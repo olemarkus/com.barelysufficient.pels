@@ -1,4 +1,5 @@
 import { getDateKeyInTimeZone } from '../utils/dateUtils';
+import type { StructuredDebugEmitter } from '../logging/logger';
 import { fetchAndNormalizeGridTariff, type GridTariffSettings } from './gridTariffUtils';
 
 type SpotPriceCacheDecisionParams = {
@@ -106,16 +107,16 @@ export const fetchGridTariffWithDateFallback = async (params: {
   settings: GridTariffSettings;
   todayDate: Date;
   timeZone: string;
-  log: (...args: unknown[]) => void;
+  structuredInfo: StructuredDebugEmitter;
   errorLog?: (...args: unknown[]) => void;
 }): Promise<GridTariffNveFetchResult> => {
   const {
-    settings, todayDate, timeZone, log, errorLog,
+    settings, todayDate, timeZone, structuredInfo, errorLog,
   } = params;
   const candidates = buildGridTariffCandidateDates(todayDate, timeZone);
   for (const [index, candidate] of candidates.entries()) {
     const data = await fetchAndNormalizeGridTariff({
-      date: candidate.date, settings, log, errorLog,
+      date: candidate.date, settings, structuredInfo, errorLog,
     });
     if (data) {
       const logContext = index === 0 ? '' : ` (fallback ${candidate.label} ${candidate.date})`;

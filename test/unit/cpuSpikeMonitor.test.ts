@@ -26,10 +26,7 @@ describe('startCpuSpikeMonitor', () => {
   });
 
   it('uses the clamped interval for delay detection and logging', () => {
-    const log = vi.fn();
-
     const stop = startCpuSpikeMonitor({
-      log,
       sampleIntervalMs: 100,
       cpuThresholdPct: 0,
       minConsecutiveSamples: 2,
@@ -42,26 +39,18 @@ describe('startCpuSpikeMonitor', () => {
     });
 
     vi.advanceTimersByTime(250);
-    let spikeMessages = log.mock.calls
-      .map(([message]) => String(message))
-      .filter((message) => message.includes('[perf] cpu spike cpu='));
-    expect(spikeMessages).toHaveLength(0);
+    expect(capture.findEvents('cpu_spike_detected')).toHaveLength(0);
 
     vi.advanceTimersByTime(250);
-    spikeMessages = log.mock.calls
-      .map(([message]) => String(message))
-      .filter((message) => message.includes('[perf] cpu spike cpu='));
-    expect(spikeMessages).toHaveLength(1);
-    expect(spikeMessages[0]).toContain('lag=0ms');
+    const spikes = capture.findEvents('cpu_spike_detected');
+    expect(spikes).toHaveLength(1);
+    expect(spikes[0]).toMatchObject({ lagMs: 0 });
 
     stop();
   });
 
   it('does not log monitor startup while disabled', () => {
-    const log = vi.fn();
-
     const stop = startCpuSpikeMonitor({
-      log,
       isEnabled: () => false,
       sampleIntervalMs: 100,
       cpuThresholdPct: 0,
@@ -69,22 +58,17 @@ describe('startCpuSpikeMonitor', () => {
       minLogIntervalMs: 0,
     });
 
-    expect(log).not.toHaveBeenCalled();
     expect(capture.findEvent('cpu_spike_monitor_started')).toBeUndefined();
 
     vi.advanceTimersByTime(1000);
-    expect(log).not.toHaveBeenCalled();
     expect(capture.findEvent('cpu_spike_monitor_started')).toBeUndefined();
+    expect(capture.findEvents('cpu_spike_detected')).toHaveLength(0);
 
     stop();
   });
 
-  it('routes monitor exceptions to error when provided', () => {
-    const log = vi.fn();
-    const error = vi.fn();
+  it('emits a structured error event for monitor exceptions', () => {
     const stop = startCpuSpikeMonitor({
-      log,
-      error,
       sampleIntervalMs: 250,
       cpuThresholdPct: 0,
       minConsecutiveSamples: 1,
@@ -97,15 +81,14 @@ describe('startCpuSpikeMonitor', () => {
 
     vi.advanceTimersByTime(250);
 
-    expect(error).toHaveBeenCalledWith('[perf] cpu spike monitor error boom', expect.any(Error));
+    const errorEvent = capture.findEvent('cpu_spike_monitor_error');
+    expect(errorEvent).toBeDefined();
+    expect((errorEvent?.err as Error | undefined)?.message).toBe('boom');
     stop();
   });
 
   it('normalizes non-Error monitor exceptions before logging', () => {
-    const error = vi.fn();
     const stop = startCpuSpikeMonitor({
-      log: vi.fn(),
-      error,
       sampleIntervalMs: 250,
       cpuThresholdPct: 0,
       minConsecutiveSamples: 1,
@@ -118,27 +101,9 @@ describe('startCpuSpikeMonitor', () => {
 
     vi.advanceTimersByTime(250);
 
-    expect(error).toHaveBeenCalledWith('[perf] cpu spike monitor error boom', expect.any(Error));
-    stop();
-  });
-
-  it('includes the normalized error when falling back to standard log output', () => {
-    const log = vi.fn();
-    const stop = startCpuSpikeMonitor({
-      log,
-      sampleIntervalMs: 250,
-      cpuThresholdPct: 0,
-      minConsecutiveSamples: 1,
-      minLogIntervalMs: 0,
-    });
-    cpuUsageSpy.mockImplementation((previous?: NodeJS.CpuUsage) => {
-      if (previous) throw 'boom';
-      return { user: 0, system: 0 };
-    });
-
-    vi.advanceTimersByTime(250);
-
-    expect(log).toHaveBeenCalledWith('[perf] cpu spike monitor error boom', expect.any(Error));
+    const errorEvent = capture.findEvent('cpu_spike_monitor_error');
+    expect(errorEvent).toBeDefined();
+    expect((errorEvent?.err as Error | undefined)?.message).toBe('boom');
     stop();
   });
 });

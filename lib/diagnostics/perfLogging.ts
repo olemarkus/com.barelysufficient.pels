@@ -234,8 +234,6 @@ export const startPerfLogger = (params: {
       if (!stopGcObserver) stopGcObserver = startGcObserver();
       if (typeof params.logCpuSpike === 'function' && !stopCpuMonitor) {
         stopCpuMonitor = startCpuSpikeMonitor({
-          log: params.logCpuSpike,
-          error: params.error,
           isEnabled: params.isEnabled,
         });
       }

@@ -215,7 +215,7 @@ export default class PriceService {
       settings: requestSettings,
       todayDate,
       timeZone,
-      log: this.sinks.log,
+      structuredInfo: (payload) => this.sinks.structuredLog?.info(payload),
       errorLog: this.sinks.errorLog,
     });
     if (data) {

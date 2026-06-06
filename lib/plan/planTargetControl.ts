@@ -153,14 +153,14 @@ export function syncPendingTargetCommands(params: {
   state: PlanEngineState;
   liveDevices: PlanInputDevice[];
   source: PendingTargetObservationSource;
-  log?: (message: string) => void;
+  structuredInfo?: StructuredDebugEmitter;
   debugStructured?: StructuredDebugEmitter;
 }): boolean {
   const {
     state,
     liveDevices,
     source,
-    log,
+    structuredInfo,
     debugStructured,
   } = params;
   const liveById = new Map(liveDevices.map((device) => [device.id, device]));
@@ -211,10 +211,11 @@ export function syncPendingTargetCommands(params: {
       Object.is(pending.lastObservedValue, observedValue)
       && pending.lastObservedSource === source
     ) {
-      maybeLogRepeatedPendingConfirmation({
+      maybeEmitRepeatedPendingConfirmation({
         pending,
+        deviceId,
         name: liveDevice.name,
-        log,
+        structuredInfo,
         source,
         observedValue,
       });
@@ -228,7 +229,7 @@ export function syncPendingTargetCommands(params: {
       observedValue,
       source,
       name: liveDevice.name,
-      log,
+      structuredInfo,
       debugStructured,
     });
   }
@@ -404,7 +405,7 @@ function updatePendingTargetWaitingObservation(params: {
   observedValue: unknown;
   source: PendingTargetObservationSource;
   name: string;
-  log?: (message: string) => void;
+  structuredInfo?: StructuredDebugEmitter;
   debugStructured?: StructuredDebugEmitter;
 }): void {
   const {
@@ -413,7 +414,7 @@ function updatePendingTargetWaitingObservation(params: {
     observedValue,
     source,
     name,
-    log,
+    structuredInfo,
     debugStructured,
   } = params;
   const previousObservedValue = pending.lastObservedValue;
@@ -430,70 +431,44 @@ function updatePendingTargetWaitingObservation(params: {
     source,
     expected: pending.desired,
   });
-  const waitingLog = buildPendingConfirmationLogMessage({
-    name,
-    capabilityId: pending.capabilityId,
-    desired: pending.desired,
-    source,
-    previousObservedValue,
-    previousObservedSource,
-    observedValue,
-  });
-  if (log && waitingLog) {
-    pending.lastWaitingLogAtMs = Date.now();
-    log(waitingLog);
-  }
-}
-
-function buildPendingConfirmationLogMessage(params: {
-  name: string;
-  capabilityId: string;
-  desired: number;
-  source: PendingTargetObservationSource;
-  previousObservedValue?: unknown;
-  previousObservedSource?: PendingTargetObservationSource;
-  observedValue: unknown;
-}): string | null {
-  const {
-    name,
-    capabilityId,
-    desired,
-    source,
-    previousObservedValue,
-    previousObservedSource,
-    observedValue,
-  } = params;
-  if (
+  const observedValueChanged = !(
     previousObservedSource !== undefined
     && Object.is(previousObservedValue, observedValue)
-  ) {
-    return null;
+  );
+  if (structuredInfo && observedValueChanged) {
+    pending.lastWaitingLogAtMs = Date.now();
+    structuredInfo({
+      event: 'target_waiting_for_confirmation',
+      deviceId,
+      deviceName: name,
+      capabilityId: pending.capabilityId,
+      observed: formatObservedTarget(observedValue),
+      previousObserved: previousObservedSource !== undefined
+        ? formatObservedTarget(previousObservedValue)
+        : undefined,
+      source,
+      expected: pending.desired,
+    });
   }
-  if (previousObservedSource !== undefined) {
-    return `Target still waiting for ${capabilityId} confirmation for ${name}: `
-      + `${formatObservedTarget(previousObservedValue)} -> ${formatObservedTarget(observedValue)} `
-      + `via ${source}; expected ${desired}°C`;
-  }
-  return `Target still waiting for ${capabilityId} confirmation for ${name}: `
-    + `observed ${formatObservedTarget(observedValue)} via ${source}; `
-    + `expected ${desired}°C`;
 }
 
-function maybeLogRepeatedPendingConfirmation(params: {
+function maybeEmitRepeatedPendingConfirmation(params: {
   pending: PendingTargetCommandState;
+  deviceId: string;
   name: string;
-  log?: (message: string) => void;
+  structuredInfo?: StructuredDebugEmitter;
   source: PendingTargetObservationSource;
   observedValue: unknown;
 }): void {
   const {
     pending,
+    deviceId,
     name,
-    log,
+    structuredInfo,
     source,
     observedValue,
   } = params;
-  if (!log) return;
+  if (!structuredInfo) return;
   const nowMs = Date.now();
   if (
     typeof pending.lastWaitingLogAtMs === 'number'
@@ -502,9 +477,13 @@ function maybeLogRepeatedPendingConfirmation(params: {
     return;
   }
   pending.lastWaitingLogAtMs = nowMs;
-  log(
-    `Target still waiting for ${pending.capabilityId} confirmation for ${name}: `
-    + `observed ${formatObservedTarget(observedValue)} via ${source}; `
-    + `expected ${pending.desired}°C`,
-  );
+  structuredInfo({
+    event: 'target_waiting_for_confirmation',
+    deviceId,
+    deviceName: name,
+    capabilityId: pending.capabilityId,
+    observed: formatObservedTarget(observedValue),
+    source,
+    expected: pending.desired,
+  });
 }
