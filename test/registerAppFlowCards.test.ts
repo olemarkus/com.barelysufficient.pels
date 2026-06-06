@@ -47,8 +47,8 @@ describe('registerAppFlowCards', () => {
       getTimeZone: vi.fn(() => 'Europe/Oslo'),
       getNow: vi.fn(() => new Date('2026-04-16T00:00:00.000Z')),
       getStructuredLogger: vi.fn(() => undefined),
+      getStructuredDebugEmitter: vi.fn(() => vi.fn()),
       log: vi.fn(),
-      logDebug: vi.fn(),
       error: vi.fn(),
     } as unknown as AppContext;
 
@@ -98,8 +98,8 @@ describe('registerAppFlowCards', () => {
       getTimeZone: vi.fn(() => 'Europe/Oslo'),
       getNow: vi.fn(() => new Date('2026-04-16T00:00:00.000Z')),
       getStructuredLogger: vi.fn(() => undefined),
+      getStructuredDebugEmitter: vi.fn(() => vi.fn()),
       log: vi.fn(),
-      logDebug: vi.fn(),
       error: vi.fn(),
     } as unknown as AppContext;
 
