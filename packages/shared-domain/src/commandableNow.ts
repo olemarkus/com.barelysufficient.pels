@@ -24,6 +24,23 @@ export const isEvDevice = (dev: { deviceClass?: string; controlCapabilityId?: st
   dev.deviceClass === 'evcharger' || dev.controlCapabilityId === 'evcharger_charging'
 );
 
+/**
+ * The two EV charging states that mean there is no live, creditable charging
+ * session: the car is unplugged (`plugged_out`), or it is exporting power back
+ * (`plugged_in_discharging`). In both, the charger cannot be driven toward a
+ * SoC target and its state-of-charge cannot be credited as progress.
+ *
+ * Co-located here (browser-safe, next to `isEvDevice` and the EV reason
+ * strings) so plan/objectives consumers read this resolved predicate instead of
+ * inlining the Homey plug-state literals — the same vocabulary-containment goal
+ * as `EV_COMMANDABLE_NOW_REASONS`. Does NOT itself gate on `isEvDevice`: callers
+ * that are already EV-scoped (e.g. the `ev_soc` progress reader) pass the state
+ * directly; callers that aren't compose it with `isEvDevice` themselves.
+ */
+export const isEvSessionInactive = (evChargingState?: string | null): boolean => (
+  evChargingState === 'plugged_out' || evChargingState === 'plugged_in_discharging'
+);
+
 export type CommandableNowResolveInput = {
   deviceClass?: string;
   controlCapabilityId?: 'onoff' | 'evcharger_charging';

@@ -34,7 +34,11 @@ import {
   EV_COMMANDABLE_NOW_REASONS,
   formatUnknownEvChargingStateReason,
 } from '../../packages/shared-domain/src/commandableNowReason';
-import { isEvDevice, type CommandableNowResolveInput } from '../../packages/shared-domain/src/commandableNow';
+import {
+  isEvDevice,
+  isEvSessionInactive,
+  type CommandableNowResolveInput,
+} from '../../packages/shared-domain/src/commandableNow';
 // Commandability resolution lives in shared-domain so the executor can import it
 // without crossing the no-executor-to-device-internals boundary. Re-exported
 // here for the planner/producer call sites that already import from this module.
@@ -110,7 +114,7 @@ export function resolveEvBoostActive(params: {
   if (!isEvDevice(dev)) return false;
   if (!isSteppedLoad(dev)) return false;
   if (dev.controllable === false || dev.managed === false || dev.available === false) return false;
-  if (dev.evChargingState === 'plugged_out' || dev.evChargingState === 'plugged_in_discharging') return false;
+  if (isEvSessionInactive(dev.evChargingState)) return false;
   // The deferred limit-lower-priority rescue lane forces boost while the task is in its
   // planned hours, independent of the device's own boost config/threshold.
   if (dev.forceBoostActive === true) return true;
@@ -308,10 +312,7 @@ export function isCanSetControl(dev: CanSetControlConsumerInput): boolean {
  * EV blocks and stay outside this gate.
  */
 export function isEvPhysicallyUnplugged(dev: CommandableNowResolveInput): boolean {
-  return (
-    isEvDevice(dev)
-    && (dev.evChargingState === 'plugged_out' || dev.evChargingState === 'plugged_in_discharging')
-  );
+  return isEvDevice(dev) && isEvSessionInactive(dev.evChargingState);
 }
 
 // ---------------------------------------------------------------------------

@@ -33,6 +33,7 @@
 import { OBJECTIVE_PROFILE_MAX_FUTURE_SKEW_MS } from '../../objectives/profiles';
 import type { ObjectiveDeviceInput } from '../../objectives/types';
 import type { DeferredObjectiveSettingsEntry } from './settings';
+import { isEvSessionInactive } from '../../../packages/shared-domain/src/commandableNow';
 
 export type DeferredObjectiveProgressResolution = {
   remainingUnits: number;
@@ -55,7 +56,7 @@ type EvProgress = {
 };
 
 const resolveEvObjectiveProgress = (device: ObjectiveDeviceInput): EvProgress => {
-  if (device.evChargingState === 'plugged_out' || device.evChargingState === 'plugged_in_discharging') {
+  if (isEvSessionInactive(device.evChargingState)) {
     return { currentPercent: null, reasonCode: 'objective_invalid_session' };
   }
   const stateOfCharge = device.stateOfCharge;
