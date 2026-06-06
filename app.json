@@ -105,6 +105,10 @@
       "method": "GET",
       "path": "/ui_device_diagnostics"
     },
+    "ui_device_log": {
+      "method": "GET",
+      "path": "/ui_device_log"
+    },
     "ui_deferred_objective_history": {
       "method": "GET",
       "path": "/ui_deferred_objective_history"

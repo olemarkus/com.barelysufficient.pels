@@ -11,6 +11,7 @@ import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSe
 import { legacyDeviceReason } from '../utils/deviceReasonTestUtils';
 import { buildBinaryObservation } from '../utils/binaryObservationTestUtils';
 import { createMockPlanEngine } from '../utils/planEngineMock';
+import { DeviceOverviewLogRecorder } from '../../lib/plan/deviceOverviewLog';
 
 const LEGACY_PLAN_SNAPSHOT_SETTING = ['device', 'plan', 'snapshot'].join('_');
 
@@ -325,6 +326,52 @@ describe('PlanService', () => {
     }));
   });
 
+  it('captures device-log entries even when the overview debug log is disabled', async () => {
+    const recorder = new DeviceOverviewLogRecorder();
+    const overviewDebugStructured = vi.fn();
+    const { service } = createPlanService({
+      planEngine: {
+        ...createMockPlanEngine(),
+        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'keep', {}, {
+          currentState: 'on',
+          plannedState: 'keep',
+          measuredPowerKw: 0,
+          expectedPowerKw: 3,
+        })),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
+      } as any,
+      overviewDebugStructured,
+      isOverviewDebugEnabled: () => false,
+      deviceOverviewLogRecorder: recorder,
+    });
+
+    await service.rebuildPlanFromCache();
+
+    // Debug log is gated off, but the recorder still captured the entry.
+    expect(overviewDebugStructured).not.toHaveBeenCalled();
+    const overview = formatDeviceOverview({
+      currentState: 'on',
+      plannedState: 'keep',
+      reason: legacyDeviceReason('keep'),
+      measuredPowerKw: 0,
+      expectedPowerKw: 3,
+      controllable: true,
+    });
+    const payload = service.getDeviceLogUiPayload();
+    expect(payload.entriesByDeviceId['dev-1']).toEqual([
+      expect.objectContaining({
+        stateMsg: overview.stateMsg,
+        statusMsg: overview.statusMsg,
+        usageMsg: overview.usageMsg,
+      }),
+    ]);
+  });
+
   it('batches multiple overview changes from the same rebuild', async () => {
     const overviewDebugStructured = vi.fn();
     const plan = buildPlan(20, 'keep', {}, {
@@ -492,8 +539,11 @@ describe('PlanService', () => {
       measuredPowerKw: 0.25,
       expectedPowerKw: 3,
     }));
+    // A usage-only overview change must NOT persist the plan snapshot (no
+    // action/detail/meta change), but it DOES emit `plan_updated` so the open
+    // settings-UI activity-log view refreshes for the new overview transition.
     expect(settingsSet.mock.calls.filter((call: unknown[]) => call[0] === LEGACY_PLAN_SNAPSHOT_SETTING)).toHaveLength(0);
-    expect(realtime.mock.calls.filter((call: unknown[]) => call[0] === 'plan_updated')).toHaveLength(0);
+    expect(realtime.mock.calls.filter((call: unknown[]) => call[0] === 'plan_updated')).toHaveLength(1);
   });
 
   it('suppresses countdown-only cooldown changes for overview logs, snapshots, and plan updates', async () => {

@@ -174,6 +174,7 @@ import type {
 } from './packages/contracts/src/starvationRescue';
 import type {
   SettingsUiDeferredObjectivePlanHistoryPayload,
+  SettingsUiDeviceLogPayload,
 } from './packages/contracts/src/settingsUiApi';
 import { HomeyEnergyPollSource } from './lib/power/sources/homeyEnergyPoll';
 import {
@@ -1996,6 +1997,9 @@ class PelsApp extends Homey.App {
   public getDeviceDiagnosticsUiPayload(): SettingsUiDeviceDiagnosticsPayload {
     return this.deviceDiagnosticsService?.getUiPayload?.()
       ?? { generatedAt: Date.now(), windowDays: 21, diagnosticsByDeviceId: {} };
+  }
+  public getDeviceLogUiPayload(): SettingsUiDeviceLogPayload {
+    return this.planService?.getDeviceLogUiPayload() ?? { version: 1, entriesByDeviceId: {} };
   }
   public getDeferredObjectiveActivePlansUiPayload(): DeferredObjectiveActivePlansV1 | null {
     const snapshot = this.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot() ?? null;

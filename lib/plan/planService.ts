@@ -4,18 +4,8 @@ import { PriceLevel } from '../price/priceLevels';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import { recordOpRssDelta, safeRss } from '../utils/opRssTracker';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
-import {
-  buildDeviceOverviewTransitionSignature,
-  formatDeviceOverview,
-  getDeviceOverviewReportedStepId,
-  getDeviceOverviewExpectedPowerKw,
-} from '../../packages/shared-domain/src/deviceOverview';
-import { formatDeviceReasonUserFacing } from '../../packages/shared-domain/src/planReasonSemantics';
+import { formatDeviceOverview } from '../../packages/shared-domain/src/deviceOverview';
 import type { IdleClassification } from '../../packages/shared-domain/src/idleClassificationCopy';
-import {
-  resolvePlanStateKind,
-  resolvePlanStateTone,
-} from '../../packages/shared-domain/src/planStateLabels';
 import {
   buildPlanCapacityStateSummary,
   buildPlanDebugSummaryEvent,
@@ -24,6 +14,13 @@ import {
   buildPlanSignature,
 } from './planLogging';
 import { hasShedding } from './planServiceInternals';
+import {
+  buildDeviceLogEntry,
+  buildOverviewBatchEvent,
+  buildOverviewEventForDevice,
+  buildOverviewSignatureForDevice,
+  type DeviceOverviewLogRecorder,
+} from './deviceOverviewLog';
 import {
   buildPlanHeadroomLogFields,
   createPlanRebuildOutcome,
@@ -37,6 +34,7 @@ import { getLogger, withRebuildContext } from '../logging/logger';
 
 const logger = getLogger('plan/service');
 import type {
+  SettingsUiDeviceLogPayload,
   SettingsUiPlanDeviceSnapshot,
   SettingsUiPlanSnapshot,
 } from '../../packages/contracts/src/settingsUiApi';
@@ -80,54 +78,6 @@ const serializePlanForUi = (
   });
 };
 
-function resolveOverviewTargetStepId(device: DevicePlan['devices'][number]): string | null {
-  return device.targetStepId ?? device.desiredStepId ?? null;
-}
-
-function buildOverviewSignatureForDevice(
-  device: DevicePlan['devices'][number],
-): string {
-  return buildDeviceOverviewTransitionSignature(device);
-}
-
-function buildOverviewEventForDevice(
-  device: DevicePlan['devices'][number],
-  overview: ReturnType<typeof formatDeviceOverview>,
-): Record<string, unknown> {
-  return {
-    component: 'overview',
-    event: 'device_overview_changed',
-    deviceId: device.id,
-    deviceName: device.name,
-    powerMsg: overview.powerMsg,
-    stateMsg: overview.stateMsg,
-    usageMsg: overview.usageMsg,
-    statusMsg: overview.statusMsg,
-    stateKind: resolvePlanStateKind(device),
-    stateTone: resolvePlanStateTone(device),
-    currentState: device.currentState,
-    plannedState: device.plannedState,
-    reasonCode: device.reason.code,
-    reasonText: formatDeviceReasonUserFacing(device.reason),
-    measuredPowerKw: device.measuredPowerKw ?? null,
-    expectedPowerKw: getDeviceOverviewExpectedPowerKw(device) ?? null,
-    reportedStepId: getDeviceOverviewReportedStepId(device) ?? null,
-    targetStepId: resolveOverviewTargetStepId(device),
-    desiredStepId: device.desiredStepId ?? null,
-  };
-}
-
-function buildOverviewBatchEvent(
-  changedDevices: Record<string, unknown>[],
-): Record<string, unknown> {
-  return {
-    component: 'overview',
-    event: 'device_overview_changes',
-    changedDeviceCount: changedDevices.length,
-    devices: changedDevices,
-  };
-}
-
 export type PlanServiceDeps = {
   homey: Homey.App['homey'];
   planEngine: PlanEngine;
@@ -148,6 +98,11 @@ export type PlanServiceDeps = {
   loggers?: Loggers;
   overviewDebugStructured?: StructuredDebugEmitter;
   isOverviewDebugEnabled?: () => boolean;
+  // Optional in-memory recorder for the settings-UI device-log view. Captures
+  // the SAME overview-transition change boundary the debug log uses, but is
+  // NOT gated on the debug topic, so the view has data without the user
+  // enabling debug logging first.
+  deviceOverviewLogRecorder?: DeviceOverviewLogRecorder;
   isPlanDebugEnabled?: () => boolean;
   deviceDiagnostics?: {
     getOverviewStarvation?: (deviceId: string) => SettingsUiPlanDeviceSnapshot['starvation'] | null;
@@ -233,6 +188,12 @@ export class PlanService {
 
   computeShortfallThreshold(): number {
     return this.deps.planEngine.computeShortfallThreshold();
+  }
+
+  // Recorded device-overview transitions for the settings-UI device-log view.
+  // Empty when no recorder is wired (e.g. tests that omit the dep).
+  getDeviceLogUiPayload(): SettingsUiDeviceLogPayload {
+    return this.deps.deviceOverviewLogRecorder?.getUiPayload() ?? { version: 1, entriesByDeviceId: {} };
   }
 
   handleShortfall(deficitKw: number): Promise<void> {
@@ -577,8 +538,17 @@ export class PlanService {
     const changed = changes.actionChanged || changes.detailChanged || changes.metaChanged;
     if (changed) {
       this.emitPlanUpdated(plan);
-    } else {
-      this.emitOverviewTransitions(plan);
+      return;
+    }
+    // No action/detail/meta change, but the overview signature (e.g.
+    // measured/expected power, status text) can still move. Capture it; if a
+    // transition was recorded, emit `plan_updated` so the open settings-UI
+    // activity-log view (which listens for that event) refreshes — otherwise
+    // overview-only transitions would record backend-side but never reach the
+    // open view.
+    const captured = this.emitOverviewTransitions(plan);
+    if (captured) {
+      this.emitPlanUpdatedRealtime(plan);
     }
   }
 
@@ -591,6 +561,10 @@ export class PlanService {
   private emitPlanUpdated(plan: DevicePlan): void {
     this.tickIdleClassifier(plan);
     this.emitOverviewTransitions(plan);
+    this.emitPlanUpdatedRealtime(plan);
+  }
+
+  private emitPlanUpdatedRealtime(plan: DevicePlan): void {
     const api = this.deps.homey.api as { realtime?: (event: string, data: unknown) => Promise<unknown> } | undefined;
     const realtime = api?.realtime;
     if (typeof realtime === 'function') {
@@ -602,20 +576,49 @@ export class PlanService {
     }
   }
 
-  private emitOverviewTransitions(plan: DevicePlan): void {
-    if (!(this.deps.isOverviewDebugEnabled?.() ?? false) || !this.deps.overviewDebugStructured) {
-      return;
-    }
+  // Per-device: detect a change against the last-known signature, capture it
+  // into the device-log recorder, and (when debug logging is on) build the
+  // structured debug event. `captured` is true whenever the signature moved
+  // (independent of the debug topic), so the caller can decide to notify the
+  // open UI; `event` is the debug payload (null when nothing changed or debug
+  // is off).
+  private recordOverviewChange(
+    device: DevicePlan['devices'][number],
+    recorder: DeviceOverviewLogRecorder | undefined,
+    debugEnabled: boolean,
+  ): { captured: boolean; event: Record<string, unknown> | null } {
+    const signature = buildOverviewSignatureForDevice(device);
+    const previousSignature = this.lastOverviewSignatureByDeviceId.get(device.id);
+    this.lastOverviewSignatureByDeviceId.set(device.id, signature);
+    if (signature === previousSignature) return { captured: false, event: null };
+    const overview = formatDeviceOverview(device);
+    recorder?.record(device.id, buildDeviceLogEntry(device, overview));
+    return {
+      captured: true,
+      event: debugEnabled ? buildOverviewEventForDevice(device, overview) : null,
+    };
+  }
+
+  // Returns true when at least one device's overview signature changed (and was
+  // captured into the recorder / batched for debug), so the caller can refresh
+  // the open settings-UI activity-log view.
+  private emitOverviewTransitions(plan: DevicePlan): boolean {
+    // The recorder must capture even when the debug-log topic is off, so the
+    // settings-UI device-log view has data without the user first enabling
+    // debug logging. Bail only when there is nothing at all to do.
+    const debugEnabled = (this.deps.isOverviewDebugEnabled?.() ?? false)
+      && this.deps.overviewDebugStructured !== undefined;
+    const recorder = this.deps.deviceOverviewLogRecorder;
+    if (!debugEnabled && !recorder) return false;
+
     const nextDeviceIds = new Set<string>();
     const changedDevices: Record<string, unknown>[] = [];
+    let captured = false;
     for (const device of plan.devices) {
       nextDeviceIds.add(device.id);
-      const overview = formatDeviceOverview(device);
-      const signature = buildOverviewSignatureForDevice(device);
-      const previousSignature = this.lastOverviewSignatureByDeviceId.get(device.id);
-      this.lastOverviewSignatureByDeviceId.set(device.id, signature);
-      if (signature === previousSignature) continue;
-      changedDevices.push(buildOverviewEventForDevice(device, overview));
+      const result = this.recordOverviewChange(device, recorder, debugEnabled);
+      if (result.captured) captured = true;
+      if (result.event) changedDevices.push(result.event);
     }
 
     for (const deviceId of this.lastOverviewSignatureByDeviceId.keys()) {
@@ -623,7 +626,16 @@ export class PlanService {
         this.lastOverviewSignatureByDeviceId.delete(deviceId);
       }
     }
+    // The device-log recorder deliberately retains devices that transiently
+    // leave the plan; its LRU device cap alone bounds memory (see
+    // deviceOverviewLog.ts). So no prune-on-not-in-plan here.
 
+    this.emitOverviewDebugBatch(changedDevices, debugEnabled);
+    return captured;
+  }
+
+  private emitOverviewDebugBatch(changedDevices: Record<string, unknown>[], debugEnabled: boolean): void {
+    if (!this.deps.overviewDebugStructured || !debugEnabled) return;
     if (changedDevices.length === 1) {
       this.deps.overviewDebugStructured(changedDevices[0]);
     } else if (changedDevices.length > 1) {

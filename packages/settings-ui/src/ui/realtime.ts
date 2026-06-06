@@ -2,6 +2,7 @@ import { panels, tabListEntries, tabs, type MdTabElement } from './dom.ts';
 import {
   SETTINGS_UI_DEVICES_PATH,
   SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH,
+  SETTINGS_UI_DEVICE_LOG_PATH,
   SETTINGS_UI_PLAN_PATH,
   SETTINGS_UI_POWER_PATH,
   SETTINGS_UI_PRICES_PATH,
@@ -372,6 +373,10 @@ const handlePlanUpdated = (plan: unknown) => {
   }
   primeApiCache(SETTINGS_UI_PLAN_PATH, { plan: parsedPlan });
   invalidateApiCache(SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH);
+  // The device-log payload is recorded backend-side on the same plan pass, so
+  // invalidate it here. Otherwise `getApiReadModel` keeps returning the stale
+  // cached payload and the open activity-log view never picks up new entries.
+  invalidateApiCache(SETTINGS_UI_DEVICE_LOG_PATH);
   document.dispatchEvent(new CustomEvent('plan-updated', { detail: { plan: parsedPlan } }));
   if (!isPanelVisible('#overview-panel')) return;
   renderPlan(parsedPlan as PlanSnapshot | null);

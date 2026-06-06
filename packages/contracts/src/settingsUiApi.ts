@@ -10,7 +10,7 @@ import type {
   SteppedLoadProfile,
   TemperatureBoostConfig,
 } from './types.js';
-import type { DeviceOverviewSnapshot } from '../../shared-domain/src/deviceOverview.js';
+import type { DeviceOverviewSnapshot, DeviceOverviewStrings } from '../../shared-domain/src/deviceOverview.js';
 
 export const SETTINGS_UI_BOOTSTRAP_PATH = '/ui_bootstrap';
 export const SETTINGS_UI_DEVICES_PATH = '/ui_devices';
@@ -22,6 +22,7 @@ export const SETTINGS_UI_REFRESH_PRICES_PATH = '/ui_refresh_prices';
 export const SETTINGS_UI_REFRESH_GRID_TARIFF_PATH = '/ui_refresh_grid_tariff';
 export const SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH = '/ui_device_diagnostics';
 export const SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH = '/ui_deferred_objective_history';
+export const SETTINGS_UI_DEVICE_LOG_PATH = '/ui_device_log';
 export const SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH = '/ui_deferred_objective_settings';
 export const SETTINGS_UI_LOG_PATH = '/settings_ui_log';
 export const SETTINGS_UI_RESET_POWER_STATS_PATH = '/ui_reset_power_stats';
@@ -195,6 +196,25 @@ export type SettingsUiDevicesPayload = {
 export type SettingsUiDeferredObjectivePlanHistoryPayload = {
   version: 1;
   entriesByDeviceId: Record<string, DeferredObjectivePlanHistoryEntry[]>;
+};
+
+// One recorded device-overview transition. The four message fields ARE the
+// shared `DeviceOverviewStrings` the runtime overview logging emits — captured
+// verbatim from `formatDeviceOverview`, never re-typed — so the visible
+// device-log wording matches the backend transition logs exactly. `stateTone`
+// is the same tone token the live device cards use, so the log can colour the
+// state line consistently without re-deriving it.
+export type SettingsUiDeviceLogEntry = DeviceOverviewStrings & {
+  atMs: number;
+  stateKind: string;
+  stateTone: string;
+};
+
+export type SettingsUiDeviceLogPayload = {
+  version: 1;
+  // Most-recent-first per device. Bounded ring buffer on the runtime side; the
+  // UI never assumes a full history.
+  entriesByDeviceId: Record<string, SettingsUiDeviceLogEntry[]>;
 };
 
 export type SettingsUiPowerStatus = {
