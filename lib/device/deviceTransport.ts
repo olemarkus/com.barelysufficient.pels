@@ -1,4 +1,3 @@
-/* eslint-disable max-lines -- Transport coordinates SDK setup, snapshots, realtime, and writes. */
 import Homey from 'homey';
 import { EventEmitter } from 'events';
 import type {

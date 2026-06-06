@@ -1,4 +1,3 @@
-/* eslint-disable max-lines -- plan service keeps rebuild/reconcile sequencing in one place. */
 import { randomUUID } from 'node:crypto';
 import type Homey from 'homey';
 import { PriceLevel } from '../price/priceLevels';

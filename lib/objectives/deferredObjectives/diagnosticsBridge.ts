@@ -1,4 +1,3 @@
-/* eslint-disable max-lines -- diagnostics bridge keeps one payload-build pipeline per concern. */
 import type { PowerTrackerState } from '../../power/tracker';
 import {
   resolveProfileEnergy,

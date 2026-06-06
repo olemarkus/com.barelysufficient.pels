@@ -1,4 +1,3 @@
-/* eslint-disable max-lines -- active-plan recorder, diagnostics, and replay stay together. */
 import type {
   DeferredObjectiveActivePlanDiagnosticReason,
   DeferredObjectiveActivePlanHourV1,

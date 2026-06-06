@@ -1,4 +1,3 @@
-/* eslint-disable max-lines -- reason normalization and shed-temperature hold decisions share stateful helpers here */
 import type { DevicePlanDevice } from './planTypes';
 import type { PlanEngineState } from './planState';
 import type { StructuredDebugEmitter } from '../logging/logger';
