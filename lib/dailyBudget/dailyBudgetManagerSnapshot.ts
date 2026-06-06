@@ -16,24 +16,26 @@ import type {
   DailyBudgetState,
 } from './dailyBudgetTypes';
 import type { DailyBudgetManagerDeps, PlanResult } from './dailyBudgetManagerTypes';
+import type { StructuredDebugEmitter } from '../logging/logger';
 import type { UncontrolledReservePlanDiagnostics } from './dailyBudgetPlanCaps';
 import { logNextDayPlanDebug } from './dailyBudgetNextDayDebug';
 import { logUncontrolledReserveDebug as logReserveDebug } from './dailyBudgetReserveLogging';
 
 export function logBudgetSummaryIfNeeded(params: {
-  logDebug: (...args: unknown[]) => void;
+  debugStructured: StructuredDebugEmitter;
   shouldLog: boolean;
   context: DayContext;
   budget: BudgetState;
 }): void {
-  const { logDebug, shouldLog, context, budget } = params;
+  const { debugStructured, shouldLog, context, budget } = params;
   if (!shouldLog) return;
-  logDebug(
-    `Daily budget: used ${context.usedNowKWh.toFixed(2)} kWh, `
-    + `allowed ${budget.allowedNowKWh.toFixed(2)} kWh, `
-    + `remaining ${budget.remainingKWh.toFixed(2)} kWh, `
-    + `confidence ${budget.confidence.toFixed(2)}`,
-  );
+  debugStructured({
+    event: 'daily_budget_summary',
+    usedNowKWh: context.usedNowKWh,
+    allowedNowKWh: budget.allowedNowKWh,
+    remainingKWh: budget.remainingKWh,
+    confidence: budget.confidence,
+  });
 }
 
 export function buildSnapshot(params: {
@@ -86,6 +88,7 @@ export function buildSnapshot(params: {
 
 export function buildSnapshotAndLogDebug(params: {
   deps: DailyBudgetManagerDeps;
+  debugStructured: StructuredDebugEmitter;
   state: DailyBudgetState;
   settings: DailyBudgetSettings;
   enabled: boolean;
@@ -100,6 +103,7 @@ export function buildSnapshotAndLogDebug(params: {
 }): DailyBudgetDayPayload {
   const {
     deps,
+    debugStructured,
     state,
     settings,
     enabled,
@@ -113,7 +117,7 @@ export function buildSnapshotAndLogDebug(params: {
     priceOptimizationEnabled,
   } = params;
   const shouldLog = plan.shouldLog && (deps.isDebugTopicEnabled?.('daily_budget') ?? true);
-  logBudgetSummaryIfNeeded({ logDebug: deps.logDebug, shouldLog, context, budget });
+  logBudgetSummaryIfNeeded({ debugStructured, shouldLog, context, budget });
   const snapshot = buildSnapshot({
     state,
     settings,
@@ -126,7 +130,7 @@ export function buildSnapshotAndLogDebug(params: {
     usableCapacityKw: capacityBudgetKWh,
   });
   logPlanDebugIfNeeded({
-    logDebug: deps.logDebug,
+    debugStructured,
     shouldLog,
     snapshot,
     priceData: plan.priceData,
@@ -139,7 +143,7 @@ export function buildSnapshotAndLogDebug(params: {
     uncontrolledReserveDiagnostics: plan.uncontrolledReserveDiagnostics,
   });
   logNextDayPlanDebug({
-    logDebug: deps.logDebug,
+    debugStructured,
     shouldLog,
     context,
     settings,
@@ -159,7 +163,7 @@ export function buildSnapshotAndLogDebug(params: {
 }
 
 export function logPlanDebugIfNeeded(params: {
-  logDebug: (...args: unknown[]) => void;
+  debugStructured: StructuredDebugEmitter;
   shouldLog: boolean;
   snapshot: DailyBudgetDayPayload;
   priceData: PriceData;
@@ -168,7 +172,7 @@ export function logPlanDebugIfNeeded(params: {
   settings: DailyBudgetSettings;
   state: DailyBudgetState;
   defaultProfile: number[];
-  label?: string;
+  variant?: 'current' | 'next_day';
   planDebug?: {
     lockCurrentBucket: boolean;
     shouldLockCurrent: boolean;
@@ -178,7 +182,7 @@ export function logPlanDebugIfNeeded(params: {
   uncontrolledReserveDiagnostics?: UncontrolledReservePlanDiagnostics;
 }): void {
   const {
-    logDebug,
+    debugStructured,
     shouldLog,
     snapshot,
     priceData,
@@ -187,13 +191,13 @@ export function logPlanDebugIfNeeded(params: {
     settings,
     state,
     defaultProfile,
-    label,
+    variant,
     planDebug,
     uncontrolledReserveDiagnostics,
   } = params;
   if (!shouldLog) return;
   logDailyBudgetPlanDebug({
-    logDebug,
+    debugStructured,
     snapshot,
     priceData,
     priceOptimizationEnabled,
@@ -201,7 +205,7 @@ export function logPlanDebugIfNeeded(params: {
     settings,
     state,
     defaultProfile,
-    label,
+    variant,
     planDebug,
     uncontrolledReserveDiagnostics,
   });
