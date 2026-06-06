@@ -90,14 +90,14 @@ deadline feature end-to-end and to display EV deadline plans without actuating t
 - Temperature admission wired in `lib/plan/admission/deferredObjective.ts`: cap-off devices made
   visible during planned hours, kept idle outside, setpoint lifted to deadline target.
 - EV admission and pause/resume actuation wired across admission, planner, and executor:
-  `admission.ts` emits `ev_resume`/`ev_pause` intents per cycle;
-  `lib/plan/planBuilder.ts` collects them via `buildDeferredEvCommandIntents`;
-  `lib/executor/binaryExecutor.ts` (`applyDeferredEvCommand`) actuates pause when
+  `admission.ts` emits `binary_restore`/`binary_release` intents per cycle;
+  `lib/plan/planBuilder.ts` collects them via `attachDeferredReleaseIntents`;
+  `lib/executor/binaryExecutor.ts` (`applyDeferredBinaryCommand`) actuates pause when
   `plugged_in_charging` and resume when `plugged_in_paused`;
   `lib/executor/planExecutor.ts` runs stability checks
-  (`hasStableEvDeadlineActuation`). Integration tests under
+  (`hasStableBinaryReleaseActuation`). Integration tests under
   `test/integration/evDevices.integration.test.ts` cover the resume and pause transitions
-  (e.g. `deferredReleaseIntent: 'ev_resume'` for a paused plugged-in charger).
+  (e.g. `deferredReleaseIntent: 'binary_restore'` for a paused plugged-in charger).
 
 ## Where the trust gap is today
 
@@ -118,7 +118,7 @@ describes *what* each topic is, not *when* it should ship.
 
 ### EV admission landed (shipped v1)
 
-EV-aware executor intent (`ev_resume` / `ev_pause`) is emitted by admission,
+EV-aware executor intent (`binary_restore` / `binary_release`) is emitted by admission,
 propagated through the planner, and applied by the binary executor. A
 planned EV bucket resumes a paused plugged-in charger; an idle bucket
 pauses a charging one. Cooldowns and the stale-power failsafe are honored.

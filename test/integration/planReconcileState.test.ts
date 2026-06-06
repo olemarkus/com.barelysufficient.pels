@@ -57,7 +57,7 @@ const buildEvDevice = (
   deviceClass: 'evcharger',
   controlCapabilityId: 'evcharger_charging',
   evChargingState: 'plugged_in_paused',
-  deferredReleaseIntent: 'ev_resume',
+  deferredReleaseIntent: 'binary_restore',
   ...overrides,
 });
 
@@ -308,7 +308,7 @@ describe('planReconcileState stepped device drift', () => {
     it('treats charging EV state as drift when a deadline pause is expected', () => {
       const plan = buildPlan([buildEvDevice({
         evChargingState: 'plugged_in_charging',
-        deferredReleaseIntent: 'ev_pause',
+        deferredReleaseIntent: 'binary_release',
       })]);
       const liveDevices: PlanInputDevice[] = [{
         id: 'ev-1',
@@ -325,7 +325,7 @@ describe('planReconcileState stepped device drift', () => {
     it('dampens EV deadline pause drift while the matching binary command is pending', () => {
       const plan = buildPlan([buildEvDevice({
         evChargingState: 'plugged_in_charging',
-        deferredReleaseIntent: 'ev_pause',
+        deferredReleaseIntent: 'binary_release',
       })]);
       const liveDevices: PlanInputDevice[] = [{
         id: 'ev-1',

@@ -57,14 +57,14 @@ export function resolveRestoreLogSource(
   return !lastRestoreMs || lastRestoreMs < shedDecidedMs ? 'shed_state' : 'current_plan';
 }
 
-export function hasStableEvDeadlineActuation(dev: DevicePlan['devices'][number]): boolean {
+export function hasStableBinaryReleaseActuation(dev: DevicePlan['devices'][number]): boolean {
   if (dev.binaryCommandPending === true) return false;
-  if (dev.deferredReleaseIntent === 'ev_resume') {
-    // Paused = off-but-commandable, the only state a resume acts on.
+  if (dev.deferredReleaseIntent === 'binary_restore') {
+    // Released = off-but-commandable, the only state a restore acts on.
     return dev.binaryControl?.on === false && isCommandableNow(dev);
   }
-  if (dev.deferredReleaseIntent === 'ev_pause') {
-    // Charging = on (the consolidated binary truth).
+  if (dev.deferredReleaseIntent === 'binary_release') {
+    // On (the consolidated binary truth).
     return dev.binaryControl?.on ?? true;
   }
   return false;

@@ -238,15 +238,15 @@ const buildExecutableReleaseIntent = (
   if (kind === 'shed_release') {
     // shed_release fires the device's configured shedBehavior; the executor resolves the
     // concrete actuation primitive (turn_off / set_temperature / set_step) at apply time.
-    // EV chargers should always route through 'ev_pause' (never 'shed_release'), so reject
-    // here as a defensive guard against a misrouted producer. `releaseShedStepId` is
-    // producer-resolved (see `resolveShedIntent`); the lifecycle-end release path reads it
-    // for the stepped-no-binary case and falls back to binary off otherwise.
+    // Binary-controlled deferred objectives route through 'binary_release' (never
+    // 'shed_release'), so reject here as a defensive guard against a misrouted producer.
+    // `releaseShedStepId` is producer-resolved (see `resolveShedIntent`); the lifecycle-end
+    // release path reads it for the stepped-no-binary case and falls back to binary off otherwise.
     if (dev.deviceClass === 'evcharger' || dev.controlCapabilityId === 'evcharger_charging') return null;
     return { kind, deviceId: dev.id, name: dev.name, releaseShedStepId: dev.releaseShedStepId };
   }
   if (dev.deviceClass !== 'evcharger' && dev.controlCapabilityId !== 'evcharger_charging') return null;
-  if (kind === 'ev_pause') return { kind, deviceId: dev.id, name: dev.name };
+  if (kind === 'binary_release') return { kind, deviceId: dev.id, name: dev.name };
   if (planMeta?.powerFreshnessState && planMeta.powerFreshnessState !== 'fresh') return null;
   if (dev.plannedState !== 'keep') return null;
   if (isSwapTargetPendingReason(dev)) return null;

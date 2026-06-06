@@ -105,11 +105,12 @@ export type DevicePlanDevice = {
   targetPowerConfig?: TargetPowerSteppedLoadConfig;
   evChargingState?: string;
   // One-shot intent emitted by deferred-objective admission when a cap-off device's smart task
-  // transitions out of a plannable status (or the device is in an idle bucket). EV chargers map
-  // to 'ev_resume'/'ev_pause' and use the dedicated EV executor path; everything else maps to
-  // 'shed_release', which causes the executor to issue the device's configured shedBehavior
-  // (turn_off / set_temperature / set_step) exactly once, gated by observed-state idempotency.
-  deferredReleaseIntent?: 'ev_resume' | 'ev_pause' | 'shed_release';
+  // transitions out of a plannable status (or the device is in an idle bucket). Binary-controlled
+  // devices map to 'binary_restore'/'binary_release' and use the dedicated binary executor path;
+  // everything else maps to 'shed_release', which causes the executor to issue the device's
+  // configured shedBehavior (turn_off / set_temperature / set_step) exactly once, gated by
+  // observed-state idempotency.
+  deferredReleaseIntent?: 'binary_restore' | 'binary_release' | 'shed_release';
   priority?: number;
   powerKw?: number;
   expectedPowerKw?: number;

@@ -1025,7 +1025,7 @@ describe('PlanService', () => {
         deviceClass: 'evcharger',
         controlCapabilityId: 'evcharger_charging',
         evChargingState: 'plugged_in_paused',
-        deferredReleaseIntent: 'ev_resume',
+        deferredReleaseIntent: 'binary_restore',
       },
     );
 
@@ -1036,7 +1036,7 @@ describe('PlanService', () => {
         expect.objectContaining({
           id: 'ev-1',
           evChargingState: 'plugged_in_paused',
-          deferredReleaseIntent: 'ev_resume',
+          deferredReleaseIntent: 'binary_restore',
         }),
       ],
     }), 'reconcile');

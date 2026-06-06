@@ -60,7 +60,7 @@ type PlanDeviceEntry = {
   id: string;
   plannedState?: string;
   reason?: string;
-  deferredReleaseIntent?: 'ev_resume' | 'ev_pause';
+  deferredReleaseIntent?: 'binary_restore' | 'binary_release';
 };
 
 const flushPromises = () => new Promise((resolve) => process.nextTick(resolve));
@@ -320,7 +320,7 @@ describe('EV charger integration', { retry: 2 }, () => {
     const plan = await rebuildPlan(app, { totalPowerKw: 0.4, softLimitKw: 10.0 });
     const evPlan = getPlanEntry(plan, charger.idValue);
 
-    expectDeferredReleaseIntent(evPlan, 'ev_resume');
+    expectDeferredReleaseIntent(evPlan, 'binary_restore');
     expect(evPlan.plannedState).not.toBe('inactive');
     expect(charger.getCommandSequence()).toEqual(['evcharger_charging:true']);
 
@@ -369,7 +369,7 @@ describe('EV charger integration', { retry: 2 }, () => {
     const plan = await rebuildPlan(app, { totalPowerKw: 0.4, softLimitKw: 10.0 });
     const evPlan = getPlanEntry(plan, charger.idValue);
 
-    expectDeferredReleaseIntent(evPlan, 'ev_resume');
+    expectDeferredReleaseIntent(evPlan, 'binary_restore');
     expect(charger.getCommandSequence()).toEqual(['evcharger_charging:true']);
     expect(charger.commandLog.every((entry) => entry.capabilityId === 'evcharger_charging')).toBe(true);
 
@@ -392,7 +392,7 @@ describe('EV charger integration', { retry: 2 }, () => {
     const plan = await rebuildPlan(app, { totalPowerKw: 7.2, softLimitKw: 10.0 });
     const evPlan = getPlanEntry(plan, charger.idValue);
 
-    expectDeferredReleaseIntent(evPlan, 'ev_pause');
+    expectDeferredReleaseIntent(evPlan, 'binary_release');
     expect(charger.getCommandSequence()).toEqual(['evcharger_charging:false']);
     expect(charger.commandLog.every((entry) => entry.capabilityId === 'evcharger_charging')).toBe(true);
 
@@ -406,7 +406,7 @@ describe('EV charger integration', { retry: 2 }, () => {
   // Note's "EV Semantics" §"Power-limit control off": meeting the deadline target removes the
   // deferred-objective allowance and PELS should pause the charger. Without a terminal pause,
   // a cap-off charger would keep running past the user's target.
-  it('emits a terminal ev_pause when the EV reaches target with Power-limit control off', async () => {
+  it('emits a terminal binary_release when the EV reaches target with Power-limit control off', async () => {
     currentTimeMs = EV_DEADLINE_TEST_NOW_MS;
     const charger = new EaseeMockCharger();
     // SoC already at 80, target 42 → diagnostic resolves to `satisfied` immediately.
@@ -422,7 +422,7 @@ describe('EV charger integration', { retry: 2 }, () => {
     const plan = await rebuildPlan(app, { totalPowerKw: 7.2, softLimitKw: 10.0 });
     const evPlan = getPlanEntry(plan, charger.idValue);
 
-    expectDeferredReleaseIntent(evPlan, 'ev_pause');
+    expectDeferredReleaseIntent(evPlan, 'binary_release');
     expect(charger.getCommandSequence()).toEqual(['evcharger_charging:false']);
 
     const snapshot = await refreshSnapshot(app);
@@ -452,10 +452,10 @@ describe('EV charger integration', { retry: 2 }, () => {
     expect(charger.getCommandSequence()).toEqual([]);
   });
 
-  // Counter-case: Power-limit control ON + satisfied must NOT emit a deferred ev_pause. Normal
+  // Counter-case: Power-limit control ON + satisfied must NOT emit a deferred binary_release. Normal
   // managed charging behavior takes over once admission drops out. The note's pause guarantee
   // is specific to the cap-off path.
-  it('does not emit a deferred ev_pause when satisfied while Power-limit control is on', async () => {
+  it('does not emit a deferred binary_release when satisfied while Power-limit control is on', async () => {
     currentTimeMs = EV_DEADLINE_TEST_NOW_MS;
     const charger = new EaseeMockCharger();
     await charger.seedState('plugged_in_charging', { socPercent: 80 });
@@ -756,11 +756,11 @@ function getPlanEntry(plan: { devices: PlanDeviceEntry[] }, deviceId: string): P
 
 // Asserts the deferred-release intent, dumping the full plan entry on mismatch
 // so a CI flake reports the surrounding plan state (currentState, plannedState,
-// reason, reportedStepId, …) instead of a bare "expected ev_pause, got
+// reason, reportedStepId, …) instead of a bare "expected binary_release, got
 // undefined". See the retry note on the describe block.
 function expectDeferredReleaseIntent(
   evPlan: PlanDeviceEntry,
-  expected: 'ev_resume' | 'ev_pause' | undefined,
+  expected: 'binary_restore' | 'binary_release' | undefined,
 ): void {
   // Only stringify the plan entry on mismatch — this suite is CPU-load
   // sensitive, so the diagnostic must not add overhead to passing runs.

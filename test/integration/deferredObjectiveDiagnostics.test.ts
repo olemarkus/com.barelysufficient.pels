@@ -1071,7 +1071,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     expect(diagnostic?.status).toBe('cannot_meet');
     expect(diagnostic?.reasonCode).toBe('deadline_passed');
     const decision = applyDeferredObjectiveAdmission(diagnostic ? [diagnostic] : [], [device]).get('ev-1');
-    expect(decision).toEqual({ kind: 'idle', budgetExempt: false, releaseIntent: 'ev_pause' });
+    expect(decision).toEqual({ kind: 'idle', budgetExempt: false, releaseIntent: 'binary_release' });
   });
 
   it('runs the allocator at bootstrap when no commitment covers the active hour', () => {
