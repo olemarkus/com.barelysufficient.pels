@@ -7,6 +7,7 @@ import {
   getSettingsUiDeferredObjectivePlanHistoryPayload,
   getSettingsUiDeferredObjectiveSettingsPayload,
   getSettingsUiDeviceDiagnosticsPayload,
+  getSettingsUiDeviceLogPayload,
   getSettingsUiDevicesPayload,
   getSettingsUiPlanPayload,
   getSettingsUiPowerPayload,
@@ -79,6 +80,9 @@ export = {
   )),
   ui_device_diagnostics: withApiLogging('ui_device_diagnostics', ({ homey }: ApiContext) => (
     getSettingsUiDeviceDiagnosticsPayload({ homey })
+  )),
+  ui_device_log: withApiLogging('ui_device_log', ({ homey }: ApiContext) => (
+    getSettingsUiDeviceLogPayload({ homey })
   )),
   ui_deferred_objective_history: withApiLogging('ui_deferred_objective_history', ({ homey }: ApiContext) => (
     getSettingsUiDeferredObjectivePlanHistoryPayload({ homey })

@@ -865,6 +865,12 @@
     };
   };
 
+  const resolveDeviceLogPayload = () => {
+    const scenarioDeviceLog = runtimeOverrides.scenarioPatch?.deviceLog;
+    if (scenarioDeviceLog !== undefined) return scenarioDeviceLog;
+    return { version: 1, entriesByDeviceId: {} };
+  };
+
   // Build a candidate payload that visibly reflects the requested model
   // settings: scale plannedKWh proportionally to the new daily budget so the
   // comparison charts in the UI show a real difference, then update the per-day
@@ -1017,6 +1023,7 @@
     'GET /ui_power': () => buildPowerPayload(),
     'GET /ui_prices': () => buildPricesPayload(),
     'GET /ui_device_diagnostics': () => resolveDeviceDiagnosticsPayload(),
+    'GET /ui_device_log': () => resolveDeviceLogPayload(),
     'GET /ui_deferred_objective_history': () => resolveDeferredObjectiveHistoryPayload(),
     // Objectives moved to per-device keys; the UI's loadDeferredObjectiveSettings
     // now reads this endpoint (the legacy blob is consumed by the migration). The

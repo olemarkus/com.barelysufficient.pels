@@ -1,6 +1,7 @@
 import { requirePlanEngine } from './contextGuards';
 import { evictMissingDeviceCacheEntries, toPlanDevice } from './toPlanDevice';
 import { PlanService } from '../../lib/plan/planService';
+import { DeviceOverviewLogRecorder } from '../../lib/plan/deviceOverviewLog';
 import { readPriceStore } from '../../lib/price/priceStore';
 import type { AppContext } from '../../lib/app/appContext';
 import { isRuntimePlannedDevice } from '../appDeviceSupport';
@@ -44,6 +45,7 @@ export function createPlanService(ctx: AppContext): PlanService {
     schedulePostActuationRefresh: () => ctx.snapshotHelpers.schedulePostActuationRefresh(),
     overviewDebugStructured: ctx.getStructuredDebugEmitter('overview', 'overview'),
     isOverviewDebugEnabled: () => ctx.debugLoggingTopics.has('overview'),
+    deviceOverviewLogRecorder: new DeviceOverviewLogRecorder(),
     isPlanDebugEnabled: () => ctx.debugLoggingTopics.has('plan'),
     deviceDiagnostics: ctx.deviceDiagnosticsService,
     snapshotWarmupGate: ctx.snapshotWarmupGate,

@@ -238,3 +238,7 @@ export const deviceDetailDiagnosticsDisclosure = document.querySelector(
 ) as HTMLDetailsElement | null;
 export const deviceDetailDiagnosticsStatus = qs('#device-detail-diagnostics-status');
 export const deviceDetailDiagnosticsCards = qs('#device-detail-diagnostics-cards');
+export const deviceDetailActivityLogDisclosure = document.querySelector(
+  '#device-detail-activity-log-disclosure',
+) as HTMLDetailsElement | null;
+export const deviceDetailActivityLogBody = qs('#device-detail-activity-log-body');
