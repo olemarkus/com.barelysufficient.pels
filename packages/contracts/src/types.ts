@@ -179,12 +179,11 @@ export type ObservedDeviceState = {
     // Unified binary observation for whether the device may draw power.
     // This is not the same as "is actively drawing power right now" for devices
     // with richer state, such as EV chargers or stepped loads.
-    // Non-optional by contract: the producer always resolves a concrete boolean
-    // at the parse boundary. The Homey SDK types don't guarantee a capability
-    // value, so on the (should-never-happen, type-driven) missing-value path the
-    // value is synthesized there — never optimistic — rather than left absent, so
-    // consumers never re-handle "missing". See `resolveUnobservedControlFallback`.
-    currentOn: boolean;
+    // Present IFF the device has binary control (`controlCapabilityId` set); `.on`
+    // is the observed binary state. A non-binary device has no `binaryControl` —
+    // consumers must treat its absence exactly like the old fabricated `currentOn:
+    // true` ("may always draw, so stays sheddable").
+    binaryControl?: { on: boolean };
     evCharging?: boolean;
     evChargingState?: string;
     stateOfCharge?: DeviceStateOfChargeSnapshot;

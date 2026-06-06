@@ -146,7 +146,7 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
 
         const seeded = h.projection.getObservedState('dev1');
         expect(seeded).toBeDefined();
-        expect(seeded?.currentOn).toBe(true);
+        expect(seeded?.binaryControl?.on).toBe(true);
         assertShadowEquality(h);
         h.transport.destroy();
     });
@@ -185,10 +185,10 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
         const h = await buildHarness();
         mockApiGet.mockResolvedValue({ dev1: onoffDevice('dev1', false, '2026-03-20T06:00:00.000Z') });
         await h.transport.refreshSnapshot();
-        expect(h.projection.getObservedState('dev1')?.currentOn).toBe(false);
+        expect(h.projection.getObservedState('dev1')?.binaryControl?.on).toBe(false);
 
         h.transport.injectCapabilityUpdateForTest('dev1', 'onoff', true);
-        expect(h.projection.getObservedState('dev1')?.currentOn).toBe(true);
+        expect(h.projection.getObservedState('dev1')?.binaryControl?.on).toBe(true);
         assertShadowEquality(h);
         h.transport.destroy();
     });
@@ -198,11 +198,11 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
         // Seed currentOn=false.
         mockApiGet.mockResolvedValue({ dev1: onoffDevice('dev1', false, '2026-03-20T06:00:00.000Z') });
         await h.transport.refreshSnapshot();
-        expect(h.projection.getObservedState('dev1')?.currentOn).toBe(false);
+        expect(h.projection.getObservedState('dev1')?.binaryControl?.on).toBe(false);
 
         // Realtime turns it on.
         h.transport.injectCapabilityUpdateForTest('dev1', 'onoff', true);
-        expect(h.projection.getObservedState('dev1')?.currentOn).toBe(true);
+        expect(h.projection.getObservedState('dev1')?.binaryControl?.on).toBe(true);
 
         // A refresh whose SDK read is OLDER than the realtime event. Transport's
         // fresher-wins keeps currentOn=true, so Event A carries true and the
@@ -210,8 +210,8 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
         mockApiGet.mockResolvedValue({ dev1: onoffDevice('dev1', false, '2026-03-20T05:30:00.000Z') });
         await h.transport.refreshSnapshot();
 
-        expect(h.transport.getSnapshotByDeviceId('dev1')?.currentOn).toBe(true);
-        expect(h.projection.getObservedState('dev1')?.currentOn).toBe(true);
+        expect(h.transport.getSnapshotByDeviceId('dev1')?.binaryControl?.on).toBe(true);
+        expect(h.projection.getObservedState('dev1')?.binaryControl?.on).toBe(true);
         assertShadowEquality(h);
         h.transport.destroy();
     });
@@ -220,14 +220,14 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
         const h = await buildHarness();
         mockApiGet.mockResolvedValue({ dev1: onoffDevice('dev1', true, '2026-03-20T06:00:00.000Z') });
         await h.transport.refreshSnapshot();
-        expect(h.projection.getObservedState('dev1')?.currentOn).toBe(true);
+        expect(h.projection.getObservedState('dev1')?.binaryControl?.on).toBe(true);
 
         // Empty raw read within the grace window → commit deferred → no Event A.
         mockApiGet.mockResolvedValue({});
         await h.transport.refreshSnapshot();
 
         expect(h.transport.getSnapshot()).toHaveLength(1);
-        expect(h.projection.getObservedState('dev1')?.currentOn).toBe(true);
+        expect(h.projection.getObservedState('dev1')?.binaryControl?.on).toBe(true);
         h.transport.destroy();
     });
 
@@ -289,7 +289,7 @@ describe('ObservedDeviceStateProjection apply guard', () => {
         id,
         name: id,
         targets: [],
-        currentOn,
+        binaryControl: { on: currentOn },
     });
 
     const delta = (seq: number, currentOn: boolean, observedAtMs?: number): ObservedStateChangedEvent => ({
@@ -311,10 +311,10 @@ describe('ObservedDeviceStateProjection apply guard', () => {
         p.applyDelta(delta(1, false));
         p.applyDelta(delta(3, true));
         p.applyDelta(delta(2, false)); // out of order → dropped
-        expect(p.getObservedState('dev1')?.currentOn).toBe(true);
+        expect(p.getObservedState('dev1')?.binaryControl?.on).toBe(true);
 
         p.applyDelta(delta(2, false)); // duplicate replay of an earlier seq → still dropped
-        expect(p.getObservedState('dev1')?.currentOn).toBe(true);
+        expect(p.getObservedState('dev1')?.binaryControl?.on).toBe(true);
     });
 
     it('dedup: applying the identical seq twice is a no-op', () => {
@@ -323,7 +323,7 @@ describe('ObservedDeviceStateProjection apply guard', () => {
         const first = p.getObservedState('dev1');
         p.applyDelta(delta(5, false)); // same seq → dropped, value unchanged
         expect(p.getObservedState('dev1')).toBe(first);
-        expect(p.getObservedState('dev1')?.currentOn).toBe(true);
+        expect(p.getObservedState('dev1')?.binaryControl?.on).toBe(true);
     });
 
     it('observedAtMs fallback applies only when a seq is absent on either side', () => {
@@ -332,10 +332,10 @@ describe('ObservedDeviceStateProjection apply guard', () => {
         p.applyDelta({ source: 'device_update', deviceId: 'dev1', observedAtMs: 200, observed: baseObserved('dev1', true) });
         // Newer timestamp, still no seq → accepted.
         p.applyDelta({ source: 'device_update', deviceId: 'dev1', observedAtMs: 300, observed: baseObserved('dev1', false) });
-        expect(p.getObservedState('dev1')?.currentOn).toBe(false);
+        expect(p.getObservedState('dev1')?.binaryControl?.on).toBe(false);
         // Older timestamp, no seq → dropped.
         p.applyDelta({ source: 'device_update', deviceId: 'dev1', observedAtMs: 100, observed: baseObserved('dev1', true) });
-        expect(p.getObservedState('dev1')?.currentOn).toBe(false);
+        expect(p.getObservedState('dev1')?.binaryControl?.on).toBe(false);
     });
 
     it('refresh prunes devices absent from the batch', () => {

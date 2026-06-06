@@ -12,7 +12,7 @@ const buildLiveDevice = (deviceId: string, name: string, target: number): PlanIn
   id: deviceId,
   name,
   deviceType: 'temperature',
-  currentOn: true,
+  binaryControl: { on: true },
   currentTemperature: 21,
   targets: [{ id: 'target_temperature', value: target, unit: '°C' }],
 });

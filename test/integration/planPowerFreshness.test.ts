@@ -15,7 +15,7 @@ const buildDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice 
   id: 'dev',
   name: 'Device',
   targets: [],
-  currentOn: true,
+  binaryControl: { on: true },
   controllable: true,
   expectedPowerKw: 1.2,
   ...overrides,

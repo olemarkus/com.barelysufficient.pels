@@ -34,7 +34,7 @@ const evDevice: TargetDeviceSnapshot = {
   id: 'ev-1',
   name: 'Driveway',
   targets: [],
-  currentOn: false,
+  binaryControl: { on: false },
   deviceClass: 'evcharger',
 } as TargetDeviceSnapshot;
 

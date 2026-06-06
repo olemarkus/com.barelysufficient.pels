@@ -100,7 +100,7 @@ const buildDevice = (
   targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
   deviceType: 'temperature',
   powerCapable: true,
-  currentOn: true,
+  binaryControl: { on: true },
   capabilities: ['target_temperature', 'onoff'],
   ...overrides,
 });
@@ -229,7 +229,7 @@ describe('device detail managed state saves', () => {
         activationEnabled: false,
       },
       capabilities: ['measure_power', 'charging_button', 'charge_mode', 'alarm_generic.car_connected'],
-      currentOn: false,
+      binaryControl: { on: false },
     })];
     state.managedMap = { 'zaptec-1': true };
     state.controllableMap = { 'zaptec-1': false };
@@ -326,7 +326,7 @@ describe('device detail managed state saves', () => {
         activationEnabled: false,
       },
       capabilities: ['measure_power', 'charging_button', 'charge_mode', 'alarm_generic.car_connected'],
-      currentOn: false,
+      binaryControl: { on: false },
     })];
     state.managedMap = { 'zaptec-1': true };
     state.controllableMap = { 'zaptec-1': false };
@@ -398,7 +398,7 @@ describe('device detail managed state saves', () => {
         activationEnabled: true,
       },
       capabilities: ['measure_power', 'charging_button', 'charge_mode', 'alarm_generic.car_connected'],
-      currentOn: false,
+      binaryControl: { on: false },
     })];
     state.managedMap = { 'zaptec-1': true };
     state.controllableMap = { 'zaptec-1': false };
@@ -970,7 +970,7 @@ describe('device detail managed state saves', () => {
       controlCapabilityId: 'evcharger_charging',
       controlWriteCapabilityId: 'charging_button',
       capabilities: ['measure_power', 'evcharger_charging', 'available_installation_current', 'charging_button'],
-      currentOn: true,
+      binaryControl: { on: true },
     })];
     state.managedMap = { 'zaptec-1': true };
     state.controllableMap = { 'zaptec-1': true };

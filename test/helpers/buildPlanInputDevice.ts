@@ -7,7 +7,7 @@ import type { PlanInputDevice } from '../../lib/plan/planTypes';
  * Defaults:
  *   - `name` falls back to `id`
  *   - `targets` defaults to `[]`
- *   - `currentOn` defaults to `true`
+ *   - `binaryControl` defaults to `{ on: true }` (the old fabricated `currentOn: true`)
  *   - `shedIntent` defaults to `{ kind: 'turn_off' }` (the post-PR-A required
  *     field; tests that care about a specific intent override it)
  *
@@ -25,7 +25,7 @@ export function buildPlanInputDevice(
   return {
     name: overrides.id,
     targets: [],
-    currentOn: true,
+    binaryControl: { on: true },
     ...overrides,
   };
 }

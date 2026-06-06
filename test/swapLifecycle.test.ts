@@ -22,9 +22,9 @@ describe('swap lifecycle completion', () => {
     const swapState = emptySwapState();
     swapState.pendingSwapTargets.add('target');
 
-    expect(isSwapTargetComplete(buildPlanDevice({ id: 'target', currentState: 'off', currentOn: false }), swapState))
+    expect(isSwapTargetComplete(buildPlanDevice({ id: 'target', currentState: 'off', binaryControl: { on: false } }), swapState))
       .toBe(false);
-    expect(isSwapTargetComplete(buildPlanDevice({ id: 'target', currentState: 'on', currentOn: true }), swapState))
+    expect(isSwapTargetComplete(buildPlanDevice({ id: 'target', currentState: 'on', binaryControl: { on: true } }), swapState))
       .toBe(true);
   });
 
@@ -36,7 +36,7 @@ describe('swap lifecycle completion', () => {
     const target = steppedPlanDevice({
       id: 'target',
       currentState: 'on',
-      currentOn: true,
+      binaryControl: { on: true },
       reportedStepId: 'medium',
     });
 
@@ -51,7 +51,7 @@ describe('swap lifecycle completion', () => {
     const target = steppedPlanDevice({
       id: 'target',
       currentState: 'on',
-      currentOn: true,
+      binaryControl: { on: true },
       reportedStepId: 'max',
     });
 
@@ -68,7 +68,7 @@ describe('swap lifecycle completion', () => {
     const target = steppedPlanDevice({
       id: 'target',
       currentState: 'on',
-      currentOn: true,
+      binaryControl: { on: true },
       selectedStepId: 'max',
       reportedStepId: 'medium',
     });
@@ -84,7 +84,7 @@ describe('swap lifecycle completion', () => {
     const target = steppedPlanDevice({
       id: 'target',
       currentState: 'on',
-      currentOn: true,
+      binaryControl: { on: true },
       selectedStepId: 'max',
       reportedStepId: undefined,
     });
@@ -99,7 +99,7 @@ describe('swap lifecycle completion', () => {
     const target = steppedPlanDevice({
       id: 'target',
       currentState: 'on',
-      currentOn: true,
+      binaryControl: { on: true },
       reportedStepId: 'max',
       desiredStepId: undefined,
       targetStepId: undefined,
@@ -115,8 +115,8 @@ describe('swap lifecycle blocking and cleanup', () => {
     swapState.pendingSwapTargets.add('target');
     swapState.swappedOutFor.set('lower', 'target');
     const deviceMap = new Map([
-      ['target', buildPlanDevice({ id: 'target', name: 'Target', currentState: 'off', currentOn: false })],
-      ['lower', buildPlanDevice({ id: 'lower', name: 'Lower', currentState: 'off', currentOn: false })],
+      ['target', buildPlanDevice({ id: 'target', name: 'Target', currentState: 'off', binaryControl: { on: false } })],
+      ['lower', buildPlanDevice({ id: 'lower', name: 'Lower', currentState: 'off', binaryControl: { on: false } })],
     ]);
 
     expect(isBlockedBySwapState(deviceMap.get('lower')!, deviceMap, swapState)).toBe(true);
@@ -127,8 +127,8 @@ describe('swap lifecycle blocking and cleanup', () => {
     const swapState = emptySwapState();
     swapState.pendingSwapTargets.add('target');
     const deviceMap = new Map([
-      ['target', buildPlanDevice({ id: 'target', name: 'Target', priority: 1, currentState: 'off', currentOn: false })],
-      ['lower', buildPlanDevice({ id: 'lower', name: 'Lower', priority: 9, currentState: 'off', currentOn: false })],
+      ['target', buildPlanDevice({ id: 'target', name: 'Target', priority: 1, currentState: 'off', binaryControl: { on: false } })],
+      ['lower', buildPlanDevice({ id: 'lower', name: 'Lower', priority: 9, currentState: 'off', binaryControl: { on: false } })],
     ]);
 
     expect(isBlockedBySwapState(deviceMap.get('lower')!, deviceMap, swapState)).toBe(true);
@@ -185,8 +185,8 @@ describe('swap lifecycle blocking and cleanup', () => {
     swapState.requestedTargetByDevice.set('target', { targetStepId: 'max' });
     swapState.swappedOutFor.set('lower', 'target');
     const deviceMap = new Map([
-      ['target', buildPlanDevice({ id: 'target', currentState: 'on', currentOn: true })],
-      ['lower', buildPlanDevice({ id: 'lower', currentState: 'off', currentOn: false })],
+      ['target', buildPlanDevice({ id: 'target', currentState: 'on', binaryControl: { on: true } })],
+      ['lower', buildPlanDevice({ id: 'lower', currentState: 'off', binaryControl: { on: false } })],
     ]);
 
     cleanupCompletedSwaps(swapState, deviceMap);
@@ -212,8 +212,8 @@ describe('swap lifecycle blocking and cleanup', () => {
     swapState.lastSwapPlanMeasurementTs.set('target', 123);
     swapState.swappedOutFor.set('lower', 'target');
     const deviceMap = new Map([
-      ['target', buildPlanDevice({ id: 'target', name: 'Target', currentState: 'on', currentOn: true })],
-      ['lower', buildPlanDevice({ id: 'lower', name: 'Lower', currentState: 'off', currentOn: false })],
+      ['target', buildPlanDevice({ id: 'target', name: 'Target', currentState: 'on', binaryControl: { on: true } })],
+      ['lower', buildPlanDevice({ id: 'lower', name: 'Lower', currentState: 'off', binaryControl: { on: false } })],
     ]);
 
     expect(isBlockedBySwapState(deviceMap.get('lower')!, deviceMap, swapState)).toBe(false);
@@ -237,11 +237,11 @@ describe('swap lifecycle blocking and cleanup', () => {
       ['target', steppedPlanDevice({
         id: 'target',
         currentState: 'on',
-        currentOn: true,
+        binaryControl: { on: true },
         selectedStepId: 'medium',
         reportedStepId: 'low',
       })],
-      ['lower', buildPlanDevice({ id: 'lower', currentState: 'off', currentOn: false })],
+      ['lower', buildPlanDevice({ id: 'lower', currentState: 'off', binaryControl: { on: false } })],
     ]);
     cleanupCompletedSwaps(swapState, belowRequestedMap);
     expect(exportSwapState(swapState).swapByDevice).toMatchObject({
@@ -260,10 +260,10 @@ describe('swap lifecycle blocking and cleanup', () => {
       ['target', steppedPlanDevice({
         id: 'target',
         currentState: 'on',
-        currentOn: true,
+        binaryControl: { on: true },
         reportedStepId: 'medium',
       })],
-      ['lower', buildPlanDevice({ id: 'lower', currentState: 'off', currentOn: false })],
+      ['lower', buildPlanDevice({ id: 'lower', currentState: 'off', binaryControl: { on: false } })],
     ]);
     cleanupCompletedSwaps(swapState, atRequestedMap);
     expect(exportSwapState(swapState).swapByDevice).toEqual({
@@ -281,11 +281,11 @@ describe('swap lifecycle blocking and cleanup', () => {
         id: 'target',
         name: 'Target',
         currentState: 'on',
-        currentOn: true,
+        binaryControl: { on: true },
         selectedStepId: 'max',
         reportedStepId: 'low',
       })],
-      ['lower', buildPlanDevice({ id: 'lower', name: 'Lower', currentState: 'off', currentOn: false })],
+      ['lower', buildPlanDevice({ id: 'lower', name: 'Lower', currentState: 'off', binaryControl: { on: false } })],
     ]);
 
     // The source must stay shed: the target has not confirmed the requested step yet.

@@ -5,7 +5,7 @@ const buildDevice = (): PlanInputDevice => ({
   id: 'dev',
   name: 'Device',
   targets: [],
-  currentOn: false,
+  binaryControl: { on: false },
   controllable: true,
 });
 

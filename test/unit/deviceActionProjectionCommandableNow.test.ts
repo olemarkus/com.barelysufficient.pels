@@ -12,10 +12,12 @@ import { describe, expect, it } from 'vitest';
 import {
   isCanSetControl,
   isCommandableNow,
+  isEvPhysicallyUnplugged,
   resolveBoostActive,
   resolveCanSetControl,
   resolveCommandableNow,
 } from '../../lib/device/deviceActionProjection';
+import { isEvSessionInactive } from '../../packages/shared-domain/src/commandableNow';
 
 describe('resolveCommandableNow — EV plug state', () => {
   it('returns commandableNow=false when the charger is plugged_out', () => {
@@ -205,5 +207,37 @@ describe('resolveBoostActive — aggregate', () => {
 
   it('returns false if neither is active', () => {
     expect(resolveBoostActive({ temperatureBoostActive: false, evBoostActive: false })).toBe(false);
+  });
+});
+
+describe('isEvSessionInactive — shared plug-state predicate', () => {
+  it('is true only for the two no-live-session states', () => {
+    expect(isEvSessionInactive('plugged_out')).toBe(true);
+    expect(isEvSessionInactive('plugged_in_discharging')).toBe(true);
+  });
+
+  it('is false for chargeable/commandable states and unknown/undefined', () => {
+    expect(isEvSessionInactive('plugged_in_charging')).toBe(false);
+    expect(isEvSessionInactive('plugged_in_paused')).toBe(false);
+    expect(isEvSessionInactive('plugged_in')).toBe(false);
+    expect(isEvSessionInactive(undefined)).toBe(false);
+  });
+
+  it('does NOT gate on EV-ness — the caller scopes that (isEvPhysicallyUnplugged composes both)', () => {
+    // A non-EV device that somehow carried one of these strings would read as
+    // inactive-session by the bare predicate; isEvPhysicallyUnplugged adds the
+    // isEvDevice guard so a non-EV device is never an "EV physical block".
+    expect(isEvSessionInactive('plugged_out')).toBe(true);
+    expect(isEvPhysicallyUnplugged({ evChargingState: 'plugged_out' })).toBe(false);
+    expect(isEvPhysicallyUnplugged({
+      deviceClass: 'evcharger',
+      controlCapabilityId: 'evcharger_charging',
+      evChargingState: 'plugged_out',
+    })).toBe(true);
+    expect(isEvPhysicallyUnplugged({
+      deviceClass: 'evcharger',
+      controlCapabilityId: 'evcharger_charging',
+      evChargingState: 'plugged_in_charging',
+    })).toBe(false);
   });
 });

@@ -140,11 +140,11 @@ describe('device manager support helpers', () => {
   it('logs EV command and snapshot changes', () => {
     const logger = createLogger();
     const previousSnapshot: TargetDeviceSnapshot[] = [
-      { id: 'ev1', name: 'EV 1', deviceClass: 'evcharger', currentOn: false, evChargingState: 'plugged_in_paused', powerKw: 0, controlCapabilityId: 'evcharger_charging' },
+      { id: 'ev1', name: 'EV 1', deviceClass: 'evcharger', binaryControl: { on: false }, evChargingState: 'plugged_in_paused', powerKw: 0, controlCapabilityId: 'evcharger_charging' },
     ];
     const nextSnapshot: TargetDeviceSnapshot[] = [
-      { id: 'ev1', name: 'EV 1', deviceClass: 'evcharger', currentOn: true, evChargingState: 'plugged_in_charging', powerKw: 7.2, controlCapabilityId: 'evcharger_charging' },
-      { id: 'ev2', name: 'EV 2', deviceClass: 'evcharger', currentOn: false, evChargingState: 'plugged_out', powerKw: 0, controlCapabilityId: 'evcharger_charging' },
+      { id: 'ev1', name: 'EV 1', deviceClass: 'evcharger', binaryControl: { on: true }, evChargingState: 'plugged_in_charging', powerKw: 7.2, controlCapabilityId: 'evcharger_charging' },
+      { id: 'ev2', name: 'EV 2', deviceClass: 'evcharger', binaryControl: { on: false }, evChargingState: 'plugged_out', powerKw: 0, controlCapabilityId: 'evcharger_charging' },
     ];
 
     logEvCapabilityRequest({
@@ -295,7 +295,7 @@ describe('device manager support helpers', () => {
       parseDevice: () => ({
         id: 'dev-1',
         name: 'Device 1',
-        currentOn: true,
+        binaryControl: { on: true },
         targets: [],
       } as never),
     });
@@ -459,7 +459,7 @@ describe('parser-valid device without onoff is not eligible for turn_off actuati
       // No controlCapabilityId, no 'onoff' in capabilities
       capabilities: ['target_temperature', 'measure_temperature', 'measure_power'],
       canSetControl: true,
-      currentOn: false,
+      binaryControl: { on: false },
     } as never);
 
     // Null = no binary control plan = turn_off cannot actuate even though parser accepted.
@@ -481,7 +481,7 @@ describe('parser-valid device without onoff is not eligible for turn_off actuati
       name: 'Hot Water Tank',
       capabilities: ['target_temperature', 'measure_temperature', 'measure_power'],
       canSetControl: true,
-      currentOn: false,
+      binaryControl: { on: false },
     } as never);
 
     // Parser accepts; actuation gate rejects.

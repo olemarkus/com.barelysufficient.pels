@@ -119,7 +119,7 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'dev-2',
         name: 'Heater',
-        currentOn: false,
+        binaryControl: { on: false },
         controlCapabilityId: 'onoff',
         binaryControlObservation: buildBinaryObservation('onoff', false),
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
@@ -139,7 +139,7 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'dev-2',
         name: 'Heater',
-        currentOn: false,
+        binaryControl: { on: false },
         controlCapabilityId: undefined,
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
       }];
@@ -158,7 +158,7 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'dev-2',
         name: 'Heater',
-        currentOn: false,
+        binaryControl: { on: false },
         controlCapabilityId: undefined,
         targets: [{ id: 'target_temperature', value: 19, unit: '°C' }],
       }];
@@ -187,7 +187,7 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'dev-2',
         name: 'Heater',
-        currentOn: false,
+        binaryControl: { on: false },
         controlCapabilityId: undefined,
         observationStale: true,
         targets: [{ id: 'target_temperature', value: 19, unit: '°C' }],
@@ -213,7 +213,7 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'dev-2',
         name: 'Heater',
-        currentOn: false,
+        binaryControl: { on: false },
         controlCapabilityId: undefined,
         targets: [{ id: 'target_temperature', value: 19, unit: '°C' }],
       }];
@@ -229,7 +229,7 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'dev-2',
         name: 'Heater',
-        currentOn: false,
+        binaryControl: { on: false },
         controlCapabilityId: 'onoff',
         binaryCommandPending: true,
         binaryCommandPendingDesired: true,
@@ -247,7 +247,7 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'dev-2',
         name: 'Heater',
-        currentOn: false,
+        binaryControl: { on: false },
         controlCapabilityId: 'onoff',
         binaryControlObservation: buildBinaryObservation('onoff', false),
         binaryCommandPending: true,
@@ -266,7 +266,7 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'dev-2',
         name: 'Heater',
-        currentOn: false,
+        binaryControl: { on: false },
         controlCapabilityId: 'onoff',
         binaryControlObservation: buildBinaryObservation('onoff', false),
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
@@ -280,7 +280,7 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'ev-1',
         name: 'EV Charger',
-        currentOn: false,
+        binaryControl: { on: false },
         controlCapabilityId: 'evcharger_charging',
         evChargingState: 'plugged_in_paused',
         targets: [],
@@ -294,7 +294,7 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'ev-1',
         name: 'EV Charger',
-        currentOn: true,
+        binaryControl: { on: true },
         controlCapabilityId: 'evcharger_charging',
         evChargingState: 'plugged_in_paused',
         binaryCommandPending: true,
@@ -313,7 +313,7 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'ev-1',
         name: 'EV Charger',
-        currentOn: true,
+        binaryControl: { on: true },
         controlCapabilityId: 'evcharger_charging',
         evChargingState: 'plugged_in_charging',
         targets: [],
@@ -330,7 +330,7 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'ev-1',
         name: 'EV Charger',
-        currentOn: true,
+        binaryControl: { on: true },
         controlCapabilityId: 'evcharger_charging',
         evChargingState: 'plugged_in_charging',
         binaryCommandPending: true,
@@ -350,7 +350,7 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'dev-2',
         name: 'Heater',
-        currentOn: false,
+        binaryControl: { on: false },
         controlCapabilityId: 'onoff',
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
         controllable: false,
@@ -372,7 +372,7 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'dev-2',
         name: 'Heater',
-        currentOn: false,
+        binaryControl: { on: false },
         controlCapabilityId: 'onoff',
         observationStale: true,
         // Stale observation still counts as evidence — `binaryControlObservation`
@@ -389,7 +389,7 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'dev-1',
         name: 'Tank',
-        currentOn: false,
+        binaryControl: { on: false },
         selectedStepId: 'low',
         targets: [],
         controlModel: 'stepped_load',
@@ -405,7 +405,7 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'dev-1',
         name: 'Tank',
-        currentOn: true,
+        binaryControl: { on: true },
         selectedStepId: 'max',
         targets: [],
         controlModel: 'stepped_load',
@@ -420,7 +420,7 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'dev-1',
         name: 'Tank',
-        currentOn: true,
+        binaryControl: { on: true },
         selectedStepId: 'low',
         targets: [],
         controlModel: 'stepped_load',
@@ -441,7 +441,7 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'dev-1',
         name: 'Tank',
-        currentOn: false,
+        binaryControl: { on: false },
         selectedStepId: 'low',
         targets: [],
         controlModel: 'stepped_load',
@@ -467,7 +467,7 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'dev-1',
         name: 'Tank',
-        currentOn: true,
+        binaryControl: { on: true },
         selectedStepId: 'max',
         targets: [],
         controlModel: 'stepped_load',
@@ -490,7 +490,7 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'dev-1',
         name: 'Tank',
-        currentOn: true,
+        binaryControl: { on: true },
         selectedStepId: 'off',
         targets: [],
         controlModel: 'stepped_load',
@@ -512,7 +512,7 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'dev-1',
         name: 'Tank',
-        currentOn: false,
+        binaryControl: { on: false },
         selectedStepId: 'max',
         targets: [],
         controlModel: 'stepped_load',
@@ -535,7 +535,7 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'dev-1',
         name: 'Tank',
-        currentOn: true,
+        binaryControl: { on: true },
         selectedStepId: 'low',
         targets: [],
         controlModel: 'stepped_load',
@@ -558,7 +558,7 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'dev-1',
         name: 'Tank',
-        currentOn: true,
+        binaryControl: { on: true },
         selectedStepId: 'low',
         targets: [{ id: 'target_temperature', value: 23, unit: '°C' }],
         controlModel: 'stepped_load',
@@ -569,7 +569,7 @@ describe('planReconcileState stepped device drift', () => {
       expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-1')).toBe(false);
       expect(hasPlanExecutionDriftForDevice(
         plan,
-        [{ ...liveDevices[0], currentOn: false, binaryControlObservation: buildBinaryObservation('onoff', false) }],
+        [{ ...liveDevices[0], binaryControl: { on: false }, binaryControlObservation: buildBinaryObservation('onoff', false) }],
         'dev-1',
       )).toBe(true);
     });
@@ -585,7 +585,7 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'dev-1',
         name: 'Tank',
-        currentOn: true,
+        binaryControl: { on: true },
         selectedStepId: 'low',
         targets: [],
         controlModel: 'stepped_load',
@@ -604,7 +604,7 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'dev-2',
         name: 'Heater',
-        currentOn: false,
+        binaryControl: { on: false },
         controlCapabilityId: 'onoff',
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
       }];
@@ -619,7 +619,7 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'dev-1',
         name: 'Tank',
-        currentOn: false,
+        binaryControl: { on: false },
         controlCapabilityId: 'onoff',
         selectedStepId: 'max',
         targets: [],
@@ -642,7 +642,7 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'dev-1',
         name: 'Tank',
-        currentOn: false,
+        binaryControl: { on: false },
         // Fallback-only live state: no reported step, selectedStepId is the
         // planning fallback.
         selectedStepId: 'low',
@@ -668,7 +668,7 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'dev-1',
         name: 'Tank',
-        currentOn: true,
+        binaryControl: { on: true },
         selectedStepId: 'low',
         targets: [],
         controlModel: 'stepped_load',
@@ -690,7 +690,7 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'dev-1',
         name: 'Tank',
-        currentOn: false,
+        binaryControl: { on: false },
         targets: [],
         controlModel: 'stepped_load',
         steppedLoadProfile: steppedProfile,
@@ -715,7 +715,7 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'dev-1',
         name: 'Tank',
-        currentOn: true,
+        binaryControl: { on: true },
         selectedStepId: 'max',
         reportedStepId: 'max',
         targets: [],
@@ -736,7 +736,7 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'dev-1',
         name: 'Tank',
-        currentOn: true,
+        binaryControl: { on: true },
         selectedStepId: 'off',
         targets: [],
         controlModel: 'stepped_load',
@@ -753,7 +753,7 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'dev-2',
         name: 'Heater',
-        currentOn: false,
+        binaryControl: { on: false },
         controlCapabilityId: 'onoff',
         observationStale: true,
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
@@ -773,7 +773,7 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'dev-2',
         name: 'Heater',
-        currentOn: false,
+        binaryControl: { on: false },
         controlCapabilityId: 'onoff',
         binaryCommandPending: false,
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
@@ -798,7 +798,7 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'dev-1',
         name: 'Tank',
-        currentOn: false,
+        binaryControl: { on: false },
         selectedStepId: 'off',
         targets: [],
         controlModel: 'stepped_load',
@@ -828,7 +828,7 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'dev-1',
         name: 'Tank',
-        currentOn: true,
+        binaryControl: { on: true },
         selectedStepId: 'max',
         targets: [],
         controlModel: 'stepped_load',
@@ -853,7 +853,7 @@ describe('planReconcileState stepped device drift', () => {
       const liveDevices: PlanInputDevice[] = [{
         id: 'dev-1',
         name: 'Tank',
-        currentOn: false,
+        binaryControl: { on: false },
         selectedStepId: 'off',
         targets: [],
         controlModel: 'stepped_load',
@@ -915,7 +915,7 @@ describe('expected binary state for stepped turn_off / turn_on (Group 4)', () =>
       id: 'dev-1',
       name: 'Tank',
       targets: [],
-      currentOn: true,
+      binaryControl: { on: true },
       controlModel: 'stepped_load',
       steppedLoadProfile: steppedProfile,
       selectedStepId: 'low',
@@ -926,7 +926,7 @@ describe('expected binary state for stepped turn_off / turn_on (Group 4)', () =>
     // a matching `binaryControlObservation` unless an override supplies one.
     return merged.binaryControlObservation
       ? merged
-      : { ...merged, binaryControlObservation: buildBinaryObservation('onoff', merged.currentOn) };
+      : { ...merged, binaryControlObservation: buildBinaryObservation('onoff', merged.binaryControl?.on) };
   };
 
   const buildPlanWith = (device: DevicePlan['devices'][number]): DevicePlan => ({
@@ -940,11 +940,11 @@ describe('expected binary state for stepped turn_off / turn_on (Group 4)', () =>
     const plan = buildPlanWith(buildSteppedShedDevice({ shedAction: 'turn_off', selectedStepId: 'low' }));
 
     // Live currentOn=true → current state is 'on' → differs from expected 'off' → drift
-    expect(hasPlanExecutionDriftForDevice(plan, [buildLiveInput({ currentOn: true, selectedStepId: 'low' })], 'dev-1'))
+    expect(hasPlanExecutionDriftForDevice(plan, [buildLiveInput({ binaryControl: { on: true }, selectedStepId: 'low' })], 'dev-1'))
       .toBe(true);
 
     // Live currentOn=false → current state is 'off' → matches expected 'off' → no binary drift
-    expect(hasPlanExecutionDriftForDevice(plan, [buildLiveInput({ currentOn: false, selectedStepId: 'low' })], 'dev-1'))
+    expect(hasPlanExecutionDriftForDevice(plan, [buildLiveInput({ binaryControl: { on: false }, selectedStepId: 'low' })], 'dev-1'))
       .toBe(false);
   });
 
@@ -954,11 +954,11 @@ describe('expected binary state for stepped turn_off / turn_on (Group 4)', () =>
     const plan = buildPlanWith(buildKeepDevice({ currentState: 'off', selectedStepId: 'low' }));
 
     // Live currentOn=false → current state is 'off' → differs from expected 'on' → drift
-    expect(hasPlanExecutionDriftForDevice(plan, [buildLiveInput({ currentOn: false, selectedStepId: 'low' })], 'dev-1'))
+    expect(hasPlanExecutionDriftForDevice(plan, [buildLiveInput({ binaryControl: { on: false }, selectedStepId: 'low' })], 'dev-1'))
       .toBe(true);
 
     // Live currentOn=true → current state is 'on' → matches expected 'on' → no binary drift
-    expect(hasPlanExecutionDriftForDevice(plan, [buildLiveInput({ currentOn: true, selectedStepId: 'low' })], 'dev-1'))
+    expect(hasPlanExecutionDriftForDevice(plan, [buildLiveInput({ binaryControl: { on: true }, selectedStepId: 'low' })], 'dev-1'))
       .toBe(false);
   });
 
@@ -974,11 +974,11 @@ describe('expected binary state for stepped turn_off / turn_on (Group 4)', () =>
       desiredStepId: 'low',
     }));
     // Live currentOn=true (step at 'low', non-off) → liveCurrentState='on' → no drift
-    expect(hasPlanExecutionDriftForDevice(setStepAtLow, [buildLiveInput({ currentOn: true, selectedStepId: 'low' })], 'dev-1'))
+    expect(hasPlanExecutionDriftForDevice(setStepAtLow, [buildLiveInput({ binaryControl: { on: true }, selectedStepId: 'low' })], 'dev-1'))
       .toBe(false);
     // Live currentOn=false (step at 'low', non-off) → liveCurrentState='off' → drift
     // (expected='on' from set_step at non-off, live='off')
-    expect(hasPlanExecutionDriftForDevice(setStepAtLow, [buildLiveInput({ currentOn: false, selectedStepId: 'low' })], 'dev-1'))
+    expect(hasPlanExecutionDriftForDevice(setStepAtLow, [buildLiveInput({ binaryControl: { on: false }, selectedStepId: 'low' })], 'dev-1'))
       .toBe(true);
 
     // set_step shed at off-step → expected 'off'.
@@ -993,10 +993,10 @@ describe('expected binary state for stepped turn_off / turn_on (Group 4)', () =>
       desiredStepId: 'off',
     }));
     // Live at off-step with binary off → no drift (expected='off', live='off')
-    expect(hasPlanExecutionDriftForDevice(setStepAtOff, [buildLiveInput({ currentOn: false, selectedStepId: 'off' })], 'dev-1'))
+    expect(hasPlanExecutionDriftForDevice(setStepAtOff, [buildLiveInput({ binaryControl: { on: false }, selectedStepId: 'off' })], 'dev-1'))
       .toBe(false);
     // Live step changed to 'low' → step drift (live selectedStepId ≠ previous selectedStepId)
-    expect(hasPlanExecutionDriftForDevice(setStepAtOff, [buildLiveInput({ currentOn: true, selectedStepId: 'low' })], 'dev-1'))
+    expect(hasPlanExecutionDriftForDevice(setStepAtOff, [buildLiveInput({ binaryControl: { on: true }, selectedStepId: 'low' })], 'dev-1'))
       .toBe(true);
   });
 
@@ -1007,7 +1007,7 @@ describe('expected binary state for stepped turn_off / turn_on (Group 4)', () =>
       desiredStepId: undefined,
     }));
 
-    expect(hasPlanExecutionDriftForDevice(plan, [buildLiveInput({ currentOn: false, selectedStepId: undefined })], 'dev-1'))
+    expect(hasPlanExecutionDriftForDevice(plan, [buildLiveInput({ binaryControl: { on: false }, selectedStepId: undefined })], 'dev-1'))
       .toBe(false);
   });
 
@@ -1025,10 +1025,10 @@ describe('expected binary state for stepped turn_off / turn_on (Group 4)', () =>
 
     // Expected binary is 'off' for turn_off regardless of desiredStepId.
     // Live currentOn=true → drift (expected='off', observed='on')
-    expect(hasPlanExecutionDriftForDevice(plan, [buildLiveInput({ currentOn: true, selectedStepId: 'low' })], 'dev-1'))
+    expect(hasPlanExecutionDriftForDevice(plan, [buildLiveInput({ binaryControl: { on: true }, selectedStepId: 'low' })], 'dev-1'))
       .toBe(true);
     // Live currentOn=false → no drift (expected='off', observed='off')
-    expect(hasPlanExecutionDriftForDevice(plan, [buildLiveInput({ currentOn: false, selectedStepId: 'low' })], 'dev-1'))
+    expect(hasPlanExecutionDriftForDevice(plan, [buildLiveInput({ binaryControl: { on: false }, selectedStepId: 'low' })], 'dev-1'))
       .toBe(false);
   });
 });

@@ -63,7 +63,7 @@ describe('plan binary control helpers', () => {
         communicationModel: 'cloud',
         controlCapabilityId: 'onoff',
         canSetControl: true,
-        currentOn: false,
+        binaryControl: { on: false },
       },
       logContext: 'capacity',
     })).resolves.toBe(true);
@@ -75,7 +75,7 @@ describe('plan binary control helpers', () => {
         id: 'connected-300',
         name: 'Connected 300',
         communicationModel: 'cloud',
-        currentOn: false,
+        binaryControl: { on: false },
         controlCapabilityId: 'onoff',
         binaryControlObservation: binaryObservation('onoff', false, 61_000),
         targets: [],
@@ -105,7 +105,7 @@ describe('plan binary control helpers', () => {
         id: 'connected-300',
         name: 'Connected 300',
         communicationModel: 'cloud',
-        currentOn: false,
+        binaryControl: { on: false },
         controlCapabilityId: 'onoff',
         binaryControlObservation: binaryObservation('onoff', false, 61_000),
         targets: [],
@@ -161,7 +161,7 @@ describe('plan binary control helpers', () => {
     const deviceManager = withGetSnapshotByDeviceId({
       setCapability: vi.fn().mockResolvedValue(undefined),
       getSnapshot: vi.fn().mockReturnValue([
-        { id: 'ev1', name: 'EV', currentOn: true, evChargingState: 'plugged_in_charging', controlCapabilityId: 'evcharger_charging' },
+        { id: 'ev1', name: 'EV', binaryControl: { on: true }, evChargingState: 'plugged_in_charging', controlCapabilityId: 'evcharger_charging' },
       ]),
     });
 
@@ -278,7 +278,7 @@ describe('plan binary control helpers', () => {
         flowBacked: true,
         flowBackedCapabilityIds: ['onoff'],
         canSetControl: true,
-        currentOn: true,
+        binaryControl: { on: true },
       },
       logContext: 'capacity',
       reason: 'shedding',
@@ -408,7 +408,7 @@ describe('plan binary control helpers', () => {
       getSnapshot: vi.fn().mockReturnValue([{
         id: 'socket1',
         name: 'Socket',
-        currentOn: true,
+        binaryControl: { on: true },
         controlCapabilityId: 'onoff',
         canSetControl: true,
       }]),
@@ -428,7 +428,7 @@ describe('plan binary control helpers', () => {
       snapshot: {
         id: 'socket1',
         name: 'Socket',
-        currentOn: false,
+        binaryControl: { on: false },
         controlCapabilityId: 'onoff',
         canSetControl: true,
       },
@@ -481,7 +481,7 @@ describe('plan binary control helpers', () => {
       liveDevices: [{
         id: 'socket1',
         name: 'Socket',
-        currentOn: false,
+        binaryControl: { on: false },
         controlCapabilityId: 'onoff',
         binaryControlObservation: binaryObservation(
           'onoff',
@@ -525,7 +525,7 @@ describe('plan binary control helpers', () => {
         name: 'Socket',
         controlCapabilityId: 'onoff',
         canSetControl: true,
-        currentOn: false,
+        binaryControl: { on: false },
       },
       logContext: 'capacity',
     })).resolves.toBe(true);
@@ -536,7 +536,7 @@ describe('plan binary control helpers', () => {
       liveDevices: [{
         id: 'socket1',
         name: 'Socket',
-        currentOn: false,
+        binaryControl: { on: false },
         controlCapabilityId: 'onoff',
         binaryControlObservation: binaryObservation(
           'onoff',
@@ -579,7 +579,7 @@ describe('plan binary control helpers', () => {
       liveDevices: [{
         id: 'socket1',
         name: 'Socket',
-        currentOn: true,
+        binaryControl: { on: true },
         controlCapabilityId: 'onoff',
         binaryControlObservation: binaryObservation('onoff', true, 999),
         targets: [],
@@ -607,7 +607,7 @@ describe('plan binary control helpers', () => {
       liveDevices: [{
         id: 'socket1',
         name: 'Socket',
-        currentOn: true,
+        binaryControl: { on: true },
         controlCapabilityId: 'onoff',
         binaryControlObservation: binaryObservation('onoff', true, 1_001),
         targets: [],
@@ -635,7 +635,7 @@ describe('plan binary control helpers', () => {
       liveDevices: [{
         id: 'socket1',
         name: 'Socket',
-        currentOn: true,
+        binaryControl: { on: true },
         controlCapabilityId: 'onoff',
         binaryControlObservation: binaryObservation('onoff', true, 1_000),
         targets: [],
@@ -663,7 +663,7 @@ describe('plan binary control helpers', () => {
       liveDevices: [{
         id: 'socket1',
         name: 'Socket',
-        currentOn: true,
+        binaryControl: { on: true },
         controlCapabilityId: 'onoff',
         binaryControlObservation: binaryObservation('onoff', true, Number.NaN),
         targets: [],
@@ -698,7 +698,7 @@ describe('plan binary control helpers', () => {
         name: 'Socket',
         controlCapabilityId: 'onoff',
         canSetControl: true,
-        currentOn: false,
+        binaryControl: { on: false },
       },
       logContext: 'capacity',
     })).resolves.toBe(true);
@@ -709,7 +709,7 @@ describe('plan binary control helpers', () => {
       liveDevices: [{
         id: 'socket1',
         name: 'Socket',
-        currentOn: false,
+        binaryControl: { on: false },
         controlCapabilityId: 'onoff',
         binaryControlObservation: binaryObservation(
           'onoff',
@@ -759,7 +759,7 @@ describe('plan binary control helpers', () => {
         name: 'EV',
         controlCapabilityId: 'evcharger_charging',
         canSetControl: true,
-        currentOn: true,
+        binaryControl: { on: true },
         evChargingState: 'plugged_in_charging',
       },
       logContext: 'capacity',
@@ -771,7 +771,7 @@ describe('plan binary control helpers', () => {
       liveDevices: [{
         id: 'ev1',
         name: 'EV',
-        currentOn: true,
+        binaryControl: { on: true },
         evChargingState: 'plugged_in_paused',
         controlCapabilityId: 'evcharger_charging',
         binaryControlObservation: binaryObservation(
@@ -810,7 +810,7 @@ describe('plan binary control helpers', () => {
       liveDevices: [{
         id: 'ev1',
         name: 'EV',
-        currentOn: true,
+        binaryControl: { on: true },
         evChargingState: 'plugged_in_charging',
         controlCapabilityId: 'evcharger_charging',
         binaryControlObservation: binaryObservation('evcharger_charging', false, 1_001),
@@ -839,7 +839,7 @@ describe('plan binary control helpers', () => {
       liveDevices: [{
         id: 'ev1',
         name: 'EV',
-        currentOn: true,
+        binaryControl: { on: true },
         evChargingState: 'plugged_in_paused',
         controlCapabilityId: 'evcharger_charging',
         binaryControlObservation: binaryObservation('evcharger_charging', false, 1_001),
@@ -868,7 +868,7 @@ describe('plan binary control helpers', () => {
       liveDevices: [{
         id: 'ev1',
         name: 'EV',
-        currentOn: true,
+        binaryControl: { on: true },
         evChargingState: 'plugged_in_paused',
         controlCapabilityId: 'evcharger_charging',
         binaryControlObservation: binaryObservation('evcharger_charging', false, 1_001),
@@ -898,7 +898,7 @@ describe('plan binary control helpers', () => {
       liveDevices: [{
         id: 'ev1',
         name: 'EV',
-        currentOn: true,
+        binaryControl: { on: true },
         evChargingState: 'plugged_in_charging',
         controlCapabilityId: 'evcharger_charging',
         binaryControlObservation: binaryObservation(
@@ -938,7 +938,7 @@ describe('plan binary control helpers', () => {
       liveDevices: [{
         id: 'ev1',
         name: 'EV',
-        currentOn: true,
+        binaryControl: { on: true },
         evChargingState: 'plugged_in_charging',
         controlCapabilityId: 'evcharger_charging',
         binaryControlObservation: binaryObservation(
@@ -973,7 +973,7 @@ describe('plan binary control helpers', () => {
       liveDevices: [{
         id: 'ev1',
         name: 'EV',
-        currentOn: false,
+        binaryControl: { on: false },
         controlCapabilityId: 'evcharger_charging',
         binaryControlObservation: binaryObservation('evcharger_charging', false, 999),
         targets: [],
@@ -990,7 +990,7 @@ describe('plan binary control helpers', () => {
       liveDevices: [{
         id: 'ev1',
         name: 'EV',
-        currentOn: false,
+        binaryControl: { on: false },
         evChargingState: 'mystery',
         controlCapabilityId: 'evcharger_charging',
         binaryControlObservation: binaryObservation('evcharger_charging', false, 1_001),
@@ -1008,7 +1008,7 @@ describe('plan binary control helpers', () => {
       liveDevices: [{
         id: 'ev1',
         name: 'EV',
-        currentOn: false,
+        binaryControl: { on: false },
         controlCapabilityId: 'evcharger_charging',
         binaryControlObservation: binaryObservation('evcharger_charging', false, 1_001),
         targets: [],
@@ -1041,7 +1041,7 @@ describe('plan binary control helpers', () => {
       liveDevices: [{
         id: 'ev1',
         name: 'EV',
-        currentOn: true,
+        binaryControl: { on: true },
         evChargingState: 'plugged_in_paused',
         controlCapabilityId: 'evcharger_charging',
         binaryControlObservation: binaryObservation(
@@ -1357,7 +1357,7 @@ describe('binary control plan requires onoff capability (Group 1.3)', () => {
         name: 'No-Onoff Device',
         // No controlCapabilityId, no onoff in capabilities
         canSetControl: true,
-        currentOn: true,
+        binaryControl: { on: true },
       } as never,
       logContext: 'capacity',
     });

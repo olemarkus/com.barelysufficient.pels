@@ -32,7 +32,7 @@ const baseSnapshot = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDevi
   name: 'Water heater',
   targets: [],
   deviceType: 'onoff',
-  currentOn: false,
+  binaryControl: { on: false },
   measuredPowerKw: 0,
   ...overrides,
 });
@@ -170,7 +170,7 @@ describe('appDeviceControlHelpers', () => {
   it('uses the lowest active configured step as the default selected step for stepped loads', () => {
     const runtimeState = createDeviceControlRuntimeState();
     const decorated = decorateSnapshotWithDeviceControl({
-      snapshot: baseSnapshot({ currentOn: true }),
+      snapshot: baseSnapshot({ binaryControl: { on: true } }),
       profiles: steppedProfiles,
       runtimeState,
       nowMs: 1000,
@@ -185,14 +185,14 @@ describe('appDeviceControlHelpers', () => {
     // expectedPowerKw is NOT overwritten — it retains the original snapshot value
     // (undefined here). Step-derived power is available via planningPowerKw.
     expect(decorated.expectedPowerKw).toBeUndefined();
-    expect(decorated.currentOn).toBe(true);
+    expect(decorated.binaryControl?.on).toBe(true);
   });
 
   it('preserves existing expectedPowerKw and expectedPowerSource for stepped loads', () => {
     const runtimeState = createDeviceControlRuntimeState();
     const decorated = decorateSnapshotWithDeviceControl({
       snapshot: baseSnapshot({
-        currentOn: true,
+        binaryControl: { on: true },
         expectedPowerKw: 2.5,
         expectedPowerSource: 'measured-peak',
       }),
@@ -209,7 +209,7 @@ describe('appDeviceControlHelpers', () => {
   it('preserves currentOn=false for stepped devices even with non-off step', () => {
     const runtimeState = createDeviceControlRuntimeState();
     const decorated = decorateSnapshotWithDeviceControl({
-      snapshot: baseSnapshot({ currentOn: false }),
+      snapshot: baseSnapshot({ binaryControl: { on: false } }),
       profiles: steppedProfiles,
       runtimeState,
       nowMs: 1000,
@@ -218,14 +218,14 @@ describe('appDeviceControlHelpers', () => {
     expect(decorated.controlModel).toBe('stepped_load');
     expect(decorated.selectedStepId).toBe('low');
     expect(decorated.reportedStepId).toBeUndefined();
-    expect(decorated.currentOn).toBe(false);
+    expect(decorated.binaryControl?.on).toBe(false);
   });
 
   it('keeps native non-off step reports as observed truth even when currentOn=false', () => {
     const runtimeState = createDeviceControlRuntimeState();
     const decorated = decorateSnapshotWithDeviceControl({
       snapshot: baseSnapshot({
-        currentOn: false,
+        binaryControl: { on: false },
         reportedStepId: 'max',
         lastUpdated: 1_500,
         suggestedSteppedLoadProfile: steppedProfiles['dev-1'],
@@ -243,7 +243,7 @@ describe('appDeviceControlHelpers', () => {
 
     expect(decorated.reportedStepId).toBe('max');
     expect(decorated.selectedStepId).toBe('max');
-    expect(decorated.currentOn).toBe(false);
+    expect(decorated.binaryControl?.on).toBe(false);
   });
 
   it('does not turn flow non-off feedback into reported truth while currentOn=false', () => {
@@ -258,7 +258,7 @@ describe('appDeviceControlHelpers', () => {
     })).toBe('changed');
 
     const decorated = decorateSnapshotWithDeviceControl({
-      snapshot: baseSnapshot({ currentOn: false }),
+      snapshot: baseSnapshot({ binaryControl: { on: false } }),
       profiles: steppedProfiles,
       runtimeState,
       nowMs: 2_000,
@@ -266,7 +266,7 @@ describe('appDeviceControlHelpers', () => {
 
     expect(decorated.reportedStepId).toBeUndefined();
     expect(decorated.selectedStepId).toBe('low');
-    expect(decorated.currentOn).toBe(false);
+    expect(decorated.binaryControl?.on).toBe(false);
   });
 
   it('uses parsed target-power step observations as reported stepped-load truth', () => {
@@ -281,7 +281,7 @@ describe('appDeviceControlHelpers', () => {
 
     const decorated = decorateSnapshotWithDeviceControl({
       snapshot: baseSnapshot({
-        currentOn: true,
+        binaryControl: { on: true },
         reportedStepId: 'max',
         lastUpdated: 1_500,
         controlModel: 'stepped_load',
@@ -312,7 +312,7 @@ describe('appDeviceControlHelpers', () => {
 
     const decorated = decorateSnapshotWithDeviceControl({
       snapshot: baseSnapshot({
-        currentOn: true,
+        binaryControl: { on: true },
         reportedStepId: '1500w',
         lastUpdated: 1_500,
         controlModel: 'stepped_load',
@@ -337,7 +337,7 @@ describe('appDeviceControlHelpers', () => {
     } as unknown as DeviceControlProfiles;
 
     const decorated = decorateSnapshotWithDeviceControl({
-      snapshot: baseSnapshot({ expectedPowerSource: 'manual', currentOn: false }),
+      snapshot: baseSnapshot({ expectedPowerSource: 'manual', binaryControl: { on: false } }),
       profiles: emptyProfiles,
       runtimeState,
       nowMs: 1000,
@@ -346,7 +346,7 @@ describe('appDeviceControlHelpers', () => {
     expect(decorated.selectedStepId).toBeUndefined();
     expect(decorated.planningPowerKw).toBeUndefined();
     expect(decorated.expectedPowerSource).toBe('manual');
-    expect(decorated.currentOn).toBe(false);
+    expect(decorated.binaryControl?.on).toBe(false);
   });
 
   it('does not infer a stepped level from measured power', () => {
@@ -368,7 +368,7 @@ describe('appDeviceControlHelpers', () => {
     const runtimeState = createDeviceControlRuntimeState();
     const decorated = decorateSnapshotWithDeviceControl({
       snapshot: baseSnapshot({
-        currentOn: true,
+        binaryControl: { on: true },
         selectedStepId: 'max',
       }),
       profiles: steppedProfiles,
@@ -419,7 +419,7 @@ describe('appDeviceControlHelpers', () => {
     });
 
     const reportedDecorated = decorateSnapshotWithDeviceControl({
-      snapshot: baseSnapshot({ currentOn: true }),
+      snapshot: baseSnapshot({ binaryControl: { on: true } }),
       profiles: steppedProfiles,
       runtimeState,
       nowMs: 1700,
@@ -439,7 +439,7 @@ describe('appDeviceControlHelpers', () => {
     expect(pruneStaleSteppedLoadCommandStates(runtimeState, 2000 + STEPPED_LOAD_COMMAND_STALE_MS + 1)).toBe(true);
 
     const staleDecorated = decorateSnapshotWithDeviceControl({
-      snapshot: baseSnapshot({ currentOn: true }),
+      snapshot: baseSnapshot({ binaryControl: { on: true } }),
       profiles: steppedProfiles,
       runtimeState,
       nowMs: 2000 + STEPPED_LOAD_COMMAND_STALE_MS + 1,
@@ -491,7 +491,7 @@ describe('appDeviceControlHelpers', () => {
     });
     expect(offDecorated.selectedStepId).toBe('off');
     expect(offDecorated.reportedStepId).toBe('off');
-    expect(offDecorated.currentOn).toBe(false);
+    expect(offDecorated.binaryControl?.on).toBe(false);
     expect(offDecorated.planningPowerKw).toBe(0);
 
     expect(reportSteppedLoadActualStep({
@@ -542,7 +542,7 @@ describe('appDeviceControlHelpers', () => {
     const structuredLogger = { info: vi.fn() };
     const helpers = new AppDeviceControlHelpers({
       getProfiles: () => steppedProfiles,
-      getDeviceSnapshots: () => [baseSnapshot({ currentOn: true })],
+      getDeviceSnapshots: () => [baseSnapshot({ binaryControl: { on: true } })],
       getLatestPlanSnapshot: () => ({
         devices: [{
           id: 'dev-1',
@@ -571,7 +571,7 @@ describe('appDeviceControlHelpers', () => {
       status: 'idle',
     });
 
-    const [decorated] = helpers.decorateTargetSnapshotList([baseSnapshot({ currentOn: true })]);
+    const [decorated] = helpers.decorateTargetSnapshotList([baseSnapshot({ binaryControl: { on: true } })]);
     expect(decorated.reportedStepId).toBe('max');
     expect(decorated.selectedStepId).toBe('max');
     expect(decorated.targetStepId).toBe('low');
@@ -592,7 +592,7 @@ describe('appDeviceControlHelpers', () => {
     const helpers = new AppDeviceControlHelpers({
       getProfiles: () => ({}),
       getDeviceSnapshots: () => [baseSnapshot({
-        currentOn: true,
+        binaryControl: { on: true },
         steppedLoadProfile: steppedProfiles['dev-1'],
       })],
       getLatestPlanSnapshot: () => ({ devices: [] } as never),
@@ -646,7 +646,7 @@ describe('appDeviceControlHelpers', () => {
     const helpers = new AppDeviceControlHelpers({
       getProfiles: () => ({}),
       getDeviceSnapshots: () => [baseSnapshot({
-        currentOn: true,
+        binaryControl: { on: true },
         controlModel: 'stepped_load',
         steppedLoadProfile: steppedProfiles['dev-1'],
       })],
@@ -683,7 +683,7 @@ describe('appDeviceControlHelpers', () => {
     const structuredLogger = { info: vi.fn() };
     const helpers = new AppDeviceControlHelpers({
       getProfiles: () => steppedProfiles,
-      getDeviceSnapshots: () => [baseSnapshot({ currentOn: true })],
+      getDeviceSnapshots: () => [baseSnapshot({ binaryControl: { on: true } })],
       getLatestPlanSnapshot: () => ({
         devices: [{
           id: 'dev-1',
@@ -719,7 +719,7 @@ describe('appDeviceControlHelpers', () => {
       status: 'success',
     });
 
-    const [decorated] = helpers.decorateTargetSnapshotList([baseSnapshot({ currentOn: true })]);
+    const [decorated] = helpers.decorateTargetSnapshotList([baseSnapshot({ binaryControl: { on: true } })]);
     expect(decorated.reportedStepId).toBe('low');
     expect(decorated.selectedStepId).toBe('low');
     expect(decorated.targetStepId).toBe('low');
@@ -738,7 +738,7 @@ describe('appDeviceControlHelpers', () => {
   it('replaces a stale desired step even when the repeated feedback report is unchanged', () => {
     const helpers = new AppDeviceControlHelpers({
       getProfiles: () => steppedProfiles,
-      getDeviceSnapshots: () => [baseSnapshot({ currentOn: true })],
+      getDeviceSnapshots: () => [baseSnapshot({ binaryControl: { on: true } })],
       getLatestPlanSnapshot: () => ({
         devices: [{
           id: 'dev-1',
@@ -772,7 +772,7 @@ describe('appDeviceControlHelpers', () => {
   it('does not let suppressed flow feedback confirm a pending desired step while currentOn=false', () => {
     const helpers = new AppDeviceControlHelpers({
       getProfiles: () => steppedProfiles,
-      getDeviceSnapshots: () => [baseSnapshot({ currentOn: false })],
+      getDeviceSnapshots: () => [baseSnapshot({ binaryControl: { on: false } })],
       getStructuredLogger: () => ({ info: vi.fn() }) as never,
       debugStructured: vi.fn(),
     });
@@ -799,7 +799,7 @@ describe('appDeviceControlHelpers', () => {
   it('returns invalid for unknown flow step reports even when currentOn=false', () => {
     const helpers = new AppDeviceControlHelpers({
       getProfiles: () => steppedProfiles,
-      getDeviceSnapshots: () => [baseSnapshot({ currentOn: false })],
+      getDeviceSnapshots: () => [baseSnapshot({ binaryControl: { on: false } })],
       getStructuredLogger: () => ({ info: vi.fn() }) as never,
       debugStructured: vi.fn(),
     });

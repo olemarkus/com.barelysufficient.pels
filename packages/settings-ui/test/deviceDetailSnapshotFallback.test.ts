@@ -126,7 +126,7 @@ const buildDevice = (
   targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
   deviceType: 'temperature',
   powerCapable: true,
-  currentOn: true,
+  binaryControl: { on: true },
   capabilities: ['target_temperature', 'onoff'],
   ...overrides,
 });
@@ -233,7 +233,7 @@ describe('device detail snapshot-fallback wiring (defense-in-depth)', () => {
         activationEnabled: true,
       },
       capabilities: ['measure_power', 'charging_button', 'charge_mode'],
-      currentOn: true,
+      binaryControl: { on: true },
     })];
     state.managedMap = { 'zaptec-1': true };
     state.controllableMap = { 'zaptec-1': true };

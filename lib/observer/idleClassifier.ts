@@ -30,7 +30,7 @@ export type IdleClassifierDeviceInput = {
   id: string;
   name: string;
   currentState: string;
-  currentOn: boolean;
+  binaryControl?: { on: boolean };
   observationStale?: boolean;
   measuredPowerKw?: number;
   currentTemperature?: number;

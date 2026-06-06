@@ -306,7 +306,7 @@ describe('plan restore device helpers', () => {
     const targetOnlyOff = makeDevice({
       id: 'target-only-off',
       currentState: 'not_applicable',
-      currentOn: false,
+      binaryControl: { on: false },
     });
 
     expect(isBinaryRestoreCandidate(targetOnlyOff)).toBe(false);

@@ -22,7 +22,7 @@ describe('resolveRemainingSheddableLoadKw — stale observation handling', () =>
   const turnOffBehavior: RemainingShedBehavior = { action: 'turn_off' };
 
   it('falls back to configured demand for a stale currentOn=false device instead of reporting 0', () => {
-    // Regression: stale snapshots with currentOn: false and missing live
+    // Regression: stale snapshots with binaryControl: { on: false } and missing live
     // measurement must not be silently zeroed out — the device may still be
     // drawing, and excluding it from remaining sheddable load can mis-signal
     // "no actionable load left" during shortfall handling. In production the
@@ -32,7 +32,7 @@ describe('resolveRemainingSheddableLoadKw — stale observation handling', () =>
     const stale = toPlanRemainingSheddableDevice(buildPlanDevice({
       id: 'stale-off',
       controllable: true,
-      currentOn: false,
+      binaryControl: { on: false },
       currentState: 'unknown',
       observationStale: true,
       expectedPowerKw: 1.4,
@@ -51,7 +51,7 @@ describe('resolveRemainingSheddableLoadKw — stale observation handling', () =>
     const fresh = toPlanRemainingSheddableDevice(buildPlanDevice({
       id: 'fresh-off',
       controllable: true,
-      currentOn: false,
+      binaryControl: { on: false },
       currentState: 'off',
       observationStale: false,
       expectedPowerKw: 1.4,
@@ -80,14 +80,14 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
     const simpleOn = buildPlanInputDevice({
       id: 'simple-on',
       controllable: true,
-      currentOn: true,
+      binaryControl: { on: true },
       currentState: 'on',
       measuredPowerKw: 1.4,
     });
     const steppedMax = buildPlanInputDevice({
       id: 'stepped-max',
       controllable: true,
-      currentOn: true,
+      binaryControl: { on: true },
       currentState: 'on',
       controlModel: 'stepped_load',
       steppedLoadProfile: steppedProfile,
@@ -98,7 +98,7 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
     const steppedAtLowestActive = buildPlanInputDevice({
       id: 'stepped-low',
       controllable: true,
-      currentOn: true,
+      binaryControl: { on: true },
       currentState: 'on',
       controlModel: 'stepped_load',
       steppedLoadProfile: steppedProfile,
@@ -162,7 +162,7 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
     const baselineSteppedMax = buildPlanInputDevice({
       id: 'baseline-stepped-max',
       controllable: true,
-      currentOn: true,
+      binaryControl: { on: true },
       currentState: 'on',
       controlModel: 'stepped_load',
       steppedLoadProfile: steppedProfile,
@@ -175,7 +175,7 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
     const steppedLowestNoBinary = buildPlanInputDevice({
       id: 'edge-a-stepped-lowest-no-binary',
       controllable: true,
-      currentOn: true,
+      binaryControl: { on: true },
       currentState: 'on',
       controlModel: 'stepped_load',
       steppedLoadProfile: steppedProfile,
@@ -189,7 +189,7 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
     const steppedUnknownNoEffective = buildPlanInputDevice({
       id: 'edge-b-stepped-unknown-no-effective',
       controllable: true,
-      currentOn: true,
+      binaryControl: { on: true },
       currentState: 'on',
       controlModel: 'stepped_load',
       steppedLoadProfile: steppedProfile,
@@ -202,7 +202,7 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
     const temperatureNoopShed = buildPlanInputDevice({
       id: 'edge-d-temperature-noop',
       controllable: true,
-      currentOn: true,
+      binaryControl: { on: true },
       currentState: 'on',
       measuredPowerKw: 1.4,
       targets: [{
@@ -327,7 +327,7 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
     const device = buildPlanInputDevice({
       id: 'edge-c-stepped-unknown-but-reported',
       controllable: true,
-      currentOn: true,
+      binaryControl: { on: true },
       currentState: 'on',
       controlModel: 'stepped_load',
       steppedLoadProfile: steppedProfile,
@@ -397,7 +397,7 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
         ...buildPlanInputDevice({
           id: 'a',
           controllable: true,
-          currentOn: true,
+          binaryControl: { on: true },
           controlModel: 'stepped_load',
           steppedLoadProfile: steppedProfile,
           selectedStepId: 'low',
@@ -419,7 +419,7 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
         ...buildPlanInputDevice({
           id: 'b',
           controllable: true,
-          currentOn: true,
+          binaryControl: { on: true },
           controlModel: 'stepped_load',
           steppedLoadProfile: steppedProfile,
           controlCapabilityId: 'onoff',
@@ -441,7 +441,7 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
         ...buildPlanInputDevice({
           id: 'c',
           controllable: true,
-          currentOn: true,
+          binaryControl: { on: true },
           controlModel: 'stepped_load',
           steppedLoadProfile: steppedProfile,
           controlCapabilityId: 'onoff',
@@ -462,7 +462,7 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
         ...buildPlanInputDevice({
           id: 'd',
           controllable: true,
-          currentOn: true,
+          binaryControl: { on: true },
           measuredPowerKw: 1.4,
           targets: [{
             id: 'target_temperature',

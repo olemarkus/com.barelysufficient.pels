@@ -37,7 +37,7 @@ export const buildPlanInputDevice = (overrides: Partial<PlanInputDevice> = {}): 
   id: 'dev',
   name: 'Device',
   targets: [],
-  currentOn: true,
+  binaryControl: { on: true },
   controllable: true,
   controlCapabilityId: 'onoff',
   ...overrides,

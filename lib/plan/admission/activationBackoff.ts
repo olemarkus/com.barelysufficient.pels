@@ -18,7 +18,7 @@ export const ACTIVATION_BACKOFF_MAX_LEVEL = 4;
 
 export type ActivationBackoffObservation = {
   available?: boolean;
-  currentOn: boolean;
+  binaryControl?: { on: boolean };
   currentState?: string;
   measuredPowerKw?: number;
   observationStale?: boolean;

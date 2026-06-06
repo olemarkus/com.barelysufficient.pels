@@ -11,7 +11,7 @@ import {
 
 const buildDevice = (overrides: Partial<TargetDeviceSnapshot> & { id: string; name: string }): TargetDeviceSnapshot => ({
   targets: [],
-  currentOn: false,
+  binaryControl: { on: false },
   ...overrides,
 } as TargetDeviceSnapshot);
 

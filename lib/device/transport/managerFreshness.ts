@@ -66,13 +66,13 @@ function applyEvChargingStateUpdate(
   if (Object.is(mutableSnapshot.evChargingState, value)) {
     return { changed: false, normalizedValue: value, binaryControlObservation };
   }
-  const previousCurrentOn = mutableSnapshot.currentOn;
+  const previousCurrentOn = mutableSnapshot.binaryControl?.on ?? true;
   mutableSnapshot.evChargingState = value;
   const nextCurrentOn = resolveEvCurrentOn({
     evChargingState: mutableSnapshot.evChargingState,
     evchargerCharging: mutableSnapshot.evCharging,
   });
-  mutableSnapshot.currentOn = nextCurrentOn;
+  mutableSnapshot.binaryControl = { on: nextCurrentOn };
   updateStateOfChargeSessionBoundary({
     snapshot: mutableSnapshot,
     evChargingState: value,

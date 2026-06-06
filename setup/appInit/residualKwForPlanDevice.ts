@@ -89,7 +89,7 @@ function toRestoreSteppedLoad(
   // so the wiring layer computes the same projection here and funnels the
   // resolved boolean into the producer.
   const currentState = resolveObservedCurrentState({
-    currentOn: device.currentOn,
+    binaryControl: device.binaryControl,
     controlCapabilityId,
     observationStale,
     controlModel: device.controlModel,

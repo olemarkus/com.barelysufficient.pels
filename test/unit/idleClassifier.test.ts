@@ -26,7 +26,7 @@ const heaterAt = (
   id: 'heater-1',
   name: 'Connected 300',
   currentState: 'on',
-  currentOn: true,
+  binaryControl: { on: true },
   observationStale: false,
   measuredPowerKw: 0,
   currentTemperature: 61.5,

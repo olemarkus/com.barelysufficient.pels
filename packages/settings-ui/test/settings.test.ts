@@ -1012,7 +1012,7 @@ describe('settings script', () => {
           deviceClass: 'socket',
           deviceType: 'onoff',
           targets: [],
-          currentOn: false,
+          binaryControl: { on: false },
           powerCapable: true,
           expectedPowerSource: 'default',
           powerKw: 1,

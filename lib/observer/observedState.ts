@@ -18,7 +18,8 @@ import { getSteppedLoadStep, isSteppedLoadOffStep } from '../utils/deviceControl
 import type { DeviceControlModel, SteppedLoadProfile } from '../../packages/contracts/src/types';
 
 export type ObservedCurrentStateInput = {
-  currentOn: boolean;
+  // Present iff binary control; absence is the old fabricated `currentOn: true`.
+  binaryControl?: { on: boolean };
   controlCapabilityId?: 'onoff' | 'evcharger_charging';
   observationStale?: boolean;
   controlModel?: DeviceControlModel;
@@ -33,7 +34,7 @@ export type CurrentStateInput = Partial<ObservedCurrentStateInput> & {
 type StepCurrentStateInput = Pick<
   ObservedCurrentStateInput,
   'controlModel' | 'steppedLoadProfile' | 'selectedStepId' | 'controlCapabilityId'
-> & { currentOn: boolean };
+> & { binaryControl?: { on: boolean } };
 
 const hasBinaryCapability = (device: Pick<CurrentStateInput, 'controlCapabilityId'>): boolean => (
   device.controlCapabilityId !== undefined
@@ -74,12 +75,12 @@ export function resolveObservedSteppedLoadCurrentState(
 ): string {
   const profile = hasSteppedCapability(device) ? device.steppedLoadProfile ?? null : null;
   if (!profile) {
-    return device.currentOn ? 'on' : 'off';
+    return (device.binaryControl?.on ?? true) ? 'on' : 'off';
   }
   // Only short-circuit on binary off when the device actually has a binary
   // capability — a defaulted `currentOn: false` on a step-only device must not
   // mask the step state.
-  if (hasBinaryCapability(device) && device.currentOn === false) return 'off';
+  if (hasBinaryCapability(device) && device.binaryControl?.on === false) return 'off';
   if (!device.selectedStepId) return 'unknown';
   const selectedStep = getSteppedLoadStep(profile, device.selectedStepId);
   if (!selectedStep) return 'unknown';
@@ -93,10 +94,11 @@ export function resolveObservedSteppedLoadCurrentState(
  */
 export function resolveObservedCurrentStateValue(device: CurrentStateInput): string {
   if (typeof device.currentState === 'string') return device.currentState;
-  if (typeof device.currentOn === 'boolean') {
-    return resolveObservedCurrentState(device as ObservedCurrentStateInput);
-  }
-  return 'unknown';
+  // Every real device formerly carried a concrete `currentOn` boolean (a
+  // non-binary device defaulted to the fabricated `true`), so this always
+  // resolved through `resolveObservedCurrentState`. With `binaryControl` absent
+  // for non-binary devices, the fabricated default is applied inside the helper.
+  return resolveObservedCurrentState(device as ObservedCurrentStateInput);
 }
 
 export function resolveObservedCurrentState(
@@ -110,7 +112,7 @@ export function resolveObservedCurrentState(
       controlModel: 'stepped_load',
       steppedLoadProfile: device.steppedLoadProfile,
       selectedStepId: device.selectedStepId,
-      currentOn: device.currentOn,
+      binaryControl: device.binaryControl,
       controlCapabilityId: device.controlCapabilityId,
     });
     if (steppedState !== 'unknown') return steppedState;
@@ -118,7 +120,7 @@ export function resolveObservedCurrentState(
   if (!hasBinaryCapability(device)) {
     return 'not_applicable';
   }
-  return device.currentOn ? 'on' : 'off';
+  return (device.binaryControl?.on ?? true) ? 'on' : 'off';
 }
 
 /**
@@ -143,7 +145,7 @@ export function isObservedOff(device: CurrentStateInput): boolean {
   const stepped = hasSteppedCapability(device);
   if (!binary && !stepped) return false;
 
-  if (binary && device.currentOn === false) return true;
+  if (binary && device.binaryControl?.on === false) return true;
   if (stepped && stepIsAtOff(device)) return true;
   return false;
 }
@@ -164,7 +166,7 @@ export function isObservedOn(device: CurrentStateInput): boolean {
   const stepped = hasSteppedCapability(device);
   if (!binary && !stepped) return false;
 
-  if (binary && device.currentOn !== true) return false;
+  if (binary && (device.binaryControl?.on ?? true) !== true) return false;
   if (stepped && !stepIsAtActive(device)) return false;
   return true;
 }

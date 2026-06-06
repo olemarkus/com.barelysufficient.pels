@@ -48,7 +48,7 @@ describe('sumControlledUsageKw', () => {
 
   it('uses the same off-device demand fallback for snapshot-shaped devices', () => {
     const result = sumControlledUsageKw([
-      { controllable: true, currentOn: false, controlCapabilityId: 'onoff', expectedPowerKw: 1.2, planningPowerKw: 1.4 },
+      { controllable: true, binaryControl: { on: false }, controlCapabilityId: 'onoff', expectedPowerKw: 1.2, planningPowerKw: 1.4 },
     ]);
 
     expect(result).toBe(1.4);
@@ -56,7 +56,7 @@ describe('sumControlledUsageKw', () => {
 
   it('preserves unknown usage when currentOn is false but the live state is explicitly unknown', () => {
     const result = sumControlledUsageKw([
-      { controllable: true, currentOn: false, currentState: 'unknown', expectedPowerKw: 1.2 },
+      { controllable: true, binaryControl: { on: false }, currentState: 'unknown', expectedPowerKw: 1.2 },
     ]);
 
     expect(result).toBeCloseTo(1.2, 6);
@@ -102,7 +102,7 @@ describe('sumControlledUsageKw', () => {
           controllable: true,
           plannedState: 'shed',
           currentState: 'not_applicable',
-          currentOn: false,
+          binaryControl: { on: false },
           controlCapabilityId: undefined,
           expectedPowerKw: 1.25,
         },

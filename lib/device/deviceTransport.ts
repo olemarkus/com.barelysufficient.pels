@@ -878,7 +878,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         changes: NonNullable<PlanRealtimeUpdateEvent['changes']>,
     ): boolean {
         const snapshot = this.latestSnapshot[snapshotIndex];
-        const previousCurrentOn = snapshot.currentOn;
+        const previousCurrentOn = snapshot.binaryControl?.on;
         // Check the settle window before the equality check so a confirmation
         // observation (value === currentOn) can still settle it.
         const hasSettleWindow = this.binarySettleOps.hasWindow(this.binarySettleState, deviceId, capabilityId);
@@ -888,10 +888,12 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         }
         if (hasSettleWindow && !isSettlementEvidence) {
             if (capabilityId === 'evcharger_charging') {
-                snapshot.currentOn = resolveEvCurrentOn({
-                    evChargingState: snapshot.evChargingState,
-                    evchargerCharging: snapshot.evCharging,
-                });
+                snapshot.binaryControl = {
+                    on: resolveEvCurrentOn({
+                        evChargingState: snapshot.evChargingState,
+                        evchargerCharging: snapshot.evCharging,
+                    }),
+                };
             }
             this.recordRealtimeCapabilityObservation({
                 deviceId,
@@ -929,11 +931,15 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         if (!hasSettleWindow) {
             this.applyBinaryObservationToSnapshot(snapshot, capabilityId, value, 'realtime_capability');
         }
-        if (snapshot.currentOn === previousCurrentOn) return false;
+        // Resolve both sides through the may-draw default before comparing so an
+        // absent (non-binary) previous state can't read as a spurious on<->on change.
+        const previousOn = previousCurrentOn ?? true;
+        const nextOn = snapshot.binaryControl?.on ?? true;
+        if (nextOn === previousOn) return false;
         changes.push({
             capabilityId,
-            previousValue: formatBinaryState(previousCurrentOn),
-            nextValue: formatBinaryState(snapshot.currentOn),
+            previousValue: formatBinaryState(previousOn),
+            nextValue: formatBinaryState(nextOn),
         });
         return false;
     }
@@ -970,13 +976,15 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         const observedAtMs = Date.now();
         if (capabilityId === 'evcharger_charging') {
             mutableSnapshot.evCharging = value;
-            mutableSnapshot.currentOn = resolveEvCurrentOn({
-                evChargingState: mutableSnapshot.evChargingState,
-                evchargerCharging: value,
-            });
+            mutableSnapshot.binaryControl = {
+                on: resolveEvCurrentOn({
+                    evChargingState: mutableSnapshot.evChargingState,
+                    evchargerCharging: value,
+                }),
+            };
             if (!isRawBinarySettlementEvidenceAllowed(mutableSnapshot, capabilityId)) return;
         } else {
-            mutableSnapshot.currentOn = value;
+            mutableSnapshot.binaryControl = { on: value };
         }
         if (capabilityId === 'onoff' || capabilityId === 'evcharger_charging') {
             const evidence: BinaryControlObservation = {
@@ -1504,12 +1512,14 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         const mutableSnapshot = snapshot;
         if (acceptedEvidence.capabilityId === 'evcharger_charging') {
             mutableSnapshot.evCharging = acceptedEvidence.observedValue;
-            mutableSnapshot.currentOn = resolveEvCurrentOn({
-                evChargingState: mutableSnapshot.evChargingState,
-                evchargerCharging: acceptedEvidence.observedValue,
-            });
+            mutableSnapshot.binaryControl = {
+                on: resolveEvCurrentOn({
+                    evChargingState: mutableSnapshot.evChargingState,
+                    evchargerCharging: acceptedEvidence.observedValue,
+                }),
+            };
         } else {
-            mutableSnapshot.currentOn = acceptedEvidence.observedValue;
+            mutableSnapshot.binaryControl = { on: acceptedEvidence.observedValue };
         }
         mutableSnapshot.binaryControlObservation = acceptedEvidence;
         return acceptedEvidence;
@@ -1911,7 +1921,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             }
         }
         if (typeof updates.on === 'boolean') {
-            snap.currentOn = updates.on;
+            snap.binaryControl = { on: updates.on };
             snap.lastLocalWriteMs = Date.now();
         }
     }

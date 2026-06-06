@@ -81,7 +81,7 @@ export type PlanExecutorSteppedContext = {
 const resolveCurrentOn = (
   action: ExecutableSteppedLoadDevice,
   snapshot?: TargetDeviceSnapshot,
-): boolean | null => snapshot?.currentOn ?? action.current.on;
+): boolean | null => (snapshot ? (snapshot.binaryControl?.on ?? true) : action.current.on);
 
 /* eslint-disable complexity --
  * Command dispatch still combines step validation, retry gating, and
@@ -255,6 +255,7 @@ const maybeSkipSteppedLoadRestoreBinary = (
       reasonCode: 'not_setable',
     });
   }
+  const snapshotOn = snapshot.binaryControl?.on ?? true;
   if (ctx.state.pendingRestores.has(action.id)) {
     return logSteppedLoadRestoreSkip(ctx, {
       action,
@@ -263,7 +264,7 @@ const maybeSkipSteppedLoadRestoreBinary = (
     });
   }
   if (
-    snapshot.currentOn === false
+    snapshotOn === false
     && stepViolated
     && !isRequestedStepMaterialized(stepActuation)
   ) {
@@ -279,7 +280,7 @@ const maybeSkipSteppedLoadRestoreBinary = (
       desiredStepId,
     });
   }
-  if (snapshot.currentOn !== false && !stepNeedsAdjustment) {
+  if (snapshotOn !== false && !stepNeedsAdjustment) {
     return logSteppedLoadRestoreSkip(ctx, {
       action,
       mode,
@@ -340,10 +341,10 @@ export const applySteppedLoadRestore = async (
     return NOT_RESTORED;
   }
   const stepViolated = effectiveCurrentOn === false && stepNeedsAdjustment;
-  if (snapshot?.currentOn === false) {
+  if (snapshot?.binaryControl?.on === false) {
     logger.debug({
       event: 'executor_stepped_log_debug',
-      msg: `Capacity: ${name} violates keep invariant: onoff=${snapshot?.currentOn}`,
+      msg: `Capacity: ${name} violates keep invariant: onoff=${snapshot?.binaryControl?.on ?? true}`,
     });
   }
   if (applyKeepInvariantShedBlock(ctx, action, name, hasShedDevices, requestedStepId)) return NOT_RESTORED;
@@ -367,13 +368,13 @@ export const applySteppedLoadRestore = async (
   if (!snapshot) return NOT_RESTORED;
   // Binary already on (no write needed) but the restore is "ready" so the caller
   // can proceed to issue the step command.
-  if (snapshot.currentOn !== false) return { ready: true, wroteBinary: false };
+  if ((snapshot.binaryControl?.on ?? true) !== false) return { ready: true, wroteBinary: false };
   const wroteBinary = await executeSteppedLoadRestoreBinary(ctx, {
     action,
     snapshot,
     mode,
     name,
-    onoffViolated: snapshot.currentOn === false,
+    onoffViolated: snapshot.binaryControl?.on === false,
     stepViolated,
   });
   return { ready: wroteBinary, wroteBinary };

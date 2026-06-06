@@ -210,7 +210,7 @@ describe('EV charger integration', { retry: 2 }, () => {
         id: charger.idValue,
         deviceClass: 'evcharger',
         controlCapabilityId: 'evcharger_charging',
-        currentOn: expectedOn,
+        binaryControl: { on: expectedOn },
         evChargingState: state,
       }));
     },
@@ -231,7 +231,7 @@ describe('EV charger integration', { retry: 2 }, () => {
     let snapshot = await refreshSnapshot(app);
     let entry = getSnapshotEntry(snapshot, charger.idValue);
     expect(entry).toEqual(expect.objectContaining({
-      currentOn: false,
+      binaryControl: { on: false },
       evChargingState: 'plugged_in_paused',
       powerKw: 7.2,
       controlCapabilityId: 'evcharger_charging',
@@ -256,7 +256,7 @@ describe('EV charger integration', { retry: 2 }, () => {
     snapshot = await refreshSnapshot(app);
     entry = getSnapshotEntry(snapshot, charger.idValue);
     expect(entry).toEqual(expect.objectContaining({
-      currentOn: true,
+      binaryControl: { on: true },
       evChargingState: 'plugged_in_charging',
       controlCapabilityId: 'evcharger_charging',
     }));
@@ -277,7 +277,7 @@ describe('EV charger integration', { retry: 2 }, () => {
     const snapshot = await refreshSnapshot(app);
     const entry = getSnapshotEntry(snapshot, charger.idValue);
     expect(entry).toEqual(expect.objectContaining({
-      currentOn: false,
+      binaryControl: { on: false },
       evChargingState: 'plugged_in',
     }));
   });
@@ -303,7 +303,7 @@ describe('EV charger integration', { retry: 2 }, () => {
       const snapshot = await refreshSnapshot(app);
       const entry = getSnapshotEntry(snapshot, charger.idValue);
       expect(entry).toEqual(expect.objectContaining({
-        currentOn: false,
+        binaryControl: { on: false },
         evChargingState: state,
       }));
     },
@@ -327,7 +327,7 @@ describe('EV charger integration', { retry: 2 }, () => {
     const snapshot = await refreshSnapshot(app);
     const entry = getSnapshotEntry(snapshot, charger.idValue);
     expect(entry).toEqual(expect.objectContaining({
-      currentOn: true,
+      binaryControl: { on: true },
       evChargingState: 'plugged_in_charging',
     }));
   });
@@ -347,7 +347,7 @@ describe('EV charger integration', { retry: 2 }, () => {
     const snapshot = await refreshSnapshot(app);
     const entry = getSnapshotEntry(snapshot, charger.idValue);
     expect(entry).toEqual(expect.objectContaining({
-      currentOn: false,
+      binaryControl: { on: false },
       evChargingState: 'plugged_in_paused',
     }));
   });
@@ -375,7 +375,7 @@ describe('EV charger integration', { retry: 2 }, () => {
 
     const snapshot = await refreshSnapshot(app);
     expect(getSnapshotEntry(snapshot, charger.idValue)).toEqual(expect.objectContaining({
-      currentOn: true,
+      binaryControl: { on: true },
       evChargingState: 'plugged_in_charging',
     }));
   });
@@ -398,7 +398,7 @@ describe('EV charger integration', { retry: 2 }, () => {
 
     const snapshot = await refreshSnapshot(app);
     expect(getSnapshotEntry(snapshot, charger.idValue)).toEqual(expect.objectContaining({
-      currentOn: false,
+      binaryControl: { on: false },
       evChargingState: 'plugged_in_paused',
     }));
   });
@@ -428,7 +428,7 @@ describe('EV charger integration', { retry: 2 }, () => {
     const snapshot = await refreshSnapshot(app);
     const entry = getSnapshotEntry(snapshot, charger.idValue);
     expect(entry).toEqual(expect.objectContaining({
-      currentOn: false,
+      binaryControl: { on: false },
       evChargingState: 'plugged_in_paused',
     }));
   });
@@ -525,7 +525,7 @@ describe('EV charger integration', { retry: 2 }, () => {
     const snapshot = await refreshSnapshot(app);
     const entry = getSnapshotEntry(snapshot, charger.idValue);
     expect(entry).toEqual(expect.objectContaining({
-      currentOn: true,
+      binaryControl: { on: true },
       evChargingState: 'plugged_in_charging',
     }));
   });
@@ -592,10 +592,10 @@ describe('EV charger integration', { retry: 2 }, () => {
     const chargerEntry = getSnapshotEntry(snapshot, charger.idValue);
 
     expect(heaterEntry).toEqual(expect.objectContaining({
-      currentOn: false,
+      binaryControl: { on: false },
     }));
     expect(chargerEntry).toEqual(expect.objectContaining({
-      currentOn: false,
+      binaryControl: { on: false },
       evChargingState: 'plugged_in_paused',
       expectedPowerSource: 'load-setting',
     }));

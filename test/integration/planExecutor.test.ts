@@ -91,7 +91,7 @@ const buildExecutor = (
       controlCapabilityId: 'onoff',
       canSetControl: true,
       available: true,
-      currentOn: false,
+      binaryControl: { on: false },
     },
   ],
   overrides: Partial<PlanExecutorDeps> = {},
@@ -194,7 +194,7 @@ describe('PlanExecutor restore logging', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: true,
+        binaryControl: { on: true },
       },
       {
         id: 'dev-1',
@@ -202,7 +202,7 @@ describe('PlanExecutor restore logging', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: true,
+        binaryControl: { on: true },
       },
     ];
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
@@ -256,7 +256,7 @@ describe('PlanExecutor restore logging', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: true,
+        binaryControl: { on: true },
       },
     ];
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
@@ -292,7 +292,7 @@ describe('PlanExecutor restore logging', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: true,
+        binaryControl: { on: true },
       },
     ];
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
@@ -328,7 +328,7 @@ describe('PlanExecutor restore logging', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: true,
+        binaryControl: { on: true },
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
       },
     ];
@@ -392,7 +392,7 @@ describe('PlanExecutor restore logging', () => {
       controlCapabilityId: 'evcharger_charging',
       canSetControl: true,
       available: true,
-      currentOn: true,
+      binaryControl: { on: true },
       evChargingState: 'plugged_in_charging',
     }]);
 
@@ -430,7 +430,7 @@ describe('PlanExecutor restore logging', () => {
       controlCapabilityId: 'evcharger_charging',
       canSetControl: true,
       available: true,
-      currentOn: true,
+      binaryControl: { on: true },
       evChargingState: 'plugged_in_charging',
     }]);
 
@@ -509,7 +509,7 @@ describe('PlanExecutor restore logging', () => {
         flowBackedCapabilityIds: ['onoff'],
         canSetControl: true,
         available: true,
-        currentOn: true,
+        binaryControl: { on: true },
       }],
     );
 
@@ -574,7 +574,7 @@ describe('PlanExecutor restore logging', () => {
         flowBackedCapabilityIds: ['onoff'],
         canSetControl: true,
         available: true,
-        currentOn: false,
+        binaryControl: { on: false },
       }],
     );
 
@@ -622,7 +622,7 @@ describe('PlanExecutor restore logging', () => {
         flowBackedCapabilityIds: ['onoff'],
         canSetControl: true,
         available: true,
-        currentOn: true,
+        binaryControl: { on: true },
       }],
     );
 
@@ -681,7 +681,7 @@ describe('PlanExecutor restore logging', () => {
         flowBackedCapabilityIds: ['onoff'],
         canSetControl: true,
         available: true,
-        currentOn: true,
+        binaryControl: { on: true },
       }],
     );
     state.pendingBinaryCommands['dev-1'] = {
@@ -787,7 +787,7 @@ describe('PlanExecutor restore logging', () => {
       controlCapabilityId: 'onoff',
       canSetControl: true,
       available: true,
-      currentOn: true,
+      binaryControl: { on: true },
     }], {
       deviceDiagnostics: deviceDiagnostics as any,
     });
@@ -838,7 +838,7 @@ describe('PlanExecutor restore logging', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: true,
+        binaryControl: { on: true },
         targets: [{ id: 'target_temperature', value: 16, unit: '°C' }],
       },
     ], {
@@ -882,7 +882,7 @@ describe('PlanExecutor pending target commands', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: true,
+        binaryControl: { on: true },
         targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
       },
     ]);
@@ -946,7 +946,7 @@ describe('PlanExecutor pending target commands', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: true,
+        binaryControl: { on: true },
         targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
       },
     ]);
@@ -1015,7 +1015,7 @@ describe('PlanExecutor pending target commands', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: true,
+        binaryControl: { on: true },
         targets: [{ id: 'target_temperature', value: 22, unit: '°C' }],
       },
     ], {
@@ -1044,7 +1044,7 @@ describe('PlanExecutor pending target commands', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: true,
+        binaryControl: { on: true },
         targets: [{ id: 'target_temperature', value: 15, unit: '°C' }],
       },
     ], {
@@ -1065,7 +1065,7 @@ describe('PlanExecutor pending target commands', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: true,
+        binaryControl: { on: true },
         targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
       },
     ]);
@@ -1095,7 +1095,7 @@ describe('PlanExecutor pending target commands', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: true,
+        binaryControl: { on: true },
         targets: [{ id: 'target_temperature', value: 40, unit: '°C', min: 35, max: 75, step: 5 }],
       },
     ]);
@@ -1119,7 +1119,7 @@ describe('PlanExecutor pending target commands', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: true,
+        binaryControl: { on: true },
         targets: [{ id: 'target_temperature', value: 22, unit: '°C' }],
       },
     ], {
@@ -1180,7 +1180,7 @@ describe('PlanExecutor pending target commands', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: true,
+        binaryControl: { on: true },
         targets: [{ id: 'target_temperature', value: 28, unit: '°C' }],
       },
     ]);
@@ -1225,7 +1225,7 @@ describe('PlanExecutor pending target commands', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: true,
+        binaryControl: { on: true },
         targets: [{ id: 'target_temperature', value: 25, unit: '°C' }],
       },
     ];
@@ -1281,7 +1281,7 @@ describe('PlanExecutor pending target commands', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: true,
+        binaryControl: { on: true },
         targets: [{ id: 'target_temperature', value: 25, unit: '°C' }],
       },
     ]);
@@ -1313,7 +1313,7 @@ describe('PlanExecutor stepped loads', () => {
     controlCapabilityId: 'onoff',
     canSetControl: true,
     available: true,
-    currentOn: true,
+    binaryControl: { on: true },
     targets: [],
     controlModel: 'stepped_load',
     steppedLoadProfile: steppedProfile,
@@ -1389,7 +1389,7 @@ describe('PlanExecutor stepped loads', () => {
     const { executor, deviceManager } = buildExecutor(
       undefined,
       steppedSnapshot({
-        currentOn: true,
+        binaryControl: { on: true },
         selectedStepId: 'max',
         reportedStepId: 'max',
         binaryControlObservation: onoffObservation(true),
@@ -1405,7 +1405,7 @@ describe('PlanExecutor stepped loads', () => {
     const { executor, deviceManager } = buildExecutor(
       undefined,
       steppedSnapshot({
-        currentOn: false,
+        binaryControl: { on: false },
         selectedStepId: 'max',
         reportedStepId: 'max',
         binaryControlObservation: onoffObservation(false),
@@ -1464,7 +1464,7 @@ describe('PlanExecutor stepped loads', () => {
       controlCapabilityId: 'onoff' as const,
       canSetControl: true,
       available: true,
-      currentOn: true,
+      binaryControl: { on: true },
       binaryControlObservation: onoffObservation(true),
     }];
     const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
@@ -1494,7 +1494,7 @@ describe('PlanExecutor stepped loads', () => {
       controlCapabilityId: 'onoff',
       canSetControl: true,
       available: true,
-      currentOn: true,
+      binaryControl: { on: true },
       binaryControlObservation: onoffObservation(true),
     }]);
     observeNativeSteppedLoadCommandAdapter({
@@ -1614,7 +1614,7 @@ describe('PlanExecutor stepped loads', () => {
       deviceClass: 'evcharger',
       controlCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_in_paused',
-      currentOn: false,
+      binaryControl: { on: false },
       deferredReleaseIntent: 'ev_resume',
       ...overrides,
     }],
@@ -1631,7 +1631,7 @@ describe('PlanExecutor stepped loads', () => {
 
     expect(executor.hasStablePlanActuation(evDeadlinePlan({
       evChargingState: 'plugged_in_charging',
-      currentOn: true,
+      binaryControl: { on: true },
       deferredReleaseIntent: 'ev_pause',
     }))).toBe(true);
   });
@@ -1791,7 +1791,7 @@ describe('PlanExecutor stepped loads', () => {
 
   it('restores a stepped device to on when it has keep intent but currentOn is false', async () => {
     const snapshot = steppedSnapshot({
-      currentOn: false,
+      binaryControl: { on: false },
       selectedStepId: 'low',
       reportedStepId: 'low',
     });
@@ -1820,7 +1820,7 @@ describe('PlanExecutor stepped loads', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: false,
+        binaryControl: { on: false },
       },
     ];
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
@@ -1848,7 +1848,7 @@ describe('PlanExecutor stepped loads', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: false,
+        binaryControl: { on: false },
       },
     ];
     const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(undefined, snapshot);
@@ -1877,7 +1877,7 @@ describe('PlanExecutor stepped loads', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: false,
+        binaryControl: { on: false },
       },
     ];
     const { executor, desiredSteppedTrigger, deviceManager, deps } = buildExecutor(undefined, snapshot);
@@ -1907,7 +1907,7 @@ describe('PlanExecutor stepped loads', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: false,
+        binaryControl: { on: false },
       },
     ];
     const { executor, desiredSteppedTrigger, deviceManager, deps } = buildExecutor(undefined, snapshot);
@@ -1937,7 +1937,7 @@ describe('PlanExecutor stepped loads', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: true,
+        binaryControl: { on: true },
       },
     ];
     const { executor, desiredSteppedTrigger, deviceManager, deps } = buildExecutor(undefined, snapshot);
@@ -1974,7 +1974,7 @@ describe('PlanExecutor stepped loads', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: true,
+        binaryControl: { on: true },
       },
     ];
     const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(undefined, snapshot);
@@ -2005,7 +2005,7 @@ describe('PlanExecutor stepped loads', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: false,
+        binaryControl: { on: false },
       },
     ];
     const structuredLog = { info: vi.fn(), debug: vi.fn() };
@@ -2032,7 +2032,7 @@ describe('PlanExecutor stepped loads', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: true,
+        binaryControl: { on: true },
         binaryControlObservation: onoffObservation(true),
       },
     ];
@@ -2056,7 +2056,7 @@ describe('PlanExecutor stepped loads', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: false,
+        binaryControl: { on: false },
       },
     ];
     const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(undefined, snapshot);
@@ -2079,7 +2079,7 @@ describe('PlanExecutor stepped loads', () => {
         id: 'dev-1',
         name: 'Tank',
         available: true,
-        currentOn: true,
+        binaryControl: { on: true },
       },
     ];
     const noTargetsDebugStructured = vi.fn();
@@ -2108,7 +2108,7 @@ describe('PlanExecutor stepped loads', () => {
         id: 'dev-1',
         name: 'Heater',
         available: true,
-        currentOn: true,
+        binaryControl: { on: true },
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
       },
     ];
@@ -2142,7 +2142,7 @@ describe('PlanExecutor stepped loads', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: false,
+        binaryControl: { on: false },
       },
     ];
     const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
@@ -2171,7 +2171,7 @@ describe('PlanExecutor stepped loads', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: false,
+        binaryControl: { on: false },
       },
     ];
     const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
@@ -2198,7 +2198,7 @@ describe('PlanExecutor stepped loads', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: false,
+        binaryControl: { on: false },
       },
     ];
     const { executor, deviceManager } = buildExecutor(undefined, snapshot, {
@@ -2235,7 +2235,7 @@ describe('PlanExecutor stepped loads', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: false,
+        binaryControl: { on: false },
       },
     ];
     const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
@@ -2270,7 +2270,7 @@ describe('PlanExecutor stepped loads', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: false,
+        binaryControl: { on: false },
       },
     ];
     const now = Date.now();
@@ -2310,7 +2310,7 @@ describe('PlanExecutor stepped loads', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: true,
+        binaryControl: { on: true },
       },
     ];
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
@@ -2340,7 +2340,7 @@ describe('PlanExecutor stepped loads', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: true,
+        binaryControl: { on: true },
       },
     ];
     const { executor, desiredSteppedTrigger, deviceManager, state, deps } = buildExecutor(undefined, snapshot);
@@ -2391,7 +2391,7 @@ describe('PlanExecutor stepped loads', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: true,
+        binaryControl: { on: true },
       },
     ];
     const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(state, snapshot);
@@ -2429,7 +2429,7 @@ describe('PlanExecutor stepped loads', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: true,
+        binaryControl: { on: true },
       },
     ];
     const { executor, deps } = buildExecutor(state, snapshot);
@@ -2462,7 +2462,7 @@ describe('PlanExecutor stepped loads', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: false,
+        binaryControl: { on: false },
       },
       {
         id: 'dev-shed',
@@ -2470,7 +2470,7 @@ describe('PlanExecutor stepped loads', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: true,
+        binaryControl: { on: true },
       },
     ];
     const { executor, deps } = buildExecutor(state, snapshot);
@@ -2522,7 +2522,7 @@ describe('PlanExecutor stepped loads', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: true,
+        binaryControl: { on: true },
       },
     ];
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
@@ -2545,7 +2545,7 @@ describe('PlanExecutor stepped loads', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: true,
+        binaryControl: { on: true },
       },
     ];
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
@@ -2571,7 +2571,7 @@ describe('PlanExecutor stepped loads', () => {
         controlCapabilityId: 'onoff',
         canSetControl: true,
         available: true,
-        currentOn: false,
+        binaryControl: { on: false },
       },
     ];
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
@@ -2627,13 +2627,13 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     ...overrides,
   }];
 
-  const buildSnapshot = (overrides: Partial<TargetDeviceSnapshot> = { currentOn: false }): TargetDeviceSnapshot[] => [{
+  const buildSnapshot = (overrides: Partial<TargetDeviceSnapshot> = { binaryControl: { on: false } }): TargetDeviceSnapshot[] => [{
     id: 'dev-1',
     name: 'Tank',
     controlCapabilityId: 'onoff' as const,
     canSetControl: true,
     available: true,
-    currentOn: false,
+    binaryControl: { on: false },
     targets: [],
     controlModel: 'stepped_load' as const,
     steppedLoadProfile: steppedProfile,
@@ -2643,7 +2643,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
   it('detects onoff drift and restores a keep device turned off externally', async () => {
     const appliedPlan = steppedPlan({ currentState: 'on', selectedStepId: 'low', desiredStepId: 'low' });
     const liveDevices = buildLiveDevices({
-      currentOn: false,
+      binaryControl: { on: false },
       selectedStepId: 'low',
       reportedStepId: 'low',
     });
@@ -2653,7 +2653,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     expect(livePlan.devices[0].currentState).toBe('off');
 
     const { executor, deviceManager } = buildExecutor(undefined, buildSnapshot({
-      currentOn: false,
+      binaryControl: { on: false },
       selectedStepId: 'low',
       reportedStepId: 'low',
     }));
@@ -2670,7 +2670,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       desiredStepId: 'low',
     });
     const liveDevices = buildLiveDevices({
-      currentOn: false,
+      binaryControl: { on: false },
       // Fallback-only live state: no reported step, selectedStepId is the
       // planning fallback.
       selectedStepId: 'low',
@@ -2684,7 +2684,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
     const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(
       undefined,
-      buildSnapshot({ currentOn: false }),
+      buildSnapshot({ binaryControl: { on: false } }),
     );
     await executor.applyPlanActions(livePlan, 'reconcile');
 
@@ -2705,12 +2705,12 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
   it('detects step drift and re-issues step command for a keep device at off-step', async () => {
     const appliedPlan = steppedPlan({ currentState: 'on', selectedStepId: 'low', desiredStepId: 'low' });
-    const liveDevices = buildLiveDevices({ currentOn: false, selectedStepId: 'off' });
+    const liveDevices = buildLiveDevices({ binaryControl: { on: false }, selectedStepId: 'off' });
 
     const livePlan = buildLiveStatePlan(appliedPlan, liveDevices);
     expect(hasPlanExecutionDrift(appliedPlan, livePlan)).toBe(true);
 
-    const { executor, desiredSteppedTrigger } = buildExecutor(undefined, buildSnapshot({ currentOn: false }));
+    const { executor, desiredSteppedTrigger } = buildExecutor(undefined, buildSnapshot({ binaryControl: { on: false } }));
     await executor.applyPlanActions(livePlan, 'reconcile');
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
@@ -2740,7 +2740,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     });
     const { executor, desiredSteppedTrigger, deviceManager } = buildExecutor(
       undefined,
-      buildSnapshot({ currentOn: true, binaryControlObservation: onoffObservation(true) }),
+      buildSnapshot({ binaryControl: { on: true }, binaryControlObservation: onoffObservation(true) }),
     );
 
     await expect(executor.applyPlanActions(plan, 'reconcile')).resolves.toEqual({
@@ -2760,7 +2760,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
   it('does not use the keep invariant to restore a stepped load rejected for headroom', async () => {
     const snapshot = buildSnapshot({
-      currentOn: false,
+      binaryControl: { on: false },
       selectedStepId: 'off',
     });
     const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
@@ -2798,7 +2798,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     // with desiredStepId='low' — only stepViolated is true.
     // The decorated snapshot derives currentState='off' from the off-step, which
     // lets applySteppedLoadRestore enter.
-    const snapshot = buildSnapshot({ currentOn: true, binaryControlObservation: onoffObservation(true) });
+    const snapshot = buildSnapshot({ binaryControl: { on: true }, binaryControlObservation: onoffObservation(true) });
     const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
     const plan = steppedPlan({
@@ -2822,7 +2822,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
   });
 
   it('does not log current_state restore skip when a keep device is already on but needs a higher step', async () => {
-    const snapshot = buildSnapshot({ currentOn: true, binaryControlObservation: onoffObservation(true) });
+    const snapshot = buildSnapshot({ binaryControl: { on: true }, binaryControlObservation: onoffObservation(true) });
     const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
     const plan = steppedPlan({
@@ -2849,7 +2849,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
   it('treats a matching in-flight stepped restore as pending instead of no keep violation', async () => {
     // Genuinely-on device (trusted onoff observation) with a step command in
     // flight: the step deferral applies and no defensive binary-on is needed.
-    const snapshot = buildSnapshot({ currentOn: true, binaryControlObservation: onoffObservation(true) });
+    const snapshot = buildSnapshot({ binaryControl: { on: true }, binaryControlObservation: onoffObservation(true) });
     const { executor, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
     const plan = steppedPlan({
@@ -2892,7 +2892,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
   // step-attempt deferral must NOT suppress the defensive binary-on — otherwise the
   // device sits at 0 kW for the whole pending window.
   it('treats a stepped restore retry window as backoff instead of no keep violation', async () => {
-    const snapshot = buildSnapshot({ currentOn: true });
+    const snapshot = buildSnapshot({ binaryControl: { on: true } });
     const now = Date.now();
     const { executor, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
@@ -2956,7 +2956,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     // Both violations: raw snapshot has currentOn=false AND selectedStepId='off'
     // while desiredStepId='low'. Both onoffViolated and stepViolated should be true.
     const snapshot = buildSnapshot({
-      currentOn: false,
+      binaryControl: { on: false },
       selectedStepId: 'off',
     });
     const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
@@ -2985,7 +2985,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
   it('re-issues the low-step command and defers binary restore when low is only assumed', async () => {
     const snapshot = buildSnapshot({
-      currentOn: false,
+      binaryControl: { on: false },
       selectedStepId: 'low',
     });
     const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
@@ -3016,7 +3016,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
   it('does not use selectedStepId alone as restore preparation proof', async () => {
     const snapshot = buildSnapshot({
-      currentOn: false,
+      binaryControl: { on: false },
       selectedStepId: 'low',
     });
     const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
@@ -3047,7 +3047,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
   it('uses reported step evidence as restore preparation proof', async () => {
     const snapshot = buildSnapshot({
-      currentOn: false,
+      binaryControl: { on: false },
       selectedStepId: 'low',
       reportedStepId: 'low',
     });
@@ -3068,7 +3068,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
   });
 
   it('does not pass planner restore holds into stepped executor logging', async () => {
-    const snapshot = buildSnapshot({ currentOn: true });
+    const snapshot = buildSnapshot({ binaryControl: { on: true } });
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
     await executor.applyPlanActions(steppedPlan({
@@ -3091,7 +3091,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
   it('does not apply target updates while a stepped restore is held by planner admission', async () => {
     const snapshot = buildSnapshot({
-      currentOn: true,
+      binaryControl: { on: true },
       targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
     });
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
@@ -3119,12 +3119,12 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       selectedStepId: 'low',
       desiredStepId: 'low',
     });
-    const liveDevices = buildLiveDevices({ currentOn: true, selectedStepId: 'max' });
+    const liveDevices = buildLiveDevices({ binaryControl: { on: true }, selectedStepId: 'max' });
 
     const livePlan = buildLiveStatePlan(appliedPlan, liveDevices);
     expect(hasPlanExecutionDrift(appliedPlan, livePlan)).toBe(true);
 
-    const { executor, desiredSteppedTrigger } = buildExecutor(undefined, buildSnapshot({ currentOn: true }));
+    const { executor, desiredSteppedTrigger } = buildExecutor(undefined, buildSnapshot({ binaryControl: { on: true } }));
     await executor.applyPlanActions(livePlan, 'reconcile');
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
@@ -3155,7 +3155,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       desiredStepId: 'low',
       reportedStepId: 'max',
     });
-    const liveDevices = buildLiveDevices({ currentOn: true });
+    const liveDevices = buildLiveDevices({ binaryControl: { on: true } });
 
     const livePlan = buildLiveStatePlan(appliedPlan, liveDevices);
     expect(livePlan.devices[0]).toEqual(expect.objectContaining({
@@ -3164,7 +3164,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     }));
     expect(hasPlanExecutionDrift(appliedPlan, livePlan)).toBe(true);
 
-    const { executor, desiredSteppedTrigger } = buildExecutor(undefined, buildSnapshot({ currentOn: true }));
+    const { executor, desiredSteppedTrigger } = buildExecutor(undefined, buildSnapshot({ binaryControl: { on: true } }));
     await executor.applyPlanActions(livePlan, 'reconcile');
 
     expect(desiredSteppedTrigger.trigger).toHaveBeenCalledWith(
@@ -3177,7 +3177,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
   });
 
   it('normalizes a shed-constrained keep restore to the lowest non-zero step before binary restore', async () => {
-    const snapshot = buildSnapshot({ currentOn: false });
+    const snapshot = buildSnapshot({ binaryControl: { on: false } });
     const structuredLog = { info: vi.fn() };
     const debugStructured = vi.fn();
     const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot, {
@@ -3229,7 +3229,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
   });
 
   it('defers keep-invariant restore when shed devices exist but step preparation is not reported', async () => {
-    const snapshot = buildSnapshot({ currentOn: false });
+    const snapshot = buildSnapshot({ binaryControl: { on: false } });
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
     const plan: DevicePlan = {
@@ -3266,7 +3266,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
   });
 
   it('defers keep-invariant restore when no devices are shed but step preparation is not reported', async () => {
-    const snapshot = buildSnapshot({ currentOn: false });
+    const snapshot = buildSnapshot({ binaryControl: { on: false } });
     const { executor, deviceManager } = buildExecutor(undefined, snapshot);
 
     const plan = steppedPlan({ currentState: 'off', selectedStepId: 'off', desiredStepId: 'max' });
@@ -3276,7 +3276,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
   });
 
   it('does not emit restore_keep_invariant_shed_blocked for a true off restore while devices remain shed', async () => {
-    const snapshot = buildSnapshot({ currentOn: false });
+    const snapshot = buildSnapshot({ binaryControl: { on: false } });
     const state = createPlanEngineState();
     const structuredLog = { info: vi.fn() };
     const debugStructured = vi.fn();
@@ -3323,7 +3323,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
         { id: 'max', planningPowerW: 3000 },
       ],
     };
-    const snapshot = buildSnapshot({ currentOn: false });
+    const snapshot = buildSnapshot({ binaryControl: { on: false } });
     const state = createPlanEngineState();
     const structuredLog = { info: vi.fn() };
     const debugStructured = vi.fn();
@@ -3372,7 +3372,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
   });
 
   it('keeps shed-block dedupe state clear across admitted off restores', async () => {
-    const snapshot = buildSnapshot({ currentOn: false });
+    const snapshot = buildSnapshot({ binaryControl: { on: false } });
     const state = createPlanEngineState();
     const structuredLog = { info: vi.fn() };
     const debugStructured = vi.fn();
@@ -3435,7 +3435,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     // The keep-invariant gate must read the executable shed set, not the planner shed set,
     // so this phantom shed does not block unrelated restores.
     const snapshot = buildSnapshot({
-      currentOn: false,
+      binaryControl: { on: false },
       selectedStepId: 'max',
       reportedStepId: 'max',
     });
@@ -3520,7 +3520,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     // no step change. The step is already non-zero so it must not be overwritten.
     it('sends onoff=true without changing step when step is already non-zero', async () => {
       const snapshot = buildSnapshot({
-        currentOn: false,
+        binaryControl: { on: false },
         selectedStepId: 'low',
         reportedStepId: 'low',
       });
@@ -3547,7 +3547,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     // The companion planDevices test (it.fails) covers the normalization gap.
     it('issues step command when desiredStepId is pre-normalized to lowest non-zero and step is at off-step', async () => {
       const snapshot = buildSnapshot({
-        currentOn: false,
+        binaryControl: { on: false },
         selectedStepId: 'off',
       });
       const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
@@ -3571,7 +3571,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     // Restore must re-enter at the lowest non-zero step rather than trusting a stale
     // desiredStepId, so the load becomes deterministic again.
     it('normalizes unknown-step restore to the lowest non-zero step before binary restore', async () => {
-      const snapshot = buildSnapshot({ currentOn: false });
+      const snapshot = buildSnapshot({ binaryControl: { on: false } });
       const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
 
       await executor.applyPlanActions(steppedPlan({
@@ -3591,7 +3591,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
     it('does not issue a forced normalization step when the current non-zero step is already known', async () => {
       const snapshot = buildSnapshot({
-        currentOn: false,
+        binaryControl: { on: false },
         selectedStepId: 'low',
         reportedStepId: 'low',
       });
@@ -3617,7 +3617,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
           controlCapabilityId: 'onoff',
           canSetControl: true,
           available: true,
-          currentOn: false,
+          binaryControl: { on: false },
         },
       ];
       const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
@@ -3649,7 +3649,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
           controlCapabilityId: 'onoff',
           canSetControl: true,
           available: true,
-          currentOn: false,
+          binaryControl: { on: false },
         },
       ];
       const { executor, deviceManager, desiredSteppedTrigger } = buildExecutor(undefined, snapshot);
@@ -3685,7 +3685,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
           controlCapabilityId: 'onoff',
           canSetControl: true,
           available: true,
-          currentOn: true,
+          binaryControl: { on: true },
         },
       ];
       const { executor, deviceManager } = buildExecutor(undefined, snapshot);
@@ -3723,7 +3723,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
           controlCapabilityId: 'onoff',
           canSetControl: true,
           available: true,
-          currentOn: false, // binary already off
+          binaryControl: { on: false }, // binary already off
         },
       ];
       const { executor, deviceManager } = buildExecutor(undefined, snapshot);
@@ -3752,7 +3752,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
           controlCapabilityId: 'onoff',
           canSetControl: true,
           available: true,
-          currentOn: true, // binary still on
+          binaryControl: { on: true }, // binary still on
         },
       ];
       const { executor, deviceManager } = buildExecutor(undefined, snapshot);

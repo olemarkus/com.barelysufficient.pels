@@ -14,7 +14,7 @@ const buildDevice = (): TargetDeviceSnapshot => ({
   id: 'heater-1',
   name: 'Hall Heater',
   deviceType: 'temperature',
-  currentOn: true,
+  binaryControl: { on: true },
   targets: [{ id: 'target_temperature', value: 20, unit: '°C', step: 0.5 }],
 });
 
@@ -22,7 +22,7 @@ const buildOnOffDevice = (): TargetDeviceSnapshot => ({
   id: 'charger-1',
   name: 'EV Charger',
   deviceType: 'onoff',
-  currentOn: true,
+  binaryControl: { on: true },
   targets: [],
 });
 

@@ -69,7 +69,7 @@ describe('decideBinaryControl (plan-side decision producer)', () => {
         name: 'Socket',
         controlCapabilityId: 'onoff',
         canSetControl: true,
-        currentOn: false,
+        binaryControl: { on: false },
       },
       logContext: 'capacity',
     });
@@ -105,7 +105,7 @@ describe('decideBinaryControl (plan-side decision producer)', () => {
         name: 'Socket',
         controlCapabilityId: 'onoff',
         canSetControl: true,
-        currentOn: true,
+        binaryControl: { on: true },
       },
       logContext: 'capacity',
     });
@@ -312,7 +312,7 @@ describe('decideAndDispatchBinaryControl (executor-side convenience)', () => {
         name: 'Socket',
         controlCapabilityId: 'onoff',
         canSetControl: true,
-        currentOn: true, // already matches
+        binaryControl: { on: true }, // already matches
       },
       logContext: 'capacity',
     });

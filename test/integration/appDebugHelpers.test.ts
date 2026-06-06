@@ -263,7 +263,7 @@ describe('appDebugHelpers', () => {
           id: 'dev-1',
           name: 'Kitchen Socket',
           targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
-          currentOn: false,
+          binaryControl: { on: false },
           controllable: true,
           managed: true,
         },
@@ -276,7 +276,7 @@ describe('appDebugHelpers', () => {
           snapshot: {
             id: 'dev-1',
             name: 'Kitchen Socket',
-            currentOn: false,
+            binaryControl: { on: false },
             measuredPowerKw: 0.1,
             targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
           },
@@ -293,7 +293,7 @@ describe('appDebugHelpers', () => {
           snapshot: {
             id: 'dev-1',
             name: 'Kitchen Socket',
-            currentOn: false,
+            binaryControl: { on: false },
             targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
           },
         },
@@ -312,7 +312,7 @@ describe('appDebugHelpers', () => {
             snapshot: {
               id: 'dev-1',
               name: 'Kitchen Socket',
-              currentOn: false,
+              binaryControl: { on: false },
               measuredPowerKw: 0.1,
               targets: [{ id: 'target_temperature', value: 20.5, unit: '°C' }],
             },
@@ -328,7 +328,7 @@ describe('appDebugHelpers', () => {
             snapshot: {
               id: 'dev-1',
               name: 'Kitchen Socket',
-              currentOn: false,
+              binaryControl: { on: false },
               measuredPowerKw: 0.1,
               targets: [{ id: 'target_temperature', value: 20.5, unit: '°C' }],
             },
@@ -510,7 +510,7 @@ describe('appDebugHelpers', () => {
         snapshot: [{
           id: 'dev-1',
           name: 'Kitchen Socket',
-          currentOn: false,
+          binaryControl: { on: false },
           targets: [{ id: 'target_temperature', value: 20.5, unit: '°C' }],
           measuredPowerKw: 0.1,
         }],

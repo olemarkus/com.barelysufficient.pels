@@ -2086,7 +2086,7 @@ describe('recordPowerSampleForApp', () => {
         name: 'Objective heater',
         targets: [],
         deviceType: 'temperature' as const,
-        currentOn: true,
+        binaryControl: { on: true },
         currentTemperature,
         lastFreshDataMs: observedAtMs,
         measuredPowerKw: 2,
@@ -2157,7 +2157,7 @@ describe('createCalibrationSnapshotMutationHook', () => {
     },
     reportedStepId: 'low',
     measuredPowerKw: 1.1,
-    currentOn: true,
+    binaryControl: { on: true },
     lastFreshDataMs: start,
     ...overrides,
   } as TargetDeviceSnapshot);

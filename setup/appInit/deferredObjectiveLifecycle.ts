@@ -161,7 +161,7 @@ const resolveEvBinaryState = (evChargingState: string | undefined): 'on' | 'off'
 //     that may still be on, so emit `'unknown'` and let `planTerminalEnding` keep
 //     the task ARMED until a trusted state arrives or the disarm grace elapses.
 const resolveTerminalBinaryState = (device: PlanInputDevice): 'on' | 'off' | 'unknown' => {
-  if (device.currentOn) return 'on';
+  if (device.binaryControl?.on ?? true) return 'on';
   return isDeviceObservationTrusted(device) ? 'off' : 'unknown';
 };
 

@@ -39,7 +39,7 @@ const buildObserved = (
   name: 'Device 1',
   snapshot: { id: 'dev-1' } as never,
   available: true,
-  currentOn: true,
+  binaryControl: { on: true },
   observedBinaryState: 'on',
   target: null,
   steppedLoad: null,
@@ -98,7 +98,7 @@ describe('applyShedReleaseIntent', () => {
       intent: { kind: 'ev_pause', deviceId: 'dev-1', name: 'Device 1' },
       steppedLoadIntent: null,
       observed: buildObserved(),
-      snapshot: { id: 'dev-1', currentOn: true, controlCapabilityId: 'onoff' } as never,
+      snapshot: { id: 'dev-1', binaryControl: { on: true }, controlCapabilityId: 'onoff' } as never,
       mode: 'plan',
       deps,
     });
@@ -112,7 +112,7 @@ describe('applyShedReleaseIntent', () => {
       intent: buildIntent(),
       steppedLoadIntent: null,
       observed: buildObserved(),
-      snapshot: { id: 'dev-1', currentOn: true, controlCapabilityId: 'onoff' } as never,
+      snapshot: { id: 'dev-1', binaryControl: { on: true }, controlCapabilityId: 'onoff' } as never,
       mode: 'plan',
       deps,
     });
@@ -129,7 +129,7 @@ describe('applyShedReleaseIntent', () => {
       intent: buildIntent(),
       steppedLoadIntent: null,
       observed: buildObserved(),
-      snapshot: { id: 'dev-1', currentOn: true, controlCapabilityId: 'onoff' } as never,
+      snapshot: { id: 'dev-1', binaryControl: { on: true }, controlCapabilityId: 'onoff' } as never,
       mode: 'plan',
       deps,
     });
@@ -150,8 +150,8 @@ describe('applyShedReleaseIntent', () => {
     const result = await applyShedReleaseIntent({
       intent: buildIntent(),
       steppedLoadIntent: null,
-      observed: buildObserved({ currentOn: false, observedBinaryState: 'off' }),
-      snapshot: { id: 'dev-1', currentOn: false, controlCapabilityId: 'onoff' } as never,
+      observed: buildObserved({ binaryControl: { on: false }, observedBinaryState: 'off' }),
+      snapshot: { id: 'dev-1', binaryControl: { on: false }, controlCapabilityId: 'onoff' } as never,
       mode: 'plan',
       deps,
     });
@@ -167,7 +167,7 @@ describe('applyShedReleaseIntent', () => {
       intent: buildIntent(),
       steppedLoadIntent: null,
       observed: buildObserved({ observedBinaryState: 'unknown' }),
-      snapshot: { id: 'dev-1', currentOn: true, controlCapabilityId: 'onoff' } as never,
+      snapshot: { id: 'dev-1', binaryControl: { on: true }, controlCapabilityId: 'onoff' } as never,
       mode: 'plan',
       deps,
     });
@@ -181,7 +181,7 @@ describe('applyShedReleaseIntent', () => {
       intent: buildIntent(),
       steppedLoadIntent: null,
       observed: buildObserved(),
-      snapshot: { id: 'dev-1', currentOn: true, controlCapabilityId: 'evcharger_charging' } as never,
+      snapshot: { id: 'dev-1', binaryControl: { on: true }, controlCapabilityId: 'evcharger_charging' } as never,
       mode: 'plan',
       deps,
     });
@@ -282,7 +282,7 @@ describe('applyShedReleaseIntent', () => {
       intent: buildIntent(),
       steppedLoadIntent: buildSteppedLoadIntent(),
       observed: buildObserved(),
-      snapshot: { id: 'dev-1', currentOn: true, controlCapabilityId: 'onoff' } as never,
+      snapshot: { id: 'dev-1', binaryControl: { on: true }, controlCapabilityId: 'onoff' } as never,
       mode: 'plan',
       deps,
     });
@@ -303,7 +303,7 @@ describe('applyShedReleaseIntent', () => {
       observed: buildObserved({
         steppedLoad: { on: true, stepId: 'high' },
       }),
-      snapshot: { id: 'dev-1', currentOn: true } as never,
+      snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
       mode: 'plan',
       deps,
     });
@@ -332,7 +332,7 @@ describe('applyShedReleaseIntent', () => {
       observed: buildObserved({
         steppedLoad: { on: true, stepId: 'high' },
       }),
-      snapshot: { id: 'dev-1', currentOn: true } as never,
+      snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
       mode: 'plan',
       deps,
     });
@@ -350,7 +350,7 @@ describe('applyShedReleaseIntent', () => {
       observed: buildObserved({
         steppedLoad: { on: true, stepId: 'high' },
       }),
-      snapshot: { id: 'dev-1', currentOn: true } as never,
+      snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
       mode: 'plan',
       deps,
     });
@@ -366,7 +366,7 @@ describe('applyShedReleaseIntent', () => {
       observed: buildObserved({
         steppedLoad: { on: true, stepId: 'low' },
       }),
-      snapshot: { id: 'dev-1', currentOn: true } as never,
+      snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
       mode: 'plan',
       deps,
     });
@@ -382,7 +382,7 @@ describe('applyShedReleaseIntent', () => {
       observed: buildObserved({
         steppedLoad: { on: true, stepId: 'low' },
       }),
-      snapshot: { id: 'dev-1', currentOn: true } as never,
+      snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
       mode: 'plan',
       deps,
     });
@@ -396,7 +396,7 @@ describe('applyShedReleaseIntent', () => {
       intent: buildIntent(),
       steppedLoadIntent: null,
       observed: buildObserved(),
-      snapshot: { id: 'dev-1', currentOn: true } as never,
+      snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
       mode: 'plan',
       deps,
     });
@@ -413,7 +413,7 @@ describe('applyShedReleaseIntent', () => {
       observed: buildObserved({
         steppedLoad: { on: true, stepId: undefined },
       }),
-      snapshot: { id: 'dev-1', currentOn: true } as never,
+      snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
       mode: 'plan',
       deps,
     });
@@ -429,7 +429,7 @@ describe('applyShedReleaseIntent', () => {
       observed: buildObserved({
         steppedLoad: { on: true, stepId: 'phantom-step-id-from-old-profile' },
       }),
-      snapshot: { id: 'dev-1', currentOn: true } as never,
+      snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
       mode: 'plan',
       deps,
     });
@@ -451,7 +451,7 @@ describe('applyShedReleaseIntent', () => {
       observed: buildObserved({
         steppedLoad: { on: true, stepId: 'high' },
       }),
-      snapshot: { id: 'dev-1', currentOn: true } as never,
+      snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
       mode: 'plan',
       deps,
     });
@@ -470,7 +470,7 @@ describe('applyShedReleaseIntent', () => {
       observed: buildObserved({
         steppedLoad: { on: true, stepId: 'high' },
       }),
-      snapshot: { id: 'dev-1', currentOn: true } as never,
+      snapshot: { id: 'dev-1', binaryControl: { on: true } } as never,
       mode: 'plan',
       deps,
     });

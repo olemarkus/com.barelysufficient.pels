@@ -139,8 +139,8 @@ export function shouldSkipAlreadyMatched(params: {
   const { deviceManager, controlPlan, deviceId, desired, snapshot } = params;
   if (controlPlan.isEv) return false;
   const latestObservedSnapshot = deviceManager.getSnapshotByDeviceId(deviceId) ?? snapshot;
-  if (typeof latestObservedSnapshot?.currentOn !== 'boolean') return false;
-  return latestObservedSnapshot.currentOn === desired;
+  if (latestObservedSnapshot?.binaryControl === undefined) return false;
+  return latestObservedSnapshot.binaryControl.on === desired;
 }
 
 export function hasPendingMatchingBinaryCommand(params: {
@@ -187,7 +187,7 @@ function evSnapshotField(
 export function formatEvSnapshot(snapshot?: TargetDeviceSnapshot): string {
   if (!snapshot) return 'snapshot=missing';
   return [
-    `currentOn=${String(snapshot.currentOn)}`,
+    `currentOn=${String(snapshot.binaryControl?.on ?? true)}`,
     `evState=${snapshot.evChargingState ?? 'unknown'}`,
     `available=${snapshot.available !== false}`,
     `canSet=${snapshot.canSetControl !== false}`,

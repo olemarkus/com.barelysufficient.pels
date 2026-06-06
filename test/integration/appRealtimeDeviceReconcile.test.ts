@@ -100,7 +100,7 @@ describe('appRealtimeDeviceReconcile', () => {
       liveDevices: [{
         id: 'dev-1',
         name: 'Heater',
-        currentOn: true,
+        binaryControl: { on: true },
         controlCapabilityId: 'onoff',
         currentTemperature: 21,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
@@ -143,7 +143,7 @@ describe('appRealtimeDeviceReconcile', () => {
       liveDevices: [{
         id: 'dev-1',
         name: 'Heater',
-        currentOn: false,
+        binaryControl: { on: false },
         controlCapabilityId: 'onoff',
         binaryControlObservation: buildBinaryObservation('onoff', false),
         currentTemperature: 21,
@@ -180,7 +180,7 @@ describe('appRealtimeDeviceReconcile', () => {
       liveDevices: [{
         id: 'dev-1',
         name: 'Heater',
-        currentOn: false,
+        binaryControl: { on: false },
         controlCapabilityId: 'onoff',
         binaryCommandPending: true,
         binaryCommandPendingDesired: true,
@@ -226,7 +226,7 @@ describe('appRealtimeDeviceReconcile', () => {
         id: 'dev-1',
         name: 'Heater',
         controlCapabilityId: 'onoff',
-        currentOn: false,
+        binaryControl: { on: false },
         binaryControlObservation: buildBinaryObservation('onoff', false),
         currentTemperature: 21,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
@@ -263,7 +263,7 @@ describe('appRealtimeDeviceReconcile', () => {
         id: 'dev-1',
         name: 'Heater',
         controlCapabilityId: 'onoff',
-        currentOn: true,
+        binaryControl: { on: true },
         binaryControlObservation: buildBinaryObservation('onoff', true),
         currentTemperature: 21,
         targets: [],
@@ -304,7 +304,7 @@ describe('appRealtimeDeviceReconcile', () => {
       liveDevices: [{
         id: 'dev-1',
         name: 'Heater',
-        currentOn: false,
+        binaryControl: { on: false },
         controlCapabilityId: 'onoff',
         currentTemperature: 21,
         targets: [{ id: 'target_temperature', value: 23.5, unit: '°C' }],
