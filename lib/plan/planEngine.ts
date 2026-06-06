@@ -35,6 +35,7 @@ import type { Actuator } from '../actuator/deviceActuator';
 export type PlanEngineDeps = {
   homey: Homey.App['homey'];
   deviceManager: PlanExecutorDeps['deviceManager'];
+  getObservedState: PlanExecutorDeps['getObservedState'];
   actuator: Actuator;
   getCapacityGuard: () => CapacityGuard | undefined;
   getCapacitySettings: () => { limitKw: number; marginKw: number };
@@ -133,6 +134,7 @@ export class PlanEngine {
     const executorDeps: PlanExecutorDeps = {
       homey: deps.homey,
       deviceManager: deps.deviceManager,
+      getObservedState: deps.getObservedState,
       actuator: deps.actuator,
       getCapacityGuard: deps.getCapacityGuard,
       getCapacitySettings: deps.getCapacitySettings,

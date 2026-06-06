@@ -69,6 +69,7 @@ export function createPlanEngine(ctx: AppContext) {
   return new PlanEngineClass({
     homey: ctx.homey,
     deviceManager,
+    getObservedState: (deviceId) => ctx.getObservedState(deviceId),
     actuator,
     getCapacityGuard: () => ctx.capacityGuard,
     getCapacitySettings: () => ctx.capacitySettings,
