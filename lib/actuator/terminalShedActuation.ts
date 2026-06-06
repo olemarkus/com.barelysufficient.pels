@@ -24,9 +24,9 @@ const logger = getLogger('actuator/terminal-shed');
  *
  * Idempotency is observed-state, trusted-evidence only (mirrors the executor's
  * shed-release guards): act only on a binary device observed `on`, or a target
- * observed away from the shed setpoint. `unknown` / missing observation is
- * treated as "no trusted evidence yet — wait", so a defaulted state after a
- * Homey restart cannot fire a spurious write.
+ * observed away from the shed setpoint. A missing observation is treated as "no
+ * trusted evidence yet — wait", so a defaulted state after a Homey restart
+ * cannot fire a spurious write.
  */
 // NB: deliberately NOT the same union as `ShedActionIntent`
 // (`deviceActionProjection.ts`) or `ShedAction` (`lib/plan/planTypes`). Those
@@ -54,8 +54,8 @@ export type ShedActuationCommand =
   | { kind: 'skip'; reasonCode: string };
 
 export type ShedActuationObservedState = {
-  /** Trusted binary observation; `'unknown'` blocks the write (no evidence yet). */
-  binaryState?: 'on' | 'off' | 'unknown';
+  /** Trusted binary observation (`binaryControl.on`); missing blocks the write (no evidence yet). */
+  binaryState?: 'on' | 'off';
   /** Last observed thermostat target, for the set_temperature idempotency check. */
   targetValue?: number | null;
   /** Trusted stepped-load observation, sourced from reported/native step state. */
@@ -185,7 +185,7 @@ const applyBinaryOffShed = async (
 ): Promise<boolean> => {
   // turn_off / EV pause / set_step on a binary-capable device.
   // Trusted-evidence gate: only fire when the device is observed `on`. Treat
-  // `off` as already-shed and `unknown`/missing as "wait for real evidence".
+  // `off` as already-shed and a missing observation as "wait for real evidence".
   if (observed.binaryState !== 'on') return false;
   await actuator.apply({
     kind: 'binary',

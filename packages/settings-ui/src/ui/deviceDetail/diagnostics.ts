@@ -9,6 +9,7 @@ import type {
 } from '../../../../contracts/src/deviceDiagnosticsTypes.ts';
 import { SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH } from '../../../../contracts/src/settingsUiApi.ts';
 import { PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS } from '../../../../shared-domain/src/planStateLabels.ts';
+import { STARVATION_WAITING_FOR_POWER_COPY } from '../../../../shared-domain/src/planStarvation.ts';
 import {
   deviceDetailDiagnosticsCards,
   deviceDetailDiagnosticsDisclosure,
@@ -107,13 +108,13 @@ const formatStarvationTimestamp = (timestamp: number | null): string => {
 type StarvationReason = DeviceDiagnosticsStarvationCountingCause | DeviceDiagnosticsStarvationPauseReason;
 
 const STARVATION_REASON_LABELS: Record<StarvationReason, string> = {
-  capacity: 'Waiting for available power',
+  capacity: STARVATION_WAITING_FOR_POWER_COPY,
   daily_budget: 'Daily budget is limiting service',
   hourly_budget: 'Hourly budget is limiting service',
   shortfall: 'Hard cap may be exceeded',
   swap_pending: 'Waiting for higher-priority device',
   swapped_out: 'Waiting for higher-priority device',
-  insufficient_headroom: 'Waiting for available power',
+  insufficient_headroom: STARVATION_WAITING_FOR_POWER_COPY,
   shedding_active: 'PELS is limiting devices',
   cooldown: 'Waiting before retrying',
   headroom_cooldown: 'Waiting for power reading to stabilise',

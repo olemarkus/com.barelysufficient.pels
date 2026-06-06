@@ -1132,6 +1132,58 @@ describe('native stepped-load wiring', () => {
     }
   });
 
+  it('dispatches an observed-state delta for a native power-step that keeps the same reported step', async () => {
+    // Regression for the stage-4b finding: a native power-step update that does
+    // NOT change the reported step still advances lastFreshDataMs in place. Only
+    // the reported-step-changed branch dispatches via
+    // emitNativeSteppedLoadReportedStepChanged, so without an explicit push the
+    // observer projection's freshness would lag the snapshot until the next full
+    // refresh — and a projection-fed freshness reader would see the device stale.
+    const get = vi.fn(async (path: string) => {
+      if (path === 'manager/devices/device') return { 'hoiax-1': buildHoiaxDevice() };
+      throw new Error(`unexpected device fetch: ${path}`);
+    });
+    setRestClient({ get, put: vi.fn().mockResolvedValue(undefined) });
+    try {
+      const deviceManager = new DeviceTransport(
+        mockHomeyInstance as unknown as Homey.App,
+        createLogger(),
+        { getNativeEvWiringEnabled: () => true, getDeviceControlProfile: () => steppedProfile },
+      );
+      await deviceManager.refreshSnapshot({ includeLivePower: false });
+
+      const observed = vi.fn();
+      const reconcile = vi.fn();
+      deviceManager.on(PLAN_LIVE_STATE_OBSERVED_EVENT, observed);
+      deviceManager.on(PLAN_RECONCILE_REALTIME_UPDATE_EVENT, reconcile);
+
+      // First power-step changes the reported step (medium -> max): the
+      // reported-step-changed branch dispatches both observed + reconcile.
+      deviceManager.injectCapabilityUpdateForTest('hoiax-1', 'max_power_3000', '3');
+      expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ reportedStepId: 'max' }));
+      expect(observed).toHaveBeenCalledTimes(1);
+      expect(reconcile).toHaveBeenCalledTimes(1);
+
+      observed.mockClear();
+      reconcile.mockClear();
+
+      // Same power-step again (max -> max): no reported-step change, but the
+      // freshness bump must still surface as an observed-state delta — and NOT a
+      // plan-reconcile (nothing reconcilable changed).
+      deviceManager.injectCapabilityUpdateForTest('hoiax-1', 'max_power_3000', '3');
+      expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({ reportedStepId: 'max' }));
+      expect(observed).toHaveBeenCalledTimes(1);
+      expect(observed).toHaveBeenCalledWith(expect.objectContaining({
+        source: 'realtime_capability',
+        deviceId: 'hoiax-1',
+        capabilityId: 'max_power_3000',
+      }));
+      expect(reconcile).not.toHaveBeenCalled();
+    } finally {
+      restoreMockRestClient();
+    }
+  });
+
   it('uses DeviceTransport flow transport for non-native stepped-load commands', async () => {
     mockHomeyInstance.flow._triggerCardTriggers.desired_stepped_load_changed = [];
     const deviceManager = new DeviceTransport(
@@ -1144,6 +1196,7 @@ describe('native stepped-load wiring', () => {
     deviceManager.setSnapshotForTests([{
       id: 'flow-step-1',
       name: 'Flow backed charger',
+      targets: [],
       binaryControl: { on: true },
       controlModel: 'stepped_load',
       steppedLoadProfile: {
@@ -1253,6 +1306,7 @@ describe('native stepped-load wiring', () => {
     deviceManager.setSnapshotForTests([{
       id: 'flow-step-1',
       name: 'Flow backed charger',
+      targets: [],
       binaryControl: { on: true },
       controlModel: 'stepped_load',
       steppedLoadProfile: steppedProfile,

@@ -137,20 +137,19 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
       do this before/with the next active-plans schema-version bump.** Source: pels-layering-guardian
       on PR #1517, 2026-06-05.
 
-- [ ] **Snapshot decomposition stage-4b prerequisites (before wiring any reader onto the
-      `ObservedDeviceState` projection).** Three items, all detailed in
-      `notes/state-management/snapshot-decomposition.md` (step 4b): (1) in-process-restart seq-epoch
-      hazard — `set deviceManager` can swap transport and reset its seq counter while the long-lived
-      projection holds high seqs, silently dropping post-swap deltas; tie the drop-guard to a transport
-      epoch or co-recreate the projection with the transport. (2) `getObservedState`/`getAllObservedStates`
-      return the stored value by reference — return a copy/freeze before a consumer can mutate it.
-      (3) The device-update path enriches `observed` from `latestSnapshotById` *before*
-      `syncRealtimeDeviceUpdateSnapshot` commits the parsed snapshot, so the projection lags one
-      device-update-only change until the next capability event/refresh (Codex P2 on PR-4a); harmless
-      while shadow-only, but move the enrichment after the sync (mind the `preservePreviousSnapshot`
-      invalid-binary-payload edge — enrich from the committed, not the parsed, snapshot). Source: PR-4a
-      review (codex), 2026-06-05. Files: `lib/observer/observedDeviceStateProjection.ts`,
-      `lib/device/deviceTransport.ts`, `app.ts`.
+- [ ] **Retire the `observed ?? device` boot-window fallback in `toPlanDevice` once freshness leaves
+      the descriptor surface.** Stage 4b wired the first projection reader: `toPlanDevice`
+      (`setup/appInit.ts`) resolves `observationStale` from `ctx.getObservedState(id)`, falling back to
+      the snapshot only until the first observation lands. The fallback is correct *today* solely because
+      `TargetDeviceSnapshot = DeviceDescriptor & ObservedDeviceState` so the snapshot still physically
+      carries `lastFreshDataMs`/`lastLocalWriteMs`. Once a later stage strips those freshness fields off
+      the descriptor surface, the `?? device` arm reads `undefined` and silently flips `unknown` → non-stale.
+      Remove the fallback (or re-point it) in lockstep with that strip, so the "identical anyway" boot-window
+      assumption doesn't outlive its invariant. Persona: contributor; hypothesis: a stale fallback that
+      reads a removed field is a silent correctness trap for the next stage. Source: pels-layering-guardian
+      P3 on the stage-4b PR, 2026-06-06. Files: `setup/appInit.ts`, `packages/contracts/src/types.ts`.
+      (The three stage-4b *prerequisites* — seq-epoch co-creation, freeze-on-store, and the
+      device-update-lag dispatch — shipped with the stage-4b reader PR.)
 
 - [ ] **Finish migrating the remaining ambiguous flat `test/*.test.ts` specs into tier folders.**
       The testing taxonomy (`notes/testing-taxonomy.md`) + scaffolding landed first; then the
@@ -181,21 +180,6 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
       include list updated). Do the move as part of that taxonomy pass, not piecemeal. Persona:
       contributor; hypothesis: a path-obvious tier speeds review and keeps the dom-config include
       list consistent. Source: Codex review of PR #1476.
-
-*2026-06-03 review-findings investigation (pels-copy-and-terminology / pels-m3-critic).
-The dangling note ref, starvation_rescue preview-fixture blindness, and the back-button
-title colour were fixed in the same change; items below are the deferred remainder.*
-
-- [ ] **Dedup the one starvation literal shared with shared-domain.** The string
-      `"Waiting for available power"` is hardcoded in `STARVATION_REASON_LABELS`
-      (`packages/settings-ui/src/ui/deviceDetail/diagnostics.ts` ~L109-156) AND owned by
-      `planStarvation.ts`'s `formatStarvationReason` (`packages/shared-domain/`), so the two can
-      drift. Point the diagnostics map at the shared-domain string for that one label. (Scoped
-      down from a broader "hoist the whole ~20-entry map" framing: the original log/UI-parity
-      rationale does NOT hold — grep-confirmed no runtime/logging path consumes these labels, and
-      most of the diagnostics map has no shared-domain sibling and no log consumer, so a full hoist
-      would be a no-payoff base-class trap.) Source: pels-copy-and-terminology, 2026-06-03;
-      rescoped 2026-06-04 merit pass.
 
 *v2.10.0..HEAD release-review findings (2026-05-29, six-agent fan-out:
 `pels-runtime-reality` + `pels-layering-guardian` + `pels-copy-and-terminology` +
@@ -269,21 +253,16 @@ were rolled back before they could land.*
       control behaviour (over-tightening risks under-heating).
       Source: live prod UI walk, 2026-05-22.
 
-- [ ] **Make the postmortem strip honest about unobserved-gap hours** (consolidates three
-      former items: persist-anchors + mark-restart-gap + flow-mode proration).
-      *Support cost:* every Homey restart mid-task (settings change, OOM, deploy) currently drops
-      one hour of delivery from the strip and renders it as a falsely-empty bar that reads "device
-      did nothing" to a user inspecting a run — a predictable confusion scenario.
-      - **Root-cause fix (persist anchors):** `currentHourOpening`/`lastKWhPerUnit` live only on
-        the in-memory `InProgressRecord` (`planHistory.ts`) and aren't written to
-        `DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING`, so a restart loses the in-flight hour. The
-        `restarts mid-run drop the in-flight hour anchor` regression test pins this. Persist them
-        alongside the rest of the record. Files: `lib/objectives/deferredObjectives/planHistory.ts`,
-        `packages/contracts/src/deferredObjectiveActivePlans.ts`.
-      - **Cheap mitigation (UI signal), if anchors aren't persisted:** mark restart-straddling
-        hours in `DeadlinePlanHistoryDetail.tsx` (dashed cell + `data unavailable across restart`
-        tooltip) so a measurement gap is distinguishable from a quiet hour. The gap is always the
-        hour the pre-restart opening was anchored in.
+- [ ] **Postmortem strip: prorate multi-hour gaps under `power_source = flow`** (remaining
+      out-of-scope tail of the former "honest about unobserved-gap hours" item).
+      - **DONE — root-cause fix (persist anchors):** `currentHourOpening`/`lastKWhPerUnit` are now
+        persisted onto the active plan (`inFlightHourOpening`/`inFlightKWhPerUnit`) and restored in
+        `startRecord` after a restart, so a Homey restart mid-task no longer drops the in-flight
+        hour or renders it as a falsely-empty "device did nothing" bar. This also makes the cheap
+        dashed-cell UI mitigation (`DeadlinePlanHistoryDetail.tsx`) MOOT — the gap is filled, not
+        merely flagged. Shipped: contract `deferredObjectiveActivePlans.ts` +
+        `activePlanSettings.ts` validator, `planHistory.ts` persist seam, `activePlanRecorder.ts`
+        `applyInProgressAnchors`, `planHistoryInProgressState.ts` restore.
       - **Out of scope (telemetry-blocked):** proper proration of multi-hour gaps under
         `power_source = flow` needs per-hour power telemetry that doesn't exist; the rollover
         detector attributes the whole delta to the opening hour. Documented in
@@ -384,6 +363,17 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
 *Entry bar: each item states a **hypothesis**, **why it's needed**, and the **persona**
 (`notes/personas.md`) it serves. Items that can't name all three are maintainability/
 cosmetic chores — do them in passing or drop them; don't park them here.*
+
+- [ ] **Fold the same-file `capacityNote` literal onto `STARVATION_WAITING_FOR_POWER_COPY`.**
+      *Persona:* maintainer / support (`notes/personas.md`) reading log/UI copy parity.
+      *Hypothesis:* `capacityNote: 'Waiting for available power.'` in `planStarvation.ts` re-types the
+      same phrase the new `STARVATION_WAITING_FOR_POWER_COPY` constant owns (differs only by a trailing
+      period), so the two can silently diverge from the overview/row-subtext wording.
+      *Why it's needed:* completing the same-file dedup removes the last in-file copy of this literal.
+      Deferred from the dedup PR because `capacityNote` is bundled into the `starvation_rescue` widget,
+      so the change regenerates `widgets/starvation_rescue/*` — a build-artifact churn out of scope for a
+      string-sourcing chore. Fix: `` capacityNote: `${STARVATION_WAITING_FOR_POWER_COPY}.` `` and commit
+      the regenerated widget bundles. Source: pels-copy-and-terminology on PR #1535, 2026-06-06.
 
 - [ ] **Create-screen `Extra permissions` opt-out is additive-only.**
       *Persona:* skeptical optimiser / curious tinkerer (`notes/personas.md` #4/#3) who expects

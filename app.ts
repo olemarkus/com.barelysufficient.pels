@@ -492,13 +492,13 @@ class PelsApp extends Homey.App {
     disableUnsupportedDevices: (snapshot) => disableUnsupportedDevicesHelper({
       snapshot,
       settings: this.homey.settings,
-      logDebug: (...args: unknown[]) => this.logDebug('devices', ...args),
+      debugStructured: this.getStructuredDebugEmitter('devices', 'devices'),
     }),
     seedMissingModeTargets: (snapshot) => seedMissingModeTargetsHelper({
       snapshot,
       settings: this.homey.settings,
       structuredLog: (event) => this.getStructuredLogger('devices')?.info(event),
-      logDebug: (...args: unknown[]) => this.logDebug('devices', ...args),
+      debugStructured: this.getStructuredDebugEmitter('devices', 'devices'),
     }),
     getFlowReportedDeviceIds: () => this.getFlowReportedDeviceIds(),
     emitFlowBackedRefreshRequests: async (deviceIds) => this.emitFlowBackedRefreshRequests(deviceIds),
@@ -691,12 +691,23 @@ class PelsApp extends Homey.App {
         reportedAt: params.reportedAt,
         nowMs: Date.now(),
       });
+      // Deliberately NOT dispatched into the projection here: this branch only
+      // advances `stateOfCharge` freshness (no `lastFreshDataMs` change), which
+      // no projection reader consumes yet, and re-advertising the SoC capability
+      // on this event would trip `shouldRebuildPlanForRealtimeEvSocObservation`
+      // into the very plan rebuild this freshness-only heartbeat is meant to
+      // skip. A future SoC-freshness projection reader handles its own dispatch.
       return;
     }
     const nextFreshDataMs = Math.max(device.lastFreshDataMs ?? 0, params.reportedAt);
     if (nextFreshDataMs <= (device.lastFreshDataMs ?? 0)) return;
     device.lastFreshDataMs = nextFreshDataMs;
     device.lastUpdated = nextFreshDataMs;
+    // Steady (no value change) flow-backed reports only advance freshness in
+    // place; dispatch so the projection-fed freshness reader stays faithful
+    // instead of marking the device stale until the next value change/refresh.
+    // Non-SoC capability id, so it can't trip the realtime EV-SoC rebuild gate.
+    this.deviceManager?.dispatchObservedStateForDevice(params.deviceId, params.capabilityId);
   }
 
   private async getHomeyDevicesForFlow(): Promise<HomeyDeviceLike[]> {
@@ -827,6 +838,7 @@ class PelsApp extends Homey.App {
       resolveModeName: (name) => app.resolveModeName(name),
       getAllModes: () => app.getAllModes(),
       resolveManagedState: (deviceId) => app.resolveManagedState(deviceId),
+      getObservedState: (deviceId) => app.observedDeviceStateProjection.getObservedState(deviceId),
       getCommunicationModel: (deviceId) => app.getCommunicationModel(deviceId),
       isCapacityControlEnabled: (deviceId) => app.isCapacityControlEnabled(deviceId),
       isBudgetExempt: (deviceId) => app.isBudgetExempt(deviceId),
@@ -1227,6 +1239,17 @@ class PelsApp extends Homey.App {
   private async initDeviceManager(): Promise<void> {
     const structuredLogger = this.structuredLogger ?? this.installStructuredLogger();
     const structuredLog = structuredLogger.child({ component: 'devices' });
+    // Co-create the observed-state projection with the transport so their
+    // lifecycles are coupled. The projection's sequence guard is keyed on the
+    // transport's per-device `observationSeq`; a new DeviceTransport resets those
+    // counters, so a long-lived projection would drop a fresh transport's early
+    // deltas (seq <= the previous transport's higher seqs). `initDeviceManager`
+    // runs once today (no in-process restart path), so this is currently
+    // equivalent to the field initializer — but it documents and enforces the
+    // transport/projection epoch coupling for any future restart. The persistent
+    // emitter subscription reads `this.observedDeviceStateProjection` at event
+    // time, so reassigning the field is sufficient.
+    this.observedDeviceStateProjection = new ObservedDeviceStateProjection();
     this.deviceManager = new DeviceTransport(this, {
       log: this.log.bind(this),
       debug: (...args: unknown[]) => this.logDebug('devices', ...args),
@@ -1272,6 +1295,17 @@ class PelsApp extends Homey.App {
     this.observedStateEmitter.onPlanReconcile((event: PlanReconcileObservedEvent) => {
       this.scheduleRealtimeDeviceReconcile(event);
     });
+    // Feed the projection FIRST, before any listener that reads it. Listeners
+    // fire in registration order, and `syncLivePlanState` below reads the
+    // projection (via `toPlanDevice`'s `observationStale`); applying the event
+    // here first ensures that pass sees the freshly-merged observed value for
+    // the same event instead of the previous one (stage 4b).
+    this.observedStateEmitter.onObservedStateChanged((event) => {
+      this.observedDeviceStateProjection.applyDelta(event);
+    });
+    this.observedStateEmitter.onObservedStateRefresh((event) => {
+      this.observedDeviceStateProjection.applyRefresh(event);
+    });
     this.observedStateEmitter.onObservedStateChanged((event: ObservedStateChangedEvent) => {
       if (this.shouldRebuildPlanForRealtimeEvSocObservation(event)) {
         incPerfCounters([
@@ -1294,15 +1328,6 @@ class PelsApp extends Homey.App {
         };
       }
       void this.planService?.syncLivePlanState(event.source);
-    });
-    // Stage 4a: feed the shadow projection from the same emitter as a peer
-    // subscriber. The projection only records the decided value transport
-    // already merged; no existing reader consumes it yet.
-    this.observedStateEmitter.onObservedStateChanged((event) => {
-      this.observedDeviceStateProjection.applyDelta(event);
-    });
-    this.observedStateEmitter.onObservedStateRefresh((event) => {
-      this.observedDeviceStateProjection.applyRefresh(event);
     });
   }
 

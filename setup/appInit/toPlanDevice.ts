@@ -12,6 +12,15 @@ import {
 } from './calibrationViews';
 
 export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot) {
+  // First real reader of the observer-owned observed-state projection (stage 4b).
+  // The freshness fields (`lastFreshDataMs`/`lastLocalWriteMs`) are observed
+  // state, so staleness is decided from the projection's maintained truth rather
+  // than the snapshot. Falls back to the snapshot until the first observation for
+  // this device lands (boot window), where the two are identical anyway. The
+  // resolved boolean is threaded into the residual-power credit below so both
+  // freshness consumers in this build share one source.
+  const observed = ctx.getObservedState(device.id);
+  const observationStale = isDeviceObservationStale(observed ?? device);
   const pendingBinaryCommand = ctx.planEngine?.getPendingBinaryCommandForDevice?.(
     device.id,
     device.communicationModel,
@@ -41,6 +50,7 @@ export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot) {
     device,
     controlCapabilityId: device.controlCapabilityId,
     shedBehavior,
+    observationStale,
   });
   return {
     ...device,
@@ -60,7 +70,7 @@ export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot) {
     nextStepCommandRetryAtMs: device.nextStepCommandRetryAtMs,
     stepCommandPending: device.stepCommandPending,
     stepCommandStatus: device.stepCommandStatus,
-    observationStale: isDeviceObservationStale(device),
+    observationStale,
     managed: ctx.resolveManagedState(device.id),
     controllable,
     budgetExempt: ctx.isBudgetExempt(device.id),

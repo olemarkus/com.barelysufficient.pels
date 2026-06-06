@@ -136,22 +136,27 @@ export type InProgressRecord = Omit<
   // `null` when no trustworthy reading has been observed yet (cold start,
   // sensor offline) so the rollover skips emission until coverage resumes.
   //
-  // Lossy-restart contract: this field is **not persisted** across PELS
-  // restarts. The in-progress map is rebuilt from live diagnostics, so a
-  // restart mid-run re-anchors the opening at the post-restart reading.
-  // Any progress delivered between the pre-restart opening and the first
-  // post-restart observation is lost from the postmortem strip (it lands
-  // in *neither* hour). Persisting requires a new settings key — tracked
-  // in `TODO.md`. See `restarts mid-run drop the in-flight hour anchor`
-  // regression test below for the pinned behaviour.
+  // Restart contract: this anchor IS persisted across PELS restarts. The
+  // in-progress map is still rebuilt from live diagnostics, but `startRecord`
+  // restores the opening from the active plan's `inFlightHourOpening` (written
+  // each observe cycle via `persistInProgressAnchors` → the active-plan
+  // recorder's `applyInProgressAnchors`). So a restart mid-run re-uses the
+  // pre-restart opening and the closing-hour delta is attributed across the
+  // restart boundary rather than blanking the in-flight hour's postmortem bar.
+  // When no anchor was persisted (legacy plan / cold-start run with no
+  // trustworthy reading yet) it degrades to the previous re-anchor-on-first-
+  // -reading behaviour.
   currentHourOpening: HourProgressSnapshot | null;
   // Effective kWh-per-unit factor from the most recent diagnostic. Cached
   // on the record so `finalizeRecord` can flush the still-open hour's
   // contribution without re-reading a diagnostic (the finalization paths
   // — `finalizeStaleRecords`, `finalizeForUserChange`, `finalizeElapsedDeadline`
   // — do not carry one).
-  // `null` when no diagnostic ever resolved a profile. Same lossy-restart
-  // contract as `currentHourOpening` — see above.
+  // `null` when no diagnostic ever resolved a profile. Persisted across
+  // restarts via the active plan's `inFlightKWhPerUnit` — same restart
+  // contract as `currentHourOpening` (see above) — so the restored opening can
+  // still be converted to delivered kWh after a mid-run restart even before a
+  // fresh diagnostic re-resolves the factor.
   lastKWhPerUnit: number | null;
   // Mean-based plan total (no variance buffer) from the most recent
   // observed revision (`revision.energyExpectedKWh`). Cached on the record so
@@ -341,10 +346,40 @@ export const startRecord = (
     hasDeliveryContribution: false,
     revisions: [],
     hourlyContributions: [],
-    currentHourOpening: seedHourOpening(diag, nowMs),
-    lastKWhPerUnit: pickKwhPerUnit(diag),
+    // Restore the persisted postmortem anchor when the active plan carries one
+    // (a restart picking up an in-flight run): re-using the pre-restart opening
+    // means the closing-hour delta is attributed across the restart boundary
+    // rather than blanking the in-flight hour. Fall back to seeding from the
+    // current reading when no anchor was persisted (cold start / legacy plan).
+    currentHourOpening: restoreHourOpening(plan) ?? seedHourOpening(diag, nowMs),
+    lastKWhPerUnit: pickKwhPerUnit(diag) ?? restoreKWhPerUnit(plan),
     energyExpectedKWhAtFinalize: pickEnergyExpectedKWhFromPlan(plan),
   };
+};
+
+// Restore the persisted in-flight hour-opening anchor from the active plan, when
+// present. Absent on legacy plans and cold-start runs — both degrade to the
+// pre-existing seed-from-current-reading behaviour. Guarded against a malformed
+// persisted shape defensively even though the active-plan normalizer already
+// rejects non-finite anchors.
+const restoreHourOpening = (
+  plan: DeferredObjectiveActivePlanV1 | undefined,
+): HourProgressSnapshot | null => {
+  const opening = plan?.inFlightHourOpening;
+  if (!opening) return null;
+  if (!Number.isFinite(opening.hourMs) || !Number.isFinite(opening.value)) return null;
+  return { hourMs: opening.hourMs, value: opening.value };
+};
+
+// Restore the persisted kWh-per-unit factor from the active plan. Only a
+// finite-positive value is meaningful (mirrors `pickKwhPerUnit`); absent ⇒ null
+// (cold start) so the rollover skips emission until a profile resolves.
+const restoreKWhPerUnit = (
+  plan: DeferredObjectiveActivePlanV1 | undefined,
+): number | null => {
+  const value = plan?.inFlightKWhPerUnit;
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return null;
+  return value;
 };
 
 // Anchor the hour-rollover detector at run start. We adopt the first

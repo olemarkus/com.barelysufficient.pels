@@ -46,16 +46,16 @@ describe('disableUnsupportedDevices', () => {
         'vt-1': { enabled: true, cheapDelta: 5, expensiveDelta: -5 },
       },
     });
-    const logDebug = vi.fn();
+    const debugStructured = vi.fn();
 
     disableUnsupportedDevices({
       snapshot: [buildPriceOnlyDevice()],
       settings: settings as any,
-      logDebug,
+      debugStructured,
     });
 
     expect(settings.set).not.toHaveBeenCalled();
-    expect(logDebug).not.toHaveBeenCalled();
+    expect(debugStructured).not.toHaveBeenCalled();
   });
 
   it('emits price-only log when unsupported settings are adjusted', () => {
@@ -66,19 +66,17 @@ describe('disableUnsupportedDevices', () => {
         'vt-1': { enabled: true, cheapDelta: 5, expensiveDelta: -5 },
       },
     });
-    const logDebug = vi.fn();
+    const debugStructured = vi.fn();
 
     disableUnsupportedDevices({
       snapshot: [buildPriceOnlyDevice()],
       settings: settings as any,
-      logDebug,
+      debugStructured,
     });
 
     expect(settings.set).toHaveBeenCalled();
-    expect(logDebug).toHaveBeenCalledWith('Disabled unsupported PELS controls: VThermo');
-    expect(logDebug).toHaveBeenCalledWith(
-      'Price-only support enabled (capacity disabled) for no-power temperature devices: VThermo',
-    );
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({ event: 'unsupported_controls_disabled', deviceNames: ['VThermo'] }));
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({ event: 'price_only_support_enabled', deviceNames: ['VThermo'] }));
   });
 
   it('does not emit price-only log when only fully unsupported devices changed', () => {
@@ -90,17 +88,17 @@ describe('disableUnsupportedDevices', () => {
         'socket-1': { enabled: true, cheapDelta: 5, expensiveDelta: -5 },
       },
     });
-    const logDebug = vi.fn();
+    const debugStructured = vi.fn();
 
     disableUnsupportedDevices({
       snapshot: [buildPriceOnlyDevice(), buildFullyUnsupportedDevice()],
       settings: settings as any,
-      logDebug,
+      debugStructured,
     });
 
-    expect(logDebug).toHaveBeenCalledWith('Disabled unsupported PELS controls: VThermo, Garage Socket');
-    expect(logDebug.mock.calls.flat().some(
-      (entry) => typeof entry === 'string' && entry.includes('Price-only support enabled'),
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({ event: 'unsupported_controls_disabled', deviceNames: ['VThermo', 'Garage Socket'] }));
+    expect(debugStructured.mock.calls.flat().some(
+      (entry) => typeof entry === 'object' && entry !== null && entry.event === 'price_only_support_enabled',
     )).toBe(false);
   });
 
@@ -109,16 +107,16 @@ describe('disableUnsupportedDevices', () => {
     // device shows up. Writing { id: false } would fire the settings handler
     // and trigger a recursive snapshot refresh on first boot.
     const settings = makeSettings({});
-    const logDebug = vi.fn();
+    const debugStructured = vi.fn();
 
     disableUnsupportedDevices({
       snapshot: [buildFullyUnsupportedDevice()],
       settings: settings as any,
-      logDebug,
+      debugStructured,
     });
 
     expect(settings.set).not.toHaveBeenCalled();
-    expect(logDebug).not.toHaveBeenCalled();
+    expect(debugStructured).not.toHaveBeenCalled();
   });
 
   it('does not re-emit the price-only log on repeated refreshes for fresh-install price-only devices', () => {
@@ -128,25 +126,25 @@ describe('disableUnsupportedDevices', () => {
     // "Price-only support enabled..." line fires on every snapshot refresh,
     // creating persistent operational log noise.
     const settings = makeSettings({});
-    const logDebug = vi.fn();
+    const debugStructured = vi.fn();
 
     disableUnsupportedDevices({
       snapshot: [buildPriceOnlyDevice()],
       settings: settings as any,
-      logDebug,
+      debugStructured,
     });
-    expect(logDebug.mock.calls.flat().some(
-      (entry) => typeof entry === 'string' && entry.includes('Price-only support enabled'),
+    expect(debugStructured.mock.calls.flat().some(
+      (entry) => typeof entry === 'object' && entry !== null && entry.event === 'price_only_support_enabled',
     )).toBe(false);
 
     // Second refresh with the same (still-absent) settings: still no log.
-    logDebug.mockClear();
+    debugStructured.mockClear();
     disableUnsupportedDevices({
       snapshot: [buildPriceOnlyDevice()],
       settings: settings as any,
-      logDebug,
+      debugStructured,
     });
-    expect(logDebug).not.toHaveBeenCalled();
+    expect(debugStructured).not.toHaveBeenCalled();
   });
 
   it('writes managed/controllable false only when the user previously enabled the device', () => {
@@ -157,7 +155,7 @@ describe('disableUnsupportedDevices', () => {
       [MANAGED_DEVICES]: { 'ev1': true, 'socket-1': true },
       [CONTROLLABLE_DEVICES]: { 'ev1': true, 'socket-1': true },
     });
-    const logDebug = vi.fn();
+    const debugStructured = vi.fn();
     const evDevice: TargetDeviceSnapshot = {
       id: 'ev1',
       name: 'EV Charger',
@@ -169,7 +167,7 @@ describe('disableUnsupportedDevices', () => {
     disableUnsupportedDevices({
       snapshot: [evDevice],
       settings: settings as any,
-      logDebug,
+      debugStructured,
     });
 
     const writtenManaged = settings.set.mock.calls.find(([key]) => key === MANAGED_DEVICES)?.[1];
@@ -184,7 +182,7 @@ describe('disableUnsupportedDevices', () => {
     disableUnsupportedDevices({
       snapshot: [evDevice],
       settings: settings as any,
-      logDebug,
+      debugStructured,
     });
     expect(settings.set).not.toHaveBeenCalled();
   });
@@ -232,13 +230,13 @@ describe('seedMissingModeTargets', () => {
   it('seeds missing entries from the device current setpoint', () => {
     const settings = baseSettings({ Home: {}, Away: {}, Night: {} });
     const structuredLog = vi.fn();
-    const logDebug = vi.fn();
+    const debugStructured = vi.fn();
 
     seedMissingModeTargets({
       snapshot: [buildThermostat()],
       settings: settings as any,
       structuredLog,
-      logDebug,
+      debugStructured,
     });
 
     expect(settings.set).toHaveBeenCalledWith('mode_device_targets', {
@@ -262,7 +260,7 @@ describe('seedMissingModeTargets', () => {
       snapshot: [buildThermostat()],
       settings: settings as any,
       structuredLog: vi.fn(),
-      logDebug: vi.fn(),
+      debugStructured: vi.fn(),
     });
 
     expect(settings.set).not.toHaveBeenCalled();
@@ -276,7 +274,7 @@ describe('seedMissingModeTargets', () => {
       snapshot: [buildThermostat()],
       settings: settings as any,
       structuredLog,
-      logDebug: vi.fn(),
+      debugStructured: vi.fn(),
     });
 
     expect(settings.set).toHaveBeenCalledWith('mode_device_targets', {
@@ -301,7 +299,7 @@ describe('seedMissingModeTargets', () => {
       snapshot: [thermostat],
       settings: settings as any,
       structuredLog: vi.fn(),
-      logDebug: vi.fn(),
+      debugStructured: vi.fn(),
     });
 
     expect(settings.set).toHaveBeenCalledWith('mode_device_targets', {
@@ -320,7 +318,7 @@ describe('seedMissingModeTargets', () => {
       snapshot: [thermostat],
       settings: settings as any,
       structuredLog,
-      logDebug: vi.fn(),
+      debugStructured: vi.fn(),
     });
 
     expect(settings.set).not.toHaveBeenCalled();
@@ -352,7 +350,7 @@ describe('seedMissingModeTargets', () => {
       ],
       settings: settings as any,
       structuredLog: vi.fn(),
-      logDebug: vi.fn(),
+      debugStructured: vi.fn(),
     });
 
     expect(settings.set).not.toHaveBeenCalled();
@@ -369,7 +367,7 @@ describe('seedMissingModeTargets', () => {
       snapshot: [buildThermostat()],
       settings: settings as any,
       structuredLog: vi.fn(),
-      logDebug: vi.fn(),
+      debugStructured: vi.fn(),
     });
 
     expect(settings.set).not.toHaveBeenCalled();
@@ -385,7 +383,7 @@ describe('seedMissingModeTargets', () => {
       snapshot: [buildThermostat()],
       settings: settings as any,
       structuredLog: vi.fn(),
-      logDebug: vi.fn(),
+      debugStructured: vi.fn(),
     });
 
     expect(settings.set).not.toHaveBeenCalled();
@@ -405,7 +403,7 @@ describe('seedMissingModeTargets', () => {
       snapshot: [buildThermostat()],
       settings: settings as any,
       structuredLog: vi.fn(),
-      logDebug: vi.fn(),
+      debugStructured: vi.fn(),
     });
 
     expect(settings.set).toHaveBeenCalledWith('mode_device_targets', {
@@ -428,7 +426,7 @@ describe('seedMissingModeTargets', () => {
       snapshot: [buildThermostat()],
       settings: initial as any,
       structuredLog,
-      logDebug: vi.fn(),
+      debugStructured: vi.fn(),
     });
     expect(initial.set).toHaveBeenCalledWith('mode_device_targets', {
       Home: { 't-1': 21 },
@@ -444,7 +442,7 @@ describe('seedMissingModeTargets', () => {
       snapshot: [buildThermostat()],
       settings: afterClear as any,
       structuredLog,
-      logDebug: vi.fn(),
+      debugStructured: vi.fn(),
     });
 
     expect(afterClear.set).not.toHaveBeenCalled();
@@ -468,7 +466,7 @@ describe('seedMissingModeTargets', () => {
       snapshot: [buildThermostat()],
       settings: settings as any,
       structuredLog,
-      logDebug: vi.fn(),
+      debugStructured: vi.fn(),
     });
     settings.set.mockClear();
     structuredLog.mockClear();
@@ -484,7 +482,7 @@ describe('seedMissingModeTargets', () => {
       ],
       settings: settings as any,
       structuredLog,
-      logDebug: vi.fn(),
+      debugStructured: vi.fn(),
     });
 
     expect(settings.set).toHaveBeenCalledWith('mode_device_targets', {
@@ -510,13 +508,13 @@ describe('seedMissingModeTargets', () => {
       snapshot: [thermostat],
       settings: settings as any,
       structuredLog,
-      logDebug: vi.fn(),
+      debugStructured: vi.fn(),
     });
     seedMissingModeTargets({
       snapshot: [thermostat],
       settings: settings as any,
       structuredLog,
-      logDebug: vi.fn(),
+      debugStructured: vi.fn(),
     });
 
     const skippedEvents = structuredLog.mock.calls

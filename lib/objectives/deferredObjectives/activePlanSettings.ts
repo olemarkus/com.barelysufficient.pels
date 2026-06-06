@@ -227,6 +227,29 @@ const isOptionalRevisionHistory = (
   value === undefined || (Array.isArray(value) && value.every(isRevision))
 );
 
+// Persisted postmortem in-flight anchors. Both optional for backward
+// compatibility — legacy plans (and cold-start runs) omit them. When present
+// `inFlightHourOpening` must carry a finite hour bucket + a finite reading, and
+// `inFlightKWhPerUnit` must be a finite POSITIVE factor (the recorder only ever
+// caches a positive kWh/unit — `pickKwhPerUnit` returns null for non-positive
+// rates). Reject malformed shapes rather than letting a NaN anchor reach the
+// rollover detector, where it would corrupt the attributed delta. A
+// present-but-malformed anchor is treated as tampering and drops the whole plan
+// (consistent with the other optional-field guards here); on the legitimate
+// path the recorder either omits the field (cold start) or writes a well-formed
+// one, so a healthy mid-run restart still restores the anchor.
+const isOptionalInFlightHourOpening = (value: unknown): boolean => {
+  if (value === undefined) return true;
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  return isFiniteNumber(v.hourMs) && isFiniteNumber(v.value);
+};
+
+const hasValidInFlightAnchors = (v: Record<string, unknown>): boolean => (
+  isOptionalInFlightHourOpening(v.inFlightHourOpening)
+    && isOptionalFinitePositive(v.inFlightKWhPerUnit)
+);
+
 const isCommitment = (value: unknown): value is DeferredObjectiveActivePlanCommitmentV1 | undefined => {
   if (value === undefined) return true;
   if (!value || typeof value !== 'object') return false;
@@ -278,6 +301,7 @@ const isActivePlan = (value: unknown): value is DeferredObjectiveActivePlanV1 =>
     && hasValidPlanLevelDurationSnapshot(v)
     && isCommitment(v.commitment)
     && hasCoherentCommitmentState(v)
+    && hasValidInFlightAnchors(v)
     && isOptionalRevisionHistory(v.history);
 };
 
