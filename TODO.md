@@ -298,9 +298,25 @@ styling" items were written against UI that no longer exists — there are zero
 smart-task charts already share the palette tokens and are deliberately different
 chart types, not two languages for one chart. Do not re-raise from the stale
 live-walk screenshots.*
-- [ ] Add a device-log view in the Settings UI, and reuse the shared device overview formatter so
+- [x] Add a device-log view in the Settings UI, and reuse the shared device overview formatter so
       the visible device-log wording matches backend overview transition logs exactly.
       Files: settings UI advanced/device-log surface, `packages/shared-domain/src/deviceOverview.ts`.
+      Shipped as an "Activity log" disclosure on the device-detail page. Data source: a bounded
+      in-memory overview-transition recorder (`lib/plan/deviceOverviewLog.ts`) fed from the same
+      signature-change boundary `PlanService.emitOverviewTransitions` uses for the structured
+      overview log, served via a new `/ui_device_log` read endpoint. Log-parity is guaranteed by
+      construction: the recorder stores the verbatim `formatDeviceOverview` output (`DeviceOverviewStrings`).
+      Deferred follow-ups (P3, persona: curious tinkerer — wants to debug their own setup over time):
+      the recorder is session-only (no persistence), so the log is empty after a restart — hypothesis:
+      a persisted ring buffer would let the tinkerer review what happened overnight; needs the
+      Homey-SDK transient-read grace pattern before persisting. Also currently per-device only
+      (reached via device detail); a cross-device "recent activity" feed on Overview is a possible
+      later surface if the per-device view proves used.
+      P3 (persona: contributor): `STATE_TONE_CHIP_MODIFIER` in `DeviceLogView.tsx` duplicates
+      `PLAN_STATE_CHIP_MODIFIER` in `PlanDeviceCards.tsx` — both live in `settings-ui/src/ui/views/`
+      (same side of every boundary), so fold them into one shared `chipModifierForTone()` helper to
+      stop the tone→chip-class map drifting between the live card and the log. Source:
+      pels-layering-guardian on PR #1546.
 - [ ] Finish the planner/executor/device-transport state boundary split.
       Planner output should carry desired state and planner reasons; `DeviceTransport` should
       provide observed current state and own native / flow / capability transport; executor should

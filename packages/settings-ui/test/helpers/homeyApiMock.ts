@@ -13,6 +13,7 @@ import {
   SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH,
   SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH,
   SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH,
+  SETTINGS_UI_DEVICE_LOG_PATH,
   SETTINGS_UI_DEVICES_PATH,
   SETTINGS_UI_LOG_PATH,
   SETTINGS_UI_PLAN_PATH,
@@ -58,6 +59,7 @@ export type MockHomeyUiState = {
   deferredObjectiveHistory?: unknown;
   deferredObjectiveSettings?: unknown;
   deviceDiagnostics?: unknown;
+  deviceLog?: unknown;
   // Explicit device list returned by the `/ui_devices` and
   // `/ui_refresh_devices` handlers. Mirrors production's
   // `getSettingsUiDevicesPayload`, which serves the live in-memory device
@@ -298,6 +300,9 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
   [buildRouteKey('GET', SETTINGS_UI_POWER_PATH)]: (homey) => async () => buildUiPower(homey),
   [buildRouteKey('GET', SETTINGS_UI_PRICES_PATH)]: (homey) => async () => buildUiPrices(homey),
   [buildRouteKey('GET', SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH)]: (homey) => async () => buildUiDiagnostics(homey),
+  [buildRouteKey('GET', SETTINGS_UI_DEVICE_LOG_PATH)]: (homey) => async () => (
+    getUiOverride(homey, 'deviceLog') ?? { version: 1, entriesByDeviceId: {} }
+  ),
   [buildRouteKey('GET', SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH)]: (homey) => async () => (
     getUiOverride(homey, 'deferredObjectiveHistory') ?? { version: 1, entriesByDeviceId: {} }
   ),

@@ -20,6 +20,7 @@ import type {
   SettingsUiBootstrap,
   SettingsUiDeferredObjectivePlanHistoryPayload,
   SettingsUiDeviceDiagnosticsResponse,
+  SettingsUiDeviceLogPayload,
   SettingsUiDevicesPayload,
   SettingsUiLogRequest,
   SettingsUiPlanPayload,
@@ -46,6 +47,7 @@ type SettingsUiApiApp = Homey.App & {
   previewDailyBudgetModel?: (settings: Partial<DailyBudgetModelSettings>) => DailyBudgetModelPreviewResponse;
   applyDailyBudgetModel?: (settings: Partial<DailyBudgetModelSettings>) => DailyBudgetUiPayload | null;
   getDeviceDiagnosticsUiPayload?: () => SettingsUiDeviceDiagnosticsResponse;
+  getDeviceLogUiPayload?: () => SettingsUiDeviceLogPayload;
   getDeferredObjectivePlanHistoryUiPayload?: () => SettingsUiDeferredObjectivePlanHistoryPayload;
   getDeferredObjectiveActivePlansUiPayload?: () => DeferredObjectiveActivePlansV1 | null;
   previewDeferredObjectivePlan?: (
@@ -203,6 +205,16 @@ export const getSettingsUiDeviceDiagnosticsPayload = ({ homey }: ApiContext): Se
   // Returning an empty payload here would silently strip diagnostics from the
   // device-detail page without any explanation.
   return app.getDeviceDiagnosticsUiPayload();
+};
+
+export const getSettingsUiDeviceLogPayload = ({ homey }: ApiContext): SettingsUiDeviceLogPayload => {
+  const app = getApp(homey);
+  if (!app?.getDeviceLogUiPayload) {
+    return { version: 1, entriesByDeviceId: {} };
+  }
+  // No try/catch: let exceptions bubble to the api.ts wrapper so the client
+  // sees the real failure and the cause lands in `/tmp/pels` via app.error.
+  return app.getDeviceLogUiPayload();
 };
 
 export const getSettingsUiDeferredObjectivePlanHistoryPayload = (

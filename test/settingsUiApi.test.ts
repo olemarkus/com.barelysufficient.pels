@@ -1,6 +1,7 @@
 import {
   buildSettingsUiBootstrap,
   getSettingsUiDeviceDiagnosticsPayload,
+  getSettingsUiDeviceLogPayload,
   getSettingsUiDevicesPayload,
   getSettingsUiPlanPayload,
   getSettingsUiPowerPayload,
@@ -129,6 +130,22 @@ describe('settingsUiApi', () => {
         },
       },
     });
+    const getDeviceLogUiPayload = vi.fn().mockReturnValue({
+      version: 1,
+      entriesByDeviceId: {
+        'dev-1': [
+          {
+            atMs: 1700000000000,
+            powerMsg: 'on → off',
+            stateMsg: 'Limited',
+            usageMsg: 'Measured: 0.00 kW',
+            statusMsg: 'Limiting to stay within budget',
+            stateKind: 'held',
+            stateTone: 'held',
+          },
+        ],
+      },
+    });
     const app = {
       log,
       error,
@@ -143,6 +160,7 @@ describe('settingsUiApi', () => {
       previewDailyBudgetModel,
       applyDailyBudgetModel,
       getDeviceDiagnosticsUiPayload,
+      getDeviceLogUiPayload,
       get latestTargetSnapshot() {
         return latestDevices;
       },
@@ -180,6 +198,7 @@ describe('settingsUiApi', () => {
       previewDailyBudgetModel,
       applyDailyBudgetModel,
       getDeviceDiagnosticsUiPayload,
+      getDeviceLogUiPayload,
     };
   };
 
@@ -362,6 +381,38 @@ describe('settingsUiApi', () => {
       windowDays: 21,
       diagnosticsByDeviceId: {},
     });
+  });
+
+  it('serves recorded device-log entries from the app', () => {
+    const homey = createHomey();
+
+    expect(getSettingsUiDeviceLogPayload({ homey: homey as never })).toEqual({
+      version: 1,
+      entriesByDeviceId: {
+        'dev-1': [
+          expect.objectContaining({ stateMsg: 'Limited', statusMsg: 'Limiting to stay within budget' }),
+        ],
+      },
+    });
+  });
+
+  it('returns an empty device-log payload when the app has no device-log API yet', () => {
+    const homey = createHomey();
+    delete (homey.app as { getDeviceLogUiPayload?: unknown }).getDeviceLogUiPayload;
+
+    expect(getSettingsUiDeviceLogPayload({ homey: homey as never })).toEqual({
+      version: 1,
+      entriesByDeviceId: {},
+    });
+  });
+
+  it('rethrows device-log API failures so the api wrapper can log them', () => {
+    const homey = createHomey();
+    homey.getDeviceLogUiPayload.mockImplementation(() => {
+      throw new Error('device log not ready');
+    });
+
+    expect(() => getSettingsUiDeviceLogPayload({ homey: homey as never })).toThrow('device log not ready');
   });
 
   it('rethrows diagnostics API failures so the api wrapper can log them', () => {

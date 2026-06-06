@@ -5042,6 +5042,46 @@ details[open] > summary .disclosure-chevron {
   font-weight: var(--font-weight-semibold);
 }
 
+/* Device activity log — recent overview transitions for one device. A plain
+   neutral list (no coloured state-rail per the card convention); state is
+   carried by the per-entry status chip, which reuses the live device-card
+   `.plan-chip--{modifier}` tones. */
+.device-log__list {
+  display: grid;
+  gap: var(--spacing-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.device-log__entry {
+  display: grid;
+  gap: var(--spacing-1);
+  padding: var(--spacing-3);
+  border: 1px solid var(--pels-surface-outline);
+  border-radius: var(--radius-md);
+  background: var(--pels-surface-container-low);
+}
+
+.device-log__entry-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-2);
+}
+
+.device-log__time {
+  flex: 0 0 auto;
+}
+
+.device-log__line {
+  margin: 0;
+}
+
+.device-log__empty {
+  margin: 0;
+}
+
 .detail-deadline-form {
   display: grid;
   gap: var(--spacing-4);
