@@ -136,6 +136,20 @@ export type PlanHistoryPersistDeps = {
   // so the recorder stays usable in tests and headless callers. Gated on the
   // `deferred_objectives` debug topic by the wiring in `setup/appInit.ts`.
   debugStructured?: StructuredDebugEmitter;
+  // Optional side-effect callback that persists the in-flight postmortem hour
+  // anchors (`currentHourOpening` / `lastKWhPerUnit`) onto the matching active
+  // plan after each observe cycle. The active-plan recorder owns the persisted
+  // active-plans blob, so the recorder threads its in-memory anchors out through
+  // this seam rather than writing the setting itself. On a PELS restart mid-run
+  // the persisted anchor is read back in `startRecord` so the in-flight hour's
+  // postmortem bar isn't blanked. Optional so the recorder stays usable in tests
+  // and headless callers (without it, the lossy-restart behaviour is unchanged).
+  persistInProgressAnchors?: (anchors: {
+    deviceId: string;
+    deadlineAtMs: number;
+    hourOpening: { hourMs: number; value: number } | null;
+    kWhPerUnit: number | null;
+  }) => void;
   // Optional side-effect callback invoked when a temperature objective finalises
   // as `met` with `metReason: 'stalled'` — the exact shape that carries a clean
   // observation of the device's local control deadband. The wiring layer reads
@@ -265,10 +279,9 @@ export class DeferredObjectivePlanHistoryRecorder {
         ? mergeRecord(existing, diag, nowMs, plan)
         : recordNonPlannableTick(existing, diag, nowMs, plan);
       const withRollover = this.applyHourlyDeliveryRollover(merged, diag, nowMs);
-      this.inProgress.set(
-        key,
-        this.maybePromoteOnStall(withRollover, diag, nowMs, getStallClassification),
-      );
+      const settled = this.maybePromoteOnStall(withRollover, diag, nowMs, getStallClassification);
+      this.inProgress.set(key, settled);
+      this.persistAnchors(settled);
       return;
     }
     // Begin tracking on first sight of a future-dated deadline, regardless of status. The
@@ -289,6 +302,20 @@ export class DeferredObjectivePlanHistoryRecorder {
     // the classifier has had a chance to re-evaluate against the actual
     // current objective — handles promotion through the `existing` branch.
     this.inProgress.set(key, next);
+    this.persistAnchors(next);
+  }
+
+  // Thread the record's in-flight postmortem anchors out to the active-plan
+  // recorder (when wired) so they survive a PELS restart mid-run. Pure read of
+  // the record — the active-plan recorder no-ops when no plan tracks the run yet
+  // and only marks the active plans dirty when a value actually changed.
+  private persistAnchors(record: InProgressRecord): void {
+    this.deps.persistInProgressAnchors?.({
+      deviceId: record.deviceId,
+      deadlineAtMs: record.deadlineAtMs,
+      hourOpening: record.currentHourOpening,
+      kWhPerUnit: record.lastKWhPerUnit,
+    });
   }
 
   /**

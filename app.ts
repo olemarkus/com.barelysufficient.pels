@@ -492,13 +492,13 @@ class PelsApp extends Homey.App {
     disableUnsupportedDevices: (snapshot) => disableUnsupportedDevicesHelper({
       snapshot,
       settings: this.homey.settings,
-      logDebug: (...args: unknown[]) => this.logDebug('devices', ...args),
+      debugStructured: this.getStructuredDebugEmitter('devices', 'devices'),
     }),
     seedMissingModeTargets: (snapshot) => seedMissingModeTargetsHelper({
       snapshot,
       settings: this.homey.settings,
       structuredLog: (event) => this.getStructuredLogger('devices')?.info(event),
-      logDebug: (...args: unknown[]) => this.logDebug('devices', ...args),
+      debugStructured: this.getStructuredDebugEmitter('devices', 'devices'),
     }),
     getFlowReportedDeviceIds: () => this.getFlowReportedDeviceIds(),
     emitFlowBackedRefreshRequests: async (deviceIds) => this.emitFlowBackedRefreshRequests(deviceIds),

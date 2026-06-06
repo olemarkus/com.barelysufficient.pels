@@ -136,8 +136,8 @@ function hasExecutableBinaryExecutionDrift(
     return hasExecutableSteppedLoadExecutionDrift(intent.steppedLoad, observed, runtime);
   }
   const release = intent.release;
-  if (release && (release.kind === 'ev_resume' || release.kind === 'ev_pause')) {
-    return hasExecutableEvExecutionDrift({ ...release, kind: release.kind }, observed, runtime);
+  if (release && (release.kind === 'binary_restore' || release.kind === 'binary_release')) {
+    return hasExecutableBinaryReleaseExecutionDrift({ ...release, kind: release.kind }, observed, runtime);
   }
   // shed_release is materialized at apply time via getShedBehavior; the resulting actuation
   // (binary off, target setpoint write, stepped command) reuses the same axis-specific
@@ -151,19 +151,19 @@ function hasExecutableBinaryExecutionDrift(
   });
 }
 
-function hasExecutableEvExecutionDrift(
-  intent: ExecutableReleaseIntent & { kind: 'ev_resume' | 'ev_pause' },
+function hasExecutableBinaryReleaseExecutionDrift(
+  intent: ExecutableReleaseIntent & { kind: 'binary_restore' | 'binary_release' },
   observed: ExecutableObservedDeviceState,
   runtime: DriftRuntimeState,
 ): boolean {
-  if (isPendingBinaryCommandMatchingExpected(runtime.pendingBinary, intent.kind === 'ev_resume' ? 'on' : 'off')) {
+  if (isPendingBinaryCommandMatchingExpected(runtime.pendingBinary, intent.kind === 'binary_restore' ? 'on' : 'off')) {
     return false;
   }
-  if (intent.kind === 'ev_resume') {
-    // Resume drift: still off-but-commandable (paused) — transition not yet seen.
+  if (intent.kind === 'binary_restore') {
+    // Restore drift: still off-but-commandable (released) — transition not yet seen.
     return observed.binaryControl?.on === false && isCommandableNow(observed.snapshot);
   }
-  // Pause drift: still on (charging) — transition not yet seen.
+  // Release drift: still on — transition not yet seen.
   return observed.binaryControl?.on ?? true;
 }
 

@@ -212,7 +212,7 @@ describe('appSnapshotHelpers', () => {
       disableUnsupportedDevices: (nextSnapshot) => disableUnsupportedDevices({
         snapshot: nextSnapshot,
         settings: mockHomeyInstance.settings as any,
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       }),
       seedMissingModeTargets: vi.fn(),
       getFlowReportedDeviceIds: vi.fn(() => []),
@@ -272,7 +272,7 @@ describe('appSnapshotHelpers', () => {
       disableUnsupportedDevices: (nextSnapshot) => disableUnsupportedDevices({
         snapshot: nextSnapshot,
         settings: mockHomeyInstance.settings as any,
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
       }),
       seedMissingModeTargets: vi.fn(),
       getFlowReportedDeviceIds: vi.fn(() => []),

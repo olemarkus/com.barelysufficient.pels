@@ -128,7 +128,7 @@ describe('planExecutablePlan', () => {
       plannedState: 'keep',
       currentState: 'on',
       evChargingState: 'plugged_in_paused',
-      deferredReleaseIntent: 'ev_resume',
+      deferredReleaseIntent: 'binary_restore',
       reason,
     });
 

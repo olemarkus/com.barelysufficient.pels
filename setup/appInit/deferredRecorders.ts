@@ -125,6 +125,15 @@ export function createDeferredObjectivePlanHistoryRecorder(
     // skips that hour rather than fabricating a contribution.
     resolveHourPrice: (hourStartMs) => resolveHourPriceFromContext(ctx, hourStartMs),
     debugStructured: ctx.getStructuredDebugEmitter('deferred_objectives', 'deferred_objectives'),
+    // Thread the recorder's in-flight postmortem anchors onto the active plan so
+    // a PELS restart mid-run can restore them (otherwise the in-flight hour
+    // renders as a falsely-empty postmortem bar). Resolved lazily: the active-
+    // plan recorder is constructed after this one (see `initPlanEngine` in
+    // `app.ts`), so it may be absent on the very first observe ticks — the
+    // recorder simply omits the anchor that cycle and re-stamps the next.
+    persistInProgressAnchors: (anchors) => (
+      ctx.deferredObjectiveActivePlanRecorder?.applyInProgressAnchors(anchors)
+    ),
     onMetStalledEntry: (entry) => updateLearnedThermostatDeadbandFromEntry(ctx, entry),
   });
   runStartupBackfill(ctx, recorder);

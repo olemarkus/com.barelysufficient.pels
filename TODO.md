@@ -182,21 +182,6 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
       contributor; hypothesis: a path-obvious tier speeds review and keeps the dom-config include
       list consistent. Source: Codex review of PR #1476.
 
-*2026-06-03 review-findings investigation (pels-copy-and-terminology / pels-m3-critic).
-The dangling note ref, starvation_rescue preview-fixture blindness, and the back-button
-title colour were fixed in the same change; items below are the deferred remainder.*
-
-- [ ] **Dedup the one starvation literal shared with shared-domain.** The string
-      `"Waiting for available power"` is hardcoded in `STARVATION_REASON_LABELS`
-      (`packages/settings-ui/src/ui/deviceDetail/diagnostics.ts` ~L109-156) AND owned by
-      `planStarvation.ts`'s `formatStarvationReason` (`packages/shared-domain/`), so the two can
-      drift. Point the diagnostics map at the shared-domain string for that one label. (Scoped
-      down from a broader "hoist the whole ~20-entry map" framing: the original log/UI-parity
-      rationale does NOT hold — grep-confirmed no runtime/logging path consumes these labels, and
-      most of the diagnostics map has no shared-domain sibling and no log consumer, so a full hoist
-      would be a no-payoff base-class trap.) Source: pels-copy-and-terminology, 2026-06-03;
-      rescoped 2026-06-04 merit pass.
-
 *v2.10.0..HEAD release-review findings (2026-05-29, six-agent fan-out:
 `pels-runtime-reality` + `pels-layering-guardian` + `pels-copy-and-terminology` +
 `pels-m3-critic` + `pels-ux-fit`). No P0 blockers; the past-tasks hit-rate
@@ -269,21 +254,16 @@ were rolled back before they could land.*
       control behaviour (over-tightening risks under-heating).
       Source: live prod UI walk, 2026-05-22.
 
-- [ ] **Make the postmortem strip honest about unobserved-gap hours** (consolidates three
-      former items: persist-anchors + mark-restart-gap + flow-mode proration).
-      *Support cost:* every Homey restart mid-task (settings change, OOM, deploy) currently drops
-      one hour of delivery from the strip and renders it as a falsely-empty bar that reads "device
-      did nothing" to a user inspecting a run — a predictable confusion scenario.
-      - **Root-cause fix (persist anchors):** `currentHourOpening`/`lastKWhPerUnit` live only on
-        the in-memory `InProgressRecord` (`planHistory.ts`) and aren't written to
-        `DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING`, so a restart loses the in-flight hour. The
-        `restarts mid-run drop the in-flight hour anchor` regression test pins this. Persist them
-        alongside the rest of the record. Files: `lib/objectives/deferredObjectives/planHistory.ts`,
-        `packages/contracts/src/deferredObjectiveActivePlans.ts`.
-      - **Cheap mitigation (UI signal), if anchors aren't persisted:** mark restart-straddling
-        hours in `DeadlinePlanHistoryDetail.tsx` (dashed cell + `data unavailable across restart`
-        tooltip) so a measurement gap is distinguishable from a quiet hour. The gap is always the
-        hour the pre-restart opening was anchored in.
+- [ ] **Postmortem strip: prorate multi-hour gaps under `power_source = flow`** (remaining
+      out-of-scope tail of the former "honest about unobserved-gap hours" item).
+      - **DONE — root-cause fix (persist anchors):** `currentHourOpening`/`lastKWhPerUnit` are now
+        persisted onto the active plan (`inFlightHourOpening`/`inFlightKWhPerUnit`) and restored in
+        `startRecord` after a restart, so a Homey restart mid-task no longer drops the in-flight
+        hour or renders it as a falsely-empty "device did nothing" bar. This also makes the cheap
+        dashed-cell UI mitigation (`DeadlinePlanHistoryDetail.tsx`) MOOT — the gap is filled, not
+        merely flagged. Shipped: contract `deferredObjectiveActivePlans.ts` +
+        `activePlanSettings.ts` validator, `planHistory.ts` persist seam, `activePlanRecorder.ts`
+        `applyInProgressAnchors`, `planHistoryInProgressState.ts` restore.
       - **Out of scope (telemetry-blocked):** proper proration of multi-hour gaps under
         `power_source = flow` needs per-hour power telemetry that doesn't exist; the rollover
         detector attributes the whole delta to the opening hour. Documented in
@@ -322,13 +302,14 @@ live-walk screenshots.*
       `lib/plan/planReasons.ts` (mixes reason normalization with shed-temperature hold decisions),
       plan/executor/rendering boundaries.
 - [ ] Finish the last `app.ts` shrink after the `TimerRegistry` / `AppContext` refactor. The
-      remaining cleanup is to split/trim `setup/appInit.ts` (still ~440 LOC, over the `setup/`
-      one-purpose-per-file convention) into focused sub-files under `setup/appInit/`, and keep
-      trimming any delegates that no longer buy readability or testability. (`resolveHasBinaryControl`
-      no longer exists as a shared symbol — that part is already handled.) Deferred from the
-      `lib/app/** -> setup/` migration PR because the appInit decomposition is a non-mechanical
-      restructure, independent of the relocations.
-      Files: `app.ts`, `setup/appInit.ts`.
+      `setup/appInit.ts` decomposition is now DONE — the former ~440 LOC file is a thin re-export
+      barrel (~19 LOC) over focused `setup/appInit/` sub-files (`contextGuards`, `createPlanEngine`,
+      `createPlanService`, `priceServices`, `registerAppFlowCards`, `toPlanDevice`,
+      `deviceDiagnosticsService`), each one purpose and under the `setup/` ~150 LOC convention.
+      Remaining: keep trimming any wiring delegates (in `app.ts` / the sub-files) that no longer buy
+      readability or testability. (`resolveHasBinaryControl` no longer exists as a shared symbol —
+      that part is already handled.)
+      Files: `app.ts`, `setup/appInit/**`.
 - [ ] Stop granting blanket `max-lines` exemptions. Classify each currently-oversized runtime file
       as either Bucket A ("must shrink to <=500") or Bucket B ("documented exception with a
       concrete raised ceiling"), replace file-level `eslint-disable` pragmas with per-file config
@@ -383,6 +364,17 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
 *Entry bar: each item states a **hypothesis**, **why it's needed**, and the **persona**
 (`notes/personas.md`) it serves. Items that can't name all three are maintainability/
 cosmetic chores — do them in passing or drop them; don't park them here.*
+
+- [ ] **Fold the same-file `capacityNote` literal onto `STARVATION_WAITING_FOR_POWER_COPY`.**
+      *Persona:* maintainer / support (`notes/personas.md`) reading log/UI copy parity.
+      *Hypothesis:* `capacityNote: 'Waiting for available power.'` in `planStarvation.ts` re-types the
+      same phrase the new `STARVATION_WAITING_FOR_POWER_COPY` constant owns (differs only by a trailing
+      period), so the two can silently diverge from the overview/row-subtext wording.
+      *Why it's needed:* completing the same-file dedup removes the last in-file copy of this literal.
+      Deferred from the dedup PR because `capacityNote` is bundled into the `starvation_rescue` widget,
+      so the change regenerates `widgets/starvation_rescue/*` — a build-artifact churn out of scope for a
+      string-sourcing chore. Fix: `` capacityNote: `${STARVATION_WAITING_FOR_POWER_COPY}.` `` and commit
+      the regenerated widget bundles. Source: pels-copy-and-terminology on PR #1535, 2026-06-06.
 
 - [ ] **Create-screen `Extra permissions` opt-out is additive-only.**
       *Persona:* skeptical optimiser / curious tinkerer (`notes/personas.md` #4/#3) who expects

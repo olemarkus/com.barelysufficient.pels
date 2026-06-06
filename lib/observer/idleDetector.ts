@@ -43,7 +43,7 @@
  *
  * Only temperature-bearing devices are eligible: without a setpoint reading
  * we have no way to distinguish "satisfied hold" from "broken" / "capped".
- * EV chargers have their own pause modelling (`ev_pause`) and are excluded.
+ * EV chargers have their own release modelling (`binary_release`) and are excluded.
  */
 import { isFiniteNumber } from '../utils/appTypeGuards';
 
@@ -109,7 +109,7 @@ export type IdleDetectorInput = {
   pelsCommandedShed: boolean;
   /**
    * Exclude devices that should never be classified — EV chargers (handled by
-   * the ev_pause path) and devices without temperature observability.
+   * the binary_release path) and devices without temperature observability.
    */
   hasTemperatureSetpoint: boolean;
   isEvCharger: boolean;

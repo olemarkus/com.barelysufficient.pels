@@ -3,16 +3,17 @@ import type { PlanInputDevice } from './planInputDevice.js';
 
 /**
  * One-shot release intent emitted when a cap-off device's smart task leaves a
- * plannable status (or the device is in an idle bucket). EV chargers map to
- * `ev_resume` / `ev_pause` (the dedicated EV executor path); everything else
- * maps to `shed_release`, which fires the device's configured shedBehavior once.
+ * plannable status (or the device is in an idle bucket). Binary-controlled
+ * devices map to `binary_restore` / `binary_release` (the dedicated binary
+ * executor path); everything else maps to `shed_release`, which fires the
+ * device's configured shedBehavior once.
  *
  * Defined here (planner I/O package) so both the producing smart-task controller
  * (`lib/objectives`) and the consuming planner (`lib/plan`) agree on the type
  * without the consumer importing the controller. Mirrors the inline union on
  * `DevicePlanDevice.deferredReleaseIntent`.
  */
-export type DeferredReleaseIntent = 'ev_resume' | 'ev_pause' | 'shed_release';
+export type DeferredReleaseIntent = 'binary_restore' | 'binary_release' | 'shed_release';
 
 /**
  * The per-cycle planner context the smart-task controller needs to decorate the

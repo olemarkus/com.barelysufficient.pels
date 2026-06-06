@@ -5,7 +5,7 @@ future implementation work. The soft temperature slice is current shipped behavi
 deadline hours, make cap-off temperature devices visible during planned hours, keep them idle
 outside planned hours, and raise the planned setpoint to the deadline target while still respecting
 normal budget, capacity, priority, cooldown, and admission gates. EV pause/resume admission and
-actuation are also shipped (`admission.ts` emits `ev_resume`/`ev_pause` intents;
+actuation are also shipped (`admission.ts` emits `binary_restore`/`binary_release` intents;
 `lib/executor/binaryExecutor.ts` applies them) — see `notes/ev-ready-by/README.md` for the user-
 facing slice. Multi-objective contention and richer step escalation remain future work in this
 note. Energy-based milestones and the
@@ -152,8 +152,8 @@ and applied at the planner boundary in `PlanBuilder.buildPlanSnapshotWithTimings
 Cap-on temperature admission and contention across multiple deferred objectives are still future
 work. EV pause/resume admission shipped — see `notes/ev-ready-by/README.md`.
 
-EV admission has one additional safety gate beyond the temperature path: `ev_resume` intents
-are dropped by `planBuilder.attachDeferredEvCommandIntents` when
+EV admission has one additional safety gate beyond the temperature path: `binary_restore` intents
+are dropped by `planBuilder.attachDeferredReleaseIntents` when
 `context.powerFreshnessState !== 'fresh'`. Stale whole-home power readings can't justify
 restoring an EV charger — the gate is one-way (pause is always safe and isn't gated).
 
@@ -673,8 +673,8 @@ depends on the per-device Power-limit control setting:
   that allowance and PELS should pause charging. It should not restart charging unless a new or
   changed deadline target, boost, or manual/user action asks for it. Implementation:
   `applyDeferredObjectiveAdmission` (`lib/plan/admission/deferredObjective.ts`) emits a terminal
-  `ev_pause` for `satisfied + ev_soc + controllable=false`. The `planExecutor` cap-off branch
-  routes that intent through `applyDeferredEvCommand`; the executor short-circuits when the
+  `binary_release` for `satisfied + ev_soc + controllable=false`. The `planExecutor` cap-off branch
+  routes that intent through `applyDeferredBinaryCommand`; the executor short-circuits when the
   charger is already paused, so per-cycle re-emission is idempotent.
 
 ## Energy Calculation
@@ -1144,7 +1144,7 @@ cover their cases (or because the slice they belong to is deferred):
 write-time `deadlineAtMs` resolution, price-feature-gated soft-temperature admission/target
 overrides, the horizon scheduler (budget-friendly buckets with deadline margin), stepped
 `expectedStepId` selection, EV admission (disconnect invalidation, fresh-progress gating,
-`satisfied`→pause on cap-off via `applyDeferredEvCommand`), deadline auto-disable on pass
+`satisfied`→pause on cap-off via `applyDeferredBinaryCommand`), deadline auto-disable on pass
 (`statusTransitions.ts`), and the Smart-tasks + per-device plan/history UI with public flow-card
 creation/clearing. The freshness doctrine — credit aged-out temperature (thermostats fall silent at
 setpoint) but require strictly-fresh EV SoC — lives in `lib/observer/observationFreshness.ts` and
