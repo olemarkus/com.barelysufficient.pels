@@ -4,6 +4,7 @@ import { formatHomeyEnergyError, type HomeyEnergyApi } from '../utils/homeyEnerg
 import { normalizeError } from '../utils/errorUtils';
 import { fetchHomeyEnergyCurrency, fetchHomeyEnergyPricesForDate } from './homeyEnergyPriceFetch';
 import { getFlowPricePayload } from './flowPriceUtils';
+import type { StructuredDebugEmitter } from '../logging/logger';
 
 export type HomeyEnergyFetchResult = Awaited<ReturnType<typeof fetchHomeyEnergyPricesForDate>>;
 
@@ -39,15 +40,15 @@ export const shouldUseHomeyEnergyCache = (params: {
   info: HomeyEnergyDateInfo;
   forceRefresh: boolean;
   getSettingValue: (key: string) => unknown;
-  logDebug: (...args: unknown[]) => void;
+  debugStructured: StructuredDebugEmitter;
   updateCombinedPrices: () => void;
 }): boolean => {
-  const { info, forceRefresh, getSettingValue, logDebug, updateCombinedPrices } = params;
+  const { info, forceRefresh, getSettingValue, debugStructured, updateCombinedPrices } = params;
   if (forceRefresh) return false;
   const cachedToday = getFlowPricePayload(getSettingValue(HOMEY_PRICES_TODAY));
   const cachedTomorrow = getFlowPricePayload(getSettingValue(HOMEY_PRICES_TOMORROW));
   if (cachedToday?.dateKey === info.todayKey && cachedTomorrow?.dateKey === info.tomorrowKey) {
-    logDebug('Homey prices: Using cached data');
+    debugStructured({ event: 'homey_energy_cache_used' });
     updateCombinedPrices();
     return true;
   }
@@ -96,10 +97,10 @@ export const logHomeyEnergyPayloadStatus = (params: {
   info: HomeyEnergyDateInfo;
   results: HomeyEnergyResults;
   log: (...args: unknown[]) => void;
-  logDebug: (...args: unknown[]) => void;
+  debugStructured: StructuredDebugEmitter;
   errorLog?: (...args: unknown[]) => void;
 }): void => {
-  const { info, results, log, logDebug, errorLog } = params;
+  const { info, results, log, debugStructured, errorLog } = params;
   if (!results.todayResult.payload) {
     const details = {
       date: info.todayKey,
@@ -120,7 +121,7 @@ export const logHomeyEnergyPayloadStatus = (params: {
     };
     const localHour = getZonedParts(new Date(), info.timeZone).hour;
     if (localHour < 13) {
-      logDebug('Homey prices: Tomorrow data not available yet (before 13:00)', details);
+      debugStructured({ event: 'homey_energy_tomorrow_pending', ...details });
     } else if (errorLog) {
       errorLog('Homey prices: Missing tomorrow price data after 13:00', details);
     } else {
@@ -133,10 +134,10 @@ export const updateHomeyEnergyCurrency = async (params: {
   energyApi: HomeyEnergyApi;
   results: HomeyEnergyResults;
   setSetting: (key: string, value: unknown) => void;
-  logDebug: (...args: unknown[]) => void;
+  debugStructured: StructuredDebugEmitter;
   errorLog?: (...args: unknown[]) => void;
 }): Promise<void> => {
-  const { energyApi, results, setSetting, logDebug, errorLog } = params;
+  const { energyApi, results, setSetting, debugStructured, errorLog } = params;
   let currency: string | null = null;
   try {
     currency = await fetchHomeyEnergyCurrency(energyApi);
@@ -145,7 +146,7 @@ export const updateHomeyEnergyCurrency = async (params: {
     if (errorLog) {
       errorLog('Homey prices: Failed to fetch currency', normalizedError);
     } else {
-      logDebug('Homey prices: Failed to fetch currency', normalizedError);
+      debugStructured({ event: 'homey_energy_currency_fetch_failed', error: normalizedError.message });
     }
   }
   const priceUnit = currency || results.todayResult.priceUnit || results.tomorrowResult.priceUnit;

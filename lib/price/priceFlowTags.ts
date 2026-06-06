@@ -2,6 +2,7 @@ import type Homey from 'homey';
 import { buildPriceExport, priceExportFingerprint } from './priceExportBuilder';
 import { readPriceStore } from './priceStore';
 import type { PriceExportV1 } from '../../packages/contracts/src/priceExport';
+import type { StructuredDebugEmitter } from '../logging/logger';
 
 type HomeyLike = Homey.App['homey'];
 type FlowTokenLike = { setValue: (value: unknown) => Promise<unknown> };
@@ -20,7 +21,7 @@ export type PriceFlowTagPublisherDeps = {
   homey: HomeyLike;
   requestPriceRefetch: () => void;
   log: (...args: unknown[]) => void;
-  logDebug: (...args: unknown[]) => void;
+  debugStructured: StructuredDebugEmitter;
   error: (...args: unknown[]) => void;
 };
 
@@ -58,7 +59,11 @@ export class PriceFlowTagPublisher {
     if (!exportValue) return;
     const fingerprint = priceExportFingerprint(exportValue);
     if (fingerprint === this.lastFingerprint) {
-      this.deps.logDebug(`PriceFlowTagPublisher: publish(${reason}) — unchanged fingerprint, skipping`);
+      this.deps.debugStructured({
+        event: 'price_flow_tag_publish_skipped',
+        reason,
+        cause: 'unchanged_fingerprint',
+      });
       return;
     }
     const json = JSON.stringify(exportValue);
@@ -80,9 +85,11 @@ export class PriceFlowTagPublisher {
         );
       }
     } else {
-      this.deps.logDebug(
-        `PriceFlowTagPublisher: publish(${reason}) — tag not initialized, firing trigger only`,
-      );
+      this.deps.debugStructured({
+        event: 'price_flow_tag_publish_trigger_only',
+        reason,
+        cause: 'tag_not_initialized',
+      });
     }
     let triggerFireOk = false;
     try {
@@ -134,6 +141,6 @@ export class PriceFlowTagPublisher {
     }
     const card = flow.getTriggerCard(PRICE_LIST_UPDATED_TRIGGER_ID);
     await card.trigger({ prices_json: json });
-    this.deps.logDebug(`PriceFlowTagPublisher: fired price_list_updated (${reason})`);
+    this.deps.debugStructured({ event: 'price_list_updated_fired', reason });
   }
 }

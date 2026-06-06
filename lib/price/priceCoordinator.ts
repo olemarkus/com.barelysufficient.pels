@@ -7,7 +7,7 @@ import { shouldCatchUpCombinedPricesRotation } from './priceServiceCombined';
 import { COMBINED_PRICES, PRICE_OPTIMIZATION_ENABLED } from '../utils/settingsKeys';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
 import { getNextLocalDayStartUtcMs } from '../utils/dateUtils';
-import type { Logger as PinoLogger } from '../logging/logger';
+import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import { getLogger } from '../logging/logger';
 
 const moduleLogger = getLogger('price/coordinator');
@@ -25,7 +25,7 @@ export type PriceCoordinatorDeps = {
   getCurrentPriceLevel: () => PriceLevel;
   rebuildPlanFromCache: (reason: string) => Promise<void>;
   log: (...args: unknown[]) => void;
-  logDebug: (...args: unknown[]) => void;
+  debugStructured: StructuredDebugEmitter;
   error: (...args: unknown[]) => void;
   structuredLog?: PinoLogger;
   onCombinedPricesUpdated?: (reason: string) => void;
@@ -51,7 +51,7 @@ export class PriceCoordinator {
     this.priceService = new PriceService(
       deps.homey,
       deps.log,
-      deps.logDebug,
+      deps.debugStructured,
       deps.error,
       deps.getHomeyEnergyApi,
     );
@@ -98,11 +98,11 @@ export class PriceCoordinator {
       getThresholdPercent: () => this.deps.homey.settings.get('price_threshold_percent') ?? 25,
       getMinDiffOre: () => this.deps.homey.settings.get('price_min_diff_ore') ?? 0,
       rebuildPlan: async (reason) => {
-        this.deps.logDebug(`Price optimization: triggering plan rebuild (${reason})`);
+        this.deps.debugStructured({ event: 'price_optimization_plan_rebuild_triggered', reason });
         await this.deps.rebuildPlanFromCache(reason);
       },
       log: (...args: unknown[]) => this.deps.log(...args),
-      logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
+      debugStructured: this.deps.debugStructured,
       error: (...args: unknown[]) => this.deps.error(...args),
       structuredLog: this.deps.structuredLog,
     });
@@ -233,12 +233,12 @@ export class PriceCoordinator {
     // A persisted V1 shape must run through the readPriceStore migration first;
     // rebuilding it here would clobber that path. Leave it for migration.
     if (isCombinedPricesV1(existingPayload)) {
-      this.deps.logDebug('Combined prices payload is legacy V1; deferring to V1→V2 migration');
+      this.deps.debugStructured({ event: 'combined_prices_catchup_deferred', reason: 'legacy_v1_payload' });
       return;
     }
     const timeZone = this.deps.homey.clock.getTimezone();
     if (!shouldCatchUpCombinedPricesRotation(existingPayload, new Date(), timeZone)) return;
-    this.deps.logDebug('Combined prices payload predates today, rotating on boot');
+    this.deps.debugStructured({ event: 'combined_prices_catchup_rotating', reason: 'payload_predates_today' });
     // Boot must not abort if rotation throws; mirror the midnight timer's guard.
     try {
       this.updateCombinedPrices();

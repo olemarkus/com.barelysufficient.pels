@@ -1306,7 +1306,7 @@ describe('Price optimization', () => {
     getCurrentPriceLevel: () => PriceLevel.NORMAL,
     rebuildPlanFromCache: async () => undefined,
     log: () => undefined,
-    logDebug: () => undefined,
+    debugStructured: () => undefined,
     error: () => undefined,
     ...overrides,
   });

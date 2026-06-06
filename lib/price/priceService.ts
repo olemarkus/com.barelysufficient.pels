@@ -33,11 +33,11 @@ import {
 } from './homeyEnergyRefresh';
 import {
   buildCombinedHourlyPricesFromPayloads,
-  describeFlowSlotChange,
   purgeStaleFlowPriceSlots,
   storeFlowPriceData as storeFlowPriceDataHelper,
   type FlowSlotChange,
 } from './priceServiceFlowHelpers';
+import type { StructuredDebugEmitter } from '../logging/logger';
 import type { FlowPricePayload } from './flowPriceUtils';
 import {
   buildCombinedPricePayload,
@@ -66,7 +66,7 @@ export default class PriceService {
   constructor(
     private homey: Homey.App['homey'],
     private log: (...args: unknown[]) => void,
-    private logDebug: (...args: unknown[]) => void,
+    private debugStructured: StructuredDebugEmitter,
     private errorLog?: (...args: unknown[]) => void,
     private getHomeyEnergyApi?: () => HomeyEnergyApi | null,
   ) { }
@@ -126,22 +126,22 @@ export default class PriceService {
       now: today,
     });
     if (cacheDecision.areaChanged) {
-      this.logDebug(`Spot prices: Price area changed from ${cachedArea} to ${priceArea}, ignoring cache`);
+      this.debugStructured({ event: 'spot_price_area_changed', fromArea: cachedArea, toArea: priceArea });
     }
     if (cacheDecision.useCache) {
-      this.logDebug(`Spot prices: Using cached data (${existingPrices?.length ?? 0} entries including today)`);
+      this.debugStructured({ event: 'spot_price_cache_used', entryCount: existingPrices?.length ?? 0 });
       this.updateCombinedPrices();
       return true;
     }
     if (cacheDecision.shouldFetchTomorrow) {
-      this.logDebug('Spot prices: Refreshing to fetch tomorrow\'s prices (after 12:15 UTC)');
+      this.debugStructured({ event: 'spot_price_refresh_for_tomorrow' });
     }
     return false;
   }
   async refreshSpotPrices(forceRefresh = false): Promise<void> {
     const scheme = this.getPriceScheme();
     if (scheme === 'flow') {
-      this.logDebug('Spot prices: Skipping refresh (flow price scheme active)');
+      this.debugStructured({ event: 'spot_price_refresh_skipped', reason: 'flow_scheme_active' });
       return;
     }
     if (scheme === 'homey') {
@@ -167,14 +167,14 @@ export default class PriceService {
       date: today,
       priceArea,
       log: this.log,
-      logDebug: this.logDebug,
+      debugStructured: this.debugStructured,
       errorLog: this.errorLog,
     });
     const tomorrowPrices = await fetchSpotPricesForDate({
       date: addDays(today, 1),
       priceArea,
       log: this.log,
-      logDebug: this.logDebug,
+      debugStructured: this.debugStructured,
       errorLog: this.errorLog,
     });
     const allPrices = [...todayPrices, ...tomorrowPrices];
@@ -189,7 +189,7 @@ export default class PriceService {
   }
   async refreshGridTariffData(forceRefresh = false): Promise<void> {
     if (this.getPriceScheme() !== 'norway') {
-      this.logDebug('Grid tariff: Skipping refresh (non-Norway price scheme active)');
+      this.debugStructured({ event: 'grid_tariff_refresh_skipped', reason: 'non_norway_scheme' });
       return;
     }
     const settings = this.getGridTariffSettings();
@@ -208,7 +208,7 @@ export default class PriceService {
     const today = getDateKeyInTimeZone(todayDate, timeZone);
     const existingData = this.getSettingValue('nettleie_data') as
       Array<{ dateKey?: string; datoId?: string; source?: unknown }> | null;
-    if (!forceRefresh && shouldUseGridTariffCache(existingData, today, this.logDebug)) {
+    if (!forceRefresh && shouldUseGridTariffCache(existingData, today, this.debugStructured)) {
       this.updateCombinedPrices();
       return;
     }
@@ -290,7 +290,7 @@ export default class PriceService {
     // below would otherwise clobber good today/tomorrow prices on a transient
     // read (boot catch-up, midnight rotation, every caller). Keep the cache.
     if (combinedRebuildLostActionableEntries(existingPayload, payload, now, timeZone)) {
-      this.logDebug('Combined prices rebuild lost today/tomorrow entries, keeping cache (skipping settings update)');
+      this.debugStructured({ event: 'combined_prices_rebuild_lost_entries_kept_cache' });
       this.emitRealtime('prices_updated', existingPayload);
       return;
     }
@@ -298,10 +298,7 @@ export default class PriceService {
       const nextLastFetched = getCombinedPayloadLastFetched(payload);
       const previousLastFetched = getCombinedPayloadLastFetched(existingPayload);
       const shouldUpdateLastFetched = Boolean(nextLastFetched && nextLastFetched !== previousLastFetched);
-      const unchangedMessage = shouldUpdateLastFetched
-        ? 'Combined prices unchanged, updating lastFetched timestamp'
-        : 'Combined prices unchanged, skipping settings update';
-      this.logDebug(unchangedMessage);
+      this.debugStructured({ event: 'combined_prices_unchanged', lastFetchedUpdated: shouldUpdateLastFetched });
       if (shouldUpdateLastFetched) this.homey.settings.set(COMBINED_PRICES, payload);
       this.emitRealtime('prices_updated', payload);
       return;
@@ -355,7 +352,10 @@ export default class PriceService {
       tomorrowPayload: getFlowPricePayload(this.getSettingValue(tomorrowSettingKey)),
     });
     purge.changes.forEach((change: FlowSlotChange) => {
-      this.logDebug(describeFlowSlotChange(label, change));
+      this.debugStructured({
+        event: 'flow_price_slot_rotated', priceSource: label,
+        slot: change.slot, action: change.action, from: change.from,
+      });
     });
     if (purge.changes.some((c) => c.slot === 'today' || c.action === 'promoted_to_today')) {
       this.homey.settings.set(todaySettingKey, purge.todayPayload);
@@ -386,7 +386,7 @@ export default class PriceService {
       timeZone,
       todayPayload,
       tomorrowPayload,
-      logDebug: this.logDebug,
+      debugStructured: this.debugStructured,
       label,
     });
   }
@@ -416,7 +416,7 @@ export default class PriceService {
       kind,
       raw,
       timeZone: this.homey.clock.getTimezone(),
-      logDebug: this.logDebug,
+      debugStructured: this.debugStructured,
       setSetting: (key, value) => this.homey.settings.set(key, value),
       updateCombinedPrices: () => this.updateCombinedPrices(),
     });
@@ -499,7 +499,7 @@ export default class PriceService {
 
   private async refreshHomeyEnergyPrices(forceRefresh: boolean): Promise<void> {
     if (this.getPriceScheme() !== 'homey') {
-      this.logDebug('Homey prices: Skipping refresh (price scheme not homey)');
+      this.debugStructured({ event: 'homey_energy_refresh_skipped', reason: 'non_homey_scheme' });
       return;
     }
     const energyApi = this.getHomeyEnergyApi?.();
@@ -512,7 +512,7 @@ export default class PriceService {
       info,
       forceRefresh,
       getSettingValue: (key) => this.getSettingValue(key),
-      logDebug: this.logDebug,
+      debugStructured: this.debugStructured,
       updateCombinedPrices: () => this.updateCombinedPrices(),
     })) {
       return;
@@ -530,7 +530,7 @@ export default class PriceService {
       info,
       results,
       log: this.log,
-      logDebug: this.logDebug,
+      debugStructured: this.debugStructured,
       errorLog: this.errorLog,
     });
 
@@ -538,7 +538,7 @@ export default class PriceService {
       energyApi,
       results,
       setSetting: (key, value) => this.homey.settings.set(key, value),
-      logDebug: this.logDebug,
+      debugStructured: this.debugStructured,
       errorLog: this.errorLog,
     });
     const stored = storeHomeyEnergyPayloads({
