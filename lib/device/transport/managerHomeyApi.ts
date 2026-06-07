@@ -136,12 +136,14 @@ export function writeErrorToStderr(message: string, error: unknown): void {
 
 export function logDeviceTransportRuntimeError(
   logger: Pick<Logger, 'error'>,
-  message: string,
+  payload: { event: string } & Record<string, unknown>,
   error: unknown,
 ): void {
   const normalizedError = normalizeError(error);
-  logger.error(message, normalizedError);
-  writeErrorToStderr(message, normalizedError);
+  logger.error({ ...payload, err: normalizedError });
+  // Mirror to stderr as a last-resort sink in case the structured logger
+  // destination is unavailable; use the event name as the human-readable tag.
+  writeErrorToStderr(payload.event, normalizedError);
 }
 
 function isHomeyAppWrapper(value: unknown): value is { homey: Homey.App['homey'] } {

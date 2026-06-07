@@ -52,7 +52,11 @@ export async function fetchDevicesWithFallback(params: {
       }
     }
   }
-  logDeviceTransportRuntimeError(logger, 'Device fetch failed after all retries', lastError);
+  logDeviceTransportRuntimeError(
+    logger,
+    { event: 'device_fetch_failed_after_retries', attempts: DEVICE_FETCH_RETRY_DELAYS_MS.length + 1 },
+    lastError,
+  );
   throw lastError;
 }
 
@@ -115,7 +119,10 @@ export async function fetchLivePowerReport(params: {
   try {
     const report = await getEnergyLiveReport();
     if (report === null) {
-      logger.error('Energy live report unavailable: REST client not initialized');
+      logger.error({
+        event: 'energy_live_report_unavailable',
+        reasonCode: 'rest_client_not_initialized',
+      });
       return { byDeviceId: {}, homePowerW: null, deviceCount: 0 };
     }
     const byDeviceId = extractLivePowerWattsByDeviceId(report);
@@ -129,7 +136,7 @@ export async function fetchLivePowerReport(params: {
     });
     return { byDeviceId, homePowerW, deviceCount };
   } catch (error) {
-    logDeviceTransportRuntimeError(logger, 'Energy live report fetch failed', error);
+    logDeviceTransportRuntimeError(logger, { event: 'energy_live_report_fetch_failed' }, error);
     return { byDeviceId: {}, homePowerW: null, deviceCount: 0 };
   }
 }
