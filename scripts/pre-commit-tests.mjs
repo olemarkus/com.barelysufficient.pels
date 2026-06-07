@@ -24,6 +24,12 @@ const runtimeLaneConfigs = [
   ['unit', 'vitest.config.unit.mts'],
   ['integration', 'vitest.config.integration.mts'],
   ['e2e', 'vitest.config.e2e.mts'],
+  // Timezone lane: `test/tz/**` lives only in the tz config's `include`, so the
+  // unit/integration/e2e `related` runs find no tz tests and a tz-only change
+  // would otherwise commit without exercising the DST suites. Runs them once in
+  // the host TZ here (Oslo-gated specs self-skip); CI's timezone-tests job still
+  // does the full multi-TZ sweep via run-timezone-tests.mjs.
+  ['tz', 'vitest.config.tz.mts'],
 ];
 
 const runtimePrefixes = [
