@@ -1,3 +1,4 @@
+import type { BinaryControlCapabilityId } from '../../contracts/src/types.js';
 import {
   buildComparableDeviceReason,
   formatDeviceReasonUserFacing,
@@ -40,7 +41,7 @@ export type DeviceOverviewSnapshot = {
   currentState?: string;
   plannedState?: string;
   controlModel?: 'temperature_target' | 'binary_power' | 'stepped_load';
-  controlCapabilityId?: 'onoff' | 'evcharger_charging';
+  controlCapabilityId?: BinaryControlCapabilityId;
   evChargingState?: string;
   measuredPowerKw?: number;
   expectedPowerKw?: number;

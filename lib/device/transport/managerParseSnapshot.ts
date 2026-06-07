@@ -7,7 +7,6 @@ import {
   toCapabilityTimestampMs,
   type DeviceCapabilityMap,
 } from '../managerControl';
-import type { FlowReportedCapabilityId } from './flowReportedCapabilities';
 
 const moduleLogger = getLogger('device/parse-snapshot');
 
@@ -21,7 +20,10 @@ export function resolveParsedControlState(params: {
   capabilityObj: DeviceCapabilityMap;
   evCharging: TargetDeviceSnapshot['evCharging'];
   evChargingState: TargetDeviceSnapshot['evChargingState'];
-  flowBackedCapabilityIds: FlowReportedCapabilityId[];
+  // Only a membership test happens below, so the narrow `FlowReportedCapabilityId[]`
+  // is unnecessary here — accept any capability-id list. Lets `controlCapabilityId`
+  // (an open `BinaryControlCapabilityId`) be tested without a type assertion.
+  flowBackedCapabilityIds: readonly string[];
   currentOn?: boolean;
 }): {
   resolvedOn?: boolean;
@@ -52,7 +54,8 @@ export function resolveParsedControlState(params: {
       evChargingState,
       currentOn,
     }),
-    canSetControl: controlCapabilityId && flowBackedCapabilityIds.includes(controlCapabilityId)
+    canSetControl: controlCapabilityId
+      && flowBackedCapabilityIds.includes(controlCapabilityId)
       ? true
       : getCanSetControl(controlCapabilityId, controlWriteCapabilityId, capabilityObj),
   };

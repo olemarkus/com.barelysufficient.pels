@@ -1,4 +1,4 @@
-import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
+import type { BinaryControlCapabilityId, SteppedLoadProfile } from '../../packages/contracts/src/types';
 import type { SteppedLoadStepRequestResult } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 
 /**
@@ -20,7 +20,7 @@ export type DeviceCommand =
     kind: 'binary';
     deviceId: string;
     /** Which binary control to drive — a control outcome, not an SDK channel. */
-    control: 'onoff' | 'evcharger_charging';
+    control: BinaryControlCapabilityId;
     desired: boolean;
     /** Producer-resolved: true → route via the Flow trigger, not setCapability. */
     flowBacked: boolean;
@@ -60,7 +60,7 @@ export type ActuatorTransport = {
   applyDeviceTargets: (targets: Record<string, number>, contextInfo?: string) => Promise<void>;
   triggerFlowBackedBinaryControl: (
     deviceId: string,
-    capabilityId: 'onoff' | 'evcharger_charging',
+    capabilityId: BinaryControlCapabilityId,
     desired: boolean,
   ) => Promise<void>;
   requestSteppedLoadStep?: (params: {

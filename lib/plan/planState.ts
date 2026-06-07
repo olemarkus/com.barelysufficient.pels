@@ -1,3 +1,4 @@
+import type { BinaryControlCapabilityId } from '../../packages/contracts/src/types';
 import { RESTORE_COOLDOWN_MS } from './planConstants';
 import type { PowerFreshnessState } from './planPowerFreshness';
 import type {
@@ -113,7 +114,7 @@ export type PlanEngineState = {
   pendingSheds: Set<string>;
   pendingRestores: Set<string>;
   pendingBinaryCommands: Record<string, {
-    capabilityId: 'onoff' | 'evcharger_charging';
+    capabilityId: BinaryControlCapabilityId;
     desired: boolean;
     startedMs: number;
     pendingMs?: number;

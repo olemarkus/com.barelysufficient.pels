@@ -22,6 +22,7 @@
  * `isPlanActivelyConverging` emptiness probe; no consumer reads or
  * evicts it in place.
  */
+import type { BinaryControlCapabilityId } from '../../packages/contracts/src/types';
 import {
   type PendingBinaryCommand,
   type PendingObservationSource,
@@ -273,7 +274,7 @@ export type PendingBinaryLiveDevice = {
 };
 
 export type PendingBinaryObservationSnapshot = {
-  capabilityId: 'onoff' | 'evcharger_charging';
+  capabilityId: BinaryControlCapabilityId;
   observedValue: boolean;
   observedAtMs: number;
   observedCapabilityIds: string[];

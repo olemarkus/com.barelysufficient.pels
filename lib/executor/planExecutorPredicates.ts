@@ -1,3 +1,4 @@
+import type { BinaryControlCapabilityId } from '../../packages/contracts/src/types';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { DevicePlan } from '../plan/planTypes';
 import type { PlanEngineState } from '../plan/planState';
@@ -108,7 +109,7 @@ export function hasEquivalentSteppedLoadCommandHold(
 }
 
 export function resolveFlowBackedBinaryTriggerCardId(
-  capabilityId: 'onoff' | 'evcharger_charging',
+  capabilityId: BinaryControlCapabilityId,
   desired: boolean,
 ): string {
   if (capabilityId === 'evcharger_charging') {

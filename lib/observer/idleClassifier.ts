@@ -22,7 +22,7 @@ import {
 import { isFiniteNumber } from '../utils/appTypeGuards';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import { emitGated, type DeviationSurprise } from '../logging/deviationGate';
-import type { PlannedDeviceState } from '../../packages/contracts/src/types';
+import type { BinaryControlCapabilityId, PlannedDeviceState } from '../../packages/contracts/src/types';
 import { formatIdleClassificationCopy } from '../../packages/shared-domain/src/idleClassificationCopy';
 
 /** Subset of DevicePlanDevice used by the classifier — keeps coupling thin. */
@@ -36,7 +36,7 @@ export type IdleClassifierDeviceInput = {
   currentTemperature?: number;
   currentTarget: number | null;
   plannedState: PlannedDeviceState;
-  controlCapabilityId?: 'onoff' | 'evcharger_charging';
+  controlCapabilityId?: BinaryControlCapabilityId;
 };
 
 export type IdleClassifier = {

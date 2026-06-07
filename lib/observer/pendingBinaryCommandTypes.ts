@@ -9,12 +9,14 @@
  *    confirmation window?". Plan/executor consumers read it through this
  *    helper without owning the policy.
  *
- * Plan/executor consume these types and freshness helpers via direct
- * import — observer is a leaf so the consumer direction is allowed.
+ * Plan/executor consume these types and freshness helpers via a direct
+ * dependency — observer is a leaf so the consumer direction is allowed.
  *
  * Constants are inlined here rather than imported from `lib/plan/` so
  * observer remains a leaf (cruiser rule `no-observer-to-peer`).
  */
+
+import type { BinaryControlCapabilityId } from '../../packages/contracts/src/types';
 
 /**
  * Observation sources that can settle a pending command. Identical to
@@ -43,7 +45,7 @@ export type PendingBinaryCommandRestoreSource = 'shed_state' | 'current_plan';
 export type PendingBinaryCommandActuationMode = 'plan' | 'reconcile';
 
 export type PendingBinaryCommand = {
-  capabilityId: 'onoff' | 'evcharger_charging';
+  capabilityId: BinaryControlCapabilityId;
   desired: boolean;
   startedMs: number;
   pendingMs?: number;

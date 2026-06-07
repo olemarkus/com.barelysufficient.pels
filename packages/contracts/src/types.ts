@@ -100,9 +100,18 @@ export type DeviceStateOfChargeSnapshot = {
     invalidatedAtMs?: number;
 };
 
+/**
+ * A Homey capability id used to drive a device's binary (on/off) control.
+ * Intentionally an open string: the *concrete* known binary-control capabilities
+ * (`onoff`, `evcharger_charging`, …) are resolved at the device/producer layer
+ * (`lib/device/deviceActionProjection.ts`); planner/executor/transport consumers
+ * only ever carry the resolved id and must not branch on which one it is.
+ */
+export type BinaryControlCapabilityId = string;
+
 export type BinaryControlObservation = {
     valid: true;
-    capabilityId: 'onoff' | 'evcharger_charging';
+    capabilityId: BinaryControlCapabilityId;
     observedValue: boolean;
     observedCapabilityIds: string[];
     observedAtMs: number;
@@ -126,7 +135,7 @@ export type DeviceDescriptor = {
     communicationModel?: 'local' | 'cloud';
     zone?: string;
     controlModel?: DeviceControlModel;
-    controlCapabilityId?: 'onoff' | 'evcharger_charging';
+    controlCapabilityId?: BinaryControlCapabilityId;
     controlAdapter?: DeviceControlAdapterSnapshot;
     controlWriteCapabilityId?: string;
     controlObservationCapabilityId?: string;

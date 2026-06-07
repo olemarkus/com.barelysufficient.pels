@@ -1,5 +1,5 @@
 import type { DeviceObservation } from '../device/deviceObservation';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { BinaryControlCapabilityId, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import { getLogger } from '../logging/logger';
 import type { BinaryControlPlan } from '../device/deviceActionProjection';
@@ -198,7 +198,7 @@ export function formatEvSnapshot(snapshot?: TargetDeviceSnapshot): string {
 
 export function isFlowBackedBinaryControl(
   snapshot: TargetDeviceSnapshot | undefined,
-  capabilityId: 'onoff' | 'evcharger_charging',
+  capabilityId: BinaryControlCapabilityId,
 ): boolean {
   return Array.isArray(snapshot?.flowBackedCapabilityIds)
     && snapshot.flowBackedCapabilityIds.includes(capabilityId);

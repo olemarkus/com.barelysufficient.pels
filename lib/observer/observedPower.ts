@@ -6,6 +6,7 @@
  * carried the value.
  */
 import type {
+  BinaryControlCapabilityId,
   DeviceControlModel,
   RestorePowerSource,
   SteppedLoadProfile,
@@ -22,7 +23,7 @@ export type ObservedPowerInput = {
   expectedPowerKw?: number;
   planningPowerKw?: number;
   powerKw?: number;
-  controlCapabilityId?: 'onoff' | 'evcharger_charging';
+  controlCapabilityId?: BinaryControlCapabilityId;
   controlModel?: DeviceControlModel;
   steppedLoadProfile?: SteppedLoadProfile;
 };
