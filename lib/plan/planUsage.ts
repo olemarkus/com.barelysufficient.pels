@@ -1,3 +1,4 @@
+import type { BinaryControlCapabilityId } from '../../packages/contracts/src/types';
 import { getHighestKnownPowerKw, getMeasuredDrawKw } from '../observer/observedPower';
 import { isObservedOff } from '../observer/observedState';
 import { isFiniteNumber } from '../utils/appTypeGuards';
@@ -7,7 +8,7 @@ type UsageDevice = {
   budgetExempt?: boolean;
   binaryControl?: { on: boolean };
   currentState?: string;
-  controlCapabilityId?: 'onoff' | 'evcharger_charging';
+  controlCapabilityId?: BinaryControlCapabilityId;
   plannedState?: string;
   measuredPowerKw?: number;
   expectedPowerKw?: number;

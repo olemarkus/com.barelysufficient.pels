@@ -1,4 +1,5 @@
 import type {
+  BinaryControlCapabilityId,
   DeviceControlAdapterSnapshot,
   DeviceControlModel,
   DeviceStateOfChargeSnapshot,
@@ -86,7 +87,7 @@ export type PlanInputDeviceBase = {
   lastStepCommandIssuedAt?: number;
   stepCommandRetryCount?: number;
   nextStepCommandRetryAtMs?: number;
-  controlCapabilityId?: 'onoff' | 'evcharger_charging';
+  controlCapabilityId?: BinaryControlCapabilityId;
   controlAdapter?: DeviceControlAdapterSnapshot;
   targetPowerConfig?: TargetPowerSteppedLoadConfig;
   priority?: number;

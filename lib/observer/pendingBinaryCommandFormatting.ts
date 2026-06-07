@@ -1,10 +1,12 @@
 /**
  * Pure formatting helper used by observer's pending-binary-command sync
  * logger; surfaced as its own module so plan-side log builders can
- * import the same labels without dragging in the rest of observer.
+ * reuse the same labels without dragging in the rest of observer.
  */
+import type { BinaryControlCapabilityId } from '../../packages/contracts/src/types';
+
 export function formatPendingBinaryObservedValue(
-  capabilityId: 'onoff' | 'evcharger_charging',
+  capabilityId: BinaryControlCapabilityId,
   value: boolean | string | undefined,
 ): string {
   if (capabilityId === 'evcharger_charging') {

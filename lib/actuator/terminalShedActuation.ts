@@ -1,5 +1,6 @@
 import { getLogger } from '../logging/logger';
 import type {
+  BinaryControlCapabilityId,
   SteppedLoadProfile,
 } from '../../packages/contracts/src/types';
 import {
@@ -40,7 +41,7 @@ export type ShedActuationCommand =
   // `flowBacked` devices are controlled via a Homey Flow trigger, NOT a direct
   // capability write (a `setCapability` would silently no-op and leave the load
   // on) — the producer resolves which from the snapshot's flowBackedCapabilityIds.
-  | { kind: 'binary_off'; capabilityId: 'onoff' | 'evcharger_charging'; flowBacked: boolean }
+  | { kind: 'binary_off'; capabilityId: BinaryControlCapabilityId; flowBacked: boolean }
   | { kind: 'set_temperature'; targetValue: number }
   | {
     kind: 'set_step';

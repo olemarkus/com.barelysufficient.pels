@@ -43,6 +43,7 @@
  * `lib/observer/**`.
  */
 import type {
+  BinaryControlCapabilityId,
   RestorePowerSource,
   SteppedLoadProfile,
   SteppedLoadStep,
@@ -83,7 +84,7 @@ export type ResidualKwShedSteppedDevice = {
    */
   hasKnownEffectiveStep: boolean;
   measuredPowerKw?: number;
-  controlCapabilityId?: 'onoff' | 'evcharger_charging';
+  controlCapabilityId?: BinaryControlCapabilityId;
 };
 
 export type ResidualKwShedDeviceInput = {

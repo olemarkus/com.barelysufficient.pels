@@ -13,7 +13,7 @@ import {
   selectShedActuationRecorder,
   shedActuationStampsCapacityMarkers,
 } from './lifecycleReleaseRecording';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { BinaryControlCapabilityId, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type {
   ExecutableBinaryIntent,
   ExecutableObservedDeviceState,
@@ -233,7 +233,7 @@ const recordDirectBinaryShedActuation = (
   params: {
     deviceId: string;
     name: string;
-    capabilityId: 'onoff' | 'evcharger_charging';
+    capabilityId: BinaryControlCapabilityId;
     reason?: string;
     lifecycleRelease?: boolean;
     now: number;

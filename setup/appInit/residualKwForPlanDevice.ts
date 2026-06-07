@@ -19,6 +19,7 @@
  * dep-cruiser rule).
  */
 import type {
+  BinaryControlCapabilityId,
   DecoratedDeviceSnapshot,
   RestorePowerSource,
 } from '../../packages/contracts/src/types';
@@ -47,7 +48,7 @@ export type ResidualKwForPlanDeviceShedBehavior = {
 
 export function buildResidualKwForPlanDevice(params: {
   device: DecoratedDeviceSnapshot;
-  controlCapabilityId?: 'onoff' | 'evcharger_charging';
+  controlCapabilityId?: BinaryControlCapabilityId;
   shedBehavior: ResidualKwForPlanDeviceShedBehavior;
   // Resolved once by the caller (`toPlanDevice`) from the observer projection so
   // every freshness consumer in a single plan-device build shares one source of
@@ -77,7 +78,7 @@ export function buildResidualKwForPlanDevice(params: {
 
 function toRestoreSteppedLoad(
   device: DecoratedDeviceSnapshot,
-  controlCapabilityId: 'onoff' | 'evcharger_charging' | undefined,
+  controlCapabilityId: BinaryControlCapabilityId | undefined,
   observationStale: boolean,
 ): ResidualKwRestoreSteppedDevice | undefined {
   if (
@@ -122,7 +123,7 @@ function toResidualShedBehavior(
 
 function toResidualSteppedLoad(
   device: DecoratedDeviceSnapshot,
-  controlCapabilityId: 'onoff' | 'evcharger_charging' | undefined,
+  controlCapabilityId: BinaryControlCapabilityId | undefined,
 ): ResidualKwShedSteppedDevice | undefined {
   if (device.controlModel !== 'stepped_load' || !device.steppedLoadProfile
     || device.steppedLoadProfile.model !== 'stepped_load') {

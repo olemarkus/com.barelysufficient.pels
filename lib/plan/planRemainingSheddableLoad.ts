@@ -1,4 +1,8 @@
-import type { SteppedLoadCommandStatus, SteppedLoadProfile } from '../../packages/contracts/src/types';
+import type {
+  BinaryControlCapabilityId,
+  SteppedLoadCommandStatus,
+  SteppedLoadProfile,
+} from '../../packages/contracts/src/types';
 import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
 import { getPrimaryTargetCapability, normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
 import { isObservedOff } from '../observer/observedState';
@@ -40,7 +44,7 @@ type RemainingSheddableBaseDevice = RemainingSheddablePowerFields & RemainingShe
   binaryControl?: { on: boolean };
   currentState?: string;
   budgetExempt: boolean;
-  controlCapabilityId?: 'onoff' | 'evcharger_charging';
+  controlCapabilityId?: BinaryControlCapabilityId;
   observationStale?: boolean;
 };
 
@@ -113,7 +117,7 @@ type RemainingSheddableSourceDevice = RemainingSheddablePowerFields & RemainingS
   binaryControl?: { on: boolean };
   currentState?: string;
   budgetExempt?: boolean;
-  controlCapabilityId?: 'onoff' | 'evcharger_charging';
+  controlCapabilityId?: BinaryControlCapabilityId;
   observationStale?: boolean;
 };
 

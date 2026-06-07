@@ -6,6 +6,7 @@ import type {
 } from '../../packages/planner-types/src/planInputDevice';
 import type { PowerFreshnessState } from './planPowerFreshness';
 import type {
+  BinaryControlCapabilityId,
   DeviceControlModel,
   DeviceControlAdapterSnapshot,
   DeviceStateOfChargeSnapshot,
@@ -233,7 +234,7 @@ type DevicePlanDeviceBase = {
   lastStepCommandIssuedAt?: number;
   stepCommandRetryCount?: number;
   nextStepCommandRetryAtMs?: number;
-  controlCapabilityId?: 'onoff' | 'evcharger_charging';
+  controlCapabilityId?: BinaryControlCapabilityId;
   controlAdapter?: DeviceControlAdapterSnapshot;
   targetPowerConfig?: TargetPowerSteppedLoadConfig;
   // EV fields (`evChargingState`, `evBoost`, `evBoostActive`, `stateOfCharge`)

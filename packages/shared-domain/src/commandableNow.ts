@@ -8,6 +8,7 @@
  * browser-safe projection of already-resolved observed fields; the reason
  * strings it returns live alongside it in `commandableNowReason.ts`.
  */
+import type { BinaryControlCapabilityId } from '../../contracts/src/types.js';
 import { resolveEvBlockReason } from './commandableNowReason';
 
 /**
@@ -69,7 +70,7 @@ export const isEvChargerNotResumableForDevice = (dev: { evChargingState?: string
 
 export type CommandableNowResolveInput = {
   deviceClass?: string;
-  controlCapabilityId?: 'onoff' | 'evcharger_charging';
+  controlCapabilityId?: BinaryControlCapabilityId;
   evChargingState?: string;
   available?: boolean;
 };

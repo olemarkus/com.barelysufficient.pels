@@ -16,6 +16,7 @@
  *    narrows automatically via structural compatibility.
  */
 import type {
+  BinaryControlCapabilityId,
   DeviceControlModel,
   DeviceStateOfChargeSnapshot,
   EvBoostConfig,
@@ -66,7 +67,7 @@ export const TEMPERATURE_BOOST_EXIT_MARGIN_C = 2;
 
 
 export type BinaryControlPlan = {
-  capabilityId: 'onoff' | 'evcharger_charging';
+  capabilityId: BinaryControlCapabilityId;
   isEv: boolean;
   canSet: boolean;
 };
@@ -88,7 +89,7 @@ type ObservationFreshness = {
 
 export type EvBoostResolveInput = SteppedLoadIdentity & ControllableFlags & ObservationFreshness & {
   deviceClass?: string;
-  controlCapabilityId?: 'onoff' | 'evcharger_charging';
+  controlCapabilityId?: BinaryControlCapabilityId;
   evChargingState?: string;
   forceBoostActive?: boolean;
   evBoost?: EvBoostConfig;
@@ -180,7 +181,7 @@ export function getEvRestoreBlockReason(snapshot?: TargetDeviceSnapshot): string
 }
 
 type BinaryCapabilityResolveInput = {
-  controlCapabilityId?: 'onoff' | 'evcharger_charging';
+  controlCapabilityId?: BinaryControlCapabilityId;
   capabilities?: string[];
 };
 
@@ -358,7 +359,7 @@ export type ShedIntentBehaviorInput = {
 export type ShedIntentResolveInput = {
   shedBehavior: ShedIntentBehaviorInput;
   controllable: boolean;
-  controlCapabilityId?: 'onoff' | 'evcharger_charging';
+  controlCapabilityId?: BinaryControlCapabilityId;
   controlModel?: DeviceControlModel;
   steppedLoadProfile?: SteppedLoadProfile;
   primaryTarget?: TargetCapabilitySnapshot | null;

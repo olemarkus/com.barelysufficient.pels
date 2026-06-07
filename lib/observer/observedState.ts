@@ -15,12 +15,16 @@
  * stale-off rule from slice 2's `getCurrentDrawKw`).
  */
 import { getSteppedLoadStep, isSteppedLoadOffStep } from '../utils/deviceControlProfiles';
-import type { DeviceControlModel, SteppedLoadProfile } from '../../packages/contracts/src/types';
+import type {
+  BinaryControlCapabilityId,
+  DeviceControlModel,
+  SteppedLoadProfile,
+} from '../../packages/contracts/src/types';
 
 export type ObservedCurrentStateInput = {
   // Present iff binary control; absence is the old fabricated `currentOn: true`.
   binaryControl?: { on: boolean };
-  controlCapabilityId?: 'onoff' | 'evcharger_charging';
+  controlCapabilityId?: BinaryControlCapabilityId;
   observationStale?: boolean;
   controlModel?: DeviceControlModel;
   steppedLoadProfile?: SteppedLoadProfile;
