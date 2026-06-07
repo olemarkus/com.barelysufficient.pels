@@ -409,6 +409,16 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
 (`notes/personas.md`) it serves. Items that can't name all three are maintainability/
 cosmetic chores — do them in passing or drop them; don't park them here.*
 
+- [ ] **Share one target-power preset enumeration across the two shared-domain modules.**
+      *Persona:* maintainer (`notes/personas.md`) adding a future target-power preset.
+      *Hypothesis:* `isEvTargetPowerPreset` (`packages/shared-domain/src/evTargetPowerConfig.ts`) and
+      `resolveTargetPowerPresetPhaseCount` (`packages/shared-domain/src/targetPowerStepping.ts`) each
+      independently enumerate `ev_charger_1_phase`/`ev_charger_3_phase`, so a third preset would have to
+      be added in lockstep or phase-count resolution silently diverges from preset validity.
+      *Why it's needed:* collapses the duplication onto one source (e.g. drive phase-count off
+      `isEvTargetPowerPreset` + a single preset→phaseCount map) before a third preset lands.
+      Source: pels-layering-guardian on the EV-stepped `wattsPerAmp` chunk, 2026-06-07.
+
 - [ ] **Fold the same-file `capacityNote` literal onto `STARVATION_WAITING_FOR_POWER_COPY`.**
       *Persona:* maintainer / support (`notes/personas.md`) reading log/UI copy parity.
       *Hypothesis:* `capacityNote: 'Waiting for available power.'` in `planStarvation.ts` re-types the

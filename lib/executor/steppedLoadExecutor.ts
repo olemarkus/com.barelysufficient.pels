@@ -26,6 +26,7 @@ import {
   type SteppedLoadStepRequestResult,
   type SteppedLoadStepRequestTransport,
 } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
+import { resolveTargetPowerWattsPerAmp } from '../../packages/shared-domain/src/targetPowerStepping';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import { getLogger } from '../logging/logger';
 
@@ -650,10 +651,8 @@ const resolvePlanningCurrentA = (
   action: ExecutableSteppedLoadDevice,
   planningPowerW: number,
 ): number => {
-  if (action.targetPowerConfig?.enabled === false) return 0;
-  if (action.targetPowerConfig?.preset === 'ev_charger_1_phase') return planningPowerW / 230;
-  if (action.targetPowerConfig?.preset === 'ev_charger_3_phase') return planningPowerW / (230 * 3);
-  return 0;
+  const wattsPerAmp = resolveTargetPowerWattsPerAmp(action.targetPowerConfig);
+  return wattsPerAmp ? planningPowerW / wattsPerAmp : 0;
 };
 
 const logSteppedLoadRestoreSkip = (
