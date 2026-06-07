@@ -661,14 +661,4 @@ export default tseslint.config(
       'max-lines': ['warn', { max: 710, skipBlankLines: true, skipComments: true }],
     },
   },
-  {
-    // Extracted target-command actuation is one cohesive retry/confirmation
-    // pipeline (setpoint write, temporarily-unavailable handling, confirmation)
-    // that stays local after the executor split. Companion to the
-    // `steppedLoadExecutor` / `binaryExecutor` Bucket-B entries.
-    files: ['lib/executor/targetExecutor.ts'],
-    rules: {
-      'max-lines': ['warn', { max: 560, skipBlankLines: true, skipComments: true }],
-    },
-  },
 );

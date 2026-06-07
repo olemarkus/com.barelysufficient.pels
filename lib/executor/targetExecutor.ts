@@ -1,5 +1,4 @@
 import { normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
-import type { ObservedDeviceState } from '../../packages/contracts/src/types';
 import type { ExecutableTargetCommand, ExecutableTargetUpdate } from './executablePlan';
 import {
   getPendingTargetCommandDecision,
@@ -7,15 +6,17 @@ import {
   recordFailedPendingTargetCommandAttempt,
   recordPendingTargetCommandAttempt,
 } from '../plan/planTargetControl';
-import type {
-  PendingTargetCommandStatus,
-  PendingTargetObservationSource,
-} from '../plan/planTypes';
-import type { PlanEngineState } from '../plan/planState';
+import type { PendingTargetCommandStatus } from '../plan/planTypes';
 import type { PlanActuationMode } from './executorTypes';
-import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
-import type { Actuator } from '../actuator/deviceActuator';
 import { getLogger } from '../logging/logger';
+import type { PlanExecutorTargetContext } from './targetExecutorContext';
+import {
+  logPendingTargetRetry,
+  syncPendingTargetCommandAfterActuation,
+} from './targetPendingCommand';
+
+// Re-exported so existing importers keep resolving the context type from targetExecutor.
+export type { PlanExecutorTargetContext };
 
 const logger = getLogger('executor/target');
 
@@ -27,47 +28,6 @@ type PlanActionHandleResult = {
 type TargetCommandDispatchResult =
   | { applied: false; reason: 'skipped' | 'failed' }
   | { applied: true; attemptType: 'send' | 'retry' };
-
-type TargetCommandPostActuationState = {
-  latestObservedValueAfterActuation: unknown;
-  pendingStillExists: boolean;
-};
-
-export type PlanExecutorTargetContext = {
-  state: PlanEngineState;
-  /**
-   * Observed-state read seam (stage 5): the target executor reads observed
-   * capability values (`targets`) from the observer projection rather than the
-   * raw transport snapshot. Narrowed to the only field it consumes. `undefined`
-   * before the first observation for the device lands.
-   */
-  getObservedState: (deviceId: string) => Pick<ObservedDeviceState, 'targets'> | undefined;
-  /**
-   * Single write seam: the setpoint write routes through here
-   * (`actuator.apply({ kind: 'target', ... })`).
-   */
-  actuator: Actuator;
-  operatingMode: string;
-  syncLivePlanStateAfterTargetActuation?: (source: PendingTargetObservationSource) => boolean | void;
-  logTargetRetryComparison?: (params: {
-    deviceId: string;
-    name: string;
-    targetCap: string;
-    desired: number;
-    observedValue?: unknown;
-    observedSource?: string;
-    retryCount: number;
-    skipContext: 'plan' | 'shedding' | 'overshoot';
-  }) => Promise<void> | void;
-  recordShedActuation: (deviceId: string, name: string, now: number) => void;
-  recordRestoreActuation: (deviceId: string, name: string, now: number) => void;
-  recordActivationAttemptStarted: (deviceId: string, name: string, now: number) => void;
-  deviceDiagnostics?: DeviceDiagnosticsRecorder;
-};
-
-const waitForImmediateObservedState = async (): Promise<void> => {
-  await Promise.resolve();
-};
 
 const resolveTargetCommandReasonCode = (params: {
   mode: PlanActuationMode;
@@ -475,104 +435,3 @@ const executeTargetCommandDispatch = async (
   };
 };
 
-const syncPendingTargetCommandAfterActuation = async (
-  ctx: PlanExecutorTargetContext,
-  params: {
-    deviceId: string;
-    name: string;
-    targetCap: string;
-    desired: number;
-  },
-): Promise<TargetCommandPostActuationState> => {
-  const { deviceId, name, targetCap, desired } = params;
-  await waitForImmediateObservedState();
-  ctx.syncLivePlanStateAfterTargetActuation?.('realtime_capability');
-  const latestObservedValueAfterActuation = getLatestObservedTargetValue(ctx, deviceId, targetCap);
-  let pendingStillExists = hasMatchingPendingTargetCommand(ctx, deviceId, targetCap, desired);
-  if (pendingStillExists && Object.is(latestObservedValueAfterActuation, desired)) {
-    // eslint-disable-next-line no-param-reassign, functional/immutable-data -- Shared executor state update.
-    delete ctx.state.pendingTargetCommands[deviceId];
-    pendingStillExists = false;
-    ctx.syncLivePlanStateAfterTargetActuation?.('realtime_capability');
-    logger.debug({
-      event: 'executor_target_log_debug',
-      msg: `Capacity: confirmed ${targetCap} for ${name} at ${desired}°C immediately after actuation`,
-    });
-  }
-  return {
-    latestObservedValueAfterActuation,
-    pendingStillExists,
-  };
-};
-
-const getLatestObservedTargetValue = (
-  ctx: PlanExecutorTargetContext,
-  deviceId: string,
-  targetCap: string,
-): unknown => ctx.getObservedState(deviceId)
-  ?.targets?.find((entry) => entry.id === targetCap)
-  ?.value;
-
-const hasMatchingPendingTargetCommand = (
-  ctx: PlanExecutorTargetContext,
-  deviceId: string,
-  targetCap: string,
-  desired: number,
-): boolean => ctx.state.pendingTargetCommands[deviceId]?.capabilityId === targetCap
-    && ctx.state.pendingTargetCommands[deviceId]?.desired === desired;
-
-const logPendingTargetRetry = async (
-  ctx: PlanExecutorTargetContext,
-  params: {
-    deviceId: string;
-    name: string;
-    targetCap: string;
-    desired: number;
-    retryCount: number;
-    retryDelaySec: number;
-    observedValue?: unknown;
-    observedSource?: PendingTargetObservationSource;
-    skipContext: 'plan' | 'shedding' | 'overshoot';
-  },
-): Promise<void> => {
-  const {
-    deviceId,
-    name,
-    targetCap,
-    desired,
-    retryCount,
-    retryDelaySec,
-    observedValue,
-    observedSource,
-    skipContext,
-  } = params;
-  logger.info({ event: 'executor_target_log', msg: `Target mismatch still present for ${name}; observed `
-    + `${formatObservedTarget(observedValue)} `
-    + `via ${observedSource ?? 'unknown'}, retrying ${targetCap} to ${desired}°C` });
-  logger.debug({ event: 'executor_target_log_debug', msg: `Capacity: retried ${targetCap} for ${name} to ${desired}°C `
-    + `(retry ${retryCount}, next retry in ${retryDelaySec}s)` });
-  try {
-    await ctx.logTargetRetryComparison?.({
-      deviceId,
-      name,
-      targetCap,
-      desired,
-      observedValue,
-      observedSource,
-      retryCount,
-      skipContext,
-    });
-  } catch (error) {
-    logger.error({
-      event: 'executor_target_error',
-      msg: `Failed to log target retry comparison for ${name}`,
-      err: error,
-    });
-  }
-};
-
-function formatObservedTarget(value: unknown): string {
-  if (typeof value === 'number' && Number.isFinite(value)) return `${value}°C`;
-  if (value === null || value === undefined) return 'unknown';
-  return String(value);
-}
