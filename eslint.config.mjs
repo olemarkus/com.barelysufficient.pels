@@ -681,14 +681,4 @@ export default tseslint.config(
       'max-lines': ['warn', { max: 560, skipBlankLines: true, skipComments: true }],
     },
   },
-  {
-    // Daily-budget service keeps day rollover, persisted state, and forecast in
-    // one flow (they share the day-bucket clock). Only ~14 effective lines over
-    // the floor — closest Bucket-A shrink candidate; named in TODO.md for a
-    // forecast/state extraction. Capped tightly until then.
-    files: ['lib/dailyBudget/dailyBudgetService.ts'],
-    rules: {
-      'max-lines': ['warn', { max: 525, skipBlankLines: true, skipComments: true }],
-    },
-  },
 );
