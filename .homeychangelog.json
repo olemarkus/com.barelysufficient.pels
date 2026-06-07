@@ -397,5 +397,8 @@
   },
   "2.11.3": {
     "en": "Fixed a bug in the smart task planner. Also includes various UI tweaks."
+  },
+  "2.11.4": {
+    "en": "Device pages now show an Activity log of recent actions PELS took. Plan widget layout improvements. Various stability fixes."
   }
 }
