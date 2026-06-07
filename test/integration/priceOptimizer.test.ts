@@ -30,7 +30,6 @@ const makeDeps = (overrides: {
     getMinDiffOre: () => 5,
     rebuildPlan,
     debugStructured: vi.fn(),
-    error: vi.fn(),
     structuredLog,
   };
   return { deps, rebuildPlan, structuredLog };

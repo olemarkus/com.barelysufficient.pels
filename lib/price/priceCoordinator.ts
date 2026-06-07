@@ -7,6 +7,7 @@ import { shouldCatchUpCombinedPricesRotation } from './priceServiceCombined';
 import { COMBINED_PRICES, PRICE_OPTIMIZATION_ENABLED } from '../utils/settingsKeys';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
 import { getNextLocalDayStartUtcMs } from '../utils/dateUtils';
+import { normalizeError } from '../utils/errorUtils';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import { getLogger } from '../logging/logger';
 
@@ -108,7 +109,6 @@ export class PriceCoordinator {
         await this.deps.rebuildPlanFromCache(reason);
       },
       debugStructured: this.deps.debugStructured,
-      error: (...args: unknown[]) => this.deps.error(...args),
       structuredLog: this.deps.structuredLog,
     });
   }
@@ -171,7 +171,10 @@ export class PriceCoordinator {
       try {
         this.updateCombinedPrices();
       } catch (error) {
-        this.deps.error('Midnight price rotation failed', error);
+        (this.deps.structuredLog ?? moduleLogger).error({
+          event: 'midnight_price_rotation_failed',
+          err: normalizeError(error),
+        });
       } finally {
         this.scheduleNextMidnightRotation();
       }
@@ -248,7 +251,10 @@ export class PriceCoordinator {
     try {
       this.updateCombinedPrices();
     } catch (error) {
-      this.deps.error('Boot combined-prices catch-up rotation failed', error);
+      (this.deps.structuredLog ?? moduleLogger).error({
+        event: 'combined_prices_catchup_rotation_failed',
+        err: normalizeError(error),
+      });
     }
   }
 
@@ -290,12 +296,11 @@ export class PriceCoordinator {
 
   private reportPriceFetchFailure(priceSource: 'spot' | 'grid_tariff', error: unknown): Error {
     const err = error instanceof Error ? error : new Error(String(error));
-    const label = priceSource === 'spot' ? 'spot prices' : 'grid tariff data';
-    this.deps.error(`Failed to refresh ${label}`, err);
     (this.deps.structuredLog ?? moduleLogger).error({
       event: 'price_fetch_failed',
       priceSource,
       reasonCode: resolveErrorReasonCode(err),
+      err,
     });
     return err;
   }
