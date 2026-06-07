@@ -28,6 +28,5 @@ export function createPriceFlowTagPublisher(ctx: AppContext): PriceFlowTagPublis
     requestPriceRefetch: () => ctx.priceCoordinator?.updateCombinedPrices(),
     log: (...args: unknown[]) => ctx.log(...args),
     debugStructured: ctx.getStructuredDebugEmitter('price', 'price'),
-    error: (...args: unknown[]) => ctx.error(...args),
   });
 }

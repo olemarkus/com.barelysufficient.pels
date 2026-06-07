@@ -1,8 +1,12 @@
 import type Homey from 'homey';
 import { buildPriceExport, priceExportFingerprint } from './priceExportBuilder';
 import { readPriceStore } from './priceStore';
+import { normalizeError } from '../utils/errorUtils';
 import type { PriceExportV1 } from '../../packages/contracts/src/priceExport';
 import type { StructuredDebugEmitter } from '../logging/logger';
+import { getLogger } from '../logging/logger';
+
+const moduleLogger = getLogger('price/flowTags');
 
 type HomeyLike = Homey.App['homey'];
 type FlowTokenLike = { setValue: (value: unknown) => Promise<unknown> };
@@ -22,7 +26,6 @@ export type PriceFlowTagPublisherDeps = {
   requestPriceRefetch: () => void;
   log: (...args: unknown[]) => void;
   debugStructured: StructuredDebugEmitter;
-  error: (...args: unknown[]) => void;
 };
 
 export class PriceFlowTagPublisher {
@@ -36,7 +39,7 @@ export class PriceFlowTagPublisher {
     if (this.initialized) return;
     const flow = this.deps.homey.flow as { createToken?: CreateTokenFn };
     if (typeof flow?.createToken !== 'function') {
-      this.deps.error('PriceFlowTagPublisher: homey.flow.createToken unavailable, skipping tag registration');
+      moduleLogger.error({ event: 'price_flow_tag_create_token_unavailable', tagId: PRICE_FLOW_TAG_ID });
       return;
     }
     try {
@@ -47,7 +50,11 @@ export class PriceFlowTagPublisher {
       });
       this.initialized = true;
     } catch (error) {
-      this.deps.error(`PriceFlowTagPublisher: failed to create token ${PRICE_FLOW_TAG_ID}`, error);
+      moduleLogger.error({
+        event: 'price_flow_tag_create_token_failed',
+        err: normalizeError(error),
+        tagId: PRICE_FLOW_TAG_ID,
+      });
     }
   }
 
@@ -79,10 +86,7 @@ export class PriceFlowTagPublisher {
         await this.setToken(json);
         tagWriteOk = true;
       } catch (error) {
-        this.deps.error(
-          `PriceFlowTagPublisher: publish(${reason}) tag write failed — will retry on next update`,
-          error,
-        );
+        moduleLogger.error({ event: 'price_flow_tag_write_failed', err: normalizeError(error), reason });
       }
     } else {
       this.deps.debugStructured({
@@ -96,10 +100,7 @@ export class PriceFlowTagPublisher {
       await this.fireTrigger(json, reason);
       triggerFireOk = true;
     } catch (error) {
-      this.deps.error(
-        `PriceFlowTagPublisher: publish(${reason}) trigger fire failed — will retry on next update`,
-        error,
-      );
+      moduleLogger.error({ event: 'price_flow_tag_trigger_fire_failed', err: normalizeError(error), reason });
     }
     // Only advance the fingerprint when both surfaces published cleanly —
     // otherwise the next publish would skip this payload on the failed
@@ -113,7 +114,7 @@ export class PriceFlowTagPublisher {
     try {
       return this.buildExport();
     } catch (error) {
-      this.deps.error('PriceFlowTagPublisher: failed to build price export', error);
+      moduleLogger.error({ event: 'price_flow_tag_build_export_failed', err: normalizeError(error) });
       return null;
     }
   }
