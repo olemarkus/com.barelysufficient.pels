@@ -108,6 +108,7 @@ import {
   PELS_MEASURE_STEP_CAPABILITY_ID,
   type SteppedLoadStepRequestResult,
 } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
+import { resolveTargetPowerPresetPhaseCount } from '../../packages/shared-domain/src/targetPowerStepping';
 import { isStateOfChargeCapabilityId } from './transport/stateOfCharge';
 import { applyDeviceCompatibilityMetadata } from './compatibility';
 import type { DeviceObservation } from './deviceObservation';
@@ -2523,14 +2524,6 @@ function isRawBinarySettlementEvidenceAllowed(
     capabilityId: string,
 ): boolean {
     return capabilityId !== 'evcharger_charging' || snapshot.evChargingState === undefined;
-}
-
-function resolveTargetPowerPresetPhaseCount(
-    preset: string | undefined,
-): number | undefined {
-    if (preset === 'ev_charger_1_phase') return 1;
-    if (preset === 'ev_charger_3_phase') return 3;
-    return undefined;
 }
 
 function summarizeSnapshotRefreshMetrics(snapshot: TargetDeviceSnapshot[]): SnapshotRefreshMetrics {
