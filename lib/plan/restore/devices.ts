@@ -1,11 +1,10 @@
 import { getSteppedLoadHighestStep } from '../../utils/deviceControlProfiles';
 import { PLAN_REASON_CODES, type DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
-import { resolveEvBlockReason } from '../../../packages/shared-domain/src/commandableNowReason';
+import { resolveEvBlockReasonForDevice } from '../../../packages/shared-domain/src/commandableNow';
 import type { DevicePlanDevice } from '../planTypes';
 import { isObservedOff, isObservedOn } from '../../observer/observedState';
 import { sortByPriorityAsc, sortByPriorityDesc } from '../planSort';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
-import { isEvPlanDevice } from '../planEvDevice';
 
 export const NEUTRAL_STARTUP_HOLD_REASON: DeviceReason = { code: PLAN_REASON_CODES.neutralStartupHold };
 
@@ -109,13 +108,11 @@ export function getOnDevices(
 
 export function getEvRestoreStateBlockReason(dev: DevicePlanDevice): string | null {
   if (dev.controlCapabilityId !== 'evcharger_charging') return null;
-  // `controlCapabilityId === 'evcharger_charging'` already proves this is an EV
-  // device; `isEvPlanDevice` re-establishes that for the compiler so evChargingState
-  // narrows off the EV-omitted base. The gateless EV-state → reason switch lives in
-  // commandableNowReason (one source of truth, shared with resolveCommandableNow +
-  // the device-projection snapshot gate); a non-narrowed dev (unreachable here)
-  // resolves to state_unknown via `undefined`.
-  return resolveEvBlockReason(isEvPlanDevice(dev) ? dev.evChargingState : undefined);
+  // Delegate EV-state → reason to the shared device-shaped resolver (one source of
+  // truth, also behind resolveCommandableNow). The controlCapabilityId gate above
+  // already proves EV, so the resolver's own isEvDevice gate passes. This consumer
+  // never touches the raw charging-state string — no plug-state re-derivation here.
+  return resolveEvBlockReasonForDevice(dev);
 }
 
 export function getInactiveReason(dev: DevicePlanDevice): DeviceReason | null {

@@ -339,11 +339,6 @@ live-walk screenshots.*
       `functional/immutable-data`) and targeted `eslint-disable-next-line` suppressions were out of scope.)
       Proposal: `notes/complexity-cleanup/god-file-policy.md`. The shrink-to-<=500 follow-ups for the
       Bucket-A-adjacent files are split out below.
-- [ ] Shrink `lib/dailyBudget/dailyBudgetService.ts` back under the 500-LOC floor (currently ~514
-      effective, capped at 525). It mixes day-rollover, persisted state, and forecast in one flow; the
-      cleanest cut is to extract the forecast computation (or the persisted-state load/save) into a
-      sibling module. Closest Bucket-A candidate from the max-lines-exemption sweep — small enough that
-      a focused extraction lands under 500. Persona: contributor. Files: `lib/dailyBudget/dailyBudgetService.ts`.
 - [ ] Shrink the executor Bucket-B files toward <=500 by splitting their dispatch tables from their
       decision logic: `lib/executor/binaryExecutor.ts` (~565, split the shed/restore/EV-deferred dispatch
       table from the decision branches), `lib/executor/targetExecutor.ts` (~550, split the retry/confirmation
