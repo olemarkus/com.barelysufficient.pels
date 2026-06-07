@@ -8,6 +8,5 @@ export const createDeviceDiagnosticsService = (ctx: AppContext): DeviceDiagnosti
     isDebugEnabled: () => ctx.debugLoggingTopics.has('diagnostics'),
     structuredLog: ctx.getStructuredLogger('diagnostics'),
     debugStructured: ctx.getStructuredDebugEmitter('diagnostics', 'diagnostics'),
-    error: (...args: unknown[]) => ctx.error(...args),
   })
 );
