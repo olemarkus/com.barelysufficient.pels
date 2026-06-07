@@ -4,6 +4,7 @@ import {
   resolveCommandableNow,
 } from '../../lib/device/deviceActionProjection';
 import { buildResidualKwForPlanDevice } from './residualKwForPlanDevice';
+import { resolveEvCommandability } from '../../packages/shared-domain/src/commandableNow';
 import type { DecoratedDeviceSnapshot, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { AppContext } from '../../lib/app/appContext';
 import {
@@ -40,6 +41,11 @@ export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot): 
       available: device.available,
     },
   });
+  // Resolve the observed EV plug-state into the flat decisions the planner
+  // consumes, ONCE, here at the producer seam. The observer owns the raw
+  // `evChargingState` (`ObservedDeviceState`); it is stripped from the plan
+  // device below so no plan/objective consumer can re-derive plug-state.
+  const evCommandability = resolveEvCommandability(device);
   const canSetControlResolved = resolveCanSetControl({
     controlCapabilityId: device.controlCapabilityId,
     capabilities: device.capabilities,
@@ -61,8 +67,12 @@ export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot): 
   // pair. The descriptor (`TargetDeviceSnapshot`) keeps the profile as a plain
   // optional (out of scope for this slice), so `device.steppedLoadProfile` is
   // read directly here.
+  // Strip the observer-owned raw `evChargingState` off the spread so it never
+  // rides onto the plan device; the resolved `evCommandability` replaces it.
+  const { evChargingState: _evChargingState, ...deviceFields } = device;
   return withSteppedDiscriminant({
-    ...device,
+    ...deviceFields,
+    ...(evCommandability !== undefined ? { evCommandability } : {}),
     // The step-command/planning cluster used to ride in on the `...device`
     // spread when it lived on `TargetDeviceSnapshot`. It now originates on the
     // decoration carrier (`DecoratedDeviceSnapshot`); copy each field

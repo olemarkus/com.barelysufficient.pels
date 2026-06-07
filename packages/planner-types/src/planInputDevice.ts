@@ -4,6 +4,7 @@ import type {
   DeviceControlModel,
   DeviceStateOfChargeSnapshot,
   EvBoostConfig,
+  EvCommandabilityResolution,
   RestorePowerSource,
   SteppedLoadCommandStatus,
   SteppedLoadProfile,
@@ -53,13 +54,16 @@ type NonSteppedPlanInputKind = {
  * (`lib/plan/planEvDevice.ts`) adds onto whichever stepped variant the device
  * is. The fields are OMITTED from `PlanInputDeviceBase`, so an un-narrowed read
  * is a hard compile error; every field is optional because the producer does
- * not guarantee any of them (snapshot-sourced `evChargingState` is absent on a
- * genuine EV cold start; `evBoost`/`stateOfCharge` only when configured/
- * reported). The plan-input side has no `evBoostActive` (resolved only on the
- * output `DevicePlanDevice`).
+ * not guarantee any of them (`evCommandability` is absent on non-EV devices;
+ * `evBoost`/`stateOfCharge` only when configured/reported). The plan-input side
+ * has no `evBoostActive` (resolved only on the output `DevicePlanDevice`).
+ *
+ * The raw observed `evChargingState` is NOT carried here: the observer owns it
+ * (`ObservedDeviceState`), and the producer resolves it once into the flat
+ * `evCommandability` decisions the planner consumes.
  */
 export type EvPlanInputKind = {
-  evChargingState?: string;
+  evCommandability?: EvCommandabilityResolution;
   evBoost?: EvBoostConfig;
   stateOfCharge?: DeviceStateOfChargeSnapshot;
 };
@@ -152,7 +156,7 @@ export type PlanInputDeviceBase = {
   // state. Absence is equivalent to the old fabricated `currentOn: true` for non-binary devices.
   binaryControl?: { on: boolean };
   currentState?: string;
-  // EV fields (`evChargingState`, `evBoost`, `stateOfCharge`) are split off onto
+  // EV fields (`evCommandability`, `evBoost`, `stateOfCharge`) are split off onto
   // the orthogonal `EvPlanInputKind` cluster; reach them through the
   // `isEvPlanDevice` guard (`lib/plan/planEvDevice.ts`).
   powerKw?: number;

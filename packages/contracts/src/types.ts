@@ -213,6 +213,27 @@ export type ObservedDeviceState = {
 };
 
 /**
+ * Producer-resolved EV plug-state classification carried on the planner device
+ * types. The planner is NOT the canonical source of EV state — the observer is
+ * (`ObservedDeviceState.evChargingState`) — so planner devices carry only the
+ * resolved decisions they need, materialized ONCE at the producer seam
+ * (`setup/appInit/toPlanDevice.ts`) from the observed `evChargingState`. Plan
+ * and objective consumers read these flat bits instead of re-touching the raw
+ * Homey plug-state string. Lives in `@pels/contracts` (the base type layer) so
+ * `@pels/shared-domain` (the resolver), `@pels/planner-types` (PlanInputDevice),
+ * and `lib/plan` (DevicePlanDevice) all import it without crossing a boundary.
+ * See `packages/shared-domain/src/commandableNow.ts:resolveEvCommandability`.
+ */
+export type EvCommandabilityResolution = {
+    /** EV block-reason string: `null` when commandable, else the reason. */
+    blockReason: string | null;
+    /** `plugged_out` / `plugged_in_discharging` — no creditable charging session. */
+    sessionInactive: boolean;
+    /** `plugged_in` — connected but the session cannot be resumed by command. */
+    chargerNotResumable: boolean;
+};
+
+/**
  * The normalized, Homey-free device snapshot transport produces. Expressed as
  * the intersection of its two concern surfaces so the full struct cannot drift
  * from the partition: adding a field forces a decision about whether it is a

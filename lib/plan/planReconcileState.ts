@@ -32,15 +32,16 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
         ?? (isSteppedLoadDevice(device) ? device.steppedLoadProfile : undefined);
       // EV is orthogonal to the stepped axis and its fields are off the base, so
       // the `...device` spread does not carry them at the type level. Re-source
-      // the cluster explicitly: `evChargingState` from the live snapshot (the
-      // pre-slice override), the remaining EV fields from the prior plan device
-      // (which `...device` previously carried wholesale), then regroup through
-      // `withEvDiscriminant`. Runtime values are byte-identical.
+      // the cluster explicitly: `evCommandability` from the live device (the
+      // producer-resolved decisions follow the freshest observation), the
+      // remaining EV fields from the prior plan device (which `...device`
+      // previously carried wholesale), then regroup through `withEvDiscriminant`.
+      // Runtime values are byte-identical.
       const evDevice = isEvPlanDevice(device) ? device : null;
       const evLive = isEvPlanDevice(live) ? live : null;
       return withSteppedDiscriminant(withEvDiscriminant({
         ...device,
-        evChargingState: evLive?.evChargingState,
+        evCommandability: evLive?.evCommandability,
         evBoost: evDevice?.evBoost,
         evBoostActive: evDevice?.evBoostActive,
         stateOfCharge: evDevice?.stateOfCharge,

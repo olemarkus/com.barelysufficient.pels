@@ -25,6 +25,16 @@ export function createPlanService(ctx: AppContext): PlanService {
     // plan-facing `PlanInputDevice`. Pending commands only exist for commanded
     // devices, so the unfiltered snapshot is a harmless superset.
     getSettleDevices: () => ctx.latestTargetSnapshot,
+    // EV charging state for the settings-UI read model comes from the observer
+    // (its canonical owner), not the plan device — the planner carries only the
+    // resolved `evCommandability`, not the raw observed plug-state. NB: do NOT
+    // fall back to `ctx.latestTargetSnapshot` here — that getter re-runs
+    // `getSnapshot()` + full re-decoration on every access, so a per-device lookup
+    // mid-serialization is O(n²) and re-entrant-unsafe (it breaks the SDK-boundary
+    // shed e2es). The observed projection is event-driven, so the chip can show
+    // generic copy for the first cold-start cycle before the projection fills;
+    // tracked as a P3 in TODO.md.
+    getObservedEvChargingState: (deviceId) => ctx.getObservedState(deviceId)?.evChargingState,
     getCapacityDryRun: () => ctx.capacityDryRun,
     loggers: {
       structuredLog: ctx.getStructuredLogger('plan'),

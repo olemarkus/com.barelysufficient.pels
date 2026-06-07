@@ -8,7 +8,7 @@
  * browser-safe projection of already-resolved observed fields; the reason
  * strings it returns live alongside it in `commandableNowReason.ts`.
  */
-import type { BinaryControlCapabilityId } from '../../contracts/src/types.js';
+import type { BinaryControlCapabilityId, EvCommandabilityResolution } from '../../contracts/src/types.js';
 import { resolveEvBlockReason } from './commandableNowReason';
 
 /**
@@ -45,8 +45,10 @@ export const isEvSessionInactive = (evChargingState?: string | null): boolean =>
  * `evChargingState` string themselves (the bug-magnet this de-couple removes:
  * consumers must never re-derive plug-state semantics). Caller scopes EV-ness.
  */
-export const isEvSessionInactiveForDevice = (dev: { evChargingState?: string | null }): boolean => (
-  isEvSessionInactive(dev.evChargingState)
+export const isEvSessionInactiveForDevice = (dev: EvStateConsumerInput): boolean => (
+  dev.evCommandability
+    ? dev.evCommandability.sessionInactive
+    : isEvSessionInactive(dev.evChargingState)
 );
 
 /**
@@ -64,14 +66,61 @@ export const isEvChargerNotResumable = (evChargingState?: string | null): boolea
 );
 
 /** Device-shaped form of {@link isEvChargerNotResumable}. Caller scopes EV-ness. */
-export const isEvChargerNotResumableForDevice = (dev: { evChargingState?: string | null }): boolean => (
-  isEvChargerNotResumable(dev.evChargingState)
+export const isEvChargerNotResumableForDevice = (dev: EvStateConsumerInput): boolean => (
+  dev.evCommandability
+    ? dev.evCommandability.chargerNotResumable
+    : isEvChargerNotResumable(dev.evChargingState)
 );
+
+/**
+ * Whether the EV plug-state blocks boost activation: every state PELS cannot
+ * drive toward a target — unplugged / discharging (no creditable session) OR
+ * `plugged_in` (connected but NOT resumable). The runtime boost-active gate
+ * (`resolveEvBoostActive`) reads this; the settings-UI boost panel renders the
+ * matching reason STRING via `resolveEvBoostBlockReason`. Both decide on the
+ * same plug-state set so the runtime never forces boost the UI says won't
+ * activate. Caller scopes EV-ness.
+ */
+export const isEvBoostBlockedByPlugState = (dev: EvStateConsumerInput): boolean => (
+  dev.evCommandability
+    ? dev.evCommandability.sessionInactive || dev.evCommandability.chargerNotResumable
+    : isEvSessionInactive(dev.evChargingState) || isEvChargerNotResumable(dev.evChargingState)
+);
+
+/**
+ * Consumer input for the device-shaped EV resolvers. Dual-shaped: planner
+ * call sites pass the producer-resolved `evCommandability` (raw `evChargingState`
+ * is absent — removed from the planner types); snapshot call sites pass the raw
+ * `evChargingState` (no `evCommandability`). The resolvers prefer the materialized
+ * value when present, mirroring the `isCommandableNow` dual-read.
+ */
+export type EvStateConsumerInput = {
+  evChargingState?: string | null;
+  evCommandability?: EvCommandabilityResolution;
+};
+
+/**
+ * Materialize the EV plug-state classification at the producer seam. Returns
+ * `undefined` for non-EV devices (the device-shaped consumers then short-circuit
+ * via their own `isEvDevice` gate or the `undefined` fallthrough). The single
+ * place the raw `evChargingState` is read on the way into the planner.
+ */
+export const resolveEvCommandability = (
+  dev: { deviceClass?: string; controlCapabilityId?: string; evChargingState?: string },
+): EvCommandabilityResolution | undefined => {
+  if (!isEvDevice(dev)) return undefined;
+  return {
+    blockReason: resolveEvBlockReason(dev.evChargingState),
+    sessionInactive: isEvSessionInactive(dev.evChargingState),
+    chargerNotResumable: isEvChargerNotResumable(dev.evChargingState),
+  };
+};
 
 export type CommandableNowResolveInput = {
   deviceClass?: string;
   controlCapabilityId?: BinaryControlCapabilityId;
   evChargingState?: string;
+  evCommandability?: EvCommandabilityResolution;
   available?: boolean;
 };
 
@@ -153,6 +202,11 @@ export function getCommandableNowReason(dev: CommandableNowConsumerInput): strin
  * otherwise preserve a real value).
  */
 export function resolveEvBlockReasonForDevice(dev: CommandableNowResolveInput): string | null {
+  // Prefer the producer-resolved classification (planner devices); its own
+  // `isEvDevice` gate at materialization means a present value is already
+  // EV-scoped. Snapshot-shaped callers carry no `evCommandability` and fall
+  // back to the raw read behind the `isEvDevice` gate.
+  if (dev.evCommandability) return dev.evCommandability.blockReason;
   if (!isEvDevice(dev)) return null;
   return resolveEvBlockReason(dev.evChargingState);
 }

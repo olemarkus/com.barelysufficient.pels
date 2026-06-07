@@ -1,5 +1,6 @@
 import type { DevicePlanDevice, PlanInputDevice, ShedAction } from './planTypes';
 import { withEvDiscriminant, withSteppedDiscriminant } from './planTypes';
+import type { EvCommandabilityResolution } from '../../packages/contracts/src/types';
 import { isEvPlanDevice } from './planEvDevice';
 import { resolveShedIntent } from '../device/deviceActionProjection';
 import { materializeShedSnapshotFields } from './planActionMaterialization';
@@ -347,11 +348,13 @@ function hasKnownPowerFields(dev: PlanInputDevice): boolean {
     || Number.isFinite(dev.powerKw);
 }
 
-// EV charging state lives on the orthogonal `EvKind` cluster (off the plan-input
-// base); narrow before reading so the access stays sound. Non-EV devices never
-// carry it, so the `undefined` fallback matches the prior direct read.
-function resolveEvChargingStateForPlan(dev: PlanInputDevice): string | undefined {
-  return isEvPlanDevice(dev) ? dev.evChargingState : undefined;
+// Producer-resolved EV commandability lives on the orthogonal `EvKind` cluster
+// (off the plan-input base); narrow before reading so the access stays sound.
+// Non-EV devices never carry it, so the `undefined` fallback is correct. The
+// value is materialized once upstream at `toPlanDevice`; here it is only
+// forwarded onto the output plan device.
+function resolveEvCommandabilityForPlan(dev: PlanInputDevice): EvCommandabilityResolution | undefined {
+  return isEvPlanDevice(dev) ? dev.evCommandability : undefined;
 }
 
 function buildBasePlanDevice(params: {
@@ -423,11 +426,11 @@ function buildBasePlanDevice(params: {
   const resolvedPlannedTarget = shedAction === 'set_temperature' && shedTemperature !== null
     ? shedTemperature
     : plannedTarget;
-  // EV charging state only exists on EV devices; `resolveEvChargingStateForPlan`
+  // EV commandability only exists on EV devices; `resolveEvCommandabilityForPlan`
   // gates the read on the EV narrowing so it stays sound against the EV-omitted
   // plan-input base. The value is regrouped onto the orthogonal `EvKind` cluster
   // below.
-  const evChargingState = resolveEvChargingStateForPlan(dev);
+  const evCommandability = resolveEvCommandabilityForPlan(dev);
   // The stepped + EV discriminants are set explicitly in the loose literal, then
   // re-tied: `withEvDiscriminant` regroups the EV cluster (orthogonal axis) and
   // `withSteppedDiscriminant` lands the result in one stepped union member.
@@ -462,7 +465,7 @@ function buildBasePlanDevice(params: {
     controlCapabilityId: dev.controlCapabilityId,
     controlAdapter: dev.controlAdapter,
     targetPowerConfig: dev.targetPowerConfig,
-    evChargingState,
+    evCommandability,
     reason: baseReason,
     zone: dev.zone || 'Unknown',
     controllable,

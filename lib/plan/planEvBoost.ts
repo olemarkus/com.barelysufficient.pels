@@ -33,7 +33,9 @@ export function emitEvBoostStateChange(params: {
     percent: typeof stateOfCharge?.percent === 'number' ? stateOfCharge.percent : null,
     boostBelowPercent: typeof boostBelowPercent === 'number' ? boostBelowPercent : null,
     status: stateOfCharge?.status ?? null,
-    evChargingState: ev?.evChargingState ?? null,
+    // Observer owns the raw `evChargingState`; the planner carries the resolved
+    // block reason. Log that instead (null when the charger is commandable).
+    evBlockReason: ev?.evCommandability?.blockReason ?? null,
     observationStale: dev.observationStale === true,
   });
 }

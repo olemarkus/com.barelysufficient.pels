@@ -1035,7 +1035,6 @@ describe('PlanService', () => {
       deviceClass: 'evcharger',
       controlCapabilityId: 'evcharger_charging',
       binaryControl: { on: false },
-      evChargingState: 'plugged_in_paused',
     }];
     const service = new PlanService({
       homey: {
@@ -1074,7 +1073,6 @@ describe('PlanService', () => {
         plannedState: 'keep',
         deviceClass: 'evcharger',
         controlCapabilityId: 'evcharger_charging',
-        evChargingState: 'plugged_in_paused',
         deferredReleaseIntent: 'binary_restore',
       },
     );
@@ -1085,7 +1083,6 @@ describe('PlanService', () => {
       devices: [
         expect.objectContaining({
           id: 'ev-1',
-          evChargingState: 'plugged_in_paused',
           deferredReleaseIntent: 'binary_restore',
         }),
       ],

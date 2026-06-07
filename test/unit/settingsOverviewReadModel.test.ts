@@ -111,6 +111,24 @@ describe('settingsOverviewReadModel', () => {
     });
   });
 
+  it('sources evChargingState from the observer dep, not the plan device', () => {
+    // The plan device carries the producer-resolved `evCommandability`, not the raw
+    // plug-state (materialized + stripped by the test builder, mirroring toPlanDevice).
+    const device = buildPlanDevice({
+      id: 'ev-1',
+      controlCapabilityId: 'evcharger_charging',
+      evChargingState: 'plugged_out',
+    });
+
+    // The observer is the canonical owner; the read model must surface ITS value.
+    expect(buildSettingsOverviewDeviceReadModel(device, {
+      getObservedEvChargingState: (id) => (id === 'ev-1' ? 'plugged_in_charging' : undefined),
+    }).evChargingState).toBe('plugged_in_charging');
+
+    // With no observer dep wired, the plan device must not leak a raw plug-state.
+    expect(buildSettingsOverviewDeviceReadModel(device).evChargingState).toBeUndefined();
+  });
+
   it('keeps planner cooldown reasons available as structured read-model data', () => {
     const device = buildPlanDevice({
       reason: {

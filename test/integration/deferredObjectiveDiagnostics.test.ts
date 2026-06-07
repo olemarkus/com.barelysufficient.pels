@@ -16,6 +16,7 @@ import { DeferredObjectivePlanHistoryRecorder } from '../../lib/objectives/defer
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
+import { withMaterializedEvCommandability } from '../utils/planTestUtils';
 import type { DeferredObjectiveActivePlansV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectivePlanHistoryV4 } from '../../packages/contracts/src/deferredObjectivePlanHistory';
 import { buildObjectiveSignature } from '../../lib/objectives/deferredObjectives/activePlanSignature';
@@ -23,7 +24,13 @@ import { buildObjectiveSignature } from '../../lib/objectives/deferredObjectives
 const HOUR_MS = 60 * 60 * 1000;
 const NOW_MS = Date.UTC(2026, 0, 1, 17, 0, 0);
 
-const buildDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice => ({
+// Materialize `evCommandability` from the readable `evChargingState` (mirroring
+// the production producer `toPlanDevice`) so these objective-diagnostics fixtures
+// exercise the materialized path the planner actually consumes, not the raw
+// snapshot-fallback arm of the dual-read.
+const buildDevice = (
+  overrides: Partial<PlanInputDevice> & { evChargingState?: string } = {},
+): PlanInputDevice => withMaterializedEvCommandability({
   id: 'ev-1',
   name: 'Driveway EV',
   targets: [],
@@ -45,7 +52,7 @@ const buildDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice 
     ],
   },
   ...overrides,
-});
+}) as PlanInputDevice;
 
 const buildTemperatureDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice => ({
   id: 'heater-1',
@@ -606,7 +613,7 @@ describe('ConcurrentEligibleTaskTracker', () => {
   // predicate (priority 1, both rescue permissions `'always'`, enabled
   // objective). Each helper creates one task; the per-test code stitches them
   // into a settings map and device map.
-  const buildEligibleDevice = (id: string): PlanInputDevice => ({
+  const buildEligibleDevice = (id: string): PlanInputDevice => withMaterializedEvCommandability({
     id,
     name: id,
     targets: [],
@@ -627,7 +634,7 @@ describe('ConcurrentEligibleTaskTracker', () => {
         { id: 'low', planningPowerW: 1000 },
       ],
     },
-  });
+  }) as PlanInputDevice;
 
   const buildEligibleObjective = (deadlineAtMs: number) => ({
     enabled: true,
@@ -2583,7 +2590,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // 12 kWh) fits → at_risk: feasible_above_floor.
     const HARDCAP_KW = 3;
     const NEED_KWH_TO_REACH = 6;
-    const buildPromotableDevice = (id: string): PlanInputDevice => ({
+    const buildPromotableDevice = (id: string): PlanInputDevice => withMaterializedEvCommandability({
       id,
       name: id,
       targets: [],
@@ -2606,7 +2613,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
           { id: 'top', planningPowerW: 3000 },
         ],
       },
-    });
+    }) as PlanInputDevice;
 
     // Target = current + 30%, profile rate = 0.2 kWh/% → 30 × 0.2 = 6 kWh.
     const buildPromotableSettings = (

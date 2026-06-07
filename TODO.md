@@ -121,20 +121,23 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
       bits / shared-domain predicates (`isEvDevice`, `resolveEvBlockReasonForDevice`,
       `isEvSessionInactiveForDevice`, `resolveEvBoostBlockReason`) instead of raw plug-state, and
       `scripts/check-ev-vocab.mjs` (in `ci:checks`) forbids `plugged_*` literals in those three layers.
-      **Remaining EV field-move (drop `evChargingState` from `EvPlanInputKind` / `DevicePlanDevice` /
-      `ObjectiveDeviceInput` + the `planDevices`/`planReconcileState`/`settingsOverviewReadModel`
-      carriers) — NOT blocked, just unstarted.** The producer materialization already exists:
-      `setup/appInit/toPlanDevice.ts` computes `commandableNow`/`commandableNowReason`/
-      `canSetControlResolved` (via `resolveCommandableNow`/`resolveCanSetControl`) onto every
-      `PlanInputDevice`. Remaining work: (a) materialize at that same seam the two EV bits the shared
-      resolvers still derive from raw `evChargingState` — `evSessionActive` (for the
-      `diagnosticProgress` invalid-session check) and an EV-specific block reason (NOTE:
-      `commandableNowReason` can't be reused directly — it folds in `available`/`device unavailable`, so a
-      paused-but-unavailable EV diverges from the restore gate); (b) make `isEvSessionInactiveForDevice` /
-      `resolveEvBlockReasonForDevice` dual-read those bits (prefer materialized, like `isCommandableNow`);
-      (c) drop `evChargingState` from the consumer types + carriers. `evChargingState` stays on
-      `TargetDeviceSnapshot` (transport + settings-UI) regardless; the two debug stringifiers
-      (`formatEvSnapshot`, the `planEvBoost` log) need a gate exemption or a move to shared-domain.
+      **EV field-move landed (2026-06-07): `evChargingState` removed from `EvPlanInputKind` /
+      `DevicePlanDevice` (`EvKind`) / `ObjectiveDeviceInput`.** The producer
+      (`setup/appInit/toPlanDevice.ts`) now resolves the observed plug-state ONCE into a flat
+      `evCommandability: EvCommandabilityResolution` (`{ blockReason, sessionInactive, chargerNotResumable }`,
+      new type in `@pels/contracts`) via `resolveEvCommandability` (shared-domain); it is threaded through
+      the `planDevices`/`planReconcileState` carriers and the `withEvDiscriminant` regrouper. The device-shaped
+      resolvers (`isEvSessionInactiveForDevice` / `isEvChargerNotResumableForDevice` /
+      `resolveEvBlockReasonForDevice` / `isEvBoostBlockedByPlugState`) dual-read it (prefer materialized, fall
+      back to raw `evChargingState` for snapshot-shaped callers), mirroring `isCommandableNow`. Architectural
+      correction surfaced in review: the settings-UI read model used to read `evChargingState` off the plan
+      device — but the **observer** is its canonical owner (`ObservedDeviceState.evChargingState`), so
+      `settingsOverviewReadModel` now sources it via a `getObservedEvChargingState` planService dep wired to
+      `ctx.getObservedState(id)`. `evChargingState` stays on `TargetDeviceSnapshot`/`ObservedDeviceState`
+      (transport + observer + settings-UI display) as designed. Fixed in passing: `isEvPhysicallyUnplugged`
+      read the raw string directly (would have silently no-op'd on plan devices after the move) — now dual-reads.
+      Remaining under this item: the temperature (~21) / stepped (~34) field-level discrimination and the
+      `TargetDeviceSnapshot` discrimination (~119 importers) — independent of the EV slice.
 
 ## P2 Product, Observability, and Maintainability
 
@@ -418,7 +421,38 @@ cosmetic chores — do them in passing or drop them; don't park them here.*
       *Why it's needed:* collapses the duplication onto one source (e.g. drive phase-count off
       `isEvTargetPowerPreset` + a single preset→phaseCount map) before a third preset lands.
       Source: pels-layering-guardian on the EV-stepped `wattsPerAmp` chunk, 2026-06-07.
-
+- [ ] **Retire the raw-`evChargingState` arm of the `EvStateConsumerInput` dual-read.**
+      *Persona:* maintainer (`notes/personas.md`) reasoning about the EV resolvers.
+      *Hypothesis:* now that the planner types carry only `evCommandability`, the dual-read in
+      `packages/shared-domain/src/commandableNow.ts` (`isEvSessionInactiveForDevice` /
+      `isEvChargerNotResumableForDevice` / `resolveEvBlockReasonForDevice` / `isEvBoostBlockedByPlugState`)
+      only needs its raw-`evChargingState` fallback for the remaining snapshot-shaped callers
+      (`TargetDeviceSnapshot`, executor restore helpers). Once those migrate to a materialized form, the
+      resolvers can drop the second input shape and stop carrying two paths.
+      *Why it's needed:* a single input shape removes a latent footgun — e.g. `resolveEvBlockReasonForDevice`
+      currently short-circuits on `evCommandability` *before* its `isEvDevice` gate, which is safe only because
+      `resolveEvCommandability` never produces a value for a non-EV device; a future hand-constructed input could
+      bypass the gate. Until then the dual-read is correct and commented.
+- [ ] **Close the boot-window EV-state-chip gap in the settings-UI read model.**
+      *Persona:* Homey owner (`notes/personas.md`) glancing at the device overview right after an app restart.
+      *Hypothesis:* the read model now sources `evChargingState` from the observer
+      (`getObservedEvChargingState` → `ctx.getObservedState`), which is event-driven and empty until the first
+      observation for a device lands, so the EV state chip can show generic copy ("Inactive" instead of "Car
+      unplugged") for the first cold-start cycle. A naive `ctx.latestTargetSnapshot` fallback is NOT the answer —
+      that getter re-decorates the whole snapshot per access (O(n²), re-entrant-unsafe; it broke the shed e2es).
+      *Why it's needed:* a brief generic chip on restart is a minor first-impression wobble on the EV surface the
+      owner cares about. A safe fix needs a cheap by-id observed/snapshot accessor (e.g. a memoized per-serialize
+      map, or seeding the observed projection at boot) rather than the live re-decorating getter. Low urgency
+      (single cycle, cosmetic; runtime control is unaffected — it reads the materialized `evCommandability`).
+- [ ] **Restore raw EV plug-state granularity to the `ev_boost_state_changed` debug log.**
+      *Persona:* maintainer / log-review (`notes/personas.md`) triaging EV boost behaviour.
+      *Hypothesis:* `lib/plan/planEvBoost.ts` now logs `evBlockReason` (derived) instead of the raw
+      `evChargingState`; `blockReason` is `null` for both `plugged_in_charging` and `plugged_in_paused`, so the
+      two commandable states are no longer distinguishable in this log line and the literal Homey plug-state is
+      gone from boost triage.
+      *Why it's needed:* boost debugging sometimes needs the exact plug-state; logging the full
+      `evCommandability` struct (or an observer-sourced `evState`) alongside the reason restores it without
+      reintroducing a raw read on a planner consumer. Low urgency (debug-only field).
 - [ ] **Fold the same-file `capacityNote` literal onto `STARVATION_WAITING_FOR_POWER_COPY`.**
       *Persona:* maintainer / support (`notes/personas.md`) reading log/UI copy parity.
       *Hypothesis:* `capacityNote: 'Waiting for available power.'` in `planStarvation.ts` re-types the
