@@ -1,4 +1,3 @@
-import type { BinaryControlCapabilityId } from '../../packages/contracts/src/types';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { DevicePlan } from '../plan/planTypes';
 import type { PlanEngineState } from '../plan/planState';
@@ -106,20 +105,6 @@ export function hasEquivalentSteppedLoadCommandHold(
   return dev.stepCommandStatus === 'stale'
     && typeof dev.nextStepCommandRetryAtMs === 'number'
     && Date.now() < dev.nextStepCommandRetryAtMs;
-}
-
-export function resolveFlowBackedBinaryTriggerCardId(
-  capabilityId: BinaryControlCapabilityId,
-  desired: boolean,
-): string {
-  if (capabilityId === 'evcharger_charging') {
-    return desired
-      ? 'flow_backed_device_start_charging_requested'
-      : 'flow_backed_device_stop_charging_requested';
-  }
-  return desired
-    ? 'flow_backed_device_turn_on_requested'
-    : 'flow_backed_device_turn_off_requested';
 }
 
 export function isRestoreHoldReason(reason: DeviceReason | undefined): boolean {

@@ -1,9 +1,6 @@
 import type { ObservedDeviceState, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { PlanEngineState } from './planState';
 import {
-  formatEvSnapshot,
-} from './planBinaryControl';
-import {
   isCanSetControl,
   isCommandableNow,
 } from '../device/deviceActionProjection';
@@ -92,16 +89,6 @@ export const shouldSkipShedding = (params: {
   } = params;
   const isUnavailable = snapshotState?.available === false;
   const isAlreadyOff = snapshotState?.binaryControl?.on === false;
-  if (snapshotState?.deviceClass === 'evcharger') {
-    const evSnapshot = formatEvSnapshot(snapshotState);
-    logger.debug({
-      event: 'plan_shed_eval_ev',
-      deviceId,
-      deviceName,
-      evSnapshot,
-      msg: `Actuator: evaluating EV shed for ${deviceName} (${evSnapshot})`,
-    });
-  }
   if (isUnavailable) {
     logger.debug({
       event: 'plan_shed_skipped',

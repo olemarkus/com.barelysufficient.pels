@@ -5,10 +5,7 @@ import {
   type BinaryControlLogContext,
   type BinaryControlRestoreSource,
   buildBinaryControlLogMessage,
-  buildEvBinaryControlLogMessage,
   buildFlowBackedBinaryControlRequestLogMessage,
-  buildFlowBackedEvBinaryControlRequestLogMessage,
-  formatEvSnapshot,
 } from '../plan/planBinaryControlHelpers';
 import { decideBinaryControl } from '../plan/planBinaryControl';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
@@ -134,7 +131,6 @@ export async function dispatchBinaryControlDecision(params: {
     });
     emitBinaryCommandSuccess({
       decision,
-      observation: transport.observation,
     });
     return { ok: true };
   } catch (caughtError) {
@@ -194,9 +190,8 @@ async function dispatchBinaryCommand(params: {
 
 function emitBinaryCommandSuccess(params: {
   decision: BinaryControlDecision;
-  observation: DeviceObservation;
 }): void {
-  const { decision, observation } = params;
+  const { decision } = params;
   logger.info({
     event: decision.flowBackedControl ? 'flow_backed_binary_command_succeeded' : 'binary_command_succeeded',
     deviceId: decision.deviceId,
@@ -208,7 +203,6 @@ function emitBinaryCommandSuccess(params: {
     ...(decision.restoreSource ? { restoreSource: decision.restoreSource } : {}),
     ...(decision.reason ? { reason: decision.reason } : {}),
     msg: buildBinaryControlSuccessLogMessage({
-      isEv: decision.isEv,
       logContext: decision.logContext,
       desired: decision.desired,
       name: decision.name,
@@ -217,15 +211,6 @@ function emitBinaryCommandSuccess(params: {
       actuationMode: decision.actuationMode,
       flowBackedControl: decision.flowBackedControl,
     }),
-  });
-  if (!decision.isEv) return;
-  logger.debug({
-    event: decision.flowBackedControl ? 'ev_action_requested_via_flow' : 'ev_action_completed',
-    deviceId: decision.deviceId,
-    deviceName: decision.name,
-    capabilityId: decision.capabilityId,
-    desired: decision.desired,
-    evSnapshot: formatEvSnapshot(observation.getSnapshotByDeviceId(decision.deviceId)),
   });
 }
 
@@ -247,7 +232,6 @@ function emitBinaryCommandFailure(params: {
     ...(decision.reason ? { reason: decision.reason } : {}),
     err,
     msg: buildBinaryControlFailureLogMessage({
-      isEv: decision.isEv,
       desired: decision.desired,
       name: decision.name,
       flowBackedControl: decision.flowBackedControl,
@@ -256,7 +240,6 @@ function emitBinaryCommandFailure(params: {
 }
 
 function buildBinaryControlSuccessLogMessage(params: {
-  isEv: boolean;
   logContext: BinaryControlLogContext;
   desired: boolean;
   name: string;
@@ -266,7 +249,6 @@ function buildBinaryControlSuccessLogMessage(params: {
   flowBackedControl: boolean;
 }): string {
   const {
-    isEv,
     logContext,
     desired,
     name,
@@ -276,32 +258,25 @@ function buildBinaryControlSuccessLogMessage(params: {
     flowBackedControl,
   } = params;
   if (flowBackedControl) {
-    return isEv
-      ? buildFlowBackedEvBinaryControlRequestLogMessage(logContext, desired, name, reason, actuationMode)
-      : buildFlowBackedBinaryControlRequestLogMessage({
-        logContext,
-        desired,
-        name,
-        reason,
-        restoreSource,
-        actuationMode,
-      });
+    return buildFlowBackedBinaryControlRequestLogMessage({
+      logContext,
+      desired,
+      name,
+      reason,
+      restoreSource,
+      actuationMode,
+    });
   }
-  return isEv
-    ? buildEvBinaryControlLogMessage(logContext, desired, name, reason, actuationMode)
-    : buildBinaryControlLogMessage({ logContext, desired, name, reason, restoreSource, actuationMode });
+  return buildBinaryControlLogMessage({ logContext, desired, name, reason, restoreSource, actuationMode });
 }
 
 function buildBinaryControlFailureLogMessage(params: {
-  isEv: boolean;
   desired: boolean;
   name: string;
   flowBackedControl: boolean;
 }): string {
-  const { isEv, desired, name, flowBackedControl } = params;
-  const verb = isEv
-    ? `${desired ? 'resume' : 'pause'} EV charging for`
-    : `${desired ? 'turn on' : 'turn off'}`;
+  const { desired, name, flowBackedControl } = params;
+  const verb = `${desired ? 'turn on' : 'turn off'}`;
   return flowBackedControl
     ? `Failed to request ${verb} ${name} via flow`
     : `Failed to ${verb} ${name} via DeviceTransport`;

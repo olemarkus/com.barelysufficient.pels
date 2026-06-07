@@ -1,10 +1,9 @@
-import { isCommandableNow, isEvDevice } from '../../packages/shared-domain/src/commandableNow';
+import { isCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import { getLogger } from '../logging/logger';
 import {
   shouldSkipShedding,
 } from '../plan/planExecutorSupport';
 import {
-  formatEvSnapshot,
   getBinaryControlPlan,
   isFlowBackedBinaryControl,
 } from '../plan/planBinaryControl';
@@ -51,15 +50,6 @@ export const applyBinaryRestore = async (
     return false;
   }
   if ((snapshot.binaryControl?.on ?? true) !== false) return false;
-  if (isEvDevice(snapshot)) {
-    logger.debug({
-      event: 'ev_restore_evaluating',
-      deviceId: intent.deviceId,
-      deviceName: intent.name,
-      logContext: 'capacity',
-      evSnapshot: formatEvSnapshot(snapshot),
-    });
-  }
   if (!canApplyRestoreSnapshot(ctx, {
     snapshot,
     deviceId: intent.deviceId,
@@ -96,15 +86,6 @@ export const applyUncontrolledBinaryRestore = async (
     return false;
   }
   if ((entry.binaryControl?.on ?? true) !== false) return false;
-  if (isEvDevice(entry)) {
-    logger.debug({
-      event: 'ev_restore_evaluating',
-      deviceId: intent.deviceId,
-      deviceName: intent.name,
-      logContext: 'capacity_control_off',
-      evSnapshot: formatEvSnapshot(entry),
-    });
-  }
   if (!canApplyRestoreSnapshot(ctx, {
     snapshot: entry,
     deviceId: intent.deviceId,
@@ -278,13 +259,6 @@ const turnOffDevice = async (
   } = params;
   const snapshotEntry = snapshot ?? ctx.observation.getSnapshotByDeviceId(deviceId);
   const controlPlan = getBinaryControlPlan(snapshotEntry);
-  if (snapshotEntry && isEvDevice(snapshotEntry)) {
-    logger.debug({
-      event: 'ev_shed_preparing',
-      deviceName: name,
-      evSnapshot: formatEvSnapshot(snapshotEntry),
-    });
-  }
   if (!controlPlan) {
     const hasTarget = Array.isArray(snapshotEntry?.targets) && snapshotEntry.targets.length > 0;
     if (shedActuationStampsCapacityMarkers(lifecycleRelease)) {

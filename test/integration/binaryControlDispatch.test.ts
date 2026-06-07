@@ -84,7 +84,6 @@ describe('decideBinaryControl (plan-side decision producer)', () => {
       actuationMode: 'plan',
       restoreSource: undefined,
       reason: undefined,
-      isEv: false,
     });
     // Plan no longer touches pending state — dispatcher records it.
     expect(state.pendingBinaryCommands.socket1).toBeUndefined();
@@ -137,7 +136,6 @@ describe('decideBinaryControl (plan-side decision producer)', () => {
     });
 
     expect(decision).toMatchObject({
-      isEv: true,
       flowBackedControl: true,
       reason: 'shedding',
     });
@@ -159,7 +157,6 @@ describe('dispatchBinaryControlDecision (executor-side dispatcher)', () => {
         flowBackedControl: false,
         logContext: 'capacity',
         actuationMode: 'plan',
-        isEv: false,
       },
       transport,
       snapshot: {
@@ -199,7 +196,6 @@ describe('dispatchBinaryControlDecision (executor-side dispatcher)', () => {
         flowBackedControl: true,
         logContext: 'capacity',
         actuationMode: 'plan',
-        isEv: false,
       },
       transport,
       snapshot: {
@@ -244,7 +240,6 @@ describe('dispatchBinaryControlDecision (executor-side dispatcher)', () => {
         flowBackedControl: false,
         logContext: 'capacity',
         actuationMode: 'plan',
-        isEv: false,
       },
       transport,
       snapshot: {
@@ -277,7 +272,6 @@ describe('dispatchBinaryControlDecision (executor-side dispatcher)', () => {
         flowBackedControl: true,
         logContext: 'capacity',
         actuationMode: 'plan',
-        isEv: false,
       },
       transport,
       snapshot: {

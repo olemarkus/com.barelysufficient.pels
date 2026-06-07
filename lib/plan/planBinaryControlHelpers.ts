@@ -37,7 +37,6 @@ export type BinaryControlDecision = {
   actuationMode: BinaryControlActuationMode;
   restoreSource?: BinaryControlRestoreSource;
   reason?: string;
-  isEv: boolean;
   /**
    * True when this decision comes from the smart-task lifecycle-end disable path
    * rather than a capacity shed. Carried onto the pending entry so the executor's
@@ -81,7 +80,6 @@ export function shouldSkipBinaryControl(params: {
       actuationMode,
       hasTargets,
       capabilityId: snapshot?.controlCapabilityId ?? null,
-      ...evSnapshotField(snapshot),
     });
     return true;
   }
@@ -95,7 +93,6 @@ export function shouldSkipBinaryControl(params: {
       capabilityId: controlPlan.capabilityId,
       logContext,
       actuationMode,
-      ...evSnapshotField(snapshot, controlPlan.isEv),
     });
     return true;
   }
@@ -109,7 +106,6 @@ export function shouldSkipBinaryControl(params: {
       capabilityId: controlPlan.capabilityId,
       logContext,
       actuationMode,
-      ...evSnapshotField(snapshot, controlPlan.isEv),
     });
     return true;
   }
@@ -137,7 +133,11 @@ export function shouldSkipAlreadyMatched(params: {
   snapshot?: TargetDeviceSnapshot;
 }): boolean {
   const { deviceManager, controlPlan, deviceId, desired, snapshot } = params;
-  if (controlPlan.isEv) return false;
+  // Only skip an already-matched command when the device's observed
+  // `binaryControl.on` faithfully mirrors its control state. Devices whose
+  // observation does not track the on/off control (chargers) report
+  // `observedStateComparable === false` and must never short-circuit here.
+  if (!controlPlan.observedStateComparable) return false;
   const latestObservedSnapshot = deviceManager.getSnapshotByDeviceId(deviceId) ?? snapshot;
   if (latestObservedSnapshot?.binaryControl === undefined) return false;
   return latestObservedSnapshot.binaryControl.on === desired;
@@ -156,44 +156,6 @@ export function hasPendingMatchingBinaryCommand(params: {
   const pending = pendingBinaryCommandStore.get(deviceId);
   if (!pending) return false;
   return pending.capabilityId === controlPlan.capabilityId && pending.desired === desired;
-}
-
-/**
- * Returns `{ evSnapshot: formatEvSnapshot(snapshot) }` when the snapshot
- * describes an EV charger, otherwise an empty object. Spread into a
- * structured `binary_command_skipped` emit so EV chargers carry the
- * snapshot fields (`currentOn=`, `evState=`, `canSet=`, `powerKw=`, …)
- * needed to diagnose stalled shedding, while non-EV emits stay unchanged.
- *
- * EV identity prefers the producer-resolved `controlPlan.isEv` when the caller
- * has a control plan (it already folds in the resolved `evcharger_charging`
- * control capability, including the early shape where the device exposes the
- * capability but hasn't populated `deviceClass`). Where there is no control
- * plan yet (the missing-control-plan skip), it falls back to the snapshot's own
- * identity — `deviceClass === 'evcharger'` OR the `evcharger_charging` control
- * capability — mirroring the `isEvDevice` union in `deviceActionProjection.ts`.
- */
-function evSnapshotField(
-  snapshot: TargetDeviceSnapshot | undefined,
-  isEvFromPlan?: boolean,
-): { evSnapshot: string } | Record<string, never> {
-  const isEv = isEvFromPlan
-    ?? (snapshot?.deviceClass === 'evcharger'
-      || snapshot?.controlCapabilityId === 'evcharger_charging');
-  if (!isEv) return {};
-  return { evSnapshot: formatEvSnapshot(snapshot) };
-}
-
-export function formatEvSnapshot(snapshot?: TargetDeviceSnapshot): string {
-  if (!snapshot) return 'snapshot=missing';
-  return [
-    `currentOn=${String(snapshot.binaryControl?.on ?? true)}`,
-    `evState=${snapshot.evChargingState ?? 'unknown'}`,
-    `available=${snapshot.available !== false}`,
-    `canSet=${snapshot.canSetControl !== false}`,
-    `powerKw=${snapshot.powerKw ?? snapshot.measuredPowerKw ?? snapshot.expectedPowerKw ?? 'unknown'}`,
-    `expectedPowerKw=${snapshot.expectedPowerKw ?? 'unknown'}`,
-  ].join(', ');
 }
 
 export function isFlowBackedBinaryControl(
@@ -250,23 +212,6 @@ export function resolveBinaryRestoreSuffix(params: {
     : ' (to match current plan)';
 }
 
-export function buildFlowBackedEvBinaryControlRequestLogMessage(
-  logContext: BinaryControlLogContext,
-  desired: boolean,
-  name: string,
-  reason?: string,
-  actuationMode: BinaryControlActuationMode = 'plan',
-): string {
-  const prefix = logContext === 'capacity_control_off' ? 'Capacity control off' : 'Capacity';
-  if (actuationMode === 'reconcile') {
-    const actionText = desired ? 'requested charging resume for' : 'requested charging pause for';
-    return `${prefix}: ${actionText} ${name} (reconcile after drift)`;
-  }
-  const actionText = desired ? 'requested charging resume for' : 'requested charging pause for';
-  const suffix = !desired && reason ? ` (${reason})` : '';
-  return `${prefix}: ${actionText} ${name}${suffix}`;
-}
-
 export function buildBinaryControlLogMessage(params: {
   logContext: BinaryControlLogContext;
   desired: boolean;
@@ -298,23 +243,6 @@ export function buildBinaryControlLogMessage(params: {
     return `Capacity: turned off ${name} (shedding)`;
   }
   return `Capacity control off: turned off ${name}`;
-}
-
-export function buildEvBinaryControlLogMessage(
-  logContext: BinaryControlLogContext,
-  desired: boolean,
-  name: string,
-  reason?: string,
-  actuationMode: BinaryControlActuationMode = 'plan',
-): string {
-  const prefix = logContext === 'capacity_control_off' ? 'Capacity control off' : 'Capacity';
-  if (actuationMode === 'reconcile') {
-    const actionText = desired ? 'resumed charging for' : 'paused charging for';
-    return `${prefix}: ${actionText} ${name} (reconcile after drift)`;
-  }
-  const actionText = desired ? 'resumed charging for' : 'paused charging for';
-  const suffix = !desired && reason ? ` (${reason})` : '';
-  return `${prefix}: ${actionText} ${name}${suffix}`;
 }
 
 // `formatPendingBinaryObservedValue` moved to
