@@ -1,6 +1,5 @@
 import { createPlanEngineState } from '../../lib/plan/planState';
 import {
-  formatEvSnapshot,
   getBinaryControlPlan,
   getEvRestoreBlockReason,
 } from '../../lib/plan/planBinaryControl';
@@ -134,20 +133,19 @@ describe('plan binary control helpers', () => {
       name: 'Socket',
       controlCapabilityId: 'onoff',
       canSetControl: true,
-    })).toEqual({ capabilityId: 'onoff', isEv: false, canSet: true });
+    })).toEqual({ capabilityId: 'onoff', observedStateComparable: true, canSet: true });
     expect(getBinaryControlPlan({
       id: 'ev1',
       name: 'EV',
       capabilities: ['evcharger_charging'],
       canSetControl: false,
-    })).toEqual({ capabilityId: 'evcharger_charging', isEv: true, canSet: false });
+    })).toEqual({ capabilityId: 'evcharger_charging', observedStateComparable: false, canSet: false });
 
     expect(getEvRestoreBlockReason({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging', expectedPowerSource: 'default' })).toBe('charger state unknown');
     expect(getEvRestoreBlockReason({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging' })).toBe('charger state unknown');
     expect(getEvRestoreBlockReason({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging', evChargingState: 'plugged_out' })).toBe('charger is unplugged');
     expect(getEvRestoreBlockReason({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging', evChargingState: 'plugged_in' })).toBe('charger is not resumable');
     expect(getEvRestoreBlockReason({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging', evChargingState: 'mystery' })).toBe("unknown charging state 'mystery'");
-    expect(formatEvSnapshot()).toBe('snapshot=missing');
   });
 
   it('handles EV and standard binary control actions', async () => {
@@ -441,7 +439,6 @@ describe('plan binary control helpers', () => {
     expect(logCapture.findEvent('binary_command_skipped')).toMatchObject({
       reasonCode: 'already_matched',
     });
-    expect(logCapture.findEvent('binary_command_skipped')).not.toHaveProperty('evSnapshot');
   });
 
   it('clears pending standard binary commands once the live state confirms them', async () => {
@@ -1104,7 +1101,6 @@ describe('plan binary control helpers', () => {
     expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'binary_command_skipped',
       reasonCode: expect.stringMatching(/missing_(onoff_capability|control_targets)/),
-      evSnapshot: expect.stringContaining('evState='),
     }));
 
     await expect(setBinaryControl({
@@ -1130,12 +1126,11 @@ describe('plan binary control helpers', () => {
     expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'binary_command_skipped',
       reasonCode: 'capability_not_setable',
-      evSnapshot: expect.stringContaining('evState='),
     }));
 
-    // EV identity is the same union as `isEvDevice`: a snapshot that omits
-    // `deviceClass` but carries the `evcharger_charging` control capability is
-    // still an EV charger, so its skip emit must carry the snapshot too.
+    // A snapshot that omits `deviceClass` but carries the `evcharger_charging`
+    // control capability still resolves a binary control plan, so its skip emit
+    // is the same generic `capability_not_setable`.
     await expect(setBinaryControl({
       state,
       deviceManager: failingManager as never,
@@ -1158,7 +1153,6 @@ describe('plan binary control helpers', () => {
     expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'binary_command_skipped',
       reasonCode: 'capability_not_setable',
-      evSnapshot: expect.stringContaining('evState='),
     }));
 
     await expect(setBinaryControl({
@@ -1307,7 +1301,7 @@ describe('plan binary control helpers', () => {
     expect(state.pendingBinaryCommands.ev1).toBeUndefined();
     expect(logCapture.events).toContainEqual(expect.objectContaining({
       event: 'binary_command_failed',
-      msg: 'Failed to resume EV charging for EV via DeviceTransport',
+      msg: 'Failed to turn on EV via DeviceTransport',
     }));
   });
 });

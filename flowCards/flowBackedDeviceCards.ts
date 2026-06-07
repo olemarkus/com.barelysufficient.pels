@@ -1,3 +1,4 @@
+import type { BinaryControlCapabilityId } from '../packages/contracts/src/types';
 import type { HomeyDeviceLike } from '../lib/utils/types';
 import type { FlowReportedCapabilityId } from '../lib/device/transport/flowReportedCapabilities';
 import type { FlowBackedCapabilityReportOutcome } from '../lib/app/appContext';
@@ -11,6 +12,20 @@ import { getLogger } from '../lib/logging/logger';
 const moduleLogger = getLogger('flowcards/flow-backed-device');
 
 type FlowBackedCardTarget = 'binary' | 'evcharger' | 'binary_or_evcharger';
+
+export function resolveFlowBackedBinaryTriggerCardId(
+  capabilityId: BinaryControlCapabilityId,
+  desired: boolean,
+): string {
+  if (capabilityId === 'evcharger_charging') {
+    return desired
+      ? 'flow_backed_device_start_charging_requested'
+      : 'flow_backed_device_stop_charging_requested';
+  }
+  return desired
+    ? 'flow_backed_device_turn_on_requested'
+    : 'flow_backed_device_turn_off_requested';
+}
 
 export function registerFlowBackedDeviceCards(deps: FlowCardDeps): void {
   registerFlowBackedRequestTrigger({

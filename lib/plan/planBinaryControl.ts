@@ -1,13 +1,11 @@
 import type { DeviceObservation } from '../device/deviceObservation';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
-import { getLogger } from '../logging/logger';
 import {
   type BinaryControlActuationMode,
   type BinaryControlDecision,
   type BinaryControlLogContext,
   type BinaryControlRestoreSource,
-  formatEvSnapshot,
   isFlowBackedBinaryControl,
   shouldSkipBinaryControl,
 } from './planBinaryControlHelpers';
@@ -23,12 +21,9 @@ export {
 } from '../device/deviceActionProjection';
 
 export {
-  formatEvSnapshot,
   isFlowBackedBinaryControl,
   type BinaryControlDecision,
 } from './planBinaryControlHelpers';
-
-const logger = getLogger('plan/binary-control');
 
 type BinaryControlDeps = {
   pendingBinaryCommandStore: PendingBinaryCommandStore;
@@ -77,18 +72,6 @@ export function decideBinaryControl(params: BinaryControlDeps & {
   }
   if (!controlPlan) return null;
 
-  if (controlPlan.isEv) {
-    logger.debug({
-      event: 'ev_action_requested',
-      deviceId,
-      deviceName: name,
-      capabilityId: controlPlan.capabilityId,
-      desired,
-      evSnapshot: formatEvSnapshot(snapshot),
-      ...(reason ? { reason } : {}),
-    });
-  }
-
   const flowBackedControl = isFlowBackedBinaryControl(snapshot, controlPlan.capabilityId);
 
   return {
@@ -101,7 +84,6 @@ export function decideBinaryControl(params: BinaryControlDeps & {
     actuationMode,
     restoreSource,
     reason,
-    isEv: controlPlan.isEv,
     ...(lifecycleRelease ? { lifecycleRelease: true } : {}),
   };
 }

@@ -2,7 +2,7 @@ import type { BinaryControlCapabilityId } from '../../packages/contracts/src/typ
 import type { AppContext } from '../../lib/app/appContext';
 import { createDeviceActuator, type Actuator } from '../../lib/actuator/deviceActuator';
 import type { ActuatorTransport } from '../../lib/actuator/deviceCommand';
-import { resolveFlowBackedBinaryTriggerCardId } from '../../lib/executor/planExecutorPredicates';
+import { resolveFlowBackedBinaryTriggerCardId } from '../../flowCards/flowBackedDeviceCards';
 
 // Single definition of the flow-backed binary trigger so production wiring and
 // tests resolve the SAME trigger card — no hand-copied closure that can drift.
