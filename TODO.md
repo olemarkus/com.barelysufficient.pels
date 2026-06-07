@@ -116,6 +116,25 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
       added in slice 1 — no plan/executor site branches on `controlModel === 'temperature_target'`
       (or the EV capability) and then reads kind-specific fields un-narrowed, so a guard would be
       dead code; add those alongside the field-move slices that create real consumers.
+      **EV-vocabulary de-couple landed (2026-06-07, PRs #1528/#1531/#1540/#1544/#1554/#1561/#1568/#1570/#1571):**
+      every consumer in `lib/plan`/`lib/objectives`/`lib/executor`/settings-UI now reads producer-resolved
+      bits / shared-domain predicates (`isEvDevice`, `resolveEvBlockReasonForDevice`,
+      `isEvSessionInactiveForDevice`, `resolveEvBoostBlockReason`) instead of raw plug-state, and
+      `scripts/check-ev-vocab.mjs` (in `ci:checks`) forbids `plugged_*` literals in those three layers.
+      **Remaining EV field-move (drop `evChargingState` from `EvPlanInputKind` / `DevicePlanDevice` /
+      `ObjectiveDeviceInput` + the `planDevices`/`planReconcileState`/`settingsOverviewReadModel`
+      carriers) — NOT blocked, just unstarted.** The producer materialization already exists:
+      `setup/appInit/toPlanDevice.ts` computes `commandableNow`/`commandableNowReason`/
+      `canSetControlResolved` (via `resolveCommandableNow`/`resolveCanSetControl`) onto every
+      `PlanInputDevice`. Remaining work: (a) materialize at that same seam the two EV bits the shared
+      resolvers still derive from raw `evChargingState` — `evSessionActive` (for the
+      `diagnosticProgress` invalid-session check) and an EV-specific block reason (NOTE:
+      `commandableNowReason` can't be reused directly — it folds in `available`/`device unavailable`, so a
+      paused-but-unavailable EV diverges from the restore gate); (b) make `isEvSessionInactiveForDevice` /
+      `resolveEvBlockReasonForDevice` dual-read those bits (prefer materialized, like `isCommandableNow`);
+      (c) drop `evChargingState` from the consumer types + carriers. `evChargingState` stays on
+      `TargetDeviceSnapshot` (transport + settings-UI) regardless; the two debug stringifiers
+      (`formatEvSnapshot`, the `planEvBoost` log) need a gate exemption or a move to shared-domain.
 
 ## P2 Product, Observability, and Maintainability
 
