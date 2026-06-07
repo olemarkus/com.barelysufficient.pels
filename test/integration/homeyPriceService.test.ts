@@ -12,7 +12,7 @@ import {
 } from '../../lib/utils/settingsKeys';
 import { getDateKeyInTimeZone, getDateKeyStartMs, shiftDateKey } from '../../lib/utils/dateUtils';
 import type { HomeyEnergyApi, HomeyEnergyPriceInterval } from '../../lib/utils/homeyEnergy';
-import type { Logger } from '../../lib/logging/logger';
+import { captureLogger } from '../utils/loggerCapture';
 import type Homey from 'homey';
 
 const sinks = (overrides: Partial<PriceServiceLoggingSinks> = {}): PriceServiceLoggingSinks => ({
@@ -134,21 +134,21 @@ describe('Homey price service', () => {
   it('logs an error when Homey price fetch fails', async () => {
     vi.useFakeTimers().setSystemTime(fixedNow);
     mockHomeyInstance.settings.set(PRICE_SCHEME, 'homey');
-    const errorLog = vi.fn();
+    const capture = captureLogger();
     const energyApi: HomeyEnergyApi = {
       fetchDynamicElectricityPrices: vi.fn().mockRejectedValue(new Error('boom')),
     };
 
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
-      sinks({ errorLog }),
+      sinks(),
       () => energyApi,
     );
 
     await service.refreshSpotPrices(true);
 
-    const messages = errorLog.mock.calls.map((call) => call[0]);
-    expect(messages.some((message) => String(message).includes('Failed to fetch price data for'))).toBe(true);
+    expect(capture.findEvent('homey_prices_fetch_failed')).toMatchObject({ message: 'boom' });
+    capture.restore();
   });
 
   it('stores only today and uses price unit when currency lookup fails', async () => {
@@ -169,19 +169,19 @@ describe('Homey price service', () => {
 
     mockHomeyInstance.settings.set(PRICE_SCHEME, 'homey');
     const debugStructured = vi.fn();
-    const errorLog = vi.fn();
     const structuredLog = { info: vi.fn() };
+    const capture = captureLogger();
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
-      sinks({ debugStructured, errorLog, structuredLog: structuredLog as unknown as Logger }),
+      sinks({ debugStructured, structuredLog: structuredLog as unknown as PriceServiceLoggingSinks['structuredLog'] }),
       () => energyApi,
     );
 
     await service.refreshSpotPrices(true);
 
-    expect(errorLog).toHaveBeenCalledWith('Homey prices: Failed to fetch currency', expect.any(Error));
-    const currencyError = errorLog.mock.calls.find(([message]) => message === 'Homey prices: Failed to fetch currency')?.[1];
-    expect((currencyError as Error).message).toBe('nope');
+    const currencyFailure = capture.findEvent('homey_energy_currency_fetch_failed');
+    expect(currencyFailure).toBeDefined();
+    expect((currencyFailure?.err as { message?: string } | undefined)?.message).toBe('nope');
     expect(debugStructured).not.toHaveBeenCalledWith(
       expect.objectContaining({ event: 'homey_energy_currency_fetch_failed' }),
     );
@@ -191,6 +191,7 @@ describe('Homey price service', () => {
     expect(structuredLog.info).toHaveBeenCalledWith(
       expect.objectContaining({ event: 'homey_prices_stored', dayCount: 1 }),
     );
+    capture.restore();
   });
 
   it('logs when no Homey price data is available', async () => {
