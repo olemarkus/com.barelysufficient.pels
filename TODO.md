@@ -339,12 +339,6 @@ live-walk screenshots.*
       `functional/immutable-data`) and targeted `eslint-disable-next-line` suppressions were out of scope.)
       Proposal: `notes/complexity-cleanup/god-file-policy.md`. The shrink-to-<=500 follow-ups for the
       Bucket-A-adjacent files are split out below.
-- [ ] Shrink `lib/executor/targetExecutor.ts` (~546) toward <=500 by splitting the pending-command
-      retry/confirmation loop from the setpoint-write sequencing. Just over the floor; a structural
-      split rather than a risky in-PR shrink. Persona: contributor.
-      Files: `lib/executor/targetExecutor.ts`.
-      (`binaryExecutor.ts` was shrunk 565→309 by extracting the restore cluster into
-      `binaryRestoreHelpers.ts` + `binaryControlShared.ts`; its override is removed.)
 - [ ] Split the larger Bucket-B god-files toward <=500 when next touched (named here so the ceilings in
       `eslint.config.mjs` are accountable, not permanent): `lib/device/deviceTransport.ts` (~2148, peel off a
       transport subsystem on a clear boundary), `lib/plan/restore/index.ts` (~1327, swap-flow vs per-device
