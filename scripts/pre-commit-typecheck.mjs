@@ -19,10 +19,12 @@ if (matches([
   'test/',
   'packages/contracts/src/',
   'packages/shared-domain/src/',
+  'vitest.shared.mts',
   'vitest.config.mts',
-  'vitest.config.fast.mts',
-  'vitest.config.dom.mts',
-  'vitest.config.dom.fast.mts',
+  'vitest.config.unit.mts',
+  'vitest.config.integration.mts',
+  'vitest.config.e2e.mts',
+  'vitest.config.tz.mts',
   'vitest-env.d.ts',
 ])) {
   commands.push({ label: 'tsc:runtime', command: 'npx', args: ['tsc', '--noEmit'] });

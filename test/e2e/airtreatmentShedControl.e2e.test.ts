@@ -12,8 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockHomeyInstance, setMockDrivers } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW } from '../../lib/utils/settingsKeys';
-
-const flushPromises = () => new Promise((resolve) => process.nextTick(resolve));
+import { drainUntilCalledWith } from '../utils/asyncDrain';
 
 const cap = (deviceId: string, capability: string) =>
   `manager/devices/device/${deviceId}/capability/${capability}`;
@@ -110,7 +109,7 @@ describe('Airtreatment capacity shedding (SDK-boundary e2e)', () => {
     const app = createApp();
     await app.onInit();
     await vi.advanceTimersByTimeAsync(10_000);
-    await flushPromises();
+    await drainUntilCalledWith(putSpy, cap('airtreatment-1', 'target_temperature'), { value: 16 });
 
     expect(putSpy).toHaveBeenCalledWith(cap('airtreatment-1', 'target_temperature'), { value: 16 });
     expect(onoffWrites(putSpy)).toHaveLength(0);
@@ -132,7 +131,7 @@ describe('Airtreatment capacity shedding (SDK-boundary e2e)', () => {
     const app = createApp();
     await app.onInit();
     await vi.advanceTimersByTimeAsync(10_000);
-    await flushPromises();
+    await drainUntilCalledWith(putSpy, cap('thermostat-1', 'target_temperature'), { value: 10 });
 
     expect(putSpy).toHaveBeenCalledWith(cap('thermostat-1', 'target_temperature'), { value: 10 });
     expect(onoffWrites(putSpy)).toHaveLength(0);
@@ -154,7 +153,7 @@ describe('Airtreatment capacity shedding (SDK-boundary e2e)', () => {
     const app = createApp();
     await app.onInit();
     await vi.advanceTimersByTimeAsync(10_000);
-    await flushPromises();
+    await drainUntilCalledWith(putSpy, cap('airtreatment-onoff-1', 'onoff'), { value: false });
 
     expect(putSpy).toHaveBeenCalledWith(cap('airtreatment-onoff-1', 'onoff'), { value: false });
     expect(tempWrites(putSpy)).toHaveLength(0);
