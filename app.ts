@@ -1,4 +1,3 @@
-/* eslint-disable max-lines -- Homey app lifecycle remains centralized in the main app class. */
 import Homey from 'homey';
 import CapacityGuard from './lib/power/capacityGuard';
 import { DeviceTransport } from './lib/device/deviceTransport';
@@ -175,6 +174,7 @@ import type {
 } from './packages/contracts/src/starvationRescue';
 import type {
   SettingsUiDeferredObjectivePlanHistoryPayload,
+  SettingsUiDeviceLogPayload,
 } from './packages/contracts/src/settingsUiApi';
 import { HomeyEnergyPollSource } from './lib/power/sources/homeyEnergyPoll';
 import {
@@ -325,7 +325,9 @@ class PelsApp extends Homey.App {
         try {
           this.homey.settings.set(DEFERRED_OBJECTIVE_HOURS_REMAINING_LATCH, latch);
         } catch (error) {
-          this.error('Failed to persist deferred-objective hours-remaining latch', error);
+          this.getStructuredLogger('deferred_objectives')?.error({
+            event: 'deferred_objective_hours_remaining_latch_persist_failed', err: normalizeError(error),
+          });
         }
       },
     });
@@ -431,7 +433,6 @@ class PelsApp extends Homey.App {
     setPowerSampleRebuildState: (state) => {
       this.powerSampleRebuildState = state;
     },
-    error: (...args: unknown[]) => this.error(...args),
   });
   private readonly planRebuildScheduler = new PlanRebuildScheduler({
     getNowMs: getAppPlanRebuildNowMs,
@@ -486,7 +487,6 @@ class PelsApp extends Homey.App {
     isCapacityControlEnabled: (deviceId) => this.isCapacityControlEnabled(deviceId),
     getStructuredLogger: (component) => this.getStructuredLogger(component),
     getStructuredDebugEmitter: (component, topic) => this.getStructuredDebugEmitter(component, topic),
-    error: (...args) => this.error(...args),
     getNow: () => this.getNow(),
     logPeriodicStatus: (options) => this.logPeriodicStatus(options),
     disableUnsupportedDevices: (snapshot) => disableUnsupportedDevicesHelper({
@@ -691,12 +691,23 @@ class PelsApp extends Homey.App {
         reportedAt: params.reportedAt,
         nowMs: Date.now(),
       });
+      // Deliberately NOT dispatched into the projection here: this branch only
+      // advances `stateOfCharge` freshness (no `lastFreshDataMs` change), which
+      // no projection reader consumes yet, and re-advertising the SoC capability
+      // on this event would trip `shouldRebuildPlanForRealtimeEvSocObservation`
+      // into the very plan rebuild this freshness-only heartbeat is meant to
+      // skip. A future SoC-freshness projection reader handles its own dispatch.
       return;
     }
     const nextFreshDataMs = Math.max(device.lastFreshDataMs ?? 0, params.reportedAt);
     if (nextFreshDataMs <= (device.lastFreshDataMs ?? 0)) return;
     device.lastFreshDataMs = nextFreshDataMs;
     device.lastUpdated = nextFreshDataMs;
+    // Steady (no value change) flow-backed reports only advance freshness in
+    // place; dispatch so the projection-fed freshness reader stays faithful
+    // instead of marking the device stale until the next value change/refresh.
+    // Non-SoC capability id, so it can't trip the realtime EV-SoC rebuild gate.
+    this.deviceManager?.dispatchObservedStateForDevice(params.deviceId, params.capabilityId);
   }
 
   private async getHomeyDevicesForFlow(): Promise<HomeyDeviceLike[]> {
@@ -827,6 +838,7 @@ class PelsApp extends Homey.App {
       resolveModeName: (name) => app.resolveModeName(name),
       getAllModes: () => app.getAllModes(),
       resolveManagedState: (deviceId) => app.resolveManagedState(deviceId),
+      getObservedState: (deviceId) => app.observedDeviceStateProjection.getObservedState(deviceId),
       getCommunicationModel: (deviceId) => app.getCommunicationModel(deviceId),
       isCapacityControlEnabled: (deviceId) => app.isCapacityControlEnabled(deviceId),
       isBudgetExempt: (deviceId) => app.isBudgetExempt(deviceId),
@@ -1185,9 +1197,7 @@ class PelsApp extends Homey.App {
     this.dailyBudgetService = new DailyBudgetService({
       homey: this.homey,
       log: (...args: unknown[]) => this.log(...args),
-      logDebug: (...args: unknown[]) => this.logDebug('daily_budget', ...args),
       isDebugTopicEnabled: (topic) => this.debugLoggingTopics.has(topic),
-      error: (...args: unknown[]) => this.error(...args),
       getPowerTracker: () => this.powerTracker,
       getPriceOptimizationEnabled: () => this.priceOptimizationEnabled,
       getCapacitySettings: () => this.capacitySettings,
@@ -1227,6 +1237,17 @@ class PelsApp extends Homey.App {
   private async initDeviceManager(): Promise<void> {
     const structuredLogger = this.structuredLogger ?? this.installStructuredLogger();
     const structuredLog = structuredLogger.child({ component: 'devices' });
+    // Co-create the observed-state projection with the transport so their
+    // lifecycles are coupled. The projection's sequence guard is keyed on the
+    // transport's per-device `observationSeq`; a new DeviceTransport resets those
+    // counters, so a long-lived projection would drop a fresh transport's early
+    // deltas (seq <= the previous transport's higher seqs). `initDeviceManager`
+    // runs once today (no in-process restart path), so this is currently
+    // equivalent to the field initializer — but it documents and enforces the
+    // transport/projection epoch coupling for any future restart. The persistent
+    // emitter subscription reads `this.observedDeviceStateProjection` at event
+    // time, so reassigning the field is sufficient.
+    this.observedDeviceStateProjection = new ObservedDeviceStateProjection();
     this.deviceManager = new DeviceTransport(this, {
       log: this.log.bind(this),
       debug: (...args: unknown[]) => this.logDebug('devices', ...args),
@@ -1272,6 +1293,17 @@ class PelsApp extends Homey.App {
     this.observedStateEmitter.onPlanReconcile((event: PlanReconcileObservedEvent) => {
       this.scheduleRealtimeDeviceReconcile(event);
     });
+    // Feed the projection FIRST, before any listener that reads it. Listeners
+    // fire in registration order, and `syncLivePlanState` below reads the
+    // projection (via `toPlanDevice`'s `observationStale`); applying the event
+    // here first ensures that pass sees the freshly-merged observed value for
+    // the same event instead of the previous one (stage 4b).
+    this.observedStateEmitter.onObservedStateChanged((event) => {
+      this.observedDeviceStateProjection.applyDelta(event);
+    });
+    this.observedStateEmitter.onObservedStateRefresh((event) => {
+      this.observedDeviceStateProjection.applyRefresh(event);
+    });
     this.observedStateEmitter.onObservedStateChanged((event: ObservedStateChangedEvent) => {
       if (this.shouldRebuildPlanForRealtimeEvSocObservation(event)) {
         incPerfCounters([
@@ -1294,15 +1326,6 @@ class PelsApp extends Homey.App {
         };
       }
       void this.planService?.syncLivePlanState(event.source);
-    });
-    // Stage 4a: feed the shadow projection from the same emitter as a peer
-    // subscriber. The projection only records the decided value transport
-    // already merged; no existing reader consumes it yet.
-    this.observedStateEmitter.onObservedStateChanged((event) => {
-      this.observedDeviceStateProjection.applyDelta(event);
-    });
-    this.observedStateEmitter.onObservedStateRefresh((event) => {
-      this.observedDeviceStateProjection.applyRefresh(event);
     });
   }
 
@@ -1495,6 +1518,12 @@ class PelsApp extends Homey.App {
     if (!this.structuredLogger) return undefined;
     return this.structuredLogger.child({ component });
   }
+  // Public accessor so the REST API layer (api.ts) can emit structured handler
+  // failures through the same pino logger as the rest of the runtime, instead
+  // of the legacy prose `error()` sink.
+  public getApiStructuredLogger(): PinoLogger | undefined {
+    return this.getStructuredLogger('api');
+  }
   private getStructuredDebugEmitter(component: string, debugTopic: DebugLoggingTopic): StructuredDebugEmitter {
     return (payload) => {
       if (!this.structuredLogger || !this.debugLoggingTopics.has(debugTopic)) return;
@@ -1554,7 +1583,6 @@ class PelsApp extends Homey.App {
   private updateDebugLoggingEnabled(logChange = false): void {
     this.debugLoggingTopics = buildDebugLoggingTopics({
       settings: this.homey.settings,
-      log: (...args: unknown[]) => this.log(...args),
       logChange,
     });
   }
@@ -1563,8 +1591,8 @@ class PelsApp extends Homey.App {
     if (!trimmed || this.lastNotifiedOperatingMode === trimmed) return;
     const card = this.homey.flow?.getTriggerCard?.('operating_mode_changed');
     if (card && typeof card.trigger === 'function') {
-      card.trigger({}, { mode: trimmed })
-        .catch((err: Error) => this.error('Failed to trigger operating_mode_changed', err));
+      card.trigger({}, { mode: trimmed }).catch((err: Error) => this.getStructuredLogger('flow')
+        ?.error({ event: 'operating_mode_changed_trigger_failed', err: normalizeError(err) }));
     }
     this.lastNotifiedOperatingMode = trimmed;
   }
@@ -1587,7 +1615,6 @@ class PelsApp extends Homey.App {
       homey: this.homey,
       store: this.powerCalibrationStore,
       nowMs,
-      error: (msg, err) => this.error(msg, err),
     });
   }
   private flushPowerCalibration(nowMs: number = Date.now()): void {
@@ -1595,13 +1622,11 @@ class PelsApp extends Homey.App {
       homey: this.homey,
       store: this.powerCalibrationStore,
       nowMs,
-      error: (msg, err) => this.error(msg, err),
     });
   }
   private runStartupSettingsMigrations(): void {
-    const log = this.log.bind(this);
-    migrateManagedDevicesHelper({ homey: this.homey, log });
-    runBootMigrationsHelper({ homey: this.homey, log });
+    migrateManagedDevicesHelper({ homey: this.homey });
+    runBootMigrationsHelper({ homey: this.homey });
   }
   private areFlowBackedCardsAvailable(): boolean {
     if (typeof this.flowBackedCardsAvailable === 'boolean') {
@@ -1712,7 +1737,8 @@ class PelsApp extends Homey.App {
       }
       await this.overheadToken.setValue(overhead ?? 0);
     } catch (error) {
-      this.error('Failed to create/update capacity_overhead token', error as Error);
+      this.getStructuredLogger('flow')
+        ?.error({ event: 'capacity_overhead_token_update_failed', err: normalizeError(error) });
     }
   }
   private persistPowerTrackerState(reason: PowerTrackerPersistReason = 'write'): void {
@@ -1806,7 +1832,13 @@ class PelsApp extends Homey.App {
   private async handleOperatingModeChange(rawMode: string): Promise<void> {
     const resolved = resolveModeNameHelper(rawMode, this.modeAliases);
     const previousMode = this.operatingMode;
-    if (resolved !== rawMode) this.logDebug('settings', `Mode '${rawMode}' resolved via alias to '${resolved}'`);
+    if (resolved !== rawMode) {
+      this.getStructuredDebugEmitter('settings', 'settings')({
+        event: 'mode_resolved_via_alias',
+        requestedMode: rawMode,
+        resolvedMode: resolved,
+      });
+    }
     this.operatingMode = resolved;
     this.homey.settings.set(OPERATING_MODE_SETTING, resolved);
     const aliasUsed = rawMode !== resolved ? rawMode : null;
@@ -1814,7 +1846,7 @@ class PelsApp extends Homey.App {
       this.homey.settings.set('mode_alias_used', aliasUsed);
     }
     if (previousMode?.toLowerCase() === resolved.toLowerCase()) {
-      this.logDebug('settings', `Mode '${resolved}' already active`);
+      this.getStructuredDebugEmitter('settings', 'settings')({ event: 'mode_already_active', mode: resolved });
     }
     this.notifyOperatingModeChanged(resolved);
   }
@@ -1967,6 +1999,9 @@ class PelsApp extends Homey.App {
   public getDeviceDiagnosticsUiPayload(): SettingsUiDeviceDiagnosticsPayload {
     return this.deviceDiagnosticsService?.getUiPayload?.()
       ?? { generatedAt: Date.now(), windowDays: 21, diagnosticsByDeviceId: {} };
+  }
+  public getDeviceLogUiPayload(): SettingsUiDeviceLogPayload {
+    return this.planService?.getDeviceLogUiPayload() ?? { version: 1, entriesByDeviceId: {} };
   }
   public getDeferredObjectiveActivePlansUiPayload(): DeferredObjectiveActivePlansV1 | null {
     const snapshot = this.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot() ?? null;

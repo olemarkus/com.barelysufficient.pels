@@ -1,6 +1,7 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { PriceFlowTagPublisher, PRICE_FLOW_TAG_ID, PRICE_LIST_UPDATED_TRIGGER_ID } from '../../lib/price/priceFlowTags';
 import { mockHomeyInstance } from '../mocks/homey';
+import { captureLogger } from '../utils/loggerCapture';
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
 
 const buildStore = (overrides: Partial<CombinedPricesV2> = {}): CombinedPricesV2 => ({
@@ -40,8 +41,7 @@ const newPublisher = () => new PriceFlowTagPublisher({
   homey: mockHomeyInstance as any,
   requestPriceRefetch: () => {},
   log: () => {},
-  logDebug: () => {},
-  error: () => {},
+  debugStructured: () => {},
 });
 
 describe('PriceFlowTagPublisher', () => {
@@ -170,8 +170,7 @@ describe('PriceFlowTagPublisher', () => {
       } as any,
       requestPriceRefetch: () => {},
       log: () => {},
-      logDebug: () => {},
-      error: () => {},
+      debugStructured: () => {},
     });
     await publisher.init();
     await publisher.publish('first');
@@ -196,8 +195,7 @@ describe('PriceFlowTagPublisher', () => {
       } as any,
       requestPriceRefetch: () => {},
       log: () => {},
-      logDebug: () => {},
-      error: () => {},
+      debugStructured: () => {},
     });
     await publisher.init();
     expect(createCalls).toBe(1);
@@ -210,7 +208,7 @@ describe('PriceFlowTagPublisher', () => {
     mockHomeyInstance.settings.set('combined_prices', buildStore({
       days: { '2026-05-17': { hours: day('2026-05-17', 24, 50) } },
     }));
-    const errors: unknown[][] = [];
+    const capture = captureLogger();
     const publisher = new PriceFlowTagPublisher({
       homey: {
         ...mockHomeyInstance,
@@ -223,17 +221,15 @@ describe('PriceFlowTagPublisher', () => {
       } as any,
       requestPriceRefetch: () => {},
       log: () => {},
-      logDebug: () => {},
-      error: (...args: unknown[]) => { errors.push(args); },
+      debugStructured: () => {},
     });
     await publisher.init();
     await publisher.publish('tag-broken');
     // Event-driven flows must still fire even when the tag-write path is broken.
     expect(triggersFor(PRICE_LIST_UPDATED_TRIGGER_ID)).toHaveLength(1);
     // Tag-write failure must still be logged (not silently swallowed).
-    const tagErrorLogged = errors.some((args) =>
-      typeof args[0] === 'string' && args[0].includes('tag write failed'));
-    expect(tagErrorLogged).toBe(true);
+    expect(capture.findEvent('price_flow_tag_write_failed')).toMatchObject({ reason: 'tag-broken' });
+    capture.restore();
   });
 
   it('still fires the trigger when createToken never succeeded', async () => {
@@ -250,8 +246,7 @@ describe('PriceFlowTagPublisher', () => {
       } as any,
       requestPriceRefetch: () => {},
       log: () => {},
-      logDebug: () => {},
-      error: () => {},
+      debugStructured: () => {},
     });
     await publisher.init();
     await publisher.publish('no-token');
@@ -282,8 +277,7 @@ describe('PriceFlowTagPublisher', () => {
       } as any,
       requestPriceRefetch: () => {},
       log: () => {},
-      logDebug: () => {},
-      error: () => {},
+      debugStructured: () => {},
     });
     await publisher.init();
     await publisher.publish('first');

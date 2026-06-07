@@ -41,6 +41,12 @@ import {
   showDeviceDetailDiagnosticsLoading,
 } from './diagnostics.ts';
 import {
+  initDeviceDetailActivityLogToggleHandler,
+  refreshDeviceDetailActivityLogIfExpanded,
+  resetDeviceDetailActivityLogRequests,
+  resetDeviceDetailActivityLogView,
+} from './activityLog.ts';
+import {
   initDeviceDetailPriceOptHandlers,
   setDeviceDetailDeltaValues,
   updateDeltaSectionVisibility,
@@ -265,6 +271,7 @@ export const openDeviceDetail = (deviceId: string) => {
   if (!device) return;
 
   resetDeviceDetailDiagnosticsRequests();
+  resetDeviceDetailActivityLogRequests();
   // Do not drop drafts here: switching from device A's pane to device B's must
   // preserve A's in-progress edits per TODO `stepped-load-draft-close-handler`.
   // The draft for B (if any) is loaded via renderSteppedLoadDraft below.
@@ -296,12 +303,15 @@ export const openDeviceDetail = (deviceId: string) => {
   });
 
   resetDeviceDetailDiagnosticsView();
+  resetDeviceDetailActivityLogView();
   showDeviceDetailOverlay();
 };
 
 export const closeDeviceDetail = () => {
   resetDeviceDetailDiagnosticsRequests();
   resetDeviceDetailDiagnosticsView();
+  resetDeviceDetailActivityLogRequests();
+  resetDeviceDetailActivityLogView();
   if (currentDetailDeviceId) {
     closeSteppedLoadDraft(currentDetailDeviceId);
   }
@@ -472,13 +482,16 @@ const initDeviceDetailRefreshHandlers = () => {
   });
 
   document.addEventListener('plan-updated', () => {
-    if (!currentDetailDeviceId || !isDeviceDetailDiagnosticsExpanded()) return;
+    if (!currentDetailDeviceId) return;
 
     const deviceId = currentDetailDeviceId;
-    void refreshDeviceDetailDiagnostics({
-      deviceId,
-      isCurrentDevice: () => currentDetailDeviceId === deviceId && isDeviceDetailDiagnosticsExpanded(),
-    });
+    if (isDeviceDetailDiagnosticsExpanded()) {
+      void refreshDeviceDetailDiagnostics({
+        deviceId,
+        isCurrentDevice: () => currentDetailDeviceId === deviceId && isDeviceDetailDiagnosticsExpanded(),
+      });
+    }
+    refreshDeviceDetailActivityLogIfExpanded(deviceId, () => currentDetailDeviceId);
   });
 };
 
@@ -538,6 +551,7 @@ export const initDeviceDetailHandlers = () => {
     refreshOpenDeviceDetail,
   });
   initDeviceDetailDiagnosticsHandler();
+  initDeviceDetailActivityLogToggleHandler(() => currentDetailDeviceId);
   initDeviceDetailEscapeHandler();
   initDeviceDetailOpenHandler();
   initDeviceDetailRefreshHandlers();

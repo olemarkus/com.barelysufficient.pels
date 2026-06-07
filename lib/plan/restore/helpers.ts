@@ -1,5 +1,5 @@
-/* eslint-disable max-lines -- Restore helper decisions and their countdown metadata are kept together. */
 import type { DevicePlanDevice } from '../planTypes';
+import { withSteppedDiscriminant } from '../planTypes';
 import type { RestoreTiming } from './timing';
 import type { PlanEngineState } from '../planState';
 import type { StructuredDebugEmitter } from '../../logging/logger';
@@ -20,6 +20,7 @@ import {
 } from './timing';
 import {
   getSteppedLoadNextRestoreStep,
+  isSteppedLoadDevice,
   resolveSteppedLoadRestoreDeltaKw,
 } from '../planSteppedLoad';
 import {
@@ -69,11 +70,15 @@ export function setRestorePlanDevice(
 ): void {
   const current = deviceMap.get(id);
   if (!current) return;
-  deviceMap.set(id, { ...current, ...updates });
+  // Spreading two unions decouples the `controlModel`/`steppedLoadProfile`
+  // discriminant; re-tie it as a single variant-shaped pair (updates win when
+  // they carry it) so the merged device stays assignable to one union member.
+  const next: DevicePlanDevice = withSteppedDiscriminant({ ...current, ...updates });
+  deviceMap.set(id, next);
 }
 
 export function buildOffSteppedRestoreShedUpdate(dev: DevicePlanDevice): Partial<DevicePlanDevice> {
-  const offStepId = dev.steppedLoadProfile
+  const offStepId = isSteppedLoadDevice(dev)
     ? (getSteppedLoadOffStep(dev.steppedLoadProfile) ?? getSteppedLoadLowestStep(dev.steppedLoadProfile))?.id
     : dev.selectedStepId;
   return {
@@ -431,7 +436,7 @@ export function planRestoreForSteppedDevice(params: {
     return { availableHeadroom, restoredOneThisCycle };
   }
 
-  const lowestNonZeroStep = dev.steppedLoadProfile
+  const lowestNonZeroStep = isSteppedLoadDevice(dev)
     ? getSteppedLoadLowestActiveStep(dev.steppedLoadProfile)
     : null;
   const deltaKw = resolveSteppedLoadRestoreDeltaKw({

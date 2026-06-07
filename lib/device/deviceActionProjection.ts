@@ -31,8 +31,8 @@ import {
 import { normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
 import { hasTemperatureBoostTarget } from '../utils/temperatureBoost';
 import {
-  EV_COMMANDABLE_NOW_REASONS,
-  formatUnknownEvChargingStateReason,
+  resolveEvBlockReason,
+  resolveEvBoostBlockReason,
 } from '../../packages/shared-domain/src/commandableNowReason';
 import {
   isEvDevice,
@@ -114,7 +114,11 @@ export function resolveEvBoostActive(params: {
   if (!isEvDevice(dev)) return false;
   if (!isSteppedLoad(dev)) return false;
   if (dev.controllable === false || dev.managed === false || dev.available === false) return false;
-  if (isEvSessionInactive(dev.evChargingState)) return false;
+  // Block boost for every plug-state PELS cannot drive: unplugged / discharging
+  // (no creditable session) AND `plugged_in` (connected but NOT resumable). One
+  // source of truth with the settings-UI boost panel, which renders this same
+  // resolver — so the runtime never forces boost the UI says won't activate.
+  if (resolveEvBoostBlockReason(dev) !== null) return false;
   // The deferred limit-lower-priority rescue lane forces boost while the task is in its
   // planned hours, independent of the device's own boost config/threshold.
   if (dev.forceBoostActive === true) return true;
@@ -170,21 +174,9 @@ export function getBinaryControlPlan(snapshot?: TargetDeviceSnapshot): BinaryCon
 
 export function getEvRestoreBlockReason(snapshot?: TargetDeviceSnapshot): string | null {
   if (!snapshot || !isEvDevice(snapshot)) return null;
-  if (snapshot.evChargingState === undefined) return EV_COMMANDABLE_NOW_REASONS.state_unknown;
-
-  switch (snapshot.evChargingState) {
-    case 'plugged_in_paused':
-    case 'plugged_in_charging':
-      return null;
-    case 'plugged_in':
-      return EV_COMMANDABLE_NOW_REASONS.plugged_in;
-    case 'plugged_out':
-      return EV_COMMANDABLE_NOW_REASONS.plugged_out;
-    case 'plugged_in_discharging':
-      return EV_COMMANDABLE_NOW_REASONS.plugged_in_discharging;
-    default:
-      return formatUnknownEvChargingStateReason(snapshot.evChargingState);
-  }
+  // Gateless EV-state → reason switch lives in commandableNowReason (one source
+  // of truth, shared with resolveCommandableNow + the plan restore-reason gate).
+  return resolveEvBlockReason(snapshot.evChargingState);
 }
 
 type BinaryCapabilityResolveInput = {

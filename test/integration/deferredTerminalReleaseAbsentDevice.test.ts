@@ -65,3 +65,36 @@ describe('handleDeferredDeadlineReached — absent device must not disarm within
     expect(forgetDevice).toHaveBeenCalledWith('d1');
   });
 });
+
+describe('handleDeferredDeadlineReached — unavailable device must not disarm within grace (commandability gate)', () => {
+  // The device is PRESENT in the plan list but `available === false`: it cannot be
+  // commanded this tick (offline, or the producer could only synthesize an
+  // untrusted control read). We can neither actuate nor trust an apparent-off, so
+  // the release keeps the task armed and retries — the commandability gate that
+  // replaced the old observation-trust `'unknown'` state read.
+  const buildCtxWithUnavailableDevice = () => {
+    const built = buildCtx();
+    (built.ctx.planService as unknown as { getPlanDevices: () => unknown[] }).getPlanDevices = () => [
+      { id: 'd1', name: 'EV charger', available: false, binaryControl: { on: false }, targets: [] },
+    ];
+    return built;
+  };
+
+  it('does NOT disarm while the device is unavailable and within grace', () => {
+    const { ctx, settingsStore, forgetDevice } = buildCtxWithUnavailableDevice();
+
+    handleDeferredDeadlineReached(ctx, 'd1', 'temperature', DEADLINE, DEADLINE + 60_000);
+
+    expect((settingsStore.get('deferred_objective.d1') as { enabled: boolean }).enabled).toBe(true);
+    expect(forgetDevice).not.toHaveBeenCalled();
+  });
+
+  it('gives up and disarms once grace has elapsed with the device still unavailable', () => {
+    const { ctx, settingsStore, forgetDevice } = buildCtxWithUnavailableDevice();
+
+    handleDeferredDeadlineReached(ctx, 'd1', 'temperature', DEADLINE, DEADLINE + GRACE_MS + 1);
+
+    expect((settingsStore.get('deferred_objective.d1') as { enabled: boolean }).enabled).toBe(false);
+    expect(forgetDevice).toHaveBeenCalledWith('d1');
+  });
+});

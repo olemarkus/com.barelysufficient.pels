@@ -9,7 +9,7 @@ const createCoordinator = () => new PriceCoordinator({
   getCurrentPriceLevel: () => PriceLevel.NORMAL,
   rebuildPlanFromCache: async () => undefined,
   log: () => undefined,
-  logDebug: () => undefined,
+  debugStructured: () => undefined,
   error: () => undefined,
 });
 
@@ -67,14 +67,15 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
   it('keeps firing even when an updateCombinedPrices invocation throws', () => {
     vi.useFakeTimers().setSystemTime(new Date('2026-05-10T20:30:00.000Z'));
 
-    const errorLog = vi.fn();
+    const structuredLog = { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() };
     const coordinator = new PriceCoordinator({
       homey: mockHomeyInstance as never,
       getCurrentPriceLevel: () => PriceLevel.NORMAL,
       rebuildPlanFromCache: async () => undefined,
       log: () => undefined,
-      logDebug: () => undefined,
-      error: errorLog,
+      debugStructured: () => undefined,
+      error: () => undefined,
+      structuredLog: structuredLog as never,
     });
     const updateSpy = vi.spyOn(coordinator, 'updateCombinedPrices');
     updateSpy.mockImplementationOnce(() => {
@@ -85,7 +86,9 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
 
     vi.advanceTimersByTime(91 * 60 * 1000);
     expect(updateSpy).toHaveBeenCalledTimes(1);
-    expect(errorLog).toHaveBeenCalledWith('Midnight price rotation failed', expect.any(Error));
+    expect(structuredLog.error).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'midnight_price_rotation_failed', err: expect.any(Error) }),
+    );
 
     // Next midnight still fires.
     vi.advanceTimersByTime(24 * 60 * 60 * 1000);
@@ -246,14 +249,15 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
     vi.useFakeTimers().setSystemTime(new Date('2026-05-11T06:00:00.000Z'));
     mockHomeyInstance.settings.set(COMBINED_PRICES, buildPayload(PRIOR_DAY_LAST_FETCHED));
 
-    const errorLog = vi.fn();
+    const structuredLog = { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() };
     const coordinator = new PriceCoordinator({
       homey: mockHomeyInstance as never,
       getCurrentPriceLevel: () => PriceLevel.NORMAL,
       rebuildPlanFromCache: async () => undefined,
       log: () => undefined,
-      logDebug: () => undefined,
-      error: errorLog,
+      debugStructured: () => undefined,
+      error: () => undefined,
+      structuredLog: structuredLog as never,
     });
     const updateSpy = vi.spyOn(coordinator, 'updateCombinedPrices');
     updateSpy.mockImplementationOnce(() => {
@@ -262,9 +266,8 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
 
     expect(() => coordinator.startPriceRefresh()).not.toThrow();
     expect(updateSpy).toHaveBeenCalledTimes(1);
-    expect(errorLog).toHaveBeenCalledWith(
-      'Boot combined-prices catch-up rotation failed',
-      expect.any(Error),
+    expect(structuredLog.error).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'combined_prices_catchup_rotation_failed', err: expect.any(Error) }),
     );
 
     coordinator.stop();

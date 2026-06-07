@@ -1,4 +1,3 @@
-/* eslint-disable max-lines -- Transport coordinates SDK setup, snapshots, realtime, and writes. */
 import Homey from 'homey';
 import { EventEmitter } from 'events';
 import type {
@@ -471,6 +470,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         this.applyNativeSteppedLoadSnapshotUpdate({
             snapshotIndex,
             deviceId,
+            capabilityId,
             nextReportedStepId,
             isNativePowerStepUpdate,
         });
@@ -514,6 +514,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         this.applyNativeSteppedLoadSnapshotUpdate({
             snapshotIndex,
             deviceId,
+            capabilityId,
             nextReportedStepId,
             isNativePowerStepUpdate: true,
         });
@@ -802,12 +803,14 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     private applyNativeSteppedLoadSnapshotUpdate(params: {
         snapshotIndex: number;
         deviceId: string;
+        capabilityId: string;
         nextReportedStepId: string | undefined;
         isNativePowerStepUpdate: boolean;
     }): void {
         const {
             snapshotIndex,
             deviceId,
+            capabilityId,
             nextReportedStepId,
             isNativePowerStepUpdate,
         } = params;
@@ -819,7 +822,8 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             currentSnapshot.lastFreshDataMs = Date.now();
             currentSnapshot.lastUpdated = currentSnapshot.lastFreshDataMs;
         }
-        if (previousReportedStepId !== nextReportedStepId) {
+        const reportedStepChanged = previousReportedStepId !== nextReportedStepId;
+        if (reportedStepChanged) {
             this.emitNativeSteppedLoadReportedStepChanged({
                 deviceId,
                 deviceName: currentSnapshot.name,
@@ -827,6 +831,22 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
                 nextReportedStepId,
             });
             this.onSnapshotMutated?.(currentSnapshot, Date.now());
+        }
+        // A power-step that does NOT change the reported step still advances
+        // lastFreshDataMs/lastUpdated in place but skips the dispatch funnel (the
+        // reportedStepChanged branch above is the only one that dispatches). Push
+        // the freshness delta ourselves so the observer projection doesn't lag the
+        // snapshot until the next full refresh — a projection-fed freshness reader
+        // (stage 4b) would otherwise see the device as stale. When the reported
+        // step changed, emitNativeSteppedLoadReportedStepChanged already dispatched
+        // the (freshness-inclusive) delta, so this guards against a double push.
+        if (isNativePowerStepUpdate && !reportedStepChanged) {
+            this.dispatchObservedStateChanged({
+                source: 'realtime_capability',
+                deviceId,
+                ...this.nextObservationCursor(deviceId),
+                capabilityId,
+            });
         }
     }
 
@@ -1064,6 +1084,13 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             device: binarySafeDevice,
             previousSnapshot,
         });
+        // Defer the observed-state emission until AFTER the snapshot commit
+        // below. `dispatchObservedStateChanged` enriches the event by projecting
+        // `latestSnapshotById`, so emitting inline here would project the
+        // PRE-update snapshot and lag the projection one device-update behind
+        // (Codex P2 on PR-4a). Collect now, dispatch once the committed snapshot
+        // (incl. binary-settle evidence) is in place.
+        const deferredObservedStateEvents: ObservedDeviceStateEvent[] = [];
         const result = handleRealtimeDeviceUpdate({
             device: observedDevice,
             latestSnapshot: this.latestSnapshot,
@@ -1100,7 +1127,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             },
             createObservationCursor: (nextDeviceId) => this.nextObservationCursor(nextDeviceId),
             emitPlanReconcile: (event) => this.emitPlanReconcileEvent(event),
-            emitObservedState: (event: ObservedDeviceStateEvent) => this.dispatchObservedStateChanged(event),
+            emitObservedState: (event: ObservedDeviceStateEvent) => deferredObservedStateEvents.push(event),
         });
         const currentSnapshot = deviceId
             ? this.syncRealtimeDeviceUpdateSnapshot({
@@ -1133,6 +1160,12 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             observedCapabilityIds: result.observedCapabilityIds,
         })) {
             this.onSnapshotMutated?.(currentSnapshot, Date.now());
+        }
+        // Snapshot (and binary-settle evidence) is now committed to
+        // `latestSnapshotById`, so each enriched observed value projects the
+        // post-update state rather than the previous one.
+        for (const event of deferredObservedStateEvents) {
+            this.dispatchObservedStateChanged(event);
         }
     };
 
@@ -1738,7 +1771,16 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     async pollHomePowerW(): Promise<number | null> {
         return this.updateHomePowerFromReport(await this.fetchLivePowerReport());
     }
-    setSnapshotForTests(snapshot: TargetDeviceSnapshot[]): void { this.setSnapshot(snapshot); }
+    setSnapshotForTests(snapshot: TargetDeviceSnapshot[]): void {
+        // Mirror the production refresh funnel (`commitRefreshedSnapshot`): commit
+        // the snapshot, then dispatch the observed-state refresh so the observer
+        // projection is fed exactly as it is in production. Without this, a test
+        // that seeds state via `setSnapshotForTests` leaves the projection empty,
+        // so any reader routed onto the projection would silently fall back to the
+        // snapshot and the projection path would never be exercised by the suite.
+        this.setSnapshot(snapshot);
+        this.dispatchObservedStateRefresh(snapshot);
+    }
     setSnapshot(s: TargetDeviceSnapshot[]): void {
         this.latestSnapshot = s;
         this.syncLatestSnapshotIndex();
@@ -1777,7 +1819,6 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             || !homeyInstance.platform
             || !homeyInstance.platformVersion
         ) {
-            this.logger.log('Device API unavailable from SDK, running without realtime device updates');
             (this.logger.structuredLog ?? moduleLogger).info({
                 component: 'devices',
                 event: 'device_api_init_skipped',
@@ -1792,7 +1833,6 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             await initHomeyHttpClient(this.homey);
         } catch (error) {
             const normalizedError = normalizeError(error);
-            this.logger.error('Failed to initialize HTTP client, continuing in degraded mode', normalizedError);
             (this.logger.structuredLog ?? moduleLogger).error({
                 event: 'device_api_http_client_init_failed',
                 reasonCode: 'http_client_init_failed',
@@ -1904,26 +1944,15 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         }
     }
 
-    updateLocalSnapshot(
-        deviceId: string,
-        updates: { target?: number | null; targetCapabilityId?: string; on?: boolean },
-    ): void {
+    // Optimistic binary write-back: a shed (turn-off) is trusted as observed
+    // truth immediately so the planner doesn't re-shed before the device echoes.
+    // (The former `target` branch was dead — the sole caller only ever passes
+    // `{ on }` — and was removed.)
+    updateLocalSnapshot(deviceId: string, updates: { on: boolean }): void {
         const snap = this.latestSnapshot.find((d) => d.id === deviceId);
         if (!snap) return;
-
-        if (typeof updates.target === 'number' && snap.targets?.length) {
-            const entry = updates.targetCapabilityId
-                ? snap.targets.find((t) => t.id === updates.targetCapabilityId)
-                : snap.targets[0];
-            if (entry) {
-                entry.value = updates.target;
-                snap.lastLocalWriteMs = Date.now();
-            }
-        }
-        if (typeof updates.on === 'boolean') {
-            snap.binaryControl = { on: updates.on };
-            snap.lastLocalWriteMs = Date.now();
-        }
+        snap.binaryControl = { on: updates.on };
+        snap.lastLocalWriteMs = Date.now();
     }
 
     getPeriodicStatusMetrics(): ({ devicesTotal: number } & SnapshotRefreshMetrics) | null {
@@ -2029,6 +2058,16 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             preservedLocalState,
         });
 
+        if (preservedLocalState) {
+            // Optimistic shed write mutates binaryControl in place but skips the
+            // realtime dispatch funnel; push it so the projection stays faithful.
+            // Dispatched AFTER recordLocalWriteObservation, which advances
+            // lastLocalWriteMs — so the projected value captures that final
+            // timestamp rather than an earlier one (no shadow divergence).
+            // Safe: syncLivePlanState is serialized; onoff isn't a SoC capability.
+            this.dispatchObservedStateForDevice(deviceId, capabilityId);
+        }
+
         const snapshotAfter = this.latestSnapshot.find((device) => device.id === deviceId);
         logEvCapabilityAccepted({
             logger: this.logger,
@@ -2095,10 +2134,6 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
                 ...(actuationMode ? { mode: actuationMode } : {}),
                 err: normalizedError,
             });
-            this.logger.error(
-                `Failed to trigger stepped-load command for device ${deviceId}`,
-                normalizedError,
-            );
         });
         return { requested: true, transport: 'flow' };
     }
@@ -2138,9 +2173,20 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             if (!targetCap) continue;
             try {
                 const appliedValue = await this.setCapability(device.id, targetCap, targetValue);
-                this.logger.log(`Set ${targetCap} for ${device.name} to ${String(appliedValue)} (${contextInfo})`);
+                (this.logger.structuredLog ?? moduleLogger).info({
+                    event: 'device_target_applied',
+                    deviceId: device.id,
+                    deviceName: device.name,
+                    capabilityId: targetCap,
+                    appliedValue,
+                    context: contextInfo,
+                });
             } catch (error) {
-                this.logger.error(`Failed to set ${targetCap} for ${device.name}`, error);
+                (this.logger.structuredLog ?? moduleLogger).error({
+                    event: 'device_target_apply_failed',
+                    deviceId: device.id, deviceName: device.name, capabilityId: targetCap,
+                    targetValue, context: contextInfo, err: normalizeError(error),
+                });
             }
         }
         await this.refreshSnapshot();
@@ -2153,13 +2199,15 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             const targetCap = device.targets?.[0]?.id;
             if (!targetCap) continue;
             const target = device.targets.find((entry) => entry.id === targetCap);
-            const normalizedValue = typeof targetValue === 'number'
-                ? normalizeTargetCapabilityValue({ target, value: targetValue })
-                : targetValue;
-            this.logger.log(
-                `Dry-run: would set ${targetCap} for ${device.name} `
-                + `to ${normalizedValue}°C (${contextInfo})`,
-            );
+            const normalizedValue = normalizeTargetCapabilityValue({ target, value: targetValue });
+            (this.logger.structuredLog ?? moduleLogger).info({
+                event: 'device_target_preview',
+                deviceId: device.id,
+                deviceName: device.name,
+                capabilityId: targetCap,
+                normalizedValue,
+                context: contextInfo,
+            });
         }
     }
 
@@ -2339,6 +2387,26 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     private consultPendingPredicate(deviceId: string, capabilityId: string): boolean {
         if (this.pendingPredicate) return this.pendingPredicate(deviceId, capabilityId) === true;
         return this.binarySettleOps.hasWindow(this.binarySettleState, deviceId, capabilityId);
+    }
+
+    /**
+     * Dispatch the current observed state of a single device through the same
+     * funnel + per-device cursor the realtime handlers use. For wiring-layer
+     * paths that mutate a snapshot device's observed surface in place outside
+     * transport's own handlers (e.g. app-side flow-backed freshness sync) — the
+     * caller mutates the snapshot object (shared by reference with
+     * `latestSnapshotById`), then calls this so the observer projection records
+     * the change instead of lagging until the next full refresh. No-op when the
+     * device isn't in the current snapshot.
+     */
+    dispatchObservedStateForDevice(deviceId: string, capabilityId?: string): void {
+        if (!this.latestSnapshotById.has(deviceId)) return;
+        this.dispatchObservedStateChanged({
+            source: 'realtime_capability',
+            deviceId,
+            ...this.nextObservationCursor(deviceId),
+            ...(capabilityId !== undefined ? { capabilityId } : {}),
+        });
     }
 
     /**

@@ -116,6 +116,25 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
       added in slice 1 — no plan/executor site branches on `controlModel === 'temperature_target'`
       (or the EV capability) and then reads kind-specific fields un-narrowed, so a guard would be
       dead code; add those alongside the field-move slices that create real consumers.
+      **EV-vocabulary de-couple landed (2026-06-07, PRs #1528/#1531/#1540/#1544/#1554/#1561/#1568/#1570/#1571):**
+      every consumer in `lib/plan`/`lib/objectives`/`lib/executor`/settings-UI now reads producer-resolved
+      bits / shared-domain predicates (`isEvDevice`, `resolveEvBlockReasonForDevice`,
+      `isEvSessionInactiveForDevice`, `resolveEvBoostBlockReason`) instead of raw plug-state, and
+      `scripts/check-ev-vocab.mjs` (in `ci:checks`) forbids `plugged_*` literals in those three layers.
+      **Remaining EV field-move (drop `evChargingState` from `EvPlanInputKind` / `DevicePlanDevice` /
+      `ObjectiveDeviceInput` + the `planDevices`/`planReconcileState`/`settingsOverviewReadModel`
+      carriers) — NOT blocked, just unstarted.** The producer materialization already exists:
+      `setup/appInit/toPlanDevice.ts` computes `commandableNow`/`commandableNowReason`/
+      `canSetControlResolved` (via `resolveCommandableNow`/`resolveCanSetControl`) onto every
+      `PlanInputDevice`. Remaining work: (a) materialize at that same seam the two EV bits the shared
+      resolvers still derive from raw `evChargingState` — `evSessionActive` (for the
+      `diagnosticProgress` invalid-session check) and an EV-specific block reason (NOTE:
+      `commandableNowReason` can't be reused directly — it folds in `available`/`device unavailable`, so a
+      paused-but-unavailable EV diverges from the restore gate); (b) make `isEvSessionInactiveForDevice` /
+      `resolveEvBlockReasonForDevice` dual-read those bits (prefer materialized, like `isCommandableNow`);
+      (c) drop `evChargingState` from the consumer types + carriers. `evChargingState` stays on
+      `TargetDeviceSnapshot` (transport + settings-UI) regardless; the two debug stringifiers
+      (`formatEvSnapshot`, the `planEvBoost` log) need a gate exemption or a move to shared-domain.
 
 ## P2 Product, Observability, and Maintainability
 
@@ -137,50 +156,19 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
       do this before/with the next active-plans schema-version bump.** Source: pels-layering-guardian
       on PR #1517, 2026-06-05.
 
-- [ ] **Snapshot decomposition stage-4b prerequisites (before wiring any reader onto the
-      `ObservedDeviceState` projection).** Three items, all detailed in
-      `notes/state-management/snapshot-decomposition.md` (step 4b): (1) in-process-restart seq-epoch
-      hazard — `set deviceManager` can swap transport and reset its seq counter while the long-lived
-      projection holds high seqs, silently dropping post-swap deltas; tie the drop-guard to a transport
-      epoch or co-recreate the projection with the transport. (2) `getObservedState`/`getAllObservedStates`
-      return the stored value by reference — return a copy/freeze before a consumer can mutate it.
-      (3) The device-update path enriches `observed` from `latestSnapshotById` *before*
-      `syncRealtimeDeviceUpdateSnapshot` commits the parsed snapshot, so the projection lags one
-      device-update-only change until the next capability event/refresh (Codex P2 on PR-4a); harmless
-      while shadow-only, but move the enrichment after the sync (mind the `preservePreviousSnapshot`
-      invalid-binary-payload edge — enrich from the committed, not the parsed, snapshot). Source: PR-4a
-      review (codex), 2026-06-05. Files: `lib/observer/observedDeviceStateProjection.ts`,
-      `lib/device/deviceTransport.ts`, `app.ts`.
-
-- [ ] **Finish migrating the remaining ambiguous flat `test/*.test.ts` specs into tier folders.**
-      The testing taxonomy (`notes/testing-taxonomy.md`) + scaffolding landed first; then the
-      *obviously-classified* specs moved (app/SDK-harness → `integration/`, single-concrete-file
-      imports → `unit/`, `*E2E` → `e2e/`); then careful per-file passes over the
-      `dailyBudget*` / `device*` / `app*`, `deferred*` / `objective*`, and `plan*` clusters (read
-      each, unit vs integration by subject — plan-layer logic biased to integration), plus
-      device-suite e2e reshapes.
-      ~64 flat specs remain — long-tail odds-and-ends needing per-file judgment, the
-      `deviceIdentityHygiene` meta-test (uses `import.meta.url`-relative repoRoot — needs a
-      manual path fix to move), and the 5 environment-special `*Browser.test.ts` /
-      `settings-ui.test.ts` specs (jsdom / explicit-include in the dom config — moving them needs
-      that include list updated too). Migrate opportunistically — when you
-      touch a spec, move it into its tier
-      folder and bump its relative-import depth (`'../X'` → `'../../X'`, `'./X'` → `'../X'`), then
-      run `knip` (type-only imports pass vitest but fail `deadcode:check` on wrong depth). When
-      every spec is under a tier folder, re-scope
-      `test:unit` from the whole-suite glob to `test/unit/` so the three tier commands partition
-      the runtime suite, and (optionally) split CI into per-tier jobs (see the CI-actions note
-      below). Persona: contributor; hypothesis: a path-obvious tier speeds review and lets CI
-      fan out unit→integration→e2e for faster signal.
-
-- [ ] **Migrate `test/planPriceWidgetBrowser.test.ts` into the `test/unit` tier (per `test/AGENTS.md`).**
-      The spec imports concrete plan_budget widget files (`chart`, `chartGeometry`, `widgetApp`) and
-      belongs under `test/unit/` like the other single-module browser specs. Deferred to avoid a
-      conflict with the active test-taxonomy migration (it is one of the 5 environment-special
-      `*Browser.test.ts` specs the migration item above tracks — moving it also needs the dom-config
-      include list updated). Do the move as part of that taxonomy pass, not piecemeal. Persona:
-      contributor; hypothesis: a path-obvious tier speeds review and keeps the dom-config include
-      list consistent. Source: Codex review of PR #1476.
+- [ ] **Retire the `observed ?? device` boot-window fallback in `toPlanDevice` once freshness leaves
+      the descriptor surface.** Stage 4b wired the first projection reader: `toPlanDevice`
+      (`setup/appInit.ts`) resolves `observationStale` from `ctx.getObservedState(id)`, falling back to
+      the snapshot only until the first observation lands. The fallback is correct *today* solely because
+      `TargetDeviceSnapshot = DeviceDescriptor & ObservedDeviceState` so the snapshot still physically
+      carries `lastFreshDataMs`/`lastLocalWriteMs`. Once a later stage strips those freshness fields off
+      the descriptor surface, the `?? device` arm reads `undefined` and silently flips `unknown` → non-stale.
+      Remove the fallback (or re-point it) in lockstep with that strip, so the "identical anyway" boot-window
+      assumption doesn't outlive its invariant. Persona: contributor; hypothesis: a stale fallback that
+      reads a removed field is a silent correctness trap for the next stage. Source: pels-layering-guardian
+      P3 on the stage-4b PR, 2026-06-06. Files: `setup/appInit.ts`, `packages/contracts/src/types.ts`.
+      (The three stage-4b *prerequisites* — seq-epoch co-creation, freeze-on-store, and the
+      device-update-lag dispatch — shipped with the stage-4b reader PR.)
 
 *v2.10.0..HEAD release-review findings (2026-05-29, six-agent fan-out:
 `pels-runtime-reality` + `pels-layering-guardian` + `pels-copy-and-terminology` +
@@ -281,9 +269,25 @@ styling" items were written against UI that no longer exists — there are zero
 smart-task charts already share the palette tokens and are deliberately different
 chart types, not two languages for one chart. Do not re-raise from the stale
 live-walk screenshots.*
-- [ ] Add a device-log view in the Settings UI, and reuse the shared device overview formatter so
+- [x] Add a device-log view in the Settings UI, and reuse the shared device overview formatter so
       the visible device-log wording matches backend overview transition logs exactly.
       Files: settings UI advanced/device-log surface, `packages/shared-domain/src/deviceOverview.ts`.
+      Shipped as an "Activity log" disclosure on the device-detail page. Data source: a bounded
+      in-memory overview-transition recorder (`lib/plan/deviceOverviewLog.ts`) fed from the same
+      signature-change boundary `PlanService.emitOverviewTransitions` uses for the structured
+      overview log, served via a new `/ui_device_log` read endpoint. Log-parity is guaranteed by
+      construction: the recorder stores the verbatim `formatDeviceOverview` output (`DeviceOverviewStrings`).
+      Deferred follow-ups (P3, persona: curious tinkerer — wants to debug their own setup over time):
+      the recorder is session-only (no persistence), so the log is empty after a restart — hypothesis:
+      a persisted ring buffer would let the tinkerer review what happened overnight; needs the
+      Homey-SDK transient-read grace pattern before persisting. Also currently per-device only
+      (reached via device detail); a cross-device "recent activity" feed on Overview is a possible
+      later surface if the per-device view proves used.
+      P3 (persona: contributor): `STATE_TONE_CHIP_MODIFIER` in `DeviceLogView.tsx` duplicates
+      `PLAN_STATE_CHIP_MODIFIER` in `PlanDeviceCards.tsx` — both live in `settings-ui/src/ui/views/`
+      (same side of every boundary), so fold them into one shared `chipModifierForTone()` helper to
+      stop the tone→chip-class map drifting between the live card and the log. Source:
+      pels-layering-guardian on PR #1546.
 - [ ] Finish the planner/executor/device-transport state boundary split.
       Planner output should carry desired state and planner reasons; `DeviceTransport` should
       provide observed current state and own native / flow / capability transport; executor should
@@ -310,12 +314,31 @@ live-walk screenshots.*
       readability or testability. (`resolveHasBinaryControl` no longer exists as a shared symbol —
       that part is already handled.)
       Files: `app.ts`, `setup/appInit/**`.
-- [ ] Stop granting blanket `max-lines` exemptions. Classify each currently-oversized runtime file
-      as either Bucket A ("must shrink to <=500") or Bucket B ("documented exception with a
-      concrete raised ceiling"), replace file-level `eslint-disable` pragmas with per-file config
-      overrides in `eslint.config.mjs` that cite the structural reason.
-      Proposal: `notes/complexity-cleanup/god-file-policy.md`.
-      Files: `eslint.config.mjs`, file-level disables in `app.ts`, `lib/**`.
+- [x] Stop granting blanket `max-lines` exemptions. *(done: all 16 runtime files carrying a
+      file-level `/* eslint-disable max-lines */` blanket pragma — `app.ts`, `flowCards/registerFlowCards.ts`,
+      `setup/appDebugHelpers.ts`, `lib/device/deviceTransport.ts`, `lib/device/transport/managerObservation.ts`,
+      `lib/dailyBudget/dailyBudgetService.ts`, `lib/plan/{planBuilder,planReasons,planService}.ts`,
+      `lib/plan/restore/{index,helpers}.ts`, `lib/executor/{binaryExecutor,targetExecutor,steppedLoadExecutor}.ts`,
+      `lib/objectives/deferredObjectives/{activePlanRecorder,diagnosticsBridge}.ts` — now have a cited
+      per-file `max-lines` override in `eslint.config.mjs` with a concrete ceiling just above current
+      effective size and a structural reason (Bucket B per the policy note). The stale `app.ts` 750
+      override was corrected to its true size (the blanket pragma had been masking ~1885 effective lines).
+      No blanket `max-lines` pragmas remain; `npm run lint --max-warnings=0` is green WITHOUT them.
+      Other-rule file-level pragmas left intact (`managerObservation.ts` `max-params`, `appDebugHelpers.ts`
+      `functional/immutable-data`) and targeted `eslint-disable-next-line` suppressions were out of scope.)
+      Proposal: `notes/complexity-cleanup/god-file-policy.md`. The shrink-to-<=500 follow-ups for the
+      Bucket-A-adjacent files are split out below.
+- [ ] Split the larger Bucket-B god-files toward <=500 when next touched (named here so the ceilings in
+      `eslint.config.mjs` are accountable, not permanent): `lib/device/deviceTransport.ts` (~2148, peel off a
+      transport subsystem on a clear boundary), `lib/plan/restore/index.ts` (~1327, swap-flow vs per-device
+      restore gating), `flowCards/registerFlowCards.ts` (~1124, only if registration gains per-card behavior),
+      `lib/plan/planBuilder.ts` (~1063, overshoot/meta builders), `lib/device/transport/managerObservation.ts`
+      (~1005, retained-observation accounting), `lib/plan/planReasons.ts` (~1001, reason-normalization vs hold
+      decisions), `lib/plan/planService.ts` (~781, reconcile vs rebuild), `lib/executor/steppedLoadExecutor.ts`
+      (~773), `lib/objectives/deferredObjectives/activePlanRecorder.ts` (~743, replay split) and
+      `diagnosticsBridge.ts` (~739, per-concern payload builders), `setup/appDebugHelpers.ts` (~706, comparison
+      serializer). Persona: contributor. Large structural splits — out of scope for the exemption sweep.
+      Files: as listed.
 - [~] Add a hero summary to the Electricity prices settings panel. *(partial, landed in
       `v2-7-3-budget-rhythm-and-polish`, 2026-05-18: one-sentence lede added under the panel
       `pels-hero` h2 so users know what the panel controls.)* Remaining for a later pass:

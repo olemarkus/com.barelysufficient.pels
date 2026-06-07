@@ -1,4 +1,3 @@
-/* eslint-disable max-lines -- debug dump helpers intentionally keep all emitted shapes in one place. */
 /* eslint-disable functional/immutable-data -- debug payload assembly is local and not shared mutable state. */
 import type Homey from 'homey';
 import type {
@@ -18,6 +17,9 @@ import { isHomeyDeviceLike } from '../lib/utils/types';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import { normalizeError } from '../lib/utils/errorUtils';
 import { safeJsonStringify, sanitizeLogValue } from '../lib/utils/logUtils';
+import { getLogger } from '../lib/logging/logger';
+
+const debugLogger = getLogger('devices/debug-dump');
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -511,14 +513,12 @@ export async function logHomeyDeviceForDebug(params: {
   deviceId: string;
   deviceManager: DeviceTransport;
   getPelsDeviceState?: (deviceId: string) => PelsDeviceDebugState | null;
-  log: (msg: string, metadata?: unknown) => void;
   error: (msg: string, err: Error) => void;
 }): Promise<boolean> {
   const {
     deviceId,
     deviceManager,
     getPelsDeviceState,
-    log,
     error,
   } = params;
   if (!deviceId) return false;
@@ -534,7 +534,7 @@ export async function logHomeyDeviceForDebug(params: {
   const device = devices.find((entry) => entry.id === deviceId);
   const safeDeviceId = sanitizeLogValue(deviceId);
   if (!device) {
-    log('Homey device dump: device not found', { deviceId: safeDeviceId });
+    debugLogger.info({ event: 'homey_device_dump_device_not_found', deviceId: safeDeviceId });
     return false;
   }
 
@@ -597,7 +597,8 @@ export async function logHomeyDeviceForDebug(params: {
     source: 'side_by_side',
   };
 
-  log('Homey device dump', {
+  debugLogger.info({
+    event: 'homey_device_dump',
     deviceId: safeDeviceId,
     label: safeLabel,
     payload: safeJsonStringify(dump),
@@ -615,7 +616,6 @@ export async function logHomeyDeviceComparisonForDebug(params: {
   observedSource?: string;
   deviceManager: DeviceTransport;
   getPelsDeviceState?: (deviceId: string) => PelsDeviceDebugState | null;
-  log: (msg: string, metadata?: unknown) => void;
   error: (msg: string, err: Error) => void;
 }): Promise<boolean> {
   const {
@@ -626,7 +626,6 @@ export async function logHomeyDeviceComparisonForDebug(params: {
     observedSource,
     deviceManager,
     getPelsDeviceState,
-    log,
     error,
   } = params;
   if (!deviceId) return false;
@@ -642,7 +641,11 @@ export async function logHomeyDeviceComparisonForDebug(params: {
   const device = devices.find((entry) => entry.id === deviceId);
   const safeDeviceId = sanitizeLogValue(deviceId);
   if (!device) {
-    log('Homey/Pels device state comparison: device not found', { deviceId: safeDeviceId, reason });
+    debugLogger.info({
+      event: 'homey_pels_device_state_comparison_device_not_found',
+      deviceId: safeDeviceId,
+      reason,
+    });
     return false;
   }
 
@@ -661,7 +664,8 @@ export async function logHomeyDeviceComparisonForDebug(params: {
   const observedSources = pelsState?.observedSources
     ?? buildObservedSourcesSummary(deviceManager.getDebugObservedSources?.(deviceId));
 
-  log('Homey/Pels device state comparison', {
+  debugLogger.info({
+    event: 'homey_pels_device_state_comparison',
     deviceId: safeDeviceId,
     label: safeLabel,
     payload: safeJsonStringify({
@@ -713,7 +717,6 @@ export async function logHomeyDeviceForDebugFromApp(params: {
         ),
       };
     },
-    log: (msg, payload) => runtimeApp.log?.(msg, payload),
     error: (msg, err) => runtimeApp.error?.(msg, err),
   });
 }
@@ -770,7 +773,6 @@ export async function logHomeyDeviceComparisonForDebugFromApp(params: {
         ),
       };
     },
-    log: (msg, payload) => runtimeApp.log?.(msg, payload),
     error: (msg, err) => runtimeApp.error?.(msg, err),
   });
 }

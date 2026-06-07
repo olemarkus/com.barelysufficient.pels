@@ -1,3 +1,4 @@
+import type { StructuredDebugEmitter } from '../logging/logger';
 import { getDateKeyInTimeZone, shiftDateKey } from '../utils/dateUtils';
 import { FLOW_PRICES_TODAY, FLOW_PRICES_TOMORROW } from '../utils/settingsKeys';
 import {
@@ -18,12 +19,12 @@ type CombinedPayloadParams = {
   timeZone: string;
   todayPayload: FlowPricePayload | null;
   tomorrowPayload: FlowPricePayload | null;
-  logDebug: (...args: unknown[]) => void;
+  debugStructured: StructuredDebugEmitter;
   label: 'Flow prices' | 'Homey prices';
 };
 
 export const buildCombinedHourlyPricesFromPayloads = (params: CombinedPayloadParams): BaseHourlyPrice[] => {
-  const { now, timeZone, todayPayload, tomorrowPayload, logDebug, label } = params;
+  const { now, timeZone, todayPayload, tomorrowPayload, debugStructured, label } = params;
   const todayKey = getDateKeyInTimeZone(now, timeZone);
   // Compare payloads by local calendar day instead of adding 24h to the current instant.
   const tomorrowKey = shiftDateKey(todayKey, 1);
@@ -41,7 +42,7 @@ export const buildCombinedHourlyPricesFromPayloads = (params: CombinedPayloadPar
     ? buildFlowEntries(tomorrowPayload, timeZone)
     : todayResult.entries;
   if (useTomorrowAsToday && tomorrowPayload) {
-    logDebug(`${label}: Using stored tomorrow data for ${todayKey} as today`);
+    debugStructured({ event: 'price_tomorrow_used_as_today', priceSource: label, date: todayKey });
   }
 
   const tomorrowEntries = useTomorrowAsToday
@@ -117,18 +118,11 @@ export const purgeStaleFlowPriceSlots = (
   };
 };
 
-export const describeFlowSlotChange = (label: string, change: FlowSlotChange): string => {
-  if (change.action === 'promoted_to_today') {
-    return `${label}: Promoted stored tomorrow data (${change.from}) into today slot`;
-  }
-  return `${label}: Cleared stale ${change.slot} data (was ${change.from})`;
-};
-
 type StoreFlowPriceParams = {
   kind: 'today' | 'tomorrow';
   raw: unknown;
   timeZone: string;
-  logDebug: (...args: unknown[]) => void;
+  debugStructured: StructuredDebugEmitter;
   setSetting: (key: string, value: unknown) => void;
   updateCombinedPrices: () => void;
 };
@@ -138,7 +132,7 @@ export const storeFlowPriceData = (params: StoreFlowPriceParams): {
   storedCount: number;
   missingHours: number[];
 } => {
-  const { kind, raw, timeZone, logDebug, setSetting, updateCombinedPrices } = params;
+  const { kind, raw, timeZone, debugStructured, setSetting, updateCombinedPrices } = params;
   const todayKey = getDateKeyInTimeZone(new Date(), timeZone);
   const dateKey = kind === 'tomorrow' ? shiftDateKey(todayKey, 1) : todayKey;
   const parsed = parseFlowPricePayloadInput(raw, { dateKey, timeZone });
@@ -156,7 +150,12 @@ export const storeFlowPriceData = (params: StoreFlowPriceParams): {
 
   const missingHours = getMissingFlowHours(pricesByHour, getExpectedFlowHours(dateKey, timeZone));
   if (missingHours.length > 0) {
-    logDebug(`Flow prices: Missing ${missingHours.length} hour(s) for ${dateKey}`, missingHours);
+    debugStructured({
+      event: 'flow_prices_missing_hours',
+      date: dateKey,
+      missingHourCount: missingHours.length,
+      missingHours,
+    });
   }
 
   updateCombinedPrices();

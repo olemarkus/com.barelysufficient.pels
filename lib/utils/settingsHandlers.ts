@@ -38,11 +38,15 @@ import {
   PRICE_SCHEME,
 } from './settingsKeys';
 import { incPerfCounters } from './perfCounters';
+import { getLogger } from '../logging/logger';
+import { normalizeError } from './errorUtils';
 import {
   createDebouncedSyncScheduler,
   type DebouncedSyncScheduler,
 } from './settingsHandlerDebounce';
 import { toStableFingerprint } from './stableFingerprint';
+
+const settingsLogger = getLogger('settings');
 export type PriceServiceLike = {
   refreshGridTariffData: (forceRefresh?: boolean) => Promise<void>;
   refreshSpotPrices: (forceRefresh?: boolean) => Promise<void>;
@@ -67,8 +71,6 @@ export type SettingsHandlerDeps = {
   updateOverheadToken: (value?: number) => Promise<void>;
   updateDebugLoggingEnabled: (logChange?: boolean) => void;
   restartHomeyEnergyPoll?: () => void;
-  log: (message: string) => void;
-  errorLog: (message: string, error: unknown) => void;
 };
 
 const DEDUPED_CAPACITY_KEYS = [
@@ -139,7 +141,10 @@ const createDailyBudgetPriceSyncScheduler = (deps: SettingsHandlerDeps): Debounc
       deps.updateDailyBudgetState(FORCE_DAILY_BUDGET_STATE_PERSIST);
       await rebuildPlanFromSettings(deps, 'daily_budget_price');
     },
-    onError: (error) => deps.errorLog('Failed to sync daily budget state after combined price update', error),
+    onError: (error) => settingsLogger.error({
+      event: 'daily_budget_combined_price_sync_failed',
+      err: normalizeError(error),
+    }),
   })
 );
 
@@ -152,7 +157,10 @@ const createDailyBudgetSettingsSyncScheduler = (deps: SettingsHandlerDeps): Debo
       deps.updateDailyBudgetState(FORCE_DAILY_BUDGET_STATE_PERSIST);
       await rebuildPlanFromSettings(deps, 'daily_budget_settings');
     },
-    onError: (error) => deps.errorLog('Failed to sync daily budget settings', error),
+    onError: (error) => settingsLogger.error({
+      event: 'daily_budget_settings_sync_failed',
+      err: normalizeError(error),
+    }),
   })
 );
 
@@ -230,7 +238,11 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): SettingsHandle
       await keyHandler();
       markProcessedWrite(key);
     }).catch((error) => {
-      deps.errorLog('Settings handler failed', error);
+      settingsLogger.error({
+        event: 'settings_handler_failed',
+        settingKey: key,
+        err: normalizeError(error),
+      });
     });
     await queue;
   }) as SettingsHandler;
@@ -268,42 +280,42 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
     },
     [CONTROLLABLE_DEVICES]: async () => {
       deps.loadCapacitySettings();
-      await refreshSnapshotWithLog(deps, 'Failed to refresh devices after controllable change');
+      await refreshSnapshotWithLog(deps, 'controllable_devices_change');
       await rebuildPlanFromSettings(deps, 'controllable_devices');
     },
     [MANAGED_DEVICES]: async () => {
       deps.loadCapacitySettings();
-      await refreshSnapshotWithLog(deps, 'Failed to refresh devices after managed change');
+      await refreshSnapshotWithLog(deps, 'managed_devices_change');
       await rebuildPlanFromSettings(deps, 'managed_devices');
     },
     [NATIVE_EV_WIRING_DEVICES]: async () => {
       deps.loadCapacitySettings();
-      await refreshSnapshotWithLog(deps, 'Failed to refresh devices after native wiring change');
+      await refreshSnapshotWithLog(deps, 'native_ev_wiring_change');
       await rebuildPlanFromSettings(deps, NATIVE_EV_WIRING_DEVICES);
     },
     [DEVICE_DRIVER_OVERRIDES]: async () => {
       deps.loadCapacitySettings();
-      await refreshSnapshotWithLog(deps, 'Failed to refresh devices after device driver override change');
+      await refreshSnapshotWithLog(deps, 'device_driver_override_change');
       await rebuildPlanFromSettings(deps, DEVICE_DRIVER_OVERRIDES);
     },
     [DEVICE_CONTROL_PROFILES]: async () => {
       deps.loadCapacitySettings();
-      await refreshSnapshotWithLog(deps, 'Failed to refresh devices after control profile change');
+      await refreshSnapshotWithLog(deps, 'device_control_profile_change');
       await rebuildPlanFromSettings(deps, DEVICE_CONTROL_PROFILES);
     },
     [DEVICE_TARGET_POWER_CONFIGS]: async () => {
       deps.loadCapacitySettings();
-      await refreshSnapshotWithLog(deps, 'Failed to refresh devices after target power model change');
+      await refreshSnapshotWithLog(deps, 'device_target_power_change');
       await rebuildPlanFromSettings(deps, DEVICE_TARGET_POWER_CONFIGS);
     },
     [DEVICE_COMMUNICATION_MODELS]: async () => {
       deps.loadCapacitySettings();
-      await refreshSnapshotWithLog(deps, 'Failed to refresh devices after communication model change');
+      await refreshSnapshotWithLog(deps, 'device_communication_model_change');
       await rebuildPlanFromSettings(deps, DEVICE_COMMUNICATION_MODELS);
     },
     [BUDGET_EXEMPT_DEVICES]: async () => {
       deps.loadCapacitySettings();
-      await refreshSnapshotWithLog(deps, 'Failed to refresh devices after budget exemption change');
+      await refreshSnapshotWithLog(deps, 'budget_exemption_change');
       deps.updateDailyBudgetState(FORCE_DAILY_BUDGET_STATE_PERSIST);
       await rebuildPlanFromSettings(deps, BUDGET_EXEMPT_DEVICES);
     },
@@ -324,11 +336,11 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
     },
     [OVERSHOOT_BEHAVIORS]: async () => {
       deps.loadCapacitySettings();
-      await refreshSnapshotWithLog(deps, 'Failed to refresh devices after overshoot behavior change');
+      await refreshSnapshotWithLog(deps, 'overshoot_behavior_change');
       await rebuildPlanFromSettings(deps, OVERSHOOT_BEHAVIORS);
     },
     refresh_target_devices_snapshot: async () => {
-      await refreshSnapshotWithLog(deps, 'Failed to refresh target devices snapshot');
+      await refreshSnapshotWithLog(deps, 'manual_snapshot_refresh');
     },
   };
 }
@@ -342,14 +354,20 @@ function buildPriceSettingsHandlers(
       try {
         await deps.priceService.refreshGridTariffData(true);
       } catch (error) {
-        deps.errorLog('Failed to refresh grid tariff data', error);
+        settingsLogger.error({
+          event: 'grid_tariff_refresh_failed',
+          err: normalizeError(error),
+        });
       }
     },
     refresh_spot_prices: async () => {
       try {
         await deps.priceService.refreshSpotPrices(true);
       } catch (error) {
-        deps.errorLog('Failed to refresh spot prices', error);
+        settingsLogger.error({
+          event: 'spot_prices_refresh_failed',
+          err: normalizeError(error),
+        });
       }
     },
     [PRICE_SCHEME]: async () => {
@@ -378,7 +396,7 @@ function buildPriceSettingsHandlers(
     price_min_diff_ore: async () => refreshPriceDerivedState(deps),
     [PRICE_OPTIMIZATION_SETTINGS]: async () => {
       deps.loadPriceOptimizationSettings();
-      await refreshSnapshotWithLog(deps, 'Failed to refresh plan after price optimization settings change');
+      await refreshSnapshotWithLog(deps, 'price_optimization_settings_change');
     },
     [COMBINED_PRICES]: async () => {
       void scheduleDailyBudgetPriceSync();
@@ -406,10 +424,9 @@ function buildMiscSettingsHandlers(deps: SettingsHandlerDeps): SettingsHandlerMa
   };
 }
 
-const formatSettingsUiMessage = (entry: SettingsUiLogEntry) => {
-  const context = entry.context ? ` (${entry.context})` : '';
-  const detail = entry.detail ? ` - ${entry.detail}` : '';
-  return `Settings UI${context}: ${entry.message}${detail}`;
+const settingsUiLogLevelMethod = (level: SettingsUiLogEntry['level']): 'error' | 'warn' | 'info' => {
+  if (level === 'error') return 'error';
+  return level === 'warn' ? 'warn' : 'info';
 };
 
 const handleSettingsUiLog = async (deps: SettingsHandlerDeps): Promise<void> => {
@@ -418,14 +435,13 @@ const handleSettingsUiLog = async (deps: SettingsHandlerDeps): Promise<void> => 
   const entry = raw as SettingsUiLogEntry;
   if (!entry.level || !entry.message) return;
 
-  const message = formatSettingsUiMessage(entry);
-  if (entry.level === 'error') {
-    deps.errorLog(message, new Error(entry.detail || entry.message));
-  } else if (entry.level === 'warn') {
-    deps.log(`Warning: ${message}`);
-  } else {
-    deps.log(message);
-  }
+  settingsLogger[settingsUiLogLevelMethod(entry.level)]({
+    event: 'settings_ui_log',
+    level: entry.level,
+    message: entry.message,
+    detail: entry.detail ?? null,
+    context: entry.context ?? null,
+  });
 
   deps.homey.settings.set('settings_ui_log', null);
 };
@@ -436,7 +452,10 @@ async function handleModeTargetsChange(deps: SettingsHandlerDeps): Promise<void>
     await deps.refreshTargetDevicesSnapshot();
     await rebuildPlanFromSettings(deps, 'mode_targets');
   } catch (error) {
-    deps.errorLog('Failed to refresh devices after mode target change', error);
+    settingsLogger.error({
+      event: 'mode_targets_snapshot_refresh_failed',
+      err: normalizeError(error),
+    });
     await rebuildPlanFromSettings(deps, 'mode_targets_fallback');
   }
 }
@@ -458,9 +477,9 @@ async function handleDailyBudgetPriceChange(deps: SettingsHandlerDeps): Promise<
 }
 
 async function handlePowerSourceChange(deps: SettingsHandlerDeps): Promise<void> {
-  deps.log('Power source changed, refreshing snapshot');
+  settingsLogger.info({ event: 'power_source_changed' });
   deps.restartHomeyEnergyPoll?.();
-  await refreshSnapshotWithLog(deps, 'Failed to refresh after power source change');
+  await refreshSnapshotWithLog(deps, 'power_source_change');
   await rebuildPlanFromSettings(deps, 'power_source');
 }
 
@@ -477,10 +496,14 @@ async function rebuildPlanFromSettings(deps: SettingsHandlerDeps, source: string
   await deps.rebuildPlanFromCache(`settings:${source}`);
 }
 
-async function refreshSnapshotWithLog(deps: SettingsHandlerDeps, message: string): Promise<void> {
+async function refreshSnapshotWithLog(deps: SettingsHandlerDeps, reasonCode: string): Promise<void> {
   try {
     await deps.refreshTargetDevicesSnapshot();
   } catch (error) {
-    deps.errorLog(message, error);
+    settingsLogger.error({
+      event: 'settings_snapshot_refresh_failed',
+      reasonCode,
+      err: normalizeError(error),
+    });
   }
 }

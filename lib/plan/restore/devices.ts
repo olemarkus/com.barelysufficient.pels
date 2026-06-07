@@ -1,9 +1,6 @@
 import { getSteppedLoadHighestStep } from '../../utils/deviceControlProfiles';
 import { PLAN_REASON_CODES, type DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
-import {
-  EV_COMMANDABLE_NOW_REASONS,
-  formatUnknownEvChargingStateReason,
-} from '../../../packages/shared-domain/src/commandableNowReason';
+import { resolveEvBlockReasonForDevice } from '../../../packages/shared-domain/src/commandableNow';
 import type { DevicePlanDevice } from '../planTypes';
 import { isObservedOff, isObservedOn } from '../../observer/observedState';
 import { sortByPriorityAsc, sortByPriorityDesc } from '../planSort';
@@ -110,22 +107,14 @@ export function getOnDevices(
 }
 
 export function getEvRestoreStateBlockReason(dev: DevicePlanDevice): string | null {
-  if (dev.controlCapabilityId !== 'evcharger_charging') return null;
-  if (dev.evChargingState === undefined) return EV_COMMANDABLE_NOW_REASONS.state_unknown;
-
-  switch (dev.evChargingState) {
-    case 'plugged_in_paused':
-    case 'plugged_in_charging':
-      return null;
-    case 'plugged_in':
-      return EV_COMMANDABLE_NOW_REASONS.plugged_in;
-    case 'plugged_out':
-      return EV_COMMANDABLE_NOW_REASONS.plugged_out;
-    case 'plugged_in_discharging':
-      return EV_COMMANDABLE_NOW_REASONS.plugged_in_discharging;
-    default:
-      return formatUnknownEvChargingStateReason(dev.evChargingState);
-  }
+  // Delegate EV identity AND EV-state → reason to the shared device-shaped
+  // resolver (one source of truth, also behind resolveCommandableNow). Its own
+  // `isEvDevice` gate covers BOTH the `evcharger_charging` control capability and
+  // an `evcharger` device class, so an evcharger-class device that happens to
+  // control via a different capability is no longer silently skipped. Non-EV
+  // devices resolve to `null`. This consumer never touches the raw charging-state
+  // string — no plug-state re-derivation here.
+  return resolveEvBlockReasonForDevice(dev);
 }
 
 export function getInactiveReason(dev: DevicePlanDevice): DeviceReason | null {

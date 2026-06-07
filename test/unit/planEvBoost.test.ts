@@ -63,6 +63,19 @@ describe('resolveEvBoostActive', () => {
     })).toBe(false);
   });
 
+  it('does not activate for a connected-but-not-resumable charger (plugged_in)', () => {
+    // `plugged_in` (distinct from the resumable `plugged_in_paused`) cannot be
+    // driven by PELS, so boost must never claim to activate — even with a fresh
+    // SoC below the threshold.
+    expect(resolveEvBoostActive({
+      dev: buildEvDevice({
+        evChargingState: 'plugged_in',
+        stateOfCharge: { percent: 20, status: 'fresh' as const },
+      }),
+      previousActive: false,
+    })).toBe(false);
+  });
+
   it('does not activate for non-stepped or non-EV devices', () => {
     expect(resolveEvBoostActive({
       dev: buildPlanInputDevice({

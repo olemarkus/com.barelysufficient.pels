@@ -32,6 +32,7 @@ import type {
   DeviceTargetPowerConfigs,
   EvBoostConfig,
   EvBoostSettings,
+  ObservedDeviceState,
   TargetDeviceSnapshot,
   TemperatureBoostConfig,
   TemperatureBoostSettings,
@@ -115,6 +116,10 @@ export type AppContext = {
   resolveModeName: (name: string) => string;
   getAllModes: () => Set<string>;
   resolveManagedState: (deviceId: string) => boolean;
+  // Observer-owned maintained observed truth for a device, fed by the dispatcher
+  // push (`lib/observer/observedDeviceStateProjection.ts`). `undefined` until the
+  // first observation lands; readers fall back to the snapshot for that window.
+  getObservedState: (deviceId: string) => ObservedDeviceState | undefined;
   getCommunicationModel: (deviceId: string) => 'local' | 'cloud';
   isCapacityControlEnabled: (deviceId: string) => boolean;
   isBudgetExempt: (deviceId: string) => boolean;

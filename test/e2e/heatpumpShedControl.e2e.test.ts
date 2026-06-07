@@ -12,8 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockHomeyInstance, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW } from '../../lib/utils/settingsKeys';
-
-const flushPromises = () => new Promise((resolve) => process.nextTick(resolve));
+import { drainUntilCalledWith } from '../utils/asyncDrain';
 
 const cap = (deviceId: string, capability: string) =>
   `manager/devices/device/${deviceId}/capability/${capability}`;
@@ -87,7 +86,7 @@ describe('Heatpump capacity control (SDK-boundary e2e)', () => {
     const app = createApp();
     await app.onInit();
     await vi.advanceTimersByTimeAsync(10_000);
-    await flushPromises();
+    await drainUntilCalledWith(putSpy, cap('heatpump-a', 'target_temperature'), { value: 15 });
 
     expect(putSpy).toHaveBeenCalledWith(cap('heatpump-a', 'target_temperature'), { value: 15 });
     const turnedOff = putSpy.mock.calls.some(
@@ -108,7 +107,7 @@ describe('Heatpump capacity control (SDK-boundary e2e)', () => {
 
     const app = createApp();
     await app.onInit();
-    await flushPromises();
+    await drainUntilCalledWith(putSpy, cap('heatpump-a', 'target_temperature'), { value: 20 });
 
     expect(putSpy).toHaveBeenCalledWith(cap('heatpump-a', 'target_temperature'), { value: 20 });
   });

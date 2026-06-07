@@ -1,4 +1,7 @@
 import type { DevicePlan, PlanInputDevice } from './planTypes';
+import { withEvDiscriminant, withSteppedDiscriminant } from './planTypes';
+import { isSteppedLoadDevice } from './planSteppedLoad';
+import { isEvPlanDevice } from './planEvDevice';
 import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 import { resolveObservedCurrentState } from './planCurrentState';
@@ -21,18 +24,36 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
       const live = liveById.get(device.id);
       if (!live) return device;
       const liveStepState = resolveLiveSteppedStepState(device, live);
-      return {
+      // The live snapshot's profile wins when present; otherwise keep the prior
+      // device's. The merged literal spreads `...device` (a union) wholesale, so
+      // `withSteppedDiscriminant` re-ties the discriminant into one variant —
+      // stripping any stale `steppedLoadProfile` the spread carried over.
+      const mergedProfile = (isSteppedLoadDevice(live) ? live.steppedLoadProfile : undefined)
+        ?? (isSteppedLoadDevice(device) ? device.steppedLoadProfile : undefined);
+      // EV is orthogonal to the stepped axis and its fields are off the base, so
+      // the `...device` spread does not carry them at the type level. Re-source
+      // the cluster explicitly: `evChargingState` from the live snapshot (the
+      // pre-slice override), the remaining EV fields from the prior plan device
+      // (which `...device` previously carried wholesale), then regroup through
+      // `withEvDiscriminant`. Runtime values are byte-identical.
+      const evDevice = isEvPlanDevice(device) ? device : null;
+      const evLive = isEvPlanDevice(live) ? live : null;
+      return withSteppedDiscriminant(withEvDiscriminant({
         ...device,
+        evChargingState: evLive?.evChargingState,
+        evBoost: evDevice?.evBoost,
+        evBoostActive: evDevice?.evBoostActive,
+        stateOfCharge: evDevice?.stateOfCharge,
+        controlModel: live.controlModel ?? device.controlModel,
+        steppedLoadProfile: mergedProfile,
         currentState: resolveCurrentStateFromPlanInput(device, live),
         currentTarget: getPrimaryTargetCapability(live.targets)?.value ?? null,
         observationStale: live.observationStale ?? device.observationStale,
-        controlModel: live.controlModel ?? device.controlModel,
-        steppedLoadProfile: live.steppedLoadProfile ?? device.steppedLoadProfile,
         selectedStepId: liveStepState.selectedStepId,
         desiredStepId: clampShedDesiredStepId(
           device,
           liveStepState.selectedStepId,
-          live.steppedLoadProfile ?? device.steppedLoadProfile,
+          mergedProfile,
         ),
         lastDesiredStepId: live.desiredStepId ?? device.lastDesiredStepId,
         lastStepCommandIssuedAt: live.lastStepCommandIssuedAt ?? device.lastStepCommandIssuedAt,
@@ -46,14 +67,13 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
         expectedPowerSource: live.expectedPowerSource,
         measuredPowerKw: live.measuredPowerKw,
         controlCapabilityId: live.controlCapabilityId,
-        evChargingState: live.evChargingState,
         binaryCommandPending: live.binaryCommandPending,
         available: live.available,
         zone: live.zone ?? device.zone,
         controllable: live.controllable ?? device.controllable,
         stepCommandPending: live.stepCommandPending ?? device.stepCommandPending,
         stepCommandStatus: live.stepCommandStatus ?? device.stepCommandStatus,
-      };
+      }));
     }),
   };
 }
@@ -154,7 +174,7 @@ function resolveCurrentStateFromPlanInput(
     controlCapabilityId: liveDevice.controlCapabilityId,
     observationStale: liveDevice.observationStale,
     controlModel: previousDevice.controlModel,
-    steppedLoadProfile: previousDevice.steppedLoadProfile,
+    steppedLoadProfile: isSteppedLoadDevice(previousDevice) ? previousDevice.steppedLoadProfile : undefined,
     selectedStepId: liveDevice.selectedStepId,
   });
 }

@@ -1,4 +1,5 @@
 import PriceService from '../../lib/price/priceService';
+import type { PriceServiceLoggingSinks } from '../../lib/price/priceServiceLoggingSinks';
 import { mockHomeyInstance } from '../mocks/homey';
 import {
   COMBINED_PRICES,
@@ -11,7 +12,14 @@ import {
 } from '../../lib/utils/settingsKeys';
 import { getDateKeyInTimeZone, getDateKeyStartMs, shiftDateKey } from '../../lib/utils/dateUtils';
 import type { HomeyEnergyApi, HomeyEnergyPriceInterval } from '../../lib/utils/homeyEnergy';
+import { captureLogger } from '../utils/loggerCapture';
 import type Homey from 'homey';
+
+const sinks = (overrides: Partial<PriceServiceLoggingSinks> = {}): PriceServiceLoggingSinks => ({
+  log: () => {},
+  debugStructured: () => {},
+  ...overrides,
+});
 
 const buildIntervals = (startUtcMs: number, values: number[], intervalMinutes: number): HomeyEnergyPriceInterval[] => (
   values.map((value, index) => {
@@ -62,9 +70,7 @@ describe('Homey price service', () => {
 
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
-      () => {},
-      () => {},
-      () => {},
+      sinks(),
       () => energyApi,
     );
 
@@ -94,57 +100,55 @@ describe('Homey price service', () => {
       fetchDynamicElectricityPrices: vi.fn().mockResolvedValue([]),
     };
 
-    const logDebug = vi.fn();
+    const debugStructured = vi.fn();
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
-      () => {},
-      logDebug,
-      () => {},
+      sinks({ debugStructured }),
       () => energyApi,
     );
 
     await service.refreshSpotPrices(false);
 
     expect(energyApi.fetchDynamicElectricityPrices).not.toHaveBeenCalled();
-    expect(logDebug).toHaveBeenCalledWith('Homey prices: Using cached data');
+    expect(debugStructured).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'homey_energy_cache_used' }),
+    );
   });
 
   it('logs when Homey energy API is unavailable', async () => {
     mockHomeyInstance.settings.set(PRICE_SCHEME, 'homey');
-    const log = vi.fn();
+    const structuredLog = { info: vi.fn() };
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
-      log,
-      () => {},
-      () => {},
+      sinks({ structuredLog: structuredLog as unknown as Logger }),
       () => null,
     );
 
     await service.refreshSpotPrices(true);
 
-    expect(log).toHaveBeenCalledWith('Homey prices: Homey energy API not available');
+    expect(structuredLog.info).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'homey_energy_api_unavailable' }),
+    );
   });
 
   it('logs an error when Homey price fetch fails', async () => {
     vi.useFakeTimers().setSystemTime(fixedNow);
     mockHomeyInstance.settings.set(PRICE_SCHEME, 'homey');
-    const errorLog = vi.fn();
+    const capture = captureLogger();
     const energyApi: HomeyEnergyApi = {
       fetchDynamicElectricityPrices: vi.fn().mockRejectedValue(new Error('boom')),
     };
 
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
-      () => {},
-      () => {},
-      errorLog,
+      sinks(),
       () => energyApi,
     );
 
     await service.refreshSpotPrices(true);
 
-    const messages = errorLog.mock.calls.map((call) => call[0]);
-    expect(messages.some((message) => String(message).includes('Failed to fetch price data for'))).toBe(true);
+    expect(capture.findEvent('homey_prices_fetch_failed')).toMatchObject({ message: 'boom' });
+    capture.restore();
   });
 
   it('stores only today and uses price unit when currency lookup fails', async () => {
@@ -164,48 +168,51 @@ describe('Homey price service', () => {
     };
 
     mockHomeyInstance.settings.set(PRICE_SCHEME, 'homey');
-    const log = vi.fn();
-    const logDebug = vi.fn();
-    const errorLog = vi.fn();
+    const debugStructured = vi.fn();
+    const structuredLog = { info: vi.fn() };
+    const capture = captureLogger();
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
-      log,
-      logDebug,
-      errorLog,
+      sinks({ debugStructured, structuredLog: structuredLog as unknown as PriceServiceLoggingSinks['structuredLog'] }),
       () => energyApi,
     );
 
     await service.refreshSpotPrices(true);
 
-    expect(errorLog).toHaveBeenCalledWith('Homey prices: Failed to fetch currency', expect.any(Error));
-    const currencyError = errorLog.mock.calls.find(([message]) => message === 'Homey prices: Failed to fetch currency')?.[1];
-    expect((currencyError as Error).message).toBe('nope');
-    expect(logDebug).not.toHaveBeenCalledWith('Homey prices: Failed to fetch currency', expect.any(Error));
+    const currencyFailure = capture.findEvent('homey_energy_currency_fetch_failed');
+    expect(currencyFailure).toBeDefined();
+    expect((currencyFailure?.err as { message?: string } | undefined)?.message).toBe('nope');
+    expect(debugStructured).not.toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'homey_energy_currency_fetch_failed' }),
+    );
     expect(mockHomeyInstance.settings.get(HOMEY_PRICES_TODAY)).toBeTruthy();
     expect(mockHomeyInstance.settings.get(HOMEY_PRICES_TOMORROW)).toBeUndefined();
     expect(mockHomeyInstance.settings.get(HOMEY_PRICES_CURRENCY)).toBe('NOK');
-    expect(log).toHaveBeenCalledWith('Homey prices: Stored 1 day of price data');
+    expect(structuredLog.info).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'homey_prices_stored', dayCount: 1 }),
+    );
+    capture.restore();
   });
 
   it('logs when no Homey price data is available', async () => {
     vi.useFakeTimers().setSystemTime(fixedNow);
     mockHomeyInstance.settings.set(PRICE_SCHEME, 'homey');
-    const log = vi.fn();
+    const structuredLog = { info: vi.fn() };
     const energyApi: HomeyEnergyApi = {
       fetchDynamicElectricityPrices: vi.fn().mockResolvedValue([]),
     };
 
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
-      log,
-      () => {},
-      () => {},
+      sinks({ structuredLog: structuredLog as unknown as Logger }),
       () => energyApi,
     );
 
     await service.refreshSpotPrices(true);
 
-    expect(log).toHaveBeenCalledWith('Homey prices: No price data available');
+    expect(structuredLog.info).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'homey_prices_no_data' }),
+    );
   });
 
   it('ignores cached Homey data with mismatched date keys', () => {
@@ -220,20 +227,22 @@ describe('Homey price service', () => {
       updatedAt: new Date().toISOString(),
     });
 
-    const logDebug = vi.fn();
+    const debugStructured = vi.fn();
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
-      () => {},
-      logDebug,
-      () => {},
+      sinks({ debugStructured }),
     );
 
     const prices = service.getCombinedHourlyPrices();
 
     expect(prices).toEqual([]);
-    expect(logDebug).toHaveBeenCalledWith(
-      `Homey prices: Cleared stale today data (was ${wrongKey})`,
-    );
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'flow_price_slot_rotated',
+      priceSource: 'Homey prices',
+      slot: 'today',
+      action: 'cleared',
+      from: wrongKey,
+    }));
     expect(mockHomeyInstance.settings.get(HOMEY_PRICES_TODAY)).toBeNull();
   });
 
@@ -250,12 +259,10 @@ describe('Homey price service', () => {
     };
     mockHomeyInstance.settings.set(FLOW_PRICES_TOMORROW, stalePayload);
 
-    const logDebug = vi.fn();
+    const debugStructured = vi.fn();
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
-      () => {},
-      logDebug,
-      () => {},
+      sinks({ debugStructured }),
     );
 
     const prices = service.getCombinedHourlyPrices();
@@ -263,9 +270,12 @@ describe('Homey price service', () => {
     expect(prices.length).toBeGreaterThan(0);
     expect(mockHomeyInstance.settings.get(FLOW_PRICES_TODAY)).toEqual(stalePayload);
     expect(mockHomeyInstance.settings.get(FLOW_PRICES_TOMORROW)).toBeNull();
-    expect(logDebug).toHaveBeenCalledWith(
-      `Flow prices: Promoted stored tomorrow data (${todayKey}) into today slot`,
-    );
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'flow_price_slot_rotated',
+      priceSource: 'Flow prices',
+      action: 'promoted_to_today',
+      from: todayKey,
+    }));
   });
 
   it('promotes a stale Homey tomorrow payload dated today into the today slot', () => {
@@ -292,12 +302,10 @@ describe('Homey price service', () => {
     mockHomeyInstance.settings.set(HOMEY_PRICES_TODAY, yesterdayPayload);
     mockHomeyInstance.settings.set(HOMEY_PRICES_TOMORROW, stalePayload);
 
-    const logDebug = vi.fn();
+    const debugStructured = vi.fn();
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
-      () => {},
-      logDebug,
-      () => {},
+      sinks({ debugStructured }),
     );
 
     const prices = service.getCombinedHourlyPrices();
@@ -305,9 +313,12 @@ describe('Homey price service', () => {
     expect(prices.length).toBeGreaterThan(0);
     expect(mockHomeyInstance.settings.get(HOMEY_PRICES_TODAY)).toEqual(stalePayload);
     expect(mockHomeyInstance.settings.get(HOMEY_PRICES_TOMORROW)).toBeNull();
-    expect(logDebug).toHaveBeenCalledWith(
-      `Homey prices: Promoted stored tomorrow data (${todayKey}) into today slot`,
-    );
+    expect(debugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'flow_price_slot_rotated',
+      priceSource: 'Homey prices',
+      action: 'promoted_to_today',
+      from: todayKey,
+    }));
   });
 
   it('persists refreshed lastFetched when combined prices are otherwise unchanged', () => {
@@ -322,9 +333,7 @@ describe('Homey price service', () => {
 
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
-      () => {},
-      () => {},
-      () => {},
+      sinks(),
     );
     const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
 
@@ -353,9 +362,7 @@ describe('Homey price service', () => {
 
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
-      () => {},
-      () => {},
-      () => {},
+      sinks(),
     );
     const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
 

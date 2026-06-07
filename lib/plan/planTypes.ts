@@ -1,6 +1,7 @@
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import type {
   PlanInputDevice,
+  PlanInputDeviceBase,
   StepPowerCalibrationView,
 } from '../../packages/planner-types/src/planInputDevice';
 import type { PowerFreshnessState } from './planPowerFreshness';
@@ -70,10 +71,144 @@ export type SteppedLoadKind = {
   steppedLoadProfile: SteppedLoadProfile;
 };
 
-export type SteppedPlanDevice = DevicePlanDevice & SteppedLoadKind;
-export type SteppedPlanInputDevice = PlanInputDevice & SteppedLoadKind;
+/**
+ * Non-stepped control-kind discriminant (slice 2 of the discriminated-types
+ * refactor). The discriminant field `steppedLoadProfile` is moved OFF the base
+ * shape and split across the two variants: the stepped variant requires it
+ * (`SteppedLoadKind`), the non-stepped variant omits it. This
+ * makes the compiler reject un-narrowed `device.steppedLoadProfile` reads on a
+ * `DevicePlanDevice` / `PlanInputDevice` union — consumers must pass through the
+ * `isSteppedLoadDevice` guard (or hold an already-narrowed `Stepped*` value)
+ * before touching the profile.
+ *
+ * Only the `steppedLoadProfile` discriminant moves in this slice; the rest of
+ * the stepped cluster (`reportedStepId`, `selectedStepId`, step-command fields,
+ * …) stays optional on the base for follow-up slices.
+ *
+ * The non-stepped variant OMITS `steppedLoadProfile` entirely (rather than
+ * `?: never`) so an un-narrowed read on the union is a hard compile error
+ * (TS2339) — `?: never` would still type the read as `SteppedLoadProfile |
+ * undefined` and silently permit it.
+ */
+export type NonSteppedLoadKind = {
+  controlModel?: Exclude<DeviceControlModel, 'stepped_load'>;
+};
 
-export type DevicePlanDevice = {
+/**
+ * EV field cluster (EV-variant slice of the discriminated-types refactor).
+ *
+ * EV is ORTHOGONAL to the stepped/non-stepped axis: an EV charger can also be
+ * stepped-controlled. So `EvKind` is NOT a union member alongside
+ * `Stepped|NonStepped`; it is an intersection the `isEvPlanDevice` type-guard
+ * adds back on top of whichever stepped variant the device already is. The EV
+ * fields are OMITTED from `DevicePlanDeviceBase`, so neither stepped nor
+ * non-stepped variants expose them un-narrowed — a `device.evChargingState` /
+ * `.stateOfCharge` / `.evBoost*` read on a bare `DevicePlanDevice` is a hard
+ * compile error (TS2339); consumers must pass through `isEvPlanDevice` (or hold
+ * an already-narrowed value) first.
+ *
+ * Every field is OPTIONAL: the producer (`toPlanDevice` / `planDevices`) sources
+ * `evChargingState` straight from the device snapshot, where it is absent on a
+ * genuine EV cold start (`resolveEvCommandableBlock` explicitly handles
+ * `case undefined`), and `evBoost` / `evBoostActive` / `stateOfCharge` are only
+ * present when boost is configured / the charger reports SoC. So the guard
+ * groups the cluster onto the variant WITHOUT asserting presence the producer
+ * does not guarantee.
+ */
+export type EvKind = {
+  evChargingState?: string;
+  evBoost?: EvBoostConfig;
+  evBoostActive?: boolean;
+  stateOfCharge?: DeviceStateOfChargeSnapshot;
+};
+
+export type SteppedPlanDevice = DevicePlanDeviceBase & SteppedLoadKind;
+export type NonSteppedPlanDevice = DevicePlanDeviceBase & NonSteppedLoadKind;
+export type DevicePlanDevice = SteppedPlanDevice | NonSteppedPlanDevice;
+
+/**
+ * A "might be stepped" device probe: the stepped discriminant
+ * (`controlModel` + `steppedLoadProfile`) as plain independent optionals. Used
+ * by step helpers that accept a device before it is narrowed through
+ * `isSteppedLoadDevice`, and by `withSteppedDiscriminant` to re-tie the pair.
+ */
+export type SteppedDiscriminantProbe = {
+  controlModel?: DeviceControlModel;
+  steppedLoadProfile?: SteppedLoadProfile;
+};
+
+/**
+ * Rebuild a discriminated plan device from a loose bag whose `controlModel` and
+ * `steppedLoadProfile` are still independent optionals (e.g. the result of a
+ * `{ ...current, ...updates }` merge, or a `...snapshot` spread). Strips both
+ * discriminant fields off the base and re-attaches them as a single
+ * variant-shaped pair (`SteppedLoadKind | NonSteppedLoadKind`), so the result
+ * lands cleanly in one union member.
+ *
+ * Stripping is essential: an object spread can never *remove* a key, so a stale
+ * `steppedLoadProfile` would otherwise survive onto a non-stepped result. The
+ * runtime predicate matches `isSteppedLoadDevice` — a profile is honoured only
+ * when both `controlModel === 'stepped_load'` and the profile's own `model`
+ * agree; anything else resolves to the non-stepped discriminant, which omits
+ * `steppedLoadProfile` entirely.
+ */
+export function withSteppedDiscriminant<TBase extends object>(
+  loose: TBase & SteppedDiscriminantProbe,
+):
+  | (Omit<TBase, keyof SteppedDiscriminantProbe> & SteppedLoadKind)
+  | (Omit<TBase, keyof SteppedDiscriminantProbe> & NonSteppedLoadKind) {
+  const { controlModel, steppedLoadProfile, ...base } = loose;
+  if (controlModel === 'stepped_load' && steppedLoadProfile?.model === 'stepped_load') {
+    return { ...base, controlModel: 'stepped_load', steppedLoadProfile };
+  }
+  return {
+    ...base,
+    controlModel: controlModel === 'stepped_load' ? undefined : controlModel,
+  };
+}
+
+/**
+ * EV field cluster as plain independent optionals: the "might be EV" loose
+ * shape a construction/merge site carries before the cluster is regrouped onto
+ * the orthogonal `EvKind` intersection. Used by `withEvDiscriminant`.
+ */
+export type EvDiscriminantProbe = {
+  evChargingState?: string;
+  evBoost?: EvBoostConfig;
+  evBoostActive?: boolean;
+  stateOfCharge?: DeviceStateOfChargeSnapshot;
+};
+
+/**
+ * Regroup the EV field cluster off a loose bag (whose EV fields are independent
+ * optionals on the base, e.g. the result of a `{ ...current, ...updates }`
+ * merge or a `...snapshot` spread) onto a single `EvKind`-shaped intersection.
+ *
+ * Stripping is essential for the same reason as `withSteppedDiscriminant`: an
+ * object spread can never *remove* a key, so the EV fields would otherwise
+ * survive on the base part of the result and re-pollute the base shape the EV
+ * slice deliberately omits them from. EV is orthogonal to the stepped axis, so
+ * there is no boolean discriminant to recompute — the cluster is regrouped
+ * byte-identically (every EV value is forwarded unchanged) and re-attached as
+ * `EvKind`. The result's base part is `Omit<TBase, keyof EvDiscriminantProbe>`,
+ * matching the EV-stripped `DevicePlanDeviceBase`.
+ */
+export function withEvDiscriminant<TBase extends object>(
+  loose: TBase & EvDiscriminantProbe,
+): Omit<TBase, keyof EvDiscriminantProbe> & EvKind {
+  const { evChargingState, evBoost, evBoostActive, stateOfCharge, ...base } = loose;
+  return {
+    ...base,
+    ...(evChargingState !== undefined ? { evChargingState } : {}),
+    ...(evBoost !== undefined ? { evBoost } : {}),
+    ...(evBoostActive !== undefined ? { evBoostActive } : {}),
+    ...(stateOfCharge !== undefined ? { stateOfCharge } : {}),
+  };
+}
+
+export type SteppedPlanInputDevice = PlanInputDeviceBase & SteppedLoadKind;
+
+type DevicePlanDeviceBase = {
   id: string;
   name: string;
   deviceClass?: string;
@@ -86,8 +221,6 @@ export type DevicePlanDevice = {
   plannedTarget?: number;
   observationStale?: boolean;
   communicationModel?: 'local' | 'cloud';
-  controlModel?: DeviceControlModel;
-  steppedLoadProfile?: SteppedLoadProfile;
   reportedStepId?: string;
   targetStepId?: string;
   // Producer-resolved EFFECTIVE step (`reportedStepId` ?? planning fallback).
@@ -103,7 +236,9 @@ export type DevicePlanDevice = {
   controlCapabilityId?: 'onoff' | 'evcharger_charging';
   controlAdapter?: DeviceControlAdapterSnapshot;
   targetPowerConfig?: TargetPowerSteppedLoadConfig;
-  evChargingState?: string;
+  // EV fields (`evChargingState`, `evBoost`, `evBoostActive`, `stateOfCharge`)
+  // are split off onto the orthogonal `EvKind` cluster; reach them through the
+  // `isEvPlanDevice` guard (`lib/plan/planEvDevice.ts`).
   // One-shot intent emitted by deferred-objective admission when a cap-off device's smart task
   // transitions out of a plannable status (or the device is in an idle bucket). Binary-controlled
   // devices map to 'binary_restore'/'binary_release' and use the dedicated binary executor path;
@@ -127,8 +262,6 @@ export type DevicePlanDevice = {
   currentTemperature?: number;
   temperatureBoost?: TemperatureBoostConfig;
   temperatureBoostActive?: boolean;
-  evBoost?: EvBoostConfig;
-  evBoostActive?: boolean;
   /**
    * Producer-resolved aggregate boost flag: `true` when either
    * `temperatureBoostActive` or `evBoostActive` fires this cycle. Resolved
@@ -136,7 +269,6 @@ export type DevicePlanDevice = {
    * single bit instead of recomputing the OR per call.
    */
   boostActive?: boolean;
-  stateOfCharge?: DeviceStateOfChargeSnapshot;
   stepCommandPending?: boolean;
   stepCommandStatus?: SteppedLoadCommandStatus;
   binaryCommandPending?: boolean;

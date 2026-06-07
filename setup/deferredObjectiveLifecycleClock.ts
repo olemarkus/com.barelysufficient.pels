@@ -1,5 +1,8 @@
 import type { DeferredObjectiveLifecycleEmitter } from '../lib/objectives/deferredObjectives/lifecycleEmitter';
 import { normalizeError } from '../lib/utils/errorUtils';
+import { getLogger } from '../lib/logging/logger';
+
+const logger = getLogger('plan/deferred-lifecycle-clock');
 
 /**
  * Default tick cadence for the smart-task lifecycle clock. Deadline /
@@ -13,7 +16,6 @@ const DEFERRED_OBJECTIVE_CLOCK_INTERVAL_MS = 30 * 1000;
 export type DeferredObjectiveLifecycleClockDeps = {
   emitter: DeferredObjectiveLifecycleEmitter;
   getNowMs: () => number;
-  error: (message: string, error: Error) => void;
   intervalMs?: number;
 };
 
@@ -34,7 +36,10 @@ export const startDeferredObjectiveLifecycleClock = (
     try {
       deps.emitter.tick(deps.getNowMs());
     } catch (error: unknown) {
-      deps.error('Failed to run smart-task lifecycle clock tick', normalizeError(error));
+      logger.error({
+        event: 'smart_task_lifecycle_clock_tick_failed',
+        err: normalizeError(error),
+      });
     }
   }, intervalMs);
   return () => {

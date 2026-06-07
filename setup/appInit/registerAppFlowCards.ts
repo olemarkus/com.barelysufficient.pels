@@ -78,8 +78,6 @@ export function registerAppFlowCards(ctx: AppContext): void {
     getTimeZone: () => ctx.getTimeZone(),
     getNow: () => ctx.getNow(),
     getStructuredLogger: (component) => ctx.getStructuredLogger(component),
-    log: (...args: unknown[]) => ctx.log(...args),
-    logDebug: (...args: unknown[]) => ctx.logDebug('settings', ...args),
-    error: (...args: unknown[]) => ctx.error(...args),
+    debugStructured: ctx.getStructuredDebugEmitter('flow', 'settings'),
   });
 }

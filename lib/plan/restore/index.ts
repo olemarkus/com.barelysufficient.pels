@@ -1,4 +1,3 @@
-/* eslint-disable max-lines -- binary restore gating and swap flow stay together for readability */
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../../logging/logger';
 import { getLogger } from '../../logging/logger';
 import type { DevicePlanDevice } from '../planTypes';
@@ -1407,7 +1406,7 @@ function markOffDevicesMeterSettling(params: {
     }
 
     const updates: Partial<DevicePlanDevice> = { plannedState: 'shed', reason };
-    if (dev.steppedLoadProfile) {
+    if (isSteppedLoadDevice(dev)) {
       Object.assign(updates, buildOffSteppedRestoreShedUpdate(dev));
     }
     setDevice(deviceMap, dev.id, updates);

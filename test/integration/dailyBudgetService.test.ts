@@ -74,8 +74,6 @@ function buildService(): DailyBudgetService {
       },
     } as any,
     log: () => undefined,
-    logDebug: () => undefined,
-    error: () => undefined,
     getPowerTracker: () => ({ buckets: {} }),
     getPriceOptimizationEnabled: () => false,
     getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }), requestPriceRefetch: () => undefined,
@@ -416,7 +414,7 @@ describe('DailyBudgetService', () => {
     vi.useRealTimers();
   });
 
-  it('logs daily budget update failures to error', () => {
+  it('logs daily budget update failures as a structured event', () => {
     const error = vi.fn();
     const service = new DailyBudgetService({
       homey: {
@@ -429,11 +427,10 @@ describe('DailyBudgetService', () => {
         },
       } as any,
       log: vi.fn(),
-      logDebug: vi.fn(),
-      error,
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
       getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }), requestPriceRefetch: () => undefined,
+      structuredLog: { error } as any,
     });
     (service as any).manager.update = vi.fn(() => {
       throw 'boom';
@@ -441,8 +438,10 @@ describe('DailyBudgetService', () => {
 
     service.updateState();
 
-    expect(error).toHaveBeenCalledWith('Daily budget: failed to update state', expect.any(Error));
-    expect((error.mock.calls[0]?.[1] as Error).message).toBe('boom');
+    expect(error).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'daily_budget_state_update_failed',
+      err: expect.objectContaining({ message: 'boom' }),
+    }));
   });
 
   it('does not emit budget_recomputed when refreshing for periodic status only', () => {
@@ -458,8 +457,6 @@ describe('DailyBudgetService', () => {
         },
       } as any,
       log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
       getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }), requestPriceRefetch: () => undefined,
@@ -504,8 +501,6 @@ describe('DailyBudgetService', () => {
         },
       } as any,
       log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
       getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }), requestPriceRefetch: () => undefined,
@@ -544,8 +539,6 @@ describe('DailyBudgetService', () => {
         },
       } as any,
       log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
       getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }), requestPriceRefetch: () => undefined,
@@ -579,8 +572,6 @@ describe('DailyBudgetService', () => {
         },
       } as any,
       log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
       getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }), requestPriceRefetch: () => undefined,
@@ -635,8 +626,6 @@ describe('DailyBudgetService', () => {
         },
       } as any,
       log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
       getCapacitySettings: () => ({ limitKw: 5, marginKw: 1 }),

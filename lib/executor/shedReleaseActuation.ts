@@ -4,6 +4,7 @@ import type {
   SteppedLoadStep,
   TargetDeviceSnapshot,
 } from '../../packages/contracts/src/types';
+import { isEvDevice } from '../../packages/shared-domain/src/commandableNow';
 import {
   applyBinarySheddingToDevice,
   type PlanExecutorBinaryContext,
@@ -129,9 +130,9 @@ const applyShedReleaseBinaryOff = async (params: {
 }): Promise<boolean> => {
   const { intent, behavior, snapshot, observed, deps } = params;
   // Defensive: binary-controlled deferred objectives route through 'binary_release', not
-  // 'shed_release'; the projection already rejects shed_release for them, but guard at apply
-  // time too.
-  if (snapshot?.controlCapabilityId === 'evcharger_charging') return false;
+  // 'shed_release'; the projection already rejects shed_release for EV devices
+  // (`isEvDevice`), but guard at apply time too — faithful mirror of that gate.
+  if (snapshot && isEvDevice(snapshot)) return false;
   if (!snapshot?.controlCapabilityId) {
     // No binary handle, and the stepped re-projection above either didn't apply (turn_off
     // shedBehavior, or no steppedLoad intent available) or returned false. Stay silent on
@@ -174,13 +175,19 @@ const buildShedReleaseSteppedAction = (params: {
     intent, steppedLoadIntent, observed, targetStep, currentStepId,
   } = params;
   const profile = steppedLoadIntent.steppedLoadProfile;
-  const observedStepId = observed?.steppedLoad?.stepId;
   const currentStep = currentStepId ? getSteppedLoadStep(profile, currentStepId) : null;
+  // Provenance mirrors `toExecutableSteppedStepState`: only real telemetry
+  // (`reportedStepId`) is `reported` evidence; the effective `stepId` is a
+  // planning fallback, not a confirmed report. (This release path always requests
+  // the shed target, never the current step, so materialization resolves to
+  // `no_observed_match` either way — but keep the labeling honest so a future
+  // reader can't mistake the fallback for telemetry.)
+  const reportedStepId = observed?.steppedLoad?.reportedStepId;
   const stepActuation = resolveSteppedStepActuationState({
     step: {
       requestedStepId: targetStep.id,
-      observedStep: observedStepId
-        ? { kind: 'reported', stepId: observedStepId }
+      observedStep: reportedStepId
+        ? { kind: 'reported', stepId: reportedStepId }
         : { kind: 'unknown' },
       fallbackStepId: observed?.steppedLoad?.stepId,
     },

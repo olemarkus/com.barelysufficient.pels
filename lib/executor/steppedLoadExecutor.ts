@@ -1,7 +1,3 @@
-/* eslint-disable max-lines --
- * Extracted stepped-load actuation remains one cohesive invariant-heavy
- * pipeline after the executor split.
- */
 import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadStep,

@@ -20,7 +20,6 @@ const TZ = 'Europe/Oslo';
 
 const buildManager = (overrides: Partial<ConstructorParameters<typeof DailyBudgetManager>[0]> = {}) => new DailyBudgetManager({
   log: () => undefined,
-  logDebug: () => undefined,
   ...overrides,
 });
 
@@ -183,9 +182,9 @@ describe('daily budget planning', () => {
   });
 
   it('summarizes long profile arrays in plan debug payloads', () => {
-    const logDebug = vi.fn();
+    const debugStructured = vi.fn();
     const manager = buildManager({
-      logDebug,
+      debugStructured,
       isDebugTopicEnabled: () => true,
     });
     const settings = buildSettings({ dailyBudgetKWh: 10 });
@@ -208,14 +207,13 @@ describe('daily budget planning', () => {
       forcePlanRebuild: true,
     });
 
-    const debugCall = logDebug.mock.calls.find((call) => (
-      typeof call[0] === 'string'
-      && call[0].startsWith('Daily budget: plan debug ')
+    const debugCall = debugStructured.mock.calls.find((call) => (
+      typeof call[0] === 'object'
+      && call[0] !== null
+      && call[0].event === 'daily_budget_plan_debug'
     ));
     expect(debugCall).toBeDefined();
-    const payload = JSON.parse(
-      (debugCall?.[0] as string).replace('Daily budget: plan debug ', ''),
-    );
+    const payload = debugCall?.[0] as { meta: Record<string, { length: number; min: number; max: number; sum: number; mean: number }> };
     expect(payload.meta.profileDefaultWeights).toEqual(expect.objectContaining({
       length: 24,
       min: expect.any(Number),

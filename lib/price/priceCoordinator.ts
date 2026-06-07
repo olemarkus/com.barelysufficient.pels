@@ -7,7 +7,8 @@ import { shouldCatchUpCombinedPricesRotation } from './priceServiceCombined';
 import { COMBINED_PRICES, PRICE_OPTIMIZATION_ENABLED } from '../utils/settingsKeys';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
 import { getNextLocalDayStartUtcMs } from '../utils/dateUtils';
-import type { Logger as PinoLogger } from '../logging/logger';
+import { normalizeError } from '../utils/errorUtils';
+import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import { getLogger } from '../logging/logger';
 
 const moduleLogger = getLogger('price/coordinator');
@@ -25,7 +26,7 @@ export type PriceCoordinatorDeps = {
   getCurrentPriceLevel: () => PriceLevel;
   rebuildPlanFromCache: (reason: string) => Promise<void>;
   log: (...args: unknown[]) => void;
-  logDebug: (...args: unknown[]) => void;
+  debugStructured: StructuredDebugEmitter;
   error: (...args: unknown[]) => void;
   structuredLog?: PinoLogger;
   onCombinedPricesUpdated?: (reason: string) => void;
@@ -50,9 +51,12 @@ export class PriceCoordinator {
   constructor(private deps: PriceCoordinatorDeps) {
     this.priceService = new PriceService(
       deps.homey,
-      deps.log,
-      deps.logDebug,
-      deps.error,
+      {
+        log: deps.log,
+        debugStructured: deps.debugStructured,
+        errorLog: deps.error,
+        structuredLog: deps.structuredLog,
+      },
       deps.getHomeyEnergyApi,
     );
     if (deps.onCombinedPricesUpdated) {
@@ -72,7 +76,10 @@ export class PriceCoordinator {
     const enabled = this.deps.homey.settings.get(PRICE_OPTIMIZATION_ENABLED) as unknown;
     this.priceOptimizationEnabled = enabled !== false;
     if (logChange) {
-      this.deps.log(`Price optimization ${this.priceOptimizationEnabled ? 'enabled' : 'disabled'}`);
+      this.deps.structuredLog?.info({
+        event: 'price_optimization_enabled_changed',
+        enabled: this.priceOptimizationEnabled,
+      });
     }
   }
 
@@ -98,12 +105,10 @@ export class PriceCoordinator {
       getThresholdPercent: () => this.deps.homey.settings.get('price_threshold_percent') ?? 25,
       getMinDiffOre: () => this.deps.homey.settings.get('price_min_diff_ore') ?? 0,
       rebuildPlan: async (reason) => {
-        this.deps.logDebug(`Price optimization: triggering plan rebuild (${reason})`);
+        this.deps.debugStructured({ event: 'price_optimization_plan_rebuild_triggered', reason });
         await this.deps.rebuildPlanFromCache(reason);
       },
-      log: (...args: unknown[]) => this.deps.log(...args),
-      logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
-      error: (...args: unknown[]) => this.deps.error(...args),
+      debugStructured: this.deps.debugStructured,
       structuredLog: this.deps.structuredLog,
     });
   }
@@ -166,7 +171,10 @@ export class PriceCoordinator {
       try {
         this.updateCombinedPrices();
       } catch (error) {
-        this.deps.error('Midnight price rotation failed', error);
+        (this.deps.structuredLog ?? moduleLogger).error({
+          event: 'midnight_price_rotation_failed',
+          err: normalizeError(error),
+        });
       } finally {
         this.scheduleNextMidnightRotation();
       }
@@ -233,17 +241,20 @@ export class PriceCoordinator {
     // A persisted V1 shape must run through the readPriceStore migration first;
     // rebuilding it here would clobber that path. Leave it for migration.
     if (isCombinedPricesV1(existingPayload)) {
-      this.deps.logDebug('Combined prices payload is legacy V1; deferring to V1→V2 migration');
+      this.deps.debugStructured({ event: 'combined_prices_catchup_deferred', reason: 'legacy_v1_payload' });
       return;
     }
     const timeZone = this.deps.homey.clock.getTimezone();
     if (!shouldCatchUpCombinedPricesRotation(existingPayload, new Date(), timeZone)) return;
-    this.deps.logDebug('Combined prices payload predates today, rotating on boot');
+    this.deps.debugStructured({ event: 'combined_prices_catchup_rotating', reason: 'payload_predates_today' });
     // Boot must not abort if rotation throws; mirror the midnight timer's guard.
     try {
       this.updateCombinedPrices();
     } catch (error) {
-      this.deps.error('Boot combined-prices catch-up rotation failed', error);
+      (this.deps.structuredLog ?? moduleLogger).error({
+        event: 'combined_prices_catchup_rotation_failed',
+        err: normalizeError(error),
+      });
     }
   }
 
@@ -285,12 +296,11 @@ export class PriceCoordinator {
 
   private reportPriceFetchFailure(priceSource: 'spot' | 'grid_tariff', error: unknown): Error {
     const err = error instanceof Error ? error : new Error(String(error));
-    const label = priceSource === 'spot' ? 'spot prices' : 'grid tariff data';
-    this.deps.error(`Failed to refresh ${label}`, err);
     (this.deps.structuredLog ?? moduleLogger).error({
       event: 'price_fetch_failed',
       priceSource,
       reasonCode: resolveErrorReasonCode(err),
+      err,
     });
     return err;
   }

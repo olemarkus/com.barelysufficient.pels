@@ -57,7 +57,6 @@ export class BackgroundTasksController {
     if (this.stopResourceWarnings) this.stopResourceWarnings();
     this.stopResourceWarnings = startResourceWarnings({
       homey: this.deps.homey,
-      log: (message) => this.deps.log(message),
       error: (...args: unknown[]) => this.deps.error(...args),
     });
   }
@@ -71,7 +70,6 @@ export class BackgroundTasksController {
   startPerfLogging(): void {
     this.stopPerfLog = startPerfLogger({
       isEnabled: () => this.deps.isDebugTopicEnabled('perf'),
-      log: (...args: unknown[]) => this.deps.logDebug('perf', ...args),
       logStructured: this.deps.getStructuredDebugEmitter('perf', 'perf'),
       error: (...args: unknown[]) => this.deps.error(...args),
       logCpuSpike: (...args: unknown[]) => this.deps.log(...args),
@@ -96,7 +94,6 @@ export class BackgroundTasksController {
     this.stopDeferredObjectiveClock = startDeferredObjectiveLifecycleClock({
       emitter,
       getNowMs: () => this.deps.getNow().getTime(),
-      error: (message, error) => this.deps.error(message, error),
     });
   }
 

@@ -1,8 +1,11 @@
 import Homey from 'homey';
+import { getLogger } from '../../lib/logging/logger';
+
+const driverLogger = getLogger('driver/pels-insights');
 
 class PelsInsightsDriver extends Homey.Driver {
   async onInit(): Promise<void> {
-    this.log('PELS Insights driver initialized');
+    driverLogger.info({ event: 'pels_insights_driver_initialized' });
   }
 
   async onPairListDevices(): Promise<Array<{ name: string; data: { id: string } }>> {

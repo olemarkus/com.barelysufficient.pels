@@ -6,7 +6,7 @@ import {
 
 describe('priceServiceFlowHelpers DST date keys', () => {
   it('keeps tomorrow payload on the spring-forward eve boundary', () => {
-    const logDebug = vi.fn();
+    const debugStructured = vi.fn();
     const result = buildCombinedHourlyPricesFromPayloads({
       now: new Date('2024-03-30T22:30:00.000Z'),
       timeZone: 'Europe/Oslo',
@@ -20,14 +20,13 @@ describe('priceServiceFlowHelpers DST date keys', () => {
         pricesByHour: { '0': 2, '1': 3, '3': 4 },
         updatedAt: new Date('2024-03-30T20:00:00.000Z').toISOString(),
       },
-      logDebug,
+      debugStructured,
       label: 'Flow prices',
     });
 
     expect(result.some((entry) => entry.totalPrice === 4)).toBe(true);
-    expect(logDebug).not.toHaveBeenCalledWith(
-      expect.stringContaining('Ignoring stored tomorrow data'),
-      expect.anything(),
+    expect(debugStructured).not.toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'price_tomorrow_used_as_today' }),
     );
   });
 
@@ -42,7 +41,7 @@ describe('priceServiceFlowHelpers DST date keys', () => {
         kind: 'tomorrow',
         raw: [1, 2, 4],
         timeZone: 'Europe/Oslo',
-        logDebug: vi.fn(),
+        debugStructured: vi.fn(),
         setSetting,
         updateCombinedPrices,
       });

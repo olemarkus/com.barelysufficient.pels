@@ -1,6 +1,3 @@
-/* eslint-disable max-lines --
- * Observation tracking keeps freshness, retained observations, and debug source state together.
- */
 /* eslint-disable max-params --
  * Internal helpers mirror observation fields directly to keep this move-only split simple.
  */

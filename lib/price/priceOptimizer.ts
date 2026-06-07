@@ -3,7 +3,8 @@ import { PriceLevel } from './priceLevels';
 import { incPerfCounters, addPerfDuration } from '../utils/perfCounters';
 import { recordOpRssDelta, safeRss } from '../utils/opRssTracker';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
-import type { Logger as PinoLogger } from '../logging/logger';
+import { normalizeError } from '../utils/errorUtils';
+import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import { getLogger } from '../logging/logger';
 
 const moduleLogger = getLogger('price/optimizer');
@@ -28,9 +29,7 @@ export type PriceOptimizerDeps = {
   getThresholdPercent: () => number;
   getMinDiffOre: () => number;
   rebuildPlan: (reason: string) => Promise<void>;
-  log: (...args: unknown[]) => void;
-  logDebug: (...args: unknown[]) => void;
-  error: (...args: unknown[]) => void;
+  debugStructured: StructuredDebugEmitter;
   structuredLog?: PinoLogger;
 };
 
@@ -48,14 +47,14 @@ export class PriceOptimizer {
     const rssBefore = safeRss();
     try {
       if (!this.deps.isEnabled()) {
-        this.deps.logDebug('Price optimization: Disabled globally');
+        this.deps.debugStructured({ event: 'price_optimization_disabled_globally' });
         this.lastMode = null;
         return;
       }
 
       const settings = this.deps.getSettings();
       if (!settings || Object.keys(settings).length === 0) {
-        this.deps.log('Price optimization: No devices configured');
+        (this.deps.structuredLog ?? moduleLogger).info({ event: 'price_optimization_no_devices_configured' });
         this.lastMode = null;
         return;
       }
@@ -70,12 +69,6 @@ export class PriceOptimizer {
       const avgPrice = prices.length > 0 ? prices.reduce((sum, p) => sum + p.totalPrice, 0) / prices.length : 0;
       const thresholdPercent = this.deps.getThresholdPercent();
       const minDiffOre = this.deps.getMinDiffOre();
-      const currentPriceStr = currentPrice?.totalPrice?.toFixed(1) ?? 'N/A';
-      this.deps.log(
-        `Price optimization: current=${currentPriceStr} øre, avg=${avgPrice.toFixed(1)} øre, `
-        + `threshold=${thresholdPercent}%, minDiff=${minDiffOre} øre, isCheap=${isCheap}, `
-        + `isExpensive=${isExpensive}, devices=${Object.keys(settings).length}`,
-      );
       const resultingMode = PriceOptimizer.resolveHourLabel(isCheap, isExpensive);
       const previousMode = this.lastMode;
       (this.deps.structuredLog ?? moduleLogger).info({
@@ -88,6 +81,8 @@ export class PriceOptimizer {
         currentPriceAvailable: currentPrice != null,
         currentPriceOre: currentPrice?.totalPrice ?? null,
         avgPriceOre: Math.round(avgPrice * 10) / 10,
+        thresholdPercent,
+        minDiffOre,
         isCheap,
         isExpensive,
       });
@@ -138,12 +133,18 @@ export class PriceOptimizer {
 
     this.startTimeout = setTimeout(() => {
       this.applyOnce().catch((error: Error) => {
-        this.deps.error('Price optimization failed', error);
+        (this.deps.structuredLog ?? moduleLogger).error({
+          event: 'price_optimization_failed',
+          err: normalizeError(error),
+        });
       });
 
       this.interval = setInterval(() => {
         this.applyOnce().catch((error: Error) => {
-          this.deps.error('Price optimization failed', error);
+          (this.deps.structuredLog ?? moduleLogger).error({
+            event: 'price_optimization_failed',
+            err: normalizeError(error),
+          });
         });
       }, 60 * 60 * 1000);
     }, msUntilNextHour);

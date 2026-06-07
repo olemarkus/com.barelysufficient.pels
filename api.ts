@@ -1,12 +1,15 @@
 import type Homey from 'homey';
 import type { DailyBudgetModelPreviewResponse, DailyBudgetUiPayload } from './lib/dailyBudget/dailyBudgetTypes';
+import type { Logger as PinoLogger } from 'pino';
 import type { HomeyDeviceLike } from './lib/utils/types';
+import { normalizeError } from './lib/utils/errorUtils';
 import { getHomeyDevicesForDebugFromApp, logHomeyDeviceForDebugFromApp } from './setup/appDebugHelpers';
 import {
   buildSettingsUiBootstrap,
   getSettingsUiDeferredObjectivePlanHistoryPayload,
   getSettingsUiDeferredObjectiveSettingsPayload,
   getSettingsUiDeviceDiagnosticsPayload,
+  getSettingsUiDeviceLogPayload,
   getSettingsUiDevicesPayload,
   getSettingsUiPlanPayload,
   getSettingsUiPowerPayload,
@@ -28,6 +31,7 @@ type ApiContext = {
 type DailyBudgetApp = Homey.App & {
   getDailyBudgetUiPayload?: () => DailyBudgetUiPayload | null;
   recomputeDailyBudgetToday?: () => DailyBudgetUiPayload | null;
+  getApiStructuredLogger?: () => PinoLogger | undefined;
 };
 
 const hasDeviceId = (device: HomeyDeviceLike): device is HomeyDeviceLike & { id: string } => (
@@ -39,14 +43,15 @@ const getApp = (homey: Homey.App['homey']): DailyBudgetApp | null => {
   return homey.app as DailyBudgetApp;
 };
 
-// Wrap an async API handler so any thrown error is logged via `app.error`
-// before the rejection propagates to the Homey API transport. Without this,
-// handler exceptions become opaque "Network request failed" responses on the
-// client and never reach `/tmp/pels`, leaving the failure undiagnosable.
+// Wrap an async API handler so any thrown error is logged through the runtime's
+// structured pino logger before the rejection propagates to the Homey API
+// transport. Without this, handler exceptions become opaque "Network request
+// failed" responses on the client and never reach `/tmp/pels`, leaving the
+// failure undiagnosable.
 //
-// During app restart `homey.app` may not be wired yet; fall back to
-// `console.error` so the cause still lands in the app's stderr log instead of
-// disappearing because no logger was reachable.
+// During app restart `homey.app` (or its structured logger) may not be wired
+// yet; fall back to `console.error` so the cause still lands in the app's
+// stderr log instead of disappearing because no logger was reachable.
 const withApiLogging = <Ctx extends ApiContext, R>(
   name: string,
   handler: (ctx: Ctx) => Promise<R> | R,
@@ -55,8 +60,12 @@ const withApiLogging = <Ctx extends ApiContext, R>(
     return await handler(ctx);
   } catch (error) {
     const app = getApp(ctx.homey);
-    if (app?.error) app.error(`api ${name} failed`, error as Error);
-    else console.error(`api ${name} failed`, error);
+    const logger = app?.getApiStructuredLogger?.();
+    if (logger) {
+      logger.error({ event: 'api_handler_failed', handler: name, err: normalizeError(error) });
+    } else {
+      console.error(`api ${name} failed`, error);
+    }
     throw error;
   }
 };
@@ -79,6 +88,9 @@ export = {
   )),
   ui_device_diagnostics: withApiLogging('ui_device_diagnostics', ({ homey }: ApiContext) => (
     getSettingsUiDeviceDiagnosticsPayload({ homey })
+  )),
+  ui_device_log: withApiLogging('ui_device_log', ({ homey }: ApiContext) => (
+    getSettingsUiDeviceLogPayload({ homey })
   )),
   ui_deferred_objective_history: withApiLogging('ui_deferred_objective_history', ({ homey }: ApiContext) => (
     getSettingsUiDeferredObjectivePlanHistoryPayload({ homey })

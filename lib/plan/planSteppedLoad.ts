@@ -14,6 +14,7 @@ import type { SteppedLoadProfile, SteppedLoadStep } from '../../packages/contrac
 import type {
   DevicePlanDevice,
   PlanInputDevice,
+  SteppedDiscriminantProbe,
   SteppedLoadKind,
   SteppedPlanDevice,
   SteppedPlanInputDevice,
@@ -26,10 +27,14 @@ import {
   resolveKnownEffectiveStepId,
 } from './planSteppedLoadState';
 
-type StepCapableDevice = Pick<
+// The stepped discriminant (`controlModel` + `steppedLoadProfile`) is now split
+// across the discriminated-union variants, so it is no longer a common key of
+// `PlanInputDevice | DevicePlanDevice` and cannot be `Pick`ed from the union.
+// The step helpers below accept the `SteppedDiscriminantProbe` "might be
+// stepped" shape (both fields as plain optionals); the `isSteppedLoadDevice`
+// guard narrows it to the required shape before any profile read.
+type StepCapableDevice = SteppedDiscriminantProbe & Pick<
   PlanInputDevice | DevicePlanDevice,
-  | 'controlModel'
-  | 'steppedLoadProfile'
   | 'reportedStepId'
   | 'selectedStepId'
   | 'desiredStepId'
@@ -42,10 +47,8 @@ StepCapableDevice,
 | 'selectedStepId'
 | 'desiredStepId'
 >;
-type StepSheddingCapableDevice = Pick<
+type StepSheddingCapableDevice = SteppedDiscriminantProbe & Pick<
   PlanInputDevice,
-  | 'controlModel'
-  | 'steppedLoadProfile'
   | 'stepCommandPending'
   | 'stepCommandStatus'
 > & StepIdentityFields;
@@ -493,7 +496,7 @@ export function resolveSteppedCandidatePower(
 }
 
 export const resolveSteppedUnknownCurrentMeasuredShedding = (params: {
-  device: Pick<PlanInputDevice, 'controlModel' | 'steppedLoadProfile' | 'measuredPowerKw'> & StepIdentityFields;
+  device: SteppedDiscriminantProbe & Pick<PlanInputDevice, 'measuredPowerKw'> & StepIdentityFields;
   shedAction: 'turn_off' | 'set_step';
 }): {
   targetStep: SteppedLoadStep;

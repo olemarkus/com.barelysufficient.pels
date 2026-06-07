@@ -171,11 +171,7 @@ const buildHarness = (devices: TargetDeviceSnapshot[]): {
 
   const targetCtx: PlanExecutorTargetContext = {
     state,
-    deviceManager: {
-      getSnapshot: () => Array.from(snapshots.values()),
-      getSnapshotByDeviceId: (id) => snapshots.get(id),
-      setCapability,
-    },
+    getObservedState: (id) => snapshots.get(id),
     // The capability-addressed setpoint write routes through the actuator over
     // the same `setCapability`, so `setCapabilityCalls` still observes it.
     actuator: createDeviceActuator(buildActuatorTransport(setCapability)),
@@ -231,11 +227,7 @@ const buildHarnessNoSnapshotMutation = (devices: TargetDeviceSnapshot[]): Return
 
   const targetCtx: PlanExecutorTargetContext = {
     state,
-    deviceManager: {
-      getSnapshot: () => Array.from(snapshots.values()),
-      getSnapshotByDeviceId: (id) => snapshots.get(id),
-      setCapability,
-    },
+    getObservedState: (id) => snapshots.get(id),
     actuator: createDeviceActuator(buildActuatorTransport(setCapability)),
     operatingMode: 'Home',
     recordShedActuation: () => {},

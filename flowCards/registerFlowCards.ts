@@ -1,4 +1,3 @@
-/* eslint-disable max-lines -- Flow card registration stays centralized in this module. */
 import { PriceLevel, PRICE_LEVEL_OPTIONS, PriceLevelOption } from '../lib/price/priceLevels';
 import CapacityGuard from '../lib/power/capacityGuard';
 import type { DecoratedDeviceSnapshot, TargetDeviceSnapshot } from '../packages/contracts/src/types';
@@ -21,7 +20,7 @@ import { startRuntimeSpan } from '../lib/utils/runtimeTrace';
 import { normalizeError } from '../lib/utils/errorUtils';
 import { evaluateLowestPriceCard, type LowestPriceCardId } from '../lib/price/priceLowestFlowEvaluator';
 import type { CombinedHourlyPrice } from '../lib/price/priceTypes';
-import type { Logger as PinoLogger } from '../lib/logging/logger';
+import type { Logger as PinoLogger, StructuredDebugEmitter } from '../lib/logging/logger';
 import { emitGated } from '../lib/logging/deviationGate';
 import type { LogDedupeEntry } from '../lib/logging/logDedupe';
 import { PELS_MEASURE_STEP_CAPABILITY_ID } from '../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
@@ -149,9 +148,7 @@ export type FlowCardDeps = {
   getTimeZone: () => string;
   getNow: () => Date;
   getStructuredLogger: (component: string) => PinoLogger | undefined;
-  log: (...args: unknown[]) => void;
-  logDebug: (...args: unknown[]) => void;
-  error: (...args: unknown[]) => void;
+  debugStructured: StructuredDebugEmitter;
 };
 
 export function registerFlowCards(deps: FlowCardDeps): void {
@@ -164,7 +161,7 @@ export function registerFlowCards(deps: FlowCardDeps): void {
       setExpectedOverride: (deviceId, kw) => deps.setExpectedOverride(deviceId, kw),
       refreshSnapshot: () => deps.refreshSnapshot(),
       rebuildPlan: () => requestPlanRebuildFromFlow(deps, 'expected_power'),
-      log: (...args: unknown[]) => deps.log(...args),
+      getStructuredLogger: (component: string) => deps.getStructuredLogger(component),
     });
 
     const operatingModeChangedTrigger = homey.flow.getTriggerCard('operating_mode_changed');
@@ -802,11 +799,20 @@ function createPriceCardRunListener(kind: 'today' | 'tomorrow', deps: FlowCardDe
         throw new Error('Price data is required.');
       }
       const result = deps.storeFlowPriceData(kind, raw);
-      deps.log(`Flow: stored ${result.storedCount} hourly prices for ${result.dateKey} (${kind})`);
+      deps.getStructuredLogger('price')?.info({
+        event: 'flow_prices_stored',
+        priceKind: kind,
+        dateKey: result.dateKey,
+        storedCount: result.storedCount,
+      });
       return true;
     } catch (error) {
       const normalizedError = normalizeError(error);
-      deps.error(`Flow: Failed to store ${kind} prices from flow tag.`, normalizedError);
+      deps.getStructuredLogger('price')?.error({
+        event: 'flow_prices_store_failed',
+        priceKind: kind,
+        error: normalizedError.message,
+      });
       throw normalizedError;
     }
   };
@@ -853,14 +859,17 @@ function evaluateLowestPriceFlowCard(
     currentPriceOverride,
   });
 
-  const currentPrice = typeof result.currentPrice === 'number' ? result.currentPrice.toFixed(6) : 'n/a';
-  const cutoff = typeof result.cutoff === 'number' ? result.cutoff.toFixed(6) : 'n/a';
-  const statePrice = typeof currentPriceOverride === 'number' ? currentPriceOverride.toFixed(6) : 'n/a';
-  deps.logDebug(
-    `Flow ${source} ${cardId}: reason=${result.reason}, current=${currentPrice}, `
-    + `state_current=${statePrice}, cutoff=${cutoff}, candidates=${result.candidateCount} `
-    + `=> ${result.matches ? 'PASS' : 'FAIL'}`,
-  );
+  deps.debugStructured({
+    event: 'price_lowest_card_evaluated',
+    source,
+    cardId,
+    reason: result.reason,
+    currentPrice: result.currentPrice,
+    stateCurrentPrice: currentPriceOverride ?? null,
+    cutoff: result.cutoff,
+    candidateCount: result.candidateCount,
+    matches: result.matches,
+  });
 
   return result.matches;
 }
@@ -904,8 +913,11 @@ function registerCapacityAndModeCards(deps: FlowCardDeps): void {
     const previous = deps.homey.settings.get(CAPACITY_LIMIT_KW);
     deps.homey.settings.set(CAPACITY_LIMIT_KW, limit);
     deps.setCapacityLimit(limit);
-    const previousText = typeof previous === 'number' ? `${previous} kW` : 'unset';
-    deps.log(`Flow: capacity limit set to ${limit} kW (was ${previousText})`);
+    deps.getStructuredLogger('capacity')?.info({
+      event: 'capacity_limit_set',
+      limitKw: limit,
+      previousLimitKw: typeof previous === 'number' ? previous : null,
+    });
     return true;
   });
 
@@ -931,17 +943,23 @@ function registerCapacityAndModeCards(deps: FlowCardDeps): void {
     const unchangedBudget = typeof previousBudget === 'number' && previousBudget === raw;
     const unchangedEnabled = previousEnabled === nextEnabled;
     if (unchangedBudget && unchangedEnabled) {
-      deps.log(`Flow: daily budget unchanged (${raw} kWh)`);
+      deps.getStructuredLogger('daily_budget')?.info({
+        event: 'daily_budget_flow_updated',
+        budgetKwh: raw,
+        enabled: previousEnabled,
+        changed: false,
+      });
       return true;
     }
 
     deps.homey.settings.set(DAILY_BUDGET_KWH, raw);
     deps.homey.settings.set(DAILY_BUDGET_ENABLED, nextEnabled);
-    if (isDisabling) {
-      deps.log('Flow: daily budget disabled (0 kWh)');
-    } else {
-      deps.log(`Flow: daily budget set to ${raw} kWh`);
-    }
+    deps.getStructuredLogger('daily_budget')?.info({
+      event: 'daily_budget_flow_updated',
+      budgetKwh: raw,
+      enabled: nextEnabled,
+      changed: true,
+    });
     return true;
   });
 
@@ -973,10 +991,12 @@ function registerCapacityAndModeCards(deps: FlowCardDeps): void {
     const activeMode = deps.getCurrentOperatingMode();
     const matches = activeMode.toLowerCase() === chosenMode.toLowerCase();
     if (!matches && chosenModeRaw !== chosenMode) {
-      deps.logDebug(
-        `Mode condition checked using alias '${chosenModeRaw}' -> `
-        + `'${chosenMode}', but active mode is '${activeMode}'`,
-      );
+      deps.debugStructured({
+        event: 'mode_condition_alias_mismatch',
+        requestedAlias: chosenModeRaw,
+        resolvedMode: chosenMode,
+        activeMode,
+      });
     }
     return matches;
   });
@@ -1030,10 +1050,11 @@ async function getBestEffortEvChargerSnapshot(
     return await getDeviceSnapshotById(deps, chargerDeviceId);
   } catch (error: unknown) {
     const normalizedError = normalizeError(error);
-    deps.logDebug(
-      `Flow: failed to reload EV charger snapshot for '${chargerDeviceId}' after reporting SoC: `
-      + normalizedError.message,
-    );
+    deps.debugStructured({
+      event: 'ev_charger_snapshot_reload_failed',
+      deviceId: chargerDeviceId,
+      error: normalizedError.message,
+    });
     return undefined;
   }
 }
@@ -1216,29 +1237,22 @@ function logHeadroomCheck(params: {
     requiredKw,
     decision,
   } = params;
-  const softLimit = capacityGuard.getSoftLimit();
-  const currentPower = capacityGuard.getLastTotalPower();
-  const deviceName = deviceSnap ? deviceSnap.name : `device ${deviceId}`;
-  const expectedPowerKwStr = deviceSnap?.expectedPowerKw !== undefined
-    ? deviceSnap.expectedPowerKw.toFixed(2)
-    : 'unknown';
-  const sourceStr = deviceSnap?.expectedPowerSource ? ` (${deviceSnap.expectedPowerSource})` : '';
-  const cooldownStr = decision.cooldownSource && typeof decision.cooldownRemainingSec === 'number'
-    ? `, cooldown=${decision.cooldownSource} (${decision.cooldownRemainingSec}s remaining)`
-    : '';
-  const penaltyStr = decision.penaltyLevel > 0
-    ? `, activation penalty=L${decision.penaltyLevel} `
-      + `(clear=${decision.clearRemainingSec ?? 0}s)`
-    : '';
-
-  deps.logDebug(
-    `Headroom check for device "${deviceName}": `
-    + `soft limit=${softLimit.toFixed(2)}kW, `
-    + `current power=${currentPower?.toFixed(2) ?? 'unknown'}kW, `
-    + `device consumption=${decision.observedKw.toFixed(2)}kW, `
-    + `expected power=${expectedPowerKwStr}kW${sourceStr}, `
-    + `headroom for device=${decision.calculatedHeadroomForDeviceKw.toFixed(2)}kW `
-    + `(required=${requiredKw.toFixed(2)}kW, effective=${decision.requiredKwWithPenalty.toFixed(2)}kW)`
-    + `${cooldownStr}${penaltyStr} → ${decision.allowed ? 'PASS' : 'FAIL'}`,
-  );
+  deps.debugStructured({
+    event: 'headroom_for_device_checked',
+    deviceId,
+    deviceName: deviceSnap?.name,
+    softLimitKw: capacityGuard.getSoftLimit(),
+    currentPowerKw: capacityGuard.getLastTotalPower() ?? null,
+    deviceConsumptionKw: decision.observedKw,
+    expectedPowerKw: deviceSnap?.expectedPowerKw ?? null,
+    expectedPowerSource: deviceSnap?.expectedPowerSource ?? null,
+    requiredKw,
+    effectiveRequiredKw: decision.requiredKwWithPenalty,
+    headroomForDeviceKw: decision.calculatedHeadroomForDeviceKw,
+    cooldownSource: decision.cooldownSource ?? null,
+    cooldownRemainingSec: decision.cooldownRemainingSec ?? null,
+    penaltyLevel: decision.penaltyLevel,
+    clearRemainingSec: decision.clearRemainingSec ?? null,
+    allowed: decision.allowed,
+  });
 }

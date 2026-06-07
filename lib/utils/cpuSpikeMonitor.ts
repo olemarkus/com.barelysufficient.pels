@@ -1,6 +1,9 @@
 import { getRecentPlanRebuildTraces, summarizeRecentPlanRebuildTraces } from './planRebuildTrace';
 import { listRecentRuntimeSpans, listRuntimeSpans } from './runtimeTrace';
 import { normalizeError } from './errorUtils';
+import { getLogger } from '../logging/logger';
+
+const monitorLogger = getLogger('perf/cpu-spike-monitor');
 
 const MB = 1024 * 1024;
 
@@ -67,33 +70,24 @@ const buildRebuildSummary = (nowMs: number): string => {
   ].join(' ');
 };
 
-const buildCpuSpikeMessage = (sample: CpuSample, nowMs: number): string => {
-  const cpuSummary = [
-    `cpu=${sample.cpuPct.toFixed(1)}%`,
-    `wall=${sample.wallMs.toFixed(0)}ms`,
-    `lag=${sample.lagMs.toFixed(0)}ms`,
-    `userMs=${sample.userMs.toFixed(1)}`,
-    `sysMs=${sample.systemMs.toFixed(1)}`,
-  ].join(' ');
+const emitCpuSpike = (sample: CpuSample, nowMs: number): void => {
   const activeSpans = listRuntimeSpans(12, nowMs);
   const recentSpans = listRecentRuntimeSpans(24, 30_000, nowMs);
-  const activeSummary = activeSpans.length > 0 ? activeSpans.join(' | ') : 'none';
-  const recentSummary = recentSpans.length > 0 ? recentSpans.join(' | ') : 'none';
-  const rebuildSummary = buildRebuildSummary(nowMs);
-  const suffix = rebuildSummary ? ` ${rebuildSummary}` : '';
-
-  return [
-    '[perf] cpu spike',
-    cpuSummary,
-    resolveMemorySummary(),
-    `active=${activeSummary}`,
-    `recent=${recentSummary}${suffix}`,
-  ].join(' ');
+  monitorLogger.warn({
+    event: 'cpu_spike_detected',
+    cpuPct: Number(sample.cpuPct.toFixed(1)),
+    wallMs: Number(sample.wallMs.toFixed(0)),
+    lagMs: Number(sample.lagMs.toFixed(0)),
+    userMs: Number(sample.userMs.toFixed(1)),
+    systemMs: Number(sample.systemMs.toFixed(1)),
+    memory: resolveMemorySummary(),
+    activeSpans,
+    recentSpans,
+    rebuild: buildRebuildSummary(nowMs) || undefined,
+  });
 };
 
 export const startCpuSpikeMonitor = (params: {
-  log: (...args: unknown[]) => void;
-  error?: (...args: unknown[]) => void;
   isEnabled?: () => boolean;
   sampleIntervalMs?: number;
   cpuThresholdPct?: number;
@@ -101,8 +95,6 @@ export const startCpuSpikeMonitor = (params: {
   minLogIntervalMs?: number;
 }): (() => void) => {
   const {
-    log,
-    error: logError,
     isEnabled,
     sampleIntervalMs = 1000,
     cpuThresholdPct = 85,
@@ -147,15 +139,10 @@ export const startCpuSpikeMonitor = (params: {
       if ((nowMs - lastLogAtMs) < minLogIntervalMs) return;
 
       lastLogAtMs = nowMs;
-      log(buildCpuSpikeMessage(sample, nowMs));
+      emitCpuSpike(sample, nowMs);
     } catch (caughtError) {
       const error = normalizeError(caughtError);
-      const message = `[perf] cpu spike monitor error ${error.message}`;
-      if (typeof logError === 'function') {
-        logError(message, error);
-      } else {
-        log(message, error);
-      }
+      monitorLogger.error({ event: 'cpu_spike_monitor_error', err: error });
     }
   }, effectiveIntervalMs);
 
@@ -163,7 +150,11 @@ export const startCpuSpikeMonitor = (params: {
     timer.unref();
   }
   if (typeof isEnabled !== 'function' || isEnabled()) {
-    log(`[perf] cpu spike monitor started interval=${effectiveIntervalMs}ms threshold=${cpuThresholdPct}%`);
+    monitorLogger.info({
+      event: 'cpu_spike_monitor_started',
+      intervalMs: effectiveIntervalMs,
+      thresholdPct: cpuThresholdPct,
+    });
   }
 
   return () => {

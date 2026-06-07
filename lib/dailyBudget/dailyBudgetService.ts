@@ -1,13 +1,6 @@
-/* eslint-disable max-lines -- daily budget service keeps day/state/forecast in one flow. */
 import type Homey from 'homey';
 import type { PowerTrackerState } from '../power/tracker';
 import { isFiniteNumber } from '../utils/appTypeGuards';
-import {
-  getDateKeyInTimeZone,
-  getDateKeyStartMs,
-  getNextLocalDayStartUtcMs,
-  shiftDateKey,
-} from '../utils/dateUtils';
 import { readCombinedPriceData } from '../price/priceStore';
 import {
   DAILY_BUDGET_ENABLED,
@@ -31,6 +24,11 @@ import {
 } from './dailyBudgetConstants';
 import { DailyBudgetManager } from './dailyBudgetManager';
 import type { CombinedPriceData } from './dailyBudgetManager';
+import {
+  buildTomorrowPreview as computeTomorrowPreview,
+  buildYesterdayHistory as computeYesterdayHistory,
+  type DailyBudgetAdjacentDayDeps,
+} from './dailyBudgetAdjacentDays';
 import { composeHotPathDailyBudgetSnapshot, computeAdjacentDaysSeedSignature } from './dailyBudgetSnapshotState';
 import {
   DailyBudgetStatePersistencePolicy,
@@ -59,9 +57,7 @@ const moduleLogger = getLogger('dailyBudget/service');
 type DailyBudgetServiceDeps = {
   homey: Homey.App['homey'];
   log: (...args: unknown[]) => void;
-  logDebug: (...args: unknown[]) => void;
   isDebugTopicEnabled?: (topic: 'daily_budget') => boolean;
-  error: (...args: unknown[]) => void;
   getPowerTracker: () => PowerTrackerState;
   getPriceOptimizationEnabled: () => boolean;
   getCapacitySettings: () => { limitKw: number; marginKw: number };
@@ -118,7 +114,6 @@ export class DailyBudgetService {
   constructor(private deps: DailyBudgetServiceDeps) {
     this.manager = new DailyBudgetManager({
       log: (...args: unknown[]) => this.deps.log(...args),
-      logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
       isDebugTopicEnabled: (topic) => this.deps.isDebugTopicEnabled?.(topic) ?? true,
       structuredDebug: (payload: Record<string, unknown>) => this.emitStructuredDailyBudgetDebug(payload),
       debugStructured: this.deps.debugStructured,
@@ -149,14 +144,9 @@ export class DailyBudgetService {
     this.persistencePolicy.initialize(this.manager.exportState());
   }
 
-  private logError(message: string, error: unknown): void {
-    this.deps.error(message, normalizeError(error));
-  }
-
   private createManagerClone(): DailyBudgetManager {
     const manager = new DailyBudgetManager({
       log: (...args: unknown[]) => this.deps.log(...args),
-      logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
       isDebugTopicEnabled: (topic) => this.deps.isDebugTopicEnabled?.(topic) ?? true,
       structuredDebug: (payload: Record<string, unknown>) => this.emitStructuredDailyBudgetDebug(payload),
       debugStructured: this.deps.debugStructured,
@@ -209,7 +199,10 @@ export class DailyBudgetService {
       const tz = this.deps.homey.clock?.getTimezone?.();
       if (typeof tz === 'string' && tz.trim()) return tz;
     } catch (error) {
-      this.logError('Daily budget: failed to read timezone', error);
+      (this.deps.structuredLog ?? moduleLogger).error({
+        event: 'daily_budget_timezone_read_failed',
+        err: normalizeError(error),
+      });
     }
     return 'Europe/Oslo';
   }
@@ -267,7 +260,10 @@ export class DailyBudgetService {
       }
       if (update.persistReason) this.maybePersistState(update.persistReason, nowMs);
     } catch (error) {
-      this.logError('Daily budget: failed to update state', error);
+      (this.deps.structuredLog ?? moduleLogger).error({
+        event: 'daily_budget_state_update_failed',
+        err: normalizeError(error),
+      });
     } finally {
       stopSpan();
       incPerfCounter('daily_budget_update_total');
@@ -291,65 +287,37 @@ export class DailyBudgetService {
 
   resetLearning(): void { this.manager.resetLearning(); this.persistState('reset'); }
 
+  private adjacentDayDepsCache: DailyBudgetAdjacentDayDeps | null = null;
+  // Lazy-cached: the bundle's fields are stable refs / thunks that re-read `this.*` at call
+  // time, so one instance is reused across rebuilds — avoids per-invocation allocation in the
+  // RSS-constrained Homey runtime.
+  private get adjacentDayDeps(): DailyBudgetAdjacentDayDeps {
+    if (!this.adjacentDayDepsCache) {
+      this.adjacentDayDepsCache = {
+        resolveTimeZone: () => this.resolveTimeZone(),
+        priceStoreDeps: this.priceStoreDeps,
+        getCapacitySettings: () => this.deps.getCapacitySettings(),
+        getPowerTracker: () => this.deps.getPowerTracker(),
+        getPriceOptimizationEnabled: () => this.deps.getPriceOptimizationEnabled(),
+        structuredLog: this.deps.structuredLog,
+      };
+    }
+    return this.adjacentDayDepsCache;
+  }
+
+  // Thin delegators to the pure adjacent-day builders in `dailyBudgetAdjacentDays`. Kept as
+  // instance methods so the seed/rebuild orchestration tests can stub the builders deterministically
+  // (the forecast bodies themselves now live and are unit-tested in that module).
   private buildTomorrowPreview(
     nowMs: number,
     manager: DailyBudgetManager = this.manager,
     settings: DailyBudgetSettings = this.settings,
   ): DailyBudgetDayPayload | null {
-    try {
-      const timeZone = this.resolveTimeZone();
-      const todayKey = getDateKeyInTimeZone(new Date(nowMs), timeZone);
-      const todayStartUtcMs = getDateKeyStartMs(todayKey, timeZone);
-      const tomorrowStartUtcMs = getNextLocalDayStartUtcMs(todayStartUtcMs, timeZone);
-      const combinedPrices = readCombinedPriceData(this.priceStoreDeps, new Date(nowMs), timeZone);
-      const capacity = this.deps.getCapacitySettings();
-      const capacityBudgetKWh = resolveUsableCapacityKw(capacity);
-      return manager.buildPreview({
-        dayStartUtcMs: tomorrowStartUtcMs,
-        timeZone,
-        settings,
-        combinedPrices,
-        priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),
-        capacityBudgetKWh,
-      });
-    } catch (error) {
-      this.logError('Daily budget: failed to build tomorrow preview', error);
-      return null;
-    }
+    return computeTomorrowPreview(this.adjacentDayDeps, nowMs, manager, settings);
   }
 
   private buildYesterdayHistory(nowMs: number): DailyBudgetDayPayload | null {
-    const context = this.resolveYesterdayContext(nowMs);
-    if (!context) return null;
-    const { timeZone, yesterdayStartUtcMs } = context;
-    try {
-      const combinedPrices = readCombinedPriceData(this.priceStoreDeps, new Date(nowMs), timeZone);
-      return this.manager.buildHistory({
-        dayStartUtcMs: yesterdayStartUtcMs,
-        timeZone,
-        powerTracker: this.deps.getPowerTracker(),
-        combinedPrices,
-        priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),
-        priceShapingEnabled: this.settings.priceShapingEnabled,
-        controlledUsageWeight: this.settings.controlledUsageWeight,
-      });
-    } catch (error) {
-      this.logError('Daily budget: failed to build yesterday history', error);
-      return null;
-    }
-  }
-
-  private resolveYesterdayContext(nowMs: number): { timeZone: string; yesterdayStartUtcMs: number } | null {
-    try {
-      const timeZone = this.resolveTimeZone();
-      const todayKey = getDateKeyInTimeZone(new Date(nowMs), timeZone);
-      const yesterdayKey = shiftDateKey(todayKey, -1);
-      const yesterdayStartUtcMs = getDateKeyStartMs(yesterdayKey, timeZone);
-      return { timeZone, yesterdayStartUtcMs };
-    } catch (error) {
-      this.logError('Daily budget: failed to resolve yesterday date', error);
-      return null;
-    }
+    return computeYesterdayHistory(this.adjacentDayDeps, nowMs, this.manager, this.settings);
   }
 
   getSnapshot(): DailyBudgetUiPayload | null { return this.snapshot; }
