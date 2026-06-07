@@ -3,6 +3,7 @@ import { PriceLevel } from './priceLevels';
 import { incPerfCounters, addPerfDuration } from '../utils/perfCounters';
 import { recordOpRssDelta, safeRss } from '../utils/opRssTracker';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
+import { normalizeError } from '../utils/errorUtils';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import { getLogger } from '../logging/logger';
 
@@ -29,7 +30,6 @@ export type PriceOptimizerDeps = {
   getMinDiffOre: () => number;
   rebuildPlan: (reason: string) => Promise<void>;
   debugStructured: StructuredDebugEmitter;
-  error: (...args: unknown[]) => void;
   structuredLog?: PinoLogger;
 };
 
@@ -133,12 +133,18 @@ export class PriceOptimizer {
 
     this.startTimeout = setTimeout(() => {
       this.applyOnce().catch((error: Error) => {
-        this.deps.error('Price optimization failed', error);
+        (this.deps.structuredLog ?? moduleLogger).error({
+          event: 'price_optimization_failed',
+          err: normalizeError(error),
+        });
       });
 
       this.interval = setInterval(() => {
         this.applyOnce().catch((error: Error) => {
-          this.deps.error('Price optimization failed', error);
+          (this.deps.structuredLog ?? moduleLogger).error({
+            event: 'price_optimization_failed',
+            err: normalizeError(error),
+          });
         });
       }, 60 * 60 * 1000);
     }, msUntilNextHour);

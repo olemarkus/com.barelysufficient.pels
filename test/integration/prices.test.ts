@@ -2578,12 +2578,12 @@ describe('Price optimization', () => {
 
     await expect(coordinator.refreshGridTariffData(true)).rejects.toThrow('socket hang up');
 
-    expect(error).toHaveBeenCalledWith('Failed to refresh grid tariff data', refreshError);
-    expect(structuredLog.error).toHaveBeenCalledWith({
+    expect(structuredLog.error).toHaveBeenCalledWith(expect.objectContaining({
       event: 'price_fetch_failed',
       priceSource: 'grid_tariff',
       reasonCode: 'socket_hangup',
-    });
+      err: refreshError,
+    }));
   });
 
   it('normalizes non-Error spot refresh failures before rethrowing', async () => {
@@ -2597,11 +2597,11 @@ describe('Price optimization', () => {
 
     await expect(coordinator.refreshSpotPrices(true)).rejects.toThrow('timeout');
 
-    expect(error).toHaveBeenCalledWith('Failed to refresh spot prices', expect.any(Error));
-    expect(structuredLog.error).toHaveBeenCalledWith({
+    expect(structuredLog.error).toHaveBeenCalledWith(expect.objectContaining({
       event: 'price_fetch_failed',
       priceSource: 'spot',
       reasonCode: 'request_timeout',
-    });
+      err: expect.any(Error),
+    }));
   });
 });

@@ -60,9 +60,8 @@ export const shouldUseHomeyEnergyCache = (params: {
 export const fetchHomeyEnergyResults = async (params: {
   energyApi: HomeyEnergyApi;
   info: HomeyEnergyDateInfo;
-  errorLog?: (...args: unknown[]) => void;
 }): Promise<HomeyEnergyResults | null> => {
-  const { energyApi, info, errorLog } = params;
+  const { energyApi, info } = params;
   const [todayOutcome, tomorrowOutcome] = await Promise.allSettled([
     fetchHomeyEnergyPricesForDate({
       api: energyApi,
@@ -77,11 +76,7 @@ export const fetchHomeyEnergyResults = async (params: {
   ]);
   const logFailure = (dateKey: string, error: unknown) => {
     const details = formatHomeyEnergyError(error);
-    if (errorLog) {
-      errorLog(`Homey prices: Failed to fetch price data for ${dateKey}`, details);
-    } else {
-      priceLogger.warn({ event: 'homey_prices_fetch_failed', date: dateKey, ...details });
-    }
+    priceLogger.error({ event: 'homey_prices_fetch_failed', date: dateKey, ...details });
   };
   if (todayOutcome.status === 'rejected') logFailure(info.todayKey, todayOutcome.reason);
   if (tomorrowOutcome.status === 'rejected') logFailure(info.tomorrowKey, tomorrowOutcome.reason);
@@ -98,20 +93,15 @@ export const logHomeyEnergyPayloadStatus = (params: {
   info: HomeyEnergyDateInfo;
   results: HomeyEnergyResults;
   debugStructured: StructuredDebugEmitter;
-  errorLog?: (...args: unknown[]) => void;
 }): void => {
-  const { info, results, debugStructured, errorLog } = params;
+  const { info, results, debugStructured } = params;
   if (!results.todayResult.payload) {
-    const details = {
+    priceLogger.error({
+      event: 'homey_prices_missing_today',
       date: info.todayKey,
       intervalMinutes: results.todayResult.intervalMinutes,
       priceUnit: results.todayResult.priceUnit,
-    };
-    if (errorLog) {
-      errorLog('Homey prices: Missing today price data', details);
-    } else {
-      priceLogger.warn({ event: 'homey_prices_missing_today', ...details });
-    }
+    });
   }
   if (!results.tomorrowResult.payload) {
     const details = {
@@ -122,10 +112,8 @@ export const logHomeyEnergyPayloadStatus = (params: {
     const localHour = getZonedParts(new Date(), info.timeZone).hour;
     if (localHour < 13) {
       debugStructured({ event: 'homey_energy_tomorrow_pending', ...details });
-    } else if (errorLog) {
-      errorLog('Homey prices: Missing tomorrow price data after 13:00', details);
     } else {
-      priceLogger.warn({ event: 'homey_prices_missing_tomorrow', ...details });
+      priceLogger.error({ event: 'homey_prices_missing_tomorrow', ...details });
     }
   }
 };
@@ -134,20 +122,13 @@ export const updateHomeyEnergyCurrency = async (params: {
   energyApi: HomeyEnergyApi;
   results: HomeyEnergyResults;
   setSetting: (key: string, value: unknown) => void;
-  debugStructured: StructuredDebugEmitter;
-  errorLog?: (...args: unknown[]) => void;
 }): Promise<void> => {
-  const { energyApi, results, setSetting, debugStructured, errorLog } = params;
+  const { energyApi, results, setSetting } = params;
   let currency: string | null = null;
   try {
     currency = await fetchHomeyEnergyCurrency(energyApi);
   } catch (error) {
-    const normalizedError = normalizeError(error);
-    if (errorLog) {
-      errorLog('Homey prices: Failed to fetch currency', normalizedError);
-    } else {
-      debugStructured({ event: 'homey_energy_currency_fetch_failed', error: normalizedError.message });
-    }
+    priceLogger.error({ event: 'homey_energy_currency_fetch_failed', err: normalizeError(error) });
   }
   const priceUnit = currency || results.todayResult.priceUnit || results.tomorrowResult.priceUnit;
   if (priceUnit) {

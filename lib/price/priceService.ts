@@ -519,7 +519,6 @@ export default class PriceService {
     const results = await fetchHomeyEnergyResults({
       energyApi,
       info,
-      errorLog: this.sinks.errorLog,
     });
     if (!results) return;
 
@@ -527,15 +526,12 @@ export default class PriceService {
       info,
       results,
       debugStructured: this.sinks.debugStructured,
-      errorLog: this.sinks.errorLog,
     });
 
     await updateHomeyEnergyCurrency({
       energyApi,
       results,
       setSetting: (key, value) => this.homey.settings.set(key, value),
-      debugStructured: this.sinks.debugStructured,
-      errorLog: this.sinks.errorLog,
     });
     const stored = storeHomeyEnergyPayloads({
       results,
