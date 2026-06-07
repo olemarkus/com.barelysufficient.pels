@@ -1610,7 +1610,6 @@ class PelsApp extends Homey.App {
       homey: this.homey,
       store: this.powerCalibrationStore,
       nowMs,
-      error: (msg, err) => this.error(msg, err),
     });
   }
   private flushPowerCalibration(nowMs: number = Date.now()): void {
@@ -1618,7 +1617,6 @@ class PelsApp extends Homey.App {
       homey: this.homey,
       store: this.powerCalibrationStore,
       nowMs,
-      error: (msg, err) => this.error(msg, err),
     });
   }
   private runStartupSettingsMigrations(): void {

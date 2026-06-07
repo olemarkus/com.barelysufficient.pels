@@ -30,6 +30,7 @@ import {
 } from './deviceDiagnosticsModel';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import { getLogger } from '../logging/logger';
+import { normalizeError } from '../utils/errorUtils';
 
 const moduleLogger = getLogger('diagnostics/device');
 // Hoisted once so `emitDebug` allocates no per-call closure on the (test-only;
@@ -234,9 +235,8 @@ type DeviceDiagnosticsServiceDeps = {
   homey: Homey.App['homey'];
   getTimeZone: () => string;
   isDebugEnabled?: () => boolean;
-  structuredLog?: Pick<PinoLogger, 'info'>;
+  structuredLog?: Pick<PinoLogger, 'info' | 'error'>;
   debugStructured?: StructuredDebugEmitter;
-  error: (...args: unknown[]) => void;
 };
 
 const isFiniteNumber = (value: unknown): value is number => (
@@ -1344,7 +1344,11 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
         ...(bytes === undefined ? {} : { bytes }),
       });
     } catch (error) {
-      this.deps.error('Failed to persist device diagnostics state', error as Error);
+      (this.deps.structuredLog ?? moduleLogger).error({
+        event: 'diagnostics_persist_failed',
+        reason,
+        err: normalizeError(error),
+      });
     }
   }
 

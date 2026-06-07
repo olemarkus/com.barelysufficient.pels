@@ -254,14 +254,19 @@ describe('device manager support helpers', () => {
     writeErrorToStderr('device manager failed', new Error('boom'));
     expect(stderrWrite).toHaveBeenCalledWith(expect.stringContaining('device manager failed'));
 
-    logDeviceTransportRuntimeError(logger, 'device manager runtime failed', new Error('runtime boom'));
-    expect(logger.error).toHaveBeenCalledWith('device manager runtime failed', expect.any(Error));
-    expect(stderrWrite).toHaveBeenCalledWith(expect.stringContaining('device manager runtime failed'));
+    logDeviceTransportRuntimeError(logger, { event: 'device_manager_runtime_failed' }, new Error('runtime boom'));
+    expect(logger.error).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'device_manager_runtime_failed',
+      err: expect.any(Error),
+    }));
+    expect(stderrWrite).toHaveBeenCalledWith(expect.stringContaining('device_manager_runtime_failed'));
 
-    logDeviceTransportRuntimeError(logger, 'device manager string failure', 'string boom');
-    const normalizedError = logger.error.mock.calls.find(([message]) => message === 'device manager string failure')?.[1];
-    expect(normalizedError).toBeInstanceOf(Error);
-    expect((normalizedError as Error).message).toBe('string boom');
+    logDeviceTransportRuntimeError(logger, { event: 'device_manager_string_failure' }, 'string boom');
+    const stringFailureCall = logger.error.mock.calls.find(
+      ([payload]) => (payload as { event?: string })?.event === 'device_manager_string_failure',
+    )?.[0] as { err?: unknown } | undefined;
+    expect(stringFailureCall?.err).toBeInstanceOf(Error);
+    expect((stringFailureCall?.err as Error).message).toBe('string boom');
   });
   it('dedupes peak-power updates within the same rounded band', () => {
     const logger = createLogger();

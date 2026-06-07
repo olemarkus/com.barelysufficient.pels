@@ -24,6 +24,10 @@ import { POWER_CALIBRATION, POWER_CALIBRATION_INITIALIZED } from '../utils/setti
 import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { isFiniteNumber } from '../utils/appTypeGuards';
 import type { StructuredDebugEmitter } from '../logging/logger';
+import { getLogger } from '../logging/logger';
+import { normalizeError } from '../utils/errorUtils';
+
+const moduleLogger = getLogger('device/power-calibration-store');
 
 const DEFAULT_PERSIST_DEBOUNCE_MS = 60_000;
 const DEFAULT_PRUNE_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
@@ -309,7 +313,6 @@ export function persistPowerCalibrationIfDue(params: {
   homey: Homey.App['homey'];
   store: PowerCalibrationStore;
   nowMs: number;
-  error: (msg: string, err: Error) => void;
 }): boolean {
   const snapshot = params.store.snapshotForPersist(params.nowMs);
   if (!snapshot) return false;
@@ -325,7 +328,6 @@ export function persistPowerCalibrationFlush(params: {
   homey: Homey.App['homey'];
   store: PowerCalibrationStore;
   nowMs: number;
-  error: (msg: string, err: Error) => void;
 }): boolean {
   const snapshot = params.store.snapshotForFlush(params.nowMs);
   if (!snapshot) return false;
@@ -337,7 +339,6 @@ function writeAndMark(
     homey: Homey.App['homey'];
     store: PowerCalibrationStore;
     nowMs: number;
-    error: (msg: string, err: Error) => void;
   },
   snapshot: PowerCalibrationSnapshot,
 ): boolean {
@@ -345,7 +346,10 @@ function writeAndMark(
     params.homey.settings.set(POWER_CALIBRATION, snapshot);
     params.store.markPersisted(params.nowMs);
   } catch (err) {
-    params.error('Failed to persist power calibration', err as Error);
+    moduleLogger.error({
+      event: 'power_calibration_persist_failed',
+      err: normalizeError(err),
+    });
     return false;
   }
   // Mark "we've written before" so a subsequent boot with a missing snapshot

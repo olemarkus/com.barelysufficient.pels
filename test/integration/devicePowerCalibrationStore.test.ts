@@ -10,6 +10,7 @@ import {
   createEmptyPowerCalibrationSnapshot,
 } from '../../lib/device/devicePowerCalibration';
 import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import { captureLogger } from '../utils/loggerCapture';
 import { POWER_CALIBRATION, POWER_CALIBRATION_INITIALIZED } from '../../lib/utils/settingsKeys';
 
 const CONNECTED_300_PROFILE: SteppedLoadProfile = {
@@ -193,15 +194,21 @@ describe('write-failure recovery', () => {
     } as never;
     const store = new PowerCalibrationStore({ persistDebounceMs: 0 });
     store.ingestDeviceSnapshot(baseDeviceSnapshot(), 0);
-    const errors: Array<[string, Error]> = [];
-    const wrote = persistPowerCalibrationIfDue({
-      homey,
-      store,
-      nowMs: 0,
-      error: (msg, err) => errors.push([msg, err]),
-    });
-    expect(wrote).toBe(false);
-    expect(errors).toHaveLength(1);
+    const capture = captureLogger();
+    let wrote: boolean;
+    try {
+      wrote = persistPowerCalibrationIfDue({
+        homey,
+        store,
+        nowMs: 0,
+      });
+      expect(wrote).toBe(false);
+      expect(capture.findEvent('power_calibration_persist_failed')).toMatchObject({
+        event: 'power_calibration_persist_failed',
+      });
+    } finally {
+      capture.restore();
+    }
     // Critical: the store must remain dirty so the same samples are retried
     // on the next persist tick rather than silently lost.
     expect(store.isDirty()).toBe(true);
@@ -216,7 +223,6 @@ describe('write-failure recovery', () => {
       homey: homey as never,
       store,
       nowMs: 0,
-      error: () => undefined,
     });
     expect(homeyStore.get(POWER_CALIBRATION)).toBeDefined();
     expect(store.isDirty()).toBe(false);
@@ -273,7 +279,6 @@ describe('abandon-grace on missing settings load', () => {
       homey: homey as never,
       store,
       nowMs: 1_500,
-      error: () => undefined,
     });
     expect(wrote).toBe(false);
     expect(homeyStore.get(POWER_CALIBRATION)).toBeUndefined();
@@ -291,7 +296,6 @@ describe('abandon-grace on missing settings load', () => {
       homey: homey as never,
       store,
       nowMs: 70_000,
-      error: () => undefined,
     });
     expect(wrote).toBe(true);
     expect(homeyStore.get(POWER_CALIBRATION)).toBeDefined();
@@ -311,7 +315,6 @@ describe('abandon-grace on missing settings load', () => {
       homey: homey as never,
       store,
       nowMs: 1_500,
-      error: () => undefined,
     });
     expect(wrote).toBe(true);
   });
@@ -333,7 +336,6 @@ describe('abandon-grace on missing settings load', () => {
       homey: homey as never,
       store,
       nowMs: 1_500,
-      error: () => undefined,
     });
     expect(wrote).toBe(false);
     expect(homeyStore.get(POWER_CALIBRATION)).toEqual({ version: 1, devices: 'bad' });
@@ -353,7 +355,6 @@ describe('abandon-grace on missing settings load', () => {
       homey: homey as never,
       store,
       nowMs: 1_500,
-      error: () => undefined,
     });
     expect(wrote).toBe(false);
   });
@@ -387,7 +388,6 @@ describe('abandon-grace on missing settings load', () => {
       homey: homey as never,
       store,
       nowMs: 1_500,
-      error: () => undefined,
     });
     expect(wrote).toBe(false);
   });
@@ -411,7 +411,6 @@ describe('fresh-install vs transient-miss discriminator', () => {
       homey: homey as never,
       store,
       nowMs: 1_500,
-      error: () => undefined,
     });
     expect(wrote).toBe(true);
     expect(homeyStore.get(POWER_CALIBRATION)).toBeDefined();
@@ -435,7 +434,6 @@ describe('fresh-install vs transient-miss discriminator', () => {
       homey: homey as never,
       store,
       nowMs: 1_500,
-      error: () => undefined,
     });
     expect(wrote).toBe(false);
     expect(homeyStore.get(POWER_CALIBRATION)).toBeUndefined();
@@ -453,7 +451,6 @@ describe('fresh-install vs transient-miss discriminator', () => {
       homey: homey as never,
       store,
       nowMs: 1_500,
-      error: () => undefined,
     });
     expect(homeyStore.get(POWER_CALIBRATION_INITIALIZED)).toBe(true);
   });
@@ -488,7 +485,6 @@ describe('fresh-install vs transient-miss discriminator', () => {
       homey: homey as never,
       store,
       nowMs: 1_500,
-      error: () => undefined,
     });
     const markerWrites = writes.filter(([key]) => key === POWER_CALIBRATION_INITIALIZED);
     expect(markerWrites).toHaveLength(1);
@@ -527,7 +523,6 @@ describe('fresh-install vs transient-miss discriminator', () => {
       homey: homey as never,
       store,
       nowMs: 1_500,
-      error: () => undefined,
     });
     expect(wrote).toBe(false);
   });
@@ -555,7 +550,6 @@ describe('fresh-install vs transient-miss discriminator', () => {
       homey: homey as never,
       store,
       nowMs: 1_500,
-      error: () => undefined,
     });
     expect(wrote).toBe(false);
   });
@@ -585,7 +579,6 @@ describe('fresh-install vs transient-miss discriminator', () => {
       homey: homey as never,
       store,
       nowMs: 1_500,
-      error: () => undefined,
     });
     expect(wrote).toBe(false);
   });
@@ -617,7 +610,6 @@ describe('fresh-install vs transient-miss discriminator', () => {
       homey: homey as never,
       store,
       nowMs: 1_500,
-      error: () => undefined,
     });
     expect(wrote).toBe(false);
   });
@@ -644,7 +636,6 @@ describe('persistPowerCalibrationFlush', () => {
       homey: homey as never,
       store: reloaded,
       nowMs: 1_500,
-      error: () => undefined,
     });
     expect(wrote).toBe(true);
     expect(reloaded.isDirty()).toBe(false);
@@ -669,7 +660,6 @@ describe('persistPowerCalibrationFlush', () => {
       homey: homey as never,
       store,
       nowMs: 1_500,
-      error: () => undefined,
     });
     expect(wrote).toBe(false);
     expect(homeyStore.get(POWER_CALIBRATION)).toBeUndefined();
@@ -683,7 +673,6 @@ describe('persistPowerCalibrationFlush', () => {
       homey: homey as never,
       store,
       nowMs: 0,
-      error: () => undefined,
     });
     expect(wrote).toBe(false);
   });
@@ -695,16 +684,13 @@ describe('persistPowerCalibrationIfDue', () => {
     const homey = mockHomey(homeyStore);
     const store = new PowerCalibrationStore({ persistDebounceMs: 1_000 });
     store.ingestDeviceSnapshot(baseDeviceSnapshot(), 0);
-    const errors: Array<[string, Error]> = [];
     const wrote = persistPowerCalibrationIfDue({
       homey: homey as never,
       store,
       nowMs: 1_500,
-      error: (msg, err) => errors.push([msg, err]),
     });
     expect(wrote).toBe(true);
     expect(homeyStore.get(POWER_CALIBRATION)).toBeDefined();
-    expect(errors).toEqual([]);
   });
 
   it('is a no-op when the store is clean', () => {
@@ -717,7 +703,6 @@ describe('persistPowerCalibrationIfDue', () => {
       homey: homey as never,
       store,
       nowMs: 1_000,
-      error: () => undefined,
     });
     expect(wrote).toBe(false);
     expect(homeyStore.get(POWER_CALIBRATION)).toBeUndefined();
