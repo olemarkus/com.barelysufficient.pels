@@ -140,6 +140,27 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
 
 *v2.11.0..HEAD release-review findings (2026-06-02). Non-blocking follow-ups.*
 
+- [ ] **Extend the connected-but-not-resumable (`plugged_in`) honesty to the remaining surfaces.**
+      The objective/smart-task honesty for a `plugged_in` charger (PELS can't resume it) shipped the
+      list chip + widget ("Paused — can't resume" / "Can't resume" / "Car charging won't resume —
+      check the charger.") and stopped crediting its SoC as on-track (`objective_charger_not_resumable`,
+      PR after #1577). Two surfaces were deliberately left for a focused follow-up so the first PR stayed
+      bounded: (1) the **EV device-card state line** (`resolveEvCardStateLine` in `deadlineLabels.ts`)
+      shows no line for not-resumable (honest but silent — `isPlugOutPaused` in
+      `PlanDeviceCards.tsx:60` only fires on `objective_invalid_session`); add a distinct
+      "charging won't resume" line. (2) The **pending-hero** for a charger that is not-resumable
+      *from the start* (no plan yet) falls through to the generic `awaiting_horizon_plan` copy; add a
+      `charger_not_resumable` `DeferredObjectiveActivePlanPendingReason` + hero copy + `DeadlineLiveState`
+      so the detail hero matches the chip. Persona: EV owner (notes/personas.md). Hypothesis: a connected
+      charger that silently won't charge erodes trust more than an explicit "check the charger" prompt.
+      (3) **Clear a stale `diagnosticReasonCode` on recovery.** `ensurePendingRecord`
+      (`activePlanRecorder.ts:796-800`) only clears the code on the no-horizon path; when a charger
+      recovers to a healthy diagnostic (has `horizonPlan`) on a committed plan, the per-cycle dispatch
+      early-returns (`:724`, not replan-due) and leaves `diagnosticReasonCode` set, so the chip can read
+      "Can't resume" until the next `:58` replan. **Pre-existing — `objective_invalid_session` (unplugged)
+      has the identical staleness**; fix both in the shared dispatch (clear the field when a healthy
+      diagnostic arrives for a committed plan), with regression coverage for re-plug AND re-resume.
+      (Codex P2 on PR #1579.)
 - [ ] **Hoist the active-plan shape guard into shared-domain so the UI and runtime can't drift.**
       The settings-UI `coerceDeferredObjectiveActivePlans`
       (`packages/settings-ui/src/ui/deferredObjectiveActivePlans.ts`) is a leaner duplicate of the
