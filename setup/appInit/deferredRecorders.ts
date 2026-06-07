@@ -27,6 +27,7 @@ import {
   LEARNED_THERMOSTAT_DEADBAND_C,
 } from '../../lib/utils/settingsKeys';
 import { isFiniteNumber } from '../../lib/utils/appTypeGuards';
+import { normalizeError } from '../../lib/utils/errorUtils';
 import {
   LEARNED_THERMOSTAT_DEADBAND_MAX_C,
   getLearnedThermostatDeadbandC,
@@ -96,7 +97,10 @@ export const writeWatermark = (ctx: AppContext, ms: number): void => {
   try {
     ctx.homey.settings.set(DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK, ms);
   } catch (error) {
-    ctx.error('Failed to persist deferred-objective observation watermark', error);
+    ctx.getStructuredLogger('deferred_objectives')?.error({
+      event: 'deferred_objective_observation_watermark_persist_failed',
+      err: normalizeError(error),
+    });
   }
 };
 
@@ -112,7 +116,10 @@ export function createDeferredObjectivePlanHistoryRecorder(
         ctx.homey.settings.set(DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING, next);
         return true;
       } catch (error) {
-        ctx.error('Failed to persist deferred-objective plan history', error);
+        ctx.getStructuredLogger('deferred_objectives')?.error({
+          event: 'deferred_objective_plan_history_persist_failed',
+          err: normalizeError(error),
+        });
         return false;
       }
     },
@@ -162,7 +169,10 @@ const updateLearnedThermostatDeadbandFromEntry = (
   try {
     rawMap = ctx.homey.settings.get(LEARNED_THERMOSTAT_DEADBAND_C);
   } catch (error) {
-    ctx.error('Failed to read learned thermostat deadband', error);
+    ctx.getStructuredLogger('deferred_objectives')?.error({
+      event: 'learned_thermostat_deadband_read_failed',
+      err: normalizeError(error),
+    });
     return;
   }
   const map = normaliseLearnedThermostatDeadbandMap(rawMap);
@@ -191,7 +201,10 @@ const updateLearnedThermostatDeadbandFromEntry = (
   try {
     ctx.homey.settings.set(LEARNED_THERMOSTAT_DEADBAND_C, nextMap);
   } catch (error) {
-    ctx.error('Failed to persist learned thermostat deadband', error);
+    ctx.getStructuredLogger('deferred_objectives')?.error({
+      event: 'learned_thermostat_deadband_persist_failed',
+      err: normalizeError(error),
+    });
   }
 };
 
@@ -310,7 +323,10 @@ export function createDeferredObjectiveActivePlanRecorder(
       try {
         ctx.homey.settings.set(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING, next);
       } catch (error) {
-        ctx.error('Failed to persist deferred-objective active plans', error);
+        ctx.getStructuredLogger('deferred_objectives')?.error({
+          event: 'deferred_objective_active_plans_persist_failed',
+          err: normalizeError(error),
+        });
       }
     },
     debugStructured: ctx.getStructuredDebugEmitter('deferred_objectives', 'deferred_objectives'),
