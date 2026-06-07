@@ -8,8 +8,13 @@ import {
 } from '../utils/dateUtils';
 import { readCombinedPriceData } from '../price/priceStore';
 import { resolveUsableCapacityKw } from '../power/capacityModel';
+import { normalizeError } from '../utils/errorUtils';
+import type { Logger as PinoLogger } from '../logging/logger';
+import { getLogger } from '../logging/logger';
 import type { DailyBudgetManager } from './dailyBudgetManager';
 import type { DailyBudgetDayPayload, DailyBudgetSettings } from './dailyBudgetTypes';
+
+const moduleLogger = getLogger('dailyBudget/service');
 
 /**
  * Collaborators the adjacent-day (tomorrow preview / yesterday history) builders need from
@@ -22,7 +27,7 @@ export type DailyBudgetAdjacentDayDeps = {
   getCapacitySettings: () => { limitKw: number; marginKw: number };
   getPowerTracker: () => PowerTrackerState;
   getPriceOptimizationEnabled: () => boolean;
-  logError: (message: string, error: unknown) => void;
+  structuredLog?: PinoLogger;
 };
 
 export const buildTomorrowPreview = (
@@ -47,7 +52,10 @@ export const buildTomorrowPreview = (
       capacityBudgetKWh,
     });
   } catch (error) {
-    deps.logError('Daily budget: failed to build tomorrow preview', error);
+    (deps.structuredLog ?? moduleLogger).error({
+      event: 'daily_budget_tomorrow_preview_failed',
+      err: normalizeError(error),
+    });
     return null;
   }
 };
@@ -63,7 +71,10 @@ const resolveYesterdayContext = (
     const yesterdayStartUtcMs = getDateKeyStartMs(yesterdayKey, timeZone);
     return { timeZone, yesterdayStartUtcMs };
   } catch (error) {
-    deps.logError('Daily budget: failed to resolve yesterday date', error);
+    (deps.structuredLog ?? moduleLogger).error({
+      event: 'daily_budget_yesterday_date_resolve_failed',
+      err: normalizeError(error),
+    });
     return null;
   }
 };
@@ -89,7 +100,10 @@ export const buildYesterdayHistory = (
       controlledUsageWeight: settings.controlledUsageWeight,
     });
   } catch (error) {
-    deps.logError('Daily budget: failed to build yesterday history', error);
+    (deps.structuredLog ?? moduleLogger).error({
+      event: 'daily_budget_yesterday_history_failed',
+      err: normalizeError(error),
+    });
     return null;
   }
 };

@@ -94,7 +94,6 @@ export class BackgroundTasksController {
     this.stopDeferredObjectiveClock = startDeferredObjectiveLifecycleClock({
       emitter,
       getNowMs: () => this.deps.getNow().getTime(),
-      error: (message, error) => this.deps.error(message, error),
     });
   }
 
