@@ -133,6 +133,7 @@ vi.mock('socket.io-client', () => ({
 
 import { mockHomeyInstance, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
+import { drainUntilCalledWith } from '../utils/asyncDrain';
 import { CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW } from '../../lib/utils/settingsKeys';
 
 const DEVICE_ID = 'device-a';
@@ -265,7 +266,11 @@ describe('On/off realtime observation across pull gap (SDK-boundary e2e)', () =>
 
     totalW = 10_000;
     await vi.advanceTimersByTimeAsync(10_000);
-    await flushPromises();
+    // Wait for the detached poll→plan→execute chain to reach the SDK write
+    // instead of a fixed flush, which flakes to zero calls under full-suite CPU
+    // load (notes/testing-taxonomy.md). The toHaveBeenCalledWith below then gives
+    // a readable diff and is guaranteed to hold once this resolves.
+    await drainUntilCalledWith(putSpy, onoffCap(DEVICE_ID), { value: false });
 
     expect(putSpy).toHaveBeenCalledWith(onoffCap(DEVICE_ID), { value: false });
   });
