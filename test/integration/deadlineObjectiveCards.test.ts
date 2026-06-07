@@ -252,6 +252,7 @@ const buildDeps = (overrides: {
   activePlans?: DeferredObjectiveActivePlansV1 | null;
   rebuildPlan?: ReturnType<typeof vi.fn>;
   recorders?: MockRecorders;
+  structuredError?: ReturnType<typeof vi.fn>;
 }): { deps: FlowCardDeps; mock: ReturnType<typeof createMockHomey>; recorders: MockRecorders } => {
   const mock = createMockHomey();
   const recorders = overrides.recorders ?? buildMockRecorders();
@@ -299,10 +300,10 @@ const buildDeps = (overrides: {
     getCombinedHourlyPrices: () => null,
     getTimeZone: () => 'UTC',
     getNow: () => new Date(MOCK_NOW_MS),
-    getStructuredLogger: () => undefined,
-    log: () => {},
+    getStructuredLogger: () => (
+      overrides.structuredError ? { error: overrides.structuredError } : undefined
+    ),
     debugStructured: () => {},
-    error: () => {},
     getDeferredObjectiveActivePlans: () => (
       Object.prototype.hasOwnProperty.call(overrides, 'activePlans')
         ? overrides.activePlans
@@ -1287,12 +1288,12 @@ describe('deadline objective flow cards', () => {
 
   it('swallows token-build errors so a bad plan-revision event cannot crash the publisher', () => {
     const planRevisionBus = createDeferredObjectivePlanRevisionBus();
-    const errors: unknown[][] = [];
+    const structuredError = vi.fn();
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'ev-1', name: 'Garage charger', deviceClass: 'evcharger' })],
       planRevisionBus,
+      structuredError,
     });
-    (deps as { error: (...args: unknown[]) => void }).error = (...args: unknown[]) => { errors.push(args); };
     registerDeadlineObjectiveCards(deps);
     const trigger = mock.triggers.get('deadline_plan_changed')!;
 
@@ -1310,8 +1311,10 @@ describe('deadline objective flow cards', () => {
       revision: null as unknown as never,
     })).not.toThrow();
     expect(trigger.trigger).not.toHaveBeenCalled();
-    expect(errors).toHaveLength(1);
-    expect(String(errors[0][0])).toMatch(/Failed to build deadline_plan_changed tokens/);
+    expect(structuredError).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'deadline_plan_changed_tokens_build_failed',
+      deviceId: 'ev-1',
+    }));
   });
 
   it('has_active_deadline returns true only when an enabled entry exists', async () => {

@@ -13,9 +13,10 @@ import {
   MANAGED_DEVICES,
 } from '../lib/utils/settingsKeys';
 
-const { settingsLoggerInfo, settingsLoggerWarn } = vi.hoisted(() => ({
+const { settingsLoggerInfo, settingsLoggerWarn, settingsLoggerError } = vi.hoisted(() => ({
   settingsLoggerInfo: vi.fn(),
   settingsLoggerWarn: vi.fn(),
+  settingsLoggerError: vi.fn(),
 }));
 
 vi.mock('../lib/logging/logger', async (importOriginal) => {
@@ -24,7 +25,7 @@ vi.mock('../lib/logging/logger', async (importOriginal) => {
     ...actual,
     getLogger: (component: string) => (
       component === 'settings'
-        ? { info: settingsLoggerInfo, warn: settingsLoggerWarn }
+        ? { info: settingsLoggerInfo, warn: settingsLoggerWarn, error: settingsLoggerError }
         : actual.getLogger(component)
     ),
   };
@@ -67,7 +68,6 @@ const buildDeps = (overrides: Partial<SettingsHandlerDeps> = {}): SettingsHandle
     updateOverheadToken: vi.fn().mockResolvedValue(undefined),
     updateDebugLoggingEnabled: vi.fn(),
     restartHomeyEnergyPoll: vi.fn(),
-    errorLog: vi.fn(),
     ...overrides,
   };
 };
@@ -76,6 +76,7 @@ describe('createSettingsHandler', () => {
   beforeEach(() => {
     settingsLoggerInfo.mockClear();
     settingsLoggerWarn.mockClear();
+    settingsLoggerError.mockClear();
   });
 
   afterEach(() => {
@@ -111,10 +112,9 @@ describe('createSettingsHandler', () => {
 
     await handler('mode_device_targets');
 
-    expect(deps.errorLog).toHaveBeenCalledWith(
-      'Failed to refresh devices after mode target change',
-      expect.any(Error),
-    );
+    expect(settingsLoggerError).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'mode_targets_snapshot_refresh_failed',
+    }));
     expect(deps.rebuildPlanFromCache).toHaveBeenCalled();
   });
 
@@ -179,10 +179,10 @@ describe('createSettingsHandler', () => {
 
     await handler('refresh_target_devices_snapshot');
 
-    expect(deps.errorLog).toHaveBeenCalledWith(
-      'Failed to refresh target devices snapshot',
-      expect.any(Error),
-    );
+    expect(settingsLoggerError).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'settings_snapshot_refresh_failed',
+      reasonCode: 'manual_snapshot_refresh',
+    }));
   });
 
   it('logs when grid tariff refresh fails', async () => {
@@ -197,12 +197,13 @@ describe('createSettingsHandler', () => {
 
     await handler('refresh_nettleie');
 
-    expect(deps.errorLog).toHaveBeenCalledWith('Failed to refresh grid tariff data', expect.any(Error));
+    expect(settingsLoggerError).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'grid_tariff_refresh_failed',
+    }));
   });
 
   it('routes settings UI log entries by level', async () => {
-    const errorLog = vi.fn() as vi.MockedFunction<SettingsHandlerDeps['errorLog']>;
-    const deps = buildDeps({ errorLog });
+    const deps = buildDeps();
     deps.homey.settings.get = vi.fn()
       .mockReturnValueOnce({ level: 'error', message: 'Bad', detail: 'Detail', context: 'Form' })
       .mockReturnValueOnce({ level: 'warn', message: 'Heads up' })
@@ -213,10 +214,14 @@ describe('createSettingsHandler', () => {
     await handler('settings_ui_log');
     await handler('settings_ui_log');
 
-    expect(errorLog).toHaveBeenCalledTimes(1);
-    expect(errorLog).toHaveBeenCalledWith(expect.stringContaining('Settings UI'), expect.any(Error));
-    const loggedError = errorLog.mock.calls[0][1] as Error;
-    expect(loggedError.message).toBe('Detail');
+    expect(settingsLoggerError).toHaveBeenCalledTimes(1);
+    expect(settingsLoggerError).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'settings_ui_log',
+      level: 'error',
+      message: 'Bad',
+      detail: 'Detail',
+      context: 'Form',
+    }));
     expect(settingsLoggerWarn).toHaveBeenCalledTimes(1);
     expect(settingsLoggerWarn).toHaveBeenCalledWith(expect.objectContaining({
       event: 'settings_ui_log',
@@ -246,7 +251,7 @@ describe('createSettingsHandler', () => {
 
     expect(settingsLoggerInfo).not.toHaveBeenCalled();
     expect(settingsLoggerWarn).not.toHaveBeenCalled();
-    expect(deps.errorLog).not.toHaveBeenCalled();
+    expect(settingsLoggerError).not.toHaveBeenCalled();
     expect(deps.homey.settings.set).not.toHaveBeenCalled();
   });
 
@@ -258,7 +263,10 @@ describe('createSettingsHandler', () => {
 
     await handler('capacity_priorities');
 
-    expect(deps.errorLog).toHaveBeenCalledWith('Settings handler failed', expect.any(Error));
+    expect(settingsLoggerError).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'settings_handler_failed',
+      settingKey: 'capacity_priorities',
+    }));
   });
 
   it('handles debug logging toggle keys', async () => {

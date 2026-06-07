@@ -10,6 +10,7 @@ import {
 } from '../observer/observationFreshness';
 import type { PlanService } from '../plan/planService';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import { normalizeError } from '../utils/errorUtils';
 import type { TimerRegistry } from './timerRegistry';
 
 const SNAPSHOT_REFRESH_MINUTE_INTERVALS = [25, 55];
@@ -70,7 +71,6 @@ export class AppSnapshotHelpers {
     isCapacityControlEnabled: (deviceId: string) => boolean;
     getStructuredLogger: (component: string) => PinoLogger | undefined;
     getStructuredDebugEmitter: (component: string, topic: 'devices' | 'plan') => StructuredDebugEmitter;
-    error: (...args: unknown[]) => void;
     getNow: () => Date;
     logPeriodicStatus: (options?: { includeDeviceHealth?: boolean }) => void;
     disableUnsupportedDevices: (snapshot: TargetDeviceSnapshot[]) => void;
@@ -108,7 +108,10 @@ export class AppSnapshotHelpers {
       'targetConfirmationPoll',
       setInterval(() => {
         this.pollStuckTargetConfirmations()
-          .catch((error) => this.deps.error('Pending target confirmation poll failed', error));
+          .catch((error) => this.deps.getStructuredLogger('snapshot')?.error({
+            event: 'stuck_target_confirmation_poll_failed',
+            err: normalizeError(error),
+          }));
       }, TARGET_CONFIRMATION_POLL_INTERVAL_MS),
     );
   }
@@ -296,7 +299,10 @@ export class AppSnapshotHelpers {
         await this.refreshTargetDevicesSnapshot({ targeted: true });
         refreshed = true;
       } catch (error) {
-        this.deps.error('Periodic snapshot refresh failed', error);
+        this.deps.getStructuredLogger('snapshot')?.error({
+          event: 'periodic_snapshot_refresh_failed',
+          err: normalizeError(error),
+        });
       } finally {
         this.deps.logPeriodicStatus({ includeDeviceHealth: refreshed });
         if (this.snapshotRefreshTimer === scheduledTimer) {
@@ -345,7 +351,10 @@ export class AppSnapshotHelpers {
       try {
         await this.refreshTargetDevicesSnapshot({ targeted: true, recordHomeyEnergySample: false });
       } catch (error) {
-        this.deps.error('Post-actuation snapshot refresh failed:', error);
+        this.deps.getStructuredLogger('snapshot')?.error({
+          event: 'post_actuation_snapshot_refresh_failed',
+          err: normalizeError(error),
+        });
       }
     }, POST_ACTUATION_REFRESH_DELAY_MS));
   }
@@ -429,7 +438,10 @@ export class AppSnapshotHelpers {
         try {
           await this.refreshStaleDeviceObservations();
         } catch (error) {
-          this.deps.error('Stale device observation refresh failed', error);
+          this.deps.getStructuredLogger('snapshot')?.error({
+            event: 'stale_device_observation_refresh_failed',
+            err: normalizeError(error),
+          });
         } finally {
           if (!this.staleObservationRefreshStopped) {
             this.scheduleStaleObservationRefreshFallback();
