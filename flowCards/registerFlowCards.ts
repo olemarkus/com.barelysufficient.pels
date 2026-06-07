@@ -149,7 +149,6 @@ export type FlowCardDeps = {
   getNow: () => Date;
   getStructuredLogger: (component: string) => PinoLogger | undefined;
   debugStructured: StructuredDebugEmitter;
-  error: (...args: unknown[]) => void;
 };
 
 export function registerFlowCards(deps: FlowCardDeps): void {
@@ -809,7 +808,11 @@ function createPriceCardRunListener(kind: 'today' | 'tomorrow', deps: FlowCardDe
       return true;
     } catch (error) {
       const normalizedError = normalizeError(error);
-      deps.error(`Flow: Failed to store ${kind} prices from flow tag.`, normalizedError);
+      deps.getStructuredLogger('price')?.error({
+        event: 'flow_prices_store_failed',
+        priceKind: kind,
+        error: normalizedError.message,
+      });
       throw normalizedError;
     }
   };

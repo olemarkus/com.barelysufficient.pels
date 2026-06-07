@@ -79,6 +79,5 @@ export function registerAppFlowCards(ctx: AppContext): void {
     getNow: () => ctx.getNow(),
     getStructuredLogger: (component) => ctx.getStructuredLogger(component),
     debugStructured: ctx.getStructuredDebugEmitter('flow', 'settings'),
-    error: (...args: unknown[]) => ctx.error(...args),
   });
 }

@@ -48,6 +48,7 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
   const actionListeners: Record<string, (args: unknown) => Promise<unknown>> = {};
   const structuredInfo = vi.fn();
   const structuredWarn = vi.fn();
+  const structuredError = vi.fn();
   const actionAutocompleteListeners: Record<string, Record<string, (query: string, args?: Record<string, unknown>) => Promise<unknown>>> = {};
   const triggerListeners: Record<string, (args: unknown, state?: unknown) => Promise<unknown>> = {};
   const triggerAutocompleteListeners: Record<string, Record<string, (query: string, args?: Record<string, unknown>) => Promise<unknown>>> = {};
@@ -102,9 +103,8 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
     getCombinedHourlyPrices: vi.fn(() => []),
     getTimeZone: vi.fn(() => 'Europe/Oslo'),
     getNow: vi.fn(() => new Date('2026-03-11T10:00:00Z')),
-    getStructuredLogger: vi.fn(() => ({ info: structuredInfo, warn: structuredWarn })),
+    getStructuredLogger: vi.fn(() => ({ info: structuredInfo, warn: structuredWarn, error: structuredError })),
     debugStructured: vi.fn(),
-    error: vi.fn(),
     ...overrides,
   };
   return {
@@ -115,6 +115,7 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
     triggerAutocompleteListeners,
     structuredInfo,
     structuredWarn,
+    structuredError,
   };
 };
 
@@ -207,7 +208,7 @@ describe('registerFlowCards', () => {
   });
 
   it('normalizes non-Error failures from external price flow cards', async () => {
-    const { deps, actionListeners } = buildDeps({
+    const { deps, actionListeners, structuredError } = buildDeps({
       storeFlowPriceData: vi.fn(() => {
         throw 'boom';
       }),
@@ -216,11 +217,11 @@ describe('registerFlowCards', () => {
     registerFlowCards(deps);
 
     await expect(actionListeners.set_external_prices_today({ prices_json: '{}' })).rejects.toThrow('boom');
-    expect(deps.error).toHaveBeenCalledWith(
-      'Flow: Failed to store today prices from flow tag.',
-      expect.any(Error),
-    );
-    expect(((deps.error as ReturnType<typeof vi.fn>).mock.calls[0]?.[1] as Error).message).toBe('boom');
+    expect(structuredError).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'flow_prices_store_failed',
+      priceKind: 'today',
+      error: 'boom',
+    }));
   });
 
   it('writes a clean boolean map for budget exemption flow cards without direct rebuild work', async () => {

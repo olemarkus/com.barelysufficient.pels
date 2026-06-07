@@ -487,7 +487,6 @@ class PelsApp extends Homey.App {
     isCapacityControlEnabled: (deviceId) => this.isCapacityControlEnabled(deviceId),
     getStructuredLogger: (component) => this.getStructuredLogger(component),
     getStructuredDebugEmitter: (component, topic) => this.getStructuredDebugEmitter(component, topic),
-    error: (...args) => this.error(...args),
     getNow: () => this.getNow(),
     logPeriodicStatus: (options) => this.logPeriodicStatus(options),
     disableUnsupportedDevices: (snapshot) => disableUnsupportedDevicesHelper({

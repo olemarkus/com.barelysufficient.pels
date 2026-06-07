@@ -118,7 +118,6 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     isCapacityControlEnabled: () => false,
     getStructuredLogger: () => undefined,
     logDebug: vi.fn(),
-    error: vi.fn(),
     getNow: () => new Date('2026-04-16T00:00:00.000Z'),
     logPeriodicStatus: vi.fn(),
     disableUnsupportedDevices: vi.fn(),
