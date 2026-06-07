@@ -175,19 +175,9 @@ describe('applyShedReleaseIntent', () => {
     expect(mockedApplyBinarySheddingToDevice).not.toHaveBeenCalled();
   });
 
-  it('skips an EV-capability device routed through shed_release (defensive guard)', async () => {
-    const deps = buildDeps({ action: 'turn_off', temperature: null, stepId: null });
-    const result = await applyShedReleaseIntent({
-      intent: buildIntent(),
-      steppedLoadIntent: null,
-      observed: buildObserved(),
-      snapshot: { id: 'dev-1', binaryControl: { on: true }, controlCapabilityId: 'evcharger_charging' } as never,
-      mode: 'plan',
-      deps,
-    });
-    expect(result).toBe(false);
-    expect(mockedApplyBinarySheddingToDevice).not.toHaveBeenCalled();
-  });
+  // (Removed) the EV-routed-through-shed_release case asserted a defensive guard that has
+  // been deleted: shed_release is only ever produced for non-EV (temperature) objectives, so
+  // an EV device never reaches this path. See the objectiveKind↔device invariant in admission.ts.
 
   it('fires a target write at the shed temperature when shedBehavior is set_temperature', async () => {
     const recordReleaseShedActuation = vi.fn();

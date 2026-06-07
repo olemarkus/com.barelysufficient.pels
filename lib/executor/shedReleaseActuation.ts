@@ -4,7 +4,6 @@ import type {
   SteppedLoadStep,
   TargetDeviceSnapshot,
 } from '../../packages/contracts/src/types';
-import { isEvDevice } from '../../packages/shared-domain/src/commandableNow';
 import {
   applyBinarySheddingToDevice,
   type PlanExecutorBinaryContext,
@@ -129,10 +128,10 @@ const applyShedReleaseBinaryOff = async (params: {
   deps: ShedReleaseActuationDeps;
 }): Promise<boolean> => {
   const { intent, behavior, snapshot, observed, deps } = params;
-  // Defensive: binary-controlled deferred objectives route through 'binary_release', not
-  // 'shed_release'; the projection already rejects shed_release for EV devices
-  // (`isEvDevice`), but guard at apply time too — faithful mirror of that gate.
-  if (snapshot && isEvDevice(snapshot)) return false;
+  // No EV re-derivation here: shed_release is only ever produced for non-EV (temperature)
+  // objectives — binary-controlled (ev_soc) objectives route through 'binary_release'. The
+  // intent is authoritative (see the objectiveKind↔device invariant note in admission.ts);
+  // a device with no binary handle is still rejected below.
   if (!snapshot?.controlCapabilityId) {
     // No binary handle, and the stepped re-projection above either didn't apply (turn_off
     // shedBehavior, or no steppedLoad intent available) or returned false. Stay silent on

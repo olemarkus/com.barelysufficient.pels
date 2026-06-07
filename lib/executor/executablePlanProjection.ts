@@ -2,7 +2,6 @@ import {
   formatDeviceReason,
   PLAN_REASON_CODES,
 } from '../../packages/shared-domain/src/planReasonSemantics';
-import { isEvDevice } from '../../packages/shared-domain/src/commandableNow';
 import type { DevicePlan } from '../plan/planTypes';
 import { isRestoreAdmissionHoldReason } from '../planContract/planDecisionSemantics';
 import type {
@@ -244,17 +243,19 @@ const buildExecutableReleaseIntent = (
 ): ExecutableReleaseIntent | null => {
   const kind = dev.deferredReleaseIntent;
   if (!kind) return null;
+  // The release intent is producer-resolved in deferred-objective admission, keyed on
+  // objectiveKind which is 1:1 with device type (`ev_soc` → EV charger → binary_*;
+  // `temperature` → thermostat → shed_release). The executor trusts the intent and does
+  // NOT re-derive EV-ness: `shed_release` never targets an EV device and `binary_*` always
+  // does, so the old `isEvDevice` guards here were unreachable. See the invariant note at
+  // `resolveReleaseIntentForCapOff` in lib/objectives/deferredObjectives/admission.ts.
   if (kind === 'shed_release') {
     // shed_release fires the device's configured shedBehavior; the executor resolves the
     // concrete actuation primitive (turn_off / set_temperature / set_step) at apply time.
-    // Binary-controlled deferred objectives route through 'binary_release' (never
-    // 'shed_release'), so reject here as a defensive guard against a misrouted producer.
     // `releaseShedStepId` is producer-resolved (see `resolveShedIntent`); the lifecycle-end
     // release path reads it for the stepped-no-binary case and falls back to binary off otherwise.
-    if (isEvDevice(dev)) return null;
     return { kind, deviceId: dev.id, name: dev.name, releaseShedStepId: dev.releaseShedStepId };
   }
-  if (!isEvDevice(dev)) return null;
   if (kind === 'binary_release') return { kind, deviceId: dev.id, name: dev.name };
   if (planMeta?.powerFreshnessState && planMeta.powerFreshnessState !== 'fresh') return null;
   if (dev.plannedState !== 'keep') return null;
