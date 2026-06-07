@@ -225,6 +225,19 @@ describe('plan restore device helpers', () => {
       controlCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_in',
     }))).toBe('charger is not resumable');
+    // EV identity follows isEvDevice (device class OR evcharger_charging capability):
+    // an evcharger-class device controlling via a different capability still
+    // surfaces the EV block reason instead of falling through as a generic binary.
+    expect(getEvRestoreStateBlockReason(makeDevice({
+      deviceClass: 'evcharger',
+      controlCapabilityId: 'onoff',
+      evChargingState: 'plugged_out',
+    }))).toBe('charger is unplugged');
+    // A genuine non-EV binary device is unaffected (no EV reason).
+    expect(getEvRestoreStateBlockReason(makeDevice({
+      controlCapabilityId: 'onoff',
+      evChargingState: 'plugged_out',
+    }))).toBeNull();
     expect(reasonText(getInactiveReason(makeDevice({
       controlCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_out',

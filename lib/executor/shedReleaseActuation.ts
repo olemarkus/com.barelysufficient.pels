@@ -175,13 +175,19 @@ const buildShedReleaseSteppedAction = (params: {
     intent, steppedLoadIntent, observed, targetStep, currentStepId,
   } = params;
   const profile = steppedLoadIntent.steppedLoadProfile;
-  const observedStepId = observed?.steppedLoad?.stepId;
   const currentStep = currentStepId ? getSteppedLoadStep(profile, currentStepId) : null;
+  // Provenance mirrors `toExecutableSteppedStepState`: only real telemetry
+  // (`reportedStepId`) is `reported` evidence; the effective `stepId` is a
+  // planning fallback, not a confirmed report. (This release path always requests
+  // the shed target, never the current step, so materialization resolves to
+  // `no_observed_match` either way — but keep the labeling honest so a future
+  // reader can't mistake the fallback for telemetry.)
+  const reportedStepId = observed?.steppedLoad?.reportedStepId;
   const stepActuation = resolveSteppedStepActuationState({
     step: {
       requestedStepId: targetStep.id,
-      observedStep: observedStepId
-        ? { kind: 'reported', stepId: observedStepId }
+      observedStep: reportedStepId
+        ? { kind: 'reported', stepId: reportedStepId }
         : { kind: 'unknown' },
       fallbackStepId: observed?.steppedLoad?.stepId,
     },
