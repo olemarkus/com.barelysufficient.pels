@@ -250,6 +250,64 @@ describe('ObservedDeviceStateProjection (stage 4a shadow)', () => {
         h.transport.destroy();
     });
 
+    it('optimistic shed write keeps the projection binaryControl faithful to the snapshot', async () => {
+        const h = await buildHarness();
+        homeyApi.setRestClient({
+            get: (path) => mockHomeyInstance.api.get(path),
+            post: (path, body) => mockHomeyInstance.api.post(path, body),
+            put: (path, body) => mockHomeyInstance.api.put(path, body),
+        });
+        try {
+            mockApiGet.mockResolvedValue({ dev1: onoffDevice('dev1', true, '2026-03-20T06:00:00.000Z') });
+            await h.transport.refreshSnapshot();
+            expect(h.projection.getObservedState('dev1')?.binaryControl?.on).toBe(true);
+
+            // Force every Date.now() to strictly increase so the optimistic
+            // write (lastLocalWriteMs = T1) and the subsequent
+            // recordLocalWriteObservation (lastLocalWriteMs = T2 > T1) land on
+            // different timestamps. The dispatch must happen AFTER that bump or
+            // the projection keeps T1 while the snapshot holds T2 — shadow
+            // divergence this assertion would then catch deterministically.
+            let nowTick = Date.parse('2026-03-20T06:10:00.000Z');
+            vi.spyOn(Date, 'now').mockImplementation(() => { nowTick += 1; return nowTick; });
+
+            // PELS sheds the device. The transport keeps the turn-off optimistic
+            // (mutates binaryControl in place without a realtime event), so the
+            // projection must receive the dispatched delta to stay faithful.
+            await h.transport.setCapability('dev1', 'onoff', false);
+
+            expect(h.transport.getSnapshotByDeviceId('dev1')?.binaryControl?.on).toBe(false);
+            expect(h.projection.getObservedState('dev1')?.binaryControl?.on).toBe(false);
+            assertShadowEquality(h);
+        } finally {
+            h.transport.destroy();
+        }
+    });
+
+    it('binary settle (write then confirming observation) keeps the projection faithful', async () => {
+        const h = await buildHarness();
+        homeyApi.setRestClient({
+            get: (path) => mockHomeyInstance.api.get(path),
+            post: (path, body) => mockHomeyInstance.api.post(path, body),
+            put: (path, body) => mockHomeyInstance.api.put(path, body),
+        });
+        try {
+            mockApiGet.mockResolvedValue({ dev1: onoffDevice('dev1', false, '2026-03-20T06:00:00.000Z') });
+            await h.transport.refreshSnapshot();
+
+            // Restore: turn-on is NOT optimistic — it opens a settle window and
+            // stays pending until the device confirms. The confirming observation
+            // closes the settle and must leave the projection == snapshot.
+            await h.transport.setCapability('dev1', 'onoff', true);
+            h.transport.injectCapabilityUpdateForTest('dev1', 'onoff', true);
+
+            expect(h.transport.getSnapshotByDeviceId('dev1')?.binaryControl?.on).toBe(true);
+            assertShadowEquality(h);
+        } finally {
+            h.transport.destroy();
+        }
+    });
+
     it('abandon-grace: a transient empty read defers commit, fires no refresh event, and retains prior values', async () => {
         const h = await buildHarness();
         mockApiGet.mockResolvedValue({ dev1: onoffDevice('dev1', true, '2026-03-20T06:00:00.000Z') });

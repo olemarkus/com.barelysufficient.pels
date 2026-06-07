@@ -3053,15 +3053,24 @@ describe('DeviceTransport', () => {
                 },
             });
 
-            // Drift is emitted immediately — no waiting for settle timeout
+            // Drift is emitted immediately — no waiting for settle timeout.
+            // Reconcile fires once (only the drift); the optimistic shed write
+            // emits no reconcile.
             expect(realtimeListener).toHaveBeenCalledOnce();
             const driftEvent = realtimeListener.mock.calls[0][0];
             expect(driftEvent).toEqual(expect.objectContaining({
                 deviceId: 'dev1',
                 changes: [{ capabilityId: 'onoff', previousValue: 'off', nextValue: 'on' }],
             }));
-            expect(liveStateListener).toHaveBeenCalledOnce();
+            // Two observed-state events: [0] the optimistic shed write (on:false,
+            // dispatched so the observer projection stays faithful), [1] the
+            // device_update drift correcting it back to on:true.
+            expect(liveStateListener).toHaveBeenCalledTimes(2);
             expect(liveStateListener.mock.calls[0][0]).toEqual(expect.objectContaining({
+                source: 'realtime_capability',
+                deviceId: 'dev1',
+            }));
+            expect(liveStateListener.mock.calls[1][0]).toEqual(expect.objectContaining({
                 source: 'device_update',
                 deviceId: 'dev1',
                 observationSeq: driftEvent.observationSeq,

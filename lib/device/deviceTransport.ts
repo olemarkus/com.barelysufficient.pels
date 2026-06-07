@@ -1944,26 +1944,15 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         }
     }
 
-    updateLocalSnapshot(
-        deviceId: string,
-        updates: { target?: number | null; targetCapabilityId?: string; on?: boolean },
-    ): void {
+    // Optimistic binary write-back: a shed (turn-off) is trusted as observed
+    // truth immediately so the planner doesn't re-shed before the device echoes.
+    // (The former `target` branch was dead — the sole caller only ever passes
+    // `{ on }` — and was removed.)
+    updateLocalSnapshot(deviceId: string, updates: { on: boolean }): void {
         const snap = this.latestSnapshot.find((d) => d.id === deviceId);
         if (!snap) return;
-
-        if (typeof updates.target === 'number' && snap.targets?.length) {
-            const entry = updates.targetCapabilityId
-                ? snap.targets.find((t) => t.id === updates.targetCapabilityId)
-                : snap.targets[0];
-            if (entry) {
-                entry.value = updates.target;
-                snap.lastLocalWriteMs = Date.now();
-            }
-        }
-        if (typeof updates.on === 'boolean') {
-            snap.binaryControl = { on: updates.on };
-            snap.lastLocalWriteMs = Date.now();
-        }
+        snap.binaryControl = { on: updates.on };
+        snap.lastLocalWriteMs = Date.now();
     }
 
     getPeriodicStatusMetrics(): ({ devicesTotal: number } & SnapshotRefreshMetrics) | null {
@@ -2068,6 +2057,16 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             value: normalizedValue,
             preservedLocalState,
         });
+
+        if (preservedLocalState) {
+            // Optimistic shed write mutates binaryControl in place but skips the
+            // realtime dispatch funnel; push it so the projection stays faithful.
+            // Dispatched AFTER recordLocalWriteObservation, which advances
+            // lastLocalWriteMs — so the projected value captures that final
+            // timestamp rather than an earlier one (no shadow divergence).
+            // Safe: syncLivePlanState is serialized; onoff isn't a SoC capability.
+            this.dispatchObservedStateForDevice(deviceId, capabilityId);
+        }
 
         const snapshotAfter = this.latestSnapshot.find((device) => device.id === deviceId);
         logEvCapabilityAccepted({
