@@ -44,11 +44,36 @@ const shouldEmitTerminalRelease = (
   && device?.controllable === false
 );
 
+// INVARIANT (load-bearing): the release intent is keyed purely on objectiveKind,
+// and objectiveKind↔device-type is 1:1 — `ev_soc` only ever attaches to an EV
+// charger, `temperature` only to a thermostat. This is enforced at the write seam
+// (`flowCards/deadlineObjectiveCards.ts` throws unless `isEvCharger` /
+// `supportsTemperatureObjective`) and structurally (an evcharger snapshot always
+// has `targets: []`, so it can never carry a temperature objective). The executor
+// relies on this: it routes deferred releases solely on the
+// `binary_release`/`binary_restore`/`shed_release` intent and does NOT re-check
+// `isEvDevice` (so `shed_release` never reaches an EV device, `binary_*` always an
+// EV device). If a future change lets an evcharger expose settable targets, or
+// relaxes those write-card gates, this binding breaks — restore the executor's
+// device-kind guard (or re-key the routing) if that ever happens.
+//
+// Exhaustive switch (not a ternary) so adding a third objective kind to the
+// diagnostic union is a COMPILE error here rather than a silent shed_release —
+// forcing a deliberate routing decision for the new kind.
 const resolveReleaseIntentForCapOff = (
   objectiveKind: DeferredObjectiveDiagnostic['objectiveKind'],
-): 'binary_release' | 'shed_release' => (
-  objectiveKind === 'ev_soc' ? 'binary_release' : 'shed_release'
-);
+): 'binary_release' | 'shed_release' => {
+  switch (objectiveKind) {
+    case 'ev_soc':
+      return 'binary_release';
+    case 'temperature':
+      return 'shed_release';
+    default: {
+      const exhaustive: never = objectiveKind;
+      return exhaustive;
+    }
+  }
+};
 
 // A deferred current hour is "released" when the device is idled this cycle rather
 // than run. Four causes: there is no current bucket, the current bucket carries no
