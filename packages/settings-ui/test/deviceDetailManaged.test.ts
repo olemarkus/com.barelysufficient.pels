@@ -1892,4 +1892,80 @@ describe('device detail managed state saves', () => {
     expect(temperatureBoost?.hidden).toBe(true);
     expect(status?.textContent).toBe('Battery level is stale. Boost will not activate.');
   });
+
+  it('blocks EV boost for a connected-but-not-resumable charger (plugged_in)', async () => {
+    vi.doMock('../src/ui/devices.ts', () => ({
+      renderDevices: vi.fn(),
+    }));
+    vi.doMock('../src/ui/modes.ts', () => ({
+      renderPriorities: vi.fn(),
+    }));
+    vi.doMock('../src/ui/priceOptimization.ts', () => ({
+      renderPriceOptimization: vi.fn(),
+      savePriceOptimizationSettings: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/toast.ts', () => ({
+      showToastError: vi.fn().mockResolvedValue(undefined),
+    }));
+    vi.doMock('../src/ui/logging.ts', () => ({
+      logSettingsError: vi.fn().mockResolvedValue(undefined),
+    }));
+
+    const homeyModule = await import('../src/ui/homey.ts');
+    const homey = createHomeyMock({
+      settings: {
+        ev_boost_settings: {
+          'charger-1': { enabled: true, boostBelowPercent: 40 },
+        },
+      },
+    });
+    homeyModule.setHomeyClient(homey);
+
+    const {
+      initDeviceDetailHandlers,
+      loadEvBoostSettings,
+      openDeviceDetail,
+    } = await import('../src/ui/deviceDetail/index.ts');
+    const { state } = await import('../src/ui/state.ts');
+
+    // Fresh SoC below the 40% threshold: without the plug-state block the panel
+    // would say "Boost active when planning". `plugged_in` is not resumable, so
+    // the block reason must win over the SoC check.
+    state.latestDevices = [buildDevice('charger-1', 'Driveway charger', {
+      deviceClass: 'evcharger',
+      deviceType: 'onoff',
+      controlModel: 'stepped_load',
+      targets: [],
+      capabilities: ['measure_power', 'evcharger_charging'],
+      evChargingState: 'plugged_in',
+      stateOfCharge: {
+        percent: 32,
+        status: 'fresh',
+      },
+      steppedLoadProfile: {
+        model: 'stepped_load',
+        steps: [
+          { id: 'off', planningPowerW: 0 },
+          { id: 'low', planningPowerW: 1250 },
+          { id: 'max', planningPowerW: 3000 },
+        ],
+      },
+    })];
+    state.managedMap = { 'charger-1': true };
+    state.controllableMap = { 'charger-1': true };
+    state.budgetExemptMap = {};
+    state.priceOptimizationSettings = {};
+    state.capacityPriorities = { Home: { 'charger-1': 1 } };
+    state.modeTargets = { Home: {} };
+    state.activeMode = 'Home';
+    state.editingMode = 'Home';
+
+    await loadEvBoostSettings();
+    initDeviceDetailHandlers();
+    openDeviceDetail('charger-1');
+    await flushPromises();
+
+    const status = document.querySelector('#device-detail-ev-boost-status') as HTMLElement | null;
+    expect(status?.textContent).toBe('Car charging won’t resume. Boost will not activate.');
+  });
 });
