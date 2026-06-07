@@ -86,28 +86,30 @@ export const resolveEvBlockReason = (evChargingState: string | undefined): strin
  * with the other EV-state-keyed reason strings so both vocabularies live in
  * one browser-safe home, per `feedback_ui_text_shared_with_logs`.
  *
- * The two keys mirror the EV-state values the boost panel branches on; the
- * remaining EV states (`plugged_in_paused`, `plugged_in_charging`,
- * `plugged_in`) either allow boost or fall through to the battery-level
- * checks downstream. Strings are byte-for-byte identical to the prior
- * inline literals.
+ * The keys mirror the EV-state values that block boost. `plugged_in` (connected
+ * but NOT resumable — distinct from the resumable `plugged_in_paused`) blocks
+ * too: PELS cannot drive a non-resumable charger, so boost can never activate.
+ * The remaining EV states (`plugged_in_paused`, `plugged_in_charging`) allow
+ * boost or fall through to the battery-level checks downstream.
  */
-export type EvBoostBlockReasonKey = 'plugged_out' | 'plugged_in_discharging';
+export type EvBoostBlockReasonKey = 'plugged_out' | 'plugged_in_discharging' | 'plugged_in';
 
 export const EV_BOOST_BLOCK_REASONS: Record<EvBoostBlockReasonKey, string> = {
   plugged_out: 'Car not connected. Boost will not activate.',
   plugged_in_discharging: 'Car is discharging. Boost will not activate.',
+  plugged_in: 'Car charging won’t resume. Boost will not activate.',
 };
 
 /**
  * Device-shaped resolver for the boost-block reason so the settings-UI boost
  * panel reads it off the device instead of inlining the plug-state literals
  * (the bug-magnet this de-couple removes). Returns the specific block-reason
- * string for the two boost-blocking states, else `null` (boost not blocked by
+ * string for the three boost-blocking states, else `null` (boost not blocked by
  * plug state — fall through to the battery-level checks).
  */
 export const resolveEvBoostBlockReason = (dev: { evChargingState?: string | null }): string | null => {
   if (dev.evChargingState === 'plugged_out') return EV_BOOST_BLOCK_REASONS.plugged_out;
   if (dev.evChargingState === 'plugged_in_discharging') return EV_BOOST_BLOCK_REASONS.plugged_in_discharging;
+  if (dev.evChargingState === 'plugged_in') return EV_BOOST_BLOCK_REASONS.plugged_in;
   return null;
 };

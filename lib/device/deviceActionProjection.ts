@@ -32,6 +32,7 @@ import { normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
 import { hasTemperatureBoostTarget } from '../utils/temperatureBoost';
 import {
   resolveEvBlockReason,
+  resolveEvBoostBlockReason,
 } from '../../packages/shared-domain/src/commandableNowReason';
 import {
   isEvDevice,
@@ -113,7 +114,11 @@ export function resolveEvBoostActive(params: {
   if (!isEvDevice(dev)) return false;
   if (!isSteppedLoad(dev)) return false;
   if (dev.controllable === false || dev.managed === false || dev.available === false) return false;
-  if (isEvSessionInactive(dev.evChargingState)) return false;
+  // Block boost for every plug-state PELS cannot drive: unplugged / discharging
+  // (no creditable session) AND `plugged_in` (connected but NOT resumable). One
+  // source of truth with the settings-UI boost panel, which renders this same
+  // resolver — so the runtime never forces boost the UI says won't activate.
+  if (resolveEvBoostBlockReason(dev) !== null) return false;
   // The deferred limit-lower-priority rescue lane forces boost while the task is in its
   // planned hours, independent of the device's own boost config/threshold.
   if (dev.forceBoostActive === true) return true;
