@@ -512,6 +512,20 @@ describe('previewDeferredObjectivePlan', () => {
     expect(estimate.unavailableReason).toBe('price_feature_disabled');
   });
 
+  it('tags unavailable as not_resumable when the charger is connected but cannot resume (plugged_in)', () => {
+    const ctx: PreviewContext = {
+      device: buildEvDevice({ evChargingState: 'plugged_in' }),
+      powerTracker: buildEvPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot(),
+      priceOptimizationEnabled: true,
+      hardCapKw: 10,
+    };
+    const estimate = runPreview({ deviceId: 'ev-1', candidate: evCandidate(), ctx });
+
+    expect(estimate.status).toBe('unavailable');
+    expect(estimate.unavailableReason).toBe('not_resumable');
+  });
+
   it('returns at_risk when the deadline forces the plan into its safety reserve', () => {
     const ctx: PreviewContext = {
       device: buildEvDevice(),

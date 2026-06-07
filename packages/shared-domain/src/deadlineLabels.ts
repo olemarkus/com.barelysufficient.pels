@@ -64,6 +64,7 @@ export type SmartTaskListStatusId =
   | 'building_plan'   // pending, no allocation yet
   | 'queued'          // plan ready, first hour in the future
   | 'paused_unplugged' // EV: car unplugged / session ended
+  | 'paused_not_resumable' // EV: connected but charging can't be resumed (plugged_in)
   | 'on_track'
   | 'at_risk'
   | 'cannot_meet'
@@ -78,6 +79,7 @@ export const SMART_TASK_LIST_STATUS_LABELS: Record<SmartTaskListStatusId, string
   building_plan: 'Building plan…',
   queued: 'Scheduled',
   paused_unplugged: 'Paused — unplugged',
+  paused_not_resumable: 'Paused — can’t resume',
   on_track: 'On track',
   at_risk: 'At risk',
   cannot_meet: 'Cannot finish',
@@ -88,13 +90,14 @@ export const SMART_TASK_LIST_STATUS_LABELS: Record<SmartTaskListStatusId, string
 // row at 320–480 px has roughly half the horizontal space the settings UI
 // list card uses, so the `Paused — unplugged` em-dash variant truncates or
 // pushes the row out of layout. The widget reuses the settings UI label for
-// every other state — only `paused_unplugged` needs the compressed form.
-// Keeping the override here (and not in the widget) preserves the
-// "UI text shared with logs" rule: both the list label and the widget label
+// every other state — only the `Paused — …` em-dash variants need the
+// compressed form. Keeping the override here (and not in the widget) preserves
+// the "UI text shared with logs" rule: both the list label and the widget label
 // resolve from shared-domain helpers, not from hardcoded widget strings.
 export const SMART_TASK_WIDGET_STATUS_LABELS: Record<SmartTaskListStatusId, string> = {
   ...SMART_TASK_LIST_STATUS_LABELS,
   paused_unplugged: 'Unplugged',
+  paused_not_resumable: 'Can’t resume',
 };
 
 // Widget detail-panel "why" + recourse copy. Composed from producer-resolved
@@ -111,6 +114,7 @@ const SMART_TASK_WIDGET_WHY_BY_STATUS: Record<SmartTaskListStatusId, string | nu
   building_plan: null, // resolved by pendingReason
   queued: null, // composed from firstPlannedTimeLabel when present
   paused_unplugged: 'EV is unplugged — plug in to resume.',
+  paused_not_resumable: 'Car charging won’t resume — check the charger.',
   on_track: null, // affirmative line resolved from firstPlannedTimeLabel
   at_risk: null, // disambiguated by budget vs time below
   cannot_meet: null, // resolved by floor cause / budget bucket count
@@ -374,6 +378,7 @@ export const CREATE_SMART_TASK_WIDGET_COPY = {
 const PREVIEW_UNAVAILABLE_COPY_BY_REASON: Record<DeferredObjectivePlanPreviewUnavailableReason, string> = {
   invalid_deadline: 'Can’t preview this ready-by time yet.',
   invalid_session: 'Can’t preview this yet — plug the EV in to start.',
+  not_resumable: 'Can’t preview this yet — charging won’t resume. Check the charger.',
   missing_capacity: 'Can’t preview this yet — PELS needs power readings from this device.',
   missing_device: 'Can’t preview this yet — PELS can’t find this device.',
   needs_observation: CREATE_SMART_TASK_WIDGET_COPY.previewNeedsObservation,
@@ -482,6 +487,7 @@ export const SMART_TASK_LIST_STATUS_CHIP_VARIANT: Record<SmartTaskListStatusId, 
   building_plan: resolveBuildingPlanChipTone(),
   queued: 'muted',
   paused_unplugged: resolvePausedUnpluggedChipTone(),
+  paused_not_resumable: resolvePausedUnpluggedChipTone(),
   on_track: 'ok',
   at_risk: 'warn',
   cannot_meet: 'alert',
@@ -519,6 +525,7 @@ const SMART_TASK_LIST_READY_BY_TONE: Record<SmartTaskListStatusId, SmartTaskList
   building_plan: 'neutral',
   queued: 'neutral',
   paused_unplugged: 'warn',
+  paused_not_resumable: 'warn',
   on_track: 'neutral',
   at_risk: 'warn',
   cannot_meet: 'warn',
@@ -555,6 +562,9 @@ const SMART_TASK_LIST_READY_BY_STATUS_WORD: Record<SmartTaskListStatusId, string
   // full label; this is the same sanctioned shared-domain string, not a new
   // variant.
   paused_unplugged: SMART_TASK_WIDGET_STATUS_LABELS.paused_unplugged,
+  // Compressed widget label ('Can’t resume') for the same double-em-dash reason
+  // as paused_unplugged — the full chip label carries its own em-dash.
+  paused_not_resumable: SMART_TASK_WIDGET_STATUS_LABELS.paused_not_resumable,
   on_track: null,
   at_risk: SMART_TASK_LIST_STATUS_LABELS.at_risk,
   cannot_meet: SMART_TASK_LIST_STATUS_LABELS.cannot_meet,
@@ -913,6 +923,10 @@ export const resolveSmartTaskListStatus = (params: {
   // still cached. Without this, the list chip would say "On track" while the
   // device-card line said "Charging paused — car unplugged".
   if (diagnosticReasonCode === 'objective_invalid_session') return 'paused_unplugged';
+  // Connected-but-not-resumable-mid-plan: same precedence as unplugged — fires
+  // even on a non-pending plan with a cached `latest`, so the chip says "can’t
+  // resume" instead of "On track" for a charger PELS can’t drive.
+  if (diagnosticReasonCode === 'objective_charger_not_resumable') return 'paused_not_resumable';
 
   if (pending || planStatus === undefined) {
     if (pendingReason === 'invalid_session') return 'paused_unplugged';

@@ -4737,6 +4737,7 @@ var SMART_TASK_LIST_STATUS_LABELS = {
   building_plan: "Building plan\u2026",
   queued: "Scheduled",
   paused_unplugged: "Paused \u2014 unplugged",
+  paused_not_resumable: "Paused \u2014 can\u2019t resume",
   on_track: "On track",
   at_risk: "At risk",
   cannot_meet: "Cannot finish",
@@ -4744,7 +4745,8 @@ var SMART_TASK_LIST_STATUS_LABELS = {
 };
 var SMART_TASK_WIDGET_STATUS_LABELS = {
   ...SMART_TASK_LIST_STATUS_LABELS,
-  paused_unplugged: "Unplugged"
+  paused_unplugged: "Unplugged",
+  paused_not_resumable: "Can\u2019t resume"
 };
 var CREATE_SMART_TASK_WIDGET_COPY = {
   // Step 1 — device picker.
@@ -4852,6 +4854,7 @@ var CREATE_SMART_TASK_WIDGET_COPY = {
 var PREVIEW_UNAVAILABLE_COPY_BY_REASON = {
   invalid_deadline: "Can\u2019t preview this ready-by time yet.",
   invalid_session: "Can\u2019t preview this yet \u2014 plug the EV in to start.",
+  not_resumable: "Can\u2019t preview this yet \u2014 charging won\u2019t resume. Check the charger.",
   missing_capacity: "Can\u2019t preview this yet \u2014 PELS needs power readings from this device.",
   missing_device: "Can\u2019t preview this yet \u2014 PELS can\u2019t find this device.",
   needs_observation: CREATE_SMART_TASK_WIDGET_COPY.previewNeedsObservation,
@@ -4867,6 +4870,7 @@ var SMART_TASK_LIST_STATUS_CHIP_VARIANT = {
   building_plan: resolveBuildingPlanChipTone(),
   queued: "muted",
   paused_unplugged: resolvePausedUnpluggedChipTone(),
+  paused_not_resumable: resolvePausedUnpluggedChipTone(),
   on_track: "ok",
   at_risk: "warn",
   cannot_meet: "alert",
@@ -4883,6 +4887,9 @@ var SMART_TASK_LIST_READY_BY_STATUS_WORD = {
   // full label; this is the same sanctioned shared-domain string, not a new
   // variant.
   paused_unplugged: SMART_TASK_WIDGET_STATUS_LABELS.paused_unplugged,
+  // Compressed widget label ('Can’t resume') for the same double-em-dash reason
+  // as paused_unplugged — the full chip label carries its own em-dash.
+  paused_not_resumable: SMART_TASK_WIDGET_STATUS_LABELS.paused_not_resumable,
   on_track: null,
   at_risk: SMART_TASK_LIST_STATUS_LABELS.at_risk,
   cannot_meet: SMART_TASK_LIST_STATUS_LABELS.cannot_meet,

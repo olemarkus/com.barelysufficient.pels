@@ -195,6 +195,7 @@ const logger = getLogger('plan/deferred-diag-bridge');
 
 export type DeferredObjectiveDiagnosticReasonCode =
   | DeferredObjectivePolicyHorizonUnavailableReason
+  | 'objective_charger_not_resumable'
   | 'objective_invalid_deadline'
   | 'objective_invalid_session'
   | 'objective_missing_capacity'
