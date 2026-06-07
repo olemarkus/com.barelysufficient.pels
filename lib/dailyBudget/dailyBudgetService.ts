@@ -58,7 +58,6 @@ type DailyBudgetServiceDeps = {
   homey: Homey.App['homey'];
   log: (...args: unknown[]) => void;
   isDebugTopicEnabled?: (topic: 'daily_budget') => boolean;
-  error: (...args: unknown[]) => void;
   getPowerTracker: () => PowerTrackerState;
   getPriceOptimizationEnabled: () => boolean;
   getCapacitySettings: () => { limitKw: number; marginKw: number };
@@ -145,10 +144,6 @@ export class DailyBudgetService {
     this.persistencePolicy.initialize(this.manager.exportState());
   }
 
-  private logError(message: string, error: unknown): void {
-    this.deps.error(message, normalizeError(error));
-  }
-
   private createManagerClone(): DailyBudgetManager {
     const manager = new DailyBudgetManager({
       log: (...args: unknown[]) => this.deps.log(...args),
@@ -204,7 +199,10 @@ export class DailyBudgetService {
       const tz = this.deps.homey.clock?.getTimezone?.();
       if (typeof tz === 'string' && tz.trim()) return tz;
     } catch (error) {
-      this.logError('Daily budget: failed to read timezone', error);
+      (this.deps.structuredLog ?? moduleLogger).error({
+        event: 'daily_budget_timezone_read_failed',
+        err: normalizeError(error),
+      });
     }
     return 'Europe/Oslo';
   }
@@ -262,7 +260,10 @@ export class DailyBudgetService {
       }
       if (update.persistReason) this.maybePersistState(update.persistReason, nowMs);
     } catch (error) {
-      this.logError('Daily budget: failed to update state', error);
+      (this.deps.structuredLog ?? moduleLogger).error({
+        event: 'daily_budget_state_update_failed',
+        err: normalizeError(error),
+      });
     } finally {
       stopSpan();
       incPerfCounter('daily_budget_update_total');
@@ -298,7 +299,7 @@ export class DailyBudgetService {
         getCapacitySettings: () => this.deps.getCapacitySettings(),
         getPowerTracker: () => this.deps.getPowerTracker(),
         getPriceOptimizationEnabled: () => this.deps.getPriceOptimizationEnabled(),
-        logError: (message, error) => this.logError(message, error),
+        structuredLog: this.deps.structuredLog,
       };
     }
     return this.adjacentDayDepsCache;

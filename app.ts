@@ -1198,7 +1198,6 @@ class PelsApp extends Homey.App {
       homey: this.homey,
       log: (...args: unknown[]) => this.log(...args),
       isDebugTopicEnabled: (topic) => this.debugLoggingTopics.has(topic),
-      error: (...args: unknown[]) => this.error(...args),
       getPowerTracker: () => this.powerTracker,
       getPriceOptimizationEnabled: () => this.priceOptimizationEnabled,
       getCapacitySettings: () => this.capacitySettings,
