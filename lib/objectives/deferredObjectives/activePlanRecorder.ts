@@ -235,12 +235,16 @@ const resolvePendingReason = (
 };
 
 // Narrow diagnostic reason codes that the UI needs to render specific copy
-// (e.g. "car unplugged") beyond what `pendingReason` alone can express.
+// (e.g. "car unplugged" / "charger can't resume") beyond what `pendingReason`
+// alone can express. Surfaced on the active plan even when it carries a cached
+// `latest` revision, so the list chip stays honest after a mid-plan transition.
 const resolveDiagnosticReasonCode = (
   diag: DeferredObjectiveDiagnostic,
-): DeferredObjectiveActivePlanDiagnosticReason | undefined => (
-  diag.reasonCode === 'objective_invalid_session' ? 'objective_invalid_session' : undefined
-);
+): DeferredObjectiveActivePlanDiagnosticReason | undefined => {
+  if (diag.reasonCode === 'objective_invalid_session') return 'objective_invalid_session';
+  if (diag.reasonCode === 'objective_charger_not_resumable') return 'objective_charger_not_resumable';
+  return undefined;
+};
 
 const createPlanFromDiagnostic = (
   diag: DeferredObjectiveDiagnostic,

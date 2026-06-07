@@ -264,6 +264,7 @@ export type DeferredObjectiveKwhPerUnitProvenanceV1 = {
 // without knowing runtime-internal reason code strings. Optional so older
 // persisted plans (without the field) continue to load.
 export type DeferredObjectiveActivePlanDiagnosticReason =
+  | 'objective_charger_not_resumable'
   | 'objective_invalid_session';
 
 export type DeferredObjectiveActivePlanV1 = {

@@ -48,6 +48,25 @@ export const isEvSessionInactiveForDevice = (dev: { evChargingState?: string | n
   isEvSessionInactive(dev.evChargingState)
 );
 
+/**
+ * The connected-but-NOT-resumable EV state: the car is plugged in but the
+ * charging session cannot be driven back on by a command (`plugged_in` —
+ * distinct from the resumable `plugged_in_paused`). PELS cannot move this
+ * charger toward its SoC target, so its SoC must not be credited as on-track
+ * progress and boost / objective surfaces must say so rather than reading as
+ * healthy. Co-located with {@link isEvSessionInactive} for the same
+ * vocabulary-containment reason — consumers read this resolved predicate
+ * instead of inlining the plug-state literal. Caller scopes EV-ness.
+ */
+export const isEvChargerNotResumable = (evChargingState?: string | null): boolean => (
+  evChargingState === 'plugged_in'
+);
+
+/** Device-shaped form of {@link isEvChargerNotResumable}. Caller scopes EV-ness. */
+export const isEvChargerNotResumableForDevice = (dev: { evChargingState?: string | null }): boolean => (
+  isEvChargerNotResumable(dev.evChargingState)
+);
+
 export type CommandableNowResolveInput = {
   deviceClass?: string;
   controlCapabilityId?: 'onoff' | 'evcharger_charging';
