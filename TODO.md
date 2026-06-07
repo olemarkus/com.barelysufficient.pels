@@ -191,36 +191,6 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
       (The three stage-4b *prerequisites* — seq-epoch co-creation, freeze-on-store, and the
       device-update-lag dispatch — shipped with the stage-4b reader PR.)
 
-- [ ] **Finish migrating the remaining ambiguous flat `test/*.test.ts` specs into tier folders.**
-      The testing taxonomy (`notes/testing-taxonomy.md`) + scaffolding landed first; then the
-      *obviously-classified* specs moved (app/SDK-harness → `integration/`, single-concrete-file
-      imports → `unit/`, `*E2E` → `e2e/`); then careful per-file passes over the
-      `dailyBudget*` / `device*` / `app*`, `deferred*` / `objective*`, and `plan*` clusters (read
-      each, unit vs integration by subject — plan-layer logic biased to integration), plus
-      device-suite e2e reshapes.
-      ~64 flat specs remain — long-tail odds-and-ends needing per-file judgment, the
-      `deviceIdentityHygiene` meta-test (uses `import.meta.url`-relative repoRoot — needs a
-      manual path fix to move), and the 5 environment-special `*Browser.test.ts` /
-      `settings-ui.test.ts` specs (jsdom / explicit-include in the dom config — moving them needs
-      that include list updated too). Migrate opportunistically — when you
-      touch a spec, move it into its tier
-      folder and bump its relative-import depth (`'../X'` → `'../../X'`, `'./X'` → `'../X'`), then
-      run `knip` (type-only imports pass vitest but fail `deadcode:check` on wrong depth). When
-      every spec is under a tier folder, re-scope
-      `test:unit` from the whole-suite glob to `test/unit/` so the three tier commands partition
-      the runtime suite, and (optionally) split CI into per-tier jobs (see the CI-actions note
-      below). Persona: contributor; hypothesis: a path-obvious tier speeds review and lets CI
-      fan out unit→integration→e2e for faster signal.
-
-- [ ] **Migrate `test/planPriceWidgetBrowser.test.ts` into the `test/unit` tier (per `test/AGENTS.md`).**
-      The spec imports concrete plan_budget widget files (`chart`, `chartGeometry`, `widgetApp`) and
-      belongs under `test/unit/` like the other single-module browser specs. Deferred to avoid a
-      conflict with the active test-taxonomy migration (it is one of the 5 environment-special
-      `*Browser.test.ts` specs the migration item above tracks — moving it also needs the dom-config
-      include list updated). Do the move as part of that taxonomy pass, not piecemeal. Persona:
-      contributor; hypothesis: a path-obvious tier speeds review and keeps the dom-config include
-      list consistent. Source: Codex review of PR #1476.
-
 *v2.10.0..HEAD release-review findings (2026-05-29, six-agent fan-out:
 `pels-runtime-reality` + `pels-layering-guardian` + `pels-copy-and-terminology` +
 `pels-m3-critic` + `pels-ux-fit`). No P0 blockers; the past-tasks hit-rate

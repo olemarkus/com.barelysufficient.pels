@@ -11,11 +11,25 @@ const unique = (values) => [...new Set(values)];
 const matches = (file, prefixes) => prefixes.some((prefix) => file === prefix || file.startsWith(prefix));
 
 const runtimeTestWiringFiles = [
+  'vitest.shared.mts',
   'vitest.config.mts',
-  'vitest.config.fast.mts',
-  'vitest.config.dom.mts',
-  'vitest.config.dom.fast.mts',
+  'vitest.config.unit.mts',
+  'vitest.config.integration.mts',
+  'vitest.config.e2e.mts',
+  'vitest.config.tz.mts',
   'vitest-env.d.ts',
+];
+
+const runtimeLaneConfigs = [
+  ['unit', 'vitest.config.unit.mts'],
+  ['integration', 'vitest.config.integration.mts'],
+  ['e2e', 'vitest.config.e2e.mts'],
+  // Timezone lane: `test/tz/**` lives only in the tz config's `include`, so the
+  // unit/integration/e2e `related` runs find no tz tests and a tz-only change
+  // would otherwise commit without exercising the DST suites. Runs them once in
+  // the host TZ here (Oslo-gated specs self-skip); CI's timezone-tests job still
+  // does the full multi-TZ sweep via run-timezone-tests.mjs.
+  ['tz', 'vitest.config.tz.mts'],
 ];
 
 const runtimePrefixes = [
@@ -47,23 +61,17 @@ const settingsFiles = unique(files.filter((file) => matches(file, settingsPrefix
 const commands = [];
 
 if (hasRuntimeTestWiringChange) {
-  commands.push(
-    { label: 'vitest:node', command: 'npx', args: ['vitest', 'run', '--config', 'vitest.config.fast.mts'] },
-    { label: 'vitest:dom', command: 'npx', args: ['vitest', 'run', '--config', 'vitest.config.dom.fast.mts'] },
-  );
+  for (const [tier, config] of runtimeLaneConfigs) {
+    commands.push({ label: `vitest:${tier}`, command: 'npx', args: ['vitest', 'run', '--config', config] });
+  }
 } else if (runtimeFiles.length > 0) {
-  commands.push(
-    {
-      label: 'vitest:node:related',
+  for (const [tier, config] of runtimeLaneConfigs) {
+    commands.push({
+      label: `vitest:${tier}:related`,
       command: 'npx',
-      args: ['vitest', 'related', '--config', 'vitest.config.fast.mts', '--passWithNoTests', ...runtimeFiles],
-    },
-    {
-      label: 'vitest:dom:related',
-      command: 'npx',
-      args: ['vitest', 'related', '--config', 'vitest.config.dom.fast.mts', '--passWithNoTests', ...runtimeFiles],
-    },
-  );
+      args: ['vitest', 'related', '--config', config, '--passWithNoTests', ...runtimeFiles],
+    });
+  }
 }
 
 if (settingsFiles.length > 0) {

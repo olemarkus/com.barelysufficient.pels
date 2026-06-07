@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import {
   CREATE_SMART_TASK_WIDGET_COPY,
 } from '../../packages/shared-domain/src/deadlineLabels';
