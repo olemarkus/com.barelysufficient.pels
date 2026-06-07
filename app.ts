@@ -325,7 +325,9 @@ class PelsApp extends Homey.App {
         try {
           this.homey.settings.set(DEFERRED_OBJECTIVE_HOURS_REMAINING_LATCH, latch);
         } catch (error) {
-          this.error('Failed to persist deferred-objective hours-remaining latch', error);
+          this.getStructuredLogger('deferred_objectives')?.error({
+            event: 'deferred_objective_hours_remaining_latch_persist_failed', err: normalizeError(error),
+          });
         }
       },
     });
@@ -431,7 +433,6 @@ class PelsApp extends Homey.App {
     setPowerSampleRebuildState: (state) => {
       this.powerSampleRebuildState = state;
     },
-    error: (...args: unknown[]) => this.error(...args),
   });
   private readonly planRebuildScheduler = new PlanRebuildScheduler({
     getNowMs: getAppPlanRebuildNowMs,
@@ -1519,6 +1520,12 @@ class PelsApp extends Homey.App {
     if (!this.structuredLogger) return undefined;
     return this.structuredLogger.child({ component });
   }
+  // Public accessor so the REST API layer (api.ts) can emit structured handler
+  // failures through the same pino logger as the rest of the runtime, instead
+  // of the legacy prose `error()` sink.
+  public getApiStructuredLogger(): PinoLogger | undefined {
+    return this.getStructuredLogger('api');
+  }
   private getStructuredDebugEmitter(component: string, debugTopic: DebugLoggingTopic): StructuredDebugEmitter {
     return (payload) => {
       if (!this.structuredLogger || !this.debugLoggingTopics.has(debugTopic)) return;
@@ -1586,8 +1593,8 @@ class PelsApp extends Homey.App {
     if (!trimmed || this.lastNotifiedOperatingMode === trimmed) return;
     const card = this.homey.flow?.getTriggerCard?.('operating_mode_changed');
     if (card && typeof card.trigger === 'function') {
-      card.trigger({}, { mode: trimmed })
-        .catch((err: Error) => this.error('Failed to trigger operating_mode_changed', err));
+      card.trigger({}, { mode: trimmed }).catch((err: Error) => this.getStructuredLogger('flow')
+        ?.error({ event: 'operating_mode_changed_trigger_failed', err: normalizeError(err) }));
     }
     this.lastNotifiedOperatingMode = trimmed;
   }
@@ -1732,7 +1739,8 @@ class PelsApp extends Homey.App {
       }
       await this.overheadToken.setValue(overhead ?? 0);
     } catch (error) {
-      this.error('Failed to create/update capacity_overhead token', error as Error);
+      this.getStructuredLogger('flow')
+        ?.error({ event: 'capacity_overhead_token_update_failed', err: normalizeError(error) });
     }
   }
   private persistPowerTrackerState(reason: PowerTrackerPersistReason = 'write'): void {
