@@ -5,6 +5,7 @@ import {
 } from '../lib/plan/rebuildScheduler/powerDriven';
 import type { RebuildIntent } from '../lib/plan/rebuildScheduler/scheduler';
 import { incPerfCounter } from '../lib/utils/perfCounters';
+import { normalizeError } from '../lib/utils/errorUtils';
 import type { DebugLoggingTopic } from '../packages/shared-domain/src/utils/debugLogging';
 
 const PLAN_REBUILD_SCHEDULER_DEBUG_RATE_LIMIT_MS = 60 * 1000;
@@ -15,7 +16,6 @@ export type SchedulerTelemetryObserverDeps = {
   getNowMs: () => number;
   getPowerSampleRebuildState: () => PowerSampleRebuildState;
   setPowerSampleRebuildState: (state: PowerSampleRebuildState) => void;
-  error: (...args: unknown[]) => void;
 };
 
 /**
@@ -74,12 +74,21 @@ export class SchedulerTelemetryObserver {
   };
 
   readonly onIntentError = (intent: RebuildIntent, error: Error): void => {
+    const logger = this.deps.getStructuredLogger()?.child({ component: 'plan' });
     if (intent.kind === 'flow') {
-      this.deps.error(`Flow rebuild scheduler failed for ${intent.reason}`, error);
+      logger?.error({
+        event: 'plan_rebuild_flow_failed',
+        intentReason: intent.reason,
+        err: normalizeError(error),
+      });
       return;
     }
     if (intent.kind === 'signal' || intent.kind === 'hardCap') {
-      this.deps.error('PowerTracker: Failed to rebuild plan after power sample:', error);
+      logger?.error({
+        event: 'plan_rebuild_power_sample_failed',
+        intentKind: intent.kind,
+        err: normalizeError(error),
+      });
     }
   };
 
