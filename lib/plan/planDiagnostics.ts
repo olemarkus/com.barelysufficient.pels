@@ -11,19 +11,16 @@ import type { PlanContext } from './planContext';
 import type { RestorePlanResult } from './restore';
 import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
 import { isEvDevice } from '../../packages/shared-domain/src/commandableNow';
+import {
+  isStarvationSupportedDeviceClass,
+  isTemperatureControlDevice,
+} from '../../packages/shared-domain/src/temperatureDeviceKind';
 import { getPrimaryTargetCapability } from '../utils/targetCapabilities';
 import { isDeviceObservationTrusted } from '../observer/observationTrust';
 
 const TARGET_DEFICIT_EPSILON_C = 0.5;
 const STARVATION_LOW_TEMP_STEP_C = 0.5;
 const STARVATION_HIGH_TEMP_STEP_C = 1.0;
-const STARVATION_SUPPORTED_DEVICE_CLASSES = new Set([
-  'thermostat',
-  'heater',
-  'heatpump',
-  'airconditioning',
-  'airtreatment',
-]);
 
 const noStarvationSuppression = (): StarvationSuppressionNormalization => ({
   suppressionState: 'none',
@@ -72,7 +69,7 @@ const isFiniteNumber = (value: unknown): value is number => (
 );
 
 const isTemperatureInputDevice = (inputDevice?: PlanInputDevice): boolean => (
-  inputDevice?.deviceType === 'temperature'
+  isTemperatureControlDevice(inputDevice)
 );
 
 const resolveCurrentTemperatureC = (
@@ -150,8 +147,7 @@ const resolveEligibleForStarvation = (params: {
   const { device, inputDevice, isEv } = params;
   if (isEv || !inputDevice) return false;
   if (!isTemperatureInputDevice(inputDevice)) return false;
-  const deviceClass = (device.deviceClass ?? inputDevice.deviceClass ?? '').trim().toLowerCase();
-  if (!STARVATION_SUPPORTED_DEVICE_CLASSES.has(deviceClass)) return false;
+  if (!isStarvationSupportedDeviceClass(device.deviceClass ?? inputDevice.deviceClass)) return false;
   return inputDevice.managed === true
     && inputDevice.controllable === true
     && device.controllable !== false
@@ -319,7 +315,10 @@ const resolveDesiredTemperatureTarget = (params: {
   if (!inputDevice || !Array.isArray(inputDevice.targets) || inputDevice.targets.length === 0) {
     return null;
   }
-  if (inputDevice.deviceType && inputDevice.deviceType !== 'temperature') {
+  // Bail only when the device declares a non-temperature modality; an unset
+  // deviceType is left to the downstream target check (behaviour preserved —
+  // matches the prior `deviceType && deviceType !== 'temperature'` truthiness).
+  if (inputDevice.deviceType && !isTemperatureControlDevice(inputDevice)) {
     return null;
   }
   const desired = desiredForMode[inputDevice.id];
