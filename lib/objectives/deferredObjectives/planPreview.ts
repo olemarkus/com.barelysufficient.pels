@@ -262,6 +262,7 @@ const resolvePreviewUnavailableReason = (
   const reasonCode = diag.reasonCode;
   if (reasonCode === 'objective_invalid_deadline') return 'invalid_deadline';
   if (reasonCode === 'objective_invalid_session') return 'invalid_session';
+  if (reasonCode === 'objective_charger_not_resumable') return 'not_resumable';
   if (reasonCode === 'objective_missing_capacity' || reasonCode === 'objective_missing_charge_rate') {
     return 'missing_capacity';
   }

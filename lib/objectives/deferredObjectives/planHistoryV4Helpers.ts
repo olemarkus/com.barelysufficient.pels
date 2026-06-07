@@ -245,6 +245,7 @@ export const captureRevisionSnapshot = (
 // untrusted telemetry, so the recorder gates writes on this set the same way
 // `finalProgress*` does.
 export const PROGRESS_UNTRUSTWORTHY_REASON_CODES: ReadonlySet<DeferredObjectiveDiagnostic['reasonCode']> = new Set([
+  'objective_charger_not_resumable',
   'objective_invalid_deadline',
   'objective_invalid_session',
   'objective_missing_device',

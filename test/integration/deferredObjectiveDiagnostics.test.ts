@@ -1757,6 +1757,29 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
   });
 
+  it('flags a connected-but-not-resumable charger (plugged_in) instead of crediting its SoC as on-track', () => {
+    // The car is plugged in with a fresh SoC, but `plugged_in` is the
+    // not-resumable state — PELS cannot drive the charger toward the target, so
+    // the SoC must not be credited as progress. The diagnostic resolves to
+    // `unknown` with the dedicated reason that drives the "Paused — can't resume"
+    // chip instead of an "On track" plan.
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildDevice({ evChargingState: 'plugged_in' })],
+      settings: normalizeDeferredObjectiveSettings(buildSettings()),
+      powerTracker: buildPowerTracker(),
+      dailyBudgetSnapshot: buildSnapshot(),
+      priceOptimizationEnabled: true,
+    });
+
+    expect(diagnostic).toMatchObject({
+      objectiveKind: 'ev_soc',
+      status: 'unknown',
+      reasonCode: 'objective_charger_not_resumable',
+    });
+  });
+
   it('rolls a past local deadline to tomorrow and waits when tomorrow prices are missing', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       nowMs: NOW_MS,
@@ -1916,6 +1939,33 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       targetPercent: 60,
       energyNeededKWh: 0,
       expectedStepId: null,
+    });
+  });
+
+  it('marks a met EV objective as satisfied even when the charger is not resumable (plugged_in)', () => {
+    // Regression: a connected-but-not-resumable charger whose fresh SoC already
+    // meets the target needs no resume — it must reach the satisfied path, not
+    // read "Paused — can't resume" (the not-resumable block only applies when
+    // there is still charge to deliver).
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      nowMs: NOW_MS,
+      timeZone: 'UTC',
+      devices: [buildDevice({
+        evChargingState: 'plugged_in',
+        stateOfCharge: { percent: 70, status: 'fresh', observedAtMs: NOW_MS },
+      })],
+      settings: normalizeDeferredObjectiveSettings(buildSettings({ targetPercent: 60 })),
+      powerTracker: {},
+      dailyBudgetSnapshot: buildSnapshot(),
+      priceOptimizationEnabled: true,
+    });
+
+    expect(diagnostic).toMatchObject({
+      objectiveKind: 'ev_soc',
+      status: 'satisfied',
+      reasonCode: 'energy_already_met',
+      currentPercent: 70,
+      targetPercent: 60,
     });
   });
 

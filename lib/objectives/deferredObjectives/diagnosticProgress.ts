@@ -33,7 +33,10 @@
 import { OBJECTIVE_PROFILE_MAX_FUTURE_SKEW_MS } from '../../objectives/profiles';
 import type { ObjectiveDeviceInput } from '../../objectives/types';
 import type { DeferredObjectiveSettingsEntry } from './settings';
-import { isEvSessionInactiveForDevice } from '../../../packages/shared-domain/src/commandableNow';
+import {
+  isEvChargerNotResumableForDevice,
+  isEvSessionInactiveForDevice,
+} from '../../../packages/shared-domain/src/commandableNow';
 
 export type DeferredObjectiveProgressResolution = {
   remainingUnits: number;
@@ -44,7 +47,11 @@ export type DeferredObjectiveProgressResolution = {
   remainingUnits: 0;
   currentPercent: number | null;
   currentTemperatureC: number | null;
-  reasonCode: 'objective_invalid_session' | 'objective_missing_temperature' | 'objective_progress_stale';
+  reasonCode:
+  | 'objective_charger_not_resumable'
+  | 'objective_invalid_session'
+  | 'objective_missing_temperature'
+  | 'objective_progress_stale';
 };
 
 type EvProgress = {
@@ -111,8 +118,25 @@ export const resolveObjectiveProgress = (params: {
         reasonCode: progress.reasonCode,
       };
     }
+    const remainingUnits = Math.max(0, objective.targetPercent - progress.currentPercent);
+    // Connected but NOT resumable (`plugged_in`): PELS cannot drive the charger
+    // toward the target, so block the objective — BUT only when there is still
+    // charge to deliver. A fresh SoC already at/above the target falls through to
+    // the satisfied path (remainingUnits === 0); resuming is moot, so a completed
+    // task must not read "Paused — can't resume". The check lives here (with the
+    // target in hand) precisely so an already-met SoC is never masked by the
+    // not-resumable signal — the rest of the not-resumable wiring keys off this
+    // reason code unchanged.
+    if (remainingUnits > 0 && isEvChargerNotResumableForDevice(device)) {
+      return {
+        remainingUnits: 0,
+        currentPercent: progress.currentPercent,
+        currentTemperatureC: null,
+        reasonCode: 'objective_charger_not_resumable',
+      };
+    }
     return {
-      remainingUnits: Math.max(0, objective.targetPercent - progress.currentPercent),
+      remainingUnits,
       currentPercent: progress.currentPercent,
       currentTemperatureC: null,
       reasonCode: null,

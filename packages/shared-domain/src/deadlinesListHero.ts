@@ -42,10 +42,11 @@
 // Subline always names the soonest relevant card:
 //   - at-risk branch: soonest `cannot_meet` (under alert tone) or soonest
 //     `at_risk`, with the status reason after the em-dash;
-//   - paused branch: soonest `paused_unplugged` card, using the
-//     "due HH:MM — car unplugged." framing so the subline never claims
+//   - paused branch: soonest paused card (`paused_unplugged` /
+//     `paused_not_resumable`), using the "due HH:MM — <reason>." framing
+//     (car unplugged / charging won't resume) so the subline never claims
 //     "ready by HH:MM" for a smart task the device can't deliver until the
-//     user plugs back in;
+//     user acts on the charger;
 //   - every other non-at-risk / non-paused branch: soonest card overall,
 //     using the "ready by HH:MM[, verb from HH:MM]" framing.
 //
@@ -174,6 +175,9 @@ const STATUS_BUCKET: Record<SmartTaskListStatusId, StatusBucket> = {
   building_plan: 'pending',
   queued: 'pending',
   paused_unplugged: 'paused',
+  // Same `paused` bucket as unplugged: connected but charging can't resume is a
+  // "needs user attention" state, not a healthy/planning one.
+  paused_not_resumable: 'paused',
   at_risk: 'at_risk',
   cannot_meet: 'at_risk',
   satisfied: 'satisfied',
@@ -251,13 +255,22 @@ const buildSoonestSubline = (card: DeadlinesListHeroCard, formatTime: (ms: numbe
     : `${readyByPart}.`;
 };
 
-// Paused-branch subline: "Tesla due 06:30 — car unplugged.". Mirrors the
-// shape of the at-risk subline ("due HH:MM — reason.") so the warn-tone
-// branches share a recognisable cadence. Only `paused_unplugged` cards
-// reach this helper.
+// Paused-branch subline: "Tesla due 06:30 — car unplugged." / "… — charging
+// won't resume.". Mirrors the at-risk subline shape ("due HH:MM — reason.") so
+// the warn-tone branches share a recognisable cadence. Both paused statuses
+// reach this helper (`paused_unplugged` + `paused_not_resumable`); the reason
+// clause names the ACTUAL recovery so the hero never tells a connected-charger
+// owner to replug. Producer-side resolution (this is the hero copy producer);
+// the view never branches on status.
+const PAUSED_SUBLINE_REASON: Partial<Record<SmartTaskListStatusId, string>> = {
+  paused_unplugged: 'car unplugged',
+  paused_not_resumable: 'charging won’t resume',
+};
+
 const buildPausedSubline = (card: DeadlinesListHeroCard, formatTime: (ms: number) => string): string => {
   const deviceName = card.deviceName.trim() || KIND_NAME_FALLBACK[card.kind];
-  return `${deviceName} due ${formatTime(card.deadlineAtMs)} — car unplugged.`;
+  const reason = PAUSED_SUBLINE_REASON[card.statusId] ?? 'car unplugged';
+  return `${deviceName} due ${formatTime(card.deadlineAtMs)} — ${reason}.`;
 };
 
 // Compose the non-at-risk headline from the three bucket counts. Two or more
