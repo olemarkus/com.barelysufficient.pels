@@ -662,16 +662,6 @@ export default tseslint.config(
     },
   },
   {
-    // Binary-control orchestration keeps shed / restore / EV-deferred branches in
-    // one file; grew past 500 when actuator-write-seam PR1b absorbed the
-    // decision-then-dispatch helper from `lib/plan/planBinaryControl.ts`.
-    // Target: <=500 once the dispatch table splits from the decision branches.
-    files: ['lib/executor/binaryExecutor.ts'],
-    rules: {
-      'max-lines': ['warn', { max: 575, skipBlankLines: true, skipComments: true }],
-    },
-  },
-  {
     // Extracted target-command actuation is one cohesive retry/confirmation
     // pipeline (setpoint write, temporarily-unavailable handling, confirmation)
     // that stays local after the executor split. Companion to the
