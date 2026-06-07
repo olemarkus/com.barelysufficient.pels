@@ -98,3 +98,16 @@ export const EV_BOOST_BLOCK_REASONS: Record<EvBoostBlockReasonKey, string> = {
   plugged_out: 'Car not connected. Boost will not activate.',
   plugged_in_discharging: 'Car is discharging. Boost will not activate.',
 };
+
+/**
+ * Device-shaped resolver for the boost-block reason so the settings-UI boost
+ * panel reads it off the device instead of inlining the plug-state literals
+ * (the bug-magnet this de-couple removes). Returns the specific block-reason
+ * string for the two boost-blocking states, else `null` (boost not blocked by
+ * plug state — fall through to the battery-level checks).
+ */
+export const resolveEvBoostBlockReason = (dev: { evChargingState?: string | null }): string | null => {
+  if (dev.evChargingState === 'plugged_out') return EV_BOOST_BLOCK_REASONS.plugged_out;
+  if (dev.evChargingState === 'plugged_in_discharging') return EV_BOOST_BLOCK_REASONS.plugged_in_discharging;
+  return null;
+};
