@@ -1,6 +1,5 @@
 import type {
   DeviceStateOfChargeSnapshot,
-  EvCommandabilityResolution,
   SteppedLoadProfile,
 } from '../../packages/contracts/src/types';
 
@@ -41,7 +40,8 @@ export type ObjectiveDeviceInput = {
   // Producer-resolved EV plug-state decisions (the observer owns the raw
   // `evChargingState`); read via the shared `isEvSessionInactiveForDevice` /
   // `isEvChargerNotResumableForDevice` dual-read resolvers.
-  evCommandability?: EvCommandabilityResolution;
+  evSessionInactive?: boolean;
+  evChargerNotResumable?: boolean;
   powerKw?: number;
   expectedPowerKw?: number;
   planningPowerKw?: number;

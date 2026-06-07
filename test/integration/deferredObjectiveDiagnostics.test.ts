@@ -16,7 +16,7 @@ import { DeferredObjectivePlanHistoryRecorder } from '../../lib/objectives/defer
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
-import { withMaterializedEvCommandability } from '../utils/planTestUtils';
+import { withMaterializedEvPlugState } from '../utils/planTestUtils';
 import type { DeferredObjectiveActivePlansV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectivePlanHistoryV4 } from '../../packages/contracts/src/deferredObjectivePlanHistory';
 import { buildObjectiveSignature } from '../../lib/objectives/deferredObjectives/activePlanSignature';
@@ -24,13 +24,13 @@ import { buildObjectiveSignature } from '../../lib/objectives/deferredObjectives
 const HOUR_MS = 60 * 60 * 1000;
 const NOW_MS = Date.UTC(2026, 0, 1, 17, 0, 0);
 
-// Materialize `evCommandability` from the readable `evChargingState` (mirroring
-// the production producer `toPlanDevice`) so these objective-diagnostics fixtures
-// exercise the materialized path the planner actually consumes, not the raw
-// snapshot-fallback arm of the dual-read.
+// Materialize the flat EV plug-state sub-fields from the readable
+// `evChargingState` (mirroring the production producer `toPlanDevice`) so these
+// objective-diagnostics fixtures exercise the materialized path the planner
+// actually consumes, not the raw snapshot-fallback arm of the dual-read.
 const buildDevice = (
   overrides: Partial<PlanInputDevice> & { evChargingState?: string } = {},
-): PlanInputDevice => withMaterializedEvCommandability({
+): PlanInputDevice => withMaterializedEvPlugState({
   id: 'ev-1',
   name: 'Driveway EV',
   targets: [],
@@ -613,7 +613,7 @@ describe('ConcurrentEligibleTaskTracker', () => {
   // predicate (priority 1, both rescue permissions `'always'`, enabled
   // objective). Each helper creates one task; the per-test code stitches them
   // into a settings map and device map.
-  const buildEligibleDevice = (id: string): PlanInputDevice => withMaterializedEvCommandability({
+  const buildEligibleDevice = (id: string): PlanInputDevice => withMaterializedEvPlugState({
     id,
     name: id,
     targets: [],
@@ -2590,7 +2590,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // 12 kWh) fits → at_risk: feasible_above_floor.
     const HARDCAP_KW = 3;
     const NEED_KWH_TO_REACH = 6;
-    const buildPromotableDevice = (id: string): PlanInputDevice => withMaterializedEvCommandability({
+    const buildPromotableDevice = (id: string): PlanInputDevice => withMaterializedEvPlugState({
       id,
       name: id,
       targets: [],

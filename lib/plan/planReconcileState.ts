@@ -30,18 +30,20 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
       // stripping any stale `steppedLoadProfile` the spread carried over.
       const mergedProfile = (isSteppedLoadDevice(live) ? live.steppedLoadProfile : undefined)
         ?? (isSteppedLoadDevice(device) ? device.steppedLoadProfile : undefined);
-      // EV is orthogonal to the stepped axis and its fields are off the base, so
-      // the `...device` spread does not carry them at the type level. Re-source
-      // the cluster explicitly: `evCommandability` from the live device (the
-      // producer-resolved decisions follow the freshest observation), the
-      // remaining EV fields from the prior plan device (which `...device`
-      // previously carried wholesale), then regroup through `withEvDiscriminant`.
-      // Runtime values are byte-identical.
+      // The EV cluster (`evBoost` / `evBoostActive` / `stateOfCharge`) is
+      // orthogonal to the stepped axis and off the base, so the `...device`
+      // spread does not carry it at the type level. Re-source it explicitly from
+      // the prior plan device (which `...device` previously carried wholesale),
+      // then regroup through `withEvDiscriminant`. The flat EV plug-state
+      // sub-fields (`evBlockReason` / `evSessionInactive` / `evChargerNotResumable`)
+      // are base fields re-sourced from the live device so the producer-resolved
+      // decisions follow the freshest observation. Runtime values are byte-identical.
       const evDevice = isEvPlanDevice(device) ? device : null;
-      const evLive = isEvPlanDevice(live) ? live : null;
       return withSteppedDiscriminant(withEvDiscriminant({
         ...device,
-        evCommandability: evLive?.evCommandability,
+        evBlockReason: live.evBlockReason,
+        evSessionInactive: live.evSessionInactive,
+        evChargerNotResumable: live.evChargerNotResumable,
         evBoost: evDevice?.evBoost,
         evBoostActive: evDevice?.evBoostActive,
         stateOfCharge: evDevice?.stateOfCharge,

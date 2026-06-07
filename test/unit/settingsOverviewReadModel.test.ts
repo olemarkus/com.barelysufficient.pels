@@ -112,8 +112,8 @@ describe('settingsOverviewReadModel', () => {
   });
 
   it('sources evChargingState from the observer dep, not the plan device', () => {
-    // The plan device carries the producer-resolved `evCommandability`, not the raw
-    // plug-state (materialized + stripped by the test builder, mirroring toPlanDevice).
+    // The plan device carries the producer-resolved flat EV plug-state sub-fields, not
+    // the raw plug-state (materialized + stripped by the test builder, mirroring toPlanDevice).
     const device = buildPlanDevice({
       id: 'ev-1',
       controlCapabilityId: 'evcharger_charging',
