@@ -38,6 +38,16 @@ export const isEvSessionInactive = (evChargingState?: string | null): boolean =>
   evChargingState === 'plugged_out' || evChargingState === 'plugged_in_discharging'
 );
 
+/**
+ * Device-shaped form of {@link isEvSessionInactive} so EV-scoped consumers read
+ * the resolved predicate off the device instead of touching the raw
+ * `evChargingState` string themselves (the bug-magnet this de-couple removes:
+ * consumers must never re-derive plug-state semantics). Caller scopes EV-ness.
+ */
+export const isEvSessionInactiveForDevice = (dev: { evChargingState?: string | null }): boolean => (
+  isEvSessionInactive(dev.evChargingState)
+);
+
 export type CommandableNowResolveInput = {
   deviceClass?: string;
   controlCapabilityId?: 'onoff' | 'evcharger_charging';
@@ -84,7 +94,7 @@ export function resolveCommandableNow(params: {
 }): CommandableNowResolution {
   const { dev } = params;
 
-  const evBlock = resolveEvCommandableBlock(dev);
+  const evBlock = resolveEvBlockReasonForDevice(dev);
   if (evBlock !== null) {
     return { commandableNow: false, reason: evBlock };
   }
@@ -113,11 +123,16 @@ export function getCommandableNowReason(dev: CommandableNowConsumerInput): strin
   return resolveCommandableNow({ dev }).reason;
 }
 
-function resolveEvCommandableBlock(dev: CommandableNowResolveInput): string | null {
+/**
+ * EV block-reason for a device: `null` when commandable (or not an EV), else the
+ * reason string. The device-shaped public resolver shared by `resolveCommandableNow`
+ * AND the plan restore-reason gate, so neither re-derives the EV-state switch nor
+ * touches the raw `evChargingState`. Gates EV-ness itself (the gateless switch is
+ * `resolveEvBlockReason` in commandableNowReason). `undefined` → state_unknown: no
+ * trusted plug-state (genuine cold start; transport's consolidated truth would
+ * otherwise preserve a real value).
+ */
+export function resolveEvBlockReasonForDevice(dev: CommandableNowResolveInput): string | null {
   if (!isEvDevice(dev)) return null;
-  // Gateless EV-state → reason switch lives in commandableNowReason (one source
-  // of truth, shared with the plan/device restore-reason consumers). `undefined`
-  // → state_unknown: no trusted plug-state (genuine cold start; transport's
-  // consolidated truth would otherwise preserve a real value).
   return resolveEvBlockReason(dev.evChargingState);
 }
