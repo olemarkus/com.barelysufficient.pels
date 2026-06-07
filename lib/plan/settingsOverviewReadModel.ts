@@ -19,6 +19,11 @@ import { isEvPlanDevice } from './planEvDevice';
 export type SettingsOverviewReadModelDeps = {
   getOverviewStarvation?: (deviceId: string) => SettingsUiPlanDeviceStarvation | null | undefined;
   getIdleClassification?: (deviceId: string) => 'near_target_idle' | 'unresponsive' | 'capped_idle' | undefined;
+  // EV charging state is observed state — the observer is its canonical source
+  // (`ObservedDeviceState.evChargingState`), not the planner. The settings-UI
+  // read model surfaces the raw string for display, so it reads it from the
+  // observer here rather than off the plan device (which no longer carries it).
+  getObservedEvChargingState?: (deviceId: string) => string | undefined;
 };
 
 function resolveFiniteKWh(value: number | undefined): number | undefined {
@@ -70,8 +75,10 @@ export function buildSettingsOverviewDeviceReadModel(
   device: DevicePlan['devices'][number],
   deps: SettingsOverviewReadModelDeps = {},
 ): SettingsUiPlanDeviceSnapshot {
-  // EV fields live on the orthogonal `EvKind` cluster (off the base); narrow
-  // once so the snapshot can surface them. Non-EV devices have them undefined.
+  // EV boost fields live on the orthogonal `EvKind` cluster (off the base);
+  // narrow once so the snapshot can surface them. Non-EV devices have them
+  // undefined. The raw `evChargingState` comes from the observer (its canonical
+  // owner), NOT the plan device — see `getObservedEvChargingState`.
   const ev = isEvPlanDevice(device) ? device : null;
   return {
     id: device.id,
@@ -85,7 +92,7 @@ export function buildSettingsOverviewDeviceReadModel(
     plannedState: device.plannedState,
     controlModel: device.controlModel,
     controlCapabilityId: device.controlCapabilityId,
-    evChargingState: ev?.evChargingState,
+    evChargingState: deps.getObservedEvChargingState?.(device.id),
     currentTarget: device.currentTarget,
     plannedTarget: device.plannedTarget,
     currentTemperature: device.currentTemperature,

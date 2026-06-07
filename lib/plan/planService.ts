@@ -75,6 +75,7 @@ const serializePlanForUi = (
   return buildSettingsOverviewReadModel(plan, {
     getOverviewStarvation: (deviceId) => deps.deviceDiagnostics?.getOverviewStarvation?.(deviceId),
     getIdleClassification: (deviceId) => idleClassifier.getClassification(deviceId),
+    getObservedEvChargingState: (deviceId) => deps.getObservedEvChargingState?.(deviceId),
   });
 };
 
@@ -89,6 +90,10 @@ export type PlanServiceDeps = {
   // never confirm. The fallback exists only so tests that don't exercise the settle can
   // omit it.
   getSettleDevices?: () => PendingBinaryLiveDevice[];
+  // EV charging state for the settings-UI read model, sourced from the observer
+  // (its canonical owner — `ObservedDeviceState`), not the plan device. The
+  // planner no longer carries the raw `evChargingState`.
+  getObservedEvChargingState?: (deviceId: string) => string | undefined;
   getCapacityDryRun: () => boolean;
   isCurrentHourCheap: () => boolean;
   isCurrentHourExpensive: () => boolean;

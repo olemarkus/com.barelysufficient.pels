@@ -20,6 +20,7 @@ import type {
   DeviceControlModel,
   DeviceStateOfChargeSnapshot,
   EvBoostConfig,
+  EvCommandabilityResolution,
   SteppedLoadProfile,
   TargetCapabilitySnapshot,
   TargetDeviceSnapshot,
@@ -33,11 +34,11 @@ import { normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
 import { hasTemperatureBoostTarget } from '../utils/temperatureBoost';
 import {
   resolveEvBlockReason,
-  resolveEvBoostBlockReason,
 } from '../../packages/shared-domain/src/commandableNowReason';
 import {
+  isEvBoostBlockedByPlugState,
   isEvDevice,
-  isEvSessionInactive,
+  isEvSessionInactiveForDevice,
   type CommandableNowResolveInput,
 } from '../../packages/shared-domain/src/commandableNow';
 // Commandability resolution lives in shared-domain so the executor can import it
@@ -96,7 +97,7 @@ type ObservationFreshness = {
 export type EvBoostResolveInput = SteppedLoadIdentity & ControllableFlags & ObservationFreshness & {
   deviceClass?: string;
   controlCapabilityId?: BinaryControlCapabilityId;
-  evChargingState?: string;
+  evCommandability?: EvCommandabilityResolution;
   forceBoostActive?: boolean;
   evBoost?: EvBoostConfig;
   stateOfCharge?: DeviceStateOfChargeSnapshot;
@@ -122,10 +123,11 @@ export function resolveEvBoostActive(params: {
   if (!isSteppedLoad(dev)) return false;
   if (dev.controllable === false || dev.managed === false || dev.available === false) return false;
   // Block boost for every plug-state PELS cannot drive: unplugged / discharging
-  // (no creditable session) AND `plugged_in` (connected but NOT resumable). One
-  // source of truth with the settings-UI boost panel, which renders this same
-  // resolver — so the runtime never forces boost the UI says won't activate.
-  if (resolveEvBoostBlockReason(dev) !== null) return false;
+  // (no creditable session) AND `plugged_in` (connected but NOT resumable).
+  // Reads the producer-resolved `evCommandability`; the settings-UI boost panel
+  // renders the matching reason STRING (`resolveEvBoostBlockReason`) off the same
+  // plug-state set, so the runtime never forces boost the UI says won't activate.
+  if (isEvBoostBlockedByPlugState(dev)) return false;
   // The deferred limit-lower-priority rescue lane forces boost while the task is in its
   // planned hours, independent of the device's own boost config/threshold.
   if (dev.forceBoostActive === true) return true;
@@ -311,7 +313,11 @@ export function isCanSetControl(dev: CanSetControlConsumerInput): boolean {
  * EV blocks and stay outside this gate.
  */
 export function isEvPhysicallyUnplugged(dev: CommandableNowResolveInput): boolean {
-  return isEvDevice(dev) && isEvSessionInactive(dev.evChargingState);
+  // Dual-read via the device-shaped resolver: plan-device callers carry the
+  // producer-resolved `evCommandability` (raw `evChargingState` is gone from the
+  // planner types), snapshot callers carry the raw string. Reading the raw field
+  // directly here would silently no-op on plan devices.
+  return isEvDevice(dev) && isEvSessionInactiveForDevice(dev);
 }
 
 // ---------------------------------------------------------------------------
