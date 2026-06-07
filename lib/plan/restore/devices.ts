@@ -107,11 +107,13 @@ export function getOnDevices(
 }
 
 export function getEvRestoreStateBlockReason(dev: DevicePlanDevice): string | null {
-  if (dev.controlCapabilityId !== 'evcharger_charging') return null;
-  // Delegate EV-state → reason to the shared device-shaped resolver (one source of
-  // truth, also behind resolveCommandableNow). The controlCapabilityId gate above
-  // already proves EV, so the resolver's own isEvDevice gate passes. This consumer
-  // never touches the raw charging-state string — no plug-state re-derivation here.
+  // Delegate EV identity AND EV-state → reason to the shared device-shaped
+  // resolver (one source of truth, also behind resolveCommandableNow). Its own
+  // `isEvDevice` gate covers BOTH the `evcharger_charging` control capability and
+  // an `evcharger` device class, so an evcharger-class device that happens to
+  // control via a different capability is no longer silently skipped. Non-EV
+  // devices resolve to `null`. This consumer never touches the raw charging-state
+  // string — no plug-state re-derivation here.
   return resolveEvBlockReasonForDevice(dev);
 }
 

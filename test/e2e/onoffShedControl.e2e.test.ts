@@ -15,8 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockHomeyInstance, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW } from '../../lib/utils/settingsKeys';
-
-const flushPromises = () => new Promise((resolve) => process.nextTick(resolve));
+import { drainUntilCalledWith } from '../utils/asyncDrain';
 
 const ONOFF_CAP = (deviceId: string) => `manager/devices/device/${deviceId}/capability/onoff`;
 
@@ -86,7 +85,7 @@ describe('On/off capacity shedding (SDK-boundary e2e)', () => {
     const app = createApp();
     await app.onInit();
     await vi.advanceTimersByTimeAsync(10_000);
-    await flushPromises();
+    await drainUntilCalledWith(putSpy, ONOFF_CAP('device-a'), { value: false });
 
     expect(putSpy).toHaveBeenCalledWith(ONOFF_CAP('device-a'), { value: false });
   });
@@ -107,7 +106,7 @@ describe('On/off capacity shedding (SDK-boundary e2e)', () => {
     const app = createApp();
     await app.onInit();
     await vi.advanceTimersByTimeAsync(10_000);
-    await flushPromises();
+    await drainUntilCalledWith(putSpy, ONOFF_CAP('device-a'), { value: false });
 
     expect(putSpy).toHaveBeenCalledWith(ONOFF_CAP('device-a'), { value: false });
     const wroteTemperatureTarget = putSpy.mock.calls.some(([path]) =>

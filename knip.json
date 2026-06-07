@@ -62,12 +62,22 @@
       ]
     }
   },
+  "vitest": {
+    "config": [
+      "vitest.config.mts",
+      "vitest.config.unit.mts",
+      "vitest.config.integration.mts",
+      "vitest.config.e2e.mts",
+      "vitest.config.tz.mts"
+    ]
+  },
   "ignore": [
     "test/mocks/echarts-subpath-shim.ts",
+    "test/mocks/homey.ts",
     "vitest-env.d.ts"
   ],
   "ignoreDependencies": [
-    "@types/homey",
+    "homey",
     "homey-api",
     "playwright"
   ],
@@ -78,8 +88,5 @@
   "ignoreExportsUsedInFile": true,
   "rules": {
     "duplicates": "off"
-  },
-  "ignoreUnresolved": [
-    "../../packages/contracts/src/types"
-  ]
+  }
 }

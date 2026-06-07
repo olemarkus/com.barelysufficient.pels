@@ -118,20 +118,23 @@ When `.homeycompose/` changes, run `homey app validate` — this regenerates roo
 
 ### Testing
 
+Each runtime tier is its own fast lane with its own config (`vitest.config.{unit,integration,e2e,tz}.mts`); the lanes run in **parallel isolated forks** (no shared `maxWorkers: 1`). Coverage is collected once, across all tiers, by `vitest.config.mts`.
+
 ```bash
-npm run test:unit           # Whole fast vitest suite, all tiers (no coverage, lighter config)
-npm run test:unit:ci        # Whole vitest suite with coverage
-npm run test:unit:tz        # Timezone-sensitive tests
-npm run test:integration    # test/integration/ tier only (fast)
-npm run test:e2e:runtime    # test/e2e/ runtime SDK-boundary tier only (fast)
+npm run test:unit           # unit tier only (test/unit/, fast, no coverage)
+npm run test:integration    # integration tier only (test/integration/, fast)
+npm run test:e2e:runtime    # runtime SDK-boundary e2e tier only (test/e2e/, fast, 30s timeout)
+npm run test:unit:tz        # timezone-sensitive lane, across several TZ values
+npm run test:coverage       # all runtime tiers in one instrumented pass + 80% gate
+npm run test:unit:ci        # alias entry for the coverage lane
 npm run test:ui             # Settings UI vitest tests
 npm run test:e2e            # Settings-UI Playwright E2E (chromium + firefox mobile); alias: test:e2e:ui
 npm run ci:full             # Complete CI: checks + runtime + settings UI + Playwright
 ```
 
-**Test taxonomy.** Tests are classified into three tiers — **unit** (one pure function, no I/O), **integration** (one layer, only outward seams mocked via shared helpers), **e2e** (nothing internal mocked; driven through an external seam — Homey SDK for runtime e2e, the UI for Playwright e2e — and observed through that seam + structured logs, never parsed prose). Specs live in `test/unit/`, `test/integration/`, `test/e2e/`; shared mocks/helpers/setup stay at `test/` root. The obviously-classified specs are migrated; the remaining ambiguous flat `test/*.test.ts` files migrate opportunistically — move the one you touch into its tier folder (bumping import depth, then `knip`). Full reference: `notes/testing-taxonomy.md`.
+**Test taxonomy.** Tests are classified into three tiers — **unit** (one pure function, no I/O), **integration** (one layer, only outward seams mocked via shared helpers), **e2e** (nothing internal mocked; driven through an external seam — Homey SDK for runtime e2e, the UI for Playwright e2e — and observed through that seam + structured logs, never parsed prose). Every spec lives in `test/unit/`, `test/integration/`, or `test/e2e/` (the flat `test/*.test.ts` files were fully migrated); shared mocks/helpers/setup stay at `test/` root. jsdom widget-render specs are unit-tier and self-declare their environment via a `// @vitest-environment jsdom` pragma. A new spec lands in its tier folder; bump import depth when moving one, then run `knip`. Full reference: `notes/testing-taxonomy.md`.
 
-**Coverage threshold:** 80% across branches, functions, lines, statements. Collected from all `*.ts` files under `<rootDir>` (excluding `test/**`, `settings/**`, `packages/**`), which includes root entry points (`app.ts`, `api.ts`), `lib/**`, `flowCards/**`, and `drivers/**`.
+**Coverage threshold:** 80% across branches, functions, lines, statements, enforced by the `coverage` CI job (`npm run test:coverage`). Collected from `app.ts`, `api.ts`, `lib/**`, `flowCards/**`, and `drivers/**`.
 
 **Testing rules:**
 - Unit tests must have a narrow, specific purpose — avoid adding broad checks already covered by integration or regression tests.
@@ -187,9 +190,11 @@ GitHub Actions (`.github/workflows/test.yml`) runs on every push and PR:
 
 1. **checks** — `npm run ci:checks` (all lints, architecture, dead code, typecheck) followed by `npm run build` and `npm run validate`.
 2. **docs** — VitePress build validation.
-3. **runtime-tests** — `npm run ci:test:runtime` (vitest + timezone tests).
-4. **settings-ui-tests** — `npm run ci:test:settings-ui`.
-5. **playwright** — E2E matrix (chromium mobile + firefox mobile).
+3. **unit-tests** / **integration-tests** / **e2e-tests** — the three runtime tiers, each its own parallel job (`npm run test:unit` / `test:integration` / `test:e2e:runtime`).
+4. **timezone-tests** — `npm run test:unit:tz`.
+5. **coverage** — `npm run test:coverage` (all tiers in one instrumented pass, 80% gate).
+6. **settings-ui-tests** — `npm run ci:test:settings-ui`.
+7. **playwright** — E2E matrix (chromium mobile + firefox mobile).
 
 `docs.yml` deploys docs to GitHub Pages at `pels.barelysufficient.org` on every push to `main`.
 
