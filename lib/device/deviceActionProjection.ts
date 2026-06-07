@@ -304,13 +304,13 @@ export function isCanSetControl(dev: CanSetControlConsumerInput): boolean {
 }
 
 /**
- * Detects the specific "EV physical block" sub-case that the consumer at
- * `planOffStateReason.resolveEvPhysicalBlockInactiveReason` cares about:
+ * Detects the specific "device physically blocked" sub-case that the consumer at
+ * `planOffStateReason.resolvePhysicalBlockInactiveReason` cares about:
  * the device is an EV charger and the plug is out or discharging. Other
  * not-commandable reasons (e.g. `available === false`) are not physical
- * EV blocks and stay outside this gate.
+ * blocks and stay outside this gate.
  */
-export function isEvPhysicallyUnplugged(dev: CommandableNowResolveInput): boolean {
+export function isDevicePhysicallyBlocked(dev: CommandableNowResolveInput): boolean {
   return isEvDevice(dev) && isEvSessionInactive(dev.evChargingState);
 }
 

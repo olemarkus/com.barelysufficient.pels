@@ -8,7 +8,7 @@
  *    (the new producer-seam home, fed onto `commandableNowReason`)
  *  - `lib/device/deviceActionProjection.ts:getEvRestoreBlockReason`
  *    (legacy snapshot-shape helper for the binary-control planner)
- *  - `lib/plan/restore/devices.ts:getEvRestoreStateBlockReason`
+ *  - `lib/plan/restore/devices.ts:getDeviceStateBlockReason`
  *    (legacy restore-eligibility gate, surfaced via `DeviceReason.detail`)
  *
  * Both routes feed UI surfaces (status chips, device cards, plan reason
@@ -54,7 +54,7 @@ export const formatUnknownEvChargingStateReason = (state: string): string => (
  * EV-block-reason consumers that used to inline this switch:
  *   - `resolveCommandableNow` (`commandableNow.ts`)
  *   - `getEvRestoreBlockReason` (`lib/device/deviceActionProjection.ts`, snapshot-shaped)
- *   - `getEvRestoreStateBlockReason` (`lib/plan/restore/devices.ts`, plan-device-shaped)
+ *   - `getDeviceStateBlockReason` (`lib/plan/restore/devices.ts`, plan-device-shaped)
  *
  * Returns `null` for the commandable states (`plugged_in_paused` /
  * `plugged_in_charging`), the reason string for the non-commandable ones, and

@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest';
 import {
   isCanSetControl,
   isCommandableNow,
-  isEvPhysicallyUnplugged,
+  isDevicePhysicallyBlocked,
   resolveBoostActive,
   resolveCanSetControl,
   resolveCommandableNow,
@@ -223,18 +223,18 @@ describe('isEvSessionInactive — shared plug-state predicate', () => {
     expect(isEvSessionInactive(undefined)).toBe(false);
   });
 
-  it('does NOT gate on EV-ness — the caller scopes that (isEvPhysicallyUnplugged composes both)', () => {
+  it('does NOT gate on EV-ness — the caller scopes that (isDevicePhysicallyBlocked composes both)', () => {
     // A non-EV device that somehow carried one of these strings would read as
-    // inactive-session by the bare predicate; isEvPhysicallyUnplugged adds the
-    // isEvDevice guard so a non-EV device is never an "EV physical block".
+    // inactive-session by the bare predicate; isDevicePhysicallyBlocked adds the
+    // isEvDevice guard so a non-EV device is never a physical block.
     expect(isEvSessionInactive('plugged_out')).toBe(true);
-    expect(isEvPhysicallyUnplugged({ evChargingState: 'plugged_out' })).toBe(false);
-    expect(isEvPhysicallyUnplugged({
+    expect(isDevicePhysicallyBlocked({ evChargingState: 'plugged_out' })).toBe(false);
+    expect(isDevicePhysicallyBlocked({
       deviceClass: 'evcharger',
       controlCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_out',
     })).toBe(true);
-    expect(isEvPhysicallyUnplugged({
+    expect(isDevicePhysicallyBlocked({
       deviceClass: 'evcharger',
       controlCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_in_charging',

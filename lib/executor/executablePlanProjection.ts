@@ -2,7 +2,6 @@ import {
   formatDeviceReason,
   PLAN_REASON_CODES,
 } from '../../packages/shared-domain/src/planReasonSemantics';
-import { isEvDevice } from '../../packages/shared-domain/src/commandableNow';
 import type { DevicePlan } from '../plan/planTypes';
 import { isRestoreAdmissionHoldReason } from '../planContract/planDecisionSemantics';
 import type {
@@ -247,23 +246,19 @@ const buildExecutableReleaseIntent = (
   if (kind === 'shed_release') {
     // shed_release fires the device's configured shedBehavior; the executor resolves the
     // concrete actuation primitive (turn_off / set_temperature / set_step) at apply time.
-    // Binary-controlled deferred objectives route through 'binary_release' (never
-    // 'shed_release'), so reject here as a defensive guard against a misrouted producer.
     // `releaseShedStepId` is producer-resolved (see `resolveShedIntent`); the lifecycle-end
     // release path reads it for the stepped-no-binary case and falls back to binary off otherwise.
-    if (isEvDevice(dev)) return null;
     return { kind, deviceId: dev.id, name: dev.name, releaseShedStepId: dev.releaseShedStepId };
   }
-  if (!isEvDevice(dev)) return null;
   if (kind === 'binary_release') return { kind, deviceId: dev.id, name: dev.name };
   if (planMeta?.powerFreshnessState && planMeta.powerFreshnessState !== 'fresh') return null;
   if (dev.plannedState !== 'keep') return null;
   if (isSwapTargetPendingReason(dev)) return null;
-  if (dev.reason && isEvResumeBlockedReason(dev.reason)) return null;
+  if (dev.reason && isRestoreBlockedReason(dev.reason)) return null;
   return { kind, deviceId: dev.id, name: dev.name };
 };
 
-const EV_RESUME_BLOCK_REASON_CODES = new Set<string>([
+const RESTORE_BLOCK_REASON_CODES = new Set<string>([
   PLAN_REASON_CODES.activationBackoff,
   PLAN_REASON_CODES.capacity,
   PLAN_REASON_CODES.cooldownRestore,
@@ -278,6 +273,6 @@ const EV_RESUME_BLOCK_REASON_CODES = new Set<string>([
   PLAN_REASON_CODES.waitingForOtherDevices,
 ]);
 
-const isEvResumeBlockedReason = (reason: NonNullable<PlanDevice['reason']>): boolean => (
-  EV_RESUME_BLOCK_REASON_CODES.has(reason.code)
+const isRestoreBlockedReason = (reason: NonNullable<PlanDevice['reason']>): boolean => (
+  RESTORE_BLOCK_REASON_CODES.has(reason.code)
 );

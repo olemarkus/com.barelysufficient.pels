@@ -5,17 +5,17 @@ import {
 import { computeBaseRestoreNeed } from './restore/accounting';
 import { getSteppedLoadShedTargetStep, isSteppedLoadDevice } from './planSteppedLoad';
 import { buildRestoreNeedReason, buildShortfallReason } from './planReasonStrings';
-import { getInactiveReason, getEvRestoreStateBlockReason } from './restore/devices';
-import { isEvPhysicallyUnplugged } from '../device/deviceActionProjection';
+import { getInactiveReason, getDeviceStateBlockReason } from './restore/devices';
+import { isDevicePhysicallyBlocked } from '../device/deviceActionProjection';
 import type { DevicePlanDevice } from './planTypes';
 
-function resolveEvPhysicalBlockInactiveReason(planDevice: DevicePlanDevice): string | null {
-  // Producer-seam consumer (chunk 2): the EV plug-state gate moved into
-  // `deviceActionProjection.isEvPhysicallyUnplugged`. The existing reason
+function resolvePhysicalBlockInactiveReason(planDevice: DevicePlanDevice): string | null {
+  // Producer-seam consumer (chunk 2): the device physical-block gate moved into
+  // `deviceActionProjection.isDevicePhysicallyBlocked`. The existing reason
   // string emitter is kept unchanged so UI strings don't churn here —
   // chunk 6 reroutes UI consumers to `commandableNowReason`.
-  if (!isEvPhysicallyUnplugged(planDevice)) return null;
-  return getEvRestoreStateBlockReason(planDevice) ?? null;
+  if (!isDevicePhysicallyBlocked(planDevice)) return null;
+  return getDeviceStateBlockReason(planDevice) ?? null;
 }
 
 export function applyOffStateReason(params: {
@@ -25,7 +25,7 @@ export function applyOffStateReason(params: {
 }): DevicePlanDevice {
   const { planDevice, headroomRaw, guardInShortfall } = params;
   if (!planDevice.controllable) return planDevice;
-  const physicalBlockReason = resolveEvPhysicalBlockInactiveReason(planDevice);
+  const physicalBlockReason = resolvePhysicalBlockInactiveReason(planDevice);
   if (physicalBlockReason) {
     return {
       ...planDevice,

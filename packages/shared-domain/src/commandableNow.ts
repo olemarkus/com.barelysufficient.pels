@@ -114,7 +114,7 @@ export function resolveCommandableNow(params: {
 }): CommandableNowResolution {
   const { dev } = params;
 
-  const evBlock = resolveEvBlockReasonForDevice(dev);
+  const evBlock = resolveDeviceStateBlockReason(dev);
   if (evBlock !== null) {
     return { commandableNow: false, reason: evBlock };
   }
@@ -144,7 +144,7 @@ export function getCommandableNowReason(dev: CommandableNowConsumerInput): strin
 }
 
 /**
- * EV block-reason for a device: `null` when commandable (or not an EV), else the
+ * Device-state block-reason for a device: `null` when commandable (or not an EV), else the
  * reason string. The device-shaped public resolver shared by `resolveCommandableNow`
  * AND the plan restore-reason gate, so neither re-derives the EV-state switch nor
  * touches the raw `evChargingState`. Gates EV-ness itself (the gateless switch is
@@ -152,7 +152,7 @@ export function getCommandableNowReason(dev: CommandableNowConsumerInput): strin
  * trusted plug-state (genuine cold start; transport's consolidated truth would
  * otherwise preserve a real value).
  */
-export function resolveEvBlockReasonForDevice(dev: CommandableNowResolveInput): string | null {
+export function resolveDeviceStateBlockReason(dev: CommandableNowResolveInput): string | null {
   if (!isEvDevice(dev)) return null;
   return resolveEvBlockReason(dev.evChargingState);
 }

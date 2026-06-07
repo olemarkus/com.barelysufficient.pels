@@ -175,20 +175,6 @@ describe('applyShedReleaseIntent', () => {
     expect(mockedApplyBinarySheddingToDevice).not.toHaveBeenCalled();
   });
 
-  it('skips an EV-capability device routed through shed_release (defensive guard)', async () => {
-    const deps = buildDeps({ action: 'turn_off', temperature: null, stepId: null });
-    const result = await applyShedReleaseIntent({
-      intent: buildIntent(),
-      steppedLoadIntent: null,
-      observed: buildObserved(),
-      snapshot: { id: 'dev-1', binaryControl: { on: true }, controlCapabilityId: 'evcharger_charging' } as never,
-      mode: 'plan',
-      deps,
-    });
-    expect(result).toBe(false);
-    expect(mockedApplyBinarySheddingToDevice).not.toHaveBeenCalled();
-  });
-
   it('fires a target write at the shed temperature when shedBehavior is set_temperature', async () => {
     const recordReleaseShedActuation = vi.fn();
     const deps = buildDeps(

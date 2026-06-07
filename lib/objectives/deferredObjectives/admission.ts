@@ -44,6 +44,17 @@ const shouldEmitTerminalRelease = (
   && device?.controllable === false
 );
 
+// INVARIANT (load-bearing): the release intent is keyed purely on objectiveKind,
+// and objectiveKind↔device-type is 1:1 — `ev_soc` only ever attaches to an EV
+// charger, `temperature` only to a thermostat. This is enforced at the write seam
+// (`flowCards/deadlineObjectiveCards.ts` throws unless `isEvCharger` /
+// `supportsTemperatureObjective`) and structurally (an evcharger snapshot always
+// has `targets: []`, so it can never carry a temperature objective). The executor
+// relies on this: it routes solely on the `binary_release`/`binary_restore`/
+// `shed_release` intent and no longer re-checks `isEvDevice`. If a future change
+// lets an evcharger expose settable targets, or relaxes those write-card gates,
+// this binding breaks and a `shed_release` could reach an EV device — restore the
+// executor's device-kind guard (or re-key the routing) if that ever happens.
 const resolveReleaseIntentForCapOff = (
   objectiveKind: DeferredObjectiveDiagnostic['objectiveKind'],
 ): 'binary_release' | 'shed_release' => (
