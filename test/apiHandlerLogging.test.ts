@@ -1,9 +1,9 @@
 // Regression: every `ui_*` API handler used to be a bare `async` return. When
 // the wrapped helper threw, Homey's transport surfaced a generic "Network
 // request failed" on the client and the actual cause never reached
-// `/tmp/pels` via `app.error`. The `withApiLogging` wrapper in `api.ts` now
-// guarantees both: log on the server, rethrow so the client sees the real
-// failure.
+// `/tmp/pels` via the structured logger. The `withApiLogging` wrapper in
+// `api.ts` now guarantees both: emit a structured `api_handler_failed` event on
+// the server, rethrow so the client sees the real failure.
 
 vi.mock('../setup/settingsUiApi', () => ({
   buildSettingsUiBootstrap: vi.fn(),
@@ -31,25 +31,28 @@ vi.mock('../setup/appDebugHelpers', () => ({
 import api from '../api';
 import * as stubs from '../setup/settingsUiApi';
 
-type AppMock = { error: ReturnType<typeof vi.fn> };
+type LoggerMock = { error: ReturnType<typeof vi.fn> };
+type AppMock = { getApiStructuredLogger: ReturnType<typeof vi.fn> };
 type HomeyMock = { app: AppMock };
 type Handler = (ctx: { homey: HomeyMock }) => Promise<unknown>;
 
-const buildHomey = (): HomeyMock => ({ app: { error: vi.fn() } });
+const buildHomey = (): { homey: HomeyMock; logger: LoggerMock } => {
+  const logger: LoggerMock = { error: vi.fn() };
+  return { homey: { app: { getApiStructuredLogger: vi.fn(() => logger) } }, logger };
+};
 
 const cases: Array<{
   handler: keyof typeof api;
   stub: keyof typeof stubs;
-  logName: string;
 }> = [
-  { handler: 'ui_bootstrap', stub: 'buildSettingsUiBootstrap', logName: 'api ui_bootstrap failed' },
-  { handler: 'ui_devices', stub: 'getSettingsUiDevicesPayload', logName: 'api ui_devices failed' },
-  { handler: 'ui_plan', stub: 'getSettingsUiPlanPayload', logName: 'api ui_plan failed' },
-  { handler: 'ui_power', stub: 'getSettingsUiPowerPayload', logName: 'api ui_power failed' },
-  { handler: 'ui_prices', stub: 'getSettingsUiPricesPayload', logName: 'api ui_prices failed' },
-  { handler: 'ui_device_diagnostics', stub: 'getSettingsUiDeviceDiagnosticsPayload', logName: 'api ui_device_diagnostics failed' },
-  { handler: 'ui_deferred_objective_history', stub: 'getSettingsUiDeferredObjectivePlanHistoryPayload', logName: 'api ui_deferred_objective_history failed' },
-  { handler: 'ui_recompute_daily_budget', stub: 'recomputeSettingsUiDailyBudget', logName: 'api ui_recompute_daily_budget failed' },
+  { handler: 'ui_bootstrap', stub: 'buildSettingsUiBootstrap' },
+  { handler: 'ui_devices', stub: 'getSettingsUiDevicesPayload' },
+  { handler: 'ui_plan', stub: 'getSettingsUiPlanPayload' },
+  { handler: 'ui_power', stub: 'getSettingsUiPowerPayload' },
+  { handler: 'ui_prices', stub: 'getSettingsUiPricesPayload' },
+  { handler: 'ui_device_diagnostics', stub: 'getSettingsUiDeviceDiagnosticsPayload' },
+  { handler: 'ui_deferred_objective_history', stub: 'getSettingsUiDeferredObjectivePlanHistoryPayload' },
+  { handler: 'ui_recompute_daily_budget', stub: 'recomputeSettingsUiDailyBudget' },
 ];
 
 const stubFor = (name: keyof typeof stubs): ReturnType<typeof vi.fn> => (
@@ -61,7 +64,7 @@ beforeEach(() => {
 });
 
 describe('api handler error logging', () => {
-  it('falls back to console.error when homey.app is not wired (restart window)', async () => {
+  it('falls back to console.error when the structured logger is not wired (restart window)', async () => {
     const cause = new Error('bootstrap blew up before app was ready');
     stubFor('buildSettingsUiBootstrap').mockImplementation(() => { throw cause; });
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -78,25 +81,27 @@ describe('api handler error logging', () => {
     }
   });
 
-  for (const { handler, stub, logName } of cases) {
-    it(`${handler}: rethrows handler errors and logs them via app.error before the client sees a transport failure`, async () => {
-      const homey = buildHomey();
+  for (const { handler, stub } of cases) {
+    it(`${handler}: rethrows handler errors and emits a structured api_handler_failed event before the client sees a transport failure`, async () => {
+      const { homey, logger } = buildHomey();
       const cause = new Error(`${handler} blew up`);
       stubFor(stub).mockImplementation(() => { throw cause; });
 
       const fn = (api as Record<string, Handler>)[handler];
       await expect(fn({ homey })).rejects.toBe(cause);
-      expect(homey.app.error).toHaveBeenCalledExactlyOnceWith(logName, cause);
+      expect(logger.error).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ event: 'api_handler_failed', handler, err: cause }),
+      );
     });
 
     it(`${handler}: passes through successful responses without logging`, async () => {
-      const homey = buildHomey();
+      const { homey, logger } = buildHomey();
       const result = { ok: true, handler };
       stubFor(stub).mockReturnValue(result);
 
       const fn = (api as Record<string, Handler>)[handler];
       await expect(fn({ homey })).resolves.toBe(result);
-      expect(homey.app.error).not.toHaveBeenCalled();
+      expect(logger.error).not.toHaveBeenCalled();
     });
   }
 });
