@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { OPERATING_MODE_SETTING } from '../lib/utils/settingsKeys';
+import { captureLogger } from './utils/loggerCapture';
 
 // The shared `homey` alias mock (test/mocks/homey.ts) only exposes `App`, not a
 // `Device` base class, so the insights device cannot extend it under that
@@ -149,38 +150,47 @@ describe('pels_insights mode-picker listener', () => {
   it('reverts the tile and logs an error when the settings write is rejected', async () => {
     const device = await initDevice('Home');
 
-    device.homey.settings.failOnSet = true;
-    await tapMode(device, 'Away');
+    const capture = captureLogger();
+    try {
+      device.homey.settings.failOnSet = true;
+      await tapMode(device, 'Away');
 
-    // Settings stayed on the previously-committed mode (write was rejected).
-    expect(device.homey.settings.get(OPERATING_MODE_SETTING)).toBe('Home');
-    // The tile was reverted to the runtime's true mode.
-    expect(device.capabilityValues.get('mode_indicator')).toBe('Home');
-    // The failure was surfaced via this.error.
-    expect(device.errorCalls).toHaveLength(1);
-    expect(device.errorCalls[0]?.[0]).toContain('Failed to commit mode selection');
+      // Settings stayed on the previously-committed mode (write was rejected).
+      expect(device.homey.settings.get(OPERATING_MODE_SETTING)).toBe('Home');
+      // The tile was reverted to the runtime's true mode.
+      expect(device.capabilityValues.get('mode_indicator')).toBe('Home');
+      // The failure was surfaced as a structured error event.
+      expect(capture.findEvents('pels_insights_commit_mode_selection_failed')).toHaveLength(1);
+    } finally {
+      capture.restore();
+    }
   });
 
   it('does not revert the tile when a newer selection supersedes a failed write', async () => {
     const device = await initDevice('Home');
 
-    // 'Away' will reject asynchronously; start it but don't await yet.
-    device.homey.settings.asyncFailValue = 'Away';
-    const failingTap = tapMode(device, 'Away');
+    const capture = captureLogger();
+    try {
+      // 'Away' will reject asynchronously; start it but don't await yet.
+      device.homey.settings.asyncFailValue = 'Away';
+      const failingTap = tapMode(device, 'Away');
 
-    // A newer tap lands and succeeds synchronously, bumping the selection seq.
-    await tapMode(device, 'Sleep');
+      // A newer tap lands and succeeds synchronously, bumping the selection seq.
+      await tapMode(device, 'Sleep');
 
-    // Now let the stale 'Away' write settle and run its catch/revert branch.
-    await failingTap;
+      // Now let the stale 'Away' write settle and run its catch/revert branch.
+      await failingTap;
 
-    // The newer selection stands; the stale failure did NOT revert the tile
-    // back to the original committed mode.
-    expect(device.homey.settings.get(OPERATING_MODE_SETTING)).toBe('Sleep');
-    expect(device.capabilityValues.get('mode_indicator')).not.toBe('Home');
-    expect(
-      device.errorCalls.some((c) => String(c[0]).includes('Failed to commit mode selection')),
-    ).toBe(true);
+      // The newer selection stands; the stale failure did NOT revert the tile
+      // back to the original committed mode.
+      expect(device.homey.settings.get(OPERATING_MODE_SETTING)).toBe('Sleep');
+      expect(device.capabilityValues.get('mode_indicator')).not.toBe('Home');
+      expect(
+        capture.findEvents('pels_insights_commit_mode_selection_failed').length,
+      ).toBeGreaterThan(0);
+    } finally {
+      capture.restore();
+    }
   });
 
   it('ignores blank or non-string mode selections without touching settings', async () => {

@@ -24,14 +24,13 @@ const createDeps = (params: { initialState?: unknown; isDebugEnabled?: boolean }
   };
   const debugStructured = vi.fn();
   const structuredInfo = vi.fn();
-  const error = vi.fn();
+  const structuredError = vi.fn();
   const service = new DeviceDiagnosticsService({
     homey: { settings } as never,
     getTimeZone: () => 'Europe/Oslo',
     isDebugEnabled: () => isDebugEnabled,
-    structuredLog: { info: structuredInfo } as never,
+    structuredLog: { info: structuredInfo, error: structuredError } as never,
     debugStructured,
-    error,
   });
   return {
     service,
@@ -39,7 +38,7 @@ const createDeps = (params: { initialState?: unknown; isDebugEnabled?: boolean }
     settings,
     debugStructured,
     structuredInfo,
-    error,
+    structuredError,
   };
 };
 
