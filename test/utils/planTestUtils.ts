@@ -3,22 +3,40 @@ import type {
   PlanInputDevice,
 } from '../../lib/plan/planTypes';
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
-import { resolveEvCommandability } from '../../packages/shared-domain/src/commandableNow';
+import { isEvDevice, resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import { legacyDeviceReason } from './deviceReasonTestUtils.ts';
 
+type MaterializedEvFields = {
+  evBlockReason?: string | null;
+  evSessionInactive?: boolean;
+  evChargerNotResumable?: boolean;
+};
+
 /**
- * Materialize `evCommandability` from a raw `evChargingState` exactly as the
- * production producer (`setup/appInit/toPlanDevice.ts`) does, so EV fixtures can
- * keep their readable `evChargingState: 'plugged_out'` inputs while the plan
- * devices they build carry the producer-resolved decisions the planner reads.
- * The raw `evChargingState` is dropped — the observer owns it, not the planner.
+ * Test convenience: materialize the flat EV plug-state sub-fields from a
+ * fixture's readable `evChargingState: 'plugged_out'` input so the plan devices
+ * it builds carry the producer-resolved decisions the planner reads, and drop
+ * the raw `evChargingState` (the observer owns it, not the planner).
+ *
+ * NOT a full mirror of the producer: `toPlanDevice` attaches the trio to EVERY
+ * device (`null`/`false` for non-EV), whereas this helper omits the fields for
+ * non-EV / unspecified fixtures. That is behaviourally identical for consumers —
+ * the dual-read resolvers treat an absent field and a `false`/`null` value the
+ * same — and keeps non-EV fixtures uncluttered.
  */
-export const withMaterializedEvCommandability = <T extends { deviceClass?: string; controlCapabilityId?: string }>(
+export const withMaterializedEvPlugState = <T extends { deviceClass?: string; controlCapabilityId?: string }>(
   overrides: T & { evChargingState?: string },
-): Omit<T, 'evChargingState'> & { evCommandability?: ReturnType<typeof resolveEvCommandability> } => {
+): Omit<T, 'evChargingState'> & MaterializedEvFields => {
   const { evChargingState, ...rest } = overrides;
   if (evChargingState === undefined && !('evChargingState' in overrides)) return rest;
-  return { ...rest, evCommandability: resolveEvCommandability({ ...rest, evChargingState }) };
+  if (!isEvDevice(rest)) return rest;
+  const commandable = resolveCommandableNow({ dev: { ...rest, evChargingState } });
+  const evFields: MaterializedEvFields = {
+    evBlockReason: commandable.evBlockReason,
+    evSessionInactive: commandable.evSessionInactive,
+    evChargerNotResumable: commandable.evChargerNotResumable,
+  };
+  return { ...rest, ...evFields };
 };
 
 export const steppedProfile: SteppedLoadProfile = {
@@ -44,7 +62,7 @@ DevicePlanDevice => {
     currentTarget: null,
     controlCapabilityId: 'onoff',
     reason: legacyDeviceReason('keep')!,
-    ...withMaterializedEvCommandability(rest),
+    ...withMaterializedEvPlugState(rest),
     ...(reason !== undefined
       ? { reason: typeof reason === 'string' ? legacyDeviceReason(reason)! : reason }
       : {}),
@@ -60,7 +78,7 @@ export const buildPlanInputDevice = (
   binaryControl: { on: true },
   controllable: true,
   controlCapabilityId: 'onoff',
-  ...withMaterializedEvCommandability(overrides),
+  ...withMaterializedEvPlugState(overrides),
 });
 
 export const steppedPlanDevice = (overrides: Partial<DevicePlanDevice> = {}): DevicePlanDevice => {

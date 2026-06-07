@@ -20,7 +20,6 @@ import type {
   DeviceControlModel,
   DeviceStateOfChargeSnapshot,
   EvBoostConfig,
-  EvCommandabilityResolution,
   SteppedLoadProfile,
   TargetCapabilitySnapshot,
   TargetDeviceSnapshot,
@@ -97,7 +96,8 @@ type ObservationFreshness = {
 export type EvBoostResolveInput = SteppedLoadIdentity & ControllableFlags & ObservationFreshness & {
   deviceClass?: string;
   controlCapabilityId?: BinaryControlCapabilityId;
-  evCommandability?: EvCommandabilityResolution;
+  evSessionInactive?: boolean;
+  evChargerNotResumable?: boolean;
   forceBoostActive?: boolean;
   evBoost?: EvBoostConfig;
   stateOfCharge?: DeviceStateOfChargeSnapshot;
@@ -124,7 +124,7 @@ export function resolveEvBoostActive(params: {
   if (dev.controllable === false || dev.managed === false || dev.available === false) return false;
   // Block boost for every plug-state PELS cannot drive: unplugged / discharging
   // (no creditable session) AND `plugged_in` (connected but NOT resumable).
-  // Reads the producer-resolved `evCommandability`; the settings-UI boost panel
+  // Reads the producer-resolved flat EV plug-state bits; the settings-UI boost panel
   // renders the matching reason STRING (`resolveEvBoostBlockReason`) off the same
   // plug-state set, so the runtime never forces boost the UI says won't activate.
   if (isEvBoostBlockedByPlugState(dev)) return false;
@@ -314,9 +314,9 @@ export function isCanSetControl(dev: CanSetControlConsumerInput): boolean {
  */
 export function isEvPhysicallyUnplugged(dev: CommandableNowResolveInput): boolean {
   // Dual-read via the device-shaped resolver: plan-device callers carry the
-  // producer-resolved `evCommandability` (raw `evChargingState` is gone from the
-  // planner types), snapshot callers carry the raw string. Reading the raw field
-  // directly here would silently no-op on plan devices.
+  // producer-resolved flat `evSessionInactive` bit (raw `evChargingState` is gone
+  // from the planner types), snapshot callers carry the raw string. Reading the raw
+  // field directly here would silently no-op on plan devices.
   return isEvDevice(dev) && isEvSessionInactiveForDevice(dev);
 }
 

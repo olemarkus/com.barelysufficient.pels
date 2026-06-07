@@ -27,7 +27,7 @@ export function createPlanService(ctx: AppContext): PlanService {
     getSettleDevices: () => ctx.latestTargetSnapshot,
     // EV charging state for the settings-UI read model comes from the observer
     // (its canonical owner), not the plan device — the planner carries only the
-    // resolved `evCommandability`, not the raw observed plug-state. NB: do NOT
+    // resolved flat EV plug-state sub-fields, not the raw observed plug-state. NB: do NOT
     // fall back to `ctx.latestTargetSnapshot` here — that getter re-runs
     // `getSnapshot()` + full re-decoration on every access, so a per-device lookup
     // mid-serialization is O(n²) and re-entrant-unsafe (it breaks the SDK-boundary

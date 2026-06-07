@@ -4,7 +4,6 @@ import type {
   DeviceControlModel,
   DeviceStateOfChargeSnapshot,
   EvBoostConfig,
-  EvCommandabilityResolution,
   RestorePowerSource,
   SteppedLoadCommandStatus,
   SteppedLoadProfile,
@@ -54,16 +53,17 @@ type NonSteppedPlanInputKind = {
  * (`lib/plan/planEvDevice.ts`) adds onto whichever stepped variant the device
  * is. The fields are OMITTED from `PlanInputDeviceBase`, so an un-narrowed read
  * is a hard compile error; every field is optional because the producer does
- * not guarantee any of them (`evCommandability` is absent on non-EV devices;
- * `evBoost`/`stateOfCharge` only when configured/reported). The plan-input side
- * has no `evBoostActive` (resolved only on the output `DevicePlanDevice`).
+ * not guarantee any of them (`evBoost`/`stateOfCharge` only when
+ * configured/reported). The plan-input side has no `evBoostActive` (resolved
+ * only on the output `DevicePlanDevice`).
  *
- * The raw observed `evChargingState` is NOT carried here: the observer owns it
- * (`ObservedDeviceState`), and the producer resolves it once into the flat
- * `evCommandability` decisions the planner consumes.
+ * The EV plug-state sub-classification (`evBlockReason` / `evSessionInactive` /
+ * `evChargerNotResumable`) is NOT here: it is materialized flat on the base
+ * alongside `commandableNow` (see `PlanInputDeviceBase`). The raw observed
+ * `evChargingState` is not carried at all — the observer owns it
+ * (`ObservedDeviceState`).
  */
 export type EvPlanInputKind = {
-  evCommandability?: EvCommandabilityResolution;
   evBoost?: EvBoostConfig;
   stateOfCharge?: DeviceStateOfChargeSnapshot;
 };
@@ -106,6 +106,17 @@ export type PlanInputDeviceBase = {
   commandableNow?: boolean;
   /** Opaque diagnostic string; UI / diagnostics consumers only. */
   commandableNowReason?: string | null;
+  /**
+   * Producer-resolved EV plug-state sub-classification, materialized flat
+   * alongside `commandableNow` from the observed `evChargingState` (the observer
+   * owns the raw plug-state; the planner carries only the resolved decisions).
+   * Both/all are absent for non-EV devices; consumers read them through the
+   * shared `resolveEvBlockReasonForDevice` / `isEvSessionInactiveForDevice` /
+   * `isEvChargerNotResumableForDevice` dual-read resolvers.
+   */
+  evBlockReason?: string | null;
+  evSessionInactive?: boolean;
+  evChargerNotResumable?: boolean;
   /**
    * Producer-resolved sibling bit (chunk 6 of the planner-detype refactor):
    * true when the device's binary control capability can be written this
@@ -156,9 +167,11 @@ export type PlanInputDeviceBase = {
   // state. Absence is equivalent to the old fabricated `currentOn: true` for non-binary devices.
   binaryControl?: { on: boolean };
   currentState?: string;
-  // EV fields (`evCommandability`, `evBoost`, `stateOfCharge`) are split off onto
-  // the orthogonal `EvPlanInputKind` cluster; reach them through the
-  // `isEvPlanDevice` guard (`lib/plan/planEvDevice.ts`).
+  // EV fields (`evBoost`, `stateOfCharge`) are split off onto the orthogonal
+  // `EvPlanInputKind` cluster; reach them through the `isEvPlanDevice` guard
+  // (`lib/plan/planEvDevice.ts`). The flat EV plug-state sub-fields
+  // (`evBlockReason` / `evSessionInactive` / `evChargerNotResumable`) live on the
+  // base alongside `commandableNow`.
   powerKw?: number;
   expectedPowerKw?: number;
   planningPowerKw?: number;

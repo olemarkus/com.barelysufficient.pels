@@ -11,7 +11,6 @@ import type {
   DeviceControlAdapterSnapshot,
   DeviceStateOfChargeSnapshot,
   EvBoostConfig,
-  EvCommandabilityResolution,
   PlannedDeviceState,
   RestorePowerSource,
   SteppedLoadCommandStatus,
@@ -104,21 +103,22 @@ export type NonSteppedLoadKind = {
  * `Stepped|NonStepped`; it is an intersection the `isEvPlanDevice` type-guard
  * adds back on top of whichever stepped variant the device already is. The EV
  * fields are OMITTED from `DevicePlanDeviceBase`, so neither stepped nor
- * non-stepped variants expose them un-narrowed — a `device.evCommandability` /
- * `.stateOfCharge` / `.evBoost*` read on a bare `DevicePlanDevice` is a hard
- * compile error (TS2339); consumers must pass through `isEvPlanDevice` (or hold
- * an already-narrowed value) first.
+ * non-stepped variants expose them un-narrowed — a `device.stateOfCharge` /
+ * `.evBoost*` read on a bare `DevicePlanDevice` is a hard compile error
+ * (TS2339); consumers must pass through `isEvPlanDevice` (or hold an
+ * already-narrowed value) first.
  *
- * Every field is OPTIONAL: the producer (`toPlanDevice`) resolves
- * `evCommandability` once from the observed `evChargingState` — the observer
- * owns the raw plug-state (`ObservedDeviceState`), the planner carries only the
- * resolved decisions — and `evBoost` / `evBoostActive` / `stateOfCharge` are
+ * Every field is OPTIONAL: `evBoost` / `evBoostActive` / `stateOfCharge` are
  * only present when boost is configured / the charger reports SoC. So the guard
  * groups the cluster onto the variant WITHOUT asserting presence the producer
  * does not guarantee.
+ *
+ * The flat EV plug-state sub-fields (`evBlockReason` / `evSessionInactive` /
+ * `evChargerNotResumable`) are NOT here: they live on `DevicePlanDeviceBase`
+ * alongside `commandableNow`, materialized once by the producer from the
+ * observed `evChargingState` (the observer owns the raw plug-state).
  */
 export type EvKind = {
-  evCommandability?: EvCommandabilityResolution;
   evBoost?: EvBoostConfig;
   evBoostActive?: boolean;
   stateOfCharge?: DeviceStateOfChargeSnapshot;
@@ -175,12 +175,12 @@ export function withSteppedDiscriminant<TBase extends object>(
  * the orthogonal `EvKind` intersection. Used by `withEvDiscriminant`.
  *
  * `evChargingState` is NOT a planner field (the observer owns the raw plug-state;
- * the planner carries the resolved `evCommandability`). It is listed here only so
- * `withEvDiscriminant` strips any stale copy a `...snapshot`/`...device` spread
- * carried in, and so the regrouped result type omits it from the base.
+ * the planner carries the resolved flat EV sub-fields on the base). It is listed
+ * here only so `withEvDiscriminant` strips any stale copy a `...snapshot`/
+ * `...device` spread carried in, and so the regrouped result type omits it from
+ * the base.
  */
 export type EvDiscriminantProbe = {
-  evCommandability?: EvCommandabilityResolution;
   evChargingState?: string;
   evBoost?: EvBoostConfig;
   evBoostActive?: boolean;
@@ -210,13 +210,12 @@ export function withEvDiscriminant<TBase extends object>(
   loose: TBase & EvDiscriminantProbe,
 ): Omit<TBase, keyof EvDiscriminantProbe> & EvKind {
   const {
-    evCommandability, evBoost, evBoostActive, stateOfCharge,
+    evBoost, evBoostActive, stateOfCharge,
     evChargingState: _evChargingState,
     ...base
   } = loose;
   return {
     ...base,
-    ...(evCommandability !== undefined ? { evCommandability } : {}),
     ...(evBoost !== undefined ? { evBoost } : {}),
     ...(evBoostActive !== undefined ? { evBoostActive } : {}),
     ...(stateOfCharge !== undefined ? { stateOfCharge } : {}),
@@ -253,9 +252,14 @@ type DevicePlanDeviceBase = {
   controlCapabilityId?: BinaryControlCapabilityId;
   controlAdapter?: DeviceControlAdapterSnapshot;
   targetPowerConfig?: TargetPowerSteppedLoadConfig;
-  // EV fields (`evCommandability`, `evBoost`, `evBoostActive`, `stateOfCharge`)
-  // are split off onto the orthogonal `EvKind` cluster; reach them through the
-  // `isEvPlanDevice` guard (`lib/plan/planEvDevice.ts`).
+  // EV cluster fields (`evBoost`, `evBoostActive`, `stateOfCharge`) are split off
+  // onto the orthogonal `EvKind`; reach them through the `isEvPlanDevice` guard
+  // (`lib/plan/planEvDevice.ts`). The flat EV plug-state sub-fields below are on
+  // the base, materialized once by the producer from the observed
+  // `evChargingState` (the observer owns the raw plug-state).
+  evBlockReason?: string | null;
+  evSessionInactive?: boolean;
+  evChargerNotResumable?: boolean;
   // One-shot intent emitted by deferred-objective admission when a cap-off device's smart task
   // transitions out of a plannable status (or the device is in an idle bucket). Binary-controlled
   // devices map to 'binary_restore'/'binary_release' and use the dedicated binary executor path;
