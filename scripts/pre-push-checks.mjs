@@ -17,10 +17,12 @@ const RUNTIME_PATHS = [
   'packages/contracts/src/',
   'packages/shared-domain/src/',
   'widgets/',
+  'vitest.shared.mts',
   'vitest.config.mts',
-  'vitest.config.fast.mts',
-  'vitest.config.dom.mts',
-  'vitest.config.dom.fast.mts',
+  'vitest.config.unit.mts',
+  'vitest.config.integration.mts',
+  'vitest.config.e2e.mts',
+  'vitest.config.tz.mts',
   'vitest-env.d.ts',
 ];
 
@@ -120,6 +122,8 @@ const planCommands = (changedFiles) => {
   if (matchesAnyPath(changedFiles, RUNTIME_PATHS)) {
     commands.push(
       { label: 'test:unit', command: 'npm', args: ['run', 'test:unit'] },
+      { label: 'test:integration', command: 'npm', args: ['run', 'test:integration'] },
+      { label: 'test:e2e:runtime', command: 'npm', args: ['run', 'test:e2e:runtime'] },
       { label: 'test:unit:tz', command: 'npm', args: ['run', 'test:unit:tz'] },
     );
   }

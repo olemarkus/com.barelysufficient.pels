@@ -63,7 +63,7 @@ jobs:
       - name: Build docs site
         run: npm run docs:build
 
-  runtime-tests:
+  unit-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -74,8 +74,64 @@ jobs:
       - name: Setup toolchain and dependencies
         uses: ./.github/actions/setup
 
-      - name: Run runtime Jest suites
-        run: npm run ci:test:runtime
+      - name: Run unit lane
+        run: npm run test:unit
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup toolchain and dependencies
+        uses: ./.github/actions/setup
+
+      - name: Run integration lane
+        run: npm run test:integration
+
+  e2e-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup toolchain and dependencies
+        uses: ./.github/actions/setup
+
+      - name: Run runtime e2e lane
+        run: npm run test:e2e:runtime
+
+  timezone-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup toolchain and dependencies
+        uses: ./.github/actions/setup
+
+      - name: Run timezone regression lane
+        run: npm run test:unit:tz
+
+  coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Setup toolchain and dependencies
+        uses: ./.github/actions/setup
+
+      - name: Run all runtime tiers with coverage (80% gate)
+        run: npm run test:coverage
 
   settings-ui-tests:
     runs-on: ubuntu-latest

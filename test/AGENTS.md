@@ -39,11 +39,12 @@ relative imports — fix them mechanically:
 ## Running a single tier
 
 ```
-npm run test:integration     # test/integration/ only
-npm run test:e2e:runtime     # test/e2e/ only
-npm run test:unit            # whole fast vitest suite (all tiers, until migration completes)
-npm run test:unit:ci         # whole suite + 80% coverage gate
+npm run test:unit            # test/unit/ only (fast)
+npm run test:integration     # test/integration/ only (fast)
+npm run test:e2e:runtime     # test/e2e/ only (fast, 30s timeout)
+npm run test:unit:tz         # test/tz/ timezone lane
+npm run test:coverage        # all tiers in one pass + 80% coverage gate
 ```
 
-Most flat `test/*.test.ts` specs are not yet classified; migrate the one you touch into its
-tier folder as part of your change (see `notes/testing-taxonomy.md` → Migration status).
+Every spec is classified into a tier folder; there are no flat `test/*.test.ts` specs left. A
+new spec lands directly in its tier folder (see `notes/testing-taxonomy.md`).

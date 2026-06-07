@@ -152,43 +152,44 @@ There are **no path aliases** — test files import production code with relativ
 The bare `homey` import and other vitest aliases resolve absolutely (config-relative) and are
 unaffected.
 
-## Commands
+## Commands and lane configs
 
-| Command | Tier / scope | Engine |
-|---|---|---|
-| `npm run test:integration` | `test/integration/` only | vitest (fast, no coverage) |
-| `npm run test:e2e:runtime` | `test/e2e/` only (SDK-boundary) | vitest (fast, no coverage) |
-| `npm run test:e2e:ui` (alias of `test:e2e`) | settings-UI e2e | Playwright |
-| `npm run test:unit` | **all** vitest specs, fast | vitest (fast) — see note |
-| `npm run test:unit:ci` | **all** vitest specs + coverage | vitest (coverage-gated) |
-| `npm run test:unit:tz` | `test/tz/` timezone specs | vitest |
+Every spec lives under `test/unit/`, `test/integration/`, or `test/e2e/` (plus `test/tz/` for
+the timezone harness). Each tier is its own vitest config that runs in **parallel isolated
+forks** — there is no shared `maxWorkers: 1`, and no spec runs at the tail of one giant
+single-fork process. Shared options and aliases live in `vitest.shared.mts`.
 
-The aggregate runners (`test:unit`, `test:unit:ci`) glob `test/**/*.test.ts` recursively, so
-they keep running every spec regardless of which tier folder it sits in — the suite stays
-green throughout the incremental migration below.
+| Command | Config | Tier / scope | Engine |
+|---|---|---|---|
+| `npm run test:unit` | `vitest.config.unit.mts` | `test/unit/` only | vitest (fast, no coverage) |
+| `npm run test:integration` | `vitest.config.integration.mts` | `test/integration/` only | vitest (fast, no coverage) |
+| `npm run test:e2e:runtime` | `vitest.config.e2e.mts` | `test/e2e/` only (SDK-boundary, 30s timeout) | vitest (fast, no coverage) |
+| `npm run test:unit:tz` | `vitest.config.tz.mts` | `test/tz/` + DST price specs, across TZ values | vitest |
+| `npm run test:coverage` (alias `test:unit:ci`) | `vitest.config.mts` | **all** runtime tiers in one pass | vitest (80% coverage gate) |
+| `npm run test:e2e:ui` (alias of `test:e2e`) | — | settings-UI e2e | Playwright |
 
-**End-state intent:** once the migration completes and every spec lives under a tier folder,
-`test:unit` narrows to `test/unit/`, and the three tier commands partition the runtime suite
-cleanly. Until then `test:unit` keeps its legacy "run the whole fast vitest suite" meaning to
-avoid silently skipping un-migrated specs. Do not re-scope it early.
+The three tier commands partition the runtime suite cleanly; the coverage lane globs
+`test/**/*.test.ts` so the 80% gate sees every tier at once. CI runs the tiers as separate
+jobs (`unit-tests`, `integration-tests`, `e2e-tests`, `timezone-tests`, `coverage`).
 
-## Migration status (incremental)
+**jsdom widget specs.** A handful of widget-render specs need a DOM. They are unit-tier and
+self-declare their environment with a `// @vitest-environment jsdom` pragma on line 1, so they
+run in the node-environment unit lane (and the coverage lane) without a separate dom config.
 
-The taxonomy was adopted in waves:
+## Determinism in SDK-boundary e2e
 
-1. Folder scaffolding + the already-named specs (`*.integration.test.ts`, `*.unit.test.ts`,
-   `deferredObjective*E2E`).
-2. The *obviously-classified* specs: app/SDK-harness tests (`createApp`, `mockHomeyInstance`,
-   `setMockDrivers`, `MockDevice`) → `integration/`; specs importing exactly one concrete
-   production file with no SDK mock → `unit/`; `*E2E`-named → `e2e/`.
+SDK-boundary e2e specs drive a chain of **detached** promises (the energy-poll interval is
+fire-and-forget; executor writes are dispatched with `void Promise.resolve(...)`). The number
+of microtask turns between "poll fired" and "`api.put` called" is not fixed, so a single
+trailing `process.nextTick` flush is load-sensitive — it flaked as "Number of calls: 0" under
+full-suite CPU load. Wait for the observable effect instead: `test/utils/asyncDrain.ts` exposes
+`drainUntil(predicate)` / `drainUntilCalledWith(spy, ...args)`, which interleave fake-timer
+advancement and microtask draining until the SDK write lands (or throw — a real regression
+never satisfies the predicate). Use these rather than a fixed flush + immediate assert.
 
-~64 flat `test/*.test.ts` specs remain — the ones whose tier needs per-file judgment
-(multi-subsystem imports without the app harness, SDK-mock-but-no-app, and the
-environment-special `*Browser.test.ts` / `settings-ui.test.ts`, which are pinned by an explicit
-include list in the dom vitest config and need that list updated when moved). They migrate
-opportunistically — when you touch a spec, move it into its tier
-folder (bumping import depth per the rule above, then `knip` to catch type-only-import depth
-errors) as part of the same change. Tracked in `TODO.md`.
+## Classifying a spec
 
-When in doubt about a flat spec's tier, apply the two border-case rules above; if it still
-isn't obvious, it is probably an integration test wearing a unit test's clothes.
+When in doubt about a spec's tier, apply the two border-case rules above; if it still isn't
+obvious, it is probably an integration test wearing a unit test's clothes. Moving a spec into a
+tier folder bumps its import depth (see the rule above) — run `knip` afterward to catch
+type-only-import depth errors, which esbuild silently strips so vitest won't.
