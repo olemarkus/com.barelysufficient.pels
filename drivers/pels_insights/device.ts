@@ -1,7 +1,11 @@
 import Homey from 'homey';
 import { OPERATING_MODE_SETTING } from '../../lib/utils/settingsKeys';
 import { getAllModes } from '../../lib/utils/capacityHelpers';
+import { getLogger } from '../../lib/logging/logger';
+import { normalizeError } from '../../lib/utils/errorUtils';
 import { buildModeEnumValues, type ModeEnumValue } from './modeEnum';
+
+const deviceLogger = getLogger('driver/pels-insights');
 
 type StatusData = {
   headroomKw?: number;
@@ -102,7 +106,11 @@ class PelsInsightsDevice extends Homey.Device {
     try {
       await this.removeCapability(capability);
     } catch (error) {
-      this.error(`Failed to remove deprecated capability ${capability}`, error);
+      deviceLogger.error({
+        event: 'pels_insights_remove_deprecated_capability_failed',
+        capability,
+        err: normalizeError(error),
+      });
     }
   }
 
@@ -115,7 +123,11 @@ class PelsInsightsDevice extends Homey.Device {
         await image.unregister();
       } catch (error) {
         if (isMissingRetiredPlanImageError(error)) continue;
-        this.error(`Failed to remove retired plan image ${imageId} from device`, error);
+        deviceLogger.error({
+          event: 'pels_insights_remove_retired_plan_image_failed',
+          imageId,
+          err: normalizeError(error),
+        });
       }
     }
   }
@@ -221,7 +233,11 @@ class PelsInsightsDevice extends Homey.Device {
       // awaiting a non-thenable.
       await Promise.resolve(this.homey.settings.set(OPERATING_MODE_SETTING, mode));
     } catch (error) {
-      this.error('Failed to commit mode selection', error);
+      deviceLogger.error({
+        event: 'pels_insights_commit_mode_selection_failed',
+        mode,
+        err: normalizeError(error),
+      });
       // Revert the tile to the runtime's true mode so it cannot silently
       // display a mode the controller never adopted — but only if no newer
       // selection has started, so we don't clobber a later successful tap.
@@ -262,7 +278,10 @@ class PelsInsightsDevice extends Homey.Device {
       this.lastAppliedModeOptions = serialized;
     } catch (error) {
       if (this.destroyed) return;
-      this.error('Failed to refresh mode_indicator values', error);
+      deviceLogger.error({
+        event: 'pels_insights_refresh_mode_options_failed',
+        err: normalizeError(error),
+      });
     }
   }
 
@@ -271,7 +290,11 @@ class PelsInsightsDevice extends Homey.Device {
     try {
       await this.setCapabilityValue('mode_indicator', mode);
     } catch (error) {
-      this.error('Failed to update mode_indicator', error);
+      deviceLogger.error({
+        event: 'pels_insights_update_mode_failed',
+        mode,
+        err: normalizeError(error),
+      });
     }
   }
 
@@ -279,7 +302,10 @@ class PelsInsightsDevice extends Homey.Device {
     try {
       await this.setCapabilityValue('pels_shortfall', Boolean(inShortfall));
     } catch (error) {
-      this.error('Failed to update shortfall alarm', error);
+      deviceLogger.error({
+        event: 'pels_insights_update_shortfall_failed',
+        err: normalizeError(error),
+      });
     }
   }
 
@@ -295,7 +321,10 @@ class PelsInsightsDevice extends Homey.Device {
         }
       }
     } catch (error) {
-      this.error('Failed to update status capabilities', error);
+      deviceLogger.error({
+        event: 'pels_insights_update_status_capabilities_failed',
+        err: normalizeError(error),
+      });
     }
   }
 }

@@ -1833,7 +1833,6 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             await initHomeyHttpClient(this.homey);
         } catch (error) {
             const normalizedError = normalizeError(error);
-            this.logger.error('Failed to initialize HTTP client, continuing in degraded mode', normalizedError);
             (this.logger.structuredLog ?? moduleLogger).error({
                 event: 'device_api_http_client_init_failed',
                 reasonCode: 'http_client_init_failed',
@@ -2136,10 +2135,6 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
                 ...(actuationMode ? { mode: actuationMode } : {}),
                 err: normalizedError,
             });
-            this.logger.error(
-                `Failed to trigger stepped-load command for device ${deviceId}`,
-                normalizedError,
-            );
         });
         return { requested: true, transport: 'flow' };
     }
@@ -2188,7 +2183,11 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
                     context: contextInfo,
                 });
             } catch (error) {
-                this.logger.error(`Failed to set ${targetCap} for ${device.name}`, error);
+                (this.logger.structuredLog ?? moduleLogger).error({
+                    event: 'device_target_apply_failed',
+                    deviceId: device.id, deviceName: device.name, capabilityId: targetCap,
+                    targetValue, context: contextInfo, err: normalizeError(error),
+                });
             }
         }
         await this.refreshSnapshot();
