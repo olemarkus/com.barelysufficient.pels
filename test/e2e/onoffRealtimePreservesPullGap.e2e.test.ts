@@ -133,7 +133,7 @@ vi.mock('socket.io-client', () => ({
 
 import { mockHomeyInstance, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
-import { drainUntilCalledWith } from '../utils/asyncDrain';
+import { drainUntil, drainUntilCalledWith } from '../utils/asyncDrain';
 import { CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW } from '../../lib/utils/settingsKeys';
 
 const DEVICE_ID = 'device-a';
@@ -238,7 +238,14 @@ describe('On/off realtime observation across pull gap (SDK-boundary e2e)', () =>
 
     totalW = 10_000;
     await vi.advanceTimersByTimeAsync(10_000);
-    await flushPromises();
+    // Negative assertion: drive the detached poll→plan→execute chain to
+    // quiescence before asserting absence. A fixed flush could assert before a
+    // late write lands, so a "missing onoff is wrongly controllable" regression
+    // could slip past. Drain bounded rounds waiting for any write: a buggy off
+    // write lands within them (and fails the assert); the correct no-write case
+    // exhausts the rounds and drainUntil throws — swallowed so we reach the
+    // assertion with the cycle fully settled.
+    await drainUntil(() => putSpy.mock.calls.length > 0, { rounds: 20 }).catch(() => {});
 
     expect(putSpy).not.toHaveBeenCalledWith(onoffCap(DEVICE_ID), { value: false });
   });
