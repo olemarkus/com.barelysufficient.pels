@@ -10,7 +10,7 @@ import { resolveStarvationSuppressionSemantics } from '../planContract/planDecis
 import type { PlanContext } from './planContext';
 import type { RestorePlanResult } from './restore';
 import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
-import { isEvPlanDevice } from './planEvDevice';
+import { isEvDevice } from '../../packages/shared-domain/src/commandableNow';
 import { getPrimaryTargetCapability } from '../utils/targetCapabilities';
 import { isDeviceObservationTrusted } from '../observer/observationTrust';
 
@@ -64,11 +64,7 @@ export const buildDeviceDiagnosticsObservations = (
 };
 
 const isEvLikeDevice = (device: DevicePlanDevice, inputDevice?: PlanInputDevice): boolean => (
-  device.controlCapabilityId === 'evcharger_charging'
-  || inputDevice?.controlCapabilityId === 'evcharger_charging'
-  || (isEvPlanDevice(device) && typeof device.evChargingState === 'string')
-  || (inputDevice !== undefined && isEvPlanDevice(inputDevice)
-    && typeof inputDevice.evChargingState === 'string')
+  isEvDevice(device) || (inputDevice !== undefined && isEvDevice(inputDevice))
 );
 
 const isFiniteNumber = (value: unknown): value is number => (
