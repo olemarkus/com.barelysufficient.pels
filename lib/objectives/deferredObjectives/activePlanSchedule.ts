@@ -62,7 +62,7 @@ export const buildHoursFromHorizonPlan = (
 // The rate is the BUFFERED per-unit rate (`energyNeededKWh / remainingUnits`,
 // producer-resolved as `kWhPerUnitBuffered`) — the same buffered currency the
 // hour's `plannedKWh` is booked in. Converting buffered planned energy at the
-// mean rate (`kWhPerDegreeC`/`kWhPerPercent`, which is `energyExpectedKWh /
+// mean rate (`kWhPerUnitBanded`, which is `energyExpectedKWh /
 // remainingUnits`) would overshoot the cumulative milestone by the buffer ratio,
 // leaving the final milestone above target and making `isAheadOfHourMilestone`
 // under-fire (the device under-defers). Falls back to the mean rate when the
@@ -72,7 +72,7 @@ const resolveUnitTrajectoryAnchor = (
   diag: DeferredObjectiveDiagnostic,
 ): { anchorUnit: number; ratePerUnit: number } | null => {
   const anchorUnit = diag.currentValue;
-  const meanRatePerUnit = diag.objectiveKind === 'temperature' ? diag.kWhPerDegreeC : diag.kWhPerPercent;
+  const meanRatePerUnit = diag.kWhPerUnitBanded;
   const bufferedRatePerUnit = diag.kWhPerUnitBuffered;
   const ratePerUnit = typeof bufferedRatePerUnit === 'number' && Number.isFinite(bufferedRatePerUnit)
     && bufferedRatePerUnit > 0

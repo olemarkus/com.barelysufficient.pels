@@ -70,8 +70,7 @@ const makeDiag = (
     deadlineAtMs: overrides.deadlineAtMs,
     deadlineLocalTime: '06:00',
     energyNeededKWh: 22.5,
-    kWhPerPercent: null,
-    kWhPerDegreeC: 1.5,
+    kWhPerUnitBanded: 1.5,
     rateConfidence: 'high',
     kwhPerUnitSource: 'learned',
     horizonBucketCount: 6,
@@ -2050,15 +2049,15 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       });
       const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
       const deadlineAtMs = 3 * HOUR_MS;
-      // `kWhPerDegreeC: null` → cold start before any profile (learned or
+      // `kWhPerUnitBanded: null` → cold start before any profile (learned or
       // bootstrap) resolved. We can still anchor the opening progress, but
       // there's nothing to multiply against, so no contribution lands.
       recorder.observe(
-        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50, kWhPerDegreeC: null })],
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50, kWhPerUnitBanded: null })],
         HOUR_MS + 5 * 60_000,
       );
       recorder.observe(
-        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 53, kWhPerDegreeC: null })],
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 53, kWhPerUnitBanded: null })],
         2 * HOUR_MS + 5 * 60_000,
       );
       recorder.observe([], deadlineAtMs);

@@ -247,17 +247,18 @@ type BaseDeferredObjectiveDiagnostic = {
   // on the unresolved paths; absent or equal to `energyNeededKWh` means there is
   // no buffer to show (cold-start, bootstrap, steady device).
   energyExpectedKWh?: number | null;
-  kWhPerPercent: number | null;
-  kWhPerDegreeC: number | null;
+  // Banded remaining-interval display average (kWh/unit), kind-agnostic. Shifts
+  // as a task crosses bands. Sourced from `profileEnergy.kWhPerUnit`.
+  kWhPerUnitBanded: number | null;
   // Buffered per-unit rate (`energyNeededKWh / remainingUnits`), kind-agnostic.
-  // The buffered-currency analog of the mean `kWhPerPercent`/`kWhPerDegreeC`.
+  // The buffered-currency analog of the mean `kWhPerUnitBanded`.
   // Consumed by the unit-milestone stamp so the cumulative milestone lands on
   // target instead of overshooting by the buffer ratio. Optional/back-compatible:
   // absent on legacy diagnostics, where the stamp falls back to the mean rate.
   kWhPerUnitBuffered?: number | null;
   // Sample-driven global learned mean (kWh/unit), kind-agnostic. Distinct from
-  // the kind-split `kWhPerPercent`/`kWhPerDegreeC`, which are the banded
-  // remaining-interval display average and so shift as a task crosses bands.
+  // `kWhPerUnitBanded`, which is the banded remaining-interval display average
+  // and so shifts as a task crosses bands.
   // This only moves on genuine rate drift, so it is the stable statistic the
   // active-plan recorder's `measured_deviation` detector compares. Null on
   // bootstrap / unresolved. See `profileEnergyResolution.kWhPerUnitMean`.
@@ -598,8 +599,7 @@ export const buildDeferredObjectiveDiagnostic = (params: {
     currentPercent: null,
     currentTemperatureC: null,
     energyNeededKWh: null,
-    kWhPerPercent: null,
-    kWhPerDegreeC: null,
+    kWhPerUnitBanded: null,
     rateConfidence: null,
     displayConfidence: null,
     kwhPerUnitSource: null,
@@ -908,8 +908,7 @@ const buildDiagnosticBase = (params: {
   currentPercent: number | null;
   currentTemperatureC: number | null;
   energyNeededKWh: number | null;
-  kWhPerPercent: number | null;
-  kWhPerDegreeC: number | null;
+  kWhPerUnitBanded: number | null;
   rateConfidence: string | null;
   displayConfidence: 'low' | 'medium' | 'high' | null;
   kwhPerUnitSource: DeferredObjectiveKwhPerUnitSource | null;
@@ -939,8 +938,7 @@ const buildDiagnosticBase = (params: {
     deadlineAtMs,
     deadlineLocalTime: deadlineAtMs !== null ? formatDeadlineLocalTime(deadlineAtMs, params.timeZone) : '',
     energyNeededKWh: params.energyNeededKWh,
-    kWhPerPercent: params.kWhPerPercent,
-    kWhPerDegreeC: params.kWhPerDegreeC,
+    kWhPerUnitBanded: params.kWhPerUnitBanded,
     // Base default; resolved diagnostics override via `buildKnownEnergyFields`.
     kwhPerUnitLearnedMean: null,
     rateConfidence: params.rateConfidence,
@@ -1004,13 +1002,12 @@ const buildKnownEnergyFields = (params: {
   profileEnergy: Extract<DeferredObjectiveEnergyResolution, { reasonCode: null }>;
 }): Pick<
   DeferredObjectiveDiagnostic,
-  'energyNeededKWh' | 'energyExpectedKWh' | 'kWhPerPercent' | 'kWhPerDegreeC'
+  'energyNeededKWh' | 'energyExpectedKWh' | 'kWhPerUnitBanded'
   | 'kWhPerUnitBuffered' | 'kwhPerUnitLearnedMean' | 'rateConfidence' | 'displayConfidence' | 'kwhPerUnitSource'
 > => ({
   energyNeededKWh: params.profileEnergy.energyNeededKWh,
   energyExpectedKWh: params.profileEnergy.energyExpectedKWh,
-  kWhPerPercent: params.objective.kind === 'ev_soc' ? params.profileEnergy.kWhPerUnit : null,
-  kWhPerDegreeC: params.objective.kind === 'temperature' ? params.profileEnergy.kWhPerUnit : null,
+  kWhPerUnitBanded: params.profileEnergy.kWhPerUnit,
   kWhPerUnitBuffered: params.profileEnergy.kWhPerUnitBuffered,
   kwhPerUnitLearnedMean: params.profileEnergy.kWhPerUnitMean,
   rateConfidence: params.profileEnergy.rateConfidence,

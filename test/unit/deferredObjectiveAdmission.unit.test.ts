@@ -32,8 +32,7 @@ const buildDiagnostic = (overrides: Partial<DeferredObjectiveDiagnostic> & { dev
   deadlineAtMs: Date.UTC(2026, 4, 11, 7, 0, 0),
   deadlineLocalTime: '07:00',
   energyNeededKWh: 1.5,
-  kWhPerPercent: null,
-  kWhPerDegreeC: 0.5,
+  kWhPerUnitBanded: 0.5,
   rateConfidence: 'high',
   kwhPerUnitSource: 'learned',
   horizonBucketCount: 6,
@@ -84,8 +83,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       objectiveKind: 'ev_soc',
       targetPercent: 80,
       currentPercent: 40,
-      kWhPerPercent: 1,
-      kWhPerDegreeC: null,
+      kWhPerUnitBanded: 1,
       horizonPlan: buildHorizonPlan({ kind: 'ev_soc', objectiveId: 'ev1:ev_soc' }),
     });
     const device = buildEvDevice({ id: 'ev1', controlModel: 'binary_power' });
@@ -117,8 +115,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       objectiveKind: 'ev_soc',
       targetPercent: 80,
       currentPercent: 40,
-      kWhPerPercent: 1,
-      kWhPerDegreeC: null,
+      kWhPerUnitBanded: 1,
       horizonPlan: buildHorizonPlan({
         kind: 'ev_soc',
         objectiveId: 'ev1:ev_soc',
@@ -425,8 +422,7 @@ describe('buildDeferredTargetOverrides', () => {
       objectiveKind: 'ev_soc',
       targetPercent: 80,
       currentPercent: 40,
-      kWhPerPercent: 1,
-      kWhPerDegreeC: null,
+      kWhPerUnitBanded: 1,
       horizonPlan: buildHorizonPlan({ kind: 'ev_soc', objectiveId: 'ev1:ev_soc' }),
     });
     expect(buildDeferredTargetOverrides([diagnostic])).toEqual({});

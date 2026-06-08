@@ -59,8 +59,13 @@ export const buildDeferredObjectiveDebugPayload = (
   // band-residual signal the Cause #1 Step 2/3 validation gate needs to confirm
   // mature devices stop planning off a permanently-wide buffer.
   energyExpectedKWh: diagnostic.energyExpectedKWh ?? null,
-  kWhPerPercent: diagnostic.kWhPerPercent,
-  kWhPerDegreeC: diagnostic.kWhPerDegreeC,
+  // Re-derive the documented per-kind log fields from the now-unified in-memory
+  // `kWhPerUnitBanded`, mirroring how the per-kind target/current fields above
+  // are emitted, so existing structured-log analysis / dashboards (and the
+  // `deferred-load-objectives` notes that list `kWhPerPercent`) keep working.
+  kWhPerPercent: diagnostic.objectiveKind === 'ev_soc' ? diagnostic.kWhPerUnitBanded : null,
+  kWhPerDegreeC: diagnostic.objectiveKind === 'temperature' ? diagnostic.kWhPerUnitBanded : null,
+  kWhPerUnitBanded: diagnostic.kWhPerUnitBanded,
   rateConfidence: diagnostic.rateConfidence,
   // Band-aware confidence the smart-task chip reads. Distinct from
   // `rateConfidence` (the global per-sample CV stat, pinned `low` on thermal

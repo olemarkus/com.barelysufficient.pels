@@ -96,7 +96,7 @@ The disarm event carries `disarmReason: 'recovered' | 'safety_timeout' | 'no_pro
 
 ## What `kWhPerUnit` means in plan provenance now
 
-Before this change, `kwhPerUnitProvenance.kWhPerUnit` on an active plan recorded the device's learned global mean — a slow-changing rate independent of the specific plan. With banded estimation, `resolveProfileEnergy` returns `effectiveKwhPerUnit = energyNeededKWh / remainingUnits`, integrated across the bands between the current value and the target. The diagnostic surface (`kWhPerPercent` / `kWhPerDegreeC`) and the active plan recorder both store that effective value.
+Before this change, `kwhPerUnitProvenance.kWhPerUnit` on an active plan recorded the device's learned global mean — a slow-changing rate independent of the specific plan. With banded estimation, `resolveProfileEnergy` returns `effectiveKwhPerUnit = energyNeededKWh / remainingUnits`, integrated across the bands between the current value and the target. The diagnostic surface (the unit-agnostic `kWhPerUnitBanded`, emitted to structured logs as the legacy per-kind `kWhPerPercent` / `kWhPerDegreeC` for back-compat) and the active plan recorder both store that effective value.
 
 Consequence: **two plans for the same device starting from different SoCs or temperatures can record different `kWhPerUnit` even when nothing in the model has changed.** This is intentional — the recorded value reflects what was actually used to size this plan. Operators reading provenance should treat it as "rate used for this plan," not "the device's learned rate."
 

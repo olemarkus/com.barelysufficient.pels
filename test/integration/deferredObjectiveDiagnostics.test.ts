@@ -861,7 +861,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       currentPercent: 40,
       targetPercent: 60,
       energyNeededKWh: 4,
-      kWhPerPercent: 0.2,
+      kWhPerUnitBanded: 0.2,
       expectedStepId: 'low',
       horizonBucketCount: 5,
     });
@@ -1536,7 +1536,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       currentTemperatureC: 55,
       targetTemperatureC: 65,
       energyNeededKWh: 8,
-      kWhPerDegreeC: 0.8,
+      kWhPerUnitBanded: 0.8,
       expectedStepId: 'heat',
       horizonBucketCount: 4,
     });
@@ -1576,7 +1576,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const buffered = run(0.48); // σ = 0.4
     expect(buffered?.energyNeededKWh).toBeCloseTo(10); // 10 × (0.8 + 1·0.2)
     // Displayed learned rate is the measured mean, NOT the buffered rate.
-    expect(buffered?.kWhPerDegreeC).toBeCloseTo(0.8);
+    expect(buffered?.kWhPerUnitBanded).toBeCloseTo(0.8);
 
     // Zero variance reproduces the un-buffered baseline (8 kWh).
     expect(run(0)?.energyNeededKWh).toBeCloseTo(8);
@@ -1611,7 +1611,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       priceOptimizationEnabled: true,
     });
     expect(diagnostic?.energyNeededKWh).toBeCloseTo(6);
-    expect(diagnostic?.kWhPerPercent).toBeCloseTo(0.2);
+    expect(diagnostic?.kWhPerUnitBanded).toBeCloseTo(0.2);
   });
 
   it('refuses to promise more energy than the per-bucket budget headroom allows', () => {
@@ -1860,7 +1860,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       reasonCode: 'objective_missing_price_horizon',
       currentPercent: 40,
       energyNeededKWh: 4,
-      kWhPerPercent: 0.2,
+      kWhPerUnitBanded: 0.2,
       deadlineAtMs: Date.UTC(2026, 0, 2, 16, 0, 0),
     });
   });
@@ -2163,7 +2163,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       // status is no longer `unknown` and the source is `bootstrap`.
       status: 'on_track',
       energyNeededKWh: 2,
-      kWhPerPercent: 1,
+      kWhPerUnitBanded: 1,
       kwhPerUnitSource: 'bootstrap',
       rateConfidence: null,
     });
@@ -2181,7 +2181,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
 
     expect(diagnostic).toMatchObject({
-      kWhPerPercent: 0.2,
+      kWhPerUnitBanded: 0.2,
       kwhPerUnitSource: 'learned',
       rateConfidence: 'medium',
     });
@@ -2356,7 +2356,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // Energy needed = 3 °C × 0.3004 kWh/°C ≈ 0.9012 kWh (no σ, no buffer
     // contribution).
     expect(diagnostic!.energyNeededKWh).toBeCloseTo(0.9012, 3);
-    expect(diagnostic!.kWhPerDegreeC).toBeCloseTo(0.3004, 3);
+    expect(diagnostic!.kWhPerUnitBanded).toBeCloseTo(0.3004, 3);
     // Horizon plan was built — the fallback step plumbed through to the
     // bucket allocator. `expectedStepId` is the synthetic `charge`
     // step the producer emitted; consumers that previously short-circuited
