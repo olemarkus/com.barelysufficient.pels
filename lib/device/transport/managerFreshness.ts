@@ -1,5 +1,6 @@
-import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
+import type { EvChargingState, TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
 import {
+  isEvChargingState,
   resolveEvChargingStateBinaryEvidence,
   resolveEvCurrentOn,
 } from '../managerControl';
@@ -49,14 +50,18 @@ export function applyFreshnessOnlyCapabilityUpdate(params: {
     };
   }
   if (capabilityId === 'evcharger_charging_state' && typeof value === 'string') {
-    return applyEvChargingStateUpdate(snapshot, value);
+    // An explicit out-of-enum value is new information (the charger left a known
+    // state), so normalise it to `undefined` and APPLY the transition — do not
+    // drop the update, which would strand the stale (possibly commandable)
+    // prior state. A non-string value falls through and is ignored.
+    return applyEvChargingStateUpdate(snapshot, isEvChargingState(value) ? value : undefined);
   }
   return { changed: false, normalizedValue: undefined };
 }
 
 function applyEvChargingStateUpdate(
   snapshot: TargetDeviceSnapshot,
-  value: string,
+  value: EvChargingState | undefined,
 ): FreshnessOnlyCapabilityUpdateResult {
   const mutableSnapshot = snapshot;
   const observedAtMs = Date.now();
@@ -73,12 +78,16 @@ function applyEvChargingStateUpdate(
     evchargerCharging: mutableSnapshot.evCharging,
   });
   mutableSnapshot.binaryControl = { on: nextCurrentOn };
-  updateStateOfChargeSessionBoundary({
-    snapshot: mutableSnapshot,
-    evChargingState: value,
-    observedAtMs,
-    nowMs: observedAtMs,
-  });
+  // Session-boundary tracking is only meaningful for a known plug-state; a
+  // normalised-unknown (`undefined`) transition has no session semantics.
+  if (value !== undefined) {
+    updateStateOfChargeSessionBoundary({
+      snapshot: mutableSnapshot,
+      evChargingState: value,
+      observedAtMs,
+      nowMs: observedAtMs,
+    });
+  }
   return {
     changed: true,
     normalizedValue: value,
@@ -100,7 +109,7 @@ function buildEvChargingStateReconcileChange(
 }
 
 function buildEvChargingStateBinaryControlObservation(
-  value: string,
+  value: EvChargingState | undefined,
   observedAtMs: number,
 ): TargetDeviceSnapshot['binaryControlObservation'] {
   const observedValue = resolveEvChargingStateBinaryEvidence(value);

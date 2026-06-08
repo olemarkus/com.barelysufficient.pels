@@ -8,6 +8,7 @@ import type { HandleRealtimeDeviceUpdateResult } from './managerRealtimeHandlers
 import type { DeviceFetchSource } from './managerFetch';
 import { getDeviceId } from './managerHelpers';
 import {
+    isEvChargingState,
     resolveEvChargingStateBinaryEvidence,
     resolveEvCurrentOn,
 } from '../managerControl';
@@ -772,15 +773,20 @@ function applyEvChargingStateObservation(
     observation: CapabilityObservation,
 ): boolean {
     const snapshot = nextSnapshot;
-    if (typeof observation.value !== 'string' || snapshot.evChargingState === observation.value) return false;
-    snapshot.evChargingState = observation.value;
+    if (typeof observation.value !== 'string') return false;
+    // An out-of-enum value is a real transition out of a known state, so
+    // normalise it to `undefined` and apply it — never strand the stale (and
+    // possibly commandable) prior state. A non-string value (above) is ignored.
+    const normalized = isEvChargingState(observation.value) ? observation.value : undefined;
+    if (snapshot.evChargingState === normalized) return false;
+    snapshot.evChargingState = normalized;
     snapshot.binaryControl = {
         on: resolveEvCurrentOn({
             evChargingState: snapshot.evChargingState,
             evchargerCharging: snapshot.evCharging,
         }),
     };
-    const binaryEvidence = resolveEvChargingStateBinaryEvidence(observation.value);
+    const binaryEvidence = resolveEvChargingStateBinaryEvidence(normalized);
     if (binaryEvidence !== undefined && observation.source !== 'local_write') {
         snapshot.binaryControlObservation = {
             valid: true,
@@ -793,12 +799,16 @@ function applyEvChargingStateObservation(
     } else {
         delete snapshot.binaryControlObservation;
     }
-    updateStateOfChargeSessionBoundary({
-        snapshot,
-        evChargingState: observation.value,
-        observedAtMs: observation.observedAt,
-        nowMs: observation.observedAt,
-    });
+    // Session-boundary tracking needs a known plug-state; a normalised-unknown
+    // (`undefined`) transition has no session semantics.
+    if (normalized !== undefined) {
+        updateStateOfChargeSessionBoundary({
+            snapshot,
+            evChargingState: normalized,
+            observedAtMs: observation.observedAt,
+            nowMs: observation.observedAt,
+        });
+    }
     snapshot.lastFreshDataMs = Math.max(snapshot.lastFreshDataMs ?? 0, observation.observedAt);
     snapshot.lastUpdated = snapshot.lastFreshDataMs;
     return true;

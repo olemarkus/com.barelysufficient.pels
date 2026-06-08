@@ -3,7 +3,11 @@ import type {
   FlowReportedCapabilitiesForDevice,
   FlowReportedCapabilityEntry,
 } from './flowReportedCapabilities';
-import type { DeviceStateOfChargeSnapshot, TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
+import type {
+  DeviceStateOfChargeSnapshot,
+  EvChargingState,
+  TargetDeviceSnapshot,
+} from '../../../packages/contracts/src/types';
 
 export const EV_SOC_CAPABILITY_ID = 'measure_battery' as const;
 export const EV_SOC_NATIVE_CAPABILITY_IDS = [
@@ -124,7 +128,7 @@ export function updateStateOfChargeFromRealtimeCapability(params: {
 
 export function updateStateOfChargeSessionBoundary(params: {
   snapshot: TargetDeviceSnapshot;
-  evChargingState: string;
+  evChargingState: EvChargingState;
   observedAtMs: number;
   nowMs: number;
 }): boolean {
@@ -188,7 +192,7 @@ function resolveRealtimeSessionStartedAtMs(
 
 function shouldStartNewSession(
   previous: DeviceStateOfChargeSnapshot,
-  evChargingState: string,
+  evChargingState: EvChargingState,
 ): boolean {
   if (!isConnectedEvState(evChargingState)) return false;
   if (previous.sessionStartedAtMs === undefined) return true;
