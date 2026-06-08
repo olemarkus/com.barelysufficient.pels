@@ -64,9 +64,9 @@ type PowerUsageEntry = UsageDayEntry;
 
 type HourlyPatternView = 'all' | 'weekday' | 'weekend';
 const MIN_RELIABLE_SAMPLES_PER_HOUR = 2;
-// Daily history always shows the last 7 days. The tracker still keeps a 14-day
-// data cap (week/month totals depend on it); only the rendered slice is fixed.
-const DAILY_HISTORY_DAYS = 7;
+// Daily history shows the last 14 days — the full window the tracker retains
+// (week/month totals depend on the same cap); the rendered slice matches it.
+const DAILY_HISTORY_DAYS = 14;
 const ZERO_KWH_EPSILON = 1e-9;
 
 let powerUsageWeekOffset = 0;
