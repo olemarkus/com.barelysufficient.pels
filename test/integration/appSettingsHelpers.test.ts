@@ -213,6 +213,28 @@ describe('initSettingsHandlerForApp', () => {
 });
 
 describe('buildCapacitySettingsSnapshot', () => {
+  it('resolves a loaded set of devices to unique, deterministic priority per mode', () => {
+    // Persisted payload is intentionally corrupt: duplicate priorities (a/b
+    // both 5), a gap (jumps to 9), and an unordered key sequence.
+    const settings = {
+      get: vi.fn((key: string) => (
+        key === 'capacity_priorities'
+          ? { Home: { b: 5, a: 5, c: 9, d: 1 } }
+          : undefined
+      )),
+    };
+
+    const next = buildCapacitySettingsSnapshot({
+      settings: settings as never,
+      current: buildCapacitySnapshot(),
+    });
+
+    // Strict 1..N order; ties (a/b) break by deviceId; gaps closed.
+    expect(next.capacityPriorities).toEqual({ Home: { d: 1, a: 2, b: 3, c: 4 } });
+    const ranks = Object.values(next.capacityPriorities.Home);
+    expect(new Set(ranks).size).toBe(ranks.length);
+  });
+
   it('loads normalized device driver overrides from settings', () => {
     const settings = {
       get: vi.fn((key: string) => (
