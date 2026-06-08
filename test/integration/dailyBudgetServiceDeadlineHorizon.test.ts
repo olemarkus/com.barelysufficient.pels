@@ -8,6 +8,7 @@ import {
 } from '../../lib/objectives/deferredObjectives/policyHorizon';
 import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
 import { createCombinedPricesReader } from '../../setup/priceCombinedPricesAdapter';
+import { createDailyBudgetSettingsStore } from '../../setup/dailyBudgetSettingsAdapter';
 import {
   COMBINED_PRICES,
   DAILY_BUDGET_ENABLED,
@@ -79,6 +80,7 @@ const buildService = (initialSettings: SettingsStore): {
     getPriceOptimizationEnabled: () => true,
     getCapacitySettings: () => ({ limitKw: 10, marginKw: 2 }),
     combinedPricesReader: createCombinedPricesReader({ homey, requestRefetch: () => undefined }),
+    dailyBudgetSettingsStore: createDailyBudgetSettingsStore(homey),
   });
   service.loadSettings();
   return {
