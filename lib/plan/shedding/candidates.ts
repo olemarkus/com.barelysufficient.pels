@@ -18,6 +18,7 @@ import {
   isSteppedLoadOffStep,
 } from '../../utils/deviceControlProfiles';
 import { isNonSteppedDeviceRecovering } from '../planShedRecovery';
+import { compareDeviceIdAsc } from '../planSort';
 import { isPendingBinaryCommandActive } from '../planObservationPolicy';
 import { isCapacityBreached } from '../planRemainingSheddableLoad';
 import { normalizeTargetCapabilityValue } from '../../utils/targetCapabilities';
@@ -430,7 +431,11 @@ function sortCandidates(a: ShedCandidate, b: ShedCandidate): number {
   if (a.recentlyRestored !== b.recentlyRestored) {
     return Number(a.recentlyRestored) - Number(b.recentlyRestored);
   }
-  return b.effectivePower - a.effectivePower;
+  if (a.effectivePower !== b.effectivePower) return b.effectivePower - a.effectivePower;
+  // Deterministic final tiebreak so the all-default-priority bucket (and any
+  // equal-power ties) resolves identically on shed and restore, independent of
+  // input order. Shared with restore via compareDeviceIdAsc.
+  return compareDeviceIdAsc(a, b);
 }
 
 function resolveSteppedShedTargetStep(params: {
