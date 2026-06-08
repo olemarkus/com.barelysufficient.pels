@@ -48,6 +48,28 @@ type PolicyBucketSource = {
 
 const HOUR_MS = 60 * 60 * 1000;
 
+// Far edge of the AVAILABLE price data, in epoch ms: the end of the last
+// published price hour the producer handed us (`max(entry.startMs) + 1h`).
+// `buildPriceHorizonFromCombined` already windowed the entries to `[nowMs,
+// deadlineAtMs)` and dropped hours with no published price, so this is the real
+// extent of usable Nordpool data for the deadline — NOT re-clamped to the
+// allocator's deadline-trimmed buckets (which saturate at the deadline once a
+// plan is committed). The active-plan recorder uses it as the "prices were valid
+// through" watermark to tell a genuine price-publication advance (`prices_revised`)
+// from an internal schedule reshuffle (`schedule_revised`). Returns `null` when
+// no priced hour is available (empty horizon), so the recorder can carry the
+// previous watermark forward rather than resetting it.
+export const resolvePriceHorizonAvailableUpToMs = (
+  priceHorizon: readonly PriceHorizonEntry[],
+): number | null => {
+  let latestStartMs: number | null = null;
+  for (const entry of priceHorizon) {
+    if (!Number.isFinite(entry.startMs)) continue;
+    if (latestStartMs === null || entry.startMs > latestStartMs) latestStartMs = entry.startMs;
+  }
+  return latestStartMs === null ? null : latestStartMs + HOUR_MS;
+};
+
 export const buildDeferredObjectivePolicyHorizon = (params: {
   nowMs: number;
   deadlineAtMs: number;

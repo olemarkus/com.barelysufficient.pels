@@ -17,6 +17,7 @@ import { resolveFloorShortfallCause } from './floorShortfallCause';
 import {
   hasPriceHorizonAdvanced,
   resolveHorizonPriceWatermark,
+  resolvePersistedPricesUpTo,
   resolveReplanReason,
 } from './replanReason';
 import { getLogger } from '../../logging/logger';
@@ -295,6 +296,13 @@ const buildRevision = (params: {
   revision: number;
   reason: DeferredObjectiveActivePlanRevisionReason;
   nowMs: number;
+  // The prior revision's price-availability watermark, carried forward when this
+  // diagnostic stamped none (a frozen mid-hour read or a transient prices-missing
+  // cycle that still wrote a revision). Resetting it to `null` would blind the
+  // NEXT fresh revision's advance check (`previous === null ⇒ not an advance`)
+  // and re-mislabel a genuine Nordpool publish as `schedule_revised`. Undefined
+  // for the first revision (no prior watermark to preserve).
+  previousPricesUpTo?: number | null;
 }): DeferredObjectiveActivePlanRevisionV1 => {
   // Callers only invoke buildRevision after `buildHoursFromHorizonPlan` returned
   // non-null, which guarantees `horizonPlan` is present.
@@ -331,7 +339,10 @@ const buildRevision = (params: {
   return {
     revision: params.revision,
     revisedAtMs: params.nowMs,
-    computedFromPricesUpTo: resolveHorizonPriceWatermark(params.diag),
+    computedFromPricesUpTo: resolvePersistedPricesUpTo(
+      resolveHorizonPriceWatermark(params.diag),
+      params.previousPricesUpTo,
+    ),
     reason: params.reason,
     hours: params.hours,
     // Round to milliWh to match `plannedKWh`. Without rounding,
@@ -1004,7 +1015,10 @@ export class DeferredObjectiveActivePlanRecorder {
       pricesAdvanced: hasPriceHorizonAdvanced(latest, diag),
     });
     const nextRevision = latest.revision + 1;
-    const revision = buildRevision({ diag, hours: effectiveHours, revision: nextRevision, reason, nowMs });
+    const revision = buildRevision({
+      diag, hours: effectiveHours, revision: nextRevision, reason, nowMs,
+      previousPricesUpTo: latest.computedFromPricesUpTo,
+    });
     const provenance = resolveProvenance(diag);
     // Provenance updates are best-effort; preserve the existing snapshot when
     // the new diagnostic didn't resolve a profile so we don't clobber useful

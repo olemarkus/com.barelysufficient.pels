@@ -33,6 +33,7 @@ import {
 } from '../../../packages/shared-domain/src/idleClassificationCopy';
 import {
   buildDeferredObjectivePolicyHorizon,
+  resolvePriceHorizonAvailableUpToMs,
   type DeferredObjectivePolicyHorizonResult,
   type DeferredObjectivePolicyHorizonUnavailableReason,
   type PriceHorizonEntry,
@@ -872,18 +873,29 @@ const buildFreshDiagnostic = (params: {
     concurrentEligibleCount: params.concurrentEligibleCount,
   });
 
+  // Stamp the price-availability watermark from the SOURCE price horizon (not the
+  // deadline-clamped allocator buckets), so the recorder can tell a genuine
+  // price-publication advance (`prices_revised`) from an internal schedule
+  // reshuffle (`schedule_revised`). The fresh path always has the real horizon
+  // here; the planner deliberately never sees `priceHorizon`, so we resolve it at
+  // the bridge and attach it to the plan it produced.
+  const planWithPriceWatermark: DeferredObjectiveHorizonPlan = {
+    ...horizonPlan,
+    pricesAvailableUpToMs: resolvePriceHorizonAvailableUpToMs(priceHorizon),
+  };
+
   return {
     ...mergeProgressFields(base, progress.currentPercent, progress.currentTemperatureC),
-    status: horizonPlan.status,
-    reasonCode: horizonPlan.statusDetail,
+    status: planWithPriceWatermark.status,
+    reasonCode: planWithPriceWatermark.statusDetail,
     ...buildKnownEnergyFields({ objective, profileEnergy }),
     horizonBucketCount: policyHorizon.horizonBucketCount,
     dailyBudgetExhaustedBucketCount,
-    expectedStepId: horizonPlan.expectedStepId,
+    expectedStepId: planWithPriceWatermark.expectedStepId,
     budgetExemptApplied: objective.rescue?.exemptFromBudget === 'always'
-      && isCurrentBucketPlanned(horizonPlan),
+      && isCurrentBucketPlanned(planWithPriceWatermark),
     limitLowerPriorityApplied: objective.rescue?.limitLowerPriorityDevices === 'always',
-    horizonPlan,
+    horizonPlan: planWithPriceWatermark,
   };
 };
 

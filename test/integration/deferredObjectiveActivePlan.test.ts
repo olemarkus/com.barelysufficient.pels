@@ -2422,6 +2422,149 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(plan?.latest?.revision).toBe(2);
   });
 
+  it('labels a price-availability advance prices_revised even when the clamped bucket end is unchanged', () => {
+    // Regression for the schedule_revised mislabel: once a plan is committed for a
+    // fixed deadline, the allocator's `plannedBuckets.endMs` are clamped to the
+    // deadline and so saturate there — they can never advance even when Nordpool
+    // publishes a fresher day. The recorder must use the bridge-stamped
+    // `pricesAvailableUpToMs` (the far edge of AVAILABLE price data, NOT the
+    // clamped buckets) as the watermark. Here both revisions carry the SAME
+    // committed schedule + clamped bucket span; only the price-availability edge
+    // advances, and a metadata drift forces the write — so the genuine cause is a
+    // fresh price publication, not an internal reshuffle.
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    // Revision 1: prices available only through 4h (the deadline-clamped bucket
+    // end); the far 48h deadline means tomorrow's prices are not yet published.
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 48 * HOUR_MS,
+      dailyBudgetExhaustedBucketCount: 0,
+      horizonPlan: makeHorizon([
+        makeBucket(2 * HOUR_MS, 1.5),
+        makeBucket(3 * HOUR_MS, 1.5),
+        makeBucket(4 * HOUR_MS, 1.5),
+      ], { pricesAvailableUpToMs: 5 * HOUR_MS }),
+    })], HOUR_MS);
+    expect(recorder.getPlanForTests('dev')?.latest?.computedFromPricesUpTo).toBe(5 * HOUR_MS);
+
+    // Revision 2: tomorrow's prices published — the availability edge advances to
+    // 48h while the committed charging hours (and their clamped bucket ends) are
+    // unchanged. A metadata drift forces the revision write; the cause must be the
+    // price publication.
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 48 * HOUR_MS,
+      dailyBudgetExhaustedBucketCount: 2,
+      horizonPlan: makeHorizon([
+        makeBucket(2 * HOUR_MS, 1.5),
+        makeBucket(3 * HOUR_MS, 1.5),
+        makeBucket(4 * HOUR_MS, 1.5),
+      ], { pricesAvailableUpToMs: 48 * HOUR_MS }),
+    })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
+
+    const plan = recorder.getPlanForTests('dev');
+    expect(plan?.latest?.reason).toBe('prices_revised');
+    expect(plan?.latest?.computedFromPricesUpTo).toBe(48 * HOUR_MS);
+    expect(plan?.latest?.revision).toBe(2);
+  });
+
+  it('labels a metadata drift schedule_revised when the price-availability horizon is unchanged', () => {
+    // The price-data far edge is identical across revisions (no fresh Nordpool
+    // publish); only `dailyBudgetExhaustedBucketCount` drifted. This is an
+    // internal reshuffle, not a price publication, so it must stay
+    // `schedule_revised`.
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 48 * HOUR_MS,
+      dailyBudgetExhaustedBucketCount: 0,
+      horizonPlan: makeHorizon([
+        makeBucket(2 * HOUR_MS, 1.5),
+        makeBucket(3 * HOUR_MS, 1.5),
+        makeBucket(4 * HOUR_MS, 1.5),
+      ], { pricesAvailableUpToMs: 48 * HOUR_MS }),
+    })], HOUR_MS);
+
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 48 * HOUR_MS,
+      // Same committed schedule + SAME price-availability watermark; only the
+      // daily-budget signal shifted.
+      dailyBudgetExhaustedBucketCount: 2,
+      horizonPlan: makeHorizon([
+        makeBucket(2 * HOUR_MS, 1.5),
+        makeBucket(3 * HOUR_MS, 1.5),
+        makeBucket(4 * HOUR_MS, 1.5),
+      ], { pricesAvailableUpToMs: 48 * HOUR_MS }),
+    })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
+
+    const plan = recorder.getPlanForTests('dev');
+    expect(plan?.latest?.reason).toBe('schedule_revised');
+    expect(plan?.latest?.revision).toBe(2);
+  });
+
+  it('carries the price-availability watermark forward across a revision that stamps none', () => {
+    // A frozen mid-hour read (or a transient prices-missing cycle) can still write
+    // a revision but carries no `pricesAvailableUpToMs` — only deadline-clamped
+    // bucket ends. If the recorder dropped the watermark to that lower bucket end
+    // (or to null), the NEXT fresh revision's advance check would mis-fire and
+    // re-mislabel a real publish as `schedule_revised`. The watermark must carry
+    // forward monotonically.
+    const { deps } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    // Revision 1: prices through 24h (well past the clamped 4h bucket end).
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 48 * HOUR_MS,
+      dailyBudgetExhaustedBucketCount: 0,
+      horizonPlan: makeHorizon([
+        makeBucket(2 * HOUR_MS, 1.5),
+        makeBucket(3 * HOUR_MS, 1.5),
+        makeBucket(4 * HOUR_MS, 1.5),
+      ], { pricesAvailableUpToMs: 24 * HOUR_MS }),
+    })], HOUR_MS);
+    expect(recorder.getPlanForTests('dev')?.latest?.computedFromPricesUpTo).toBe(24 * HOUR_MS);
+
+    // Revision 2: a metadata drift with NO stamped watermark (frozen/legacy
+    // shape). The clamped bucket end is only 4h, but the carried-forward 24h
+    // watermark must be preserved (max), not regressed to 4h.
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 48 * HOUR_MS,
+      dailyBudgetExhaustedBucketCount: 2,
+      horizonPlan: makeHorizon([
+        makeBucket(2 * HOUR_MS, 1.5),
+        makeBucket(3 * HOUR_MS, 1.5),
+        makeBucket(4 * HOUR_MS, 1.5),
+      ]),
+    })], 2 * HOUR_MS + SETTLE_OFFSET_MS);
+    expect(recorder.getPlanForTests('dev')?.latest?.computedFromPricesUpTo).toBe(24 * HOUR_MS);
+
+    // Revision 3: tomorrow's prices published — data extends to 48h. Because the
+    // carried-forward watermark was 24h (not 4h / null), this is detected as a
+    // genuine advance and labelled `prices_revised`.
+    recorder.observe([makeDiag({
+      deviceId: 'dev',
+      deadlineAtMs: 48 * HOUR_MS,
+      dailyBudgetExhaustedBucketCount: 0,
+      horizonPlan: makeHorizon([
+        makeBucket(2 * HOUR_MS, 1.5),
+        makeBucket(3 * HOUR_MS, 1.5),
+        makeBucket(4 * HOUR_MS, 1.5),
+      ], { pricesAvailableUpToMs: 48 * HOUR_MS }),
+    })], 3 * HOUR_MS + SETTLE_OFFSET_MS);
+
+    const plan = recorder.getPlanForTests('dev');
+    expect(plan?.latest?.reason).toBe('prices_revised');
+    expect(plan?.latest?.computedFromPricesUpTo).toBe(48 * HOUR_MS);
+    expect(plan?.latest?.revision).toBe(3);
+  });
+
   it('persists dailyBudgetExhaustedBucketCount only when the diagnostic flagged exhaustion', () => {
     const { deps, saved } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);
