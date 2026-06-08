@@ -187,6 +187,20 @@ export type DeviceDescriptor = {
  * the dispatcher push. `id`/`name` are duplicated from `DeviceDescriptor` as
  * the join key so observed-state readers can key/log without a descriptor.
  */
+/**
+ * Closed set of EV charger plug/charge states, mirroring the Homey
+ * `evcharger_charging_state` capability enum. Producers (the capability read in
+ * `getEvChargingState`, the native-EV and flow-reported derivations) resolve to
+ * this union at their parse seam; consumers branch on it exhaustively. A vendor
+ * value outside the set is normalised to `undefined` at the read boundary.
+ */
+export type EvChargingState =
+    | 'plugged_in_charging'
+    | 'plugged_in'
+    | 'plugged_in_paused'
+    | 'plugged_out'
+    | 'plugged_in_discharging';
+
 export type ObservedDeviceState = {
     id: string;
     name: string;
@@ -200,7 +214,7 @@ export type ObservedDeviceState = {
     // true` ("may always draw, so stays sheddable").
     binaryControl?: { on: boolean };
     evCharging?: boolean;
-    evChargingState?: string;
+    evChargingState?: EvChargingState;
     stateOfCharge?: DeviceStateOfChargeSnapshot;
     currentTemperature?: number;
     measuredPowerKw?: number;

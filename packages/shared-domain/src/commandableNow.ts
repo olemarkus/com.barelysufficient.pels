@@ -8,7 +8,7 @@
  * browser-safe projection of already-resolved observed fields; the reason
  * strings it returns live alongside it in `commandableNowReason.ts`.
  */
-import type { BinaryControlCapabilityId } from '../../contracts/src/types.js';
+import type { BinaryControlCapabilityId, EvChargingState } from '../../contracts/src/types.js';
 import { resolveEvBlockReason } from './commandableNowReason';
 
 /**
@@ -35,7 +35,7 @@ export const isEvDevice = (dev: { deviceClass?: string; controlCapabilityId?: st
  * that are already EV-scoped (e.g. the `ev_soc` progress reader) pass the state
  * directly; callers that aren't compose it with `isEvDevice` themselves.
  */
-export const isEvSessionInactive = (evChargingState?: string | null): boolean => (
+export const isEvSessionInactive = (evChargingState?: EvChargingState): boolean => (
   evChargingState === 'plugged_out' || evChargingState === 'plugged_in_discharging'
 );
 
@@ -59,7 +59,7 @@ export const isEvSessionInactiveForDevice = (dev: EvStateConsumerInput): boolean
  * vocabulary-containment reason — consumers read this resolved predicate
  * instead of inlining the plug-state literal. Caller scopes EV-ness.
  */
-export const isEvChargerNotResumable = (evChargingState?: string | null): boolean => (
+export const isEvChargerNotResumable = (evChargingState?: EvChargingState): boolean => (
   evChargingState === 'plugged_in'
 );
 
@@ -90,7 +90,7 @@ export const isEvBoostBlockedByPlugState = (dev: EvStateConsumerInput): boolean 
  * `isCommandableNow` dual-read.
  */
 export type EvStateConsumerInput = {
-  evChargingState?: string | null;
+  evChargingState?: EvChargingState;
   evSessionInactive?: boolean;
   evChargerNotResumable?: boolean;
 };
@@ -98,7 +98,7 @@ export type EvStateConsumerInput = {
 export type CommandableNowResolveInput = {
   deviceClass?: string;
   controlCapabilityId?: BinaryControlCapabilityId;
-  evChargingState?: string;
+  evChargingState?: EvChargingState;
   evSessionInactive?: boolean;
   evChargerNotResumable?: boolean;
   evBlockReason?: string | null;

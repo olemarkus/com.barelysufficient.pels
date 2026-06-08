@@ -1,4 +1,4 @@
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { EvChargingState, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { resolveBinaryOn } from '../utils/binaryControl';
 import type { Logger } from '../utils/types';
 
@@ -63,7 +63,7 @@ export function getCurrentOn(params: {
 }
 
 export function resolveEvCurrentOn(params: {
-  evChargingState: string | undefined;
+  evChargingState: EvChargingState | undefined;
   evchargerCharging: unknown;
 }): boolean {
   const { evChargingState, evchargerCharging } = params;
@@ -87,7 +87,7 @@ export function resolveEvCurrentOn(params: {
 }
 
 export function resolveEvCurrentOnObservation(params: {
-  evChargingState: string | undefined;
+  evChargingState: EvChargingState | undefined;
   evchargerCharging: unknown;
 }): boolean | undefined {
   const { evChargingState, evchargerCharging } = params;
@@ -142,9 +142,29 @@ export function getCanSetControl(
   return true;
 }
 
-export function getEvChargingState(capabilityObj: DeviceCapabilityMap): string | undefined {
+// Membership set derived from a `satisfies Record<EvChargingState, …>` literal so
+// a new union member is a compile error here until it's added to the guard (the
+// Set keeps `has` off the prototype chain — `'toString' in record` would lie).
+const EV_CHARGING_STATES: ReadonlySet<string> = new Set(
+  Object.keys({
+    plugged_in_charging: 0,
+    plugged_in: 0,
+    plugged_in_paused: 0,
+    plugged_out: 0,
+    plugged_in_discharging: 0,
+  } satisfies Record<EvChargingState, 0>),
+);
+
+export function isEvChargingState(value: unknown): value is EvChargingState {
+  return typeof value === 'string' && EV_CHARGING_STATES.has(value);
+}
+
+// Capability-read parse seam: `evcharger_charging_state` is a closed Homey enum,
+// so a value outside the set (or a non-string) normalises to `undefined` — the
+// same outcome consumers' literal comparisons already produced for it.
+export function getEvChargingState(capabilityObj: DeviceCapabilityMap): EvChargingState | undefined {
   const value = capabilityObj.evcharger_charging_state?.value;
-  return typeof value === 'string' ? value : undefined;
+  return isEvChargingState(value) ? value : undefined;
 }
 
 export function getEvCharging(capabilityObj: DeviceCapabilityMap): boolean | undefined {
