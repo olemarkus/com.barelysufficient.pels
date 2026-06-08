@@ -2,6 +2,8 @@ import type { AppContext } from '../../lib/app/appContext';
 import { createObjectivePriceHorizonBuilder } from './objectivePriceHorizon';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
+import { isBinaryPlanDevice } from '../../lib/plan/planBinaryDevice';
+import { getBinaryOn } from '../../packages/shared-domain/src/binaryControlState';
 import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives';
 import {
   DeferredObjectiveLifecycleEmitter,
@@ -150,7 +152,10 @@ const TERMINAL_RELEASE_DISARM_GRACE_MS = 5 * 60 * 1000;
 // the producer already owns. (`binaryControl.on === true` for EV iff
 // `plugged_in_charging`, per `resolveEvCurrentOn` — a paused charger is off.)
 const resolveTerminalBinaryState = (device: PlanInputDevice): 'on' | 'off' => (
-  (device.binaryControl?.on ?? true) ? 'on' : 'off'
+  // Non-binary (no control capability this cycle) reads as "on" — it may always
+  // draw — matching the prior `binaryControl?.on ?? true`. Only a confirmed
+  // binary-off device resolves to "off".
+  isBinaryPlanDevice(device) && !getBinaryOn(device) ? 'off' : 'on'
 );
 
 export const readTerminalObserved = (

@@ -87,6 +87,10 @@ describe('readTerminalObserved — 2-state read of the producer binaryControl.on
   const binaryDevice = (overrides: Partial<PlanInputDevice>): PlanInputDevice => ({
     id: 'b1',
     name: 'Water heater',
+    // A binary device carries its control capability: it is the discriminant for
+    // binary status (`isBinaryPlanDevice`), so `binaryControl` without it is no
+    // longer a binary device.
+    controlCapabilityId: 'onoff',
     binaryControl: { on: false },
     targets: [],
     ...overrides,
