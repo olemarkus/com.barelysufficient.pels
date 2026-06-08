@@ -13,6 +13,7 @@ import { DEFERRED_OBJECTIVE_PLAN_HISTORY_VERSION } from './planHistorySettings';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 import type { IdleClassification } from '../../../packages/shared-domain/src/idleClassificationCopy';
 import { buildEndedEventFromEntry, type DeferredObjectiveEndedBus } from './endedEventBus';
+import { resolveFinalProgressValue } from '../../../packages/shared-domain/src/deferredObjectiveValues';
 import {
   appendHourlyContribution,
   buildFinalHourFlush,
@@ -538,9 +539,7 @@ export class DeferredObjectivePlanHistoryRecorder {
   // the original record if no flush was possible — no opening anchor, no
   // measurable delta, no kWh/unit, or no price resolver).
   private flushOpenHourAtFinalize(record: InProgressRecord): InProgressRecord {
-    const finalProgress = record.objectiveKind === 'temperature'
-      ? record.finalProgressC
-      : record.finalProgressPercent;
+    const finalProgress = resolveFinalProgressValue(record);
     // Option (a): advance the opening anchor to the *next* hour bucket so a
     // (defensive) re-entry on the returned record cannot collide with the
     // just-flushed hour. Finalization deletes the record immediately today, so

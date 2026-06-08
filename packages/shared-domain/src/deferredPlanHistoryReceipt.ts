@@ -97,6 +97,11 @@ import {
   RECEIPT_WEEK_LAST,
   RECEIPT_WEEK_THIS,
 } from './deferredPlanHistoryReceiptStrings';
+import {
+  resolveFinalProgressValue,
+  resolveStartProgressValue,
+  resolveTargetValue,
+} from './deferredObjectiveValues';
 import { priceRateLabelToAmountUnit } from './price/priceUnitLabel';
 import {
   formatDateInTimeZone,
@@ -150,14 +155,13 @@ const formatStartProgress = (
   entry: Pick<DeferredObjectivePlanHistoryEntry,
     'objectiveKind' | 'startProgressC' | 'startProgressPercent'>,
 ): string | null => {
-  if (entry.objectiveKind === 'temperature') {
-    return entry.startProgressC === null
-      ? null
-      : formatReceiptStartFromTemperature(entry.startProgressC.toFixed(1));
-  }
-  return entry.startProgressPercent === null
-    ? null
-    : formatReceiptStartFromPercent(entry.startProgressPercent.toFixed(0));
+  // Value selection is unit-agnostic; only the formatter (°C vs %) stays
+  // kind-specific.
+  const startValue = resolveStartProgressValue(entry);
+  if (startValue === null) return null;
+  return entry.objectiveKind === 'temperature'
+    ? formatReceiptStartFromTemperature(startValue.toFixed(1))
+    : formatReceiptStartFromPercent(startValue.toFixed(0));
 };
 
 // Picks the first progress sample whose value differs from the entry's start
@@ -310,32 +314,26 @@ const sumPlannedKWh = (
 const estimateTimeShortfall = (
   entry: Pick<
     DeferredObjectivePlanHistoryEntry,
-    'objectiveKind' | 'startProgressC' | 'finalProgressC' | 'targetTemperatureC'
+    'startProgressC' | 'finalProgressC' | 'targetTemperatureC'
     | 'startProgressPercent' | 'finalProgressPercent' | 'targetPercent'
     | 'startedAtMs' | 'deadlineAtMs'
   >,
 ): number | null => {
   const windowMs = entry.deadlineAtMs - entry.startedAtMs;
   if (!Number.isFinite(windowMs) || windowMs <= 0) return null;
-  if (entry.objectiveKind === 'temperature') {
-    if (entry.finalProgressC === null || entry.targetTemperatureC === null) return null;
-    // No defaulting: without a start reading we can't honestly compute the
-    // start→target span the gap should be measured against. A defaulted-0
-    // start would compress the span (and inflate the shortfall) whenever the
-    // run started above zero — better to suppress the chip than fabricate.
-    if (entry.startProgressC === null) return null;
-    const gap = entry.targetTemperatureC - entry.finalProgressC;
-    const totalSpan = entry.targetTemperatureC - entry.startProgressC;
-    if (gap <= 0 || totalSpan <= 0) return null;
-    return Math.round(windowMs * (gap / totalSpan));
-  }
-  if (entry.finalProgressPercent === null || entry.targetPercent === null) return null;
-  // Same honesty guard as the temperature branch — a missing start percent
-  // can't be silently treated as 0 without skewing the heuristic for runs
-  // that started above zero (e.g. EV at 20% charging toward 80%).
-  if (entry.startProgressPercent === null) return null;
-  const gap = entry.targetPercent - entry.finalProgressPercent;
-  const totalSpan = entry.targetPercent - entry.startProgressPercent;
+  // Value selection is unit-agnostic — the gap/span ratio math is identical for
+  // °C and %, so resolve each value once and run a single computation.
+  const finalValue = resolveFinalProgressValue(entry);
+  const targetValue = resolveTargetValue(entry);
+  if (finalValue === null || targetValue === null) return null;
+  // No defaulting: without a start reading we can't honestly compute the
+  // start→target span the gap should be measured against. A defaulted-0
+  // start would compress the span (and inflate the shortfall) whenever the
+  // run started above zero — better to suppress the chip than fabricate.
+  const startValue = resolveStartProgressValue(entry);
+  if (startValue === null) return null;
+  const gap = targetValue - finalValue;
+  const totalSpan = targetValue - startValue;
   if (gap <= 0 || totalSpan <= 0) return null;
   return Math.round(windowMs * (gap / totalSpan));
 };
@@ -353,7 +351,7 @@ export const formatPlanHistoryShortfallChip = (
   entry: Pick<
     DeferredObjectivePlanHistoryEntry,
     'outcome' | 'deliveredKWh' | 'finalPlan' | 'originalPlan'
-    | 'objectiveKind' | 'startProgressC' | 'finalProgressC' | 'targetTemperatureC'
+    | 'startProgressC' | 'finalProgressC' | 'targetTemperatureC'
     | 'startProgressPercent' | 'finalProgressPercent' | 'targetPercent'
     | 'startedAtMs' | 'deadlineAtMs'
   >,

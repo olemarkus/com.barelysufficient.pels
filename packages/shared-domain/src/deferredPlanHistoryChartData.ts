@@ -18,6 +18,12 @@ import type {
   DeferredObjectivePlanHistoryEntry,
   DeferredObjectivePlanHistoryRevisionSnapshot,
 } from '../../contracts/src/deferredObjectivePlanHistory';
+import {
+  resolveFinalProgressValue,
+  resolveSampleValue,
+  resolveStartProgressValue,
+  resolveTargetValue,
+} from './deferredObjectiveValues';
 
 // Trajectory chart mode. `trajectory` is the v4 shape used when the entry has
 // enough information to render the planned staircase + observed line in the
@@ -338,20 +344,16 @@ const finiteOrNull = (raw: number | null): number | null => (
 const pickStartProgress = (
   entry: Pick<
     DeferredObjectivePlanHistoryEntry,
-    'objectiveKind' | 'startProgressC' | 'startProgressPercent'
+    'startProgressC' | 'startProgressPercent'
   >,
-): number | null => finiteOrNull(
-  entry.objectiveKind === 'temperature' ? entry.startProgressC : entry.startProgressPercent,
-);
+): number | null => finiteOrNull(resolveStartProgressValue(entry));
 
 const pickTargetValue = (
   entry: Pick<
     DeferredObjectivePlanHistoryEntry,
-    'objectiveKind' | 'targetTemperatureC' | 'targetPercent'
+    'targetTemperatureC' | 'targetPercent'
   >,
-): number | null => finiteOrNull(
-  entry.objectiveKind === 'temperature' ? entry.targetTemperatureC : entry.targetPercent,
-);
+): number | null => finiteOrNull(resolveTargetValue(entry));
 
 // Prepend the run's start reading at the window start when the first observed
 // sample lands later (the recorder often misses the opening cycle, so the line
@@ -371,7 +373,7 @@ export const anchorObservedAtStart = (
 const pickObservedSamples = (
   entry: Pick<
     DeferredObjectivePlanHistoryEntry,
-    'objectiveKind' | 'progressSamples'
+    'progressSamples'
   >,
 ): DeferredPlanHistoryChartPoint[] => {
   if (!Array.isArray(entry.progressSamples) || entry.progressSamples.length === 0) {
@@ -380,7 +382,7 @@ const pickObservedSamples = (
   const out: DeferredPlanHistoryChartPoint[] = [];
   for (const sample of entry.progressSamples) {
     if (!Number.isFinite(sample.atMs)) continue;
-    const value = entry.objectiveKind === 'temperature' ? sample.valueC : sample.valuePercent;
+    const value = resolveSampleValue(sample);
     if (value === null || !Number.isFinite(value)) continue;
     out.push({ atMs: sample.atMs, value });
   }
@@ -427,7 +429,6 @@ const pickMetMarkerValue = (
     'outcome'
     | 'metReason'
     | 'metAtMs'
-    | 'objectiveKind'
     | 'targetTemperatureC'
     | 'targetPercent'
     | 'finalProgressC'
@@ -436,9 +437,7 @@ const pickMetMarkerValue = (
 ): number | null => {
   if (pickMetMarker(entry) === null) return null;
   if (entry.metReason === 'stalled' || entry.metReason === 'stalled_device_capped') {
-    const finalProgress = entry.objectiveKind === 'temperature'
-      ? entry.finalProgressC
-      : entry.finalProgressPercent;
+    const finalProgress = resolveFinalProgressValue(entry);
     return Number.isFinite(finalProgress) ? finalProgress : null;
   }
   return pickTargetValue(entry);

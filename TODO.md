@@ -156,6 +156,23 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
       - **type discrimination:** the temperature (~21) / stepped (~34) field-level discrimination and the
         `TargetDeviceSnapshot` discrimination (~119 importers) — the type-tightening half, independent of the
         value-level de-kinding above.
+- [ ] **Finish the deferred-objective unit-agnostic value train (writer-flip + fork guard).**
+      *Step 1 shipped (PR `refactor/plan-history-value-accessors`):* one canonical coalesce module
+      `packages/shared-domain/src/deferredObjectiveValues.ts` (`resolveTargetValue` /
+      `resolveStartProgressValue` / `resolveFinalProgressValue` / `resolveSampleValue` = `*Percent ?? *C`),
+      and every **reader** of the kind-split (°C/%) value pair across `lib/objectives`, `packages/shared-domain`,
+      `flowCards`, and `DeadlinesList.tsx` now routes through it. Behavior byte-identical (exactly one column
+      non-null per record today); `objectiveKind` retained only for unit suffix / rounding / threshold.
+      *Remaining:* (a) **writer-flip** — change the recorder/in-progress writers to set the generic
+      `*Percent` column for every kind going forward (legacy `*C` entries still resolve via the `?? *C`
+      fallback); no schema bump, both columns stay for back-compat read. (b) **fork guard** — an AST guard
+      (sibling to `check-ev-vocab.mjs` / `check-device-kind-vocab.mjs`, wired into `ci:checks`) forbidding new
+      `objectiveKind === 'temperature' ? *C : *Percent` value-picking forks on the recorded field pairs
+      outside `deferredObjectiveValues.ts`, so the consolidation can't quietly re-grow consumer-side once the
+      single-column write lands. (c) once (a)+(b) hold, delete the now-dead kind-split value fields from the
+      in-memory `DeferredObjectiveDiagnostic` (keep persisted columns + settings + contract DTO).
+      Files: `lib/objectives/deferredObjectives/{planHistory,planHistoryInProgressState,activePlanRecorder}.ts`,
+      `scripts/`, `packages/contracts/src/deferredObjectivePlanHistory.ts`.
 
 ## P2 Product, Observability, and Maintainability
 
