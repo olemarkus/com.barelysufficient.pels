@@ -134,7 +134,11 @@ const TARGET_SNAPSHOT_FORBID_PATTERN = {
 };
 // Consumer layers forbidden from the raw producer snapshot. Add a dir here once
 // it no longer imports `TargetDeviceSnapshot` (route its reads to the halves first).
-const SNAPSHOT_CONSUMER_DIRS = ['lib/objectives/**/*.ts'];
+const SNAPSHOT_CONSUMER_DIRS = [
+  'lib/objectives/**/*.ts',
+  'lib/plan/**/*.ts',
+  'lib/executor/**/*.ts',
+];
 
 export default tseslint.config(
   eslint.configs.recommended,

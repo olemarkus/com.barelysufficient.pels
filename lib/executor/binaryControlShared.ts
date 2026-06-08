@@ -6,7 +6,7 @@ import {
   decideAndDispatchBinaryControl,
 } from './binaryControlDispatch';
 import type { PlanEngineState } from '../plan/planState';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { BinaryControlDecisionSnapshot } from '../plan/planBinaryControlHelpers';
 import type { PlanActuationMode } from './executorTypes';
 
 export type PlanExecutorBinaryContext = {
@@ -29,7 +29,7 @@ export const runBinaryControl = async (params: {
   deviceId: string;
   name: string;
   desired: boolean;
-  snapshot?: TargetDeviceSnapshot;
+  snapshot?: BinaryControlDecisionSnapshot;
   logContext: 'capacity' | 'capacity_control_off';
   restoreSource?: 'shed_state' | 'current_plan';
   reason?: string;

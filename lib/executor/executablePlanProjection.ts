@@ -12,7 +12,6 @@ import {
 import type {
   ObservedDeviceState,
   SteppedLoadDecoration,
-  TargetDeviceSnapshot,
 } from '../../packages/contracts/src/types';
 import type {
   ExecutableBinaryIntent,
@@ -23,6 +22,7 @@ import type {
   ExecutableObservedTargetState,
   ExecutablePlan,
   ExecutableReleaseIntent,
+  ExecutorDeviceSnapshot,
 } from './executablePlan';
 import { buildExecutableSteppedLoadIntent } from './executableSteppedLoadProjection';
 import { buildExecutableTargetIntent } from './executableTargetProjection';
@@ -67,7 +67,7 @@ function buildExecutableDeviceIntentSafe(planDevice: PlanDevice, planMeta?: Plan
 }
 
 export function buildExecutableObservedState(
-  snapshots: TargetDeviceSnapshot[],
+  snapshots: ExecutorDeviceSnapshot[],
 ): ExecutableObservedState {
   return {
     devices: snapshots.map(buildExecutableObservedDeviceState),
@@ -152,7 +152,7 @@ export function buildExecutableObservedDeviceState(
   // Widened past the raw snapshot to carry the optional `selectedStepId`
   // decoration: the drift path feeds a live `PlanInputDevice` (decoration
   // present), the raw observed-state path feeds transport snapshots (absent).
-  snapshot: TargetDeviceSnapshot & Pick<SteppedLoadDecoration, 'selectedStepId'>,
+  snapshot: ExecutorDeviceSnapshot & Pick<SteppedLoadDecoration, 'selectedStepId'>,
 ): ExecutableObservedDeviceState {
   return {
     id: snapshot.id,
@@ -198,7 +198,7 @@ const buildObservedSteppedLoadState = (
   // transport snapshot carries no decoration), but on the drift path
   // (`planExecutionDrift` → live `PlanInputDevice`) it is the producer-resolved
   // effective step. The read must survive both, so widen past the raw snapshot.
-  snapshot: TargetDeviceSnapshot & Pick<SteppedLoadDecoration, 'selectedStepId'>,
+  snapshot: ExecutorDeviceSnapshot & Pick<SteppedLoadDecoration, 'selectedStepId'>,
 ): ExecutableObservedSteppedLoadState | null => {
   if (snapshot.controlModel !== 'stepped_load') return null;
   return {

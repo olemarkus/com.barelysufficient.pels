@@ -3,7 +3,7 @@ import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadStep,
 } from '../utils/deviceControlProfiles';
-import type { SteppedLoadProfile, SteppedLoadStep, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { SteppedLoadProfile, SteppedLoadStep } from '../../packages/contracts/src/types';
 import {
   canTurnOnDevice,
   recordActivationAttemptStarted,
@@ -19,7 +19,11 @@ import {
   isRequestedStepMaterialized,
   type SteppedStepActuationState,
 } from './steppedLoadActuation';
-import type { ExecutableSteppedLoadDevice, ExecutableSteppedLoadTransition } from './executablePlan';
+import type {
+  ExecutableSteppedLoadDevice,
+  ExecutableSteppedLoadTransition,
+  ExecutorDeviceSnapshot,
+} from './executablePlan';
 import type { PlanActuationMode } from './executorTypes';
 import type { PlanEngineState } from '../plan/planState';
 import {
@@ -77,7 +81,7 @@ export type PlanExecutorSteppedContext = {
 
 const resolveCurrentOn = (
   action: ExecutableSteppedLoadDevice,
-  snapshot?: TargetDeviceSnapshot,
+  snapshot?: ExecutorDeviceSnapshot,
 ): boolean | null => (snapshot ? isBinaryOnOrUnknown(snapshot) : action.current.on);
 
 /* eslint-disable complexity --
@@ -88,7 +92,7 @@ export const applySteppedLoadCommand = async (
   ctx: PlanExecutorSteppedContext,
   action: ExecutableSteppedLoadDevice,
   mode: PlanActuationMode,
-  snapshot?: TargetDeviceSnapshot,
+  snapshot?: ExecutorDeviceSnapshot,
   options: { recordPlanActuation?: boolean } = {},
 ): Promise<boolean> => {
   const profile = action.steppedLoadProfile;
@@ -217,7 +221,7 @@ const maybeSkipSteppedLoadRestoreBinary = (
   ctx: PlanExecutorSteppedContext,
   params: {
     action: ExecutableSteppedLoadDevice;
-    snapshot: TargetDeviceSnapshot | undefined;
+    snapshot: ExecutorDeviceSnapshot | undefined;
     mode: PlanActuationMode;
     matchingRestoreAttempt: ExecutableSteppedLoadDevice['matchingRestoreAttempt'];
     stepActuation: SteppedStepActuationState;
@@ -294,7 +298,7 @@ const maybeSkipSteppedLoadRestoreBinary = (
 export const applySteppedLoadRestore = async (
   ctx: PlanExecutorSteppedContext,
   action: ExecutableSteppedLoadDevice,
-  snapshot: TargetDeviceSnapshot | undefined,
+  snapshot: ExecutorDeviceSnapshot | undefined,
   mode: PlanActuationMode,
   hasShedDevices: boolean,
   options: { preRestoreStepIssued?: boolean } = {},
@@ -381,7 +385,7 @@ export const applySteppedLoadRestore = async (
 export const applySteppedLoadShedOff = async (
   ctx: PlanExecutorSteppedContext,
   action: ExecutableSteppedLoadDevice,
-  snapshot: TargetDeviceSnapshot | undefined,
+  snapshot: ExecutorDeviceSnapshot | undefined,
   mode: PlanActuationMode,
 ): Promise<boolean> => {
   if (action.desired.on !== false) return false;
@@ -707,7 +711,7 @@ const dispatchSteppedLoadRestoreBinaryCommand = async (
   ctx: PlanExecutorSteppedContext,
   params: {
     action: ExecutableSteppedLoadDevice;
-    snapshot: TargetDeviceSnapshot;
+    snapshot: ExecutorDeviceSnapshot;
     mode: PlanActuationMode;
     name: string;
   },
@@ -730,7 +734,7 @@ const executeSteppedLoadRestoreBinary = async (
   ctx: PlanExecutorSteppedContext,
   params: {
     action: ExecutableSteppedLoadDevice;
-    snapshot: TargetDeviceSnapshot;
+    snapshot: ExecutorDeviceSnapshot;
     mode: PlanActuationMode;
     name: string;
     onoffViolated: boolean;

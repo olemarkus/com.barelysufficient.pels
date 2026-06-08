@@ -2,13 +2,13 @@ import type { DeviceObservation } from '../device/deviceObservation';
 import {
   type BinaryControlActuationMode,
   type BinaryControlDecision,
+  type BinaryControlDecisionSnapshot,
   type BinaryControlLogContext,
   type BinaryControlRestoreSource,
   buildBinaryControlLogMessage,
   buildFlowBackedBinaryControlRequestLogMessage,
 } from '../plan/planBinaryControlHelpers';
 import { decideBinaryControl } from '../plan/planBinaryControl';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { resolveBinaryCommandPendingMs } from '../observer/pendingBinaryCommandTypes';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import type { Actuator } from '../actuator/deviceActuator';
@@ -83,7 +83,7 @@ export async function decideAndDispatchBinaryControl(params: {
   deviceId: string;
   name: string;
   desired: boolean;
-  snapshot?: TargetDeviceSnapshot;
+  snapshot?: BinaryControlDecisionSnapshot;
   logContext: BinaryControlLogContext;
   restoreSource?: BinaryControlRestoreSource;
   reason?: string;
@@ -136,7 +136,7 @@ export async function dispatchBinaryControlDecision(params: {
   decision: BinaryControlDecision;
   transport: BinaryControlTransport;
   /** Snapshot the decision was made against; used to size the per-device pending window. */
-  snapshot?: TargetDeviceSnapshot;
+  snapshot?: BinaryControlDecisionSnapshot;
 }): Promise<DispatchBinaryControlResult> {
   const { decision, transport, snapshot } = params;
   recordPendingForDispatch({ store: transport.pendingBinaryCommandStore, decision, snapshot });
@@ -162,7 +162,7 @@ export async function dispatchBinaryControlDecision(params: {
 function recordPendingForDispatch(params: {
   store: PendingBinaryCommandStore;
   decision: BinaryControlDecision;
-  snapshot?: TargetDeviceSnapshot;
+  snapshot?: BinaryControlDecisionSnapshot;
 }): void {
   const { store, decision, snapshot } = params;
   store.record(decision.deviceId, {

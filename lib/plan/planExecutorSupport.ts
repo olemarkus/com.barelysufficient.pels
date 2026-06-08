@@ -1,5 +1,5 @@
 import { isBinaryObservedOff } from '../../packages/shared-domain/src/binaryControlState';
-import type { ObservedDeviceState, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { DeviceDescriptor, ObservedDeviceState } from '../../packages/contracts/src/types';
 import type { PlanEngineState } from './planState';
 import {
   isCanSetControl,
@@ -35,20 +35,27 @@ const isShedThrottled = (params: {
  * call sites) and falls back to fresh resolution from raw snapshot fields
  * (`evChargingState`, `available`, `controlCapabilityId`, `capabilities`,
  * `canSetControl`, legacy `canSetOnOff`) for the executor call sites that
- * still pass `TargetDeviceSnapshot`.
+ * pass the decomposed snapshot halves.
  *
  * Chunk 6 of the planner-detype refactor: producer now resolves both bits
  * so this gate no longer round-trips through `getBinaryControlPlan` +
  * `getEvRestoreBlockReason`.
+ *
+ * Reads observed truth (commandability inputs: `evChargingState`/`available`)
+ * plus the descriptor capability config — the decomposed snapshot halves, not
+ * the raw producer `TargetDeviceSnapshot`. The full snapshot stays assignable.
  */
-export const canTurnOnDevice = (snapshot?: TargetDeviceSnapshot): boolean => {
+export type CanTurnOnDeviceSnapshot = ObservedDeviceState
+  & Pick<DeviceDescriptor, 'deviceClass' | 'controlCapabilityId' | 'capabilities' | 'canSetControl'>;
+
+export const canTurnOnDevice = (snapshot?: CanTurnOnDeviceSnapshot): boolean => {
   if (!snapshot) return false;
   if (!isCommandableNow(snapshot)) return false;
   if (!isCanSetControl({
     controlCapabilityId: snapshot.controlCapabilityId,
     capabilities: snapshot.capabilities,
     canSetControl: snapshot.canSetControl,
-    canSetOnOff: (snapshot as TargetDeviceSnapshot & { canSetOnOff?: boolean }).canSetOnOff,
+    canSetOnOff: (snapshot as { canSetOnOff?: boolean }).canSetOnOff,
   })) return false;
   return true;
 };
@@ -79,7 +86,7 @@ export const shouldSkipShedding = (params: {
   state: Pick<PlanEngineState, 'lastDeviceShedMs' | 'pendingSheds'>;
   deviceId: string;
   deviceName: string;
-  snapshotState: TargetDeviceSnapshot | undefined;
+  snapshotState: Pick<ObservedDeviceState, 'available' | 'binaryControl'> | undefined;
   nowTs?: number;
 }): boolean => {
   const {
