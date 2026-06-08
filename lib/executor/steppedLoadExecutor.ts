@@ -390,7 +390,7 @@ export const applySteppedLoadShedOff = async (
   if (!snapshot) return false;
   const name = action.name;
   try {
-    const applied = await decideAndDispatchBinaryControl({
+    const outcome = await decideAndDispatchBinaryControl({
       transport: ctx.buildBinaryControlTransport(),
       deviceId: action.id,
       name,
@@ -399,7 +399,7 @@ export const applySteppedLoadShedOff = async (
       logContext: 'capacity',
       actuationMode: mode,
     });
-    if (!applied) return false;
+    if (!outcome.applied) return false;
     if (mode === 'plan') {
       const now = Date.now();
       ctx.recordShedActuation(action.id, name, now);
@@ -712,7 +712,7 @@ const dispatchSteppedLoadRestoreBinaryCommand = async (
   },
 ): Promise<boolean> => {
   const { action, snapshot, mode, name } = params;
-  return decideAndDispatchBinaryControl({
+  const outcome = await decideAndDispatchBinaryControl({
     transport: ctx.buildBinaryControlTransport(),
     deviceId: action.id,
     name,
@@ -722,6 +722,7 @@ const dispatchSteppedLoadRestoreBinaryCommand = async (
     restoreSource: ctx.getRestoreLogSource(action.id),
     actuationMode: mode,
   });
+  return outcome.applied;
 };
 
 const executeSteppedLoadRestoreBinary = async (

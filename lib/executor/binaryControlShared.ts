@@ -1,6 +1,7 @@
 import type { DeviceObservation } from '../device/deviceObservation';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import {
+  type BinaryControlOutcome,
   type BinaryControlTransport,
   decideAndDispatchBinaryControl,
 } from './binaryControlDispatch';
@@ -34,7 +35,7 @@ export const runBinaryControl = async (params: {
   reason?: string;
   actuationMode?: PlanActuationMode;
   lifecycleRelease?: boolean;
-}): Promise<boolean> => {
+}): Promise<BinaryControlOutcome> => {
   const {
     ctx, deviceId, name, desired, snapshot, logContext, restoreSource, reason, actuationMode,
     lifecycleRelease,

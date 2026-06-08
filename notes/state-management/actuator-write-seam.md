@@ -365,14 +365,20 @@ Split into sub-PRs so each is independently shippable and behavior-preserving:
 - Keep logging/pending/retry where they are unless a clean home emerges — this
   train is about the write seam, not relocating the executor's bookkeeping.
 
-  **Future cleanup (NOT this PR):** the binary path still *re-resolves* the
-  flow-vs-native decision after the write — `isFlowBackedBinaryControl(...)` is
-  recomputed at three post-write consumer sites in `binaryExecutor.ts`
-  (~lines 372 / 427 / 595) to decide whether the command was flow-backed when
-  recording confirmation. PR1b-3 hoisted the *dispatch-path* recompute but left
-  these consumer-side re-resolutions; folding them onto the producer-resolved
-  `flowBacked` the command already carries is a follow-up, decoupled from the write
-  seam.
+  **Consumer-side recompute — *Shipped.*** The binary path used to *re-resolve* the
+  flow-vs-native decision after the write: `isFlowBackedBinaryControl(...)` was
+  recomputed at three post-write consumer sites (`turnOffDevice` in
+  `binaryExecutor.ts`; `applyBinaryRestoreWithSnapshot` and
+  `applyCapacityControlOffRestoreWithSnapshot` in `binaryRestoreHelpers.ts`) to
+  decide whether the command was flow-backed when recording confirmation. PR1b-3
+  hoisted the *dispatch-path* recompute but left these consumer-side re-resolutions.
+  The decide-and-dispatch wrapper now returns a `BinaryControlOutcome`
+  (`{ applied: false } | { applied: true; flowBacked }`) carrying the
+  producer-resolved flag the command already had, so the three sites read
+  `outcome.flowBacked` and no longer call `isFlowBackedBinaryControl`. The symbol is
+  gone from `lib/executor/**` entirely; the `binary:seam` guard
+  (`scripts/check-binary-seam.mjs`, in `ci:checks`) keeps it that way. This closed
+  the "Finish the planner/executor/device-transport state boundary split" TODO.
 
 **PR 2 — move the read model to observer.** Split into PR2a (shipped) and PR2b
 (deferred by decision) once the two halves were found to have very different

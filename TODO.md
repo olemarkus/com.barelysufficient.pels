@@ -330,15 +330,19 @@ live-walk screenshots.*
       (same side of every boundary), so fold them into one shared `chipModifierForTone()` helper to
       stop the tone→chip-class map drifting between the live card and the log. Source:
       pels-layering-guardian on PR #1546.
-- [ ] Finish the planner/executor/device-transport state boundary split.
-      Planner output should carry desired state and planner reasons; `DeviceTransport` should
-      provide observed current state and own native / flow / capability transport; executor should
-      compare current with desired and handle sequencing, pending commands, retries, and
-      materialization. `ExecutablePlan` now carries executor intent and `ExecutableObservedState`
-      carries snapshot-built observer truth at the dispatch and drift-detection boundaries.
-      Remaining work is to move the last flow-backed binary transport details fully behind
-      `DeviceTransport`.
-      Files: `lib/executor/**`, `lib/device/deviceTransport.ts`, binary transport tests.
+- [x] Finish the planner/executor/device-transport state boundary split. *(done: the last
+      flow-backed binary transport detail is now sealed behind the dispatch seam. The plan layer
+      already resolved flow-vs-native once via `isFlowBackedBinaryControl` and packaged it on
+      `BinaryControlDecision`; the dispatch wrapper now surfaces that resolved flag outward as
+      `BinaryControlOutcome.flowBacked` (`lib/executor/binaryControlDispatch.ts`), so the three
+      executor post-write recording sites — `turnOffDevice` shed, `applyBinaryRestoreWithSnapshot`,
+      `applyCapacityControlOffRestoreWithSnapshot` — read `outcome.flowBacked` instead of
+      re-deriving it from the snapshot. `isFlowBackedBinaryControl` is no longer imported anywhere
+      under `lib/executor/**`; the new `binary:seam` guard (`scripts/check-binary-seam.mjs`, wired
+      into `ci:checks`) locks that in place. Removing the recompute also dropped `turnOffDevice`
+      below the complexity ceiling, retiring its `eslint-disable complexity` pragma. The
+      `ExecutablePlan` / `ExecutableObservedState` dispatch + drift boundaries were already split in
+      prior trains; this closes the named remaining work.)
 - [ ] Split app lifecycle context into initialized vs initializing phases so services that are
       required after startup are not exposed forever as optional fields.
       Files: `lib/app/appContext.ts`, `app.ts`, app init/service tests.

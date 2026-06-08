@@ -35,6 +35,7 @@
     "arch:grep": "node scripts/check-plan-objectives-edge.mjs",
     "ev:vocab": "node scripts/check-ev-vocab.mjs",
     "device-kind:vocab": "node scripts/check-device-kind-vocab.mjs",
+    "binary:seam": "node scripts/check-binary-seam.mjs",
     "deadcode:check": "knip",
     "sanitize:homey-build": "node scripts/sanitize-homey-build.mjs",
     "package:check": "node scripts/check-homey-packaging.mjs",

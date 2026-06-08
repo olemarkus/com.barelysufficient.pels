@@ -24,6 +24,20 @@ export type DispatchBinaryControlResult =
   | { ok: false; reason: 'dispatch_failed' };
 
 /**
+ * Outcome of a decide-and-dispatch call, surfaced to executor callers.
+ *
+ * `flowBacked` carries the producer-resolved routing decision
+ * (`BinaryControlDecision.flowBackedControl`) outward so post-write recording
+ * sites never re-derive it from the snapshot. This is what seals the
+ * flow-vs-native transport detail behind this seam: the executor records
+ * direct actuation only when a real capability write happened
+ * (`applied && !flowBacked`); a flow trigger leaves no direct write to record.
+ */
+export type BinaryControlOutcome =
+  | { applied: false }
+  | { applied: true; flowBacked: boolean };
+
+/**
  * Transport seam for binary-control dispatch. Executor talks to this
  * (an interface implementing the two writeable seams) rather than
  * importing `DeviceTransport` directly. Today the same concrete object
@@ -55,8 +69,9 @@ const logger = getLogger('executor/binary-dispatch');
 /**
  * Convenience wrapper: ask the plan layer to decide (reading state via the
  * transport's bound `observation`) and, if it returns a decision, dispatch
- * it via the same transport. Returns `true` when the underlying dispatch
- * succeeded; `false` when the plan skipped or the dispatch failed.
+ * it via the same transport. Returns `{ applied: true, flowBacked }` when the
+ * underlying dispatch succeeded, `{ applied: false }` when the plan skipped or
+ * the dispatch failed.
  *
  * The decide-and-dispatch pair must share one observation source to avoid
  * deciding against one snapshot and logging against another; that's why the
@@ -74,7 +89,7 @@ export async function decideAndDispatchBinaryControl(params: {
   reason?: string;
   actuationMode?: BinaryControlActuationMode;
   lifecycleRelease?: boolean;
-}): Promise<boolean> {
+}): Promise<BinaryControlOutcome> {
   const {
     transport, deviceId, name, desired, snapshot, logContext,
     restoreSource, reason, actuationMode, lifecycleRelease,
@@ -92,9 +107,10 @@ export async function decideAndDispatchBinaryControl(params: {
     actuationMode,
     lifecycleRelease,
   });
-  if (!decision) return false;
+  if (!decision) return { applied: false };
   const result = await dispatchBinaryControlDecision({ decision, transport, snapshot });
-  return result.ok;
+  if (!result.ok) return { applied: false };
+  return { applied: true, flowBacked: decision.flowBackedControl };
 }
 
 /**

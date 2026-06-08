@@ -291,12 +291,12 @@ describe('dispatchBinaryControlDecision (executor-side dispatcher)', () => {
 });
 
 describe('decideAndDispatchBinaryControl (executor-side convenience)', () => {
-  it('returns false without invoking dispatch when the decision is null', async () => {
+  it('reports not-applied without invoking dispatch when the decision is null', async () => {
     const state = createPlanEngineState();
     const setCapability = vi.fn();
     const transport = buildTransport(state, { setCapability });
 
-    const ok = await decideAndDispatchBinaryControl({
+    const outcome = await decideAndDispatchBinaryControl({
       transport,
       deviceId: 'socket1',
       name: 'Socket',
@@ -311,7 +311,58 @@ describe('decideAndDispatchBinaryControl (executor-side convenience)', () => {
       logContext: 'capacity',
     });
 
-    expect(ok).toBe(false);
+    expect(outcome).toEqual({ applied: false });
+    expect(setCapability).not.toHaveBeenCalled();
+  });
+
+  it('surfaces flowBacked=false for a native capability write so callers can record direct actuation', async () => {
+    const state = createPlanEngineState();
+    const setCapability = vi.fn().mockResolvedValue(undefined);
+    const transport = buildTransport(state, { setCapability });
+
+    const outcome = await decideAndDispatchBinaryControl({
+      transport,
+      deviceId: 'socket1',
+      name: 'Socket',
+      desired: true,
+      snapshot: {
+        id: 'socket1',
+        name: 'Socket',
+        controlCapabilityId: 'onoff',
+        canSetControl: true,
+        binaryControl: { on: false },
+      },
+      logContext: 'capacity',
+    });
+
+    expect(outcome).toEqual({ applied: true, flowBacked: false });
+    expect(setCapability).toHaveBeenCalledWith('socket1', 'onoff', true);
+  });
+
+  it('surfaces flowBacked=true for a flow-routed write without callers re-reading the snapshot', async () => {
+    const state = createPlanEngineState();
+    const setCapability = vi.fn().mockResolvedValue(undefined);
+    const triggerFlowBackedBinaryControl = vi.fn().mockResolvedValue(undefined);
+    const transport = buildTransport(state, { setCapability, triggerFlowBackedBinaryControl });
+
+    const outcome = await decideAndDispatchBinaryControl({
+      transport,
+      deviceId: 'ev1',
+      name: 'EV',
+      desired: false,
+      snapshot: {
+        id: 'ev1',
+        name: 'EV',
+        controlCapabilityId: 'evcharger_charging',
+        canSetControl: true,
+        binaryControl: { on: true },
+        flowBackedCapabilityIds: ['evcharger_charging'],
+      },
+      logContext: 'capacity',
+    });
+
+    expect(outcome).toEqual({ applied: true, flowBacked: true });
+    expect(triggerFlowBackedBinaryControl).toHaveBeenCalledWith('ev1', 'evcharger_charging', false);
     expect(setCapability).not.toHaveBeenCalled();
   });
 });

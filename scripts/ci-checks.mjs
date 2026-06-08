@@ -12,5 +12,6 @@ await runParallel([
   { label: 'arch:grep', command: 'npm', args: ['run', 'arch:grep'] },
   { label: 'ev:vocab', command: 'npm', args: ['run', 'ev:vocab'] },
   { label: 'device-kind:vocab', command: 'npm', args: ['run', 'device-kind:vocab'] },
+  { label: 'binary:seam', command: 'npm', args: ['run', 'binary:seam'] },
   { label: 'deadcode', command: 'npm', args: ['run', 'deadcode:check'] },
 ]);
