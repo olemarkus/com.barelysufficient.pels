@@ -139,6 +139,22 @@ const SNAPSHOT_CONSUMER_DIRS = [
   'lib/plan/**/*.ts',
   'lib/executor/**/*.ts',
 ];
+// Settings-UI imports contracts via a RELATIVE path (`../../../contracts/src/types.ts`),
+// which has no `packages/` segment and keeps the `.ts` extension — so the runtime
+// `TARGET_SNAPSHOT_FORBID_PATTERN` group above does not match it. This variant uses a
+// settings-UI-shaped group glob to ban the same `TargetDeviceSnapshot` name from the
+// browser/webview surface, which consumes the decomposed device read-models instead
+// (ObservedDeviceState / DeviceDescriptor Picks / SettingsUiDeviceView). `DecoratedDeviceSnapshot`
+// is intentionally NOT banned — it lives at the store definition (state.ts SettingsUiDeviceView)
+// and the device payload ingest (getTargetDevices), the settings-UI's own producer boundary.
+const SETTINGS_UI_SNAPSHOT_FORBID_PATTERN = {
+  group: ['**/contracts/src/types', '**/contracts/src/types.ts'],
+  importNames: ['TargetDeviceSnapshot'],
+  message: 'The settings UI must not import the raw producer-input `TargetDeviceSnapshot` — depend on '
+    + 'the decomposed device read-models (`ObservedDeviceState` / a `DeviceDescriptor` Pick / the '
+    + '`SettingsUiDeviceView` store type, or the `SettingsUiDeviceListItem` / `SettingsUiDeviceDetailItem` '
+    + 'carriers in deviceUtils.ts). See notes/state-management/snapshot-decomposition.md.',
+};
 
 export default tseslint.config(
   eslint.configs.recommended,
@@ -511,6 +527,21 @@ export default tseslint.config(
       globals: {
         ...globals.browser,
       },
+    },
+  },
+  // Seals the Role-2 snapshot boundary: the settings-UI source surface (browser/
+  // webview) must consume the decomposed device read-models, never the raw
+  // producer-input `TargetDeviceSnapshot`. Every surface — list, detail, price-opt,
+  // control-profiles, deadline-plan — was migrated off the name before this gate
+  // landed. Tests are intentionally excluded (they build snapshot fixtures).
+  // browserTypeScriptRules sets no `no-restricted-imports`, so this block adds it
+  // without dropping any existing restriction.
+  {
+    files: ['packages/settings-ui/src/**/*.ts', 'packages/settings-ui/src/**/*.tsx'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': ['error', {
+        patterns: [SETTINGS_UI_SNAPSHOT_FORBID_PATTERN],
+      }],
     },
   },
   {
