@@ -448,7 +448,7 @@ const renderLegend = (
 // passes a height that preserves the container's true aspect ratio, the x and y
 // scale factors are EQUAL, so `<circle>` dots stay round despite `none`. The
 // panel itself fills the viewBox (minus a small margin), so the card reaches the
-// tile edges at any height; the plot block is capped + centred inside it.
+// tile edges at any height; the plot block fills the panel inside it.
 const applyViewBox = (chartEl: SVGSVGElement, viewport: Geometry['viewport']): void => {
   chartEl.setAttribute('viewBox', `0 0 ${viewport.width} ${viewport.height}`);
   chartEl.setAttribute('preserveAspectRatio', 'none');
@@ -458,10 +458,9 @@ export const renderEmptyState = (
   chartEl: SVGSVGElement,
   payload: Pick<PlanPriceWidgetEmptyPayload, 'subtitle' | 'title'>,
   height: number = VIEWPORT_MIN_HEIGHT,
-  scale = 1,
 ): void => {
   const chartDocument = chartEl.ownerDocument;
-  const { panel, viewport } = resolveGeometry(resolveViewportHeight(height), scale);
+  const { panel, viewport } = resolveGeometry(resolveViewportHeight(height));
 
   clearNode(chartEl);
   applyViewBox(chartEl, viewport);
@@ -494,10 +493,9 @@ export const renderReadyState = (
   payload: PlanPriceWidgetReadyPayload,
   half: PlanPriceWidgetHalf,
   height: number = VIEWPORT_MIN_HEIGHT,
-  scale = 1,
 ): void => {
   const chartDocument = chartEl.ownerDocument;
-  const geometry = resolveGeometry(resolveViewportHeight(height), scale);
+  const geometry = resolveGeometry(resolveViewportHeight(height));
   const groups = createChartGroups(chartDocument);
   const metrics = resolvePlotMetrics(payload, half, geometry);
 
@@ -543,15 +541,14 @@ export const renderWidget = (
   payload: PlanPriceWidgetPayload | null,
   half: PlanPriceWidgetHalf,
   height: number = VIEWPORT_MIN_HEIGHT,
-  scale = 1,
 ): void => {
   if (!payload || payload.state !== 'ready') {
     renderEmptyState(chartEl, payload || {
       title: WIDGET_TITLE,
       subtitle: DEFAULT_EMPTY_SUBTITLE,
-    }, height, scale);
+    }, height);
     return;
   }
 
-  renderReadyState(chartEl, payload, half, height, scale);
+  renderReadyState(chartEl, payload, half, height);
 };

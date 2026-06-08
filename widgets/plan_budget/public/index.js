@@ -66,25 +66,15 @@
   var X_LABEL_GAP = 32;
   var LEGEND_GAP = 78;
   var BLOCK_BOTTOM_PAD = 10;
-  var PLOT_BODY_MIN_PX = 180;
-  var PLOT_BODY_MAX_PX = 360;
   var resolveViewportHeight = (desired) => {
     if (!Number.isFinite(desired)) return VIEWPORT_MIN_HEIGHT;
     return Math.min(VIEWPORT_MAX_HEIGHT, Math.max(VIEWPORT_MIN_HEIGHT, Math.round(desired)));
   };
   var BLOCK_OVERHEAD = PLOT_TOP_OFFSET + LEGEND_GAP + BLOCK_BOTTOM_PAD;
-  var resolveGeometry = (height, scale = 1) => {
-    const unitScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
-    const plotBodyMin = PLOT_BODY_MIN_PX / unitScale;
-    const plotBodyMax = PLOT_BODY_MAX_PX / unitScale;
+  var resolveGeometry = (height) => {
     const panelHeight = height - PANEL_MARGIN * 2;
-    const availableBody = panelHeight - BLOCK_OVERHEAD;
-    const bandedBody = Math.min(plotBodyMax, Math.max(plotBodyMin, availableBody));
-    const plotBodyHeight = Math.max(0, Math.min(bandedBody, availableBody));
-    const blockHeight = plotBodyHeight + BLOCK_OVERHEAD;
-    const surplus = Math.max(0, panelHeight - blockHeight);
-    const blockTop = PANEL_MARGIN + surplus / 2;
-    const plotTop = blockTop + PLOT_TOP_OFFSET;
+    const plotBodyHeight = Math.max(0, panelHeight - BLOCK_OVERHEAD);
+    const plotTop = PANEL_MARGIN + PLOT_TOP_OFFSET;
     const plotBottom = plotTop + plotBodyHeight;
     return {
       viewport: { width: VIEWPORT_WIDTH, height },
@@ -432,9 +422,9 @@
     chartEl.setAttribute("viewBox", `0 0 ${viewport.width} ${viewport.height}`);
     chartEl.setAttribute("preserveAspectRatio", "none");
   };
-  var renderEmptyState = (chartEl, payload, height = VIEWPORT_MIN_HEIGHT, scale = 1) => {
+  var renderEmptyState = (chartEl, payload, height = VIEWPORT_MIN_HEIGHT) => {
     const chartDocument = chartEl.ownerDocument;
-    const { panel, viewport } = resolveGeometry(resolveViewportHeight(height), scale);
+    const { panel, viewport } = resolveGeometry(resolveViewportHeight(height));
     clearNode(chartEl);
     applyViewBox(chartEl, viewport);
     chartEl.setAttribute("aria-label", payload.subtitle || PLAN_PRICE_WIDGET_ARIA.unavailable);
@@ -460,9 +450,9 @@
       "text-anchor": "middle"
     }, payload.subtitle || DEFAULT_EMPTY_SUBTITLE));
   };
-  var renderReadyState = (chartEl, payload, half, height = VIEWPORT_MIN_HEIGHT, scale = 1) => {
+  var renderReadyState = (chartEl, payload, half, height = VIEWPORT_MIN_HEIGHT) => {
     const chartDocument = chartEl.ownerDocument;
-    const geometry = resolveGeometry(resolveViewportHeight(height), scale);
+    const geometry = resolveGeometry(resolveViewportHeight(height));
     const groups = createChartGroups(chartDocument);
     const metrics = resolvePlotMetrics(payload, half, geometry);
     clearNode(chartEl);
@@ -492,15 +482,15 @@
       tone: payload.summaryTone
     });
   };
-  var renderWidget = (chartEl, payload, half, height = VIEWPORT_MIN_HEIGHT, scale = 1) => {
+  var renderWidget = (chartEl, payload, half, height = VIEWPORT_MIN_HEIGHT) => {
     if (!payload || payload.state !== "ready") {
       renderEmptyState(chartEl, payload || {
         title: WIDGET_TITLE,
         subtitle: DEFAULT_EMPTY_SUBTITLE
-      }, height, scale);
+      }, height);
       return;
     }
-    renderReadyState(chartEl, payload, half, height, scale);
+    renderReadyState(chartEl, payload, half, height);
   };
 
   // widgets/_shared/widgetRuntime.ts
@@ -813,11 +803,11 @@
     const rect = chartEl.getBoundingClientRect?.();
     const measured = rect?.height ?? 0;
     const width = rect?.width ?? 0;
-    if (!Number.isFinite(measured) || measured <= 0 || width <= 0) {
-      return { height: VIEWPORT_MIN_HEIGHT, scale: 1 };
+    if (!Number.isFinite(measured) || measured <= 0 || !Number.isFinite(width) || width <= 0) {
+      return { height: VIEWPORT_MIN_HEIGHT };
     }
     const scale = width / VIEWPORT_WIDTH2;
-    return { height: measured / scale, scale };
+    return { height: measured / scale };
   };
   var renderView = (targets, payload, half) => {
     const { chartEl, tabsEl, tabButtons } = targets;
@@ -830,15 +820,15 @@
       button.tabIndex = selected ? 0 : -1;
       button.classList.toggle("tab--active", selected);
     });
-    const { height, scale } = measureChart(chartEl);
-    renderWidget(chartEl, payload, half, height, scale);
+    const { height } = measureChart(chartEl);
+    renderWidget(chartEl, payload, half, height);
   };
   var renderLoadErrorView = (targets, title, subtitle) => {
     const { chartEl, tabsEl } = targets;
     tabsEl.hidden = true;
     applySummary(targets, null);
-    const { height, scale } = measureChart(chartEl);
-    renderEmptyState(chartEl, { title, subtitle }, height, scale);
+    const { height } = measureChart(chartEl);
+    renderEmptyState(chartEl, { title, subtitle }, height);
   };
   var keyToHalf = (key) => {
     if (key === "ArrowRight" || key === "ArrowDown" || key === "End") return "afternoon";
@@ -878,7 +868,7 @@
     let halfPinned = false;
     let resizeObserver = null;
     let lastDrawnSignature = "";
-    const measurementSignature = (m) => `${Math.round(m.height)}:${m.scale.toFixed(3)}`;
+    const measurementSignature = (m) => `${Math.round(m.height)}`;
     let destroyed = false;
     let inErrorState = false;
     const labelTabs = () => {

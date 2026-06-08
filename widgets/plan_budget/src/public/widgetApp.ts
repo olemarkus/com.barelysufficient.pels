@@ -168,27 +168,24 @@ const VIEWPORT_WIDTH = 480;
 type ChartMeasurement = {
   // The container height expressed in viewBox units (measuredPx / scale).
   height: number;
-  // The width scale `widthPx / 480`: how many CSS px one viewBox unit spans. Used
-  // to size the plot body in physical px so it stays the same size at any width.
-  scale: number;
 };
 
-// Measure the chart container's pixel height + width scale for the responsive
-// viewBox. Returns the 4:3 minimum at scale 1 when no layout box is available yet
-// (jsdom/preview/pre-paint), so the chart still renders at its natural ratio and
-// the geometry uses its fixed-unit fallback band.
+// Measure the chart container's height in viewBox units for the responsive
+// viewBox. Returns the 4:3 minimum when no layout box is available yet
+// (jsdom/preview/pre-paint), so the chart still renders at its natural ratio.
 const measureChart = (chartEl: SVGSVGElement): ChartMeasurement => {
   const rect = chartEl.getBoundingClientRect?.();
   const measured = rect?.height ?? 0;
   const width = rect?.width ?? 0;
-  if (!Number.isFinite(measured) || measured <= 0 || width <= 0) {
-    return { height: VIEWPORT_MIN_HEIGHT, scale: 1 };
+  if (!Number.isFinite(measured) || measured <= 0 || !Number.isFinite(width) || width <= 0) {
+    return { height: VIEWPORT_MIN_HEIGHT };
   }
   // The viewBox keeps width 480; scale the measured pixel height into viewBox
   // units so the chart fills the container's true aspect ratio (clamped in
-  // chart.ts).
+  // chart.ts). The geometry then fills the panel in unit space, so the same
+  // fraction of the card is covered at any width without a separate scale.
   const scale = width / VIEWPORT_WIDTH;
-  return { height: measured / scale, scale };
+  return { height: measured / scale };
 };
 
 // Reflect the projected summary, tab visibility, and selected tab into the DOM,
@@ -211,8 +208,8 @@ const renderView = (
     button.classList.toggle('tab--active', selected);
   });
 
-  const { height, scale } = measureChart(chartEl);
-  renderWidget(chartEl, payload, half, height, scale);
+  const { height } = measureChart(chartEl);
+  renderWidget(chartEl, payload, half, height);
 };
 
 // Tear the view down to the load-error state. Destructured so the assignments
@@ -225,8 +222,8 @@ const renderLoadErrorView = (
   const { chartEl, tabsEl } = targets;
   tabsEl.hidden = true;
   applySummary(targets, null);
-  const { height, scale } = measureChart(chartEl);
-  renderEmptyState(chartEl, { title, subtitle }, height, scale);
+  const { height } = measureChart(chartEl);
+  renderEmptyState(chartEl, { title, subtitle }, height);
 };
 
 // Map a keydown to the half it selects, or null when the key is irrelevant.
@@ -278,14 +275,13 @@ export const createWidgetController = (
   let half: PlanPriceWidgetHalf = 'morning';
   let halfPinned = false;
   let resizeObserver: ResizeObserver | null = null;
-  // A signature of the last-drawn measurement (rounded unit-height + width scale);
-  // lets the resize handler skip re-rendering when neither changed (the observer
-  // fires on every sub-pixel reflow). Scale is part of the key because the
-  // physical-px plot-body cap depends on it, so a uniform tile growth (aspect
-  // ratio held, scale changed) must still redraw even though unit-height is equal.
+  // A signature of the last-drawn measurement (rounded unit-height); lets the
+  // resize handler skip re-rendering when it hasn't changed (the observer fires on
+  // every sub-pixel reflow). The geometry depends only on the viewBox unit-height
+  // now — the body fills the panel in unit space, so width no longer factors in.
   let lastDrawnSignature = '';
-  const measurementSignature = (m: { height: number; scale: number }): string =>
-    `${Math.round(m.height)}:${m.scale.toFixed(3)}`;
+  const measurementSignature = (m: { height: number }): string =>
+    `${Math.round(m.height)}`;
   // Set once destroy() runs; guards in-flight async loads from rendering to a
   // detached DOM after teardown (destroy doesn't bump loadSequence).
   let destroyed = false;
