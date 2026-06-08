@@ -1,4 +1,4 @@
-import type Homey from 'homey';
+import type { HomeyRuntime } from '../ports/homeyRuntime';
 import type { PowerTrackerState } from '../power/tracker';
 import { isFiniteNumber } from '../utils/appTypeGuards';
 import { readCombinedPriceData } from '../price/priceStore';
@@ -47,7 +47,7 @@ import { resolveUsableCapacityKw } from '../power/capacityModel';
 const moduleLogger = getLogger('dailyBudget/service');
 
 type DailyBudgetServiceDeps = {
-  homey: Homey.App['homey'];
+  homey: HomeyRuntime;
   log: (...args: unknown[]) => void;
   isDebugTopicEnabled?: (topic: 'daily_budget') => boolean;
   getPowerTracker: () => PowerTrackerState;
