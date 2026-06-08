@@ -6,14 +6,12 @@ import {
 import type {
   DeviceControlModel,
   DeviceTargetPowerConfigs,
-  SteppedLoadDecoration,
   SteppedLoadProfile,
   TargetPowerSteppedLoadConfig,
-  TargetDeviceSnapshot,
 } from '../../../contracts/src/types.ts';
 import { DEVICE_CONTROL_PROFILES, DEVICE_TARGET_POWER_CONFIGS } from '../../../contracts/src/settingsKeys.ts';
 import { getSetting } from './homey.ts';
-import { state } from './state.ts';
+import { state, type SettingsUiDeviceView } from './state.ts';
 import { supportsTemperatureDevice } from './deviceUtils.ts';
 import { logSettingsError } from './logging.ts';
 
@@ -22,8 +20,8 @@ const roundPowerW = (value: number): number => Math.max(0, Math.round(value / 50
 
 const resolveEstimatedMaxPlanningPowerW = (
   // Reads the decoration's `planningPowerKw` when present (the live device list
-  // is the decorated carrier); a plain raw snapshot without it is also valid.
-  device: TargetDeviceSnapshot & Pick<SteppedLoadDecoration, 'planningPowerKw'>,
+  // is the decorated carrier); it is optional, so a device without it is valid.
+  device: SettingsUiDeviceView,
 ): number => {
   const knownKw = [
     device.planningPowerKw,
@@ -35,7 +33,7 @@ const resolveEstimatedMaxPlanningPowerW = (
   return roundPowerW((knownKw ?? (DEFAULT_MAX_PLANNING_POWER_W / 1000)) * 1000) || DEFAULT_MAX_PLANNING_POWER_W;
 };
 
-export const createDefaultSteppedLoadProfile = (device: TargetDeviceSnapshot): SteppedLoadProfile => {
+export const createDefaultSteppedLoadProfile = (device: SettingsUiDeviceView): SteppedLoadProfile => {
   if (device.suggestedSteppedLoadProfile?.model === 'stepped_load') {
     return device.suggestedSteppedLoadProfile;
   }
@@ -61,25 +59,25 @@ export const createDefaultSteppedLoadProfile = (device: TargetDeviceSnapshot): S
 export const getStoredDeviceControlProfile = (deviceId: string) => state.deviceControlProfiles[deviceId] ?? null;
 export const getStoredTargetPowerConfig = (deviceId: string) => state.deviceTargetPowerConfigs[deviceId] ?? null;
 
-export const isNativeSteppedLoadProfileActive = (device?: TargetDeviceSnapshot | null): boolean => (
+export const isNativeSteppedLoadProfileActive = (device?: SettingsUiDeviceView | null): boolean => (
   device?.controlAdapter?.kind === 'capability_adapter'
   && device.controlAdapter.activationEnabled === true
   && device.suggestedSteppedLoadProfile?.model === 'stepped_load'
 );
 
-const hasSteppedLoadProfileState = (device: TargetDeviceSnapshot): boolean => (
+const hasSteppedLoadProfileState = (device: SettingsUiDeviceView): boolean => (
   device.steppedLoadProfile?.model === 'stepped_load'
   || device.suggestedSteppedLoadProfile?.model === 'stepped_load'
   || getStoredDeviceControlProfile(device.id)?.model === 'stepped_load'
 );
 
-const hasEnabledEvTargetPowerPreset = (device: TargetDeviceSnapshot): boolean => {
+const hasEnabledEvTargetPowerPreset = (device: SettingsUiDeviceView): boolean => {
   const targetPowerConfig = getStoredTargetPowerConfig(device.id) ?? device.targetPowerConfig;
   return targetPowerConfig?.enabled !== false
     && (targetPowerConfig?.preset === 'ev_charger_1_phase' || targetPowerConfig?.preset === 'ev_charger_3_phase');
 };
 
-export const hasSteppedLoadSupport = (device?: TargetDeviceSnapshot | null): boolean => {
+export const hasSteppedLoadSupport = (device?: SettingsUiDeviceView | null): boolean => {
   if (!device) return false;
   if (isNativeSteppedLoadProfileActive(device)) return true;
   if (hasSteppedLoadProfileState(device)) return true;
@@ -87,7 +85,7 @@ export const hasSteppedLoadSupport = (device?: TargetDeviceSnapshot | null): boo
   return false;
 };
 
-export const getEffectiveControlModel = (device: TargetDeviceSnapshot): DeviceControlModel => {
+export const getEffectiveControlModel = (device: SettingsUiDeviceView): DeviceControlModel => {
   if (isNativeSteppedLoadProfileActive(device)) return 'stepped_load';
   if (device.controlModel) return device.controlModel;
   const storedProfile = getStoredDeviceControlProfile(device.id);
