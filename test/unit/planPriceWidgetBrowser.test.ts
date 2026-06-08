@@ -9,6 +9,7 @@ import {
   resolveSummaryParts,
 } from '../../widgets/plan_budget/src/public/chart';
 import { resolveGeometry, resolveViewportHeight } from '../../widgets/plan_budget/src/public/chartGeometry';
+import { resolveYAxis } from '../../widgets/plan_budget/src/public/chartTicks';
 import { findRuleBlock, parseCssRuleBlocks } from '../cssTestUtils';
 import { PREVIEW_OVER_PAYLOAD, PREVIEW_TODAY_PAYLOAD } from '../../widgets/plan_budget/src/public/previewPayloads';
 import type { PlanPriceWidgetReadyPayload } from '../../widgets/plan_budget/src/planPriceWidgetTypes';
@@ -676,6 +677,81 @@ describe('plan budget widget panel-fill geometry', () => {
     // payload exercises the otherwise-unguarded `over` (red) status chip.
     expect(PREVIEW_OVER_PAYLOAD.summaryTone).toBe('over');
     expect(resolveSummaryParts(PREVIEW_OVER_PAYLOAD)).toMatchObject({ tone: 'over', status: 'Over budget' });
+  });
+});
+
+// Nice-number Y axis: the kWh gridlines are multiples of a 1/2/2.5/5×10ⁿ step
+// (round + distinct by construction), the interval count tracks the plot height,
+// and the shared price labels never repeat the integer above them.
+describe('plan budget widget nice-number Y axis', () => {
+  const NICE_MANTISSAS = [1, 2, 2.5, 5];
+  const isNiceStep = (step: number): boolean => {
+    const decade = 10 ** Math.round(Math.log10(step));
+    return NICE_MANTISSAS.some((m) => Math.abs(step - m * decade) < step * 1e-6);
+  };
+  const axis = (over: Partial<Parameters<typeof resolveYAxis>[0]> = {}): ReturnType<typeof resolveYAxis> =>
+    resolveYAxis({ peakKwh: 1.1, plotHeight: 434, priceMin: 79, priceMax: 162, hasPriceData: true, ...over });
+
+  test('kWh labels are round and strictly increasing (never non-round, never repeated)', () => {
+    // Several peaks, including ones the OLD raw-peak axis rendered as non-round
+    // (e.g. 4.3 → 0/1.2/2.3/3.5/4.6) or risked repeating.
+    for (const peakKwh of [0.2, 1.1, 1.0, 4.3, 7.7, 0.05]) {
+      const { ticks } = axis({ peakKwh });
+      const values = ticks.map((t) => Number(t.kwhLabel));
+      // Round: the label round-trips through Number with <= 2 decimals.
+      for (const t of ticks) expect(t.kwhLabel).toBe(String(Number(Number(t.kwhLabel).toFixed(2))));
+      // Distinct + strictly increasing — no two gridlines share a label.
+      for (let i = 1; i < values.length; i += 1) expect(values[i]).toBeGreaterThan(values[i - 1]);
+      // The step between gridlines is a nice 1/2/2.5/5 value.
+      expect(isNiceStep(values[1] - values[0])).toBe(true);
+    }
+  });
+
+  test('the axis ceiling clears the headroomed data peak so the tallest bar fits', () => {
+    for (const peakKwh of [0.2, 1.1, 4.3, 7.7]) {
+      const { kwhMax } = axis({ peakKwh });
+      expect(kwhMax).toBeGreaterThanOrEqual(peakKwh * 1.08 - 1e-9);
+    }
+  });
+
+  test('a taller plot gets more gridlines; never more than 8 intervals (no clutter)', () => {
+    const short = axis({ plotHeight: 240 });
+    const tall = axis({ plotHeight: 1074 });
+    expect(tall.ticks.length).toBeGreaterThan(short.ticks.length);
+    // The interval count tracks height but is capped at 8 so a giant tile can't
+    // clutter the axis. (The lower end floats with the nice step — a coarse step
+    // can land at 3 intervals, e.g. 0/1/2/3 — but stays a sane >= 3.)
+    for (const g of [axis({ plotHeight: 100 }), short, tall, axis({ plotHeight: 4000, peakKwh: 2.8 })]) {
+      const intervals = g.ticks.length - 1;
+      expect(intervals).toBeGreaterThanOrEqual(3);
+      expect(intervals).toBeLessThanOrEqual(8);
+    }
+  });
+
+  test('price labels never repeat the integer above them, even on a near-flat day', () => {
+    // A tiny price span over many gridlines would round to the same integer
+    // repeatedly; those duplicates are dropped (null), the rest stay distinct.
+    const { ticks } = axis({ priceMin: 100, priceMax: 101, plotHeight: 1074 });
+    const shown = ticks.map((t) => t.priceLabel).filter((l): l is string => l !== null);
+    expect(new Set(shown).size).toBe(shown.length);
+    expect(shown.length).toBeGreaterThan(0);
+  });
+
+  test('price labels use the clamped (>= 1) span the chart plots against', () => {
+    // A sub-1 price span is clamped to 1 for plotting (chart.ts), so the labels
+    // must use the same clamped span: the axis spans priceMin..priceMin+1, so the
+    // top label is 101 (not the raw max 100.4 → "100", which would disagree with
+    // where the max-price dot is plotted).
+    const { ticks } = axis({ priceMin: 100, priceMax: 100.4, plotHeight: 240 });
+    const labels = ticks.map((t) => t.priceLabel).filter((l): l is string => l !== null);
+    expect(Math.max(...labels.map(Number))).toBe(101);
+  });
+
+  test('no price labels are emitted when there is no price data', () => {
+    const { ticks } = axis({ hasPriceData: false });
+    expect(ticks.every((t) => t.priceLabel === null)).toBe(true);
+    // kWh labels are still present.
+    expect(ticks.every((t) => t.kwhLabel.length > 0)).toBe(true);
   });
 });
 
