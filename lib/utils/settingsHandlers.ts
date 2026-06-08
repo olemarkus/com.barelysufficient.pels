@@ -1,4 +1,4 @@
-import Homey from 'homey';
+import type Homey from 'homey';
 import CapacityGuard from '../power/capacityGuard';
 import type { DailyBudgetUpdateStateOptions } from '../dailyBudget/dailyBudgetTypes';
 import type { SettingsUiLogEntry } from '../../packages/contracts/src/types';

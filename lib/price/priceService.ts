@@ -1,4 +1,4 @@
-import Homey from 'homey';
+import type Homey from 'homey';
 import {
   getDateKeyInTimeZone,
   getHourStartInTimeZone,
