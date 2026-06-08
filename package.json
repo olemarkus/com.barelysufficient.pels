@@ -34,6 +34,7 @@
     "arch:check": "dependency-cruiser --config .dependency-cruiser.cjs app.ts flowCards drivers lib setup \"widgets/*/src\" widgets/_shared packages/settings-ui/src packages/contracts/src packages/shared-domain/src packages/planner-types/src",
     "arch:grep": "node scripts/check-plan-objectives-edge.mjs",
     "ev:vocab": "node scripts/check-ev-vocab.mjs",
+    "control-model:vocab": "node scripts/check-control-model-vocab.mjs",
     "device-kind:vocab": "node scripts/check-device-kind-vocab.mjs",
     "binary:seam": "node scripts/check-binary-seam.mjs",
     "deadcode:check": "knip",

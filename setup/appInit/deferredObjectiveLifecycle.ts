@@ -1,5 +1,6 @@
 import type { AppContext } from '../../lib/app/appContext';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
+import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives';
 import {
   DeferredObjectiveLifecycleEmitter,
@@ -101,9 +102,7 @@ const resolveTerminalSteppedShedCommand = (
   device: PlanInputDevice,
   behavior: { stepId?: string | null },
 ): ShedActuationCommand | null => {
-  const profile = device.controlModel === 'stepped_load' && device.steppedLoadProfile?.model === 'stepped_load'
-    ? device.steppedLoadProfile
-    : null;
+  const profile = isSteppedLoadDevice(device) ? device.steppedLoadProfile : null;
   if (!profile) return null;
   const preferred = behavior.stepId ? getSteppedLoadStep(profile, behavior.stepId) : null;
   const target = preferred ?? getSteppedLoadLowestActiveStep(profile) ?? getSteppedLoadOffStep(profile);

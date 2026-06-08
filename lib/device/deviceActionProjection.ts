@@ -372,14 +372,15 @@ export type ShedIntentResolveInput = {
   shedBehavior: ShedIntentBehaviorInput;
   controllable: boolean;
   controlCapabilityId?: BinaryControlCapabilityId;
-  controlModel?: DeviceControlModel;
   steppedLoadProfile?: SteppedLoadProfile;
   primaryTarget?: TargetCapabilitySnapshot | null;
 };
 
+// "Stepped load" is a yes/no capability = presence of a valid
+// `steppedLoadProfile`; `controlModel` is a producer-only setting and not part
+// of the discriminant.
 const isSteppedLoadDeviceShape = (input: ShedIntentResolveInput): boolean => (
-  input.controlModel === 'stepped_load'
-  && input.steppedLoadProfile?.model === 'stepped_load'
+  input.steppedLoadProfile?.model === 'stepped_load'
 );
 
 const resolveSetStepTargetStepId = (input: ShedIntentResolveInput): string | null => {

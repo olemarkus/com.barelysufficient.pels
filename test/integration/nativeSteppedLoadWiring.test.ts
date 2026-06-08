@@ -226,10 +226,10 @@ describe('native stepped-load wiring', () => {
     })).toEqual({
       model: 'stepped_load',
       steps: expect.arrayContaining([
-        { id: 'off', planningPowerW: 0 },
-        { id: '6a', planningPowerW: 4140 },
-        { id: '16a', planningPowerW: 11040 },
-        { id: '32a', planningPowerW: 22080 },
+        { id: 'off', planningPowerW: 0, planningCurrentA: 0 },
+        { id: '6a', planningPowerW: 4140, planningCurrentA: 6 },
+        { id: '16a', planningPowerW: 11040, planningCurrentA: 16 },
+        { id: '32a', planningPowerW: 22080, planningCurrentA: 32 },
       ]),
     });
   });
@@ -246,12 +246,36 @@ describe('native stepped-load wiring', () => {
     })).toEqual({
       model: 'stepped_load',
       steps: expect.arrayContaining([
-        { id: 'off', planningPowerW: 0 },
-        { id: '6a', planningPowerW: 1380 },
-        { id: '16a', planningPowerW: 3680 },
-        { id: '32a', planningPowerW: 7360 },
+        { id: 'off', planningPowerW: 0, planningCurrentA: 0 },
+        { id: '6a', planningPowerW: 1380, planningCurrentA: 6 },
+        { id: '16a', planningPowerW: 3680, planningCurrentA: 16 },
+        { id: '32a', planningPowerW: 7360, planningCurrentA: 32 },
       ]),
     });
+  });
+
+  // Behaviour-preservation guard for the EV-preset current-stepping move: the
+  // producer now stamps `planningCurrentA` onto each step, and the executor reads
+  // it directly instead of dividing `planningPowerW` by the preset watts-per-amp.
+  // Assert the stamped current is byte-identical to the old derivation —
+  // `amps = planningPowerW / (230 * phaseCount)` — for both presets.
+  it.each([
+    { preset: 'ev_charger_1_phase' as const, phaseCount: 1 },
+    { preset: 'ev_charger_3_phase' as const, phaseCount: 3 },
+  ])('stamps planningCurrentA = planningPowerW / (230 * phaseCount) for $preset', ({ preset, phaseCount }) => {
+    const device = buildTargetPowerDevice({ settings: { pelsTargetPowerPreset: preset } });
+
+    const profile = resolveNativeSteppedLoadProfileSuggestion({
+      device,
+      capabilities: device.capabilities ?? [],
+      capabilityObj: device.capabilitiesObj as NonNullable<HomeyDeviceLike['capabilitiesObj']>,
+    });
+
+    expect(profile).not.toBeUndefined();
+    for (const step of profile!.steps) {
+      // Inverse of the old executor `resolveTargetPowerWattsPerAmp` derivation.
+      expect(step.planningCurrentA).toBe(step.planningPowerW / (230 * phaseCount));
+    }
   });
 
   it('maps target_power observations and commands through the stepped-load profile', () => {
@@ -401,8 +425,8 @@ describe('native stepped-load wiring', () => {
       steppedLoadProfile: expect.objectContaining({
         model: 'stepped_load',
         steps: expect.arrayContaining([
-          { id: '6a', planningPowerW: 4140 },
-          { id: '16a', planningPowerW: 11040 },
+          { id: '6a', planningPowerW: 4140, planningCurrentA: 6 },
+          { id: '16a', planningPowerW: 11040, planningCurrentA: 16 },
         ]),
       }),
     }));
@@ -438,8 +462,8 @@ describe('native stepped-load wiring', () => {
       steppedLoadProfile: expect.objectContaining({
         model: 'stepped_load',
         steps: expect.arrayContaining([
-          { id: '6a', planningPowerW: 1380 },
-          { id: '16a', planningPowerW: 3680 },
+          { id: '6a', planningPowerW: 1380, planningCurrentA: 6 },
+          { id: '16a', planningPowerW: 3680, planningCurrentA: 16 },
         ]),
       }),
     }));
@@ -956,10 +980,13 @@ describe('native stepped-load wiring', () => {
       controlModel: 'stepped_load',
       steppedLoadProfile: {
         model: 'stepped_load',
+        // EV preset profiles now carry the producer-resolved per-step
+        // installation current; the executor reads `planningCurrentA` off the
+        // step (6a @ 3-phase = 4140 / (230*3) = 6 A).
         steps: [
-          { id: 'off', planningPowerW: 0 },
-          { id: '6a', planningPowerW: 4140 },
-          { id: '16a', planningPowerW: 11040 },
+          { id: 'off', planningPowerW: 0, planningCurrentA: 0 },
+          { id: '6a', planningPowerW: 4140, planningCurrentA: 6 },
+          { id: '16a', planningPowerW: 11040, planningCurrentA: 16 },
         ],
       },
       selectedStepId: '16a',
@@ -970,7 +997,6 @@ describe('native stepped-load wiring', () => {
         activationRequired: false,
         activationEnabled: true,
       },
-      targetPowerConfig: { enabled: true, preset: 'ev_charger_3_phase' },
       shedAction: 'set_step',
       reason: { code: 'overCapacity', label: 'over capacity' },
     });

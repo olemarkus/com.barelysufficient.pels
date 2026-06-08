@@ -47,7 +47,6 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
         evBoost: evDevice?.evBoost,
         evBoostActive: evDevice?.evBoostActive,
         stateOfCharge: evDevice?.stateOfCharge,
-        controlModel: live.controlModel ?? device.controlModel,
         steppedLoadProfile: mergedProfile,
         currentState: resolveCurrentStateFromPlanInput(device, live),
         currentTarget: getPrimaryTargetCapability(live.targets)?.value ?? null,
@@ -88,7 +87,7 @@ function resolveLiveSteppedStepState(
   DevicePlan['devices'][number],
   'reportedStepId' | 'selectedStepId'
 > {
-  if ((live.controlModel ?? previous.controlModel) !== 'stepped_load') {
+  if (!isSteppedLoadDevice(live) && !isSteppedLoadDevice(previous)) {
     return {
       reportedStepId: undefined,
       selectedStepId: undefined,
@@ -176,7 +175,6 @@ function resolveCurrentStateFromPlanInput(
     binaryControl: liveDevice.binaryControl,
     controlCapabilityId: liveDevice.controlCapabilityId,
     observationStale: liveDevice.observationStale,
-    controlModel: previousDevice.controlModel,
     steppedLoadProfile: isSteppedLoadDevice(previousDevice) ? previousDevice.steppedLoadProfile : undefined,
     selectedStepId: liveDevice.selectedStepId,
   });
@@ -188,7 +186,7 @@ function hasSettledPostActuationState(
 ): boolean {
   if (baseDevice.available === false || liveDevice.available === false) return true;
   if (
-    baseDevice.controlModel === 'stepped_load'
+    isSteppedLoadDevice(baseDevice)
     && baseDevice.desiredStepId
     && liveDevice.selectedStepId !== baseDevice.desiredStepId
   ) {
@@ -223,7 +221,7 @@ function hasRelevantBinaryExecutionDrift(
   previousDevice: DevicePlan['devices'][number],
   liveDevice: DevicePlan['devices'][number],
 ): boolean {
-  if (previousDevice.controlModel === 'stepped_load') {
+  if (isSteppedLoadDevice(previousDevice)) {
     return previousDevice.selectedStepId !== liveDevice.selectedStepId
       || previousDevice.currentState !== liveDevice.currentState
       || hasSteppedEvidenceChanged(previousDevice, liveDevice);

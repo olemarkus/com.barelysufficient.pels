@@ -25,6 +25,7 @@ import type {
 } from './executablePlan';
 import { buildExecutableSteppedLoadIntent } from './executableSteppedLoadProjection';
 import { buildExecutableTargetIntent } from './executableTargetProjection';
+import { isSteppedLoadDevice } from '../plan/planSteppedLoad';
 
 type PlanDevice = DevicePlan['devices'][number];
 type PlanMeta = DevicePlan['meta'];
@@ -136,7 +137,7 @@ const isDroppedUnderspecifiedSetStepShed = (
   executableDevice: ExecutableDeviceIntent | undefined,
 ): boolean => (
   planDevice.plannedState === 'shed'
-  && planDevice.controlModel === 'stepped_load'
+  && isSteppedLoadDevice(planDevice)
   && planDevice.shedAction === 'set_step'
   && executableDevice?.steppedLoad === null
   && !isHeldByRestoreAdmission(planDevice)
@@ -208,7 +209,7 @@ const buildObservedSteppedLoadState = (
 };
 
 const buildExecutableBinaryIntent = (dev: PlanDevice): ExecutableBinaryIntent | null => {
-  if (dev.controlModel === 'stepped_load') return null;
+  if (isSteppedLoadDevice(dev)) return null;
   if (dev.controlCapabilityId === undefined) return null;
   if (dev.controllable === false) {
     return dev.plannedState === 'keep'

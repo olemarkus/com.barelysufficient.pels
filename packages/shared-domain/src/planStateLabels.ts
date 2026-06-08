@@ -94,8 +94,11 @@ const isGray = (device: DeviceOverviewSnapshot): boolean => {
 };
 
 const hasSteppedRestorePending = (device: DeviceOverviewSnapshot): boolean => (
-  device.controlModel === 'stepped_load'
-  && isOffLike(device.currentState)
+  // A distinct selected→desired step id pair only ever exists on a stepped device,
+  // so the step-id check below already gates stepped-ness — no need to also read the
+  // `controlModel` setting (which a plan device no longer carries; only stepped
+  // devices populate `selectedStepId`/`desiredStepId`).
+  isOffLike(device.currentState)
   && Boolean(device.selectedStepId && device.desiredStepId && device.selectedStepId !== device.desiredStepId)
 );
 

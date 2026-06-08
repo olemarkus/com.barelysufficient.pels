@@ -2,7 +2,7 @@ import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadStep,
 } from '../utils/deviceControlProfiles';
-import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { SteppedLoadProfile, SteppedLoadStep, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import {
   canTurnOnDevice,
   recordActivationAttemptStarted,
@@ -26,7 +26,6 @@ import {
   type SteppedLoadStepRequestResult,
   type SteppedLoadStepRequestTransport,
 } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
-import { resolveTargetPowerWattsPerAmp } from '../../packages/shared-domain/src/targetPowerStepping';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import { getLogger } from '../logging/logger';
 
@@ -603,7 +602,7 @@ const executeSteppedLoadCommand = async (
     previousStepId,
   } = params;
   const planningPowerW = desiredStep.planningPowerW;
-  const planningCurrentA = resolvePlanningCurrentA(action, planningPowerW);
+  const planningCurrentA = resolvePlanningCurrentA(desiredStep);
   try {
     const result = await ctx.requestSteppedLoadStep({
       deviceId: action.id,
@@ -647,13 +646,14 @@ const executeSteppedLoadCommand = async (
   }
 };
 
+// The producer (EV target-power profile builder) pre-resolves each step's
+// installation current onto `planningCurrentA`; the executor reads it directly
+// instead of dividing the step power by the preset's watts-per-amp. Steps from
+// capability-built / non-preset profiles carry no `planningCurrentA`, which is
+// the same `0` the watts-per-amp path produced for a missing/unknown preset.
 const resolvePlanningCurrentA = (
-  action: ExecutableSteppedLoadDevice,
-  planningPowerW: number,
-): number => {
-  const wattsPerAmp = resolveTargetPowerWattsPerAmp(action.targetPowerConfig);
-  return wattsPerAmp ? planningPowerW / wattsPerAmp : 0;
-};
+  desiredStep: SteppedLoadStep,
+): number => desiredStep.planningCurrentA ?? 0;
 
 const logSteppedLoadRestoreSkip = (
   _ctx: PlanExecutorSteppedContext,

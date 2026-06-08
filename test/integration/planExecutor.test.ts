@@ -223,7 +223,6 @@ describe('PlanExecutor restore logging', () => {
           currentTarget: null,
           controllable: true,
           reason: KEEP_REASON,
-          controlModel: 'stepped_load',
           steppedLoadProfile: { model: 'stepped_load' } as never,
         },
         {
@@ -1337,7 +1336,6 @@ describe('PlanExecutor stepped loads', () => {
         plannedTarget: 68,
         controllable: true,
         reason: KEEP_REASON,
-        controlModel: 'stepped_load',
         steppedLoadProfile: steppedProfile,
         selectedStepId: 'low',
         desiredStepId: 'max',
@@ -1418,11 +1416,21 @@ describe('PlanExecutor stepped loads', () => {
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', true);
   });
 
-  it('passes phase-aware EV charger current for stepped-load flow commands', async () => {
+  it('passes the producer-resolved per-step installation current for stepped-load flow commands', async () => {
     const { executor, desiredSteppedTrigger } = buildExecutor();
 
+    // The producer (EV target-power profile builder) stamps `planningCurrentA`
+    // onto each step; the executor reads it off the desired step instead of
+    // re-deriving it from the target-power preset config.
     await expect(executor.applyPlanActions(steppedPlan({
-      targetPowerConfig: { enabled: true, preset: 'ev_charger_1_phase' },
+      steppedLoadProfile: {
+        model: 'stepped_load' as const,
+        steps: [
+          { id: 'off', planningPowerW: 0, planningCurrentA: 0 },
+          { id: 'low', planningPowerW: 1250, planningCurrentA: 1250 / 230 },
+          { id: 'max', planningPowerW: 3000, planningCurrentA: 3000 / 230 },
+        ],
+      },
     }))).resolves.toEqual({
       deviceWriteCount: 0,
       commandRequestCount: 1,
@@ -1438,12 +1446,12 @@ describe('PlanExecutor stepped loads', () => {
     });
   });
 
-  it('does not emit EV charger current when the EV target-power config is disabled', async () => {
+  it('emits zero installation current when the step carries no planningCurrentA', async () => {
     const { executor, desiredSteppedTrigger } = buildExecutor();
 
-    await expect(executor.applyPlanActions(steppedPlan({
-      targetPowerConfig: { enabled: false, preset: 'ev_charger_1_phase' },
-    }))).resolves.toEqual({
+    // Capability-built / non-preset profiles carry no per-step current, which is
+    // the same zero the old watts-per-amp path produced for a missing preset.
+    await expect(executor.applyPlanActions(steppedPlan())).resolves.toEqual({
       deviceWriteCount: 0,
       commandRequestCount: 1,
     });
@@ -2608,7 +2616,6 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       currentTarget: null,
       controllable: true,
       reason: KEEP_REASON,
-      controlModel: 'stepped_load',
       steppedLoadProfile: steppedProfile,
       selectedStepId: 'low',
       desiredStepId: 'low',
@@ -3206,7 +3213,6 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
           currentTarget: null,
           controllable: true,
           reason: KEEP_REASON,
-          controlModel: 'stepped_load' as const,
           steppedLoadProfile: steppedProfile,
           selectedStepId: 'max',
           desiredStepId: 'max',
@@ -3253,7 +3259,6 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
           currentTarget: null,
           controllable: true,
           reason: KEEP_REASON,
-          controlModel: 'stepped_load' as const,
           steppedLoadProfile: steppedProfile,
           selectedStepId: 'off',
           desiredStepId: 'low', // at lowestNonZeroStep — allowed
@@ -3296,7 +3301,6 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
         {
           id: 'dev-1', name: 'Tank', currentState: 'off', plannedState: 'keep',
           currentTarget: null, controllable: true, reason: KEEP_REASON,
-          controlModel: 'stepped_load' as const,
           steppedLoadProfile: steppedProfile,
           selectedStepId: 'off',
           desiredStepId: 'max',
@@ -3392,7 +3396,6 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
         {
           id: 'dev-1', name: 'Tank', currentState: 'off', plannedState: 'keep',
           currentTarget: null, controllable: true, reason: KEEP_REASON,
-          controlModel: 'stepped_load' as const,
           steppedLoadProfile: steppedProfile,
           selectedStepId: 'max',
           desiredStepId: 'max',
@@ -3405,7 +3408,6 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
         {
           id: 'dev-1', name: 'Tank', currentState: 'off', plannedState: 'keep',
           currentTarget: null, controllable: true, reason: KEEP_REASON,
-          controlModel: 'stepped_load' as const,
           steppedLoadProfile: steppedProfile,
           selectedStepId: 'off',
           desiredStepId: 'max',
@@ -3461,7 +3463,6 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
           currentTarget: null,
           controllable: true,
           reason: CAPACITY_REASON,
-          controlModel: 'stepped_load' as const,
           steppedLoadProfile: steppedProfile,
           shedAction: 'set_step',
           selectedStepId: undefined,
@@ -3480,7 +3481,6 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
           currentTarget: null,
           controllable: true,
           reason: KEEP_REASON,
-          controlModel: 'stepped_load' as const,
           steppedLoadProfile: steppedProfile,
           selectedStepId: 'max',
           desiredStepId: 'max',

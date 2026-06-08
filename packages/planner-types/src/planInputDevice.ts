@@ -23,28 +23,27 @@ import type {
  * that import `PlanInputDevice` from there keep working unchanged.
  */
 /**
- * Stepped-control discriminant for the plan-input union (slice 2 of the
- * discriminated-types refactor). The stepped variant pins
- * `controlModel: 'stepped_load'` and requires the profile; the non-stepped
- * variant omits the profile entirely and excludes the stepped control model.
- * Moving `steppedLoadProfile` off the base makes the compiler reject
- * un-narrowed `device.steppedLoadProfile` reads — consumers must pass through
+ * Stepped-control discriminant for the plan-input union. "Stepped load" is a
+ * yes/no capability = presence of a valid `steppedLoadProfile`; `controlModel`
+ * is a producer-only setting carried as a plain base optional (consumed by the
+ * lib/device boost resolvers), NOT the discriminant. The stepped variant
+ * requires the profile; the non-stepped variant omits it. Moving
+ * `steppedLoadProfile` off the base makes the compiler reject un-narrowed
+ * `device.steppedLoadProfile` reads — consumers must pass through
  * `isSteppedLoadDevice` first.
  *
  * The runtime guard lives in `lib/plan/planSteppedLoad.ts`; the kind helper
  * `SteppedLoadKind` in `lib/plan/planTypes.ts` mirrors this stepped shape.
  */
 type SteppedPlanInputKind = {
-  controlModel: 'stepped_load';
   steppedLoadProfile: SteppedLoadProfile;
 };
 
-type NonSteppedPlanInputKind = {
-  // Omits `steppedLoadProfile` entirely (not `?: never`) so an un-narrowed read
-  // on the union is a hard compile error rather than a silently-permitted
-  // `SteppedLoadProfile | undefined`.
-  controlModel?: Exclude<DeviceControlModel, 'stepped_load'>;
-};
+// Omits `steppedLoadProfile` entirely (not `?: never`) so an un-narrowed read
+// on the union is a hard compile error rather than a silently-permitted
+// `SteppedLoadProfile | undefined`. It stays `{}`-shaped (no index signature);
+// the discriminant is profile presence alone.
+type NonSteppedPlanInputKind = Record<never, never>;
 
 /**
  * EV field cluster for the plan-input contract (EV-variant slice). EV is
@@ -94,6 +93,12 @@ export type PlanInputDeviceBase = {
   controlCapabilityId?: BinaryControlCapabilityId;
   controlAdapter?: DeviceControlAdapterSnapshot;
   targetPowerConfig?: TargetPowerSteppedLoadConfig;
+  // Producer-only control-model setting (`temperature_target` / `binary_power` /
+  // `stepped_load`). It is NOT the planner's stepped discriminant — that is
+  // profile presence (`isSteppedLoadDevice`). Carried here so the lib/device
+  // boost resolvers (which receive the whole plan-input device) can read it; the
+  // planner itself must not branch on it.
+  controlModel?: DeviceControlModel;
   priority?: number;
   /**
    * Producer-resolved bit (chunk 2 of the planner-detype refactor): true when

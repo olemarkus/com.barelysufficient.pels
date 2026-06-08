@@ -88,7 +88,8 @@ export const steppedPlanDevice = (overrides: Partial<DevicePlanDevice> = {}): De
   const defaultPlanningKw = step ? step.planningPowerW / 1000 : 0;
 
   return buildPlanDevice({
-    controlModel: 'stepped_load',
+    // `controlModel` is no longer a plan-device (output) field; the stepped
+    // discriminant is the presence of a valid `steppedLoadProfile`.
     steppedLoadProfile: profile,
     selectedStepId,
     planningPowerKw: defaultPlanningKw,

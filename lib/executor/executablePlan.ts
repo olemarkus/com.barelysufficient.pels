@@ -2,7 +2,6 @@ import type {
   DeviceControlAdapterSnapshot,
   SteppedLoadProfile,
   TargetDeviceSnapshot,
-  TargetPowerSteppedLoadConfig,
 } from '../../packages/contracts/src/types';
 import type { SteppedStepActuationState } from './steppedLoadActuation';
 
@@ -159,7 +158,6 @@ export type ExecutableSteppedLoadIntent = {
   steppedLoadProfile: SteppedLoadProfile;
   communicationModel?: 'local' | 'cloud';
   controlAdapter?: DeviceControlAdapterSnapshot;
-  targetPowerConfig?: TargetPowerSteppedLoadConfig;
   shedAction?: 'turn_off' | 'set_temperature' | 'set_step';
   desired: ExecutableSteppedLoadDesiredState;
   previousStepId?: string;
@@ -177,7 +175,6 @@ export type ExecutableSteppedLoadDevice = {
   steppedLoadProfile: SteppedLoadProfile;
   communicationModel?: 'local' | 'cloud';
   controlAdapter?: DeviceControlAdapterSnapshot;
-  targetPowerConfig?: TargetPowerSteppedLoadConfig;
   shedAction?: 'turn_off' | 'set_temperature' | 'set_step';
   current: ExecutableSteppedLoadCurrentState;
   desired: ExecutableSteppedLoadDesiredState;

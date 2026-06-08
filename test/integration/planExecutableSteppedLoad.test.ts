@@ -19,7 +19,10 @@ const buildObservedState = (
   name: device.name,
   binaryControl: { on: device.binaryControl?.on ?? device.currentState === 'on' },
   targets: [],
-  controlModel: device.controlModel,
+  // `controlModel` is a producer setting that legitimately stays on the executor's
+  // snapshot input (`TargetDeviceSnapshot`); the plan device no longer carries it,
+  // so derive it from profile presence to mirror what the transport producer emits.
+  controlModel: device.steppedLoadProfile?.model === 'stepped_load' ? 'stepped_load' : undefined,
   steppedLoadProfile: device.steppedLoadProfile,
   selectedStepId: device.selectedStepId,
   reportedStepId: device.reportedStepId,

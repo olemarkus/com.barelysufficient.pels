@@ -5,6 +5,7 @@ import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import { recordOpRssDelta, safeRss } from '../utils/opRssTracker';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
 import { formatDeviceOverview } from '../../packages/shared-domain/src/deviceOverview';
+import { isSteppedLoadDevice } from './planSteppedLoad';
 import type { IdleClassification } from '../../packages/shared-domain/src/idleClassificationCopy';
 import {
   buildPlanCapacityStateSummary,
@@ -76,6 +77,7 @@ const serializePlanForUi = (
     getOverviewStarvation: (deviceId) => deps.deviceDiagnostics?.getOverviewStarvation?.(deviceId),
     getIdleClassification: (deviceId) => idleClassifier.getClassification(deviceId),
     getObservedEvChargingState: (deviceId) => deps.getObservedEvChargingState?.(deviceId),
+    getDeviceTypeById: deps.getDeviceTypeById,
   });
 };
 
@@ -94,6 +96,10 @@ export type PlanServiceDeps = {
   // (its canonical owner — `ObservedDeviceState`), not the plan device. The
   // planner no longer carries the raw `evChargingState`.
   getObservedEvChargingState?: (deviceId: string) => string | undefined;
+  // Producer `deviceType` map for the settings-UI control-mode card selection
+  // (the planner no longer carries `controlModel`). Built once per serialize from
+  // the raw snapshot; see `SettingsOverviewReadModelDeps.getDeviceTypeById`.
+  getDeviceTypeById?: () => Map<string, 'temperature' | 'onoff'>;
   getCapacityDryRun: () => boolean;
   isCurrentHourCheap: () => boolean;
   isCurrentHourExpensive: () => boolean;
@@ -592,15 +598,29 @@ export class PlanService {
     recorder: DeviceOverviewLogRecorder | undefined,
     debugEnabled: boolean,
   ): { captured: boolean; event: Record<string, unknown> | null } {
-    const signature = buildOverviewSignatureForDevice(device);
+    // The shared-domain overview/log helpers (and `formatDeviceOverview`) ask
+    // "is this stepped?" via `controlModel`, a producer SETTING the plan device no
+    // longer carries. Restore the STEPPED value for the display/log seam from the
+    // profile-presence truth (`isSteppedLoadDevice`) so stepped devices render and
+    // sign correctly. Non-stepped devices need no restoration here (the helpers
+    // only branch on the `stepped_load` value). We deliberately do NOT resolve the
+    // temperature-vs-binary split here: it would need the producer `deviceType`
+    // (a `deviceManager.getSnapshot()` call), and this runs INSIDE the plan/apply
+    // cycle where re-entering the device manager breaks the SDK-boundary e2es. The
+    // non-stepped controlModel granularity in the change signature is tracked as a
+    // P3 in TODO.md (rare, self-healing). This is display, not planning.
+    const overviewDevice = isSteppedLoadDevice(device)
+      ? { ...device, controlModel: 'stepped_load' as const }
+      : device;
+    const signature = buildOverviewSignatureForDevice(overviewDevice);
     const previousSignature = this.lastOverviewSignatureByDeviceId.get(device.id);
     this.lastOverviewSignatureByDeviceId.set(device.id, signature);
     if (signature === previousSignature) return { captured: false, event: null };
-    const overview = formatDeviceOverview(device);
-    recorder?.record(device.id, buildDeviceLogEntry(device, overview));
+    const overview = formatDeviceOverview(overviewDevice);
+    recorder?.record(device.id, buildDeviceLogEntry(overviewDevice, overview));
     return {
       captured: true,
-      event: debugEnabled ? buildOverviewEventForDevice(device, overview) : null,
+      event: debugEnabled ? buildOverviewEventForDevice(overviewDevice, overview) : null,
     };
   }
 

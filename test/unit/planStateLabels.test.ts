@@ -49,4 +49,17 @@ describe('planStateLabels', () => {
       desiredStepId: 'comfort',
     })).toBe('resuming');
   });
+
+  it('detects stepped restore-pending from the step ids alone (plan devices carry no controlModel)', () => {
+    // Plan devices no longer carry `controlModel`; the distinct selected→desired
+    // step pair only exists on a stepped device, so it must still read as resuming.
+    expect(resolvePlanStateKind({
+      ...baseDevice,
+      currentState: 'off',
+      selectedStepId: 'eco',
+      desiredStepId: 'comfort',
+    })).toBe('resuming');
+    // A non-stepped off device (no step ids) is not resuming.
+    expect(resolvePlanStateKind({ ...baseDevice, currentState: 'off' })).not.toBe('resuming');
+  });
 });

@@ -266,7 +266,6 @@ const buildRestoreToLowPlan = (selectedStepId: 'max' | 'low'): DevicePlan => ({
     plannedState: 'keep',
     currentTarget: null,
     controllable: true,
-    controlModel: 'stepped_load',
     steppedLoadProfile: CONNECTED_200_STEPPED_LOAD_PROFILE,
     controlCapabilityId: 'onoff',
     selectedStepId,

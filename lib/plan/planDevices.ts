@@ -430,7 +430,6 @@ function buildBasePlanDevice(params: {
     ...(resolvedPlannedTarget !== undefined ? { plannedTarget: resolvedPlannedTarget } : {}),
     observationStale: dev.observationStale,
     communicationModel: dev.communicationModel,
-    controlModel: dev.controlModel,
     steppedLoadProfile: isSteppedLoadDevice(dev) ? dev.steppedLoadProfile : undefined,
     reportedStepId: dev.reportedStepId,
     targetStepId: effectiveDesiredStepId,
@@ -449,7 +448,6 @@ function buildBasePlanDevice(params: {
     measuredPowerKw: dev.measuredPowerKw,
     controlCapabilityId: dev.controlCapabilityId,
     controlAdapter: dev.controlAdapter,
-    targetPowerConfig: dev.targetPowerConfig,
     // Flat EV plug-state sub-fields are base fields materialized once upstream at
     // `toPlanDevice`; forward them straight from the input device onto the output
     // plan device (no EV narrowing needed — they live on the base).
@@ -533,7 +531,6 @@ function resolveShedAction(params: {
     shedBehavior,
     controllable,
     controlCapabilityId: dev.controlCapabilityId,
-    controlModel: dev.controlModel,
     steppedLoadProfile: isSteppedLoadDevice(dev) ? dev.steppedLoadProfile : undefined,
     primaryTarget: getPrimaryTargetCapability(dev.targets),
   });

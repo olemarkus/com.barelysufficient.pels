@@ -27,12 +27,14 @@ import {
   resolveKnownEffectiveStepId,
 } from './planSteppedLoadState';
 
-// The stepped discriminant (`controlModel` + `steppedLoadProfile`) is now split
-// across the discriminated-union variants, so it is no longer a common key of
-// `PlanInputDevice | DevicePlanDevice` and cannot be `Pick`ed from the union.
-// The step helpers below accept the `SteppedDiscriminantProbe` "might be
-// stepped" shape (both fields as plain optionals); the `isSteppedLoadDevice`
-// guard narrows it to the required shape before any profile read.
+// The stepped discriminant is the presence of a valid `steppedLoadProfile`
+// (`controlModel` is a producer-only setting on the snapshot, not a planner
+// field), split across the discriminated-union variants, so it is no longer a
+// common key of `PlanInputDevice | DevicePlanDevice` and cannot be `Pick`ed
+// from the union. The step helpers below accept the `SteppedDiscriminantProbe`
+// "might be stepped" shape (the profile as a plain optional); the
+// `isSteppedLoadDevice` guard narrows it to the required shape before any
+// profile read.
 type StepCapableDevice = SteppedDiscriminantProbe & Pick<
   PlanInputDevice | DevicePlanDevice,
   | 'reportedStepId'
@@ -54,7 +56,6 @@ type StepSheddingCapableDevice = SteppedDiscriminantProbe & Pick<
 > & StepIdentityFields;
 
 type StepTransitionCapableDevice = {
-  controlModel?: StepCapableDevice['controlModel'];
   steppedLoadProfile?: StepCapableDevice['steppedLoadProfile'];
   reportedStepId?: string;
   selectedStepId?: StepCapableDevice['selectedStepId'];
@@ -86,30 +87,43 @@ export type SteppedLoadTransition = {
   transitionPhase: SteppedLoadTransitionPhase;
 };
 
-// Kind type-guard: after a positive branch the consumer reads `controlModel` /
+// Kind type-guard: "stepped load" is a yes/no capability = presence of a valid
+// `steppedLoadProfile`. After a positive branch the consumer reads
 // `steppedLoadProfile` as required (no `?.` / `!`). The predicate
-// (`controlModel === 'stepped_load' && steppedLoadProfile?.model ===
-// 'stepped_load'`) proves exactly that narrowed shape, so the guard is sound.
-// Dedicated overloads narrow the two flat plan device types to their named
-// `Stepped*` slices; the generic overload preserves any other caller's
-// variable type and intersects it with `SteppedLoadKind`.
+// (`steppedLoadProfile?.model === 'stepped_load'`) proves exactly that narrowed
+// shape, so the guard is sound. Dedicated overloads narrow the two flat plan
+// device types to their named `Stepped*` slices; the generic overload preserves
+// any other caller's variable type and intersects it with `SteppedLoadKind`.
 export function isSteppedLoadDevice(device: DevicePlanDevice): device is SteppedPlanDevice;
 export function isSteppedLoadDevice(device: PlanInputDevice): device is SteppedPlanInputDevice;
-export function isSteppedLoadDevice<T extends Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile'>>(
+// Union overload for the dual-read fallback sites that hold a
+// `PlanInputDevice | DevicePlanDevice` and cannot resolve one of the singles.
+export function isSteppedLoadDevice(
+  device: PlanInputDevice | DevicePlanDevice,
+): device is SteppedPlanInputDevice | SteppedPlanDevice;
+export function isSteppedLoadDevice<T extends SteppedDiscriminantProbe>(
   device: T,
 ): device is T & SteppedLoadKind;
 export function isSteppedLoadDevice(
-  device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile'>,
+  device: SteppedDiscriminantProbe | PlanInputDevice | DevicePlanDevice,
 ): boolean {
-  return device.controlModel === 'stepped_load' && device.steppedLoadProfile?.model === 'stepped_load';
+  // `steppedLoadProfile` is only typed on the stepped variant of each device
+  // union; widen to the probe shape to read it un-narrowed (the runtime field
+  // is simply absent on the non-stepped variants, so `?.` is sound).
+  return (device as SteppedDiscriminantProbe).steppedLoadProfile?.model === 'stepped_load';
 }
 
 const getSteppedLoadProfileForDevice = (
-  device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile'>,
-): SteppedLoadProfile | null => (isSteppedLoadDevice(device) ? (device.steppedLoadProfile ?? null) : null);
+  device: SteppedDiscriminantProbe | PlanInputDevice | DevicePlanDevice,
+): SteppedLoadProfile | null => {
+  // All three input shapes carry `steppedLoadProfile` only on their stepped
+  // variant; treat the value as the probe shape for the guard + read.
+  const probe = device as SteppedDiscriminantProbe;
+  return isSteppedLoadDevice(probe) ? (probe.steppedLoadProfile ?? null) : null;
+};
 
 export const resolveSteppedLoadInitialDesiredStepId = (
-  device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile'> & StepIdentityFields,
+  device: Pick<StepCapableDevice, 'steppedLoadProfile'> & StepIdentityFields,
 ): string | undefined => {
   const profile = getSteppedLoadProfileForDevice(device);
   if (!profile) return undefined;
@@ -182,7 +196,7 @@ export const resolveSteppedLoadTransition = (
 /* eslint-enable complexity, sonarjs/cognitive-complexity */
 
 export const resolveSteppedKeepDesiredStepId = (
-  device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile'> & StepIdentityFields
+  device: Pick<StepCapableDevice, 'steppedLoadProfile'> & StepIdentityFields
   & { currentState?: string; plannedState?: string },
   options: { anyOtherDeviceLimited?: boolean } = {},
 ): string | undefined => {
@@ -240,7 +254,7 @@ const clampToLowestActiveWhenOtherDevicesLimited = (params: {
 };
 
 export const getSteppedLoadNextRestoreStep = (
-  device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile'> & StepIdentityFields
+  device: Pick<StepCapableDevice, 'steppedLoadProfile'> & StepIdentityFields
   & { currentState?: string },
 ) => {
   const profile = getSteppedLoadProfileForDevice(device);
@@ -259,7 +273,7 @@ export const getSteppedLoadNextRestoreStep = (
 };
 
 export const getSteppedLoadShedTargetStep = (params: {
-  device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile'> & StepIdentityFields
+  device: Pick<StepCapableDevice, 'steppedLoadProfile'> & StepIdentityFields
   & { currentState?: string };
   shedAction: 'turn_off' | 'set_step';
   currentDesiredStepId?: string;
@@ -323,7 +337,11 @@ export const resolveSteppedLoadSheddingTarget = (params: {
 };
 
 export const resolveSteppedLoadPlanningKw = (
-  device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile'>,
+  // Accepts a "might be stepped" probe OR a concrete plan device union; the
+  // concrete arms avoid the weak-type "no overlapping property" error that a
+  // bare `SteppedDiscriminantProbe` (single optional) would trigger for a
+  // non-weak `PlanInputDevice` argument.
+  device: SteppedDiscriminantProbe | PlanInputDevice | DevicePlanDevice,
   stepId?: string,
 ): number => {
   const profile = getSteppedLoadProfileForDevice(device);
@@ -334,7 +352,7 @@ export const resolveSteppedLoadPlanningKw = (
 type ImmediateReliefDevice =
   & Pick<
     StepCapableDevice,
-    'controlModel' | 'steppedLoadProfile' | 'measuredPowerKw' | 'stepPowerCalibration'
+    'steppedLoadProfile' | 'measuredPowerKw' | 'stepPowerCalibration'
   >
   & StepIdentityFields;
 
@@ -363,7 +381,7 @@ export const resolveSteppedLoadImmediateReliefKw = (params: {
 type RestoreDeltaDevice =
   & Pick<
     StepCapableDevice,
-    'controlModel' | 'steppedLoadProfile' | 'measuredPowerKw' | 'stepPowerCalibration'
+    'steppedLoadProfile' | 'measuredPowerKw' | 'stepPowerCalibration'
   >
   & { currentState?: string };
 
@@ -414,7 +432,7 @@ function resolveRestoreFromContribution(params: {
 // plan layer trusts the view; helpers here only fall back to nameplate when
 // no view entry is present.
 function resolveStepAdmissionKw(
-  device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile' | 'stepPowerCalibration'>,
+  device: Pick<StepCapableDevice, 'steppedLoadProfile' | 'stepPowerCalibration'>,
   stepId: string | undefined,
 ): number {
   if (stepId === undefined) return resolveSteppedLoadPlanningKw(device, stepId);
@@ -424,7 +442,7 @@ function resolveStepAdmissionKw(
 }
 
 function resolveStepDeliveryKw(
-  device: Pick<StepCapableDevice, 'controlModel' | 'steppedLoadProfile' | 'stepPowerCalibration'>,
+  device: Pick<StepCapableDevice, 'steppedLoadProfile' | 'stepPowerCalibration'>,
   stepId: string | undefined,
 ): number {
   if (stepId === undefined) return resolveSteppedLoadPlanningKw(device, stepId);
