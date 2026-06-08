@@ -2,8 +2,16 @@ import { DailyBudgetService } from '../../lib/dailyBudget/dailyBudgetService';
 import type { ConfidenceDebug, DailyBudgetDayPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import { DEBUG_LOGGING_TOPICS } from '../../lib/utils/settingsKeys';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
+import { createDailyBudgetSettingsStore } from '../../setup/dailyBudgetSettingsAdapter';
 
 const TZ = 'Europe/Oslo';
+
+// Inert store for service tests that never read/write config (they exercise
+// plan recompute / state persistence). Reads from a throwaway null homey →
+// canonical defaults; never invoked by those tests.
+const nullSettingsStore = createDailyBudgetSettingsStore(
+  { settings: { get: () => null, set: () => undefined } } as any,
+);
 const NOW_MS = new Date('2025-03-15T12:00:00Z').getTime();
 
 function buildConfidenceDebug(overrides: Partial<ConfidenceDebug> = {}): ConfidenceDebug {
@@ -63,20 +71,22 @@ function buildDayPayload(params: {
 }
 
 function buildService(): DailyBudgetService {
+  const homey = {
+    settings: {
+      get: vi.fn(() => null),
+      set: vi.fn(),
+    },
+    clock: {
+      getTimezone: () => TZ,
+    },
+  } as any;
   return new DailyBudgetService({
-    homey: {
-      settings: {
-        get: vi.fn(() => null),
-        set: vi.fn(),
-      },
-      clock: {
-        getTimezone: () => TZ,
-      },
-    } as any,
+    homey,
     log: () => undefined,
     getPowerTracker: () => ({ buckets: {} }),
     getPriceOptimizationEnabled: () => false,
     getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }), combinedPricesReader: { readStore: () => null },
+    dailyBudgetSettingsStore: createDailyBudgetSettingsStore(homey),
   });
 }
 
@@ -429,7 +439,7 @@ describe('DailyBudgetService', () => {
       log: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
-      getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }), combinedPricesReader: { readStore: () => null },
+      getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }), combinedPricesReader: { readStore: () => null }, dailyBudgetSettingsStore: nullSettingsStore,
       structuredLog: { error } as any,
     });
     (service as any).manager.update = vi.fn(() => {
@@ -459,7 +469,7 @@ describe('DailyBudgetService', () => {
       log: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
-      getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }), combinedPricesReader: { readStore: () => null },
+      getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }), combinedPricesReader: { readStore: () => null }, dailyBudgetSettingsStore: nullSettingsStore,
       structuredLog: { info } as any,
     });
     (service as any).manager.update = vi.fn(() => ({
@@ -503,7 +513,7 @@ describe('DailyBudgetService', () => {
       log: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
-      getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }), combinedPricesReader: { readStore: () => null },
+      getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }), combinedPricesReader: { readStore: () => null }, dailyBudgetSettingsStore: nullSettingsStore,
       structuredLog: { info } as any,
     });
     (service as any).manager.update = vi.fn(() => ({
@@ -541,7 +551,7 @@ describe('DailyBudgetService', () => {
       log: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
-      getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }), combinedPricesReader: { readStore: () => null },
+      getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }), combinedPricesReader: { readStore: () => null }, dailyBudgetSettingsStore: nullSettingsStore,
       structuredLog: { info } as any,
     });
     (service as any).manager.update = vi.fn(() => ({
@@ -574,7 +584,7 @@ describe('DailyBudgetService', () => {
       log: vi.fn(),
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
-      getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }), combinedPricesReader: { readStore: () => null },
+      getCapacitySettings: () => ({ limitKw: 0, marginKw: 0 }), combinedPricesReader: { readStore: () => null }, dailyBudgetSettingsStore: nullSettingsStore,
       structuredLog: { info } as any,
     });
     const snapshots = [
@@ -629,7 +639,7 @@ describe('DailyBudgetService', () => {
       getPowerTracker: () => ({ buckets: {} }),
       getPriceOptimizationEnabled: () => false,
       getCapacitySettings: () => ({ limitKw: 5, marginKw: 1 }),
-      combinedPricesReader: { readStore: () => null },
+      combinedPricesReader: { readStore: () => null }, dailyBudgetSettingsStore: nullSettingsStore,
     });
     const updateSpy = vi.fn(() => ({
       snapshot: buildDayPayload({
