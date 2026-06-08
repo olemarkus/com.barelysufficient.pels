@@ -4,6 +4,7 @@ import {
   DeviceDiagnosticsService,
 } from '../../lib/diagnostics/deviceDiagnosticsService';
 import type { DeviceDiagnosticsPlanObservation } from '../../lib/diagnostics/deviceDiagnosticsService';
+import { createDeviceDiagnosticsStateStore } from '../../setup/deviceDiagnosticsStateAdapter';
 
 type MockSettings = {
   get: Mock;
@@ -26,7 +27,7 @@ const createDeps = (params: { initialState?: unknown; isDebugEnabled?: boolean }
   const structuredInfo = vi.fn();
   const structuredError = vi.fn();
   const service = new DeviceDiagnosticsService({
-    homey: { settings } as never,
+    diagnosticsStateStore: createDeviceDiagnosticsStateStore({ settings } as never),
     getTimeZone: () => 'Europe/Oslo',
     isDebugEnabled: () => isDebugEnabled,
     structuredLog: { info: structuredInfo, error: structuredError } as never,
