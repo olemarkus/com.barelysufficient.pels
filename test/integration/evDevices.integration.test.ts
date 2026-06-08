@@ -287,7 +287,6 @@ describe('EV charger integration', { retry: 2 }, () => {
   it.each([
     ['plugged_out', 'charger is unplugged'],
     ['plugged_in_discharging', 'charger is discharging'],
-    ['mystery', "unknown charging state 'mystery'"],
   ] as Array<[EaseeChargingState, string]>)(
     'marks an Easee-like charger inactive when restore is blocked by state %s',
     async (state, reason) => {
@@ -310,6 +309,30 @@ describe('EV charger integration', { retry: 2 }, () => {
       }));
     },
   );
+
+  it('normalises a vendor charging state outside the enum to the uncommandable unknown state', async () => {
+    // The producer (`getEvChargingState`) maps any value outside the
+    // `evcharger_charging_state` enum to `undefined`, so an unrecognised state
+    // is never surfaced verbatim: the charger is planned inactive as
+    // "charger state unknown" and its snapshot carries no charging state.
+    const charger = new EaseeMockCharger({ loadW: 7200 });
+    await charger.seedState('mystery');
+    const app = await createEvApp(charger);
+
+    const plan = await rebuildPlan(app, { totalPowerKw: 0.4, softLimitKw: 10.0 });
+    const evPlan = getPlanEntry(plan, charger.idValue);
+
+    expect(evPlan.plannedState).toBe('inactive');
+    expect(reasonText(evPlan.reason)).toBe('inactive (charger state unknown)');
+    expect(charger.commandLog).toHaveLength(0);
+
+    const snapshot = await refreshSnapshot(app);
+    const entry = getSnapshotEntry(snapshot, charger.idValue);
+    expect(entry).toEqual(expect.objectContaining({
+      binaryControl: { on: false },
+      evChargingState: undefined,
+    }));
+  });
 
   it('resumes a paused plugged-in charger during a planned EV deadline bucket', async () => {
     currentTimeMs = EV_DEADLINE_TEST_NOW_MS;

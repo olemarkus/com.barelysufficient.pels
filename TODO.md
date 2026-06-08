@@ -133,6 +133,16 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
       `ctx.getObservedState(id)`. `evChargingState` stays on `TargetDeviceSnapshot`/`ObservedDeviceState`
       (transport + observer + settings-UI display) as designed. Fixed in passing: `isEvPhysicallyUnplugged`
       read the raw string directly (would have silently no-op'd on plan devices after the move) — now dual-reads.
+      **`evChargingState` typed as the `EvChargingState` union (closed enum) — foundation landed.** Field +
+      every consumer type now use `EvChargingState` (no `string`, no `null`); the producer
+      (`getEvChargingState` + the two realtime seams) normalises any vendor value outside the capability enum
+      to `undefined` (uncommandable / `state_unknown`), and the verbose "unknown charging state 'X'" diagnostic
+      was dropped (unknown is ignored, not surfaced). **NEXT — EV-observed-interface slice (hypothesis:**
+      `undefined` still leaks to all readers because `evChargingState` is a flat optional field on the generic
+      `ObservedDeviceState`; **why:** the observer-snapshot twin of the plan-layer `EvKind`/`isEvPlanDevice`
+      pattern is missing; **persona:** runtime maintainer): move EV observed fields onto an `EvObservedFields`
+      interface with a required `evChargingState: EvChargingState`, gated by an `isEvObserved(s)` type guard, so
+      non-EV code structurally cannot reach it and present values are never `undefined`. Mirrors `isEvPlanDevice`.
       **Temperature de-kind slice T1 landed (2026-06-07): planner branches on modality, not device kind.**
       Moved the starvation device-class set and the `deviceType === 'temperature'` checks out of
       `lib/plan/planDiagnostics.ts` into browser-safe shared-domain predicates (`isTemperatureControlDevice`,

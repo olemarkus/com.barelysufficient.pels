@@ -14,6 +14,7 @@ import type {
 } from '../../packages/contracts/src/settingsUiApi';
 import { normalizePlanMeta } from './planStatusHelpers';
 import type { DevicePlan } from './planTypes';
+import type { EvChargingState } from '../../packages/contracts/src/types';
 import { isEvPlanDevice } from './planEvDevice';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 
@@ -24,7 +25,7 @@ export type SettingsOverviewReadModelDeps = {
   // (`ObservedDeviceState.evChargingState`), not the planner. The settings-UI
   // read model surfaces the raw string for display, so it reads it from the
   // observer here rather than off the plan device (which no longer carries it).
-  getObservedEvChargingState?: (deviceId: string) => string | undefined;
+  getObservedEvChargingState?: (deviceId: string) => EvChargingState | undefined;
   // `controlModel` is a producer-only SETTING the planner no longer carries, but
   // the settings-UI still needs it to pick the device card (stepped / temperature
   // / generic). Stepped is the decorated truth (`isSteppedLoadDevice` on the plan

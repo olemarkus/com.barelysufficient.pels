@@ -1,4 +1,5 @@
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
+import type { EvChargingState } from '../../packages/contracts/src/types';
 import type {
   PlanInputDevice,
   PlanInputDeviceBase,
@@ -170,7 +171,7 @@ export function withSteppedDiscriminant<TBase extends object>(
  * the base.
  */
 export type EvDiscriminantProbe = {
-  evChargingState?: string;
+  evChargingState?: EvChargingState;
   evBoost?: EvBoostConfig;
   evBoostActive?: boolean;
   stateOfCharge?: DeviceStateOfChargeSnapshot;

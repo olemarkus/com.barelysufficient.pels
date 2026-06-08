@@ -65,6 +65,7 @@ import type {
   HeadroomUsageObservation,
 } from './planHeadroomDevice';
 import type { PlanActuationMode } from '../executor/executorTypes';
+import type { EvChargingState } from '../../packages/contracts/src/types';
 import type { PlanActuationResult } from '../executor/planExecutor';
 import type { SnapshotWarmupGate } from './snapshotWarmupGate';
 
@@ -95,7 +96,7 @@ export type PlanServiceDeps = {
   // EV charging state for the settings-UI read model, sourced from the observer
   // (its canonical owner — `ObservedDeviceState`), not the plan device. The
   // planner no longer carries the raw `evChargingState`.
-  getObservedEvChargingState?: (deviceId: string) => string | undefined;
+  getObservedEvChargingState?: (deviceId: string) => EvChargingState | undefined;
   // Producer `deviceType` map for the settings-UI control-mode card selection
   // (the planner no longer carries `controlModel`). Built once per serialize from
   // the raw snapshot; see `SettingsOverviewReadModelDeps.getDeviceTypeById`.

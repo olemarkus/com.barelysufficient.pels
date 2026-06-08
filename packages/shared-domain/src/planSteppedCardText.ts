@@ -1,4 +1,4 @@
-import type { SteppedLoadProfile } from '../../contracts/src/types';
+import type { EvChargingState, SteppedLoadProfile } from '../../contracts/src/types';
 import type { DeviceOverviewSnapshot } from './deviceOverview';
 import { PLAN_REASON_CODES } from './planReasonSemanticsCore';
 import type { DeviceReason } from './planReasonSemanticsCore';
@@ -322,7 +322,7 @@ const EV_CHARGING_STATE_LABELS: Record<string, string> = {
 };
 
 export const resolveEvChargingStateLabel = (device: {
-  evChargingState?: string;
+  evChargingState?: EvChargingState;
   controlCapabilityId?: string;
 }): string | null => {
   if (device.controlCapabilityId !== 'evcharger_charging') return null;
