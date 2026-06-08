@@ -751,14 +751,14 @@ Both are data-gated: act only when prod evidence shows the gap, else leave alone
 *Demoted from P2 (2026-06-03 scrutiny pass) — real product / future-capability work with a
 persona but no current support-cost pressure; reframed to the P3 bar.*
 
-- [ ] **Smart-tasks widget — legible `at_risk` tone on the dark host.**
-      *Persona:* notification-driven panic visitor scanning the widget for which task is in trouble.
-      *Hypothesis:* the `data-tone="warn"` 12%-mixed wash is near-invisible over the dark Homey host,
-      so the "at risk" signal leans almost entirely on the status chip; bumping the warn fill to a
-      legible state-layer makes risk readable at a glance.
-      *Why:* the persona most likely to open the widget under stress can miss the one row that matters.
-      Files: `widgets/smart_tasks/public/index.css` (warn wash + eta recolor). Source: release-review
-      pels-ux-fit + pels-m3-critic.
+- [x] **Smart-tasks widget — legible `at_risk` tone on the dark host.** Shipped: the warn/danger
+      row body line (`.row__values`) now takes the Homey warning/danger text token
+      (`--pw-text-warning` / `--pw-text-danger`), the same one the eta already uses — so the whole
+      left column reads as warning at a glance instead of staying the muted grey of an inert row.
+      Per owner steer, the signal is carried by Homey-native text emphasis, NOT by bumping the
+      near-invisible 12% tonal fill (Homey provides no warning *surface* token, only colour tokens).
+      Also fixed the stale `default` smart_tasks harness mock (missing required `endedRows`, which
+      threw before render). Files: `widgets/smart_tasks/src/public/index.css`.
 - [ ] **Miss-streak rollup on Overview.**
       *Persona:* recovering-from-mistake owner (#5) — reaches Overview from a notification, not via
       Smart-tasks.

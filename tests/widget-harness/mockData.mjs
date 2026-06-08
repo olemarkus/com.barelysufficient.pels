@@ -149,6 +149,11 @@ const SMART_TASKS = {
       { deviceId: 'hw', deviceName: 'Hot water', kind: 'temperature', unitSymbol: '°C', currentValue: 42, targetValue: 55, finishLabel: '05:30', statusLabel: 'At risk', tone: 'warn', etaVerb: 'Ready by', targetActionVerb: 'Heat to', targetNoun: 'Target', deadlineLongLabel: 'Tomorrow 05:30', planMetaLabel: 'Estimate ≈2h 15m · 1.8 kW · ≈4.0 kWh', confidenceLabel: null, whyLabel: 'Limited time left before the deadline.', recourseHint: null },
       { deviceId: 'bed', deviceName: 'Bedroom heat', kind: 'temperature', unitSymbol: '°C', currentValue: null, targetValue: 22, finishLabel: '07:00', statusLabel: 'Building plan…', tone: 'muted', etaVerb: 'Ready by', targetActionVerb: 'Heat to', targetNoun: 'Target', deadlineLongLabel: 'Tomorrow 07:00', planMetaLabel: null, confidenceLabel: null, whyLabel: 'Waiting for tomorrow’s prices.', recourseHint: null },
     ],
+    endedRows: [
+      // A Missed run carries outcomeTone 'warn' — exercises that the active
+      // warn/danger value tint does NOT leak into the calm history group.
+      { id: 'hist-dryer-1', deviceId: 'dryer', deviceName: 'Dryer', unitSymbol: '°C', targetValue: 55, targetActionVerb: 'Heat to', outcomeLabel: 'Missed', outcomeTone: 'warn', finishedLabel: 'Today 04:30', progressLabel: '38 → 49 °C · target 55 °C', reachedAtLabel: null, whyLabel: 'Ran out of budget before the deadline.', recourseHint: null, chart: null },
+    ],
   },
   empty: { state: 'empty', subtitle: 'No smart tasks yet' },
 };
