@@ -144,11 +144,19 @@ export type EvKind = {
  *
  * The boost cluster (`temperatureBoost` / `temperatureBoostActive`) is NOT here:
  * it stays on `DevicePlanDeviceBase` (entangled with the cross-kind boost
- * machinery), as does the planner-output `plannedTarget`.
+ * machinery).
+ *
+ * `plannedTarget` (the planner-output commanded setpoint) IS here: the planner
+ * resolves it only for temperature devices (`resolvePlannedTarget` returns
+ * `undefined` otherwise), so reading it on a non-temperature plan device is a
+ * TS2339 compile error. It is OPTIONAL: the planner may leave it unset (e.g. a
+ * temperature device that is kept untouched this cycle), so the guard groups it
+ * onto the variant WITHOUT asserting a presence the producer does not guarantee.
  */
 export type TemperatureKind = {
   currentTarget: number | null;
   currentTemperature?: number;
+  plannedTarget?: number;
 };
 
 export type SteppedPlanDevice = DevicePlanDeviceBase & SteppedLoadKind;
@@ -257,6 +265,7 @@ export function withEvDiscriminant<TBase extends object>(
 export type TemperatureDiscriminantProbe = {
   currentTarget?: number | null;
   currentTemperature?: number;
+  plannedTarget?: number;
 };
 
 /**
@@ -278,11 +287,12 @@ export type TemperatureDiscriminantProbe = {
 export function withTemperatureDiscriminant<TBase extends object>(
   loose: TBase & TemperatureDiscriminantProbe,
 ): Omit<TBase, keyof TemperatureDiscriminantProbe> & TemperatureKind {
-  const { currentTarget, currentTemperature, ...base } = loose;
+  const { currentTarget, currentTemperature, plannedTarget, ...base } = loose;
   return {
     ...base,
     currentTarget: currentTarget ?? null,
     ...(currentTemperature !== undefined ? { currentTemperature } : {}),
+    ...(plannedTarget !== undefined ? { plannedTarget } : {}),
   };
 }
 
@@ -302,11 +312,11 @@ type DevicePlanDeviceBase = {
   binaryControl?: { on: boolean };
   currentState: string;
   plannedState: PlannedDeviceState;
-  // `currentTarget` and `currentTemperature` are split off onto the orthogonal
-  // `TemperatureKind` cluster; reach them through the `isTemperaturePlanDevice`
-  // guard (`lib/plan/planTemperatureDevice.ts`). `plannedTarget` (planner output)
-  // and the boost cluster (`temperatureBoost*`) stay on the base.
-  plannedTarget?: number;
+  // `currentTarget`, `currentTemperature`, and `plannedTarget` (planner output)
+  // are split off onto the orthogonal `TemperatureKind` cluster; reach them
+  // through the `isTemperaturePlanDevice` guard
+  // (`lib/plan/planTemperatureDevice.ts`). The boost cluster
+  // (`temperatureBoost*`) stays on the base.
   observationStale?: boolean;
   communicationModel?: 'local' | 'cloud';
   reportedStepId?: string;

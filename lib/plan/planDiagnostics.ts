@@ -102,9 +102,9 @@ const resolveIntendedNormalTemperatureTarget = (params: {
 // current setpoint. Starvation compares this against the intended/mode target —
 // a device PELS commands in full (`keep`) is not starved, however cold it is.
 const resolveCommandedTargetC = (device: DevicePlanDevice): number | null => {
+  if (!isTemperaturePlanDevice(device)) return null;
   if (isFiniteNumber(device.plannedTarget)) return device.plannedTarget;
-  const currentTarget = isTemperaturePlanDevice(device) ? device.currentTarget : null;
-  if (isFiniteNumber(currentTarget)) return currentTarget;
+  if (isFiniteNumber(device.currentTarget)) return device.currentTarget;
   return null;
 };
 
@@ -382,7 +382,9 @@ const resolveTemperatureBlockCause = (
   targetDeficitActive: boolean,
   restoreResult: RestorePlanResult,
 ): DeviceDiagnosticsBlockCause => {
-  const plannedTarget = typeof device.plannedTarget === 'number' ? device.plannedTarget : null;
+  const plannedTarget = isTemperaturePlanDevice(device) && typeof device.plannedTarget === 'number'
+    ? device.plannedTarget
+    : null;
   const plannedToRecover = targetDeficitActive
     && plannedTarget !== null
     && plannedTarget >= desiredTarget - TARGET_DEFICIT_EPSILON_C;

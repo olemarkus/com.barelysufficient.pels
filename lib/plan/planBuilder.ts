@@ -1159,12 +1159,14 @@ function shouldExposePendingTargetCommand(
   state: PlanEngineState,
 ): boolean {
   const pending = state.pendingTargetCommands[device.id];
-  const currentTarget = isTemperaturePlanDevice(device) ? device.currentTarget : null;
+  const isTemperature = isTemperaturePlanDevice(device);
+  const currentTarget = isTemperature ? device.currentTarget : null;
+  const plannedTarget = isTemperature ? device.plannedTarget : undefined;
   return Boolean(
     pending
-    && typeof device.plannedTarget === 'number'
-    && device.plannedTarget !== currentTarget
-    && device.plannedTarget === pending.desired,
+    && typeof plannedTarget === 'number'
+    && plannedTarget !== currentTarget
+    && plannedTarget === pending.desired,
   );
 }
 

@@ -1,5 +1,6 @@
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { isRestoreAdmissionHoldReason } from '../planContract/planDecisionSemantics';
+import { isTemperaturePlanDevice } from '../plan/planTemperatureDevice';
 import type { DevicePlan, ShedAction } from '../plan/planTypes';
 import type {
   ExecutableObservedDeviceState,
@@ -11,13 +12,14 @@ import type {
 type PlanDevice = DevicePlan['devices'][number];
 
 export function buildExecutableTargetIntent(dev: PlanDevice): ExecutableTargetIntent | null {
-  if (typeof dev.plannedTarget !== 'number') return null;
+  const plannedTarget = isTemperaturePlanDevice(dev) ? dev.plannedTarget : undefined;
+  if (typeof plannedTarget !== 'number') return null;
   if (dev.reason?.code === PLAN_REASON_CODES.swapPending && dev.reason.targetName === null) return null;
   if (dev.reason && isRestoreAdmissionHoldReason(dev.reason)) return null;
   return {
     deviceId: dev.id,
     name: dev.name,
-    desired: dev.plannedTarget,
+    desired: plannedTarget,
     purpose: dev.plannedState === 'shed' && dev.shedAction === 'set_temperature'
       ? 'shed_temperature'
       : 'target_update',

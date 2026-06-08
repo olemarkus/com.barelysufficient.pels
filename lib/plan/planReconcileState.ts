@@ -202,7 +202,8 @@ function hasSettledPostActuationState(
   if (requiresBinaryRestore(baseDevice) && !isObservedOn(liveDevice)) return false;
   if (requiresBinaryShed(baseDevice) && !isObservedOff(liveDevice)) return false;
   const liveCurrentTarget = isTemperaturePlanDevice(liveDevice) ? liveDevice.currentTarget : null;
-  if (requiresTargetUpdate(baseDevice) && liveCurrentTarget !== baseDevice.plannedTarget) return false;
+  const basePlannedTarget = isTemperaturePlanDevice(baseDevice) ? baseDevice.plannedTarget : undefined;
+  if (requiresTargetUpdate(baseDevice) && liveCurrentTarget !== basePlannedTarget) return false;
   return true;
 }
 
@@ -222,8 +223,9 @@ function requiresTargetUpdate(device: DevicePlan['devices'][number]): boolean {
   if (device.plannedState === 'shed' && device.shedAction !== 'set_temperature') {
     return false;
   }
-  const currentTarget = isTemperaturePlanDevice(device) ? device.currentTarget : null;
-  return typeof device.plannedTarget === 'number' && device.plannedTarget !== currentTarget;
+  if (!isTemperaturePlanDevice(device)) return false;
+  const { currentTarget, plannedTarget } = device;
+  return typeof plannedTarget === 'number' && plannedTarget !== currentTarget;
 }
 
 function hasRelevantBinaryExecutionDrift(
@@ -259,5 +261,5 @@ function tracksTargetForExecution(device: DevicePlan['devices'][number]): boolea
   if (device.plannedState === 'shed' && device.shedAction !== 'set_temperature') {
     return false;
   }
-  return typeof device.plannedTarget === 'number';
+  return isTemperaturePlanDevice(device) && typeof device.plannedTarget === 'number';
 }

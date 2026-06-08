@@ -462,7 +462,7 @@ const compactPelsPlanDevice = (
     currentState: device.currentState,
     plannedState: device.plannedState,
     currentTarget: isTemperaturePlanDevice(device) ? device.currentTarget : null,
-    plannedTarget: device.plannedTarget,
+    plannedTarget: isTemperaturePlanDevice(device) ? device.plannedTarget : undefined,
     reason: formatDeviceReason(device.reason),
     controllable: device.controllable,
     stepPowerCalibration: device.stepPowerCalibration,

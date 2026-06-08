@@ -2445,6 +2445,7 @@ describe('Device plan snapshot', () => {
       {
         id: 'hoiax-1',
         name: 'Connected 300',
+        deviceType: 'temperature',
         targets: [{ id: 'target_temperature', value: 65, unit: '°C', min: 35, max: 75, step: 5 }],
         powerKw: 3,
         binaryControl: { on: true },
@@ -3572,6 +3573,7 @@ describe('Dry run mode', () => {
       {
         id: 'dev-1',
         name: 'Heater A',
+        deviceType: 'temperature',
         targets: [{ id: 'target_temperature', value: 50, unit: '°C' }],
         powerKw: 1,
         binaryControl: { on: true },
@@ -3860,6 +3862,7 @@ describe('Dry run mode', () => {
       {
         id: 'dev-1',
         name: 'Heater A',
+        deviceType: 'temperature',
         targets: [{ id: 'target_temperature', value: shedDevice.id === 'dev-1' ? 15 : 20, unit: '°C' }],
         powerKw: 1,
         binaryControl: { on: true },
@@ -3868,6 +3871,7 @@ describe('Dry run mode', () => {
       {
         id: 'dev-2',
         name: 'Heater B',
+        deviceType: 'temperature',
         targets: [{ id: 'target_temperature', value: shedDevice.id === 'dev-2' ? 15 : 20, unit: '°C' }],
         powerKw: 1,
         binaryControl: { on: true },
@@ -4096,6 +4100,7 @@ describe('Dry run mode', () => {
     (app as any).deviceManager.setSnapshotForTests([{
       id: 'dev-unavailable',
       name: 'Unavailable Heater',
+      deviceType: 'temperature',
       targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
       capabilities: ['target_temperature', 'onoff'],
       binaryControl: { on: true },
@@ -4104,6 +4109,7 @@ describe('Dry run mode', () => {
     }, {
       id: 'dev-available',
       name: 'Available Heater',
+      deviceType: 'temperature',
       targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
       capabilities: ['target_temperature', 'onoff'],
       binaryControl: { on: true },
@@ -4116,6 +4122,7 @@ describe('Dry run mode', () => {
         {
           id: 'dev-unavailable',
           name: 'Unavailable Heater',
+          deviceType: 'temperature',
           plannedState: 'keep',
           currentState: 'keep',
           plannedTarget: 20,
@@ -4125,6 +4132,7 @@ describe('Dry run mode', () => {
         {
           id: 'dev-available',
           name: 'Available Heater',
+          deviceType: 'temperature',
           plannedState: 'keep',
           currentState: 'keep',
           plannedTarget: 20,
@@ -4155,6 +4163,7 @@ describe('Dry run mode', () => {
     (app as any).deviceManager.setSnapshotForTests([{
       id: 'dev-unavailable',
       name: 'Unavailable Heater',
+      deviceType: 'temperature',
       targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
       capabilities: ['target_temperature', 'onoff'],
       binaryControl: { on: true },
@@ -4163,6 +4172,7 @@ describe('Dry run mode', () => {
     }, {
       id: 'dev-available',
       name: 'Available Heater',
+      deviceType: 'temperature',
       targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
       capabilities: ['target_temperature', 'onoff'],
       binaryControl: { on: true },
@@ -4175,6 +4185,7 @@ describe('Dry run mode', () => {
         {
           id: 'dev-unavailable',
           name: 'Unavailable Heater',
+          deviceType: 'temperature',
           plannedState: 'shed',
           currentState: 'keep',
           plannedTarget: 12,
@@ -4185,6 +4196,7 @@ describe('Dry run mode', () => {
         {
           id: 'dev-available',
           name: 'Available Heater',
+          deviceType: 'temperature',
           plannedState: 'shed',
           currentState: 'keep',
           plannedTarget: 12,

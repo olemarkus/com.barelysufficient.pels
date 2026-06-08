@@ -9,11 +9,14 @@ import {
   getSteppedRestoreCandidates,
   markOffDevicesStayOff,
 } from '../../lib/plan/restore/devices';
-import type { DevicePlanDevice } from '../../lib/plan/planTypes';
+import type { DevicePlanDevice, TemperatureDiscriminantProbe } from '../../lib/plan/planTypes';
+import { withTemperatureDiscriminant } from '../../lib/plan/planTypes';
 import { legacyDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
 
 const makeDevice = (
-  overrides: Partial<DevicePlanDevice> & { reason?: DevicePlanDevice['reason'] | string },
+  overrides: Partial<DevicePlanDevice> & TemperatureDiscriminantProbe & {
+    reason?: DevicePlanDevice['reason'] | string;
+  },
 ): DevicePlanDevice => {
   let reason = legacyDeviceReason('keep')!;
   if (typeof overrides.reason === 'string') {
@@ -21,17 +24,32 @@ const makeDevice = (
   } else if (overrides.reason !== undefined) {
     reason = overrides.reason;
   }
-  return {
+  const { currentTarget, plannedTarget, reason: _reason, ...rest } = overrides;
+  const base = {
     id: overrides.id ?? 'dev',
     name: overrides.name ?? 'Device',
     currentState: overrides.currentState ?? 'off',
     plannedState: overrides.plannedState ?? 'keep',
-    currentTarget: overrides.currentTarget ?? null,
-    plannedTarget: overrides.plannedTarget ?? null,
-    controlCapabilityId: 'onoff',
-    ...overrides,
-    reason,
+    controlCapabilityId: 'onoff' as const,
+    ...rest,
   };
+  // A fixture carrying a temperature target is a temperature device: stamp
+  // `deviceType` (so the `isTemperaturePlanDevice` guard fires) and regroup the
+  // cluster onto `TemperatureKind`, mirroring the production producer. Binary
+  // fixtures (no target signal) stay non-temperature.
+  const hasTemperatureSignal = currentTarget != null || plannedTarget != null;
+  if (!hasTemperatureSignal) {
+    return { ...base, reason } as DevicePlanDevice;
+  }
+  return {
+    ...withTemperatureDiscriminant({
+      deviceType: 'temperature' as const,
+      ...base,
+      currentTarget: currentTarget ?? null,
+      ...(plannedTarget != null ? { plannedTarget } : {}),
+    }),
+    reason,
+  } as DevicePlanDevice;
 };
 
 describe('plan restore device helpers', () => {
