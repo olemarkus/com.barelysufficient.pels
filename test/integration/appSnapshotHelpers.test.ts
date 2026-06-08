@@ -6,7 +6,10 @@ import {
   CONTROLLABLE_DEVICES,
   MANAGED_DEVICES,
 } from '../../lib/utils/settingsKeys';
+import { normalizePowerSource } from '../../lib/power/powerSource';
 import { mockHomeyInstance } from '../mocks/homey';
+
+const mockPowerSource = () => normalizePowerSource(mockHomeyInstance.settings.get('power_source'));
 
 describe('appSnapshotHelpers', () => {
   beforeEach(() => {
@@ -22,7 +25,7 @@ describe('appSnapshotHelpers', () => {
 
   it('restarting periodic snapshot refresh replaces existing timers instead of duplicating them', () => {
     const helper = new AppSnapshotHelpers({
-      homey: mockHomeyInstance as any,
+      getPowerSource: mockPowerSource,
       timers: new TimerRegistry(),
       getDeviceManager: () => ({ refreshSnapshot: vi.fn() } as any),
       getPlanEngine: () => undefined,
@@ -70,7 +73,7 @@ describe('appSnapshotHelpers', () => {
       measuredPowerKw: 1.2,
     }];
     const helper = new AppSnapshotHelpers({
-      homey: mockHomeyInstance as any,
+      getPowerSource: mockPowerSource,
       timers: new TimerRegistry(),
       getDeviceManager: () => ({ refreshSnapshot } as any),
       getPlanEngine: () => undefined,
@@ -130,7 +133,7 @@ describe('appSnapshotHelpers', () => {
       targets: [],
     }];
     const helper = new AppSnapshotHelpers({
-      homey: mockHomeyInstance as any,
+      getPowerSource: mockPowerSource,
       timers: new TimerRegistry(),
       getDeviceManager: () => ({ refreshSnapshot } as any),
       getPlanEngine: () => undefined,
@@ -183,7 +186,7 @@ describe('appSnapshotHelpers', () => {
       settingsSeenByHeadroom.push(mockHomeyInstance.settings.get(CONTROLLABLE_DEVICES));
     });
     const helper = new AppSnapshotHelpers({
-      homey: mockHomeyInstance as any,
+      getPowerSource: mockPowerSource,
       timers: new TimerRegistry(),
       getDeviceManager: () => ({ refreshSnapshot } as any),
       getPlanEngine: () => undefined,
@@ -248,7 +251,7 @@ describe('appSnapshotHelpers', () => {
       targets: [],
     }];
     const helper = new AppSnapshotHelpers({
-      homey: mockHomeyInstance as any,
+      getPowerSource: mockPowerSource,
       timers: new TimerRegistry(),
       getDeviceManager: () => ({ refreshSnapshot } as any),
       getPlanEngine: () => undefined,
@@ -292,7 +295,7 @@ describe('appSnapshotHelpers', () => {
     });
 
     const helper = new AppSnapshotHelpers({
-      homey: mockHomeyInstance as any,
+      getPowerSource: mockPowerSource,
       timers: new TimerRegistry(),
       getDeviceManager: () => ({ refreshSnapshot } as any),
       getPlanEngine: () => undefined,
@@ -337,7 +340,7 @@ describe('appSnapshotHelpers', () => {
       .mockResolvedValue(undefined);
 
     const helper = new AppSnapshotHelpers({
-      homey: mockHomeyInstance as any,
+      getPowerSource: mockPowerSource,
       timers: new TimerRegistry(),
       getDeviceManager: () => ({ refreshSnapshot } as any),
       getPlanEngine: () => undefined,
@@ -387,7 +390,7 @@ describe('appSnapshotHelpers', () => {
       .mockResolvedValue(undefined);
 
     const helper = new AppSnapshotHelpers({
-      homey: mockHomeyInstance as any,
+      getPowerSource: mockPowerSource,
       timers: new TimerRegistry(),
       getDeviceManager: () => ({ refreshSnapshot } as any),
       getPlanEngine: () => undefined,
@@ -479,7 +482,7 @@ describe('appSnapshotHelpers', () => {
     }) {
       const refreshSnapshot = options.refreshSnapshot ?? vi.fn().mockResolvedValue(undefined);
       return new AppSnapshotHelpers({
-        homey: mockHomeyInstance as any,
+        getPowerSource: mockPowerSource,
         timers: new TimerRegistry(),
         getDeviceManager: () => ({ refreshSnapshot } as any),
         getPlanEngine: () => undefined,
@@ -624,7 +627,7 @@ describe('appSnapshotHelpers', () => {
     }) {
       const refreshSnapshot = vi.fn().mockResolvedValue(undefined);
       return new AppSnapshotHelpers({
-        homey: mockHomeyInstance as any,
+        getPowerSource: mockPowerSource,
         timers: new TimerRegistry(),
         getDeviceManager: () => ({ refreshSnapshot } as any),
         getPlanEngine: () => undefined,

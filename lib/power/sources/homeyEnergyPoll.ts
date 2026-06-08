@@ -1,4 +1,4 @@
-import type { HomeyRuntime } from '../../ports/homeyRuntime';
+import type { PowerSource } from '../powerSource';
 import type { TimerRegistry } from '../../app/timerRegistry';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 
@@ -20,7 +20,7 @@ export class HomeyEnergyPollSource {
   private pollInterval?: ReturnType<typeof setInterval>;
 
   constructor(private readonly deps: {
-    homey: HomeyRuntime;
+    getPowerSource: () => PowerSource;
     timers: TimerRegistry;
     pollHomePower: () => Promise<number | null | undefined>;
     recordPowerSample: (powerW: number) => Promise<void>;
@@ -33,7 +33,7 @@ export class HomeyEnergyPollSource {
       this.deps.timers.clear('homeyEnergyPoll');
       this.pollInterval = undefined;
     }
-    if (this.deps.homey.settings.get('power_source') !== 'homey_energy') return;
+    if (this.deps.getPowerSource() !== 'homey_energy') return;
 
     this.pollNow()
       .catch((error) => this.deps.error('Homey Energy initial poll failed', error));
