@@ -111,11 +111,36 @@ const isSteppedLoad = (device: SteppedLoadIdentity): boolean => (
   device.controlModel === 'stepped_load' && device.steppedLoadProfile?.model === 'stepped_load'
 );
 
-export function resolveEvBoostActive(params: {
-  dev: EvBoostResolveInput;
-  previousActive: boolean;
-}): boolean {
-  const { dev } = params;
+/**
+ * A device's measured progress value against its boost floor, both in the
+ * device's own unit: a temperature device measures °C against `boostBelowC`, an
+ * EV charger measures SoC % against `boostBelowPercent`. Both kinds project into
+ * this shape so the boost decision itself is unit-agnostic.
+ */
+type MeasuredBoostState = {
+  current: number;
+  boostFloor: number;
+};
+
+/**
+ * The unit-agnostic boost decision: the measured value strictly below its floor.
+ *
+ * There is no exit-margin hysteresis — the only behavioural consumer (restore
+ * escalation in `lib/plan/restore/helpers.ts`) is already gated on recent
+ * observed draw, so a device satisfied at/near its setpoint stops escalating
+ * without a band, and each device's own thermostat/charger deadband supplies the
+ * physical hysteresis.
+ *
+ * Only the final comparison is shared. The kind-specific eligibility and gate
+ * ORDERING stay in the two resolvers below — in particular EV's plug-state block
+ * must precede `forceBoostActive` (a not-resumable charger must never force-boost),
+ * which a flattened skeleton would lose.
+ */
+const isBelowBoostFloor = (state: MeasuredBoostState): boolean => (
+  state.current < state.boostFloor
+);
+
+export function resolveEvBoostActive(dev: EvBoostResolveInput): boolean {
   if (!isEvDevice(dev)) return false;
   if (!isSteppedLoad(dev)) return false;
   if (dev.controllable === false || dev.managed === false || dev.available === false) return false;
@@ -134,14 +159,10 @@ export function resolveEvBoostActive(params: {
   if (!stateOfCharge) return false;
   const boostBelowPercent = config.boostBelowPercent;
   if (!Number.isFinite(boostBelowPercent)) return false;
-  return stateOfCharge.percent < boostBelowPercent;
+  return isBelowBoostFloor({ current: stateOfCharge.percent, boostFloor: boostBelowPercent });
 }
 
-export function resolveTemperatureBoostActive(params: {
-  dev: TemperatureBoostResolveInput;
-  previousActive: boolean;
-}): boolean {
-  const { dev } = params;
+export function resolveTemperatureBoostActive(dev: TemperatureBoostResolveInput): boolean {
   if (!isSteppedLoad(dev)) return false;
   if (!hasTemperatureBoostTarget(dev.targets)) return false;
   if (dev.controllable === false || dev.managed === false || dev.available === false) return false;
@@ -154,11 +175,7 @@ export function resolveTemperatureBoostActive(params: {
   if (currentTemperature === undefined) return false;
   const boostBelowC = config.boostBelowC;
   if (typeof boostBelowC !== 'number' || !Number.isFinite(boostBelowC)) return false;
-  // No PELS-side exit hysteresis: boost is a "below the floor" signal, and the only
-  // behavioural consumer (restore escalation) is already gated on recent observed draw,
-  // so a device satisfied at/near its setpoint stops escalating without a temperature
-  // band. The device's own thermostat deadband supplies the physical hysteresis.
-  return currentTemperature < boostBelowC;
+  return isBelowBoostFloor({ current: currentTemperature, boostFloor: boostBelowC });
 }
 
 export function getBinaryControlPlan(snapshot?: TargetDeviceSnapshot): BinaryControlPlan | null {
