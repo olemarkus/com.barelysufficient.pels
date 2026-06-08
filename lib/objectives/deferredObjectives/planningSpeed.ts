@@ -10,6 +10,8 @@
  * we don't duplicate the nameplate fallback.
  */
 import { sortSteppedLoadSteps } from '../../utils/deviceControlProfiles';
+import { isEvDevice } from '../../../packages/shared-domain/src/commandableNow';
+import { isTemperatureControlDevice } from '../../../packages/shared-domain/src/temperatureDeviceKind';
 import type { ObjectiveDeviceInput } from '../../objectives/types';
 import { resolveStepDeliveryUsefulKw } from './objectiveStepPower';
 
@@ -59,7 +61,7 @@ export const resolvePlanningSpeedKw = (device: ObjectiveDeviceInput | undefined)
     // and the bucket allocator agree on the value.
     return positiveOrNull(resolveStepDeliveryUsefulKw(device, 'charge', planning));
   }
-  if (device.deviceClass === 'evcharger') {
+  if (isEvDevice(device)) {
     const expected = firstPositiveFinite([device.expectedPowerKw, device.powerKw]);
     if (expected !== null) {
       return positiveOrNull(resolveStepDeliveryUsefulKw(device, 'charge', expected));
@@ -71,7 +73,7 @@ export const resolvePlanningSpeedKw = (device: ObjectiveDeviceInput | undefined)
   // builds a horizon plan against the fallback rate while the hero degrades
   // to the `hoursLeft` form — a producer/consumer disagreement that hides
   // the rate the user is actually being charged against.
-  if (device.deviceType === 'temperature') {
+  if (isTemperatureControlDevice(device)) {
     const expected = firstPositiveFinite([
       device.measuredPowerKw,
       device.expectedPowerKw,

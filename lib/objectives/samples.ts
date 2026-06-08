@@ -2,6 +2,8 @@ import {
   getSteppedLoadStep,
   isSteppedLoadOffStep,
 } from '../utils/deviceControlProfiles';
+import { isEvDevice } from '../../packages/shared-domain/src/commandableNow';
+import { isTemperatureControlDevice } from '../../packages/shared-domain/src/temperatureDeviceKind';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { DeviceObjectiveProfileSample } from './types';
 
@@ -21,7 +23,7 @@ export function buildObjectiveProfileSample(
     };
   }
 
-  if (device.deviceClass === 'evcharger' && device.stateOfCharge?.status === 'fresh') {
+  if (isEvDevice(device) && device.stateOfCharge?.status === 'fresh') {
     const observedAtMs = device.stateOfCharge.observedAtMs ?? device.lastFreshDataMs;
     if (typeof observedAtMs !== 'number' || !Number.isFinite(observedAtMs)) return null;
     if (!isFreshObservationTime(observedAtMs, nowMs)) return null;
@@ -41,7 +43,7 @@ function isFreshTemperatureDevice(
   device: TargetDeviceSnapshot,
   nowMs: number,
 ): device is TargetDeviceSnapshot & { currentTemperature: number; lastFreshDataMs: number } {
-  return device.deviceType === 'temperature'
+  return isTemperatureControlDevice(device)
     && typeof device.currentTemperature === 'number'
     && Number.isFinite(device.currentTemperature)
     && typeof device.lastFreshDataMs === 'number'

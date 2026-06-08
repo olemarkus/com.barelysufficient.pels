@@ -1,4 +1,5 @@
 import type {
+  BinaryControlCapabilityId,
   DeviceStateOfChargeSnapshot,
   SteppedLoadProfile,
 } from '../../packages/contracts/src/types';
@@ -35,6 +36,11 @@ export type ObjectiveDeviceInput = {
   name: string;
   deviceClass?: string;
   deviceType?: 'temperature' | 'onoff';
+  // Carried so the canonical `isEvDevice` identity (deviceClass OR the
+  // evcharger_charging capability) is type-visible here, matching the runtime
+  // `PlanInputDevice` that flows in. The EV power-fallbacks in objectiveSteps /
+  // planningSpeed rely on it.
+  controlCapabilityId?: BinaryControlCapabilityId;
   steppedLoadProfile?: SteppedLoadProfile;
   priority?: number;
   // Producer-resolved EV plug-state decisions (the observer owns the raw
