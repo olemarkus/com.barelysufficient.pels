@@ -110,6 +110,32 @@ const HOMEY_HOT_PATH_DIRS = [
   'lib/power/**/*.ts',
 ];
 
+// The consumer-side `homey` ban (no allowTypeImports), shared so the snapshot
+// consumer block below can re-declare no-restricted-imports without dropping the
+// homey enforcement (flat config replaces, not merges, a rule for overlapping files).
+const HOMEY_SDK_FORBID_PATH = {
+  name: 'homey',
+  message: 'Outside the device-boundary leaf, lib/** must not reference the Homey SDK at all '
+    + '(no value OR type import) — depend on the lib/ports/homeyRuntime ports '
+    + '(SettingsPort/ClockPort/HomeyRuntime/FlowPort/ApiPort). The SDK runtime instance is '
+    + 'injected from the entry points. See notes/state-management/.',
+};
+// `TargetDeviceSnapshot` is the raw producer-input snapshot (DeviceDescriptor &
+// ObservedDeviceState) transport builds; downstream consumer layers must not
+// depend on it — they consume the decomposed halves or the discriminated plan
+// device. It lives among many exports in contracts/src/types.ts, so it is matched
+// by `importNames` (a patterns entry), not a whole-module path.
+const TARGET_SNAPSHOT_FORBID_PATTERN = {
+  group: ['**/packages/contracts/src/types'],
+  importNames: ['TargetDeviceSnapshot'],
+  message: 'Downstream consumer layers must not import the raw producer-input `TargetDeviceSnapshot` '
+    + '— depend on the decomposed halves `ObservedDeviceState` / `DeviceDescriptor` (or a Pick of them), '
+    + 'or the discriminated plan device. See notes/state-management/snapshot-decomposition.md.',
+};
+// Consumer layers forbidden from the raw producer snapshot. Add a dir here once
+// it no longer imports `TargetDeviceSnapshot` (route its reads to the halves first).
+const SNAPSHOT_CONSUMER_DIRS = ['lib/objectives/**/*.ts'];
+
 export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
@@ -306,16 +332,24 @@ export default tseslint.config(
   // (no-require-imports), and dynamic `import('homey')` (no-restricted-syntax).
   {
     files: ['lib/**/*.ts'],
-    ignores: HOMEY_LEAF_ALLOWLIST,
+    ignores: [...HOMEY_LEAF_ALLOWLIST, ...SNAPSHOT_CONSUMER_DIRS],
     rules: {
       '@typescript-eslint/no-restricted-imports': ['error', {
-        paths: [{
-          name: 'homey',
-          message: 'Outside the device-boundary leaf, lib/** must not reference the Homey SDK at all '
-            + '(no value OR type import) — depend on the lib/ports/homeyRuntime ports '
-            + '(SettingsPort/ClockPort/HomeyRuntime/FlowPort/ApiPort). The SDK runtime instance is '
-            + 'injected from the entry points. See notes/state-management/.',
-        }],
+        paths: [HOMEY_SDK_FORBID_PATH],
+      }],
+      '@typescript-eslint/no-require-imports': 'error',
+    },
+  },
+  // Downstream consumer layers: the homey ban above PLUS the raw-snapshot ban.
+  // Re-declares no-restricted-imports (flat config replaces it for these files)
+  // so both restrictions apply; no-restricted-syntax (perf + homey dynamic-import)
+  // still comes from the hot-paths block, which these dirs are also in.
+  {
+    files: SNAPSHOT_CONSUMER_DIRS,
+    rules: {
+      '@typescript-eslint/no-restricted-imports': ['error', {
+        paths: [HOMEY_SDK_FORBID_PATH],
+        patterns: [TARGET_SNAPSHOT_FORBID_PATTERN],
       }],
       '@typescript-eslint/no-require-imports': 'error',
     },

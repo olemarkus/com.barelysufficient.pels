@@ -1,4 +1,4 @@
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { ObjectiveSampleDevice } from './samples';
 import type {
   DeviceObjectiveProfile,
   DeviceObjectiveProfileSample,
@@ -41,7 +41,7 @@ export type ObjectiveProfileDebugEmitter = (payload: Record<string, unknown>) =>
 
 export function updateObjectiveProfilesFromSnapshot(params: {
   state: PowerTrackerState;
-  devices: TargetDeviceSnapshot[];
+  devices: ObjectiveSampleDevice[];
   nowMs: number;
   debugStructured?: ObjectiveProfileDebugEmitter;
 }): PowerTrackerState {

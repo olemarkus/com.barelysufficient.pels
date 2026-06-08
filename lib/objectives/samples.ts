@@ -4,14 +4,21 @@ import {
 } from '../utils/deviceControlProfiles';
 import { isEvDevice } from '../../packages/shared-domain/src/commandableNow';
 import { isTemperatureControlDevice } from '../../packages/shared-domain/src/temperatureDeviceKind';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { DeviceDescriptor, ObservedDeviceState } from '../../packages/contracts/src/types';
 import type { DeviceObjectiveProfileSample } from './types';
+
+// Observed truth (temperature / SoC / measured power / reported step) plus the
+// few descriptor fields the kind predicates need — NOT the full producer-input
+// `TargetDeviceSnapshot`. Objectives is a downstream consumer; it depends on the
+// decomposed snapshot halves, never the raw producer snapshot.
+export type ObjectiveSampleDevice = ObservedDeviceState
+  & Pick<DeviceDescriptor, 'steppedLoadProfile' | 'deviceClass' | 'deviceType' | 'controlCapabilityId'>;
 
 export const OBJECTIVE_PROFILE_MAX_OBSERVATION_AGE_MS = 30 * 60 * 1000;
 export const OBJECTIVE_PROFILE_MAX_FUTURE_SKEW_MS = 5 * 1000;
 
 export function buildObjectiveProfileSample(
-  device: TargetDeviceSnapshot,
+  device: ObjectiveSampleDevice,
   nowMs: number,
 ): DeviceObjectiveProfileSample | null {
   if (isFreshTemperatureDevice(device, nowMs)) {
@@ -40,9 +47,9 @@ export function buildObjectiveProfileSample(
 }
 
 function isFreshTemperatureDevice(
-  device: TargetDeviceSnapshot,
+  device: ObjectiveSampleDevice,
   nowMs: number,
-): device is TargetDeviceSnapshot & { currentTemperature: number; lastFreshDataMs: number } {
+): device is ObjectiveSampleDevice & { currentTemperature: number; lastFreshDataMs: number } {
   return isTemperatureControlDevice(device)
     && typeof device.currentTemperature === 'number'
     && Number.isFinite(device.currentTemperature)
@@ -57,7 +64,7 @@ function isFreshObservationTime(observedAtMs: number, nowMs: number): boolean {
 }
 
 function resolveCredibleDevicePower(
-  device: TargetDeviceSnapshot,
+  device: ObjectiveSampleDevice,
 ): Pick<DeviceObjectiveProfileSample, 'crediblePowerW' | 'powerSource'> {
   if (
     typeof device.measuredPowerKw === 'number'
