@@ -80,15 +80,14 @@ not a release gate.*
       land (over-cap tone + plan_budget flex squeeze already shipped); no change made. Anything
       further on `headroom` is subjective polish needing a hands-on harness walk, not an
       autonomous PR.
-- [ ] **P2 — `plan_budget` y-axis tick density on very-tall tiles.**
-      *Persona:* skeptical optimiser reading the Budget widget on a stretched (multi-row) dashboard tile.
-      *Hypothesis:* now that the plot body fills the panel, a very-tall tile keeps the same 5 fixed
-      gridlines (0 / 0.3 / 0.6 / 0.9 / 1.2 kWh), so the larger plot leaves big unlabelled vertical gaps
-      — a bar read mid-card has no nearby gridline. A height-proportional tick count (one more interval
-      past a height threshold) would keep the axis legible at the new scale.
-      *Why:* the fill makes the chart more prominent, raising the bar for axis legibility; flagged by
-      pels-m3-critic + pels-ux-fit on PR #1599 (both non-blocking). Files:
-      `widgets/plan_budget/src/public/chart.ts` (gridline/tick generation).
+- [x] **P2 — `plan_budget` y-axis tick density on very-tall tiles.** Shipped: replaced the fixed
+      4-interval raw-peak axis with a nice-number axis (`widgets/plan_budget/src/public/chartTicks.ts`).
+      The kWh gridlines are multiples of a 1/2/2.5/5×10ⁿ step (round + distinct by construction), and the
+      interval count tracks plot height (clamped 4–8), so a tall tile gets more evenly-spaced gridlines
+      instead of 5 with big gaps. This also fixed a pre-existing issue the fill exposed: the old axis
+      scaled the raw peak and rounded to 1 decimal, so real (non-1.2) peaks produced non-round labels
+      (e.g. 0/1.2/2.3/3.5/4.6). The shared price axis drops a label that would repeat the integer above
+      it (near-flat day). Bars now scale to the nice ceiling.
 
 ### P1 — targeted refactors (deferred)
 

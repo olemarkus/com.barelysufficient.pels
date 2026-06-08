@@ -147,8 +147,64 @@
     ].join(" ");
   };
 
+  // widgets/plan_budget/src/public/chartTicks.ts
+  var NICE_MANTISSAS = [1, 2, 2.5, 5];
+  var PEAK_HEADROOM = 1.08;
+  var MIN_KWH_MAX = 1;
+  var INTERVAL_TARGET_UNITS = 120;
+  var MIN_INTERVALS = 4;
+  var MAX_INTERVALS = 8;
+  var clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+  var MANTISSA_UPPER_BOUNDS = [1.414, 2.236, 3.536, 7.071];
+  var nearestNiceStep = (raw) => {
+    if (!Number.isFinite(raw) || raw <= 0) return NICE_MANTISSAS[0];
+    const decade = 10 ** Math.floor(Math.log10(raw));
+    const norm = raw / decade;
+    for (let i = 0; i < MANTISSA_UPPER_BOUNDS.length; i += 1) {
+      if (norm < MANTISSA_UPPER_BOUNDS[i]) return NICE_MANTISSAS[i] * decade;
+    }
+    return 10 * decade;
+  };
+  var formatKwhTick = (value) => String(Number(value.toFixed(2)));
+  var formatPriceTick = (value) => String(Math.round(value));
+  var resolveYAxis = ({
+    peakKwh,
+    plotHeight,
+    priceMin,
+    priceMax,
+    hasPriceData
+  }) => {
+    const rawMax = Math.max(MIN_KWH_MAX, peakKwh * PEAK_HEADROOM);
+    const desiredIntervals = clamp(
+      Math.round(plotHeight / INTERVAL_TARGET_UNITS),
+      MIN_INTERVALS,
+      MAX_INTERVALS
+    );
+    let kwhStep = nearestNiceStep(rawMax / desiredIntervals);
+    let kwhMax = Math.ceil(rawMax / kwhStep - 1e-9) * kwhStep;
+    let count = Math.max(1, Math.round(kwhMax / kwhStep));
+    while (count > MAX_INTERVALS) {
+      kwhStep = nearestNiceStep(kwhStep * 1.5);
+      kwhMax = Math.ceil(rawMax / kwhStep - 1e-9) * kwhStep;
+      count = Math.max(1, Math.round(kwhMax / kwhStep));
+    }
+    const priceSpan = Math.max(1, priceMax - priceMin);
+    const ticks = [];
+    let lastPriceLabel = null;
+    for (let index = 0; index <= count; index += 1) {
+      const ratio = index / count;
+      let priceLabel = null;
+      if (hasPriceData) {
+        const candidate = formatPriceTick(priceMin + priceSpan * ratio);
+        priceLabel = candidate === lastPriceLabel ? null : candidate;
+        if (priceLabel !== null) lastPriceLabel = priceLabel;
+      }
+      ticks.push({ ratio, kwhLabel: formatKwhTick(kwhStep * index), priceLabel });
+    }
+    return { kwhMax, ticks };
+  };
+
   // widgets/plan_budget/src/public/chart.ts
-  var GRID_LINES = 4;
   var BAR_RADIUS = 3;
   var DOT_RADIUS = 4;
   var WIDGET_TITLE = PLAN_PRICE_WIDGET_TITLE;
@@ -161,11 +217,6 @@
     const hour = Number.parseInt(match[1], 10);
     return Number.isFinite(hour) ? hour : null;
   };
-  var formatPlanTick = (value) => {
-    const rounded = Math.round(value * 10) / 10;
-    return rounded % 1 === 0 ? String(Math.round(rounded)) : rounded.toFixed(1);
-  };
-  var formatPriceTick = (value) => String(Math.round(value));
   var resolvePriceBounds = (payload) => {
     if (!payload.hasPriceData) return { min: 0, max: 1 };
     if (Math.abs(payload.priceMax - payload.priceMin) < 1e-3) {
@@ -195,9 +246,16 @@
     const plotWidth = plot.right - plot.left;
     const plotHeight = plot.bottom - plot.top;
     const buckets = resolveVisibleBuckets(payload, half);
-    const maxPlan = Math.max(1, payload.maxPlan * 1.08);
     const priceBounds = resolvePriceBounds(payload);
     const priceSpan = Math.max(1, priceBounds.max - priceBounds.min);
+    const axis = resolveYAxis({
+      peakKwh: payload.maxPlan,
+      plotHeight,
+      priceMin: priceBounds.min,
+      priceMax: priceBounds.max,
+      hasPriceData: payload.hasPriceData
+    });
+    const maxPlan = axis.kwhMax;
     const stepWidth = plotWidth / Math.max(1, buckets.length);
     const barWidth = Math.max(6, stepWidth * 0.62);
     return {
@@ -208,7 +266,8 @@
       plotWidth,
       priceBounds,
       priceSpan,
-      stepWidth
+      stepWidth,
+      yTicks: axis.ticks
     };
   };
   var createChartGroups = (chartDocument) => {
@@ -254,11 +313,10 @@
       "text-anchor": "end"
     }, payload.priceAxisUnit));
   };
-  var appendGridAndAxisLabels = (chartDocument, groups, payload, metrics, geometry) => {
+  var appendGridAndAxisLabels = (chartDocument, groups, metrics, geometry) => {
     const { plot } = geometry;
-    for (let index = 0; index <= GRID_LINES; index += 1) {
-      const ratio = index / GRID_LINES;
-      const y = plot.bottom - metrics.plotHeight * ratio;
+    for (const tick of metrics.yTicks) {
+      const y = plot.bottom - metrics.plotHeight * tick.ratio;
       groups.plotGroup.appendChild(createSvg(chartDocument, "line", {
         class: "chart__grid",
         x1: plot.left,
@@ -271,15 +329,14 @@
         x: plot.left - 8,
         y: y + 4,
         "text-anchor": "end"
-      }, formatPlanTick(metrics.maxPlan * ratio)));
-      if (!payload.hasPriceData) continue;
-      const priceValue = metrics.priceBounds.min + metrics.priceSpan * ratio;
+      }, tick.kwhLabel));
+      if (tick.priceLabel === null) continue;
       groups.labelsGroup.appendChild(createSvg(chartDocument, "text", {
         class: "chart__axis-label",
         x: plot.right + 8,
         y: y + 4,
         "text-anchor": "start"
-      }, formatPriceTick(priceValue)));
+      }, tick.priceLabel));
     }
   };
   var appendNowMarker = (chartDocument, plotGroup, payload, metrics, geometry) => {
@@ -464,7 +521,7 @@
     chartEl.appendChild(groups.chartGroup);
     appendPanel(chartDocument, groups.panelGroup, geometry);
     appendAxisTitles(chartDocument, groups.labelsGroup, payload, geometry);
-    appendGridAndAxisLabels(chartDocument, groups, payload, metrics, geometry);
+    appendGridAndAxisLabels(chartDocument, groups, metrics, geometry);
     appendNowMarker(chartDocument, groups.plotGroup, payload, metrics, geometry);
     appendPlanBars(chartDocument, groups.plotGroup, payload, metrics, geometry);
     appendPriceSeries(chartDocument, groups.plotGroup, payload, metrics, geometry);
