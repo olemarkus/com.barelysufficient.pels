@@ -1059,6 +1059,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const settings = normalizeDeferredObjectiveSettings(buildSettings({ deadlineAtMs, targetPercent: 50 }));
     const device = buildDevice({
       controllable: false,
+      controlModel: 'binary_power',
       stateOfCharge: { percent: 43, status: 'fresh', observedAtMs: NOW_MS },
     });
     const [diagnostic] = buildDeferredObjectiveDiagnostics({

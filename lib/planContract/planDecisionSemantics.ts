@@ -34,6 +34,27 @@ const RESTORE_ADMISSION_HOLD_REASON_CODES = new Set<PlanReasonCode>([
   PLAN_REASON_CODES.cooldownRestore,
 ]);
 
+// Reasons under which a producer-resolved deferred-objective resume (binary_restore)
+// must NOT fire: the capacity planner has independently decided this device should
+// stay off this cycle (capacity pressure, cooldowns, restore throttling/pending, the
+// shed invariant, startup stabilization, waiting on other devices). The deferred-
+// release producer reads this so a smart task claims power only when the planner
+// agrees — it never overrides capacity/cooldown.
+const DEFERRED_RESTORE_BLOCK_REASON_CODES = new Set<PlanReasonCode>([
+  PLAN_REASON_CODES.activationBackoff,
+  PLAN_REASON_CODES.capacity,
+  PLAN_REASON_CODES.cooldownRestore,
+  PLAN_REASON_CODES.cooldownShedding,
+  PLAN_REASON_CODES.headroomCooldown,
+  PLAN_REASON_CODES.insufficientHeadroom,
+  PLAN_REASON_CODES.meterSettling,
+  PLAN_REASON_CODES.restorePending,
+  PLAN_REASON_CODES.restoreThrottled,
+  PLAN_REASON_CODES.shedInvariant,
+  PLAN_REASON_CODES.startupStabilization,
+  PLAN_REASON_CODES.waitingForOtherDevices,
+]);
+
 const STEPPED_KEEP_INVARIANT_RESTORE_REASON_CODES = new Set<PlanReasonCode>([
   PLAN_REASON_CODES.keep,
   PLAN_REASON_CODES.restoreNeed,
@@ -72,6 +93,17 @@ const COUNTING_SUPPRESSION_CAUSES: Partial<Record<PlanReasonCode, PlanStarvation
 
 export const isRestoreAdmissionHoldReason = (reason: DeviceReason): boolean => (
   RESTORE_ADMISSION_HOLD_REASON_CODES.has(reason.code)
+);
+
+export const isDeferredRestoreBlockedReason = (reason: DeviceReason): boolean => (
+  DEFERRED_RESTORE_BLOCK_REASON_CODES.has(reason.code)
+);
+
+// A swap is pending against this device but the swap target is not yet known
+// (`targetName === null`) — actuation must hold until the target resolves. Shared
+// reason classifier (the deferred-release producer and the executor both gate on it).
+export const isSwapTargetPendingReason = (reason: DeviceReason | undefined): boolean => (
+  reason?.code === PLAN_REASON_CODES.swapPending && reason.targetName === null
 );
 
 export const allowsSteppedLoadKeepInvariantRestore = (reason: DeviceReason): boolean => (
