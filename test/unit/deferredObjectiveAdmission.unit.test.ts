@@ -88,7 +88,8 @@ describe('applyDeferredObjectiveAdmission', () => {
       kWhPerDegreeC: null,
       horizonPlan: buildHorizonPlan({ kind: 'ev_soc', objectiveId: 'ev1:ev_soc' }),
     });
-    const decisions = applyDeferredObjectiveAdmission([diagnostic]);
+    const device = buildEvDevice({ id: 'ev1', controlModel: 'binary_power' });
+    const decisions = applyDeferredObjectiveAdmission([diagnostic], [device]);
     expect(decisions.get('ev1')).toEqual({
       kind: 'planned',
       budgetExempt: false,
@@ -124,8 +125,62 @@ describe('applyDeferredObjectiveAdmission', () => {
         currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, expectedStepId: null },
       }),
     });
-    const decisions = applyDeferredObjectiveAdmission([diagnostic]);
+    const device = buildEvDevice({ id: 'ev1', controlModel: 'binary_power' });
+    const decisions = applyDeferredObjectiveAdmission([diagnostic], [device]);
     expect(decisions.get('ev1')).toEqual({ kind: 'idle', budgetExempt: false, releaseIntent: 'binary_release' });
+  });
+
+  it('routes a stepped-load EV charger by control modality, not as binary', () => {
+    // A stepped EV charger (controlModel 'stepped_load') with an ev_soc objective: release
+    // routing keys on control modality, so it does NOT use the binary release/restore path.
+    // Idle → shed_release (the executor disables via the binary handle); planned → no
+    // releaseIntent (the planner's normal stepped lane restores it at the planned step).
+    const device = buildEvDevice({ id: 'ev1', controllable: false, controlModel: 'stepped_load' });
+    const idle = buildDiagnostic({
+      deviceId: 'ev1',
+      objectiveKind: 'ev_soc',
+      horizonPlan: buildHorizonPlan({
+        kind: 'ev_soc',
+        objectiveId: 'ev1:ev_soc',
+        currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, expectedStepId: null },
+      }),
+    });
+    expect(applyDeferredObjectiveAdmission([idle], [device]).get('ev1'))
+      .toEqual({ kind: 'idle', budgetExempt: false, releaseIntent: 'shed_release' });
+
+    const planned = buildDiagnostic({
+      deviceId: 'ev1',
+      objectiveKind: 'ev_soc',
+      horizonPlan: buildHorizonPlan({ kind: 'ev_soc', objectiveId: 'ev1:ev_soc' }),
+    });
+    const plannedDecision = applyDeferredObjectiveAdmission([planned], [device]).get('ev1');
+    expect(plannedDecision).toMatchObject({ kind: 'planned' });
+    expect(plannedDecision).not.toHaveProperty('releaseIntent');
+  });
+
+  it('routes a stepped EV charger and a stepped water heater through identical branches', () => {
+    // Non-negotiable: when it comes to stepped-load / shedding, the planner must not tell an EV
+    // charger apart from a stepped water heater (e.g. Connected 300). Both are controlModel
+    // 'stepped_load'; only their objective unit (SoC% vs °C) differs, which never reaches the
+    // release routing. So their admission decisions must be byte-identical across buckets.
+    const evCharger = buildEvDevice({ id: 'dev', controllable: false, controlModel: 'stepped_load' });
+    const waterHeater: PlanInputDevice = {
+      id: 'dev', name: 'dev', targets: [], controllable: false, controlModel: 'stepped_load',
+    };
+    const idleHorizon = {
+      currentBucket: { bucketId: 'b1', sourceBucketId: 'b1', plannedUsefulEnergyKWh: 0, expectedStepId: null },
+    };
+    for (const horizon of [{}, idleHorizon]) {
+      const evDecision = applyDeferredObjectiveAdmission(
+        [buildDiagnostic({ deviceId: 'dev', objectiveKind: 'ev_soc', horizonPlan: buildHorizonPlan({ kind: 'ev_soc', ...horizon }) })],
+        [evCharger],
+      ).get('dev');
+      const heaterDecision = applyDeferredObjectiveAdmission(
+        [buildDiagnostic({ deviceId: 'dev', objectiveKind: 'temperature', horizonPlan: buildHorizonPlan({ kind: 'temperature', ...horizon }) })],
+        [waterHeater],
+      ).get('dev');
+      expect(evDecision).toEqual(heaterDecision);
+    }
   });
 
   it('returns idle when the current bucket is missing entirely', () => {
@@ -154,7 +209,7 @@ describe('applyDeferredObjectiveAdmission', () => {
       status: 'satisfied',
       horizonPlan: buildHorizonPlan({ status: 'satisfied', currentBucket: null, plannedUsefulEnergyKWh: 0 }),
     });
-    const device = buildEvDevice({ id: 'ev1', controllable: false });
+    const device = buildEvDevice({ id: 'ev1', controllable: false, controlModel: 'binary_power' });
     const decisions = applyDeferredObjectiveAdmission([diagnostic], [device]);
     expect(decisions.get('ev1')).toEqual({ kind: 'inactive', budgetExempt: false, releaseIntent: 'binary_release' });
   });
@@ -347,7 +402,8 @@ describe('applyDeferredObjectiveAdmission', () => {
       objectiveKind: 'ev_soc',
       horizonPlan: buildHorizonPlan({ kind: 'ev_soc', objectiveId: 'ev1:ev_soc', priceDeferralEligible: true }),
     });
-    const decisions = applyDeferredObjectiveAdmission([diagnostic]);
+    const device = buildEvDevice({ id: 'ev1', controlModel: 'binary_power' });
+    const decisions = applyDeferredObjectiveAdmission([diagnostic], [device]);
     expect(decisions.get('ev1')).toEqual({ kind: 'idle', budgetExempt: false, releaseIntent: 'binary_release' });
   });
 });

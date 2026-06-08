@@ -44,36 +44,22 @@ const shouldEmitTerminalRelease = (
   && device?.controllable === false
 );
 
-// INVARIANT (load-bearing): the release intent is keyed purely on objectiveKind,
-// and objectiveKind↔device-type is 1:1 — `ev_soc` only ever attaches to an EV
-// charger, `temperature` only to a thermostat. This is enforced at the write seam
-// (`flowCards/deadlineObjectiveCards.ts` throws unless `isEvCharger` /
-// `supportsTemperatureObjective`) and structurally (an evcharger snapshot always
-// has `targets: []`, so it can never carry a temperature objective). The executor
-// relies on this: it routes deferred releases solely on the
-// `binary_release`/`binary_restore`/`shed_release` intent and does NOT re-check
-// `isEvDevice` (so `shed_release` never reaches an EV device, `binary_*` always an
-// EV device). If a future change lets an evcharger expose settable targets, or
-// relaxes those write-card gates, this binding breaks — restore the executor's
-// device-kind guard (or re-key the routing) if that ever happens.
-//
-// Exhaustive switch (not a ternary) so adding a third objective kind to the
-// diagnostic union is a COMPILE error here rather than a silent shed_release —
-// forcing a deliberate routing decision for the new kind.
+// Release routing is keyed on the device's CONTROL MODALITY, not the objective
+// kind — a smart task is device-agnostic (the only EV-specific thing, the SoC
+// unit, lives in the objective's progress/target math, never here). A
+// `binary_power` device (e.g. an EV charger) is released/resumed via its binary
+// control (`binary_release` / `binary_restore`); `temperature_target` and
+// `stepped_load` devices fire their configured shedBehavior (`shed_release`).
+// Mirrors the "branch on control modality, not device kind" rule used elsewhere.
+const usesBinaryReleaseControl = (device: PlanInputDevice | undefined): boolean => (
+  device?.controlModel === 'binary_power'
+);
+
 const resolveReleaseIntentForCapOff = (
-  objectiveKind: DeferredObjectiveDiagnostic['objectiveKind'],
-): 'binary_release' | 'shed_release' => {
-  switch (objectiveKind) {
-    case 'ev_soc':
-      return 'binary_release';
-    case 'temperature':
-      return 'shed_release';
-    default: {
-      const exhaustive: never = objectiveKind;
-      return exhaustive;
-    }
-  }
-};
+  device: PlanInputDevice | undefined,
+): 'binary_release' | 'shed_release' => (
+  usesBinaryReleaseControl(device) ? 'binary_release' : 'shed_release'
+);
 
 // A deferred current hour is "released" when the device is idled this cycle rather
 // than run. Four causes: there is no current bucket, the current bucket carries no
@@ -107,12 +93,12 @@ const resolveDecision = (
   const engageBoost = diagnostic.limitLowerPriorityApplied === true && PLANNABLE_STATUSES.has(diagnostic.status);
   if (!PLANNABLE_STATUSES.has(diagnostic.status)) {
     if (!shouldEmitTerminalRelease(diagnostic, device)) return { kind: 'inactive', budgetExempt: false };
-    const releaseIntent = resolveReleaseIntentForCapOff(diagnostic.objectiveKind);
+    const releaseIntent = resolveReleaseIntentForCapOff(device);
     return { kind: 'inactive', budgetExempt: false, releaseIntent };
   }
   const horizonPlan = diagnostic.horizonPlan;
   if (!horizonPlan) return { kind: 'inactive', budgetExempt: false };
-  const isEvObjective = diagnostic.objectiveKind === 'ev_soc';
+  const releasesViaBinary = usesBinaryReleaseControl(device);
   if (isReleasedCurrentHour(horizonPlan)) {
     // Released bucket: hold the device in its configured release posture. Besides
     // genuine idle hours (no current bucket / no booked energy), this also fires
@@ -122,15 +108,15 @@ const resolveDecision = (
     // admission path; the clock-driven recorder is insulated, so no revision is
     // written (the device's idling re-books the cheaper hours at the next :58 settle).
     //
-    // Binary-controlled objectives (EV SoC today, cap-on or cap-off): always release the binary
-    // control. Off-peak hours have no capacity pressure, so the planner's normal shed/restore
-    // lane would never command the cap-on device off — but the smart task's whole point is not
+    // Binary-controlled devices (cap-on or cap-off): always release the binary control.
+    // Off-peak hours have no capacity pressure, so the planner's normal shed/restore lane
+    // would never command the cap-on device off — but the smart task's whole point is not
     // to run outside planned hours, so we force binary_release regardless of cap-on/off.
     //
     // Non-binary cap-off: emit shed_release once so the configured shedBehavior fires. Cap-on
     // non-binary stays on the planner's normal lane — emitting shed_release there would race
     // the planner's own decisions (it might be deliberately restoring the device).
-    if (isEvObjective) {
+    if (releasesViaBinary) {
       return { kind: 'idle', budgetExempt: false, releaseIntent: 'binary_release' };
     }
     if (device?.controllable === false) {
@@ -143,7 +129,7 @@ const resolveDecision = (
     budgetExempt,
     engageBoost,
     expectedStepId: horizonPlan.currentBucket?.expectedStepId ?? null,
-    ...(isEvObjective ? { releaseIntent: 'binary_restore' as const } : {}),
+    ...(releasesViaBinary ? { releaseIntent: 'binary_restore' as const } : {}),
   };
 };
 
