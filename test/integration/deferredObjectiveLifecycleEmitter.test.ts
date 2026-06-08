@@ -60,6 +60,7 @@ const buildDeps = (
   getDevices: () => [],
   getPowerTracker: () => ({ lastTimestamp: Date.now() } as PowerTrackerState),
   getDailyBudgetSnapshot: () => null,
+  buildPriceHorizon: () => [],
   getPriceOptimizationEnabled: () => false,
   getDeferredObjectiveActivePlans: () => null,
   getHardCapKw: () => 10,

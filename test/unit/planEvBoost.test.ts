@@ -26,72 +26,53 @@ describe('resolveEvBoostActive', () => {
   });
 
   it('activates for stepped EV chargers below the threshold with fresh SoC', () => {
-    expect(resolveEvBoostActive({
-      dev: buildEvDevice(),
-      previousActive: false,
-    })).toBe(true);
+    expect(resolveEvBoostActive(buildEvDevice())).toBe(true);
   });
 
   it('forces boost on for the deferred limit-lower-priority lane, ignoring config/threshold', () => {
     // No evBoost config and SoC above any threshold: only the admission-set forceBoostActive
     // flag activates it (the limit-lower-priority lane).
-    expect(resolveEvBoostActive({
-      dev: buildEvDevice({ forceBoostActive: true, evBoost: undefined, stateOfCharge: { percent: 90, status: 'fresh' as const } }),
-      previousActive: false,
-    })).toBe(true);
+    const dev = buildEvDevice({
+      forceBoostActive: true,
+      evBoost: undefined,
+      stateOfCharge: { percent: 90, status: 'fresh' as const },
+    });
+    expect(resolveEvBoostActive(dev)).toBe(true);
   });
 
   it('stops at the target threshold without hysteresis', () => {
-    expect(resolveEvBoostActive({
-      dev: buildEvDevice({ stateOfCharge: { percent: 40, status: 'fresh' as const } }),
-      previousActive: true,
-    })).toBe(false);
+    const dev = buildEvDevice({ stateOfCharge: { percent: 40, status: 'fresh' as const } });
+    expect(resolveEvBoostActive(dev)).toBe(false);
   });
 
   it('does not activate for stale, missing, or unplugged EV state', () => {
-    expect(resolveEvBoostActive({
-      dev: buildEvDevice({ stateOfCharge: { percent: 20, status: 'stale' as const } }),
-      previousActive: false,
-    })).toBe(false);
-    expect(resolveEvBoostActive({
-      dev: buildEvDevice({ stateOfCharge: undefined }),
-      previousActive: false,
-    })).toBe(false);
-    expect(resolveEvBoostActive({
-      dev: buildEvDevice({ evChargingState: 'plugged_out' }),
-      previousActive: false,
-    })).toBe(false);
+    expect(resolveEvBoostActive(buildEvDevice({
+      stateOfCharge: { percent: 20, status: 'stale' as const },
+    }))).toBe(false);
+    expect(resolveEvBoostActive(buildEvDevice({ stateOfCharge: undefined }))).toBe(false);
+    expect(resolveEvBoostActive(buildEvDevice({ evChargingState: 'plugged_out' }))).toBe(false);
   });
 
   it('does not activate for a connected-but-not-resumable charger (plugged_in)', () => {
     // `plugged_in` (distinct from the resumable `plugged_in_paused`) cannot be
     // driven by PELS, so boost must never claim to activate — even with a fresh
     // SoC below the threshold.
-    expect(resolveEvBoostActive({
-      dev: buildEvDevice({
-        evChargingState: 'plugged_in',
-        stateOfCharge: { percent: 20, status: 'fresh' as const },
-      }),
-      previousActive: false,
-    })).toBe(false);
+    expect(resolveEvBoostActive(buildEvDevice({
+      evChargingState: 'plugged_in',
+      stateOfCharge: { percent: 20, status: 'fresh' as const },
+    }))).toBe(false);
   });
 
   it('does not activate for non-stepped or non-EV devices', () => {
-    expect(resolveEvBoostActive({
-      dev: buildPlanInputDevice({
-        deviceClass: 'evcharger',
-        evBoost: { enabled: true, boostBelowPercent: 40 },
-        stateOfCharge: { percent: 20, status: 'fresh' },
-      }),
-      previousActive: false,
-    })).toBe(false);
-    expect(resolveEvBoostActive({
-      dev: steppedInputDevice({
-        evBoost: { enabled: true, boostBelowPercent: 40 },
-        stateOfCharge: { percent: 20, status: 'fresh' },
-      }),
-      previousActive: false,
-    })).toBe(false);
+    expect(resolveEvBoostActive(buildPlanInputDevice({
+      deviceClass: 'evcharger',
+      evBoost: { enabled: true, boostBelowPercent: 40 },
+      stateOfCharge: { percent: 20, status: 'fresh' },
+    }))).toBe(false);
+    expect(resolveEvBoostActive(steppedInputDevice({
+      evBoost: { enabled: true, boostBelowPercent: 40 },
+      stateOfCharge: { percent: 20, status: 'fresh' },
+    }))).toBe(false);
   });
 });
 

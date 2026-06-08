@@ -5,6 +5,8 @@ import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSe
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { DevicePlanDevice, PlanInputDevice } from '../../lib/plan/planTypes';
 import type { DailyBudgetUiPayload, DailyBudgetDayPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
+import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
+import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
 import {
   DeferredObjectiveDecorationController,
   type DeferredObjectiveSettingsV1,
@@ -83,6 +85,27 @@ const buildDailyBudgetSnapshot = (hoursInDay = 24): DailyBudgetUiPayload => ({
   days: { '2026-05-10': buildDay(hoursInDay) },
 });
 
+// Price-layer source for the allocation horizon, built from the same flat 30
+// price the snapshot carries so the horizon exists and the daily-budget
+// starvation behaviour under test is exercised end-to-end.
+const buildCombinedPrices = (hoursInDay = 24): CombinedPricesV2 => {
+  const hours: CombinedPriceEntry[] = Array.from({ length: hoursInDay }, (_, i) => ({
+    startsAt: new Date(DAY_START_UTC + i * HOUR_MS).toISOString(),
+    total: 30,
+    isCheap: false,
+    isExpensive: false,
+  }));
+  return {
+    version: 2,
+    days: { '2026-05-10': { hours } },
+    avgPrice: 0,
+    lowThreshold: 0,
+    highThreshold: 0,
+    priceScheme: 'norway',
+    priceUnit: 'øre/kWh',
+  };
+};
+
 const buildPowerTracker = (nowMs: number): PowerTrackerState => ({
   lastTimestamp: nowMs,
   objectiveProfiles: {
@@ -154,6 +177,7 @@ const buildBuilder = (rescue?: DeferredObjectiveRescuePermissions, hoursInDay = 
     getTimeZone: () => 'UTC',
     getPowerTracker: () => buildPowerTracker(DAY_START_UTC),
     getPriceOptimizationEnabled: () => true,
+    buildPriceHorizon: (nowMs, deadlineAtMs) => buildPriceHorizonFromCombined(buildCombinedPrices(hoursInDay), nowMs, deadlineAtMs),
     getHardCapKw: () => 100,
   });
   return new PlanBuilder({

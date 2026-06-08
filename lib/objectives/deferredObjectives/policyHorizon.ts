@@ -1,5 +1,8 @@
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';
+import type { PriceHorizonEntry } from '../../../packages/planner-types/src/priceHorizon';
 import type { DeferredObjectiveHorizonBucket } from './types';
+
+export type { PriceHorizonEntry };
 
 export type DeferredObjectivePolicyHorizonUnavailableReason =
   | 'objective_price_feature_disabled'
@@ -43,10 +46,22 @@ type PolicyBucketSource = {
   dailyBudgetExhausted: boolean;
 };
 
+const HOUR_MS = 60 * 60 * 1000;
+
 export const buildDeferredObjectivePolicyHorizon = (params: {
   nowMs: number;
   deadlineAtMs: number;
   priceOptimizationEnabled: boolean;
+  // Price + grid source for the allocation horizon, sourced directly from the
+  // price layer (`buildPriceHorizonFromCombined`). The base buckets (id /
+  // startMs / endMs / price) are built from this — NOT the daily-budget
+  // snapshot, which is now only the budget overlay below.
+  priceHorizon: PriceHorizonEntry[];
+  // OPTIONAL budget overlay. When a day-bucket matches a price-horizon hour
+  // (its `startUtc` floors to the same epoch hour), its `perBucketBudgetKWh` /
+  // `backgroundKWh` / `dailyBudgetExhausted` are overlaid onto that bucket.
+  // When absent, the bucket runs with no daily-budget cap and the per-hour
+  // hard cap becomes the only constraint.
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
   // When true (an at-risk smart task that was granted the "exempt from budget"
   // rescue permission), the per-bucket daily-budget cap is lifted so the planner
@@ -82,6 +97,7 @@ export const buildDeferredObjectivePolicyHorizon = (params: {
     nowMs,
     deadlineAtMs,
     priceOptimizationEnabled,
+    priceHorizon,
     dailyBudgetSnapshot,
     exemptFromBudget = false,
     hardCapKw = null,
@@ -93,6 +109,7 @@ export const buildDeferredObjectivePolicyHorizon = (params: {
   const sourceBuckets = collectPriceBuckets({
     nowMs,
     deadlineAtMs,
+    priceHorizon,
     dailyBudgetSnapshot,
   });
   if (!sourceBuckets || sourceBuckets.length === 0) {
@@ -113,6 +130,7 @@ export const buildDeferredObjectivePolicyHorizon = (params: {
 // exactly the price data the planner saw. Returns an empty map when the
 // snapshot has no usable price buckets. Used by the plan-preview composition,
 // which needs the raw per-bucket price to cost the plan.
+// TODO: preview reader still sources price from the daily-budget snapshot pending the preview migration.
 export const buildDeferredObjectivePolicyBucketPrices = (
   dailyBudgetSnapshot: DailyBudgetUiPayload | null,
 ): Map<string, number> => {
@@ -149,6 +167,7 @@ const floorToHourMs = (ms: number): number => Math.floor(ms / PRICE_WINDOW_HOUR_
 // across the gap and the time axis stays true), NOT dropped — dropping would
 // collapse the array indices the chart lays out by and skew the x-axis. Returns
 // an empty array when no priced buckets fall in the window.
+// TODO: preview reader still sources price from the daily-budget snapshot pending the preview migration.
 export const buildDeferredObjectivePolicyWindowPrices = (
   dailyBudgetSnapshot: DailyBudgetUiPayload | null,
   nowMs: number,
@@ -193,25 +212,134 @@ const unavailable = (
   reasonCode,
 });
 
+// Budget overlay fields for a single horizon hour, looked up from the
+// daily-budget snapshot. `null` means there was no matching snapshot bucket.
+type BudgetOverlay = {
+  backgroundKWh: number | null;
+  perBucketBudgetKWh: number | null;
+  dailyBudgetExhausted: boolean;
+};
+
+// No matching snapshot bucket: run with no daily-budget cap. `backgroundKWh = 0`
+// (NOT null) is REQUIRED so `resolveReservedHeadroomKw` returns `hardCapKw` (the
+// per-hour hard cap becomes the constraint); `perBucketBudgetKWh = null` keeps
+// `resolveMaxUsefulEnergyKWh` null (no daily-budget cap).
+const NO_BUDGET_OVERLAY: BudgetOverlay = {
+  backgroundKWh: 0,
+  perBucketBudgetKWh: null,
+  dailyBudgetExhausted: false,
+};
+
+// Build the allocation base buckets from the PRICE-LAYER horizon (price + grid)
+// and overlay the OPTIONAL daily-budget snapshot for the budget fields only.
+// Returns null when the price horizon is empty or does not cover
+// `[nowMs, deadlineAtMs)`.
 const collectPriceBuckets = (params: {
   nowMs: number;
   deadlineAtMs: number;
+  priceHorizon: PriceHorizonEntry[];
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
 }): PolicyBucketSource[] | null => {
   const {
     nowMs,
     deadlineAtMs,
+    priceHorizon,
     dailyBudgetSnapshot,
   } = params;
-  if (!dailyBudgetSnapshot) return null;
-  const allBuckets = collectSnapshotPriceBuckets(dailyBudgetSnapshot)
-    .filter((bucket) => bucket.endMs > nowMs && bucket.startMs < deadlineAtMs)
-    .sort((left, right) => left.startMs - right.startMs);
+  const budgetByHour = buildBudgetOverlayByHour(dailyBudgetSnapshot);
+  const allBuckets = priceHorizon.flatMap((entry) => {
+    // `entry.startMs` is the RAW price-hour start instant (NOT clipped to `nowMs`,
+    // NOT floored). Keeping it raw is what preserves byte-identical behavior with
+    // the pre-decouple snapshot grid for ALL timezones: the horizon planner trims
+    // the current bucket to `nowMs` for allocation, while the bucket's own
+    // `endMs - startMs` feeds `resolveReservedHeadroomKw` / `resolveMaxUsefulEnergyKWh`
+    // at the FULL-hour duration (clipping would inflate the uncontrolled-kW term),
+    // and the raw instant keeps fractional-offset (UTC+5:30) grids phase-aligned
+    // with the daily-budget overlay. The epoch-hour floor is only the join key.
+    const startMs = entry.startMs;
+    // Each priced hour spans exactly ONE hour — do NOT stretch a bucket to the
+    // next entry's start. A sparse feed (e.g. 10:00 + 12:00 but no 11:00) must
+    // leave a real gap so `coversHorizon` reports `objective_missing_price_horizon`
+    // instead of silently bridging the missing hour at the prior hour's price.
+    const endMs = startMs + HOUR_MS;
+    // Window filter mirrors the legacy `endMs > nowMs && startMs < deadlineAtMs`.
+    if (endMs <= nowMs || startMs >= deadlineAtMs) return [];
+    const hourKey = Math.floor(startMs / HOUR_MS) * HOUR_MS;
+    const overlay = budgetByHour.get(hourKey) ?? NO_BUDGET_OVERLAY;
+    return [{
+      // Id is the raw price-hour-start ISO — for whole-hour-offset timezones this
+      // equals the daily-budget snapshot's `startUtc` id, and for fractional
+      // offsets it carries the same `:30`/`:45` instant, preserving the
+      // downstream `sourceBucketId` cost join in both cases.
+      id: new Date(startMs).toISOString(),
+      startMs,
+      endMs,
+      price: entry.price,
+      backgroundKWh: overlay.backgroundKWh,
+      perBucketBudgetKWh: overlay.perBucketBudgetKWh,
+      dailyBudgetExhausted: overlay.dailyBudgetExhausted,
+    }];
+  });
   if (allBuckets.length === 0) return null;
   if (!coversHorizon({ buckets: allBuckets, nowMs, deadlineAtMs })) return null;
   return allBuckets;
 };
 
+// Index the daily-budget snapshot's day-buckets by epoch-hour-floored start so
+// the price-horizon buckets can overlay the budget fields. First-write wins on a
+// duplicate hour (matches the price-horizon dedupe direction).
+const buildBudgetOverlayByHour = (
+  snapshot: DailyBudgetUiPayload | null,
+): Map<number, BudgetOverlay> => {
+  const byHour = new Map<number, BudgetOverlay>();
+  if (!snapshot) return byHour;
+  for (const dateKey of [snapshot.todayKey, snapshot.tomorrowKey]) {
+    if (!dateKey) continue;
+    const day = snapshot.days[dateKey];
+    if (!day) continue;
+    for (const overlay of collectDayBudgetOverlays(day)) {
+      const hour = Math.floor(overlay.startMs / HOUR_MS) * HOUR_MS;
+      if (!byHour.has(hour)) {
+        byHour.set(hour, {
+          backgroundKWh: overlay.backgroundKWh,
+          perBucketBudgetKWh: overlay.perBucketBudgetKWh,
+          dailyBudgetExhausted: overlay.dailyBudgetExhausted,
+        });
+      }
+    }
+  }
+  return byHour;
+};
+
+const collectDayBudgetOverlays = (
+  day: DailyBudgetDayPayload,
+): Array<BudgetOverlay & { startMs: number }> => {
+  const starts = day.buckets.startUtc;
+  if (!Array.isArray(starts)) return [];
+  const allowedCumKWh = day.buckets.allowedCumKWh;
+  const plannedUncontrolledKWh = day.buckets.plannedUncontrolledKWh;
+  const dailyBudgetKWh = day.budget.enabled ? day.budget.dailyBudgetKWh : null;
+  return starts.flatMap((startIso, index) => {
+    const startMs = new Date(startIso).getTime();
+    if (!Number.isFinite(startMs)) return [];
+    const perBucketBudgetKWh = resolvePerBucketBudget(allowedCumKWh, index);
+    return [{
+      startMs,
+      backgroundKWh: finiteOrNull(plannedUncontrolledKWh?.[index]),
+      perBucketBudgetKWh,
+      dailyBudgetExhausted: isDailyBudgetExhausted({
+        allowedCumKWh,
+        index,
+        perBucketBudgetKWh,
+        dailyBudgetKWh,
+      }),
+    }];
+  });
+};
+
+// Preview-only snapshot price buckets (id/price/budget keyed off the snapshot's
+// own `startUtc`). The ALLOCATION path no longer uses this — it reads the price
+// layer via `buildPriceHorizonFromCombined`. See the preview-reader TODOs.
 const collectSnapshotPriceBuckets = (snapshot: DailyBudgetUiPayload): PolicyBucketSource[] => (
   [snapshot.todayKey, snapshot.tomorrowKey]
     .flatMap((dateKey) => {
@@ -348,9 +476,8 @@ const mapPolicyBuckets = (
       endMs: bucket.endMs,
       // Raw price is the sole price signal. The allocator fills hours
       // cheapest-first by comparing these relatively (currency-invariant band)
-      // and the live deferral compares them by ratio.
-      // `collectSnapshotPriceBuckets` already guarantees a finite price on every
-      // source bucket.
+      // and the live deferral compares them by ratio. `buildPriceHorizonFromCombined`
+      // already filters out non-finite prices, so every source bucket has one.
       price: bucket.price,
       ...(cap !== null ? { maxUsefulEnergyKWh: cap } : {}),
       ...(reservedHeadroomKw !== null ? { reservedHeadroomKw } : {}),

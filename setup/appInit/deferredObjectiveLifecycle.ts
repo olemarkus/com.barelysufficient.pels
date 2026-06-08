@@ -1,4 +1,5 @@
 import type { AppContext } from '../../lib/app/appContext';
+import { createObjectivePriceHorizonBuilder } from './objectivePriceHorizon';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives';
@@ -332,6 +333,9 @@ export function createDeferredObjectiveLifecycleEmitter(
     getDevices: () => ctx.planService?.getPlanDevices() ?? [],
     getPowerTracker: () => ctx.powerTracker,
     getDailyBudgetSnapshot: () => ctx.dailyBudgetService?.getSnapshot() ?? null,
+    // Allocation-horizon price source, resolved from the price layer; shared
+    // single source of truth (see `createObjectivePriceHorizonBuilder`).
+    buildPriceHorizon: createObjectivePriceHorizonBuilder(ctx),
     getPriceOptimizationEnabled: () => ctx.priceOptimizationEnabled,
     getDeferredObjectiveActivePlans: () => (
       ctx.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot() ?? null

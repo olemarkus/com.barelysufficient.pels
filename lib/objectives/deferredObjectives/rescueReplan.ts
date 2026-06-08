@@ -1,6 +1,10 @@
 import type { DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';
 import { planDeferredObjectiveHorizon } from './horizonPlanner';
-import { buildDeferredObjectivePolicyHorizon, type DeferredObjectivePolicyHorizonResult } from './policyHorizon';
+import {
+  buildDeferredObjectivePolicyHorizon,
+  type DeferredObjectivePolicyHorizonResult,
+  type PriceHorizonEntry,
+} from './policyHorizon';
 import { resolveCommittedHours } from './resolveCommittedHours';
 import type { DeferredObjectiveSettingsEntry } from './settings';
 import type { DeferredObjectiveHorizonPlan, DeferredObjectiveStep } from './types';
@@ -48,6 +52,9 @@ export const resolveHorizonPlanWithRescue = (params: {
   aheadOfHourMilestone?: boolean;
   policyHorizon: Extract<DeferredObjectivePolicyHorizonResult, { reasonCode: null }>;
   priceOptimizationEnabled: boolean;
+  // Price-layer horizon (price + grid) forwarded to the exempt rebuild so it
+  // sources price exactly like the baseline horizon did.
+  priceHorizon: PriceHorizonEntry[];
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
   // Threaded through to the exempt rebuild so its rebuilt buckets carry the
   // same per-bucket `reservedHeadroomKw` forecast as the baseline buckets —
@@ -134,6 +141,7 @@ export const resolveHorizonPlanWithRescue = (params: {
     nowMs,
     deadlineAtMs,
     priceOptimizationEnabled,
+    priceHorizon: params.priceHorizon,
     dailyBudgetSnapshot,
     exemptFromBudget: true,
     hardCapKw: params.hardCapKw,
