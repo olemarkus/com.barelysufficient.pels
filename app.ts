@@ -38,7 +38,7 @@ import type { CombinedHourlyPrice } from './lib/price/priceTypes';
 import { createObjectivePriceHorizonBuilder } from './setup/appInit/objectivePriceHorizon';
 import { buildPeriodicStatusLogFields } from './lib/diagnostics/periodicStatus';
 import { getDeviceLoadSetting } from './lib/device/load';
-import { DailyBudgetService } from './lib/dailyBudget/dailyBudgetService';
+import type { DailyBudgetService } from './lib/dailyBudget/dailyBudgetService';
 import type {
   DeferredObjectiveActivePlanRecorder,
   DeferredObjectivePlanHistoryRecorder,
@@ -101,6 +101,7 @@ import {
   createDeferredObjectiveActivePlanRecorder,
   createDeferredObjectiveLifecycleEmitter,
   createDeferredObjectivePlanHistoryRecorder,
+  createDailyBudgetService,
   createDeviceDiagnosticsService,
   createPlanEngine,
   createPlanService,
@@ -1195,17 +1196,7 @@ class PelsApp extends Homey.App {
     await publisher.publish('startup');
   }
   private initDailyBudgetService(): void {
-    this.dailyBudgetService = new DailyBudgetService({
-      homey: this.homey,
-      log: (...args: unknown[]) => this.log(...args),
-      isDebugTopicEnabled: (topic) => this.debugLoggingTopics.has(topic),
-      getPowerTracker: () => this.powerTracker,
-      getPriceOptimizationEnabled: () => this.priceOptimizationEnabled,
-      getCapacitySettings: () => this.capacitySettings,
-      combinedPricesReader: this.ctx.combinedPricesReader,
-      structuredLog: this.structuredLogger?.child({ component: 'daily_budget' }),
-      debugStructured: this.getStructuredDebugEmitter('daily_budget', 'daily_budget'),
-    });
+    this.dailyBudgetService = createDailyBudgetService(this.ctx);
     this.dailyBudgetService.loadSettings();
     this.dailyBudgetService.loadState();
   }

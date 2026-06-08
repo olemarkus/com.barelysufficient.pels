@@ -3,24 +3,15 @@ import type { PowerTrackerState } from '../power/tracker';
 import { isFiniteNumber } from '../utils/appTypeGuards';
 import { readCombinedPriceData } from '../price/priceStore';
 import type { CombinedPricesReader } from '../price/combinedPricesReader';
+import type { DailyBudgetSettingsStore } from './dailyBudgetSettingsStore';
 import {
-  DAILY_BUDGET_ENABLED,
-  DAILY_BUDGET_KWH,
-  DAILY_BUDGET_PRICE_SHAPING_ENABLED,
-  DAILY_BUDGET_CONTROLLED_WEIGHT,
-  DAILY_BUDGET_PRICE_FLEX_SHARE,
   DAILY_BUDGET_STATE,
   DEBUG_LOGGING_TOPICS,
 } from '../utils/settingsKeys';
 import {
   MAX_DAILY_BUDGET_KWH,
   MIN_DAILY_BUDGET_KWH,
-  PRICE_FLEX_HIGH,
-  PRICE_FLEX_HIGH_THRESHOLD,
-  PRICE_FLEX_LOW,
-  PRICE_FLEX_MEDIUM,
   PRICE_SHAPING_FLEX_SHARE,
-  UNMANAGED_RESERVE_CONSERVATIVE_MODE,
   UNMANAGED_RESERVE_MODE,
 } from './dailyBudgetConstants';
 import { DailyBudgetManager } from './dailyBudgetManager';
@@ -63,6 +54,7 @@ type DailyBudgetServiceDeps = {
   getPriceOptimizationEnabled: () => boolean;
   getCapacitySettings: () => { limitKw: number; marginKw: number };
   combinedPricesReader: CombinedPricesReader;
+  dailyBudgetSettingsStore: DailyBudgetSettingsStore;
   structuredLog?: PinoLogger;
   debugStructured?: StructuredDebugEmitter;
 };
@@ -82,19 +74,6 @@ export type DailyBudgetPeriodicStatusFields = {
   remainingOriginalKWh: number;
   remainingCurrentKWh: number;
   exceeded: boolean;
-};
-
-const normalizeUnmanagedReserveMode = (value: unknown): number => {
-  if (!isFiniteNumber(value)) return UNMANAGED_RESERVE_MODE;
-  return value >= 0.5 ? UNMANAGED_RESERVE_CONSERVATIVE_MODE : UNMANAGED_RESERVE_MODE;
-};
-
-const normalizePriceFlexShare = (value: unknown): number => {
-  if (!isFiniteNumber(value)) return PRICE_SHAPING_FLEX_SHARE;
-  const bounded = Math.min(1, Math.max(0, value));
-  if (bounded <= PRICE_FLEX_LOW) return PRICE_FLEX_LOW;
-  if (bounded > PRICE_FLEX_HIGH_THRESHOLD) return PRICE_FLEX_HIGH;
-  return PRICE_FLEX_MEDIUM;
 };
 
 export class DailyBudgetService {
@@ -122,22 +101,7 @@ export class DailyBudgetService {
   }
 
   loadSettings(): void {
-    const enabled = this.deps.homey.settings.get(DAILY_BUDGET_ENABLED) as unknown;
-    const budgetKWh = this.deps.homey.settings.get(DAILY_BUDGET_KWH) as unknown;
-    const priceShapingEnabled = this.deps.homey.settings.get(DAILY_BUDGET_PRICE_SHAPING_ENABLED) as unknown;
-    const controlledWeight = this.deps.homey.settings.get(DAILY_BUDGET_CONTROLLED_WEIGHT) as unknown;
-    const priceFlexShare = this.deps.homey.settings.get(DAILY_BUDGET_PRICE_FLEX_SHARE) as unknown;
-    const rawBudget = isFiniteNumber(budgetKWh) ? Math.max(0, budgetKWh) : 0;
-    const boundedBudget = rawBudget === 0
-      ? 0
-      : Math.min(MAX_DAILY_BUDGET_KWH, Math.max(MIN_DAILY_BUDGET_KWH, rawBudget));
-    this.settings = {
-      enabled: enabled === true,
-      dailyBudgetKWh: boundedBudget,
-      priceShapingEnabled: priceShapingEnabled !== false,
-      controlledUsageWeight: normalizeUnmanagedReserveMode(controlledWeight),
-      priceShapingFlexShare: normalizePriceFlexShare(priceFlexShare),
-    };
+    this.settings = this.deps.dailyBudgetSettingsStore.read();
   }
 
   loadState(): void {
@@ -185,11 +149,7 @@ export class DailyBudgetService {
   }
 
   private persistSettings(settings: DailyBudgetSettings): void {
-    this.deps.homey.settings.set(DAILY_BUDGET_ENABLED, settings.enabled);
-    this.deps.homey.settings.set(DAILY_BUDGET_KWH, settings.dailyBudgetKWh);
-    this.deps.homey.settings.set(DAILY_BUDGET_PRICE_SHAPING_ENABLED, settings.priceShapingEnabled);
-    this.deps.homey.settings.set(DAILY_BUDGET_CONTROLLED_WEIGHT, settings.controlledUsageWeight);
-    this.deps.homey.settings.set(DAILY_BUDGET_PRICE_FLEX_SHARE, settings.priceShapingFlexShare);
+    this.deps.dailyBudgetSettingsStore.write(settings);
   }
 
   private resolveTimeZone(): string {
