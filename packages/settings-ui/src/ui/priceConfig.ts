@@ -25,9 +25,11 @@ import {
   PRICE_SCHEME,
 } from '../../../contracts/src/settingsKeys.ts';
 import {
+  SETTINGS_UI_POWER_PATH,
   SETTINGS_UI_PRICES_PATH,
   SETTINGS_UI_REFRESH_GRID_TARIFF_PATH,
   SETTINGS_UI_REFRESH_PRICES_PATH,
+  type SettingsUiPowerPayload,
   type SettingsUiPricesPayload,
 } from '../../../contracts/src/settingsUiApi.ts';
 import { buildFlowStatus, buildHomeyStatus } from './priceConfigStatus.ts';
@@ -61,6 +63,11 @@ type PriceConfigState = {
   tariffGroup: string;
   flowStatus: FlowStatus | null;
   homeyStatus: HomeyStatus | null;
+  // Live summary signals. `currentPriceLevel` is the raw Homey level read from
+  // the power read-model (same field the budget hero consumes); `lastFetchedShort`
+  // is the pre-formatted short clock time from the combined-prices read-model.
+  currentPriceLevel: string | null;
+  lastFetchedShort: string | null;
 };
 
 let configState: PriceConfigState = {
@@ -76,6 +83,22 @@ let configState: PriceConfigState = {
   tariffGroup: 'Husholdning',
   flowStatus: null,
   homeyStatus: null,
+  currentPriceLevel: null,
+  lastFetchedShort: null,
+};
+
+// Narrow the unknown `combinedPrices` read-model to the one field the live
+// summary needs, then format it as a short local clock time. Mirrors the
+// pending-hero `formatLastFetched` narrowing in `deadlinePlanPending.ts` so the
+// two surfaces read "last fetched" from the exact same shape. Returns null when
+// the payload is missing/unrecognised so the card shows the neutral dash.
+const resolveLastFetchedShort = (combinedPrices: unknown): string | null => {
+  if (!combinedPrices || typeof combinedPrices !== 'object') return null;
+  const raw = (combinedPrices as { lastFetched?: unknown }).lastFetched;
+  if (typeof raw !== 'string' || raw.length === 0) return null;
+  const ms = new Date(raw).getTime();
+  if (!Number.isFinite(ms)) return null;
+  return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
 };
 
 let electricityPricesSurface: HTMLElement | null = null;
@@ -115,6 +138,8 @@ const renderElectricityPrices = () => {
     tariffGroup: configState.tariffGroup,
     flowStatus: configState.flowStatus,
     homeyStatus: configState.homeyStatus,
+    currentPriceLevel: configState.currentPriceLevel,
+    lastFetchedShort: configState.lastFetchedShort,
     gridCompanyOptions: getGridCompanyOptions(configState.countyCode),
     showPriceAwareDevicesLink: false,
     onSchemeChange: handleSchemeChange,
@@ -377,7 +402,10 @@ const handleRefreshGridTariff = async () => {
 
 const refreshStatusInfo = async () => {
   try {
-    const pricesPayload = await getApiReadModel<SettingsUiPricesPayload>(SETTINGS_UI_PRICES_PATH);
+    const [pricesPayload, powerPayload] = await Promise.all([
+      getApiReadModel<SettingsUiPricesPayload>(SETTINGS_UI_PRICES_PATH),
+      getApiReadModel<SettingsUiPowerPayload>(SETTINGS_UI_POWER_PATH),
+    ]);
     const payload = pricesPayload ?? {
       combinedPrices: null, electricityPrices: null, priceArea: null, gridTariffData: null,
       flowToday: null, flowTomorrow: null, homeyCurrency: null, homeyToday: null, homeyTomorrow: null,
@@ -386,6 +414,10 @@ const refreshStatusInfo = async () => {
       ...configState,
       flowStatus: configState.priceScheme === 'flow' ? buildFlowStatus(payload) : null,
       homeyStatus: configState.priceScheme === 'homey' ? buildHomeyStatus(payload) : null,
+      // Same `priceLevel` field the budget hero reads, so the tier chip never
+      // disagrees across surfaces.
+      currentPriceLevel: powerPayload?.status?.priceLevel ?? null,
+      lastFetchedShort: resolveLastFetchedShort(payload.combinedPrices),
     };
   } catch (error) {
     await logSettingsError('Failed to refresh price status', error, 'priceConfig');

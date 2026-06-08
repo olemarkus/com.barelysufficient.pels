@@ -13,6 +13,8 @@ const buildProps = (overrides: Partial<ElectricityPricesViewProps> = {}): Electr
   tariffGroup: 'Husholdning',
   flowStatus: null,
   homeyStatus: null,
+  currentPriceLevel: null,
+  lastFetchedShort: null,
   gridCompanyOptions: [
     { name: 'Grid Company', organizationNumber: '123' },
   ],
@@ -52,5 +54,54 @@ describe('ElectricityPricesView', () => {
     refreshButtons.forEach((button) => {
       expect((button as HTMLElement & { type?: string }).type).toBe('button');
     });
+  });
+
+  it('renders the canonical price-level chip and last-fetched time in the summary card', () => {
+    const mount = document.createElement('div');
+    document.body.appendChild(mount);
+
+    renderElectricityPricesView(mount, buildProps({
+      currentPriceLevel: 'expensive',
+      lastFetchedShort: '14:05',
+    }));
+
+    const summary = mount.querySelector('.electricity-prices-live-summary');
+    expect(summary).not.toBeNull();
+    const chip = summary?.querySelector('.plan-chip');
+    // Canonical "Price high" pair from priceLevelChips.ts, with the warn tone.
+    expect(chip?.textContent?.trim()).toBe('Price high');
+    expect(chip?.classList.contains('plan-chip--warn')).toBe(true);
+    expect(chip?.getAttribute('data-price-level')).toBe('expensive');
+    expect(summary?.textContent).toContain('14:05');
+  });
+
+  it('stays calm (no chip) for normal price level and shows a dash when never fetched', () => {
+    const mount = document.createElement('div');
+    document.body.appendChild(mount);
+
+    renderElectricityPricesView(mount, buildProps({
+      currentPriceLevel: 'normal',
+      lastFetchedShort: null,
+    }));
+
+    const summary = mount.querySelector('.electricity-prices-live-summary');
+    expect(summary?.querySelector('.plan-chip')).toBeNull();
+    expect(summary?.textContent).toContain('Normal');
+    expect(summary?.textContent).toContain('—');
+  });
+
+  it('shows "Awaiting prices" (not "Normal") for the unknown level before prices arrive', () => {
+    const mount = document.createElement('div');
+    document.body.appendChild(mount);
+
+    renderElectricityPricesView(mount, buildProps({
+      currentPriceLevel: 'unknown',
+      lastFetchedShort: null,
+    }));
+
+    const summary = mount.querySelector('.electricity-prices-live-summary');
+    expect(summary?.querySelector('.plan-chip')).toBeNull();
+    expect(summary?.textContent).toContain('Awaiting prices');
+    expect(summary?.textContent).not.toContain('Normal');
   });
 });
