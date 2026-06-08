@@ -5,7 +5,6 @@ import {
 } from '../plan/planExecutorSupport';
 import {
   getEvRestoreBlockReason,
-  isFlowBackedBinaryControl,
 } from '../plan/planBinaryControl';
 import { getLogger } from '../logging/logger';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
@@ -101,7 +100,7 @@ export const applyBinaryRestoreWithSnapshot = async (
   ctx.state.pendingRestores.add(deviceId);
   try {
     try {
-      const applied = await runBinaryControl({
+      const outcome = await runBinaryControl({
         ctx,
         deviceId,
         name,
@@ -111,12 +110,8 @@ export const applyBinaryRestoreWithSnapshot = async (
         restoreSource: ctx.getRestoreLogSource(deviceId),
         actuationMode: mode,
       });
-      if (!applied) return false;
-      const flowBackedControl = isFlowBackedBinaryControl(
-        snapshot,
-        snapshot.controlCapabilityId ?? 'onoff',
-      );
-      if (!flowBackedControl) {
+      if (!outcome.applied) return false;
+      if (!outcome.flowBacked) {
         logger.info({
           event: 'binary_command_applied',
           deviceId,
@@ -157,7 +152,7 @@ export const applyCapacityControlOffRestoreWithSnapshot = async (
     snapshot,
   } = params;
   try {
-    const applied = await runBinaryControl({
+    const outcome = await runBinaryControl({
       ctx,
       deviceId,
       name,
@@ -166,12 +161,8 @@ export const applyCapacityControlOffRestoreWithSnapshot = async (
       logContext: 'capacity_control_off',
       actuationMode: 'plan',
     });
-    if (!applied) return false;
-    const flowBackedControl = isFlowBackedBinaryControl(
-      snapshot,
-      snapshot.controlCapabilityId ?? 'onoff',
-    );
-    if (!flowBackedControl) {
+    if (!outcome.applied) return false;
+    if (!outcome.flowBacked) {
       logger.info({
         event: 'binary_command_applied',
         deviceId,

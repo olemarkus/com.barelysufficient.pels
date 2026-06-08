@@ -5,7 +5,6 @@ import {
 } from '../plan/planExecutorSupport';
 import {
   getBinaryControlPlan,
-  isFlowBackedBinaryControl,
 } from '../plan/planBinaryControl';
 import {
   resolveBinaryShedReasonCode,
@@ -237,9 +236,6 @@ const recordDirectBinaryShedActuation = (
   })(deviceId, name, now);
 };
 
-/* eslint-disable complexity --
- * Binary shed command preserves legacy control capability branches.
- */
 const turnOffDevice = async (
   ctx: PlanExecutorBinaryContext,
   params: {
@@ -284,7 +280,7 @@ const turnOffDevice = async (
   }
   const now = Date.now();
   try {
-    const applied = await runBinaryControl({
+    const outcome = await runBinaryControl({
       ctx,
       deviceId,
       name,
@@ -295,12 +291,8 @@ const turnOffDevice = async (
       actuationMode: 'plan',
       lifecycleRelease,
     });
-    if (!applied) return false;
-    const flowBackedControl = isFlowBackedBinaryControl(
-      snapshotEntry,
-      snapshotEntry?.controlCapabilityId ?? controlPlan.capabilityId,
-    );
-    if (!flowBackedControl) {
+    if (!outcome.applied) return false;
+    if (!outcome.flowBacked) {
       recordDirectBinaryShedActuation(ctx, {
         deviceId,
         name,
@@ -316,4 +308,3 @@ const turnOffDevice = async (
     return false;
   }
 };
-/* eslint-enable complexity */
