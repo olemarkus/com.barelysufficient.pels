@@ -4,10 +4,7 @@ import { isFiniteNumber } from '../utils/appTypeGuards';
 import { readCombinedPriceData } from '../price/priceStore';
 import type { CombinedPricesReader } from '../price/combinedPricesReader';
 import type { DailyBudgetSettingsStore } from './dailyBudgetSettingsStore';
-import {
-  DAILY_BUDGET_STATE,
-  DEBUG_LOGGING_TOPICS,
-} from '../utils/settingsKeys';
+import { DAILY_BUDGET_STATE } from '../utils/settingsKeys';
 import {
   MAX_DAILY_BUDGET_KWH,
   MIN_DAILY_BUDGET_KWH,
@@ -38,7 +35,6 @@ import type {
 import { incPerfCounter } from '../utils/perfCounters';
 import { recordOpDuration, safeRss } from '../utils/opRssTracker';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
-import { normalizeDebugLoggingTopics } from '../../packages/shared-domain/src/utils/debugLogging';
 import { normalizeError } from '../utils/errorUtils';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import { getLogger } from '../logging/logger';
@@ -287,9 +283,7 @@ export class DailyBudgetService {
   }
 
   private shouldIncludeConfidenceBootstrapDebug(): boolean {
-    if (this.deps.homey.settings.get('debug_logging_enabled') === true) return true;
-    const rawTopics = this.deps.homey.settings.get(DEBUG_LOGGING_TOPICS) as unknown;
-    return normalizeDebugLoggingTopics(rawTopics).includes('daily_budget');
+    return this.deps.isDebugTopicEnabled?.('daily_budget') ?? false;
   }
 
   private emitStructuredDailyBudgetDebug(payload: Record<string, unknown>): void {
