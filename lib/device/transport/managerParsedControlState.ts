@@ -101,10 +101,18 @@ export function resolveDeviceParsedControlState(params: {
 
 /**
  * Resolves the nested `binaryControl` for the parsed snapshot. Present IFF the
- * device has binary control now, OR (transient capability-drop case) it was
- * binary on the previous snapshot — in which case the prior `.on` is latched.
- * Genuinely-non-binary devices get `undefined` (the old fabricated `currentOn:
- * true` is dropped; consumers treat absence as "may always draw").
+ * device has a control capability THIS cycle. Capability presence is the source
+ * of truth for binary status: a device whose control capability is absent now —
+ * including a transient capability drop on a partial update — is NOT binary this
+ * cycle and gets `undefined` (consumers treat absence as "may always draw"). This
+ * matches the plan-layer `isBinaryPlanDevice` guard, which keys on the same
+ * current `controlCapabilityId`, so the observed snapshot and the plan device
+ * agree about what a capability drop means.
+ *
+ * The on-state still latches the prior `.on` for a binary device whose VALUE read
+ * transiently failed (`currentOn` undefined while the capability is present) — a
+ * missing value is not a missing capability, so a trusted on-state is not lost on
+ * a flaky value read (only a genuine cold start coalesces to `false`).
  */
 function resolveBinaryControl(params: {
   currentOn?: boolean;
@@ -112,13 +120,7 @@ function resolveBinaryControl(params: {
   previousSnapshot?: TargetDeviceSnapshot;
 }): { on: boolean } | undefined {
   const { currentOn, controlCapabilityId, previousSnapshot } = params;
-  const isBinary = controlCapabilityId !== undefined || previousSnapshot?.controlCapabilityId !== undefined;
-  if (!isBinary) return undefined;
-  // Latch the prior `.on` in the transient capability-drop case: `currentOn`
-  // already carries the latched value via `resolvedOn`, but if that resolves
-  // `undefined` (e.g. an inconsistent previous snapshot) fall back to the
-  // previous `binaryControl.on` directly so a trusted on-state is never lost on
-  // a missing read (only a genuine cold start coalesces to `false`).
+  if (controlCapabilityId === undefined) return undefined;
   return { on: currentOn ?? previousSnapshot?.binaryControl?.on ?? false };
 }
 
@@ -156,7 +158,11 @@ function resolveBinaryControl(params: {
  * - binary device with a missing value → latch previous trusted evidence, else
  *   synthesize untrusted `false`;
  * - no control capability but binary last snapshot (transient capability drop on
- *   a partial update) → latch previous (no phantom on-transition);
+ *   a partial update) → latch previous (no phantom on-transition). NOTE: this
+ *   `currentOn` only feeds `resolvedOn` (the managed-drop guard); it no longer
+ *   produces a `binaryControl` — `resolveBinaryControl` revokes binary status on
+ *   a capability drop. So the device stays managed this cycle (grace toward
+ *   "ultimately unmanaged") but reads as non-binary;
  * - genuinely non-binary (no off-switch, setpoint-controlled) → `true` — it may
  *   always draw, so it must stay sheddable (a `false` reads as 0-draw).
  *
