@@ -119,6 +119,38 @@ export type EvKind = {
   stateOfCharge?: DeviceStateOfChargeSnapshot;
 };
 
+/**
+ * Temperature field cluster (temperature-variant slice of the
+ * discriminated-types refactor).
+ *
+ * Like `EvKind`, this is ORTHOGONAL to the stepped axis (an air-treatment unit
+ * can be both temperature- and stepped-controlled), so it is NOT a union member
+ * alongside `Stepped|NonStepped`; it is the intersection the
+ * `isTemperaturePlanDevice` type-guard (`lib/plan/planTemperatureDevice.ts`)
+ * adds onto whichever stepped variant the device already is. The fields are
+ * OMITTED from `DevicePlanDeviceBase`, so a `device.currentTarget` /
+ * `.currentTemperature` read on a bare `DevicePlanDevice` is a hard compile
+ * error (TS2339); consumers must pass through `isTemperaturePlanDevice` (or hold
+ * an already-narrowed value) first.
+ *
+ * `currentTarget` is REQUIRED on the narrowed shape: the producer always
+ * resolves it to a value-or-null for a temperature device (the primary target
+ * capability's value, or `null` during a transient read failure). It is
+ * `number | null`, never absent, once the temperature discriminant holds.
+ *
+ * `currentTemperature` is OPTIONAL: the sensor reading is only present when the
+ * device reports it, so the guard groups it onto the variant WITHOUT asserting a
+ * presence the producer does not guarantee.
+ *
+ * The boost cluster (`temperatureBoost` / `temperatureBoostActive`) is NOT here:
+ * it stays on `DevicePlanDeviceBase` (entangled with the cross-kind boost
+ * machinery), as does the planner-output `plannedTarget`.
+ */
+export type TemperatureKind = {
+  currentTarget: number | null;
+  currentTemperature?: number;
+};
+
 export type SteppedPlanDevice = DevicePlanDeviceBase & SteppedLoadKind;
 export type NonSteppedPlanDevice = DevicePlanDeviceBase & NonSteppedLoadKind;
 export type DevicePlanDevice = SteppedPlanDevice | NonSteppedPlanDevice;
@@ -212,18 +244,68 @@ export function withEvDiscriminant<TBase extends object>(
   };
 }
 
+/**
+ * Temperature field cluster as plain independent optionals: the "might be
+ * temperature" loose shape a construction/merge site carries before the cluster
+ * is regrouped onto the orthogonal `TemperatureKind` intersection. Used by
+ * `withTemperatureDiscriminant`.
+ *
+ * `currentTarget` is optional here (the loose-bag input may omit it) even though
+ * the regrouped `TemperatureKind` requires it: the regrouper defaults a missing
+ * value to `null`, matching the producer's value-or-null contract.
+ */
+export type TemperatureDiscriminantProbe = {
+  currentTarget?: number | null;
+  currentTemperature?: number;
+};
+
+/**
+ * Regroup the temperature field cluster off a loose bag (whose temperature
+ * fields are independent optionals on the base, e.g. the result of a
+ * `{ ...current, ...updates }` merge or a `...snapshot` spread) onto a single
+ * `TemperatureKind`-shaped intersection.
+ *
+ * Stripping is essential for the same reason as `withEvDiscriminant`: an object
+ * spread can never *remove* a key, so the temperature fields would otherwise
+ * survive on the base part of the result and re-pollute the base shape this
+ * slice deliberately omits them from. Temperature is orthogonal to the stepped
+ * axis, so there is no boolean discriminant to recompute — the cluster is
+ * regrouped (every value forwarded unchanged, `currentTarget` defaulting to
+ * `null` when absent) and re-attached as `TemperatureKind`. The result's base
+ * part is `Omit<TBase, keyof TemperatureDiscriminantProbe>`, matching the
+ * temperature-stripped `DevicePlanDeviceBase`.
+ */
+export function withTemperatureDiscriminant<TBase extends object>(
+  loose: TBase & TemperatureDiscriminantProbe,
+): Omit<TBase, keyof TemperatureDiscriminantProbe> & TemperatureKind {
+  const { currentTarget, currentTemperature, ...base } = loose;
+  return {
+    ...base,
+    currentTarget: currentTarget ?? null,
+    ...(currentTemperature !== undefined ? { currentTemperature } : {}),
+  };
+}
+
 export type SteppedPlanInputDevice = PlanInputDeviceBase & SteppedLoadKind;
 
 type DevicePlanDeviceBase = {
   id: string;
   name: string;
   deviceClass?: string;
+  // Carried flat (like `deviceClass`) so the `isTemperaturePlanDevice` guard's
+  // runtime predicate (`deviceType === 'temperature'`) reads identically on the
+  // output plan device as on the input device. Stamped by the producer in
+  // `lib/plan/planDevices.ts`.
+  deviceType?: 'temperature' | 'onoff';
   // Transitional snapshot field only. Planner truth must come from currentState.
   // Present iff binary control; absence is the old fabricated `currentOn: true`.
   binaryControl?: { on: boolean };
   currentState: string;
   plannedState: PlannedDeviceState;
-  currentTarget: number | null;
+  // `currentTarget` and `currentTemperature` are split off onto the orthogonal
+  // `TemperatureKind` cluster; reach them through the `isTemperaturePlanDevice`
+  // guard (`lib/plan/planTemperatureDevice.ts`). `plannedTarget` (planner output)
+  // and the boost cluster (`temperatureBoost*`) stay on the base.
   plannedTarget?: number;
   observationStale?: boolean;
   communicationModel?: 'local' | 'cloud';
@@ -269,7 +351,6 @@ type DevicePlanDeviceBase = {
   zone?: string;
   controllable?: boolean;
   budgetExempt?: boolean;
-  currentTemperature?: number;
   temperatureBoost?: TemperatureBoostConfig;
   temperatureBoostActive?: boolean;
   /**

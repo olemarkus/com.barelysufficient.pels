@@ -67,6 +67,25 @@ export type EvPlanInputKind = {
   stateOfCharge?: DeviceStateOfChargeSnapshot;
 };
 
+/**
+ * Temperature field cluster for the plan-input contract (temperature-variant
+ * slice). Temperature is ORTHOGONAL to the stepped axis (an air-treatment unit
+ * can also be stepped), so this is NOT a union member; it is the intersection
+ * the `isTemperaturePlanDevice` type-guard (`lib/plan/planTemperatureDevice.ts`)
+ * adds onto whichever stepped variant the device is. The field is OMITTED from
+ * `PlanInputDeviceBase`, so an un-narrowed `device.currentTemperature` read is a
+ * hard compile error; it is optional because the producer does not guarantee
+ * the sensor reads.
+ *
+ * The plan-input side carries NO `currentTarget`: the target is resolved from
+ * the device's `targets` capability list at plan-build time
+ * (`lib/plan/planDevices.ts`); `currentTarget` only exists on the OUTPUT
+ * `DevicePlanDevice`'s `TemperatureKind`.
+ */
+export type TemperaturePlanInputKind = {
+  currentTemperature?: number;
+};
+
 export type PlanInputDevice =
   | (PlanInputDeviceBase & SteppedPlanInputKind)
   | (PlanInputDeviceBase & NonSteppedPlanInputKind);
@@ -182,7 +201,9 @@ export type PlanInputDeviceBase = {
   planningPowerKw?: number;
   expectedPowerSource?: 'manual' | 'measured-peak' | 'load-setting' | 'homey-energy' | 'default';
   measuredPowerKw?: number;
-  currentTemperature?: number;
+  // `currentTemperature` is split off onto the orthogonal `TemperaturePlanInputKind`
+  // cluster; reach it through the `isTemperaturePlanDevice` guard
+  // (`lib/plan/planTemperatureDevice.ts`). `temperatureBoost` stays on the base.
   temperatureBoost?: TemperatureBoostConfig;
   // Set by the deferred limit-lower-priority rescue lane (admission) to force boost on while
   // the smart task is in its planned hours; the boost resolvers honour it independent of the

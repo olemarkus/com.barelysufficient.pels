@@ -41,7 +41,8 @@ import type {
 } from '../../packages/contracts/src/settingsUiApi';
 import { normalizePlanMeta } from './planStatusHelpers';
 import { buildSettingsOverviewReadModel } from './settingsOverviewReadModel';
-import { createIdleClassifier, type IdleClassifier } from '../observer/idleClassifier';
+import { createIdleClassifier, type IdleClassifier, type IdleClassifierDeviceInput } from '../observer/idleClassifier';
+import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import type { PendingBinaryLiveDevice } from '../observer/pendingBinaryCommands';
 import { PlanStatusWriter } from './planStatusWriter';
 import {
@@ -567,7 +568,13 @@ export class PlanService {
   private tickIdleClassifier(plan: DevicePlan): void {
     if (this.lastTickedPlanRef === plan) return;
     this.lastTickedPlanRef = plan;
-    this.idleClassifier.classifyAll(plan.devices, Date.now());
+    // Narrow the temperature cluster via the guard so the classifier never reads
+    // `currentTarget`/`currentTemperature` off an un-narrowed plan device — a
+    // non-temperature device contributes `currentTarget: null` (its old base value).
+    const idleInputs = plan.devices.map((device): IdleClassifierDeviceInput => (
+      isTemperaturePlanDevice(device) ? device : { ...device, currentTarget: null }
+    ));
+    this.idleClassifier.classifyAll(idleInputs, Date.now());
   }
 
   private emitPlanUpdated(plan: DevicePlan): void {

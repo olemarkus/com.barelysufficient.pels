@@ -47,7 +47,6 @@ export function buildBoostPlanDeviceFields(params: {
   evBoostActive: boolean;
 }): Pick<
   DevicePlanDevice,
-  | 'currentTemperature'
   | 'temperatureBoost'
   | 'temperatureBoostActive'
   | 'boostActive'
@@ -57,10 +56,11 @@ export function buildBoostPlanDeviceFields(params: {
   // devices; gate the reads on the EV narrowing. `evBoostActive` is resolved by
   // the caller and carried regardless (it is `false` for non-EV devices). The
   // returned `EvKind` is regrouped onto the variant by `withEvDiscriminant` at
-  // the construction site.
+  // the construction site. `currentTemperature` is no longer carried here — it
+  // rides on the orthogonal `TemperatureKind` cluster, attached by the producer
+  // via `withTemperatureDiscriminant`.
   const ev = isEvPlanDevice(dev) ? dev : null;
   return {
-    currentTemperature: dev.currentTemperature,
     temperatureBoost: dev.temperatureBoost,
     temperatureBoostActive,
     boostActive: resolveBoostActive({ temperatureBoostActive, evBoostActive }),

@@ -4,6 +4,7 @@ import type { PowerTrackerState } from '../power/tracker';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { isCooldownBlockedReason } from '../planContract/planDecisionSemantics';
 import type { DevicePlan, DevicePlanDevice, PlanInputDevice, ShedAction } from './planTypes';
+import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import type { OvershootTrackedPlanDevice, PlanEngineState } from './planState';
 import { computeDailyUsageSoftLimit, computeDynamicSoftLimit, computeShortfallThreshold } from './planBudget';
 import { buildPlanContext, type PlanContext, type SoftLimitSource } from './planContext';
@@ -1154,14 +1155,15 @@ function trackPlanDevicesForOvershoot(
 }
 
 function shouldExposePendingTargetCommand(
-  device: Pick<DevicePlanDevice, 'id' | 'plannedTarget' | 'currentTarget'>,
+  device: DevicePlanDevice,
   state: PlanEngineState,
 ): boolean {
   const pending = state.pendingTargetCommands[device.id];
+  const currentTarget = isTemperaturePlanDevice(device) ? device.currentTarget : null;
   return Boolean(
     pending
     && typeof device.plannedTarget === 'number'
-    && device.plannedTarget !== device.currentTarget
+    && device.plannedTarget !== currentTarget
     && device.plannedTarget === pending.desired,
   );
 }

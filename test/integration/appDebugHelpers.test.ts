@@ -339,6 +339,7 @@ describe('appDebugHelpers', () => {
             {
               id: 'dev-1',
               name: 'Kitchen Socket',
+              deviceType: 'temperature',
               currentState: 'off',
               plannedState: 'keep',
               currentTarget: 18,
@@ -514,6 +515,7 @@ describe('appDebugHelpers', () => {
           devices: [{
             id: 'dev-1',
             name: 'Kitchen Socket',
+            deviceType: 'temperature',
             currentState: 'off',
             plannedState: 'keep',
             currentTarget: 20.5,

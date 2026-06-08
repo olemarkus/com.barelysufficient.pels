@@ -1,6 +1,7 @@
 import type { DevicePlanDevice, PlanInputDevice, ShedAction } from './planTypes';
-import { withEvDiscriminant, withSteppedDiscriminant } from './planTypes';
+import { withEvDiscriminant, withSteppedDiscriminant, withTemperatureDiscriminant } from './planTypes';
 import { isEvPlanDevice } from './planEvDevice';
+import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { resolveShedIntent } from '../device/deviceActionProjection';
 import { materializeShedSnapshotFields } from './planActionMaterialization';
 import type { PlanEngineState } from './planState';
@@ -347,6 +348,13 @@ function hasKnownPowerFields(dev: PlanInputDevice): boolean {
     || Number.isFinite(dev.powerKw);
 }
 
+// Source the temperature sensor reading from the input device through the
+// temperature narrowing (the plan-input base omits `currentTemperature`). Kept
+// as a standalone helper so `buildBasePlanDevice` stays under the complexity cap.
+function resolveInputCurrentTemperature(dev: PlanInputDevice): number | undefined {
+  return isTemperaturePlanDevice(dev) ? dev.currentTemperature : undefined;
+}
+
 function buildBasePlanDevice(params: {
   dev: PlanInputDevice;
   devices: PlanInputDevice[];
@@ -416,17 +424,22 @@ function buildBasePlanDevice(params: {
   const resolvedPlannedTarget = shedAction === 'set_temperature' && shedTemperature !== null
     ? shedTemperature
     : plannedTarget;
-  // The stepped + EV discriminants are set explicitly in the loose literal, then
-  // re-tied: `withEvDiscriminant` regroups the EV cluster (orthogonal axis) and
-  // `withSteppedDiscriminant` lands the result in one stepped union member.
-  return withSteppedDiscriminant(withEvDiscriminant({
+  // The stepped, EV, and temperature discriminants are set explicitly in the
+  // loose literal, then re-tied: `withEvDiscriminant` regroups the EV cluster
+  // and `withTemperatureDiscriminant` the temperature cluster (both orthogonal
+  // axes), and `withSteppedDiscriminant` lands the result in one stepped union
+  // member. The temperature sensor reading is sourced from the input device
+  // through the temperature narrowing (the base omits `currentTemperature`).
+  return withSteppedDiscriminant(withTemperatureDiscriminant(withEvDiscriminant({
     id: dev.id,
     name: dev.name,
     deviceClass: dev.deviceClass,
+    deviceType: dev.deviceType,
     binaryControl: dev.binaryControl,
     currentState,
     plannedState,
     currentTarget,
+    currentTemperature: resolveInputCurrentTemperature(dev),
     ...(resolvedPlannedTarget !== undefined ? { plannedTarget: resolvedPlannedTarget } : {}),
     observationStale: dev.observationStale,
     communicationModel: dev.communicationModel,
@@ -467,7 +480,7 @@ function buildBasePlanDevice(params: {
     shedTemperature,
     releaseShedStepId,
     ...pickPropagatedPlanFields(dev),
-  }));
+  })));
 }
 
 function pickPropagatedPlanFields(

@@ -1,4 +1,5 @@
 import type { PlanInputDevice } from './planTypes';
+import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { hasTemperatureBoostTarget } from '../utils/temperatureBoost';
 import { getLogger } from '../logging/logger';
 
@@ -22,13 +23,14 @@ export function emitTemperatureBoostStateChange(params: {
   const { dev, previousActive, active } = params;
   if (previousActive === active) return;
   const boostBelowC = dev.temperatureBoost?.boostBelowC;
+  const currentTemperature = isTemperaturePlanDevice(dev) ? dev.currentTemperature : undefined;
   logger.debug({
     event: 'temperature_boost_state_changed',
     deviceId: dev.id,
     deviceName: dev.name,
     active,
     previousActive,
-    currentTemperatureC: typeof dev.currentTemperature === 'number' ? dev.currentTemperature : null,
+    currentTemperatureC: typeof currentTemperature === 'number' ? currentTemperature : null,
     boostBelowC: typeof boostBelowC === 'number' ? boostBelowC : null,
     observationStale: dev.observationStale === true,
   });

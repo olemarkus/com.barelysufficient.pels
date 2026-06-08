@@ -4,6 +4,7 @@ import type {
   SteppedLoadProfile,
 } from '../../packages/contracts/src/types';
 import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
+import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { getPrimaryTargetCapability, normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
 import { isObservedOff } from '../observer/observedState';
 import { getCurrentDrawKw } from '../observer/observedPower';
@@ -220,9 +221,10 @@ function toPlanResidualTemperatureTarget(
   device: DevicePlanDevice,
 ): ResidualKwShedTemperatureTarget | undefined {
   if (device.shedAction !== 'set_temperature') return undefined;
+  const temperature = isTemperaturePlanDevice(device) ? device : null;
   return {
-    ...(typeof device.currentTarget === 'number' && Number.isFinite(device.currentTarget)
-      ? { currentValue: device.currentTarget }
+    ...(typeof temperature?.currentTarget === 'number' && Number.isFinite(temperature.currentTarget)
+      ? { currentValue: temperature.currentTarget }
       : {}),
   };
 }
@@ -352,10 +354,11 @@ function toRemainingTemperatureTarget(target: {
 }
 
 function toPlanRemainingTemperatureTarget(device: DevicePlanDevice): RemainingSheddableTemperatureTarget {
+  const temperature = isTemperaturePlanDevice(device) ? device : null;
   return {
     id: 'target_temperature',
-    ...(typeof device.currentTarget === 'number' && Number.isFinite(device.currentTarget)
-      ? { currentValue: device.currentTarget }
+    ...(typeof temperature?.currentTarget === 'number' && Number.isFinite(temperature.currentTarget)
+      ? { currentValue: temperature.currentTarget }
       : {}),
   };
 }

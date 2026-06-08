@@ -1,13 +1,15 @@
 import type { DevicePlanDevice } from '../planTypes';
 import { getInactiveReason, isRestoreLiveEligibleDevice } from './devices';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
+import { isTemperaturePlanDevice } from '../planTemperatureDevice';
 import { getSteppedLoadStep } from '../../utils/deviceControlProfiles';
 import { isDeviceObservationTrusted } from '../../observer/observationTrust';
 
 function isTargetRestorePending(device: DevicePlanDevice): boolean {
+  const currentTarget = isTemperaturePlanDevice(device) ? device.currentTarget : null;
   return device.shedAction === 'set_temperature'
     && typeof device.plannedTarget === 'number'
-    && device.currentTarget !== device.plannedTarget
+    && currentTarget !== device.plannedTarget
     && device.pendingTargetCommand?.status === 'waiting_confirmation'
     && device.pendingTargetCommand?.desired === device.plannedTarget;
 }

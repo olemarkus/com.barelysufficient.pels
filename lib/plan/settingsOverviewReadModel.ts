@@ -16,6 +16,7 @@ import { normalizePlanMeta } from './planStatusHelpers';
 import type { DevicePlan } from './planTypes';
 import type { EvChargingState } from '../../packages/contracts/src/types';
 import { isEvPlanDevice } from './planEvDevice';
+import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 
 export type SettingsOverviewReadModelDeps = {
@@ -109,6 +110,10 @@ export function buildSettingsOverviewDeviceReadModel(
   // undefined. The raw `evChargingState` comes from the observer (its canonical
   // owner), NOT the plan device — see `getObservedEvChargingState`.
   const ev = isEvPlanDevice(device) ? device : null;
+  // The temperature cluster (`currentTarget` / `currentTemperature`) lives on the
+  // orthogonal `TemperatureKind` (off the base); narrow once so the snapshot can
+  // surface it. Non-temperature devices leave both undefined.
+  const temperature = isTemperaturePlanDevice(device) ? device : null;
   return {
     id: device.id,
     name: device.name,
@@ -125,9 +130,9 @@ export function buildSettingsOverviewDeviceReadModel(
     controlModel: resolveDisplayControlModel(device, producerDeviceType),
     controlCapabilityId: device.controlCapabilityId,
     evChargingState: deps.getObservedEvChargingState?.(device.id),
-    currentTarget: device.currentTarget,
+    currentTarget: temperature ? temperature.currentTarget : null,
     plannedTarget: device.plannedTarget,
-    currentTemperature: device.currentTemperature,
+    currentTemperature: temperature?.currentTemperature,
     measuredPowerKw: device.measuredPowerKw,
     expectedPowerKw: device.expectedPowerKw,
     planningPowerKw: device.planningPowerKw,
