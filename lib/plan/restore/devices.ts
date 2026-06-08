@@ -3,7 +3,7 @@ import { PLAN_REASON_CODES, type DeviceReason } from '../../../packages/shared-d
 import { resolveEvBlockReasonForDevice } from '../../../packages/shared-domain/src/commandableNow';
 import type { DevicePlanDevice } from '../planTypes';
 import { isObservedOff, isObservedOn } from '../../observer/observedState';
-import { sortByPriorityAsc, sortByPriorityDesc } from '../planSort';
+import { compareDeviceIdAsc, sortByPriorityAsc, sortByPriorityDesc } from '../planSort';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
 import { isTemperaturePlanDevice } from '../planTemperatureDevice';
 
@@ -82,7 +82,13 @@ export function getRestoreCandidates(planDevices: DevicePlanDevice[]): RestoreCa
       .filter((device) => isOffSteppedRestoreCandidate(device))
       .map((device) => ({ kind: 'stepped' as const, device })),
   ];
-  return candidates.slice().sort((a, b) => (a.device.priority ?? 999) - (b.device.priority ?? 999));
+  return candidates.slice().sort((a, b) => {
+    const byPriority = (a.device.priority ?? 999) - (b.device.priority ?? 999);
+    if (byPriority !== 0) return byPriority;
+    // Deterministic final tiebreak shared with shed (compareDeviceIdAsc) so the
+    // all-default-priority bucket arbitrates identically regardless of input order.
+    return compareDeviceIdAsc(a.device, b.device);
+  });
 }
 
 export function getOnDevices(
