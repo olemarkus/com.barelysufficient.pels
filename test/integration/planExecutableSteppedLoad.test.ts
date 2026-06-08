@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { buildExecutableObservedDeviceState } from '../../lib/executor/executablePlanProjection';
+import {
+  buildExecutableObservedDeviceState,
+} from '../../lib/executor/executablePlanProjection';
 import {
   buildExecutableSteppedLoadDevice,
   buildExecutableSteppedLoadIntent,
+  resolveSteppedLoadCurrentFallback,
 } from '../../lib/executor/executableSteppedLoadProjection';
 import type { DevicePlanDevice } from '../../lib/plan/planTypes';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
@@ -126,5 +129,66 @@ describe('planExecutableSteppedLoad', () => {
       controlModel: 'binary_power',
       steppedLoadProfile: undefined,
     }))).toBeNull();
+  });
+
+  it('resolves the current step on the raw dispatch path (no selectedStepId decoration) from the producer fallback', () => {
+    // Regression: the raw dispatch path builds observed state from `getSnapshot()`
+    // snapshots, which carry NO `selectedStepId` decoration — so the observed step
+    // stays undefined there (it is real-evidence-only, never the planning fallback).
+    // The effective current step is supplied by the producer-resolved fallback
+    // (`resolveSteppedLoadCurrentFallback`), not the intent and not an observed join.
+    // Keeping the observed step undefined on dispatch is what keeps the stepped
+    // shed-release trusted-evidence gate a no-op until a real report arrives.
+    const planDevice = steppedPlanDevice({
+      currentState: 'on',
+      plannedState: 'keep',
+      selectedStepId: 'medium',
+      desiredStepId: 'medium',
+      reportedStepId: 'medium',
+    });
+
+    // Raw snapshot WITHOUT the selectedStepId decoration, as `getSnapshot()` produces.
+    const rawSnapshot = {
+      id: planDevice.id,
+      name: planDevice.name,
+      binaryControl: { on: true },
+      targets: [],
+      controlModel: planDevice.controlModel,
+      steppedLoadProfile: planDevice.steppedLoadProfile,
+    } as unknown as TargetDeviceSnapshot;
+
+    const observed = buildExecutableObservedDeviceState(rawSnapshot);
+    const action = buildExecutableSteppedLoadDevice(
+      buildExecutableSteppedLoadIntent(planDevice),
+      observed,
+      resolveSteppedLoadCurrentFallback(planDevice),
+    );
+
+    // Observed step is undefined on the raw dispatch path (no decoration) ...
+    expect(observed?.steppedLoad?.stepId).toBeUndefined();
+    // ... yet the executable device's current step is authoritative via the producer fallback.
+    expect(action?.current.stepId).toBe('medium');
+    expect(action?.current.on).toBe(true);
+  });
+
+  it('resolves current state from the plan-device fallback when the device is absent from the snapshot', () => {
+    // A planned device that disappeared from `getSnapshot()` between planning and
+    // dispatch has no observation; the producer-resolved fallback (plan device's
+    // effective on/step) supplies the current state, not a removed intent field.
+    const planDevice = steppedPlanDevice({
+      currentState: 'on',
+      plannedState: 'keep',
+      selectedStepId: 'low',
+      desiredStepId: 'low',
+    });
+
+    const action = buildExecutableSteppedLoadDevice(
+      buildExecutableSteppedLoadIntent(planDevice),
+      undefined,
+      resolveSteppedLoadCurrentFallback(planDevice),
+    );
+
+    expect(action?.current.stepId).toBe('low');
+    expect(action?.current.on).toBe(true);
   });
 });

@@ -161,6 +161,21 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
 
 *v2.11.0..HEAD release-review findings (2026-06-02). Non-blocking follow-ups.*
 
+- [ ] **Decide whether stepped shed/restore recording should gate on `flowBacked` like the binary paths.**
+      (Gemini review of #1591, deferred.) The binary seam seal made `BinaryControlOutcome.flowBacked`
+      available, and `binaryExecutor.ts` / `binaryRestoreHelpers.ts` skip recording *direct* actuation
+      for flow-backed commands. The stepped paths (`applySteppedLoadShedOff` ~line 402,
+      `dispatchSteppedLoadRestoreBinaryCommand` ~line 725 in `steppedLoadExecutor.ts`) still record
+      unconditionally (pre-existing; the seam-seal PR preserved that). Open question: the stepped
+      `recordShedActuation`/`recordRestoreActuation` stamp the shed/restore *cooldown*, which should
+      probably fire regardless of channel — unlike the binary *direct-write diagnostic* recorder that
+      correctly skips flow-backed. So a blind "gate on `flowBacked`" may be a cooldown bug, not a fix.
+      First establish whether a stepped-load device is ever flow-backed in practice; if it can be,
+      decide per-recorder (cooldown vs diagnostic) whether the channel matters, and add a test. If
+      stepped is never flow-backed, close as a no-op. Persona: maintainer. Hypothesis: the binary↔stepped
+      recording asymmetry is either a real flow-backed diagnostic-double-count or a deliberate
+      channel-agnostic cooldown — name which before changing it.
+
 - [ ] **Extend the connected-but-not-resumable (`plugged_in`) honesty to the remaining surfaces.**
       The objective/smart-task honesty for a `plugged_in` charger (PELS can't resume it) shipped the
       list chip + widget ("Paused — can't resume" / "Can't resume" / "Car charging won't resume —
@@ -394,7 +409,7 @@ live-walk screenshots.*
       is now a Preact surface — `#electricity-prices-surface` — so the live summary card lands
       here too, NOT in `index.html`); price-service → UI wiring (the deadline surface already
       reads `priceScheme`/`lastFetched`, e.g. `deadlinePlanPending.ts`, as a wiring reference).
-- [ ] Tighten the planner-to-executor projection so executable stepped-load intents cannot be
+- [x] Tighten the planner-to-executor projection so executable stepped-load intents cannot be
       underspecified. The desired end state is an `input snapshots -> ExecutablePlan` boundary
       where only core planning/admission sees both current and desired state; executable intents
       contain commandable desired state only, and observed current state comes separately from
@@ -404,12 +419,29 @@ live-walk screenshots.*
       Update: keep-invariant gate now reads `hasExecutableShedDevices` from the executable plan
       so a dropped underspecified set_step shed no longer phantom-blocks unrelated stepped
       restores; dropped intents are also surfaced via the `stepped_load_shed_intent_dropped`
-      structured debug event. The deeper refactor of removing observed current state from intents
-      is still outstanding.
-      Why P2 (demoted from P1 in release-review pass): the user-visible symptom is already
-      fixed by the keep-invariant gate; the remaining work is internal-only refactor.
+      structured debug event.
+      Closeout (`refactor/stepped-intent-desired-only`): `ExecutableSteppedLoadIntent` is now
+      desired-only — `planningCurrentOn` / `planningCurrentStepId` removed. Current state
+      (`on` / `stepId` / `stepIsOffStep` / `stepForShed`) is producer-resolved:
+      `resolveSteppedLoadCurrentFallback(planDevice)` resolves the effective on/step once on the
+      plan device (`resolveEffectiveCurrentOn` + `selectedStepId`) and the dispatch loop passes it
+      to the projection, so the executor reads current state from the observation when present and
+      this producer fallback otherwise — never from the (desired-only) intent. Drift reads the
+      planned current step from `planDevice.selectedStepId` (not the intent). The shed-release
+      stepped re-projection's `planningCurrentOn` branch was dead (the caller gates on an observed
+      step) and was dropped. Deliberately NOT done: the raw dispatch observed step is left
+      real-evidence-only (`observed.steppedLoad.stepId` stays undefined on the undecorated
+      `getSnapshot()` path) rather than joined from the effective `selectedStepId` — joining it
+      would have flipped the previously-dead stepped shed-release dispatch path into a live
+      `set_step` command satisfiable by a planning assumption (no real SDK report), weakening the
+      trusted-evidence gate. Reviving that path (gated on `reportedStepId`) is a separate
+      intentional change, not this refactor. Behaviour-preserving; regression tests assert the raw
+      dispatch path keeps the observed step undefined yet resolves the current step from the
+      producer fallback, and that the shed-release gate no-ops without a real observed step.
       Files: `lib/executor/executableSteppedLoadProjection.ts`, `lib/executor/executablePlan.ts`,
-      `lib/executor/planExecutionDrift.ts`, stepped executable projection/drift tests.
+      `lib/executor/executablePlanProjection.ts`, `lib/executor/planExecutor.ts`,
+      `lib/executor/planExecutionDrift.ts`, `lib/executor/shedReleaseActuation.ts`, stepped
+      executable projection/drift tests.
 
 *Smart-task controller extraction (2026-05-30, `feat/smarttask-lifecycle-producer`).
 Program to make the planner know nothing about smart tasks (deferred objectives):
