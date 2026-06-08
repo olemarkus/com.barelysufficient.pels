@@ -1,4 +1,4 @@
-import { flattenAllHours, readPriceStore } from '../../lib/price/priceStore';
+import { flattenAllHours } from '../../lib/price/priceStore';
 import {
   resolvePostmortemTone,
   type PostmortemTone,
@@ -222,11 +222,7 @@ const resolveHourPriceFromContext = (
   tone: PostmortemTone;
   costDisplay: DeferredObjectivePlanHistoryCostDisplay;
 } | null => {
-  const store = readPriceStore(
-    { homey: ctx.homey, requestRefetch: () => ctx.priceCoordinator?.updateCombinedPrices() },
-    new Date(),
-    ctx.homey.clock.getTimezone(),
-  );
+  const store = ctx.combinedPricesReader.readStore(ctx.getNow(), ctx.getTimeZone());
   if (!store) return null;
   for (const entry of flattenAllHours(store)) {
     const entryStart = new Date(entry.startsAt).getTime();

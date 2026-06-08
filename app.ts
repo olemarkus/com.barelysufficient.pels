@@ -80,6 +80,7 @@ import { BackgroundTasksController } from './setup/backgroundTasksController';
 import { PowerSamplePipeline } from './setup/powerSamplePipeline';
 import { SchedulerTelemetryObserver } from './setup/schedulerTelemetryObserver';
 import { SettingsRepository } from './setup/settingsRepository';
+import { createCombinedPricesReaderForApp } from './setup/priceCombinedPricesAdapter';
 import { detectNativeWiringConflicts, type NativeWiringConflictDetection } from './setup/flowConflictProbe';
 import { getRawFromHomeyApi } from './lib/device/transport/managerHomeyApi';
 import {
@@ -795,7 +796,7 @@ class PelsApp extends Homey.App {
     const appRef = app;
     return {
       startupBootstrap: undefined,
-      homey: app.homey,
+      homey: app.homey, combinedPricesReader: createCombinedPricesReaderForApp(app.homey, () => app.priceCoordinator),
       log: (...args: unknown[]) => app.log(...args),
       error: (...args: unknown[]) => app.error(...args),
       logDebug: (topic, ...args) => app.logDebug(topic, ...args),
@@ -1201,7 +1202,7 @@ class PelsApp extends Homey.App {
       getPowerTracker: () => this.powerTracker,
       getPriceOptimizationEnabled: () => this.priceOptimizationEnabled,
       getCapacitySettings: () => this.capacitySettings,
-      requestPriceRefetch: () => this.priceCoordinator?.updateCombinedPrices(),
+      combinedPricesReader: this.ctx.combinedPricesReader,
       structuredLog: this.structuredLogger?.child({ component: 'daily_budget' }),
       debugStructured: this.getStructuredDebugEmitter('daily_budget', 'daily_budget'),
     });

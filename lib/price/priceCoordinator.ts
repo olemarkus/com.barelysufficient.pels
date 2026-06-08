@@ -230,16 +230,16 @@ export class PriceCoordinator {
    * misfire on a transient/empty scheme read. For non-flow schemes this no-ops.
    *
    * Legacy V1 payloads are skipped: rebuilding here would write a fresh V2 and
-   * bypass the V1→V2 migration in `readPriceStore` (which carries the V1's own
-   * resolved tiers forward). Leaving the V1 payload in place lets the next
-   * `readPriceStore` caller migrate it, and the scheduled midnight rotation
+   * bypass the combined-prices reader's V1→V2 migration (which carries the V1's
+   * own resolved tiers forward). Leaving the V1 payload in place lets the next
+   * combined-prices read migrate it, and the scheduled midnight rotation
    * picks up the local-day rollover afterwards.
    */
   catchUpCombinedPricesRotation(): void {
     if (this.priceService.getPriceScheme() !== 'flow') return;
     const existingPayload = this.deps.homey.settings.get(COMBINED_PRICES) as unknown;
-    // A persisted V1 shape must run through the readPriceStore migration first;
-    // rebuilding it here would clobber that path. Leave it for migration.
+    // A persisted V1 shape must run through the combined-prices reader's
+    // migration first; rebuilding it here would clobber that path. Leave it.
     if (isCombinedPricesV1(existingPayload)) {
       this.deps.debugStructured({ event: 'combined_prices_catchup_deferred', reason: 'legacy_v1_payload' });
       return;

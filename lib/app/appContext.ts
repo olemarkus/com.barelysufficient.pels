@@ -23,6 +23,7 @@ import type { PlanService } from '../plan/planService';
 import type { PriceLevel } from '../price/priceLevels';
 import type { PriceCoordinator } from '../price/priceCoordinator';
 import type { PriceFlowTagPublisher } from '../price/priceFlowTags';
+import type { CombinedPricesReader } from '../price/combinedPricesReader';
 import type { PriceOptimizationSettings } from '../price/priceOptimizer';
 import type { CombinedHourlyPrice } from '../price/priceTypes';
 import type { DebugLoggingTopic } from '../../packages/shared-domain/src/utils/debugLogging';
@@ -212,6 +213,10 @@ export type AppContext = {
   deviceDiagnosticsService?: DeviceDiagnosticsService;
   priceCoordinator?: PriceCoordinator;
   priceFlowTagPublisher?: PriceFlowTagPublisher;
+  // Single combined-prices read boundary shared by every consumer (daily
+  // budget, flow tags, plan service, deferred recorders). The adapter owns the
+  // settings read + V1→V2 migration; consumers receive only typed results.
+  readonly combinedPricesReader: CombinedPricesReader;
   deviceManager?: DeviceTransport;
   planEngine?: PlanEngine;
   planService?: PlanService;
