@@ -4,7 +4,7 @@ import {
   type CapacitySettingsSnapshot,
 } from '../../setup/appSettingsHelpers';
 import type { AppContext } from '../../lib/app/appContext';
-import { TimerRegistry } from '../../lib/app/timerRegistry';
+import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import {
   CAPACITY_LIMIT_KW,
   DEVICE_DRIVER_OVERRIDES,

@@ -24,7 +24,7 @@ export const MODE_TARGET_GRACE_CYCLES = 4;
 // when users enable it a stuck misconfigured device would otherwise fire one
 // log line per plan cycle (~10 s in `homey_energy` mode → ~8,640/day). Matches
 // the 15-minute window used by `STALE_OBSERVATION_REFRESH_LOG_BACKOFF_MS` in
-// `lib/app/appSnapshotHelpers.ts`. In-memory only per
+// `setup/appSnapshotHelpers.ts`. In-memory only per
 // `feedback_homey_sdk_unreliable`.
 export const MISSING_MODE_TARGET_EMIT_INTERVAL_MS = 15 * 60 * 1000;
 
@@ -60,7 +60,7 @@ export function rememberModeTargetCapability(
 /**
  * Drop per-device transient state for devices no longer present in the live
  * snapshot. Mirrors `cleanupMissingHeadroomDevices` in `planHeadroomState.ts`
- * and the proactive prune in `lib/app/appSnapshotHelpers.ts:pruneStaleRefreshLogBackoff`.
+ * and the proactive prune in `setup/appSnapshotHelpers.ts:pruneStaleRefreshLogBackoff`.
  * Returns true when at least one entry was deleted.
  */
 export function cleanupMissingModeTargetDevices(
@@ -236,7 +236,7 @@ function applyMissingModeTargetGrace(
  * `missing_mode_target_and_current_target`. Emit on (a) first occurrence, (b)
  * event-kind change (fallback → skip or vice versa), or (c) heartbeat
  * interval elapsed. Same pattern as
- * `lib/app/appSnapshotHelpers.ts:STALE_OBSERVATION_REFRESH_LOG_BACKOFF_MS`.
+ * `setup/appSnapshotHelpers.ts:STALE_OBSERVATION_REFRESH_LOG_BACKOFF_MS`.
  * Returns true when an emit was actually fired (the caller doesn't need it,
  * but it's useful for tests and future caller introspection).
  */

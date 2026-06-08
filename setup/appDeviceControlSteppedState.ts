@@ -1,12 +1,12 @@
-import { getSteppedLoadStep, isSteppedLoadOffStep } from '../utils/deviceControlProfiles';
-import { serializeLegacyStepFieldsFromEvidence } from '../plan/planSteppedLoadState';
-import { isNativeSteppedLoadControlEnabled } from '../device/nativeSteppedLoadWiring';
+import { getSteppedLoadStep, isSteppedLoadOffStep } from '../lib/utils/deviceControlProfiles';
+import { serializeLegacyStepFieldsFromEvidence } from '../lib/plan/planSteppedLoadState';
+import { isNativeSteppedLoadControlEnabled } from '../lib/device/nativeSteppedLoadWiring';
 import type {
   DeviceControlProfile,
   SteppedLoadCommandStatus,
   SteppedLoadProfile,
   TargetDeviceSnapshot,
-} from '../../packages/contracts/src/types';
+} from '../packages/contracts/src/types';
 type StepEvidence = {
   stepId?: string;
   observedAtMs?: number;

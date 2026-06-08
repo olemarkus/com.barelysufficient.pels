@@ -9,7 +9,7 @@ import {
   resolveEffectiveSteppedLoadProfile,
   reportSteppedLoadActualStep,
   resolveDefaultControlModel,
-} from '../../lib/app/appDeviceControlHelpers';
+} from '../../setup/appDeviceControlHelpers';
 import {
   PELS_MEASURE_STEP_CAPABILITY_ID,
   PELS_TARGET_STEP_CAPABILITY_ID,

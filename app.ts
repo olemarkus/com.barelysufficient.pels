@@ -59,7 +59,7 @@ import {
 import {
   AppDeviceControlHelpers,
   normalizeStoredDeviceControlProfiles,
-} from './lib/app/appDeviceControlHelpers';
+} from './setup/appDeviceControlHelpers';
 import {
   getAllModes as getAllModesHelper,
   getShedBehavior as getShedBehaviorHelper,
@@ -185,8 +185,8 @@ import { HomeyEnergyPollSource } from './lib/power/sources/homeyEnergyPoll';
 import {
   AppSnapshotHelpers,
   type RefreshTargetDevicesSnapshotOptions,
-} from './lib/app/appSnapshotHelpers';
-import { TimerRegistry } from './lib/app/timerRegistry';
+} from './setup/appSnapshotHelpers';
+import { TimerRegistry } from './lib/utils/timerRegistry';
 import {
   getFlowReportedDeviceIds,
   getFlowRefreshRequestedDeviceIds,

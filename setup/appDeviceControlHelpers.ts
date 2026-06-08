@@ -3,10 +3,10 @@ import {
   getSteppedLoadStep,
   normalizeDeviceControlProfiles,
   resolveSteppedLoadPlanningPowerKw,
-} from '../utils/deviceControlProfiles';
-import { isNativeSteppedLoadControlEnabled } from '../device/nativeSteppedLoadWiring';
-import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
-import type { DevicePlan } from '../plan/planTypes';
+} from '../lib/utils/deviceControlProfiles';
+import { isNativeSteppedLoadControlEnabled } from '../lib/device/nativeSteppedLoadWiring';
+import type { Logger as PinoLogger, StructuredDebugEmitter } from '../lib/logging/logger';
+import type { DevicePlan } from '../lib/plan/planTypes';
 import type {
   DecoratedDeviceSnapshot,
   DeviceControlModel,
@@ -14,13 +14,13 @@ import type {
   SteppedLoadCommandStatus,
   SteppedLoadProfile,
   TargetDeviceSnapshot,
-} from '../../packages/contracts/src/types';
-import { STEPPED_LOAD_COMMAND_RETRY_DELAYS_MS } from '../plan/planConstants';
-import { LOCAL_STEPPED_LOAD_COMMAND_PENDING_MS } from '../plan/planObservationPolicy';
+} from '../packages/contracts/src/types';
+import { STEPPED_LOAD_COMMAND_RETRY_DELAYS_MS } from '../lib/plan/planConstants';
+import { LOCAL_STEPPED_LOAD_COMMAND_PENDING_MS } from '../lib/plan/planObservationPolicy';
 import {
   PELS_MEASURE_STEP_CAPABILITY_ID,
   PELS_TARGET_STEP_CAPABILITY_ID,
-} from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
+} from '../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import {
   buildSteppedLoadSnapshotStepFields,
   resolveNativeSteppedLoadProfile,
@@ -28,7 +28,7 @@ import {
   shouldSuppressSteppedLoadFlowReport,
 } from './appDeviceControlSteppedState';
 import { emitSteppedFeedbackLog } from './appDeviceControlFeedback';
-import { resolveBinaryOn } from '../utils/binaryControl';
+import { resolveBinaryOn } from '../lib/utils/binaryControl';
 export const STEPPED_LOAD_COMMAND_STALE_MS = LOCAL_STEPPED_LOAD_COMMAND_PENDING_MS;
 export type SteppedLoadDesiredRuntimeState = {
   capabilityId: typeof PELS_TARGET_STEP_CAPABILITY_ID;
