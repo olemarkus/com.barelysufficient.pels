@@ -24,6 +24,10 @@ import type {
   DeferredObjectivePlanHistoryRevisionSnapshot,
 } from '../../contracts/src/deferredObjectivePlanHistory';
 import { MIN_LEARNED_SAMPLES_FOR_CONFIDENT_CHIP } from './deadlineLabels';
+import {
+  resolveFinalProgressValue,
+  resolveStartProgressValue,
+} from './deferredObjectiveValues';
 
 // Why a `missed` run missed, in the order we check (most concrete cause wins):
 //   - `budget_limited`     — the daily budget cap collapsed one or more planned
@@ -136,16 +140,14 @@ const resolveProgressTowardTarget = (
     | 'startProgressPercent' | 'finalProgressPercent'
   >,
 ): { delta: number; deadband: number } | null => {
-  if (entry.objectiveKind === 'temperature') {
-    const start = entry.startProgressC;
-    const final = entry.finalProgressC;
-    if (!Number.isFinite(start) || !Number.isFinite(final)) return null;
-    return { delta: (final as number) - (start as number), deadband: NO_DELIVERY_PROGRESS_DEADBAND_C };
-  }
-  const start = entry.startProgressPercent;
-  const final = entry.finalProgressPercent;
-  if (!Number.isFinite(start) || !Number.isFinite(final)) return null;
-  return { delta: (final as number) - (start as number), deadband: NO_DELIVERY_PROGRESS_DEADBAND_PERCENT };
+  // Value selection is unit-agnostic; only the deadband stays kind-specific.
+  const start = resolveStartProgressValue(entry);
+  const final = resolveFinalProgressValue(entry);
+  if (start === null || final === null || !Number.isFinite(start) || !Number.isFinite(final)) return null;
+  const deadband = entry.objectiveKind === 'temperature'
+    ? NO_DELIVERY_PROGRESS_DEADBAND_C
+    : NO_DELIVERY_PROGRESS_DEADBAND_PERCENT;
+  return { delta: final - start, deadband };
 };
 
 // True when the device delivered essentially nothing. Primary signal is the flat

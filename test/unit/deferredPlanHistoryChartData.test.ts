@@ -631,15 +631,15 @@ describe('resolveHistoryDetailChartData', () => {
       ]);
     });
 
-    it('skips samples whose kind-specific value is null', () => {
+    it('skips samples with no value in either column', () => {
       // Defensive — should not happen with the v4 recorder, but the helper
-      // must not crash if a sample lacks the field for the entry's kind.
+      // must not crash if a sample carries no usable value at all.
       const entry = buildEntry({
         objectiveKind: 'temperature',
         originalPlan: buildSnapshot(),
         progressSamples: [
           { atMs: START_MS, valueC: 50, valuePercent: null },
-          { atMs: START_MS + HOUR_MS, valueC: null, valuePercent: 30 },
+          { atMs: START_MS + HOUR_MS, valueC: null, valuePercent: null },
           { atMs: START_MS + 2 * HOUR_MS, valueC: 53, valuePercent: null },
         ],
       });

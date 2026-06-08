@@ -14,6 +14,7 @@ import {
   type SmartTaskListStatusId,
 } from '../../../../shared-domain/src/deadlineLabels.ts';
 import { formatSmartTaskListDateTime } from '../../../../shared-domain/src/deferredPlanHistory.ts';
+import { resolveTargetValue } from '../../../../shared-domain/src/deferredObjectiveValues.ts';
 import { formatTimeInTimeZone } from '../../../../shared-domain/src/utils/dateUtils.ts';
 import {
   DEADLINES_LIST_BASELINE_EYEBROW,
@@ -89,16 +90,15 @@ const formatHourMinute = (ms: number): string => {
 
 const formatTarget = (card: DeadlinesListCard): string => {
   const labels = deadlineLabels(card.kind);
-  if (card.kind === 'temperature' && card.targetTemperatureC !== null) {
-    const value = Number.isInteger(card.targetTemperatureC)
-      ? String(card.targetTemperatureC)
-      : card.targetTemperatureC.toFixed(1);
+  // Value selection is unit-agnostic; only the rounding + unit suffix stay
+  // kind-specific.
+  const target = resolveTargetValue(card);
+  if (target === null) return '—';
+  if (card.kind === 'temperature') {
+    const value = Number.isInteger(target) ? String(target) : target.toFixed(1);
     return `${value} ${labels.targetUnit}`;
   }
-  if (card.kind === 'ev_soc' && card.targetPercent !== null) {
-    return `${Math.round(card.targetPercent)} ${labels.targetUnit}`;
-  }
-  return '—';
+  return `${Math.round(target)} ${labels.targetUnit}`;
 };
 
 const StatusChip = ({ statusId }: { statusId: SmartTaskListStatusId }) => {

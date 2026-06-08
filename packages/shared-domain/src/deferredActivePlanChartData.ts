@@ -14,6 +14,11 @@ import type {
   DeferredObjectiveActivePlanV1,
 } from '../../contracts/src/deferredObjectiveActivePlans';
 import {
+  resolveSampleValue,
+  resolveStartProgressValue,
+  resolveTargetValue,
+} from './deferredObjectiveValues';
+import {
   anchorObservedAtStart,
   type DeferredPlanHistoryChartData,
   type DeferredPlanHistoryChartPoint,
@@ -26,11 +31,11 @@ const finiteOrNull = (raw: number | null | undefined): number | null => (
 );
 
 const pickTarget = (plan: DeferredObjectiveActivePlanV1): number | null => finiteOrNull(
-  plan.objectiveKind === 'temperature' ? plan.targetTemperatureC : plan.targetPercent,
+  resolveTargetValue(plan),
 );
 
 const pickStartProgress = (plan: DeferredObjectiveActivePlanV1): number | null => finiteOrNull(
-  plan.objectiveKind === 'temperature' ? plan.startProgressC : plan.startProgressPercent,
+  resolveStartProgressValue(plan),
 );
 
 // Effective kWh-per-unit rate the planner used: the latest revision's resolved
@@ -44,13 +49,12 @@ const pickRate = (plan: DeferredObjectiveActivePlanV1): number | null => {
 
 const pickObservedSamples = (
   samples: DeferredObjectiveActivePlanProgressSampleV1[] | undefined,
-  objectiveKind: DeferredObjectiveActivePlanV1['objectiveKind'],
 ): DeferredPlanHistoryChartPoint[] => {
   if (!Array.isArray(samples) || samples.length === 0) return [];
   const out: DeferredPlanHistoryChartPoint[] = [];
   for (const sample of samples) {
     if (!sample || !Number.isFinite(sample.atMs)) continue;
-    const value = objectiveKind === 'temperature' ? sample.valueC : sample.valuePercent;
+    const value = resolveSampleValue(sample);
     if (value === null || !Number.isFinite(value)) continue;
     out.push({ atMs: sample.atMs, value });
   }
@@ -125,7 +129,7 @@ export const resolveActivePlanChartData = (
   const windowEndMs = plan.deadlineAtMs;
   const target = pickTarget(plan);
   const startProgress = pickStartProgress(plan);
-  const samples = pickObservedSamples(plan.progressSamples, plan.objectiveKind);
+  const samples = pickObservedSamples(plan.progressSamples);
   // Append the live "now" reading past the last bucketed sample, then anchor at
   // the run start so the line spans start → now instead of starting mid-chart.
   const nowMs = options.nowMs;

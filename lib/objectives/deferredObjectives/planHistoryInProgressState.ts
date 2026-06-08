@@ -16,6 +16,10 @@ import type {
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 import {
+  resolveFinalProgressValue,
+  resolveTargetValue,
+} from '../../../packages/shared-domain/src/deferredObjectiveValues';
+import {
   classificationImpliesStallSatisfied,
   type IdleClassification,
 } from '../../../packages/shared-domain/src/idleClassificationCopy';
@@ -650,14 +654,11 @@ export const recordNonPlannableTick = (
 };
 
 const wasTargetReached = (record: InProgressRecord): boolean => {
-  if (record.objectiveKind === 'temperature') {
-    if (record.targetTemperatureC === null) return false;
-    if (record.finalProgressC === null) return false;
-    return record.finalProgressC >= record.targetTemperatureC;
-  }
-  if (record.targetPercent === null) return false;
-  if (record.finalProgressPercent === null) return false;
-  return record.finalProgressPercent >= record.targetPercent;
+  // Value selection is unit-agnostic; the >= comparison is identical for °C / %.
+  const target = resolveTargetValue(record);
+  const final = resolveFinalProgressValue(record);
+  if (target === null || final === null) return false;
+  return final >= target;
 };
 
 const classifyOutcome = (

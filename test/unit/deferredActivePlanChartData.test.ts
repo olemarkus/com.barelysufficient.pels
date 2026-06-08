@@ -227,12 +227,12 @@ describe('resolveActivePlanChartData', () => {
     expect(data.target).toBe(55);
   });
 
-  test('drops non-finite / wrong-kind samples', () => {
+  test('drops non-finite / valueless samples', () => {
     const data = resolveActivePlanChartData(buildPlan({
       progressSamples: [
         { atMs: START_MS, valueC: 50, valuePercent: null },
         { atMs: Number.NaN, valueC: 51, valuePercent: null },
-        { atMs: START_MS + HOUR_MS, valueC: null, valuePercent: 70 }, // wrong kind for temperature
+        { atMs: START_MS + HOUR_MS, valueC: null, valuePercent: null }, // no value in either column
         { atMs: START_MS + 2 * HOUR_MS, valueC: 53, valuePercent: null },
       ],
     }));

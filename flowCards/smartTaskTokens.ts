@@ -11,6 +11,10 @@
 
 import type { SmartTaskStatusNotificationId } from '../packages/shared-domain/src/deadlineLabels';
 import {
+  resolveFinalProgressValue,
+  resolveTargetValue,
+} from '../packages/shared-domain/src/deferredObjectiveValues';
+import {
   formatDeadlineLocalTime,
   type DeferredObjectiveEndedEvent,
   type DeferredObjectiveHoursRemainingEvent,
@@ -47,16 +51,12 @@ const computeShortfall = (event: DeferredObjectiveEndedEvent): {
   known: boolean;
 } => {
   if (event.outcome === 'succeeded') return { value: 0, known: true };
-  if (event.objectiveKind === 'temperature'
-    && event.targetTemperatureC !== null
-    && event.finalProgressC !== null) {
-    const delta = event.targetTemperatureC - event.finalProgressC;
-    return { value: delta > 0 ? delta : 0, known: true };
-  }
-  if (event.objectiveKind === 'ev_soc'
-    && event.targetPercent !== null
-    && event.finalProgressPercent !== null) {
-    const delta = event.targetPercent - event.finalProgressPercent;
+  // Value selection is unit-agnostic (resolver coalesces the kind-split pair);
+  // the shortfall delta math is identical for °C and %.
+  const target = resolveTargetValue(event);
+  const final = resolveFinalProgressValue(event);
+  if (target !== null && final !== null) {
+    const delta = target - final;
     return { value: delta > 0 ? delta : 0, known: true };
   }
   return { value: 0, known: false };

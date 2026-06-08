@@ -29,6 +29,12 @@ __export(smartTasksWidgetPayload_exports, {
 });
 module.exports = __toCommonJS(smartTasksWidgetPayload_exports);
 
+// packages/shared-domain/src/deferredObjectiveValues.ts
+var resolveTargetValue = (fields) => fields.targetPercent ?? fields.targetTemperatureC ?? null;
+var resolveStartProgressValue = (fields) => fields.startProgressPercent ?? fields.startProgressC ?? null;
+var resolveFinalProgressValue = (fields) => fields.finalProgressPercent ?? fields.finalProgressC ?? null;
+var resolveSampleValue = (fields) => fields.valuePercent ?? fields.valueC ?? null;
+
 // packages/shared-domain/src/deferredPlanHistoryChartData.ts
 var HOUR_MS = 60 * 60 * 1e3;
 var integratePlannedStaircase = (snapshot, anchorValue, anchorAtMs, windowEndMs, capValue = null) => {
@@ -115,12 +121,8 @@ var staircasesDiffer = (a, b) => {
   return false;
 };
 var finiteOrNull = (raw) => raw === null || !Number.isFinite(raw) ? null : raw;
-var pickStartProgress = (entry) => finiteOrNull(
-  entry.objectiveKind === "temperature" ? entry.startProgressC : entry.startProgressPercent
-);
-var pickTargetValue = (entry) => finiteOrNull(
-  entry.objectiveKind === "temperature" ? entry.targetTemperatureC : entry.targetPercent
-);
+var pickStartProgress = (entry) => finiteOrNull(resolveStartProgressValue(entry));
+var pickTargetValue = (entry) => finiteOrNull(resolveTargetValue(entry));
 var anchorObservedAtStart = (observed, windowStartMs, startProgress) => {
   if (startProgress === null) return [...observed];
   if (observed.length > 0 && observed[0].atMs <= windowStartMs) return [...observed];
@@ -133,7 +135,7 @@ var pickObservedSamples = (entry) => {
   const out = [];
   for (const sample of entry.progressSamples) {
     if (!Number.isFinite(sample.atMs)) continue;
-    const value = entry.objectiveKind === "temperature" ? sample.valueC : sample.valuePercent;
+    const value = resolveSampleValue(sample);
     if (value === null || !Number.isFinite(value)) continue;
     out.push({ atMs: sample.atMs, value });
   }
@@ -153,7 +155,7 @@ var pickMetMarker = (entry) => {
 var pickMetMarkerValue = (entry) => {
   if (pickMetMarker(entry) === null) return null;
   if (entry.metReason === "stalled" || entry.metReason === "stalled_device_capped") {
-    const finalProgress = entry.objectiveKind === "temperature" ? entry.finalProgressC : entry.finalProgressPercent;
+    const finalProgress = resolveFinalProgressValue(entry);
     return Number.isFinite(finalProgress) ? finalProgress : null;
   }
   return pickTargetValue(entry);
@@ -233,21 +235,21 @@ var resolveHistoryDetailChartData = (entry) => {
 // packages/shared-domain/src/deferredActivePlanChartData.ts
 var finiteOrNull2 = (raw) => raw === null || raw === void 0 || !Number.isFinite(raw) ? null : raw;
 var pickTarget = (plan) => finiteOrNull2(
-  plan.objectiveKind === "temperature" ? plan.targetTemperatureC : plan.targetPercent
+  resolveTargetValue(plan)
 );
 var pickStartProgress2 = (plan) => finiteOrNull2(
-  plan.objectiveKind === "temperature" ? plan.startProgressC : plan.startProgressPercent
+  resolveStartProgressValue(plan)
 );
 var pickRate = (plan) => {
   const rate = finiteOrNull2(plan.latest?.rateMean ?? plan.kwhPerUnitProvenance?.kWhPerUnit ?? null);
   return rate !== null && rate > 0 ? rate : null;
 };
-var pickObservedSamples2 = (samples, objectiveKind) => {
+var pickObservedSamples2 = (samples) => {
   if (!Array.isArray(samples) || samples.length === 0) return [];
   const out = [];
   for (const sample of samples) {
     if (!sample || !Number.isFinite(sample.atMs)) continue;
-    const value = objectiveKind === "temperature" ? sample.valueC : sample.valuePercent;
+    const value = resolveSampleValue(sample);
     if (value === null || !Number.isFinite(value)) continue;
     out.push({ atMs: sample.atMs, value });
   }
@@ -279,7 +281,7 @@ var resolveActivePlanChartData = (plan, options = {}) => {
   const windowEndMs = plan.deadlineAtMs;
   const target = pickTarget(plan);
   const startProgress = pickStartProgress2(plan);
-  const samples = pickObservedSamples2(plan.progressSamples, plan.objectiveKind);
+  const samples = pickObservedSamples2(plan.progressSamples);
   const nowMs = options.nowMs;
   const currentValue = finiteOrNull2(options.currentValue ?? null);
   const withNow = nowMs !== void 0 && currentValue !== null && (samples.length === 0 || samples[samples.length - 1].atMs < nowMs) ? [...samples, { atMs: nowMs, value: currentValue }] : samples;
@@ -824,16 +826,11 @@ var sumPlannedKWh = (snapshot) => {
 };
 var pickSnapshot = (entry) => entry.finalPlan ?? entry.originalPlan ?? null;
 var resolveProgressTowardTarget = (entry) => {
-  if (entry.objectiveKind === "temperature") {
-    const start2 = entry.startProgressC;
-    const final2 = entry.finalProgressC;
-    if (!Number.isFinite(start2) || !Number.isFinite(final2)) return null;
-    return { delta: final2 - start2, deadband: NO_DELIVERY_PROGRESS_DEADBAND_C };
-  }
-  const start = entry.startProgressPercent;
-  const final = entry.finalProgressPercent;
-  if (!Number.isFinite(start) || !Number.isFinite(final)) return null;
-  return { delta: final - start, deadband: NO_DELIVERY_PROGRESS_DEADBAND_PERCENT };
+  const start = resolveStartProgressValue(entry);
+  const final = resolveFinalProgressValue(entry);
+  if (start === null || final === null || !Number.isFinite(start) || !Number.isFinite(final)) return null;
+  const deadband = entry.objectiveKind === "temperature" ? NO_DELIVERY_PROGRESS_DEADBAND_C : NO_DELIVERY_PROGRESS_DEADBAND_PERCENT;
+  return { delta: final - start, deadband };
 };
 var resolveNoDelivery = (entry, deliveredKWh) => {
   const progress = resolveProgressTowardTarget(entry);
@@ -924,31 +921,20 @@ var formatPercent = (value) => value === null ? null : `${value.toFixed(0)} %`;
 var resolveDisplayedEndValue = (outcome, metReason, finalValue, targetValue) => outcome === "met" && metReason === void 0 && finalValue !== null && targetValue !== null && finalValue < targetValue ? targetValue : finalValue;
 var formatPlanHistoryProgressLine = (entry) => {
   const suppressArrow = entry.outcome === "abandoned" || entry.outcome === "replaced";
-  if (entry.objectiveKind === "temperature") {
-    const start2 = formatTemperature(entry.startProgressC);
-    const target2 = formatTemperature(entry.targetTemperatureC);
-    if (!start2 || !target2) return null;
-    if (suppressArrow) return `${start2}  \xB7  target ${target2}`;
-    const endC = resolveDisplayedEndValue(
-      entry.outcome,
-      entry.metReason,
-      entry.finalProgressC,
-      entry.targetTemperatureC
-    );
-    const end2 = formatTemperature(endC);
-    return `${start2} \u2192 ${end2 ?? "\u2014"}  \xB7  target ${target2}`;
-  }
-  const start = formatPercent(entry.startProgressPercent);
-  const target = formatPercent(entry.targetPercent);
+  const formatValue = entry.objectiveKind === "temperature" ? formatTemperature : formatPercent;
+  const startValue = resolveStartProgressValue(entry);
+  const targetValue = resolveTargetValue(entry);
+  const start = formatValue(startValue);
+  const target = formatValue(targetValue);
   if (!start || !target) return null;
   if (suppressArrow) return `${start}  \xB7  target ${target}`;
-  const endPct = resolveDisplayedEndValue(
+  const endValue = resolveDisplayedEndValue(
     entry.outcome,
     entry.metReason,
-    entry.finalProgressPercent,
-    entry.targetPercent
+    resolveFinalProgressValue(entry),
+    targetValue
   );
-  const end = formatPercent(endPct);
+  const end = formatValue(endValue);
   return `${start} \u2192 ${end ?? "\u2014"}  \xB7  target ${target}`;
 };
 var formatPlanHistoryReachedAtLine = (entry, timeZone = "UTC") => {
@@ -1044,7 +1030,7 @@ var resolveCurrentValue = (device, kind) => {
   const percent = device.stateOfCharge?.percent;
   return isFiniteNumber(percent) ? percent : null;
 };
-var resolveTargetValue = (plan) => {
+var resolveTargetValue2 = (plan) => {
   if (plan.objectiveKind === "temperature") {
     return isFiniteNumber(plan.targetTemperatureC) ? plan.targetTemperatureC : null;
   }
@@ -1238,7 +1224,7 @@ var buildCandidate = (params) => {
   if (!isFiniteNumber(plan.deadlineAtMs)) return null;
   const statusId = resolveStatusId(plan, nowMs);
   if (statusId === "satisfied") return null;
-  const targetValue = resolveTargetValue(plan);
+  const targetValue = resolveTargetValue2(plan);
   if (targetValue === null) return null;
   const etaMs = resolvePlannerEtaMs(plan);
   const row = buildRow({

@@ -8,6 +8,11 @@ import type {
 } from '../../contracts/src/deferredObjectivePlanHistory';
 import { APPROX_GLYPH, resolveRevisionReason } from './deadlineLabels';
 import { formatRefinedMissCause } from './deferredPlanHistoryAttribution';
+import {
+  resolveFinalProgressValue,
+  resolveStartProgressValue,
+  resolveTargetValue,
+} from './deferredObjectiveValues';
 import { resolveEntryCostDisplay, scaleRawCostToDisplay } from './deferredPlanHistoryReceiptStrings';
 import { priceRateLabelToAmountUnit } from './price/priceUnitLabel';
 import { formatTimeInTimeZone } from './utils/dateUtils';
@@ -112,25 +117,19 @@ export const formatPlanHistoryProgressLine = (
   >,
 ): string | null => {
   const suppressArrow = entry.outcome === 'abandoned' || entry.outcome === 'replaced';
-  if (entry.objectiveKind === 'temperature') {
-    const start = formatTemperature(entry.startProgressC);
-    const target = formatTemperature(entry.targetTemperatureC);
-    if (!start || !target) return null;
-    if (suppressArrow) return `${start}  ·  target ${target}`;
-    const endC = resolveDisplayedEndValue(
-      entry.outcome, entry.metReason, entry.finalProgressC, entry.targetTemperatureC,
-    );
-    const end = formatTemperature(endC);
-    return `${start} → ${end ?? '—'}  ·  target ${target}`;
-  }
-  const start = formatPercent(entry.startProgressPercent);
-  const target = formatPercent(entry.targetPercent);
+  // Value selection is unit-agnostic (resolver coalesces the kind-split pair);
+  // only the formatter (°C vs %) stays kind-specific.
+  const formatValue = entry.objectiveKind === 'temperature' ? formatTemperature : formatPercent;
+  const startValue = resolveStartProgressValue(entry);
+  const targetValue = resolveTargetValue(entry);
+  const start = formatValue(startValue);
+  const target = formatValue(targetValue);
   if (!start || !target) return null;
   if (suppressArrow) return `${start}  ·  target ${target}`;
-  const endPct = resolveDisplayedEndValue(
-    entry.outcome, entry.metReason, entry.finalProgressPercent, entry.targetPercent,
+  const endValue = resolveDisplayedEndValue(
+    entry.outcome, entry.metReason, resolveFinalProgressValue(entry), targetValue,
   );
-  const end = formatPercent(endPct);
+  const end = formatValue(endValue);
   return `${start} → ${end ?? '—'}  ·  target ${target}`;
 };
 
@@ -221,14 +220,15 @@ export const formatPlanHistoryOvershootLine = (
   >,
 ): string | null => {
   if (entry.outcome !== 'met') return null;
+  // Value selection is unit-agnostic; the threshold + unit suffix stay kind-specific.
+  const finalValue = resolveFinalProgressValue(entry);
+  const targetValue = resolveTargetValue(entry);
+  if (finalValue === null || targetValue === null) return null;
+  const delta = finalValue - targetValue;
   if (entry.objectiveKind === 'temperature') {
-    if (entry.finalProgressC === null || entry.targetTemperatureC === null) return null;
-    const delta = entry.finalProgressC - entry.targetTemperatureC;
     if (delta <= OVERSHOOT_TEMPERATURE_THRESHOLD_C_PUBLIC) return null;
     return `Overshoot ${delta.toFixed(1)} °C`;
   }
-  if (entry.finalProgressPercent === null || entry.targetPercent === null) return null;
-  const delta = entry.finalProgressPercent - entry.targetPercent;
   if (delta <= OVERSHOOT_PERCENT_THRESHOLD_PUBLIC) return null;
   return `Overshoot ${delta.toFixed(0)} %`;
 };
@@ -454,27 +454,31 @@ const formatClockTime = (ms: number, timeZone: string): string | null => {
   }, timeZone);
 };
 
+// Format a resolved (unit-agnostic) value with the kind's unit suffix. Shared
+// by the target / final-progress formatters so the value selection (resolver)
+// and the unit format (kind) stay separated.
+const formatValueWithUnit = (
+  kind: 'temperature' | 'ev_soc',
+  value: number | null,
+): string | null => {
+  if (value === null) return null;
+  return kind === 'temperature' ? `${value.toFixed(1)} °C` : `${value.toFixed(0)} %`;
+};
+
 const formatTargetValue = (
   kind: 'temperature' | 'ev_soc',
   targetTemperatureC: number | null,
   targetPercent: number | null,
-): string | null => {
-  if (kind === 'temperature') {
-    return targetTemperatureC === null ? null : `${targetTemperatureC.toFixed(1)} °C`;
-  }
-  return targetPercent === null ? null : `${targetPercent.toFixed(0)} %`;
-};
+): string | null => formatValueWithUnit(kind, resolveTargetValue({ targetTemperatureC, targetPercent }));
 
 const formatFinalProgressValue = (
   kind: 'temperature' | 'ev_soc',
   finalProgressC: number | null,
   finalProgressPercent: number | null,
-): string | null => {
-  if (kind === 'temperature') {
-    return finalProgressC === null ? null : `${finalProgressC.toFixed(1)} °C`;
-  }
-  return finalProgressPercent === null ? null : `${finalProgressPercent.toFixed(0)} %`;
-};
+): string | null => formatValueWithUnit(
+  kind,
+  resolveFinalProgressValue({ finalProgressC, finalProgressPercent }),
+);
 
 const formatShortfallValue = (
   kind: 'temperature' | 'ev_soc',
@@ -483,16 +487,12 @@ const formatShortfallValue = (
   finalProgressPercent: number | null,
   targetPercent: number | null,
 ): string | null => {
-  if (kind === 'temperature') {
-    if (finalProgressC === null || targetTemperatureC === null) return null;
-    const gap = targetTemperatureC - finalProgressC;
-    if (gap <= 0) return null;
-    return `${gap.toFixed(1)} °C`;
-  }
-  if (finalProgressPercent === null || targetPercent === null) return null;
-  const gap = targetPercent - finalProgressPercent;
+  const finalValue = resolveFinalProgressValue({ finalProgressC, finalProgressPercent });
+  const targetValue = resolveTargetValue({ targetTemperatureC, targetPercent });
+  if (finalValue === null || targetValue === null) return null;
+  const gap = targetValue - finalValue;
   if (gap <= 0) return null;
-  return `${gap.toFixed(0)} %`;
+  return kind === 'temperature' ? `${gap.toFixed(1)} °C` : `${gap.toFixed(0)} %`;
 };
 
 // Detect whether a `met` outcome overshot the target meaningfully. Threshold
@@ -506,12 +506,13 @@ const wasOvershoot = (
   finalProgressPercent: number | null,
   targetPercent: number | null,
 ): boolean => {
-  if (kind === 'temperature') {
-    if (finalProgressC === null || targetTemperatureC === null) return false;
-    return finalProgressC - targetTemperatureC > OVERSHOOT_TEMPERATURE_THRESHOLD_C;
-  }
-  if (finalProgressPercent === null || targetPercent === null) return false;
-  return finalProgressPercent - targetPercent > OVERSHOOT_PERCENT_THRESHOLD;
+  const finalValue = resolveFinalProgressValue({ finalProgressC, finalProgressPercent });
+  const targetValue = resolveTargetValue({ targetTemperatureC, targetPercent });
+  if (finalValue === null || targetValue === null) return false;
+  const threshold = kind === 'temperature'
+    ? OVERSHOOT_TEMPERATURE_THRESHOLD_C
+    : OVERSHOOT_PERCENT_THRESHOLD;
+  return finalValue - targetValue > threshold;
 };
 
 type PostmortemEntry = Pick<
