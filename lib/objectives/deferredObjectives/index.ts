@@ -45,6 +45,7 @@ export {
 } from './objectiveWrite';
 export {
   migrateBlobToPerKeyIfNeeded,
+  objectiveKeyListIsTrustworthy,
   readAllObjectives,
   readObjectiveForDevice,
   writeObjectiveForDevice,

@@ -308,6 +308,14 @@ describe('app init plan service wiring', () => {
       if (key === DEFERRED_OBJECTIVES_PERKEY_MIGRATED) return true; // migration completed
       return undefined;
     });
+    // A genuinely-migrated store ALWAYS has settings keys (the watermark and the
+    // migration marker themselves), so getKeys() is non-empty even with zero
+    // objectives. An empty getKeys() here would be the transient flake the
+    // back-fill correctly defers on — not this "migrated, zero objectives" case.
+    (ctx.homey.settings.getKeys as unknown as ReturnType<typeof vi.fn>).mockReturnValue([
+      DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK,
+      DEFERRED_OBJECTIVES_PERKEY_MIGRATED,
+    ]);
     setSpy.mockClear();
 
     createDeferredObjectivePlanHistoryRecorder(ctx);

@@ -210,6 +210,11 @@ export type AppContext = {
   dailyBudgetService?: DailyBudgetService;
   deferredObjectivePlanHistoryRecorder?: DeferredObjectivePlanHistoryRecorder;
   deferredObjectiveActivePlanRecorder?: DeferredObjectiveActivePlanRecorder;
+  // Latched when startup back-fill bailed because the per-key migration marker was not yet
+  // set (a boot-time empty `getKeys()` flake). The first observe tick after an in-session
+  // migration retry completes re-runs the back-fill for the still-pending offline window
+  // before advancing the watermark past it. See `runPendingDeferredObjectiveBackfill`.
+  deferredObjectiveBackfillPending?: boolean;
   deviceDiagnosticsService?: DeviceDiagnosticsService;
   priceCoordinator?: PriceCoordinator;
   priceFlowTagPublisher?: PriceFlowTagPublisher;

@@ -75,6 +75,18 @@ export const objectiveAbsenceIsTrustworthy = (
 };
 
 /**
+ * Whether the store-wide key list is trustworthy right now. PELS always has
+ * settings keys, so an empty `getKeys()` is the transient-empty-store flake
+ * (the same signal `migrateBlobToPerKeyIfNeeded` step (2) and
+ * `objectiveAbsenceIsTrustworthy` refuse on). Callers that interpret an empty
+ * `readAllObjectives` result as "genuinely zero enabled objectives" must gate
+ * on this first — otherwise a flaky empty read is mistaken for real emptiness.
+ */
+export const objectiveKeyListIsTrustworthy = (store: ObjectiveSettingsStore): boolean => (
+  store.getKeys().length > 0
+);
+
+/**
  * Assemble the legacy V1 map shape from the per-device keys, so whole-map
  * consumers keep iterating `objectivesByDeviceId` unchanged. Enumerates only
  * keys carrying the per-device prefix; skips malformed/empty entries.
