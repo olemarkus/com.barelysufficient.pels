@@ -1,3 +1,4 @@
+import { isBinaryObservedOff, isBinaryOnOrUnknown } from '../../packages/shared-domain/src/binaryControlState';
 import { isCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import { getLogger } from '../logging/logger';
 import {
@@ -48,7 +49,7 @@ export const applyBinaryRestore = async (
     });
     return false;
   }
-  if ((snapshot.binaryControl?.on ?? true) !== false) return false;
+  if (isBinaryOnOrUnknown(snapshot)) return false;
   if (!canApplyRestoreSnapshot(ctx, {
     snapshot,
     deviceId: intent.deviceId,
@@ -84,7 +85,7 @@ export const applyUncontrolledBinaryRestore = async (
     });
     return false;
   }
-  if ((entry.binaryControl?.on ?? true) !== false) return false;
+  if (isBinaryOnOrUnknown(entry)) return false;
   if (!canApplyRestoreSnapshot(ctx, {
     snapshot: entry,
     deviceId: intent.deviceId,
@@ -180,7 +181,7 @@ export const applyDeferredBinaryCommand = async (
     // default) bypasses the capacity precheck / pendingSheds path so it does not
     // stamp the cooldown markers. The binary-on check is the trusted-evidence
     // gate, mirroring applyShedReleaseBinaryOff's gate.
-    if (snapshot.binaryControl?.on === false) return false;
+    if (isBinaryObservedOff(snapshot)) return false;
     return applyBinarySheddingToDevice(ctx, {
       deviceId: intent.deviceId,
       deviceName: intent.name,
@@ -191,7 +192,7 @@ export const applyDeferredBinaryCommand = async (
   // Restore only an off-but-commandable device — i.e. released. Reads the binary
   // truth (`binaryControl.on`) + producer-resolved commandability, not any
   // device-specific state string.
-  if ((snapshot.binaryControl?.on ?? true) || !isCommandableNow(snapshot)) return false;
+  if (isBinaryOnOrUnknown(snapshot) || !isCommandableNow(snapshot)) return false;
   if (!canApplyRestoreSnapshot(ctx, {
     snapshot,
     deviceId: intent.deviceId,

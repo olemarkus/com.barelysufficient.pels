@@ -1,3 +1,4 @@
+import { isBinaryObservedOff, isBinaryOnOrUnknown } from '../../packages/shared-domain/src/binaryControlState';
 import type { DevicePlan, PlanInputDevice } from '../plan/planTypes';
 import { isCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import { isSteppedLoadOffStep } from '../utils/deviceControlProfiles';
@@ -169,10 +170,10 @@ function hasExecutableBinaryReleaseExecutionDrift(
   }
   if (intent.kind === 'binary_restore') {
     // Restore drift: still off-but-commandable (released) — transition not yet seen.
-    return observed.binaryControl?.on === false && isCommandableNow(observed.snapshot);
+    return isBinaryObservedOff(observed) && isCommandableNow(observed.snapshot);
   }
   // Release drift: still on — transition not yet seen.
-  return observed.binaryControl?.on ?? true;
+  return isBinaryOnOrUnknown(observed);
 }
 
 function hasExecutableSteppedLoadExecutionDrift(

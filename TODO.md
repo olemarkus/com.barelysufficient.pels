@@ -195,6 +195,15 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
       recording asymmetry is either a real flow-backed diagnostic-double-count or a deliberate
       channel-agnostic cooldown — name which before changing it.
 
+- [ ] **Add a `check-binary-vocab` CI guard forbidding raw `binaryControl?.on` reads in `lib/plan/**` and `lib/executor/**`.**
+      The binary observed-state consolidation routed all 23 absence-handling reads through
+      `isBinaryOnOrUnknown` / `isBinaryObservedOff` (shared-domain), the binary twin of the EV-vocab
+      de-couple. There is direct precedent: `scripts/check-ev-vocab.mjs` (in `ci:checks`) locks in the
+      EV-string consolidation the same way. Persona: maintainer. Hypothesis: without an AST member-access
+      guard, new code will re-inline `binaryControl?.on ?? true` / `=== false`, eroding the single
+      absence-rule and re-scattering the `undefined` semantics the consolidation removed. Model it on
+      `check-ev-vocab.mjs` (TS-compiler-API property-access detector); allow the predicate module itself.
+
 - [ ] **Extend the connected-but-not-resumable (`plugged_in`) honesty to the remaining surfaces.**
       The objective/smart-task honesty for a `plugged_in` charger (PELS can't resume it) shipped the
       list chip + widget ("Paused — can't resume" / "Can't resume" / "Car charging won't resume —
