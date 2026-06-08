@@ -140,6 +140,10 @@ type DeferredDiag = {
   status?: string;
   reasonCode?: string;
   plannedUsefulEnergyKWh?: number;
+  // The step the task scheduled the device to RUN at this hour. A real (non-`off`)
+  // step only when the current bucket is a planned (admitted) bucket; `null`/absent
+  // when the hour is released or the task is `cannot_meet`.
+  expectedStepId?: string | null;
   limitLowerPriorityApplied?: boolean;
   budgetExemptApplied?: boolean;
 };
@@ -307,19 +311,24 @@ describe('smart-task boost — no daily budget, hourly hard cap (SDK-boundary e2
     expect(findEvent(steppedEvents, 'restore_stepped_admitted')).toBeUndefined();
   });
 
-  it('A PLAIN (no-permission) smart task still allocates against the hard cap when daily budget is OFF', async () => {
-    // Regression guard for the disabled-daily-budget zero-cap seam: with daily
-    // budget OFF, the snapshot still carries an all-zero `allowedCumKWh`, which the
-    // policy-horizon overlay used to read as a per-bucket budget of 0 — clamping a
-    // non-exempt task to zero useful energy (`cannot_meet`, never runs). A disabled
-    // budget must contribute NO cap, so a plain task books real energy and is
-    // schedulable, bounded only by the per-hour hard cap.
+  it('A PLAIN (exempt-OFF) smart task is admitted to run against the hard cap when daily budget is OFF', async () => {
+    // Regression guard for the disabled-daily-budget zero-cap seam (exempt-from-budget
+    // OFF + daily budget OFF): the snapshot still carries an all-zero `allowedCumKWh`,
+    // which the policy-horizon overlay used to read as a per-bucket budget of 0 —
+    // clamping a non-exempt task to zero useful energy (`cannot_meet`, never runs,
+    // `expectedStepId: null`). A disabled budget must contribute NO cap, so a plain
+    // task books real energy and is ADMITTED to run the device, bounded only by the
+    // per-hour hard cap.
     const { diag, steppedEvents } = await runCycleAtHour({ cheapHour: 0, currentHour: 0, withSmartTask: 'plain' });
 
-    // The task allocates: a plannable status (NOT cannot_meet) with real booked energy.
+    // Admitted end-to-end: a plannable status (NOT cannot_meet), real booked energy,
+    // and the current hour scheduled to a real RUNNING step (`expectedStepId`) — the
+    // task is actively running the device this hour, not idled by a phantom 0 budget.
     expect(diag?.status).not.toBe('cannot_meet');
     expect(diag?.reasonCode).not.toBe('deadline_passed');
     expect(diag?.plannedUsefulEnergyKWh).toBeGreaterThan(0);
+    expect(diag?.expectedStepId).toBeTruthy();
+    expect(diag?.expectedStepId).not.toBe('off');
     // A plain task carries no budget exemption and no boost permission.
     expect(diag?.budgetExemptApplied).toBe(false);
     expect(diag?.limitLowerPriorityApplied).toBeFalsy();
