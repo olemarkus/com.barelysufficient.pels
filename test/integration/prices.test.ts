@@ -12,6 +12,7 @@ import {
   ELECTRICITY_SUPPORT_THRESHOLD_EX_VAT,
 } from '../../lib/price/priceComponents';
 import { PriceCoordinator } from '../../lib/price/priceCoordinator';
+import { createPriceOptimizationSettingsStore } from '../../setup/priceOptimizationSettingsAdapter';
 import { flattenAllHours } from '../../lib/price/priceStore';
 import type { CombinedPricesV2 } from '../../lib/price/priceTypes';
 import { PriceLevel } from '../../lib/price/priceLevels';
@@ -1303,6 +1304,7 @@ describe('Price optimization', () => {
 
   const createPriceCoordinatorForTest = (overrides: Partial<ConstructorParameters<typeof PriceCoordinator>[0]> = {}): PriceCoordinator => new PriceCoordinator({
     homey: mockHomeyInstance as never,
+    priceOptimizationSettingsStore: createPriceOptimizationSettingsStore(mockHomeyInstance as never),
     getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
     getCurrentPriceLevel: () => PriceLevel.NORMAL,
     rebuildPlanFromCache: async () => undefined,

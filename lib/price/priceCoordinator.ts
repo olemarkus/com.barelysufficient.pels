@@ -4,7 +4,8 @@ import { PriceLevel } from './priceLevels';
 import PriceService from './priceService';
 import { type CombinedHourlyPrice, isCombinedPricesV1 } from './priceTypes';
 import { shouldCatchUpCombinedPricesRotation } from './priceServiceCombined';
-import { COMBINED_PRICES, PRICE_OPTIMIZATION_ENABLED } from '../utils/settingsKeys';
+import { COMBINED_PRICES } from '../utils/settingsKeys';
+import type { PriceOptimizationSettingsStore } from './priceOptimizationSettingsStore';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
 import { getNextLocalDayStartUtcMs } from '../utils/dateUtils';
 import { normalizeError } from '../utils/errorUtils';
@@ -22,6 +23,7 @@ const MIDNIGHT_ROTATION_MIN_DELAY_MS = 1000;
 
 export type PriceCoordinatorDeps = {
   homey: { settings: SettingsPort; api: ApiPort };
+  priceOptimizationSettingsStore: PriceOptimizationSettingsStore;
   getTimeZone: () => string;
   getHomeyEnergyApi?: () => import('../utils/homeyEnergy').HomeyEnergyApi | null;
   getCurrentPriceLevel: () => PriceLevel;
@@ -75,8 +77,7 @@ export class PriceCoordinator {
   }
 
   updatePriceOptimizationEnabled(logChange = false): void {
-    const enabled = this.deps.homey.settings.get(PRICE_OPTIMIZATION_ENABLED) as unknown;
-    this.priceOptimizationEnabled = enabled !== false;
+    this.priceOptimizationEnabled = this.deps.priceOptimizationSettingsStore.isEnabled();
     if (logChange) {
       this.deps.structuredLog?.info({
         event: 'price_optimization_enabled_changed',
@@ -86,8 +87,8 @@ export class PriceCoordinator {
   }
 
   loadPriceOptimizationSettings(): void {
-    const settings = this.deps.homey.settings.get('price_optimization_settings') as unknown;
-    if (isPriceOptimizationSettings(settings)) {
+    const settings = this.deps.priceOptimizationSettingsStore.readDeviceSettings();
+    if (settings) {
       this.priceOptimizationSettings = settings;
     }
   }
@@ -104,8 +105,8 @@ export class PriceCoordinator {
       },
       getSettings: () => this.priceOptimizationSettings,
       isEnabled: () => this.priceOptimizationEnabled,
-      getThresholdPercent: () => (this.deps.homey.settings.get('price_threshold_percent') as number | undefined) ?? 25,
-      getMinDiffOre: () => (this.deps.homey.settings.get('price_min_diff_ore') as number | undefined) ?? 0,
+      getThresholdPercent: () => this.deps.priceOptimizationSettingsStore.getThresholdPercent(),
+      getMinDiffOre: () => this.deps.priceOptimizationSettingsStore.getMinDiffOre(),
       rebuildPlan: async (reason) => {
         this.deps.debugStructured({ event: 'price_optimization_plan_rebuild_triggered', reason });
         await this.deps.rebuildPlanFromCache(reason);
@@ -330,17 +331,4 @@ function resolveErrorReasonCode(error: Error): string {
     return 'ssl_verification_failed';
   }
   return 'price_fetch_failed';
-}
-
-function isPriceOptimizationSettings(
-  value: unknown,
-): value is Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }> {
-  if (!value || typeof value !== 'object') return false;
-  return Object.values(value as Record<string, unknown>).every((entry) => {
-    if (!entry || typeof entry !== 'object') return false;
-    const record = entry as { enabled?: unknown; cheapDelta?: unknown; expensiveDelta?: unknown };
-    return typeof record.enabled === 'boolean'
-      && typeof record.cheapDelta === 'number'
-      && typeof record.expensiveDelta === 'number';
-  });
 }
