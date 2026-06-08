@@ -9,7 +9,7 @@ import type { DecoratedDeviceSnapshot } from '../../../contracts/src/types.ts';
 import type {
   DeferredObjectiveActivePlanRevisionV1,
   DeferredObjectiveActivePlanSpeedMode,
-  DeferredObjectiveActivePlanV1,
+  ResolvedDeferredObjectiveActivePlanV1,
 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import { resolveChipConfidence, resolveSmartTaskLearning } from '../../../shared-domain/src/deadlineLabels.ts';
 import { BOOTSTRAP_EV_SOC_KWH_PER_PERCENT } from '../../../shared-domain/src/objectiveProfileBootstrap.ts';
@@ -126,7 +126,7 @@ export const resolveDisplayRateAndSpeedMode = (params: {
 
 export const resolveEnergyNeededKWh = (params: {
   profile: DeviceObjectiveProfile | null;
-  activePlan: DeferredObjectiveActivePlanV1;
+  activePlan: ResolvedDeferredObjectiveActivePlanV1;
 }): {
   energyNeededKWh: number;
   // Mean-based estimate paired with the buffered `energyNeededKWh` for the

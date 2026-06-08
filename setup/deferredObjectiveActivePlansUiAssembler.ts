@@ -1,4 +1,12 @@
-import type { DeferredObjectiveActivePlansV1 } from '../packages/contracts/src/deferredObjectiveActivePlans';
+import type {
+  DeferredObjectiveActivePlansV1,
+  ResolvedDeferredObjectiveActivePlanV1,
+  ResolvedDeferredObjectiveActivePlansV1,
+} from '../packages/contracts/src/deferredObjectiveActivePlans';
+import {
+  toResolvedActivePlan,
+  toResolvedActivePlans,
+} from '../packages/shared-domain/src/deferredActivePlanResolvedView';
 import type { DeferredObjectivePlanHistoryRecorder } from '../lib/objectives/deferredObjectives/planHistory';
 
 // Stitches the live in-progress trajectory (start progress + hourly observed
@@ -9,28 +17,33 @@ import type { DeferredObjectivePlanHistoryRecorder } from '../lib/objectives/def
 // the UI payload, never on the persisted snapshot (see the field doc on
 // `DeferredObjectiveActivePlanV1.progressSamples`).
 //
-// Returns a fresh object graph (per-plan spread) so a caller can never mutate
-// the recorder's persisted snapshot through the returned payload. When no
-// history recorder is wired (degraded boot) the snapshot passes through
-// untouched — the widget falls back to a chartless detail panel.
+// Also resolves each plan's kind-split (°C/%) value pairs to the unit-agnostic
+// `Resolved…` view at this producer boundary, so UI consumers never see (or
+// branch on) the raw columns. Returns a fresh object graph (per-plan spread) so
+// a caller can never mutate the recorder's persisted snapshot through the
+// returned payload. When no history recorder is wired (degraded boot) the
+// snapshot is still resolved (just without a trajectory) — the widget falls back
+// to a chartless detail panel.
 export const assembleActivePlansWithTrajectory = (
   snapshot: DeferredObjectiveActivePlansV1,
   historyRecorder: DeferredObjectivePlanHistoryRecorder | undefined,
-): DeferredObjectiveActivePlansV1 => {
-  if (!historyRecorder) return snapshot;
+): ResolvedDeferredObjectiveActivePlansV1 => {
+  if (!historyRecorder) return toResolvedActivePlans(snapshot);
   const plansByDeviceId = Object.fromEntries(
     Object.entries(snapshot.plansByDeviceId).map(([deviceId, plan]) => {
-      // Defensive: pass a null/absent plan through untouched (spreading it would
-      // synthesize a bogus partial object). The contract types plans as
-      // non-null, but the consuming widget already guards for null, so mirror it.
-      const trajectory = plan ? historyRecorder.getInProgressTrajectory(deviceId) : null;
-      if (trajectory === null) return [deviceId, plan] as const;
-      return [deviceId, {
+      // Defensive: pass a null/absent plan through untouched — resolving it (or
+      // spreading it) would synthesize a bogus partial object. The contract
+      // types plans as non-null, but the consuming widget already guards for
+      // null, so mirror it.
+      if (!plan) return [deviceId, plan as unknown as ResolvedDeferredObjectiveActivePlanV1] as const;
+      const trajectory = historyRecorder.getInProgressTrajectory(deviceId);
+      const stitched = trajectory === null ? plan : {
         ...plan,
         startProgressC: trajectory.startProgressC,
         startProgressPercent: trajectory.startProgressPercent,
         progressSamples: trajectory.progressSamples,
-      }] as const;
+      };
+      return [deviceId, toResolvedActivePlan(stitched)] as const;
     }),
   );
   return { ...snapshot, plansByDeviceId };

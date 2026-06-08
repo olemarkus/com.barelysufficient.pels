@@ -1,4 +1,8 @@
 import type { DeferredObjectivePlanHistoryEntry } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
+import {
+  resolveFinalProgressValue,
+  resolveTargetValue,
+} from '../../../packages/shared-domain/src/deferredObjectiveValues';
 
 // Public outcomes exposed to Flow automations. Maps from the broader internal
 // outcome set (`planHistory.ts`):
@@ -15,14 +19,16 @@ export type DeferredObjectiveEndedEvent = {
   deviceName: string | null;
   objectiveKind: 'temperature' | 'ev_soc';
   outcome: DeferredObjectivePublicOutcome;
-  targetTemperatureC: number | null;
-  targetPercent: number | null;
+  // Unit-agnostic deadline target (°C for temperature, % for EV SoC — disambiguate
+  // via `objectiveKind`). Resolved from the entry's kind-split columns at build
+  // time so consumers never branch on kind to pick the value.
+  targetValue: number | null;
   deadlineAtMs: number;
   finalizedAtMs: number;
   // Only populated when outcome === 'succeeded'.
   metAtMs: number | null;
-  finalProgressC: number | null;
-  finalProgressPercent: number | null;
+  // Unit-agnostic final progress reading (same unit rule as `targetValue`).
+  finalProgressValue: number | null;
 };
 
 type Listener = (event: DeferredObjectiveEndedEvent) => void;
@@ -81,12 +87,10 @@ export const buildEndedEventFromEntry = (
     deviceName: entry.deviceName,
     objectiveKind: entry.objectiveKind,
     outcome: publicOutcome,
-    targetTemperatureC: entry.targetTemperatureC,
-    targetPercent: entry.targetPercent,
+    targetValue: resolveTargetValue(entry),
     deadlineAtMs: entry.deadlineAtMs,
     finalizedAtMs: entry.finalizedAtMs,
     metAtMs: entry.metAtMs,
-    finalProgressC: entry.finalProgressC,
-    finalProgressPercent: entry.finalProgressPercent,
+    finalProgressValue: resolveFinalProgressValue(entry),
   };
 };

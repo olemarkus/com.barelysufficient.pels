@@ -3,8 +3,8 @@
  */
 import type {
   DeferredObjectiveActivePlanV1,
-  DeferredObjectiveActivePlansV1,
 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
+import { toResolvedActivePlans } from '../../packages/shared-domain/src/deferredActivePlanResolvedView';
 import type {
   DeferredObjectivePlanHistoryEntry,
   ResolvedDeferredObjectivePlanHistoryEntry,
@@ -56,7 +56,10 @@ const buildDevice = (overrides: Partial<TargetDeviceSnapshot>): TargetDeviceSnap
 } as TargetDeviceSnapshot);
 
 const buildInput = (plansByDeviceId: Record<string, DeferredObjectiveActivePlanV1>, devices: TargetDeviceSnapshot[] = []) => ({
-  activePlans: { version: 1, plansByDeviceId } as DeferredObjectiveActivePlansV1,
+  // The widget payload builder consumes the RESOLVED active-plans view (kind-split
+  // columns collapsed to `targetValue` / `value`), produced by the UI assembler in
+  // production. Resolve the raw fixtures here at the same boundary.
+  activePlans: toResolvedActivePlans({ version: 1, plansByDeviceId }),
   devices,
   nowMs: NOW,
   timeZone: 'UTC',

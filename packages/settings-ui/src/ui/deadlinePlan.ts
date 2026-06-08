@@ -48,7 +48,7 @@ import {
   type DeadlinePlanPendingPayload,
 } from './views/DeadlinePlan.tsx';
 import type {
-  DeferredObjectiveActivePlanV1,
+  ResolvedDeferredObjectiveActivePlanV1,
   DeferredObjectiveActivePlanRevisionV1,
   DeferredObjectiveActivePlanRevisionReason,
 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
@@ -164,7 +164,7 @@ type ResolvedObjectiveContext = {
   objective: DeferredObjectiveSettingsEntry;
   deviceId: string;
   deadlineAtMs: number;
-  activePlan: DeferredObjectiveActivePlanV1 | null;
+  activePlan: ResolvedDeferredObjectiveActivePlanV1 | null;
   nowMs: number;
 };
 

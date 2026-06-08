@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { testExports } from '../src/ui/deadlinesList.ts';
 import type {
-  DeferredObjectiveActivePlansV1,
   DeferredObjectiveActivePlanV1,
+  ResolvedDeferredObjectiveActivePlansV1,
 } from '../../contracts/src/deferredObjectiveActivePlans.ts';
 import type {
   DeferredObjectiveSettingsV1,
@@ -10,6 +10,7 @@ import type {
 } from '../../contracts/src/deferredObjectiveSettings.ts';
 import type { TargetDeviceSnapshot } from '../../contracts/src/types.ts';
 import { toResolvedPlanHistoryEntry } from '../../shared-domain/src/deferredPlanHistoryResolvedView.ts';
+import { toResolvedActivePlans } from '../../shared-domain/src/deferredActivePlanResolvedView.ts';
 
 const { resolveDeadlinesListCards, resolveDeadlinesHistoryEntries } = testExports;
 
@@ -42,7 +43,9 @@ const buildPlan = (overrides: Partial<DeferredObjectiveActivePlanV1>): DeferredO
   ...overrides,
 });
 
-const buildActivePlans = (plans: DeferredObjectiveActivePlanV1[]): DeferredObjectiveActivePlansV1 => ({
+const buildActivePlans = (
+  plans: DeferredObjectiveActivePlanV1[],
+): ResolvedDeferredObjectiveActivePlansV1 => toResolvedActivePlans({
   version: 1,
   plansByDeviceId: Object.fromEntries(plans.map((plan) => [plan.deviceId, plan])),
 });
@@ -154,7 +157,7 @@ describe('resolveDeadlinesListCards', () => {
       deviceId: 'dev_a',
       deviceName: 'Living-room heater',
       kind: 'temperature',
-      targetTemperatureC: 21,
+      targetValue: 21,
       firstActionAtMs: T0 + 3 * HOUR_MS,
       deadlineAtMs: T0 + 12 * HOUR_MS,
       href: './?page=deadline-plan&deviceId=dev_a',
@@ -430,7 +433,7 @@ describe('resolveDeadlinesListCards', () => {
       dev_a: { ...buildPlan({}), deviceId: 'dev_other', deviceName: 'Stored fallback' },
     };
     const cards = resolveDeadlinesListCards({
-      activePlans: { version: 1, plansByDeviceId },
+      activePlans: toResolvedActivePlans({ version: 1, plansByDeviceId }),
       objectiveSettings: buildObjectiveSettings({ dev_a: enabledTemperatureEntry }),
       devices: [
         { id: 'dev_a', name: 'Living-room heater', targets: [], binaryControl: { on: false } },

@@ -1046,13 +1046,11 @@ describe('deadline objective flow cards', () => {
       deviceName: 'Boiler',
       objectiveKind: 'temperature',
       outcome: 'missed',
-      targetTemperatureC: 55,
-      targetPercent: null,
+      targetValue: 55,
       deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
       finalizedAtMs: HH_MM_TO_UTC_MS(7, 1),
       metAtMs: null,
-      finalProgressC: 50,
-      finalProgressPercent: null,
+      finalProgressValue: 50,
     };
     endedBus.publish(missedEvent);
 
@@ -1073,7 +1071,7 @@ describe('deadline objective flow cards', () => {
       ...missedEvent,
       outcome: 'succeeded',
       metAtMs: HH_MM_TO_UTC_MS(6, 30),
-      finalProgressC: 55,
+      finalProgressValue: 55,
     });
     expect(trigger.trigger).toHaveBeenCalledTimes(2);
     expect(trigger.trigger.mock.calls[1]![0]).toEqual({
@@ -1100,13 +1098,11 @@ describe('deadline objective flow cards', () => {
       deviceName: 'Boiler',
       objectiveKind: 'temperature',
       outcome: 'missed',
-      targetTemperatureC: 55,
-      targetPercent: null,
+      targetValue: 55,
       deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
       finalizedAtMs: HH_MM_TO_UTC_MS(7, 1),
       metAtMs: null,
-      finalProgressC: null,
-      finalProgressPercent: null,
+      finalProgressValue: null,
     });
     expect(trigger.trigger).toHaveBeenCalledTimes(1);
     expect(trigger.trigger.mock.calls[0]![0]).toEqual({
@@ -1123,13 +1119,11 @@ describe('deadline objective flow cards', () => {
       deviceName: 'Boiler',
       objectiveKind: 'ev_soc',
       outcome: 'abandoned',
-      targetTemperatureC: null,
-      targetPercent: 80,
+      targetValue: 80,
       deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
       finalizedAtMs: HH_MM_TO_UTC_MS(7, 1),
       metAtMs: null,
-      finalProgressC: null,
-      finalProgressPercent: 73,
+      finalProgressValue: 73,
     });
     expect(trigger.trigger).toHaveBeenCalledTimes(2);
     expect(trigger.trigger.mock.calls[1]![0]).toEqual({

@@ -10,14 +10,9 @@
 // Lives in its own file (alongside the history producer) so each stays under
 // the 500-LOC cap and the live/finished concerns don't entangle.
 import type {
-  DeferredObjectiveActivePlanProgressSampleV1,
-  DeferredObjectiveActivePlanV1,
+  ResolvedDeferredObjectiveActivePlanProgressSampleV1,
+  ResolvedDeferredObjectiveActivePlanV1,
 } from '../../contracts/src/deferredObjectiveActivePlans';
-import {
-  resolveSampleValue,
-  resolveStartProgressValue,
-  resolveTargetValue,
-} from './deferredObjectiveValues';
 import {
   anchorObservedAtStart,
   type DeferredPlanHistoryChartData,
@@ -30,31 +25,31 @@ const finiteOrNull = (raw: number | null | undefined): number | null => (
   raw === null || raw === undefined || !Number.isFinite(raw) ? null : raw
 );
 
-const pickTarget = (plan: DeferredObjectiveActivePlanV1): number | null => finiteOrNull(
-  resolveTargetValue(plan),
+const pickTarget = (plan: ResolvedDeferredObjectiveActivePlanV1): number | null => finiteOrNull(
+  plan.targetValue,
 );
 
-const pickStartProgress = (plan: DeferredObjectiveActivePlanV1): number | null => finiteOrNull(
-  resolveStartProgressValue(plan),
+const pickStartProgress = (plan: ResolvedDeferredObjectiveActivePlanV1): number | null => finiteOrNull(
+  plan.startProgressValue,
 );
 
 // Effective kWh-per-unit rate the planner used: the latest revision's resolved
 // display rate, falling back to the learned-profile mean on the provenance.
 // Positive-only — a zero/absent rate yields a null so the caller drops the
 // planned staircase rather than dividing by zero.
-const pickRate = (plan: DeferredObjectiveActivePlanV1): number | null => {
+const pickRate = (plan: ResolvedDeferredObjectiveActivePlanV1): number | null => {
   const rate = finiteOrNull(plan.latest?.rateMean ?? plan.kwhPerUnitProvenance?.kWhPerUnit ?? null);
   return rate !== null && rate > 0 ? rate : null;
 };
 
 const pickObservedSamples = (
-  samples: DeferredObjectiveActivePlanProgressSampleV1[] | undefined,
+  samples: ResolvedDeferredObjectiveActivePlanProgressSampleV1[] | undefined,
 ): DeferredPlanHistoryChartPoint[] => {
   if (!Array.isArray(samples) || samples.length === 0) return [];
   const out: DeferredPlanHistoryChartPoint[] = [];
   for (const sample of samples) {
     if (!sample || !Number.isFinite(sample.atMs)) continue;
-    const value = resolveSampleValue(sample);
+    const { value } = sample;
     if (value === null || !Number.isFinite(value)) continue;
     out.push({ atMs: sample.atMs, value });
   }
@@ -119,7 +114,7 @@ const resolveActivePlannedAnchor = (
  * The renderer hides the chart container in that case and shows the text lines.
  */
 export const resolveActivePlanChartData = (
-  plan: DeferredObjectiveActivePlanV1,
+  plan: ResolvedDeferredObjectiveActivePlanV1,
   // `nowMs` + `currentValue` (the device's live reading from the widget's device
   // snapshot) extend the measured line to "now" and give an active task a
   // "you are here" anchor even before two hourly samples have been bucketed.

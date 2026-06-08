@@ -12,7 +12,7 @@ import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDevic
 import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
 import type { SettingsUiPricesPayload } from '../../../contracts/src/settingsUiApi.ts';
 import type { DeferredObjectiveSettingsEntry } from '../../../contracts/src/deferredObjectiveSettings.ts';
-import type { DeferredObjectiveActivePlanV1 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
+import type { ResolvedDeferredObjectiveActivePlanV1 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import type { DeadlinePlanPendingPayload } from './views/DeadlinePlan.tsx';
 import { formatDeadlineFull, formatTarget } from './deadlinePlanFormatters.ts';
 
@@ -40,7 +40,7 @@ export const pendingChipTone = (liveState: DeadlineLiveState): SmartTaskChipTone
 };
 
 export const resolvePendingReason = (
-  activePlan: DeferredObjectiveActivePlanV1 | null,
+  activePlan: ResolvedDeferredObjectiveActivePlanV1 | null,
 ): DeadlinePlanPendingReason => activePlan?.pendingReason ?? 'awaiting_horizon_plan';
 
 const resolvePriceSource = (scheme: unknown): DeadlinePendingPriceSource => {

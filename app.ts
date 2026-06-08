@@ -166,7 +166,7 @@ import type { SettingsUiDeviceDiagnosticsPayload } from './packages/contracts/sr
 import type { DeferredObjectivePlanHistoryEntry } from './packages/contracts/src/deferredObjectivePlanHistory';
 import { toResolvedPlanHistoryEntry } from './packages/shared-domain/src/deferredPlanHistoryResolvedView';
 import type {
-  DeferredObjectiveActivePlansV1,
+  ResolvedDeferredObjectiveActivePlansV1,
 } from './packages/contracts/src/deferredObjectiveActivePlans';
 import type {
   DeferredObjectivePlanPreviewEstimate,
@@ -1995,7 +1995,7 @@ class PelsApp extends Homey.App {
   public getDeviceLogUiPayload(): SettingsUiDeviceLogPayload {
     return this.planService?.getDeviceLogUiPayload() ?? { version: 1, entriesByDeviceId: {} };
   }
-  public getDeferredObjectiveActivePlansUiPayload(): DeferredObjectiveActivePlansV1 | null {
+  public getDeferredObjectiveActivePlansUiPayload(): ResolvedDeferredObjectiveActivePlansV1 | null {
     const snapshot = this.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot() ?? null;
     if (snapshot === null) return null;
     // Stitch live in-progress trajectory (start progress + observed samples)

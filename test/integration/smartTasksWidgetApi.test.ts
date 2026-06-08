@@ -11,8 +11,9 @@
 import { getSmartTasks } from '../../widgets/smart_tasks/src/api';
 import type {
   DeferredObjectiveActivePlanV1,
-  DeferredObjectiveActivePlansV1,
+  ResolvedDeferredObjectiveActivePlansV1,
 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
+import { toResolvedActivePlans } from '../../packages/shared-domain/src/deferredActivePlanResolvedView';
 import type {
   DeferredObjectivePlanHistoryEntry,
   ResolvedDeferredObjectivePlanHistoryEntry,
@@ -98,7 +99,7 @@ const emptyHistory: SettingsUiDeferredObjectivePlanHistoryPayload = { version: 1
 // Structural mock of the app methods the widget API reads — the SDK/settings
 // surface, faked. Every method optional, matching the real `WidgetApiApp`.
 type AppMock = {
-  getDeferredObjectiveActivePlansUiPayload?: () => DeferredObjectiveActivePlansV1 | null;
+  getDeferredObjectiveActivePlansUiPayload?: () => ResolvedDeferredObjectiveActivePlansV1 | null;
   getDeferredObjectivePlanHistoryRecentUiPayload?: (sinceMs: number) => SettingsUiDeferredObjectivePlanHistoryPayload;
   getDeferredObjectivePlanHistoryUiPayload?: () => SettingsUiDeferredObjectivePlanHistoryPayload;
   getUiPickerDevices?: () => TargetDeviceSnapshot[];
@@ -108,10 +109,14 @@ const run = (app: AppMock, timeZone = 'UTC') => getSmartTasks({
   homey: { app, clock: { getTimezone: () => timeZone } },
 });
 
-const plansOf = (...plans: DeferredObjectiveActivePlanV1[]): DeferredObjectiveActivePlansV1 => ({
-  version: 1,
-  plansByDeviceId: Object.fromEntries(plans.map((p) => [p.deviceId, p])),
-});
+// The app's `getDeferredObjectiveActivePlansUiPayload` returns the RESOLVED
+// container in production (the assembler stitches trajectory then resolves the
+// kind-split columns), so resolve the raw fixtures here at the same boundary.
+const plansOf = (...plans: DeferredObjectiveActivePlanV1[]): ResolvedDeferredObjectiveActivePlansV1 =>
+  toResolvedActivePlans({
+    version: 1,
+    plansByDeviceId: Object.fromEntries(plans.map((p) => [p.deviceId, p])),
+  });
 
 describe('smart_tasks widget API — mocked SDK/settings scenarios', () => {
   test('active task with stitched start + samples renders a planned+observed trajectory', async () => {

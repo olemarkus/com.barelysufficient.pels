@@ -14,7 +14,6 @@ import {
   type SmartTaskListStatusId,
 } from '../../../../shared-domain/src/deadlineLabels.ts';
 import { formatSmartTaskListDateTime } from '../../../../shared-domain/src/deferredPlanHistory.ts';
-import { resolveTargetValue } from '../../../../shared-domain/src/deferredObjectiveValues.ts';
 import { formatTimeInTimeZone } from '../../../../shared-domain/src/utils/dateUtils.ts';
 import {
   DEADLINES_LIST_BASELINE_EYEBROW,
@@ -33,8 +32,7 @@ export type DeadlinesListCard = {
   deviceId: string;
   deviceName: string;
   kind: DeferredObjectiveSettingsKind;
-  targetTemperatureC: number | null;
-  targetPercent: number | null;
+  targetValue: number | null;
   firstActionAtMs: number | null;
   deadlineAtMs: number;
   href: string;
@@ -90,9 +88,9 @@ const formatHourMinute = (ms: number): string => {
 
 const formatTarget = (card: DeadlinesListCard): string => {
   const labels = deadlineLabels(card.kind);
-  // Value selection is unit-agnostic; only the rounding + unit suffix stay
-  // kind-specific.
-  const target = resolveTargetValue(card);
+  // Value already resolved at the producer; only the rounding + unit suffix
+  // stay kind-specific.
+  const target = card.targetValue;
   if (target === null) return '—';
   if (card.kind === 'temperature') {
     const value = Number.isInteger(target) ? String(target) : target.toFixed(1);
