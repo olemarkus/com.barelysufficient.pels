@@ -37,3 +37,24 @@ export type HomeyRuntime = {
   settings: SettingsPort;
   clock: ClockPort;
 };
+
+export type FlowTriggerCard = {
+  trigger(tokens: Record<string, unknown>, state?: Record<string, unknown>): Promise<unknown>;
+};
+
+export type FlowToken = {
+  setValue(value: unknown): Promise<unknown>;
+};
+
+/**
+ * Subset of `homey.flow` (ManagerFlow) the domain uses to publish runtime Flow
+ * tokens/triggers. Deliberately NOT part of `HomeyRuntime`: only the two flow
+ * publishers depend on it, so folding it into the shared runtime port would
+ * make every settings-only consumer falsely claim a flow dependency. Consumers
+ * keep their own `typeof …` runtime guards for partial mocks / SDK variance;
+ * this port types the happy path.
+ */
+export type FlowPort = {
+  getTriggerCard(id: string): FlowTriggerCard;
+  createToken(id: string, opts: { type: 'string'; title: string; value: string }): Promise<FlowToken>;
+};

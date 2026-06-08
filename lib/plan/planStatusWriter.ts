@@ -1,4 +1,4 @@
-import type Homey from 'homey';
+import type { SettingsPort, FlowPort } from '../ports/homeyRuntime';
 import type { Logger as PinoLogger } from '../logging/logger';
 import { buildPelsStatus } from './pelsStatus';
 import { PriceLevel } from '../price/priceLevels';
@@ -25,7 +25,7 @@ type PelsStatusComputation = {
 };
 
 type PlanStatusWriterDeps = {
-  homey: Homey.App['homey'];
+  homey: { settings: SettingsPort; flow: FlowPort };
   getCombinedPrices: () => unknown;
   isCurrentHourCheap: () => boolean;
   isCurrentHourExpensive: () => boolean;
