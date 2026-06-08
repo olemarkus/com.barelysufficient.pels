@@ -5,6 +5,7 @@ import type { DevicePlanDevice } from '../planTypes';
 import { isObservedOff, isObservedOn } from '../../observer/observedState';
 import { sortByPriorityAsc, sortByPriorityDesc } from '../planSort';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
+import { isTemperaturePlanDevice } from '../planTemperatureDevice';
 
 export const NEUTRAL_STARTUP_HOLD_REASON: DeviceReason = { code: PLAN_REASON_CODES.neutralStartupHold };
 
@@ -176,9 +177,10 @@ function canSwapOutDevice(
   behavior: { action: 'turn_off' | 'set_temperature' | 'set_step'; temperature: number | null; stepId: string | null },
 ): boolean {
   if (behavior.action !== 'set_temperature' || behavior.temperature === null) return true;
+  const devCurrentTarget = isTemperaturePlanDevice(dev) ? dev.currentTarget : null;
   let currentTarget: number | null = null;
-  if (typeof dev.currentTarget === 'number') {
-    currentTarget = dev.currentTarget;
+  if (typeof devCurrentTarget === 'number') {
+    currentTarget = devCurrentTarget;
   } else if (typeof dev.plannedTarget === 'number') {
     currentTarget = dev.plannedTarget;
   }

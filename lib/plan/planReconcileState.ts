@@ -1,7 +1,8 @@
 import type { DevicePlan, PlanInputDevice } from './planTypes';
-import { withEvDiscriminant, withSteppedDiscriminant } from './planTypes';
+import { withEvDiscriminant, withSteppedDiscriminant, withTemperatureDiscriminant } from './planTypes';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import { isEvPlanDevice } from './planEvDevice';
+import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 import { resolveObservedCurrentState } from './planCurrentState';
@@ -39,7 +40,13 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
       // are base fields re-sourced from the live device so the producer-resolved
       // decisions follow the freshest observation. Runtime values are byte-identical.
       const evDevice = isEvPlanDevice(device) ? device : null;
-      return withSteppedDiscriminant(withEvDiscriminant({
+      // The temperature cluster (`currentTarget` / `currentTemperature`) is
+      // orthogonal to the stepped axis and off the base, so the `...device`
+      // spread does not carry it at the type level. Re-source `currentTarget`
+      // from the live targets and `currentTemperature` from the live device
+      // (narrowed), then regroup through `withTemperatureDiscriminant`.
+      const liveTemperature = isTemperaturePlanDevice(live) ? live : null;
+      return withSteppedDiscriminant(withTemperatureDiscriminant(withEvDiscriminant({
         ...device,
         evBlockReason: live.evBlockReason,
         evSessionInactive: live.evSessionInactive,
@@ -62,7 +69,7 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
         stepCommandRetryCount: live.stepCommandRetryCount ?? device.stepCommandRetryCount,
         nextStepCommandRetryAtMs: live.nextStepCommandRetryAtMs ?? device.nextStepCommandRetryAtMs,
         reportedStepId: liveStepState.reportedStepId,
-        currentTemperature: live.currentTemperature,
+        currentTemperature: liveTemperature?.currentTemperature,
         powerKw: live.powerKw,
         expectedPowerKw: live.expectedPowerKw,
         planningPowerKw: live.planningPowerKw,
@@ -75,7 +82,7 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
         controllable: live.controllable ?? device.controllable,
         stepCommandPending: live.stepCommandPending ?? device.stepCommandPending,
         stepCommandStatus: live.stepCommandStatus ?? device.stepCommandStatus,
-      }));
+      })));
     }),
   };
 }
@@ -194,7 +201,8 @@ function hasSettledPostActuationState(
   }
   if (requiresBinaryRestore(baseDevice) && !isObservedOn(liveDevice)) return false;
   if (requiresBinaryShed(baseDevice) && !isObservedOff(liveDevice)) return false;
-  if (requiresTargetUpdate(baseDevice) && liveDevice.currentTarget !== baseDevice.plannedTarget) return false;
+  const liveCurrentTarget = isTemperaturePlanDevice(liveDevice) ? liveDevice.currentTarget : null;
+  if (requiresTargetUpdate(baseDevice) && liveCurrentTarget !== baseDevice.plannedTarget) return false;
   return true;
 }
 
@@ -214,7 +222,8 @@ function requiresTargetUpdate(device: DevicePlan['devices'][number]): boolean {
   if (device.plannedState === 'shed' && device.shedAction !== 'set_temperature') {
     return false;
   }
-  return typeof device.plannedTarget === 'number' && device.plannedTarget !== device.currentTarget;
+  const currentTarget = isTemperaturePlanDevice(device) ? device.currentTarget : null;
+  return typeof device.plannedTarget === 'number' && device.plannedTarget !== currentTarget;
 }
 
 function hasRelevantBinaryExecutionDrift(
@@ -238,10 +247,12 @@ function hasSteppedEvidenceChanged(
 
 function hasRelevantTargetExecutionDrift(
   previousDevice: DevicePlan['devices'][number],
-  liveDevice: Pick<DevicePlan['devices'][number], 'currentTarget'>,
+  liveDevice: DevicePlan['devices'][number],
 ): boolean {
   if (!tracksTargetForExecution(previousDevice)) return false;
-  return previousDevice.currentTarget !== liveDevice.currentTarget;
+  const previousTarget = isTemperaturePlanDevice(previousDevice) ? previousDevice.currentTarget : null;
+  const liveTarget = isTemperaturePlanDevice(liveDevice) ? liveDevice.currentTarget : null;
+  return previousTarget !== liveTarget;
 }
 
 function tracksTargetForExecution(device: DevicePlan['devices'][number]): boolean {

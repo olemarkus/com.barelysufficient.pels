@@ -10,6 +10,7 @@ import { resolveStarvationSuppressionSemantics } from '../planContract/planDecis
 import type { PlanContext } from './planContext';
 import type { RestorePlanResult } from './restore';
 import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
+import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { isEvDevice } from '../../packages/shared-domain/src/commandableNow';
 import {
   isStarvationSupportedDeviceClass,
@@ -76,8 +77,12 @@ const resolveCurrentTemperatureC = (
   device: DevicePlanDevice,
   inputDevice?: PlanInputDevice,
 ): number | null => {
-  if (isFiniteNumber(device.currentTemperature)) return device.currentTemperature;
-  if (isFiniteNumber(inputDevice?.currentTemperature)) return inputDevice.currentTemperature;
+  const deviceTemperature = isTemperaturePlanDevice(device) ? device.currentTemperature : undefined;
+  if (isFiniteNumber(deviceTemperature)) return deviceTemperature;
+  const inputTemperature = inputDevice && isTemperaturePlanDevice(inputDevice)
+    ? inputDevice.currentTemperature
+    : undefined;
+  if (isFiniteNumber(inputTemperature)) return inputTemperature;
   return null;
 };
 
@@ -98,7 +103,8 @@ const resolveIntendedNormalTemperatureTarget = (params: {
 // a device PELS commands in full (`keep`) is not starved, however cold it is.
 const resolveCommandedTargetC = (device: DevicePlanDevice): number | null => {
   if (isFiniteNumber(device.plannedTarget)) return device.plannedTarget;
-  if (isFiniteNumber(device.currentTarget)) return device.currentTarget;
+  const currentTarget = isTemperaturePlanDevice(device) ? device.currentTarget : null;
+  if (isFiniteNumber(currentTarget)) return currentTarget;
   return null;
 };
 
@@ -239,7 +245,9 @@ const buildDiagnosticsObservation = (params: {
     isCurrentHourCheap,
     isCurrentHourExpensive,
   });
-  const currentTarget = typeof device.currentTarget === 'number' ? device.currentTarget : null;
+  const currentTarget = isTemperaturePlanDevice(device) && typeof device.currentTarget === 'number'
+    ? device.currentTarget
+    : null;
   const intendedNormalTargetC = resolveIntendedNormalTemperatureTarget({
     desiredForMode,
     inputDevice,

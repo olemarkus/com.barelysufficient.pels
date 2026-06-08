@@ -1,10 +1,37 @@
 import type {
   DevicePlanDevice,
   PlanInputDevice,
+  TemperatureDiscriminantProbe,
 } from '../../lib/plan/planTypes';
+import { withTemperatureDiscriminant } from '../../lib/plan/planTypes';
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
 import { isEvDevice, resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import { legacyDeviceReason } from './deviceReasonTestUtils.ts';
+
+/**
+ * Treat a fixture's `currentTarget` / `currentTemperature` override as the
+ * temperature-variant signal: a device carrying either is a temperature device,
+ * so default `deviceType: 'temperature'` (unless the fixture set it explicitly)
+ * and regroup the cluster onto `TemperatureKind`. Mirrors the production
+ * producer, which always stamps `deviceType` from the snapshot. Without this,
+ * the `isTemperaturePlanDevice` guard (which keys on `deviceType`) would read
+ * `null` for fixtures that express temperature intent only through
+ * `currentTarget`.
+ */
+const withFixtureTemperatureKind = <T extends { deviceType?: 'temperature' | 'onoff' }>(
+  fields: T & TemperatureDiscriminantProbe,
+): Omit<T, keyof TemperatureDiscriminantProbe> => {
+  const hasTemperatureSignal = fields.currentTarget !== undefined
+    || fields.currentTemperature !== undefined;
+  if (!hasTemperatureSignal) {
+    const { currentTarget: _ct, currentTemperature: _cte, ...rest } = fields;
+    return rest;
+  }
+  return withTemperatureDiscriminant({
+    deviceType: 'temperature' as const,
+    ...fields,
+  });
+};
 
 type MaterializedEvFields = {
   evBlockReason?: string | null;
@@ -50,36 +77,52 @@ export const steppedProfile: SteppedLoadProfile = {
 };
 
 export const buildPlanDevice = (
-  overrides: Partial<DevicePlanDevice> & { reason?: DevicePlanDevice['reason'] | string; evChargingState?: string } = {},
+  overrides: Partial<DevicePlanDevice> & TemperatureDiscriminantProbe & {
+    reason?: DevicePlanDevice['reason'] | string;
+    evChargingState?: string;
+    deviceType?: 'temperature' | 'onoff';
+  } = {},
 ):
 DevicePlanDevice => {
-  const { reason, ...rest } = overrides;
+  const { reason, currentTarget, currentTemperature, ...rest } = overrides;
   return {
     id: 'dev',
     name: 'Device',
     currentState: 'on',
     plannedState: 'keep',
-    currentTarget: null,
     controlCapabilityId: 'onoff',
     reason: legacyDeviceReason('keep')!,
-    ...withMaterializedEvPlugState(rest),
+    ...withFixtureTemperatureKind({
+      ...withMaterializedEvPlugState(rest),
+      ...(currentTarget !== undefined ? { currentTarget } : {}),
+      ...(currentTemperature !== undefined ? { currentTemperature } : {}),
+    }),
     ...(reason !== undefined
       ? { reason: typeof reason === 'string' ? legacyDeviceReason(reason)! : reason }
       : {}),
-  };
+  } as DevicePlanDevice;
 };
 
 export const buildPlanInputDevice = (
-  overrides: Partial<PlanInputDevice> & { evChargingState?: string } = {},
-): PlanInputDevice => ({
-  id: 'dev',
-  name: 'Device',
-  targets: [],
-  binaryControl: { on: true },
-  controllable: true,
-  controlCapabilityId: 'onoff',
-  ...withMaterializedEvPlugState(overrides),
-});
+  overrides: Partial<PlanInputDevice> & TemperatureDiscriminantProbe & {
+    evChargingState?: string;
+    deviceType?: 'temperature' | 'onoff';
+  } = {},
+): PlanInputDevice => {
+  const { currentTarget: _currentTarget, currentTemperature, ...rest } = overrides;
+  return {
+    id: 'dev',
+    name: 'Device',
+    targets: [],
+    binaryControl: { on: true },
+    controllable: true,
+    controlCapabilityId: 'onoff',
+    ...withFixtureTemperatureKind({
+      ...withMaterializedEvPlugState(rest),
+      ...(currentTemperature !== undefined ? { currentTemperature } : {}),
+    }),
+  } as PlanInputDevice;
+};
 
 export const steppedPlanDevice = (overrides: Partial<DevicePlanDevice> = {}): DevicePlanDevice => {
   const profile = overrides.steppedLoadProfile ?? steppedProfile;

@@ -33,6 +33,7 @@ const buildPlan = (
       {
         id: 'dev-1',
         name: 'Heater',
+        deviceType: 'temperature',
         binaryControl: { on: true },
         currentState: 'on',
         plannedState: 'keep',
@@ -2008,6 +2009,7 @@ describe('PlanService', () => {
             {
               id: 'dev-1',
               name: 'Heater 1',
+              deviceType: 'temperature',
               currentState: 'off',
               plannedState: 'keep',
               currentTarget: 20,
@@ -2018,6 +2020,7 @@ describe('PlanService', () => {
             {
               id: 'dev-2',
               name: 'Heater 2',
+              deviceType: 'temperature',
               currentState: 'off',
               plannedState: 'keep',
               currentTarget: 20,
@@ -2121,6 +2124,7 @@ describe('PlanService', () => {
             {
               id: 'dev-1',
               name: 'Heater 1',
+              deviceType: 'temperature',
               currentState: 'off',
               plannedState: 'keep',
               currentTarget: 20,
@@ -2132,6 +2136,7 @@ describe('PlanService', () => {
             {
               id: 'dev-2',
               name: 'Heater 2',
+              deviceType: 'temperature',
               currentState: 'off',
               plannedState: 'keep',
               currentTarget: 20,

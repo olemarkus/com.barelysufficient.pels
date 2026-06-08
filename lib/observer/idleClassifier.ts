@@ -25,7 +25,17 @@ import { emitGated, type DeviationSurprise } from '../logging/deviationGate';
 import type { BinaryControlCapabilityId, PlannedDeviceState } from '../../packages/contracts/src/types';
 import { formatIdleClassificationCopy } from '../../packages/shared-domain/src/idleClassificationCopy';
 
-/** Subset of DevicePlanDevice used by the classifier — keeps coupling thin. */
+/**
+ * Subset of DevicePlanDevice used by the classifier — keeps coupling thin.
+ *
+ * `currentTarget` / `currentTemperature` are the temperature-variant cluster
+ * (`TemperatureKind`), now off the `DevicePlanDevice` base. The caller
+ * (`planService.tickIdleClassifier`) maps each plan device through the
+ * `isTemperaturePlanDevice` guard before passing it here, contributing
+ * `currentTarget: null` for a non-temperature device — so this input keeps
+ * `currentTarget` required (matching the old always-present base field) and the
+ * classifier never reads the cluster off an un-narrowed device.
+ */
 export type IdleClassifierDeviceInput = {
   id: string;
   name: string;

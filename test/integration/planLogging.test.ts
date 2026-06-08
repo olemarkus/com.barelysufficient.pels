@@ -286,6 +286,7 @@ describe('plan logging helpers', () => {
         {
           id: 'heater-at-shed-temp',
           name: 'Heater At Shed Temp',
+          deviceType: 'temperature',
           plannedState: 'keep',
           binaryControl: { on: true },
           currentState: 'on',

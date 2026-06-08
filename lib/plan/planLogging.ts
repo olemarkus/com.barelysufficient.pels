@@ -12,6 +12,7 @@ import {
 } from '../../packages/shared-domain/src/planReasonSemantics';
 import { isObservedOff, isObservedOn } from '../observer/observedState';
 import { isSteppedLoadDevice } from './planSteppedLoad';
+import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import type { DevicePlan, DevicePlanDevice, PlanInputDevice } from './planTypes';
 import {
   isActivationPenaltyBlockedReason,
@@ -282,7 +283,7 @@ export function buildPlanDetailSignature(plan: DevicePlan): string {
       desiredStepId: d.desiredStepId,
       lastDesiredStepId: d.lastDesiredStepId,
       currentState: d.currentState,
-      currentTarget: d.currentTarget,
+      currentTarget: isTemperaturePlanDevice(d) ? d.currentTarget : null,
       reason: buildComparableDeviceReason(d.reason),
       planningPowerKw: d.planningPowerKw,
       shedAction: d.shedAction,

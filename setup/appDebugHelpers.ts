@@ -12,6 +12,7 @@ import type {
 import { formatDeviceReason } from '../packages/shared-domain/src/planReasonSemantics';
 import { DEVICES_API_PATH, getRawDevices } from '../lib/device/transport/managerHomeyApi';
 import type { DevicePlan, StepPowerCalibrationView } from '../lib/plan/planTypes';
+import { isTemperaturePlanDevice } from '../lib/plan/planTemperatureDevice';
 import type { HomeyDeviceLike } from '../lib/utils/types';
 import { isHomeyDeviceLike } from '../lib/utils/types';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
@@ -460,7 +461,7 @@ const compactPelsPlanDevice = (
     name: device.name,
     currentState: device.currentState,
     plannedState: device.plannedState,
-    currentTarget: device.currentTarget,
+    currentTarget: isTemperaturePlanDevice(device) ? device.currentTarget : null,
     plannedTarget: device.plannedTarget,
     reason: formatDeviceReason(device.reason),
     controllable: device.controllable,

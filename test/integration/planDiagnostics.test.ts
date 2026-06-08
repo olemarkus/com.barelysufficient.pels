@@ -54,7 +54,11 @@ const buildObservation = (params: {
   isCurrentHourExpensive?: () => boolean;
 }) => buildDeviceDiagnosticsObservations({
   context: buildContext(params.inputDevice, params.desiredForMode),
-  planDevices: [params.planDevice],
+  // Production always stamps the plan device's `deviceType` from the snapshot, so
+  // mirror the input device's modality onto the plan device the fixture builds.
+  // The temperature-cluster reads (`currentTarget` / `currentTemperature`) on the
+  // plan device narrow through `isTemperaturePlanDevice`, which keys on it.
+  planDevices: [{ deviceType: params.inputDevice.deviceType, ...params.planDevice } as DevicePlanDevice],
   restoreResult: buildRestoreResult(params.restoreResult),
   priceOptimizationEnabled: params.priceOptimizationEnabled ?? false,
   priceOptimizationSettings: params.priceOptimizationSettings ?? {},

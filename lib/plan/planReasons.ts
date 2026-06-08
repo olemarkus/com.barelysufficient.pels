@@ -1,4 +1,5 @@
 import type { DevicePlanDevice } from './planTypes';
+import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import type { PlanEngineState } from './planState';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import {
@@ -442,7 +443,8 @@ type PendingRestoreDelay = {
 };
 
 function hasTemperatureTarget(dev: DevicePlanDevice): boolean {
-  return (typeof dev.currentTarget === 'number' && Number.isFinite(dev.currentTarget))
+  const currentTarget = isTemperaturePlanDevice(dev) ? dev.currentTarget : null;
+  return (typeof currentTarget === 'number' && Number.isFinite(currentTarget))
     || (typeof dev.plannedTarget === 'number' && Number.isFinite(dev.plannedTarget));
 }
 
@@ -787,7 +789,8 @@ function resolveHoldDecision(params: {
     return { type: 'skip' };
   }
 
-  const atMinTemp = Number(dev.currentTarget) === behavior.temperature
+  const currentTarget = isTemperaturePlanDevice(dev) ? dev.currentTarget : null;
+  const atMinTemp = Number(currentTarget) === behavior.temperature
     || Number(dev.plannedTarget) === behavior.temperature;
   const alreadyMinTempShed = dev.shedAction === 'set_temperature' && dev.shedTemperature === behavior.temperature;
   const wasShedLastPlan = state.lastPlannedShedIds.has(dev.id);
@@ -971,7 +974,8 @@ function getPendingRestoreDelay(
   for (const dev of planDevices) {
     const behavior = getShedBehavior(dev.id);
     if (behavior.action !== 'set_temperature' || behavior.temperature === null) continue;
-    if (typeof dev.currentTarget !== 'number' || dev.currentTarget !== behavior.temperature) continue;
+    const currentTarget = isTemperaturePlanDevice(dev) ? dev.currentTarget : null;
+    if (typeof currentTarget !== 'number' || currentTarget !== behavior.temperature) continue;
     if (typeof dev.plannedTarget !== 'number' || dev.plannedTarget <= behavior.temperature) continue;
 
     const lastRestoreMs = state.lastDeviceRestoreMs[dev.id];

@@ -10,6 +10,7 @@ import type {
   PendingTargetObservationSource,
   PlanInputDevice,
 } from './planTypes';
+import { isTemperaturePlanDevice } from './planTemperatureDevice';
 
 type PendingTargetDecision =
   | { type: 'send' }
@@ -128,10 +129,11 @@ export function prunePendingTargetCommandsForPlan(params: {
   let changed = false;
   for (const [deviceId, pending] of Object.entries(state.pendingTargetCommands)) {
     const device = planById.get(deviceId);
+    const deviceCurrentTarget = device && isTemperaturePlanDevice(device) ? device.currentTarget : null;
     const shouldKeep = Boolean(
       device
       && typeof device.plannedTarget === 'number'
-      && device.plannedTarget !== device.currentTarget
+      && device.plannedTarget !== deviceCurrentTarget
       && device.plannedTarget === pending.desired,
     );
     if (shouldKeep) continue;
@@ -243,9 +245,10 @@ export function decoratePlanWithPendingTargetCommands(
 ): DevicePlan {
   const devices = plan.devices.map((device) => {
     const pending = state.pendingTargetCommands[device.id];
+    const deviceCurrentTarget = isTemperaturePlanDevice(device) ? device.currentTarget : null;
     const shouldExpose = pending
       && typeof device.plannedTarget === 'number'
-      && device.plannedTarget !== device.currentTarget
+      && device.plannedTarget !== deviceCurrentTarget
       && device.plannedTarget === pending.desired;
     if (!shouldExpose) {
       if (!device.pendingTargetCommand) return device;
