@@ -1,4 +1,4 @@
-import { isBinaryOnOrUnknown, isBinaryObservedOff, getObservedBinaryOn } from '../../packages/shared-domain/src/binaryControlState';
+import { isBinaryOnOrUnknown, isBinaryObservedOff, isBinaryControlled, getBinaryOn } from '../../packages/shared-domain/src/binaryControlState';
 
 describe('binary observed-state predicates', () => {
   describe('isBinaryOnOrUnknown (≡ binaryControl?.on ?? true)', () => {
@@ -37,21 +37,34 @@ describe('binary observed-state predicates', () => {
     }
   });
 
-  describe('getObservedBinaryOn (boolean | null; preserves "non-binary")', () => {
-    it('returns the observed on-state when present', () => {
-      expect(getObservedBinaryOn({ binaryControl: { on: true } })).toBe(true);
-      expect(getObservedBinaryOn({ binaryControl: { on: false } })).toBe(false);
+  describe('isBinaryControlled (type guard; non-binary is the else-branch, not a value)', () => {
+    it('is true when the device has binary control', () => {
+      expect(isBinaryControlled({ binaryControl: { on: true } })).toBe(true);
+      expect(isBinaryControlled({ binaryControl: { on: false } })).toBe(true);
     });
-    it('returns null (not a default) when binary state is absent', () => {
-      expect(getObservedBinaryOn({})).toBe(null);
-      expect(getObservedBinaryOn(undefined)).toBe(null);
-      expect(getObservedBinaryOn(null)).toBe(null);
+    it('is false when the device has no binary control', () => {
+      expect(isBinaryControlled({})).toBe(false);
+      expect(isBinaryControlled(undefined)).toBe(false);
+      expect(isBinaryControlled(null)).toBe(false);
     });
-    it('never equals a desired boolean when absent (the match-check invariant)', () => {
-      // planBinaryControlHelpers relies on `null === desired` being false so an
-      // absent binary state never short-circuits an already-matched command.
-      expect(getObservedBinaryOn(undefined) === true).toBe(false);
-      expect(getObservedBinaryOn(undefined) === false).toBe(false);
+  });
+
+  describe('getBinaryOn (strict read on a narrowed binary device)', () => {
+    it('returns the observed on-state', () => {
+      expect(getBinaryOn({ binaryControl: { on: true } })).toBe(true);
+      expect(getBinaryOn({ binaryControl: { on: false } })).toBe(false);
+    });
+    it('reads strict only after narrowing — the match-check pattern', () => {
+      // planBinaryControlHelpers: `isBinaryControlled(d) && getBinaryOn(d) === desired`.
+      // A non-binary device short-circuits at the guard, never reaching getBinaryOn.
+      const nonBinary: { binaryControl?: { on: boolean } } = {};
+      const matches = (d: { binaryControl?: { on: boolean } }, desired: boolean): boolean => (
+        isBinaryControlled(d) && getBinaryOn(d) === desired
+      );
+      expect(matches(nonBinary, true)).toBe(false);
+      expect(matches(nonBinary, false)).toBe(false);
+      expect(matches({ binaryControl: { on: true } }, true)).toBe(true);
+      expect(matches({ binaryControl: { on: true } }, false)).toBe(false);
     });
   });
 });

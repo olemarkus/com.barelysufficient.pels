@@ -9,7 +9,7 @@
 // `packages/shared-domain/src/binaryControlState.ts`:
 //   - `isBinaryOnOrUnknown`  (absent → on / "may draw")
 //   - `isBinaryObservedOff`  (only CONFIRMED observed-off)
-//   - `getObservedBinaryOn`  (boolean | null; preserves "non-binary")
+//   - `isBinaryControlled` + `getBinaryOn`  (narrow, then read a strict boolean)
 //
 // Forwarding the whole struct (`binaryControl: device.binaryControl`) is
 // plumbing, not a reading, and stays allowed — only `.on` access on a
@@ -120,9 +120,10 @@ if (offenders.length > 0) {
   process.stderr.write(
     'Binary-control containment violation (check-binary-vocab):\n'
     + 'lib/plan/** and lib/executor/** must not read `binaryControl.on` directly.\n'
-    + 'Use the shared-domain readers (isBinaryOnOrUnknown, isBinaryObservedOff,\n'
-    + 'getObservedBinaryOn) so absence-handling stays in one place. Forwarding the\n'
-    + 'struct (`binaryControl: x.binaryControl`) is fine; reading `.on` is not.\n'
+    + 'Use the shared-domain readers (isBinaryOnOrUnknown, isBinaryObservedOff, or\n'
+    + 'isBinaryControlled + getBinaryOn) so absence-handling stays in one place.\n'
+    + 'Forwarding the struct (`binaryControl: x.binaryControl`) is fine; reading\n'
+    + '`.on` is not.\n'
     + 'Offending access(es):\n',
   );
   for (const { file, line } of offenders) {

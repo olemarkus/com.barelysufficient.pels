@@ -9,12 +9,16 @@
  * that rule once, so call sites can't mishandle the `undefined` — and so the
  * planner/executor never touch `binaryControl.on` directly (enforced by the
  * `check-binary-vocab` guard). The two predicates collapse absence to the
- * default; `getObservedBinaryOn` preserves it for callers that must tell
- * "non-binary" apart from on/off.
+ * default; callers that must tell "non-binary" apart from on/off narrow through
+ * `isBinaryControlled` and then read a guaranteed `boolean` via `getBinaryOn` —
+ * no sentinel (`null`/`undefined`) re-encodes the non-binary case as a value.
  *
  * Browser-safe: a structural shape, no Homey SDK types.
  */
 type BinaryControlObserved = { binaryControl?: { on: boolean } };
+
+/** A device narrowed to one that HAS observed binary control. */
+type BinaryControlled = { binaryControl: { on: boolean } };
 
 /**
  * True unless the device is CONFIRMED observed-off. Absent/unknown binary state
@@ -35,12 +39,23 @@ export const isBinaryObservedOff = (device: BinaryControlObserved | null | undef
 );
 
 /**
- * The observed binary on-state, or `null` when the device has no binary control
- * (a non-binary device, or an absent `binaryControl`). Unlike the two predicates
- * this does NOT collapse absence to a default — use it where the caller must
- * distinguish "non-binary" from on/off (e.g. rendering current state, or an
- * exact-match check against a desired boolean where absent must not match).
+ * Type guard: the device HAS observed binary control. A non-binary device (or
+ * one with no observed `binaryControl` yet) returns `false` — that case is the
+ * guard's else-branch, NOT a nullable value the caller has to handle. On the
+ * narrowed shape `binaryControl` is guaranteed present, so `getBinaryOn` reads
+ * `.on` as a plain `boolean`. The shared-domain twin of `isEvObserved`: callers
+ * narrow through this instead of re-deciding what an absent `binaryControl`
+ * means.
  */
-export const getObservedBinaryOn = (device: BinaryControlObserved | null | undefined): boolean | null => (
-  device?.binaryControl?.on ?? null
+export const isBinaryControlled = <T extends BinaryControlObserved>(
+  device: T | null | undefined,
+): device is T & BinaryControlled => (
+  device?.binaryControl !== undefined
 );
+
+/**
+ * The observed binary on-state of a device already narrowed to one that has
+ * binary control (via `isBinaryControlled`). Keeps the `.on` read in one place
+ * so the planner / executor never touch it directly.
+ */
+export const getBinaryOn = (device: BinaryControlled): boolean => device.binaryControl.on;

@@ -10,7 +10,7 @@ import {
   type CurrentStateInput,
   type ObservedCurrentStateInput,
 } from '../observer/observedState';
-import { getObservedBinaryOn } from '../../packages/shared-domain/src/binaryControlState';
+import { isBinaryControlled, getBinaryOn } from '../../packages/shared-domain/src/binaryControlState';
 
 export type PlannerCurrentStateSource = 'binary' | 'stepped' | 'target' | 'unknown';
 export type PlannerPendingInfluence = 'none' | 'present_but_not_applied';
@@ -66,27 +66,27 @@ function buildBinaryResolvedCurrentState(params: {
 }
 
 function buildNotApplicableResolvedCurrentState(params: {
-  currentState: 'not_applicable';
-  binaryOn: boolean | null;
+  device: CurrentStateInput;
   pendingInfluence: PlannerPendingInfluence;
 }): ResolvedCurrentState {
-  const { currentState, binaryOn, pendingInfluence } = params;
-  // Binary devices have an observed on-state; resolve their on/off. A device
-  // with no binary control (target-only / non-binary) resolves to `null`,
-  // mirroring the old absent-`currentOn` target branch.
-  if (binaryOn !== null) {
+  const { device, pendingInfluence } = params;
+  // A device WITH binary control resolves to its observed on/off; a device with
+  // no binary control (target-only / non-binary) is the guard's else-branch —
+  // mirroring the old absent-`currentOn` target branch, with no nullable value.
+  if (isBinaryControlled(device)) {
+    const on = getBinaryOn(device);
     return {
-      currentState,
-      isOn: binaryOn,
+      currentState: 'not_applicable',
+      isOn: on,
       source: 'binary',
-      reasonCode: binaryOn
+      reasonCode: on
         ? 'observed_binary_on_not_applicable'
         : 'observed_binary_off_not_applicable',
       pendingInfluence,
     };
   }
   return {
-    currentState,
+    currentState: 'not_applicable',
     isOn: null,
     source: 'target',
     reasonCode: 'observed_target_only',
@@ -107,11 +107,7 @@ export function resolveEffectiveCurrentState(
   }
 
   if (currentState === 'not_applicable') {
-    return buildNotApplicableResolvedCurrentState({
-      currentState,
-      binaryOn: getObservedBinaryOn(device),
-      pendingInfluence,
-    });
+    return buildNotApplicableResolvedCurrentState({ device, pendingInfluence });
   }
 
   return {
