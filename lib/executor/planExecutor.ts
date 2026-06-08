@@ -1,4 +1,4 @@
-import type Homey from 'homey';
+import type { SettingsPort, FlowPort } from '../ports/homeyRuntime';
 import CapacityGuard from '../power/capacityGuard';
 import type { DeviceObservation } from '../device/deviceObservation';
 import type { DevicePlan, PlanInputDevice, ShedAction } from '../plan/planTypes';
@@ -91,7 +91,7 @@ import {
 import { selectShedActuationRecorder } from './lifecycleReleaseRecording';
 
 export type PlanExecutorDeps = {
-  homey: Homey.App['homey'];
+  homey: { settings: SettingsPort; flow: FlowPort };
   deviceManager: PlanExecutorDeviceTransport;
   /**
    * Observer-owned observed-state read (stage 5). The target executor sources
