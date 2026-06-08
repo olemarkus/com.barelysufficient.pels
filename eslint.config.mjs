@@ -257,6 +257,32 @@ export default tseslint.config(
       ],
     },
   },
+  // Keep the Homey SDK at the leaf. lib/** is the domain layer; it may reference
+  // Homey SDK *types* (`import type Homey from 'homey'`) but must never *value*-
+  // import the SDK. The runtime SDK object (`homey.settings`, `homey.clock`,
+  // `homey.api`, …) is dependency-injected from the entry points — app.ts and
+  // drivers/** subclass `Homey.App`/`Homey.Driver` and thread the instance down.
+  // So the real SDK leaf is the injected instance, not an import (see
+  // notes/state-management/). `allowTypeImports` keeps the current type-only
+  // coupling legal; a future port-interface train can drop it per-module to
+  // retire even the type dependency. `homey` is a types-only package
+  // (@types/homey → homey-apps-sdk-v3-types), so dependency-cruiser — which runs
+  // post-compilation, where these edges are erased — can't police this; the
+  // source-level lint rule is the only honest gate.
+  {
+    files: ['lib/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': ['error', {
+        paths: [{
+          name: 'homey',
+          allowTypeImports: true,
+          message: 'lib/** must not value-import the Homey SDK — use `import type Homey from \'homey\'`. '
+            + 'The SDK runtime instance is injected from the entry points (app.ts/drivers). '
+            + 'See notes/state-management/: the SDK leaf is the injected instance, not an import.',
+        }],
+      }],
+    },
+  },
   // Test files - relaxed rules
   {
     files: ['test/**/*.ts'],

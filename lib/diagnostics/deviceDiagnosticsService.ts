@@ -1,4 +1,3 @@
-import type Homey from 'homey';
 import {
   getDateKeyInTimeZone,
   getDateKeyStartMs,
@@ -24,10 +23,10 @@ import {
   createEmptyDayAggregate,
   createEmptyPersistedState,
   getRecentDateKeys,
-  sanitizePersistedState,
   type PersistedDayAggregate,
   type PersistedDiagnosticsState,
 } from './deviceDiagnosticsModel';
+import type { DeviceDiagnosticsStateStore } from './deviceDiagnosticsStateStore';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import { getLogger } from '../logging/logger';
 import { normalizeError } from '../utils/errorUtils';
@@ -232,7 +231,7 @@ type LiveDeviceDiagnostics = {
 };
 
 type DeviceDiagnosticsServiceDeps = {
-  homey: Homey.App['homey'];
+  diagnosticsStateStore: DeviceDiagnosticsStateStore;
   getTimeZone: () => string;
   isDebugEnabled?: () => boolean;
   structuredLog?: Pick<PinoLogger, 'info' | 'error'>;
@@ -666,12 +665,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
   }
 
   private loadFromSettings(): void {
-    const raw = this.deps.homey.settings.get(DEVICE_DIAGNOSTICS_STATE_KEY) as unknown;
-    const sanitized = sanitizePersistedState({
-      raw,
-      persistVersion: DEVICE_DIAGNOSTICS_PERSIST_VERSION,
-      windowDays: DEVICE_DIAGNOSTICS_WINDOW_DAYS,
-    });
+    const sanitized = this.deps.diagnosticsStateStore.read();
     this.persistedState = sanitized.state;
     const prunedDayCount = this.pruneExpiredDays(Date.now());
     this.lastSeenDateKey = getDateKeyInTimeZone(new Date(), this.deps.getTimeZone());
@@ -1327,7 +1321,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
 
     this.persistedState.generatedAt = nowTs;
     try {
-      this.deps.homey.settings.set(DEVICE_DIAGNOSTICS_STATE_KEY, this.persistedState);
+      this.deps.diagnosticsStateStore.write(this.persistedState);
       this.lastFlushMs = nowTs;
       this.dirty = false;
       const dirtyDeviceCount = this.dirtyDeviceIds.size;
