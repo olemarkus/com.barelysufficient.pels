@@ -24,16 +24,9 @@ import {
   DEFERRED_OBJECTIVE_OBSERVATION_WATERMARK,
   DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING,
   DEFERRED_OBJECTIVES_PERKEY_MIGRATED,
-  LEARNED_THERMOSTAT_DEADBAND_C,
 } from '../../lib/utils/settingsKeys';
 import { isFiniteNumber } from '../../lib/utils/appTypeGuards';
 import { normalizeError } from '../../lib/utils/errorUtils';
-import {
-  LEARNED_THERMOSTAT_DEADBAND_MAX_C,
-  getLearnedThermostatDeadbandC,
-  normaliseLearnedThermostatDeadbandMap,
-  updateLearnedThermostatDeadband,
-} from '../../lib/utils/learnedThermostatDeadbandStore';
 import type { AppContext } from '../../lib/app/appContext';
 
 // How long the deferred-objective observation watermark can be stale before we advance it
@@ -141,72 +134,10 @@ export function createDeferredObjectivePlanHistoryRecorder(
     persistInProgressAnchors: (anchors) => (
       ctx.deferredObjectiveActivePlanRecorder?.applyInProgressAnchors(anchors)
     ),
-    onMetStalledEntry: (entry) => updateLearnedThermostatDeadbandFromEntry(ctx, entry),
   });
   runStartupBackfill(ctx, recorder);
   return recorder;
 }
-
-// Translate a met/stalled history entry into a fresh deadband observation and
-// EMA-merge it into the persisted per-device map. The observation is the gap
-// between the value PELS commanded during planned hours
-// (`targetTemperatureC + currentLearnedDeadband`) and the temperature the
-// room actually reached before the device's local controller stopped drawing
-// (`finalProgressC`). Both inputs are guarded — a corrupted persisted map or
-// a missing `finalProgressC` skip the update rather than feeding noise into
-// the EMA.
-const updateLearnedThermostatDeadbandFromEntry = (
-  ctx: AppContext,
-  entry: {
-    deviceId: string;
-    targetTemperatureC: number | null;
-    finalProgressC: number | null;
-  },
-): void => {
-  if (entry.targetTemperatureC === null || entry.finalProgressC === null) return;
-  if (!isFiniteNumber(entry.targetTemperatureC) || !isFiniteNumber(entry.finalProgressC)) return;
-  let rawMap: unknown;
-  try {
-    rawMap = ctx.homey.settings.get(LEARNED_THERMOSTAT_DEADBAND_C);
-  } catch (error) {
-    ctx.getStructuredLogger('deferred_objectives')?.error({
-      event: 'learned_thermostat_deadband_read_failed',
-      err: normalizeError(error),
-    });
-    return;
-  }
-  const map = normaliseLearnedThermostatDeadbandMap(rawMap);
-  const commandedSetpointC = entry.targetTemperatureC + getLearnedThermostatDeadbandC(map, entry.deviceId);
-  const observedDeadbandC = commandedSetpointC - entry.finalProgressC;
-  // Skip large observations — they indicate a device plateau (e.g. Connected
-  // 300 water heater stalled at 61.5 °C against a 65 °C target with a 3.5 °C
-  // gap) rather than a thermostat control-loop deadband. The standard 5 °C /
-  // 5 min `near_target_idle` classifier path fires for any gap inside the
-  // hold band, but a true control-loop deadband signal is by definition
-  // small. `LEARNED_THERMOSTAT_DEADBAND_MAX_C` (1.0 °C) is the natural
-  // separator: the over-command cap was set to the upper bound of plausible
-  // deadbands, so observations exceeding it are not deadband evidence and
-  // would corrupt the EMA if mixed in. The `capped_idle` classifier path
-  // catches the well-below-target case for `gap > 5 °C` and maps to
-  // `metReason: 'stalled_device_capped'`, which the recorder hook already
-  // filters out — this guard handles the same physical case for stalls
-  // inside the standard hold band where the gap reads as smaller.
-  if (observedDeadbandC > LEARNED_THERMOSTAT_DEADBAND_MAX_C) return;
-  const nextMap = updateLearnedThermostatDeadband({
-    map,
-    deviceId: entry.deviceId,
-    observedDeadbandC,
-  });
-  if (nextMap === map) return;
-  try {
-    ctx.homey.settings.set(LEARNED_THERMOSTAT_DEADBAND_C, nextMap);
-  } catch (error) {
-    ctx.getStructuredLogger('deferred_objectives')?.error({
-      event: 'learned_thermostat_deadband_persist_failed',
-      err: normalizeError(error),
-    });
-  }
-};
 
 // Look up the persisted V2 combined-prices entry whose hour-aligned
 // `startsAt` equals `hourStartMs` and map its already-resolved
