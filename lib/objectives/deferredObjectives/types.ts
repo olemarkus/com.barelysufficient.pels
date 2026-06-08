@@ -167,6 +167,22 @@ export type DeferredObjectiveHorizonPlan = {
   // hours at the next `:58` settle. See
   // notes/deferred-load-objectives/execution-adaptation.md work item 2.
   priceDeferralEligible: boolean;
+  // Far edge of the AVAILABLE price data this plan was computed against, in epoch
+  // ms — the end of the last published price hour that overlaps `[nowMs,
+  // deadlineAtMs)` (i.e. `max(priceHorizonEntry.startMs) + 1h`, NOT re-clamped to
+  // the deadline beyond the window the price layer already applies). This is the
+  // authoritative "prices were valid through" watermark the active-plan recorder
+  // compares across revisions to decide whether a later revision genuinely
+  // consumed a fresher price publication (`prices_revised`) versus an internal
+  // schedule reshuffle (`schedule_revised`). It deliberately does NOT come from
+  // `plannedBuckets` (those are deadline-clamped allocator output and saturate at
+  // the deadline once a plan is committed, so they can never advance — the
+  // original `schedule_revised` mislabel). `null`/absent when no price horizon
+  // backed this plan (frozen mid-hour read, prices missing, or price optimization
+  // off); the recorder then carries the previous revision's watermark forward
+  // (falling back to the legacy bucket-end value only when there is none) rather
+  // than resetting it. Optional/back-compat: legacy diagnostics omit it.
+  pricesAvailableUpToMs?: number | null;
   // Per-cycle COLD-START price release. True when a later hour is meaningfully
   // cheaper than the current hour AND the full buffered need fits into those
   // cheaper future hours at the device's CLIMBED (real-element) step. The
