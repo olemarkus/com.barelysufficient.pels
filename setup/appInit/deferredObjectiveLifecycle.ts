@@ -33,6 +33,7 @@ import {
   disableDeferredObjectiveInSettings,
   requireDeferredObjectiveActivePlanRecorder,
   requireDeferredObjectivePlanHistoryRecorder,
+  runPendingDeferredObjectiveBackfill,
   WATERMARK_IDLE_REFRESH_MS,
   writeWatermark,
 } from './deferredRecorders';
@@ -357,6 +358,13 @@ export function createDeferredObjectiveLifecycleEmitter(
     ),
     observeDeferredObjectivePlanHistory: (diagnostics, nowMs, activePlans, getStallClassification) => {
       const recorder = requireDeferredObjectivePlanHistoryRecorder(ctx);
+      // Run the offline-window back-fill that an earlier boot deferred because the per-key
+      // migration marker was still unset (an empty-`getKeys()` flake). `getDeferredObjectiveSettings`
+      // above already retried `migrateBlobToPerKeyIfNeeded` on this same tick, so the marker is
+      // now set when the retry succeeded — back-fill the pending `(watermark, now]` window HERE,
+      // before the watermark-advance below jumps it to `now` and silently skips the migrated
+      // legacy task's elapsed deadline. No-op once back-fill completed for this session.
+      runPendingDeferredObjectiveBackfill(ctx, recorder);
       recorder.observe(diagnostics, nowMs, activePlans, getStallClassification);
       // Persist the watermark when we flushed new history (recorder is clean and the save
       // succeeded). Otherwise, if the recorder is clean and enough time has passed since the
@@ -371,6 +379,13 @@ export function createDeferredObjectiveLifecycleEmitter(
         return;
       }
       if (recorder.isDirty()) return;
+      // A still-pending back-fill (a boot flake deferred the migration and this tick's retry
+      // didn't complete it — e.g. getKeys() flaked empty again) means the (watermark, now]
+      // offline window is still owed. The idle-refresh advance must NOT jump the watermark
+      // past it, or the owed window is permanently skipped — the same silent-history-loss the
+      // back-fill path itself guards against. Leave the watermark; a later healthy tick
+      // completes the back-fill and advances it then.
+      if (ctx.deferredObjectiveBackfillPending) return;
       if (nowMs - lastWatermarkPersistMs < WATERMARK_IDLE_REFRESH_MS) return;
       writeWatermark(ctx, nowMs);
       lastWatermarkPersistMs = nowMs;
