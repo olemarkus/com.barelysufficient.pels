@@ -2,6 +2,7 @@ import type { BinaryControlCapabilityId } from '../../packages/contracts/src/typ
 import { RESTORE_COOLDOWN_MS } from './planConstants';
 import type { PowerFreshnessState } from './planPowerFreshness';
 import type {
+  BinaryControlDiscriminantProbe,
   DevicePlanDevice,
   PendingTargetCommandStatus,
   PendingTargetObservationSource,
@@ -64,7 +65,6 @@ export type OvershootTrackedPlanDevice = Pick<
   | 'controllable'
   | 'plannedState'
   | 'currentState'
-  | 'binaryControl'
   | 'measuredPowerKw'
   | 'expectedPowerKw'
   | 'planningPowerKw'
@@ -72,11 +72,16 @@ export type OvershootTrackedPlanDevice = Pick<
   | 'binaryCommandPending'
   | 'stepCommandPending'
   | 'reason'
-> & {
-  pendingBinaryOnCommand: boolean;
-  pendingBinaryOffCommand: boolean;
-  pendingTargetCommand: boolean;
-};
+>
+  // `binaryControl` is OMITTED from `DevicePlanDeviceBase` (orthogonal
+  // `BinaryControlKind`), so it can't be Pick'd off the base — carry it as the
+  // optional probe shape, sourced by the producer via `isBinaryPlanDevice`.
+  & BinaryControlDiscriminantProbe
+  & {
+    pendingBinaryOnCommand: boolean;
+    pendingBinaryOffCommand: boolean;
+    pendingTargetCommand: boolean;
+  };
 
 export type PlanEngineState = {
   appStartedAtMs: number;
