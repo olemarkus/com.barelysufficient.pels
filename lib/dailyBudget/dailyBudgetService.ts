@@ -2,6 +2,7 @@ import type Homey from 'homey';
 import type { PowerTrackerState } from '../power/tracker';
 import { isFiniteNumber } from '../utils/appTypeGuards';
 import { readCombinedPriceData } from '../price/priceStore';
+import type { CombinedPricesReader } from '../price/combinedPricesReader';
 import {
   DAILY_BUDGET_ENABLED,
   DAILY_BUDGET_KWH,
@@ -61,7 +62,7 @@ type DailyBudgetServiceDeps = {
   getPowerTracker: () => PowerTrackerState;
   getPriceOptimizationEnabled: () => boolean;
   getCapacitySettings: () => { limitKw: number; marginKw: number };
-  requestPriceRefetch: () => void;
+  combinedPricesReader: CombinedPricesReader;
   structuredLog?: PinoLogger;
   debugStructured?: StructuredDebugEmitter;
 };
@@ -191,9 +192,6 @@ export class DailyBudgetService {
     this.deps.homey.settings.set(DAILY_BUDGET_PRICE_FLEX_SHARE, settings.priceShapingFlexShare);
   }
 
-  private get priceStoreDeps() {
-    return { homey: this.deps.homey, requestRefetch: this.deps.requestPriceRefetch };
-  }
   private resolveTimeZone(): string {
     try {
       const tz = this.deps.homey.clock?.getTimezone?.();
@@ -224,7 +222,7 @@ export class DailyBudgetService {
     const nowMs = params.nowMs ?? Date.now();
     const includeAdjacentDays = params.includeAdjacentDays === true;
     const timeZone = this.resolveTimeZone();
-    const combinedPrices = readCombinedPriceData(this.priceStoreDeps, new Date(nowMs), timeZone);
+    const combinedPrices = readCombinedPriceData(this.deps.combinedPricesReader, new Date(nowMs), timeZone);
     const capacity = this.deps.getCapacitySettings();
     const capacityBudgetKWh = resolveUsableCapacityKw(capacity);
     try {
@@ -295,7 +293,7 @@ export class DailyBudgetService {
     if (!this.adjacentDayDepsCache) {
       this.adjacentDayDepsCache = {
         resolveTimeZone: () => this.resolveTimeZone(),
-        priceStoreDeps: this.priceStoreDeps,
+        combinedPricesReader: this.deps.combinedPricesReader,
         getCapacitySettings: () => this.deps.getCapacitySettings(),
         getPowerTracker: () => this.deps.getPowerTracker(),
         getPriceOptimizationEnabled: () => this.deps.getPriceOptimizationEnabled(),
@@ -428,7 +426,7 @@ export class DailyBudgetService {
     const active = this.snapshot;
     const manager = this.createManagerClone();
     const timeZone = this.resolveTimeZone();
-    const combinedPrices = readCombinedPriceData(this.priceStoreDeps, new Date(nowMs), timeZone);
+    const combinedPrices = readCombinedPriceData(this.deps.combinedPricesReader, new Date(nowMs), timeZone);
     const capacity = this.deps.getCapacitySettings();
     const capacityBudgetKWh = resolveUsableCapacityKw(capacity);
     const update = manager.update({

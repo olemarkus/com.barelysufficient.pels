@@ -1,6 +1,6 @@
 import type { AppContext } from '../../lib/app/appContext';
 import type { BuildPriceHorizon } from '../../lib/objectives/deferredObjectives';
-import { buildPriceHorizonFromCombined, readPriceStore } from '../../lib/price/priceStore';
+import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
 
 // Single source of truth for the deferred-objective allocation-horizon price
 // source. Resolves the per-hour price grid directly from the price layer (a
@@ -10,11 +10,7 @@ import { buildPriceHorizonFromCombined, readPriceStore } from '../../lib/price/p
 // create-task preview wiring.
 export const createObjectivePriceHorizonBuilder = (ctx: AppContext): BuildPriceHorizon => (
   (nowMs, deadlineAtMs) => buildPriceHorizonFromCombined(
-    readPriceStore(
-      { homey: ctx.homey, requestRefetch: () => ctx.priceCoordinator?.updateCombinedPrices() },
-      ctx.getNow(),
-      ctx.getTimeZone(),
-    ),
+    ctx.combinedPricesReader.readStore(ctx.getNow(), ctx.getTimeZone()),
     nowMs,
     deadlineAtMs,
   )

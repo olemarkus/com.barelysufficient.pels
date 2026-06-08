@@ -7,6 +7,7 @@ import {
   buildDeferredObjectivePolicyHorizon,
 } from '../../lib/objectives/deferredObjectives/policyHorizon';
 import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
+import { createCombinedPricesReader } from '../../setup/priceCombinedPricesAdapter';
 import {
   COMBINED_PRICES,
   DAILY_BUDGET_ENABLED,
@@ -66,17 +67,18 @@ const buildService = (initialSettings: SettingsStore): {
   const set = vi.fn((key: string, value: unknown) => {
     settings[key] = value;
   });
+  const homey = {
+    settings: { get, set, on: vi.fn(), off: vi.fn() },
+    clock: { getTimezone: () => TZ },
+  } as any;
   const service = new DailyBudgetService({
-    homey: {
-      settings: { get, set, on: vi.fn(), off: vi.fn() },
-      clock: { getTimezone: () => TZ },
-    } as any,
+    homey,
     log: () => undefined,
     error: () => undefined,
     getPowerTracker: () => ({ buckets: {} }),
     getPriceOptimizationEnabled: () => true,
     getCapacitySettings: () => ({ limitKw: 10, marginKw: 2 }),
-    requestPriceRefetch: () => undefined,
+    combinedPricesReader: createCombinedPricesReader({ homey, requestRefetch: () => undefined }),
   });
   service.loadSettings();
   return {
