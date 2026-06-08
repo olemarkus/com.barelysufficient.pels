@@ -95,18 +95,6 @@ not a release gate.*
 The flow-reported / pendingBinaryCommands / stepped-restore-wrapper / stepped-swap-completion /
 deviceOverview entries shipped in the 2026-06-03 train; the two below remain deferred.*
 
-- [x] **Remove the legacy stepped-load evidence fields from persisted/API contracts.** Shipped:
-      retired the redundant raw-evidence trio `actualStepId` / `assumedStepId` / `actualStepSource`
-      (type `SteppedLoadActualStepSource`) from `TargetDeviceSnapshot`, `PlanInputDevice`, and
-      `DevicePlanDevice`. Provenance now lives solely in the discriminated
-      `NormalizedSteppedLoadStepState` adapter (`lib/plan/planSteppedLoadState.ts`); producers stopped
-      emitting the trio and consumers gate on `reportedStepId` presence. No persisted-state migration
-      needed (snapshots are runtime-only, rebuilt from the Homey SDK each boot). `selectedStepId` was
-      intentionally KEPT: it is not a compatibility shim but the producer-resolved EFFECTIVE step
-      (`reportedStepId ?? planning fallback`) read by ~30 planner/executor/restore sites. Collapsing it
-      into per-site `resolveEffectiveStepId(...)` calls is a much larger, riskier rewrite tracked by the
-      discriminated-snapshots item below (which would discriminate stepped variants and naturally
-      subsume the effective-step read). Do not re-file `selectedStepId` removal as a standalone item.
 - [ ] **Tighten the device-state snapshots to discriminated types.** `TargetDeviceSnapshot`,
       `DevicePlanDevice`, and `PlanInputDevice` carry binary/temperature/stepped/EV/freshness/power
       fields as one nullable bag; discriminate by control kind so the compiler enforces per-variant
@@ -352,38 +340,6 @@ styling" items were written against UI that no longer exists — there are zero
 smart-task charts already share the palette tokens and are deliberately different
 chart types, not two languages for one chart. Do not re-raise from the stale
 live-walk screenshots.*
-- [x] Add a device-log view in the Settings UI, and reuse the shared device overview formatter so
-      the visible device-log wording matches backend overview transition logs exactly.
-      Files: settings UI advanced/device-log surface, `packages/shared-domain/src/deviceOverview.ts`.
-      Shipped as an "Activity log" disclosure on the device-detail page. Data source: a bounded
-      in-memory overview-transition recorder (`lib/plan/deviceOverviewLog.ts`) fed from the same
-      signature-change boundary `PlanService.emitOverviewTransitions` uses for the structured
-      overview log, served via a new `/ui_device_log` read endpoint. Log-parity is guaranteed by
-      construction: the recorder stores the verbatim `formatDeviceOverview` output (`DeviceOverviewStrings`).
-      Deferred follow-ups (P3, persona: curious tinkerer — wants to debug their own setup over time):
-      the recorder is session-only (no persistence), so the log is empty after a restart — hypothesis:
-      a persisted ring buffer would let the tinkerer review what happened overnight; needs the
-      Homey-SDK transient-read grace pattern before persisting. Also currently per-device only
-      (reached via device detail); a cross-device "recent activity" feed on Overview is a possible
-      later surface if the per-device view proves used.
-      P3 (persona: contributor): `STATE_TONE_CHIP_MODIFIER` in `DeviceLogView.tsx` duplicates
-      `PLAN_STATE_CHIP_MODIFIER` in `PlanDeviceCards.tsx` — both live in `settings-ui/src/ui/views/`
-      (same side of every boundary), so fold them into one shared `chipModifierForTone()` helper to
-      stop the tone→chip-class map drifting between the live card and the log. Source:
-      pels-layering-guardian on PR #1546.
-- [x] Finish the planner/executor/device-transport state boundary split. *(done: the last
-      flow-backed binary transport detail is now sealed behind the dispatch seam. The plan layer
-      already resolved flow-vs-native once via `isFlowBackedBinaryControl` and packaged it on
-      `BinaryControlDecision`; the dispatch wrapper now surfaces that resolved flag outward as
-      `BinaryControlOutcome.flowBacked` (`lib/executor/binaryControlDispatch.ts`), so the three
-      executor post-write recording sites — `turnOffDevice` shed, `applyBinaryRestoreWithSnapshot`,
-      `applyCapacityControlOffRestoreWithSnapshot` — read `outcome.flowBacked` instead of
-      re-deriving it from the snapshot. `isFlowBackedBinaryControl` is no longer imported anywhere
-      under `lib/executor/**`; the new `binary:seam` guard (`scripts/check-binary-seam.mjs`, wired
-      into `ci:checks`) locks that in place. Removing the recompute also dropped `turnOffDevice`
-      below the complexity ceiling, retiring its `eslint-disable complexity` pragma. The
-      `ExecutablePlan` / `ExecutableObservedState` dispatch + drift boundaries were already split in
-      prior trains; this closes the named remaining work.)
 - [ ] Split app lifecycle context into initialized vs initializing phases so services that are
       required after startup are not exposed forever as optional fields.
       Files: `lib/app/appContext.ts`, `app.ts`, app init/service tests.
@@ -401,20 +357,6 @@ live-walk screenshots.*
       readability or testability. (`resolveHasBinaryControl` no longer exists as a shared symbol —
       that part is already handled.)
       Files: `app.ts`, `setup/appInit/**`.
-- [x] Stop granting blanket `max-lines` exemptions. *(done: all 16 runtime files carrying a
-      file-level `/* eslint-disable max-lines */` blanket pragma — `app.ts`, `flowCards/registerFlowCards.ts`,
-      `setup/appDebugHelpers.ts`, `lib/device/deviceTransport.ts`, `lib/device/transport/managerObservation.ts`,
-      `lib/dailyBudget/dailyBudgetService.ts`, `lib/plan/{planBuilder,planReasons,planService}.ts`,
-      `lib/plan/restore/{index,helpers}.ts`, `lib/executor/{binaryExecutor,targetExecutor,steppedLoadExecutor}.ts`,
-      `lib/objectives/deferredObjectives/{activePlanRecorder,diagnosticsBridge}.ts` — now have a cited
-      per-file `max-lines` override in `eslint.config.mjs` with a concrete ceiling just above current
-      effective size and a structural reason (Bucket B per the policy note). The stale `app.ts` 750
-      override was corrected to its true size (the blanket pragma had been masking ~1885 effective lines).
-      No blanket `max-lines` pragmas remain; `npm run lint --max-warnings=0` is green WITHOUT them.
-      Other-rule file-level pragmas left intact (`managerObservation.ts` `max-params`, `appDebugHelpers.ts`
-      `functional/immutable-data`) and targeted `eslint-disable-next-line` suppressions were out of scope.)
-      Proposal: `notes/complexity-cleanup/god-file-policy.md`. The shrink-to-<=500 follow-ups for the
-      Bucket-A-adjacent files are split out below.
 - [ ] Split the larger Bucket-B god-files toward <=500 when next touched (named here so the ceilings in
       `eslint.config.mjs` are accountable, not permanent): `lib/device/deviceTransport.ts` (~2148, peel off a
       transport subsystem on a clear boundary), `lib/plan/restore/index.ts` (~1327, swap-flow vs per-device
@@ -426,49 +368,14 @@ live-walk screenshots.*
       `diagnosticsBridge.ts` (~739, per-concern payload builders), `setup/appDebugHelpers.ts` (~706, comparison
       serializer). Persona: contributor. Large structural splits — out of scope for the exemption sweep.
       Files: as listed.
-- [~] Add a hero summary to the Electricity prices settings panel. *(partial, landed in
-      `v2-7-3-budget-rhythm-and-polish`, 2026-05-18: one-sentence lede added under the panel
-      `pels-hero` h2 so users know what the panel controls.)* Remaining for a later pass:
-      a live "current tier / cheap / expensive / last-fetched" summary card. That requires
-      a new wiring path from the price service into the settings UI and was out of scope.
+- [ ] Add a live summary card to the Electricity prices settings panel. *(The one-sentence
+      lede landed in `v2-7-3-budget-rhythm-and-polish`, 2026-05-18.)* Remaining: a live
+      "current tier / cheap / expensive / last-fetched" summary card. That requires
+      a new wiring path from the price service into the settings UI.
       Files: `packages/settings-ui/src/ui/views/ElectricityPricesView.tsx` (lede done; the panel
       is now a Preact surface — `#electricity-prices-surface` — so the live summary card lands
       here too, NOT in `index.html`); price-service → UI wiring (the deadline surface already
       reads `priceScheme`/`lastFetched`, e.g. `deadlinePlanPending.ts`, as a wiring reference).
-- [x] Tighten the planner-to-executor projection so executable stepped-load intents cannot be
-      underspecified. The desired end state is an `input snapshots -> ExecutablePlan` boundary
-      where only core planning/admission sees both current and desired state; executable intents
-      contain commandable desired state only, and observed current state comes separately from
-      `ExecutableObservedState`. In particular, stepped `set_step` limiting should either carry a
-      concrete requested step or be represented as non-executable before drift/dispatch code sees
-      it.
-      Update: keep-invariant gate now reads `hasExecutableShedDevices` from the executable plan
-      so a dropped underspecified set_step shed no longer phantom-blocks unrelated stepped
-      restores; dropped intents are also surfaced via the `stepped_load_shed_intent_dropped`
-      structured debug event.
-      Closeout (`refactor/stepped-intent-desired-only`): `ExecutableSteppedLoadIntent` is now
-      desired-only — `planningCurrentOn` / `planningCurrentStepId` removed. Current state
-      (`on` / `stepId` / `stepIsOffStep` / `stepForShed`) is producer-resolved:
-      `resolveSteppedLoadCurrentFallback(planDevice)` resolves the effective on/step once on the
-      plan device (`resolveEffectiveCurrentOn` + `selectedStepId`) and the dispatch loop passes it
-      to the projection, so the executor reads current state from the observation when present and
-      this producer fallback otherwise — never from the (desired-only) intent. Drift reads the
-      planned current step from `planDevice.selectedStepId` (not the intent). The shed-release
-      stepped re-projection's `planningCurrentOn` branch was dead (the caller gates on an observed
-      step) and was dropped. Deliberately NOT done: the raw dispatch observed step is left
-      real-evidence-only (`observed.steppedLoad.stepId` stays undefined on the undecorated
-      `getSnapshot()` path) rather than joined from the effective `selectedStepId` — joining it
-      would have flipped the previously-dead stepped shed-release dispatch path into a live
-      `set_step` command satisfiable by a planning assumption (no real SDK report), weakening the
-      trusted-evidence gate. Reviving that path (gated on `reportedStepId`) is a separate
-      intentional change, not this refactor. Behaviour-preserving; regression tests assert the raw
-      dispatch path keeps the observed step undefined yet resolves the current step from the
-      producer fallback, and that the shed-release gate no-ops without a real observed step.
-      Files: `lib/executor/executableSteppedLoadProjection.ts`, `lib/executor/executablePlan.ts`,
-      `lib/executor/executablePlanProjection.ts`, `lib/executor/planExecutor.ts`,
-      `lib/executor/planExecutionDrift.ts`, `lib/executor/shedReleaseActuation.ts`, stepped
-      executable projection/drift tests.
-
 *Smart-task controller extraction (2026-05-30, `feat/smarttask-lifecycle-producer`).
 Program to make the planner know nothing about smart tasks (deferred objectives):
 relocate the lifecycle out of `lib/plan` into a clock-driven controller that
@@ -492,6 +399,21 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
 (`notes/personas.md`) it serves. Items that can't name all three are maintainability/
 cosmetic chores — do them in passing or drop them; don't park them here.*
 
+- [ ] **Persist the device Activity-log so it survives a restart.**
+      *Persona:* curious tinkerer (`notes/personas.md`) — wants to debug their own setup over time.
+      *Hypothesis:* the Activity-log recorder (`lib/plan/deviceOverviewLog.ts`, served via
+      `/ui_device_log`) is session-only, so the log is empty after a restart; a persisted ring buffer
+      would let the tinkerer review what happened overnight.
+      *Why it's needed:* the one surface that reconstructs per-device history is wiped on every boot.
+      Needs the Homey-SDK transient-read grace pattern before persisting. A later cross-device "recent
+      activity" feed on Overview is a possible follow-on if the per-device view proves used.
+- [ ] **Fold the duplicate tone→chip-class map into one shared helper.**
+      *Persona:* contributor (`notes/personas.md`).
+      *Hypothesis:* `STATE_TONE_CHIP_MODIFIER` in `DeviceLogView.tsx` duplicates
+      `PLAN_STATE_CHIP_MODIFIER` in `PlanDeviceCards.tsx` (both in `settings-ui/src/ui/views/`, same
+      side of every boundary), so the maps drift between the live card and the log.
+      *Why it's needed:* fold them into one shared `chipModifierForTone()` helper to stop the drift.
+      Source: pels-layering-guardian on PR #1546.
 - [ ] **Restore non-stepped control-mode granularity to the device-overview change signature.**
       *Persona:* Homey owner (`notes/personas.md`) watching the device-overview/activity-log refresh.
       *Hypothesis:* now that the planner no longer carries `controlModel`, the overview/log seam
@@ -777,14 +699,6 @@ Both are data-gated: act only when prod evidence shows the gap, else leave alone
 *Demoted from P2 (2026-06-03 scrutiny pass) — real product / future-capability work with a
 persona but no current support-cost pressure; reframed to the P3 bar.*
 
-- [x] **Smart-tasks widget — legible `at_risk` tone on the dark host.** Shipped: the warn/danger
-      row body line (`.row__values`) now takes the Homey warning/danger text token
-      (`--pw-text-warning` / `--pw-text-danger`), the same one the eta already uses — so the whole
-      left column reads as warning at a glance instead of staying the muted grey of an inert row.
-      Per owner steer, the signal is carried by Homey-native text emphasis, NOT by bumping the
-      near-invisible 12% tonal fill (Homey provides no warning *surface* token, only colour tokens).
-      Also fixed the stale `default` smart_tasks harness mock (missing required `endedRows`, which
-      threw before render). Files: `widgets/smart_tasks/src/public/index.css`.
 - [ ] **Miss-streak rollup on Overview.**
       *Persona:* recovering-from-mistake owner (#5) — reaches Overview from a notification, not via
       Smart-tasks.
