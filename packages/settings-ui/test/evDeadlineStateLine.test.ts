@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { EvDeadlineStateLine } from '../src/ui/views/PlanDeviceCards.tsx';
 import { state } from '../src/ui/state.ts';
 import { createEmptyDeferredObjectiveSettings } from '../../contracts/src/deferredObjectiveSettings.ts';
+import type { OverviewDeferredObjectiveActivePlan } from '../../contracts/src/deferredObjectiveActivePlans.ts';
 
 // Fixed reference point: 2026-01-01 12:00:00 UTC
 const NOW_MS = Date.UTC(2026, 0, 1, 12, 0, 0);
@@ -29,6 +30,30 @@ const seedEvObjective = (deviceId: string, overrides: { enabled?: boolean; deadl
     },
   };
 };
+
+// The Overview EV-state line reads only the narrow `OverviewDeferredObjectiveActivePlan`
+// (`latest` + `diagnosticReasonCode`) off `state.deferredObjectiveActivePlans`, so seed
+// exactly that shape — value columns are deliberately unreachable here.
+const seedActivePlan = (deviceId: string, plan: OverviewDeferredObjectiveActivePlan): void => {
+  state.deferredObjectiveActivePlans = {
+    version: 1,
+    // Merge rather than replace so a multi-device test can seed plans incrementally.
+    plansByDeviceId: { ...state.deferredObjectiveActivePlans?.plansByDeviceId, [deviceId]: plan },
+  };
+};
+
+const latestWithHours = (
+  hours: { startsAtMs: number; plannedKWh: number }[],
+  revisedAtMs: number = NOW_MS,
+): OverviewDeferredObjectiveActivePlan['latest'] => ({
+  revision: 1,
+  revisedAtMs,
+  computedFromPricesUpTo: null,
+  reason: 'flow_card',
+  hours,
+  energyNeededKWh: 5,
+  planStatus: 'on_track',
+});
 
 afterEach(() => {
   state.deferredObjectiveSettings = createEmptyDeferredObjectiveSettings();
@@ -72,32 +97,7 @@ describe('EvDeadlineStateLine', () => {
 
   it('renders nothing when there are no active plan hours and plug-out is not set', () => {
     seedEvObjective('ev-charger');
-    state.deferredObjectiveActivePlans = {
-      version: 1,
-      plansByDeviceId: {
-        'ev-charger': {
-          deviceId: 'ev-charger',
-          deviceName: 'Test EV',
-          objectiveKind: 'ev_soc',
-          targetTemperatureC: null,
-          targetPercent: 80,
-          deadlineAtMs: FUTURE_DEADLINE_MS,
-          startedAtMs: NOW_MS,
-          pending: false,
-          objectiveSignature: '',
-          original: null,
-          latest: {
-            revision: 1,
-            revisedAtMs: NOW_MS,
-            computedFromPricesUpTo: null,
-            reason: 'flow_card',
-            hours: [],
-            energyNeededKWh: 5,
-            planStatus: 'on_track',
-          },
-        },
-      },
-    };
+    seedActivePlan('ev-charger', { latest: latestWithHours([]) });
     const mount = renderStateLine('ev-charger');
     expect(mount.querySelector('.plan-card__ev-state')).toBeNull();
   });
@@ -105,32 +105,9 @@ describe('EvDeadlineStateLine', () => {
   it('shows next-start line when the first planned hour is in the future', () => {
     seedEvObjective('ev-charger');
     const futureStart = NOW_MS + 2 * ONE_HOUR_MS; // 14:00
-    state.deferredObjectiveActivePlans = {
-      version: 1,
-      plansByDeviceId: {
-        'ev-charger': {
-          deviceId: 'ev-charger',
-          deviceName: 'Test EV',
-          objectiveKind: 'ev_soc',
-          targetTemperatureC: null,
-          targetPercent: 80,
-          deadlineAtMs: FUTURE_DEADLINE_MS,
-          startedAtMs: NOW_MS,
-          pending: false,
-          objectiveSignature: '',
-          original: null,
-          latest: {
-            revision: 1,
-            revisedAtMs: NOW_MS,
-            computedFromPricesUpTo: null,
-            reason: 'flow_card',
-            hours: [{ startsAtMs: futureStart, plannedKWh: 3 }],
-            energyNeededKWh: 5,
-            planStatus: 'on_track',
-          },
-        },
-      },
-    };
+    seedActivePlan('ev-charger', {
+      latest: latestWithHours([{ startsAtMs: futureStart, plannedKWh: 3 }]),
+    });
     const el = renderStateLine('ev-charger').querySelector('.plan-card__ev-state');
     expect(el).not.toBeNull();
     expect(el?.textContent).toMatch(/^Waiting · charging starts /);
@@ -142,32 +119,9 @@ describe('EvDeadlineStateLine', () => {
     seedEvObjective('ev-charger');
     // Started 30 minutes ago, ends in 30 minutes
     const activeStart = NOW_MS - 30 * 60 * 1000;
-    state.deferredObjectiveActivePlans = {
-      version: 1,
-      plansByDeviceId: {
-        'ev-charger': {
-          deviceId: 'ev-charger',
-          deviceName: 'Test EV',
-          objectiveKind: 'ev_soc',
-          targetTemperatureC: null,
-          targetPercent: 80,
-          deadlineAtMs: FUTURE_DEADLINE_MS,
-          startedAtMs: NOW_MS - ONE_HOUR_MS,
-          pending: false,
-          objectiveSignature: '',
-          original: null,
-          latest: {
-            revision: 1,
-            revisedAtMs: NOW_MS - ONE_HOUR_MS,
-            computedFromPricesUpTo: null,
-            reason: 'flow_card',
-            hours: [{ startsAtMs: activeStart, plannedKWh: 3 }],
-            energyNeededKWh: 5,
-            planStatus: 'on_track',
-          },
-        },
-      },
-    };
+    seedActivePlan('ev-charger', {
+      latest: latestWithHours([{ startsAtMs: activeStart, plannedKWh: 3 }], NOW_MS - ONE_HOUR_MS),
+    });
     const el = renderStateLine('ev-charger').querySelector('.plan-card__ev-state');
     expect(el).not.toBeNull();
     expect(el?.textContent).toMatch(/^Charging · planned finish /);
@@ -177,26 +131,7 @@ describe('EvDeadlineStateLine', () => {
 
   it('shows plug-out paused line when diagnosticReasonCode is objective_invalid_session', () => {
     seedEvObjective('ev-charger');
-    state.deferredObjectiveActivePlans = {
-      version: 1,
-      plansByDeviceId: {
-        'ev-charger': {
-          deviceId: 'ev-charger',
-          deviceName: 'Test EV',
-          objectiveKind: 'ev_soc',
-          targetTemperatureC: null,
-          targetPercent: 80,
-          deadlineAtMs: FUTURE_DEADLINE_MS,
-          startedAtMs: NOW_MS,
-          pending: true,
-          pendingReason: 'device_data_missing',
-          diagnosticReasonCode: 'objective_invalid_session',
-          objectiveSignature: '',
-          original: null,
-          latest: null,
-        },
-      },
-    };
+    seedActivePlan('ev-charger', { latest: null, diagnosticReasonCode: 'objective_invalid_session' });
     const el = renderStateLine('ev-charger').querySelector('.plan-card__ev-state');
     expect(el).not.toBeNull();
     expect(el?.textContent).toBe('Charging paused — car unplugged');
@@ -204,26 +139,8 @@ describe('EvDeadlineStateLine', () => {
 
   it('does not show plug-out paused when device_data_missing but no specific diagnostic reason', () => {
     seedEvObjective('ev-charger');
-    state.deferredObjectiveActivePlans = {
-      version: 1,
-      plansByDeviceId: {
-        'ev-charger': {
-          deviceId: 'ev-charger',
-          deviceName: 'Test EV',
-          objectiveKind: 'ev_soc',
-          targetTemperatureC: null,
-          targetPercent: 80,
-          deadlineAtMs: FUTURE_DEADLINE_MS,
-          startedAtMs: NOW_MS,
-          pending: true,
-          pendingReason: 'device_data_missing',
-          // No diagnosticReasonCode — generic missing data
-          objectiveSignature: '',
-          original: null,
-          latest: null,
-        },
-      },
-    };
+    // No diagnosticReasonCode — generic missing data
+    seedActivePlan('ev-charger', { latest: null });
     const mount = renderStateLine('ev-charger');
     expect(mount.querySelector('.plan-card__ev-state')).toBeNull();
   });
@@ -233,34 +150,10 @@ describe('EvDeadlineStateLine', () => {
     // Active-charging is more actionable than plug-out paused.
     seedEvObjective('ev-charger');
     const activeStart = NOW_MS - 30 * 60 * 1000;
-    state.deferredObjectiveActivePlans = {
-      version: 1,
-      plansByDeviceId: {
-        'ev-charger': {
-          deviceId: 'ev-charger',
-          deviceName: 'Test EV',
-          objectiveKind: 'ev_soc',
-          targetTemperatureC: null,
-          targetPercent: 80,
-          deadlineAtMs: FUTURE_DEADLINE_MS,
-          startedAtMs: NOW_MS - ONE_HOUR_MS,
-          pending: true,
-          pendingReason: 'device_data_missing',
-          diagnosticReasonCode: 'objective_invalid_session',
-          objectiveSignature: '',
-          original: null,
-          latest: {
-            revision: 1,
-            revisedAtMs: NOW_MS - ONE_HOUR_MS,
-            computedFromPricesUpTo: null,
-            reason: 'flow_card',
-            hours: [{ startsAtMs: activeStart, plannedKWh: 3 }],
-            energyNeededKWh: 5,
-            planStatus: 'on_track',
-          },
-        },
-      },
-    };
+    seedActivePlan('ev-charger', {
+      latest: latestWithHours([{ startsAtMs: activeStart, plannedKWh: 3 }], NOW_MS - ONE_HOUR_MS),
+      diagnosticReasonCode: 'objective_invalid_session',
+    });
     const el = renderStateLine('ev-charger').querySelector('.plan-card__ev-state');
     // Active charging takes priority over plug-out
     expect(el?.textContent).toMatch(/^Charging · planned finish /);

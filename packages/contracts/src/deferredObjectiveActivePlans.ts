@@ -406,3 +406,24 @@ export type ResolvedDeferredObjectiveActivePlansV1 = {
   version: 1;
   plansByDeviceId: Record<string, ResolvedDeferredObjectiveActivePlanV1>;
 };
+
+// Narrow read-only view for the Overview device-card EV-state line — the ONLY
+// fields `PlanDeviceCards` reads off the separately-loaded active-plans state
+// (`coerceDeferredObjectiveActivePlans` / `state.deferredObjectiveActivePlans`).
+// That state is seeded once from the resolved bootstrap payload and then
+// re-read from the raw persisted setting on every realtime change, so the two
+// shapes differ on the kind-split value columns — but neither the Overview
+// path NOR this type touches them. Typing the Overview state to this narrow
+// shape makes reading a value column there a compile error and removes the
+// resolved-vs-raw divergence (both satisfy this subset). The deadline-plan
+// surfaces read the fully-resolved `bootstrap.deferredObjectiveActivePlans`
+// instead, never this state.
+export type OverviewDeferredObjectiveActivePlan = Pick<
+  DeferredObjectiveActivePlanV1,
+  'latest' | 'diagnosticReasonCode'
+>;
+
+export type OverviewDeferredObjectiveActivePlans = {
+  version: 1;
+  plansByDeviceId: Record<string, OverviewDeferredObjectiveActivePlan>;
+};
