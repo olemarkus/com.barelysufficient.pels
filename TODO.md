@@ -793,13 +793,6 @@ persona but no current support-cost pressure; reframed to the P3 bar.*
       *Why:* money visibility is exactly this persona's question; Usage is the one surface that withholds
       it. Needs a per-device kWh API field. Files: `packages/contracts/src/settingsUiApi.ts`,
       `packages/settings-ui/src/ui/usageHero.ts`, `.../usageStatsChartsEcharts.ts`.
-- [ ] **Replace mechanically-generated widget preview PNGs with Figma-template exports** before App
-      Store publish.
-      *Persona:* prospective user evaluating PELS from the App Store listing.
-      *Hypothesis:* the hand-rolled SVG-via-script mockups are compliant stop-gaps but read as
-      amateurish; polished previews raise first-impression install trust.
-      *Why:* store first-impression for a not-yet-user. Files: `widgets/*/scripts/build-previews.mjs`
-      + SVG sources. Source: pels-m3-critic.
 - [ ] **Sticky/debounced `at_risk` smart-task rescue (phase 2).**
       *Persona:* skeptical optimiser whose plan churns around the satisfied↔at_risk boundary.
       *Hypothesis:* the contract/runtime already parse an `at_risk` rescue mode that the JSON dropdown
