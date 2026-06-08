@@ -2859,7 +2859,9 @@ describe('Device plan snapshot', () => {
       driverA: new MockDriver('driverA', [dev1, dev2, dev3]),
     });
 
-    // Set priorities: dev-1 is #1 (most important), dev-3 is #5, dev-2 is #10 (least important)
+    // Set priorities with gaps: dev-1 #1 (most important), dev-3 #5, dev-2 #10
+    // (least important). The settings port closes the gaps on read, so the
+    // relative order is preserved but the resolved ranks are contiguous 1/2/3.
     mockHomeyInstance.settings.set('capacity_priorities', {
       Home: { 'dev-1': 1, 'dev-2': 10, 'dev-3': 5 },
     });
@@ -2881,10 +2883,10 @@ describe('Device plan snapshot', () => {
     expect(deviceOrder[0].priority).toBe(1);
 
     expect(deviceOrder[1].name).toBe('Medium Priority Heater');
-    expect(deviceOrder[1].priority).toBe(5);
+    expect(deviceOrder[1].priority).toBe(2);
 
     expect(deviceOrder[2].name).toBe('Least Important Heater');
-    expect(deviceOrder[2].priority).toBe(10);
+    expect(deviceOrder[2].priority).toBe(3);
   });
 
   it('does not log swap messages twice when refreshTargetDevicesSnapshot and recordPowerSample run close together', async () => {

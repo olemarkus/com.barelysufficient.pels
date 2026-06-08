@@ -1,7 +1,9 @@
-// SDK-boundary e2e (createApp) — CHARACTERIZATION: how TWO priority-1 stepped
-// devices, each carrying a smart task with BOTH standing permissions (boost =
-// limit-lower-priority, AND exempt-from-budget), behave when they compete for a
-// NARROW hard-cap headroom, with mixed prices and the daily budget ON.
+// SDK-boundary e2e (createApp) — CHARACTERIZATION: how TWO stepped devices stored
+// with the SAME priority, each carrying a smart task with BOTH standing permissions
+// (boost = limit-lower-priority, AND exempt-from-budget), behave when they compete
+// for a NARROW hard-cap headroom, with mixed prices and the daily budget ON. The
+// settings port resolves the stored priority tie to a strict order, so one tank is
+// the deterministic winner — this test pins that arbitration end-to-end.
 //
 // THE RULE THIS TEST FOLLOWS (notes/testing-taxonomy.md): nothing internal is
 // mocked, the scenario is driven ONLY at the Homey SDK boundary (mock devices,
@@ -21,9 +23,11 @@
 //     the cap to within one small step, so the restore lane admits ONE escalation
 //     at a time (the other waits on its meter-settling window) — they take turns,
 //     never both stepping up in the same cycle.
-//  4. Neither can fully reach target by the deadline under the narrow cap; the
-//     reserved headroom is split between the two equal-priority tasks, so both
-//     book the same floor energy and both resolve `cannot_meet`.
+//  4. The stored priorities tie both tanks; the settings port breaks the tie into a
+//     strict order (deviceId asc → tank_a wins). Under the narrow cap the winner
+//     takes the headroom and reaches target (`on_track`) while the loser, on second
+//     pick, only partly progresses (`at_risk`) — instead of an equal-priority split
+//     leaving both `cannot_meet`.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp } from '../utils/appTestUtils';
@@ -142,7 +146,7 @@ describe('two boost+exempt smart tasks, narrow headroom, daily budget ON (SDK-bo
     vi.useRealTimers();
   });
 
-  it('both tasks boost past the shed invariant and take turns under the narrow hard cap; neither meets target', async () => {
+  it('both tasks boost past the shed invariant and take turns; the priority-tie winner meets target, the loser is at risk', async () => {
     vi.setSystemTime(new Date(DAY + 30 * 60 * 1000));
     mockHomeyInstance.settings.set(DEBUG_LOGGING_TOPICS, ['plan', 'diagnostics', 'deferred_objectives']);
     mockHomeyInstance.settings.set('power_source', 'homey_energy');
@@ -155,6 +159,8 @@ describe('two boost+exempt smart tasks, narrow headroom, daily budget ON (SDK-bo
     mockHomeyInstance.settings.set('price_optimization_enabled', true);
     mockHomeyInstance.settings.set(MANAGED_DEVICES, { [TANK_A]: true, [TANK_B]: true, [LOWER]: true });
     mockHomeyInstance.settings.set(CONTROLLABLE_DEVICES, { [TANK_A]: true, [TANK_B]: true, [LOWER]: true });
+    // Both tanks stored at the same priority — the settings port resolves this tie
+    // to a strict order (deviceId asc → tank_a wins) before the planner sees it.
     mockHomeyInstance.settings.set('capacity_priorities', { Home: { [TANK_A]: 1, [TANK_B]: 1, [LOWER]: 5 } });
     mockHomeyInstance.settings.set(DEVICE_TARGET_POWER_CONFIGS, {
       [TANK_A]: { enabled: true, min: 0, max: 3000, step: 500 },
@@ -249,10 +255,12 @@ describe('two boost+exempt smart tasks, narrow headroom, daily budget ON (SDK-bo
     );
     expect(meterSettlingWait).toBe(true);
 
-    // (5) Under the narrow cap neither task can reach target by the deadline — the
-    // reserved headroom is split between the two equal-priority tasks, so both end
-    // up `cannot_meet` rather than one starving the other.
-    expect(lastDiag(TANK_A)?.status).toBe('cannot_meet');
-    expect(lastDiag(TANK_B)?.status).toBe('cannot_meet');
+    // (5) The stored priorities tie both tanks at 1; the settings port resolves that
+    // tie to a strict order (deviceId asc → tank_a wins rank 1, tank_b rank 2), so
+    // the deterministic winner takes the scarce headroom. tank_a reaches `on_track`;
+    // tank_b, on second pick of what remains under the narrow cap, lands `at_risk`
+    // rather than both fair-splitting into `cannot_meet`.
+    expect(lastDiag(TANK_A)?.status).toBe('on_track');
+    expect(lastDiag(TANK_B)?.status).toBe('at_risk');
   });
 });

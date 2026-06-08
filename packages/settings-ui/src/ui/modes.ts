@@ -26,6 +26,7 @@ import { resolveManagedState, state } from './state.ts';
 import { createDragHandle } from './components.ts';
 import { logSettingsError } from './logging.ts';
 import { DEFAULT_MODE_NAME, resolveModeName } from '../../../shared-domain/src/modeLabels.ts';
+import { normalizeModePriorities } from '../../../shared-domain/src/modePriorities.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import { debouncedSetSetting } from './utils.ts';
 
@@ -106,9 +107,14 @@ export const loadModeAndPriorities = async () => {
   const aliases = await getSetting('mode_aliases');
   state.activeMode = typeof mode === 'string' && mode.trim() ? mode : DEFAULT_MODE_NAME;
   state.editingMode = state.activeMode; // Start editing the active mode
-  state.capacityPriorities = priorities && typeof priorities === 'object'
-    ? priorities as Record<string, Record<string, number>>
-    : {};
+  // Persisted priorities may carry duplicates or gaps; resolve to the same
+  // strict 1..N order the runtime planner uses so the UI list and the planner
+  // agree on which device wins.
+  state.capacityPriorities = normalizeModePriorities(
+    priorities && typeof priorities === 'object'
+      ? priorities as Record<string, Record<string, number>>
+      : {},
+  );
   state.modeTargets = targets && typeof targets === 'object'
     ? targets as Record<string, Record<string, number>>
     : {};
