@@ -9,11 +9,6 @@ import {
   readAllObjectives,
 } from '../../lib/objectives/deferredObjectives';
 import { createObjectivePriceHorizonBuilder } from './objectivePriceHorizon';
-import { LEARNED_THERMOSTAT_DEADBAND_C } from '../../lib/utils/settingsKeys';
-import {
-  getLearnedThermostatDeadbandC,
-  normaliseLearnedThermostatDeadbandMap,
-} from '../../lib/utils/learnedThermostatDeadbandStore';
 
 export function createPlanEngine(ctx: AppContext) {
   // Smart-task controller: lives in the app-wiring layer so the planner engine
@@ -39,25 +34,6 @@ export function createPlanEngine(ctx: AppContext) {
     // Allocation-horizon price source, resolved from the price layer; shared
     // single source of truth so the objectives subsystem stays free of `lib/price`.
     buildPriceHorizon: createObjectivePriceHorizonBuilder(ctx),
-    // Read-through into the persisted per-device learned deadband map. The
-    // setting is updated on every met/stalled finalize by
-    // `updateLearnedThermostatDeadbandFromEntry` in `deferredRecorders.ts`,
-    // so a fresh read each call picks up the latest EMA without caching.
-    // Settings.get can transiently throw (`feedback_homey_sdk_unreliable`);
-    // we treat a throw as "no learned value" so the override falls back to
-    // the raw user target rather than poisoning a plan cycle.
-    getLearnedThermostatDeadbandC: (deviceId: string): number => {
-      let raw: unknown;
-      try {
-        raw = ctx.homey.settings.get(LEARNED_THERMOSTAT_DEADBAND_C) as unknown;
-      } catch {
-        return 0;
-      }
-      return getLearnedThermostatDeadbandC(
-        normaliseLearnedThermostatDeadbandMap(raw),
-        deviceId,
-      );
-    },
   });
 
   // Resolve the device manager first so its absence surfaces the canonical
