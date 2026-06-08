@@ -1,20 +1,6 @@
 import { render } from 'preact';
 import type { SettingsUiDeviceLogEntry } from '../../../../contracts/src/settingsUiApi.ts';
-
-// Tone token -> chip modifier, mirroring the live device cards
-// (`PlanDeviceCards.tsx`) so a logged state line wears the same colour it had
-// when it was current. Kept as a small local map rather than imported because
-// the cards file is a heavy view module; the mapping is three lines.
-const STATE_TONE_CHIP_MODIFIER: Record<string, string> = {
-  active: 'good',
-  resuming: 'good',
-  held: 'limited',
-  idle: 'muted',
-  neutral: 'muted',
-  warning: 'alert',
-};
-
-const resolveChipModifier = (tone: string): string => STATE_TONE_CHIP_MODIFIER[tone] ?? 'muted';
+import { chipModifierForTone } from './chipModifier.ts';
 
 export type DeviceLogViewState =
   | { status: 'loading' }
@@ -40,7 +26,7 @@ const DeviceLogEntryRow = ({
   <li class="device-log__entry">
     <div class="device-log__entry-head">
       <span
-        class={`plan-chip plan-chip--${resolveChipModifier(entry.stateTone)}`}
+        class={`plan-chip plan-chip--${chipModifierForTone(entry.stateTone)}`}
         data-state-tone={entry.stateTone}
       >
         {entry.stateMsg}

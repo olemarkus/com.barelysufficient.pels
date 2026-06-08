@@ -1,6 +1,7 @@
 import { h } from 'preact';
 import { useRef, useLayoutEffect } from 'preact/hooks';
 import { MdElevation, MdRipple } from './materialWebJSX.tsx';
+import { chipModifierForTone } from './chipModifier.ts';
 import { PLAN_REASON_CODES } from '../../../../shared-domain/src/planReasonSemanticsCore.ts';
 import {
   readDeviceReasonDetail,
@@ -174,20 +175,6 @@ const isPlanStateKind = (value: string | undefined): value is PlanStateKind => (
   || value === 'unknown'
 );
 
-// Maps a `PlanStateTone` (active/idle/held/resuming/neutral/warning) onto the
-// `plan-chip--{modifier}` family so the device-state chip uses the same
-// primitive as the "Always on", Boost, Smart-task, and starvation chips. Spec:
-// TODO #2 (chip-primitive consolidation, 2026-05-16). Previous family
-// `plan-state-chip` is no longer referenced from app code.
-const PLAN_STATE_CHIP_MODIFIER: Record<string, string> = {
-  active: 'good',
-  resuming: 'good',
-  held: 'limited',
-  idle: 'muted',
-  neutral: 'muted',
-  warning: 'alert',
-};
-
 const resolveStatePresentation = (dev: PlanDeviceSnapshot) => {
   const kind = isPlanStateKind(dev.stateKind) ? dev.stateKind : resolvePlanStateKind(dev);
   const tone = dev.stateTone ?? PLAN_STATE_TONE[kind];
@@ -195,7 +182,7 @@ const resolveStatePresentation = (dev: PlanDeviceSnapshot) => {
     kind,
     label: PLAN_STATE_LABEL[kind],
     tone,
-    chipModifier: PLAN_STATE_CHIP_MODIFIER[tone] ?? 'muted',
+    chipModifier: chipModifierForTone(tone),
   };
 };
 
