@@ -151,14 +151,6 @@ export type PlanHistoryPersistDeps = {
     hourOpening: { hourMs: number; value: number } | null;
     kWhPerUnit: number | null;
   }) => void;
-  // Optional side-effect callback invoked when a temperature objective finalises
-  // as `met` with `metReason: 'stalled'` — the exact shape that carries a clean
-  // observation of the device's local control deadband. The wiring layer reads
-  // the current learned deadband, computes the observed gap, EMA-updates, and
-  // persists. Kept off the recorder so this module stays free of settings I/O
-  // and the test fixtures keep their headless shape. See
-  // `lib/utils/learnedThermostatDeadbandStore.ts` for the consumer.
-  onMetStalledEntry?: (entry: DeferredObjectivePlanHistoryEntry) => void;
 };
 
 // Per-hour delivery contribution fed into the recorder by the runtime
@@ -594,18 +586,6 @@ export class DeferredObjectivePlanHistoryRecorder {
     const endedEvent = buildEndedEventFromEntry(entry);
     if (endedEvent !== null) {
       this.deps.endedBus?.publish(endedEvent);
-    }
-    // Deadband learning hook: only fires for clean met/stalled temperature
-    // entries — the device's local controller satisfied near setpoint, which
-    // is the only shape that carries a meaningful deadband observation.
-    // `missed` is excluded because the device didn't reach satisfaction at
-    // all; `stalled_device_capped` is excluded because the device parked at
-    // its own internal cap, not at the user-target deadband.
-    if (entry.discoveredFrom === 'observation'
-        && entry.outcome === 'met'
-        && entry.metReason === 'stalled'
-        && entry.objectiveKind === 'temperature') {
-      this.deps.onMetStalledEntry?.(entry);
     }
   }
 

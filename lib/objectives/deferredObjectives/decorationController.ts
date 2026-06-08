@@ -30,7 +30,6 @@ export type DeferredObjectiveDecorationControllerDeps = {
   // daily-budget snapshot (threaded via `decorate(input)`) is now only the
   // budget overlay.
   buildPriceHorizon: BuildPriceHorizon;
-  getLearnedThermostatDeadbandC?: (deviceId: string) => number;
 };
 
 /**
@@ -44,9 +43,8 @@ export type DeferredObjectiveDecorationControllerDeps = {
  * plan to decorate.
  *
  * Construction-time getters supply the live household context (power tracker,
- * price-optimization flag, hard cap, time zone, settings, active plans, learned
- * deadband) so the planner does not thread smart-task concerns through its own
- * dependency surface.
+ * price-optimization flag, hard cap, time zone, settings, active plans) so the
+ * planner does not thread smart-task concerns through its own dependency surface.
  */
 export class DeferredObjectiveDecorationController {
   // Stateful tracker for the priority-1 fully-reserved smart-task count. Held
@@ -71,10 +69,7 @@ export class DeferredObjectiveDecorationController {
     // `resolveCommittedHours`) to decorate the device inputs — reading is free
     // every cycle; only the write rides the clock. See the carve-out note.
     const decisions = applyDeferredObjectiveAdmission(evaluations, devices);
-    const targetOverrides = buildDeferredTargetOverrides(
-      evaluations,
-      this.deps.getLearnedThermostatDeadbandC,
-    );
+    const targetOverrides = buildDeferredTargetOverrides(evaluations);
     const admission = applyDeferredAdmissionToInput(devices, decisions, targetOverrides);
     return {
       admittedDevices: admission.devices,
