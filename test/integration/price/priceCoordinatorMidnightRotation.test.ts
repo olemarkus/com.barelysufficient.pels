@@ -6,6 +6,7 @@ import { COMBINED_PRICES, FLOW_PRICES_TODAY, PRICE_SCHEME } from '../../../lib/u
 
 const createCoordinator = () => new PriceCoordinator({
   homey: mockHomeyInstance as never,
+  getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
   getCurrentPriceLevel: () => PriceLevel.NORMAL,
   rebuildPlanFromCache: async () => undefined,
   log: () => undefined,
@@ -70,6 +71,7 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
     const structuredLog = { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() };
     const coordinator = new PriceCoordinator({
       homey: mockHomeyInstance as never,
+      getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
       getCurrentPriceLevel: () => PriceLevel.NORMAL,
       rebuildPlanFromCache: async () => undefined,
       log: () => undefined,
@@ -252,6 +254,7 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
     const structuredLog = { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() };
     const coordinator = new PriceCoordinator({
       homey: mockHomeyInstance as never,
+      getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
       getCurrentPriceLevel: () => PriceLevel.NORMAL,
       rebuildPlanFromCache: async () => undefined,
       log: () => undefined,

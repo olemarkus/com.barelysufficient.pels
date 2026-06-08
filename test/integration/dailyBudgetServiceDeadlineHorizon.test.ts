@@ -74,6 +74,7 @@ const buildService = (initialSettings: SettingsStore): {
   } as any;
   const service = new DailyBudgetService({
     homey,
+    getTimeZone: () => TZ,
     log: () => undefined,
     error: () => undefined,
     getPowerTracker: () => ({ buckets: {} }),

@@ -1303,6 +1303,7 @@ describe('Price optimization', () => {
 
   const createPriceCoordinatorForTest = (overrides: Partial<ConstructorParameters<typeof PriceCoordinator>[0]> = {}): PriceCoordinator => new PriceCoordinator({
     homey: mockHomeyInstance as never,
+    getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
     getCurrentPriceLevel: () => PriceLevel.NORMAL,
     rebuildPlanFromCache: async () => undefined,
     log: () => undefined,

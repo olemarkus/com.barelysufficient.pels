@@ -11,7 +11,6 @@
  *   ManagerSettings.get(key: string): any
  *   ManagerSettings.set(key: string, value: any): void   // synchronous, no Promise
  *   ManagerSettings.unset(key: string): void
- *   ManagerClock.getTimezone(): string
  *
  * `get` deliberately narrows the SDK's `any` to `unknown`: settings are
  * untrusted persisted data, so callers must validate before use (matching the
@@ -29,13 +28,8 @@ export type SettingsPort = {
   unset(key: string): void;
 };
 
-export type ClockPort = {
-  getTimezone(): string;
-};
-
 export type HomeyRuntime = {
   settings: SettingsPort;
-  clock: ClockPort;
 };
 
 export type FlowTriggerCard = {

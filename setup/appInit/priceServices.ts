@@ -7,6 +7,7 @@ import type { AppContext } from '../../lib/app/appContext';
 export function createPriceCoordinator(ctx: AppContext): PriceCoordinator {
   return new PriceCoordinator({
     homey: ctx.homey,
+    getTimeZone: () => ctx.getTimeZone(),
     getHomeyEnergyApi: () => resolveHomeyEnergyApiFromSdk(ctx.homey),
     getCurrentPriceLevel: () => ctx.getCurrentPriceLevel(),
     rebuildPlanFromCache: (reason) => requirePlanService(ctx).rebuildPlanFromCache(reason).then(() => undefined),
@@ -25,6 +26,7 @@ export function createPriceCoordinator(ctx: AppContext): PriceCoordinator {
 export function createPriceFlowTagPublisher(ctx: AppContext): PriceFlowTagPublisher {
   return new PriceFlowTagPublisher({
     homey: ctx.homey,
+    getTimeZone: () => ctx.getTimeZone(),
     combinedPricesReader: ctx.combinedPricesReader,
     log: (...args: unknown[]) => ctx.log(...args),
     debugStructured: ctx.getStructuredDebugEmitter('price', 'price'),

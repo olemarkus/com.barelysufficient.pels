@@ -11,6 +11,7 @@ import type { AppContext } from '../../lib/app/appContext';
 export function createDailyBudgetService(ctx: AppContext): DailyBudgetService {
   return new DailyBudgetService({
     homey: ctx.homey,
+    getTimeZone: () => ctx.getTimeZone(),
     log: (...args: unknown[]) => ctx.log(...args),
     isDebugTopicEnabled: (topic) => ctx.debugLoggingTopics.has(topic),
     getPowerTracker: () => ctx.powerTracker,

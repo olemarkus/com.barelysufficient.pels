@@ -1,4 +1,4 @@
-import type { HomeyRuntime, ApiPort } from '../ports/homeyRuntime';
+import type { SettingsPort, ApiPort } from '../ports/homeyRuntime';
 import {
   getDateKeyInTimeZone,
   getHourStartInTimeZone,
@@ -64,8 +64,9 @@ const GRID_TARIFF_FAILURE_REASONS: Record<'keepCache' | 'clearStaleFallback' | '
 
 export default class PriceService {
   constructor(
-    private homey: HomeyRuntime & { api: ApiPort },
+    private homey: { settings: SettingsPort; api: ApiPort },
     private readonly sinks: PriceServiceLoggingSinks,
+    private getTimeZone: () => string,
     private getHomeyEnergyApi?: () => HomeyEnergyApi | null,
   ) { }
 
@@ -202,7 +203,7 @@ export default class PriceService {
     };
 
     const todayDate = new Date();
-    const timeZone = this.homey.clock.getTimezone();
+    const timeZone = this.getTimeZone();
     const today = getDateKeyInTimeZone(todayDate, timeZone);
     const existingData = this.getSettingValue('nettleie_data') as
       Array<{ dateKey?: string; datoId?: string; source?: unknown }> | null;
@@ -270,7 +271,7 @@ export default class PriceService {
 
   updateCombinedPrices(): void {
     const now = new Date();
-    const timeZone = this.homey.clock.getTimezone();
+    const timeZone = this.getTimeZone();
     const combined = this.getCombinedHourlyPrices();
     const payload = buildCombinedPricePayload({
       combined,
@@ -317,7 +318,7 @@ export default class PriceService {
     const priceArea = this.getPriceArea();
     const gridTariffSettings = this.getGridTariffSettings();
     const norwayPriceModel = this.getNorwayPriceModel();
-    const timeZone = this.homey.clock.getTimezone();
+    const timeZone = this.getTimeZone();
     const currentMonthKey = getDateKeyInTimeZone(new Date(), timeZone).slice(0, 7);
     return buildCombinedHourlyPricesNorway({
       spotPrices: this.getSettingValue('electricity_prices'),
@@ -327,7 +328,7 @@ export default class PriceService {
       countyCode: gridTariffSettings.countyCode,
       tariffGroup: gridTariffSettings.tariffGroup,
       norwayPriceModel,
-      monthUsageKwh: norwayPriceModel === 'norgespris' ? getCurrentMonthUsageKwh(this.homey) : 0,
+      monthUsageKwh: norwayPriceModel === 'norgespris' ? getCurrentMonthUsageKwh(this.homey, this.getTimeZone()) : 0,
       hourlyUsageEstimateKwh: norwayPriceModel === 'norgespris' ? getHourlyUsageEstimateKwh(this.homey) : 0,
       now: new Date(),
       currentMonthKey,
@@ -371,7 +372,7 @@ export default class PriceService {
   }): CombinedHourlyPrice[] {
     const { todaySettingKey, tomorrowSettingKey, label } = params;
     const now = new Date();
-    const timeZone = this.homey.clock.getTimezone();
+    const timeZone = this.getTimeZone();
     const { todayPayload, tomorrowPayload } = this.rotateFlowPriceSlots({
       now,
       timeZone,
@@ -413,7 +414,7 @@ export default class PriceService {
     return storeFlowPriceDataHelper({
       kind,
       raw,
-      timeZone: this.homey.clock.getTimezone(),
+      timeZone: this.getTimeZone(),
       debugStructured: this.sinks.debugStructured,
       setSetting: (key, value) => this.homey.settings.set(key, value),
       updateCombinedPrices: () => this.updateCombinedPrices(),
@@ -491,7 +492,7 @@ export default class PriceService {
   getCurrentHourStartMs(): number {
     const current = getCurrentHourPrice(this.getCombinedHourlyPrices());
     if (current) return new Date(current.startsAt).getTime();
-    const timeZone = this.homey.clock.getTimezone();
+    const timeZone = this.getTimeZone();
     return getHourStartInTimeZone(new Date(), timeZone);
   }
 
@@ -505,7 +506,7 @@ export default class PriceService {
       this.sinks.structuredLog?.info({ event: 'homey_energy_api_unavailable' });
       return;
     }
-    const info = buildHomeyEnergyDateInfo(this.homey.clock.getTimezone());
+    const info = buildHomeyEnergyDateInfo(this.getTimeZone());
     if (shouldUseHomeyEnergyCache({
       info,
       forceRefresh,
