@@ -48,47 +48,6 @@ stepped-restore-wrapper / stepped-swap-completion refactors, the settings.test.t
 plan_budget truncation, the starvation confirm-sheet sub-parts, and the shared widget runtime.
 What remains open is below.*
 
-### P1 — Widget loveability follow-ups (demoted from P0, 2026-05-31)
-
-*Source: owner walked the live dashboard with all five PELS widgets stacked
-(real-device screenshots) and rejected the "shippable polish" verdict of the
-2026-05-30 widget-polish train (`notes/widget-review.md` § Shipped). The
-2026-05-31 release-review cleanup fixed the concrete release blockers: New smart
-task and Held-back devices now surface/block `Cannot finish`, preview-unavailable
-copy names the missing input instead of always blaming prices, unknown EV/temperature
-rows no longer render bare units, smart-task recourse copy is non-imperative, and
-public docs now describe all five widgets. Remaining work is desirability polish,
-not a release gate.*
-
-- [ ] **Widget desirability (`headroom`), residual & subjective.** `plan_budget` is done:
-      status-line truncation (PR #1458), and the dead-band + flat-summary defects shipped via the
-      panel-fill responsive chart (height-derived viewBox maps 1:1 onto the tile, the card panel
-      fills the whole tile, the plot is capped + vertically centred with balanced padding inside the
-      card) + two-tier summary (bold projected headline over a toned status chip). The dead band is
-      fully eliminated at the common 480 px tall-tile case and strictly improved at every width (the
-      old 2:3-clamp + `meet` letterbox pooled an empty band below the chart; PR #1476 replaces it
-      with a panel-fill + physical-px-capped/centred plot, so no band appears outside the card and
-      bars never stretch into spaghetti). *Residual P2 (extreme aspect): RESOLVED* — the plot body now
-      FILLS the panel instead of capping at a fixed physical size and pooling a band on tall tiles
-      (owner picked the fill option over a higher finite cap). Removed `PLOT_BODY_MIN_PX` /
-      `PLOT_BODY_MAX_PX` and the whole `scale`-based px-band: filling in viewBox-unit space is
-      width-independent automatically (no narrow-tile void), so `resolveGeometry(height)` no longer
-      takes `scale` and `chart.ts` / `widgetApp.measureChart` stopped threading it. Growth adds height
-      only — bar WIDTH stays fixed by `PLOT_X` — and a tile too short to seat the furniture shrinks the
-      body to fit so nothing clips. `headroom` was assessed against the
-      widget render-gate and reads acceptable — hierarchy / price-chip weight / over-cap tone all
-      land (over-cap tone + plan_budget flex squeeze already shipped); no change made. Anything
-      further on `headroom` is subjective polish needing a hands-on harness walk, not an
-      autonomous PR.
-- [x] **P2 — `plan_budget` y-axis tick density on very-tall tiles.** Shipped: replaced the fixed
-      4-interval raw-peak axis with a nice-number axis (`widgets/plan_budget/src/public/chartTicks.ts`).
-      The kWh gridlines are multiples of a 1/2/2.5/5×10ⁿ step (round + distinct by construction), and the
-      interval count tracks plot height (clamped 4–8), so a tall tile gets more evenly-spaced gridlines
-      instead of 5 with big gaps. This also fixed a pre-existing issue the fill exposed: the old axis
-      scaled the raw peak and rounded to 1 decimal, so real (non-1.2) peaks produced non-round labels
-      (e.g. 0/1.2/2.3/3.5/4.6). The shared price axis drops a label that would repeat the integer above
-      it (near-flat day). Bars now scale to the nice ceiling.
-
 ### P1 — targeted refactors (deferred)
 
 *Concrete, bounded changes to specific named surfaces (not structural re-splits — those stay P2).
@@ -180,58 +139,6 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
 
 *v2.11.0..HEAD release-review findings (2026-06-02). Non-blocking follow-ups.*
 
-- [ ] **Extend the deterministic priority tiebreak to unconfigured (default-priority) devices.**
-      The mode-priorities settings port (`packages/shared-domain/src/modePriorities.ts`) gives
-      *stored* priorities a strict, deterministic 1..N order (ties break by deviceId). But a managed
-      device with no stored priority falls to the caller-side default (`?? 100` in `app.ts:~1970`
-      and `modes.ts:~163`), so every never-configured device collides at 100. The shed comparator
-      (`lib/plan/shedding/candidates.ts:~427`) breaks that tie by `recentlyRestored` then
-      effective-power (highest sheds first), and the restore sort (`lib/plan/restore/devices.ts:~85`)
-      leans on input-order stability — neither falls back to deviceId. So the "one device always
-      consistently wins" guarantee holds only for configured devices, and shed vs restore arbitrate
-      the default-100 group differently. Persona: maintainer / owner who never opened the priority
-      screen. Hypothesis: the default-100 collision is the *common* real-world case, and the
-      shed-by-power / restore-by-input-order asymmetry makes capacity arbitration non-deterministic
-      for exactly those users; either extend the deviceId tiebreak into both comparators or assign
-      defaults a deterministic rank at projection time. Pre-existing; surfaced by the strict-priorities
-      change which made the gap visible by closing it for configured devices.
-
-- [ ] **Decide whether stepped shed/restore recording should gate on `flowBacked` like the binary paths.**
-      (Gemini review of #1591, deferred.) The binary seam seal made `BinaryControlOutcome.flowBacked`
-      available, and `binaryExecutor.ts` / `binaryRestoreHelpers.ts` skip recording *direct* actuation
-      for flow-backed commands. The stepped paths (`applySteppedLoadShedOff` ~line 402,
-      `dispatchSteppedLoadRestoreBinaryCommand` ~line 725 in `steppedLoadExecutor.ts`) still record
-      unconditionally (pre-existing; the seam-seal PR preserved that). Open question: the stepped
-      `recordShedActuation`/`recordRestoreActuation` stamp the shed/restore *cooldown*, which should
-      probably fire regardless of channel — unlike the binary *direct-write diagnostic* recorder that
-      correctly skips flow-backed. So a blind "gate on `flowBacked`" may be a cooldown bug, not a fix.
-      First establish whether a stepped-load device is ever flow-backed in practice; if it can be,
-      decide per-recorder (cooldown vs diagnostic) whether the channel matters, and add a test. If
-      stepped is never flow-backed, close as a no-op. Persona: maintainer. Hypothesis: the binary↔stepped
-      recording asymmetry is either a real flow-backed diagnostic-double-count or a deliberate
-      channel-agnostic cooldown — name which before changing it.
-
-- [ ] **Extend the connected-but-not-resumable (`plugged_in`) honesty to the remaining surfaces.**
-      The objective/smart-task honesty for a `plugged_in` charger (PELS can't resume it) shipped the
-      list chip + widget ("Paused — can't resume" / "Can't resume" / "Car charging won't resume —
-      check the charger.") and stopped crediting its SoC as on-track (`objective_charger_not_resumable`,
-      PR after #1577). Two surfaces were deliberately left for a focused follow-up so the first PR stayed
-      bounded: (1) the **EV device-card state line** (`resolveEvCardStateLine` in `deadlineLabels.ts`)
-      shows no line for not-resumable (honest but silent — `isPlugOutPaused` in
-      `PlanDeviceCards.tsx:60` only fires on `objective_invalid_session`); add a distinct
-      "charging won't resume" line. (2) The **pending-hero** for a charger that is not-resumable
-      *from the start* (no plan yet) falls through to the generic `awaiting_horizon_plan` copy; add a
-      `charger_not_resumable` `DeferredObjectiveActivePlanPendingReason` + hero copy + `DeadlineLiveState`
-      so the detail hero matches the chip. Persona: EV owner (notes/personas.md). Hypothesis: a connected
-      charger that silently won't charge erodes trust more than an explicit "check the charger" prompt.
-      (3) **Clear a stale `diagnosticReasonCode` on recovery.** `ensurePendingRecord`
-      (`activePlanRecorder.ts:796-800`) only clears the code on the no-horizon path; when a charger
-      recovers to a healthy diagnostic (has `horizonPlan`) on a committed plan, the per-cycle dispatch
-      early-returns (`:724`, not replan-due) and leaves `diagnosticReasonCode` set, so the chip can read
-      "Can't resume" until the next `:58` replan. **Pre-existing — `objective_invalid_session` (unplugged)
-      has the identical staleness**; fix both in the shared dispatch (clear the field when a healthy
-      diagnostic arrives for a committed plan), with regression coverage for re-plug AND re-resume.
-      (Codex P2 on PR #1579.)
 - [ ] **Hoist the active-plan shape guard into shared-domain so the UI and runtime can't drift.**
       The settings-UI `coerceDeferredObjectiveActivePlans`
       (`packages/settings-ui/src/ui/deferredObjectiveActivePlans.ts`) is a leaner duplicate of the
@@ -242,7 +149,7 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
       `DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION` bump the runtime normaliser would reject the old blob
       while the UI guard forces `version: 1` onto a v2-shaped payload and renders stale/foreign fields.
       Fix per the resolution-in-producer rule: extract one browser-safe `coerce`/`normalize` into
-      `packages/shared-domain/src/` (precedent: `temperatureBoost.ts` already exports value normalisers
+      `packages/shared-domain/src/` (precedent: `deferredObjectiveValues.ts` already exports value normalisers
       there) and delegate the top-level shape/version check from BOTH `activePlanSettings.ts` and the
       settings-UI module — single source of truth, `settings-ui ↛ lib` boundary intact. **Trigger:
       do this before/with the next active-plans schema-version bump.** Source: pels-layering-guardian
@@ -250,15 +157,16 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
 
 - [ ] **Retire the `observed ?? device` boot-window fallback in `toPlanDevice` once freshness leaves
       the descriptor surface.** Stage 4b wired the first projection reader: `toPlanDevice`
-      (`setup/appInit.ts`) resolves `observationStale` from `ctx.getObservedState(id)`, falling back to
-      the snapshot only until the first observation lands. The fallback is correct *today* solely because
+      (`setup/appInit/toPlanDevice.ts`, fallback at ~line 25) resolves `observationStale` from
+      `ctx.getObservedState(id)`, falling back to the snapshot only until the first observation lands.
+      The fallback is correct *today* solely because
       `TargetDeviceSnapshot = DeviceDescriptor & ObservedDeviceState` so the snapshot still physically
       carries `lastFreshDataMs`/`lastLocalWriteMs`. Once a later stage strips those freshness fields off
       the descriptor surface, the `?? device` arm reads `undefined` and silently flips `unknown` → non-stale.
       Remove the fallback (or re-point it) in lockstep with that strip, so the "identical anyway" boot-window
       assumption doesn't outlive its invariant. Persona: contributor; hypothesis: a stale fallback that
       reads a removed field is a silent correctness trap for the next stage. Source: pels-layering-guardian
-      P3 on the stage-4b PR, 2026-06-06. Files: `setup/appInit.ts`, `packages/contracts/src/types.ts`.
+      P3 on the stage-4b PR, 2026-06-06. Files: `setup/appInit/toPlanDevice.ts`, `packages/contracts/src/types.ts`.
       (The three stage-4b *prerequisites* — seq-epoch co-creation, freeze-on-store, and the
       device-update-lag dispatch — shipped with the stage-4b reader PR.)
 
@@ -268,25 +176,6 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
 reorder and the remaining widget-copy hoist shipped as their own follow-up
 PRs. Items below are later polish.*
 
-- [ ] **Migrate the last pinned `lib/app/**` inhabitants out of `lib/app/`.**
-      `CLAUDE.md` lists `lib/app/` as sunsetting with only `appContext.ts`
-      as the long-term inhabitant. The leaf wiring helpers that only
-      entry-layer code imported (`appBootMigrations`, `appDebugHelpers`,
-      `appDeviceSupport`, `appLifecycleHelpers`, `appManagedDeviceMigration`,
-      `appPriceLowestTrigger`, `appRealtimeDeviceReconcile*`,
-      `appSettingsHelpers`, `settingsUiApi*`) have been relocated to
-      `setup/`. The still-pinned inhabitants cannot move yet because
-      `appContext.ts` (which STAYS) imports them, and a domain module
-      imports one — moving any would create a forbidden `lib -> setup`
-      edge: `appDeviceControlHelpers.ts` + `appDeviceControlFeedback.ts` +
-      `appDeviceControlSteppedState.ts` (the control chain pulled in by
-      `appContext`), `appSnapshotHelpers.ts` (imported by `appContext`),
-      and `timerRegistry.ts` (imported by `appContext` AND by the domain
-      module `lib/power/sources/homeyEnergyPoll.ts`). Unpinning these
-      requires first severing `appContext`'s value imports of them (and
-      relocating `TimerRegistry` to a neutral home the power layer can
-      reach without going through `lib/app/`).
-
 *v2.9.1 RC release-review carry-forward (re-added on `v2.9.1..main`
 release-review pass, 2026-05-26 — the original entry committed as
 `6dea64be` on the v2.9.1 release branch never propagated to main).*
@@ -295,60 +184,12 @@ release-review pass, 2026-05-26 — the original entry committed as
 
 *v2.9.0 retrospective P2 cleanup and docs follow-ups (2026-05-23).*
 
-- [ ] Re-evaluate `RECOVERY_PROGRESS_RESET_MULTIPLIER = 5` against the
-      noisy-thermostat device class. At 0.05 °C reset threshold (5 × the
-      0.01 °C epsilon), Mill/Adax/Glamox sensors that report 0.1-0.2 °C
-      jitter will keep clearing the band and resetting the no-progress
-      counter, so the `no_progress` disarm never trips and only the
-      24-hour `RECOVERY_SAFETY_TIMEOUT_MS` bounds the worst case. The
-      wall-clock floor caps the harm to "won't disarm during the first
-      30 min", but past 30 min a noisy device is back to the original
-      stuck-state. Couple to the open thermostat-noise work (stashed
-      `missing_capacity` draft) rather than blindly raising the
-      multiplier here; the right fix is likely a noise-aware threshold
-      keyed to the device's observed jitter floor.
-      Files: `lib/objectives/recovery.ts`.
-      Source: `pels-runtime-reality`, PR #1001 follow-up, 2026-05-23.
-
 *Confidence-model Step-2 follow-ups (2026-05-23). Step 2 of Cause #1
 (`resolveBandedProfileConfidence` + `applyBandedConfidence`) shipped — the
 overall `kwhPerUnit.confidence` now reflects the pooled within-band residual,
 so a converged multi-step device can escape `low` (the standing v2.9 P0 signal
 seen 985/985 in prod). These are `pels-runtime-reality` follow-ups that didn't
 block merge.*
-
-*v2.7.4 train follow-ups (2026-05-19). Three items from the v2.7.3
-release-review fan-out that did not ride the train; deferred as
-maintenance-tier polish without user-visible impact at supported widths.
-Re-applied after the train merged because the in-session TODO additions
-were rolled back before they could land.*
-
-- [ ] Smart-task temperature overshoot. Live prod walk (2026-05-22):
-      multiple "Connected 300" successes overshot the 65 °C target by
-      double digits — `70.7 → 79.4 °C · Overshoot 14.4 °C`,
-      `29.3 → 77.7 °C · Overshoot 12.7 °C`. Surfacing overshoot is good,
-      but a consistent ~14 °C overrun wastes energy and hints at a
-      stop-condition/sensor lag. Recorded as `Succeeded`, so no
-      correctness/data break — energy-waste + comfort concern.
-      Investigate the heat stop condition vs. target before changing
-      control behaviour (over-tightening risks under-heating).
-      Source: live prod UI walk, 2026-05-22.
-
-- [ ] **Postmortem strip: prorate multi-hour gaps under `power_source = flow`** (remaining
-      out-of-scope tail of the former "honest about unobserved-gap hours" item).
-      - **DONE — root-cause fix (persist anchors):** `currentHourOpening`/`lastKWhPerUnit` are now
-        persisted onto the active plan (`inFlightHourOpening`/`inFlightKWhPerUnit`) and restored in
-        `startRecord` after a restart, so a Homey restart mid-task no longer drops the in-flight
-        hour or renders it as a falsely-empty "device did nothing" bar. This also makes the cheap
-        dashed-cell UI mitigation (`DeadlinePlanHistoryDetail.tsx`) MOOT — the gap is filled, not
-        merely flagged. Shipped: contract `deferredObjectiveActivePlans.ts` +
-        `activePlanSettings.ts` validator, `planHistory.ts` persist seam, `activePlanRecorder.ts`
-        `applyInProgressAnchors`, `planHistoryInProgressState.ts` restore.
-      - **Out of scope (telemetry-blocked):** proper proration of multi-hour gaps under
-        `power_source = flow` needs per-hour power telemetry that doesn't exist; the rollover
-        detector attributes the whole delta to the opening hour. Documented in
-        `planHistoryV4Helpers.ts:detectHourRollover`; revisit only if per-hour telemetry lands.
-      Source: `pels-runtime-reality`, v2.8.0 PR1 review pass (PRs #990 + hour-rollover).
 
 *v2.7.1 release-review P2 batch (2026-05-17), six-agent fan-out — non-blocking
 polish/drift/follow-up. (Most resolved or discarded in the 2026-06-03 scrutiny pass.)*
@@ -369,34 +210,17 @@ live-walk screenshots.*
       Files: `lib/plan/restore/index.ts` (returns `{ plannedState, reason }` bundled),
       `lib/plan/planReasons.ts` (mixes reason normalization with shed-temperature hold decisions),
       plan/executor/rendering boundaries.
-- [ ] Finish the last `app.ts` shrink after the `TimerRegistry` / `AppContext` refactor. The
-      `setup/appInit.ts` decomposition is now DONE — the former ~440 LOC file is a thin re-export
-      barrel (~19 LOC) over focused `setup/appInit/` sub-files (`contextGuards`, `createPlanEngine`,
-      `createPlanService`, `priceServices`, `registerAppFlowCards`, `toPlanDevice`,
-      `deviceDiagnosticsService`), each one purpose and under the `setup/` ~150 LOC convention.
-      Remaining: keep trimming any wiring delegates (in `app.ts` / the sub-files) that no longer buy
-      readability or testability. (`resolveHasBinaryControl` no longer exists as a shared symbol —
-      that part is already handled.)
-      Files: `app.ts`, `setup/appInit/**`.
 - [ ] Split the larger Bucket-B god-files toward <=500 when next touched (named here so the ceilings in
-      `eslint.config.mjs` are accountable, not permanent): `lib/device/deviceTransport.ts` (~2148, peel off a
-      transport subsystem on a clear boundary), `lib/plan/restore/index.ts` (~1327, swap-flow vs per-device
-      restore gating), `flowCards/registerFlowCards.ts` (~1124, only if registration gains per-card behavior),
-      `lib/plan/planBuilder.ts` (~1063, overshoot/meta builders), `lib/device/transport/managerObservation.ts`
-      (~1005, retained-observation accounting), `lib/plan/planReasons.ts` (~1001, reason-normalization vs hold
-      decisions), `lib/plan/planService.ts` (~781, reconcile vs rebuild), `lib/executor/steppedLoadExecutor.ts`
-      (~773), `lib/objectives/deferredObjectives/activePlanRecorder.ts` (~743, replay split) and
-      `diagnosticsBridge.ts` (~739, per-concern payload builders), `setup/appDebugHelpers.ts` (~706, comparison
+      `eslint.config.mjs` are accountable, not permanent): `lib/device/deviceTransport.ts` (~2578, peel off a
+      transport subsystem on a clear boundary), `lib/plan/restore/index.ts` (~1414, swap-flow vs per-device
+      restore gating), `flowCards/registerFlowCards.ts` (~1258, only if registration gains per-card behavior),
+      `lib/plan/planBuilder.ts` (~1257, overshoot/meta builders), `lib/device/transport/managerObservation.ts`
+      (~1082, retained-observation accounting), `lib/plan/planReasons.ts` (~1124, reason-normalization vs hold
+      decisions), `lib/plan/planService.ts` (~936, reconcile vs rebuild), `lib/executor/steppedLoadExecutor.ts`
+      (~845), `lib/objectives/deferredObjectives/activePlanRecorder.ts` (~1208, replay split) and
+      `diagnosticsBridge.ts` (~1028, per-concern payload builders), `setup/appDebugHelpers.ts` (~779, comparison
       serializer). Persona: contributor. Large structural splits — out of scope for the exemption sweep.
       Files: as listed.
-- [ ] Add a live summary card to the Electricity prices settings panel. *(The one-sentence
-      lede landed in `v2-7-3-budget-rhythm-and-polish`, 2026-05-18.)* Remaining: a live
-      "current tier / cheap / expensive / last-fetched" summary card. That requires
-      a new wiring path from the price service into the settings UI.
-      Files: `packages/settings-ui/src/ui/views/ElectricityPricesView.tsx` (lede done; the panel
-      is now a Preact surface — `#electricity-prices-surface` — so the live summary card lands
-      here too, NOT in `index.html`); price-service → UI wiring (the deadline surface already
-      reads `priceScheme`/`lastFetched`, e.g. `deadlinePlanPending.ts`, as a wiring reference).
 *Smart-task controller extraction (2026-05-30, `feat/smarttask-lifecycle-producer`).
 Program to make the planner know nothing about smart tasks (deferred objectives):
 relocate the lifecycle out of `lib/plan` into a clock-driven controller that
@@ -428,13 +252,6 @@ cosmetic chores — do them in passing or drop them; don't park them here.*
       *Why it's needed:* the one surface that reconstructs per-device history is wiped on every boot.
       Needs the Homey-SDK transient-read grace pattern before persisting. A later cross-device "recent
       activity" feed on Overview is a possible follow-on if the per-device view proves used.
-- [ ] **Fold the duplicate tone→chip-class map into one shared helper.**
-      *Persona:* contributor (`notes/personas.md`).
-      *Hypothesis:* `STATE_TONE_CHIP_MODIFIER` in `DeviceLogView.tsx` duplicates
-      `PLAN_STATE_CHIP_MODIFIER` in `PlanDeviceCards.tsx` (both in `settings-ui/src/ui/views/`, same
-      side of every boundary), so the maps drift between the live card and the log.
-      *Why it's needed:* fold them into one shared `chipModifierForTone()` helper to stop the drift.
-      Source: pels-layering-guardian on PR #1546.
 - [ ] **Restore non-stepped control-mode granularity to the device-overview change signature.**
       *Persona:* Homey owner (`notes/personas.md`) watching the device-overview/activity-log refresh.
       *Hypothesis:* now that the planner no longer carries `controlModel`, the overview/log seam
@@ -448,15 +265,6 @@ cosmetic chores — do them in passing or drop them; don't park them here.*
       (e.g. caching the map at plan-build time, or carrying a producer-resolved control-mode kind on the plan
       device). Very low urgency: a runtime deviceType flip is a rare device-capability change and self-heals on
       the next plan change. Source: Codex review on PR #1594.
-- [ ] **Share one target-power preset enumeration across the two shared-domain modules.**
-      *Persona:* maintainer (`notes/personas.md`) adding a future target-power preset.
-      *Hypothesis:* `isEvTargetPowerPreset` (`packages/shared-domain/src/evTargetPowerConfig.ts`) and
-      `resolveTargetPowerPresetPhaseCount` (`packages/shared-domain/src/targetPowerStepping.ts`) each
-      independently enumerate `ev_charger_1_phase`/`ev_charger_3_phase`, so a third preset would have to
-      be added in lockstep or phase-count resolution silently diverges from preset validity.
-      *Why it's needed:* collapses the duplication onto one source (e.g. drive phase-count off
-      `isEvTargetPowerPreset` + a single preset→phaseCount map) before a third preset lands.
-      Source: pels-layering-guardian on the EV-stepped `wattsPerAmp` chunk, 2026-06-07.
 - [ ] **Retire the raw-`evChargingState` arm of the `EvStateConsumerInput` dual-read.**
       *Persona:* maintainer (`notes/personas.md`) reasoning about the EV resolvers.
       *Hypothesis:* now that the planner types carry only `evCommandability`, the dual-read in
@@ -480,15 +288,6 @@ cosmetic chores — do them in passing or drop them; don't park them here.*
       owner cares about. A safe fix needs a cheap by-id observed/snapshot accessor (e.g. a memoized per-serialize
       map, or seeding the observed projection at boot) rather than the live re-decorating getter. Low urgency
       (single cycle, cosmetic; runtime control is unaffected — it reads the materialized `evCommandability`).
-- [ ] **Restore raw EV plug-state granularity to the `ev_boost_state_changed` debug log.**
-      *Persona:* maintainer / log-review (`notes/personas.md`) triaging EV boost behaviour.
-      *Hypothesis:* `lib/plan/planEvBoost.ts` now logs `evBlockReason` (derived) instead of the raw
-      `evChargingState`; `blockReason` is `null` for both `plugged_in_charging` and `plugged_in_paused`, so the
-      two commandable states are no longer distinguishable in this log line and the literal Homey plug-state is
-      gone from boost triage.
-      *Why it's needed:* boost debugging sometimes needs the exact plug-state; logging the full
-      `evCommandability` struct (or an observer-sourced `evState`) alongside the reason restores it without
-      reintroducing a raw read on a planner consumer. Low urgency (debug-only field).
 - [ ] **Fold the same-file `capacityNote` literal onto `STARVATION_WAITING_FOR_POWER_COPY`.**
       *Persona:* maintainer / support (`notes/personas.md`) reading log/UI copy parity.
       *Hypothesis:* `capacityNote: 'Waiting for available power.'` in `planStarvation.ts` re-types the
@@ -526,17 +325,6 @@ cosmetic chores — do them in passing or drop them; don't park them here.*
 *Smart-task failure-investigation & live UX — the underserved panic / skeptical
 visitors (`notes/personas.md` #4–6).*
 
-- [ ] **Smart-task live-detail energy band reads as a typo at a glance.**
-      *Persona:* notification-driven panic visitor (deep-linked to the live detail mid-stress)
-      and first-time user (needs the number to read as trustworthy on first contact).
-      *Hypothesis:* `Needs 0.9–11 kWh` (en-dash, `smart-task-live-v2-480.png`, 2026-05-27 prod
-      walk) is misread as a typo or one garbled number, undermining trust in the load-bearing
-      figure on the page these personas land on.
-      *Why it's needed:* the estimate is the answer on a deep-linked surface; an illegible
-      number fails the "earn its visit" test. Render with `to` (`0.9 to 11 kWh`), space the
-      dash, or fold to a single number once `displayConfidence !== 'low'`.
-      Files: `packages/shared-domain/src/deadlineLabels.ts` (banded formatter, ~L1803),
-      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`. Source: 2026-05-27 prod walk.
 - [ ] **Deadline-hero "Need X kWh" shows the original requirement, not live remaining.**
       *Persona:* curious tinkerer (watches the plan progress and expects the number to tick
       down) and skeptical optimiser (cross-checks remaining vs delivered).
@@ -573,18 +361,6 @@ visitors (`notes/personas.md` #4–6).*
       state today; the breadcrumb earns the visit. Related: `notes/smart-task-ui/README.md` Q2.
       Files: `packages/settings-ui/src/ui/deadlinePlanHero.ts`, `.../deadlinePlan.ts`
       (recent-miss query against `DeferredObjectivePlanHistoryEntry`).
-- [ ] **Stop under-labeling real price advances as `schedule_revised`.**
-      *Persona:* skeptical optimiser / failure-investigation visitor (#4–5) reading "why did
-      my plan change?".
-      *Hypothesis:* `resolveHorizonPriceWatermark` uses `max(plannedBuckets[].endMs)`, but
-      buckets are clamped to `deadlineAtMs` (`policyHorizon.ts`/`bucketAllocation.ts`), so the
-      watermark is usually just the deadline and `hasPriceHorizonAdvanced` rarely flips — real
-      Nordpool publications get shown as "schedule revised" instead of "prices published".
-      *Why it's needed:* the revision reason is user-facing copy the optimiser trusts; the
-      wrong cause misleads them. PR #890 fixed the inverse (no false "prices published" on
-      internal replans), not this. Fix: thread a real `pricesAvailableUpToMs` cutoff through
-      `DeferredObjectiveHorizonPlan` to the recorder. Files: `lib/objectives/deferredObjectives/replanReason.ts`,
-      `policyHorizon.ts`, `bucketAllocation.ts`. Source: chatgpt-codex P2 on PR #890.
 - [ ] **Fold the revision-history panel into "What PELS has learned" at 320 px.**
       *Persona:* curious tinkerer (#3) — expands cards to debug their own setup.
       *Hypothesis:* at 320 px the standalone collapsed panel costs ~80–96 px of chrome before
@@ -594,19 +370,6 @@ visitors (`notes/personas.md` #4–6).*
       revision content below the fold, weakening the one surface this persona uses to
       reconstruct what changed. Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
       `PlanInputsCard`. Source: pels-m3-critic/ux-fit on PR #1197 (batches 1–3 shipped).
-- [ ] **Run the startup back-fill after an in-session migration retry.**
-      *Persona:* failure-investigation visitor (#5) who opens history detail to learn *what
-      happened* on a past deadline.
-      *Hypothesis:* a boot-time `getKeys()` flake defers migration; when the plan-cycle retry
-      completes mid-session, back-fill never re-runs, so the observation watermark advances to
-      `now` and the offline window for migrated legacy tasks is permanently skipped — silently
-      dropping the smart-task history this persona depends on.
-      *Why it's needed:* history completeness is the only surface that reconstructs a failure;
-      a gap fails this persona at their highest-stress moment. Fix: trigger back-fill on the
-      in-session marker unset→set, or freeze the watermark until a back-fill has run that
-      session. (Narrow: boot-flake + timing; history completeness, not live tasks.)
-      Source: codex P2 on PR #1294.
-
 *EV charging — the skeptical optimiser / EV commuter (`notes/personas.md` #4).*
 
 - [ ] **EV deadline automation: per-charger defaults and plug-in auto-trigger.**
@@ -647,17 +410,6 @@ visitors (`notes/personas.md` #4–6).*
       drill-down PELS doesn't render today. Build the page and the 30-day hourly-retention
       per-device step-change tracker that feeds it together — the tracker is not shippable on
       its own. Files: future device-level step-change tracker; per-device usage-history route + chart.
-- [ ] **Salvage the Usage half of closed PR #883 (`v2.7.3/budget-usage-loveable`).**
-      *Persona:* set-and-forget owner / first-time user (a day-aware "Your typical Sunday runs
-      X kWh" voice and a clean 14d default give the one-glance Usage summary), plus skeptical
-      optimiser (NOK money line on Usage).
-      *Hypothesis:* a day-aware natural-language Usage hero reads as more trustworthy and human
-      than a raw total, and a money line answers the optimiser's "what did it cost" on the
-      surface they check.
-      *Why it's needed:* pays off the Usage first-glance rows in `notes/personas.md` (Budget
-      half already superseded by `dd92fa42`). Scope: typical-day voice (`usageHero.ts` +
-      `usageVoice.ts`); drop the 7d toggle in `power.ts` (keep 14d); NBSP between number and
-      `kr`; NOK money line (deferred). Small focused PR.
 - [ ] **Auto-adjust the daily budget from past eligible exemptions** (policy in
       `notes/daily-budget-auto-adjust/README.md`).
       *Persona:* skeptical optimiser (heat-tank owner) and failure-investigation user — both
