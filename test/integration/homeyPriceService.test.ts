@@ -71,6 +71,7 @@ describe('Homey price service', () => {
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
       sinks(),
+      () => timeZone,
       () => energyApi,
     );
 
@@ -104,6 +105,7 @@ describe('Homey price service', () => {
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
       sinks({ debugStructured }),
+      () => timeZone,
       () => energyApi,
     );
 
@@ -121,6 +123,7 @@ describe('Homey price service', () => {
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
       sinks({ structuredLog: structuredLog as unknown as Logger }),
+      () => timeZone,
       () => null,
     );
 
@@ -142,6 +145,7 @@ describe('Homey price service', () => {
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
       sinks(),
+      () => timeZone,
       () => energyApi,
     );
 
@@ -174,6 +178,7 @@ describe('Homey price service', () => {
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
       sinks({ debugStructured, structuredLog: structuredLog as unknown as PriceServiceLoggingSinks['structuredLog'] }),
+      () => timeZone,
       () => energyApi,
     );
 
@@ -205,6 +210,7 @@ describe('Homey price service', () => {
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
       sinks({ structuredLog: structuredLog as unknown as Logger }),
+      () => timeZone,
       () => energyApi,
     );
 
@@ -231,6 +237,7 @@ describe('Homey price service', () => {
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
       sinks({ debugStructured }),
+      () => timeZone,
     );
 
     const prices = service.getCombinedHourlyPrices();
@@ -263,6 +270,7 @@ describe('Homey price service', () => {
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
       sinks({ debugStructured }),
+      () => timeZone,
     );
 
     const prices = service.getCombinedHourlyPrices();
@@ -306,6 +314,7 @@ describe('Homey price service', () => {
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
       sinks({ debugStructured }),
+      () => timeZone,
     );
 
     const prices = service.getCombinedHourlyPrices();
@@ -334,6 +343,7 @@ describe('Homey price service', () => {
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
       sinks(),
+      () => timeZone,
     );
     const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
 
@@ -363,6 +373,7 @@ describe('Homey price service', () => {
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
       sinks(),
+      () => timeZone,
     );
     const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
 

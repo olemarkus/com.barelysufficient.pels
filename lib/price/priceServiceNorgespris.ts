@@ -4,16 +4,15 @@ import {
 } from '../utils/dateUtils';
 import { DEFAULT_NORGESPRIS_HOURLY_USAGE_ESTIMATE_KWH } from './norwayPriceDefaults';
 
-type SettingsReader = { settings: { get: (key: string) => unknown }; clock: { getTimezone: () => string } };
+type SettingsReader = { settings: { get: (key: string) => unknown } };
 type HomeyApi = SettingsReader;
 
 const getSettingValue = (homey: HomeyApi, key: string): unknown => homey.settings.get(key);
 
-export const getCurrentMonthUsageKwh = (homey: HomeyApi): number => {
+export const getCurrentMonthUsageKwh = (homey: HomeyApi, timeZone: string): number => {
   const raw = getSettingValue(homey, 'power_tracker_state');
   if (!raw || typeof raw !== 'object') return 0;
   const tracker = raw as { dailyTotals?: unknown; buckets?: unknown };
-  const timeZone = homey.clock.getTimezone();
   const now = new Date();
   const monthStartMs = getMonthStartInTimeZone(now, timeZone);
   const { year, month } = getZonedParts(now, timeZone);

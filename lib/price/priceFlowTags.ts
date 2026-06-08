@@ -1,4 +1,4 @@
-import type { ClockPort, FlowPort, FlowToken } from '../ports/homeyRuntime';
+import type { FlowPort, FlowToken } from '../ports/homeyRuntime';
 import { buildPriceExport, priceExportFingerprint } from './priceExportBuilder';
 import type { CombinedPricesReader } from './combinedPricesReader';
 import { normalizeError } from '../utils/errorUtils';
@@ -12,7 +12,8 @@ export const PRICE_FLOW_TAG_ID = 'pels_prices_json';
 export const PRICE_LIST_UPDATED_TRIGGER_ID = 'price_list_updated';
 
 export type PriceFlowTagPublisherDeps = {
-  homey: { clock: ClockPort; flow: FlowPort };
+  homey: { flow: FlowPort };
+  getTimeZone: () => string;
   combinedPricesReader: CombinedPricesReader;
   log: (...args: unknown[]) => void;
   debugStructured: StructuredDebugEmitter;
@@ -110,7 +111,7 @@ export class PriceFlowTagPublisher {
   }
 
   private buildExport(): PriceExportV1 {
-    const timeZone = this.deps.homey.clock.getTimezone();
+    const timeZone = this.deps.getTimeZone();
     const now = new Date();
     const store = this.deps.combinedPricesReader.readStore(now, timeZone);
     return buildPriceExport({ store, now, timeZone });

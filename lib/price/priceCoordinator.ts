@@ -1,4 +1,4 @@
-import type { HomeyRuntime, ApiPort } from '../ports/homeyRuntime';
+import type { SettingsPort, ApiPort } from '../ports/homeyRuntime';
 import { PriceOptimizer } from './priceOptimizer';
 import { PriceLevel } from './priceLevels';
 import PriceService from './priceService';
@@ -21,7 +21,8 @@ const MIDNIGHT_ROTATION_OFFSET_MS = 30 * 1000;
 const MIDNIGHT_ROTATION_MIN_DELAY_MS = 1000;
 
 export type PriceCoordinatorDeps = {
-  homey: HomeyRuntime & { api: ApiPort };
+  homey: { settings: SettingsPort; api: ApiPort };
+  getTimeZone: () => string;
   getHomeyEnergyApi?: () => import('../utils/homeyEnergy').HomeyEnergyApi | null;
   getCurrentPriceLevel: () => PriceLevel;
   rebuildPlanFromCache: (reason: string) => Promise<void>;
@@ -57,6 +58,7 @@ export class PriceCoordinator {
         errorLog: deps.error,
         structuredLog: deps.structuredLog,
       },
+      deps.getTimeZone,
       deps.getHomeyEnergyApi,
     );
     if (deps.onCombinedPricesUpdated) {
@@ -182,7 +184,7 @@ export class PriceCoordinator {
   }
 
   private computeMidnightRotationDelayMs(now: Date): number {
-    const timeZone = this.deps.homey.clock.getTimezone();
+    const timeZone = this.deps.getTimeZone();
     const targetMs = getNextLocalDayStartUtcMs(now.getTime(), timeZone) + MIDNIGHT_ROTATION_OFFSET_MS;
     return Math.max(MIDNIGHT_ROTATION_MIN_DELAY_MS, targetMs - now.getTime());
   }
@@ -244,7 +246,7 @@ export class PriceCoordinator {
       this.deps.debugStructured({ event: 'combined_prices_catchup_deferred', reason: 'legacy_v1_payload' });
       return;
     }
-    const timeZone = this.deps.homey.clock.getTimezone();
+    const timeZone = this.deps.getTimeZone();
     if (!shouldCatchUpCombinedPricesRotation(existingPayload, new Date(), timeZone)) return;
     this.deps.debugStructured({ event: 'combined_prices_catchup_rotating', reason: 'payload_predates_today' });
     // Boot must not abort if rotation throws; mirror the midnight timer's guard.

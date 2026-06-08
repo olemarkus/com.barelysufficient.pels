@@ -1,4 +1,4 @@
-import type { HomeyRuntime } from '../ports/homeyRuntime';
+import type { SettingsPort } from '../ports/homeyRuntime';
 import type { PowerTrackerState } from '../power/tracker';
 import { isFiniteNumber } from '../utils/appTypeGuards';
 import { readCombinedPriceData } from '../price/priceStore';
@@ -47,7 +47,8 @@ import { resolveUsableCapacityKw } from '../power/capacityModel';
 const moduleLogger = getLogger('dailyBudget/service');
 
 type DailyBudgetServiceDeps = {
-  homey: HomeyRuntime;
+  homey: { settings: SettingsPort };
+  getTimeZone: () => string;
   log: (...args: unknown[]) => void;
   isDebugTopicEnabled?: (topic: 'daily_budget') => boolean;
   getPowerTracker: () => PowerTrackerState;
@@ -153,16 +154,7 @@ export class DailyBudgetService {
   }
 
   private resolveTimeZone(): string {
-    try {
-      const tz = this.deps.homey.clock?.getTimezone?.();
-      if (typeof tz === 'string' && tz.trim()) return tz;
-    } catch (error) {
-      (this.deps.structuredLog ?? moduleLogger).error({
-        event: 'daily_budget_timezone_read_failed',
-        err: normalizeError(error),
-      });
-    }
-    return 'Europe/Oslo';
+    return this.deps.getTimeZone();
   }
 
   updateState(params: {

@@ -30,6 +30,7 @@ const buildExpectedNorgesprisAdjustment = (share: number): number => (
 const createService = (): PriceService => new PriceService(
   mockHomeyInstance as unknown as Homey.App['homey'],
   { log: () => {}, debugStructured: () => {} },
+  () => mockHomeyInstance.clock.getTimezone(),
 );
 
 const setNorwayNorgesprisSettings = (params: {
