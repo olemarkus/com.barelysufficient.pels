@@ -54,7 +54,17 @@ export const toPublicOutcome = (
     case 'met': return 'succeeded';
     case 'missed': return 'missed';
     case 'abandoned': return 'abandoned';
-    default: return null;
+    case 'replaced':
+    case 'unknown':
+      return null;
+    default: {
+      // Exhaustiveness guard: a new DeferredObjectivePlanOutcome member must
+      // decide here whether it fires the public "ended" trigger. Suppresses
+      // (null) any out-of-schema persisted outcome rather than throwing.
+      const exhaustive: never = outcome;
+      void exhaustive;
+      return null;
+    }
   }
 };
 

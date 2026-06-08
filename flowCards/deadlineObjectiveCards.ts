@@ -137,8 +137,14 @@ const mapPlanStatusToFlowStatus = (
       return 'unachievable';
     case 'satisfied':
       return 'satisfied';
-    default:
+    default: {
+      // Exhaustiveness guard: a new DeferredObjectiveActivePlanStatusV1 member
+      // must be mapped to a Flow status explicitly above rather than silently
+      // collapsing to 'unachievable'. Keeps the defensive fallback at runtime.
+      const exhaustive: never = status;
+      void exhaustive;
       return 'unachievable';
+    }
   }
 };
 
