@@ -63,9 +63,6 @@ import {
 // `lib/observer/` can share one source under the
 // `no-device-to-peer-except-power` layering rule.
 
-export const TEMPERATURE_BOOST_EXIT_MARGIN_C = 2;
-
-
 export type BinaryControlPlan = {
   capabilityId: BinaryControlCapabilityId;
   /**
@@ -144,7 +141,7 @@ export function resolveTemperatureBoostActive(params: {
   dev: TemperatureBoostResolveInput;
   previousActive: boolean;
 }): boolean {
-  const { dev, previousActive } = params;
+  const { dev } = params;
   if (!isSteppedLoad(dev)) return false;
   if (!hasTemperatureBoostTarget(dev.targets)) return false;
   if (dev.controllable === false || dev.managed === false || dev.available === false) return false;
@@ -157,10 +154,11 @@ export function resolveTemperatureBoostActive(params: {
   if (currentTemperature === undefined) return false;
   const boostBelowC = config.boostBelowC;
   if (typeof boostBelowC !== 'number' || !Number.isFinite(boostBelowC)) return false;
-  const exitThresholdC = boostBelowC + TEMPERATURE_BOOST_EXIT_MARGIN_C;
-  return previousActive
-    ? currentTemperature < exitThresholdC
-    : currentTemperature < boostBelowC;
+  // No PELS-side exit hysteresis: boost is a "below the floor" signal, and the only
+  // behavioural consumer (restore escalation) is already gated on recent observed draw,
+  // so a device satisfied at/near its setpoint stops escalating without a temperature
+  // band. The device's own thermostat deadband supplies the physical hysteresis.
+  return currentTemperature < boostBelowC;
 }
 
 export function getBinaryControlPlan(snapshot?: TargetDeviceSnapshot): BinaryControlPlan | null {

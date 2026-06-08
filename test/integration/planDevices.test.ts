@@ -51,7 +51,12 @@ beforeEach(() => { logCapture = captureLogger(); });
 afterEach(() => { logCapture.restore(); });
 
 describe('buildInitialPlanDevices', () => {
-  it('applies temperature boost hysteresis for stepped temperature devices', () => {
+  it('activates strictly below the floor with no exit-margin hysteresis', () => {
+    // `state` persists across build() calls, so the first call leaves the device
+    // previously-active. With the dropped TEMPERATURE_BOOST_EXIT_MARGIN_C there is no
+    // exit band: a previously-active device at 56.5 °C (above its 55 °C floor) ends
+    // immediately rather than coasting to floor+2. The device's own thermostat deadband
+    // supplies the physical hysteresis.
     const state = createPlanEngineState();
     const build = (currentTemperature: number) => buildInitialPlanDevices({
       context: buildContext([steppedInputDevice({
@@ -69,7 +74,7 @@ describe('buildInitialPlanDevices', () => {
     })[0];
 
     expect(build(54.9).temperatureBoostActive).toBe(true);
-    expect(build(56.5).temperatureBoostActive).toBe(true);
+    expect(build(56.5).temperatureBoostActive).toBe(false);
     expect(build(57).temperatureBoostActive).toBe(false);
   });
 
@@ -138,12 +143,15 @@ describe('buildInitialPlanDevices', () => {
       previousActive: false,
       currentTemperatureC: 54.9,
       boostBelowC: 55,
-      exitThresholdC: 57,
       observationStale: false,
     });
   });
 
-  it('emits a structured debug event when temperature boost ends', () => {
+  it('ends boost as soon as the device reaches its floor — no exit-margin hysteresis', () => {
+    // Regression for the dropped TEMPERATURE_BOOST_EXIT_MARGIN_C: at 56 °C the device is
+    // already at/above its 55 °C floor (it sits inside the former 55–57 °C hysteresis band),
+    // so even though boost was active last cycle it ends now. Previously the +2 °C margin
+    // kept it active until 57 °C, manufacturing overshoot.
     const state = createPlanEngineState();
     state.temperatureBoostActiveByDevice.tank = true;
 
@@ -152,7 +160,7 @@ describe('buildInitialPlanDevices', () => {
         id: 'tank',
         name: 'Water tank',
         deviceType: 'temperature',
-        currentTemperature: 57,
+        currentTemperature: 56,
         temperatureBoost: { enabled: true, boostBelowC: 55 },
       })]),
       state,
@@ -166,6 +174,7 @@ describe('buildInitialPlanDevices', () => {
       deviceId: 'tank',
       active: false,
       previousActive: true,
+      currentTemperatureC: 56,
     });
   });
 

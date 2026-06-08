@@ -1,16 +1,12 @@
 import type { PlanInputDevice } from './planTypes';
 import { hasTemperatureBoostTarget } from '../utils/temperatureBoost';
 import { getLogger } from '../logging/logger';
-import { TEMPERATURE_BOOST_EXIT_MARGIN_C } from '../device/deviceActionProjection';
 
-// `resolveTemperatureBoostActive` and `TEMPERATURE_BOOST_EXIT_MARGIN_C`
-// moved to `lib/device/deviceActionProjection.ts` as chunk 1 of the
-// planner-detype refactor. Re-exported here so every existing call site
-// continues to work unchanged.
-export {
-  resolveTemperatureBoostActive,
-  TEMPERATURE_BOOST_EXIT_MARGIN_C,
-} from '../device/deviceActionProjection';
+// `resolveTemperatureBoostActive` moved to
+// `lib/device/deviceActionProjection.ts` as chunk 1 of the planner-detype
+// refactor. Re-exported here so every existing call site continues to work
+// unchanged.
+export { resolveTemperatureBoostActive } from '../device/deviceActionProjection';
 
 const logger = getLogger('plan/temperature-boost');
 
@@ -34,7 +30,6 @@ export function emitTemperatureBoostStateChange(params: {
     previousActive,
     currentTemperatureC: typeof dev.currentTemperature === 'number' ? dev.currentTemperature : null,
     boostBelowC: typeof boostBelowC === 'number' ? boostBelowC : null,
-    exitThresholdC: typeof boostBelowC === 'number' ? boostBelowC + TEMPERATURE_BOOST_EXIT_MARGIN_C : null,
     observationStale: dev.observationStale === true,
   });
 }
