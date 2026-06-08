@@ -37,8 +37,17 @@ const resolveSafePaceTooltipBySource = (
       return SAFE_PACE_TOOLTIP_BY_SOURCE.daily;
     case 'both':
       return SAFE_PACE_TOOLTIP_BY_SOURCE.both;
-    default:
+    case 'capacity':
+    case null:
+    case undefined:
       return SAFE_PACE_TOOLTIP_BY_SOURCE.capacity;
+    default: {
+      // Exhaustiveness guard: a new HeroSoftLimitSource member must pick its
+      // own tooltip above rather than silently borrowing the capacity copy.
+      const exhaustive: never = source;
+      void exhaustive;
+      return SAFE_PACE_TOOLTIP_BY_SOURCE.capacity;
+    }
   }
 };
 

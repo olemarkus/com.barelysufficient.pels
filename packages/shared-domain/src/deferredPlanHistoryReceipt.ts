@@ -505,8 +505,14 @@ const formatLastDeviceState = (
       return RECEIPT_LAST_STATE_TARGET_REACHED;
     case 'invalid':
       return null;
-    default:
+    default: {
+      // Exhaustiveness guard: a new DeferredObjectiveActivePlanStatusV1 member
+      // must render explicit last-state copy above. Returns null for any
+      // out-of-schema persisted status rather than throwing.
+      const exhaustive: never = lastPlan.planStatus;
+      void exhaustive;
       return null;
+    }
   }
 };
 

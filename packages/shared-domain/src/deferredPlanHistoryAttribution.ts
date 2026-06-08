@@ -335,7 +335,18 @@ export const formatRefinedMissCause = (entry: AttributionEntry): string | null =
       return 'Target needed more energy than estimated.';
     case 'low_confidence':
       return STILL_LEARNING_CAUSE;
-    default:
+    case 'budget_limited':
+    case 'capacity_shortfall':
+    case 'unknown':
+    case null:
       return null;
+    default: {
+      // Exhaustiveness guard: a new DeferredPlanHistoryMissCause member must
+      // make an explicit "Why" decision above (refined sentence or null)
+      // rather than silently falling through to null.
+      const exhaustive: never = attribution.cause;
+      void exhaustive;
+      return null;
+    }
   }
 };
