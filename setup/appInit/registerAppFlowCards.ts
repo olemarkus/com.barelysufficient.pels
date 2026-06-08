@@ -1,6 +1,8 @@
 import { requireDailyBudgetService, requireFlowHomey } from './contextGuards';
 import { registerFlowCards } from '../../flowCards/registerFlowCards';
 import type { AppContext } from '../../lib/app/appContext';
+import { normalizePowerSource } from '../../lib/power/powerSource';
+import { POWER_SOURCE } from '../../lib/utils/settingsKeys';
 import {
   clearObjectiveForDevice,
   migrateBlobToPerKeyIfNeeded,
@@ -20,7 +22,9 @@ export function registerAppFlowCards(ctx: AppContext): void {
     getCurrentPriceLevel: () => ctx.getCurrentPriceLevel(),
     areFlowBackedCardsAvailable: () => ctx.areFlowBackedCardsAvailable(),
     recordPowerSample: (powerW) => {
-      if (ctx.homey.settings.get('power_source') === 'homey_energy') return Promise.resolve();
+      if (normalizePowerSource(ctx.homey.settings.get(POWER_SOURCE)) === 'homey_energy') {
+        return Promise.resolve();
+      }
       return ctx.recordPowerSample(powerW);
     },
     getCapacityGuard: () => ctx.capacityGuard,

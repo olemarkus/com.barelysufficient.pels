@@ -1,6 +1,9 @@
 import { HomeyEnergyPollSource } from '../../lib/power/sources/homeyEnergyPoll';
 import { TimerRegistry } from '../../lib/app/timerRegistry';
+import { normalizePowerSource } from '../../lib/power/powerSource';
 import { mockHomeyInstance } from '../mocks/homey';
+
+const mockPowerSource = () => normalizePowerSource(mockHomeyInstance.settings.get('power_source'));
 
 describe('HomeyEnergyPollSource', () => {
   beforeEach(() => {
@@ -18,7 +21,7 @@ describe('HomeyEnergyPollSource', () => {
     const pollHomePower = vi.fn().mockResolvedValue(2100);
     const recordPowerSample = vi.fn().mockResolvedValue(undefined);
     const source = new HomeyEnergyPollSource({
-      homey: mockHomeyInstance as any,
+      getPowerSource: mockPowerSource,
       timers: new TimerRegistry(),
       pollHomePower,
       recordPowerSample,
@@ -50,7 +53,7 @@ describe('HomeyEnergyPollSource', () => {
 
     const pollHomePower = vi.fn().mockResolvedValue(null);
     const source = new HomeyEnergyPollSource({
-      homey: mockHomeyInstance as any,
+      getPowerSource: mockPowerSource,
       timers: new TimerRegistry(),
       pollHomePower,
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
