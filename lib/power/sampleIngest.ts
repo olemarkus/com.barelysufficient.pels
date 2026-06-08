@@ -1,4 +1,4 @@
-import type Homey from 'homey';
+import type { HomeyRuntime } from '../ports/homeyRuntime';
 import type CapacityGuard from './capacityGuard';
 import type { PowerTrackerState } from './tracker';
 import type { StructuredDebugEmitter } from '../logging/logger';
@@ -153,7 +153,7 @@ export async function recordPowerSampleForApp(params: {
 }
 
 export function persistPowerTrackerStateForApp(params: {
-  homey: Homey.App['homey'];
+  homey: HomeyRuntime;
   powerTracker: PowerTrackerState;
   reason?: PowerTrackerPersistReason;
   error: (msg: string, err: Error) => void;
