@@ -77,8 +77,20 @@ read off the decorated snapshot: `residualKwForPlanDevice.ts:97,135` (`selectedS
 `:102` (`planningPowerKw`), `calibrationViews.ts:61` (`planningPowerKw`).
 
 So these fields are **path-dependent**: *live* on the decorated planner path, *dead*
-on the raw executor path (`executablePlanProjection.ts:187` reads `selectedStepId` off
-the undecorated `getSnapshot()`, always undefined). A blind type-level cull is unsafe.
+on the raw executor path (`buildObservedSteppedLoadState` reads `selectedStepId` off the
+undecorated `getSnapshot()`, always undefined). A blind type-level cull is unsafe.
+
+**Update (`refactor/stepped-intent-desired-only`):** the executable stepped intent is now
+desired-only — the old `planningCurrentOn` / `planningCurrentStepId` current-state fields were
+removed. Current state is producer-resolved: `resolveSteppedLoadCurrentFallback(planDevice)`
+resolves the effective on/step once on the plan device and the dispatch loop passes it to the
+projection, so the executor never re-derives a planning fallback off the (desired-only) intent.
+Deliberately, the raw dispatch observed step is **left real-evidence-only** —
+`observed.steppedLoad.stepId` stays undefined on the undecorated `getSnapshot()` path (NOT joined
+from the effective `selectedStepId`). That keeps the stepped shed-release trusted-evidence gate a
+no-op until a real SDK report arrives, instead of letting a planning-assumed step satisfy it. This
+does NOT move `selectedStepId` off `TargetDeviceSnapshot` — the broader decoration rework below is
+still the path-origin fix.
 
 **This is the actual mess** (sharper than "god-struct"): `TargetDeviceSnapshot` is
 doing double duty — transport's observed snapshot **and** the app-layer's

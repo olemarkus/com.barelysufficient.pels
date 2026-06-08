@@ -72,7 +72,10 @@ import {
   findDroppedSteppedShedIntents,
   hasExecutableShedDevices,
 } from './executablePlanProjection';
-import { buildExecutableSteppedLoadDevice } from './executableSteppedLoadProjection';
+import {
+  buildExecutableSteppedLoadDevice,
+  resolveSteppedLoadCurrentFallback,
+} from './executableSteppedLoadProjection';
 import {
   buildExecutableTargetCommand,
   buildExecutableTargetUpdate,
@@ -679,6 +682,16 @@ export class PlanExecutor {
       const executablePlan = buildExecutablePlan(plan);
       const observedState = buildExecutableObservedState(this.latestTargetSnapshot);
       const observedMap = new Map(observedState.devices.map((entry) => [entry.id, entry]));
+      // Producer-resolved current state per device. The raw dispatch snapshot carries
+      // no observed step (`selectedStepId` is a plan-device decoration, absent here),
+      // so the effective current step/on is resolved once on the plan device and
+      // supplied to the projection — keeping current-state resolution in the producer
+      // layer rather than re-derived on the (desired-only) executable intent. The
+      // observation stays authoritative for any field it does carry (binary on,
+      // reported step, measured power).
+      const steppedFallbackMap = new Map(
+        plan.devices.map((device) => [device.id, resolveSteppedLoadCurrentFallback(device)]),
+      );
       const hasShedDevices = hasExecutableShedDevices(plan, executablePlan);
       this.logUnderspecifiedSteppedShedDevices(plan, executablePlan, mode);
       let deviceWriteCount = 0;
@@ -688,7 +701,11 @@ export class PlanExecutor {
         const snapshot = observed?.snapshot;
         try {
           if (intent.projectionError) throw intent.projectionError;
-          const steppedAction = buildExecutableSteppedLoadDevice(intent.steppedLoad, observed);
+          const steppedAction = buildExecutableSteppedLoadDevice(
+            intent.steppedLoad,
+            observed,
+            steppedFallbackMap.get(intent.id),
+          );
           if (shouldSkipUnavailable({
             snapshot,
             name: intent.name,

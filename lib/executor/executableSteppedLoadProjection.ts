@@ -17,6 +17,7 @@ import {
 import type {
   ExecutableObservedDeviceState,
   ExecutableObservedSteppedLoadState,
+  ExecutableSteppedLoadCurrentFallback,
   ExecutableSteppedLoadCurrentState,
   ExecutableSteppedLoadDevice,
   ExecutableSteppedLoadIntent,
@@ -65,8 +66,6 @@ export function buildExecutableSteppedLoadIntent(dev: PlanDevice): ExecutableSte
     targetPowerConfig: dev.targetPowerConfig,
     shedAction: dev.shedAction,
     desired,
-    planningCurrentOn: planningCurrent.on,
-    planningCurrentStepId: dev.selectedStepId,
     previousStepId: dev.selectedStepId ?? dev.lastDesiredStepId,
     transition,
     matchingRestoreAttempt,
@@ -76,12 +75,29 @@ export function buildExecutableSteppedLoadIntent(dev: PlanDevice): ExecutableSte
   };
 }
 
+/**
+ * Producer-resolved current fallback from the plan device. Used by the
+ * device-projection only when the device has no observation this cycle; the
+ * resolution (effective on + effective step) lives here, in the producer layer,
+ * so the executor never re-derives a planning fallback.
+ */
+export function resolveSteppedLoadCurrentFallback(
+  dev: PlanDevice,
+): ExecutableSteppedLoadCurrentFallback | undefined {
+  if (!isSteppedLoadDevice(dev)) return undefined;
+  return {
+    on: resolveEffectiveCurrentOn(dev),
+    stepId: dev.selectedStepId,
+  };
+}
+
 export function buildExecutableSteppedLoadDevice(
   intent: ExecutableSteppedLoadIntent | null,
   observed: ExecutableObservedDeviceState | undefined,
+  currentFallback?: ExecutableSteppedLoadCurrentFallback,
 ): ExecutableSteppedLoadDevice | null {
   if (!intent) return null;
-  const current = buildCurrentState(intent, observed);
+  const current = buildCurrentState(intent, observed, currentFallback);
   const stepActuation = resolveSteppedStepActuationState({
     step: toExecutableSteppedStepState(observed?.steppedLoad, intent.desired.stepId),
   });
@@ -103,12 +119,17 @@ export function buildExecutableSteppedLoadDevice(
 const buildCurrentState = (
   intent: ExecutableSteppedLoadIntent,
   observedDevice: ExecutableObservedDeviceState | undefined,
+  currentFallback: ExecutableSteppedLoadCurrentFallback | undefined,
 ): ExecutableSteppedLoadCurrentState => {
   const observed = observedDevice?.steppedLoad;
-  const stepId = observed?.stepId ?? intent.planningCurrentStepId;
+  // Current state is producer-resolved: from the observation when present, else
+  // from the plan-device fallback the observed-state producer supplies for a
+  // device absent from this cycle's snapshot. The intent carries desired-only
+  // state and never contributes current state here.
+  const stepId = observed?.stepId ?? currentFallback?.stepId;
   return {
     on: observed?.on
-      ?? (observedDevice ? (observedDevice.binaryControl?.on ?? true) : intent.planningCurrentOn),
+      ?? (observedDevice ? (observedDevice.binaryControl?.on ?? true) : (currentFallback?.on ?? null)),
     stepId,
     stepForShed: resolveObservedStepForShed(intent, observed, stepId),
     stepIsOffStep: stepId

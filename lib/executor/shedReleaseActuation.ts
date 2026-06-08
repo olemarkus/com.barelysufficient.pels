@@ -201,8 +201,10 @@ const buildShedReleaseSteppedAction = (params: {
     targetPowerConfig: steppedLoadIntent.targetPowerConfig,
     shedAction: 'set_step',
     current: {
-      on: observed?.steppedLoad?.on
-        ?? (observed ? (observed.binaryControl?.on ?? true) : steppedLoadIntent.planningCurrentOn),
+      // `observed` is always present here: the caller (`applyShedReleaseSteppedLoad`)
+      // gates on `observed.steppedLoad.stepId` before building this action, so the
+      // current state is fully observation-derived — no planning fallback.
+      on: observed?.steppedLoad?.on ?? (observed?.binaryControl?.on ?? true),
       stepId: currentStepId,
       stepForShed: currentStep
         ? { stepId: currentStep.id, planningPowerW: currentStep.planningPowerW }
@@ -267,10 +269,12 @@ const applyShedReleaseSteppedLoad = async (params: {
   const targetStep = resolveProducerShedReleaseStep(intent, profile);
   if (!targetStep) return false;
   // Trusted-evidence gate (mirrors the binary path's `observedBinaryState === 'on'` check):
-  // require an observed step id from a real snapshot. `planningCurrentStepId` can carry a
-  // stale value from before a Homey restart; firing a step command against it would race
-  // against an SDK that hasn't yet reported the device's true state. No observation → wait
-  // for real evidence.
+  // require an observed step id from a real snapshot. The effective current step can carry a
+  // planning fallback (`reportedStepId ?? planning`) that may be stale from before a Homey
+  // restart; firing a step command against it would race against an SDK that hasn't yet
+  // reported the device's true state. The dispatch-path observed state carries an observed
+  // step only from a decorated source — a raw `getSnapshot()` snapshot has none — so this
+  // stays a no-op until real evidence arrives.
   const observedStepId = observed?.steppedLoad?.stepId;
   if (!observedStepId) {
     logger.debug({

@@ -52,6 +52,10 @@ export function hasPlanDeviceExecutionDrift(params: {
     intent: buildExecutableDeviceIntent(planDevice),
     observed: buildExecutableObservedDeviceState(liveDevice),
     runtime: buildDriftRuntimeState(planDevice, liveDevice),
+    // The planned current step is the plan device's producer-resolved effective
+    // step; drift compares it against the live observed step. It is read from the
+    // plan device, not from the (desired-only) executable intent.
+    plannedCurrentStepId: planDevice.selectedStepId,
   });
 }
 
@@ -59,13 +63,16 @@ function hasExecutableDeviceExecutionDrift(params: {
   intent: ExecutableDeviceIntent;
   observed: ExecutableObservedDeviceState;
   runtime: DriftRuntimeState;
+  plannedCurrentStepId: string | undefined;
 }): boolean {
   // Drift compares observer-reported state with planner-intended state.
   // Observer-reported state is authoritative here — even a stale observation
   // is what the device actually shows, and re-actuating against a drift is
   // idempotent, so we no longer gate drift on observation freshness.
-  const { intent, observed, runtime } = params;
-  if (hasExecutableBinaryExecutionDrift(intent, observed, runtime)) return true;
+  const {
+    intent, observed, runtime, plannedCurrentStepId,
+  } = params;
+  if (hasExecutableBinaryExecutionDrift(intent, observed, runtime, plannedCurrentStepId)) return true;
   return hasExecutableTargetExecutionDrift(intent, observed, runtime);
 }
 
@@ -131,9 +138,10 @@ function hasExecutableBinaryExecutionDrift(
   intent: ExecutableDeviceIntent,
   observed: ExecutableObservedDeviceState,
   runtime: DriftRuntimeState,
+  plannedCurrentStepId: string | undefined,
 ): boolean {
   if (intent.steppedLoad) {
-    return hasExecutableSteppedLoadExecutionDrift(intent.steppedLoad, observed, runtime);
+    return hasExecutableSteppedLoadExecutionDrift(intent.steppedLoad, observed, runtime, plannedCurrentStepId);
   }
   const release = intent.release;
   if (release && (release.kind === 'binary_restore' || release.kind === 'binary_release')) {
@@ -171,13 +179,14 @@ function hasExecutableSteppedLoadExecutionDrift(
   intent: ExecutableSteppedLoadIntent,
   observed: ExecutableObservedDeviceState,
   runtime: DriftRuntimeState,
+  plannedCurrentStepId: string | undefined,
 ): boolean {
-  if (isSteppedBinaryTransitionInFlight(intent, observed, runtime)) return false;
+  if (isSteppedBinaryTransitionInFlight(intent, observed, runtime, plannedCurrentStepId)) return false;
   const expectedBinaryState = resolveExpectedBinaryStateForSteppedIntent(intent);
   if (hasBinaryStateDrift({ expectedBinaryState, observed, pendingBinary: runtime.pendingBinary })) {
     return true;
   }
-  return hasSteppedStepDrift(intent, observed);
+  return hasSteppedStepDrift(observed, plannedCurrentStepId);
 }
 
 function hasBinaryStateDrift(params: {
@@ -225,24 +234,25 @@ function isPendingBinaryCommandMatchingExpected(
 }
 
 function hasSteppedStepDrift(
-  intent: ExecutableSteppedLoadIntent,
   observed: ExecutableObservedDeviceState,
+  plannedCurrentStepId: string | undefined,
 ): boolean {
   const observedStepId = observed.steppedLoad?.stepId;
   if (observedStepId === undefined) return false;
-  return intent.planningCurrentStepId !== observedStepId;
+  return plannedCurrentStepId !== observedStepId;
 }
 
 function isSteppedBinaryTransitionInFlight(
   intent: ExecutableSteppedLoadIntent,
   observed: ExecutableObservedDeviceState,
   runtime: DriftRuntimeState,
+  plannedCurrentStepId: string | undefined,
 ): boolean {
   const transition = intent.transition;
   if (!transition || transition.binaryTarget === null) return false;
   if (!hasRelevantPendingForTransition(runtime, transition.binaryTarget)) return false;
   const liveStepId = observed.steppedLoad?.stepId;
-  if (!isObservedStepAllowedForTransition(transition, liveStepId, intent.planningCurrentStepId)) return false;
+  if (!isObservedStepAllowedForTransition(transition, liveStepId, plannedCurrentStepId)) return false;
   return isObservedBinaryStateForTransition(transition, observed);
 }
 

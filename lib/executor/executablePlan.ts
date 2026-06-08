@@ -139,6 +139,19 @@ export type ExecutableSteppedLoadDesiredState = ExecutableSteppedLoadState & {
   plannedStepId?: string;
 };
 
+/**
+ * Producer-resolved current state used by the device-projection ONLY when the
+ * device has no observation this cycle (absent from `getSnapshot()` between
+ * planning and dispatch). The observed-state producer owns the resolution from
+ * the plan device's effective values (`resolveEffectiveCurrentOn` /
+ * `selectedStepId`); the executor never re-derives a planning fallback. When an
+ * observation exists, the observed state is authoritative and this is ignored.
+ */
+export type ExecutableSteppedLoadCurrentFallback = {
+  on: boolean | null;
+  stepId?: string;
+};
+
 export type ExecutableSteppedLoadIntent = {
   id: string;
   name: string;
@@ -149,8 +162,6 @@ export type ExecutableSteppedLoadIntent = {
   targetPowerConfig?: TargetPowerSteppedLoadConfig;
   shedAction?: 'turn_off' | 'set_temperature' | 'set_step';
   desired: ExecutableSteppedLoadDesiredState;
-  planningCurrentOn: boolean | null;
-  planningCurrentStepId?: string;
   previousStepId?: string;
   transition: ExecutableSteppedLoadTransition | null;
   matchingRestoreAttempt: ExecutableSteppedLoadRestoreAttempt;

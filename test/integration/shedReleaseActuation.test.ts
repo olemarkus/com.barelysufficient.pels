@@ -64,8 +64,6 @@ const buildSteppedLoadIntent = (
   steppedLoadProfile: buildSteppedLoadProfile(),
   shedAction: 'set_step',
   desired: { on: true, stepId: 'high' },
-  planningCurrentOn: true,
-  planningCurrentStepId: 'high',
   transition: null,
   matchingRestoreAttempt: null,
   matchingCommandAttempt: null,
@@ -289,7 +287,7 @@ describe('applyShedReleaseIntent', () => {
     );
     const result = await applyShedReleaseIntent({
       intent: buildIntent({ releaseShedStepId: 'low' }),
-      steppedLoadIntent: buildSteppedLoadIntent({ planningCurrentStepId: 'high' }),
+      steppedLoadIntent: buildSteppedLoadIntent(),
       observed: buildObserved({
         steppedLoad: { on: true, stepId: 'high' },
       }),
@@ -318,7 +316,7 @@ describe('applyShedReleaseIntent', () => {
     const deps = buildDeps({ action: 'set_step', temperature: null, stepId: null });
     const result = await applyShedReleaseIntent({
       intent: buildIntent({ releaseShedStepId: 'low' }),
-      steppedLoadIntent: buildSteppedLoadIntent({ planningCurrentStepId: 'high' }),
+      steppedLoadIntent: buildSteppedLoadIntent(),
       observed: buildObserved({
         steppedLoad: { on: true, stepId: 'high' },
       }),
@@ -336,7 +334,7 @@ describe('applyShedReleaseIntent', () => {
     const deps = buildDeps({ action: 'set_step', temperature: null, stepId: null });
     const result = await applyShedReleaseIntent({
       intent: buildIntent({ releaseShedStepId: null }),
-      steppedLoadIntent: buildSteppedLoadIntent({ planningCurrentStepId: 'high' }),
+      steppedLoadIntent: buildSteppedLoadIntent(),
       observed: buildObserved({
         steppedLoad: { on: true, stepId: 'high' },
       }),
@@ -352,7 +350,7 @@ describe('applyShedReleaseIntent', () => {
     const deps = buildDeps({ action: 'set_step', temperature: null, stepId: 'low' });
     const result = await applyShedReleaseIntent({
       intent: buildIntent({ releaseShedStepId: 'low' }),
-      steppedLoadIntent: buildSteppedLoadIntent({ planningCurrentStepId: 'low' }),
+      steppedLoadIntent: buildSteppedLoadIntent(),
       observed: buildObserved({
         steppedLoad: { on: true, stepId: 'low' },
       }),
@@ -368,7 +366,7 @@ describe('applyShedReleaseIntent', () => {
     const deps = buildDeps({ action: 'set_step', temperature: null, stepId: 'mid' });
     const result = await applyShedReleaseIntent({
       intent: buildIntent({ releaseShedStepId: 'mid' }),
-      steppedLoadIntent: buildSteppedLoadIntent({ planningCurrentStepId: 'low' }),
+      steppedLoadIntent: buildSteppedLoadIntent(),
       observed: buildObserved({
         steppedLoad: { on: true, stepId: 'low' },
       }),
@@ -399,7 +397,7 @@ describe('applyShedReleaseIntent', () => {
     const deps = buildDeps({ action: 'set_step', temperature: null, stepId: 'low' });
     const result = await applyShedReleaseIntent({
       intent: buildIntent({ releaseShedStepId: 'low' }),
-      steppedLoadIntent: buildSteppedLoadIntent({ planningCurrentStepId: 'high' }),
+      steppedLoadIntent: buildSteppedLoadIntent(),
       observed: buildObserved({
         steppedLoad: { on: true, stepId: undefined },
       }),
@@ -415,7 +413,7 @@ describe('applyShedReleaseIntent', () => {
     const deps = buildDeps({ action: 'set_step', temperature: null, stepId: 'low' });
     const result = await applyShedReleaseIntent({
       intent: buildIntent({ releaseShedStepId: 'low' }),
-      steppedLoadIntent: buildSteppedLoadIntent({ planningCurrentStepId: 'high' }),
+      steppedLoadIntent: buildSteppedLoadIntent(),
       observed: buildObserved({
         steppedLoad: { on: true, stepId: 'phantom-step-id-from-old-profile' },
       }),
@@ -432,7 +430,6 @@ describe('applyShedReleaseIntent', () => {
     const result = await applyShedReleaseIntent({
       intent: buildIntent(),
       steppedLoadIntent: buildSteppedLoadIntent({
-        planningCurrentStepId: 'high',
         matchingCommandAttempt: {
           status: 'awaiting_confirmation',
           requestedStepId: 'mid',
@@ -454,7 +451,6 @@ describe('applyShedReleaseIntent', () => {
     const result = await applyShedReleaseIntent({
       intent: buildIntent(),
       steppedLoadIntent: buildSteppedLoadIntent({
-        planningCurrentStepId: 'high',
         nextStepCommandRetryAtMs: Date.now() + 60_000,
       }),
       observed: buildObserved({
