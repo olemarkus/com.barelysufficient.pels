@@ -17,6 +17,9 @@ const buildShedDevice = (id: string): PlanInputDevice => ({
   name: id,
   targets: [],
   controllable: true,
+  // Real parse output resolves a binary control capability for a sheddable
+  // device; shed candidacy gates on writability (`isCanSetControl`).
+  controlCapabilityId: 'onoff',
   binaryControl: { on: true },
   measuredPowerKw: 1.5,
 });

@@ -18,6 +18,10 @@ const buildDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice 
   id: 'dev',
   name: 'Device',
   targets: [],
+  // Real parse output resolves a binary control capability for a sheddable
+  // device; shed candidacy gates on writability (`isCanSetControl`), so model
+  // that here. A cap-less device overrides with `controlCapabilityId: undefined`.
+  controlCapabilityId: 'onoff',
   ...overrides,
 });
 

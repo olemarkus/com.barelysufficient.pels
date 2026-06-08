@@ -3,6 +3,7 @@ import type { PlanInputDevice, ShedAction } from '../planTypes';
 import type { SteppedLoadProfile } from '../../../packages/contracts/src/types';
 import { isObservedOff } from '../../observer/observedState';
 import { getCurrentDrawKw } from '../../observer/observedPower';
+import { isCanSetControl } from '../../device/deviceActionProjection';
 import type { PendingBinaryCommandStore } from '../../observer/pendingBinaryCommands';
 import {
   getSteppedLoadShedTargetStep,
@@ -187,6 +188,15 @@ function buildBinaryCandidate(
   recentlyRestored: boolean,
   pendingBinaryCommandStore: PendingBinaryCommandStore,
 ): BinaryShedCandidate | null {
+  // Only offer a binary shed candidate when PELS can actually write the device's
+  // on/off control. `isCanSetControl` reads the producer-resolved writability bit
+  // (the same one the executor's restore/stepped paths gate on via
+  // `canTurnOnDevice`), so a device that lost its binary capability — e.g. a
+  // thermostat that dropped `onoff` and can now only shed via its target — is
+  // excluded here instead of being credited in the cascade and then no-oped at
+  // the executor (`getBinaryControlPlan === null`), which would waste the shed
+  // slot and leave the overshoot unrelieved while a writable device goes unshed.
+  if (!isCanSetControl(device)) return null;
   const power = getCurrentDrawKw(device);
   if (power <= 0) return null;
   // Raw read: activeness is evaluated here with the device's

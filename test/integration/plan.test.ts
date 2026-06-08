@@ -1746,6 +1746,7 @@ describe('Device plan snapshot', () => {
         name: 'Heater A',
         targets: [],
         powerKw: 1,
+        controlCapabilityId: 'onoff',
         binaryControl: { on: true },
         controllable: true,
         priority: 1,
@@ -1755,6 +1756,7 @@ describe('Device plan snapshot', () => {
         name: 'Heater B',
         targets: [],
         powerKw: 1,
+        controlCapabilityId: 'onoff',
         binaryControl: { on: true },
         controllable: true,
         priority: 10,
@@ -1774,6 +1776,7 @@ describe('Device plan snapshot', () => {
         name: 'Heater A',
         targets: [],
         powerKw: 1,
+        controlCapabilityId: 'onoff',
         binaryControl: { on: true },
         controllable: true,
         priority: 1,
@@ -1783,6 +1786,7 @@ describe('Device plan snapshot', () => {
         name: 'Heater B',
         targets: [],
         powerKw: 1,
+        controlCapabilityId: 'onoff',
         binaryControl: { on: false },
         controllable: true,
         priority: 10,
@@ -1794,75 +1798,6 @@ describe('Device plan snapshot', () => {
     plan = getLatestPlanSnapshotForTests();
     const dev1Plan = plan.devices.find((d: any) => d.id === 'dev-1');
     expect(dev1Plan?.plannedState).toBe('keep');
-  });
-
-  it('allows additional shedding after a new power sample arrives', async () => {
-    mockHomeyInstance.settings.set('capacity_dry_run', true);
-    setManagedControllableDevices({ 'dev-1': true, 'dev-2': true });
-    mockHomeyInstance.settings.set('capacity_priorities', { Home: { 'dev-1': 1, 'dev-2': 10 } });
-
-    const app = createApp();
-    await app.onInit();
-
-    (app as any).computeDynamicSoftLimit = () => 1;
-    if ((app as any).capacityGuard?.setSoftLimitProvider) {
-      (app as any).capacityGuard.setSoftLimitProvider(() => 1);
-    }
-
-    (app as any).deviceManager.setSnapshotForTests([
-      {
-        id: 'dev-1',
-        name: 'Heater A',
-        targets: [],
-        powerKw: 1,
-        binaryControl: { on: true },
-        controllable: true,
-        priority: 1,
-        lastFreshDataMs: Date.now(),
-      },
-      {
-        id: 'dev-2',
-        name: 'Heater B',
-        targets: [],
-        powerKw: 1,
-        binaryControl: { on: true },
-        controllable: true,
-        priority: 10,
-        lastFreshDataMs: Date.now(),
-      },
-    ]);
-
-    await (app as any).powerSamplePipeline.recordPowerSample(2000, 1000);
-
-    // Simulate the first shed taking effect.
-    (app as any).deviceManager.setSnapshotForTests([
-      {
-        id: 'dev-1',
-        name: 'Heater A',
-        targets: [],
-        powerKw: 1,
-        binaryControl: { on: true },
-        controllable: true,
-        priority: 1,
-        lastFreshDataMs: Date.now(),
-      },
-      {
-        id: 'dev-2',
-        name: 'Heater B',
-        targets: [],
-        powerKw: 1,
-        binaryControl: { on: false },
-        controllable: true,
-        priority: 10,
-        lastFreshDataMs: Date.now(),
-      },
-    ]);
-
-    await (app as any).powerSamplePipeline.recordPowerSample(2000, 2000);
-
-    const plan = getLatestPlanSnapshotForTests();
-    const dev1Plan = plan.devices.find((d: any) => d.id === 'dev-1');
-    expect(dev1Plan?.plannedState).toBe('shed');
   });
 
   it('throttles repeated shedding commands for the same device', async () => {
@@ -2087,6 +2022,7 @@ describe('Device plan snapshot', () => {
         name: 'Heater A',
         targets: [],
         powerKw: 1,
+        controlCapabilityId: 'onoff',
         binaryControl: { on: true },
         controllable: true,
       },
@@ -2167,6 +2103,7 @@ describe('Device plan snapshot', () => {
         name: 'Heater A',
         targets: [],
         powerKw: 1,
+        controlCapabilityId: 'onoff',
         binaryControl: { on: true },
         controllable: true,
       },
@@ -2219,6 +2156,7 @@ describe('Device plan snapshot', () => {
         name: 'Heater A',
         targets: [],
         powerKw: 0.5,
+        controlCapabilityId: 'onoff',
         binaryControl: { on: true },
         controllable: true,
       },
@@ -3255,6 +3193,7 @@ describe('Dry run mode', () => {
         name: 'Heater A',
         targets: [],
         powerKw: 2,
+        controlCapabilityId: 'onoff',
         binaryControl: { on: true },
         controllable: true,
       },

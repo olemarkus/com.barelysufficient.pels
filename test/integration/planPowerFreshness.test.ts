@@ -15,6 +15,9 @@ const buildDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice 
   id: 'dev',
   name: 'Device',
   targets: [],
+  // Shed candidacy gates on writability (`isCanSetControl`); a real binary
+  // device resolves a control capability, so model that here.
+  controlCapabilityId: 'onoff',
   binaryControl: { on: true },
   controllable: true,
   expectedPowerKw: 1.2,
