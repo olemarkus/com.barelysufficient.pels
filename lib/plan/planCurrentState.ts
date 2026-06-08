@@ -10,6 +10,7 @@ import {
   type CurrentStateInput,
   type ObservedCurrentStateInput,
 } from '../observer/observedState';
+import { getObservedBinaryOn } from '../../packages/shared-domain/src/binaryControlState';
 
 export type PlannerCurrentStateSource = 'binary' | 'stepped' | 'target' | 'unknown';
 export type PlannerPendingInfluence = 'none' | 'present_but_not_applied';
@@ -66,19 +67,19 @@ function buildBinaryResolvedCurrentState(params: {
 
 function buildNotApplicableResolvedCurrentState(params: {
   currentState: 'not_applicable';
-  binaryControl?: { on: boolean };
+  binaryOn: boolean | null;
   pendingInfluence: PlannerPendingInfluence;
 }): ResolvedCurrentState {
-  const { currentState, binaryControl, pendingInfluence } = params;
-  // Binary devices carry an observed `binaryControl`; resolve their on/off. A
-  // device with no binary control (target-only / non-binary) carries no
-  // `binaryControl`, mirroring the old absent-`currentOn` target branch.
-  if (binaryControl !== undefined) {
+  const { currentState, binaryOn, pendingInfluence } = params;
+  // Binary devices have an observed on-state; resolve their on/off. A device
+  // with no binary control (target-only / non-binary) resolves to `null`,
+  // mirroring the old absent-`currentOn` target branch.
+  if (binaryOn !== null) {
     return {
       currentState,
-      isOn: binaryControl.on,
+      isOn: binaryOn,
       source: 'binary',
-      reasonCode: binaryControl.on
+      reasonCode: binaryOn
         ? 'observed_binary_on_not_applicable'
         : 'observed_binary_off_not_applicable',
       pendingInfluence,
@@ -108,7 +109,7 @@ export function resolveEffectiveCurrentState(
   if (currentState === 'not_applicable') {
     return buildNotApplicableResolvedCurrentState({
       currentState,
-      binaryControl: device.binaryControl,
+      binaryOn: getObservedBinaryOn(device),
       pendingInfluence,
     });
   }
