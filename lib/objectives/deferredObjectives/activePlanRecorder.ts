@@ -1,5 +1,4 @@
 import type {
-  DeferredObjectiveActivePlanDiagnosticReason,
   DeferredObjectiveActivePlanHourV1,
   DeferredObjectiveActivePlanPendingReason,
   DeferredObjectiveActivePlanRevisionReason,
@@ -13,6 +12,7 @@ import {
   toPersistedPlanLevelDurationFields,
 } from './activePlanDuration';
 import { DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION } from './activePlanSettings';
+import { resolveDiagnosticReasonCode, withDiagnosticReasonCode } from './activePlanDiagnosticReason';
 import { resolveFloorShortfallCause } from './floorShortfallCause';
 import {
   hasPriceHorizonAdvanced,
@@ -219,6 +219,11 @@ const resolvePendingReason = (
   // plug back in. Without this the hero said the generic "Waiting" with no
   // hint that the action is on the user, not PELS.
   if (diag.reasonCode === 'objective_invalid_session') return 'invalid_session';
+  // EV connected but PELS can't resume the charger — surface a dedicated
+  // "can't resume" copy variant so a not-resumable charger that has no plan yet
+  // (pending from the start) gets the same honest hero as the list chip,
+  // instead of falling through to the generic "Waiting for tomorrow's prices".
+  if (diag.reasonCode === 'objective_charger_not_resumable') return 'charger_not_resumable';
   // Thermal devices have no shipped bootstrap kWh/°C; tell the user that
   // power readings are what unblock the plan instead of leaving them with an
   // indefinite "Waiting" state. For thermal objectives this also covers
@@ -233,18 +238,6 @@ const resolvePendingReason = (
   }
   if (DEVICE_DATA_REASON_CODES.has(diag.reasonCode)) return 'device_data_missing';
   return 'awaiting_horizon_plan';
-};
-
-// Narrow diagnostic reason codes that the UI needs to render specific copy
-// (e.g. "car unplugged" / "charger can't resume") beyond what `pendingReason`
-// alone can express. Surfaced on the active plan even when it carries a cached
-// `latest` revision, so the list chip stays honest after a mid-plan transition.
-const resolveDiagnosticReasonCode = (
-  diag: DeferredObjectiveDiagnostic,
-): DeferredObjectiveActivePlanDiagnosticReason | undefined => {
-  if (diag.reasonCode === 'objective_invalid_session') return 'objective_invalid_session';
-  if (diag.reasonCode === 'objective_charger_not_resumable') return 'objective_charger_not_resumable';
-  return undefined;
 };
 
 const createPlanFromDiagnostic = (
@@ -722,7 +715,10 @@ export class DeferredObjectiveActivePlanRecorder {
       this.writeFirstRevision(diag, signature, candidateHours, reason, nowMs);
       return;
     }
-    const backfilled = this.backfillCommitmentIfMissing(current, signature, nowMs);
+    const backfilled = this.refreshDiagnosticReasonCode(
+      this.backfillCommitmentIfMissing(current, signature, nowMs),
+      diag,
+    );
     // End-of-hour settle gate: a replan revision settles at most once per clock
     // hour (at/after :58); a user objective edit bypasses it. The planner's
     // per-cycle live allocation is unaffected — only the persisted RECORD is
@@ -782,33 +778,50 @@ export class DeferredObjectiveActivePlanRecorder {
     return backfilled;
   }
 
+  // Keep a committed plan's `diagnosticReasonCode` in lock-step with the live
+  // diagnostic on EVERY cycle — not only when a replan is due. The list chip and
+  // device-card line read this field to surface "Paused — unplugged" /
+  // "Can't resume" even on a plan with a cached `latest` revision. Without a
+  // per-cycle refresh, a charger that RECOVERS (re-plugged, or resume succeeds)
+  // while no replan is due — the `isReplanDueThisCycle` gate early-returns most
+  // cycles — would keep advertising the stale `objective_invalid_session` /
+  // `objective_charger_not_resumable` code until the next `:58` replan, so the
+  // chip lies "Can't resume" on a healthy charger. `ensurePendingRecord` already
+  // refreshes this on the no-`horizonPlan` path; this mirrors it on the
+  // committed-plan path. Returns the (possibly updated) record so the caller
+  // feeds the corrected code into `maybeWriteReplanRevision`'s `...current`
+  // spread, which would otherwise carry the stale code across a replan write too.
+  private refreshDiagnosticReasonCode(
+    current: DeferredObjectiveActivePlanV1,
+    diag: DeferredObjectiveDiagnostic,
+  ): DeferredObjectiveActivePlanV1 {
+    const code = resolveDiagnosticReasonCode(diag);
+    if (current.diagnosticReasonCode === code) return current;
+    this.plans[current.deviceId] = withDiagnosticReasonCode(current, code);
+    this.dirty = true;
+    return this.plans[current.deviceId]!;
+  }
+
   private ensurePendingRecord(
     diag: DeferredObjectiveDiagnostic,
     signature: string,
     nowMs: number,
   ): void {
-    const pendingReason = resolvePendingReason(diag);
-    const diagnosticReasonCode = resolveDiagnosticReasonCode(diag);
     const existing = this.plans[diag.deviceId];
     if (existing !== undefined) {
-      // Refresh `pendingReason` (pending records only — it's meaningless for
-      // executed plans) and `diagnosticReasonCode` (always — must surface the
-      // current cause even on non-pending plans). The non-pending path matters
-      // for the unplug-mid-schedule case: an EV with a persisted revision that
-      // transitions to `objective_invalid_session` needs to drive the
-      // "Charging plan paused — car unplugged" state on the device card.
-      const reasonChanged = existing.pending && existing.pendingReason !== pendingReason;
-      const diagChanged = existing.diagnosticReasonCode !== diagnosticReasonCode;
-      if (reasonChanged || diagChanged) {
-        const updated: DeferredObjectiveActivePlanV1 = existing.pending
-          ? { ...existing, pendingReason }
-          : { ...existing };
-        if (diagnosticReasonCode !== undefined) {
-          updated.diagnosticReasonCode = diagnosticReasonCode;
-        } else {
-          delete updated.diagnosticReasonCode;
-        }
-        this.plans[diag.deviceId] = updated;
+      // Non-pending records (a persisted revision that's gone invalid mid-plan,
+      // e.g. EV unplugged) share the committed-plan refresh path: only the
+      // `diagnosticReasonCode` needs to track the live diagnostic — `pendingReason`
+      // is meaningless once a plan has executed.
+      if (!existing.pending) {
+        this.refreshDiagnosticReasonCode(existing, diag);
+        return;
+      }
+      // Pending records refresh both `pendingReason` and `diagnosticReasonCode`.
+      const pendingReason = resolvePendingReason(diag);
+      const diagnosticReasonCode = resolveDiagnosticReasonCode(diag);
+      if (existing.pendingReason !== pendingReason || existing.diagnosticReasonCode !== diagnosticReasonCode) {
+        this.plans[diag.deviceId] = withDiagnosticReasonCode({ ...existing, pendingReason }, diagnosticReasonCode);
         this.dirty = true;
       }
       return;

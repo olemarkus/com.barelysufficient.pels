@@ -21,6 +21,7 @@ import { formatDeadlineFull, formatTarget } from './deadlinePlanFormatters.ts';
 // task surfaces (list / hero / device card) never disagree on chip copy.
 export const resolvePendingLiveState = (reason: DeadlinePlanPendingReason): DeadlineLiveState => {
   if (reason === 'invalid_session') return 'paused_unplugged';
+  if (reason === 'charger_not_resumable') return 'paused_not_resumable';
   return 'building_plan';
 };
 
@@ -35,7 +36,9 @@ export const resolvePendingLiveState = (reason: DeadlinePlanPendingReason): Dead
 // `feedback_layering_resolution_in_producer.md` this consumer just calls the
 // flat shared-domain helpers — it never branches on the underlying state.
 export const pendingChipTone = (liveState: DeadlineLiveState): SmartTaskChipTone => {
-  if (liveState === 'paused_unplugged') return resolvePausedUnpluggedChipTone();
+  if (liveState === 'paused_unplugged' || liveState === 'paused_not_resumable') {
+    return resolvePausedUnpluggedChipTone();
+  }
   return resolveBuildingPlanChipTone();
 };
 

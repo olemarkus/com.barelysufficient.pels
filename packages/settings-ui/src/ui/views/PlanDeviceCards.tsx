@@ -58,8 +58,11 @@ const resolveEvStateLineText = (deviceId: string, nowMs: number): string | null 
   const activePlan = state.deferredObjectiveActivePlans?.plansByDeviceId?.[deviceId];
   const hours = activePlan?.latest?.hours ?? [];
   const isPlugOutPaused = activePlan?.diagnosticReasonCode === 'objective_invalid_session';
+  const isNotResumable = activePlan?.diagnosticReasonCode === 'objective_charger_not_resumable';
 
-  const stateLine = resolveEvCardStateLine({ hours, nowMs, isPlugOutPaused, formatTime: formatEvCardTime });
+  const stateLine = resolveEvCardStateLine({
+    hours, nowMs, isPlugOutPaused, isNotResumable, formatTime: formatEvCardTime,
+  });
   return stateLine.kind === 'none' ? null : stateLine.text;
 };
 
