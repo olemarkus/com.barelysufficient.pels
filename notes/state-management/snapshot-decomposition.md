@@ -224,3 +224,27 @@ store, because:
   injection/push, never a concrete transport import.
 - The capacity-guard power-sample path stays decoupled (per PR2a — poll return value,
   not the observer holder).
+
+## Consumer-import gate (the other axis: keep the raw snapshot from escaping)
+
+Separate from decomposing the producer, an ESLint `no-restricted-imports` gate keeps
+the raw `TargetDeviceSnapshot` **name** from being imported by consumer layers — they
+must take the decomposed halves (`ObservedDeviceState` / a `DeviceDescriptor` Pick) or
+a discriminated/read-model carrier. dependency-cruiser can't police this (the type is
+one export among many in a shared file; type edges erase post-compile), so `importNames`
+is the only honest gate — same mechanism as the homey-leaf ban. Sealed surfaces:
+
+- **Runtime consumers** (`SNAPSHOT_CONSUMER_DIRS` in `eslint.config.mjs`): `lib/objectives/**`,
+  `lib/plan/**`, `lib/executor/**` (PRs #1635 / #1637).
+- **Settings-UI source** (`SETTINGS_UI_SNAPSHOT_FORBID_PATTERN`): the whole browser surface,
+  migrated surface-by-surface onto read-model carriers — list/detail (`SettingsUiDeviceListItem`
+  / `SettingsUiDeviceDetailItem` in `deviceUtils.ts`), price-opt + control-profiles (the
+  `SettingsUiDeviceView` store type), deadline-plan (plain `ObservedDeviceState`). Tests are
+  excluded — they legitimately build snapshot fixtures. The settings-UI group glob differs from
+  the runtime one because the UI imports contracts by a relative `../../../contracts/src/types.ts`
+  path (no `packages/` segment, keeps `.ts`).
+
+`DecoratedDeviceSnapshot` is deliberately **not** banned in the settings-UI: it backs the
+store type (`SettingsUiDeviceView` in `state.ts`) and the device-payload ingest
+(`getTargetDevices`) — the UI's own producer boundary. Dissolving that structural embedding
+(decompose `SettingsUiDeviceView` onto the carriers) is the remaining deeper follow-up.
