@@ -130,10 +130,10 @@ export function buildInitialPlanDevices(params: {
       ? deps.getShedBehavior(dev.id)
       : { action: 'turn_off', temperature: null, stepId: null };
     const previousActive = state.temperatureBoostActiveByDevice[dev.id] === true;
-    const active = resolveTemperatureBoostActive({ dev, previousActive });
+    const active = resolveTemperatureBoostActive(dev);
     emitTemperatureBoostStateChange({ dev, previousActive, active });
     const previousEvBoostActive = state.evBoostActiveByDevice[dev.id] === true;
-    const evBoostActive = resolveEvBoostActive({ dev, previousActive: previousEvBoostActive });
+    const evBoostActive = resolveEvBoostActive(dev);
     emitEvBoostStateChange({
       dev,
       previousActive: previousEvBoostActive,
