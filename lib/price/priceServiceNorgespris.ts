@@ -1,4 +1,3 @@
-import type Homey from 'homey';
 import {
   getMonthStartInTimeZone,
   getZonedParts,
@@ -6,7 +5,7 @@ import {
 import { DEFAULT_NORGESPRIS_HOURLY_USAGE_ESTIMATE_KWH } from './norwayPriceDefaults';
 
 type SettingsReader = { settings: { get: (key: string) => unknown }; clock: { getTimezone: () => string } };
-type HomeyApi = Homey.App['homey'] | SettingsReader;
+type HomeyApi = SettingsReader;
 
 const getSettingValue = (homey: HomeyApi, key: string): unknown => homey.settings.get(key);
 

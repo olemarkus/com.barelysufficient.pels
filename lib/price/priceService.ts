@@ -1,4 +1,4 @@
-import type Homey from 'homey';
+import type { HomeyRuntime, ApiPort } from '../ports/homeyRuntime';
 import {
   getDateKeyInTimeZone,
   getHourStartInTimeZone,
@@ -64,7 +64,7 @@ const GRID_TARIFF_FAILURE_REASONS: Record<'keepCache' | 'clearStaleFallback' | '
 
 export default class PriceService {
   constructor(
-    private homey: Homey.App['homey'],
+    private homey: HomeyRuntime & { api: ApiPort },
     private readonly sinks: PriceServiceLoggingSinks,
     private getHomeyEnergyApi?: () => HomeyEnergyApi | null,
   ) { }
@@ -79,7 +79,7 @@ export default class PriceService {
     return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
   }
   private emitRealtime(event: string, payload: unknown): void {
-    const api = (this.homey as { api?: { realtime?: (evt: string, data: unknown) => Promise<void> } }).api;
+    const api = this.homey.api;
     if (!api?.realtime) return;
     api.realtime(event, payload).catch((err) => this.sinks.errorLog?.('Failed to emit realtime event', event, err));
   }
