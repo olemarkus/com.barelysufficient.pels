@@ -1,6 +1,5 @@
-import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
 import { setSetting } from './homey.ts';
-import { state } from './state.ts';
+import { state, type SettingsUiDeviceView } from './state.ts';
 import { updatePriceConfigDevices } from './priceConfig.ts';
 
 // Re-exported for `priceOpt.ts`; the underlying helper lives in `state.ts`
@@ -11,6 +10,6 @@ export const savePriceOptimizationSettings = async () => {
   await setSetting('price_optimization_settings', state.priceOptimizationSettings);
 };
 
-export const renderPriceOptimization = (devices: TargetDeviceSnapshot[]) => {
+export const renderPriceOptimization = (devices: SettingsUiDeviceView[]) => {
   updatePriceConfigDevices(devices);
 };

@@ -8,7 +8,7 @@ import {
 } from './homey.ts';
 import { showToast, showToastError } from './toast.ts';
 import { logSettingsError } from './logging.ts';
-import { state, defaultPriceOptimizationConfig } from './state.ts';
+import { state, defaultPriceOptimizationConfig, type SettingsUiDeviceView } from './state.ts';
 import { supportsTemperatureDevice } from './deviceUtils.ts';
 import { resolveManagedState } from './state.ts';
 import { gridCompanies } from './gridCompanies.ts';
@@ -47,7 +47,6 @@ import type {
   PriceScheme,
   NorwayPriceModel,
 } from './priceConfigTypes.ts';
-import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
 
 type PriceConfigState = {
   optimizationEnabled: boolean;
@@ -90,7 +89,7 @@ const getGridCompanyOptions = (countyCode: string): GridCompanyOption[] => (
     .map((c) => ({ name: c.name, organizationNumber: c.organizationNumber }))
 );
 
-const buildPriceOptDevices = (devices: TargetDeviceSnapshot[]): PriceOptDevice[] => (
+const buildPriceOptDevices = (devices: SettingsUiDeviceView[]): PriceOptDevice[] => (
   devices
     .filter((d) => {
       const cfg = state.priceOptimizationSettings[d.id];
@@ -456,7 +455,7 @@ const ensureLoaded = async () => {
   if (!settingsLoaded) await loadPriceConfigSettings();
 };
 
-export const updatePriceConfigDevices = (devices: TargetDeviceSnapshot[]) => {
+export const updatePriceConfigDevices = (devices: SettingsUiDeviceView[]) => {
   state.latestDevices = devices;
   renderPriceAwareDevices();
 };
