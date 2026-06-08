@@ -1,6 +1,5 @@
 import { DailyBudgetService } from '../../lib/dailyBudget/dailyBudgetService';
 import type { ConfidenceDebug, DailyBudgetDayPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
-import { DEBUG_LOGGING_TOPICS } from '../../lib/utils/settingsKeys';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
 import { createDailyBudgetSettingsStore } from '../../setup/dailyBudgetSettingsAdapter';
 
@@ -276,9 +275,7 @@ describe('DailyBudgetService', () => {
       }),
       persistReason: null,
     }));
-    (service as any).deps.homey.settings.get = vi.fn((key: string) => (
-      key === 'debug_logging_enabled' ? true : null
-    ));
+    (service as any).deps.isDebugTopicEnabled = () => true;
     (service as any).manager.update = updateSpy;
 
     service.getUiPayload();
@@ -289,7 +286,7 @@ describe('DailyBudgetService', () => {
     }));
   });
 
-  it('does not enable confidence bootstrap debug for unrelated topic filters', () => {
+  it('does not enable confidence bootstrap debug when the daily_budget topic is off', () => {
     const service = buildService();
     const updateSpy = vi.fn(() => ({
       snapshot: buildDayPayload({
@@ -299,9 +296,7 @@ describe('DailyBudgetService', () => {
       }),
       persistReason: null,
     }));
-    (service as any).deps.homey.settings.get = vi.fn((key: string) => (
-      key === DEBUG_LOGGING_TOPICS ? ['plan'] : null
-    ));
+    (service as any).deps.isDebugTopicEnabled = () => false;
     (service as any).manager.update = updateSpy;
 
     service.getUiPayload();
@@ -309,29 +304,6 @@ describe('DailyBudgetService', () => {
     expect(updateSpy).toHaveBeenCalledWith(expect.objectContaining({
       refreshConfidence: true,
       includeConfidenceBootstrapDebug: false,
-    }));
-  });
-
-  it('enables confidence bootstrap debug for legacy object-form daily_budget topic settings', () => {
-    const service = buildService();
-    const updateSpy = vi.fn(() => ({
-      snapshot: buildDayPayload({
-        dateKey: '2025-03-15',
-        confidence: 0.72,
-        confidenceDebug: buildConfidenceDebug(),
-      }),
-      persistReason: null,
-    }));
-    (service as any).deps.homey.settings.get = vi.fn((key: string) => (
-      key === DEBUG_LOGGING_TOPICS ? { plan: true, daily_budget: true } : null
-    ));
-    (service as any).manager.update = updateSpy;
-
-    service.getUiPayload();
-
-    expect(updateSpy).toHaveBeenCalledWith(expect.objectContaining({
-      refreshConfidence: true,
-      includeConfidenceBootstrapDebug: true,
     }));
   });
 
