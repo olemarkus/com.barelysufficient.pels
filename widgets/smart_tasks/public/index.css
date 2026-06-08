@@ -215,6 +215,19 @@
   font-weight: var(--pw-weight-medium, 500);
 }
 
+/* The 12% tonal row wash is near-invisible over the dark Homey host, so on a
+   warn/danger row only the chip + eta carried the signal while the values line
+   stayed the same muted grey as an inert row. Tint the values with the Homey
+   warning/danger text token (the same one the eta uses) so the whole left
+   column reads as warning at a glance — text emphasis, not a louder fill. */
+.row[data-tone="danger"] .row__values {
+  color: var(--pw-text-danger, #f0696c);
+}
+
+.row[data-tone="warn"] .row__values {
+  color: var(--pw-text-warning, #b9770e);
+}
+
 /* Homey-native status tag (shared recipe with headroom + create_smart_task):
    medium weight, small radius, faint tonal border over a light tonal fill — a
    soft tag, not a saturated pill. */
@@ -312,6 +325,15 @@
 
 .ended__rows .row[data-tone="warn"] .row__btn {
   background: transparent;
+}
+
+/* …and for the same reason the value line stays muted on ended rows: a Missed
+   outcome carries `data-tone="warn"`, which would otherwise inherit the active
+   warning/danger value tint above and re-introduce active colour into the calm
+   history group. The outcome chip alone conveys the result. */
+.ended__rows .row[data-tone="warn"] .row__values,
+.ended__rows .row[data-tone="danger"] .row__values {
+  color: var(--pw-text-muted, #6d7680);
 }
 
 /* ----- Detail view ----- */
