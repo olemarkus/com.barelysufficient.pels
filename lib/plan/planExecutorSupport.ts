@@ -1,3 +1,4 @@
+import { isBinaryObservedOff } from '../../packages/shared-domain/src/binaryControlState';
 import type { ObservedDeviceState, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { PlanEngineState } from './planState';
 import {
@@ -88,7 +89,7 @@ export const shouldSkipShedding = (params: {
     snapshotState,
   } = params;
   const isUnavailable = snapshotState?.available === false;
-  const isAlreadyOff = snapshotState?.binaryControl?.on === false;
+  const isAlreadyOff = isBinaryObservedOff(snapshotState);
   if (isUnavailable) {
     logger.debug({
       event: 'plan_shed_skipped',

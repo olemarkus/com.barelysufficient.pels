@@ -1,3 +1,4 @@
+import { isBinaryObservedOff } from '../../packages/shared-domain/src/binaryControlState';
 import type { SettingsPort, FlowPort } from '../ports/homeyRuntime';
 import CapacityGuard from '../power/capacityGuard';
 import type { DeviceObservation } from '../device/deviceObservation';
@@ -743,7 +744,7 @@ export class PlanExecutor {
               if (await this.applyTargetIntent(intent.target, observed, mode)) deviceWriteCount += 1;
               continue;
             }
-            const onoffViolated = snapshot?.binaryControl?.on === false;
+            const onoffViolated = isBinaryObservedOff(snapshot);
             const preRestoreStepIssued = onoffViolated
               ? await this.applySteppedLoadCommand(
                 steppedAction,

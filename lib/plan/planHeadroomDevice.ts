@@ -1,3 +1,4 @@
+import { isBinaryObservedOff } from '../../packages/shared-domain/src/binaryControlState';
 import type { PlanEngineState } from './planState';
 import {
   applyActivationPenalty,
@@ -61,7 +62,7 @@ const resolveObservedHeadroomDeviceKw = (
   if (device.available === false) return 0;
   const measured = getMeasuredDrawKw(device);
   if (measured !== null) return measured;
-  if (device.binaryControl?.on === false) return 0;
+  if (isBinaryObservedOff(device)) return 0;
   return getHighestKnownPowerKw(device)?.kw ?? 0;
 };
 

@@ -1,3 +1,4 @@
+import { isBinaryOnOrUnknown } from '../../packages/shared-domain/src/binaryControlState';
 import type { ShedAction } from '../plan/planTypes';
 import type {
   SteppedLoadProfile,
@@ -203,7 +204,7 @@ const buildShedReleaseSteppedAction = (params: {
       // `observed` is always present here: the caller (`applyShedReleaseSteppedLoad`)
       // gates on `observed.steppedLoad.stepId` before building this action, so the
       // current state is fully observation-derived — no planning fallback.
-      on: observed?.steppedLoad?.on ?? (observed?.binaryControl?.on ?? true),
+      on: observed?.steppedLoad?.on ?? isBinaryOnOrUnknown(observed),
       stepId: currentStepId,
       stepForShed: currentStep
         ? { stepId: currentStep.id, planningPowerW: currentStep.planningPowerW }

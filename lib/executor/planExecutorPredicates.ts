@@ -1,3 +1,4 @@
+import { isBinaryObservedOff, isBinaryOnOrUnknown } from '../../packages/shared-domain/src/binaryControlState';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { DevicePlan } from '../plan/planTypes';
 import type { PlanEngineState } from '../plan/planState';
@@ -61,11 +62,11 @@ export function hasStableBinaryReleaseActuation(dev: DevicePlan['devices'][numbe
   if (dev.binaryCommandPending === true) return false;
   if (dev.deferredReleaseIntent === 'binary_restore') {
     // Released = off-but-commandable, the only state a restore acts on.
-    return dev.binaryControl?.on === false && isCommandableNow(dev);
+    return isBinaryObservedOff(dev) && isCommandableNow(dev);
   }
   if (dev.deferredReleaseIntent === 'binary_release') {
     // On (the consolidated binary truth).
-    return dev.binaryControl?.on ?? true;
+    return isBinaryOnOrUnknown(dev);
   }
   return false;
 }
