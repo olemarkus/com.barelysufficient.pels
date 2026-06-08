@@ -290,7 +290,7 @@ export default tseslint.config(
   // floor rule above and locks the dir at zero SDK coupling. Add a dir here as
   // its last `Homey.App` reference is retired (the port-interface train).
   {
-    files: ['lib/dailyBudget/**/*.ts', 'lib/diagnostics/**/*.ts'],
+    files: ['lib/dailyBudget/**/*.ts', 'lib/diagnostics/**/*.ts', 'lib/power/**/*.ts'],
     rules: {
       '@typescript-eslint/no-restricted-imports': ['error', {
         paths: [{

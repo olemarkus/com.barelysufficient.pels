@@ -1,4 +1,4 @@
-import type Homey from 'homey';
+import type { HomeyRuntime } from '../ports/homeyRuntime';
 import CapacityGuard from '../power/capacityGuard';
 import type { DailyBudgetUpdateStateOptions } from '../dailyBudget/dailyBudgetTypes';
 import type { SettingsUiLogEntry } from '../../packages/contracts/src/types';
@@ -54,7 +54,7 @@ export type PriceServiceLike = {
 };
 
 export type SettingsHandlerDeps = {
-  homey: Homey.App['homey'];
+  homey: HomeyRuntime;
   loadCapacitySettings: () => void;
   rebuildPlanFromCache: (reason?: string) => Promise<void>;
   refreshTargetDevicesSnapshot: () => Promise<void>;

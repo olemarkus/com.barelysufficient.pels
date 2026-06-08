@@ -1,4 +1,4 @@
-import type Homey from 'homey';
+import type { HomeyRuntime } from '../../ports/homeyRuntime';
 import type { TimerRegistry } from '../../app/timerRegistry';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 
@@ -20,7 +20,7 @@ export class HomeyEnergyPollSource {
   private pollInterval?: ReturnType<typeof setInterval>;
 
   constructor(private readonly deps: {
-    homey: Homey.App['homey'];
+    homey: HomeyRuntime;
     timers: TimerRegistry;
     pollHomePower: () => Promise<number | null | undefined>;
     recordPowerSample: (powerW: number) => Promise<void>;

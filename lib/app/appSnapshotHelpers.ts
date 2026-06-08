@@ -1,4 +1,4 @@
-import type Homey from 'homey';
+import type { HomeyRuntime } from '../ports/homeyRuntime';
 import type { DeviceTransport } from '../device/deviceTransport';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import type { PlanEngine } from '../plan/planEngine';
@@ -61,7 +61,7 @@ export class AppSnapshotHelpers {
   private staleRefreshLogLastEmitMsById = new Map<string, number>();
 
   constructor(private readonly deps: {
-    homey: Homey.App['homey'];
+    homey: HomeyRuntime;
     timers: TimerRegistry;
     getDeviceManager: () => DeviceTransport | undefined;
     getPlanEngine: () => PlanEngine | undefined;

@@ -1,4 +1,4 @@
-import type Homey from 'homey';
+import type { HomeyRuntime } from '../ports/homeyRuntime';
 import CapacityGuard from '../power/capacityGuard';
 import type { PowerTrackerState } from '../power/tracker';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
@@ -58,7 +58,7 @@ type ShortfallMeta = Pick<
 >;
 
 export type PlanBuilderDeps = {
-  homey: Homey.App['homey'];
+  homey: HomeyRuntime;
   getCapacityGuard: () => CapacityGuard | undefined;
   getCapacitySettings: () => { limitKw: number; marginKw: number };
   getOperatingMode: () => string;
