@@ -292,6 +292,7 @@ describe('appRealtimeDeviceReconcile', () => {
         devices: [{
           id: 'dev-1',
           name: 'Heater',
+          deviceType: 'temperature',
           currentState: 'off',
           plannedState: 'shed',
           currentTarget: 21,

@@ -131,7 +131,7 @@ export function buildSettingsOverviewDeviceReadModel(
     controlCapabilityId: device.controlCapabilityId,
     evChargingState: deps.getObservedEvChargingState?.(device.id),
     currentTarget: temperature ? temperature.currentTarget : null,
-    plannedTarget: device.plannedTarget,
+    plannedTarget: temperature?.plannedTarget,
     currentTemperature: temperature?.currentTemperature,
     measuredPowerKw: device.measuredPowerKw,
     expectedPowerKw: device.expectedPowerKw,

@@ -443,9 +443,10 @@ type PendingRestoreDelay = {
 };
 
 function hasTemperatureTarget(dev: DevicePlanDevice): boolean {
-  const currentTarget = isTemperaturePlanDevice(dev) ? dev.currentTarget : null;
+  if (!isTemperaturePlanDevice(dev)) return false;
+  const { currentTarget, plannedTarget } = dev;
   return (typeof currentTarget === 'number' && Number.isFinite(currentTarget))
-    || (typeof dev.plannedTarget === 'number' && Number.isFinite(dev.plannedTarget));
+    || (typeof plannedTarget === 'number' && Number.isFinite(plannedTarget));
 }
 
 function emitRestoreRejectedDebug(params: {
@@ -789,9 +790,11 @@ function resolveHoldDecision(params: {
     return { type: 'skip' };
   }
 
-  const currentTarget = isTemperaturePlanDevice(dev) ? dev.currentTarget : null;
+  const isTemperature = isTemperaturePlanDevice(dev);
+  const currentTarget = isTemperature ? dev.currentTarget : null;
+  const plannedTarget = isTemperature ? dev.plannedTarget : undefined;
   const atMinTemp = Number(currentTarget) === behavior.temperature
-    || Number(dev.plannedTarget) === behavior.temperature;
+    || Number(plannedTarget) === behavior.temperature;
   const alreadyMinTempShed = dev.shedAction === 'set_temperature' && dev.shedTemperature === behavior.temperature;
   const wasShedLastPlan = state.lastPlannedShedIds.has(dev.id);
   const shouldAbortRestoreForShortfall = guardInShortfall
@@ -974,9 +977,10 @@ function getPendingRestoreDelay(
   for (const dev of planDevices) {
     const behavior = getShedBehavior(dev.id);
     if (behavior.action !== 'set_temperature' || behavior.temperature === null) continue;
-    const currentTarget = isTemperaturePlanDevice(dev) ? dev.currentTarget : null;
+    if (!isTemperaturePlanDevice(dev)) continue;
+    const { currentTarget, plannedTarget } = dev;
     if (typeof currentTarget !== 'number' || currentTarget !== behavior.temperature) continue;
-    if (typeof dev.plannedTarget !== 'number' || dev.plannedTarget <= behavior.temperature) continue;
+    if (typeof plannedTarget !== 'number' || plannedTarget <= behavior.temperature) continue;
 
     const lastRestoreMs = state.lastDeviceRestoreMs[dev.id];
     if (!lastRestoreMs) continue;

@@ -6,12 +6,13 @@ import { getSteppedLoadStep } from '../../utils/deviceControlProfiles';
 import { isDeviceObservationTrusted } from '../../observer/observationTrust';
 
 function isTargetRestorePending(device: DevicePlanDevice): boolean {
-  const currentTarget = isTemperaturePlanDevice(device) ? device.currentTarget : null;
+  if (!isTemperaturePlanDevice(device)) return false;
+  const { currentTarget, plannedTarget } = device;
   return device.shedAction === 'set_temperature'
-    && typeof device.plannedTarget === 'number'
-    && currentTarget !== device.plannedTarget
+    && typeof plannedTarget === 'number'
+    && currentTarget !== plannedTarget
     && device.pendingTargetCommand?.status === 'waiting_confirmation'
-    && device.pendingTargetCommand?.desired === device.plannedTarget;
+    && device.pendingTargetCommand?.desired === plannedTarget;
 }
 
 function isSteppedRestorePending(device: DevicePlanDevice): boolean {

@@ -177,12 +177,14 @@ function canSwapOutDevice(
   behavior: { action: 'turn_off' | 'set_temperature' | 'set_step'; temperature: number | null; stepId: string | null },
 ): boolean {
   if (behavior.action !== 'set_temperature' || behavior.temperature === null) return true;
-  const devCurrentTarget = isTemperaturePlanDevice(dev) ? dev.currentTarget : null;
+  const isTemperature = isTemperaturePlanDevice(dev);
+  const devCurrentTarget = isTemperature ? dev.currentTarget : null;
+  const devPlannedTarget = isTemperature ? dev.plannedTarget : undefined;
   let currentTarget: number | null = null;
   if (typeof devCurrentTarget === 'number') {
     currentTarget = devCurrentTarget;
-  } else if (typeof dev.plannedTarget === 'number') {
-    currentTarget = dev.plannedTarget;
+  } else if (typeof devPlannedTarget === 'number') {
+    currentTarget = devPlannedTarget;
   }
   if (currentTarget === null) return true;
   return currentTarget > behavior.temperature;

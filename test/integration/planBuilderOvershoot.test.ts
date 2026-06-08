@@ -465,6 +465,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       buildDevice({
         id: 'at-temp',
         name: 'AtTemp',
+        deviceType: 'temperature',
         measuredPowerKw: 0.8,
         targets: [{ id: 'target_temperature', value: 15, unit: 'C' }],
       }),
