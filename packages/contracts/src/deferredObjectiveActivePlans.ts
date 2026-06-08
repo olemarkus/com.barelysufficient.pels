@@ -224,6 +224,10 @@ export type DeferredObjectiveActivePlanPendingReason =
   | 'device_data_missing'
   // EV plugged-out / discharging — surfaced as a paused state in the UI.
   | 'invalid_session'
+  // EV connected (plugged_in) but PELS can't resume charging — surfaced as a
+  // "Can't resume" paused state. Distinct from `invalid_session` so the hero
+  // names the charger as the thing to check, not "plug the car in".
+  | 'charger_not_resumable'
   // Thermal device with no learned `kWhPerUnit` profile yet — the planner has
   // no shipped bootstrap rate for thermal kinds, so it sits pending until
   // accepted samples produce a profile.

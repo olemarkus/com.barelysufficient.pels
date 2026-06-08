@@ -651,6 +651,8 @@ var DEADLINE_LABELS = {
       // and falls back to the generic scheduled copy if the resolver ever
       // hands a stale value through.
       paused_unplugged: "Scheduled",
+      // Thermal devices aren't chargers; unreachable, same fallback as above.
+      paused_not_resumable: "Scheduled",
       ok: "On track"
     },
     atRiskChipLabel: SMART_TASK_LIST_STATUS_LABELS.at_risk,
@@ -677,6 +679,9 @@ var DEADLINE_LABELS = {
       }),
       device_data_missing: HEATER_DEVICE_DATA_MISSING,
       invalid_session: HEATER_DEVICE_DATA_MISSING,
+      // Thermal devices aren't chargers; unreachable here, kept as a safety net
+      // so a future diagnostic can't leak EV-specific copy onto a heater.
+      charger_not_resumable: HEATER_DEVICE_DATA_MISSING,
       // Cold-start `missing_capacity` collapses to a single user-facing line —
       // headline + metaLine combined parse as `PENDING_REASON_MISSING_CAPACITY_COPY`
       // ("Learning energy use — needs power readings from this device."). Earlier
@@ -738,6 +743,7 @@ var DEADLINE_LABELS = {
       building_plan: "Building plan\u2026",
       queued: "Scheduled",
       paused_unplugged: "Paused \u2014 unplugged",
+      paused_not_resumable: SMART_TASK_LIST_STATUS_LABELS.paused_not_resumable,
       ok: "On track"
     },
     atRiskChipLabel: SMART_TASK_LIST_STATUS_LABELS.at_risk,
@@ -767,6 +773,18 @@ var DEADLINE_LABELS = {
         headline: "Charging paused \u2014 EV unplugged",
         body: "PELS will resume the schedule once the EV is plugged in and reports a valid charging session.",
         headlineReason: "Charger reports the car isn\u2019t plugged in.",
+        recourse: null
+      }),
+      // Connected (plugged_in) but PELS can't resume charging. Distinct from
+      // `invalid_session`: the car IS plugged in, so the lever is the charger,
+      // not the cable. Recourse is null — like unplugged, the fix is a physical
+      // action with no in-app tab to land on. `headlineReason` reuses the
+      // canonical widget "why" line so the three EV surfaces (list chip / hero /
+      // card) agree on the cause copy.
+      charger_not_resumable: () => ({
+        headline: "Charging won\u2019t resume",
+        body: "PELS can\u2019t resume charging on this charger. Check the charger and the EV \u2014 PELS will pick the schedule back up once charging can run again.",
+        headlineReason: SMART_TASK_WIDGET_WHY_BY_STATUS.paused_not_resumable,
         recourse: null
       }),
       missing_capacity: EV_DEVICE_DATA_MISSING

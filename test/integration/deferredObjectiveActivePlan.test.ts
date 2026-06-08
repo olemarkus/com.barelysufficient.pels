@@ -704,6 +704,79 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(plan.diagnosticReasonCode).toBeUndefined();
   });
 
+  // Regression: C3 staleness bug. A COMMITTED plan (has `latest`, not pending)
+  // that picks up a `objective_charger_not_resumable` / `objective_invalid_session`
+  // code must CLEAR it the moment the charger recovers — even on a cycle where no
+  // replan settles (the `isReplanDueThisCycle` gate early-returns most cycles).
+  // Before the fix, only the no-`horizonPlan` pending path cleared the code, so a
+  // recovered charger kept advertising "Can't resume" until the next :58 replan.
+  it('clears a stale objective_charger_not_resumable on a committed plan when the charger recovers (no replan due)', () => {
+    const { deps, saved } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    // t0 (hour 2, before :58): healthy diagnostic → first committed revision.
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], 2 * HOUR_MS);
+    recorder.flushIfDirty();
+    expect(saved()!.plansByDeviceId.dev.pending).toBe(false);
+    expect(saved()!.plansByDeviceId.dev.diagnosticReasonCode).toBeUndefined();
+
+    // t1 (still hour 2, before :58 → no replan due): charger can't resume.
+    // Production routes a blocking `reasonCode` through `withUnknown`
+    // (diagnosticsBridge.ts), which OMITS `horizonPlan`, so a real not-resumable
+    // diag is horizon-less and is recorded via `ensurePendingRecord` (the
+    // `candidateHours === null` set path) — delete `horizonPlan` to match.
+    const notResumable = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
+    delete (notResumable as { horizonPlan?: unknown }).horizonPlan;
+    notResumable.reasonCode = 'objective_charger_not_resumable';
+    recorder.observe([notResumable], 2 * HOUR_MS + 10 * 60 * 1000);
+    recorder.flushIfDirty();
+    const paused = saved()!.plansByDeviceId.dev;
+    expect(paused.pending).toBe(false);
+    expect(paused.latest).not.toBeNull();
+    expect(paused.diagnosticReasonCode).toBe('objective_charger_not_resumable');
+
+    // t2 (still hour 2, before :58 → still no replan due): charger recovers.
+    recorder.observe(
+      [makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })],
+      2 * HOUR_MS + 20 * 60 * 1000,
+    );
+    recorder.flushIfDirty();
+    const recovered = saved()!.plansByDeviceId.dev;
+    expect(recovered.pending).toBe(false);
+    expect(recovered.latest).not.toBeNull();
+    expect(recovered.diagnosticReasonCode).toBeUndefined();
+  });
+
+  // Regression: C3, identical staleness for the re-plug path
+  // (objective_invalid_session → healthy) on a committed plan with no replan due.
+  it('clears a stale objective_invalid_session on a committed plan when the EV is re-plugged (no replan due)', () => {
+    const { deps, saved } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], 2 * HOUR_MS);
+    recorder.flushIfDirty();
+    expect(saved()!.plansByDeviceId.dev.diagnosticReasonCode).toBeUndefined();
+
+    // A real invalid-session diag is horizon-less (routed through `withUnknown`
+    // in diagnosticsBridge.ts, which omits `horizonPlan`), so it's recorded via
+    // `ensurePendingRecord`, not the committed path — delete `horizonPlan` to match.
+    const unplugged = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
+    delete (unplugged as { horizonPlan?: unknown }).horizonPlan;
+    unplugged.reasonCode = 'objective_invalid_session';
+    recorder.observe([unplugged], 2 * HOUR_MS + 10 * 60 * 1000);
+    recorder.flushIfDirty();
+    expect(saved()!.plansByDeviceId.dev.diagnosticReasonCode).toBe('objective_invalid_session');
+
+    recorder.observe(
+      [makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })],
+      2 * HOUR_MS + 20 * 60 * 1000,
+    );
+    recorder.flushIfDirty();
+    const recovered = saved()!.plansByDeviceId.dev;
+    expect(recovered.pending).toBe(false);
+    expect(recovered.diagnosticReasonCode).toBeUndefined();
+  });
+
   it('transitions pending -> first revision with prices_arrived when prices show up', () => {
     const { deps, saved } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);

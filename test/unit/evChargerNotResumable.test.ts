@@ -6,6 +6,8 @@ import {
 import {
   SMART_TASK_LIST_STATUS_LABELS,
   SMART_TASK_WIDGET_STATUS_LABELS,
+  deadlineLabels,
+  resolveEvCardStateLine,
   resolveSmartTaskListStatus,
 } from '../../packages/shared-domain/src/deadlineLabels';
 
@@ -44,5 +46,49 @@ describe('resolveSmartTaskListStatus — connected-but-not-resumable charger', (
   it('exposes the approved chip / widget copy', () => {
     expect(SMART_TASK_LIST_STATUS_LABELS.paused_not_resumable).toBe('Paused — can’t resume');
     expect(SMART_TASK_WIDGET_STATUS_LABELS.paused_not_resumable).toBe('Can’t resume');
+  });
+});
+
+describe('resolveEvCardStateLine — connected-but-not-resumable charger (C1)', () => {
+  const formatTime = (ms: number): string => `T${ms}`;
+
+  it('surfaces a distinct not_resumable state line', () => {
+    expect(resolveEvCardStateLine({
+      hours: [], nowMs: 0, isPlugOutPaused: false, isNotResumable: true, formatTime,
+    })).toEqual({ kind: 'not_resumable', text: 'Charging won’t resume — check the charger' });
+  });
+
+  it('not-resumable wins over planned hours (the schedule can\'t run)', () => {
+    const line = resolveEvCardStateLine({
+      hours: [{ startsAtMs: 0 }],
+      nowMs: 0,
+      isPlugOutPaused: false,
+      isNotResumable: true,
+      formatTime,
+    });
+    expect(line.kind).toBe('not_resumable');
+  });
+
+  it('falls back to the existing branches when not-resumable is absent', () => {
+    expect(resolveEvCardStateLine({
+      hours: [], nowMs: 0, isPlugOutPaused: true, isNotResumable: false, formatTime,
+    }).kind).toBe('plug_out_paused');
+    expect(resolveEvCardStateLine({
+      hours: [], nowMs: 0, isPlugOutPaused: false, formatTime,
+    }).kind).toBe('none');
+  });
+});
+
+describe('EV pending hero — charger_not_resumable (C2)', () => {
+  const ctx = { deviceId: 'dev', deviceName: 'Connected 300', deadlineTime: '07:00' };
+
+  it('renders a charger-focused hero distinct from the unplugged copy', () => {
+    const notResumable = deadlineLabels('ev_soc').pendingHeroByReason.charger_not_resumable(ctx);
+    const unplugged = deadlineLabels('ev_soc').pendingHeroByReason.invalid_session(ctx);
+    expect(notResumable.headline).toBe('Charging won’t resume');
+    expect(notResumable.recourse).toBeNull();
+    expect(notResumable.headlineReason).not.toBeNull();
+    // Must NOT be the "plug in" copy — the car is connected.
+    expect(notResumable.headline).not.toBe(unplugged.headline);
   });
 });
