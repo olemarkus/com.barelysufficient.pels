@@ -180,6 +180,22 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
 
 *v2.11.0..HEAD release-review findings (2026-06-02). Non-blocking follow-ups.*
 
+- [ ] **Extend the deterministic priority tiebreak to unconfigured (default-priority) devices.**
+      The mode-priorities settings port (`packages/shared-domain/src/modePriorities.ts`) gives
+      *stored* priorities a strict, deterministic 1..N order (ties break by deviceId). But a managed
+      device with no stored priority falls to the caller-side default (`?? 100` in `app.ts:~1970`
+      and `modes.ts:~163`), so every never-configured device collides at 100. The shed comparator
+      (`lib/plan/shedding/candidates.ts:~427`) breaks that tie by `recentlyRestored` then
+      effective-power (highest sheds first), and the restore sort (`lib/plan/restore/devices.ts:~85`)
+      leans on input-order stability — neither falls back to deviceId. So the "one device always
+      consistently wins" guarantee holds only for configured devices, and shed vs restore arbitrate
+      the default-100 group differently. Persona: maintainer / owner who never opened the priority
+      screen. Hypothesis: the default-100 collision is the *common* real-world case, and the
+      shed-by-power / restore-by-input-order asymmetry makes capacity arbitration non-deterministic
+      for exactly those users; either extend the deviceId tiebreak into both comparators or assign
+      defaults a deterministic rank at projection time. Pre-existing; surfaced by the strict-priorities
+      change which made the gap visible by closing it for configured devices.
+
 - [ ] **Decide whether stepped shed/restore recording should gate on `flowBacked` like the binary paths.**
       (Gemini review of #1591, deferred.) The binary seam seal made `BinaryControlOutcome.flowBacked`
       available, and `binaryExecutor.ts` / `binaryRestoreHelpers.ts` skip recording *direct* actuation
@@ -194,6 +210,15 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
       stepped is never flow-backed, close as a no-op. Persona: maintainer. Hypothesis: the binary↔stepped
       recording asymmetry is either a real flow-backed diagnostic-double-count or a deliberate
       channel-agnostic cooldown — name which before changing it.
+
+- [ ] **Add a `check-binary-vocab` CI guard forbidding raw `binaryControl?.on` reads in `lib/plan/**` and `lib/executor/**`.**
+      The binary observed-state consolidation routed all 23 absence-handling reads through
+      `isBinaryOnOrUnknown` / `isBinaryObservedOff` (shared-domain), the binary twin of the EV-vocab
+      de-couple. There is direct precedent: `scripts/check-ev-vocab.mjs` (in `ci:checks`) locks in the
+      EV-string consolidation the same way. Persona: maintainer. Hypothesis: without an AST member-access
+      guard, new code will re-inline `binaryControl?.on ?? true` / `=== false`, eroding the single
+      absence-rule and re-scattering the `undefined` semantics the consolidation removed. Model it on
+      `check-ev-vocab.mjs` (TS-compiler-API property-access detector); allow the predicate module itself.
 
 - [ ] **Extend the connected-but-not-resumable (`plugged_in`) honesty to the remaining surfaces.**
       The objective/smart-task honesty for a `plugged_in` charger (PELS can't resume it) shipped the

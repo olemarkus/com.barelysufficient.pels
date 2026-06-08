@@ -6,6 +6,7 @@ import {
   type RealtimeDeviceReconcileState,
 } from './appRealtimeDeviceReconcile';
 import { hasPlanExecutionDriftForDevice } from '../lib/executor/planExecutionDrift';
+import { isTemperaturePlanDevice } from '../lib/plan/planTemperatureDevice';
 import type { DevicePlan, PlanInputDevice } from '../lib/plan/planTypes';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../lib/logging/logger';
 import { getLogger } from '../lib/logging/logger';
@@ -122,11 +123,12 @@ function enrichRealtimeDeviceReconcileEvent(
   if (!planDevice) return event;
 
   let planExpectation: string | undefined;
+  const plannedTarget = isTemperaturePlanDevice(planDevice) ? planDevice.plannedTarget : undefined;
   if (
     event.capabilityId?.startsWith('target_temperature')
-    && typeof planDevice.plannedTarget === 'number'
+    && typeof plannedTarget === 'number'
   ) {
-    planExpectation = `plan target: ${planDevice.plannedTarget}°C`;
+    planExpectation = `plan target: ${plannedTarget}°C`;
   } else if (event.capabilityId === 'onoff' || event.capabilityId === 'evcharger_charging') {
     planExpectation = resolvePlanStateExpectation(planDevice);
   }

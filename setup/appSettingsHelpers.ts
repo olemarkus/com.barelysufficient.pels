@@ -23,6 +23,7 @@ import {
   normalizeTemperatureBoostSettings,
 } from '../lib/utils/appTypeGuards';
 import { normalizeDeviceTargetPowerConfigs } from '../lib/utils/targetPowerConfig';
+import { normalizeModePriorities } from '../packages/shared-domain/src/modePriorities';
 import {
   BUDGET_EXEMPT_DEVICES,
   CAPACITY_DRY_RUN,
@@ -99,7 +100,13 @@ export function buildCapacitySettingsSnapshot(params: {
     ? resolveModeNameHelper(modeRaw, nextAliases)
     : current.operatingMode;
 
-  const nextPriorities = isPrioritySettings(priorities) ? priorities : current.capacityPriorities;
+  // Resolution-in-producer: the persisted payload may carry duplicate or gapped
+  // priorities, so normalize to a strict 1..N order here. Every runtime consumer
+  // (getPriorityForDevice → planSort/shedding) reads this resolved snapshot, so
+  // they all inherit the strict order without branching on stored shape.
+  const nextPriorities = normalizeModePriorities(
+    isPrioritySettings(priorities) ? priorities : current.capacityPriorities,
+  );
   const nextTargets = isModeDeviceTargets(modeTargets) ? modeTargets : current.modeDeviceTargets;
   const nextDryRun = typeof dryRun === 'boolean' ? dryRun : current.capacityDryRun;
   const nextBehaviors = normalizeShedBehaviorsHelper(rawShedBehaviors as Record<string, ShedBehavior> | undefined);

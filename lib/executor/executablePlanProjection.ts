@@ -1,3 +1,4 @@
+import { isBinaryOnOrUnknown } from '../../packages/shared-domain/src/binaryControlState';
 import {
   formatDeviceReason,
   PLAN_REASON_CODES,
@@ -176,7 +177,7 @@ export function buildExecutableObservedDeviceState(
 export const resolveObservedBinaryStateFromSnapshot = (
   // Stage 5: narrowed to the observed surface — reads only `binaryControl`.
   snapshot: Pick<ObservedDeviceState, 'binaryControl'>,
-): 'on' | 'off' => ((snapshot.binaryControl?.on ?? true) ? 'on' : 'off');
+): 'on' | 'off' => (isBinaryOnOrUnknown(snapshot) ? 'on' : 'off');
 
 // Stage 5: narrowed to the observed surface — reads only `targets`.
 const buildObservedTargetState = (
@@ -201,7 +202,7 @@ const buildObservedSteppedLoadState = (
 ): ExecutableObservedSteppedLoadState | null => {
   if (snapshot.controlModel !== 'stepped_load') return null;
   return {
-    on: snapshot.binaryControl?.on ?? true,
+    on: isBinaryOnOrUnknown(snapshot),
     stepId: snapshot.selectedStepId,
     reportedStepId: snapshot.reportedStepId,
     measuredPowerKw: snapshot.measuredPowerKw,

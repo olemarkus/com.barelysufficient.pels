@@ -1054,6 +1054,31 @@ describe('settings script', () => {
     expect(controllableCalls[controllableCalls.length - 1]?.[1]).toEqual(expect.objectContaining({ 'socket-2': true }));
   });
 
+  it('normalizes loaded priorities to a strict, deterministic order', async () => {
+    // Persisted payload has duplicate priorities (dev-1/dev-2 both 5) and a gap.
+    // The UI must resolve to the same strict order the planner uses so the list
+    // and the runtime agree on which device wins.
+    // @ts-ignore mutate mock
+    global.Homey.set = vi.fn((key, val, cb) => cb && cb(null));
+    // @ts-ignore mutate mock
+    global.Homey.get = vi.fn((key, cb) => {
+      if (key === 'capacity_priorities') {
+        return cb(null, { Home: { 'dev-2': 5, 'dev-1': 5, 'dev-3': 9 } });
+      }
+      if (key === 'operating_mode') return cb(null, 'Home');
+      return cb(null, []);
+    });
+
+    await loadSettingsScript();
+
+    const { state } = await import('../src/ui/state.ts');
+    expect(state.capacityPriorities).toEqual({
+      Home: { 'dev-1': 1, 'dev-2': 2, 'dev-3': 3 },
+    });
+    const ranks = Object.values(state.capacityPriorities.Home);
+    expect(new Set(ranks).size).toBe(ranks.length);
+  });
+
   it('renames a mode and updates settings', async () => {
     const setSpy = vi.fn((key, val, cb) => cb && cb(null));
     // @ts-ignore mutate mock

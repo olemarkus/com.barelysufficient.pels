@@ -1,3 +1,4 @@
+import { isBinaryObservedOff } from '../../../packages/shared-domain/src/binaryControlState';
 import type { DevicePlanDevice } from '../planTypes';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
 import { getSteppedLoadRestoreStep } from '../../utils/deviceControlProfiles';
@@ -124,7 +125,7 @@ function resolvePendingRestoreGapKwForDevice(
   // This branch is non-stepped (stepped exits earlier). The raw `currentOn` is
   // authoritative for binary-only devices, and matches the rest of the binary
   // pending-restore-gap math below.
-  if (dev.binaryControl?.on === false) return 0;
+  if (isBinaryObservedOff(dev)) return 0;
   const expectedKw = estimateRestorePower(dev);
   const actualKw = Math.max(0, dev.measuredPowerKw ?? dev.powerKw ?? 0);
   if (actualKw >= expectedKw * PENDING_RESTORE_CONFIRMED_FRACTION) return 0;

@@ -148,6 +148,7 @@ describe('planReconcileState stepped device drift', () => {
 
     it('still detects target drift for target-only keep devices', () => {
       const plan = buildPlan([buildBinaryDevice({
+        deviceType: 'temperature',
         currentState: 'not_applicable',
         plannedState: 'keep',
         controlCapabilityId: undefined,
@@ -197,6 +198,7 @@ describe('planReconcileState stepped device drift', () => {
 
     it('treats a mismatched pending target command as drift', () => {
       const plan = buildPlan([buildBinaryDevice({
+        deviceType: 'temperature',
         currentState: 'not_applicable',
         plannedState: 'keep',
         controlCapabilityId: undefined,

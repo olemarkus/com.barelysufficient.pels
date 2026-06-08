@@ -50,6 +50,7 @@ const buildPlan = (): DevicePlan => ({
     {
       id: 'dev-1',
       name: 'Heater',
+      deviceType: 'temperature',
       currentState: 'off',
       plannedState: 'keep',
       currentTarget: 21,
@@ -71,6 +72,7 @@ const buildTargetPlan = (currentTarget = 18, plannedTarget = 23): DevicePlan => 
     {
       id: 'dev-1',
       name: 'Heater',
+      deviceType: 'temperature',
       currentState: 'on',
       plannedState: 'keep',
       currentTarget,
@@ -1136,6 +1138,7 @@ describe('PlanExecutor pending target commands', () => {
         {
           id: 'dev-1',
           name: 'Heater',
+          deviceType: 'temperature',
           currentState: 'on',
           plannedState: 'shed',
           currentTarget: 22,
@@ -1330,6 +1333,7 @@ describe('PlanExecutor stepped loads', () => {
       {
         id: 'dev-1',
         name: 'Tank',
+        deviceType: 'temperature',
         currentState: 'on',
         plannedState: 'keep',
         currentTarget: 68,

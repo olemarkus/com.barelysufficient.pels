@@ -1,3 +1,4 @@
+import { isBinaryOnOrUnknown } from '../../packages/shared-domain/src/binaryControlState';
 import type { DevicePlan } from '../plan/planTypes';
 import {
   isSteppedLoadDevice,
@@ -128,7 +129,7 @@ const buildCurrentState = (
   const stepId = observed?.stepId ?? currentFallback?.stepId;
   return {
     on: observed?.on
-      ?? (observedDevice ? (observedDevice.binaryControl?.on ?? true) : (currentFallback?.on ?? null)),
+      ?? (observedDevice ? isBinaryOnOrUnknown(observedDevice) : (currentFallback?.on ?? null)),
     stepId,
     stepForShed: resolveObservedStepForShed(intent, observed, stepId),
     stepIsOffStep: stepId
