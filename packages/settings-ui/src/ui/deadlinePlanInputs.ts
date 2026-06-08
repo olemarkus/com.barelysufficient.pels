@@ -5,7 +5,7 @@ import {
   SMART_TASK_LIMIT_LOWER_PRIORITY_DEVICES_NOTE,
   type DeadlineLabels,
 } from '../../../shared-domain/src/deadlineLabels.ts';
-import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
+import type { ObservedDeviceState } from '../../../contracts/src/types.ts';
 import type { DeferredObjectiveKwhPerUnitProvenanceV1 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import { formatAcceptedAt } from './deadlinePlanFormatters.ts';
 import { resolveLowestActiveStepKw } from './deadlinePlanResolvers.ts';
@@ -29,12 +29,12 @@ const formatMaxPowerLabel = (kw: number | null): string | null => {
 
 const resolvePlanInputPowerKw = (params: {
   planningSpeedKw: number | null;
-  device: TargetDeviceSnapshot;
+  device: ObservedDeviceState;
 }): number | null => params.planningSpeedKw ?? resolveLowestActiveStepKw(params.device);
 
 export const buildPlanInputs = (params: {
   labels: DeadlineLabels;
-  device: TargetDeviceSnapshot;
+  device: ObservedDeviceState;
   provenance: DeferredObjectiveKwhPerUnitProvenanceV1 | undefined;
   // Pre-resolved by `resolveKwhPerUnitDisplayRate` so this producer never
   // branches on the revision's `kwhPerUnitSource` / `objectiveKind` to pick

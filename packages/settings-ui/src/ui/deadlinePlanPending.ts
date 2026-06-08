@@ -9,7 +9,7 @@ import {
   type SmartTaskChipTone,
 } from '../../../shared-domain/src/deadlineLabels.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
-import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
+import type { ObservedDeviceState } from '../../../contracts/src/types.ts';
 import type { SettingsUiPricesPayload } from '../../../contracts/src/settingsUiApi.ts';
 import type { DeferredObjectiveSettingsEntry } from '../../../contracts/src/deferredObjectiveSettings.ts';
 import type { ResolvedDeferredObjectiveActivePlanV1 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
@@ -78,7 +78,7 @@ export const resolvePendingPriceContext = (prices: SettingsUiPricesPayload): Pic
 };
 
 export const buildPendingHero = (params: {
-  device: TargetDeviceSnapshot;
+  device: ObservedDeviceState;
   objective: DeferredObjectiveSettingsEntry;
   labels: DeadlineLabels;
   deadlineAtMs: number;

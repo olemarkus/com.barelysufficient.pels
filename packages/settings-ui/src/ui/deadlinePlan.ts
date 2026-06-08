@@ -6,7 +6,7 @@ import {
   normalizeDeferredObjectiveSettings,
   type DeferredObjectiveSettingsEntry,
 } from '../../../contracts/src/deferredObjectiveSettings.ts';
-import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
+import type { ObservedDeviceState } from '../../../contracts/src/types.ts';
 import {
   deadlineLabels,
   formatCheapestHoursCaption,
@@ -56,7 +56,7 @@ import type {
 type ObjectivePlanInput = {
   bootstrap: SettingsUiBootstrap;
   deviceId: string | null;
-  devices: TargetDeviceSnapshot[];
+  devices: ObservedDeviceState[];
   prices: SettingsUiPricesPayload;
   nowMs?: number;
 };
@@ -80,7 +80,7 @@ const resolvePriceTone = (hour: HorizonHour): DeadlinePlanPayload['timeline']['h
 };
 
 const buildTimeline = (params: {
-  device: TargetDeviceSnapshot;
+  device: ObservedDeviceState;
   bootstrap: SettingsUiBootstrap;
   deviceId: string;
   hours: HorizonHour[];
@@ -160,7 +160,7 @@ const buildTimeline = (params: {
 };
 
 type ResolvedObjectiveContext = {
-  device: TargetDeviceSnapshot;
+  device: ObservedDeviceState;
   objective: DeferredObjectiveSettingsEntry;
   deviceId: string;
   deadlineAtMs: number;
