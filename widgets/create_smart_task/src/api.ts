@@ -1,14 +1,13 @@
 import { resolveDeferredObjectiveDeadline } from '../../../lib/objectives/deferredObjectives';
 import type {
   DeferredObjectivePlanPreviewCandidate,
-  DeferredObjectivePlanPreviewEstimate,
 } from '../../../packages/contracts/src/deferredObjectivePlanPreview';
 import {
   normalizeDeferredObjectiveSettingsEntry,
   type DeferredObjectiveRescuePermissions,
   type DeferredObjectiveSettingsKind,
 } from '../../../packages/contracts/src/deferredObjectiveSettings';
-import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
+import type { CreateSmartTaskHostApi } from '../../../packages/contracts/src/widgetHostApi';
 import {
   formatScheduledHoursWindow,
   formatSmartTaskDeadlineLong,
@@ -29,24 +28,9 @@ import type {
 // forwards to (`previewDeferredObjectivePlan`, `createDeferredObjective`) are
 // the single source of truth for projection and persistence.
 
-type CreateSmartTaskApiApp = {
-  // Runtime-planned devices the widget may offer (managed snapshot). The widget
-  // offers ONLY these so it never presents a device whose create would be
-  // rejected as `device_not_planned`. See app.getCreateSmartTaskCandidateDevices.
-  getCreateSmartTaskCandidateDevices?: () => TargetDeviceSnapshot[];
-  previewDeferredObjectivePlan?: (
-    deviceId: string,
-    candidate: DeferredObjectivePlanPreviewCandidate,
-  ) => DeferredObjectivePlanPreviewEstimate;
-  createDeferredObjective?: (
-    deviceId: string,
-    candidate: DeferredObjectivePlanPreviewCandidate,
-  ) => { ok: true } | { ok: false; reason: string };
-};
-
 type WidgetApiContext = {
   homey: {
-    app?: CreateSmartTaskApiApp;
+    app?: CreateSmartTaskHostApi;
     clock?: { getTimezone?: () => string };
   };
 };
