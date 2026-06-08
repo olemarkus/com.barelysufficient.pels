@@ -1,23 +1,11 @@
-import type {
-  ResolvedDeferredObjectiveActivePlansV1,
-} from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { SettingsUiDeferredObjectivePlanHistoryPayload } from '../../../packages/contracts/src/settingsUiApi';
-import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
+import type { SmartTaskHistoryHostApi } from '../../../packages/contracts/src/widgetHostApi';
 import { buildSmartTasksWidgetPayload, ENDED_WINDOW_MS } from './smartTasksWidgetPayload';
 import type { SmartTasksWidgetPayload } from './smartTasksWidgetTypes';
 
-type WidgetApiApp = {
-  getDeferredObjectiveActivePlansUiPayload?: () => ResolvedDeferredObjectiveActivePlansV1 | null;
-  // Bounded fetch (last-24h) is preferred so the widget doesn't serialize the
-  // entire all-time history every 60 s refresh; the full method is the
-  // back-compat fallback for an app build that predates the bounded one.
-  getDeferredObjectivePlanHistoryRecentUiPayload?: (sinceMs: number) => SettingsUiDeferredObjectivePlanHistoryPayload;
-  getDeferredObjectivePlanHistoryUiPayload?: () => SettingsUiDeferredObjectivePlanHistoryPayload;
-  getUiPickerDevices?: () => TargetDeviceSnapshot[];
-};
 
 const readRecentHistory = (
-  app: WidgetApiApp | undefined,
+  app: SmartTaskHistoryHostApi | undefined,
   nowMs: number,
 ): SettingsUiDeferredObjectivePlanHistoryPayload | null => {
   if (typeof app?.getDeferredObjectivePlanHistoryRecentUiPayload === 'function') {
@@ -31,7 +19,7 @@ const readRecentHistory = (
 
 type WidgetApiContext = {
   homey: {
-    app?: WidgetApiApp;
+    app?: SmartTaskHistoryHostApi;
     // Homey SDK clock. The widget API runs in the app process (often UTC),
     // so the user's configured timezone must be plumbed explicitly or the
     // detail-panel day/time labels fall back to the host zone.

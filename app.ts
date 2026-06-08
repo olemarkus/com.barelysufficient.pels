@@ -50,6 +50,7 @@ import type {
   DailyBudgetUpdateStateOptions,
 } from './lib/dailyBudget/dailyBudgetTypes';
 import type { SettingsUiPlanSnapshot } from './packages/contracts/src/settingsUiApi';
+import type { PelsWidgetHostApi } from './packages/contracts/src/widgetHostApi';
 import { type DebugLoggingTopic } from './packages/shared-domain/src/utils/debugLogging';
 import {
   resolveSmartTaskDeviceKind,
@@ -304,7 +305,7 @@ function flowConflictKey(
     .join('|');
 }
 
-class PelsApp extends Homey.App {
+class PelsApp extends Homey.App implements PelsWidgetHostApi {
   private powerTracker: PowerTrackerState = {};
   private powerCalibrationStore: PowerCalibrationStore = new PowerCalibrationStore();
   private capacityGuard?: CapacityGuard;

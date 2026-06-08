@@ -1,17 +1,13 @@
 import type { CombinedPriceData, CombinedPriceEntry } from '../../../lib/dailyBudget/dailyBudgetPrices';
-import type { DailyBudgetUiPayload } from '../../../lib/dailyBudget/dailyBudgetTypes';
+import type { DailyBudgetHostApi } from '../../../packages/contracts/src/widgetHostApi';
 import { buildPlanPriceWidgetPayload } from './planPriceWidgetPayload';
 import type { PlanPriceWidgetPayload } from './planPriceWidgetTypes';
 
 const COMBINED_PRICES_SETTING = 'combined_prices';
 
-type WidgetApiApp = {
-  getDailyBudgetUiPayload?: () => DailyBudgetUiPayload | null;
-};
-
 type WidgetApiContext = {
   homey: {
-    app?: WidgetApiApp;
+    app?: DailyBudgetHostApi;
     settings: {
       get: (key: string) => unknown;
     };

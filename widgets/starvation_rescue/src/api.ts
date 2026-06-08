@@ -1,8 +1,7 @@
 import type {
   DeferredObjectivePlanPreviewCandidate,
-  DeferredObjectivePlanPreviewEstimate,
 } from '../../../packages/contracts/src/deferredObjectivePlanPreview';
-import type { StarvationRescueDevice } from '../../../packages/contracts/src/starvationRescue';
+import type { StarvationRescueHostApi } from '../../../packages/contracts/src/widgetHostApi';
 import {
   scheduledHoursIncludeCurrentHour,
   starvationRowOffersRescue,
@@ -48,29 +47,9 @@ import type {
 // staying "now"-shaped (a rescue, not a scheduled overnight task).
 const RESCUE_DEADLINE_HORIZON_MS = 3 * 60 * 60 * 1000;
 
-type StarvationRescueApiApp = {
-  getStarvedRescueDevices?: () => StarvationRescueDevice[];
-  // Preview the plan the rescue would persist. A rescue only runs on a device
-  // with NO existing smart task (the list excludes task-having devices), so the
-  // fresh candidate IS what persists — this just reuses the create engine's
-  // preview. `hasExistingObjective` is always false. See
-  // `App.previewStarvationRescuePlan`.
-  previewStarvationRescuePlan?: (
-    deviceId: string,
-    freshRescueCandidate: DeferredObjectivePlanPreviewCandidate,
-  ) => { estimate: DeferredObjectivePlanPreviewEstimate; deadlineAtMs: number; hasExistingObjective: boolean };
-  // Persist the rescue as a fresh task via the create engine (the candidate
-  // carries the rescue permissions; the engine gates them). Rejects a device that
-  // already has a task. See `App.rescueDeviceWithBudgetExemption`.
-  rescueDeviceWithBudgetExemption?: (
-    deviceId: string,
-    candidate: DeferredObjectivePlanPreviewCandidate,
-  ) => { ok: true } | { ok: false; reason: string };
-};
-
 type WidgetApiContext = {
   homey: {
-    app?: StarvationRescueApiApp;
+    app?: StarvationRescueHostApi;
     clock?: { getTimezone?: () => string };
   };
 };
@@ -101,7 +80,7 @@ const parseRescueRequest = (body: unknown): StarvationRescueRequest | null => {
 // or tampered request can never build a budget-exempt rescue for a
 // capacity row, or for a device that already recovered.
 const resolveRescuableDevice = (
-  app: StarvationRescueApiApp | undefined,
+  app: StarvationRescueHostApi | undefined,
 ): ((deviceId: string) =>
   | { ok: true; targetTemperatureC: number }
   | { ok: false; reason: StarvationRescueRejectReason }) => {
