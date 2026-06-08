@@ -21,6 +21,7 @@ import {
   clearNode,
   createSvg,
 } from './chartSvg';
+import { resolveYAxis, type YAxisTick } from './chartTicks';
 import type {
   PlanPriceWidgetEmptyPayload,
   PlanPriceWidgetPayload,
@@ -31,7 +32,6 @@ import type {
 // `chart` keep working after the geometry split.
 export { VIEWPORT_MIN_HEIGHT } from './chartGeometry';
 
-const GRID_LINES = 4;
 const BAR_RADIUS = 3;
 const DOT_RADIUS = 4;
 const WIDGET_TITLE = PLAN_PRICE_WIDGET_TITLE;
@@ -68,6 +68,8 @@ type PlotMetrics = {
   priceBounds: PriceBounds;
   priceSpan: number;
   stepWidth: number;
+  // The nice-number shared Y gridlines (kWh multiples + deduped price labels).
+  yTicks: YAxisTick[];
 };
 type ChartGroups = {
   chartGroup: SVGGElement;
@@ -76,13 +78,6 @@ type ChartGroups = {
   panelGroup: SVGGElement;
   plotGroup: SVGGElement;
 };
-
-const formatPlanTick = (value: number): string => {
-  const rounded = Math.round(value * 10) / 10;
-  return rounded % 1 === 0 ? String(Math.round(rounded)) : rounded.toFixed(1);
-};
-
-const formatPriceTick = (value: number): string => String(Math.round(value));
 
 const resolvePriceBounds = (payload: PlanPriceWidgetReadyPayload): PriceBounds => {
   if (!payload.hasPriceData) return { min: 0, max: 1 };
@@ -127,11 +122,19 @@ const resolvePlotMetrics = (
   const plotWidth = plot.right - plot.left;
   const plotHeight = plot.bottom - plot.top;
   const buckets = resolveVisibleBuckets(payload, half);
-  // Scale the y-axis to the whole day's peak so the two halves stay visually
-  // comparable when the user toggles tabs.
-  const maxPlan = Math.max(1, payload.maxPlan * 1.08);
   const priceBounds = resolvePriceBounds(payload);
   const priceSpan = Math.max(1, priceBounds.max - priceBounds.min);
+  // Nice-number Y axis, scaled to the whole day's peak so the two halves stay
+  // visually comparable when the user toggles tabs. `kwhMax` is the nice ceiling
+  // the bars scale against; its interval count tracks `plotHeight`.
+  const axis = resolveYAxis({
+    peakKwh: payload.maxPlan,
+    plotHeight,
+    priceMin: priceBounds.min,
+    priceMax: priceBounds.max,
+    hasPriceData: payload.hasPriceData,
+  });
+  const maxPlan = axis.kwhMax;
   const stepWidth = plotWidth / Math.max(1, buckets.length);
   // Leave a visible inter-bar gap (0.62 of the step) so the bars read as
   // discrete hours rather than a solid wall.
@@ -146,6 +149,7 @@ const resolvePlotMetrics = (
     priceBounds,
     priceSpan,
     stepWidth,
+    yTicks: axis.ticks,
   };
 };
 
@@ -207,14 +211,12 @@ const appendAxisTitles = (
 const appendGridAndAxisLabels = (
   chartDocument: Document,
   groups: ChartGroups,
-  payload: PlanPriceWidgetReadyPayload,
   metrics: PlotMetrics,
   geometry: Geometry,
 ): void => {
   const { plot } = geometry;
-  for (let index = 0; index <= GRID_LINES; index += 1) {
-    const ratio = index / GRID_LINES;
-    const y = plot.bottom - (metrics.plotHeight * ratio);
+  for (const tick of metrics.yTicks) {
+    const y = plot.bottom - (metrics.plotHeight * tick.ratio);
 
     groups.plotGroup.appendChild(createSvg(chartDocument, 'line', {
       class: 'chart__grid',
@@ -229,17 +231,18 @@ const appendGridAndAxisLabels = (
       x: plot.left - 8,
       y: y + 4,
       'text-anchor': 'end',
-    }, formatPlanTick(metrics.maxPlan * ratio)));
+    }, tick.kwhLabel));
 
-    if (!payload.hasPriceData) continue;
+    // `priceLabel` is null when there's no price data or the integer would repeat
+    // the gridline above — the gridline stays, the duplicate number is skipped.
+    if (tick.priceLabel === null) continue;
 
-    const priceValue = metrics.priceBounds.min + (metrics.priceSpan * ratio);
     groups.labelsGroup.appendChild(createSvg(chartDocument, 'text', {
       class: 'chart__axis-label',
       x: plot.right + 8,
       y: y + 4,
       'text-anchor': 'start',
-    }, formatPriceTick(priceValue)));
+    }, tick.priceLabel));
   }
 };
 
@@ -511,7 +514,7 @@ export const renderReadyState = (
   chartEl.appendChild(groups.chartGroup);
   appendPanel(chartDocument, groups.panelGroup, geometry);
   appendAxisTitles(chartDocument, groups.labelsGroup, payload, geometry);
-  appendGridAndAxisLabels(chartDocument, groups, payload, metrics, geometry);
+  appendGridAndAxisLabels(chartDocument, groups, metrics, geometry);
   appendNowMarker(chartDocument, groups.plotGroup, payload, metrics, geometry);
   appendPlanBars(chartDocument, groups.plotGroup, payload, metrics, geometry);
   appendPriceSeries(chartDocument, groups.plotGroup, payload, metrics, geometry);
