@@ -1,10 +1,10 @@
 import { vi } from 'vitest';
 import type { AppContext, FlowBackedCapabilityReportOutcome } from '../../lib/app/appContext';
-import { AppDeviceControlHelpers } from '../../lib/app/appDeviceControlHelpers';
+import { AppDeviceControlHelpers } from '../../setup/appDeviceControlHelpers';
 import { HomeyEnergyPollSource } from '../../lib/power/sources/homeyEnergyPoll';
-import { AppSnapshotHelpers } from '../../lib/app/appSnapshotHelpers';
+import { AppSnapshotHelpers } from '../../setup/appSnapshotHelpers';
 import { normalizePowerSource } from '../../lib/power/powerSource';
-import { TimerRegistry } from '../../lib/app/timerRegistry';
+import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import { createCombinedPricesReader } from '../../setup/priceCombinedPricesAdapter';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';

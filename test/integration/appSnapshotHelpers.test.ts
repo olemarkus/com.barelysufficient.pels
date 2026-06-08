@@ -1,6 +1,6 @@
-import { AppSnapshotHelpers } from '../../lib/app/appSnapshotHelpers';
+import { AppSnapshotHelpers } from '../../setup/appSnapshotHelpers';
 import { disableUnsupportedDevices } from '../../setup/appDeviceSupport';
-import { TimerRegistry } from '../../lib/app/timerRegistry';
+import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import { STALE_DEVICE_OBSERVATION_MS } from '../../lib/observer/observationFreshness';
 import {
   CONTROLLABLE_DEVICES,

@@ -39,11 +39,11 @@ import type {
   TemperatureBoostSettings,
 } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike } from '../utils/types';
-import type { AppDeviceControlHelpers } from './appDeviceControlHelpers';
+import type { AppDeviceControlHelpers } from '../../setup/appDeviceControlHelpers';
 import type { HomeyEnergyPollSource } from '../power/sources/homeyEnergyPoll';
 import type { PowerSampleRebuildState } from '../plan/rebuildScheduler/powerDriven';
-import type { RefreshTargetDevicesSnapshotOptions, AppSnapshotHelpers } from './appSnapshotHelpers';
-import type { TimerRegistry } from './timerRegistry';
+import type { RefreshTargetDevicesSnapshotOptions, AppSnapshotHelpers } from '../../setup/appSnapshotHelpers';
+import type { TimerRegistry } from '../utils/timerRegistry';
 import type {
   FlowReportedCapabilitiesForDevice,
   FlowReportedCapabilityId,

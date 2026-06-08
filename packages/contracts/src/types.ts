@@ -244,7 +244,7 @@ export type TargetDeviceSnapshot = DeviceDescriptor & ObservedDeviceState;
 
 /**
  * Step-command / planning state the app-layer decorator
- * (`lib/app/appDeviceControlHelpers.decorateSnapshotWithDeviceControl`)
+ * (`setup/appDeviceControlHelpers.decorateSnapshotWithDeviceControl`)
  * resolves for stepped-load devices and writes ON TOP of a
  * `TargetDeviceSnapshot` after transport produces it. These fields do NOT
  * originate in the transport-parsed snapshot; they are launders into the

@@ -1,17 +1,17 @@
-import type { PowerSource } from '../power/powerSource';
-import type { DeviceTransport } from '../device/deviceTransport';
-import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
-import type { PlanEngine } from '../plan/planEngine';
-import { TARGET_CONFIRMATION_STUCK_POLL_MS } from '../plan/planConstants';
+import type { PowerSource } from '../lib/power/powerSource';
+import type { DeviceTransport } from '../lib/device/deviceTransport';
+import type { Logger as PinoLogger, StructuredDebugEmitter } from '../lib/logging/logger';
+import type { PlanEngine } from '../lib/plan/planEngine';
+import { TARGET_CONFIRMATION_STUCK_POLL_MS } from '../lib/plan/planConstants';
 import {
   getLatestDeviceObservationMs,
   isDeviceObservationStale,
   isDeviceObservationStaleByAge,
-} from '../observer/observationFreshness';
-import type { PlanService } from '../plan/planService';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
-import { normalizeError } from '../utils/errorUtils';
-import type { TimerRegistry } from './timerRegistry';
+} from '../lib/observer/observationFreshness';
+import type { PlanService } from '../lib/plan/planService';
+import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import { normalizeError } from '../lib/utils/errorUtils';
+import type { TimerRegistry } from '../lib/utils/timerRegistry';
 
 const SNAPSHOT_REFRESH_MINUTE_INTERVALS = [25, 55];
 const TARGET_CONFIRMATION_POLL_INTERVAL_MS = TARGET_CONFIRMATION_STUCK_POLL_MS;

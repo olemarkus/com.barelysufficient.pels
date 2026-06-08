@@ -1,5 +1,5 @@
 import type { PowerSource } from '../powerSource';
-import type { TimerRegistry } from '../../app/timerRegistry';
+import type { TimerRegistry } from '../../utils/timerRegistry';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 
 const HOMEY_ENERGY_POLL_INTERVAL_MS = 10_000;

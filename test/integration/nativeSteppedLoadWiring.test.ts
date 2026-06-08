@@ -19,7 +19,7 @@ import {
   buildExecutableSteppedLoadDevice,
   buildExecutableSteppedLoadIntent,
 } from '../../lib/executor/executableSteppedLoadProjection';
-import { AppDeviceControlHelpers } from '../../lib/app/appDeviceControlHelpers';
+import { AppDeviceControlHelpers } from '../../setup/appDeviceControlHelpers';
 import type { DevicePlanDevice } from '../../lib/plan/planTypes';
 import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';

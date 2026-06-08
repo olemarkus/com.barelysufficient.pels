@@ -3,7 +3,7 @@ import CapacityGuard from '../lib/power/capacityGuard';
 import type { DecoratedDeviceSnapshot, TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import type { DeferredObjectiveActivePlansV1 } from '../packages/contracts/src/deferredObjectiveActivePlans';
 import type { FlowHomeyLike, HomeyDeviceLike } from '../lib/utils/types';
-import type { ReportSteppedLoadActualStepResult } from '../lib/app/appDeviceControlHelpers';
+import type { ReportSteppedLoadActualStepResult } from '../setup/appDeviceControlHelpers';
 import { registerExpectedPowerCard } from './expectedPower';
 import { registerEvChargingPhaseCard } from './evChargingPhaseCard';
 import type { HeadroomCardDeviceLike, HeadroomForDeviceDecision } from '../lib/plan/planHeadroomDevice';

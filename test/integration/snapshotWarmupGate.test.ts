@@ -1,6 +1,6 @@
 import { SnapshotWarmupGate } from '../../lib/plan/snapshotWarmupGate';
 import { startAppServices } from '../../setup/appLifecycleHelpers';
-import { TimerRegistry } from '../../lib/app/timerRegistry';
+import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 
 type Deferred<T> = {

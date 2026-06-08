@@ -1,5 +1,5 @@
 import { HomeyEnergyPollSource } from '../../lib/power/sources/homeyEnergyPoll';
-import { TimerRegistry } from '../../lib/app/timerRegistry';
+import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import { normalizePowerSource } from '../../lib/power/powerSource';
 import { mockHomeyInstance } from '../mocks/homey';
 
