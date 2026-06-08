@@ -406,6 +406,8 @@ export const applySteppedLoadShedOff = async (
     if (!outcome.applied) return false;
     if (mode === 'plan') {
       const now = Date.now();
+      // Intentionally NOT gated on `flowBacked` (unlike the binary direct-write *diagnostic*
+      // recorder): this stamps the shed *cooldown*, which must fire regardless of actuation channel.
       ctx.recordShedActuation(action.id, name, now);
     }
     logger.info({
@@ -773,6 +775,8 @@ const executeSteppedLoadRestoreBinary = async (
     });
     if (mode === 'plan') {
       const now = Date.now();
+      // Intentionally NOT gated on `flowBacked` (unlike the binary direct-write *diagnostic*
+      // recorder): this stamps the restore *cooldown*, which must fire regardless of actuation channel.
       ctx.recordRestoreActuation(action.id, name, now);
       recordActivationAttemptStarted({
         state: ctx.state,
