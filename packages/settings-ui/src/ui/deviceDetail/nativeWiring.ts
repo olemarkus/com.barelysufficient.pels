@@ -1,4 +1,3 @@
-import type { TargetDeviceSnapshot } from '../../../../contracts/src/types.ts';
 import { NATIVE_EV_WIRING_DEVICES } from '../../../../contracts/src/settingsKeys.ts';
 import {
   deviceDetailFlowConflictBody,
@@ -13,7 +12,11 @@ import {
   deviceDetailSetupDisclosure,
 } from '../dom.ts';
 import { nativeWiringFlowConflictNotice } from '../../../../shared-domain/src/nativeWiringCopy.ts';
-import { requiresNativeWiringForActivation, supportsNativeWiringActivation } from '../deviceUtils.ts';
+import {
+  requiresNativeWiringForActivation,
+  supportsNativeWiringActivation,
+  type SettingsUiDeviceDetailItem,
+} from '../deviceUtils.ts';
 import { state } from '../state.ts';
 import { readRecordSettingStrict, writeFreshSetting } from './settingsWrite.ts';
 
@@ -40,7 +43,7 @@ const expandSetupDisclosure = () => {
 };
 
 const syncFlowConflictNotice = (
-  device: TargetDeviceSnapshot | null,
+  device: SettingsUiDeviceDetailItem | null,
   nativeWiringEffectiveEnabled: boolean,
 ): boolean => {
   // Only surface the conflict while native wiring is actually held off. Once
@@ -68,7 +71,7 @@ const syncNativeWiringRequirementSurfaces = (required: boolean) => {
 // user needs to see (activation required, or a flow conflict — both render
 // inside the collapsed `<details>`). The per-device guard keeps refreshes from
 // fighting a manual re-close.
-const syncSetupAutoExpand = (device: TargetDeviceSnapshot | null, shouldExpand: boolean) => {
+const syncSetupAutoExpand = (device: SettingsUiDeviceDetailItem | null, shouldExpand: boolean) => {
   if (!shouldExpand) {
     setupAutoExpandedForDeviceId = null;
     return;
@@ -79,7 +82,7 @@ const syncSetupAutoExpand = (device: TargetDeviceSnapshot | null, shouldExpand: 
   }
 };
 
-export const setDeviceDetailNativeWiringState = (device: TargetDeviceSnapshot | null) => {
+export const setDeviceDetailNativeWiringState = (device: SettingsUiDeviceDetailItem | null) => {
   const nativeWiringSupported = supportsNativeWiringActivation(device);
   const nativeWiringEffectiveEnabled = device
     ? state.nativeWiringMap[device.id] === true || device.controlAdapter?.activationEnabled === true
@@ -110,7 +113,7 @@ export const setDeviceDetailNativeWiringState = (device: TargetDeviceSnapshot | 
 };
 
 export const updateCurrentDeviceNativeWiringSnapshot = (
-  device: TargetDeviceSnapshot | null,
+  device: SettingsUiDeviceDetailItem | null,
   nativeWiringEnabled: boolean,
 ) => {
   if (!device) return;
@@ -126,7 +129,7 @@ export const updateCurrentDeviceNativeWiringSnapshot = (
 
 export const initDeviceDetailNativeWiringHandler = (params: {
   getCurrentDetailDeviceId: () => string | null;
-  getDeviceById: (deviceId: string) => TargetDeviceSnapshot | null;
+  getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
   refreshCurrentDeviceControlStates: () => void;
   refreshOpenDeviceDetail: () => void;
   refreshSharedDeviceViews: () => void;

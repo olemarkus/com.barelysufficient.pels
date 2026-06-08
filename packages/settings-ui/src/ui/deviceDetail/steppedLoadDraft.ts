@@ -3,7 +3,8 @@ import {
   normalizeSteppedLoadProfile,
   sortSteppedLoadSteps,
 } from '../../../../contracts/src/deviceControlProfiles.ts';
-import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../../../../contracts/src/types.ts';
+import type { SteppedLoadProfile } from '../../../../contracts/src/types.ts';
+import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 import {
   deviceDetailShedAction,
   deviceDetailSteppedAddStep,
@@ -80,7 +81,7 @@ const attachDraftSyncOnChange = (
   });
 };
 
-const getDraftProfileFromCurrentDevice = (device: TargetDeviceSnapshot): SteppedLoadProfile => (
+const getDraftProfileFromCurrentDevice = (device: SettingsUiDeviceDetailItem): SteppedLoadProfile => (
   isNativeSteppedLoadProfileActive(device)
     ? createDefaultSteppedLoadProfile(device)
     : getSteppedLoadDraft(device.id)
@@ -88,7 +89,7 @@ const getDraftProfileFromCurrentDevice = (device: TargetDeviceSnapshot): Stepped
       ?? createDefaultSteppedLoadProfile(device)
 );
 
-const canEditSteppedLoadProfile = (device: TargetDeviceSnapshot): boolean => !hasEvTargetPowerPreset(device);
+const canEditSteppedLoadProfile = (device: SettingsUiDeviceDetailItem): boolean => !hasEvTargetPowerPreset(device);
 
 const collectSteppedLoadDraftFromDom = (): SteppedLoadProfile | null => {
   if (!deviceDetailSteppedSteps) return null;
@@ -158,18 +159,18 @@ const buildSteppedLoadStepRow = (params: {
   return row;
 };
 
-export const isSteppedLoadControlModel = (device: TargetDeviceSnapshot | null): boolean => (
+export const isSteppedLoadControlModel = (device: SettingsUiDeviceDetailItem | null): boolean => (
   Boolean(device && resolveDeviceDetailControlMode(device) === 'stepped_load')
 );
 
-export const resolveSavedSteppedLoadProfile = (device: TargetDeviceSnapshot): SteppedLoadProfile | null => {
+export const resolveSavedSteppedLoadProfile = (device: SettingsUiDeviceDetailItem): SteppedLoadProfile | null => {
   const stored = getStoredDeviceControlProfile(device.id);
   if (stored?.model === 'stepped_load') return stored;
   return device.steppedLoadProfile?.model === 'stepped_load' ? device.steppedLoadProfile : null;
 };
 
 export const updateSetStepOptionLabel = (
-  device: TargetDeviceSnapshot | null,
+  device: SettingsUiDeviceDetailItem | null,
   profileOverride?: SteppedLoadProfile | null,
 ) => {
   const setStepOption = getSetStepOption();
@@ -194,7 +195,7 @@ export const updateSetStepOptionLabel = (
   }
 };
 
-export const renderSteppedLoadDraft = (device: TargetDeviceSnapshot) => {
+export const renderSteppedLoadDraft = (device: SettingsUiDeviceDetailItem) => {
   if (!deviceDetailSteppedSection || !deviceDetailSteppedSteps) return;
 
   const showStepEditor = isSteppedLoadControlModel(device);
@@ -255,7 +256,7 @@ export const closeSteppedLoadDraft = (deviceId: string): void => {
 
 export const initSteppedLoadDraftHandlers = (params: {
   getCurrentDetailDeviceId: () => string | null;
-  getDeviceById: (deviceId: string) => TargetDeviceSnapshot | null;
+  getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
   persistDeviceControlProfile: (deviceId: string, profile: SteppedLoadProfile | null) => Promise<boolean>;
   refreshOpenDeviceDetail: () => void;
 }) => {

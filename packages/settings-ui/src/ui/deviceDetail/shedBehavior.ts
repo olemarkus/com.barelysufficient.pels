@@ -1,4 +1,3 @@
-import type { TargetDeviceSnapshot } from '../../../../contracts/src/types.ts';
 import {
   deviceDetailShedAction,
   deviceDetailShedStep,
@@ -12,6 +11,7 @@ import { state } from '../state.ts';
 import {
   supportsPowerDevice,
   supportsTemperatureDevice,
+  type SettingsUiDeviceDetailItem,
 } from '../deviceUtils.ts';
 import {
   AIRTREATMENT_SHED_FLOOR_C,
@@ -74,7 +74,7 @@ export const writeShedBehaviors = async (params: ShedBehaviorWriteParams) => (
   }))
 );
 
-const isTemperatureDeviceWithoutOnOff = (device: TargetDeviceSnapshot | null): boolean => (
+const isTemperatureDeviceWithoutOnOff = (device: SettingsUiDeviceDetailItem | null): boolean => (
   Boolean(
     device
     && supportsTemperatureDevice(device)
@@ -82,7 +82,7 @@ const isTemperatureDeviceWithoutOnOff = (device: TargetDeviceSnapshot | null): b
   )
 );
 
-const resolveTemperatureShedFloor = (device: TargetDeviceSnapshot | null): number => {
+const resolveTemperatureShedFloor = (device: SettingsUiDeviceDetailItem | null): number => {
   const classKey = (device?.deviceClass || '').trim().toLowerCase();
   return classKey === 'airtreatment' ? AIRTREATMENT_SHED_FLOOR_C : NON_ONOFF_TEMPERATURE_SHED_FLOOR_C;
 };
@@ -157,7 +157,7 @@ const resolveShedTemperatureValue = (params: {
 
 const getShedDefaultTemp = (
   deviceId: string | null,
-  getDeviceById: (deviceId: string) => TargetDeviceSnapshot | null,
+  getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null,
 ): number => {
   if (!deviceId) return 10;
 
@@ -191,7 +191,7 @@ const parseShedTemperatureInput = (): number | null => {
 
 const resolveTemperatureShedBehavior = (params: {
   deviceId: string;
-  getDeviceById: (deviceId: string) => TargetDeviceSnapshot | null;
+  getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
 }): {
   behavior: PersistedShedBehavior;
   updateTempInput?: number;
@@ -223,8 +223,8 @@ const resolveTemperatureShedBehavior = (params: {
 
 const resolveVisibleShedAction = (params: {
   currentDetailDeviceId: string | null;
-  getDeviceById: (deviceId: string) => TargetDeviceSnapshot | null;
-  isSteppedLoadControlModel: (device: TargetDeviceSnapshot | null) => boolean;
+  getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
+  isSteppedLoadControlModel: (device: SettingsUiDeviceDetailItem | null) => boolean;
 }): ShedAction | null => {
   const device = params.currentDetailDeviceId ? params.getDeviceById(params.currentDetailDeviceId) : null;
   if (!deviceDetailShedAction || !device || !supportsPowerDevice(device)) return null;
@@ -250,8 +250,8 @@ const resolveVisibleShedAction = (params: {
 };
 
 const resolveShedControlCapabilities = (params: {
-  device: TargetDeviceSnapshot | null;
-  isSteppedLoadControlModel: (device: TargetDeviceSnapshot | null) => boolean;
+  device: SettingsUiDeviceDetailItem | null;
+  isSteppedLoadControlModel: (device: SettingsUiDeviceDetailItem | null) => boolean;
 }) => {
   const { device } = params;
   const supportsTemperature = supportsTemperatureDevice(device);
@@ -283,9 +283,9 @@ export const loadShedBehaviors = async () => {
 
 export const setDeviceDetailShedBehavior = (params: {
   deviceId: string;
-  getDeviceById: (deviceId: string) => TargetDeviceSnapshot | null;
-  isSteppedLoadControlModel: (device: TargetDeviceSnapshot | null) => boolean;
-  updateSetStepOptionLabel: (device: TargetDeviceSnapshot | null) => void;
+  getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
+  isSteppedLoadControlModel: (device: SettingsUiDeviceDetailItem | null) => boolean;
+  updateSetStepOptionLabel: (device: SettingsUiDeviceDetailItem | null) => void;
 }) => {
   const device = params.getDeviceById(params.deviceId);
   params.updateSetStepOptionLabel(device);
@@ -334,8 +334,8 @@ export const setDeviceDetailShedBehavior = (params: {
 
 export const updateShedFieldVisibility = (params: {
   currentDetailDeviceId: string | null;
-  getDeviceById: (deviceId: string) => TargetDeviceSnapshot | null;
-  isSteppedLoadControlModel: (device: TargetDeviceSnapshot | null) => boolean;
+  getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
+  isSteppedLoadControlModel: (device: SettingsUiDeviceDetailItem | null) => boolean;
 }) => {
   if (!deviceDetailShedAction || !deviceDetailShedTempRow || !deviceDetailShedStepRow) return;
 
@@ -362,8 +362,8 @@ export const updateShedFieldVisibility = (params: {
 const saveShedBehavior = async (params: {
   currentDetailDeviceId: string | null;
   getCurrentDetailDeviceId: () => string | null;
-  getDeviceById: (deviceId: string) => TargetDeviceSnapshot | null;
-  isSteppedLoadControlModel: (device: TargetDeviceSnapshot | null) => boolean;
+  getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
+  isSteppedLoadControlModel: (device: SettingsUiDeviceDetailItem | null) => boolean;
 }) => {
   const deviceId = params.currentDetailDeviceId;
   if (!deviceId) return;
@@ -422,8 +422,8 @@ const saveShedBehavior = async (params: {
 
 export const initDeviceDetailShedHandlers = (params: {
   getCurrentDetailDeviceId: () => string | null;
-  getDeviceById: (deviceId: string) => TargetDeviceSnapshot | null;
-  isSteppedLoadControlModel: (device: TargetDeviceSnapshot | null) => boolean;
+  getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
+  isSteppedLoadControlModel: (device: SettingsUiDeviceDetailItem | null) => boolean;
 }) => {
   const autoSaveShedBehavior = async () => {
     const currentDetailDeviceId = params.getCurrentDetailDeviceId();

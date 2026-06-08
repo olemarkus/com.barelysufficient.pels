@@ -1,4 +1,4 @@
-import type { TargetDeviceSnapshot } from '../../../../contracts/src/types.ts';
+import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 import {
   deviceDetailSocRow,
   deviceDetailSocUpdated,
@@ -6,7 +6,7 @@ import {
 } from '../dom.ts';
 import { getTimeAgo } from '../utils.ts';
 
-export function setDeviceDetailSocState(device: TargetDeviceSnapshot | null): void {
+export function setDeviceDetailSocState(device: SettingsUiDeviceDetailItem | null): void {
   if (!deviceDetailSocRow || !deviceDetailSocValue || !deviceDetailSocUpdated) return;
   if (!device || device.deviceClass !== 'evcharger') {
     deviceDetailSocRow.hidden = true;

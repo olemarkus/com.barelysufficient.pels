@@ -1,8 +1,8 @@
 import type {
   DeviceTargetPowerConfigs,
-  TargetDeviceSnapshot,
   TargetPowerSteppedLoadConfig,
 } from '../../../../contracts/src/types.ts';
+import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 import { DEVICE_TARGET_POWER_CONFIGS } from '../../../../contracts/src/settingsKeys.ts';
 import { createEvTargetPowerConfig } from '../../../../shared-domain/src/evTargetPowerConfig.ts';
 import {
@@ -26,7 +26,9 @@ const TARGET_POWER_MAX_GENERATED_STEPS = 128;
 
 export { createEvTargetPowerConfig };
 
-export const createContinuousTargetPowerConfig = (device: TargetDeviceSnapshot): TargetPowerSteppedLoadConfig => {
+export const createContinuousTargetPowerConfig = (
+  device: SettingsUiDeviceDetailItem,
+): TargetPowerSteppedLoadConfig => {
   const existing = state.deviceTargetPowerConfigs[device.id] ?? device.targetPowerConfig;
   if (existing && !existing.preset) return { ...existing, enabled: true };
   const max = Math.max(
@@ -42,7 +44,7 @@ export const createContinuousTargetPowerConfig = (device: TargetDeviceSnapshot):
   };
 };
 
-export const renderTargetPowerConfig = (device: TargetDeviceSnapshot) => {
+export const renderTargetPowerConfig = (device: SettingsUiDeviceDetailItem) => {
   if (!deviceDetailTargetPowerConfig) return;
   const config = state.deviceTargetPowerConfigs[device.id] ?? device.targetPowerConfig;
   const showRange = Boolean(config && !config.preset);

@@ -1,7 +1,6 @@
 import type {
   DeviceControlProfiles,
   SteppedLoadProfile,
-  TargetDeviceSnapshot,
 } from '../../../../contracts/src/types.ts';
 import { normalizeDeviceControlProfiles } from '../../../../contracts/src/deviceControlProfiles.ts';
 import {
@@ -98,6 +97,7 @@ import {
 import { resolveDeviceDetailControlState } from './controlState.ts';
 import { initDeviceDetailManagedControlHandlers } from './managedControl.ts';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
+import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 
 let currentDetailDeviceId: string | null = null;
 let pendingOpenDeviceId: string | null = null;
@@ -111,7 +111,7 @@ const setDeviceDetailTitle = (name: string) => {
   if (deviceDetailTitle) deviceDetailTitle.textContent = formatDisplayDeviceName(name);
 };
 
-const setDeviceDetailBudgetExemptState = (device: TargetDeviceSnapshot | null) => {
+const setDeviceDetailBudgetExemptState = (device: SettingsUiDeviceDetailItem | null) => {
   if (!deviceDetailBudgetExempt || !device) return;
   deviceDetailBudgetExempt.selected = state.budgetExemptMap[device.id] === true || device.budgetExempt === true;
   deviceDetailBudgetExempt.disabled = false;

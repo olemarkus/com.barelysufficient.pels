@@ -1,9 +1,9 @@
-import type { TargetDeviceSnapshot } from '../../../../contracts/src/types.ts';
 import {
   getEffectiveControlModel,
   getStoredTargetPowerConfig,
   isNativeSteppedLoadProfileActive,
 } from '../deviceControlProfiles.ts';
+import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 import type { MdFilledSelectElement } from '../dom.ts';
 import {
   createContinuousTargetPowerConfig,
@@ -23,7 +23,7 @@ export type DeviceDetailControlModeOption = {
 };
 
 export function getDeviceDetailControlModeOptions(
-  device: TargetDeviceSnapshot | null,
+  device: SettingsUiDeviceDetailItem | null,
 ): DeviceDetailControlModeOption[] {
   const options: DeviceDetailControlModeOption[] = [
     { value: 'default', label: 'Default' },
@@ -49,7 +49,7 @@ export function getDeviceDetailControlModeOptions(
 
 export function syncDeviceDetailControlModeOptions(
   select: MdFilledSelectElement | null,
-  device: TargetDeviceSnapshot | null,
+  device: SettingsUiDeviceDetailItem | null,
   selectedValue?: string,
 ): void {
   if (!select) return;
@@ -71,7 +71,7 @@ export function syncDeviceDetailControlModeOptions(
   });
 }
 
-export function resolveDeviceDetailControlMode(device: TargetDeviceSnapshot): DeviceDetailControlMode {
+export function resolveDeviceDetailControlMode(device: SettingsUiDeviceDetailItem): DeviceDetailControlMode {
   const targetPowerConfig = getStoredTargetPowerConfig(device.id) ?? device.targetPowerConfig;
   if (targetPowerConfig?.enabled !== false) {
     if (targetPowerConfig?.preset === 'ev_charger_1_phase') return 'ev_charger_1_phase';
@@ -82,13 +82,13 @@ export function resolveDeviceDetailControlMode(device: TargetDeviceSnapshot): De
   return 'default';
 }
 
-export function isNativeEvWiringActive(device: TargetDeviceSnapshot | null | undefined): boolean {
+export function isNativeEvWiringActive(device: SettingsUiDeviceDetailItem | null | undefined): boolean {
   return device?.controlAdapter?.kind === 'capability_adapter'
     && device.controlAdapter.activationEnabled === true
     && device.controlWriteCapabilityId === 'charging_button';
 }
 
-export function hasEvTargetPowerPreset(device: TargetDeviceSnapshot | null | undefined): boolean {
+export function hasEvTargetPowerPreset(device: SettingsUiDeviceDetailItem | null | undefined): boolean {
   const targetPowerConfig = device ? getStoredTargetPowerConfig(device.id) ?? device.targetPowerConfig : undefined;
   return targetPowerConfig?.enabled !== false
     && (
@@ -97,11 +97,11 @@ export function hasEvTargetPowerPreset(device: TargetDeviceSnapshot | null | und
     );
 }
 
-function isEvChargerDevice(device: TargetDeviceSnapshot | null | undefined): boolean {
+function isEvChargerDevice(device: SettingsUiDeviceDetailItem | null | undefined): boolean {
   return device?.deviceClass === 'evcharger';
 }
 
-function canUseEvTargetPowerPreset(device: TargetDeviceSnapshot | null | undefined): boolean {
+function canUseEvTargetPowerPreset(device: SettingsUiDeviceDetailItem | null | undefined): boolean {
   return isEvChargerDevice(device) || hasEvTargetPowerPreset(device);
 }
 
@@ -118,7 +118,7 @@ export function normalizeDeviceDetailControlMode(value: string): DeviceDetailCon
 
 export function isControlModeAllowedForDevice(
   controlMode: DeviceDetailControlMode,
-  device: TargetDeviceSnapshot,
+  device: SettingsUiDeviceDetailItem,
 ): boolean {
   const isEvPreset = controlMode === 'ev_charger_1_phase' || controlMode === 'ev_charger_3_phase';
   if (isEvPreset) return canUseEvTargetPowerPreset(device);
@@ -128,7 +128,7 @@ export function isControlModeAllowedForDevice(
 
 export function resolveTargetPowerConfigForControlMode(
   controlMode: DeviceDetailControlMode,
-  device: TargetDeviceSnapshot,
+  device: SettingsUiDeviceDetailItem,
 ) {
   if (controlMode === 'ev_charger_1_phase' || controlMode === 'ev_charger_3_phase') {
     return createEvTargetPowerConfig(controlMode);

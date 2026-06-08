@@ -1,4 +1,9 @@
-import type { DeviceDescriptor, ObservedDeviceState } from '../../../contracts/src/types.ts';
+import type {
+  DeviceDescriptor,
+  EvBoostConfig,
+  ObservedDeviceState,
+  TemperatureBoostConfig,
+} from '../../../contracts/src/types.ts';
 
 export { isGrayStateDevice } from '../../../shared-domain/src/deviceStatePredicates.ts';
 
@@ -14,6 +19,23 @@ export type SettingsUiDeviceListItem = ObservedDeviceState
     | 'powerCapable' | 'powerKw' | 'expectedPowerKw' | 'loadKw'
     | 'controlAdapter' | 'controlCapabilityId'
   >;
+
+// The device fields the settings-UI device DETAIL surface reads — a superset of
+// the LIST carrier (detail calls the shared list predicates, so its device must
+// stay assignable to `SettingsUiDeviceListItem`) plus the extra descriptor
+// config the detail panes show and the optimistic boost-config augmentation that
+// `state.latestDevices` (`SettingsUiDeviceView`) carries. Still NOT the raw
+// producer `TargetDeviceSnapshot` / `DecoratedDeviceSnapshot`; the full snapshot
+// stays structurally assignable, so callers pass unchanged.
+export type SettingsUiDeviceDetailItem = SettingsUiDeviceListItem
+  & Pick<DeviceDescriptor,
+    | 'controlWriteCapabilityId' | 'steppedLoadProfile' | 'targetPowerConfig'
+    | 'capabilities' | 'flowConflict'
+  >
+  & {
+    temperatureBoost?: TemperatureBoostConfig;
+    evBoost?: EvBoostConfig;
+  };
 
 export const supportsPowerDevice = (device?: SettingsUiDeviceListItem | null): boolean => {
   if (!device) return false;

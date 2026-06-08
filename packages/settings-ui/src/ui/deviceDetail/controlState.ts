@@ -1,14 +1,14 @@
-import type { TargetDeviceSnapshot } from '../../../../contracts/src/types.ts';
 import {
   requiresNativeWiringForActivation,
   supportsManagedDevice,
   supportsPowerDevice,
   supportsTemperatureDevice,
+  type SettingsUiDeviceDetailItem,
 } from '../deviceUtils.ts';
 import { resolveManagedState } from '../state.ts';
 
 export const resolveDeviceDetailControlState = (
-  device: TargetDeviceSnapshot | null,
+  device: SettingsUiDeviceDetailItem | null,
   deviceId: string,
 ) => {
   const supportsTemperature = supportsTemperatureDevice(device);

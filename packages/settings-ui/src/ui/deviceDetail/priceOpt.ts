@@ -1,4 +1,3 @@
-import type { TargetDeviceSnapshot } from '../../../../contracts/src/types.ts';
 import {
   deviceDetailCheapDelta,
   deviceDetailDeltaSection,
@@ -6,7 +5,7 @@ import {
   deviceDetailPriceOpt,
 } from '../dom.ts';
 import { renderDevices } from '../devices.ts';
-import { supportsTemperatureDevice } from '../deviceUtils.ts';
+import { supportsTemperatureDevice, type SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 import { logSettingsError } from '../logging.ts';
 import {
   renderPriceOptimization,
@@ -47,7 +46,7 @@ export const setDeviceDetailDeltaValues = (deviceId: string) => {
 
 export const updateDeltaSectionVisibility = (params: {
   currentDetailDeviceId: string | null;
-  getDeviceById: (deviceId: string) => TargetDeviceSnapshot | null;
+  getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
 }) => {
   if (!deviceDetailDeltaSection || !deviceDetailPriceOpt) return;
 
@@ -63,7 +62,7 @@ export const updateDeltaSectionVisibility = (params: {
 
 export const initDeviceDetailPriceOptHandlers = (params: {
   getCurrentDetailDeviceId: () => string | null;
-  getDeviceById: (deviceId: string) => TargetDeviceSnapshot | null;
+  getDeviceById: (deviceId: string) => SettingsUiDeviceDetailItem | null;
 }) => {
   const renderPriceOptDependents = () => {
     renderDevices(state.latestDevices);
