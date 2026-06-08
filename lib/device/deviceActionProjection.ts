@@ -32,8 +32,10 @@ import {
 import { normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
 import { hasTemperatureBoostTarget } from '../utils/temperatureBoost';
 import {
+  EV_COMMANDABLE_NOW_REASONS,
   resolveEvBlockReason,
 } from '../../packages/shared-domain/src/commandableNowReason';
+import { isEvObserved } from './evObservedState';
 import {
   isEvBoostBlockedByPlugState,
   isEvDevice,
@@ -198,9 +200,14 @@ export function getBinaryControlPlan(snapshot?: TargetDeviceSnapshot): BinaryCon
 
 export function getEvRestoreBlockReason(snapshot?: TargetDeviceSnapshot): string | null {
   if (!snapshot || !isEvDevice(snapshot)) return null;
-  // Gateless EV-state → reason switch lives in commandableNowReason (one source
-  // of truth, shared with resolveCommandableNow + the plan restore-reason gate).
-  return resolveEvBlockReason(snapshot.evChargingState);
+  // Narrow through the EV-observed guard so the block reason reads a guaranteed
+  // plug-state; an EV charger with no resolved state yet is pessimistically
+  // uncommandable ('state_unknown'). The reason vocabulary (one source of truth,
+  // shared with resolveCommandableNow + the plan restore-reason gate) lives in
+  // commandableNowReason.
+  return isEvObserved(snapshot)
+    ? resolveEvBlockReason(snapshot.evChargingState)
+    : EV_COMMANDABLE_NOW_REASONS.state_unknown;
 }
 
 type BinaryCapabilityResolveInput = {

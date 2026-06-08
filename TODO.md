@@ -113,6 +113,18 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
       added in slice 1 — no plan/executor site branches on `controlModel === 'temperature_target'`
       (or the EV capability) and then reads kind-specific fields un-narrowed, so a guard would be
       dead code; add those alongside the field-move slices that create real consumers.
+      **EV-observed guard landed (slice 1 of the observer-snapshot EV discrimination):** added
+      `isEvObserved(snapshot): snapshot is EvObservedSnapshot` + `EvObservedSnapshot` (=
+      `TargetDeviceSnapshot & { evChargingState: EvChargingState }`) in `lib/device/evObservedState.ts`
+      — the observer-snapshot twin of `isEvPlanDevice`. `getEvRestoreBlockReason`
+      (`lib/device/deviceActionProjection.ts`) now narrows through it (behaviour-preserving: EV + no
+      resolved state → `state_unknown`, as before). **No field moved off `ObservedDeviceState`** —
+      `evChargingState` stays optional on the base; narrowing happens only at the guard. NEXT slices
+      (the part that enforces "never read `evChargingState` without narrowing"): move the EV observed
+      fields off the base `ObservedDeviceState` onto `EvObservedSnapshot` and migrate the ~15 transport
+      owner-reads + remaining consumers — the same deferred-hard `TargetDeviceSnapshot` discrimination
+      above (transport builds snapshots uniformly across kinds), ideally done across temperature/stepped/EV
+      together.
       **EV-vocabulary de-couple landed (2026-06-07, PRs #1528/#1531/#1540/#1544/#1554/#1561/#1568/#1570/#1571):**
       every consumer in `lib/plan`/`lib/objectives`/`lib/executor`/settings-UI now reads producer-resolved
       bits / shared-domain predicates (`isEvDevice`, `resolveEvBlockReasonForDevice`,
