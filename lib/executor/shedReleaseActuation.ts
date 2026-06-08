@@ -198,7 +198,6 @@ const buildShedReleaseSteppedAction = (params: {
     steppedLoadProfile: profile,
     communicationModel: steppedLoadIntent.communicationModel,
     controlAdapter: steppedLoadIntent.controlAdapter,
-    targetPowerConfig: steppedLoadIntent.targetPowerConfig,
     shedAction: 'set_step',
     current: {
       // `observed` is always present here: the caller (`applyShedReleaseSteppedLoad`)

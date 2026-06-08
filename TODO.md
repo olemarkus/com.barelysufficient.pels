@@ -466,6 +466,19 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
 (`notes/personas.md`) it serves. Items that can't name all three are maintainability/
 cosmetic chores — do them in passing or drop them; don't park them here.*
 
+- [ ] **Restore non-stepped control-mode granularity to the device-overview change signature.**
+      *Persona:* Homey owner (`notes/personas.md`) watching the device-overview/activity-log refresh.
+      *Hypothesis:* now that the planner no longer carries `controlModel`, the overview/log seam
+      (`PlanService.recordOverviewChange`) restores only the STEPPED value (`isSteppedLoadDevice`), so
+      `buildDeviceOverviewTransitionSignature` no longer distinguishes a non-stepped `temperature_target` ↔
+      `binary_power` flip (both collapse to `undefined`). A device that changes deviceType with no other planner
+      change could leave an open settings-UI card stale until the next plan change.
+      *Why it's needed:* full restoration needs the producer `deviceType` (a `deviceManager.getSnapshot()` call),
+      but the overview loop runs INSIDE the plan/apply cycle where re-entering the device manager breaks the
+      SDK-boundary shed e2es — so the cheap fix isn't safe. A real fix needs a cycle-safe `deviceType` source
+      (e.g. caching the map at plan-build time, or carrying a producer-resolved control-mode kind on the plan
+      device). Very low urgency: a runtime deviceType flip is a rare device-capability change and self-heals on
+      the next plan change. Source: Codex review on PR #1594.
 - [ ] **Share one target-power preset enumeration across the two shared-domain modules.**
       *Persona:* maintainer (`notes/personas.md`) adding a future target-power preset.
       *Hypothesis:* `isEvTargetPowerPreset` (`packages/shared-domain/src/evTargetPowerConfig.ts`) and

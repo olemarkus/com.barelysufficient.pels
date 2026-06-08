@@ -7,7 +7,6 @@ import type {
 import type { PowerFreshnessState } from './planPowerFreshness';
 import type {
   BinaryControlCapabilityId,
-  DeviceControlModel,
   DeviceControlAdapterSnapshot,
   DeviceStateOfChargeSnapshot,
   EvBoostConfig,
@@ -16,7 +15,6 @@ import type {
   SteppedLoadCommandStatus,
   SteppedLoadProfile,
   TemperatureBoostConfig,
-  TargetPowerSteppedLoadConfig,
 } from '../../packages/contracts/src/types';
 export type ShedAction = 'turn_off' | 'set_temperature' | 'set_step';
 
@@ -50,15 +48,17 @@ export type ShedBehavior = {
 };
 
 /**
- * Control-kind discriminant slices, slice 1 of the discriminated-types refactor.
+ * Control-kind discriminant slices of the discriminated-types refactor.
  *
- * These intersection helpers pin the `controlModel` discriminant AND the
- * kind-specific fields that are *guaranteed present once the discriminant
- * holds* to REQUIRED, without changing the flat base types (`PlanInputDevice`
- * / `DevicePlanDevice` keep every field optional). The narrowing happens only
- * at the kind type-guards in `lib/plan/planSteppedLoad.ts`; consumers that
- * branch through a guard then read the kind-specific field without
- * optional-chaining or a null-assert.
+ * "Stepped load" is a yes/no capability = presence of a valid
+ * `steppedLoadProfile`. `controlModel` is a producer-only setting carried on the
+ * snapshot (`TargetDeviceSnapshot`) and is NOT a planner field — the planner
+ * discriminates purely on profile presence. These intersection helpers pin the
+ * profile (guaranteed present once the discriminant holds) to REQUIRED, without
+ * changing the flat base types (`DevicePlanDevice` keeps every other field
+ * optional). The narrowing happens only at the kind type-guards in
+ * `lib/plan/planSteppedLoad.ts`; consumers that branch through a guard then read
+ * the profile without optional-chaining or a null-assert.
  *
  * Field-level variant discrimination (moving fields off the base type so the
  * compiler forbids reading e.g. `currentTemperature` on a stepped device) is a
@@ -66,34 +66,28 @@ export type ShedBehavior = {
  * out of scope for this slice.
  */
 export type SteppedLoadKind = {
-  controlModel: 'stepped_load';
   // The stepped guard's predicate (`steppedLoadProfile?.model === 'stepped_load'`)
   // proves the profile is present, so it is required on the narrowed shape.
   steppedLoadProfile: SteppedLoadProfile;
 };
 
 /**
- * Non-stepped control-kind discriminant (slice 2 of the discriminated-types
- * refactor). The discriminant field `steppedLoadProfile` is moved OFF the base
- * shape and split across the two variants: the stepped variant requires it
- * (`SteppedLoadKind`), the non-stepped variant omits it. This
- * makes the compiler reject un-narrowed `device.steppedLoadProfile` reads on a
+ * Non-stepped control-kind discriminant. The discriminant field
+ * `steppedLoadProfile` is split across the two variants: the stepped variant
+ * requires it (`SteppedLoadKind`), the non-stepped variant omits it. This makes
+ * the compiler reject un-narrowed `device.steppedLoadProfile` reads on a
  * `DevicePlanDevice` / `PlanInputDevice` union — consumers must pass through the
  * `isSteppedLoadDevice` guard (or hold an already-narrowed `Stepped*` value)
  * before touching the profile.
  *
- * Only the `steppedLoadProfile` discriminant moves in this slice; the rest of
- * the stepped cluster (`reportedStepId`, `selectedStepId`, step-command fields,
- * …) stays optional on the base for follow-up slices.
- *
  * The non-stepped variant OMITS `steppedLoadProfile` entirely (rather than
  * `?: never`) so an un-narrowed read on the union is a hard compile error
  * (TS2339) — `?: never` would still type the read as `SteppedLoadProfile |
- * undefined` and silently permit it.
+ * undefined` and silently permit it. It carries no other discriminant field, so
+ * it stays `{}`-shaped (no index signature, so the base fields it is
+ * intersected with survive); the discriminant is profile presence alone.
  */
-export type NonSteppedLoadKind = {
-  controlModel?: Exclude<DeviceControlModel, 'stepped_load'>;
-};
+export type NonSteppedLoadKind = Record<never, never>;
 
 /**
  * EV field cluster (EV-variant slice of the discriminated-types refactor).
@@ -130,43 +124,38 @@ export type DevicePlanDevice = SteppedPlanDevice | NonSteppedPlanDevice;
 
 /**
  * A "might be stepped" device probe: the stepped discriminant
- * (`controlModel` + `steppedLoadProfile`) as plain independent optionals. Used
- * by step helpers that accept a device before it is narrowed through
- * `isSteppedLoadDevice`, and by `withSteppedDiscriminant` to re-tie the pair.
+ * (`steppedLoadProfile` presence) as a plain optional. Used by step helpers that
+ * accept a device before it is narrowed through `isSteppedLoadDevice`, and by
+ * `withSteppedDiscriminant` to re-tie the discriminant.
  */
 export type SteppedDiscriminantProbe = {
-  controlModel?: DeviceControlModel;
   steppedLoadProfile?: SteppedLoadProfile;
 };
 
 /**
- * Rebuild a discriminated plan device from a loose bag whose `controlModel` and
- * `steppedLoadProfile` are still independent optionals (e.g. the result of a
- * `{ ...current, ...updates }` merge, or a `...snapshot` spread). Strips both
- * discriminant fields off the base and re-attaches them as a single
- * variant-shaped pair (`SteppedLoadKind | NonSteppedLoadKind`), so the result
- * lands cleanly in one union member.
+ * Rebuild a discriminated plan device from a loose bag whose `steppedLoadProfile`
+ * is still a plain optional (e.g. the result of a `{ ...current, ...updates }`
+ * merge, or a `...snapshot` spread). Strips the discriminant field off the base
+ * and re-attaches it as a single variant-shaped result
+ * (`SteppedLoadKind | NonSteppedLoadKind`), so the result lands cleanly in one
+ * union member.
  *
  * Stripping is essential: an object spread can never *remove* a key, so a stale
  * `steppedLoadProfile` would otherwise survive onto a non-stepped result. The
- * runtime predicate matches `isSteppedLoadDevice` — a profile is honoured only
- * when both `controlModel === 'stepped_load'` and the profile's own `model`
- * agree; anything else resolves to the non-stepped discriminant, which omits
- * `steppedLoadProfile` entirely.
+ * runtime predicate matches `isSteppedLoadDevice` — the profile is honoured only
+ * when its own `model === 'stepped_load'`; anything else resolves to the
+ * non-stepped discriminant, which omits `steppedLoadProfile` entirely.
  */
 export function withSteppedDiscriminant<TBase extends object>(
   loose: TBase & SteppedDiscriminantProbe,
 ):
   | (Omit<TBase, keyof SteppedDiscriminantProbe> & SteppedLoadKind)
   | (Omit<TBase, keyof SteppedDiscriminantProbe> & NonSteppedLoadKind) {
-  const { controlModel, steppedLoadProfile, ...base } = loose;
-  if (controlModel === 'stepped_load' && steppedLoadProfile?.model === 'stepped_load') {
-    return { ...base, controlModel: 'stepped_load', steppedLoadProfile };
+  const { steppedLoadProfile, ...base } = loose;
+  if (steppedLoadProfile?.model === 'stepped_load') {
+    return { ...base, steppedLoadProfile };
   }
-  return {
-    ...base,
-    controlModel: controlModel === 'stepped_load' ? undefined : controlModel,
-  };
+  return { ...base };
 }
 
 /**
@@ -251,7 +240,6 @@ type DevicePlanDeviceBase = {
   nextStepCommandRetryAtMs?: number;
   controlCapabilityId?: BinaryControlCapabilityId;
   controlAdapter?: DeviceControlAdapterSnapshot;
-  targetPowerConfig?: TargetPowerSteppedLoadConfig;
   // EV cluster fields (`evBoost`, `evBoostActive`, `stateOfCharge`) are split off
   // onto the orthogonal `EvKind`; reach them through the `isEvPlanDevice` guard
   // (`lib/plan/planEvDevice.ts`). The flat EV plug-state sub-fields below are on

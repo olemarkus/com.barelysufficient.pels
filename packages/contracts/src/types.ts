@@ -42,6 +42,12 @@ export type RestorePowerSource =
 export type SteppedLoadStep = {
   id: string;
   planningPowerW: number;
+  // Pre-resolved installation current (A) for this step, stamped by the producer
+  // for target-power EV presets (`planningPowerW / (230 * phaseCount)`). The
+  // executor reads this directly for the `planning_current_a` flow token instead
+  // of re-deriving it from the EV target-power preset config. Absent (treated as
+  // 0) for capability-built / non-preset stepped profiles.
+  planningCurrentA?: number;
 };
 
 export type SteppedLoadProfile = {

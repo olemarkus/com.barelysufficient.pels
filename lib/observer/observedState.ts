@@ -37,17 +37,20 @@ export type CurrentStateInput = Partial<ObservedCurrentStateInput> & {
 
 type StepCurrentStateInput = Pick<
   ObservedCurrentStateInput,
-  'controlModel' | 'steppedLoadProfile' | 'selectedStepId' | 'controlCapabilityId'
+  'steppedLoadProfile' | 'selectedStepId' | 'controlCapabilityId'
 > & { binaryControl?: { on: boolean } };
 
 const hasBinaryCapability = (device: Pick<CurrentStateInput, 'controlCapabilityId'>): boolean => (
   device.controlCapabilityId !== undefined
 );
 
+// "Stepped load" is a yes/no capability = presence of a valid
+// `steppedLoadProfile`; `controlModel` is a producer-only setting carried on the
+// snapshot and is no longer part of the discriminant.
 const hasSteppedCapability = (
-  device: Pick<CurrentStateInput, 'controlModel' | 'steppedLoadProfile'>,
+  device: Pick<CurrentStateInput, 'steppedLoadProfile'>,
 ): boolean => (
-  device.controlModel === 'stepped_load' && device.steppedLoadProfile?.model === 'stepped_load'
+  device.steppedLoadProfile?.model === 'stepped_load'
 );
 
 function stepIsAtOff(
@@ -113,7 +116,6 @@ export function resolveObservedCurrentState(
   }
   if (hasSteppedCapability(device) && device.steppedLoadProfile) {
     const steppedState = resolveObservedSteppedLoadCurrentState({
-      controlModel: 'stepped_load',
       steppedLoadProfile: device.steppedLoadProfile,
       selectedStepId: device.selectedStepId,
       binaryControl: device.binaryControl,

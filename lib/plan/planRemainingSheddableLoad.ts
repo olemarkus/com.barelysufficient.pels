@@ -60,8 +60,10 @@ type RemainingSheddableTemperatureFields = {
   temperatureTarget: RemainingSheddableTemperatureTarget;
 };
 
+// The local stepped discriminant is profile presence (`steppedLoadProfile`),
+// mirroring the planner-wide collapse off `controlModel`. The required profile
+// field is what distinguishes the stepped union members below.
 type RemainingSheddableSteppedFields = {
-  controlModel: 'stepped_load';
   steppedLoadProfile: SteppedLoadProfile;
   selectedStepId?: string;
   desiredStepId?: string;
@@ -198,8 +200,7 @@ function toPlanResidualShedBehavior(device: DevicePlanDevice): ResidualKwShedBeh
 }
 
 function toPlanResidualSteppedLoad(device: DevicePlanDevice): ResidualKwShedSteppedDevice | undefined {
-  if (device.controlModel !== 'stepped_load' || !device.steppedLoadProfile
-    || device.steppedLoadProfile.model !== 'stepped_load') {
+  if (!isSteppedLoadDevice(device)) {
     return undefined;
   }
   const stepState = normalizeSteppedLoadStepStateFromLegacyFields({
@@ -306,7 +307,6 @@ function toRemainingSheddableDeviceFromParts(params: {
   const { base, steppedSource, temperatureTarget } = params;
   if (isSteppedLoadDevice(steppedSource)) {
     const steppedFields: RemainingSheddableSteppedFields = {
-      controlModel: 'stepped_load',
       steppedLoadProfile: steppedSource.steppedLoadProfile,
       selectedStepId: steppedSource.selectedStepId,
       desiredStepId: steppedSource.desiredStepId,
@@ -439,8 +439,7 @@ function canStillShedTemperatureDevice(params: {
 function isSteppedRemainingSheddableDevice(
   device: RemainingSheddableDevice,
 ): device is SteppedRemainingSheddableDevice | SteppedTemperatureRemainingSheddableDevice {
-  return 'controlModel' in device && device.controlModel === 'stepped_load'
-    && 'steppedLoadProfile' in device;
+  return 'steppedLoadProfile' in device;
 }
 
 function isTemperatureRemainingSheddableDevice(

@@ -33,9 +33,9 @@ type ResolveCurrentStateOptions = {
 };
 
 const isSteppedLoadObservation = (
-  device: Pick<CurrentStateInput, 'controlModel' | 'steppedLoadProfile'>,
+  device: Pick<CurrentStateInput, 'steppedLoadProfile'>,
 ): boolean => (
-  device.controlModel === 'stepped_load' && device.steppedLoadProfile?.model === 'stepped_load'
+  device.steppedLoadProfile?.model === 'stepped_load'
 );
 
 function resolvePendingInfluence(

@@ -11,6 +11,7 @@ import {
   type DeviceReason,
 } from '../../packages/shared-domain/src/planReasonSemantics';
 import { isObservedOff, isObservedOn } from '../observer/observedState';
+import { isSteppedLoadDevice } from './planSteppedLoad';
 import type { DevicePlan, DevicePlanDevice, PlanInputDevice } from './planTypes';
 import {
   isActivationPenaltyBlockedReason,
@@ -197,7 +198,7 @@ function resolvePlanDeviceShedBehavior(device: DevicePlanDevice | undefined): Re
 function buildPlanSignatureDevice(device: DevicePlanDevice): Record<string, unknown> {
   return {
     id: device.id,
-    controlModel: device.controlModel,
+    controlKind: isSteppedLoadDevice(device) ? 'stepped_load' : undefined,
     plannedState: device.plannedState,
     plannedTarget: device.plannedTarget,
     desiredStepId: device.desiredStepId,
@@ -274,7 +275,7 @@ export function buildPlanDetailSignature(plan: DevicePlan): string {
     plan.devices.map((d) => ({
       id: d.id,
       priority: d.priority,
-      controlModel: d.controlModel,
+      controlKind: isSteppedLoadDevice(d) ? 'stepped_load' : undefined,
       plannedState: d.plannedState,
       plannedTarget: d.plannedTarget,
       selectedStepId: d.selectedStepId,

@@ -153,8 +153,8 @@ describe('native EV wiring shim', () => {
       steppedLoadProfile: expect.objectContaining({
         model: 'stepped_load',
         steps: expect.arrayContaining([
-          { id: '6a', planningPowerW: 4140 },
-          { id: '16a', planningPowerW: 11040 },
+          { id: '6a', planningPowerW: 4140, planningCurrentA: 6 },
+          { id: '16a', planningPowerW: 11040, planningCurrentA: 16 },
         ]),
       }),
       targetPowerConfig: { enabled: true, preset: 'ev_charger_3_phase' },

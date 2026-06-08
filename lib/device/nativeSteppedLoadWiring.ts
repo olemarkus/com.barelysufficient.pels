@@ -380,10 +380,14 @@ function buildEvTargetPowerSteppedLoadProfile(phaseCount: 1 | 3): SteppedLoadPro
   return {
     model: 'stepped_load',
     steps: [
-      { id: 'off', planningPowerW: 0 },
+      { id: 'off', planningPowerW: 0, planningCurrentA: 0 },
       ...EV_CHARGER_AMPS.map((amps) => ({
         id: `${amps}a`,
         planningPowerW: amps * NOMINAL_PHASE_VOLTAGE * phaseCount,
+        // Pre-resolved per-step installation current so the executor reads it off
+        // the step instead of dividing by the preset's watts-per-amp. Inverse of
+        // `planningPowerW = amps * 230 * phaseCount`, i.e. exactly `amps`.
+        planningCurrentA: amps,
       })),
     ],
   };

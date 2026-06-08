@@ -35,6 +35,19 @@ export function createPlanService(ctx: AppContext): PlanService {
     // generic copy for the first cold-start cycle before the projection fills;
     // tracked as a P3 in TODO.md.
     getObservedEvChargingState: (deviceId) => ctx.getObservedState(deviceId)?.evChargingState,
+    // Producer `deviceType` for the settings-UI control-mode card. Sourced from
+    // the RAW, undecorated device snapshot (`deviceManager.getSnapshot()`) — NOT
+    // `latestTargetSnapshot` — so building this map triggers no re-decoration
+    // side effects, and it is built once per serialize (O(n)). `deviceType` is a
+    // producer setting the planner no longer evaluates; the read model only uses
+    // it to pick the temperature-vs-binary card for non-stepped devices.
+    getDeviceTypeById: () => {
+      const map = new Map<string, 'temperature' | 'onoff'>();
+      for (const device of ctx.deviceManager?.getSnapshot() ?? []) {
+        if (device.deviceType) map.set(device.id, device.deviceType);
+      }
+      return map;
+    },
     getCapacityDryRun: () => ctx.capacityDryRun,
     loggers: {
       structuredLog: ctx.getStructuredLogger('plan'),

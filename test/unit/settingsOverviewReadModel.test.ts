@@ -129,6 +129,34 @@ describe('settingsOverviewReadModel', () => {
     expect(buildSettingsOverviewDeviceReadModel(device).evChargingState).toBeUndefined();
   });
 
+  it('reproduces the control-mode card from profile-presence + producer deviceType', () => {
+    // controlModel is a producer setting the planner no longer carries. The read
+    // model must still emit the faithful value so the settings-UI picks the right
+    // card — including a temperature device with NO plannedTarget (skip /
+    // abandon-grace), which previously relied on controlModel === 'temperature_target'.
+    const temp = buildPlanDevice({ id: 'temp-1' }); // non-stepped, no plannedTarget
+    expect(buildSettingsOverviewDeviceReadModel(temp, {}, 'temperature').controlModel)
+      .toBe('temperature_target');
+
+    const binary = buildPlanDevice({ id: 'bin-1' });
+    expect(buildSettingsOverviewDeviceReadModel(binary, {}, 'onoff').controlModel).toBe('binary_power');
+    // Absent deviceType (not in the producer map) falls back to binary, matching resolveDefaultControlModel.
+    expect(buildSettingsOverviewDeviceReadModel(binary, {}).controlModel).toBe('binary_power');
+
+    const stepped = steppedPlanDevice({ id: 'step-1' });
+    // Stepped wins regardless of producer deviceType (a stepped thermostat stays stepped).
+    expect(buildSettingsOverviewDeviceReadModel(stepped, {}, 'temperature').controlModel).toBe('stepped_load');
+  });
+
+  it('threads the producer deviceType map through the top-level read model', () => {
+    const temp = buildPlanDevice({ id: 'temp-2' });
+    const readModel = buildSettingsOverviewReadModel(
+      { generatedAtMs: 0, meta: {}, devices: [temp] } as never,
+      { getDeviceTypeById: () => new Map([['temp-2', 'temperature']]) },
+    );
+    expect(readModel?.devices?.[0]?.controlModel).toBe('temperature_target');
+  });
+
   it('keeps planner cooldown reasons available as structured read-model data', () => {
     const device = buildPlanDevice({
       reason: {
