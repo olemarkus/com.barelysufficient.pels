@@ -6,6 +6,7 @@ import type {
   HomeyStatus,
   GridCompanyOption,
 } from '../priceConfigTypes.ts';
+import { resolvePriceLevelChip } from '../../../../shared-domain/src/priceLevelChips.ts';
 import {
   MdFilledSelect,
   MdFilledTextField,
@@ -28,6 +29,13 @@ export type ElectricityPricesViewProps = {
   thresholdPercent: number;
   minDiffOre: number;
   priceScheme: PriceScheme;
+  // Live price signals for the summary card. `currentPriceLevel` is the raw
+  // free-form Homey level (cheap / normal / expensive / null) — fed through the
+  // canonical `resolvePriceLevelChip` helper so the wording matches the budget
+  // hero and runtime logs. `lastFetchedShort` is a pre-formatted short clock
+  // time (or null when prices have not been fetched yet).
+  currentPriceLevel: string | null;
+  lastFetchedShort: string | null;
   norwayPriceModel: NorwayPriceModel;
   priceArea: string;
   providerSurcharge: number;
@@ -78,6 +86,43 @@ const StatusRow = ({ label, value, tone }: { label: string; value: string; tone?
     <span class={['price-config-status-value', tone].filter(Boolean).join(' ')}>{value}</span>
   </div>
 );
+
+// Compact live summary of the current price signal at the top of the panel.
+// The tier chip reuses the canonical `resolvePriceLevelChip` pair ("Price low"
+// / "Price high") so it never disagrees with the budget hero or the runtime
+// logs; `normal` / unknown levels return null, in which case we carry the calm
+// state as toned text rather than inventing a third chip (the M3 chip rail
+// stays quiet when there is nothing exceptional to say).
+const LiveSummaryCard = ({
+  currentPriceLevel,
+  lastFetchedShort,
+}: {
+  currentPriceLevel: string | null;
+  lastFetchedShort: string | null;
+}) => {
+  const chip = resolvePriceLevelChip(currentPriceLevel);
+  const chipToneCls = chip ? (chip.tone === 'warn' ? 'plan-chip--warn' : 'plan-chip--info') : '';
+  // No chip → calm wording. Only the recognised, actionable-but-quiet level
+  // ("normal") earns "Normal"; "unknown" / null / anything else means prices
+  // have not arrived yet, so we say so rather than implying an all-clear.
+  const calmValue = currentPriceLevel === 'normal' ? 'Normal' : 'Awaiting prices';
+  return (
+    <section class="settings-form-card electricity-prices-live-summary">
+      <h3 class="section-title">Right now</h3>
+      <div class="price-config-status-row">
+        <span class="price-config-status-label">Current price</span>
+        {chip ? (
+          <span class={`plan-chip ${chipToneCls}`} data-price-level={chip.priceLevel}>
+            {chip.label}
+          </span>
+        ) : (
+          <span class="price-config-status-value">{calmValue}</span>
+        )}
+      </div>
+      <StatusRow label="Last fetched" value={lastFetchedShort ?? '—'} />
+    </section>
+  );
+};
 
 const FlowStatusBlock = ({ status }: { status: FlowStatus }) => (
   <div class="price-config-source-status">
@@ -400,6 +445,10 @@ const ElectricityPricesRoot = (props: ElectricityPricesViewProps) => {
   return (
     <>
       <Header />
+      <LiveSummaryCard
+        currentPriceLevel={props.currentPriceLevel}
+        lastFetchedShort={props.lastFetchedShort}
+      />
       <SourceForm {...props} />
       <ThresholdForm
         thresholdPercent={props.thresholdPercent}

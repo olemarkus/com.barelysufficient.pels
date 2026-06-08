@@ -6437,6 +6437,17 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 
 /* ─── Electricity prices / Price-aware devices (Preact) ─────────────────── */
 
+/* Live "Right now" summary card at the top of the Electricity prices panel.
+   Decorator on `.settings-form-card`; lays its status rows out as a compact
+   column. The current-price row carries either the canonical `.plan-chip`
+   (cheap/expensive) or calm toned text (normal / awaiting), so it never grows
+   a coloured state-rail — state lives in the chip/text alone. */
+.electricity-prices-live-summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+}
+
 .price-config-source-status {
   display: flex;
   flex-direction: column;
@@ -6452,6 +6463,10 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   justify-content: space-between;
   gap: var(--spacing-2);
   font-size: var(--font-size-sm);
+}
+
+.electricity-prices-live-summary .price-config-status-row {
+  align-items: center;
 }
 
 .price-config-status-label {
