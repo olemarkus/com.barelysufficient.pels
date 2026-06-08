@@ -153,7 +153,7 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
       - **type discrimination:** the temperature (~21) / stepped (~34) field-level discrimination and the
         `TargetDeviceSnapshot` discrimination (~119 importers) — the type-tightening half, independent of the
         value-level de-kinding above.
-- [ ] **Finish the deferred-objective unit-agnostic value train (deadband + active-plan/ended-event splits).**
+- [ ] **Finish the deferred-objective unit-agnostic value train (active-plan/ended-event resolved-view splits).**
       *Step 1 shipped (`refactor/plan-history-value-accessors`):* one canonical coalesce module
       `packages/shared-domain/src/deferredObjectiveValues.ts` (`resolve*Value = *Percent ?? *C`); every reader
       routed through it.
@@ -165,15 +165,12 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
       replaced the planned writer-flip + AST guard (both unnecessary; the type system enforces it and the
       persisted columns keep their natural kind-split write). Sanctioned behavior change: receipt motion
       detection unified to a single 0.5 threshold (EV tightened 1→0.5).
-      *Remaining:* (a) **generalize the deadband learner** — `setup/appInit/deferredRecorders.ts`
-      `updateLearnedThermostatDeadbandFromEntry` is gated to temperature via `targetTemperatureC === null`;
-      that's a bug (it should learn a commanded-vs-reached offset for ANY device). Drop the kind gate, read the
-      value via the resolver on the raw entry, and learn per-device. (Consumption side — admission applying the
-      learned offset — is temperature-only today; generalizing that is a separate planning-behavior decision.)
-      (b) **apply the same resolved-view split** to the active-plan (`DeferredObjectiveActivePlanV1`,
+      *Remaining:* **apply the same resolved-view split** to the active-plan (`DeferredObjectiveActivePlanV1`,
       `deferredActivePlanChartData.ts`, widget active-plan reads) and ended-event types, so their consumers also
-      lose raw-column access. Files: `setup/appInit/deferredRecorders.ts`,
-      `packages/contracts/src/deferredObjectiveActivePlans.ts`, `packages/shared-domain/src/deferredActivePlanChartData.ts`.
+      lose raw-column access. Files: `packages/contracts/src/deferredObjectiveActivePlans.ts`,
+      `packages/shared-domain/src/deferredActivePlanChartData.ts`.
+      (The earlier "generalize the deadband learner" sub-item is dropped: the learned thermostat deadband
+      feature was removed entirely, so there's nothing to generalize.)
 
 ## P2 Product, Observability, and Maintainability
 
@@ -506,20 +503,6 @@ cosmetic chores — do them in passing or drop them; don't park them here.*
       `getDeviceStandingRescue` (gate on `hasDeferredObjectiveForDevice`), the standing-and-toggles merge
       into BOTH preview and create candidates, and the route-agnostic `Already allowed:` copy.
 
-- [ ] **Surface the learned thermostat deadband to the owner.**
-      *Persona:* skeptical optimiser / curious tinkerer (`notes/personas.md` #4/#3) — the
-      owner who notices PELS commanding 65.2 °C when they set 65.0 °C.
-      *Hypothesis:* the silent `learned_thermostat_deadband_c` offset reads as PELS
-      misbehaving; showing "PELS adds +0.2 °C so the device satisfies at-target" (plus a
-      `Reset learned deadband` control for reconfigured/replaced devices) turns a
-      trust-eroding mystery into visible, deliberate learning.
-      *Why it's needed:* the skeptical optimiser is an explicitly underserved persona, and a
-      commanded value that differs from the user's own setpoint is exactly the unexplained
-      behaviour that loses their trust.
-      *Validate first:* no user has reported this confusion yet — confirm the signal (support
-      thread / forensics) before spending UI on it; today the value lives only in the persisted
-      settings map and feeds the setpoint silently. Source: kontor smart-task forensics, 2026-05-26.
-
 *Smart-task failure-investigation & live UX — the underserved panic / skeptical
 visitors (`notes/personas.md` #4–6).*
 
@@ -688,17 +671,6 @@ Both are data-gated: act only when prod evidence shows the gap, else leave alone
       lower-priority devices than the rescued one; the success flash stays honest meanwhile).
       Files: `lib/objectives/deferredObjectives/policyHorizon.ts`, `.../rescueReplan.ts`,
       `lib/dailyBudget/dailyBudgetBreakdown.ts`. Source: pels-runtime-reality on PR #983 / #1373.
-- [ ] **Weather-condition the learned thermostat deadband.**
-      *Persona:* skeptical optimiser / comfort-sensitive heat-tank owner whose sensor lag varies
-      with conditions.
-      *Hypothesis:* the single-value EMA (0.7/0.3) collapses every met/stalled observation onto one
-      per-device deadband, but real lag is mildly weather-dependent (cold-start vs mild mid-day); if
-      rate-confidence stays low after several samples, splitting learning by outdoor-temperature
-      bucket (or recent-trajectory slope) — the way `dailyBudgetLearning.ts` keys per-day buckets —
-      would track the true deadband and stop over/under-shooting target.
-      *Why it's needed:* a biased deadband wastes energy or misses comfort for the persona who
-      notices. *Validate first:* only act once the single-value EMA shows measurable bias in
-      production. Source: kontor smart-task forensics, 2026-05-26.
 
 *Demoted from P2 (2026-06-03 scrutiny pass) — real product / future-capability work with a
 persona but no current support-cost pressure; reframed to the P3 bar.*
