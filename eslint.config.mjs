@@ -79,6 +79,37 @@ const browserTypeScriptRules = {
   'n/no-unsupported-features/es-syntax': 'off',
 };
 
+// The ONLY lib/** files allowed to reference the `homey` package — and only as
+// a TYPE. These type the raw injected SDK instance as `Homey.App`: the
+// device-boundary leaf (the sole place that talks to the SDK) plus the
+// AppContext injection seam. Every other lib/** module depends on the SDK-free
+// ports in lib/ports/homeyRuntime instead.
+const HOMEY_LEAF_ALLOWLIST = [
+  'lib/app/appContext.ts',                   // AppContext type — the injection seam (CLAUDE.md: long-term inhabitant)
+  'lib/device/deviceTransport.ts',           // the SDK transport leaf
+  'lib/device/liveFeed.ts',                  // local Web API socket.io subscription
+  'lib/device/transport/managerHomeyApi.ts', // local HTTP API client
+];
+
+// Dynamic `import('homey')` is a runtime value-load, so it bypasses the
+// `no-restricted-imports` paths gate (which only sees static import/import type).
+// `require('homey')` is sealed separately by turning `no-require-imports` on for
+// lib/**. Hot-path dirs already set `no-restricted-syntax` (perf selectors), and
+// flat config REPLACES rather than merges, so this selector is added INTO the
+// perf block there and applied via a sibling block to the remaining lib dirs.
+const HOMEY_DYNAMIC_IMPORT_BAN = {
+  selector: "ImportExpression[source.value='homey']",
+  message: 'Do not dynamic-import the Homey SDK in lib/** — depend on lib/ports/homeyRuntime '
+    + '(the device-boundary leaf type-imports `Homey.App`; nobody value-loads the SDK).',
+};
+const HOMEY_HOT_PATH_DIRS = [
+  'lib/device/**/*.ts',
+  'lib/plan/**/*.ts',
+  'lib/dailyBudget/**/*.ts',
+  'lib/objectives/**/*.ts',
+  'lib/power/**/*.ts',
+];
+
 export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
@@ -254,60 +285,68 @@ export default tseslint.config(
           selector: ':matches(ForStatement,ForInStatement,ForOfStatement,WhileStatement,DoWhileStatement) SpreadElement',
           message: 'Avoid spread allocations inside loops.',
         },
+        // SDK-leaf gate: dynamic `import('homey')` (hot-path dirs). The rest of
+        // lib/** gets this via the sibling block below the leaf rules.
+        HOMEY_DYNAMIC_IMPORT_BAN,
       ],
     },
   },
-  // Keep the Homey SDK at the leaf. lib/** is the domain layer; it may reference
-  // Homey SDK *types* (`import type Homey from 'homey'`) but must never *value*-
-  // import the SDK. The runtime SDK object (`homey.settings`, `homey.clock`,
-  // `homey.api`, …) is dependency-injected from the entry points — app.ts and
-  // drivers/** subclass `Homey.App`/`Homey.Driver` and thread the instance down.
-  // So the real SDK leaf is the injected instance, not an import (see
-  // notes/state-management/). `allowTypeImports` keeps the type-only coupling
-  // legal for modules not yet migrated onto the `lib/ports/homeyRuntime` ports;
-  // the stricter block below drops it directory-by-directory as each one moves
-  // off `Homey.App` entirely. `homey` is a types-only package
-  // (@types/homey → homey-apps-sdk-v3-types), so dependency-cruiser — which runs
-  // post-compilation, where these edges are erased — can't police this; the
-  // source-level lint rule is the only honest gate.
+  // Keep the Homey SDK at the leaf. The runtime SDK object (`homey.settings` /
+  // `clock` / `api` / `flow`) is dependency-injected from the entry points
+  // (app.ts and drivers/** subclass `Homey.App`/`Homey.Driver` and thread the
+  // instance down); the domain depends on the SDK-free ports in
+  // lib/ports/homeyRuntime instead. So `lib/**` must not reference the `homey`
+  // package AT ALL — value or type — except the device-boundary leaf and the
+  // appContext injection seam (HOMEY_LEAF_ALLOWLIST), the only places that
+  // legitimately type the raw injected instance. `homey` is a types-only package
+  // (@types/homey → homey-apps-sdk-v3-types), so dependency-cruiser (which runs
+  // post-compilation, where the edges are erased) can't police this — the
+  // source-level lint rule is the only honest gate. Three forms are sealed:
+  // static import/import type (no-restricted-imports below), `require('homey')`
+  // (no-require-imports), and dynamic `import('homey')` (no-restricted-syntax).
   {
     files: ['lib/**/*.ts'],
+    ignores: HOMEY_LEAF_ALLOWLIST,
+    rules: {
+      '@typescript-eslint/no-restricted-imports': ['error', {
+        paths: [{
+          name: 'homey',
+          message: 'Outside the device-boundary leaf, lib/** must not reference the Homey SDK at all '
+            + '(no value OR type import) — depend on the lib/ports/homeyRuntime ports '
+            + '(SettingsPort/ClockPort/HomeyRuntime/FlowPort/ApiPort). The SDK runtime instance is '
+            + 'injected from the entry points. See notes/state-management/.',
+        }],
+      }],
+      '@typescript-eslint/no-require-imports': 'error',
+    },
+  },
+  // The device-boundary leaf + the appContext injection seam: the only lib/**
+  // files that may reference `homey`, and only as a TYPE (`import type Homey` to
+  // annotate the injected instance as `Homey.App`). A value import is still
+  // forbidden — the runtime instance is injected, never imported.
+  {
+    files: HOMEY_LEAF_ALLOWLIST,
     rules: {
       '@typescript-eslint/no-restricted-imports': ['error', {
         paths: [{
           name: 'homey',
           allowTypeImports: true,
-          message: 'lib/** must not value-import the Homey SDK — use `import type Homey from \'homey\'`. '
-            + 'The SDK runtime instance is injected from the entry points (app.ts/drivers). '
-            + 'See notes/state-management/: the SDK leaf is the injected instance, not an import.',
+          message: 'Even the SDK-boundary leaf must not VALUE-import `homey` — the runtime instance is '
+            + 'injected from the entry points (app.ts/drivers). `import type Homey` is allowed here only.',
         }],
       }],
+      '@typescript-eslint/no-require-imports': 'error',
     },
   },
-  // Directories fully migrated onto the SDK-free `lib/ports/homeyRuntime` ports:
-  // they must not reference the `homey` package at all — not even as a type.
-  // `allowTypeImports` is omitted (defaults to false), so this overrides the
-  // floor rule above and locks the dir at zero SDK coupling. Add a dir here as
-  // its last `Homey.App` reference is retired (the port-interface train).
+  // Dynamic-import seal for the non-hot-path lib dirs (the hot-path dirs get
+  // HOMEY_DYNAMIC_IMPORT_BAN via the perf block's no-restricted-syntax above;
+  // flat config replaces this rule, so it can't be set in one lib-wide block
+  // without clobbering the perf selectors).
   {
-    files: [
-      'lib/dailyBudget/**/*.ts',
-      'lib/diagnostics/**/*.ts',
-      'lib/power/**/*.ts',
-      'lib/price/**/*.ts',
-      'lib/utils/**/*.ts',
-      'lib/plan/**/*.ts',
-      'lib/executor/**/*.ts',
-    ],
+    files: ['lib/**/*.ts'],
+    ignores: HOMEY_HOT_PATH_DIRS,
     rules: {
-      '@typescript-eslint/no-restricted-imports': ['error', {
-        paths: [{
-          name: 'homey',
-          message: 'This directory is migrated onto lib/ports/homeyRuntime — depend on the '
-            + 'SettingsPort/ClockPort/HomeyRuntime ports, not the Homey SDK (no `homey` import at all). '
-            + 'See project: Homey SDK at the leaf.',
-        }],
-      }],
+      'no-restricted-syntax': ['error', HOMEY_DYNAMIC_IMPORT_BAN],
     },
   },
   // Test files - relaxed rules

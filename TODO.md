@@ -186,24 +186,6 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
 
 *v2.11.0..HEAD release-review findings (2026-06-02). Non-blocking follow-ups.*
 
-- [ ] **Close the `require('homey')` / `await import('homey')` holes in the lib/** SDK-leaf gate.**
-      (Codex review of #1610, P2.) The `@typescript-eslint/no-restricted-imports` gate catches ES
-      `import` / `import type` of `homey`, but not two value-load forms: `const Homey = require('homey')`
-      (the shared config has `@typescript-eslint/no-require-imports` off) and dynamic `await import('homey')`
-      (an `ImportExpression`, which `no-restricted-imports` does not cover). Both bypass the gate while
-      still value-loading the SDK at runtime, weakening the "no file under lib/** value-imports the Homey
-      SDK" invariant. Fold the fix into PR-2d (where the eslint gate gets its final lib/**-except-boundary
-      shape): a `no-restricted-syntax` selector for `ImportExpression[source.value='homey']` plus
-      `CallExpression[callee.name='require'] > Literal[value='homey']`, **mind the flat-config collision** —
-      `no-restricted-syntax` is already set in the hot-paths perf block
-      (`lib/{device,plan,dailyBudget,objectives,power}/**`, the Array.from/spread bans) and the settings-ui
-      views block, and a later same-rule block replaces (not merges) those selectors, so the homey selectors
-      must be added *into* the perf block, not a clobbering lib/** override. lib/** has zero `require(` today,
-      so `@typescript-eslint/no-require-imports: 'error'` scoped to lib/** is the cleaner half for the
-      require form (no collision; different rule). Persona: maintainer guarding the architecture gate.
-      Hypothesis: the gate's realistic regression vector (a normal `import`) is closed; these exotic forms
-      are an enforcement gap worth sealing when the gate is finalised, not a live bug.
-
 - [ ] **Decide whether stepped shed/restore recording should gate on `flowBacked` like the binary paths.**
       (Gemini review of #1591, deferred.) The binary seam seal made `BinaryControlOutcome.flowBacked`
       available, and `binaryExecutor.ts` / `binaryRestoreHelpers.ts` skip recording *direct* actuation
