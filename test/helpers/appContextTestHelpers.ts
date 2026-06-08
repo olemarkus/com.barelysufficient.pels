@@ -3,6 +3,7 @@ import type { AppContext, FlowBackedCapabilityReportOutcome } from '../../lib/ap
 import { AppDeviceControlHelpers } from '../../lib/app/appDeviceControlHelpers';
 import { HomeyEnergyPollSource } from '../../lib/power/sources/homeyEnergyPoll';
 import { AppSnapshotHelpers } from '../../lib/app/appSnapshotHelpers';
+import { normalizePowerSource } from '../../lib/power/powerSource';
 import { TimerRegistry } from '../../lib/app/timerRegistry';
 import { createCombinedPricesReader } from '../../setup/priceCombinedPricesAdapter';
 import type { PowerTrackerState } from '../../lib/power/tracker';
@@ -109,7 +110,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
   const priceOptimizationSettings = priceOptimizationSettingsOverride ?? {};
 
   const snapshotHelpers = snapshotHelpersOverride ?? new AppSnapshotHelpers({
-    homey,
+    getPowerSource: () => normalizePowerSource(homey.settings.get('power_source')),
     timers,
     getDeviceManager: () => undefined,
     getPlanEngine: () => undefined,
@@ -127,7 +128,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     recordPowerSample: vi.fn(async () => undefined),
   });
   const homeyEnergyHelpers = homeyEnergyHelpersOverride ?? new HomeyEnergyPollSource({
-    homey,
+    getPowerSource: () => normalizePowerSource(homey.settings.get('power_source')),
     timers,
     pollHomePower: async () => null,
     recordPowerSample: vi.fn(async () => undefined),

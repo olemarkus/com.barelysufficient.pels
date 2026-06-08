@@ -1,4 +1,4 @@
-import type { HomeyRuntime } from '../ports/homeyRuntime';
+import type { PowerSource } from '../power/powerSource';
 import type { DeviceTransport } from '../device/deviceTransport';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import type { PlanEngine } from '../plan/planEngine';
@@ -61,7 +61,7 @@ export class AppSnapshotHelpers {
   private staleRefreshLogLastEmitMsById = new Map<string, number>();
 
   constructor(private readonly deps: {
-    homey: HomeyRuntime;
+    getPowerSource: () => PowerSource;
     timers: TimerRegistry;
     getDeviceManager: () => DeviceTransport | undefined;
     getPlanEngine: () => PlanEngine | undefined;
@@ -407,7 +407,7 @@ export class AppSnapshotHelpers {
   ): Promise<void> {
     if (
       options.recordHomeyEnergySample === false
-      || this.deps.homey.settings.get('power_source') !== 'homey_energy'
+      || this.deps.getPowerSource() !== 'homey_energy'
     ) {
       return;
     }

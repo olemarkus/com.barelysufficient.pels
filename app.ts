@@ -70,7 +70,9 @@ import {
   DEVICE_LAST_CONTROLLED_MS,
   FLOW_REPORTED_DEVICE_CAPABILITIES,
   OPERATING_MODE_SETTING,
+  POWER_SOURCE,
 } from './lib/utils/settingsKeys';
+import { normalizePowerSource, type PowerSource } from './lib/power/powerSource';
 import { isNumberMap } from './lib/utils/appTypeGuards';
 import {
   executePendingPowerRebuild,
@@ -480,7 +482,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi {
   private structuredLogger?: PinoLogger;
   private readonly timers = new TimerRegistry();
   private readonly snapshotHelpers = new AppSnapshotHelpers({
-    homey: this.homey,
+    getPowerSource: () => this.getPowerSource(),
     timers: this.timers,
     getDeviceManager: () => this.deviceManager,
     getPlanEngine: () => this.planEngine,
@@ -515,7 +517,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi {
     getHomePowerW: () => this.observedHomePower.getHomePowerW(),
   });
   private readonly homeyEnergyHelpers = new HomeyEnergyPollSource({
-    homey: this.homey,
+    getPowerSource: () => this.getPowerSource(),
     timers: this.timers,
     pollHomePower: async () => (await this.deviceManager?.pollHomePowerW()) ?? null,
     recordPowerSample: async (powerW) => this.powerSamplePipeline.recordPowerSample(powerW),
@@ -1944,6 +1946,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi {
   }
   public getCombinedHourlyPrices = (): CombinedHourlyPrice[] => this.priceCoordinator.getCombinedHourlyPrices();
   private getTimeZone = (): string => this.homey.clock.getTimezone();
+  private getPowerSource = (): PowerSource => normalizePowerSource(this.homey.settings.get(POWER_SOURCE));
   private getNow = (): Date => new Date();
   public findCheapestHours = (count: number): string[] => this.priceCoordinator.findCheapestHours(count);
   private isCurrentHourCheap = (): boolean => this.priceCoordinator.isCurrentHourCheap();
