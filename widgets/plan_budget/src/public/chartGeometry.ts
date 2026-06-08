@@ -2,13 +2,13 @@
 // measured container height (in viewBox units), so the chart — and the card
 // surface (`.chart__panel`) drawn inside it — FILLS the whole dashboard tile at
 // any supported width (320–480 px) and height; there is no `meet` letterbox left
-// OUTSIDE the panel. The PLOT block (grid + bars + price + x-labels + legend) is
-// capped at a sane maximum height (so bars never stretch into spaghetti) and a
-// minimum (so short tiles don't squash), then VERTICALLY CENTERED inside the
-// panel with the surplus distributed as balanced top/bottom padding INSIDE the
-// card. The furniture below the plot (x-labels, legend) moves WITH the plot
-// block — a fixed distance below the plot body — rather than being pinned to the
-// viewBox bottom.
+// OUTSIDE the panel. The PLOT block (grid + bars + price + x-labels + legend) also
+// FILLS the panel: the plot body takes all panel height below the fixed furniture
+// overhead, so a tall tile grows the plot toward the card edge rather than capping
+// it and pooling an empty band. Growing adds HEIGHT only — bar WIDTH is fixed by
+// PLOT_X, so taller tiles never stretch the ~12 bars into spaghetti. The furniture
+// below the plot (x-labels, legend) sits a fixed distance below the plot body, so
+// it grows with the plot rather than being pinned to the viewBox bottom.
 //
 // Because the caller passes a height that preserves the container's true aspect
 // ratio (`measureChartHeight` scales measured px into the fixed 480 viewBox
@@ -45,21 +45,6 @@ const X_LABEL_GAP = 32; // plot body bottom → x-label baseline
 const LEGEND_GAP = 78; // plot body bottom → legend baseline
 const BLOCK_BOTTOM_PAD = 10; // legend baseline → block bottom (descender room)
 
-// Plot BODY (the bar/grid area) height band, expressed in CONTAINER PIXELS at the
-// reference width (480 px, where 1 viewBox unit = 1 px). Capped at the maximum so
-// tall tiles centre the plot with padding instead of stretching ~12 bars into
-// spaghetti; floored at the minimum so short tiles stay legible rather than
-// squashing.
-//
-// These are PHYSICAL pixel bands. At a narrower tile (e.g. 320 px) one viewBox
-// unit is physically smaller (scale = widthPx/480 < 1), so the same physical cap
-// is MORE viewBox units. `resolveGeometry` divides by the scale to convert the
-// px band into unit space, so the plot body occupies the SAME physical height at
-// every tile width — otherwise a fixed-unit cap renders ~1.5× smaller at 320,
-// leaving a huge interior void.
-const PLOT_BODY_MIN_PX = 180;
-const PLOT_BODY_MAX_PX = 360;
-
 export type Geometry = {
   viewport: { width: number; height: number };
   panel: { x: number; y: number; width: number; height: number; radius: number };
@@ -77,46 +62,29 @@ export const resolveViewportHeight = (desired: number): number => {
 };
 
 // Fixed vertical overhead of the plot block above the plot body (PLOT_TOP_OFFSET)
-// plus everything below it (legend gap + descender pad). The plot body height is
-// whatever panel space remains, clamped into the body band.
+// plus everything below it (legend gap + descender pad). The plot body takes
+// whatever panel height remains below this overhead.
 const BLOCK_OVERHEAD = PLOT_TOP_OFFSET + LEGEND_GAP + BLOCK_BOTTOM_PAD;
 
-// Resolve all geometry for a (clamped) viewBox height. The panel fills the
-// viewBox minus the uniform margin; the plot block is capped + vertically centred
-// inside the panel, surplus split as balanced top/bottom padding.
+// Resolve all geometry for a (clamped) viewBox height. The panel fills the viewBox
+// minus the uniform margin; the plot block FILLS the panel — the body takes all
+// panel height below the fixed furniture overhead, so a tall tile grows the plot
+// toward the card edge instead of capping it and pooling an empty band.
 //
-// `scale` is the container's width scale (`widthPx / 480`): how many CSS px one
-// viewBox unit spans. It converts the PHYSICAL-pixel plot-body band into unit
-// space so the body stays the same physical size at every tile width. A
-// missing/zero scale (jsdom/pre-paint) falls back to 1 — the reference width,
-// where unit == px and the band is used verbatim.
-export const resolveGeometry = (height: number, scale = 1): Geometry => {
-  const unitScale = Number.isFinite(scale) && scale > 0 ? scale : 1;
-  // The px band converted to viewBox units: at a narrow tile (scale < 1) the same
-  // physical cap is MORE units, so the plot grows to the reference physical size
-  // instead of rendering smaller and over-padding.
-  const plotBodyMin = PLOT_BODY_MIN_PX / unitScale;
-  const plotBodyMax = PLOT_BODY_MAX_PX / unitScale;
+// Growing the body only adds HEIGHT: bar WIDTH is fixed by PLOT_X, so taller tiles
+// never thin the ~12 bars into spaghetti. Width-independence is automatic — the
+// body is sized in viewBox units that map 1:1 onto the tile (the caller passes a
+// height preserving the tile's true aspect ratio), so the same fraction of the
+// card is filled at 320 and 480 with no scale conversion needed. A tile too short
+// to seat the furniture shrinks the body to whatever remains (>= 0) so the
+// legend/x-labels stay inside the viewport.
+export const resolveGeometry = (height: number): Geometry => {
   const panelHeight = height - (PANEL_MARGIN * 2);
-  // Space the block could occupy if the plot body weren't capped, then clamp the
-  // body into its band. On a tall tile the body hits the max and the leftover
-  // panel height becomes balanced padding; on a short tile it floors at the min.
-  const availableBody = panelHeight - BLOCK_OVERHEAD;
-  const bandedBody = Math.min(plotBodyMax, Math.max(plotBodyMin, availableBody));
-  // The MIN_PX floor is a target, not an inviolable floor: at the smallest
-  // supported tile (320×~240 → ~360 viewBox units, scale ≈ 0.667) the floored
-  // body + the fixed furniture overhead is TALLER than the panel, which would
-  // push the legend/x-labels below the viewport and clip them. When the tile is
-  // physically too small for the floor, shrink the body DOWN to whatever the
-  // panel can hold (>= 0) so the whole block — legend included — stays inside.
-  const plotBodyHeight = Math.max(0, Math.min(bandedBody, availableBody));
-  const blockHeight = plotBodyHeight + BLOCK_OVERHEAD;
-  // Centre the block in the panel; never push it above the panel top when the
-  // block is taller than the panel (very short tile — the floor wins, surplus 0).
-  const surplus = Math.max(0, panelHeight - blockHeight);
-  const blockTop = PANEL_MARGIN + (surplus / 2);
+  // The body fills the panel below the furniture overhead (>= 0 so a tile too
+  // short for the furniture clips nothing — the body collapses, legend stays in).
+  const plotBodyHeight = Math.max(0, panelHeight - BLOCK_OVERHEAD);
 
-  const plotTop = blockTop + PLOT_TOP_OFFSET;
+  const plotTop = PANEL_MARGIN + PLOT_TOP_OFFSET;
   const plotBottom = plotTop + plotBodyHeight;
 
   return {

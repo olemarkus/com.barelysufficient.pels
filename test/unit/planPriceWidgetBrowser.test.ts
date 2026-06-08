@@ -518,11 +518,13 @@ describe('plan budget widget browser', () => {
 
 // Panel-fill geometry: at any supported width and tile height the PANEL fills the
 // whole viewBox (minus a uniform margin), so no empty band is ever left OUTSIDE
-// the card; the PLOT block is capped at a sane maximum (no spaghetti bars),
-// floored at a minimum (no squash on short tiles), and vertically CENTERED inside
-// the panel with the surplus split as balanced top/bottom padding. The viewBox
-// maps 1:1 onto the tile (`preserveAspectRatio="none"`) — non-distorting because
-// the caller passes a height preserving the container's true aspect ratio.
+// the card; the PLOT block then FILLS the panel — the body takes all panel height
+// below the fixed furniture overhead, so a tall tile grows the plot toward the
+// card edge instead of capping it and pooling a dead band. Growing adds height
+// only (bar WIDTH is fixed), and a tile too short to seat the furniture shrinks
+// the body to fit so nothing clips. The viewBox maps 1:1 onto the tile
+// (`preserveAspectRatio="none"`) — non-distorting because the caller passes a
+// height preserving the container's true aspect ratio.
 describe('plan budget widget panel-fill geometry', () => {
   beforeEach(() => {
     document.body.innerHTML = '';
@@ -535,33 +537,29 @@ describe('plan budget widget panel-fill geometry', () => {
   };
 
   const PANEL_MARGIN = 12;
-  // The plot-body band is expressed in PHYSICAL container px (1 viewBox unit == 1
-  // px at the 480 reference width). At scale 1 the band is used verbatim.
-  const PLOT_BODY_MIN = 180;
-  const PLOT_BODY_MAX = 360;
-  // A short 4:3 tile, a medium tile, and a tall 320-equivalent cell (the case
-  // that letterboxed a dead band outside the card before the panel-fill redesign).
+  // Fixed furniture overhead inside the plot block (PLOT_TOP_OFFSET + LEGEND_GAP +
+  // BLOCK_BOTTOM_PAD); the plot body fills the panel height below it.
+  const BLOCK_OVERHEAD = 14 + 78 + 10;
+  // A short 4:3 tile, a medium tile, and a tall cell (the case that pooled a dead
+  // band INSIDE the card before the plot body was allowed to fill it).
   const SHORT = VIEWPORT_MIN_HEIGHT;
   const MEDIUM = 560;
   const TALL = 960;
 
-  // The width scales the real widget measures: 1.0 at the 480 reference width,
-  // 0.667 at the 320 narrow tile. One viewBox unit spans `scale` CSS px.
-  const SCALE_480 = 1;
+  // The width scale the real widget measures: 1.0 at the 480 reference width,
+  // 0.667 at the 320 narrow tile.
   const SCALE_320 = 320 / 480;
 
-  // Resolve geometry as the widget would for a PHYSICALLY tall tile of `pixelH`
-  // CSS px at the given width scale: the measured px height maps to `pixelH/scale`
-  // viewBox units, and the same scale converts the px-based plot-body band.
+  const geom = (height: number): ReturnType<typeof resolveGeometry> =>
+    resolveGeometry(resolveViewportHeight(height));
+  const plotBody = (g: ReturnType<typeof resolveGeometry>): number => g.plot.bottom - g.plot.top;
+
+  // Geometry for a PHYSICALLY tall tile of `pixelH` CSS px at the given width
+  // scale: the measured px height maps to `pixelH / scale` viewBox units.
   const geometryForPhysicalTile = (
     pixelH: number,
     scale: number,
-  ): ReturnType<typeof resolveGeometry> =>
-    resolveGeometry(resolveViewportHeight(pixelH / scale), scale);
-
-  // A plot-body height (viewBox units) converted back to CSS px at a given scale.
-  const plotBodyPx = (g: ReturnType<typeof resolveGeometry>, scale: number): number =>
-    (g.plot.bottom - g.plot.top) * scale;
+  ): ReturnType<typeof resolveGeometry> => geom(pixelH / scale);
 
   test('the panel fills the viewBox height (minus a uniform margin) at every tile height', () => {
     for (const height of [SHORT, MEDIUM, TALL]) {
@@ -574,65 +572,45 @@ describe('plan budget widget panel-fill geometry', () => {
     }
   });
 
-  test('caps the plot body on tall tiles (no spaghetti) and floors it on short tiles (no squash)', () => {
-    const plotBody = (height: number): number => {
-      const { plot } = resolveGeometry(resolveViewportHeight(height));
-      return plot.bottom - plot.top;
-    };
-    // Short 4:3 cell: body within the band, not squashed below the floor.
-    expect(plotBody(SHORT)).toBeGreaterThanOrEqual(PLOT_BODY_MIN);
-    expect(plotBody(SHORT)).toBeLessThanOrEqual(PLOT_BODY_MAX);
-    // Medium + tall cells: the body is CAPPED at the maximum (bars can't stretch).
-    expect(plotBody(MEDIUM)).toBe(PLOT_BODY_MAX);
-    expect(plotBody(TALL)).toBe(PLOT_BODY_MAX);
+  test('the plot body fills the panel below the furniture overhead at every tile height', () => {
+    // The block FILLS the panel: body height + the fixed furniture overhead equals
+    // the panel height, so no empty band is pooled inside the card at any height.
+    for (const height of [SHORT, MEDIUM, TALL]) {
+      const g = geom(height);
+      expect(plotBody(g)).toBeGreaterThan(0);
+      expect(plotBody(g) + BLOCK_OVERHEAD).toBeCloseTo(g.panel.height, 0);
+    }
   });
 
-  test('the capped plot body is the same PHYSICAL height (px) at 320 vs 480', () => {
-    // The bug: a fixed-UNIT cap renders ~1.5× smaller at the narrow 320 tile (one
-    // viewBox unit is physically smaller there), so the capped plot left a huge
-    // interior void. With the px-based cap the plot body is the same physical size
-    // regardless of tile width, so the surrounding padding is comparable — no void.
+  test('a taller tile grows the plot body — it is not capped', () => {
+    // The fix: the plot body grows with the tile instead of capping and pooling a
+    // dead band above it. Bar WIDTH is fixed by PLOT_X, so this only adds height.
+    expect(plotBody(geom(TALL))).toBeGreaterThan(plotBody(geom(MEDIUM)));
+    expect(plotBody(geom(MEDIUM))).toBeGreaterThan(plotBody(geom(SHORT)));
+  });
+
+  test('fills a high fraction of the card at 320 — never less than at 480 (no narrow-tile void)', () => {
+    // The old bug: a fixed-unit cap rendered ~1.5× smaller at the narrow 320 tile,
+    // leaving a huge interior void. Filling the panel removes the cap, so the narrow
+    // tile covers AT LEAST as much of the card as the wide one — no void.
     const PIXEL_H = 700; // a physically tall tile, same px height at both widths
-    const body320 = plotBodyPx(geometryForPhysicalTile(PIXEL_H, SCALE_320), SCALE_320);
-    const body480 = plotBodyPx(geometryForPhysicalTile(PIXEL_H, SCALE_480), SCALE_480);
-    // Both hit the physical cap (PLOT_BODY_MAX px), so they match within rounding.
-    expect(body480).toBeCloseTo(PLOT_BODY_MAX, 0);
-    expect(body320).toBeCloseTo(PLOT_BODY_MAX, 0);
-    expect(Math.abs(body320 - body480)).toBeLessThanOrEqual(2);
+    const frac = (g: ReturnType<typeof resolveGeometry>): number => plotBody(g) / g.panel.height;
+    const frac320 = frac(geometryForPhysicalTile(PIXEL_H, SCALE_320));
+    const frac480 = frac(geometryForPhysicalTile(PIXEL_H, 1));
+    expect(frac480).toBeGreaterThan(0.8);
+    expect(frac320).toBeGreaterThanOrEqual(frac480 - 0.01);
   });
 
-  test('the interior padding is COMPARABLE at 320 vs 480 (no 1.5× void at the narrow tile)', () => {
-    // Regression for the pels-ux-fit finding: the void must not be dramatically
-    // larger at 320. Measure the top padding (panel top → axis title) in CSS px on
-    // a physically tall tile at both widths; they must be close, not 1.5× apart.
-    const PIXEL_H = 700;
-    const padPx = (g: ReturnType<typeof resolveGeometry>, scale: number): number =>
-      (g.axisTitleY - g.panel.y) * scale;
-    const pad320 = padPx(geometryForPhysicalTile(PIXEL_H, SCALE_320), SCALE_320);
-    const pad480 = padPx(geometryForPhysicalTile(PIXEL_H, SCALE_480), SCALE_480);
-    expect(pad320).toBeGreaterThan(0);
-    expect(pad480).toBeGreaterThan(0);
-    // Comparable: the narrow-tile padding is within ~25% of the wide-tile padding
-    // (residual differs only by the fixed-unit block overhead, not 1.5×).
-    expect(Math.abs(pad320 - pad480) / pad480).toBeLessThan(0.25);
-  });
-
-  test('vertically centres the plot block in the panel, surplus as balanced padding', () => {
-    // On the tall 320-equivalent cell the plot block is far smaller than the
-    // panel; the leftover height splits into equal top/bottom padding INSIDE the
-    // card (the plot block — axis title → legend — sits centred, no dead band).
-    const { panel, plot, legendY, axisTitleY } = resolveGeometry(resolveViewportHeight(TALL));
+  test('the plot block fills the panel on a tall tile — no surplus band, hugs both edges', () => {
+    // The block fills the panel rather than centring with a surplus: the axis title
+    // sits just below the panel top (only the fixed top offset) and the legend just
+    // above the panel bottom (only the fixed descender pad) — no pooled dead band.
+    const { panel, plot, legendY, axisTitleY } = geom(TALL);
     const panelTop = panel.y;
     const panelBottom = panel.y + panel.height;
-    // The block spans from just above the plot top (axis title) to the legend.
-    const padTop = axisTitleY - panelTop;
-    const padBottom = panelBottom - legendY;
-    expect(padTop).toBeGreaterThan(0);
-    expect(padBottom).toBeGreaterThan(0);
-    // Balanced: the two paddings match within a couple of px (axis-title/legend
-    // descender asymmetry), proving the block is centred, not top- or bottom-pinned.
-    expect(Math.abs(padTop - padBottom)).toBeLessThanOrEqual(20);
-    // The plot block stays inside the panel at both edges.
+    expect(axisTitleY - panelTop).toBeLessThan(20);
+    expect(panelBottom - legendY).toBeLessThan(20);
+    // The plot block still sits inside the panel at both edges.
     expect(plot.top).toBeGreaterThan(panelTop);
     expect(legendY).toBeLessThan(panelBottom);
   });
@@ -653,11 +631,10 @@ describe('plan budget widget panel-fill geometry', () => {
   });
 
   test('nothing clips at the smallest supported tile (320×~240 short 4:3)', () => {
-    // The bug: at the 320-wide 4:3 tile (~240 px tall → ~360 viewBox units, scale
-    // ≈ 0.667) the MIN_PX-floored plot body plus the fixed furniture overhead is
-    // TALLER than the panel, pushing the legend baseline below the viewport — it
-    // clipped. The floor is a target, not inviolable: when the tile is physically
-    // too small the body shrinks DOWN to fit so the whole block stays inside.
+    // At the 320-wide 4:3 tile (~240 px tall → ~360 viewBox units) the panel is
+    // short. The body fills only what remains below the fixed furniture overhead
+    // (>= 0), so the legend/x-labels stay inside the viewport rather than being
+    // pushed below the bottom edge and clipped.
     const SHORT_320_PX = 240;
     const g = geometryForPhysicalTile(SHORT_320_PX, SCALE_320); // height ≈ 360, scale ≈ 0.667
     expect(g.viewport.height).toBe(VIEWPORT_MIN_HEIGHT);

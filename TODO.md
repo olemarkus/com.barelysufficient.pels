@@ -68,17 +68,27 @@ not a release gate.*
       fully eliminated at the common 480 px tall-tile case and strictly improved at every width (the
       old 2:3-clamp + `meet` letterbox pooled an empty band below the chart; PR #1476 replaces it
       with a panel-fill + physical-px-capped/centred plot, so no band appears outside the card and
-      bars never stretch into spaghetti). *Residual P2 (extreme aspect):* at a 320-wide × very-tall
-      tile the plot is held to a consistent physical size and centred, leaving modest breathing room
-      above/below it — a deliberate band-vs-stretched-bars tradeoff (ux-fit wanted the plot to grow
-      vertically to fill; that yields tall bars at this aspect). Owner chose to ship the capped/centred
-      version; revisit only if real 320×tall dashboard tiles read under-filled. To resolve later: let
-      the plot body grow vertically toward the card height on tall tiles (keep MIN_PX as a floor; bar
-      WIDTH — the spaghetti axis — is independent of vertical growth). `headroom` was assessed against the
+      bars never stretch into spaghetti). *Residual P2 (extreme aspect): RESOLVED* — the plot body now
+      FILLS the panel instead of capping at a fixed physical size and pooling a band on tall tiles
+      (owner picked the fill option over a higher finite cap). Removed `PLOT_BODY_MIN_PX` /
+      `PLOT_BODY_MAX_PX` and the whole `scale`-based px-band: filling in viewBox-unit space is
+      width-independent automatically (no narrow-tile void), so `resolveGeometry(height)` no longer
+      takes `scale` and `chart.ts` / `widgetApp.measureChart` stopped threading it. Growth adds height
+      only — bar WIDTH stays fixed by `PLOT_X` — and a tile too short to seat the furniture shrinks the
+      body to fit so nothing clips. `headroom` was assessed against the
       widget render-gate and reads acceptable — hierarchy / price-chip weight / over-cap tone all
       land (over-cap tone + plan_budget flex squeeze already shipped); no change made. Anything
       further on `headroom` is subjective polish needing a hands-on harness walk, not an
       autonomous PR.
+- [ ] **P2 — `plan_budget` y-axis tick density on very-tall tiles.**
+      *Persona:* skeptical optimiser reading the Budget widget on a stretched (multi-row) dashboard tile.
+      *Hypothesis:* now that the plot body fills the panel, a very-tall tile keeps the same 5 fixed
+      gridlines (0 / 0.3 / 0.6 / 0.9 / 1.2 kWh), so the larger plot leaves big unlabelled vertical gaps
+      — a bar read mid-card has no nearby gridline. A height-proportional tick count (one more interval
+      past a height threshold) would keep the axis legible at the new scale.
+      *Why:* the fill makes the chart more prominent, raising the bar for axis legibility; flagged by
+      pels-m3-critic + pels-ux-fit on PR #1599 (both non-blocking). Files:
+      `widgets/plan_budget/src/public/chart.ts` (gridline/tick generation).
 
 ### P1 — targeted refactors (deferred)
 
