@@ -86,6 +86,22 @@ export type TemperaturePlanInputKind = {
   currentTemperature?: number;
 };
 
+/**
+ * Binary-control field cluster for the plan-input contract. Like
+ * `EvPlanInputKind`/`TemperaturePlanInputKind`, binary control is ORTHOGONAL to
+ * the stepped axis (a stepped device also has an onoff control), so this is NOT a
+ * union member; it is the intersection the `isBinaryPlanDevice` type-guard
+ * (`lib/plan/planBinaryDevice.ts`) adds onto whichever stepped variant the device
+ * is. `binaryControl` is OMITTED from `PlanInputDeviceBase`, so an un-narrowed
+ * `device.binaryControl` read is a hard compile error; it is REQUIRED on the
+ * narrowed shape (a binary device's observed on-state is always resolved to a
+ * concrete boolean). The guard's runtime discriminant is `controlCapabilityId
+ * !== undefined` — capability presence is the source of truth for binary status.
+ */
+export type BinaryPlanInputKind = {
+  binaryControl: { on: boolean };
+};
+
 export type PlanInputDevice =
   | (PlanInputDeviceBase & SteppedPlanInputKind)
   | (PlanInputDeviceBase & NonSteppedPlanInputKind);
@@ -186,10 +202,9 @@ export type PlanInputDeviceBase = {
       source: RestorePowerSource;
     };
   };
-  // Raw observed binary snapshot input. Planner decisions should resolve through currentState helpers.
-  // Present IFF the device has binary control (`controlCapabilityId` set); `.on` is the observed binary
-  // state. Absence is equivalent to the old fabricated `currentOn: true` for non-binary devices.
-  binaryControl?: { on: boolean };
+  // `binaryControl` is split off onto the orthogonal `BinaryPlanInputKind` cluster;
+  // reach it through the `isBinaryPlanDevice` guard (`lib/plan/planBinaryDevice.ts`).
+  // Present IFF the device has binary control (`controlCapabilityId` set) this cycle.
   currentState?: string;
   // EV fields (`evBoost`, `stateOfCharge`) are split off onto the orthogonal
   // `EvPlanInputKind` cluster; reach them through the `isEvPlanDevice` guard

@@ -31,6 +31,7 @@ import {
   resolveSteppedKeepDesiredStepId,
   resolveSteppedLoadInitialDesiredStepId,
 } from './planSteppedLoad';
+import { isBinaryPlanDevice } from './planBinaryDevice';
 import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadStep,
@@ -357,6 +358,12 @@ function resolveInputCurrentTemperature(dev: PlanInputDevice): number | undefine
   return isTemperaturePlanDevice(dev) ? dev.currentTemperature : undefined;
 }
 
+// Source the binary cluster only when the input device is binary this cycle;
+// `withBinaryDiscriminant` re-derives presence from `controlCapabilityId`.
+function resolveInputBinaryControlField(dev: PlanInputDevice): { binaryControl?: { on: boolean } } {
+  return isBinaryPlanDevice(dev) ? { binaryControl: dev.binaryControl } : {};
+}
+
 function buildBasePlanDevice(params: {
   dev: PlanInputDevice;
   devices: PlanInputDevice[];
@@ -437,7 +444,7 @@ function buildBasePlanDevice(params: {
     name: dev.name,
     deviceClass: dev.deviceClass,
     deviceType: dev.deviceType,
-    binaryControl: dev.binaryControl,
+    ...resolveInputBinaryControlField(dev),
     currentState,
     plannedState,
     currentTarget,

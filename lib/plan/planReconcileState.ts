@@ -2,6 +2,7 @@ import type { DevicePlan, PlanInputDevice } from './planTypes';
 import { withEvDiscriminant, withSteppedDiscriminant, withTemperatureDiscriminant } from './planTypes';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 import { isEvPlanDevice } from './planEvDevice';
+import { isBinaryPlanDevice } from './planBinaryDevice';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
@@ -179,7 +180,7 @@ function resolveCurrentStateFromPlanInput(
   liveDevice: PlanInputDevice,
 ): string {
   return resolveObservedCurrentState({
-    binaryControl: liveDevice.binaryControl,
+    ...(isBinaryPlanDevice(liveDevice) ? { binaryControl: liveDevice.binaryControl } : {}),
     controlCapabilityId: liveDevice.controlCapabilityId,
     observationStale: liveDevice.observationStale,
     steppedLoadProfile: isSteppedLoadDevice(previousDevice) ? previousDevice.steppedLoadProfile : undefined,
