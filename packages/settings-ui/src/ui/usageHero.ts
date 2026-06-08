@@ -6,6 +6,7 @@ import {
   usageHeroProjection,
 } from './dom.ts';
 import { getStartOfDayInTimeZone, getZonedParts } from './timezone.ts';
+import { formatTypicalDayLine } from '../../../shared-domain/src/usageVoice.ts';
 
 export type PowerStatsLike = {
   today: number;
@@ -78,10 +79,12 @@ const setElementText = (el: HTMLElement | null, text: string | null) => {
   target.hidden = false;
 };
 
-const isWeekendDate = (date: Date, timeZone: string): boolean => {
+// Day-of-week index (0 = Sunday … 6 = Saturday) for the calendar day that
+// `date` falls on in `timeZone`. Drives both the weekend check and the
+// day-aware "typical day" voice line so they read the same day.
+const zonedWeekdayIndex = (date: Date, timeZone: string): number => {
   const { year, month, day } = getZonedParts(date, timeZone);
-  const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
-  return weekday === 0 || weekday === 6;
+  return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
 };
 
 export type PaceContext = {
@@ -232,7 +235,8 @@ export const renderUsageHero = (
   if (usageHeroHeadline) usageHeroHeadline.textContent = `${stats.today.toFixed(1)} kWh today`;
 
   const now = new Date();
-  const isWeekend = isWeekendDate(now, timeZone);
+  const weekdayIndex = zonedWeekdayIndex(now, timeZone);
+  const isWeekend = weekdayIndex === 0 || weekdayIndex === 6;
   const typicalDay = isWeekend ? stats.weekendAvg : stats.weekdayAvg;
   if (!stats.hasPatternData || typicalDay <= 0) {
     renderHeroEmpty(todayText);
@@ -240,10 +244,11 @@ export const renderUsageHero = (
   }
 
   const ctx = computePaceContext(stats.today, typicalDay, now, timeZone);
-  const typicalLabel = isWeekend ? 'weekend' : 'weekday';
+  // Day-aware voice (shared-domain `formatTypicalDayLine`) names the actual
+  // day-of-week so the comparison reads as story, not a stat row.
   setElementText(
     usageHeroComparison,
-    `Today · ${todayText}. Typical ${typicalLabel}: ${typicalDay.toFixed(1)} kWh.`,
+    `Today · ${todayText}. ${formatTypicalDayLine(weekdayIndex, typicalDay)}`,
   );
 
   const chip = formatDeltaChipLabel(ctx);
