@@ -1,6 +1,6 @@
 import type Homey from 'homey';
 import { buildPriceExport, priceExportFingerprint } from './priceExportBuilder';
-import { readPriceStore } from './priceStore';
+import type { CombinedPricesReader } from './combinedPricesReader';
 import { normalizeError } from '../utils/errorUtils';
 import type { PriceExportV1 } from '../../packages/contracts/src/priceExport';
 import type { StructuredDebugEmitter } from '../logging/logger';
@@ -23,7 +23,7 @@ export const PRICE_LIST_UPDATED_TRIGGER_ID = 'price_list_updated';
 
 export type PriceFlowTagPublisherDeps = {
   homey: HomeyLike;
-  requestPriceRefetch: () => void;
+  combinedPricesReader: CombinedPricesReader;
   log: (...args: unknown[]) => void;
   debugStructured: StructuredDebugEmitter;
 };
@@ -122,11 +122,7 @@ export class PriceFlowTagPublisher {
   private buildExport(): PriceExportV1 {
     const timeZone = this.deps.homey.clock.getTimezone();
     const now = new Date();
-    const store = readPriceStore(
-      { homey: this.deps.homey, requestRefetch: this.deps.requestPriceRefetch },
-      now,
-      timeZone,
-    );
+    const store = this.deps.combinedPricesReader.readStore(now, timeZone);
     return buildPriceExport({ store, now, timeZone });
   }
 

@@ -4,6 +4,7 @@ import { AppDeviceControlHelpers } from '../../lib/app/appDeviceControlHelpers';
 import { HomeyEnergyPollSource } from '../../lib/power/sources/homeyEnergyPoll';
 import { AppSnapshotHelpers } from '../../lib/app/appSnapshotHelpers';
 import { TimerRegistry } from '../../lib/app/timerRegistry';
+import { createCombinedPricesReader } from '../../setup/priceCombinedPricesAdapter';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { StructuredDebugEmitter } from '../../lib/logging/logger';
@@ -143,6 +144,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
   const context: AppContext = {
     startupBootstrap: undefined,
     homey,
+    combinedPricesReader: createCombinedPricesReader({ homey, requestRefetch: () => undefined }),
     log: vi.fn(),
     error: vi.fn(),
     logDebug: vi.fn(),

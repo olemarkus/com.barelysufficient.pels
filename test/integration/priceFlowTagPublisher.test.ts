@@ -1,5 +1,6 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { PriceFlowTagPublisher, PRICE_FLOW_TAG_ID, PRICE_LIST_UPDATED_TRIGGER_ID } from '../../lib/price/priceFlowTags';
+import { createCombinedPricesReader } from '../../setup/priceCombinedPricesAdapter';
 import { mockHomeyInstance } from '../mocks/homey';
 import { captureLogger } from '../utils/loggerCapture';
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
@@ -39,7 +40,7 @@ const tokenValue = (): string => (mockHomeyInstance.flow._tokens[PRICE_FLOW_TAG_
 
 const newPublisher = () => new PriceFlowTagPublisher({
   homey: mockHomeyInstance as any,
-  requestPriceRefetch: () => {},
+  combinedPricesReader: createCombinedPricesReader({ homey: mockHomeyInstance as any, requestRefetch: () => {} }),
   log: () => {},
   debugStructured: () => {},
 });
@@ -168,7 +169,7 @@ describe('PriceFlowTagPublisher', () => {
           }),
         },
       } as any,
-      requestPriceRefetch: () => {},
+      combinedPricesReader: createCombinedPricesReader({ homey: mockHomeyInstance as any, requestRefetch: () => {} }),
       log: () => {},
       debugStructured: () => {},
     });
@@ -193,7 +194,7 @@ describe('PriceFlowTagPublisher', () => {
           },
         },
       } as any,
-      requestPriceRefetch: () => {},
+      combinedPricesReader: createCombinedPricesReader({ homey: mockHomeyInstance as any, requestRefetch: () => {} }),
       log: () => {},
       debugStructured: () => {},
     });
@@ -219,7 +220,7 @@ describe('PriceFlowTagPublisher', () => {
           }),
         },
       } as any,
-      requestPriceRefetch: () => {},
+      combinedPricesReader: createCombinedPricesReader({ homey: mockHomeyInstance as any, requestRefetch: () => {} }),
       log: () => {},
       debugStructured: () => {},
     });
@@ -244,7 +245,7 @@ describe('PriceFlowTagPublisher', () => {
           createToken: async () => { throw new Error('flow-down'); },
         },
       } as any,
-      requestPriceRefetch: () => {},
+      combinedPricesReader: createCombinedPricesReader({ homey: mockHomeyInstance as any, requestRefetch: () => {} }),
       log: () => {},
       debugStructured: () => {},
     });
@@ -275,7 +276,7 @@ describe('PriceFlowTagPublisher', () => {
           }),
         },
       } as any,
-      requestPriceRefetch: () => {},
+      combinedPricesReader: createCombinedPricesReader({ homey: mockHomeyInstance as any, requestRefetch: () => {} }),
       log: () => {},
       debugStructured: () => {},
     });

@@ -25,7 +25,7 @@ export function createPriceCoordinator(ctx: AppContext): PriceCoordinator {
 export function createPriceFlowTagPublisher(ctx: AppContext): PriceFlowTagPublisher {
   return new PriceFlowTagPublisher({
     homey: ctx.homey,
-    requestPriceRefetch: () => ctx.priceCoordinator?.updateCombinedPrices(),
+    combinedPricesReader: ctx.combinedPricesReader,
     log: (...args: unknown[]) => ctx.log(...args),
     debugStructured: ctx.getStructuredDebugEmitter('price', 'price'),
   });

@@ -1,4 +1,3 @@
-import type Homey from 'homey';
 import type { PowerTrackerState } from '../power/tracker';
 import {
   getDateKeyInTimeZone,
@@ -7,6 +6,7 @@ import {
   shiftDateKey,
 } from '../utils/dateUtils';
 import { readCombinedPriceData } from '../price/priceStore';
+import type { CombinedPricesReader } from '../price/combinedPricesReader';
 import { resolveUsableCapacityKw } from '../power/capacityModel';
 import { normalizeError } from '../utils/errorUtils';
 import type { Logger as PinoLogger } from '../logging/logger';
@@ -23,7 +23,7 @@ const moduleLogger = getLogger('dailyBudget/service');
  */
 export type DailyBudgetAdjacentDayDeps = {
   resolveTimeZone: () => string;
-  priceStoreDeps: { homey: Homey.App['homey']; requestRefetch: () => void };
+  combinedPricesReader: CombinedPricesReader;
   getCapacitySettings: () => { limitKw: number; marginKw: number };
   getPowerTracker: () => PowerTrackerState;
   getPriceOptimizationEnabled: () => boolean;
@@ -41,7 +41,7 @@ export const buildTomorrowPreview = (
     const todayKey = getDateKeyInTimeZone(new Date(nowMs), timeZone);
     const todayStartUtcMs = getDateKeyStartMs(todayKey, timeZone);
     const tomorrowStartUtcMs = getNextLocalDayStartUtcMs(todayStartUtcMs, timeZone);
-    const combinedPrices = readCombinedPriceData(deps.priceStoreDeps, new Date(nowMs), timeZone);
+    const combinedPrices = readCombinedPriceData(deps.combinedPricesReader, new Date(nowMs), timeZone);
     const capacityBudgetKWh = resolveUsableCapacityKw(deps.getCapacitySettings());
     return manager.buildPreview({
       dayStartUtcMs: tomorrowStartUtcMs,
@@ -89,7 +89,7 @@ export const buildYesterdayHistory = (
   if (!context) return null;
   const { timeZone, yesterdayStartUtcMs } = context;
   try {
-    const combinedPrices = readCombinedPriceData(deps.priceStoreDeps, new Date(nowMs), timeZone);
+    const combinedPrices = readCombinedPriceData(deps.combinedPricesReader, new Date(nowMs), timeZone);
     return manager.buildHistory({
       dayStartUtcMs: yesterdayStartUtcMs,
       timeZone,
