@@ -1,5 +1,7 @@
 import type { DevicePlanDevice, PlanInputDevice, ShedAction } from './planTypes';
-import { withEvDiscriminant, withSteppedDiscriminant, withTemperatureDiscriminant } from './planTypes';
+import {
+  withBinaryDiscriminant, withEvDiscriminant, withSteppedDiscriminant, withTemperatureDiscriminant,
+} from './planTypes';
 import { isEvPlanDevice } from './planEvDevice';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { resolveShedIntent } from '../device/deviceActionProjection';
@@ -424,13 +426,13 @@ function buildBasePlanDevice(params: {
   const resolvedPlannedTarget = shedAction === 'set_temperature' && shedTemperature !== null
     ? shedTemperature
     : plannedTarget;
-  // The stepped, EV, and temperature discriminants are set explicitly in the
-  // loose literal, then re-tied: `withEvDiscriminant` regroups the EV cluster
-  // and `withTemperatureDiscriminant` the temperature cluster (both orthogonal
-  // axes), and `withSteppedDiscriminant` lands the result in one stepped union
-  // member. The temperature sensor reading is sourced from the input device
-  // through the temperature narrowing (the base omits `currentTemperature`).
-  return withSteppedDiscriminant(withTemperatureDiscriminant(withEvDiscriminant({
+  // The stepped, EV, temperature, and binary discriminants are set explicitly in
+  // the loose literal, then re-tied: `withEvDiscriminant`/`withTemperatureDiscriminant`/
+  // `withBinaryDiscriminant` regroup their orthogonal clusters (binary keyed on
+  // `controlCapabilityId` presence) and `withSteppedDiscriminant` lands the result
+  // in one stepped union member. The temperature sensor reading is sourced from the
+  // input device through the temperature narrowing (the base omits `currentTemperature`).
+  return withSteppedDiscriminant(withTemperatureDiscriminant(withEvDiscriminant(withBinaryDiscriminant({
     id: dev.id,
     name: dev.name,
     deviceClass: dev.deviceClass,
@@ -480,7 +482,7 @@ function buildBasePlanDevice(params: {
     shedTemperature,
     releaseShedStepId,
     ...pickPropagatedPlanFields(dev),
-  })));
+  }))));
 }
 
 function pickPropagatedPlanFields(

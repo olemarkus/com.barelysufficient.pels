@@ -5,6 +5,7 @@ import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSe
 import { isCooldownBlockedReason } from '../planContract/planDecisionSemantics';
 import type { DevicePlan, DevicePlanDevice, PlanInputDevice, ShedAction } from './planTypes';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
+import { isBinaryPlanDevice } from './planBinaryDevice';
 import type { OvershootTrackedPlanDevice, PlanEngineState } from './planState';
 import { computeDailyUsageSoftLimit, computeDynamicSoftLimit, computeShortfallThreshold } from './planBudget';
 import { buildPlanContext, type PlanContext, type SoftLimitSource } from './planContext';
@@ -1127,7 +1128,9 @@ function trackPlanDeviceForOvershoot(
     controllable: device.controllable,
     plannedState: device.plannedState,
     currentState: device.currentState,
-    binaryControl: device.binaryControl,
+    // Source the binary cluster only when the device is binary this cycle (a
+    // transient capability drop revokes binary status; see `isBinaryPlanDevice`).
+    ...(isBinaryPlanDevice(device) ? { binaryControl: device.binaryControl } : {}),
     measuredPowerKw: device.measuredPowerKw,
     expectedPowerKw: device.expectedPowerKw,
     planningPowerKw: device.planningPowerKw,

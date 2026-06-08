@@ -2,6 +2,7 @@ import type { StructuredDebugEmitter } from '../../logging/logger';
 import { getLogger } from '../../logging/logger';
 import type { DeviceDiagnosticsRecorder } from '../../diagnostics/deviceDiagnosticsService';
 import type { DevicePlanDevice } from '../planTypes';
+import { isBinaryPlanDevice } from '../planBinaryDevice';
 import type { PlanEngineState } from '../planState';
 import {
   RECENT_SHED_EXTRA_BUFFER_KW,
@@ -76,7 +77,8 @@ export function getRestoreNeed(
     deviceId: dev.id,
     observation: {
       available: dev.available,
-      binaryControl: dev.binaryControl,
+      // Binary status follows control-capability presence (drop revokes it).
+      ...(isBinaryPlanDevice(dev) ? { binaryControl: dev.binaryControl } : {}),
       currentState: dev.currentState,
       measuredPowerKw: dev.measuredPowerKw,
     },

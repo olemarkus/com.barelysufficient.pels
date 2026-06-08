@@ -159,6 +159,29 @@ export type TemperatureKind = {
   plannedTarget?: number;
 };
 
+/**
+ * Binary-control field cluster (binary-variant slice of the discriminated-types
+ * refactor).
+ *
+ * Like `EvKind`/`TemperatureKind`, binary control is ORTHOGONAL to the stepped
+ * axis (a stepped device also has an onoff control), so this is NOT a union
+ * member; it is the intersection the `isBinaryPlanDevice` type-guard
+ * (`lib/plan/planBinaryDevice.ts`) adds onto whichever stepped variant the
+ * device is. `binaryControl` is OMITTED from `DevicePlanDeviceBase`, so an
+ * un-narrowed `device.binaryControl` read is a hard compile error (TS2339);
+ * consumers must pass through `isBinaryPlanDevice` first.
+ *
+ * `binaryControl` is REQUIRED on the narrowed shape: a binary device's observed
+ * on-state is always resolved to a concrete `{ on: boolean }` by the producer.
+ * The guard's runtime discriminant is `controlCapabilityId !== undefined` (a flat
+ * base field) — so a device whose control capability is absent THIS cycle (e.g.
+ * a transient capability drop) is NOT a binary device this cycle and the cluster
+ * is omitted: capability presence is the source of truth for binary status.
+ */
+export type BinaryControlKind = {
+  binaryControl: { on: boolean };
+};
+
 export type SteppedPlanDevice = DevicePlanDeviceBase & SteppedLoadKind;
 export type NonSteppedPlanDevice = DevicePlanDeviceBase & NonSteppedLoadKind;
 export type DevicePlanDevice = SteppedPlanDevice | NonSteppedPlanDevice;
@@ -296,6 +319,43 @@ export function withTemperatureDiscriminant<TBase extends object>(
   };
 }
 
+/**
+ * Binary-control field as a plain optional: the "might be binary" loose shape a
+ * construction/merge site carries before the field is regrouped onto the
+ * orthogonal `BinaryControlKind` intersection. Used by `withBinaryDiscriminant`.
+ */
+export type BinaryControlDiscriminantProbe = {
+  binaryControl?: { on: boolean };
+};
+
+/**
+ * Regroup the binary-control field off a loose bag onto a single
+ * `BinaryControlKind` intersection — or omit it when the device is non-binary.
+ *
+ * UNLIKE `withEvDiscriminant`/`withTemperatureDiscriminant` (orthogonal clusters
+ * whose fields are optional and always re-attached), `binaryControl` is REQUIRED
+ * on the cluster, so this recomputes a boolean discriminant like
+ * `withSteppedDiscriminant`: `controlCapabilityId` presence. Capability presence
+ * is the source of truth for binary status — a device whose control capability
+ * is absent this cycle (e.g. a transient drop) is regrouped WITHOUT the cluster
+ * (no longer binary). Stripping is essential: an object spread can never remove a
+ * key, so a stale `binaryControl` would otherwise survive onto a non-binary
+ * result. When binary, the producer always resolves a concrete on-state;
+ * `?? { on: false }` mirrors the transport's `resolveBinaryControl` fallback for
+ * the (invariant-impossible) case a spread dropped the value.
+ */
+export function withBinaryDiscriminant<TBase extends { controlCapabilityId?: BinaryControlCapabilityId }>(
+  loose: TBase & BinaryControlDiscriminantProbe,
+):
+  | (Omit<TBase, keyof BinaryControlDiscriminantProbe> & BinaryControlKind)
+  | Omit<TBase, keyof BinaryControlDiscriminantProbe> {
+  const { binaryControl, ...base } = loose;
+  if (base.controlCapabilityId !== undefined) {
+    return { ...base, binaryControl: binaryControl ?? { on: false } };
+  }
+  return { ...base };
+}
+
 export type SteppedPlanInputDevice = PlanInputDeviceBase & SteppedLoadKind;
 
 type DevicePlanDeviceBase = {
@@ -307,9 +367,10 @@ type DevicePlanDeviceBase = {
   // output plan device as on the input device. Stamped by the producer in
   // `lib/plan/planDevices.ts`.
   deviceType?: 'temperature' | 'onoff';
-  // Transitional snapshot field only. Planner truth must come from currentState.
-  // Present iff binary control; absence is the old fabricated `currentOn: true`.
-  binaryControl?: { on: boolean };
+  // `binaryControl` is split off onto the orthogonal `BinaryControlKind` cluster;
+  // reach it through the `isBinaryPlanDevice` guard (`lib/plan/planBinaryDevice.ts`).
+  // Present iff the device is binary (`controlCapabilityId` set); a transient
+  // capability drop revokes binary status for that cycle.
   currentState: string;
   plannedState: PlannedDeviceState;
   // `currentTarget`, `currentTemperature`, and `plannedTarget` (planner output)

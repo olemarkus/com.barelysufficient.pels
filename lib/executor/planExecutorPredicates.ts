@@ -8,6 +8,7 @@ import type {
 } from './executablePlan';
 import { isObservedOff } from '../observer/observedState';
 import { isSteppedLoadDevice, resolveSteppedKeepDesiredStepId } from '../plan/planSteppedLoad';
+import { isBinaryPlanDevice } from '../plan/planBinaryDevice';
 import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
 import {
   allowsSteppedLoadKeepInvariantRestore,
@@ -61,12 +62,14 @@ export function resolveRestoreLogSource(
 export function hasStableBinaryReleaseActuation(dev: DevicePlan['devices'][number]): boolean {
   if (dev.binaryCommandPending === true) return false;
   if (dev.deferredReleaseIntent === 'binary_restore') {
-    // Released = off-but-commandable, the only state a restore acts on.
-    return isBinaryObservedOff(dev) && isCommandableNow(dev);
+    // Released = off-but-commandable, the only state a restore acts on. A device
+    // with no control capability this cycle is not binary → not "observed off".
+    return isBinaryPlanDevice(dev) && isBinaryObservedOff(dev) && isCommandableNow(dev);
   }
   if (dev.deferredReleaseIntent === 'binary_release') {
-    // On (the consolidated binary truth).
-    return isBinaryOnOrUnknown(dev);
+    // On (the consolidated binary truth). Non-binary keeps the prior "on/unknown"
+    // default (true) so a release without observed-off evidence is not yet stable.
+    return isBinaryPlanDevice(dev) ? isBinaryOnOrUnknown(dev) : true;
   }
   return false;
 }
