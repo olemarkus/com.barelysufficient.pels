@@ -843,10 +843,44 @@
     return buildSampleDailyBudgetPayload();
   };
 
+  // Mirror the real API producer (`app.ts getDeferredObjectiveActivePlansUiPayload`
+  // → `setup/deferredObjectiveActivePlansUiAssembler` → `toResolvedActivePlans`):
+  // the settings UI receives active plans with the kind-split (°C/%) target,
+  // start-progress, and per-sample value pairs already resolved to flat fields.
+  // Fixtures (sample + scenario patches) inject raw plans, so resolve them here.
+  // Idempotent (nullish-keeps an already-resolved value); leftover raw columns are
+  // harmless — the UI reads only the resolved fields.
+  const toResolvedActivePlan = (plan) => ({
+    ...plan,
+    targetValue: plan.targetValue ?? plan.targetPercent ?? plan.targetTemperatureC ?? null,
+    ...(plan.startProgressC !== undefined
+      || plan.startProgressPercent !== undefined
+      || plan.startProgressValue !== undefined
+      ? { startProgressValue: plan.startProgressValue ?? plan.startProgressPercent ?? plan.startProgressC ?? null }
+      : {}),
+    ...(Array.isArray(plan.progressSamples)
+      ? {
+        progressSamples: plan.progressSamples.map((sample) => ({
+          ...sample,
+          value: sample.value ?? sample.valuePercent ?? sample.valueC ?? null,
+        })),
+      }
+      : {}),
+  });
+
+  const resolveActivePlans = (payload) => {
+    if (!payload || typeof payload !== 'object' || !payload.plansByDeviceId) return payload;
+    const plansByDeviceId = {};
+    for (const [deviceId, plan] of Object.entries(payload.plansByDeviceId)) {
+      plansByDeviceId[deviceId] = plan && typeof plan === 'object' ? toResolvedActivePlan(plan) : plan;
+    }
+    return { ...payload, plansByDeviceId };
+  };
+
   const resolveActivePlansPayload = () => {
     const scenarioPlans = runtimeOverrides.scenarioPatch?.deferredObjectiveActivePlans;
-    if (scenarioPlans !== undefined) return scenarioPlans;
-    return buildSampleActivePlans();
+    if (scenarioPlans !== undefined) return resolveActivePlans(scenarioPlans);
+    return resolveActivePlans(buildSampleActivePlans());
   };
 
   // Mirror the real API producer (`app.ts buildPlanHistoryUiPayload` →

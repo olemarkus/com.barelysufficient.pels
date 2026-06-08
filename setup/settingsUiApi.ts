@@ -5,7 +5,7 @@ import type {
   DailyBudgetUiPayload,
 } from '../packages/contracts/src/dailyBudgetTypes';
 import type {
-  DeferredObjectiveActivePlansV1,
+  ResolvedDeferredObjectiveActivePlansV1,
 } from '../packages/contracts/src/deferredObjectiveActivePlans';
 import type {
   DeferredObjectivePlanPreviewCandidate,
@@ -49,7 +49,7 @@ type SettingsUiApiApp = Homey.App & {
   getDeviceDiagnosticsUiPayload?: () => SettingsUiDeviceDiagnosticsResponse;
   getDeviceLogUiPayload?: () => SettingsUiDeviceLogPayload;
   getDeferredObjectivePlanHistoryUiPayload?: () => SettingsUiDeferredObjectivePlanHistoryPayload;
-  getDeferredObjectiveActivePlansUiPayload?: () => DeferredObjectiveActivePlansV1 | null;
+  getDeferredObjectiveActivePlansUiPayload?: () => ResolvedDeferredObjectiveActivePlansV1 | null;
   previewDeferredObjectivePlan?: (
     deviceId: string,
     candidate: DeferredObjectivePlanPreviewCandidate,

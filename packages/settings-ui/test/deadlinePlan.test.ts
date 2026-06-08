@@ -6,12 +6,13 @@ import type { DailyBudgetUiPayload } from '../../contracts/src/dailyBudgetTypes.
 import type { DecoratedDeviceSnapshot } from '../../contracts/src/types.ts';
 import type {
   DeferredObjectiveActivePlanV1,
-  DeferredObjectiveActivePlansV1,
+  ResolvedDeferredObjectiveActivePlansV1,
 } from '../../contracts/src/deferredObjectiveActivePlans.ts';
 import {
   deadlineLabels,
   SMART_TASK_LIST_STATUS_CHIP_VARIANT,
 } from '../../shared-domain/src/deadlineLabels.ts';
+import { toResolvedActivePlans } from '../../shared-domain/src/deferredActivePlanResolvedView.ts';
 
 const atLocalHour = (base: Date, hourOffset: number): Date => {
   const date = new Date(base);
@@ -33,7 +34,7 @@ it('uses domain-specific measured series labels', () => {
 
 const buildActivePlans = (
   plan: DeferredObjectiveActivePlanV1 | null,
-): DeferredObjectiveActivePlansV1 => ({
+): ResolvedDeferredObjectiveActivePlansV1 => toResolvedActivePlans({
   version: 1,
   plansByDeviceId: plan ? { [plan.deviceId]: plan } : {},
 });

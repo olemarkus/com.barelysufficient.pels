@@ -375,3 +375,34 @@ export type DeferredObjectiveActivePlansV1 = {
   version: 1;
   plansByDeviceId: Record<string, DeferredObjectiveActivePlanV1>;
 };
+
+// Progress sample with the kind-split (°C/%) pair already resolved to a single
+// unit-agnostic number — the shape UI consumers receive.
+export type ResolvedDeferredObjectiveActivePlanProgressSampleV1 = {
+  atMs: number;
+  value: number | null;
+};
+
+// Consumer-facing view of an active plan. The kind-split value columns
+// (`targetTemperatureC`/`targetPercent`, the UI-derived `startProgressC`/
+// `startProgressPercent`, and sample `valueC`/`valuePercent`) are RESOLVED to
+// single unit-agnostic numbers (`targetValue` / `startProgressValue`, sample
+// `value`) by `toResolvedActivePlan` at the producer boundary (the UI payload
+// assembler). The raw columns are absent from this type, so reading one is a
+// compile error — consumers branch on `objectiveKind` only for the display unit.
+// The persisted `DeferredObjectiveActivePlanV1` keeps the raw columns.
+export type ResolvedDeferredObjectiveActivePlanV1 = Omit<
+  DeferredObjectiveActivePlanV1,
+  'targetTemperatureC' | 'targetPercent'
+  | 'startProgressC' | 'startProgressPercent'
+  | 'progressSamples'
+> & {
+  targetValue: number | null;
+  startProgressValue?: number | null;
+  progressSamples?: ResolvedDeferredObjectiveActivePlanProgressSampleV1[];
+};
+
+export type ResolvedDeferredObjectiveActivePlansV1 = {
+  version: 1;
+  plansByDeviceId: Record<string, ResolvedDeferredObjectiveActivePlanV1>;
+};

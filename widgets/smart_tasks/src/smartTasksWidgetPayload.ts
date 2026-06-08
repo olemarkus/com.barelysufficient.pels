@@ -1,6 +1,6 @@
 import type {
-  DeferredObjectiveActivePlansV1,
-  DeferredObjectiveActivePlanV1,
+  ResolvedDeferredObjectiveActivePlansV1,
+  ResolvedDeferredObjectiveActivePlanV1,
   DeferredObjectiveActivePlanRevisionV1,
   DeferredObjectiveKwhPerUnitProvenanceV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
@@ -92,7 +92,7 @@ const toWidgetChart = (chart: DeferredPlanHistoryChartData): DeferredPlanHistory
 
 const resolveCurrentValue = (
   device: TargetDeviceSnapshot | undefined,
-  kind: DeferredObjectiveActivePlanV1['objectiveKind'],
+  kind: ResolvedDeferredObjectiveActivePlanV1['objectiveKind'],
 ): number | null => {
   if (!device) return null;
   if (kind === 'temperature') {
@@ -102,14 +102,7 @@ const resolveCurrentValue = (
   return isFiniteNumber(percent) ? percent : null;
 };
 
-const resolveTargetValue = (plan: DeferredObjectiveActivePlanV1): number | null => {
-  if (plan.objectiveKind === 'temperature') {
-    return isFiniteNumber(plan.targetTemperatureC) ? plan.targetTemperatureC : null;
-  }
-  return isFiniteNumber(plan.targetPercent) ? plan.targetPercent : null;
-};
-
-const resolvePlannerEtaMs = (plan: DeferredObjectiveActivePlanV1): number | null => {
+const resolvePlannerEtaMs = (plan: ResolvedDeferredObjectiveActivePlanV1): number | null => {
   const hours = plan.latest?.hours;
   if (!hours || hours.length === 0) return null;
   const last = hours[hours.length - 1];
@@ -266,7 +259,7 @@ const resolveConfidenceLabel = (
 );
 
 export type SmartTasksWidgetInput = {
-  activePlans: DeferredObjectiveActivePlansV1 | null;
+  activePlans: ResolvedDeferredObjectiveActivePlansV1 | null;
   // Finalized plan history (all devices). The "Recently ended" section is built
   // from entries that finalized within `ENDED_WINDOW_MS`. Null/absent when the
   // recorder isn't wired — the section is simply empty.
@@ -299,7 +292,7 @@ const compareCandidates = (a: Candidate, b: Candidate): number => {
 };
 
 const resolveStatusId = (
-  plan: DeferredObjectiveActivePlanV1,
+  plan: ResolvedDeferredObjectiveActivePlanV1,
   nowMs: number,
 ): SmartTaskListStatusId => (
   resolveSmartTaskListStatus({
@@ -322,7 +315,7 @@ type RowCopy = {
 };
 
 const resolveRowCopy = (
-  plan: DeferredObjectiveActivePlanV1,
+  plan: ResolvedDeferredObjectiveActivePlanV1,
   statusId: SmartTaskListStatusId,
   firstPlannedTimeLabel: string | null,
 ): RowCopy => {
@@ -354,7 +347,7 @@ const resolveRowCopy = (
 
 const buildRow = (params: {
   deviceId: string;
-  plan: DeferredObjectiveActivePlanV1;
+  plan: ResolvedDeferredObjectiveActivePlanV1;
   device: TargetDeviceSnapshot | undefined;
   targetValue: number;
   statusId: SmartTaskListStatusId;
@@ -394,7 +387,7 @@ const buildRow = (params: {
 
 const buildCandidate = (params: {
   deviceId: string;
-  plan: DeferredObjectiveActivePlanV1;
+  plan: ResolvedDeferredObjectiveActivePlanV1;
   devicesById: Map<string, TargetDeviceSnapshot>;
   nowMs: number;
   timeZone: string | null;
@@ -403,7 +396,7 @@ const buildCandidate = (params: {
   if (!isFiniteNumber(plan.deadlineAtMs)) return null;
   const statusId = resolveStatusId(plan, nowMs);
   if (statusId === 'satisfied') return null;
-  const targetValue = resolveTargetValue(plan);
+  const targetValue = plan.targetValue;
   if (targetValue === null) return null;
   const etaMs = resolvePlannerEtaMs(plan);
   const row = buildRow({

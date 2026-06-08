@@ -3,6 +3,7 @@
 // single planned staircase at the run's start progress and overlays the
 // observed-so-far line — no revised line, no "reached" marker.
 import { resolveActivePlanChartData } from '../../packages/shared-domain/src/deferredActivePlanChartData';
+import { toResolvedActivePlan } from '../../packages/shared-domain/src/deferredActivePlanResolvedView';
 import type { DeferredObjectiveActivePlanV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -45,9 +46,19 @@ const buildPlan = (
   ...overrides,
 });
 
+// The producer consumes the RESOLVED view (kind-split columns collapsed to a
+// single `targetValue` / `startProgressValue` / sample `value`). The fixtures
+// above stay in raw-column form so each test can express the temperature/percent
+// pair under test; this wrapper resolves them at the producer boundary exactly
+// as the real UI payload assembler does.
+const resolveChart = (
+  plan: DeferredObjectiveActivePlanV1,
+  options?: { nowMs?: number; currentValue?: number | null },
+) => resolveActivePlanChartData(toResolvedActivePlan(plan), options);
+
 describe('resolveActivePlanChartData', () => {
   test('anchors the planned staircase at the observed value where booked heating starts, capped at target', () => {
-    const data = resolveActivePlanChartData(buildPlan());
+    const data = resolveChart(buildPlan());
     expect(data.mode).toBe('trajectory');
     expect(data.unit).toBe('°C');
     expect(data.windowStartMs).toBe(START_MS);
@@ -71,7 +82,7 @@ describe('resolveActivePlanChartData', () => {
   test('caps the planned staircase at the target (no overshoot past the goal)', () => {
     // 5 booked hours × 1 kWh ÷ 0.5 kWh/°C = +10 °C from start 50 → would reach
     // 60, but the target is 55, so the drawn plan must flatten at 55.
-    const data = resolveActivePlanChartData(buildPlan({
+    const data = resolveChart(buildPlan({
       targetTemperatureC: 55,
       startProgressC: 50,
       latest: {
@@ -91,7 +102,7 @@ describe('resolveActivePlanChartData', () => {
   });
 
   test('appends the live now reading past the last sample', () => {
-    const data = resolveActivePlanChartData(buildPlan(), {
+    const data = resolveChart(buildPlan(), {
       nowMs: START_MS + 2.5 * HOUR_MS,
       currentValue: 53,
     });
@@ -100,7 +111,7 @@ describe('resolveActivePlanChartData', () => {
   });
 
   test('anchors the measured line at the run start when the first sample lands later', () => {
-    const data = resolveActivePlanChartData(buildPlan({
+    const data = resolveChart(buildPlan({
       startProgressC: 50,
       // First sample an hour into the run — without anchoring the line would
       // begin mid-chart.
@@ -118,7 +129,7 @@ describe('resolveActivePlanChartData', () => {
     // anchor at the ~20 °C trough where booked heating begins and rise to 40 —
     // NOT be omitted, and NOT climb from 65 past target.
     const reheatStart = START_MS + 2 * HOUR_MS;
-    const data = resolveActivePlanChartData(buildPlan({
+    const data = resolveChart(buildPlan({
       targetTemperatureC: 40,
       startProgressC: 65,
       latest: {
@@ -150,7 +161,7 @@ describe('resolveActivePlanChartData', () => {
     // stitch delivered neither start progress nor samples (e.g. just after an app
     // restart), but the plan + rate are present and the device reports a live
     // value. The planned staircase must still render (anchored at the live value).
-    const data = resolveActivePlanChartData(buildPlan({
+    const data = resolveChart(buildPlan({
       startProgressC: null,
       startProgressPercent: null,
       progressSamples: undefined,
@@ -164,7 +175,7 @@ describe('resolveActivePlanChartData', () => {
   });
 
   test('maps observed samples to the kind value and sorts ascending', () => {
-    const data = resolveActivePlanChartData(buildPlan());
+    const data = resolveChart(buildPlan());
     expect(data.observed).toEqual([
       { atMs: START_MS, value: 50 },
       { atMs: START_MS + HOUR_MS, value: 52 },
@@ -172,7 +183,7 @@ describe('resolveActivePlanChartData', () => {
   });
 
   test('reads EV SoC progress + target in percent', () => {
-    const data = resolveActivePlanChartData(buildPlan({
+    const data = resolveChart(buildPlan({
       objectiveKind: 'ev_soc',
       targetTemperatureC: null,
       targetPercent: 80,
@@ -190,7 +201,7 @@ describe('resolveActivePlanChartData', () => {
   });
 
   test('falls back to the learned-profile rate when latest.rateMean is absent', () => {
-    const data = resolveActivePlanChartData(buildPlan({
+    const data = resolveChart(buildPlan({
       latest: { ...buildPlan().latest!, rateMean: undefined },
       kwhPerUnitProvenance: {
         source: 'learned',
@@ -205,7 +216,7 @@ describe('resolveActivePlanChartData', () => {
   });
 
   test('renders observed-only (no planned) when there is no usable rate but ≥2 samples', () => {
-    const data = resolveActivePlanChartData(buildPlan({
+    const data = resolveChart(buildPlan({
       latest: { ...buildPlan().latest!, rateMean: 0 },
       kwhPerUnitProvenance: undefined,
     }));
@@ -215,7 +226,7 @@ describe('resolveActivePlanChartData', () => {
   });
 
   test('falls back to a chartless payload when no rate AND fewer than two samples', () => {
-    const data = resolveActivePlanChartData(buildPlan({
+    const data = resolveChart(buildPlan({
       latest: { ...buildPlan().latest!, rateMean: 0 },
       kwhPerUnitProvenance: undefined,
       progressSamples: [{ atMs: START_MS, valueC: 50, valuePercent: null }],
@@ -228,7 +239,7 @@ describe('resolveActivePlanChartData', () => {
   });
 
   test('drops non-finite / valueless samples', () => {
-    const data = resolveActivePlanChartData(buildPlan({
+    const data = resolveChart(buildPlan({
       progressSamples: [
         { atMs: START_MS, valueC: 50, valuePercent: null },
         { atMs: Number.NaN, valueC: 51, valuePercent: null },

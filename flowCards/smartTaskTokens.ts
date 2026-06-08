@@ -11,10 +11,6 @@
 
 import type { SmartTaskStatusNotificationId } from '../packages/shared-domain/src/deadlineLabels';
 import {
-  resolveFinalProgressValue,
-  resolveTargetValue,
-} from '../packages/shared-domain/src/deferredObjectiveValues';
-import {
   formatDeadlineLocalTime,
   type DeferredObjectiveEndedEvent,
   type DeferredObjectiveHoursRemainingEvent,
@@ -51,10 +47,10 @@ const computeShortfall = (event: DeferredObjectiveEndedEvent): {
   known: boolean;
 } => {
   if (event.outcome === 'succeeded') return { value: 0, known: true };
-  // Value selection is unit-agnostic (resolver coalesces the kind-split pair);
-  // the shortfall delta math is identical for °C and %.
-  const target = resolveTargetValue(event);
-  const final = resolveFinalProgressValue(event);
+  // The event carries unit-agnostic values resolved at the producer boundary
+  // (`buildEndedEventFromEntry`); the shortfall delta math is identical for °C and %.
+  const target = event.targetValue;
+  const final = event.finalProgressValue;
   if (target !== null && final !== null) {
     const delta = target - final;
     return { value: delta > 0 ? delta : 0, known: true };

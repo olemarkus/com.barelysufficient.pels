@@ -163,24 +163,6 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
       - **type discrimination:** the temperature (~21) / stepped (~34) field-level discrimination and the
         `TargetDeviceSnapshot` discrimination (~119 importers) — the type-tightening half, independent of the
         value-level de-kinding above.
-- [ ] **Finish the deferred-objective unit-agnostic value train (active-plan/ended-event resolved-view splits).**
-      *Step 1 shipped (`refactor/plan-history-value-accessors`):* one canonical coalesce module
-      `packages/shared-domain/src/deferredObjectiveValues.ts` (`resolve*Value = *Percent ?? *C`); every reader
-      routed through it.
-      *Step 2 shipped (`refactor/deferred-objective-resolved-view`):* the plan-history CONSUMER path is now a
-      compile-time-enforced type split — `ResolvedDeferredObjectivePlanHistoryEntry`
-      (`targetValue`/`startProgressValue`/`finalProgressValue` + sample `value`, raw °C/% columns OMITTED) is what
-      every consumer receives; `toResolvedPlanHistoryEntry` resolves once at the producer boundary
-      (`app.ts buildPlanHistoryUiPayload`). Reading a raw column off the resolved view is a compile error — this
-      replaced the planned writer-flip + AST guard (both unnecessary; the type system enforces it and the
-      persisted columns keep their natural kind-split write). Sanctioned behavior change: receipt motion
-      detection unified to a single 0.5 threshold (EV tightened 1→0.5).
-      *Remaining:* **apply the same resolved-view split** to the active-plan (`DeferredObjectiveActivePlanV1`,
-      `deferredActivePlanChartData.ts`, widget active-plan reads) and ended-event types, so their consumers also
-      lose raw-column access. Files: `packages/contracts/src/deferredObjectiveActivePlans.ts`,
-      `packages/shared-domain/src/deferredActivePlanChartData.ts`.
-      (The earlier "generalize the deadband learner" sub-item is dropped: the learned thermostat deadband
-      feature was removed entirely, so there's nothing to generalize.)
 
 ## P2 Product, Observability, and Maintainability
 

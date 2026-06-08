@@ -13,8 +13,8 @@ import {
   type DeferredObjectiveSettingsV1,
 } from '../../../contracts/src/deferredObjectiveSettings.ts';
 import type {
-  DeferredObjectiveActivePlansV1,
-  DeferredObjectiveActivePlanV1,
+  ResolvedDeferredObjectiveActivePlansV1,
+  ResolvedDeferredObjectiveActivePlanV1,
 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import type { ResolvedDeferredObjectivePlanHistoryEntry } from '../../../contracts/src/deferredObjectivePlanHistory.ts';
 import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
@@ -47,7 +47,7 @@ import {
 // fetched from `/ui_devices` (Homey SDK) does.
 const resolveCurrentValue = (
   device: TargetDeviceSnapshot | undefined,
-  kind: DeferredObjectiveActivePlanV1['objectiveKind'],
+  kind: ResolvedDeferredObjectiveActivePlanV1['objectiveKind'],
 ): number | null => {
   if (!device) return null;
   if (kind === 'temperature') {
@@ -61,7 +61,7 @@ const resolveCurrentValue = (
 
 const buildCard = (params: {
   deviceId: string;
-  plan: DeferredObjectiveActivePlanV1;
+  plan: ResolvedDeferredObjectiveActivePlanV1;
   objective: DeferredObjectiveSettingsV1['objectivesByDeviceId'][string] | undefined;
   device: TargetDeviceSnapshot | undefined;
   nowMs: number;
@@ -90,8 +90,7 @@ const buildCard = (params: {
     deviceId,
     deviceName: device?.name ?? plan.deviceName ?? deviceId,
     kind: plan.objectiveKind,
-    targetTemperatureC: plan.targetTemperatureC,
-    targetPercent: plan.targetPercent,
+    targetValue: plan.targetValue,
     firstActionAtMs: firstHour,
     deadlineAtMs: plan.deadlineAtMs,
     href: buildDeadlineHref(deviceId),
@@ -107,7 +106,7 @@ const buildCard = (params: {
 };
 
 export const resolveDeadlinesListCards = (params: {
-  activePlans: DeferredObjectiveActivePlansV1 | null;
+  activePlans: ResolvedDeferredObjectiveActivePlansV1 | null;
   objectiveSettings: DeferredObjectiveSettingsV1;
   devices: readonly TargetDeviceSnapshot[];
   nowMs?: number;

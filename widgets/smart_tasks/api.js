@@ -25,11 +25,6 @@ __export(api_exports, {
 });
 module.exports = __toCommonJS(api_exports);
 
-// packages/shared-domain/src/deferredObjectiveValues.ts
-var resolveTargetValue = (fields) => fields.targetPercent ?? fields.targetTemperatureC ?? null;
-var resolveStartProgressValue = (fields) => fields.startProgressPercent ?? fields.startProgressC ?? null;
-var resolveSampleValue = (fields) => fields.valuePercent ?? fields.valueC ?? null;
-
 // packages/shared-domain/src/deferredPlanHistoryChartData.ts
 var HOUR_MS = 60 * 60 * 1e3;
 var integratePlannedStaircase = (snapshot, anchorValue, anchorAtMs, windowEndMs, capValue = null) => {
@@ -230,10 +225,10 @@ var resolveHistoryDetailChartData = (entry) => {
 // packages/shared-domain/src/deferredActivePlanChartData.ts
 var finiteOrNull2 = (raw) => raw === null || raw === void 0 || !Number.isFinite(raw) ? null : raw;
 var pickTarget = (plan) => finiteOrNull2(
-  resolveTargetValue(plan)
+  plan.targetValue
 );
 var pickStartProgress2 = (plan) => finiteOrNull2(
-  resolveStartProgressValue(plan)
+  plan.startProgressValue
 );
 var pickRate = (plan) => {
   const rate = finiteOrNull2(plan.latest?.rateMean ?? plan.kwhPerUnitProvenance?.kWhPerUnit ?? null);
@@ -244,7 +239,7 @@ var pickObservedSamples2 = (samples) => {
   const out = [];
   for (const sample of samples) {
     if (!sample || !Number.isFinite(sample.atMs)) continue;
-    const value = resolveSampleValue(sample);
+    const { value } = sample;
     if (value === null || !Number.isFinite(value)) continue;
     out.push({ atMs: sample.atMs, value });
   }
@@ -1033,12 +1028,6 @@ var resolveCurrentValue = (device, kind) => {
   const percent = device.stateOfCharge?.percent;
   return isFiniteNumber(percent) ? percent : null;
 };
-var resolveTargetValue2 = (plan) => {
-  if (plan.objectiveKind === "temperature") {
-    return isFiniteNumber(plan.targetTemperatureC) ? plan.targetTemperatureC : null;
-  }
-  return isFiniteNumber(plan.targetPercent) ? plan.targetPercent : null;
-};
 var resolvePlannerEtaMs = (plan) => {
   const hours = plan.latest?.hours;
   if (!hours || hours.length === 0) return null;
@@ -1227,7 +1216,7 @@ var buildCandidate = (params) => {
   if (!isFiniteNumber(plan.deadlineAtMs)) return null;
   const statusId = resolveStatusId(plan, nowMs);
   if (statusId === "satisfied") return null;
-  const targetValue = resolveTargetValue2(plan);
+  const targetValue = plan.targetValue;
   if (targetValue === null) return null;
   const etaMs = resolvePlannerEtaMs(plan);
   const row = buildRow({

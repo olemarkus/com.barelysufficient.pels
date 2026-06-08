@@ -1,11 +1,13 @@
-import type { DeferredObjectiveActivePlansV1 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
+import type {
+  ResolvedDeferredObjectiveActivePlansV1,
+} from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { SettingsUiDeferredObjectivePlanHistoryPayload } from '../../../packages/contracts/src/settingsUiApi';
 import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
 import { buildSmartTasksWidgetPayload, ENDED_WINDOW_MS } from './smartTasksWidgetPayload';
 import type { SmartTasksWidgetPayload } from './smartTasksWidgetTypes';
 
 type WidgetApiApp = {
-  getDeferredObjectiveActivePlansUiPayload?: () => DeferredObjectiveActivePlansV1 | null;
+  getDeferredObjectiveActivePlansUiPayload?: () => ResolvedDeferredObjectiveActivePlansV1 | null;
   // Bounded fetch (last-24h) is preferred so the widget doesn't serialize the
   // entire all-time history every 60 s refresh; the full method is the
   // back-compat fallback for an app build that predates the bounded one.
