@@ -1,14 +1,12 @@
-// Device-KIND vocabulary containment guard for the planner / executor layers
-// (sibling of check-ev-vocab.mjs, which covers EV plug-state).
+// Device-KIND vocabulary containment guard for the planner / objectives /
+// executor layers (sibling of check-ev-vocab.mjs, which covers EV plug-state).
 //
-// SCOPE: `lib/plan` and `lib/executor` today. `lib/objectives` still has device-
-// kind branches (deviceClass === 'evcharger' / deviceType === 'temperature' power
-// fallbacks in samples.ts / objectiveSteps.ts / planningSpeed.ts); de-kinding
-// those needs per-site judgment (isEvDevice widens the EV check; objective-kind
-// vs device-kind), tracked as a T2 follow-up in TODO.md. Add lib/objectives to
-// consumerDirs once those sites read shared-domain predicates.
+// SCOPE: `lib/plan`, `lib/objectives`, and `lib/executor`. (Objectives' EV /
+// temperature power-fallbacks were de-kinded to shared-domain predicates; only
+// genuine `objectiveKind` branches — an objective's own kind, not a device's —
+// remain there, which this guard does not touch.)
 //
-// WHY THIS EXISTS: `lib/plan` and `lib/executor` must branch on CONTROL MODALITY
+// WHY THIS EXISTS: these layers must branch on CONTROL MODALITY
 // (binary / target / stepped) and producer-resolved bits — never on device KIND.
 // The two kind axes that leak are:
 //   - `deviceClass` family names ('thermostat'/'heater'/'heatpump'/
@@ -43,7 +41,7 @@ const require = createRequire(import.meta.url);
 const ts = require('typescript');
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const consumerDirs = ['lib/plan', 'lib/executor'].map((d) => path.join(rootDir, d));
+const consumerDirs = ['lib/plan', 'lib/objectives', 'lib/executor'].map((d) => path.join(rootDir, d));
 
 // Device-CLASS family names. These are device kinds the consumer layers must not
 // name; a thermostat, heat pump, etc. is identified abstractly via shared-domain
@@ -163,7 +161,7 @@ for (const file of files) {
 if (offenders.length > 0) {
   process.stderr.write(
     'Device-kind vocabulary containment violation (check-device-kind-vocab):\n'
-    + 'lib/plan/** and lib/executor/** must not branch on device\n'
+    + 'lib/plan/**, lib/objectives/** and lib/executor/** must not branch on device\n'
     + 'KIND (deviceClass family names or the deviceType discriminant). Use the\n'
     + 'shared-domain predicates (isEvDevice, isTemperatureControlDevice,\n'
     + 'isStarvationSupportedDeviceClass) or producer-resolved bits instead. Kind\n'
@@ -177,5 +175,5 @@ if (offenders.length > 0) {
 }
 
 process.stdout.write(
-  `device-kind:vocab OK — no deviceClass/deviceType kind branches in plan/executor (${files.length} files scanned)\n`,
+  `device-kind:vocab OK — no deviceClass/deviceType kind branches in plan/objectives/executor (${files.length} files scanned)\n`,
 );

@@ -143,14 +143,17 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
       `isEvDevice`. Added `scripts/check-device-kind-vocab.mjs` (in `ci:checks`) — an AST guard forbidding
       deviceClass family-name literals and `deviceType`/`deviceClass` literal comparisons in `lib/plan` +
       `lib/executor` (executor was already clean). Value-level only; no `TargetDeviceSnapshot` touch.
+      **Objectives de-kind slice T2a landed (2026-06-08): `lib/objectives` consumes shared predicates.**
+      Swapped the `deviceClass === 'evcharger'` / `deviceType === 'temperature'` power-estimation
+      fallbacks in `samples.ts` / `objectiveSteps.ts` / `planningSpeed.ts` to `isEvDevice` /
+      `isTemperatureControlDevice`. The EV swap intentionally widens to the canonical EV identity
+      (`isEvDevice` also matches the `evcharger_charging` capability, not just `deviceClass`), aligning
+      objectives with how every other layer identifies EV chargers; genuine `objectiveKind === 'temperature'`
+      branches (`admission.ts`, `coldStartRelease.ts`) are objective-kind, not device-kind, and stay.
+      `lib/objectives` is now in `check-device-kind-vocab.mjs`'s `consumerDirs`, so the guard enforces all
+      three consumer layers.
       Remaining under this item:
-      - **T2 — objectives de-kind:** `lib/objectives/{samples.ts,deferredObjectives/objectiveSteps.ts,
-        deferredObjectives/planningSpeed.ts}` still branch on `deviceClass === 'evcharger'` /
-        `deviceType === 'temperature'` for power-estimation fallbacks. Swap to `isEvDevice` /
-        `isTemperatureControlDevice` (NOTE: `isEvDevice` widens the EV check to include the
-        `evcharger_charging` capability — confirm that's intended per site), keep genuine `objectiveKind`
-        branches as-is, then add `lib/objectives` back to `check-device-kind-vocab.mjs`'s `consumerDirs`.
-      - **T2 — type discrimination:** the temperature (~21) / stepped (~34) field-level discrimination and the
+      - **type discrimination:** the temperature (~21) / stepped (~34) field-level discrimination and the
         `TargetDeviceSnapshot` discrimination (~119 importers) — the type-tightening half, independent of the
         value-level de-kinding above.
 

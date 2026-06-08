@@ -1,4 +1,6 @@
 import { sortSteppedLoadSteps } from '../../utils/deviceControlProfiles';
+import { isEvDevice } from '../../../packages/shared-domain/src/commandableNow';
+import { isTemperatureControlDevice } from '../../../packages/shared-domain/src/temperatureDeviceKind';
 import type { ObjectiveDeviceInput } from '../../objectives/types';
 import { resolveStepDeliveryUsefulKw } from './objectiveStepPower';
 import { firstPositiveFinite } from './planningSpeed';
@@ -24,7 +26,7 @@ export const resolveObjectiveSteps = (device: ObjectiveDeviceInput): DeferredObj
   if (typeof planning === 'number' && Number.isFinite(planning) && planning > 0) {
     return [{ id: 'charge', usefulPowerKw: resolveStepDeliveryUsefulKw(device, 'charge', planning) }];
   }
-  if (device.deviceClass === 'evcharger') {
+  if (isEvDevice(device)) {
     const expected = firstPositiveFinite([device.expectedPowerKw, device.powerKw]);
     if (expected !== null) {
       return [{ id: 'charge', usefulPowerKw: resolveStepDeliveryUsefulKw(device, 'charge', expected) }];
@@ -46,7 +48,7 @@ export const resolveObjectiveSteps = (device: ObjectiveDeviceInput): DeferredObj
   // `thermostat`, `onoff` + `target_temperature` + `measure_power`, no
   // stepped controls; before this branch they kept `pendingReason:
   // missing_capacity` indefinitely even with a converged learned profile.
-  if (device.deviceType === 'temperature') {
+  if (isTemperatureControlDevice(device)) {
     const expected = firstPositiveFinite([device.measuredPowerKw, device.expectedPowerKw, device.powerKw]);
     if (expected !== null) {
       return [{ id: 'charge', usefulPowerKw: resolveStepDeliveryUsefulKw(device, 'charge', expected) }];
