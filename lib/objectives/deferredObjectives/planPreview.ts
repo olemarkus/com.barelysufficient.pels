@@ -12,7 +12,11 @@ import { priceRateLabelToAmountUnit } from '../../../packages/shared-domain/src/
 import type { ObjectiveDeviceInput } from '../../objectives/types';
 import { roundKWh } from './activePlanMath';
 import { buildHoursFromHorizonPlan, resolveProjectedFinishAtMs } from './activePlanSchedule';
-import { buildDeferredObjectiveDiagnostic, type DeferredObjectiveDiagnostic } from './diagnosticsBridge';
+import {
+  buildDeferredObjectiveDiagnostic,
+  type BuildPriceHorizon,
+  type DeferredObjectiveDiagnostic,
+} from './diagnosticsBridge';
 import {
   buildDeferredObjectivePolicyBucketPrices,
   buildDeferredObjectivePolicyWindowPrices,
@@ -30,6 +34,10 @@ export type PreviewDeferredObjectivePlanParams = {
   device: ObjectiveDeviceInput | undefined;
   powerTracker: PowerTrackerState;
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
+  // Price-layer allocation-horizon producer, injected by the wiring layer. The
+  // daily-budget snapshot is the budget overlay only (and still feeds the
+  // preview's price-curve / cost readers pending the preview migration).
+  buildPriceHorizon: BuildPriceHorizon;
   priceOptimizationEnabled: boolean;
   hardCapKw: number | null;
   // The price-RATE label from the price store (e.g. "øre/kWh", "NOK",
@@ -67,6 +75,7 @@ export const previewDeferredObjectivePlan = (
     device: params.device,
     powerTracker: params.powerTracker,
     dailyBudgetSnapshot: params.dailyBudgetSnapshot,
+    buildPriceHorizon: params.buildPriceHorizon,
     priceOptimizationEnabled: params.priceOptimizationEnabled,
     // A candidate has no persisted active plan, so no committed hours bias the
     // allocation — this is deliberately the fresh-optimizer view.

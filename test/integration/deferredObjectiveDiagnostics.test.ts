@@ -1,12 +1,14 @@
 import {
-  buildDeferredObjectiveDiagnostics,
-  buildDeferredObjectivePolicyHorizon,
+  buildDeferredObjectiveDiagnostics as buildDeferredObjectiveDiagnosticsRaw,
+  buildDeferredObjectivePolicyHorizon as buildDeferredObjectivePolicyHorizonRaw,
   ConcurrentEligibleTaskTracker,
   createEmptyDeferredObjectiveSettings,
   ELIGIBILITY_ABANDON_GRACE_MS,
   normalizeDeferredObjectiveSettings,
   resolveDeferredObjectiveDeadline,
 } from '../../lib/objectives/deferredObjectives';
+import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
+import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
 import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredObjectives/admission';
 import type {
   DeferredObjectivePlannedBucket,
@@ -262,6 +264,60 @@ const buildDay = (params: {
     },
   };
 };
+
+// Derive a price-layer `CombinedPricesV2` from a daily-budget snapshot so the
+// allocation horizon (which now reads the price layer directly) sees EXACTLY the
+// same per-hour prices the snapshot carries. For these UTC (whole-hour-offset)
+// fixtures each snapshot day-bucket `startUtc` is already hour-aligned, so the
+// derived combined-prices hours map one-to-one onto the snapshot's price buckets.
+const combinedFromSnapshot = (snapshot: DailyBudgetUiPayload | null): CombinedPricesV2 | null => {
+  if (!snapshot) return null;
+  const days: CombinedPricesV2['days'] = {};
+  for (const [dateKey, day] of Object.entries(snapshot.days)) {
+    const hours: CombinedPriceEntry[] = day.buckets.startUtc.map((startsAt, index) => ({
+      startsAt,
+      total: day.buckets.price[index],
+      isCheap: false,
+      isExpensive: false,
+    }));
+    days[dateKey] = { hours };
+  }
+  return {
+    version: 2,
+    days,
+    avgPrice: 0,
+    lowThreshold: 0,
+    highThreshold: 0,
+    priceScheme: 'norway',
+    priceUnit: 'øre/kWh',
+  };
+};
+
+// Wrapper: inject the price-layer `combinedPrices` derived from the same snapshot
+// the test already supplies, so existing budget-overlay assertions stay intact.
+const buildDeferredObjectiveDiagnostics = (
+  params: Omit<Parameters<typeof buildDeferredObjectiveDiagnosticsRaw>[0], 'buildPriceHorizon'>,
+): ReturnType<typeof buildDeferredObjectiveDiagnosticsRaw> => {
+  const combined = combinedFromSnapshot(params.dailyBudgetSnapshot);
+  return buildDeferredObjectiveDiagnosticsRaw({
+    ...params,
+    buildPriceHorizon: (nowMs, deadlineAtMs) => buildPriceHorizonFromCombined(combined, nowMs, deadlineAtMs),
+  });
+};
+
+// Wrapper: inject the `priceHorizon` derived from the same snapshot the test
+// supplies, sourced through the production builder so the horizon entries match
+// what the live cycle would derive from the price layer.
+const buildDeferredObjectivePolicyHorizon = (
+  params: Omit<Parameters<typeof buildDeferredObjectivePolicyHorizonRaw>[0], 'priceHorizon'>,
+): ReturnType<typeof buildDeferredObjectivePolicyHorizonRaw> => buildDeferredObjectivePolicyHorizonRaw({
+  ...params,
+  priceHorizon: buildPriceHorizonFromCombined(
+    combinedFromSnapshot(params.dailyBudgetSnapshot),
+    params.nowMs,
+    params.deadlineAtMs,
+  ),
+});
 
 const sumReserveAllocation = (plannedBuckets: readonly DeferredObjectivePlannedBucket[]): number => (
   plannedBuckets.reduce((sum, bucket) => sum + (bucket.reserve ? bucket.plannedUsefulEnergyKWh : 0), 0)

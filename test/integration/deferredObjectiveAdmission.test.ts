@@ -4,6 +4,8 @@ import { createPlanEngineState } from '../../lib/plan/planState';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { DevicePlanDevice, PlanInputDevice } from '../../lib/plan/planTypes';
 import type { DailyBudgetUiPayload, DailyBudgetDayPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
+import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
+import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
 import {
   DeferredObjectiveDecorationController,
   type DeferredObjectiveSettingsV1,
@@ -74,6 +76,27 @@ const buildDailyBudgetSnapshot = (): DailyBudgetUiPayload => ({
   todayKey: '2026-05-10',
   days: { '2026-05-10': buildDay() },
 });
+
+// Price-layer source for the allocation horizon, built from the SAME
+// `HOURLY_PRICES` the snapshot carries (UTC day ⇒ hour-aligned), so the
+// cheap/expensive shaping under test flows through the real producer.
+const buildCombinedPrices = (): CombinedPricesV2 => {
+  const hours: CombinedPriceEntry[] = HOURLY_PRICES.map((total, i) => ({
+    startsAt: new Date(DAY_START_UTC + i * HOUR_MS).toISOString(),
+    total,
+    isCheap: false,
+    isExpensive: false,
+  }));
+  return {
+    version: 2,
+    days: { '2026-05-10': { hours } },
+    avgPrice: 0,
+    lowThreshold: 0,
+    highThreshold: 0,
+    priceScheme: 'norway',
+    priceUnit: 'øre/kWh',
+  };
+};
 
 const buildPowerTracker = (nowMs: number): PowerTrackerState => ({
   lastTimestamp: nowMs,
@@ -160,6 +183,7 @@ const buildBuilder = (
     getTimeZone: () => 'UTC',
     getPowerTracker: () => powerTrackerRef.current,
     getPriceOptimizationEnabled: () => true,
+    buildPriceHorizon: (nowMs, deadlineAtMs) => buildPriceHorizonFromCombined(buildCombinedPrices(), nowMs, deadlineAtMs),
     getHardCapKw: () => capacitySettings.limitKw,
   });
   return new PlanBuilder({
@@ -292,6 +316,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       getTimeZone: () => 'UTC',
       getPowerTracker: () => powerTrackerRef.current,
       getPriceOptimizationEnabled: () => true,
+      buildPriceHorizon: (nowMs, deadlineAtMs) => buildPriceHorizonFromCombined(buildCombinedPrices(), nowMs, deadlineAtMs),
       getHardCapKw: () => 100,
     });
     const builder = new PlanBuilder({
@@ -537,6 +562,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       getTimeZone: () => 'UTC',
       getPowerTracker: () => powerTracker,
       getPriceOptimizationEnabled: () => true,
+      buildPriceHorizon: (nowMs, deadlineAtMs) => buildPriceHorizonFromCombined(buildCombinedPrices(), nowMs, deadlineAtMs),
       getHardCapKw: () => 100,
     });
     const builder = new PlanBuilder({

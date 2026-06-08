@@ -2,10 +2,12 @@ import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
+  COMBINED_PRICES,
   CONTROLLABLE_DEVICES,
   MANAGED_DEVICES,
   OPERATING_MODE_SETTING,
 } from '../../lib/utils/settingsKeys';
+import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
 import { PER_DEVICE_OBJECTIVE_KEY_PREFIX } from '../../lib/objectives/deferredObjectives/objectiveStore';
 import { getDateKeyInTimeZone, getDateKeyStartMs } from '../../lib/utils/dateUtils';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
@@ -639,6 +641,13 @@ async function createEvApp(
   await app.onInit();
   if (options?.evDeadlinePricesByRelativeHour) {
     app.dailyBudgetService.getSnapshot = () => buildEvDeadlineDailyBudgetSnapshot(options.evDeadlinePricesByRelativeHour!);
+    // The allocation horizon now sources price from the price layer. Seed
+    // COMBINED_PRICES with the SAME per-hour prices the snapshot carries so the
+    // deferred objective can build its horizon (the snapshot is the budget overlay).
+    mockHomeyInstance.settings.set(
+      COMBINED_PRICES,
+      buildEvDeadlineCombinedPrices(options.evDeadlinePricesByRelativeHour!),
+    );
   }
   await app.refreshTargetDevicesSnapshot({ fast: false });
   if (options?.evDeadlinePricesByRelativeHour) {
@@ -658,6 +667,51 @@ function buildEvDeadlineDailyBudgetSnapshot(pricesByRelativeHour: number[]): Dai
     days: {
       [todayKey]: day,
     },
+  };
+}
+
+// Compute the absolute per-hour prices + UTC day start the deadline fixtures
+// share, from the relative-to-current-hour price overrides. Shared by the
+// daily-budget snapshot (budget overlay) and the price-layer store (allocation).
+function resolveEvDeadlinePricesByHour(pricesByRelativeHour: number[]): { dayStartMs: number; pricesByHour: number[] } {
+  const now = new Date(currentTimeMs);
+  const timeZone = 'Europe/Oslo';
+  const dateKey = getDateKeyInTimeZone(now, timeZone);
+  const dayStartMs = getDateKeyStartMs(dateKey, timeZone);
+  const currentHour = Number(new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    hour: 'numeric',
+    hour12: false,
+  }).format(now));
+  const pricesByHour = Array.from({ length: 24 }, () => 50);
+  pricesByRelativeHour.forEach((price, offset) => {
+    pricesByHour[(currentHour + offset) % 24] = price;
+  });
+  return { dayStartMs, pricesByHour };
+}
+
+function buildEvDeadlineCombinedPrices(pricesByRelativeHour: number[]): CombinedPricesV2 {
+  const { dayStartMs, pricesByHour } = resolveEvDeadlinePricesByHour(pricesByRelativeHour);
+  const hours: CombinedPriceEntry[] = pricesByHour.map((total, hour) => ({
+    startsAt: new Date(dayStartMs + hour * HOUR_MS).toISOString(),
+    total,
+    isCheap: false,
+    isExpensive: false,
+  }));
+  // `readPriceStore` prunes day buckets to the [yesterday, today, tomorrow]
+  // window resolved from the REAL wall clock (`new Date()` in `App.getNow` is
+  // not driven by the test's `Date.now` override). Key the day under the real
+  // today so pruning keeps it; the horizon builder still selects the correct
+  // hours by their `startsAt` against the (test-clock) `nowMs`/deadline.
+  const dateKey = getDateKeyInTimeZone(new Date(), 'Europe/Oslo');
+  return {
+    version: 2,
+    days: { [dateKey]: { hours } },
+    avgPrice: 0,
+    lowThreshold: 0,
+    highThreshold: 0,
+    priceScheme: 'norway',
+    priceUnit: 'øre/kWh',
   };
 }
 

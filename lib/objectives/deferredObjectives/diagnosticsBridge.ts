@@ -35,6 +35,7 @@ import {
   buildDeferredObjectivePolicyHorizon,
   type DeferredObjectivePolicyHorizonResult,
   type DeferredObjectivePolicyHorizonUnavailableReason,
+  type PriceHorizonEntry,
 } from './policyHorizon';
 import type {
   DeferredObjectiveRescuePermissions,
@@ -46,6 +47,12 @@ import {
   resolveConcurrentEligibleCount,
 } from './concurrentEligibleTasks';
 import type { DeferredObjectiveHorizonPlan, DeferredObjectiveStep } from './types';
+
+// Injected by the wiring layer: resolves the price-layer allocation horizon for
+// `[nowMs, deadlineAtMs)`. Defined as a closure (not a `CombinedPricesV2` input)
+// so this leafward subsystem never imports the `lib/price` peer — the producer
+// (`buildPriceHorizonFromCombined` in lib/price) lives in the price layer.
+export type BuildPriceHorizon = (nowMs: number, deadlineAtMs: number) => PriceHorizonEntry[];
 
 // Frozen mid-hour metadata sourced from the coherent active committed-plan view.
 // Present ⇒ the per-cycle path reads the frozen plan instead of running the
@@ -321,6 +328,10 @@ export const buildDeferredObjectiveDiagnostics = (params: {
   settings: DeferredObjectiveSettingsV1;
   powerTracker: PowerTrackerState;
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
+  // Price-layer source for the allocation horizon (price + grid), injected by
+  // the wiring layer. The daily-budget snapshot above is now only the optional
+  // budget overlay.
+  buildPriceHorizon: BuildPriceHorizon;
   priceOptimizationEnabled: boolean;
   activePlans?: DeferredObjectiveActivePlansV1 | null;
   hardCapKw?: number | null;
@@ -527,6 +538,25 @@ const buildPolicyGatedKnownInputs = (
   };
 };
 
+// Shape the `unknown` diagnostic for an unavailable policy horizon (price feature
+// off, or a transient missing horizon with no frozen fallback). Folds the gated
+// known-progress inputs and the horizon's bucket counts onto the verdict.
+type UnavailablePolicyHorizon = Extract<
+  DeferredObjectivePolicyHorizonResult,
+  { reasonCode: DeferredObjectivePolicyHorizonUnavailableReason }
+>;
+
+const buildHorizonUnavailableDiagnostic = (
+  base: DeferredObjectiveDiagnostic,
+  progress: DeferredObjectiveProgressResolution,
+  rawPolicyHorizon: UnavailablePolicyHorizon,
+  ctx: { powerTracker: PowerTrackerState; deviceId: string; objective: DeferredObjectiveSettingsEntry },
+): DeferredObjectiveDiagnostic => withUnknown({
+  ...buildPolicyGatedKnownInputs(base, progress, rawPolicyHorizon.reasonCode, ctx),
+  horizonBucketCount: rawPolicyHorizon.horizonBucketCount,
+  dailyBudgetExhaustedBucketCount: rawPolicyHorizon.dailyBudgetExhaustedBucketCount,
+}, rawPolicyHorizon.reasonCode);
+
 // Exported so the plan-preview composition (`previewDeferredObjectivePlan`)
 // can build a diagnostic for a single CANDIDATE objective through the exact
 // same pipeline the live cycle uses — guaranteeing the preview's horizon plan
@@ -541,6 +571,7 @@ export const buildDeferredObjectiveDiagnostic = (params: {
   device?: ObjectiveDeviceInput;
   powerTracker: PowerTrackerState;
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
+  buildPriceHorizon: BuildPriceHorizon;
   priceOptimizationEnabled: boolean;
   activePlans?: DeferredObjectiveActivePlansV1 | null;
   hardCapKw?: number | null;
@@ -554,6 +585,7 @@ export const buildDeferredObjectiveDiagnostic = (params: {
     device,
     powerTracker,
     dailyBudgetSnapshot,
+    buildPriceHorizon,
     priceOptimizationEnabled,
     activePlans,
   } = params;
@@ -578,6 +610,8 @@ export const buildDeferredObjectiveDiagnostic = (params: {
     return withUnknown(base, 'objective_invalid_deadline');
   }
   const withDeadline = base;
+  // Allocation-horizon price source, resolved by the wiring-injected producer.
+  const priceHorizon = buildPriceHorizon(nowMs, objective.deadlineAtMs);
   const progress = resolveObjectiveProgress({ objective, device, nowMs });
   if (!progress.reasonCode && progress.remainingUnits <= 0) {
     return buildDiagnosticWithPolicyHorizon({
@@ -588,9 +622,10 @@ export const buildDeferredObjectiveDiagnostic = (params: {
       powerTracker,
       base: withDeadline,
       progress,
-      policyHorizon: { buckets: [], horizonBucketCount: 0, dailyBudgetExhaustedBucketCount: 0, reasonCode: null },
+      policyHorizon: EMPTY_POLICY_HORIZON,
       deadlineAtMs: objective.deadlineAtMs,
       priceOptimizationEnabled,
+      priceHorizon,
       dailyBudgetSnapshot,
       activePlans,
       hardCapKw: params.hardCapKw,
@@ -614,6 +649,7 @@ export const buildDeferredObjectiveDiagnostic = (params: {
     nowMs,
     deadlineAtMs: objective.deadlineAtMs,
     priceOptimizationEnabled,
+    priceHorizon,
     dailyBudgetSnapshot,
     hardCapKw: params.hardCapKw,
     concurrentEligibleCount: params.concurrentEligibleCount,
@@ -623,35 +659,16 @@ export const buildDeferredObjectiveDiagnostic = (params: {
   // returns to normal control) — exactly as before C. We must NOT keep serving the
   // stale price-optimized commitment frozen here. Only a transient
   // `objective_missing_price_horizon` (SDK read gap) is served frozen below.
+  const unavailableCtx = { powerTracker, deviceId, objective };
   if (rawPolicyHorizon.reasonCode === 'objective_price_feature_disabled') {
-    const knownInputs = buildPolicyGatedKnownInputs(
-      withDeadline,
-      progress,
-      rawPolicyHorizon.reasonCode,
-      { powerTracker, deviceId, objective },
-    );
-    return withUnknown({
-      ...knownInputs,
-      horizonBucketCount: rawPolicyHorizon.horizonBucketCount,
-      dailyBudgetExhaustedBucketCount: rawPolicyHorizon.dailyBudgetExhaustedBucketCount,
-    }, rawPolicyHorizon.reasonCode);
+    return buildHorizonUnavailableDiagnostic(withDeadline, progress, rawPolicyHorizon, unavailableCtx);
   }
   const horizonAvailable = rawPolicyHorizon.reasonCode === null;
   const replan = !frozenFallback || (isPastHourSettleMark(nowMs) && horizonAvailable);
   if (replan && rawPolicyHorizon.reasonCode !== null) {
     // Bootstrap (or empty/all-elapsed commitment) with no usable horizon (transient
     // `objective_missing_price_horizon`): nothing to serve frozen, can't allocate → unknown.
-    const knownInputs = buildPolicyGatedKnownInputs(
-      withDeadline,
-      progress,
-      rawPolicyHorizon.reasonCode,
-      { powerTracker, deviceId, objective },
-    );
-    return withUnknown({
-      ...knownInputs,
-      horizonBucketCount: rawPolicyHorizon.horizonBucketCount,
-      dailyBudgetExhaustedBucketCount: rawPolicyHorizon.dailyBudgetExhaustedBucketCount,
-    }, rawPolicyHorizon.reasonCode);
+    return buildHorizonUnavailableDiagnostic(withDeadline, progress, rawPolicyHorizon, unavailableCtx);
   }
   const policyHorizon = rawPolicyHorizon.reasonCode === null ? rawPolicyHorizon : EMPTY_POLICY_HORIZON;
 
@@ -666,6 +683,7 @@ export const buildDeferredObjectiveDiagnostic = (params: {
     policyHorizon,
     deadlineAtMs: objective.deadlineAtMs,
     priceOptimizationEnabled,
+    priceHorizon,
     dailyBudgetSnapshot,
     activePlans,
     hardCapKw: params.hardCapKw,
@@ -687,6 +705,7 @@ const buildDiagnosticWithPolicyHorizon = (params: {
   policyHorizon: Extract<DeferredObjectivePolicyHorizonResult, { reasonCode: null }>;
   deadlineAtMs: number;
   priceOptimizationEnabled: boolean;
+  priceHorizon: PriceHorizonEntry[];
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
   activePlans?: DeferredObjectiveActivePlansV1 | null;
   hardCapKw?: number | null;
@@ -704,37 +723,30 @@ const buildDiagnosticWithPolicyHorizon = (params: {
     policyHorizon,
     deadlineAtMs,
     priceOptimizationEnabled,
+    priceHorizon,
     dailyBudgetSnapshot,
     activePlans,
     frozenRead,
   } = params;
-  if (progress.reasonCode) {
-    return withUnknown({
-      ...mergeProgressFields(base, progress.currentPercent, progress.currentTemperatureC),
-      horizonBucketCount: policyHorizon.horizonBucketCount,
-      dailyBudgetExhaustedBucketCount: policyHorizon.dailyBudgetExhaustedBucketCount,
-    }, progress.reasonCode);
-  }
+  const unknownWithProgress = (
+    reasonCode: DeferredObjectiveDiagnosticReasonCode,
+    extra?: ReturnType<typeof buildKnownEnergyFields>,
+  ) => withUnknown({
+    ...mergeProgressFields(base, progress.currentPercent, progress.currentTemperatureC),
+    ...(extra ?? {}),
+    horizonBucketCount: policyHorizon.horizonBucketCount,
+    dailyBudgetExhaustedBucketCount: policyHorizon.dailyBudgetExhaustedBucketCount,
+  }, reasonCode);
+  if (progress.reasonCode) return unknownWithProgress(progress.reasonCode);
 
   const profileEnergy: DeferredObjectiveEnergyResolution = progress.remainingUnits > 0
     ? resolveProgressEnergy({ powerTracker, deviceId, objective, remainingUnits: progress.remainingUnits, progress })
     : ZERO_ENERGY_RESOLUTION;
-  if (profileEnergy.reasonCode) {
-    return withUnknown({
-      ...mergeProgressFields(base, progress.currentPercent, progress.currentTemperatureC),
-      horizonBucketCount: policyHorizon.horizonBucketCount,
-      dailyBudgetExhaustedBucketCount: policyHorizon.dailyBudgetExhaustedBucketCount,
-    }, profileEnergy.reasonCode);
-  }
+  if (profileEnergy.reasonCode) return unknownWithProgress(profileEnergy.reasonCode);
 
   const steps = profileEnergy.energyNeededKWh > 0 ? resolveObjectiveSteps(device) : [];
   if (profileEnergy.energyNeededKWh > 0 && steps.length === 0) {
-    return withUnknown({
-      ...mergeProgressFields(base, progress.currentPercent, progress.currentTemperatureC),
-      ...buildKnownEnergyFields({ objective, profileEnergy }),
-      horizonBucketCount: policyHorizon.horizonBucketCount,
-      dailyBudgetExhaustedBucketCount: policyHorizon.dailyBudgetExhaustedBucketCount,
-    }, 'objective_missing_charge_rate');
+    return unknownWithProgress('objective_missing_charge_rate', buildKnownEnergyFields({ objective, profileEnergy }));
   }
 
   const activeCommittedPlan = resolveActiveCommittedPlan({
@@ -797,6 +809,7 @@ const buildDiagnosticWithPolicyHorizon = (params: {
     policyHorizon,
     deadlineAtMs,
     priceOptimizationEnabled,
+    priceHorizon,
     dailyBudgetSnapshot,
     steps,
     commitment,
@@ -819,6 +832,7 @@ const buildFreshDiagnostic = (params: {
   policyHorizon: Extract<DeferredObjectivePolicyHorizonResult, { reasonCode: null }>;
   deadlineAtMs: number;
   priceOptimizationEnabled: boolean;
+  priceHorizon: PriceHorizonEntry[];
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
   steps: DeferredObjectiveStep[];
   commitment: DeferredObjectiveActivePlanHourV1[] | undefined;
@@ -829,7 +843,8 @@ const buildFreshDiagnostic = (params: {
 }): DeferredObjectiveDiagnostic => {
   const {
     nowMs, deviceId, objective, device, base, progress, policyHorizon, deadlineAtMs,
-    priceOptimizationEnabled, dailyBudgetSnapshot, steps, commitment, aheadOfHourMilestone, profileEnergy,
+    priceOptimizationEnabled, priceHorizon, dailyBudgetSnapshot, steps, commitment,
+    aheadOfHourMilestone, profileEnergy,
   } = params;
   const { plan: horizonPlan, dailyBudgetExhaustedBucketCount } = resolveHorizonPlanWithRescue({
     nowMs,
@@ -843,6 +858,7 @@ const buildFreshDiagnostic = (params: {
     aheadOfHourMilestone,
     policyHorizon,
     priceOptimizationEnabled,
+    priceHorizon,
     dailyBudgetSnapshot,
     hardCapKw: params.hardCapKw,
     // Strict top-priority gate for Slice-2 floor promotion; see comment in

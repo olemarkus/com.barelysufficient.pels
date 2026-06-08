@@ -22,6 +22,7 @@ describe('DeferredObjectiveDecorationController', () => {
       getTimeZone: () => 'UTC',
       getPowerTracker: buildPowerTracker,
       getPriceOptimizationEnabled: () => true,
+      buildPriceHorizon: () => [],
       getHardCapKw: () => 10,
     });
 
@@ -34,6 +35,7 @@ describe('DeferredObjectiveDecorationController', () => {
     const controller = new DeferredObjectiveDecorationController({
       getPowerTracker: buildPowerTracker,
       getPriceOptimizationEnabled: () => true,
+      buildPriceHorizon: () => [],
       getHardCapKw: () => 10,
     });
     const devices = [buildDevice()];

@@ -8,6 +8,7 @@ import {
   migrateBlobToPerKeyIfNeeded,
   readAllObjectives,
 } from '../../lib/objectives/deferredObjectives';
+import { createObjectivePriceHorizonBuilder } from './objectivePriceHorizon';
 import { LEARNED_THERMOSTAT_DEADBAND_C } from '../../lib/utils/settingsKeys';
 import {
   getLearnedThermostatDeadbandC,
@@ -35,6 +36,9 @@ export function createPlanEngine(ctx: AppContext) {
     getPowerTracker: () => ctx.powerTracker,
     getPriceOptimizationEnabled: () => ctx.priceOptimizationEnabled,
     getHardCapKw: () => ctx.capacitySettings.limitKw,
+    // Allocation-horizon price source, resolved from the price layer; shared
+    // single source of truth so the objectives subsystem stays free of `lib/price`.
+    buildPriceHorizon: createObjectivePriceHorizonBuilder(ctx),
     // Read-through into the persisted per-device learned deadband map. The
     // setting is updated on every met/stalled finalize by
     // `updateLearnedThermostatDeadbandFromEntry` in `deferredRecorders.ts`,

@@ -66,6 +66,7 @@ export {
   normalizeDeferredObjectiveSettingsEntry,
 } from './settings';
 export type {
+  BuildPriceHorizon,
   DeferredObjectiveDiagnostic,
   DeferredObjectiveDiagnosticReasonCode,
 } from './diagnosticsBridge';
@@ -73,6 +74,7 @@ export type { DeferredObjectiveDeadlineResolution } from './deadline';
 export type {
   DeferredObjectivePolicyHorizonResult,
   DeferredObjectivePolicyHorizonUnavailableReason,
+  PriceHorizonEntry,
 } from './policyHorizon';
 export type {
   DeferredObjectiveRescueMode,

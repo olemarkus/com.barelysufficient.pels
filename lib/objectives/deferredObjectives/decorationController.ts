@@ -1,5 +1,6 @@
 import type { PowerTrackerState } from '../../power/tracker';
 import type { DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';
+import type { BuildPriceHorizon } from './diagnosticsBridge';
 import type { DeferredObjectiveActivePlansV1 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type {
   DeferredDecorationBundle,
@@ -25,6 +26,10 @@ export type DeferredObjectiveDecorationControllerDeps = {
   getPowerTracker: () => PowerTrackerState;
   getPriceOptimizationEnabled: () => boolean;
   getHardCapKw: () => number;
+  // Price-layer allocation-horizon producer, injected by the wiring layer. The
+  // daily-budget snapshot (threaded via `decorate(input)`) is now only the
+  // budget overlay.
+  buildPriceHorizon: BuildPriceHorizon;
   getLearnedThermostatDeadbandC?: (deviceId: string) => number;
 };
 
@@ -99,6 +104,7 @@ export class DeferredObjectiveDecorationController {
         settings,
         powerTracker: this.deps.getPowerTracker(),
         dailyBudgetSnapshot,
+        buildPriceHorizon: this.deps.buildPriceHorizon,
         priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),
         activePlans: this.deps.getDeferredObjectiveActivePlans?.() ?? null,
         hardCapKw: this.deps.getHardCapKw(),
