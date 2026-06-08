@@ -7,7 +7,7 @@ import {
   getEvRestoreBlockReason,
 } from '../plan/planBinaryControl';
 import { getLogger } from '../logging/logger';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { ExecutorDeviceSnapshot } from './executablePlan';
 import type { PlanActuationMode } from './executorTypes';
 import { type PlanExecutorBinaryContext, runBinaryControl } from './binaryControlShared';
 
@@ -16,7 +16,7 @@ const logger = getLogger('executor/binary');
 export const canApplyRestoreSnapshot = (
   _ctx: PlanExecutorBinaryContext,
   params: {
-    snapshot?: TargetDeviceSnapshot;
+    snapshot?: ExecutorDeviceSnapshot;
     deviceId: string;
     name: string;
     logContext: 'capacity' | 'capacity_control_off';
@@ -74,7 +74,7 @@ export const applyBinaryRestoreWithSnapshot = async (
   params: {
     deviceId: string;
     name: string;
-    snapshot: TargetDeviceSnapshot;
+    snapshot: ExecutorDeviceSnapshot;
     logContext: 'capacity';
     mode: PlanActuationMode;
   },
@@ -143,7 +143,7 @@ export const applyCapacityControlOffRestoreWithSnapshot = async (
   params: {
     deviceId: string;
     name: string;
-    snapshot: TargetDeviceSnapshot;
+    snapshot: ExecutorDeviceSnapshot;
   },
 ): Promise<boolean> => {
   const {

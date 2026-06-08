@@ -1,9 +1,9 @@
 import type { DeviceObservation } from '../device/deviceObservation';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import {
   type BinaryControlActuationMode,
   type BinaryControlDecision,
+  type BinaryControlDecisionSnapshot,
   type BinaryControlLogContext,
   type BinaryControlRestoreSource,
   isFlowBackedBinaryControl,
@@ -44,7 +44,7 @@ export function decideBinaryControl(params: BinaryControlDeps & {
   deviceId: string;
   name: string;
   desired: boolean;
-  snapshot?: TargetDeviceSnapshot;
+  snapshot?: BinaryControlDecisionSnapshot;
   logContext: BinaryControlLogContext;
   restoreSource?: BinaryControlRestoreSource;
   reason?: string;

@@ -1,9 +1,9 @@
 import { isBinaryOnOrUnknown } from '../../packages/shared-domain/src/binaryControlState';
 import type { ShedAction } from '../plan/planTypes';
 import type {
+  DeviceDescriptor,
   SteppedLoadProfile,
   SteppedLoadStep,
-  TargetDeviceSnapshot,
 } from '../../packages/contracts/src/types';
 import {
   applyBinarySheddingToDevice,
@@ -63,7 +63,7 @@ export const applyShedReleaseIntent = async (params: {
   intent: ExecutableReleaseIntent;
   steppedLoadIntent: ExecutableSteppedLoadIntent | null;
   observed: ExecutableObservedDeviceState | undefined;
-  snapshot: TargetDeviceSnapshot | undefined;
+  snapshot: Pick<DeviceDescriptor, 'controlCapabilityId'> | undefined;
   mode: PlanActuationMode;
   deps: ShedReleaseActuationDeps;
 }): Promise<boolean> => {
@@ -124,7 +124,7 @@ const applyShedReleaseTemperature = async (params: {
 const applyShedReleaseBinaryOff = async (params: {
   intent: ExecutableReleaseIntent;
   behavior: { action: ShedAction };
-  snapshot: TargetDeviceSnapshot | undefined;
+  snapshot: Pick<DeviceDescriptor, 'controlCapabilityId'> | undefined;
   observed: ExecutableObservedDeviceState | undefined;
   deps: ShedReleaseActuationDeps;
 }): Promise<boolean> => {

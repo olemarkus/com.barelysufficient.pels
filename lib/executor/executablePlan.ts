@@ -1,13 +1,35 @@
 import type {
   DeviceControlAdapterSnapshot,
+  DeviceDescriptor,
+  ObservedDeviceState,
   SteppedLoadProfile,
-  TargetDeviceSnapshot,
 } from '../../packages/contracts/src/types';
 import type { SteppedStepActuationState } from './steppedLoadActuation';
 
 export type ExecutablePlan = {
   devices: ExecutableDeviceIntent[];
 };
+
+/**
+ * The decomposed snapshot surface the executor consumes: observer-owned
+ * observed truth (`ObservedDeviceState`) plus the descriptor config its
+ * actuation gates read (binary control routing, commandability, stepped-load
+ * control model). Deliberately narrower than the raw producer
+ * `TargetDeviceSnapshot` — the executor is a downstream consumer, so it depends
+ * on the decomposed halves, never the full producer snapshot. The full snapshot
+ * remains structurally assignable to this, so producers feed it unchanged.
+ */
+export type ExecutorDeviceSnapshot = ObservedDeviceState
+  & Pick<
+    DeviceDescriptor,
+    | 'controlCapabilityId'
+    | 'flowBackedCapabilityIds'
+    | 'capabilities'
+    | 'canSetControl'
+    | 'communicationModel'
+    | 'deviceClass'
+    | 'controlModel'
+  >;
 
 export type ExecutableDeviceIntent = {
   id: string;
@@ -27,7 +49,7 @@ export type ExecutableObservedState = {
 export type ExecutableObservedDeviceState = {
   id: string;
   name: string;
-  snapshot: TargetDeviceSnapshot;
+  snapshot: ExecutorDeviceSnapshot;
   available: boolean | null;
   // Present iff binary control; absence is the old fabricated `currentOn: true`.
   binaryControl?: { on: boolean };

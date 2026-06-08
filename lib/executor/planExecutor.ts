@@ -4,7 +4,7 @@ import CapacityGuard from '../power/capacityGuard';
 import type { DeviceObservation } from '../device/deviceObservation';
 import type { DevicePlan, PlanInputDevice, ShedAction } from '../plan/planTypes';
 import type { PendingTargetObservationSource } from '../plan/planTypes';
-import type { ObservedDeviceState, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { ObservedDeviceState } from '../../packages/contracts/src/types';
 
 /**
  * The executor's **read-only** view of the device transport: snapshot reads
@@ -27,6 +27,7 @@ import type {
   ExecutableSteppedLoadIntent,
   ExecutableTargetIntent,
   ExecutableTargetUpdate,
+  ExecutorDeviceSnapshot,
 } from './executablePlan';
 import type { PlanActuationMode } from './executorTypes';
 import type { PlanEngineState } from '../plan/planState';
@@ -348,7 +349,7 @@ export class PlanExecutor {
     }
   }
 
-  private get latestTargetSnapshot(): TargetDeviceSnapshot[] {
+  private get latestTargetSnapshot(): ExecutorDeviceSnapshot[] {
     return this.deviceManager.getSnapshot();
   }
 
@@ -440,7 +441,7 @@ export class PlanExecutor {
     intent: ExecutableReleaseIntent;
     steppedLoadIntent: ExecutableSteppedLoadIntent | null;
     observed: ExecutableObservedDeviceState | undefined;
-    snapshot: TargetDeviceSnapshot | undefined;
+    snapshot: ExecutorDeviceSnapshot | undefined;
     mode: PlanActuationMode;
   }): Promise<boolean> {
     return applyShedReleaseIntent({
@@ -526,7 +527,7 @@ export class PlanExecutor {
   private async applySteppedLoadCommand(
     action: ExecutableSteppedLoadDevice | null,
     mode: PlanActuationMode,
-    snapshot?: TargetDeviceSnapshot,
+    snapshot?: ExecutorDeviceSnapshot,
     options: { recordPlanActuation?: boolean } = {},
   ): Promise<boolean> {
     return action
@@ -536,7 +537,7 @@ export class PlanExecutor {
 
   private async applySteppedLoadRestore(
     action: ExecutableSteppedLoadDevice | null,
-    snapshot: TargetDeviceSnapshot | undefined,
+    snapshot: ExecutorDeviceSnapshot | undefined,
     mode: PlanActuationMode,
     hasShedDevices: boolean,
     options: { preRestoreStepIssued?: boolean } = {},
@@ -555,7 +556,7 @@ export class PlanExecutor {
 
   private async applySteppedLoadShedOff(
     action: ExecutableSteppedLoadDevice | null,
-    snapshot: TargetDeviceSnapshot | undefined,
+    snapshot: ExecutorDeviceSnapshot | undefined,
     mode: PlanActuationMode,
   ): Promise<boolean> {
     return action

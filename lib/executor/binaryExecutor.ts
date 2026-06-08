@@ -12,11 +12,12 @@ import {
   selectShedActuationRecorder,
   shedActuationStampsCapacityMarkers,
 } from './lifecycleReleaseRecording';
-import type { BinaryControlCapabilityId, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { BinaryControlCapabilityId } from '../../packages/contracts/src/types';
 import type {
   ExecutableBinaryIntent,
   ExecutableObservedDeviceState,
   ExecutableReleaseIntent,
+  ExecutorDeviceSnapshot,
 } from './executablePlan';
 import type { PlanActuationMode } from './executorTypes';
 import { runBinaryControl, type PlanExecutorBinaryContext } from './binaryControlShared';
@@ -60,7 +61,7 @@ export const applyBinaryRestore = async (
   return applyBinaryRestoreWithSnapshot(ctx, {
     deviceId: intent.deviceId,
     name: intent.name,
-    snapshot: snapshot as TargetDeviceSnapshot,
+    snapshot,
     logContext: 'capacity',
     mode,
   });
@@ -96,7 +97,7 @@ export const applyUncontrolledBinaryRestore = async (
   return applyCapacityControlOffRestoreWithSnapshot(ctx, {
     deviceId: intent.deviceId,
     name: intent.name,
-    snapshot: entry as TargetDeviceSnapshot,
+    snapshot: entry,
   });
 };
 
@@ -243,7 +244,7 @@ const turnOffDevice = async (
     deviceId: string;
     name: string;
     reason?: string;
-    snapshot?: TargetDeviceSnapshot;
+    snapshot?: ExecutorDeviceSnapshot;
     lifecycleRelease?: boolean;
   },
 ): Promise<boolean> => {

@@ -1,11 +1,27 @@
 import type { DeviceObservation } from '../device/deviceObservation';
-import type { BinaryControlCapabilityId, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type {
+  BinaryControlCapabilityId,
+  DeviceDescriptor,
+  ObservedDeviceState,
+} from '../../packages/contracts/src/types';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import { getObservedBinaryOn } from '../../packages/shared-domain/src/binaryControlState';
 import { getLogger } from '../logging/logger';
 import type { BinaryControlPlan } from '../device/deviceActionProjection';
 
 const logger = getLogger('plan/binary-helpers');
+
+/**
+ * The decomposed snapshot surface the binary-control decision reads: observed
+ * truth (`targets`/`binaryControl`) plus the descriptor config the skip/route
+ * gates consult. Narrower than the raw producer `TargetDeviceSnapshot` — the
+ * full snapshot remains assignable, so callers pass it unchanged.
+ */
+export type BinaryControlDecisionSnapshot = ObservedDeviceState
+  & Pick<
+    DeviceDescriptor,
+    'controlCapabilityId' | 'flowBackedCapabilityIds' | 'capabilities' | 'canSetControl' | 'communicationModel'
+  >;
 
 // `BinaryControlPlan` is owned by the producer
 // (`lib/device/deviceActionProjection.ts`) — plan consumes the same flat
@@ -55,7 +71,7 @@ export function shouldSkipBinaryControl(params: {
   logContext: BinaryControlLogContext;
   actuationMode: BinaryControlActuationMode;
   name: string;
-  snapshot?: TargetDeviceSnapshot;
+  snapshot?: BinaryControlDecisionSnapshot;
   pendingBinaryCommandStore: PendingBinaryCommandStore;
 }): boolean {
   const {
@@ -131,7 +147,7 @@ export function shouldSkipAlreadyMatched(params: {
   controlPlan: BinaryControlPlan;
   deviceId: string;
   desired: boolean;
-  snapshot?: TargetDeviceSnapshot;
+  snapshot?: BinaryControlDecisionSnapshot;
 }): boolean {
   const { deviceManager, controlPlan, deviceId, desired, snapshot } = params;
   // Only skip an already-matched command when the device's observed binary
@@ -162,7 +178,7 @@ export function hasPendingMatchingBinaryCommand(params: {
 }
 
 export function isFlowBackedBinaryControl(
-  snapshot: TargetDeviceSnapshot | undefined,
+  snapshot: Pick<DeviceDescriptor, 'flowBackedCapabilityIds'> | undefined,
   capabilityId: BinaryControlCapabilityId,
 ): boolean {
   return Array.isArray(snapshot?.flowBackedCapabilityIds)
