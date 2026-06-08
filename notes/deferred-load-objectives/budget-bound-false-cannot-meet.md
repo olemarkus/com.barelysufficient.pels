@@ -77,3 +77,35 @@ budget binds normally. Closed, no action needed.
 `deferred_objective_horizon_planned` now carries `rescueExemptMode`,
 `rescueLimitMode`, `budgetExemptApplied`, `limitLowerPriorityApplied`, so the
 config-vs-code question is answerable from prod logs.
+
+## Prong D: daily budget DISABLED also zero-capped allocation (fixed)
+
+A distinct cause of the same `cannot_meet` symptom, found while building the
+boost SDK-boundary e2e (`deferredObjectiveBoostNoBudgetStepUpE2E.test.ts`): when
+the user has the daily budget **disabled**, `dailyBudgetService.getSnapshot()`
+still returns a snapshot with `budget.enabled: false` but an all-zero
+`allowedCumKWh`. `policyHorizon.ts` nulled `dailyBudgetKWh` when disabled (so the
+*exhaustion* classifier stayed off) but still computed
+`perBucketBudgetKWh = allowedCumKWh[i] − allowedCumKWh[i-1] = 0`, so
+`resolveMaxUsefulEnergyKWh = max(0, 0 − 0) = 0` — capping **every** bucket to
+zero useful energy. A non-exempt (plain) smart task therefore booked nothing and
+reported `cannot_meet` whenever daily budget was off — the opposite of the
+"no daily budget ⇒ the hourly hard cap is the only constraint" contract. Boost /
+exempt tasks dodged it (`exemptFromBudget` lifts the cap via
+`resolveMaxUsefulEnergyKWh`), so it only bit ordinary tasks.
+
+Fix: `collectDayBudgetOverlays` now contributes **no overlay** for a day whose
+`budget.enabled === false`, so each bucket falls through to `NO_BUDGET_OVERLAY`
+(`perBucketBudgetKWh: null` ⇒ no cap; `backgroundKWh: 0` ⇒ `reservedHeadroomKw`
+falls back to the full hard cap). The enabled-but-exhausted path
+(`isDailyBudgetExhausted`) is untouched. Guarded by the "plain task allocates
+with daily budget OFF" case in the boost e2e.
+
+### Terminology aside: `rescue` is a misnomer
+
+The two extra-permission fields (`exemptFromBudget`, `limitLowerPriorityDevices`)
+live under `objective.rescue` but are **standing** permissions — their value is
+literally `'always'`, and they apply on every planned cycle, not as a one-shot
+rescue. The name is a holdover from the starvation "Get power now" lane where the
+pair was first introduced. The persisted key is intentionally left as-is
+(renaming would break persisted state + the contract for a naming cleanup).
