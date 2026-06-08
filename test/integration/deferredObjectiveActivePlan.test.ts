@@ -88,8 +88,7 @@ const makeDiag = (overrides: Partial<DeferredObjectiveDiagnostic> & {
     deadlineAtMs: overrides.deadlineAtMs,
     deadlineLocalTime: '06:00',
     energyNeededKWh: 4.5,
-    kWhPerPercent: null,
-    kWhPerDegreeC: 1.5,
+    kWhPerUnitBanded: 1.5,
     kwhPerUnitLearnedMean: 1.5,
     rateConfidence: 'high',
     kwhPerUnitSource: 'learned',
@@ -307,7 +306,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     // Anchor 50 °C, target 51.5 °C ⇒ 1.5 °C remaining. The plan books the buffered
     // total (6 kWh) ⇒ buffered rate = 6 / 1.5 = 4.0 kWh/°C. Each 2 kWh hour adds
     // 2 / 4 = 0.5 °C, so the staircase lands exactly on the 51.5 °C target.
-    // Converting at the MEAN rate (kWhPerDegreeC = 1.5) would add 2 / 1.5 ≈ 1.33 °C
+    // Converting at the MEAN rate (kWhPerUnitBanded = 1.5) would add 2 / 1.5 ≈ 1.33 °C
     // per hour → 51.33, 52.67, 54.0, overshooting the target by 2.5 °C and making
     // the ahead-of-milestone gate under-fire.
     recorder.observe([makeDiag({
@@ -316,7 +315,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       currentTemperatureC: 50,
       targetTemperatureC: 51.5,
       energyNeededKWh: 6,
-      kWhPerDegreeC: 1.5,
+      kWhPerUnitBanded: 1.5,
       kWhPerUnitBuffered: 4,
       horizonPlan: makeHorizon([
         makeBucket(2 * HOUR_MS, 2),
@@ -539,8 +538,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       targetPercent: 80,
       currentTemperatureC: null,
       currentPercent: 40,
-      kWhPerDegreeC: null,
-      kWhPerPercent: 0.5,
+      kWhPerUnitBanded: 0.5,
     });
     delete (diag as { horizonPlan?: unknown }).horizonPlan;
     diag.reasonCode = 'objective_missing_charge_rate';
@@ -2503,8 +2501,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       name: string;
       objectiveKind: 'temperature' | 'ev_soc';
       source: 'learned' | 'bootstrap' | null;
-      kWhPerDegreeC: number | null;
-      kWhPerPercent: number | null;
+      kWhPerUnitBanded: number | null;
       expectedRateMean: number | undefined;
       expectedSpeedMode: 'auto' | 'learning' | undefined;
     }> = [
@@ -2512,8 +2509,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         name: 'learned thermal → auto + learned mean',
         objectiveKind: 'temperature',
         source: 'learned',
-        kWhPerDegreeC: 1.5,
-        kWhPerPercent: null,
+        kWhPerUnitBanded: 1.5,
         expectedRateMean: 1.5,
         expectedSpeedMode: 'auto',
       },
@@ -2521,8 +2517,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         name: 'learned EV → auto + learned per-percent mean',
         objectiveKind: 'ev_soc',
         source: 'learned',
-        kWhPerDegreeC: null,
-        kWhPerPercent: 0.18,
+        kWhPerUnitBanded: 0.18,
         expectedRateMean: 0.18,
         expectedSpeedMode: 'auto',
       },
@@ -2530,9 +2525,8 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         name: 'bootstrap EV → learning + bootstrap constant',
         objectiveKind: 'ev_soc',
         source: 'bootstrap',
-        kWhPerDegreeC: null,
-        // The diagnostic carries the bootstrap constant on kWhPerPercent.
-        kWhPerPercent: 0.15,
+        // The diagnostic carries the bootstrap constant on kWhPerUnitBanded.
+        kWhPerUnitBanded: 0.15,
         expectedRateMean: 0.15,
         expectedSpeedMode: 'learning',
       },
@@ -2551,8 +2545,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
             ? { targetTemperatureC: null, currentTemperatureC: null, targetPercent: 80, currentPercent: 40 }
             : {}),
           kwhPerUnitSource: tc.source,
-          kWhPerDegreeC: tc.kWhPerDegreeC,
-          kWhPerPercent: tc.kWhPerPercent,
+          kWhPerUnitBanded: tc.kWhPerUnitBanded,
         })], HOUR_MS);
         recorder.flushIfDirty();
 

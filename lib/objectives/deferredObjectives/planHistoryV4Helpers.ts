@@ -401,7 +401,7 @@ export type HourProgressSnapshot = {
 // rollover skips emission for that cycle and the contribution lands as
 // "not measured" in the postmortem rather than as a fabricated zero.
 export const pickKwhPerUnit = (diag: DeferredObjectiveDiagnostic): number | null => {
-  const value = diag.objectiveKind === 'temperature' ? diag.kWhPerDegreeC : diag.kWhPerPercent;
+  const value = diag.kWhPerUnitBanded;
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return null;
   return value;
 };

@@ -273,12 +273,11 @@ const createPlanFromDiagnostic = (
 // Collapses the bootstrap-vs-learned branching the settings UI used to do
 // (`resolveKwhPerUnitDisplayRate`): the diagnostic carries the same value the
 // UI displayed — the learned profile mean for `learned`, or the EV bootstrap
-// constant for `bootstrap` — on `kWhPerPercent` (EV) / `kWhPerDegreeC`
-// (thermal). `null` when the resolver short-circuited (no source) or the value
-// isn't a usable positive number.
+// constant for `bootstrap` — on `kWhPerUnitBanded`. `null` when the resolver
+// short-circuited (no source) or the value isn't a usable positive number.
 const resolveRateMean = (diag: DeferredObjectiveDiagnostic): number | null => {
   if (diag.kwhPerUnitSource === null) return null;
-  const rate = diag.kWhPerPercent ?? diag.kWhPerDegreeC;
+  const rate = diag.kWhPerUnitBanded;
   return typeof rate === 'number' && Number.isFinite(rate) && rate > 0 ? rate : null;
 };
 
@@ -370,7 +369,7 @@ const resolveProvenance = (
 ): DeferredObjectiveActivePlanV1['kwhPerUnitProvenance'] | undefined => {
   const source = diag.kwhPerUnitSource;
   if (source === null) return undefined;
-  const learnedKwh = source === 'learned' ? (diag.kWhPerPercent ?? diag.kWhPerDegreeC) : null;
+  const learnedKwh = source === 'learned' ? diag.kWhPerUnitBanded : null;
   const confidence = source === 'learned' && isProvenanceConfidence(diag.rateConfidence)
     ? diag.rateConfidence
     : null;
@@ -448,7 +447,7 @@ const MEASURED_DEVIATION_RELATIVE_THRESHOLD = 0.15;
 // reading.
 const resolveLearnedRateKwh = (diag: DeferredObjectiveDiagnostic): number | null => {
   if (diag.kwhPerUnitSource !== 'learned') return null;
-  // Use the sample-driven global mean, NOT `kWhPerPercent`/`kWhPerDegreeC`:
+  // Use the sample-driven global mean, NOT `kWhPerUnitBanded`:
   // those are the banded average over the remaining interval and shift as the
   // task crosses bands even with no new samples, which would fire spurious
   // deviations during normal progress. The global mean only moves on real
