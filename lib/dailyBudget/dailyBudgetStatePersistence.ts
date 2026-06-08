@@ -1,4 +1,4 @@
-import type Homey from 'homey';
+import type { SettingsPort } from '../ports/homeyRuntime';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import { DAILY_BUDGET_STATE } from '../utils/settingsKeys';
 import type { DailyBudgetState, DailyBudgetStatePersistReason } from './dailyBudgetTypes';
@@ -76,7 +76,7 @@ export class DailyBudgetStatePersistencePolicy {
 }
 
 type PersistDailyBudgetStateParams = {
-  settings: Homey.App['homey']['settings'];
+  settings: SettingsPort;
   policy: DailyBudgetStatePersistencePolicy;
   state: DailyBudgetState;
   reason: DailyBudgetStatePersistReason;

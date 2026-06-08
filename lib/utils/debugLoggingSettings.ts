@@ -1,4 +1,4 @@
-import type Homey from 'homey';
+import type { SettingsPort } from '../ports/homeyRuntime';
 import {
   ALL_DEBUG_LOGGING_TOPICS,
   type DebugLoggingTopic,
@@ -10,7 +10,7 @@ import { getLogger } from '../logging/logger';
 const settingsLogger = getLogger('settings/debug-logging');
 
 export function buildDebugLoggingTopics(params: {
-  settings: Homey.App['homey']['settings'];
+  settings: SettingsPort;
   logChange?: boolean;
 }): Set<DebugLoggingTopic> {
   const { settings, logChange } = params;

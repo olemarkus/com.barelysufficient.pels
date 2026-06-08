@@ -1,5 +1,4 @@
 import v8 from 'node:v8';
-import type Homey from 'homey';
 import { resolveSmapsSummary } from '../diagnostics/smapsRollup';
 import { getPerfSnapshot } from '../utils/perfCounters';
 import { getRecentPlanRebuildTraces, summarizeRecentPlanRebuildTraces } from '../utils/planRebuildTrace';
@@ -15,7 +14,11 @@ type HomeyEmitter = {
 };
 
 type StartResourceWarningListenersParams = {
-  homey: Homey.App['homey'];
+  // This listener path consumes only the SDK's event-emitter surface (cpuwarn /
+  // memwarn / unload), never settings/clock — so it depends on the local
+  // HomeyEmitter shape directly, not the HomeyRuntime port. The full injected
+  // instance structurally satisfies it.
+  homey: HomeyEmitter;
   error: (...args: unknown[]) => void;
 };
 
@@ -148,9 +151,8 @@ const createWarnLogger = (
 export const startResourceWarningListeners = (
   params: StartResourceWarningListenersParams,
 ): (() => void) | undefined => {
-  const { homey, error } = params;
-  const emitter = homey as unknown as HomeyEmitter;
-  if (typeof emitter.on !== 'function') return undefined;
+  const { homey: emitter, error } = params;
+  if (!emitter || typeof emitter.on !== 'function') return undefined;
 
   const cpuwarn = createWarnLogger('cpuwarn', error);
   const memwarn = createWarnLogger('memwarn', error);

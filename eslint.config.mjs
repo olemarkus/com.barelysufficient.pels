@@ -263,9 +263,10 @@ export default tseslint.config(
   // `homey.api`, …) is dependency-injected from the entry points — app.ts and
   // drivers/** subclass `Homey.App`/`Homey.Driver` and thread the instance down.
   // So the real SDK leaf is the injected instance, not an import (see
-  // notes/state-management/). `allowTypeImports` keeps the current type-only
-  // coupling legal; a future port-interface train can drop it per-module to
-  // retire even the type dependency. `homey` is a types-only package
+  // notes/state-management/). `allowTypeImports` keeps the type-only coupling
+  // legal for modules not yet migrated onto the `lib/ports/homeyRuntime` ports;
+  // the stricter block below drops it directory-by-directory as each one moves
+  // off `Homey.App` entirely. `homey` is a types-only package
   // (@types/homey → homey-apps-sdk-v3-types), so dependency-cruiser — which runs
   // post-compilation, where these edges are erased — can't police this; the
   // source-level lint rule is the only honest gate.
@@ -279,6 +280,24 @@ export default tseslint.config(
           message: 'lib/** must not value-import the Homey SDK — use `import type Homey from \'homey\'`. '
             + 'The SDK runtime instance is injected from the entry points (app.ts/drivers). '
             + 'See notes/state-management/: the SDK leaf is the injected instance, not an import.',
+        }],
+      }],
+    },
+  },
+  // Directories fully migrated onto the SDK-free `lib/ports/homeyRuntime` ports:
+  // they must not reference the `homey` package at all — not even as a type.
+  // `allowTypeImports` is omitted (defaults to false), so this overrides the
+  // floor rule above and locks the dir at zero SDK coupling. Add a dir here as
+  // its last `Homey.App` reference is retired (the port-interface train).
+  {
+    files: ['lib/dailyBudget/**/*.ts', 'lib/diagnostics/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': ['error', {
+        paths: [{
+          name: 'homey',
+          message: 'This directory is migrated onto lib/ports/homeyRuntime — depend on the '
+            + 'SettingsPort/ClockPort/HomeyRuntime ports, not the Homey SDK (no `homey` import at all). '
+            + 'See project: Homey SDK at the leaf.',
         }],
       }],
     },
