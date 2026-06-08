@@ -3157,7 +3157,7 @@ describe('DeviceTransport', () => {
             }));
         });
 
-        it('stops preserving the local off-state after settle timeout; a later non-boolean device.update honestly resolves currentOn:false (no re-synthesized on-state)', async () => {
+        it('after the settle window, a device.update that drops the onoff capability revokes binary status (capability presence is the source of truth — no latch)', async () => {
             vi.useFakeTimers();
             try {
                 mockApiGet.mockResolvedValue({
@@ -3197,10 +3197,11 @@ describe('DeviceTransport', () => {
                     },
                 });
 
-                // After the settle window expires the held off-state is released,
-                // but a binary-less device.update no longer re-synthesizes the old
-                // optimistic on-state — it honestly resolves currentOn:false, which
-                // matches the existing off-state, so the only change is the target.
+                // After the settle window expires the held off-state is released.
+                // This update omits the `onoff` capability, so the control capability
+                // is absent THIS cycle: capability presence is the source of truth for
+                // binary status, so the device is no longer binary (the prior off-state
+                // is NOT latched present). The reconcile fires once for the target change.
                 expect(realtimeListener).toHaveBeenCalledOnce();
                 expect(realtimeListener).toHaveBeenCalledWith(expect.objectContaining({
                     deviceId: 'dev1',
@@ -3209,7 +3210,9 @@ describe('DeviceTransport', () => {
                     ],
                 }));
                 expect(deviceManager.getSnapshot()[0]).toEqual(expect.objectContaining({
-                    binaryControl: { on: false },
+                    // Binary status revoked: no control capability this cycle → non-binary.
+                    binaryControl: undefined,
+                    controlCapabilityId: undefined,
                     targets: [expect.objectContaining({ id: 'target_temperature', value: 21 })],
                 }));
             } finally {

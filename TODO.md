@@ -180,21 +180,6 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
 
 *v2.11.0..HEAD release-review findings (2026-06-02). Non-blocking follow-ups.*
 
-- [ ] **Reconcile the transport `binaryControl` latch with the "capability drop revokes binary status" directive (binary-capability train, next slice).**
-      The plan layer now treats a device as binary iff `controlCapabilityId` is present THIS cycle
-      (`isBinaryPlanDevice`, `lib/plan/planBinaryDevice.ts`), so a transient capability drop revokes
-      binary status for that cycle. But the transport's `resolveBinaryControl`
-      (`lib/device/transport/managerParsedControlState.ts:109-123`, and the sibling
-      `resolveUnobservedControlFallback` ~166-206) still LATCHES `binaryControl` *present* across the drop
-      (`|| previousSnapshot?.controlCapabilityId !== undefined`). The plan-layer guard is authoritative, so
-      the latched value is now dead weight — a silent producer/consumer split. Persona: maintainer.
-      Hypothesis: either stop latching across a `controlCapabilityId` drop (status follows capability
-      end-to-end), or document why the producer intentionally retains a value the plan layer discards; the
-      former aligns the observed carrier with the plan carrier and is the observed-side slice of the
-      discriminated-`binaryControl` move. Benign today (verified: the per-cycle revocation reserves more
-      restore headroom / no-ops the binary re-apply via `binaryExecutor.ts` capability gate; nothing
-      persists), so it is a maintainability/consistency follow-on, not a correctness fix.
-
 - [ ] **Extend the deterministic priority tiebreak to unconfigured (default-priority) devices.**
       The mode-priorities settings port (`packages/shared-domain/src/modePriorities.ts`) gives
       *stored* priorities a strict, deterministic 1..N order (ties break by deviceId). But a managed
