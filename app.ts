@@ -35,6 +35,7 @@ import { PriceFlowTagPublisher } from './lib/price/priceFlowTags';
 import { PowerTrackerState } from './lib/power/tracker';
 import { PriceLevel } from './lib/price/priceLevels';
 import type { CombinedHourlyPrice } from './lib/price/priceTypes';
+import { createObjectivePriceHorizonBuilder } from './setup/appInit/objectivePriceHorizon';
 import { buildPeriodicStatusLogFields } from './lib/diagnostics/periodicStatus';
 import { getDeviceLoadSetting } from './lib/device/load';
 import { DailyBudgetService } from './lib/dailyBudget/dailyBudgetService';
@@ -2128,6 +2129,7 @@ class PelsApp extends Homey.App {
       device: snapshotDevice ? toPlanDevice(this.ctx, snapshotDevice) : undefined,
       powerTracker: this.powerTracker,
       dailyBudgetSnapshot: this.dailyBudgetService?.getSnapshot() ?? null,
+      buildPriceHorizon: createObjectivePriceHorizonBuilder(this.ctx),
       priceOptimizationEnabled: this.priceOptimizationEnabled,
       hardCapKw: this.capacitySettings.limitKw,
       // The price store exposes a per-kWh RATE label; `previewDeferredObjectivePlan`

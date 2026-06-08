@@ -1,5 +1,6 @@
 import type { PowerTrackerState } from '../../power/tracker';
 import type { DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';
+import type { BuildPriceHorizon } from './diagnosticsBridge';
 import type { DeferredObjectiveActivePlansV1 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { ObjectiveDeviceInput } from '../types';
 import type { StructuredDebugEmitter } from '../../logging/logger';
@@ -49,6 +50,9 @@ export type DeferredObjectiveLifecycleEmitterDeps = {
   getDevices: () => ObjectiveDeviceInput[];
   getPowerTracker: () => PowerTrackerState;
   getDailyBudgetSnapshot: () => DailyBudgetUiPayload | null;
+  // Price-layer allocation-horizon producer, injected by the wiring layer. The
+  // daily-budget snapshot is now only the budget overlay.
+  buildPriceHorizon: BuildPriceHorizon;
   getPriceOptimizationEnabled: () => boolean;
   getDeferredObjectiveActivePlans: () => DeferredObjectiveActivePlansV1 | null;
   getHardCapKw: () => number | null;
@@ -119,6 +123,7 @@ export class DeferredObjectiveLifecycleEmitter {
       settings,
       powerTracker: this.deps.getPowerTracker(),
       dailyBudgetSnapshot: this.deps.getDailyBudgetSnapshot(),
+      buildPriceHorizon: this.deps.buildPriceHorizon,
       priceOptimizationEnabled: this.deps.getPriceOptimizationEnabled(),
       activePlans,
       hardCapKw: this.deps.getHardCapKw(),

@@ -6,6 +6,7 @@ import { DailyBudgetService } from '../../lib/dailyBudget/dailyBudgetService';
 import {
   buildDeferredObjectivePolicyHorizon,
 } from '../../lib/objectives/deferredObjectives/policyHorizon';
+import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
 import {
   COMBINED_PRICES,
   DAILY_BUDGET_ENABLED,
@@ -101,9 +102,15 @@ describe('DailyBudgetService → deferred objective policy horizon', () => {
     };
     const { service, setCombinedPrices } = buildService(settings);
 
+    // Today-only price layer: the deferred-objective policy horizon cannot cover
+    // a next-day deadline regardless of the daily-budget snapshot (the horizon's
+    // price source is now the price layer, not the snapshot).
+    const todayOnlyPrices = buildCombinedPricesV2(
+      { '2026-05-10': { startMs: TODAY_START_UTC_MS, count: 24 } },
+      '2026-05-10T05:00:00Z',
+    );
+
     // Many hot-path power samples flow before any settings UI has opened.
-    // With today-only prices the deferred-objective policy horizon cannot
-    // cover a next-day deadline, regardless of whether tomorrow is seeded.
     for (let i = 0; i < 25; i += 1) {
       service.updateState({ nowMs: NOW_MS + i * 10_000 });
     }
@@ -113,19 +120,21 @@ describe('DailyBudgetService → deferred objective policy horizon', () => {
       nowMs: NOW_MS,
       deadlineAtMs: DEADLINE_MS,
       priceOptimizationEnabled: true,
+      priceHorizon: buildPriceHorizonFromCombined(todayOnlyPrices, NOW_MS, DEADLINE_MS),
       dailyBudgetSnapshot: snapshot,
     });
     expect(horizon.reasonCode).toBe('objective_missing_price_horizon');
 
     // User reloads prices: tomorrow's day-ahead lands. lastFetched changes too,
     // matching how the price service rewrites the COMBINED_PRICES setting.
-    setCombinedPrices(buildCombinedPricesV2(
+    const withTomorrowPrices = buildCombinedPricesV2(
       {
         '2026-05-10': { startMs: TODAY_START_UTC_MS, count: 24 },
         '2026-05-11': { startMs: TOMORROW_START_UTC_MS, count: 24 },
       },
       '2026-05-10T13:00:00Z',
-    ));
+    );
+    setCombinedPrices(withTomorrowPrices);
 
     // The very next plan-rebuild tick (a regular hot-path update; no
     // includeAdjacentDays) must seed tomorrow into the cached snapshot.
@@ -139,6 +148,7 @@ describe('DailyBudgetService → deferred objective policy horizon', () => {
       nowMs: NOW_MS,
       deadlineAtMs: DEADLINE_MS,
       priceOptimizationEnabled: true,
+      priceHorizon: buildPriceHorizonFromCombined(withTomorrowPrices, NOW_MS, DEADLINE_MS),
       dailyBudgetSnapshot: snapshot,
     });
     expect(horizon.reasonCode).toBeNull();

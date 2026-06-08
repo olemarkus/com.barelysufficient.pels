@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
-  buildDeferredObjectiveDiagnostics,
+  buildDeferredObjectiveDiagnostics as buildDeferredObjectiveDiagnosticsRaw,
   DeferredObjectiveActivePlanRecorder,
-  previewDeferredObjectivePlan,
+  previewDeferredObjectivePlan as previewDeferredObjectivePlanRaw,
   resolveDeferredObjectiveDeadline,
   type DeferredObjectivePlanPreviewCandidate,
 } from '../../lib/objectives/deferredObjectives';
+import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
+import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
 import {
   buildHoursFromHorizonPlan,
   resolveProjectedFinishAtMs,
@@ -159,6 +161,55 @@ const buildSnapshot = (params: { prices?: number[] } = {}): DailyBudgetUiPayload
     tomorrowKey: '2026-01-02',
   };
 };
+
+// Derive a price-layer `CombinedPricesV2` from a daily-budget snapshot so the
+// allocation horizon (which now reads the price layer directly) sees the same
+// per-hour prices the snapshot carries. UTC fixtures ⇒ each bucket start is
+// already hour-aligned, so the derived hours map one-to-one onto the snapshot.
+const combinedFromSnapshot = (snapshot: DailyBudgetUiPayload | null): CombinedPricesV2 | null => {
+  if (!snapshot) return null;
+  const days: CombinedPricesV2['days'] = {};
+  for (const [dateKey, day] of Object.entries(snapshot.days)) {
+    const hours: CombinedPriceEntry[] = day.buckets.startUtc.map((startsAt, index) => ({
+      startsAt,
+      total: day.buckets.price[index],
+      isCheap: false,
+      isExpensive: false,
+    }));
+    days[dateKey] = { hours };
+  }
+  return {
+    version: 2,
+    days,
+    avgPrice: 0,
+    lowThreshold: 0,
+    highThreshold: 0,
+    priceScheme: 'norway',
+    priceUnit: 'øre/kWh',
+  };
+};
+
+// Wrappers inject the price-layer `combinedPrices` derived from the snapshot the
+// test already supplies, so the preview / diagnostic allocation path sees the
+// same prices it used to read off the snapshot's buckets.
+const priceHorizonBuilderFor = (snapshot: DailyBudgetUiPayload | null) => {
+  const combined = combinedFromSnapshot(snapshot);
+  return (nowMs: number, deadlineAtMs: number) => buildPriceHorizonFromCombined(combined, nowMs, deadlineAtMs);
+};
+
+const previewDeferredObjectivePlan = (
+  params: Omit<Parameters<typeof previewDeferredObjectivePlanRaw>[0], 'buildPriceHorizon'>,
+): ReturnType<typeof previewDeferredObjectivePlanRaw> => previewDeferredObjectivePlanRaw({
+  ...params,
+  buildPriceHorizon: priceHorizonBuilderFor(params.dailyBudgetSnapshot),
+});
+
+const buildDeferredObjectiveDiagnostics = (
+  params: Omit<Parameters<typeof buildDeferredObjectiveDiagnosticsRaw>[0], 'buildPriceHorizon'>,
+): ReturnType<typeof buildDeferredObjectiveDiagnosticsRaw> => buildDeferredObjectiveDiagnosticsRaw({
+  ...params,
+  buildPriceHorizon: priceHorizonBuilderFor(params.dailyBudgetSnapshot),
+});
 
 const buildRecorder = (): {
   recorder: DeferredObjectiveActivePlanRecorder;

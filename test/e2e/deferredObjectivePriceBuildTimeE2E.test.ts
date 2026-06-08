@@ -20,6 +20,7 @@
 // curve, which is flipped/scaled to prove the comparison is relative, not absolute.
 import { planDeferredObjectiveHorizon } from '../../lib/objectives/deferredObjectives';
 import { buildDeferredObjectivePolicyHorizon } from '../../lib/objectives/deferredObjectives/policyHorizon';
+import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
 import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredObjectives/admission';
 import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives/diagnosticsBridge';
 import type {
@@ -28,6 +29,7 @@ import type {
   DeferredObjectiveStep,
 } from '../../lib/objectives/deferredObjectives';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
+import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
 import type { PlanInputDevice } from '../../packages/planner-types/src/planInputDevice';
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -87,6 +89,28 @@ const snapshotFor = (horizonPrices: readonly number[]): DailyBudgetUiPayload => 
   return { days: { '2026-01-01': day }, todayKey: '2026-01-01', tomorrowKey: null };
 };
 
+// The horizon's price source is now the price layer. Derive a `CombinedPricesV2`
+// from the SAME snapshot prices so the raw price curve under test still flows
+// through the real producer — the snapshot now only supplies the budget overlay.
+const combinedFor = (snapshot: DailyBudgetUiPayload): CombinedPricesV2 => {
+  const day = snapshot.days['2026-01-01']!;
+  const hours: CombinedPriceEntry[] = day.buckets.startUtc.map((startsAt, index) => ({
+    startsAt,
+    total: day.buckets.price[index]!,
+    isCheap: false,
+    isExpensive: false,
+  }));
+  return {
+    version: 2,
+    days: { '2026-01-01': { hours } },
+    avgPrice: 0,
+    lowThreshold: 0,
+    highThreshold: 0,
+    priceScheme: 'norway',
+    priceUnit: 'øre/kWh',
+  };
+};
+
 const objective = (energyNeededKWh: number): DeferredObjective => ({
   id: `${DEVICE_ID}:temperature`,
   kind: 'temperature',
@@ -132,11 +156,13 @@ type BuildTimeResult = {
 };
 
 const runBuildTime = (horizonPrices: readonly number[], energyNeededKWh: number): BuildTimeResult => {
+  const snapshot = snapshotFor(horizonPrices);
   const horizon = buildDeferredObjectivePolicyHorizon({
     nowMs: NOW_MS,
     deadlineAtMs: DEADLINE_MS,
     priceOptimizationEnabled: true,
-    dailyBudgetSnapshot: snapshotFor(horizonPrices),
+    priceHorizon: buildPriceHorizonFromCombined(combinedFor(snapshot), NOW_MS, DEADLINE_MS),
+    dailyBudgetSnapshot: snapshot,
     exemptFromBudget: true, // lift the daily-budget cap so PRICE is the only allocation lever
   });
   expect(horizon.reasonCode).toBeNull(); // the producer accepted the price horizon
@@ -173,11 +199,15 @@ const runBuildTime = (horizonPrices: readonly number[], energyNeededKWh: number)
 // per-hour power ceiling?" — the deadline is one hour out so only the current
 // hour exists (no cheaper hour to prefer or defer to).
 const runBuildTimeSingleHour = (price: number): number => {
+  const singleHourNowMs = DAY_START_MS + CURRENT_HOUR * HOUR_MS; // hour start: full, unclipped current hour
+  const singleHourDeadlineMs = DAY_START_MS + (CURRENT_HOUR + 1) * HOUR_MS;
+  const snapshot = snapshotFor([price]);
   const horizon = buildDeferredObjectivePolicyHorizon({
-    nowMs: DAY_START_MS + CURRENT_HOUR * HOUR_MS, // hour start: full, unclipped current hour
-    deadlineAtMs: DAY_START_MS + (CURRENT_HOUR + 1) * HOUR_MS,
+    nowMs: singleHourNowMs,
+    deadlineAtMs: singleHourDeadlineMs,
     priceOptimizationEnabled: true,
-    dailyBudgetSnapshot: snapshotFor([price]),
+    priceHorizon: buildPriceHorizonFromCombined(combinedFor(snapshot), singleHourNowMs, singleHourDeadlineMs),
+    dailyBudgetSnapshot: snapshot,
     exemptFromBudget: true,
   });
   expect(horizon.reasonCode).toBeNull();
@@ -274,6 +304,40 @@ describe('smart-task build-time price ordering — e2e (cheap hours filled first
     expect(cheap + dear).toBeGreaterThan(4); // the overflow genuinely reached the dear hours
     expect(result.status).toBe('on_track'); // price tier never flips status
     expect(result.statusDetail).toBe('planned_with_margin');
+  });
+});
+
+describe('smart-task horizon does not bridge gaps in the price feed', () => {
+  const gapNowMs = DAY_START_MS + 12 * HOUR_MS; // top of hour, unclipped
+  const gapDeadlineMs = gapNowMs + 3 * HOUR_MS;
+
+  it('accepts a contiguous price horizon covering the deadline', () => {
+    const horizon = buildDeferredObjectivePolicyHorizon({
+      nowMs: gapNowMs,
+      deadlineAtMs: gapDeadlineMs,
+      priceOptimizationEnabled: true,
+      priceHorizon: [0, 1, 2].map((h) => ({ startMs: gapNowMs + h * HOUR_MS, price: 50 })),
+      dailyBudgetSnapshot: null,
+    });
+    expect(horizon.reasonCode).toBeNull();
+    expect(horizon.buckets).toHaveLength(3);
+  });
+
+  it('reports a missing horizon when a priced hour is absent instead of bridging it', () => {
+    // 12:00 and 14:00 priced, 13:00 absent: the 12:00 bucket must NOT stretch to
+    // 14:00 (which would let the allocator schedule the missing 13:00 hour at the
+    // 12:00 price). The gap must surface as `objective_missing_price_horizon`.
+    const horizon = buildDeferredObjectivePolicyHorizon({
+      nowMs: gapNowMs,
+      deadlineAtMs: gapDeadlineMs,
+      priceOptimizationEnabled: true,
+      priceHorizon: [
+        { startMs: gapNowMs, price: 50 },
+        { startMs: gapNowMs + 2 * HOUR_MS, price: 50 },
+      ],
+      dailyBudgetSnapshot: null,
+    });
+    expect(horizon.reasonCode).toBe('objective_missing_price_horizon');
   });
 });
 

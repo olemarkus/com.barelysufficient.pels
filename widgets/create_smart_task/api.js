@@ -4689,6 +4689,7 @@ var parseLocalTime = (localTime) => {
 };
 
 // lib/objectives/deferredObjectives/policyHorizon.ts
+var HOUR_MS3 = 60 * 60 * 1e3;
 var PRICE_WINDOW_HOUR_MS = 60 * 60 * 1e3;
 
 // lib/objectives/deferredObjectives/rescueReplan.ts
@@ -4729,7 +4730,7 @@ var ONE_HOUR_MS4 = 60 * 60 * 1e3;
 var logger = getLogger("plan/deferred-diag-bridge");
 
 // lib/objectives/deferredObjectives/hoursRemainingCrossings.ts
-var HOUR_MS3 = 60 * 60 * 1e3;
+var HOUR_MS4 = 60 * 60 * 1e3;
 
 // packages/shared-domain/src/deadlineLabels.ts
 var PENDING_REASON_MISSING_CAPACITY_COPY = "Learning energy use \u2014 needs power readings from this device.";
@@ -5222,8 +5223,8 @@ var isValidTargetPercent = (value) => typeof value === "number" && Number.isFini
 var isValidTargetTemperature = (value) => typeof value === "number" && Number.isFinite(value) && value >= -50 && value <= 100;
 
 // packages/shared-domain/src/smartTaskDeadlineFormat.ts
-var HOUR_MS4 = 60 * 60 * 1e3;
-var DAY_MS = 24 * HOUR_MS4;
+var HOUR_MS5 = 60 * 60 * 1e3;
+var DAY_MS = 24 * HOUR_MS5;
 var formatLocalHHMMFallback = (date) => `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 var formatLocalHHMM = (ms, timeZone) => {
   const date = new Date(ms);
@@ -5284,7 +5285,7 @@ var formatSmartTaskDeadlineLong = (ms, nowMs, timeZone) => {
 };
 var hoursAreContiguous = (hours) => {
   for (let i = 1; i < hours.length; i += 1) {
-    if (hours[i].startsAtMs - hours[i - 1].startsAtMs !== HOUR_MS4) return false;
+    if (hours[i].startsAtMs - hours[i - 1].startsAtMs !== HOUR_MS5) return false;
   }
   return true;
 };
@@ -5296,7 +5297,7 @@ var formatScheduledHoursWindow = (scheduledHours, timeZone) => {
   if (hoursAreContiguous(scheduledHours)) {
     const first = formatLocalHHMM(scheduledHours[0].startsAtMs, timeZone);
     const lastStart = scheduledHours[scheduledHours.length - 1].startsAtMs;
-    const end = formatLocalHHMM(lastStart + HOUR_MS4, timeZone);
+    const end = formatLocalHHMM(lastStart + HOUR_MS5, timeZone);
     return `${first}\u2013${end}`;
   }
   return scheduledHours.map((hour) => formatLocalHHMM(hour.startsAtMs, timeZone)).join(", ");

@@ -23,9 +23,11 @@ import {
   resolveDeferredObjectiveDeadline,
 } from '../../lib/objectives/deferredObjectives';
 import { buildDeferredObjectiveDiagnostics } from '../../lib/objectives/deferredObjectives/diagnosticsBridge';
+import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
 import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredObjectives/admission';
 import { DeferredObjectiveActivePlanRecorder } from '../../lib/objectives/deferredObjectives/activePlanRecorder';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
+import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 
@@ -124,6 +126,31 @@ const buildSnapshot = (nowMs: number): DailyBudgetUiPayload => ({
   tomorrowKey: '2026-01-02',
 });
 
+// Prices are an SDK-boundary input: the allocation horizon now reads them from
+// the price layer (`CombinedPricesV2`), not the daily-budget snapshot. Build the
+// store from the SAME today/tomorrow arrays so this e2e still drives the real
+// producer from raw prices.
+const buildDayHours = (startMs: number, prices: number[]): CombinedPriceEntry[] => (
+  prices.map((total, i) => ({
+    startsAt: new Date(startMs + i * HOUR_MS).toISOString(),
+    total,
+    isCheap: total <= 10,
+    isExpensive: false,
+  }))
+);
+const buildCombinedPrices = (): CombinedPricesV2 => ({
+  version: 2,
+  days: {
+    '2026-01-01': { hours: buildDayHours(DAY, todayPrices) },
+    '2026-01-02': { hours: buildDayHours(DAY + 24 * HOUR_MS, tomorrowPrices) },
+  },
+  avgPrice: 0,
+  lowThreshold: 0,
+  highThreshold: 0,
+  priceScheme: 'norway',
+  priceUnit: 'øre/kWh',
+});
+
 const resolveDeadline = (): number => {
   const r = resolveDeferredObjectiveDeadline({ nowMs: START_MS, timeZone: 'UTC', deadlineLocalTime: '06:00' });
   if (r.deadlineAtMs === null) throw new Error('failed to resolve deadline');
@@ -162,6 +189,7 @@ const runScenario = (): { hours: HourOutcome[]; finalTempC: number } => {
       settings,
       powerTracker: buildPowerTracker(nowMs),
       dailyBudgetSnapshot: buildSnapshot(nowMs),
+      buildPriceHorizon: (n, deadlineAtMs) => buildPriceHorizonFromCombined(buildCombinedPrices(), n, deadlineAtMs),
       priceOptimizationEnabled: true,
       activePlans,
     });
