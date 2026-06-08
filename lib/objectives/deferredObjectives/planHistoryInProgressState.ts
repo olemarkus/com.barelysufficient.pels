@@ -264,12 +264,8 @@ const captureTrustedProgressPercent = (diag: DeferredObjectiveDiagnostic): numbe
 );
 
 const diagnosticProgressAtTarget = (diag: DeferredObjectiveDiagnostic): boolean => {
-  if (diag.objectiveKind === 'temperature') {
-    if (diag.currentTemperatureC === null) return false;
-    return diag.currentTemperatureC >= diag.targetTemperatureC;
-  }
-  if (diag.currentPercent === null || diag.targetPercent === null) return false;
-  return diag.currentPercent >= diag.targetPercent;
+  if (diag.currentValue === null || diag.targetValue === null) return false;
+  return diag.currentValue >= diag.targetValue;
 };
 
 export const lastObservedAtMs = (record: InProgressRecord): number => {
@@ -393,7 +389,7 @@ const seedHourOpening = (
   nowMs: number,
 ): HourProgressSnapshot | null => {
   if (!hasTrustworthyProgress(diag)) return null;
-  const value = diag.objectiveKind === 'temperature' ? diag.currentTemperatureC : diag.currentPercent;
+  const value = diag.currentValue;
   if (value === null) return null;
   return { hourMs: hourBucketMs(nowMs), value };
 };

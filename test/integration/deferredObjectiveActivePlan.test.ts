@@ -70,36 +70,49 @@ const makeHorizon = (
 const makeDiag = (overrides: Partial<DeferredObjectiveDiagnostic> & {
   deviceId: string;
   deadlineAtMs: number;
-}): DeferredObjectiveDiagnostic => ({
-  deviceId: overrides.deviceId,
-  deviceName: 'Water Heater',
-  objectiveId: `${overrides.deviceId}:temperature`,
-  objectiveKind: 'temperature',
-  enforcement: 'soft',
-  status: 'on_track',
-  reasonCode: 'planned_with_margin',
-  targetPercent: null,
-  currentPercent: null,
-  targetTemperatureC: 65,
-  currentTemperatureC: 50,
-  deadlineAtMs: overrides.deadlineAtMs,
-  deadlineLocalTime: '06:00',
-  energyNeededKWh: 4.5,
-  kWhPerPercent: null,
-  kWhPerDegreeC: 1.5,
-  kwhPerUnitLearnedMean: 1.5,
-  rateConfidence: 'high',
-  kwhPerUnitSource: 'learned',
-  horizonBucketCount: 3,
-  dailyBudgetExhaustedBucketCount: 0,
-  expectedStepId: 'low',
-  horizonPlan: makeHorizon([
-    makeBucket(2 * HOUR_MS, 1.5),
-    makeBucket(3 * HOUR_MS, 1.5),
-    makeBucket(4 * HOUR_MS, 1.5),
-  ]),
-  ...overrides,
-});
+}): DeferredObjectiveDiagnostic => {
+  const diag: DeferredObjectiveDiagnostic = {
+    deviceId: overrides.deviceId,
+    deviceName: 'Water Heater',
+    objectiveId: `${overrides.deviceId}:temperature`,
+    objectiveKind: 'temperature',
+    enforcement: 'soft',
+    status: 'on_track',
+    reasonCode: 'planned_with_margin',
+    targetPercent: null,
+    currentPercent: null,
+    targetTemperatureC: 65,
+    currentTemperatureC: 50,
+    currentValue: 50,
+    targetValue: 65,
+    deadlineAtMs: overrides.deadlineAtMs,
+    deadlineLocalTime: '06:00',
+    energyNeededKWh: 4.5,
+    kWhPerPercent: null,
+    kWhPerDegreeC: 1.5,
+    kwhPerUnitLearnedMean: 1.5,
+    rateConfidence: 'high',
+    kwhPerUnitSource: 'learned',
+    horizonBucketCount: 3,
+    dailyBudgetExhaustedBucketCount: 0,
+    expectedStepId: 'low',
+    horizonPlan: makeHorizon([
+      makeBucket(2 * HOUR_MS, 1.5),
+      makeBucket(3 * HOUR_MS, 1.5),
+      makeBucket(4 * HOUR_MS, 1.5),
+    ]),
+    ...overrides,
+  };
+  // Keep the unit-agnostic pair consistent with whatever kind-split fields the
+  // override set, unless the override set the pair explicitly.
+  return {
+    ...diag,
+    currentValue: overrides.currentValue
+      ?? (diag.objectiveKind === 'temperature' ? diag.currentTemperatureC : diag.currentPercent),
+    targetValue: overrides.targetValue
+      ?? (diag.objectiveKind === 'temperature' ? diag.targetTemperatureC : diag.targetPercent),
+  };
+};
 
 // Schedule-shape view of persisted hours: drops the derived `plannedUnitMilestone`
 // (covered by its own test) so these assertions stay focused on which hours carry

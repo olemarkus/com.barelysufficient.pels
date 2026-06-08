@@ -220,6 +220,18 @@ type BaseDeferredObjectiveDiagnostic = {
   reasonCode: DeferredObjectiveDiagnosticReasonCode | DeferredObjectiveHorizonPlan['statusDetail'];
   targetPercent: number | null;
   currentPercent: number | null;
+  // Unit-AGNOSTIC current/target reading, identical to the kind-split
+  // `currentTemperatureC`/`targetTemperatureC` (temperature) or
+  // `currentPercent`/`targetPercent` (ev_soc) for this diagnostic. A heater and
+  // an EV are the same planning problem; the unit is only a display label
+  // (resolve it via `unitForObjectiveKind(objectiveKind)`). Consumers read these
+  // instead of forking on `objectiveKind` to pick a value. Invariant, for every
+  // diagnostic:
+  //   currentValue === (objectiveKind === 'temperature' ? currentTemperatureC : currentPercent)
+  //   targetValue  === (objectiveKind === 'temperature' ? targetTemperatureC  : targetPercent)
+  // (a `?: never` ev-variant temperature field counts as null).
+  currentValue: number | null;
+  targetValue: number | null;
   deadlineAtMs: number | null;
   deadlineLocalTime: string;
   energyNeededKWh: number | null;
@@ -483,9 +495,9 @@ const mergeProgressFields = (
   currentTemperatureC: number | null,
 ): DeferredObjectiveDiagnostic => {
   if (base.objectiveKind === 'temperature') {
-    return { ...base, currentPercent, currentTemperatureC };
+    return { ...base, currentPercent, currentTemperatureC, currentValue: currentTemperatureC };
   }
-  return { ...base, currentPercent };
+  return { ...base, currentPercent, currentValue: currentPercent };
 };
 
 const buildPolicyGatedKnownInputs = (
@@ -904,6 +916,10 @@ const buildDiagnosticBase = (params: {
     reasonCode: 'objective_progress_stale',
     targetPercent: params.objective.kind === 'ev_soc' ? params.objective.targetPercent : null,
     currentPercent: params.currentPercent,
+    // Unit-agnostic pair. Seeded for the ev_soc shape here; the temperature
+    // variant below overrides both with the °C readings so the invariant holds.
+    currentValue: params.currentPercent,
+    targetValue: params.objective.kind === 'ev_soc' ? params.objective.targetPercent : null,
     deadlineAtMs,
     deadlineLocalTime: deadlineAtMs !== null ? formatDeadlineLocalTime(deadlineAtMs, params.timeZone) : '',
     energyNeededKWh: params.energyNeededKWh,
@@ -927,6 +943,9 @@ const buildDiagnosticBase = (params: {
       objectiveKind: 'temperature',
       targetTemperatureC: params.objective.targetTemperatureC,
       currentTemperatureC: params.currentTemperatureC,
+      // Override the ev_soc-shaped seed: temperature reads in °C.
+      currentValue: params.currentTemperatureC,
+      targetValue: params.objective.targetTemperatureC,
     };
   }
   return {

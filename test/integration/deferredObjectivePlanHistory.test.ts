@@ -52,31 +52,44 @@ const makeHorizon = (
 
 const makeDiag = (
   overrides: Partial<DeferredObjectiveDiagnostic> & { deviceId: string; deadlineAtMs: number },
-): DeferredObjectiveDiagnostic => ({
-  deviceId: overrides.deviceId,
-  deviceName: 'Water Heater',
-  objectiveId: `${overrides.deviceId}:temperature`,
-  objectiveKind: 'temperature',
-  enforcement: 'soft',
-  status: 'on_track',
-  reasonCode: 'planned_with_margin',
-  targetPercent: null,
-  currentPercent: null,
-  targetTemperatureC: 65,
-  currentTemperatureC: 50,
-  deadlineAtMs: overrides.deadlineAtMs,
-  deadlineLocalTime: '06:00',
-  energyNeededKWh: 22.5,
-  kWhPerPercent: null,
-  kWhPerDegreeC: 1.5,
-  rateConfidence: 'high',
-  kwhPerUnitSource: 'learned',
-  horizonBucketCount: 6,
-  dailyBudgetExhaustedBucketCount: 0,
-  expectedStepId: 'low',
-  horizonPlan: makeHorizon(),
-  ...overrides,
-});
+): DeferredObjectiveDiagnostic => {
+  const diag: DeferredObjectiveDiagnostic = {
+    deviceId: overrides.deviceId,
+    deviceName: 'Water Heater',
+    objectiveId: `${overrides.deviceId}:temperature`,
+    objectiveKind: 'temperature',
+    enforcement: 'soft',
+    status: 'on_track',
+    reasonCode: 'planned_with_margin',
+    targetPercent: null,
+    currentPercent: null,
+    targetTemperatureC: 65,
+    currentTemperatureC: 50,
+    currentValue: 50,
+    targetValue: 65,
+    deadlineAtMs: overrides.deadlineAtMs,
+    deadlineLocalTime: '06:00',
+    energyNeededKWh: 22.5,
+    kWhPerPercent: null,
+    kWhPerDegreeC: 1.5,
+    rateConfidence: 'high',
+    kwhPerUnitSource: 'learned',
+    horizonBucketCount: 6,
+    dailyBudgetExhaustedBucketCount: 0,
+    expectedStepId: 'low',
+    horizonPlan: makeHorizon(),
+    ...overrides,
+  };
+  // Keep the unit-agnostic pair consistent with whatever kind-split fields the
+  // override set, unless the override set the pair explicitly.
+  return {
+    ...diag,
+    currentValue: overrides.currentValue
+      ?? (diag.objectiveKind === 'temperature' ? diag.currentTemperatureC : diag.currentPercent),
+    targetValue: overrides.targetValue
+      ?? (diag.objectiveKind === 'temperature' ? diag.targetTemperatureC : diag.targetPercent),
+  };
+};
 
 const buildPersistDeps = (initial?: DeferredObjectivePlanHistoryV4): {
   deps: PlanHistoryPersistDeps;
