@@ -1,4 +1,5 @@
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
+import { unitForObjectiveKind } from './objectiveUnit';
 import type {
   DeferredObjectivePublishedStatus,
   DeferredObjectiveStatusBus,
@@ -6,13 +7,8 @@ import type {
 } from './statusBus';
 
 const formatTargetText = (diagnostic: DeferredObjectiveDiagnostic): string => {
-  if (diagnostic.objectiveKind === 'temperature') {
-    return `${formatNumber(diagnostic.targetTemperatureC)} °C`;
-  }
-  if (diagnostic.objectiveKind === 'ev_soc' && diagnostic.targetPercent !== null) {
-    return `${formatNumber(diagnostic.targetPercent)} %`;
-  }
-  return '';
+  if (diagnostic.targetValue === null) return '';
+  return `${formatNumber(diagnostic.targetValue)} ${unitForObjectiveKind(diagnostic.objectiveKind)}`;
 };
 
 const formatNumber = (value: number): string => (
@@ -28,18 +24,13 @@ const computeShortfall = (diagnostic: DeferredObjectiveDiagnostic): {
     ? Math.round(energy * 100) / 100
     : null;
 
-  if (diagnostic.objectiveKind === 'temperature' && diagnostic.currentTemperatureC !== null) {
-    const delta = diagnostic.targetTemperatureC - diagnostic.currentTemperatureC;
+  if (diagnostic.currentValue !== null && diagnostic.targetValue !== null) {
+    const delta = diagnostic.targetValue - diagnostic.currentValue;
     if (delta > 0) {
-      return { shortfallKwh, shortfallText: `${formatNumber(delta)} °C below target` };
-    }
-  }
-  if (diagnostic.objectiveKind === 'ev_soc'
-    && diagnostic.targetPercent !== null
-    && diagnostic.currentPercent !== null) {
-    const delta = diagnostic.targetPercent - diagnostic.currentPercent;
-    if (delta > 0) {
-      return { shortfallKwh, shortfallText: `${formatNumber(delta)} % below target` };
+      return {
+        shortfallKwh,
+        shortfallText: `${formatNumber(delta)} ${unitForObjectiveKind(diagnostic.objectiveKind)} below target`,
+      };
     }
   }
   return { shortfallKwh, shortfallText: null };
