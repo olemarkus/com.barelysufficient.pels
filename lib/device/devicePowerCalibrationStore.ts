@@ -6,7 +6,7 @@
  * snapshot, debounces writes back to Homey settings, and periodically prunes
  * stale entries. Pure-store logic lives in `lib/device/devicePowerCalibration.ts`.
  */
-import type Homey from 'homey';
+import type { HomeyRuntime } from '../ports/homeyRuntime';
 import type { PowerCalibrationSnapshot } from '../../packages/contracts/src/powerCalibration';
 import {
   type RecordSampleConfig,
@@ -206,7 +206,7 @@ export class PowerCalibrationStore {
  * install as fresh.
  */
 export function loadPowerCalibrationStore(params: {
-  homey: Homey.App['homey'];
+  homey: HomeyRuntime;
   options?: PowerCalibrationStoreOptions;
 }): PowerCalibrationStore {
   const rawRead = readPersistedSnapshot(params.homey);
@@ -248,7 +248,7 @@ export function loadPowerCalibrationStore(params: {
 
 type SettingsReadResult<T> = { value: T; threw: false } | { value: undefined; threw: true };
 
-function readPersistedSnapshot(homey: Homey.App['homey']): SettingsReadResult<unknown> {
+function readPersistedSnapshot(homey: HomeyRuntime): SettingsReadResult<unknown> {
   // The Homey SDK reads can transiently throw on startup. A throw is treated
   // as a missing-with-marker-present read so the load-grace window engages
   // and a subsequent recovery read can rebuild the prior history (per the
@@ -310,7 +310,7 @@ function isPlausiblePersistedSnapshot(value: unknown): boolean {
  * when the write fails, so the next call will retry the same samples.
  */
 export function persistPowerCalibrationIfDue(params: {
-  homey: Homey.App['homey'];
+  homey: HomeyRuntime;
   store: PowerCalibrationStore;
   nowMs: number;
 }): boolean {
@@ -325,7 +325,7 @@ export function persistPowerCalibrationIfDue(params: {
  * reflect the in-memory state immediately.
  */
 export function persistPowerCalibrationFlush(params: {
-  homey: Homey.App['homey'];
+  homey: HomeyRuntime;
   store: PowerCalibrationStore;
   nowMs: number;
 }): boolean {
@@ -336,7 +336,7 @@ export function persistPowerCalibrationFlush(params: {
 
 function writeAndMark(
   params: {
-    homey: Homey.App['homey'];
+    homey: HomeyRuntime;
     store: PowerCalibrationStore;
     nowMs: number;
   },
@@ -369,7 +369,7 @@ function writeAndMark(
   return true;
 }
 
-function readInitMarker(homey: Homey.App['homey']): SettingsReadResult<boolean> {
+function readInitMarker(homey: HomeyRuntime): SettingsReadResult<boolean> {
   // A thrown read leaves the caller unable to distinguish "marker absent"
   // from "we couldn't ask". Surface the throw so the caller can pick the
   // conservative interpretation (treat as marker present → engage grace)
@@ -381,7 +381,7 @@ function readInitMarker(homey: Homey.App['homey']): SettingsReadResult<boolean> 
   }
 }
 
-function writeInitMarkerBestEffort(homey: Homey.App['homey']): void {
+function writeInitMarkerBestEffort(homey: HomeyRuntime): void {
   // Best-effort: failure means the next load or persist retries the write,
   // which is harmless because the marker is idempotent.
   try {
