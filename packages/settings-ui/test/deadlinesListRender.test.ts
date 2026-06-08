@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { DeferredObjectivePlanHistoryEntry } from '../../contracts/src/deferredObjectivePlanHistory.ts';
+import type {
+  DeferredObjectivePlanHistoryEntry,
+  ResolvedDeferredObjectivePlanHistoryEntry,
+} from '../../contracts/src/deferredObjectivePlanHistory.ts';
+import { toResolvedPlanHistoryEntry } from '../../shared-domain/src/deferredPlanHistoryResolvedView.ts';
 import {
   renderDeadlinesList,
   type DeadlinesListCard,
@@ -579,7 +583,7 @@ describe('DeadlinesHistoryList device-filter chip row', () => {
     deviceId: string,
     deviceName: string,
     offsetHours: number,
-  ): DeferredObjectivePlanHistoryEntry => ({
+  ): ResolvedDeferredObjectivePlanHistoryEntry => toResolvedPlanHistoryEntry({
     id: `${deviceId}-${offsetHours}`,
     deviceId,
     deviceName,
@@ -604,7 +608,7 @@ describe('DeadlinesHistoryList device-filter chip row', () => {
   });
 
   const renderReady = (mount: HTMLElement, params: {
-    entries: DeferredObjectivePlanHistoryEntry[];
+    entries: ResolvedDeferredObjectivePlanHistoryEntry[];
     selectedDeviceId?: string | null;
     onSelectDevice?: (deviceId: string | null) => void;
   }): void => {
@@ -802,7 +806,7 @@ describe('DeadlinesHistoryList miss-streak badges follow the device filter', () 
     deviceName: string,
     offsetHours: number,
     outcome: 'met' | 'missed',
-  ): DeferredObjectivePlanHistoryEntry => ({
+  ): ResolvedDeferredObjectivePlanHistoryEntry => toResolvedPlanHistoryEntry({
     id: `${deviceId}-${offsetHours}`,
     deviceId,
     deviceName,
@@ -828,7 +832,7 @@ describe('DeadlinesHistoryList miss-streak badges follow the device filter', () 
 
   // Two devices, each with a miss streak (3 of 3 missed), so both produce a
   // badge in the unfiltered "All" view.
-  const twoStreakingDevices = (): DeferredObjectivePlanHistoryEntry[] => [
+  const twoStreakingDevices = (): ResolvedDeferredObjectivePlanHistoryEntry[] => [
     buildMissEntry('dev_a', 'Boiler', 0, 'missed'),
     buildMissEntry('dev_b', 'Connected 300', 1, 'missed'),
     buildMissEntry('dev_a', 'Boiler', 2, 'missed'),
@@ -874,7 +878,7 @@ describe('DeadlinesHistoryList 7-day hit-rate strip', () => {
 
   const buildHistoryEntry = (
     overrides: Partial<DeferredObjectivePlanHistoryEntry> = {},
-  ): DeferredObjectivePlanHistoryEntry => ({
+  ): ResolvedDeferredObjectivePlanHistoryEntry => toResolvedPlanHistoryEntry({
     id: 'entry-1',
     deviceId: 'dev_a',
     deviceName: 'Boiler',

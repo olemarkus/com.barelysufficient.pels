@@ -849,6 +849,36 @@
     return buildSampleActivePlans();
   };
 
+  // Mirror the real API producer (`app.ts buildPlanHistoryUiPayload` →
+  // `toResolvedPlanHistoryEntry`): the settings UI receives plan-history entries
+  // with the kind-split (°C/%) pairs already resolved to flat `*Value` fields.
+  // Fixtures inject raw entries, so resolve them here. Idempotent (nullish-keeps
+  // a value the fixture already resolved); raw columns left on the object are
+  // harmless — the UI reads only the resolved fields.
+  const toResolvedHistoryEntry = (entry) => ({
+    ...entry,
+    targetValue: entry.targetValue ?? entry.targetPercent ?? entry.targetTemperatureC ?? null,
+    startProgressValue: entry.startProgressValue ?? entry.startProgressPercent ?? entry.startProgressC ?? null,
+    finalProgressValue: entry.finalProgressValue ?? entry.finalProgressPercent ?? entry.finalProgressC ?? null,
+    ...(Array.isArray(entry.progressSamples)
+      ? {
+        progressSamples: entry.progressSamples.map((sample) => ({
+          ...sample,
+          value: sample.value ?? sample.valuePercent ?? sample.valueC ?? null,
+        })),
+      }
+      : {}),
+  });
+
+  const resolveHistoryEntries = (payload) => {
+    if (!payload || typeof payload !== 'object' || !payload.entriesByDeviceId) return payload;
+    const entriesByDeviceId = {};
+    for (const [deviceId, list] of Object.entries(payload.entriesByDeviceId)) {
+      entriesByDeviceId[deviceId] = Array.isArray(list) ? list.map(toResolvedHistoryEntry) : list;
+    }
+    return { ...payload, entriesByDeviceId };
+  };
+
   const resolveDeferredObjectiveHistoryPayload = () => {
     const scenarioHistory = runtimeOverrides.scenarioPatch?.deferredObjectiveHistory;
     if (scenarioHistory !== undefined) return scenarioHistory;
@@ -1394,7 +1424,13 @@
           callback(new Error(`Homey stub: no handler for ${key}`));
           return;
         }
-        callback(null, handler(body));
+        const result = handler(body);
+        // Mirror the real API producer: plan-history entries reach the UI with
+        // the kind-split (°C/%) pairs resolved to flat `*Value` fields. Apply at
+        // the dispatch chokepoint so BOTH the default handler and any per-test
+        // `apiHandlers['GET /ui_deferred_objective_history']` override are
+        // normalized (fixtures inject raw entries). Idempotent.
+        callback(null, key === 'GET /ui_deferred_objective_history' ? resolveHistoryEntries(result) : result);
       } catch (err) {
         callback(err);
       }

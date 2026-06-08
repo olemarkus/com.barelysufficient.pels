@@ -20,14 +20,10 @@
 // disagree.
 
 import type {
-  DeferredObjectivePlanHistoryEntry,
   DeferredObjectivePlanHistoryRevisionSnapshot,
+  ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../contracts/src/deferredObjectivePlanHistory';
 import { MIN_LEARNED_SAMPLES_FOR_CONFIDENT_CHIP } from './deadlineLabels';
-import {
-  resolveFinalProgressValue,
-  resolveStartProgressValue,
-} from './deferredObjectiveValues';
 
 // Why a `missed` run missed, in the order we check (most concrete cause wins):
 //   - `budget_limited`     — the daily budget cap collapsed one or more planned
@@ -116,16 +112,15 @@ export type DeferredPlanHistoryMissAttribution = {
 
 // Entry fields the attribution reads. The progress fields + `objectiveKind`
 // back the directional `no_delivery` check; the rest back the delivery split and
-// snapshot lookup. All already persisted on `DeferredObjectivePlanHistoryEntry`.
+// snapshot lookup. All present on the resolved consumer view of an entry.
 type AttributionEntry = Pick<
-  DeferredObjectivePlanHistoryEntry,
+  ResolvedDeferredObjectivePlanHistoryEntry,
   'outcome' | 'deliveredKWh' | 'finalPlan' | 'originalPlan'
-  | 'objectiveKind' | 'startProgressC' | 'startProgressPercent'
-  | 'finalProgressC' | 'finalProgressPercent'
+  | 'objectiveKind' | 'startProgressValue' | 'finalProgressValue'
 >;
 
 const pickSnapshot = (
-  entry: Pick<DeferredObjectivePlanHistoryEntry, 'finalPlan' | 'originalPlan'>,
+  entry: Pick<ResolvedDeferredObjectivePlanHistoryEntry, 'finalPlan' | 'originalPlan'>,
 ): AttributionSnapshot | null => entry.finalPlan ?? entry.originalPlan ?? null;
 
 // Signed progress toward target (`final − start`) plus the per-kind deadband, or
@@ -136,13 +131,12 @@ const pickSnapshot = (
 const resolveProgressTowardTarget = (
   entry: Pick<
     AttributionEntry,
-    'objectiveKind' | 'startProgressC' | 'finalProgressC'
-    | 'startProgressPercent' | 'finalProgressPercent'
+    'objectiveKind' | 'startProgressValue' | 'finalProgressValue'
   >,
 ): { delta: number; deadband: number } | null => {
   // Value selection is unit-agnostic; only the deadband stays kind-specific.
-  const start = resolveStartProgressValue(entry);
-  const final = resolveFinalProgressValue(entry);
+  const start = entry.startProgressValue;
+  const final = entry.finalProgressValue;
   if (start === null || final === null || !Number.isFinite(start) || !Number.isFinite(final)) return null;
   const deadband = entry.objectiveKind === 'temperature'
     ? NO_DELIVERY_PROGRESS_DEADBAND_C
@@ -158,8 +152,7 @@ const resolveProgressTowardTarget = (
 const resolveNoDelivery = (
   entry: Pick<
     AttributionEntry,
-    'objectiveKind' | 'startProgressC' | 'finalProgressC'
-    | 'startProgressPercent' | 'finalProgressPercent'
+    'objectiveKind' | 'startProgressValue' | 'finalProgressValue'
   >,
   deliveredKWh: number | null,
 ): boolean => {
@@ -171,7 +164,7 @@ const resolveNoDelivery = (
 };
 
 const resolveCause = (params: {
-  outcome: DeferredObjectivePlanHistoryEntry['outcome'];
+  outcome: ResolvedDeferredObjectivePlanHistoryEntry['outcome'];
   snapshot: AttributionSnapshot | null;
   deliveredAtOrAbovePlan: boolean | null;
   noDelivery: boolean;
@@ -206,7 +199,7 @@ const resolveCause = (params: {
 };
 
 const resolveDeliveredKWh = (
-  entry: Pick<DeferredObjectivePlanHistoryEntry, 'deliveredKWh'>,
+  entry: Pick<ResolvedDeferredObjectivePlanHistoryEntry, 'deliveredKWh'>,
 ): number | null => (
   typeof entry.deliveredKWh === 'number' && Number.isFinite(entry.deliveredKWh)
     ? entry.deliveredKWh

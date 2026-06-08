@@ -3,10 +3,10 @@ import {
   SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH,
   type SettingsUiDeferredObjectivePlanHistoryPayload,
 } from '../../../contracts/src/settingsUiApi.ts';
-import type { DeferredObjectivePlanHistoryEntry } from '../../../contracts/src/deferredObjectivePlanHistory.ts';
+import type { ResolvedDeferredObjectivePlanHistoryEntry } from '../../../contracts/src/deferredObjectivePlanHistory.ts';
 
 export type DeadlinePlanHistoryView = {
-  entries: DeferredObjectivePlanHistoryEntry[];
+  entries: ResolvedDeferredObjectivePlanHistoryEntry[];
   timeZone: string;
 };
 

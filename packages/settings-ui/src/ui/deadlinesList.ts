@@ -16,7 +16,7 @@ import type {
   DeferredObjectiveActivePlansV1,
   DeferredObjectiveActivePlanV1,
 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
-import type { DeferredObjectivePlanHistoryEntry } from '../../../contracts/src/deferredObjectivePlanHistory.ts';
+import type { ResolvedDeferredObjectivePlanHistoryEntry } from '../../../contracts/src/deferredObjectivePlanHistory.ts';
 import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
 import { buildDeadlineHref } from './deadlineUrls.ts';
 import { resolveBrowserTimeZone } from './deadlinePlanHistoryFetch.ts';
@@ -127,7 +127,7 @@ export const resolveDeadlinesListCards = (params: {
 
 export const resolveDeadlinesHistoryEntries = (
   payload: SettingsUiDeferredObjectivePlanHistoryPayload | null,
-): DeferredObjectivePlanHistoryEntry[] => {
+): ResolvedDeferredObjectivePlanHistoryEntry[] => {
   if (!payload) return [];
   return Object.values(payload.entriesByDeviceId)
     .flat()

@@ -24,7 +24,9 @@ import {
 import type {
   DeferredObjectivePlanHistoryEntry,
   DeferredObjectivePlanHistoryRevisionSnapshot,
+  ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../packages/contracts/src/deferredObjectivePlanHistory';
+import { toResolvedPlanHistoryEntry } from '../../packages/shared-domain/src/deferredPlanHistoryResolvedView';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DEADLINE_MS = Date.UTC(2026, 4, 16, 16, 0, 0); // Sat 16 May 16:00 UTC
@@ -41,7 +43,7 @@ const buildSnapshot = (
 
 const buildEntry = (
   overrides: Partial<DeferredObjectivePlanHistoryEntry> = {},
-): DeferredObjectivePlanHistoryEntry => ({
+): ResolvedDeferredObjectivePlanHistoryEntry => toResolvedPlanHistoryEntry({
   id: 'entry-1',
   deviceId: 'dev-1',
   deviceName: 'Connected 300',
@@ -556,10 +558,10 @@ describe('formatPlanHistoryOvershootLine', () => {
 });
 
 describe('formatMissStreakAggregateLine', () => {
-  const buildMissed = (id: string): DeferredObjectivePlanHistoryEntry => (
+  const buildMissed = (id: string): ResolvedDeferredObjectivePlanHistoryEntry => (
     buildEntry({ id, deviceId: 'dev-1', outcome: 'missed' })
   );
-  const buildMet = (id: string): DeferredObjectivePlanHistoryEntry => (
+  const buildMet = (id: string): ResolvedDeferredObjectivePlanHistoryEntry => (
     buildEntry({ id, deviceId: 'dev-1', outcome: 'met' })
   );
 
@@ -901,7 +903,7 @@ describe('list-row cost ↔ week-divider roll-up agreement (recorded display on 
   const buildCostEntry = (
     totalCost: number,
     costDisplay?: DeferredObjectivePlanHistoryEntry['costDisplay'],
-  ): DeferredObjectivePlanHistoryEntry => ({
+  ): ResolvedDeferredObjectivePlanHistoryEntry => toResolvedPlanHistoryEntry({
     id: `entry-${totalCost}`,
     originalPlan: null,
     finalPlan: null,

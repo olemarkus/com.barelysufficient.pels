@@ -24,7 +24,7 @@ import {
 import { encodeHtml, useEchartsMount, type EChartsOption, type EChartsType, type SeriesOption } from '../echartsRegistry.ts';
 import { formatAcceptedAt } from '../deadlinePlanFormatters.ts';
 import type { DeadlinePlanHistoryView } from '../deadlinePlanHistoryFetch.ts';
-import type { DeferredObjectivePlanHistoryEntry } from '../../../../contracts/src/deferredObjectivePlanHistory.ts';
+import type { ResolvedDeferredObjectivePlanHistoryEntry } from '../../../../contracts/src/deferredObjectivePlanHistory.ts';
 import { DeadlinePlanHistoryDetail } from './DeadlinePlanHistoryDetail.tsx';
 import { DeadlinesHistoryListRoot } from './DeadlinesHistoryList.tsx';
 import { MdTextButton } from './materialWebJSX.tsx';
@@ -230,7 +230,7 @@ export type DeadlinePlanLoadState =
     // History tab and shows the entry's recorded plan snapshots instead of
     // the live planner output.
     status: 'history-detail';
-    entry: DeferredObjectivePlanHistoryEntry;
+    entry: ResolvedDeferredObjectivePlanHistoryEntry;
     timeZone: string;
     history?: DeadlinePlanHistoryView;
   }

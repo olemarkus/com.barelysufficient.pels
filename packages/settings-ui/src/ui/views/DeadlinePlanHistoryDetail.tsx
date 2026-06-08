@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
 import type {
-  DeferredObjectivePlanHistoryEntry,
+  ResolvedDeferredObjectivePlanHistoryEntry,
   DeferredObjectivePlanHistoryRevisionLogEntry,
   DeferredObjectivePlanHistoryRevisionSnapshot,
 } from '../../../../contracts/src/deferredObjectivePlanHistory.ts';
@@ -32,7 +32,7 @@ import { buildUsageDayHref } from '../deadlineUrls.ts';
 import { encodeHtml, useEchartsMount, type EChartsOption } from '../echartsRegistry.ts';
 
 type Props = {
-  entry: DeferredObjectivePlanHistoryEntry;
+  entry: ResolvedDeferredObjectivePlanHistoryEntry;
   timeZone: string;
   // Cost-unit suffix carried through from the boot prices (e.g. `kr`). Empty
   // string when unavailable — the history-detail mount doesn't fetch live
@@ -77,7 +77,7 @@ const ceilToHour = (ms: number): number => Math.ceil(ms / ONE_HOUR_MS) * ONE_HOU
 export const buildHistoryDetailRows = (
   original: DeferredObjectivePlanHistoryRevisionSnapshot | null,
   final: DeferredObjectivePlanHistoryRevisionSnapshot | null,
-  observedIntervals: DeferredObjectivePlanHistoryEntry['observedIntervals'],
+  observedIntervals: ResolvedDeferredObjectivePlanHistoryEntry['observedIntervals'],
   timeZone: string,
   window: { startedAtMs: number; deadlineAtMs: number },
 ): HourRow[] => {

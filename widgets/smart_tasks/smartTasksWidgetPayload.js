@@ -32,7 +32,6 @@ module.exports = __toCommonJS(smartTasksWidgetPayload_exports);
 // packages/shared-domain/src/deferredObjectiveValues.ts
 var resolveTargetValue = (fields) => fields.targetPercent ?? fields.targetTemperatureC ?? null;
 var resolveStartProgressValue = (fields) => fields.startProgressPercent ?? fields.startProgressC ?? null;
-var resolveFinalProgressValue = (fields) => fields.finalProgressPercent ?? fields.finalProgressC ?? null;
 var resolveSampleValue = (fields) => fields.valuePercent ?? fields.valueC ?? null;
 
 // packages/shared-domain/src/deferredPlanHistoryChartData.ts
@@ -121,8 +120,8 @@ var staircasesDiffer = (a, b) => {
   return false;
 };
 var finiteOrNull = (raw) => raw === null || !Number.isFinite(raw) ? null : raw;
-var pickStartProgress = (entry) => finiteOrNull(resolveStartProgressValue(entry));
-var pickTargetValue = (entry) => finiteOrNull(resolveTargetValue(entry));
+var pickStartProgress = (entry) => finiteOrNull(entry.startProgressValue);
+var pickTargetValue = (entry) => finiteOrNull(entry.targetValue);
 var anchorObservedAtStart = (observed, windowStartMs, startProgress) => {
   if (startProgress === null) return [...observed];
   if (observed.length > 0 && observed[0].atMs <= windowStartMs) return [...observed];
@@ -135,7 +134,7 @@ var pickObservedSamples = (entry) => {
   const out = [];
   for (const sample of entry.progressSamples) {
     if (!Number.isFinite(sample.atMs)) continue;
-    const value = resolveSampleValue(sample);
+    const { value } = sample;
     if (value === null || !Number.isFinite(value)) continue;
     out.push({ atMs: sample.atMs, value });
   }
@@ -155,8 +154,8 @@ var pickMetMarker = (entry) => {
 var pickMetMarkerValue = (entry) => {
   if (pickMetMarker(entry) === null) return null;
   if (entry.metReason === "stalled" || entry.metReason === "stalled_device_capped") {
-    const finalProgress = resolveFinalProgressValue(entry);
-    return Number.isFinite(finalProgress) ? finalProgress : null;
+    const finalProgress = entry.finalProgressValue;
+    return finalProgress !== null && Number.isFinite(finalProgress) ? finalProgress : null;
   }
   return pickTargetValue(entry);
 };
@@ -826,8 +825,8 @@ var sumPlannedKWh = (snapshot) => {
 };
 var pickSnapshot = (entry) => entry.finalPlan ?? entry.originalPlan ?? null;
 var resolveProgressTowardTarget = (entry) => {
-  const start = resolveStartProgressValue(entry);
-  const final = resolveFinalProgressValue(entry);
+  const start = entry.startProgressValue;
+  const final = entry.finalProgressValue;
   if (start === null || final === null || !Number.isFinite(start) || !Number.isFinite(final)) return null;
   const deadband = entry.objectiveKind === "temperature" ? NO_DELIVERY_PROGRESS_DEADBAND_C : NO_DELIVERY_PROGRESS_DEADBAND_PERCENT;
   return { delta: final - start, deadband };
@@ -930,8 +929,8 @@ var resolveDisplayedEndValue = (outcome, metReason, finalValue, targetValue) => 
 var formatPlanHistoryProgressLine = (entry) => {
   const suppressArrow = entry.outcome === "abandoned" || entry.outcome === "replaced";
   const formatValue = entry.objectiveKind === "temperature" ? formatTemperature : formatPercent;
-  const startValue = resolveStartProgressValue(entry);
-  const targetValue = resolveTargetValue(entry);
+  const startValue = entry.startProgressValue;
+  const targetValue = entry.targetValue;
   const start = formatValue(startValue);
   const target = formatValue(targetValue);
   if (!start || !target) return null;
@@ -939,7 +938,7 @@ var formatPlanHistoryProgressLine = (entry) => {
   const endValue = resolveDisplayedEndValue(
     entry.outcome,
     entry.metReason,
-    resolveFinalProgressValue(entry),
+    entry.finalProgressValue,
     targetValue
   );
   const end = formatValue(endValue);
@@ -1247,12 +1246,11 @@ var buildCandidate = (params) => {
   });
   return { row, tier: STATUS_TIER[statusId], etaMs, deadlineMs: plan.deadlineAtMs };
 };
-var resolveEndedTarget = (entry) => {
-  if (entry.objectiveKind === "temperature") {
-    return isFiniteNumber(entry.targetTemperatureC) ? entry.targetTemperatureC : null;
-  }
-  return isFiniteNumber(entry.targetPercent) ? entry.targetPercent : null;
-};
+var resolveEndedTarget = (entry) => (
+  // Target is resolved to a single unit-agnostic value on the producer boundary;
+  // `objectiveKind` only picks the display unit symbol downstream.
+  isFiniteNumber(entry.targetValue) ? entry.targetValue : null
+);
 var endedRunWasBudgetBound = (entry) => ((entry.finalPlan ?? entry.originalPlan)?.dailyBudgetExhaustedBucketCount ?? 0) > 0;
 var resolveEndedRecourse = (entry) => {
   if (entry.outcome !== "missed") return null;

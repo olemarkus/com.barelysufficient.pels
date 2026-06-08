@@ -19,6 +19,7 @@ import type {
 import {
   resolveDeferredPlanHistoryMissAttribution,
 } from '../../../packages/shared-domain/src/deferredPlanHistoryAttribution';
+import { toResolvedPlanHistoryEntry } from '../../../packages/shared-domain/src/deferredPlanHistoryResolvedView';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 
 // Resolver supplied by the runtime wiring. Returns the spot price and
@@ -176,7 +177,10 @@ export const buildFinalizedAttributionEvent = (
   entry: DeferredObjectivePlanHistoryEntry,
   energyExpectedKWh: number | null = null,
 ): Record<string, unknown> => {
-  const attribution = resolveDeferredPlanHistoryMissAttribution(entry, energyExpectedKWh);
+  const attribution = resolveDeferredPlanHistoryMissAttribution(
+    toResolvedPlanHistoryEntry(entry),
+    energyExpectedKWh,
+  );
   return {
     event: 'deferred_objective_history_finalized',
     deviceId: entry.deviceId,

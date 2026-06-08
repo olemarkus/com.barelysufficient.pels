@@ -5,8 +5,12 @@ import type {
   DeferredObjectiveActivePlanV1,
   DeferredObjectiveActivePlansV1,
 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
-import type { DeferredObjectivePlanHistoryEntry } from '../../packages/contracts/src/deferredObjectivePlanHistory';
+import type {
+  DeferredObjectivePlanHistoryEntry,
+  ResolvedDeferredObjectivePlanHistoryEntry,
+} from '../../packages/contracts/src/deferredObjectivePlanHistory';
 import type { SettingsUiDeferredObjectivePlanHistoryPayload } from '../../packages/contracts/src/settingsUiApi';
+import { toResolvedPlanHistoryEntry } from '../../packages/shared-domain/src/deferredPlanHistoryResolvedView';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { SMART_TASK_WIDGET_EMPTY_HINT } from '../../packages/shared-domain/src/deadlineLabels';
 import {
@@ -558,7 +562,7 @@ describe('buildSmartTasksWidgetPayload', () => {
 
 const buildHistoryEntry = (
   overrides: Partial<DeferredObjectivePlanHistoryEntry> = {},
-): DeferredObjectivePlanHistoryEntry => ({
+): ResolvedDeferredObjectivePlanHistoryEntry => toResolvedPlanHistoryEntry({
   id: `entry-${Math.random()}`,
   deviceId: 'dev',
   deviceName: 'Device',
@@ -597,7 +601,7 @@ const buildHistoryEntry = (
 });
 
 const historyPayload = (
-  entriesByDeviceId: Record<string, DeferredObjectivePlanHistoryEntry[]>,
+  entriesByDeviceId: Record<string, ResolvedDeferredObjectivePlanHistoryEntry[]>,
 ): SettingsUiDeferredObjectivePlanHistoryPayload => ({ version: 1, entriesByDeviceId });
 
 describe('buildSmartTasksWidgetPayload — recently ended section', () => {

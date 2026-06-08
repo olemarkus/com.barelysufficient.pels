@@ -1,4 +1,4 @@
-import type { DeferredObjectivePlanHistoryEntry } from '../../../../contracts/src/deferredObjectivePlanHistory.ts';
+import type { ResolvedDeferredObjectivePlanHistoryEntry } from '../../../../contracts/src/deferredObjectivePlanHistory.ts';
 import { MdElevation, MdRipple } from './materialWebJSX.tsx';
 import {
   formatPlanHistoryDeadlineLine,
@@ -16,12 +16,12 @@ import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDe
 import { buildDeadlineHistoryHref } from '../deadlineUrls.ts';
 
 type DeadlinePlanHistoryProps = {
-  entries: DeferredObjectivePlanHistoryEntry[];
+  entries: ResolvedDeferredObjectivePlanHistoryEntry[];
   timeZone: string;
 };
 
 export const PlanHistoryCard = ({ entry, timeZone }: {
-  entry: DeferredObjectivePlanHistoryEntry;
+  entry: ResolvedDeferredObjectivePlanHistoryEntry;
   timeZone: string;
 }) => {
   const tone = getPlanHistoryOutcomeTone(entry.outcome);

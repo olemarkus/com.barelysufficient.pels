@@ -4,7 +4,9 @@ import type {
   DeferredObjectiveActivePlanRevisionV1,
   DeferredObjectiveKwhPerUnitProvenanceV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
-import type { DeferredObjectivePlanHistoryEntry } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
+import type {
+  ResolvedDeferredObjectivePlanHistoryEntry,
+} from '../../../packages/contracts/src/deferredObjectivePlanHistory';
 import type { SettingsUiDeferredObjectivePlanHistoryPayload } from '../../../packages/contracts/src/settingsUiApi';
 import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
 import { resolveActivePlanChartData } from '../../../packages/shared-domain/src/deferredActivePlanChartData';
@@ -417,29 +419,28 @@ const buildCandidate = (params: {
   return { row, tier: STATUS_TIER[statusId], etaMs, deadlineMs: plan.deadlineAtMs };
 };
 
-const resolveEndedTarget = (entry: DeferredObjectivePlanHistoryEntry): number | null => {
-  if (entry.objectiveKind === 'temperature') {
-    return isFiniteNumber(entry.targetTemperatureC) ? entry.targetTemperatureC : null;
-  }
-  return isFiniteNumber(entry.targetPercent) ? entry.targetPercent : null;
-};
+const resolveEndedTarget = (entry: ResolvedDeferredObjectivePlanHistoryEntry): number | null => (
+  // Target is resolved to a single unit-agnostic value on the producer boundary;
+  // `objectiveKind` only picks the display unit symbol downstream.
+  isFiniteNumber(entry.targetValue) ? entry.targetValue : null
+);
 
 // A missed run is budget-bound when the recorded plan snapshot saw the daily
 // budget exhausted; otherwise it's device/shortfall-bound. Drives which
 // (hard-cap-safe) recourse hint applies — mirrors `resolveMissedHistoryRecourse`.
-const endedRunWasBudgetBound = (entry: DeferredObjectivePlanHistoryEntry): boolean => (
+const endedRunWasBudgetBound = (entry: ResolvedDeferredObjectivePlanHistoryEntry): boolean => (
   ((entry.finalPlan ?? entry.originalPlan)?.dailyBudgetExhaustedBucketCount ?? 0) > 0
 );
 
 // Missed → budget/device recourse hint (reusing the active cannot-finish copy);
 // every other outcome carries no recourse.
-const resolveEndedRecourse = (entry: DeferredObjectivePlanHistoryEntry): string | null => {
+const resolveEndedRecourse = (entry: ResolvedDeferredObjectivePlanHistoryEntry): string | null => {
   if (entry.outcome !== 'missed') return null;
   return endedRunWasBudgetBound(entry) ? RECOURSE_CANNOT_MEET_BUDGET : RECOURSE_CANNOT_MEET_DEVICE;
 };
 
 const buildEndedRow = (
-  entry: DeferredObjectivePlanHistoryEntry,
+  entry: ResolvedDeferredObjectivePlanHistoryEntry,
   devicesById: Map<string, TargetDeviceSnapshot>,
   nowMs: number,
   timeZone: string | null,

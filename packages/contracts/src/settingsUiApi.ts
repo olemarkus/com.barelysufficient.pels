@@ -1,6 +1,6 @@
 import type { DailyBudgetUiPayload } from './dailyBudgetTypes.js';
 import type { DeferredObjectiveActivePlansV1 } from './deferredObjectiveActivePlans.js';
-import type { DeferredObjectivePlanHistoryEntry } from './deferredObjectivePlanHistory.js';
+import type { ResolvedDeferredObjectivePlanHistoryEntry } from './deferredObjectivePlanHistory.js';
 import type { SettingsUiDeviceDiagnosticsPayload } from './deviceDiagnosticsTypes.js';
 import type { PowerTrackerState } from './powerTrackerTypes.js';
 import type {
@@ -195,7 +195,7 @@ export type SettingsUiDevicesPayload = {
 
 export type SettingsUiDeferredObjectivePlanHistoryPayload = {
   version: 1;
-  entriesByDeviceId: Record<string, DeferredObjectivePlanHistoryEntry[]>;
+  entriesByDeviceId: Record<string, ResolvedDeferredObjectivePlanHistoryEntry[]>;
 };
 
 // One recorded device-overview transition. The four message fields ARE the
