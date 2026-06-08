@@ -51,9 +51,9 @@
 //     chips. See notes/ui-terminology.md "Chip adjectives vs divider verbs".
 
 import type {
-  DeferredObjectivePlanHistoryEntry,
-  DeferredObjectivePlanHistoryProgressSample,
   DeferredObjectivePlanHistoryRevisionSnapshot,
+  ResolvedDeferredObjectivePlanHistoryEntry,
+  ResolvedDeferredObjectivePlanHistoryProgressSample,
 } from '../../contracts/src/deferredObjectivePlanHistory';
 import {
   APPROX_GLYPH,
@@ -97,11 +97,6 @@ import {
   RECEIPT_WEEK_LAST,
   RECEIPT_WEEK_THIS,
 } from './deferredPlanHistoryReceiptStrings';
-import {
-  resolveFinalProgressValue,
-  resolveStartProgressValue,
-  resolveTargetValue,
-} from './deferredObjectiveValues';
 import { priceRateLabelToAmountUnit } from './price/priceUnitLabel';
 import {
   formatDateInTimeZone,
@@ -152,42 +147,45 @@ const formatMargin = (ms: number): string => {
 };
 
 const formatStartProgress = (
-  entry: Pick<DeferredObjectivePlanHistoryEntry,
-    'objectiveKind' | 'startProgressC' | 'startProgressPercent'>,
+  entry: Pick<ResolvedDeferredObjectivePlanHistoryEntry,
+    'objectiveKind' | 'startProgressValue'>,
 ): string | null => {
-  // Value selection is unit-agnostic; only the formatter (°C vs %) stays
-  // kind-specific.
-  const startValue = resolveStartProgressValue(entry);
+  // Value selection is unit-agnostic (resolved on the producer boundary); only
+  // the formatter (°C vs %) stays kind-specific.
+  const startValue = entry.startProgressValue;
   if (startValue === null) return null;
   return entry.objectiveKind === 'temperature'
     ? formatReceiptStartFromTemperature(startValue.toFixed(1))
     : formatReceiptStartFromPercent(startValue.toFixed(0));
 };
 
+// Threshold (in the resolved unit-agnostic value space) above which a progress
+// sample counts as the device having moved off its start reading. A single
+// 0.5 threshold serves both kinds now that samples are pre-resolved: temperature
+// keeps its prior 0.5 °C sensitivity and EV SoC tightens from the previous 1 %
+// to 0.5 (a sanctioned behaviour change — half a percentage point of charge is
+// real motion).
+const MOTION_THRESHOLD = 0.5;
+
 // Picks the first progress sample whose value differs from the entry's start
 // reading — the moment the device actually began moving toward the target.
-// `samples[0]` is the at-start reading; the first sample whose `valueC` /
-// `valuePercent` has shifted is the "motion" sample. When no shift is
-// detected, returns null so the caller falls back to `entry.startedAtMs`.
+// `samples[0]` is the at-start reading; the first sample whose resolved `value`
+// has shifted by at least `MOTION_THRESHOLD` is the "motion" sample. When no
+// shift is detected, returns null so the caller falls back to `entry.startedAtMs`.
 const sampleShowsMotion = (
-  sample: DeferredObjectivePlanHistoryProgressSample,
-  start: { valueC: number | null; valuePercent: number | null },
+  sample: ResolvedDeferredObjectivePlanHistoryProgressSample,
+  startValue: number | null,
 ): boolean => {
-  if (start.valueC !== null && sample.valueC !== null) {
-    if (Math.abs(sample.valueC - start.valueC) >= 0.5) return true;
-  }
-  if (start.valuePercent !== null && sample.valuePercent !== null) {
-    if (Math.abs(sample.valuePercent - start.valuePercent) >= 1) return true;
-  }
-  return false;
+  if (startValue === null || sample.value === null) return false;
+  return Math.abs(sample.value - startValue) >= MOTION_THRESHOLD;
 };
 
 const firstSampleWithMotion = (
-  samples: ReadonlyArray<DeferredObjectivePlanHistoryProgressSample> | undefined,
-  start: { valueC: number | null; valuePercent: number | null },
-): DeferredObjectivePlanHistoryProgressSample | null => {
+  samples: ReadonlyArray<ResolvedDeferredObjectivePlanHistoryProgressSample> | undefined,
+  startValue: number | null,
+): ResolvedDeferredObjectivePlanHistoryProgressSample | null => {
   if (!Array.isArray(samples) || samples.length < 2) return null;
-  return samples.slice(1).find((sample) => sampleShowsMotion(sample, start)) ?? null;
+  return samples.slice(1).find((sample) => sampleShowsMotion(sample, startValue)) ?? null;
 };
 
 const pickLargestHour = (
@@ -225,11 +223,10 @@ const pickLargestHour = (
  */
 export const formatPlanHistoryReceiptTimeline = (
   entry: Pick<
-    DeferredObjectivePlanHistoryEntry,
+    ResolvedDeferredObjectivePlanHistoryEntry,
     'outcome'
     | 'objectiveKind'
-    | 'startProgressC'
-    | 'startProgressPercent'
+    | 'startProgressValue'
     | 'startedAtMs'
     | 'metAtMs'
     | 'deadlineAtMs'
@@ -246,10 +243,7 @@ export const formatPlanHistoryReceiptTimeline = (
   // away from the start reading (the moment charging / heating actually
   // engaged); fall back to `entry.startedAtMs` when no motion sample is
   // available.
-  const motionSample = firstSampleWithMotion(entry.progressSamples, {
-    valueC: entry.startProgressC,
-    valuePercent: entry.startProgressPercent,
-  });
+  const motionSample = firstSampleWithMotion(entry.progressSamples, entry.startProgressValue);
   const startTimeMs = motionSample?.atMs ?? entry.startedAtMs;
   const startedClock = formatClock(startTimeMs, timeZone);
   if (startedClock !== null) {
@@ -313,24 +307,23 @@ const sumPlannedKWh = (
 // one-third of the window, not 25% of it).
 const estimateTimeShortfall = (
   entry: Pick<
-    DeferredObjectivePlanHistoryEntry,
-    'startProgressC' | 'finalProgressC' | 'targetTemperatureC'
-    | 'startProgressPercent' | 'finalProgressPercent' | 'targetPercent'
+    ResolvedDeferredObjectivePlanHistoryEntry,
+    'startProgressValue' | 'finalProgressValue' | 'targetValue'
     | 'startedAtMs' | 'deadlineAtMs'
   >,
 ): number | null => {
   const windowMs = entry.deadlineAtMs - entry.startedAtMs;
   if (!Number.isFinite(windowMs) || windowMs <= 0) return null;
   // Value selection is unit-agnostic — the gap/span ratio math is identical for
-  // °C and %, so resolve each value once and run a single computation.
-  const finalValue = resolveFinalProgressValue(entry);
-  const targetValue = resolveTargetValue(entry);
+  // °C and %, so read each resolved value once and run a single computation.
+  const finalValue = entry.finalProgressValue;
+  const targetValue = entry.targetValue;
   if (finalValue === null || targetValue === null) return null;
   // No defaulting: without a start reading we can't honestly compute the
   // start→target span the gap should be measured against. A defaulted-0
   // start would compress the span (and inflate the shortfall) whenever the
   // run started above zero — better to suppress the chip than fabricate.
-  const startValue = resolveStartProgressValue(entry);
+  const startValue = entry.startProgressValue;
   if (startValue === null) return null;
   const gap = targetValue - finalValue;
   const totalSpan = targetValue - startValue;
@@ -349,10 +342,9 @@ const estimateTimeShortfall = (
  */
 export const formatPlanHistoryShortfallChip = (
   entry: Pick<
-    DeferredObjectivePlanHistoryEntry,
+    ResolvedDeferredObjectivePlanHistoryEntry,
     'outcome' | 'deliveredKWh' | 'finalPlan' | 'originalPlan'
-    | 'startProgressC' | 'finalProgressC' | 'targetTemperatureC'
-    | 'startProgressPercent' | 'finalProgressPercent' | 'targetPercent'
+    | 'startProgressValue' | 'finalProgressValue' | 'targetValue'
     | 'startedAtMs' | 'deadlineAtMs'
   >,
 ): string | null => {
@@ -417,7 +409,7 @@ export const formatPlanHistoryShortfallChip = (
  * punctuation reads as audit prose when stacked with other chips.
  */
 export const formatPlanHistoryCostNarrative = (
-  entry: Pick<DeferredObjectivePlanHistoryEntry, 'outcome' | 'totalCost' | 'costDisplay'>,
+  entry: Pick<ResolvedDeferredObjectivePlanHistoryEntry, 'outcome' | 'totalCost' | 'costDisplay'>,
 ): string | null => {
   if (entry.outcome !== 'met' && entry.outcome !== 'missed') return null;
   // Format with the display the entry was RECORDED under, not a live one — a
@@ -449,7 +441,7 @@ export const formatPlanHistoryCostNarrative = (
 // every outcome and pairs the cost with the delivered-kWh half. Null when
 // neither cost nor delivery was recorded (legacy entry) — never a 0 kr row.
 export const formatPlanHistoryListCostAndDelivered = (
-  entry: Pick<DeferredObjectivePlanHistoryEntry, 'deliveredKWh' | 'totalCost' | 'costDisplay'>,
+  entry: Pick<ResolvedDeferredObjectivePlanHistoryEntry, 'deliveredKWh' | 'totalCost' | 'costDisplay'>,
 ): string | null => {
   const { totalCost, deliveredKWh } = entry;
   // Scale + label with the entry's RECORDED display so a scheme switch can't
@@ -483,7 +475,7 @@ export type PlanHistoryAbandonedDetails = {
 };
 
 const formatLastDeviceState = (
-  entry: Pick<DeferredObjectivePlanHistoryEntry, 'objectiveKind' | 'finalPlan' | 'originalPlan'>,
+  entry: Pick<ResolvedDeferredObjectivePlanHistoryEntry, 'objectiveKind' | 'finalPlan' | 'originalPlan'>,
 ): string | null => {
   const lastPlan = entry.finalPlan ?? entry.originalPlan;
   if (lastPlan === null) return null;
@@ -532,7 +524,7 @@ const formatLastDeviceState = (
  */
 export const formatPlanHistoryAbandonedDetails = (
   entry: Pick<
-    DeferredObjectivePlanHistoryEntry,
+    ResolvedDeferredObjectivePlanHistoryEntry,
     'outcome' | 'finalizedAtMs' | 'deliveredKWh'
     | 'finalPlan' | 'originalPlan' | 'objectiveKind'
   >,
@@ -558,7 +550,7 @@ export type PlanHistoryWeekGroup = {
   // Pre-formatted heading copy ("Week 20 · 4 deadlines met · ≈ 41 kr.").
   // Renders as a quiet section break above the grouped cards.
   heading: string;
-  entries: DeferredObjectivePlanHistoryEntry[];
+  entries: ResolvedDeferredObjectivePlanHistoryEntry[];
 };
 
 // ISO week number per ISO-8601: weeks start on Monday; week 1 is the week
@@ -604,7 +596,7 @@ const formatWeekKey = (year: number, week: number): string => (
 // their own correct per-row cost line beneath it. Keeps the roll-up honest and
 // in agreement with the rows.
 const sumEntryDisplayCost = (
-  entries: ReadonlyArray<DeferredObjectivePlanHistoryEntry>,
+  entries: ReadonlyArray<ResolvedDeferredObjectivePlanHistoryEntry>,
   headingUnit: string,
 ): number => {
   let total = 0;
@@ -623,7 +615,7 @@ const sumEntryDisplayCost = (
 // still each render their own unit correctly, and the heading picks a single
 // representative label for the rolled-up amount.
 const resolveWeekHeadingUnit = (
-  entries: ReadonlyArray<DeferredObjectivePlanHistoryEntry>,
+  entries: ReadonlyArray<ResolvedDeferredObjectivePlanHistoryEntry>,
 ): string => {
   for (const entry of entries) {
     if (typeof entry.totalCost === 'number' && Number.isFinite(entry.totalCost)) {
@@ -686,7 +678,7 @@ type OutcomeCounts = {
 // notes/ui-terminology.md — both render the same `Abandoned` chip on each
 // row, and the divider summary speaks the chip language.
 const countOutcomes = (
-  entries: ReadonlyArray<DeferredObjectivePlanHistoryEntry>,
+  entries: ReadonlyArray<ResolvedDeferredObjectivePlanHistoryEntry>,
 ): OutcomeCounts => {
   const counts: OutcomeCounts = { succeeded: 0, missed: 0, abandoned: 0 };
   for (const entry of entries) {
@@ -703,7 +695,7 @@ const formatWeekHeading = (
   weekStartMs: number,
   nowMs: number,
   timeZone: string,
-  entries: ReadonlyArray<DeferredObjectivePlanHistoryEntry>,
+  entries: ReadonlyArray<ResolvedDeferredObjectivePlanHistoryEntry>,
 ): string => {
   const lead = formatRelativeWeekLabel(weekStartMs, nowMs, timeZone);
   const counts = countOutcomes(entries);
@@ -754,7 +746,7 @@ const formatWeekHeading = (
  * the helper stays pure and snapshot-testable.
  */
 export const groupPlanHistoryByIsoWeek = (
-  entries: ReadonlyArray<DeferredObjectivePlanHistoryEntry>,
+  entries: ReadonlyArray<ResolvedDeferredObjectivePlanHistoryEntry>,
   timeZone: string,
   nowMs: number,
 ): PlanHistoryWeekGroup[] => {
@@ -864,7 +856,7 @@ type SevenDayCounts = {
 // back to `deadlineAtMs` for older schema rows that persisted without a
 // finalisation timestamp, so the strip doesn't silently lose legacy entries.
 const resolveWindowAnchorMs = (
-  entry: Pick<DeferredObjectivePlanHistoryEntry, 'finalizedAtMs' | 'deadlineAtMs'>,
+  entry: Pick<ResolvedDeferredObjectivePlanHistoryEntry, 'finalizedAtMs' | 'deadlineAtMs'>,
 ): number => (
   Number.isFinite(entry.finalizedAtMs) ? entry.finalizedAtMs : entry.deadlineAtMs
 );
@@ -875,7 +867,7 @@ const resolveWindowAnchorMs = (
 // renders when only backfill rows survive) but not toward any bucket.
 const tallySevenDayEntry = (
   counts: SevenDayCounts,
-  entry: DeferredObjectivePlanHistoryEntry,
+  entry: ResolvedDeferredObjectivePlanHistoryEntry,
   cutoffMs: number,
   nowMs: number,
 ): SevenDayCounts => {
@@ -963,7 +955,7 @@ export type PlanHistory7DayHitRateStrip = {
  * log breadcrumbs so structured logs and the UI never drift.
  */
 export const resolvePlanHistory7DayHitRateStrip = (
-  entries: ReadonlyArray<DeferredObjectivePlanHistoryEntry>,
+  entries: ReadonlyArray<ResolvedDeferredObjectivePlanHistoryEntry>,
   nowMs: number,
   // Anchors the 7-day window's lower bound: the cutoff is 6 local midnights
   // before `nowMs`'s local day-start (7 local date buckets total — today plus

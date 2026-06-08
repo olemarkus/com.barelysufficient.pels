@@ -5,14 +5,10 @@ import type {
   DeferredObjectivePlanHistoryRevisionSnapshot,
   DeferredObjectivePlanMetReason,
   DeferredObjectivePlanOutcome,
+  ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../contracts/src/deferredObjectivePlanHistory';
 import { APPROX_GLYPH, resolveRevisionReason } from './deadlineLabels';
 import { formatRefinedMissCause } from './deferredPlanHistoryAttribution';
-import {
-  resolveFinalProgressValue,
-  resolveStartProgressValue,
-  resolveTargetValue,
-} from './deferredObjectiveValues';
 import { resolveEntryCostDisplay, scaleRawCostToDisplay } from './deferredPlanHistoryReceiptStrings';
 import { priceRateLabelToAmountUnit } from './price/priceUnitLabel';
 import { formatTimeInTimeZone } from './utils/dateUtils';
@@ -104,30 +100,27 @@ const resolveDisplayedEndValue = (
 
 export const formatPlanHistoryProgressLine = (
   entry: Pick<
-    DeferredObjectivePlanHistoryEntry,
+    ResolvedDeferredObjectivePlanHistoryEntry,
     'objectiveKind'
     | 'outcome'
     | 'metReason'
-    | 'targetTemperatureC'
-    | 'targetPercent'
-    | 'startProgressC'
-    | 'startProgressPercent'
-    | 'finalProgressC'
-    | 'finalProgressPercent'
+    | 'targetValue'
+    | 'startProgressValue'
+    | 'finalProgressValue'
   >,
 ): string | null => {
   const suppressArrow = entry.outcome === 'abandoned' || entry.outcome === 'replaced';
-  // Value selection is unit-agnostic (resolver coalesces the kind-split pair);
+  // Value selection is unit-agnostic (resolved on the producer boundary);
   // only the formatter (°C vs %) stays kind-specific.
   const formatValue = entry.objectiveKind === 'temperature' ? formatTemperature : formatPercent;
-  const startValue = resolveStartProgressValue(entry);
-  const targetValue = resolveTargetValue(entry);
+  const startValue = entry.startProgressValue;
+  const targetValue = entry.targetValue;
   const start = formatValue(startValue);
   const target = formatValue(targetValue);
   if (!start || !target) return null;
   if (suppressArrow) return `${start}  ·  target ${target}`;
   const endValue = resolveDisplayedEndValue(
-    entry.outcome, entry.metReason, resolveFinalProgressValue(entry), targetValue,
+    entry.outcome, entry.metReason, entry.finalProgressValue, targetValue,
   );
   const end = formatValue(endValue);
   return `${start} → ${end ?? '—'}  ·  target ${target}`;
@@ -210,19 +203,17 @@ const OVERSHOOT_PERCENT_THRESHOLD_PUBLIC = 10;
  */
 export const formatPlanHistoryOvershootLine = (
   entry: Pick<
-    DeferredObjectivePlanHistoryEntry,
+    ResolvedDeferredObjectivePlanHistoryEntry,
     'outcome'
     | 'objectiveKind'
-    | 'targetTemperatureC'
-    | 'targetPercent'
-    | 'finalProgressC'
-    | 'finalProgressPercent'
+    | 'targetValue'
+    | 'finalProgressValue'
   >,
 ): string | null => {
   if (entry.outcome !== 'met') return null;
   // Value selection is unit-agnostic; the threshold + unit suffix stay kind-specific.
-  const finalValue = resolveFinalProgressValue(entry);
-  const targetValue = resolveTargetValue(entry);
+  const finalValue = entry.finalProgressValue;
+  const targetValue = entry.targetValue;
   if (finalValue === null || targetValue === null) return null;
   const delta = finalValue - targetValue;
   if (entry.objectiveKind === 'temperature') {
@@ -364,9 +355,9 @@ const pickLastPlan = (
  */
 export const formatPlanHistoryMissedReason = (
   entry: Pick<
-    DeferredObjectivePlanHistoryEntry,
+    ResolvedDeferredObjectivePlanHistoryEntry,
     'outcome' | 'originalPlan' | 'finalPlan' | 'discoveredFrom' | 'deliveredKWh' | 'objectiveKind'
-    | 'startProgressC' | 'startProgressPercent' | 'finalProgressC' | 'finalProgressPercent'
+    | 'startProgressValue' | 'finalProgressValue'
   >,
 ): string | null => {
   if (entry.outcome !== 'missed') return null;
@@ -467,30 +458,21 @@ const formatValueWithUnit = (
 
 const formatTargetValue = (
   kind: 'temperature' | 'ev_soc',
-  targetTemperatureC: number | null,
-  targetPercent: number | null,
-): string | null => formatValueWithUnit(kind, resolveTargetValue({ targetTemperatureC, targetPercent }));
+  targetValue: number | null,
+): string | null => formatValueWithUnit(kind, targetValue);
 
 const formatFinalProgressValue = (
   kind: 'temperature' | 'ev_soc',
-  finalProgressC: number | null,
-  finalProgressPercent: number | null,
-): string | null => formatValueWithUnit(
-  kind,
-  resolveFinalProgressValue({ finalProgressC, finalProgressPercent }),
-);
+  finalProgressValue: number | null,
+): string | null => formatValueWithUnit(kind, finalProgressValue);
 
 const formatShortfallValue = (
   kind: 'temperature' | 'ev_soc',
-  finalProgressC: number | null,
-  targetTemperatureC: number | null,
-  finalProgressPercent: number | null,
-  targetPercent: number | null,
+  finalProgressValue: number | null,
+  targetValue: number | null,
 ): string | null => {
-  const finalValue = resolveFinalProgressValue({ finalProgressC, finalProgressPercent });
-  const targetValue = resolveTargetValue({ targetTemperatureC, targetPercent });
-  if (finalValue === null || targetValue === null) return null;
-  const gap = targetValue - finalValue;
+  if (finalProgressValue === null || targetValue === null) return null;
+  const gap = targetValue - finalProgressValue;
   if (gap <= 0) return null;
   return kind === 'temperature' ? `${gap.toFixed(1)} °C` : `${gap.toFixed(0)} %`;
 };
@@ -501,29 +483,23 @@ const formatShortfallValue = (
 // to the postmortem sentence; the dedicated overshoot line copy lives in PR 6.
 const wasOvershoot = (
   kind: 'temperature' | 'ev_soc',
-  finalProgressC: number | null,
-  targetTemperatureC: number | null,
-  finalProgressPercent: number | null,
-  targetPercent: number | null,
+  finalProgressValue: number | null,
+  targetValue: number | null,
 ): boolean => {
-  const finalValue = resolveFinalProgressValue({ finalProgressC, finalProgressPercent });
-  const targetValue = resolveTargetValue({ targetTemperatureC, targetPercent });
-  if (finalValue === null || targetValue === null) return false;
+  if (finalProgressValue === null || targetValue === null) return false;
   const threshold = kind === 'temperature'
     ? OVERSHOOT_TEMPERATURE_THRESHOLD_C
     : OVERSHOOT_PERCENT_THRESHOLD;
-  return finalValue - targetValue > threshold;
+  return finalProgressValue - targetValue > threshold;
 };
 
 type PostmortemEntry = Pick<
-  DeferredObjectivePlanHistoryEntry,
+  ResolvedDeferredObjectivePlanHistoryEntry,
   'outcome'
   | 'metReason'
   | 'objectiveKind'
-  | 'targetTemperatureC'
-  | 'targetPercent'
-  | 'finalProgressC'
-  | 'finalProgressPercent'
+  | 'targetValue'
+  | 'finalProgressValue'
   | 'metAtMs'
   | 'deadlineAtMs'
   | 'finalizedAtMs'
@@ -546,11 +522,7 @@ const resolveMetTimingLabels = (
   entry: PostmortemEntry,
   timeZone: string,
 ): MetTimingLabels | null => {
-  const targetLabel = formatTargetValue(
-    entry.objectiveKind,
-    entry.targetTemperatureC,
-    entry.targetPercent,
-  );
+  const targetLabel = formatTargetValue(entry.objectiveKind, entry.targetValue);
   const metAtLabel = entry.metAtMs !== null ? formatClockTime(entry.metAtMs, timeZone) : null;
   const deadlineLabel = formatClockTime(entry.deadlineAtMs, timeZone);
   const marginMs = entry.metAtMs === null ? null : entry.deadlineAtMs - entry.metAtMs;
@@ -571,16 +543,8 @@ const resolveStalledMetPostmortem = (
   // the target so the gap is obvious, and explicitly tell the user we
   // counted it as done. Falls through to a target-less plain sentence if
   // either piece is missing so a malformed entry still gets a sentence.
-  const finalLabel = formatFinalProgressValue(
-    entry.objectiveKind,
-    entry.finalProgressC,
-    entry.finalProgressPercent,
-  );
-  const targetLabel = formatTargetValue(
-    entry.objectiveKind,
-    entry.targetTemperatureC,
-    entry.targetPercent,
-  );
+  const finalLabel = formatFinalProgressValue(entry.objectiveKind, entry.finalProgressValue);
+  const targetLabel = formatTargetValue(entry.objectiveKind, entry.targetValue);
   if (finalLabel !== null && targetLabel !== null) {
     return {
       variant: 'met-by-stall',
@@ -602,16 +566,8 @@ const resolveDeviceCappedMetPostmortem = (
   // device itself — its setpoint cap noun (deliberately not "hard cap",
   // which is the PELS-canonical physical-line concept per
   // `feedback_hard_cap_is_physical.md`).
-  const finalLabel = formatFinalProgressValue(
-    entry.objectiveKind,
-    entry.finalProgressC,
-    entry.finalProgressPercent,
-  );
-  const targetLabel = formatTargetValue(
-    entry.objectiveKind,
-    entry.targetTemperatureC,
-    entry.targetPercent,
-  );
+  const finalLabel = formatFinalProgressValue(entry.objectiveKind, entry.finalProgressValue);
+  const targetLabel = formatTargetValue(entry.objectiveKind, entry.targetValue);
   if (finalLabel !== null && targetLabel !== null) {
     return {
       variant: 'met-by-device-cap',
@@ -645,13 +601,7 @@ const resolveMetPostmortem = (
     return resolveStalledMetPostmortem(entry);
   }
   const timing = resolveMetTimingLabels(entry, timeZone);
-  const overshot = wasOvershoot(
-    entry.objectiveKind,
-    entry.finalProgressC,
-    entry.targetTemperatureC,
-    entry.finalProgressPercent,
-    entry.targetPercent,
-  );
+  const overshot = wasOvershoot(entry.objectiveKind, entry.finalProgressValue, entry.targetValue);
   if (overshot && timing !== null) {
     // The `Overshoot N °C` muted subline (rendered separately by
     // `DeadlinePlanHistoryDetail.tsx`) already carries the magnitude — folding
@@ -685,11 +635,7 @@ const resolveMetPostmortem = (
   // Met but we lack the timing detail to compose the receipt sentence (legacy
   // entry without `metAtMs`, malformed deadline). Fall back to a plain
   // confirmation rather than null so the hero always carries a lead line.
-  const targetLabel = formatTargetValue(
-    entry.objectiveKind,
-    entry.targetTemperatureC,
-    entry.targetPercent,
-  );
+  const targetLabel = formatTargetValue(entry.objectiveKind, entry.targetValue);
   return {
     variant: 'met-with-margin',
     sentence: targetLabel !== null
@@ -715,22 +661,12 @@ const resolveMissedPostmortem = (
         : 'The daily energy budget ran out before the deadline.',
     };
   }
-  const finalLabel = formatFinalProgressValue(
-    entry.objectiveKind,
-    entry.finalProgressC,
-    entry.finalProgressPercent,
-  );
-  const targetLabel = formatTargetValue(
-    entry.objectiveKind,
-    entry.targetTemperatureC,
-    entry.targetPercent,
-  );
+  const finalLabel = formatFinalProgressValue(entry.objectiveKind, entry.finalProgressValue);
+  const targetLabel = formatTargetValue(entry.objectiveKind, entry.targetValue);
   const shortfallLabel = formatShortfallValue(
     entry.objectiveKind,
-    entry.finalProgressC,
-    entry.targetTemperatureC,
-    entry.finalProgressPercent,
-    entry.targetPercent,
+    entry.finalProgressValue,
+    entry.targetValue,
   );
   if (
     finalLabel !== null

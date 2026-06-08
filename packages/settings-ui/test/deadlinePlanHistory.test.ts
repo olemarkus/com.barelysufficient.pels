@@ -1,9 +1,15 @@
 import { h, render } from 'preact';
 import { describe, expect, it } from 'vitest';
 import { DeadlinePlanHistory } from '../src/ui/views/DeadlinePlanHistory.tsx';
-import type { DeferredObjectivePlanHistoryEntry } from '../../contracts/src/deferredObjectivePlanHistory';
+import type {
+  DeferredObjectivePlanHistoryEntry,
+  ResolvedDeferredObjectivePlanHistoryEntry,
+} from '../../contracts/src/deferredObjectivePlanHistory';
+import { toResolvedPlanHistoryEntry } from '../../shared-domain/src/deferredPlanHistoryResolvedView.ts';
 
-const buildEntry = (overrides: Partial<DeferredObjectivePlanHistoryEntry> = {}): DeferredObjectivePlanHistoryEntry => ({
+const buildEntry = (
+  overrides: Partial<DeferredObjectivePlanHistoryEntry> = {},
+): ResolvedDeferredObjectivePlanHistoryEntry => toResolvedPlanHistoryEntry({
   id: 'entry-test-1',
   originalPlan: null,
   finalPlan: null,
@@ -171,7 +177,7 @@ describe('DeadlinePlanHistory', () => {
     delete stripped.observedIntervals;
     delete stripped.discoveredFrom;
     const mount = mountIntoBody(h(DeadlinePlanHistory, {
-      entries: [stripped as DeferredObjectivePlanHistoryEntry],
+      entries: [stripped as ResolvedDeferredObjectivePlanHistoryEntry],
       timeZone: 'UTC',
     }));
     // The list and the outcome chip still render.

@@ -13,7 +13,7 @@
 // composition lives here; the view's only branches are on the resolved
 // `tone` and the presence/absence of optional fields.
 import type {
-  DeferredObjectivePlanHistoryEntry,
+  ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../../contracts/src/deferredObjectivePlanHistory.ts';
 import {
   formatPlanHistoryAbandonedSecondary,
@@ -134,7 +134,7 @@ export type DeadlinePlanHistoryHeroPayload = {
 
 
 export type BuildHistoryDetailHeroParams = {
-  entry: DeferredObjectivePlanHistoryEntry;
+  entry: ResolvedDeferredObjectivePlanHistoryEntry;
   timeZone: string;
   // Heading timestamp pre-formatted by the caller (e.g. `Sat 16 May 16:00`).
   // Kept off the entry so the producer stays free of locale helpers.

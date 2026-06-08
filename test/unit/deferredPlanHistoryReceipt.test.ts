@@ -21,7 +21,9 @@ import {
 import type {
   DeferredObjectivePlanHistoryEntry,
   DeferredObjectivePlanHistoryRevisionSnapshot,
+  ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../packages/contracts/src/deferredObjectivePlanHistory';
+import { toResolvedPlanHistoryEntry } from '../../packages/shared-domain/src/deferredPlanHistoryResolvedView';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DEADLINE_MS = Date.UTC(2026, 4, 16, 7, 0, 0); // Sat 16 May 07:00 UTC
@@ -42,7 +44,7 @@ const buildSnapshot = (
 
 const buildEntry = (
   overrides: Partial<DeferredObjectivePlanHistoryEntry> = {},
-): DeferredObjectivePlanHistoryEntry => ({
+): ResolvedDeferredObjectivePlanHistoryEntry => toResolvedPlanHistoryEntry({
   id: 'entry-1',
   deviceId: 'dev-1',
   deviceName: 'Connected 300',
@@ -90,6 +92,42 @@ describe('formatPlanHistoryReceiptTimeline (Succeeded)', () => {
 
   it('returns null on Missed entries (the receipt is a Succeeded-only shape)', () => {
     expect(formatPlanHistoryReceiptTimeline(buildEntry({ outcome: 'missed' }), 'UTC')).toBeNull();
+  });
+
+  // The "Started" row picks the first progress sample that moved >= 0.5 off the
+  // start reading. After the resolved-view split this is a single 0.5 threshold
+  // for every kind (was 0.5 °C / 1 % keyed off which raw column was populated).
+  // For EV SoC that tightens 1 -> 0.5: a 0.6-point shift now counts as motion,
+  // a 0.4-point shift still does not.
+  it('treats a 0.6 % SoC shift as motion (single 0.5 threshold)', () => {
+    const rows = formatPlanHistoryReceiptTimeline(
+      buildEntry({
+        startProgressPercent: 20,
+        progressSamples: [
+          { atMs: DEADLINE_MS - 8 * HOUR_MS, valueC: null, valuePercent: 20 },
+          { atMs: DEADLINE_MS - 6 * HOUR_MS, valueC: null, valuePercent: 20.6 },
+        ],
+      }),
+      'UTC',
+    );
+    const started = rows!.find((row) => row.label === RECEIPT_ROW_LABEL_STARTED);
+    expect(started?.time).toBe('01:00'); // the motion sample at DEADLINE - 6h
+  });
+
+  it('does not treat a 0.4 % SoC shift as motion (falls back to startedAtMs)', () => {
+    const rows = formatPlanHistoryReceiptTimeline(
+      buildEntry({
+        startedAtMs: DEADLINE_MS - 8 * HOUR_MS,
+        startProgressPercent: 20,
+        progressSamples: [
+          { atMs: DEADLINE_MS - 8 * HOUR_MS, valueC: null, valuePercent: 20 },
+          { atMs: DEADLINE_MS - 6 * HOUR_MS, valueC: null, valuePercent: 20.4 },
+        ],
+      }),
+      'UTC',
+    );
+    const started = rows!.find((row) => row.label === RECEIPT_ROW_LABEL_STARTED);
+    expect(started?.time).toBe('23:00'); // no motion -> startedAtMs at DEADLINE - 8h
   });
 
   it('returns null when fewer than two rows can be composed (no plan, no metAtMs)', () => {

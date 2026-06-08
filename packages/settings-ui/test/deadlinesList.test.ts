@@ -9,6 +9,7 @@ import type {
   DeferredObjectiveSettingsEntry,
 } from '../../contracts/src/deferredObjectiveSettings.ts';
 import type { TargetDeviceSnapshot } from '../../contracts/src/types.ts';
+import { toResolvedPlanHistoryEntry } from '../../shared-domain/src/deferredPlanHistoryResolvedView.ts';
 
 const { resolveDeadlinesListCards, resolveDeadlinesHistoryEntries } = testExports;
 
@@ -500,7 +501,7 @@ describe('resolveDeadlinesListCards', () => {
 });
 
 describe('resolveDeadlinesHistoryEntries', () => {
-  const buildEntry = (deviceId: string, finalizedAtMs: number) => ({
+  const buildEntry = (deviceId: string, finalizedAtMs: number) => toResolvedPlanHistoryEntry({
     deviceId,
     deviceName: deviceId,
     objectiveKind: 'temperature' as const,
@@ -557,7 +558,7 @@ describe('history device-filter persistence', () => {
     renderHistorySurface,
   } = testExports;
 
-  const buildHistoryPayloadEntry = (deviceId: string, finalizedAtMs: number, deviceName: string) => ({
+  const buildHistoryPayloadEntry = (deviceId: string, finalizedAtMs: number, deviceName: string) => toResolvedPlanHistoryEntry({
     id: `${deviceId}-${finalizedAtMs}`,
     deviceId,
     deviceName,
@@ -676,7 +677,7 @@ describe('history cost meta line (real state path)', () => {
   // `totalCost` is the RAW persisted total in the scheme's minor unit (øre for
   // the default kr/100 scheme), exactly as the runtime accumulates it from
   // combined-price totals.
-  const buildCostEntry = (totalCost: number, deliveredKWh: number) => ({
+  const buildCostEntry = (totalCost: number, deliveredKWh: number) => toResolvedPlanHistoryEntry({
     id: `dev_cost-${totalCost}`,
     deviceId: 'dev_cost',
     deviceName: 'Connected 300',

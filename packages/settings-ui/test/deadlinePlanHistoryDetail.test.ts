@@ -4,7 +4,9 @@ import { describe, expect, it, vi } from 'vitest';
 import type {
   DeferredObjectivePlanHistoryEntry,
   DeferredObjectivePlanHistoryRevisionSnapshot,
+  ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../contracts/src/deferredObjectivePlanHistory';
+import { toResolvedPlanHistoryEntry } from '../../shared-domain/src/deferredPlanHistoryResolvedView.ts';
 
 // Mock the ECharts registry to avoid mounting real ECharts in JSDOM. The
 // `useEchartsMount` stub mirrors the production hook's shape — it still runs
@@ -45,7 +47,7 @@ const buildRevision = (
 
 const buildEntry = (
   overrides: Partial<DeferredObjectivePlanHistoryEntry> = {},
-): DeferredObjectivePlanHistoryEntry => ({
+): ResolvedDeferredObjectivePlanHistoryEntry => toResolvedPlanHistoryEntry({
   id: 'entry-test-1',
   deviceId: 'dev_water_heater',
   deviceName: 'Connected 300',
@@ -71,7 +73,7 @@ const buildEntry = (
 });
 
 const mount = async (
-  entry: DeferredObjectivePlanHistoryEntry,
+  entry: ResolvedDeferredObjectivePlanHistoryEntry,
   options: { costUnit?: string } = {},
 ): Promise<HTMLElement> => {
   const root = document.createElement('div');

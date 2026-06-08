@@ -1,5 +1,5 @@
 import { render } from 'preact';
-import type { DeferredObjectivePlanHistoryEntry } from '../../../../contracts/src/deferredObjectivePlanHistory.ts';
+import type { ResolvedDeferredObjectivePlanHistoryEntry } from '../../../../contracts/src/deferredObjectivePlanHistory.ts';
 import {
   SMART_TASK_PAST_EMPTY_COPY,
   SMART_TASK_PAST_HEADING,
@@ -29,7 +29,7 @@ export type DeadlinesHistoryListState =
   | { status: 'empty' }
   | {
       status: 'ready';
-      entries: DeferredObjectivePlanHistoryEntry[];
+      entries: ResolvedDeferredObjectivePlanHistoryEntry[];
       timeZone: string;
       // No live cost display is threaded in: both the per-row cost line and the
       // week roll-up scale + label each entry with its OWN recorded `costDisplay`
@@ -60,7 +60,7 @@ type MissStreakBadge = { deviceId: string; deviceName: string; line: string };
 // mistake user's "pattern at a glance" signal without forcing them to mentally
 // aggregate the chip column.
 const resolveMissStreakBadges = (
-  entries: ReadonlyArray<DeferredObjectivePlanHistoryEntry>,
+  entries: ReadonlyArray<ResolvedDeferredObjectivePlanHistoryEntry>,
 ): MissStreakBadge[] => {
   const seenDevices = new Set<string>();
   const badges: MissStreakBadge[] = [];

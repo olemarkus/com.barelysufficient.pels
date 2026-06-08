@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SettingsUiDeferredObjectivePlanHistoryPayload } from '../../contracts/src/settingsUiApi.ts';
+import { toResolvedPlanHistoryEntry } from '../../shared-domain/src/deferredPlanHistoryResolvedView.ts';
 
 // Stale-history-refresh race guard. PR1 made the independently-fetched history
 // callback re-render the active list (to thread the resolved `historyPresent`
@@ -44,7 +45,7 @@ const emptyBootstrap = {
 };
 const emptyDevices = { devices: [] };
 
-const historyEntry = () => ({
+const historyEntry = () => toResolvedPlanHistoryEntry({
   id: 'entry-1',
   deviceId: 'dev_a',
   deviceName: 'Boiler',

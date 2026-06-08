@@ -289,6 +289,37 @@ export type DeferredObjectivePlanHistoryEntry = {
 // train) will surface its own constant or read the array length directly,
 // so we deliberately don't export the cap here until a consumer needs it.
 
+// Hourly progress sample with the kind-split (°C/%) pair already resolved to a
+// single unit-agnostic number. This is the shape consumers receive — the raw
+// `valueC`/`valuePercent` pair never crosses the API/producer boundary.
+export type ResolvedDeferredObjectivePlanHistoryProgressSample = {
+  atMs: number;
+  value: number | null;
+};
+
+// Consumer-facing view of a finalized plan-history entry. The raw kind-split
+// value columns (`targetTemperatureC`/`targetPercent`, `startProgress*`,
+// `finalProgress*`, and sample `valueC`/`valuePercent`) are RESOLVED to single
+// unit-agnostic numbers (`targetValue` / `startProgressValue` /
+// `finalProgressValue`, sample `value`) by `toResolvedPlanHistoryEntry` before
+// the entry reaches any consumer. The raw columns are intentionally ABSENT from
+// this type, so reading one is a compile error: consumers branch on
+// `objectiveKind` only to pick a display unit, never to pick a value.
+// Persistence keeps the raw columns (see `DeferredObjectivePlanHistoryEntry`);
+// resolution happens once, at the producer boundary.
+export type ResolvedDeferredObjectivePlanHistoryEntry = Omit<
+  DeferredObjectivePlanHistoryEntry,
+  'targetTemperatureC' | 'targetPercent'
+  | 'startProgressC' | 'startProgressPercent'
+  | 'finalProgressC' | 'finalProgressPercent'
+  | 'progressSamples'
+> & {
+  targetValue: number | null;
+  startProgressValue: number | null;
+  finalProgressValue: number | null;
+  progressSamples?: ResolvedDeferredObjectivePlanHistoryProgressSample[];
+};
+
 export type DeferredObjectivePlanHistoryV4 = {
   version: 4;
   entries: DeferredObjectivePlanHistoryEntry[];

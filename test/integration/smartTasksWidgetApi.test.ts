@@ -13,8 +13,12 @@ import type {
   DeferredObjectiveActivePlanV1,
   DeferredObjectiveActivePlansV1,
 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
-import type { DeferredObjectivePlanHistoryEntry } from '../../packages/contracts/src/deferredObjectivePlanHistory';
+import type {
+  DeferredObjectivePlanHistoryEntry,
+  ResolvedDeferredObjectivePlanHistoryEntry,
+} from '../../packages/contracts/src/deferredObjectivePlanHistory';
 import type { SettingsUiDeferredObjectivePlanHistoryPayload } from '../../packages/contracts/src/settingsUiApi';
+import { toResolvedPlanHistoryEntry } from '../../packages/shared-domain/src/deferredPlanHistoryResolvedView';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 
 const NOW = Date.now();
@@ -52,7 +56,9 @@ const device = (o: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => 
   ...o,
 } as TargetDeviceSnapshot);
 
-const historyEntry = (o: Partial<DeferredObjectivePlanHistoryEntry> = {}): DeferredObjectivePlanHistoryEntry => ({
+const historyEntry = (
+  o: Partial<DeferredObjectivePlanHistoryEntry> = {},
+): ResolvedDeferredObjectivePlanHistoryEntry => toResolvedPlanHistoryEntry({
   id: `e${Math.random()}`,
   deviceId: 'wh',
   deviceName: 'Water heater',

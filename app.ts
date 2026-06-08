@@ -161,9 +161,8 @@ import {
 } from './setup/settingsUiAppRuntime';
 import type { DeviceDiagnosticsService } from './lib/diagnostics/deviceDiagnosticsService';
 import type { SettingsUiDeviceDiagnosticsPayload } from './packages/contracts/src/deviceDiagnosticsTypes';
-import type {
-  DeferredObjectivePlanHistoryEntry,
-} from './packages/contracts/src/deferredObjectivePlanHistory';
+import type { DeferredObjectivePlanHistoryEntry } from './packages/contracts/src/deferredObjectivePlanHistory';
+import { toResolvedPlanHistoryEntry } from './packages/shared-domain/src/deferredPlanHistoryResolvedView';
 import type {
   DeferredObjectiveActivePlansV1,
 } from './packages/contracts/src/deferredObjectiveActivePlans';
@@ -2308,7 +2307,7 @@ class PelsApp extends Homey.App {
     accept?: (entry: DeferredObjectivePlanHistoryEntry) => boolean,
   ): SettingsUiDeferredObjectivePlanHistoryPayload {
     const snapshot = this.deferredObjectivePlanHistoryRecorder?.getHistorySnapshot();
-    const entriesByDeviceId: Record<string, DeferredObjectivePlanHistoryEntry[]> = {};
+    const entriesByDeviceId: SettingsUiDeferredObjectivePlanHistoryPayload['entriesByDeviceId'] = {};
     if (snapshot) {
       // Sort newest finalizedAtMs first within each device to match the UI expectation.
       const byDevice = new Map<string, DeferredObjectivePlanHistoryEntry[]>();
@@ -2319,7 +2318,10 @@ class PelsApp extends Homey.App {
         byDevice.set(entry.deviceId, list);
       }
       for (const [deviceId, list] of byDevice) {
-        entriesByDeviceId[deviceId] = list.sort((a, b) => b.finalizedAtMs - a.finalizedAtMs);
+        // Resolve kind-split °C/% pairs to unit-agnostic numbers at this producer boundary.
+        entriesByDeviceId[deviceId] = list
+          .sort((a, b) => b.finalizedAtMs - a.finalizedAtMs)
+          .map(toResolvedPlanHistoryEntry);
       }
     }
     return { version: 1, entriesByDeviceId };
