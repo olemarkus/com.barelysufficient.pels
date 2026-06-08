@@ -314,11 +314,20 @@ const buildBudgetOverlayByHour = (
 const collectDayBudgetOverlays = (
   day: DailyBudgetDayPayload,
 ): Array<BudgetOverlay & { startMs: number }> => {
+  // A DISABLED daily budget imposes no soft cap. The disabled-state snapshot
+  // still carries an `allowedCumKWh` array (all-zero), which `resolvePerBucketBudget`
+  // would read as a per-bucket budget of 0 — clamping every smart task's allocation
+  // to zero useful energy (`cannot_meet`) whenever the user has daily budget off.
+  // Contribute NO overlay so each bucket falls through to `NO_BUDGET_OVERLAY` and the
+  // per-hour hard cap becomes the only constraint, matching the "no daily budget ⇒
+  // hard cap only" contract.
+  if (!day.budget.enabled) return [];
   const starts = day.buckets.startUtc;
   if (!Array.isArray(starts)) return [];
   const allowedCumKWh = day.buckets.allowedCumKWh;
   const plannedUncontrolledKWh = day.buckets.plannedUncontrolledKWh;
-  const dailyBudgetKWh = day.budget.enabled ? day.budget.dailyBudgetKWh : null;
+  // Reached only for enabled days (disabled returned above), so no `: null` branch.
+  const dailyBudgetKWh = day.budget.dailyBudgetKWh;
   return starts.flatMap((startIso, index) => {
     const startMs = new Date(startIso).getTime();
     if (!Number.isFinite(startMs)) return [];
