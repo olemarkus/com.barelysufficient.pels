@@ -1,4 +1,4 @@
-import type Homey from 'homey';
+import type { HomeyRuntime, FlowPort } from '../ports/homeyRuntime';
 import CapacityGuard from '../power/capacityGuard';
 import type { PowerTrackerState } from '../power/tracker';
 import type { DevicePlan, PendingTargetObservationSource, PlanInputDevice, ShedAction } from './planTypes';
@@ -35,7 +35,7 @@ import type { Actuator } from '../actuator/deviceActuator';
 const moduleLogger = getLogger('plan/engine');
 
 export type PlanEngineDeps = {
-  homey: Homey.App['homey'];
+  homey: HomeyRuntime & { flow: FlowPort };
   deviceManager: PlanExecutorDeps['deviceManager'];
   getObservedState: PlanExecutorDeps['getObservedState'];
   actuator: Actuator;

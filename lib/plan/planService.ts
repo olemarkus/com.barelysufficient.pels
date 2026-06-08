@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type Homey from 'homey';
+import type { SettingsPort, FlowPort, ApiPort } from '../ports/homeyRuntime';
 import { PriceLevel } from '../price/priceLevels';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import { recordOpRssDelta, safeRss } from '../utils/opRssTracker';
@@ -82,7 +82,7 @@ const serializePlanForUi = (
 };
 
 export type PlanServiceDeps = {
-  homey: Homey.App['homey'];
+  homey: { settings: SettingsPort; flow: FlowPort; api: ApiPort };
   planEngine: PlanEngine;
   getPlanDevices: () => PlanInputDevice[];
   // Binary-settle evidence (`binaryControlObservation`) is observer-internal and NOT
@@ -576,7 +576,7 @@ export class PlanService {
   }
 
   private emitPlanUpdatedRealtime(plan: DevicePlan): void {
-    const api = this.deps.homey.api as { realtime?: (event: string, data: unknown) => Promise<unknown> } | undefined;
+    const api = this.deps.homey.api;
     const realtime = api?.realtime;
     if (typeof realtime === 'function') {
       realtime.call(api, 'plan_updated', serializePlanForUi(plan, this.deps, this.idleClassifier))

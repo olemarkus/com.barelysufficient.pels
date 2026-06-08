@@ -296,6 +296,8 @@ export default tseslint.config(
       'lib/power/**/*.ts',
       'lib/price/**/*.ts',
       'lib/utils/**/*.ts',
+      'lib/plan/**/*.ts',
+      'lib/executor/**/*.ts',
     ],
     rules: {
       '@typescript-eslint/no-restricted-imports': ['error', {
