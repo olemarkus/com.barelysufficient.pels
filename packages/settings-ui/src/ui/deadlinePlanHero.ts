@@ -4,7 +4,7 @@ import type {
 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import type { DeferredObjectiveSettingsEntry } from '../../../contracts/src/deferredObjectiveSettings.ts';
 import type { ObjectiveProfileConfidence } from '../../../contracts/src/objectiveProfileTypes.ts';
-import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
+import type { ObservedDeviceState } from '../../../contracts/src/types.ts';
 import {
   formatConfidenceChipLabel,
   formatDeadlineCostMetaLine,
@@ -249,7 +249,7 @@ const SPEED_MODE_LABELS: Record<DeferredObjectiveActivePlanSpeedMode, string> = 
 };
 
 export type BuildHeroInput = {
-  device: TargetDeviceSnapshot;
+  device: ObservedDeviceState;
   // Active task's device id. Threaded onto the device-side cannot-meet recourse
   // payload so the click dispatcher deep-links to the device-settings overlay
   // rather than dead-ending on the Overview tab (mirrors history-detail's

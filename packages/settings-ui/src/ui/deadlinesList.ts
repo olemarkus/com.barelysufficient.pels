@@ -17,7 +17,7 @@ import type {
   ResolvedDeferredObjectiveActivePlanV1,
 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import type { ResolvedDeferredObjectivePlanHistoryEntry } from '../../../contracts/src/deferredObjectivePlanHistory.ts';
-import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
+import type { ObservedDeviceState } from '../../../contracts/src/types.ts';
 import { buildDeadlineHref } from './deadlineUrls.ts';
 import { resolveBrowserTimeZone } from './deadlinePlanHistoryFetch.ts';
 import {
@@ -46,7 +46,7 @@ import {
 // active-plan recorder doesn't carry live device readings; the snapshot
 // fetched from `/ui_devices` (Homey SDK) does.
 const resolveCurrentValue = (
-  device: TargetDeviceSnapshot | undefined,
+  device: ObservedDeviceState | undefined,
   kind: ResolvedDeferredObjectiveActivePlanV1['objectiveKind'],
 ): number | null => {
   if (!device) return null;
@@ -63,7 +63,7 @@ const buildCard = (params: {
   deviceId: string;
   plan: ResolvedDeferredObjectiveActivePlanV1;
   objective: DeferredObjectiveSettingsV1['objectivesByDeviceId'][string] | undefined;
-  device: TargetDeviceSnapshot | undefined;
+  device: ObservedDeviceState | undefined;
   nowMs: number;
 }): DeadlinesListCard => {
   const { deviceId, plan, objective, device, nowMs } = params;
@@ -108,7 +108,7 @@ const buildCard = (params: {
 export const resolveDeadlinesListCards = (params: {
   activePlans: ResolvedDeferredObjectiveActivePlansV1 | null;
   objectiveSettings: DeferredObjectiveSettingsV1;
-  devices: readonly TargetDeviceSnapshot[];
+  devices: readonly ObservedDeviceState[];
   nowMs?: number;
 }): DeadlinesListCard[] => {
   const nowMs = params.nowMs ?? Date.now();
