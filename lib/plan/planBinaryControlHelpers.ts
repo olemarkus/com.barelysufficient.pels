@@ -1,6 +1,7 @@
 import type { DeviceObservation } from '../device/deviceObservation';
 import type { BinaryControlCapabilityId, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
+import { getObservedBinaryOn } from '../../packages/shared-domain/src/binaryControlState';
 import { getLogger } from '../logging/logger';
 import type { BinaryControlPlan } from '../device/deviceActionProjection';
 
@@ -133,14 +134,16 @@ export function shouldSkipAlreadyMatched(params: {
   snapshot?: TargetDeviceSnapshot;
 }): boolean {
   const { deviceManager, controlPlan, deviceId, desired, snapshot } = params;
-  // Only skip an already-matched command when the device's observed
-  // `binaryControl.on` faithfully mirrors its control state. Devices whose
-  // observation does not track the on/off control (chargers) report
+  // Only skip an already-matched command when the device's observed binary
+  // on-state faithfully mirrors its control state. Devices whose observation
+  // does not track the on/off control (chargers) report
   // `observedStateComparable === false` and must never short-circuit here.
   if (!controlPlan.observedStateComparable) return false;
   const latestObservedSnapshot = deviceManager.getSnapshotByDeviceId(deviceId) ?? snapshot;
-  if (latestObservedSnapshot?.binaryControl === undefined) return false;
-  return latestObservedSnapshot.binaryControl.on === desired;
+  // A device with no binary control returns `null` here, which never equals the
+  // desired boolean — so absent binary state never short-circuits (matches the
+  // prior explicit `binaryControl === undefined → return false`).
+  return getObservedBinaryOn(latestObservedSnapshot) === desired;
 }
 
 export function hasPendingMatchingBinaryCommand(params: {

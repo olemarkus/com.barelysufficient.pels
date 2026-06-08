@@ -36,6 +36,7 @@
     "ev:vocab": "node scripts/check-ev-vocab.mjs",
     "control-model:vocab": "node scripts/check-control-model-vocab.mjs",
     "device-kind:vocab": "node scripts/check-device-kind-vocab.mjs",
+    "binary:vocab": "node scripts/check-binary-vocab.mjs",
     "binary:seam": "node scripts/check-binary-seam.mjs",
     "deadcode:check": "knip",
     "sanitize:homey-build": "node scripts/sanitize-homey-build.mjs",

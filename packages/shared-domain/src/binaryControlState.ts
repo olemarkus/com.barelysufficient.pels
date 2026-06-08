@@ -5,9 +5,12 @@
  * `binaryControl` is `{ on: boolean } | undefined`; absence means "no trusted
  * binary state" (a non-binary device, or a binary device before its first
  * observation). The domain rule — documented on `ObservedDeviceState` — is that
- * absence is treated as ON ("may draw, stays sheddable"). These two predicates
- * encode that rule once (they are exact complements when applied to the same
- * input) and return a `boolean`, so call sites can't mishandle the `undefined`.
+ * absence is treated as ON ("may draw, stays sheddable"). These readers encode
+ * that rule once, so call sites can't mishandle the `undefined` — and so the
+ * planner/executor never touch `binaryControl.on` directly (enforced by the
+ * `check-binary-vocab` guard). The two predicates collapse absence to the
+ * default; `getObservedBinaryOn` preserves it for callers that must tell
+ * "non-binary" apart from on/off.
  *
  * Browser-safe: a structural shape, no Homey SDK types.
  */
@@ -29,4 +32,15 @@ export const isBinaryOnOrUnknown = (device: BinaryControlObserved | null | undef
  */
 export const isBinaryObservedOff = (device: BinaryControlObserved | null | undefined): boolean => (
   device?.binaryControl?.on === false
+);
+
+/**
+ * The observed binary on-state, or `null` when the device has no binary control
+ * (a non-binary device, or an absent `binaryControl`). Unlike the two predicates
+ * this does NOT collapse absence to a default — use it where the caller must
+ * distinguish "non-binary" from on/off (e.g. rendering current state, or an
+ * exact-match check against a desired boolean where absent must not match).
+ */
+export const getObservedBinaryOn = (device: BinaryControlObserved | null | undefined): boolean | null => (
+  device?.binaryControl?.on ?? null
 );

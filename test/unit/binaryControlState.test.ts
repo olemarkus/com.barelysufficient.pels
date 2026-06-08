@@ -1,4 +1,4 @@
-import { isBinaryOnOrUnknown, isBinaryObservedOff } from '../../packages/shared-domain/src/binaryControlState';
+import { isBinaryOnOrUnknown, isBinaryObservedOff, getObservedBinaryOn } from '../../packages/shared-domain/src/binaryControlState';
 
 describe('binary observed-state predicates', () => {
   describe('isBinaryOnOrUnknown (≡ binaryControl?.on ?? true)', () => {
@@ -35,5 +35,23 @@ describe('binary observed-state predicates', () => {
     for (const d of [{ binaryControl: { on: true } }, { binaryControl: { on: false } }, {}, undefined, null]) {
       expect(isBinaryOnOrUnknown(d)).toBe(!isBinaryObservedOff(d));
     }
+  });
+
+  describe('getObservedBinaryOn (boolean | null; preserves "non-binary")', () => {
+    it('returns the observed on-state when present', () => {
+      expect(getObservedBinaryOn({ binaryControl: { on: true } })).toBe(true);
+      expect(getObservedBinaryOn({ binaryControl: { on: false } })).toBe(false);
+    });
+    it('returns null (not a default) when binary state is absent', () => {
+      expect(getObservedBinaryOn({})).toBe(null);
+      expect(getObservedBinaryOn(undefined)).toBe(null);
+      expect(getObservedBinaryOn(null)).toBe(null);
+    });
+    it('never equals a desired boolean when absent (the match-check invariant)', () => {
+      // planBinaryControlHelpers relies on `null === desired` being false so an
+      // absent binary state never short-circuits an already-matched command.
+      expect(getObservedBinaryOn(undefined) === true).toBe(false);
+      expect(getObservedBinaryOn(undefined) === false).toBe(false);
+    });
   });
 });

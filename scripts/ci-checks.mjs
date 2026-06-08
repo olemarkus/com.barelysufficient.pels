@@ -13,6 +13,7 @@ await runParallel([
   { label: 'ev:vocab', command: 'npm', args: ['run', 'ev:vocab'] },
   { label: 'control-model:vocab', command: 'npm', args: ['run', 'control-model:vocab'] },
   { label: 'device-kind:vocab', command: 'npm', args: ['run', 'device-kind:vocab'] },
+  { label: 'binary:vocab', command: 'npm', args: ['run', 'binary:vocab'] },
   { label: 'binary:seam', command: 'npm', args: ['run', 'binary:seam'] },
   { label: 'deadcode', command: 'npm', args: ['run', 'deadcode:check'] },
 ]);
