@@ -1,4 +1,4 @@
-import Homey from 'homey';
+import type Homey from 'homey';
 import CapacityGuard from '../power/capacityGuard';
 import type { PowerTrackerState } from '../power/tracker';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';

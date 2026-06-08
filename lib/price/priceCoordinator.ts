@@ -1,4 +1,4 @@
-import Homey from 'homey';
+import type Homey from 'homey';
 import { PriceOptimizer } from './priceOptimizer';
 import { PriceLevel } from './priceLevels';
 import PriceService from './priceService';

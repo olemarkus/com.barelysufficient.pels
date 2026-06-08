@@ -1,4 +1,4 @@
-import Homey from 'homey';
+import type Homey from 'homey';
 import CapacityGuard from '../power/capacityGuard';
 import type { DeviceObservation } from '../device/deviceObservation';
 import type { DevicePlan, PlanInputDevice, ShedAction } from '../plan/planTypes';
