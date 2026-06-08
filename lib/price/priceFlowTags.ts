@@ -1,4 +1,4 @@
-import type Homey from 'homey';
+import type { ClockPort, FlowPort, FlowToken } from '../ports/homeyRuntime';
 import { buildPriceExport, priceExportFingerprint } from './priceExportBuilder';
 import type { CombinedPricesReader } from './combinedPricesReader';
 import { normalizeError } from '../utils/errorUtils';
@@ -8,28 +8,18 @@ import { getLogger } from '../logging/logger';
 
 const moduleLogger = getLogger('price/flowTags');
 
-type HomeyLike = Homey.App['homey'];
-type FlowTokenLike = { setValue: (value: unknown) => Promise<unknown> };
-type CreateTokenFn = (
-  id: string,
-  opts: { type: 'string'; title: string; value: string },
-) => Promise<FlowTokenLike>;
-type TriggerCardLike = {
-  trigger: (tokens: Record<string, unknown>, state?: Record<string, unknown>) => Promise<unknown>;
-};
-
 export const PRICE_FLOW_TAG_ID = 'pels_prices_json';
 export const PRICE_LIST_UPDATED_TRIGGER_ID = 'price_list_updated';
 
 export type PriceFlowTagPublisherDeps = {
-  homey: HomeyLike;
+  homey: { clock: ClockPort; flow: FlowPort };
   combinedPricesReader: CombinedPricesReader;
   log: (...args: unknown[]) => void;
   debugStructured: StructuredDebugEmitter;
 };
 
 export class PriceFlowTagPublisher {
-  private token?: FlowTokenLike;
+  private token?: FlowToken;
   private initialized = false;
   private lastFingerprint: string | null = null;
 
@@ -37,7 +27,7 @@ export class PriceFlowTagPublisher {
 
   async init(): Promise<void> {
     if (this.initialized) return;
-    const flow = this.deps.homey.flow as { createToken?: CreateTokenFn };
+    const flow = this.deps.homey.flow;
     if (typeof flow?.createToken !== 'function') {
       moduleLogger.error({ event: 'price_flow_tag_create_token_unavailable', tagId: PRICE_FLOW_TAG_ID });
       return;
@@ -132,7 +122,7 @@ export class PriceFlowTagPublisher {
   }
 
   private async fireTrigger(json: string, reason: string): Promise<void> {
-    const flow = this.deps.homey.flow as { getTriggerCard?: (id: string) => TriggerCardLike };
+    const flow = this.deps.homey.flow;
     if (typeof flow?.getTriggerCard !== 'function') {
       throw new Error('PriceFlowTagPublisher: homey.flow.getTriggerCard unavailable');
     }
