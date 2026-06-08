@@ -1,4 +1,4 @@
-import type Homey from 'homey';
+import type { ApiPort } from '../ports/homeyRuntime';
 
 export type HomeyEnergyPriceInterval = {
   periodStart: string;
@@ -54,8 +54,8 @@ export const isHomeyEnergyApi = (value: unknown): value is HomeyEnergyApi => (
   hasFunction(value, 'fetchDynamicElectricityPrices')
 );
 
-export const resolveHomeyEnergyApiFromSdk = (homey: Homey.App['homey']): HomeyEnergyApi | null => {
-  const apiContainer = (homey as { api?: unknown }).api;
+export const resolveHomeyEnergyApiFromSdk = (homey: { api: ApiPort }): HomeyEnergyApi | null => {
+  const apiContainer = homey.api;
   if (!isRecord(apiContainer)) return null;
   const energyApi = apiContainer.energy;
   return isHomeyEnergyApi(energyApi) ? energyApi : null;

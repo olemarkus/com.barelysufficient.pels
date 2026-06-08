@@ -1,4 +1,4 @@
-import type Homey from 'homey';
+import type { HomeyRuntime, ApiPort } from '../ports/homeyRuntime';
 import { PriceOptimizer } from './priceOptimizer';
 import { PriceLevel } from './priceLevels';
 import PriceService from './priceService';
@@ -21,7 +21,7 @@ const MIDNIGHT_ROTATION_OFFSET_MS = 30 * 1000;
 const MIDNIGHT_ROTATION_MIN_DELAY_MS = 1000;
 
 export type PriceCoordinatorDeps = {
-  homey: Homey.App['homey'];
+  homey: HomeyRuntime & { api: ApiPort };
   getHomeyEnergyApi?: () => import('../utils/homeyEnergy').HomeyEnergyApi | null;
   getCurrentPriceLevel: () => PriceLevel;
   rebuildPlanFromCache: (reason: string) => Promise<void>;
@@ -102,8 +102,8 @@ export class PriceCoordinator {
       },
       getSettings: () => this.priceOptimizationSettings,
       isEnabled: () => this.priceOptimizationEnabled,
-      getThresholdPercent: () => this.deps.homey.settings.get('price_threshold_percent') ?? 25,
-      getMinDiffOre: () => this.deps.homey.settings.get('price_min_diff_ore') ?? 0,
+      getThresholdPercent: () => (this.deps.homey.settings.get('price_threshold_percent') as number | undefined) ?? 25,
+      getMinDiffOre: () => (this.deps.homey.settings.get('price_min_diff_ore') as number | undefined) ?? 0,
       rebuildPlan: async (reason) => {
         this.deps.debugStructured({ event: 'price_optimization_plan_rebuild_triggered', reason });
         await this.deps.rebuildPlanFromCache(reason);

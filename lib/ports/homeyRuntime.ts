@@ -58,3 +58,16 @@ export type FlowPort = {
   getTriggerCard(id: string): FlowTriggerCard;
   createToken(id: string, opts: { type: 'string'; title: string; value: string }): Promise<FlowToken>;
 };
+
+/**
+ * Subset of `homey.api` (ManagerApi) the domain uses: emit a realtime UI event,
+ * and reach the Homey Energy manager. Like `FlowPort`, a standalone port (only
+ * the price/energy consumers need it) — not folded into `HomeyRuntime`. `energy`
+ * stays `unknown`: its shape is validated at the read site by `isHomeyEnergyApi`
+ * (lib/utils/homeyEnergy). Consumers keep their `typeof …` guards for partial
+ * mocks / SDK variance; this port types the happy path.
+ */
+export type ApiPort = {
+  realtime(event: string, data: unknown): Promise<unknown>;
+  readonly energy?: unknown;
+};
