@@ -1,5 +1,5 @@
 import Sortable from 'sortablejs';
-import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
+import type { SettingsUiDeviceListItem } from './deviceUtils.ts';
 import {
   getPrimaryTargetCapability,
   getTargetCapabilityStep,
@@ -67,14 +67,14 @@ const createModeOption = (value: string, selected: boolean): MaterialSelectOptio
   return option;
 };
 
-const supportsTemperatureDevice = (device: TargetDeviceSnapshot): boolean => (
+const supportsTemperatureDevice = (device: SettingsUiDeviceListItem): boolean => (
   device.deviceType === 'temperature' || (device.targets?.length ?? 0) > 0
 );
 
-const getPrimaryTemperatureTarget = (device: TargetDeviceSnapshot) => getPrimaryTargetCapability(device.targets);
+const getPrimaryTemperatureTarget = (device: SettingsUiDeviceListItem) => getPrimaryTargetCapability(device.targets);
 
 const normalizeDeviceTargetValue = (
-  device: TargetDeviceSnapshot,
+  device: SettingsUiDeviceListItem,
   value: number,
 ): number => normalizeTargetCapabilityValue({
   target: getPrimaryTemperatureTarget(device),
@@ -163,7 +163,7 @@ export const getPriority = (deviceId: string) => {
   return state.capacityPriorities[mode]?.[deviceId] ?? 100;
 };
 
-export const getDesiredTarget = (device: TargetDeviceSnapshot) => {
+export const getDesiredTarget = (device: SettingsUiDeviceListItem) => {
   if (!supportsTemperatureDevice(device)) return null;
   const mode = state.editingMode || DEFAULT_MODE_NAME;
   const value = state.modeTargets[mode]?.[device.id];
@@ -182,7 +182,7 @@ const buildOnOffPlaceholder = (): HTMLElement => {
   return placeholder;
 };
 
-const buildModeTargetInput = (device: TargetDeviceSnapshot, desired: number | null): HTMLElement => {
+const buildModeTargetInput = (device: SettingsUiDeviceListItem, desired: number | null): HTMLElement => {
   if (!supportsTemperatureDevice(device)) return buildOnOffPlaceholder();
   const target = getPrimaryTemperatureTarget(device);
   const tempInput = document.createElement('md-filled-text-field') as MaterialTextFieldElement;
@@ -214,7 +214,7 @@ const buildModeTargetInput = (device: TargetDeviceSnapshot, desired: number | nu
   return tempInput;
 };
 
-const buildPriorityRow = (device: TargetDeviceSnapshot) => {
+const buildPriorityRow = (device: SettingsUiDeviceListItem) => {
   const row = document.createElement('li');
   row.className = 'device-row draggable mode-row';
   row.dataset.deviceId = device.id;
@@ -242,7 +242,7 @@ const buildPriorityRow = (device: TargetDeviceSnapshot) => {
   return row;
 };
 
-export const renderPriorities = (devices: TargetDeviceSnapshot[]) => {
+export const renderPriorities = (devices: SettingsUiDeviceListItem[]) => {
   if (!priorityList) return;
   priorityList.innerHTML = '';
   const managedDevices = devices.filter((device) => resolveManagedState(device.id));
@@ -384,7 +384,7 @@ export const applyTargetChange = async (deviceId: string, rawValue: string) => {
   }
 };
 
-const buildPrioritiesFromDevices = (devices: TargetDeviceSnapshot[]) => (
+const buildPrioritiesFromDevices = (devices: SettingsUiDeviceListItem[]) => (
   Object.fromEntries(devices.map((device, index) => [device.id, index + 1]))
 );
 

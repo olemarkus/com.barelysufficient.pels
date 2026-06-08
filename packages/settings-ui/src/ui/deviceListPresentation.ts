@@ -1,4 +1,3 @@
-import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
 import { setTooltip } from './tooltips.ts';
 import {
   supportsManagedDevice,
@@ -6,6 +5,7 @@ import {
   supportsTemperatureDevice,
   isGrayStateDevice,
   requiresNativeWiringForActivation,
+  type SettingsUiDeviceListItem,
 } from './deviceUtils.ts';
 import { resolveDeviceClassLabel } from './deviceClassLabels.ts';
 import { resolveManagedState, state } from './state.ts';
@@ -14,7 +14,7 @@ import type { RowDisabledReasons } from './deviceControlAvailability.ts';
 export type DeviceGroup = {
   key: string;
   label: string;
-  devices: TargetDeviceSnapshot[];
+  devices: SettingsUiDeviceListItem[];
 };
 
 type GroupManagedState = 'all' | 'partial' | 'none';
@@ -32,7 +32,7 @@ const buildStateChip = (label: string, title: string): HTMLElement => {
   return chip;
 };
 
-const buildDeviceAvailabilityChip = (device: TargetDeviceSnapshot): HTMLElement | null => {
+const buildDeviceAvailabilityChip = (device: SettingsUiDeviceListItem): HTMLElement | null => {
   if (!isGrayStateDevice(device)) return null;
   return buildStateChip(
     device.available === false ? 'Unavailable' : 'Unknown',
@@ -42,12 +42,12 @@ const buildDeviceAvailabilityChip = (device: TargetDeviceSnapshot): HTMLElement 
   );
 };
 
-const buildBudgetExemptChip = (device: TargetDeviceSnapshot): HTMLElement | null => {
+const buildBudgetExemptChip = (device: SettingsUiDeviceListItem): HTMLElement | null => {
   if (state.budgetExemptMap[device.id] !== true && device.budgetExempt !== true) return null;
   return buildStateChip('Budget exempt', 'This device is excluded from daily budget limits.');
 };
 
-const buildFlowBackedChip = (device: TargetDeviceSnapshot): HTMLElement | null => {
+const buildFlowBackedChip = (device: SettingsUiDeviceListItem): HTMLElement | null => {
   if (device.flowBacked !== true) return null;
   return buildStateChip(
     'Flow-backed',
@@ -55,7 +55,7 @@ const buildFlowBackedChip = (device: TargetDeviceSnapshot): HTMLElement | null =
   );
 };
 
-export const appendDeviceStateChips = (container: HTMLElement, device: TargetDeviceSnapshot) => {
+export const appendDeviceStateChips = (container: HTMLElement, device: SettingsUiDeviceListItem) => {
   const chips = [
     buildDeviceAvailabilityChip(device),
     buildFlowBackedChip(device),
@@ -85,7 +85,7 @@ export const appendRedesignDisabledReasons = (
   container.appendChild(list);
 };
 
-export const resolveDeviceManageability = (device: TargetDeviceSnapshot) => {
+export const resolveDeviceManageability = (device: SettingsUiDeviceListItem) => {
   const supportsTemperature = supportsTemperatureDevice(device);
   const supportsPower = supportsPowerDevice(device);
   const supportsManage = supportsManagedDevice(supportsPower, supportsTemperature);
@@ -101,8 +101,8 @@ export const resolveDeviceManageability = (device: TargetDeviceSnapshot) => {
   };
 };
 
-export const groupDevicesByClass = (devices: TargetDeviceSnapshot[]): DeviceGroup[] => {
-  const groups = new Map<string, TargetDeviceSnapshot[]>();
+export const groupDevicesByClass = (devices: SettingsUiDeviceListItem[]): DeviceGroup[] => {
+  const groups = new Map<string, SettingsUiDeviceListItem[]>();
   devices.forEach((device) => {
     const key = (device.deviceClass || 'other').trim().toLowerCase() || 'other';
     const bucket = groups.get(key) || [];

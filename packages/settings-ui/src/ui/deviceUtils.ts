@@ -1,8 +1,21 @@
-import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
+import type { DeviceDescriptor, ObservedDeviceState } from '../../../contracts/src/types.ts';
 
 export { isGrayStateDevice } from '../../../shared-domain/src/deviceStatePredicates.ts';
 
-export const supportsPowerDevice = (device?: TargetDeviceSnapshot | null): boolean => {
+// The device fields the settings-UI device LIST surface reads — the decomposed
+// snapshot halves (observed truth + the descriptor config the list shows), NOT
+// the raw producer `TargetDeviceSnapshot` / `DecoratedDeviceSnapshot`. The full
+// snapshot stays structurally assignable (every descriptor field is optional),
+// so callers (e.g. `state.latestDevices`) pass unchanged. First surface of the
+// settings-UI snapshot-consumer decoupling (notes/state-management/).
+export type SettingsUiDeviceListItem = ObservedDeviceState
+  & Pick<DeviceDescriptor,
+    | 'deviceClass' | 'deviceType' | 'budgetExempt' | 'flowBacked'
+    | 'powerCapable' | 'powerKw' | 'expectedPowerKw' | 'loadKw'
+    | 'controlAdapter' | 'controlCapabilityId'
+  >;
+
+export const supportsPowerDevice = (device?: SettingsUiDeviceListItem | null): boolean => {
   if (!device) return false;
   if (device.powerCapable !== undefined) return device.powerCapable;
   return typeof device.powerKw === 'number'
@@ -11,7 +24,7 @@ export const supportsPowerDevice = (device?: TargetDeviceSnapshot | null): boole
     || typeof device.loadKw === 'number';
 };
 
-export const supportsTemperatureDevice = (device?: TargetDeviceSnapshot | null): boolean => {
+export const supportsTemperatureDevice = (device?: SettingsUiDeviceListItem | null): boolean => {
   if (!device) return false;
   if (device.deviceType) return device.deviceType === 'temperature';
   return (device.targets?.length ?? 0) > 0;
@@ -21,14 +34,14 @@ export const supportsManagedDevice = (supportsPower: boolean, supportsTemperatur
   supportsPower || supportsTemperature
 );
 
-export const requiresNativeWiringForActivation = (device?: TargetDeviceSnapshot | null): boolean => (
+export const requiresNativeWiringForActivation = (device?: SettingsUiDeviceListItem | null): boolean => (
   device?.controlAdapter?.kind === 'capability_adapter'
   && device.controlAdapter.activationRequired === true
   && device.controlAdapter.activationEnabled !== true
   && device.controlCapabilityId !== 'evcharger_charging'
 );
 
-export const supportsNativeWiringActivation = (device?: TargetDeviceSnapshot | null): boolean => (
+export const supportsNativeWiringActivation = (device?: SettingsUiDeviceListItem | null): boolean => (
   device?.controlAdapter?.kind === 'capability_adapter'
   && (
     device.controlAdapter.activationRequired === true

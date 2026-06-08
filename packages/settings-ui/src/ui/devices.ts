@@ -1,4 +1,4 @@
-import type { TargetDeviceSnapshot } from '../../../contracts/src/types.ts';
+import type { SettingsUiDeviceListItem } from './deviceUtils.ts';
 import { deviceCardList, emptyState, refreshButton } from './dom.ts';
 import {
   SETTINGS_UI_DEVICES_PATH,
@@ -31,7 +31,7 @@ import {
 } from './deviceListPresentation.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 
-export const getTargetDevices = async (): Promise<TargetDeviceSnapshot[]> => {
+export const getTargetDevices = async (): Promise<SettingsUiDeviceListItem[]> => {
   const payload = await getApiReadModel<SettingsUiDevicesPayload>(SETTINGS_UI_DEVICES_PATH);
   return Array.isArray(payload?.devices) ? payload.devices : [];
 };
@@ -155,7 +155,7 @@ const buildRedesignSwitchCell = (
   return cell;
 };
 
-const buildRedesignNameCell = (device: TargetDeviceSnapshot): HTMLElement => {
+const buildRedesignNameCell = (device: SettingsUiDeviceListItem): HTMLElement => {
   const nameWrap = document.createElement('div');
   nameWrap.className = 'pels-device-card__name device-row__name entity-name';
   const nameText = document.createElement('span');
@@ -167,7 +167,7 @@ const buildRedesignNameCell = (device: TargetDeviceSnapshot): HTMLElement => {
 };
 
 const buildRedesignRowSwitches = (
-  device: TargetDeviceSnapshot,
+  device: SettingsUiDeviceListItem,
   manageability: ReturnType<typeof resolveDeviceManageability>,
   titles: RowSwitchTitles,
   disabled: { managed: boolean; limit: boolean; price: boolean },
@@ -202,7 +202,7 @@ const buildRedesignRowSwitches = (
   ];
 };
 
-const createRedesignDetailButton = (device: TargetDeviceSnapshot): HTMLElement => {
+const createRedesignDetailButton = (device: SettingsUiDeviceListItem): HTMLElement => {
   const button = document.createElement('md-icon-button');
   button.className = 'pels-device-card__detail-button';
   button.setAttribute('type', 'button');
@@ -228,7 +228,7 @@ const createRedesignDetailButton = (device: TargetDeviceSnapshot): HTMLElement =
   return button;
 };
 
-const buildRedesignDeviceRow = (device: TargetDeviceSnapshot): HTMLElement => {
+const buildRedesignDeviceRow = (device: SettingsUiDeviceListItem): HTMLElement => {
   const manageability = resolveDeviceManageability(device);
   const isLoadingComplete = state.initialLoadComplete;
   const disabled = {
@@ -312,7 +312,7 @@ const buildDeviceClassCard = (group: DeviceGroup): HTMLElement => {
   return card;
 };
 
-export const renderDevices = (devices: TargetDeviceSnapshot[]) => {
+export const renderDevices = (devices: SettingsUiDeviceListItem[]) => {
   const target = deviceCardList;
   if (!target) return;
   target.replaceChildren();
