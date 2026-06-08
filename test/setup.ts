@@ -5,6 +5,71 @@ import type { MockInstance } from 'vitest';
 import { clearPlanRebuildTracesForTests } from '../lib/utils/planRebuildTrace.ts';
 import { installCanvasContextStub } from './utils/canvasContextStub.ts';
 
+// Deterministic in-memory socket.io so the device live feed (lib/device/liveFeed.ts)
+// NEVER opens a real websocket during tests. A real `io()` connect targets the local
+// Homey API, ECONNREFUSEDs (`device_live_feed_connect_error`), and leaves pending real
+// async (engine.io/ws timers) that fake-timer drains can't flush — the intermittent
+// `*ShedControl` e2e flake under the all-tiers coverage run. This sits alongside the
+// global `fetch`/`https.get` stubs below so NO runtime network seam reaches the wire in
+// tests. Tests that need to DRIVE live events provide their own per-file
+// `vi.mock('socket.io-client', ...)`, which overrides this global mock.
+vi.mock('socket.io-client', () => {
+  // Mimics a REFUSED connection with no real I/O. `connect()` fires `connect_error`
+  // (deferred a microtask), so the live feed's `waitForRootConnect`
+  // (lib/device/liveFeed.ts) rejects immediately — `start()`/`onInit` then proceed
+  // WITHOUT running the handshake/subscribe flow. Why this exact shape:
+  //  - The REAL client opens a websocket that ECONNREFUSEDs and leaks pending real
+  //    async (engine.io/ws), which fake-timer drains can't flush → the intermittent
+  //    `*ShedControl` e2e flake.
+  //  - A FULLY INERT socket (never settles) hangs: `connect()` awaits a 15s handshake
+  //    timeout that nothing advances during `onInit` → 30s test timeout.
+  //  - A socket that COMPLETES the handshake runs the subscribe flow, whose microtasks
+  //    nondeterministically perturb a test's plan-cycle drain.
+  // Failing fast (like the real refused connection, minus the I/O) avoids all three.
+  // This sits alongside the global `fetch`/`https.get` stubs so NO runtime network seam
+  // reaches the wire in tests. Tests that need a CONNECTED feed provide their own
+  // per-file `vi.mock('socket.io-client', ...)`, which overrides this global mock.
+  type Listener = (...args: unknown[]) => void;
+  class FakeSocket {
+    connected = false;
+    readonly io = { on: (): void => {}, socket: (): FakeSocket => new FakeSocket() };
+    private readonly listeners = new Map<string, Set<Listener>>();
+
+    on(event: string, listener: Listener): this {
+      const set = this.listeners.get(event) ?? new Set<Listener>();
+      set.add(listener);
+      this.listeners.set(event, set);
+      return this;
+    }
+
+    once(event: string, listener: Listener): this {
+      const wrapper: Listener = (...args) => { this.off(event, wrapper); listener(...args); };
+      return this.on(event, wrapper);
+    }
+
+    off(event: string, listener?: Listener): this {
+      if (!listener) this.listeners.delete(event);
+      else this.listeners.get(event)?.delete(listener);
+      return this;
+    }
+
+    removeAllListeners(): this { this.listeners.clear(); return this; }
+
+    connect(): this {
+      queueMicrotask(() => this.fire('connect_error', new Error('live feed disabled in tests')));
+      return this;
+    }
+    open(): this { return this.connect(); }
+    disconnect(): this { this.connected = false; return this; }
+    emit(): boolean { return true; }
+
+    private fire(event: string, ...args: unknown[]): void {
+      for (const listener of Array.from(this.listeners.get(event) ?? [])) listener(...args);
+    }
+  }
+  return { io: (): FakeSocket => new FakeSocket() };
+});
+
 // Flag to temporarily allow console.error in tests that intentionally trigger errors
 let allowConsoleError = false;
 export const setAllowConsoleError = (allow: boolean): void => {
