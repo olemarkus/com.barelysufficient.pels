@@ -1,4 +1,5 @@
-import type { TargetDeviceSnapshot, EvBoostSettings } from '../../../../contracts/src/types.ts';
+import type { EvBoostSettings } from '../../../../contracts/src/types.ts';
+import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 import { EV_BOOST_SETTINGS } from '../../../../contracts/src/settingsKeys.ts';
 import { normalizeEvBoostSettings } from '../../../../contracts/src/evBoost.ts';
 import { resolveEvBoostBlockReason } from '../../../../shared-domain/src/commandableNowReason.ts';
@@ -22,7 +23,7 @@ const normalizeBoostBelowPercent = (value: number, fallback: number): number => 
   Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : fallback
 );
 
-export const supportsEvBoostDevice = (device: TargetDeviceSnapshot | null | undefined): boolean => (
+export const supportsEvBoostDevice = (device: SettingsUiDeviceDetailItem | null | undefined): boolean => (
   device?.deviceClass === 'evcharger' && hasSteppedLoadSupport(device)
 );
 
@@ -70,7 +71,7 @@ export const renderEvBoostSettings = (device: SettingsUiDeviceView | null) => {
 };
 
 function buildEvBoostStatusText(params: {
-  device: TargetDeviceSnapshot;
+  device: SettingsUiDeviceDetailItem;
   enabled: boolean;
   boostBelowPercent: number;
 }): string {

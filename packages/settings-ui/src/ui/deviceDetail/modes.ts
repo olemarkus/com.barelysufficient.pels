@@ -1,4 +1,3 @@
-import type { TargetDeviceSnapshot } from '../../../../contracts/src/types.ts';
 import {
   getPrimaryTargetCapability,
   getTargetCapabilityStep,
@@ -8,7 +7,7 @@ import { deviceDetailModes, deviceDetailModesSection, type MdFilledTextFieldElem
 import { state } from '../state.ts';
 import { showToastError } from '../toast.ts';
 import { logSettingsError } from '../logging.ts';
-import { supportsTemperatureDevice } from '../deviceUtils.ts';
+import { supportsTemperatureDevice, type SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 import { debouncedSetSetting } from '../utils.ts';
 import { renderPriorities } from '../modes.ts';
 
@@ -25,7 +24,7 @@ const getPriorityLabel = (mode: string, deviceId: string) => {
   return `Priority: #${priority <= 100 ? priority : '—'}`;
 };
 
-const getTargetInputValue = (mode: string, device: TargetDeviceSnapshot) => {
+const getTargetInputValue = (mode: string, device: SettingsUiDeviceDetailItem) => {
   const target = getPrimaryTargetCapability(device.targets);
   const currentTarget = state.modeTargets[mode]?.[device.id];
   const defaultTarget = device.targets?.[0]?.value;
@@ -53,7 +52,7 @@ const getTargetBounds = (
 
 const buildDeviceDetailModeInput = (
   mode: string,
-  device: TargetDeviceSnapshot,
+  device: SettingsUiDeviceDetailItem,
   target: ReturnType<typeof getPrimaryTargetCapability>,
 ): MdFilledTextFieldElement => {
   const tempInput = document.createElement('md-filled-text-field') as MdFilledTextFieldElement;
@@ -74,7 +73,7 @@ const buildDeviceDetailModeInput = (
 const bindDeviceDetailModeInput = (
   tempInput: MdFilledTextFieldElement,
   mode: string,
-  device: TargetDeviceSnapshot,
+  device: SettingsUiDeviceDetailItem,
   target: ReturnType<typeof getPrimaryTargetCapability>,
 ) => {
   const inputElement = tempInput;
@@ -96,7 +95,7 @@ const bindDeviceDetailModeInput = (
   });
 };
 
-const buildDeviceDetailModeRow = (mode: string, device: TargetDeviceSnapshot) => {
+const buildDeviceDetailModeRow = (mode: string, device: SettingsUiDeviceDetailItem) => {
   const row = document.createElement('div');
   row.className = 'device-row detail-mode-row';
   row.dataset.mode = mode;
@@ -139,7 +138,7 @@ const buildDeviceDetailModeRow = (mode: string, device: TargetDeviceSnapshot) =>
   return row;
 };
 
-export const renderDeviceDetailModes = (device: TargetDeviceSnapshot) => {
+export const renderDeviceDetailModes = (device: SettingsUiDeviceDetailItem) => {
   if (!deviceDetailModes) return;
   while (deviceDetailModes.firstChild) deviceDetailModes.removeChild(deviceDetailModes.firstChild);
 
