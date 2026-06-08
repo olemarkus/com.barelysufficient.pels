@@ -3,7 +3,11 @@ import {
   PLAN_REASON_CODES,
 } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { DevicePlan } from '../plan/planTypes';
-import { isRestoreAdmissionHoldReason } from '../planContract/planDecisionSemantics';
+import {
+  isDeferredRestoreBlockedReason,
+  isRestoreAdmissionHoldReason,
+  isSwapTargetPendingReason,
+} from '../planContract/planDecisionSemantics';
 import type {
   ObservedDeviceState,
   SteppedLoadDecoration,
@@ -215,13 +219,13 @@ const buildExecutableBinaryIntent = (dev: PlanDevice): ExecutableBinaryIntent | 
     return buildExecutableBinaryShedIntent(dev);
   }
   if (dev.plannedState !== 'keep') return null;
-  if (isSwapTargetPendingReason(dev)) return null;
+  if (isSwapTargetPendingReason(dev.reason)) return null;
   if (dev.reason && isRestoreAdmissionHoldReason(dev.reason)) return null;
   return { kind: 'restore', deviceId: dev.id, name: dev.name, source: 'controlled' };
 };
 
 const buildExecutableBinaryShedIntent = (dev: PlanDevice): ExecutableBinaryIntent | null => {
-  if (isSwapTargetPendingReason(dev)) return null;
+  if (isSwapTargetPendingReason(dev.reason)) return null;
   if (dev.reason && isRestoreAdmissionHoldReason(dev.reason)) return null;
   if ((dev.shedAction ?? 'turn_off') === 'set_temperature') return null;
   const isSwap = dev.reason?.code === PLAN_REASON_CODES.swappedOut;
@@ -233,22 +237,17 @@ const buildExecutableBinaryShedIntent = (dev: PlanDevice): ExecutableBinaryInten
   };
 };
 
-const isSwapTargetPendingReason = (dev: PlanDevice): boolean => (
-  dev.reason?.code === PLAN_REASON_CODES.swapPending && dev.reason.targetName === null
-);
-
 const buildExecutableReleaseIntent = (
   dev: PlanDevice,
   planMeta?: PlanMeta,
 ): ExecutableReleaseIntent | null => {
   const kind = dev.deferredReleaseIntent;
   if (!kind) return null;
-  // The release intent is producer-resolved in deferred-objective admission, keyed on
-  // objectiveKind which is 1:1 with device type (`ev_soc` → EV charger → binary_*;
-  // `temperature` → thermostat → shed_release). The executor trusts the intent and does
-  // NOT re-derive EV-ness: `shed_release` never targets an EV device and `binary_*` always
-  // does, so the old `isEvDevice` guards here were unreachable. See the invariant note at
-  // `resolveReleaseIntentForCapOff` in lib/objectives/deferredObjectives/admission.ts.
+  // The release intent is producer-resolved in deferred-objective admission. This per-cycle
+  // projection only reconciles a binary_restore (resume) against the current cycle's planner
+  // state — power-freshness (re-evaluated every cycle, incl. realtime reconcile) and the final
+  // plan reason — via shared predicates in planDecisionSemantics. The actual executor
+  // (planExecutor) then actuates the resulting intent flatly, without re-checking reasons.
   if (kind === 'shed_release') {
     // shed_release fires the device's configured shedBehavior; the executor resolves the
     // concrete actuation primitive (turn_off / set_temperature / set_step) at apply time.
@@ -257,28 +256,12 @@ const buildExecutableReleaseIntent = (
     return { kind, deviceId: dev.id, name: dev.name, releaseShedStepId: dev.releaseShedStepId };
   }
   if (kind === 'binary_release') return { kind, deviceId: dev.id, name: dev.name };
+  // binary_restore is the only positive (turn-on) intent: require a fresh power sample
+  // (avoid racing the capacity guard), the device kept, no pending swap target, and a plan
+  // reason that does not block restore (capacity/cooldown/etc).
   if (planMeta?.powerFreshnessState && planMeta.powerFreshnessState !== 'fresh') return null;
   if (dev.plannedState !== 'keep') return null;
-  if (isSwapTargetPendingReason(dev)) return null;
-  if (dev.reason && isEvResumeBlockedReason(dev.reason)) return null;
+  if (isSwapTargetPendingReason(dev.reason)) return null;
+  if (dev.reason && isDeferredRestoreBlockedReason(dev.reason)) return null;
   return { kind, deviceId: dev.id, name: dev.name };
 };
-
-const EV_RESUME_BLOCK_REASON_CODES = new Set<string>([
-  PLAN_REASON_CODES.activationBackoff,
-  PLAN_REASON_CODES.capacity,
-  PLAN_REASON_CODES.cooldownRestore,
-  PLAN_REASON_CODES.cooldownShedding,
-  PLAN_REASON_CODES.headroomCooldown,
-  PLAN_REASON_CODES.insufficientHeadroom,
-  PLAN_REASON_CODES.meterSettling,
-  PLAN_REASON_CODES.restorePending,
-  PLAN_REASON_CODES.restoreThrottled,
-  PLAN_REASON_CODES.shedInvariant,
-  PLAN_REASON_CODES.startupStabilization,
-  PLAN_REASON_CODES.waitingForOtherDevices,
-]);
-
-const isEvResumeBlockedReason = (reason: NonNullable<PlanDevice['reason']>): boolean => (
-  EV_RESUME_BLOCK_REASON_CODES.has(reason.code)
-);

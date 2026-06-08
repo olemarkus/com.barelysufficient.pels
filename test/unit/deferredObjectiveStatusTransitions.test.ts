@@ -19,6 +19,16 @@ const baseDiagnostic = (overrides: Partial<DeferredObjectiveDiagnostic> & {
   currentPercent: null,
   targetTemperatureC: 55,
   currentTemperatureC: 50,
+  // Mirror the production invariant: currentValue/targetValue track the kind's
+  // unit (°C for temperature, % for ev_soc), so the fixture stays consistent when
+  // a test overrides objectiveKind. An explicit currentValue/targetValue override
+  // still wins via the `...overrides` spread below.
+  currentValue: (overrides.objectiveKind ?? 'temperature') === 'temperature'
+    ? (overrides.currentTemperatureC ?? 50)
+    : (overrides.currentPercent ?? null),
+  targetValue: (overrides.objectiveKind ?? 'temperature') === 'temperature'
+    ? (overrides.targetTemperatureC ?? 55)
+    : (overrides.targetPercent ?? null),
   deadlineAtMs: overrides.deadlineAtMs ?? 1_700_000_000_000,
   deadlineLocalTime: '07:00',
   energyNeededKWh: 1.5,

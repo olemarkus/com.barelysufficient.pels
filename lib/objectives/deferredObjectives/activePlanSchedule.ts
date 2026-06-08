@@ -71,7 +71,7 @@ export const buildHoursFromHorizonPlan = (
 const resolveUnitTrajectoryAnchor = (
   diag: DeferredObjectiveDiagnostic,
 ): { anchorUnit: number; ratePerUnit: number } | null => {
-  const anchorUnit = diag.objectiveKind === 'temperature' ? diag.currentTemperatureC : diag.currentPercent;
+  const anchorUnit = diag.currentValue;
   const meanRatePerUnit = diag.objectiveKind === 'temperature' ? diag.kWhPerDegreeC : diag.kWhPerPercent;
   const bufferedRatePerUnit = diag.kWhPerUnitBuffered;
   const ratePerUnit = typeof bufferedRatePerUnit === 'number' && Number.isFinite(bufferedRatePerUnit)
