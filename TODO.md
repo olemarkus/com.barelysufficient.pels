@@ -774,3 +774,19 @@ persona but no current support-cost pressure; reframed to the P3 bar.*
       `packages/contracts/src/deferredObjectiveSettings.ts`, `flowCards/deadlineObjectiveCards.ts`,
       `lib/objectives/deferredObjectives/diagnosticsBridge.ts`,
       `.homeycompose/flow/actions/set_ev_charge_deadline.json`.
+- [ ] **Stabilise the createApp shed e2e tests against the all-tiers coverage run.**
+      *Persona:* maintainer landing any PR (CI reliability).
+      *Hypothesis:* `onoffShedControl` / `airtreatmentShedControl` / `heatpumpShedControl`
+      (`test/e2e/*ShedControl*`) drive the real Homey live-feed websocket and assert the shed write via
+      `drainUntilCalledWith`; under the heavier instrumented all-tiers `coverage` pass (and intermittently
+      the standalone `e2e-tests` job) the 50-round fake-timer drain doesn't converge
+      (`drainUntil: predicate not satisfied after 50 drain rounds`), failing the required
+      `coverage`/`e2e-tests` checks nondeterministically. Likely the real websocket connect
+      (`ECONNREFUSED ::1:80`) leaves a pending real-timer/microtask the fake-timer drain can't flush under
+      load. Stub the live-feed seam in these harnesses (or raise/parameterise the drain rounds) so the
+      shed write is observed deterministically.
+      *Why:* a real, recurring CI-reliability cost — these flakes forced coverage/e2e re-runs on the
+      price-source-decouple work (#1598/#1604) with no code cause. *Validate first:* reproduce with
+      `npm run test:coverage` (intermittent). Files: `test/e2e/onoffShedControl.e2e.test.ts`,
+      `test/e2e/airtreatmentShedControl.e2e.test.ts`, `test/e2e/heatpumpShedControl.e2e.test.ts`,
+      `test/utils/asyncDrain.ts`, the live-feed adapter under `lib/device/**`.
