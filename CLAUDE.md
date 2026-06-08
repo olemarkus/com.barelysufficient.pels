@@ -194,7 +194,7 @@ GitHub Actions (`.github/workflows/test.yml`) runs on every push and PR:
 4. **timezone-tests** — `npm run test:unit:tz`.
 5. **coverage** — `npm run test:coverage` (all tiers in one instrumented pass, 80% gate).
 6. **settings-ui-tests** — `npm run ci:test:settings-ui`.
-7. **playwright** — E2E matrix (chromium mobile + firefox mobile).
+7. **playwright** — E2E matrix (`chromium-mobile-width`, `firefox-mobile-width`, `chromium-narrow-width`).
 
 `docs.yml` deploys docs to GitHub Pages at `pels.barelysufficient.org` on every push to `main`.
 
