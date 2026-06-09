@@ -4,6 +4,7 @@ import {
   COMBINED_PRICES,
   ELECTRICITY_PRICES,
   ELECTRICITY_PRICES_AREA,
+  HOMEY_PRICES_CURRENCY,
   NETTLEIE_DATA,
 } from '../lib/utils/settingsKeys';
 
@@ -23,6 +24,7 @@ export const createPriceDataStore = (homey: Homey.App['homey']): PriceDataStore 
   writeNettleie: (data) => homey.settings.set(NETTLEIE_DATA, data),
   readFlowPayload: (key) => homey.settings.get(key),
   writeFlowPayload: (key, payload) => homey.settings.set(key, payload),
+  writeHomeyPricesCurrency: (unit) => homey.settings.set(HOMEY_PRICES_CURRENCY, unit),
   readCombinedRaw: () => homey.settings.get(COMBINED_PRICES),
   writeCombined: (payload) => homey.settings.set(COMBINED_PRICES, payload),
 });

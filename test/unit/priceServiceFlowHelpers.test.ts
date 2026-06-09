@@ -34,7 +34,7 @@ describe('priceServiceFlowHelpers DST date keys', () => {
     vi.useFakeTimers();
     try {
       vi.setSystemTime(new Date('2024-03-30T22:30:00.000Z'));
-      const setSetting = vi.fn();
+      const writeFlowPayload = vi.fn();
       const updateCombinedPrices = vi.fn();
 
       const result = storeFlowPriceData({
@@ -42,12 +42,12 @@ describe('priceServiceFlowHelpers DST date keys', () => {
         raw: [1, 2, 4],
         timeZone: 'Europe/Oslo',
         debugStructured: vi.fn(),
-        setSetting,
+        writeFlowPayload,
         updateCombinedPrices,
       });
 
       expect(result.dateKey).toBe('2024-03-31');
-      expect(setSetting).toHaveBeenCalledWith(
+      expect(writeFlowPayload).toHaveBeenCalledWith(
         'flow_prices_tomorrow',
         expect.objectContaining({ dateKey: '2024-03-31' }),
       );
