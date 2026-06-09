@@ -21,9 +21,33 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // widgets/plan_budget/src/api.ts
 var api_exports = {};
 __export(api_exports, {
-  getChart: () => getChart
+  getChart: () => getChart,
+  logClientError: () => logClientError
 });
 module.exports = __toCommonJS(api_exports);
+
+// widgets/_shared/widgetClientLogApi.ts
+var isValidEntry = (value) => {
+  if (!value || typeof value !== "object") return false;
+  const entry = value;
+  return (entry.level === "error" || entry.level === "warn" || entry.level === "info") && typeof entry.widget === "string" && typeof entry.message === "string";
+};
+var handleWidgetClientLog = (widgetId, { homey, body }) => {
+  const app = homey.app;
+  if (!isValidEntry(body)) {
+    app?.error?.(`Widget ${widgetId} log API called without a valid payload`);
+    return { ok: false };
+  }
+  const message = `Widget (${body.widget}): ${body.message}`;
+  if (body.level === "error") {
+    app?.error?.(message, new Error(body.detail ?? body.message));
+  } else if (body.level === "warn") {
+    app?.log?.(`Warning: ${message}`);
+  } else {
+    app?.log?.(message);
+  }
+  return { ok: true };
+};
 
 // packages/shared-domain/src/price/priceUnitLabel.ts
 var PER_KWH_RATE_SUFFIX = /^(.*?)\s*\/\s*kwh\s*$/i;
@@ -40,7 +64,7 @@ var PLAN_PRICE_WIDGET_EMPTY = {
   budgetDisabled: "Daily budget disabled",
   noData: "No budget data available",
   tomorrowPending: "Tomorrow's budget not available yet",
-  loadError: "Unable to load widget"
+  loadError: "Could not load. Reopen the dashboard."
 };
 var ORE_PER_KWH_LABEL = "\xF8re/kWh";
 var PLACEHOLDER_UNIT = "price units";
@@ -325,7 +349,9 @@ var getChart = async ({ homey, query }) => {
     priceScheme: resolvePriceScheme(rawCombinedPrices)
   });
 };
+var logClientError = (context) => handleWidgetClientLog("plan_budget", context);
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
-  getChart
+  getChart,
+  logClientError
 });

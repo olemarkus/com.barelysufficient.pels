@@ -150,10 +150,10 @@ export const initDebouncedSaveFlush = (): (() => void) | undefined => {
   }
   const handler = () => {
     // Best-effort flush on unload; browsers may not wait for async work to finish.
-    void flushPendingSaves().catch(() => {
-      // Avoid leaking details to console on unload; keep message generic.
-      console.error('Failed to flush pending setting saves before unload.');
-    });
+    // A failure here has no reliable channel — the page is going away, so an async
+    // `settings_ui_log` POST would not complete, and the WebView console is
+    // unreachable on the mobile dashboard — so swallow it silently.
+    void flushPendingSaves().catch(() => {});
   };
   window.addEventListener('beforeunload', handler);
   window.addEventListener('pagehide', handler);

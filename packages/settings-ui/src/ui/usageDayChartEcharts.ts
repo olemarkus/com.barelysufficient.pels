@@ -1,4 +1,5 @@
 import { encodeHtml, initEcharts, type EChartsOption, type EChartsType } from './echartsRegistry.ts';
+import { logSettingsWarn } from './logging.ts';
 import {
   formatAxisTick,
   formatHourAxisLabel,
@@ -304,7 +305,7 @@ export const renderUsageDayChartEcharts = (params: UsageDayChartEchartsParams): 
     labelsEl.hidden = true;
     return true;
   } catch (error) {
-    console.warn('Usage day chart: echarts render failed', error);
+    void logSettingsWarn('Usage day chart: echarts render failed', error, 'usageDayChart');
     disposePlot();
     barsEl.replaceChildren();
     labelsEl.hidden = true;

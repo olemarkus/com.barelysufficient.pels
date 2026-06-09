@@ -23,9 +23,33 @@ var api_exports = {};
 __export(api_exports, {
   createStarvationRescue: () => createStarvationRescue,
   getStarvationRescueDevices: () => getStarvationRescueDevices,
+  logClientError: () => logClientError,
   previewStarvationRescue: () => previewStarvationRescue
 });
 module.exports = __toCommonJS(api_exports);
+
+// widgets/_shared/widgetClientLogApi.ts
+var isValidEntry = (value) => {
+  if (!value || typeof value !== "object") return false;
+  const entry = value;
+  return (entry.level === "error" || entry.level === "warn" || entry.level === "info") && typeof entry.widget === "string" && typeof entry.message === "string";
+};
+var handleWidgetClientLog = (widgetId, { homey, body }) => {
+  const app = homey.app;
+  if (!isValidEntry(body)) {
+    app?.error?.(`Widget ${widgetId} log API called without a valid payload`);
+    return { ok: false };
+  }
+  const message = `Widget (${body.widget}): ${body.message}`;
+  if (body.level === "error") {
+    app?.error?.(message, new Error(body.detail ?? body.message));
+  } else if (body.level === "warn") {
+    app?.log?.(`Warning: ${message}`);
+  } else {
+    app?.log?.(message);
+  }
+  return { ok: true };
+};
 
 // packages/shared-domain/src/planStarvation.ts
 var STARVATION_RESCUE_WIDGET_COPY = {
@@ -301,9 +325,11 @@ var createStarvationRescue = async ({ homey, body }) => {
     runsCurrentHour: post ? scheduledHoursIncludeCurrentHour(post.estimate.scheduledHours, nowMs) : false
   };
 };
+var logClientError = (context) => handleWidgetClientLog("starvation_rescue", context);
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   createStarvationRescue,
   getStarvationRescueDevices,
+  logClientError,
   previewStarvationRescue
 });

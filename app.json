@@ -1622,6 +1622,10 @@
         "createCreateSmartTask": {
           "method": "POST",
           "path": "/create"
+        },
+        "logClientError": {
+          "method": "POST",
+          "path": "/log"
         }
       },
       "id": "create_smart_task",
@@ -1636,6 +1640,10 @@
         "getHeadroom": {
           "method": "GET",
           "path": "/headroom"
+        },
+        "logClientError": {
+          "method": "POST",
+          "path": "/log"
         }
       },
       "id": "headroom",
@@ -1674,6 +1682,10 @@
         "getChart": {
           "method": "GET",
           "path": "/chart"
+        },
+        "logClientError": {
+          "method": "POST",
+          "path": "/log"
         }
       },
       "id": "plan_budget"
@@ -1687,6 +1699,10 @@
         "getSmartTasks": {
           "method": "GET",
           "path": "/smart_tasks"
+        },
+        "logClientError": {
+          "method": "POST",
+          "path": "/log"
         }
       },
       "id": "smart_tasks",
@@ -1709,6 +1725,10 @@
         "createStarvationRescue": {
           "method": "POST",
           "path": "/rescue"
+        },
+        "logClientError": {
+          "method": "POST",
+          "path": "/log"
         }
       },
       "id": "starvation_rescue",

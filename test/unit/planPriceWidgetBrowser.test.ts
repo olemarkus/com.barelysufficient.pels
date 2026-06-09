@@ -433,7 +433,7 @@ describe('plan budget widget browser', () => {
     controller.bootstrap(homey);
     await flushPromises();
 
-    expect(targets.chartEl.querySelector('.chart__empty-subtitle')?.textContent).toBe('Unable to load widget');
+    expect(targets.chartEl.querySelector('.chart__empty-subtitle')?.textContent).toBe('Could not load. Reopen the dashboard.');
     expect(targets.tabsEl.hidden).toBe(true);
     // The two-tier header collapses (hidden + cleared) on the error state.
     expect(targets.summaryEl.hidden).toBe(true);
@@ -476,7 +476,7 @@ describe('plan budget widget browser', () => {
     await flushPromises();
 
     // The load failed: the error copy is shown.
-    expect(targets.chartEl.querySelector('.chart__empty-subtitle')?.textContent).toBe('Unable to load widget');
+    expect(targets.chartEl.querySelector('.chart__empty-subtitle')?.textContent).toBe('Could not load. Reopen the dashboard.');
 
     // A resize fires (tile grew). The handler re-renders; with `lastPayload` null
     // this previously repainted the NO-DATA empty state and wiped the error copy.
@@ -485,7 +485,7 @@ describe('plan budget widget browser', () => {
     resizeCb?.();
 
     // Error copy survives the resize — NOT the no-data subtitle.
-    expect(targets.chartEl.querySelector('.chart__empty-subtitle')?.textContent).toBe('Unable to load widget');
+    expect(targets.chartEl.querySelector('.chart__empty-subtitle')?.textContent).toBe('Could not load. Reopen the dashboard.');
 
     controller.destroy();
     delete widgetWindow.ResizeObserver;

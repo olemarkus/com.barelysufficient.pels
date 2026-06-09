@@ -25,8 +25,13 @@
     safePaceLabel: "Safe pace now",
     /** Shown when there is no status to render yet. */
     noDataSubtitle: "No data yet",
-    /** Shown when the widget API call fails. */
-    loadErrorSubtitle: "Unable to load"
+    /**
+     * Shown when the widget API call fails. The dominant cause is the Homey host
+     * orphaning the widget instance ("Widget Not Found"), which only a fresh
+     * dashboard open clears — so the copy names that remedy. Kept short: it renders
+     * in the headroom tile's large value slot.
+     */
+    loadErrorSubtitle: "Reopen the dashboard"
   };
   var PLACEHOLDER_LABEL = "\u2014";
   var LIMIT_STATE_LABELS = {
@@ -88,6 +93,23 @@
       }
     };
   };
+  var ORPHAN_RELOAD_KEY = "pels-widget-orphan-reload-at";
+  var ORPHAN_RELOAD_WINDOW_MS = 6e4;
+  var isWidgetNotFound = (error) => (error instanceof Error ? error.message : String(error)).toLowerCase().includes("widget not found");
+  var maybeReloadOnOrphan = (widgetWindow) => {
+    try {
+      const store = widgetWindow.sessionStorage;
+      if (Date.now() - Number(store.getItem(ORPHAN_RELOAD_KEY) ?? "0") < ORPHAN_RELOAD_WINDOW_MS) {
+        return false;
+      }
+      store.setItem(ORPHAN_RELOAD_KEY, String(Date.now()));
+      widgetWindow.location.reload();
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  var reloadIfOrphaned = (error, widgetWindow) => isWidgetNotFound(error) && maybeReloadOnOrphan(widgetWindow);
   var installWidget = (config) => {
     const { widgetWindow, widgetDocument, resolveTargets: resolveTargets2, createController } = config;
     const targets = resolveTargets2(widgetDocument);
@@ -109,6 +131,75 @@
     }
     return controller;
   };
+
+  // widgets/_shared/widgetClientLog.ts
+  var WIDGET_CLIENT_LOG_PATH = "/log";
+  var MAX_PENDING = 20;
+  var SUPPRESS_WINDOW_MS = 60 * 1e3;
+  var normalizeError = (error) => {
+    if (error === void 0) return void 0;
+    if (error instanceof Error) return error.stack ?? error.message;
+    if (typeof error === "string") return error;
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return String(error);
+    }
+  };
+  var createWidgetErrorReporter = (params) => {
+    const pending = [];
+    const lastAcceptedAt = /* @__PURE__ */ new Map();
+    const post = async (entry) => {
+      const homey = params.getHomey();
+      if (!homey) throw new Error("widget log: no Homey client");
+      await homey.api("POST", WIDGET_CLIENT_LOG_PATH, entry);
+    };
+    const drain = async () => {
+      while (pending.length > 0) {
+        await post(pending[0]);
+        pending.shift();
+      }
+    };
+    const queue = (entry) => {
+      const last = pending[pending.length - 1];
+      if (last && last.level === entry.level && last.message === entry.message) {
+        last.detail = entry.detail;
+        last.timestamp = entry.timestamp;
+        return;
+      }
+      if (pending.length >= MAX_PENDING) pending.shift();
+      pending.push(entry);
+    };
+    const flush = () => {
+      void drain().catch(() => {
+      });
+    };
+    const report = (level, message, error) => {
+      if (!params.getHomey()) return;
+      const now = params.now();
+      const key = `${level}:${message}`;
+      const seenAt = lastAcceptedAt.get(key);
+      if (seenAt !== void 0 && now - seenAt < SUPPRESS_WINDOW_MS) return;
+      lastAcceptedAt.set(key, now);
+      const entry = {
+        level,
+        widget: params.widget,
+        message,
+        detail: normalizeError(error),
+        timestamp: now
+      };
+      void (async () => {
+        try {
+          await drain();
+          await post(entry);
+        } catch {
+          queue(entry);
+        }
+      })();
+    };
+    return { report, flush };
+  };
+  var widgetErrorReporter = (widget, getHomey) => createWidgetErrorReporter({ widget, getHomey, now: () => Date.now() });
 
   // widgets/headroom/src/public/previewPayloads.ts
   var PREVIEW_HEADROOM_PAYLOADS = {
@@ -309,6 +400,7 @@
     let initialRenderDone = false;
     let loadSequence = 0;
     let destroyed = false;
+    const reporter = widgetErrorReporter("headroom", () => homeyRef);
     const loadAndRender = async () => {
       const loadId = ++loadSequence;
       try {
@@ -318,9 +410,11 @@
         const payload = preview || !homeyRef ? resolveHeadroomPreviewPayload(searchParams.get("state")) : await homeyRef.api("GET", "/headroom");
         if (destroyed || loadId !== loadSequence) return;
         renderWidget(targets, payload);
+        reporter.flush();
       } catch (error) {
         if (destroyed || loadId !== loadSequence) return;
-        console.error("Failed to load headroom widget", error);
+        if (reloadIfOrphaned(error, widgetWindow)) return;
+        reporter.report("error", "Failed to load headroom widget", error);
         renderWidget(targets, { state: "empty", subtitle: LOAD_ERROR_SUBTITLE });
       } finally {
         if (!destroyed && loadId === loadSequence && !initialRenderDone && homeyRef?.ready) {

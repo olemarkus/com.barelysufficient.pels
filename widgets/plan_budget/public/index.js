@@ -16,7 +16,7 @@
     budgetDisabled: "Daily budget disabled",
     noData: "No budget data available",
     tomorrowPending: "Tomorrow's budget not available yet",
-    loadError: "Unable to load widget"
+    loadError: "Could not load. Reopen the dashboard."
   };
   var PLAN_PRICE_WIDGET_ARIA = {
     unavailable: "Budget and price chart unavailable",
@@ -588,6 +588,23 @@
       }
     };
   };
+  var ORPHAN_RELOAD_KEY = "pels-widget-orphan-reload-at";
+  var ORPHAN_RELOAD_WINDOW_MS = 6e4;
+  var isWidgetNotFound = (error) => (error instanceof Error ? error.message : String(error)).toLowerCase().includes("widget not found");
+  var maybeReloadOnOrphan = (widgetWindow) => {
+    try {
+      const store = widgetWindow.sessionStorage;
+      if (Date.now() - Number(store.getItem(ORPHAN_RELOAD_KEY) ?? "0") < ORPHAN_RELOAD_WINDOW_MS) {
+        return false;
+      }
+      store.setItem(ORPHAN_RELOAD_KEY, String(Date.now()));
+      widgetWindow.location.reload();
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  var reloadIfOrphaned = (error, widgetWindow) => isWidgetNotFound(error) && maybeReloadOnOrphan(widgetWindow);
   var installWidget = (config) => {
     const { widgetWindow, widgetDocument, resolveTargets: resolveTargets2, createController } = config;
     const targets = resolveTargets2(widgetDocument);
@@ -609,6 +626,75 @@
     }
     return controller;
   };
+
+  // widgets/_shared/widgetClientLog.ts
+  var WIDGET_CLIENT_LOG_PATH = "/log";
+  var MAX_PENDING = 20;
+  var SUPPRESS_WINDOW_MS = 60 * 1e3;
+  var normalizeError = (error) => {
+    if (error === void 0) return void 0;
+    if (error instanceof Error) return error.stack ?? error.message;
+    if (typeof error === "string") return error;
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return String(error);
+    }
+  };
+  var createWidgetErrorReporter = (params) => {
+    const pending = [];
+    const lastAcceptedAt = /* @__PURE__ */ new Map();
+    const post = async (entry) => {
+      const homey = params.getHomey();
+      if (!homey) throw new Error("widget log: no Homey client");
+      await homey.api("POST", WIDGET_CLIENT_LOG_PATH, entry);
+    };
+    const drain = async () => {
+      while (pending.length > 0) {
+        await post(pending[0]);
+        pending.shift();
+      }
+    };
+    const queue = (entry) => {
+      const last = pending[pending.length - 1];
+      if (last && last.level === entry.level && last.message === entry.message) {
+        last.detail = entry.detail;
+        last.timestamp = entry.timestamp;
+        return;
+      }
+      if (pending.length >= MAX_PENDING) pending.shift();
+      pending.push(entry);
+    };
+    const flush = () => {
+      void drain().catch(() => {
+      });
+    };
+    const report = (level, message, error) => {
+      if (!params.getHomey()) return;
+      const now = params.now();
+      const key = `${level}:${message}`;
+      const seenAt = lastAcceptedAt.get(key);
+      if (seenAt !== void 0 && now - seenAt < SUPPRESS_WINDOW_MS) return;
+      lastAcceptedAt.set(key, now);
+      const entry = {
+        level,
+        widget: params.widget,
+        message,
+        detail: normalizeError(error),
+        timestamp: now
+      };
+      void (async () => {
+        try {
+          await drain();
+          await post(entry);
+        } catch {
+          queue(entry);
+        }
+      })();
+    };
+    return { report, flush };
+  };
+  var widgetErrorReporter = (widget, getHomey) => createWidgetErrorReporter({ widget, getHomey, now: () => Date.now() });
 
   // widgets/plan_budget/src/public/previewPayloads.ts
   var buildBucketLabels = () => Array.from(
@@ -928,6 +1014,7 @@
     const measurementSignature = (m) => `${Math.round(m.height)}`;
     let destroyed = false;
     let inErrorState = false;
+    const reporter = widgetErrorReporter("plan_budget", () => homeyRef);
     const labelTabs = () => {
       tabButtons.morning.textContent = PLAN_PRICE_WIDGET_TABS.morning;
       tabButtons.afternoon.textContent = PLAN_PRICE_WIDGET_TABS.afternoon;
@@ -970,11 +1057,6 @@
       unbindTabs?.();
       unbindTabs = null;
     };
-    const renderLoadError = () => {
-      lastPayload = null;
-      inErrorState = true;
-      render();
-    };
     const loadAndRender = async () => {
       const loadId = ++loadSequence;
       try {
@@ -988,10 +1070,14 @@
         inErrorState = false;
         if (!halfPinned) half = resolveInitialHalf(payload);
         render();
+        reporter.flush();
       } catch (error) {
         if (destroyed || loadId !== loadSequence) return;
-        console.error("Failed to load widget chart", error);
-        renderLoadError();
+        if (reloadIfOrphaned(error, widgetWindow)) return;
+        reporter.report("error", "Failed to load plan_budget widget", error);
+        lastPayload = null;
+        inErrorState = true;
+        render();
       } finally {
         if (!destroyed && loadId === loadSequence && !initialRenderDone && homeyRef?.ready) {
           homeyRef.ready();

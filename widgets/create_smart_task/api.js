@@ -4418,9 +4418,33 @@ var api_exports = {};
 __export(api_exports, {
   createCreateSmartTask: () => createCreateSmartTask,
   getCreateSmartTaskDevices: () => getCreateSmartTaskDevices,
+  logClientError: () => logClientError,
   previewCreateSmartTask: () => previewCreateSmartTask
 });
 module.exports = __toCommonJS(api_exports);
+
+// widgets/_shared/widgetClientLogApi.ts
+var isValidEntry = (value) => {
+  if (!value || typeof value !== "object") return false;
+  const entry = value;
+  return (entry.level === "error" || entry.level === "warn" || entry.level === "info") && typeof entry.widget === "string" && typeof entry.message === "string";
+};
+var handleWidgetClientLog = (widgetId, { homey, body }) => {
+  const app = homey.app;
+  if (!isValidEntry(body)) {
+    app?.error?.(`Widget ${widgetId} log API called without a valid payload`);
+    return { ok: false };
+  }
+  const message = `Widget (${body.widget}): ${body.message}`;
+  if (body.level === "error") {
+    app?.error?.(message, new Error(body.detail ?? body.message));
+  } else if (body.level === "warn") {
+    app?.log?.(`Warning: ${message}`);
+  } else {
+    app?.log?.(message);
+  }
+  return { ok: true };
+};
 
 // lib/objectives/deferredObjectives/bucketAllocation.ts
 var HOUR_MS = 60 * 60 * 1e3;
@@ -5546,9 +5570,11 @@ var createCreateSmartTask = async ({ homey, body }) => {
   if (result.ok) return { ok: true };
   return createReject(mapAppReason(result.reason));
 };
+var logClientError = (context) => handleWidgetClientLog("create_smart_task", context);
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   createCreateSmartTask,
   getCreateSmartTaskDevices,
+  logClientError,
   previewCreateSmartTask
 });
