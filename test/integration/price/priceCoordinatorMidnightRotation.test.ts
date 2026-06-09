@@ -2,12 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockHomeyInstance } from '../../mocks/homey';
 import { PriceCoordinator } from '../../../lib/price/priceCoordinator';
 import { createPriceOptimizationSettingsStore } from '../../../setup/priceOptimizationSettingsAdapter';
+import { createCombinedPricesStore } from '../../../setup/priceCombinedPricesAdapter';
 import { PriceLevel } from '../../../lib/price/priceLevels';
 import { COMBINED_PRICES, FLOW_PRICES_TODAY, PRICE_SCHEME } from '../../../lib/utils/settingsKeys';
 
 const createCoordinator = () => new PriceCoordinator({
   homey: mockHomeyInstance as never,
   priceOptimizationSettingsStore: createPriceOptimizationSettingsStore(mockHomeyInstance as never),
+  combinedPricesStore: createCombinedPricesStore(mockHomeyInstance as never),
   getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
   getCurrentPriceLevel: () => PriceLevel.NORMAL,
   rebuildPlanFromCache: async () => undefined,
@@ -74,6 +76,7 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
     const coordinator = new PriceCoordinator({
       homey: mockHomeyInstance as never,
       priceOptimizationSettingsStore: createPriceOptimizationSettingsStore(mockHomeyInstance as never),
+      combinedPricesStore: createCombinedPricesStore(mockHomeyInstance as never),
       getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
       getCurrentPriceLevel: () => PriceLevel.NORMAL,
       rebuildPlanFromCache: async () => undefined,
@@ -258,6 +261,7 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
     const coordinator = new PriceCoordinator({
       homey: mockHomeyInstance as never,
       priceOptimizationSettingsStore: createPriceOptimizationSettingsStore(mockHomeyInstance as never),
+      combinedPricesStore: createCombinedPricesStore(mockHomeyInstance as never),
       getTimeZone: () => mockHomeyInstance.clock.getTimezone(),
       getCurrentPriceLevel: () => PriceLevel.NORMAL,
       rebuildPlanFromCache: async () => undefined,

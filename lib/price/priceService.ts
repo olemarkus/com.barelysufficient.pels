@@ -4,7 +4,6 @@ import {
   getHourStartInTimeZone,
 } from '../utils/dateUtils';
 import {
-  COMBINED_PRICES,
   FLOW_PRICES_TODAY,
   FLOW_PRICES_TOMORROW,
   HOMEY_PRICES_CURRENCY,
@@ -54,6 +53,7 @@ import { fetchSpotPricesForDate } from './spotPriceFetch';
 import { getCurrentHourPrice, isCurrentHourAtLevel } from './priceLevelUtils';
 import { formatFlowPriceInfo, formatNorwayPriceInfo } from './priceInfoFormatters';
 import type { CombinedHourlyPrice, PriceScheme } from './priceTypes';
+import type { CombinedPricesStore } from './combinedPricesStore';
 import type { HomeyEnergyApi } from '../utils/homeyEnergy';
 
 const GRID_TARIFF_FAILURE_REASONS: Record<'keepCache' | 'clearStaleFallback' | 'noData', string> = {
@@ -67,7 +67,8 @@ export default class PriceService {
     private homey: { settings: SettingsPort; api: ApiPort },
     private readonly sinks: PriceServiceLoggingSinks,
     private getTimeZone: () => string,
-    private getHomeyEnergyApi?: () => HomeyEnergyApi | null,
+    private getHomeyEnergyApi: (() => HomeyEnergyApi | null) | undefined,
+    private readonly combinedPricesStore: CombinedPricesStore,
   ) { }
 
   private onCombinedPricesUpdated?: (reason: string) => void;
@@ -282,7 +283,7 @@ export default class PriceService {
       now,
       timeZone,
     });
-    const existingPayload = this.getSettingValue(COMBINED_PRICES);
+    const existingPayload = this.combinedPricesStore.readRaw();
     // Data safety: never replace still-valid prices with an empty rebuild. A
     // missing/transiently-unreadable/invalid raw flow slot makes the rebuild
     // empty; its fingerprint differs from the populated cache, so the set()
@@ -298,11 +299,11 @@ export default class PriceService {
       const previousLastFetched = getCombinedPayloadLastFetched(existingPayload);
       const shouldUpdateLastFetched = Boolean(nextLastFetched && nextLastFetched !== previousLastFetched);
       this.sinks.debugStructured({ event: 'combined_prices_unchanged', lastFetchedUpdated: shouldUpdateLastFetched });
-      if (shouldUpdateLastFetched) this.homey.settings.set(COMBINED_PRICES, payload);
+      if (shouldUpdateLastFetched) this.combinedPricesStore.write(payload);
       this.emitRealtime('prices_updated', payload);
       return;
     }
-    this.homey.settings.set(COMBINED_PRICES, payload);
+    this.combinedPricesStore.write(payload);
     this.emitRealtime('prices_updated', payload);
     this.onCombinedPricesUpdated?.('changed');
   }

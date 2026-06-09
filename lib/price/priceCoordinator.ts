@@ -6,6 +6,7 @@ import { type CombinedHourlyPrice, isCombinedPricesV1 } from './priceTypes';
 import { shouldCatchUpCombinedPricesRotation } from './priceServiceCombined';
 import { COMBINED_PRICES } from '../utils/settingsKeys';
 import type { PriceOptimizationSettingsStore } from './priceOptimizationSettingsStore';
+import type { CombinedPricesStore } from './combinedPricesStore';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
 import { getNextLocalDayStartUtcMs } from '../utils/dateUtils';
 import { normalizeError } from '../utils/errorUtils';
@@ -24,6 +25,7 @@ const MIDNIGHT_ROTATION_MIN_DELAY_MS = 1000;
 export type PriceCoordinatorDeps = {
   homey: { settings: SettingsPort; api: ApiPort };
   priceOptimizationSettingsStore: PriceOptimizationSettingsStore;
+  combinedPricesStore: CombinedPricesStore;
   getTimeZone: () => string;
   getHomeyEnergyApi?: () => import('../utils/homeyEnergy').HomeyEnergyApi | null;
   getCurrentPriceLevel: () => PriceLevel;
@@ -62,6 +64,7 @@ export class PriceCoordinator {
       },
       deps.getTimeZone,
       deps.getHomeyEnergyApi,
+      deps.combinedPricesStore,
     );
     if (deps.onCombinedPricesUpdated) {
       this.priceService.setOnCombinedPricesUpdated(deps.onCombinedPricesUpdated);

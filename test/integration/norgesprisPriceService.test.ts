@@ -1,5 +1,6 @@
 import type Homey from 'homey';
 import PriceService from '../../lib/price/priceService';
+import { createCombinedPricesStore } from '../../setup/priceCombinedPricesAdapter';
 import { mockHomeyInstance } from '../mocks/homey';
 import {
   CONSUMPTION_TAX_STANDARD_EX_VAT,
@@ -31,6 +32,8 @@ const createService = (): PriceService => new PriceService(
   mockHomeyInstance as unknown as Homey.App['homey'],
   { log: () => {}, debugStructured: () => {} },
   () => mockHomeyInstance.clock.getTimezone(),
+  undefined,
+  createCombinedPricesStore(mockHomeyInstance as never),
 );
 
 const setNorwayNorgesprisSettings = (params: {

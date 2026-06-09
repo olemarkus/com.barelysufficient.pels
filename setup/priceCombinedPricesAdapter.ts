@@ -1,5 +1,6 @@
 import type Homey from 'homey';
 import type { CombinedPricesReader } from '../lib/price/combinedPricesReader';
+import type { CombinedPricesStore } from '../lib/price/combinedPricesStore';
 import type { PriceCoordinator } from '../lib/price/priceCoordinator';
 import { COMBINED_PRICES } from '../lib/utils/settingsKeys';
 import {
@@ -84,4 +85,19 @@ export const createCombinedPricesReaderForApp = (
 ): CombinedPricesReader => createCombinedPricesReader({
   homey,
   requestRefetch: () => getPriceCoordinator()?.updateCombinedPrices(),
+});
+
+/**
+ * Builds the {@link CombinedPricesStore}: the producer-side read/write boundary
+ * PriceService uses when rebuilding the cache. Unlike the reader, `readRaw`
+ * returns the persisted COMBINED_PRICES value verbatim — un-migrated and
+ * un-pruned — because PriceService fingerprints it and runs the transient-read
+ * data-safety guard against the raw bytes. `write` persists the freshly-built
+ * V2 payload.
+ */
+export const createCombinedPricesStore = (
+  homey: Homey.App['homey'],
+): CombinedPricesStore => ({
+  readRaw: () => homey.settings.get(COMBINED_PRICES),
+  write: (payload) => homey.settings.set(COMBINED_PRICES, payload),
 });
