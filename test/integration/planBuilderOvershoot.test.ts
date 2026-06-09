@@ -36,7 +36,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
     capacityGuard.reportTotalPower(2.5);
 
     const builder = new PlanBuilder({
-      homey: { settings: { set: vi.fn() } } as never,
+      setCapacityInShortfall: vi.fn(),
       getCapacityGuard: () => capacityGuard,
       getCapacitySettings: () => ({ limitKw: 5, marginKw: 0 }),
       getOperatingMode: () => 'Home',
@@ -104,7 +104,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const capacityGuard = new CapacityGuard({ limitKw: 4, softMarginKw: 0 });
 
       const builder = new PlanBuilder({
-        homey: { settings: { set: vi.fn() } } as never,
+        setCapacityInShortfall: vi.fn(),
         getCapacityGuard: () => capacityGuard,
         getCapacitySettings: () => ({ limitKw: 4, marginKw: 0 }),
         getOperatingMode: () => 'Home',
@@ -179,7 +179,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const capacityGuard = new CapacityGuard({ limitKw: 4, softMarginKw: 0 });
 
       const builder = new PlanBuilder({
-        homey: { settings: { set: vi.fn() } } as never,
+        setCapacityInShortfall: vi.fn(),
         getCapacityGuard: () => capacityGuard,
         getCapacitySettings: () => ({ limitKw: 4, marginKw: 0 }),
         getOperatingMode: () => 'Home',
@@ -250,7 +250,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const capacityGuard = new CapacityGuard({ limitKw: 4, softMarginKw: 0 });
 
       const builder = new PlanBuilder({
-        homey: { settings: { set: vi.fn() } } as never,
+        setCapacityInShortfall: vi.fn(),
         getCapacityGuard: () => capacityGuard,
         getCapacitySettings: () => ({ limitKw: 4, marginKw: 0 }),
         getOperatingMode: () => 'Home',
@@ -330,7 +330,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const capacityGuard = new CapacityGuard({ limitKw: 4, softMarginKw: 0 });
 
       const builder = new PlanBuilder({
-        homey: { settings: { set: vi.fn() } } as never,
+        setCapacityInShortfall: vi.fn(),
         getCapacityGuard: () => capacityGuard,
         getCapacitySettings: () => ({ limitKw: 4, marginKw: 0 }),
         getOperatingMode: () => 'Home',
@@ -389,7 +389,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const capacityGuard = new CapacityGuard({ limitKw: 4, softMarginKw: 0 });
 
       const builder = new PlanBuilder({
-        homey: { settings: { set: vi.fn() } } as never,
+        setCapacityInShortfall: vi.fn(),
         getCapacityGuard: () => capacityGuard,
         getCapacitySettings: () => ({ limitKw: 4, marginKw: 0 }),
         getOperatingMode: () => 'Home',
@@ -442,7 +442,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
     capacityGuard.reportTotalPower(4.8);
 
     const builder = new PlanBuilder({
-      homey: { settings: { set: vi.fn() } } as never,
+      setCapacityInShortfall: vi.fn(),
       getCapacityGuard: () => capacityGuard,
       getCapacitySettings: () => ({ limitKw: 4, marginKw: 0 }),
       getOperatingMode: () => 'Home',
@@ -496,7 +496,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
     capacityGuard.reportTotalPower(4.461);
 
     const builder = new PlanBuilder({
-      homey: { settings: { set: vi.fn() } } as never,
+      setCapacityInShortfall: vi.fn(),
       getCapacityGuard: () => capacityGuard,
       getCapacitySettings: () => ({ limitKw: 5, marginKw: 0 }),
       getOperatingMode: () => 'Home',
@@ -551,7 +551,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
     capacityGuard.reportTotalPower(2.5);
 
     const builder = new PlanBuilder({
-      homey: { settings: { set: vi.fn() } } as never,
+      setCapacityInShortfall: vi.fn(),
       getCapacityGuard: () => capacityGuard,
       getCapacitySettings: () => ({ limitKw: 5, marginKw: 0 }),
       getOperatingMode: () => 'Home',
@@ -608,7 +608,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
     capacityGuard.reportTotalPower(0.5);
 
     const builder = new PlanBuilder({
-      homey: { settings: { set: vi.fn() } } as never,
+      setCapacityInShortfall: vi.fn(),
       getCapacityGuard: () => capacityGuard,
       getCapacitySettings: () => ({ limitKw: 5, marginKw: 0 }),
       getOperatingMode: () => 'Home',
@@ -661,7 +661,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       capacityGuard.reportTotalPower(4.8);
 
       const builder = new PlanBuilder({
-        homey: { settings: { set: vi.fn() } } as never,
+        setCapacityInShortfall: vi.fn(),
         getCapacityGuard: () => capacityGuard,
         getCapacitySettings: () => ({ limitKw: 4, marginKw: 0 }),
         getOperatingMode: () => 'Home',
@@ -728,7 +728,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const capacityGuard = new CapacityGuard({ limitKw: 4, softMarginKw: 0 });
 
       const builder = new PlanBuilder({
-        homey: { settings: { set: vi.fn() } } as never,
+        setCapacityInShortfall: vi.fn(),
         getCapacityGuard: () => capacityGuard,
         getCapacitySettings: () => ({ limitKw: 4, marginKw: 0 }),
         getOperatingMode: () => 'Home',
@@ -793,7 +793,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const capacityGuard = new CapacityGuard({ limitKw: 4, softMarginKw: 0 });
 
       const builder = new PlanBuilder({
-        homey: { settings: { set: vi.fn() } } as never,
+        setCapacityInShortfall: vi.fn(),
         getCapacityGuard: () => capacityGuard,
         getCapacitySettings: () => ({ limitKw: 4, marginKw: 0 }),
         getOperatingMode: () => 'Home',
@@ -864,7 +864,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const capacityGuard = new CapacityGuard({ limitKw: 4, softMarginKw: 0 });
 
       const builder = new PlanBuilder({
-        homey: { settings: { set: vi.fn() } } as never,
+        setCapacityInShortfall: vi.fn(),
         getCapacityGuard: () => capacityGuard,
         getCapacitySettings: () => ({ limitKw: 4, marginKw: 0 }),
         getOperatingMode: () => 'Home',
@@ -942,7 +942,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       capacityGuard.reportTotalPower(0.8);
 
       const builder = new PlanBuilder({
-        homey: { settings: { set: vi.fn() } } as never,
+        setCapacityInShortfall: vi.fn(),
         getCapacityGuard: () => capacityGuard,
         getCapacitySettings: () => ({ limitKw: 4, marginKw: 0 }),
         getOperatingMode: () => 'Home',
@@ -1004,7 +1004,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const capacityGuard = new CapacityGuard({ limitKw: 4, softMarginKw: 0 });
 
       const builder = new PlanBuilder({
-        homey: { settings: { set: vi.fn() } } as never,
+        setCapacityInShortfall: vi.fn(),
         getCapacityGuard: () => capacityGuard,
         getCapacitySettings: () => ({ limitKw: 4, marginKw: 0 }),
         getOperatingMode: () => 'Home',
@@ -1081,7 +1081,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const capacityGuard = new CapacityGuard({ limitKw: 4, softMarginKw: 0 });
 
       const builder = new PlanBuilder({
-        homey: { settings: { set: vi.fn() } } as never,
+        setCapacityInShortfall: vi.fn(),
         getCapacityGuard: () => capacityGuard,
         getCapacitySettings: () => ({ limitKw: 4, marginKw: 0 }),
         getOperatingMode: () => 'Home',
@@ -1161,7 +1161,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const capacityGuard = new CapacityGuard({ limitKw: 4, softMarginKw: 0 });
 
       const builder = new PlanBuilder({
-        homey: { settings: { set: vi.fn() } } as never,
+        setCapacityInShortfall: vi.fn(),
         getCapacityGuard: () => capacityGuard,
         getCapacitySettings: () => ({ limitKw: 4, marginKw: 0 }),
         getOperatingMode: () => 'Home',
@@ -1267,7 +1267,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const capacityGuard = new CapacityGuard({ limitKw: 4, softMarginKw: 0 });
 
       const builder = new PlanBuilder({
-        homey: { settings: { set: vi.fn() } } as never,
+        setCapacityInShortfall: vi.fn(),
         getCapacityGuard: () => capacityGuard,
         getCapacitySettings: () => ({ limitKw: 4, marginKw: 0 }),
         getOperatingMode: () => 'Home',
@@ -1378,7 +1378,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const capacityGuard = new CapacityGuard({ limitKw: 4, softMarginKw: 0 });
 
       const builder = new PlanBuilder({
-        homey: { settings: { set: vi.fn() } } as never,
+        setCapacityInShortfall: vi.fn(),
         getCapacityGuard: () => capacityGuard,
         getCapacitySettings: () => ({ limitKw: 4, marginKw: 0 }),
         getOperatingMode: () => 'Home',
@@ -1488,7 +1488,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
       const capacityGuard = new CapacityGuard({ limitKw: 4, softMarginKw: 0 });
 
       const builder = new PlanBuilder({
-        homey: { settings: { set: vi.fn() } } as never,
+        setCapacityInShortfall: vi.fn(),
         getCapacityGuard: () => capacityGuard,
         getCapacitySettings: () => ({ limitKw: 4, marginKw: 0 }),
         getOperatingMode: () => 'Home',

@@ -209,6 +209,7 @@ const buildExecutor = (initialSnapshot: TargetDeviceSnapshot, device: HomeyDevic
   });
 
   const deps: PlanExecutorDeps = {
+    setCapacityInShortfall: vi.fn(),
     homey: {
       settings: { set: vi.fn() },
       flow: {

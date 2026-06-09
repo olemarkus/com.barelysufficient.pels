@@ -25,6 +25,7 @@ export const DEVICE_TARGET_POWER_CONFIGS = 'device_target_power_configs';
 export const DEVICE_COMMUNICATION_MODELS = 'device_communication_models';
 export const DEVICE_LAST_CONTROLLED_MS = 'device_last_controlled_ms';
 export const OVERSHOOT_BEHAVIORS = 'overshoot_behaviors';
+export const CAPACITY_IN_SHORTFALL = 'capacity_in_shortfall';
 export const PRICE_OPTIMIZATION_SETTINGS = 'price_optimization_settings';
 export const PRICE_OPTIMIZATION_ENABLED = 'price_optimization_enabled';
 export const PRICE_THRESHOLD_PERCENT = 'price_threshold_percent';

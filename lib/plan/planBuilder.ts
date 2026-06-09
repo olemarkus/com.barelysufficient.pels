@@ -1,4 +1,3 @@
-import type { HomeyRuntime } from '../ports/homeyRuntime';
 import CapacityGuard from '../power/capacityGuard';
 import type { PowerTrackerState } from '../power/tracker';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
@@ -60,7 +59,7 @@ type ShortfallMeta = Pick<
 >;
 
 export type PlanBuilderDeps = {
-  homey: HomeyRuntime;
+  setCapacityInShortfall: (inShortfall: boolean) => void;
   getCapacityGuard: () => CapacityGuard | undefined;
   getCapacitySettings: () => { limitKw: number; marginKw: number };
   getOperatingMode: () => string;
@@ -674,7 +673,7 @@ export class PlanBuilder {
     }
     if (sheddingPlan.guardInShortfall !== this.state.inShortfall) {
       this.state.inShortfall = sheddingPlan.guardInShortfall;
-      this.deps.homey.settings.set('capacity_in_shortfall', sheddingPlan.guardInShortfall);
+      this.deps.setCapacityInShortfall(sheddingPlan.guardInShortfall);
       incPerfCounter('settings_set.capacity_in_shortfall');
     }
   }

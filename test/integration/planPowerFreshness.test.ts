@@ -134,7 +134,7 @@ describe('planner behavior under stale power freshness states', () => {
     structuredLog?: { info?: ReturnType<typeof vi.fn>; warn?: ReturnType<typeof vi.fn> };
   }): PlanBuilder {
     return new PlanBuilder({
-      homey: { settings: { set: vi.fn() } } as never,
+      setCapacityInShortfall: vi.fn(),
       getCapacityGuard: () => params.capacityGuard,
       getCapacitySettings: () => ({ limitKw: 6, marginKw: 0.2 }),
       getOperatingMode: () => 'Home',
