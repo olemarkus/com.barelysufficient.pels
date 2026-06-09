@@ -1,6 +1,6 @@
 import PriceService from '../../lib/price/priceService';
 import type { PriceServiceLoggingSinks } from '../../lib/price/priceServiceLoggingSinks';
-import { createCombinedPricesStore } from '../../setup/priceCombinedPricesAdapter';
+import { createPriceDataStore } from '../../setup/priceDataAdapter';
 import { mockHomeyInstance } from '../mocks/homey';
 import {
   COMBINED_PRICES,
@@ -74,7 +74,7 @@ describe('Homey price service', () => {
       sinks(),
       () => timeZone,
       () => energyApi,
-      createCombinedPricesStore(mockHomeyInstance as never),
+      createPriceDataStore(mockHomeyInstance as never),
     );
 
     await service.refreshSpotPrices(true);
@@ -109,7 +109,7 @@ describe('Homey price service', () => {
       sinks({ debugStructured }),
       () => timeZone,
       () => energyApi,
-      createCombinedPricesStore(mockHomeyInstance as never),
+      createPriceDataStore(mockHomeyInstance as never),
     );
 
     await service.refreshSpotPrices(false);
@@ -128,7 +128,7 @@ describe('Homey price service', () => {
       sinks({ structuredLog: structuredLog as unknown as Logger }),
       () => timeZone,
       () => null,
-      createCombinedPricesStore(mockHomeyInstance as never),
+      createPriceDataStore(mockHomeyInstance as never),
     );
 
     await service.refreshSpotPrices(true);
@@ -151,7 +151,7 @@ describe('Homey price service', () => {
       sinks(),
       () => timeZone,
       () => energyApi,
-      createCombinedPricesStore(mockHomeyInstance as never),
+      createPriceDataStore(mockHomeyInstance as never),
     );
 
     await service.refreshSpotPrices(true);
@@ -185,7 +185,7 @@ describe('Homey price service', () => {
       sinks({ debugStructured, structuredLog: structuredLog as unknown as PriceServiceLoggingSinks['structuredLog'] }),
       () => timeZone,
       () => energyApi,
-      createCombinedPricesStore(mockHomeyInstance as never),
+      createPriceDataStore(mockHomeyInstance as never),
     );
 
     await service.refreshSpotPrices(true);
@@ -218,7 +218,7 @@ describe('Homey price service', () => {
       sinks({ structuredLog: structuredLog as unknown as Logger }),
       () => timeZone,
       () => energyApi,
-      createCombinedPricesStore(mockHomeyInstance as never),
+      createPriceDataStore(mockHomeyInstance as never),
     );
 
     await service.refreshSpotPrices(true);
@@ -246,7 +246,7 @@ describe('Homey price service', () => {
       sinks({ debugStructured }),
       () => timeZone,
       undefined,
-      createCombinedPricesStore(mockHomeyInstance as never),
+      createPriceDataStore(mockHomeyInstance as never),
     );
 
     const prices = service.getCombinedHourlyPrices();
@@ -281,7 +281,7 @@ describe('Homey price service', () => {
       sinks({ debugStructured }),
       () => timeZone,
       undefined,
-      createCombinedPricesStore(mockHomeyInstance as never),
+      createPriceDataStore(mockHomeyInstance as never),
     );
 
     const prices = service.getCombinedHourlyPrices();
@@ -327,7 +327,7 @@ describe('Homey price service', () => {
       sinks({ debugStructured }),
       () => timeZone,
       undefined,
-      createCombinedPricesStore(mockHomeyInstance as never),
+      createPriceDataStore(mockHomeyInstance as never),
     );
 
     const prices = service.getCombinedHourlyPrices();
@@ -358,7 +358,7 @@ describe('Homey price service', () => {
       sinks(),
       () => timeZone,
       undefined,
-      createCombinedPricesStore(mockHomeyInstance as never),
+      createPriceDataStore(mockHomeyInstance as never),
     );
     const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
 
@@ -390,7 +390,7 @@ describe('Homey price service', () => {
       sinks(),
       () => timeZone,
       undefined,
-      createCombinedPricesStore(mockHomeyInstance as never),
+      createPriceDataStore(mockHomeyInstance as never),
     );
     const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
 

@@ -53,7 +53,7 @@ import { fetchSpotPricesForDate } from './spotPriceFetch';
 import { getCurrentHourPrice, isCurrentHourAtLevel } from './priceLevelUtils';
 import { formatFlowPriceInfo, formatNorwayPriceInfo } from './priceInfoFormatters';
 import type { CombinedHourlyPrice, PriceScheme } from './priceTypes';
-import type { CombinedPricesStore } from './combinedPricesStore';
+import type { PriceDataStore } from './priceDataStore';
 import type { HomeyEnergyApi } from '../utils/homeyEnergy';
 
 const GRID_TARIFF_FAILURE_REASONS: Record<'keepCache' | 'clearStaleFallback' | 'noData', string> = {
@@ -68,7 +68,7 @@ export default class PriceService {
     private readonly sinks: PriceServiceLoggingSinks,
     private getTimeZone: () => string,
     private getHomeyEnergyApi: (() => HomeyEnergyApi | null) | undefined,
-    private readonly combinedPricesStore: CombinedPricesStore,
+    private readonly priceDataStore: PriceDataStore,
   ) { }
 
   private onCombinedPricesUpdated?: (reason: string) => void;
@@ -117,7 +117,7 @@ export default class PriceService {
   }): boolean {
     const { forceRefresh, cachedArea, priceArea, today, dates } = params;
     if (forceRefresh) return false;
-    const existingPrices = this.getSettingValue('electricity_prices') as Array<{ startsAt?: string }> | null;
+    const existingPrices = this.priceDataStore.readSpotPrices() as Array<{ startsAt?: string }> | null;
     const cacheDecision = getSpotPriceCacheDecision({
       cachedArea,
       priceArea,
@@ -149,7 +149,7 @@ export default class PriceService {
       return;
     }
     const priceArea = this.getPriceArea();
-    const cachedArea = this.getSettingValue('electricity_prices_area');
+    const cachedArea = this.priceDataStore.readSpotPriceArea();
     const today = new Date();
     const dates = getSpotPriceDates(today);
 
@@ -182,8 +182,8 @@ export default class PriceService {
       this.sinks.structuredLog?.info({ event: 'spot_prices_no_data' });
       return;
     }
-    this.homey.settings.set('electricity_prices', allPrices);
-    this.homey.settings.set('electricity_prices_area', priceArea);
+    this.priceDataStore.writeSpotPrices(allPrices);
+    this.priceDataStore.writeSpotPriceArea(priceArea);
     this.sinks.structuredLog?.info({ event: 'spot_prices_stored', priceCount: allPrices.length, priceArea });
     this.updateCombinedPrices();
   }
@@ -206,7 +206,7 @@ export default class PriceService {
     const todayDate = new Date();
     const timeZone = this.getTimeZone();
     const today = getDateKeyInTimeZone(todayDate, timeZone);
-    const existingData = this.getSettingValue('nettleie_data') as
+    const existingData = this.priceDataStore.readNettleie() as
       Array<{ dateKey?: string; datoId?: string; source?: unknown }> | null;
     if (!forceRefresh && shouldUseGridTariffCache(existingData, today, this.sinks.debugStructured)) {
       this.updateCombinedPrices();
@@ -253,7 +253,7 @@ export default class PriceService {
       // The cached data is a stale fallback for an operator we can no longer
       // serve (e.g. the org number changed). Clear it so combined prices don't
       // keep using another operator's tariff.
-      this.homey.settings.set('nettleie_data', []);
+      this.priceDataStore.writeNettleie([]);
       this.updateCombinedPrices();
     }
     this.sinks.errorLog?.(`Grid tariff: ${GRID_TARIFF_FAILURE_REASONS[outcome.kind]}`, {
@@ -265,7 +265,7 @@ export default class PriceService {
   }
 
   private storeGridTariffData(data: Array<Record<string, unknown>>, logContext: string): void {
-    this.homey.settings.set('nettleie_data', data);
+    this.priceDataStore.writeNettleie(data);
     this.sinks.structuredLog?.info({ event: 'grid_tariff_stored', entryCount: data.length, context: logContext });
     this.updateCombinedPrices();
   }
@@ -283,7 +283,7 @@ export default class PriceService {
       now,
       timeZone,
     });
-    const existingPayload = this.combinedPricesStore.readRaw();
+    const existingPayload = this.priceDataStore.readCombinedRaw();
     // Data safety: never replace still-valid prices with an empty rebuild. A
     // missing/transiently-unreadable/invalid raw flow slot makes the rebuild
     // empty; its fingerprint differs from the populated cache, so the set()
@@ -299,11 +299,11 @@ export default class PriceService {
       const previousLastFetched = getCombinedPayloadLastFetched(existingPayload);
       const shouldUpdateLastFetched = Boolean(nextLastFetched && nextLastFetched !== previousLastFetched);
       this.sinks.debugStructured({ event: 'combined_prices_unchanged', lastFetchedUpdated: shouldUpdateLastFetched });
-      if (shouldUpdateLastFetched) this.combinedPricesStore.write(payload);
+      if (shouldUpdateLastFetched) this.priceDataStore.writeCombined(payload);
       this.emitRealtime('prices_updated', payload);
       return;
     }
-    this.combinedPricesStore.write(payload);
+    this.priceDataStore.writeCombined(payload);
     this.emitRealtime('prices_updated', payload);
     this.onCombinedPricesUpdated?.('changed');
   }
@@ -322,8 +322,8 @@ export default class PriceService {
     const timeZone = this.getTimeZone();
     const currentMonthKey = getDateKeyInTimeZone(new Date(), timeZone).slice(0, 7);
     return buildCombinedHourlyPricesNorway({
-      spotPrices: this.getSettingValue('electricity_prices'),
-      gridTariffData: this.getSettingValue('nettleie_data'),
+      spotPrices: this.priceDataStore.readSpotPrices(),
+      gridTariffData: this.priceDataStore.readNettleie(),
       providerSurchargeIncVat: this.getNumberSetting('provider_surcharge', 0),
       priceArea,
       countyCode: gridTariffSettings.countyCode,
@@ -348,8 +348,8 @@ export default class PriceService {
     const purge = purgeStaleFlowPriceSlots({
       now,
       timeZone,
-      todayPayload: getFlowPricePayload(this.getSettingValue(todaySettingKey)),
-      tomorrowPayload: getFlowPricePayload(this.getSettingValue(tomorrowSettingKey)),
+      todayPayload: getFlowPricePayload(this.priceDataStore.readFlowPayload(todaySettingKey)),
+      tomorrowPayload: getFlowPricePayload(this.priceDataStore.readFlowPayload(tomorrowSettingKey)),
     });
     purge.changes.forEach((change: FlowSlotChange) => {
       this.sinks.debugStructured({
@@ -358,10 +358,10 @@ export default class PriceService {
       });
     });
     if (purge.changes.some((c) => c.slot === 'today' || c.action === 'promoted_to_today')) {
-      this.homey.settings.set(todaySettingKey, purge.todayPayload);
+      this.priceDataStore.writeFlowPayload(todaySettingKey, purge.todayPayload);
     }
     if (purge.changes.some((c) => c.slot === 'tomorrow')) {
-      this.homey.settings.set(tomorrowSettingKey, purge.tomorrowPayload);
+      this.priceDataStore.writeFlowPayload(tomorrowSettingKey, purge.tomorrowPayload);
     }
     return { todayPayload: purge.todayPayload, tomorrowPayload: purge.tomorrowPayload };
   }
