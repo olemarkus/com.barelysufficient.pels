@@ -268,7 +268,7 @@ describe('headroom widget browser', () => {
     controller.bootstrap(homey);
     await flushPromises();
 
-    expect(document.querySelector('[data-current]')?.textContent).toBe('Unable to load');
+    expect(document.querySelector('[data-current]')?.textContent).toBe('Reopen the dashboard');
     expect(ready).toHaveBeenCalledTimes(1);
     controller.destroy();
   });

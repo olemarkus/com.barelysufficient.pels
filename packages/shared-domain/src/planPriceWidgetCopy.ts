@@ -35,7 +35,7 @@ export const PLAN_PRICE_WIDGET_EMPTY = {
   budgetDisabled: 'Daily budget disabled',
   noData: 'No budget data available',
   tomorrowPending: "Tomorrow's budget not available yet",
-  loadError: 'Unable to load widget',
+  loadError: 'Could not load. Reopen the dashboard.',
 } as const;
 
 // Chart SVG aria-labels (screen-reader description of the chart region). Kept

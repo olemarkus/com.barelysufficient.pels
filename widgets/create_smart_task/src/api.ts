@@ -1,3 +1,4 @@
+import { handleWidgetClientLog, type WidgetClientLogContext } from '../../_shared/widgetClientLogApi';
 import { resolveDeferredObjectiveDeadline } from '../../../lib/objectives/deferredObjectives';
 import type {
   DeferredObjectivePlanPreviewCandidate,
@@ -250,3 +251,7 @@ export const createCreateSmartTask = async (
   if (result.ok) return { ok: true };
   return createReject(mapAppReason(result.reason));
 };
+
+export const logClientError = (context: WidgetClientLogContext): { ok: boolean } => (
+  handleWidgetClientLog('create_smart_task', context)
+);

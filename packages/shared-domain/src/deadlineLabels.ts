@@ -251,7 +251,7 @@ export const SMART_TASK_WIDGET_LOADING = 'Loading…';
 // Error subtitle after repeated failed refreshes. Sourced here (like the
 // headroom / plan_budget widgets) so runtime log breadcrumbs reuse the exact
 // phrasing the user saw, rather than the widget inlining it.
-export const SMART_TASK_WIDGET_LOAD_ERROR_SUBTITLE = 'Unable to load';
+export const SMART_TASK_WIDGET_LOAD_ERROR_SUBTITLE = 'Could not load. Reopen the dashboard.';
 // One-word prefix for the detail-panel plan-meta recap (duration · power · energy)
 // so it isn't the least-legible line — names the dense run-on as a forward estimate.
 export const SMART_TASK_WIDGET_PLAN_META_LABEL_PREFIX = 'Estimate';

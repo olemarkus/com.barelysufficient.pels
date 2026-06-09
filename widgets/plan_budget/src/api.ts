@@ -1,3 +1,4 @@
+import { handleWidgetClientLog, type WidgetClientLogContext } from '../../_shared/widgetClientLogApi';
 import type { CombinedPriceData, CombinedPriceEntry } from '../../../lib/dailyBudget/dailyBudgetPrices';
 import type { DailyBudgetHostApi } from '../../../packages/contracts/src/widgetHostApi';
 import { buildPlanPriceWidgetPayload } from './planPriceWidgetPayload';
@@ -69,3 +70,7 @@ export const getChart = async ({ homey, query }: WidgetApiContext): Promise<Plan
     priceScheme: resolvePriceScheme(rawCombinedPrices),
   });
 };
+
+export const logClientError = (context: WidgetClientLogContext): { ok: boolean } => (
+  handleWidgetClientLog('plan_budget', context)
+);
