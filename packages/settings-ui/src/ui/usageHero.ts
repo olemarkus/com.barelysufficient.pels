@@ -6,7 +6,15 @@ import {
   usageHeroProjection,
 } from './dom.ts';
 import { getStartOfDayInTimeZone, getZonedParts } from './timezone.ts';
-import { formatTypicalDayLine } from '../../../shared-domain/src/usageVoice.ts';
+import {
+  USAGE_HERO_ON_PACE,
+  USAGE_HERO_ON_TRACK,
+  formatVsPaceChipLabel,
+  formatVsTypicalChipLabel,
+  formatProjectionLine,
+  formatUsageComparisonLine,
+  formatUsageCollectingLine,
+} from '../../../shared-domain/src/usageHeroStrings.ts';
 
 export type PowerStatsLike = {
   today: number;
@@ -117,40 +125,40 @@ const resolveOverDeltaTone = (overDelta: number, base: number): ChipTone => {
 export const formatDeltaChipLabel = (ctx: PaceContext): { label: string; tone: ChipTone } => {
   if (ctx.projected === null) {
     if (ctx.absDiff < PACE_ON_PACE_KWH) {
-      return { label: 'On pace', tone: 'ok' };
+      return { label: USAGE_HERO_ON_PACE, tone: 'ok' };
     }
     if (ctx.diff > 0) {
       return {
-        label: `+${ctx.absDiff.toFixed(1)} kWh vs pace`,
+        label: formatVsPaceChipLabel(ctx.diff, ctx.absDiff),
         tone: resolveOverDeltaTone(ctx.diff, ctx.expectedSoFar),
       };
     }
-    return { label: `−${ctx.absDiff.toFixed(1)} kWh vs pace`, tone: 'ok' };
+    return { label: formatVsPaceChipLabel(ctx.diff, ctx.absDiff), tone: 'ok' };
   }
   const projectedDiff = ctx.projected - ctx.typicalDay;
   const absDiff = Math.abs(projectedDiff);
   if (absDiff < PROJECTION_ON_TRACK_KWH) {
-    return { label: 'On track', tone: 'ok' };
+    return { label: USAGE_HERO_ON_TRACK, tone: 'ok' };
   }
   if (projectedDiff > 0) {
     return {
-      label: `+${absDiff.toFixed(1)} kWh vs typical`,
+      label: formatVsTypicalChipLabel(projectedDiff, absDiff),
       tone: resolveOverDeltaTone(projectedDiff, ctx.typicalDay),
     };
   }
-  return { label: `−${absDiff.toFixed(1)} kWh vs typical`, tone: 'ok' };
+  return { label: formatVsTypicalChipLabel(projectedDiff, absDiff), tone: 'ok' };
 };
 
 export const formatProjectionText = (ctx: PaceContext): string | null => {
   if (ctx.projected === null) return null;
   const projectedDiff = ctx.projected - ctx.typicalDay;
-  if (Math.abs(projectedDiff) < PROJECTION_ON_TRACK_KWH) {
-    return `On track for ~${ctx.projected.toFixed(1)} kWh by midnight.`;
-  }
   // Prose drops the redundant delta number — the chip carries it — but keeps
   // the projection figure so the user still sees the absolute end-of-day kWh.
-  const direction = projectedDiff > 0 ? 'above' : 'below';
-  return `On track for ~${ctx.projected.toFixed(1)} kWh by midnight (${direction} typical).`;
+  return formatProjectionLine(
+    ctx.projected,
+    projectedDiff,
+    Math.abs(projectedDiff) < PROJECTION_ON_TRACK_KWH,
+  );
 };
 
 export const resolveHeroTone = (ctx: PaceContext): 'ok' | 'warn' | 'alert' => {
@@ -221,7 +229,7 @@ export const computePaceContext = (
 };
 
 const renderHeroEmpty = (todayText: string) => {
-  setElementText(usageHeroComparison, `Today · ${todayText}. Collecting history…`);
+  setElementText(usageHeroComparison, formatUsageCollectingLine(todayText));
   if (usageHeroDelta) usageHeroDelta.hidden = true;
   if (usageHeroProjection) usageHeroProjection.hidden = true;
   setHeroTone(usageHero, 'ok');
@@ -244,11 +252,11 @@ export const renderUsageHero = (
   }
 
   const ctx = computePaceContext(stats.today, typicalDay, now, timeZone);
-  // Day-aware voice (shared-domain `formatTypicalDayLine`) names the actual
-  // day-of-week so the comparison reads as story, not a stat row.
+  // Day-aware voice (shared-domain) names the actual day-of-week so the
+  // comparison reads as story, not a stat row.
   setElementText(
     usageHeroComparison,
-    `Today · ${todayText}. ${formatTypicalDayLine(weekdayIndex, typicalDay)}`,
+    formatUsageComparisonLine(todayText, weekdayIndex, typicalDay),
   );
 
   const chip = formatDeltaChipLabel(ctx);
