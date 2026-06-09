@@ -31,7 +31,6 @@ import type {
 } from './executablePlan';
 import type { PlanActuationMode } from './executorTypes';
 import type { PlanEngineState } from '../plan/planState';
-import { DEVICE_LAST_CONTROLLED_MS } from '../utils/settingsKeys';
 import { incPerfCounter } from '../utils/perfCounters';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
 import {
@@ -95,6 +94,7 @@ import { selectShedActuationRecorder } from './lifecycleReleaseRecording';
 export type PlanExecutorDeps = {
   homey: { settings: SettingsPort; flow: FlowPort };
   setCapacityInShortfall: (inShortfall: boolean) => void;
+  persistLastControlledMs: (lastControlledMs: Record<string, number>) => void;
   deviceManager: PlanExecutorDeviceTransport;
   /**
    * Observer-owned observed-state read (stage 5). The target executor sources
@@ -339,7 +339,7 @@ export class PlanExecutor {
     if (this.controlPersistenceBatchDepth > 0) return;
     if (!this.lastControlledPersistenceDirty) return;
     try {
-      this.deps.homey.settings.set(DEVICE_LAST_CONTROLLED_MS, this.state.lastDeviceControlledMs);
+      this.deps.persistLastControlledMs(this.state.lastDeviceControlledMs);
       this.lastControlledPersistenceDirty = false;
     } catch (error) {
       logger.error({

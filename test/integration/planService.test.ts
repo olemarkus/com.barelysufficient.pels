@@ -56,6 +56,7 @@ const createPlanService = (overrides: Partial<ConstructorParameters<typeof PlanS
       api: { realtime: vi.fn().mockResolvedValue(undefined) },
       flow: {},
     } as any,
+    writePelsStatus: vi.fn(),
     planEngine: {
         ...createMockPlanEngine(),
       buildDevicePlanSnapshot: vi.fn().mockResolvedValue(buildPlan(20, 'stable')),
@@ -111,6 +112,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: settingsSet },
         api: { realtime },
@@ -166,6 +168,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: settingsSet },
         api: { realtime },
@@ -626,6 +629,7 @@ describe('PlanService', () => {
     const overviewDebugStructured = vi.fn();
     const realtime = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
         api: { realtime },
@@ -781,6 +785,7 @@ describe('PlanService', () => {
     let currentOn = false;
     const overviewDebugStructured = vi.fn();
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
         api: { realtime: vi.fn().mockResolvedValue(undefined) },
@@ -855,6 +860,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: settingsSet },
         api: { realtime },
@@ -885,6 +891,7 @@ describe('PlanService', () => {
     const realtime = vi.fn().mockRejectedValue('boom');
     const structuredLog = { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() };
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
         api: { realtime },
@@ -936,6 +943,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: settingsSet },
         api: { realtime },
@@ -961,6 +969,7 @@ describe('PlanService', () => {
     const applyPlanActions = vi.fn().mockResolvedValue(undefined);
     const realtime = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
         api: { realtime },
@@ -1040,6 +1049,7 @@ describe('PlanService', () => {
       binaryControl: { on: false },
     }];
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
         api: { realtime: vi.fn().mockResolvedValue(undefined) },
@@ -1096,6 +1106,7 @@ describe('PlanService', () => {
     const applyPlanActions = vi.fn().mockResolvedValue(undefined);
     const realtime = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
         api: { realtime },
@@ -1179,6 +1190,7 @@ describe('PlanService', () => {
     }));
 
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: settingsSet },
         api: { realtime },
@@ -1263,6 +1275,7 @@ describe('PlanService', () => {
     }));
 
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: settingsSet },
         api: { realtime },
@@ -1322,6 +1335,7 @@ describe('PlanService', () => {
   it('preserves generatedAtMs when syncLivePlanState refreshes live state', async () => {
     const realtime = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
         api: { realtime },
@@ -1385,6 +1399,7 @@ describe('PlanService', () => {
   it('skips plan reconcile for power-only drift', async () => {
     const applyPlanActions = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
         api: { realtime: vi.fn().mockResolvedValue(undefined) },
@@ -1436,6 +1451,7 @@ describe('PlanService', () => {
   it('skips plan reconcile for target-only drift while a shed device is already off', async () => {
     const applyPlanActions = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
         api: { realtime: vi.fn().mockResolvedValue(undefined) },
@@ -1482,6 +1498,7 @@ describe('PlanService', () => {
   it('reapplies shed-off intent when live binary state is still on', async () => {
     const applyPlanActions = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
         api: { realtime: vi.fn().mockResolvedValue(undefined) },
@@ -1539,6 +1556,7 @@ describe('PlanService', () => {
     let hasPendingBinaryCommands = true;
     const realtime = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
         api: { realtime },
@@ -1607,6 +1625,7 @@ describe('PlanService', () => {
       }),
     );
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
         api: { realtime },
@@ -1676,6 +1695,7 @@ describe('PlanService', () => {
   it('reapplies the current plan when reconcile runs from a stale keep/off snapshot', async () => {
     const applyPlanActions = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
         api: { realtime: vi.fn().mockResolvedValue(undefined) },
@@ -1731,6 +1751,7 @@ describe('PlanService', () => {
     const realtime = vi.fn().mockResolvedValue(undefined);
     const applyPlanActions = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
         api: { realtime },
@@ -1809,6 +1830,7 @@ describe('PlanService', () => {
       };
     });
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
         api: { realtime },
@@ -1920,6 +1942,7 @@ describe('PlanService', () => {
       currentOn = true;
     });
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
         api: { realtime },
@@ -1992,6 +2015,7 @@ describe('PlanService', () => {
       };
     });
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
         api: { realtime },
@@ -2107,6 +2131,7 @@ describe('PlanService', () => {
       };
     });
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
         api: { realtime },
@@ -2222,6 +2247,7 @@ describe('PlanService', () => {
       currentOn = false;
     });
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
         api: { realtime },
@@ -2289,6 +2315,7 @@ describe('PlanService', () => {
     });
     const realtime = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
         api: { realtime },
@@ -2364,6 +2391,7 @@ describe('PlanService', () => {
       };
     }));
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
         api: { realtime: vi.fn().mockResolvedValue(undefined) },
@@ -2423,6 +2451,7 @@ describe('PlanService', () => {
     }));
     const applySheddingToDevice = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
         api: { realtime: vi.fn().mockResolvedValue(undefined) },
@@ -2488,6 +2517,7 @@ describe('PlanService', () => {
       decoratePlanWithPendingTargetCommands: vi.fn((plan: DevicePlan) => plan),
     };
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
         api: { realtime: vi.fn().mockResolvedValue(undefined) },
@@ -2546,6 +2576,7 @@ describe('PlanService', () => {
     const syncPendingBinaryCommands = vi.fn(() => false);
     const buildDevicePlanSnapshot = vi.fn().mockResolvedValue(buildPlan(20, 'stable'));
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
         api: { realtime: vi.fn().mockResolvedValue(undefined) },
@@ -2613,6 +2644,7 @@ describe('PlanService', () => {
     let liveDevices = [buildLiveDevice(snapshotRefreshEvidence)];
     const syncPendingBinaryCommands = vi.fn(() => false);
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
         api: { realtime: vi.fn().mockResolvedValue(undefined) },
@@ -2671,6 +2703,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: settingsSet },
         api: { realtime: vi.fn().mockResolvedValue(undefined) },
@@ -2730,6 +2763,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
         api: { realtime: vi.fn().mockResolvedValue(undefined) },
@@ -2774,6 +2808,7 @@ describe('PlanService', () => {
   it('reuses cached pels status computation when inputs are unchanged', () => {
     const buildPelsStatusSpy = vi.spyOn(pelsStatusModule, 'buildPelsStatus');
     const planService = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
         api: {},
@@ -2828,6 +2863,10 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      // The pels_status write is what `statusWriteMs` measures; route the injected
+      // writer to the same fake-timer-advancing spy the settings.set used to be, so
+      // the phase-timing assertion keeps observing the ~7ms status write cost.
+      writePelsStatus: settingsSet,
       homey: {
         settings: { set: settingsSet },
         api: { realtime },
@@ -2878,6 +2917,7 @@ describe('PlanService', () => {
     };
 
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: settingsSet },
         api: { realtime: vi.fn().mockResolvedValue(undefined) },
@@ -3167,6 +3207,7 @@ describe('PlanService', () => {
     const schedulePostActuationRefresh = vi.fn();
     const applyPlanActions = vi.fn().mockResolvedValue({ deviceWriteCount: 1 });
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
         api: { realtime: vi.fn().mockResolvedValue(undefined) },
@@ -3212,6 +3253,7 @@ describe('PlanService', () => {
     const schedulePostActuationRefresh = vi.fn();
     const applyPlanActions = vi.fn().mockResolvedValue({ deviceWriteCount: 0 });
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
         api: { realtime: vi.fn().mockResolvedValue(undefined) },
@@ -3290,6 +3332,7 @@ describe('PlanService', () => {
       )),
     };
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
         api: { realtime: vi.fn().mockResolvedValue(undefined) },
@@ -3327,6 +3370,7 @@ describe('PlanService', () => {
     const schedulePostActuationRefresh = vi.fn();
     const applyPlanActions = vi.fn().mockResolvedValue(undefined);
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
         api: { realtime: vi.fn().mockResolvedValue(undefined) },
@@ -3376,6 +3420,7 @@ describe('PlanService', () => {
     const schedulePostActuationRefresh = vi.fn();
     const applySheddingToDevice = vi.fn().mockResolvedValue(true);
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
         api: { realtime: vi.fn().mockResolvedValue(undefined) },
@@ -3410,6 +3455,7 @@ describe('PlanService', () => {
     const schedulePostActuationRefresh = vi.fn();
     const applySheddingToDevice = vi.fn().mockResolvedValue(false);
     const service = new PlanService({
+      writePelsStatus: vi.fn(),
       homey: {
         settings: { set: vi.fn() },
         api: { realtime: vi.fn().mockResolvedValue(undefined) },

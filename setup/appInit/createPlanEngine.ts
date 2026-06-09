@@ -1,7 +1,7 @@
 import { buildDeviceActuator } from './buildDeviceActuator';
 import { requireDeviceManager } from './contextGuards';
 import { PlanEngine as PlanEngineClass } from '../../lib/plan/planEngine';
-import { CAPACITY_IN_SHORTFALL } from '../../lib/utils/settingsKeys';
+import { CAPACITY_IN_SHORTFALL, DEVICE_LAST_CONTROLLED_MS } from '../../lib/utils/settingsKeys';
 import type { DeviceDiagnosticsRecorder } from '../../lib/diagnostics/deviceDiagnosticsService';
 import type { AppContext } from '../../lib/app/appContext';
 import {
@@ -50,6 +50,7 @@ export function createPlanEngine(ctx: AppContext) {
   return new PlanEngineClass({
     homey: ctx.homey,
     setCapacityInShortfall: (inShortfall) => ctx.homey.settings.set(CAPACITY_IN_SHORTFALL, inShortfall),
+    persistLastControlledMs: (lastControlledMs) => ctx.homey.settings.set(DEVICE_LAST_CONTROLLED_MS, lastControlledMs),
     deviceManager,
     getObservedState: (deviceId) => ctx.getObservedState(deviceId),
     actuator,

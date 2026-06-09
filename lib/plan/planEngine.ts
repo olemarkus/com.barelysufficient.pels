@@ -37,6 +37,7 @@ const moduleLogger = getLogger('plan/engine');
 export type PlanEngineDeps = {
   homey: HomeyRuntime & { flow: FlowPort };
   setCapacityInShortfall: (inShortfall: boolean) => void;
+  persistLastControlledMs: (lastControlledMs: Record<string, number>) => void;
   deviceManager: PlanExecutorDeps['deviceManager'];
   getObservedState: PlanExecutorDeps['getObservedState'];
   actuator: Actuator;
@@ -137,6 +138,7 @@ export class PlanEngine {
     const executorDeps: PlanExecutorDeps = {
       homey: deps.homey,
       setCapacityInShortfall: deps.setCapacityInShortfall,
+      persistLastControlledMs: deps.persistLastControlledMs,
       deviceManager: deps.deviceManager,
       getObservedState: deps.getObservedState,
       actuator: deps.actuator,

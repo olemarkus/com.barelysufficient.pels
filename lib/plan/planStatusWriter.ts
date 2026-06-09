@@ -1,4 +1,4 @@
-import type { SettingsPort, FlowPort } from '../ports/homeyRuntime';
+import type { FlowPort } from '../ports/homeyRuntime';
 import type { Logger as PinoLogger } from '../logging/logger';
 import { buildPelsStatus } from './pelsStatus';
 import { PriceLevel } from '../price/priceLevels';
@@ -25,7 +25,8 @@ type PelsStatusComputation = {
 };
 
 type PlanStatusWriterDeps = {
-  homey: { settings: SettingsPort; flow: FlowPort };
+  homey: { flow: FlowPort };
+  writePelsStatus: (status: ReturnType<typeof buildPelsStatus>['status']) => void;
   getCombinedPrices: () => unknown;
   isCurrentHourCheap: () => boolean;
   isCurrentHourExpensive: () => boolean;
@@ -148,7 +149,7 @@ export class PlanStatusWriter {
     now: number,
   ): number {
     const writeStart = Date.now();
-    this.deps.homey.settings.set('pels_status', status);
+    this.deps.writePelsStatus(status);
     this.lastPelsStatusWrittenJson = statusJson;
     this.lastPelsStatusWriteMs = now;
     const writeMs = Date.now() - writeStart;
