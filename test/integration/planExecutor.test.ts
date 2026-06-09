@@ -141,6 +141,7 @@ const buildExecutor = (
     getTriggerCard: vi.fn((cardId: keyof typeof triggerCards) => triggerCards[cardId]),
   } as unknown as Homey.App['homey']['flow'];
   const deps: PlanExecutorDeps = {
+    setCapacityInShortfall: vi.fn(),
     homey: {
       settings: { set: vi.fn() },
       flow: flowMock,

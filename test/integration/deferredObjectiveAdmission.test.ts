@@ -187,7 +187,7 @@ const buildBuilder = (
     getHardCapKw: () => capacitySettings.limitKw,
   });
   return new PlanBuilder({
-    homey: { settings: { set: vi.fn() } } as never,
+    setCapacityInShortfall: vi.fn(),
     getCapacityGuard: () => capacityGuard,
     getCapacitySettings: () => capacitySettings,
     getOperatingMode: () => overrides.modeRef?.current ?? 'Home',
@@ -320,7 +320,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       getHardCapKw: () => 100,
     });
     const builder = new PlanBuilder({
-      homey: { settings: { set: vi.fn() } } as never,
+      setCapacityInShortfall: vi.fn(),
       getCapacityGuard: () => {
         const guard = new CapacityGuard({ limitKw: 100, softMarginKw: 0 });
         guard.reportTotalPower(0);
@@ -566,7 +566,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
       getHardCapKw: () => 100,
     });
     const builder = new PlanBuilder({
-      homey: { settings: { set: vi.fn() } } as never,
+      setCapacityInShortfall: vi.fn(),
       getCapacityGuard: () => capacityGuard,
       getCapacitySettings: () => ({ limitKw: 100, marginKw: 0 }),
       getOperatingMode: () => 'Home',

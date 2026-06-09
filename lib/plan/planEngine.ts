@@ -36,6 +36,7 @@ const moduleLogger = getLogger('plan/engine');
 
 export type PlanEngineDeps = {
   homey: HomeyRuntime & { flow: FlowPort };
+  setCapacityInShortfall: (inShortfall: boolean) => void;
   deviceManager: PlanExecutorDeps['deviceManager'];
   getObservedState: PlanExecutorDeps['getObservedState'];
   actuator: Actuator;
@@ -110,7 +111,7 @@ export class PlanEngine {
     this.structuredLog = deps.structuredLog ?? moduleLogger;
 
     const builderDeps: PlanBuilderDeps = {
-      homey: deps.homey,
+      setCapacityInShortfall: deps.setCapacityInShortfall,
       getCapacityGuard: deps.getCapacityGuard,
       getCapacitySettings: deps.getCapacitySettings,
       getOperatingMode: deps.getOperatingMode,
@@ -135,6 +136,7 @@ export class PlanEngine {
 
     const executorDeps: PlanExecutorDeps = {
       homey: deps.homey,
+      setCapacityInShortfall: deps.setCapacityInShortfall,
       deviceManager: deps.deviceManager,
       getObservedState: deps.getObservedState,
       actuator: deps.actuator,

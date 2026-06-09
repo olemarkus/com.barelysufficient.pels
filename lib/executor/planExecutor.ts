@@ -94,6 +94,7 @@ import { selectShedActuationRecorder } from './lifecycleReleaseRecording';
 
 export type PlanExecutorDeps = {
   homey: { settings: SettingsPort; flow: FlowPort };
+  setCapacityInShortfall: (inShortfall: boolean) => void;
   deviceManager: PlanExecutorDeviceTransport;
   /**
    * Observer-owned observed-state read (stage 5). The target executor sources
@@ -649,7 +650,7 @@ export class PlanExecutor {
     });
 
     this.state.inShortfall = true;
-    this.deps.homey.settings.set('capacity_in_shortfall', true);
+    this.deps.setCapacityInShortfall(true);
     incPerfCounter('settings_set.capacity_in_shortfall');
 
     // Trigger flow card
@@ -668,7 +669,7 @@ export class PlanExecutor {
 
     logger.info({ event: 'executor_plan_log', msg: 'Capacity shortfall resolved' });
     this.state.inShortfall = false;
-    this.deps.homey.settings.set('capacity_in_shortfall', false);
+    this.deps.setCapacityInShortfall(false);
     incPerfCounter('settings_set.capacity_in_shortfall');
   }
 

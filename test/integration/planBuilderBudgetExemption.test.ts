@@ -88,11 +88,7 @@ describe('PlanBuilder budget exemption handling', () => {
     ];
 
     const builder = new PlanBuilder({
-      homey: {
-        settings: {
-          set: vi.fn(),
-        },
-      } as never,
+      setCapacityInShortfall: vi.fn(),
       getCapacityGuard: () => capacityGuard,
       getCapacitySettings: () => ({ limitKw: 10, marginKw: 0.2 }),
       getOperatingMode: () => 'Home',
@@ -142,11 +138,7 @@ describe('PlanBuilder budget exemption handling', () => {
     capacityGuard.reportTotalPower(2.5);
 
     const builder = new PlanBuilder({
-      homey: {
-        settings: {
-          set: vi.fn(),
-        },
-      } as never,
+      setCapacityInShortfall: vi.fn(),
       getCapacityGuard: () => capacityGuard,
       getCapacitySettings: () => ({ limitKw: 10, marginKw: 0.2 }),
       getOperatingMode: () => 'Home',
@@ -190,11 +182,7 @@ describe('PlanBuilder budget exemption handling', () => {
     capacityGuard.reportTotalPower(2.5);
 
     const builder = new PlanBuilder({
-      homey: {
-        settings: {
-          set: vi.fn(),
-        },
-      } as never,
+      setCapacityInShortfall: vi.fn(),
       getCapacityGuard: () => capacityGuard,
       getCapacitySettings: () => ({ limitKw: 10, marginKw: 0.2 }),
       getOperatingMode: () => 'Home',
