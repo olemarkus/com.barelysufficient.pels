@@ -9,6 +9,7 @@ import {
 import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
 import { createCombinedPricesReader } from '../../setup/priceCombinedPricesAdapter';
 import { createDailyBudgetSettingsStore } from '../../setup/dailyBudgetSettingsAdapter';
+import { createDailyBudgetStateStore } from '../../setup/dailyBudgetStateAdapter';
 import {
   COMBINED_PRICES,
   DAILY_BUDGET_ENABLED,
@@ -73,7 +74,6 @@ const buildService = (initialSettings: SettingsStore): {
     clock: { getTimezone: () => TZ },
   } as any;
   const service = new DailyBudgetService({
-    homey,
     getTimeZone: () => TZ,
     log: () => undefined,
     error: () => undefined,
@@ -82,6 +82,7 @@ const buildService = (initialSettings: SettingsStore): {
     getCapacitySettings: () => ({ limitKw: 10, marginKw: 2 }),
     combinedPricesReader: createCombinedPricesReader({ homey, requestRefetch: () => undefined }),
     dailyBudgetSettingsStore: createDailyBudgetSettingsStore(homey),
+    dailyBudgetStateStore: createDailyBudgetStateStore(homey),
   });
   service.loadSettings();
   return {
