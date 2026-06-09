@@ -109,9 +109,16 @@ export type TemperatureBoostResolveInput = SteppedLoadIdentity & ControllableFla
   currentTemperature?: number;
 };
 
-const isSteppedLoad = (device: SteppedLoadIdentity): boolean => (
-  device.controlModel === 'stepped_load' && device.steppedLoadProfile?.model === 'stepped_load'
-);
+// "Stepped load" is a yes/no capability = presence of a valid
+// `steppedLoadProfile`; `controlModel` is a producer-only setting and not part
+// of the discriminant (the producer sets the two atomically, so profile
+// presence already implies `controlModel === 'stepped_load'`). Shared by the
+// boost resolvers and the shed-intent resolver below — and matching every other
+// site (`planSteppedLoad`, `planCurrentState`, `planTypes`, `observedState`) —
+// so the planner's profile-only stepped check and this one cannot drift.
+const hasSteppedLoadProfile = (
+  device: { steppedLoadProfile?: SteppedLoadProfile },
+): boolean => device.steppedLoadProfile?.model === 'stepped_load';
 
 /**
  * A device's measured progress value against its boost floor, both in the
@@ -144,7 +151,7 @@ const isBelowBoostFloor = (state: MeasuredBoostState): boolean => (
 
 export function resolveEvBoostActive(dev: EvBoostResolveInput): boolean {
   if (!isEvDevice(dev)) return false;
-  if (!isSteppedLoad(dev)) return false;
+  if (!hasSteppedLoadProfile(dev)) return false;
   if (dev.controllable === false || dev.managed === false || dev.available === false) return false;
   // Block boost for every plug-state PELS cannot drive: unplugged / discharging
   // (no creditable session) AND `plugged_in` (connected but NOT resumable).
@@ -165,7 +172,7 @@ export function resolveEvBoostActive(dev: EvBoostResolveInput): boolean {
 }
 
 export function resolveTemperatureBoostActive(dev: TemperatureBoostResolveInput): boolean {
-  if (!isSteppedLoad(dev)) return false;
+  if (!hasSteppedLoadProfile(dev)) return false;
   if (!hasTemperatureBoostTarget(dev.targets)) return false;
   if (dev.controllable === false || dev.managed === false || dev.available === false) return false;
   // The deferred limit-lower-priority rescue lane forces boost while the task is in its
@@ -398,11 +405,9 @@ export type ShedIntentResolveInput = {
   primaryTarget?: TargetCapabilitySnapshot | null;
 };
 
-// "Stepped load" is a yes/no capability = presence of a valid
-// `steppedLoadProfile`; `controlModel` is a producer-only setting and not part
-// of the discriminant.
+// Same stepped discriminant as the boost resolvers — see `hasSteppedLoadProfile`.
 const isSteppedLoadDeviceShape = (input: ShedIntentResolveInput): boolean => (
-  input.steppedLoadProfile?.model === 'stepped_load'
+  hasSteppedLoadProfile(input)
 );
 
 const resolveSetStepTargetStepId = (input: ShedIntentResolveInput): string | null => {

@@ -27,6 +27,20 @@ describe('resolveTemperatureBoostActive', () => {
     expect(resolveTemperatureBoostActive(dev)).toBe(true);
   });
 
+  it('keys the stepped discriminant on the profile, not controlModel', () => {
+    // Regression: the boost resolver used to gate on `controlModel === 'stepped_load'
+    // && profile`, while every other site (planner, observer) keys on the profile
+    // alone. The two are now one predicate (`hasSteppedLoadProfile`). A device that
+    // carries a valid steppedLoadProfile but no resolved controlModel must still be
+    // treated as stepped — under the old AND form this returned false.
+    const dev = steppedInputDevice({
+      controlModel: undefined,
+      currentTemperature: 54.9,
+      temperatureBoost: { enabled: true, boostBelowC: 55 },
+    });
+    expect(resolveTemperatureBoostActive(dev)).toBe(true);
+  });
+
   it('does not activate at or above the floor — no exit-margin hysteresis', () => {
     // The dropped TEMPERATURE_BOOST_EXIT_MARGIN_C used to keep boost active up to floor+2 °C
     // once active. The resolver no longer takes prior state at all: the decision is simply
