@@ -1,0 +1,144 @@
+# yaml-language-server: $schema=https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json
+#
+# CodeRabbit configuration for PELS (com.barelysufficient.pels).
+# A Homey Pro app: hourly electricity-capacity controller (TypeScript, Node 22,
+# vitest, esbuild settings UI). See CLAUDE.md / AGENTS.md for repo conventions.
+
+language: en-GB
+
+early_access: false
+
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  review_status: true
+  poem: false
+  collapse_walkthrough: false
+  abort_on_close: true
+
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - main
+
+  # --- Generated / vendored / non-source paths: never review or comment on these.
+  path_filters:
+    - "!app.json"                         # auto-generated from .homeycompose — do not edit directly
+    - "!settings/**"                      # generated settings-UI bundle (built from packages/settings-ui)
+    - "!**/*.min.js"
+    - "!**/*.min.css"
+    - "!package-lock.json"
+    - "!.homeybuild/**"
+    - "!coverage/**"
+    - "!output/**"
+    - "!tmp/**"
+    - "!**/dist/**"
+    - "!**/test-results/**"
+    - "!**/playwright-report/**"
+    - "!**/blob-report/**"
+    - "!**/__snapshots__/**"
+    - "!**/*.png"
+    - "!**/*.svg"
+
+  # --- Targeted guidance per area. Mirrors the project's review subagents and
+  #     the hard rules in CLAUDE.md / AGENTS.md.
+  path_instructions:
+    - path: "lib/**/*.ts"
+      instructions: >-
+        Enforce the strict layering in CLAUDE.md. Domain modules (lib/core,
+        lib/plan, lib/price, lib/dailyBudget) must not import lib/app/**, must
+        not import settings-UI code, and must not import test code. Flag new
+        imports from lib/utils into lib/core or lib/plan (transitional allowance,
+        do not expand). Resolution-in-producer rule: producers resolve to flat
+        values; consumers must never branch on source/provenance/evidence/
+        staleness. Operating realities: Homey SDK reads can transiently fail —
+        never delete persisted state on one missing/empty read; respect 60s shed
+        and 60–300s restore cooldowns; account for 23/25-hour DST days in daily
+        bucket logic. The capacity hard cap is physical, not a tuning knob.
+    - path: "lib/plan/**/*.ts"
+      instructions: >-
+        This is the planning engine (build → execute → reconcile). Watch for
+        regressions in shed/restore cooldowns, escalation hysteresis, and
+        stale-observation handling (stale-off is trusted-off; do not re-derive
+        trust from staleness). Deadlines are soft-only; enforcement:'hard' is
+        vestigial.
+    - path: "packages/settings-ui/**/*.{ts,css,html}"
+      instructions: >-
+        Settings UI runs only inside Homey's WebView, mobile-first, max 480px
+        wide (min 320px), dark theme. Use Android/Material Design conventions,
+        never iOS idioms. All CSS spacing/radius/colour/weight/transitions must
+        come from design tokens (settings/tokens.css) — no hardcoded hex,
+        spacing, font weights, or transitions. Prefer native <input>/<select>
+        with .field over md-outlined-* (ghosted in dark). 48px touch targets.
+        No coloured state-rail/accent stripe on cards. Settings UI must only
+        consume packages/contracts and packages/shared-domain — never import
+        runtime backend (app.ts, lib/**, setup/**) directly. Do NOT comment on
+        ARIA attributes/roles/landmarks or screen-reader / assistive-technology
+        support: the WebView exposes no accessibility APIs, so those are not
+        actionable. Semantic HTML, colour contrast, and keyboard navigation
+        remain in scope.
+    - path: "packages/shared-domain/**/*.ts"
+      instructions: >-
+        Browser-safe shared logic. User-visible UI strings come from
+        shared-domain helpers shared with structured logging — keep copy
+        canonical. Avoid 'plan' for deadline/objective features (use
+        'deadline'/'objective'). Remedy copy must name the actual control and
+        must not suggest raising the capacity hard cap.
+    - path: "setup/**/*.ts"
+      instructions: >-
+        App-wiring layer. One purpose per file, named for the concrete wiring;
+        each file exposes a class or a single register*/init* function — no
+        grab-bag helper bags. Files over ~150 LOC should split. setup/** may
+        import lib/** and packages/**, never the reverse.
+    - path: "**/*.test.ts"
+      instructions: >-
+        Tests use vitest (NOT Jest). Respect the unit/integration/e2e tiers in
+        test/{unit,integration,e2e}/. Use shared type-safe mock helpers, not
+        ad-hoc `as any` casts. e2e must simulate only the Homey SDK boundary
+        (device temp/SoC, prices, clock) — never mock PELS internals.
+        Time-sensitive specs should fake Date rather than rely on the real clock.
+    - path: "{flowCards,drivers,widgets}/**/*.ts"
+      instructions: >-
+        flowCards/** must not import packages/settings-ui/** or drivers/**.
+        Dashboard widgets use only Homey widget CSS (--homey-*), never
+        settings-UI tokens. Avoid breaking Flow cards, capabilities, or
+        persisted-state shapes without strong justification (backwards compat).
+    - path: "docs/**/*.md"
+      instructions: >-
+        VitePress docs. Doc screenshots are captured at mobile resolution
+        (≤480px, DSF 1, never 2×). Do not name competitors.
+
+  # --- Out-of-scope topics (from .github/copilot-instructions.md).
+  finishing_touches:
+    docstrings:
+      enabled: true
+    unit_tests:
+      enabled: false
+
+  tools:
+    eslint:
+      enabled: true
+    markdownlint:
+      enabled: true
+    yamllint:
+      enabled: true
+    shellcheck:
+      enabled: true
+    gitleaks:
+      enabled: true
+    ast-grep:
+      essential_rules: true
+
+chat:
+  auto_reply: true
+
+knowledge_base:
+  opt_out: false
+  learnings:
+    scope: auto
+  issues:
+    scope: auto
+  pull_requests:
+    scope: auto
