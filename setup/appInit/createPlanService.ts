@@ -3,11 +3,13 @@ import { evictMissingDeviceCacheEntries, toPlanDevice } from './toPlanDevice';
 import { PlanService } from '../../lib/plan/planService';
 import { DeviceOverviewLogRecorder } from '../../lib/plan/deviceOverviewLog';
 import type { AppContext } from '../../lib/app/appContext';
+import { PELS_STATUS } from '../../lib/utils/settingsKeys';
 import { isRuntimePlannedDevice } from '../appDeviceSupport';
 
 export function createPlanService(ctx: AppContext): PlanService {
   return new PlanService({
     homey: ctx.homey,
+    writePelsStatus: (status) => ctx.homey.settings.set(PELS_STATUS, status),
     planEngine: requirePlanEngine(ctx),
     getPlanDevices: () => {
       const snapshot = ctx.latestTargetSnapshot;

@@ -140,10 +140,15 @@ const buildExecutor = (
   const flowMock = {
     getTriggerCard: vi.fn((cardId: keyof typeof triggerCards) => triggerCards[cardId]),
   } as unknown as Homey.App['homey']['flow'];
+  const settingsSet = vi.fn();
   const deps: PlanExecutorDeps = {
     setCapacityInShortfall: vi.fn(),
+    // Forward the injected persist writer to the same homey.settings.set spy the
+    // production wiring targets (DEVICE_LAST_CONTROLLED_MS), so the existing
+    // persistence assertions keep observing the real write key.
+    persistLastControlledMs: (lastControlledMs) => settingsSet(DEVICE_LAST_CONTROLLED_MS, lastControlledMs),
     homey: {
-      settings: { set: vi.fn() },
+      settings: { set: settingsSet },
       flow: flowMock,
     } as unknown as Homey.App['homey'],
     deviceManager: deviceManager as never,

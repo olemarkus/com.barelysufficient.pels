@@ -45,6 +45,7 @@ import { createIdleClassifier, type IdleClassifier, type IdleClassifierDeviceInp
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import type { PendingBinaryLiveDevice } from '../observer/pendingBinaryCommands';
 import { PlanStatusWriter } from './planStatusWriter';
+import type { buildPelsStatus } from './pelsStatus';
 import {
   buildLiveStatePlan,
   canRefreshPlanSnapshotFromLiveState,
@@ -85,6 +86,7 @@ const serializePlanForUi = (
 
 export type PlanServiceDeps = {
   homey: { settings: SettingsPort; flow: FlowPort; api: ApiPort };
+  writePelsStatus: (status: ReturnType<typeof buildPelsStatus>['status']) => void;
   planEngine: PlanEngine;
   getPlanDevices: () => PlanInputDevice[];
   // Binary-settle evidence (`binaryControlObservation`) is observer-internal and NOT
@@ -152,6 +154,7 @@ export class PlanService {
     });
     this.planStatusWriter = new PlanStatusWriter({
       homey: deps.homey,
+      writePelsStatus: deps.writePelsStatus,
       getCombinedPrices: deps.getCombinedPrices,
       isCurrentHourCheap: deps.isCurrentHourCheap,
       isCurrentHourExpensive: deps.isCurrentHourExpensive,
