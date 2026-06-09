@@ -123,7 +123,7 @@ type StoreFlowPriceParams = {
   raw: unknown;
   timeZone: string;
   debugStructured: StructuredDebugEmitter;
-  setSetting: (key: string, value: unknown) => void;
+  writeFlowPayload: (key: string, payload: FlowPricePayload | null) => void;
   updateCombinedPrices: () => void;
 };
 
@@ -132,7 +132,7 @@ export const storeFlowPriceData = (params: StoreFlowPriceParams): {
   storedCount: number;
   missingHours: number[];
 } => {
-  const { kind, raw, timeZone, debugStructured, setSetting, updateCombinedPrices } = params;
+  const { kind, raw, timeZone, debugStructured, writeFlowPayload, updateCombinedPrices } = params;
   const todayKey = getDateKeyInTimeZone(new Date(), timeZone);
   const dateKey = kind === 'tomorrow' ? shiftDateKey(todayKey, 1) : todayKey;
   const parsed = parseFlowPricePayloadInput(raw, { dateKey, timeZone });
@@ -146,7 +146,7 @@ export const storeFlowPriceData = (params: StoreFlowPriceParams): {
   };
 
   const settingKey = kind === 'today' ? FLOW_PRICES_TODAY : FLOW_PRICES_TOMORROW;
-  setSetting(settingKey, payload);
+  writeFlowPayload(settingKey, payload);
 
   const missingHours = getMissingFlowHours(pricesByHour, getExpectedFlowHours(dateKey, timeZone));
   if (missingHours.length > 0) {

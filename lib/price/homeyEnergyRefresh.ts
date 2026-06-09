@@ -1,9 +1,9 @@
 import { getDateKeyInTimeZone, getDateKeyStartMs, getZonedParts, shiftDateKey } from '../utils/dateUtils';
-import { HOMEY_PRICES_CURRENCY, HOMEY_PRICES_TODAY, HOMEY_PRICES_TOMORROW } from '../utils/settingsKeys';
+import { HOMEY_PRICES_TODAY, HOMEY_PRICES_TOMORROW } from '../utils/settingsKeys';
 import { formatHomeyEnergyError, type HomeyEnergyApi } from '../utils/homeyEnergy';
 import { normalizeError } from '../utils/errorUtils';
 import { fetchHomeyEnergyCurrency, fetchHomeyEnergyPricesForDate } from './homeyEnergyPriceFetch';
-import { getFlowPricePayload } from './flowPriceUtils';
+import { getFlowPricePayload, type FlowPricePayload } from './flowPriceUtils';
 import { getLogger, type StructuredDebugEmitter } from '../logging/logger';
 
 const priceLogger = getLogger('price');
@@ -121,9 +121,9 @@ export const logHomeyEnergyPayloadStatus = (params: {
 export const updateHomeyEnergyCurrency = async (params: {
   energyApi: HomeyEnergyApi;
   results: HomeyEnergyResults;
-  setSetting: (key: string, value: unknown) => void;
+  writeHomeyPricesCurrency: (unit: string) => void;
 }): Promise<void> => {
-  const { energyApi, results, setSetting } = params;
+  const { energyApi, results, writeHomeyPricesCurrency } = params;
   let currency: string | null = null;
   try {
     currency = await fetchHomeyEnergyCurrency(energyApi);
@@ -132,22 +132,22 @@ export const updateHomeyEnergyCurrency = async (params: {
   }
   const priceUnit = currency || results.todayResult.priceUnit || results.tomorrowResult.priceUnit;
   if (priceUnit) {
-    setSetting(HOMEY_PRICES_CURRENCY, priceUnit);
+    writeHomeyPricesCurrency(priceUnit);
   }
 };
 
 export const storeHomeyEnergyPayloads = (params: {
   results: HomeyEnergyResults;
-  setSetting: (key: string, value: unknown) => void;
+  writeFlowPayload: (key: string, payload: FlowPricePayload | null) => void;
 }): number => {
-  const { results, setSetting } = params;
+  const { results, writeFlowPayload } = params;
   let stored = 0;
   if (results.todayResult.payload) {
-    setSetting(HOMEY_PRICES_TODAY, results.todayResult.payload);
+    writeFlowPayload(HOMEY_PRICES_TODAY, results.todayResult.payload);
     stored += 1;
   }
   if (results.tomorrowResult.payload) {
-    setSetting(HOMEY_PRICES_TOMORROW, results.tomorrowResult.payload);
+    writeFlowPayload(HOMEY_PRICES_TOMORROW, results.tomorrowResult.payload);
     stored += 1;
   }
   return stored;

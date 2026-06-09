@@ -417,7 +417,7 @@ export default class PriceService {
       raw,
       timeZone: this.getTimeZone(),
       debugStructured: this.sinks.debugStructured,
-      setSetting: (key, value) => this.homey.settings.set(key, value),
+      writeFlowPayload: (key, payload) => this.priceDataStore.writeFlowPayload(key, payload),
       updateCombinedPrices: () => this.updateCombinedPrices(),
     });
   }
@@ -533,11 +533,11 @@ export default class PriceService {
     await updateHomeyEnergyCurrency({
       energyApi,
       results,
-      setSetting: (key, value) => this.homey.settings.set(key, value),
+      writeHomeyPricesCurrency: (unit) => this.priceDataStore.writeHomeyPricesCurrency(unit),
     });
     const stored = storeHomeyEnergyPayloads({
       results,
-      setSetting: (key, value) => this.homey.settings.set(key, value),
+      writeFlowPayload: (key, payload) => this.priceDataStore.writeFlowPayload(key, payload),
     });
     if (stored === 0) {
       this.sinks.structuredLog?.info({ event: 'homey_prices_no_data' });
