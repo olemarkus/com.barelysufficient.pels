@@ -1,6 +1,5 @@
-import type { SettingsPort } from '../ports/homeyRuntime';
+import type { DailyBudgetStateStore } from './dailyBudgetStateStore';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
-import { DAILY_BUDGET_STATE } from '../utils/settingsKeys';
 import type { DailyBudgetState, DailyBudgetStatePersistReason } from './dailyBudgetTypes';
 
 const LOW_PRIORITY_PERSIST_INTERVAL_MS = 10 * 60 * 1000;
@@ -76,7 +75,7 @@ export class DailyBudgetStatePersistencePolicy {
 }
 
 type PersistDailyBudgetStateParams = {
-  settings: SettingsPort;
+  stateStore: DailyBudgetStateStore;
   policy: DailyBudgetStatePersistencePolicy;
   state: DailyBudgetState;
   reason: DailyBudgetStatePersistReason;
@@ -106,7 +105,7 @@ export function persistDailyBudgetState(
     return;
   }
   const persistStart = Date.now();
-  params.settings.set(DAILY_BUDGET_STATE, params.state);
+  params.stateStore.write(params.state);
   params.policy.recordPersisted({ reason: params.reason, stateJson, nowMs: params.nowMs });
   incPerfCounter('settings_set.daily_budget_state');
   incPerfCounter(`settings_set.daily_budget_state_reason.${params.reason}_total`);

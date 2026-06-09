@@ -1,10 +1,9 @@
-import type { SettingsPort } from '../ports/homeyRuntime';
 import type { PowerTrackerState } from '../power/tracker';
 import { isFiniteNumber } from '../utils/appTypeGuards';
 import { readCombinedPriceData } from '../price/priceStore';
 import type { CombinedPricesReader } from '../price/combinedPricesReader';
 import type { DailyBudgetSettingsStore } from './dailyBudgetSettingsStore';
-import { DAILY_BUDGET_STATE } from '../utils/settingsKeys';
+import type { DailyBudgetStateStore } from './dailyBudgetStateStore';
 import {
   MAX_DAILY_BUDGET_KWH,
   MIN_DAILY_BUDGET_KWH,
@@ -43,7 +42,7 @@ import { resolveUsableCapacityKw } from '../power/capacityModel';
 const moduleLogger = getLogger('dailyBudget/service');
 
 type DailyBudgetServiceDeps = {
-  homey: { settings: SettingsPort };
+  dailyBudgetStateStore: DailyBudgetStateStore;
   getTimeZone: () => string;
   log: (...args: unknown[]) => void;
   isDebugTopicEnabled?: (topic: 'daily_budget') => boolean;
@@ -102,7 +101,7 @@ export class DailyBudgetService {
   }
 
   loadState(): void {
-    this.manager.loadState(this.deps.homey.settings.get(DAILY_BUDGET_STATE));
+    this.manager.loadState(this.deps.dailyBudgetStateStore.read());
     this.persistencePolicy.initialize(this.manager.exportState());
   }
 
@@ -219,14 +218,14 @@ export class DailyBudgetService {
 
   private maybePersistState(reason: DailyBudgetStatePersistReason, nowMs: number): void {
     maybePersistDailyBudgetState({
-      settings: this.deps.homey.settings, policy: this.persistencePolicy,
+      stateStore: this.deps.dailyBudgetStateStore, policy: this.persistencePolicy,
       state: this.manager.exportState(), reason, nowMs,
     });
   }
 
   persistState(reason: DailyBudgetStatePersistReason = 'manual', nowMs = Date.now()): void {
     persistDailyBudgetState({
-      settings: this.deps.homey.settings, policy: this.persistencePolicy,
+      stateStore: this.deps.dailyBudgetStateStore, policy: this.persistencePolicy,
       state: this.manager.exportState(), reason, nowMs,
     });
   }
