@@ -338,18 +338,6 @@ visitors (`notes/personas.md` #4–6).*
       bootstrap payload), never per-cycle persistence.
       Files: `lib/objectives/deferredObjectives/activePlanRecorder.ts`, `setup/settingsUiApi.ts`,
       `packages/settings-ui/src/ui/deadlinePlan.ts`, `.../deadlinePlanResolvers.ts`.
-- [ ] **Make the live → completed → history transition happen in place.**
-      *Persona:* curious tinkerer (#3) watching a plan run, becoming the failure-investigation
-      visitor (#5) at completion.
-      *Hypothesis:* if the live page transitions in place — same URL, chart fading from
-      "planned + measured" to "planned vs delivered", hero re-shaping from "what's next" to
-      "what happened", adding `historyId=…` once persisted — the user who watched for hours
-      lands on the verdict instead of being bounced to a thin "See History" card.
-      *Why it's needed:* the Live-Homey walk flagged the hard-cut as jarring; the page
-      *becoming* the history-detail pays off both the watcher and the postmortem reader.
-      Related: `notes/smart-task-ui/README.md` §4. Files:
-      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`, `.../deadlinePlan.ts`,
-      `lib/objectives/deferredObjectives/planHistory.ts` (transient handoff).
 - [ ] **Breadcrumb a recent miss on the active-task hero.** Show "Last [kind] task missed:
       {short reason}" for ~24 h after a finalized miss.
       *Persona:* notification-driven panic visitor (#6) — reopens the app worried about a
@@ -372,19 +360,6 @@ visitors (`notes/personas.md` #4–6).*
       `PlanInputsCard`. Source: pels-m3-critic/ux-fit on PR #1197 (batches 1–3 shipped).
 *EV charging — the skeptical optimiser / EV commuter (`notes/personas.md` #4).*
 
-- [ ] **EV deadline automation: per-charger defaults and plug-in auto-trigger.**
-      *Persona:* skeptical optimiser / EV commuter (#4) — daily plug-in after the commute.
-      *Hypothesis:* a per-charger automation profile that auto-materializes a deadline
-      objective on the `sessionStartedAtMs` boundary means the commuter never fires
-      `set_ev_charge_deadline` manually and still gets cheap-hour charging every night.
-      *Why it's needed:* the v1 flow-card path works but imposes per-session friction; the
-      daily charger is exactly the persona who tires of the ritual and stops trusting
-      ready-by charging. Profile = enabled / target % or kWh / ready-by / enforcement / speed
-      mode / optional manual kW + derating, upserted via the flow-card path; persistence should
-      stay feature-specific rather than reviving the cut shared-state helper
-      (`notes/persisted-settings-state.md`). Design:
-      `notes/ev-ready-by/README.md`. Files: new `packages/contracts/src/evChargerDefaults.ts`,
-      new wiring, `lib/device/transport/stateOfCharge.ts`, tests.
 - [ ] **EV deadline polish: manual override actions + imminent-deadline urgency rule.**
       *Persona:* notification-driven panic visitor (#6) with EV-commuter overlap (#4) —
       realizes mid-evening the car won't be ready by morning and needs to intervene.
@@ -410,20 +385,6 @@ visitors (`notes/personas.md` #4–6).*
       drill-down PELS doesn't render today. Build the page and the 30-day hourly-retention
       per-device step-change tracker that feeds it together — the tracker is not shippable on
       its own. Files: future device-level step-change tracker; per-device usage-history route + chart.
-- [ ] **Auto-adjust the daily budget from past eligible exemptions** (policy in
-      `notes/daily-budget-auto-adjust/README.md`).
-      *Persona:* skeptical optimiser (heat-tank owner) and failure-investigation user — both
-      hit by repeated starvation-driven exemptions that signal the configured budget is
-      chronically too tight.
-      *Hypothesis:* raising tomorrow's effective budget by recent eligible exempted kWh
-      (always relative to the configured base, never compounding) stops the planner chasing
-      weather/thermal demand too aggressively and reduces repeat starvation, without touching
-      hourly capacity protection.
-      *Why it's needed:* recurring exemptions are a latent "your budget doesn't match reality"
-      failure these personas keep hitting; automating the correction closes a loop they
-      otherwise manage by hand. Honour the note's guards (base-relative, source-filtered, no
-      hourly bypass). Files: daily budget state/service/UI/settings/diagnostics.
-
 *Planner accuracy for multi-device homes — the skeptical optimiser (`notes/personas.md` #4).
 Both are data-gated: act only when prod evidence shows the gap, else leave alone.*
 

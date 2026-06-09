@@ -5,7 +5,7 @@ Notes are either **design-of-record** (why a shipped subsystem is shaped the way
 **deferred-design** (a parked plan with a clear revisit trigger). Where a note describes shipped
 work it carries a status line; treat anything without one as still-forward design.
 
-Per-directory `CLAUDE.md` files (`state-management/`, `starvation/`, `daily-budget-auto-adjust/`)
+Per-directory `CLAUDE.md` files (`state-management/`, `starvation/`)
 are agent-context invariant digests, not notes — they are loaded automatically and are not listed
 below.
 
@@ -77,5 +77,4 @@ below.
 
 - `starvation/README.md` — temperature-device starvation model; detection + rescue widget shipped,
   flow cards / insights still the gap.
-- `daily-budget-auto-adjust/README.md` — planned daily-budget auto-adjust policy (unimplemented).
 - `restore-eagerness/README.md` — narrowed remaining restore-admission concern (late-ramp overshoot).

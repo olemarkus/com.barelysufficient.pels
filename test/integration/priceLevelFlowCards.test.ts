@@ -77,6 +77,7 @@ describe('Price level flow cards', () => {
 
     const planService = new PlanService({
       homey: mockHomeyInstance as any,
+      writePelsStatus: (status) => mockHomeyInstance.settings.set('pels_status', status),
       planEngine: {} as any,
       getPlanDevices: () => [],
       getCapacityDryRun: () => true,
