@@ -85,7 +85,7 @@ const browserTypeScriptRules = {
 // AppContext injection seam. Every other lib/** module depends on the SDK-free
 // ports in lib/ports/homeyRuntime instead.
 const HOMEY_LEAF_ALLOWLIST = [
-  'lib/app/appContext.ts',                   // AppContext type — the injection seam (CLAUDE.md: long-term inhabitant)
+  'lib/app/appContext.ts',                   // AppContext type — the injection seam (AGENTS.md: long-term inhabitant)
   'lib/device/deviceTransport.ts',           // the SDK transport leaf
   'lib/device/liveFeed.ts',                  // local Web API socket.io subscription
   'lib/device/transport/managerHomeyApi.ts', // local HTTP API client

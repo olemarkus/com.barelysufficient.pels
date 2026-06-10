@@ -2,7 +2,7 @@
 #
 # CodeRabbit configuration for PELS (com.barelysufficient.pels).
 # A Homey Pro app: hourly electricity-capacity controller (TypeScript, Node 22,
-# vitest, esbuild settings UI). See CLAUDE.md / AGENTS.md for repo conventions.
+# vitest, esbuild settings UI). See AGENTS.md for repo conventions (CLAUDE.md is an import stub).
 
 language: en-GB
 
@@ -43,15 +43,16 @@ reviews:
     - "!**/*.svg"
 
   # --- Targeted guidance per area. Mirrors the project's review subagents and
-  #     the hard rules in CLAUDE.md / AGENTS.md.
+  #     the hard rules in AGENTS.md.
   path_instructions:
     - path: "lib/**/*.ts"
       instructions: >-
-        Enforce the strict layering in CLAUDE.md. Domain modules (lib/core,
-        lib/plan, lib/price, lib/dailyBudget) must not import lib/app/**, must
+        Enforce the strict layering in AGENTS.md. Domain modules (lib/device,
+        lib/power, lib/observer, lib/executor, lib/objectives, lib/plan,
+        lib/price, lib/dailyBudget) must not import lib/app/**, must
         not import settings-UI code, and must not import test code. Flag new
-        imports from lib/utils into lib/core or lib/plan (transitional allowance,
-        do not expand). Resolution-in-producer rule: producers resolve to flat
+        imports from lib/utils into lib/device, lib/power, or lib/plan
+        (transitional allowance, do not expand). Resolution-in-producer rule: producers resolve to flat
         values; consumers must never branch on source/provenance/evidence/
         staleness. Operating realities: Homey SDK reads can transiently fail —
         never delete persisted state on one missing/empty read; respect 60s shed
