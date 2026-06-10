@@ -138,6 +138,72 @@ test('budget adjust → preview → apply walkthrough', async ({ page }, testInf
 });
 
 /**
+ * Two-step discard confirm on the header Done action: Adjust is the only
+ * surface that doesn't save instantly, so leaving with a dirty draft must
+ * warn before discarding (header-initiated session → returns to plan view).
+ */
+test('Done with a dirty draft requires a second confirming click', async ({ page }) => {
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByRole('tablist')).toBeVisible();
+  await page.getByRole('tab', { name: 'Budget' }).click();
+  await expect(page.locator('#budget-redesign-surface')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Adjust', exact: true }).click();
+  await expect(page.locator('#budget-redesign-adjust-view')).toBeVisible();
+
+  const kwhField = page.locator('#budget-redesign-kwh');
+  const originalKwh = await kwhField.evaluate(
+    (el) => (el as HTMLElement & { value?: string }).value ?? '',
+  );
+  await kwhField.evaluate((el) => {
+    const target = el as HTMLElement & { value?: string };
+    target.value = '33';
+    target.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+
+  // First click arms the confirm; the adjust view stays put.
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
+  const confirmButton = page.getByRole('button', { name: 'Click again to discard' });
+  await expect(confirmButton).toBeVisible();
+  await expect(page.locator('#budget-redesign-adjust-view')).toBeVisible();
+
+  // Second click discards and returns to the plan view.
+  await confirmButton.click();
+  await expect(page.locator('#budget-redesign-adjust-view')).toHaveCount(0);
+
+  // Re-entering Adjust shows the original value — nothing was applied.
+  await page.getByRole('button', { name: 'Adjust', exact: true }).click();
+  await expect(page.locator('#budget-redesign-kwh')).toHaveJSProperty('value', originalKwh);
+});
+
+/**
+ * Homey's host stylesheet opens with a universal `* { padding: 0 }` reset,
+ * and document rules targeting a custom-element host beat the component's
+ * `:host` padding — a naked md-outlined-button collapses to its bare label
+ * (short labels then render as broken circles). `.budget-page-header__action`
+ * restores host padding; this guards the pill actually containing its label.
+ */
+test('header toggle pill contains its label with M3 lead/trail space', async ({ page }) => {
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await page.getByRole('tab', { name: 'Budget' }).click();
+  await expect(page.locator('#budget-redesign-surface')).toBeVisible();
+
+  const measure = () => page.locator('#budget-redesign-mode-toggle').evaluate((el) => {
+    const host = el.getBoundingClientRect();
+    const label = el.shadowRoot?.querySelector('.label')?.getBoundingClientRect();
+    return { host: host.width, label: label?.width ?? 0 };
+  });
+
+  const planGeometry = await measure();
+  expect(planGeometry.host).toBeGreaterThanOrEqual(planGeometry.label + 24);
+
+  await page.getByRole('button', { name: 'Adjust', exact: true }).click();
+  await expect(page.locator('#budget-redesign-adjust-view')).toBeVisible();
+  const adjustGeometry = await measure();
+  expect(adjustGeometry.host).toBeGreaterThanOrEqual(adjustGeometry.label + 24);
+});
+
+/**
  * Regression guard for Budget segmented controls: Homey injects a host
  * stylesheet in the settings WebView and the previous single-class selector
  * (`.segmented__option[aria-pressed="true"]`) lost the cascade fight, so the

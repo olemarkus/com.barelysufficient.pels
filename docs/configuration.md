@@ -185,14 +185,12 @@ Advanced is for diagnostics, cleanup, and expert tuning.
 | Setting | What it does |
 | --- | --- |
 | **Debug logging topics** | Chooses which internal topics emit debug logs. |
-| **Background usage reserve** | Tunes how much daily budget PELS holds back for household usage it cannot move. |
-| **Managed device flexibility** | Tunes how freely PELS may shift managed-device usage toward cheaper feasible hours. |
 | **Show daily budget breakdown in chart** | Splits the plan chart into managed and background portions. |
 | **Reset usage history** | Clears hourly samples, daily totals, and weekday/weekend averages. |
 | **Clear device data** | Removes stored PELS metadata for one selected device. |
 | **Device log** | Writes a selected Homey device payload to the app logs for inspection. |
 
-Only change the daily-budget tuning values if you understand the tradeoff. They can materially change when devices are limited and resumed.
+**Background usage reserve** and **Managed device flexibility** are edited in the Budget page's Adjust view (Budget shaping section), reachable from the Budget page header or the **Daily budget** row in Settings. Only change them if you understand the tradeoff — they can materially change when devices are limited and resumed.
 
 For the exact formulas, see [Daily Budget Weighting Math](/daily-budget-weights).
 

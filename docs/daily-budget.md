@@ -77,7 +77,7 @@ Daily budget disabled means PELS uses only hourly capacity and price optimizatio
 
 ## Where To Configure It
 
-The main daily budget surface is the **Budget** page.
+The main daily budget surface is the **Budget** page. You can reach its settings two ways: the **Adjust** button on the Budget page header, or the **Daily budget** row on the Settings page — both open the same Adjust view. When you arrive from Settings, **Done** takes you back to Settings.
 
 The page has two local views:
 
@@ -89,22 +89,23 @@ The page has two local views:
 The **Adjust** view includes:
 
 - **Enable daily budget**: turns the feature on/off.
-- **Daily budget (kWh)**: target daily energy use. Range: 20-360 kWh.
+- **Daily budget (kWh)**: target daily energy use. Range: 20–360 kWh.
 - **Use cheaper hours**: when price optimization is enabled and prices are reliable, the plan is weighted toward cheaper remaining hours.
 - **Background usage reserve**: how much daily budget PELS holds back for household usage it cannot move, such as appliances, lights, and unmanaged devices.
 - **Managed device flexibility**: how freely PELS may shift managed-device usage toward cheaper hours after preserving minimum service.
 
-Use **Preview changes** before applying. PELS shows the candidate plan so you can compare it with the current plan.
+Use **Preview changes** before applying. PELS shows the candidate plan so you can compare it with the current plan. Changes in the Adjust view do not save until you apply them. Pressing **Done** with unsaved changes asks you to confirm first; switching to another tab discards them immediately (a notice appears).
 
-### Advanced Tuning
+### Behavior Shaping
 
-The same advanced tuning controls also appear under **Settings > Advanced > Daily budget tuning**:
+The shaping controls live in the Adjust view's **Budget shaping** section:
 
-- **Background usage reserve**: how much daily budget PELS holds back for household usage it cannot move, such as appliances, lights, and unmanaged devices. `Balanced` uses the normal reserve. `Conservative` reserves more, which can reduce daily-budget misses but leaves less budget for managed devices.
-- **Managed device flexibility**: how freely PELS may shift managed-device usage toward cheaper hours after preserving minimum service. `Low` stays close to normal managed-device usage, `Medium` shifts some usage, and `High` shifts more aggressively toward cheaper feasible hours.
-- **Show daily budget breakdown in the chart**: stacks background usage and managed device usage in the chart.
+- **Background usage reserve**: `Balanced` uses the normal reserve. `Conservative` reserves more, which can reduce daily-budget misses but leaves less budget for managed devices.
+- **Managed device flexibility**: `Low` stays close to normal managed-device usage, `Medium` shifts some usage, and `High` shifts more aggressively toward cheaper feasible hours.
 
-**Warning:** these controls can significantly change pacing behavior and when devices are limited or resumed. Keep defaults unless you are deliberately tuning behavior. If you change them, adjust one parameter at a time and observe at least a full day.
+A related display-only option, **Show daily budget breakdown in the chart** (stacks background usage and managed device usage), is under **Settings > Advanced > Daily budget chart**.
+
+**Warning:** the shaping controls can significantly change pacing behavior and when devices are limited or resumed. Keep defaults unless you are deliberately tuning behavior. If you change them, adjust one parameter at a time and observe at least a full day.
 
 For exact formulas and worked examples, see [Daily Budget Weighting Math (Advanced)](daily-budget-weights.md).
 
