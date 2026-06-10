@@ -17,7 +17,7 @@ box the original split did not name — the actuator.
 > `observedStateDispatcher.setHomePowerW`. **PR2b (snapshot store → observer) is
 > DEFERRED BY DECISION** (dual-store risk, no behavior change — see PR 2 below).
 > **PR 3 (tighten) remains outstanding.** Train sequence at the end.
-> Read [`CLAUDE.md`](./CLAUDE.md) (device-state invariants) and
+> Read the device-state invariants digest in [`lib/device/AGENTS.md`](../../lib/device/AGENTS.md) and
 > [`observer-transport-split.md`](./observer-transport-split.md) first — this
 > note assumes the `planned / commanded / observed / pending` vocabulary and
 > the transport-is-the-SDK-leaf rule.
@@ -410,7 +410,7 @@ risk profiles.
   `refreshSnapshot`), and transport cannot import observer
   (`no-device-to-peer-except-power`). The move buys **no behavior change** while
   adding a high snapshot-rollback regression surface (the merge/realtime
-  freshness invariants in `CLAUDE.md`).
+  freshness invariants in `lib/device/AGENTS.md`).
 - Not worth doing until the read-side parse/merge pipeline itself relocates out
   of transport. The external snapshot reader `lib/plan/snapshotWarmupGate.ts`
   stays on transport for now.

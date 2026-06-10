@@ -1582,7 +1582,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         if (!existing || existing.capabilityId !== capabilityId || existing.observedValue === observedValue) return;
         // A timestamp-less PULL read carries no evidence it is newer than a
         // pushed observation, so it must not erase a realtime/device_update
-        // observation (notes/state-management/CLAUDE.md "Never let an older full
+        // observation (lib/device/AGENTS.md "Never let an older full
         // fetch erase a fresher local or realtime observation without evidence
         // it is newer"). A genuine state change arrives via a push (realtime
         // listener / device.update), so the retained evidence stays supersedable

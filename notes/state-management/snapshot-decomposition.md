@@ -16,7 +16,7 @@ god-struct, and seal the raw snapshot inside transport.**
 > **stage 4b / 5** — route real readers (wiring-side first, then plan/executor)
 > onto the projection. Read
 > [`observer-transport-split.md`](./observer-transport-split.md) +
-> [`CLAUDE.md`](./CLAUDE.md) first.
+> the device-state invariants digest in [`lib/device/AGENTS.md`](../../lib/device/AGENTS.md) first.
 
 ## The smell (why this exists)
 
