@@ -1,3 +1,26 @@
+/**
+ * Plan assembly pipeline. One `buildDevicePlanSnapshot` call turns the live
+ * device inputs into a `DevicePlan` through fixed stages: deferred-objective
+ * decoration → plan context (soft limit, headroom, power freshness) →
+ * shedding selection → initial device materialization → restore →
+ * shed-temperature hold → reason normalization → finalization, followed by
+ * overshoot bookkeeping, plan meta, and diagnostics observation. The builder
+ * mutates the shared `PlanEngineState` (cooldown clocks, overshoot tracking,
+ * shed-decision stamps) but performs no actuation — every device write
+ * belongs to the executor.
+ *
+ * Shed-selection invariant (`lib/plan/shedding/AGENTS.md`): the shed set is
+ * fixed once `buildSheddingPlan` returns, plus the decoration seam's
+ * `forceShedSet` merged here before materialization. Every later stage —
+ * materialization, restore, hold, reason normalization — only copies
+ * `shedSet` membership into per-device `plannedState`/shed actions, or
+ * declines to lift an existing shed; none of them may add a device to the
+ * shed set.
+ *
+ * Boundary (`lib/plan/AGENTS.md`): smart-task-agnostic — objectives reach
+ * the builder only through the injected `decorateDeferredObjectives` seam.
+ * Capacity-model internals: `docs/technical.md`.
+ */
 import CapacityGuard from '../power/capacityGuard';
 import type { PowerTrackerState } from '../power/tracker';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
