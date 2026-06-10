@@ -1,3 +1,12 @@
+/**
+ * Pure allocation math for the daily kWh budget: weight normalization,
+ * price-shaped composite weights, and cap/floor-constrained distribution of
+ * a day's budget (kWh) across plan buckets. No I/O, no clock, no Homey SDK —
+ * every function maps positional bucket arrays to positional bucket arrays,
+ * so all array inputs of one call must be index-aligned to the same bucket
+ * sequence. The formulas and their user-facing meaning are specified in
+ * `docs/daily-budget-weights.md`; keep code and doc in lock-step.
+ */
 import { clamp } from '../utils/mathUtils';
 import { PRICE_SHAPING_PRICE_RANGE_EPSILON } from './dailyBudgetConstants';
 
@@ -5,12 +14,33 @@ const CAP_ALLOCATION_EPSILON = 1e-6;
 // Allow a few extra redistribution passes when caps fill due to rounding.
 const MAX_CAP_REDISTRIBUTION_EXTRA_ITERATIONS = 3;
 
+/**
+ * Scales `weights` to sum to 1. Inputs are unitless relative shares (callers
+ * pass kWh-derived per-bucket weights) and are expected non-negative —
+ * negative entries are not clamped, they pass through scaled. A non-positive
+ * total (empty array, all zeros, or net-negative sum) returns an all-zeros
+ * array of the same length rather than dividing by zero; callers needing a
+ * usable shape in that case supply their own fallback (see
+ * `normalizeWeightsWithFallback` in `dailyBudgetPlanCore.ts`).
+ */
 export function normalizeWeights(weights: number[]): number[] {
   const total = weights.reduce((sum, value) => sum + value, 0);
   if (total <= 0) return weights.map(() => 0);
   return weights.map((value) => value / total);
 }
 
+/**
+ * Blends base bucket weights toward price-shaped weights:
+ * `base·(1−f) + base·factor·f` per bucket, with `f = clamp(flexShare, 0, 1)`
+ * — an out-of-range `flexShare` is safe. `baseWeights` are unitless relative
+ * weights and the result is NOT renormalized; callers normalize downstream.
+ * `priceFactors` entries are index-aligned multipliers around 1 produced by
+ * `buildPriceFactors` (clamped to [0.7, 1.3]; above 1 = cheaper than the
+ * median); a `null` or missing entry (an elapsed bucket — a missing remaining
+ * price disables shaping entirely instead of emitting per-bucket nulls)
+ * leaves that bucket at its base weight. An absent or empty `priceFactors`
+ * array returns a copy of `baseWeights` unchanged, ignoring `flexShare`.
+ */
 export function buildCompositeWeights(params: {
   baseWeights: number[];
   priceFactors?: Array<number | null>;

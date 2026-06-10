@@ -1,3 +1,24 @@
+/**
+ * Persisted record-keeper for deferred-objective active plans — the slow clock
+ * in this module's two-clock design (governed by
+ * `lib/objectives/deferredObjectives/AGENTS.md`; read it before changing
+ * anything here). The recorder owns WHEN the persisted record may change:
+ * replan revisions settle at most once per clock hour, at/after the `:58`
+ * mark shared with the build-time gate via `settleWindow.ts` (a user
+ * objective edit bypasses the gate). Between settles the committed record is
+ * frozen — the planner's per-cycle live allocation is deliberately ungated,
+ * and the mid-hour frozen read is served elsewhere (`frozenHorizonPlan.ts`),
+ * not by this file. The recorder also owns the commitment envelope, the
+ * bounded revision history, and the pending-record lifecycle that the
+ * settings UI and the public Flow status read.
+ *
+ * Persistence caveat: Homey settings reads can transiently return
+ * missing/empty data, so a persisted plan is never dropped on a single cycle
+ * without its diagnostic — `dropExpiredAndAbandoned` waits `ABANDON_GRACE_MS`
+ * (one hour) since the device was last seen, and `lastSeenAtMs` is seeded to
+ * construction time on reload so a miss right after restart cannot delete
+ * persisted plans. Preserve that property when changing load/drop paths.
+ */
 import type {
   DeferredObjectiveActivePlanHourV1,
   DeferredObjectiveActivePlanPendingReason,
