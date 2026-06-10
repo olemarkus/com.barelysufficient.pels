@@ -152,6 +152,8 @@ const buildBudgetProps = (overrides: Partial<BudgetOverviewProps> = {}): BudgetO
   },
   allocationWarning: null,
   priceLevelChip: null,
+  adjustReturnTarget: 'plan',
+  onReturnToSettings: () => {},
   onLocalViewChange: () => {},
   onDayChange: () => {},
   onChartModeChange: () => {},

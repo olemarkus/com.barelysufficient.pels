@@ -397,6 +397,12 @@
           <span slot="supporting-text" class="settings-nav-card__description">Hard cap, safety margin, power source</span>
           <svg slot="end" class="settings-nav-card__chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m8.59 16.59 4.58-4.59-4.58-4.59L10 6l6 6-6 6-1.41-1.41z" fill="currentColor"/></svg>
         </md-list-item>
+        <md-list-item type="button" class="settings-nav-card" data-settings-target="budget-adjust">
+          <svg slot="start" class="settings-nav-card__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 6.5A1.5 1.5 0 0 1 6.5 5h11A1.5 1.5 0 0 1 19 6.5v12a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 18.5v-12zM8 3v4M16 3v4M5 10h14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M12.8 12 10.4 15.6h2l-1.2 3 2.8-3.6h-2l0.8-3z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+          <span slot="headline" class="settings-nav-card__title pels-text-card-title">Daily budget</span>
+          <span slot="supporting-text" class="settings-nav-card__description">Budget size, cheaper hours, flexibility</span>
+          <svg slot="end" class="settings-nav-card__chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m8.59 16.59 4.58-4.59-4.58-4.59L10 6l6 6-6 6-1.41-1.41z" fill="currentColor"/></svg>
+        </md-list-item>
         <md-list-item type="button" class="settings-nav-card" data-settings-target="devices">
           <svg slot="start" class="settings-nav-card__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 9.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM6 4.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zm12 0a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM6 14.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zm12 0a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
           <span slot="headline" class="settings-nav-card__title pels-text-card-title">Devices</span>
@@ -535,29 +541,12 @@
       </details>
       <details class="settings-collapse">
         <summary>
-          <h3 class="section-title">Daily budget tuning</h3>
-          <span class="section-hint">Behavior shaping</span>
+          <h3 class="section-title">Daily budget chart</h3>
+          <span class="section-hint">Chart display</span>
           <svg class="disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" fill="currentColor"/></svg>
         </summary>
         <div class="collapse-content">
-          <form id="daily-budget-advanced-form" class="form-grid">
-            <label class="field">
-              <span class="field__label pels-text-settings-label" id="daily-budget-controlled-weight-label">Background usage reserve</span>
-              <md-filled-select id="daily-budget-controlled-weight" aria-labelledby="daily-budget-controlled-weight-label">
-                <md-select-option value="0" selected><div slot="headline">Balanced</div></md-select-option>
-                <md-select-option value="1"><div slot="headline">Conservative</div></md-select-option>
-              </md-filled-select>
-              <small class="field__hint">How much daily budget to hold back for household usage PELS cannot move.</small>
-            </label>
-            <label class="field">
-              <span class="field__label pels-text-settings-label" id="daily-budget-price-flex-share-label">Managed device flexibility</span>
-              <md-filled-select id="daily-budget-price-flex-share" aria-labelledby="daily-budget-price-flex-share-label">
-                <md-select-option value="0.3"><div slot="headline">Low</div></md-select-option>
-                <md-select-option value="0.6" selected><div slot="headline">Medium</div></md-select-option>
-                <md-select-option value="0.85"><div slot="headline">High</div></md-select-option>
-              </md-filled-select>
-              <small class="field__hint">How freely PELS may shift managed-device usage toward cheaper hours after preserving minimum service.</small>
-            </label>
+          <div class="form-grid">
             <div class="md-switch-row">
               <md-switch id="daily-budget-breakdown" aria-labelledby="daily-budget-breakdown-label"></md-switch>
               <span class="md-switch-row__content">
@@ -565,8 +554,11 @@
                 <small class="field__hint">Stack background usage and managed device usage.</small>
               </span>
             </div>
-            <p class="muted">PELS uses recent usage history to reserve budget for unmanaged household load, then plans managed-device usage around prices and minimum service needs.</p>
-          </form>
+            <p class="muted">Edit budget size and shaping on the Budget tab under Adjust.</p>
+            <div class="inline-actions">
+              <md-text-button type="button" data-settings-target="budget-adjust">Open budget settings</md-text-button>
+            </div>
+          </div>
         </div>
       </details>
       <details class="settings-collapse">

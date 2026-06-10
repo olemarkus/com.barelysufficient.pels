@@ -1,104 +1,15 @@
-import {
-  dailyBudgetAdvancedForm,
-  dailyBudgetControlledWeightInput,
-  dailyBudgetPriceFlexShareInput,
-  dailyBudgetBreakdownInput,
-  type MdFilledSelectElement,
-} from './dom.ts';
+import { dailyBudgetBreakdownInput } from './dom.ts';
 import { getSetting } from './homey.ts';
 import { pushSettingWriteIfChanged } from './settingWrites.ts';
 import { logSettingsError } from './logging.ts';
 import { showToast, showToastError } from './toast.ts';
-import { priceFlexModeValue, reserveModeValue } from './dailyBudgetTuningValues.ts';
-import {
-  PRICE_SHAPING_FLEX_SHARE,
-  UNMANAGED_RESERVE_MODE,
-} from '../../../contracts/src/dailyBudgetConstants.ts';
-import {
-  DAILY_BUDGET_CONTROLLED_WEIGHT,
-  DAILY_BUDGET_BREAKDOWN_ENABLED,
-  DAILY_BUDGET_PRICE_FLEX_SHARE,
-} from '../../../contracts/src/settingsKeys.ts';
+import { DAILY_BUDGET_BREAKDOWN_ENABLED } from '../../../contracts/src/settingsKeys.ts';
 import { rerenderDailyBudget } from './dailyBudget.ts';
 
-const clampRatio = (value: number, fallback: number): number => {
-  if (!Number.isFinite(value)) return fallback;
-  return Math.min(1, Math.max(0, value));
-};
-
-const parseSelectRatio = (value: string, fallback: number): number => (
-  clampRatio(Number.parseFloat(value), fallback)
-);
-
-const setSelectValue = (input: MdFilledSelectElement | null, value: string) => {
-  if (!input) return;
-  const target = input;
-  target.value = value;
-};
-
-export const loadDailyBudgetTuningSettings = async () => {
-  if (!dailyBudgetControlledWeightInput && !dailyBudgetPriceFlexShareInput && !dailyBudgetBreakdownInput) return;
-  const [controlledWeightRaw, priceFlexShareRaw, breakdownRaw] = await Promise.all([
-    getSetting(DAILY_BUDGET_CONTROLLED_WEIGHT),
-    getSetting(DAILY_BUDGET_PRICE_FLEX_SHARE),
-    getSetting(DAILY_BUDGET_BREAKDOWN_ENABLED),
-  ]);
-  const controlledWeight = clampRatio(
-    typeof controlledWeightRaw === 'number' ? controlledWeightRaw : Number.NaN,
-    UNMANAGED_RESERVE_MODE,
-  );
-  const priceFlexShare = clampRatio(
-    typeof priceFlexShareRaw === 'number' ? priceFlexShareRaw : Number.NaN,
-    PRICE_SHAPING_FLEX_SHARE,
-  );
-  setSelectValue(dailyBudgetControlledWeightInput, reserveModeValue(controlledWeight));
-  setSelectValue(dailyBudgetPriceFlexShareInput, priceFlexModeValue(priceFlexShare));
-  if (dailyBudgetBreakdownInput) {
-    dailyBudgetBreakdownInput.selected = breakdownRaw === true;
-  }
-};
-
-const saveDailyBudgetTuningSetting = async (params: {
-  key: string;
-  next: unknown;
-  successMessage: string;
-  failureMessage: string;
-  context: string;
-}) => {
-  try {
-    const current = await getSetting(params.key);
-    const writes: Array<Promise<void>> = [];
-    pushSettingWriteIfChanged(writes, params.key, current, params.next);
-    if (writes.length > 0) {
-      await Promise.all(writes);
-    }
-    await showToast(params.successMessage, 'ok');
-  } catch (error) {
-    await logSettingsError(params.failureMessage, error, params.context);
-    await showToastError(error, params.failureMessage);
-  }
-};
-
-const saveControlledWeight = async () => {
-  const next = parseSelectRatio(dailyBudgetControlledWeightInput?.value ?? '', UNMANAGED_RESERVE_MODE);
-  await saveDailyBudgetTuningSetting({
-    key: DAILY_BUDGET_CONTROLLED_WEIGHT,
-    next,
-    successMessage: 'Background usage reserve saved.',
-    failureMessage: 'Failed to save background usage reserve.',
-    context: 'dailyBudgetTuningControlledWeight',
-  });
-};
-
-const savePriceFlexShare = async () => {
-  const next = parseSelectRatio(dailyBudgetPriceFlexShareInput?.value ?? '', PRICE_SHAPING_FLEX_SHARE);
-  await saveDailyBudgetTuningSetting({
-    key: DAILY_BUDGET_PRICE_FLEX_SHARE,
-    next,
-    successMessage: 'Managed device flexibility saved.',
-    failureMessage: 'Failed to save managed device flexibility.',
-    context: 'dailyBudgetTuningPriceFlexShare',
-  });
+export const loadDailyBudgetBreakdownSetting = async () => {
+  if (!dailyBudgetBreakdownInput) return;
+  const breakdownRaw = await getSetting(DAILY_BUDGET_BREAKDOWN_ENABLED);
+  dailyBudgetBreakdownInput.selected = breakdownRaw === true;
 };
 
 const saveDailyBudgetBreakdownSetting = async () => {
@@ -122,8 +33,8 @@ const saveDailyBudgetBreakdownSetting = async () => {
   rerenderDailyBudget();
 };
 
-export const initDailyBudgetTuningHandlers = () => {
-  if (!dailyBudgetControlledWeightInput && !dailyBudgetPriceFlexShareInput && !dailyBudgetBreakdownInput) return;
+export const initDailyBudgetBreakdownHandlers = () => {
+  if (!dailyBudgetBreakdownInput) return;
   const autoSaveBreakdown = async () => {
     try {
       await saveDailyBudgetBreakdownSetting();
@@ -134,8 +45,5 @@ export const initDailyBudgetTuningHandlers = () => {
     }
   };
 
-  dailyBudgetControlledWeightInput?.addEventListener('change', () => { void saveControlledWeight(); });
-  dailyBudgetPriceFlexShareInput?.addEventListener('change', () => { void savePriceFlexShare(); });
-  dailyBudgetBreakdownInput?.addEventListener('change', autoSaveBreakdown);
-  dailyBudgetAdvancedForm?.addEventListener('submit', (event) => event.preventDefault());
+  dailyBudgetBreakdownInput.addEventListener('change', autoSaveBreakdown);
 };

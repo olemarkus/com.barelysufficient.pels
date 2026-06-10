@@ -484,11 +484,10 @@ Overview may show a compact `Simulation mode` chip when this setting affects cur
 - data management, including usage-stat reset and other destructive maintenance actions
 - rare recovery tools
 
-Move normal planning controls out of Advanced:
-
-- background usage reserve
-- managed device flexibility
-- daily budget tuning
+Normal planning controls moved out of Advanced (shipped): background usage reserve and managed
+device flexibility are edited only in Budget → Adjust, reachable from the Budget page header and
+the `Settings > Daily budget` nav row (which deep-links into the Adjust view and routes Done back
+to Settings). Advanced keeps only the daily-budget breakdown chart toggle (a display-only option).
 
 Advanced should be collapsed and calm by default. Debug checklist-style controls should not be
 first-screen content.

@@ -5230,6 +5230,31 @@ details[open] > summary .disclosure-chevron {
 .budget-page-header__action {
   flex: 0 0 auto;
   align-self: center;
+  /* Homey's host stylesheet opens with a universal `* { padding: 0 }` reset,
+     and document rules targeting a custom-element host beat the component's
+     own `:host` padding — so a naked md-outlined-button collapses to its
+     bare label (the same bleed every other outlined button here works
+     around with host-drawn padding). Restore the M3 lead/trail space on the
+     host, where this class outranks the universal reset. */
+  padding-inline: var(--spacing-4);
+}
+
+/* Two-step discard confirm on the Budget header toggle: the armed state
+   ("Click again to discard") carries the warning tone so it reads as a
+   destructive choice. Label colour reaches the shadow-DOM text via the
+   `--md-outlined-button-*` custom properties, not the host `color`. The
+   state-pair tokens (`--color-state-warning-text` / `-border`) match the
+   `.dry-run-banner__action` warning-outlined-button precedent and carry
+   the per-theme contrast the bare `--warning` amber lacks. */
+#budget-redesign-mode-toggle.confirming {
+  --md-outlined-button-label-text-color: var(--color-state-warning-text);
+  --md-outlined-button-hover-label-text-color: var(--color-state-warning-text);
+  --md-outlined-button-pressed-label-text-color: var(--color-state-warning-text);
+  --md-outlined-button-focus-label-text-color: var(--color-state-warning-text);
+  --md-outlined-button-outline-color: var(--color-state-warning-border);
+  --md-outlined-button-hover-state-layer-color: var(--color-state-warning-text);
+  --md-outlined-button-pressed-state-layer-color: var(--color-state-warning-text);
+  --md-outlined-button-focus-state-layer-color: var(--color-state-warning-text);
 }
 
 .budget-redesign-allocation-warning {
