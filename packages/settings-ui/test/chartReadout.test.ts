@@ -1,0 +1,342 @@
+// Phase 3 chart interaction grammar: structured readout content resolvers
+// (exact user-facing strings) + the pinned-readout primitive's selection
+// lifecycle against a scripted chart double.
+import { attachChartReadout } from '../src/ui/chartReadout.ts';
+import {
+  buildDailyHistoryReadout,
+  buildHourlyPatternReadout,
+  buildUsageDayReadout,
+  readoutToTooltipHtml,
+  resolveTooltipDataIndex,
+} from '../src/ui/chartTooltipFormat.ts';
+import { buildUsageDayBucketReadout } from '../src/ui/usageDayView.ts';
+import type { EChartsType } from '../src/ui/echartsRegistry.ts';
+
+// Measurement segments join their tokens with NBSP (wraps happen only at the
+// ` · ` separators) — mirror the production join so the exact-string
+// assertions below stay byte-accurate.
+const nb = (text: string): string => text.split(' ').join(' ');
+
+describe('chart readout content resolvers', () => {
+  it('formats the hourly pattern readout as hour range + average', () => {
+    expect(buildHourlyPatternReadout({ hour: 13, avg: 1.24 })).toEqual({
+      when: '13:00–14:00',
+      values: [{ text: nb('Average 1.24 kWh') }],
+    });
+  });
+
+  it('wraps the hourly pattern range across midnight', () => {
+    expect(buildHourlyPatternReadout({ hour: 23, avg: 0.5 }).when).toBe('23:00–00:00');
+  });
+
+  it('formats the daily history readout without budget context when no budget is set', () => {
+    expect(buildDailyHistoryReadout({ dateLabel: 'Thu 4 Jun', kWh: 12.6, budgetKWh: null })).toEqual({
+      when: 'Thu 4 Jun',
+      values: [{ text: nb('12.6 kWh') }],
+    });
+  });
+
+  it('adds a warn-toned over-budget line when the day exceeds the budget', () => {
+    expect(buildDailyHistoryReadout({ dateLabel: 'Thu 4 Jun', kWh: 15.2, budgetKWh: 14 })).toEqual({
+      when: 'Thu 4 Jun',
+      values: [
+        { text: nb('15.2 kWh') },
+        { text: nb('1.2 kWh over budget'), tone: 'warn' },
+      ],
+    });
+  });
+
+  it('adds a within-budget line when the day stays under the budget', () => {
+    expect(buildDailyHistoryReadout({ dateLabel: 'Thu 4 Jun', kWh: 12.6, budgetKWh: 14 })).toEqual({
+      when: 'Thu 4 Jun',
+      values: [
+        { text: nb('12.6 kWh') },
+        { text: nb('Within budget of 14.0 kWh') },
+      ],
+    });
+  });
+
+  it('uses the stored budget value even below the adjust slider floor', () => {
+    // Regression: the budget context must come from the active budget, not
+    // the budget-adjust draft (which clamps a stored 12 kWh up to 20 on read).
+    expect(buildDailyHistoryReadout({ dateLabel: 'Thu 4 Jun', kWh: 9.5, budgetKWh: 12 }).values).toEqual([
+      { text: nb('9.5 kWh') },
+      { text: nb('Within budget of 12.0 kWh') },
+    ]);
+  });
+
+  it('marks the window-clipped oldest day as a partial day', () => {
+    expect(buildDailyHistoryReadout({
+      dateLabel: 'Thu 4 Jun',
+      kWh: 9.1,
+      budgetKWh: null,
+      partialDay: true,
+    }).values).toEqual([{ text: nb('9.1 kWh (partial day)') }]);
+  });
+
+  it('formats the usage day readout with the managed/background split and warning', () => {
+    expect(buildUsageDayReadout({
+      hourRange: '13:00–14:00',
+      measuredKWh: 1.31,
+      managedKWh: 0.8,
+      backgroundKWh: 0.51,
+      unreliable: true,
+    })).toEqual({
+      when: '13:00–14:00',
+      values: [
+        { text: nb('Measured 1.31 kWh') },
+        // NBSP inside each half; the ` · ` separator keeps normal spaces so
+        // the split line may wrap there.
+        { text: `${nb('Managed 0.80 kWh')} · ${nb('Background 0.51 kWh')}` },
+        // Prose warning keeps normal spaces (no unit to orphan; must stay
+        // wrappable at 320 px).
+        { text: 'Unreliable — some readings missing this hour', tone: 'warn' },
+      ],
+    });
+  });
+
+  it('suffixes the in-progress hour measurement with "so far"', () => {
+    expect(buildUsageDayReadout({
+      hourRange: '12:00–13:00',
+      measuredKWh: 0.45,
+      managedKWh: null,
+      backgroundKWh: null,
+      unreliable: false,
+      inProgress: true,
+    }).values).toEqual([{ text: nb('Measured 0.45 kWh so far') }]);
+  });
+
+  it('omits the split line when either half is missing', () => {
+    expect(buildUsageDayReadout({
+      hourRange: '13:00–14:00',
+      measuredKWh: 1.31,
+      managedKWh: null,
+      backgroundKWh: null,
+      unreliable: false,
+    }).values).toEqual([{ text: nb('Measured 1.31 kWh') }]);
+  });
+
+  it('builds the usage day bucket range from the next bucket label, closing the day at 00:00', () => {
+    const bucket = {
+      label: '23:00',
+      measuredKWh: 1.5,
+      controlledKWh: null,
+      uncontrolledKWh: null,
+      unreliable: false,
+    };
+    expect(buildUsageDayBucketReadout(bucket, undefined).when).toBe('23:00–00:00');
+    expect(buildUsageDayBucketReadout({ ...bucket, label: '13:00' }, '14:00').when).toBe('13:00–14:00');
+  });
+
+  it('passes the in-progress flag through the bucket readout builder', () => {
+    const bucket = {
+      label: '12:00',
+      measuredKWh: 0.45,
+      controlledKWh: null,
+      uncontrolledKWh: null,
+      unreliable: false,
+    };
+    expect(buildUsageDayBucketReadout(bucket, '13:00', true).values)
+      .toEqual([{ text: nb('Measured 0.45 kWh so far') }]);
+    expect(buildUsageDayBucketReadout(bucket, '13:00').values)
+      .toEqual([{ text: nb('Measured 0.45 kWh') }]);
+  });
+
+  it('renders tooltip HTML with one line per value and an encoded when-line', () => {
+    const html = readoutToTooltipHtml({
+      when: 'Thu 4 Jun <b>',
+      values: [
+        { text: '15.2 kWh' },
+        { text: '1.2 kWh over budget', tone: 'warn' },
+      ],
+    }, { warnColor: '#f00' });
+    expect(html).toBe('Thu 4 Jun &lt;b&gt;<br/>15.2 kWh<br/><span style="color:#f00;">1.2 kWh over budget</span>');
+  });
+
+  it('renders warn values as plain lines when no warn colour is supplied', () => {
+    const html = readoutToTooltipHtml({
+      when: '13:00–14:00',
+      values: [{ text: 'Unreliable — some readings missing this hour', tone: 'warn' }],
+    });
+    expect(html).toBe('13:00–14:00<br/>Unreliable — some readings missing this hour');
+  });
+});
+
+describe('resolveTooltipDataIndex', () => {
+  it('resolves the data index from single-object and array params', () => {
+    expect(resolveTooltipDataIndex({ dataIndex: 5 })).toBe(5);
+    expect(resolveTooltipDataIndex([{ dataIndex: 3 }, { dataIndex: 9 }])).toBe(3);
+  });
+
+  it('rejects missing, non-numeric, and non-finite data indexes', () => {
+    expect(resolveTooltipDataIndex(undefined)).toBe(-1);
+    expect(resolveTooltipDataIndex({})).toBe(-1);
+    expect(resolveTooltipDataIndex({ dataIndex: '4' })).toBe(-1);
+    // NaN/Infinity pass a bare typeof check but defeat the callers'
+    // `index < 0 || index >= length` range guard — must resolve to -1.
+    expect(resolveTooltipDataIndex({ dataIndex: Number.NaN })).toBe(-1);
+    expect(resolveTooltipDataIndex({ dataIndex: Number.POSITIVE_INFINITY })).toBe(-1);
+  });
+});
+
+type FakeChart = {
+  chart: EChartsType;
+  actions: Array<Record<string, unknown>>;
+  tap: (x: number, y: number) => void;
+  setContainsPixel: (value: boolean) => void;
+  setPixelIndex: (value: number | null) => void;
+};
+
+// Scripted chart double for the readout primitive: captures the zr click
+// handler, records `dispatchAction` payloads, and lets the test script the
+// pixel→index resolution (`containPixel` + `convertFromPixel`).
+const createFakeChart = (): FakeChart => {
+  const actions: Array<Record<string, unknown>> = [];
+  let clickHandler: ((event: { offsetX: number; offsetY: number }) => void) | null = null;
+  let containsPixel = true;
+  let pixelIndex: number | null = null;
+  const chart = {
+    setOption: () => {},
+    resize: () => {},
+    dispose: () => {},
+    isDisposed: () => false,
+    convertFromPixel: () => pixelIndex,
+    containPixel: () => containsPixel,
+    dispatchAction: (payload: Record<string, unknown>) => {
+      actions.push(payload);
+    },
+    getZr: () => ({
+      on: (event: string, handler: (event: { offsetX: number; offsetY: number }) => void) => {
+        if (event === 'click') clickHandler = handler;
+      },
+    }),
+  } as unknown as EChartsType;
+  return {
+    chart,
+    actions,
+    tap: (x, y) => clickHandler?.({ offsetX: x, offsetY: y }),
+    setContainsPixel: (value) => {
+      containsPixel = value;
+    },
+    setPixelIndex: (value) => {
+      pixelIndex = value;
+    },
+  };
+};
+
+const contentFor = (index: number) => ({
+  when: `hour ${index}`,
+  values: [{ text: `value ${index}` }],
+});
+
+describe('attachChartReadout', () => {
+  it('renders the default selection on update and dispatches the select action', () => {
+    const fake = createFakeChart();
+    const host = document.createElement('div');
+    const handle = attachChartReadout({ chart: fake.chart, host });
+    handle.update({ itemCount: 24, defaultIndex: 7, resolveContent: contentFor });
+
+    expect(host.querySelector('.chart-readout__primary')?.textContent).toBe('hour 7');
+    expect(host.querySelector('.chart-readout__secondary')?.textContent).toBe('value 7');
+    const select = fake.actions.find((action) => action.type === 'select');
+    expect(select).toMatchObject({ type: 'select', seriesIndex: 0, dataIndex: 7 });
+  });
+
+  it('selects the tapped column and updates the readout', () => {
+    const fake = createFakeChart();
+    const host = document.createElement('div');
+    const handle = attachChartReadout({ chart: fake.chart, host });
+    handle.update({ itemCount: 24, defaultIndex: 7, resolveContent: contentFor });
+
+    fake.setPixelIndex(13);
+    fake.tap(100, 50);
+
+    expect(host.querySelector('.chart-readout__primary')?.textContent).toBe('hour 13');
+    const selects = fake.actions.filter((action) => action.type === 'select');
+    expect(selects[selects.length - 1]).toMatchObject({ dataIndex: 13 });
+  });
+
+  it('restores the default selection on a tap outside the plot grid', () => {
+    const fake = createFakeChart();
+    const host = document.createElement('div');
+    const handle = attachChartReadout({ chart: fake.chart, host });
+    handle.update({ itemCount: 24, defaultIndex: 7, resolveContent: contentFor });
+
+    fake.setPixelIndex(13);
+    fake.tap(100, 50);
+    expect(host.querySelector('.chart-readout__primary')?.textContent).toBe('hour 13');
+
+    fake.setContainsPixel(false);
+    fake.tap(2, 2);
+    expect(host.querySelector('.chart-readout__primary')?.textContent).toBe('hour 7');
+  });
+
+  it('re-applies an explicit selection after a notMerge refresh', () => {
+    const fake = createFakeChart();
+    const host = document.createElement('div');
+    const handle = attachChartReadout({ chart: fake.chart, host });
+    handle.update({ itemCount: 24, defaultIndex: 7, resolveContent: contentFor });
+
+    fake.setPixelIndex(13);
+    fake.tap(100, 50);
+    fake.actions.length = 0;
+
+    // Realtime refresh: the chart module calls `update` again after
+    // `setOption(notMerge: true)` wiped ECharts' select state.
+    handle.update({ itemCount: 24, defaultIndex: 7, resolveContent: contentFor });
+
+    const selects = fake.actions.filter((action) => action.type === 'select');
+    expect(selects[selects.length - 1]).toMatchObject({ dataIndex: 13 });
+    expect(host.querySelector('.chart-readout__primary')?.textContent).toBe('hour 13');
+  });
+
+  it('drops a stale explicit selection when the data shrinks below it', () => {
+    const fake = createFakeChart();
+    const host = document.createElement('div');
+    const handle = attachChartReadout({ chart: fake.chart, host });
+    handle.update({ itemCount: 24, defaultIndex: 3, resolveContent: contentFor });
+
+    fake.setPixelIndex(20);
+    fake.tap(100, 50);
+    handle.update({ itemCount: 5, defaultIndex: 3, resolveContent: contentFor });
+
+    expect(host.querySelector('.chart-readout__primary')?.textContent).toBe('hour 3');
+  });
+
+  it('marks warn-toned values with the warn class', () => {
+    const fake = createFakeChart();
+    const host = document.createElement('div');
+    const handle = attachChartReadout({ chart: fake.chart, host });
+    handle.update({
+      itemCount: 1,
+      defaultIndex: 0,
+      resolveContent: () => ({
+        when: 'Wed, Jun 4',
+        values: [
+          { text: '15.2 kWh' },
+          { text: '1.2 kWh over budget', tone: 'warn' as const },
+        ],
+      }),
+    });
+
+    const warn = host.querySelector('.chart-readout__value--warn');
+    expect(warn?.textContent).toBe('1.2 kWh over budget');
+    expect(host.querySelector('.chart-readout__secondary')?.textContent)
+      .toBe('15.2 kWh · 1.2 kWh over budget');
+  });
+
+  it('clears the host and ignores taps after detach', () => {
+    const fake = createFakeChart();
+    const host = document.createElement('div');
+    const handle = attachChartReadout({ chart: fake.chart, host });
+    handle.update({ itemCount: 24, defaultIndex: 7, resolveContent: contentFor });
+    handle.detach();
+
+    expect(host.childElementCount).toBe(0);
+    fake.actions.length = 0;
+    fake.setPixelIndex(2);
+    fake.tap(10, 10);
+    expect(fake.actions).toEqual([]);
+    expect(host.childElementCount).toBe(0);
+  });
+});

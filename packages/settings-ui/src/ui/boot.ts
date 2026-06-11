@@ -313,10 +313,14 @@ const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
   // Device-dependent renders (renderPriorities, renderDevices)
   // are deferred to first tab open via lazy loading in showTab().
   renderPowerUsage(usage);
+  // Budget payload before the first power-stats render: the Usage tab's
+  // daily-history chart sources its budget overlay from the active
+  // daily-budget payload (`activeDailyBudget.ts`), so the mark line and
+  // readout context are present from first paint.
+  await refreshDailyBudgetPlan(bootstrap?.dailyBudget);
   await renderPowerStats();
   renderModeOptions();
   await refreshAdvancedDeviceLogger();
-  await refreshDailyBudgetPlan(bootstrap?.dailyBudget);
 
   // Phase 4: Mark initial load complete - enables save operations
   state.initialLoadComplete = true;

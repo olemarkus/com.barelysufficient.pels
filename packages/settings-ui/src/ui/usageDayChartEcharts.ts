@@ -1,4 +1,4 @@
-import { encodeHtml, initEcharts, type EChartsOption, type EChartsType } from './echartsRegistry.ts';
+import { initEcharts, type EChartsOption, type EChartsType } from './echartsRegistry.ts';
 import { logSettingsWarn } from './logging.ts';
 import {
   formatAxisTick,
@@ -8,15 +8,25 @@ import {
   roundedAxisMaxToInterval,
   type DayViewBar,
 } from './dayViewChart.ts';
+import {
+  buildChartTooltipBase,
+  readoutToTooltipHtml,
+  resolveTooltipDataIndex,
+  type ChartReadoutContent,
+} from './chartTooltipFormat.ts';
+import { attachChartReadout, prefersCoarsePointer, type ChartReadoutHandle } from './chartReadout.ts';
 import { attachTabShownResize } from './chartVisibilityResize.ts';
-
-type AxisFormatterParam = {
-  dataIndex?: number;
-};
 
 type UsageDayChartEchartsParams = {
   bars: DayViewBar[];
   labels: string[];
+  // Structured per-bucket content feeding both the hover tooltip and the
+  // pinned readout row (one grammar, identical information).
+  readouts?: ChartReadoutContent[];
+  readoutHost?: HTMLElement | null;
+  // Default readout selection: the current hour on the Today view, the peak
+  // hour otherwise. Negative falls back to index 0 inside the readout helper.
+  defaultReadoutIndex?: number;
   currentBucketIndex: number;
   enabled: boolean;
   barsEl: HTMLElement;
@@ -29,7 +39,13 @@ type UsageDayPalette = {
   disabled: string;
   muted: string;
   grid: string;
+  // Current-hour marker border ONLY (borderWidth 1 in `buildMeasuredData`).
   currentBorder: string;
+  // On-surface high-contrast tone for the selected bar's border — the same
+  // selection identity the smart-task schedule chart uses (`palette.text` in
+  // `views/DeadlinePlan.tsx`), kept visually distinct from the current-hour
+  // marker above.
+  text: string;
   tooltipBackground: string;
   tooltipText: string;
   tooltipBorder: string;
@@ -42,6 +58,8 @@ let plot: EChartsType | null = null;
 let plotContainer: HTMLElement | null = null;
 let plotResizeObserver: ResizeObserver | null = null;
 let detachTabShownResize: (() => void) | null = null;
+let plotReadout: ChartReadoutHandle | null = null;
+let plotReadoutHost: HTMLElement | null = null;
 
 const resolveChartSize = (element: HTMLElement) => {
   const width = element.clientWidth > 0
@@ -65,6 +83,14 @@ const disposePlot = () => {
     detachTabShownResize();
     detachTabShownResize = null;
   }
+  if (plotReadout) {
+    plotReadout.detach();
+    plotReadout = null;
+  }
+  if (plotReadoutHost) {
+    plotReadoutHost.hidden = true;
+    plotReadoutHost = null;
+  }
   if (plot) {
     plot.dispose();
     plot = null;
@@ -75,7 +101,7 @@ const disposePlot = () => {
   }
 };
 
-const ensurePlot = (container: HTMLElement): EChartsType => {
+const ensurePlot = (container: HTMLElement, readoutHost: HTMLElement | null): EChartsType => {
   if (plot && plotContainer === container) {
     return plot;
   }
@@ -89,6 +115,10 @@ const ensurePlot = (container: HTMLElement): EChartsType => {
     ...resolveChartSize(container),
   });
   plotContainer = container;
+  if (readoutHost) {
+    plotReadout = attachChartReadout({ chart: plot, host: readoutHost });
+    plotReadoutHost = readoutHost;
+  }
 
   if (typeof ResizeObserver === 'function') {
     plotResizeObserver = new ResizeObserver(() => {
@@ -109,6 +139,7 @@ const USAGE_DAY_PALETTE_VARS = {
   muted: '--pels-chart-muted',
   grid: '--pels-chart-grid',
   currentBorder: '--pels-chart-current-border',
+  text: '--text',
   tooltipBackground: '--pels-chart-tooltip-bg',
   tooltipText: '--pels-chart-tooltip-text',
   tooltipBorder: '--pels-chart-tooltip-border',
@@ -152,19 +183,13 @@ const buildMeasuredData = (params: {
   }));
 };
 
-const resolveTooltipIndex = (rawParams: unknown): number => {
-  const first: unknown = Array.isArray(rawParams) ? rawParams[0] : rawParams;
-  if (!first || typeof first !== 'object') return -1;
-  const candidate = first as AxisFormatterParam;
-  return typeof candidate.dataIndex === 'number' ? candidate.dataIndex : -1;
-};
-
-const buildTooltipFormatter = (bars: DayViewBar[]) => (rawParams: unknown): string => {
-  const index = resolveTooltipIndex(rawParams);
-  if (index < 0 || index >= bars.length) return '';
-  const text = bars[index].title ?? '';
-  return encodeHtml(text).replace(/ · /g, '<br/>');
-};
+const buildTooltipFormatter = (readouts: ChartReadoutContent[], warnColor: string) => (
+  (rawParams: unknown): string => {
+    const index = resolveTooltipDataIndex(rawParams);
+    if (index < 0 || index >= readouts.length) return '';
+    return readoutToTooltipHtml(readouts[index], { warnColor });
+  }
+);
 
 const getDataMax = (bars: DayViewBar[]): number => (
   Math.max(1, ...bars.map((bar) => bar.value))
@@ -176,6 +201,7 @@ const buildOption = (params: UsageDayChartEchartsParams): EChartsOption => {
   const {
     bars,
     labels,
+    readouts = [],
     currentBucketIndex,
     enabled,
     barsEl,
@@ -211,20 +237,9 @@ const buildOption = (params: UsageDayChartEchartsParams): EChartsOption => {
       },
     },
     tooltip: {
-      trigger: 'axis',
-      axisPointer: { type: 'none' },
-      confine: true,
-      backgroundColor: palette.tooltipBackground,
-      borderColor: palette.tooltipBorder,
-      borderWidth: 1,
-      padding: [8, 10],
-      extraCssText: 'opacity:1;backdrop-filter:none;box-shadow:var(--shadow-md);',
-      textStyle: {
-        color: palette.tooltipText,
-        fontSize: 12,
-        fontWeight: 500,
-      },
-      formatter: buildTooltipFormatter(bars),
+      ...buildChartTooltipBase(palette),
+      show: !prefersCoarsePointer(),
+      formatter: buildTooltipFormatter(readouts, palette.warn),
     },
     xAxis: {
       type: 'category',
@@ -263,7 +278,8 @@ const buildOption = (params: UsageDayChartEchartsParams): EChartsOption => {
         itemStyle: { color: palette.measured },
         emphasis: { disabled: true },
         blur: { disabled: true },
-        select: { disabled: true },
+        selectedMode: 'single',
+        select: { itemStyle: { borderColor: palette.text, borderWidth: 2 } },
       },
       // Zero-data dummy series so the legend's "Warning" entry has a real
       // series to bind to. The "Measured" series colours warning bars
@@ -290,18 +306,29 @@ const buildOption = (params: UsageDayChartEchartsParams): EChartsOption => {
 };
 
 export const renderUsageDayChartEcharts = (params: UsageDayChartEchartsParams): boolean => {
-  const { barsEl, labelsEl, bars } = params;
+  const { barsEl, labelsEl, bars, readouts = [], readoutHost = null, defaultReadoutIndex = 0 } = params;
   if (!barsEl) return false;
   if (!Array.isArray(bars) || bars.length === 0) {
     disposePlot();
     barsEl.replaceChildren();
     labelsEl.hidden = true;
+    if (readoutHost) readoutHost.hidden = true;
     return false;
   }
 
   try {
-    const chart = ensurePlot(barsEl);
+    const chart = ensurePlot(barsEl, readoutHost);
     chart.setOption(buildOption(params), { notMerge: true });
+    if (plotReadout && plotReadoutHost) {
+      plotReadoutHost.hidden = false;
+      plotReadout.update({
+        itemCount: bars.length,
+        defaultIndex: defaultReadoutIndex,
+        resolveContent: (index) => (
+          index >= 0 && index < readouts.length ? readouts[index] : null
+        ),
+      });
+    }
     labelsEl.hidden = true;
     return true;
   } catch (error) {
@@ -309,6 +336,7 @@ export const renderUsageDayChartEcharts = (params: UsageDayChartEchartsParams): 
     disposePlot();
     barsEl.replaceChildren();
     labelsEl.hidden = true;
+    if (readoutHost) readoutHost.hidden = true;
     return false;
   }
 };

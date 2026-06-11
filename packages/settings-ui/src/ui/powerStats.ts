@@ -21,6 +21,9 @@ export type PowerStatsSummary = {
   hourlyPatternWeekend: HourlyPatternPoint[];
   hourlyPatternMeta: string;
   dailyHistory: DailyHistoryPoint[];
+  // True when the oldest day in the daily-history window is only partially
+  // covered (window-clipped) — see `isLeadingHistoryDayPartial`.
+  dailyHistoryLeadingPartial: boolean;
   hasPatternData: boolean;
 };
 
@@ -37,6 +40,7 @@ export const getEmptyPowerStats = (): PowerStatsSummary => ({
   hourlyPatternWeekend: [],
   hourlyPatternMeta: 'Average kWh per hour based on historical data.',
   dailyHistory: [],
+  dailyHistoryLeadingPartial: false,
   hasPatternData: false,
 });
 
@@ -250,4 +254,35 @@ export const buildDailyHistory = (dailyTotals: Record<string, number>, todayKey:
     entries.push({ date: dateKey, kWh });
   }
   return entries.sort((a, b) => b.date.localeCompare(a.date)).slice(0, DAILY_HISTORY_DAYS);
+};
+
+// The oldest (leading-edge) day of the daily-history window can be only
+// partially covered: its total is derived from hourly buckets whose coverage
+// starts after local midnight, either because the rolling retention pruned
+// the day's early hours or because tracking started mid-day. Rendering that
+// bar without context makes a clipped day read as a genuinely thrifty one, so
+// the producer resolves a flag for the chart readout's `(partial day)` note.
+//
+// `history` is the desc-sorted output of `buildDailyHistory` (oldest last).
+// A day present in the persisted `dailyTotals` is a full-day aggregate
+// (`tracker.ts` folds whole days only) and is never flagged.
+export const isLeadingHistoryDayPartial = (params: {
+  history: DailyHistoryPoint[];
+  persistedDailyTotals: Record<string, number> | null | undefined;
+  buckets: Record<string, number> | undefined;
+  timeZone: string;
+}): boolean => {
+  const { history, persistedDailyTotals, buckets, timeZone } = params;
+  const oldest = history.length > 0 ? history[history.length - 1] : undefined;
+  if (!oldest) return false;
+  if (typeof persistedDailyTotals?.[oldest.date] === 'number') return false;
+  const dayStartMs = getDateKeyStartMs(oldest.date, timeZone);
+  let earliestMs = Number.POSITIVE_INFINITY;
+  for (const iso of Object.keys(buckets ?? {})) {
+    const ts = new Date(iso).getTime();
+    if (!Number.isFinite(ts) || ts >= earliestMs) continue;
+    if (getDateKeyInTimeZone(new Date(ts), timeZone) !== oldest.date) continue;
+    earliestMs = ts;
+  }
+  return Number.isFinite(earliestMs) && earliestMs > dayStartMs;
 };

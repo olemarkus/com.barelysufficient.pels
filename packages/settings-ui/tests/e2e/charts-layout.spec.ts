@@ -97,7 +97,10 @@ test.describe('Settings UI chart layout', () => {
       '#usage-day-chart',
       '#usage-day-bars',
       '#usage-day-labels',
+      '#usage-day-readout',
       '#hourly-pattern',
+      '#hourly-pattern-readout',
+      '#daily-history-readout',
       '#power-list svg',
     ]);
     expect(

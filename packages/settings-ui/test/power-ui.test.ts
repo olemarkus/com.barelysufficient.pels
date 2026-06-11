@@ -29,6 +29,7 @@ const buildPowerDom = () => {
     <div id="usage-day-peak"></div>
     <div id="usage-day-over-cap"></div>
     <div id="usage-day-chart"><div id="usage-day-bars"></div><div id="usage-day-labels"></div></div>
+    <div id="usage-day-readout" hidden></div>
     <div id="usage-day-empty"></div>
     <div id="usage-day-meta"></div>
   `;
@@ -522,6 +523,32 @@ describe('power page stats (buckets-only)', () => {
     vi.useRealTimers();
   });
 
+  it('clears and hides the pinned readout when switching to a day with no data', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(Date.UTC(2025, 0, 6, 12, 0, 0)));
+    await installHomeyClient({}, 'UTC');
+    const { renderUsageDayView } = await import('../src/ui/usageDayView.ts');
+    const readout = document.querySelector('#usage-day-readout') as HTMLElement;
+
+    // Data render populates and shows the pinned readout row.
+    renderUsageDayView([{
+      hour: new Date('2025-01-06T12:00:00.000Z'),
+      kWh: 2.5,
+      controlledKWh: 1.1,
+      uncontrolledKWh: 1.4,
+    }]);
+    expect(readout.hidden).toBe(false);
+    // Readout segments join tokens with NBSP (see `chartTooltipFormat.ts`).
+    expect(readout.textContent).toContain('Measured 2.50 kWh');
+
+    // Re-render with no entries for the selected day (the day-switch path):
+    // the previous day's readout must not stay visible under "no data".
+    renderUsageDayView([]);
+    expect(readout.hidden).toBe(true);
+    expect(readout.textContent).toBe('');
+    vi.useRealTimers();
+  });
+
   it('renders a single bar series in usage day echarts', async () => {
     const setOption = vi.fn();
     const initEcharts = vi.fn(() => ({
@@ -774,13 +801,18 @@ describe('power page stats (buckets-only)', () => {
     }
   });
 
-  it('includes measured value in usage day tooltip text', async () => {
+  it('passes structured measured readout content for the usage day chart', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(Date.UTC(2025, 0, 6, 12, 0, 0)));
     await installHomeyClient({}, 'UTC');
-    let capturedBars: Array<{ title: string; marker?: { value: number } }> = [];
-    const renderUsageDayChartEcharts = vi.fn((params: { bars: Array<{ title: string; marker?: { value: number } }> }) => {
-      capturedBars = params.bars;
+    type CapturedParams = {
+      bars: Array<{ title?: string; marker?: { value: number } }>;
+      readouts?: Array<{ when: string; values: Array<{ text: string; tone?: string }> }>;
+      defaultReadoutIndex?: number;
+    };
+    let captured: CapturedParams | null = null;
+    const renderUsageDayChartEcharts = vi.fn((params: CapturedParams) => {
+      captured = params;
       return true;
     });
     vi.doMock('../src/ui/usageDayChartEcharts.ts', () => ({ renderUsageDayChartEcharts }));
@@ -792,9 +824,128 @@ describe('power page stats (buckets-only)', () => {
       budgetKWh: 2.0,
     }]);
 
-    expect(capturedBars[0]?.title).toContain('Measured 2.50 kWh');
-    expect(capturedBars[0]?.marker).toBeUndefined();
+    const params = captured as CapturedParams | null;
+    expect(params?.bars[0]?.title).toBeUndefined();
+    expect(params?.bars[0]?.marker).toBeUndefined();
+    expect(params?.readouts?.[0]?.when).toBe('00:00–01:00');
+    // Measurement segments join with NBSP so units never wrap away from
+    // their number (wraps only at the ` · ` separators).
+    expect(params?.readouts?.[0]?.values).toEqual([{ text: 'Measured 2.50 kWh'.split(' ').join(' ') }]);
+    // Today view at 12:00 UTC → the current hour (12) is the default
+    // selection, and only that in-progress bucket carries the "so far"
+    // suffix.
+    expect(params?.defaultReadoutIndex).toBe(12);
+    expect(params?.readouts?.[12]?.values[0]?.text).toBe('Measured 0.00 kWh so far'.split(' ').join(' '));
     vi.useRealTimers();
+  });
+
+  it('sources the daily-history budget from the active daily-budget payload, unclamped', async () => {
+    // Stored budget 12 kWh sits BELOW the budget-adjust slider floor (20):
+    // the adjust draft clamps it up on read, so the chart must source the
+    // active payload instead and keep the stored value (P1 regression — the
+    // mark line/readout said 20.0 while the Budget hero said 12.0).
+    const buckets = buildBuckets('2025-01-06T00:00:00.000Z', 24, 1.0);
+    await installHomeyClient({ buckets });
+    type DailyParams = { points: unknown[]; budgetKWh?: number | null; leadingPartialDay?: boolean };
+    let captured: DailyParams | null = null;
+    vi.doMock('../src/ui/usageStatsChartsEcharts.ts', () => ({
+      renderDailyHistoryChartEcharts: vi.fn((params: DailyParams) => {
+        captured = params;
+        return true;
+      }),
+      renderHourlyPatternChartEcharts: vi.fn(() => true),
+    }));
+    const { setActiveDailyBudgetFromPayload } = await import('../src/ui/activeDailyBudget.ts');
+    setActiveDailyBudgetFromPayload({
+      todayKey: '2025-01-06',
+      days: { '2025-01-06': { budget: { enabled: true, dailyBudgetKWh: 12 } } },
+    } as never);
+    const { renderPowerStats } = await import('../src/ui/power.ts');
+    await renderPowerStats();
+
+    const params = captured as DailyParams | null;
+    expect(params?.points).toHaveLength(1);
+    expect(params?.budgetKWh).toBe(12);
+    // Full-day bucket coverage on the oldest day → no partial-day flag.
+    expect(params?.leadingPartialDay).toBe(false);
+  });
+
+  it('passes no budget context to the daily-history chart when the budget is disabled', async () => {
+    const buckets = buildBuckets('2025-01-06T00:00:00.000Z', 24, 1.0);
+    await installHomeyClient({ buckets });
+    type DailyParams = { points: unknown[]; budgetKWh?: number | null };
+    let captured: DailyParams | null = null;
+    vi.doMock('../src/ui/usageStatsChartsEcharts.ts', () => ({
+      renderDailyHistoryChartEcharts: vi.fn((params: DailyParams) => {
+        captured = params;
+        return true;
+      }),
+      renderHourlyPatternChartEcharts: vi.fn(() => true),
+    }));
+    const { setActiveDailyBudgetFromPayload } = await import('../src/ui/activeDailyBudget.ts');
+    setActiveDailyBudgetFromPayload({
+      todayKey: '2025-01-06',
+      days: { '2025-01-06': { budget: { enabled: false, dailyBudgetKWh: 12 } } },
+    } as never);
+    const { renderPowerStats } = await import('../src/ui/power.ts');
+    await renderPowerStats();
+
+    // null suppresses the mark line and the readout's budget context line.
+    expect((captured as DailyParams | null)?.budgetKWh).toBeNull();
+  });
+
+  it('re-renders the daily-history chart when the active budget value changes', async () => {
+    // A budget edit while the Usage tab is visible must move the mark line,
+    // bar tinting, and readout budget context immediately: `dailyBudget.ts`
+    // pushes every payload refresh into `activeDailyBudget.ts`, whose change
+    // listener repaints the chart from the cached stats (no stats refetch).
+    const buckets = buildBuckets('2025-01-06T00:00:00.000Z', 24, 1.0);
+    await installHomeyClient({ buckets });
+    type DailyParams = { budgetKWh?: number | null };
+    const renderDaily = vi.fn<(params: DailyParams) => boolean>(() => true);
+    vi.doMock('../src/ui/usageStatsChartsEcharts.ts', () => ({
+      renderDailyHistoryChartEcharts: renderDaily,
+      renderHourlyPatternChartEcharts: vi.fn(() => true),
+    }));
+    const payloadWithBudget = (dailyBudgetKWh: number) => ({
+      todayKey: '2025-01-06',
+      days: { '2025-01-06': { budget: { enabled: true, dailyBudgetKWh } } },
+    } as never);
+    const { setActiveDailyBudgetFromPayload } = await import('../src/ui/activeDailyBudget.ts');
+    setActiveDailyBudgetFromPayload(payloadWithBudget(12));
+    const { renderPowerStats } = await import('../src/ui/power.ts');
+    await renderPowerStats();
+    expect(renderDaily.mock.lastCall?.[0]?.budgetKWh).toBe(12);
+
+    renderDaily.mockClear();
+    setActiveDailyBudgetFromPayload(payloadWithBudget(8));
+    expect(renderDaily).toHaveBeenCalledTimes(1);
+    expect(renderDaily.mock.calls[0]?.[0]?.budgetKWh).toBe(8);
+
+    // Same stored value again → no redundant repaint.
+    renderDaily.mockClear();
+    setActiveDailyBudgetFromPayload(payloadWithBudget(8));
+    expect(renderDaily).not.toHaveBeenCalled();
+  });
+
+  it('flags the window-clipped oldest history day to the daily-history chart', async () => {
+    // Bucket coverage of the oldest (and only) history day starts at 10:00
+    // local — the producer resolves the partial-day flag for the readout.
+    const buckets = buildBuckets('2025-01-06T10:00:00.000Z', 14, 1.0);
+    await installHomeyClient({ buckets });
+    type DailyParams = { leadingPartialDay?: boolean };
+    let captured: DailyParams | null = null;
+    vi.doMock('../src/ui/usageStatsChartsEcharts.ts', () => ({
+      renderDailyHistoryChartEcharts: vi.fn((params: DailyParams) => {
+        captured = params;
+        return true;
+      }),
+      renderHourlyPatternChartEcharts: vi.fn(() => true),
+    }));
+    const { renderPowerStats } = await import('../src/ui/power.ts');
+    await renderPowerStats();
+
+    expect((captured as DailyParams | null)?.leadingPartialDay).toBe(true);
   });
 
   it('renders consecutive zero-usage hours as valid data', async () => {
@@ -839,5 +990,112 @@ describe('power page stats (buckets-only)', () => {
 
     expect(stats.today).toBeCloseTo(context.usedNowKWh, 6);
     vi.useRealTimers();
+  });
+});
+
+describe('resolveActiveDailyBudgetKWh', () => {
+  const payloadWith = (budget: { enabled: boolean; dailyBudgetKWh: number }) => ({
+    todayKey: '2025-01-06',
+    days: { '2025-01-06': { budget } },
+  } as never);
+
+  it('returns the stored value even below the adjust slider floor', async () => {
+    const { resolveActiveDailyBudgetKWh } = await import('../src/ui/activeDailyBudget.ts');
+    expect(resolveActiveDailyBudgetKWh(payloadWith({ enabled: true, dailyBudgetKWh: 12 }))).toBe(12);
+  });
+
+  it('returns null when the budget is disabled, missing, or non-positive', async () => {
+    const { resolveActiveDailyBudgetKWh } = await import('../src/ui/activeDailyBudget.ts');
+    expect(resolveActiveDailyBudgetKWh(payloadWith({ enabled: false, dailyBudgetKWh: 12 }))).toBeNull();
+    expect(resolveActiveDailyBudgetKWh(payloadWith({ enabled: true, dailyBudgetKWh: 0 }))).toBeNull();
+    expect(resolveActiveDailyBudgetKWh(payloadWith({ enabled: true, dailyBudgetKWh: Number.NaN }))).toBeNull();
+    expect(resolveActiveDailyBudgetKWh(null)).toBeNull();
+  });
+});
+
+describe('isLeadingHistoryDayPartial', () => {
+  const timeZone = 'UTC';
+  // `buildDailyHistory` output is desc-sorted: oldest day last.
+  const history = [
+    { date: '2025-01-07', kWh: 24 },
+    { date: '2025-01-06', kWh: 14 },
+  ];
+
+  it('flags the oldest day when its bucket coverage starts after local midnight', async () => {
+    const { isLeadingHistoryDayPartial } = await import('../src/ui/powerStats.ts');
+    const buckets = buildBuckets('2025-01-06T10:00:00.000Z', 38, 1);
+    expect(isLeadingHistoryDayPartial({
+      history, persistedDailyTotals: undefined, buckets, timeZone,
+    })).toBe(true);
+  });
+
+  it('does not flag when coverage starts at the local day start', async () => {
+    const { isLeadingHistoryDayPartial } = await import('../src/ui/powerStats.ts');
+    const buckets = buildBuckets('2025-01-06T00:00:00.000Z', 48, 1);
+    expect(isLeadingHistoryDayPartial({
+      history, persistedDailyTotals: undefined, buckets, timeZone,
+    })).toBe(false);
+  });
+
+  it('trusts a persisted full-day total over late bucket coverage', async () => {
+    const { isLeadingHistoryDayPartial } = await import('../src/ui/powerStats.ts');
+    const buckets = buildBuckets('2025-01-06T10:00:00.000Z', 38, 1);
+    expect(isLeadingHistoryDayPartial({
+      history, persistedDailyTotals: { '2025-01-06': 14 }, buckets, timeZone,
+    })).toBe(false);
+  });
+
+  it('returns false for an empty history', async () => {
+    const { isLeadingHistoryDayPartial } = await import('../src/ui/powerStats.ts');
+    expect(isLeadingHistoryDayPartial({
+      history: [], persistedDailyTotals: undefined, buckets: undefined, timeZone,
+    })).toBe(false);
+  });
+});
+
+describe('daily-history date labels in negative-offset zones', () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it('labels each bar by its LOCAL calendar date in America/New_York', async () => {
+    // Regression: `new Date(`${key}T00:00:00.000Z`)` anchors a local date
+    // key at UTC midnight, which negative-offset zones (America/*) format as
+    // the PREVIOUS local day — the axis label, pinned readout, and tooltip
+    // all said Jan 5 for the 2025-01-06 bar. Labels must come from the key's
+    // local day start in the configured zone.
+    // Earlier tests in this file `doMock` the whole chart module; this test
+    // needs the real implementation with only the echarts seam stubbed.
+    vi.doUnmock('../src/ui/usageStatsChartsEcharts.ts');
+    const setOption = vi.fn();
+    vi.doMock('../src/ui/echartsRegistry.ts', () => ({
+      initEcharts: vi.fn(() => ({ setOption, resize: vi.fn(), dispose: vi.fn() })),
+      encodeHtml: (value: string) => value,
+    }));
+    const { renderDailyHistoryChartEcharts } = await import('../src/ui/usageStatsChartsEcharts.ts');
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+
+    const rendered = renderDailyHistoryChartEcharts({
+      container,
+      points: [{ date: '2025-01-06', kWh: 10 }],
+      timeZone: 'America/New_York',
+    });
+
+    expect(rendered).toBe(true);
+    const option = setOption.mock.calls[0]?.[0] as {
+      xAxis: { data: string[] };
+      tooltip: { formatter: (params: unknown) => string };
+    };
+    // Axis caption: the key's own day number, never the UTC-midnight
+    // previous day. (Day-number assertions keep the check locale-agnostic.)
+    expect(option.xAxis.data[0]).toMatch(/6/);
+    expect(option.xAxis.data[0]).not.toMatch(/5/);
+    // The tooltip formatter and the pinned readout (incl. its default
+    // selection) share the same prebuilt `readouts` array, so this covers
+    // both surfaces.
+    const tooltipHtml = option.tooltip.formatter([{ dataIndex: 0 }]);
+    expect(tooltipHtml).toMatch(/6/);
+    expect(tooltipHtml).not.toMatch(/5/);
   });
 });
