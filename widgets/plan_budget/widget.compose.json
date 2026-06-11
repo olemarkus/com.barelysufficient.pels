@@ -31,6 +31,10 @@
     "getChart": {
       "method": "GET",
       "path": "/chart"
+    },
+    "logClientError": {
+      "method": "POST",
+      "path": "/log"
     }
   }
 }

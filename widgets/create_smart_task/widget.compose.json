@@ -15,6 +15,10 @@
     "createCreateSmartTask": {
       "method": "POST",
       "path": "/create"
+    },
+    "logClientError": {
+      "method": "POST",
+      "path": "/log"
     }
   }
 }

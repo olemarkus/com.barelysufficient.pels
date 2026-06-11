@@ -152,6 +152,32 @@ describe('normalizeDeferredObjectivePlanHistory v3 → v4 migration', () => {
     expect(round.revisions).toEqual(v4Entry.revisions);
   });
 
+  it('loads mixed-cadence progressSamples unchanged (hourly legacy + 15-minute current)', () => {
+    // Entries finalized before the 15-minute sampling change carry hourly
+    // samples; entries finalized mid-upgrade can even mix both cadences in
+    // one array. The validator is cadence-agnostic (it checks shape, not
+    // spacing) so neither legacy nor mixed entries are mutated or dropped on
+    // load — consumers sort by `atMs` and never assume a grid.
+    const QUARTER_MS = 15 * 60 * 1000;
+    const mixedEntry = {
+      ...v3Entry,
+      id: 'v4-mixed-cadence',
+      progressSamples: [
+        { atMs: 0, valueC: 50, valuePercent: null },
+        { atMs: HOUR_MS, valueC: 53, valuePercent: null },
+        { atMs: 2 * HOUR_MS, valueC: 56, valuePercent: null },
+        { atMs: 2 * HOUR_MS + QUARTER_MS, valueC: 57, valuePercent: null },
+        { atMs: 2 * HOUR_MS + 2 * QUARTER_MS, valueC: 57.8, valuePercent: null },
+      ],
+    };
+    const result = normalizeDeferredObjectivePlanHistory({
+      version: 4,
+      entries: [mixedEntry],
+    });
+    expect(result.entries).toHaveLength(1);
+    expect(result.entries[0]!.progressSamples).toEqual(mixedEntry.progressSamples);
+  });
+
   it('loads a legacy v4 entry that has totalCost but no costDisplay (absent → fallback on read)', () => {
     const legacy = {
       ...v3Entry,

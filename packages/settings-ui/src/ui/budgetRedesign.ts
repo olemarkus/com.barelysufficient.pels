@@ -48,6 +48,10 @@ type RenderState = {
 };
 
 let currentBudgetLocalView: BudgetLocalView = 'plan';
+// Where the Done button leads from the Adjust view. 'settings' when the user
+// arrived via the Settings tab's "Daily budget" row; 'plan' for sessions
+// started from the Budget page header (or the allocation-warning CTA).
+let adjustReturnTarget: 'plan' | 'settings' = 'plan';
 let currentChartMode: BudgetRedesignChartMode = 'progress';
 let latestRenderState: RenderState = {
   payload: null,
@@ -60,6 +64,36 @@ export const updateBudgetPriceLevel = (priceLevel: string | null): void => {
   if (latestRenderState.priceLevel === priceLevel) return;
   latestRenderState = { ...latestRenderState, priceLevel };
   doRender();
+};
+
+// Entry point for the Settings tab's "Daily budget" row: open the Adjust
+// view directly and route Done back to the Settings panel.
+export const openBudgetAdjustFromSettings = (): void => {
+  currentBudgetLocalView = 'adjust';
+  adjustReturnTarget = 'settings';
+  doRender();
+};
+
+// Injected by boot (budgetRedesign cannot import realtime's showTab — the
+// realtime → dailyBudget → budgetRedesign import chain would turn circular).
+// Routing through showTab keeps the leave path uniform: discard, referrer
+// reset, and the unsaved-changes toast all live in discardBudgetAdjustOnLeave.
+let settingsNavigator: () => void = () => {};
+
+export const setBudgetAdjustSettingsNavigator = (navigate: () => void): void => {
+  settingsNavigator = navigate;
+};
+
+// Called when the budget panel is left (tab bar or Done-to-Settings) so a
+// stale 'settings' referrer doesn't survive into the next Adjust session.
+// A settings-initiated session also ends entirely: the next direct visit to
+// the Budget tab should land on the plan view, not a leftover Adjust view.
+export const resetBudgetAdjustReturnTarget = (): void => {
+  if (adjustReturnTarget === 'settings') {
+    currentBudgetLocalView = 'plan';
+    adjustReturnTarget = 'plan';
+    doRender();
+  }
 };
 let budgetSurface: HTMLElement | null = null;
 
@@ -119,8 +153,19 @@ const buildProps = (): BudgetOverviewProps => {
     adjust,
     allocationWarning: view === 'today' ? resolveAllocationWarning(planPayload) : null,
     priceLevelChip: resolvePriceLevelChip(latestRenderState.priceLevel),
+    adjustReturnTarget,
+    onReturnToSettings: () => {
+      // The header has already confirmed any discard (two-step button), so
+      // drop the draft before navigating — discardBudgetAdjustOnLeave then
+      // sees a clean draft and stays silent instead of toasting the user
+      // for an action they explicitly confirmed.
+      discardBudgetAdjust();
+      settingsNavigator();
+    },
     onLocalViewChange: (v) => {
       if (currentBudgetLocalView === 'adjust' && v !== 'adjust') discardBudgetAdjust();
+      // Header-initiated Adjust sessions always return to the plan view.
+      if (v === 'adjust') adjustReturnTarget = 'plan';
       currentBudgetLocalView = v;
       doRender();
     },

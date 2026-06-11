@@ -1,5 +1,5 @@
 import { render, type ComponentChildren } from 'preact';
-import { useRef, useLayoutEffect } from 'preact/hooks';
+import { useEffect, useRef, useLayoutEffect, useState } from 'preact/hooks';
 import {
   MdElevation,
   MdFilledButton,
@@ -8,7 +8,7 @@ import {
   MdSwitch,
   MdTextButton,
 } from './materialWebJSX.tsx';
-import { ExpandMoreIcon, WarningIcon } from './icons.tsx';
+import { ExpandMoreIcon, TuneIcon, WarningIcon } from './icons.tsx';
 import {
   renderBudgetRedesignChart,
   clearBudgetRedesignChart,
@@ -106,6 +106,11 @@ export type BudgetOverviewProps = {
   adjust: BudgetAdjustData;
   allocationWarning: AllocationWarning | null;
   priceLevelChip: PriceLevelChip | null;
+  // Where the Done button leads from the Adjust view; 'settings' when the
+  // session was opened from the Settings tab's "Daily budget" row.
+  adjustReturnTarget: 'plan' | 'settings';
+  // Navigates back to the Settings panel for settings-initiated sessions.
+  onReturnToSettings: () => void;
   onLocalViewChange: (v: BudgetLocalView) => void;
   onDayChange: (v: BudgetRedesignDayView) => void;
   onChartModeChange: (v: BudgetRedesignChartMode) => void;
@@ -576,7 +581,7 @@ const BudgetAdjustView = ({
                 The selected day's energy plan.
                 <span class="field__hint-range">{` Range ${MIN_DAILY_BUDGET_KWH}–${MAX_DAILY_BUDGET_KWH} kWh.`}</span>
                 {recommendedMaxKWh !== null && recommendedMaxKWh < MAX_DAILY_BUDGET_KWH ? (
-                  <span class="field__hint-range">{` Recommended up to ${formatKWh(recommendedMaxKWh, 1)} (hard cap × 24h).`}</span>
+                  <span class="field__hint-range">{` Recommended up to ${formatKWh(recommendedMaxKWh, 1)} (safe pace × 24h).`}</span>
                 ) : null}
               </FieldHint>
             </span>
@@ -791,30 +796,105 @@ const BudgetAdjustView = ({
 // Usage / Smart tasks / Settings). Chip + Plan/Adjust toggle sit in the
 // shared chip-rail row above the eyebrow + headline, matching the shape the
 // Overview hero established for status chips + info button.
+// Matches the auto-revert window of the other two-step confirm buttons
+// (reset usage history, device cleanup).
+const DISCARD_CONFIRM_TIMEOUT_MS = 5000;
+
 const BudgetPageHeader = ({
   localView,
   budgetEnabled,
+  adjustStatus,
+  adjustDraft,
+  adjustReturnTarget,
   priceLevelChip,
   onLocalViewChange,
+  onReturnToSettings,
 }: {
   localView: BudgetLocalView;
   budgetEnabled: boolean;
+  adjustStatus: BudgetAdjustStatus;
+  adjustDraft: BudgetAdjustDraft;
+  adjustReturnTarget: 'plan' | 'settings';
   priceLevelChip: PriceLevelChip | null;
   onLocalViewChange: (v: BudgetLocalView) => void;
+  onReturnToSettings: () => void;
 }) => {
   const inPlan = localView === 'plan';
-  const toggleLabel = inPlan ? 'Adjust' : 'Done';
+  const toSettings = adjustReturnTarget === 'settings';
+  // Adjust is the only surface that doesn't save instantly; a 'dirty' draft
+  // or 'pending' preview is unsaved work that Done would silently discard.
+  const hasUnsaved = !inPlan && adjustStatus !== 'clean';
+  // The confirm state is the draft object it was armed against. The
+  // controller swaps the draft identity on every field change, so deriving
+  // `confirming` from `armedDraft === adjustDraft` disarms the confirm the
+  // moment the user resumes editing (or the draft is replaced by an apply /
+  // external refresh / tab-bar discard) — a confirm armed for the OLD draft
+  // must never silently take new edits with it inside the revert window.
+  const [armedDraft, setArmedDraft] = useState<BudgetAdjustDraft | null>(null);
+  const confirmTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearConfirm = () => {
+    if (confirmTimeoutRef.current) {
+      clearTimeout(confirmTimeoutRef.current);
+      confirmTimeoutRef.current = null;
+    }
+    setArmedDraft(null);
+  };
+  useEffect(() => () => {
+    if (confirmTimeoutRef.current) clearTimeout(confirmTimeoutRef.current);
+  }, []);
+  const confirming = armedDraft !== null && hasUnsaved && armedDraft === adjustDraft;
   // When the daily budget is disabled the user is force-pinned into Adjust
-  // view (resolveEffectiveLocalView snaps localView → 'adjust'). The toggle
-  // therefore has nowhere to go: disable it and surface the tooltip the
-  // prior segmented control carried (parity with v2.7.2). Without this guard,
-  // clicking the enabled "Done" silently discards a dirty Adjust draft and
-  // snaps right back to Adjust — the user sees nothing change.
-  const toggleDisabled = !budgetEnabled;
-  const toggleTitle = !budgetEnabled
+  // view (resolveEffectiveLocalView snaps localView → 'adjust') and Done has
+  // no plan view to return to — unless the session came from Settings, where
+  // returning is always meaningful. Without this guard, clicking the enabled
+  // "Done" silently discards a dirty Adjust draft and snaps right back to
+  // Adjust — the user sees nothing change.
+  const toggleDisabled = !budgetEnabled && !toSettings;
+  const toggleLabel = inPlan ? 'Adjust' : (confirming ? 'Click again to discard' : 'Done');
+  const toggleTitle = toggleDisabled
     ? 'Enable daily budget to see the plan.'
-    : (inPlan ? 'Adjust budget settings' : 'Return to budget plan');
-  const onToggleClick = () => onLocalViewChange(inPlan ? 'adjust' : 'plan');
+    : inPlan
+      ? 'Adjust budget settings'
+      : confirming
+        ? 'Unsaved changes will be discarded'
+        : (toSettings ? 'Back to Settings' : 'Return to budget plan');
+  const onToggleClick = () => {
+    if (inPlan) {
+      clearConfirm();
+      onLocalViewChange('adjust');
+      return;
+    }
+    if (hasUnsaved && !confirming) {
+      if (confirmTimeoutRef.current) clearTimeout(confirmTimeoutRef.current);
+      setArmedDraft(adjustDraft);
+      confirmTimeoutRef.current = setTimeout(() => {
+        confirmTimeoutRef.current = null;
+        setArmedDraft(null);
+      }, DISCARD_CONFIRM_TIMEOUT_MS);
+      return;
+    }
+    clearConfirm();
+    // Settings-initiated sessions return to the Settings panel; the injected
+    // navigator (not a data-settings-target attribute) does the tab switch so
+    // the armed/unarmed confirm state can never race the navigation.
+    if (toSettings) {
+      onReturnToSettings();
+      return;
+    }
+    onLocalViewChange('plan');
+  };
+  const toggleNode = (
+    <MdOutlinedButton
+      id="budget-redesign-mode-toggle"
+      class={`budget-page-header__action${confirming ? ' confirming' : ''}`}
+      title={toggleTitle}
+      {...(toggleDisabled ? { disabled: true } : {})}
+      onClick={onToggleClick}
+    >
+      {inPlan && <TuneIcon slot="icon" />}
+      {toggleLabel}
+    </MdOutlinedButton>
+  );
   const chipToneCls = priceLevelChip
     ? (priceLevelChip.tone === 'warn' ? 'plan-chip--warn' : 'plan-chip--info')
     : '';
@@ -833,32 +913,14 @@ const BudgetPageHeader = ({
               </span>
             )}
           </div>
-          <MdTextButton
-            id="budget-redesign-mode-toggle"
-            class="budget-page-header__action"
-            title={toggleTitle}
-            {...(toggleDisabled ? { disabled: true } : {})}
-            onClick={onToggleClick}
-          >
-            {toggleLabel}
-          </MdTextButton>
+          {toggleNode}
         </div>
       )}
       <div class="plan-hero__section">
         <p class="eyebrow plan-hero__section-label">Budget</p>
         <div class="plan-hero__headline-row">
           <h2 class="plan-hero__headline">Daily budget</h2>
-          {!hasChipRow && (
-            <MdTextButton
-              id="budget-redesign-mode-toggle"
-              class="budget-page-header__action"
-              title={toggleTitle}
-              {...(toggleDisabled ? { disabled: true } : {})}
-              onClick={onToggleClick}
-            >
-              {toggleLabel}
-            </MdTextButton>
-          )}
+          {!hasChipRow && toggleNode}
         </div>
       </div>
     </header>
@@ -874,6 +936,8 @@ const BudgetOverviewRoot = ({
   adjust,
   allocationWarning,
   priceLevelChip,
+  adjustReturnTarget,
+  onReturnToSettings,
   onLocalViewChange,
   onDayChange,
   onChartModeChange,
@@ -888,8 +952,12 @@ const BudgetOverviewRoot = ({
     <BudgetPageHeader
       localView={localView}
       budgetEnabled={budgetEnabled}
+      adjustStatus={adjust.status}
+      adjustDraft={adjust.draft}
+      adjustReturnTarget={adjustReturnTarget}
       priceLevelChip={priceLevelChip}
       onLocalViewChange={onLocalViewChange}
+      onReturnToSettings={onReturnToSettings}
     />
     {localView === 'plan' && (
       <div class="budget-redesign-view">

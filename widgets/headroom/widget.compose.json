@@ -7,6 +7,10 @@
     "getHeadroom": {
       "method": "GET",
       "path": "/headroom"
+    },
+    "logClientError": {
+      "method": "POST",
+      "path": "/log"
     }
   }
 }

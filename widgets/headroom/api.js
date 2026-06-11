@@ -21,9 +21,33 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // widgets/headroom/src/api.ts
 var api_exports = {};
 __export(api_exports, {
-  getHeadroom: () => getHeadroom
+  getHeadroom: () => getHeadroom,
+  logClientError: () => logClientError
 });
 module.exports = __toCommonJS(api_exports);
+
+// widgets/_shared/widgetClientLogApi.ts
+var isValidEntry = (value) => {
+  if (!value || typeof value !== "object") return false;
+  const entry = value;
+  return (entry.level === "error" || entry.level === "warn" || entry.level === "info") && typeof entry.widget === "string" && typeof entry.message === "string";
+};
+var handleWidgetClientLog = (widgetId, { homey, body }) => {
+  const app = homey.app;
+  if (!isValidEntry(body)) {
+    app?.error?.(`Widget ${widgetId} log API called without a valid payload`);
+    return { ok: false };
+  }
+  const message = `Widget (${body.widget}): ${body.message}`;
+  if (body.level === "error") {
+    app?.error?.(message, new Error(body.detail ?? body.message));
+  } else if (body.level === "warn") {
+    app?.log?.(`Warning: ${message}`);
+  } else {
+    app?.log?.(message);
+  }
+  return { ok: true };
+};
 
 // packages/shared-domain/src/headroomWidgetCopy.ts
 var HEADROOM_WIDGET_COPY = {
@@ -37,8 +61,13 @@ var HEADROOM_WIDGET_COPY = {
   safePaceLabel: "Safe pace now",
   /** Shown when there is no status to render yet. */
   noDataSubtitle: "No data yet",
-  /** Shown when the widget API call fails. */
-  loadErrorSubtitle: "Unable to load"
+  /**
+   * Shown when the widget API call fails. The dominant cause is the Homey host
+   * orphaning the widget instance ("Widget Not Found"), which only a fresh
+   * dashboard open clears — so the copy names that remedy. Kept short: it renders
+   * in the headroom tile's large value slot.
+   */
+  loadErrorSubtitle: "Reopen the dashboard"
 };
 
 // widgets/headroom/src/headroomWidgetConstants.ts
@@ -107,7 +136,9 @@ var getHeadroom = async ({ homey }) => {
   const status = readStatus(homey.settings.get(PELS_STATUS_SETTING));
   return buildHeadroomWidgetPayload({ status });
 };
+var logClientError = (context) => handleWidgetClientLog("headroom", context);
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
-  getHeadroom
+  getHeadroom,
+  logClientError
 });

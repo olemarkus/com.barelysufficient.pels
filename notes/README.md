@@ -5,9 +5,10 @@ Notes are either **design-of-record** (why a shipped subsystem is shaped the way
 **deferred-design** (a parked plan with a clear revisit trigger). Where a note describes shipped
 work it carries a status line; treat anything without one as still-forward design.
 
-Per-directory `CLAUDE.md` files (`state-management/`, `starvation/`)
-are agent-context invariant digests, not notes — they are loaded automatically and are not listed
-below.
+Agent-context invariant digests live next to the code they protect, in per-module `AGENTS.md`
+files (`lib/device/AGENTS.md` for state management, `lib/observer/AGENTS.md` for observation
+quiescence, `lib/diagnostics/AGENTS.md` for starvation) — see the per-directory docs index in the
+root `AGENTS.md`. The notes here are the design-of-record behind those digests.
 
 ## Conventions & references
 

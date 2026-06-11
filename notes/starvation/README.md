@@ -1,5 +1,8 @@
 # Temperature Device Starvation Detection v1
 
+> The agent-facing invariants digest for this subsystem lives next to the code in
+> `lib/diagnostics/AGENTS.md`; this note is the design-of-record behind it.
+
 This note captures the intended starvation model and the remaining rollout target.
 Core intended-target / suppression-state diagnostics now exist in `lib/plan/planDiagnostics.ts`
 and `lib/diagnostics/deviceDiagnosticsService.ts`, but flows/insights and any remaining

@@ -6,6 +6,7 @@ import {
   roundedAxisMaxToInterval,
 } from './dayViewChart.ts';
 import { formatDateInTimeZone } from './timezone.ts';
+import { logSettingsWarn } from './logging.ts';
 import { attachTabShownResize } from './chartVisibilityResize.ts';
 
 type AxisFormatterParam = {
@@ -391,7 +392,7 @@ export const renderHourlyPatternChartEcharts = (params: {
     }), { notMerge: true });
     return true;
   } catch (error) {
-    console.warn('Hourly pattern chart: echarts render failed', error);
+    void logSettingsWarn('Hourly pattern chart: echarts render failed', error, 'hourlyPatternChart');
     disposePlot('hourly');
     container.replaceChildren();
     return false;
@@ -420,7 +421,7 @@ export const renderDailyHistoryChartEcharts = (params: {
     }), { notMerge: true });
     return true;
   } catch (error) {
-    console.warn('Daily history chart: echarts render failed', error);
+    void logSettingsWarn('Daily history chart: echarts render failed', error, 'dailyHistoryChart');
     disposePlot('daily');
     container.replaceChildren();
     return false;

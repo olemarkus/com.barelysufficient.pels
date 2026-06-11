@@ -1,5 +1,6 @@
 import { attachTabShownResize } from './chartVisibilityResize.ts';
 import { readChartPalette } from './dayViewChart.ts';
+import { logSettingsWarn } from './logging.ts';
 import { encodeHtml, initEcharts, type EChartsOption, type EChartsType } from './echartsRegistry.ts';
 import {
   formatDateInTimeZone,
@@ -396,7 +397,7 @@ export const renderPowerWeekChart = (params: {
     );
     return true;
   } catch (error) {
-    console.warn('Power week heatmap: echarts render failed', error);
+    void logSettingsWarn('Power week heatmap: echarts render failed', error, 'powerWeekChart');
     disposePowerWeekChart(container);
     return false;
   }

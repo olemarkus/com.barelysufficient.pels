@@ -15,6 +15,10 @@
     "createStarvationRescue": {
       "method": "POST",
       "path": "/rescue"
+    },
+    "logClientError": {
+      "method": "POST",
+      "path": "/log"
     }
   }
 }

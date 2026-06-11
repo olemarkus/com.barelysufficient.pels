@@ -48,7 +48,15 @@ export type HourPriceResolver = (
 // documents a matching constant (intentionally not exported there — runtime
 // must not value-import contract source files; see
 // `test/runtimePackaging.test.ts`). Keep both copies in sync.
-export const PROGRESS_SAMPLES_PER_ENTRY_CAP = 48;
+//
+// 200 covers ~50 h at the 15-minute base grid — wider than any same-day
+// deadline. Runs longer than that are re-bucketed onto a coarser grid (see
+// `rebucketProgressSamples`) rather than dropping their oldest readings, so a
+// multi-day task keeps full-run shape at reduced resolution instead of losing
+// its start. Persisted-size arithmetic: one sample is ~60 B of JSON, so the
+// cap bounds an entry's sample payload at ~12 KB and the 30-entry history
+// buffer at ~360 KB absolute worst case.
+export const PROGRESS_SAMPLES_PER_ENTRY_CAP = 200;
 
 // Runtime safety cap on `InProgressRecord.revisions[]` length. Realistic runs
 // see 5-10 entries thanks to the active-plan recorder's per-cycle dedupe, but
@@ -65,9 +73,23 @@ export const MAX_REVISIONS_PER_ENTRY = 64;
 
 const ONE_HOUR_MS = 60 * 60 * 1000;
 
-// Floor a timestamp to its containing hour. Used to bucket progress samples
-// so the in-memory ring keeps at most one entry per hour-of-the-run.
+// Floor a timestamp to its containing hour. Used by the hour-rollover /
+// delivery-contribution machinery, which is genuinely hour-shaped (spot prices
+// and the postmortem bar strip are per-hour). Progress samples use the finer
+// 15-minute grid below.
 export const hourBucketMs = (atMs: number): number => Math.floor(atMs / ONE_HOUR_MS) * ONE_HOUR_MS;
+
+// Base sampling grid for the measured-progress trajectory. 15 minutes (down
+// from the original hourly grid) so a real heat→coast→heat run renders as a
+// curve instead of an angular 3-point line on the trajectory charts. Bucket
+// keys are pure UTC-ms arithmetic — no local-time math — so DST transitions
+// (23/25 h days) cannot skew the grid.
+const PROGRESS_SAMPLE_INTERVAL_MS = 15 * 60 * 1000;
+
+// Floor a timestamp to its containing 15-minute progress-sample bucket.
+export const progressSampleBucketMs = (atMs: number): number => (
+  Math.floor(atMs / PROGRESS_SAMPLE_INTERVAL_MS) * PROGRESS_SAMPLE_INTERVAL_MS
+);
 
 // Effective kWh-per-unit the planner used for this revision, pulled from the
 // active plan's provenance snapshot. The bands work
@@ -296,14 +318,47 @@ export const seedProgressSamples = (
 ): Map<number, DeferredObjectivePlanHistoryProgressSample> => {
   const map = new Map<number, DeferredObjectivePlanHistoryProgressSample>();
   const sample = buildProgressSample(diag, nowMs);
-  if (sample !== null) map.set(hourBucketMs(nowMs), sample);
+  if (sample !== null) map.set(progressSampleBucketMs(nowMs), sample);
   return map;
 };
 
-// Upsert the diagnostic's current progress into the hourly ring. One entry
-// per hour-of-the-run; later cycles within the same hour overwrite (latest
-// reading wins). Drops diagnostics that carry no fresh progress so the ring
-// never accumulates all-null rows.
+// Deterministic cap eviction: re-bucket the ring onto a coarser grid instead
+// of dropping the oldest readings. The grid doubles from the 15-minute base
+// (30 min, 1 h, 2 h, …) until the sample count fits the cap; within each
+// coarse bucket the latest reading wins — the same "latest reading wins"
+// semantics the per-cycle upsert already uses. Keying off each sample's real
+// `atMs` is grid-consistent because every coarser grid is an integer multiple
+// of the base grid. The result preserves full-run coverage (a multi-day task
+// keeps its start instead of losing it), is a pure function of the sample
+// timestamps (deterministic regardless of map iteration order — at most one
+// sample exists per base bucket, so per-coarse-bucket "latest atMs" is
+// unambiguous), and terminates because the grid eventually exceeds the run
+// span, collapsing to a single bucket.
+export const rebucketProgressSamples = (
+  samples: ReadonlyMap<number, DeferredObjectivePlanHistoryProgressSample>,
+  cap: number,
+): Map<number, DeferredObjectivePlanHistoryProgressSample> => {
+  if (samples.size <= cap) return new Map(samples);
+  let gridMs = PROGRESS_SAMPLE_INTERVAL_MS;
+  for (;;) {
+    gridMs *= 2;
+    const grouped = new Map<number, DeferredObjectivePlanHistoryProgressSample>();
+    for (const sample of samples.values()) {
+      const key = Math.floor(sample.atMs / gridMs) * gridMs;
+      const existing = grouped.get(key);
+      if (existing === undefined || sample.atMs > existing.atMs) grouped.set(key, sample);
+    }
+    if (grouped.size <= cap) return grouped;
+  }
+};
+
+// Upsert the diagnostic's current progress into the 15-minute ring. One entry
+// per quarter-hour-of-the-run; later cycles within the same bucket overwrite
+// (latest reading wins). Drops diagnostics that carry no fresh progress so the
+// ring never accumulates all-null rows. When the upsert pushes the ring past
+// `PROGRESS_SAMPLES_PER_ENTRY_CAP` (a multi-day run), the ring is re-bucketed
+// onto a coarser grid so memory and the persisted entry stay bounded without
+// losing the run's start.
 export const recordProgressSample = (
   current: Map<number, DeferredObjectivePlanHistoryProgressSample>,
   diag: DeferredObjectiveDiagnostic,
@@ -312,23 +367,25 @@ export const recordProgressSample = (
   const sample = buildProgressSample(diag, nowMs);
   if (sample === null) return current;
   const next = new Map(current);
-  next.set(hourBucketMs(nowMs), sample);
-  return next;
+  next.set(progressSampleBucketMs(nowMs), sample);
+  if (next.size <= PROGRESS_SAMPLES_PER_ENTRY_CAP) return next;
+  return rebucketProgressSamples(next, PROGRESS_SAMPLES_PER_ENTRY_CAP);
 };
 
-// Drain the in-memory hourly progress ring into a sorted, capped array. The
-// cap (`PROGRESS_SAMPLES_PER_ENTRY_CAP`) keeps the persisted entry bounded
-// even if the recorder somehow accumulates more samples than expected;
-// dropping the *oldest* preserves the most recent (and most diagnostically
-// useful) readings while ensuring the final `finalProgressC` headline value
-// still appears in the chart.
+// Drain the in-memory progress ring into a sorted, capped array. The cap
+// (`PROGRESS_SAMPLES_PER_ENTRY_CAP`) is normally already enforced by
+// `recordProgressSample`'s re-bucket eviction; this is a backstop that applies
+// the same coarser-grid collapse (never drop-oldest) if the ring somehow
+// exceeds it, so the persisted entry stays bounded and full-run coverage —
+// including the final `finalProgressC` headline reading — survives.
 export const drainProgressSamples = (
   samples: Map<number, DeferredObjectivePlanHistoryProgressSample>,
 ): DeferredObjectivePlanHistoryProgressSample[] => {
   if (samples.size === 0) return [];
-  const sorted = [...samples.values()].sort((a, b) => a.atMs - b.atMs);
-  if (sorted.length <= PROGRESS_SAMPLES_PER_ENTRY_CAP) return sorted;
-  return sorted.slice(sorted.length - PROGRESS_SAMPLES_PER_ENTRY_CAP);
+  const bounded = samples.size <= PROGRESS_SAMPLES_PER_ENTRY_CAP
+    ? samples
+    : rebucketProgressSamples(samples, PROGRESS_SAMPLES_PER_ENTRY_CAP);
+  return [...bounded.values()].sort((a, b) => a.atMs - b.atMs);
 };
 
 // Append a revision-log entry the first time we observe a higher

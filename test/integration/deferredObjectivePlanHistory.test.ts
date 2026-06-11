@@ -117,7 +117,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
     expect(trajectory).not.toBeNull();
     expect(trajectory!.startProgressC).toBe(50);
     expect(trajectory!.startProgressPercent).toBeNull();
-    // One hourly sample per occupied hour bucket, sorted ascending by atMs.
+    // One sample per occupied 15-minute bucket, sorted ascending by atMs.
     expect(trajectory!.progressSamples.map((s) => s.valueC)).toEqual([50, 58]);
     const ats = trajectory!.progressSamples.map((s) => s.atMs);
     expect(ats).toEqual([...ats].sort((a, b) => a - b));
@@ -1379,14 +1379,16 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       },
     });
 
-    it('drains the hourly progress ring into the entry at finalization', () => {
+    it('drains the 15-minute progress ring into the entry at finalization', () => {
       const { deps, saved } = buildPersistDeps();
       const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
       const deadlineAtMs = 6 * HOUR_MS;
-      // Three cycles in distinct hours produce three samples; two cycles in
-      // the same hour collapse to the most recent reading.
+      const MIN_MS = 60 * 1000;
+      // Cycles in distinct 15-minute buckets each produce a sample; two
+      // cycles in the same quarter-hour collapse to the most recent reading.
       recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 })], 0);
-      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 52 })], 30 * 60 * 1000);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 51 })], 5 * MIN_MS);
+      recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 52 })], 30 * MIN_MS);
       recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 55 })], HOUR_MS);
       recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 60 })], 2 * HOUR_MS);
       recorder.observe([], deadlineAtMs);
@@ -1394,17 +1396,18 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
 
       const entry = saved()!.entries[0]!;
       expect(entry.progressSamples).toBeDefined();
-      // Three hour-buckets (0h / 1h / 2h). The half-hour sample upserts the
-      // 0h bucket, so the persisted `atMs` for that bucket is the half-hour
-      // timestamp (the latest observation kept) and not the bucket-start
-      // timestamp — the UI gets the most precise time PELS actually saw the
-      // reading.
+      // Four quarter-hour buckets (0:00 / 0:30 / 1:00 / 2:00). The 0:05
+      // sample upserts the 0:00 bucket, so the persisted `atMs` for that
+      // bucket is the 0:05 timestamp (the latest observation kept) and not
+      // the bucket-start timestamp — the UI gets the most precise time PELS
+      // actually saw the reading. The half-hour reading now keeps its own
+      // bucket instead of collapsing into the hour (the whole point of the
+      // 15-minute grid: a heat→coast→heat run stops rendering as an angular
+      // 3-point line).
       const sampleAtMs = entry.progressSamples!.map((s) => s.atMs);
-      expect(sampleAtMs).toEqual([30 * 60 * 1000, HOUR_MS, 2 * HOUR_MS]);
-      // Within 0h bucket: latest reading wins (52 °C, not the initial 50).
-      expect(entry.progressSamples![0]!.valueC).toBe(52);
-      expect(entry.progressSamples![1]!.valueC).toBe(55);
-      expect(entry.progressSamples![2]!.valueC).toBe(60);
+      expect(sampleAtMs).toEqual([5 * MIN_MS, 30 * MIN_MS, HOUR_MS, 2 * HOUR_MS]);
+      // Within the 0:00 bucket: latest reading wins (51 °C, not the initial 50).
+      expect(entry.progressSamples!.map((s) => s.valueC)).toEqual([51, 52, 55, 60]);
       // The temperature objective stamps `valuePercent: null` so the UI
       // never has to branch on objectiveKind to pick a field.
       for (const sample of entry.progressSamples!) {
@@ -1412,24 +1415,39 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       }
     });
 
-    it('caps progressSamples at 48 entries, dropping the oldest', () => {
+    it('caps progressSamples at 200 by re-bucketing to a coarser grid, preserving the run start', () => {
       const { deps, saved } = buildPersistDeps();
       const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
-      // A 60-hour deadline is unrealistic for production but exercises the cap.
+      const QUARTER_MS = 15 * 60 * 1000;
+      // A 60-hour deadline is unrealistic for production but exercises the
+      // cap: 240 quarter-hour observations exceed the 200-sample cap.
       const deadlineAtMs = 60 * HOUR_MS;
-      for (let hour = 0; hour < 55; hour += 1) {
+      const cycles = 240;
+      for (let i = 0; i < cycles; i += 1) {
         recorder.observe([makeDiag({
-          deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50 + hour,
-        })], hour * HOUR_MS);
+          deviceId: 'dev', deadlineAtMs, currentTemperatureC: 20 + i * 0.1,
+        })], i * QUARTER_MS);
       }
       recorder.observe([], deadlineAtMs);
       recorder.flushIfDirty();
 
       const entry = saved()!.entries[0]!;
-      expect(entry.progressSamples).toHaveLength(48);
-      // Oldest 7 hours were dropped — first sample now starts at hour 7.
-      expect(entry.progressSamples![0]!.atMs).toBe(7 * HOUR_MS);
-      expect(entry.progressSamples![47]!.atMs).toBe(54 * HOUR_MS);
+      const samples = entry.progressSamples!;
+      expect(samples.length).toBeLessThanOrEqual(200);
+      expect(samples.length).toBeGreaterThan(100);
+      // Eviction re-buckets onto a coarser grid (15 → 30 min) instead of
+      // dropping the oldest readings, so the run's START survives: the first
+      // persisted sample still falls inside the first coarse bucket rather
+      // than hours into the run (the old drop-oldest behavior).
+      expect(samples[0]!.atMs).toBeLessThan(2 * QUARTER_MS);
+      // The latest reading is always retained.
+      expect(samples[samples.length - 1]!.atMs).toBe((cycles - 1) * QUARTER_MS);
+      // Sorted ascending and strictly increasing in value (latest-per-bucket
+      // keeps the trajectory monotone for this monotone input).
+      for (let i = 1; i < samples.length; i += 1) {
+        expect(samples[i]!.atMs).toBeGreaterThan(samples[i - 1]!.atMs);
+        expect(samples[i]!.valueC!).toBeGreaterThan(samples[i - 1]!.valueC!);
+      }
     });
 
     it('preserves the progress ring on abandon-grace finalization', () => {
@@ -1464,13 +1482,13 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       recorder.observe([makeDiag({
         deviceId: 'dev', deadlineAtMs, currentTemperatureC: 50,
       })], 0);
-      // Cycle 2: same hour bucket as cycle 1, but the sensor has gone stale.
-      // Must NOT overwrite the trusted 0 h sample with the untrusted value.
+      // Cycle 2: the sensor has gone stale. Must NOT land in the ring (no
+      // new 0:30 bucket entry, no overwrite of anything).
       recorder.observe([makeDiag({
         deviceId: 'dev', deadlineAtMs, currentTemperatureC: 99,
         reasonCode: 'objective_progress_stale',
       })], 30 * 60 * 1000);
-      // Cycle 3: still stale on a new hour bucket. Must NOT add a new sample.
+      // Cycle 3: still stale on another bucket. Must NOT add a new sample.
       recorder.observe([makeDiag({
         deviceId: 'dev', deadlineAtMs, currentTemperatureC: 99,
         reasonCode: 'objective_progress_stale',
@@ -1484,12 +1502,12 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
 
       const entry = saved()!.entries[0]!;
       expect(entry.progressSamples).toHaveLength(2);
-      // Hour-0 bucket kept the trusted 50 °C reading; the stale 99 °C upsert
-      // was rejected even though it fell into the same bucket.
+      // The 0:00 bucket kept the trusted 50 °C reading; the stale 99 °C
+      // readings never landed in the ring at all (neither the 0:30 nor the
+      // 1:00 bucket exists).
       expect(entry.progressSamples![0]!.atMs).toBe(0);
       expect(entry.progressSamples![0]!.valueC).toBe(50);
-      // Hour-2 bucket has the next trusted reading. Hour-1 (stale-only) was
-      // never written.
+      // The 2:00 bucket has the next trusted reading.
       expect(entry.progressSamples![1]!.atMs).toBe(2 * HOUR_MS);
       expect(entry.progressSamples![1]!.valueC).toBe(55);
     });
@@ -2369,6 +2387,64 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       expect(entry.finalProgressC).toBeCloseTo(61.8, 1);
     });
 
+    it('keeps recording 15-minute post-stall samples while the plateau freeze holds', () => {
+      // The stall freeze pins `satisfied` / `metAtMs` / `finalProgress*` at
+      // the plateau reading, but the progress-sample ring is deliberately NOT
+      // frozen — the post-stall coast is exactly what the 15-minute grid is
+      // meant to make visible on the trajectory chart. This guards the
+      // interaction at the new cadence: quarter-hour post-stall readings keep
+      // landing as samples without thawing the frozen headline values.
+      const { deps, saved } = buildPersistDeps();
+      const recorder = new DeferredObjectivePlanHistoryRecorder(deps);
+      const deadlineAtMs = 6 * HOUR_MS;
+      const QUARTER_MS = 15 * 60 * 1000;
+      const stallNearTarget = () => 'near_target_idle' as const;
+
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 60.9 })],
+        0,
+      );
+      // Plateau reached; classifier promotes the run to met(stalled).
+      recorder.observe(
+        [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: 61.8 })],
+        3 * HOUR_MS,
+        null,
+        stallNearTarget,
+      );
+      // Post-stall cooling observed every 15 minutes.
+      const coast = [61.6, 61.3, 61.1, 60.8];
+      coast.forEach((temperature, i) => {
+        recorder.observe(
+          [makeDiag({ deviceId: 'dev', deadlineAtMs, currentTemperatureC: temperature })],
+          3 * HOUR_MS + (i + 1) * QUARTER_MS,
+          null,
+          stallNearTarget,
+        );
+      });
+      recorder.observe([], deadlineAtMs);
+      recorder.flushIfDirty();
+
+      const entry = saved()!.entries[0]!;
+      // Frozen headline: the plateau reading, not the coast.
+      expect(entry.outcome).toBe('met');
+      expect(entry.metReason).toBe('stalled');
+      expect(entry.metAtMs).toBe(3 * HOUR_MS);
+      expect(entry.finalProgressC).toBeCloseTo(61.8, 1);
+      // Un-frozen ring: each post-stall quarter-hour reading landed as its
+      // own sample (start, plateau, then the four coast readings).
+      expect(entry.progressSamples!.map((s) => s.valueC)).toEqual(
+        [60.9, 61.8, ...coast],
+      );
+      expect(entry.progressSamples!.map((s) => s.atMs)).toEqual([
+        0,
+        3 * HOUR_MS,
+        3 * HOUR_MS + QUARTER_MS,
+        3 * HOUR_MS + 2 * QUARTER_MS,
+        3 * HOUR_MS + 3 * QUARTER_MS,
+        3 * HOUR_MS + 4 * QUARTER_MS,
+      ]);
+    });
+
     it('keeps metReason "stalled" when the live status was producer-resolved to satisfied', () => {
       // The lifecycleEmitter feeds the recorder diagnostics whose top-level
       // `status` was resolved to `satisfied` by diagnosticsBridge (so the chip /
@@ -3010,8 +3086,8 @@ describe('appendRevisionLogIfNew (revisions[] cap)', () => {
   // recorder-driven path is already covered by the v4 history-detail suite;
   // this block intentionally drives the helper directly so the cap value and
   // ordering semantics are asserted in isolation, the way
-  // `caps progressSamples at 48 entries, dropping the oldest` covers the
-  // sibling `PROGRESS_SAMPLES_PER_ENTRY_CAP`.
+  // `caps progressSamples at 200 by re-bucketing to a coarser grid` covers
+  // the sibling `PROGRESS_SAMPLES_PER_ENTRY_CAP`.
   const makeRevision = (n: number): DeferredObjectiveActivePlanRevisionV1 => ({
     revision: n,
     revisedAtMs: n * HOUR_MS,

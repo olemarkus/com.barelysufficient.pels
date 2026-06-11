@@ -54,8 +54,10 @@ import {
 } from './modes.ts';
 import { refreshPriceConfigView, reloadPriceConfigSettings, updatePriceConfigDevices } from './priceConfig.ts';
 import { refreshDailyBudgetPlan, updateBudgetPower } from './dailyBudget.ts';
-import { discardBudgetAdjust, refreshBudgetAdjust } from './budgetAdjustController.ts';
-import { loadDailyBudgetTuningSettings } from './dailyBudgetTuning.ts';
+import { discardBudgetAdjust, getBudgetAdjustView, refreshBudgetAdjust } from './budgetAdjustController.ts';
+import { resetBudgetAdjustReturnTarget } from './budgetRedesign.ts';
+import { showToast } from './toast.ts';
+import { loadDailyBudgetBreakdownSetting } from './dailyBudgetTuning.ts';
 import {
   parsePlanSnapshot,
   refreshPlan,
@@ -105,12 +107,8 @@ const DAILY_BUDGET_SETTINGS_KEYS = new Set([
   'daily_budget_enabled',
   'daily_budget_kwh',
   'daily_budget_price_shaping_enabled',
-]);
-
-const DAILY_BUDGET_TUNING_KEYS = new Set([
   DAILY_BUDGET_CONTROLLED_WEIGHT,
   DAILY_BUDGET_PRICE_FLEX_SHARE,
-  DAILY_BUDGET_BREAKDOWN_ENABLED,
 ]);
 
 const CAPACITY_SETTINGS_KEYS = new Set([CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW, CAPACITY_DRY_RUN]);
@@ -254,9 +252,8 @@ const refreshDailyBudgetSettings = (key: string) => {
   if (DAILY_BUDGET_SETTINGS_KEYS.has(key)) {
     runLoggedTask(refreshBudgetAdjust(), 'Failed to refresh adjust draft', 'settings.set');
   }
-  if (DAILY_BUDGET_TUNING_KEYS.has(key)) {
-    runLoggedTask(loadDailyBudgetTuningSettings(), 'Failed to load daily budget tuning', 'settings.set');
-    runLoggedTask(refreshBudgetAdjust(), 'Failed to refresh adjust draft', 'settings.set');
+  if (key === DAILY_BUDGET_BREAKDOWN_ENABLED) {
+    runLoggedTask(loadDailyBudgetBreakdownSetting(), 'Failed to load daily budget breakdown setting', 'settings.set');
   }
   runLoggedTask(refreshDailyBudgetPlan(), 'Failed to refresh daily budget', 'settings.set');
 };
@@ -464,7 +461,16 @@ const discardBudgetAdjustOnLeave = (nextTabId: string) => {
   const onBudget = panels.some(
     (panel) => panel.dataset.panel === 'budget' && !panel.classList.contains('hidden'),
   );
-  if (onBudget) discardBudgetAdjust();
+  if (!onBudget) return;
+  const { status } = getBudgetAdjustView();
+  if (status !== 'clean') {
+    // Neutral tone: an expected, recoverable notice — not an error. The
+    // explicitly-confirmed Done path discards before navigating and stays
+    // silent; this fires only for unconfirmed tab-bar exits.
+    void showToast('Discarded unsaved budget changes.');
+  }
+  discardBudgetAdjust();
+  resetBudgetAdjustReturnTarget();
 };
 
 // Updates only the shell-nav indicator state (active class, aria-selected,

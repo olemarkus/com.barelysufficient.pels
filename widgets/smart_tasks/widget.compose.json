@@ -7,6 +7,10 @@
     "getSmartTasks": {
       "method": "GET",
       "path": "/smart_tasks"
+    },
+    "logClientError": {
+      "method": "POST",
+      "path": "/log"
     }
   }
 }

@@ -10,6 +10,7 @@ import {
   type WidgetHomeyBase,
   type WidgetWindowBase,
 } from '../../../_shared/widgetRuntime';
+import { widgetErrorReporter, type WidgetErrorReporter } from '../../../_shared/widgetClientLog';
 import { resolveCreateSmartTaskPreviewPayload } from './previewPayloads';
 import { renderWidget, type RenderTargets, type ViewState } from './render';
 import type {
@@ -341,6 +342,7 @@ const fetchDevices = async (
   homeyRef: WidgetHomey | null,
   usePreviewData: boolean,
   previewState: string | null,
+  reporter: WidgetErrorReporter,
 ): Promise<CreateSmartTaskDevicesPayload> => {
   if (usePreviewData) return resolveCreateSmartTaskPreviewPayload(previewState);
   // Real boot, bridge not ready yet: a transient "connecting" state, never the
@@ -348,9 +350,12 @@ const fetchDevices = async (
   // `feedback_ui_text_shared_with_logs`.
   if (!homeyRef) return { state: 'empty', subtitle: C.notReady, hint: null };
   try {
-    return await homeyRef.api('GET', '/devices') as CreateSmartTaskDevicesPayload;
+    const payload = await homeyRef.api('GET', '/devices') as CreateSmartTaskDevicesPayload;
+    // GET succeeded → the app is reachable; drain any backlog queued while down.
+    reporter.flush();
+    return payload;
   } catch (error) {
-    console.error('Failed to load create_smart_task widget', error);
+    reporter.report('error', 'Failed to load create_smart_task widget', error);
     // A real fetch that FAILED — the distinct `error` state, not `empty`. It
     // carries a tap-to-retry affordance (see render + resolveClickAction) so a
     // stuck load recovers in place. Shared copy (not an inlined literal) so the
@@ -364,13 +369,14 @@ const fetchPreview = async (
   homeyRef: WidgetHomey | null,
   usePreviewData: boolean,
   request: CreateSmartTaskCandidateRequest,
+  reporter: WidgetErrorReporter,
 ): Promise<CreateSmartTaskPreviewResponse> => {
   if (usePreviewData) return PREVIEW_RESPONSE;
   if (!homeyRef) return { ok: false, reason: 'unavailable' };
   try {
     return await homeyRef.api('POST', '/preview', request) as CreateSmartTaskPreviewResponse;
   } catch (error) {
-    console.error('Failed to preview smart task', error);
+    reporter.report('error', 'Failed to preview smart task', error);
     return { ok: false, reason: 'unavailable' };
   }
 };
@@ -379,6 +385,7 @@ const submitCreate = async (
   homeyRef: WidgetHomey | null,
   usePreviewData: boolean,
   request: CreateSmartTaskCandidateRequest,
+  reporter: WidgetErrorReporter,
 ): Promise<CreateSmartTaskCreateResponse> => {
   if (usePreviewData) return { ok: true };
   // Never report success without a real `/create` round-trip. With no API
@@ -388,7 +395,7 @@ const submitCreate = async (
   try {
     return await homeyRef.api('POST', '/create', request) as CreateSmartTaskCreateResponse;
   } catch (error) {
-    console.error('Failed to create smart task', error);
+    reporter.report('error', 'Failed to create smart task', error);
     return { ok: false, reason: 'unavailable' };
   }
 };
@@ -435,6 +442,7 @@ export const createWidgetController = (params: {
   // Latest-request-wins token (bumped on `setView`): a stale preview/create that
   // resolves after the user moved on is dropped, not applied. See runPreview.
   let requestSeq = 0;
+  const reporter = widgetErrorReporter('create_smart_task', () => homeyRef);
 
   const render = (): void => renderWidget(targets, devicesPayload, view);
 
@@ -450,7 +458,7 @@ export const createWidgetController = (params: {
   const runPreview = async (): Promise<void> => {
     if (view.kind !== 'compose') return;
     const token = ++requestSeq;
-    const response = await fetchPreview(homeyRef, usePreviewData, buildCandidateRequest(view));
+    const response = await fetchPreview(homeyRef, usePreviewData, buildCandidateRequest(view), reporter);
     // Drop a preview that resolved after navigation/device-switch (stale).
     if (token !== requestSeq || view.kind !== 'compose') return;
     // Spread the compose view forward so device/goal/ready-by + the opt-in
@@ -466,7 +474,7 @@ export const createWidgetController = (params: {
     view = { ...view, submitting: true, error: null };
     const token = ++requestSeq;
     render();
-    const result = await submitCreate(homeyRef, usePreviewData, request);
+    const result = await submitCreate(homeyRef, usePreviewData, request, reporter);
     // Same latest-request-wins guard: a create that resolves after the user
     // backed out / switched candidates must not flip the now-different view.
     if (token !== requestSeq || view.kind !== 'preview') return;
@@ -535,7 +543,7 @@ export const createWidgetController = (params: {
     const searchParams = new URLSearchParams(widgetWindow.location.search);
     usePreviewData = searchParams.get('preview') === '1';
     applyPreviewTheme(widgetDocument, searchParams);
-    const payload = await fetchDevices(homeyRef, usePreviewData, searchParams.get('state'));
+    const payload = await fetchDevices(homeyRef, usePreviewData, searchParams.get('state'), reporter);
     // Drop a torn-down or superseded load before touching the DOM (latest-wins).
     if (destroyed || loadId !== loadSequence) return;
     devicesPayload = payload;

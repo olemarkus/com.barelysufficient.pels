@@ -70,6 +70,22 @@
   --pw-blue: var(--homey-color-blue, #3f9fff);
   --pw-red: var(--homey-color-red, #f0696c);
 
+  /* ---- Chart series ---- */
+  /* One semantic vocabulary for every chart series across the widgets, so the
+     same data role always carries the same colour. Widgets cannot theme-branch
+     (the dashboard swaps the `--homey-*` VALUES), so muted tones are composed
+     with `color-mix()` against background/text rather than hardcoded per theme.
+     - plan: the muted fill for planned/budget bars — calm, recedes.
+     - plan-current: the one saturated accent, reserved for "now".
+     - price: a muted violet (blue mixed toward red) — informational, not alarming.
+     - actual: text-colour level ticks — measured reality reads as "ink".
+     - guide: reference furniture (now-line, target guides). */
+  --pw-chart-plan: color-mix(in srgb, var(--homey-color-green, #58c56a) 55%, var(--homey-background-color, #ffffff));
+  --pw-chart-plan-current: var(--homey-color-green, #58c56a);
+  --pw-chart-price: color-mix(in srgb, var(--homey-color-blue, #3f9fff) 55%, var(--homey-color-red, #f0696c));
+  --pw-chart-actual: var(--homey-text-color, #1f252a);
+  --pw-chart-guide: var(--homey-text-color-light, #6d7680);
+
   /* ---- Surfaces & lines ---- */
   --pw-background: var(--homey-background-color, #ffffff);
   --pw-line: var(--homey-line-color, rgba(15, 23, 28, 0.12));
@@ -498,7 +514,7 @@
    opacity + dashed so it reads as the goal, distinct from the solid planned
    line that shares the muted tone. */
 .tchart__target {
-  stroke: var(--pw-text-muted, #6d7680);
+  stroke: var(--pw-chart-guide, #6d7680);
   stroke-width: 1;
   stroke-dasharray: 4 4;
   opacity: 0.55;
@@ -529,7 +545,7 @@
 .tchart__observed {
   fill: none;
   stroke: var(--pw-success, #58c56a);
-  stroke-width: 2.5;
+  stroke-width: 2;
   stroke-linejoin: round;
   stroke-linecap: round;
 }
