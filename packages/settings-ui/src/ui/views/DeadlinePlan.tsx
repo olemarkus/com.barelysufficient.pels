@@ -26,6 +26,7 @@ import {
 } from '../../../../shared-domain/src/deadlineLabels.ts';
 import { useEchartsMount, type EChartsOption, type EChartsType, type SeriesOption } from '../echartsRegistry.ts';
 import { attachHourScrub, resolveScrubHourIndex } from '../deadlineChartScrub.ts';
+import { resolveCategoryIndexFromPixel } from '../chartReadout.ts';
 import { formatAcceptedAt, formatHourLabel } from '../deadlinePlanFormatters.ts';
 import type { DeadlinePlanHistoryView } from '../deadlinePlanHistoryFetch.ts';
 import type { ResolvedDeferredObjectivePlanHistoryEntry } from '../../../../contracts/src/deferredObjectivePlanHistory.ts';
@@ -807,16 +808,9 @@ const ScheduleChart = ({ payload, selectedIndex, onSelect }: {
       chartHandle.current = chart;
       attachHourScrub(
         chart,
-        (x, y) => {
-          if (!chart.containPixel({ gridIndex: 0 }, [x, y])) return null;
-          // Single-axis finder takes the scalar pixel coordinate — passing an
-          // `[x, y]` pair makes ECharts return null on a category axis.
-          const raw = chart.convertFromPixel({ xAxisIndex: 0 }, x);
-          const value = Array.isArray(raw) ? raw[0] : raw;
-          if (typeof value !== 'number' || !Number.isFinite(value)) return null;
-          const index = Math.round(value);
-          return index >= 0 && index < hourCount ? index : null;
-        },
+        // Column-tolerant pixel→hour resolution shared with the Usage-tab
+        // pinned readouts (`chartReadout.ts`).
+        (x, y) => resolveCategoryIndexFromPixel(chart, x, y, hourCount),
         (index) => onSelectRef.current(index),
       );
     },

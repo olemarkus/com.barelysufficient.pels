@@ -6,6 +6,7 @@ import {
   powerWeekLabel,
   dailyList,
   dailyEmpty,
+  dailyHistoryReadout,
   usageToday,
   usageWeek,
   usageMonth,
@@ -13,6 +14,7 @@ import {
   usageWeekendAvg,
   hourlyPattern,
   hourlyPatternMeta,
+  hourlyPatternReadout,
 } from './dom.ts';
 import { renderUsageHero } from './usageHero.ts';
 import { SETTINGS_UI_POWER_PATH, type SettingsUiPowerPayload } from '../../../contracts/src/settingsUiApi.ts';
@@ -35,7 +37,7 @@ import {
   renderDailyHistoryChartEcharts,
   renderHourlyPatternChartEcharts,
 } from './usageStatsChartsEcharts.ts';
-import { getBudgetAdjustView } from './budgetAdjustController.ts';
+import { getActiveDailyBudgetKWh, setActiveDailyBudgetChangeListener } from './activeDailyBudget.ts';
 import {
   formatDateInTimeZone,
   getDateKeyInTimeZone,
@@ -51,6 +53,7 @@ import {
   getPowerTimeContext,
   getWeekdayWeekendAverages,
   getWeekMonthTotals,
+  isLeadingHistoryDayPartial,
   mergeDailyTotals,
   mergeHourlyAverages,
   type DailyHistoryPoint,
@@ -76,6 +79,7 @@ let latestPowerStats: PowerStatsSummary = getEmptyPowerStats();
 let latestPowerStatsTimeZone = getHomeyTimezone();
 let hourlyPatternView: HourlyPatternView = 'all';
 let usageHistoryToggleReady = false;
+let powerStatsRendered = false;
 let setHourlyPatternToggleActive: (view: HourlyPatternView | null) => void = () => {};
 
 const getPowerReadModel = async (): Promise<SettingsUiPowerPayload> => {
@@ -183,6 +187,7 @@ const renderHourlyPattern = (stats: PowerStatsSummary) => {
     renderHourlyPatternChartEcharts({
       container: hourlyPattern,
       points: [],
+      readoutHost: hourlyPatternReadout,
     });
     const message = document.createElement('div');
     message.className = 'hourly-pattern__empty';
@@ -193,22 +198,13 @@ const renderHourlyPattern = (stats: PowerStatsSummary) => {
   const rendered = renderHourlyPatternChartEcharts({
     container: hourlyPattern,
     points,
+    readoutHost: hourlyPatternReadout,
   });
   if (rendered) return;
   const message = document.createElement('div');
   message.className = 'hourly-pattern__empty';
   message.textContent = 'Usage pattern chart unavailable';
   hourlyPattern.appendChild(message);
-};
-
-// Resolve the configured daily-budget kWh for the history chart's overlay.
-// Returns null when the budget is disabled, missing, or non-finite — callers
-// pass the value through to the chart which suppresses the overlay on null.
-const resolveDailyBudgetKWhForChart = (): number | null => {
-  const view = getBudgetAdjustView();
-  if (!view.active?.enabled) return null;
-  const value = view.active?.dailyBudgetKWh;
-  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
 };
 
 const renderDailyHistory = (stats: PowerStatsSummary, timeZone: string) => {
@@ -219,6 +215,7 @@ const renderDailyHistory = (stats: PowerStatsSummary, timeZone: string) => {
       container: dailyList,
       points: [],
       timeZone,
+      readoutHost: dailyHistoryReadout,
     });
     dailyEmpty.textContent = 'No daily totals yet.';
     dailyEmpty.hidden = false;
@@ -228,7 +225,12 @@ const renderDailyHistory = (stats: PowerStatsSummary, timeZone: string) => {
     container: dailyList,
     points,
     timeZone,
-    budgetKWh: resolveDailyBudgetKWhForChart(),
+    // Same active-budget payload the Budget hero renders — never the
+    // budget-adjust draft, which clamps the stored value into the slider
+    // range on read (see `activeDailyBudget.ts`).
+    budgetKWh: getActiveDailyBudgetKWh(),
+    leadingPartialDay: stats.dailyHistoryLeadingPartial,
+    readoutHost: dailyHistoryReadout,
   });
   dailyEmpty.hidden = rendered;
   if (rendered) return;
@@ -265,6 +267,18 @@ const renderUsageHistorySections = () => {
   renderDailyHistory(latestPowerStats, latestPowerStatsTimeZone);
 };
 
+// Budget edits while the Usage tab is visible: `dailyBudget.ts` pushes every
+// payload refresh into `activeDailyBudget.ts`, and on a value change this
+// repaints the daily-history chart from the cached stats so the mark line,
+// over-budget bar tinting, and readout budget context track the new budget
+// without refetching power stats. No-op until the first `renderPowerStats`
+// has populated the cache — boot resolves the budget payload before the
+// first stats render, and that render reads the fresh value itself.
+setActiveDailyBudgetChangeListener(() => {
+  if (!powerStatsRendered) return;
+  renderDailyHistory(latestPowerStats, latestPowerStatsTimeZone);
+});
+
 export const getPowerStats = async (): Promise<{ stats: PowerStatsSummary; timeZone: string }> => {
   const tracker = (await getPowerReadModel()).tracker as PowerTracker | null;
   if (!tracker || typeof tracker !== 'object') {
@@ -293,6 +307,14 @@ export const getPowerStats = async (): Promise<{ stats: PowerStatsSummary; timeZ
   const hourlyPatternWeekend = buildHourlyPattern(derivedHourlyAverages, (d) => d === 0 || d === 6);
   const hourlyPatternMeta = getHourlyPatternMeta(tracker.buckets, timeZone);
   const dailyHistory = buildDailyHistory(derivedDailyTotals, timeContext.todayKey);
+  // Producer-resolved: consumers (chart + readout) get a flat flag instead of
+  // re-deriving bucket coverage for the window's oldest day.
+  const dailyHistoryLeadingPartial = isLeadingHistoryDayPartial({
+    history: dailyHistory,
+    persistedDailyTotals: tracker.dailyTotals,
+    buckets: tracker.buckets,
+    timeZone,
+  });
 
   return {
     stats: {
@@ -306,6 +328,7 @@ export const getPowerStats = async (): Promise<{ stats: PowerStatsSummary; timeZ
       hourlyPatternWeekend,
       hourlyPatternMeta,
       dailyHistory,
+      dailyHistoryLeadingPartial,
       hasPatternData: averages.hasPatternData,
     },
     timeZone,
@@ -364,6 +387,7 @@ export const renderPowerStats = async () => {
     const { stats, timeZone } = await getPowerStats();
     latestPowerStats = stats;
     latestPowerStatsTimeZone = timeZone;
+    powerStatsRendered = true;
     renderPowerSummary(stats, timeZone);
     renderPowerAverages(stats);
     renderUsageHistorySections();

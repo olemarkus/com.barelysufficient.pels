@@ -57,6 +57,18 @@ export const composeBudgetHeroOverBy = (kwh: number): string => (
   `Over by ${formatBudgetHeroKWh(kwh)} kWh`
 );
 
+// Daily-history chart budget-context stems (Usage tab readout + tooltip).
+// They live here, next to the hero's over/within-budget language, so the
+// over-budget vocabulary has one home — the chart context, the hero pill and
+// any runtime log that quotes either stay in lockstep. Both reuse the hero's
+// one-decimal kWh formatting.
+export const composeKWhOverBudget = (kwh: number): string => (
+  `${formatBudgetHeroKWh(kwh)} kWh over budget`
+);
+export const composeWithinBudgetOf = (budgetKWh: number): string => (
+  `Within budget of ${formatBudgetHeroKWh(budgetKWh)} kWh`
+);
+
 // Price-shaping tagline shown beneath the hero comparison when the feature is
 // on. The "no prices" variant only differs in the parenthetical disclaimer.
 export const BUDGET_HERO_USING_CHEAPER_HOURS = 'Using cheaper hours';

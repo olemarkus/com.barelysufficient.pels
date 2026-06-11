@@ -1,22 +1,32 @@
-import { encodeHtml, initEcharts, type EChartsOption, type EChartsType } from './echartsRegistry.ts';
+import { initEcharts, type EChartsOption, type EChartsType } from './echartsRegistry.ts';
 import {
   formatAxisTick,
   readChartPalette,
   resolveLabelEvery,
   roundedAxisMaxToInterval,
 } from './dayViewChart.ts';
-import { formatDateInTimeZone } from './timezone.ts';
+import {
+  buildChartTooltipBase,
+  buildDailyHistoryReadout,
+  buildHourlyPatternReadout,
+  readoutToTooltipHtml,
+  resolveTooltipDataIndex,
+  type ChartReadoutContent,
+} from './chartTooltipFormat.ts';
+import { attachChartReadout, prefersCoarsePointer, type ChartReadoutHandle } from './chartReadout.ts';
+import { formatDateInTimeZone, getDateKeyStartMs } from './timezone.ts';
 import { logSettingsWarn } from './logging.ts';
 import { attachTabShownResize } from './chartVisibilityResize.ts';
-
-type AxisFormatterParam = {
-  dataIndex?: number;
-};
 
 type UsageStatsPalette = {
   bar: string;
   muted: string;
   grid: string;
+  // On-surface high-contrast tone for the selected bar's border — the same
+  // selection identity the smart-task schedule chart uses (`palette.text` in
+  // `views/DeadlinePlan.tsx`). `--pels-chart-current-border` is reserved for
+  // current-hour markers and must not double as selection.
+  text: string;
   tooltipBackground: string;
   tooltipText: string;
   tooltipBorder: string;
@@ -38,6 +48,8 @@ type PlotState = {
   container: HTMLElement | null;
   resizeObserver: ResizeObserver | null;
   detachTabShown: (() => void) | null;
+  readout: ChartReadoutHandle | null;
+  readoutHost: HTMLElement | null;
   className: string;
 };
 
@@ -49,6 +61,8 @@ const hourlyPatternState: PlotState = {
   container: null,
   resizeObserver: null,
   detachTabShown: null,
+  readout: null,
+  readoutHost: null,
   className: 'hourly-pattern--echarts',
 };
 const dailyHistoryState: PlotState = {
@@ -56,6 +70,8 @@ const dailyHistoryState: PlotState = {
   container: null,
   resizeObserver: null,
   detachTabShown: null,
+  readout: null,
+  readoutHost: null,
   className: 'daily-history--echarts',
 };
 type PlotKind = 'hourly' | 'daily';
@@ -64,6 +80,7 @@ const USAGE_STATS_PALETTE_VARS = {
   bar: '--pels-chart-measured',
   muted: '--pels-chart-muted',
   grid: '--pels-chart-grid',
+  text: '--text',
   tooltipBackground: '--pels-chart-tooltip-bg',
   tooltipText: '--pels-chart-tooltip-text',
   tooltipBorder: '--pels-chart-tooltip-border',
@@ -100,6 +117,14 @@ const disposePlot = (kind: PlotKind) => {
     state.detachTabShown();
     state.detachTabShown = null;
   }
+  if (state.readout) {
+    state.readout.detach();
+    state.readout = null;
+  }
+  if (state.readoutHost) {
+    state.readoutHost.hidden = true;
+    state.readoutHost = null;
+  }
   if (state.plot) {
     state.plot.dispose();
     state.plot = null;
@@ -110,7 +135,11 @@ const disposePlot = (kind: PlotKind) => {
   }
 };
 
-const ensurePlot = (kind: PlotKind, container: HTMLElement): EChartsType => {
+const ensurePlot = (
+  kind: PlotKind,
+  container: HTMLElement,
+  readoutHost: HTMLElement | null,
+): EChartsType => {
   const state = getPlotState(kind);
   if (state.plot && state.container === container) {
     return state.plot;
@@ -125,6 +154,10 @@ const ensurePlot = (kind: PlotKind, container: HTMLElement): EChartsType => {
     ...resolveChartSize(container),
   });
   state.container = container;
+  if (readoutHost) {
+    state.readout = attachChartReadout({ chart: state.plot, host: readoutHost });
+    state.readoutHost = readoutHost;
+  }
 
   if (typeof ResizeObserver === 'function') {
     state.resizeObserver = new ResizeObserver(() => {
@@ -142,11 +175,33 @@ const ensurePlot = (kind: PlotKind, container: HTMLElement): EChartsType => {
   return state.plot;
 };
 
-const resolveTooltipIndex = (rawParams: unknown): number => {
-  const first: unknown = Array.isArray(rawParams) ? rawParams[0] : rawParams;
-  if (!first || typeof first !== 'object') return -1;
-  const candidate = first as AxisFormatterParam;
-  return typeof candidate.dataIndex === 'number' ? candidate.dataIndex : -1;
+// Sync the pinned readout row after a `setOption` refresh: re-apply the
+// selection (wiped by `notMerge`) and surface the row. The default selection
+// is the most informative point per chart — the peak hour on the typical-day
+// pattern, the most recent complete day on the daily history — so the row is
+// never empty.
+const updateReadout = (params: {
+  kind: PlotKind;
+  itemCount: number;
+  defaultIndex: number;
+  resolveContent: (index: number) => ChartReadoutContent | null;
+}) => {
+  const state = getPlotState(params.kind);
+  if (!state.readout || !state.readoutHost) return;
+  state.readoutHost.hidden = false;
+  state.readout.update({
+    itemCount: params.itemCount,
+    defaultIndex: params.defaultIndex,
+    resolveContent: params.resolveContent,
+  });
+};
+
+const peakIndex = (values: number[]): number => {
+  let best = 0;
+  for (let index = 1; index < values.length; index += 1) {
+    if (values[index] > values[best]) best = index;
+  }
+  return best;
 };
 
 const buildHourlyPatternOption = (params: {
@@ -171,26 +226,12 @@ const buildHourlyPatternOption = (params: {
       containLabel: true,
     },
     tooltip: {
-      trigger: 'axis',
-      axisPointer: { type: 'none' },
-      confine: true,
-      backgroundColor: palette.tooltipBackground,
-      borderColor: palette.tooltipBorder,
-      borderWidth: 1,
-      padding: [8, 10],
-      extraCssText: 'opacity:1;backdrop-filter:none;box-shadow:var(--shadow-md);',
-      textStyle: {
-        color: palette.tooltipText,
-        fontSize: 12,
-        fontWeight: 500,
-      },
+      ...buildChartTooltipBase(palette),
+      show: !prefersCoarsePointer(),
       formatter: (rawParams: unknown) => {
-        const index = resolveTooltipIndex(rawParams);
+        const index = resolveTooltipDataIndex(rawParams);
         if (index < 0 || index >= points.length) return '';
-        const point = points[index];
-        const start = String(point.hour).padStart(2, '0');
-        const end = String((point.hour + 1) % 24).padStart(2, '0');
-        return `${encodeHtml(`${start}:00–${end}:00`)}<br/>${encodeHtml(`Average ${point.avg.toFixed(2)} kWh`)}`;
+        return readoutToTooltipHtml(buildHourlyPatternReadout(points[index]));
       },
     },
     xAxis: {
@@ -238,13 +279,25 @@ const buildHourlyPatternOption = (params: {
         },
         emphasis: { disabled: true },
         blur: { disabled: true },
-        select: { disabled: true },
+        selectedMode: 'single',
+        select: { itemStyle: { borderColor: palette.text, borderWidth: 2 } },
       },
     ],
   };
 };
 
 const BAR_RADIUS: [number, number, number, number] = [4, 4, 0, 0];
+
+// Daily-history `date` keys are LOCAL calendar days (`YYYY-MM-DD` in the
+// configured zone). Anchoring them at UTC midnight (`T00:00:00.000Z`) makes
+// negative-offset zones (America/*) format the PREVIOUS local day, so axis
+// labels, the readout, and the tooltip would all be one day off. Resolve the
+// key's local day start in the configured zone before formatting.
+const formatDateKeyLabel = (
+  dateKey: string,
+  options: Intl.DateTimeFormatOptions,
+  timeZone: string,
+): string => formatDateInTimeZone(new Date(getDateKeyStartMs(dateKey, timeZone)), options, timeZone);
 
 const resolveBarItemStyle = (value: number, budgetKWh: number | null, palette: UsageStatsPalette) => {
   if (budgetKWh !== null && Number.isFinite(value) && value > budgetKWh) {
@@ -273,19 +326,17 @@ const buildBudgetMarkLine = (budgetKWh: number, palette: UsageStatsPalette) => (
 });
 
 const buildDailyHistoryOption = (params: {
-  points: DailyHistoryPoint[];
+  ordered: DailyHistoryPoint[];
+  readouts: ChartReadoutContent[];
   timeZone: string;
   palette: UsageStatsPalette;
   budgetKWh: number | null;
 }): EChartsOption => {
-  const { points, timeZone, palette, budgetKWh } = params;
-  const ordered = [...points].sort((a, b) => a.date.localeCompare(b.date));
+  const { ordered, readouts, timeZone, palette, budgetKWh } = params;
   const values = ordered.map((point) => point.kWh);
-  const dates = ordered.map((point) => point.date);
-  const labels = dates.map((dateKey) => {
-    const date = new Date(`${dateKey}T00:00:00.000Z`);
-    return formatDateInTimeZone(date, { month: 'short', day: 'numeric' }, timeZone);
-  });
+  const labels = ordered.map((point) => (
+    formatDateKeyLabel(point.date, { month: 'short', day: 'numeric' }, timeZone)
+  ));
   const labelEvery = resolveLabelEvery(labels.length);
   // When the budget line would sit above the tallest bar, include it in the
   // axis ceiling so the reference still renders inside the chart frame.
@@ -304,26 +355,12 @@ const buildDailyHistoryOption = (params: {
       containLabel: true,
     },
     tooltip: {
-      trigger: 'axis',
-      axisPointer: { type: 'none' },
-      confine: true,
-      backgroundColor: palette.tooltipBackground,
-      borderColor: palette.tooltipBorder,
-      borderWidth: 1,
-      padding: [8, 10],
-      extraCssText: 'opacity:1;backdrop-filter:none;box-shadow:var(--shadow-md);',
-      textStyle: {
-        color: palette.tooltipText,
-        fontSize: 12,
-        fontWeight: 500,
-      },
+      ...buildChartTooltipBase(palette),
+      show: !prefersCoarsePointer(),
       formatter: (rawParams: unknown) => {
-        const index = resolveTooltipIndex(rawParams);
-        if (index < 0 || index >= ordered.length) return '';
-        const point = ordered[index];
-        const date = new Date(`${point.date}T00:00:00.000Z`);
-        const label = formatDateInTimeZone(date, { weekday: 'short', month: 'short', day: 'numeric' }, timeZone);
-        return `${encodeHtml(label)}<br/>${encodeHtml(`${point.kWh.toFixed(1)} kWh`)}`;
+        const index = resolveTooltipDataIndex(rawParams);
+        if (index < 0 || index >= readouts.length) return '';
+        return readoutToTooltipHtml(readouts[index], { warnColor: palette.overBudget });
       },
     },
     xAxis: {
@@ -367,7 +404,8 @@ const buildDailyHistoryOption = (params: {
         barMinHeight: 2,
         emphasis: { disabled: true },
         blur: { disabled: true },
-        select: { disabled: true },
+        selectedMode: 'single',
+        select: { itemStyle: { borderColor: palette.text, borderWidth: 2 } },
         ...(showBudgetLine ? { markLine: buildBudgetMarkLine(budgetKWh as number, palette) } : {}),
       },
     ],
@@ -377,24 +415,35 @@ const buildDailyHistoryOption = (params: {
 export const renderHourlyPatternChartEcharts = (params: {
   container: HTMLElement;
   points: HourlyPatternPoint[];
+  readoutHost?: HTMLElement | null;
 }): boolean => {
-  const { container, points } = params;
+  const { container, points, readoutHost = null } = params;
   if (!Array.isArray(points) || points.length === 0) {
     disposePlot('hourly');
     container.replaceChildren();
+    if (readoutHost) readoutHost.hidden = true;
     return false;
   }
   try {
-    const chart = ensurePlot('hourly', container);
+    const chart = ensurePlot('hourly', container, readoutHost);
     chart.setOption(buildHourlyPatternOption({
       points,
       palette: resolvePalette(container),
     }), { notMerge: true });
+    updateReadout({
+      kind: 'hourly',
+      itemCount: points.length,
+      defaultIndex: peakIndex(points.map((point) => point.avg)),
+      resolveContent: (index) => (
+        index >= 0 && index < points.length ? buildHourlyPatternReadout(points[index]) : null
+      ),
+    });
     return true;
   } catch (error) {
     void logSettingsWarn('Hourly pattern chart: echarts render failed', error, 'hourlyPatternChart');
     disposePlot('hourly');
     container.replaceChildren();
+    if (readoutHost) readoutHost.hidden = true;
     return false;
   }
 };
@@ -404,26 +453,61 @@ export const renderDailyHistoryChartEcharts = (params: {
   points: DailyHistoryPoint[];
   timeZone: string;
   budgetKWh?: number | null;
+  // Producer-resolved flag: the oldest day in the window is window-clipped,
+  // so its readout gains the `(partial day)` note.
+  leadingPartialDay?: boolean;
+  readoutHost?: HTMLElement | null;
 }): boolean => {
-  const { container, points, timeZone, budgetKWh = null } = params;
+  const {
+    container,
+    points,
+    timeZone,
+    budgetKWh = null,
+    leadingPartialDay = false,
+    readoutHost = null,
+  } = params;
   if (!Array.isArray(points) || points.length === 0) {
     disposePlot('daily');
     container.replaceChildren();
+    if (readoutHost) readoutHost.hidden = true;
     return false;
   }
   try {
-    const chart = ensurePlot('daily', container);
+    const chart = ensurePlot('daily', container, readoutHost);
+    const ordered = [...points].sort((a, b) => a.date.localeCompare(b.date));
+    const readouts = ordered.map((point, index) => buildDailyHistoryReadout({
+      dateLabel: formatDateKeyLabel(
+        point.date,
+        { weekday: 'short', month: 'short', day: 'numeric' },
+        timeZone,
+      ),
+      kWh: point.kWh,
+      budgetKWh,
+      partialDay: leadingPartialDay && index === 0,
+    }));
     chart.setOption(buildDailyHistoryOption({
-      points,
+      ordered,
+      readouts,
       timeZone,
       palette: resolvePalette(container),
       budgetKWh,
     }), { notMerge: true });
+    updateReadout({
+      kind: 'daily',
+      itemCount: ordered.length,
+      // Most recent complete day (the producer already excludes today) — a
+      // 14-day-peak default would pin a stale date as the row's anchor.
+      defaultIndex: ordered.length - 1,
+      resolveContent: (index) => (
+        index >= 0 && index < readouts.length ? readouts[index] : null
+      ),
+    });
     return true;
   } catch (error) {
     void logSettingsWarn('Daily history chart: echarts render failed', error, 'dailyHistoryChart');
     disposePlot('daily');
     container.replaceChildren();
+    if (readoutHost) readoutHost.hidden = true;
     return false;
   }
 };

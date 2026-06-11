@@ -3909,72 +3909,6 @@ md-filled-button.is-busy {
   border: 1px solid var(--pels-chart-heatmap-border);
 }
 
-.usage-bar {
-  position: relative;
-  display: block;
-  width: 100%;
-  height: 10px;
-  background: var(--pels-surface-container-high);
-  border-radius: var(--radius-full);
-  overflow: hidden;
-  border: 1px solid var(--panel-border);
-}
-
-.usage-bar--lg {
-  height: 14px;
-}
-
-.usage-bar__fill {
-  height: 100%;
-  transition: width var(--transition-fast);
-}
-
-.usage-bar__fill--accent {
-  background: var(--accent);
-}
-
-.usage-row--warn .usage-bar {
-  border-color: var(--color-state-negative-border);
-}
-
-.usage-row--warn .usage-bar__fill--accent {
-  background: var(--color-state-negative-bg);
-}
-
-#usage-panel .usage-bar__fill--accent {
-  /* Per-device strips in the Usage tab join the unified accent family
-   * (TODO 2026-05-16 palette unification). The other day-view surfaces
-   * (Budget/Plan) keep cascading `--day-view-color-primary` unchanged. */
-  background: var(--color-semantic-accent);
-}
-
-#usage-panel .usage-row--warn .usage-bar__fill--accent {
-  background: var(--color-state-negative-bg);
-}
-
-.usage-bar.tooltip-active {
-  border-color: var(--color-state-info-border);
-  box-shadow: 0 0 0 2px var(--color-state-info-border);
-}
-
-.usage-bar__label {
-  position: absolute;
-  left: 50%;
-  bottom: calc(100% + var(--spacing-1));
-  transform: translateX(-50%);
-  padding: 2px 6px;
-  font-size: var(--font-size-xs);
-  color: var(--text);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--transition-fast);
-  background: var(--pels-surface-container-highest);
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-sm);
-  white-space: nowrap;
-  box-shadow: var(--shadow-sm);
-}
-
 .power-meter {
   position: relative;
   width: 100%;
@@ -5951,10 +5885,12 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   border-top: 2px dashed var(--pels-text-supporting-color);
 }
 
-/* Pinned hour readout under the schedule chart. Card-inset surface one tier
- * above the card so it reads as the chart's caption slot; fixed min-height
- * (touch-target token) so swapping one-line and two-line content never
- * reflows the page mid-scrub. */
+/* Pinned point readout under a chart (shared primitive — smart-task pages
+ * via `.deadline-readout`, Usage-tab charts via `.chart-readout`). Card-inset
+ * surface one tier above the card so it reads as the chart's caption slot;
+ * fixed min-height (touch-target token) so swapping one-line and two-line
+ * content never reflows the page mid-scrub. */
+.chart-readout,
 .deadline-readout {
   display: flex;
   flex-direction: column;
@@ -5966,14 +5902,37 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   background: var(--pels-surface-container-low);
 }
 
+/* The Usage cards lay children out in normal flow (no flex gap), so the
+ * readout carries its own breathing room from the chart above. */
+.chart-readout {
+  margin-top: var(--spacing-2);
+}
+
+/* Desktop (hover-capable fine pointer): the floating ECharts tooltip is
+ * active there, so the pinned row would caption the same point twice. Touch
+ * keeps the row — it replaces the disabled tooltip. Scoped to
+ * `.chart-readout` only: the smart-task pages' `.deadline-readout` has no
+ * floating tooltip and must stay visible on desktop. */
+@media (hover: hover) and (pointer: fine) {
+  .chart-readout {
+    display: none;
+  }
+}
+
+.chart-readout__primary,
 .deadline-readout__primary {
   font-size: var(--pels-text-body-font-size);
   font-weight: var(--font-weight-semibold);
 }
 
+.chart-readout__secondary,
 .deadline-readout__secondary {
   font-size: var(--pels-text-supporting-font-size);
   color: var(--pels-text-supporting-color);
+}
+
+.chart-readout__value--warn {
+  color: var(--color-role-warn);
 }
 
 /* Stateline under the trajectory chart: "51.1 °C now · on track — projected
@@ -6385,11 +6344,6 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   display: flex;
   flex-direction: column-reverse;
   transition: height var(--transition-fast);
-}
-
-.day-view-bar.tooltip-active .day-view-bar__stack,
-.daily-budget-bar.tooltip-active .daily-budget-bar__stack {
-  box-shadow: 0 0 0 2px var(--color-state-info-border);
 }
 
 .day-view-bar__segment,

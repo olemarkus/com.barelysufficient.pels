@@ -10,10 +10,12 @@ import {
   usageDayLabels,
   usageDayEmpty,
   usageDayMeta,
+  usageDayReadout,
 } from './dom.ts';
 import { getHomeyTimezone } from './homey.ts';
 import { createToggleGroup } from './components.ts';
 import type { DayViewBar } from './dayViewChart.ts';
+import { buildUsageDayReadout, type ChartReadoutContent } from './chartTooltipFormat.ts';
 import { renderUsageDayChartEcharts } from './usageDayChartEcharts.ts';
 import {
   buildLocalDayBuckets,
@@ -135,15 +137,24 @@ const getCurrentUsageDayBucketIndex = (buckets: UsageDayBucket[], nextDayStartUt
   return -1;
 };
 
-const buildUsageDayBarTitle = (bucket: UsageDayBucket) => {
-  const lines = [`${bucket.label}`, `Measured ${bucket.measuredKWh.toFixed(2)} kWh`];
-  if (bucket.controlledKWh !== null && bucket.uncontrolledKWh !== null) {
-    lines.push(`Managed ${bucket.controlledKWh.toFixed(2)} kWh`);
-    lines.push(`Background ${bucket.uncontrolledKWh.toFixed(2)} kWh`);
-  }
-  if (bucket.unreliable) lines.push('Unreliable data');
-  return lines.join(' · ');
-};
+// Structured per-bucket content for the tooltip + pinned readout (one
+// grammar, identical information on both surfaces). The hour range ends at
+// the next bucket's local label so DST-shifted buckets stay honest; the last
+// bucket closes the day at 00:00. `inProgress` marks the current hour on the
+// Today view — its measurement is still accumulating, so the readout reads
+// `Measured … kWh so far`. Exported for unit tests.
+export const buildUsageDayBucketReadout = (
+  bucket: Pick<UsageDayBucket, 'label' | 'measuredKWh' | 'controlledKWh' | 'uncontrolledKWh' | 'unreliable'>,
+  nextLabel: string | undefined,
+  inProgress = false,
+): ChartReadoutContent => buildUsageDayReadout({
+  hourRange: `${bucket.label}–${nextLabel ?? '00:00'}`,
+  measuredKWh: bucket.measuredKWh,
+  managedKWh: bucket.controlledKWh,
+  backgroundKWh: bucket.uncontrolledKWh,
+  unreliable: bucket.unreliable,
+  inProgress,
+});
 
 const renderUsageDayHeader = (dateKey: string, timeZone: string) => {
   if (!usageDayTitle || !usageDayLabel) return;
@@ -167,6 +178,15 @@ const renderUsageDayNoData = () => {
   if (!usageDayEmpty || !usageDayChart) return;
   usageDayEmpty.hidden = false;
   usageDayChart.hidden = true;
+  // The pinned readout row lives OUTSIDE #usage-day-chart, so hiding the
+  // chart alone would leave the previous day's readout visible under the
+  // "no data" message when the user switches to an empty day. Clear and hide
+  // it here; the next data render re-shows it (`renderUsageDayChartEcharts`
+  // unhides the host and re-renders the selection on every chart render).
+  if (usageDayReadout) {
+    usageDayReadout.replaceChildren();
+    usageDayReadout.hidden = true;
+  }
   setUsageDayStatus('No data');
   setUsageDaySummaryValue(usageDayTotal, '-- kWh', true);
   setUsageDaySummaryValue(usageDayPeak, '-- kWh', true);
@@ -208,13 +228,23 @@ const getUsageDayBars = (buckets: UsageDayBucket[], currentBucketIndex: number):
     return {
       label: bucket.label,
       value: bucket.measuredKWh,
-      title: buildUsageDayBarTitle(bucket),
       state,
       className: warn ? 'usage-day-bar is-warn' : 'usage-day-bar',
       segments: [{ value: bucket.measuredKWh, className: 'day-view-bar__segment--measured' }],
     };
   })
 );
+
+// Default readout selection: the current hour on the Today view (the most
+// informative point while the day is in progress), the peak hour otherwise.
+const getDefaultReadoutIndex = (buckets: UsageDayBucket[], currentBucketIndex: number): number => {
+  if (currentBucketIndex >= 0) return currentBucketIndex;
+  let peak = 0;
+  for (let index = 1; index < buckets.length; index += 1) {
+    if (buckets[index].measuredKWh > buckets[peak].measuredKWh) peak = index;
+  }
+  return peak;
+};
 
 export const renderUsageDayView = (entries: UsageDayEntry[]) => {
   latestEntries = entries;
@@ -238,9 +268,15 @@ export const renderUsageDayView = (entries: UsageDayEntry[]) => {
 
   const bars = getUsageDayBars(buckets, currentBucketIndex);
   const labels = buckets.map((bucket) => bucket.label);
+  const readouts = buckets.map((bucket, index) => (
+    buildUsageDayBucketReadout(bucket, buckets[index + 1]?.label, index === currentBucketIndex)
+  ));
   const renderedWithEcharts = renderUsageDayChartEcharts({
     bars,
     labels,
+    readouts,
+    readoutHost: usageDayReadout,
+    defaultReadoutIndex: getDefaultReadoutIndex(buckets, currentBucketIndex),
     currentBucketIndex,
     enabled: true,
     barsEl: usageDayBars,

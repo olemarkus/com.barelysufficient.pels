@@ -1,26 +1,11 @@
 import { delegate, hideAll } from 'tippy.js';
 
 const TOOLTIP_SELECTOR = '[data-tooltip]';
-const TOOLTIP_ACTIVE_CLASS = 'tooltip-active';
 
 const getTooltipContent = (reference: Element): string => {
   if (!(reference instanceof HTMLElement)) return '';
   const content = reference.dataset.tooltip;
   return content ? content.trim() : '';
-};
-
-const isBarTooltipTarget = (reference: Element): reference is HTMLElement => (
-  reference instanceof HTMLElement
-  && (
-    reference.classList.contains('usage-bar')
-    || reference.classList.contains('daily-budget-bar')
-    || reference.classList.contains('day-view-bar')
-  )
-);
-
-const setBarTooltipActive = (reference: Element, active: boolean): void => {
-  if (!isBarTooltipTarget(reference)) return;
-  reference.classList.toggle(TOOLTIP_ACTIVE_CLASS, active);
 };
 
 export const setTooltip = (element: HTMLElement | null, content?: string | null): void => {
@@ -63,12 +48,8 @@ export const initTooltips = (): void => {
       const content = getTooltipContent(instance.reference);
       if (!content) return false;
       hideAll({ exclude: instance });
-      setBarTooltipActive(instance.reference, true);
       instance.setContent(content);
       return undefined;
-    },
-    onHide(instance) {
-      setBarTooltipActive(instance.reference, false);
     },
   });
 };

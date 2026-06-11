@@ -11,6 +11,7 @@ import {
 } from './budgetRedesign.ts';
 import { setBudgetAdjustRefresh } from './budgetAdjustController.ts';
 import { resolveCostDisplayFromCombinedPrices } from './priceUnit.ts';
+import { setActiveDailyBudgetFromPayload } from './activeDailyBudget.ts';
 
 let currentDailyBudgetView: BudgetDayView = 'today';
 let latestDailyBudgetPayload: DailyBudgetUiPayload | null = null;
@@ -18,6 +19,10 @@ let costDisplay: CostDisplay = resolveCostDisplayFromCombinedPrices(null);
 
 const renderDailyBudget = (payload: DailyBudgetUiPayload | null) => {
   latestDailyBudgetPayload = payload;
+  // Keep the chart-overlay budget source in lockstep with what the Budget
+  // hero renders (see `activeDailyBudget.ts` for why the budget-adjust draft
+  // is not a valid source).
+  setActiveDailyBudgetFromPayload(payload);
   renderBudgetRedesign(payload, currentDailyBudgetView, costDisplay);
 };
 

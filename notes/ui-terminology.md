@@ -394,6 +394,18 @@ The finalized-run detail page (chart-overhaul Phase 1B). All strings live in `pa
 
 **Strip legend chips**: `Price low` / `Price normal` / `Price high` + the dashed sample `Planned, didn’t run` — the SAME string (one phrasing + casing) as the readout's skipped verdict. The colour names the price level; the bar height is energy.
 
+### Usage tab chart readouts (pinned, one interaction grammar)
+
+The three Usage-tab charts (Today-so-far hourly bars, Daily usage history, Typical day pattern) reuse the smart-task pages' pinned-readout primitive: no floating ECharts tooltip on touch — tap a column to select it (visible select border in the on-surface text tone; the current-hour marker keeps its own `--pels-chart-current-border` colour), tap outside the plot to restore the default selection, and the row under the chart carries the values. On desktop (hover-capable fine pointers) the floating tooltip shows the SAME structured content and the pinned row is hidden — one caption per modality, never both. The row is never empty: the default selection is the current hour on the Today view, the most recent complete day on the daily history, the peak point on the typical-day pattern. Resolvers live in `packages/settings-ui/src/ui/chartTooltipFormat.ts`; the over/within-budget stems live with the Budget hero strings in `packages/shared-domain/src/dailyBudgetHeroStrings.ts`.
+
+Two-line grammar — primary line names the time bucket, secondary line carries the measurements joined with ` · ` (measurement segments use non-breaking spaces internally, so a unit never wraps away from its number; wraps happen only at the separators):
+
+- Today so far / Yesterday (hourly): `13:00–14:00` / `Measured 1.31 kWh`, plus `Managed 0.80 kWh · Background 0.51 kWh` when the split exists, plus `Unreliable — some readings missing this hour` (warn tone) when the hour is flagged — the readout names the consequence; the chart legend and stat strip keep their established one-word `Warning`/`Warnings` labels. The range closes the day at `23:00–00:00`. The in-progress current hour reads `Measured 0.45 kWh so far`.
+- Daily usage history: `Thu 4 Jun` / `12.6 kWh` (the rendered date format — locale-dependent, no comma in en-GB-style locales), plus budget context only when a daily budget is configured: `1.2 kWh over budget` (warn tone) or `Within budget of 14.0 kWh`. The budget number is the ACTIVE daily budget — the same one the Budget tab's hero shows — never the budget-adjust draft. The window-clipped oldest day of the 14-day history reads `9.1 kWh (partial day)`.
+- Typical day: `13:00–14:00` / `Average 1.24 kWh`.
+
+Vocabulary stays canonical: `Measured` / `Managed` / `Background` / `budget` — never `controlled` / `uncontrolled` / `shed`.
+
 ## Mode label
 
 The Settings page renders the current operating mode as a single selector
