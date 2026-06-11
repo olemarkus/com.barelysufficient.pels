@@ -139,6 +139,16 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
 
 *v2.11.0..HEAD release-review findings (2026-06-02). Non-blocking follow-ups.*
 
+- [ ] **Weather collector: transient miss of `weather_advisor_settings` silently halts sampling
+      until the next restart or settings write.** `WeatherCollector.start()` registers no timers
+      when the config blob reads absent/malformed, and nothing re-checks later (the hourly
+      re-read in `sampleOnce` never runs because no timer exists). Persona: the tinkerer running
+      the hidden weather feature; hypothesis: one transient SDK read miss at boot costs a full
+      day of temperature samples (unreconstructable for the live path) and the gap is only
+      visible as a `partialTemp` day much later. Candidate fix: distinguish "blob present and
+      disabled" (no timers, correct) from "blob unreadable" (schedule a bounded re-check).
+      Source: pels-runtime-reality on the weather-collection PR, 2026-06-11.
+
 - [ ] **Give the armed budget-discard state a visible "keep changes" path.** The Budget header's
       two-step confirm shows only the destructive option ("Click again to discard"); the save path
       (Preview changes → Apply) is a sticky CTA further down, and the explanatory text lives in a

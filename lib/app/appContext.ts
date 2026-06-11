@@ -83,6 +83,8 @@ export type AppContext = {
   loadPriceOptimizationSettings: () => void;
   updatePriceOptimizationEnabled: (logChange?: boolean) => void;
   updateDebugLoggingEnabled: (logChange?: boolean) => void;
+  /** Restarts the hidden weather-history collector after its settings blob changes. */
+  reloadWeatherCollector?: () => void;
   updateOverheadToken: (value?: number) => Promise<void>;
   registerFlowCards: () => void;
   refreshTargetDevicesSnapshot: (options?: RefreshTargetDevicesSnapshotOptions) => Promise<void>;

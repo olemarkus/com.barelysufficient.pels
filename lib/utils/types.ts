@@ -54,7 +54,7 @@ export type CapabilityValue<T> = {
 
 type UnknownRecord = Record<string, unknown>;
 
-const isUnknownRecord = (value: unknown): value is UnknownRecord => (
+export const isUnknownRecord = (value: unknown): value is UnknownRecord => (
     typeof value === 'object' && value !== null && !Array.isArray(value)
 );
 

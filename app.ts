@@ -81,6 +81,8 @@ import {
 import { assembleActivePlansWithTrajectory } from './setup/deferredObjectiveActivePlansUiAssembler';
 import { BackgroundTasksController } from './setup/backgroundTasksController';
 import { PowerSamplePipeline } from './setup/powerSamplePipeline';
+import { createWeatherCollector } from './setup/appInit/createWeatherCollector';
+import type { WeatherCollector } from './lib/weather/weatherCollector';
 import { SchedulerTelemetryObserver } from './setup/schedulerTelemetryObserver';
 import { SettingsRepository } from './setup/settingsRepository';
 import { createCombinedPricesReaderForApp } from './setup/priceCombinedPricesAdapter';
@@ -143,7 +145,7 @@ import {
   isManagedFilterActive as isManagedFilterActiveHelper,
   isRuntimePlannedDevice,
 } from './setup/appDeviceSupport';
-import { runStartupStep, startAppServices } from './setup/appLifecycleHelpers';
+import { flushDailyBudgetStateOnUninit, runStartupStep, startAppServices } from './setup/appLifecycleHelpers';
 import { addPerfDuration, incPerfCounter, incPerfCounters } from './lib/utils/perfCounters';
 import { VOLATILE_WRITE_THROTTLE_MS } from './lib/utils/timingConstants';
 import { getHourBucketKey } from './lib/utils/dateUtils';
@@ -465,9 +467,11 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi {
     getPlanRebuildNowMs: () => this.getPlanRebuildNowMs(),
     savePowerTracker: (state) => this.savePowerTracker(state),
     getStructuredDebugEmitter: (component, topic) => this.getStructuredDebugEmitter(component, topic),
+    getOutdoorTemperatureC: () => this.weatherCollector?.getCurrentOutdoorTemperatureC(),
   });
   private realtimeDeviceReconcileState = realtimeReconcile.createRealtimeDeviceReconcileState();
   private stopSettingsHandler?: () => void;
+  private weatherCollector?: WeatherCollector;
   private readonly backgroundTasks = new BackgroundTasksController({
     homey: this.homey,
     log: (...args: unknown[]) => this.log(...args),
@@ -814,6 +818,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi {
       loadPriceOptimizationSettings: () => app.loadPriceOptimizationSettings(),
       updatePriceOptimizationEnabled: (logChange) => app.updatePriceOptimizationEnabled(logChange),
       updateDebugLoggingEnabled: (logChange) => app.updateDebugLoggingEnabled(logChange),
+      reloadWeatherCollector: () => app.backgroundTasks.startWeatherCollector(app.weatherCollector),
       updateOverheadToken: (value) => app.updateOverheadToken(value),
       registerFlowCards: () => app.registerFlowCards(),
       refreshTargetDevicesSnapshot: (options) => app.refreshTargetDevicesSnapshot(options),
@@ -1030,6 +1035,11 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi {
 
   private startPostStartupBackgroundTasks(): void {
     this.startPowerTrackerPruning();
+    // Hidden weather-history collector. Created here (not earlier) because its
+    // device reads ride on the transport REST client initialized during
+    // `initDeviceManager`. No-op unless `weather_advisor_settings` enables it.
+    this.weatherCollector = createWeatherCollector(this.ctx);
+    this.backgroundTasks.startWeatherCollector(this.weatherCollector);
     // Clock-driven smart-task lifecycle emission (status/hours-remaining/ended +
     // history). PlanService exists by now, so the emitter's getDevices reads the
     // live plan-device source. Runs off the power path — fixes the flow-mode lag.
@@ -1473,7 +1483,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi {
     // Persist any unflushed deferred-objective plan-history entries before shutting down.
     this.deferredObjectivePlanHistoryRecorder?.flushIfDirty();
     this.deferredObjectiveActivePlanRecorder?.flushIfDirty();
-    this.flushDailyBudgetStateOnUninit();
+    flushDailyBudgetStateOnUninit(this.ctx);
     // Flush bypasses the debounce window so any samples accepted since the
     // last persist tick reach settings before shutdown. Without this, samples
     // recorded inside the persist-debounce window are lost on restart.
@@ -1483,16 +1493,6 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi {
     persistDeferredObjectiveObservationWatermark(this.ctx, this.deferredObjectivePlanHistoryRecorder);
     this.priceCoordinator.stop();
     this.deviceManager?.destroy();
-  }
-  private flushDailyBudgetStateOnUninit(): void {
-    try {
-      this.dailyBudgetService?.persistState('runtime', Date.now());
-    } catch (error) {
-      this.getStructuredLogger('daily_budget')?.error({
-        event: 'daily_budget_state_shutdown_flush_failed',
-        err: normalizeError(error),
-      });
-    }
   }
   private clearUninitTimers(): void {
     if (this.timers.has('powerTrackerSave')) {

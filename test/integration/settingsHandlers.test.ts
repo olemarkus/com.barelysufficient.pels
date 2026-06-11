@@ -11,6 +11,7 @@ import {
   DEVICE_DRIVER_OVERRIDES,
   DEVICE_TARGET_POWER_CONFIGS,
   MANAGED_DEVICES,
+  WEATHER_ADVISOR_SETTINGS,
 } from '../../lib/utils/settingsKeys';
 
 const { settingsLoggerInfo, settingsLoggerWarn, settingsLoggerError } = vi.hoisted(() => ({
@@ -277,6 +278,16 @@ describe('createSettingsHandler', () => {
     await handler(DEBUG_LOGGING_TOPICS);
 
     expect(deps.updateDebugLoggingEnabled).toHaveBeenCalledTimes(2);
+  });
+
+  it('reloads the weather collector when its settings blob changes', async () => {
+    const reloadWeatherAdvisor = vi.fn();
+    const deps = buildDeps({ reloadWeatherAdvisor });
+    const handler = createSettingsHandler(deps);
+
+    await handler(WEATHER_ADVISOR_SETTINGS);
+
+    expect(reloadWeatherAdvisor).toHaveBeenCalledTimes(1);
   });
 
   it('recomputes combined prices when price threshold changes', async () => {

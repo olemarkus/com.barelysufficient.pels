@@ -9,6 +9,7 @@ import type { StructuredDebugEmitter } from '../lib/logging/logger';
 import type { CombinedHourlyPrice } from '../lib/price/priceTypes';
 import { startDeferredObjectiveLifecycleClock } from './deferredObjectiveLifecycleClock';
 import type { DeferredObjectiveLifecycleEmitter } from '../lib/objectives/deferredObjectives/lifecycleEmitter';
+import type { WeatherCollector } from '../lib/weather/weatherCollector';
 
 export type BackgroundTasksControllerDeps = {
   homey: Homey.App['homey'];
@@ -50,6 +51,7 @@ export class BackgroundTasksController {
   private stopResourceWarnings?: () => void;
   private stopHeapSnapshot?: () => void;
   private stopDeferredObjectiveClock?: () => void;
+  private stopWeatherCollector?: () => void;
 
   constructor(private readonly deps: BackgroundTasksControllerDeps) {}
 
@@ -97,11 +99,18 @@ export class BackgroundTasksController {
     });
   }
 
+  /** (Re)starts the weather collector; safe to call again after a settings change. */
+  startWeatherCollector(collector: WeatherCollector | undefined): void {
+    if (this.stopWeatherCollector) this.stopWeatherCollector();
+    this.stopWeatherCollector = collector?.start();
+  }
+
   stopAll(): void {
     this.stopPriceLowestTrigger?.();
     this.stopPerfLog?.();
     this.stopResourceWarnings?.();
     this.stopHeapSnapshot?.();
     this.stopDeferredObjectiveClock?.();
+    this.stopWeatherCollector?.();
   }
 }

@@ -36,6 +36,7 @@ import {
   PRICE_OPTIMIZATION_ENABLED,
   PRICE_OPTIMIZATION_SETTINGS,
   PRICE_SCHEME,
+  WEATHER_ADVISOR_SETTINGS,
 } from './settingsKeys';
 import { incPerfCounters } from './perfCounters';
 import { getLogger } from '../logging/logger';
@@ -71,6 +72,7 @@ export type SettingsHandlerDeps = {
   updateOverheadToken: (value?: number) => Promise<void>;
   updateDebugLoggingEnabled: (logChange?: boolean) => void;
   restartHomeyEnergyPoll?: () => void;
+  reloadWeatherAdvisor?: () => void;
 };
 
 const DEDUPED_CAPACITY_KEYS = [
@@ -420,6 +422,7 @@ function buildMiscSettingsHandlers(deps: SettingsHandlerDeps): SettingsHandlerMa
     },
     debug_logging_enabled: async () => deps.updateDebugLoggingEnabled(true),
     [DEBUG_LOGGING_TOPICS]: async () => deps.updateDebugLoggingEnabled(true),
+    [WEATHER_ADVISOR_SETTINGS]: async () => deps.reloadWeatherAdvisor?.(),
     settings_ui_log: async () => handleSettingsUiLog(deps),
   };
 }
