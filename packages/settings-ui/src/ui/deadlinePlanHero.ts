@@ -154,6 +154,11 @@ export const resolveQueuedHeadlineReason = (params: {
   // to surface "Today's budget is full" on healthy on-track plans whose first
   // hour falls after midnight too.
   dailyBudgetExhaustedInRunUp: boolean;
+  // Producer-verified "planned hours average price < current hour price"
+  // comparison (`resolvePlannedWindowCheaperThanNow` in `deadlinePlan.ts`).
+  // Gates the "Cheaper than now" sentence so it never contradicts the
+  // schedule chart's bars.
+  plannedWindowCheaperThanNow: boolean;
 }): string | null => {
   if (params.cannotMeet) return null;
   if (!params.firstChargingHour) return null;
@@ -164,6 +169,7 @@ export const resolveQueuedHeadlineReason = (params: {
       || params.computedFromPricesUpTo < params.deadlineAtMs,
     deadlineTime: formatHourLabel(params.deadlineAtMs),
     dailyBudgetExhausted: params.dailyBudgetExhaustedInRunUp,
+    plannedWindowCheaperThanNow: params.plannedWindowCheaperThanNow,
   });
 };
 
@@ -282,6 +288,9 @@ export type BuildHeroInput = {
   // resolve the "prices not through deadline yet" headline-reason branch.
   // Null when the latest revision predates the field.
   computedFromPricesUpTo: number | null;
+  // Producer-verified price comparison gating the "Cheaper than now" queued
+  // reason line (see `resolveQueuedHeadlineReason`).
+  plannedWindowCheaperThanNow: boolean;
   planningSpeedKw: number | null;
   estimatedDurationText: string | null;
   // Producer-resolved presentation-speed mode enum off the latest revision.

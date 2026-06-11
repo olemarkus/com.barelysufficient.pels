@@ -9,7 +9,16 @@ const openDeadlinePlan = async (page: Page) => {
   await page.goto('/?page=deadline-plan&deviceId=dev_connected300', { waitUntil: 'domcontentloaded' });
   const panel = page.locator('#deadline-plan-panel');
   await expect(panel.locator('.plan-hero__headline')).toBeVisible();
-  await expect(panel.locator('.deadline-horizon-chart svg')).toBeVisible();
+  await expect(panel.locator('.deadline-schedule-chart svg')).toBeVisible();
+  await expect(panel.locator('.deadline-trajectory-chart svg')).toBeVisible();
+  // The SVG elements mount before ECharts paints the first frame, so poll
+  // until both charts carry rendered label text (same idiom as
+  // charts-layout.spec.ts) — otherwise the capture can race the paint and
+  // commit blank/partial chart PNGs to docs.
+  await page.waitForFunction(() => (
+    (document.querySelector('.deadline-schedule-chart svg')?.textContent ?? '').length > 0
+    && (document.querySelector('.deadline-trajectory-chart svg')?.textContent ?? '').length > 0
+  ));
   // The shell-nav lives inside the page-level `.hero`, so hiding `.hero` also
   // removes the shell-nav tabs from the capture. The router now keeps
   // `#shell-nav` visible (so the breadcrumb stays lit while the plan-detail

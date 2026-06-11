@@ -202,12 +202,33 @@ const buildReadyPayloadWithDeviceRecourse = (deviceId: string): DeadlinePlanPayl
   },
   timeline: {
     ariaLabel: 'Heating smart task',
-    progressFloor: 0,
-    progressCeilingValue: 22,
-    progressCeilingLabel: '22 °C',
-    deadlineLabel: 'Mon 18',
     hours: [],
+    nowIndex: 0,
+    nowAxisX: -0.5,
+    deadlineAxisX: 0.5,
+    deadlineMarkLabel: 'deadline Mon 18:00',
+    plannedRanges: [],
     cheapestHoursCaption: null,
+  },
+  trajectory: {
+    cardTitle: 'Will it reach 22.0 °C in time?',
+    ariaLabel: 'Smart task progress trajectory for Connected 300',
+    measuredPoints: [[0, 18]],
+    nowPoint: [0, 18],
+    plannedPoints: [[0, 18], [3_600_000, 22]],
+    runBands: [],
+    targetValue: 22,
+    targetLabel: 'Target 22.0 °C',
+    deadlineAtMs: 7_200_000,
+    deadlineMarkLabel: 'deadline',
+    deadlineDanger: false,
+    xMinMs: 0,
+    xMaxMs: 9_000_000,
+    yMin: 16,
+    yMax: 24,
+    yFloorLabel: '16.0 °C',
+    stateline: { emphasis: '18.0 °C now', rest: 'on track — projected ready ≈ Mon 17:00, 1 hour before the deadline', tone: 'ok' },
+    shortfall: null,
   },
   planInputs: {
     perUnitRateLabel: null,
@@ -264,13 +285,13 @@ describe('DeadlinePlan cheapest-hours caption', () => {
   it('renders the producer-resolved caption under the horizon chart', () => {
     const payload = buildReadyPayloadWithDeviceRecourse('dev_heater_42');
     payload.timeline.cheapestHoursCaption =
-      'Picked 2 of 4 hours · avg 0.15 vs window avg 0.50 kr/kWh';
+      'Picked 2 of the 4 hours it can use · avg 0.15 kr/kWh';
     const mount = mountIntoBody();
     renderDeadlinePlan(mount, { status: 'ready', payload });
     const caption = mount.querySelector('.deadline-horizon-caption');
     expect(caption).not.toBeNull();
     expect(caption?.textContent).toBe(
-      'Picked 2 of 4 hours · avg 0.15 vs window avg 0.50 kr/kWh',
+      'Picked 2 of the 4 hours it can use · avg 0.15 kr/kWh',
     );
   });
 

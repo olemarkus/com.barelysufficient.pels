@@ -339,6 +339,39 @@ Em-dash separator (U+2014) per the existing typography convention.
 
 Hour-diff chip wording: `+Nh` (added), `−Nh` (dropped, U+2212 MINUS SIGN to match the typographic minus used by post-finalization rows and cost-meta lines). Both omitted when a revision only redistributed kWh across the same hours.
 
+### Smart task live page (two-chart split)
+
+The live smart-task detail page renders two question-titled chart cards. All strings live in `packages/shared-domain/src/deadlineLabels.ts` so the UI and runtime log breadcrumbs share one vocabulary.
+
+**Card titles** (always question-shaped):
+
+- Schedule card: `When will it run, and at what price?` (kind-agnostic — the kind verb lives in the planned band, not the title).
+- Trajectory card: `Will it reach {target} in time?` where `{target}` is `formatProgressValueForUnit` output (`65.0 °C` / `80%`).
+
+**Pinned readout** (under the schedule chart) — primary line grammar is `time · price · third segment`:
+
+- Time segment: `Now` for the current hour (canonical `NOW_MARKER_WORD`, also the axis label at the now column), else `HH:MM`.
+- Price segment: `0.62 kr/kWh` (two decimals, display-scaled unit).
+- Third segment, one of:
+  - `{Kind verb} N kWh planned` — planned hour (`Heating 2.0 kWh planned`), optionally suffixed `· Measured N kWh` when the tracker saw real energy that hour.
+  - `Idle — heating starts HH:MM` — idle current hour with a later run scheduled. Capitalized `Idle` like its sibling segments; the embedded kind verb stays lowercase mid-sentence. Never claims the kind verb as active while the hero says it starts later.
+  - `Idle` — idle current hour, nothing scheduled.
+  - `Not scheduled` — idle non-current hour.
+- Secondary line: at rest (no explicit selection) it is always the scrub hint `Drag across the chart to read any hour`; once the user actively selects an hour (including re-selecting Now) it shows that hour's revision-reason sentence (e.g. `Updated as new prices arrived`) when one exists, else the hint.
+
+**Trajectory stateline** (under the trajectory chart), two variants:
+
+- On-track: `{X} now · on track — projected ready ≈ {T}, {N} hours before the deadline` (full word `hours`, singular-aware `1 hour`; `just before the deadline` under one hour). The status word is the lowercase mid-sentence form of the chip vocabulary (`on track` / `at risk`); plan status `invalid` renders no status word at all.
+- Danger: `Projected {X} at the deadline · {Y} short` (e.g. `Projected 58.0 °C at the deadline · 7 °C short`). The shortfall amount label (`7 °C short` / `12% short`) is shared with the on-chart gap annotation.
+
+**Planned/run bands**: both charts label their band with the same kind verb — `Heating` / `Charging` (`deviceSeriesName`). Never a different word per chart (the old trajectory `runs` label is retired). Only the first contiguous band carries the label.
+
+**Deadline marker**: the marker word is `deadline` on both charts. The schedule chart appends the full form (`deadline Sun 09:00`); the trajectory chart uses the bare word on-track and appends the clock time (`deadline 16:00`) only on the danger variant. The trajectory target line is labelled `Target {value}` (`formatSmartTaskTargetLabel`).
+
+**Trust caption** (under the schedule chart): `Picked {N} of the {M} hours it can use · avg {P} {unit}`. "the M hours it can use" names the chart's eligible pool; it intentionally does not reuse the hero's "hours left" figure, which counts from now and can differ by one. No window-average comparison — the muted unplanned bars carry the baseline visually.
+
+**Queued "why" subline** (hero, below the headline): `Cheaper than now — starts at HH:MM.` may only render when the producer-verified comparison holds (planned-hours average price strictly below the current hour's price). Otherwise the non-comparative form `Scheduled for the cheapest hours it can use — starts at HH:MM.` renders — "it can use" is the trust caption's eligibility vocabulary, and the claim is true by construction (the planner fills cheapest-first among eligible hours) without comparing to now. Never state "cheaper than now" unverified — the schedule chart below would show the disproof.
+
 ## Mode label
 
 The Settings page renders the current operating mode as a single selector

@@ -241,11 +241,16 @@ test.describe('Settings UI chart layout', () => {
     ), targets);
   });
 
-  test('deadline-plan horizon chart labels the price axis with a unit', async ({ page }) => {
+  test('deadline-plan schedule chart labels the price axis with a unit', async ({ page }) => {
     await page.goto('/?page=deadline-plan&deviceId=dev_connected300', { waitUntil: 'domcontentloaded' });
     const panel = page.locator('#deadline-plan-panel');
-    await expect(panel.locator('.deadline-horizon-chart svg')).toBeVisible();
-    const axisText = await panel.locator('.deadline-horizon-chart svg').evaluate((svg) => svg.textContent ?? '');
+    await expect(panel.locator('.deadline-schedule-chart svg')).toBeVisible();
+    // The SVG element mounts before ECharts paints its first frame, so poll
+    // until label text lands instead of reading textContent immediately.
+    await page.waitForFunction(() => (
+      (document.querySelector('.deadline-schedule-chart svg')?.textContent ?? '').length > 0
+    ));
+    const axisText = await panel.locator('.deadline-schedule-chart svg').evaluate((svg) => svg.textContent ?? '');
     expect(
       axisText.includes('øre/kWh') || axisText.includes('kr/kWh'),
       `Price axis should display unit, got: ${axisText.slice(0, 200)}`,

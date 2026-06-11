@@ -1069,6 +1069,13 @@ export type DeadlineHeadlineReasonResolverParams = {
   // True when one or more horizon buckets in the run-up had their per-bucket
   // cap collapse to zero because the daily budget cap was hit.
   dailyBudgetExhausted: boolean;
+  // True when the planned hours' average display price is strictly below the
+  // current hour's display price. The producer resolves the comparison from
+  // the same per-hour display prices the schedule chart renders (see
+  // `resolvePlannedWindowCheaperThanNow` in `deadlinePlan.ts`), so the
+  // "Cheaper than now" sentence can never contradict the bars. False when the
+  // comparison can't be made (no planned hours, no current-hour price).
+  plannedWindowCheaperThanNow: boolean;
 };
 
 // Returns null when none of the three primary cases apply (e.g. price-aware
@@ -1138,8 +1145,8 @@ export type DeadlineLabels = {
   // sits below the queued headline. Branches resolve in this order:
   //   1. prices_short_of_deadline → "Waiting for tomorrow's prices through HH:MM."
   //   2. daily_budget_exhausted   → "Today's budget is full — next cheap window after midnight."
-  //   3. cheaper window chosen    → "Cheaper than now — starts at HH:MM."
-  //   4. none of the above        → null (the subline is suppressed).
+  //   3. planned avg < now price  → "Cheaper than now — starts at HH:MM."
+  //   4. otherwise                → "Scheduled for the cheapest hours it can use — starts at HH:MM."
   resolveQueuedHeadlineReason: DeadlineHeadlineReasonResolver;
   completedHero: { headline: string; body: string };
   targetUnit: '°C' | '%';
@@ -1368,7 +1375,22 @@ const resolveQueuedHeadlineReason: DeadlineHeadlineReasonResolver = (params) => 
   if (params.dailyBudgetExhausted) {
     return 'Today’s budget is full — next cheap window after midnight.';
   }
-  return `Cheaper than now — starts at ${params.firstPlannedTime}.`;
+  // "Cheaper than now" is a verifiable claim, so it only renders when the
+  // producer-resolved price comparison proves it — the schedule chart sits
+  // directly below this line and would otherwise show the disproof (the
+  // current hour can be the cheapest bar). When the comparison doesn't hold
+  // (or can't be made), fall back to a claim that's true by construction:
+  // this branch is only reachable for price-selected plans (branch 1 absorbs
+  // every missing/short-price case, and at-risk/cannot-meet plans never call
+  // this resolver), and the planner's price-banded fill picks the cheapest
+  // hours among the hours it may use. "it can use" (the cheapest-hours
+  // caption's eligibility vocabulary) absorbs the cases where "now" is the
+  // cheapest bar but ineligible — the line makes no comparison to now, so
+  // the chart cannot contradict it.
+  if (params.plannedWindowCheaperThanNow) {
+    return `Cheaper than now — starts at ${params.firstPlannedTime}.`;
+  }
+  return `Scheduled for the cheapest hours it can use — starts at ${params.firstPlannedTime}.`;
 };
 
 // Shared recourse-action labels + target tabs across both kinds. The producer
@@ -1879,7 +1901,7 @@ export const formatEnergyEstimateKWh = (params: {
 
 // ─── "Cheapest hours" chart caption ─────────────────────────────────────────
 
-// Caption rendered under the live deadline-plan horizon chart answering the
+// Caption rendered under the live deadline-plan schedule chart answering the
 // skeptical EV-commuter's second-most-asked question (after cost): "is PELS
 // actually picking cheaper hours?" The chart already tone-codes the price bars,
 // but a single sentence states the result plainly.
@@ -1889,21 +1911,19 @@ export const formatEnergyEstimateKWh = (params: {
 // constraint can keep a non-cheapest hour in the live set (see
 // `lib/objectives/deferredObjectives/bucketAllocation.ts`), so "picked the N
 // cheapest" would overclaim optimality the planner doesn't guarantee. Instead
-// the caption states the count and lets the avg-vs-baseline numbers prove the
-// chosen hours are cheaper than the window — the factual, always-true signal.
-//
-// Baseline (`allPrices` average) is the average price across **all** hours in
-// the window — i.e. the hours PELS could have chosen from. That's the most
-// defensible comparison: it answers "vs picking hours blindly across the whole
-// window", which is exactly the alternative the user is suspicious of. The
-// caption labels it before the value ("vs window avg Q kr/kWh") so the number
-// it compares against is never ambiguous and the unit is stated once.
+// the caption states the count ("Picked N of the M hours it can use") plus the
+// picked hours' average price; the muted unplanned bars directly above carry
+// the baseline visually, so no numeric comparison is repeated here. "the M
+// hours it can use" names the eligible pool (every charted hour up to the
+// deadline) without re-anchoring on the hero's hours-left figure, which counts
+// from *now* and can legitimately differ by one.
 //
 // `unitLabel` is the already-scaled price unit (e.g. `kr/kWh`); the caller
 // passes the per-hour display prices already scaled øre→kr via the CostDisplay
 // divisor, so this helper only averages + phrases pre-scaled values and never
 // re-divides. `plannedPrices` are the display prices of the picked hours;
-// `allPrices` are every hour's display price in the window (the baseline pool).
+// `allPrices` are every hour's display price in the window (the eligible pool
+// whose size the caption states).
 //
 // The averaging lives here (not at the caller) so the producer stays a thin
 // projection and the trust-caption arithmetic is unit-tested in one place.
@@ -1927,13 +1947,170 @@ export const formatCheapestHoursCaption = (params: {
   const totalHourCount = params.allPrices.length;
   if (plannedHourCount <= 0 || totalHourCount < 2) return null;
   const plannedAverage = averagePrice(params.plannedPrices);
-  const baseline = averagePrice(params.allPrices);
-  if (!Number.isFinite(plannedAverage) || !Number.isFinite(baseline)) return null;
+  if (!Number.isFinite(plannedAverage)) return null;
+  // "the M hours it can use" names the eligible pool explicitly: `allPrices`
+  // is every hour the planner could have picked (the chart window ends at the
+  // deadline), so the count reconciles with the bars the user sees — and the
+  // phrasing avoids colliding with the hero's "N hours left", which counts
+  // from now and can differ by one. The window-average comparison was dropped
+  // with the two-chart split — the muted unplanned bars already carry the
+  // baseline visually.
   return (
-    `Picked ${plannedHourCount} of ${totalHourCount} hours`
-    + ` · avg ${plannedAverage.toFixed(2)} vs window avg ${baseline.toFixed(2)} ${unit}`
+    `Picked ${plannedHourCount} of the ${totalHourCount} hours it can use`
+    + ` · avg ${plannedAverage.toFixed(2)} ${unit}`
   );
 };
+
+// ─── Live-page two-chart split copy (schedule + trajectory cards) ────────────
+// All strings for the smart-task live page's question-titled charts live here
+// so runtime log breadcrumbs and the UI render identical wording (per
+// `feedback_ui_text_shared_with_logs.md`) and the view stays a flat renderer
+// (per `feedback_layering_resolution_in_producer.md`).
+
+// Card title for the schedule chart. Kind-agnostic — the kind verb lives in
+// the planned-band label ("Heating"/"Charging" via `deviceSeriesName`).
+export const SMART_TASK_SCHEDULE_CARD_TITLE = 'When will it run, and at what price?';
+
+// Kind-aware trajectory card title: "Will it reach 65 °C in time?" /
+// "Will it reach 80% in time?". The target label is composed from the same
+// `formatProgressValueForUnit` the hero lines use so the number can't drift.
+export const formatSmartTaskTrajectoryCardTitle = (params: {
+  targetValue: number;
+  targetUnit: '°C' | '%';
+}): string => `Will it reach ${formatProgressValueForUnit(params.targetValue, params.targetUnit)} in time?`;
+
+// Pinned-readout helper line shown when the selected hour carries no revision
+// sentence. Names the gesture (drag/scrub), not a tap, because 26 one-hour
+// columns at 320 px are too thin for individual taps.
+export const SMART_TASK_READOUT_SCRUB_HINT = 'Drag across the chart to read any hour';
+
+// Third segment of the readout primary line for an hour with no planned
+// energy that is not the current hour.
+export const SMART_TASK_READOUT_NOT_SCHEDULED = 'Not scheduled';
+
+// Marker word for the deadline markLine on both live charts. The schedule
+// chart appends the resolved "Sun 09:00" form; the trajectory chart uses the
+// bare word (on-track) or appends the clock time (danger variant).
+export const DEADLINE_MARKER_WORD = 'deadline';
+
+// Marker word for the current hour on both live charts: the schedule chart's
+// x-axis label at the now column and (capitalized, time-position) the pinned
+// readout's time segment. One constant so the two surfaces can't drift.
+export const NOW_MARKER_WORD = 'Now';
+
+// "Target 65.0 °C" / "Target 80%" label on the trajectory chart's dashed
+// target line. Composed from the same `formatProgressValueForUnit` the hero
+// and stateline use so the number format can't drift.
+export const formatSmartTaskTargetLabel = (params: {
+  targetValue: number;
+  targetUnit: '°C' | '%';
+}): string => `Target ${formatProgressValueForUnit(params.targetValue, params.targetUnit)}`;
+
+// Primary line of the pinned hour readout under the schedule chart.
+// Shapes (all parts pre-resolved by the producer — locale time formatting and
+// price scaling never happen here):
+//   planned:            `13:00 · 0.62 kr/kWh · Heating 2.0 kWh planned`
+//   planned + measured: `… planned · Measured 1.8 kWh`
+//   idle current hour:  `Now · 0.42 kr/kWh · Idle — heating starts 08:00`
+//   idle current hour, nothing scheduled: `Now · 0.42 kr/kWh · Idle`
+//   idle other hour:    `13:00 · 0.62 kr/kWh · Not scheduled`
+// The idle current hour must never claim the kind verb as active — the hero
+// already says when it starts, so the readout agrees ("Idle — heating starts
+// 08:00") instead of contradicting it. The third segment is capitalized like
+// its siblings ("Not scheduled", "Heating … planned"); the embedded kind verb
+// stays lowercase mid-sentence ("heating starts").
+export const formatSmartTaskHourReadoutPrimary = (params: {
+  timeLabel: string;
+  priceLabel: string;
+  planned: boolean;
+  plannedKwh: number;
+  kindVerb: string;
+  isNow: boolean;
+  // First planned start time ("08:00") when the current hour is idle and a
+  // run is scheduled later; null when nothing is scheduled.
+  nextStartLabel: string | null;
+  measuredKwh: number | null;
+}): string => {
+  const head = `${params.timeLabel} · ${params.priceLabel}`;
+  if (params.planned) {
+    const measured = params.measuredKwh !== null && params.measuredKwh > 0
+      ? ` · Measured ${params.measuredKwh.toFixed(1)} kWh`
+      : '';
+    return `${head} · ${params.kindVerb} ${params.plannedKwh.toFixed(1)} kWh planned${measured}`;
+  }
+  if (params.isNow) {
+    return params.nextStartLabel !== null
+      ? `${head} · Idle — ${params.kindVerb.toLowerCase()} starts ${params.nextStartLabel}`
+      : `${head} · Idle`;
+  }
+  return `${head} · ${SMART_TASK_READOUT_NOT_SCHEDULED}`;
+};
+
+// Stateline under the trajectory chart. Two variants:
+//   ready: `51.1 °C now · on track — projected ready ≈ Sun 02:00, 7 hours before the deadline`
+//   short: `Projected 58 °C at the deadline · 7 °C short`
+// `emphasis` renders bold + toned; `rest` is the plain remainder (the view
+// joins them with ` · `). Composed here so the live UI and runtime logs share
+// the exact sentence.
+export type SmartTaskTrajectoryStateline = {
+  emphasis: string;
+  rest: string;
+  tone: 'ok' | 'danger';
+};
+
+// Full word per the terminology rule "full words for time units" — the
+// stateline is a sentence, not a chip, so "7 hours" beats "7 h".
+const formatHoursBeforeDeadline = (hoursBefore: number): string => {
+  if (hoursBefore < 1) return 'just before the deadline';
+  const rounded = Math.round(hoursBefore);
+  return `${rounded} ${rounded === 1 ? 'hour' : 'hours'} before the deadline`;
+};
+
+export const formatSmartTaskTrajectoryStatelineReady = (params: {
+  nowValueLabel: string;
+  // Lowercase mid-sentence status word ("on track" / "at risk") or null when
+  // no status word applies; the chip above carries the capitalized form.
+  statusWord: string | null;
+  readyTimeLabel: string;
+  hoursBeforeDeadline: number;
+}): SmartTaskTrajectoryStateline => ({
+  emphasis: `${params.nowValueLabel} now`,
+  rest: `${params.statusWord !== null ? `${params.statusWord} — ` : ''}projected ready `
+    + `${APPROX_GLYPH} ${params.readyTimeLabel}, ${formatHoursBeforeDeadline(params.hoursBeforeDeadline)}`,
+  tone: 'ok',
+});
+
+// Mid-sentence status words for the ready stateline. Lowercase variants of the
+// canonical chip labels (`On track` / `At risk`) — same vocabulary, sentence
+// position.
+export const SMART_TASK_STATELINE_ON_TRACK_WORD = 'on track';
+export const SMART_TASK_STATELINE_AT_RISK_WORD = 'at risk';
+
+// Rounds to the unit's display precision (whole % / one-decimal °C). A
+// sub-half-step `shortBy` would round to a zero amount ("0% short"), but the
+// only caller (`deadlinePlanTrajectory.ts`) gates the short branch on
+// `SHORTFALL_DISPLAY_EPSILON` (0.5 % / 0.05 °C) — exactly the rounding
+// half-step — so a flagged shortfall always renders ≥ "1% short" /
+// "0.1 °C short". If those epsilons ever shrink below the half-step, clamp
+// here instead of trusting the gate.
+export const formatSmartTaskTrajectoryShortAmountLabel = (
+  shortBy: number,
+  unit: '°C' | '%',
+): string => {
+  if (unit === '%') return `${Math.round(shortBy)}% short`;
+  const rounded = Math.round(shortBy * 10) / 10;
+  const text = rounded % 1 === 0 ? `${Math.round(rounded)}` : rounded.toFixed(1);
+  return `${text} °C short`;
+};
+
+export const formatSmartTaskTrajectoryStatelineShort = (params: {
+  projectedValueLabel: string;
+  shortAmountLabel: string;
+}): SmartTaskTrajectoryStateline => ({
+  emphasis: `Projected ${params.projectedValueLabel} at the deadline`,
+  rest: params.shortAmountLabel,
+  tone: 'danger',
+});
 
 // ─── Cost + delivered-so-far hero lines (v2.7.2 PR 2) ────────────────────────
 
@@ -2045,7 +2222,10 @@ export const formatDeadlineDeliveredSoFarLine = (params: {
   return `${energyPart} · now ${currentLabel} of ${targetLabel} target`;
 };
 
-const formatProgressValueForUnit = (
+// Exported for the live-page trajectory producer (`deadlinePlan.ts`), which
+// composes "51.1 °C now" / "Projected 58 °C at the deadline" with the same
+// precision rules as the delivered-so-far hero line above.
+export const formatProgressValueForUnit = (
   value: number,
   unit: '°C' | '%',
 ): string => (

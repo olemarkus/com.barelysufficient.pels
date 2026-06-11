@@ -1,7 +1,10 @@
-import { BarChart, HeatmapChart, LineChart } from 'echarts/charts';
+import { BarChart, HeatmapChart, LineChart, ScatterChart } from 'echarts/charts';
 import {
   GridComponent,
   LegendComponent,
+  MarkAreaComponent,
+  MarkLineComponent,
+  MarkPointComponent,
   TooltipComponent,
   VisualMapComponent,
 } from 'echarts/components';
@@ -13,19 +16,37 @@ import { attachTabShownResize } from './chartVisibilityResize.ts';
 
 type EChartsInitOpts = Record<string, unknown>;
 type EChartsOption = Record<string, unknown>;
+// Minimal pointer-event surface of a ZRender instance. The deadline-plan
+// scrub interaction listens at the zr level (not per-series `chart.on`)
+// because 26 one-hour bar columns at 320 px are too thin to tap individually
+// — the whole plot area must resolve pointer positions to hour columns.
+type ZRenderLike = {
+  on: (event: string, handler: (event: { offsetX: number; offsetY: number }) => void) => void;
+};
+
 type EChartsType = {
   setOption: (option: EChartsOption, opts?: Record<string, unknown>) => void;
   resize: (opts?: Record<string, unknown>) => void;
   dispose: () => void;
-  // `convertToPixel` returns the pixel position of a data point in the
-  // chart's coordinate system. Used by the deadline-plan bar-centre parity
-  // test to verify both grids resolve the same `xAxisIndex × dataIndex` to
-  // the same `[x, y]` pixel; without exposing the method the test would have
-  // to parse SVG path geometry, which is brittle across renderer versions.
-  convertToPixel: (
+  isDisposed: () => boolean;
+  // `convertFromPixel` resolves a pixel coordinate back to an axis value —
+  // category index for category axes, ms for time/value axes. Drives the
+  // deadline-plan scrub-to-hour snapping. NOTE: with a single-axis finder
+  // (`{xAxisIndex}`) the value must be the scalar pixel coordinate along
+  // that axis — passing an `[x, y]` pair makes ECharts return null.
+  convertFromPixel: (
     finder: { xAxisIndex?: number; yAxisIndex?: number; gridIndex?: number; seriesIndex?: number },
-    value: number | string | Array<number | string>,
-  ) => number | number[];
+    value: number | number[],
+  ) => number | number[] | null;
+  // True when the pixel lies inside the referenced coordinate system (grid).
+  // Used to treat taps outside the plot area as "restore default selection".
+  containPixel: (
+    finder: { gridIndex?: number; seriesIndex?: number },
+    value: number[],
+  ) => boolean;
+  // Imperative highlight/downplay for the selected-hour emphasis state.
+  dispatchAction: (payload: Record<string, unknown>) => void;
+  getZr: () => ZRenderLike;
 };
 type SeriesOption = Record<string, unknown>;
 
@@ -37,8 +58,17 @@ const ensureRegistry = () => {
     BarChart,
     HeatmapChart,
     LineChart,
+    ScatterChart,
     GridComponent,
     LegendComponent,
+    // Mark components were previously unregistered, so every `markLine` /
+    // `markPoint` already present in option builders (deadline now-line,
+    // usage-stats budget line, history-detail met marker) silently no-oped.
+    // Registered for the smart-task live-page split; the latent marks above
+    // now render as their authors intended.
+    MarkAreaComponent,
+    MarkLineComponent,
+    MarkPointComponent,
     TooltipComponent,
     VisualMapComponent,
     SVGRenderer,
@@ -70,12 +100,13 @@ type MountEchartsParams = {
   // Re-mount trigger list. Mirrors a `useEffect` dependency array — the chart
   // is disposed + rebuilt whenever any entry changes identity.
   deps: ReadonlyArray<unknown>;
-  // Optional post-render side-effect, invoked once after the initial
-  // `setOption` and again after every `ResizeObserver` resize. The deadline
-  // price-horizon chart uses this to write per-bar pixel centres onto the
-  // container for the bar-centre parity test; charts without that need pass
-  // nothing and the hook is a no-op on this axis.
-  onAfterRender?: (chart: EChartsType, container: HTMLDivElement) => void;
+  // Optional hook invoked once per (re-)mount, right after the initial
+  // `setOption`. Gives the caller the live chart handle for imperative
+  // wiring — the deadline-plan charts attach zr-level scrub handlers and
+  // stash the handle for `dispatchAction` selection updates. Runs again on
+  // every `deps` remount with the fresh chart; the previous chart was
+  // disposed, so callers must not retain stale handles beyond it.
+  onChartInit?: (chart: EChartsType, container: HTMLDivElement) => void;
 };
 
 // Shared ECharts mount hook for the Preact chart wrappers. Initializes the
@@ -95,19 +126,17 @@ type MountEchartsParams = {
 export const useEchartsMount = (
   params: MountEchartsParams,
 ): RefObject<HTMLDivElement> => {
-  const { buildOption, resolveSize, deps, onAfterRender } = params;
+  const { buildOption, resolveSize, deps, onChartInit } = params;
   const chartRef = useRef<HTMLDivElement>(null);
   // The `ResizeObserver` / tab-shown handler are long-lived (re-created only on
-  // a `deps` change), but must call the LATEST `resolveSize` / `onAfterRender`,
-  // not the identities captured when the effect first ran. Hold them in
-  // latest-refs (updated every render) so a re-render with new callbacks but
-  // unchanged `deps` doesn't leave the resize path calling stale closures.
-  // `buildOption` is intentionally NOT ref'd: it runs at mount and re-mount is
-  // exactly what a `deps` change is for.
+  // a `deps` change), but must call the LATEST `resolveSize`, not the identity
+  // captured when the effect first ran. Hold it in a latest-ref (updated every
+  // render) so a re-render with new callbacks but unchanged `deps` doesn't
+  // leave the resize path calling stale closures. `buildOption` /
+  // `onChartInit` are intentionally NOT ref'd: they run at mount and re-mount
+  // is exactly what a `deps` change is for.
   const resolveSizeRef = useRef(resolveSize);
   resolveSizeRef.current = resolveSize;
-  const onAfterRenderRef = useRef(onAfterRender);
-  onAfterRenderRef.current = onAfterRender;
   useEffect(() => {
     const container = chartRef.current;
     if (!container) return undefined;
@@ -117,11 +146,10 @@ export const useEchartsMount = (
       ...resolveSizeNow(container),
     });
     chart.setOption(buildOption(container), { notMerge: true });
-    onAfterRenderRef.current?.(chart, container);
+    onChartInit?.(chart, container);
     const resizeObserver = typeof ResizeObserver === 'function'
       ? new ResizeObserver(() => {
         chart.resize(resolveSizeNow(container));
-        onAfterRenderRef.current?.(chart, container);
       })
       : null;
     resizeObserver?.observe(container);

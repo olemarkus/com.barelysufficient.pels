@@ -2576,6 +2576,23 @@ md-filled-button.is-busy {
   margin-top: var(--spacing-2);
 }
 
+/* Cannot-finish remedy line. On the alert hero the meta line opens with the
+ * remedy sentence ("Not enough time for this target. Lower the target or move
+ * the deadline.") — the most actionable string on the surface — so it renders
+ * at the primary body tone instead of the muted supporting tone the recap
+ * lines use. The adjacent-sibling selector targets exactly the meta line (the
+ * first muted subline after the device/target subline); the delivered-so-far
+ * and cost recap lines below it stay muted. Token swap only, mirroring
+ * `.plan-hero__subline--action` on the pending hero. Bare `[data-tone="alert"]`
+ * (instead of `.plan-hero[data-tone="alert"]`) keeps the selector inside the
+ * stylelint specificity ceiling; within `#deadline-plan-panel` only the hero
+ * section carries that tone. */
+#deadline-plan-panel [data-tone="alert"]
+  .plan-hero__subline:not(.plan-hero__subline--muted)
+  + .plan-hero__subline--muted {
+  color: var(--pels-text-primary);
+}
+
 /* Recourse action row beneath the cannot-finish meta line. The 48 px floor
  * matches the touch-target token used elsewhere on PELS — see
  * `feedback_design_tokens.md` plus the upstream "Lift `.pels-icon-toggle` and
@@ -5854,8 +5871,75 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   /* 240 px container holds: top legend (auto-wraps to two lines at 320–480 px
    * when series names are long), price grid (live chart only), load+progress
    * grid, x-axis tick labels under containLabel. Previously 220 px assumed a
-   * single-line legend that truncated long localized labels with `…`. */
+   * single-line legend that truncated long localized labels with `…`.
+   * History-detail charts only — the live page now uses the two
+   * single-question containers below. */
   height: 240px;
+}
+
+/* Live-page schedule chart ("When will it run, and at what price?"): one
+ * grid, no legend, so the container is shorter than the history chart.
+ * Heights are physical-pixel chart viewports (cf. `pels.chart.week-height`)
+ * and must match SCHEDULE_CHART_HEIGHT / TRAJECTORY_CHART_HEIGHT in
+ * views/DeadlinePlan.tsx, which seed the cold-mount fallback size. */
+.deadline-schedule-chart {
+  width: 100%;
+  min-width: 0;
+  height: 190px;
+  /* Scrubbing the chart must read as a horizontal drag, not a page scroll.
+   * Keep vertical panning available (pan-y) so the page still scrolls when
+   * the gesture starts vertically. */
+  touch-action: pan-y;
+}
+
+/* Live-page trajectory chart ("Will it reach 65 °C in time?"). */
+.deadline-trajectory-chart {
+  width: 100%;
+  min-width: 0;
+  height: 160px;
+  touch-action: pan-y;
+}
+
+/* Pinned hour readout under the schedule chart. Card-inset surface one tier
+ * above the card so it reads as the chart's caption slot; fixed min-height
+ * (touch-target token) so swapping one-line and two-line content never
+ * reflows the page mid-scrub. */
+.deadline-readout {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  justify-content: center;
+  min-height: var(--pels-touch-target-min);
+  padding: var(--spacing-2) var(--spacing-3);
+  border-radius: var(--radius-md);
+  background: var(--pels-surface-container-low);
+}
+
+.deadline-readout__primary {
+  font-size: var(--pels-text-body-font-size);
+  font-weight: var(--font-weight-semibold);
+}
+
+.deadline-readout__secondary {
+  font-size: var(--pels-text-supporting-font-size);
+  color: var(--pels-text-supporting-color);
+}
+
+/* Stateline under the trajectory chart: "51.1 °C now · on track — projected
+ * ready ≈ …". The emphasis span carries the tone; the remainder stays at the
+ * default on-surface tone. */
+.deadline-stateline {
+  margin: 0;
+  font-size: var(--pels-text-body-font-size);
+}
+
+.deadline-stateline__emphasis {
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-role-good);
+}
+
+.deadline-stateline--danger .deadline-stateline__emphasis {
+  color: var(--color-role-danger);
 }
 
 /* Trust caption under the live horizon chart: "Picked the N cheapest of M
