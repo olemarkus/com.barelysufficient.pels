@@ -226,7 +226,12 @@
   gap: var(--pw-su-1, 4px);
   background: transparent;
   border: none;
-  color: inherit;
+
+  /* Explicit text token, not `inherit`: the dashboard host supplies the
+     inherited body colour, but a host (or harness) that doesn't would leave the
+     dark-theme title invisible (black on dark). `--pw-text` resolves the same
+     colour the host would supply. */
+  color: var(--pw-text, inherit);
   font: inherit;
   font-size: var(--pw-font-size-title, 17px);
   line-height: var(--pw-line-title, 24px);
@@ -570,10 +575,11 @@
   height: 100%;
 }
 
-/* Shaded band over the scheduled hours — the "runs here" window. A translucent
-   accent tint so the chosen hours read as the good/cheap part of the curve. */
+/* Shaded band over the scheduled hours — the "runs here" window. The shared
+   band token so every scheduled-run band across the widget family (tchart +
+   pchart) carries one intensity. */
 .pchart__band {
-  fill: color-mix(in srgb, var(--pw-chart-plan-current, #58c56a) 18%, transparent);
+  fill: var(--pw-chart-band, rgba(88, 197, 106, 0.1));
 }
 
 /* The price line — shared chart-price tone (matches the plan_budget price

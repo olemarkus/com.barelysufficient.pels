@@ -34,8 +34,11 @@ const DARK_TOKENS = `
   --homey-su-5:20px; --homey-su-6:24px; --homey-su-7:28px; --homey-su-8:32px;
 }
 /* An iframe's default canvas is white; give the widget document the dark Homey
-   card surface so the tile reads dark (a transparent body would show white). */
+   card surface so the tile reads dark (a transparent body would show white).
+   The host also supplies the inherited text colour — emulate it so anything
+   relying on inheritance renders as Homey would, not black-on-dark. */
 html, body { background: var(--homey-color-mono-100, #161b21); }
+body { color: var(--homey-text-color, #1f252a); }
 `;
 
 // Theme-independent base: fonts + Homey's real widget-padding classes

@@ -207,6 +207,7 @@
   // widgets/plan_budget/src/public/chart.ts
   var BAR_RADIUS = 1.5;
   var DOT_RADIUS = 4;
+  var compensateRadius = (radius, pxPerUnit) => Number.isFinite(pxPerUnit) && pxPerUnit > 0 ? radius / pxPerUnit : radius;
   var ACTUAL_TICK_PAD = 1.5;
   var WIDGET_TITLE = PLAN_PRICE_WIDGET_TITLE;
   var DEFAULT_EMPTY_SUBTITLE = PLAN_PRICE_WIDGET_EMPTY.noData;
@@ -242,7 +243,7 @@
     });
     return buckets;
   };
-  var resolvePlotMetrics = (payload, half, geometry) => {
+  var resolvePlotMetrics = (payload, half, geometry, pxPerUnit) => {
     const { plot } = geometry;
     const plotWidth = plot.right - plot.left;
     const plotHeight = plot.bottom - plot.top;
@@ -266,6 +267,7 @@
       plotHeight,
       plotWidth,
       priceBounds,
+      priceDotRadius: compensateRadius(DOT_RADIUS + 1, pxPerUnit),
       priceSpan,
       stepWidth,
       yTicks: axis.ticks
@@ -394,7 +396,7 @@
       class: "chart__price-dot",
       cx: plot.left + metrics.stepWidth * (visible.localIndex + 0.5),
       cy: currentPriceY,
-      r: DOT_RADIUS + 1
+      r: metrics.priceDotRadius
     }));
   };
   var appendActualMarkers = (chartDocument, plotGroup, payload, metrics, geometry) => {
@@ -514,11 +516,11 @@
       "text-anchor": "middle"
     }, payload.subtitle || DEFAULT_EMPTY_SUBTITLE));
   };
-  var renderReadyState = (chartEl, payload, half, height = VIEWPORT_MIN_HEIGHT) => {
+  var renderReadyState = (chartEl, payload, half, height = VIEWPORT_MIN_HEIGHT, pxPerUnit = 1) => {
     const chartDocument = chartEl.ownerDocument;
     const geometry = resolveGeometry(resolveViewportHeight(height));
     const groups = createChartGroups(chartDocument);
-    const metrics = resolvePlotMetrics(payload, half, geometry);
+    const metrics = resolvePlotMetrics(payload, half, geometry, pxPerUnit);
     clearNode(chartEl);
     applyViewBox(chartEl, geometry.viewport);
     chartEl.setAttribute(
@@ -546,7 +548,7 @@
       tone: payload.summaryTone
     });
   };
-  var renderWidget = (chartEl, payload, half, height = VIEWPORT_MIN_HEIGHT) => {
+  var renderWidget = (chartEl, payload, half, height = VIEWPORT_MIN_HEIGHT, pxPerUnit = 1) => {
     if (!payload || payload.state !== "ready") {
       renderEmptyState(chartEl, payload || {
         title: WIDGET_TITLE,
@@ -554,7 +556,7 @@
       }, height);
       return;
     }
-    renderReadyState(chartEl, payload, half, height);
+    renderReadyState(chartEl, payload, half, height, pxPerUnit);
   };
 
   // widgets/_shared/widgetRuntime.ts
@@ -954,10 +956,10 @@
     const measured = rect?.height ?? 0;
     const width = rect?.width ?? 0;
     if (!Number.isFinite(measured) || measured <= 0 || !Number.isFinite(width) || width <= 0) {
-      return { height: VIEWPORT_MIN_HEIGHT };
+      return { height: VIEWPORT_MIN_HEIGHT, scale: 1 };
     }
     const scale = width / VIEWPORT_WIDTH2;
-    return { height: measured / scale };
+    return { height: measured / scale, scale };
   };
   var renderView = (targets, payload, half) => {
     const { chartEl, tabsEl, tabButtons } = targets;
@@ -970,8 +972,8 @@
       button.tabIndex = selected ? 0 : -1;
       button.classList.toggle("tab--active", selected);
     });
-    const { height } = measureChart(chartEl);
-    renderWidget(chartEl, payload, half, height);
+    const { height, scale } = measureChart(chartEl);
+    renderWidget(chartEl, payload, half, height, scale);
   };
   var renderLoadErrorView = (targets, title, subtitle) => {
     const { chartEl, tabsEl } = targets;
@@ -1018,7 +1020,7 @@
     let halfPinned = false;
     let resizeObserver = null;
     let lastDrawnSignature = "";
-    const measurementSignature = (m) => `${Math.round(m.height)}`;
+    const measurementSignature = (m) => `${Math.round(m.height)}@${m.scale.toFixed(2)}`;
     let destroyed = false;
     let inErrorState = false;
     const reporter = widgetErrorReporter("plan_budget", () => homeyRef);

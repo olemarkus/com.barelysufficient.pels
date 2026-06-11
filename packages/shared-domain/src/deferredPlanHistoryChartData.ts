@@ -35,6 +35,16 @@ export type DeferredPlanHistoryChartPoint = {
   value: number;
 };
 
+// One scheduled-run band: a contiguous span of booked hours, shaded behind the
+// trajectory so "when PELS planned to run the device" reads at a glance. Same
+// `{fromMs, toMs}` vocabulary as the settings-UI live trajectory's `runBands`
+// (`deadlinePlanTrajectory.ts`) minus the label — the 96 px widget chart has no
+// room for an in-band label, so the settings pages carry the labelled version.
+export type DeferredPlanHistoryChartBand = {
+  fromMs: number;
+  toMs: number;
+};
+
 // Producer-resolved chart payload. The view renders straight from these flat
 // fields; it never inspects `progressSamples`, `kwhPerUnitMean`, or any of
 // the snapshot's internals. Per
@@ -63,6 +73,13 @@ export type DeferredPlanHistoryChartData = {
   // The recorder caps the persisted samples at 48/run, so the line is
   // reasonably smooth even on long runs.
   observed: DeferredPlanHistoryChartPoint[];
+  // Scheduled-run bands: merged spans of the booked hours (plannedKWh > 0) of
+  // the schedule that was last in force (`finalPlan ?? originalPlan` for a
+  // finished run, `latest` for a live one), clamped to the window. Producer-
+  // resolved per `feedback_layering_resolution_in_producer` so the view shades
+  // flat ranges without re-deriving them from plan snapshots. Empty on
+  // `legacy_kwh` or when no hour books any energy.
+  runBands: DeferredPlanHistoryChartBand[];
   // Horizontal target reference line. `null` only when the entry recorded no
   // target for the kind (defensive — every shipped entry has a target).
   target: number | null;
@@ -81,6 +98,44 @@ export type DeferredPlanHistoryChartData = {
 };
 
 const HOUR_MS = 60 * 60 * 1000;
+
+// Resolves the scheduled-run bands from a plan snapshot's hours: each hour
+// with booked energy spans `[coversFromMs ?? startsAtMs, startsAtMs + 1h]`
+// (the same coverage semantics as the staircase integration below), clamped to
+// the chart window; contiguous/overlapping spans merge into one band so a
+// 3-hour block reads as one shaded run, not three abutting rects. Exported so
+// the live-task producer (`deferredActivePlanChartData.ts`) resolves bands from
+// `latest.hours` with identical semantics.
+type RunBandHour = Pick<
+  DeferredObjectivePlanHistoryRevisionSnapshot['hours'][number],
+  'startsAtMs' | 'plannedKWh' | 'coversFromMs'
+>;
+export const resolveRunBands = (
+  hours: readonly RunBandHour[],
+  windowStartMs: number,
+  windowEndMs: number,
+): DeferredPlanHistoryChartBand[] => {
+  const spans: DeferredPlanHistoryChartBand[] = [];
+  for (const hour of hours) {
+    const plannedKWh = Number.isFinite(hour.plannedKWh) ? hour.plannedKWh : 0;
+    if (plannedKWh <= 0) continue;
+    const fromMs = Math.max(windowStartMs, hour.coversFromMs ?? hour.startsAtMs);
+    const toMs = Math.min(windowEndMs, hour.startsAtMs + HOUR_MS);
+    if (toMs <= fromMs) continue;
+    spans.push({ fromMs, toMs });
+  }
+  spans.sort((a, b) => a.fromMs - b.fromMs);
+  const merged: DeferredPlanHistoryChartBand[] = [];
+  for (const span of spans) {
+    const last = merged[merged.length - 1];
+    if (last !== undefined && span.fromMs <= last.toMs) {
+      last.toMs = Math.max(last.toMs, span.toMs);
+      continue;
+    }
+    merged.push({ ...span });
+  }
+  return merged;
+};
 
 // Exported so the live-task producer (`deferredActivePlanChartData.ts`) can
 // reuse the exact planned-staircase math. Narrowed to the two fields it reads
@@ -479,6 +534,14 @@ const buildTrajectoryPayload = (
   plannedOriginal,
   plannedFinal,
   observed: anchorObservedAtStart(observed, frame.windowStartMs, frame.startProgress),
+  // Bands shade the schedule that was last in force — the final plan when the
+  // run replanned, else the original. That matches where heating/charging was
+  // actually booked to happen, which is the story the shading tells.
+  runBands: resolveRunBands(
+    (entry.finalPlan ?? entry.originalPlan)?.hours ?? [],
+    frame.windowStartMs,
+    frame.windowEndMs,
+  ),
   target: pickTargetValue(entry),
   metAtMs: pickMetMarker(entry),
   metMarkerValue: pickMetMarkerValue(entry),
@@ -575,6 +638,7 @@ const composeLegacyData = (
   plannedOriginal: [],
   plannedFinal: null,
   observed: [],
+  runBands: [],
   target: pickTargetValue(entry),
   metAtMs: pickMetMarker(entry),
   metMarkerValue: pickMetMarkerValue(entry),

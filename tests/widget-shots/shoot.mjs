@@ -57,9 +57,11 @@ const DARK_TOKENS = `
   --homey-su-3: 12px;
 }
 /* Homey wraps each widget in a padded dark card; emulate so the tile doesn't
-   sit edge-to-edge on the page background. */
+   sit edge-to-edge on the page background. The host also supplies the inherited
+   text colour — without it, anything relying on inheritance renders black on
+   dark, which is exactly the class of bug these shots must catch. */
 html, body { background: #0f1419; margin: 0; }
-body { padding: 12px; }
+body { padding: 12px; color: var(--homey-text-color, #1f252a); }
 /* Homey renders widgets in a system sans-serif; without this the page falls back
    to a serif (wider glyphs → false text-overflow). Match a representative sans. */
 html, body, * { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important; }
@@ -86,8 +88,10 @@ const WIDTHS = [480, 320];
 const HEADROOM_STATES = ['near', 'at_pace', 'over_cap'];
 
 // Render one widget page at one width and write `<name>.png`. Captures console +
-// page errors so a broken render is reported, not silently shot.
-const capture = async (browser, { url, width, name, theme = 'dark', tokens = DARK_TOKENS }) => {
+// page errors so a broken render is reported, not silently shot. `interact`
+// (optional) drives the widget into a deeper state — e.g. tapping a list row to
+// open a detail panel — after the initial preview render and before the shot.
+const capture = async (browser, { url, width, name, theme = 'dark', tokens = DARK_TOKENS, interact }) => {
   const page = await browser.newPage({ viewport: { width, height: 760 }, deviceScaleFactor: 2, colorScheme: theme });
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
@@ -97,6 +101,10 @@ const capture = async (browser, { url, width, name, theme = 'dark', tokens = DAR
     await page.addStyleTag({ content: tokens });
     // Let the widget bundle render the preview payload (+ any chart draw).
     await page.waitForTimeout(900);
+    if (interact) {
+      await interact(page);
+      await page.waitForTimeout(400);
+    }
     const root = await page.$('#widget-root');
     await (root ?? page).screenshot({ path: path.join(OUT, `${name}.png`) });
     if (errors.length) console.error(`[${name}] console errors:\n  ${errors.join('\n  ')}`);
@@ -131,6 +139,55 @@ try {
     for (const width of WIDTHS) {
       const { url } = indexUrl('plan_budget', `preview=1&theme=${theme}&tone=over`);
       await capture(browser, { url, width, name: `plan_budget-${width}-over${suffix}`, theme, tokens });
+    }
+    // smart_tasks detail views (interaction-driven): the trajectory chart —
+    // run bands + smoothed measured line — only renders inside the detail
+    // panel, so tap into it. Active = the at-risk hot-water task; ended = the
+    // succeeded EV run (exercises the met marker on the same chart path).
+    // Captured at BOTH widths like the top-level states — the chart legend and
+    // detail lines are exactly the content that wraps/overflows at 320px.
+    for (const width of WIDTHS) {
+      const { url } = indexUrl('smart_tasks', `preview=1&theme=${theme}`);
+      await capture(browser, {
+        url,
+        width,
+        name: `smart_tasks-${width}-detail${suffix}`,
+        theme,
+        tokens,
+        interact: async (page) => {
+          await page.click('[data-row-button][data-device-id="preview-hot-water"]');
+          await page.waitForSelector('svg.tchart');
+        },
+      });
+      await capture(browser, {
+        url,
+        width,
+        name: `smart_tasks-${width}-detail-ended${suffix}`,
+        theme,
+        tokens,
+        interact: async (page) => {
+          await page.click('[data-ended-button][data-history-id="preview-ev-ended"]');
+          await page.waitForSelector('svg.tchart');
+        },
+      });
+    }
+    // create_smart_task compose→preview (interaction-driven): pick the first
+    // device, then request the preview so the price-window chart (pchart) is
+    // exercised, not just the picker list. Both widths, same reason as above.
+    for (const width of WIDTHS) {
+      const { url } = indexUrl('create_smart_task', `preview=1&theme=${theme}`);
+      await capture(browser, {
+        url,
+        width,
+        name: `create_smart_task-${width}-preview${suffix}`,
+        theme,
+        tokens,
+        interact: async (page) => {
+          await page.click('[data-device-button]');
+          await page.click('[data-preview-btn]');
+          await page.waitForSelector('svg.pchart');
+        },
+      });
     }
   }
 } finally {

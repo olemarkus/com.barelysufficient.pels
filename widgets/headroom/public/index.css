@@ -79,12 +79,21 @@
      - plan-current: the one saturated accent, reserved for "now".
      - price: a muted violet (blue mixed toward red) — informational, not alarming.
      - actual: text-colour level ticks — measured reality reads as "ink".
-     - guide: reference furniture (now-line, target guides). */
+     - guide: reference furniture (now-line, target guides, planned staircases).
+     - measured: the accent-toned measured-progress LINE in the smart-task
+       trajectory, where measured is the hero series climbing toward a goal.
+       Deliberately distinct from `actual` (ink-level ticks marking completed
+       readings against plan bars); it shares plan-current's hue today but
+       names a different role, so the two can diverge without a re-sweep.
+     - band: scheduled-run shading behind a trajectory — plan-family at a low
+       mix so it reads as background context, never as a series. */
   --pw-chart-plan: color-mix(in srgb, var(--homey-color-green, #58c56a) 55%, var(--homey-background-color, #ffffff));
   --pw-chart-plan-current: var(--homey-color-green, #58c56a);
   --pw-chart-price: color-mix(in srgb, var(--homey-color-blue, #3f9fff) 55%, var(--homey-color-red, #f0696c));
   --pw-chart-actual: var(--homey-text-color, #1f252a);
   --pw-chart-guide: var(--homey-text-color-light, #6d7680);
+  --pw-chart-measured: var(--homey-color-green, #58c56a);
+  --pw-chart-band: color-mix(in srgb, var(--homey-color-green, #58c56a) 10%, transparent);
 
   /* ---- Surfaces & lines ---- */
   --pw-background: var(--homey-background-color, #ffffff);

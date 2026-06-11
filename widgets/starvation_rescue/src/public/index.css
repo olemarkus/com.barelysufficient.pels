@@ -288,9 +288,11 @@
   height: 100%;
 }
 
-/* Shaded band over the scheduled hours — the "runs here" window. */
+/* Shaded band over the scheduled hours — the "runs here" window. The shared
+   band token so every scheduled-run band across the widget family (tchart +
+   pchart) carries one intensity. */
 .pchart__band {
-  fill: color-mix(in srgb, var(--pw-chart-plan-current, #58c56a) 18%, transparent);
+  fill: var(--pw-chart-band, rgba(88, 197, 106, 0.1));
 }
 
 /* The price line — shared chart-price tone, stroked only. `stroke-width` is a

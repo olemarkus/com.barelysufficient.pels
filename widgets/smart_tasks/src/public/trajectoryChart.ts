@@ -1,6 +1,7 @@
 import {
   SMART_TASK_WIDGET_CHART_MEASURED_LABEL,
   SMART_TASK_WIDGET_CHART_PLANNED_LABEL,
+  SMART_TASK_WIDGET_CHART_RUN_BAND_LABEL,
   SMART_TASK_WIDGET_CHART_TARGET_LABEL,
 } from '../../../../packages/shared-domain/src/deadlineLabels';
 import type {
@@ -81,6 +82,54 @@ const buildPolyline = (
   .map((point, index) => `${index === 0 ? 'M' : 'L'}${xScale(point.atMs).toFixed(1)} ${yScale(point.value).toFixed(1)}`)
   .join(' ');
 
+// Lightly-smoothed path for the observed line. The 15-minute progress samples
+// carry sensor jitter that a straight polyline renders as sawtooth noise;
+// monotone cubic Hermite interpolation (Fritsch–Carlson tangents → cubic
+// Bézier segments) rounds the corners WITHOUT overshooting between samples —
+// a smoothed temperature line must never imply readings above/below what was
+// measured (a Catmull-Rom spline would). Falls back to the straight polyline
+// below 3 points, where there is nothing to smooth.
+const buildSmoothPath = (
+  points: readonly DeferredPlanHistoryChartPoint[],
+  xScale: (atMs: number) => number,
+  yScale: (value: number) => number,
+): string => {
+  if (points.length < 3) return buildPolyline(points, xScale, yScale);
+  const pts = points.map((p) => ({ x: xScale(p.atMs), y: yScale(p.value) }));
+  const n = pts.length;
+  const dx: number[] = [];
+  const slope: number[] = [];
+  for (let i = 0; i < n - 1; i += 1) {
+    dx[i] = pts[i + 1]!.x - pts[i]!.x;
+    slope[i] = dx[i]! > 0 ? (pts[i + 1]!.y - pts[i]!.y) / dx[i]! : 0;
+  }
+  // Fritsch–Carlson tangents: zero at local extrema (sign change) so each
+  // segment stays within its endpoints' y-range.
+  const tangents: number[] = [slope[0]!];
+  for (let i = 1; i < n - 1; i += 1) {
+    const prev = slope[i - 1]!;
+    const next = slope[i]!;
+    if (prev * next <= 0) {
+      tangents[i] = 0;
+      continue;
+    }
+    const w1 = 2 * dx[i]! + dx[i - 1]!;
+    const w2 = dx[i]! + 2 * dx[i - 1]!;
+    tangents[i] = (w1 + w2) / (w1 / prev + w2 / next);
+  }
+  tangents[n - 1] = slope[n - 2]!;
+  let path = `M${pts[0]!.x.toFixed(1)} ${pts[0]!.y.toFixed(1)}`;
+  for (let i = 0; i < n - 1; i += 1) {
+    const third = dx[i]! / 3;
+    const c1y = pts[i]!.y + tangents[i]! * third;
+    const c2y = pts[i + 1]!.y - tangents[i + 1]! * third;
+    path += ` C${(pts[i]!.x + third).toFixed(1)} ${c1y.toFixed(1)}`
+      + ` ${(pts[i + 1]!.x - third).toFixed(1)} ${c2y.toFixed(1)}`
+      + ` ${pts[i + 1]!.x.toFixed(1)} ${pts[i + 1]!.y.toFixed(1)}`;
+  }
+  return path;
+};
+
 // Stepped path for the planned staircase: hold the previous level horizontally
 // to the next point's x, then rise/fall vertically to its level (`step: 'end'`).
 // The producer emits an extra anchor at each booked hour's start carrying the
@@ -104,16 +153,19 @@ const buildStepPath = (
 // Colour-coded legend so the two lines + target guide read without a manual.
 // Crisp HTML text (not in-SVG, which the `preserveAspectRatio:none` scaling
 // would squish). Each present series gets one labelled item; the target item
-// carries the goal value + unit ("Target 55 °C").
+// carries the goal value + unit ("Target 55 °C"). The scheduled-run bands get
+// a swatch item (the band tint is too faint to colour a word legibly, so a
+// small tinted rect carries the colour and the label stays muted text).
 const appendLegend = (container: HTMLElement, data: DeferredPlanHistoryChartData): void => {
   const doc = container.ownerDocument;
   const legend = doc.createElement('div');
   legend.className = 'tchart__legend';
-  const addItem = (modifier: string, text: string): void => {
+  const addItem = (modifier: string, text: string): HTMLElement => {
     const item = doc.createElement('span');
     item.className = `tchart__legend-item tchart__legend-item--${modifier}`;
     item.textContent = text;
     legend.appendChild(item);
+    return item;
   };
   if (isDrawableLine(data.plannedOriginal) || isDrawableLine(data.plannedFinal)) {
     addItem('planned', SMART_TASK_WIDGET_CHART_PLANNED_LABEL);
@@ -126,7 +178,37 @@ const appendLegend = (container: HTMLElement, data: DeferredPlanHistoryChartData
     const valueText = rounded % 1 === 0 ? `${Math.round(rounded)}` : rounded.toFixed(1);
     addItem('target', `${SMART_TASK_WIDGET_CHART_TARGET_LABEL} ${valueText} ${data.unit}`);
   }
+  if (data.runBands.length > 0) {
+    const item = addItem('band', SMART_TASK_WIDGET_CHART_RUN_BAND_LABEL);
+    const swatch = doc.createElement('span');
+    swatch.className = 'tchart__legend-swatch';
+    item.prepend(swatch);
+  }
   if (legend.childNodes.length > 0) container.appendChild(legend);
+};
+
+// Scheduled-run bands — low-opacity rects behind everything, shading the spans
+// where the plan booked the device to run. Label-free ON the chart at this
+// 96-unit height (the HTML legend above the chart carries the band key);
+// xScale's clamp keeps a band that touches the window edge inside the plot.
+const appendRunBands = (
+  svg: SVGElement,
+  doc: Document,
+  bands: DeferredPlanHistoryChartData['runBands'],
+  xScale: (atMs: number) => number,
+): void => {
+  for (const band of bands) {
+    const x1 = xScale(band.fromMs);
+    const x2 = xScale(band.toMs);
+    if (x2 <= x1) continue;
+    svg.appendChild(createSvg(doc, 'rect', {
+      class: 'tchart__band',
+      x: x1.toFixed(1),
+      y: PLOT.top,
+      width: (x2 - x1).toFixed(1),
+      height: PLOT_HEIGHT,
+    }));
+  }
 };
 
 const formatAxisValue = (value: number): string => {
@@ -138,21 +220,33 @@ const formatAxisValue = (value: number): string => {
 // series reads against a value scale. The top label carries the unit ("65 °C")
 // so the axis isn't a mystery number; the bottom stays bare (same unit).
 // Skipped when the range collapses to a single value (nothing to scale).
+//
+// Each label hangs OFF its own value line — max baseline just above
+// yScale(dataMax), min baseline just below yScale(dataMin) — instead of
+// sitting on it. The y-extremes are by definition the only rows where the
+// pad zone above/below is series-free, so the labels can never be struck
+// through by the target/planned/observed lines they used to overlap.
+const Y_LABEL_GAP = 4;
 const appendYAxisLabels = (
   svg: SVGElement,
   doc: Document,
   values: readonly number[],
   unit: string | null,
+  yScale: (value: number) => number,
 ): void => {
   const dataMin = Math.min(...values);
   const dataMax = Math.max(...values);
   if (dataMax <= dataMin) return;
   const maxLabel = unit ? `${formatAxisValue(dataMax)} ${unit}` : formatAxisValue(dataMax);
+  // Clamp into the viewBox so the squished in-SVG text (non-uniform scaling)
+  // keeps its ascenders/descenders on the canvas.
+  const maxLabelY = Math.max(10, yScale(dataMax) - Y_LABEL_GAP);
+  const minLabelY = Math.min(VIEW.height - 2, yScale(dataMin) + Y_LABEL_GAP + 8);
   svg.appendChild(createSvg(doc, 'text', {
-    class: 'tchart__axis', x: PLOT.left, y: PLOT.top + 10, 'text-anchor': 'start',
+    class: 'tchart__axis', x: PLOT.left, y: maxLabelY, 'text-anchor': 'start',
   }, maxLabel));
   svg.appendChild(createSvg(doc, 'text', {
-    class: 'tchart__axis', x: PLOT.left, y: PLOT.bottom, 'text-anchor': 'start',
+    class: 'tchart__axis', x: PLOT.left, y: minLabelY, 'text-anchor': 'start',
   }, formatAxisValue(dataMin)));
 };
 
@@ -196,6 +290,9 @@ export const renderTrajectoryChart = (
     role: 'img',
   });
 
+  // 0) Scheduled-run bands behind everything.
+  appendRunBands(svg, doc, data.runBands, xScale);
+
   // 1) Target reference line behind the series.
   if (data.target !== null) {
     const y = yScale(data.target);
@@ -218,9 +315,11 @@ export const renderTrajectoryChart = (
   }
 
   // 3) Observed progress line on top — the "where we actually are" series.
+  // Lightly smoothed (monotone, no overshoot) so the 15-minute samples read
+  // as a trend, not sensor sawtooth; 2-point series stay a straight segment.
   if (hasObserved) {
     svg.appendChild(createSvg(doc, 'path', {
-      class: 'tchart__observed', d: buildPolyline(data.observed, xScale, yScale),
+      class: 'tchart__observed', d: buildSmoothPath(data.observed, xScale, yScale),
     }));
   }
 
@@ -239,7 +338,7 @@ export const renderTrajectoryChart = (
   }
 
   // 5) Y-axis scale labels so even a near-flat series reads against a value scale.
-  appendYAxisLabels(svg, doc, values, data.unit);
+  appendYAxisLabels(svg, doc, values, data.unit, yScale);
 
   // Legend ABOVE the chart: the chart is the tallest element, so in tight
   // vertical layouts a legend below it is the first thing to fall off-screen.

@@ -175,6 +175,10 @@ const VIEWPORT_WIDTH = 480;
 type ChartMeasurement = {
   // The container height expressed in viewBox units (measuredPx / scale).
   height: number;
+  // CSS px per viewBox unit (rendered width / 480). The renderer divides the
+  // price-dot radius by this so the dot's rendered size stays constant like
+  // the `vector-effect`-protected strokes. 1 = unmeasured/unscaled.
+  scale: number;
 };
 
 // Measure the chart container's height in viewBox units for the responsive
@@ -185,14 +189,14 @@ const measureChart = (chartEl: SVGSVGElement): ChartMeasurement => {
   const measured = rect?.height ?? 0;
   const width = rect?.width ?? 0;
   if (!Number.isFinite(measured) || measured <= 0 || !Number.isFinite(width) || width <= 0) {
-    return { height: VIEWPORT_MIN_HEIGHT };
+    return { height: VIEWPORT_MIN_HEIGHT, scale: 1 };
   }
   // The viewBox keeps width 480; scale the measured pixel height into viewBox
   // units so the chart fills the container's true aspect ratio (clamped in
   // chart.ts). The geometry then fills the panel in unit space, so the same
   // fraction of the card is covered at any width without a separate scale.
   const scale = width / VIEWPORT_WIDTH;
-  return { height: measured / scale };
+  return { height: measured / scale, scale };
 };
 
 // Reflect the projected summary, tab visibility, and selected tab into the DOM,
@@ -215,8 +219,8 @@ const renderView = (
     button.classList.toggle('tab--active', selected);
   });
 
-  const { height } = measureChart(chartEl);
-  renderWidget(chartEl, payload, half, height);
+  const { height, scale } = measureChart(chartEl);
+  renderWidget(chartEl, payload, half, height, scale);
 };
 
 // Tear the view down to the load-error state. Destructured so the assignments
@@ -287,8 +291,10 @@ export const createWidgetController = (
   // every sub-pixel reflow). The geometry depends only on the viewBox unit-height
   // now — the body fills the panel in unit space, so width no longer factors in.
   let lastDrawnSignature = '';
-  const measurementSignature = (m: { height: number }): string =>
-    `${Math.round(m.height)}`;
+  // Includes the px-per-unit scale: a width-only resize keeps the unit height
+  // identical (same aspect ratio) while the compensated dot radius changes.
+  const measurementSignature = (m: { height: number; scale: number }): string =>
+    `${Math.round(m.height)}@${m.scale.toFixed(2)}`;
   // Set once destroy() runs; guards in-flight async loads from rendering to a
   // detached DOM after teardown (destroy doesn't bump loadSequence).
   let destroyed = false;
