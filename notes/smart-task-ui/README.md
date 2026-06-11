@@ -229,3 +229,33 @@ See `TODO.md` for the discrete entries. The split (loosely):
   list (~50 items) that this review overlaps with substantially. The
   new entries this review adds are the ones whose framing depends on
   the personas/asymmetric-treatment thesis above.
+
+## Addendum — 2026-06-11: chart-overhaul train closures
+
+The chart-overhaul train (PRs #1677–#1681) closed three of the findings
+this review tracks. Recorded here so the sections above read as the
+review-time state, not open gaps:
+
+- **Plan-change visibility on touch** (§ "Plan-change visibility is the
+  weakest narrative"): the live page's 1-px changed-hour border and
+  tooltip-only revision reason are gone — changed hours render a dot
+  marker and the pinned scrub readout surfaces the canonical revision
+  sentence on touch (#1679); the history detail gained a
+  "Plan changed HH:MM" marker, a compare-with-initial-plan toggle, and
+  per-hour skip attribution (#1681).
+- **Postmortem cost absence**: progress/delivery samples are recorded at
+  15-minute resolution (#1678), and the history detail's hourly strip
+  pays its cost question per hour
+  (`23:00 · 1.1 kWh · 0.48 kr/kWh ≈ 0.53 kr`), with the Succeeded cost
+  narrative regaining the per-kWh average + delivered fragments (#1681).
+- **Chart comprehension**: the live dual-pane "Price horizon" chart
+  split into two single-question cards with a pinned tap readout
+  (#1679); the widget trajectory gained scheduled-run bands and a
+  smoothed measured line (#1680); the history detail is receipt-first
+  with a kind-aware question title ("Did it heat up as planned?") and a
+  compact DOM legend (#1681). The widget charts moved onto the calm
+  semantic chart-token palette (#1677).
+
+The asymmetric-treatment thesis above remains the design-of-record; the
+chart collapse policy (which now also gates the hourly strip) lives in
+`notes/v2-7-2/postmortem-chart-policy.md`.

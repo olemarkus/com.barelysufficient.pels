@@ -50,7 +50,7 @@ If you have more than three active Smart tasks, a small `+N in Smart tasks` line
 
 ### Tap a task to see its progress
 
-Tap any row to open a compact **progress trajectory**: the planned line (where PELS expects the device to be heading toward its target) overlaid with the measured line (where it actually is so far), against a dashed target reference. A colour-coded legend names each line and the target value, so you can see at a glance whether a task is keeping up with its plan or falling behind.
+Tap any row to open a compact **progress trajectory**: the planned line (where PELS expects the device to be heading toward its target) overlaid with the measured line (where it actually is so far), against a dashed target reference, with the hours PELS scheduled shaded behind them. A colour-coded legend names each line and the target value, so you can see at a glance whether a task is keeping up with its plan or falling behind.
 
 ![Smart tasks widget detail: a planned-vs-measured progress trajectory for an at-risk task, with the measured line tracking below the plan toward a dashed target line](/screenshots/widgets/smart-tasks-detail.png)
 

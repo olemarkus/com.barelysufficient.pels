@@ -181,6 +181,41 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
       hypothesis: "click" is desktop vocabulary that subtly signals the UI wasn't built for the
       device in their hand. Source: pels-copy-and-terminology + pels-ux-fit, 2026-06-10.
 
+*Chart-overhaul train review follow-ups (2026-06-11, PRs #1677–#1681). Non-blocking.*
+
+- [ ] **Grace the plan-history recorder's boot load against transient-empty reads.** The
+      `DeferredObjectivePlanHistoryRecorder` constructor does a single un-graced `deps.load()`
+      (`lib/objectives/deferredObjectives/planHistory.ts:196`); per
+      `feedback_homey_sdk_unreliable`, a transient-empty boot read followed by a finalization
+      flush silently drops up to 30 persisted history entries. Give it the trustworthy-read
+      grace the backfill key-list path already has (`objectiveStore.ts` treats an empty
+      `getKeys()` as untrusted and retries instead of committing). Source: pels-runtime-reality
+      on PR #1678, 2026-06-11.
+
+- [ ] **Split `packages/shared-domain/src/deferredPlanHistoryReceipt.ts`.** The eslint
+      `max-lines` waiver has been ratcheted twice (540→555→560 in `eslint.config.mjs`) and the
+      waiver comment itself names the file a split-out target. The producer composes six
+      asymmetric surfaces with natural seams (succeeded timeline / miss chips / abandoned
+      details / ISO-week archive / 7-day strip); split along them so the next surface doesn't
+      ratchet again. Source: pels-layering-guardian on PR #1681, 2026-06-11.
+
+- [ ] **Give the smart-task live schedule chart's encodings an on-chart decode path.** The
+      schedule card's three encodings (price-tone colour, opacity = scheduled, changed-hour dot)
+      have no legend; disclosure is scrub-readout-only. Hypothesis: a 4-word caption legend
+      closes the first-read gap; persona: the first-time/skeptic visitor who hasn't discovered
+      scrubbing. Flagged for owner walk in the PR body. Files:
+      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx` (schedule card caption). Source:
+      #1679 reviews, 2026-06-11.
+
+- [ ] **Compose a real cause for the plain-miss history hero's "Why" line.** The fallback branch
+      renders "Why: Didn't reach the target before the deadline." — circular (it restates the
+      Missed outcome it annotates). Compose an actual cause the way the revised/refined miss
+      paths already do (e.g. from delivered-vs-needed or the final plan snapshot). Persona:
+      recovering-from-mistake owner (#5). Files: `packages/shared-domain/src/deferredPlanHistory.ts`
+      (`formatPlanHistoryMissedReason` final fallback, ~line 402), rendered via
+      `packages/settings-ui/src/ui/deadlinePlanHistoryDetailHero.ts`. Source: pels-ux-fit on
+      PR #1681, 2026-06-11.
+
 - [ ] **Hoist the active-plan shape guard into shared-domain so the UI and runtime can't drift.**
       The settings-UI `coerceDeferredObjectiveActivePlans`
       (`packages/settings-ui/src/ui/deferredObjectiveActivePlans.ts`) is a leaner duplicate of the

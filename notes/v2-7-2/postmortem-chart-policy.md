@@ -92,6 +92,8 @@ The toggle was renamed in PR10 from "View schedule" → "View details" because:
 1. "Schedule" is the live deadline-plan page's vocabulary — using it on the historic detail page overloads the noun.
 2. The expanded view doesn't just show "the schedule" — it shows the scheduled-vs-observed comparison chart *plus* the per-revision log (gated on the same toggle, per the `RevisionsCard` comment in `DeadlinePlanHistoryDetail.tsx`). "Details" is the honest umbrella term for that grouping.
 
+> Update 2026-06-11 (chart-overhaul Phase 1B, PR #1681): the receipt-first pass extended the same collapse — "View details" now gates the trajectory chart **and** the cost-paying hourly strip together. The Succeeded-collapsed / Missed-expanded asymmetry in the TL;DR table is unchanged.
+
 ## Outcome headline styling
 
 PR10 promoted `hero.lead.sentence` from a muted-supporting paragraph
