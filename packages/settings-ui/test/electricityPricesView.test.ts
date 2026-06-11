@@ -104,4 +104,22 @@ describe('ElectricityPricesView', () => {
     expect(summary?.textContent).toContain('Awaiting prices');
     expect(summary?.textContent).not.toContain('Normal');
   });
+
+  it('hides the last-fetched timestamp while awaiting prices (no fetched-vs-awaiting contradiction)', () => {
+    const mount = document.createElement('div');
+    document.body.appendChild(mount);
+
+    // Post-midnight / partial-fetch window: a fetch completed (06:31) but no
+    // price covers the current hour, so the level is unknown. The card must not
+    // claim "Last fetched 06:31" next to "Awaiting prices".
+    renderElectricityPricesView(mount, buildProps({
+      currentPriceLevel: 'unknown',
+      lastFetchedShort: '06:31',
+    }));
+
+    const summary = mount.querySelector('.electricity-prices-live-summary');
+    expect(summary?.textContent).toContain('Awaiting prices');
+    expect(summary?.textContent).not.toContain('06:31');
+    expect(summary?.textContent).not.toContain('Last fetched');
+  });
 });

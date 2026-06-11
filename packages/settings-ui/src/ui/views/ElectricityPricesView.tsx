@@ -106,6 +106,12 @@ const LiveSummaryCard = ({
   // ("normal") earns "Normal"; "unknown" / null / anything else means prices
   // have not arrived yet, so we say so rather than implying an all-clear.
   const calmValue = currentPriceLevel === 'normal' ? 'Normal' : 'Awaiting prices';
+  // A usable current price means there are prices covering this hour (a chip or
+  // the "normal" level). When we're still "Awaiting prices" the last-fetched
+  // timestamp refers to a fetch that does not cover now, so showing it next to
+  // "Awaiting prices" reads as a contradiction ("fetched at 06:31" yet "no
+  // price"). Suppress the row until a current price exists.
+  const hasUsablePriceLevel = chip !== null || currentPriceLevel === 'normal';
   return (
     <section class="settings-form-card electricity-prices-live-summary">
       <h3 class="section-title">Right now</h3>
@@ -119,7 +125,9 @@ const LiveSummaryCard = ({
           <span class="price-config-status-value">{calmValue}</span>
         )}
       </div>
-      <StatusRow label="Last fetched" value={lastFetchedShort ?? '—'} />
+      {hasUsablePriceLevel ? (
+        <StatusRow label="Last fetched" value={lastFetchedShort ?? '—'} />
+      ) : null}
     </section>
   );
 };
