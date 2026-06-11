@@ -85,10 +85,12 @@ export type InProgressRecord = Omit<
   // history detail can show "Replanned N times". 0 when no plannable
   // revision was ever observed.
   revisionCount: number;
-  // Hourly downsample of progress observations, keyed by hour-aligned `atMs`.
-  // Each cycle upserts the latest reading for the current hour; cap is
-  // applied at drain so the in-memory map stays bounded even for runs that
-  // somehow exceed the cap. Drained into the entry at finalization.
+  // 15-minute downsample of progress observations, keyed by quarter-hour-
+  // aligned bucket start (`progressSampleBucketMs`). Each cycle upserts the
+  // latest reading for the current bucket; runs long enough to exceed
+  // `PROGRESS_SAMPLES_PER_ENTRY_CAP` are re-bucketed onto a coarser grid
+  // (deterministic eviction, full-run coverage preserved) so the in-memory
+  // map stays bounded. Drained into the entry at finalization.
   progressSamples: Map<number, DeferredObjectivePlanHistoryProgressSample>;
   // Total useful kWh delivered to the device across the run. Summed from
   // `recordHourlyDelivery` contributions; persisted only when at least one

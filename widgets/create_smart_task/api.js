@@ -5197,6 +5197,7 @@ var ONE_HOUR_MS5 = 60 * ONE_MINUTE_MS;
 
 // lib/objectives/deferredObjectives/planHistoryV4Helpers.ts
 var ONE_HOUR_MS6 = 60 * 60 * 1e3;
+var PROGRESS_SAMPLE_INTERVAL_MS = 15 * 60 * 1e3;
 
 // lib/objectives/deferredObjectives/planHistoryInProgressState.ts
 var INTERVAL_MERGE_GAP_MS = 5 * 60 * 1e3;

@@ -136,12 +136,14 @@ export type DeferredObjectivePlanHistoryHourlyContribution = {
   tone: DeferredObjectivePlanHistoryHourlyTone;
 };
 
-// Hourly snapshot of objective progress while a run is in flight. The
-// recorder maintains a per-run ring keyed by hour-aligned `atMs` and drains
-// it into the entry at finalization. Each sample carries whichever progress
-// value applies to the objective kind (temperature → `valueC`, EV SoC →
-// `valuePercent`); the other field is always `null` so the consumer never
-// has to branch on `objectiveKind` to pick the field. Added in schema v4.
+// Snapshot of objective progress while a run is in flight. The recorder
+// maintains a per-run ring keyed on a 15-minute bucket grid (hourly before
+// v2.11.x — consumers must not assume a cadence: sort by `atMs` and tolerate
+// mixed spacing) and drains it into the entry at finalization. Each sample
+// carries whichever progress value applies to the objective kind
+// (temperature → `valueC`, EV SoC → `valuePercent`); the other field is
+// always `null` so the consumer never has to branch on `objectiveKind` to
+// pick the field. Added in schema v4.
 export type DeferredObjectivePlanHistoryProgressSample = {
   atMs: number;
   valueC: number | null;
@@ -233,14 +235,16 @@ export type DeferredObjectivePlanHistoryEntry = {
   // load — the history detail treats absence as "unknown" and falls back to
   // a generic copy.
   revisionCount?: number;
-  // Hourly downsample of progress observations across the run, drained from
-  // the recorder's in-memory ring at finalization. Capped at
-  // `PROGRESS_SAMPLES_PER_ENTRY_CAP` (48) so the entry stays bounded in JSON
-  // size regardless of how long the run was; the cap matches a 2-day window
-  // at hourly granularity which is wider than any deadline we expect to
-  // ship. Optional — legacy v3 entries (and runs that finalized before this
-  // field shipped) read with the field absent and the UI falls back to a
-  // headline-only summary. Added in schema v4.
+  // 15-minute downsample of progress observations across the run (hourly on
+  // entries finalized before v2.11.x — cadence-agnostic consumers required),
+  // drained from the recorder's in-memory ring at finalization. Capped at
+  // `PROGRESS_SAMPLES_PER_ENTRY_CAP` (200, ~50 h at the 15-minute grid —
+  // wider than any same-day deadline; longer runs are re-bucketed to a
+  // coarser grid rather than truncated) so the entry stays bounded in JSON
+  // size regardless of how long the run was. Optional — legacy v3 entries
+  // (and runs that finalized before this field shipped) read with the field
+  // absent and the UI falls back to a headline-only summary. Added in
+  // schema v4.
   progressSamples?: DeferredObjectivePlanHistoryProgressSample[];
   // Total useful energy delivered to the device across the run, summed from
   // the runtime hourly delivery feed. Optional — a run that finalizes
@@ -282,12 +286,12 @@ export type DeferredObjectivePlanHistoryEntry = {
   hourlyContributions?: DeferredObjectivePlanHistoryHourlyContribution[];
 };
 
-// Runtime cap on `progressSamples` per entry lives in
-// `lib/objectives/deferredObjectives/planHistory.ts` as a local constant — runtime
-// code must not value-import contract source files (see
-// `test/runtimePackaging.test.ts`). The Settings UI (PRs 2–7 of the v2.7.2
-// train) will surface its own constant or read the array length directly,
-// so we deliberately don't export the cap here until a consumer needs it.
+// Runtime cap on `progressSamples` per entry (200) lives in
+// `lib/objectives/deferredObjectives/planHistoryV4Helpers.ts` as a local
+// constant (`PROGRESS_SAMPLES_PER_ENTRY_CAP`) — runtime code must not
+// value-import contract source files (see `test/runtimePackaging.test.ts`).
+// The Settings UI reads the array length directly, so we deliberately don't
+// export the cap here until a consumer needs it.
 
 // Hourly progress sample with the kind-split (°C/%) pair already resolved to a
 // single unit-agnostic number. This is the shape consumers receive — the raw

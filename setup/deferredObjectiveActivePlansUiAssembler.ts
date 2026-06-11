@@ -9,8 +9,8 @@ import {
 } from '../packages/shared-domain/src/deferredActivePlanResolvedView';
 import type { DeferredObjectivePlanHistoryRecorder } from '../lib/objectives/deferredObjectives/planHistory';
 
-// Stitches the live in-progress trajectory (start progress + hourly observed
-// samples) onto the active-plans UI snapshot so the smart-tasks widget can draw
+// Stitches the live in-progress trajectory (start progress + 15-minute-grid
+// observed samples) onto the active-plans UI snapshot so the smart-tasks widget can draw
 // a planned-vs-actual progress chart for a still-running task. The observed
 // readings live on the plan-history recorder's in-flight records, not on the
 // active-plan store, so this is the one place the two are merged — and only on
