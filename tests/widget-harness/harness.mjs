@@ -13,6 +13,9 @@ import { WIDGETS, respond, settings } from './mockData.mjs';
 
 // Dark Homey token set (mirrors tests/widget-shots/shoot.mjs). One canonical
 // value per token so the widgets render as Homey resolves them at runtime.
+// Injected ONLY in dark theme: light is the no-token state, where every
+// `var(--homey-*, fallback)` resolves to its in-CSS light fallback — the same
+// way a standalone preview renders.
 const DARK_TOKENS = `
 :root, body, .homey-dark-mode {
   --homey-background-color:#161b21; --homey-color-mono-050:#232b33; --homey-color-mono-100:#1f262d;
@@ -32,14 +35,24 @@ const DARK_TOKENS = `
 }
 /* An iframe's default canvas is white; give the widget document the dark Homey
    card surface so the tile reads dark (a transparent body would show white). */
-html, body { background: var(--homey-color-mono-100, #161b21); margin: 0; height: 100%; }
+html, body { background: var(--homey-color-mono-100, #161b21); }
+`;
+
+// Theme-independent base: fonts + Homey's real widget-padding classes
+// (apps.developer.homey.app → widgets → styling): the dashboard insets widget
+// content by these amounts, not the harness. Replicate them so the margins
+// match the real dashboard exactly.
+const BASE_STYLE = `
+html, body { margin: 0; height: 100%; }
 html, body, * { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif; }
-/* Homey's real widget-padding classes (apps.developer.homey.app → widgets →
-   styling): the dashboard insets widget content by these amounts, not the
-   harness. Replicate them so the margins match the real dashboard exactly. */
 .homey-widget { padding: var(--homey-su-4, 16px); }
 .homey-widget-small { padding: var(--homey-su-2, 8px); }
 .homey-widget-full { padding: 0; }
+`;
+
+// Light theme injects NO tokens (fallbacks rule) — only the light card canvas.
+const LIGHT_CANVAS = `
+html, body { background: #ffffff; }
 `;
 
 // Current scenario per widget id (defaults to each widget's first scenario).
@@ -65,7 +78,8 @@ window.__mount = (win) => {
 // widget's own `./index.css` / `./index.js` refs to absolute paths instead.
 const buildSrcdoc = async (id) => {
   const html = await fetch(`/widgets/${id}/public/index.html`).then((r) => r.text());
-  const headInject = `<style>${DARK_TOKENS}</style>`
+  const themeStyle = theme === 'dark' ? DARK_TOKENS : LIGHT_CANVAS;
+  const headInject = `<style>${BASE_STYLE}${themeStyle}</style>`
     + `<script>window.Homey={};window.__W=${JSON.stringify(id)};</script>`;
   const tailInject = `<script>parent.__mount(window);</script>`;
   return html
