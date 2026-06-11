@@ -1,3 +1,4 @@
+import { handleWidgetClientLog, type WidgetClientLogContext } from '../../_shared/widgetClientLogApi';
 import { buildHeadroomWidgetPayload, type HeadroomWidgetInput } from './headroomWidgetPayload';
 import type { HeadroomWidgetPayload } from './headroomWidgetTypes';
 
@@ -20,3 +21,7 @@ export const getHeadroom = async ({ homey }: WidgetApiContext): Promise<Headroom
   const status = readStatus(homey.settings.get(PELS_STATUS_SETTING));
   return buildHeadroomWidgetPayload({ status });
 };
+
+export const logClientError = (context: WidgetClientLogContext): { ok: boolean } => (
+  handleWidgetClientLog('headroom', context)
+);

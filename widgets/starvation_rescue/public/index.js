@@ -169,6 +169,75 @@
     return controller;
   };
 
+  // widgets/_shared/widgetClientLog.ts
+  var WIDGET_CLIENT_LOG_PATH = "/log";
+  var MAX_PENDING = 20;
+  var SUPPRESS_WINDOW_MS = 60 * 1e3;
+  var normalizeError = (error) => {
+    if (error === void 0) return void 0;
+    if (error instanceof Error) return error.stack ?? error.message;
+    if (typeof error === "string") return error;
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return String(error);
+    }
+  };
+  var createWidgetErrorReporter = (params) => {
+    const pending = [];
+    const lastAcceptedAt = /* @__PURE__ */ new Map();
+    const post = async (entry) => {
+      const homey = params.getHomey();
+      if (!homey) throw new Error("widget log: no Homey client");
+      await homey.api("POST", WIDGET_CLIENT_LOG_PATH, entry);
+    };
+    const drain = async () => {
+      while (pending.length > 0) {
+        await post(pending[0]);
+        pending.shift();
+      }
+    };
+    const queue = (entry) => {
+      const last = pending[pending.length - 1];
+      if (last && last.level === entry.level && last.message === entry.message) {
+        last.detail = entry.detail;
+        last.timestamp = entry.timestamp;
+        return;
+      }
+      if (pending.length >= MAX_PENDING) pending.shift();
+      pending.push(entry);
+    };
+    const flush = () => {
+      void drain().catch(() => {
+      });
+    };
+    const report = (level, message, error) => {
+      if (!params.getHomey()) return;
+      const now = params.now();
+      const key = `${level}:${message}`;
+      const seenAt = lastAcceptedAt.get(key);
+      if (seenAt !== void 0 && now - seenAt < SUPPRESS_WINDOW_MS) return;
+      lastAcceptedAt.set(key, now);
+      const entry = {
+        level,
+        widget: params.widget,
+        message,
+        detail: normalizeError(error),
+        timestamp: now
+      };
+      void (async () => {
+        try {
+          await drain();
+          await post(entry);
+        } catch {
+          queue(entry);
+        }
+      })();
+    };
+    return { report, flush };
+  };
+  var widgetErrorReporter = (widget, getHomey) => createWidgetErrorReporter({ widget, getHomey, now: () => Date.now() });
+
   // widgets/starvation_rescue/src/public/previewPayloads.ts
   var PREVIEW_STARVATION_RESCUE_DEVICES = {
     state: "ready",
@@ -1091,33 +1160,35 @@
     if (eventTarget.closest("[data-confirm-back]")) return { kind: "back" };
     return null;
   };
-  var fetchDevices = async (homeyRef, usePreviewData) => {
+  var fetchDevices = async (homeyRef, usePreviewData, reporter) => {
     if (usePreviewData) return PREVIEW_STARVATION_RESCUE_DEVICES;
     if (!homeyRef) return { state: "empty", subtitle: C2.notReady };
     try {
-      return await homeyRef.api("GET", "/devices");
+      const payload = await homeyRef.api("GET", "/devices");
+      reporter.flush();
+      return payload;
     } catch (error) {
-      console.error("Failed to load starvation_rescue widget", error);
+      reporter.report("error", "Failed to load starvation_rescue widget", error);
       return { state: "empty", subtitle: C2.loadError };
     }
   };
-  var fetchPreview = async (homeyRef, usePreviewData, deviceId) => {
+  var fetchPreview = async (homeyRef, usePreviewData, deviceId, reporter) => {
     if (usePreviewData) return PREVIEW_RESPONSE;
     if (!homeyRef) return { ok: false, reason: "unavailable" };
     try {
       return await homeyRef.api("POST", "/preview", { deviceId });
     } catch (error) {
-      console.error("Failed to preview starvation rescue", error);
+      reporter.report("error", "Failed to preview starvation rescue", error);
       return { ok: false, reason: "unavailable" };
     }
   };
-  var submitRescue = async (homeyRef, usePreviewData, deviceId, deadlineAtMs) => {
+  var submitRescue = async (homeyRef, usePreviewData, deviceId, deadlineAtMs, reporter) => {
     if (usePreviewData) return { ok: true, runsCurrentHour: false };
     if (!homeyRef) return { ok: false, reason: "unavailable" };
     try {
       return await homeyRef.api("POST", "/rescue", { deviceId, deadlineAtMs });
     } catch (error) {
-      console.error("Failed to create starvation rescue", error);
+      reporter.report("error", "Failed to create starvation rescue", error);
       return { ok: false, reason: "unavailable" };
     }
   };
@@ -1134,6 +1205,7 @@
     let doneResetTimer = null;
     let destroyed = false;
     let requestSeq = 0;
+    const reporter = widgetErrorReporter("starvation_rescue", () => homeyRef);
     const render = () => {
       renderWidget(targets, devicesPayload, view);
     };
@@ -1154,7 +1226,7 @@
     };
     const runPreview = async (device) => {
       const token = ++requestSeq;
-      const response = await fetchPreview(homeyRef, usePreviewData, device.deviceId);
+      const response = await fetchPreview(homeyRef, usePreviewData, device.deviceId, reporter);
       if (token !== requestSeq || view.kind !== "confirm") return;
       view = { ...view, response };
       render();
@@ -1167,7 +1239,7 @@
       view = { ...view, submitting: true, error: null };
       const token = ++requestSeq;
       render();
-      const result = await submitRescue(homeyRef, usePreviewData, device.deviceId, deadlineAtMs);
+      const result = await submitRescue(homeyRef, usePreviewData, device.deviceId, deadlineAtMs, reporter);
       if (token !== requestSeq || view.kind !== "confirm") return;
       view = result.ok ? { kind: "done", ranNow: result.runsCurrentHour } : { ...view, submitting: false, error: resolveStarvationRescueRejectCopy(result.reason) };
       render();
@@ -1209,7 +1281,7 @@
       const searchParams = new URLSearchParams(widgetWindow.location.search);
       usePreviewData = searchParams.get("preview") === "1";
       applyPreviewTheme(widgetDocument, searchParams);
-      const payload = await fetchDevices(homeyRef, usePreviewData);
+      const payload = await fetchDevices(homeyRef, usePreviewData, reporter);
       if (destroyed) return;
       if (loadId === loadSequence) {
         devicesPayload = payload;

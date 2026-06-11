@@ -45,7 +45,7 @@ var PLAN_PRICE_WIDGET_EMPTY = {
   budgetDisabled: "Daily budget disabled",
   noData: "No budget data available",
   tomorrowPending: "Tomorrow's budget not available yet",
-  loadError: "Unable to load widget"
+  loadError: "Could not load. Reopen the dashboard."
 };
 var ORE_PER_KWH_LABEL = "\xF8re/kWh";
 var PLACEHOLDER_UNIT = "price units";

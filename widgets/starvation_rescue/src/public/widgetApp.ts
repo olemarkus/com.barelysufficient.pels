@@ -10,6 +10,7 @@ import {
   type WidgetHomeyBase,
   type WidgetWindowBase,
 } from '../../../_shared/widgetRuntime';
+import { widgetErrorReporter, type WidgetErrorReporter } from '../../../_shared/widgetClientLog';
 import { PREVIEW_STARVATION_RESCUE_DEVICES } from './previewPayloads';
 import { renderWidget, type RenderTargets, type ViewState } from './render';
 import type {
@@ -155,13 +156,19 @@ export const resolveClickAction = (eventTarget: EventTarget | null): ClickAction
 const fetchDevices = async (
   homeyRef: WidgetHomey | null,
   usePreviewData: boolean,
+  reporter: WidgetErrorReporter,
 ): Promise<StarvationRescueDevicesPayload> => {
   if (usePreviewData) return PREVIEW_STARVATION_RESCUE_DEVICES;
   if (!homeyRef) return { state: 'empty', subtitle: C.notReady };
   try {
-    return await homeyRef.api('GET', '/devices') as StarvationRescueDevicesPayload;
+    const payload = await homeyRef.api('GET', '/devices') as StarvationRescueDevicesPayload;
+    // GET succeeded → the app is reachable; drain any backlog queued while it
+    // was down. (A failed load returns the same `empty` shape as a no-devices
+    // success, so the success path — not the payload — is the reachable signal.)
+    reporter.flush();
+    return payload;
   } catch (error) {
-    console.error('Failed to load starvation_rescue widget', error);
+    reporter.report('error', 'Failed to load starvation_rescue widget', error);
     return { state: 'empty', subtitle: C.loadError };
   }
 };
@@ -170,13 +177,14 @@ const fetchPreview = async (
   homeyRef: WidgetHomey | null,
   usePreviewData: boolean,
   deviceId: string,
+  reporter: WidgetErrorReporter,
 ): Promise<StarvationRescuePreviewResponse> => {
   if (usePreviewData) return PREVIEW_RESPONSE;
   if (!homeyRef) return { ok: false, reason: 'unavailable' };
   try {
     return await homeyRef.api('POST', '/preview', { deviceId }) as StarvationRescuePreviewResponse;
   } catch (error) {
-    console.error('Failed to preview starvation rescue', error);
+    reporter.report('error', 'Failed to preview starvation rescue', error);
     return { ok: false, reason: 'unavailable' };
   }
 };
@@ -188,6 +196,7 @@ const submitRescue = async (
   // Echo the deadline the PREVIEW resolved so the server persists exactly what
   // the user saw (not a fresh now+3h) — see StarvationRescueRequest.
   deadlineAtMs: number,
+  reporter: WidgetErrorReporter,
 ): Promise<StarvationRescueCreateResponse> => {
   // Design preview: the fixture schedules from the next hour on (all future), so
   // the honest flash is "queued".
@@ -196,7 +205,7 @@ const submitRescue = async (
   try {
     return await homeyRef.api('POST', '/rescue', { deviceId, deadlineAtMs }) as StarvationRescueCreateResponse;
   } catch (error) {
-    console.error('Failed to create starvation rescue', error);
+    reporter.report('error', 'Failed to create starvation rescue', error);
     return { ok: false, reason: 'unavailable' };
   }
 };
@@ -226,6 +235,7 @@ export const createWidgetController = (params: {
   // Latest-request-wins token: a slow preview/create that resolves after the
   // user backed out must not clobber the current view.
   let requestSeq = 0;
+  const reporter = widgetErrorReporter('starvation_rescue', () => homeyRef);
 
   const render = (): void => {
     renderWidget(targets, devicesPayload, view);
@@ -251,7 +261,7 @@ export const createWidgetController = (params: {
 
   const runPreview = async (device: StarvationRescueDevice): Promise<void> => {
     const token = ++requestSeq;
-    const response = await fetchPreview(homeyRef, usePreviewData, device.deviceId);
+    const response = await fetchPreview(homeyRef, usePreviewData, device.deviceId, reporter);
     // Drop a preview that resolved after navigation (stale).
     if (token !== requestSeq || view.kind !== 'confirm') return;
     view = { ...view, response };
@@ -269,7 +279,7 @@ export const createWidgetController = (params: {
     view = { ...view, submitting: true, error: null };
     const token = ++requestSeq;
     render();
-    const result = await submitRescue(homeyRef, usePreviewData, device.deviceId, deadlineAtMs);
+    const result = await submitRescue(homeyRef, usePreviewData, device.deviceId, deadlineAtMs, reporter);
     if (token !== requestSeq || view.kind !== 'confirm') return;
     // Success → the done flash (success label only after `ok:true`). Otherwise
     // stay on the confirm view with a retryable error line.
@@ -315,7 +325,7 @@ export const createWidgetController = (params: {
     const searchParams = new URLSearchParams(widgetWindow.location.search);
     usePreviewData = searchParams.get('preview') === '1';
     applyPreviewTheme(widgetDocument, searchParams);
-    const payload = await fetchDevices(homeyRef, usePreviewData);
+    const payload = await fetchDevices(homeyRef, usePreviewData, reporter);
     if (destroyed) return;
     if (loadId === loadSequence) {
       devicesPayload = payload;

@@ -85,7 +85,7 @@ const browserTypeScriptRules = {
 // AppContext injection seam. Every other lib/** module depends on the SDK-free
 // ports in lib/ports/homeyRuntime instead.
 const HOMEY_LEAF_ALLOWLIST = [
-  'lib/app/appContext.ts',                   // AppContext type — the injection seam (CLAUDE.md: long-term inhabitant)
+  'lib/app/appContext.ts',                   // AppContext type — the injection seam (AGENTS.md: long-term inhabitant)
   'lib/device/deviceTransport.ts',           // the SDK transport leaf
   'lib/device/liveFeed.ts',                  // local Web API socket.io subscription
   'lib/device/transport/managerHomeyApi.ts', // local HTTP API client
@@ -820,6 +820,25 @@ export default tseslint.config(
     files: ['lib/plan/restore/helpers.ts'],
     rules: {
       'max-lines': ['warn', { max: 710, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  {
+    // The settings UI and dashboard widgets run inside Homey's WebView, whose
+    // console is unreachable on the mobile dashboard — a `console.*` there is a
+    // diagnostic that silently disappears (the original "Unable to load with no
+    // explanation"). Route problems through the app instead: settings UI via
+    // `logSettings*` (→ `settings_ui_log`), widgets via the shared
+    // `widgetErrorReporter` (→ each widget's `/log`). Both land in the Homey app
+    // log. Generated widget bundles (`widgets/**/*.js`) are already ignored.
+    name: 'no-console-in-webview-surfaces',
+    files: [
+      'packages/settings-ui/src/**/*.ts',
+      'packages/settings-ui/src/**/*.tsx',
+      'widgets/*/src/**/*.ts',
+      'widgets/_shared/**/*.ts',
+    ],
+    rules: {
+      'no-console': 'error',
     },
   },
 );

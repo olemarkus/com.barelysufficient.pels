@@ -38,8 +38,13 @@ var HEADROOM_WIDGET_COPY = {
   safePaceLabel: "Safe pace now",
   /** Shown when there is no status to render yet. */
   noDataSubtitle: "No data yet",
-  /** Shown when the widget API call fails. */
-  loadErrorSubtitle: "Unable to load"
+  /**
+   * Shown when the widget API call fails. The dominant cause is the Homey host
+   * orphaning the widget instance ("Widget Not Found"), which only a fresh
+   * dashboard open clears — so the copy names that remedy. Kept short: it renders
+   * in the headroom tile's large value slot.
+   */
+  loadErrorSubtitle: "Reopen the dashboard"
 };
 
 // widgets/headroom/src/headroomWidgetConstants.ts

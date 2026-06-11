@@ -70,6 +70,7 @@ const buildDom = () => {
         <p class="muted settings-current-mode__hint">Priorities and temperatures stay in Modes.</p>
       </section>
       <button data-settings-target="limits"></button>
+      <button data-settings-target="budget-adjust"></button>
       <button data-settings-target="devices"></button>
       <button data-settings-target="modes"></button>
       <button data-settings-target="price"></button>
@@ -115,7 +116,8 @@ const buildDom = () => {
       <div id="priority-list"></div>
       <p id="priority-empty" hidden></p>
     </section>
-    <section class="panel hidden" data-panel="budget">
+    <section class="panel hidden" id="budget-panel" data-panel="budget">
+      <div id="budget-redesign-surface"></div>
     </section>
     <section class="panel hidden" id="usage-panel" data-panel="usage">
       <div id="power-list"></div>
@@ -181,18 +183,7 @@ const buildDom = () => {
     </section>
     <section class="panel hidden" data-panel="advanced">
       <div id="debug-logging-checkboxes"></div>
-      <form id="daily-budget-advanced-form">
-        <md-filled-select id="daily-budget-controlled-weight">
-          <md-select-option value="0"><div slot="headline">Balanced</div></md-select-option>
-          <md-select-option value="1"><div slot="headline">Conservative</div></md-select-option>
-        </md-filled-select>
-        <md-filled-select id="daily-budget-price-flex-share">
-          <md-select-option value="0.3"><div slot="headline">Low</div></md-select-option>
-          <md-select-option value="0.6"><div slot="headline">Medium</div></md-select-option>
-          <md-select-option value="0.85"><div slot="headline">High</div></md-select-option>
-        </md-filled-select>
-        <md-switch id="daily-budget-breakdown"></md-switch>
-      </form>
+      <md-switch id="daily-budget-breakdown"></md-switch>
     </section>
     <div id="device-detail-overlay" hidden>
       <div id="device-detail-panel">
@@ -301,6 +292,85 @@ describe('settings script', () => {
     expect(rows.length).toBe(1);
     expect(rows[0].querySelector('.device-row__name')?.textContent).toContain('Heater');
     expect(document.querySelector('#empty-state')?.hasAttribute('hidden')).toBe(true);
+  });
+
+  it('opens Budget → Adjust with a Settings return target via the budget-adjust deep link', async () => {
+    await loadSettingsScript();
+    const { showTab } = await import('../src/ui/realtime.ts');
+    showTab('settings');
+
+    (document.querySelector('[data-settings-target="budget-adjust"]') as HTMLButtonElement).click();
+    await flushPromises();
+
+    // The virtual 'budget-adjust' target must open the budget panel — and must
+    // NOT leak into showTab (it matches no data-panel and would hide every
+    // panel, blanking the app).
+    const budgetPanel = document.querySelector('#budget-panel');
+    const settingsPanel = document.querySelector('#settings-panel');
+    expect(budgetPanel?.classList.contains('hidden')).toBe(false);
+    expect(settingsPanel?.classList.contains('hidden')).toBe(true);
+
+    // The Adjust view is open with a Done action.
+    expect(document.querySelector('#budget-redesign-adjust-view')).not.toBeNull();
+    const toggle = document.querySelector('#budget-redesign-mode-toggle');
+    expect(toggle?.textContent).toContain('Done');
+    // The session came from Settings, so Done stays enabled even though the
+    // daily budget is disabled (the pinned-adjust state). Preact clears a
+    // previously-set `disabled` property with '' rather than removing it,
+    // so assert on truthiness.
+    expect(Boolean((toggle as HTMLElement & { disabled?: boolean | string }).disabled)).toBe(false);
+
+    (toggle as HTMLElement).click();
+    await flushPromises();
+    expect(settingsPanel?.classList.contains('hidden')).toBe(false);
+    expect(budgetPanel?.classList.contains('hidden')).toBe(true);
+
+    // The settings-initiated session fully ended: a direct Budget-tab visit
+    // must not inherit the 'settings' referrer (the fixture's budget is
+    // disabled, so the view pins to Adjust and the Done toggle goes back to
+    // being disabled once the referrer is reset).
+    (document.querySelector('.tab[data-tab="budget"]') as HTMLButtonElement).click();
+    await flushPromises();
+    expect(budgetPanel?.classList.contains('hidden')).toBe(false);
+    const pinnedToggle = document.querySelector('#budget-redesign-mode-toggle');
+    expect(Boolean((pinnedToggle as HTMLElement & { disabled?: boolean | string }).disabled)).toBe(true);
+  });
+
+  it('toasts on an unconfirmed tab-bar exit with unsaved budget edits, but stays silent after a confirmed Done', async () => {
+    await loadSettingsScript();
+    const { showTab } = await import('../src/ui/realtime.ts');
+    const { showToast } = await import('../src/ui/toast.ts');
+    showTab('settings');
+
+    const openAdjustAndDirtyDraft = async () => {
+      (document.querySelector('[data-settings-target="budget-adjust"]') as HTMLButtonElement).click();
+      await flushPromises();
+      const enableSwitch = document.querySelector('#budget-redesign-enabled') as HTMLElement & { selected?: boolean };
+      enableSwitch.selected = true;
+      enableSwitch.dispatchEvent(new Event('change', { bubbles: true }));
+      await flushPromises();
+    };
+
+    // Unconfirmed exit via the tab bar discards with a notice.
+    await openAdjustAndDirtyDraft();
+    vi.mocked(showToast).mockClear();
+    showTab('devices');
+    await flushPromises();
+    expect(showToast).toHaveBeenCalledWith('Discarded unsaved budget changes.');
+
+    // The confirmed Done path stays silent — the user already confirmed the
+    // discard on the two-step button.
+    showTab('settings');
+    await openAdjustAndDirtyDraft();
+    vi.mocked(showToast).mockClear();
+    const toggle = document.querySelector('#budget-redesign-mode-toggle') as HTMLElement;
+    toggle.click();
+    await flushPromises();
+    expect(toggle.textContent).toContain('Click again to discard');
+    toggle.click();
+    await flushPromises();
+    expect(document.querySelector('#settings-panel')?.classList.contains('hidden')).toBe(false);
+    expect(showToast).not.toHaveBeenCalledWith('Discarded unsaved budget changes.');
   });
 
   it('uses bootstrap settings to avoid refetching primed values during initial load', async () => {

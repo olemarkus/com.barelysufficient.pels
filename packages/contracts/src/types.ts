@@ -170,7 +170,7 @@ export type DeviceDescriptor = {
     priority?: number;
     // Nameplate / configured power hints — a planning input, NOT measured
     // telemetry (`measuredPowerKw` is the observed value). Kept on the
-    // descriptor per the CLAUDE.md invariant that estimated power stays distinct
+    // descriptor per the lib/device/AGENTS.md invariant that estimated power stays distinct
     // from observation.
     powerKw?: number;
     expectedPowerKw?: number;

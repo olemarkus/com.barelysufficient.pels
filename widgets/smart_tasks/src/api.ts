@@ -1,3 +1,4 @@
+import { handleWidgetClientLog, type WidgetClientLogContext } from '../../_shared/widgetClientLogApi';
 import type { SettingsUiDeferredObjectivePlanHistoryPayload } from '../../../packages/contracts/src/settingsUiApi';
 import type { SmartTaskHistoryHostApi } from '../../../packages/contracts/src/widgetHostApi';
 import { buildSmartTasksWidgetPayload, ENDED_WINDOW_MS } from './smartTasksWidgetPayload';
@@ -50,3 +51,7 @@ export const getSmartTasks = async ({ homey }: WidgetApiContext): Promise<SmartT
     timeZone: readTimeZone(homey),
   });
 };
+
+export const logClientError = (context: WidgetClientLogContext): { ok: boolean } => (
+  handleWidgetClientLog('smart_tasks', context)
+);

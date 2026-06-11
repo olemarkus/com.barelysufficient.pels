@@ -24,7 +24,7 @@ export type {
  * straight through with no runtime adapter.
  *
  * Kept deliberately separate from `PlanInputDevice` per the architecture
- * boundary (CLAUDE.md: accept duplication when consolidation would cross a
+ * boundary (AGENTS.md: accept duplication when consolidation would cross a
  * layering boundary). `stepPowerCalibration` is narrowed to the one field the
  * controller reads (`deliveryPowerKw`); the planner's richer
  * `StepPowerCalibrationView` value type remains assignable.

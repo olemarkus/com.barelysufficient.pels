@@ -1,3 +1,29 @@
+/**
+ * Rebuild orchestration for the planning layer: PlanService owns WHEN a plan
+ * is rebuilt and everything around the build, never WHAT the plan decides —
+ * shed/restore decisions belong to `PlanEngine`/`PlanBuilder`, to which every
+ * build and actuation call is forwarded. Invariants callers can rely on:
+ * plan operations (rebuild, reconcile, manual shed) are serialized through
+ * one promise queue (`syncLivePlanStateInline` runs un-queued by design — the
+ * executor invokes it inside an already-queued actuation); the first rebuild
+ * is held behind the snapshot warmup gate (snapshot-ready or bounded timeout),
+ * so the first plan normally sees a populated snapshot — downstream code must
+ * still tolerate an empty one on the timeout path; and on rebuild, actuation
+ * only happens when the plan's action signature changed (or the executor
+ * reports stable-plan actuation) — detail/meta-only changes update snapshots,
+ * status, and logs without touching devices. This class also owns the published plan snapshots the
+ * settings UI and flow layer read, the `PlanStatusWriter`, and the
+ * signature-deduped structured rebuild/overview logging.
+ *
+ * Reconcile vs rebuild: `reconcileLatestPlanState` re-applies the EXISTING
+ * committed plan when live device state has drifted from planned intent (no
+ * new decisions, `'reconcile'` actuation mode, skipped in dry-run), while
+ * `rebuildPlanFromCache` runs the full builder pipeline and may change
+ * decisions. `syncLivePlanState*` is cheaper than either: it settles pending
+ * command bookkeeping and refreshes the published snapshot, with no actuation.
+ *
+ * Governing references: `docs/technical.md`, `lib/plan/AGENTS.md`.
+ */
 import { randomUUID } from 'node:crypto';
 import type { SettingsPort, FlowPort, ApiPort } from '../ports/homeyRuntime';
 import { PriceLevel } from '../price/priceLevels';

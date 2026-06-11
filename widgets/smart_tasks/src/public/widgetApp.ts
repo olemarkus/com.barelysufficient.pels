@@ -2,11 +2,13 @@ import { SMART_TASK_WIDGET_LOAD_ERROR_SUBTITLE } from '../../../../packages/shar
 import {
   applyPreviewTheme,
   createRefreshLoop,
+  reloadIfOrphaned,
   installWidget as installSharedWidget,
   type WidgetController as SharedWidgetController,
   type WidgetHomeyBase,
   type WidgetWindowBase,
 } from '../../../_shared/widgetRuntime';
+import { widgetErrorReporter } from '../../../_shared/widgetClientLog';
 import { PREVIEW_SMART_TASKS_PAYLOAD } from './previewPayloads';
 import { renderLoading, renderWidget, type RenderTargets } from './render';
 import type { SmartTasksWidgetPayload } from '../smartTasksWidgetTypes';
@@ -234,6 +236,7 @@ export const createWidgetController = (params: {
   let consecutiveLoadFailures = 0;
   // Guards in-flight loads from rendering into a torn-down widget after destroy().
   let destroyed = false;
+  const reporter = widgetErrorReporter('smart_tasks', () => homeyRef);
   // Until the first API response lands, show the loading state instead of the
   // blank empty state — the app can take many seconds to respond after a restart
   // (cold-start device enumeration / busy event loop), and a blank panel for that
@@ -252,6 +255,28 @@ export const createWidgetController = (params: {
     reportHeight?.();
   };
 
+  const handleLoadFailure = (error: unknown): void => {
+    // A host-orphaned instance ("Widget Not Found") loops forever on retry; a
+    // one-shot iframe reload re-establishes routing. Bail if it fired.
+    if (reloadIfOrphaned(error, widgetWindow)) return;
+    // Homey SDK reads fail transiently (per feedback_homey_sdk_unreliable).
+    // Keep the last good payload + open detail panel across a brief blip and
+    // only fall back to the error state after several consecutive misses, so
+    // one flaky 60 s refresh doesn't tear down a detail panel the user is
+    // reading or flash a misleading "Unable to load".
+    consecutiveLoadFailures += 1;
+    if (consecutiveLoadFailures < MAX_CONSECUTIVE_LOAD_FAILURES && lastPayload?.state === 'ready') {
+      return;
+    }
+    // Surfaced the error state to the user — mirror it into the app log, since
+    // the WebView console is unreachable on the mobile dashboard.
+    reporter.report('error', 'Failed to load smart_tasks widget', error);
+    everLoaded = true;
+    lastPayload = { state: 'empty', subtitle: SMART_TASK_WIDGET_LOAD_ERROR_SUBTITLE, hint: null };
+    view = { kind: 'list' };
+    render();
+  };
+
   const loadAndRender = async (): Promise<void> => {
     const loadId = ++loadSequence;
     try {
@@ -267,22 +292,10 @@ export const createWidgetController = (params: {
       lastPayload = payload;
       view = rehydrateView(view, payload);
       render();
+      reporter.flush();
     } catch (error) {
       if (destroyed || loadId !== loadSequence) return;
-      console.error('Failed to load smart_tasks widget', error);
-      // Homey SDK reads fail transiently (per feedback_homey_sdk_unreliable).
-      // Keep the last good payload + open detail panel across a brief blip and
-      // only fall back to the error state after several consecutive misses, so
-      // one flaky 60 s refresh doesn't tear down a detail panel the user is
-      // reading or flash a misleading "Unable to load".
-      consecutiveLoadFailures += 1;
-      if (consecutiveLoadFailures < MAX_CONSECUTIVE_LOAD_FAILURES && lastPayload?.state === 'ready') {
-        return;
-      }
-      everLoaded = true;
-      lastPayload = { state: 'empty', subtitle: SMART_TASK_WIDGET_LOAD_ERROR_SUBTITLE, hint: null };
-      view = { kind: 'list' };
-      render();
+      handleLoadFailure(error);
     } finally {
       if (loadId === loadSequence && !initialRenderDone && homeyRef?.ready) {
         homeyRef.ready();

@@ -411,7 +411,7 @@
    opacity + dashed so it reads as the goal, distinct from the solid planned
    line that shares the muted tone. */
 .tchart__target {
-  stroke: var(--pw-text-muted, #6d7680);
+  stroke: var(--pw-chart-guide, #6d7680);
   stroke-width: 1;
   stroke-dasharray: 4 4;
   opacity: 0.55;
@@ -442,7 +442,7 @@
 .tchart__observed {
   fill: none;
   stroke: var(--pw-success, #58c56a);
-  stroke-width: 2.5;
+  stroke-width: 2;
   stroke-linejoin: round;
   stroke-linecap: round;
 }

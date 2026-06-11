@@ -2,11 +2,13 @@ import { HEADROOM_WIDGET_COPY } from '../../../../packages/shared-domain/src/hea
 import {
   applyPreviewTheme,
   createRefreshLoop,
+  reloadIfOrphaned,
   installWidget as installSharedWidget,
   type WidgetController as SharedWidgetController,
   type WidgetHomeyBase,
   type WidgetWindowBase,
 } from '../../../_shared/widgetRuntime';
+import { widgetErrorReporter } from '../../../_shared/widgetClientLog';
 import { resolveHeadroomPreviewPayload } from './previewPayloads';
 import { renderWidget, type RenderTargets } from './render';
 import type { HeadroomWidgetPayload } from '../headroomWidgetTypes';
@@ -59,6 +61,7 @@ export const createWidgetController = (params: {
   let initialRenderDone = false;
   let loadSequence = 0;
   let destroyed = false;
+  const reporter = widgetErrorReporter('headroom', () => homeyRef);
 
   const loadAndRender = async (): Promise<void> => {
     const loadId = ++loadSequence;
@@ -71,9 +74,11 @@ export const createWidgetController = (params: {
         : await homeyRef.api('GET', '/headroom') as HeadroomWidgetPayload;
       if (destroyed || loadId !== loadSequence) return;
       renderWidget(targets, payload);
+      reporter.flush();
     } catch (error) {
       if (destroyed || loadId !== loadSequence) return;
-      console.error('Failed to load headroom widget', error);
+      if (reloadIfOrphaned(error, widgetWindow)) return;
+      reporter.report('error', 'Failed to load headroom widget', error);
       renderWidget(targets, { state: 'empty', subtitle: LOAD_ERROR_SUBTITLE });
     } finally {
       if (!destroyed && loadId === loadSequence && !initialRenderDone && homeyRef?.ready) {

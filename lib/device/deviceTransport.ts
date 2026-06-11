@@ -1,3 +1,22 @@
+/**
+ * Device-layer hub: owns observed current device state and the device-specific
+ * actuation transport behind one boundary. Reconcile/merge changes are
+ * governed by the invariants digest in `lib/device/AGENTS.md` (planned /
+ * commanded / observed / effective-planning / pending stay strictly separate;
+ * source trust order; an older full fetch must never roll back a fresher
+ * realtime or local-write observation) — read it before touching this file.
+ *
+ * The planner never imports this module directly: plan code reaches
+ * `lib/device` only through the producer seams allowlisted by
+ * `no-plan-to-device` (`deviceObservation.ts`, `deviceActionProjection.ts`,
+ * `deviceResidualKw.ts`), so changes here must surface planner-facing data
+ * through those seams, never as new exports for `lib/plan` to import.
+ *
+ * This class is slated to split on the observer/transport boundary (tracked
+ * in `TODO.md` under the Bucket-B god-files item; design of record in
+ * `notes/state-management/observer-transport-split.md`) — do not grow it.
+ * New behaviour belongs in a `transport/` or observer collaborator.
+ */
 import type Homey from 'homey';
 import { EventEmitter } from 'events';
 import type {
@@ -1582,7 +1601,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         if (!existing || existing.capabilityId !== capabilityId || existing.observedValue === observedValue) return;
         // A timestamp-less PULL read carries no evidence it is newer than a
         // pushed observation, so it must not erase a realtime/device_update
-        // observation (notes/state-management/CLAUDE.md "Never let an older full
+        // observation (lib/device/AGENTS.md "Never let an older full
         // fetch erase a fresher local or realtime observation without evidence
         // it is newer"). A genuine state change arrives via a push (realtime
         // listener / device.update), so the retained evidence stays supersedable

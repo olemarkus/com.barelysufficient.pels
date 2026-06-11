@@ -1,7 +1,9 @@
 // Widget screenshot harness — renders each Homey dashboard widget in its
-// `?preview=1` state against an injected `--homey-*` DARK token set (the tokens
-// Homey supplies at runtime; standalone preview only has the in-CSS fallbacks),
-// at 480px and 320px. Produces tests/widget-shots/out/<widget>-<width>[-<state>].png.
+// `?preview=1` state in BOTH themes at 480px and 320px: dark against an
+// injected `--homey-*` DARK token set (the tokens Homey supplies at runtime),
+// light with NO tokens so every `var(--homey-*, fallback)` resolves to its
+// in-CSS light fallback. Produces
+// tests/widget-shots/out/<widget>-<width>[-<state>][-light].png.
 //
 // Run: node tests/widget-shots/shoot.mjs
 // (Reads the COMMITTED widget bundles in widgets/*/public/, so run `npm run
@@ -63,6 +65,20 @@ body { padding: 12px; }
 html, body, * { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important; }
 `;
 
+// Light theme: NO tokens injected — the widgets' in-CSS `var(--homey-*, …)`
+// fallbacks ARE the light values, exactly like a standalone preview. Only the
+// page chrome (light dashboard canvas + the same padding/font) is supplied.
+const LIGHT_TOKENS = `
+html, body { background: #eef1f4; margin: 0; }
+body { padding: 12px; }
+html, body, * { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important; }
+`;
+
+const THEMES = [
+  { theme: 'dark', tokens: DARK_TOKENS, suffix: '' },
+  { theme: 'light', tokens: LIGHT_TOKENS, suffix: '-light' },
+];
+
 const WIDGETS = ['plan_budget', 'headroom', 'starvation_rescue', 'smart_tasks', 'create_smart_task'];
 const WIDTHS = [480, 320];
 // Extra captures: headroom's limit-states (selected via ?state=), so the
@@ -71,14 +87,14 @@ const HEADROOM_STATES = ['near', 'at_pace', 'over_cap'];
 
 // Render one widget page at one width and write `<name>.png`. Captures console +
 // page errors so a broken render is reported, not silently shot.
-const capture = async (browser, { url, width, name }) => {
-  const page = await browser.newPage({ viewport: { width, height: 760 }, deviceScaleFactor: 2, colorScheme: 'dark' });
+const capture = async (browser, { url, width, name, theme = 'dark', tokens = DARK_TOKENS }) => {
+  const page = await browser.newPage({ viewport: { width, height: 760 }, deviceScaleFactor: 2, colorScheme: theme });
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push(String(e)));
   try {
     await page.goto(url);
-    await page.addStyleTag({ content: DARK_TOKENS });
+    await page.addStyleTag({ content: tokens });
     // Let the widget bundle render the preview payload (+ any chart draw).
     await page.waitForTimeout(900);
     const root = await page.$('#widget-root');
@@ -97,23 +113,25 @@ const indexUrl = (widget, params) => {
 
 const browser = await chromium.launch();
 try {
-  for (const widget of WIDGETS) {
-    const { exists, url } = indexUrl(widget, 'preview=1&theme=dark');
-    if (!exists) { console.error(`MISSING widgets/${widget}/public/index.html`); continue; }
-    for (const width of WIDTHS) {
-      await capture(browser, { url, width, name: `${widget}-${width}` });
+  for (const { theme, tokens, suffix } of THEMES) {
+    for (const widget of WIDGETS) {
+      const { exists, url } = indexUrl(widget, `preview=1&theme=${theme}`);
+      if (!exists) { console.error(`MISSING widgets/${widget}/public/index.html`); continue; }
+      for (const width of WIDTHS) {
+        await capture(browser, { url, width, name: `${widget}-${width}${suffix}`, theme, tokens });
+      }
     }
-  }
-  // Headroom limit-states at 480px (selected via ?state=).
-  for (const state of HEADROOM_STATES) {
-    const { url } = indexUrl('headroom', `preview=1&theme=dark&state=${state}`);
-    await capture(browser, { url, width: 480, name: `headroom-480-${state}` });
-  }
-  // plan_budget over-budget tone (selected via ?tone=over), so the red status
-  // chip is exercised at both widths — on_track + null are the default captures.
-  for (const width of WIDTHS) {
-    const { url } = indexUrl('plan_budget', 'preview=1&theme=dark&tone=over');
-    await capture(browser, { url, width, name: `plan_budget-${width}-over` });
+    // Headroom limit-states at 480px (selected via ?state=).
+    for (const state of HEADROOM_STATES) {
+      const { url } = indexUrl('headroom', `preview=1&theme=${theme}&state=${state}`);
+      await capture(browser, { url, width: 480, name: `headroom-480-${state}${suffix}`, theme, tokens });
+    }
+    // plan_budget over-budget tone (selected via ?tone=over), so the red status
+    // chip is exercised at both widths — on_track + null are the default captures.
+    for (const width of WIDTHS) {
+      const { url } = indexUrl('plan_budget', `preview=1&theme=${theme}&tone=over`);
+      await capture(browser, { url, width, name: `plan_budget-${width}-over${suffix}`, theme, tokens });
+    }
   }
 } finally {
   await browser.close();

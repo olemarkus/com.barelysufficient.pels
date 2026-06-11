@@ -40,6 +40,14 @@ export const ExpandMoreIcon = (props: IconProps) => (
   </svg>
 );
 
+// Material `tune` glyph. Marks the Budget page's Adjust trigger so the
+// entry into the budget-settings surface reads as "settings live here".
+export const TuneIcon = (props: IconProps) => (
+  <svg {...baseSvgProps(props)}>
+    <path d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z" />
+  </svg>
+);
+
 // Material `warning` glyph. Used by the dry-run, stale-data, and budget
 // allocation banner primitives in place of the U+26A0 Unicode emoji so the
 // icon stays consistent across Apple, Google, and Microsoft glyph sets.

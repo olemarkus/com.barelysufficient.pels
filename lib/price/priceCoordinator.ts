@@ -1,3 +1,18 @@
+/**
+ * Orchestrates refresh and rotation of the combined-prices store and notifies
+ * consumers when it changes — the 3-hour spot/grid-tariff refresh loop, the
+ * per-local-midnight rotation (plus its boot catch-up for flow-scheme users),
+ * and the `PriceOptimizer` lifecycle. Consumers are notified through
+ * `onCombinedPricesUpdated` and plan rebuilds via `rebuildPlanFromCache`;
+ * they receive resolved flat values (hourly prices, levels, cheap/expensive
+ * verdicts) and never branch on which source (spot / flow / Homey Energy)
+ * produced them — source resolution stays inside `PriceService`.
+ *
+ * All cached price-data persistence goes through the typed stores
+ * (`priceDataStore`, the combined-prices store) — never add ad-hoc
+ * `settings.set` of price payloads here. Module invariants (leaf rule,
+ * store boundaries): `lib/price/AGENTS.md`.
+ */
 import type { SettingsPort, ApiPort } from '../ports/homeyRuntime';
 import { PriceOptimizer } from './priceOptimizer';
 import { PriceLevel } from './priceLevels';

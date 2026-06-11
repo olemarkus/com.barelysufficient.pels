@@ -68,8 +68,12 @@ import {
 } from './dailyBudget.ts';
 import { loadBudgetAdjust } from './budgetAdjustController.ts';
 import {
-  initDailyBudgetTuningHandlers,
-  loadDailyBudgetTuningSettings,
+  openBudgetAdjustFromSettings,
+  setBudgetAdjustSettingsNavigator,
+} from './budgetRedesign.ts';
+import {
+  initDailyBudgetBreakdownHandlers,
+  loadDailyBudgetBreakdownSetting,
 } from './dailyBudgetTuning.ts';
 import {
   initDeviceDetailHandlers,
@@ -110,13 +114,27 @@ import {
 import { initDeadlinePlanRouter } from './deadlinePlanRouter.ts';
 
 const initTabHandlers = () => {
+  // The Budget header's Done button navigates back to Settings through
+  // showTab so the leave path (draft discard, referrer reset, toast) stays
+  // identical to a tab-bar exit.
+  setBudgetAdjustSettingsNavigator(() => showTab('settings'));
   tabs.forEach((tab) => {
     tab.addEventListener('click', () => showTab((tab as HTMLElement).dataset.tab || 'devices'));
   });
   document.addEventListener('click', (event) => {
     if (!(event.target instanceof Element)) return;
     const trigger = event.target.closest<HTMLElement>('[data-settings-target]');
-    if (trigger?.dataset.settingsTarget) showTab(trigger.dataset.settingsTarget);
+    const target = trigger?.dataset.settingsTarget;
+    if (!target) return;
+    // 'budget-adjust' is a virtual target: it matches no data-panel, and
+    // letting it reach showTab would hide every panel. Open the Budget tab
+    // with the Adjust view active and a Settings return target instead.
+    if (target === 'budget-adjust') {
+      openBudgetAdjustFromSettings();
+      showTab('budget');
+      return;
+    }
+    showTab(target);
   });
 };
 
@@ -237,7 +255,7 @@ const initAdvancedHandlers = () => {
 
   initAdvancedDeviceCleanupHandlers();
   initAdvancedDeviceLoggerHandlers();
-  initDailyBudgetTuningHandlers();
+  initDailyBudgetBreakdownHandlers();
 };
 
 const loadBootstrapData = async (): Promise<SettingsUiBootstrap | null> => {
@@ -280,7 +298,7 @@ const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
   const [usage] = await Promise.all([
     getPowerUsage(),
     loadCapacitySettings(),
-    loadDailyBudgetTuningSettings(),
+    loadDailyBudgetBreakdownSetting(),
     loadBudgetAdjust(),
     loadStaleDataStatus(),
     loadDeviceControlProfiles(),

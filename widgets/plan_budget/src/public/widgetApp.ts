@@ -8,9 +8,11 @@ import {
 import {
   applyPreviewTheme,
   createRefreshLoop,
+  reloadIfOrphaned,
   installWidget as installSharedWidget,
   type WidgetController as SharedWidgetController,
 } from '../../../_shared/widgetRuntime';
+import { widgetErrorReporter } from '../../../_shared/widgetClientLog';
 import { resolvePreviewPayload } from './previewPayloads';
 import {
   PLAN_PRICE_WIDGET_EMPTY,
@@ -35,7 +37,12 @@ type WidgetSettings = {
 };
 
 export type WidgetHomey = {
-  api: (method: 'GET', path: string) => Promise<PlanPriceWidgetPayload>;
+  // GET returns this widget's typed chart payload; POST is used only for the
+  // shared `/log` client-error reporter (see widgetErrorReporter).
+  api: {
+    (method: 'GET', path: string): Promise<PlanPriceWidgetPayload>;
+    (method: 'POST', path: string, body?: unknown): Promise<unknown>;
+  };
   getSettings?: () => unknown;
   ready?: () => void;
 };
@@ -292,6 +299,7 @@ export const createWidgetController = (
   // explicitly, mirroring the `destroyed` flag, so a resize re-renders the error
   // view. Cleared on the next successful load.
   let inErrorState = false;
+  const reporter = widgetErrorReporter('plan_budget', () => homeyRef);
 
   const labelTabs = (): void => {
     tabButtons.morning.textContent = PLAN_PRICE_WIDGET_TABS.morning;
@@ -349,12 +357,6 @@ export const createWidgetController = (
     unbindTabs = null;
   };
 
-  const renderLoadError = (): void => {
-    lastPayload = null;
-    inErrorState = true;
-    render();
-  };
-
   const loadAndRender = async (): Promise<void> => {
     const loadId = ++loadSequence;
 
@@ -376,10 +378,14 @@ export const createWidgetController = (
       // tab, a background refresh must not yank them back to "now".
       if (!halfPinned) half = resolveInitialHalf(payload);
       render();
+      reporter.flush();
     } catch (error) {
       if (destroyed || loadId !== loadSequence) return;
-      console.error('Failed to load widget chart', error);
-      renderLoadError();
+      if (reloadIfOrphaned(error, widgetWindow)) return;
+      reporter.report('error', 'Failed to load plan_budget widget', error);
+      lastPayload = null;
+      inErrorState = true;
+      render();
     } finally {
       if (!destroyed && loadId === loadSequence && !initialRenderDone && homeyRef?.ready) {
         homeyRef.ready();

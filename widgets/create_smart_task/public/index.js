@@ -546,6 +546,75 @@
     return controller;
   };
 
+  // widgets/_shared/widgetClientLog.ts
+  var WIDGET_CLIENT_LOG_PATH = "/log";
+  var MAX_PENDING = 20;
+  var SUPPRESS_WINDOW_MS = 60 * 1e3;
+  var normalizeError = (error) => {
+    if (error === void 0) return void 0;
+    if (error instanceof Error) return error.stack ?? error.message;
+    if (typeof error === "string") return error;
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return String(error);
+    }
+  };
+  var createWidgetErrorReporter = (params) => {
+    const pending = [];
+    const lastAcceptedAt = /* @__PURE__ */ new Map();
+    const post = async (entry) => {
+      const homey = params.getHomey();
+      if (!homey) throw new Error("widget log: no Homey client");
+      await homey.api("POST", WIDGET_CLIENT_LOG_PATH, entry);
+    };
+    const drain = async () => {
+      while (pending.length > 0) {
+        await post(pending[0]);
+        pending.shift();
+      }
+    };
+    const queue = (entry) => {
+      const last = pending[pending.length - 1];
+      if (last && last.level === entry.level && last.message === entry.message) {
+        last.detail = entry.detail;
+        last.timestamp = entry.timestamp;
+        return;
+      }
+      if (pending.length >= MAX_PENDING) pending.shift();
+      pending.push(entry);
+    };
+    const flush = () => {
+      void drain().catch(() => {
+      });
+    };
+    const report = (level, message, error) => {
+      if (!params.getHomey()) return;
+      const now = params.now();
+      const key = `${level}:${message}`;
+      const seenAt = lastAcceptedAt.get(key);
+      if (seenAt !== void 0 && now - seenAt < SUPPRESS_WINDOW_MS) return;
+      lastAcceptedAt.set(key, now);
+      const entry = {
+        level,
+        widget: params.widget,
+        message,
+        detail: normalizeError(error),
+        timestamp: now
+      };
+      void (async () => {
+        try {
+          await drain();
+          await post(entry);
+        } catch {
+          queue(entry);
+        }
+      })();
+    };
+    return { report, flush };
+  };
+  var widgetErrorReporter = (widget, getHomey) => createWidgetErrorReporter({ widget, getHomey, now: () => Date.now() });
+
   // widgets/create_smart_task/src/public/previewPayloads.ts
   var PREVIEW_CREATE_SMART_TASK_PAYLOADS = {
     // Gallery thumbnail: one temperature device and one EV charger so the gallery
@@ -1336,33 +1405,35 @@
     const el = target.closest(selector);
     return el instanceof HTMLElement ? el.dataset[key] ?? null : null;
   };
-  var fetchDevices = async (homeyRef, usePreviewData, previewState) => {
+  var fetchDevices = async (homeyRef, usePreviewData, previewState, reporter) => {
     if (usePreviewData) return resolveCreateSmartTaskPreviewPayload(previewState);
     if (!homeyRef) return { state: "empty", subtitle: C2.notReady, hint: null };
     try {
-      return await homeyRef.api("GET", "/devices");
+      const payload = await homeyRef.api("GET", "/devices");
+      reporter.flush();
+      return payload;
     } catch (error) {
-      console.error("Failed to load create_smart_task widget", error);
+      reporter.report("error", "Failed to load create_smart_task widget", error);
       return { state: "error" };
     }
   };
-  var fetchPreview = async (homeyRef, usePreviewData, request) => {
+  var fetchPreview = async (homeyRef, usePreviewData, request, reporter) => {
     if (usePreviewData) return PREVIEW_RESPONSE;
     if (!homeyRef) return { ok: false, reason: "unavailable" };
     try {
       return await homeyRef.api("POST", "/preview", request);
     } catch (error) {
-      console.error("Failed to preview smart task", error);
+      reporter.report("error", "Failed to preview smart task", error);
       return { ok: false, reason: "unavailable" };
     }
   };
-  var submitCreate = async (homeyRef, usePreviewData, request) => {
+  var submitCreate = async (homeyRef, usePreviewData, request, reporter) => {
     if (usePreviewData) return { ok: true };
     if (!homeyRef) return { ok: false, reason: "unavailable" };
     try {
       return await homeyRef.api("POST", "/create", request);
     } catch (error) {
-      console.error("Failed to create smart task", error);
+      reporter.report("error", "Failed to create smart task", error);
       return { ok: false, reason: "unavailable" };
     }
   };
@@ -1396,6 +1467,7 @@
     let createdResetTimer = null;
     let destroyed = false;
     let requestSeq = 0;
+    const reporter = widgetErrorReporter("create_smart_task", () => homeyRef);
     const render = () => renderWidget(targets, devicesPayload, view);
     const setView = (next) => {
       view = next;
@@ -1405,7 +1477,7 @@
     const runPreview = async () => {
       if (view.kind !== "compose") return;
       const token = ++requestSeq;
-      const response = await fetchPreview(homeyRef, usePreviewData, buildCandidateRequest(view));
+      const response = await fetchPreview(homeyRef, usePreviewData, buildCandidateRequest(view), reporter);
       if (token !== requestSeq || view.kind !== "compose") return;
       view = { ...view, kind: "preview", response, submitting: false, error: null };
       render();
@@ -1417,7 +1489,7 @@
       view = { ...view, submitting: true, error: null };
       const token = ++requestSeq;
       render();
-      const result = await submitCreate(homeyRef, usePreviewData, request);
+      const result = await submitCreate(homeyRef, usePreviewData, request, reporter);
       if (token !== requestSeq || view.kind !== "preview") return;
       view = result.ok ? { kind: "created" } : { ...view, submitting: false, error: resolveCreateSmartTaskRejectCopy(result.reason) };
       render();
@@ -1491,7 +1563,7 @@
       const searchParams = new URLSearchParams(widgetWindow.location.search);
       usePreviewData = searchParams.get("preview") === "1";
       applyPreviewTheme(widgetDocument, searchParams);
-      const payload = await fetchDevices(homeyRef, usePreviewData, searchParams.get("state"));
+      const payload = await fetchDevices(homeyRef, usePreviewData, searchParams.get("state"), reporter);
       if (destroyed || loadId !== loadSequence) return;
       devicesPayload = payload;
       if (view.kind === "picker" || payload.state === "ready") render();

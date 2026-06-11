@@ -1,5 +1,9 @@
 # State Management Notes
 
+> The agent-facing invariants digest for this subsystem lives next to the code in
+> `lib/device/AGENTS.md` (with the quiescence rules in `lib/observer/AGENTS.md`); these notes are
+> the design-of-record behind it.
+
 This note is for contributors working on runtime state, drift handling, snapshot refresh, and post-actuation behavior.
 
 The core problem is simple:

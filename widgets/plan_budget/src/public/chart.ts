@@ -32,8 +32,11 @@ import type {
 // `chart` keep working after the geometry split.
 export { VIEWPORT_MIN_HEIGHT } from './chartGeometry';
 
-const BAR_RADIUS = 3;
+const BAR_RADIUS = 1.5;
 const DOT_RADIUS = 4;
+// "Used" level ticks overshoot the bar on each side so the tick reads as a
+// marker across the bar, not a stripe inside it.
+const ACTUAL_TICK_PAD = 1.5;
 const WIDGET_TITLE = PLAN_PRICE_WIDGET_TITLE;
 const DEFAULT_EMPTY_SUBTITLE = PLAN_PRICE_WIDGET_EMPTY.noData;
 
@@ -281,9 +284,11 @@ const appendPlanBars = (
     const x = plot.left + (metrics.stepWidth * bucket.localIndex) + ((metrics.stepWidth - metrics.barWidth) / 2);
     const height = metrics.plotHeight * (value / metrics.maxPlan);
     const y = plot.bottom - height;
+    // The current hour is the one saturated bar; the rest stay muted.
+    const isCurrent = payload.showNow && bucket.dayIndex === payload.currentIndex;
 
     plotGroup.appendChild(createSvg(chartDocument, 'path', {
-      class: 'chart__bar',
+      class: isCurrent ? 'chart__bar chart__bar--current' : 'chart__bar',
       d: buildBarPath(x, y, metrics.barWidth, height, BAR_RADIUS),
     }));
   });
@@ -343,13 +348,23 @@ const appendActualMarkers = (
   const { plot } = geometry;
   metrics.buckets.forEach((bucket) => {
     const value = payload.actualKwh[bucket.dayIndex];
-    if (typeof value !== 'number' || !Number.isFinite(value) || bucket.dayIndex > payload.currentIndex) return;
+    // COMPLETED hours only: the current-hour (and later) ticks are suppressed
+    // only when the accent bar + price dot carry the "now" signal (showNow) —
+    // a partial-hour tick would read as a final reading. Without showNow,
+    // currentIndex is a degenerate producer fallback (0), so every finite
+    // actual gets its tick.
+    if (typeof value !== 'number' || !Number.isFinite(value)) return;
+    if (payload.showNow && bucket.dayIndex >= payload.currentIndex) return;
 
-    plotGroup.appendChild(createSvg(chartDocument, 'circle', {
+    const tickX = plot.left + (metrics.stepWidth * bucket.localIndex) + ((metrics.stepWidth - metrics.barWidth) / 2);
+    const tickY = plot.bottom - (value / metrics.maxPlan) * metrics.plotHeight;
+    // A horizontal level tick spanning the bar width — "filled to here".
+    plotGroup.appendChild(createSvg(chartDocument, 'line', {
       class: 'chart__actual',
-      cx: plot.left + (metrics.stepWidth * (bucket.localIndex + 0.5)),
-      cy: plot.bottom - (value / metrics.maxPlan) * metrics.plotHeight,
-      r: DOT_RADIUS,
+      x1: tickX - ACTUAL_TICK_PAD,
+      y1: tickY,
+      x2: tickX + metrics.barWidth + ACTUAL_TICK_PAD,
+      y2: tickY,
     }));
   });
 };
@@ -420,11 +435,13 @@ const renderLegend = (
         ry: 3,
       }));
     } else if (item.type === 'actual') {
-      legendGroup.appendChild(createSvg(chartDocument, 'circle', {
+      // A level-tick swatch matching the in-plot "Used" markers.
+      legendGroup.appendChild(createSvg(chartDocument, 'line', {
         class: 'chart__legend-actual',
-        cx: item.x + 8,
-        cy: legendY - 2,
-        r: 5,
+        x1: item.x,
+        y1: legendY - 2,
+        x2: item.x + 16,
+        y2: legendY - 2,
       }));
     } else {
       legendGroup.appendChild(createSvg(chartDocument, 'line', {

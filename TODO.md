@@ -139,6 +139,48 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
 
 *v2.11.0..HEAD release-review findings (2026-06-02). Non-blocking follow-ups.*
 
+- [ ] **Give the armed budget-discard state a visible "keep changes" path.** The Budget header's
+      two-step confirm shows only the destructive option ("Click again to discard"); the save path
+      (Preview changes → Apply) is a sticky CTA further down, and the explanatory text lives in a
+      hover-only `title` that touch users never see. Surface a one-line inline hint near the armed
+      button (or render the armed moment as a Keep editing / Discard pair). Persona: returning
+      tweaker (persona 4); hypothesis: a user who tapped Done absent-mindedly reads only "discard",
+      assumes their edits are already lost, and re-enters them from scratch. Source: pels-ux-fit on
+      the budget-settings-access PR, 2026-06-10.
+
+- [ ] **Settings-referred Adjust session lacks the sibling "← Settings" back affordance.** Every
+      Settings sub-page (Limits & safety, Devices, …) opens with a leading back chip; the Daily
+      budget row instead lands on the Budget tab where the way back is a trailing "Done" whose
+      destination is only in a hover `title`. When `adjustReturnTarget === 'settings'`, render the
+      shared `.settings-back-button` affordance above the Budget header (it can coexist with Done).
+      Persona: settings-first owner (persona 1); hypothesis: without the visible back affordance the
+      tab-indicator jump (Settings → Budget) reads as "I got teleported", not "this is a sub-page of
+      what I was doing". Source: pels-ux-fit, 2026-06-10.
+
+- [ ] **Move the daily-budget breakdown chart toggle from Advanced to the Budget chart card.** After
+      the tuning-selects retirement, Advanced ("Diagnostics, cleanup, logs, experiments") hosts a
+      lone display preference — a scent mismatch on both ends. Put the toggle on the chart it
+      controls (overflow or inline on the Budget chart card) and let Advanced be purely diagnostics.
+      Persona: chart-curious optimiser (persona 4); hypothesis: nobody looking at the budget chart
+      thinks to open Advanced to change how the chart renders. Source: pels-ux-fit + pels-m3-critic,
+      2026-06-10.
+
+- [ ] **Busy-gate the Budget header toggle (inherited apply race).** `onToggleClick` ignores
+      `adjust.busy`: confirming a discard while an apply is in flight yields a post-navigation
+      "Daily budget updated." toast and a lingering dirty status (workingDraft = pre-apply values vs
+      newly-applied active). Pre-existing behavior (old single-click Done had the same race; the
+      two-step confirm only adds friction), so not fixed in the access PR. Fix: disable the toggle
+      while `busy`, or honor the `draftRevision` guard in `applyBudgetAdjust`'s success path the way
+      preview already does. Persona: impatient tweaker; hypothesis: rapid preview→apply→Done
+      sequences on slow Homey bridges leave the Adjust view claiming unsaved changes that were in
+      fact applied. Source: adversarial correctness lens, 2026-06-10.
+
+- [ ] **Sweep the two-step confirm family from "Click again…" to "Tap again…".** All four armed
+      confirm labels (reset usage history, device cleanup ×2, budget discard) say "Click" inside a
+      touch-first WebView. Sweep them together so the idiom doesn't fork. Persona: phone-only owner;
+      hypothesis: "click" is desktop vocabulary that subtly signals the UI wasn't built for the
+      device in their hand. Source: pels-copy-and-terminology + pels-ux-fit, 2026-06-10.
+
 - [ ] **Hoist the active-plan shape guard into shared-domain so the UI and runtime can't drift.**
       The settings-UI `coerceDeferredObjectiveActivePlans`
       (`packages/settings-ui/src/ui/deferredObjectiveActivePlans.ts`) is a leaner duplicate of the

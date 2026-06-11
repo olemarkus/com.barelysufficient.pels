@@ -1,3 +1,4 @@
+import { handleWidgetClientLog, type WidgetClientLogContext } from '../../_shared/widgetClientLogApi';
 import type {
   DeferredObjectivePlanPreviewCandidate,
 } from '../../../packages/contracts/src/deferredObjectivePlanPreview';
@@ -231,3 +232,7 @@ export const createStarvationRescue = async (
     runsCurrentHour: post ? scheduledHoursIncludeCurrentHour(post.estimate.scheduledHours, nowMs) : false,
   };
 };
+
+export const logClientError = (context: WidgetClientLogContext): { ok: boolean } => (
+  handleWidgetClientLog('starvation_rescue', context)
+);
