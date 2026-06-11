@@ -38,6 +38,8 @@ export type PowerSamplePipelineDeps = {
   getPlanRebuildNowMs: () => number;
   savePowerTracker: (state: PowerTrackerState) => void;
   getStructuredDebugEmitter: (component: string, debugTopic: 'objective_profiles') => StructuredDebugEmitter;
+  /** Latest outdoor temperature (hidden weather feature); undefined when unavailable or stale. */
+  getOutdoorTemperatureC?: () => number | undefined;
 };
 
 /**
@@ -139,6 +141,7 @@ export class PowerSamplePipeline {
         updateObjectiveProfiles: (params) => updateObjectiveProfilesFromSnapshot({
           ...params,
           debugStructured: this.deps.getStructuredDebugEmitter('objective_profiles', 'objective_profiles'),
+          outdoorTemperatureC: this.deps.getOutdoorTemperatureC?.(),
         }),
         schedulePlanRebuild: async () => {
           await schedulePlanRebuildFromSignal({

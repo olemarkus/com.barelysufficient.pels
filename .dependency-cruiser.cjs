@@ -33,7 +33,7 @@ module.exports = {
       name: 'no-domain-to-app-layer',
       comment: 'Domain modules should not depend on app wiring.',
       severity: 'error',
-      from: { path: '^lib/(device|power|objectives|plan|price|dailyBudget|observer|executor|actuator)/' },
+      from: { path: '^lib/(device|power|objectives|plan|price|dailyBudget|observer|executor|actuator|weather)/' },
       to: { path: '^lib/app/' },
     },
     {
@@ -179,21 +179,21 @@ module.exports = {
       comment: 'Power is a producer; only the established power <-> objectives type cycle is allowed. All other peer edges forbidden.',
       severity: 'error',
       from: { path: '^lib/power/' },
-      to: { path: '^lib/(device|plan|price|dailyBudget|observer|executor)/' },
+      to: { path: '^lib/(device|plan|price|dailyBudget|observer|executor|weather)/' },
     },
     {
       name: 'no-device-to-peer-except-power',
       comment: 'Device is an SDK adapter; device may consume power (whole-home capacity/tracker types), nothing else. All other peer edges forbidden.',
       severity: 'error',
       from: { path: '^lib/device/' },
-      to: { path: '^lib/(plan|price|dailyBudget|objectives|observer|executor)/' },
+      to: { path: '^lib/(plan|price|dailyBudget|objectives|observer|executor|weather)/' },
     },
     {
       name: 'no-observer-to-peer',
       comment: 'Observer is a leaf module; consumed by plan/executor, must not consume any other peer.',
       severity: 'error',
       from: { path: '^lib/observer/' },
-      to: { path: '^lib/(device|power|plan|price|dailyBudget|objectives|executor)/' },
+      to: { path: '^lib/(device|power|plan|price|dailyBudget|objectives|executor|weather)/' },
     },
     {
       name: 'no-actuator-to-peer',
@@ -204,7 +204,7 @@ module.exports = {
         + 'notes/state-management/actuator-write-seam.md.',
       severity: 'error',
       from: { path: '^lib/actuator/' },
-      to: { path: '^lib/(device|power|plan|price|dailyBudget|objectives|observer|executor)/' },
+      to: { path: '^lib/(device|power|plan|price|dailyBudget|objectives|observer|executor|weather)/' },
     },
     {
       name: 'no-actuator-bypass',
@@ -233,21 +233,29 @@ module.exports = {
       comment: 'Price is a leaf (consumed by plan and dailyBudget); must not depend on other peers.',
       severity: 'error',
       from: { path: '^lib/price/' },
-      to: { path: '^lib/(device|power|plan|dailyBudget|objectives|observer|executor)/' },
+      to: { path: '^lib/(device|power|plan|dailyBudget|objectives|observer|executor|weather)/' },
     },
     {
       name: 'no-objectives-to-peer-except-power',
       comment: 'Objectives is leafward; power <-> objectives type cycle is allowed, all other peer edges forbidden.',
       severity: 'error',
       from: { path: '^lib/objectives/' },
-      to: { path: '^lib/(device|plan|price|dailyBudget|observer|executor)/' },
+      to: { path: '^lib/(device|plan|price|dailyBudget|observer|executor|weather)/' },
+    },
+    {
+      name: 'no-weather-to-peer',
+      comment: 'Weather is a leaf collector fed flat getters from setup wiring; it must not '
+        + 'import any peer domain (notably lib/power — kWh totals arrive via injected getters).',
+      severity: 'error',
+      from: { path: '^lib/weather/' },
+      to: { path: '^lib/(device|power|plan|price|dailyBudget|objectives|observer|executor|actuator)/' },
     },
     {
       name: 'no-dailyBudget-to-peer',
       comment: 'DailyBudget is consumed by plan; may consume power and price, must not depend on any other peer.',
       severity: 'error',
       from: { path: '^lib/dailyBudget/' },
-      to: { path: '^lib/(plan|device|objectives|observer|executor)/' },
+      to: { path: '^lib/(plan|device|objectives|observer|executor|weather)/' },
     },
     // Existing inversions to track but not yet break — clean-up targets.
     {

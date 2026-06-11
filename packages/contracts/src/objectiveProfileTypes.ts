@@ -75,6 +75,10 @@ export type ObjectiveProfileSampleObservation = {
   observedAtMs: number;
   inputValue: number;
   kwhPerUnit: number;
+  // Outdoor temperature when the rise window closed, recorded so a future
+  // estimator can condition heating rates on weather. Optional-field
+  // evolution: legacy observations simply lack it.
+  outdoorTemperatureC?: number;
 };
 
 export type ObjectiveProfileBand = {

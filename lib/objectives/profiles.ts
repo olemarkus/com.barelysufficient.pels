@@ -44,8 +44,9 @@ export function updateObjectiveProfilesFromSnapshot(params: {
   devices: ObjectiveSampleDevice[];
   nowMs: number;
   debugStructured?: ObjectiveProfileDebugEmitter;
+  outdoorTemperatureC?: number;
 }): PowerTrackerState {
-  const { state, devices, nowMs, debugStructured } = params;
+  const { state, devices, nowMs, debugStructured, outdoorTemperatureC } = params;
   const previousProfiles = state.objectiveProfiles ?? {};
   let nextProfiles: Record<string, DeviceObjectiveProfile> = previousProfiles;
   let changed = false;
@@ -69,6 +70,7 @@ export function updateObjectiveProfilesFromSnapshot(params: {
       deviceId: device.id,
       deviceName: device.name,
       debugStructured,
+      outdoorTemperatureC,
     });
     if (next !== previous) {
       ensureMutable()[device.id] = next;
@@ -104,14 +106,9 @@ export function updateDeviceObjectiveProfile(params: {
   deviceId?: string;
   deviceName?: string;
   debugStructured?: ObjectiveProfileDebugEmitter;
+  outdoorTemperatureC?: number;
 }): DeviceObjectiveProfile {
-  const {
-    previous,
-    sample,
-    deviceId,
-    deviceName,
-    debugStructured,
-  } = params;
+  const { previous, sample, deviceId, deviceName, debugStructured, outdoorTemperatureC } = params;
   if (!previous || previous.kind !== resolveKindForSample(sample)) {
     return buildInitialProfile(sample);
   }
@@ -224,6 +221,7 @@ export function updateDeviceObjectiveProfile(params: {
     intervalMs,
     valueDelta,
     windowEnergyKwh,
+    outdoorTemperatureC,
   });
 }
 
@@ -269,22 +267,19 @@ function buildAcceptedProfileSample(params: {
   intervalMs: number;
   valueDelta: number;
   windowEnergyKwh: number | undefined;
+  outdoorTemperatureC?: number;
 }): DeviceObjectiveProfile {
   const {
-    previous,
-    sample,
-    deviceId,
-    deviceName,
-    debugStructured,
-    intervalMs,
-    valueDelta,
-    windowEnergyKwh,
+    previous, sample, deviceId, deviceName, debugStructured,
+    intervalMs, valueDelta, windowEnergyKwh, outdoorTemperatureC,
   } = params;
   const previousSample = previous.lastSample;
   const unitPerHour = calculateUnitPerHour({ intervalMs, valueDelta });
   const energyKwh = windowEnergyKwh;
   const kwhPerUnit = energyKwh !== undefined ? calculateKwhPerUnit({ energyKwh, valueDelta }) : undefined;
-  const bandedUpdate = resolveBandedUpdate({ previous, previousSample, sample, kwhPerUnit });
+  const bandedUpdate = resolveBandedUpdate({
+    previous, previousSample, sample, kwhPerUnit, outdoorTemperatureC,
+  });
   const nextProfile = {
     ...previous,
     updatedAtMs: sample.observedAtMs,
@@ -520,8 +515,9 @@ function resolveBandedUpdate(params: {
   previousSample: DeviceObjectiveProfileSample;
   sample: DeviceObjectiveProfileSample;
   kwhPerUnit: number | undefined;
+  outdoorTemperatureC?: number;
 }): Partial<Pick<DeviceObjectiveProfile, 'samples' | 'bands'>> {
-  const { previous, previousSample, sample, kwhPerUnit } = params;
+  const { previous, previousSample, sample, kwhPerUnit, outdoorTemperatureC } = params;
   if (kwhPerUnit === undefined) return {};
   // Tag the sample by the midpoint of the rise so the band layout reflects
   // where the energy was actually deposited, not just the end value.
@@ -530,6 +526,7 @@ function resolveBandedUpdate(params: {
     observedAtMs: sample.observedAtMs,
     inputValue,
     kwhPerUnit,
+    ...(outdoorTemperatureC !== undefined ? { outdoorTemperatureC } : {}),
   });
   const bands = fitBandsFromSamples({ samples, kind: previous.kind });
   // Explicit `bands: undefined` clears any prior layout if the fitter declines

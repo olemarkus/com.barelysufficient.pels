@@ -288,6 +288,7 @@ export function initSettingsHandlerForApp(ctx: AppContext): { handle: SettingsHa
     updateOverheadToken: ctx.updateOverheadToken,
     updateDebugLoggingEnabled: ctx.updateDebugLoggingEnabled,
     restartHomeyEnergyPoll: () => ctx.homeyEnergyHelpers.restart(),
+    reloadWeatherAdvisor: () => ctx.reloadWeatherCollector?.(),
   });
   const onSettingsSet = async (key: string) => {
     await settingsHandler?.(key);

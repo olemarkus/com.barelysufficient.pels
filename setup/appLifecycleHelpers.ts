@@ -24,6 +24,18 @@ function requireDailyBudgetService(ctx: AppContext) {
   return ctx.dailyBudgetService;
 }
 
+/** Shutdown flush for the daily-budget state blob; never throws into `onUninit`. */
+export function flushDailyBudgetStateOnUninit(ctx: AppContext): void {
+  try {
+    ctx.dailyBudgetService?.persistState('runtime', Date.now());
+  } catch (error) {
+    ctx.getStructuredLogger('daily_budget')?.error({
+      event: 'daily_budget_state_shutdown_flush_failed',
+      err: normalizeError(error),
+    });
+  }
+}
+
 const runBackgroundTask = (
   label: string,
   work: () => void | Promise<void>,
