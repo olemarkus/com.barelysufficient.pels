@@ -105,7 +105,7 @@ const resolveActivePlannedAnchor = (
  * The planned staircase is integrated from the live `latest.hours × rate`,
  * anchored at the run's start progress and clamped to the deadline — the same
  * math the finished-run "Planned trajectory" line uses. The observed line is
- * the hourly progress series captured so far. There is no revised/second line
+ * the 15-minute progress series captured so far. There is no revised/second line
  * and no "reached target" marker: the run is still in flight.
  *
  * Falls back to a chartless (`legacy_kwh`, empty) payload when there is nothing
@@ -117,7 +117,7 @@ export const resolveActivePlanChartData = (
   plan: ResolvedDeferredObjectiveActivePlanV1,
   // `nowMs` + `currentValue` (the device's live reading from the widget's device
   // snapshot) extend the measured line to "now" and give an active task a
-  // "you are here" anchor even before two hourly samples have been bucketed.
+  // "you are here" anchor even before two samples have been bucketed.
   options: { nowMs?: number; currentValue?: number | null } = {},
 ): DeferredPlanHistoryChartData => {
   const windowStartMs = plan.startedAtMs;

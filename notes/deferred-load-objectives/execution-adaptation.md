@@ -88,7 +88,8 @@ computed.
   elapsed before the anchor are dropped (they're already in the observed line). Helper:
   `buildRevisedStaircase`. The anchor value comes from `observedValueAt`, which **interpolates**
   between the samples bracketing `revisedAtMs`: the recorder keeps only one progress sample per
-  hour, so a mid-hour revision rarely has a sample exactly at `revisedAtMs`, and interpolating
+  15-minute bucket (hourly before the 15-minute sampling change), so a revision rarely has a
+  sample exactly at `revisedAtMs`, and interpolating
   recovers an accurate anchor instead of snapping to the stale prior-hour reading.
 - **Coverage-aware straddling hour (the tricky part).** A hour can be either a full-hour
   commitment *floor* (whole-hour energy) or an already-*trimmed* current hour whose stored
