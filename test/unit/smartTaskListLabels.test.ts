@@ -2,6 +2,11 @@ import {
   deadlineLabels,
   formatCheapestHoursCaption,
   formatConfidenceChipLabel,
+  formatSmartTaskHourReadoutPrimary,
+  formatSmartTaskTrajectoryCardTitle,
+  formatSmartTaskTrajectoryShortAmountLabel,
+  formatSmartTaskTrajectoryStatelineReady,
+  formatSmartTaskTrajectoryStatelineShort,
   formatEnergyEstimateKWh,
   formatSmartTaskCurrentValueLine,
   formatSmartTaskHitRateFragment,
@@ -110,15 +115,18 @@ describe('formatEnergyEstimateKWh', () => {
 });
 
 describe('formatCheapestHoursCaption', () => {
-  it('averages the picked + window prices and states the count and avg-vs-baseline', () => {
-    // 2 planned hours at 0.10 + 0.20 → avg 0.15; window of 4 hours at
-    // 0.10 + 0.20 + 0.80 + 0.90 → avg 0.50. The picked average is well below
-    // the window average, which is the whole point of the caption.
+  it('averages the picked prices and names the eligible-hour pool', () => {
+    // 2 planned hours at 0.10 + 0.20 → avg 0.15 out of the 4 eligible hours.
+    // The window-average comparison was dropped with the two-chart live-page
+    // split (the muted unplanned bars carry the baseline visually), so the
+    // caption reconciles count + picked average only. "of the N hours it can
+    // use" names the chart's eligible pool without colliding with the hero's
+    // hours-left figure (counted from now, can differ by one).
     expect(formatCheapestHoursCaption({
       plannedPrices: [0.1, 0.2],
       allPrices: [0.1, 0.2, 0.8, 0.9],
       unitLabel: 'kr/kWh',
-    })).toBe('Picked 2 of 4 hours · avg 0.15 vs window avg 0.50 kr/kWh');
+    })).toBe('Picked 2 of the 4 hours it can use · avg 0.15 kr/kWh');
   });
 
   it('suppresses the caption when there are no planned hours or only one hour in the window', () => {
@@ -138,6 +146,134 @@ describe('formatCheapestHoursCaption', () => {
     const base = { plannedPrices: [0.1, 0.2], allPrices: [0.1, 0.2, 0.8, 0.9] };
     expect(formatCheapestHoursCaption({ ...base, unitLabel: '' })).toBeNull();
     expect(formatCheapestHoursCaption({ ...base, unitLabel: 'Price' })).toBeNull();
+  });
+});
+
+describe('live-page two-chart split copy', () => {
+  it('readout: planned hour names the kind verb, energy, and measured tail', () => {
+    expect(formatSmartTaskHourReadoutPrimary({
+      timeLabel: '13:00',
+      priceLabel: '0.62 kr/kWh',
+      planned: true,
+      plannedKwh: 2,
+      kindVerb: 'Heating',
+      isNow: false,
+      nextStartLabel: null,
+      measuredKwh: null,
+    })).toBe('13:00 · 0.62 kr/kWh · Heating 2.0 kWh planned');
+    expect(formatSmartTaskHourReadoutPrimary({
+      timeLabel: '13:00',
+      priceLabel: '0.62 kr/kWh',
+      planned: true,
+      plannedKwh: 2,
+      kindVerb: 'Charging',
+      isNow: false,
+      nextStartLabel: null,
+      measuredKwh: 1.8,
+    })).toBe('13:00 · 0.62 kr/kWh · Charging 2.0 kWh planned · Measured 1.8 kWh');
+  });
+
+  it('readout: idle current hour says when the run starts instead of claiming activity', () => {
+    // The hero says "Heating from 08:00"; the readout must agree — never
+    // claim "Heating" on an hour the plan left idle.
+    expect(formatSmartTaskHourReadoutPrimary({
+      timeLabel: 'Now',
+      priceLabel: '0.42 kr/kWh',
+      planned: false,
+      plannedKwh: 0,
+      kindVerb: 'Heating',
+      isNow: true,
+      nextStartLabel: '08:00',
+      measuredKwh: null,
+    })).toBe('Now · 0.42 kr/kWh · Idle — heating starts 08:00');
+    expect(formatSmartTaskHourReadoutPrimary({
+      timeLabel: 'Now',
+      priceLabel: '0.42 kr/kWh',
+      planned: false,
+      plannedKwh: 0,
+      kindVerb: 'Heating',
+      isNow: true,
+      nextStartLabel: null,
+      measuredKwh: null,
+    })).toBe('Now · 0.42 kr/kWh · Idle');
+  });
+
+  it('readout: idle non-current hour reads Not scheduled', () => {
+    expect(formatSmartTaskHourReadoutPrimary({
+      timeLabel: '13:00',
+      priceLabel: '0.62 kr/kWh',
+      planned: false,
+      plannedKwh: 0,
+      kindVerb: 'Heating',
+      isNow: false,
+      nextStartLabel: '08:00',
+      measuredKwh: null,
+    })).toBe('13:00 · 0.62 kr/kWh · Not scheduled');
+  });
+
+  it('trajectory card title is kind-aware via the target unit', () => {
+    expect(formatSmartTaskTrajectoryCardTitle({ targetValue: 65, targetUnit: '°C' }))
+      .toBe('Will it reach 65.0 °C in time?');
+    expect(formatSmartTaskTrajectoryCardTitle({ targetValue: 80, targetUnit: '%' }))
+      .toBe('Will it reach 80% in time?');
+  });
+
+  it('stateline ready variant composes the on-track sentence with the approx glyph', () => {
+    expect(formatSmartTaskTrajectoryStatelineReady({
+      nowValueLabel: '51.1 °C',
+      statusWord: 'on track',
+      readyTimeLabel: 'Sun 02:00',
+      hoursBeforeDeadline: 7,
+    })).toEqual({
+      emphasis: '51.1 °C now',
+      rest: 'on track — projected ready ≈ Sun 02:00, 7 hours before the deadline',
+      tone: 'ok',
+    });
+    expect(formatSmartTaskTrajectoryStatelineReady({
+      nowValueLabel: '45%',
+      statusWord: null,
+      readyTimeLabel: 'Mon 06:00',
+      hoursBeforeDeadline: 0.4,
+    })).toEqual({
+      emphasis: '45% now',
+      rest: 'projected ready ≈ Mon 06:00, just before the deadline',
+      tone: 'ok',
+    });
+    // Full time-unit words, singular-aware ("1 hour", never "1 h").
+    expect(formatSmartTaskTrajectoryStatelineReady({
+      nowValueLabel: '45%',
+      statusWord: 'on track',
+      readyTimeLabel: 'Mon 05:00',
+      hoursBeforeDeadline: 1.2,
+    }).rest).toBe('on track — projected ready ≈ Mon 05:00, 1 hour before the deadline');
+  });
+
+  it('stateline short variant states the projected value and the gap', () => {
+    expect(formatSmartTaskTrajectoryStatelineShort({
+      projectedValueLabel: '58.0 °C',
+      shortAmountLabel: '7 °C short',
+    })).toEqual({
+      emphasis: 'Projected 58.0 °C at the deadline',
+      rest: '7 °C short',
+      tone: 'danger',
+    });
+  });
+
+  it('short-amount label rounds per unit (whole °C drop the decimal, % round)', () => {
+    expect(formatSmartTaskTrajectoryShortAmountLabel(7, '°C')).toBe('7 °C short');
+    expect(formatSmartTaskTrajectoryShortAmountLabel(6.95, '°C')).toBe('7 °C short');
+    expect(formatSmartTaskTrajectoryShortAmountLabel(6.5, '°C')).toBe('6.5 °C short');
+    expect(formatSmartTaskTrajectoryShortAmountLabel(12.4, '%')).toBe('12% short');
+  });
+
+  // The trajectory producer only calls this with `shortBy >=
+  // SHORTFALL_DISPLAY_EPSILON` (0.05 °C / 0.5 %) — exactly the rounding
+  // half-step — so the smallest flagged shortfall already rounds to a
+  // non-zero amount. Pins that alignment: shrink the epsilons below these
+  // values and a zero-amount clamp becomes required here.
+  it('short-amount label is non-zero at the display-epsilon gate values', () => {
+    expect(formatSmartTaskTrajectoryShortAmountLabel(0.05, '°C')).toBe('0.1 °C short');
+    expect(formatSmartTaskTrajectoryShortAmountLabel(0.5, '%')).toBe('1% short');
   });
 });
 

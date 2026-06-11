@@ -13,14 +13,6 @@ export const formatDeadlineFull = (deadlineAtMs: number): string => (
   })
 );
 
-export const formatDeadlineShort = (deadlineAtMs: number): string => (
-  new Date(deadlineAtMs).toLocaleString([], {
-    weekday: 'short',
-    hour: '2-digit',
-    hour12: false,
-  })
-);
-
 export const formatTemperature = (value: number): string => (
   Number.isInteger(value) ? `${value} °C` : `${value.toFixed(1)} °C`
 );

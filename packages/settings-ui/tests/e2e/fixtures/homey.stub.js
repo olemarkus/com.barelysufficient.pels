@@ -967,6 +967,14 @@
     return { ...source, days };
   };
 
+  // Danger-state knob: `window.__PELS_HOMEY_STUB__ = { deadlinePlanUnderBooked:
+  // true }` serves an under-booked active plan (booked kWh < energyNeededKWh)
+  // so the trajectory card's data-driven cannot-finish branch (staircase tops
+  // out short of the target) is reachable from a Playwright harness. The
+  // baseline plan always books exactly what it needs, which keeps that branch
+  // dead in every other spec.
+  const deadlinePlanUnderBooked = initialOverrides.deadlinePlanUnderBooked === true;
+
   const buildSampleActivePlans = () => {
     const objective = settings.deferred_objectives?.objectivesByDeviceId?.dev_connected300;
     if (!objective?.enabled) return { version: 1, plansByDeviceId: {} };
@@ -992,8 +1000,12 @@
       computedFromPricesUpTo: deadlineAtMs,
       reason: 'flow_card',
       hours,
-      energyNeededKWh: plannedHourCount * 2,
-      planStatus: 'on_track',
+      // Under-booked scenario: needs 35 kWh but only books `plannedHourCount
+      // × 2` (12 kWh at the default 8-hour deadline), so the projected
+      // staircase tops out short of the target and the danger stateline +
+      // red deadline render.
+      energyNeededKWh: deadlinePlanUnderBooked ? 35 : plannedHourCount * 2,
+      planStatus: deadlinePlanUnderBooked ? 'cannot_meet' : 'on_track',
     };
     const latestRevision = latestHours === hours ? revision : {
       ...revision,

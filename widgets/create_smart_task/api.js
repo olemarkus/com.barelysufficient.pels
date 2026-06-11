@@ -4967,7 +4967,10 @@ var resolveQueuedHeadlineReason = (params) => {
   if (params.dailyBudgetExhausted) {
     return "Today\u2019s budget is full \u2014 next cheap window after midnight.";
   }
-  return `Cheaper than now \u2014 starts at ${params.firstPlannedTime}.`;
+  if (params.plannedWindowCheaperThanNow) {
+    return `Cheaper than now \u2014 starts at ${params.firstPlannedTime}.`;
+  }
+  return `Scheduled for the cheapest hours it can use \u2014 starts at ${params.firstPlannedTime}.`;
 };
 var CANNOT_MEET_RECOURSE = {
   openBudget: { label: "Open Budget", targetTab: "budget" },

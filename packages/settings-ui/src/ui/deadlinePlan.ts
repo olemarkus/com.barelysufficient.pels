@@ -9,19 +9,15 @@ import {
 import type { ObservedDeviceState } from '../../../contracts/src/types.ts';
 import {
   deadlineLabels,
-  formatCheapestHoursCaption,
   SMART_TASK_BANNER_UNAVAILABLE_FOR_DEVICE,
   type DeadlinePendingContext,
   type DeadlinePlanUnavailableReason,
 } from '../../../shared-domain/src/deadlineLabels.ts';
-import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import { buildPlanInputs } from './deadlinePlanInputs.ts';
+import { buildTrajectory } from './deadlinePlanTrajectory.ts';
+import { buildTimeline, resolveActualDeviceKwh } from './deadlinePlanTimeline.ts';
 import { buildHero, resolveDeadlineHeroTone } from './deadlinePlanHero.ts';
-import {
-  formatDeadlineShort,
-  formatHourLabel,
-  formatTemperature,
-} from './deadlinePlanFormatters.ts';
+import { formatHourLabel } from './deadlinePlanFormatters.ts';
 import {
   buildPendingHero,
   resolvePendingPriceContext,
@@ -50,7 +46,6 @@ import {
 import type {
   ResolvedDeferredObjectiveActivePlanV1,
   DeferredObjectiveActivePlanRevisionV1,
-  DeferredObjectiveActivePlanRevisionReason,
 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 
 type ObjectivePlanInput = {
@@ -59,104 +54,6 @@ type ObjectivePlanInput = {
   devices: ObservedDeviceState[];
   prices: SettingsUiPricesPayload;
   nowMs?: number;
-};
-
-const formatPrice = (total: number): string => total.toFixed(2);
-
-const resolveActualDeviceKwh = (params: {
-  bootstrap: SettingsUiBootstrap;
-  deviceId: string;
-  startsAtMs: number;
-}): number | null => {
-  const bucketKey = new Date(params.startsAtMs).toISOString();
-  const value = params.bootstrap.power.tracker?.deviceBuckets?.[params.deviceId]?.[bucketKey];
-  return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value) : null;
-};
-
-const resolvePriceTone = (hour: HorizonHour): DeadlinePlanPayload['timeline']['hours'][number]['tone'] => {
-  if (hour.isCheap === true) return 'cheap';
-  if (hour.isExpensive === true) return 'expensive';
-  return 'normal';
-};
-
-const buildTimeline = (params: {
-  device: ObservedDeviceState;
-  bootstrap: SettingsUiBootstrap;
-  deviceId: string;
-  hours: HorizonHour[];
-  originalChargeByStartMs: Map<number, number>;
-  currentChargeByStartMs: Map<number, number>;
-  latestRevisionReason: DeferredObjectiveActivePlanRevisionReason | null;
-  progressStart: number;
-  progressTarget: number;
-  progressPerKWh: number;
-  progressUnit: '°C' | '%';
-  deadlineAtMs: number;
-  costDisplay: CostDisplay;
-  priceUnitLabel: string;
-}): DeadlinePlanPayload['timeline'] => {
-  let projectedProgress = params.progressStart;
-  const progressFloor = Math.min(
-    params.progressStart,
-    ...params.hours.map((hour) => {
-      const currentKwh = params.currentChargeByStartMs.get(hour.startsAtMs) ?? 0;
-      return currentKwh > 0
-        ? Math.min(params.progressTarget, params.progressStart + currentKwh * params.progressPerKWh)
-        : params.progressStart;
-    }),
-  );
-  const normalizedProgressFloor = params.progressUnit === '°C'
-    ? Math.max(0, Math.floor((progressFloor - 1) / 5) * 5)
-    : Math.max(0, Math.floor((progressFloor - 5) / 10) * 10);
-  const progressCeilingLabel = params.progressUnit === '°C'
-    ? formatTemperature(params.progressTarget)
-    : `${Math.round(params.progressTarget)}%`;
-  const hours = params.hours.map((hour) => {
-    const originalKwh = params.originalChargeByStartMs.get(hour.startsAtMs) ?? 0;
-    const currentKwh = params.currentChargeByStartMs.get(hour.startsAtMs) ?? 0;
-    if (currentKwh > 0) {
-      projectedProgress = Math.min(params.progressTarget, projectedProgress + currentKwh * params.progressPerKWh);
-    }
-    const displayPrice = hour.price / Math.max(1, params.costDisplay.divisor);
-    const hourChanged = Math.abs(originalKwh - currentKwh) > 0.001;
-    return {
-      time: formatHourLabel(hour.startsAtMs),
-      price: formatPrice(displayPrice),
-      priceValue: displayPrice,
-      tone: resolvePriceTone(hour),
-      planned: currentKwh > 0,
-      changed: hourChanged,
-      revisionReason: hourChanged ? params.latestRevisionReason : null,
-      usage: {
-        backgroundKwh: Math.max(0, hour.plannedOtherKWh),
-        originalDeviceKwh: originalKwh,
-        deviceKwh: currentKwh,
-        actualDeviceKwh: resolveActualDeviceKwh({
-          bootstrap: params.bootstrap,
-          deviceId: params.deviceId,
-          startsAtMs: hour.startsAtMs,
-        }),
-      },
-      progress: projectedProgress,
-    };
-  });
-  return {
-    ariaLabel: `Smart task schedule for ${formatDisplayDeviceName(params.device.name)}`,
-    progressFloor: Math.min(normalizedProgressFloor, params.progressTarget - 1),
-    progressCeilingValue: params.progressTarget,
-    progressCeilingLabel,
-    deadlineLabel: formatDeadlineShort(params.deadlineAtMs),
-    hours,
-    // Trust caption read from the same already-scaled per-hour display prices
-    // (øre→kr handled upstream by the CostDisplay divisor) the chart renders;
-    // the baseline pool is every hour in the window. Averaging + phrasing live
-    // in shared-domain so this stays a thin projection.
-    cheapestHoursCaption: formatCheapestHoursCaption({
-      plannedPrices: hours.filter((hour) => hour.planned).map((hour) => hour.priceValue),
-      allPrices: hours.map((hour) => hour.priceValue),
-      unitLabel: params.priceUnitLabel,
-    }),
-  };
 };
 
 type ResolvedObjectiveContext = {
@@ -224,13 +121,35 @@ const buildPendingPayload = (
   };
 };
 
+// Single planned-hour predicate: an hour is planned iff it appears in this
+// map. Zero/non-positive allocations are dropped at construction so `has`
+// (hero `firstChargingHour`) and `(get(...) ?? 0) > 0` (timeline bars,
+// trajectory bands/staircase) can never disagree about whether an hour runs.
 const buildChargeByStartMs = (
   revision: DeferredObjectiveActivePlanRevisionV1 | null,
 ): Map<number, number> => {
   const out = new Map<number, number>();
   if (!revision) return out;
   for (const hour of revision.hours) {
-    out.set(hour.startsAtMs, hour.plannedKWh);
+    if (hour.plannedKWh > 0) out.set(hour.startsAtMs, hour.plannedKWh);
+  }
+  return out;
+};
+
+// Coverage starts (`coversFromMs`) for the booked hours, keyed like
+// `buildChargeByStartMs`. Present only for buckets the planner already
+// trimmed at a mid-hour revision (absence ⇒ the energy covers the full
+// hour). The trajectory staircase needs this to prorate the in-progress
+// hour without double-trimming an already-trimmed bucket.
+const buildCoverStartByStartMs = (
+  revision: DeferredObjectiveActivePlanRevisionV1 | null,
+): Map<number, number> => {
+  const out = new Map<number, number>();
+  if (!revision) return out;
+  for (const hour of revision.hours) {
+    if (hour.plannedKWh > 0 && typeof hour.coversFromMs === 'number') {
+      out.set(hour.startsAtMs, hour.coversFromMs);
+    }
   }
   return out;
 };
@@ -273,7 +192,6 @@ const prepareObjectivePayload = (
 
   const windowStartMs = Math.min(ctx.nowMs, ctx.activePlan.original?.revisedAtMs ?? ctx.nowMs);
   const hours = collectHorizonHours({
-    bootstrap: params.bootstrap,
     deadlineAtMs: ctx.deadlineAtMs,
     windowStartMs,
     prices: params.prices,
@@ -368,6 +286,32 @@ const resolveLiveCostAndDelivery = (params: {
     deliveredCostSoFar: sawAnyActual ? deliveredCostSoFar : null,
     deliveredKWh,
   };
+};
+
+// Producer-side price comparison feeding the queued hero's "Cheaper than now"
+// reason line: true iff the planned hours' average price is strictly below
+// the current hour's price. Reads the same per-hour prices and planned-hour
+// set `buildTimeline` / `resolveLiveCostAndDelivery` consume, so the sentence
+// can never contradict the schedule chart rendered beneath it. Raw `hour.price`
+// values are compared directly — the CostDisplay divisor scales every hour by
+// the same factor, so it cancels out of the comparison. False when the
+// comparison can't be made (no planned hours, or no hour contains `nowMs`),
+// in which case the resolver falls back to the non-comparative phrasing.
+const resolvePlannedWindowCheaperThanNow = (params: {
+  hours: HorizonHour[];
+  currentChargeByStartMs: Map<number, number>;
+  nowMs: number;
+}): boolean => {
+  const plannedPrices = params.hours
+    .filter((hour) => (params.currentChargeByStartMs.get(hour.startsAtMs) ?? 0) > 0)
+    .map((hour) => hour.price);
+  if (plannedPrices.length === 0) return false;
+  const currentHour = params.hours.find((hour) => (
+    params.nowMs >= hour.startsAtMs && params.nowMs < hour.endMs
+  ));
+  if (!currentHour) return false;
+  const plannedAverage = plannedPrices.reduce((sum, price) => sum + price, 0) / plannedPrices.length;
+  return plannedAverage < currentHour.price;
 };
 
 // Prorate one bucket's `actualKWh` against the plan's run interval. Tracker
@@ -512,6 +456,11 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
       // hero's headline-reason resolver can branch on "prices not through
       // deadline yet" without re-deriving the comparison at the view layer.
       computedFromPricesUpTo: resolveFiniteNumber(latest.computedFromPricesUpTo),
+      // Verified price comparison for the "Cheaper than now" reason line —
+      // resolved from the same hour set the timeline + cost sums consume.
+      plannedWindowCheaperThanNow: resolvePlannedWindowCheaperThanNow({
+        hours, currentChargeByStartMs, nowMs,
+      }),
       // Plan-level snapshot frozen at first-revision time. Read from the
       // plan, not the latest revision, so the hero meta line shows the
       // "total duration" the user agreed to at plan creation rather than
@@ -539,13 +488,28 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
       device, bootstrap, deviceId, hours,
       originalChargeByStartMs, currentChargeByStartMs,
       latestRevisionReason: latest.reason,
-      progressStart: progress.currentValue,
-      progressTarget: progress.targetValue,
-      progressPerKWh,
-      progressUnit: progress.unit,
+      labels,
       deadlineAtMs,
+      nowMs,
       costDisplay: input.costDisplay,
       priceUnitLabel: input.priceUnitLabel,
+    }),
+    trajectory: buildTrajectory({
+      device,
+      activePlan: activePlan!,
+      planStatus: latest.planStatus,
+      hours,
+      currentChargeByStartMs,
+      currentCoverStartByStartMs: buildCoverStartByStartMs(latest),
+      currentValue: progress.currentValue,
+      targetValue: progress.targetValue,
+      progressPerKWh,
+      unit: progress.unit,
+      deadlineAtMs,
+      nowMs,
+      // Same kind verb as the schedule chart's planned band — the two cards'
+      // bands speak one word ("Heating" / "Charging").
+      runBandLabel: labels.deviceSeriesName,
     }),
     planInputs: buildPlanInputs({
       labels,

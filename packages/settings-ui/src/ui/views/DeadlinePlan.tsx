@@ -1,7 +1,6 @@
 import { render } from 'preact';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type { DeferredObjectiveSettingsKind } from '../../../../contracts/src/deferredObjectiveSettings.ts';
-import type { DeferredObjectiveActivePlanRevisionReason } from '../../../../contracts/src/deferredObjectiveActivePlans.ts';
 import type {
   ActivePlanRevisionLogRow,
   ActivePlanRevisionLogSummary,
@@ -14,15 +13,19 @@ import {
   SMART_TASK_BANNER_RECORD_NOT_FOUND_BODY,
   SMART_TASK_BANNER_RECORD_NOT_FOUND_TITLE,
   SMART_TASK_BANNER_UNAVAILABLE_TITLE,
+  NOW_MARKER_WORD,
   SMART_TASK_EXTRA_PERMISSIONS_ROW_LABEL,
   SMART_TASK_LOADING_LABEL,
+  SMART_TASK_READOUT_SCRUB_HINT,
+  SMART_TASK_SCHEDULE_CARD_TITLE,
   type DeadlineCannotMeetRecourse,
   type DeadlineLabels,
   type DeadlinePlanUnavailableReason,
   type KwhPerUnitProvenanceRow,
+  type SmartTaskTrajectoryStateline,
 } from '../../../../shared-domain/src/deadlineLabels.ts';
-import { encodeHtml, useEchartsMount, type EChartsOption, type EChartsType, type SeriesOption } from '../echartsRegistry.ts';
-import { formatAcceptedAt } from '../deadlinePlanFormatters.ts';
+import { useEchartsMount, type EChartsOption, type EChartsType, type SeriesOption } from '../echartsRegistry.ts';
+import { formatAcceptedAt, formatHourLabel } from '../deadlinePlanFormatters.ts';
 import type { DeadlinePlanHistoryView } from '../deadlinePlanHistoryFetch.ts';
 import type { ResolvedDeferredObjectivePlanHistoryEntry } from '../../../../contracts/src/deferredObjectivePlanHistory.ts';
 import { DeadlinePlanHistoryDetail } from './DeadlinePlanHistoryDetail.tsx';
@@ -62,21 +65,55 @@ type DeadlinePlanChip = {
 };
 
 type DeadlinePlanHour = {
+  // Hour-start timestamp. The trajectory chart's scrub handler maps time-axis
+  // pixel positions back onto this hour grid, and the selection hairline sits
+  // at `startsAtMs + 30 min`.
+  startsAtMs: number;
   time: string;
   price: string;
   priceValue: number;
   tone: DeadlinePlanHourTone;
   planned: boolean;
   changed: boolean;
-  // Populated on changed hours from the latest revision's reason; null otherwise.
-  revisionReason: DeferredObjectiveActivePlanRevisionReason | null;
-  usage: {
-    backgroundKwh: number;
-    originalDeviceKwh: number;
-    deviceKwh: number;
-    actualDeviceKwh: number | null;
+  // Pinned-readout lines for this hour, fully resolved at the producer
+  // (`formatSmartTaskHourReadoutPrimary` + the revision-reason sentence).
+  // `secondary` is null when the hour carries no revision narrative; the
+  // view falls back to the scrub hint so the row keeps a stable two-line
+  // height. At the default (no explicit selection) state the view shows the
+  // scrub hint unconditionally — see `ScheduleQuestionCards`.
+  readout: {
+    primary: string;
+    secondary: string | null;
   };
-  progress: number;
+};
+
+// Trajectory card payload ("Will it reach 65 °C in time?"). Every series,
+// band, axis bound, and sentence arrives producer-resolved; the view only
+// maps them onto ECharts series. Point tuples are `[ms, value]`.
+export type DeadlineTrajectoryPayload = {
+  cardTitle: string;
+  ariaLabel: string;
+  measuredPoints: Array<[number, number]>;
+  nowPoint: [number, number];
+  plannedPoints: Array<[number, number]>;
+  runBands: Array<{ fromMs: number; toMs: number; label: string | null }>;
+  targetValue: number;
+  // "Target 65.0 °C" — anchored top-left at the line start (markPoint), NOT
+  // an end label: end labels collide when the staircase converges on the
+  // target line near the deadline.
+  targetLabel: string;
+  deadlineAtMs: number;
+  deadlineMarkLabel: string;
+  deadlineDanger: boolean;
+  xMinMs: number;
+  xMaxMs: number;
+  yMin: number;
+  yMax: number;
+  yFloorLabel: string;
+  stateline: SmartTaskTrajectoryStateline;
+  // Vertical "7 °C short" gap annotation at the deadline; null when the
+  // projected staircase reaches the target in time.
+  shortfall: { fromValue: number; toValue: number; label: string } | null;
 };
 
 export type DeadlinePlanPayload = {
@@ -131,12 +168,22 @@ export type DeadlinePlanPayload = {
   };
   timeline: {
     ariaLabel: string;
-    progressFloor: number;
-    progressCeilingValue: number;
-    progressCeilingLabel: string;
-    deadlineLabel: string;
     hours: DeadlinePlanHour[];
-    // "Picked N of M hours · avg P vs window avg Q kr/kWh" trust
+    // Index of the hour column containing "now" — the default readout
+    // selection and the position of the "Now" axis label + now markLine.
+    // Not necessarily 0: the window opens at the plan's original revision.
+    nowIndex: number;
+    // Fractional category-axis coordinates (category `i` spans
+    // `[i-0.5, i+0.5]`) so the now/deadline markLines sit at their TRUE
+    // positions instead of snapping to a bar centre.
+    nowAxisX: number;
+    deadlineAxisX: number;
+    // "deadline Sun 09:00" markLine label, producer-composed.
+    deadlineMarkLabel: string;
+    // Contiguous planned-hour ranges for the markArea bands; only the first
+    // carries the kind-verb label.
+    plannedRanges: Array<{ from: number; to: number; label: string | null }>;
+    // "Picked N of M hours before the deadline · avg P kr/kWh" trust
     // caption rendered under the chart. Resolved producer-side from the
     // per-hour `priceValue` + `planned` flag via `formatCheapestHoursCaption`
     // so the view never re-derives the averages or branches on price unit.
@@ -144,6 +191,7 @@ export type DeadlinePlanPayload = {
     // single-hour window, or a missing price unit).
     cheapestHoursCaption: string | null;
   };
+  trajectory: DeadlineTrajectoryPayload;
   planInputs: {
     perUnitRateLabel: string | null;
     perUnitRateNote: string | null;
@@ -293,16 +341,15 @@ export type DeadlineChartPalette = {
   priceCheap: string;
   priceNormal: string;
   priceExpensive: string;
-  background: string;
-  device: string;
-  actualDevice: string;
-  progress: string;
+  // Accent series colour: planned-band tint, measured trajectory line, now
+  // dot. The band uses it at low opacity so planned ranges read as a wash
+  // behind the full-opacity bars.
+  accent: string;
+  // Muted staircase / guide colour for the planned trajectory ahead.
+  muted: string;
   grid: string;
   text: string;
-  muted: string;
-  tooltipBackground: string;
-  tooltipText: string;
-  tooltipBorder: string;
+  danger: string;
 };
 
 // `fallback` is consulted only when the computed value is empty (token missing
@@ -320,19 +367,18 @@ const cssNumber = (element: HTMLElement, variable: string, fallback: number): nu
 };
 
 const resolvePalette = (element: HTMLElement): DeadlineChartPalette => ({
-  priceCheap: cssVar(element, '--pels-status-good-border'),
-  priceNormal: cssVar(element, '--pels-surface-container-high'),
-  priceExpensive: cssVar(element, '--color-base-warning-default'),
-  background: cssVar(element, '--pels-text-supporting-color'),
-  device: cssVar(element, '--color-base-accent-default'),
-  actualDevice: cssVar(element, '--color-role-good'),
-  progress: cssVar(element, '--color-base-info-default'),
+  // Canonical price-tone tokens shared with the history hourly strip — the
+  // same cheap/normal/expensive vocabulary on both smart-task surfaces.
+  priceCheap: cssVar(element, '--pels-chart-hour-tone-cheap'),
+  priceNormal: cssVar(element, '--pels-chart-hour-tone-normal'),
+  priceExpensive: cssVar(element, '--pels-chart-hour-tone-expensive'),
+  // Semantic role token (not the raw base token) so the chart accent follows
+  // any future role remap with the rest of the surface.
+  accent: cssVar(element, '--color-role-accent'),
+  muted: cssVar(element, '--pels-text-supporting-color'),
   grid: cssVar(element, '--pels-surface-outline'),
   text: cssVar(element, '--text'),
-  muted: cssVar(element, '--pels-text-supporting-color'),
-  tooltipBackground: cssVar(element, '--color-overlay-toast'),
-  tooltipText: cssVar(element, '--color-semantic-text-primary'),
-  tooltipBorder: cssVar(element, '--color-border-medium'),
+  danger: cssVar(element, '--color-role-danger'),
 });
 
 export type ChartTypography = {
@@ -347,321 +393,126 @@ const resolveTypography = (element: HTMLElement): ChartTypography => ({
   axisNameFontWeight: cssNumber(element, '--font-weight-bold', 700),
 });
 
-const resolveChartSize = (element: HTMLElement): { height: number; width: number } => {
-  const width = element.clientWidth > 0 ? element.clientWidth : (element.parentElement?.clientWidth ?? 390);
-  const viewportWidth = document.documentElement?.clientWidth ?? 0;
-  return {
-    width: width > 0 ? width : Math.min(480, viewportWidth || 390),
-    // Default height matches `.deadline-horizon-chart` in style.css (240 px)
-    // so a cold-mount inside a hidden panel sizes the chart consistently with
-    // the post-resize value.
-    height: element.clientHeight > 0 ? element.clientHeight : 240,
-  };
-};
-
-const formatProgressValue = (value: number, unit: DeadlineLabels['targetUnit']): string => (
-  unit === '°C' ? `${value.toFixed(1)} °C` : `${Math.round(value)}%`
+// Container-specific sizers. Fallback heights must match the
+// `.deadline-schedule-chart` / `.deadline-trajectory-chart` rules in
+// style.css so a cold-mount inside a hidden panel sizes the chart
+// consistently with the post-resize value.
+const resolveChartSizeWithFallback = (fallbackHeight: number) => (
+  (element: HTMLElement): { height: number; width: number } => {
+    const width = element.clientWidth > 0 ? element.clientWidth : (element.parentElement?.clientWidth ?? 390);
+    const viewportWidth = document.documentElement?.clientWidth ?? 0;
+    return {
+      width: width > 0 ? width : Math.min(480, viewportWidth || 390),
+      height: element.clientHeight > 0 ? element.clientHeight : fallbackHeight,
+    };
+  }
 );
 
-const buildTooltip = (payload: DeadlinePlanPayload, rawParams: unknown): string => {
-  const params = Array.isArray(rawParams) ? rawParams : [rawParams];
-  const first = params.find((item): item is { dataIndex: number } => (
-    Boolean(item) && typeof item === 'object' && Number.isInteger((item as { dataIndex?: unknown }).dataIndex)
-  ));
-  const hour = first ? payload.timeline.hours[first.dataIndex] : null;
-  if (!hour) return '';
-  const labels = payload.labels;
-  // Only the not-planned state needs its own line — the planned case is
-  // already conveyed by the device-series line ("Heating 2.0 kWh"). Dropping
-  // the planner-noun "Plan " prefix here too (TODO 1062).
-  const idleLine = hour.planned ? null : labels.planTooltipIdle;
-  const originalLine = hour.changed
-    ? `${labels.originalDeviceSeriesName} ${hour.usage.originalDeviceKwh.toFixed(1)} kWh`
-    : null;
-  const actualLine = hour.usage.actualDeviceKwh !== null
-    ? `${labels.actualDeviceSeriesName} ${hour.usage.actualDeviceKwh.toFixed(1)} kWh`
-    : null;
-  const revisionLine = hour.changed && hour.revisionReason !== null
-    ? (labels.revisionReasonTooltipLine[hour.revisionReason] ?? null)
-    : null;
-  return [
-    `<strong>${encodeHtml(hour.time)}</strong>`,
-    `Price ${encodeHtml(hour.price)} ${encodeHtml(payload.priceUnitLabel)}`,
-    `${encodeHtml(labels.backgroundSeriesName)} ${hour.usage.backgroundKwh.toFixed(1)} kWh`,
-    ...(originalLine ? [encodeHtml(originalLine)] : []),
-    `${encodeHtml(labels.deviceSeriesName)} ${hour.usage.deviceKwh.toFixed(1)} kWh`,
-    ...(actualLine ? [encodeHtml(actualLine)] : []),
-    ...(idleLine ? [encodeHtml(idleLine)] : []),
-    `${encodeHtml(labels.progressSeriesName)} ${formatProgressValue(hour.progress, labels.targetUnit)}`,
-    ...(revisionLine ? [encodeHtml(revisionLine)] : []),
-  ].join('<br>');
-};
+const SCHEDULE_CHART_HEIGHT = 190;
+const TRAJECTORY_CHART_HEIGHT = 160;
+const resolveScheduleChartSize = resolveChartSizeWithFallback(SCHEDULE_CHART_HEIGHT);
+const resolveTrajectoryChartSize = resolveChartSizeWithFallback(TRAJECTORY_CHART_HEIGHT);
 
-// Two-grid ECharts layout inside a 240 px container. Top: price, Bottom: load + progress overlay.
-// The 44 px top reserves room for a two-line legend (`width: '100%'`) — with
-// up to 5 long localized series names at 320–480 px the legend wraps, and a
-// single-line `top: 28` left no room above the price grid.
-const PRICE_GRID_TOP = 44;
-const PRICE_GRID_HEIGHT = 56;
-const LOAD_GRID_TOP = 126;
-const LOAD_GRID_HEIGHT = 84;
-const GRID_LEFT = 36;
-const GRID_RIGHT = 56;
+const ONE_HOUR_MS = 60 * 60 * 1000;
 
-// Pinned bar width + category gap shared by every bar series across both
-// xAxis grids (`xAxisIndex 0` = price, `xAxisIndex 1` = load). ECharts auto-
-// sizes bars per grid: the price grid has 1 bar series while the load grid
-// has 2–4 (background + device + optional original-overlay + optional actual
-// line), and without explicit pins the auto-sizer picks different widths and
-// off-centres the bars relative to the category. Pinning both values makes
-// bar centres parity-aligned at every viewport from 320–480 px, which the
-// `bar-centre parity` E2E spec asserts. `barWidth` (not `barMaxWidth`) is
-// required: `barMaxWidth` is an upper bound that the auto-sizer still varies
-// per grid, defeating the alignment goal.
-const BAR_WIDTH = 14;
-const BAR_CATEGORY_GAP = '20%';
-
-export const buildChartOption = (
+// Schedule chart ("When will it run, and at what price?"): one grid, one
+// zero-baselined price axis on the right, tone-coloured price bars (planned
+// hours full opacity, unplanned muted), a solid-tint markArea band over the
+// planned ranges labeled with the kind verb, a dot markPoint over changed
+// hours (replaces the undiscoverable 1px border), and now/deadline markLines
+// at their TRUE fractional x-positions. No legend; the ECharts tooltip is
+// fully disabled — the pinned readout row below the chart is the only
+// tap/scrub surface, so a floating box would double-fire.
+//
+// NOTE on dash grammar: planned ranges are SOLID tint. Dashed banding is
+// reserved for "planned but didn't run" on the history page.
+export const buildScheduleChartOption = (
   payload: DeadlinePlanPayload,
   palette: DeadlineChartPalette,
   typography: ChartTypography,
 ): EChartsOption => {
-  const hourCount = payload.timeline.hours.length;
-  const labels = payload.timeline.hours.map((hour) => hour.time);
-  // Keep the two-line "Now" / deadline labels from colliding with interior
-  // ticks in the 320 px Homey WebView. First/last always render below, so the
-  // interior cadence can be sparse without losing the time span.
+  const { timeline } = payload;
+  const hourCount = timeline.hours.length;
+  const labels = timeline.hours.map((hour) => hour.time);
   const showLabelEvery = hourCount > 10 ? 4 : 3;
-  // Use the natural max of the (already scaled) display values and keep the
-  // price axis anchored at zero for normal non-negative prices. Nord Pool can
-  // go negative; in that case the lower bound follows the data so those hours
-  // remain visible instead of being flattened into the zero line.
-  const priceValues = payload.timeline.hours.map((hour) => hour.priceValue);
+  // Keep the price axis anchored at zero for normal non-negative prices so
+  // bar heights are honest. Nord Pool can go negative; in that case the lower
+  // bound follows the data so those hours remain visible instead of being
+  // flattened into the zero line.
+  const priceValues = timeline.hours.map((hour) => hour.priceValue);
   const rawPriceMin = priceValues.length ? Math.min(...priceValues) : 0;
   const rawPriceMax = priceValues.length ? Math.max(...priceValues) : 0;
   const priceAxisMin = rawPriceMin < 0 ? rawPriceMin : 0;
   const priceMax = rawPriceMax > 0 ? rawPriceMax : (priceAxisMin < 0 ? 0 : 1);
-  const stackedMax = Math.max(0.5, ...payload.timeline.hours.map((hour) => (
-    Math.max(
-      hour.usage.backgroundKwh + Math.max(hour.usage.originalDeviceKwh, hour.usage.deviceKwh),
-      hour.usage.actualDeviceKwh ?? 0,
-    )
-  )));
-  const originalSeriesName = payload.labels.originalDeviceSeriesName;
-  const hasActualDeviceSeries = payload.timeline.hours.some((hour) => hour.usage.actualDeviceKwh !== null);
-  // Suppress the original-series legend and overlay bars when the plan has never
-  // been revised: every hour's originalDeviceKwh equals deviceKwh, so rendering
-  // both series produces duplicate legend entries with no informational gain.
-  // Matches the suppression logic in DeadlinePlanHistoryDetail.
-  const hasOriginalSeries = payload.timeline.hours.some(
-    (hour) => Math.abs(hour.usage.originalDeviceKwh - hour.usage.deviceKwh) > 0.001,
-  );
-
-  const axisBase = {
-    type: 'category' as const,
-    data: labels,
-    boundaryGap: true,
-    axisTick: { show: false },
-    axisLine: { lineStyle: { color: palette.grid } },
-    axisLabel: {
-      color: palette.muted,
-      fontSize: typography.labelFontSize,
-      interval: (index: number) => index === 0 || index === hourCount - 1 || index % showLabelEvery === 0,
-      formatter: (value: string, index: number) => {
-        if (index === 0) return `Now\n${value}`;
-        if (index === hourCount - 1) return `${payload.timeline.deadlineLabel}\n${value}`;
-        return value;
-      },
-    },
-  };
-  const valueAxisBase = {
-    type: 'value' as const,
-    splitLine: { lineStyle: { color: palette.grid, opacity: 0.55 } },
-    axisLine: { show: false },
-    axisTick: { show: false },
-    axisLabel: { color: palette.text, fontSize: typography.labelFontSize },
-  };
+  // Changed-hour dot sits a fixed fraction of the axis span above the bar so
+  // it clears the bar cap at every viewport without per-bar measurements.
+  const changedDotOffset = (priceMax - priceAxisMin) * 0.07;
   const axisNameStyle = {
     color: palette.text,
     fontSize: typography.axisNameFontSize,
     fontWeight: typography.axisNameFontWeight,
     align: 'center' as const,
   };
-  const showCeilingOnly = (max: number, label: string) => (value: number) => (
-    Math.abs(value - max) < 0.001 ? label : ''
-  );
-  const nowMarkLine = {
-    silent: true,
-    symbol: 'none' as const,
-    lineStyle: { color: palette.muted, type: 'dashed' as const, width: 1 },
-    label: { show: false },
-    data: [{ xAxis: 0 }],
-  };
-
-  // Shared builder for the progress axis. The load grid uses it for the
-  // visible left axis (`palette.progress` colour) and the price grid uses
-  // it for a transparent phantom that reserves identical layout width —
-  // see the bar-alignment comment near the yAxis array (TODO 628). Keeping
-  // a single builder ensures future tweaks (ticks, ranges, formatter) stay
-  // mirrored across the two grids.
-  const buildProgressAxis = (gridIndex: 0 | 1, color: string) => ({
-    ...valueAxisBase,
-    gridIndex,
-    position: 'left' as const,
-    name: payload.labels.targetUnit,
-    nameLocation: 'middle' as const,
-    nameGap: GRID_LEFT - 12,
-    nameRotate: 0,
-    nameTextStyle: { ...axisNameStyle, color },
-    min: payload.timeline.progressFloor,
-    max: payload.timeline.progressCeilingValue,
-    interval: Math.max(1, payload.timeline.progressCeilingValue - payload.timeline.progressFloor),
-    splitLine: { show: false },
-    axisLabel: {
-      ...valueAxisBase.axisLabel,
-      color,
-      formatter: showCeilingOnly(payload.timeline.progressCeilingValue, payload.timeline.progressCeilingLabel),
-    },
-  });
-
   return {
     animation: false,
     backgroundColor: 'transparent',
-    color: [palette.background, palette.device, palette.actualDevice, palette.progress],
     textStyle: { color: palette.text, fontFamily: 'inherit' },
-    legend: {
-      top: 0,
-      left: 0,
-      // Let the legend wrap onto a second row instead of truncating to
-      // "Background usa…" / "Original Heatin…" / "Measured Heati…" when 4–5
-      // long localized series names overflow the 320–480 px chart width.
-      // `PRICE_GRID_TOP` (44) and the container `.deadline-horizon-chart`
-      // height token reserve enough vertical room for a two-line legend.
-      width: '100%',
-      // Explicit `itemStyle` per entry: the original-plan series renders its
-      // bars as `transparent` fill + colored border, which would otherwise
-      // produce an invisible legend swatch. Pin each legend swatch to the
-      // colour the user actually sees in the rendered series.
-      data: [
-        { name: payload.labels.backgroundSeriesName, itemStyle: { color: palette.background } },
-        { name: payload.labels.deviceSeriesName, itemStyle: { color: palette.device } },
-        ...(hasOriginalSeries
-          ? [{
-              name: originalSeriesName,
-              itemStyle: {
-                color: 'transparent',
-                borderColor: palette.device,
-                borderWidth: 2,
-                borderType: 'dashed' as const,
-              },
-            }]
-          : []),
-        ...(hasActualDeviceSeries
-          ? [{ name: payload.labels.actualDeviceSeriesName, itemStyle: { color: palette.actualDevice } }]
-          : []),
-        { name: payload.labels.progressSeriesName, itemStyle: { color: palette.progress } },
-      ],
-      itemWidth: 12,
-      itemHeight: 8,
-      icon: 'roundRect',
-      textStyle: { color: palette.muted, fontSize: typography.labelFontSize },
-      inactiveColor: palette.grid,
+    grid: { left: 8, right: 56, top: 24, bottom: 24, containLabel: true },
+    xAxis: {
+      type: 'category',
+      data: labels,
+      boundaryGap: true,
+      axisTick: { show: false },
+      axisLine: { lineStyle: { color: palette.grid } },
+      axisLabel: {
+        color: palette.muted,
+        fontSize: typography.labelFontSize,
+        interval: (index: number) => (
+          index === timeline.nowIndex || index === hourCount - 1 || index % showLabelEvery === 0
+        ),
+        formatter: (value: string, index: number) => (
+          index === timeline.nowIndex ? NOW_MARKER_WORD : value
+        ),
+      },
     },
-    grid: [
-      // `containLabel: true` makes ECharts auto-reserve enough horizontal
-      // space INSIDE the `[left, right]` box for both axes' labels + names.
-      // The result is that both grids share the same effective plot area
-      // (since they reserve identical insets), and the bars at the same
-      // `dataIndex` line up horizontally between the two grids (TODO 628).
-      // Without it the price grid (single right axis) and load grid (left
-      // progress axis + right kWh axis) end up with different plot widths
-      // and bars drift apart.
-      { top: PRICE_GRID_TOP, left: GRID_LEFT, right: GRID_RIGHT, height: PRICE_GRID_HEIGHT, containLabel: true },
-      { top: LOAD_GRID_TOP, left: GRID_LEFT, right: GRID_RIGHT, height: LOAD_GRID_HEIGHT, containLabel: true },
-    ],
-    tooltip: {
-      trigger: 'axis',
-      appendToBody: true,
-      confine: true,
-      backgroundColor: palette.tooltipBackground,
-      borderColor: palette.tooltipBorder,
-      textStyle: { color: palette.tooltipText },
-      formatter: (params: unknown) => buildTooltip(payload, params),
-    },
-    xAxis: [
-      { ...axisBase, gridIndex: 0, axisLabel: { show: false } },
-      { ...axisBase, gridIndex: 1 },
-    ],
-    yAxis: [
-      {
-        ...valueAxisBase,
-        gridIndex: 0,
-        position: 'right',
-        name: payload.priceUnitLabel,
-        nameLocation: 'middle',
-        nameGap: GRID_RIGHT - 12,
-        nameRotate: 0,
-        nameTextStyle: axisNameStyle,
-        min: priceAxisMin,
-        max: priceMax,
-        // Force a single tick at min / max so the axis labels stay readable in
-        // the narrow 56-px price grid — without this, kr/kWh values can fall
-        // into ECharts' default 5-tick layout and overlap.
-        interval: Math.max(0.01, priceMax - priceAxisMin),
-        axisLabel: {
-          ...valueAxisBase.axisLabel,
-          // One-decimal precision matches the Budget chart's price axis
-          // (`budgetRedesignChart.ts:400`) so users see the same number
-          // format on both surfaces. Tooltip retains two-decimal precision
-          // via `formatPrice` in `deadlinePlan.ts`.
-          formatter: (value: number) => {
-            if (priceAxisMin < 0 && Math.abs(value - priceAxisMin) < 0.001) return priceAxisMin.toFixed(1);
-            if (Math.abs(value - priceMax) < 0.001) return priceMax.toFixed(1);
-            return '';
-          },
+    yAxis: {
+      type: 'value',
+      position: 'right',
+      name: payload.priceUnitLabel,
+      nameLocation: 'middle',
+      nameGap: 44,
+      nameRotate: 0,
+      nameTextStyle: axisNameStyle,
+      min: priceAxisMin,
+      max: priceMax,
+      // Force a single tick at min / max so the axis labels stay readable —
+      // without this, kr/kWh values can fall into ECharts' default 5-tick
+      // layout and overlap at 320 px.
+      interval: Math.max(0.01, priceMax - priceAxisMin),
+      splitLine: { lineStyle: { color: palette.grid, opacity: 0.55 } },
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: {
+        color: palette.text,
+        fontSize: typography.labelFontSize,
+        // One-decimal precision matches the Budget chart's price axis so
+        // users see the same number format on both surfaces. The readout
+        // retains two-decimal precision via `formatPrice` in `deadlinePlan.ts`.
+        formatter: (value: number) => {
+          if (priceAxisMin < 0 && Math.abs(value - priceAxisMin) < 0.001) return priceAxisMin.toFixed(1);
+          if (Math.abs(value - priceMax) < 0.001) return priceMax.toFixed(1);
+          return '';
         },
       },
-      // Phantom left axis on the price grid — invisible to the user but
-      // mirrors the load grid's progress axis so ECharts reserves the same
-      // plot-area inset on both grids. Without it, the load grid's left
-      // axis pushes its plot area ~20 px to the right (TODO 628) and the
-      // bars at matching `dataIndex` end up off-centre between the two
-      // grids. The axis label text is the same shape as the load grid's
-      // ceiling label so ECharts measures the same text width;
-      // `color: 'transparent'` paints it invisibly while the glyphs still
-      // occupy layout space. Sharing the builder with the load grid keeps
-      // the two axes in lock-step under future tweaks.
-      buildProgressAxis(0, 'transparent'),
-      {
-        ...valueAxisBase,
-        gridIndex: 1,
-        position: 'right',
-        name: 'kWh',
-        nameLocation: 'middle',
-        nameGap: GRID_RIGHT - 12,
-        nameRotate: 0,
-        nameTextStyle: axisNameStyle,
-        min: 0,
-        max: stackedMax,
-        interval: stackedMax,
-        axisLabel: {
-          ...valueAxisBase.axisLabel,
-          formatter: showCeilingOnly(stackedMax, stackedMax.toFixed(1)),
-        },
-      },
-      buildProgressAxis(1, palette.progress),
-    ],
+    },
     series: [
       {
+        id: 'price',
         name: 'Price',
         type: 'bar',
-        xAxisIndex: 0,
-        yAxisIndex: 0,
-        barWidth: BAR_WIDTH,
-        barCategoryGap: BAR_CATEGORY_GAP,
+        barCategoryGap: '25%',
         barMinHeight: 3,
-        markLine: nowMarkLine,
-        data: payload.timeline.hours.map((hour) => ({
+        data: timeline.hours.map((hour) => ({
           value: hour.priceValue,
           itemStyle: {
             color: hour.tone === 'cheap'
@@ -669,175 +520,491 @@ export const buildChartOption = (
               : hour.tone === 'expensive'
                 ? palette.priceExpensive
                 : palette.priceNormal,
-            borderRadius: [5, 5, 2, 2],
-          },
-        })),
-      },
-      {
-        name: payload.labels.backgroundSeriesName,
-        type: 'bar',
-        stack: 'load',
-        xAxisIndex: 1,
-        // kWh axis moved from yAxis[1] to yAxis[2] after the price-grid
-        // phantom axis was inserted at yAxis[1] (see the phantom-axis comment
-        // above the yAxis array). All load-grid bar/line series share this
-        // shifted index.
-        yAxisIndex: 2,
-        barWidth: BAR_WIDTH,
-        barCategoryGap: BAR_CATEGORY_GAP,
-        markLine: nowMarkLine,
-        data: payload.timeline.hours.map((hour) => hour.usage.backgroundKwh),
-        itemStyle: { color: palette.background, borderRadius: [0, 0, 0, 0] },
-      },
-      {
-        name: payload.labels.deviceSeriesName,
-        type: 'bar',
-        stack: 'load',
-        xAxisIndex: 1,
-        yAxisIndex: 2,
-        barWidth: BAR_WIDTH,
-        barCategoryGap: BAR_CATEGORY_GAP,
-        data: payload.timeline.hours.map((hour) => ({
-          value: hour.usage.deviceKwh,
-          itemStyle: {
-            color: palette.device,
-            opacity: hour.planned ? 1 : 0.45,
-            borderColor: hour.changed ? palette.tooltipText : palette.device,
-            borderWidth: hour.changed ? 1 : 0,
+            opacity: hour.planned ? 1 : 0.4,
             borderRadius: [3, 3, 0, 0],
           },
         })),
-      },
-      ...(hasOriginalSeries ? [
-        {
-          name: payload.labels.backgroundSeriesName,
-          type: 'bar' as const,
-          stack: 'original-load',
-          xAxisIndex: 1,
-          yAxisIndex: 2,
-          barWidth: BAR_WIDTH,
-          barCategoryGap: BAR_CATEGORY_GAP,
-          barGap: '-100%',
+        // Selected-hour highlight, driven imperatively via
+        // `dispatchAction({type:'highlight'})` from the scrub handler. The
+        // border alone carries the selection; opacity is deliberately NOT
+        // overridden so the selected bar keeps its planned/unplanned channel
+        // (ECharts emphasis inherits unspecified itemStyle props per-datum).
+        emphasis: { itemStyle: { borderColor: palette.text, borderWidth: 2 } },
+        markArea: {
           silent: true,
-          tooltip: { show: false },
-          itemStyle: { color: 'transparent', borderColor: 'transparent' },
-          emphasis: { disabled: true },
-          data: payload.timeline.hours.map((hour) => hour.usage.backgroundKwh),
+          itemStyle: { color: palette.accent, opacity: 0.12 },
+          label: {
+            show: true,
+            color: palette.accent,
+            fontSize: typography.labelFontSize,
+            position: 'insideTop' as const,
+          },
+          data: timeline.plannedRanges.map((range) => ([
+            { name: range.label ?? '', xAxis: range.from },
+            { xAxis: range.to },
+          ])),
         },
-        {
-          name: originalSeriesName,
-          type: 'bar' as const,
-          stack: 'original-load',
-          xAxisIndex: 1,
-          yAxisIndex: 2,
-          barWidth: BAR_WIDTH,
-          barCategoryGap: BAR_CATEGORY_GAP,
-          barGap: '-100%',
-          itemStyle: { color: 'transparent', borderColor: palette.device, borderWidth: 2 },
-          data: payload.timeline.hours.map((hour) => ({
-            value: hour.usage.originalDeviceKwh,
-            itemStyle: {
-              color: 'transparent',
-              borderColor: hour.usage.originalDeviceKwh > 0 ? palette.device : 'transparent',
-              borderWidth: hour.usage.originalDeviceKwh > 0 ? 2 : 0,
-              borderType: hour.changed ? 'dashed' as const : 'solid' as const,
-              borderRadius: [3, 3, 0, 0],
+        markPoint: {
+          silent: true,
+          symbol: 'circle',
+          symbolSize: 5,
+          itemStyle: { color: palette.text },
+          label: { show: false },
+          data: timeline.hours.flatMap((hour, index) => (
+            hour.changed
+              ? [{ coord: [index, Math.max(hour.priceValue, 0) + changedDotOffset] }]
+              : []
+          )),
+        },
+        markLine: {
+          silent: true,
+          symbol: 'none',
+          data: [
+            {
+              xAxis: timeline.nowAxisX,
+              lineStyle: { color: palette.muted, type: 'dashed' as const, width: 1 },
+              label: { show: false },
             },
-          })),
+            {
+              xAxis: timeline.deadlineAxisX,
+              lineStyle: { color: palette.muted, type: 'dashed' as const, width: 1 },
+              label: {
+                show: true,
+                formatter: timeline.deadlineMarkLabel,
+                color: palette.muted,
+                fontSize: typography.labelFontSize,
+                position: 'insideEndTop' as const,
+              },
+            },
+          ],
         },
-      ] : []),
-      ...(hasActualDeviceSeries ? [{
-        name: payload.labels.actualDeviceSeriesName,
-        type: 'line' as const,
-        xAxisIndex: 1,
-        yAxisIndex: 2,
-        symbol: 'circle',
-        symbolSize: 7,
-        connectNulls: false,
-        lineStyle: { color: palette.actualDevice, width: 2, type: 'dotted' as const },
-        itemStyle: { color: palette.actualDevice },
-        data: payload.timeline.hours.map((hour) => hour.usage.actualDeviceKwh),
-      }] : []),
-      {
-        name: payload.labels.progressSeriesName,
-        type: 'line',
-        step: 'end',
-        xAxisIndex: 1,
-        // Progress axis sits at yAxis[3] after the price-grid phantom axis was
-        // inserted at yAxis[1] to match the load grid's left-axis inset.
-        yAxisIndex: 3,
-        symbol: 'none',
-        lineStyle: { color: palette.progress, width: 2 },
-        areaStyle: { color: palette.progress, opacity: 0.12 },
-        data: payload.timeline.hours.map((hour) => hour.progress),
       },
     ] satisfies SeriesOption[],
   };
 };
 
-// Writes per-grid bar x-centres to a data attribute on the chart container so
-// the bar-centre parity E2E spec (TODO 628) can verify alignment without
-// poking at SVG paths or fragile heuristics. The attribute carries one entry
-// per hour for each xAxis: `{"price":[x0,…], "load":[x0,…]}`. Test-only path;
-// removing it would only weaken the regression suite.
-const writeBarCentresForTest = (
-  container: HTMLElement,
-  chart: EChartsType,
-  hourCount: number,
-): void => {
-  const collect = (xAxisIndex: number): number[] => {
-    const centres: number[] = [];
-    for (let i = 0; i < hourCount; i += 1) {
-      // `convertToPixel` on a category axis returns a single x-pixel for the
-      // category index. Pass `i` as the data index. Some echarts versions
-      // return `[x, y]` instead of `x`; handle both shapes defensively so the
-      // attribute is populated either way.
-      const pixel = chart.convertToPixel({ xAxisIndex }, i);
-      const x = Array.isArray(pixel) ? pixel[0] : pixel;
-      if (Number.isFinite(x)) centres.push(Number((x as number).toFixed(2)));
-    }
-    return centres;
+// Trajectory chart ("Will it reach 65 °C in time?"): measured-so-far line +
+// now dot + muted planned staircase ahead + scheduled-run bands + dashed
+// target line (label anchored top-LEFT at the line start — end labels collide
+// when the staircase converges on the target) + deadline markLine + optional
+// shortfall gap annotation. All silent — selection feedback is the hairline
+// series updated imperatively from the shared scrub state.
+export const buildTrajectoryChartOption = (
+  trajectory: DeadlineTrajectoryPayload,
+  palette: DeadlineChartPalette,
+  typography: ChartTypography,
+  surfaceColor: string,
+  chartWidth: number,
+): EChartsOption => {
+  const deadlineColor = trajectory.deadlineDanger ? palette.danger : palette.muted;
+  const xSpanMs = trajectory.xMaxMs - trajectory.xMinMs;
+  // Explicit, width-aware tick cadence: ~5 hour-aligned labels at full card
+  // width, ~3 at narrow (≤360 px) widths where five "HH:MM" labels fuse into
+  // one unreadable run. ECharts' time axis ignores `interval` and its default
+  // ticks + `hideOverlap` still crowd at 320–480 px, so the formatter blanks
+  // every label that doesn't sit on the chosen hour cadence (the signed-off
+  // mock's idiom).
+  const targetTickCount = chartWidth > 0 && chartWidth <= 360 ? 3 : 5;
+  const tickIntervalMs = Math.max(1, Math.ceil(xSpanMs / ONE_HOUR_MS / targetTickCount)) * ONE_HOUR_MS;
+  return {
+    animation: false,
+    backgroundColor: 'transparent',
+    textStyle: { color: palette.text, fontFamily: 'inherit' },
+    grid: { left: 8, right: 34, top: 28, bottom: 22, containLabel: true },
+    xAxis: {
+      type: 'time',
+      min: trajectory.xMinMs,
+      max: trajectory.xMaxMs,
+      axisTick: { show: false },
+      axisLine: { lineStyle: { color: palette.grid } },
+      splitLine: { show: false },
+      axisLabel: {
+        color: palette.muted,
+        fontSize: typography.labelFontSize,
+        hideOverlap: true,
+        formatter: (ms: number): string => (
+          ms % tickIntervalMs === 0 ? formatHourLabel(ms) : ''
+        ),
+      },
+    },
+    yAxis: {
+      type: 'value',
+      min: trajectory.yMin,
+      max: trajectory.yMax,
+      splitLine: { show: false },
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: {
+        color: palette.muted,
+        fontSize: typography.labelFontSize,
+        // Only the floor renders a label; the target value is carried by the
+        // dashed line's own label so the axis stays quiet.
+        formatter: (value: number) => (
+          Math.abs(value - trajectory.yMin) < 0.001 ? trajectory.yFloorLabel : ''
+        ),
+      },
+    },
+    series: [
+      {
+        id: 'run-bands',
+        type: 'line',
+        data: [],
+        silent: true,
+        markArea: {
+          silent: true,
+          itemStyle: { color: palette.accent, opacity: 0.08 },
+          label: {
+            show: true,
+            color: palette.accent,
+            fontSize: typography.labelFontSize,
+            position: 'insideBottom' as const,
+          },
+          data: trajectory.runBands.map((band) => ([
+            { name: band.label ?? '', xAxis: band.fromMs },
+            { xAxis: band.toMs },
+          ])),
+        },
+      },
+      {
+        id: 'planned-staircase',
+        type: 'line',
+        data: trajectory.plannedPoints,
+        silent: true,
+        symbol: 'none',
+        lineStyle: { color: palette.muted, width: 1.5 },
+      },
+      {
+        id: 'target-line',
+        type: 'line',
+        silent: true,
+        symbol: 'none',
+        data: [
+          [trajectory.xMinMs, trajectory.targetValue],
+          [trajectory.xMaxMs, trajectory.targetValue],
+        ],
+        lineStyle: { color: palette.muted, width: 1, type: 'dashed' as const },
+        markPoint: {
+          silent: true,
+          symbol: 'rect',
+          symbolSize: 0.1,
+          label: {
+            show: true,
+            formatter: trajectory.targetLabel,
+            color: palette.muted,
+            fontSize: typography.labelFontSize,
+            position: 'top' as const,
+            distance: 4,
+          },
+          data: [{ coord: [trajectory.xMinMs + xSpanMs * 0.06, trajectory.targetValue] }],
+        },
+        markLine: {
+          silent: true,
+          symbol: 'none',
+          lineStyle: { color: deadlineColor, width: 1, type: 'dashed' as const },
+          label: {
+            show: true,
+            formatter: trajectory.deadlineMarkLabel,
+            color: deadlineColor,
+            fontSize: typography.labelFontSize,
+            // Horizontal label above the line top (the mock's idiom) — the
+            // grid's `top: 28` reserves the headroom. `insideEndTop` would
+            // rotate the label along the vertical line.
+            position: 'end' as const,
+            distance: 6,
+          },
+          data: [{ xAxis: trajectory.deadlineAtMs }],
+        },
+      },
+      ...(trajectory.shortfall !== null ? [{
+        id: 'shortfall',
+        type: 'line' as const,
+        silent: true,
+        symbol: 'none',
+        data: [
+          [trajectory.deadlineAtMs, trajectory.shortfall.fromValue],
+          [trajectory.deadlineAtMs, trajectory.shortfall.toValue],
+        ],
+        lineStyle: { color: palette.danger, width: 2 },
+        markPoint: {
+          silent: true,
+          symbol: 'rect',
+          symbolSize: 0.1,
+          label: {
+            show: true,
+            formatter: trajectory.shortfall.label,
+            color: palette.danger,
+            fontSize: typography.labelFontSize,
+            position: 'left' as const,
+            distance: 8,
+          },
+          data: [{
+            coord: [
+              trajectory.deadlineAtMs,
+              (trajectory.shortfall.fromValue + trajectory.shortfall.toValue) / 2,
+            ],
+          }],
+        },
+      }] : []),
+      {
+        id: 'measured',
+        type: 'line',
+        data: trajectory.measuredPoints,
+        silent: true,
+        symbol: 'none',
+        smooth: 0.4,
+        lineStyle: { color: palette.accent, width: 2.5 },
+      },
+      {
+        id: 'now-dot',
+        type: 'scatter',
+        data: [trajectory.nowPoint],
+        silent: true,
+        symbolSize: 9,
+        itemStyle: { color: palette.accent, borderColor: surfaceColor, borderWidth: 2 },
+      },
+      {
+        // Selection hairline, fed imperatively from the shared scrub state.
+        id: 'selection-hairline',
+        type: 'line',
+        data: [],
+        silent: true,
+        markLine: {
+          silent: true,
+          symbol: 'none',
+          lineStyle: { color: palette.text, width: 1, opacity: 0.5 },
+          label: { show: false },
+          data: [],
+        },
+      },
+    ] satisfies SeriesOption[],
   };
-  container.setAttribute('data-test-bar-centres', JSON.stringify({
-    price: collect(0),
-    load: collect(1),
-  }));
 };
 
-const HorizonChart = ({ payload }: { payload: DeadlinePlanPayload }) => {
-  // Routed through the shared `useEchartsMount` primitive. `onAfterRender`
-  // writes the per-bar pixel centres for the bar-centre parity test after the
-  // initial render and after each ResizeObserver resize — the one extra
-  // side-effect this chart layers on the common init/dispose/resize shape.
-  // `resolveChartSize` is this view's container-specific sizer. The cold-mount
-  // tab-shown resize is handled inside the primitive.
+// ─── Scrub interaction ───────────────────────────────────────────────────────
+
+// Pointer-down + drag scrubbing that snaps to hour columns. 26 bars at 320 px
+// are too thin for individual taps, so the listener sits at the zr level and
+// resolves any plot-area position to an hour via `convertFromPixel`. A tap
+// outside the grid resolves to `null`, which the shared state treats as
+// "restore the default (Now) selection". ZRender synthesizes mouse events
+// from touch, so the same handlers cover the Homey WebView.
+const attachHourScrub = (
+  chart: EChartsType,
+  resolveIndex: (x: number, y: number) => number | null,
+  onSelect: (index: number | null) => void,
+): void => {
+  const zr = chart.getZr();
+  let dragging = false;
+  const apply = (event: { offsetX: number; offsetY: number }): void => {
+    onSelect(resolveIndex(event.offsetX, event.offsetY));
+  };
+  zr.on('mousedown', (event) => {
+    dragging = true;
+    apply(event);
+  });
+  zr.on('mousemove', (event) => {
+    if (dragging) apply(event);
+  });
+  zr.on('mouseup', () => {
+    dragging = false;
+  });
+  zr.on('globalout', () => {
+    dragging = false;
+  });
+};
+
+// Resolve a trajectory-chart time-axis position (ms) to an index in the REAL
+// hour list. The producer tolerates gapped price buckets (`resolveNowIndex`
+// has the same fallback), so deriving the index arithmetically from the first
+// hour's start would desynchronise the readout + hairline as soon as an hour
+// is missing. Containing bucket wins; a position in a gap or outside the
+// listed hours snaps to the nearest bucket (clamping to the ends). Exported
+// for unit tests.
+export const resolveScrubHourIndex = (
+  hours: ReadonlyArray<{ startsAtMs: number }>,
+  ms: number,
+): number | null => {
+  let best: number | null = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const [index, hour] of hours.entries()) {
+    const endMs = hour.startsAtMs + ONE_HOUR_MS;
+    const distance = ms < hour.startsAtMs
+      ? hour.startsAtMs - ms
+      : Math.max(0, ms - endMs);
+    if (distance < bestDistance) {
+      best = index;
+      bestDistance = distance;
+    }
+  }
+  return best;
+};
+
+const ScheduleChart = ({ payload, selectedIndex, onSelect }: {
+  payload: DeadlinePlanPayload;
+  selectedIndex: number;
+  onSelect: (index: number | null) => void;
+}) => {
+  const hourCount = payload.timeline.hours.length;
+  const chartHandle = useRef<EChartsType | null>(null);
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
   const chartRef = useEchartsMount({
-    buildOption: (container) => buildChartOption(
+    buildOption: (container) => buildScheduleChartOption(
       payload,
       resolvePalette(container),
       resolveTypography(container),
     ),
-    resolveSize: resolveChartSize,
+    resolveSize: resolveScheduleChartSize,
     deps: [payload],
-    onAfterRender: (chart, container) => (
-      writeBarCentresForTest(container, chart, payload.timeline.hours.length)
-    ),
+    onChartInit: (chart) => {
+      chartHandle.current = chart;
+      attachHourScrub(
+        chart,
+        (x, y) => {
+          if (!chart.containPixel({ gridIndex: 0 }, [x, y])) return null;
+          // Single-axis finder takes the scalar pixel coordinate — passing an
+          // `[x, y]` pair makes ECharts return null on a category axis.
+          const raw = chart.convertFromPixel({ xAxisIndex: 0 }, x);
+          const value = Array.isArray(raw) ? raw[0] : raw;
+          if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+          const index = Math.round(value);
+          return index >= 0 && index < hourCount ? index : null;
+        },
+        (index) => onSelectRef.current(index),
+      );
+    },
   });
-
-  return <div ref={chartRef} class="deadline-horizon-chart" role="img" aria-label={payload.timeline.ariaLabel} />;
+  // Imperative highlight of the selected bar. Runs after the mount effect on
+  // both cold mount and `payload` remounts (hooks run in registration order),
+  // so the handle always points at the live chart.
+  useEffect(() => {
+    const chart = chartHandle.current;
+    if (!chart || chart.isDisposed()) return;
+    chart.dispatchAction({ type: 'downplay', seriesIndex: 0 });
+    chart.dispatchAction({ type: 'highlight', seriesIndex: 0, dataIndex: selectedIndex });
+  }, [selectedIndex, payload]);
+  return <div ref={chartRef} class="deadline-schedule-chart" role="img" aria-label={payload.timeline.ariaLabel} />;
 };
 
-const HorizonCard = ({ payload }: { payload: DeadlinePlanPayload }) => (
-  <section class="pels-surface-card budget-redesign-card deadline-horizon-card" aria-labelledby="deadline-horizon-title">
-    <div class="budget-card-header">
-      <h2 class="plan-card__title" id="deadline-horizon-title">Price horizon</h2>
-    </div>
-    <HorizonChart payload={payload} />
-    {payload.timeline.cheapestHoursCaption && (
-      <p class="deadline-horizon-caption pels-card-supporting">{payload.timeline.cheapestHoursCaption}</p>
-    )}
-  </section>
-);
+const TrajectoryChart = ({ payload, selectedHourMs, onSelect }: {
+  payload: DeadlinePlanPayload;
+  // Hour-start ms of an EXPLICIT selection; null at the default state so the
+  // hairline doesn't crowd the now dot at rest.
+  selectedHourMs: number | null;
+  onSelect: (index: number | null) => void;
+}) => {
+  const { trajectory } = payload;
+  const hours = payload.timeline.hours;
+  const chartHandle = useRef<EChartsType | null>(null);
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
+  const chartRef = useEchartsMount({
+    buildOption: (container) => buildTrajectoryChartOption(
+      trajectory,
+      resolvePalette(container),
+      resolveTypography(container),
+      // Now-dot ring colour = the card surface behind the chart, so the dot
+      // reads as punched out of the measured line.
+      cssVar(container, '--pels-surface-container-lowest', 'transparent'),
+      // Width drives the time-axis label cadence (~3 labels at ≤360 px).
+      // Same sizer the mount hook uses, so the cadence matches the rendered
+      // width even on a cold mount inside a hidden panel.
+      resolveTrajectoryChartSize(container).width,
+    ),
+    resolveSize: resolveTrajectoryChartSize,
+    deps: [payload],
+    onChartInit: (chart) => {
+      chartHandle.current = chart;
+      attachHourScrub(
+        chart,
+        (x, y) => {
+          if (!chart.containPixel({ gridIndex: 0 }, [x, y])) return null;
+          // Scalar pixel for the single-axis finder (see ScheduleChart note).
+          const raw = chart.convertFromPixel({ xAxisIndex: 0 }, x);
+          const ms = Array.isArray(raw) ? raw[0] : raw;
+          if (typeof ms !== 'number' || !Number.isFinite(ms)) return null;
+          return resolveScrubHourIndex(hours, ms);
+        },
+        (index) => onSelectRef.current(index),
+      );
+    },
+  });
+  // Selection hairline at the selected hour's centre, merged onto the
+  // `selection-hairline` series by id. Only `markLine.data` changes; the
+  // line style was baked into the initial option with the live palette.
+  useEffect(() => {
+    const chart = chartHandle.current;
+    if (!chart || chart.isDisposed()) return;
+    chart.setOption({
+      series: [{
+        id: 'selection-hairline',
+        markLine: {
+          data: selectedHourMs === null ? [] : [{ xAxis: selectedHourMs + ONE_HOUR_MS / 2 }],
+        },
+      }],
+    });
+  }, [selectedHourMs, payload]);
+  return <div ref={chartRef} class="deadline-trajectory-chart" role="img" aria-label={trajectory.ariaLabel} />;
+};
+
+// The two question cards + the pinned readout row. Selection is shared: a
+// scrub on either chart drives the readout under chart 1, the emphasis
+// border on the selected bar, and the hairline on chart 2. `null` selection
+// = the default (the "Now" hour) — the readout is never empty.
+const ScheduleQuestionCards = ({ payload }: { payload: DeadlinePlanPayload }) => {
+  const [selected, setSelected] = useState<number | null>(null);
+  const hours = payload.timeline.hours;
+  const effectiveIndex = selected !== null && selected >= 0 && selected < hours.length
+    ? selected
+    : payload.timeline.nowIndex;
+  const hour = hours[effectiveIndex];
+  // At-rest (no explicit selection yet) the secondary line is always the
+  // scrub hint — discoverability of the gesture beats the default Now hour's
+  // revision narrative, which reappears as soon as the user actively selects
+  // any hour (including re-selecting Now). The branch is on interaction state
+  // only; the view never inspects why `readout.secondary` exists.
+  const readoutSecondary = selected === null
+    ? SMART_TASK_READOUT_SCRUB_HINT
+    : (hour?.readout.secondary ?? SMART_TASK_READOUT_SCRUB_HINT);
+  const stateline = payload.trajectory.stateline;
+  return (
+    <>
+      <section
+        class="pels-surface-card budget-redesign-card deadline-horizon-card"
+        aria-labelledby="deadline-schedule-title"
+      >
+        <div class="budget-card-header">
+          <h2 class="plan-card__title" id="deadline-schedule-title">{SMART_TASK_SCHEDULE_CARD_TITLE}</h2>
+        </div>
+        <ScheduleChart payload={payload} selectedIndex={effectiveIndex} onSelect={setSelected} />
+        <div class="deadline-readout" aria-live="polite">
+          <div class="deadline-readout__primary">{hour?.readout.primary}</div>
+          <div class="deadline-readout__secondary">{readoutSecondary}</div>
+        </div>
+        {payload.timeline.cheapestHoursCaption && (
+          <p class="deadline-horizon-caption pels-card-supporting">{payload.timeline.cheapestHoursCaption}</p>
+        )}
+      </section>
+      <section
+        class="pels-surface-card budget-redesign-card deadline-horizon-card"
+        aria-labelledby="deadline-trajectory-title"
+      >
+        <div class="budget-card-header">
+          <h2 class="plan-card__title" id="deadline-trajectory-title">{payload.trajectory.cardTitle}</h2>
+        </div>
+        <TrajectoryChart
+          payload={payload}
+          selectedHourMs={selected !== null ? (hours[effectiveIndex]?.startsAtMs ?? null) : null}
+          onSelect={setSelected}
+        />
+        <p class={stateline.tone === 'danger' ? 'deadline-stateline deadline-stateline--danger' : 'deadline-stateline'}>
+          <strong class="deadline-stateline__emphasis">{stateline.emphasis}</strong>
+          {` · ${stateline.rest}`}
+        </p>
+      </section>
+    </>
+  );
+};
 
 // Refresh cadence for the "Latest reading used" freshness string. One minute
 // matches the granularity of `formatLastSampleValue` ("Updated N min ago") so
@@ -1154,7 +1321,7 @@ const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) =
   return (
     <>
       <DeadlineHero payload={loadState.payload} />
-      <HorizonCard payload={loadState.payload} />
+      <ScheduleQuestionCards payload={loadState.payload} />
       <PlanInputsCard payload={loadState.payload} />
       <RevisionHistoryPanel payload={loadState.payload} />
       <PriorRunsHistory history={loadState.history} />
