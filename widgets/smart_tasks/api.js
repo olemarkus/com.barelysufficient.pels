@@ -51,6 +51,28 @@ var handleWidgetClientLog = (widgetId, { homey, body }) => {
 
 // packages/shared-domain/src/deferredPlanHistoryChartData.ts
 var HOUR_MS = 60 * 60 * 1e3;
+var resolveRunBands = (hours, windowStartMs, windowEndMs) => {
+  const spans = [];
+  for (const hour of hours) {
+    const plannedKWh = Number.isFinite(hour.plannedKWh) ? hour.plannedKWh : 0;
+    if (plannedKWh <= 0) continue;
+    const fromMs = Math.max(windowStartMs, hour.coversFromMs ?? hour.startsAtMs);
+    const toMs = Math.min(windowEndMs, hour.startsAtMs + HOUR_MS);
+    if (toMs <= fromMs) continue;
+    spans.push({ fromMs, toMs });
+  }
+  spans.sort((a, b) => a.fromMs - b.fromMs);
+  const merged = [];
+  for (const span of spans) {
+    const last = merged[merged.length - 1];
+    if (last !== void 0 && span.fromMs <= last.toMs) {
+      last.toMs = Math.max(last.toMs, span.toMs);
+      continue;
+    }
+    merged.push({ ...span });
+  }
+  return merged;
+};
 var integratePlannedStaircase = (snapshot, anchorValue, anchorAtMs, windowEndMs, capValue = null) => {
   const kwhPerUnitMean = snapshot.kwhPerUnitMean ?? 0;
   if (kwhPerUnitMean <= 0) return [];
@@ -182,6 +204,14 @@ var buildTrajectoryPayload = (entry, plannedOriginal, plannedFinal, observed, fr
   plannedOriginal,
   plannedFinal,
   observed: anchorObservedAtStart(observed, frame.windowStartMs, frame.startProgress),
+  // Bands shade the schedule that was last in force — the final plan when the
+  // run replanned, else the original. That matches where heating/charging was
+  // actually booked to happen, which is the story the shading tells.
+  runBands: resolveRunBands(
+    (entry.finalPlan ?? entry.originalPlan)?.hours ?? [],
+    frame.windowStartMs,
+    frame.windowEndMs
+  ),
   target: pickTargetValue(entry),
   metAtMs: pickMetMarker(entry),
   metMarkerValue: pickMetMarkerValue(entry)
@@ -226,6 +256,7 @@ var composeLegacyData = (entry, windowStartMs, windowEndMs) => ({
   plannedOriginal: [],
   plannedFinal: null,
   observed: [],
+  runBands: [],
   target: pickTargetValue(entry),
   metAtMs: pickMetMarker(entry),
   metMarkerValue: pickMetMarkerValue(entry)
@@ -277,6 +308,7 @@ var emptyChart = (target, windowStartMs, windowEndMs) => ({
   plannedOriginal: [],
   plannedFinal: null,
   observed: [],
+  runBands: [],
   target,
   metAtMs: null,
   metMarkerValue: null
@@ -290,6 +322,7 @@ var resolveActivePlannedAnchor = (snapshot, withNow, live) => {
   }
   return null;
 };
+var appendNowReading = (samples, nowMs, currentValue) => nowMs !== void 0 && Number.isFinite(nowMs) && currentValue !== null && (samples.length === 0 || samples[samples.length - 1].atMs < nowMs) ? [...samples, { atMs: nowMs, value: currentValue }] : samples;
 var resolveActivePlanChartData = (plan, options = {}) => {
   const windowStartMs = plan.startedAtMs;
   const windowEndMs = plan.deadlineAtMs;
@@ -298,7 +331,7 @@ var resolveActivePlanChartData = (plan, options = {}) => {
   const samples = pickObservedSamples2(plan.progressSamples);
   const nowMs = options.nowMs;
   const currentValue = finiteOrNull2(options.currentValue ?? null);
-  const withNow = nowMs !== void 0 && currentValue !== null && (samples.length === 0 || samples[samples.length - 1].atMs < nowMs) ? [...samples, { atMs: nowMs, value: currentValue }] : samples;
+  const withNow = appendNowReading(samples, nowMs, currentValue);
   const observed = anchorObservedAtStart(withNow, windowStartMs, startProgress);
   const rate = pickRate(plan);
   const latest = plan.latest;
@@ -316,6 +349,10 @@ var resolveActivePlanChartData = (plan, options = {}) => {
     plannedOriginal: planned,
     plannedFinal: null,
     observed,
+    // Bands shade the live schedule's booked hours — present even when the
+    // planned staircase couldn't be drawn (no usable rate), since the booked
+    // WHEN is known independently of the rate-derived HOW MUCH.
+    runBands: resolveRunBands(latest?.hours ?? [], windowStartMs, windowEndMs),
     target,
     metAtMs: null,
     metMarkerValue: null

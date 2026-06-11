@@ -238,6 +238,53 @@ describe('resolveActivePlanChartData', () => {
     expect(data.target).toBe(55);
   });
 
+  test('resolves merged scheduled-run bands from the live schedule\'s booked hours', () => {
+    // The fixture books two contiguous hours (+1h and +2h) → one merged band.
+    const data = resolveChart(buildPlan());
+    expect(data.runBands).toEqual([
+      { fromMs: START_MS + HOUR_MS, toMs: START_MS + 3 * HOUR_MS },
+    ]);
+  });
+
+  test('keeps a gap between detached booked hours and skips zero-kWh hours', () => {
+    const data = resolveChart(buildPlan({
+      latest: {
+        ...buildPlan().latest!,
+        hours: [
+          { startsAtMs: START_MS, plannedKWh: 1 },
+          { startsAtMs: START_MS + HOUR_MS, plannedKWh: 0 },
+          { startsAtMs: START_MS + 2 * HOUR_MS, plannedKWh: 1 },
+        ],
+      },
+    }));
+    expect(data.runBands).toEqual([
+      { fromMs: START_MS, toMs: START_MS + HOUR_MS },
+      { fromMs: START_MS + 2 * HOUR_MS, toMs: START_MS + 3 * HOUR_MS },
+    ]);
+  });
+
+  test('still resolves bands when no usable rate suppresses the planned staircase', () => {
+    // The booked WHEN is known independently of the rate-derived HOW MUCH.
+    const data = resolveChart(buildPlan({
+      latest: { ...buildPlan().latest!, rateMean: 0 },
+      kwhPerUnitProvenance: undefined,
+    }));
+    expect(data.plannedOriginal).toEqual([]);
+    expect(data.runBands).toEqual([
+      { fromMs: START_MS + HOUR_MS, toMs: START_MS + 3 * HOUR_MS },
+    ]);
+  });
+
+  test('emits no bands on the chartless fallback payload', () => {
+    const data = resolveChart(buildPlan({
+      latest: { ...buildPlan().latest!, rateMean: 0 },
+      kwhPerUnitProvenance: undefined,
+      progressSamples: [{ atMs: START_MS, valueC: 50, valuePercent: null }],
+    }));
+    expect(data.mode).toBe('legacy_kwh');
+    expect(data.runBands).toEqual([]);
+  });
+
   test('drops non-finite / valueless samples', () => {
     const data = resolveChart(buildPlan({
       progressSamples: [

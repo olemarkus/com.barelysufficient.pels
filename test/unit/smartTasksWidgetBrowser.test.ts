@@ -199,6 +199,10 @@ describe('smart tasks widget detail view', () => {
     expect(legendText).toContain('Planned');
     expect(legendText).toContain('Measured');
     expect(legendText).toContain('Target 55 °C');
+    // The shaded run bands get a swatch + the canonical 'Scheduled' key, since
+    // the on-chart bands are deliberately label-free at widget scale.
+    expect(legendText).toContain('Scheduled');
+    expect(chart.querySelector('.tchart__legend-item--band .tchart__legend-swatch')).not.toBeNull();
     // Y-axis scale labels give a near-flat series context.
     expect(chart.querySelectorAll('.tchart__axis').length).toBeGreaterThanOrEqual(2);
   });
@@ -303,6 +307,7 @@ describe('renderTrajectoryChart', () => {
     plannedOriginal: [],
     plannedFinal: null,
     observed: [],
+    runBands: [],
     target: 55,
     metAtMs: null,
     metMarkerValue: null,
@@ -333,6 +338,8 @@ describe('renderTrajectoryChart', () => {
     const legend = container.querySelector('.tchart__legend')?.textContent ?? '';
     expect(legend).toContain('Planned');
     expect(legend).not.toContain('Measured');
+    // No run bands in this payload → no band key in the legend.
+    expect(legend).not.toContain('Scheduled');
   });
 
   test('draws an observed-only chart (>= 2 samples, no planned)', () => {
@@ -348,5 +355,75 @@ describe('renderTrajectoryChart', () => {
     const drawn = renderTrajectoryChart(container, baseChart({ mode: 'legacy_kwh', unit: null }));
     expect(drawn).toBe(false);
     expect(container.childNodes.length).toBe(0);
+  });
+
+  test('shades one scheduled-run band rect per payload range, behind the series', () => {
+    renderTrajectoryChart(container, baseChart({
+      plannedOriginal: [{ atMs: T, value: 42 }, { atMs: T + 3 * H, value: 55 }],
+      runBands: [
+        { fromMs: T, toMs: T + H },
+        { fromMs: T + 2 * H, toMs: T + 3 * H },
+      ],
+    }));
+    const bands = container.querySelectorAll('rect.tchart__band');
+    expect(bands).toHaveLength(2);
+    // Plot spans x 8..472 over the 3 h window → each 1 h band is ~154.7 wide.
+    const first = bands[0]!;
+    expect(Number(first.getAttribute('x'))).toBeCloseTo(8, 1);
+    expect(Number(first.getAttribute('width'))).toBeCloseTo(464 / 3, 0);
+    const second = bands[1]!;
+    expect(Number(second.getAttribute('x'))).toBeCloseTo(8 + (2 * 464) / 3, 0);
+    // Bands draw BEHIND the series: the band rect precedes the planned path.
+    const svgChildren = [...container.querySelector('svg.tchart')!.children];
+    expect(svgChildren.findIndex((el) => el.classList.contains('tchart__band')))
+      .toBeLessThan(svgChildren.findIndex((el) => el.classList.contains('tchart__planned')));
+    // The bands stay label-free on-chart; the legend carries their key as a
+    // swatch + the canonical 'Scheduled' word (one item, however many bands).
+    const bandItems = container.querySelectorAll('.tchart__legend-item--band');
+    expect(bandItems).toHaveLength(1);
+    expect(bandItems[0]!.textContent).toBe('Scheduled');
+    expect(bandItems[0]!.querySelector('.tchart__legend-swatch')).not.toBeNull();
+  });
+
+  test('smooths the observed line (cubic segments) when ≥ 3 samples are available', () => {
+    renderTrajectoryChart(container, baseChart({
+      observed: [
+        { atMs: T, value: 42 },
+        { atMs: T + H, value: 46 },
+        { atMs: T + 2 * H, value: 47 },
+        { atMs: T + 3 * H, value: 51 },
+      ],
+    }));
+    const d = container.querySelector('.tchart__observed')?.getAttribute('d') ?? '';
+    expect(d).toContain('C');
+    expect(d).not.toContain('L');
+  });
+
+  test('keeps a 2-point observed series as a straight segment (nothing to smooth)', () => {
+    renderTrajectoryChart(container, baseChart({
+      observed: [{ atMs: T, value: 42 }, { atMs: T + H, value: 50 }],
+    }));
+    const d = container.querySelector('.tchart__observed')?.getAttribute('d') ?? '';
+    expect(d).toContain('L');
+    expect(d).not.toContain('C');
+  });
+
+  test('hangs the y-axis labels off their value lines instead of striking through them', () => {
+    // Target == data max, so the target guide sits exactly at the max line.
+    renderTrajectoryChart(container, baseChart({
+      plannedOriginal: [{ atMs: T, value: 42 }, { atMs: T + 3 * H, value: 55 }],
+      target: 55,
+    }));
+    const axisLabels = container.querySelectorAll('text.tchart__axis');
+    expect(axisLabels).toHaveLength(2);
+    const targetLineY = Number(container.querySelector('.tchart__target')!.getAttribute('y1'));
+    const maxLabelY = Number(axisLabels[0]!.getAttribute('y'));
+    // Baseline strictly above the line it labels → the line can't strike it.
+    expect(maxLabelY).toBeLessThan(targetLineY);
+    // The min label hangs BELOW the planned line's start point (the data min).
+    const plannedD = container.querySelector('.tchart__planned')!.getAttribute('d')!;
+    const minPointY = Number(/^M[\d.]+ ([\d.]+)/.exec(plannedD)![1]);
+    const minLabelY = Number(axisLabels[1]!.getAttribute('y'));
+    expect(minLabelY).toBeGreaterThan(minPointY);
   });
 });

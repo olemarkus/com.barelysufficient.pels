@@ -34,6 +34,16 @@ export { VIEWPORT_MIN_HEIGHT } from './chartGeometry';
 
 const BAR_RADIUS = 1.5;
 const DOT_RADIUS = 4;
+// `vector-effect: non-scaling-stroke` keeps stroke WIDTHS constant in CSS px
+// when the 480-unit viewBox maps onto a narrower tile, but it does not protect
+// geometry like a circle's radius — at 320 px the price dot rendered ~2/3 size
+// while every line around it stayed full weight. Divide the radius by the
+// viewBox→px scale factor (px per viewBox unit) so the dot's RENDERED radius
+// stays as constant as the strokes. Guarded to 1 for non-finite/zero scales
+// (jsdom/pre-paint), which preserves the unscaled legacy geometry.
+const compensateRadius = (radius: number, pxPerUnit: number): number => (
+  Number.isFinite(pxPerUnit) && pxPerUnit > 0 ? radius / pxPerUnit : radius
+);
 // "Used" level ticks overshoot the bar on each side so the tick reads as a
 // marker across the bar, not a stripe inside it.
 const ACTUAL_TICK_PAD = 1.5;
@@ -69,6 +79,8 @@ type PlotMetrics = {
   plotHeight: number;
   plotWidth: number;
   priceBounds: PriceBounds;
+  // Scale-compensated price-dot radius in viewBox units (see compensateRadius).
+  priceDotRadius: number;
   priceSpan: number;
   stepWidth: number;
   // The nice-number shared Y gridlines (kWh multiples + deduped price labels).
@@ -120,6 +132,7 @@ const resolvePlotMetrics = (
   payload: PlanPriceWidgetReadyPayload,
   half: PlanPriceWidgetHalf,
   geometry: Geometry,
+  pxPerUnit: number,
 ): PlotMetrics => {
   const { plot } = geometry;
   const plotWidth = plot.right - plot.left;
@@ -150,6 +163,7 @@ const resolvePlotMetrics = (
     plotHeight,
     plotWidth,
     priceBounds,
+    priceDotRadius: compensateRadius(DOT_RADIUS + 1, pxPerUnit),
     priceSpan,
     stepWidth,
     yTicks: axis.ticks,
@@ -332,7 +346,7 @@ const appendPriceSeries = (
     class: 'chart__price-dot',
     cx: plot.left + (metrics.stepWidth * (visible.localIndex + 0.5)),
     cy: currentPriceY,
-    r: DOT_RADIUS + 1,
+    r: metrics.priceDotRadius,
   }));
 };
 
@@ -513,11 +527,16 @@ export const renderReadyState = (
   payload: PlanPriceWidgetReadyPayload,
   half: PlanPriceWidgetHalf,
   height: number = VIEWPORT_MIN_HEIGHT,
+  // CSS px per viewBox unit (rendered width / 480), measured by the caller.
+  // Compensates geometry that `vector-effect` can't (the price-dot radius);
+  // defaults to 1 = unscaled, the legacy behaviour for callers that don't
+  // measure (tests, pre-paint renders).
+  pxPerUnit = 1,
 ): void => {
   const chartDocument = chartEl.ownerDocument;
   const geometry = resolveGeometry(resolveViewportHeight(height));
   const groups = createChartGroups(chartDocument);
-  const metrics = resolvePlotMetrics(payload, half, geometry);
+  const metrics = resolvePlotMetrics(payload, half, geometry, pxPerUnit);
 
   clearNode(chartEl);
   applyViewBox(chartEl, geometry.viewport);
@@ -561,6 +580,7 @@ export const renderWidget = (
   payload: PlanPriceWidgetPayload | null,
   half: PlanPriceWidgetHalf,
   height: number = VIEWPORT_MIN_HEIGHT,
+  pxPerUnit = 1,
 ): void => {
   if (!payload || payload.state !== 'ready') {
     renderEmptyState(chartEl, payload || {
@@ -570,5 +590,5 @@ export const renderWidget = (
     return;
   }
 
-  renderReadyState(chartEl, payload, half, height);
+  renderReadyState(chartEl, payload, half, height, pxPerUnit);
 };

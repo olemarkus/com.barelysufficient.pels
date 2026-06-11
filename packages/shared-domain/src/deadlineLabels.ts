@@ -273,6 +273,13 @@ export const SMART_TASK_WIDGET_CHART_PLANNED_LABEL = 'Planned';
 export const SMART_TASK_WIDGET_CHART_MEASURED_LABEL = 'Measured';
 export const SMART_TASK_WIDGET_CHART_TARGET_LABEL = 'Target';
 
+// Key for the shaded scheduled-run bands behind the widget trajectory. The
+// settings-page charts label their band with the kind verb ("Heating" /
+// "Charging" via `deviceSeriesName`), but the widget chart payload is
+// kind-agnostic, so the band key reuses the canonical status word `Scheduled`
+// (`notes/ui-terminology.md`) rather than inventing a new one.
+export const SMART_TASK_WIDGET_CHART_RUN_BAND_LABEL = 'Scheduled';
+
 // Overflow line shown beneath the capped widget row list when more active
 // tasks exist than the widget renders (`+N in Smart tasks`). Formatter rather
 // than a constant because the count is dynamic; sourced from shared-domain so

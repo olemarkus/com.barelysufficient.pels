@@ -18,6 +18,7 @@ import {
   type DeferredPlanHistoryChartData,
   type DeferredPlanHistoryChartPoint,
   integratePlannedStaircase,
+  resolveRunBands,
   resolveStaircaseAnchor,
 } from './deferredPlanHistoryChartData';
 
@@ -68,6 +69,7 @@ const emptyChart = (
   plannedOriginal: [],
   plannedFinal: null,
   observed: [],
+  runBands: [],
   target,
   metAtMs: null,
   metMarkerValue: null,
@@ -113,6 +115,20 @@ const resolveActivePlannedAnchor = (
  * points (a single point renders as a lone dot, which reads worse than no chart).
  * The renderer hides the chart container in that case and shows the text lines.
  */
+// Append the live "now" reading past the last bucketed sample so the measured
+// line extends to the present. No-op when there is no reading or a sample
+// already covers (or postdates) `nowMs`.
+const appendNowReading = (
+  samples: DeferredPlanHistoryChartPoint[],
+  nowMs: number | undefined,
+  currentValue: number | null,
+): DeferredPlanHistoryChartPoint[] => (
+  nowMs !== undefined && Number.isFinite(nowMs) && currentValue !== null
+    && (samples.length === 0 || samples[samples.length - 1]!.atMs < nowMs)
+    ? [...samples, { atMs: nowMs, value: currentValue }]
+    : samples
+);
+
 export const resolveActivePlanChartData = (
   plan: ResolvedDeferredObjectiveActivePlanV1,
   // `nowMs` + `currentValue` (the device's live reading from the widget's device
@@ -125,14 +141,11 @@ export const resolveActivePlanChartData = (
   const target = pickTarget(plan);
   const startProgress = pickStartProgress(plan);
   const samples = pickObservedSamples(plan.progressSamples);
-  // Append the live "now" reading past the last bucketed sample, then anchor at
-  // the run start so the line spans start → now instead of starting mid-chart.
+  // Extend to "now", then anchor at the run start so the line spans
+  // start → now instead of starting mid-chart.
   const nowMs = options.nowMs;
   const currentValue = finiteOrNull(options.currentValue ?? null);
-  const withNow = nowMs !== undefined && currentValue !== null
-    && (samples.length === 0 || samples[samples.length - 1]!.atMs < nowMs)
-    ? [...samples, { atMs: nowMs, value: currentValue }]
-    : samples;
+  const withNow = appendNowReading(samples, nowMs, currentValue);
   const observed = anchorObservedAtStart(withNow, windowStartMs, startProgress);
   const rate = pickRate(plan);
   // Truthy guard covers both `null` and a defensively-omitted `undefined`
@@ -164,6 +177,10 @@ export const resolveActivePlanChartData = (
     plannedOriginal: planned,
     plannedFinal: null,
     observed,
+    // Bands shade the live schedule's booked hours — present even when the
+    // planned staircase couldn't be drawn (no usable rate), since the booked
+    // WHEN is known independently of the rate-derived HOW MUCH.
+    runBands: resolveRunBands(latest?.hours ?? [], windowStartMs, windowEndMs),
     target,
     metAtMs: null,
     metMarkerValue: null,

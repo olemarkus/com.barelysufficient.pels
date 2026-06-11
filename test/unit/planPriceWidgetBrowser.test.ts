@@ -304,6 +304,21 @@ describe('plan budget widget browser', () => {
     expect(chartEl.querySelector('.chart__price-dot')).not.toBeNull();
   });
 
+  test('compensates the price-dot radius for the viewBox→px scale at narrow widths', () => {
+    // `vector-effect` keeps stroke widths constant in CSS px but not radii —
+    // the renderer divides r by the px-per-unit scale so the dot renders at a
+    // constant size like the lines around it.
+    const chartEl = setDocumentMarkup();
+    renderWidget(chartEl, PREVIEW_TODAY_PAYLOAD, 'morning');
+    const dotR = Number(chartEl.querySelector('.chart__price-dot')!.getAttribute('r'));
+
+    // 320 px tile → 320/480 px per viewBox unit; r scales up by the inverse so
+    // r × scale (the rendered radius) matches the unscaled default.
+    renderWidget(chartEl, PREVIEW_TODAY_PAYLOAD, 'morning', undefined, 320 / 480);
+    const narrowR = Number(chartEl.querySelector('.chart__price-dot')!.getAttribute('r'));
+    expect(narrowR * (320 / 480)).toBeCloseTo(dotR, 5);
+  });
+
   test('resolves the initial half from the current hour', () => {
     expect(resolveInitialHalf(PREVIEW_TODAY_PAYLOAD)).toBe('morning');
     expect(resolveInitialHalf({ ...PREVIEW_TODAY_PAYLOAD, currentIndex: 18 })).toBe('afternoon');

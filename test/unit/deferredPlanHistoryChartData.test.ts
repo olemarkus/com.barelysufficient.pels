@@ -125,6 +125,59 @@ describe('resolveHistoryDetailChartData', () => {
     });
   });
 
+  describe('runBands', () => {
+    it('resolves merged scheduled-run bands from the final plan when present', () => {
+      const entry = buildEntry({
+        originalPlan: buildSnapshot(),
+        // Final plan books two contiguous hours later in the window plus a
+        // detached one — contiguous spans merge, the gap stays a gap.
+        finalPlan: buildSnapshot({
+          hours: [
+            { startsAtMs: START_MS + 2 * HOUR_MS, plannedKWh: 1 },
+            { startsAtMs: START_MS + 3 * HOUR_MS, plannedKWh: 1 },
+            { startsAtMs: START_MS + 5 * HOUR_MS, plannedKWh: 1 },
+          ],
+        }),
+      });
+      const data = resolveHistoryDetailChartData(entry);
+      expect(data.runBands).toEqual([
+        { fromMs: START_MS + 2 * HOUR_MS, toMs: START_MS + 4 * HOUR_MS },
+        { fromMs: START_MS + 5 * HOUR_MS, toMs: START_MS + 6 * HOUR_MS },
+      ]);
+    });
+
+    it('falls back to the original plan, skips zero-kWh hours, and clamps to the window', () => {
+      const entry = buildEntry({
+        originalPlan: buildSnapshot({
+          hours: [
+            // Trimmed current hour: coverage starts mid-hour.
+            { startsAtMs: START_MS, plannedKWh: 0.4, coversFromMs: START_MS + HOUR_MS / 2 },
+            { startsAtMs: START_MS + HOUR_MS, plannedKWh: 0 },
+            // Overruns the deadline — clamped to the window end.
+            { startsAtMs: DEADLINE_MS - HOUR_MS / 2, plannedKWh: 1 },
+          ],
+        }),
+        finalPlan: null,
+      });
+      const data = resolveHistoryDetailChartData(entry);
+      expect(data.runBands).toEqual([
+        { fromMs: START_MS + HOUR_MS / 2, toMs: START_MS + HOUR_MS },
+        { fromMs: DEADLINE_MS - HOUR_MS / 2, toMs: DEADLINE_MS },
+      ]);
+    });
+
+    it('emits no bands in legacy_kwh mode', () => {
+      const entry = buildEntry({
+        originalPlan: buildSnapshot({ kwhPerUnitMean: undefined }),
+        finalPlan: null,
+        progressSamples: undefined,
+      });
+      const data = resolveHistoryDetailChartData(entry);
+      expect(data.mode).toBe('legacy_kwh');
+      expect(data.runBands).toEqual([]);
+    });
+  });
+
   describe('planned staircase integration', () => {
     it('integrates hours × kwhPerUnitMean from startProgressC for temperature objectives', () => {
       // Two 1-kWh hours at 0.5 kWh/°C → +2 °C total. Anchor[0]=start, then

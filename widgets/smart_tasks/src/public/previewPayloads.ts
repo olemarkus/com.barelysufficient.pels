@@ -52,9 +52,11 @@ export const PREVIEW_SMART_TASKS_PAYLOAD: SmartTasksWidgetReadyPayload = {
       confidenceLabel: null,
       whyLabel: 'Limited time left before the deadline.',
       recourseHint: null,
-      // Planned line climbs steadily to the target by the deadline; the observed
-      // line tracks BELOW it and flatter — visibly behind schedule, which is the
-      // "at risk" reading made visual (and consistent with the estimate above).
+      // Planned staircase rises across two booked runs with an idle hour between
+      // (the shaded run bands + the flat mid-plan segment); the observed line is
+      // a lightly-noisy 15-minute series tracking BELOW the plan — visibly behind
+      // schedule, which is the "at risk" reading made visual (and consistent with
+      // the estimate above) while also demonstrating the smoothed measured line.
       chart: {
         mode: 'trajectory',
         unit: '°C',
@@ -62,15 +64,23 @@ export const PREVIEW_SMART_TASKS_PAYLOAD: SmartTasksWidgetReadyPayload = {
         windowEndMs: T + 3 * H,
         plannedOriginal: [
           { atMs: T, value: 42 },
-          { atMs: T + H, value: 46.5 },
-          { atMs: T + 2 * H, value: 51 },
+          { atMs: T + H, value: 48.5 },
+          { atMs: T + 2 * H, value: 48.5 },
           { atMs: T + 3 * H, value: 55 },
         ],
         plannedFinal: null,
         observed: [
           { atMs: T, value: 42 },
-          { atMs: T + H, value: 44 },
-          { atMs: T + 1.5 * H, value: 45.5 },
+          { atMs: T + 0.25 * H, value: 43.1 },
+          { atMs: T + 0.5 * H, value: 44.4 },
+          { atMs: T + 0.75 * H, value: 45.2 },
+          { atMs: T + H, value: 46.4 },
+          { atMs: T + 1.25 * H, value: 46.1 },
+          { atMs: T + 1.5 * H, value: 46.6 },
+        ],
+        runBands: [
+          { fromMs: T, toMs: T + H },
+          { fromMs: T + 2 * H, toMs: T + 3 * H },
         ],
         target: 55,
         metAtMs: null,
@@ -138,6 +148,9 @@ export const PREVIEW_SMART_TASKS_PAYLOAD: SmartTasksWidgetReadyPayload = {
           { atMs: T + 3 * H, value: 74 },
           { atMs: T + 3.5 * H, value: 80 },
         ],
+        // Charging was booked for the last three hours only — the first hour
+        // (waiting for cheaper prices) stays unshaded.
+        runBands: [{ fromMs: T + H, toMs: T + 4 * H }],
         target: 80,
         metAtMs: T + 3.5 * H,
         metMarkerValue: 80,
@@ -175,6 +188,8 @@ export const PREVIEW_SMART_TASKS_PAYLOAD: SmartTasksWidgetReadyPayload = {
           { atMs: T + 2 * H, value: 48 },
           { atMs: T + 3 * H, value: 52 },
         ],
+        // Every hour was booked (the run heated flat-out and still missed).
+        runBands: [{ fromMs: T, toMs: T + 3 * H }],
         target: 60,
         metAtMs: null,
         metMarkerValue: null,

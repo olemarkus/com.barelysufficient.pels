@@ -79,12 +79,21 @@
      - plan-current: the one saturated accent, reserved for "now".
      - price: a muted violet (blue mixed toward red) — informational, not alarming.
      - actual: text-colour level ticks — measured reality reads as "ink".
-     - guide: reference furniture (now-line, target guides). */
+     - guide: reference furniture (now-line, target guides, planned staircases).
+     - measured: the accent-toned measured-progress LINE in the smart-task
+       trajectory, where measured is the hero series climbing toward a goal.
+       Deliberately distinct from `actual` (ink-level ticks marking completed
+       readings against plan bars); it shares plan-current's hue today but
+       names a different role, so the two can diverge without a re-sweep.
+     - band: scheduled-run shading behind a trajectory — plan-family at a low
+       mix so it reads as background context, never as a series. */
   --pw-chart-plan: color-mix(in srgb, var(--homey-color-green, #58c56a) 55%, var(--homey-background-color, #ffffff));
   --pw-chart-plan-current: var(--homey-color-green, #58c56a);
   --pw-chart-price: color-mix(in srgb, var(--homey-color-blue, #3f9fff) 55%, var(--homey-color-red, #f0696c));
   --pw-chart-actual: var(--homey-text-color, #1f252a);
   --pw-chart-guide: var(--homey-text-color-light, #6d7680);
+  --pw-chart-measured: var(--homey-color-green, #58c56a);
+  --pw-chart-band: color-mix(in srgb, var(--homey-color-green, #58c56a) 10%, transparent);
 
   /* ---- Surfaces & lines ---- */
   --pw-background: var(--homey-background-color, #ffffff);
@@ -368,7 +377,12 @@
   gap: var(--pw-su-1, 4px);
   background: transparent;
   border: none;
-  color: inherit;
+
+  /* Explicit text token, not `inherit`: the dashboard host supplies the
+     inherited body colour, but a host (or harness) that doesn't would leave the
+     dark-theme title invisible (black on dark). `--pw-text` resolves the same
+     colour the host would supply. */
+  color: var(--pw-text, inherit);
   font: inherit;
   font-size: var(--pw-font-size-title, 17px);
   line-height: var(--pw-line-title, 24px);
@@ -491,11 +505,19 @@
 /* Y-axis value labels (data min/max) at the chart's left edge, so a near-flat
    series still reads against a scale instead of looking like meaningless noise.
    Squishes slightly under the non-uniform scale like the rest of the in-SVG
-   text — acceptable for short numbers. */
+   text — acceptable for short numbers. The renderer hangs each label off its
+   own value line (max above, min below) so no series strikes through it. */
 .tchart__axis {
   fill: var(--pw-text-muted, #6d7680);
   font-size: var(--pw-font-size-body, 14px);
   font-variant-numeric: var(--pw-numeric, tabular-nums);
+}
+
+/* Scheduled-run bands — low-opacity plan-family shading behind every series,
+   marking the spans where the plan booked the device to run. Fill-only (no
+   stroke), so the non-uniform SVG scaling needs no vector-effect here. */
+.tchart__band {
+  fill: var(--pw-chart-band, rgba(88, 197, 106, 0.1));
 }
 
 /* `vector-effect: non-scaling-stroke` keeps stroke WEIGHTS true regardless of
@@ -520,10 +542,12 @@
   opacity: 0.55;
 }
 
-/* Planned trajectory — the muted "where it should be" staircase, solid stroke. */
+/* Planned trajectory — the muted "where it should be" staircase, solid stroke.
+   Guide-family per the chart-token vocabulary: planned is reference furniture
+   the measured line is judged against, not a competing data series. */
 .tchart__planned {
   fill: none;
-  stroke: var(--pw-text-muted, #6d7680);
+  stroke: var(--pw-chart-guide, #6d7680);
   stroke-width: 2;
   stroke-linejoin: round;
   stroke-linecap: round;
@@ -533,7 +557,7 @@
    reads as secondary to the primary planned line. */
 .tchart__planned-revised {
   fill: none;
-  stroke: var(--pw-text-muted, #6d7680);
+  stroke: var(--pw-chart-guide, #6d7680);
   stroke-width: 1.5;
   stroke-dasharray: 5 4;
   stroke-linejoin: round;
@@ -544,7 +568,7 @@
 /* Observed progress — the accent "where it actually is" line, drawn on top. */
 .tchart__observed {
   fill: none;
-  stroke: var(--pw-success, #58c56a);
+  stroke: var(--pw-chart-measured, #58c56a);
   stroke-width: 2;
   stroke-linejoin: round;
   stroke-linecap: round;
@@ -552,13 +576,13 @@
 
 /* Marker at the point the run reached / plateaued at target. */
 .tchart__marker {
-  fill: var(--pw-success, #58c56a);
+  fill: var(--pw-chart-measured, #58c56a);
 }
 
 /* "You are here" / latest-reading dot on the measured line (active tasks and
    missed/abandoned runs, which have no met marker). */
 .tchart__now {
-  fill: var(--pw-success, #58c56a);
+  fill: var(--pw-chart-measured, #58c56a);
 }
 
 /* Colour-coded legend naming the two lines + the target guide so the chart
@@ -584,4 +608,26 @@
 
 .tchart__legend-item--target {
   font-variant-numeric: var(--pw-numeric, tabular-nums);
+}
+
+/* Scheduled-run band key — the only legend item with a swatch: the band tint
+   is too faint to colour a word legibly, so a small tinted rect carries the
+   colour and the label stays muted text. */
+.tchart__legend-item--band {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pw-su-1, 4px);
+}
+
+/* Same `--pw-chart-band` token as the on-chart rects so the key can never
+   drift from the shading; a hairline in the measured/plan tone keeps the
+   10 px swatch legible where the low-opacity tint alone would vanish.
+   Geometry values are raw, like the chart's own stroke geometry (Homey ships
+   no token at this scale). */
+.tchart__legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--pw-chart-band, rgba(88, 197, 106, 0.1));
+  border: 1px solid color-mix(in srgb, var(--pw-chart-measured, #58c56a) 45%, transparent);
 }

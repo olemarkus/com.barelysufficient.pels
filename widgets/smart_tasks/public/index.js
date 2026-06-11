@@ -40,6 +40,7 @@
   var SMART_TASK_WIDGET_CHART_PLANNED_LABEL = "Planned";
   var SMART_TASK_WIDGET_CHART_MEASURED_LABEL = "Measured";
   var SMART_TASK_WIDGET_CHART_TARGET_LABEL = "Target";
+  var SMART_TASK_WIDGET_CHART_RUN_BAND_LABEL = "Scheduled";
   var formatSmartTaskWidgetOverflow = (count) => `+${count} in Smart tasks`;
   var CREATE_SMART_TASK_WIDGET_COPY = {
     // Step 1 — device picker.
@@ -645,9 +646,11 @@
         confidenceLabel: null,
         whyLabel: "Limited time left before the deadline.",
         recourseHint: null,
-        // Planned line climbs steadily to the target by the deadline; the observed
-        // line tracks BELOW it and flatter — visibly behind schedule, which is the
-        // "at risk" reading made visual (and consistent with the estimate above).
+        // Planned staircase rises across two booked runs with an idle hour between
+        // (the shaded run bands + the flat mid-plan segment); the observed line is
+        // a lightly-noisy 15-minute series tracking BELOW the plan — visibly behind
+        // schedule, which is the "at risk" reading made visual (and consistent with
+        // the estimate above) while also demonstrating the smoothed measured line.
         chart: {
           mode: "trajectory",
           unit: "\xB0C",
@@ -655,15 +658,23 @@
           windowEndMs: T + 3 * H,
           plannedOriginal: [
             { atMs: T, value: 42 },
-            { atMs: T + H, value: 46.5 },
-            { atMs: T + 2 * H, value: 51 },
+            { atMs: T + H, value: 48.5 },
+            { atMs: T + 2 * H, value: 48.5 },
             { atMs: T + 3 * H, value: 55 }
           ],
           plannedFinal: null,
           observed: [
             { atMs: T, value: 42 },
-            { atMs: T + H, value: 44 },
-            { atMs: T + 1.5 * H, value: 45.5 }
+            { atMs: T + 0.25 * H, value: 43.1 },
+            { atMs: T + 0.5 * H, value: 44.4 },
+            { atMs: T + 0.75 * H, value: 45.2 },
+            { atMs: T + H, value: 46.4 },
+            { atMs: T + 1.25 * H, value: 46.1 },
+            { atMs: T + 1.5 * H, value: 46.6 }
+          ],
+          runBands: [
+            { fromMs: T, toMs: T + H },
+            { fromMs: T + 2 * H, toMs: T + 3 * H }
           ],
           target: 55,
           metAtMs: null,
@@ -731,6 +742,9 @@
             { atMs: T + 3 * H, value: 74 },
             { atMs: T + 3.5 * H, value: 80 }
           ],
+          // Charging was booked for the last three hours only — the first hour
+          // (waiting for cheaper prices) stays unshaded.
+          runBands: [{ fromMs: T + H, toMs: T + 4 * H }],
           target: 80,
           metAtMs: T + 3.5 * H,
           metMarkerValue: 80
@@ -768,6 +782,8 @@
             { atMs: T + 2 * H, value: 48 },
             { atMs: T + 3 * H, value: 52 }
           ],
+          // Every hour was booked (the run heated flat-out and still missed).
+          runBands: [{ fromMs: T, toMs: T + 3 * H }],
           target: 60,
           metAtMs: null,
           metMarkerValue: null
@@ -810,6 +826,38 @@
     return (value) => PLOT.bottom - (value - lo) / span * PLOT_HEIGHT;
   };
   var buildPolyline = (points, xScale, yScale) => points.map((point, index) => `${index === 0 ? "M" : "L"}${xScale(point.atMs).toFixed(1)} ${yScale(point.value).toFixed(1)}`).join(" ");
+  var buildSmoothPath = (points, xScale, yScale) => {
+    if (points.length < 3) return buildPolyline(points, xScale, yScale);
+    const pts = points.map((p) => ({ x: xScale(p.atMs), y: yScale(p.value) }));
+    const n = pts.length;
+    const dx = [];
+    const slope = [];
+    for (let i = 0; i < n - 1; i += 1) {
+      dx[i] = pts[i + 1].x - pts[i].x;
+      slope[i] = dx[i] > 0 ? (pts[i + 1].y - pts[i].y) / dx[i] : 0;
+    }
+    const tangents = [slope[0]];
+    for (let i = 1; i < n - 1; i += 1) {
+      const prev = slope[i - 1];
+      const next = slope[i];
+      if (prev * next <= 0) {
+        tangents[i] = 0;
+        continue;
+      }
+      const w1 = 2 * dx[i] + dx[i - 1];
+      const w2 = dx[i] + 2 * dx[i - 1];
+      tangents[i] = (w1 + w2) / (w1 / prev + w2 / next);
+    }
+    tangents[n - 1] = slope[n - 2];
+    let path = `M${pts[0].x.toFixed(1)} ${pts[0].y.toFixed(1)}`;
+    for (let i = 0; i < n - 1; i += 1) {
+      const third = dx[i] / 3;
+      const c1y = pts[i].y + tangents[i] * third;
+      const c2y = pts[i + 1].y - tangents[i + 1] * third;
+      path += ` C${(pts[i].x + third).toFixed(1)} ${c1y.toFixed(1)} ${(pts[i + 1].x - third).toFixed(1)} ${c2y.toFixed(1)} ${pts[i + 1].x.toFixed(1)} ${pts[i + 1].y.toFixed(1)}`;
+    }
+    return path;
+  };
   var buildStepPath = (points, xScale, yScale) => {
     if (points.length === 0) return "";
     const xy = points.map((p) => ({ x: xScale(p.atMs), y: yScale(p.value) }));
@@ -828,6 +876,7 @@
       item.className = `tchart__legend-item tchart__legend-item--${modifier}`;
       item.textContent = text;
       legend.appendChild(item);
+      return item;
     };
     if (isDrawableLine(data.plannedOriginal) || isDrawableLine(data.plannedFinal)) {
       addItem("planned", SMART_TASK_WIDGET_CHART_PLANNED_LABEL);
@@ -840,27 +889,50 @@
       const valueText = rounded % 1 === 0 ? `${Math.round(rounded)}` : rounded.toFixed(1);
       addItem("target", `${SMART_TASK_WIDGET_CHART_TARGET_LABEL} ${valueText} ${data.unit}`);
     }
+    if (data.runBands.length > 0) {
+      const item = addItem("band", SMART_TASK_WIDGET_CHART_RUN_BAND_LABEL);
+      const swatch = doc.createElement("span");
+      swatch.className = "tchart__legend-swatch";
+      item.prepend(swatch);
+    }
     if (legend.childNodes.length > 0) container.appendChild(legend);
+  };
+  var appendRunBands = (svg, doc, bands, xScale) => {
+    for (const band of bands) {
+      const x1 = xScale(band.fromMs);
+      const x2 = xScale(band.toMs);
+      if (x2 <= x1) continue;
+      svg.appendChild(createSvg(doc, "rect", {
+        class: "tchart__band",
+        x: x1.toFixed(1),
+        y: PLOT.top,
+        width: (x2 - x1).toFixed(1),
+        height: PLOT_HEIGHT
+      }));
+    }
   };
   var formatAxisValue = (value) => {
     const rounded = Math.round(value * 10) / 10;
     return rounded % 1 === 0 ? `${Math.round(rounded)}` : rounded.toFixed(1);
   };
-  var appendYAxisLabels = (svg, doc, values, unit) => {
+  var Y_LABEL_GAP = 4;
+  var appendYAxisLabels = (svg, doc, values, unit, yScale) => {
     const dataMin = Math.min(...values);
     const dataMax = Math.max(...values);
     if (dataMax <= dataMin) return;
     const maxLabel = unit ? `${formatAxisValue(dataMax)} ${unit}` : formatAxisValue(dataMax);
+    const maxLabelY = Math.max(10, yScale(dataMax) - Y_LABEL_GAP);
+    const minLabelY = Math.min(VIEW.height - 2, yScale(dataMin) + Y_LABEL_GAP + 8);
     svg.appendChild(createSvg(doc, "text", {
       class: "tchart__axis",
       x: PLOT.left,
-      y: PLOT.top + 10,
+      y: maxLabelY,
       "text-anchor": "start"
     }, maxLabel));
     svg.appendChild(createSvg(doc, "text", {
       class: "tchart__axis",
       x: PLOT.left,
-      y: PLOT.bottom,
+      y: minLabelY,
       "text-anchor": "start"
     }, formatAxisValue(dataMin)));
   };
@@ -890,6 +962,7 @@
       preserveAspectRatio: "none",
       role: "img"
     });
+    appendRunBands(svg, doc, data.runBands, xScale);
     if (data.target !== null) {
       const y = yScale(data.target);
       svg.appendChild(createSvg(doc, "line", {
@@ -915,7 +988,7 @@
     if (hasObserved) {
       svg.appendChild(createSvg(doc, "path", {
         class: "tchart__observed",
-        d: buildPolyline(data.observed, xScale, yScale)
+        d: buildSmoothPath(data.observed, xScale, yScale)
       }));
     }
     if (data.metAtMs !== null && data.metMarkerValue !== null) {
@@ -934,7 +1007,7 @@
         r: 4
       }));
     }
-    appendYAxisLabels(svg, doc, values, data.unit);
+    appendYAxisLabels(svg, doc, values, data.unit, yScale);
     appendLegend(container, data);
     container.appendChild(svg);
     return true;
