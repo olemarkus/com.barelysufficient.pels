@@ -166,6 +166,26 @@ describe('resolveHistoryDetailChartData', () => {
       ]);
     });
 
+    it('drops hours with a non-finite startsAtMs instead of emitting NaN bands', () => {
+      // Persisted snapshots are the input — a malformed hour must not sail
+      // through the `toMs <= fromMs` skip (`NaN <= NaN` is false) and push a
+      // NaN band into the chart markArea.
+      const entry = buildEntry({
+        originalPlan: buildSnapshot({
+          hours: [
+            { startsAtMs: Number.NaN, plannedKWh: 1 },
+            { startsAtMs: START_MS + HOUR_MS, plannedKWh: 1, coversFromMs: Number.NaN },
+            { startsAtMs: START_MS + 2 * HOUR_MS, plannedKWh: 1 },
+          ],
+        }),
+        finalPlan: null,
+      });
+      const data = resolveHistoryDetailChartData(entry);
+      expect(data.runBands).toEqual([
+        { fromMs: START_MS + 2 * HOUR_MS, toMs: START_MS + 3 * HOUR_MS },
+      ]);
+    });
+
     it('emits no bands in legacy_kwh mode', () => {
       const entry = buildEntry({
         originalPlan: buildSnapshot({ kwhPerUnitMean: undefined }),
@@ -304,6 +324,10 @@ describe('resolveHistoryDetailChartData', () => {
       const entry = buildEntry({ originalPlan: snapshot, finalPlan: snapshot });
       const data = resolveHistoryDetailChartData(entry);
       expect(data.plannedFinal).toBeNull();
+      // Producer-resolved single semantic source: no replan → the visible
+      // staircase IS the original.
+      expect(data.replanned).toBe(false);
+      expect(data.plannedVisible).toEqual(data.plannedOriginal);
     });
 
     it('surfaces plannedFinal when the run replanned with a different schedule', () => {
@@ -328,6 +352,11 @@ describe('resolveHistoryDetailChartData', () => {
       // The two staircases anchor at the same start progress but climb at
       // different times — the divergence is enough to surface the overlay.
       expect(data.plannedFinal![1]?.atMs).not.toBe(data.plannedOriginal[1]?.atMs);
+      // Producer-resolved single semantic source: a real replan → the visible
+      // staircase is the re-anchored final, and `replanned` gates the marker /
+      // compare-toggle / skip-attribution consumers.
+      expect(data.replanned).toBe(true);
+      expect(data.plannedVisible).toEqual(data.plannedFinal);
     });
 
     it('re-anchors the revised staircase at the measured progress at revisedAtMs', () => {
@@ -703,6 +732,56 @@ describe('resolveHistoryDetailChartData', () => {
       expect(values).toEqual([50, 53]);
     });
 
+    it('falls back to an honest start→final two-point segment when no samples landed', () => {
+      // Sample-less entry (rate present → trajectory mode): the displayed
+      // measured series must NOT be a pseudo-line off the echoed start
+      // reading alone. Both readings exist on the entry → the honest
+      // start→final segment renders instead (review round 2 P0).
+      const entry = buildEntry({
+        originalPlan: buildSnapshot(),
+        progressSamples: [],
+        startProgressC: 50,
+        finalProgressC: 58,
+      });
+      const data = resolveHistoryDetailChartData(entry);
+      expect(data.mode).toBe('trajectory');
+      expect(data.observed).toEqual([
+        { atMs: START_MS, value: 50 },
+        { atMs: DEADLINE_MS, value: 58 },
+      ]);
+    });
+
+    it('ends the synthetic segment at finalisation, not the deadline, on early-finalised runs', () => {
+      // Early-finalised sample-less run: the honest endpoint is when the run
+      // actually ended — pinning it to the deadline would draw an implied
+      // post-stop trajectory that never happened (review round 3).
+      const entry = buildEntry({
+        originalPlan: buildSnapshot(),
+        progressSamples: [],
+        startProgressC: 50,
+        finalProgressC: 58,
+        finalizedAtMs: START_MS + 2 * HOUR_MS,
+      });
+      const data = resolveHistoryDetailChartData(entry);
+      expect(data.observed).toEqual([
+        { atMs: START_MS, value: 50 },
+        { atMs: START_MS + 2 * HOUR_MS, value: 58 },
+      ]);
+    });
+
+    it('carries no measured series at all when the final reading is missing too', () => {
+      const entry = buildEntry({
+        originalPlan: buildSnapshot(),
+        progressSamples: [],
+        startProgressC: 50,
+        finalProgressC: null,
+      });
+      const data = resolveHistoryDetailChartData(entry);
+      expect(data.mode).toBe('trajectory');
+      // 0 or ≥2 points — never a single echoed start reading.
+      expect(data.observed).toEqual([]);
+    });
+
     it('sorts samples by atMs even if the recorder drained out-of-order', () => {
       const entry = buildEntry({
         originalPlan: buildSnapshot(),
@@ -826,49 +905,52 @@ describe('resolveHistoryDetailChartData', () => {
   });
 });
 
-// Covers the v2.7.2 PR 4 chart-string lift: per `feedback_ui_text_shared_with_logs`,
-// the user-visible series names / card titles / toggle copy live in
-// shared-domain so runtime log breadcrumbs can read the same strings the
-// chart legend renders. Assertions pin the exact shipped strings so a copy
-// tweak surfaces here rather than silently in the UI.
+// Covers the chart-string lift (v2.7.2 PR 4; trimmed in the Phase 1B
+// receipt-first redesign): per `feedback_ui_text_shared_with_logs`, the
+// user-visible card titles / toggle copy live in shared-domain so runtime log
+// breadcrumbs can read the same strings the card renders. The Phase 1B
+// redesign retired the ECharts legend + floating tooltip, so the series-name
+// fields moved out of this helper (the DOM legend labels live in
+// `deferredPlanHistoryDetailInteraction.ts`). Assertions pin the exact
+// shipped strings so a copy tweak surfaces here rather than silently in the UI.
 describe('historyDetailChartLabels', () => {
-  it('exposes every expected key with mode-agnostic series + toggle copy', () => {
-    const labels = historyDetailChartLabels('trajectory');
+  it('exposes every expected key', () => {
+    const labels = historyDetailChartLabels('trajectory', 'temperature');
     expect(Object.keys(labels).sort()).toEqual([
       'cardTitle',
       'collapseToggleLabel',
       'expandToggleLabel',
       'fallbackNote',
-      'formatObservedNotRecorded',
       'formatTrajectoryAriaLabel',
-      'metMarkName',
-      'plannedRevisedSeriesName',
-      'plannedSeriesName',
-      'targetSeriesName',
     ]);
-    expect(labels.plannedSeriesName).toBe('Planned trajectory');
-    expect(labels.plannedRevisedSeriesName).toBe('Revised trajectory');
-    expect(labels.targetSeriesName).toBe('Target');
-    expect(labels.metMarkName).toBe('Reached target');
     expect(labels.expandToggleLabel).toBe('View details');
     expect(labels.collapseToggleLabel).toBe('Hide details');
   });
 
-  it('returns the trajectory card title with no fallback note in trajectory mode', () => {
-    const labels = historyDetailChartLabels('trajectory');
-    expect(labels.cardTitle).toBe('Progress history');
-    expect(labels.fallbackNote).toBeNull();
+  it('returns the kind-aware question title with no fallback note in trajectory mode', () => {
+    expect(historyDetailChartLabels('trajectory', 'temperature').cardTitle)
+      .toBe('Did it heat up as planned?');
+    expect(historyDetailChartLabels('trajectory', 'ev_soc').cardTitle)
+      .toBe('Did it charge as planned?');
+    expect(historyDetailChartLabels('trajectory', 'temperature').fallbackNote).toBeNull();
   });
 
-  it('returns the legacy card title + fallback note in legacy_kwh mode', () => {
-    const labels = historyDetailChartLabels('legacy_kwh');
-    expect(labels.cardTitle).toBe('Scheduled vs observed');
+  it('surfaces the absent-observations caption in trajectory mode when no measured series draws', () => {
+    const labels = historyDetailChartLabels('trajectory', 'temperature', false);
+    expect(labels.cardTitle).toBe('Did it heat up as planned?');
     expect(labels.fallbackNote).toBe('Schedule only — observations not recorded for this run.');
   });
 
-  it('composes the parametric tooltip + aria-label strings with the caller-supplied names', () => {
-    const labels = historyDetailChartLabels('trajectory');
-    expect(labels.formatObservedNotRecorded('Measured Heating')).toBe('Measured Heating — not recorded');
+  it('returns the legacy card title + fallback note in legacy_kwh mode (kind-agnostic)', () => {
+    for (const kind of ['temperature', 'ev_soc'] as const) {
+      const labels = historyDetailChartLabels('legacy_kwh', kind);
+      expect(labels.cardTitle).toBe('Scheduled vs observed');
+      expect(labels.fallbackNote).toBe('Schedule only — observations not recorded for this run.');
+    }
+  });
+
+  it('composes the aria-label with the caller-supplied name', () => {
+    const labels = historyDetailChartLabels('trajectory', 'temperature');
     expect(labels.formatTrajectoryAriaLabel('Connected 300')).toBe('Progress trajectory for Connected 300');
     // Caller-resolved fallback: the view passes `'this smart task'` when no
     // device name is recorded — shared-domain just templates whatever string

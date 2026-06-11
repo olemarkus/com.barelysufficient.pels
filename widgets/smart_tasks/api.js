@@ -56,7 +56,9 @@ var resolveRunBands = (hours, windowStartMs, windowEndMs) => {
   for (const hour of hours) {
     const plannedKWh = Number.isFinite(hour.plannedKWh) ? hour.plannedKWh : 0;
     if (plannedKWh <= 0) continue;
-    const fromMs = Math.max(windowStartMs, hour.coversFromMs ?? hour.startsAtMs);
+    const coverFromMs = hour.coversFromMs ?? hour.startsAtMs;
+    if (!Number.isFinite(hour.startsAtMs) || !Number.isFinite(coverFromMs)) continue;
+    const fromMs = Math.max(windowStartMs, coverFromMs);
     const toMs = Math.min(windowEndMs, hour.startsAtMs + HOUR_MS);
     if (toMs <= fromMs) continue;
     spans.push({ fromMs, toMs });
@@ -196,26 +198,44 @@ var pickMetMarkerValue = (entry) => {
   }
   return pickTargetValue(entry);
 };
-var buildTrajectoryPayload = (entry, plannedOriginal, plannedFinal, observed, frame) => ({
-  mode: "trajectory",
-  unit: entry.objectiveKind === "temperature" ? "\xB0C" : "%",
-  windowStartMs: frame.windowStartMs,
-  windowEndMs: frame.windowEndMs,
-  plannedOriginal,
-  plannedFinal,
-  observed: anchorObservedAtStart(observed, frame.windowStartMs, frame.startProgress),
-  // Bands shade the schedule that was last in force — the final plan when the
-  // run replanned, else the original. That matches where heating/charging was
-  // actually booked to happen, which is the story the shading tells.
-  runBands: resolveRunBands(
-    (entry.finalPlan ?? entry.originalPlan)?.hours ?? [],
-    frame.windowStartMs,
-    frame.windowEndMs
-  ),
-  target: pickTargetValue(entry),
-  metAtMs: pickMetMarker(entry),
-  metMarkerValue: pickMetMarkerValue(entry)
-});
+var resolveDisplayedObserved = (entry, observed, frame) => {
+  const anchored = anchorObservedAtStart(observed, frame.windowStartMs, frame.startProgress);
+  if (anchored.length >= 2) return anchored;
+  const finalValue = entry.finalProgressValue;
+  const endAtMs = Number.isFinite(entry.finalizedAtMs) ? Math.min(entry.finalizedAtMs, frame.windowEndMs) : null;
+  if (frame.startProgress !== null && finalValue !== null && Number.isFinite(finalValue) && endAtMs !== null && endAtMs > frame.windowStartMs) {
+    return [
+      { atMs: frame.windowStartMs, value: frame.startProgress },
+      { atMs: endAtMs, value: finalValue }
+    ];
+  }
+  return [];
+};
+var buildTrajectoryPayload = (entry, plannedOriginal, plannedFinal, observed, frame) => {
+  const replanned = plannedFinal !== null && plannedFinal.length > 0;
+  return {
+    mode: "trajectory",
+    unit: entry.objectiveKind === "temperature" ? "\xB0C" : "%",
+    windowStartMs: frame.windowStartMs,
+    windowEndMs: frame.windowEndMs,
+    plannedOriginal,
+    plannedFinal,
+    plannedVisible: replanned ? plannedFinal : plannedOriginal,
+    replanned,
+    observed: resolveDisplayedObserved(entry, observed, frame),
+    // Bands shade the schedule that was last in force — the final plan when the
+    // run replanned, else the original. That matches where heating/charging was
+    // actually booked to happen, which is the story the shading tells.
+    runBands: resolveRunBands(
+      (entry.finalPlan ?? entry.originalPlan)?.hours ?? [],
+      frame.windowStartMs,
+      frame.windowEndMs
+    ),
+    target: pickTargetValue(entry),
+    metAtMs: pickMetMarker(entry),
+    metMarkerValue: pickMetMarkerValue(entry)
+  };
+};
 var composeHeatFromBelowTrajectory = (entry, observed, frame) => {
   const { windowStartMs, windowEndMs, startProgress, target } = frame;
   const plannedOriginal = entry.originalPlan !== null && startProgress !== null ? integratePlannedStaircase(entry.originalPlan, startProgress, windowStartMs, windowEndMs, target) : [];
@@ -255,6 +275,8 @@ var composeLegacyData = (entry, windowStartMs, windowEndMs) => ({
   windowEndMs,
   plannedOriginal: [],
   plannedFinal: null,
+  plannedVisible: [],
+  replanned: false,
   observed: [],
   runBands: [],
   target: pickTargetValue(entry),
@@ -307,6 +329,8 @@ var emptyChart = (target, windowStartMs, windowEndMs) => ({
   windowEndMs,
   plannedOriginal: [],
   plannedFinal: null,
+  plannedVisible: [],
+  replanned: false,
   observed: [],
   runBands: [],
   target,
@@ -348,6 +372,10 @@ var resolveActivePlanChartData = (plan, options = {}) => {
     windowEndMs,
     plannedOriginal: planned,
     plannedFinal: null,
+    // A live plan has one staircase and no replan overlay — the visible
+    // staircase IS the live plan.
+    plannedVisible: planned,
+    replanned: false,
     observed,
     // Bands shade the live schedule's booked hours — present even when the
     // planned staircase couldn't be drawn (no usable rate), since the booked
@@ -985,6 +1013,10 @@ var formatRefinedMissCause = (entry) => {
     }
   }
 };
+
+// packages/shared-domain/src/deferredPlanHistoryReceiptStrings.ts
+var RECEIPT_NBSP = "\xA0";
+var RECEIPT_DURATION_ZERO = `0${RECEIPT_NBSP}min`;
 
 // packages/shared-domain/src/utils/dateUtils.ts
 var DAY_START_SEARCH_WINDOW_MS = 72 * 60 * 60 * 1e3;

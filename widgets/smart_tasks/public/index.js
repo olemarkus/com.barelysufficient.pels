@@ -600,6 +600,25 @@
   // widgets/smart_tasks/src/public/previewPayloads.ts
   var T = 17e11;
   var H = 60 * 60 * 1e3;
+  var PREVIEW_HOT_WATER_PLANNED = [
+    { atMs: T, value: 42 },
+    { atMs: T + H, value: 48.5 },
+    { atMs: T + 2 * H, value: 48.5 },
+    { atMs: T + 3 * H, value: 55 }
+  ];
+  var PREVIEW_EV_ENDED_PLANNED = [
+    { atMs: T, value: 45 },
+    { atMs: T + H, value: 45 },
+    { atMs: T + 2 * H, value: 60 },
+    { atMs: T + 3 * H, value: 73 },
+    { atMs: T + 4 * H, value: 80 }
+  ];
+  var PREVIEW_HOT_WATER_ENDED_PLANNED = [
+    { atMs: T, value: 40 },
+    { atMs: T + H, value: 47 },
+    { atMs: T + 2 * H, value: 54 },
+    { atMs: T + 3 * H, value: 60 }
+  ];
   var PREVIEW_SMART_TASKS_PAYLOAD = {
     state: "ready",
     // Non-zero so the preview also demonstrates the "+N in Smart tasks"
@@ -656,13 +675,10 @@
           unit: "\xB0C",
           windowStartMs: T,
           windowEndMs: T + 3 * H,
-          plannedOriginal: [
-            { atMs: T, value: 42 },
-            { atMs: T + H, value: 48.5 },
-            { atMs: T + 2 * H, value: 48.5 },
-            { atMs: T + 3 * H, value: 55 }
-          ],
+          plannedOriginal: PREVIEW_HOT_WATER_PLANNED,
           plannedFinal: null,
+          plannedVisible: PREVIEW_HOT_WATER_PLANNED,
+          replanned: false,
           observed: [
             { atMs: T, value: 42 },
             { atMs: T + 0.25 * H, value: 43.1 },
@@ -727,14 +743,10 @@
           unit: "%",
           windowStartMs: T,
           windowEndMs: T + 4 * H,
-          plannedOriginal: [
-            { atMs: T, value: 45 },
-            { atMs: T + H, value: 45 },
-            { atMs: T + 2 * H, value: 60 },
-            { atMs: T + 3 * H, value: 73 },
-            { atMs: T + 4 * H, value: 80 }
-          ],
+          plannedOriginal: PREVIEW_EV_ENDED_PLANNED,
           plannedFinal: null,
+          plannedVisible: PREVIEW_EV_ENDED_PLANNED,
+          replanned: false,
           observed: [
             { atMs: T, value: 45 },
             { atMs: T + H, value: 46 },
@@ -769,13 +781,10 @@
           unit: "\xB0C",
           windowStartMs: T,
           windowEndMs: T + 3 * H,
-          plannedOriginal: [
-            { atMs: T, value: 40 },
-            { atMs: T + H, value: 47 },
-            { atMs: T + 2 * H, value: 54 },
-            { atMs: T + 3 * H, value: 60 }
-          ],
+          plannedOriginal: PREVIEW_HOT_WATER_ENDED_PLANNED,
           plannedFinal: null,
+          plannedVisible: PREVIEW_HOT_WATER_ENDED_PLANNED,
+          replanned: false,
           observed: [
             { atMs: T, value: 40 },
             { atMs: T + H, value: 44 },

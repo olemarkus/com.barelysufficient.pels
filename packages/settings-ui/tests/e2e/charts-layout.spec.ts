@@ -257,14 +257,14 @@ test.describe('Settings UI chart layout', () => {
     ).toBe(true);
   });
 
-  // Regression: history-detail trajectory chart legend can wrap to 2 rows at
-  // 320 px (4 entries: Planned / Revised / Measured / Target). The static
-  // `grid.top: 60` reserve must keep the chart's plot area (svg + axes) from
-  // overlapping the legend region, even at the narrowest supported width.
-  // Asserts the chart container itself sits within the surrounding panel and
-  // that the legend's bounding box ends above the plot's first y-axis tick
-  // — i.e. legend wrap does not crowd the chart-top edge.
-  test('history-detail trajectory chart reserves grid.top for legend wrap at 320 px', async ({ page }) => {
+  // Regression (rewritten for the Phase 1B receipt-first redesign): the
+  // history-detail trajectory card replaced the wrap-prone 4-entry ECharts
+  // legend with a compact 3-item DOM legend row (Measured / Planned /
+  // Target {value}) above the chart, plus a "Plan changed HH:MM" marker
+  // label inside the chart's 28 px top reserve. At 320 px the legend must
+  // wrap cleanly (no horizontal overflow), sit fully above the chart
+  // container, and the marker label must render inside the chart bounds.
+  test('history-detail trajectory legend and marker label fit at 320 px', async ({ page }) => {
     type HistoryEntryFixture = {
       id: string;
       deviceId: string;
@@ -299,6 +299,7 @@ test.describe('Settings UI chart layout', () => {
         revisedAtMs: number;
         kwhPerUnitMean: number;
       };
+      revisions: Array<{ atMs: number; reasonId: string; hoursAdded: number; hoursRemoved: number }>;
       revisionCount: number;
       progressSamples: Array<{ atMs: number; valueC: number; valuePercent: null }>;
     };
@@ -314,10 +315,10 @@ test.describe('Settings UI chart layout', () => {
     };
     const T0 = Date.UTC(2026, 4, 16, 4, 0, 0);
     const HOUR = 3_600_000;
-    // Both `originalPlan` and `finalPlan` populated so the trajectory chart
-    // renders the 4-entry legend (Planned + Revised + Measured + Target),
-    // which is the wrap-prone configuration. `progressSamples` switches the
-    // producer into trajectory mode.
+    // Both `originalPlan` and `finalPlan` populated (genuinely different
+    // schedules) so the revised configuration renders: marker + compare
+    // toggle + the full legend row. `progressSamples` switches the producer
+    // into trajectory mode.
     const buildPlan = (): HistoryEntryFixture['originalPlan'] => ({
       hours: [
         { startsAtMs: T0, plannedKWh: 1.0 },
@@ -330,11 +331,6 @@ test.describe('Settings UI chart layout', () => {
       revisedAtMs: T0,
       kwhPerUnitMean: 0.5,
     });
-    // Final plan shifts hour energies so `staircasesDiffer` resolves true and
-    // the "Revised trajectory" legend entry actually renders. Without this the
-    // producer collapses originalPlan/finalPlan to a single staircase and the
-    // legend drops to 3 entries — exactly the configuration this test claims
-    // to regression-protect against. Pin all 4 labels via the assertion below.
     const buildRevisedPlan = (): HistoryEntryFixture['finalPlan'] => ({
       hours: [
         { startsAtMs: T0, plannedKWh: 0.5 },
@@ -369,6 +365,9 @@ test.describe('Settings UI chart layout', () => {
       discoveredFrom: 'observation',
       originalPlan: buildPlan(),
       finalPlan: buildRevisedPlan(),
+      revisions: [
+        { atMs: T0 + 30 * 60 * 1000, reasonId: 'prices_revised', hoursAdded: 2, hoursRemoved: 2 },
+      ],
       revisionCount: 2,
       progressSamples: [
         { atMs: T0, valueC: 50, valuePercent: null },
@@ -386,69 +385,51 @@ test.describe('Settings UI chart layout', () => {
     // Met outcome → chart collapsed by default. Click "View details" so the
     // trajectory chart actually mounts.
     await page.locator('button.pels-button.plan-history-detail__chart-toggle').click();
-    const chart = page.locator('.deadline-horizon-chart');
+    const chart = page.locator('.deadline-history-trajectory-chart');
     await expect(chart).toBeVisible();
     await expect(chart.locator('svg')).toBeVisible();
 
-    // Probe: with `grid.top: 60` the plot area's top edge must sit at or
-    // below 60 px (matching the reserved headroom), and every legend label
-    // (`<text>` rendered above the plot area) must finish above the plot.
-    // We identify the plot area by the lowest y-coord of any chart line/bar
-    // path; the legend by `<text>` nodes whose content matches the known
-    // series labels. The `gap` of 1 px is the same fuzz the y-axis fit test
-    // uses for sub-pixel rendering.
-    const result = await chart.evaluate((container) => {
-      const rect = container.getBoundingClientRect();
-      const svg = container.querySelector('svg');
-      if (!svg) return { ok: false, reason: 'no svg' } as const;
-      // When originalPlan and finalPlan differ, the original series is named
-      // "Initial schedule" (not "Planned trajectory") so the user can
-      // distinguish the two staircases at a glance. This test exercises the
-      // dual-staircase configuration via the differentiated buildRevisedPlan()
-      // fixture above, so assert the dual labels.
-      const legendLabels = ['Initial schedule', 'Revised trajectory', 'Measured Heating', 'Target'];
-      const texts = Array.from(svg.querySelectorAll('text'));
-      const legendTexts = texts.filter((node) => (
-        node instanceof SVGTextElement
-        && legendLabels.includes((node.textContent ?? '').trim())
+    // DOM legend: all three items render with the target value, wrap inside
+    // the viewport, and finish above the chart container.
+    const legend = page.locator('.deadline-history-legend');
+    await expect(legend).toBeVisible();
+    const items = legend.locator('.deadline-history-legend__item');
+    await expect(items).toHaveText(['Measured', 'Planned', 'Target 65.0 °C']);
+    const probe = await page.evaluate(() => {
+      const legendEl = document.querySelector('.deadline-history-legend');
+      const chartEl = document.querySelector('.deadline-history-trajectory-chart');
+      if (!legendEl || !chartEl) return { ok: false, reason: 'missing nodes' } as const;
+      const legendRect = legendEl.getBoundingClientRect();
+      const chartRect = chartEl.getBoundingClientRect();
+      // The "Plan changed HH:MM" marker label must render fully inside the
+      // chart container (the grid's 28 px top reserve holds it).
+      const markerText = [...chartEl.querySelectorAll('svg text')].find((node) => (
+        /^Plan changed \d{2}:\d{2}$/.test((node.textContent ?? '').trim())
       ));
-      if (legendTexts.length === 0) return { ok: false, reason: 'no legend labels found' } as const;
-      // Pin all 4 expected labels — earlier this test silently passed with 3
-      // when finalPlan equalled originalPlan and the producer collapsed
-      // "Revised trajectory" away. Without all 4 labels the wrap-prone
-      // configuration isn't actually exercised.
-      const renderedLabels = new Set(legendTexts.map((node) => (node.textContent ?? '').trim()));
-      const missingLabels = legendLabels.filter((label) => !renderedLabels.has(label));
-      if (missingLabels.length > 0) {
-        return { ok: false, reason: `missing legend labels: ${missingLabels.join(', ')}` } as const;
-      }
-      const legendBottom = Math.max(
-        ...legendTexts.map((node) => node.getBoundingClientRect().bottom),
-      );
-      // Plot area's top edge ≈ the topmost y-axis tick label (formatted as
-      // a numeric temperature, e.g. "67.0 °C"). Filter to the trajectory's
-      // unit so we don't mistake the legend labels for axis ticks.
-      const axisTexts = texts.filter((node) => (
-        node instanceof SVGTextElement
-        && /°C$/.test((node.textContent ?? '').trim())
-      ));
-      if (axisTexts.length === 0) return { ok: false, reason: 'no °C axis labels' } as const;
-      const plotTop = Math.min(...axisTexts.map((node) => node.getBoundingClientRect().top));
-      // Container right edge must not exceed the viewport (sanity — chart
-      // does not horizontally overflow at 320 px either).
-      const containerOverflow = rect.right > window.innerWidth + 1;
+      if (!markerText) return { ok: false, reason: 'no marker label' } as const;
+      const markerRect = markerText.getBoundingClientRect();
+      const legendAboveChart = legendRect.bottom <= chartRect.top + 1;
+      const legendInsideViewport = legendRect.right <= window.innerWidth + 1 && legendRect.left >= -1;
+      const markerInsideChart = markerRect.top >= chartRect.top - 1
+        && markerRect.bottom <= chartRect.bottom + 1
+        && markerRect.left >= chartRect.left - 1
+        && markerRect.right <= chartRect.right + 1;
+      const containerOverflow = chartRect.right > window.innerWidth + 1;
       return {
-        ok: legendBottom <= plotTop + 1 && !containerOverflow,
-        legendBottom: Number(legendBottom.toFixed(2)),
-        plotTop: Number(plotTop.toFixed(2)),
+        ok: legendAboveChart && legendInsideViewport && markerInsideChart && !containerOverflow,
+        legendBottom: Number(legendRect.bottom.toFixed(2)),
+        chartTop: Number(chartRect.top.toFixed(2)),
+        markerTop: Number(markerRect.top.toFixed(2)),
+        markerBottom: Number(markerRect.bottom.toFixed(2)),
+        chartBottom: Number(chartRect.bottom.toFixed(2)),
+        markerRight: Number(markerRect.right.toFixed(2)),
+        chartRight: Number(chartRect.right.toFixed(2)),
         viewport: window.innerWidth,
-        containerRight: Number(rect.right.toFixed(2)),
-        containerOverflow,
       } as const;
     });
     expect(
-      result.ok,
-      `Legend overlaps plot or chart overflows viewport: ${JSON.stringify(result)}`,
+      probe.ok,
+      `Legend/marker layout broken at 320 px: ${JSON.stringify(probe)}`,
     ).toBe(true);
   });
 

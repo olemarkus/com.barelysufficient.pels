@@ -55,12 +55,15 @@ export const formatReceiptReadyMargin = (margin: string, deadlineClock: string):
 
 // "0 min" / "23 min" / "2 h" / "2 h 15 min" — the human margin/shortfall
 // duration phrasing. The producer computes the millisecond value; this owns
-// the words and unit spacing.
-export const RECEIPT_DURATION_ZERO = '0 min';
-export const formatReceiptDurationMinutes = (minutes: number): string => `${minutes} min`;
-export const formatReceiptDurationHours = (hours: number): string => `${hours} h`;
+// the words and unit spacing. NBSP throughout so a duration is one
+// unbreakable token — "3 h 16 min" must never split across lines mid-figure
+// at 320 px (review round 2 P2 #11).
+export const RECEIPT_DURATION_ZERO = `0${RECEIPT_NBSP}min`;
+export const formatReceiptDurationMinutes = (minutes: number): string =>
+  `${minutes}${RECEIPT_NBSP}min`;
+export const formatReceiptDurationHours = (hours: number): string => `${hours}${RECEIPT_NBSP}h`;
 export const formatReceiptDurationHoursMinutes = (hours: number, minutes: number): string =>
-  `${hours} h ${minutes} min`;
+  `${hours}${RECEIPT_NBSP}h${RECEIPT_NBSP}${minutes}${RECEIPT_NBSP}min`;
 
 // ─── Missed shortfall chip ────────────────────────────────────────────────────
 
@@ -82,13 +85,43 @@ export const formatReceiptShortfall = (approxGlyph: string, duration: string): s
 
 // ─── Cost narrative chip (Succeeded + Missed) ────────────────────────────────
 
-// "≈ 12 kr" — whole kroner cost story. Glyph + unit are threaded in so the
-// glyph stays single-sourced and the unit reads in the user's display currency.
+// "≈ 12 kr spent" — whole kroner cost story on the Missed hero. The verb
+// names what the figure IS (money already spent on the failed run) so the
+// bare amount can't read as a price or an estimate-to-finish (review round 2
+// P2 #10; canonical row in `notes/ui-terminology.md`). Glyph + unit are
+// threaded in so the glyph stays single-sourced and the unit reads in the
+// user's display currency.
 export const formatReceiptCostNarrative = (
   approxGlyph: string,
   roundedCost: number,
   unit: string,
-): string => `${approxGlyph}${RECEIPT_NBSP}${roundedCost}${RECEIPT_NBSP}${unit}`;
+): string => `${approxGlyph}${RECEIPT_NBSP}${roundedCost}${RECEIPT_NBSP}${unit} spent`;
+
+// Receipt-grade cost fragments for the Succeeded shape (chart-overhaul
+// Phase 1B): "≈ 3.10 kr · 0.52 kr/kWh on average · 6.0 kWh delivered". The
+// producer pre-formats the numbers (minor-unit currencies render as whole
+// integers, major units keep two decimals per the PELS money convention);
+// these own only the words and the NBSP figure-grouping.
+// Whole-integer minor-unit currencies (no fractional øre); two decimals for
+// major units. Shared by the receipt cost amount + per-kWh average so both
+// halves of the narrative round identically — also reused by the strip's
+// per-hour readout (`deferredPlanHistoryDetailInteraction.ts`).
+export const isMinorCurrencyUnit = (unit: string): boolean => (
+  unit === 'øre' || unit === 'öre' || unit === 'cent'
+);
+export const formatCostFigure = (value: number, unit: string): string => (
+  value.toFixed(isMinorCurrencyUnit(unit) ? 0 : 2)
+);
+
+export const formatReceiptCostAmount = (
+  approxGlyph: string,
+  formattedCost: string,
+  unit: string,
+): string => `${approxGlyph}${RECEIPT_NBSP}${formattedCost}${RECEIPT_NBSP}${unit}`;
+export const formatReceiptCostAverage = (formattedRate: string, unit: string): string =>
+  `${formattedRate}${RECEIPT_NBSP}${unit}/kWh on average`;
+export const formatReceiptCostDelivered = (formattedKWh: string): string =>
+  `${formattedKWh}${RECEIPT_NBSP}kWh delivered`;
 
 // ─── Abandoned details (collapsed <details> body) ────────────────────────────
 

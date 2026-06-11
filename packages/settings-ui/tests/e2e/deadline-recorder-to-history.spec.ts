@@ -366,4 +366,119 @@ test.describe('Deadline recorder → history UI round-trip', () => {
       ).toEqual([]);
     });
   }
+
+  // Phase 1B receipt-first redesign: the trajectory card carries a
+  // "Plan changed HH:MM" marker + a "Compare with initial plan" toggle on
+  // revised runs, and the hourly strip answers its title's cost promise via
+  // a pinned readout on tap (no floating tooltips). Run at both supported
+  // widths so the 320 px legend wrap can't silently regress the readout.
+  for (const viewport of [{ width: 480, height: 900 }, { width: 320, height: 800 }] as const) {
+    test(`plan-change marker, compare toggle and strip readout work at ${viewport.width}px`, async ({ page }) => {
+      const T0 = Date.UTC(2026, 4, 16, 4, 0, 0);
+      const HOUR = 3_600_000;
+      const entry = {
+        id: 'fixture-receipt-first',
+        deviceId: 'dev_connected300',
+        deviceName: 'Connected 300',
+        objectiveKind: 'temperature' as const,
+        targetTemperatureC: 65,
+        targetPercent: null,
+        deadlineAtMs: T0 + 6 * HOUR,
+        startedAtMs: T0,
+        finalizedAtMs: T0 + 6 * HOUR,
+        startProgressC: 50,
+        startProgressPercent: null,
+        finalProgressC: 65,
+        finalProgressPercent: null,
+        initialEnergyNeededKWh: 4.0,
+        outcome: 'met' as const,
+        metAtMs: T0 + 5 * HOUR,
+        usedDeadlineReserve: false,
+        observedIntervals: [{ fromMs: T0, toMs: T0 + 5 * HOUR }],
+        discoveredFrom: 'observation' as const,
+        // kwhPerUnitMean present → trajectory mode (the Phase 1B surface).
+        originalPlan: {
+          hours: [
+            { startsAtMs: T0, plannedKWh: 1.0 },
+            { startsAtMs: T0 + HOUR, plannedKWh: 0.8 },
+          ],
+          energyNeededKWh: 4.0,
+          planStatus: 'on_track' as const,
+          revisedAtMs: T0,
+          kwhPerUnitMean: 0.4,
+        },
+        // A genuinely different replanned schedule so the producer's replan
+        // detection fires and the marker + toggle render.
+        finalPlan: {
+          hours: [
+            { startsAtMs: T0 + 2 * HOUR, plannedKWh: 1.2 },
+            { startsAtMs: T0 + 3 * HOUR, plannedKWh: 1.0 },
+            { startsAtMs: T0 + 4 * HOUR, plannedKWh: 0.9 },
+          ],
+          energyNeededKWh: 4.5,
+          planStatus: 'on_track' as const,
+          revisedAtMs: T0 + 2 * HOUR,
+          kwhPerUnitMean: 0.4,
+        },
+        revisions: [
+          { atMs: T0 + 2 * HOUR, reasonId: 'prices_revised', hoursAdded: 3, hoursRemoved: 2 },
+        ],
+        revisionCount: 2,
+        progressSamples: Array.from({ length: 6 }, (_, hour) => ({
+          atMs: T0 + hour * HOUR,
+          valueC: 50 + hour * 3,
+          valuePercent: null,
+        })),
+        // Raw øre prices; the readout scales by the recorded ÷100 divisor.
+        hourlyContributions: [
+          { atMs: T0 + 2 * HOUR, deliveredKWh: 1.2, priceValue: 42, tone: 'cheap' as const },
+          { atMs: T0 + 4 * HOUR, deliveredKWh: 0.9, priceValue: 55, tone: 'normal' as const },
+        ],
+        totalCost: 100,
+        deliveredKWh: 2.1,
+        costDisplay: { unit: 'kr', divisor: 100 },
+      };
+
+      await page.setViewportSize(viewport);
+      await page.addInitScript(stubHistory, { dev_connected300: [entry] });
+      await page.goto(
+        `/?page=deadline-plan&deviceId=dev_connected300&historyId=${encodeURIComponent(entry.id)}`,
+        { waitUntil: 'domcontentloaded' },
+      );
+
+      // Succeeded → receipt shape: chart + strip both collapsed behind the
+      // single "View details" toggle.
+      await expect(page.locator('.deadline-history-trajectory-chart')).toHaveCount(0);
+      await expect(page.locator('.hourly-strip')).toHaveCount(0);
+      await page.locator('button.pels-button.plan-history-detail__chart-toggle').click();
+      const chart = page.locator('.deadline-history-trajectory-chart');
+      await expect(chart).toBeVisible();
+      await expect(chart.locator('svg')).toBeVisible();
+      await expect(page.locator('.hourly-strip')).toBeVisible();
+
+      // Plan-change marker label renders on the chart; the readout defaults
+      // to the marker hour and carries the canonical revision sentence.
+      await expect(chart.locator('svg')).toContainText(/Plan changed \d{2}:\d{2}/);
+      const trajectoryReadout = page.locator('.deadline-readout').first();
+      await expect(trajectoryReadout).toContainText('Plan changed here — tomorrow’s prices published (+3h −2h)');
+
+      // "Compare with initial plan" reveals the dashed original staircase —
+      // one more dashed path in the SVG (the target line is the other).
+      const dashedPaths = chart.locator('svg path[stroke-dasharray]');
+      const dashedBefore = await dashedPaths.count();
+      await page.locator('.plan-history-detail__compare-row md-switch').click();
+      await expect(dashedPaths).toHaveCount(dashedBefore + 1);
+
+      // Strip readout: the default selection is the tallest delivered bar
+      // (1.2 kWh at 42 øre → 0.42 kr/kWh ≈ 0.50 kr); tapping another
+      // delivered bucket moves the selection outline + the readout.
+      const stripReadout = page.locator('.deadline-readout').last();
+      await expect(stripReadout).toContainText('1.2 kWh · 0.42 kr/kWh ≈ 0.50 kr');
+      await expect(stripReadout).toContainText('Ran as planned');
+      const buckets = page.locator('.hourly-strip__bucket');
+      await buckets.nth(4).click();
+      await expect(buckets.nth(4)).toHaveAttribute('data-selected', 'true');
+      await expect(stripReadout).toContainText('0.9 kWh · 0.55 kr/kWh ≈ 0.50 kr');
+    });
+  }
 });

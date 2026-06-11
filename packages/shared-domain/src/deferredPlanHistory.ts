@@ -9,7 +9,14 @@ import type {
 } from '../../contracts/src/deferredObjectivePlanHistory';
 import { APPROX_GLYPH, resolveRevisionReason } from './deadlineLabels';
 import { formatRefinedMissCause } from './deferredPlanHistoryAttribution';
-import { resolveEntryCostDisplay, scaleRawCostToDisplay } from './deferredPlanHistoryReceiptStrings';
+import {
+  formatReceiptDurationHours,
+  formatReceiptDurationHoursMinutes,
+  formatReceiptDurationMinutes,
+  RECEIPT_DURATION_ZERO,
+  resolveEntryCostDisplay,
+  scaleRawCostToDisplay,
+} from './deferredPlanHistoryReceiptStrings';
 import { priceRateLabelToAmountUnit } from './price/priceUnitLabel';
 import { formatTimeInTimeZone } from './utils/dateUtils';
 
@@ -288,17 +295,20 @@ export const formatMissStreakAggregateLine = (
 const MINUTE_MS = 60 * 1000;
 const HOUR_MS = 60 * MINUTE_MS;
 
+// Margin phrasing for the met headlines ("18 min before 01:00"). Composed
+// from the SAME receipt duration formatters the Succeeded trio's "Ready" row
+// uses (`formatMargin` in `deferredPlanHistoryReceipt.ts`) so the headline
+// and the trio render the duration identically — one spacing convention,
+// "1 h" never "1h" (review round 2 P2 #11). Floors to whole minutes so a
+// sub-hour margin never rounds up across the hour boundary.
 const formatDurationMs = (ms: number): string => {
-  if (ms <= 0) return '0m';
-  // Floor to whole minutes so a sub-hour gap never rounds up across the hour boundary (e.g.
-  // 59m 31s must render as "59m", not "1h", to stay consistent with the caller's HOUR_MS
-  // threshold for the "Brief gap" / "Not observed for" split).
+  if (ms <= 0) return RECEIPT_DURATION_ZERO;
   const totalMinutes = Math.floor(ms / MINUTE_MS);
-  if (totalMinutes < 60) return `${totalMinutes}m`;
+  if (totalMinutes < 60) return formatReceiptDurationMinutes(totalMinutes);
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
-  if (minutes === 0) return `${hours}h`;
-  return `${hours}h ${minutes}m`;
+  if (minutes === 0) return formatReceiptDurationHours(hours);
+  return formatReceiptDurationHoursMinutes(hours, minutes);
 };
 
 // True when the snapshot recorded the planner's daily-budget cap collapsing
@@ -609,9 +619,13 @@ const resolveMetPostmortem = (
     // chip + the headline read as a contradiction. Keep the headline shape
     // identical to `met-with-margin` so the chip is the only signal that
     // distinguishes "clean met" from "met-with-overshoot".
+    // No trailing period on the "Hit …" timing headlines: the receipt trio's
+    // "18 min before 01:00" detail tail renders period-less directly below,
+    // and the same phrase once with and once without a period reads as a
+    // typo — one convention (review round 2 P2 #11; mock history-v3).
     return {
       variant: 'met-with-overshoot',
-      sentence: `Hit ${timing.targetLabel} at ${timing.metAtLabel}, before ${timing.deadlineLabel}.`,
+      sentence: `Hit ${timing.targetLabel} at ${timing.metAtLabel}, before ${timing.deadlineLabel}`,
     };
   }
   // Met-at-buzzer: reached the target inside the last planned hour of the
@@ -622,14 +636,14 @@ const resolveMetPostmortem = (
     return {
       variant: 'met-at-buzzer',
       sentence: `Hit ${timing.targetLabel} at ${timing.metAtLabel}, `
-        + `${formatDurationMs(timing.marginMs)} before ${timing.deadlineLabel}.`,
+        + `${formatDurationMs(timing.marginMs)} before ${timing.deadlineLabel}`,
     };
   }
   if (timing !== null) {
     return {
       variant: 'met-with-margin',
       sentence: `Hit ${timing.targetLabel} at ${timing.metAtLabel}, `
-        + `${formatDurationMs(timing.marginMs)} before ${timing.deadlineLabel}.`,
+        + `${formatDurationMs(timing.marginMs)} before ${timing.deadlineLabel}`,
     };
   }
   // Met but we lack the timing detail to compose the receipt sentence (legacy

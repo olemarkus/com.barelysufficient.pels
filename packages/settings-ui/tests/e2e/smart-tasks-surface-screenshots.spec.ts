@@ -99,6 +99,18 @@ const makeEntry = (params: {
       valuePercent: null,
     }))
     : undefined;
+  // Per-hour delivery against the FINAL plan's hours so the Phase 1B hourly
+  // strip renders (price-level legend + pinned readout) and reconciles with
+  // the receipt: the tallest delivered bar (2.0 kWh) lands on the largest
+  // planned hour. Raw øre prices — the readout scales by the recorded ÷100
+  // divisor. Σ deliveredKWh = 4.6 matches the entry's `deliveredKWh`.
+  const hourlyContributions = revised
+    ? [
+      { atMs: startedAtMs + 3 * HOUR, deliveredKWh: 2.0, priceValue: 40, tone: 'cheap' as const },
+      { atMs: startedAtMs + 4 * HOUR, deliveredKWh: 1.5, priceValue: 52, tone: 'normal' as const },
+      { atMs: startedAtMs + 5 * HOUR, deliveredKWh: 1.1, priceValue: 60, tone: 'expensive' as const },
+    ]
+    : undefined;
   return {
     id,
     deviceId,
@@ -129,6 +141,7 @@ const makeEntry = (params: {
       : undefined,
     revisionCount: revised ? 2 : 1,
     progressSamples,
+    hourlyContributions,
     totalCost: totalCostOre,
     deliveredKWh,
   };
@@ -154,10 +167,12 @@ const buildHistory = (nowMs: number) => {
     makeEntry({ id: `kontor-${i}`, deviceId: 'dev_termostat_kontor', deviceName: 'Termostat kontor', outcome, finalizedAtMs: nowMs - daysAgo * DAY, startC, finalC, targetC: 21, ...extra });
   const entries = [
     // The revised entry leads this week: it carries the re-anchored staircase
-    // (detail-surface pixel path) AND the populated `Cost ≈ 12 kr · 4.6 kWh
-    // delivered` meta line (list pixel path). `totalCostOre: 1200` is RAW øre →
-    // renders "≈ 12 kr" after the ÷100 display divisor.
-    makeEntry({ id: REVISED_ENTRY_ID, deviceId: 'dev_connected300', deviceName: 'Connected 300', outcome: 'met', finalizedAtMs: nowMs - 0.5 * DAY, startC: 50, finalC: 65, targetC: 65, totalCostOre: 1200, deliveredKWh: 4.6, revised: true }),
+    // (detail-surface pixel path) AND the populated cost/delivered meta (list
+    // pixel path). `totalCostOre: 224` is RAW øre (= Σ priceValue × kWh of the
+    // seeded hourly contributions, so the hero cost narrative reconciles with
+    // the strip's per-hour readouts) → renders "≈ 2.24 kr" after the ÷100
+    // display divisor.
+    makeEntry({ id: REVISED_ENTRY_ID, deviceId: 'dev_connected300', deviceName: 'Connected 300', outcome: 'met', finalizedAtMs: nowMs - 0.5 * DAY, startC: 50, finalC: 65, targetC: 65, totalCostOre: 224, deliveredKWh: 4.6, revised: true }),
     // A second cost-bearing row (Missed) so the populated cost meta isn't a
     // single-row fluke and the whole-kr week roll-up has more than one summand.
     kontor(1, 'missed', 1, 17.7, 20.9, { totalCostOre: 340, deliveredKWh: 1.8 }),
@@ -202,9 +217,12 @@ const openSmartTasks = async (page: Page) => {
 
 // Drive the history-detail sub-page directly via its query-string route (the
 // list card links to `./?page=deadline-plan&deviceId=…&historyId=…`). The
-// `met`-outcome revised entry defaults the trajectory chart collapsed (receipt
-// shape), so expand it via the "View details" toggle to render the "Revised
-// trajectory" overlay + the "What changed" revisions card before capturing.
+// `met`-outcome revised entry defaults the trajectory chart + hourly strip
+// collapsed (receipt shape), so expand via "View details", then exercise the
+// Phase 1B interaction set — the "Plan changed" marker readout renders by
+// default, the "Compare with initial plan" toggle reveals the dashed original
+// staircase, and a strip-bucket tap moves the per-hour cost readout — so the
+// capture photographs the full receipt-first surface.
 const openHistoryDetail = async (page: Page) => {
   await page.goto(
     `/?page=deadline-plan&deviceId=dev_connected300&historyId=${encodeURIComponent(REVISED_ENTRY_ID)}`,
@@ -212,7 +230,16 @@ const openHistoryDetail = async (page: Page) => {
   );
   await expect(page.locator('.plan-history-detail')).toBeVisible();
   await page.locator('button.pels-button.plan-history-detail__chart-toggle').click();
-  await expect(page.locator('.deadline-horizon-chart svg')).toBeVisible();
+  await expect(page.locator('.deadline-history-trajectory-chart svg')).toBeVisible();
+  // Marker + canonical revision sentence land in the default readout.
+  await expect(page.locator('.deadline-readout').first()).toContainText('Plan changed here');
+  // Reveal the dashed original staircase for the capture.
+  await page.locator('.plan-history-detail__compare-row md-switch').click();
+  // Strip readout: tap the second delivered bucket so the selection outline
+  // + per-hour cost line are photographed.
+  await expect(page.locator('.hourly-strip')).toBeVisible();
+  await page.locator('.hourly-strip__bucket[data-delivered="true"]').nth(1).click();
+  await expect(page.locator('.deadline-readout').last()).toContainText('kr/kWh');
 };
 
 const STATES = [
@@ -224,7 +251,7 @@ const STATES = [
   { name: 'history-detail', clearActive: false, withHistory: true, detail: true },
 ] as const;
 
-for (const width of [480, 360] as const) {
+for (const width of [480, 360, 320] as const) {
   test.describe(`Smart tasks surface render @ ${width}px`, () => {
     test.skip(process.env.PELS_CAPTURE_SMART_TASKS !== '1', 'Set PELS_CAPTURE_SMART_TASKS=1 to capture.');
     for (const state of STATES) {

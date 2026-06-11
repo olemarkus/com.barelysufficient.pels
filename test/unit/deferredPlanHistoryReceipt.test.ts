@@ -87,31 +87,36 @@ describe('formatPlanHistoryReceiptTimeline (Succeeded)', () => {
     expect(peak?.time).toBe('04:00');
     expect(peak?.detail).toContain('4.0 kWh');
     const ready = rows!.find((row) => row.label === 'Ready');
-    expect(ready?.detail).toMatch(/18 min before 07:00/);
+    // NBSP inside the duration ("18 min") so it never wraps mid-figure.
+    expect(ready?.detail).toMatch(/18\u00a0min before 07:00/);
   });
 
   it('returns null on Missed entries (the receipt is a Succeeded-only shape)', () => {
     expect(formatPlanHistoryReceiptTimeline(buildEntry({ outcome: 'missed' }), 'UTC')).toBeNull();
   });
 
-  // The "Started" row picks the first progress sample that moved >= 0.5 off the
-  // start reading. After the resolved-view split this is a single 0.5 threshold
-  // for every kind (was 0.5 °C / 1 % keyed off which raw column was populated).
-  // For EV SoC that tightens 1 -> 0.5: a 0.6-point shift now counts as motion,
-  // a 0.4-point shift still does not.
-  it('treats a 0.6 % SoC shift as motion (single 0.5 threshold)', () => {
+  // The "Started" row detects motion at the first sample that moved >= 0.5 off
+  // the start reading, then anchors on the sample immediately BEFORE it (the
+  // last still-at-start reading) — the motion sample itself is taken after the
+  // device had already been running for up to a sample interval, so stamping
+  // it would read one sample late. Single 0.5 threshold for every kind after
+  // the resolved-view split (was 0.5 °C / 1 %).
+  it('treats a 0.6 % SoC shift as motion and anchors on the sample before it', () => {
     const rows = formatPlanHistoryReceiptTimeline(
       buildEntry({
         startProgressPercent: 20,
         progressSamples: [
           { atMs: DEADLINE_MS - 8 * HOUR_MS, valueC: null, valuePercent: 20 },
-          { atMs: DEADLINE_MS - 6 * HOUR_MS, valueC: null, valuePercent: 20.6 },
+          { atMs: DEADLINE_MS - 6 * HOUR_MS, valueC: null, valuePercent: 20 },
+          { atMs: DEADLINE_MS - 5 * HOUR_MS, valueC: null, valuePercent: 20.6 },
         ],
       }),
       'UTC',
     );
     const started = rows!.find((row) => row.label === RECEIPT_ROW_LABEL_STARTED);
-    expect(started?.time).toBe('01:00'); // the motion sample at DEADLINE - 6h
+    // Motion lands at DEADLINE - 5h (02:00); the anchor is the still-at-start
+    // sample before it at DEADLINE - 6h.
+    expect(started?.time).toBe('01:00');
   });
 
   it('does not treat a 0.4 % SoC shift as motion (falls back to startedAtMs)', () => {
@@ -198,36 +203,48 @@ describe('formatPlanHistoryShortfallChip (Missed)', () => {
 });
 
 describe('formatPlanHistoryCostNarrative', () => {
-  it('formats whole kroner with non-breaking spaces and no trailing period', () => {
-    // v2.7.3 — chip uses NBSP between glyph + value + unit so it never
-    // wraps mid-figure at 320 px; per-kWh average dropped pending
-    // PR12-hourly-contributions per-hour spot prices.
+  it('composes the full Succeeded receipt line: cost · per-kWh average · delivered', () => {
+    // Phase 1B receipt-first redesign (signed-off mock history/v3.html):
+    // "≈ 3.10 kr · 0.52 kr/kWh on average · 6.0 kWh delivered". NBSP between
+    // glyph/value/unit so fragments never wrap mid-figure at 320 px.
     // Already-scaled `kr` total recorded at divisor 1 isolates the formatting
-    // (rounding / NBSP / rate-suffix stripping) from the øre→kr scale.
+    // from the øre→kr scale.
     const line = formatPlanHistoryCostNarrative(
       buildEntry({ totalCost: 12.37, deliveredKWh: 10, costDisplay: { unit: 'kr', divisor: 1 } }),
     );
-    expect(line).toBe('≈ 12 kr');
-    // No per-kWh half — spec deferred until per-hour spot prices land.
-    expect(line).not.toContain('kr/kWh');
+    expect(line).toBe('≈\u00a012.37\u00a0kr · 1.24\u00a0kr/kWh on average · 10.0\u00a0kWh delivered');
   });
 
-  it('scales a raw øre total by the recorded divisor 100 (1237 øre → whole kr, not raw øre)', () => {
+  it('scales a raw øre total by the recorded divisor 100 (1237 øre → kr, not raw øre)', () => {
     const line = formatPlanHistoryCostNarrative(
       buildEntry({ totalCost: 1237, deliveredKWh: 10, costDisplay: { unit: 'kr', divisor: 100 } }),
     );
-    // 1237 øre / 100 = 12.37 → Math.round → 12 kr. The raw øre must never reach
-    // the chip labelled as kr (the scheme-switch bug this provenance field fixes).
-    expect(line).toContain('12');
+    // 1237 øre / 100 = 12.37 kr; the per-kWh average derives from the SAME
+    // scaled figure (1.24 kr/kWh). The raw øre must never reach the line
+    // labelled as kr (the scheme-switch bug the provenance field fixes).
+    expect(line).toContain('12.37');
+    expect(line).toContain('1.24');
     expect(line).toContain('kr');
     expect(line).not.toContain('1237');
   });
 
-  it('still renders the chip when delivery is missing', () => {
+  it('keeps the Missed line at the whole-kr cost-only chip (shortfall chip carries delivery)', () => {
+    const line = formatPlanHistoryCostNarrative(
+      buildEntry({ outcome: 'missed', totalCost: 12.37, deliveredKWh: 10, costDisplay: { unit: 'kr', divisor: 1 } }),
+    );
+    expect(line).toBe('≈\u00a012\u00a0kr spent');
+    expect(line).not.toContain('kr/kWh');
+  });
+
+  it('collapses to the bare cost when delivery is missing or zero', () => {
     const line = formatPlanHistoryCostNarrative(
       buildEntry({ totalCost: 7, deliveredKWh: undefined, costDisplay: { unit: 'kr', divisor: 1 } }),
     );
-    expect(line).toBe('≈ 7 kr');
+    expect(line).toBe('≈\u00a07.00\u00a0kr');
+    const zeroDelivery = formatPlanHistoryCostNarrative(
+      buildEntry({ totalCost: 7, deliveredKWh: 0, costDisplay: { unit: 'kr', divisor: 1 } }),
+    );
+    expect(zeroDelivery).toBe('≈\u00a07.00\u00a0kr');
   });
 
   it('returns null on Abandoned and when the recorded cost unit is empty', () => {
@@ -239,9 +256,7 @@ describe('formatPlanHistoryCostNarrative', () => {
     )).toBeNull();
   });
 
-  it('strips a rate-shaped recorded unit so the TOTAL chip reads "kr", not "kr/kWh"', () => {
-    // Equals the bare-`kr` chip (same NBSP glyph spacing) — the only difference
-    // from the source `kr/kWh` unit must be the dropped `/kWh` rate suffix.
+  it('strips a rate-shaped recorded unit so the TOTAL fragment reads "kr", not "kr/kWh"', () => {
     const rateUnit = formatPlanHistoryCostNarrative(
       buildEntry({ totalCost: 12, deliveredKWh: 4, costDisplay: { unit: 'kr/kWh', divisor: 1 } }),
     );
@@ -249,8 +264,19 @@ describe('formatPlanHistoryCostNarrative', () => {
       buildEntry({ totalCost: 12, deliveredKWh: 4, costDisplay: { unit: 'kr', divisor: 1 } }),
     );
     expect(rateUnit).toBe(amountUnit);
-    expect(rateUnit).not.toContain('kr/kWh');
-    expect(rateUnit).toContain('kr');
+    // The cost amount fragment must read `kr`; only the average fragment may
+    // carry the `/kWh` rate suffix.
+    expect(rateUnit!.split(' · ')[0]).not.toContain('kr/kWh');
+    expect(rateUnit!.split(' · ')[0]).toContain('kr');
+  });
+
+  it('renders minor-unit currencies as whole integers in both fragments', () => {
+    const line = formatPlanHistoryCostNarrative(
+      buildEntry({ totalCost: 310, deliveredKWh: 6, costDisplay: { unit: 'øre', divisor: 1 } }),
+    );
+    // 310 øre over 6.0 kWh → 52 øre/kWh; no fractional øre per the money
+    // convention.
+    expect(line).toBe('≈\u00a0310\u00a0øre · 52\u00a0øre/kWh on average · 6.0\u00a0kWh delivered');
   });
 });
 

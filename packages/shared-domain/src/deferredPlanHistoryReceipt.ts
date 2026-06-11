@@ -62,6 +62,10 @@ import {
 } from './deadlineLabels';
 import {
   formatReceiptAbandonedDelivered,
+  formatCostFigure,
+  formatReceiptCostAmount,
+  formatReceiptCostAverage,
+  formatReceiptCostDelivered,
   formatReceiptCostNarrative,
   formatReceiptDeliveredBare,
   formatReceiptDeliveredOf,
@@ -167,11 +171,8 @@ const formatStartProgress = (
 // real motion).
 const MOTION_THRESHOLD = 0.5;
 
-// Picks the first progress sample whose value differs from the entry's start
-// reading — the moment the device actually began moving toward the target.
-// `samples[0]` is the at-start reading; the first sample whose resolved `value`
-// has shifted by at least `MOTION_THRESHOLD` is the "motion" sample. When no
-// shift is detected, returns null so the caller falls back to `entry.startedAtMs`.
+// True when a progress sample's resolved `value` has shifted off the entry's
+// start reading by at least `MOTION_THRESHOLD`.
 const sampleShowsMotion = (
   sample: ResolvedDeferredObjectivePlanHistoryProgressSample,
   startValue: number | null,
@@ -180,12 +181,20 @@ const sampleShowsMotion = (
   return Math.abs(sample.value - startValue) >= MOTION_THRESHOLD;
 };
 
-const firstSampleWithMotion = (
+// Anchor sample for the "Started" row: the sample immediately BEFORE the
+// first sample whose value moved off the start reading (`samples[0]` is the
+// at-start reading). The first moved sample is taken AFTER the device
+// engaged — stamping its clock reads one sample late; the preceding sample
+// is the last still-at-start moment, the honest lower bound for when it
+// engaged. Null when no shift is detected (caller falls back to startedAtMs).
+const startAnchorSample = (
   samples: ReadonlyArray<ResolvedDeferredObjectivePlanHistoryProgressSample> | undefined,
   startValue: number | null,
 ): ResolvedDeferredObjectivePlanHistoryProgressSample | null => {
   if (!Array.isArray(samples) || samples.length < 2) return null;
-  return samples.slice(1).find((sample) => sampleShowsMotion(sample, startValue)) ?? null;
+  const motionIndex = samples.findIndex((sample, index) => index > 0 && sampleShowsMotion(sample, startValue));
+  if (motionIndex <= 0) return null;
+  return samples[motionIndex - 1] ?? null;
 };
 
 const pickLargestHour = (
@@ -209,7 +218,8 @@ const pickLargestHour = (
  * than the receipt the surface is meant to be.
  *
  * Rows (in render order):
- *   1. "Started" — first progress sample with motion, with the start reading
+ *   1. "Started" — the sample immediately before the first progress sample
+ *      with motion (the last still-at-start reading), with the start reading
  *      as the detail tail. Suppressed when `progressSamples` carries < 2
  *      entries or none of them landed in time.
  *   2. "Largest planned hour" — the largest planned kWh hour from the
@@ -239,12 +249,11 @@ export const formatPlanHistoryReceiptTimeline = (
   if (entry.outcome !== 'met') return null;
   const rows: PlanHistoryReceiptRow[] = [];
 
-  // Row 1 — Started. Prefer the first progress sample whose value moved
-  // away from the start reading (the moment charging / heating actually
-  // engaged); fall back to `entry.startedAtMs` when no motion sample is
-  // available.
-  const motionSample = firstSampleWithMotion(entry.progressSamples, entry.startProgressValue);
-  const startTimeMs = motionSample?.atMs ?? entry.startedAtMs;
+  // Row 1 — Started. Anchor on the last sample BEFORE the value moved away
+  // from the start reading (the moment charging / heating actually engaged);
+  // fall back to `entry.startedAtMs` when no motion was detected.
+  const anchorSample = startAnchorSample(entry.progressSamples, entry.startProgressValue);
+  const startTimeMs = anchorSample?.atMs ?? entry.startedAtMs;
   const startedClock = formatClock(startTimeMs, timeZone);
   if (startedClock !== null) {
     rows.push({
@@ -385,31 +394,32 @@ export const formatPlanHistoryShortfallChip = (
 // ─── Cost narrative chip (Succeeded + Missed) ────────────────────────────────
 
 /**
- * Composes the cost narrative chip rendered on the Succeeded and Missed
- * shapes ("≈ 12 kr"). Returns `null` when `totalCost` is not recorded, when
- * the cost unit is empty, or on outcomes other than met / missed — any of
- * these leaves nothing honest to surface. (`deliveredKWh` is accepted on
- * the entry so a future per-kWh half can re-attach without a contract
- * change; it does not by itself gate the chip today.)
+ * Composes the cost narrative line rendered on the Succeeded and Missed
+ * shapes. Returns `null` when `totalCost` is not recorded, when the cost
+ * unit is empty, or on outcomes other than met / missed — any of these
+ * leaves nothing honest to surface.
  *
- * Kroner are rendered as whole units per spec — sub-kr precision turns a
- * story into an audit.
+ * Succeeded (chart-overhaul Phase 1B receipt-first redesign, signed-off
+ * mock `history/v3.html`): the full receipt form
+ * `≈ 3.10 kr · 0.52 kr/kWh on average · 6.0 kWh delivered` — the average
+ * and delivered fragments suppress individually when `deliveredKWh` is
+ * missing or zero, leaving the bare `≈ 3.10 kr`.
  *
- * v2.7.3 — the "1.20 kr/kWh on average" half of the chip was dropped. The
- * original spec asked for "≈ N kr · M% under peak hours", which requires
- * per-hour spot prices the history entry doesn't carry today. The kr/kWh
- * average was a stand-in; it read as an audit rather than the receipt the
- * surface is meant to be. When per-hour spot prices land (PR12-hourly-
- * contributions wiring), this helper can compute the actual % framing.
+ * Missed keeps the v2.7.3 whole-kroner `≈ 12 kr` chip: the shortfall chip
+ * beside it already carries the delivered-kWh figure, so repeating it here
+ * would double-surface the number ("per the existing resolvers").
  *
  * Abandoned entries pass through this helper too but get `null` back so
  * the view suppresses the chip on the quiet shape.
  *
- * The chip omits its trailing period (v2.7.3 P2 fold-in) — bureaucratic
+ * The line omits its trailing period (v2.7.3 P2 fold-in) — bureaucratic
  * punctuation reads as audit prose when stacked with other chips.
  */
 export const formatPlanHistoryCostNarrative = (
-  entry: Pick<ResolvedDeferredObjectivePlanHistoryEntry, 'outcome' | 'totalCost' | 'costDisplay'>,
+  entry: Pick<
+    ResolvedDeferredObjectivePlanHistoryEntry,
+    'outcome' | 'totalCost' | 'costDisplay' | 'deliveredKWh'
+  >,
 ): string | null => {
   if (entry.outcome !== 'met' && entry.outcome !== 'missed') return null;
   // Format with the display the entry was RECORDED under, not a live one — a
@@ -421,8 +431,19 @@ export const formatPlanHistoryCostNarrative = (
   if (unit.length === 0) return null;
   const { totalCost } = entry;
   if (typeof totalCost !== 'number' || !Number.isFinite(totalCost)) return null;
-  const roundedCost = Math.round(scaleRawCostToDisplay(totalCost, display.divisor));
-  return formatReceiptCostNarrative(APPROX_GLYPH, roundedCost, unit);
+  const displayCost = scaleRawCostToDisplay(totalCost, display.divisor);
+  if (entry.outcome === 'missed') {
+    return formatReceiptCostNarrative(APPROX_GLYPH, Math.round(displayCost), unit);
+  }
+  const parts = [formatReceiptCostAmount(APPROX_GLYPH, formatCostFigure(displayCost, unit), unit)];
+  const delivered = entry.deliveredKWh;
+  if (typeof delivered === 'number' && Number.isFinite(delivered) && delivered > 0) {
+    parts.push(
+      formatReceiptCostAverage(formatCostFigure(displayCost / delivered, unit), unit),
+      formatReceiptCostDelivered(delivered.toFixed(1)),
+    );
+  }
+  return parts.join(RECEIPT_FRAGMENT_SEPARATOR);
 };
 
 // Composes the past-task LIST row's cost meta line — `Cost ≈ N kr · M kWh

@@ -4959,7 +4959,7 @@ describe('schedule + trajectory chart option builders', () => {
   // because the producer tolerates gapped price buckets (`resolveNowIndex`
   // has the same fallback). A gap must not desynchronise readout + hairline.
   it('resolveScrubHourIndex resolves against the actual hour list, including gaps', async () => {
-    const { resolveScrubHourIndex } = await import('../src/ui/views/DeadlinePlan.tsx');
+    const { resolveScrubHourIndex } = await import('../src/ui/deadlineChartScrub.ts');
     const HOUR = 3_600_000;
     // Gapped grid: 00:00, 01:00, then 03:00 (the 02:00 bucket is missing).
     const hours = [{ startsAtMs: 0 }, { startsAtMs: HOUR }, { startsAtMs: 3 * HOUR }];

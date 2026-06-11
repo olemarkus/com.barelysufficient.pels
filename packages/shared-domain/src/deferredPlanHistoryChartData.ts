@@ -71,8 +71,26 @@ export type DeferredPlanHistoryChartData = {
   plannedFinal: DeferredPlanHistoryChartPoint[] | null;
   // Observed progress samples in unit space (°C / %). Empty on `legacy_kwh`.
   // The recorder caps the persisted samples at 48/run, so the line is
-  // reasonably smooth even on long runs.
+  // reasonably smooth even on long runs. Honest-rendering contract (review
+  // round 2): either ≥ 2 points (a drawable measured line) or empty — a
+  // sample-less entry never fabricates a pseudo-line from the echoed start
+  // reading alone. When no real samples landed but the entry recorded BOTH a
+  // start and a final reading, this carries the honest two-point start→final
+  // segment; otherwise it is empty and the view shows the
+  // absent-observations caption instead of a Measured series.
   observed: DeferredPlanHistoryChartPoint[];
+  // The staircase the DEFAULT view draws: the re-anchored final plan when the
+  // run replanned, else the single original staircase. The single semantic
+  // source for "what was planned" — chart series selection, the pinned
+  // readout's planned values, and the compare/marker gates all read this (or
+  // `replanned` below) instead of re-deriving `plannedFinal ?? plannedOriginal`
+  // at each call site. Producer-resolved per
+  // `feedback_layering_resolution_in_producer`.
+  plannedVisible: DeferredPlanHistoryChartPoint[];
+  // True when the run genuinely replanned AND a drawable revised staircase
+  // exists (`plannedFinal` populated). Gates the "Plan changed" marker and
+  // the "Compare with initial plan" toggle. Always false on `legacy_kwh`.
+  replanned: boolean;
   // Scheduled-run bands: merged spans of the booked hours (plannedKWh > 0) of
   // the schedule that was last in force (`finalPlan ?? originalPlan` for a
   // finished run, `latest` for a live one), clamped to the window. Producer-
@@ -119,7 +137,13 @@ export const resolveRunBands = (
   for (const hour of hours) {
     const plannedKWh = Number.isFinite(hour.plannedKWh) ? hour.plannedKWh : 0;
     if (plannedKWh <= 0) continue;
-    const fromMs = Math.max(windowStartMs, hour.coversFromMs ?? hour.startsAtMs);
+    // Persisted snapshots are the input here — a non-finite `startsAtMs` /
+    // `coversFromMs` would sail through the `toMs <= fromMs` skip below
+    // (`NaN <= NaN` is false) and push a NaN band into the chart markArea,
+    // so drop malformed hours outright.
+    const coverFromMs = hour.coversFromMs ?? hour.startsAtMs;
+    if (!Number.isFinite(hour.startsAtMs) || !Number.isFinite(coverFromMs)) continue;
+    const fromMs = Math.max(windowStartMs, coverFromMs);
     const toMs = Math.min(windowEndMs, hour.startsAtMs + HOUR_MS);
     if (toMs <= fromMs) continue;
     spans.push({ fromMs, toMs });
@@ -263,7 +287,10 @@ export const integratePlannedStaircase = (
 // the final sample, and `null` when `atMs` precedes the first sample (no
 // measured progress yet to anchor on → caller falls back to the start anchor).
 // `observed` is sorted ascending by `atMs` (see `pickObservedSamples`).
-const observedValueAt = (
+// Exported for the pinned-readout producer
+// (`deferredPlanHistoryDetailInteraction.ts`), which reads the measured value
+// at each hour boundary with the same interpolation the staircase anchors use.
+export const observedValueAt = (
   observed: readonly DeferredPlanHistoryChartPoint[],
   atMs: number,
 ): number | null => {
@@ -501,6 +528,7 @@ type ChartDataEntry = Pick<
   | 'originalPlan'
   | 'finalPlan'
   | 'progressSamples'
+  | 'finalizedAtMs'
   | 'metAtMs'
   | 'metReason'
   | 'outcome'
@@ -516,6 +544,41 @@ type TrajectoryFrame = {
   target: number | null;
 };
 
+// Displayed measured series for the trajectory chart. Start-anchored real
+// samples when ≥ 2 points exist (a drawable line); otherwise NEVER a
+// pseudo-line off the echoed start reading alone — a sample-less entry falls
+// back to the honest two-point start→final segment when both readings were
+// recorded on the entry, else to no measured series at all (the view then
+// suppresses the Measured legend item and shows the absent-observations
+// caption). Review round 2 P0: the previous behaviour let the single echoed
+// start reading masquerade as measured data in the pinned readout.
+const resolveDisplayedObserved = (
+  entry: Pick<ChartDataEntry, 'finalProgressValue' | 'finalizedAtMs'>,
+  observed: readonly DeferredPlanHistoryChartPoint[],
+  frame: TrajectoryFrame,
+): DeferredPlanHistoryChartPoint[] => {
+  const anchored = anchorObservedAtStart(observed, frame.windowStartMs, frame.startProgress);
+  if (anchored.length >= 2) return anchored;
+  const finalValue = entry.finalProgressValue;
+  // The synthetic segment ends at finalisation (clamped to the window), never
+  // the deadline — an early-finalised run must not draw an implied post-stop
+  // trajectory it never lived. No finite finalisation time → no honest
+  // endpoint → no synthetic line.
+  const endAtMs = Number.isFinite(entry.finalizedAtMs)
+    ? Math.min(entry.finalizedAtMs, frame.windowEndMs)
+    : null;
+  if (
+    frame.startProgress !== null && finalValue !== null && Number.isFinite(finalValue)
+    && endAtMs !== null && endAtMs > frame.windowStartMs
+  ) {
+    return [
+      { atMs: frame.windowStartMs, value: frame.startProgress },
+      { atMs: endAtMs, value: finalValue },
+    ];
+  }
+  return [];
+};
+
 // Assembles the flat trajectory payload from already-resolved staircases. The
 // displayed measured line is anchored at the run start so it doesn't begin
 // mid-chart (the raw `observed` still feeds the revised-staircase re-anchor,
@@ -526,26 +589,35 @@ const buildTrajectoryPayload = (
   plannedFinal: DeferredPlanHistoryChartPoint[] | null,
   observed: DeferredPlanHistoryChartPoint[],
   frame: TrajectoryFrame,
-): DeferredPlanHistoryChartData => ({
-  mode: 'trajectory',
-  unit: entry.objectiveKind === 'temperature' ? '°C' : '%',
-  windowStartMs: frame.windowStartMs,
-  windowEndMs: frame.windowEndMs,
-  plannedOriginal,
-  plannedFinal,
-  observed: anchorObservedAtStart(observed, frame.windowStartMs, frame.startProgress),
-  // Bands shade the schedule that was last in force — the final plan when the
-  // run replanned, else the original. That matches where heating/charging was
-  // actually booked to happen, which is the story the shading tells.
-  runBands: resolveRunBands(
-    (entry.finalPlan ?? entry.originalPlan)?.hours ?? [],
-    frame.windowStartMs,
-    frame.windowEndMs,
-  ),
-  target: pickTargetValue(entry),
-  metAtMs: pickMetMarker(entry),
-  metMarkerValue: pickMetMarkerValue(entry),
-});
+): DeferredPlanHistoryChartData => {
+  // A non-null `plannedFinal` is guaranteed non-empty by the compose branches;
+  // `replanned` and the visible staircase derive from that single fact so the
+  // chart, readout, marker and compare-toggle can never disagree about
+  // whether a replan happened.
+  const replanned = plannedFinal !== null && plannedFinal.length > 0;
+  return {
+    mode: 'trajectory',
+    unit: entry.objectiveKind === 'temperature' ? '°C' : '%',
+    windowStartMs: frame.windowStartMs,
+    windowEndMs: frame.windowEndMs,
+    plannedOriginal,
+    plannedFinal,
+    plannedVisible: replanned ? plannedFinal : plannedOriginal,
+    replanned,
+    observed: resolveDisplayedObserved(entry, observed, frame),
+    // Bands shade the schedule that was last in force — the final plan when the
+    // run replanned, else the original. That matches where heating/charging was
+    // actually booked to happen, which is the story the shading tells.
+    runBands: resolveRunBands(
+      (entry.finalPlan ?? entry.originalPlan)?.hours ?? [],
+      frame.windowStartMs,
+      frame.windowEndMs,
+    ),
+    target: pickTargetValue(entry),
+    metAtMs: pickMetMarker(entry),
+    metMarkerValue: pickMetMarkerValue(entry),
+  };
+};
 
 // Heat-from-below trajectory (`startProgress < target`): the start-anchored
 // original is the genuine from-start intent reference, with a re-anchored
@@ -637,6 +709,8 @@ const composeLegacyData = (
   windowEndMs,
   plannedOriginal: [],
   plannedFinal: null,
+  plannedVisible: [],
+  replanned: false,
   observed: [],
   runBands: [],
   target: pickTargetValue(entry),
@@ -690,46 +764,36 @@ export const resolveHistoryDetailChartData = (
 
 // ─── History-detail chart labels (v2.7.2 PR 4 copy lift) ──────────────────────
 //
-// User-visible chart strings — series names, card titles, the legacy fallback
-// note, the chart-collapse toggle, and the chart aria-label — for the
-// smart-task history-detail surface. Lifted out of
-// `DeadlinePlanHistoryDetail.tsx` per `feedback_ui_text_shared_with_logs` so
-// runtime log breadcrumbs and the view read identical strings.
+// User-visible chart strings — card titles, the legacy fallback note, the
+// chart-collapse toggle, and the chart aria-label — for the smart-task
+// history-detail surface. Lifted out of `DeadlinePlanHistoryDetail.tsx` per
+// `feedback_ui_text_shared_with_logs` so runtime log breadcrumbs and the
+// view read identical strings.
 //
-// Strings here are kind-agnostic today (the trajectory chart's series names
-// don't change between EV / thermal — only the y-axis unit does, and that's
-// already a producer-resolved field on `DeferredPlanHistoryChartData`). The
-// kind-aware observed-series name still lives on `deadlineLabels(kind)`
-// alongside the other kind-aware chart copy.
+// The Phase 1B receipt-first redesign retired the ECharts legend (the DOM
+// legend row's labels live in `deferredPlanHistoryDetailInteraction.ts`) so
+// the series-name fields and the floating-tooltip absence line were removed
+// here — the trajectory chart no longer renders a floating tooltip at all
+// (pinned readout is the one interaction grammar).
 
 export type HistoryDetailChartLabels = {
-  /** Trajectory chart legend / series name for the planned staircase. */
-  plannedSeriesName: string;
-  /** Trajectory chart legend / series name for the revised (post-replan) staircase. */
-  plannedRevisedSeriesName: string;
-  /** Trajectory chart legend / series name for the target reference line. */
-  targetSeriesName: string;
-  /** Trajectory chart mark-point label for the met marker. */
-  metMarkName: string;
-  /** Chart card title; varies by mode (trajectory vs legacy_kwh fallback). */
+  /**
+   * Chart card title; varies by mode (trajectory vs legacy_kwh fallback) and,
+   * on trajectory mode, by objective kind (question-shaped per the chart
+   * comprehension spec).
+   */
   cardTitle: string;
   /**
-   * Subtext shown under the chart card title in legacy fallback mode. `null`
-   * on trajectory mode — the y-axis unit + line shapes already carry the
-   * "what is this" signal there.
+   * Subtext shown under the chart card title in legacy fallback mode, and in
+   * trajectory mode when no measured series draws (sample-less entry with no
+   * honest start→final segment) — the caption is the honest substitute for a
+   * fabricated Measured line. `null` when a measured line renders.
    */
   fallbackNote: string | null;
   /** Label shown on the chart-collapse toggle button when the chart is collapsed. */
   expandToggleLabel: string;
   /** Label shown on the chart-collapse toggle button when the chart is expanded. */
   collapseToggleLabel: string;
-  /**
-   * Tooltip line appended to the trajectory tooltip when the user hovers
-   * over a planned-line column with no observed sample at that hour. Called
-   * with the kind-aware observed-series name so the absence message reads
-   * naturally (e.g. `Measured Heating — not recorded`).
-   */
-  formatObservedNotRecorded: (observedSeriesName: string) => string;
   /**
    * Aria-label for the trajectory chart wrapper. `deviceName` falls back to
    * `'this smart task'` at the call site when no device name is recorded;
@@ -739,32 +803,39 @@ export type HistoryDetailChartLabels = {
   formatTrajectoryAriaLabel: (deviceName: string) => string;
 };
 
-const PLANNED_SERIES_NAME = 'Planned trajectory';
-const PLANNED_REVISED_SERIES_NAME = 'Revised trajectory';
-const TARGET_SERIES_NAME = 'Target';
-const MET_MARK_NAME = 'Reached target';
-const TRAJECTORY_CARD_TITLE = 'Progress history';
+// Kind-aware question titles so the card states the question it answers
+// (chart-overhaul Phase 1B; replaces the prior "Progress history").
+const TRAJECTORY_CARD_TITLE_HEAT = 'Did it heat up as planned?';
+const TRAJECTORY_CARD_TITLE_CHARGE = 'Did it charge as planned?';
 const LEGACY_CARD_TITLE = 'Scheduled vs observed';
 const LEGACY_FALLBACK_NOTE = 'Schedule only — observations not recorded for this run.';
 const EXPAND_TOGGLE_LABEL = 'View details';
 const COLLAPSE_TOGGLE_LABEL = 'Hide details';
 
 // Resolves the mode-aware chart-card title + the matching fallback note.
-// Trajectory mode reads as "Progress history" so it doesn't get confused with
-// the live Smart-task price horizon. Legacy mode keeps the prior "Scheduled
-// vs observed" copy so v3 entries land on the same wording they did before
-// PR 4. Picking once at the helper keeps the view's branching shallow.
+// Trajectory mode asks the kind-aware question ("Did it heat up as
+// planned?" / "Did it charge as planned?"). Legacy mode keeps the prior
+// "Scheduled vs observed" copy so v3 entries land on the same wording they
+// did before PR 4. Picking once at the helper keeps the view's branching
+// shallow.
+const trajectoryCardTitle = (kind: 'temperature' | 'ev_soc'): string => (
+  kind === 'temperature' ? TRAJECTORY_CARD_TITLE_HEAT : TRAJECTORY_CARD_TITLE_CHARGE
+);
+
 export const historyDetailChartLabels = (
   mode: DeferredPlanHistoryChartMode,
+  kind: 'temperature' | 'ev_soc',
+  // True when the chart payload carries a drawable measured series
+  // (`observed.length > 0` — the producer guarantees ≥ 2 points or none).
+  // Trajectory mode without one surfaces the absent-observations caption so
+  // a sample-less entry says so instead of implying the staircase was
+  // measured. Defaults to true so legacy callers (runtime log breadcrumbs)
+  // keep their prior trajectory-mode output.
+  hasMeasuredSeries = true,
 ): HistoryDetailChartLabels => ({
-  plannedSeriesName: PLANNED_SERIES_NAME,
-  plannedRevisedSeriesName: PLANNED_REVISED_SERIES_NAME,
-  targetSeriesName: TARGET_SERIES_NAME,
-  metMarkName: MET_MARK_NAME,
-  cardTitle: mode === 'trajectory' ? TRAJECTORY_CARD_TITLE : LEGACY_CARD_TITLE,
-  fallbackNote: mode === 'trajectory' ? null : LEGACY_FALLBACK_NOTE,
+  cardTitle: mode === 'trajectory' ? trajectoryCardTitle(kind) : LEGACY_CARD_TITLE,
+  fallbackNote: mode === 'trajectory' && hasMeasuredSeries ? null : LEGACY_FALLBACK_NOTE,
   expandToggleLabel: EXPAND_TOGGLE_LABEL,
   collapseToggleLabel: COLLAPSE_TOGGLE_LABEL,
-  formatObservedNotRecorded: (observedSeriesName) => `${observedSeriesName} — not recorded`,
   formatTrajectoryAriaLabel: (deviceName) => `Progress trajectory for ${deviceName}`,
 });

@@ -6,6 +6,30 @@ import type { SmartTasksWidgetReadyPayload } from '../smartTasksWidgetTypes';
 const T = 1_700_000_000_000;
 const H = 60 * 60 * 1000;
 
+// Named planned staircases so each preview chart can feed the SAME array to
+// `plannedOriginal` and the producer-resolved `plannedVisible` (no replan
+// overlay in the canned previews → visible = original, per the contract in
+// `deferredPlanHistoryChartData.ts`).
+const PREVIEW_HOT_WATER_PLANNED = [
+  { atMs: T, value: 42 },
+  { atMs: T + H, value: 48.5 },
+  { atMs: T + 2 * H, value: 48.5 },
+  { atMs: T + 3 * H, value: 55 },
+];
+const PREVIEW_EV_ENDED_PLANNED = [
+  { atMs: T, value: 45 },
+  { atMs: T + H, value: 45 },
+  { atMs: T + 2 * H, value: 60 },
+  { atMs: T + 3 * H, value: 73 },
+  { atMs: T + 4 * H, value: 80 },
+];
+const PREVIEW_HOT_WATER_ENDED_PLANNED = [
+  { atMs: T, value: 40 },
+  { atMs: T + H, value: 47 },
+  { atMs: T + 2 * H, value: 54 },
+  { atMs: T + 3 * H, value: 60 },
+];
+
 export const PREVIEW_SMART_TASKS_PAYLOAD: SmartTasksWidgetReadyPayload = {
   state: 'ready',
   // Non-zero so the preview also demonstrates the "+N in Smart tasks"
@@ -62,13 +86,10 @@ export const PREVIEW_SMART_TASKS_PAYLOAD: SmartTasksWidgetReadyPayload = {
         unit: '°C',
         windowStartMs: T,
         windowEndMs: T + 3 * H,
-        plannedOriginal: [
-          { atMs: T, value: 42 },
-          { atMs: T + H, value: 48.5 },
-          { atMs: T + 2 * H, value: 48.5 },
-          { atMs: T + 3 * H, value: 55 },
-        ],
+        plannedOriginal: PREVIEW_HOT_WATER_PLANNED,
         plannedFinal: null,
+        plannedVisible: PREVIEW_HOT_WATER_PLANNED,
+        replanned: false,
         observed: [
           { atMs: T, value: 42 },
           { atMs: T + 0.25 * H, value: 43.1 },
@@ -133,14 +154,10 @@ export const PREVIEW_SMART_TASKS_PAYLOAD: SmartTasksWidgetReadyPayload = {
         unit: '%',
         windowStartMs: T,
         windowEndMs: T + 4 * H,
-        plannedOriginal: [
-          { atMs: T, value: 45 },
-          { atMs: T + H, value: 45 },
-          { atMs: T + 2 * H, value: 60 },
-          { atMs: T + 3 * H, value: 73 },
-          { atMs: T + 4 * H, value: 80 },
-        ],
+        plannedOriginal: PREVIEW_EV_ENDED_PLANNED,
         plannedFinal: null,
+        plannedVisible: PREVIEW_EV_ENDED_PLANNED,
+        replanned: false,
         observed: [
           { atMs: T, value: 45 },
           { atMs: T + H, value: 46 },
@@ -175,13 +192,10 @@ export const PREVIEW_SMART_TASKS_PAYLOAD: SmartTasksWidgetReadyPayload = {
         unit: '°C',
         windowStartMs: T,
         windowEndMs: T + 3 * H,
-        plannedOriginal: [
-          { atMs: T, value: 40 },
-          { atMs: T + H, value: 47 },
-          { atMs: T + 2 * H, value: 54 },
-          { atMs: T + 3 * H, value: 60 },
-        ],
+        plannedOriginal: PREVIEW_HOT_WATER_ENDED_PLANNED,
         plannedFinal: null,
+        plannedVisible: PREVIEW_HOT_WATER_ENDED_PLANNED,
+        replanned: false,
         observed: [
           { atMs: T, value: 40 },
           { atMs: T + H, value: 44 },
