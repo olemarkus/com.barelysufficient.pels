@@ -43,7 +43,7 @@ const PLOT_TOP_OFFSET = 14; // blockTop → plot body top
 const AXIS_TITLE_OFFSET = 6; // plot body top → axis-title baseline (above the plot)
 const X_LABEL_GAP = 32; // plot body bottom → x-label baseline
 const LEGEND_GAP = 78; // plot body bottom → legend baseline
-const BLOCK_BOTTOM_PAD = 10; // legend baseline → block bottom (descender room)
+const BLOCK_BOTTOM_PAD = 24; // legend baseline → block bottom (descender room + air above the panel border)
 
 export type Geometry = {
   viewport: { width: number; height: number };

@@ -104,8 +104,16 @@ describe('plan budget widget browser', () => {
     expect(chartEl.getAttribute('aria-label')).toBe('Budget and price chart for today');
     // 24-hour day → 12 morning bars (not the full 24-bar wall).
     expect(chartEl.querySelectorAll('.chart__bar')).toHaveLength(12);
-    // Actuals run to currentIndex 10, all within the morning half.
-    expect(chartEl.querySelectorAll('.chart__actual')).toHaveLength(11);
+    // "Used" level ticks render for COMPLETED hours only (dayIndex < currentIndex
+    // 10): the current hour keeps just the accent bar + price dot, no tick.
+    const actuals = [...chartEl.querySelectorAll('.chart__actual')];
+    expect(actuals).toHaveLength(10);
+    // The markers are horizontal level ticks (`<line>`), not the old halo dots.
+    for (const actual of actuals) expect(actual.tagName.toLowerCase()).toBe('line');
+    // Exactly one accent bar — the current hour — when showNow is set.
+    expect(chartEl.querySelectorAll('.chart__bar--current')).toHaveLength(1);
+    // The legend "Used" swatch matches the in-plot tick shape.
+    expect(chartEl.querySelector('.chart__legend-actual')?.tagName.toLowerCase()).toBe('line');
     expect(chartEl.querySelectorAll('.chart__legend-text')).toHaveLength(3);
     expect(chartEl.querySelector('.chart__price')).not.toBeNull();
     const axisTitles = [...chartEl.querySelectorAll('.chart__axis-title')].map((node) => node.textContent);
@@ -121,6 +129,29 @@ describe('plan budget widget browser', () => {
     // currentIndex 10 and all actuals live in the morning half.
     expect(chartEl.querySelectorAll('.chart__actual')).toHaveLength(0);
     expect(chartEl.querySelector('.chart__now')).toBeNull();
+    // No accent bar either — the current hour is not in this half.
+    expect(chartEl.querySelectorAll('.chart__bar--current')).toHaveLength(0);
+  });
+
+  test('renders ticks for every finite actual when showNow is false (degenerate currentIndex)', () => {
+    const chartEl = setDocumentMarkup();
+    // Degenerate producer state: currentBucketIndex transiently absent on a
+    // today payload → fallback currentIndex 0 with showNow false. The
+    // current-hour suppression only holds when the accent bar + price dot
+    // carry the "now" signal, so here every finite actual keeps its tick.
+    const payload: PlanPriceWidgetReadyPayload = {
+      ...PREVIEW_TODAY_PAYLOAD,
+      showNow: false,
+      currentIndex: 0,
+    };
+
+    renderWidget(chartEl, payload, 'morning');
+
+    // All 11 finite actuals (indexes 0..10) — including index 0, the clamped
+    // currentIndex — render as level ticks instead of being suppressed.
+    expect(chartEl.querySelectorAll('.chart__actual')).toHaveLength(11);
+    // And no accent bar pretends an hour is "now".
+    expect(chartEl.querySelectorAll('.chart__bar--current')).toHaveLength(0);
   });
 
   // Build a ready payload whose buckets carry the given LOCAL hour labels, so the
@@ -540,7 +571,7 @@ describe('plan budget widget panel-fill geometry', () => {
   const PANEL_MARGIN = 12;
   // Fixed furniture overhead inside the plot block (PLOT_TOP_OFFSET + LEGEND_GAP +
   // BLOCK_BOTTOM_PAD); the plot body fills the panel height below it.
-  const BLOCK_OVERHEAD = 14 + 78 + 10;
+  const BLOCK_OVERHEAD = 14 + 78 + 24;
   // A short 4:3 tile, a medium tile, and a tall cell (the case that pooled a dead
   // band INSIDE the card before the plot body was allowed to fill it).
   const SHORT = VIEWPORT_MIN_HEIGHT;
@@ -605,12 +636,13 @@ describe('plan budget widget panel-fill geometry', () => {
   test('the plot block fills the panel on a tall tile — no surplus band, hugs both edges', () => {
     // The block fills the panel rather than centring with a surplus: the axis title
     // sits just below the panel top (only the fixed top offset) and the legend just
-    // above the panel bottom (only the fixed descender pad) — no pooled dead band.
+    // above the panel bottom (only the fixed BLOCK_BOTTOM_PAD of 24 — descender room
+    // + breathing space above the panel border) — no pooled dead band.
     const { panel, plot, legendY, axisTitleY } = geom(TALL);
     const panelTop = panel.y;
     const panelBottom = panel.y + panel.height;
     expect(axisTitleY - panelTop).toBeLessThan(20);
-    expect(panelBottom - legendY).toBeLessThan(20);
+    expect(panelBottom - legendY).toBeLessThanOrEqual(24);
     // The plot block still sits inside the panel at both edges.
     expect(plot.top).toBeGreaterThan(panelTop);
     expect(legendY).toBeLessThan(panelBottom);
@@ -655,9 +687,10 @@ describe('plan budget widget panel-fill geometry', () => {
     // "none"` they only render round because the caller-supplied viewBox height
     // preserves the container aspect ratio (equal x/y scale) — asserted via the
     // 1:1 mapping below; the circle element itself carries no distortion.
+    // (The "Used" markers are `<line>` level ticks, not dots — covered above.)
     for (const height of [SHORT, MEDIUM, TALL]) {
       const chartEl = renderAt(height);
-      const dots = [...chartEl.querySelectorAll('.chart__actual, .chart__price-dot')];
+      const dots = [...chartEl.querySelectorAll('.chart__price-dot')];
       expect(dots.length).toBeGreaterThan(0);
       for (const dot of dots) {
         expect(dot.tagName.toLowerCase()).toBe('circle');

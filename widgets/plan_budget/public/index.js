@@ -65,7 +65,7 @@
   var AXIS_TITLE_OFFSET = 6;
   var X_LABEL_GAP = 32;
   var LEGEND_GAP = 78;
-  var BLOCK_BOTTOM_PAD = 10;
+  var BLOCK_BOTTOM_PAD = 24;
   var resolveViewportHeight = (desired) => {
     if (!Number.isFinite(desired)) return VIEWPORT_MIN_HEIGHT;
     return Math.min(VIEWPORT_MAX_HEIGHT, Math.max(VIEWPORT_MIN_HEIGHT, Math.round(desired)));
@@ -205,8 +205,9 @@
   };
 
   // widgets/plan_budget/src/public/chart.ts
-  var BAR_RADIUS = 3;
+  var BAR_RADIUS = 1.5;
   var DOT_RADIUS = 4;
+  var ACTUAL_TICK_PAD = 1.5;
   var WIDGET_TITLE = PLAN_PRICE_WIDGET_TITLE;
   var DEFAULT_EMPTY_SUBTITLE = PLAN_PRICE_WIDGET_EMPTY.noData;
   var HALF_SPLIT_HOUR = 12;
@@ -360,8 +361,9 @@
       const x = plot.left + metrics.stepWidth * bucket.localIndex + (metrics.stepWidth - metrics.barWidth) / 2;
       const height = metrics.plotHeight * (value / metrics.maxPlan);
       const y = plot.bottom - height;
+      const isCurrent = payload.showNow && bucket.dayIndex === payload.currentIndex;
       plotGroup.appendChild(createSvg(chartDocument, "path", {
-        class: "chart__bar",
+        class: isCurrent ? "chart__bar chart__bar--current" : "chart__bar",
         d: buildBarPath(x, y, metrics.barWidth, height, BAR_RADIUS)
       }));
     });
@@ -400,12 +402,16 @@
     const { plot } = geometry;
     metrics.buckets.forEach((bucket) => {
       const value = payload.actualKwh[bucket.dayIndex];
-      if (typeof value !== "number" || !Number.isFinite(value) || bucket.dayIndex > payload.currentIndex) return;
-      plotGroup.appendChild(createSvg(chartDocument, "circle", {
+      if (typeof value !== "number" || !Number.isFinite(value)) return;
+      if (payload.showNow && bucket.dayIndex >= payload.currentIndex) return;
+      const tickX = plot.left + metrics.stepWidth * bucket.localIndex + (metrics.stepWidth - metrics.barWidth) / 2;
+      const tickY = plot.bottom - value / metrics.maxPlan * metrics.plotHeight;
+      plotGroup.appendChild(createSvg(chartDocument, "line", {
         class: "chart__actual",
-        cx: plot.left + metrics.stepWidth * (bucket.localIndex + 0.5),
-        cy: plot.bottom - value / metrics.maxPlan * metrics.plotHeight,
-        r: DOT_RADIUS
+        x1: tickX - ACTUAL_TICK_PAD,
+        y1: tickY,
+        x2: tickX + metrics.barWidth + ACTUAL_TICK_PAD,
+        y2: tickY
       }));
     });
   };
@@ -453,11 +459,12 @@
           ry: 3
         }));
       } else if (item.type === "actual") {
-        legendGroup.appendChild(createSvg(chartDocument, "circle", {
+        legendGroup.appendChild(createSvg(chartDocument, "line", {
           class: "chart__legend-actual",
-          cx: item.x + 8,
-          cy: legendY - 2,
-          r: 5
+          x1: item.x,
+          y1: legendY - 2,
+          x2: item.x + 16,
+          y2: legendY - 2
         }));
       } else {
         legendGroup.appendChild(createSvg(chartDocument, "line", {

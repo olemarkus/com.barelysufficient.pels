@@ -290,21 +290,23 @@
 
 /* Shaded band over the scheduled hours — the "runs here" window. */
 .pchart__band {
-  fill: color-mix(in srgb, var(--pw-success, #58c56a) 15%, transparent);
+  fill: color-mix(in srgb, var(--pw-chart-plan-current, #58c56a) 18%, transparent);
 }
 
-/* The price line — price/danger tone, stroked only. `stroke-width` is a raw SVG
-   geometry value (Homey ships no stroke-width token); colour stays tokenised. */
+/* The price line — shared chart-price tone, stroked only. `stroke-width` is a
+   raw SVG geometry value (Homey ships no stroke-width token); colour stays
+   tokenised. */
 .pchart__line {
   fill: none;
-  stroke: var(--pw-red, #f0696c);
-  stroke-width: 2;
+  stroke: var(--pw-chart-price, #8f87bd);
+  stroke-width: 1.5;
   stroke-linejoin: round;
   stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
 }
 
 .pchart__dot {
-  fill: var(--pw-success, #58c56a);
+  fill: var(--pw-chart-plan-current, #58c56a);
 }
 
 .pchart__axis {
