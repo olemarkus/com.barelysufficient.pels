@@ -306,6 +306,8 @@ describe('renderTrajectoryChart', () => {
     windowEndMs: T + 3 * H,
     plannedOriginal: [],
     plannedFinal: null,
+    plannedVisible: [],
+    replanned: false,
     observed: [],
     runBands: [],
     target: 55,

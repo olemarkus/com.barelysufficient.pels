@@ -71,7 +71,10 @@ const buildEntry = (
 describe('formatPlanHistoryPostmortem', () => {
   describe('met outcome', () => {
     it('resolves met-with-margin when the run reached the target well before the deadline', () => {
-      // Reached the target 4h 3m before the deadline (16:00) → margin variant.
+      // Reached the target 4 h 3 min before the deadline (16:00) → margin
+      // variant. The duration uses the receipt trio's phrasing with NBSP
+      // joins ("4 h 3 min", unbreakable) and the timing headline drops its
+      // trailing period to match the period-less trio rows (one convention).
       const metAtMs = DEADLINE_MS - 4 * HOUR_MS - 3 * 60 * 1000;
       const entry = buildEntry({
         outcome: 'met',
@@ -82,7 +85,8 @@ describe('formatPlanHistoryPostmortem', () => {
       expect(result.variant).toBe('met-with-margin');
       expect(result.sentence).toContain('65.0 °C');
       expect(result.sentence).toContain('16:00');
-      expect(result.sentence).toMatch(/4h 3m/);
+      expect(result.sentence).toMatch(/4\u00a0h\u00a03\u00a0min/);
+      expect(result.sentence.endsWith('.')).toBe(false);
     });
 
     it('resolves met-at-buzzer when the run reached target inside the last hour', () => {
@@ -95,7 +99,7 @@ describe('formatPlanHistoryPostmortem', () => {
       });
       const result = formatPlanHistoryPostmortem(entry, 'UTC');
       expect(result.variant).toBe('met-at-buzzer');
-      expect(result.sentence).toMatch(/2m before/);
+      expect(result.sentence).toMatch(/2\u00a0min before/);
     });
 
     it('resolves met-with-overshoot when the final progress is > 5 °C above target', () => {
@@ -112,7 +116,9 @@ describe('formatPlanHistoryPostmortem', () => {
       // the `Succeeded` chip; the muted `Overshoot N °C` subline (rendered
       // by `DeadlinePlanHistoryDetail.tsx`) carries the magnitude instead.
       expect(result.sentence).not.toContain('overshot');
-      expect(result.sentence).toMatch(/^Hit .* at .*, before .*\.$/);
+      // Period-less like its met-with-margin sibling — one convention across
+      // the "Hit …" timing headline family.
+      expect(result.sentence).toMatch(/^Hit .* at .*, before [^.]*$/);
     });
 
     it('resolves met-with-overshoot for EV when > 10 % above target', () => {

@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import type {
   ResolvedDeferredObjectivePlanHistoryEntry,
   DeferredObjectivePlanHistoryRevisionLogEntry,
@@ -19,8 +19,29 @@ import {
   formatPlanHistoryUsageDayLinkLabel,
 } from '../../../../shared-domain/src/deferredPlanHistory.ts';
 import {
+  formatHistoryTrajectoryLegendTarget,
+  resolveHistoryPlanChangeMarker,
+  resolveHistoryRunBands,
+  resolveHistoryStripReadout,
+  resolveHistoryTrajectoryReadout,
+  HISTORY_COMPARE_INITIAL_PLAN_LABEL,
+  HISTORY_STRIP_LEGEND_PRICE_HIGH,
+  HISTORY_STRIP_LEGEND_PRICE_LOW,
+  HISTORY_STRIP_LEGEND_PRICE_NORMAL,
+  HISTORY_STRIP_LEGEND_SKIPPED,
+  HISTORY_TRAJECTORY_LEGEND_MEASURED,
+  HISTORY_TRAJECTORY_LEGEND_PLANNED,
+  SMART_TASK_HISTORY_STRIP_TITLE,
+  type HistoryHourReadout,
+  type HistoryPlanChangeMarker,
+  type HistoryRunBand,
+  type HistoryStripReadout,
+} from '../../../../shared-domain/src/deferredPlanHistoryDetailInteraction.ts';
+import {
   deadlineLabels,
+  formatProgressValueForUnit,
   REVISION_REASON_FALLBACK_WITH_DETAIL,
+  SMART_TASK_READOUT_SCRUB_HINT,
   SMART_TASK_USAGE_RETURN_LABEL,
 } from '../../../../shared-domain/src/deadlineLabels.ts';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
@@ -28,17 +49,14 @@ import {
   buildHistoryDetailHero,
   type DeadlinePlanHistoryHeroPayload,
 } from '../deadlinePlanHistoryDetailHero.ts';
+import { attachHourScrub, resolveScrubHourIndex } from '../deadlineChartScrub.ts';
 import { buildUsageDayHref } from '../deadlineUrls.ts';
-import { encodeHtml, useEchartsMount, type EChartsOption } from '../echartsRegistry.ts';
+import { encodeHtml, useEchartsMount, type EChartsOption, type EChartsType } from '../echartsRegistry.ts';
+import { MdSwitch } from './materialWebJSX.tsx';
 
 type Props = {
   entry: ResolvedDeferredObjectivePlanHistoryEntry;
   timeZone: string;
-  // Cost-unit suffix carried through from the boot prices (e.g. `kr`). Empty
-  // string when unavailable — the history-detail mount doesn't fetch live
-  // prices (bookmarked URLs work without them), so this is left empty by
-  // default; the secondary line collapses to the kWh-only form.
-  costUnit?: string;
 };
 
 // ─── Legacy kWh-bar chart (v3 fallback) ───────────────────────────────────────
@@ -131,20 +149,16 @@ type Palette = {
   device: string;
   deviceMuted: string;
   observed: string;
+  // Accent series colour for the trajectory's measured line + run bands —
+  // same `--color-role-accent` the live trajectory card uses so the two
+  // surfaces read as one chart family.
+  accent: string;
   text: string;
   muted: string;
   grid: string;
   tooltipBackground: string;
   tooltipText: string;
   tooltipBorder: string;
-  // Neutral on-good fill used by the trajectory chart's "Reached target"
-  // markPoint. Pinned to a status-neutral token so the marker stays legible
-  // even if a future variant attaches `metAtMs` to a non-`good` hero tone
-  // (today the marker only renders on `good` heroes, but the planner-state
-  // colour `palette.observed` would silently mis-contrast under a warn-tone
-  // gradient). Paired with `palette.text` (= `--pels-text-primary`) for the
-  // stroke so the dot reads as a hero-agnostic ring + dot.
-  statusOnGood: string;
 };
 
 const cssVar = (element: HTMLElement, name: string, fallback = ''): string => (
@@ -155,13 +169,13 @@ const resolvePalette = (element: HTMLElement): Palette => ({
   device: cssVar(element, '--color-base-accent-default'),
   deviceMuted: cssVar(element, '--pels-surface-container-high'),
   observed: cssVar(element, '--color-role-good'),
+  accent: cssVar(element, '--color-role-accent'),
   text: cssVar(element, '--text'),
   muted: cssVar(element, '--pels-text-supporting-color'),
   grid: cssVar(element, '--pels-surface-outline'),
   tooltipBackground: cssVar(element, '--color-overlay-toast'),
   tooltipText: cssVar(element, '--color-semantic-text-primary'),
   tooltipBorder: cssVar(element, '--color-border-medium'),
-  statusOnGood: cssVar(element, '--pels-status-on-good'),
 });
 
 const resolveChartSize = (element: HTMLElement): { height: number; width: number } => {
@@ -337,35 +351,40 @@ export const buildHistoryDetailChartOption = (
   };
 };
 
-// ─── Trajectory chart (v2.7.2 PR 4) ───────────────────────────────────────────
+// ─── Trajectory chart (v2.7.2 PR 4; receipt-first redesign Phase 1B) ──────────
 //
 // Renders the planned staircase + observed-progress line on a single grid with
 // the y-axis in unit space (°C / %). The producer in shared-domain resolves
 // the staircase from `originalPlan.hours × kwhPerUnitMean`; this layer is a
 // renderer that never inspects the raw entry.
+//
+// Phase 1B: the default view shows ONLY the final plan staircase; on a
+// revised run a vertical "Plan changed HH:MM" marker pins the replan and the
+// "Compare with initial plan" toggle reveals the dashed original. The ECharts
+// legend + floating tooltip are gone — a compact DOM legend row sits above
+// the chart and a pinned readout (the live page's primitive) handles taps.
 
-// User-visible series names + mark label come from the shared-domain helper
-// (`historyDetailChartLabels`) so runtime log breadcrumbs and the chart legend
-// stay on identical strings per `feedback_ui_text_shared_with_logs`. Aliased
-// to local consts here so the option-builder body keeps reading naturally.
-// `'trajectory'` is passed because these particular fields are mode-agnostic;
-// the mode-aware fields (cardTitle / fallbackNote) are resolved at the call
-// site with the live chart mode.
-const TRAJECTORY_LABELS = historyDetailChartLabels('trajectory');
-const PLANNED_SERIES_NAME = TRAJECTORY_LABELS.plannedSeriesName;
-const PLANNED_REVISED_SERIES_NAME = TRAJECTORY_LABELS.plannedRevisedSeriesName;
-const TARGET_SERIES_NAME = TRAJECTORY_LABELS.targetSeriesName;
-const MET_MARK_NAME = TRAJECTORY_LABELS.metMarkName;
+// Series names are renderer-internal identifiers (nothing renders them once
+// the legend + tooltip are DOM-side); kept stable for tests.
+const PLANNED_SERIES_NAME = 'Planned trajectory';
+const INITIAL_PLAN_SERIES_NAME = 'Initial plan';
+const TARGET_SERIES_NAME = 'Target';
+const MEASURED_SERIES_NAME = 'Measured';
+const MET_MARK_NAME = 'Reached target';
 
-const formatTrajectoryValue = (value: number, unit: '°C' | '%'): string => (
-  unit === '°C' ? `${value.toFixed(1)} °C` : `${Math.round(value)} %`
-);
+// Axis values delegate to the shared `formatProgressValueForUnit` so the
+// y-axis renders "45%" exactly like the hero / readout lines (the previous
+// view-local formatter spaced the percent — "45 %" — and drifted from every
+// other surface; review round 2 P2 #7).
+const formatTrajectoryValue = formatProgressValueForUnit;
 
+// `h23` keeps midnight as "00:00" (a bare `hour12: false` can pick `h24` →
+// "24:00" in some locales), matching the shared-domain readout/axis clocks.
 const formatTrajectoryClock = (atMs: number, timeZone: string): string => (
   new Date(atMs).toLocaleTimeString([], {
     hour: '2-digit',
     minute: '2-digit',
-    hour12: false,
+    hourCycle: 'h23',
     timeZone,
   })
 );
@@ -380,17 +399,23 @@ const toEchartsData = (points: readonly DeferredPlanHistoryChartPoint[]): Trajec
 );
 
 // Resolve a min/max for the y-axis that always contains the target line and
-// gives the observed/planned series a bit of headroom. Floors at 0 for `%`
-// (SoC can't go below zero) but lets °C dip below 0 since cold-storage
-// thermostats can legitimately span sub-zero. The 5 %/2 °C padding keeps the
-// observed line from hugging the chart edge.
+// gives the observed/planned series a bit of headroom. Fits the domain to the
+// series that actually DRAW — the visible staircase, the dashed original only
+// while the compare toggle shows it, and the measured line — never to hidden
+// series (an undrawn re-anchored staircase or a suppressed measured point
+// would otherwise stretch the axis and crush the visible staircase into a
+// sliver; review round 2 P0 #1). Floors at 0 for `%` (SoC can't go below
+// zero) but lets °C dip below 0 since cold-storage thermostats can
+// legitimately span sub-zero. The 5 %/2 °C padding keeps the observed line
+// from hugging the chart edge.
 const resolveTrajectoryYRange = (
   data: DeferredPlanHistoryChartData,
+  showOriginalOverlay: boolean,
 ): { min: number | 'dataMin'; max: number | 'dataMax' } => {
   const values: number[] = [];
   if (data.target !== null) values.push(data.target);
-  for (const point of data.plannedOriginal) values.push(point.value);
-  if (data.plannedFinal) for (const point of data.plannedFinal) values.push(point.value);
+  for (const point of data.plannedVisible) values.push(point.value);
+  if (showOriginalOverlay) for (const point of data.plannedOriginal) values.push(point.value);
   for (const point of data.observed) values.push(point.value);
   if (values.length === 0) return { min: 'dataMin', max: 'dataMax' };
   const min = Math.min(...values);
@@ -401,72 +426,27 @@ const resolveTrajectoryYRange = (
   return { min: lowerBound, max: upperBound };
 };
 
-type TrajectoryTooltipPart = {
-  seriesName: string;
-  data?: unknown;
-  value?: unknown;
-  axisValue?: unknown;
-};
-
-// Pull the timestamp from the first tooltip part. ECharts emits `axisValue`
-// for axis-triggered tooltips on a `time` xAxis; otherwise fall back to the
-// first series' `[ms, value]` payload. Returns `null` only when both shapes
-// fail, which the caller treats as "no hover position resolved".
-const resolveTooltipAxisMs = (first: TrajectoryTooltipPart): number | null => {
-  const candidateAxis = first.axisValue;
-  if (typeof candidateAxis === 'number') return candidateAxis;
-  if (Array.isArray(first.data)) {
-    const ms = (first.data as unknown[])[0];
-    if (typeof ms === 'number') return ms;
-  }
-  return null;
-};
-
-const resolveTooltipYValue = (part: TrajectoryTooltipPart): number | null => {
-  if (Array.isArray(part.data)) {
-    const y = (part.data as unknown[])[1];
-    if (typeof y === 'number') return y;
-  }
-  if (typeof part.value === 'number') return part.value;
-  return null;
-};
-
-const buildTrajectoryTooltip = (
-  data: DeferredPlanHistoryChartData,
-  timeZone: string,
-  unit: '°C' | '%',
-  observedSeriesName: string,
-): ((raw: unknown) => string) => (raw: unknown): string => {
-  const parts = Array.isArray(raw) ? (raw as TrajectoryTooltipPart[]) : [raw as TrajectoryTooltipPart];
-  const first = parts[0];
-  if (!first) return '';
-  const axisMs = resolveTooltipAxisMs(first);
-  if (axisMs === null) return '';
-  const lines = [`<strong>${encodeHtml(formatTrajectoryClock(axisMs, timeZone))}</strong>`];
-  for (const part of parts) {
-    // Hide the target reference line from the tooltip — it's a fixed
-    // horizontal guide, not a data series, so listing "Target 65.0 °C" at
-    // every hover would be noise.
-    if (part.seriesName === TARGET_SERIES_NAME) continue;
-    const yValue = resolveTooltipYValue(part);
-    if (yValue === null) continue;
-    lines.push(`${encodeHtml(part.seriesName)} ${encodeHtml(formatTrajectoryValue(yValue, unit))}`);
-  }
-  // If the user is hovering over the planned line but no observed point lies
-  // at this hour, surface that explicitly so the absence is honest (rather
-  // than letting the tooltip silently omit the observed series).
-  if (data.observed.length === 0 && data.plannedOriginal.length > 0) {
-    lines.push(encodeHtml(TRAJECTORY_LABELS.formatObservedNotRecorded(observedSeriesName)));
-  }
-  return lines.join('<br>');
+// Inputs for the trajectory option. Grouped so the builder stays inside the
+// parameter budget; every field is producer-resolved.
+export type HistoryTrajectoryOptionParams = {
+  data: DeferredPlanHistoryChartData;
+  marker: HistoryPlanChangeMarker | null;
+  runBands: HistoryRunBand[];
+  // When true (the "Compare with initial plan" toggle), the dashed original
+  // staircase renders behind the final one.
+  showInitialPlan: boolean;
+  palette: Palette;
+  timeZone: string;
+  // Rendered width — drives the time-axis label cadence (~5 hour-aligned
+  // labels at full card width, ~3 at ≤360 px). 0 falls back to the wide
+  // cadence. Same idiom as the live trajectory chart.
+  chartWidth: number;
 };
 
 export const buildHistoryDetailTrajectoryOption = (
-  data: DeferredPlanHistoryChartData,
-  palette: Palette,
-  timeZone: string,
-  observedSeriesName: string,
+  params: HistoryTrajectoryOptionParams,
 ): EChartsOption => {
+  const { data, marker, runBands, showInitialPlan, palette, timeZone, chartWidth } = params;
   // Trajectory-mode payloads always carry a unit; a `null` unit means a
   // caller wired a `legacy_kwh` payload through this builder, which would
   // silently render °C labels on a kWh dataset. Assert at the boundary.
@@ -474,154 +454,152 @@ export const buildHistoryDetailTrajectoryOption = (
     throw new Error('buildHistoryDetailTrajectoryOption requires a trajectory-mode payload (unit must be set)');
   }
   const unit: '°C' | '%' = data.unit;
-  const hasPlannedOriginal = data.plannedOriginal.length > 0;
-  const hasPlannedFinal = data.plannedFinal !== null && data.plannedFinal.length > 0;
+  // The DEFAULT view shows only the planner's last word — the producer-
+  // resolved `plannedVisible` staircase (`replanned` gates the overlay), the
+  // same semantic source the pinned readout and the strip's skip attribution
+  // read. The original is the on-demand comparison layer.
+  const plannedVisible = data.plannedVisible;
+  const showOriginalOverlay = showInitialPlan && data.replanned && data.plannedOriginal.length > 0;
   const hasObserved = data.observed.length > 0;
-  const yRange = resolveTrajectoryYRange(data);
-  // Pre-compose the legend label names — the original-staircase swatch reads
-  // as "Planned" when there is no second revision, and "Initial plan"
-  // (matching the legacy chart vocabulary) once the user has both lines on
-  // the chart to compare.
-  const originalLabel = hasPlannedFinal ? INITIAL_SERIES_NAME : PLANNED_SERIES_NAME;
-  const revisedLabel = PLANNED_REVISED_SERIES_NAME;
-  const legendData = [
-    ...(hasPlannedOriginal
-      ? [{
-        name: originalLabel,
-        itemStyle: { color: hasPlannedFinal ? 'transparent' : palette.device, borderColor: palette.device, borderWidth: 2 },
-      }]
-      : []),
-    ...(hasPlannedFinal ? [{ name: revisedLabel, itemStyle: { color: palette.device } }] : []),
-    ...(hasObserved ? [{ name: observedSeriesName, itemStyle: { color: palette.observed } }] : []),
-    ...(data.target !== null
-      ? [{ name: TARGET_SERIES_NAME, itemStyle: { color: 'transparent', borderColor: palette.muted, borderWidth: 1, borderType: 'dashed' as const } }]
-      : []),
-  ];
+  const yRange = resolveTrajectoryYRange(data, showOriginalOverlay);
+  const yMin = typeof yRange.min === 'number' ? yRange.min : null;
+  const yMax = typeof yRange.max === 'number' ? yRange.max : null;
+  const yMid = yMin !== null && yMax !== null ? (yMin + yMax) / 2 : null;
+  // Explicit, width-aware tick cadence (the live trajectory chart's idiom):
+  // ECharts' time axis defaults + `hideOverlap` still crowd HH:MM labels into
+  // an unreadable run at 320–480 px, so the formatter blanks every label that
+  // doesn't sit on the chosen hour cadence. The cadence is anchored at the
+  // first whole hour inside the window — an epoch-aligned modulo would skip
+  // the window-start hour whenever it isn't a multiple of the interval from
+  // the epoch (an 18:00 window opened with 20:00 as its leftmost label at
+  // 320 px; review round 2 P2 #12).
+  const xSpanMs = data.windowEndMs - data.windowStartMs;
+  const targetTickCount = chartWidth > 0 && chartWidth <= 360 ? 3 : 5;
+  const tickIntervalMs = Math.max(1, Math.ceil(xSpanMs / ONE_HOUR_MS / targetTickCount)) * ONE_HOUR_MS;
+  const tickAnchorMs = ceilToHour(data.windowStartMs);
   return {
     animation: false,
     backgroundColor: 'transparent',
     textStyle: { color: palette.text, fontFamily: 'inherit' },
-    legend: {
-      top: 0,
-      left: 0,
-      width: '100%',
-      data: legendData,
-      itemWidth: 12,
-      itemHeight: 8,
-      icon: 'roundRect',
-      textStyle: { color: palette.muted, fontSize: 11 },
-      inactiveColor: palette.grid,
-    },
-    // `top: 60` matches the legacy bar chart; reserves vertical headroom
-    // for a 2-line legend wrap at 320 px when the trajectory carries the
-    // full 4-entry legend (Planned / Revised / Measured / Target).
-    grid: { top: 60, left: 8, right: 16, bottom: 32, containLabel: true },
-    tooltip: {
-      trigger: 'axis',
-      appendToBody: true,
-      confine: true,
-      backgroundColor: palette.tooltipBackground,
-      borderColor: palette.tooltipBorder,
-      textStyle: { color: palette.tooltipText },
-      formatter: buildTrajectoryTooltip(data, timeZone, unit, observedSeriesName),
-    },
+    // No ECharts legend (the compact DOM legend row above the chart carries
+    // Measured / Planned / Target) and no floating tooltip — the pinned
+    // readout below the chart is the only tap/scrub surface, matching the
+    // live page's interaction grammar. `top: 28` reserves headroom for the
+    // "Plan changed HH:MM" marker label.
+    grid: { top: 28, left: 8, right: 34, bottom: 22, containLabel: true },
     xAxis: {
       type: 'time',
       min: data.windowStartMs,
       max: data.windowEndMs,
+      // Force hourly tick generation so the window-anchored cadence below
+      // always has a tick to label at the anchor hour (ECharts would
+      // otherwise pick a sparser epoch-aligned tick set on long windows).
+      maxInterval: ONE_HOUR_MS,
       axisTick: { show: false },
       axisLine: { lineStyle: { color: palette.grid } },
+      splitLine: { show: false },
       axisLabel: {
         color: palette.muted,
         fontSize: 11,
         hideOverlap: true,
-        formatter: (ms: number): string => formatTrajectoryClock(ms, timeZone),
+        formatter: (ms: number): string => (
+          ms >= tickAnchorMs && (ms - tickAnchorMs) % tickIntervalMs === 0
+            ? formatTrajectoryClock(ms, timeZone)
+            : ''
+        ),
       },
     },
     yAxis: {
       type: 'value',
       min: yRange.min,
       max: yRange.max,
-      splitNumber: 4,
+      // Two intervals → ticks at floor / mid / ceiling; only floor + mid
+      // carry labels. The target value is carried by the legend's
+      // "Target 65.0 °C" item, never an axis tick — this is the fix for the
+      // 67.0/65.0 label collision the redesign was signed off on.
+      ...(yMin !== null && yMax !== null && yMax > yMin
+        ? { interval: (yMax - yMin) / 2 }
+        : { splitNumber: 2 }),
       splitLine: { lineStyle: { color: palette.grid, opacity: 0.55 } },
       axisLine: { show: false },
       axisTick: { show: false },
       axisLabel: {
-        color: palette.text,
+        color: palette.muted,
         fontSize: 11,
-        formatter: (value: number) => formatTrajectoryValue(value, unit),
+        formatter: (value: number) => {
+          if (yMin !== null && Math.abs(value - yMin) < 0.001) return formatTrajectoryValue(value, unit);
+          if (yMid !== null && Math.abs(value - yMid) < 0.001) return formatTrajectoryValue(value, unit);
+          return '';
+        },
       },
     },
     series: [
-      ...(hasPlannedOriginal ? [{
-        name: originalLabel,
+      // Scheduled-run bands behind everything — solid accent tint, kind-verb
+      // label on the first band only (the live trajectory card's idiom; the
+      // dashed grammar stays reserved for "planned but didn't run" on the
+      // strip below).
+      {
+        id: 'run-bands',
+        type: 'line' as const,
+        data: [],
+        silent: true,
+        markArea: {
+          silent: true,
+          itemStyle: { color: palette.accent, opacity: 0.08 },
+          label: {
+            show: true,
+            color: palette.accent,
+            fontSize: 11,
+            position: 'insideBottom' as const,
+          },
+          data: runBands.map((band) => ([
+            { name: band.label ?? '', xAxis: band.fromMs },
+            { xAxis: band.toMs },
+          ])),
+        },
+      },
+      // Dashed original staircase — only when the compare toggle is on.
+      ...(showOriginalOverlay ? [{
+        name: INITIAL_PLAN_SERIES_NAME,
         type: 'line' as const,
         step: 'end' as const,
+        silent: true,
         showSymbol: false,
-        // The original staircase is the planner's intent. When a revised
-        // staircase overlays it, render the original as dashed-muted (the
-        // "what we set out to do") so the eye lands on the revised one.
-        lineStyle: hasPlannedFinal
-          ? { color: palette.device, width: 2, type: 'dashed' as const, opacity: 0.7 }
-          : { color: palette.device, width: 2 },
-        itemStyle: { color: palette.device },
+        lineStyle: { color: palette.muted, width: 1.5, type: 'dashed' as const, opacity: 0.8 },
+        itemStyle: { color: palette.muted },
         data: toEchartsData(data.plannedOriginal),
-        // The metAtMs marker sits on the planned staircase — the postmortem
-        // sentence "Hit 65 °C at 11:57" lands here. Only attached to the
-        // original series so a revised overlay doesn't double-mark.
-        // Marker style is pinned to neutral tokens (`statusOnGood` fill +
-        // `text` stroke) rather than `palette.observed`/`palette.text` taken
-        // together as a planner-state pair. Today the marker only renders
-        // when the hero tone is `good`; the neutral pinning means a future
-        // variant that attaches `metAtMs` to a non-`good` hero (e.g. a
-        // hypothetical `met-with-overshoot` reclassified to `warn`) still
-        // reads correctly without threading hero tone into the option
-        // builder.
-        markPoint: data.metAtMs !== null && data.metMarkerValue !== null && !hasPlannedFinal
-          ? {
-            symbol: 'circle',
-            symbolSize: 10,
-            itemStyle: { color: palette.statusOnGood, borderColor: palette.text, borderWidth: 1 },
-            label: { show: false },
-            data: [{
-              name: MET_MARK_NAME,
-              coord: [data.metAtMs, data.metMarkerValue],
-            }],
-          }
-          : undefined,
       }] : []),
-      ...(hasPlannedFinal ? [{
-        name: revisedLabel,
+      // The visible planned staircase (final plan when revised). Carries the
+      // "Plan changed HH:MM" markLine so the marker participates in the time
+      // scale without a synthetic series.
+      ...(plannedVisible.length > 0 ? [{
+        name: PLANNED_SERIES_NAME,
         type: 'line' as const,
         step: 'end' as const,
+        silent: true,
         showSymbol: false,
-        lineStyle: { color: palette.device, width: 2 },
-        itemStyle: { color: palette.device },
-        data: toEchartsData(data.plannedFinal!),
-        // See note above on the original-series markPoint — same tone-neutral
-        // pinning applies on the revised overlay.
-        markPoint: data.metAtMs !== null && data.metMarkerValue !== null
+        lineStyle: { color: palette.muted, width: 1.5 },
+        itemStyle: { color: palette.muted },
+        data: toEchartsData(plannedVisible),
+        markLine: marker !== null
           ? {
-            symbol: 'circle',
-            symbolSize: 10,
-            itemStyle: { color: palette.statusOnGood, borderColor: palette.text, borderWidth: 1 },
-            label: { show: false },
-            data: [{
-              name: MET_MARK_NAME,
-              coord: [data.metAtMs, data.metMarkerValue],
-            }],
+            silent: true,
+            symbol: 'none',
+            lineStyle: { color: palette.muted, width: 1, type: 'solid' as const, opacity: 0.5 },
+            label: {
+              show: true,
+              formatter: marker.label,
+              color: palette.muted,
+              fontSize: 10,
+              // Horizontal label above the vertical line's top — the grid's
+              // `top: 28` reserves the headroom (the live deadline marker's
+              // idiom).
+              position: 'end' as const,
+              distance: 6,
+            },
+            data: [{ xAxis: marker.atMs }],
           }
           : undefined,
-      }] : []),
-      ...(hasObserved ? [{
-        name: observedSeriesName,
-        type: 'line' as const,
-        showSymbol: true,
-        symbol: 'circle',
-        symbolSize: 6,
-        lineStyle: { color: palette.observed, width: 2 },
-        itemStyle: { color: palette.observed },
-        data: toEchartsData(data.observed),
       }] : []),
       // Target reference as a dashed horizontal line. Rendered as a
       // single-segment line series spanning the window so it picks up the
@@ -638,6 +616,45 @@ export const buildHistoryDetailTrajectoryOption = (
           [data.windowEndMs, data.target],
         ] as TrajectorySeriesData,
       }] : []),
+      // Measured line — the accent hero series, smoothed like the live page.
+      ...(hasObserved ? [{
+        name: MEASURED_SERIES_NAME,
+        type: 'line' as const,
+        silent: true,
+        showSymbol: false,
+        smooth: 0.4,
+        lineStyle: { color: palette.accent, width: 2.5 },
+        itemStyle: { color: palette.accent },
+        data: toEchartsData(data.observed),
+      }] : []),
+      // Met marker: an accent ring at the moment the target was reached.
+      // `metMarkerValue` is producer-resolved (target for target-reached
+      // runs, the frozen plateau for stalled ones) so the ring sits ON the
+      // measured line — the hero's "Ready 00:42" row and this dot must
+      // reconcile.
+      ...(data.metAtMs !== null && data.metMarkerValue !== null ? [{
+        name: MET_MARK_NAME,
+        type: 'scatter' as const,
+        silent: true,
+        symbolSize: 10,
+        itemStyle: { color: 'transparent', borderColor: palette.accent, borderWidth: 2 },
+        data: [[data.metAtMs, data.metMarkerValue]] as TrajectorySeriesData,
+      }] : []),
+      // Selection hairline, fed imperatively from the scrub state (same
+      // primitive as the live page).
+      {
+        id: 'selection-hairline',
+        type: 'line' as const,
+        data: [],
+        silent: true,
+        markLine: {
+          silent: true,
+          symbol: 'none',
+          lineStyle: { color: palette.text, width: 1, opacity: 0.5 },
+          label: { show: false },
+          data: [],
+        },
+      },
     ],
   };
 };
@@ -677,29 +694,188 @@ const LegacyKwhChart = ({ rows, hasOriginalSeries, hasFinalSeries, observedSerie
   );
 };
 
-const TrajectoryChart = ({ data, timeZone, observedSeriesName, ariaLabel }: {
+// History trajectory container is shorter than the legacy 240 px chart — no
+// ECharts legend rows to hold. Must match `.deadline-history-trajectory-chart`
+// in style.css (the cold-mount fallback size).
+const HISTORY_TRAJECTORY_CHART_HEIGHT = 180;
+const resolveHistoryTrajectoryChartSize = (element: HTMLElement): { height: number; width: number } => ({
+  ...resolveChartSize(element),
+  height: element.clientHeight > 0 ? element.clientHeight : HISTORY_TRAJECTORY_CHART_HEIGHT,
+});
+
+const HistoryTrajectoryChart = ({
+  data, marker, runBands, showInitialPlan, timeZone, hours, selectedHourMs, onSelect, ariaLabel,
+}: {
   data: DeferredPlanHistoryChartData;
+  marker: HistoryPlanChangeMarker | null;
+  runBands: HistoryRunBand[];
+  showInitialPlan: boolean;
   timeZone: string;
-  observedSeriesName: string;
+  // Hour-bucket grid backing the pinned readout; the scrub snaps to it.
+  hours: ReadonlyArray<{ startsAtMs: number }>;
+  // Hour-start ms of an EXPLICIT selection; null at the default state so the
+  // hairline doesn't crowd the chart at rest (live-page contract).
+  selectedHourMs: number | null;
+  onSelect: (index: number | null) => void;
   ariaLabel: string;
 }) => {
+  const chartHandle = useRef<EChartsType | null>(null);
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
   const chartRef = useEchartsMount({
-    buildOption: (container) => buildHistoryDetailTrajectoryOption(
+    buildOption: (container) => buildHistoryDetailTrajectoryOption({
       data,
-      resolvePalette(container),
+      marker,
+      runBands,
+      showInitialPlan,
+      palette: resolvePalette(container),
       timeZone,
-      observedSeriesName,
-    ),
-    resolveSize: resolveChartSize,
-    deps: [data, timeZone, observedSeriesName],
+      // Width drives the time-axis label cadence (~3 labels at ≤360 px).
+      // Same sizer the mount hook uses, so the cadence matches the rendered
+      // width even on a cold mount inside a hidden panel.
+      chartWidth: resolveHistoryTrajectoryChartSize(container).width,
+    }),
+    resolveSize: resolveHistoryTrajectoryChartSize,
+    deps: [data, marker, runBands, showInitialPlan, timeZone],
+    onChartInit: (chart) => {
+      chartHandle.current = chart;
+      attachHourScrub(
+        chart,
+        (x, y) => {
+          if (!chart.containPixel({ gridIndex: 0 }, [x, y])) return null;
+          // Scalar pixel for the single-axis finder (see the live page's
+          // ScheduleChart note — an `[x, y]` pair makes ECharts return null).
+          const raw = chart.convertFromPixel({ xAxisIndex: 0 }, x);
+          const ms = Array.isArray(raw) ? raw[0] : raw;
+          if (typeof ms !== 'number' || !Number.isFinite(ms)) return null;
+          return resolveScrubHourIndex(hours, ms);
+        },
+        (index) => onSelectRef.current(index),
+      );
+    },
   });
+  // Selection hairline at the selected hour's centre, merged onto the
+  // `selection-hairline` series by id — the live page's exact idiom.
+  useEffect(() => {
+    const chart = chartHandle.current;
+    if (!chart || chart.isDisposed()) return;
+    chart.setOption({
+      series: [{
+        id: 'selection-hairline',
+        markLine: {
+          data: selectedHourMs === null ? [] : [{ xAxis: selectedHourMs + ONE_HOUR_MS / 2 }],
+        },
+      }],
+    });
+  }, [selectedHourMs, data]);
   return (
     <div
       ref={chartRef}
-      class="deadline-horizon-chart"
+      class="deadline-history-trajectory-chart"
       role="img"
       aria-label={ariaLabel}
     />
+  );
+};
+
+// Compact DOM legend row above the trajectory chart — Measured / Planned /
+// Target {value}. Owner-requested (direct end-labels collide when the lines
+// converge on the target near the deadline). Token-styled swatches; wraps
+// cleanly at 320 px. The Measured item renders only while a measured series
+// actually draws — advertising a swatch for a line that isn't there reads as
+// a data bug (review round 2 P0 #1).
+const HistoryTrajectoryLegend = ({ target, unit, showMeasured }: {
+  target: number | null;
+  unit: '°C' | '%';
+  showMeasured: boolean;
+}) => (
+  <div class="deadline-history-legend">
+    {showMeasured && (
+      <span class="deadline-history-legend__item">
+        <span class="deadline-history-legend__swatch" data-series="measured" aria-hidden="true" />
+        {HISTORY_TRAJECTORY_LEGEND_MEASURED}
+      </span>
+    )}
+    <span class="deadline-history-legend__item">
+      <span class="deadline-history-legend__swatch" data-series="planned" aria-hidden="true" />
+      {HISTORY_TRAJECTORY_LEGEND_PLANNED}
+    </span>
+    {target !== null && (
+      <span class="deadline-history-legend__item">
+        <span class="deadline-history-legend__swatch" data-series="target" aria-hidden="true" />
+        {formatHistoryTrajectoryLegendTarget({ targetValue: target, targetUnit: unit })}
+      </span>
+    )}
+  </div>
+);
+
+// Trajectory card body: legend row → chart → pinned readout → compare
+// toggle (revised runs only). Selection state is local — the strip below
+// keeps its own (the two readouts answer different questions, and the mock
+// shows them selected independently).
+const HistoryTrajectorySection = ({ data, entry, timeZone, ariaLabel }: {
+  data: DeferredPlanHistoryChartData;
+  entry: ResolvedDeferredObjectivePlanHistoryEntry;
+  timeZone: string;
+  ariaLabel: string;
+}) => {
+  const [selected, setSelected] = useState<number | null>(null);
+  const [showInitialPlan, setShowInitialPlan] = useState(false);
+  const marker = resolveHistoryPlanChangeMarker(entry, data, timeZone);
+  // Labelled bands decorate the chart payload's own producer-resolved spans —
+  // one geometry source shared with the widget chart.
+  const runBands = resolveHistoryRunBands(entry, data);
+  const readout: HistoryHourReadout = resolveHistoryTrajectoryReadout(data, marker, timeZone);
+  const effectiveIndex = selected !== null && selected >= 0 && selected < readout.rows.length
+    ? selected
+    : readout.defaultIndex;
+  const row = readout.rows[effectiveIndex];
+  const hours = readout.rows.map((readoutRow) => ({ startsAtMs: readoutRow.atMs }));
+  // The hour's own narrative (the plan-change sentence) wins when present;
+  // otherwise the scrub hint keeps the row two lines tall and teaches the
+  // gesture. The default selection is the plan-change hour, so the marker's
+  // "why" is the first thing a visitor reads — by design.
+  const secondary = row?.secondary ?? SMART_TASK_READOUT_SCRUB_HINT;
+  // Same producer-resolved gate as the marker + chart overlay: a genuine
+  // replan with a drawable original to compare against.
+  const hasCompareToggle = data.replanned && data.plannedOriginal.length > 0;
+  return (
+    <>
+      <HistoryTrajectoryLegend
+        target={data.target}
+        unit={data.unit ?? '°C'}
+        showMeasured={data.observed.length > 0}
+      />
+      <HistoryTrajectoryChart
+        data={data}
+        marker={marker}
+        runBands={runBands}
+        showInitialPlan={showInitialPlan}
+        timeZone={timeZone}
+        hours={hours}
+        selectedHourMs={selected !== null ? (row?.atMs ?? null) : null}
+        onSelect={setSelected}
+        ariaLabel={ariaLabel}
+      />
+      <div class="deadline-readout" aria-live="polite">
+        <div class="deadline-readout__primary">{row?.primary}</div>
+        <div class="deadline-readout__secondary">{secondary}</div>
+      </div>
+      {hasCompareToggle && (
+        <label class="md-switch-row plan-history-detail__compare-row">
+          <MdSwitch
+            aria-label={HISTORY_COMPARE_INITIAL_PLAN_LABEL}
+            {...(showInitialPlan ? { selected: true } : {})}
+            onChange={() => setShowInitialPlan((current) => !current)}
+          />
+          <span class="md-switch-row__content">
+            <span class="md-switch-row__label pels-text-settings-label">
+              {HISTORY_COMPARE_INITIAL_PLAN_LABEL}
+            </span>
+          </span>
+        </label>
+      )}
+    </>
   );
 };
 
@@ -955,143 +1131,136 @@ const formatUsageLinkDate = (ms: number, timeZone: string): string => {
 // producer (`resolveHistoryDetailHourlyStrip`); this component is a pure
 // mapper.
 
-const formatStripHourLabel = (atMs: number, timeZone: string): string => (
-  new Date(atMs).toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-    timeZone,
-  })
-);
-
-// Price in the user's display unit. `priceValue` is already the same
-// currency-major value the recorder sums into `totalCost`, so we render it
-// straight through with the page-level `costUnit` qualifier (e.g. "kr",
-// "EUR") — no minor-unit conversion. Empty `costUnit` (the prop default
-// before a currency is resolved) drops the qualifier rather than fabricate
-// one. Whole-øre/öre/cent display follows the money convention used
-// elsewhere in PELS: minor-unit denominations render as integers (no
-// fractional øre); major-unit denominations keep two decimals.
-const formatStripPrice = (priceValue: number | null, costUnit: string): string | null => {
-  if (priceValue === null || !Number.isFinite(priceValue)) return null;
-  const isMinorUnit = costUnit === 'øre' || costUnit === 'öre' || costUnit === 'cent';
-  const decimals = isMinorUnit ? 0 : 2;
-  const value = priceValue.toFixed(decimals);
-  return costUnit === '' ? value : `${value} ${costUnit}`;
-};
-
-const formatStripKWh = (kwh: number): string | null => {
-  if (!Number.isFinite(kwh) || kwh <= 0) return null;
-  return `${kwh.toFixed(2)} kWh`;
-};
-
-const buildStripTooltip = (
-  bucket: HourlyStripBucket,
-  timeZone: string,
-  costUnit: string,
-): string => {
-  // "time · 0.42 kWh · 0.18 kr · planned" / "time · skipped". Skipped means
-  // the hour was scheduled but never delivered — we suppress kWh and price
-  // on those buckets so the tooltip doesn't contradict itself (the bucket's
-  // `kwh` field carries the planned fallback for bar-height context, not
-  // for the tooltip). Planned-and-delivered keeps the kWh + price + marker.
-  // No exclamation marks, no emoji — per the voice constraint.
-  const parts: string[] = [formatStripHourLabel(bucket.atMs, timeZone)];
-  if (bucket.outlinePresent) {
-    parts.push('skipped');
-    return parts.join(' · ');
-  }
-  const kwhText = formatStripKWh(bucket.kwh);
-  if (kwhText !== null) parts.push(kwhText);
-  const priceText = formatStripPrice(bucket.priceValue, costUnit);
-  if (priceText !== null) parts.push(priceText);
-  if (bucket.planned && bucket.delivered) {
-    parts.push('planned');
-  }
-  return parts.join(' · ');
-};
-
 const resolveBarHeightPercent = (
   bucket: HourlyStripBucket,
   maxKwh: number,
 ): number => {
   if (maxKwh <= 0) return 0;
   if (bucket.kwh <= 0) return 0;
-  // Floor at 8 % so a tiny delivered bar is still visible against the
-  // strip baseline; outlined-only buckets stay at 0 so the dashed outline
-  // floats at the baseline without a visible fill.
+  // Floor at 8 % so a tiny bar is still visible against the strip baseline.
+  // Planned-but-skipped buckets render their dashed outline at the PLANNED
+  // kWh height (`bucket.kwh` carries the planned energy for outline buckets)
+  // so a dropped 1.0 kWh hour reads as a 1.0 kWh-sized dashed box, not a
+  // baseline sliver (review round 2 P1 #3) — the outline-vs-fill distinction
+  // is carried by CSS (`data-outline`), not by zeroing the height.
   const ratio = bucket.kwh / maxKwh;
-  if (bucket.outlinePresent) return 0;
   return Math.max(8, Math.round(ratio * 100));
 };
 
 const HourlyStripLegend = () => (
-  // Legend-as-sample-chips (design synthesis loveable touch #2). Three
-  // `.plan-chip` instances with embedded tone-coloured bars consume the
-  // same chip primitive Overview hero uses — keeps chip sizing/spacing
-  // tokens in one place. A visually-hidden caption announces the three
-  // tiers to screen readers (the chips themselves carry their tier label
-  // as visible text). Per `feedback_design_tokens.md`, all colour /
-  // spacing tokens are inherited from `.plan-chip` + the
-  // `--pels-chart-hour-tone-*` family.
+  // Legend-as-sample-chips. Three price-tier `.plan-chip` instances plus the
+  // dashed "planned, didn’t run" sample explaining the outline grammar. A
+  // visually-hidden caption announces the tiers to screen readers. Per
+  // `feedback_design_tokens.md`, all colour / spacing tokens are inherited
+  // from `.plan-chip` + the `--pels-chart-hour-tone-*` family.
   <div class="hourly-strip__legend">
     <span class="visually-hidden">
-      Bars are shaded by price tier: cheap, normal, or peak.
+      Bars are shaded by price level: low, normal, or high.
     </span>
     <span class="plan-chip plan-chip--muted hourly-strip__legend-item">
       <span class="hourly-strip__legend-bar" data-tone="cheap" aria-hidden="true" />
-      <span class="hourly-strip__legend-label">cheap</span>
+      <span class="hourly-strip__legend-label">{HISTORY_STRIP_LEGEND_PRICE_LOW}</span>
     </span>
     <span class="plan-chip plan-chip--muted hourly-strip__legend-item">
       <span class="hourly-strip__legend-bar" data-tone="normal" aria-hidden="true" />
-      <span class="hourly-strip__legend-label">normal</span>
+      <span class="hourly-strip__legend-label">{HISTORY_STRIP_LEGEND_PRICE_NORMAL}</span>
     </span>
     <span class="plan-chip plan-chip--muted hourly-strip__legend-item">
       <span class="hourly-strip__legend-bar" data-tone="expensive" aria-hidden="true" />
-      <span class="hourly-strip__legend-label">peak</span>
+      <span class="hourly-strip__legend-label">{HISTORY_STRIP_LEGEND_PRICE_HIGH}</span>
+    </span>
+    <span class="plan-chip plan-chip--muted hourly-strip__legend-item">
+      <span class="hourly-strip__legend-bar" data-tone="skipped" aria-hidden="true" />
+      <span class="hourly-strip__legend-label">{HISTORY_STRIP_LEGEND_SKIPPED}</span>
     </span>
   </div>
 );
 
-const HourlyStrip = ({ data, timeZone, costUnit }: {
+// Hourly strip + its pinned readout. The strip stays DOM-based; the old
+// hover/focus tooltips are gone — tapping a bucket drives the readout below
+// (one interaction grammar with the trajectory chart and the live page).
+// Selection is strip-local and never empty: it defaults to the most
+// informative bucket (the tallest delivered bar).
+const HourlyStripSection = ({ data, entry, chart, timeZone }: {
   data: Extract<DeferredPlanHistoryHourlyStripData, { mode: 'present' }>;
+  entry: ResolvedDeferredObjectivePlanHistoryEntry;
+  // Trajectory payload for the same entry — the producer-resolved `replanned`
+  // gate the strip's skip attribution shares with the chart above.
+  chart: Pick<DeferredPlanHistoryChartData, 'replanned'>;
   timeZone: string;
-  costUnit: string;
 }) => {
+  const [selected, setSelected] = useState<number | null>(null);
+  const readout: HistoryStripReadout = resolveHistoryStripReadout(data, entry, chart, timeZone);
+  const effectiveIndex = selected !== null && selected >= 0 && selected < readout.rows.length
+    ? selected
+    : readout.defaultIndex;
+  const row = readout.rows[effectiveIndex];
   const maxKwh = data.buckets.reduce((acc, bucket) => Math.max(acc, bucket.kwh), 0);
   return (
-    <div class="hourly-strip" role="img" aria-label="Per-hour delivery and price">
-      <HourlyStripLegend />
-      <ol class="hourly-strip__bars">
-        {data.buckets.map((bucket) => {
-          const heightPercent = resolveBarHeightPercent(bucket, maxKwh);
-          const tooltip = buildStripTooltip(bucket, timeZone, costUnit);
-          return (
-            <li
-              key={bucket.atMs}
-              class="hourly-strip__bucket"
-              data-tone={bucket.tone ?? 'gap'}
-              data-outline={bucket.outlinePresent ? 'true' : 'false'}
-              data-cheapest={bucket.cheapestDeliveredHighlight ? 'true' : 'false'}
-              data-planned={bucket.planned ? 'true' : 'false'}
-              data-delivered={bucket.delivered ? 'true' : 'false'}
-              data-tooltip={tooltip}
-              tabIndex={0}
-              aria-label={tooltip}
-            >
-              <span
-                class="hourly-strip__bar"
-                style={`height: ${heightPercent}%;`}
-              />
-            </li>
-          );
-        })}
-      </ol>
-    </div>
+    <>
+      <h3 class="plan-card__title plan-history-detail__strip-title">
+        {SMART_TASK_HISTORY_STRIP_TITLE}
+      </h3>
+      <div class="hourly-strip">
+        <HourlyStripLegend />
+        <ol class="hourly-strip__bars">
+          {data.buckets.map((bucket, index) => {
+            const heightPercent = resolveBarHeightPercent(bucket, maxKwh);
+            const bucketRow = readout.rows[index];
+            const label = bucketRow?.secondary !== null && bucketRow?.secondary !== undefined
+              ? `${bucketRow.primary} · ${bucketRow.secondary}`
+              : bucketRow?.primary;
+            return (
+              <li
+                key={bucket.atMs}
+                class="hourly-strip__bucket"
+                data-tone={bucket.tone ?? 'gap'}
+                data-outline={bucket.outlinePresent ? 'true' : 'false'}
+                data-cheapest={bucket.cheapestDeliveredHighlight ? 'true' : 'false'}
+                data-planned={bucket.planned ? 'true' : 'false'}
+                data-delivered={bucket.delivered ? 'true' : 'false'}
+                data-selected={index === effectiveIndex ? 'true' : 'false'}
+                tabIndex={0}
+                aria-label={label}
+                onClick={() => setSelected(index)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    setSelected(index);
+                  }
+                }}
+              >
+                <span
+                  class="hourly-strip__bar"
+                  style={`height: ${heightPercent}%;`}
+                />
+              </li>
+            );
+          })}
+        </ol>
+        {/* Hour labels under the buckets (mock-style "19 … 00"). Same flex
+          * distribution as the bars so each label centres under its bucket;
+          * the producer thins the cadence (first/last/every-2nd) when the
+          * buckets get narrow, emitting `null` for unlabelled buckets. The
+          * row is decorative — the readout's primary line carries the full
+          * HH:MM for assistive tech. */}
+        <div class="hourly-strip__axis" aria-hidden="true">
+          {readout.rows.map((axisRow) => (
+            <span key={axisRow.atMs} class="hourly-strip__axis-label">
+              {axisRow.axisLabel ?? ''}
+            </span>
+          ))}
+        </div>
+      </div>
+      <div class="deadline-readout" aria-live="polite">
+        <div class="deadline-readout__primary">{row?.primary}</div>
+        <div class="deadline-readout__secondary">{row?.secondary ?? ''}</div>
+      </div>
+    </>
   );
 };
 
-export const DeadlinePlanHistoryDetail = ({ entry, timeZone, costUnit = '' }: Props) => {
+export const DeadlinePlanHistoryDetail = ({ entry, timeZone }: Props) => {
   const deadlineLine = formatPlanHistoryDeadlineLine(entry, timeZone);
   // Resolve the per-revision rows once. A non-empty array switches the surface
   // from the hero fallback line to the dedicated `RevisionsCard` below the
@@ -1166,7 +1335,14 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone, costUnit = '' }: Pr
   const ariaHeading = displayHeadingName !== ''
     ? `${displayHeadingName} — ${deadlineLine}`
     : deadlineLine;
-  const chartLabels: HistoryDetailChartLabels = historyDetailChartLabels(chartData.mode);
+  const chartLabels: HistoryDetailChartLabels = historyDetailChartLabels(
+    chartData.mode,
+    entry.objectiveKind,
+    // Trajectory mode without a drawable measured series surfaces the
+    // absent-observations caption (`fallbackNote`) instead of implying the
+    // staircase was measured.
+    chartData.observed.length > 0,
+  );
   const trajectoryAriaLabel = chartLabels.formatTrajectoryAriaLabel(
     displayHeadingName !== '' ? displayHeadingName : 'this smart task',
   );
@@ -1193,7 +1369,7 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone, costUnit = '' }: Pr
             * hour cost?" — render the strip inside the empty-state card so
             * the surface isn't a dead end. */}
           {hourlyStrip.mode === 'present' && (
-            <HourlyStrip data={hourlyStrip} timeZone={timeZone} costUnit={costUnit} />
+            <HourlyStripSection data={hourlyStrip} entry={entry} chart={chartData} timeZone={timeZone} />
           )}
         </section>
       ) : (
@@ -1215,10 +1391,10 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone, costUnit = '' }: Pr
             <p class="pels-card-supporting">{chartFallbackNote}</p>
           )}
           {!chartCollapsed && chartData.mode === 'trajectory' && (
-            <TrajectoryChart
+            <HistoryTrajectorySection
               data={chartData}
+              entry={entry}
               timeZone={timeZone}
-              observedSeriesName={observedSeriesName}
               ariaLabel={trajectoryAriaLabel}
             />
           )}
@@ -1233,11 +1409,12 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone, costUnit = '' }: Pr
           {/* Per-hour bar strip lives inside the chart card so the time
             * axis reads continuous with the trajectory above. Suppressed
             * for entries without `hourlyContributions` (producer returns
-            * `absent`) and while the chart is collapsed (receipt-shape
-            * on Succeeded). Owner walk #11 + #14: answers "when did each
-            * hour run, and what did each hour cost?" at a glance. */}
+            * `absent`) and while the chart is collapsed — "View details"
+            * expands/collapses the trajectory AND the strip together
+            * (receipt-shape on Succeeded). Owner walk #11 + #14: answers
+            * "when did each hour run, and what did each hour cost?". */}
           {!chartCollapsed && hourlyStrip.mode === 'present' && (
-            <HourlyStrip data={hourlyStrip} timeZone={timeZone} costUnit={costUnit} />
+            <HourlyStripSection data={hourlyStrip} entry={entry} chart={chartData} timeZone={timeZone} />
           )}
         </section>
       )}

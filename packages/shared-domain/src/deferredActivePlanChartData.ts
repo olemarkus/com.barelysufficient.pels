@@ -68,6 +68,8 @@ const emptyChart = (
   windowEndMs,
   plannedOriginal: [],
   plannedFinal: null,
+  plannedVisible: [],
+  replanned: false,
   observed: [],
   runBands: [],
   target,
@@ -176,6 +178,10 @@ export const resolveActivePlanChartData = (
     windowEndMs,
     plannedOriginal: planned,
     plannedFinal: null,
+    // A live plan has one staircase and no replan overlay — the visible
+    // staircase IS the live plan.
+    plannedVisible: planned,
+    replanned: false,
     observed,
     // Bands shade the live schedule's booked hours — present even when the
     // planned staircase couldn't be drawn (no usable rate), since the booked

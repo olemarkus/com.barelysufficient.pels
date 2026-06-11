@@ -5900,6 +5900,57 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   touch-action: pan-y;
 }
 
+/* History-detail trajectory chart ("Did it heat up as planned?"). Shorter
+ * than the legacy 240 px `.deadline-horizon-chart` — the ECharts legend rows
+ * moved into the DOM legend above the chart. Height must match
+ * HISTORY_TRAJECTORY_CHART_HEIGHT in views/DeadlinePlanHistoryDetail.tsx
+ * (the cold-mount fallback size). */
+.deadline-history-trajectory-chart {
+  width: 100%;
+  min-width: 0;
+  height: 180px;
+  touch-action: pan-y;
+}
+
+/* Compact DOM legend row above the history trajectory chart:
+ * Measured / Planned / Target 65.0 °C. Wraps cleanly at 320 px. */
+.deadline-history-legend {
+  display: flex;
+  flex-flow: row wrap;
+  gap: var(--spacing-2) var(--spacing-4);
+  align-items: center;
+  font-size: var(--pels-text-supporting-font-size);
+  color: var(--pels-text-supporting-color);
+}
+
+.deadline-history-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+/* Line-sample swatches. Heights express the series stroke weights (measured
+ * 2.5 px accent, planned 1.5 px muted, target dashed muted) via border-top
+ * so the swatch reads as the actual line. */
+.deadline-history-legend__swatch {
+  display: inline-block;
+  width: 1.25em;
+  height: 0;
+}
+
+.deadline-history-legend__swatch[data-series="measured"] {
+  border-top: 3px solid var(--color-role-accent);
+  border-radius: var(--radius-xs);
+}
+
+.deadline-history-legend__swatch[data-series="planned"] {
+  border-top: 2px solid var(--pels-text-supporting-color);
+}
+
+.deadline-history-legend__swatch[data-series="target"] {
+  border-top: 2px dashed var(--pels-text-supporting-color);
+}
+
 /* Pinned hour readout under the schedule chart. Card-inset surface one tier
  * above the card so it reads as the chart's caption slot; fixed min-height
  * (touch-target token) so swapping one-line and two-line content never
@@ -6004,6 +6055,13 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   background: var(--pels-chart-hour-tone-expensive);
 }
 
+/* Dashed sample for the "planned, didn’t run" legend chip — mirrors the
+ * skipped-bucket outline grammar on the strip itself. */
+.hourly-strip__legend-bar[data-tone="skipped"] {
+  background: transparent;
+  border: 1px dashed var(--pels-chart-hour-tone-skipped-outline);
+}
+
 .hourly-strip__legend-label {
   color: inherit;
 }
@@ -6024,6 +6082,27 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   list-style: none;
 }
 
+/* Hour labels under the buckets ("19 … 00", mock-style). Mirrors the bar
+ * row's flex distribution + gap so each label centres under its bucket; the
+ * producer thins the cadence (first/last/every-2nd) when the buckets get
+ * narrow, emitting empty cells for unlabelled buckets. */
+.hourly-strip__axis {
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  gap: 2px;
+  margin-top: var(--spacing-1);
+}
+
+.hourly-strip__axis-label {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-align: center;
+  font-size: var(--font-size-xs);
+  color: var(--pels-text-supporting-color);
+}
+
 .hourly-strip__bucket {
   /* Each bucket fills 1/N of the row width — flex distribution keeps the
    * strip aligned across DST 23/25-hour windows without re-deriving width. */
@@ -6034,11 +6113,10 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   height: 100%;
   min-width: 0;
   position: relative;
-  /* Each bucket is its own hover/focus target. The token-styled `::after`
-   * tooltip (see below) replaces the browser's native `title` rendering so
-   * the popover matches the dark chart-tooltip style used by the
-   * trajectory chart directly above. Pointer-coarse users can tap (focus
-   * via `tabIndex={0}`) to surface it. */
+  /* Tap target: selecting a bucket drives the pinned readout below the
+   * strip (the floating tooltip was retired with the Phase 1B one-grammar
+   * pass — same interaction as the trajectory chart above). */
+  cursor: pointer;
   outline: none;
 }
 
@@ -6048,36 +6126,24 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   border-radius: var(--radius-xs);
 }
 
-/* Token-styled hover/focus tooltip. Reuses the same chart-tooltip token
- * family the ECharts trajectory tooltip consumes (see
- * `usageDayChartEcharts.ts` / `powerWeekChartEcharts.ts`) so the two
- * popovers read as the same primitive. Rendered via `::after` with
- * `attr(data-tooltip)` content; suppressed when the bucket has no
- * tooltip text (gap buckets without delivered/planned hours). */
-.hourly-strip__bucket[data-tooltip]:where(:hover, :focus-visible)::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  bottom: calc(100% + var(--spacing-1));
-  left: 50%;
-  transform: translateX(-50%);
-  padding: var(--spacing-1) var(--spacing-2);
-  background: var(--pels-chart-tooltip-bg);
-  color: var(--pels-chart-tooltip-text);
-  border: 1px solid var(--pels-chart-tooltip-border);
-  border-radius: var(--radius-sm);
-  font-size: var(--font-size-xs);
-  line-height: var(--font-line-height-tight);
-  white-space: nowrap;
-  pointer-events: none;
-  z-index: 10;
-}
-
 .hourly-strip__bar {
   display: block;
   width: 100%;
+  /* Baseline tick: even a zero-height gap bucket keeps a sliver of bar so
+   * the selection outline below has something visible to hug. */
+  min-height: 2px;
   border-radius: var(--radius-xs);
   background: var(--pels-surface-container-high);
   transition: background var(--transition-fast);
+}
+
+/* Selected bucket: visible outline hugging the BAR fill — not the full 64 px
+ * column, which read as a phantom full-height value on short bars. Zero/gap
+ * buckets keep a 2 px baseline tick via the bar's `min-height` above, so the
+ * selection stays visible on them too. */
+.hourly-strip__bucket[data-selected="true"] .hourly-strip__bar {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
 }
 
 .hourly-strip__bucket[data-tone="cheap"] .hourly-strip__bar {
@@ -6098,18 +6164,15 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   background: transparent;
 }
 
-/* Planned-but-skipped: dashed 1 px outline at the baseline, no fill. Reads
- * as "schedule said yes, machinery did not" — restraint, not action. */
-.hourly-strip__bucket[data-outline="true"]::after {
-  content: "";
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 8px;
+/* Planned-but-skipped: dashed 1 px outline box at the PLANNED kWh height
+ * (the view sizes the bar from the bucket's planned energy), no fill. Reads
+ * as "schedule said yes, machinery did not" — restraint, not action. The
+ * 8 px min-height keeps a zero-planned outline visible as the old baseline
+ * sliver. */
+.hourly-strip__bucket[data-outline="true"] .hourly-strip__bar {
+  background: transparent;
+  min-height: 8px;
   border: 1px dashed var(--pels-chart-hour-tone-skipped-outline);
-  border-radius: var(--radius-xs);
-  pointer-events: none;
 }
 
 /* Soft accent glow on the single cheapest delivered hour. "This is the
@@ -6125,6 +6188,13 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   .hourly-strip__bar {
     transition: none;
   }
+}
+
+/* Second question title inside the chart card ("When did each hour run, and
+ * what did it cost?") — breathing room above so the strip reads as its own
+ * section while staying on the shared time axis. */
+.plan-history-detail__strip-title {
+  margin-top: var(--spacing-3);
 }
 
 .plan-inputs__list {
@@ -7496,6 +7566,19 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   --pels-md-on-secondary: var(--color-base-accent-on);
   --pels-md-on-surface-variant: var(--color-semantic-text-secondary);
   --pels-md-on-error: var(--color-base-accent-on);
+}
+
+/* M3 switch: the component's default unselected track reads off
+ * `--md-sys-color-surface-container-highest`, which sits within a step of the
+ * PELS dark card surfaces — an unselected switch (e.g. "Compare with initial
+ * plan", the Budget toggles) was nearly invisible at rest. Bind the
+ * unselected track/outline/handle to tokens with real contrast against the
+ * card so the off state is discoverable. Token-only per
+ * `feedback_design_tokens`. */
+md-switch {
+  --md-switch-track-color: var(--pels-surface-container-high);
+  --md-switch-track-outline-color: var(--pels-md-outline);
+  --md-switch-handle-color: var(--pels-md-on-surface-variant);
 }
 
 /* Switch row: switch on the left, label + hint stacked beside it.

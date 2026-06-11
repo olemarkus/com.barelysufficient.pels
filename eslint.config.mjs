@@ -660,10 +660,13 @@ export default tseslint.config(
     // 555 for cost-display provenance: each cost line now resolves the entry's
     // RECORDED `CostDisplay` (so a scheme switch can't relabel an archived
     // figure) and the ISO-week roll-up sums per-entry display cost + resolves a
-    // heading unit for mixed-scheme weeks. Reinforces the split-out target.
+    // heading unit for mixed-scheme weeks. Bumped to 560 for the Phase 1B
+    // receipt-first cost narrative (the Succeeded chip's avg + delivered
+    // fragments); the figure formatting itself lives in the strings module.
+    // Reinforces the split-out target.
     files: ['packages/shared-domain/src/deferredPlanHistoryReceipt.ts'],
     rules: {
-      'max-lines': ['warn', { max: 555, skipBlankLines: true, skipComments: true }],
+      'max-lines': ['warn', { max: 560, skipBlankLines: true, skipComments: true }],
     },
   },
   {

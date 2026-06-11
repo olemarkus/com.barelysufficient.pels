@@ -372,6 +372,28 @@ The live smart-task detail page renders two question-titled chart cards. All str
 
 **Queued "why" subline** (hero, below the headline): `Cheaper than now — starts at HH:MM.` may only render when the producer-verified comparison holds (planned-hours average price strictly below the current hour's price). Otherwise the non-comparative form `Scheduled for the cheapest hours it can use — starts at HH:MM.` renders — "it can use" is the trust caption's eligibility vocabulary, and the claim is true by construction (the planner fills cheapest-first among eligible hours) without comparing to now. Never state "cheaper than now" unverified — the schedule chart below would show the disproof.
 
+### Smart task history detail (receipt-first)
+
+The finalized-run detail page (chart-overhaul Phase 1B). All strings live in `packages/shared-domain/src/deferredPlanHistoryDetailInteraction.ts`, `deferredPlanHistoryChartData.ts` (`historyDetailChartLabels`), and `deferredPlanHistoryReceipt.ts` so the UI and runtime log breadcrumbs share one vocabulary.
+
+**Card titles** (question-shaped, like the live page):
+
+- Trajectory card: `Did it heat up as planned?` / `Did it charge as planned?` (kind-aware; replaces the retired `Progress history`). Legacy v3 entries keep `Scheduled vs observed`.
+- Hourly strip: `When did each hour run, and what did it cost?` — and the title's promise is paid by the strip's pinned readout (per-hour cost on tap), never left rhetorical.
+
+**Hero (Succeeded, receipt-first)**: outcome chip + headline + the 3-row receipt timeline (`Started` / `Largest planned hour` / `Ready`) + the cost narrative line `≈ 3.10 kr · 0.52 kr/kWh on average · 6.0 kWh delivered` (fragments suppress individually when data is missing; minor-unit currencies render whole integers). `View details` expands the trajectory chart AND the hourly strip together. Missed keeps the diagnosis-first shape (charts expanded, shortfall chip + Why + recourse) and the whole-kr `≈ 12 kr spent` cost chip — `spent` names what the figure is (money already spent on the failed run), and the shortfall chip already carries the delivered figure.
+
+**Trajectory legend** (compact DOM row, not an ECharts legend): `Measured` / `Planned` / `Target {value}` (`formatSmartTaskTargetLabel`). The y-axis labels only the floor and mid ticks — the target value is carried by the legend item, never an axis tick (the 67.0/65.0 collision fix).
+
+**Plan-change marker** (revised runs only): on-chart label `Plan changed HH:MM` at the first post-start revision. The default view shows ONLY the final staircase; the `Compare with initial plan` switch (inside the expanded details) reveals the dashed original. Dash grammar: dashed = the superseded initial plan here, and "Planned, didn’t run" on the strip — planned bands stay solid tint.
+
+**Pinned readouts** (the live page's primitive — no floating tooltips on touch, one interaction grammar):
+
+- Trajectory: `21:00 · Measured 56.1 °C · Planned 56.5 °C`; when the hour contains the plan change, the second line is `Plan changed here — {revision-reason label, lowercased mid-sentence} ({±Nh diff})`, e.g. `Plan changed here — tomorrow’s prices published (+3h −3h)`. Unknown reason codes fall back to the bare `Plan changed here` (no misattributed diff). Default selection: the plan-change hour, else the met hour, else the last measured hour.
+- Strip: `23:00 · 1.1 kWh · 0.48 kr/kWh ≈ 0.53 kr` (price scaled by the entry's RECORDED cost display) with a second-line verdict: `Ran as planned`, `Skipped at the HH:MM plan change — {reason}` (only when exactly one recorded replan makes the attribution honest; a bare `schedule_revised` reason keeps the stem only — "plan change — schedule revised" is a tautology), the neutral `Planned, didn’t run`, or `Not scheduled` (gap hours). Default selection: the tallest delivered bar.
+
+**Strip legend chips**: `Price low` / `Price normal` / `Price high` + the dashed sample `Planned, didn’t run` — the SAME string (one phrasing + casing) as the readout's skipped verdict. The colour names the price level; the bar height is energy.
+
 ## Mode label
 
 The Settings page renders the current operating mode as a single selector

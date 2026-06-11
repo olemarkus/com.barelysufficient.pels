@@ -11,22 +11,32 @@ import { toResolvedPlanHistoryEntry } from '../../shared-domain/src/deferredPlan
 // Mock the ECharts registry to avoid mounting real ECharts in JSDOM. The
 // `useEchartsMount` stub mirrors the production hook's shape — it still runs
 // `buildOption(container)` inside an effect so the option-builder code paths
-// the view depends on are exercised — but binds to a stub chart instead of a
-// real instance.
+// the view depends on are exercised, and it invokes `onChartInit` with a
+// stub chart (the trajectory section's scrub wiring + hairline effect read
+// the handle) — but binds to a stub instead of a real instance.
 vi.mock('../src/ui/echartsRegistry.ts', () => ({
   encodeHtml: (value: string) => value,
   useEchartsMount: (params: {
     buildOption: (container: HTMLDivElement) => unknown;
-    onAfterRender?: (chart: unknown, container: HTMLDivElement) => void;
+    onChartInit?: (chart: unknown, container: HTMLDivElement) => void;
     deps: ReadonlyArray<unknown>;
   }) => {
     const ref = useRef<HTMLDivElement>(null);
     useEffect(() => {
       const container = ref.current;
       if (!container) return;
-      const chart = { setOption: vi.fn(), resize: vi.fn(), dispose: vi.fn() };
+      const chart = {
+        setOption: vi.fn(),
+        resize: vi.fn(),
+        dispose: vi.fn(),
+        isDisposed: () => false,
+        dispatchAction: vi.fn(),
+        getZr: () => ({ on: vi.fn() }),
+        containPixel: () => false,
+        convertFromPixel: () => null,
+      };
       chart.setOption(params.buildOption(container));
-      params.onAfterRender?.(chart, container);
+      params.onChartInit?.(chart, container);
     }, params.deps);
     return ref;
   },
@@ -74,13 +84,12 @@ const buildEntry = (
 
 const mount = async (
   entry: ResolvedDeferredObjectivePlanHistoryEntry,
-  options: { costUnit?: string } = {},
 ): Promise<HTMLElement> => {
   const root = document.createElement('div');
   document.body.appendChild(root);
   const { DeadlinePlanHistoryDetail } = await import('../src/ui/views/DeadlinePlanHistoryDetail.tsx');
   render(
-    h(DeadlinePlanHistoryDetail, { entry, timeZone: 'UTC', costUnit: options.costUnit ?? '' }),
+    h(DeadlinePlanHistoryDetail, { entry, timeZone: 'UTC' }),
     root,
   );
   return root;
@@ -88,12 +97,11 @@ const mount = async (
 
 const stubPalette = {
   device: '#0ff', deviceMuted: '#222', observed: '#0f0',
+  // Distinct from `observed` so the met-ring test can prove the marker reads
+  // the accent role, not the planner-state observed colour.
+  accent: '#abcdef',
   text: '#fff', muted: '#888', grid: '#333',
   tooltipBackground: '#000', tooltipText: '#fff', tooltipBorder: '#444',
-  // Distinct from `observed` so the markPoint pinning test can prove the
-  // marker reads from the neutral on-good token, not the planner-state
-  // observed colour.
-  statusOnGood: '#abcdef',
 };
 
 describe('DeadlinePlanHistoryDetail', () => {
@@ -681,28 +689,88 @@ describe('DeadlinePlanHistoryDetail', () => {
     expect(option.legend.data.map((l) => l.name)).toContain('Measured Charging');
   });
 
-  // v2.7.2 PR 4 — actual-vs-plan trajectory chart shape. The chart's y-axis
-  // moves to the target unit (°C / %), planned hours render as a stepped
-  // staircase derived from `kwhPerUnitMean`, observed samples render as a
-  // line + points, and the target reference + metAtMs marker land on the
-  // chart.
-  describe('actual-vs-plan trajectory chart (PR 4)', () => {
-    it('renders the trajectory chart and the "Progress history" title for entries with progressSamples', async () => {
-      const revision = buildRevision({ kwhPerUnitMean: 0.5 });
+  // Receipt-first trajectory card (chart-overhaul Phase 1B). The y-axis is
+  // unit space (°C / %) with floor/mid ticks only, the card title is the
+  // kind-aware question, the ECharts legend/tooltip are retired in favour of
+  // a compact DOM legend + the pinned readout, and revised runs show only
+  // the final staircase by default with a "Plan changed HH:MM" marker + a
+  // "Compare with initial plan" toggle.
+  describe('actual-vs-plan trajectory card (Phase 1B)', () => {
+    const trajectoryRevision = (
+      overrides: Partial<DeferredObjectivePlanHistoryRevisionSnapshot> = {},
+    ) => buildRevision({
+      kwhPerUnitMean: 0.5,
+      ...overrides,
+    });
+    const trajectorySamples = [
+      { atMs: DEADLINE_MS - 3 * HOUR_MS, valueC: 50, valuePercent: null },
+      { atMs: DEADLINE_MS - 2 * HOUR_MS, valueC: 54, valuePercent: null },
+      { atMs: DEADLINE_MS - HOUR_MS, valueC: 58, valuePercent: null },
+    ];
+    const buildOptionParams = async (
+      entry: ResolvedDeferredObjectivePlanHistoryEntry,
+      showInitialPlan = false,
+    ) => {
+      const { resolveHistoryDetailChartData } = await import('../../shared-domain/src/deferredPlanHistory');
+      const { resolveHistoryPlanChangeMarker, resolveHistoryRunBands } =
+        await import('../../shared-domain/src/deferredPlanHistoryDetailInteraction');
+      const data = resolveHistoryDetailChartData(entry);
+      return {
+        data,
+        marker: resolveHistoryPlanChangeMarker(entry, data, 'UTC'),
+        runBands: resolveHistoryRunBands(entry, data),
+        showInitialPlan,
+        palette: stubPalette,
+        timeZone: 'UTC',
+        chartWidth: 480,
+      };
+    };
+
+    it('renders the kind-aware question title for trajectory entries', async () => {
+      const revision = trajectoryRevision();
       const root = await mount(buildEntry({
         outcome: 'missed', // missed → chart expanded by default
         finalProgressC: 38,
         originalPlan: revision,
         finalPlan: revision,
-        progressSamples: [
-          { atMs: DEADLINE_MS - 3 * HOUR_MS, valueC: 50, valuePercent: null },
-          { atMs: DEADLINE_MS - 2 * HOUR_MS, valueC: 54, valuePercent: null },
-          { atMs: DEADLINE_MS - HOUR_MS, valueC: 58, valuePercent: null },
-        ],
+        progressSamples: trajectorySamples,
       }));
-      expect(root.textContent).toContain('Progress history');
+      expect(root.textContent).toContain('Did it heat up as planned?');
+      expect(root.textContent).not.toContain('Progress history');
       expect(root.textContent).not.toContain('Scheduled vs observed');
-      expect(root.querySelector('.deadline-horizon-chart')).not.toBeNull();
+      expect(root.querySelector('.deadline-history-trajectory-chart')).not.toBeNull();
+    });
+
+    it('renders the compact DOM legend row: Measured / Planned / Target {value}', async () => {
+      const revision = trajectoryRevision();
+      const root = await mount(buildEntry({
+        outcome: 'missed',
+        finalProgressC: 38,
+        targetTemperatureC: 65,
+        originalPlan: revision,
+        finalPlan: revision,
+        progressSamples: trajectorySamples,
+      }));
+      const legend = root.querySelector('.deadline-history-legend');
+      expect(legend).not.toBeNull();
+      const items = [...legend!.querySelectorAll('.deadline-history-legend__item')]
+        .map((item) => item.textContent?.trim());
+      expect(items).toEqual(['Measured', 'Planned', 'Target 65.0 °C']);
+    });
+
+    it('renders the pinned readout row with the per-hour Measured · Planned line', async () => {
+      const revision = trajectoryRevision();
+      const root = await mount(buildEntry({
+        outcome: 'missed',
+        finalProgressC: 38,
+        originalPlan: revision,
+        finalPlan: revision,
+        progressSamples: trajectorySamples,
+      }));
+      const readout = root.querySelector('.deadline-readout');
+      expect(readout).not.toBeNull();
+      expect(readout!.querySelector('.deadline-readout__primary')?.textContent)
+        .toMatch(/^\d{2}:\d{2} · Measured /);
     });
 
     it('falls back to the legacy "Scheduled vs observed" card title when neither samples nor rate were captured', async () => {
@@ -719,19 +787,21 @@ describe('DeadlinePlanHistoryDetail', () => {
       }));
       expect(root.textContent).toContain('Scheduled vs observed');
       expect(root.textContent).toContain('Schedule only — observations not recorded for this run.');
+      // Legacy fallback path stays exactly as before Phase 1B: no DOM
+      // legend, no readout, no compare toggle.
+      expect(root.querySelector('.deadline-history-legend')).toBeNull();
+      expect(root.querySelector('.deadline-readout')).toBeNull();
+      expect(root.querySelector('.plan-history-detail__compare-row')).toBeNull();
     });
 
-    it('builds a time-axis trajectory option with planned staircase, observed line, and target reference', async () => {
+    it('builds a time-axis option with the planned staircase, measured line, and target — no legend, no tooltip', async () => {
       const { buildHistoryDetailTrajectoryOption } =
         await import('../src/ui/views/DeadlinePlanHistoryDetail.tsx');
-      const { resolveHistoryDetailChartData } =
-        await import('../../shared-domain/src/deferredPlanHistory');
-      const revision = buildRevision({
+      const revision = trajectoryRevision({
         hours: [
           { startsAtMs: DEADLINE_MS - 2 * HOUR_MS, plannedKWh: 1 },
           { startsAtMs: DEADLINE_MS - HOUR_MS, plannedKWh: 1 },
         ],
-        kwhPerUnitMean: 0.5,
       });
       const entry = buildEntry({
         outcome: 'met',
@@ -747,23 +817,22 @@ describe('DeadlinePlanHistoryDetail', () => {
           { atMs: DEADLINE_MS - HOUR_MS, valueC: 60, valuePercent: null },
         ],
       });
-      const chartData = resolveHistoryDetailChartData(entry);
-      const option = buildHistoryDetailTrajectoryOption(
-        chartData,
-        stubPalette,
-        'UTC',
-        'Measured Heating',
-      ) as {
+      const option = buildHistoryDetailTrajectoryOption(await buildOptionParams(entry)) as {
         xAxis: { type: string; min: number; max: number };
-        series: Array<{ name: string; type: string; step?: string }>;
-        legend: { data: Array<{ name: string }> };
+        legend?: unknown;
+        tooltip?: unknown;
+        series: Array<{ name?: string; type: string; step?: string }>;
       };
       expect(option.xAxis.type).toBe('time');
       expect(option.xAxis.min).toBe(DEADLINE_MS - 2 * HOUR_MS);
       expect(option.xAxis.max).toBe(DEADLINE_MS);
+      // No ECharts legend / floating tooltip — DOM legend + pinned readout
+      // are the one interaction grammar.
+      expect(option.legend).toBeUndefined();
+      expect(option.tooltip).toBeUndefined();
       const seriesNames = option.series.map((s) => s.name);
       expect(seriesNames).toContain('Planned trajectory');
-      expect(seriesNames).toContain('Measured Heating');
+      expect(seriesNames).toContain('Measured');
       expect(seriesNames).toContain('Target');
       // Planned series must be a stepped line so the horizontal-hour
       // semantic reads correctly.
@@ -772,92 +841,11 @@ describe('DeadlinePlanHistoryDetail', () => {
       expect(plannedSeries?.step).toBe('end');
     });
 
-    it('exposes the metAtMs marker on the planned staircase for met outcomes', async () => {
+    it('shows only the final staircase by default on revised runs; the toggle reveals the dashed original', async () => {
       const { buildHistoryDetailTrajectoryOption } =
         await import('../src/ui/views/DeadlinePlanHistoryDetail.tsx');
-      const { resolveHistoryDetailChartData } =
-        await import('../../shared-domain/src/deferredPlanHistory');
-      const revision = buildRevision({ kwhPerUnitMean: 0.5 });
-      const entry = buildEntry({
-        outcome: 'met',
-        metAtMs: DEADLINE_MS - HOUR_MS,
-        originalPlan: revision,
-        finalPlan: revision,
-        progressSamples: [
-          { atMs: DEADLINE_MS - 2 * HOUR_MS, valueC: 50, valuePercent: null },
-          { atMs: DEADLINE_MS - HOUR_MS, valueC: 65, valuePercent: null },
-        ],
-      });
-      const chartData = resolveHistoryDetailChartData(entry);
-      const option = buildHistoryDetailTrajectoryOption(
-        chartData,
-        stubPalette,
-        'UTC',
-        'Measured Heating',
-      ) as {
-        series: Array<{ name: string; markPoint?: { data: Array<{ name: string; coord: number[] }> } }>;
-      };
-      const plannedSeries = option.series.find((s) => s.name === 'Planned trajectory');
-      expect(plannedSeries?.markPoint?.data[0]?.name).toBe('Reached target');
-      expect(plannedSeries?.markPoint?.data[0]?.coord[0]).toBe(DEADLINE_MS - HOUR_MS);
-      expect(plannedSeries?.markPoint?.data[0]?.coord[1]).toBe(65);
-    });
-
-    // Pins the markPoint to neutral tokens (statusOnGood fill + text stroke)
-    // rather than the planner-state pair (`observed` fill + `text` stroke).
-    // The marker only renders on `good` heroes today, but a future variant
-    // attaching `metAtMs` to a non-`good` tone would otherwise silently
-    // mis-contrast against a warn-tone gradient. Asserts both the original
-    // (single-staircase) and revised (two-staircase) branches read from the
-    // same neutral tokens.
-    it('pins the metAtMs markPoint to neutral status-on-good tokens (tone-aware)', async () => {
-      const { buildHistoryDetailTrajectoryOption } =
-        await import('../src/ui/views/DeadlinePlanHistoryDetail.tsx');
-      const { resolveHistoryDetailChartData } =
-        await import('../../shared-domain/src/deferredPlanHistory');
-      const revision = buildRevision({ kwhPerUnitMean: 0.5 });
-      const entry = buildEntry({
-        outcome: 'met',
-        metAtMs: DEADLINE_MS - HOUR_MS,
-        originalPlan: revision,
-        finalPlan: revision,
-        progressSamples: [
-          { atMs: DEADLINE_MS - 2 * HOUR_MS, valueC: 50, valuePercent: null },
-          { atMs: DEADLINE_MS - HOUR_MS, valueC: 65, valuePercent: null },
-        ],
-      });
-      const chartData = resolveHistoryDetailChartData(entry);
-      const option = buildHistoryDetailTrajectoryOption(
-        chartData,
-        stubPalette,
-        'UTC',
-        'Measured Heating',
-      ) as {
-        series: Array<{
-          name: string;
-          markPoint?: { itemStyle?: { color?: string; borderColor?: string } };
-        }>;
-      };
-      const planned = option.series.find((s) => s.name === 'Planned trajectory');
-      // Marker fill must be the neutral on-good token (stubbed `#abcdef`),
-      // NOT the planner-state `observed` green (`#0f0`). Stroke matches
-      // `palette.text` (= `--pels-text-primary` in the live palette).
-      expect(planned?.markPoint?.itemStyle?.color).toBe('#abcdef');
-      expect(planned?.markPoint?.itemStyle?.color).not.toBe('#0f0');
-      expect(planned?.markPoint?.itemStyle?.borderColor).toBe('#fff');
-    });
-
-    it('pins the revised-overlay metAtMs markPoint to the same neutral tokens', async () => {
-      const { buildHistoryDetailTrajectoryOption } =
-        await import('../src/ui/views/DeadlinePlanHistoryDetail.tsx');
-      const { resolveHistoryDetailChartData } =
-        await import('../../shared-domain/src/deferredPlanHistory');
-      const original = buildRevision({ kwhPerUnitMean: 0.5 });
-      // Distinct revised snapshot (more hours) so the trajectory has a
-      // second-staircase overlay and the revised branch's markPoint is the
-      // one that carries the dot.
-      const revised = buildRevision({
-        kwhPerUnitMean: 0.5,
+      const original = trajectoryRevision();
+      const revised = trajectoryRevision({
         hours: [
           { startsAtMs: DEADLINE_MS - 2 * HOUR_MS, plannedKWh: 1 },
           { startsAtMs: DEADLINE_MS - HOUR_MS, plannedKWh: 1.5 },
@@ -866,42 +854,37 @@ describe('DeadlinePlanHistoryDetail', () => {
       const entry = buildEntry({
         outcome: 'met',
         metAtMs: DEADLINE_MS - HOUR_MS,
+        startedAtMs: DEADLINE_MS - 4 * HOUR_MS,
         originalPlan: original,
         finalPlan: revised,
+        revisions: [
+          { atMs: DEADLINE_MS - 3 * HOUR_MS, reasonId: 'prices_revised', hoursAdded: 1, hoursRemoved: 1 },
+        ],
         progressSamples: [
-          { atMs: DEADLINE_MS - 2 * HOUR_MS, valueC: 50, valuePercent: null },
+          { atMs: DEADLINE_MS - 4 * HOUR_MS, valueC: 50, valuePercent: null },
           { atMs: DEADLINE_MS - HOUR_MS, valueC: 65, valuePercent: null },
         ],
       });
-      const chartData = resolveHistoryDetailChartData(entry);
-      const option = buildHistoryDetailTrajectoryOption(
-        chartData,
-        stubPalette,
-        'UTC',
-        'Measured Heating',
-      ) as {
-        series: Array<{
-          name: string;
-          markPoint?: { itemStyle?: { color?: string; borderColor?: string } };
-        }>;
+      const collapsed = buildHistoryDetailTrajectoryOption(await buildOptionParams(entry)) as {
+        series: Array<{ name?: string; lineStyle?: { type?: string }; markLine?: { data: Array<{ xAxis: number }>; label: { formatter: string } } }>;
       };
-      const revisedSeries = option.series.find((s) => s.name === 'Revised trajectory');
-      expect(revisedSeries?.markPoint?.itemStyle?.color).toBe('#abcdef');
-      expect(revisedSeries?.markPoint?.itemStyle?.borderColor).toBe('#fff');
+      expect(collapsed.series.map((s) => s.name)).not.toContain('Initial plan');
+      // The plan-change marker pins the replan instant with the producer label.
+      const planned = collapsed.series.find((s) => s.name === 'Planned trajectory');
+      expect(planned?.markLine?.data[0]?.xAxis).toBe(DEADLINE_MS - 3 * HOUR_MS);
+      expect(planned?.markLine?.label.formatter).toMatch(/^Plan changed \d{2}:\d{2}$/);
+      const compared = buildHistoryDetailTrajectoryOption(await buildOptionParams(entry, true)) as {
+        series: Array<{ name?: string; lineStyle?: { type?: string } }>;
+      };
+      const initial = compared.series.find((s) => s.name === 'Initial plan');
+      expect(initial).toBeDefined();
+      expect(initial?.lineStyle?.type).toBe('dashed');
     });
 
-    // Pins the trajectory grid.top to 60 px so the 4-entry legend (Planned /
-    // Revised / Measured / Target) has room to wrap to two rows at 320 px
-    // without crowding the chart-top edge. Regression-protect: a future
-    // tweak that drops the reserve back to 44 will fail this test, signalling
-    // a 320 px Playwright snapshot is needed to confirm whatever new value
-    // still clears the wrap.
-    it('reserves 60 px grid.top on the trajectory chart for 2-line legend wrap', async () => {
+    it('renders the met marker as an accent ring sitting on the measured line', async () => {
       const { buildHistoryDetailTrajectoryOption } =
         await import('../src/ui/views/DeadlinePlanHistoryDetail.tsx');
-      const { resolveHistoryDetailChartData } =
-        await import('../../shared-domain/src/deferredPlanHistory');
-      const revision = buildRevision({ kwhPerUnitMean: 0.5 });
+      const revision = trajectoryRevision();
       const entry = buildEntry({
         outcome: 'met',
         metAtMs: DEADLINE_MS - HOUR_MS,
@@ -912,17 +895,54 @@ describe('DeadlinePlanHistoryDetail', () => {
           { atMs: DEADLINE_MS - HOUR_MS, valueC: 65, valuePercent: null },
         ],
       });
-      const chartData = resolveHistoryDetailChartData(entry);
-      const option = buildHistoryDetailTrajectoryOption(
-        chartData,
-        stubPalette,
-        'UTC',
-        'Measured Heating',
-      ) as { grid: { top: number; bottom: number; containLabel: boolean } };
-      expect(option.grid.top).toBe(60);
+      const option = buildHistoryDetailTrajectoryOption(await buildOptionParams(entry)) as {
+        series: Array<{
+          name?: string;
+          type?: string;
+          data?: Array<[number, number]>;
+          itemStyle?: { color?: string; borderColor?: string };
+        }>;
+      };
+      const ring = option.series.find((s) => s.name === 'Reached target');
+      expect(ring?.type).toBe('scatter');
+      expect(ring?.data?.[0]).toEqual([DEADLINE_MS - HOUR_MS, 65]);
+      // Transparent fill + accent stroke = a ring punched out of the line.
+      expect(ring?.itemStyle?.color).toBe('transparent');
+      expect(ring?.itemStyle?.borderColor).toBe('#abcdef');
+    });
+
+    it('labels only the floor and mid y-ticks — the target is never an axis tick', async () => {
+      const { buildHistoryDetailTrajectoryOption } =
+        await import('../src/ui/views/DeadlinePlanHistoryDetail.tsx');
+      const revision = trajectoryRevision();
+      const entry = buildEntry({
+        outcome: 'met',
+        metAtMs: DEADLINE_MS - HOUR_MS,
+        targetTemperatureC: 65,
+        originalPlan: revision,
+        finalPlan: revision,
+        progressSamples: [
+          { atMs: DEADLINE_MS - 2 * HOUR_MS, valueC: 50, valuePercent: null },
+          { atMs: DEADLINE_MS - HOUR_MS, valueC: 65, valuePercent: null },
+        ],
+      });
+      const option = buildHistoryDetailTrajectoryOption(await buildOptionParams(entry)) as {
+        grid: { top: number; containLabel: boolean };
+        yAxis: { min: number; max: number; interval: number; axisLabel: { formatter: (value: number) => string } };
+      };
+      const { min, max, interval, axisLabel } = option.yAxis;
+      expect(interval).toBeCloseTo((max - min) / 2);
+      const mid = (min + max) / 2;
+      expect(axisLabel.formatter(min)).not.toBe('');
+      expect(axisLabel.formatter(mid)).not.toBe('');
+      // The ceiling tick (which would sit nearest the target line) stays
+      // unlabeled — the legend's "Target 65.0 °C" carries the value.
+      expect(axisLabel.formatter(max)).toBe('');
       // `containLabel: true` is the load-bearing pattern from PR 1 that
       // gives ECharts room to auto-fit the y-axis labels; keep it pinned.
       expect(option.grid.containLabel).toBe(true);
+      // 28 px top reserve holds the "Plan changed HH:MM" marker label.
+      expect(option.grid.top).toBe(28);
     });
 
     it('uses % unit formatting for EV SoC entries', async () => {
@@ -939,8 +959,8 @@ describe('DeadlinePlanHistoryDetail', () => {
         finalProgressC: null,
         finalProgressPercent: 80,
         outcome: 'met',
-        originalPlan: buildRevision({ kwhPerUnitMean: 0.5 }),
-        finalPlan: buildRevision({ kwhPerUnitMean: 0.5 }),
+        originalPlan: trajectoryRevision(),
+        finalPlan: trajectoryRevision(),
         progressSamples: [
           { atMs: DEADLINE_MS - 2 * HOUR_MS, valueC: null, valuePercent: 30 },
           { atMs: DEADLINE_MS - HOUR_MS, valueC: null, valuePercent: 80 },
@@ -948,15 +968,40 @@ describe('DeadlinePlanHistoryDetail', () => {
       });
       const chartData = resolveHistoryDetailChartData(entry);
       expect(chartData.unit).toBe('%');
-      const option = buildHistoryDetailTrajectoryOption(
-        chartData,
-        stubPalette,
-        'UTC',
-        'Measured Charging',
-      ) as {
-        yAxis: { axisLabel: { formatter: (value: number) => string } };
+      const option = buildHistoryDetailTrajectoryOption(await buildOptionParams(entry)) as {
+        yAxis: { min: number; axisLabel: { formatter: (value: number) => string } };
       };
-      expect(option.yAxis.axisLabel.formatter(50)).toBe('50 %');
+      // Delegated to the shared formatProgressValueForUnit — "25%", no space.
+      expect(option.yAxis.axisLabel.formatter(option.yAxis.min)).toMatch(/^\d+%$/);
+    });
+
+    it('mounts the compare toggle only on revised runs', async () => {
+      const original = trajectoryRevision();
+      const revised = trajectoryRevision({
+        hours: [
+          { startsAtMs: DEADLINE_MS - 2 * HOUR_MS, plannedKWh: 1 },
+          { startsAtMs: DEADLINE_MS - HOUR_MS, plannedKWh: 1.5 },
+        ],
+      });
+      const revisedRoot = await mount(buildEntry({
+        outcome: 'missed',
+        finalProgressC: 58,
+        originalPlan: original,
+        finalPlan: revised,
+        progressSamples: trajectorySamples,
+      }));
+      const toggleRow = revisedRoot.querySelector('.plan-history-detail__compare-row');
+      expect(toggleRow).not.toBeNull();
+      expect(toggleRow!.textContent).toContain('Compare with initial plan');
+      expect(toggleRow!.querySelector('md-switch')).not.toBeNull();
+      const unrevisedRoot = await mount(buildEntry({
+        outcome: 'missed',
+        finalProgressC: 58,
+        originalPlan: original,
+        finalPlan: original,
+        progressSamples: trajectorySamples,
+      }));
+      expect(unrevisedRoot.querySelector('.plan-history-detail__compare-row')).toBeNull();
     });
 
     it('preserves the legacy bar chart for v3 entries (kWh y-axis)', async () => {
@@ -983,9 +1028,9 @@ describe('DeadlinePlanHistoryDetail', () => {
       expect(option.yAxis.axisLabel.formatter(1.2)).toContain('kWh');
     });
 
-    // Same grid.top pinning as the trajectory builder — keeps both chart
-    // option builders aligned so a future divergence between them shows up
-    // in the test suite, not in a regressed UI.
+    // Legacy grid pinning — keeps the untouched v3 chart's legend headroom
+    // from silently regressing while the trajectory chart now manages its
+    // own (legend-free) 28 px reserve.
     it('reserves 60 px grid.top on the legacy bar chart for legend-wrap headroom', async () => {
       const { buildHistoryDetailChartOption, buildHistoryDetailRows } =
         await import('../src/ui/views/DeadlinePlanHistoryDetail.tsx');
@@ -1007,13 +1052,13 @@ describe('DeadlinePlanHistoryDetail', () => {
     });
   });
 
-  describe('per-hour bar strip (v2.7.3)', () => {
-    it('renders one bucket per hour in the deadline window when hourlyContributions is present', async () => {
+  describe('per-hour bar strip (Phase 1B pinned readout)', () => {
+    const stripEntry = (overrides: Partial<DeferredObjectivePlanHistoryEntry> = {}) => {
       const startedAtMs = DEADLINE_MS - 4 * HOUR_MS;
       // Missed outcome so the chart card defaults expanded — the postmortem
       // strip is only worth rendering when the user is actively reading the
       // diagnosis, which matches the chart-expanded contract.
-      const entry = buildEntry({
+      return buildEntry({
         startedAtMs,
         outcome: 'missed',
         finalProgressC: 60,
@@ -1021,14 +1066,24 @@ describe('DeadlinePlanHistoryDetail', () => {
         // originalPlan present so `hasChartData` is true and the chart card
         // (where the strip lives) renders rather than the empty-state card.
         originalPlan: buildRevision({
-          hours: [{ startsAtMs: startedAtMs, plannedKWh: 2 }],
+          hours: [
+            { startsAtMs: startedAtMs, plannedKWh: 2 },
+            { startsAtMs: startedAtMs + 2 * HOUR_MS, plannedKWh: 1 },
+          ],
         }),
+        // Raw øre prices; the readout scales by the recorded divisor.
         hourlyContributions: [
-          { atMs: startedAtMs, deliveredKWh: 1.5, priceValue: 0.20, tone: 'cheap' },
-          { atMs: startedAtMs + HOUR_MS, deliveredKWh: 1.2, priceValue: 0.55, tone: 'normal' },
+          { atMs: startedAtMs, deliveredKWh: 1.5, priceValue: 20, tone: 'cheap' },
+          { atMs: startedAtMs + HOUR_MS, deliveredKWh: 1.2, priceValue: 55, tone: 'normal' },
         ],
+        costDisplay: { unit: 'kr', divisor: 100 },
+        ...overrides,
       });
-      const root = await mount(entry);
+    };
+
+    it('renders the question title, one bucket per hour, and no floating tooltips', async () => {
+      const root = await mount(stripEntry());
+      expect(root.textContent).toContain('When did each hour run, and what did it cost?');
       const strip = root.querySelector('.hourly-strip');
       expect(strip).not.toBeNull();
       // 4-hour window → 4 buckets, regardless of how many contributions
@@ -1038,6 +1093,12 @@ describe('DeadlinePlanHistoryDetail', () => {
       expect(buckets[0]!.getAttribute('data-tone')).toBe('cheap');
       expect(buckets[1]!.getAttribute('data-tone')).toBe('normal');
       expect(buckets[2]!.getAttribute('data-tone')).toBe('gap');
+      // The CSS-tooltip hook is retired — the pinned readout is the one
+      // interaction grammar; aria-labels stay for non-visual access.
+      for (const bucket of buckets) {
+        expect(bucket.getAttribute('data-tooltip')).toBeNull();
+        expect(bucket.getAttribute('aria-label')).toBeTruthy();
+      }
     });
 
     it('suppresses the strip on legacy v4 entries without hourlyContributions', async () => {
@@ -1049,98 +1110,86 @@ describe('DeadlinePlanHistoryDetail', () => {
       expect(root.querySelector('.hourly-strip')).toBeNull();
     });
 
-    it('writes a tooltip with time, kWh, price and planned/skipped marker', async () => {
-      const startedAtMs = DEADLINE_MS - 2 * HOUR_MS;
-      const entry = buildEntry({
-        startedAtMs,
-        outcome: 'missed',
-        finalProgressC: 60,
-        metAtMs: null,
-        originalPlan: buildRevision({
-          hours: [
-            { startsAtMs: startedAtMs, plannedKWh: 1.0 },
-            { startsAtMs: startedAtMs + HOUR_MS, plannedKWh: 1.0 },
-          ],
-        }),
-        hourlyContributions: [
-          { atMs: startedAtMs, deliveredKWh: 0.42, priceValue: 0.18, tone: 'cheap' },
-        ],
-      });
-      const root = await mount(entry, { costUnit: 'kr' });
+    it('defaults the readout to the tallest delivered bar and pays the cost promise', async () => {
+      const root = await mount(stripEntry());
+      // Default selection = tallest delivered bar (1.5 kWh at index 0).
       const buckets = root.querySelectorAll('.hourly-strip__bucket');
-      // Delivered bucket: token-styled tooltip (via `data-tooltip` + CSS
-      // `::after`, not native `title`) carries kWh + price (in display
-      // unit) + "planned". `aria-label` mirrors the same text so screen
-      // readers still announce the data. The native `title` attribute is
-      // gone — the browser's OS-themed tooltip clashed with the dark
-      // chart-tooltip rendered above the strip.
-      expect(buckets[0]!.getAttribute('title')).toBeNull();
-      const deliveredTooltip = buckets[0]!.getAttribute('data-tooltip') ?? '';
-      expect(deliveredTooltip).toContain('0.42 kWh');
-      expect(deliveredTooltip).toContain('0.18 kr');
-      expect(deliveredTooltip).toContain('planned');
-      expect(buckets[0]!.getAttribute('aria-label')).toBe(deliveredTooltip);
-      // Outlined bucket (planned but not delivered): tooltip says "skipped"
-      // and suppresses the kWh + price segments so it doesn't contradict
-      // itself (the bucket's `kwh` field still carries `plannedKWh` for
-      // bar-height context, but that detail stays out of the tooltip).
-      const skippedTooltip = buckets[1]!.getAttribute('data-tooltip') ?? '';
-      expect(skippedTooltip).toContain('skipped');
-      expect(skippedTooltip).not.toContain('kWh');
-      expect(buckets[1]!.getAttribute('data-outline')).toBe('true');
+      expect(buckets[0]!.getAttribute('data-selected')).toBe('true');
+      // Strip readout is the LAST `.deadline-readout` in the card (the
+      // trajectory's own readout renders above the strip when trajectory
+      // mode is active; this fixture is legacy mode so it is the only one).
+      const readouts = root.querySelectorAll('.deadline-readout');
+      const stripReadout = readouts[readouts.length - 1]!;
+      // 20 raw øre at divisor 100 → 0.20 kr/kWh; × 1.5 kWh ≈ 0.30 kr.
+      expect(stripReadout.querySelector('.deadline-readout__primary')?.textContent)
+        .toBe('02:00 · 1.5 kWh · 0.20 kr/kWh ≈ 0.30 kr');
+      expect(stripReadout.querySelector('.deadline-readout__secondary')?.textContent)
+        .toBe('Ran as planned');
     });
 
-    it('renders øre prices as whole integers (minor-unit convention)', async () => {
-      const startedAtMs = DEADLINE_MS - HOUR_MS;
-      const entry = buildEntry({
-        startedAtMs,
-        outcome: 'missed',
-        finalProgressC: 60,
-        metAtMs: null,
-        originalPlan: buildRevision({
-          hours: [{ startsAtMs: startedAtMs, plannedKWh: 1.0 }],
-        }),
-        hourlyContributions: [
-          { atMs: startedAtMs, deliveredKWh: 0.42, priceValue: 17.6, tone: 'cheap' },
-        ],
-      });
-      const root = await mount(entry, { costUnit: 'øre' });
-      const bucket = root.querySelector('.hourly-strip__bucket');
-      const tooltip = bucket!.getAttribute('data-tooltip') ?? '';
-      // 17.6 øre → "18 øre" (whole-integer, no fractional øre per the
-      // PELS money convention).
-      expect(tooltip).toContain('18 øre');
-      expect(tooltip).not.toContain('17.60');
+    it('moves the readout + selection outline on tap and explains skipped hours', async () => {
+      const root = await mount(stripEntry());
+      const buckets = root.querySelectorAll<HTMLElement>('.hourly-strip__bucket');
+      // Index 2 (04:00) was planned but never delivered → outline bucket.
+      expect(buckets[2]!.getAttribute('data-outline')).toBe('true');
+      buckets[2]!.click();
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      const bucketsAfter = root.querySelectorAll<HTMLElement>('.hourly-strip__bucket');
+      expect(bucketsAfter[2]!.getAttribute('data-selected')).toBe('true');
+      expect(bucketsAfter[0]!.getAttribute('data-selected')).toBe('false');
+      const readouts = root.querySelectorAll('.deadline-readout');
+      const stripReadout = readouts[readouts.length - 1]!;
+      expect(stripReadout.querySelector('.deadline-readout__primary')?.textContent)
+        .toBe('04:00 · 1.0 kWh planned');
+      // No replan recorded → the neutral skip line, never a guessed reason.
+      expect(stripReadout.querySelector('.deadline-readout__secondary')?.textContent)
+        .toBe('Planned, didn’t run');
     });
 
-    it('renders three token-styled legend chips and a screen-reader caption', async () => {
-      const startedAtMs = DEADLINE_MS - HOUR_MS;
-      const entry = buildEntry({
-        startedAtMs,
-        outcome: 'missed',
-        finalProgressC: 60,
-        metAtMs: null,
-        originalPlan: buildRevision({
-          hours: [{ startsAtMs: startedAtMs, plannedKWh: 1.0 }],
-        }),
-        hourlyContributions: [
-          { atMs: startedAtMs, deliveredKWh: 0.5, priceValue: 0.2, tone: 'cheap' },
-        ],
-      });
-      const root = await mount(entry);
+    it('renders the price-level legend chips plus the dashed skipped sample', async () => {
+      const root = await mount(stripEntry());
       const legend = root.querySelector('.hourly-strip__legend');
       expect(legend).not.toBeNull();
-      // No `aria-hidden` on the legend wrapper any more — the chips carry
-      // visible labels, and a visually-hidden caption announces the tier
-      // vocabulary to screen readers.
-      expect(legend!.getAttribute('aria-hidden')).toBeNull();
       expect(legend!.querySelector('.visually-hidden')).not.toBeNull();
-      // Three chips, all reusing the `.plan-chip` primitive.
       const chips = legend!.querySelectorAll('.hourly-strip__legend-item');
-      expect(chips.length).toBe(3);
+      expect(chips.length).toBe(4);
+      const labels = [...chips].map((chip) => chip.textContent?.trim());
+      // One phrasing + casing with the readout's skipped verdict.
+      expect(labels).toEqual(['Price low', 'Price normal', 'Price high', 'Planned, didn’t run']);
       for (const chip of chips) {
         expect(chip.classList.contains('plan-chip')).toBe(true);
       }
+      expect(legend!.querySelector('.hourly-strip__legend-bar[data-tone="skipped"]')).not.toBeNull();
+    });
+
+    it('"View details" collapses and expands the trajectory chart AND the strip together', async () => {
+      // Succeeded outcome → receipt shape, chart card collapsed by default.
+      const revision = buildRevision({
+        kwhPerUnitMean: 0.5,
+        hours: [{ startsAtMs: DEADLINE_MS - 2 * HOUR_MS, plannedKWh: 2 }],
+      });
+      const root = await mount(buildEntry({
+        outcome: 'met',
+        metAtMs: DEADLINE_MS - HOUR_MS,
+        originalPlan: revision,
+        finalPlan: revision,
+        progressSamples: [
+          { atMs: DEADLINE_MS - 3 * HOUR_MS, valueC: 50, valuePercent: null },
+          { atMs: DEADLINE_MS - HOUR_MS, valueC: 65, valuePercent: null },
+        ],
+        hourlyContributions: [
+          { atMs: DEADLINE_MS - 2 * HOUR_MS, deliveredKWh: 1.8, priceValue: 30, tone: 'cheap' },
+        ],
+        costDisplay: { unit: 'kr', divisor: 100 },
+      }));
+      // Collapsed: neither the chart nor the strip renders.
+      expect(root.querySelector('.deadline-history-trajectory-chart')).toBeNull();
+      expect(root.querySelector('.hourly-strip')).toBeNull();
+      const toggle = root.querySelector<HTMLButtonElement>('.plan-history-detail__chart-toggle');
+      toggle!.click();
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      expect(root.querySelector('.deadline-history-trajectory-chart')).not.toBeNull();
+      expect(root.querySelector('.hourly-strip')).not.toBeNull();
     });
   });
 
