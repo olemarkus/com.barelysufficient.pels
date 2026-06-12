@@ -282,6 +282,7 @@ describe('resolveDeltaPill', () => {
 describe('resolveSplitLine', () => {
   it('renders managed and background totals when split arrays present', () => {
     const payload = buildPayload({
+      actualKWh: Array.from({ length: 24 }, (_, i) => (i < 12 ? 2.5 : 0)),
       actualControlledKWh: Array.from({ length: 24 }, (_, i) => (i < 12 ? 1.0 : null)),
       actualUncontrolledKWh: Array.from({ length: 24 }, (_, i) => (i < 12 ? 1.5 : null)),
     });
@@ -296,6 +297,11 @@ describe('resolveSplitLine', () => {
   it('includes the in-progress current bucket so the split tracks the headline', () => {
     const payload = buildPayload({
       currentBucketIndex: 12,
+      actualKWh: Array.from({ length: 24 }, (_, i) => {
+        if (i < 12) return 2.5;
+        if (i === 12) return 1.2;
+        return 0;
+      }),
       actualControlledKWh: Array.from({ length: 24 }, (_, i) => {
         if (i < 12) return 1.0;
         if (i === 12) return 0.5;
@@ -308,6 +314,35 @@ describe('resolveSplitLine', () => {
       }),
     });
     expect(resolveSplitLine(payload)).toBe('Managed 12.5 kWh · Background 18.7 kWh');
+  });
+
+  it('keeps the split summing to the rounded actual total (residual rounding)', () => {
+    // 0.14 + 0.22 = 0.36 displays as "Actual 0.4 kWh" in the chart readout,
+    // but independent one-decimal rounding would render "Managed 0.1 kWh ·
+    // Background 0.2 kWh" — a visible self-contradiction. Background must
+    // absorb the rounding residual: 0.4 − 0.1 = 0.3.
+    const payload = buildPayload({
+      currentBucketIndex: 0,
+      actualKWh: [0.36, ...Array.from({ length: 23 }, () => 0)],
+      actualControlledKWh: [0.14, ...Array.from({ length: 23 }, () => null)],
+      actualUncontrolledKWh: [0.22, ...Array.from({ length: 23 }, () => null)],
+    });
+    expect(resolveSplitLine(payload)).toBe('Managed 0.1 kWh · Background 0.3 kWh');
+  });
+
+  it('clamps rounded managed to the rounded total so no component overstates it', () => {
+    // Measurement noise can leave managed (0.35) above the actual total
+    // (0.34). Rounded independently they'd render "Managed 0.4 kWh ·
+    // Background 0.0 kWh" against a displayed "Actual 0.3 kWh" — the split
+    // would exceed the total it explains. Managed must clamp to the rounded
+    // total (0.3) first, leaving Background the 0.0 residual.
+    const payload = buildPayload({
+      currentBucketIndex: 0,
+      actualKWh: [0.34, ...Array.from({ length: 23 }, () => 0)],
+      actualControlledKWh: [0.35, ...Array.from({ length: 23 }, () => null)],
+      actualUncontrolledKWh: [0, ...Array.from({ length: 23 }, () => null)],
+    });
+    expect(resolveSplitLine(payload)).toBe('Managed 0.3 kWh · Background 0.0 kWh');
   });
 });
 

@@ -187,21 +187,37 @@ const sumElapsedNullable = (values: Array<number | null>, buckets: number): numb
   return total;
 };
 
-type SplitTotals = { managed: number; background: number };
-
-const resolveTodaySplit = (payload: DailyBudgetDayPayload): SplitTotals => {
+const resolveTodayManagedKWh = (payload: DailyBudgetDayPayload): number => {
   const elapsed = Math.max(0, payload.currentBucketIndex + 1);
   const actualTotal = sumElapsed(payload.buckets.actualKWh, elapsed);
   const managed = sumElapsedNullable(payload.buckets.actualControlledKWh, elapsed);
   const background = sumElapsedNullable(payload.buckets.actualUncontrolledKWh, elapsed);
-  if (actualTotal > 0 && managed + background < actualTotal * SPLIT_COVERAGE_THRESHOLD) {
-    return { managed: 0, background: actualTotal };
-  }
-  return { managed, background };
+  // Below the coverage threshold the split is untrustworthy — attribute
+  // everything to background (managed reads 0.0).
+  if (actualTotal > 0 && managed + background < actualTotal * SPLIT_COVERAGE_THRESHOLD) return 0;
+  return managed;
 };
 
+// One-decimal rounding matching `composeManagedBackgroundLine`'s display
+// precision, so the residual subtraction below operates on the exact figures
+// the user sees.
+const roundDisplayKWh = (value: number): number => Math.round(value * 10) / 10;
+
 export const resolveSplitLine = (payload: DailyBudgetDayPayload): string => {
-  const { managed, background } = resolveTodaySplit(payload);
+  // Residual rounding: the Budget chart readout displays the cumulative
+  // actual total at the same one-decimal precision ("Actual 0.4 kWh").
+  // Rounding Managed and Background independently can visibly contradict it
+  // (0.14 → 0.1 plus 0.22 → 0.2 while the 0.36 total displays as 0.4), so
+  // Background is the residual of the rounded total minus rounded Managed —
+  // the split always sums to the total the user sees. Managed is itself
+  // clamped to the rounded total first: when rounding pushes Managed above
+  // the displayed total (0.35 → 0.4 vs total 0.34 → 0.3), an unclamped
+  // Managed would overstate the split even with Background floored at 0.0.
+  const elapsed = Math.max(0, payload.currentBucketIndex + 1);
+  const actualTotal = sumElapsed(payload.buckets.actualKWh, elapsed);
+  const roundedTotal = Math.max(0, roundDisplayKWh(actualTotal));
+  const managed = Math.min(roundDisplayKWh(resolveTodayManagedKWh(payload)), roundedTotal);
+  const background = Math.max(0, roundDisplayKWh(roundedTotal - managed));
   return composeManagedBackgroundLine(managed, background);
 };
 

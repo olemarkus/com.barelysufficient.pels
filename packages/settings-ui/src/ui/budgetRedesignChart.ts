@@ -1,29 +1,26 @@
+// Budget-tab chart lifecycle: persistent ECharts instance per container,
+// resize wiring, and the pinned-readout interaction (chart-overhaul Phase 3).
+// Option assembly lives in `budgetRedesignChartOptions.ts`; the pure data
+// derivations and readout content bundles in `budgetRedesignChartData.ts`.
 import type { DailyBudgetDayPayload } from '../../../contracts/src/dailyBudgetTypes.ts';
-import { encodeHtml, initEcharts, type EChartsOption, type EChartsType, type SeriesOption } from './echartsRegistry.ts';
+import { initEcharts, type EChartsType } from './echartsRegistry.ts';
 import type { CostDisplay } from './dailyBudgetCost.ts';
-import { formatKWh } from './dailyBudgetFormat.ts';
-import { formatHourAxisLabel, readChartPalette, resolveLabelEvery } from './dayViewChart.ts';
-import { resolvePriceUnitLabel } from './priceUnit.ts';
 import { attachTabShownResize } from './chartVisibilityResize.ts';
+import { attachChartReadout, type ChartReadoutHandle } from './chartReadout.ts';
+import {
+  buildBudgetHourlyReadoutBundle,
+  buildBudgetProgressReadoutBundle,
+  type BudgetRedesignDayView,
+} from './budgetRedesignChartData.ts';
+import {
+  buildHourlyOption,
+  buildProgressOption,
+  READOUT_MARKER_SERIES_ID,
+  resolveBudgetChartPalette,
+} from './budgetRedesignChartOptions.ts';
 
 export type BudgetRedesignChartMode = 'progress' | 'hourlyPlan';
-export type BudgetRedesignDayView = 'today' | 'tomorrow' | 'yesterday';
-
-type BudgetChartPalette = {
-  actual: string;
-  plan: string;
-  planFill: string;
-  background: string;
-  managed: string;
-  forecast: string;
-  priceLine: string;
-  priceFill: string;
-  muted: string;
-  grid: string;
-  tooltipBackground: string;
-  tooltipText: string;
-  tooltipBorder: string;
-};
+export type { BudgetRedesignDayView } from './budgetRedesignChartData.ts';
 
 type BudgetRedesignChartParams = {
   container: HTMLElement;
@@ -33,12 +30,21 @@ type BudgetRedesignChartParams = {
   priceReliable: boolean;
   costDisplay: CostDisplay;
   dataMaxOverride?: number;
+  // Pinned readout row under the chart (chart-overhaul Phase 3). Optional:
+  // the Adjust view's small comparison charts render without one.
+  readoutHost?: HTMLElement | null;
 };
 
 type ChartHandle = {
   chart: EChartsType;
   resizeObserver?: ResizeObserver;
   detachTabShown?: () => void;
+  readout?: ChartReadoutHandle;
+  readoutHost?: HTMLElement;
+  // Progress-mode marker y-values (cumulative kWh at each index) consumed by
+  // the readout's `onSelectionApplied` hook; null in hourly mode where the
+  // native bar select border carries the selection identity instead.
+  markerValues?: Array<number | null> | null;
 };
 const chartHandles = new WeakMap<HTMLElement, ChartHandle>();
 
@@ -63,6 +69,8 @@ export const clearBudgetRedesignChart = (container?: HTMLElement) => {
   if (!handle) return;
   handle.resizeObserver?.disconnect();
   handle.detachTabShown?.();
+  handle.readout?.detach();
+  if (handle.readoutHost) handle.readoutHost.hidden = true;
   handle.chart.dispose();
   chartHandles.delete(container);
 };
@@ -89,420 +97,39 @@ const ensureChart = (container: HTMLElement): EChartsType => {
   return chart;
 };
 
-const BUDGET_CHART_PALETTE_VARS = {
-  actual: '--pels-chart-actual',
-  plan: '--pels-chart-plan',
-  planFill: '--pels-chart-plan-fill',
-  background: '--pels-chart-background',
-  managed: '--pels-chart-managed',
-  forecast: '--pels-chart-forecast',
-  priceLine: '--pels-chart-price-line',
-  priceFill: '--pels-chart-price-fill',
-  muted: '--pels-chart-muted',
-  grid: '--pels-chart-grid',
-  tooltipBackground: '--pels-chart-tooltip-bg',
-  tooltipText: '--pels-chart-tooltip-text',
-  tooltipBorder: '--pels-chart-tooltip-border',
-} as const satisfies Record<keyof BudgetChartPalette, string>;
-
-const resolvePalette = (container: HTMLElement): BudgetChartPalette => (
-  readChartPalette<BudgetChartPalette>(container, BUDGET_CHART_PALETTE_VARS)
-);
-
-const cumulative = (values: number[]): number[] => {
-  let total = 0;
-  return values.map((value) => {
-    total += Number.isFinite(value) ? value : 0;
-    return Number(total.toFixed(3));
+// Attach the pinned-readout interaction once per chart lifetime. The
+// selection-marker hook reads the CURRENT render's `markerValues` off the
+// handle, so the closure stays valid across mode switches and realtime
+// refreshes without re-attaching (the zr click handler cannot be removed).
+const ensureReadout = (container: HTMLElement, host: HTMLElement): ChartReadoutHandle | null => {
+  const handle = chartHandles.get(container);
+  if (!handle) return null;
+  if (handle.readout && handle.readoutHost === host) return handle.readout;
+  if (handle.readout) {
+    handle.readout.detach();
+    if (handle.readoutHost) handle.readoutHost.hidden = true;
+  }
+  const { chart } = handle;
+  handle.readout = attachChartReadout({
+    chart,
+    host,
+    onSelectionApplied: (index) => {
+      const current = chartHandles.get(container);
+      // Hourly mode (markerValues null): the native bar select border
+      // carries the selection identity; the marker series doesn't exist.
+      const values = current?.markerValues;
+      if (!current || current.chart !== chart || !values) return;
+      const value = values[index];
+      chart.setOption({
+        series: [{
+          id: READOUT_MARKER_SERIES_ID,
+          data: typeof value === 'number' && Number.isFinite(value) ? [[index, value]] : [],
+        }],
+      });
+    },
   });
-};
-
-const resolveActualUpToIndex = (payload: DailyBudgetDayPayload, view: BudgetRedesignDayView) => {
-  if (view === 'tomorrow') return -1;
-  if (view === 'yesterday') return (payload.buckets.actualKWh || []).length - 1;
-  return Math.max(-1, Math.min(payload.currentBucketIndex, (payload.buckets.actualKWh || []).length - 1));
-};
-
-const buildActualCumulative = (
-  actual: number[],
-  actualUpToIndex: number,
-): Array<number | null> => {
-  let total = 0;
-  return actual.map((value, index) => {
-    if (index > actualUpToIndex || !Number.isFinite(value)) return null;
-    total += value;
-    return Number(total.toFixed(3));
-  });
-};
-
-export const buildProjectionCumulative = (params: {
-  planned: number[];
-  actualCumulative: Array<number | null>;
-  actualUpToIndex: number;
-  view: BudgetRedesignDayView;
-}): Array<number | null> => {
-  const { planned, actualCumulative, actualUpToIndex, view } = params;
-  const projection = planned.map(() => null as number | null);
-  if (view !== 'today' || actualUpToIndex < 0 || actualUpToIndex >= planned.length) return projection;
-  const startValue = actualCumulative[actualUpToIndex];
-  if (!Number.isFinite(startValue)) return projection;
-  const previousActualTotal = actualUpToIndex > 0 ? actualCumulative[actualUpToIndex - 1] : 0;
-  if (!Number.isFinite(previousActualTotal)) return projection;
-  const currentActual = Math.max(0, (startValue as number) - (previousActualTotal as number));
-  const currentPlanned = Number.isFinite(planned[actualUpToIndex]) ? planned[actualUpToIndex] : 0;
-  let total = (startValue as number) + Math.max(0, (currentPlanned as number) - currentActual);
-  projection[actualUpToIndex] = Number(total.toFixed(3));
-  for (let index = actualUpToIndex + 1; index < planned.length; index += 1) {
-    total += Number.isFinite(planned[index]) ? planned[index] : 0;
-    projection[index] = Number(total.toFixed(3));
-  }
-  return projection;
-};
-
-type ChartScaleKind = 'progress' | 'hourly';
-
-const resolveYAxisScale = (dataMax: number, kind: ChartScaleKind): { max: number; interval: number } => {
-  const safeMax = Number.isFinite(dataMax) && dataMax > 0 ? dataMax : 0;
-  if (kind === 'hourly') {
-    const interval = safeMax <= 1.2 ? 0.3 : 0.5;
-    const max = Math.max(interval, Math.ceil(safeMax / interval) * interval);
-    return {
-      max: Number(max.toFixed(1)),
-      interval,
-    };
-  }
-  const interval = safeMax <= 20 ? 5 : 10;
-  return {
-    max: Math.max(interval, Math.ceil(safeMax / interval) * interval),
-    interval,
-  };
-};
-
-const resolvePriceYAxisScale = (prices: number[]): { min: number; max: number; interval: number } => {
-  if (prices.length === 0) return { min: 0, max: 1, interval: 0.5 };
-  const dataMin = Math.min(...prices);
-  const dataMax = Math.max(...prices);
-  const span = Math.max(0.01, dataMax - dataMin);
-  const pad = span * 0.1;
-  const interval = span <= 1.2 ? 0.3 : 0.5;
-  const minPadded = Math.max(0, Math.floor((dataMin - pad) / interval) * interval);
-  const maxPadded = Math.ceil((dataMax + pad) / interval) * interval;
-  return {
-    min: Number(minPadded.toFixed(2)),
-    max: Number(maxPadded.toFixed(2)),
-    interval,
-  };
-};
-
-const resolvePriceAxisUnit = (display: CostDisplay): string => (
-  display.unit.trim() ? resolvePriceUnitLabel(display) : 'Price'
-);
-
-const normalizePriceValues = (
-  prices: Array<number | null> | undefined,
-  length: number,
-  display: CostDisplay,
-): number[] => {
-  const divisor = Math.max(1, display.divisor);
-  return (prices || [])
-    .slice(0, length)
-    .filter((value): value is number => Number.isFinite(value))
-    .map((value) => Number((value / divisor).toFixed(4)));
-};
-
-const readTooltipValue = (value: unknown): number | null => {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-  if (Array.isArray(value)) {
-    const values = value as readonly unknown[];
-    for (let index = values.length - 1; index >= 0; index -= 1) {
-      const candidate = values[index];
-      if (typeof candidate === 'number' && Number.isFinite(candidate)) return candidate;
-    }
-  }
-  return null;
-};
-
-export const formatBudgetChartTooltip = (
-  rawParams: unknown,
-  priceAxisUnit?: string | null,
-): string => {
-  const paramsArray = Array.isArray(rawParams) ? rawParams : [rawParams];
-  return paramsArray
-    .filter((item): item is { seriesName?: string; value?: unknown } => (
-      Boolean(item) && typeof item === 'object'
-    ))
-    .flatMap((item) => {
-      const value = readTooltipValue(item.value);
-      if (value === null) return [];
-      const name = item.seriesName ?? '';
-      const formatted = name === 'Price'
-        ? `${value.toFixed(2)} ${priceAxisUnit ?? 'price'}`
-        : formatKWh(value);
-      return `${encodeHtml(name)}: ${formatted}`;
-    })
-    .join('<br/>');
-};
-
-const buildBaseOption = (params: {
-  labels: string[];
-  palette: BudgetChartPalette;
-  dataMax: number;
-  scaleKind: ChartScaleKind;
-  priceAxisUnit?: string | null;
-}): EChartsOption => {
-  const {
-    labels,
-    palette,
-    dataMax,
-    scaleKind,
-    priceAxisUnit,
-  } = params;
-  const labelEvery = resolveLabelEvery(labels.length);
-  const yScale = resolveYAxisScale(dataMax, scaleKind);
-  return {
-    animation: false,
-    stateAnimation: { duration: 0 },
-    grid: { left: 8, right: 8, top: 12, bottom: 26, containLabel: true },
-    tooltip: {
-      trigger: 'axis',
-      confine: true,
-      backgroundColor: palette.tooltipBackground,
-      borderColor: palette.tooltipBorder,
-      borderWidth: 1,
-      padding: [8, 10],
-      textStyle: { color: palette.tooltipText, fontSize: 12, fontWeight: 500 },
-      formatter: (rawParams: unknown) => {
-        return formatBudgetChartTooltip(rawParams, priceAxisUnit);
-      },
-    },
-    xAxis: {
-      type: 'category',
-      data: labels,
-      axisTick: { show: false },
-      axisLine: { lineStyle: { color: palette.grid } },
-      axisLabel: {
-        color: palette.muted,
-        fontSize: 11,
-        formatter: (_label: string, index: number) => {
-          if (index % labelEvery !== 0 && index !== labels.length - 1) return '';
-          return formatHourAxisLabel(labels[index] ?? '');
-        },
-      },
-    },
-    yAxis: {
-      type: 'value',
-      min: 0,
-      max: yScale.max,
-      interval: yScale.interval,
-      axisTick: { show: false },
-      axisLine: { show: false },
-      axisLabel: {
-        color: palette.muted,
-        fontSize: 11,
-        formatter: (value: number) => (
-          scaleKind === 'hourly' ? value.toFixed(1) : String(Math.round(value))
-        ),
-      },
-      splitLine: { lineStyle: { color: palette.grid, width: 1 } },
-    },
-  };
-};
-
-const buildProgressOption = (
-  payload: DailyBudgetDayPayload,
-  view: BudgetRedesignDayView,
-  palette: BudgetChartPalette,
-  dataMaxOverride?: number,
-): EChartsOption => {
-  const planned = payload.buckets.plannedKWh || [];
-  const actual = payload.buckets.actualKWh || [];
-  const labels = payload.buckets.startLocalLabels || [];
-  const actualUpToIndex = resolveActualUpToIndex(payload, view);
-  const planCumulative = cumulative(planned);
-  const actualCumulative = buildActualCumulative(actual, actualUpToIndex);
-  const projection = buildProjectionCumulative({ planned, actualCumulative, actualUpToIndex, view });
-  const values = [
-    ...planCumulative,
-    ...actualCumulative.filter((value): value is number => Number.isFinite(value)),
-    ...projection.filter((value): value is number => Number.isFinite(value)),
-  ];
-  const computedMax = Math.max(...values, payload.budget.dailyBudgetKWh);
-  const dataMax = dataMaxOverride !== undefined ? Math.max(computedMax, dataMaxOverride) : computedMax;
-  const option = buildBaseOption({
-    labels,
-    palette,
-    dataMax,
-    scaleKind: 'progress',
-  });
-  const series: SeriesOption[] = [
-    {
-      type: 'line',
-      name: 'Plan',
-      data: planCumulative,
-      showSymbol: false,
-      smooth: true,
-      lineStyle: { color: palette.plan, width: 3 },
-      areaStyle: { color: palette.planFill },
-      emphasis: { disabled: true },
-    },
-  ];
-  if (view !== 'tomorrow') {
-    series.unshift({
-      type: 'line',
-      name: 'Actual',
-      data: actualCumulative,
-      showSymbol: false,
-      smooth: true,
-      connectNulls: false,
-      lineStyle: { color: palette.actual, width: 3 },
-      emphasis: { disabled: true },
-    });
-  }
-  if (projection.some((value) => Number.isFinite(value))) {
-    series.push({
-      type: 'line',
-      name: 'Projection',
-      data: projection,
-      showSymbol: false,
-      smooth: true,
-      connectNulls: false,
-      lineStyle: { color: palette.forecast, width: 2, type: 'dashed', opacity: 0.7 },
-      emphasis: { disabled: true },
-    });
-  }
-  return { ...option, series };
-};
-
-type BuildHourlyParams = {
-  payload: DailyBudgetDayPayload;
-  view: BudgetRedesignDayView;
-  palette: BudgetChartPalette;
-  priceReliable: boolean;
-  costDisplay: CostDisplay;
-  dataMaxOverride?: number;
-};
-
-const buildPriceYAxis = (priceValues: number[], priceAxisUnit: string, palette: BudgetChartPalette) => {
-  const priceScale = resolvePriceYAxisScale(priceValues);
-  return {
-    type: 'value' as const,
-    min: priceScale.min,
-    max: priceScale.max,
-    interval: priceScale.interval,
-    name: priceAxisUnit,
-    nameGap: 8,
-    nameTextStyle: { color: palette.muted, fontSize: 10, padding: [0, 0, 4, 0] as [number, number, number, number] },
-    axisTick: { show: false },
-    axisLine: { show: false },
-    axisLabel: {
-      color: palette.muted,
-      fontSize: 11,
-      formatter: (value: number) => value.toFixed(1),
-    },
-    splitLine: { show: false },
-  };
-};
-
-const buildHourlyOption = (params: BuildHourlyParams): EChartsOption => {
-  const {
-    payload,
-    view,
-    palette,
-    priceReliable,
-    costDisplay,
-    dataMaxOverride,
-  } = params;
-  const planned = payload.buckets.plannedKWh || [];
-  const actual = payload.buckets.actualKWh || [];
-  const labels = payload.buckets.startLocalLabels || [];
-  const actualUpToIndex = resolveActualUpToIndex(payload, view);
-  const actualVisible = actual.map((value, index) => (
-    index <= actualUpToIndex && Number.isFinite(value) ? value : null
-  ));
-  const allActual = actualVisible.filter((value): value is number => Number.isFinite(value));
-  const computedMax = Math.max(0, ...planned, ...allActual);
-  const dataMax = dataMaxOverride !== undefined ? Math.max(computedMax, dataMaxOverride) : computedMax;
-  const priceAxisUnit = resolvePriceAxisUnit(costDisplay);
-  const option = buildBaseOption({
-    labels,
-    palette,
-    dataMax,
-    scaleKind: 'hourly',
-    priceAxisUnit,
-  });
-  const priceValues = priceReliable
-    ? normalizePriceValues(payload.buckets.price, labels.length, costDisplay)
-    : [];
-  if (priceValues.length === labels.length) {
-    option.grid = { ...(option.grid as Record<string, unknown>), right: 48, top: 26 };
-    option.yAxis = [option.yAxis, buildPriceYAxis(priceValues, priceAxisUnit, palette)];
-  }
-  const plannedBackground = payload.buckets.plannedUncontrolledKWh || [];
-  const plannedManaged = payload.buckets.plannedControlledKWh || [];
-  const hasSplit = plannedBackground.length === labels.length
-    && plannedManaged.length === labels.length;
-  const series: SeriesOption[] = hasSplit
-    ? [
-      {
-        type: 'bar',
-        name: 'Background',
-        data: plannedBackground,
-        stack: 'planned',
-        z: 2,
-        barMaxWidth: 10,
-        itemStyle: { color: palette.background },
-        emphasis: { disabled: true },
-      },
-      {
-        type: 'bar',
-        name: 'Managed',
-        data: plannedManaged,
-        stack: 'planned',
-        z: 2,
-        barMaxWidth: 10,
-        itemStyle: { color: palette.managed, borderRadius: [4, 4, 0, 0] },
-        emphasis: { disabled: true },
-      },
-    ]
-    : [
-      {
-        type: 'bar',
-        name: 'Plan',
-        data: planned,
-        z: 2,
-        barMaxWidth: 10,
-        itemStyle: { color: palette.plan, borderRadius: [4, 4, 0, 0] },
-        emphasis: { disabled: true },
-      },
-    ];
-  if (priceValues.length === labels.length) {
-    series.push({
-      type: 'line',
-      name: 'Price',
-      data: priceValues,
-      yAxisIndex: 1,
-      z: 5,
-      showSymbol: false,
-      smooth: false,
-      step: 'middle',
-      lineStyle: { color: palette.priceLine, width: 3 },
-      areaStyle: { color: palette.priceFill },
-      emphasis: { disabled: true },
-    });
-  }
-  if (view !== 'tomorrow') {
-    series.push({
-      type: 'line',
-      name: 'Actual',
-      data: actualVisible,
-      z: 4,
-      showSymbol: false,
-      connectNulls: false,
-      lineStyle: { color: palette.actual, width: 2 },
-      emphasis: { disabled: true },
-    });
-  }
-  return { ...option, series };
+  handle.readoutHost = host;
+  return handle.readout;
 };
 
 export const renderBudgetRedesignChart = (params: BudgetRedesignChartParams) => {
@@ -514,10 +141,31 @@ export const renderBudgetRedesignChart = (params: BudgetRedesignChartParams) => 
     priceReliable,
     costDisplay,
     dataMaxOverride,
+    readoutHost = null,
   } = params;
-  const palette = resolvePalette(container);
+  const palette = resolveBudgetChartPalette(container);
+  const bundle = mode === 'progress'
+    ? buildBudgetProgressReadoutBundle(payload, view)
+    : buildBudgetHourlyReadoutBundle({ payload, view, priceReliable, costDisplay });
   const option = mode === 'progress'
-    ? buildProgressOption(payload, view, palette, dataMaxOverride)
-    : buildHourlyOption({ payload, view, palette, priceReliable, costDisplay, dataMaxOverride });
-  ensureChart(container).setOption(option, { notMerge: true });
+    ? buildProgressOption({ payload, view, palette, readouts: bundle.readouts, dataMaxOverride })
+    : buildHourlyOption({
+      payload, view, palette, priceReliable, costDisplay, readouts: bundle.readouts, dataMaxOverride,
+    });
+  const chart = ensureChart(container);
+  chart.setOption(option, { notMerge: true });
+  if (!readoutHost) return;
+  const readout = ensureReadout(container, readoutHost);
+  const handle = chartHandles.get(container);
+  if (!readout || !handle) return;
+  handle.markerValues = bundle.markerValues;
+  readoutHost.hidden = bundle.readouts.length === 0;
+  // Re-applies the (surviving) selection after the notMerge wipe and
+  // re-resolves the readout content for the current mode.
+  readout.update({
+    itemCount: bundle.readouts.length,
+    defaultIndex: bundle.defaultIndex,
+    resolveContent: (index) => bundle.readouts[index] ?? null,
+    selectSeriesIndexes: bundle.selectSeriesIndexes,
+  });
 };

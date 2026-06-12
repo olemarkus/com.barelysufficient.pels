@@ -129,6 +129,120 @@ test('heatmap cell tap drives the pinned readout between distinct cells', async 
   expect(await countSelectBorders(page, '#power-list')).toBe(1);
 });
 
+const openBudgetTab = async (page: Page) => {
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+  await expect(page.getByRole('tablist')).toBeVisible();
+  await page.getByRole('tab', { name: 'Budget' }).click();
+  await expect(page.locator('#budget-panel')).toBeVisible();
+  await expect(page.locator('#budget-redesign-chart svg')).toBeVisible();
+};
+
+// Selection visuals painted in the on-surface tone (`--text`), each narrowed
+// by its structural signal so chart chrome that merely shares the tone (axis
+// lines, labels-as-paths) cannot satisfy the count:
+// - `hourly-border`: the bars' select border stroke ALSO carries the
+//   configured `borderWidth: 2` (see `buildHourlyOption`'s `select` style).
+// - `progress-marker`: the marker scatter symbol fill ALSO carries the
+//   `symbolSize: 9` geometry. Counts BOTH `path` and `circle` elements — the
+//   ECharts SVG renderer has emitted circle symbols as either across
+//   versions (currently a unit-arc `path` scaled via a `matrix(4.5,…)`
+//   transform), so the size is gated on the rendered bounding box (~9px)
+//   rather than on any renderer-specific radius attribute.
+const countSelectionToneShapes = (page: Page, probe: 'hourly-border' | 'progress-marker') => (
+  page.evaluate((probeKind) => {
+    const panel = document.querySelector('#budget-panel');
+    const svg = document.querySelector('#budget-redesign-chart svg');
+    if (!(panel instanceof HTMLElement) || !svg) return -1;
+    const tone = getComputedStyle(panel).getPropertyValue('--text').trim().toLowerCase();
+    if (!tone) return -1;
+    if (probeKind === 'hourly-border') {
+      return [...svg.querySelectorAll('path')].filter((shape) => (
+        (shape.getAttribute('stroke') ?? '').trim().toLowerCase() === tone
+          && shape.getAttribute('stroke-width') === '2'
+      )).length;
+    }
+    return [...svg.querySelectorAll('path, circle')].filter((shape) => {
+      if ((shape.getAttribute('fill') ?? '').trim().toLowerCase() !== tone) return false;
+      const box = shape.getBoundingClientRect();
+      return Math.abs(box.width - 9) <= 1.5 && Math.abs(box.height - 9) <= 1.5;
+    }).length;
+  }, probe)
+);
+
+test('budget chart drives the readout in both modes and stays coherent across the toggle', async ({ page }) => {
+  await openBudgetTab(page);
+
+  const readoutPrimary = page.locator('#budget-redesign-chart-readout .chart-readout__primary');
+  const readoutSecondary = page.locator('#budget-redesign-chart-readout .chart-readout__secondary');
+
+  // Progress mode (default view): the row is never empty — the default
+  // selection (current hour on Today) renders cumulative figures, and the
+  // single-symbol marker series carries the visible selection identity
+  // (native select is invisible on the line series).
+  await expect(readoutPrimary).toHaveText(/^By \d{2}:\d{2}$/);
+  await expect(readoutSecondary).toContainText('Plan');
+  expect(await countSelectionToneShapes(page, 'progress-marker')).toBeGreaterThanOrEqual(1);
+
+  // Two taps on distinct columns must move the readout — a dead tap (both
+  // reads still showing the default) cannot false-pass format-only asserts.
+  await tapChart(page, '#budget-redesign-chart', 0.3, 0.45);
+  await expect(readoutPrimary).toHaveText(/^By \d{2}:\d{2}$/);
+  const progressFirstTap = await readoutPrimary.textContent();
+  await tapChart(page, '#budget-redesign-chart', 0.75, 0.45);
+  await expect(readoutPrimary).toHaveText(/^By \d{2}:\d{2}$/);
+  const progressSecondTap = await readoutPrimary.textContent();
+  expect(progressSecondTap).not.toBe(progressFirstTap);
+
+  // No floating tooltip materialises on tap — the pinned row is the only
+  // caption surface on touch.
+  await expect(page.locator('#budget-redesign-chart').getByText(/Plan/)).toHaveCount(0);
+
+  // Mode toggle: the selection survives and re-resolves into the hourly
+  // grammar — the selected hour's end is the same boundary the progress
+  // readout just named ("By 18:00" → "17:00–18:00").
+  const selectedEnd = (progressSecondTap ?? '').replace(/^By /, '');
+  await page.locator('#budget-panel .segmented__option').filter({ hasText: 'Hourly plan' }).click();
+  await expect(page.locator('#budget-redesign-chart svg')).toBeVisible();
+  await expect(readoutPrimary).toHaveText(new RegExp(`^\\d{2}:\\d{2}–${selectedEnd}$`));
+  await expect(readoutSecondary).toContainText('Plan');
+
+  // Surface the hourly-mode DEFAULT selection (current hour) before the
+  // in-grid taps: an outside tap restores it, and capturing its exact text
+  // lets the final restore assert full equality (the Usage-tab tests'
+  // pattern) — a format-only check would pass even if the restore landed on
+  // the wrong column.
+  await tapChart(page, '#budget-redesign-chart', 0.5, 0.02);
+  await expect(readoutPrimary).toHaveText(/^\d{2}:\d{2}–\d{2}:\d{2}$/);
+  const hourlyDefaultText = await readoutPrimary.textContent();
+
+  // Hourly mode taps: the readout follows, and the tapped column carries the
+  // on-surface select border on its stacked bar segments.
+  await tapChart(page, '#budget-redesign-chart', 0.3, 0.45);
+  await expect(readoutPrimary).toHaveText(/^\d{2}:\d{2}–\d{2}:\d{2}$/);
+  const hourlyFirstTap = await readoutPrimary.textContent();
+  await tapChart(page, '#budget-redesign-chart', 0.6, 0.45);
+  await expect(readoutPrimary).toHaveText(/^\d{2}:\d{2}–\d{2}:\d{2}$/);
+  expect(await readoutPrimary.textContent()).not.toBe(hourlyFirstTap);
+  expect(await countSelectionToneShapes(page, 'hourly-border')).toBeGreaterThanOrEqual(1);
+
+  // A tap above the plot grid restores the default selection (current hour)
+  // — the exact text captured above, not merely something hour-shaped.
+  await tapChart(page, '#budget-redesign-chart', 0.5, 0.02);
+  await expect(readoutPrimary).toHaveText(hourlyDefaultText ?? '');
+
+  // The readout host stays within the panel width (320 px project included).
+  const overflow = await page.evaluate(() => {
+    const host = document.querySelector('#budget-redesign-chart-readout');
+    if (!(host instanceof HTMLElement)) return null;
+    const rect = host.getBoundingClientRect();
+    return { left: rect.left, right: rect.right, viewport: window.innerWidth };
+  });
+  expect(overflow).not.toBeNull();
+  if (!overflow) return;
+  expect(overflow.left).toBeGreaterThanOrEqual(-1);
+  expect(overflow.right).toBeLessThanOrEqual(overflow.viewport + 1);
+});
+
 test('usage day chart tap selects a column and empty tap restores the default', async ({ page }) => {
   await openUsageTab(page);
   await expect(page.locator('#usage-day-bars svg')).toBeVisible();
