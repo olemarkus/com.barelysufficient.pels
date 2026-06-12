@@ -1,4 +1,5 @@
-import type { ObservedDeviceState, TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
+import type { ObservedDeviceState } from '../../../packages/contracts/src/types';
+import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { ObservedDeviceStateRefreshPayload } from '../../../packages/contracts/src/observedDeviceState';
 import type { HomeyDeviceLike } from '../../utils/types';
 import { resolveEvChargingStateBinaryEvidence } from '../managerControl';
@@ -79,7 +80,7 @@ export type HandleRealtimeDeviceUpdateResult = {
   shouldReconcilePlan: boolean;
   changes: RealtimeDeviceReconcileChange[];
   observedCapabilityIds: string[];
-  currentSnapshot: TargetDeviceSnapshot | null | undefined;
+  currentSnapshot: TransportDeviceSnapshot | null | undefined;
 };
 
 type BinarySettleOutcome = 'settled' | 'drift' | 'none';
@@ -99,10 +100,10 @@ type PendingBinarySettleObservationRecorder = (
 
 export function handleRealtimeDeviceUpdate(params: {
   device: HomeyDeviceLike;
-  latestSnapshot: TargetDeviceSnapshot[];
+  latestSnapshot: TransportDeviceSnapshot[];
   recentLocalCapabilityWrites: RecentLocalCapabilityWrites;
   shouldTrackRealtimeDevice: (deviceId: string) => boolean;
-  parseDevice: (device: HomeyDeviceLike, nowTs: number) => TargetDeviceSnapshot | null;
+  parseDevice: (device: HomeyDeviceLike, nowTs: number) => TransportDeviceSnapshot | null;
   minSignificantPowerW?: number;
   recordObservedCapabilities?: (deviceId: string, capabilityIds: string[]) => void;
   notePendingBinarySettleObservation?: PendingBinarySettleObservationRecorder;
@@ -279,7 +280,7 @@ export function didMeasurePowerBecomeSignificantlyPositive(
 }
 
 function applyPendingBinarySettleToDeviceUpdate(params: {
-  currentSnapshot: TargetDeviceSnapshot | null;
+  currentSnapshot: TransportDeviceSnapshot | null;
   changes: RealtimeDeviceReconcileChange[];
   binaryEvidence: BinarySettleEvidence;
   notePendingBinarySettleObservation?: PendingBinarySettleObservationRecorder;
@@ -350,8 +351,8 @@ function applyPendingBinarySettleToDeviceUpdate(params: {
 function buildDeviceUpdateProcessedDebugEvent(params: {
   deviceId: string;
   deviceName?: string;
-  priorSnapshot: TargetDeviceSnapshot | undefined;
-  currentSnapshot: TargetDeviceSnapshot | null;
+  priorSnapshot: TransportDeviceSnapshot | undefined;
+  currentSnapshot: TransportDeviceSnapshot | null;
   controlCapabilityId: string | undefined;
   rawBinaryValue: boolean | undefined;
   binarySettleOutcome: BinarySettleOutcome;
@@ -420,7 +421,7 @@ function hasRawBinaryObservation(rawBinaryValue: boolean | undefined): rawBinary
 
 function shouldSuppressPendingBinaryChange(params: {
   binaryEvidence: BinarySettleEvidence;
-  currentSnapshot: TargetDeviceSnapshot | null;
+  currentSnapshot: TransportDeviceSnapshot | null;
   deviceId?: string;
   binaryCapabilityId?: string;
   hasPendingBinarySettleWindow?: (deviceId: string, capabilityId: string) => boolean;
@@ -442,7 +443,7 @@ function shouldSuppressPendingBinaryChange(params: {
 
 function resolveApplicableBinarySettleEvidence(params: {
   binaryEvidence: BinarySettleEvidence;
-  currentSnapshot: TargetDeviceSnapshot | null;
+  currentSnapshot: TransportDeviceSnapshot | null;
   deviceId?: string;
   binaryCapabilityId?: string;
 }): {
@@ -473,7 +474,7 @@ function resolveApplicableBinarySettleEvidence(params: {
 
 function extractBinarySettleEvidence(
   device: HomeyDeviceLike,
-  priorSnapshot: TargetDeviceSnapshot | undefined,
+  priorSnapshot: TransportDeviceSnapshot | undefined,
 ): BinarySettleEvidence {
   const capabilityId = priorSnapshot?.controlObservationCapabilityId ?? priorSnapshot?.controlCapabilityId;
   if (capabilityId === undefined) return {};

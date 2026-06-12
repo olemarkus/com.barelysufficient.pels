@@ -1,4 +1,5 @@
-import type { EvChargingState, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { EvChargingState } from '../../packages/contracts/src/types';
+import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import { resolveBinaryOn } from '../utils/binaryControl';
 import type { Logger } from '../utils/types';
 
@@ -21,7 +22,7 @@ type DeviceClassKey = string;
 export function getControlCapabilityId(params: {
   deviceClassKey: DeviceClassKey;
   capabilities: string[];
-}): TargetDeviceSnapshot['controlCapabilityId'] {
+}): TransportDeviceSnapshot['controlCapabilityId'] {
   const { deviceClassKey, capabilities } = params;
   if (deviceClassKey === 'evcharger' && capabilities.includes('evcharger_charging')) {
     return 'evcharger_charging';
@@ -47,7 +48,7 @@ export function getControlCapabilityId(params: {
 export function getCurrentOn(params: {
   deviceClassKey: DeviceClassKey;
   capabilityObj: DeviceCapabilityMap;
-  controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
+  controlCapabilityId?: TransportDeviceSnapshot['controlCapabilityId'];
 }): boolean | undefined {
   const { deviceClassKey, capabilityObj, controlCapabilityId } = params;
   if (controlCapabilityId === 'evcharger_charging' || deviceClassKey === 'evcharger') {
@@ -117,7 +118,7 @@ export function resolveEvChargingStateBinaryEvidence(evChargingState: unknown): 
 }
 
 export function getCanSetControl(
-  controlCapabilityId: TargetDeviceSnapshot['controlCapabilityId'],
+  controlCapabilityId: TransportDeviceSnapshot['controlCapabilityId'],
   controlWriteCapabilityIdOrCapabilityObj: string | DeviceCapabilityMap | undefined = undefined,
   capabilityObj?: DeviceCapabilityMap,
 ): boolean | undefined {
@@ -187,7 +188,7 @@ export function toCapabilityTimestampMs(rawValue: string | number | Date | null 
 
 export function logEvCapabilityRequest(params: {
   logger: Logger;
-  snapshotBefore?: TargetDeviceSnapshot;
+  snapshotBefore?: TransportDeviceSnapshot;
   deviceId: string;
   capabilityId: string;
   value: unknown;
@@ -212,7 +213,7 @@ export function logEvCapabilityRequest(params: {
 
 export function logEvCapabilityAccepted(params: {
   logger: Logger;
-  snapshotAfter?: TargetDeviceSnapshot;
+  snapshotAfter?: TransportDeviceSnapshot;
   deviceId: string;
   capabilityId: string;
   value: unknown;
@@ -237,8 +238,8 @@ export function logEvCapabilityAccepted(params: {
 
 export function logEvSnapshotChanges(params: {
   logger: Logger;
-  previousSnapshot: TargetDeviceSnapshot[];
-  nextSnapshot: TargetDeviceSnapshot[];
+  previousSnapshot: TransportDeviceSnapshot[];
+  nextSnapshot: TransportDeviceSnapshot[];
 }): void {
   const { logger, previousSnapshot, nextSnapshot } = params;
   const previousEvById = getEvSnapshotEntries(previousSnapshot);
@@ -273,7 +274,7 @@ export function logEvSnapshotChanges(params: {
   }
 }
 
-function getEvSnapshotEntries(snapshot: TargetDeviceSnapshot[]): Map<string, TargetDeviceSnapshot> {
+function getEvSnapshotEntries(snapshot: TransportDeviceSnapshot[]): Map<string, TransportDeviceSnapshot> {
   return new Map(
     snapshot
       .filter((device) => device.deviceClass === 'evcharger')
@@ -282,8 +283,8 @@ function getEvSnapshotEntries(snapshot: TargetDeviceSnapshot[]): Map<string, Tar
 }
 
 function buildEvSnapshotChangeLines(
-  previousEv: TargetDeviceSnapshot,
-  nextEv: TargetDeviceSnapshot,
+  previousEv: TransportDeviceSnapshot,
+  nextEv: TransportDeviceSnapshot,
 ): string[] {
   const changes: string[] = [];
   const previousOn = resolveBinaryOn(previousEv);
@@ -311,7 +312,7 @@ function buildEvSnapshotChangeLines(
   return changes;
 }
 
-function formatEvSnapshotDiscovery(snapshot: TargetDeviceSnapshot): string {
+function formatEvSnapshotDiscovery(snapshot: TransportDeviceSnapshot): string {
   return [
     `currentOn=${String(resolveBinaryOn(snapshot))}`,
     `evState=${snapshot.evChargingState ?? 'unknown'}`,
@@ -322,7 +323,7 @@ function formatEvSnapshotDiscovery(snapshot: TargetDeviceSnapshot): string {
 }
 
 function formatEvSnapshotDetails(
-  snapshot: TargetDeviceSnapshot | undefined,
+  snapshot: TransportDeviceSnapshot | undefined,
   includePower: boolean,
 ): string {
   const details = [

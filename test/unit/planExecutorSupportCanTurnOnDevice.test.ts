@@ -8,9 +8,11 @@
  */
 import { describe, expect, it } from 'vitest';
 import { canTurnOnDevice } from '../../lib/plan/planExecutorSupport';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { EvObservedProbe, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 
-const baseSnapshot = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => ({
+const baseSnapshot = (
+  overrides: Partial<TargetDeviceSnapshot & EvObservedProbe> = {},
+): TargetDeviceSnapshot & EvObservedProbe => ({
   id: 'd1',
   name: 'Device',
   targets: [],

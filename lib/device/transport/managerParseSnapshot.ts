@@ -1,4 +1,4 @@
-import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
+import type { EvChargingState, TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import { getLogger } from '../../logging/logger';
 import {
@@ -19,7 +19,7 @@ export function resolveParsedControlState(params: {
   controlWriteCapabilityId?: string;
   capabilityObj: DeviceCapabilityMap;
   evCharging: TargetDeviceSnapshot['evCharging'];
-  evChargingState: TargetDeviceSnapshot['evChargingState'];
+  evChargingState: EvChargingState | undefined;
   // Only a membership test happens below, so the narrow `FlowReportedCapabilityId[]`
   // is unnecessary here — accept any capability-id list. Lets `controlCapabilityId`
   // (an open `BinaryControlCapabilityId`) be tested without a type assertion.
@@ -167,7 +167,7 @@ function resolveSnapshotCurrentOn(params: {
   controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
   capabilityObj: DeviceCapabilityMap;
   evCharging: TargetDeviceSnapshot['evCharging'];
-  evChargingState: TargetDeviceSnapshot['evChargingState'];
+  evChargingState: EvChargingState | undefined;
   currentOn?: boolean;
 }): boolean | undefined {
   const {

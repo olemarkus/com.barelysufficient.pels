@@ -6,8 +6,8 @@ import type {
 import type {
   DeviceStateOfChargeSnapshot,
   EvChargingState,
-  TargetDeviceSnapshot,
 } from '../../../packages/contracts/src/types';
+import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 
 export const EV_SOC_CAPABILITY_ID = 'measure_battery' as const;
 export const EV_SOC_NATIVE_CAPABILITY_IDS = [
@@ -52,7 +52,7 @@ export function resolveStateOfChargeSnapshot(params: {
 }
 
 export function updateStateOfChargeObservationFreshness(params: {
-  snapshot: TargetDeviceSnapshot;
+  snapshot: TransportDeviceSnapshot;
   reportedAt: number;
   nowMs: number;
 }): boolean {
@@ -74,7 +74,7 @@ export function updateStateOfChargeObservationFreshness(params: {
 }
 
 export function updateStateOfChargeFromRealtimeCapability(params: {
-  snapshot: TargetDeviceSnapshot;
+  snapshot: TransportDeviceSnapshot;
   capabilityId: string;
   value: unknown;
   observedAtMs: number;
@@ -127,7 +127,7 @@ export function updateStateOfChargeFromRealtimeCapability(params: {
 }
 
 export function updateStateOfChargeSessionBoundary(params: {
-  snapshot: TargetDeviceSnapshot;
+  snapshot: TransportDeviceSnapshot;
   evChargingState: EvChargingState;
   observedAtMs: number;
   nowMs: number;

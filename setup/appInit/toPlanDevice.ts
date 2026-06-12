@@ -4,7 +4,11 @@ import {
   resolveCommandableNow,
 } from '../../lib/device/deviceActionProjection';
 import { buildResidualKwForPlanDevice } from './residualKwForPlanDevice';
-import type { DecoratedDeviceSnapshot, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type {
+  DecoratedDeviceSnapshot,
+  EvObservedProbe,
+  TargetDeviceSnapshot,
+} from '../../packages/contracts/src/types';
 import type { AppContext } from '../../lib/app/appContext';
 import {
   buildStepPowerCalibrationView,
@@ -13,7 +17,12 @@ import {
 import { withSteppedDiscriminant } from '../../lib/plan/planTypes';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 
-export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot): PlanInputDevice {
+// The device param widens with `EvObservedProbe`: this producer is the one
+// sanctioned reader of the raw observed `evChargingState` on the plan path —
+// it resolves the flat EV sub-fields below and strips the raw field off the
+// spread. The decorated snapshots the caller holds physically carry the field
+// (transport writes it); the base type omits it for consumers.
+export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot & EvObservedProbe): PlanInputDevice {
   // First real reader of the observer-owned observed-state projection (stage 4b).
   // The freshness fields (`lastFreshDataMs`/`lastLocalWriteMs`) are observed
   // state, so staleness is decided from the projection's maintained truth rather

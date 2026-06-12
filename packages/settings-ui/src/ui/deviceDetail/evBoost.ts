@@ -3,6 +3,7 @@ import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 import { EV_BOOST_SETTINGS } from '../../../../contracts/src/settingsKeys.ts';
 import { normalizeEvBoostSettings } from '../../../../contracts/src/evBoost.ts';
 import { resolveEvBoostBlockReason } from '../../../../shared-domain/src/commandableNowReason.ts';
+import { isEvObserved } from '../../../../shared-domain/src/evObservedState.ts';
 import { hasSteppedLoadSupport } from '../deviceControlProfiles.ts';
 import {
   deviceDetailEvBoost,
@@ -77,7 +78,10 @@ function buildEvBoostStatusText(params: {
 }): string {
   const { device, enabled, boostBelowPercent } = params;
   if (!enabled) return 'Disabled.';
-  const boostBlock = resolveEvBoostBlockReason(device);
+  // Narrow through the EV-observed guard: the base device type omits the raw
+  // plug-state, and an unobserved plug-state never blocks boost (matches the
+  // resolver's undefined branch before the field-move).
+  const boostBlock = isEvObserved(device) ? resolveEvBoostBlockReason(device) : null;
   if (boostBlock) return boostBlock;
   const stateOfCharge = device.stateOfCharge;
   if (!stateOfCharge || stateOfCharge.status === 'unknown') {

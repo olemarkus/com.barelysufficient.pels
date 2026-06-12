@@ -214,7 +214,14 @@ export type ObservedDeviceState = {
     // true` ("may always draw, so stays sheddable").
     binaryControl?: { on: boolean };
     evCharging?: boolean;
-    evChargingState?: EvChargingState;
+    // `evChargingState` is deliberately NOT here (EV-observed slice of the
+    // discriminated-types refactor): it lives on `EvObservedFields`, regrouped onto
+    // the snapshot by the `isEvObserved` guard
+    // (`packages/shared-domain/src/evObservedState.ts`), so an un-narrowed
+    // `snapshot.evChargingState` read on a base-typed value is a hard compile
+    // error (TS2339). Owner seams (transport/observer producers) and
+    // producer-fed structural funnels that physically carry the value before
+    // consumers narrow widen with `EvObservedProbe` instead.
     stateOfCharge?: DeviceStateOfChargeSnapshot;
     currentTemperature?: number;
     measuredPowerKw?: number;
@@ -241,6 +248,40 @@ export type ObservedDeviceState = {
  * `ObservedDeviceState`; readers spanning both keep this alias.
  */
 export type TargetDeviceSnapshot = DeviceDescriptor & ObservedDeviceState;
+
+/**
+ * EV observed field cluster (EV-observed slice of the discriminated-types
+ * refactor — the observer-snapshot twin of the plan layer's `EvKind`).
+ *
+ * Like `EvKind`, this is ORTHOGONAL to every other axis (an EV charger is also
+ * stepped-controlled), so it is NOT a union member; it is the intersection the
+ * `isEvObserved` type-guard (`packages/shared-domain/src/evObservedState.ts`)
+ * adds onto a snapshot. `evChargingState` is OMITTED from `ObservedDeviceState`,
+ * so an un-narrowed `snapshot.evChargingState` read is a hard compile error
+ * (TS2339); consumers must pass through `isEvObserved` (or hold an
+ * already-narrowed value) first.
+ *
+ * `evChargingState` is REQUIRED on the narrowed shape: the guard's predicate
+ * proves the plug-state has been observed, so a narrowed consumer branches on a
+ * known `EvChargingState` value without re-handling the absent case.
+ */
+export type EvObservedFields = {
+    evChargingState: EvChargingState;
+};
+
+/**
+ * EV observed cluster as a plain optional: the "might have an observed
+ * plug-state" loose shape the OWNER seams carry. Transport stores and mutates
+ * snapshots in place across kinds (`lib/device/transport/**` fresher-wins
+ * merge), and the observer's projection copies the field before consumers
+ * narrow — those producer-side surfaces widen with this probe
+ * (`TargetDeviceSnapshot & EvObservedProbe`) instead of re-adding the field to
+ * the base. Consumer code must NOT take this shape; it narrows through
+ * `isEvObserved`.
+ */
+export type EvObservedProbe = {
+    evChargingState?: EvChargingState;
+};
 
 /**
  * Step-command / planning state the app-layer decorator

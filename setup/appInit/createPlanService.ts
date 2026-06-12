@@ -5,6 +5,7 @@ import { DeviceOverviewLogRecorder } from '../../lib/plan/deviceOverviewLog';
 import type { AppContext } from '../../lib/app/appContext';
 import { PELS_STATUS } from '../../lib/utils/settingsKeys';
 import { isRuntimePlannedDevice } from '../appDeviceSupport';
+import { readObservedEvChargingState } from '../../lib/observer/observedDeviceStateProjection';
 
 export function createPlanService(ctx: AppContext): PlanService {
   return new PlanService({
@@ -35,7 +36,7 @@ export function createPlanService(ctx: AppContext): PlanService {
     // shed e2es). The observed projection is event-driven, so the chip can show
     // generic copy for the first cold-start cycle before the projection fills;
     // tracked as a P3 in TODO.md.
-    getObservedEvChargingState: (deviceId) => ctx.getObservedState(deviceId)?.evChargingState,
+    getObservedEvChargingState: (deviceId) => readObservedEvChargingState(ctx.getObservedState(deviceId)),
     // Producer `deviceType` for the settings-UI control-mode card. Sourced from
     // the RAW, undecorated device snapshot (`deviceManager.getSnapshot()`) — NOT
     // `latestTargetSnapshot` — so building this map triggers no re-decoration

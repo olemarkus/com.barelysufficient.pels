@@ -1,4 +1,9 @@
-import type { DeviceControlProfile, TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
+import type {
+  DeviceControlProfile,
+  EvChargingState,
+  TargetDeviceSnapshot,
+} from '../../../packages/contracts/src/types';
+import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike, Logger } from '../../utils/types';
 import {
     getCapabilities,
@@ -89,10 +94,10 @@ export type ParseDevicePurpose = 'runtime' | 'ui_picker' | 'unfiltered';
 export function parseDeviceList(params: {
     list: HomeyDeviceLike[];
     livePowerWByDeviceId?: LiveDevicePowerWatts;
-    previousSnapshotById?: ReadonlyMap<string, TargetDeviceSnapshot>;
+    previousSnapshotById?: ReadonlyMap<string, TransportDeviceSnapshot>;
     deps: DeviceTransportParseDeps;
     purpose?: ParseDevicePurpose;
-}): TargetDeviceSnapshot[] {
+}): TransportDeviceSnapshot[] {
     const { list, livePowerWByDeviceId = {}, previousSnapshotById, deps, purpose = 'runtime' } = params;
     const now = Date.now();
     return list
@@ -104,17 +109,17 @@ export function parseDeviceList(params: {
             deps,
             purpose,
         }))
-        .filter(Boolean) as TargetDeviceSnapshot[];
+        .filter(Boolean) as TransportDeviceSnapshot[];
 }
 
 export function parseDevice(params: {
     device: HomeyDeviceLike;
     now: number;
     livePowerWByDeviceId?: LiveDevicePowerWatts;
-    previousSnapshot?: TargetDeviceSnapshot;
+    previousSnapshot?: TransportDeviceSnapshot;
     deps: DeviceTransportParseDeps;
     purpose?: ParseDevicePurpose;
-}): TargetDeviceSnapshot | null {
+}): TransportDeviceSnapshot | null {
     const { device, now, livePowerWByDeviceId = {}, previousSnapshot, deps, purpose = 'runtime' } = params;
     const {
         logger,
@@ -261,7 +266,7 @@ function resolveParsedLastFreshDataMs(params: {
     capabilityObj: DeviceCapabilityMap;
     controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
     observedCurrentOn?: boolean;
-    evChargingState: TargetDeviceSnapshot['evChargingState'];
+    evChargingState: EvChargingState | undefined;
     targetCaps: readonly string[];
     reportedStepObservedAtMs?: number;
     measuredPowerObservedAtMs?: number;
@@ -311,7 +316,7 @@ function buildParsedDeviceSnapshot(params: {
     powerCapable: boolean;
     binaryControl: TargetDeviceSnapshot['binaryControl'];
     evCharging: TargetDeviceSnapshot['evCharging'];
-    evChargingState: TargetDeviceSnapshot['evChargingState'];
+    evChargingState: EvChargingState | undefined;
     stateOfCharge: TargetDeviceSnapshot['stateOfCharge'];
     currentTemperature: TargetDeviceSnapshot['currentTemperature'];
     capabilities: string[];
@@ -331,7 +336,7 @@ function buildParsedDeviceSnapshot(params: {
     measuredPowerObservedAtMs?: number;
     lastFreshDataMs?: number;
     lastLocalWriteMs?: number;
-}): TargetDeviceSnapshot {
+}): TransportDeviceSnapshot {
     const {
         device,
         deviceId,

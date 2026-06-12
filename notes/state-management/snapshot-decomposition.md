@@ -36,7 +36,10 @@ helpers. The observer was created but never handed the observation contract.
 
 1. **`ObservedDeviceState` → the observer** (curated, ~13 fields). Everything with a
    realtime in-place write path (a Homey event can change it): `currentOn`,
-   `evCharging`/`evChargingState`, `stateOfCharge`, `currentTemperature`,
+   `evCharging`/`evChargingState` (the latter now type-gated off the base onto
+   `EvObservedFields`, narrowed via `isEvObserved` — owner seams carry it through
+   the `EvObservedProbe` widening; EV-observed slice of the discriminated-types
+   refactor), `stateOfCharge`, `currentTemperature`,
    `measuredPowerKw`/`measuredPowerObservedAtMs`, `reportedStepId`,
    `binaryControlObservation`, `available`, `lastFreshDataMs`/`lastLocalWriteMs`/
    `lastUpdated`, plus the observed `targets` value. This is the consolidated truth

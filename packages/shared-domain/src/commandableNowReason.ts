@@ -20,7 +20,7 @@
  * Browser-safe: no Homey SDK types, no runtime imports.
  */
 
-import type { EvChargingState } from '../../contracts/src/types';
+import type { EvChargingState, EvObservedFields } from '../../contracts/src/types';
 
 /**
  * Discriminator for the non-commandable EV states that produce a reason
@@ -106,8 +106,13 @@ export const EV_BOOST_BLOCK_REASONS: Record<EvBoostBlockReasonKey, string> = {
  * (the bug-magnet this de-couple removes). Returns the specific block-reason
  * string for the three boost-blocking states, else `null` (boost not blocked by
  * plug state — fall through to the battery-level checks).
+ *
+ * Takes the NARROWED `EvObservedFields` shape: the caller decides plug-state
+ * presence exactly once, at the `isEvObserved` guard (an unobserved plug-state
+ * never blocks boost). No implicit absent branch here — the absent case is
+ * unrepresentable in the input.
  */
-export const resolveEvBoostBlockReason = (dev: { evChargingState?: EvChargingState }): string | null => {
+export const resolveEvBoostBlockReason = (dev: EvObservedFields): string | null => {
   if (dev.evChargingState === 'plugged_out') return EV_BOOST_BLOCK_REASONS.plugged_out;
   if (dev.evChargingState === 'plugged_in_discharging') return EV_BOOST_BLOCK_REASONS.plugged_in_discharging;
   if (dev.evChargingState === 'plugged_in') return EV_BOOST_BLOCK_REASONS.plugged_in;

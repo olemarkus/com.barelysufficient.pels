@@ -45,7 +45,14 @@ describe('settingsUiApi', () => {
     const defaultPlanSnapshot = {
       devices: [{ id: 'dev-1', name: 'Heater', priority: 1, reason: buildComparablePlanReason('keep') }],
     };
-    let latestDevices = [{ id: 'dev-1', name: 'Heater' }];
+    // The EV entry pins the ui_devices wire carriage of the observed plug-state:
+    // the base snapshot type omits `evChargingState` (EV-observed field-move), so
+    // the settings-UI `isEvObserved` narrowing works only if the served objects
+    // physically carry it. A producer rebuild that drops the field must fail here.
+    let latestDevices: Record<string, unknown>[] = [
+      { id: 'dev-1', name: 'Heater' },
+      { id: 'ev-1', name: 'Charger', deviceClass: 'evcharger', evChargingState: 'plugged_in_charging' },
+    ];
     let powerTracker: Record<string, unknown> = { buckets: { '2026-03-03T00:00:00.000Z': 1.2 } };
     const refreshTargetDevicesSnapshot = vi.fn().mockImplementation(async () => {
       latestDevices = [{ id: 'dev-2', name: 'Pump' }];
@@ -340,7 +347,10 @@ describe('settingsUiApi', () => {
     const homey = createHomey();
 
     expect(getSettingsUiDevicesPayload({ homey: homey as never })).toEqual({
-      devices: [{ id: 'dev-1', name: 'Heater' }],
+      devices: [
+        { id: 'dev-1', name: 'Heater' },
+        { id: 'ev-1', name: 'Charger', deviceClass: 'evcharger', evChargingState: 'plugged_in_charging' },
+      ],
     });
     expect(getSettingsUiPlanPayload({ homey: homey as never })).toEqual({
       plan: {

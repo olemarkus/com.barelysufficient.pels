@@ -17,7 +17,7 @@ import type {
   DevicePlanDevice,
   PlanInputDevice,
 } from '../../lib/plan/planTypes';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { EvObservedProbe, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { buildLiveStatePlan, hasPlanExecutionDrift } from '../../lib/plan/planReconcileState';
 import { legacyDeviceReason } from '../utils/deviceReasonTestUtils';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
@@ -1316,7 +1316,9 @@ describe('PlanExecutor stepped loads', () => {
     ],
   };
 
-  const steppedSnapshot = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot[] => [{
+  const steppedSnapshot = (
+    overrides: Partial<TargetDeviceSnapshot & EvObservedProbe> = {},
+  ): (TargetDeviceSnapshot & EvObservedProbe)[] => [{
     id: 'dev-1',
     name: 'Tank',
     controlCapabilityId: 'onoff',
@@ -2645,7 +2647,9 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     ...overrides,
   }];
 
-  const buildSnapshot = (overrides: Partial<TargetDeviceSnapshot> = { binaryControl: { on: false } }): TargetDeviceSnapshot[] => [{
+  const buildSnapshot = (
+    overrides: Partial<TargetDeviceSnapshot & EvObservedProbe> = { binaryControl: { on: false } },
+  ): (TargetDeviceSnapshot & EvObservedProbe)[] => [{
     id: 'dev-1',
     name: 'Tank',
     controlCapabilityId: 'onoff' as const,

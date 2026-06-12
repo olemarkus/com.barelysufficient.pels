@@ -192,6 +192,13 @@ export type SettingsUiDevicesPayload = {
   // so the payload carries the stepped-load step-command/planning decoration
   // the settings-UI reads (`selectedStepId` / `planningPowerKw` / ...). Typed
   // as the decoration carrier rather than the raw transport snapshot.
+  // The served objects are the transport-owned snapshots, which physically
+  // carry the observed EV plug-state the base type omits (`EvObservedFields`
+  // slice). Deliberately NOT probe-widened here: exposing `EvObservedProbe` on
+  // the consumer contract would re-permit un-narrowed optional reads across the
+  // settings-UI — consumers must narrow through `isEvObserved`. The physical
+  // carriage is pinned by the ui_devices payload test instead
+  // (`test/integration/settingsUiApi.test.ts`).
   devices: DecoratedDeviceSnapshot[];
 };
 

@@ -1,4 +1,5 @@
-import type { ObservedDeviceState, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { EvObservedProbe, ObservedDeviceState } from '../../packages/contracts/src/types';
+import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 
 /**
  * Pure projection from the full transport snapshot down to the observed-state
@@ -22,8 +23,11 @@ import type { ObservedDeviceState, TargetDeviceSnapshot } from '../../packages/c
  * the producer today, but we spread-copy them defensively so a future in-place
  * tweak can't leak across the seam either.
  */
-export function projectObservedState(snapshot: TargetDeviceSnapshot): ObservedDeviceState {
-    const projected: ObservedDeviceState = {
+export function projectObservedState(snapshot: TransportDeviceSnapshot): ObservedDeviceState {
+    // Probe-widened locally so the projection can copy `evChargingState` (the
+    // base type omits it; the observer's stored values must physically carry it
+    // for `isEvObserved` narrowing and the read-model producer accessor).
+    const projected: ObservedDeviceState & EvObservedProbe = {
         id: snapshot.id,
         name: snapshot.name,
         targets: snapshot.targets.map((target) => ({ ...target })),
