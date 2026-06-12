@@ -63,6 +63,8 @@ export type WeatherHistoryState = {
   forecastHourly?: Record<string, Record<string, number>>;
   /** Device id the one-shot Insights backfill last completed for. */
   backfilledDeviceId?: string;
+  /** Set once the one-shot Homey Energy report backfill completed (home aggregate — no device). */
+  energyReportBackfillDone?: boolean;
   /** Derived after each rollup/backfill; recomputed from records, never hand-edited. */
   latestFit?: EnergySignatureFit;
   latestSuggestion?: EnergySignatureSuggestion;

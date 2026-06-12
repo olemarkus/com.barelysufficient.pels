@@ -1,6 +1,8 @@
 import type { WeatherDailyRecord, WeatherHistoryState } from '../../packages/contracts/src/weatherAdvisorTypes';
 import {
   applyActualSample,
+  applyEnergyBackfill,
+  mergeRecoveredState,
   applyForecastSample,
   emptyWeatherHistoryState,
   normalizeWeatherHistoryState,
@@ -181,6 +183,48 @@ describe('upsertBackfillRecords', () => {
   });
 });
 
+describe('applyEnergyBackfill', () => {
+  it('fills only missingKwh records and counts the patches', () => {
+    const missing = {
+      ...backfilledRecord('2025-02-01'),
+      kwhTotal: undefined,
+      quality: { partialTemp: false, missingKwh: true, unreliablePower: false, backfilled: true },
+    };
+    const joined = liveRecord('2026-03-05', { kwhTotal: 44 });
+    const { state, patchedDays } = applyEnergyBackfill(
+      { records: [missing, joined] },
+      { '2025-02-01': 52.3, '2026-03-05': 999 },
+    );
+    expect(patchedDays).toBe(1);
+    expect(state.records[0]).toMatchObject({
+      kwhTotal: 52.3,
+      quality: { missingKwh: false, backfilled: true },
+    });
+    // The already-joined live record is untouched — tracker kWh wins.
+    expect(state.records[1].kwhTotal).toBe(44);
+  });
+
+  it('is an identity when nothing matches', () => {
+    const original = { records: [liveRecord('2026-03-05')] };
+    const { state, patchedDays } = applyEnergyBackfill(original, { '2020-01-01': 10 });
+    expect(patchedDays).toBe(0);
+    expect(state).toBe(original);
+  });
+});
+
+describe('mergeRecoveredState markers', () => {
+  it('keeps only a RECOVERED energy marker — an in-memory completion may predate the superset', () => {
+    const base = { records: [liveRecord('2026-01-08')] };
+    const inMemoryDone = mergeRecoveredState(base, { records: [], energyReportBackfillDone: true });
+    expect(inMemoryDone.energyReportBackfillDone).toBeUndefined();
+    const recoveredDone = mergeRecoveredState(
+      { ...base, energyReportBackfillDone: true },
+      { records: [] },
+    );
+    expect(recoveredDone.energyReportBackfillDone).toBe(true);
+  });
+});
+
 describe('periodsOverlapWindow', () => {
   it('detects any overlap with the window', () => {
     expect(periodsOverlapWindow([{ start: 0, end: 5 }], 4, 10)).toBe(true);
@@ -203,6 +247,7 @@ describe('normalizeWeatherHistoryState', () => {
       accumulators: { '2026-01-10': { sumC: 3, count: 2, minC: 1, maxC: 2, lastHourKey: '09' } },
       forecastHourly: { '2026-01-11': { '14': -2 } },
       backfilledDeviceId: 'dev-1',
+      energyReportBackfillDone: true,
     };
     const withJunk = {
       ...valid,

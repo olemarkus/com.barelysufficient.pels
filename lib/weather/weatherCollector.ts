@@ -14,6 +14,7 @@ import {
 import { readDeviceTemperature } from './weatherDeviceRead';
 import {
   applyActualSample,
+  applyEnergyBackfill,
   applyForecastSample,
   emptyWeatherHistoryState,
   getLocalHourKey,
@@ -25,6 +26,7 @@ import {
 } from './weatherHistory';
 import type { WeatherHistoryStore } from './weatherHistoryStore';
 import { fetchBackfillDailyRecords } from './weatherInsightsBackfill';
+import { fetchDailyConsumedKwh, listMonthKeys } from './energyReportBackfill';
 
 const HOUR_MS = 60 * 60 * 1000;
 const HOURLY_SAMPLE_OFFSET_MS = 90 * 1000;
@@ -46,7 +48,7 @@ const READ_WARN_THROTTLE_MS = HOUR_MS;
 export type WeatherCollectorDeps = {
   store: WeatherHistoryStore;
   readDevice: (deviceId: string) => Promise<RawHomeyDeviceLike>;
-  /** Read-only GET against the Homey Web API, for the Insights backfill. */
+  /** Read-only GET against the Homey Web API (Insights backfill + Energy reports). */
   fetchInsights: (path: string) => Promise<unknown>;
   /** Flat kWh totals for a local day, sourced from the power tracker by the factory. */
   getDailyKwh: (dateKey: string) => { total?: number; controlled?: number };
@@ -85,6 +87,7 @@ export class WeatherCollector {
   private persistTimer?: ReturnType<typeof setTimeout>;
   private readonly lastWarnAtMsByKey = new Map<string, number>();
   private backfillRunning = false;
+  private energyBackfillRunning = false;
   private running = false;
   /**
    * Bumped on every stop(). Async continuations capture it before awaiting
@@ -123,6 +126,7 @@ export class WeatherCollector {
       this.deps.logger.error({ event: 'weather_rollup_failed', err: normalizeError(error) });
     }
     this.maybeStartBackfill(settings);
+    this.maybeStartEnergyBackfill();
     void this.sampleOnce().catch((error: unknown) => {
       this.deps.logger.warn({ event: 'weather_sample_failed', err: normalizeError(error) });
     });
@@ -437,8 +441,14 @@ export class WeatherCollector {
       // retries — three GETs per boot is cheap insurance against silently
       // forfeiting a year of history to one transient empty response.
       const markDone = complete && records.length > 0;
+      // A device switch rebuilds the temperature history, so days the
+      // previous energy pass never saw arrive missingKwh — the energy marker
+      // must fall with the temp marker or those days stay unpatched forever.
+      const deviceChanged = markDone && this.state.backfilledDeviceId !== deviceId;
+      const { energyReportBackfillDone: _stale, ...withoutEnergyMarker } = this.state;
+      const base = deviceChanged ? withoutEnergyMarker : this.state;
       this.state = {
-        ...upsertBackfillRecords(this.state, records),
+        ...upsertBackfillRecords(base, records),
         ...(markDone ? { backfilledDeviceId: deviceId } : {}),
       };
       if (records.length > 0) {
@@ -453,6 +463,8 @@ export class WeatherCollector {
         complete,
         recordCount: this.state.records.length,
       });
+      // Temperature records now exist; fill their kWh from Energy reports.
+      if (markDone) this.maybeStartEnergyBackfill();
     }).catch((error: unknown) => {
       // Marker stays unset, so the next start() retries the backfill.
       this.deps.logger.warn({ event: 'weather_backfill_failed', deviceId, err: normalizeError(error) });
@@ -463,6 +475,72 @@ export class WeatherCollector {
       const current = this.deps.getSettings();
       if (this.running && current.enabled && current.outdoorDeviceId && current.outdoorDeviceId !== deviceId) {
         this.maybeStartBackfill(current);
+      }
+    });
+  }
+
+  /**
+   * One-shot Homey-Energy-report kWh backfill for records the power tracker
+   * could not cover. Home-aggregate data — no device to pick — so it gates
+   * only on the temperature backfill having landed (records must exist before
+   * their kWh slots can be filled) and its own done-marker.
+   */
+  private maybeStartEnergyBackfill(): void {
+    const settings = this.deps.getSettings();
+    if (!settings.enabled || !settings.outdoorDeviceId) return;
+    if (this.energyBackfillRunning) return;
+    if (this.state.energyReportBackfillDone === true) return;
+    if (this.state.backfilledDeviceId !== settings.outdoorDeviceId) return;
+    const generation = this.runGeneration;
+    const oldestMissing = this.state.records.find((record) => record.quality.missingKwh);
+    if (oldestMissing === undefined) {
+      this.state = { ...this.state, energyReportBackfillDone: true };
+      this.markDirty();
+      return;
+    }
+    const todayKey = getDateKeyInTimeZone(new Date(this.deps.getNowMs()), this.deps.getTimeZone());
+    const monthKeys = listMonthKeys(oldestMissing.dateKey, todayKey);
+    if (monthKeys.length === 0) {
+      // Clock skew (pre-NTP boot) can put "today" before the oldest record;
+      // latching the done-marker here would silently forfeit the backfill.
+      this.deps.logger.warn({
+        event: 'weather_energy_backfill_empty_span', oldestMissing: oldestMissing.dateKey, todayKey,
+      });
+      return;
+    }
+    this.energyBackfillRunning = true;
+    const generationAtLaunch = generation;
+    void fetchDailyConsumedKwh({
+      monthKeys,
+      fetchFromHomeyApi: this.deps.fetchInsights,
+    }).then(({ dailyKwh, complete }) => {
+      if (!this.running || generation !== this.runGeneration) return;
+      const { state, patchedDays } = applyEnergyBackfill(this.state, dailyKwh);
+      this.state = {
+        ...state,
+        ...(complete ? { energyReportBackfillDone: true } : {}),
+      };
+      if (patchedDays > 0) {
+        this.state = this.deps.recomputeDerived?.(this.state) ?? this.state;
+      }
+      if (patchedDays > 0 || complete) this.markDirty();
+      this.deps.logger.info({
+        event: 'weather_energy_backfill_completed',
+        patchedDays,
+        complete,
+        monthsQueried: monthKeys.length,
+      });
+    }).catch((error: unknown) => {
+      // Marker stays unset, so the next start() retries.
+      this.deps.logger.warn({ event: 'weather_energy_backfill_failed', err: normalizeError(error) });
+    }).finally(() => {
+      this.energyBackfillRunning = false;
+      // A reload during the (potentially long) fetch superseded this run and
+      // its start()-time trigger was blocked by energyBackfillRunning — kick
+      // the new run now rather than waiting for the next app restart. Gated
+      // on supersession so a persistently failing fetch cannot hot-loop.
+      if (this.running && generationAtLaunch !== this.runGeneration) {
+        this.maybeStartEnergyBackfill();
       }
     });
   }

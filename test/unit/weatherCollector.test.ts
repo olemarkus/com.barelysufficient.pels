@@ -356,6 +356,148 @@ describe('WeatherCollector', () => {
     expect((deps.fetchInsights as ReturnType<typeof vi.fn>).mock.calls.length).toBe(fetchCallsAfterFirstRun);
   });
 
+  it('chains the Energy-report backfill after the temperature backfill and patches missing kWh', async () => {
+    const points = [Date.UTC(2026, 0, 4, 23, 0, 0), Date.UTC(2026, 0, 5, 23, 0, 0)]
+      .flatMap(sixHourZeroPoints);
+    const recomputeDerived = vi.fn((state: WeatherHistoryState) => state);
+    const { collector, store } = buildHarness({
+      // No tracker kWh at all: the backfilled days arrive missingKwh.
+      getDailyKwh: vi.fn(() => ({})),
+      recomputeDerived,
+      fetchInsights: vi.fn(async (path: string) => {
+        if (path.startsWith('manager/energy/report/month')) {
+          return path.includes('2026-01')
+            ? { subReports: { '2026-01-05': { electricity: { consumedPeriod: 52.5 } } } }
+            : { subReports: {} };
+        }
+        return path.includes('lastYear')
+          ? { step: 6 * HOUR_MS, values: points }
+          : { step: 6 * HOUR_MS, values: [] };
+      }),
+    });
+    collector.start();
+    await vi.advanceTimersByTimeAsync(0);
+    collector.stop();
+    const written = lastWritten(store);
+    expect(written.backfilledDeviceId).toBe('out-1');
+    expect(written.energyReportBackfillDone).toBe(true);
+    const day5 = written.records.find((record) => record.dateKey === '2026-01-05');
+    expect(day5).toMatchObject({ kwhTotal: 52.5, quality: { missingKwh: false } });
+    // 2026-01-06 had no report entry: stays missing, but the run is complete.
+    const day6 = written.records.find((record) => record.dateKey === '2026-01-06');
+    expect(day6?.quality.missingKwh).toBe(true);
+    expect(recomputeDerived).toHaveBeenCalled();
+  });
+
+  it('clears the energy marker when the temperature backfill lands for a new device', async () => {
+    const points = sixHourZeroPoints(Date.UTC(2026, 0, 4, 23, 0, 0));
+    const energyPaths: string[] = [];
+    const { collector, store, persisted } = buildHarness({
+      getDailyKwh: vi.fn(() => ({})),
+      fetchInsights: vi.fn(async (path: string) => {
+        if (path.startsWith('manager/energy/report/month')) {
+          energyPaths.push(path);
+          return { subReports: { '2026-01-05': { electricity: { consumedPeriod: 33 } } } };
+        }
+        return path.includes('lastYear')
+          ? { step: 6 * HOUR_MS, values: points }
+          : { step: 6 * HOUR_MS, values: [] };
+      }),
+    });
+    // A previous device completed both passes; the user then switched devices.
+    persisted.value = { records: [], backfilledDeviceId: 'old-device', energyReportBackfillDone: true };
+    collector.start();
+    await vi.advanceTimersByTimeAsync(0);
+    collector.stop();
+    const written = lastWritten(store);
+    expect(written.backfilledDeviceId).toBe('out-1');
+    expect(energyPaths.length).toBeGreaterThan(0);
+    expect(written.records.find((record) => record.dateKey === '2026-01-05')?.kwhTotal).toBe(33);
+    expect(written.energyReportBackfillDone).toBe(true);
+  });
+
+  it('does not latch the energy marker on an empty month span (clock skew)', async () => {
+    const { collector, store, persisted, logger } = buildHarness({ getDailyKwh: vi.fn(() => ({})) });
+    persisted.value = {
+      records: [{
+        dateKey: '2026-01-05',
+        tempMeanC: 0,
+        tempMinC: -1,
+        tempMaxC: 1,
+        tempSampleCount: 4,
+        quality: { partialTemp: false, missingKwh: true, unreliablePower: false, backfilled: true },
+      }],
+      backfilledDeviceId: 'out-1',
+    };
+    // Pre-NTP boot: "today" lands before the oldest record.
+    vi.setSystemTime(Date.UTC(2025, 11, 1, 10, 0, 0));
+    collector.start();
+    await vi.advanceTimersByTimeAsync(0);
+    collector.stop();
+    expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({ event: 'weather_energy_backfill_empty_span' }));
+    expect(lastWritten(store).energyReportBackfillDone).toBeUndefined();
+  });
+
+  it('re-kicks a superseded in-flight energy run on the new generation', async () => {
+    let releaseFirst: (() => void) | undefined;
+    let energyCalls = 0;
+    const { collector, store, persisted } = buildHarness({
+      getDailyKwh: vi.fn(() => ({})),
+      fetchInsights: vi.fn(async (path: string) => {
+        if (path.startsWith('manager/energy/report/month')) {
+          energyCalls += 1;
+          if (energyCalls === 1) {
+            await new Promise<void>((resolve) => {
+              releaseFirst = resolve;
+            });
+          }
+          return { subReports: { '2026-01-05': { electricity: { consumedPeriod: 41 } } } };
+        }
+        return { step: 6 * HOUR_MS, values: [] };
+      }),
+    });
+    persisted.value = {
+      records: [{
+        dateKey: '2026-01-05',
+        tempMeanC: 0,
+        tempMinC: -1,
+        tempMaxC: 1,
+        tempSampleCount: 4,
+        quality: { partialTemp: false, missingKwh: true, unreliablePower: false, backfilled: true },
+      }],
+      backfilledDeviceId: 'out-1',
+    };
+    collector.start();
+    await vi.advanceTimersByTimeAsync(0); // first energy run now pending
+    collector.start(); // reload supersedes it; its own trigger is blocked
+    await vi.advanceTimersByTimeAsync(0);
+    releaseFirst?.();
+    await vi.advanceTimersByTimeAsync(0); // discard + finally re-kick
+    await vi.advanceTimersByTimeAsync(30_000);
+    collector.stop();
+    expect(energyCalls).toBeGreaterThanOrEqual(2);
+    const written = lastWritten(store);
+    expect(written.records[0]).toMatchObject({ kwhTotal: 41, quality: { missingKwh: false } });
+    expect(written.energyReportBackfillDone).toBe(true);
+  });
+
+  it('keeps the energy marker unset when a report month fails non-404', async () => {
+    const points = sixHourZeroPoints(Date.UTC(2026, 0, 4, 23, 0, 0));
+    const { collector, store } = buildHarness({
+      getDailyKwh: vi.fn(() => ({})),
+      fetchInsights: vi.fn(async (path: string) => {
+        if (path.startsWith('manager/energy/report/month')) throw new Error('HTTP 500: boom');
+        return path.includes('lastYear')
+          ? { step: 6 * HOUR_MS, values: points }
+          : { step: 6 * HOUR_MS, values: [] };
+      }),
+    });
+    collector.start();
+    await vi.advanceTimersByTimeAsync(30_000);
+    collector.stop();
+    expect(lastWritten(store).energyReportBackfillDone).toBeUndefined();
+  });
+
   it('logs and leaves the backfill marker unset when Insights reads fail', async () => {
     const { collector, store, logger } = buildHarness({
       fetchInsights: vi.fn(async () => {
