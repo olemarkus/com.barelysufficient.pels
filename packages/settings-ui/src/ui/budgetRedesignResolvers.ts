@@ -440,7 +440,14 @@ export type ComparisonDay = {
 export const resolveEffectiveLocalView = (
   activeEnabled: boolean,
   requestedView: BudgetLocalView,
-): BudgetLocalView => (activeEnabled ? requestedView : 'adjust');
+  // Weather detail needs a loaded readout; flag-off (or data not yet fetched)
+  // snaps the requested 'weather' view back to the plan view.
+  weatherDetailAvailable: boolean,
+): BudgetLocalView => {
+  if (!activeEnabled) return 'adjust';
+  if (requestedView === 'weather' && !weatherDetailAvailable) return 'plan';
+  return requestedView;
+};
 
 export const resolvePlanPayload = (p: DailyBudgetDayPayload | null, enabled: boolean) => (enabled ? p : null);
 

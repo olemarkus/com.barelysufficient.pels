@@ -25,6 +25,10 @@ import {
 import { resolveAllocationWarning } from './dailyBudgetAllocationWarning.ts';
 import { resolvePriceLevelChip } from '../../../shared-domain/src/priceLevelChips.ts';
 import {
+  getWeatherInsightView,
+  setWeatherInsightRenderer,
+} from './weatherInsight.ts';
+import {
   isPriceReliable,
   resolveChartData,
   resolveComparisonChartMax,
@@ -143,7 +147,12 @@ const buildProps = (): BudgetOverviewProps => {
   // the feature is enabled.
   const budgetEnabled = adjust.active.enabled;
   const planPayload = resolvePlanPayload(viewPayload, budgetEnabled);
-  const effectiveLocalView = resolveEffectiveLocalView(budgetEnabled, currentBudgetLocalView);
+  const weatherInsight = getWeatherInsightView();
+  const effectiveLocalView = resolveEffectiveLocalView(
+    budgetEnabled,
+    currentBudgetLocalView,
+    weatherInsight?.readout != null,
+  );
   return {
     localView: effectiveLocalView,
     view,
@@ -153,6 +162,7 @@ const buildProps = (): BudgetOverviewProps => {
     adjust,
     allocationWarning: view === 'today' ? resolveAllocationWarning(planPayload) : null,
     priceLevelChip: resolvePriceLevelChip(latestRenderState.priceLevel),
+    weatherInsight,
     adjustReturnTarget,
     onReturnToSettings: () => {
       // The header has already confirmed any discard (two-step button), so
@@ -185,6 +195,18 @@ export const doRender = () => {
 };
 
 setBudgetAdjustRenderer(() => doRender());
+// Weather-insight data lands asynchronously (budget-tab fetch, settings.set
+// round-trips); re-render the Budget surface whenever the controller updates.
+setWeatherInsightRenderer(() => doRender());
+
+// Entry point for the `budget-weather` virtual settings-target (boot.ts):
+// open the Budget tab directly on the Weather insight detail view. If the
+// readout isn't loaded yet, resolveEffectiveLocalView snaps to plan until the
+// tab-activation fetch lands and re-renders.
+export const openBudgetWeatherView = (): void => {
+  currentBudgetLocalView = 'weather';
+  doRender();
+};
 
 export const renderBudgetRedesign = (
   payload: DailyBudgetUiPayload | null,

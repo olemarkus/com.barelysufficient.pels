@@ -136,3 +136,96 @@ export type EnergySignatureSuggestion = {
   beyondObservedWarm: boolean;
   computedAtMs: number;
 };
+
+// ── Settings-UI readout ─────────────────────────────────────────────────────
+//
+// Server-assembled payload for the hidden "Weather insight" surface
+// (`/ui_weather_advisor_readout`). The runtime resolves everything to flat
+// values — state, device names, decimated scatter — so the UI never re-derives
+// from raw records (resolution-in-producer rule). `null` from the endpoint
+// means the feature flag is off (structural absence in the UI).
+
+export type WeatherAdvisorReadoutState = 'needs_device' | 'backfilling' | 'learning' | 'ready' | 'error';
+
+export type WeatherAdvisorSettingsEcho = {
+  outdoorDeviceId: string | null;
+  outdoorDeviceName: string | null;
+  forecastDeviceId: string | null;
+  forecastDeviceName: string | null;
+};
+
+/** 5 °C coverage bin; `sufficient` = ≥ 14 usable days (the solid shade). */
+export type WeatherCoverageBin = {
+  fromC: number;
+  toC: number;
+  days: number;
+  sufficient: boolean;
+};
+
+/** 1 °C scatter bin — the count-weighted symbols the chart renders. */
+export type WeatherScatterBin = {
+  tempBinC: number;
+  kwhMedian: number;
+  kwhQ1: number;
+  kwhQ3: number;
+  count: number;
+};
+
+/** One raw recent day (≤ 90 shipped) for the accent overlay + tooltips. */
+export type WeatherRecentDay = {
+  dateKey: string;
+  tempMeanC: number;
+  kwhTotal: number;
+  quality: WeatherDailyQuality;
+};
+
+export type WeatherAdvisorPrediction = {
+  tempMeanC: number;
+  source: 'forecast' | 'recent';
+  kwh: number;
+  /** q10 of the expected range. */
+  lowKwh: number;
+  /** q90 of the expected range. */
+  highKwh: number;
+  beyondObservedCold: boolean;
+  beyondObservedWarm: boolean;
+};
+
+export type WeatherAdvisorSuggestion = {
+  /** Advisory only — the UI never applies it; `Adjust budget` opens unprefilled. */
+  kwh: number;
+  /** The active daily budget for comparison; null when the daily budget is off. */
+  currentDailyBudgetKwh: number | null;
+  /** The capacity ceiling (cap × 24 h) clamped the suggestion. */
+  cappedByCapacity: boolean;
+};
+
+/** Yesterday vs typical-for-its-temperature, resolved server-side. */
+export type WeatherAdvisorYesterday = {
+  dateKey: string;
+  tempMeanC: number;
+  kwhTotal: number;
+  /** kWh above (+) / below (−) typical for the day's temperature; null when no anchor. */
+  deviationKwh: number | null;
+};
+
+export type WeatherAdvisorReadoutPayload = {
+  state: WeatherAdvisorReadoutState;
+  /** Orthogonal to `state`: recent days run above typical (S6 treatment). */
+  driftSuspected: boolean;
+  /** Median kWh/day recent days run above typical; set only while drift is suspected. */
+  driftDeviationKwh: number | null;
+  settings: WeatherAdvisorSettingsEcho;
+  fit: EnergySignatureFit | null;
+  coverage: WeatherCoverageBin[];
+  prediction: WeatherAdvisorPrediction | null;
+  suggestion: WeatherAdvisorSuggestion | null;
+  scatter: WeatherScatterBin[];
+  recentDays: WeatherRecentDay[];
+  yesterday: WeatherAdvisorYesterday | null;
+  /** Days currently usable by the estimate — drives the learning-state copy. */
+  usableDays: number;
+  /** Usable days reconstructed by the Insights backfill (footnote wording). */
+  backfilledDays: number;
+  generatedAtMs: number;
+};

@@ -100,19 +100,32 @@ export function predictDailyKwh(fit: EnergySignatureFit, tempMeanC: number): num
   return (fit.interceptKwhAtZeroC ?? 0) - fit.slopeKwhPerDegree * tempMeanC;
 }
 
+/**
+ * Quality gate for a day to count toward the signature: clean temp + kWh,
+ * reliable power, positive total. Net-export (PV) days carry no readable
+ * heating signal; excluding them keeps negative totals from bending the
+ * slope. Backfilled days are admitted — they are good data. Shared with the
+ * settings-UI readout builder so the scatter/coverage decimation and the fit
+ * judge days by the same gate.
+ */
+export function isUsableSignatureDay(record: WeatherDailyRecord): boolean {
+  return !record.quality.partialTemp
+    && !record.quality.missingKwh
+    && !record.quality.unreliablePower
+    && Number.isFinite(record.tempMeanC)
+    && typeof record.kwhTotal === 'number'
+    && Number.isFinite(record.kwhTotal)
+    && record.kwhTotal > 0;
+}
+
+/** Days currently counting toward the fit (same gates + window the fit uses). */
+export function countUsableDays(records: WeatherDailyRecord[]): number {
+  return selectUsableDays(records).length;
+}
+
 function selectUsableDays(records: WeatherDailyRecord[]): FitDay[] {
   return records
-    .filter((record) => (
-      !record.quality.partialTemp
-      && !record.quality.missingKwh
-      && !record.quality.unreliablePower
-      && Number.isFinite(record.tempMeanC)
-      && typeof record.kwhTotal === 'number'
-      && Number.isFinite(record.kwhTotal)
-      // Net-export (PV) days carry no readable heating signal; exclude from
-      // the fit rather than letting negative totals bend the slope.
-      && record.kwhTotal > 0
-    ))
+    .filter((record) => isUsableSignatureDay(record))
     // Deliberately the trailing 120 USABLE days, not calendar days: windowing
     // before the quality filter would shrink the sample after flaky stretches
     // and can drop the fit below the 21-day gate entirely. The drift detector
@@ -288,7 +301,8 @@ function median(values: number[]): number {
   return quantile(values, 0.5);
 }
 
-function quantile(values: number[], p: number): number {
+/** Linear-interpolated quantile over an unsorted sample; 0 on empty input. */
+export function quantile(values: number[], p: number): number {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
   const position = (sorted.length - 1) * p;

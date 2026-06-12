@@ -26,6 +26,7 @@ export const SETTINGS_UI_DEVICE_LOG_PATH = '/ui_device_log';
 export const SETTINGS_UI_DEFERRED_OBJECTIVE_SETTINGS_PATH = '/ui_deferred_objective_settings';
 export const SETTINGS_UI_LOG_PATH = '/settings_ui_log';
 export const SETTINGS_UI_RESET_POWER_STATS_PATH = '/ui_reset_power_stats';
+export const SETTINGS_UI_WEATHER_ADVISOR_READOUT_PATH = '/ui_weather_advisor_readout';
 export const SETTINGS_UI_RECOMPUTE_DAILY_BUDGET_PATH = '/ui_recompute_daily_budget';
 export const SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH = '/ui_preview_daily_budget_model';
 export const SETTINGS_UI_APPLY_DAILY_BUDGET_MODEL_PATH = '/ui_apply_daily_budget_model';
@@ -74,6 +75,7 @@ export const SETTINGS_UI_BOOTSTRAP_KEYS = [
   'debug_logging_topics',
   'debug_logging_enabled',
   'deferred_objectives',
+  'weather_advisor_settings',
 ] as const;
 
 export type SettingsUiBootstrapKey = (typeof SETTINGS_UI_BOOTSTRAP_KEYS)[number];

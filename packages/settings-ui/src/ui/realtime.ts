@@ -32,6 +32,7 @@ import {
   TEMPERATURE_BOOST_SETTINGS,
   PRICE_OPTIMIZATION_ENABLED,
   PRICE_SCHEME,
+  WEATHER_ADVISOR_SETTINGS,
 } from '../../../contracts/src/settingsKeys.ts';
 import { getTargetDevices, renderDevices } from './devices.ts';
 import {
@@ -76,6 +77,10 @@ import { refreshDeadlinesList } from './deadlinesList.ts';
 import { loadDeferredObjectiveSettings } from './deferredObjectiveSettings.ts';
 import { reloadDeferredObjectiveActivePlans } from './deferredObjectiveActivePlans.ts';
 import { clearUsageReturnLink } from './usageReturnLink.ts';
+import {
+  handleWeatherAdvisorSettingsChanged,
+  refreshWeatherInsightOnBudgetTab,
+} from './weatherInsight.ts';
 
 const DAILY_BUDGET_REFRESH_KEYS = new Set([
   'daily_budget_enabled',
@@ -311,12 +316,22 @@ const reloadActivePlansIfActivePlansKey = (key: string, context: string): void =
   );
 };
 
+// A flag flip / device change must reach an already-open WebView: reload the
+// weather settings snapshot and (when enabled) refetch the readout so the
+// Budget card and Settings pickers track the new state without a reload.
+// Fires for BOTH settings.set and settings.unset (clearing the blob disables).
+const reloadWeatherInsightIfWeatherKey = (key: string, context: string): void => {
+  if (key !== WEATHER_ADVISOR_SETTINGS) return;
+  runLoggedTask(handleWeatherAdvisorSettingsChanged(), 'Failed to reload weather insight', context);
+};
+
 const createSettingsUnsetHandler = () => (key: string) => {
   // Clears `unset` the per-device key; reload objectives so a cleared task drops out
   // of an already-open WebView (Homey may deliver clears as an unset event).
   invalidateSettingCache(key);
   reloadObjectivesIfObjectiveKey(key, 'settings.unset');
   reloadActivePlansIfActivePlansKey(key, 'settings.unset');
+  reloadWeatherInsightIfWeatherKey(key, 'settings.unset');
 };
 
 const createSettingsSetHandler = () => (key: string) => {
@@ -324,6 +339,7 @@ const createSettingsSetHandler = () => (key: string) => {
 
   reloadObjectivesIfObjectiveKey(key, 'settings.set');
   reloadActivePlansIfActivePlansKey(key, 'settings.set');
+  reloadWeatherInsightIfWeatherKey(key, 'settings.set');
 
   if (CAPACITY_SETTINGS_KEYS.has(key)) {
     runLoggedTask(loadCapacitySettings(), 'Failed to load capacity settings', 'settings.set');
@@ -445,6 +461,8 @@ const runTabActivationSideEffects = (tabId: string) => {
   }
   if (tabId === 'budget') {
     runLoggedTask(refreshDailyBudgetPlan(), 'Failed to refresh daily budget', 'showTab');
+    // Lazy weather-readout fetch: no-op while the flag is off.
+    runLoggedTask(refreshWeatherInsightOnBudgetTab(), 'Failed to refresh weather insight', 'showTab');
     return;
   }
   if (tabId === 'deadlines') {

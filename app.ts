@@ -82,6 +82,8 @@ import { assembleActivePlansWithTrajectory } from './setup/deferredObjectiveActi
 import { BackgroundTasksController } from './setup/backgroundTasksController';
 import { PowerSamplePipeline } from './setup/powerSamplePipeline';
 import { createWeatherCollector } from './setup/appInit/createWeatherCollector';
+import { assembleWeatherAdvisorReadout } from './setup/appInit/weatherAdvisorReadoutAssembler';
+import type { WeatherAdvisorReadoutPayload } from './packages/contracts/src/weatherAdvisorTypes';
 import type { WeatherCollector } from './lib/weather/weatherCollector';
 import { SchedulerTelemetryObserver } from './setup/schedulerTelemetryObserver';
 import { SettingsRepository } from './setup/settingsRepository';
@@ -2006,6 +2008,10 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi {
     // onto the snapshot for the smart-tasks widget chart. UI-only — never
     // persisted (see the assembler + the field doc on the contract).
     return assembleActivePlansWithTrajectory(snapshot, this.deferredObjectivePlanHistoryRecorder);
+  }
+  // Hidden weather-insight readout (null = flag off → structural UI absence).
+  public getWeatherAdvisorReadout(): Promise<WeatherAdvisorReadoutPayload | null> {
+    return assembleWeatherAdvisorReadout({ ctx: this.ctx, collector: this.weatherCollector });
   }
   // Read the device's currently-persisted deferred objective, or undefined when
   // none is stored. Backs `hasDeferredObjectiveForDevice`.

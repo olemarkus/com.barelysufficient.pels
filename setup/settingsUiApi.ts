@@ -30,6 +30,7 @@ import type {
   SettingsUiResetPowerStatsResponse,
 } from '../packages/contracts/src/settingsUiApi';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import type { WeatherAdvisorReadoutPayload } from '../packages/contracts/src/weatherAdvisorTypes';
 import {
   getLatestDevicesForUiFromApp,
   getPlanSnapshotForUiFromHomey,
@@ -54,6 +55,7 @@ type SettingsUiApiApp = Homey.App & {
     deviceId: string,
     candidate: DeferredObjectivePlanPreviewCandidate,
   ) => DeferredObjectivePlanPreviewEstimate;
+  getWeatherAdvisorReadout?: () => Promise<WeatherAdvisorReadoutPayload | null>;
 };
 
 type ApiContext = {
@@ -238,6 +240,16 @@ export const getSettingsUiDeferredObjectivePlanHistoryPayload = (
 export const getSettingsUiDeferredObjectiveSettingsPayload = (
   { homey }: ApiContext,
 ): DeferredObjectiveSettingsV1 => readAllObjectives(homey.settings);
+
+// 1-line delegation to the app's readout assembler; null when the app method
+// is not wired (old runtime) or the feature flag is off.
+export const getSettingsUiWeatherAdvisorReadout = async (
+  { homey }: ApiContext,
+): Promise<WeatherAdvisorReadoutPayload | null> => {
+  const app = getApp(homey);
+  if (!app?.getWeatherAdvisorReadout) return null;
+  return app.getWeatherAdvisorReadout();
+};
 
 export const refreshSettingsUiDevices = async ({ homey }: ApiContext): Promise<SettingsUiDevicesPayload> => {
   await refreshSettingsUiDevicesForApp(homey);

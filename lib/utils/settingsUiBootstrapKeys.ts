@@ -35,4 +35,5 @@ export const SETTINGS_UI_BOOTSTRAP_KEYS = [
   'debug_logging_topics',
   'debug_logging_enabled',
   'deferred_objectives',
+  'weather_advisor_settings',
 ] as const;

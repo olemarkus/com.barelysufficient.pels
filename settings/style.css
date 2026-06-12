@@ -8269,3 +8269,189 @@ md-switch {
    above is now gated to `(min-width: 481px)`, so the default tonal gradients
    at the top of this file carry the per-tone story for every surface at the
    narrow webview width without a second per-surface declaration site. */
+
+/* ── Weather insight (hidden, flag-gated) ─────────────────────────────────────
+   Budget-page Tomorrow/state card, detail view, coverage band, and the
+   Settings device pickers. Spec: notes/weather-insight-spec.md. Cards reuse
+   the budget primitives (.pels-surface-card / .budget-redesign-card /
+   .budget-settings-list); only weather-specific pieces live here. */
+
+.weather-card__title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-2);
+}
+
+.weather-card__title-row .plan-chip {
+  flex-shrink: 0;
+}
+
+.weather-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+  justify-content: flex-end;
+}
+
+.weather-card__verdict {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--pels-text-answer-font-size);
+}
+
+.weather-card__verdict--warn,
+.weather-card__reason {
+  color: var(--color-state-warning-text);
+}
+
+.weather-card__row-note {
+  margin: 0;
+}
+
+.weather-card__chips {
+  display: flex;
+  gap: var(--spacing-2);
+}
+
+.weather-summary__headline {
+  margin: 0;
+}
+
+.weather-numbers__details > .weather-numbers__summary {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  min-height: 48px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.weather-numbers__summary::-webkit-details-marker {
+  display: none;
+}
+
+/* Chart viewport height is a physical-pixel value (cf. the deadline charts);
+   must match WEATHER_CHART_HEIGHT in views/WeatherInsightChart.tsx (the
+   cold-mount fallback size). */
+.weather-insight-chart {
+  width: 100%;
+  min-width: 0;
+  height: 220px;
+  touch-action: pan-y;
+}
+
+/* Coverage band: token-styled HTML strip sharing the chart's temperature
+   domain. Shade = usable-day count (solid ≥ 14, light 4–13, outline ≤ 3);
+   the hollow dot repeats tomorrow's position (marker grammar: hollow =
+   projected). */
+.weather-coverage {
+  display: grid;
+  gap: var(--spacing-1);
+}
+
+.weather-coverage__track {
+  --weather-coverage-dot-x: 0%;
+
+  position: relative;
+  display: flex;
+  gap: var(--spacing-1);
+  height: var(--spacing-3);
+}
+
+.weather-coverage__bin {
+  flex: 1;
+  border-radius: var(--radius-xs);
+  background: var(--color-role-accent);
+}
+
+.weather-coverage__bin--solid {
+  opacity: 0.9;
+}
+
+.weather-coverage__bin--light {
+  opacity: 0.4;
+}
+
+.weather-coverage__bin--outline {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--pels-surface-outline);
+}
+
+.weather-coverage__dot {
+  position: absolute;
+  top: 50%;
+  left: var(--weather-coverage-dot-x);
+  width: var(--spacing-2);
+  height: var(--spacing-2);
+  transform: translate(-50%, -50%);
+  border: 2px solid var(--color-role-accent);
+  border-radius: var(--radius-full);
+  background: var(--pels-surface-container);
+}
+
+.weather-coverage__labels {
+  display: flex;
+  justify-content: space-between;
+  color: var(--pels-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.weather-coverage__caption {
+  margin: 0;
+}
+
+/* Scatter legend swatches (marker grammar: solid dot / line / hollow dot). */
+.weather-legend__swatch--day {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--pels-text-supporting-color);
+}
+
+.weather-legend__swatch--estimate {
+  height: 2px;
+  background: var(--color-role-accent);
+}
+
+.weather-legend__swatch--tomorrow {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: transparent;
+  border: 2px solid var(--color-role-accent);
+}
+
+.weather-device-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-2);
+}
+
+/* Native select primitive for the weather device pickers (form-styling rule:
+   native input/select + .field, never md-outlined-*). Padding is restated
+   because Homey's host stylesheet opens with a universal `* { padding: 0 }`
+   reset. Native dropdown arrow is kept (no `appearance: none`). */
+.pels-select {
+  width: 100%;
+  min-height: 48px;
+  padding: var(--spacing-2) var(--spacing-3);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  background: var(--pels-surface-container-high);
+  color: var(--text);
+  font: inherit;
+}
+
+.weather-settings-section {
+  display: grid;
+  gap: var(--spacing-3);
+  margin-top: var(--spacing-4);
+}
+
+.weather-settings-section__title,
+.weather-settings-section__hint {
+  margin: 0;
+}

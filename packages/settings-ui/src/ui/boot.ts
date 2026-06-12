@@ -69,8 +69,10 @@ import {
 import { loadBudgetAdjust } from './budgetAdjustController.ts';
 import {
   openBudgetAdjustFromSettings,
+  openBudgetWeatherView,
   setBudgetAdjustSettingsNavigator,
 } from './budgetRedesign.ts';
+import { initWeatherInsight } from './weatherInsight.ts';
 import {
   initDailyBudgetBreakdownHandlers,
   loadDailyBudgetBreakdownSetting,
@@ -131,6 +133,13 @@ const initTabHandlers = () => {
     // with the Adjust view active and a Settings return target instead.
     if (target === 'budget-adjust') {
       openBudgetAdjustFromSettings();
+      showTab('budget');
+      return;
+    }
+    // 'budget-weather' is the same kind of virtual target: open the Budget
+    // tab with the Weather insight detail view active (deep-link parity).
+    if (target === 'budget-weather') {
+      openBudgetWeatherView();
       showTab('budget');
       return;
     }
@@ -307,6 +316,7 @@ const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
     loadEvBoostSettings(),
     loadDeferredObjectiveSettings(),
     loadAdvancedSettings(),
+    initWeatherInsight(),
   ]);
 
   // Phase 3: Render everything once with all state populated
