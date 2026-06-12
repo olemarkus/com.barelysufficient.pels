@@ -113,6 +113,21 @@ const HOMEY_HOT_PATH_DIRS = [
 // The consumer-side `homey` ban (no allowTypeImports), shared so the snapshot
 // consumer block below can re-declare no-restricted-imports without dropping the
 // homey enforcement (flat config replaces, not merges, a rule for overlapping files).
+// packages/contracts is DELETED from the packaged app by
+// scripts/sanitize-homey-build.mjs (types-only at runtime): a VALUE import
+// from shipped runtime code crash-loops the app at boot with MODULE_NOT_FOUND
+// (prod outage 2026-06-12) and no test lane can see it, because vitest/tsc
+// resolve from source. The dep-cruiser rule no-runtime-value-deps-on-contracts
+// is the arch gate; this lint pattern is the editor-time gate. `import type`
+// stays allowed (erased at compile).
+const CONTRACTS_VALUE_IMPORT_FORBID_PATTERN = {
+  group: ['**/packages/contracts/**', '**/contracts/src/**', '@pels/contracts', '@pels/contracts/**'],
+  allowTypeImports: true,
+  message: 'packages/contracts does not exist in the packaged app (sanitize deletes it): a value '
+    + 'import here crashes the app at boot. Use `import type`, or a runtime-safe duplicate '
+    + '(lib/dailyBudget/dailyBudgetConstants.ts, lib/utils/settingsUiBootstrapKeys.ts pattern).',
+};
+
 const HOMEY_SDK_FORBID_PATH = {
   name: 'homey',
   message: 'Outside the device-boundary leaf, lib/** must not reference the Homey SDK at all '
@@ -356,6 +371,7 @@ export default tseslint.config(
     rules: {
       '@typescript-eslint/no-restricted-imports': ['error', {
         paths: [HOMEY_SDK_FORBID_PATH],
+        patterns: [CONTRACTS_VALUE_IMPORT_FORBID_PATTERN],
       }],
       '@typescript-eslint/no-require-imports': 'error',
     },
@@ -369,7 +385,7 @@ export default tseslint.config(
     rules: {
       '@typescript-eslint/no-restricted-imports': ['error', {
         paths: [HOMEY_SDK_FORBID_PATH],
-        patterns: [TARGET_SNAPSHOT_FORBID_PATTERN],
+        patterns: [TARGET_SNAPSHOT_FORBID_PATTERN, CONTRACTS_VALUE_IMPORT_FORBID_PATTERN],
       }],
       '@typescript-eslint/no-require-imports': 'error',
     },
@@ -388,6 +404,7 @@ export default tseslint.config(
           message: 'Even the SDK-boundary leaf must not VALUE-import `homey` — the runtime instance is '
             + 'injected from the entry points (app.ts/drivers). `import type Homey` is allowed here only.',
         }],
+        patterns: [CONTRACTS_VALUE_IMPORT_FORBID_PATTERN],
       }],
       '@typescript-eslint/no-require-imports': 'error',
     },
@@ -401,6 +418,17 @@ export default tseslint.config(
     ignores: HOMEY_HOT_PATH_DIRS,
     rules: {
       'no-restricted-syntax': ['error', HOMEY_DYNAMIC_IMPORT_BAN],
+    },
+  },
+  // Shipped runtime surfaces outside lib/**: same contracts value-import seal.
+  // (settings-ui and widgets/** are exempt — esbuild bundles them, inlining
+  // contracts; lib/** gets the pattern via the blocks above.)
+  {
+    files: ['app.ts', 'api.ts', 'setup/**/*.ts', 'flowCards/**/*.ts', 'drivers/**/*.ts', 'packages/shared-domain/src/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': ['error', {
+        patterns: [CONTRACTS_VALUE_IMPORT_FORBID_PATTERN],
+      }],
     },
   },
   // Test files - relaxed rules

@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { prunedNodeModules } from './homeybuild-pruned-modules.mjs';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const homeyBuildDir = path.join(rootDir, '.homeybuild');
@@ -14,17 +15,6 @@ const removeNodeModule = async (modulePath) => {
   await removePath(path.join(homeyBuildDir, 'node_modules', ...modulePath.split('/')));
 };
 
-const prunedNodeModules = [
-  '.bin',
-  '@pels',
-  '@napi-rs',
-  '@lit',
-  '@lit-labs',
-  '@material',
-  'lit',
-  'lit-element',
-  'lit-html',
-];
 
 for (const moduleName of prunedNodeModules) {
   await removeNodeModule(moduleName);
