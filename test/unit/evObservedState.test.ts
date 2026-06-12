@@ -1,11 +1,17 @@
-import { isEvObserved } from '../../lib/device/evObservedState';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import { describe, expect, it } from 'vitest';
+import { isEvObserved } from '../../packages/shared-domain/src/evObservedState';
+import type { EvObservedProbe, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 
-const snap = (over: Partial<TargetDeviceSnapshot>): TargetDeviceSnapshot => ({
+// Probe-widened fixture: the base snapshot type omits `evChargingState` (that
+// is the contract under test), so the fixture builds the owner-side widened
+// shape the guard narrows from. Fully typed (no cast) so the compiler validates
+// the fixture against the same shape the guard narrows.
+const snap = (over: Partial<TargetDeviceSnapshot & EvObservedProbe>): TargetDeviceSnapshot & EvObservedProbe => ({
   id: 'd1',
   name: 'D',
+  targets: [],
   ...over,
-} as unknown as TargetDeviceSnapshot);
+});
 
 describe('isEvObserved', () => {
   it('is false for a non-EV device (even with a charging state present)', () => {

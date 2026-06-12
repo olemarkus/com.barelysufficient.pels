@@ -1,6 +1,6 @@
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import { getLogger } from '../../logging/logger';
-import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
+import type { EvChargingState, TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
 import type { Logger } from '../../utils/types';
 import {
   getCurrentOn,
@@ -35,7 +35,7 @@ export function resolveDeviceParsedControlState(params: {
   controlWriteCapabilityId?: string;
   capabilityObj: DeviceCapabilityMap;
   evCharging: TargetDeviceSnapshot['evCharging'];
-  evChargingState: TargetDeviceSnapshot['evChargingState'];
+  evChargingState: EvChargingState | undefined;
   flowBackedCapabilityIds: FlowReportedCapabilityId[];
   previousSnapshot?: TargetDeviceSnapshot;
   suppressDropLog?: boolean;

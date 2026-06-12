@@ -1,4 +1,5 @@
-import type { EvChargingState, TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
+import type { EvChargingState } from '../../../packages/contracts/src/types';
+import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import {
   isEvChargingState,
   resolveEvChargingStateBinaryEvidence,
@@ -16,11 +17,11 @@ export type FreshnessOnlyCapabilityUpdateResult = {
   changed: boolean;
   normalizedValue: unknown;
   reconcileChange?: RealtimeDeviceReconcileChange;
-  binaryControlObservation?: TargetDeviceSnapshot['binaryControlObservation'];
+  binaryControlObservation?: TransportDeviceSnapshot['binaryControlObservation'];
 };
 
 export function applyFreshnessOnlyCapabilityUpdate(params: {
-  snapshot: TargetDeviceSnapshot;
+  snapshot: TransportDeviceSnapshot;
   capabilityId: string;
   value: unknown;
 }): FreshnessOnlyCapabilityUpdateResult {
@@ -60,7 +61,7 @@ export function applyFreshnessOnlyCapabilityUpdate(params: {
 }
 
 function applyEvChargingStateUpdate(
-  snapshot: TargetDeviceSnapshot,
+  snapshot: TransportDeviceSnapshot,
   value: EvChargingState | undefined,
 ): FreshnessOnlyCapabilityUpdateResult {
   const mutableSnapshot = snapshot;
@@ -111,7 +112,7 @@ function buildEvChargingStateReconcileChange(
 function buildEvChargingStateBinaryControlObservation(
   value: EvChargingState | undefined,
   observedAtMs: number,
-): TargetDeviceSnapshot['binaryControlObservation'] {
+): TransportDeviceSnapshot['binaryControlObservation'] {
   const observedValue = resolveEvChargingStateBinaryEvidence(value);
   if (observedValue === undefined) return undefined;
   return {

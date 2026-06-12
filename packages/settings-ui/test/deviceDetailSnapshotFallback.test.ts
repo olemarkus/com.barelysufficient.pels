@@ -7,7 +7,8 @@
 // callsite passes its live `state.*` snapshot as the fallback so a
 // transient non-object SDK read does not erase entries for other devices.
 
-import type { TargetDeviceSnapshot } from '../../contracts/src/types';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { EvObservedProbe, TargetDeviceSnapshot } from '../../contracts/src/types';
 import { createHomeyMock } from './helpers/homeyApiMock';
 
 const flushPromises = () => new Promise<void>((resolve) => {
@@ -119,8 +120,8 @@ const buildDom = () => {
 
 const buildDevice = (
   id: string,
-  overrides: Partial<TargetDeviceSnapshot> = {},
-): TargetDeviceSnapshot => ({
+  overrides: Partial<TargetDeviceSnapshot & EvObservedProbe> = {},
+): TargetDeviceSnapshot & EvObservedProbe => ({
   id,
   name: id,
   targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],

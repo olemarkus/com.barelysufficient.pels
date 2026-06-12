@@ -1,7 +1,7 @@
 /* eslint-disable max-params --
  * Internal helpers mirror observation fields directly to keep this move-only split simple.
  */
-import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
+import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import type { HomeyDeviceLike } from '../../utils/types';
 import type { HandleRealtimeDeviceUpdateResult } from './managerRealtimeHandlers';
@@ -30,7 +30,7 @@ type CapabilityObservation = {
 export type DeviceDebugObservedSource = {
     observedAt: number;
     path: 'snapshot_refresh' | 'device_update' | 'realtime_capability' | 'local_write';
-    snapshot: TargetDeviceSnapshot | null;
+    snapshot: TransportDeviceSnapshot | null;
     fetchSource?: DeviceFetchSource;
     capabilityId?: string;
     value?: unknown;
@@ -91,7 +91,7 @@ export function getDebugObservedSources(
 
 export function recordSnapshotRefreshObservations(params: {
     state: DeviceTransportObservationState;
-    snapshot: TargetDeviceSnapshot[];
+    snapshot: TransportDeviceSnapshot[];
     fetchSource: DeviceFetchSource;
 }): void {
     const {
@@ -111,7 +111,7 @@ export function recordSnapshotRefreshObservations(params: {
         sources.snapshotRefresh = {
             observedAt,
             path: 'snapshot_refresh',
-            snapshot: cloneTargetDeviceSnapshotForDebug(device),
+            snapshot: cloneTransportDeviceSnapshotForDebug(device),
             fetchSource,
         };
     }
@@ -119,7 +119,7 @@ export function recordSnapshotRefreshObservations(params: {
 
 export function recordDeviceUpdateObservation(params: {
     state: DeviceTransportObservationState;
-    latestSnapshot: TargetDeviceSnapshot[];
+    latestSnapshot: TransportDeviceSnapshot[];
     deviceId: string;
     result: HandleRealtimeDeviceUpdateResult;
 }): void {
@@ -141,7 +141,7 @@ export function recordDeviceUpdateObservation(params: {
 
 export function recordLocalWriteObservation(params: {
     state: DeviceTransportObservationState;
-    latestSnapshot: TargetDeviceSnapshot[];
+    latestSnapshot: TransportDeviceSnapshot[];
     deviceId: string;
     capabilityId: string;
     value: unknown;
@@ -178,8 +178,8 @@ export function recordLocalWriteObservation(params: {
 
 export function mergeFresherCapabilityObservations(params: {
     state: DeviceTransportObservationState;
-    previousSnapshot: TargetDeviceSnapshot[];
-    nextSnapshot: TargetDeviceSnapshot[];
+    previousSnapshot: TransportDeviceSnapshot[];
+    nextSnapshot: TransportDeviceSnapshot[];
     devices: HomeyDeviceLike[];
     logger: { debug: (...args: unknown[]) => void };
     debugStructured?: StructuredDebugEmitter;
@@ -225,7 +225,7 @@ export function mergeFresherCapabilityObservations(params: {
 
 export function recordSnapshotCapabilityObservations(params: {
     state: DeviceTransportObservationState;
-    latestSnapshot: TargetDeviceSnapshot[];
+    latestSnapshot: TransportDeviceSnapshot[];
     deviceId: string;
     source: CapabilityObservationSource;
     capabilityIds?: string[];
@@ -283,13 +283,13 @@ export function recordSnapshotCapabilityObservations(params: {
 
 export function recordCapabilityObservation(params: {
     state: DeviceTransportObservationState;
-    latestSnapshot: TargetDeviceSnapshot[];
+    latestSnapshot: TransportDeviceSnapshot[];
     deviceId: string;
     capabilityId: string;
     value: unknown;
     source: CapabilityObservationSource;
     observedAt?: number;
-    snapshot?: TargetDeviceSnapshot;
+    snapshot?: TransportDeviceSnapshot;
     countsTowardDeviceFreshness?: boolean;
 }): void {
     const {
@@ -326,7 +326,9 @@ export function resolveLatestLocalWriteMs(
     return state.latestLocalWriteMsByDeviceId.get(deviceId);
 }
 
-function cloneTargetDeviceSnapshotForDebug(snapshot: TargetDeviceSnapshot | null): TargetDeviceSnapshot | null {
+function cloneTransportDeviceSnapshotForDebug(
+    snapshot: TransportDeviceSnapshot | null,
+): TransportDeviceSnapshot | null {
     if (!snapshot) return null;
     return {
         ...snapshot,
@@ -338,7 +340,7 @@ function cloneTargetDeviceSnapshotForDebug(snapshot: TargetDeviceSnapshot | null
 function cloneObservedSource(source: DeviceDebugObservedSource): DeviceDebugObservedSource {
     return {
         ...source,
-        snapshot: cloneTargetDeviceSnapshotForDebug(source.snapshot),
+        snapshot: cloneTransportDeviceSnapshotForDebug(source.snapshot),
         changes: source.changes?.map((change) => ({ ...change })),
     };
 }
@@ -363,17 +365,17 @@ function getOrCreateDebugObservedSources(
 }
 
 function buildCurrentDebugSnapshot(
-    latestSnapshot: TargetDeviceSnapshot[],
+    latestSnapshot: TransportDeviceSnapshot[],
     deviceId: string,
-): TargetDeviceSnapshot | null {
+): TransportDeviceSnapshot | null {
     const snapshot = latestSnapshot.find((entry) => entry.id === deviceId) ?? null;
-    return cloneTargetDeviceSnapshotForDebug(snapshot);
+    return cloneTransportDeviceSnapshotForDebug(snapshot);
 }
 
 function mergeSnapshotObservationsForDevice(params: {
     state: DeviceTransportObservationState;
-    nextSnapshot: TargetDeviceSnapshot;
-    previous: TargetDeviceSnapshot;
+    nextSnapshot: TransportDeviceSnapshot;
+    previous: TransportDeviceSnapshot;
     sourceDevice: HomeyDeviceLike;
     logger: { debug: (...args: unknown[]) => void };
     debugStructured?: StructuredDebugEmitter;
@@ -457,8 +459,8 @@ function mergeSnapshotObservationsForDevice(params: {
 }
 
 function preserveBinaryControlObservation(params: {
-    previous: TargetDeviceSnapshot;
-    snapshot: TargetDeviceSnapshot;
+    previous: TransportDeviceSnapshot;
+    snapshot: TransportDeviceSnapshot;
 }): void {
     const {
         previous,
@@ -484,7 +486,7 @@ function preserveBinaryControlObservation(params: {
 }
 
 function dropRawEvBinaryObservationWhenStatePresent(
-    snapshot: TargetDeviceSnapshot,
+    snapshot: TransportDeviceSnapshot,
     sourceDevice: HomeyDeviceLike,
 ): void {
     const mutableSnapshot = snapshot;
@@ -502,7 +504,7 @@ function dropRawEvBinaryObservationWhenStatePresent(
 
 function mergeStateOfChargeObservationsForDevice(params: {
     state: DeviceTransportObservationState;
-    snapshot: TargetDeviceSnapshot;
+    snapshot: TransportDeviceSnapshot;
     sourceDevice: HomeyDeviceLike;
     logger: { debug: (...args: unknown[]) => void };
 }): void {
@@ -546,7 +548,7 @@ function mergeStateOfChargeObservationsForDevice(params: {
 
 function getMaxRetainedObservationTimeMs(
     state: DeviceTransportObservationState,
-    snapshot: TargetDeviceSnapshot,
+    snapshot: TransportDeviceSnapshot,
 ): number {
     const capabilityIds = [
         'measure_power',
@@ -573,7 +575,7 @@ function mergeCapabilityObservation(params: {
     deviceName: string;
     capabilityId: string;
     sourceDevice: HomeyDeviceLike;
-    nextSnapshot: TargetDeviceSnapshot;
+    nextSnapshot: TransportDeviceSnapshot;
     logger: { debug: (...args: unknown[]) => void };
     debugStructured?: StructuredDebugEmitter;
 }): void {
@@ -665,7 +667,7 @@ type ConsolidationWinner = 'pull' | 'retained' | 'agree';
 
 type ConsolidationContext = {
     debugStructured?: StructuredDebugEmitter;
-    nextSnapshot: TargetDeviceSnapshot;
+    nextSnapshot: TransportDeviceSnapshot;
     deviceId: string;
     deviceName: string;
     capabilityId: string;
@@ -705,7 +707,7 @@ function deviceSupportsCapability(device: HomeyDeviceLike, capabilityId: string)
 }
 
 function applyCapabilityObservation(
-    nextSnapshot: TargetDeviceSnapshot,
+    nextSnapshot: TransportDeviceSnapshot,
     capabilityId: string,
     observation: CapabilityObservation,
 ): boolean {
@@ -728,7 +730,7 @@ function applyCapabilityObservation(
 }
 
 function applyControlCapabilityObservation(
-    nextSnapshot: TargetDeviceSnapshot,
+    nextSnapshot: TransportDeviceSnapshot,
     observation: CapabilityObservation,
 ): boolean {
     const snapshot = nextSnapshot;
@@ -769,7 +771,7 @@ function applyControlCapabilityObservation(
 }
 
 function applyEvChargingStateObservation(
-    nextSnapshot: TargetDeviceSnapshot,
+    nextSnapshot: TransportDeviceSnapshot,
     observation: CapabilityObservation,
 ): boolean {
     const snapshot = nextSnapshot;
@@ -815,7 +817,7 @@ function applyEvChargingStateObservation(
 }
 
 function applyMeasuredPowerObservation(
-    nextSnapshot: TargetDeviceSnapshot,
+    nextSnapshot: TransportDeviceSnapshot,
     observation: CapabilityObservation,
 ): boolean {
     const snapshot = nextSnapshot;
@@ -833,7 +835,7 @@ function applyMeasuredPowerObservation(
 }
 
 function applyMeasuredTemperatureObservation(
-    nextSnapshot: TargetDeviceSnapshot,
+    nextSnapshot: TransportDeviceSnapshot,
     observation: CapabilityObservation,
 ): boolean {
     const snapshot = nextSnapshot;
@@ -851,7 +853,7 @@ function applyMeasuredTemperatureObservation(
 }
 
 function applyStateOfChargeObservation(
-    nextSnapshot: TargetDeviceSnapshot,
+    nextSnapshot: TransportDeviceSnapshot,
     capabilityId: string,
     observation: CapabilityObservation,
 ): boolean {
@@ -867,7 +869,7 @@ function applyStateOfChargeObservation(
 }
 
 function applyTargetCapabilityObservation(
-    nextSnapshot: TargetDeviceSnapshot,
+    nextSnapshot: TransportDeviceSnapshot,
     capabilityId: string,
     observation: CapabilityObservation,
 ): boolean {
@@ -902,7 +904,7 @@ function clearCapabilityObservationIfMatched(
     state: DeviceTransportObservationState,
     deviceId: string,
     capabilityId: string,
-    snapshot: TargetDeviceSnapshot,
+    snapshot: TransportDeviceSnapshot,
 ): void {
     const key = buildCapabilityObservationKey(deviceId, capabilityId);
     const observation = state.capabilityObservations.get(key);
@@ -917,7 +919,7 @@ function clearCapabilityObservationIfMatched(
 }
 
 function doesCapabilityObservationMatchSnapshot(
-    snapshot: TargetDeviceSnapshot,
+    snapshot: TransportDeviceSnapshot,
     capabilityId: string,
     observationValue: unknown,
 ): boolean {
@@ -938,7 +940,7 @@ function doesCapabilityObservationMatchSnapshot(
 }
 
 function matchesCurrentControlObservation(
-    snapshot: TargetDeviceSnapshot,
+    snapshot: TransportDeviceSnapshot,
     observationValue: unknown,
 ): boolean {
     const currentControlValue = snapshot.controlCapabilityId === 'evcharger_charging'
@@ -950,7 +952,7 @@ function matchesCurrentControlObservation(
 function recordSnapshotControlObservation(
     state: DeviceTransportObservationState,
     deviceId: string,
-    snapshot: TargetDeviceSnapshot,
+    snapshot: TransportDeviceSnapshot,
     source: CapabilityObservationSource,
     observedAt: number,
     capabilityIdSet: Set<string> | null,
@@ -983,7 +985,7 @@ function recordSnapshotControlObservation(
 function recordSnapshotTargetObservations(
     state: DeviceTransportObservationState,
     deviceId: string,
-    snapshot: TargetDeviceSnapshot,
+    snapshot: TransportDeviceSnapshot,
     source: CapabilityObservationSource,
     observedAt: number,
     capabilityIdSet: Set<string> | null,
@@ -1008,7 +1010,7 @@ function recordSnapshotTargetObservations(
 
 function recordSnapshotScalarObservation(
     state: DeviceTransportObservationState,
-    snapshot: TargetDeviceSnapshot,
+    snapshot: TransportDeviceSnapshot,
     params: {
         deviceId: string;
         capabilityId: 'measure_power' | 'evcharger_charging_state' | (typeof EV_SOC_NATIVE_CAPABILITY_IDS)[number];
@@ -1046,10 +1048,10 @@ function recordSnapshotScalarObservation(
 
 function updateLocalWriteTimestamps(
     state: DeviceTransportObservationState,
-    latestSnapshot: TargetDeviceSnapshot[],
+    latestSnapshot: TransportDeviceSnapshot[],
     deviceId: string,
     observedAt: number,
-    snapshot?: TargetDeviceSnapshot,
+    snapshot?: TransportDeviceSnapshot,
 ): void {
     const resolvedSnapshot = snapshot ?? latestSnapshot.find((entry) => entry.id === deviceId);
     if (resolvedSnapshot) {

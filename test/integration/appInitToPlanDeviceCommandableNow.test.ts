@@ -13,11 +13,13 @@ import { describe, expect, it } from 'vitest';
 import { toPlanDevice } from '../../setup/appInit';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import type { AppContext } from '../../lib/app/appContext';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { EvObservedProbe, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 
 const FIXED_NOW = new Date('2026-05-26T12:00:00Z').getTime();
 
-const buildEvSnapshot = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => ({
+const buildEvSnapshot = (
+  overrides: Partial<TargetDeviceSnapshot & EvObservedProbe> = {},
+): TargetDeviceSnapshot & EvObservedProbe => ({
   id: 'ev-1',
   name: 'EV charger',
   targets: [],

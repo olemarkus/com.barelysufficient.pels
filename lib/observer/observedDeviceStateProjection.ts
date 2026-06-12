@@ -1,8 +1,26 @@
-import type { ObservedDeviceState } from '../../packages/contracts/src/types';
+import type { EvChargingState, EvObservedProbe, ObservedDeviceState } from '../../packages/contracts/src/types';
 import type {
     ObservedStateChangedEvent,
     ObservedStateRefreshEvent,
 } from './observedStateEvents';
+
+/**
+ * Owner-blessed raw read of the observed EV plug-state, for PRODUCER wiring
+ * only (the settings-UI read model materializes it as a flat DTO field via
+ * `getObservedEvChargingState` in `createPlanService`). `evChargingState` is
+ * omitted from `ObservedDeviceState` (EV-observed slice; see `EvObservedFields`
+ * in `packages/contracts/src/types.ts`) so consumers cannot read it
+ * un-narrowed; the projection's stored values physically carry it (copied by
+ * transport's `projectObservedState`), and this helper accepts the
+ * probe-widened shape — a plain `ObservedDeviceState` is assignable — to hand
+ * the raw value to the one sanctioned seam. Everything else narrows through
+ * `isEvObserved`.
+ */
+export function readObservedEvChargingState(
+    state: (ObservedDeviceState & EvObservedProbe) | undefined,
+): EvChargingState | undefined {
+    return state?.evChargingState;
+}
 
 type ProjectionEntry = {
     value: ObservedDeviceState;

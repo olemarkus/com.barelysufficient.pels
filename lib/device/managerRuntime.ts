@@ -1,6 +1,6 @@
 import { roundLogValue, shouldEmitOnChange } from '../logging/logDedupe';
 import { resolveBinaryOn } from '../utils/binaryControl';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
 import {
   formatBinaryState,
@@ -18,7 +18,7 @@ import { getLogger } from '../logging/logger';
 const moduleLogger = getLogger('device/manager-runtime');
 
 const REALTIME_CONTROL_CAPABILITY_IDS = ['onoff', 'evcharger_charging'] as const;
-type RealtimeControlCapabilityId = NonNullable<TargetDeviceSnapshot['controlCapabilityId']>;
+type RealtimeControlCapabilityId = NonNullable<TransportDeviceSnapshot['controlCapabilityId']>;
 
 export type RealtimeDeviceReconcileChange = {
   capabilityId: string;
@@ -30,7 +30,7 @@ type RealtimeReconcileResult = {
   shouldReconcilePlan: boolean;
   changes: RealtimeDeviceReconcileChange[];
   observedCapabilityIds: string[];
-  currentSnapshot: TargetDeviceSnapshot | null;
+  currentSnapshot: TransportDeviceSnapshot | null;
 };
 
 export function updateLastKnownPower(params: {
@@ -76,9 +76,9 @@ export function updateLastKnownPower(params: {
 }
 
 export function reconcileRealtimeDeviceUpdate(params: {
-  latestSnapshot: TargetDeviceSnapshot[];
+  latestSnapshot: TransportDeviceSnapshot[];
   device: HomeyDeviceLike;
-  parseDevice: (device: HomeyDeviceLike, nowTs: number) => TargetDeviceSnapshot | null;
+  parseDevice: (device: HomeyDeviceLike, nowTs: number) => TransportDeviceSnapshot | null;
   recentLocalCapabilityWrites?: RecentLocalCapabilityWrites;
 }): RealtimeReconcileResult {
   const {
@@ -166,8 +166,8 @@ export function reconcileRealtimeDeviceUpdate(params: {
 
 function resolveExplicitControlObservation(params: {
   device: HomeyDeviceLike;
-  parsed: TargetDeviceSnapshot;
-  previous: TargetDeviceSnapshot | null;
+  parsed: TransportDeviceSnapshot;
+  previous: TransportDeviceSnapshot | null;
 }): {
   controlCapabilityId: RealtimeControlCapabilityId;
   value: boolean;
@@ -192,9 +192,9 @@ function resolveExplicitControlObservation(params: {
 }
 
 function getPreservedBinaryControlObservation(
-  previous: TargetDeviceSnapshot | null,
-  parsed: TargetDeviceSnapshot,
-): TargetDeviceSnapshot['binaryControlObservation'] {
+  previous: TransportDeviceSnapshot | null,
+  parsed: TransportDeviceSnapshot,
+): TransportDeviceSnapshot['binaryControlObservation'] {
   if (!previous?.binaryControlObservation) return undefined;
   if (
     parsed.controlCapabilityId !== undefined
@@ -211,8 +211,8 @@ function getPreservedBinaryControlObservation(
 }
 
 function applyBinaryControlObservation(params: {
-  parsed: TargetDeviceSnapshot;
-  observation: NonNullable<TargetDeviceSnapshot['binaryControlObservation']>;
+  parsed: TransportDeviceSnapshot;
+  observation: NonNullable<TransportDeviceSnapshot['binaryControlObservation']>;
 }): void {
   const { parsed, observation } = params;
   if (observation.capabilityId === 'evcharger_charging') {
@@ -233,8 +233,8 @@ function applyBinaryControlObservation(params: {
 }
 
 function applyExplicitBinaryObservation(params: {
-  parsed: TargetDeviceSnapshot;
-  controlCapabilityId: TargetDeviceSnapshot['controlCapabilityId'];
+  parsed: TransportDeviceSnapshot;
+  controlCapabilityId: TransportDeviceSnapshot['controlCapabilityId'];
   value: boolean;
   observedCapabilityId: string;
   observedAtMs: number;
@@ -271,8 +271,8 @@ function applyExplicitBinaryObservation(params: {
 
 function getExplicitObservedBinaryObservation(params: {
   device: HomeyDeviceLike;
-  controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
-  controlObservationCapabilityId?: TargetDeviceSnapshot['controlObservationCapabilityId'];
+  controlCapabilityId?: TransportDeviceSnapshot['controlCapabilityId'];
+  controlObservationCapabilityId?: TransportDeviceSnapshot['controlObservationCapabilityId'];
   previousEvChargingState?: string;
 }): { value: boolean; observedCapabilityId: string } | undefined {
   const {
@@ -300,8 +300,8 @@ function getExplicitObservedBinaryObservation(params: {
 }
 
 function preserveRecentLocalBinaryState(params: {
-  previous: TargetDeviceSnapshot | null;
-  parsed: TargetDeviceSnapshot;
+  previous: TransportDeviceSnapshot | null;
+  parsed: TransportDeviceSnapshot;
   deviceId: string;
   recentLocalCapabilityWrites?: RecentLocalCapabilityWrites;
   binaryValueExplicitlyObserved?: boolean;
@@ -338,8 +338,8 @@ function preserveRecentLocalBinaryState(params: {
 }
 
 function getPlanReconcileRealtimeChanges(
-  previous: TargetDeviceSnapshot | null,
-  next: TargetDeviceSnapshot,
+  previous: TransportDeviceSnapshot | null,
+  next: TransportDeviceSnapshot,
   options: { binaryValueExplicitlyObserved: boolean },
 ): RealtimeDeviceReconcileChange[] {
   if (!previous) return [];
@@ -370,8 +370,8 @@ function getPlanReconcileRealtimeChanges(
 }
 
 function getObservedCapabilityIds(
-  previous: TargetDeviceSnapshot | null,
-  next: TargetDeviceSnapshot,
+  previous: TransportDeviceSnapshot | null,
+  next: TransportDeviceSnapshot,
   options: { binaryValueExplicitlyObserved: boolean },
 ): string[] {
   if (!previous) return [];
@@ -401,9 +401,9 @@ function getObservedCapabilityIds(
 }
 
 function hasStateOfChargeObservationChanged(
-  previous: TargetDeviceSnapshot,
-  next: TargetDeviceSnapshot,
-): next is TargetDeviceSnapshot & { stateOfCharge: NonNullable<TargetDeviceSnapshot['stateOfCharge']> } {
+  previous: TransportDeviceSnapshot,
+  next: TransportDeviceSnapshot,
+): next is TransportDeviceSnapshot & { stateOfCharge: NonNullable<TransportDeviceSnapshot['stateOfCharge']> } {
   const previousSoc = previous.stateOfCharge;
   const nextSoc = next.stateOfCharge;
   if (!nextSoc) return false;

@@ -1,4 +1,5 @@
-import type { DeviceControlAdapterSnapshot, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { DeviceControlAdapterSnapshot } from '../../packages/contracts/src/types';
+import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../utils/types';
 import type { DeviceCapabilityMap } from './managerControl';
 
@@ -169,7 +170,7 @@ export function applyNativeEvWiringOverlay(params: {
 
 export function normalizeNativeEvCapabilityUpdate(params: {
   snapshot: Pick<
-    TargetDeviceSnapshot,
+    TransportDeviceSnapshot,
     'controlAdapter' | 'binaryControl' | 'evChargingState'
   >;
   capabilityId: string;
@@ -207,7 +208,7 @@ export function normalizeNativeEvCapabilityUpdate(params: {
 export function buildNativeEvObservationCapabilityObj(params: {
   device: HomeyDeviceLike;
   previousSnapshot: Pick<
-    TargetDeviceSnapshot,
+    TransportDeviceSnapshot,
     'controlAdapter'
   > | null | undefined;
 }): DeviceCapabilityMap {
@@ -248,7 +249,7 @@ export function buildNativeEvObservationCapabilityObj(params: {
 export function buildNativeEvObservationDevice(params: {
   device: HomeyDeviceLike;
   previousSnapshot: Pick<
-    TargetDeviceSnapshot,
+    TransportDeviceSnapshot,
     'controlAdapter'
   > | null | undefined;
 }): HomeyDeviceLike {

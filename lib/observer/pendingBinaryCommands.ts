@@ -22,7 +22,7 @@
  * `isPlanActivelyConverging` emptiness probe; no consumer reads or
  * evicts it in place.
  */
-import type { BinaryControlCapabilityId, EvChargingState } from '../../packages/contracts/src/types';
+import type { BinaryControlCapabilityId, EvObservedProbe } from '../../packages/contracts/src/types';
 import {
   type PendingBinaryCommand,
   type PendingObservationSource,
@@ -264,14 +264,20 @@ function resolveStore(params: {
  * The structural shape `syncPendingBinaryCommands` needs from a live
  * device. Mirrors `PlanInputDevice` fields without dragging the plan
  * layer into observer's import graph.
+ *
+ * Intersected with `EvObservedProbe` (rather than re-declaring the field): the
+ * binary-settle feeder is the transport-owned snapshot list
+ * (`getSettleDevices` in `setup/appInit/createPlanService.ts`), whose objects
+ * physically carry the observed EV plug-state the consumer-facing snapshot
+ * type omits — this is an OWNER-fed settle seam, the same probe-declared
+ * carriage as `TransportDeviceSnapshot`.
  */
 export type PendingBinaryLiveDevice = {
   id: string;
   name: string;
   communicationModel?: 'local' | 'cloud';
-  evChargingState?: EvChargingState;
   binaryControlObservation?: PendingBinaryObservationSnapshot;
-};
+} & EvObservedProbe;
 
 export type PendingBinaryObservationSnapshot = {
   capabilityId: BinaryControlCapabilityId;

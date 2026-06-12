@@ -52,7 +52,8 @@ What remains open is below.*
 
 *Concrete, bounded changes to specific named surfaces (not structural re-splits — those stay P2).
 The flow-reported / pendingBinaryCommands / stepped-restore-wrapper / stepped-swap-completion /
-deviceOverview entries shipped in the 2026-06-03 train; the two below remain deferred.*
+deviceOverview entries shipped in the 2026-06-03 train; the one item below (a multi-slice
+program) remains deferred.*
 
 - [ ] **Tighten the device-state snapshots to discriminated types.** `TargetDeviceSnapshot`,
       `DevicePlanDevice`, and `PlanInputDevice` carry binary/temperature/stepped/EV/freshness/power
@@ -74,16 +75,10 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
       dead code; add those alongside the field-move slices that create real consumers.
       **EV-observed guard landed (slice 1 of the observer-snapshot EV discrimination):** added
       `isEvObserved(snapshot): snapshot is EvObservedSnapshot` + `EvObservedSnapshot` (=
-      `TargetDeviceSnapshot & { evChargingState: EvChargingState }`) in `lib/device/evObservedState.ts`
-      — the observer-snapshot twin of `isEvPlanDevice`. `getEvRestoreBlockReason`
-      (`lib/device/deviceActionProjection.ts`) now narrows through it (behaviour-preserving: EV + no
-      resolved state → `state_unknown`, as before). **No field moved off `ObservedDeviceState`** —
-      `evChargingState` stays optional on the base; narrowing happens only at the guard. NEXT slices
-      (the part that enforces "never read `evChargingState` without narrowing"): move the EV observed
-      fields off the base `ObservedDeviceState` onto `EvObservedSnapshot` and migrate the ~15 transport
-      owner-reads + remaining consumers — the same deferred-hard `TargetDeviceSnapshot` discrimination
-      above (transport builds snapshots uniformly across kinds), ideally done across temperature/stepped/EV
-      together.
+      `TargetDeviceSnapshot & { evChargingState: EvChargingState }`) — the observer-snapshot twin of
+      `isEvPlanDevice` (since relocated to `packages/shared-domain/src/evObservedState.ts` by the
+      field-move slice below). `getEvRestoreBlockReason` (`lib/device/deviceActionProjection.ts`)
+      narrows through it (behaviour-preserving: EV + no resolved state → `state_unknown`, as before).
       **EV-vocabulary de-couple landed (2026-06-07, PRs #1528/#1531/#1540/#1544/#1554/#1561/#1568/#1570/#1571):**
       every consumer in `lib/plan`/`lib/objectives`/`lib/executor`/settings-UI now reads producer-resolved
       bits / shared-domain predicates (`isEvDevice`, `resolveEvBlockReasonForDevice`,
@@ -108,12 +103,22 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
       every consumer type now use `EvChargingState` (no `string`, no `null`); the producer
       (`getEvChargingState` + the two realtime seams) normalises any vendor value outside the capability enum
       to `undefined` (uncommandable / `state_unknown`), and the verbose "unknown charging state 'X'" diagnostic
-      was dropped (unknown is ignored, not surfaced). **NEXT — EV-observed-interface slice (hypothesis:**
-      `undefined` still leaks to all readers because `evChargingState` is a flat optional field on the generic
-      `ObservedDeviceState`; **why:** the observer-snapshot twin of the plan-layer `EvKind`/`isEvPlanDevice`
-      pattern is missing; **persona:** runtime maintainer): move EV observed fields onto an `EvObservedFields`
-      interface with a required `evChargingState: EvChargingState`, gated by an `isEvObserved(s)` type guard, so
-      non-EV code structurally cannot reach it and present values are never `undefined`. Mirrors `isEvPlanDevice`.
+      was dropped (unknown is ignored, not surfaced).
+      **EV-observed field-move landed (2026-06-12): `evChargingState` is OFF the base
+      `ObservedDeviceState`/`TargetDeviceSnapshot`.** An un-narrowed `snapshot.evChargingState` read is now a
+      hard TS2339; consumers narrow through `isEvObserved` (moved to
+      `packages/shared-domain/src/evObservedState.ts`, browser-safe, generic over the carrier so settings-UI
+      narrows the same way — first UI consumer: the EV-boost status in `deviceDetail/evBoost.ts`). New contracts
+      types: `EvObservedFields` (required `evChargingState`, the narrowed cluster) + `EvObservedProbe` (the
+      optional "might be EV-observed" loose shape). OWNER seams keep physical custody via probe-widened types:
+      `TransportDeviceSnapshot` (`lib/device/transportDeviceSnapshot.ts`) for transport's stored/mutated
+      snapshots (the transport halves swapped wholesale — they never leak outside `lib/device`), and
+      `readObservedEvChargingState` (`lib/observer/observedDeviceStateProjection.ts`) as the one sanctioned raw
+      accessor feeding the read-model's flat DTO field. `toPlanDevice` widens its param with the probe (it
+      resolves + strips, as before). Type-level only — zero runtime behavior change. NOT moved, deliberately:
+      `stateOfCharge` (independent presence semantics — SoC without plug-state is real, ~30 UI/widget/flowCard
+      readers; needs its own slice with its own cluster shape) and `evCharging` (transport-internal only, zero
+      outside readers).
       **Temperature de-kind slice T1 landed (2026-06-07): planner branches on modality, not device kind.**
       Moved the starvation device-class set and the `deviceType === 'temperature'` checks out of
       `lib/plan/planDiagnostics.ts` into browser-safe shared-domain predicates (`isTemperatureControlDevice`,
@@ -132,12 +137,27 @@ deviceOverview entries shipped in the 2026-06-03 train; the two below remain def
       three consumer layers.
       Remaining under this item:
       - **type discrimination:** the temperature (~21) / stepped (~34) field-level discrimination and the
-        `TargetDeviceSnapshot` discrimination (~119 importers) — the type-tightening half, independent of the
-        value-level de-kinding above.
+        rest of the `TargetDeviceSnapshot` discrimination — the type-tightening half, independent of the
+        value-level de-kinding above. The EV-observed field-move (above) established the pattern for the
+        observed-snapshot side: orthogonal `*Fields` cluster + `*Probe` owner-widening + shared-domain guard;
+        temperature (`currentTemperature`, observer idle-classifier consumers) and the EV `stateOfCharge`
+        cluster are the natural next slices, then the stepped descriptor fields.
 
 ## P2 Product, Observability, and Maintainability
 
 *v2.11.0..HEAD release-review findings (2026-06-02). Non-blocking follow-ups.*
+
+- [ ] **The runtime test tree is type-blind — add a test-tier typecheck lane.** No tsc project
+      includes `test/**` (root + runtime-unused exclude it; eslint runs without type info there;
+      vitest transpiles via esbuild), so type drift in test fixtures is invisible: the EV-observed
+      field-move (2026-06-12) initially shipped five masked TS2561s in the guard's own spec, and a
+      pre-existing baseline of ~185 same-class errors (stale `Partial<PlanInputDevice>` literals
+      etc.) already sits in the tree. The settings-ui tier IS typechecked (`tsc -p
+      packages/settings-ui` covers its tests) — the asymmetry is the gap. Persona: contributor;
+      hypothesis: a `tsconfig.tests.json` (extends root, includes `test/**` + vitest globals) wired
+      into `ci:checks` turns silent fixture rot into compile errors; needs a one-off cleanup of the
+      existing baseline first. Source: pels-runtime-reality + typing lens on the EV-observed
+      field-move PR, 2026-06-12.
 
 - [ ] **Weather collector: transient miss of `weather_advisor_settings` silently halts sampling
       until the next restart or settings write.** `WeatherCollector.start()` registers no timers

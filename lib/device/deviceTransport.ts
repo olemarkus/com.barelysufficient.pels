@@ -24,6 +24,7 @@ import type {
   SteppedLoadProfile,
   TargetDeviceSnapshot,
 } from '../../packages/contracts/src/types';
+import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import { projectObservedState } from './observedStateProjection';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
 import { getDeviceId } from './transport/managerHelpers';
@@ -336,8 +337,10 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     private liveFeed: DeviceLiveFeed | null = null;
     private logger: Logger;
     private homey: Homey.App;
-    private latestSnapshot: TargetDeviceSnapshot[] = [];
-    private latestSnapshotById: Map<string, TargetDeviceSnapshot> = new Map();
+    // Owner-side widened shape: these stored objects are mutated in place across
+    // kinds (incl. the EV plug-state the consumer-facing snapshot type omits).
+    private latestSnapshot: TransportDeviceSnapshot[] = [];
+    private latestSnapshotById: Map<string, TransportDeviceSnapshot> = new Map();
     // Tracks a run of transient empty SDK reads while a populated snapshot is held,
     // so we only abandon the populated snapshot after the grace window/read count.
     private emptySnapshotGrace: { firstSeenMs: number; reads: number } | null = null;
@@ -1007,7 +1010,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     }
 
     private applyBinaryObservationToSnapshot(
-        snapshot: TargetDeviceSnapshot,
+        snapshot: TransportDeviceSnapshot,
         capabilityId: string,
         value: boolean,
         source: BinaryControlObservation['source'],
@@ -1558,7 +1561,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     }
 
     private applyBinarySettleEvidenceToSnapshot(
-        snapshot: TargetDeviceSnapshot,
+        snapshot: TransportDeviceSnapshot,
         evidence: BinaryControlObservation,
     ): BinaryControlObservation {
         const acceptedEvidence = this.upsertBinarySettleEvidence(snapshot.id, evidence);
@@ -2539,7 +2542,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
 }
 
 function isRawBinarySettlementEvidenceAllowed(
-    snapshot: TargetDeviceSnapshot,
+    snapshot: TransportDeviceSnapshot,
     capabilityId: string,
 ): boolean {
     return capabilityId !== 'evcharger_charging' || snapshot.evChargingState === undefined;

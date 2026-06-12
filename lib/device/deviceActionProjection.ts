@@ -35,7 +35,7 @@ import {
   EV_COMMANDABLE_NOW_REASONS,
   resolveEvBlockReason,
 } from '../../packages/shared-domain/src/commandableNowReason';
-import { isEvObserved } from './evObservedState';
+import { isEvObserved } from '../../packages/shared-domain/src/evObservedState';
 import {
   isEvBoostBlockedByPlugState,
   isEvDevice,

@@ -20,6 +20,7 @@ describe('resolveEvBoostBlockReason', () => {
   it('does not block the resumable / charging states (fall through to SoC checks)', () => {
     expect(resolveEvBoostBlockReason({ evChargingState: 'plugged_in_paused' })).toBeNull();
     expect(resolveEvBoostBlockReason({ evChargingState: 'plugged_in_charging' })).toBeNull();
-    expect(resolveEvBoostBlockReason({ evChargingState: undefined })).toBeNull();
+    // No absent-state case: the input is the narrowed `EvObservedFields` shape —
+    // presence is decided once, at the `isEvObserved` guard (unobserved never blocks).
   });
 });
