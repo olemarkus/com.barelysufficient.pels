@@ -56,6 +56,49 @@ const sixHourZeroPoints = (dayStartUtcMs: number): Array<{ t: string; v: number 
   }))
 );
 
+// ── Meter-backfill fixtures: 18 local days 2025-12-21..2026-01-07 at 40 kWh/day ──
+const METER_DEVICES = { 'meter-1': { id: 'meter-1', capabilities: ['meter_power.imported'] } };
+const KWH_SERIES_START_MS = Date.UTC(2025, 11, 20, 23, 0, 0); // Oslo 2025-12-21 00:00
+const KWH_DAYS = 18;
+const TRACKER_FROM = '2025-12-23'; // the two oldest days exist only on the meter
+
+const meterDateKey = (dayIndex: number): string => (
+  new Date(Date.UTC(2025, 11, 21 + dayIndex, 12)).toISOString().slice(0, 10)
+);
+
+/** Cumulative counter sampled 6-hourly on local midnights: exactly 40 kWh/day. */
+const meterCounterValues = (): Array<{ t: string; v: number }> => (
+  Array.from({ length: KWH_DAYS * 4 + 1 }, (_, index) => ({
+    t: new Date(KWH_SERIES_START_MS + index * 6 * HOUR_MS).toISOString(),
+    v: 1000 + index * 10,
+  }))
+);
+
+const meterTempPoints = (): Array<{ t: string; v: number }> => (
+  Array.from({ length: KWH_DAYS }, (_, day) => sixHourZeroPoints(KWH_SERIES_START_MS + day * 24 * HOUR_MS)).flat()
+);
+
+const trackerKwhForMeterDays = (dateKey: string): { total?: number; controlled?: number } => (
+  dateKey >= TRACKER_FROM && dateKey <= meterDateKey(KWH_DAYS - 1) ? { total: 40 } : {}
+);
+
+/** Records as the temperature backfill would have created them (kWh joined where the tracker had it). */
+const meterSeededRecords = (): WeatherHistoryState['records'] => (
+  Array.from({ length: KWH_DAYS }, (_, dayIndex) => {
+    const dateKey = meterDateKey(dayIndex);
+    const missingKwh = dateKey < TRACKER_FROM;
+    return {
+      dateKey,
+      ...(missingKwh ? {} : { kwhTotal: 40 }),
+      tempMeanC: 0,
+      tempMinC: -1,
+      tempMaxC: 1,
+      tempSampleCount: 4,
+      quality: { partialTemp: false, missingKwh, unreliablePower: false, backfilled: true },
+    };
+  })
+);
+
 describe('WeatherCollector', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -349,29 +392,27 @@ describe('WeatherCollector', () => {
     expect(written.records[0].tempMeanC).toBe(4);
     expect(written.records[1].quality.backfilled).toBe(true);
 
-    const fetchCallsAfterFirstRun = (deps.fetchInsights as ReturnType<typeof vi.fn>).mock.calls.length;
+    // The kWh resolution may rescan per start (its no-source outcome never
+    // latches), but the TEMPERATURE backfill must not re-fetch once complete.
+    const temperatureFetches = (): number => (deps.fetchInsights as ReturnType<typeof vi.fn>).mock.calls
+      .filter(([path]) => String(path).includes('measure_temperature')).length;
+    const fetchCallsAfterFirstRun = temperatureFetches();
     collector.start();
     await vi.advanceTimersByTimeAsync(0);
     collector.stop();
-    expect((deps.fetchInsights as ReturnType<typeof vi.fn>).mock.calls.length).toBe(fetchCallsAfterFirstRun);
+    expect(temperatureFetches()).toBe(fetchCallsAfterFirstRun);
   });
 
-  it('chains the Energy-report backfill after the temperature backfill and patches missing kWh', async () => {
-    const points = [Date.UTC(2026, 0, 4, 23, 0, 0), Date.UTC(2026, 0, 5, 23, 0, 0)]
-      .flatMap(sixHourZeroPoints);
+  it('chains the meter kWh backfill after the temperature backfill and reconciles every record', async () => {
     const recomputeDerived = vi.fn((state: WeatherHistoryState) => state);
     const { collector, store } = buildHarness({
-      // No tracker kWh at all: the backfilled days arrive missingKwh.
-      getDailyKwh: vi.fn(() => ({})),
+      getDailyKwh: vi.fn(trackerKwhForMeterDays),
       recomputeDerived,
       fetchInsights: vi.fn(async (path: string) => {
-        if (path.startsWith('manager/energy/report/month')) {
-          return path.includes('2026-01')
-            ? { subReports: { '2026-01-05': { electricity: { consumedPeriod: 52.5 } } } }
-            : { subReports: {} };
-        }
+        if (path === 'manager/devices/device') return METER_DEVICES;
+        if (path.includes('meter-1:meter_power.imported')) return { step: 6 * HOUR_MS, values: meterCounterValues() };
         return path.includes('lastYear')
-          ? { step: 6 * HOUR_MS, values: points }
+          ? { step: 6 * HOUR_MS, values: meterTempPoints() }
           : { step: 6 * HOUR_MS, values: [] };
       }),
     });
@@ -380,122 +421,222 @@ describe('WeatherCollector', () => {
     collector.stop();
     const written = lastWritten(store);
     expect(written.backfilledDeviceId).toBe('out-1');
-    expect(written.energyReportBackfillDone).toBe(true);
-    const day5 = written.records.find((record) => record.dateKey === '2026-01-05');
-    expect(day5).toMatchObject({ kwhTotal: 52.5, quality: { missingKwh: false } });
-    // 2026-01-06 had no report entry: stays missing, but the run is complete.
-    const day6 = written.records.find((record) => record.dateKey === '2026-01-06');
-    expect(day6?.quality.missingKwh).toBe(true);
+    expect(written.meterKwhBackfillDone).toBe(true);
+    expect(written.meterKwhDeviceId).toBe('meter-1');
+    expect(written.kwhPurgeVersion).toBe(1);
+    // The two pre-tracker days were filled from the validated meter…
+    const oldest = written.records.find((record) => record.dateKey === meterDateKey(0));
+    expect(oldest?.kwhTotal).toBeCloseTo(40, 6);
+    expect(oldest?.quality).toMatchObject({ missingKwh: false, kwhBackfilled: true });
+    // …while tracker-covered days stay tracker-sourced.
+    const trackerDay = written.records.find((record) => record.dateKey === TRACKER_FROM);
+    expect(trackerDay?.kwhTotal).toBe(40);
+    expect(trackerDay?.quality.kwhBackfilled).toBeUndefined();
     expect(recomputeDerived).toHaveBeenCalled();
   });
 
-  it('clears the energy marker when the temperature backfill lands for a new device', async () => {
+  it('purges legacy kWh once on a conclusive no-candidate election, then stamps', async () => {
     const points = sixHourZeroPoints(Date.UTC(2026, 0, 4, 23, 0, 0));
-    const energyPaths: string[] = [];
-    const { collector, store, persisted } = buildHarness({
+    const devicesPaths: string[] = [];
+    const { collector, store, persisted, logger } = buildHarness({
       getDailyKwh: vi.fn(() => ({})),
       fetchInsights: vi.fn(async (path: string) => {
-        if (path.startsWith('manager/energy/report/month')) {
-          energyPaths.push(path);
-          return { subReports: { '2026-01-05': { electricity: { consumedPeriod: 33 } } } };
+        if (path === 'manager/devices/device') {
+          devicesPaths.push(path);
+          return {}; // no meter exists on this home
         }
         return path.includes('lastYear')
           ? { step: 6 * HOUR_MS, values: points }
           : { step: 6 * HOUR_MS, values: [] };
       }),
     });
-    // A previous device completed both passes; the user then switched devices.
-    persisted.value = { records: [], backfilledDeviceId: 'old-device', energyReportBackfillDone: true };
+    // A contaminated no-meter install: a legacy Energy-report fill
+    // (reconstructed record, unflagged kWh) and no completed meter pass.
+    persisted.value = {
+      records: [{
+        dateKey: '2025-03-01',
+        kwhTotal: 19.5,
+        tempMeanC: 1,
+        tempMinC: 0,
+        tempMaxC: 2,
+        tempSampleCount: 4,
+        quality: { partialTemp: false, missingKwh: false, unreliablePower: false, backfilled: true },
+      }],
+      backfilledDeviceId: 'old-device',
+      backfillVersion: 2,
+    };
     collector.start();
     await vi.advanceTimersByTimeAsync(0);
     collector.stop();
     const written = lastWritten(store);
     expect(written.backfilledDeviceId).toBe('out-1');
-    expect(energyPaths.length).toBeGreaterThan(0);
-    expect(written.records.find((record) => record.dateKey === '2026-01-05')?.kwhTotal).toBe(33);
-    expect(written.energyReportBackfillDone).toBe(true);
+    expect(devicesPaths.length).toBeGreaterThan(0);
+    // No comparable source: the marker must stay unset for retry.
+    expect(written.meterKwhBackfillDone).toBeUndefined();
+    expect(logger.info).toHaveBeenCalledWith(expect.objectContaining({ event: 'weather_meter_backfill_no_source' }));
+    // Even without a successor source, the retired source's values must not
+    // keep feeding the fit — the conclusive no-candidate election purges them.
+    const legacy = written.records.find((record) => record.dateKey === '2025-03-01');
+    expect(legacy?.kwhTotal).toBeUndefined();
+    expect(legacy?.quality.missingKwh).toBe(true);
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'weather_kwh_legacy_purged', strippedDays: 1 }),
+    );
+    // The purge is one-shot: the stamp lands with it.
+    expect(written.kwhPurgeVersion).toBe(1);
   });
 
-  it('does not latch the energy marker on an empty month span (clock skew)', async () => {
-    const { collector, store, persisted, logger } = buildHarness({ getDailyKwh: vi.fn(() => ({})) });
-    persisted.value = {
-      records: [{
-        dateKey: '2026-01-05',
-        tempMeanC: 0,
-        tempMinC: -1,
-        tempMaxC: 1,
-        tempSampleCount: 4,
-        quality: { partialTemp: false, missingKwh: true, unreliablePower: false, backfilled: true },
-      }],
-      backfilledDeviceId: 'out-1',
-    };
-    // Pre-NTP boot: "today" lands before the oldest record.
-    vi.setSystemTime(Date.UTC(2025, 11, 1, 10, 0, 0));
-    collector.start();
-    await vi.advanceTimersByTimeAsync(0);
-    collector.stop();
-    expect(logger.warn).toHaveBeenCalledWith(expect.objectContaining({ event: 'weather_energy_backfill_empty_span' }));
-    expect(lastWritten(store).energyReportBackfillDone).toBeUndefined();
-  });
-
-  it('re-kicks a superseded in-flight energy run on the new generation', async () => {
-    let releaseFirst: (() => void) | undefined;
-    let energyCalls = 0;
+  it('drops a latched meter marker when the temperature backfill completes for a new device', async () => {
+    const points = sixHourZeroPoints(Date.UTC(2026, 0, 4, 23, 0, 0));
     const { collector, store, persisted } = buildHarness({
       getDailyKwh: vi.fn(() => ({})),
       fetchInsights: vi.fn(async (path: string) => {
-        if (path.startsWith('manager/energy/report/month')) {
-          energyCalls += 1;
-          if (energyCalls === 1) {
+        if (path === 'manager/devices/device') return {}; // old meter is gone
+        return path.includes('lastYear')
+          ? { step: 6 * HOUR_MS, values: points }
+          : { step: 6 * HOUR_MS, values: [] };
+      }),
+    });
+    persisted.value = {
+      records: [],
+      backfilledDeviceId: 'old-device',
+      backfillVersion: 2,
+      meterKwhBackfillDone: true,
+      meterKwhDeviceId: 'meter-1',
+      kwhPurgeVersion: 1,
+    };
+    collector.start();
+    await vi.advanceTimersByTimeAsync(0);
+    collector.stop();
+    const written = lastWritten(store);
+    expect(written.backfilledDeviceId).toBe('out-1');
+    // The record set changed: the kWh layer must re-resolve at next chance.
+    expect(written.meterKwhBackfillDone).toBeUndefined();
+    expect(written.meterKwhDeviceId).toBeUndefined();
+  });
+
+  it('never re-strips aged tracker-joined kWh once the purge stamp is set', async () => {
+    // A no-meter install: the tracker joined kWh into this reconstructed
+    // record at backfill time (unflagged), and has since pruned the day.
+    const { collector, store, logger, persisted } = buildHarness({
+      getDailyKwh: vi.fn(() => ({})),
+      fetchInsights: vi.fn(async (path: string) => (
+        path === 'manager/devices/device' ? {} : { step: 6 * HOUR_MS, values: [] }
+      )),
+    });
+    persisted.value = {
+      records: [{
+        dateKey: '2025-03-01',
+        kwhTotal: 41,
+        tempMeanC: 1,
+        tempMinC: 0,
+        tempMaxC: 2,
+        tempSampleCount: 4,
+        quality: { partialTemp: false, missingKwh: false, unreliablePower: false, backfilled: true },
+      }],
+      backfilledDeviceId: 'out-1',
+      backfillVersion: 2,
+      kwhPurgeVersion: 1,
+    };
+    collector.start();
+    await vi.advanceTimersByTimeAsync(30_000);
+    collector.stop();
+    const written = lastWritten(store);
+    expect(written.records[0].kwhTotal).toBe(41);
+    expect(written.records[0].quality.missingKwh).toBe(false);
+    expect(logger.info).not.toHaveBeenCalledWith(expect.objectContaining({ event: 'weather_kwh_legacy_purged' }));
+  });
+
+  it('stamps the purge version on states from before the stamp existed (latched meter pass)', async () => {
+    const { collector, store, persisted } = buildHarness({
+      fetchInsights: vi.fn(async () => ({ step: 6 * HOUR_MS, values: [] })),
+    });
+    persisted.value = {
+      records: [],
+      backfilledDeviceId: 'out-1',
+      backfillVersion: 2,
+      meterKwhBackfillDone: true,
+      meterKwhDeviceId: 'meter-1',
+    };
+    collector.start();
+    await vi.advanceTimersByTimeAsync(30_000);
+    collector.stop();
+    expect(lastWritten(store).kwhPurgeVersion).toBe(1);
+  });
+
+  it('re-runs a completed temperature backfill when the stitch version is outdated', async () => {
+    const points = sixHourZeroPoints(Date.UTC(2026, 0, 4, 23, 0, 0));
+    const { collector, store, persisted } = buildHarness({
+      getDailyKwh: vi.fn(() => ({})),
+      fetchInsights: vi.fn(async (path: string) => (
+        path.includes('lastYear') ? { step: 6 * HOUR_MS, values: points } : { step: 6 * HOUR_MS, values: [] }
+      )),
+    });
+    // Completed under the version-1 stitch (no thisYear window, no version field).
+    persisted.value = { records: [], backfilledDeviceId: 'out-1' };
+    collector.start();
+    await vi.advanceTimersByTimeAsync(0);
+    collector.stop();
+    const written = lastWritten(store);
+    expect(written.backfillVersion).toBe(2);
+    expect(written.records.map((record) => record.dateKey)).toEqual(['2026-01-05']);
+  });
+
+  it('re-kicks a superseded in-flight meter run on the new generation', async () => {
+    let releaseFirst: (() => void) | undefined;
+    let devicesCalls = 0;
+    const { collector, store, persisted } = buildHarness({
+      getDailyKwh: vi.fn(trackerKwhForMeterDays),
+      fetchInsights: vi.fn(async (path: string) => {
+        if (path === 'manager/devices/device') {
+          devicesCalls += 1;
+          if (devicesCalls === 1) {
             await new Promise<void>((resolve) => {
               releaseFirst = resolve;
             });
           }
-          return { subReports: { '2026-01-05': { electricity: { consumedPeriod: 41 } } } };
+          return METER_DEVICES;
         }
+        if (path.includes('meter-1:meter_power.imported')) return { step: 6 * HOUR_MS, values: meterCounterValues() };
         return { step: 6 * HOUR_MS, values: [] };
       }),
     });
-    persisted.value = {
-      records: [{
-        dateKey: '2026-01-05',
-        tempMeanC: 0,
-        tempMinC: -1,
-        tempMaxC: 1,
-        tempSampleCount: 4,
-        quality: { partialTemp: false, missingKwh: true, unreliablePower: false, backfilled: true },
-      }],
-      backfilledDeviceId: 'out-1',
-    };
+    persisted.value = { records: meterSeededRecords(), backfilledDeviceId: 'out-1', backfillVersion: 2 };
     collector.start();
-    await vi.advanceTimersByTimeAsync(0); // first energy run now pending
+    await vi.advanceTimersByTimeAsync(0); // first meter run now pending
     collector.start(); // reload supersedes it; its own trigger is blocked
     await vi.advanceTimersByTimeAsync(0);
     releaseFirst?.();
     await vi.advanceTimersByTimeAsync(0); // discard + finally re-kick
     await vi.advanceTimersByTimeAsync(30_000);
     collector.stop();
-    expect(energyCalls).toBeGreaterThanOrEqual(2);
+    expect(devicesCalls).toBeGreaterThanOrEqual(2);
     const written = lastWritten(store);
-    expect(written.records[0]).toMatchObject({ kwhTotal: 41, quality: { missingKwh: false } });
-    expect(written.energyReportBackfillDone).toBe(true);
+    const oldest = written.records.find((record) => record.dateKey === meterDateKey(0));
+    expect(oldest).toMatchObject({ kwhTotal: 40, quality: { missingKwh: false, kwhBackfilled: true } });
+    expect(written.meterKwhBackfillDone).toBe(true);
   });
 
-  it('keeps the energy marker unset when a report month fails non-404', async () => {
-    const points = sixHourZeroPoints(Date.UTC(2026, 0, 4, 23, 0, 0));
-    const { collector, store } = buildHarness({
-      getDailyKwh: vi.fn(() => ({})),
+  it('applies a partial meter run but keeps the marker unset for retry', async () => {
+    const { collector, store, persisted } = buildHarness({
+      getDailyKwh: vi.fn(trackerKwhForMeterDays),
       fetchInsights: vi.fn(async (path: string) => {
-        if (path.startsWith('manager/energy/report/month')) throw new Error('HTTP 500: boom');
-        return path.includes('lastYear')
-          ? { step: 6 * HOUR_MS, values: points }
-          : { step: 6 * HOUR_MS, values: [] };
+        if (path === 'manager/devices/device') return METER_DEVICES;
+        if (path.includes('resolution=lastYear')) throw new Error('HTTP 500: boom');
+        if (path.includes('meter-1:meter_power.imported')) return { step: 6 * HOUR_MS, values: meterCounterValues() };
+        return { step: 6 * HOUR_MS, values: [] };
       }),
     });
+    persisted.value = { records: meterSeededRecords(), backfilledDeviceId: 'out-1', backfillVersion: 2 };
     collector.start();
     await vi.advanceTimersByTimeAsync(30_000);
     collector.stop();
-    expect(lastWritten(store).energyReportBackfillDone).toBeUndefined();
+    const written = lastWritten(store);
+    const oldest = written.records.find((record) => record.dateKey === meterDateKey(0));
+    expect(oldest).toMatchObject({ kwhTotal: 40, quality: { missingKwh: false, kwhBackfilled: true } });
+    expect(written.meterKwhBackfillDone).toBeUndefined();
+    // An incomplete run must not stamp the one-shot purge either.
+    expect(written.kwhPurgeVersion).toBeUndefined();
   });
 
   it('logs and leaves the backfill marker unset when Insights reads fail', async () => {

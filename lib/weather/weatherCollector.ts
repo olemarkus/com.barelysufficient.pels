@@ -14,19 +14,20 @@ import {
 import { readDeviceTemperature } from './weatherDeviceRead';
 import {
   applyActualSample,
-  applyEnergyBackfill,
   applyForecastSample,
   emptyWeatherHistoryState,
   getLocalHourKey,
+  KWH_PURGE_VERSION,
   mergeRecoveredState,
   normalizeWeatherHistoryState,
   periodsOverlapWindow,
+  reconcileKwhSources,
   rollupDay,
   upsertBackfillRecords,
 } from './weatherHistory';
 import type { WeatherHistoryStore } from './weatherHistoryStore';
-import { fetchBackfillDailyRecords } from './weatherInsightsBackfill';
-import { fetchDailyConsumedKwh, listMonthKeys } from './energyReportBackfill';
+import { fetchBackfillDailyRecords, TEMP_BACKFILL_VERSION } from './weatherInsightsBackfill';
+import { resolveMeterDailyKwh, type MeterKwhBackfillOutcome } from './meterKwhBackfill';
 
 const HOUR_MS = 60 * 60 * 1000;
 const HOURLY_SAMPLE_OFFSET_MS = 90 * 1000;
@@ -48,7 +49,7 @@ const READ_WARN_THROTTLE_MS = HOUR_MS;
 export type WeatherCollectorDeps = {
   store: WeatherHistoryStore;
   readDevice: (deviceId: string) => Promise<RawHomeyDeviceLike>;
-  /** Read-only GET against the Homey Web API (Insights backfill + Energy reports). */
+  /** Read-only GET against the Homey Web API (Insights backfills + meter discovery). */
   fetchInsights: (path: string) => Promise<unknown>;
   /** Flat kWh totals for a local day, sourced from the power tracker by the factory. */
   getDailyKwh: (dateKey: string) => { total?: number; controlled?: number };
@@ -87,7 +88,7 @@ export class WeatherCollector {
   private persistTimer?: ReturnType<typeof setTimeout>;
   private readonly lastWarnAtMsByKey = new Map<string, number>();
   private backfillRunning = false;
-  private energyBackfillRunning = false;
+  private meterBackfillRunning = false;
   private running = false;
   /**
    * Bumped on every stop(). Async continuations capture it before awaiting
@@ -112,6 +113,14 @@ export class WeatherCollector {
     }
     this.loadState();
     this.running = true;
+    // States written before the purge stamp existed: a latched validated-
+    // meter pass already reconciled (and purged) everything reachable, so
+    // the stamp is subsumed — without it, a marker-dropping re-run years
+    // later would mistake aged tracker-joined kWh for the legacy class.
+    if (this.state.meterKwhBackfillDone === true && this.state.kwhPurgeVersion !== KWH_PURGE_VERSION) {
+      this.state = { ...this.state, kwhPurgeVersion: KWH_PURGE_VERSION };
+      this.markDirty();
+    }
     this.deps.logger.info({
       event: 'weather_collector_started',
       outdoorDeviceId: settings.outdoorDeviceId,
@@ -126,7 +135,7 @@ export class WeatherCollector {
       this.deps.logger.error({ event: 'weather_rollup_failed', err: normalizeError(error) });
     }
     this.maybeStartBackfill(settings);
-    this.maybeStartEnergyBackfill();
+    this.maybeStartMeterKwhBackfill();
     void this.sampleOnce().catch((error: unknown) => {
       this.deps.logger.warn({ event: 'weather_sample_failed', err: normalizeError(error) });
     });
@@ -386,6 +395,13 @@ export class WeatherCollector {
       .filter((dateKey) => dateKey < todayKey)
       .sort();
     for (const dateKey of pendingKeys) this.rollup(dateKey);
+    // One refit for the whole batch: the Theil–Sen fit is O(n²) over a
+    // year-deep window, so refitting per caught-up day would multiply a
+    // second-scale synchronous cost by the days slept through.
+    if (pendingKeys.length > 0) {
+      this.state = this.deps.recomputeDerived?.(this.state) ?? this.state;
+      this.markDirty();
+    }
   }
 
   private rollup(dateKey: string): void {
@@ -400,7 +416,6 @@ export class WeatherCollector {
       kwhControlled: kwh.controlled,
       unreliablePower: periodsOverlapWindow(this.deps.getUnreliablePeriods(), dayStartMs, nextDayStartMs),
     });
-    this.state = this.deps.recomputeDerived?.(this.state) ?? this.state;
     this.markDirty();
     const record = this.state.records.find((entry) => entry.dateKey === dateKey);
     this.deps.logger.info({
@@ -417,7 +432,10 @@ export class WeatherCollector {
   private maybeStartBackfill(settings: WeatherAdvisorSettings): void {
     const deviceId = settings.outdoorDeviceId;
     if (!deviceId || this.backfillRunning) return;
-    if (this.state.backfilledDeviceId === deviceId) return;
+    // Version-gated: widening the stitched resolution set re-runs the
+    // backfill once for already-completed devices (the upsert never
+    // overwrites live records, so a re-run is purely additive).
+    if (this.state.backfilledDeviceId === deviceId && this.state.backfillVersion === TEMP_BACKFILL_VERSION) return;
     this.backfillRunning = true;
     void fetchBackfillDailyRecords({
       deviceId,
@@ -438,18 +456,17 @@ export class WeatherCollector {
       }
       // The done-marker requires a complete, non-empty reconstruction. A
       // partial or empty run keeps the marker unset so the next start()
-      // retries — three GETs per boot is cheap insurance against silently
+      // retries — a few GETs per boot is cheap insurance against silently
       // forfeiting a year of history to one transient empty response.
       const markDone = complete && records.length > 0;
-      // A device switch rebuilds the temperature history, so days the
-      // previous energy pass never saw arrive missingKwh — the energy marker
-      // must fall with the temp marker or those days stay unpatched forever.
-      const deviceChanged = markDone && this.state.backfilledDeviceId !== deviceId;
-      const { energyReportBackfillDone: _stale, ...withoutEnergyMarker } = this.state;
-      const base = deviceChanged ? withoutEnergyMarker : this.state;
+      // A completed temperature pass changes the record set (new device or a
+      // widened stitch), so the kWh layer must re-resolve: drop the meter
+      // marker and let the idempotent meter backfill run again.
+      const { meterKwhBackfillDone: _staleDone, meterKwhDeviceId: _staleDevice, ...withoutMeterMarkers } = this.state;
+      const base = markDone ? withoutMeterMarkers : this.state;
       this.state = {
         ...upsertBackfillRecords(base, records),
-        ...(markDone ? { backfilledDeviceId: deviceId } : {}),
+        ...(markDone ? { backfilledDeviceId: deviceId, backfillVersion: TEMP_BACKFILL_VERSION } : {}),
       };
       if (records.length > 0) {
         // The backfill is what gives the fit a year of data on day one.
@@ -463,8 +480,8 @@ export class WeatherCollector {
         complete,
         recordCount: this.state.records.length,
       });
-      // Temperature records now exist; fill their kWh from Energy reports.
-      if (markDone) this.maybeStartEnergyBackfill();
+      // Temperature records now exist; resolve their kWh from the meter.
+      if (markDone) this.maybeStartMeterKwhBackfill();
     }).catch((error: unknown) => {
       // Marker stays unset, so the next start() retries the backfill.
       this.deps.logger.warn({ event: 'weather_backfill_failed', deviceId, err: normalizeError(error) });
@@ -480,68 +497,118 @@ export class WeatherCollector {
   }
 
   /**
-   * One-shot Homey-Energy-report kWh backfill for records the power tracker
-   * could not cover. Home-aggregate data — no device to pick — so it gates
-   * only on the temperature backfill having landed (records must exist before
-   * their kWh slots can be filled) and its own done-marker.
+   * One-shot historical-kWh resolution from a cumulative meter device,
+   * admitted only after its daily diffs match the tracker on the days both
+   * cover (`meterKwhBackfill.ts` has the full rationale — the Energy-report
+   * source this replaced silently shipped a device-sum subset). The
+   * completion reconciles EVERY record's kWh layer, which both fills missing
+   * days and purges values from a previously trusted source that no longer
+   * validates. No-source outcomes do not latch the marker: a meter added
+   * later (or a tracker still too young for 14 overlap days) gets adopted at
+   * a subsequent start.
    */
-  private maybeStartEnergyBackfill(): void {
+  private maybeStartMeterKwhBackfill(): void {
     const settings = this.deps.getSettings();
     if (!settings.enabled || !settings.outdoorDeviceId) return;
-    if (this.energyBackfillRunning) return;
-    if (this.state.energyReportBackfillDone === true) return;
-    if (this.state.backfilledDeviceId !== settings.outdoorDeviceId) return;
-    const generation = this.runGeneration;
-    const oldestMissing = this.state.records.find((record) => record.quality.missingKwh);
-    if (oldestMissing === undefined) {
-      this.state = { ...this.state, energyReportBackfillDone: true };
-      this.markDirty();
-      return;
-    }
-    const todayKey = getDateKeyInTimeZone(new Date(this.deps.getNowMs()), this.deps.getTimeZone());
-    const monthKeys = listMonthKeys(oldestMissing.dateKey, todayKey);
-    if (monthKeys.length === 0) {
-      // Clock skew (pre-NTP boot) can put "today" before the oldest record;
-      // latching the done-marker here would silently forfeit the backfill.
-      this.deps.logger.warn({
-        event: 'weather_energy_backfill_empty_span', oldestMissing: oldestMissing.dateKey, todayKey,
-      });
-      return;
-    }
-    this.energyBackfillRunning = true;
-    const generationAtLaunch = generation;
-    void fetchDailyConsumedKwh({
-      monthKeys,
+    if (this.meterBackfillRunning) return;
+    if (this.state.meterKwhBackfillDone === true) return;
+    // Version included: at an upgrade boot the temperature re-stitch is about
+    // to rebuild the records and re-chain this flow — starting now too would
+    // run the whole REST sweep twice.
+    if (this.state.backfilledDeviceId !== settings.outdoorDeviceId
+      || this.state.backfillVersion !== TEMP_BACKFILL_VERSION) return;
+    this.meterBackfillRunning = true;
+    const generationAtLaunch = this.runGeneration;
+    void resolveMeterDailyKwh({
       fetchFromHomeyApi: this.deps.fetchInsights,
-    }).then(({ dailyKwh, complete }) => {
-      if (!this.running || generation !== this.runGeneration) return;
-      const { state, patchedDays } = applyEnergyBackfill(this.state, dailyKwh);
+      getDailyKwh: this.deps.getDailyKwh,
+      timeZone: this.deps.getTimeZone(),
+      nowMs: this.deps.getNowMs(),
+    }).then((result) => {
+      if (!this.running || generationAtLaunch !== this.runGeneration) return;
+      if (result.outcome !== 'resolved') {
+        this.handleMeterNoSource(result);
+        return;
+      }
+      const { state, filledFromMeter, strippedDays, changedDays } = reconcileKwhSources(this.state, {
+        getDailyKwh: this.deps.getDailyKwh,
+        meterDailyKwh: result.dailyKwh,
+        // The legacy purge is one-shot AND requires a complete fetch: a
+        // partial fetch may fill but never delete (unread windows would read
+        // as "unvouched"), and once the stamp lands, values that age beyond
+        // every source's reach are kept rather than mistaken for legacy.
+        allowStrip: result.complete && this.state.kwhPurgeVersion !== KWH_PURGE_VERSION,
+      });
       this.state = {
         ...state,
-        ...(complete ? { energyReportBackfillDone: true } : {}),
+        ...(result.complete
+          ? { meterKwhBackfillDone: true, meterKwhDeviceId: result.deviceId, kwhPurgeVersion: KWH_PURGE_VERSION }
+          : {}),
       };
-      if (patchedDays > 0) {
+      if (changedDays > 0) {
         this.state = this.deps.recomputeDerived?.(this.state) ?? this.state;
       }
-      if (patchedDays > 0 || complete) this.markDirty();
+      if (changedDays > 0 || result.complete) this.markDirty();
       this.deps.logger.info({
-        event: 'weather_energy_backfill_completed',
-        patchedDays,
-        complete,
-        monthsQueried: monthKeys.length,
+        event: 'weather_meter_backfill_completed',
+        deviceId: result.deviceId,
+        capability: result.capability,
+        overlapDays: result.overlapDays,
+        medianRatio: result.medianRatio,
+        filledFromMeter,
+        strippedDays,
+        changedDays,
+        complete: result.complete,
       });
     }).catch((error: unknown) => {
       // Marker stays unset, so the next start() retries.
-      this.deps.logger.warn({ event: 'weather_energy_backfill_failed', err: normalizeError(error) });
+      this.deps.logger.warn({ event: 'weather_meter_backfill_failed', err: normalizeError(error) });
     }).finally(() => {
-      this.energyBackfillRunning = false;
+      this.meterBackfillRunning = false;
       // A reload during the (potentially long) fetch superseded this run and
-      // its start()-time trigger was blocked by energyBackfillRunning — kick
+      // its start()-time trigger was blocked by meterBackfillRunning — kick
       // the new run now rather than waiting for the next app restart. Gated
       // on supersession so a persistently failing fetch cannot hot-loop.
       if (this.running && generationAtLaunch !== this.runGeneration) {
-        this.maybeStartEnergyBackfill();
+        this.maybeStartMeterKwhBackfill();
       }
+    });
+  }
+
+  /**
+   * Even with no successor source, leftovers of the RETIRED unvalidated
+   * source must not keep feeding the fit — honest-missing beats
+   * silently-wrong. Gated on the election having actually run on evidence:
+   * a failed probe means unread data, and unread data must never justify
+   * deleting anything. The marker stays unset either way so a later-added
+   * meter is adopted.
+   */
+  private handleMeterNoSource(result: Exclude<MeterKwhBackfillOutcome, { outcome: 'resolved' }>): void {
+    const electionConclusive = result.outcome === 'no_candidates' || result.probeFailures === 0;
+    // One-shot: tracker-joined backfill kWh is indistinguishable from the
+    // legacy class once the tracker's retention passes it, so a recurring
+    // strip on no-meter homes would erase legitimate values day by day.
+    if (electionConclusive && this.state.kwhPurgeVersion !== KWH_PURGE_VERSION) {
+      const { state, strippedDays, changedDays } = reconcileKwhSources(this.state, {
+        getDailyKwh: this.deps.getDailyKwh,
+        meterDailyKwh: {},
+        allowStrip: true,
+      });
+      this.state = { ...state, kwhPurgeVersion: KWH_PURGE_VERSION };
+      this.markDirty();
+      if (changedDays > 0) {
+        this.state = this.deps.recomputeDerived?.(this.state) ?? this.state;
+      }
+      if (strippedDays > 0) {
+        this.deps.logger.info({ event: 'weather_kwh_legacy_purged', strippedDays });
+      }
+    }
+    this.deps.logger.info({
+      event: 'weather_meter_backfill_no_source',
+      outcome: result.outcome,
+      ...(result.outcome === 'no_comparable_source'
+        ? { candidatesChecked: result.candidatesChecked, probeFailures: result.probeFailures }
+        : {}),
     });
   }
 }

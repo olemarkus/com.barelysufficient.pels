@@ -25,6 +25,12 @@ export type WeatherDailyQuality = {
   unreliablePower: boolean;
   /** Reconstructed from Homey Insights history rather than live sampling. */
   backfilled: boolean;
+  /**
+   * kWh sourced from the validated meter-Insights backfill, not the tracker.
+   * Producer-internal bookkeeping for the kWh reconcile (it decides which
+   * values may be re-resolved or stripped) — consumers must not branch on it.
+   */
+  kwhBackfilled?: boolean;
 };
 
 /**
@@ -63,8 +69,18 @@ export type WeatherHistoryState = {
   forecastHourly?: Record<string, Record<string, number>>;
   /** Device id the one-shot Insights backfill last completed for. */
   backfilledDeviceId?: string;
-  /** Set once the one-shot Homey Energy report backfill completed (home aggregate — no device). */
-  energyReportBackfillDone?: boolean;
+  /** Stitch-set version the temperature backfill last completed with; bumping it re-runs the backfill. */
+  backfillVersion?: number;
+  /** Set once the validated meter-Insights kWh backfill completed. */
+  meterKwhBackfillDone?: boolean;
+  /** Meter device that passed the tracker-overlap validation. */
+  meterKwhDeviceId?: string;
+  /**
+   * One-shot purge of kWh written by the retired (unvalidated) Energy-report
+   * source. Once stamped, reconciles only fill and refresh — values that age
+   * beyond every source's reach are kept, never stripped. Producer-internal.
+   */
+  kwhPurgeVersion?: number;
   /** Derived after each rollup/backfill; recomputed from records, never hand-edited. */
   latestFit?: EnergySignatureFit;
   latestSuggestion?: EnergySignatureSuggestion;
