@@ -42,10 +42,34 @@ export const resolveCategoryIndexFromPixel = (
   return index >= 0 && index < itemCount ? index : null;
 };
 
+// Resolve a plot-area pixel to a 2D grid cell (category x-axis column,
+// category y-axis row); null outside the grid. The power-week heatmap's tap
+// target is a cell, not a column, so the 1D helper above cannot serve it —
+// the grid finder returns both category values in one `convertFromPixel`
+// call. 1D consumers keep `resolveCategoryIndexFromPixel` untouched.
+export const resolveGridCellFromPixel = (
+  chart: EChartsType,
+  x: number,
+  y: number,
+): { columnIndex: number; rowIndex: number } | null => {
+  if (!chart.containPixel({ gridIndex: 0 }, [x, y])) return null;
+  const raw = chart.convertFromPixel({ gridIndex: 0 }, [x, y]);
+  if (!Array.isArray(raw) || raw.length < 2) return null;
+  const [column, row] = raw;
+  if (typeof column !== 'number' || !Number.isFinite(column)) return null;
+  if (typeof row !== 'number' || !Number.isFinite(row)) return null;
+  return { columnIndex: Math.round(column), rowIndex: Math.round(row) };
+};
+
 type ChartReadoutState = {
   itemCount: number;
   defaultIndex: number;
   resolveContent: (index: number) => ChartReadoutContent | null;
+  // Optional pixel→data-index override for charts whose data points are not
+  // 1D category columns (the heatmap's sparse 2D cell list). Returning null
+  // restores the default selection — same contract as the 1D resolver, so a
+  // tap on an empty cell or outside the grid is a "clear" everywhere.
+  resolveIndexFromPixel?: (x: number, y: number) => number | null;
 };
 
 export type ChartReadoutHandle = {
@@ -115,7 +139,9 @@ export const attachChartReadout = (params: {
 
   chart.getZr().on('click', (event) => {
     if (detached || !state) return;
-    selected = resolveCategoryIndexFromPixel(chart, event.offsetX, event.offsetY, state.itemCount);
+    selected = state.resolveIndexFromPixel
+      ? state.resolveIndexFromPixel(event.offsetX, event.offsetY)
+      : resolveCategoryIndexFromPixel(chart, event.offsetX, event.offsetY, state.itemCount);
     applySelection();
   });
 

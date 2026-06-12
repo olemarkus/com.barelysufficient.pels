@@ -11,6 +11,7 @@ import {
   composeKWhOverBudget,
   composeWithinBudgetOf,
 } from '../../../shared-domain/src/dailyBudgetHeroStrings.ts';
+import { formatPowerUsageHourlyTotal } from '../../../shared-domain/src/powerUsageStrings.ts';
 
 export type ChartReadoutValue = {
   text: string;
@@ -156,4 +157,26 @@ export const buildUsageDayReadout = (params: {
   }
   if (params.unreliable) values.push({ text: UNRELIABLE_HOUR_WARNING, tone: 'warn' });
   return { when: params.hourRange, values };
+};
+
+// Power-week heatmap: `Wed, Jun 4 · 13:00–14:00` / `2.40 kWh total`. The
+// `kWh total` suffix keeps the established aggregated-cell semantics (a DST
+// fall-back collapses two physical hours into one wall-clock cell — see
+// `formatPowerUsageHourlyTotal`); single-bucket cells stay terse (`1.24 kWh`).
+// Unreliable cells get the same consequence line as the usage-day readout.
+export const buildPowerWeekReadout = (params: {
+  dayLabel: string;
+  hour: number;
+  kWh: number;
+  aggregated: boolean;
+  unreliable: boolean;
+}): ChartReadoutContent => {
+  const values: ChartReadoutValue[] = [
+    { text: nonBreaking(formatPowerUsageHourlyTotal(params.kWh, { aggregated: params.aggregated })) },
+  ];
+  if (params.unreliable) values.push({ text: UNRELIABLE_HOUR_WARNING, tone: 'warn' });
+  return {
+    when: `${params.dayLabel} · ${padHour(params.hour)}:00–${padHour((params.hour + 1) % 24)}:00`,
+    values,
+  };
 };

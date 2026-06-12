@@ -49,6 +49,7 @@ export const powerEmpty = qs('#power-empty');
 export const powerWeekPrev = document.querySelector('#power-week-prev') as MdButtonElement;
 export const powerWeekNext = document.querySelector('#power-week-next') as MdButtonElement;
 export const powerWeekLabel = qs('#power-week-label');
+export const powerWeekReadout = document.getElementById('power-week-readout') as HTMLElement | null;
 export const dailyList = qs('#daily-list');
 export const dailyEmpty = qs('#daily-empty');
 export const dailyHistoryReadout = document.getElementById('daily-history-readout') as HTMLElement | null;

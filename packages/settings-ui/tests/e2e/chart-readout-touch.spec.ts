@@ -83,6 +83,52 @@ test('coarse pointers drive the pinned readout instead of a floating tooltip', a
   await expect(readoutPrimary).toHaveText(defaultText ?? '');
 });
 
+test('heatmap cell tap drives the pinned readout between distinct cells', async ({ page }) => {
+  await openUsageTab(page);
+
+  // The heatmap lives in the collapsed "Detailed hourly view" section.
+  await page.locator('#usage-detail-section summary').click();
+  await expect(page.locator('#power-list svg')).toBeVisible();
+
+  // Navigate to the previous week: the stub seeds 14 days of hourly buckets,
+  // so every cell of the previous week has data — taps cannot silently land
+  // on an empty cell (the dead-tap trap: both reads showing the default would
+  // false-pass format-only assertions).
+  await page.locator('#power-week-prev').click();
+  await expect(page.locator('#power-list svg')).toBeVisible();
+
+  // Default selection (most recent cell with data) — the row is never empty.
+  const readoutPrimary = page.locator('#power-week-readout .chart-readout__primary');
+  await expect(readoutPrimary).toHaveText(/ · \d{2}:00–\d{2}:00$/);
+  const defaultText = await readoutPrimary.textContent();
+  await expect(page.locator('#power-week-readout .chart-readout__secondary')).toContainText('kWh');
+
+  // Tap two distinct cells (different day column AND hour row): the readout
+  // must move between them, and exactly ONE cell carries the select ring.
+  // ECharts keys select state by item name, and unnamed heatmap items fall
+  // back to a per-column key — a regression here rings the entire 24-cell
+  // day column, so the count must be exact, not `>= 1`.
+  await tapChart(page, '#power-list', 0.25, 0.3);
+  await expect(readoutPrimary).toHaveText(/ · \d{2}:00–\d{2}:00$/);
+  const firstTapText = await readoutPrimary.textContent();
+  // The first tap must move OFF the default too — a missed first tap with a
+  // landed second tap would otherwise still pass the inequality below.
+  expect(firstTapText).not.toBe(defaultText);
+  expect(await countSelectBorders(page, '#power-list')).toBe(1);
+
+  await tapChart(page, '#power-list', 0.55, 0.7);
+  await expect(readoutPrimary).toHaveText(/ · \d{2}:00–\d{2}:00$/);
+  const secondTapText = await readoutPrimary.textContent();
+  expect(secondTapText).not.toBe(firstTapText);
+  expect(await countSelectBorders(page, '#power-list')).toBe(1);
+
+  // A tap above the plot grid restores the default selection — and leaves no
+  // stale ring on the previously tapped cell next to the default's ring.
+  await tapChart(page, '#power-list', 0.5, 0.005);
+  await expect(readoutPrimary).toHaveText(defaultText ?? '');
+  expect(await countSelectBorders(page, '#power-list')).toBe(1);
+});
+
 test('usage day chart tap selects a column and empty tap restores the default', async ({ page }) => {
   await openUsageTab(page);
   await expect(page.locator('#usage-day-bars svg')).toBeVisible();

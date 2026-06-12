@@ -1,7 +1,20 @@
 import { attachTabShownResize } from './chartVisibilityResize.ts';
 import { readChartPalette } from './dayViewChart.ts';
 import { logSettingsWarn } from './logging.ts';
-import { encodeHtml, initEcharts, type EChartsOption, type EChartsType } from './echartsRegistry.ts';
+import { initEcharts, type EChartsOption, type EChartsType } from './echartsRegistry.ts';
+import {
+  buildChartTooltipBase,
+  buildPowerWeekReadout,
+  readoutToTooltipHtml,
+  resolveTooltipDataIndex,
+  type ChartReadoutContent,
+} from './chartTooltipFormat.ts';
+import {
+  attachChartReadout,
+  prefersCoarsePointer,
+  resolveGridCellFromPixel,
+  type ChartReadoutHandle,
+} from './chartReadout.ts';
 import {
   formatDateInTimeZone,
   getDateKeyInTimeZone,
@@ -9,7 +22,6 @@ import {
   shiftDateKey,
 } from './timezone.ts';
 import type { UsageDayEntry } from './usageDayView.ts';
-import { formatPowerUsageHourlyTotal } from '../../../shared-domain/src/powerUsageStrings.ts';
 
 type PowerUsageEntry = UsageDayEntry;
 
@@ -18,8 +30,14 @@ type HeatmapPalette = {
   border: string;
   muted: string;
   grid: string;
+  warn: string;
   heatmapLow: string;
   heatmapHigh: string;
+  // On-surface high-contrast tone for the selected cell's border — the same
+  // selection identity the other Usage-tab charts use (`palette.text` in
+  // `usageDayChartEcharts.ts`), deliberately NOT `--pels-chart-current-border`
+  // (that colour is reserved for the current-hour marker).
+  text: string;
   tooltipBackground: string;
   tooltipText: string;
   tooltipBorder: string;
@@ -62,8 +80,10 @@ const HEATMAP_PALETTE_VARS = {
   border: '--pels-chart-heatmap-border',
   muted: '--pels-chart-muted',
   grid: '--pels-chart-grid',
+  warn: '--pels-chart-warn',
   heatmapLow: '--pels-chart-heatmap-low',
   heatmapHigh: '--pels-chart-heatmap-high',
+  text: '--text',
   tooltipBackground: '--pels-chart-tooltip-bg',
   tooltipText: '--pels-chart-tooltip-text',
   tooltipBorder: '--pels-chart-tooltip-border',
@@ -88,6 +108,8 @@ const resolveCellRadius = (container: HTMLElement): number => {
 };
 
 let detachTabShownResize: (() => void) | null = null;
+let plotReadout: ChartReadoutHandle | null = null;
+let plotReadoutHost: HTMLElement | null = null;
 
 // Container sizing (height / min-height / -webkit-tap-highlight-color) lives
 // in `.power-week-chart` (see `packages/settings-ui/public/style.css`). This
@@ -101,6 +123,14 @@ export const disposePowerWeekChart = (_container?: HTMLElement) => {
     detachTabShownResize();
     detachTabShownResize = null;
   }
+  if (plotReadout) {
+    plotReadout.detach();
+    plotReadout = null;
+  }
+  if (plotReadoutHost) {
+    plotReadoutHost.hidden = true;
+    plotReadoutHost = null;
+  }
   if (plot) {
     plot.dispose();
     plot = null;
@@ -108,7 +138,7 @@ export const disposePowerWeekChart = (_container?: HTMLElement) => {
   plotContainer = null;
 };
 
-const ensurePlot = (container: HTMLElement): EChartsType => {
+const ensurePlot = (container: HTMLElement, readoutHost: HTMLElement | null): EChartsType => {
   if (plot && plotContainer === container) return plot;
 
   disposePowerWeekChart();
@@ -119,6 +149,10 @@ const ensurePlot = (container: HTMLElement): EChartsType => {
     ...resolveChartSize(container),
   });
   plotContainer = container;
+  if (readoutHost) {
+    plotReadout = attachChartReadout({ chart: plot, host: readoutHost });
+    plotReadoutHost = readoutHost;
+  }
 
   if (typeof ResizeObserver === 'function') {
     plotResizeObserver = new ResizeObserver(() => {
@@ -161,20 +195,35 @@ const buildDateKeysForRange = (startMs: number, endMs: number, timeZone: string)
   return keys;
 };
 
-const buildDayLabels = (dateKeys: string[], timeZone: string): string[] => {
-  return dateKeys.map((dateKey) => {
-    const day = new Date(getDateKeyStartMs(dateKey, timeZone));
-    return formatDateInTimeZone(day, { weekday: 'short', month: 'short', day: 'numeric' }, timeZone);
-  });
+// Format one local-day key (`2026-06-04`) as `Thu, Jun 4`. The instant MUST
+// come from `getDateKeyStartMs` (local-day midnight in the given zone) — a
+// UTC-midnight `Date` formatted in a negative-offset zone lands on the
+// previous calendar day (off-by-one fixed in the Phase 3 Usage-tab PR; do
+// not reintroduce it).
+export const buildPowerWeekDayLabel = (dateKey: string, timeZone: string): string => {
+  const day = new Date(getDateKeyStartMs(dateKey, timeZone));
+  return formatDateInTimeZone(day, { weekday: 'short', month: 'short', day: 'numeric' }, timeZone);
 };
+
+const buildDayLabels = (dateKeys: string[], timeZone: string): string[] => (
+  dateKeys.map((dateKey) => buildPowerWeekDayLabel(dateKey, timeZone))
+);
 
 const buildHourLabels = (): string[] => (
   Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'))
 );
 
 type HeatCell = {
+  // ECharts keys select state by item name (`getSelectionKey` falls back to
+  // the x-category value for unnamed cartesian items), so without a unique
+  // per-cell name a single `select` rings the ENTIRE day column. Verified
+  // against echarts 6.1.0: `selectedMode: false` also silences *dispatched*
+  // select actions, so suppressing the native click-toggle is not an option —
+  // unique names are the only mechanism that confines the ring to one cell.
+  name: string;
   value: [number, number, number];
   bucketCount: number;
+  unreliable: boolean;
   itemStyle?: { color: string };
 };
 
@@ -219,10 +268,18 @@ const buildHeatmapDataFixed = (
     if (existing) {
       existing.value[2] += entry.kWh;
       existing.bucketCount += 1;
-      if (entry.unreliable) existing.itemStyle = { color: palette.cellUnreliable };
+      if (entry.unreliable) {
+        existing.unreliable = true;
+        existing.itemStyle = { color: palette.cellUnreliable };
+      }
       continue;
     }
-    const cell: HeatCell = { value: [dayOffset, hour, entry.kWh], bucketCount: 1 };
+    const cell: HeatCell = {
+      name: key,
+      value: [dayOffset, hour, entry.kWh],
+      bucketCount: 1,
+      unreliable: entry.unreliable === true,
+    };
     if (entry.unreliable) cell.itemStyle = { color: palette.cellUnreliable };
     cellsByKey.set(key, cell);
   }
@@ -231,50 +288,50 @@ const buildHeatmapDataFixed = (
   ));
 };
 
-const buildTooltipFormatter = (
-  dayLabels: string[],
-) => (rawParams: unknown): string => {
-  const params: unknown = Array.isArray(rawParams) ? rawParams[0] : rawParams;
-  if (!params || typeof params !== 'object') return '';
-  const { data } = params as { data?: HeatCell };
-  if (!data) return '';
-  const [dayIdx, hour, kWh] = data.value as [number, number, number];
-  const dayLabel = dayLabels[dayIdx] ?? '';
-  const hourStr = String(hour).padStart(2, '0');
-  const nextHour = String((hour + 1) % 24).padStart(2, '0');
-  // The `kWh total` suffix on aggregated cells already signals that the number
-  // sums more than one physical hour, so a separate "N measured hours" line is
-  // redundant and exposes internal vocabulary (`bucket`).
-  const kWhLabel = formatPowerUsageHourlyTotal(kWh, { aggregated: data.bucketCount > 1 });
-  return [
-    encodeHtml(dayLabel),
-    encodeHtml(`${hourStr}:00–${nextHour}:00`),
-    encodeHtml(kWhLabel),
-  ].join('<br/>');
-};
+// One structured content object per cell, feeding both the desktop hover
+// tooltip and the pinned touch readout (one grammar, identical information).
+// The `kWh total` suffix on aggregated cells already signals that the number
+// sums more than one physical hour, so a separate "N measured hours" line is
+// redundant and exposes internal vocabulary (`bucket`).
+const buildCellReadouts = (cells: HeatCell[], dayLabels: string[]): ChartReadoutContent[] => (
+  cells.map((cell) => buildPowerWeekReadout({
+    dayLabel: dayLabels[cell.value[0]] ?? '',
+    hour: cell.value[1],
+    kWh: cell.value[2],
+    aggregated: cell.bucketCount > 1,
+    unreliable: cell.unreliable,
+  }))
+);
+
+const buildTooltipFormatter = (readouts: ChartReadoutContent[], warnColor: string) => (
+  (rawParams: unknown): string => {
+    const index = resolveTooltipDataIndex(rawParams);
+    if (index < 0 || index >= readouts.length) return '';
+    return readoutToTooltipHtml(readouts[index], { warnColor });
+  }
+);
 
 const buildOption = (params: {
-  entries: PowerUsageEntry[];
-  timeZone: string;
-  dateKeys: string[];
+  palette: HeatmapPalette;
+  data: HeatCell[];
+  readouts: ChartReadoutContent[];
+  dayLabels: string[];
   container: HTMLElement;
   globalMinKWh: number;
   globalMaxKWh: number;
 }): EChartsOption => {
   const {
-    entries,
-    timeZone,
-    dateKeys,
+    palette,
+    data,
+    readouts,
+    dayLabels,
     container,
     globalMinKWh,
     globalMaxKWh,
   } = params;
 
-  const palette = resolvePalette(container);
   const cellRadius = resolveCellRadius(container);
-  const dayLabels = buildDayLabels(dateKeys, timeZone);
   const hourLabels = buildHourLabels();
-  const data = buildHeatmapDataFixed(entries, dateKeys, timeZone, palette);
 
   return {
     animation: false,
@@ -288,24 +345,21 @@ const buildOption = (params: {
       containLabel: true,
     },
     tooltip: {
+      ...buildChartTooltipBase(palette),
+      // Heatmap cells are item-keyed, not axis-keyed — the shared base's
+      // `trigger: 'axis'` would fire one box per column.
       trigger: 'item',
-      confine: true,
-      backgroundColor: palette.tooltipBackground,
-      borderColor: palette.tooltipBorder,
-      borderWidth: 1,
-      padding: [8, 10],
-      extraCssText: 'opacity:1;backdrop-filter:none;box-shadow:var(--shadow-md);',
-      textStyle: {
-        color: palette.tooltipText,
-        fontSize: 12,
-        fontWeight: 500,
-      },
-      formatter: buildTooltipFormatter(dayLabels),
+      show: !prefersCoarsePointer(),
+      formatter: buildTooltipFormatter(readouts, palette.warn),
     },
     visualMap: {
       min: globalMinKWh,
       max: globalMaxKWh,
       show: true,
+      // No hover-linkage indicator dot on the ramp: emphasis/blur are already
+      // disabled on the series, and on touch the dot has no mouseout — it
+      // appears on the first tap and lingers as a stale artifact.
+      hoverLink: false,
       orient: 'vertical',
       right: 0,
       top: 'center',
@@ -357,7 +411,8 @@ const buildOption = (params: {
         },
         emphasis: { disabled: true },
         blur: { disabled: true },
-        select: { disabled: true },
+        selectedMode: 'single',
+        select: { itemStyle: { borderColor: palette.text, borderWidth: 2 } },
       },
     ],
   };
@@ -369,6 +424,7 @@ export const renderPowerWeekChart = (params: {
   startMs: number;
   endMs: number;
   timeZone: string;
+  readoutHost?: HTMLElement | null;
   globalMinKWh?: number;
   globalMaxKWh?: number;
 }): boolean => {
@@ -378,6 +434,7 @@ export const renderPowerWeekChart = (params: {
     startMs,
     endMs,
     timeZone,
+    readoutHost = null,
     globalMinKWh,
     globalMaxKWh,
   } = params;
@@ -386,15 +443,41 @@ export const renderPowerWeekChart = (params: {
     const localRange = resolvePowerWeekChartValueRange(entries, timeZone, dateKeys);
     const resolvedGlobalMinKWh = Math.min(localRange.minKWh, globalMinKWh ?? localRange.minKWh);
     const resolvedGlobalMaxKWh = Math.max(localRange.maxKWh, globalMaxKWh ?? localRange.maxKWh);
-    const chart = ensurePlot(container);
+    const chart = ensurePlot(container, readoutHost);
+    const palette = resolvePalette(container);
+    const dayLabels = buildDayLabels(dateKeys, timeZone);
+    const data = buildHeatmapDataFixed(entries, dateKeys, timeZone, palette);
+    const readouts = buildCellReadouts(data, dayLabels);
     chart.resize(resolveChartSize(container));
     chart.setOption(
       buildOption({
-        entries, timeZone, dateKeys, container,
+        palette, data, readouts, dayLabels, container,
         globalMinKWh: resolvedGlobalMinKWh, globalMaxKWh: resolvedGlobalMaxKWh,
       }),
       { notMerge: true },
     );
+    if (plotReadout && plotReadoutHost) {
+      // Cells are sorted (day, hour) ascending, so the last entry is the most
+      // recent cell with data — the default selection is never an empty cell.
+      const indexByCell = new Map(data.map((cell, index) => (
+        [resolveHeatCellKey(String(cell.value[0]), cell.value[1]), index] as const
+      )));
+      // No selectable cells (empty week) -> keep the caption slot hidden
+      // rather than showing an empty row under the no-data message.
+      plotReadoutHost.hidden = data.length === 0;
+      plotReadout.update({
+        itemCount: data.length,
+        defaultIndex: data.length - 1,
+        resolveContent: (index) => (
+          index >= 0 && index < readouts.length ? readouts[index] : null
+        ),
+        resolveIndexFromPixel: (x, y) => {
+          const cell = resolveGridCellFromPixel(chart, x, y);
+          if (!cell) return null;
+          return indexByCell.get(resolveHeatCellKey(String(cell.columnIndex), cell.rowIndex)) ?? null;
+        },
+      });
+    }
     return true;
   } catch (error) {
     void logSettingsWarn('Power week heatmap: echarts render failed', error, 'powerWeekChart');

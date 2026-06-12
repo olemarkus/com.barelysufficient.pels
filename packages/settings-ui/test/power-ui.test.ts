@@ -365,8 +365,11 @@ describe('power page stats (buckets-only)', () => {
     expect(heatmapData[0]?.value[2]).toBeCloseTo(1.5, 6);
     expect(heatmapData[0]?.bucketCount).toBe(2);
     expect(option.visualMap?.max).toBeCloseTo(1.5, 6);
-    const tooltip = option.tooltip?.formatter?.({ data: heatmapData[0] }) ?? '';
-    expect(tooltip).toContain('1.50 kWh total');
+    // The tooltip formatter resolves the hovered cell by data index (the
+    // shared content resolver feeds both the tooltip and the pinned readout).
+    const tooltip = option.tooltip?.formatter?.({ dataIndex: 0 }) ?? '';
+    // Measurement segments join tokens with NBSP (see `chartTooltipFormat.ts`).
+    expect(tooltip).toContain('1.50\u00A0kWh\u00A0total');
     // The "kWh total" suffix already signals aggregation; the bucket-count
     // line exposed internal vocabulary and has been dropped (v2.7.4 train).
     expect(tooltip).not.toMatch(/measured hours/i);
