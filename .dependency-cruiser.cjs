@@ -130,6 +130,26 @@ module.exports = {
       },
     },
     {
+      name: 'no-runtime-value-deps-on-contracts',
+      comment: '@pels/contracts is types-only AT RUNTIME: scripts/sanitize-homey-build.mjs '
+        + 'deletes packages/contracts from the packaged app, so any VALUE import from code '
+        + 'that ships in the bundle (app.ts, api.ts, lib/**, setup/**, flowCards/**, '
+        + 'drivers/**, packages/shared-domain/**) crashes the app at '
+        + 'boot with MODULE_NOT_FOUND (prod outage 2026-06-12, suggestDailyBudget.ts -> '
+        + 'dailyBudgetConstants). tsPreCompilationDeps is unset, so this cruise sees only '
+        + 'post-compilation (value) imports - `import type` stays legal and erased. Values '
+        + 'needed at runtime live in duplicated runtime-safe copies (lib/dailyBudget/'
+        + 'dailyBudgetConstants.ts, lib/utils/settingsUiBootstrapKeys.ts, shared-domain '
+        + 'locals); the duplication is the sanctioned price of the packaging boundary. '
+        + 'settings-ui and widgets/** are exempt: esbuild bundles them (scripts/build-widgets.mjs '
+        + 'emits the committed widgets/*/api.js), so their imports are inlined.',
+      severity: 'error',
+      from: {
+        path: '^(app\\.ts|api\\.ts|lib/|setup/|flowCards/|drivers/|packages/shared-domain/src/)',
+      },
+      to: { path: '^packages/contracts/' },
+    },
+    {
       name: 'shared-packages-no-runtime',
       comment: 'Shared packages must remain browser-safe and runtime-agnostic. '
         + '@pels/planner-types holds the planner I/O contracts (PlanInputDevice) '

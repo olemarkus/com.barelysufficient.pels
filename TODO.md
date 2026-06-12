@@ -37,6 +37,16 @@ the release-review cleanup PR.
 
 ## P1 Correctness, Data Integrity, and Supported UX
 
+- [ ] **CI cannot catch packaged-app boot crashes (MODULE_NOT_FOUND class).** Every test lane
+      runs from source via vitest/tsc path resolution, and `homey app validate` never requires
+      the compiled bundle — so a value import of `packages/contracts` from shipped runtime code
+      passed all 15 checks and crash-looped production at boot (2026-06-12;
+      `suggestDailyBudget.ts` → `dailyBudgetConstants`). The `no-runtime-value-deps-on-contracts`
+      cruiser rule now closes that specific vector, but the general gap remains: add a CI step
+      that runs `npm run build` and smoke-requires the runtime entry modules from `.homeybuild/`
+      (app.js's require graph minus the SDK), failing on any unresolvable module. Persona: every
+      user — a boot crash takes the whole capacity controller down.
+
 *v2.9.0 closeout and v2.8.x release-review follow-ups. These are safe for
 patch releases, not release blockers; each item carries its own source/date.
 (The v2.8.0 card-title rename landed in PR #934.)*

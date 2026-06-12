@@ -1,6 +1,14 @@
 import type { EnergySignatureFit } from '../../../contracts/src/weatherAdvisorTypes';
-import { MAX_DAILY_BUDGET_KWH, MIN_DAILY_BUDGET_KWH } from '../../../contracts/src/dailyBudgetConstants';
 import { predictDailyKwh } from './energySignature';
+
+// Mirrors lib/dailyBudget/dailyBudgetConstants.ts and packages/contracts/src/
+// dailyBudgetConstants.ts (all three must stay in sync). Deliberate copy:
+// shared-domain ships inside the Homey app bundle while packages/contracts is
+// DELETED from it by scripts/sanitize-homey-build.mjs (contracts is types-only
+// at runtime — a value import here crash-looped the app at boot), and the
+// lib/ copy is unreachable across the packages-isolation boundary.
+const MIN_DAILY_BUDGET_KWH = 20;
+const MAX_DAILY_BUDGET_KWH = 360;
 
 /**
  * Turns tomorrow's expected mean temperature into an advisory daily budget.
