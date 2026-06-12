@@ -13,12 +13,21 @@ import { isPlausibleOutdoorTemperature } from './weatherHistory';
  * `manager/insights/log/{ownerUri}/{FULL log id}/entry?resolution=R` — the
  * second path segment is the full `homey:device:<id>:measure_temperature` id,
  * not the bare capability. `lastYear` returns the previous calendar year at
- * 6-hour step; `last3Months`/`last31Days` cover the current-year gap. Windows
- * overlap, so points are deduped by timestamp before grouping into local days.
+ * 6-hour step; `thisYear` covers Jan 1 → now, and `last3Months`/`last31Days`
+ * sharpen the recent window. Windows overlap, so points are deduped by
+ * timestamp before grouping into local days.
  */
 
+/**
+ * Bumped whenever BACKFILL_RESOLUTIONS widens, so installs that completed an
+ * older stitch re-run once and pick up the windows it lacked. Version 2 added
+ * `thisYear`: without it, the current calendar year up to ~3 months ago was a
+ * permanent gap (e.g. January–February temps missing on a June install).
+ */
+export const TEMP_BACKFILL_VERSION = 2;
+
 /** Resolutions to stitch, broadest first. Coarser-than-6h responses are skipped. */
-const BACKFILL_RESOLUTIONS = ['lastYear', 'last3Months', 'last31Days'] as const;
+const BACKFILL_RESOLUTIONS = ['lastYear', 'thisYear', 'last3Months', 'last31Days'] as const;
 const MAX_USABLE_STEP_MS = 6 * 60 * 60 * 1000;
 /** ≥3 of the 4 daily 6-hour points must exist for a trustworthy daily mean. */
 const MIN_POINTS_PER_DAY = 3;
@@ -67,13 +76,19 @@ async function collectTemperaturePoints(
   let failureCount = 0;
   for (const resolution of BACKFILL_RESOLUTIONS) {
     try {
-      ingestEntryResponse(await fetchInsights(`${basePath}?resolution=${resolution}`), points);
+      // A malformed/too-coarse 200 counts as a failure (the window existed
+      // but was unreadable); a well-formed empty window is a final answer.
+      if (!ingestEntryResponse(await fetchInsights(`${basePath}?resolution=${resolution}`), points)) {
+        failureCount += 1;
+      }
     } catch (error) {
-      if (failureCount === 0) firstError = error;
+      if (firstError === undefined) firstError = error;
       failureCount += 1;
     }
   }
-  if (points.size === 0 && failureCount > 0) throw firstError;
+  if (points.size === 0 && failureCount > 0) {
+    throw firstError ?? new Error('insights response unusable');
+  }
   return { points, complete: failureCount === 0 };
 }
 
@@ -115,15 +130,17 @@ function buildBackfillRecord(
   };
 }
 
-function ingestEntryResponse(response: unknown, points: Map<number, number>): void {
-  if (!isUnknownRecord(response)) return;
+/** False when the response is malformed or too coarse to use (counts as a fetch failure). */
+function ingestEntryResponse(response: unknown, points: Map<number, number>): boolean {
+  if (!isUnknownRecord(response)) return false;
   const step = response.step;
-  if (typeof step !== 'number' || step <= 0 || step > MAX_USABLE_STEP_MS) return;
-  if (!Array.isArray(response.values)) return;
+  if (typeof step !== 'number' || step <= 0 || step > MAX_USABLE_STEP_MS) return false;
+  if (!Array.isArray(response.values)) return false;
   for (const entry of response.values) {
     const point = parseEntryPoint(entry);
     if (point) points.set(point.timestampMs, point.temperatureC);
   }
+  return true;
 }
 
 function parseEntryPoint(entry: unknown): { timestampMs: number; temperatureC: number } | undefined {

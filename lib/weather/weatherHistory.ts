@@ -9,6 +9,8 @@ import { getZonedParts, shiftDateKey } from '../utils/dateUtils';
 
 /** Two years of daily records ≈ 90 KB JSON — well inside the persisted-state budget. */
 export const WEATHER_HISTORY_RETENTION_DAYS = 730;
+/** Bump only if a contaminated-kWh class is ever discovered again. */
+export const KWH_PURGE_VERSION = 1;
 /** Keep in-progress accumulators for at most today + the two preceding days. */
 const ACCUMULATOR_RETENTION_DAYS = 2;
 /** How many future forecast dateKeys to retain (tomorrow + the day after around midnight). */
@@ -231,43 +233,123 @@ export function mergeRecoveredState(
 function mergeBackfillMarkers(
   recovered: WeatherHistoryState,
   inMemory: WeatherHistoryState,
-): Pick<WeatherHistoryState, 'backfilledDeviceId' | 'energyReportBackfillDone'> {
-  const backfilledDeviceId = recovered.backfilledDeviceId ?? inMemory.backfilledDeviceId;
-  // Energy marker: recovered-only. An in-memory completion was computed while
-  // the store was unreadable, against a record set the recovered blob may
-  // extend by months — carrying it over would latch missingKwh days
-  // unpatched forever; dropping it costs one idempotent re-run next start.
-  const energyDone = recovered.energyReportBackfillDone === true;
+): Pick<
+  WeatherHistoryState,
+  'backfilledDeviceId' | 'backfillVersion' | 'meterKwhBackfillDone' | 'meterKwhDeviceId' | 'kwhPurgeVersion'
+  > {
+  // Temperature marker: prefer the recovered pair; the version describes the
+  // same completed run as its deviceId, so they must travel together.
+  const tempSource = recovered.backfilledDeviceId !== undefined ? recovered : inMemory;
+  // Meter markers and the purge stamp: recovered-only. An in-memory
+  // completion was computed while the store was unreadable, against a record
+  // set the recovered blob may extend by months — carrying it over would
+  // latch those days unfilled (or unpurged) forever; dropping it costs one
+  // idempotent re-run next start.
   return {
-    ...(backfilledDeviceId !== undefined ? { backfilledDeviceId } : {}),
-    ...(energyDone ? { energyReportBackfillDone: true } : {}),
+    ...(tempSource.backfilledDeviceId !== undefined ? { backfilledDeviceId: tempSource.backfilledDeviceId } : {}),
+    ...(tempSource.backfilledDeviceId !== undefined && tempSource.backfillVersion !== undefined
+      ? { backfillVersion: tempSource.backfillVersion }
+      : {}),
+    ...(recovered.meterKwhBackfillDone === true ? { meterKwhBackfillDone: true } : {}),
+    ...(recovered.meterKwhDeviceId !== undefined ? { meterKwhDeviceId: recovered.meterKwhDeviceId } : {}),
+    ...(recovered.kwhPurgeVersion !== undefined ? { kwhPurgeVersion: recovered.kwhPurgeVersion } : {}),
   };
 }
 
 /**
- * Patches Homey-Energy-report daily kWh into records the power tracker could
- * not cover (`missingKwh`). Joined kWh from live rollups always wins — only
- * the missing slots are filled, and `kwhControlled` stays absent (the report
- * carries no managed/background split).
+ * Rebuilds every record's kWh layer from the two admissible sources, in trust
+ * order: the power tracker (the budget's own metric — always wins where it
+ * holds a real total for the day) and the validated meter-Insights backfill.
+ * Trust rules, in decreasing protection:
+ * - A live-rollup day-close snapshot is never overwritten or stripped: the
+ *   tracker legitimately forgets old days while the snapshot stays correct.
+ * - A meter fill (`quality.kwhBackfilled`) was validated against the tracker
+ *   when written, so it is refreshed where the current map covers the day
+ *   and KEPT where it does not — history ages out of the Insights windows,
+ *   and a bad read must never be able to destroy it.
+ * - Unflagged kWh riding a reconstructed record (`quality.backfilled`) is
+ *   the unvalidated legacy class (the retired Energy-report source is all it
+ *   ever was — see `meterKwhBackfill.ts`): overwritten where the meter
+ *   covers it, stripped back to `missingKwh` where it does not. The strip is
+ *   a ONE-SHOT migration (`KWH_PURGE_VERSION` stamped by the caller after a
+ *   conclusive run): the legacy class cannot regrow once the retired code is
+ *   gone, while tracker-joined backfill kWh shares its unflagged signature —
+ *   a recurring strip would erase those legitimate values one by one as the
+ *   tracker's retention passes them. `allowStrip` additionally requires a
+ *   `complete` fetch, so a partially readable Insights day can fill but
+ *   never delete.
  */
-export function applyEnergyBackfill(
+export function reconcileKwhSources(
   state: WeatherHistoryState,
-  dailyKwh: Record<string, number>,
-): { state: WeatherHistoryState; patchedDays: number } {
-  let patchedDays = 0;
+  params: {
+    getDailyKwh: (dateKey: string) => { total?: number; controlled?: number };
+    meterDailyKwh: Record<string, number>;
+    allowStrip: boolean;
+  },
+): { state: WeatherHistoryState; filledFromMeter: number; strippedDays: number; changedDays: number } {
+  let filledFromMeter = 0;
+  let strippedDays = 0;
+  let changedDays = 0;
   const records = state.records.map((record) => {
-    if (!record.quality.missingKwh) return record;
-    const kwhTotal = dailyKwh[record.dateKey];
-    if (kwhTotal === undefined) return record;
-    patchedDays += 1;
-    return {
-      ...record,
-      kwhTotal,
-      quality: { ...record.quality, missingKwh: false },
-    };
+    const next = reconcileRecordKwh(record, params);
+    if (next === record) return record;
+    changedDays += 1;
+    if (next.quality.kwhBackfilled === true) filledFromMeter += 1;
+    if (next.quality.missingKwh && !record.quality.missingKwh) strippedDays += 1;
+    return next;
   });
-  if (patchedDays === 0) return { state, patchedDays };
-  return { state: { ...state, records }, patchedDays };
+  if (changedDays === 0) return { state, filledFromMeter, strippedDays, changedDays };
+  return { state: { ...state, records }, filledFromMeter, strippedDays, changedDays };
+}
+
+function reconcileRecordKwh(
+  record: WeatherDailyRecord,
+  params: {
+    getDailyKwh: (dateKey: string) => { total?: number; controlled?: number };
+    meterDailyKwh: Record<string, number>;
+    allowStrip: boolean;
+  },
+): WeatherDailyRecord {
+  const tracker = params.getDailyKwh(record.dateKey);
+  // A zero total is "no real measurement" (install day, tracker reset), not
+  // an authoritative day — it must not overwrite a meter-sourced value.
+  if (tracker.total !== undefined && tracker.total > 0) {
+    const { kwhBackfilled: _droppedFlag, ...quality } = record.quality;
+    const next: WeatherDailyRecord = {
+      ...record,
+      kwhTotal: tracker.total,
+      ...(tracker.controlled !== undefined ? { kwhControlled: tracker.controlled } : {}),
+      quality: { ...quality, missingKwh: false },
+    };
+    return recordKwhEquals(record, next) ? record : next;
+  }
+  const meterValidated = record.quality.kwhBackfilled === true;
+  const meterKwh = params.meterDailyKwh[record.dateKey];
+  if (meterKwh !== undefined && (record.kwhTotal === undefined || meterValidated || record.quality.backfilled)) {
+    // The meter carries no managed/background split — a stale split from a
+    // previous source paired with a fresh total would be incoherent.
+    const { kwhControlled: _droppedControlled, ...rest } = record;
+    const next: WeatherDailyRecord = {
+      ...rest,
+      kwhTotal: meterKwh,
+      quality: { ...record.quality, missingKwh: false, kwhBackfilled: true },
+    };
+    return recordKwhEquals(record, next) ? record : next;
+  }
+  const legacyUnvalidated = !meterValidated && record.quality.backfilled && record.kwhTotal !== undefined;
+  if (params.allowStrip && legacyUnvalidated && meterKwh === undefined) {
+    const { kwhTotal: _droppedTotal, kwhControlled: _droppedControlled, ...rest } = record;
+    const { kwhBackfilled: _droppedFlag, ...quality } = record.quality;
+    return { ...rest, quality: { ...quality, missingKwh: true } };
+  }
+  return record;
+}
+
+function recordKwhEquals(before: WeatherDailyRecord, after: WeatherDailyRecord): boolean {
+  return before.kwhTotal === after.kwhTotal
+    && before.kwhControlled === after.kwhControlled
+    && before.quality.missingKwh === after.quality.missingKwh
+    && before.quality.kwhBackfilled === after.quality.kwhBackfilled;
 }
 
 /**
@@ -299,15 +381,11 @@ export function normalizeWeatherHistoryState(raw: unknown): WeatherHistoryState 
   const forecastHourly = isUnknownRecord(raw.forecastHourly)
     ? normalizeForecastHourly(raw.forecastHourly)
     : {};
-  const backfilledDeviceId = typeof raw.backfilledDeviceId === 'string' && raw.backfilledDeviceId.length > 0
-    ? raw.backfilledDeviceId
-    : undefined;
   return {
     records: raw.records.filter(isPlausibleRecord).sort(byDateKeyAscending),
     ...(Object.keys(accumulators).length > 0 ? { accumulators } : {}),
     ...(Object.keys(forecastHourly).length > 0 ? { forecastHourly } : {}),
-    ...(backfilledDeviceId !== undefined ? { backfilledDeviceId } : {}),
-    ...(raw.energyReportBackfillDone === true ? { energyReportBackfillDone: true } : {}),
+    ...normalizeBackfillMarkers(raw),
     // Derived fields: producer-written and recomputed after every records
     // change, so a shallow shape check suffices — corruption self-heals at
     // the next rollup/backfill.
@@ -315,6 +393,25 @@ export function normalizeWeatherHistoryState(raw: unknown): WeatherHistoryState 
     ...(isUnknownRecord(raw.latestSuggestion)
       ? { latestSuggestion: raw.latestSuggestion as WeatherHistoryState['latestSuggestion'] }
       : {}),
+  };
+}
+
+function normalizeBackfillMarkers(
+  raw: Record<string, unknown>,
+): Pick<
+  WeatherHistoryState,
+  'backfilledDeviceId' | 'backfillVersion' | 'meterKwhBackfillDone' | 'meterKwhDeviceId' | 'kwhPurgeVersion'
+  > {
+  const isNonEmptyString = (value: unknown): value is string => typeof value === 'string' && value.length > 0;
+  const isPositiveInteger = (value: unknown): value is number => (
+    typeof value === 'number' && Number.isInteger(value) && value > 0
+  );
+  return {
+    ...(isNonEmptyString(raw.backfilledDeviceId) ? { backfilledDeviceId: raw.backfilledDeviceId } : {}),
+    ...(isPositiveInteger(raw.backfillVersion) ? { backfillVersion: raw.backfillVersion } : {}),
+    ...(raw.meterKwhBackfillDone === true ? { meterKwhBackfillDone: true } : {}),
+    ...(isNonEmptyString(raw.meterKwhDeviceId) ? { meterKwhDeviceId: raw.meterKwhDeviceId } : {}),
+    ...(isPositiveInteger(raw.kwhPurgeVersion) ? { kwhPurgeVersion: raw.kwhPurgeVersion } : {}),
   };
 }
 
@@ -363,7 +460,29 @@ function upsertRecord(
   }
   const existing = records[index];
   if (!existing.quality.backfilled && !options.overwriteLive) return records;
-  return records.map((entry, position) => (position === index ? record : entry));
+  const merged = mergeKwhLayer(existing, record);
+  return records.map((entry, position) => (position === index ? merged : entry));
+}
+
+/**
+ * A temperature refresh owns the temperature fields, not the kWh layer: a
+ * re-stitched record that arrives without kWh must not erase a fill the kWh
+ * reconcile produced (the reconcile may not re-run for months — its marker
+ * is dropped on COMPLETE temperature runs only). Carrying the value is safe
+ * even when it is legacy-contaminated: the reconcile purges that class.
+ */
+function mergeKwhLayer(existing: WeatherDailyRecord, incoming: WeatherDailyRecord): WeatherDailyRecord {
+  if (incoming.kwhTotal !== undefined || existing.kwhTotal === undefined) return incoming;
+  return {
+    ...incoming,
+    kwhTotal: existing.kwhTotal,
+    ...(existing.kwhControlled !== undefined ? { kwhControlled: existing.kwhControlled } : {}),
+    quality: {
+      ...incoming.quality,
+      missingKwh: false,
+      ...(existing.quality.kwhBackfilled === true ? { kwhBackfilled: true } : {}),
+    },
+  };
 }
 
 function pruneRecords(records: WeatherDailyRecord[], newestDateKey: string): WeatherDailyRecord[] {

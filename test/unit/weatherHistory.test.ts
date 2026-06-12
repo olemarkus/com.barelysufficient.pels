@@ -1,12 +1,12 @@
 import type { WeatherDailyRecord, WeatherHistoryState } from '../../packages/contracts/src/weatherAdvisorTypes';
 import {
   applyActualSample,
-  applyEnergyBackfill,
   mergeRecoveredState,
   applyForecastSample,
   emptyWeatherHistoryState,
   normalizeWeatherHistoryState,
   periodsOverlapWindow,
+  reconcileKwhSources,
   rollupDay,
   upsertBackfillRecords,
   WEATHER_HISTORY_RETENTION_DAYS,
@@ -181,47 +181,181 @@ describe('upsertBackfillRecords', () => {
     expect(next.records[1].tempMeanC).toBe(-7);
     expect(next.records[2].tempMeanC).toBe(4);
   });
-});
 
-describe('applyEnergyBackfill', () => {
-  it('fills only missingKwh records and counts the patches', () => {
-    const missing = {
-      ...backfilledRecord('2025-02-01'),
+  it('carries the kWh layer onto a refreshed record that arrives without one', () => {
+    const meterFilled = backfilledRecord('2026-01-06', {
+      kwhTotal: 38.5,
+      quality: {
+        partialTemp: false, missingKwh: false, unreliablePower: false, backfilled: true, kwhBackfilled: true,
+      },
+    });
+    const freshTempOnly = backfilledRecord('2026-01-06', {
+      tempMeanC: -7,
       kwhTotal: undefined,
       quality: { partialTemp: false, missingKwh: true, unreliablePower: false, backfilled: true },
-    };
-    const joined = liveRecord('2026-03-05', { kwhTotal: 44 });
-    const { state, patchedDays } = applyEnergyBackfill(
-      { records: [missing, joined] },
-      { '2025-02-01': 52.3, '2026-03-05': 999 },
+    });
+    const next = upsertBackfillRecords({ records: [meterFilled] }, [freshTempOnly]);
+    expect(next.records[0]).toMatchObject({
+      tempMeanC: -7,
+      kwhTotal: 38.5,
+      quality: { missingKwh: false, kwhBackfilled: true },
+    });
+  });
+});
+
+describe('reconcileKwhSources', () => {
+  const trackerByDay: Record<string, { total?: number; controlled?: number }> = {
+    '2026-03-05': { total: 44, controlled: 12 },
+  };
+  const getDailyKwh = (dateKey: string): { total?: number; controlled?: number } => trackerByDay[dateKey] ?? {};
+
+  it('applies the trust ladder: tracker wins, meter fills, unvalidated backfilled kWh is stripped', () => {
+    const missing = backfilledRecord('2025-02-01', {
+      kwhTotal: undefined,
+      quality: { partialTemp: false, missingKwh: true, unreliablePower: false, backfilled: true },
+    });
+    // Contaminated: an unvalidated legacy source wrote kWh (and a stale
+    // controlled split) the meter does not cover.
+    const contaminated = backfilledRecord('2025-02-02', { kwhTotal: 19.5, kwhControlled: 5 });
+    // Legacy kWh the meter DOES cover is overwritten — and the foreign
+    // controlled split must not survive next to the fresh total.
+    const overwritten = backfilledRecord('2025-02-03', { kwhTotal: 17, kwhControlled: 4 });
+    const joined = liveRecord('2026-03-05', { kwhTotal: 43, kwhControlled: 10 });
+    const { state, filledFromMeter, strippedDays, changedDays } = reconcileKwhSources(
+      { records: [missing, contaminated, overwritten, joined] },
+      {
+        getDailyKwh,
+        meterDailyKwh: { '2025-02-01': 52.3, '2025-02-03': 41.2, '2026-03-05': 999 },
+        allowStrip: true,
+      },
     );
-    expect(patchedDays).toBe(1);
     expect(state.records[0]).toMatchObject({
       kwhTotal: 52.3,
-      quality: { missingKwh: false, backfilled: true },
+      quality: { missingKwh: false, backfilled: true, kwhBackfilled: true },
     });
-    // The already-joined live record is untouched — tracker kWh wins.
-    expect(state.records[1].kwhTotal).toBe(44);
+    expect(state.records[1].kwhTotal).toBeUndefined();
+    expect(state.records[1].kwhControlled).toBeUndefined();
+    expect(state.records[1].quality.missingKwh).toBe(true);
+    expect(state.records[2].kwhTotal).toBe(41.2);
+    expect(state.records[2].kwhControlled).toBeUndefined();
+    // Tracker outranks the (implausible) meter value on the day it covers.
+    expect(state.records[3]).toMatchObject({ kwhTotal: 44, kwhControlled: 12 });
+    expect({ filledFromMeter, strippedDays, changedDays }).toEqual({
+      filledFromMeter: 2, strippedDays: 1, changedDays: 4,
+    });
   });
 
-  it('is an identity when nothing matches', () => {
-    const original = { records: [liveRecord('2026-03-05')] };
-    const { state, patchedDays } = applyEnergyBackfill(original, { '2020-01-01': 10 });
-    expect(patchedDays).toBe(0);
+  it('fills but never strips on a partial run (allowStrip=false)', () => {
+    const missing = backfilledRecord('2025-02-01', {
+      kwhTotal: undefined,
+      quality: { partialTemp: false, missingKwh: true, unreliablePower: false, backfilled: true },
+    });
+    const contaminated = backfilledRecord('2025-02-02', { kwhTotal: 19.5 });
+    const { state, strippedDays } = reconcileKwhSources(
+      { records: [missing, contaminated] },
+      { getDailyKwh, meterDailyKwh: { '2025-02-01': 52.3 }, allowStrip: false },
+    );
+    expect(state.records[0].kwhTotal).toBe(52.3);
+    expect(state.records[1].kwhTotal).toBe(19.5);
+    expect(strippedDays).toBe(0);
+  });
+
+  it('never strips or overwrites a live day-close snapshot the tracker has since forgotten', () => {
+    const agedLive = liveRecord('2024-06-01', { kwhTotal: 31 });
+    // Even when the meter covers the day: the snapshot WAS the tracker.
+    const { state, changedDays } = reconcileKwhSources(
+      { records: [agedLive] },
+      { getDailyKwh, meterDailyKwh: { '2024-06-01': 29.5 }, allowStrip: true },
+    );
+    expect(changedDays).toBe(0);
+    expect(state.records[0].kwhTotal).toBe(31);
+  });
+
+  it('keeps validated meter fills that aged beyond the sources, and refreshes covered ones', () => {
+    const meterFilled = liveRecord('2024-06-01', {
+      kwhTotal: 29.5,
+      quality: {
+        partialTemp: false, missingKwh: false, unreliablePower: false, backfilled: false, kwhBackfilled: true,
+      },
+    });
+    // No source reaches the day anymore — the fill was validated against the
+    // tracker when written, so it stays (a bad read must never delete it).
+    const kept = reconcileKwhSources(
+      { records: [meterFilled] },
+      { getDailyKwh, meterDailyKwh: {}, allowStrip: true },
+    );
+    expect(kept.changedDays).toBe(0);
+    expect(kept.state.records[0].kwhTotal).toBe(29.5);
+    // Where the current map covers it, the value is re-resolved.
+    const refreshed = reconcileKwhSources(
+      { records: [meterFilled] },
+      { getDailyKwh, meterDailyKwh: { '2024-06-01': 30.1 }, allowStrip: true },
+    );
+    expect(refreshed.state.records[0].kwhTotal).toBe(30.1);
+    expect(refreshed.state.records[0].quality.kwhBackfilled).toBe(true);
+  });
+
+  it('treats a zero tracker total as no measurement, not authority', () => {
+    const meterFilled = backfilledRecord('2026-03-06', {
+      kwhTotal: 38,
+      quality: {
+        partialTemp: false, missingKwh: false, unreliablePower: false, backfilled: true, kwhBackfilled: true,
+      },
+    });
+    const zeroTracker = (dateKey: string): { total?: number } => (dateKey === '2026-03-06' ? { total: 0 } : {});
+    const { state, changedDays } = reconcileKwhSources(
+      { records: [meterFilled] },
+      { getDailyKwh: zeroTracker, meterDailyKwh: { '2026-03-06': 38 }, allowStrip: true },
+    );
+    expect(changedDays).toBe(0);
+    expect(state.records[0].kwhTotal).toBe(38);
+  });
+
+  it('is an identity when every record already matches its source', () => {
+    const original = {
+      records: [
+        liveRecord('2026-03-05', { kwhTotal: 44, kwhControlled: 12 }),
+        backfilledRecord('2025-02-01', {
+          kwhTotal: 52.3,
+          quality: {
+            partialTemp: false, missingKwh: false, unreliablePower: false, backfilled: true, kwhBackfilled: true,
+          },
+        }),
+      ],
+    };
+    const { state, changedDays } = reconcileKwhSources(
+      original,
+      { getDailyKwh, meterDailyKwh: { '2025-02-01': 52.3 }, allowStrip: true },
+    );
+    expect(changedDays).toBe(0);
     expect(state).toBe(original);
   });
 });
 
 describe('mergeRecoveredState markers', () => {
-  it('keeps only a RECOVERED energy marker — an in-memory completion may predate the superset', () => {
+  it('keeps only RECOVERED meter markers — an in-memory completion may predate the superset', () => {
     const base = { records: [liveRecord('2026-01-08')] };
-    const inMemoryDone = mergeRecoveredState(base, { records: [], energyReportBackfillDone: true });
-    expect(inMemoryDone.energyReportBackfillDone).toBeUndefined();
+    const inMemoryDone = mergeRecoveredState(
+      base,
+      { records: [], meterKwhBackfillDone: true, meterKwhDeviceId: 'meter-1' },
+    );
+    expect(inMemoryDone.meterKwhBackfillDone).toBeUndefined();
+    expect(inMemoryDone.meterKwhDeviceId).toBeUndefined();
     const recoveredDone = mergeRecoveredState(
-      { ...base, energyReportBackfillDone: true },
+      { ...base, meterKwhBackfillDone: true, meterKwhDeviceId: 'meter-1' },
       { records: [] },
     );
-    expect(recoveredDone.energyReportBackfillDone).toBe(true);
+    expect(recoveredDone.meterKwhBackfillDone).toBe(true);
+    expect(recoveredDone.meterKwhDeviceId).toBe('meter-1');
+  });
+
+  it('carries the temp backfill version with its deviceId as a pair', () => {
+    const recovered = { records: [], backfilledDeviceId: 'dev-old', backfillVersion: 1 };
+    const inMemory = { records: [], backfilledDeviceId: 'dev-new', backfillVersion: 2 };
+    const merged = mergeRecoveredState(recovered, inMemory);
+    expect(merged).toMatchObject({ backfilledDeviceId: 'dev-old', backfillVersion: 1 });
+    const noRecoveredMarker = mergeRecoveredState({ records: [] }, inMemory);
+    expect(noRecoveredMarker).toMatchObject({ backfilledDeviceId: 'dev-new', backfillVersion: 2 });
   });
 });
 
@@ -247,7 +381,9 @@ describe('normalizeWeatherHistoryState', () => {
       accumulators: { '2026-01-10': { sumC: 3, count: 2, minC: 1, maxC: 2, lastHourKey: '09' } },
       forecastHourly: { '2026-01-11': { '14': -2 } },
       backfilledDeviceId: 'dev-1',
-      energyReportBackfillDone: true,
+      backfillVersion: 2,
+      meterKwhBackfillDone: true,
+      meterKwhDeviceId: 'meter-1',
     };
     const withJunk = {
       ...valid,

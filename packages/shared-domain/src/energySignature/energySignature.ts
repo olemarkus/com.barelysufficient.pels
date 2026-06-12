@@ -23,8 +23,14 @@ import type {
  */
 
 const MIN_USABLE_DAYS = 21;
-/** Fit on the trailing window so occupancy/equipment changes age out. */
-const FIT_WINDOW_DAYS = 120;
+/**
+ * Fit on the trailing usable-day year. A full seasonal cycle is what makes
+ * the balance point identifiable at all — a summer-only window has no heating
+ * regime — and the Insights backfills exist precisely to hand a new install a
+ * year of pairs on day one. Occupancy/equipment changes inside the window are
+ * surfaced by the drift detector rather than by truncating the window.
+ */
+const FIT_WINDOW_DAYS = 365;
 const BALANCE_POINT_GRID_C = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
 /** Loss spread below this fraction across the τ grid ⇒ τ is not identifiable. */
 const CHANGEPOINT_DEGENERACY_SPREAD = 0.02;
@@ -126,7 +132,7 @@ export function countUsableDays(records: WeatherDailyRecord[]): number {
 function selectUsableDays(records: WeatherDailyRecord[]): FitDay[] {
   return records
     .filter((record) => isUsableSignatureDay(record))
-    // Deliberately the trailing 120 USABLE days, not calendar days: windowing
+    // Deliberately the trailing USABLE days, not calendar days: windowing
     // before the quality filter would shrink the sample after flaky stretches
     // and can drop the fit below the 21-day gate entirely. The drift detector
     // slices the same usable axis, so recency stays mutually consistent.

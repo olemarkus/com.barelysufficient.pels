@@ -79,16 +79,29 @@ describe('fetchBackfillDailyRecords', () => {
     expect(complete).toBe(true);
   });
 
-  it('ignores responses coarser than six hours', async () => {
+  it('treats responses coarser than six hours as unreadable, not as empty success', async () => {
     const weekStep = entryResponse(
       sixHourPoints(Date.UTC(2026, 0, 1, 23, 0, 0), [1, 2, 3, 4]),
       7 * 24 * 60 * 60 * 1000,
     );
     const fetchInsights = vi.fn(async () => weekStep);
-    const { records } = await fetchBackfillDailyRecords({
+    // Every window unusable ⇒ throw, so the caller logs a failure and retries
+    // next start instead of completing with zero records.
+    await expect(fetchBackfillDailyRecords({
+      deviceId: 'dev-1', fetchInsights, getDailyKwh: () => ({}), timeZone: OSLO, nowMs: NOW_MS,
+    })).rejects.toThrow('insights response unusable');
+  });
+
+  it('marks the run incomplete when one window is malformed but others are readable', async () => {
+    const good = entryResponse(sixHourPoints(Date.UTC(2026, 0, 4, 23, 0, 0), [1, 2, 3, 4]));
+    const fetchInsights = vi.fn(async (path: string) => (
+      path.includes('lastYear') ? { step: 'bad' } : good
+    ));
+    const { records, complete } = await fetchBackfillDailyRecords({
       deviceId: 'dev-1', fetchInsights, getDailyKwh: () => ({}), timeZone: OSLO, nowMs: NOW_MS,
     });
-    expect(records).toEqual([]);
+    expect(records).toHaveLength(1);
+    expect(complete).toBe(false);
   });
 
   it('throws when every resolution fails', async () => {
