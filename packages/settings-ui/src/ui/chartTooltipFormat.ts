@@ -87,11 +87,18 @@ const padHour = (hour: number): string => String(hour).padStart(2, '0');
 
 // Measurement segments join their tokens with NBSP so a narrow readout row
 // never orphans a unit ("Managed 0.19 kWh" must not break before "kWh") —
-// line wrapping happens only at the ` · ` separators between segments. Prose
+// line wrapping happens only at the separators between segments. Prose
 // segments (the unreliable warning) keep normal spaces: they carry no units
 // and must stay wrappable at 320 px.
 const NBSP = ' ';
 const nonBreaking = (text: string): string => text.split(' ').join(NBSP);
+
+// In-value segment separator, same forward-binding shape as the readout
+// row's separator in `chartReadout.ts`: the leading regular space is the
+// wrap opportunity, the NBSP glues the dot to the FOLLOWING segment — a
+// wrapped line leads with "· Background …" instead of stranding the dot
+// at the end of the previous line.
+const SEPARATOR = ` ·${NBSP}`;
 
 // Consequence-language warning for an hour with gaps in its samples — names
 // what went wrong instead of the bare "Unreliable data" verdict. The chart
@@ -133,6 +140,63 @@ export const buildDailyHistoryReadout = (params: {
   return { when: dateLabel, values };
 };
 
+// Budget progress chart (cumulative lines): `By 14:00` / `Plan 8.4 kWh ·
+// Actual 7.9 kWh`, plus `Projection 8.6 kWh` when the projection covers the
+// hour. Cumulative figures keep the Budget tab's one-decimal kWh precision
+// (the hero/budget vocabulary), unlike the two-decimal per-hour buckets.
+// The bundle passes `midnight` as the end-of-day column's `endLabel`
+// (`By midnight` — see `notes/ui-terminology.md`).
+export const buildBudgetProgressReadout = (params: {
+  endLabel: string;
+  planKWh: number;
+  actualKWh: number | null;
+  projectionKWh: number | null;
+}): ChartReadoutContent => {
+  const segments = [nonBreaking(`Plan ${params.planKWh.toFixed(1)} kWh`)];
+  if (params.actualKWh !== null && Number.isFinite(params.actualKWh)) {
+    segments.push(nonBreaking(`Actual ${params.actualKWh.toFixed(1)} kWh`));
+  }
+  const values: ChartReadoutValue[] = [{ text: segments.join(SEPARATOR) }];
+  if (params.projectionKWh !== null && Number.isFinite(params.projectionKWh)) {
+    values.push({ text: nonBreaking(`Projection ${params.projectionKWh.toFixed(1)} kWh`) });
+  }
+  return { when: `By ${params.endLabel}`, values };
+};
+
+// Budget hourly-plan chart: `13:00–14:00` / `Plan 0.92 kWh (Managed 0.51 ·
+// Background 0.41)` plus `Price 0.84 kr/kWh` (display-scaled unit via
+// `resolvePriceUnitLabel`) and `Actual 0.71 kWh` when present. The split
+// halves inside the parenthetical drop their unit — the leading Plan figure
+// already names kWh for the whole line.
+export const buildBudgetHourlyReadout = (params: {
+  hourRange: string;
+  planKWh: number;
+  managedKWh: number | null;
+  backgroundKWh: number | null;
+  price: { value: number; unitLabel: string | null } | null;
+  actualKWh: number | null;
+}): ChartReadoutContent => {
+  const plan = nonBreaking(`Plan ${params.planKWh.toFixed(2)} kWh`);
+  const split = params.managedKWh !== null && params.backgroundKWh !== null
+    ? [
+      nonBreaking(`(Managed ${params.managedKWh.toFixed(2)}`),
+      nonBreaking(`Background ${params.backgroundKWh.toFixed(2)})`),
+    ].join(SEPARATOR)
+    : null;
+  const planLine = split === null ? plan : `${plan} ${split}`;
+  const values: ChartReadoutValue[] = [{ text: planLine }];
+  if (params.price !== null && Number.isFinite(params.price.value)) {
+    const priceText = params.price.unitLabel
+      ? `Price ${params.price.value.toFixed(2)} ${params.price.unitLabel}`
+      : `Price ${params.price.value.toFixed(2)}`;
+    values.push({ text: nonBreaking(priceText) });
+  }
+  if (params.actualKWh !== null && Number.isFinite(params.actualKWh)) {
+    values.push({ text: nonBreaking(`Actual ${params.actualKWh.toFixed(2)} kWh`) });
+  }
+  return { when: params.hourRange, values };
+};
+
 // Usage-day chart: `13:00–14:00` / `Measured 1.31 kWh`, plus the
 // Managed/Background split on one line when both halves exist, plus the
 // unreliable-hour warning when the hour is flagged. `inProgress` marks the
@@ -153,7 +217,7 @@ export const buildUsageDayReadout = (params: {
   if (params.managedKWh !== null && params.backgroundKWh !== null) {
     const managed = nonBreaking(`Managed ${params.managedKWh.toFixed(2)} kWh`);
     const background = nonBreaking(`Background ${params.backgroundKWh.toFixed(2)} kWh`);
-    values.push({ text: `${managed} · ${background}` });
+    values.push({ text: `${managed}${SEPARATOR}${background}` });
   }
   if (params.unreliable) values.push({ text: UNRELIABLE_HOUR_WARNING, tone: 'warn' });
   return { when: params.hourRange, values };

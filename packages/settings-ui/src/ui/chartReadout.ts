@@ -70,6 +70,13 @@ type ChartReadoutState = {
   // restores the default selection — same contract as the 1D resolver, so a
   // tap on an empty cell or outside the grid is a "clear" everywhere.
   resolveIndexFromPixel?: (x: number, y: number) => number | null;
+  // Per-update override of the series receiving the native select/unselect
+  // dispatch. Stacked-bar charts mark every stacked series so the whole
+  // column carries the border; line charts pass `[]` to skip the native
+  // dispatch entirely (a line point has no visible select state — those
+  // charts render their own marker via `onSelectionApplied`). Omitted: the
+  // attach-time `seriesIndex` scalar keeps the original single-series shape.
+  selectSeriesIndexes?: number[];
 };
 
 export type ChartReadoutHandle = {
@@ -89,7 +96,11 @@ const renderHost = (host: HTMLElement, content: ChartReadoutContent | null): voi
   const secondary = document.createElement('div');
   secondary.className = 'chart-readout__secondary';
   content.values.forEach((value, index) => {
-    if (index > 0) secondary.append(' · ');
+    // The separator binds non-breaking to the FOLLOWING segment: a regular
+    // space (the row's only wrap opportunity) followed by `·` glued to the
+    // next segment with NBSP, so a wrapped line leads with "· Price …"
+    // instead of stranding the dot at the end of the previous line.
+    if (index > 0) secondary.append(' ·\u00A0');
     const span = document.createElement('span');
     if (value.tone === 'warn') span.className = 'chart-readout__value--warn';
     span.textContent = value.text;
@@ -108,8 +119,13 @@ export const attachChartReadout = (params: {
   chart: EChartsType;
   host: HTMLElement;
   seriesIndex?: number;
+  // Invoked with the effective index after every selection apply (default
+  // render, tap, and post-refresh re-apply). Charts whose native select
+  // state is invisible (cumulative line charts) hang their own selection
+  // marker off this hook so the visual mark stays in lockstep with the row.
+  onSelectionApplied?: (index: number) => void;
 }): ChartReadoutHandle => {
-  const { chart, host } = params;
+  const { chart, host, onSelectionApplied } = params;
   const seriesIndex = params.seriesIndex ?? 0;
   let state: ChartReadoutState | null = null;
   // Explicit user selection; null means "follow the default index".
@@ -127,14 +143,20 @@ export const attachChartReadout = (params: {
       : fallback;
     // Deterministic re-apply: clear the whole series selection first so
     // neither a `notMerge` wipe nor ECharts' own click-toggle can leave the
-    // visual mark out of sync with the readout row.
-    chart.dispatchAction({
-      type: 'unselect',
-      seriesIndex,
-      dataIndex: Array.from({ length: state.itemCount }, (_, index) => index),
-    });
-    chart.dispatchAction({ type: 'select', seriesIndex, dataIndex: effective });
+    // visual mark out of sync with the readout row. The per-update override
+    // keeps the scalar attach-time shape when absent; an explicit empty list
+    // skips the native dispatch (marker-carrying line charts).
+    const selectTargets: number | number[] = state.selectSeriesIndexes ?? seriesIndex;
+    if (!Array.isArray(selectTargets) || selectTargets.length > 0) {
+      chart.dispatchAction({
+        type: 'unselect',
+        seriesIndex: selectTargets,
+        dataIndex: Array.from({ length: state.itemCount }, (_, index) => index),
+      });
+      chart.dispatchAction({ type: 'select', seriesIndex: selectTargets, dataIndex: effective });
+    }
     renderHost(host, state.resolveContent(effective));
+    onSelectionApplied?.(effective);
   };
 
   chart.getZr().on('click', (event) => {

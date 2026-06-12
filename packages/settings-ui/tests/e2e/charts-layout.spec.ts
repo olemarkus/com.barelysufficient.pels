@@ -74,6 +74,7 @@ test.describe('Settings UI chart layout', () => {
       '#budget-redesign-chart',
       '#budget-plan-summary',
       '#budget-redesign-chart svg',
+      '#budget-redesign-chart-readout',
     ]);
     expect(
       budgetIssues,

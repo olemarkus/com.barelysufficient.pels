@@ -286,6 +286,7 @@ const ChartLegend = ({
 
 const EChartsCanvas = ({ chart }: { chart: NonNullable<BudgetChartData> }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const readoutRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
     const container = containerRef.current;
@@ -297,6 +298,7 @@ const EChartsCanvas = ({ chart }: { chart: NonNullable<BudgetChartData> }) => {
       view: chart.view,
       priceReliable: chart.showPrice,
       costDisplay: chart.costDisplay,
+      readoutHost: readoutRef.current,
     });
   });
 
@@ -304,7 +306,22 @@ const EChartsCanvas = ({ chart }: { chart: NonNullable<BudgetChartData> }) => {
     if (containerRef.current) clearBudgetRedesignChart(containerRef.current);
   }, []);
 
-  return <div id="budget-redesign-chart" class="budget-redesign-chart" ref={containerRef} />;
+  // The pinned readout row (chart-overhaul Phase 3 grammar) renders under
+  // the plot; the imperative chart module owns its content and unhides it
+  // once the first selection lands. CSS hides it on hover-capable fine
+  // pointers, where the floating tooltip carries the same content instead.
+  return (
+    <>
+      <div id="budget-redesign-chart" class="budget-redesign-chart" ref={containerRef} />
+      <div
+        id="budget-redesign-chart-readout"
+        class="chart-readout"
+        aria-live="polite"
+        hidden
+        ref={readoutRef}
+      />
+    </>
+  );
 };
 
 const BudgetChartCard = ({

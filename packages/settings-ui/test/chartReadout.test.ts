@@ -3,6 +3,8 @@
 // lifecycle against a scripted chart double.
 import { attachChartReadout, resolveGridCellFromPixel } from '../src/ui/chartReadout.ts';
 import {
+  buildBudgetHourlyReadout,
+  buildBudgetProgressReadout,
   buildDailyHistoryReadout,
   buildHourlyPatternReadout,
   buildPowerWeekReadout,
@@ -15,9 +17,11 @@ import { buildPowerWeekDayLabel } from '../src/ui/powerWeekChartEcharts.ts';
 import type { EChartsType } from '../src/ui/echartsRegistry.ts';
 
 // Measurement segments join their tokens with NBSP (wraps happen only at the
-// ` · ` separators) — mirror the production join so the exact-string
-// assertions below stay byte-accurate.
+// separators) — mirror the production join so the exact-string assertions
+// below stay byte-accurate. `sep` is the forward-binding separator (regular
+// space, then `·` glued to the FOLLOWING segment with NBSP).
 const nb = (text: string): string => text.split(' ').join(' ');
+const sep = ' ·\u00A0';
 
 describe('chart readout content resolvers', () => {
   it('formats the hourly pattern readout as hour range + average', () => {
@@ -87,9 +91,9 @@ describe('chart readout content resolvers', () => {
       when: '13:00–14:00',
       values: [
         { text: nb('Measured 1.31 kWh') },
-        // NBSP inside each half; the ` · ` separator keeps normal spaces so
-        // the split line may wrap there.
-        { text: `${nb('Managed 0.80 kWh')} · ${nb('Background 0.51 kWh')}` },
+        // NBSP inside each half; the separator's leading space is the wrap
+        // opportunity, with the dot bound to the following half.
+        { text: `${nb('Managed 0.80 kWh')}${sep}${nb('Background 0.51 kWh')}` },
         // Prose warning keeps normal spaces (no unit to orphan; must stay
         // wrappable at 320 px).
         { text: 'Unreliable — some readings missing this hour', tone: 'warn' },
@@ -200,6 +204,53 @@ describe('chart readout content resolvers', () => {
     expect(label).toMatch(/^Thu/);
     expect(label).toContain('4');
     expect(label).not.toContain('3');
+  });
+
+  it('formats the budget progress readout with the spec example figures', () => {
+    expect(buildBudgetProgressReadout({
+      endLabel: '14:00',
+      planKWh: 8.4,
+      actualKWh: 7.9,
+      projectionKWh: 8.6,
+    })).toEqual({
+      when: 'By 14:00',
+      values: [
+        { text: `${nb('Plan 8.4 kWh')}${sep}${nb('Actual 7.9 kWh')}` },
+        { text: nb('Projection 8.6 kWh') },
+      ],
+    });
+  });
+
+  it('formats the budget hourly readout with the spec example figures', () => {
+    expect(buildBudgetHourlyReadout({
+      hourRange: '13:00–14:00',
+      planKWh: 0.92,
+      managedKWh: 0.51,
+      backgroundKWh: 0.41,
+      price: { value: 0.84, unitLabel: 'kr/kWh' },
+      actualKWh: 0.71,
+    })).toEqual({
+      when: '13:00–14:00',
+      values: [
+        { text: `${nb('Plan 0.92 kWh')} ${nb('(Managed 0.51')}${sep}${nb('Background 0.41)')}` },
+        { text: nb('Price 0.84 kr/kWh') },
+        { text: nb('Actual 0.71 kWh') },
+      ],
+    });
+  });
+
+  it('renders a bare price value when the payload supplies no price unit', () => {
+    expect(buildBudgetHourlyReadout({
+      hourRange: '13:00–14:00',
+      planKWh: 0.92,
+      managedKWh: null,
+      backgroundKWh: null,
+      price: { value: 0.84, unitLabel: null },
+      actualKWh: null,
+    }).values).toEqual([
+      { text: nb('Plan 0.92 kWh') },
+      { text: nb('Price 0.84') },
+    ]);
   });
 
   it('renders tooltip HTML with one line per value and an encoded when-line', () => {
@@ -404,8 +455,28 @@ describe('attachChartReadout', () => {
 
     const warn = host.querySelector('.chart-readout__value--warn');
     expect(warn?.textContent).toBe('1.2 kWh over budget');
+    // The separator's NBSP glues the `·` to the FOLLOWING segment so a
+    // wrapped line leads with the dot instead of stranding it at a line end.
     expect(host.querySelector('.chart-readout__secondary')?.textContent)
-      .toBe('15.2 kWh · 1.2 kWh over budget');
+      .toBe('15.2 kWh ·\u00A01.2 kWh over budget');
+  });
+
+  it('skips the native select/unselect dispatch when selectSeriesIndexes is empty', () => {
+    const fake = createFakeChart();
+    const host = document.createElement('div');
+    const handle = attachChartReadout({ chart: fake.chart, host });
+    handle.update({
+      itemCount: 24,
+      defaultIndex: 7,
+      resolveContent: contentFor,
+      selectSeriesIndexes: [],
+    });
+
+    // Marker-carrying line charts pass `[]`: the readout still renders, but
+    // no native select state is touched (the marker series owns the visual).
+    expect(host.querySelector('.chart-readout__primary')?.textContent).toBe('hour 7');
+    expect(fake.actions.filter((action) => action.type === 'select' || action.type === 'unselect'))
+      .toEqual([]);
   });
 
   it('routes taps through a custom pixel resolver when one is supplied', () => {

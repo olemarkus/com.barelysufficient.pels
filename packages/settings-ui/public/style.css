@@ -5908,6 +5908,12 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   margin-top: var(--spacing-2);
 }
 
+/* The budget chart card is a grid with its own gap — the normal-flow
+ * breathing room above would double the spacing there. */
+.budget-chart-card .chart-readout {
+  margin-top: 0;
+}
+
 /* Desktop (hover-capable fine pointer): the floating ECharts tooltip is
  * active there, so the pinned row would caption the same point twice. Touch
  * keeps the row — it replaces the disabled tooltip. Scoped to
