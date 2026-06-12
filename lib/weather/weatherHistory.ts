@@ -222,12 +222,52 @@ export function mergeRecoveredState(
     records,
     accumulators: { ...(inMemory.accumulators ?? {}), ...(recovered.accumulators ?? {}) },
     ...(forecastKeys.size > 0 ? { forecastHourly } : {}),
-    ...(recovered.backfilledDeviceId ?? inMemory.backfilledDeviceId
-      ? { backfilledDeviceId: recovered.backfilledDeviceId ?? inMemory.backfilledDeviceId }
-      : {}),
+    ...mergeBackfillMarkers(recovered, inMemory),
     ...(latestFit ? { latestFit } : {}),
     ...(latestSuggestion ? { latestSuggestion } : {}),
   };
+}
+
+function mergeBackfillMarkers(
+  recovered: WeatherHistoryState,
+  inMemory: WeatherHistoryState,
+): Pick<WeatherHistoryState, 'backfilledDeviceId' | 'energyReportBackfillDone'> {
+  const backfilledDeviceId = recovered.backfilledDeviceId ?? inMemory.backfilledDeviceId;
+  // Energy marker: recovered-only. An in-memory completion was computed while
+  // the store was unreadable, against a record set the recovered blob may
+  // extend by months — carrying it over would latch missingKwh days
+  // unpatched forever; dropping it costs one idempotent re-run next start.
+  const energyDone = recovered.energyReportBackfillDone === true;
+  return {
+    ...(backfilledDeviceId !== undefined ? { backfilledDeviceId } : {}),
+    ...(energyDone ? { energyReportBackfillDone: true } : {}),
+  };
+}
+
+/**
+ * Patches Homey-Energy-report daily kWh into records the power tracker could
+ * not cover (`missingKwh`). Joined kWh from live rollups always wins — only
+ * the missing slots are filled, and `kwhControlled` stays absent (the report
+ * carries no managed/background split).
+ */
+export function applyEnergyBackfill(
+  state: WeatherHistoryState,
+  dailyKwh: Record<string, number>,
+): { state: WeatherHistoryState; patchedDays: number } {
+  let patchedDays = 0;
+  const records = state.records.map((record) => {
+    if (!record.quality.missingKwh) return record;
+    const kwhTotal = dailyKwh[record.dateKey];
+    if (kwhTotal === undefined) return record;
+    patchedDays += 1;
+    return {
+      ...record,
+      kwhTotal,
+      quality: { ...record.quality, missingKwh: false },
+    };
+  });
+  if (patchedDays === 0) return { state, patchedDays };
+  return { state: { ...state, records }, patchedDays };
 }
 
 /**
@@ -267,6 +307,7 @@ export function normalizeWeatherHistoryState(raw: unknown): WeatherHistoryState 
     ...(Object.keys(accumulators).length > 0 ? { accumulators } : {}),
     ...(Object.keys(forecastHourly).length > 0 ? { forecastHourly } : {}),
     ...(backfilledDeviceId !== undefined ? { backfilledDeviceId } : {}),
+    ...(raw.energyReportBackfillDone === true ? { energyReportBackfillDone: true } : {}),
     // Derived fields: producer-written and recomputed after every records
     // change, so a shallow shape check suffices — corruption self-heals at
     // the next rollup/backfill.
