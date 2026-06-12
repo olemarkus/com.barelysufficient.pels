@@ -9,6 +9,7 @@ import {
   getSettingsUiDeferredObjectivePlanHistoryPayload,
   getSettingsUiDeferredObjectiveSettingsPayload,
   getSettingsUiDeviceDiagnosticsPayload,
+  getSettingsUiWeatherAdvisorReadout,
   getSettingsUiDeviceLogPayload,
   getSettingsUiDevicesPayload,
   getSettingsUiPlanPayload,
@@ -103,6 +104,9 @@ export = {
     if (!app?.getDailyBudgetUiPayload) return null;
     return app.getDailyBudgetUiPayload();
   }),
+  ui_weather_advisor_readout: withApiLogging('ui_weather_advisor_readout', ({ homey }: ApiContext) => (
+    getSettingsUiWeatherAdvisorReadout({ homey })
+  )),
   ui_recompute_daily_budget: withApiLogging('ui_recompute_daily_budget', ({ homey }: ApiContext) => (
     recomputeSettingsUiDailyBudget({ homey })
   )),

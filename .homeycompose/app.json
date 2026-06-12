@@ -116,6 +116,10 @@
       "method": "GET",
       "path": "/ui_deferred_objective_settings"
     },
+    "ui_weather_advisor_readout": {
+      "method": "GET",
+      "path": "/ui_weather_advisor_readout"
+    },
     "get_daily_budget": {
       "method": "GET",
       "path": "/daily_budget"

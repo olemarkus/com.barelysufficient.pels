@@ -36,8 +36,14 @@ import {
 import type { BudgetAdjustDraft, BudgetAdjustStatus } from '../budgetAdjustController.ts';
 import type { AllocationWarning } from '../dailyBudgetAllocationWarning.ts';
 import type { PriceLevelChip } from '../../../../shared-domain/src/priceLevelChips.ts';
+import { WEATHER_INSIGHT_TITLE } from '../../../../shared-domain/src/weatherInsightCopy.ts';
+import {
+  WeatherBudgetCard,
+  WeatherInsightDetail,
+  type WeatherInsightCardData,
+} from './WeatherInsight.tsx';
 
-export type BudgetLocalView = 'plan' | 'adjust';
+export type BudgetLocalView = 'plan' | 'adjust' | 'weather';
 export type BudgetStatus = 'noPlan' | 'within' | 'tight' | 'over';
 export type BudgetDeltaTone = 'ok' | 'warn' | 'alert';
 
@@ -106,6 +112,9 @@ export type BudgetOverviewProps = {
   adjust: BudgetAdjustData;
   allocationWarning: AllocationWarning | null;
   priceLevelChip: PriceLevelChip | null;
+  // Hidden weather-insight surface; null (flag off) renders no weather DOM at
+  // all — structural absence, not CSS hiding.
+  weatherInsight: WeatherInsightCardData | null;
   // Where the Done button leads from the Adjust view; 'settings' when the
   // session was opened from the Settings tab's "Daily budget" row.
   adjustReturnTarget: 'plan' | 'settings';
@@ -837,10 +846,14 @@ const BudgetPageHeader = ({
   onReturnToSettings: () => void;
 }) => {
   const inPlan = localView === 'plan';
+  // Weather insight is read-only: Done always returns straight to the plan
+  // view with no unsaved-changes handling (Budget-Adjust precedent header,
+  // minus the discard machinery).
+  const inWeather = localView === 'weather';
   const toSettings = adjustReturnTarget === 'settings';
   // Adjust is the only surface that doesn't save instantly; a 'dirty' draft
   // or 'pending' preview is unsaved work that Done would silently discard.
-  const hasUnsaved = !inPlan && adjustStatus !== 'clean';
+  const hasUnsaved = localView === 'adjust' && adjustStatus !== 'clean';
   // The confirm state is the draft object it was armed against. The
   // controller swaps the draft identity on every field change, so deriving
   // `confirming` from `armedDraft === adjustDraft` disarms the confirm the
@@ -866,7 +879,7 @@ const BudgetPageHeader = ({
   // returning is always meaningful. Without this guard, clicking the enabled
   // "Done" silently discards a dirty Adjust draft and snaps right back to
   // Adjust — the user sees nothing change.
-  const toggleDisabled = !budgetEnabled && !toSettings;
+  const toggleDisabled = !budgetEnabled && !toSettings && !inWeather;
   const toggleLabel = inPlan ? 'Adjust' : (confirming ? 'Click again to discard' : 'Done');
   const toggleTitle = toggleDisabled
     ? 'Enable daily budget to see the plan.'
@@ -874,11 +887,15 @@ const BudgetPageHeader = ({
       ? 'Adjust budget settings'
       : confirming
         ? 'Unsaved changes will be discarded'
-        : (toSettings ? 'Back to Settings' : 'Return to budget plan');
+        : (toSettings && !inWeather ? 'Back to Settings' : 'Return to budget plan');
   const onToggleClick = () => {
     if (inPlan) {
       clearConfirm();
       onLocalViewChange('adjust');
+      return;
+    }
+    if (inWeather) {
+      onLocalViewChange('plan');
       return;
     }
     if (hasUnsaved && !confirming) {
@@ -936,7 +953,7 @@ const BudgetPageHeader = ({
       <div class="plan-hero__section">
         <p class="eyebrow plan-hero__section-label">Budget</p>
         <div class="plan-hero__headline-row">
-          <h2 class="plan-hero__headline">Daily budget</h2>
+          <h2 class="plan-hero__headline">{inWeather ? WEATHER_INSIGHT_TITLE : 'Daily budget'}</h2>
           {!hasChipRow && toggleNode}
         </div>
       </div>
@@ -953,6 +970,7 @@ const BudgetOverviewRoot = ({
   adjust,
   allocationWarning,
   priceLevelChip,
+  weatherInsight,
   adjustReturnTarget,
   onReturnToSettings,
   onLocalViewChange,
@@ -997,6 +1015,11 @@ const BudgetOverviewRoot = ({
         )}
         <BudgetConfidenceCard confidence={confidence} />
         <BudgetChartCard chart={chart} onModeChange={onChartModeChange} />
+        <WeatherBudgetCard
+          data={weatherInsight}
+          onShowDetails={() => onLocalViewChange('weather')}
+          onAdjustBudget={() => onLocalViewChange('adjust')}
+        />
       </div>
     )}
     {localView === 'adjust' && (
@@ -1007,6 +1030,9 @@ const BudgetOverviewRoot = ({
         onApply={onApply}
         onDiscard={onDiscard}
       />
+    )}
+    {localView === 'weather' && weatherInsight?.readout && (
+      <WeatherInsightDetail readout={weatherInsight.readout} />
     )}
   </div>
   );

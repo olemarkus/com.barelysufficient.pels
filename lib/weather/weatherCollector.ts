@@ -156,6 +156,21 @@ export class WeatherCollector {
     return this.lastTemperatureC;
   }
 
+  /**
+   * Live in-memory history snapshot for the settings-UI readout. Read-only by
+   * contract: the state object is immutable-by-convention (every transition
+   * replaces it), so handing out the reference is safe. Fresher than the
+   * persisted blob, which lags behind the dirty/debounce cycle by up to 30 s.
+   */
+  getHistoryStateSnapshot(): WeatherHistoryState {
+    return this.state;
+  }
+
+  /** Whether the one-shot Insights backfill is in flight (UI "backfilling" state). */
+  isBackfillRunning(): boolean {
+    return this.backfillRunning;
+  }
+
   /** Persist immediately, bypassing the debounce (shutdown path). Still honors the load grace. */
   flush(): void {
     if (!this.dirty) return;

@@ -109,17 +109,39 @@ function resolveComingDayMeanTempC(
 ): { targetDateKey: string; meanTempC: number; source: EnergySignatureSuggestion['forecastSource'] } | undefined {
   const todayKey = getDateKeyInTimeZone(new Date(nowMs), timeZone);
   for (const targetDateKey of [todayKey, shiftDateKey(todayKey, 1)]) {
-    const forecastHours = Object.values(state.forecastHourly?.[targetDateKey] ?? {});
-    if (forecastHours.length >= MIN_FORECAST_HOURS) {
-      return { targetDateKey, meanTempC: mean(forecastHours), source: 'forecast_device' };
+    const forecast = resolveForecastDeviceMeanTempC(state, targetDateKey);
+    if (forecast !== undefined) {
+      return { targetDateKey, meanTempC: forecast, source: 'forecast_device' };
     }
   }
+  const persistence = resolvePersistenceMeanTempC(state);
+  if (persistence === undefined) return undefined;
+  return { targetDateKey: todayKey, meanTempC: persistence, source: 'recent_days' };
+}
+
+/**
+ * Mean of the forecast-device profile for one specific local day, or
+ * undefined when fewer than `MIN_FORECAST_HOURS` hours have accumulated.
+ * Shared with the settings-UI readout builder, which always targets TOMORROW
+ * (the card is forward-looking), unlike the midnight recompute above.
+ */
+export function resolveForecastDeviceMeanTempC(
+  state: WeatherHistoryState,
+  targetDateKey: string,
+): number | undefined {
+  const forecastHours = Object.values(state.forecastHourly?.[targetDateKey] ?? {});
+  if (forecastHours.length < MIN_FORECAST_HOURS) return undefined;
+  return mean(forecastHours);
+}
+
+/** Persistence fallback: trailing-week mean of observed daily temperatures. */
+export function resolvePersistenceMeanTempC(state: WeatherHistoryState): number | undefined {
   const recentTemps = state.records
     .slice(-PERSISTENCE_LOOKBACK_DAYS)
     .filter((record) => !record.quality.partialTemp)
     .map((record) => record.tempMeanC);
   if (recentTemps.length === 0) return undefined;
-  return { targetDateKey: todayKey, meanTempC: mean(recentTemps), source: 'recent_days' };
+  return mean(recentTemps);
 }
 
 const mean = (values: number[]): number => values.reduce((sum, value) => sum + value, 0) / values.length;

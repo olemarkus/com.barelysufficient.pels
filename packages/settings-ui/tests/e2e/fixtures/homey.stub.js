@@ -17,6 +17,11 @@
     apiHandlers: Object.create(null),
     apiCallCounts: Object.create(null),
     dailyBudgetPayload: hasInitialDailyBudgetPayload ? initialOverrides.dailyBudgetPayload : undefined,
+    // Pinned weather readout (any state, incl. null) — undefined means "build
+    // the sample ready payload from the weather_advisor_settings flag".
+    weatherReadout: Object.prototype.hasOwnProperty.call(initialOverrides, 'weatherReadout')
+      ? initialOverrides.weatherReadout
+      : undefined,
     // Active audit scenario (one of `AUDIT_SCENARIO_NAMES` in
     // `packages/settings-ui/test/helpers/auditScenarios.ts`). null means
     // baseline; a scenario flips API responses at the SDK boundary so the same
@@ -771,6 +776,11 @@
     // Debug
     debug_logging_topics: [],
     debug_logging_enabled: false,
+
+    // Hidden weather-insight flag. Absent/disabled by default so every other
+    // spec exercises the structural-absence path; weather specs flip it via
+    // `__PELS_HOMEY_STUB__ = { settings: { weather_advisor_settings: {...} } }`.
+    weather_advisor_settings: undefined,
   };
 
   const initialSettings = initialOverrides.settings;
@@ -1068,7 +1078,141 @@
     overview_redesign_enabled: settings.overview_redesign_enabled,
     device_control_profiles: settings.device_control_profiles,
     deferred_objectives: settings.deferred_objectives,
+    weather_advisor_settings: settings.weather_advisor_settings,
   });
+
+  // Sample weather-insight readout, mirroring the real producer
+  // (`lib/weather/weatherAdvisorReadout.ts` buildWeatherAdvisorReadout): the
+  // payload arrives fully resolved — state enum, decimated 1 °C scatter bins,
+  // 5 °C coverage bins, tomorrow prediction/suggestion — so the UI never
+  // re-derives from raw records. Tests pin alternate states via
+  // `__PELS_HOMEY_STUB__.weatherReadout` or a per-test apiHandlers override.
+  const buildWeatherReadoutPayload = () => {
+    if (runtimeOverrides.weatherReadout !== undefined) return runtimeOverrides.weatherReadout;
+    const advisor = settings.weather_advisor_settings;
+    if (!advisor || advisor.enabled !== true) return null;
+    const nowMs = Date.now();
+    const settingsEcho = {
+      outdoorDeviceId: advisor.outdoorDeviceId ?? null,
+      outdoorDeviceName: advisor.outdoorDeviceId ? 'Outdoor sensor' : null,
+      forecastDeviceId: advisor.forecastDeviceId ?? null,
+      forecastDeviceName: advisor.forecastDeviceId ? 'Yr forecast' : null,
+    };
+    const emptyPayload = (state) => ({
+      state,
+      driftSuspected: false,
+      driftDeviationKwh: null,
+      settings: settingsEcho,
+      fit: null,
+      coverage: [],
+      prediction: null,
+      suggestion: null,
+      scatter: [],
+      recentDays: [],
+      yesterday: null,
+      usableDays: 0,
+      backfilledDays: 0,
+      generatedAtMs: nowMs,
+    });
+    if (!advisor.outdoorDeviceId) return emptyPayload('needs_device');
+
+    const balanceC = 13;
+    const baseLoad = 23;
+    const slope = 1.8;
+    const typicalKwh = (tempC) => baseLoad + slope * Math.max(0, balanceC - tempC);
+    const scatter = [];
+    for (let t = -12; t <= 24; t += 1) {
+      const median = typicalKwh(t);
+      const count = Math.max(2, 14 - Math.abs(t - 5));
+      scatter.push({
+        tempBinC: t,
+        kwhMedian: Number(median.toFixed(1)),
+        kwhQ1: Number((median - 3).toFixed(1)),
+        kwhQ3: Number((median + 3).toFixed(1)),
+        count,
+      });
+    }
+    const recentDays = [];
+    for (let i = 30; i >= 1; i -= 1) {
+      const tempC = 2 + 8 * Math.sin(i / 4);
+      const kwh = typicalKwh(tempC) + (i % 7) - 3;
+      recentDays.push({
+        dateKey: dateKeyUtc(nowMs - i * 24 * 3600 * 1000),
+        tempMeanC: Number(tempC.toFixed(1)),
+        kwhTotal: Number(Math.max(8, kwh).toFixed(1)),
+        quality: {
+          partialTemp: i === 9,
+          missingKwh: false,
+          unreliablePower: false,
+          backfilled: false,
+        },
+      });
+    }
+    const yesterdayDay = recentDays[recentDays.length - 1];
+    const coverage = [];
+    for (let fromC = -15; fromC < 25; fromC += 5) {
+      const days = fromC < -10 || fromC >= 20 ? 3 : (fromC < -5 ? 9 : 40);
+      coverage.push({ fromC, toC: fromC + 5, days, sufficient: days >= 14 });
+    }
+    const predictedKwh = typicalKwh(2);
+    return {
+      state: 'ready',
+      driftSuspected: false,
+      driftDeviationKwh: null,
+      settings: settingsEcho,
+      fit: {
+        model: 'changepoint',
+        baseLoadKwhPerDay: baseLoad,
+        slopeKwhPerDegree: slope,
+        slopeCiLow: 1.5,
+        slopeCiHigh: 2.1,
+        balancePointC: balanceC,
+        pseudoR2: 0.78,
+        usableDays: 287,
+        observedTempMinC: -12,
+        observedTempMaxC: 24,
+        medianDayKwh: 38,
+        lowObservedDayKwh: 18,
+        confidence: 'high',
+        curvatureSteeperWhenCold: false,
+        heatLossWPerK: 75,
+        driftSuspected: false,
+        residualQ10: -5,
+        residualQ50: 0,
+        residualQ80: 5,
+        residualQ90: 7,
+        fittedAtMs: nowMs,
+      },
+      coverage,
+      prediction: {
+        tempMeanC: 2,
+        source: advisor.forecastDeviceId ? 'forecast' : 'recent',
+        kwh: Number(predictedKwh.toFixed(1)),
+        lowKwh: Number((predictedKwh - 5).toFixed(1)),
+        highKwh: Number((predictedKwh + 7).toFixed(1)),
+        beyondObservedCold: false,
+        beyondObservedWarm: false,
+      },
+      suggestion: {
+        kwh: Number((predictedKwh + 5).toFixed(1)),
+        currentDailyBudgetKwh: settings.daily_budget_enabled !== false
+          ? Number(settings.daily_budget_kwh ?? 0)
+          : null,
+        cappedByCapacity: false,
+      },
+      scatter,
+      recentDays,
+      yesterday: {
+        dateKey: yesterdayDay.dateKey,
+        tempMeanC: yesterdayDay.tempMeanC,
+        kwhTotal: yesterdayDay.kwhTotal,
+        deviationKwh: 1.2,
+      },
+      usableDays: 287,
+      backfilledDays: 240,
+      generatedAtMs: nowMs,
+    };
+  };
 
   const apiHandlers = {
     'GET /daily_budget': () => resolveDailyBudgetPayload(),
@@ -1108,6 +1252,7 @@
     'GET /ui_deferred_objective_settings': () => (
       settings.deferred_objectives ?? { version: 1, objectivesByDeviceId: {} }
     ),
+    'GET /ui_weather_advisor_readout': () => buildWeatherReadoutPayload(),
     'POST /settings_ui_log': () => ({ ok: true }),
     'POST /log_homey_device': () => ({ ok: true }),
     'POST /ui_refresh_devices': () => ({

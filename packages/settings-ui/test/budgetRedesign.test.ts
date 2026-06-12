@@ -496,13 +496,19 @@ describe('resolveConfidenceData', () => {
 
 describe('resolveEffectiveLocalView', () => {
   it('honours the requested view when the budget feature is on', () => {
-    expect(resolveEffectiveLocalView(true, 'plan')).toBe('plan');
-    expect(resolveEffectiveLocalView(true, 'adjust')).toBe('adjust');
+    expect(resolveEffectiveLocalView(true, 'plan', false)).toBe('plan');
+    expect(resolveEffectiveLocalView(true, 'adjust', false)).toBe('adjust');
   });
 
   it('forces the adjust view when the feature is off so the enable toggle surfaces', () => {
-    expect(resolveEffectiveLocalView(false, 'plan')).toBe('adjust');
-    expect(resolveEffectiveLocalView(false, 'adjust')).toBe('adjust');
+    expect(resolveEffectiveLocalView(false, 'plan', false)).toBe('adjust');
+    expect(resolveEffectiveLocalView(false, 'adjust', false)).toBe('adjust');
+  });
+
+  it('honours the weather view only while a readout is loaded', () => {
+    expect(resolveEffectiveLocalView(true, 'weather', true)).toBe('weather');
+    expect(resolveEffectiveLocalView(true, 'weather', false)).toBe('plan');
+    expect(resolveEffectiveLocalView(false, 'weather', true)).toBe('adjust');
   });
 });
 

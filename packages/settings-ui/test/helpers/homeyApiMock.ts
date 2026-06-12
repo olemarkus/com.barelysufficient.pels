@@ -27,6 +27,7 @@ import {
   SETTINGS_UI_REFRESH_PRICES_PATH,
   SETTINGS_UI_RECOMPUTE_DAILY_BUDGET_PATH,
   SETTINGS_UI_RESET_POWER_STATS_PATH,
+  SETTINGS_UI_WEATHER_ADVISOR_READOUT_PATH,
 } from '../../../contracts/src/settingsUiApi.ts';
 import type { DeferredObjectiveActivePlansV1 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import {
@@ -73,6 +74,7 @@ export type MockHomeyUiState = {
   plan?: unknown;
   power?: unknown;
   prices?: unknown;
+  weatherAdvisorReadout?: unknown;
 };
 
 export type MockHomeyApiContext = {
@@ -310,6 +312,10 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
     getUiOverride(homey, 'deferredObjectiveSettings') ?? { version: 1, objectivesByDeviceId: {} }
   ),
   [buildRouteKey('GET', DAILY_BUDGET_PATH)]: (homey) => async () => getUiOverride(homey, 'dailyBudget') ?? null,
+  // Null = weather flag off (the production handler's structural-absence shape).
+  [buildRouteKey('GET', SETTINGS_UI_WEATHER_ADVISOR_READOUT_PATH)]: (homey) => async () => (
+    getUiOverride(homey, 'weatherAdvisorReadout') ?? null
+  ),
   [buildRouteKey('GET', HOMEY_DEVICES_PATH)]: (homey) => async () => getUiOverride(homey, 'homeyDevices') ?? [],
   [buildRouteKey('POST', SETTINGS_UI_REFRESH_DEVICES_PATH)]: (homey) => async () => ({
     devices: await resolveUiDevices(homey),
