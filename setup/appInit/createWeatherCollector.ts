@@ -2,6 +2,7 @@ import type { AppContext } from '../../lib/app/appContext';
 import { WeatherCollector } from '../../lib/weather/weatherCollector';
 import { buildWeatherAdvisorSettings } from '../../lib/weather/weatherSettings';
 import { resolveDailyKwh } from '../../lib/weather/dailyKwhResolve';
+import { computeEnergySignatureUpdate } from '../../lib/weather/energySignatureService';
 import { getRawDevice, getRawFromHomeyApi } from '../../lib/device/transport/managerHomeyApi';
 import { getLogger } from '../../lib/logging/logger';
 import { createWeatherHistoryStore } from '../weatherHistoryStateAdapter';
@@ -15,8 +16,9 @@ const LONG_GAP_THRESHOLD_MS = 60 * 60 * 1000;
  * never imports `lib/power`.
  */
 export function createWeatherCollector(
-  ctx: Pick<AppContext, 'homey' | 'powerTracker' | 'getNow' | 'getTimeZone'>,
+  ctx: Pick<AppContext, 'homey' | 'powerTracker' | 'getNow' | 'getTimeZone' | 'capacitySettings'>,
 ): WeatherCollector {
+  const logger = getLogger('weather');
   return new WeatherCollector({
     store: createWeatherHistoryStore(ctx.homey),
     readDevice: (deviceId) => getRawDevice(deviceId),
@@ -34,6 +36,15 @@ export function createWeatherCollector(
     getSettings: () => buildWeatherAdvisorSettings({ settings: ctx.homey.settings }),
     getNowMs: () => ctx.getNow().getTime(),
     getTimeZone: () => ctx.getTimeZone(),
-    logger: getLogger('weather'),
+    recomputeDerived: (state) => computeEnergySignatureUpdate(state, {
+      getNowMs: () => ctx.getNow().getTime(),
+      getTimeZone: () => ctx.getTimeZone(),
+      getCapacityLimitKw: () => {
+        const limitKw = ctx.capacitySettings.limitKw;
+        return Number.isFinite(limitKw) && limitKw > 0 ? limitKw : undefined;
+      },
+      logger,
+    }),
+    logger,
   });
 }

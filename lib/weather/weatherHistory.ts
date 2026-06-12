@@ -195,8 +195,8 @@ export function upsertBackfillRecords(
  * while the store was unreadable. The recovered blob is the richer base
  * (potentially years of records); the in-memory state holds only what this
  * process collected since boot, so recovered data wins wherever both exist —
- * except forecast hours (in-memory readings are fresher) and records the
- * recovered blob simply lacks.
+ * except forecast hours and the derived fit/suggestion, where in-memory is
+ * the fresher computation, and records the recovered blob simply lacks.
  */
 export function mergeRecoveredState(
   recovered: WeatherHistoryState,
@@ -216,6 +216,8 @@ export function mergeRecoveredState(
       ...(inMemory.forecastHourly?.[dateKey] ?? {}),
     }]),
   );
+  const latestFit = inMemory.latestFit ?? recovered.latestFit;
+  const latestSuggestion = inMemory.latestSuggestion ?? recovered.latestSuggestion;
   return {
     records,
     accumulators: { ...(inMemory.accumulators ?? {}), ...(recovered.accumulators ?? {}) },
@@ -223,6 +225,8 @@ export function mergeRecoveredState(
     ...(recovered.backfilledDeviceId ?? inMemory.backfilledDeviceId
       ? { backfilledDeviceId: recovered.backfilledDeviceId ?? inMemory.backfilledDeviceId }
       : {}),
+    ...(latestFit ? { latestFit } : {}),
+    ...(latestSuggestion ? { latestSuggestion } : {}),
   };
 }
 
@@ -263,6 +267,13 @@ export function normalizeWeatherHistoryState(raw: unknown): WeatherHistoryState 
     ...(Object.keys(accumulators).length > 0 ? { accumulators } : {}),
     ...(Object.keys(forecastHourly).length > 0 ? { forecastHourly } : {}),
     ...(backfilledDeviceId !== undefined ? { backfilledDeviceId } : {}),
+    // Derived fields: producer-written and recomputed after every records
+    // change, so a shallow shape check suffices — corruption self-heals at
+    // the next rollup/backfill.
+    ...(isUnknownRecord(raw.latestFit) ? { latestFit: raw.latestFit as WeatherHistoryState['latestFit'] } : {}),
+    ...(isUnknownRecord(raw.latestSuggestion)
+      ? { latestSuggestion: raw.latestSuggestion as WeatherHistoryState['latestSuggestion'] }
+      : {}),
   };
 }
 

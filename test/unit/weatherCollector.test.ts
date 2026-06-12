@@ -120,6 +120,22 @@ describe('WeatherCollector', () => {
     expect(lastWritten(store).accumulators?.['2026-01-10']?.count).toBe(1);
   });
 
+  it('recomputes derived fields after rollups and backfills', async () => {
+    const recomputeDerived = vi.fn((state: WeatherHistoryState) => ({
+      ...state,
+      latestFit: { model: 'uncorrelated' } as WeatherHistoryState['latestFit'],
+    }));
+    vi.setSystemTime(Date.UTC(2026, 0, 10, 22, 30, 0)); // Oslo 23:30
+    const { collector, store } = buildHarness({ recomputeDerived });
+    collector.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(recomputeDerived).not.toHaveBeenCalled(); // samples alone don't refit
+    await vi.advanceTimersByTimeAsync(36 * 60 * 1000); // past midnight rollup
+    expect(recomputeDerived).toHaveBeenCalledTimes(1);
+    collector.stop();
+    expect(lastWritten(store).latestFit).toEqual({ model: 'uncorrelated' });
+  });
+
   it('rolls up yesterday shortly after local midnight with kWh snapshot and quality', async () => {
     vi.setSystemTime(Date.UTC(2026, 0, 10, 22, 30, 0)); // Oslo 23:30
     const { collector, store, deps } = buildHarness();
