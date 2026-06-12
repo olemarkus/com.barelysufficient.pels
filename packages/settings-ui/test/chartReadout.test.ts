@@ -1,15 +1,17 @@
 // Phase 3 chart interaction grammar: structured readout content resolvers
 // (exact user-facing strings) + the pinned-readout primitive's selection
 // lifecycle against a scripted chart double.
-import { attachChartReadout } from '../src/ui/chartReadout.ts';
+import { attachChartReadout, resolveGridCellFromPixel } from '../src/ui/chartReadout.ts';
 import {
   buildDailyHistoryReadout,
   buildHourlyPatternReadout,
+  buildPowerWeekReadout,
   buildUsageDayReadout,
   readoutToTooltipHtml,
   resolveTooltipDataIndex,
 } from '../src/ui/chartTooltipFormat.ts';
 import { buildUsageDayBucketReadout } from '../src/ui/usageDayView.ts';
+import { buildPowerWeekDayLabel } from '../src/ui/powerWeekChartEcharts.ts';
 import type { EChartsType } from '../src/ui/echartsRegistry.ts';
 
 // Measurement segments join their tokens with NBSP (wraps happen only at the
@@ -142,6 +144,64 @@ describe('chart readout content resolvers', () => {
       .toEqual([{ text: nb('Measured 0.45 kWh') }]);
   });
 
+  it('formats the power-week heatmap readout as day · hour range / total', () => {
+    expect(buildPowerWeekReadout({
+      dayLabel: 'Thu, Jun 4',
+      hour: 13,
+      kWh: 1.243,
+      aggregated: false,
+      unreliable: false,
+    })).toEqual({
+      when: 'Thu, Jun 4 · 13:00–14:00',
+      values: [{ text: nb('1.24 kWh') }],
+    });
+  });
+
+  it('keeps the aggregated-cell "kWh total" suffix on the heatmap readout', () => {
+    expect(buildPowerWeekReadout({
+      dayLabel: 'Sun, Oct 25',
+      hour: 2,
+      kWh: 2.4,
+      aggregated: true,
+      unreliable: false,
+    }).values).toEqual([{ text: nb('2.40 kWh total') }]);
+  });
+
+  it('adds the unreliable consequence line to flagged heatmap cells', () => {
+    expect(buildPowerWeekReadout({
+      dayLabel: 'Thu, Jun 4',
+      hour: 19,
+      kWh: 0.92,
+      aggregated: false,
+      unreliable: true,
+    }).values).toEqual([
+      { text: nb('0.92 kWh') },
+      // Same canonical consequence string as the usage-day readout — keeps
+      // normal spaces so the prose stays wrappable at 320 px.
+      { text: 'Unreliable — some readings missing this hour', tone: 'warn' },
+    ]);
+  });
+
+  it('wraps the heatmap hour range across midnight', () => {
+    expect(buildPowerWeekReadout({
+      dayLabel: 'Thu, Jun 4',
+      hour: 23,
+      kWh: 0.5,
+      aggregated: false,
+      unreliable: false,
+    }).when).toBe('Thu, Jun 4 · 23:00–00:00');
+  });
+
+  it('labels heatmap days from local-day midnight in negative-offset zones', () => {
+    // 2026-06-04 is a Thursday. A UTC-midnight Date formatted in
+    // America/New_York lands on Wednesday Jun 3 — the off-by-one the label
+    // builder must avoid by resolving the instant via `getDateKeyStartMs`.
+    const label = buildPowerWeekDayLabel('2026-06-04', 'America/New_York');
+    expect(label).toMatch(/^Thu/);
+    expect(label).toContain('4');
+    expect(label).not.toContain('3');
+  });
+
   it('renders tooltip HTML with one line per value and an encoded when-line', () => {
     const html = readoutToTooltipHtml({
       when: 'Thu 4 Jun <b>',
@@ -176,6 +236,29 @@ describe('resolveTooltipDataIndex', () => {
     // `index < 0 || index >= length` range guard — must resolve to -1.
     expect(resolveTooltipDataIndex({ dataIndex: Number.NaN })).toBe(-1);
     expect(resolveTooltipDataIndex({ dataIndex: Number.POSITIVE_INFINITY })).toBe(-1);
+  });
+});
+
+describe('resolveGridCellFromPixel', () => {
+  const gridChart = (raw: unknown, contains = true): EChartsType => ({
+    containPixel: () => contains,
+    convertFromPixel: () => raw,
+  } as unknown as EChartsType);
+
+  it('rounds the grid finder result to a cell coordinate', () => {
+    expect(resolveGridCellFromPixel(gridChart([2.4, 13.6]), 10, 10))
+      .toEqual({ columnIndex: 2, rowIndex: 14 });
+  });
+
+  it('returns null outside the grid', () => {
+    expect(resolveGridCellFromPixel(gridChart([2, 13], false), 10, 10)).toBeNull();
+  });
+
+  it('returns null for scalar or non-finite finder results', () => {
+    expect(resolveGridCellFromPixel(gridChart(5), 10, 10)).toBeNull();
+    expect(resolveGridCellFromPixel(gridChart(null), 10, 10)).toBeNull();
+    expect(resolveGridCellFromPixel(gridChart([Number.NaN, 3]), 10, 10)).toBeNull();
+    expect(resolveGridCellFromPixel(gridChart([3, Number.POSITIVE_INFINITY]), 10, 10)).toBeNull();
   });
 });
 
@@ -323,6 +406,27 @@ describe('attachChartReadout', () => {
     expect(warn?.textContent).toBe('1.2 kWh over budget');
     expect(host.querySelector('.chart-readout__secondary')?.textContent)
       .toBe('15.2 kWh · 1.2 kWh over budget');
+  });
+
+  it('routes taps through a custom pixel resolver when one is supplied', () => {
+    const fake = createFakeChart();
+    const host = document.createElement('div');
+    const handle = attachChartReadout({ chart: fake.chart, host });
+    // The 1D fallback would resolve to 13 — the override must win.
+    fake.setPixelIndex(13);
+    handle.update({
+      itemCount: 24,
+      defaultIndex: 7,
+      resolveContent: contentFor,
+      resolveIndexFromPixel: (x) => (x === 100 ? 5 : null),
+    });
+
+    fake.tap(100, 50);
+    expect(host.querySelector('.chart-readout__primary')?.textContent).toBe('hour 5');
+
+    // Resolver returns null (empty cell / outside grid): restore the default.
+    fake.tap(3, 3);
+    expect(host.querySelector('.chart-readout__primary')?.textContent).toBe('hour 7');
   });
 
   it('clears the host and ignores taps after detach', () => {

@@ -241,7 +241,7 @@
         "comment": "Power-week heatmap container height shared by `.power-week-chart` in style.css (height/min-height) and `resolveChartHeight` in powerWeekChartEcharts.ts (ECharts viewport via `initEcharts`/`chart.resize`). Promoted from parallel `240px` / `240` literals so the container box and the SVG viewport cannot drift. Literal value (not an alias) — chart heights are physical-pixel, not theme-relative; cf. `.deadline-horizon-chart`."
       },
       "current-border": { "value": "{color.state.info.border}" },
-      "grid": { "value": "{color.border.strong}" },
+      "grid": { "value": "{color.border.medium}" },
       "muted": { "value": "{color.semantic.text.muted}" },
       "tooltip-bg": { "value": "{color.overlay.toast}" },
       "tooltip-text": { "value": "{color.semantic.text.primary}" },

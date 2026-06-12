@@ -102,6 +102,7 @@ test.describe('Settings UI chart layout', () => {
       '#hourly-pattern-readout',
       '#daily-history-readout',
       '#power-list svg',
+      '#power-week-readout',
     ]);
     expect(
       usageIssues,

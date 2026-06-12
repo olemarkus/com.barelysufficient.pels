@@ -4,6 +4,7 @@ import {
   powerWeekPrev,
   powerWeekNext,
   powerWeekLabel,
+  powerWeekReadout,
   dailyList,
   dailyEmpty,
   dailyHistoryReadout,
@@ -439,6 +440,7 @@ export const renderPowerUsage = (entries: PowerUsageEntry[]) => {
     startMs: range.startMs,
     endMs: range.endMs,
     timeZone,
+    readoutHost: powerWeekReadout,
     globalMinKWh: globalRange.minKWh,
     globalMaxKWh: globalRange.maxKWh,
   });
