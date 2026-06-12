@@ -37,6 +37,9 @@ jobs:
       - name: Build app bundle
         run: npm run build
 
+      - name: Smoke packaged require graph (sanitize-aware)
+        run: npm run check:homeybuild
+
       - name: Verify committed generated artifacts match source
         run: |
           DIRTY="$(git status --porcelain)"
