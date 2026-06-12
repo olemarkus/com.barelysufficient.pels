@@ -54,6 +54,11 @@ export type WeatherCollectorDeps = {
   getSettings: () => WeatherAdvisorSettings;
   getNowMs: () => number;
   getTimeZone: () => string;
+  /**
+   * Recomputes derived fields (energy-signature fit, budget suggestion) after
+   * the records change. Injected so the collector stays a pure data layer.
+   */
+  recomputeDerived?: (state: WeatherHistoryState) => WeatherHistoryState;
   logger: PinoLogger;
 };
 
@@ -376,6 +381,7 @@ export class WeatherCollector {
       kwhControlled: kwh.controlled,
       unreliablePower: periodsOverlapWindow(this.deps.getUnreliablePeriods(), dayStartMs, nextDayStartMs),
     });
+    this.state = this.deps.recomputeDerived?.(this.state) ?? this.state;
     this.markDirty();
     const record = this.state.records.find((entry) => entry.dateKey === dateKey);
     this.deps.logger.info({
@@ -420,6 +426,10 @@ export class WeatherCollector {
         ...upsertBackfillRecords(this.state, records),
         ...(markDone ? { backfilledDeviceId: deviceId } : {}),
       };
+      if (records.length > 0) {
+        // The backfill is what gives the fit a year of data on day one.
+        this.state = this.deps.recomputeDerived?.(this.state) ?? this.state;
+      }
       if (records.length > 0 || markDone) this.markDirty();
       this.deps.logger.info({
         event: 'weather_backfill_completed',
