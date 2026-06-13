@@ -1,5 +1,7 @@
 import { runStartupStep, startAppServices } from '../../setup/appLifecycleHelpers';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
+import { createPlanRebuildOutcome } from '../../lib/plan/planRebuildMetrics';
+import type { Logger } from '../../lib/logging/logger';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 
 type Deferred<T> = {
@@ -29,7 +31,8 @@ const buildContext = () => {
   const timers = new TimerRegistry();
   const ctx = createAppContextMock({
     timers,
-    getStructuredLogger: (component: string) => (component === 'startup' ? startupLogger : undefined),
+    getStructuredLogger: (component: string): Logger | undefined =>
+      component === 'startup' ? (startupLogger as unknown as Logger) : undefined,
   });
   const loadPowerTracker = vi.mocked(ctx.loadPowerTracker);
   const loadPriceOptimizationSettings = vi.mocked(ctx.loadPriceOptimizationSettings);
@@ -60,7 +63,7 @@ const buildContext = () => {
   refreshGridTariffData.mockImplementation(async () => undefined);
   startPriceRefresh.mockImplementation(() => undefined);
   startPriceOptimization.mockImplementation(async () => undefined);
-  rebuildPlanFromCache.mockImplementation(async () => undefined);
+  rebuildPlanFromCache.mockImplementation(async () => createPlanRebuildOutcome(false));
   ctx.operatingMode = 'Home';
   ctx.lastNotifiedOperatingMode = 'Away';
 
@@ -113,7 +116,10 @@ describe('startup critical path perf guardrails', () => {
     const rebuildPlanGate = createDeferred<void>();
 
     params.refreshTargetDevicesSnapshot.mockImplementation(() => refreshSnapshotGate.promise);
-    params.rebuildPlanFromCache.mockImplementation(() => rebuildPlanGate.promise);
+    params.rebuildPlanFromCache.mockImplementation(async () => {
+      await rebuildPlanGate.promise;
+      return createPlanRebuildOutcome(false);
+    });
 
     const startupPromise = startAppServices(params.ctx);
     let settled = false;
@@ -145,6 +151,7 @@ describe('startup critical path perf guardrails', () => {
     });
     params.rebuildPlanFromCache.mockImplementation(async () => {
       callOrder.push('rebuild');
+      return createPlanRebuildOutcome(false);
     });
 
     try {

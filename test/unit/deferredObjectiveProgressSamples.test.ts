@@ -23,7 +23,10 @@ const HOUR_MS = 60 * 60 * 1000;
 const makeDiag = (
   overrides: Partial<DeferredObjectiveDiagnostic> = {},
 ): DeferredObjectiveDiagnostic => {
-  const diag: DeferredObjectiveDiagnostic = {
+  // Spreading a `Partial<DeferredObjectiveDiagnostic>` (a kind-discriminated
+  // union) widens the literal back to the union; the temperature defaults above
+  // keep it a valid temperature diagnostic at runtime, so cast rather than annotate.
+  const diag = {
     deviceId: 'dev',
     deviceName: 'Water Heater',
     objectiveId: 'dev:temperature',
@@ -52,7 +55,7 @@ const makeDiag = (
     dailyBudgetExhaustedBucketCount: 0,
     expectedStepId: 'low',
     ...overrides,
-  };
+  } as DeferredObjectiveDiagnostic;
   return {
     ...diag,
     currentValue: overrides.currentValue

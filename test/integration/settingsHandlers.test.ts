@@ -1,3 +1,4 @@
+import type { Mock } from 'vitest';
 import { createSettingsHandler, type SettingsHandlerDeps } from '../../lib/utils/settingsHandlers';
 import {
   BUDGET_EXEMPT_DEVICES,
@@ -399,7 +400,7 @@ describe('createSettingsHandler', () => {
     expect(deps.updateDailyBudgetState).toHaveBeenCalledTimes(1);
     expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(1);
 
-    resolveFirstRebuild?.();
+    (resolveFirstRebuild as (() => void) | null)?.();
     await flushMicrotasks();
 
     expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(1);
@@ -513,14 +514,14 @@ describe('createSettingsHandler', () => {
     expect(deps.loadDailyBudgetSettings).toHaveBeenCalledTimes(1);
     expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(1);
 
-    resolveFirstRebuild?.();
+    (resolveFirstRebuild as (() => void) | null)?.();
     await flushMicrotasks();
     await flushMicrotasks();
 
     expect(deps.loadDailyBudgetSettings).toHaveBeenCalledTimes(2);
     expect(deps.updateDailyBudgetState).toHaveBeenCalledTimes(2);
     expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(2);
-    expect((deps.rebuildPlanFromCache as vi.Mock).mock.calls[1]?.[0]).toBe('settings:daily_budget_settings');
+    expect((deps.rebuildPlanFromCache as Mock).mock.calls[1]?.[0]).toBe('settings:daily_budget_settings');
   });
 
   it('cancels pending debounced daily budget syncs on stop', async () => {

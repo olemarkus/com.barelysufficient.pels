@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { EvChargingState } from '../../packages/contracts/src/types';
 import {
   isEvChargerNotResumable,
   isEvChargerNotResumableForDevice,
@@ -6,6 +7,7 @@ import {
 import {
   SMART_TASK_LIST_STATUS_LABELS,
   SMART_TASK_WIDGET_STATUS_LABELS,
+  type DeadlinePendingContext,
   deadlineLabels,
   resolveEvCardStateLine,
   resolveSmartTaskListStatus,
@@ -18,7 +20,10 @@ describe('isEvChargerNotResumable', () => {
   });
 
   it('is false for the resumable / charging / unplugged states', () => {
-    for (const state of ['plugged_in_paused', 'plugged_in_charging', 'plugged_out', 'plugged_in_discharging', undefined]) {
+    const states: (EvChargingState | undefined)[] = [
+      'plugged_in_paused', 'plugged_in_charging', 'plugged_out', 'plugged_in_discharging', undefined,
+    ];
+    for (const state of states) {
       expect(isEvChargerNotResumable(state)).toBe(false);
     }
   });
@@ -80,7 +85,9 @@ describe('resolveEvCardStateLine — connected-but-not-resumable charger (C1)', 
 });
 
 describe('EV pending hero — charger_not_resumable (C2)', () => {
-  const ctx = { deviceId: 'dev', deviceName: 'Connected 300', deadlineTime: '07:00' };
+  // Deliberate partial: the two pending-hero branches under test only read
+  // `deviceId` / `deviceName` / `deadlineTime` off the full `DeadlinePendingContext`.
+  const ctx = { deviceId: 'dev', deviceName: 'Connected 300', deadlineTime: '07:00' } as unknown as DeadlinePendingContext;
 
   it('renders a charger-focused hero distinct from the unplugged copy', () => {
     const notResumable = deadlineLabels('ev_soc').pendingHeroByReason.charger_not_resumable(ctx);

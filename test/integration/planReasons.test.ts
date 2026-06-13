@@ -1,8 +1,21 @@
 import { applyShedTemperatureHold, finalizePlanDevices, normalizeShedReasons } from '../../lib/plan/planReasons';
 import { NEUTRAL_STARTUP_HOLD_REASON } from '../../lib/plan/restore/devices';
 import { createPlanEngineState } from '../../lib/plan/planState';
+import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
+import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
+import type { DevicePlanDevice } from '../../lib/plan/planTypes';
 import { buildPlanDevice } from '../utils/planTestUtils';
 import { legacyDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
+
+// Reads the moved `plannedTarget` off a plan device by narrowing through the
+// temperature guard (the field lives on `TemperatureKind`, not the base).
+const plannedTargetOf = (device: DevicePlanDevice | undefined): number | undefined =>
+  (device && isTemperaturePlanDevice(device) ? device.plannedTarget : undefined);
+
+// `buildPlanDevice` does not expose the moved `binaryControl` cluster on its
+// override; regroup the observed on-state onto the built device explicitly.
+const withBinaryOn = (device: DevicePlanDevice, on: boolean): DevicePlanDevice =>
+  withBinaryDiscriminant({ ...device, binaryControl: { on } }) as DevicePlanDevice;
 
 describe('normalizeShedReasons', () => {
   it('normalizes placeholder reasons to the mapped shed reason', () => {
@@ -10,7 +23,7 @@ describe('normalizeShedReasons', () => {
       planDevices: [buildPlanDevice({
         id: 'dev-1',
         plannedState: 'shed',
-        reason: 'restore (need 1.20kW)',
+        reason: legacyDeviceReason('restore (need 1.20kW)')!,
       })],
       shedReasons: new Map([['dev-1', legacyDeviceReason('shed due to hourly budget')!]]),
       guardInShortfall: false,
@@ -27,7 +40,7 @@ describe('normalizeShedReasons', () => {
     const [device] = normalizeShedReasons({
       planDevices: [buildPlanDevice({
         plannedState: 'shed',
-        reason: 'swapped out for Water Heater',
+        reason: legacyDeviceReason('swapped out for Water Heater')!,
       })],
       shedReasons: new Map(),
       guardInShortfall: false,
@@ -44,7 +57,7 @@ describe('normalizeShedReasons', () => {
     const [device] = normalizeShedReasons({
       planDevices: [buildPlanDevice({
         plannedState: 'shed',
-        reason: 'keep',
+        reason: legacyDeviceReason('keep')!,
         expectedPowerKw: 1,
       })],
       shedReasons: new Map(),
@@ -62,7 +75,7 @@ describe('normalizeShedReasons', () => {
     const [device] = normalizeShedReasons({
       planDevices: [buildPlanDevice({
         plannedState: 'shed',
-        reason: 'shed due to daily budget',
+        reason: legacyDeviceReason('shed due to daily budget')!,
         expectedPowerKw: 1,
       })],
       shedReasons: new Map(),
@@ -81,7 +94,7 @@ describe('normalizeShedReasons', () => {
       planDevices: [buildPlanDevice({
         id: 'dev-1',
         plannedState: 'shed',
-        reason: 'shed due to capacity',
+        reason: legacyDeviceReason('shed due to capacity')!,
       })],
       shedReasons: new Map([['dev-1', legacyDeviceReason('shed due to capacity')!]]),
       guardInShortfall: false,
@@ -136,7 +149,7 @@ describe('normalizeShedReasons', () => {
       planDevices: [buildPlanDevice({
         id: 'dev-stale-capacity',
         plannedState: 'shed',
-        reason: 'shed due to capacity',
+        reason: legacyDeviceReason('shed due to capacity')!,
       })],
       shedReasons: new Map(),
       guardInShortfall: false,
@@ -155,7 +168,7 @@ describe('normalizeShedReasons', () => {
       planDevices: [buildPlanDevice({
         id: 'dev-fresh-capacity',
         plannedState: 'shed',
-        reason: 'shed due to capacity',
+        reason: legacyDeviceReason('shed due to capacity')!,
       })],
       shedReasons: new Map(),
       guardInShortfall: false,
@@ -178,7 +191,7 @@ describe('normalizeShedReasons', () => {
       planDevices: [buildPlanDevice({
         id: 'dev-fresh',
         plannedState: 'shed',
-        reason: 'keep',
+        reason: legacyDeviceReason('keep')!,
       })],
       shedReasons: new Map([['dev-fresh', { code: 'capacity', detail: null }]]),
       guardInShortfall: false,
@@ -197,7 +210,7 @@ describe('normalizeShedReasons', () => {
       planDevices: [buildPlanDevice({
         id: 'dev-smart-task',
         plannedState: 'shed',
-        reason: 'shed due to capacity',
+        reason: legacyDeviceReason('shed due to capacity')!,
       })],
       shedReasons: new Map(),
       guardInShortfall: false,
@@ -216,7 +229,7 @@ describe('normalizeShedReasons', () => {
       planDevices: [buildPlanDevice({
         id: 'dev-smart-task-on-daily',
         plannedState: 'shed',
-        reason: 'shed due to capacity',
+        reason: legacyDeviceReason('shed due to capacity')!,
       })],
       shedReasons: new Map(),
       guardInShortfall: false,
@@ -236,7 +249,7 @@ describe('normalizeShedReasons', () => {
       planDevices: [buildPlanDevice({
         id: 'dev-swap',
         plannedState: 'shed',
-        reason: 'swapped out for Water Heater',
+        reason: legacyDeviceReason('swapped out for Water Heater')!,
       })],
       shedReasons: new Map(),
       guardInShortfall: false,
@@ -255,7 +268,7 @@ describe('finalizePlanDevices', () => {
   it('strips candidate reasons before returning finalized plan devices', () => {
     const finalized = finalizePlanDevices([buildPlanDevice({
       plannedState: 'keep',
-      reason: 'keep',
+      reason: legacyDeviceReason('keep')!,
       candidateReasons: {
         offStateAnalysis: 'restore (need 1.20kW, headroom 0.30kW)',
       },
@@ -275,35 +288,35 @@ describe('finalizePlanDevices', () => {
   it('throws in tests when a final reason/state pair is not allowed', () => {
     expect(() => finalizePlanDevices([buildPlanDevice({
       plannedState: 'shed',
-      reason: 'restore (need 1.20kW, headroom 0.30kW)',
+      reason: legacyDeviceReason('restore (need 1.20kW, headroom 0.30kW)')!,
     })])).toThrow(/Invalid plan reason pair/);
   });
 
   it('allows legacy restore cooldown shed reasons that are still emitted by stay-off paths', () => {
     expect(() => finalizePlanDevices([buildPlanDevice({
       plannedState: 'shed',
-      reason: 'cooldown (restore, 30s remaining)',
+      reason: legacyDeviceReason('cooldown (restore, 30s remaining)')!,
     })])).not.toThrow();
   });
 
   it('allows meter-settling shed reasons for blocked restore candidates', () => {
     expect(() => finalizePlanDevices([buildPlanDevice({
       plannedState: 'shed',
-      reason: 'meter settling (30s remaining)',
+      reason: legacyDeviceReason('meter settling (30s remaining)')!,
     })])).not.toThrow();
   });
 
   it('allows legacy restore cooldown keep reasons that still surface during restore holds', () => {
     expect(() => finalizePlanDevices([buildPlanDevice({
       plannedState: 'keep',
-      reason: 'cooldown (restore, 30s remaining)',
+      reason: legacyDeviceReason('cooldown (restore, 30s remaining)')!,
     })])).not.toThrow();
   });
 
   it('allows restore pending reasons for keep devices that are waiting on stepped confirmation', () => {
     expect(() => finalizePlanDevices([buildPlanDevice({
       plannedState: 'keep',
-      reason: 'restore pending (30s remaining)',
+      reason: legacyDeviceReason('restore pending (30s remaining)')!,
     })])).not.toThrow();
   });
 });
@@ -321,18 +334,17 @@ describe('applyShedTemperatureHold', () => {
     const state = createPlanEngineState();
 
     const result = applyShedTemperatureHold({
-      planDevices: [buildPlanDevice({
+      planDevices: [withBinaryOn(buildPlanDevice({
         id: 'dev-temp',
         name: 'Thermostat',
         currentState: 'keep',
         plannedState: 'shed',
         currentTarget: 16,
         plannedTarget: 16,
-        binaryControl: { on: true },
         shedAction: 'set_temperature',
         shedTemperature: 16,
-        reason: 'swap pending',
-      })],
+        reason: legacyDeviceReason('swap pending')!,
+      }), true)],
       state,
       shedReasons: new Map(),
       inShedWindow: true,
@@ -349,25 +361,24 @@ describe('applyShedTemperatureHold', () => {
     });
 
     expect(reasonText(result.planDevices[0]?.reason)).toBe('swap pending');
-    expect(result.planDevices[0]?.plannedTarget).toBe(16);
+    expect(plannedTargetOf(result.planDevices[0])).toBe(16);
   });
 
   it('preserves neutral startup holds for set_temperature devices', () => {
     const state = createPlanEngineState();
 
     const result = applyShedTemperatureHold({
-      planDevices: [buildPlanDevice({
+      planDevices: [withBinaryOn(buildPlanDevice({
         id: 'dev-temp',
         name: 'Thermostat',
         currentState: 'off',
         plannedState: 'shed',
         currentTarget: 21,
         plannedTarget: 21,
-        binaryControl: { on: false },
         shedAction: 'set_temperature',
         shedTemperature: 16,
         reason: NEUTRAL_STARTUP_HOLD_REASON,
-      })],
+      }), false)],
       state,
       shedReasons: new Map(),
       inShedWindow: true,
@@ -384,7 +395,7 @@ describe('applyShedTemperatureHold', () => {
     });
 
     expect(result.planDevices[0]?.reason).toEqual(NEUTRAL_STARTUP_HOLD_REASON);
-    expect(result.planDevices[0]?.plannedTarget).toBe(21);
+    expect(plannedTargetOf(result.planDevices[0])).toBe(21);
   });
 
   it('aborts target restore backoff while shortfall is active', () => {
@@ -398,19 +409,18 @@ describe('applyShedTemperatureHold', () => {
     };
 
     const held = applyShedTemperatureHold({
-      planDevices: [buildPlanDevice({
+      planDevices: [withBinaryOn(buildPlanDevice({
         id: 'dev-temp',
         name: 'Thermostat',
         currentState: 'keep',
         plannedState: 'keep',
         currentTarget: 16,
         plannedTarget: 21,
-        binaryControl: { on: true },
         shedAction: 'set_temperature',
         shedTemperature: 16,
         expectedPowerKw: 1,
         powerKw: 1,
-      })],
+      }), true)],
       state,
       shedReasons: new Map(),
       inShedWindow: false,
@@ -438,7 +448,7 @@ describe('applyShedTemperatureHold', () => {
     });
 
     expect(device?.plannedState).toBe('shed');
-    expect(device?.plannedTarget).toBe(16);
+    expect(plannedTargetOf(device)).toBe(16);
     expect(reasonText(device?.reason)).toBe('shortfall (need 1.20kW, headroom -0.50kW)');
   });
 });

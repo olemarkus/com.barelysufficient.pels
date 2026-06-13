@@ -58,7 +58,7 @@ describe('applyShedBehavior (thin set-and-forget terminal actuator)', () => {
         deviceId: 'd1',
         name: 'Heater',
         command: { kind: 'binary_off', capabilityId: 'evcharger_charging', flowBacked: false },
-        observed: { binaryState },
+        observed: { binaryState: binaryState as 'on' | 'off' | undefined },
         actuator,
       });
       expect(wrote).toBe(false);

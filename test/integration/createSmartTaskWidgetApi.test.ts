@@ -5,9 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   resolveDeferredObjectiveDeadline,
   type DeferredObjectivePlanPreviewCandidate,
-  type DeferredObjectivePlanPreviewEstimate,
 } from '../../lib/objectives/deferredObjectives';
+import type { DeferredObjectivePlanPreviewEstimate } from '../../packages/contracts/src/deferredObjectivePlanPreview';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { CreateSmartTaskHostApi } from '../../packages/contracts/src/widgetHostApi';
 import {
   createCreateSmartTask,
   getCreateSmartTaskDevices,
@@ -46,7 +47,9 @@ type AppMock = {
 
 const buildContext = (app: Partial<AppMock>) => ({
   homey: {
-    app,
+    // `AppMock` is a deliberate partial of the host API; cast at the seam so the
+    // widget entry points receive the `CreateSmartTaskHostApi`-shaped context.
+    app: app as unknown as CreateSmartTaskHostApi,
     clock: { getTimezone: () => TIME_ZONE },
   },
 });

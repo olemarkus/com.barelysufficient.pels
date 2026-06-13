@@ -1,4 +1,5 @@
 import { DeviceMeasuredPowerResolver } from '../../lib/device/measuredPowerResolver';
+import type { Logger } from '../../lib/utils/types';
 
 const logger = {
   log: vi.fn(),
@@ -7,7 +8,7 @@ const logger = {
   structuredLog: {
     debug: vi.fn(),
   },
-};
+} as unknown as Logger;
 
 describe('DeviceMeasuredPowerResolver', () => {
   beforeEach(() => {

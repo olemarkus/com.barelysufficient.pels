@@ -5,11 +5,45 @@ import {
 } from '../../setup/appRealtimeDeviceReconcile';
 import { shouldQueueRealtimeDeviceReconcile } from '../../setup/appRealtimeDeviceReconcileRuntime';
 import type { Logger, StructuredDebugEmitter } from '../../lib/logging/logger';
+import type {
+  BinaryControlDiscriminantProbe,
+  DevicePlanDevice,
+  PlanInputDevice,
+  TemperatureDiscriminantProbe,
+} from '../../lib/plan/planTypes';
+import { withBinaryDiscriminant, withTemperatureDiscriminant } from '../../lib/plan/planTypes';
+import type { BinaryControlObservation } from '../../packages/contracts/src/types';
 import { buildBinaryObservation } from '../utils/binaryObservationTestUtils';
+
+/**
+ * Regroup a loose plan-device fixture (temperature fields carried as plain
+ * optionals) onto the discriminated `DevicePlanDevice` shape so `currentTarget` /
+ * `plannedTarget` land on `TemperatureKind`.
+ */
+const planDevice = (
+  loose: Partial<DevicePlanDevice> & TemperatureDiscriminantProbe & { id: string; name: string; currentState: string; plannedState: string },
+): DevicePlanDevice => withTemperatureDiscriminant(loose) as DevicePlanDevice;
+
+/**
+ * Regroup a loose live-device fixture (binary + temperature fields carried as
+ * plain optionals) onto the discriminated `PlanInputDevice` shape.
+ */
+const liveDevice = (
+  loose: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & TemperatureDiscriminantProbe & {
+    id: string;
+    name: string;
+    // Observer-internal binary-settle evidence the fixtures still carry; not a
+    // `PlanInputDevice` field, so accept it on the loose input and let it ride
+    // through the regroupers (the drift check reads `binaryControl`, not this).
+    binaryControlObservation?: BinaryControlObservation;
+  },
+): PlanInputDevice => withTemperatureDiscriminant(withBinaryDiscriminant(loose)) as PlanInputDevice;
 
 describe('appRealtimeDeviceReconcile', () => {
   const createDebugStructuredMock = (): StructuredDebugEmitter => vi.fn() as unknown as StructuredDebugEmitter;
-  const createInfoLoggerMock = (): Pick<Logger, 'info'> => ({ info: vi.fn() as Logger['info'] });
+  const createInfoLoggerMock = (): Logger & { info: ReturnType<typeof vi.fn> } => (
+    { info: vi.fn() } as unknown as Logger & { info: ReturnType<typeof vi.fn> }
+  );
 
   it('logs drift details when queueing realtime reconcile', () => {
     vi.useFakeTimers();
@@ -86,7 +120,7 @@ describe('appRealtimeDeviceReconcile', () => {
       },
       latestPlanSnapshot: {
         meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
-        devices: [{
+        devices: [planDevice({
           id: 'dev-1',
           name: 'Heater',
           currentState: 'on',
@@ -95,16 +129,16 @@ describe('appRealtimeDeviceReconcile', () => {
           plannedTarget: 20,
           controllable: true,
           controlCapabilityId: 'onoff',
-        }],
+        })],
       },
-      liveDevices: [{
+      liveDevices: [liveDevice({
         id: 'dev-1',
         name: 'Heater',
         binaryControl: { on: true },
         controlCapabilityId: 'onoff',
         currentTemperature: 21,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
-      }],
+      })],
       debugStructured,
     });
 
@@ -129,7 +163,7 @@ describe('appRealtimeDeviceReconcile', () => {
       },
       latestPlanSnapshot: {
         meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
-        devices: [{
+        devices: [planDevice({
           id: 'dev-1',
           name: 'Heater',
           currentState: 'off',
@@ -138,9 +172,9 @@ describe('appRealtimeDeviceReconcile', () => {
           plannedTarget: 20,
           controllable: true,
           controlCapabilityId: 'onoff',
-        }],
+        })],
       },
-      liveDevices: [{
+      liveDevices: [liveDevice({
         id: 'dev-1',
         name: 'Heater',
         binaryControl: { on: false },
@@ -148,7 +182,7 @@ describe('appRealtimeDeviceReconcile', () => {
         binaryControlObservation: buildBinaryObservation('onoff', false),
         currentTemperature: 21,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
-      }],
+      })],
     });
 
     expect(shouldQueue).toBe(true);
@@ -166,7 +200,7 @@ describe('appRealtimeDeviceReconcile', () => {
       },
       latestPlanSnapshot: {
         meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
-        devices: [{
+        devices: [planDevice({
           id: 'dev-1',
           name: 'Heater',
           currentState: 'off',
@@ -175,9 +209,9 @@ describe('appRealtimeDeviceReconcile', () => {
           plannedTarget: 20,
           controllable: true,
           controlCapabilityId: 'onoff',
-        }],
+        })],
       },
-      liveDevices: [{
+      liveDevices: [liveDevice({
         id: 'dev-1',
         name: 'Heater',
         binaryControl: { on: false },
@@ -186,7 +220,7 @@ describe('appRealtimeDeviceReconcile', () => {
         binaryCommandPendingDesired: true,
         currentTemperature: 21,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
-      }],
+      })],
       debugStructured,
     });
 
@@ -211,7 +245,7 @@ describe('appRealtimeDeviceReconcile', () => {
       },
       latestPlanSnapshot: {
         meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
-        devices: [{
+        devices: [planDevice({
           id: 'dev-1',
           name: 'Heater',
           currentState: 'on',
@@ -220,9 +254,9 @@ describe('appRealtimeDeviceReconcile', () => {
           plannedTarget: 20,
           controllable: true,
           controlCapabilityId: 'onoff',
-        }],
+        })],
       },
-      liveDevices: [{
+      liveDevices: [liveDevice({
         id: 'dev-1',
         name: 'Heater',
         controlCapabilityId: 'onoff',
@@ -230,7 +264,7 @@ describe('appRealtimeDeviceReconcile', () => {
         binaryControlObservation: buildBinaryObservation('onoff', false),
         currentTemperature: 21,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
-      }],
+      })],
     });
 
     expect(shouldQueue).toBe(true);
@@ -248,7 +282,7 @@ describe('appRealtimeDeviceReconcile', () => {
       },
       latestPlanSnapshot: {
         meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
-        devices: [{
+        devices: [planDevice({
           id: 'dev-1',
           name: 'Heater',
           currentState: 'off',
@@ -257,9 +291,9 @@ describe('appRealtimeDeviceReconcile', () => {
           currentTarget: null,
           controllable: true,
           controlCapabilityId: 'onoff',
-        }],
+        })],
       },
-      liveDevices: [{
+      liveDevices: [liveDevice({
         id: 'dev-1',
         name: 'Heater',
         controlCapabilityId: 'onoff',
@@ -267,7 +301,7 @@ describe('appRealtimeDeviceReconcile', () => {
         binaryControlObservation: buildBinaryObservation('onoff', true),
         currentTemperature: 21,
         targets: [],
-      }],
+      })],
       debugStructured,
     });
 
@@ -289,7 +323,7 @@ describe('appRealtimeDeviceReconcile', () => {
       },
       latestPlanSnapshot: {
         meta: { totalKw: 1, softLimitKw: 5, headroomKw: 4 },
-        devices: [{
+        devices: [planDevice({
           id: 'dev-1',
           name: 'Heater',
           deviceType: 'temperature',
@@ -300,16 +334,16 @@ describe('appRealtimeDeviceReconcile', () => {
           shedAction: 'turn_off',
           controllable: true,
           controlCapabilityId: 'onoff',
-        }],
+        })],
       },
-      liveDevices: [{
+      liveDevices: [liveDevice({
         id: 'dev-1',
         name: 'Heater',
         binaryControl: { on: false },
         controlCapabilityId: 'onoff',
         currentTemperature: 21,
         targets: [{ id: 'target_temperature', value: 23.5, unit: '°C' }],
-      }],
+      })],
       debugStructured,
     });
 

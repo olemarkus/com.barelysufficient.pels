@@ -301,6 +301,7 @@ describe('lifecycle-end release for non-EV devices — integration', () => {
       });
       const firstResult = await applyShedReleaseIntent({
         intent,
+        steppedLoadIntent: null,
         observed,
         snapshot: heater,
         mode: 'plan',
@@ -325,6 +326,7 @@ describe('lifecycle-end release for non-EV devices — integration', () => {
 
       const secondResult = await applyShedReleaseIntent({
         intent,
+        steppedLoadIntent: null,
         observed: buildObserved(heater.id, heater.name, refreshedSnapshot, { binaryControl: { on: false }, observedBinaryState: 'off' }),
         snapshot: refreshedSnapshot,
         mode: 'plan',
@@ -376,6 +378,7 @@ describe('lifecycle-end release for non-EV devices — integration', () => {
       // gate that actually fires is the pending binary command record.
       const secondResult = await applyShedReleaseIntent({
         intent,
+        steppedLoadIntent: null,
         observed,
         snapshot: racedSnap,
         mode: 'plan',
@@ -408,6 +411,7 @@ describe('lifecycle-end release for non-EV devices — integration', () => {
       // First cycle.
       const firstResult = await applyShedReleaseIntent({
         intent,
+        steppedLoadIntent: null,
         observed,
         snapshot: thermostat,
         mode: 'plan',
@@ -435,6 +439,7 @@ describe('lifecycle-end release for non-EV devices — integration', () => {
       });
       const secondResult = await applyShedReleaseIntent({
         intent,
+        steppedLoadIntent: null,
         observed: refreshedObserved,
         snapshot: thermostat,
         mode: 'plan',
@@ -473,6 +478,7 @@ describe('lifecycle-end release for non-EV devices — integration', () => {
       });
       const firstResult = await applyShedReleaseIntent({
         intent,
+        steppedLoadIntent: null,
         observed: initialObserved,
         snapshot: thermostat,
         mode: 'plan',
@@ -497,6 +503,7 @@ describe('lifecycle-end release for non-EV devices — integration', () => {
       });
       await applyShedReleaseIntent({
         intent,
+        steppedLoadIntent: null,
         observed: staleObserved,
         snapshot: thermostat,
         mode: 'plan',

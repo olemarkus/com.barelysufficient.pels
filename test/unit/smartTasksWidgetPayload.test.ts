@@ -309,7 +309,7 @@ describe('buildSmartTasksWidgetPayload', () => {
           ...buildPlan({}).latest!,
           planStatus: 'cannot_meet',
           // no budget signals — falls through to device cause
-          floorShortfallCause: 'shortfall',
+          floorShortfallCause: 'step_power',
         },
       }),
     }));
@@ -706,7 +706,7 @@ describe('buildSmartTasksWidgetPayload — recently ended section', () => {
   });
 
   test('caps the ended section', () => {
-    const entries: Record<string, DeferredObjectivePlanHistoryEntry[]> = {};
+    const entries: Record<string, ResolvedDeferredObjectivePlanHistoryEntry[]> = {};
     for (let i = 0; i < ENDED_ROW_CAP + 3; i += 1) {
       entries[`d${i}`] = [buildHistoryEntry({ deviceId: `d${i}`, finalizedAtMs: NOW - (i + 1) * 60 * 1000 })];
     }
@@ -747,7 +747,7 @@ describe('buildSmartTasksWidgetPayload — recently ended section', () => {
   test('applies the ended cap to renderable rows (filters nulls before slicing)', () => {
     // Newest entry is unrenderable (no target); it must not consume a cap slot
     // and hide an older valid row.
-    const entries: Record<string, DeferredObjectivePlanHistoryEntry[]> = {
+    const entries: Record<string, ResolvedDeferredObjectivePlanHistoryEntry[]> = {
       bad: [buildHistoryEntry({
         id: 'bad', deviceId: 'bad', targetTemperatureC: null, targetPercent: null, finalizedAtMs: NOW - 60 * 1000,
       })],

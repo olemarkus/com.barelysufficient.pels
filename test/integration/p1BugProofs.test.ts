@@ -1,6 +1,8 @@
 import { recordPowerSampleForApp } from '../../lib/power/sampleIngest';
 import type CapacityGuard from '../../lib/power/capacityGuard';
 import { PlanExecutor, type PlanExecutorDeps } from '../../lib/executor/planExecutor';
+import type { PlanInputDevice } from '../../lib/plan/planTypes';
+import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { buildInitialPlanDevices } from '../../lib/plan/planDevices';
 import { getHighestKnownPowerKw } from '../../lib/observer/observedPower';
 import { getOffDevices, getSteppedRestoreCandidates } from '../../lib/plan/restore/devices';
@@ -14,13 +16,20 @@ import { mockHomeyInstance } from '../mocks/homey';
 import {
   buildPlanDevice,
   steppedInputDevice,
+  steppedPlanDevice,
 } from '../utils/planTestUtils';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
+import { legacyDeviceReason } from '../utils/deviceReasonTestUtils';
 
 const buildPlanningContext = (devices: ReturnType<typeof steppedInputDevice>[]) => ({
   devices,
   desiredForMode: {},
   total: 1.25,
+  powerKnown: true,
+  hasLivePowerSample: true,
+  powerSampleAgeMs: 0,
+  powerFreshnessState: 'fresh' as const,
+  hourBucketKey: '2025-01-01T00',
   softLimit: 5,
   capacitySoftLimit: 5,
   dailySoftLimit: null,
@@ -61,12 +70,8 @@ const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
     getCapacityDryRun: () => false,
     getOperatingMode: () => 'Home',
     getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
-    updateLocalSnapshot: vi.fn(),
     markSteppedLoadDesiredStepIssued: vi.fn(),
     logTargetRetryComparison: vi.fn(),
-    log: vi.fn(),
-    logDebug: vi.fn(),
-    error: vi.fn(),
     pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
   };
   return {
@@ -166,7 +171,7 @@ describe('P1 bug proofs', () => {
       capacitySoftLimit: 5,
       total: 6,
       devices: [
-        {
+        withBinaryDiscriminant({
           id: 'shed',
           name: 'Shed',
           targets: [],
@@ -175,8 +180,8 @@ describe('P1 bug proofs', () => {
           controlCapabilityId: 'onoff',
           measuredPowerKw: 0,
           binaryCommandPending: true,
-        },
-        {
+        }) as PlanInputDevice,
+        withBinaryDiscriminant({
           id: 'stale',
           name: 'Stale',
           targets: [],
@@ -184,7 +189,7 @@ describe('P1 bug proofs', () => {
           controllable: true,
           controlCapabilityId: 'onoff',
           observationStale: true,
-        },
+        }) as PlanInputDevice,
       ],
       shedSet: new Set(['shed']),
       softLimitSource: 'capacity',
@@ -213,12 +218,11 @@ describe('P1 bug proofs', () => {
         currentState: 'unknown',
         plannedState: 'keep',
       }),
-      buildPlanDevice({
+      steppedPlanDevice({
         id: 'stepped',
         name: 'Tank',
         currentState: 'unknown',
         plannedState: 'keep',
-        controlModel: 'stepped_load',
         steppedLoadProfile: {
           model: 'stepped_load',
           steps: [
@@ -238,15 +242,17 @@ describe('P1 bug proofs', () => {
 
   it('uses the same controlled/uncontrolled split in planning and power tracking for stepped off-step devices', async () => {
     let tracker = {};
-    const rawDevice = steppedInputDevice({
-      id: 'dev-step',
-      name: 'Tank',
-      selectedStepId: 'off',
-      currentState: 'off',
+    const rawDevice = withBinaryDiscriminant({
+      ...steppedInputDevice({
+        id: 'dev-step',
+        name: 'Tank',
+        selectedStepId: 'off',
+        currentState: 'off',
+        expectedPowerKw: 1.25,
+        measuredPowerKw: undefined,
+      }),
       binaryControl: { on: false },
-      expectedPowerKw: 1.25,
-      measuredPowerKw: undefined,
-    });
+    }) as PlanInputDevice;
 
     const planState = createPlanEngineState();
     const [planDevice] = buildInitialPlanDevices({
@@ -305,17 +311,16 @@ describe('P1 bug proofs', () => {
         softLimitKw: 4,
         headroomKw: -1,
       },
-      devices: [{
+      devices: [buildPlanDevice({
         id: 'dev-1',
         name: 'Heater',
         currentState: 'off',
         plannedState: 'shed',
         currentTarget: 21,
         plannedTarget: 21,
-        controllable: true,
         controlCapabilityId: 'onoff',
-        reason: buildPlanDevice({ reason: 'shed due to capacity' }).reason,
-      }],
+        reason: legacyDeviceReason('shed due to capacity'),
+      })],
     });
 
     expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);

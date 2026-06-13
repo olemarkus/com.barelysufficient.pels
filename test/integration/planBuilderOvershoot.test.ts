@@ -2,13 +2,16 @@ import CapacityGuard from '../../lib/power/capacityGuard';
 import { recordActivationAttemptStart } from '../../lib/plan/admission';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { createPlanEngineState } from '../../lib/plan/planState';
-import type { PlanInputDevice } from '../../lib/plan/planTypes';
+import type { PlanInputDevice, BinaryControlDiscriminantProbe } from '../../lib/plan/planTypes';
+import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { steppedInputDevice } from '../utils/planTestUtils';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 
 const emptyPendingStore = createPendingBinaryCommandStore({});
 
-const buildDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice => ({
+const buildDevice = (
+  overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe = {},
+): PlanInputDevice => withBinaryDiscriminant({
   id: 'dev',
   name: 'Device',
   targets: [],
@@ -16,7 +19,18 @@ const buildDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice 
   controllable: true,
   controlCapabilityId: 'onoff',
   ...overrides,
-});
+}) as PlanInputDevice;
+
+// `steppedInputDevice` (shared) does not accept the orthogonal binary cluster;
+// wrap it so the stepped fixtures here can also carry `binaryControl` (the
+// shared builder already sets a control capability, so the binary regrouper
+// re-ties the cluster onto the result).
+const binarySteppedInputDevice = (
+  overrides: Parameters<typeof steppedInputDevice>[0] & BinaryControlDiscriminantProbe = {},
+): PlanInputDevice => {
+  const { binaryControl, ...rest } = overrides;
+  return withBinaryDiscriminant({ ...steppedInputDevice(rest), binaryControl }) as PlanInputDevice;
+};
 
 describe('PlanBuilder overshoot diagnostics', () => {
   beforeEach(() => {
@@ -518,7 +532,7 @@ describe('PlanBuilder overshoot diagnostics', () => {
 
     const plan = await builder.buildDevicePlanSnapshot([
       {
-        ...steppedInputDevice({
+        ...binarySteppedInputDevice({
           id: 'step-live',
           name: 'Connected 300',
           binaryControl: { on: true },

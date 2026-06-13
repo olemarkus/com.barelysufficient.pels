@@ -20,7 +20,19 @@ import {
   buildExecutableSteppedLoadIntent,
 } from '../../lib/executor/executableSteppedLoadProjection';
 import { AppDeviceControlHelpers } from '../../setup/appDeviceControlHelpers';
-import type { DevicePlanDevice } from '../../lib/plan/planTypes';
+import type {
+  DevicePlanDevice,
+  BinaryControlDiscriminantProbe,
+  TemperatureDiscriminantProbe,
+  SteppedDiscriminantProbe,
+} from '../../lib/plan/planTypes';
+import {
+  withBinaryDiscriminant,
+  withTemperatureDiscriminant,
+  withSteppedDiscriminant,
+} from '../../lib/plan/planTypes';
+import { isBinaryPlanDevice } from '../../lib/plan/planBinaryDevice';
+import type { DeviceCapabilityMap } from '../../lib/device/managerControl';
 import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { mockHomeyInstance } from '../mocks/homey';
@@ -40,20 +52,31 @@ const steppedProfile: SteppedLoadProfile = {
   ],
 };
 
-const buildSteppedAction = (device: DevicePlanDevice) => buildExecutableSteppedLoadDevice(
-  buildExecutableSteppedLoadIntent(device),
-  buildExecutableObservedDeviceState({
-    id: device.id,
-    name: device.name,
-    binaryControl: device.binaryControl,
-    targets: [],
-    controlModel: device.controlModel,
-    steppedLoadProfile: device.steppedLoadProfile,
-    selectedStepId: device.selectedStepId,
-    reportedStepId: device.reportedStepId,
-    measuredPowerKw: device.measuredPowerKw,
-  }),
-);
+type SteppedActionInput = Partial<DevicePlanDevice>
+  & BinaryControlDiscriminantProbe
+  & TemperatureDiscriminantProbe
+  & SteppedDiscriminantProbe
+  & { id: string; name: string; controlModel?: string };
+
+const buildSteppedAction = (loose: SteppedActionInput) => {
+  const { controlModel: _controlModel, ...rest } = loose;
+  const device = withTemperatureDiscriminant(
+    withSteppedDiscriminant(withBinaryDiscriminant(rest)),
+  ) as DevicePlanDevice;
+  return buildExecutableSteppedLoadDevice(
+    buildExecutableSteppedLoadIntent(device),
+    buildExecutableObservedDeviceState({
+      id: device.id,
+      name: device.name,
+      binaryControl: isBinaryPlanDevice(device) ? device.binaryControl : undefined,
+      targets: [],
+      controlModel: 'stepped_load',
+      selectedStepId: device.selectedStepId,
+      reportedStepId: device.reportedStepId,
+      measuredPowerKw: device.measuredPowerKw,
+    }),
+  );
+};
 
 const createLogger = () => ({
   log: vi.fn(),
@@ -199,7 +222,7 @@ describe('native stepped-load wiring', () => {
     expect(resolveNativeSteppedLoadProfileSuggestion({
       device,
       capabilities: device.capabilities ?? [],
-      capabilityObj: device.capabilitiesObj as NonNullable<HomeyDeviceLike['capabilitiesObj']>,
+      capabilityObj: device.capabilitiesObj as unknown as DeviceCapabilityMap,
     })).toEqual({
       model: 'stepped_load',
       steps: [
@@ -222,7 +245,7 @@ describe('native stepped-load wiring', () => {
     expect(resolveNativeSteppedLoadProfileSuggestion({
       device,
       capabilities: device.capabilities ?? [],
-      capabilityObj: device.capabilitiesObj as NonNullable<HomeyDeviceLike['capabilitiesObj']>,
+      capabilityObj: device.capabilitiesObj as unknown as DeviceCapabilityMap,
     })).toEqual({
       model: 'stepped_load',
       steps: expect.arrayContaining([
@@ -242,7 +265,7 @@ describe('native stepped-load wiring', () => {
     expect(resolveNativeSteppedLoadProfileSuggestion({
       device,
       capabilities: device.capabilities ?? [],
-      capabilityObj: device.capabilitiesObj as NonNullable<HomeyDeviceLike['capabilitiesObj']>,
+      capabilityObj: device.capabilitiesObj as unknown as DeviceCapabilityMap,
     })).toEqual({
       model: 'stepped_load',
       steps: expect.arrayContaining([
@@ -268,7 +291,7 @@ describe('native stepped-load wiring', () => {
     const profile = resolveNativeSteppedLoadProfileSuggestion({
       device,
       capabilities: device.capabilities ?? [],
-      capabilityObj: device.capabilitiesObj as NonNullable<HomeyDeviceLike['capabilitiesObj']>,
+      capabilityObj: device.capabilitiesObj as unknown as DeviceCapabilityMap,
     });
 
     expect(profile).not.toBeUndefined();
@@ -827,7 +850,7 @@ describe('native stepped-load wiring', () => {
         activationRequired: false,
         activationEnabled: true,
       },
-      reason: { code: 'overCapacity', label: 'over capacity' },
+      reason: { code: 'capacity', detail: 'over capacity' },
     });
 
     expect(action).not.toBeNull();
@@ -854,7 +877,7 @@ describe('native stepped-load wiring', () => {
   });
 
   it('triggers the stepped-load flow for configured target_power models without native capability support', async () => {
-    const trigger = vi.fn(async () => undefined);
+    const trigger = vi.fn(async (..._args: unknown[]) => undefined);
     const requestSteppedLoadStep = vi.fn(async (params: {
       deviceId: string;
       desiredStepId: string;
@@ -905,7 +928,7 @@ describe('native stepped-load wiring', () => {
       selectedStepId: '8a',
       desiredStepId: '6a',
       shedAction: 'set_step',
-      reason: { code: 'overCapacity', label: 'over capacity' },
+      reason: { code: 'capacity', detail: 'over capacity' },
     });
 
     expect(action).not.toBeNull();
@@ -938,7 +961,7 @@ describe('native stepped-load wiring', () => {
   });
 
   it('triggers the stepped-load flow for EV target-power presets with native EV wiring', async () => {
-    const trigger = vi.fn(async () => undefined);
+    const trigger = vi.fn(async (..._args: unknown[]) => undefined);
     const requestSteppedLoadStep = vi.fn(async (params: {
       deviceId: string;
       desiredStepId: string;
@@ -998,7 +1021,7 @@ describe('native stepped-load wiring', () => {
         activationEnabled: true,
       },
       shedAction: 'set_step',
-      reason: { code: 'overCapacity', label: 'over capacity' },
+      reason: { code: 'capacity', detail: 'over capacity' },
     });
 
     expect(action).not.toBeNull();

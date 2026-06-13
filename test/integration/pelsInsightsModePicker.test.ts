@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { OPERATING_MODE_SETTING } from '../../lib/utils/settingsKeys';
 import { captureLogger } from '../utils/loggerCapture';
 
@@ -88,6 +88,12 @@ class FakeDeviceBase {
     /* no-op for tests */
   }
 
+  // The driver overrides these at runtime; declared on the fake so the
+  // `new () => FakeDeviceBase`-typed instance exposes the surface the tests drive.
+  async onInit(): Promise<void> {
+    /* overridden by the real driver */
+  }
+
   error(...args: unknown[]): void {
     this.errorCalls.push(args);
   }
@@ -97,13 +103,19 @@ vi.mock('homey', () => ({
   default: { Device: FakeDeviceBase },
 }));
 
-// `vi.mock` is hoisted above imports, so the dynamic import below picks up the
-// mocked `homey` and the driver extends FakeDeviceBase. The driver uses
-// `export =`, which surfaces as the module's default export under esbuild.
-const driverModule = await import('../../drivers/pels_insights/device');
-const PelsInsightsDevice = (driverModule as { default: unknown }).default as new () => FakeDeviceBase;
+type DeviceUnderTest = FakeDeviceBase;
 
-type DeviceUnderTest = InstanceType<typeof PelsInsightsDevice> & FakeDeviceBase;
+// The driver uses `export =`, which surfaces as the module's default export
+// under esbuild. Resolved in `beforeAll` rather than at top level because this
+// file compiles as a CommonJS module (no top-level `await`); `.js` extension is
+// required under nodenext module resolution.
+let PelsInsightsDevice: new () => FakeDeviceBase;
+beforeAll(async () => {
+  // `vi.mock('homey')` is hoisted, so this import picks up the mocked `homey`
+  // and the driver extends FakeDeviceBase.
+  const driverModule = await import('../../drivers/pels_insights/device.js');
+  PelsInsightsDevice = (driverModule as { default: unknown }).default as new () => FakeDeviceBase;
+});
 
 const createDevice = (committedMode: string): DeviceUnderTest => {
   const device = new PelsInsightsDevice() as DeviceUnderTest;
@@ -301,7 +313,9 @@ describe('pels_insights mode-options refresh coalescing', () => {
     reorderPriorities(device, ['Home', 'Away', 'Sleep']);
 
     // Release the in-flight write; the in-flight loop re-runs for the pending state.
-    releaseFirst?.();
+    // The Promise executor runs synchronously, so `releaseFirst` is assigned by now;
+    // assert it to defeat the control-flow narrowing to `null`.
+    releaseFirst!();
     await flushImmediates();
 
     // Both writes applied, serialized; the LAST applied option set is the newest.

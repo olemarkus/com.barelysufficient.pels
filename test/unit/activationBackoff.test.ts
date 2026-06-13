@@ -20,6 +20,7 @@ import {
 } from '../../lib/plan/planConstants';
 import type { PlanContext } from '../../lib/plan/planContext';
 import type { DevicePlanDevice } from '../../lib/plan/planTypes';
+import { buildPlanDevice as baseBuildPlanDevice } from '../utils/planTestUtils';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { applyRestorePlan } from '../../lib/plan/restore';
 import {
@@ -35,10 +36,15 @@ const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => ({
   devices: [],
   desiredForMode: {},
   total: 0,
+  powerKnown: true,
+  hasLivePowerSample: true,
+  powerSampleAgeMs: 0,
+  powerFreshnessState: 'fresh',
   softLimit: 0,
   capacitySoftLimit: 0,
   dailySoftLimit: null,
   softLimitSource: 'capacity',
+  hourBucketKey: '2026-03-08T10',
   budgetKWh: 0,
   usedKWh: 0,
   minutesRemaining: 60,
@@ -48,14 +54,8 @@ const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => ({
   ...overrides,
 });
 
-const buildPlanDevice = (overrides: Partial<DevicePlanDevice> = {}): DevicePlanDevice => ({
-  id: 'dev',
-  name: 'Device',
-  currentState: 'off',
-  plannedState: 'keep',
-  currentTarget: null,
-  ...overrides,
-});
+const buildPlanDevice = (overrides: Partial<DevicePlanDevice> = {}): DevicePlanDevice =>
+  baseBuildPlanDevice({ currentState: 'off', currentTarget: null, ...overrides });
 
 const buildTrackedDevice = (overrides: Record<string, unknown> = {}) => ({
   id: 'dev-1',
@@ -308,7 +308,15 @@ describe('activation backoff', () => {
       state,
       deviceId: 'dev-1',
       nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 2 * 60_000 + 5_000,
-      observation: { binaryControl: { on: false }, available: true, controlCapabilityId: 'onoff' },
+      // `controlCapabilityId` is load-bearing at runtime: `syncActivationPenaltyState`
+      // forwards the observation to `isObservedOff`, whose `hasBinaryCapability` gate
+      // keys off this field. Dropping it makes the off-evidence invisible. The field
+      // is declared on `ActivationBackoffObservation`, so it is set directly.
+      observation: {
+        binaryControl: { on: false },
+        available: true,
+        controlCapabilityId: 'onoff',
+      },
     });
     expect(inactiveSync.attemptOpen).toBe(false);
     expect(inactiveSync.transitions).toMatchObject([{ kind: 'attempt_closed_inactive', deviceId: 'dev-1' }]);
@@ -609,7 +617,14 @@ describe('activation backoff', () => {
       state,
       deviceId: 'dev-1',
       nowTs: start + 20_000,
-      observation: { binaryControl: { on: false }, available: true, controlCapabilityId: 'onoff' },
+      // See above: `controlCapabilityId` gates `isObservedOff`'s binary-capability
+      // check, so the off evidence is only seen when it is present. The field is
+      // declared on `ActivationBackoffObservation`, so it is set directly.
+      observation: {
+        binaryControl: { on: false },
+        available: true,
+        controlCapabilityId: 'onoff',
+      },
     });
     expect(inactiveSync.attemptOpen).toBe(false);
     expect(inactiveSync.transitions).toMatchObject([{ kind: 'attempt_closed_inactive', deviceId: 'dev-1' }]);
@@ -659,8 +674,7 @@ describe('activation backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null }),
-        log: vi.fn(),
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
         logDebug: vi.fn(),
       },
     });
@@ -705,8 +719,7 @@ describe('activation backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null }),
-        log: vi.fn(),
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
         logDebug: vi.fn(),
       },
     });
@@ -892,8 +905,7 @@ describe('activation backoff', () => {
       sheddingActive: false,
       deps: {
         powerTracker: { lastTimestamp: 123 } as PowerTrackerState,
-        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null }),
-        log: vi.fn(),
+        getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
         logDebug: vi.fn(),
       },
     });

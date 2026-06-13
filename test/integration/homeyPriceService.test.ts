@@ -125,7 +125,7 @@ describe('Homey price service', () => {
     const structuredLog = { info: vi.fn() };
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
-      sinks({ structuredLog: structuredLog as unknown as Logger }),
+      sinks({ structuredLog: structuredLog as unknown as PriceServiceLoggingSinks['structuredLog'] }),
       () => timeZone,
       () => null,
       createPriceDataStore(mockHomeyInstance as never),
@@ -215,7 +215,7 @@ describe('Homey price service', () => {
 
     const service = new PriceService(
       mockHomeyInstance as unknown as Homey.App['homey'],
-      sinks({ structuredLog: structuredLog as unknown as Logger }),
+      sinks({ structuredLog: structuredLog as unknown as PriceServiceLoggingSinks['structuredLog'] }),
       () => timeZone,
       () => energyApi,
       createPriceDataStore(mockHomeyInstance as never),

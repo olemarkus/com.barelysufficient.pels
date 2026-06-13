@@ -76,9 +76,9 @@ const enableCapacity = (deviceId: string, limitKw: number) => {
 };
 
 const onoffWrites = (putSpy: ReturnType<typeof vi.spyOn>) =>
-  putSpy.mock.calls.filter(([path]) => typeof path === 'string' && path.endsWith('/capability/onoff'));
+  putSpy.mock.calls.filter(([path]: unknown[]) => typeof path === 'string' && path.endsWith('/capability/onoff'));
 const tempWrites = (putSpy: ReturnType<typeof vi.spyOn>) =>
-  putSpy.mock.calls.filter(([path]) => typeof path === 'string' && path.includes('/capability/target_temperature'));
+  putSpy.mock.calls.filter(([path]: unknown[]) => typeof path === 'string' && path.includes('/capability/target_temperature'));
 
 describe('Airtreatment capacity shedding (SDK-boundary e2e)', () => {
   beforeEach(() => {

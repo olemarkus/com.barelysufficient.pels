@@ -123,7 +123,7 @@ describe('resolveGridTariffFallback', () => {
 
   it('keeps a real cache even when the operator has no static fallback', () => {
     const outcome = resolveGridTariffFallback({
-      ...base, existingData: [{ energyFeeExVat: 11 }], organizationNumber: '999',
+      ...base, existingData: [{ energyFeeExVat: 11 } as { source?: unknown }], organizationNumber: '999',
     });
     expect(outcome.kind).toBe('keepCache');
   });

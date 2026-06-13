@@ -14,7 +14,12 @@ import {
   PELS_MEASURE_STEP_CAPABILITY_ID,
   PELS_TARGET_STEP_CAPABILITY_ID,
 } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
-import type { DeviceControlProfiles, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type {
+  DeviceControlProfiles,
+  SteppedLoadDecoration,
+  SteppedLoadProfile,
+  TargetDeviceSnapshot,
+} from '../../packages/contracts/src/types';
 
 const steppedProfiles: DeviceControlProfiles = {
   'dev-1': {
@@ -27,7 +32,13 @@ const steppedProfiles: DeviceControlProfiles = {
   },
 };
 
-const baseSnapshot = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => ({
+const baseSnapshot = (
+  // `SteppedLoadDecoration` fields (e.g. `selectedStepId`) are not part of the
+  // raw `TargetDeviceSnapshot`; tests seed them to assert the decorator ignores
+  // any persisted decoration on its input. They flow through the spread and the
+  // return is still a plain `TargetDeviceSnapshot`.
+  overrides: Partial<TargetDeviceSnapshot> & Partial<SteppedLoadDecoration> = {},
+): TargetDeviceSnapshot => ({
   id: 'dev-1',
   name: 'Water heater',
   targets: [],
@@ -79,20 +90,20 @@ describe('appDeviceControlHelpers', () => {
   });
 
   it('resolves effective stepped-load profiles with native, stored, snapshot, then suggested precedence', () => {
-    const snapshotProfile = {
+    const snapshotProfile: SteppedLoadProfile = {
       model: 'stepped_load',
       steps: [
         { id: 'off', planningPowerW: 0 },
         { id: 'snapshot', planningPowerW: 1800 },
       ],
-    } as const;
-    const suggestedProfile = {
+    };
+    const suggestedProfile: SteppedLoadProfile = {
       model: 'stepped_load',
       steps: [
         { id: 'off', planningPowerW: 0 },
         { id: 'suggested', planningPowerW: 2200 },
       ],
-    } as const;
+    };
 
     expect(resolveEffectiveSteppedLoadProfile({
       snapshot: baseSnapshot({
@@ -301,14 +312,14 @@ describe('appDeviceControlHelpers', () => {
 
   it('uses target-power snapshot profiles for reported step decoration even when a stored profile exists', () => {
     const runtimeState = createDeviceControlRuntimeState();
-    const snapshotProfile = {
+    const snapshotProfile: SteppedLoadProfile = {
       model: 'stepped_load',
       steps: [
         { id: '0w', planningPowerW: 0 },
         { id: '1500w', planningPowerW: 1500 },
         { id: '3000w', planningPowerW: 3000 },
       ],
-    } as const;
+    };
 
     const decorated = decorateSnapshotWithDeviceControl({
       snapshot: baseSnapshot({

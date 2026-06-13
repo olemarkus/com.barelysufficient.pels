@@ -445,10 +445,10 @@ describe('power tracker integration', () => {
         hourlyAverages: {},
       });
 
-      expect(firstRun.hourlyAverages[`${dayOfWeek}_0`]).toEqual({ sum: 1, count: 1 });
-      expect(firstRun.hourlyAverages[`${dayOfWeek}_1`]).toEqual({ sum: 2, count: 1 });
+      expect(firstRun.hourlyAverages![`${dayOfWeek}_0`]).toEqual({ sum: 1, count: 1 });
+      expect(firstRun.hourlyAverages![`${dayOfWeek}_1`]).toEqual({ sum: 2, count: 1 });
       // Hours not yet aged out must not have a count contribution yet.
-      expect(firstRun.hourlyAverages[`${dayOfWeek}_2`]).toBeUndefined();
+      expect(firstRun.hourlyAverages![`${dayOfWeek}_2`]).toBeUndefined();
 
       // Run 2: clock advances so hours 2 and 3 now age out too, fed the persisted state.
       vi.setSystemTime(dayStart + 4 * 60 * 60 * 1000 + thirtyDaysMs);
@@ -459,10 +459,10 @@ describe('power tracker integration', () => {
       });
 
       // Each hour slot contributed exactly once total — no zero-sum double counting.
-      expect(secondRun.hourlyAverages[`${dayOfWeek}_0`]).toEqual({ sum: 1, count: 1 });
-      expect(secondRun.hourlyAverages[`${dayOfWeek}_1`]).toEqual({ sum: 2, count: 1 });
-      expect(secondRun.hourlyAverages[`${dayOfWeek}_2`]).toEqual({ sum: 3, count: 1 });
-      expect(secondRun.hourlyAverages[`${dayOfWeek}_3`]).toEqual({ sum: 4, count: 1 });
+      expect(secondRun.hourlyAverages![`${dayOfWeek}_0`]).toEqual({ sum: 1, count: 1 });
+      expect(secondRun.hourlyAverages![`${dayOfWeek}_1`]).toEqual({ sum: 2, count: 1 });
+      expect(secondRun.hourlyAverages![`${dayOfWeek}_2`]).toEqual({ sum: 3, count: 1 });
+      expect(secondRun.hourlyAverages![`${dayOfWeek}_3`]).toEqual({ sum: 4, count: 1 });
     } finally {
       vi.useRealTimers();
     }

@@ -14,7 +14,15 @@ import type {
 import type {
   DeferredObjectiveActivePlanHourV1,
   DeferredObjectiveActivePlansV1,
+  DeferredObjectiveActivePlanRevisionV1,
 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
+
+// Legacy persisted revisions predate the `energyNeededKWh`/`planStatus` fields;
+// the backfill path tolerates their absence. Cast each legacy fixture revision
+// so it stands in for that pre-field persisted JSON without re-adding the fields.
+const legacyRevision = (
+  revision: Omit<DeferredObjectiveActivePlanRevisionV1, 'energyNeededKWh' | 'planStatus'>,
+): DeferredObjectiveActivePlanRevisionV1 => revision as DeferredObjectiveActivePlanRevisionV1;
 
 const HOUR_MS = 60 * 60 * 1000;
 // The recorder settles a replan revision only once per clock hour, at/after the
@@ -33,6 +41,7 @@ const makeBucket = (
   startMs,
   endMs: startMs + HOUR_MS,
   durationHours: 1,
+  price: null,
   reserve: false,
   current: false,
   usefulEnergyCapacityKWh: 3,
@@ -67,12 +76,15 @@ const makeHorizon = (
   };
 };
 
-const makeDiag = (overrides: Partial<DeferredObjectiveDiagnostic> & {
+const makeDiag = (overrides: Omit<Partial<DeferredObjectiveDiagnostic>, 'targetTemperatureC' | 'currentTemperatureC'> & {
   deviceId: string;
   deadlineAtMs: number;
+  // Widened to allow ev_soc fixtures to explicitly clear the temperature
+  // fields with `null` (the discriminated union types these as `number`/`never`).
+  targetTemperatureC?: number | null;
+  currentTemperatureC?: number | null;
 }): DeferredObjectiveDiagnostic => {
   const diag: DeferredObjectiveDiagnostic = {
-    deviceId: overrides.deviceId,
     deviceName: 'Water Heater',
     objectiveId: `${overrides.deviceId}:temperature`,
     objectiveKind: 'temperature',
@@ -85,7 +97,6 @@ const makeDiag = (overrides: Partial<DeferredObjectiveDiagnostic> & {
     currentTemperatureC: 50,
     currentValue: 50,
     targetValue: 65,
-    deadlineAtMs: overrides.deadlineAtMs,
     deadlineLocalTime: '06:00',
     energyNeededKWh: 4.5,
     kWhPerUnitBanded: 1.5,
@@ -101,7 +112,7 @@ const makeDiag = (overrides: Partial<DeferredObjectiveDiagnostic> & {
       makeBucket(4 * HOUR_MS, 1.5),
     ]),
     ...overrides,
-  };
+  } as DeferredObjectiveDiagnostic;
   // Keep the unit-agnostic pair consistent with whatever kind-split fields the
   // override set, unless the override set the pair explicitly.
   return {
@@ -1741,8 +1752,8 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
           deviceId: event.deviceId,
           reason: event.reason,
           allocationChanged: event.allocationChanged,
-          hours: event.revision.hours.length,
-          energyNeededKWh: event.revision.energyNeededKWh,
+          hours: event.revision!.hours.length,
+          energyNeededKWh: event.revision!.energyNeededKWh,
           projectedFinishAtMs: event.projectedFinishAtMs,
         });
       },
@@ -1875,7 +1886,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
           previousPlanStatus: event.previousPlanStatus,
           previousWasPending: event.previousWasPending,
           allocationChanged: event.allocationChanged,
-          planStatus: event.revision.planStatus,
+          planStatus: event.revision!.planStatus,
         });
       },
     });
@@ -1919,7 +1930,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     const recorder = new DeferredObjectiveActivePlanRecorder({
       ...deps,
       onRevisionWritten: (event) => {
-        events.push({ planStatus: event.revision.planStatus });
+        events.push({ planStatus: event.revision!.planStatus });
       },
     });
 
@@ -1946,7 +1957,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     const recorder = new DeferredObjectiveActivePlanRecorder({
       ...deps,
       onRevisionWritten: (event) => {
-        events.push({ planStatus: event.revision.planStatus });
+        events.push({ planStatus: event.revision!.planStatus });
       },
     });
 
@@ -1981,7 +1992,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
           previousPlanStatus: event.previousPlanStatus,
           previousWasPending: event.previousWasPending,
           allocationChanged: event.allocationChanged,
-          planStatus: event.revision.planStatus,
+          planStatus: event.revision!.planStatus,
         });
       },
     });
@@ -2028,7 +2039,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       onRevisionWritten: (event) => {
         events.push({
           reason: event.reason,
-          hours: event.revision.hours.length,
+          hours: event.revision!.hours.length,
         });
       },
     });
@@ -2074,7 +2085,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       onRevisionWritten: (event) => {
         events.push({
           reason: event.reason,
-          hours: event.revision.hours.length,
+          hours: event.revision!.hours.length,
         });
       },
     });
@@ -2154,7 +2165,7 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
         events.push({
           reason: event.reason,
           allocationChanged: event.allocationChanged,
-          planStatus: event.revision.planStatus,
+          planStatus: event.revision!.planStatus,
         });
       },
     });
@@ -2208,9 +2219,9 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       onRevisionWritten: (event) => {
         events.push({
           reason: event.reason,
-          hours: event.revision.hours.length,
-          planStatus: event.revision.planStatus,
-          energyNeededKWh: event.revision.energyNeededKWh,
+          hours: event.revision!.hours.length,
+          planStatus: event.revision!.planStatus,
+          energyNeededKWh: event.revision!.energyNeededKWh,
         });
       },
     });
@@ -2280,10 +2291,10 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       onRevisionWritten: (event) => {
         events.push({
           reason: event.reason,
-          hours: event.revision.hours.length,
+          hours: event.revision!.hours.length,
           previousPlanStatus: event.previousPlanStatus,
           allocationChanged: event.allocationChanged,
-          planStatus: event.revision.planStatus,
+          planStatus: event.revision!.planStatus,
         });
       },
     });
@@ -3023,20 +3034,20 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
           startedAtMs: 0,
           pending: false,
           objectiveSignature: '["temperature",65,null,21600000,"soft"]',
-          original: {
+          original: legacyRevision({
             revision: 1,
             revisedAtMs: HOUR_MS,
             computedFromPricesUpTo: 5 * HOUR_MS,
             reason: 'flow_card',
             hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5 }],
-          },
-          latest: {
+          }),
+          latest: legacyRevision({
             revision: 1,
             revisedAtMs: HOUR_MS,
             computedFromPricesUpTo: 5 * HOUR_MS,
             reason: 'flow_card',
             hours: [{ startsAtMs: 2 * HOUR_MS, plannedKWh: 1.5 }],
-          },
+          }),
         },
       },
     };
@@ -3067,20 +3078,20 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
           startedAtMs: 0,
           pending: false,
           objectiveSignature: '["temperature",65,null,21600000,"soft"]',
-          original: {
+          original: legacyRevision({
             revision: 1,
             revisedAtMs: HOUR_MS,
             computedFromPricesUpTo: 5 * HOUR_MS,
             reason: 'flow_card',
             hours: legacyHours,
-          },
-          latest: {
+          }),
+          latest: legacyRevision({
             revision: 1,
             revisedAtMs: HOUR_MS,
             computedFromPricesUpTo: 5 * HOUR_MS,
             reason: 'flow_card',
             hours: legacyHours,
-          },
+          }),
           ...overrides,
         },
       },
@@ -3139,20 +3150,20 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
       // plans. So a legacy plan whose latest was empty gets a fresh
       // commitment from the first observe cycle that actually allocates.
       const persisted = buildLegacyPersisted({
-        original: {
+        original: legacyRevision({
           revision: 1,
           revisedAtMs: HOUR_MS,
           computedFromPricesUpTo: 5 * HOUR_MS,
           reason: 'flow_card',
           hours: [],
-        },
-        latest: {
+        }),
+        latest: legacyRevision({
           revision: 1,
           revisedAtMs: HOUR_MS,
           computedFromPricesUpTo: 5 * HOUR_MS,
           reason: 'flow_card',
           hours: [],
-        },
+        }),
       });
       const { deps } = buildPersistDeps(persisted);
       const recorder = new DeferredObjectiveActivePlanRecorder(deps);

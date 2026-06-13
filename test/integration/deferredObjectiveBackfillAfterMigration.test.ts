@@ -113,6 +113,10 @@ describe('deferred-objective back-fill after an in-session migration retry', () 
       getActivePlansSnapshot: () => null,
       observe: vi.fn(),
       flushIfDirty: vi.fn(() => false),
+      // The migrated task's elapsed deadline fires `onDeadlineReached` → disarm →
+      // `disableDeferredObjectiveInSettings`, which calls `clearForDevice`. Expose
+      // it so that (now wired) lifecycle path runs cleanly instead of crashing.
+      clearForDevice: vi.fn(),
     } as unknown as AppContext['deferredObjectiveActivePlanRecorder'];
 
     // Boot back-fill bailed: marker unset, watermark untouched, history empty, latch set.
@@ -182,6 +186,10 @@ describe('deferred-objective back-fill after an in-session migration retry', () 
       getActivePlansSnapshot: () => null,
       observe: vi.fn(),
       flushIfDirty: vi.fn(() => false),
+      // The migrated task's elapsed deadline fires `onDeadlineReached` → disarm →
+      // `disableDeferredObjectiveInSettings`, which calls `clearForDevice`. Expose
+      // it so that (now wired) lifecycle path runs cleanly instead of crashing.
+      clearForDevice: vi.fn(),
     } as unknown as AppContext['deferredObjectiveActivePlanRecorder'];
 
     getKeysImpl = () => [...store.keys()];
@@ -234,6 +242,10 @@ describe('deferred-objective back-fill after an in-session migration retry', () 
       getActivePlansSnapshot: () => null,
       observe: vi.fn(),
       flushIfDirty: vi.fn(() => false),
+      // The migrated task's elapsed deadline fires `onDeadlineReached` → disarm →
+      // `disableDeferredObjectiveInSettings`, which calls `clearForDevice`. Expose
+      // it so that (now wired) lifecycle path runs cleanly instead of crashing.
+      clearForDevice: vi.fn(),
     } as unknown as AppContext['deferredObjectiveActivePlanRecorder'];
 
     expect(ctx.deferredObjectiveBackfillPending).toBe(true);
@@ -332,6 +344,10 @@ describe('deferred-objective back-fill after an in-session migration retry', () 
       getActivePlansSnapshot: () => null,
       observe: vi.fn(),
       flushIfDirty: vi.fn(() => false),
+      // The migrated task's elapsed deadline fires `onDeadlineReached` → disarm →
+      // `disableDeferredObjectiveInSettings`, which calls `clearForDevice`. Expose
+      // it so that (now wired) lifecycle path runs cleanly instead of crashing.
+      clearForDevice: vi.fn(),
     } as unknown as AppContext['deferredObjectiveActivePlanRecorder'];
 
     const nextTickMs = nextBootMs + 30_000;

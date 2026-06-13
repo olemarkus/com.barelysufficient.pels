@@ -8,12 +8,10 @@ const baseDiagnostic = (overrides: Partial<DeferredObjectiveDiagnostic> & {
   deviceId: string;
   status: DeferredObjectiveDiagnostic['status'];
 }): DeferredObjectiveDiagnostic => ({
-  deviceId: overrides.deviceId,
   deviceName: 'Boiler',
   objectiveId: `${overrides.deviceId}:temperature`,
   objectiveKind: 'temperature',
   enforcement: 'soft',
-  status: overrides.status,
   reasonCode: overrides.reasonCode ?? 'objective_invalid_deadline',
   targetPercent: null,
   currentPercent: null,
@@ -38,7 +36,10 @@ const baseDiagnostic = (overrides: Partial<DeferredObjectiveDiagnostic> & {
   dailyBudgetExhaustedBucketCount: 0,
   expectedStepId: null,
   ...overrides,
-});
+  // Spreading a `Partial<DeferredObjectiveDiagnostic>` (itself a union) widens
+  // the literal back to the union of both kind-discriminated members; the
+  // temperature defaults above keep it a valid temperature diagnostic at runtime.
+} as DeferredObjectiveDiagnostic);
 
 describe('emitDeferredObjectiveStatusTransitions', () => {
   it('publishes only on status changes', () => {

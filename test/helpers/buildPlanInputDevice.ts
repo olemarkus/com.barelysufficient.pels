@@ -22,10 +22,15 @@ import type { PlanInputDevice } from '../../lib/plan/planTypes';
 export function buildPlanInputDevice(
   overrides: Partial<PlanInputDevice> & { id: string },
 ): PlanInputDevice {
+  // The `binaryControl` default is preserved verbatim, so this is the canonical
+  // fixture-constructor boundary (NOT a per-test smuggle): the cast keeps the
+  // exact runtime shape callers rely on rather than routing through
+  // `withBinaryDiscriminant`, whose runtime stripping (binaryControl omitted
+  // without `controlCapabilityId`) would change every consumer's fixture.
   return {
     name: overrides.id,
     targets: [],
     binaryControl: { on: true },
     ...overrides,
-  };
+  } as unknown as PlanInputDevice;
 }

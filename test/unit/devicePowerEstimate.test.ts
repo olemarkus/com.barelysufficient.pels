@@ -1,5 +1,5 @@
 import { estimatePower } from '../../lib/device/devicePowerEstimate';
-import type { HomeyDeviceLike } from '../../lib/utils/types';
+import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 
 const logger = {
   log: vi.fn(),
@@ -8,7 +8,7 @@ const logger = {
   structuredLog: {
     debug: vi.fn(),
   },
-};
+} as unknown as Logger;
 
 const buildState = () => ({
   expectedPowerKwOverrides: {},

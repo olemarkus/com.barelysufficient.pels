@@ -7,12 +7,10 @@ describe('resolveStateOfChargeSnapshot', () => {
       nowMs: Date.parse('2026-03-20T06:00:02.000Z'),
       capabilityObj: {
         evcharger_charging_state: {
-          id: 'evcharger_charging_state',
           value: 'plugged_in_charging',
           lastUpdated: '2026-03-20T06:00:00.000Z',
         },
         measure_soc_level: {
-          id: 'measure_soc_level',
           value: 55,
           lastUpdated: '2026-03-20T06:00:01.000Z',
         },

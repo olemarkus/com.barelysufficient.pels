@@ -26,6 +26,11 @@ import {
 } from '../../lib/objectives/deferredObjectives';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { DevicePlanDevice, PlanInputDevice } from '../../lib/plan/planTypes';
+import {
+  withBinaryDiscriminant,
+  withTemperatureDiscriminant,
+  withSteppedDiscriminant,
+} from '../../lib/plan/planTypes';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
 
@@ -91,15 +96,23 @@ const buildDay = (nowMs: number): DailyBudgetDayPayload => {
   const startUtc: string[] = [];
   const startLocalLabels: string[] = [];
   const plannedKWh: number[] = [];
+  const plannedUncontrolledKWh: number[] = [];
+  const plannedControlledKWh: number[] = [];
   const plannedWeight: number[] = [];
   const allowedCumKWh: number[] = [];
   const actualKWh: number[] = [];
+  const actualControlledKWh: (number | null)[] = [];
+  const actualUncontrolledKWh: (number | null)[] = [];
   for (let i = 0; i < 24; i += 1) {
     startUtc.push(new Date(DAY_START_UTC + i * HOUR_MS).toISOString());
     startLocalLabels.push(String(i).padStart(2, '0'));
     plannedKWh.push(HOURLY_PLANNED_KWH);
+    plannedUncontrolledKWh.push(0);
+    plannedControlledKWh.push(HOURLY_PLANNED_KWH);
     plannedWeight.push(1 / 24);
     actualKWh.push(0);
+    actualControlledKWh.push(0);
+    actualUncontrolledKWh.push(0);
     allowedCumKWh.push((i + 1) * 10);
   }
   return {
@@ -124,7 +137,11 @@ const buildDay = (nowMs: number): DailyBudgetDayPayload => {
       startLocalLabels,
       plannedWeight,
       plannedKWh,
+      plannedUncontrolledKWh,
+      plannedControlledKWh,
       actualKWh,
+      actualControlledKWh,
+      actualUncontrolledKWh,
       allowedCumKWh,
       price: HOURLY_PRICES,
     },
@@ -158,30 +175,31 @@ const buildPowerTracker = (nowMs: number): PowerTrackerState => ({
   },
 });
 
-const buildSteppedDevice = (nowMs: number): PlanInputDevice => ({
-  id: STEP_DEVICE_ID,
-  name: 'Priority Tank',
-  controllable: true,
-  controlModel: 'stepped_load',
-  controlCapabilityId: 'onoff',
-  steppedLoadProfile: STEP_PROFILE,
-  selectedStepId: 'low',
-  binaryControl: { on: true },
-  currentTemperature: 50,
-  lastFreshDataMs: nowMs,
-  observationStale: false,
-  measuredPowerKw: STEP_LOW_KW,
-  expectedPowerKw: STEP_LOW_KW,
-  planningPowerKw: STEP_LOW_KW,
-  hasRecentObservedDrawAtSelectedStep: true,
-  targets: [{ id: 'target_temperature', value: TARGET_C, unit: '°C', min: 30, max: 75, step: 1 }],
-});
+const buildSteppedDevice = (nowMs: number): PlanInputDevice => withSteppedDiscriminant(
+  withTemperatureDiscriminant(withBinaryDiscriminant({
+    id: STEP_DEVICE_ID,
+    name: 'Priority Tank',
+    controllable: true,
+    controlCapabilityId: 'onoff' as const,
+    binaryControl: { on: true },
+    steppedLoadProfile: STEP_PROFILE,
+    selectedStepId: 'low',
+    currentTemperature: 50,
+    lastFreshDataMs: nowMs,
+    observationStale: false,
+    measuredPowerKw: STEP_LOW_KW,
+    expectedPowerKw: STEP_LOW_KW,
+    planningPowerKw: STEP_LOW_KW,
+    hasRecentObservedDrawAtSelectedStep: true,
+    targets: [{ id: 'target_temperature', value: TARGET_C, unit: '°C', min: 30, max: 75, step: 1 }],
+  })),
+) as PlanInputDevice;
 
-const buildLowerPriorityDevice = (nowMs: number): PlanInputDevice => ({
+const buildLowerPriorityDevice = (nowMs: number): PlanInputDevice => withBinaryDiscriminant({
   id: LOWER_PRIORITY_ID,
   name: 'Lower Priority Heater',
   controllable: true,
-  controlCapabilityId: 'onoff',
+  controlCapabilityId: 'onoff' as const,
   binaryControl: { on: false },
   measuredPowerKw: 0,
   expectedPowerKw: LOWER_PRIORITY_RESTORE_KW,
@@ -189,7 +207,7 @@ const buildLowerPriorityDevice = (nowMs: number): PlanInputDevice => ({
   observationStale: false,
   lastFreshDataMs: nowMs,
   targets: [],
-});
+}) as PlanInputDevice;
 
 const buildSettings = (): DeferredObjectiveSettingsV1 => ({
   version: 1,
@@ -208,8 +226,8 @@ const buildSettings = (): DeferredObjectiveSettingsV1 => ({
 type CycleResult = {
   tank: DevicePlanDevice;
   lowerPriorityShed: boolean;
-  softLimitSource: string;
-  dailySoftLimitKw: number | undefined;
+  softLimitSource: string | undefined;
+  dailySoftLimitKw: number | null | undefined;
 };
 
 const runCycleAtHour = async (hour: number): Promise<CycleResult> => {

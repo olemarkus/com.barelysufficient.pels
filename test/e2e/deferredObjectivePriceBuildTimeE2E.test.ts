@@ -96,7 +96,7 @@ const combinedFor = (snapshot: DailyBudgetUiPayload): CombinedPricesV2 => {
   const day = snapshot.days['2026-01-01']!;
   const hours: CombinedPriceEntry[] = day.buckets.startUtc.map((startsAt, index) => ({
     startsAt,
-    total: day.buckets.price[index]!,
+    total: day.buckets.price![index]!,
     isCheap: false,
     isExpensive: false,
   }));
@@ -131,12 +131,19 @@ const diagnosticFor = (plan: DeferredObjectiveHorizonPlan, energyNeededKWh: numb
   currentPercent: null,
   targetTemperatureC: 65,
   currentTemperatureC: 50,
+  currentValue: 50,
+  targetValue: 65,
   deadlineAtMs: DEADLINE_MS,
   deadlineLocalTime: '18:00',
   energyNeededKWh,
   kWhPerUnitBanded: 1.5,
+  kwhPerUnitLearnedMean: 1.5,
   rateConfidence: 'high',
+  displayConfidence: 'high',
   kwhPerUnitSource: 'learned',
+  kwhPerUnitAcceptedSamples: 0,
+  kwhPerUnitLastAcceptedAtMs: null,
+  planningSpeedKw: null,
   horizonBucketCount: plan.plannedBuckets.length,
   dailyBudgetExhaustedBucketCount: 0,
   expectedStepId: plan.expectedStepId,

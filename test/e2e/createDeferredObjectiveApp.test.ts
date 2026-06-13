@@ -125,7 +125,7 @@ describe('createDeferredObjective (app)', () => {
     expect(result).toEqual({ ok: false, reason: 'device_not_planned' });
     expect(readStored().objectivesByDeviceId['heater-1']).toBeUndefined();
     // The same device must not be OFFERED by the candidate list either.
-    expect(app.getCreateSmartTaskCandidateDevices().some((d) => d.id === 'heater-1')).toBe(false);
+    expect(app.getCreateSmartTaskCandidateDevices().some((d: { id: string }) => d.id === 'heater-1')).toBe(false);
     await app.onUninit?.();
   });
 

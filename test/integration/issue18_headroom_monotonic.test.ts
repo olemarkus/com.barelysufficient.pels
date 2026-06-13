@@ -1,17 +1,18 @@
-import type { MockInstance } from 'vitest';
+import type { Mock, MockInstance } from 'vitest';
 
 import { DeviceTransport } from '../../lib/device/deviceTransport';
+import type { Logger } from '../../lib/utils/types';
 import { mockHomeyInstance } from '../mocks/homey';
 import Homey from 'homey';
 
 describe('Issue #18 Reproduction: Expected Power Overlap', () => {
     let deviceManager: DeviceTransport;
     let homeyMock: Homey.App;
-    let loggerMock: {
-        log: vi.Mock;
-        debug: vi.Mock;
-        error: vi.Mock;
-        structuredLog: { info: vi.Mock; error: vi.Mock; debug: vi.Mock };
+    let loggerMock: Logger & {
+        log: Mock;
+        debug: Mock;
+        error: Mock;
+        structuredLog: Logger['structuredLog'] & { info: Mock; error: Mock; debug: Mock };
     };
     // Shared state objects
     let expectedPowerKwOverrides: Record<string, { kw: number; ts: number }>;
@@ -31,7 +32,7 @@ describe('Issue #18 Reproduction: Expected Power Overlap', () => {
                 info: vi.fn(),
                 error: vi.fn(),
                 debug: vi.fn(),
-            },
+            } as unknown as Logger['structuredLog'] & { info: Mock; error: Mock; debug: Mock },
         };
 
         // Initialize state objects

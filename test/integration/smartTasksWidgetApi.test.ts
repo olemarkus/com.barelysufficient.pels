@@ -21,6 +21,7 @@ import type {
 import type { SettingsUiDeferredObjectivePlanHistoryPayload } from '../../packages/contracts/src/settingsUiApi';
 import { toResolvedPlanHistoryEntry } from '../../packages/shared-domain/src/deferredPlanHistoryResolvedView';
 import type { TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
+import type { SmartTaskHistoryHostApi } from '../../packages/contracts/src/widgetHostApi';
 
 const NOW = Date.now();
 const H = 60 * 60 * 1000;
@@ -106,7 +107,7 @@ type AppMock = {
 };
 
 const run = (app: AppMock, timeZone = 'UTC') => getSmartTasks({
-  homey: { app, clock: { getTimezone: () => timeZone } },
+  homey: { app: app as unknown as SmartTaskHistoryHostApi, clock: { getTimezone: () => timeZone } },
 });
 
 // The app's `getDeferredObjectiveActivePlansUiPayload` returns the RESOLVED

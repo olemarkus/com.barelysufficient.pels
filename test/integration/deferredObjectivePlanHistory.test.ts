@@ -24,6 +24,7 @@ import type {
 import {
   resolveDeferredPlanHistoryMissAttribution,
 } from '../../packages/shared-domain/src/deferredPlanHistoryAttribution';
+import { toResolvedPlanHistoryEntry } from '../../packages/shared-domain/src/deferredPlanHistoryResolvedView';
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -51,34 +52,41 @@ const makeHorizon = (
 });
 
 const makeDiag = (
-  overrides: Partial<DeferredObjectiveDiagnostic> & { deviceId: string; deadlineAtMs: number },
+  // `DeferredObjectiveDiagnostic` is a discriminated union whose `ev_soc` member
+  // forbids the temperature fields (`?: never`). Tests build ev_soc fixtures by
+  // setting `objectiveKind: 'ev_soc'` while still nulling the temperature pair, so
+  // the override param decouples the temperature fields from the discriminant
+  // (they are regrouped onto the final cast object below).
+  overrides: Partial<Omit<DeferredObjectiveDiagnostic, 'targetTemperatureC' | 'currentTemperatureC'>>
+    & { deviceId: string; deadlineAtMs: number; targetTemperatureC?: number | null; currentTemperatureC?: number | null },
 ): DeferredObjectiveDiagnostic => {
-  const diag: DeferredObjectiveDiagnostic = {
-    deviceId: overrides.deviceId,
+  // The override spread is `Partial<DeferredObjectiveDiagnostic>` (a union), which
+  // loosens the temperature discriminant; assert the temperature member back after
+  // the spread rather than annotating mid-construction.
+  const diag = {
     deviceName: 'Water Heater',
     objectiveId: `${overrides.deviceId}:temperature`,
-    objectiveKind: 'temperature',
-    enforcement: 'soft',
-    status: 'on_track',
-    reasonCode: 'planned_with_margin',
+    objectiveKind: 'temperature' as const,
+    enforcement: 'soft' as const,
+    status: 'on_track' as const,
+    reasonCode: 'planned_with_margin' as const,
     targetPercent: null,
     currentPercent: null,
     targetTemperatureC: 65,
     currentTemperatureC: 50,
     currentValue: 50,
     targetValue: 65,
-    deadlineAtMs: overrides.deadlineAtMs,
     deadlineLocalTime: '06:00',
     energyNeededKWh: 22.5,
     kWhPerUnitBanded: 1.5,
-    rateConfidence: 'high',
-    kwhPerUnitSource: 'learned',
+    rateConfidence: 'high' as const,
+    kwhPerUnitSource: 'learned' as const,
     horizonBucketCount: 6,
     dailyBudgetExhaustedBucketCount: 0,
     expectedStepId: 'low',
     horizonPlan: makeHorizon(),
     ...overrides,
-  };
+  } as DeferredObjectiveDiagnostic;
   // Keep the unit-agnostic pair consistent with whatever kind-split fields the
   // override set, unless the override set the pair explicitly.
   return {
@@ -2250,7 +2258,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         finalProgress: 51,
         kWhPerUnit: 1.5,
         resolvePrice: (hourStartMs) => (hourStartMs === HOUR_MS
-          ? { priceValue: 1.0, tone: 'expensive' }
+          ? { priceValue: 1.0, tone: 'expensive', costDisplay: { unit: 'kr', divisor: 100 } }
           : null),
       });
       expect(flush).not.toBeNull();
@@ -2276,7 +2284,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         opening: null,
         finalProgress: 51,
         kWhPerUnit: 1.5,
-        resolvePrice: () => ({ priceValue: 1.0, tone: 'expensive' }),
+        resolvePrice: () => ({ priceValue: 1.0, tone: 'expensive', costDisplay: { unit: 'kr', divisor: 100 } }),
       });
       expect(flush).toBeNull();
     });
@@ -2305,8 +2313,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         finalProgress: 51,
         kWhPerUnit: 1.5,
         resolvePrice: (hourStartMs) => (hourStartMs === HOUR_MS
-          ? { priceValue: 1.0, tone: 'expensive' }
-          : { priceValue: 2.0, tone: 'normal' }),
+          ? { priceValue: 1.0, tone: 'expensive', costDisplay: { unit: 'kr', divisor: 100 } }
+          : { priceValue: 2.0, tone: 'normal', costDisplay: { unit: 'kr', divisor: 100 } }),
       });
       expect(flush).not.toBeNull();
 
@@ -2324,8 +2332,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
         nowMs: 3 * HOUR_MS + 5 * 60_000,
         kWhPerUnit: 1.5,
         resolvePrice: (hourStartMs) => (hourStartMs === HOUR_MS
-          ? { priceValue: 1.0, tone: 'expensive' }
-          : { priceValue: 2.0, tone: 'normal' }),
+          ? { priceValue: 1.0, tone: 'expensive', costDisplay: { unit: 'kr', divisor: 100 } }
+          : { priceValue: 2.0, tone: 'normal', costDisplay: { unit: 'kr', divisor: 100 } }),
       });
       expect(replay).not.toBeNull();
       // No contribution may carry the just-closed hour's anchor — this is
@@ -2800,8 +2808,8 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       // window and reports `capped_idle`; the recorder's
       // getStallClassification bridge promotes the run to
       // met/stalled_device_capped instead of finalising it as missed.
-      const { createIdleClassifier } = await import('../../lib/observer/idleClassifier');
-      const { CAPPED_IDLE_MIN_WINDOW_MS } = await import('../../lib/observer/idleDetector');
+      const { createIdleClassifier } = await import('../../lib/observer/idleClassifier.js');
+      const { CAPPED_IDLE_MIN_WINDOW_MS } = await import('../../lib/observer/idleDetector.js');
 
       const classifier = createIdleClassifier();
       const { deps, saved } = buildPersistDeps();
@@ -2824,7 +2832,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
           measuredPowerKw: drawing ? 1.2 : 0,
           currentTemperature: 58,
           currentTarget: 65,
-          shedAction: undefined,
+          plannedState: 'keep',
           controlCapabilityId: 'onoff',
         }], cursor);
         cursor += tickMs;
@@ -3067,7 +3075,7 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
       expect(entry.finalPlan?.energyExpectedKWh).toBeCloseTo(3.0);
 
       // 2. UI render path (reads the persisted entry only — no live hint).
-      const uiAttribution = resolveDeferredPlanHistoryMissAttribution(entry);
+      const uiAttribution = resolveDeferredPlanHistoryMissAttribution(toResolvedPlanHistoryEntry(entry));
       expect(uiAttribution.cause).toBe('energy_underestimate');
       expect(uiAttribution.deliveredAtOrAbovePlan).toBe(true);
 

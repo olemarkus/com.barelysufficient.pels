@@ -6,20 +6,21 @@ import {
 import { resolveDeferredAvoidDeviceIds } from '../../lib/objectives/deferredObjectives/decorationController';
 import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives';
 import type { DeferredObjectiveHorizonPlan } from '../../lib/objectives/deferredObjectives';
-import type { PlanInputDevice } from '../../lib/plan/planTypes';
+import type { PlanInputDevice, BinaryControlDiscriminantProbe } from '../../lib/plan/planTypes';
+import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 
-const buildEvDevice = (overrides: Partial<PlanInputDevice> & { id: string }): PlanInputDevice => ({
-  id: overrides.id,
+const buildEvDevice = (
+  overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & { id: string },
+): PlanInputDevice => withBinaryDiscriminant({
   name: overrides.id,
   targets: [],
   deviceClass: 'evcharger',
   controlCapabilityId: 'evcharger_charging',
   binaryControl: { on: true },
   ...overrides,
-});
+}) as PlanInputDevice;
 
 const buildDiagnostic = (overrides: Partial<DeferredObjectiveDiagnostic> & { deviceId: string }): DeferredObjectiveDiagnostic => ({
-  deviceId: overrides.deviceId,
   objectiveId: `${overrides.deviceId}:temperature`,
   objectiveKind: 'temperature',
   enforcement: 'soft',
@@ -38,7 +39,7 @@ const buildDiagnostic = (overrides: Partial<DeferredObjectiveDiagnostic> & { dev
   horizonBucketCount: 6,
   expectedStepId: 'low',
   ...overrides,
-});
+} as DeferredObjectiveDiagnostic);
 
 const buildHorizonPlan = (overrides: Partial<DeferredObjectiveHorizonPlan> = {}): DeferredObjectiveHorizonPlan => ({
   objectiveId: 'dev:temperature',

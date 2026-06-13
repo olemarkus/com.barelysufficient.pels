@@ -1,4 +1,5 @@
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { Mock } from 'vitest';
+import type { EvObservedProbe, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { Logger } from '../../lib/utils/types';
 import {
   getCanSetControl,
@@ -41,9 +42,9 @@ const createLogger = () => ({
     debug: vi.fn(),
   },
 }) as unknown as Logger & {
-  log: vi.Mock;
-  debug: vi.Mock;
-  error: vi.Mock;
+  log: Mock;
+  debug: Mock;
+  error: Mock;
 };
 
 const mockRestClient = { get: vi.fn(), put: vi.fn() };
@@ -143,12 +144,12 @@ describe('device manager support helpers', () => {
 
   it('logs EV command and snapshot changes', () => {
     const logger = createLogger();
-    const previousSnapshot: TargetDeviceSnapshot[] = [
-      { id: 'ev1', name: 'EV 1', deviceClass: 'evcharger', binaryControl: { on: false }, evChargingState: 'plugged_in_paused', powerKw: 0, controlCapabilityId: 'evcharger_charging' },
+    const previousSnapshot: (TargetDeviceSnapshot & EvObservedProbe)[] = [
+      { id: 'ev1', name: 'EV 1', deviceClass: 'evcharger', targets: [], binaryControl: { on: false }, evChargingState: 'plugged_in_paused', powerKw: 0, controlCapabilityId: 'evcharger_charging' },
     ];
-    const nextSnapshot: TargetDeviceSnapshot[] = [
-      { id: 'ev1', name: 'EV 1', deviceClass: 'evcharger', binaryControl: { on: true }, evChargingState: 'plugged_in_charging', powerKw: 7.2, controlCapabilityId: 'evcharger_charging' },
-      { id: 'ev2', name: 'EV 2', deviceClass: 'evcharger', binaryControl: { on: false }, evChargingState: 'plugged_out', powerKw: 0, controlCapabilityId: 'evcharger_charging' },
+    const nextSnapshot: (TargetDeviceSnapshot & EvObservedProbe)[] = [
+      { id: 'ev1', name: 'EV 1', deviceClass: 'evcharger', targets: [], binaryControl: { on: true }, evChargingState: 'plugged_in_charging', powerKw: 7.2, controlCapabilityId: 'evcharger_charging' },
+      { id: 'ev2', name: 'EV 2', deviceClass: 'evcharger', targets: [], binaryControl: { on: false }, evChargingState: 'plugged_out', powerKw: 0, controlCapabilityId: 'evcharger_charging' },
     ];
 
     logEvCapabilityRequest({

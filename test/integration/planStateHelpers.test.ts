@@ -45,7 +45,7 @@ describe('isPlanActivelyConverging', () => {
         lastAttemptMs: Date.now(),
         retryCount: 0,
         nextRetryAtMs: Date.now(),
-        status: 'pending',
+        status: 'waiting_confirmation',
       },
     };
 

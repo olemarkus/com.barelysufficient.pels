@@ -150,7 +150,7 @@ describe('starvation rescue widget browser', () => {
     const homey = buildHomey({
       api: vi.fn(async () => ({ state: 'empty', subtitle: STARVATION_RESCUE_WIDGET_COPY.emptySubtitle })),
     });
-    (window as WidgetWindow).onHomeyReady?.(homey);
+    (window as WidgetWindow).onHomeyReady?.(homey as never);
     controller!.bootstrap(homey);
     await flushPromises();
 

@@ -467,7 +467,7 @@ describe('WeatherCollector', () => {
   it('does NOT start the controlled split while a stale temperature backfill is about to re-run', async () => {
     // meterKwhBackfillDone is stale-true but backfillVersion is old → the temp
     // backfill will re-run and clear markers; the controlled split must wait.
-    const fetchInsights = vi.fn(async () => ({ step: 6 * HOUR_MS, values: [] }));
+    const fetchInsights = vi.fn(async (_path: string) => ({ step: 6 * HOUR_MS, values: [] }));
     const { collector, store, persisted } = buildHarness({
       isManagedDevice: vi.fn(() => true),
       fetchInsights,

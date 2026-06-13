@@ -7,10 +7,11 @@ import {
   resolveEvBlockReasonForDevice,
 } from '../../packages/shared-domain/src/commandableNow';
 import { EV_COMMANDABLE_NOW_REASONS } from '../../packages/shared-domain/src/commandableNowReason';
+import type { CommandableNowResolveInput } from '../../packages/shared-domain/src/commandableNow';
 
 const EV = { controlCapabilityId: 'evcharger_charging' as const };
 
-const evSub = (dev: { deviceClass?: string; controlCapabilityId?: string; evChargingState?: string }) => {
+const evSub = (dev: CommandableNowResolveInput) => {
   const { evBlockReason, evSessionInactive, evChargerNotResumable } = resolveCommandableNow({ dev });
   return { evBlockReason, evSessionInactive, evChargerNotResumable };
 };
@@ -48,7 +49,7 @@ describe('resolveCommandableNow — EV plug-state sub-classification', () => {
   });
 
   it('treats the commandable states as not-blocked', () => {
-    for (const evChargingState of ['plugged_in_charging', 'plugged_in_paused']) {
+    for (const evChargingState of ['plugged_in_charging', 'plugged_in_paused'] as const) {
       expect(evSub({ ...EV, evChargingState })).toEqual({
         evBlockReason: null,
         evSessionInactive: false,
@@ -82,7 +83,7 @@ describe('device-shaped EV resolvers — dual-read prefers the materialized flat
     // Materialized says inactive; raw (stale) says charging. The producer-resolved
     // value must win so consumers never re-derive from the raw plug-state.
     const dev = {
-      evChargingState: 'plugged_in_charging',
+      evChargingState: 'plugged_in_charging' as const,
       evBlockReason: EV_COMMANDABLE_NOW_REASONS.plugged_out,
       evSessionInactive: true,
       evChargerNotResumable: false,

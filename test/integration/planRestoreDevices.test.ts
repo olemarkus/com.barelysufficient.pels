@@ -9,47 +9,36 @@ import {
   getSteppedRestoreCandidates,
   markOffDevicesStayOff,
 } from '../../lib/plan/restore/devices';
-import type { DevicePlanDevice, TemperatureDiscriminantProbe } from '../../lib/plan/planTypes';
-import { withTemperatureDiscriminant } from '../../lib/plan/planTypes';
+import type {
+  DevicePlanDevice,
+  TemperatureDiscriminantProbe,
+  BinaryControlDiscriminantProbe,
+  SteppedDiscriminantProbe,
+} from '../../lib/plan/planTypes';
+import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
+import { buildPlanDevice } from '../utils/planTestUtils';
 import { legacyDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
 
 const makeDevice = (
-  overrides: Partial<DevicePlanDevice> & TemperatureDiscriminantProbe & {
-    reason?: DevicePlanDevice['reason'] | string;
-  },
+  overrides: Partial<DevicePlanDevice>
+    & TemperatureDiscriminantProbe
+    & SteppedDiscriminantProbe
+    & BinaryControlDiscriminantProbe
+    & {
+      reason?: DevicePlanDevice['reason'] | string;
+      evChargingState?: string;
+    },
 ): DevicePlanDevice => {
-  let reason = legacyDeviceReason('keep')!;
-  if (typeof overrides.reason === 'string') {
-    reason = legacyDeviceReason(overrides.reason)!;
-  } else if (overrides.reason !== undefined) {
-    reason = overrides.reason;
-  }
-  const { currentTarget, plannedTarget, reason: _reason, ...rest } = overrides;
-  const base = {
-    id: overrides.id ?? 'dev',
-    name: overrides.name ?? 'Device',
-    currentState: overrides.currentState ?? 'off',
-    plannedState: overrides.plannedState ?? 'keep',
-    controlCapabilityId: 'onoff' as const,
+  const { binaryControl, ...rest } = overrides;
+  const device = buildPlanDevice({
+    // `makeDevice` defaults `currentState` to `'off'`; `buildPlanDevice` defaults
+    // to `'on'`, so set it explicitly before the spread can override it.
+    currentState: 'off',
+    controlCapabilityId: 'onoff',
     ...rest,
-  };
-  // A fixture carrying a temperature target is a temperature device: stamp
-  // `deviceType` (so the `isTemperaturePlanDevice` guard fires) and regroup the
-  // cluster onto `TemperatureKind`, mirroring the production producer. Binary
-  // fixtures (no target signal) stay non-temperature.
-  const hasTemperatureSignal = currentTarget != null || plannedTarget != null;
-  if (!hasTemperatureSignal) {
-    return { ...base, reason } as DevicePlanDevice;
-  }
-  return {
-    ...withTemperatureDiscriminant({
-      deviceType: 'temperature' as const,
-      ...base,
-      currentTarget: currentTarget ?? null,
-      ...(plannedTarget != null ? { plannedTarget } : {}),
-    }),
-    reason,
-  } as DevicePlanDevice;
+  });
+  if (binaryControl === undefined) return device;
+  return withBinaryDiscriminant({ ...device, binaryControl }) as DevicePlanDevice;
 };
 
 describe('plan restore device helpers', () => {
@@ -66,16 +55,16 @@ describe('plan restore device helpers', () => {
     expect(getOffDevices(devices).map((device) => device.id)).toEqual(['low', 'high']);
     expect(getOnDevices(devices, (deviceId) => (
       deviceId === 'temp-blocked'
-        ? { action: 'set_temperature', temperature: 21 }
-        : { action: 'turn_off', temperature: null }
+        ? { action: 'set_temperature', temperature: 21, stepId: null }
+        : { action: 'turn_off', temperature: null, stepId: null }
     )).map((device) => device.id)).toEqual(['on', 'na']);
     expect(getOnDevices(
       [makeDevice({ id: 'temp', currentState: 'on', currentTarget: 23, plannedTarget: 23 })],
-      () => ({ action: 'set_temperature', temperature: 20 }),
+      () => ({ action: 'set_temperature', temperature: 20, stepId: null }),
     ).map((device) => device.id)).toEqual(['temp']);
     expect(getOnDevices(
       [makeDevice({ id: 'temp', currentState: 'on', currentTarget: 20, plannedTarget: 20 })],
-      () => ({ action: 'set_temperature', temperature: 20 }),
+      () => ({ action: 'set_temperature', temperature: 20, stepId: null }),
     )).toEqual([]);
   });
 
@@ -86,7 +75,6 @@ describe('plan restore device helpers', () => {
         id: 'stepped-higher-priority',
         priority: 1,
         currentState: 'off',
-        controlModel: 'stepped_load',
         steppedLoadProfile: {
           model: 'stepped_load',
           steps: [
@@ -101,7 +89,6 @@ describe('plan restore device helpers', () => {
         id: 'stepped-lower-priority',
         priority: 8,
         currentState: 'on',
-        controlModel: 'stepped_load',
         steppedLoadProfile: {
           model: 'stepped_load',
           steps: [
@@ -130,7 +117,6 @@ describe('plan restore device helpers', () => {
         id: 'fresh-step',
         priority: 3,
         currentState: 'on',
-        controlModel: 'stepped_load',
         steppedLoadProfile: {
           model: 'stepped_load',
           steps: [
@@ -146,7 +132,6 @@ describe('plan restore device helpers', () => {
         priority: 4,
         currentState: 'on',
         observationStale: true,
-        controlModel: 'stepped_load',
         steppedLoadProfile: {
           model: 'stepped_load',
           steps: [
@@ -161,7 +146,6 @@ describe('plan restore device helpers', () => {
         id: 'unknown-step-off',
         priority: 2,
         currentState: 'off',
-        controlModel: 'stepped_load',
         steppedLoadProfile: {
           model: 'stepped_load',
           steps: [
@@ -176,7 +160,6 @@ describe('plan restore device helpers', () => {
         id: 'high-step-off',
         priority: 5,
         currentState: 'off',
-        controlModel: 'stepped_load',
         steppedLoadProfile: {
           model: 'stepped_load',
           steps: [
@@ -191,7 +174,6 @@ describe('plan restore device helpers', () => {
         id: 'unknown-step-on',
         priority: 3,
         currentState: 'on',
-        controlModel: 'stepped_load',
         steppedLoadProfile: {
           model: 'stepped_load',
           steps: [
@@ -207,7 +189,6 @@ describe('plan restore device helpers', () => {
         priority: 7,
         currentState: 'on',
         controlCapabilityId: undefined,
-        controlModel: 'stepped_load',
         steppedLoadProfile: {
           model: 'stepped_load',
           steps: [
@@ -259,7 +240,7 @@ describe('plan restore device helpers', () => {
     expect(reasonText(getInactiveReason(makeDevice({
       controlCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_out',
-    })))).toBe('inactive (charger is unplugged)');
+    })) ?? undefined)).toBe('inactive (charger is unplugged)');
     expect(getInactiveReason(makeDevice({
       controlCapabilityId: 'evcharger_charging',
       evChargingState: 'plugged_in_paused',
@@ -268,7 +249,7 @@ describe('plan restore device helpers', () => {
 
     const deviceMap = new Map<string, DevicePlanDevice>([
       ['dev1', makeDevice({ id: 'dev1', name: 'Device 1', powerKw: 1.1 })],
-      ['dev2', makeDevice({ id: 'dev2', name: 'Device 2', reason: 'shed due to capacity', powerKw: 2.2 })],
+      ['dev2', makeDevice({ id: 'dev2', name: 'Device 2', reason: legacyDeviceReason('shed due to capacity')!, powerKw: 2.2 })],
       ['ev1', makeDevice({
         id: 'ev1',
         name: 'EV 1',
@@ -286,8 +267,10 @@ describe('plan restore device helpers', () => {
       timing: {
         activeOvershoot: false,
         inCooldown: true,
+        inStartupStabilization: false,
         restoreCooldownSeconds: 12,
         shedCooldownRemainingSec: 7,
+        startupStabilizationRemainingSec: null,
       },
       setDevice,
     });
@@ -300,15 +283,17 @@ describe('plan restore device helpers', () => {
       reason: legacyDeviceReason('inactive (charger is unplugged)'),
     }));
     setDevice.mockClear();
-    deviceMap.set('dev2', makeDevice({ id: 'dev2', name: 'Device 2', reason: 'shed due to capacity', powerKw: 2.2 }));
+    deviceMap.set('dev2', makeDevice({ id: 'dev2', name: 'Device 2', reason: legacyDeviceReason('shed due to capacity')!, powerKw: 2.2 }));
 
     markOffDevicesStayOff({
       deviceMap,
       timing: {
         activeOvershoot: false,
         inCooldown: false,
+        inStartupStabilization: false,
         restoreCooldownSeconds: 9,
         shedCooldownRemainingSec: null,
+        startupStabilizationRemainingSec: null,
       },
       setDevice,
       reasonOverride: (device) => ({ code: 'other', text: `blocked ${device.id}` }),

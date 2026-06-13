@@ -1,6 +1,21 @@
 import { normalizeEvBoostSettings } from '../../packages/contracts/src/evBoost';
 import { buildBoostPlanDeviceFields, resolveEvBoostActive } from '../../lib/plan/planEvBoost';
 import { buildPlanInputDevice, steppedInputDevice } from '../utils/planTestUtils';
+import {
+  type EvDiscriminantProbe,
+  withEvDiscriminant,
+} from '../../lib/plan/planTypes';
+import type { PlanInputDevice } from '../../lib/plan/planTypes';
+
+// The EV cluster (`evBoost` / `stateOfCharge`) moved off `PlanInputDevice`'s base
+// onto the orthogonal `EvKind` cluster, so the shared builders' params no longer
+// accept those fields. Split the cluster off, build through the shared helper,
+// then re-attach it via `withEvDiscriminant`. (`evChargingState` is observer-owned
+// and forwarded through the shared builders' existing `evChargingState?` slot.)
+const withEvCluster = (
+  device: PlanInputDevice,
+  cluster: EvDiscriminantProbe,
+): PlanInputDevice => withEvDiscriminant({ ...device, ...cluster }) as PlanInputDevice;
 
 describe('normalizeEvBoostSettings', () => {
   it('keeps enabled entries with finite in-range thresholds', () => {
@@ -15,15 +30,27 @@ describe('normalizeEvBoostSettings', () => {
 });
 
 describe('resolveEvBoostActive', () => {
-  const buildEvDevice = (overrides = {}) => steppedInputDevice({
-    deviceClass: 'evcharger',
-    deviceType: 'onoff',
-    targets: [],
-    evChargingState: 'plugged_in_charging',
-    stateOfCharge: { percent: 32, status: 'fresh' as const },
-    evBoost: { enabled: true, boostBelowPercent: 40 },
-    ...overrides,
-  });
+  const buildEvDevice = (
+    overrides: Parameters<typeof steppedInputDevice>[0] & EvDiscriminantProbe & { forceBoostActive?: boolean } = {},
+  ): PlanInputDevice => {
+    const { stateOfCharge, evBoost, evChargingState, ...rest } = overrides;
+    // Preserve explicit-`undefined` overrides (`evBoost: undefined`,
+    // `stateOfCharge: undefined`) rather than defaulting them via destructuring.
+    const cluster: EvDiscriminantProbe = {
+      stateOfCharge: 'stateOfCharge' in overrides ? stateOfCharge : { percent: 32, status: 'fresh' as const },
+      evBoost: 'evBoost' in overrides ? evBoost : { enabled: true, boostBelowPercent: 40 },
+    };
+    return withEvCluster(
+      steppedInputDevice({
+        deviceClass: 'evcharger',
+        deviceType: 'onoff',
+        targets: [],
+        evChargingState: evChargingState ?? 'plugged_in_charging',
+        ...rest,
+      }),
+      cluster,
+    );
+  };
 
   it('activates for stepped EV chargers below the threshold with fresh SoC', () => {
     expect(resolveEvBoostActive(buildEvDevice())).toBe(true);
@@ -64,15 +91,20 @@ describe('resolveEvBoostActive', () => {
   });
 
   it('does not activate for non-stepped or non-EV devices', () => {
-    expect(resolveEvBoostActive(buildPlanInputDevice({
-      deviceClass: 'evcharger',
-      evBoost: { enabled: true, boostBelowPercent: 40 },
-      stateOfCharge: { percent: 20, status: 'fresh' },
-    }))).toBe(false);
-    expect(resolveEvBoostActive(steppedInputDevice({
-      evBoost: { enabled: true, boostBelowPercent: 40 },
-      stateOfCharge: { percent: 20, status: 'fresh' },
-    }))).toBe(false);
+    expect(resolveEvBoostActive(withEvCluster(
+      buildPlanInputDevice({ deviceClass: 'evcharger' }),
+      {
+        evBoost: { enabled: true, boostBelowPercent: 40 },
+        stateOfCharge: { percent: 20, status: 'fresh' },
+      },
+    ))).toBe(false);
+    expect(resolveEvBoostActive(withEvCluster(
+      steppedInputDevice({}),
+      {
+        evBoost: { enabled: true, boostBelowPercent: 40 },
+        stateOfCharge: { percent: 20, status: 'fresh' },
+      },
+    ))).toBe(false);
   });
 });
 

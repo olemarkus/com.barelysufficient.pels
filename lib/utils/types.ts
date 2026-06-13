@@ -41,6 +41,10 @@ export type FlowHomeyLike = {
 };
 
 export type CapabilityValue<T> = {
+    // The capability id, as Homey's real `capabilitiesObj` entries carry it
+    // (the map key duplicates it). Optional so production reads stay unaffected;
+    // present here so test fixtures mirroring the SDK shape typecheck.
+    id?: string;
     value?: T;
     units?: string;
     min?: number;

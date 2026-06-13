@@ -1,11 +1,14 @@
+import type { Mock } from 'vitest';
 import CapacityGuard from '../../lib/power/capacityGuard';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { PlanContext } from '../../lib/plan/planContext';
 import { SOFT_OVERSHOOT_PERSIST_MS } from '../../lib/plan/planConstants';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
-import type { PlanInputDevice } from '../../lib/plan/planTypes';
+import type { BinaryControlDiscriminantProbe, PlanInputDevice } from '../../lib/plan/planTypes';
+import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { buildSheddingPlan } from '../../lib/plan/shedding';
+import type { SheddingDeps } from '../../lib/plan/shedding/types';
 import { resolveSoftOvershootDecision } from '../../lib/plan/planOvershoot';
 import { reasonText } from '../utils/deviceReasonTestUtils';
 
@@ -14,16 +17,19 @@ import { reasonText } from '../utils/deviceReasonTestUtils';
 // pending state.
 const emptyPendingStore = createPendingBinaryCommandStore({});
 
-const buildDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice => ({
-  id: 'dev',
-  name: 'Device',
-  targets: [],
-  // Real parse output resolves a binary control capability for a sheddable
-  // device; shed candidacy gates on writability (`isCanSetControl`), so model
-  // that here. A cap-less device overrides with `controlCapabilityId: undefined`.
-  controlCapabilityId: 'onoff',
-  ...overrides,
-});
+const buildDevice = (
+  overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe = {},
+): PlanInputDevice =>
+  withBinaryDiscriminant({
+    id: 'dev',
+    name: 'Device',
+    targets: [],
+    // Real parse output resolves a binary control capability for a sheddable
+    // device; shed candidacy gates on writability (`isCanSetControl`), so model
+    // that here. A cap-less device overrides with `controlCapabilityId: undefined`.
+    controlCapabilityId: 'onoff',
+    ...overrides,
+  }) as PlanInputDevice;
 
 const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => {
   const total = overrides.total ?? null;
@@ -31,8 +37,6 @@ const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => {
   return {
     devices: [],
     desiredForMode: {},
-    total,
-    powerKnown,
     hasLivePowerSample: overrides.hasLivePowerSample ?? powerKnown,
     powerSampleAgeMs: overrides.powerSampleAgeMs ?? (powerKnown ? 0 : null),
     powerFreshnessState: overrides.powerFreshnessState ?? (powerKnown ? 'fresh' : 'stale_hold'),
@@ -40,6 +44,7 @@ const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => {
     capacitySoftLimit: 0,
     dailySoftLimit: null,
     softLimitSource: 'capacity',
+    hourBucketKey: '2024-01-01T00',
     budgetKWh: 0,
     usedKWh: 0,
     minutesRemaining: 60,
@@ -219,7 +224,7 @@ describe('buildSheddingPlan', () => {
     expect(overshootDecision.actionable).toBe(false);
     expect(result.shedSet.size).toBe(0);
     expect(capacityGuard.checkShortfall).toHaveBeenCalledTimes(1);
-    const [hasCandidates, deficitKw] = (capacityGuard.checkShortfall as unknown as vi.Mock).mock.calls[0];
+    const [hasCandidates, deficitKw] = (capacityGuard.checkShortfall as unknown as Mock).mock.calls[0];
     expect(hasCandidates).toBe(false);
     expect(deficitKw).toBeCloseTo(0.2, 6);
     expect(result.guardInShortfall).toBe(true);
@@ -332,8 +337,8 @@ describe('buildSheddingPlan', () => {
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         getShedBehavior: (deviceId: string) => (
           deviceId === 'dev-at-temp'
-            ? { action: 'set_temperature', temperature: 15 }
-            : { action: 'turn_off', temperature: null }
+            ? { action: 'set_temperature', temperature: 15, stepId: null }
+            : { action: 'turn_off', temperature: null, stepId: null }
         ),
         getPriorityForDevice: (deviceId: string) => (
           { 'dev-nonrecent': 100, 'dev-recent': 100, 'dev-at-temp': 80 }[deviceId] ?? 100
@@ -347,7 +352,7 @@ describe('buildSheddingPlan', () => {
     expect(result.shedSet.has('dev-recent')).toBe(false);
     expect(result.shedSet.has('dev-at-temp')).toBe(false);
     expect(capacityGuard.checkShortfall).toHaveBeenCalledTimes(1);
-    const [hasCandidates, deficitKw] = (capacityGuard.checkShortfall as unknown as vi.Mock).mock.calls[0];
+    const [hasCandidates, deficitKw] = (capacityGuard.checkShortfall as unknown as Mock).mock.calls[0];
     expect(hasCandidates).toBe(true);
     expect(deficitKw).toBeCloseTo(0.4, 6);
   });
@@ -396,7 +401,7 @@ describe('buildSheddingPlan', () => {
         capacityGuard,
         powerTracker: { lastTimestamp: 789 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
-        getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'dev-high' ? 1 : 3),
         log: vi.fn(),
         debugStructured: vi.fn(),
@@ -451,7 +456,7 @@ describe('buildSheddingPlan', () => {
         capacityGuard,
         powerTracker: { lastTimestamp: 456 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
-        getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'dev-restore' ? 100 : 50),
         log: vi.fn(),
         debugStructured: vi.fn(),
@@ -500,7 +505,7 @@ describe('buildSheddingPlan', () => {
         capacityGuard,
         powerTracker: { lastTimestamp: 999 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
-        getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
         debugStructured: vi.fn(),
@@ -566,7 +571,7 @@ describe('buildSheddingPlan', () => {
     expect(reasonText(result.shedReasons.get('dev-step-unknown'))).toBe('shed due to capacity');
     expect(capacityGuard.checkShortfall).toHaveBeenCalledTimes(1);
     const [hasCandidates, deficitKw, capacityStateSummary]
-      = (capacityGuard.checkShortfall as unknown as vi.Mock).mock.calls[0];
+      = (capacityGuard.checkShortfall as unknown as Mock).mock.calls[0];
     expect(hasCandidates).toBe(false);
     expect(deficitKw).toBeCloseTo(0.8, 6);
     expect(capacityStateSummary).toEqual(expect.objectContaining({
@@ -2302,7 +2307,7 @@ describe('buildSheddingPlan', () => {
         capacityGuard,
         powerTracker: { lastTimestamp: 999 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
-        getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
         debugStructured: vi.fn(),
@@ -2351,7 +2356,7 @@ describe('buildSheddingPlan', () => {
         capacityGuard,
         powerTracker: { lastTimestamp: 1001 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
-        getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
         debugStructured: vi.fn(),
@@ -2406,7 +2411,7 @@ describe('buildSheddingPlan', () => {
         capacityGuard,
         powerTracker: { lastTimestamp: 1002 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
-        getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
         log: vi.fn(),
         debugStructured: vi.fn(),
@@ -2638,7 +2643,7 @@ describe('buildSheddingPlan', () => {
         capacityGuard,
         powerTracker: { lastTimestamp: 1003 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
-        getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'exempt' ? 100 : 10),
         log: vi.fn(),
         debugStructured: vi.fn(),
@@ -2692,7 +2697,7 @@ describe('buildSheddingPlan', () => {
         capacityGuard,
         powerTracker: { lastTimestamp: 1004 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
-        getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'exempt' ? 100 : 10),
         log: vi.fn(),
         debugStructured: vi.fn(),
@@ -2745,7 +2750,7 @@ describe('buildSheddingPlan', () => {
         capacityGuard,
         powerTracker: { lastTimestamp: 1005 } as PowerTrackerState,
         pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
-        getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
+        getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: (deviceId: string) => (deviceId === 'exempt' ? 100 : 10),
         log: vi.fn(),
         debugStructured: vi.fn(),
@@ -3222,7 +3227,7 @@ describe('buildSheddingPlan', () => {
       getShortfallThreshold: vi.fn().mockReturnValue(4),
     } as unknown as CapacityGuard;
 
-    const deps = {
+    const deps: Omit<SheddingDeps, 'powerTracker' | 'pendingBinaryCommandStore'> = {
       capacityGuard,
       getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
       getPriorityForDevice: () => 100,
@@ -3878,7 +3883,7 @@ describe('buildSheddingPlan', () => {
     expect(result.sheddingActive).toBe(true);
     expect(result.updates.lastRecoveryMs).toBeUndefined();
     expect(
-      capacityGuard.setSheddingActive.mock.calls.some(([active]) => active === false),
+      vi.mocked(capacityGuard.setSheddingActive).mock.calls.some(([active]) => active === false),
     ).toBe(false);
   });
 

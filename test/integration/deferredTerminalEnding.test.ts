@@ -13,6 +13,12 @@ import { createDeviceActuator, type Actuator } from '../../lib/actuator/deviceAc
 import type { ActuatorTransport } from '../../lib/actuator/deviceCommand';
 import type { AppContext } from '../../lib/app/appContext';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
+import {
+  type BinaryControlDiscriminantProbe,
+  type EvDiscriminantProbe,
+  withBinaryDiscriminant,
+  withEvDiscriminant,
+} from '../../lib/plan/planTypes';
 
 const binaryOff: ShedActuationCommand = { kind: 'binary_off', capabilityId: 'onoff', flowBacked: false };
 const setTemp: ShedActuationCommand = { kind: 'set_temperature', targetValue: 5 };
@@ -84,7 +90,9 @@ describe('planTerminalEnding (gated terminal-ending decision — the P1 fix)', (
 });
 
 describe('readTerminalObserved — 2-state read of the producer binaryControl.on bit', () => {
-  const binaryDevice = (overrides: Partial<PlanInputDevice>): PlanInputDevice => ({
+  const binaryDevice = (
+    overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe,
+  ): PlanInputDevice => withBinaryDiscriminant({
     id: 'b1',
     name: 'Water heater',
     // A binary device carries its control capability: it is the discriminant for
@@ -94,7 +102,7 @@ describe('readTerminalObserved — 2-state read of the producer binaryControl.on
     binaryControl: { on: false },
     targets: [],
     ...overrides,
-  } as PlanInputDevice);
+  }) as PlanInputDevice;
 
   it('reports off when binaryControl.on is false', () => {
     expect(readTerminalObserved(binaryDevice({ binaryControl: { on: false } })).binaryState)
@@ -127,7 +135,9 @@ describe('readTerminalObserved — EV charger reads the same 2-state binaryContr
   // bit as a water heater — identical input shape, identical outputs, no
   // EV-specific case. binaryControl.on is the producer-resolved EV on/off
   // (resolveEvCurrentOn: only plugged_in_charging is "on").
-  const evDevice = (overrides: Partial<PlanInputDevice>): PlanInputDevice => ({
+  const evDevice = (
+    overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & EvDiscriminantProbe,
+  ): PlanInputDevice => withBinaryDiscriminant(withEvDiscriminant({
     id: 'ev1',
     name: 'EV charger',
     deviceClass: 'evcharger',
@@ -135,7 +145,7 @@ describe('readTerminalObserved — EV charger reads the same 2-state binaryContr
     binaryControl: { on: false },
     targets: [],
     ...overrides,
-  } as PlanInputDevice);
+  })) as PlanInputDevice;
 
   it('reports on for a charging EV (binaryControl.on true)', () => {
     expect(readTerminalObserved(evDevice({ binaryControl: { on: true } })).binaryState).toBe('on');
@@ -206,15 +216,15 @@ describe('resolveTerminalShedCommand — missing-target falls back to binary-off
   // every tick (no numeric observed target) until the disarm grace elapsed,
   // leaving the device running. It must use the binary handle instead.
   const deviceWithoutTarget = (
-    overrides: Partial<PlanInputDevice> = {},
-  ): PlanInputDevice => ({
+    overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe = {},
+  ): PlanInputDevice => withBinaryDiscriminant({
     id: 'd1',
     name: 'Panel heater',
     binaryControl: { on: true },
     targets: [],
     controlCapabilityId: 'onoff',
     ...overrides,
-  } as PlanInputDevice);
+  }) as PlanInputDevice;
 
   it('falls back to binary_off via controlCapabilityId when set_temperature has no present target', () => {
     const command = resolveTerminalShedCommand(

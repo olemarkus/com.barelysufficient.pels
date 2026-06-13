@@ -8,27 +8,39 @@ import {
   resolveSteppedLoadCurrentFallback,
 } from '../../lib/executor/executableSteppedLoadProjection';
 import type { DevicePlanDevice } from '../../lib/plan/planTypes';
+import { isBinaryPlanDevice } from '../../lib/plan/planBinaryDevice';
+import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { steppedPlanDevice } from '../utils/planTestUtils';
 
 const buildObservedState = (
   device: DevicePlanDevice,
   overrides: Partial<TargetDeviceSnapshot> = {},
-) => buildExecutableObservedDeviceState({
-  id: device.id,
-  name: device.name,
-  binaryControl: { on: device.binaryControl?.on ?? device.currentState === 'on' },
-  targets: [],
-  // `controlModel` is a producer setting that legitimately stays on the executor's
-  // snapshot input (`TargetDeviceSnapshot`); the plan device no longer carries it,
-  // so derive it from profile presence to mirror what the transport producer emits.
-  controlModel: device.steppedLoadProfile?.model === 'stepped_load' ? 'stepped_load' : undefined,
-  steppedLoadProfile: device.steppedLoadProfile,
-  selectedStepId: device.selectedStepId,
-  reportedStepId: device.reportedStepId,
-  measuredPowerKw: device.measuredPowerKw,
-  ...overrides,
-});
+) => {
+  const steppedLoadProfile = isSteppedLoadDevice(device) ? device.steppedLoadProfile : undefined;
+  // Preserve the original runtime semantics: read the observed `on` from
+  // `binaryControl` when it is actually present, otherwise fall back to the
+  // device's `currentState`. `isBinaryPlanDevice` only checks for a
+  // `controlCapabilityId`, so the narrowed `binaryControl` can still be absent
+  // on these fixtures — keep the optional read + fallback rather than asserting it.
+  const observedOn = (isBinaryPlanDevice(device) ? device.binaryControl?.on : undefined)
+    ?? device.currentState === 'on';
+  return buildExecutableObservedDeviceState({
+    id: device.id,
+    name: device.name,
+    binaryControl: { on: observedOn },
+    targets: [],
+    // `controlModel` is a producer setting that legitimately stays on the executor's
+    // snapshot input (`TargetDeviceSnapshot`); the plan device no longer carries it,
+    // so derive it from profile presence to mirror what the transport producer emits.
+    controlModel: steppedLoadProfile?.model === 'stepped_load' ? 'stepped_load' : undefined,
+    steppedLoadProfile,
+    selectedStepId: device.selectedStepId,
+    reportedStepId: device.reportedStepId,
+    measuredPowerKw: device.measuredPowerKw,
+    ...overrides,
+  });
+};
 
 const buildAction = (
   device: DevicePlanDevice,
@@ -121,7 +133,7 @@ describe('planExecutableSteppedLoad', () => {
       plannedState: 'keep',
       selectedStepId: 'low',
       desiredStepId: 'max',
-      reason: { code: 'meterSettling', remainingSec: 30 },
+      reason: { code: 'meter_settling', remainingSec: 30 },
     }));
 
     expect(intent).toBeNull();
@@ -129,7 +141,6 @@ describe('planExecutableSteppedLoad', () => {
 
   it('returns null for non stepped-load devices', () => {
     expect(buildExecutableSteppedLoadIntent(steppedPlanDevice({
-      controlModel: 'binary_power',
       steppedLoadProfile: undefined,
     }))).toBeNull();
   });
@@ -151,13 +162,14 @@ describe('planExecutableSteppedLoad', () => {
     });
 
     // Raw snapshot WITHOUT the selectedStepId decoration, as `getSnapshot()` produces.
+    const rawSteppedLoadProfile = isSteppedLoadDevice(planDevice) ? planDevice.steppedLoadProfile : undefined;
     const rawSnapshot = {
       id: planDevice.id,
       name: planDevice.name,
       binaryControl: { on: true },
       targets: [],
-      controlModel: planDevice.controlModel,
-      steppedLoadProfile: planDevice.steppedLoadProfile,
+      controlModel: rawSteppedLoadProfile?.model === 'stepped_load' ? 'stepped_load' : undefined,
+      steppedLoadProfile: rawSteppedLoadProfile,
     } as unknown as TargetDeviceSnapshot;
 
     const observed = buildExecutableObservedDeviceState(rawSnapshot);

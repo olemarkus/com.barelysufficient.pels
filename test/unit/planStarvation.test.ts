@@ -53,7 +53,7 @@ describe('planStarvation', () => {
 
   it('summarizes all starved devices in the hero', () => {
     expect(summarizeStarvation([
-      { starvation: null },
+      { starvation: undefined },
       {
         starvation: {
           isStarved: true,

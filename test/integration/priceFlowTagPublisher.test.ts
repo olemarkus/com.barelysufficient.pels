@@ -93,9 +93,9 @@ describe('PriceFlowTagPublisher', () => {
     const publisher = newPublisher();
     await publisher.init();
     await publisher.publish('first');
-    const setValueCountAfterFirst = (mockHomeyInstance.flow._tokens[PRICE_FLOW_TAG_ID] as { setValueCount: number }).setValueCount;
+    const setValueCountAfterFirst = (mockHomeyInstance.flow._tokens[PRICE_FLOW_TAG_ID] as unknown as { setValueCount: number }).setValueCount;
     await publisher.publish('second-identical');
-    const setValueCountAfterSecond = (mockHomeyInstance.flow._tokens[PRICE_FLOW_TAG_ID] as { setValueCount: number }).setValueCount;
+    const setValueCountAfterSecond = (mockHomeyInstance.flow._tokens[PRICE_FLOW_TAG_ID] as unknown as { setValueCount: number }).setValueCount;
     expect(setValueCountAfterSecond).toBe(setValueCountAfterFirst);
     expect(triggersFor(PRICE_LIST_UPDATED_TRIGGER_ID)).toHaveLength(1);
   });

@@ -32,7 +32,6 @@ describe('planExecutablePlan', () => {
     });
     const binaryDevice = buildPlanDevice({
       id: 'binary-1',
-      controlModel: 'binary_power',
     });
 
     const executablePlan = buildExecutablePlan(planWithDevices([steppedDevice, binaryDevice]));
@@ -74,7 +73,7 @@ describe('planExecutablePlan', () => {
       id: 'thermostat-1',
       name: 'Thermostat',
       binaryControl: { on: true },
-      targets: [{ id: 'target_temperature', value: 16 }],
+      targets: [{ id: 'target_temperature', value: 16, unit: '°C' }],
     });
 
     expect(buildExecutableTargetUpdate(
@@ -153,7 +152,6 @@ describe('planExecutablePlan', () => {
         buildPlanDevice({
           id: 'binary-shed',
           plannedState: 'shed',
-          controlModel: 'binary_power',
           reason: shedReason,
         }),
       ]);
@@ -208,7 +206,6 @@ describe('planExecutablePlan', () => {
         buildPlanDevice({
           id: 'held-shed',
           plannedState: 'shed',
-          controlModel: 'binary_power',
           reason: legacyDeviceReason('meter settling (30s remaining)')!,
         }),
       ]);
@@ -233,7 +230,7 @@ describe('planExecutablePlan', () => {
       id: 'thermostat-1',
       name: 'Thermostat',
       binaryControl: { on: true },
-      targets: [{ id: 'target_temperature', value: 18 }],
+      targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
     });
 
     expect(buildExecutableTargetUpdate(

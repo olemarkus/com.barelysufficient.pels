@@ -352,7 +352,7 @@ describe('native EV wiring shim', () => {
     const device = buildZaptecDevice();
     const overlay = applyNativeEvWiringOverlay({
       device,
-      capabilities: [...device.capabilities],
+      capabilities: [...device.capabilities!],
       capabilityObj: {
         measure_power: { value: 7200 },
         charging_button: { value: false, setable: true, lastUpdated: '2026-04-22T09:00:01.000Z' },
@@ -568,7 +568,7 @@ describe('native EV wiring shim', () => {
           'alarm_generic.car_connected': { value: true },
         },
       },
-      capabilities: [...device.capabilities],
+      capabilities: [...device.capabilities!],
       capabilityObj: {
         ...device.capabilitiesObj,
         charging_button: { value: true, setable: true },
@@ -587,7 +587,7 @@ describe('native EV wiring shim', () => {
           'alarm_generic.car_connected': { value: true },
         },
       },
-      capabilities: [...device.capabilities],
+      capabilities: [...device.capabilities!],
       capabilityObj: {
         ...device.capabilitiesObj,
         charging_button: { value: true, setable: true },
@@ -605,7 +605,7 @@ describe('native EV wiring shim', () => {
           'alarm_generic.car_connected': { value: false },
         },
       },
-      capabilities: [...device.capabilities],
+      capabilities: [...device.capabilities!],
       capabilityObj: {
         ...device.capabilitiesObj,
         charge_mode: { value: 'Disconnected' },

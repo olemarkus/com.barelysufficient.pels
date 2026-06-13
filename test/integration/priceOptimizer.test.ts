@@ -1,4 +1,4 @@
-import { PriceOptimizer } from '../../lib/price/priceOptimizer';
+import { PriceOptimizer, type PriceOptimizerDeps } from '../../lib/price/priceOptimizer';
 import { PriceLevel } from '../../lib/price/priceLevels';
 import type { CombinedHourlyPrice } from '../../lib/price/priceTypes';
 
@@ -15,7 +15,7 @@ const makeDeps = (overrides: {
   const rebuildPlan = vi.fn().mockResolvedValue(undefined);
   const structuredLog = { info: vi.fn(), debug: vi.fn(), error: vi.fn() };
   const prices = [makeHour('2024-01-01T12:00:00.000Z', 80)];
-  const deps = {
+  const deps: PriceOptimizerDeps = {
     priceStatus: {
       getCurrentLevel: () => overrides.currentLevel ?? PriceLevel.NORMAL,
       isCurrentHourCheap: () => overrides.isCheap ?? false,
@@ -30,7 +30,8 @@ const makeDeps = (overrides: {
     getMinDiffOre: () => 5,
     rebuildPlan,
     debugStructured: vi.fn(),
-    structuredLog,
+    // Partial pino mock: only the methods the optimizer logs through are stubbed.
+    structuredLog: structuredLog as unknown as PriceOptimizerDeps['structuredLog'],
   };
   return { deps, rebuildPlan, structuredLog };
 };
@@ -65,7 +66,7 @@ describe('PriceOptimizer.applyOnce', () => {
     await optimizer.applyOnce();
 
     const calls = structuredLog.info.mock.calls.map((c: unknown[]) => c[0]);
-    const second = calls.find((c: Record<string, unknown>) => c['previousMode'] === 'expensive');
+    const second = calls.find((c) => (c as Record<string, unknown>)['previousMode'] === 'expensive');
     expect(second).toBeDefined();
     expect(second).toMatchObject({
       previousMode: 'expensive',

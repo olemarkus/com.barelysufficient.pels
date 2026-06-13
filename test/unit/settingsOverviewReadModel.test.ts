@@ -1,3 +1,4 @@
+import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 import {
   buildSettingsOverviewDeviceReadModel,
   buildSettingsOverviewReadModel,
@@ -75,7 +76,7 @@ describe('settingsOverviewReadModel', () => {
     });
 
     expect(buildSettingsOverviewDeviceReadModel(device).steppedLoad).toEqual({
-      profile: device.steppedLoadProfile,
+      profile: isSteppedLoadDevice(device) ? device.steppedLoadProfile : undefined,
       reportedStepId: 'low',
       targetStepId: 'max',
       commandPending: true,
@@ -88,7 +89,7 @@ describe('settingsOverviewReadModel', () => {
       targetStepId: 'max',
       stepCommandPending: true,
       binaryCommandPending: false,
-      pendingTargetCommand: null,
+      pendingTargetCommand: undefined,
     });
 
     expect(buildSettingsOverviewDeviceReadModel(device).steppedLoad).toMatchObject({

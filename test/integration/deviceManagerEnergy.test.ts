@@ -1,6 +1,7 @@
 import { extractLiveHomePowerWatts } from '../../lib/device/managerEnergy';
 import { fetchLivePowerReport } from '../../lib/device/transport/managerFetch';
 import * as homeyApi from '../../lib/device/transport/managerHomeyApi';
+import type { Logger } from '../../lib/utils/types';
 
 describe('extractLiveHomePowerWatts', () => {
   it('returns watts from first cumulative item', () => {
@@ -76,7 +77,7 @@ describe('extractLiveHomePowerWatts', () => {
 });
 
 describe('fetchLivePowerReport', () => {
-  const logger = { log: vi.fn(), debug: vi.fn(), error: vi.fn() };
+  const logger = { log: vi.fn(), debug: vi.fn(), error: vi.fn() } as unknown as Logger;
 
   afterEach(() => {
     vi.restoreAllMocks();
