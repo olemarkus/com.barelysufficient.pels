@@ -121,8 +121,17 @@ export type AppContext = {
   resolveManagedState: (deviceId: string) => boolean;
   // Observer-owned maintained observed truth for a device, fed by the dispatcher
   // push (`lib/observer/observedDeviceStateProjection.ts`). `undefined` until the
-  // first observation lands; readers fall back to the snapshot for that window.
+  // first observation lands OR the boot/hot-plug seed fills it (see
+  // `seedObservedStateFromSnapshot`).
   getObservedState: (deviceId: string) => ObservedDeviceState | undefined;
+  // Boot/hot-plug seed: fill the observed-state projection's EMPTY slots from the
+  // RAW cached device snapshot so a reader (the settings-UI EV chip,
+  // `toPlanDevice` freshness) sees the device's real state for cycle 1, before
+  // the first dispatcher delta/refresh lands. Strictly additive — never clobbers
+  // a recorded observation (see `ObservedDeviceStateProjection.seedMissing`). No
+  // re-decoration, no device-manager re-entry: it reads `getSnapshot()` (the
+  // cached array) and projects each entry via `projectObservedState`.
+  seedObservedStateFromSnapshot: () => void;
   getCommunicationModel: (deviceId: string) => 'local' | 'cloud';
   isCapacityControlEnabled: (deviceId: string) => boolean;
   isBudgetExempt: (deviceId: string) => boolean;

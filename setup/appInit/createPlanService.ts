@@ -14,6 +14,15 @@ export function createPlanService(ctx: AppContext): PlanService {
     writePelsStatus: (status) => ctx.homey.settings.set(PELS_STATUS, status),
     planEngine: requirePlanEngine(ctx),
     getPlanDevices: () => {
+      // Boot/hot-plug seed of the observed-state projection from the RAW cached
+      // snapshot BEFORE the per-device `toPlanDevice` reads run. The projection
+      // is event-driven (empty until the first delta/refresh for a device), so
+      // on the first cold-start cycle — and for a device hot-plugged before its
+      // first observation — `getObservedState` would otherwise be empty here and
+      // `toPlanDevice` would fall back to the snapshot. Seeding fills only empty
+      // slots (never clobbers a recorded observation) and uses the raw cached
+      // array, so it adds no re-decoration and no device-manager re-entry.
+      ctx.seedObservedStateFromSnapshot();
       const snapshot = ctx.latestTargetSnapshot;
       evictMissingDeviceCacheEntries(ctx, snapshot);
       return snapshot
@@ -34,9 +43,11 @@ export function createPlanService(ctx: AppContext): PlanService {
     // fall back to `ctx.latestTargetSnapshot` here — that getter re-runs
     // `getSnapshot()` + full re-decoration on every access, so a per-device lookup
     // mid-serialization is O(n²) and re-entrant-unsafe (it breaks the SDK-boundary
-    // shed e2es). The observed projection is event-driven, so the chip can show
-    // generic copy for the first cold-start cycle before the projection fills;
-    // tracked as a P3 in TODO.md.
+    // shed e2es). The cold-start gap (a generic chip for the first cycle before
+    // the event-driven projection fills) is closed by the boot/hot-plug seed in
+    // `getPlanDevices` above: every plan build seed-fills the projection from the
+    // raw snapshot before the read model serializes, so a boot-present EV's real
+    // plug-state is materialized for cycle 1.
     getObservedEvChargingState: (deviceId) => readObservedEvChargingState(ctx.getObservedState(deviceId)),
     // Producer `deviceType` for the settings-UI control-mode card. Sourced from
     // the RAW, undecorated device snapshot (`deviceManager.getSnapshot()`) — NOT

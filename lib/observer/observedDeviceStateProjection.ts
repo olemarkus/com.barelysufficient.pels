@@ -117,6 +117,39 @@ export class ObservedDeviceStateProjection {
     }
 
     /**
+     * Boot/hot-plug seed: fill EMPTY slots from the committed snapshot's observed
+     * projection so a reader (the settings-UI EV chip, `toPlanDevice`'s freshness)
+     * sees the device's real plug/freshness state for cycle 1, before the first
+     * dispatcher delta/refresh lands. Sourced from the RAW cached snapshot
+     * (`deviceManager.getSnapshot()` → `projectObservedState`), so it never
+     * re-decorates and never re-enters the device manager.
+     *
+     * Strictly ADDITIVE — and that is the whole safety story:
+     * - It writes ONLY when no entry exists for the id (`!this.byId.has`), so it
+     *   can never clobber an already-recorded real observation. Per
+     *   `feedback_homey_sdk_unreliable`, seeding must not overwrite a fresher
+     *   real value; the present-key guard guarantees that without any ordering
+     *   comparison.
+     * - Seeded entries carry NO `seq` and NO `observedAtMs`, so when the first
+     *   real delta/refresh arrives (always a numeric `seq`), `shouldDrop` finds
+     *   neither the seq-vs-seq nor the timestamp-vs-timestamp branch applicable
+     *   (one side is undefined on each) and falls through to `return false` —
+     *   i.e. the real observation ALWAYS supersedes the seed, never the reverse.
+     *   The seed therefore cannot win a fresher-wins race or survive a prune
+     *   (the next `applyRefresh` overwrites present devices and deletes absent
+     *   ones as usual).
+     */
+    seedMissing(states: readonly ObservedDeviceState[]): void {
+        for (const state of states) {
+            if (this.byId.has(state.id)) continue;
+            // No seq/observedAtMs: a later real observation always wins (see the
+            // `shouldDrop` fall-through), and the present-key guard above means we
+            // only ever reach a genuinely empty slot here.
+            this.byId.set(state.id, { value: freezeObserved(state) });
+        }
+    }
+
+    /**
      * Idempotent, ordered apply.
      *
      * Primary key is `observationSeq` — monotonic per device, stamped by
