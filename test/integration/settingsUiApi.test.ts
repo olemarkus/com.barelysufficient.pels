@@ -45,14 +45,17 @@ describe('settingsUiApi', () => {
     const defaultPlanSnapshot = {
       devices: [{ id: 'dev-1', name: 'Heater', priority: 1, reason: buildComparablePlanReason('keep') }],
     };
-    // These entries pin the ui_devices wire carriage of the observed cluster
-    // fields the base snapshot type omits: `evChargingState` (EV-observed move),
+    // These entries pin the ui_devices wire carriage of the cluster fields the
+    // base snapshot type omits: `evChargingState` (EV-observed move),
     // `currentTemperature` (temperature-observed move), `stateOfCharge`
-    // (SoC-observed move), and `measuredPowerKw` (measured-power-observed move).
+    // (SoC-observed move), `measuredPowerKw` (measured-power-observed move), and —
+    // off the descriptor — `steppedLoadProfile` / `targetPowerConfig`
+    // (stepped-descriptor move) plus `reportedStepId` (reported-step-observed move).
     // The settings-UI `isEvObserved` / `hasObservedTemperature` /
-    // `hasObservedStateOfCharge` / `hasObservedMeasuredPower` narrowing (and
-    // `supportsPowerDevice`) works only if the served objects physically carry
-    // these — a producer rebuild that drops any of them must fail here.
+    // `hasObservedStateOfCharge` / `hasObservedMeasuredPower` / `isSteppedLoadSnapshot`
+    // / `hasObservedReportedStep` narrowing (and `supportsPowerDevice`) works only
+    // if the served objects physically carry these — a producer rebuild that drops
+    // any of them must fail here.
     let latestDevices: Record<string, unknown>[] = [
       { id: 'dev-1', name: 'Heater', deviceType: 'temperature', currentTemperature: 18.5, measuredPowerKw: 1.2 },
       {
@@ -61,6 +64,14 @@ describe('settingsUiApi', () => {
         deviceClass: 'evcharger',
         evChargingState: 'plugged_in_charging',
         stateOfCharge: { percent: 80, status: 'fresh' },
+        steppedLoadProfile: {
+          model: 'stepped_load',
+          steps: [
+            { id: 'off', planningPowerW: 0 },
+            { id: 'low', planningPowerW: 4140 },
+          ],
+        },
+        reportedStepId: 'low',
       },
     ];
     let powerTracker: Record<string, unknown> = { buckets: { '2026-03-03T00:00:00.000Z': 1.2 } };
@@ -367,6 +378,14 @@ describe('settingsUiApi', () => {
           deviceClass: 'evcharger',
           evChargingState: 'plugged_in_charging',
           stateOfCharge: { percent: 80, status: 'fresh' },
+          steppedLoadProfile: {
+            model: 'stepped_load',
+            steps: [
+              { id: 'off', planningPowerW: 0 },
+              { id: 'low', planningPowerW: 4140 },
+            ],
+          },
+          reportedStepId: 'low',
         },
       ],
     });

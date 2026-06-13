@@ -41,6 +41,7 @@ import {
   withSteppedDiscriminant,
 } from '../../lib/plan/planTypes';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import type { CapabilityValue, HomeyDeviceLike, Logger } from '../../lib/utils/types';
 
 const KEEP_REASON = legacyDeviceReason('keep')!;
@@ -125,7 +126,7 @@ const buildHoiaxDevice = (onoff: OnoffVariant): HomeyDeviceLike => {
   };
 };
 
-const parseHoiaxSnapshot = (onoff: OnoffVariant, logger: Logger): TargetDeviceSnapshot => {
+const parseHoiaxSnapshot = (onoff: OnoffVariant, logger: Logger): TransportDeviceSnapshot => {
   const parsed = parseDevice({
     device: buildHoiaxDevice(onoff),
     now: Date.parse(FRESH_ISO) + 1_000,

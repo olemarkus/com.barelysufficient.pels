@@ -505,7 +505,10 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         deviceId: string;
         capabilityId: string;
         value: unknown;
-        snapshot: TargetDeviceSnapshot;
+        // Owner seam reading the transport's own snapshot: `TransportDeviceSnapshot`
+        // carries `targetPowerConfig` / `steppedLoadProfile` via the descriptor probe
+        // (omitted from the base `TargetDeviceSnapshot`).
+        snapshot: TransportDeviceSnapshot;
     }): boolean {
         const {
             snapshotIndex,
@@ -1813,7 +1816,10 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     injectCapabilityUpdateForTest(deviceId: string, capabilityId: string, value: unknown): void {
         this.handleRealtimeCapabilityUpdate(deviceId, capabilityId, value);
     }
-    parseDeviceListForTests(list: HomeyDeviceLike[]): TargetDeviceSnapshot[] {
+    // Returns the OWNER-shaped `TransportDeviceSnapshot[]` (the runtime value the
+    // private `parseDeviceList` produces) so test assertions can read the
+    // stepped-descriptor + reported-step probe fields the base type omits.
+    parseDeviceListForTests(list: HomeyDeviceLike[]): TransportDeviceSnapshot[] {
         const effectiveList = list.map((device) => this.applyDeviceDriverOverride(device));
         this.syncTrackedDevices(effectiveList);
         return this.parseDeviceList(effectiveList, {}, 'unfiltered');
@@ -2326,7 +2332,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         effectiveList: HomeyDeviceLike[],
         livePowerWByDeviceId: LiveDevicePowerWatts = {},
         purpose: ParseDevicePurpose = 'runtime',
-    ): TargetDeviceSnapshot[] {
+    ): TransportDeviceSnapshot[] {
         return parseDeviceList({
             list: effectiveList,
             livePowerWByDeviceId,

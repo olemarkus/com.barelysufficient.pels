@@ -4,6 +4,7 @@ import type {
   MeasuredPowerObservedProbe,
   ObservedDeviceState,
   StateOfChargeObservedProbe,
+  SteppedLoadDescriptorProbe,
   TemperatureBoostConfig,
 } from '../../../contracts/src/types.ts';
 
@@ -37,9 +38,14 @@ export type SettingsUiDeviceListItem = ObservedDeviceState
 // stays structurally assignable, so callers pass unchanged.
 export type SettingsUiDeviceDetailItem = SettingsUiDeviceListItem
   & Pick<DeviceDescriptor,
-    | 'controlWriteCapabilityId' | 'steppedLoadProfile' | 'targetPowerConfig'
+    | 'controlWriteCapabilityId'
     | 'capabilities' | 'flowConflict'
   >
+  // `steppedLoadProfile` / `targetPowerConfig` moved off `DeviceDescriptor` onto
+  // the stepped-descriptor cluster; the `/ui_devices` snapshot physically carries
+  // them, which the control-mode / target-power / stepped-load-draft detail panes
+  // read (and optimistically mutate). Probe-widen rather than re-Pick the base.
+  & SteppedLoadDescriptorProbe
   & {
     temperatureBoost?: TemperatureBoostConfig;
     evBoost?: EvBoostConfig;

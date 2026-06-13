@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { EvObservedProbe, StateOfChargeObservedProbe, TargetDeviceSnapshot } from '../../contracts/src/types';
+import type {
+  EvObservedProbe,
+  StateOfChargeObservedProbe,
+  SteppedLoadDescriptorProbe,
+  TargetDeviceSnapshot,
+} from '../../contracts/src/types';
 import { createHomeyMock } from './helpers/homeyApiMock';
 
 const flushPromises = () => new Promise<void>((resolve) => {
@@ -94,8 +99,10 @@ const buildDom = () => {
 const buildDevice = (
   id: string,
   name: string,
-  overrides: Partial<TargetDeviceSnapshot & EvObservedProbe & StateOfChargeObservedProbe> = {},
-): TargetDeviceSnapshot & EvObservedProbe & StateOfChargeObservedProbe => ({
+  overrides: Partial<
+    TargetDeviceSnapshot & EvObservedProbe & StateOfChargeObservedProbe & SteppedLoadDescriptorProbe
+  > = {},
+): TargetDeviceSnapshot & EvObservedProbe & StateOfChargeObservedProbe & SteppedLoadDescriptorProbe => ({
   id,
   name,
   targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],

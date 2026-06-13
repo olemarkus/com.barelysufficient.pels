@@ -54,15 +54,27 @@ helpers. The observer was created but never handed the observation contract.
    `hasObservedMeasuredPower` — absence is the common case, so the guard draws the
    present/absent line and "present implies finite, non-negative kW" is the producer
    invariant; the two fields travel together and owner seams carry them through the
-   `MeasuredPowerObservedProbe` widening), `reportedStepId`,
-   `binaryControlObservation`, `available`, `lastFreshDataMs`/`lastLocalWriteMs`/
+   `MeasuredPowerObservedProbe` widening), `reportedStepId` (now type-gated off the
+   base onto `ReportedStepObservedFields`, narrowed via the presence-only
+   `hasObservedReportedStep` — a non-stepped device never reports a step and a
+   stepped one carries it only once a native/flow report lands; owner seams carry it
+   through the `ReportedStepObservedProbe` widening; stepped-observed slice of the
+   discriminated-types refactor), `binaryControlObservation`, `available`,
+   `lastFreshDataMs`/`lastLocalWriteMs`/
    `lastUpdated`, plus the observed `targets` value. This is the consolidated truth
    plan/executor decide on.
 2. **`DeviceDescriptor` → a descriptor read (NOT observer)** (static-ish): identity +
    config + capabilities — `controlModel`, `controlCapabilityId`, `controlAdapter`,
-   `deviceClass`/`deviceType`/`zone`, `steppedLoadProfile`,
-   `suggestedSteppedLoadProfile`, `nativeWriteCapabilities`, `flowConflict`,
-   `targetPowerConfig`, `capabilities`, `flowBacked*`, `canSetControl`,
+   `deviceClass`/`deviceType`/`zone`, `steppedLoadProfile`/`targetPowerConfig` (now
+   type-gated OFF the base onto `SteppedLoadDescriptorFields`, narrowed via
+   `isSteppedLoadSnapshot` — `steppedLoadProfile` IS the kind discriminant
+   (`model === 'stepped_load'`), the snapshot-shaped twin of `lib/plan`'s
+   `isSteppedLoadDevice`; `targetPowerConfig` rides the same cluster; owner seams and
+   the decorator carry them through the `SteppedLoadDescriptorProbe` widening;
+   stepped-descriptor slice of the discriminated-types refactor),
+   `suggestedSteppedLoadProfile` (STAYS on the base — a CONFIGURE hint for non-stepped
+   devices, not part of the stepped cluster), `nativeWriteCapabilities`, `flowConflict`,
+   `capabilities`, `flowBacked*`, `canSetControl`,
    `powerCapable`, `controllable`/`managed`/`budgetExempt`/`priority`, the nameplate
    power hints (`powerKw`/`expectedPowerKw`/`loadKw`/`expectedPowerSource`). Consumed
    by settings-UI, native-wiring, `isRuntimePlannedDevice`. Never realtime-merged, so

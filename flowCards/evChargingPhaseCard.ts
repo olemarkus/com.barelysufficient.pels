@@ -1,7 +1,11 @@
 import { createEvTargetPowerConfig, isEvTargetPowerPreset } from '../packages/shared-domain/src/evTargetPowerConfig';
 import { DEVICE_TARGET_POWER_CONFIGS } from '../lib/utils/settingsKeys';
 import { normalizeDeviceTargetPowerConfigs } from '../lib/utils/targetPowerConfig';
-import type { TargetDeviceSnapshot, TargetPowerSteppedLoadPreset } from '../packages/contracts/src/types';
+import type {
+  SteppedLoadDescriptorProbe,
+  TargetDeviceSnapshot,
+  TargetPowerSteppedLoadPreset,
+} from '../packages/contracts/src/types';
 import type { FlowCardDeps } from './registerFlowCards';
 import { buildDeviceAutocompleteOptions } from './deviceArgs';
 import {
@@ -53,9 +57,12 @@ function readPhasePreset(args: unknown): TargetPowerSteppedLoadPreset {
   throw new Error('EV charging phase must be 1-phase or 3-phase.');
 }
 
-function isEvPhaseConfiguredDevice(device: TargetDeviceSnapshot): boolean {
-  return device.targetPowerConfig?.enabled !== false
-    && isEvTargetPowerPreset(device.targetPowerConfig?.preset);
+function isEvPhaseConfiguredDevice(device: TargetDeviceSnapshot & SteppedLoadDescriptorProbe): boolean {
+  // `targetPowerConfig` rides the stepped-descriptor probe but is read on its own
+  // here (a continuous EV preset can carry it without a full stepped profile), so
+  // this is an owner-probe read, not an `isSteppedLoadSnapshot` narrow.
+  const config = device.targetPowerConfig;
+  return Boolean(config) && config?.enabled !== false && isEvTargetPowerPreset(config?.preset);
 }
 
 function formatPhaseForLog(preset: TargetPowerSteppedLoadPreset): string {

@@ -11,7 +11,9 @@ import type {
   DecoratedDeviceSnapshot,
   DeviceControlModel,
   DeviceControlProfiles,
+  ReportedStepObservedProbe,
   SteppedLoadCommandStatus,
+  SteppedLoadDescriptorProbe,
   SteppedLoadProfile,
   TargetDeviceSnapshot,
 } from '../packages/contracts/src/types';
@@ -87,7 +89,10 @@ const resolveSuggestedSteppedLoadProfile = (
 );
 
 export const resolveEffectiveSteppedLoadProfile = (params: {
-  snapshot?: TargetDeviceSnapshot;
+  // Owner-seam read of the producer-fed transport snapshot, which carries
+  // `steppedLoadProfile` / `targetPowerConfig` via the descriptor probe (omitted
+  // from the base type).
+  snapshot?: TargetDeviceSnapshot & SteppedLoadDescriptorProbe;
   profiles: DeviceControlProfiles;
   deviceId: string;
 }): SteppedLoadProfile | null => {
@@ -108,7 +113,10 @@ export const resolveEffectiveSteppedLoadProfile = (params: {
  * Decoration resolves reported step state plus legacy planner fallback in one place.
  */
 export const decorateSnapshotWithDeviceControl = (params: {
-  snapshot: TargetDeviceSnapshot;
+  // Owner seam: the input is a producer-fed transport snapshot carrying the
+  // stepped-descriptor + reported-step probes; the decorator re-resolves the
+  // effective profile and writes it (with `reportedStepId`) onto the carrier.
+  snapshot: TargetDeviceSnapshot & SteppedLoadDescriptorProbe & ReportedStepObservedProbe;
   profiles: DeviceControlProfiles;
   runtimeState: DeviceControlRuntimeState;
   nowMs?: number;
@@ -358,7 +366,9 @@ export class AppDeviceControlHelpers {
     });
   }
 
-  decorateTargetSnapshotList(snapshot: TargetDeviceSnapshot[]): DecoratedDeviceSnapshot[] {
+  decorateTargetSnapshotList(
+    snapshot: Array<TargetDeviceSnapshot & SteppedLoadDescriptorProbe & ReportedStepObservedProbe>,
+  ): DecoratedDeviceSnapshot[] {
     const nowMs = Date.now();
     pruneStaleSteppedLoadCommandStates(this.runtimeState, nowMs);
     const profiles = this.deps.getProfiles();

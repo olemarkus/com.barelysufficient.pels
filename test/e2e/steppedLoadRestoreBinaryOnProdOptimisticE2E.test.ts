@@ -75,6 +75,7 @@ import type { DevicePlan } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { steppedPlanDevice } from '../utils/planTestUtils';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { TransportDeviceSnapshot } from '../../lib/device/transportDeviceSnapshot';
 import type { CapabilityValue, HomeyDeviceLike, Logger } from '../../lib/utils/types';
 
 const KEEP_REASON = legacyDeviceReason('keep')!;
@@ -149,7 +150,7 @@ const parseHoiaxSnapshot = (params: {
   freshIso: string;
   nowMs: number;
   logger: Logger;
-}): TargetDeviceSnapshot => {
+}): TransportDeviceSnapshot => {
   const parsed = parseDevice({
     device: buildHoiaxDevice({ nativeStepValue: params.nativeStepValue, freshIso: params.freshIso }),
     now: params.nowMs,

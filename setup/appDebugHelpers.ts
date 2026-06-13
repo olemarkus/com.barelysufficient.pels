@@ -17,7 +17,11 @@ import type { HomeyDeviceLike } from '../lib/utils/types';
 import { isHomeyDeviceLike } from '../lib/utils/types';
 import type {
   MeasuredPowerObservedProbe,
+  ReportedStepObservedProbe,
+  SteppedLoadDescriptorProbe,
+  SteppedLoadProfile,
   TargetDeviceSnapshot,
+  TargetPowerSteppedLoadConfig,
   TemperatureObservedProbe,
 } from '../packages/contracts/src/types';
 import { normalizeError } from '../lib/utils/errorUtils';
@@ -79,9 +83,9 @@ type PelsTargetSnapshotSummary = {
   controlCapabilityId?: string;
   controlAdapter?: TargetDeviceSnapshot['controlAdapter'];
   capabilities?: string[];
-  steppedLoadProfile?: TargetDeviceSnapshot['steppedLoadProfile'];
+  steppedLoadProfile?: SteppedLoadProfile;
   suggestedSteppedLoadProfile?: TargetDeviceSnapshot['suggestedSteppedLoadProfile'];
-  targetPowerConfig?: TargetDeviceSnapshot['targetPowerConfig'];
+  targetPowerConfig?: TargetPowerSteppedLoadConfig;
   binaryControl?: { on: boolean };
   currentTemperature?: number;
   targets: Array<{ id: string; value?: unknown; unit: string }>;
@@ -433,7 +437,8 @@ const compactPelsTargetSnapshot = (
   // `measure_temperature` reading), so it reads through the owner probe rather
   // than `hasObservedTemperature` — a plain `TargetDeviceSnapshot` (from
   // `getSnapshot()`) stays assignable because the probe field is optional.
-  snapshot: (TargetDeviceSnapshot & TemperatureObservedProbe & MeasuredPowerObservedProbe) | null,
+  snapshot: (TargetDeviceSnapshot & TemperatureObservedProbe & MeasuredPowerObservedProbe
+    & SteppedLoadDescriptorProbe & ReportedStepObservedProbe) | null,
 ): PelsTargetSnapshotSummary | null => {
   if (!snapshot) return null;
   return {

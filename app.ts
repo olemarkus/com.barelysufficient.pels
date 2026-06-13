@@ -28,6 +28,7 @@ import type {
   DeviceControlProfiles,
   DeviceTargetPowerConfigs,
   StateOfChargeObservedProbe,
+  SteppedLoadDescriptorProbe,
   TargetDeviceSnapshot,
 } from './packages/contracts/src/types';
 import type { HomeyDeviceLike } from './lib/utils/types';
@@ -173,6 +174,7 @@ import type { DeviceDiagnosticsService } from './lib/diagnostics/deviceDiagnosti
 import type { SettingsUiDeviceDiagnosticsPayload } from './packages/contracts/src/deviceDiagnosticsTypes';
 import type { DeferredObjectivePlanHistoryEntry } from './packages/contracts/src/deferredObjectivePlanHistory';
 import { toResolvedPlanHistoryEntry } from './packages/shared-domain/src/deferredPlanHistoryResolvedView';
+import { isSteppedLoadSnapshot } from './packages/shared-domain/src/steppedLoadObservedState';
 import type {
   ResolvedDeferredObjectiveActivePlansV1,
 } from './packages/contracts/src/deferredObjectiveActivePlans';
@@ -2036,8 +2038,8 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi {
   // which the boost resolvers gate on `isSteppedLoad`; a binary on/off device has
   // no higher step to promote to. The rescue gates the grant on this so it never
   // persists (nor surfaces) a permission the device can't use.
-  private deviceSupportsLimitLowerPriority(device: TargetDeviceSnapshot): boolean {
-    return device.controlModel === 'stepped_load' && device.steppedLoadProfile?.model === 'stepped_load';
+  private deviceSupportsLimitLowerPriority(device: TargetDeviceSnapshot & SteppedLoadDescriptorProbe): boolean {
+    return device.controlModel === 'stepped_load' && isSteppedLoadSnapshot(device);
   }
   // Gate a create-smart-task candidate's opt-in "Extra permissions" against the
   // device BEFORE it is previewed or persisted — defence-in-depth, since the
@@ -2053,7 +2055,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi {
   // lanes so preview ≡ persist. Returns the candidate unchanged when it carries
   // no limit-lower-priority grant.
   private gateCandidateExtraPermissions(
-    device: TargetDeviceSnapshot | undefined,
+    device: (TargetDeviceSnapshot & SteppedLoadDescriptorProbe) | undefined,
     candidate: DeferredObjectivePlanPreviewCandidate,
   ): DeferredObjectivePlanPreviewCandidate {
     const rescue = candidate.rescue;

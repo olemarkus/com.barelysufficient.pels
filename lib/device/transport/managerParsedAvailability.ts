@@ -1,11 +1,11 @@
-import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
+import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
 import type { HomeyDeviceLike } from '../../utils/types';
 import { getIsAvailable } from './managerHelpers';
 
 export function resolveAvailable(
     controlCapabilityId: TargetDeviceSnapshot['controlCapabilityId'],
     hasTrustedControlState: boolean,
-    steppedLoadProfile: TargetDeviceSnapshot['steppedLoadProfile'],
+    steppedLoadProfile: SteppedLoadProfile | undefined,
     device: HomeyDeviceLike,
 ): boolean {
     if (

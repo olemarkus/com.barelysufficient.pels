@@ -4736,6 +4736,9 @@ var OBJECTIVE_PROFILE_REJECTION_LOG_THROTTLE_MS = 15 * 60 * 1e3;
 var RECOVERY_SAFETY_TIMEOUT_MS = 24 * 60 * 60 * 1e3;
 var RECOVERY_NO_PROGRESS_MIN_DURATION_MS = 30 * 60 * 1e3;
 
+// packages/shared-domain/src/steppedLoadObservedState.ts
+var isSteppedLoadSnapshot = (snapshot) => snapshot.steppedLoadProfile?.model === "stepped_load";
+
 // lib/objectives/samples.ts
 var OBJECTIVE_PROFILE_MAX_OBSERVATION_AGE_MS = 30 * 60 * 1e3;
 var OBJECTIVE_PROFILE_MAX_FUTURE_SKEW_MS = 5 * 1e3;
@@ -5446,7 +5449,7 @@ var buildDevice = (device) => {
     // floor is `priority === 1`). The stepped predicate mirrors app.ts
     // `deviceSupportsLimitLowerPriority`; the extra `priority === 1` keeps the
     // compose toggle from ever being offered where it would be a no-op.
-    supportsLimitLowerPriority: device.controlModel === "stepped_load" && device.steppedLoadProfile?.model === "stepped_load" && device.priority === 1
+    supportsLimitLowerPriority: device.controlModel === "stepped_load" && isSteppedLoadSnapshot(device) && device.priority === 1
   };
 };
 var buildCreateSmartTaskDevicesPayload = (input) => {
