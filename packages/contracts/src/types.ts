@@ -222,7 +222,14 @@ export type ObservedDeviceState = {
     // error (TS2339). Owner seams (transport/observer producers) and
     // producer-fed structural funnels that physically carry the value before
     // consumers narrow widen with `EvObservedProbe` instead.
-    stateOfCharge?: DeviceStateOfChargeSnapshot;
+    // `stateOfCharge` is deliberately NOT here (state-of-charge-observed slice of
+    // the discriminated-types refactor): it lives on `StateOfChargeObservedFields`,
+    // regrouped onto the snapshot by the `hasObservedStateOfCharge` guard
+    // (`packages/shared-domain/src/stateOfChargeObservedState.ts`), so an
+    // un-narrowed `snapshot.stateOfCharge` read on a base-typed value is a hard
+    // compile error (TS2339). Owner seams (transport/observer producers) and
+    // producer-fed structural funnels that physically carry the value before
+    // consumers narrow widen with `StateOfChargeObservedProbe` instead.
     // `currentTemperature` is deliberately NOT here (temperature-observed slice
     // of the discriminated-types refactor): it lives on
     // `TemperatureObservedFields`, regrouped onto the snapshot by the
@@ -336,6 +343,44 @@ export type TemperatureObservedFields = {
  */
 export type TemperatureObservedProbe = {
     currentTemperature?: number;
+};
+
+/**
+ * State-of-charge observed field cluster (SoC-observed slice of the
+ * discriminated-types refactor — the observer-snapshot twin of the plan layer's
+ * `EvKind.stateOfCharge`).
+ *
+ * Like the other observed clusters, this is ORTHOGONAL and NOT a union member;
+ * it is the intersection the `hasObservedStateOfCharge` type-guard
+ * (`packages/shared-domain/src/stateOfChargeObservedState.ts`) adds onto a
+ * snapshot. `stateOfCharge` is OMITTED from `ObservedDeviceState`, so an
+ * un-narrowed `snapshot.stateOfCharge` read is a hard compile error (TS2339);
+ * consumers must pass through `hasObservedStateOfCharge` (or hold an
+ * already-narrowed value) first.
+ *
+ * IMPORTANT — unlike the scalar clusters, `stateOfCharge` is a NESTED bag with
+ * its own `status` field. The guard proves the SNAPSHOT OBJECT is present, NOT
+ * that `status === 'fresh'` and NOT that `percent` is usable: consumers keep
+ * their `status`/freshness gates after narrowing — the guard only removes the
+ * outer `?.`/`if (!stateOfCharge)`. (The `percent` finiteness IS guaranteed by
+ * the producer's `normalizeStateOfChargePercent`, so this is a pure
+ * type-tightening slice with no boundary bug.)
+ */
+export type StateOfChargeObservedFields = {
+    stateOfCharge: DeviceStateOfChargeSnapshot;
+};
+
+/**
+ * State-of-charge observed cluster as a plain optional: the "might have an
+ * observed state-of-charge" loose shape the OWNER seams carry (transport
+ * stores/mutates it in place; the observer projection and the debug snapshot
+ * copy it before consumers narrow). Those producer-side surfaces widen with this
+ * probe (`TargetDeviceSnapshot & StateOfChargeObservedProbe`) instead of
+ * re-adding the field to the base. Consumer code must NOT take this shape; it
+ * narrows through `hasObservedStateOfCharge`.
+ */
+export type StateOfChargeObservedProbe = {
+    stateOfCharge?: DeviceStateOfChargeSnapshot;
 };
 
 /**

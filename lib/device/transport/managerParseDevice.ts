@@ -1,5 +1,6 @@
 import type {
   DeviceControlProfile,
+  DeviceStateOfChargeSnapshot,
   EvChargingState,
   TargetDeviceSnapshot,
 } from '../../../packages/contracts/src/types';
@@ -295,7 +296,7 @@ function resolveParsedSoc(
     nowMs: number,
     capabilityObj: DeviceCapabilityMap,
     reportedCapabilities: FlowReportedCapabilitiesForDevice,
-): TargetDeviceSnapshot['stateOfCharge'] {
+): DeviceStateOfChargeSnapshot | undefined {
     return resolveStateOfChargeSnapshot({
         deviceClassKey,
         nowMs,
@@ -317,7 +318,7 @@ function buildParsedDeviceSnapshot(params: {
     binaryControl: TargetDeviceSnapshot['binaryControl'];
     evCharging: TargetDeviceSnapshot['evCharging'];
     evChargingState: EvChargingState | undefined;
-    stateOfCharge: TargetDeviceSnapshot['stateOfCharge'];
+    stateOfCharge: DeviceStateOfChargeSnapshot | undefined;
     currentTemperature: number | undefined;
     capabilities: string[];
     flowBackedCapabilityIds: FlowReportedCapabilityId[];

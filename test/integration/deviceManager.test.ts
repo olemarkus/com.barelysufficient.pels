@@ -14,7 +14,7 @@ import {
     startPendingBinarySettleWindow,
 } from '../../lib/observer/binarySettle';
 import type { LiveFeedHealth } from '../../lib/device/liveFeed';
-import type { EvObservedProbe, TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
+import type { EvObservedProbe, StateOfChargeObservedProbe, TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { isCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import { isManagedFilterActive } from '../../setup/appDeviceSupport';
@@ -2569,7 +2569,7 @@ describe('DeviceTransport', () => {
                 evCharging: false,
                 evChargingState: 'plugged_in_paused',
                 binaryControlObservation: previousEvidence,
-            }] as (TargetDeviceSnapshot & EvObservedProbe)[]);
+            }] as (TargetDeviceSnapshot & EvObservedProbe & StateOfChargeObservedProbe)[]);
             mockApiGet.mockResolvedValue({
                 ev1: {
                     id: 'ev1',
@@ -2624,7 +2624,7 @@ describe('DeviceTransport', () => {
                 evCharging: false,
                 evChargingState: 'plugged_in_paused',
                 binaryControlObservation: newerEvidence,
-            }] as (TargetDeviceSnapshot & EvObservedProbe)[]);
+            }] as (TargetDeviceSnapshot & EvObservedProbe & StateOfChargeObservedProbe)[]);
             mockApiGet.mockResolvedValue({
                 ev1: {
                     id: 'ev1',
@@ -2819,7 +2819,7 @@ describe('DeviceTransport', () => {
                     evCharging: false,
                     evChargingState: 'plugged_in_paused',
                     binaryControlObservation: previousEvidence,
-                }] as (TargetDeviceSnapshot & EvObservedProbe)[]);
+                }] as (TargetDeviceSnapshot & EvObservedProbe & StateOfChargeObservedProbe)[]);
 
                 vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
                 evDeviceManager.injectCapabilityUpdateForTest('ev1', 'evcharger_charging_state', 'mystery');
@@ -4723,7 +4723,7 @@ describe('DeviceTransport', () => {
                 vi.setSystemTime(new Date('2026-03-20T06:05:00.000Z'));
                 evDeviceManager.injectCapabilityUpdateForTest('ev1', 'evcharger_charging_state', 'plugged_in_charging');
 
-                expect(evDeviceManager.getSnapshot()[0].stateOfCharge).toEqual(expect.objectContaining({
+                expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     percent: 51,
                     status: 'fresh',
                     sessionStartedAtMs: new Date('2026-03-20T06:00:00.000Z').getTime(),
@@ -4759,7 +4759,7 @@ describe('DeviceTransport', () => {
                 vi.setSystemTime(new Date('2026-03-20T06:05:00.000Z'));
                 evDeviceManager.injectCapabilityUpdateForTest('ev1', 'measure_battery', 52);
 
-                expect(evDeviceManager.getSnapshot()[0].stateOfCharge).toEqual(expect.objectContaining({
+                expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     percent: 52,
                     status: 'fresh',
                     sessionStartedAtMs: new Date('2026-03-20T06:05:00.000Z').getTime(),
@@ -4837,7 +4837,7 @@ describe('DeviceTransport', () => {
                     },
                 });
 
-                expect(evDeviceManager.getSnapshot()[0].stateOfCharge).toEqual(expect.objectContaining({
+                expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     percent: 52,
                     status: 'fresh',
                     capabilityId: 'measure_battery',
@@ -4869,7 +4869,7 @@ describe('DeviceTransport', () => {
 
             deviceManager.injectCapabilityUpdateForTest('sensor1', 'measure_battery', 48);
 
-            expect(deviceManager.getSnapshot()[0].stateOfCharge).toBeUndefined();
+            expect((deviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toBeUndefined();
         });
 
         it('treats a fresher charging-state start as on even when the stored EV boolean is stale false', async () => {
@@ -5070,7 +5070,7 @@ describe('DeviceTransport', () => {
 
                 await evDeviceManager.refreshSnapshot();
 
-                expect(evDeviceManager.getSnapshot()[0].stateOfCharge).toEqual(expect.objectContaining({
+                expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     percent: 61,
                     capabilityId: 'measure_battery',
                     status: 'fresh',
@@ -5175,7 +5175,7 @@ describe('DeviceTransport', () => {
                 });
                 await evDeviceManager.refreshSnapshot();
 
-                expect(evDeviceManager.getSnapshot()[0].stateOfCharge).toEqual(expect.objectContaining({
+                expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     percent: 61,
                     capabilityId: 'measure_battery',
                     status: 'fresh',
@@ -5280,7 +5280,7 @@ describe('DeviceTransport', () => {
                 });
                 await evDeviceManager.refreshSnapshot();
 
-                expect(evDeviceManager.getSnapshot()[0].stateOfCharge).toEqual(expect.objectContaining({
+                expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     percent: 61,
                     capabilityId: 'measure_soc_level',
                     status: 'fresh',
@@ -5329,7 +5329,7 @@ describe('DeviceTransport', () => {
                 });
 
                 await evDeviceManager.refreshSnapshot();
-                expect(evDeviceManager.getSnapshot()[0].stateOfCharge).toEqual(expect.objectContaining({
+                expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     percent: 50,
                     observedAtMs: new Date('2026-03-20T06:00:00.000Z').getTime(),
                     status: 'fresh',
@@ -5361,7 +5361,7 @@ describe('DeviceTransport', () => {
                         measure_power: { value: 0, id: 'measure_power' },
                     },
                 });
-                expect(evDeviceManager.getSnapshot()[0].stateOfCharge).toEqual(expect.objectContaining({
+                expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     percent: 50,
                     observedAtMs: new Date('2026-03-20T06:00:00.000Z').getTime(),
                     status: 'stale',
@@ -5369,7 +5369,7 @@ describe('DeviceTransport', () => {
 
                 await evDeviceManager.refreshSnapshot();
 
-                expect(evDeviceManager.getSnapshot()[0].stateOfCharge).toEqual(expect.objectContaining({
+                expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     percent: 50,
                     observedAtMs: new Date('2026-03-20T06:00:00.000Z').getTime(),
                     status: 'stale',
@@ -5463,7 +5463,7 @@ describe('DeviceTransport', () => {
                     },
                 });
                 await evDeviceManager.refreshSnapshot();
-                expect(evDeviceManager.getSnapshot()[0].stateOfCharge).toEqual(expect.objectContaining({
+                expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     percent: 70,
                     capabilityId: 'measure_battery',
                 }));
@@ -5502,7 +5502,7 @@ describe('DeviceTransport', () => {
                 });
                 await evDeviceManager.refreshSnapshot();
 
-                expect(evDeviceManager.getSnapshot()[0].stateOfCharge).toEqual(expect.objectContaining({
+                expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     percent: 70,
                     capabilityId: 'measure_battery',
                 }));
@@ -5611,7 +5611,7 @@ describe('DeviceTransport', () => {
                 });
                 await evDeviceManager.refreshSnapshot();
 
-                expect(evDeviceManager.getSnapshot()[0].stateOfCharge).toEqual(expect.objectContaining({
+                expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     percent: 50,
                     capabilityId: 'measure_battery',
                 }));
@@ -6641,7 +6641,7 @@ describe('DeviceTransport', () => {
 
                     deviceManager.injectCapabilityUpdateForTest('dev1', 'measure_temperature', 21);
 
-                    const snapshot = deviceManager.getSnapshot()[0] as TargetDeviceSnapshot & TemperatureObservedProbe;
+                    const snapshot = deviceManager.getSnapshot()[0] as TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe;
                     if (!hasObservedTemperature(snapshot)) throw new Error('expected observed temperature');
                     expect(snapshot.currentTemperature).toBe(21);
                     expect(snapshot.lastFreshDataMs).toBeGreaterThan(freshnessAtRefresh!);
@@ -6673,7 +6673,7 @@ describe('DeviceTransport', () => {
                     vi.setSystemTime(new Date('2026-04-01T12:01:00.000Z'));
                     deviceManager.injectCapabilityUpdateForTest('dev1', 'measure_temperature', Number.NaN);
 
-                    const snapshot = deviceManager.getSnapshot()[0] as TargetDeviceSnapshot & TemperatureObservedProbe;
+                    const snapshot = deviceManager.getSnapshot()[0] as TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe;
                     if (!hasObservedTemperature(snapshot)) throw new Error('expected observed temperature');
                     expect(snapshot.currentTemperature).toBe(21);
                     expect(snapshot.lastFreshDataMs).toBe(freshnessBefore);
@@ -7213,7 +7213,7 @@ describe('DeviceTransport', () => {
                 // `lastUpdated`, and the merge only carries forward fresher prior observations.
                 const observationState = createObservationState();
                 const initialFreshAt = new Date('2026-04-01T11:55:00.000Z').getTime();
-                const previousSnapshot: (TargetDeviceSnapshot & TemperatureObservedProbe)[] = [{
+                const previousSnapshot: (TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
                     id: 'ev1',
                     name: 'Zaptec',
                     deviceClass: 'evcharger',
@@ -7224,7 +7224,7 @@ describe('DeviceTransport', () => {
                     powerCapable: false,
                     lastFreshDataMs: initialFreshAt,
                 }];
-                const nextSnapshot: (TargetDeviceSnapshot & TemperatureObservedProbe)[] = [{
+                const nextSnapshot: (TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
                     ...previousSnapshot[0],
                     binaryControlObservation: {
                         valid: true,

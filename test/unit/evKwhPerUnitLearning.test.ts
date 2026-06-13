@@ -5,7 +5,7 @@ import {
 import { resolveProfileEnergy } from '../../lib/objectives/deferredObjectives/profileEnergyResolution';
 import { BOOTSTRAP_EV_SOC_KWH_PER_PERCENT } from '../../packages/shared-domain/src/objectiveProfileBootstrap';
 import type { PowerTrackerState } from '../../lib/power/tracker';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { StateOfChargeObservedProbe, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 
 // EV kWhPerUnit learning end-to-end: snapshot ingest → profile sample acceptance/
 // rejection → resolveProfileEnergy switching between bootstrap and learned. The
@@ -23,7 +23,9 @@ const hourMs = 60 * 60 * 1000;
 // rise-below-threshold assertion (which uses `MIN_SOC_RISE_PERCENT - 0.1`).
 const MIN_SOC_RISE_PERCENT = 0.2;
 
-const evDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => ({
+const evDevice = (
+  overrides: Partial<TargetDeviceSnapshot & StateOfChargeObservedProbe> = {},
+): TargetDeviceSnapshot & StateOfChargeObservedProbe => ({
   id: 'ev-1',
   name: 'Charger',
   targets: [],

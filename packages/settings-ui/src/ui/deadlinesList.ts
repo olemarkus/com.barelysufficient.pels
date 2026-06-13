@@ -17,8 +17,13 @@ import type {
   ResolvedDeferredObjectiveActivePlanV1,
 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import type { ResolvedDeferredObjectivePlanHistoryEntry } from '../../../contracts/src/deferredObjectivePlanHistory.ts';
-import type { ObservedDeviceState, TemperatureObservedProbe } from '../../../contracts/src/types.ts';
+import type {
+  ObservedDeviceState,
+  StateOfChargeObservedProbe,
+  TemperatureObservedProbe,
+} from '../../../contracts/src/types.ts';
 import { hasObservedTemperature } from '../../../shared-domain/src/temperatureObservedState.ts';
+import { hasObservedStateOfCharge } from '../../../shared-domain/src/stateOfChargeObservedState.ts';
 import { buildDeadlineHref } from './deadlineUrls.ts';
 import { resolveBrowserTimeZone } from './deadlinePlanHistoryFetch.ts';
 import {
@@ -48,17 +53,17 @@ import {
 // fetched from `/ui_devices` (Homey SDK) does.
 const resolveCurrentValue = (
   // Probe-widened: the `/ui_devices` snapshot physically carries the observed
-  // temperature the base type omits; `hasObservedTemperature` narrows it (a
-  // present reading is finite by the producer invariant — no re-check).
-  device: (ObservedDeviceState & TemperatureObservedProbe) | undefined,
+  // temperature / SoC the base type omits; `hasObservedTemperature` /
+  // `hasObservedStateOfCharge` narrow it (a present reading is finite by the
+  // producer invariant — no re-check).
+  device: (ObservedDeviceState & TemperatureObservedProbe & StateOfChargeObservedProbe) | undefined,
   kind: ResolvedDeferredObjectiveActivePlanV1['objectiveKind'],
 ): number | null => {
   if (!device) return null;
   if (kind === 'temperature') {
     return hasObservedTemperature(device) ? device.currentTemperature : null;
   }
-  const percent = device.stateOfCharge?.percent;
-  return typeof percent === 'number' && Number.isFinite(percent) ? percent : null;
+  return hasObservedStateOfCharge(device) ? device.stateOfCharge.percent : null;
 };
 
 const buildCard = (params: {

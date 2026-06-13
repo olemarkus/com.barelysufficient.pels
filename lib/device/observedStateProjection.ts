@@ -1,6 +1,7 @@
 import type {
     EvObservedProbe,
     ObservedDeviceState,
+    StateOfChargeObservedProbe,
     TemperatureObservedProbe,
 } from '../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
@@ -32,7 +33,7 @@ export function projectObservedState(snapshot: TransportDeviceSnapshot): Observe
     // fields the base type omits (`evChargingState` / `currentTemperature`); the
     // observer's stored values must physically carry them for `isEvObserved` /
     // `hasObservedTemperature` narrowing and the read-model producer accessor.
-    const projected: ObservedDeviceState & EvObservedProbe & TemperatureObservedProbe = {
+    const projected: ObservedDeviceState & EvObservedProbe & TemperatureObservedProbe & StateOfChargeObservedProbe = {
         id: snapshot.id,
         name: snapshot.name,
         targets: snapshot.targets.map((target) => ({ ...target })),

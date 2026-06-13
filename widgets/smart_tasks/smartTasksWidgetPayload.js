@@ -39,6 +39,9 @@ var hasObservedTemperature = (snapshot) => (
   snapshot.currentTemperature != null
 );
 
+// packages/shared-domain/src/stateOfChargeObservedState.ts
+var hasObservedStateOfCharge = (snapshot) => snapshot.stateOfCharge != null;
+
 // packages/shared-domain/src/deferredPlanHistoryChartData.ts
 var HOUR_MS = 60 * 60 * 1e3;
 var resolveRunBands = (hours, windowStartMs, windowEndMs) => {
@@ -1129,8 +1132,7 @@ var resolveCurrentValue = (device, kind) => {
   if (kind === "temperature") {
     return hasObservedTemperature(device) ? device.currentTemperature : null;
   }
-  const percent = device.stateOfCharge?.percent;
-  return isFiniteNumber(percent) ? percent : null;
+  return hasObservedStateOfCharge(device) ? device.stateOfCharge.percent : null;
 };
 var resolvePlannerEtaMs = (plan) => {
   const hours = plan.latest?.hours;

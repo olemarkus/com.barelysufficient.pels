@@ -46,14 +46,21 @@ describe('settingsUiApi', () => {
       devices: [{ id: 'dev-1', name: 'Heater', priority: 1, reason: buildComparablePlanReason('keep') }],
     };
     // These entries pin the ui_devices wire carriage of the observed cluster
-    // fields the base snapshot type omits: `evChargingState` (EV-observed move)
-    // and `currentTemperature` (temperature-observed move). The settings-UI
-    // `isEvObserved` / `hasObservedTemperature` narrowing works only if the
-    // served objects physically carry these — a producer rebuild that drops
-    // either field must fail here.
+    // fields the base snapshot type omits: `evChargingState` (EV-observed move),
+    // `currentTemperature` (temperature-observed move), and `stateOfCharge`
+    // (SoC-observed move). The settings-UI `isEvObserved` /
+    // `hasObservedTemperature` / `hasObservedStateOfCharge` narrowing works only
+    // if the served objects physically carry these — a producer rebuild that
+    // drops any of them must fail here.
     let latestDevices: Record<string, unknown>[] = [
       { id: 'dev-1', name: 'Heater', deviceType: 'temperature', currentTemperature: 18.5 },
-      { id: 'ev-1', name: 'Charger', deviceClass: 'evcharger', evChargingState: 'plugged_in_charging' },
+      {
+        id: 'ev-1',
+        name: 'Charger',
+        deviceClass: 'evcharger',
+        evChargingState: 'plugged_in_charging',
+        stateOfCharge: { percent: 80, status: 'fresh' },
+      },
     ];
     let powerTracker: Record<string, unknown> = { buckets: { '2026-03-03T00:00:00.000Z': 1.2 } };
     const refreshTargetDevicesSnapshot = vi.fn().mockImplementation(async () => {
@@ -353,7 +360,13 @@ describe('settingsUiApi', () => {
     expect(getSettingsUiDevicesPayload({ homey: homey as never })).toEqual({
       devices: [
         { id: 'dev-1', name: 'Heater', deviceType: 'temperature', currentTemperature: 18.5 },
-        { id: 'ev-1', name: 'Charger', deviceClass: 'evcharger', evChargingState: 'plugged_in_charging' },
+        {
+          id: 'ev-1',
+          name: 'Charger',
+          deviceClass: 'evcharger',
+          evChargingState: 'plugged_in_charging',
+          stateOfCharge: { percent: 80, status: 'fresh' },
+        },
       ],
     });
     expect(getSettingsUiPlanPayload({ homey: homey as never })).toEqual({

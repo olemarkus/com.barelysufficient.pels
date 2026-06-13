@@ -5,9 +5,11 @@ import {
 import { isEvDevice } from '../../packages/shared-domain/src/commandableNow';
 import { isTemperatureControlDevice } from '../../packages/shared-domain/src/temperatureDeviceKind';
 import { hasObservedTemperature } from '../../packages/shared-domain/src/temperatureObservedState';
+import { hasObservedStateOfCharge } from '../../packages/shared-domain/src/stateOfChargeObservedState';
 import type {
   DeviceDescriptor,
   ObservedDeviceState,
+  StateOfChargeObservedProbe,
   TemperatureObservedProbe,
 } from '../../packages/contracts/src/types';
 import type { DeviceObjectiveProfileSample } from './types';
@@ -16,10 +18,12 @@ import type { DeviceObjectiveProfileSample } from './types';
 // few descriptor fields the kind predicates need — NOT the full producer-input
 // `TargetDeviceSnapshot`. Objectives is a downstream consumer; it depends on the
 // decomposed snapshot halves, never the raw producer snapshot. The
-// `TemperatureObservedProbe` widening carries the observed temperature the base
-// type omits (this is a producer-fed funnel); `hasObservedTemperature` narrows it.
+// `TemperatureObservedProbe` / `StateOfChargeObservedProbe` widenings carry the
+// observed temperature / SoC the base type omits (this is a producer-fed funnel);
+// `hasObservedTemperature` / `hasObservedStateOfCharge` narrow them.
 export type ObjectiveSampleDevice = ObservedDeviceState
   & TemperatureObservedProbe
+  & StateOfChargeObservedProbe
   & Pick<DeviceDescriptor, 'steppedLoadProfile' | 'deviceClass' | 'deviceType' | 'controlCapabilityId'>;
 
 export const OBJECTIVE_PROFILE_MAX_OBSERVATION_AGE_MS = 30 * 60 * 1000;
@@ -38,7 +42,7 @@ export function buildObjectiveProfileSample(
     };
   }
 
-  if (isEvDevice(device) && device.stateOfCharge?.status === 'fresh') {
+  if (isEvDevice(device) && hasObservedStateOfCharge(device) && device.stateOfCharge.status === 'fresh') {
     const observedAtMs = device.stateOfCharge.observedAtMs ?? device.lastFreshDataMs;
     if (typeof observedAtMs !== 'number' || !Number.isFinite(observedAtMs)) return null;
     if (!isFreshObservationTime(observedAtMs, nowMs)) return null;
