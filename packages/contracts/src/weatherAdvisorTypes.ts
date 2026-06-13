@@ -303,6 +303,8 @@ export type WeatherAdvisorReadoutPayload = {
   outdoorReading: WeatherDeviceReading;
   /** Live forecast-device reading (tomorrow's mean) for the Settings picker validity line. */
   forecastReading: WeatherDeviceReading;
+  /** Active daily budget (kWh); null when disabled — drives the setup card's budget hint. */
+  dailyBudgetKwh: number | null;
   fit: EnergySignatureFit | null;
   coverage: WeatherCoverageBin[];
   prediction: WeatherAdvisorPrediction | null;

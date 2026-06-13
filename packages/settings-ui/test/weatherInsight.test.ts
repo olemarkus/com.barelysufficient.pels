@@ -81,6 +81,7 @@ const buildReadout = (
   forecastStatus: 'forecast',
   outdoorReading: { status: 'reading', tempC: 4 },
   forecastReading: { status: 'reading', tempC: 2 },
+  dailyBudgetKwh: 50,
   fit: buildFit(),
   coverage: [
     { fromC: -10, toC: -5, days: 6, sufficient: false },
@@ -196,6 +197,18 @@ describe('WeatherBudgetCard (Budget plan slot)', () => {
     expect(button?.textContent).toContain(WEATHER_SETUP_BUTTON);
     // Deep-links straight to the dedicated Weather insight sub-page.
     expect(button?.getAttribute('data-settings-target')).toBe('weather');
+    // A daily budget is set (fixture: 50) → no budget nudge.
+    expect(card?.querySelector('#weather-setup-budget-hint')).toBeNull();
+  });
+
+  it('S1: nudges to set a daily budget only when none is configured', () => {
+    const mount = mountIntoBody();
+    const readout = buildReadout({
+      state: 'needs_device', fit: null, prediction: null, suggestion: null, dailyBudgetKwh: null,
+    });
+    renderBudgetOverview(mount, buildProps({ weatherInsight: { readout, fetchFailed: false } }));
+    const hint = mount.querySelector('#weather-setup-budget-hint');
+    expect(hint?.textContent).toContain('daily budget');
   });
 
   it('S2: renders the backfilling card', () => {
@@ -351,6 +364,42 @@ describe('WeatherSettingsSection', () => {
     // Warn tone reuses the canonical .field__hint--alert primitive (no bespoke class).
     const warn = mount.querySelector('.field__hint--alert');
     expect(warn?.textContent).toContain('recent days');
+  });
+
+  it('labels a configured-but-deleted device as no-longer-available, never the raw id', () => {
+    const mount = mountIntoBody();
+    renderWeatherSettingsSection(mount, {
+      outdoorDeviceId: 'homey:device:deleted-uuid',
+      forecastDeviceId: null,
+      devices: [{ id: 'dev-a', label: 'Hall sensor' }],
+      devicesLoaded: true, // loaded, and the configured device isn't in the list → deleted
+      outdoorReading: { status: 'no_device' },
+      forecastReading: { status: 'no_device' },
+      onOutdoorChange: () => {},
+      onForecastChange: () => {},
+    });
+    const outdoor = mount.querySelector('#weather-outdoor-select') as HTMLSelectElement;
+    const orphan = [...outdoor.options].find((o) => o.value === 'homey:device:deleted-uuid');
+    expect(orphan?.textContent).toContain('no longer available');
+    expect(orphan?.textContent).not.toContain('homey:device:deleted-uuid');
+  });
+
+  it('uses a neutral placeholder for a configured device while the list is still loading', () => {
+    const mount = mountIntoBody();
+    renderWeatherSettingsSection(mount, {
+      outdoorDeviceId: 'homey:device:loading-uuid',
+      forecastDeviceId: null,
+      devices: [],
+      devicesLoaded: false, // not loaded yet → don't claim "deleted"
+      outdoorReading: { status: 'no_device' },
+      forecastReading: { status: 'no_device' },
+      onOutdoorChange: () => {},
+      onForecastChange: () => {},
+    });
+    const outdoor = mount.querySelector('#weather-outdoor-select') as HTMLSelectElement;
+    const opt = [...outdoor.options].find((o) => o.value === 'homey:device:loading-uuid');
+    expect(opt?.textContent).toBe('Selected device');
+    expect(opt?.textContent).not.toContain('no longer available');
   });
 
   it('shows an empty state when loaded with no temperature devices', () => {

@@ -368,6 +368,13 @@ export const WEATHER_SETUP_TITLE = WEATHER_INSIGHT_TITLE;
 export const WEATHER_SETUP_BODY = 'PELS can learn how outside temperature drives your daily usage, '
   + 'and predict tomorrow’s total. Pick the device that measures outdoor temperature to start.';
 export const WEATHER_SETUP_BUTTON = 'Choose temperature device';
+/**
+ * Gentle nudge on the setup card, shown only when no daily budget is configured.
+ * Names what the budget unlocks (the tomorrow verdict) rather than vaguely
+ * grading the whole feature — prediction/numbers work without a budget.
+ */
+export const WEATHER_SETUP_BUDGET_HINT = 'Set a daily budget and PELS can tell you whether '
+  + 'tomorrow fits inside it.';
 
 export const WEATHER_BACKFILL_TITLE = 'Reading your history…';
 export const WEATHER_BACKFILL_BODY = 'Matching the past year of your usage with past temperatures. '
@@ -400,6 +407,10 @@ export const WEATHER_FORECAST_PICKER_HINT = 'Optional. Point this at a device th
   + 'tomorrow’s outdoor temperature on its main temperature reading — a Yr “next 24 hours” device '
   + 'works. If PELS can’t read a forecast, it uses your recent days instead.';
 export const WEATHER_PICKER_NONE = 'No device';
+/** A previously-selected device that is no longer in Homey (kept selectable so the setting isn't lost). */
+export const WEATHER_PICKER_ORPHAN = 'Previously selected device (no longer available)';
+/** A configured device shown before the device list has loaded (neutral, not "deleted"). */
+export const WEATHER_PICKER_SELECTED_LOADING = 'Selected device';
 
 // ── Picker live-validity lines ─────────────────────────────────────────────
 // Shown under each picker so the user sees a chosen device actually works the

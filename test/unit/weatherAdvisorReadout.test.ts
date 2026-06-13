@@ -224,6 +224,13 @@ describe('buildWeatherAdvisorReadout', () => {
     expect(payload?.forecastStatus).toBe('recent_device_unreadable');
   });
 
+  it('surfaces the active daily budget (null when disabled) for the setup-card hint', () => {
+    expect(buildWeatherAdvisorReadout(baseInput({ settings: { enabled: true } }))?.dailyBudgetKwh)
+      .toBeNull();
+    expect(buildWeatherAdvisorReadout(baseInput({ currentDailyBudgetKwh: 50 }))?.dailyBudgetKwh)
+      .toBe(50);
+  });
+
   it('marks the suggestion as capacity-capped when cap × 24h clamps it', () => {
     const payload = buildWeatherAdvisorReadout(withState(
       { records: recentDays(30), latestFit: fit() },

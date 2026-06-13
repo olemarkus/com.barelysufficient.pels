@@ -57,6 +57,7 @@ import {
   WEATHER_SCATTER_SUBTITLE_LEARNING,
   WEATHER_SCATTER_TITLE,
   WEATHER_SETUP_BODY,
+  WEATHER_SETUP_BUDGET_HINT,
   WEATHER_SETUP_BUTTON,
   WEATHER_VALUE_NOT_CLEAR_YET,
 } from '../../../../shared-domain/src/weatherInsightCopy.ts';
@@ -193,6 +194,11 @@ export const WeatherBudgetCard = ({ data, onShowDetails, onAdjustBudget }: {
   if (readout.state === 'needs_device') {
     return (
       <StateCard id="weather-setup-card" title={WEATHER_INSIGHT_TITLE} body={WEATHER_SETUP_BODY}>
+        {/* Gentle nudge, only when no daily budget is set: the verdict/payoff
+            needs one, so flag it before the 21-day wait rather than after. */}
+        {readout.dailyBudgetKwh === null && (
+          <p class="pels-card-supporting" id="weather-setup-budget-hint">{WEATHER_SETUP_BUDGET_HINT}</p>
+        )}
         <div class="weather-card__actions">
           <MdTextButton id="weather-setup-pick-device" data-settings-target="weather">
             {WEATHER_SETUP_BUTTON}
