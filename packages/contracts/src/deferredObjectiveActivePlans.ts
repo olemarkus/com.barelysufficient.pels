@@ -1,6 +1,9 @@
 // Type-only file: runtime code must not value-import contracts per the
-// packaging boundary. The schema version literal lives at the runtime side
-// (`lib/objectives/deferredObjectives/activePlanSettings.ts`).
+// packaging boundary. The schema version literal + top-level shape/version
+// guard live in browser-safe shared-domain
+// (`packages/shared-domain/src/deferredObjectiveActivePlanShape.ts`,
+// `DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION`), shared by the runtime recorder and
+// the settings UI.
 
 // `prices_revised` is reserved for revisions where the planner consumed a
 // newer price horizon than the last revision (Nordpool publishes tomorrow's
