@@ -404,10 +404,26 @@ export const WEATHER_ERROR_BODY = 'Couldn’t load the weather readout. PELS wil
 
 // ── Settings section ───────────────────────────────────────────────────────
 // The sub-page title comes from the panel hero (static); this section renders
-// the intro hint + the two pickers.
+// the master on/off switch, then (when on) the intro hint + the two pickers.
 
-export const WEATHER_SETTINGS_SECTION_HINT = 'Predict tomorrow’s usage from outside temperature. '
-  + 'Pick the devices PELS should read.';
+/**
+ * Master switch row at the top of the sub-page. The page hero already names the
+ * feature, so the supporting line carries the value proposition — what turning
+ * it on actually does. Shown whether the feature is on or off (the switch is the
+ * feature gate; off ⇒ only this row renders).
+ */
+export const WEATHER_ENABLE_LABEL = 'Weather insight';
+export const WEATHER_ENABLE_SUPPORTING = 'Predict tomorrow’s usage from outside temperature.';
+/**
+ * Off-state pitch shown below the master switch — leads with the budget payoff
+ * (the reason to turn it on) and names the next step, so the off page sells the
+ * feature instead of reading as a bare toggle. Readable body copy, not a muted
+ * hint. No daily budget configured is fine — the setup card nudges that later.
+ */
+export const WEATHER_DISABLED_PITCH = 'See whether tomorrow’s weather will fit inside your daily '
+  + 'budget. Turn it on and pick your outdoor temperature device to start.';
+
+export const WEATHER_SETTINGS_SECTION_HINT = 'Pick the devices PELS should read.';
 /** Shown when no Homey device exposes a temperature reading PELS can use. */
 export const WEATHER_NO_TEMPERATURE_DEVICES = 'PELS found no temperature devices in Homey. Add a '
   + 'device that reports outdoor temperature on its main reading, then pick it here.';

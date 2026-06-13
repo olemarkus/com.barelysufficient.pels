@@ -1,13 +1,14 @@
 /**
- * Hidden Weather insight surface (Budget tab + Settings pickers).
+ * Weather insight surface (Budget tab + Settings sub-page).
  *
- * Flag-off is the load-bearing case: `weather_advisor_settings` absent must
- * leave ZERO weather DOM ids on the Budget page and an empty Settings mount —
- * structural absence, not CSS hiding. Runs in every Playwright project, so
- * the absence is asserted at 480 px (chromium + firefox) AND 320 px
- * (chromium-narrow).
+ * Off is the load-bearing case: with `weather_advisor_settings` absent the
+ * Budget page carries ZERO weather DOM (structural absence, not CSS hiding) —
+ * but the Settings sub-page is now always reachable and shows the master
+ * on/off switch (off), with no device pickers until it is turned on. Runs in
+ * every Playwright project, so this is asserted at 480 px (chromium + firefox)
+ * AND 320 px (chromium-narrow).
  *
- * Flag-on drives the real navigation loop: Tomorrow card → `Weather details`
+ * On drives the real navigation loop: Tomorrow card → `Weather details`
  * → detail view (header `Weather insight`, scatter chart with a non-empty
  * SVG) → `Done` → back to the plan view.
  */
@@ -34,24 +35,74 @@ const openBudgetTab = async (page: Page) => {
   await expect(page.locator('#budget-panel')).toBeVisible();
 };
 
-test.describe('Weather insight (hidden flag)', () => {
-  test('flag off: no weather DOM on Budget, Settings mount stays empty', async ({ page }) => {
+// Reads the persisted weather_advisor_settings.enabled straight from the Homey
+// stub, so a toggle's persistence (not just its optimistic render) is asserted.
+const readPersistedEnabled = (page: Page): Promise<boolean | undefined> => page.evaluate(() => (
+  new Promise<boolean | undefined>((resolve) => {
+    (window as unknown as { Homey: { get: (k: string, cb: (e: unknown, v: unknown) => void) => void } })
+      .Homey.get('weather_advisor_settings', (_error, value) => {
+        resolve((value as { enabled?: boolean } | undefined)?.enabled);
+      });
+  })
+));
+
+test.describe('Weather insight', () => {
+  test('off: no weather card on Budget; sub-page shows the master switch, no pickers', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await openBudgetTab(page);
     // The Budget surface itself rendered…
     await expect(page.locator('#budget-plan-summary')).toBeVisible();
-    // …but nothing weather-shaped exists anywhere in the panel.
+    // …but no weather card exists on the Budget page while the feature is off.
     await expect(page.locator('#budget-panel [id^="weather-"]')).toHaveCount(0);
-    await expect(page.locator('[class*="weather-"]')).toHaveCount(0);
+    await expect(page.locator('#budget-panel [class*="weather-"]')).toHaveCount(0);
 
     await page.getByRole('tab', { name: 'Settings' }).click();
     await expect(page.locator('#settings-panel')).toBeVisible();
-    // The nav card is the gate: hidden (feature unreachable) and the mount empty.
-    await expect(page.locator('#weather-insight-nav-card')).toBeHidden();
-    await expect(page.locator('#weather-insight-settings-mount')).toBeEmpty();
+    // The nav card is now always visible — the entry point to turn the feature on.
+    const navCard = page.locator('#weather-insight-nav-card');
+    await expect(navCard).toBeVisible();
+    await navCard.click();
+    await expect(page.locator('#weather-panel')).toBeVisible();
+    // Master switch present; no device pickers until it is enabled.
+    await expect(page.locator('#weather-enable-switch')).toBeVisible();
+    await expect(page.locator('#weather-insight-settings')).toHaveCount(0);
+    // The Budget cross-link promises an outlook that doesn't exist while off.
+    await expect(page.locator('#weather-see-in-budget')).toBeHidden();
   });
 
-  test('flag on: Tomorrow card → Weather details → chart → Done loop', async ({ page }) => {
+  test('off → enabling from the master switch reveals the device pickers and persists', async ({ page }) => {
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.getByRole('tab', { name: 'Settings' }).click();
+    await page.locator('#weather-insight-nav-card').click();
+    await expect(page.locator('#weather-panel')).toBeVisible();
+    await expect(page.locator('#weather-insight-settings')).toHaveCount(0);
+    // Turn the feature on from its master switch → the pickers appear and the
+    // cross-link is revealed; the flag is persisted (not just optimistically shown).
+    await page.locator('#weather-enable-switch').click();
+    await expect(page.locator('#weather-insight-settings')).toBeVisible();
+    await expect(page.locator('#weather-outdoor-select')).toBeVisible();
+    await expect(page.locator('#weather-see-in-budget')).toBeVisible();
+    expect(await readPersistedEnabled(page)).toBe(true);
+  });
+
+  test('on → disabling keeps the user on the sub-page and persists off', async ({ page }) => {
+    await enableWeatherFlag(page);
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.getByRole('tab', { name: 'Settings' }).click();
+    await page.locator('#weather-insight-nav-card').click();
+    await expect(page.locator('#weather-panel')).toBeVisible();
+    await expect(page.locator('#weather-insight-settings')).toBeVisible();
+    // Toggle off from the master switch: the sub-page stays open (the switch lives
+    // here), the pickers + cross-link disappear, and the flag persists off.
+    await page.locator('#weather-enable-switch').click();
+    await expect(page.locator('#weather-panel')).toBeVisible();
+    await expect(page.locator('#weather-enable-switch')).toBeVisible();
+    await expect(page.locator('#weather-insight-settings')).toHaveCount(0);
+    await expect(page.locator('#weather-see-in-budget')).toBeHidden();
+    expect(await readPersistedEnabled(page)).toBe(false);
+  });
+
+  test('on: Tomorrow card → Weather details → chart → Done loop', async ({ page }) => {
     await enableWeatherFlag(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await openBudgetTab(page);
@@ -80,11 +131,11 @@ test.describe('Weather insight (hidden flag)', () => {
     await expect(card).toBeVisible();
   });
 
-  test('flag on: nav card opens the Weather insight sub-page with the two pickers', async ({ page }) => {
+  test('on: nav card opens the Weather insight sub-page with the two pickers', async ({ page }) => {
     await enableWeatherFlag(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.getByRole('tab', { name: 'Settings' }).click();
-    // The nav card is unhidden when the flag is on and opens the dedicated sub-page.
+    // The nav card opens the dedicated sub-page; with the feature on the pickers render.
     const navCard = page.locator('#weather-insight-nav-card');
     await expect(navCard).toBeVisible();
     await navCard.click();
@@ -97,10 +148,10 @@ test.describe('Weather insight (hidden flag)', () => {
     await expect(page.locator('#weather-see-in-budget')).toBeVisible();
   });
 
-  test('flag on, no device: Budget setup card deep-links to the Weather sub-page', async ({ page }) => {
+  test('on, no device: Budget setup card deep-links to the Weather sub-page', async ({ page }) => {
     await page.addInitScript(() => {
       (window as Window & { __PELS_HOMEY_STUB__?: unknown }).__PELS_HOMEY_STUB__ = {
-        // Flag on but no outdoor device → Budget shows the setup card (needs_device).
+        // Feature on but no outdoor device → Budget shows the setup card (needs_device).
         settings: { weather_advisor_settings: { enabled: true }, daily_budget_kwh: 50 },
       };
     });

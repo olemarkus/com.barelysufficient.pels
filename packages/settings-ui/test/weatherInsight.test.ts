@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { renderBudgetOverview, type BudgetOverviewProps } from '../src/ui/views/BudgetOverview.tsx';
-import { renderWeatherSettingsSection } from '../src/ui/views/WeatherSettingsSection.tsx';
+import {
+  renderWeatherSettingsSection,
+  type WeatherPickersProps,
+} from '../src/ui/views/WeatherSettingsSection.tsx';
 import type {
   EnergySignatureFit,
   WeatherAdvisorReadoutPayload,
@@ -18,6 +21,8 @@ import {
   WEATHER_BACKFILL_BODY,
   WEATHER_BACKFILL_TITLE,
   WEATHER_CHIP_ROUGH_ESTIMATE,
+  WEATHER_DISABLED_PITCH,
+  WEATHER_ENABLE_LABEL,
   WEATHER_ERROR_TITLE,
   WEATHER_FORECAST_PICKER_LABEL,
   WEATHER_INSIGHT_TITLE,
@@ -338,22 +343,47 @@ describe('WeatherInsightDetail (localView weather)', () => {
 });
 
 describe('WeatherSettingsSection', () => {
-  it('renders two native selects and reports changes', () => {
+  const buildPickers = (overrides: Partial<WeatherPickersProps> = {}): WeatherPickersProps => ({
+    outdoorDeviceId: null,
+    forecastDeviceId: null,
+    devices: [{ id: 'dev-a', label: 'Hall sensor' }, { id: 'dev-b', label: 'Yr forecast' }],
+    devicesLoaded: true,
+    outdoorReading: { status: 'no_device' },
+    forecastReading: { status: 'no_device' },
+    onOutdoorChange: () => {},
+    onForecastChange: () => {},
+    ...overrides,
+  });
+
+  it('renders the master switch and the off-state pitch when off (no pickers)', () => {
+    const mount = mountIntoBody();
+    renderWeatherSettingsSection(mount, { enabled: false, onEnabledChange: () => {}, pickers: null });
+    expect(mount.querySelector('#weather-enable-switch')).not.toBeNull();
+    expect(mount.textContent).toContain(WEATHER_ENABLE_LABEL);
+    // The off page sells the feature with a payoff-led pitch, not a bare toggle.
+    expect(mount.querySelector('#weather-disabled-pitch')?.textContent).toContain(WEATHER_DISABLED_PITCH);
+    // No pickers while the feature is off.
+    expect(mount.querySelector('#weather-insight-settings')).toBeNull();
+    expect(mount.querySelector('#weather-outdoor-select')).toBeNull();
+  });
+
+  it('toggling the master switch reports the new enabled state', () => {
+    const mount = mountIntoBody();
+    const onEnabledChange = vi.fn();
+    renderWeatherSettingsSection(mount, { enabled: false, onEnabledChange, pickers: null });
+    const sw = mount.querySelector('#weather-enable-switch') as HTMLElement & { selected: boolean };
+    sw.selected = true;
+    sw.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(onEnabledChange).toHaveBeenCalledWith(true);
+  });
+
+  it('renders two native selects and reports changes when enabled', () => {
     const mount = mountIntoBody();
     const onOutdoorChange = vi.fn();
     renderWeatherSettingsSection(mount, {
-      outdoorDeviceId: null,
-      forecastDeviceId: null,
-      devices: [
-        { id: 'dev-a', label: 'Hall sensor' },
-        { id: 'dev-b', label: 'Yr forecast' },
-      ],
-      devicesLoaded: true,
-      outdoorReading: { status: 'no_device' },
-      forecastReading: { status: 'no_device' },
-      onOutdoorChange,
-      onForecastChange: () => {},
+      enabled: true, onEnabledChange: () => {}, pickers: buildPickers({ onOutdoorChange }),
     });
+    expect(mount.querySelector('#weather-enable-switch')).not.toBeNull();
     expect(mount.textContent).toContain(WEATHER_OUTDOOR_PICKER_LABEL);
     expect(mount.textContent).toContain(WEATHER_FORECAST_PICKER_LABEL);
     const outdoor = mount.querySelector('#weather-outdoor-select') as HTMLSelectElement;
@@ -365,14 +395,14 @@ describe('WeatherSettingsSection', () => {
   it('shows a live validity line under each picker (ok reading vs warn unreadable)', () => {
     const mount = mountIntoBody();
     renderWeatherSettingsSection(mount, {
-      outdoorDeviceId: 'dev-a',
-      forecastDeviceId: 'dev-b',
-      devices: [{ id: 'dev-a', label: 'Hall sensor' }, { id: 'dev-b', label: 'Yr forecast' }],
-      devicesLoaded: true,
-      outdoorReading: { status: 'reading', tempC: 4 },
-      forecastReading: { status: 'unreadable' },
-      onOutdoorChange: () => {},
-      onForecastChange: () => {},
+      enabled: true,
+      onEnabledChange: () => {},
+      pickers: buildPickers({
+        outdoorDeviceId: 'dev-a',
+        forecastDeviceId: 'dev-b',
+        outdoorReading: { status: 'reading', tempC: 4 },
+        forecastReading: { status: 'unreadable' },
+      }),
     });
     const ok = mount.querySelector('.weather-picker-status--ok');
     expect(ok?.textContent).toContain('Reading 4 °C now');
@@ -384,14 +414,10 @@ describe('WeatherSettingsSection', () => {
   it('labels a configured-but-deleted device as no-longer-available, never the raw id', () => {
     const mount = mountIntoBody();
     renderWeatherSettingsSection(mount, {
-      outdoorDeviceId: 'homey:device:deleted-uuid',
-      forecastDeviceId: null,
-      devices: [{ id: 'dev-a', label: 'Hall sensor' }],
-      devicesLoaded: true, // loaded, and the configured device isn't in the list → deleted
-      outdoorReading: { status: 'no_device' },
-      forecastReading: { status: 'no_device' },
-      onOutdoorChange: () => {},
-      onForecastChange: () => {},
+      enabled: true,
+      onEnabledChange: () => {},
+      // loaded, and the configured device isn't in the list → deleted
+      pickers: buildPickers({ outdoorDeviceId: 'homey:device:deleted-uuid', devices: [{ id: 'dev-a', label: 'Hall sensor' }] }),
     });
     const outdoor = mount.querySelector('#weather-outdoor-select') as HTMLSelectElement;
     const orphan = [...outdoor.options].find((o) => o.value === 'homey:device:deleted-uuid');
@@ -402,14 +428,10 @@ describe('WeatherSettingsSection', () => {
   it('uses a neutral placeholder for a configured device while the list is still loading', () => {
     const mount = mountIntoBody();
     renderWeatherSettingsSection(mount, {
-      outdoorDeviceId: 'homey:device:loading-uuid',
-      forecastDeviceId: null,
-      devices: [],
-      devicesLoaded: false, // not loaded yet → don't claim "deleted"
-      outdoorReading: { status: 'no_device' },
-      forecastReading: { status: 'no_device' },
-      onOutdoorChange: () => {},
-      onForecastChange: () => {},
+      enabled: true,
+      onEnabledChange: () => {},
+      // not loaded yet → don't claim "deleted"
+      pickers: buildPickers({ outdoorDeviceId: 'homey:device:loading-uuid', devices: [], devicesLoaded: false }),
     });
     const outdoor = mount.querySelector('#weather-outdoor-select') as HTMLSelectElement;
     const opt = [...outdoor.options].find((o) => o.value === 'homey:device:loading-uuid');
@@ -420,33 +442,21 @@ describe('WeatherSettingsSection', () => {
   it('shows an empty state when loaded with no temperature devices', () => {
     const mount = mountIntoBody();
     renderWeatherSettingsSection(mount, {
-      outdoorDeviceId: null,
-      forecastDeviceId: null,
-      devices: [],
-      devicesLoaded: true,
-      outdoorReading: { status: 'no_device' },
-      forecastReading: { status: 'no_device' },
-      onOutdoorChange: () => {},
-      onForecastChange: () => {},
+      enabled: true,
+      onEnabledChange: () => {},
+      pickers: buildPickers({ devices: [], devicesLoaded: true }),
     });
     expect(mount.querySelector('#weather-no-devices')?.textContent).toContain('no temperature devices');
   });
 
-  it('clears to structural absence when rendered with null props (flag off)', () => {
+  it('swaps pickers for the pitch when re-rendered disabled, keeping the master switch', () => {
     const mount = mountIntoBody();
-    renderWeatherSettingsSection(mount, {
-      outdoorDeviceId: null,
-      forecastDeviceId: null,
-      devices: [],
-      devicesLoaded: false,
-      outdoorReading: { status: 'no_device' },
-      forecastReading: { status: 'no_device' },
-      onOutdoorChange: () => {},
-      onForecastChange: () => {},
-    });
+    renderWeatherSettingsSection(mount, { enabled: true, onEnabledChange: () => {}, pickers: buildPickers() });
     expect(mount.querySelector('#weather-insight-settings')).not.toBeNull();
-    renderWeatherSettingsSection(mount, null);
+    expect(mount.querySelector('#weather-disabled-pitch')).toBeNull();
+    renderWeatherSettingsSection(mount, { enabled: false, onEnabledChange: () => {}, pickers: null });
     expect(mount.querySelector('#weather-insight-settings')).toBeNull();
-    expect(mount.childElementCount).toBe(0);
+    expect(mount.querySelector('#weather-disabled-pitch')).not.toBeNull();
+    expect(mount.querySelector('#weather-enable-switch')).not.toBeNull();
   });
 });
