@@ -1106,6 +1106,12 @@
     const forecastReading = advisor.forecastDeviceId
       ? { status: 'reading', tempC: 2 }
       : { status: 'no_device' };
+    // Mirrors the producer's resolveDailyBudgetKwh: enabled AND a positive number,
+    // else null (a 0/negative budget is "no budget", not a literal 0).
+    const budgetValue = Number(settings.daily_budget_kwh ?? 0);
+    const dailyBudgetKwh = settings.daily_budget_enabled !== false && budgetValue > 0
+      ? budgetValue
+      : null;
     const emptyPayload = (state) => ({
       state,
       driftSuspected: false,
@@ -1114,6 +1120,7 @@
       forecastStatus,
       outdoorReading,
       forecastReading,
+      dailyBudgetKwh,
       fit: null,
       coverage: [],
       prediction: null,
@@ -1175,6 +1182,7 @@
       forecastStatus,
       outdoorReading,
       forecastReading,
+      dailyBudgetKwh,
       fit: {
         model: 'changepoint',
         baseLoadKwhPerDay: baseLoad,

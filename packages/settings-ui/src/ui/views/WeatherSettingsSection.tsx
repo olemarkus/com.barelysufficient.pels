@@ -9,6 +9,8 @@ import {
   WEATHER_OUTDOOR_PICKER_HINT,
   WEATHER_OUTDOOR_PICKER_LABEL,
   WEATHER_PICKER_NONE,
+  WEATHER_PICKER_ORPHAN,
+  WEATHER_PICKER_SELECTED_LOADING,
   WEATHER_SETTINGS_SECTION_HINT,
   type WeatherReadingLine,
 } from '../../../../shared-domain/src/weatherInsightCopy.ts';
@@ -33,12 +35,13 @@ export type WeatherSettingsSectionProps = {
   onForecastChange: (deviceId: string | null) => void;
 };
 
-const DevicePicker = ({ id, label, hint, value, devices, reading, onChange }: {
+const DevicePicker = ({ id, label, hint, value, devices, devicesLoaded, reading, onChange }: {
   id: string;
   label: string;
   hint: string;
   value: string | null;
   devices: WeatherDeviceOption[];
+  devicesLoaded: boolean;
   reading: WeatherReadingLine | null;
   onChange: (deviceId: string | null) => void;
 }) => {
@@ -52,10 +55,16 @@ const DevicePicker = ({ id, label, hint, value, devices, reading, onChange }: {
       <span class="field__label pels-text-settings-label">{label}</span>
       <select id={id} class="pels-select hy-nostyle" value={value ?? ''} onChange={onSelectChange}>
         <option value="">{WEATHER_PICKER_NONE}</option>
-        {/* A configured device that no longer appears in the list (deleted /
-            still loading) stays selectable so the select doesn't silently
-            snap to "No device" and overwrite the setting on next change. */}
-        {!knownSelection && value !== null && <option value={value}>{value}</option>}
+        {/* A configured device absent from the list stays selectable (value=id) so
+            the select can't silently snap to "No device" and overwrite the
+            setting. Labelled human-friendly, never the raw id: "no longer
+            available" once the list has loaded (genuinely deleted), or a neutral
+            placeholder while it's still loading. */}
+        {!knownSelection && value !== null && (
+          <option value={value}>
+            {devicesLoaded ? WEATHER_PICKER_ORPHAN : WEATHER_PICKER_SELECTED_LOADING}
+          </option>
+        )}
         {devices.map((device) => (
           <option key={device.id} value={device.id}>{device.label}</option>
         ))}
@@ -90,6 +99,7 @@ const WeatherSettingsSectionView = (props: WeatherSettingsSectionProps) => (
       hint={WEATHER_OUTDOOR_PICKER_HINT}
       value={props.outdoorDeviceId}
       devices={props.devices}
+      devicesLoaded={props.devicesLoaded}
       reading={composeOutdoorReadingLine(props.outdoorReading)}
       onChange={props.onOutdoorChange}
     />
@@ -99,6 +109,7 @@ const WeatherSettingsSectionView = (props: WeatherSettingsSectionProps) => (
       hint={WEATHER_FORECAST_PICKER_HINT}
       value={props.forecastDeviceId}
       devices={props.devices}
+      devicesLoaded={props.devicesLoaded}
       reading={composeForecastReadingLine(props.forecastReading)}
       onChange={props.onForecastChange}
     />
