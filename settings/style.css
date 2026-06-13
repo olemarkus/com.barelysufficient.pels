@@ -8448,12 +8448,16 @@ md-switch {
 .weather-settings-section {
   display: grid;
   gap: var(--spacing-3);
-  margin-top: var(--spacing-4);
 }
 
-.weather-settings-section__title,
 .weather-settings-section__hint {
   margin: 0;
+}
+
+/* Trailing cross-link to the Budget payoff: left-aligned like the back button,
+   not the full-width stretch a bare grid child would otherwise take. */
+.settings-cross-link {
+  justify-self: start;
 }
 
 /* Live picker validity line, success tone (accent). The warning tone reuses the

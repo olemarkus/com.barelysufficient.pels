@@ -46,6 +46,8 @@ test.describe('Weather insight (hidden flag)', () => {
 
     await page.getByRole('tab', { name: 'Settings' }).click();
     await expect(page.locator('#settings-panel')).toBeVisible();
+    // The nav card is the gate: hidden (feature unreachable) and the mount empty.
+    await expect(page.locator('#weather-insight-nav-card')).toBeHidden();
     await expect(page.locator('#weather-insight-settings-mount')).toBeEmpty();
   });
 
@@ -78,13 +80,36 @@ test.describe('Weather insight (hidden flag)', () => {
     await expect(card).toBeVisible();
   });
 
-  test('flag on: Settings section renders the two native device pickers', async ({ page }) => {
+  test('flag on: nav card opens the Weather insight sub-page with the two pickers', async ({ page }) => {
     await enableWeatherFlag(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.getByRole('tab', { name: 'Settings' }).click();
+    // The nav card is unhidden when the flag is on and opens the dedicated sub-page.
+    const navCard = page.locator('#weather-insight-nav-card');
+    await expect(navCard).toBeVisible();
+    await navCard.click();
+    await expect(page.locator('#weather-panel')).toBeVisible();
     const section = page.locator('#weather-insight-settings');
     await expect(section).toBeVisible();
     await expect(section.locator('#weather-outdoor-select')).toBeVisible();
     await expect(section.locator('#weather-forecast-select')).toBeVisible();
+    // The cross-link back to the Budget payoff is present.
+    await expect(page.locator('#weather-see-in-budget')).toBeVisible();
+  });
+
+  test('flag on, no device: Budget setup card deep-links to the Weather sub-page', async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as Window & { __PELS_HOMEY_STUB__?: unknown }).__PELS_HOMEY_STUB__ = {
+        // Flag on but no outdoor device → Budget shows the setup card (needs_device).
+        settings: { weather_advisor_settings: { enabled: true }, daily_budget_kwh: 50 },
+      };
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await openBudgetTab(page);
+    const setup = page.locator('#weather-setup-card');
+    await expect(setup).toBeVisible();
+    await setup.locator('#weather-setup-pick-device').click();
+    await expect(page.locator('#weather-panel')).toBeVisible();
+    await expect(page.locator('#weather-insight-settings')).toBeVisible();
   });
 });

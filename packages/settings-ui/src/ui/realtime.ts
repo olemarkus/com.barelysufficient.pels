@@ -78,9 +78,10 @@ import { loadDeferredObjectiveSettings } from './deferredObjectiveSettings.ts';
 import { reloadDeferredObjectiveActivePlans } from './deferredObjectiveActivePlans.ts';
 import { clearUsageReturnLink } from './usageReturnLink.ts';
 import {
+  getWeatherInsightView,
   handleWeatherAdvisorSettingsChanged,
   refreshWeatherInsightOnBudgetTab,
-  refreshWeatherInsightOnSettingsTab,
+  refreshWeatherInsightOnWeatherPanel,
 } from './weatherInsight.ts';
 
 const DAILY_BUDGET_REFRESH_KEYS = new Set([
@@ -105,6 +106,7 @@ const REDESIGN_SETTINGS_SECTIONS = new Set([
   'modes',
   'electricity-prices',
   'price-aware-devices',
+  'weather',
   'simulation',
   'advanced',
 ]);
@@ -323,7 +325,18 @@ const reloadActivePlansIfActivePlansKey = (key: string, context: string): void =
 // Fires for BOTH settings.set and settings.unset (clearing the blob disables).
 const reloadWeatherInsightIfWeatherKey = (key: string, context: string): void => {
   if (key !== WEATHER_ADVISOR_SETTINGS) return;
-  runLoggedTask(handleWeatherAdvisorSettingsChanged(), 'Failed to reload weather insight', context);
+  runLoggedTask(
+    handleWeatherAdvisorSettingsChanged().then(() => {
+      // If the feature was disabled while its sub-page is open, leave it: the
+      // panel would otherwise linger with an empty mount, and "flag off" must be
+      // unreachable. getWeatherInsightView() is null once disabled.
+      if (getWeatherInsightView() === null && isPanelVisible('#weather-panel')) {
+        showTab('settings');
+      }
+    }),
+    'Failed to reload weather insight',
+    context,
+  );
 };
 
 const createSettingsUnsetHandler = () => (key: string) => {
@@ -474,9 +487,10 @@ const runTabActivationSideEffects = (tabId: string) => {
     runLoggedTask(loadCapacitySettings(), 'Failed to load limits and simulation settings', 'showTab');
     return;
   }
-  if (tabId === 'settings') {
-    // Refresh the Weather insight picker validity lines; no-op while the flag is off.
-    runLoggedTask(refreshWeatherInsightOnSettingsTab(), 'Failed to refresh weather insight', 'showTab');
+  if (tabId === 'weather') {
+    // Refresh the Weather insight picker validity lines when its sub-page opens;
+    // no-op while the flag is off.
+    runLoggedTask(refreshWeatherInsightOnWeatherPanel(), 'Failed to refresh weather insight', 'showTab');
   }
 };
 
