@@ -79,6 +79,8 @@ const buildReadout = (
     forecastDeviceName: 'Yr forecast',
   },
   forecastStatus: 'forecast',
+  outdoorReading: { status: 'reading', tempC: 4 },
+  forecastReading: { status: 'reading', tempC: 2 },
   fit: buildFit(),
   coverage: [
     { fromC: -10, toC: -5, days: 6, sufficient: false },
@@ -314,9 +316,11 @@ describe('WeatherSettingsSection', () => {
       outdoorDeviceId: null,
       forecastDeviceId: null,
       devices: [
-        { id: 'dev-a', label: 'Hall sensor (sensor)' },
-        { id: 'dev-b', label: 'Yr forecast (sensor)' },
+        { id: 'dev-a', label: 'Hall sensor' },
+        { id: 'dev-b', label: 'Yr forecast' },
       ],
+      outdoorReading: { status: 'no_device' },
+      forecastReading: { status: 'no_device' },
       onOutdoorChange,
       onForecastChange: () => {},
     });
@@ -328,12 +332,32 @@ describe('WeatherSettingsSection', () => {
     expect(onOutdoorChange).toHaveBeenCalledWith('dev-a');
   });
 
+  it('shows a live validity line under each picker (ok reading vs warn unreadable)', () => {
+    const mount = mountIntoBody();
+    renderWeatherSettingsSection(mount, {
+      outdoorDeviceId: 'dev-a',
+      forecastDeviceId: 'dev-b',
+      devices: [{ id: 'dev-a', label: 'Hall sensor' }, { id: 'dev-b', label: 'Yr forecast' }],
+      outdoorReading: { status: 'reading', tempC: 4 },
+      forecastReading: { status: 'unreadable' },
+      onOutdoorChange: () => {},
+      onForecastChange: () => {},
+    });
+    const ok = mount.querySelector('.weather-picker-status--ok');
+    expect(ok?.textContent).toContain('Reading 4 °C now');
+    // Warn tone reuses the canonical .field__hint--alert primitive (no bespoke class).
+    const warn = mount.querySelector('.field__hint--alert');
+    expect(warn?.textContent).toContain('recent days');
+  });
+
   it('clears to structural absence when rendered with null props (flag off)', () => {
     const mount = mountIntoBody();
     renderWeatherSettingsSection(mount, {
       outdoorDeviceId: null,
       forecastDeviceId: null,
       devices: [],
+      outdoorReading: { status: 'no_device' },
+      forecastReading: { status: 'no_device' },
       onOutdoorChange: () => {},
       onForecastChange: () => {},
     });

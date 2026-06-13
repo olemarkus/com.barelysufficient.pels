@@ -80,6 +80,7 @@ import { clearUsageReturnLink } from './usageReturnLink.ts';
 import {
   handleWeatherAdvisorSettingsChanged,
   refreshWeatherInsightOnBudgetTab,
+  refreshWeatherInsightOnSettingsTab,
 } from './weatherInsight.ts';
 
 const DAILY_BUDGET_REFRESH_KEYS = new Set([
@@ -471,6 +472,11 @@ const runTabActivationSideEffects = (tabId: string) => {
   }
   if (tabId === 'limits' || tabId === 'simulation') {
     runLoggedTask(loadCapacitySettings(), 'Failed to load limits and simulation settings', 'showTab');
+    return;
+  }
+  if (tabId === 'settings') {
+    // Refresh the Weather insight picker validity lines; no-op while the flag is off.
+    runLoggedTask(refreshWeatherInsightOnSettingsTab(), 'Failed to refresh weather insight', 'showTab');
   }
 };
 

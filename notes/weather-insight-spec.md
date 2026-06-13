@@ -156,6 +156,30 @@ One muted row: `Temperature: Outdoor sensor · Forecast: Yr` + text button
   days` when no device is configured; `<name> isn’t reporting — using recent
   days` when a device is configured but silent.
 
+### Settings section — device pickers + live validity
+
+The flag-gated **Weather insight** Settings section has the two native `select`
+pickers, each followed by a producer-resolved **live validity line** so a chosen
+device confirms itself instead of making the owner wait ~21 days. The producer
+resolves `outdoorReading` / `forecastReading` on the payload from an INSTANT
+on-demand read of each device's bare `measure_temperature` (done in the
+assembler — the collector's cached sample is cleared on the restart a selection
+change triggers, so it can't be trusted right after a pick). Three states per
+picker:
+
+- **reading** — accent line. Outdoor: `Reading 4 °C now`. Forecast: `Reading tomorrow ≈ 2 °C`.
+- **unreadable** — `.field__hint--alert` warning line, self-contained (the static
+  hint is hidden once a device is selected). Outdoor: `PELS can’t read a temperature
+  from this device — pick one that reports temperature on its main reading.`
+  Forecast: `This device isn’t reporting tomorrow’s temperature on its main reading — using recent days for now.`
+- **no_device** — no line; the static picker hint shows instead.
+
+The reading is checked per-picker against the current selection, so a just-changed
+device shows its hint (not the previous device's reading) until the re-fetch lands.
+
+The line is suppressed (hint shows) until a readout matching the CURRENT selection
+arrives, so a just-changed device never shows the previous device's reading.
+
 ---
 
 ## 4. States (exact copy)

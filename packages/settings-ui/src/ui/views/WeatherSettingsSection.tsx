@@ -1,5 +1,8 @@
 import { render } from 'preact';
+import type { WeatherDeviceReading } from '../../../../contracts/src/weatherAdvisorTypes.ts';
 import {
+  composeForecastReadingLine,
+  composeOutdoorReadingLine,
   WEATHER_FORECAST_PICKER_HINT,
   WEATHER_FORECAST_PICKER_LABEL,
   WEATHER_OUTDOOR_PICKER_HINT,
@@ -7,6 +10,7 @@ import {
   WEATHER_PICKER_NONE,
   WEATHER_SETTINGS_SECTION_HINT,
   WEATHER_SETTINGS_SECTION_TITLE,
+  type WeatherReadingLine,
 } from '../../../../shared-domain/src/weatherInsightCopy.ts';
 
 // Flag-gated "Weather insight" section on the Settings home panel: two native
@@ -21,16 +25,19 @@ export type WeatherSettingsSectionProps = {
   outdoorDeviceId: string | null;
   forecastDeviceId: string | null;
   devices: WeatherDeviceOption[];
+  outdoorReading: WeatherDeviceReading;
+  forecastReading: WeatherDeviceReading;
   onOutdoorChange: (deviceId: string | null) => void;
   onForecastChange: (deviceId: string | null) => void;
 };
 
-const DevicePicker = ({ id, label, hint, value, devices, onChange }: {
+const DevicePicker = ({ id, label, hint, value, devices, reading, onChange }: {
   id: string;
   label: string;
   hint: string;
   value: string | null;
   devices: WeatherDeviceOption[];
+  reading: WeatherReadingLine | null;
   onChange: (deviceId: string | null) => void;
 }) => {
   const knownSelection = value === null || devices.some((device) => device.id === value);
@@ -51,7 +58,19 @@ const DevicePicker = ({ id, label, hint, value, devices, onChange }: {
           <option key={device.id} value={device.id}>{device.label}</option>
         ))}
       </select>
-      <small class="field__hint">{hint}</small>
+      {/* Live validity: confirms the chosen device actually reads a temperature.
+          Warn reuses the canonical .field__hint--alert primitive. The static hint
+          shows only when there's no live line yet (no device, or pre-first-fetch),
+          so a confirmed device isn't followed by a redundant pick-a-device hint. */}
+      {reading === null
+        ? <small class="field__hint">{hint}</small>
+        : (
+          <small class={reading.tone === 'warn'
+            ? 'field__hint field__hint--alert'
+            : 'field__hint weather-picker-status--ok'}>
+            {reading.text}
+          </small>
+        )}
     </label>
   );
 };
@@ -75,6 +94,7 @@ const WeatherSettingsSectionView = (props: WeatherSettingsSectionProps) => (
       hint={WEATHER_OUTDOOR_PICKER_HINT}
       value={props.outdoorDeviceId}
       devices={props.devices}
+      reading={composeOutdoorReadingLine(props.outdoorReading)}
       onChange={props.onOutdoorChange}
     />
     <DevicePicker
@@ -83,6 +103,7 @@ const WeatherSettingsSectionView = (props: WeatherSettingsSectionProps) => (
       hint={WEATHER_FORECAST_PICKER_HINT}
       value={props.forecastDeviceId}
       devices={props.devices}
+      reading={composeForecastReadingLine(props.forecastReading)}
       onChange={props.onForecastChange}
     />
   </section>

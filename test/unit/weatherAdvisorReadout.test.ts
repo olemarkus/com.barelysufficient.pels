@@ -194,6 +194,28 @@ describe('buildWeatherAdvisorReadout', () => {
     expect(payload?.forecastStatus).toBe('recent_no_device'); // …but wiring is deviceless now
   });
 
+  it('resolves outdoor/forecast device readings from the on-demand device reads', () => {
+    const reading = buildWeatherAdvisorReadout(withState(
+      { records: recentDays(30), latestFit: fit() },
+      { settings: SETTINGS_WITH_FORECAST, currentOutdoorTempC: 3.4, currentForecastTempC: 1.5 },
+    ));
+    expect(reading?.outdoorReading).toEqual({ status: 'reading', tempC: 3.4 });
+    expect(reading?.forecastReading).toEqual({ status: 'reading', tempC: 1.5 });
+
+    // Devices configured but nothing readable → unreadable, not silently "no device".
+    const unreadable = buildWeatherAdvisorReadout(withState(
+      { records: recentDays(30), latestFit: fit() },
+      { settings: SETTINGS_WITH_FORECAST },
+    ));
+    expect(unreadable?.outdoorReading).toEqual({ status: 'unreadable' });
+    expect(unreadable?.forecastReading).toEqual({ status: 'unreadable' });
+
+    // No forecast device configured → no_device (picker shows only its hint).
+    const noForecast = buildWeatherAdvisorReadout(baseInput({ currentOutdoorTempC: 5 }));
+    expect(noForecast?.outdoorReading).toEqual({ status: 'reading', tempC: 5 });
+    expect(noForecast?.forecastReading).toEqual({ status: 'no_device' });
+  });
+
   it('resolves forecastStatus even in the needs_device state (no outdoor device)', () => {
     const payload = buildWeatherAdvisorReadout(baseInput({
       settings: { enabled: true, forecastDeviceId: 'dev-forecast' },

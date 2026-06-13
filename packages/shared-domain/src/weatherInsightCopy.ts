@@ -14,6 +14,7 @@
 import type {
   EnergySignatureConfidence,
   WeatherCoverageBin,
+  WeatherDeviceReading,
   WeatherForecastStatus,
 } from '../../contracts/src/weatherAdvisorTypes';
 
@@ -395,3 +396,37 @@ export const WEATHER_FORECAST_PICKER_HINT = 'Optional. Point this at a device th
   + 'tomorrow’s outdoor temperature on its main temperature reading — a Yr “next 24 hours” device '
   + 'works. If PELS can’t read a forecast, it uses your recent days instead.';
 export const WEATHER_PICKER_NONE = 'No device';
+
+// ── Picker live-validity lines ─────────────────────────────────────────────
+// Shown under each picker so the user sees a chosen device actually works the
+// instant they pick it, instead of waiting ~21 days for the first estimate.
+
+export type WeatherReadingLine = { text: string; tone: 'ok' | 'warn' };
+
+/** Live outdoor reading under the outdoor picker; null when no device is configured. */
+export const composeOutdoorReadingLine = (reading: WeatherDeviceReading): WeatherReadingLine | null => {
+  if (reading.status === 'no_device') return null;
+  if (reading.status === 'reading') return { text: `Reading ${formatTempC(reading.tempC)} now`, tone: 'ok' };
+  // The remedy points at the actual failure mode (a non-temperature device, or
+  // one reporting on a sub-capability) — and the warn line is self-contained
+  // because the static hint is hidden once a device is selected.
+  return {
+    text: 'PELS can’t read a temperature from this device — pick one that reports temperature on its main reading.',
+    tone: 'warn',
+  };
+};
+
+/** Live forecast reading under the forecast picker; null when no device is configured. */
+export const composeForecastReadingLine = (reading: WeatherDeviceReading): WeatherReadingLine | null => {
+  if (reading.status === 'no_device') return null;
+  if (reading.status === 'reading') {
+    return { text: `Reading tomorrow ${formatApproxTempC(reading.tempC)}`, tone: 'ok' };
+  }
+  // The on-demand read means a warn = the device's main temperature reading isn't
+  // readable (sub-capability-only, wrong device, or transient); name that fix and
+  // the recent-days fallback. Mirrors the outdoor warn's "main reading" remedy.
+  return {
+    text: 'This device isn’t reporting tomorrow’s temperature on its main reading — using recent days for now.',
+    tone: 'warn',
+  };
+};

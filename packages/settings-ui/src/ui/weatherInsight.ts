@@ -1,4 +1,4 @@
-import type { WeatherAdvisorReadoutPayload } from '../../../contracts/src/weatherAdvisorTypes.ts';
+import type { WeatherAdvisorReadoutPayload, WeatherDeviceReading } from '../../../contracts/src/weatherAdvisorTypes.ts';
 import { SETTINGS_UI_WEATHER_ADVISOR_READOUT_PATH } from '../../../contracts/src/settingsUiApi.ts';
 import { WEATHER_ADVISOR_SETTINGS } from '../../../contracts/src/settingsKeys.ts';
 import { callApi, getSetting, setSetting } from './homey.ts';
@@ -72,10 +72,19 @@ const fetchReadout = async (): Promise<void> => {
     await logSettingsError('Failed to load weather insight readout', error, 'weatherInsight');
   }
   renderBudgetSurface();
+  // The readout also carries the live device readings the Settings pickers show,
+  // so refresh that surface too whenever a fresh readout lands.
+  renderSettingsSection();
 };
 
 /** Budget-tab activation hook (realtime.ts): lazy fetch only while the flag is on. */
 export const refreshWeatherInsightOnBudgetTab = async (): Promise<void> => {
+  if (!currentSettings.enabled) return;
+  await fetchReadout();
+};
+
+/** Settings-tab activation hook: refresh the picker validity lines from a live readout. */
+export const refreshWeatherInsightOnSettingsTab = async (): Promise<void> => {
   if (!currentSettings.enabled) return;
   await fetchReadout();
 };
@@ -121,6 +130,25 @@ const writeDeviceSelection = async (
   await setSetting(WEATHER_ADVISOR_SETTINGS, blob);
 };
 
+// Before the first readout lands, the picker shows no status line (the readout
+// is what carries the live reading). A configured device's line pops in on the
+// next fetch (settings-tab activation or a selection write).
+const NO_READING = { status: 'no_device' } as const;
+
+// Only trust a reading when the readout describes the CURRENTLY selected device
+// for THAT picker. Right after a selection change the previous readout lingers
+// until the re-fetch lands; showing its reading would attribute the old device's
+// value to the just-picked one. Checked PER-PICKER so changing one device doesn't
+// blank the other's still-valid line; an unmatched picker falls back to its hint.
+const readingFor = (
+  pickerId: 'outdoorDeviceId' | 'forecastDeviceId',
+  readingKey: 'outdoorReading' | 'forecastReading',
+): WeatherDeviceReading => (
+  latestReadout !== null && latestReadout.settings[pickerId] === currentSettings[pickerId]
+    ? latestReadout[readingKey]
+    : NO_READING
+);
+
 const renderSettingsSection = (): void => {
   const mount = document.getElementById('weather-insight-settings-mount');
   if (!mount) return;
@@ -129,6 +157,8 @@ const renderSettingsSection = (): void => {
       outdoorDeviceId: currentSettings.outdoorDeviceId,
       forecastDeviceId: currentSettings.forecastDeviceId,
       devices: pickerDevices ?? [],
+      outdoorReading: readingFor('outdoorDeviceId', 'outdoorReading'),
+      forecastReading: readingFor('forecastDeviceId', 'forecastReading'),
       onOutdoorChange: (deviceId) => { void writeDeviceSelection({ outdoorDeviceId: deviceId }); },
       onForecastChange: (deviceId) => { void writeDeviceSelection({ forecastDeviceId: deviceId }); },
     }
