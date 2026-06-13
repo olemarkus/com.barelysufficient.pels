@@ -46,3 +46,7 @@ export const MdTextButton = (props: MdBaseProps) => (
 export const MdIconButton = (props: MdBaseProps) => (
   h('md-icon-button', props as Record<string, unknown>)
 );
+
+export const MdCircularProgress = (props: MdBaseProps) => (
+  h('md-circular-progress', props as Record<string, unknown>)
+);

@@ -1,5 +1,5 @@
 import type { ComponentChildren } from 'preact';
-import { MdElevation, MdTextButton } from './materialWebJSX.tsx';
+import { MdCircularProgress, MdElevation, MdTextButton } from './materialWebJSX.tsx';
 import { ExpandMoreIcon } from './icons.tsx';
 import type {
   EnergySignatureFit,
@@ -38,6 +38,7 @@ import {
   WEATHER_ERROR_TITLE,
   WEATHER_EXPECTED_FROM_RECENT_DAYS,
   WEATHER_INSIGHT_TITLE,
+  WEATHER_LEARNING_STUCK,
   WEATHER_LEARNING_TITLE,
   WEATHER_LEGEND_DAY,
   WEATHER_LEGEND_ESTIMATE,
@@ -208,7 +209,16 @@ export const WeatherBudgetCard = ({ data, onShowDetails, onAdjustBudget }: {
     );
   }
   if (readout.state === 'backfilling') {
-    return <StateCard id="weather-backfill-card" title={WEATHER_BACKFILL_TITLE} body={WEATHER_BACKFILL_BODY} />;
+    return (
+      <StateCard id="weather-backfill-card" title={WEATHER_BACKFILL_TITLE} body={WEATHER_BACKFILL_BODY}>
+        {/* A liveness cue so a slow first run reads as progress, not a freeze. */}
+        <MdCircularProgress
+          indeterminate
+          aria-label={WEATHER_BACKFILL_TITLE}
+          class="weather-backfill-spinner"
+        />
+      </StateCard>
+    );
   }
   if (readout.state === 'learning') {
     return (
@@ -217,6 +227,11 @@ export const WeatherBudgetCard = ({ data, onShowDetails, onAdjustBudget }: {
         title={WEATHER_LEARNING_TITLE}
         body={composeLearningBody(readout.usableDays)}
       >
+        {/* Learning never advances if the configured device can't be read — say so
+            here too, for the owner who configured once and walked away. */}
+        {readout.outdoorReading?.status === 'unreadable' && (
+          <p class="field__hint field__hint--alert" id="weather-learning-stuck">{WEATHER_LEARNING_STUCK}</p>
+        )}
         <div class="weather-card__actions">
           <MdTextButton id="weather-details-button" onClick={onShowDetails}>
             {WEATHER_BUTTON_DETAILS}

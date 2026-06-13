@@ -1,8 +1,10 @@
 import type { WeatherAdvisorReadoutPayload, WeatherDeviceReading } from '../../../contracts/src/weatherAdvisorTypes.ts';
 import { SETTINGS_UI_WEATHER_ADVISOR_READOUT_PATH } from '../../../contracts/src/settingsUiApi.ts';
 import { WEATHER_ADVISOR_SETTINGS } from '../../../contracts/src/settingsKeys.ts';
+import { WEATHER_FIRST_ESTIMATE_TOAST } from '../../../shared-domain/src/weatherInsightCopy.ts';
 import { callApi, getSetting, setSetting } from './homey.ts';
 import { logSettingsError } from './logging.ts';
+import { showToast } from './toast.ts';
 import type { WeatherInsightCardData } from './views/WeatherInsight.tsx';
 import {
   renderWeatherSettingsSection,
@@ -34,6 +36,10 @@ let latestReadout: WeatherAdvisorReadoutPayload | null = null;
 let readoutFailed = false;
 let pickerDevices: WeatherDeviceOption[] | null = null;
 let pickerDevicesLoading = false;
+// One-time "your first estimate is ready" celebration. Persisted (UI-only key)
+// so it fires once ever; the module flag also de-dupes within a session.
+const WEATHER_FIRST_ESTIMATE_SEEN_KEY = 'weather_advisor_first_estimate_seen';
+let firstEstimateSeen = false;
 // Injected by budgetRedesign at module init (same shape as setBudgetAdjustRenderer).
 let renderBudgetSurface: () => void = () => {};
 
@@ -81,6 +87,9 @@ const fetchReadout = async (): Promise<void> => {
 export const refreshWeatherInsightOnBudgetTab = async (): Promise<void> => {
   if (!currentSettings.enabled) return;
   await fetchReadout();
+  // Celebrate only here: the toast promises tomorrow's outlook, which lives on
+  // the Budget tab — not the Settings sub-page (the other fetchReadout caller).
+  await maybeCelebrateFirstEstimate();
 };
 
 /** Weather-insight sub-page activation hook: refresh the picker validity lines from a live readout. */
@@ -186,6 +195,26 @@ const renderSettingsSection = (): void => {
 
 const reloadSettings = async (): Promise<void> => {
   currentSettings = normalizeSettings(await getSetting(WEATHER_ADVISOR_SETTINGS));
+  // Monotonic: once seen this session, never let a reload (which may read a
+  // not-yet-propagated persisted value) flip it back and re-fire the toast.
+  firstEstimateSeen = firstEstimateSeen || (await getSetting(WEATHER_FIRST_ESTIMATE_SEEN_KEY)) === true;
+};
+
+/** Celebrate only on the first ready readout that hasn't been acknowledged yet. */
+export const shouldCelebrateFirstEstimate = (
+  state: WeatherAdvisorReadoutPayload['state'] | undefined,
+  alreadySeen: boolean,
+): boolean => state === 'ready' && !alreadySeen;
+
+// Fire once, the first time a READY readout is seen — and only from the Budget
+// tab, where the outlook the toast points at is actually visible. Persist the
+// seen flag BEFORE the (awaited) toast so a settings event during the toast
+// window can't read it still-false and re-fire.
+const maybeCelebrateFirstEstimate = async (): Promise<void> => {
+  if (!shouldCelebrateFirstEstimate(latestReadout?.state, firstEstimateSeen)) return;
+  firstEstimateSeen = true;
+  await setSetting(WEATHER_FIRST_ESTIMATE_SEEN_KEY, true);
+  await showToast(WEATHER_FIRST_ESTIMATE_TOAST, 'ok');
 };
 
 /** Boot hook: prime the flag from the (bootstrap-cached) setting and render the section. */

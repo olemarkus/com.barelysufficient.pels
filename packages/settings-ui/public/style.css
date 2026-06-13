@@ -8466,3 +8466,11 @@ md-switch {
   color: var(--accent);
   font-weight: var(--font-weight-medium);
 }
+
+/* Backfill liveness spinner: small, accent-toned, sitting under the card body. */
+.weather-backfill-spinner {
+  --md-circular-progress-size: 32px;
+  --md-circular-progress-active-indicator-color: var(--accent);
+
+  margin-top: var(--spacing-2);
+}

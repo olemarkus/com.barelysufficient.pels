@@ -1,4 +1,4 @@
-import { toTemperatureDeviceOptions } from '../src/ui/weatherInsight.ts';
+import { shouldCelebrateFirstEstimate, toTemperatureDeviceOptions } from '../src/ui/weatherInsight.ts';
 
 describe('toTemperatureDeviceOptions', () => {
   it('keeps only temperature-capable devices and sorts them by name', () => {
@@ -21,5 +21,21 @@ describe('toTemperatureDeviceOptions', () => {
 
   it('returns an empty list when nothing is temperature-capable', () => {
     expect(toTemperatureDeviceOptions([{ id: 'a', name: 'A', hasTemperature: false }])).toEqual([]);
+  });
+});
+
+describe('shouldCelebrateFirstEstimate', () => {
+  it('fires once on the first ready readout', () => {
+    expect(shouldCelebrateFirstEstimate('ready', false)).toBe(true);
+  });
+
+  it('does not fire again once seen', () => {
+    expect(shouldCelebrateFirstEstimate('ready', true)).toBe(false);
+  });
+
+  it('does not fire before the estimate is ready', () => {
+    expect(shouldCelebrateFirstEstimate('learning', false)).toBe(false);
+    expect(shouldCelebrateFirstEstimate('backfilling', false)).toBe(false);
+    expect(shouldCelebrateFirstEstimate(undefined, false)).toBe(false);
   });
 });

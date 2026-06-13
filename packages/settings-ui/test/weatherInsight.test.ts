@@ -21,6 +21,7 @@ import {
   WEATHER_ERROR_TITLE,
   WEATHER_FORECAST_PICKER_LABEL,
   WEATHER_INSIGHT_TITLE,
+  WEATHER_LEARNING_STUCK,
   WEATHER_OUTDOOR_PICKER_LABEL,
   WEATHER_REASON_COLDER_THAN_OBSERVED,
   WEATHER_SCATTER_SUBTITLE_LEARNING,
@@ -218,9 +219,11 @@ describe('WeatherBudgetCard (Budget plan slot)', () => {
     const card = mount.querySelector('#weather-backfill-card');
     expect(card?.textContent).toContain(WEATHER_BACKFILL_TITLE);
     expect(card?.textContent).toContain(WEATHER_BACKFILL_BODY);
+    // Liveness cue so a slow first run doesn't read as a freeze.
+    expect(card?.querySelector('md-circular-progress')).not.toBeNull();
   });
 
-  it('S3: renders the learning card with the usable-day count', () => {
+  it('S3: renders the learning card with the usable-day count (no stuck note while reading)', () => {
     const mount = mountIntoBody();
     const readout = buildReadout({
       state: 'learning', fit: null, prediction: null, suggestion: null, usableDays: 9,
@@ -229,6 +232,18 @@ describe('WeatherBudgetCard (Budget plan slot)', () => {
     const card = mount.querySelector('#weather-learning-card');
     expect(card?.textContent).toContain(composeLearningBody(9));
     expect(card?.querySelector('#weather-details-button')).not.toBeNull();
+    expect(card?.querySelector('#weather-learning-stuck')).toBeNull();
+  });
+
+  it('S3: warns on the learning card when the outdoor device is unreadable (stuck learning)', () => {
+    const mount = mountIntoBody();
+    const readout = buildReadout({
+      state: 'learning', fit: null, prediction: null, suggestion: null, usableDays: 9,
+      outdoorReading: { status: 'unreadable' },
+    });
+    renderBudgetOverview(mount, buildProps({ weatherInsight: { readout, fetchFailed: false } }));
+    const stuck = mount.querySelector('#weather-learning-stuck');
+    expect(stuck?.textContent).toContain(WEATHER_LEARNING_STUCK);
   });
 
   it('ready: renders the Tomorrow card with rows, verdict, and both actions', () => {
