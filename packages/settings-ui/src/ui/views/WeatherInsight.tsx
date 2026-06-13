@@ -43,6 +43,7 @@ import {
   WEATHER_LEGEND_TOMORROW,
   WEATHER_MORE_DETAIL,
   WEATHER_NUMBERS_TITLE,
+  WEATHER_REASON_BUDGET_LIMITING,
   WEATHER_REASON_COLDER_THAN_OBSERVED,
   WEATHER_REASON_DRIFT_WIDER,
   WEATHER_ROW_EXPECTED_USAGE,
@@ -160,6 +161,9 @@ const TomorrowCard = ({ readout, onShowDetails, onAdjustBudget }: {
       )}
       {verdict !== null && (
         <p class={`weather-card__verdict weather-card__verdict--${verdict.tone}`}>{verdict.text}</p>
+      )}
+      {suggestion?.budgetMayBeLimiting === true && (
+        <p class="pels-card-supporting weather-card__reason">{WEATHER_REASON_BUDGET_LIMITING}</p>
       )}
       <div class="weather-card__actions">
         {/* Opens the normal Adjust flow, UNPREFILLED — the suggestion is display-only. */}
@@ -297,7 +301,7 @@ const NumbersCard = ({ readout, fit }: { readout: WeatherAdvisorReadoutPayload; 
         ))}
       </div>
       <p class="pels-card-supporting">
-        {composeNumbersFootnote(fit.usableDays, readout.backfilledDays)}
+        {composeNumbersFootnote(fit.usableDays, readout.backfilledDays, readout.suppressedDaysExcluded)}
       </p>
       {fit.model === 'linear' && (
         <p class="pels-card-supporting">{composeWinterOnlySupport(fit.observedTempMaxC)}</p>

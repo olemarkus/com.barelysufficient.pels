@@ -572,6 +572,28 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     this.scheduleFlush(transition.nowTs);
   }
 
+  /**
+   * Home-level censoring evidence for one local day: Σ targetDeficitMs +
+   * Σ blockedByHeadroomMs across every device's persisted aggregate. Returns
+   * undefined when the day carries NO censoring (no device recorded it, or
+   * every device recorded zero deficit and zero headroom-block — the common
+   * case, since an aggregate exists for any shed/activation). The weather
+   * collector then leaves the day's suppression "unknown" rather than writing
+   * a misleading all-zero object. Read-only, dateKey-scoped — diagnostics
+   * stays planner-orthogonal.
+   */
+  getDaySuppressionTotals(dateKey: string): { targetDeficitMs: number; blockedByHeadroomMs: number } | undefined {
+    let targetDeficitMs = 0;
+    let blockedByHeadroomMs = 0;
+    for (const deviceState of Object.values(this.persistedState.devicesById)) {
+      const aggregate = deviceState.daysByDateKey[dateKey];
+      if (!aggregate) continue;
+      targetDeficitMs += aggregate.targetDeficitMs;
+      blockedByHeadroomMs += aggregate.blockedByHeadroomMs;
+    }
+    return targetDeficitMs > 0 || blockedByHeadroomMs > 0 ? { targetDeficitMs, blockedByHeadroomMs } : undefined;
+  }
+
   getUiPayload(nowTs: number = Date.now()): SettingsUiDeviceDiagnosticsPayload {
     this.ensureDayRollover(nowTs);
     const timeZone = this.deps.getTimeZone();

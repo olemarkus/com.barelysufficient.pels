@@ -15,6 +15,9 @@ const baseFit: EnergySignatureFit = {
   confidence: 'high',
   curvatureSteeperWhenCold: false,
   driftSuspected: false,
+  suppressedDaysExcluded: 0,
+  suppressionFilterRelaxed: false,
+  recentColdSuppressionSuspected: false,
   residualQ10: -4,
   residualQ50: 0,
   residualQ80: 5,
@@ -31,6 +34,25 @@ describe('suggestDailyBudgetKwh', () => {
     expect(result.predictedLowKwh).toBe(46);
     expect(result.predictedHighKwh).toBe(58);
     expect(result.beyondObservedCold).toBe(false);
+    expect(result.budgetMayBeLimiting).toBe(false);
+  });
+
+  it('leans the suggestion UP (q80→q90) when recent cold days were limited and tomorrow is cold', () => {
+    const limitedFit = { ...baseFit, recentColdSuppressionSuspected: true };
+    // 0 °C is below the 15 °C balance point ⇒ cold ⇒ headroom uses q90 (8): 50 + 8.
+    const result = suggestDailyBudgetKwh({ fit: limitedFit, forecastMeanTempC: 0 });
+    expect(result.budgetMayBeLimiting).toBe(true);
+    expect(result.suggestedBudgetKwh).toBe(58);
+    // Never lower than the un-leaned suggestion for the same forecast.
+    const baseline = suggestDailyBudgetKwh({ fit: baseFit, forecastMeanTempC: 0 });
+    expect(result.suggestedBudgetKwh).toBeGreaterThanOrEqual(baseline.suggestedBudgetKwh);
+  });
+
+  it('does not lean when tomorrow is warm even if recent cold days were limited', () => {
+    const limitedFit = { ...baseFit, recentColdSuppressionSuspected: true };
+    // 18 °C is above the 15 °C balance point ⇒ not cold ⇒ no lean.
+    const result = suggestDailyBudgetKwh({ fit: limitedFit, forecastMeanTempC: 18 });
+    expect(result.budgetMayBeLimiting).toBe(false);
   });
 
   it('refuses to extrapolate below observed temperatures and flags it', () => {

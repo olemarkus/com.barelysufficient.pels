@@ -99,6 +99,7 @@ export function buildWeatherAdvisorReadout(
     yesterday: buildYesterday(state.records, fit, todayKey),
     usableDays: countUsableDays(state.records),
     backfilledDays: usableYearRecords.filter((record) => record.quality.backfilled).length,
+    suppressedDaysExcluded: fit?.suppressedDaysExcluded ?? 0,
     generatedAtMs: input.nowMs,
   };
 }
@@ -130,6 +131,7 @@ function buildNeedsDevicePayload(
     yesterday: null,
     usableDays: 0,
     backfilledDays: 0,
+    suppressedDaysExcluded: 0,
     generatedAtMs: nowMs,
   };
 }
@@ -175,6 +177,7 @@ function resolveTomorrowOutlook(
         suggestedBudgetKwh: stored.suggestedBudgetKwh,
         beyondObservedCold: stored.beyondObservedCold,
         beyondObservedWarm: stored.beyondObservedWarm,
+        budgetMayBeLimiting: stored.budgetMayBeLimiting,
       },
     }
     : recomputeTomorrowSuggestion(input, fit, tomorrowKey);
@@ -197,6 +200,7 @@ function resolveTomorrowOutlook(
       kwh: resolved.result.suggestedBudgetKwh,
       currentDailyBudgetKwh: input.currentDailyBudgetKwh ?? null,
       cappedByCapacity: resolved.result.suggestedBudgetKwh >= capacityCapKwh - 1e-6,
+      budgetMayBeLimiting: resolved.result.budgetMayBeLimiting,
     },
   };
 }

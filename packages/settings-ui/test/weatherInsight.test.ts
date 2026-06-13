@@ -55,6 +55,9 @@ const buildFit = (overrides: Partial<EnergySignatureFit> = {}): EnergySignatureF
   curvatureSteeperWhenCold: false,
   heatLossWPerK: 75,
   driftSuspected: false,
+  suppressedDaysExcluded: 0,
+  suppressionFilterRelaxed: false,
+  recentColdSuppressionSuspected: false,
   residualQ10: -5,
   residualQ50: 0,
   residualQ80: 5,
@@ -90,7 +93,7 @@ const buildReadout = (
     beyondObservedCold: false,
     beyondObservedWarm: false,
   },
-  suggestion: { kwh: 48, currentDailyBudgetKwh: 50, cappedByCapacity: false },
+  suggestion: { kwh: 48, currentDailyBudgetKwh: 50, cappedByCapacity: false, budgetMayBeLimiting: false },
   scatter: [{ tempBinC: 2, kwhMedian: 42, kwhQ1: 39, kwhQ3: 45, count: 12 }],
   recentDays: [{
     dateKey: '2026-06-10',
@@ -101,6 +104,7 @@ const buildReadout = (
   yesterday: { dateKey: '2026-06-10', tempMeanC: 3, kwhTotal: 47, deviationKwh: 1.2 },
   usableDays: 287,
   backfilledDays: 240,
+  suppressedDaysExcluded: 0,
   generatedAtMs: 1_700_000_000_000,
   ...overrides,
 });

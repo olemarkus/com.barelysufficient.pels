@@ -51,9 +51,75 @@ type FitDay = { tempC: number; kwh: number };
 
 type RobustLine = { slope: number; intercept: number; slopes: number[] };
 
+/**
+ * A day whose measured kWh is a censored lower bound on demand strong enough to
+ * exclude from the fit. v1 trusts ONLY the unambiguous signal: a deadline-bound
+ * smart task that missed BECAUSE the daily budget ran out. Comfort/capacity
+ * deficits are recorded too but only drive the suggestion's upward lean
+ * (`hasComfortOrCapacitySuppression`) — excluding cold comfort-deficit days is
+ * itself slope-flattening and waits for thresholds calibrated on real data.
+ */
+const isMateriallySuppressed = (record: WeatherDailyRecord): boolean => (
+  record.suppression?.deadlineMissedToBudget === true
+);
+
+/** A day's comfort/capacity censoring is "material" for the upward suggestion lean past ~1 h. */
+const RAISE_LEAN_MIN_SUPPRESSION_MS = 60 * 60 * 1000;
+
+const hasComfortOrCapacitySuppression = (record: WeatherDailyRecord): boolean => {
+  const suppression = record.suppression;
+  if (!suppression) return false;
+  return (suppression.targetDeficitMs ?? 0) >= RAISE_LEAN_MIN_SUPPRESSION_MS
+    || (suppression.blockedByHeadroomMs ?? 0) >= RAISE_LEAN_MIN_SUPPRESSION_MS;
+};
+
+type FitSelection = {
+  records: WeatherDailyRecord[];
+  suppressedDaysExcluded: number;
+  suppressionFilterRelaxed: boolean;
+};
+
+/**
+ * Quality-usable days the fit runs on: drop materially-suppressed days, but if
+ * doing so would starve the fit below the minimum, keep them and flag the fit
+ * as relaxed (a biased-but-present estimate plus an honest warning beats no
+ * estimate). Windowing happens after both filters so a flaky stretch never
+ * shrinks the sample below the gate.
+ */
+function selectFitRecords(records: WeatherDailyRecord[]): FitSelection {
+  // Window on quality days FIRST so the fit's date span stays stable, then drop
+  // materially-suppressed days from WITHIN that window — the exclusion count is
+  // then exactly the suppressed days inside the window, regardless of where they
+  // fall (a burst of cold suppressed days must not slide the window backwards).
+  const windowedQuality = records.filter((record) => isUsableSignatureDay(record)).slice(-FIT_WINDOW_DAYS);
+  const kept = windowedQuality.filter((record) => !isMateriallySuppressed(record));
+  const suppressedInWindow = windowedQuality.length - kept.length;
+  const useFiltered = kept.length >= MIN_USABLE_DAYS;
+  return {
+    records: useFiltered ? kept : windowedQuality,
+    suppressedDaysExcluded: useFiltered ? suppressedInWindow : 0,
+    suppressionFilterRelaxed: !useFiltered && suppressedInWindow > 0,
+  };
+}
+
+/** Recent cold days that PELS limited (comfort/capacity) — the suggestion leans up on a cold forecast. */
+function detectRecentColdSuppression(
+  records: WeatherDailyRecord[],
+  coldThresholdC: number,
+): boolean {
+  return records
+    .filter((record) => isUsableSignatureDay(record))
+    .slice(-DRIFT_RECENT_DAYS)
+    .some((record) => record.tempMeanC < coldThresholdC && hasComfortOrCapacitySuppression(record));
+}
+
 export function fitEnergySignature(records: WeatherDailyRecord[], nowMs: number): EnergySignatureFit | null {
-  const usable = selectUsableDays(records);
-  if (usable.length < MIN_USABLE_DAYS) return null;
+  const selection = selectFitRecords(records);
+  if (selection.records.length < MIN_USABLE_DAYS) return null;
+  const usable: FitDay[] = selection.records.map((record) => ({
+    tempC: record.tempMeanC,
+    kwh: record.kwhTotal as number,
+  }));
 
   const temps = usable.map((day) => day.tempC);
   const kwhs = usable.map((day) => day.kwh);
@@ -70,6 +136,10 @@ export function fitEnergySignature(records: WeatherDailyRecord[], nowMs: number)
   const confidence = resolveConfidence({
     model, usableDays: usable.length, temps, pseudoR2, slope: line.slope, ci, driftSuspected,
   });
+  // Same "cold" definition the suggestion's raise-lean uses (suggestDailyBudget:
+  // balancePointC ?? observedTempMaxC) so detection and firing never diverge for
+  // a no-balance-point (winter-only) fit.
+  const recentColdSuppressionSuspected = detectRecentColdSuppression(records, balancePointC ?? observedTempMaxC);
 
   return {
     model,
@@ -87,6 +157,9 @@ export function fitEnergySignature(records: WeatherDailyRecord[], nowMs: number)
     curvatureSteeperWhenCold: model !== 'uncorrelated' && detectColdCurvature(usable, balancePointC),
     ...(model !== 'uncorrelated' ? { heatLossWPerK: (line.slope * 1000) / 24 } : {}),
     driftSuspected,
+    suppressedDaysExcluded: selection.suppressedDaysExcluded,
+    suppressionFilterRelaxed: selection.suppressionFilterRelaxed,
+    recentColdSuppressionSuspected,
     residualQ10: quantile(residuals, 0.1),
     residualQ50: quantile(residuals, 0.5),
     residualQ80: quantile(residuals, 0.8),

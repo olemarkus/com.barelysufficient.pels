@@ -101,6 +101,8 @@ export const WEATHER_BUTTON_DETAILS = 'Weather details';
 export const WEATHER_REASON_COLDER_THAN_OBSERVED = 'Tomorrow looks colder than any day PELS has '
   + 'measured — the range is wider than usual.';
 export const WEATHER_REASON_DRIFT_WIDER = 'Recent days ran higher than usual, so the range is wider.';
+export const WEATHER_REASON_BUDGET_LIMITING = 'Recent cold days were limited by your budget — '
+  + 'the suggestion is raised to match.';
 
 export type WeatherVerdictTone = 'ok' | 'warn';
 export type WeatherTomorrowVerdict = { text: string; tone: WeatherVerdictTone };
@@ -213,11 +215,18 @@ export const formatWarmDayUsage = (baseLoadKwhPerDay: number): string => (
   `≈ ${formatDailyKwh(baseLoadKwhPerDay)}/day`
 );
 
-export const composeNumbersFootnote = (usableDays: number, backfilledDays: number): string => (
-  backfilledDays > 0
+export const composeNumbersFootnote = (
+  usableDays: number,
+  backfilledDays: number,
+  suppressedDaysExcluded = 0,
+): string => {
+  const base = backfilledDays > 0
     ? `Based on ${formatDays(usableDays)}, backfilled from your usage history.`
-    : `Based on ${formatDays(usableDays)}.`
-);
+    : `Based on ${formatDays(usableDays)}.`;
+  return suppressedDaysExcluded > 0
+    ? `${base} ${formatDays(suppressedDaysExcluded)} left out — your budget limited them.`
+    : base;
+};
 
 export const composeSlopeRange = (lowKwhPerDegree: number, highKwhPerDegree: number): string => (
   `Usually between +${lowKwhPerDegree.toFixed(1)} and +${highKwhPerDegree.toFixed(1)} kWh per degree.`

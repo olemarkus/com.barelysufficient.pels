@@ -10,15 +10,17 @@ import { getDateKeyStartMs, shiftDateKey } from '../utils/dateUtils';
 export type DailyKwhSource = {
   buckets?: Record<string, number>;
   controlledBuckets?: Record<string, number>;
+  uncontrolledBuckets?: Record<string, number>;
   dailyTotals?: Record<string, number>;
   controlledDailyTotals?: Record<string, number>;
+  uncontrolledDailyTotals?: Record<string, number>;
 };
 
 export function resolveDailyKwh(params: {
   dateKey: string;
   timeZone: string;
   source: DailyKwhSource;
-}): { total?: number; controlled?: number } {
+}): { total?: number; controlled?: number; uncontrolled?: number } {
   const { dateKey, timeZone, source } = params;
   const dayStartMs = getDateKeyStartMs(dateKey, timeZone);
   const nextDayStartMs = getDateKeyStartMs(shiftDateKey(dateKey, 1), timeZone);
@@ -30,9 +32,14 @@ export function resolveDailyKwh(params: {
     sumBucketsInWindow(source.controlledBuckets, dayStartMs, nextDayStartMs),
     source.controlledDailyTotals?.[dateKey],
   );
+  const uncontrolled = combineDisjointSums(
+    sumBucketsInWindow(source.uncontrolledBuckets, dayStartMs, nextDayStartMs),
+    source.uncontrolledDailyTotals?.[dateKey],
+  );
   return {
     ...(total !== undefined ? { total } : {}),
     ...(controlled !== undefined ? { controlled } : {}),
+    ...(uncontrolled !== undefined ? { uncontrolled } : {}),
   };
 }
 

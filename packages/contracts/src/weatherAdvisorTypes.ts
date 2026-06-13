@@ -34,6 +34,23 @@ export type WeatherDailyQuality = {
 };
 
 /**
+ * Evidence that PELS itself suppressed this day's consumption, so the measured
+ * daily kWh is a censored lower bound on true demand. Recorded at rollup from
+ * the diagnostics + smart-task history (absent on backfilled days — diagnostics
+ * don't reach that far back; absent therefore means "unknown", admitted as
+ * unsuppressed). Producer-internal: consumers must not branch on it — the fit
+ * and suggestion resolve it to flat outputs.
+ */
+export type WeatherDaySuppression = {
+  /** Σ ms managed temperature devices were held below their intended target. */
+  targetDeficitMs?: number;
+  /** Σ ms a device could not run because capacity was saturated. */
+  blockedByHeadroomMs?: number;
+  /** A deadline-bound smart task missed AND its plan saw the daily budget exhausted. */
+  deadlineMissedToBudget?: boolean;
+};
+
+/**
  * One local calendar day of joined usage + outdoor temperature. kWh values are
  * snapshotted at day close so the record stays self-contained after the power
  * tracker prunes its own history.
@@ -43,11 +60,20 @@ export type WeatherDailyRecord = {
   dateKey: string;
   kwhTotal?: number;
   kwhControlled?: number;
+  /**
+   * Un-sheddable (background + uncontrolled-heater) kWh for the day, from the
+   * tracker's `uncontrolledDailyTotals`. PELS never suppresses it, so the
+   * uncontrolled-vs-temp relationship is an uncensored weather signal — recorded
+   * now for a future kWh-based censoring estimate. Absent on backfilled days.
+   */
+  kwhUncontrolled?: number;
   tempMeanC: number;
   tempMinC: number;
   tempMaxC: number;
   tempSampleCount: number;
   quality: WeatherDailyQuality;
+  /** Producer-internal censoring evidence; consumers must not branch on it. See WeatherDaySuppression. */
+  suppression?: WeatherDaySuppression;
 };
 
 /** In-progress accumulation for a day that has not been rolled up yet. */
@@ -131,6 +157,12 @@ export type EnergySignatureFit = {
   heatLossWPerK?: number;
   /** Recent days run above what's typical for their temperature. */
   driftSuspected: boolean;
+  /** Days dropped from the fit because PELS censored them (deadline-miss-to-budget). */
+  suppressedDaysExcluded: number;
+  /** Suppression exclusion would have starved the fit, so it was kept unfiltered (estimate may read low). */
+  suppressionFilterRelaxed: boolean;
+  /** Recent cold days showed comfort/capacity suppression — the suggestion leans up on a cold forecast. */
+  recentColdSuppressionSuspected: boolean;
   residualQ10: number;
   residualQ50: number;
   residualQ80: number;
@@ -152,6 +184,8 @@ export type EnergySignatureSuggestion = {
   beyondObservedCold: boolean;
   /** Forecast warmer than any observed day; evaluated at the warmest observed instead. */
   beyondObservedWarm: boolean;
+  /** Recent cold days were PELS-limited and tomorrow is cold — the suggestion was leaned up. */
+  budgetMayBeLimiting: boolean;
   computedAtMs: number;
 };
 
@@ -216,6 +250,8 @@ export type WeatherAdvisorSuggestion = {
   currentDailyBudgetKwh: number | null;
   /** The capacity ceiling (cap × 24 h) clamped the suggestion. */
   cappedByCapacity: boolean;
+  /** Recent cold days were PELS-limited and tomorrow is cold — the suggestion was raised to match. */
+  budgetMayBeLimiting: boolean;
 };
 
 /** Yesterday vs typical-for-its-temperature, resolved server-side. */
@@ -245,5 +281,7 @@ export type WeatherAdvisorReadoutPayload = {
   usableDays: number;
   /** Usable days reconstructed by the Insights backfill (footnote wording). */
   backfilledDays: number;
+  /** Days left out of the estimate because the budget limited them (footnote wording). */
+  suppressedDaysExcluded: number;
   generatedAtMs: number;
 };

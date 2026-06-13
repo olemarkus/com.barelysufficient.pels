@@ -52,8 +52,18 @@ export type WeatherCollectorDeps = {
   /** Read-only GET against the Homey Web API (Insights backfills + meter discovery). */
   fetchInsights: (path: string) => Promise<unknown>;
   /** Flat kWh totals for a local day, sourced from the power tracker by the factory. */
-  getDailyKwh: (dateKey: string) => { total?: number; controlled?: number };
+  getDailyKwh: (dateKey: string) => { total?: number; controlled?: number; uncontrolled?: number };
   getUnreliablePeriods: () => Array<{ start: number; end: number }>;
+  /**
+   * Censoring evidence for a local day (PELS-limited comfort/capacity, or a
+   * deadline-miss-to-budget), composed by the factory from diagnostics + smart-
+   * task history. Absent fields = signal unavailable (treated as unsuppressed).
+   */
+  getDaySuppression: (dateKey: string) => {
+    targetDeficitMs?: number;
+    blockedByHeadroomMs?: number;
+    deadlineMissedToBudget?: boolean;
+  };
   getSettings: () => WeatherAdvisorSettings;
   getNowMs: () => number;
   getTimeZone: () => string;
@@ -414,7 +424,9 @@ export class WeatherCollector {
       dayLengthHours: Math.round((nextDayStartMs - dayStartMs) / HOUR_MS),
       kwhTotal: kwh.total,
       kwhControlled: kwh.controlled,
+      kwhUncontrolled: kwh.uncontrolled,
       unreliablePower: periodsOverlapWindow(this.deps.getUnreliablePeriods(), dayStartMs, nextDayStartMs),
+      suppression: this.deps.getDaySuppression(dateKey),
     });
     this.markDirty();
     const record = this.state.records.find((entry) => entry.dateKey === dateKey);

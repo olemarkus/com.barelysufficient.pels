@@ -72,6 +72,9 @@ export function computeEnergySignatureUpdate(
     heatLossWPerK: fit.heatLossWPerK !== undefined ? Math.round(fit.heatLossWPerK) : null,
     curvatureSteeperWhenCold: fit.curvatureSteeperWhenCold,
     driftSuspected: fit.driftSuspected,
+    suppressedDaysExcluded: fit.suppressedDaysExcluded,
+    suppressionFilterRelaxed: fit.suppressionFilterRelaxed,
+    recentColdSuppressionSuspected: fit.recentColdSuppressionSuspected,
     ...(suggestion ? {
       targetDateKey: suggestion.targetDateKey,
       forecastSource: suggestion.forecastSource,
@@ -80,6 +83,7 @@ export function computeEnergySignatureUpdate(
       suggestedBudgetKwh: round2(suggestion.suggestedBudgetKwh),
       beyondObservedCold: suggestion.beyondObservedCold,
       beyondObservedWarm: suggestion.beyondObservedWarm,
+      budgetMayBeLimiting: suggestion.budgetMayBeLimiting,
     } : {}),
   });
 
