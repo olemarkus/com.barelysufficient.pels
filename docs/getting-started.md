@@ -157,7 +157,7 @@ Once you have worked through the steps above, verify:
 - **Hard cap** — your maximum average power for any hour, in **kW**.
 - **Safety margin** — a buffer below the hard cap where PELS starts reacting, in **kW**.
 - **Available power** — how much more load PELS can fit right now before it reaches the current safe pace, in **kW**.
-- **Daily budget** — an optional soft guide for total energy in a day, in **kWh**. This never overrides the hourly hard cap.
+- **Daily budget** — an optional soft guide for total energy in a day, in **kWh**. Used to spend less by shifting load into cheap hours or to hold the home under a daily energy ceiling; it never overrides the hourly hard cap. See [Daily Energy Budget](/daily-budget#why-set-a-daily-budget).
 
 ## What to read next
 

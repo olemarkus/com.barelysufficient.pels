@@ -14,7 +14,7 @@ Use this page when you are deciding whether to rely on power limiting, daily bud
 | Function | Best for | What PELS changes | Main constraint |
 | --- | --- | --- | --- |
 | **Power limiting** | Staying below a grid tariff step or breaker limit | Pauses, lowers, or resumes managed devices when the home gets close to the hard cap | Hourly hard cap |
-| **Daily budget** | Shaping total whole-home energy through the day | Gives more room to cheap or useful hours and less room to expensive hours | Daily kWh budget plus hourly hard cap |
+| **Daily budget** | Spending less and using less by pacing whole-home energy across the day | Gives more room to cheap or useful hours and less room to expensive hours | Daily kWh budget plus hourly hard cap |
 | **Price-based temperature shift** | Moving heating or cooling on devices with thermal mass | Raises targets in cheap hours and lowers targets in expensive hours | Temperature comfort range |
 | **Smart tasks** | Getting a specific device ready by a time | Plans the cheapest useful hours before the ready-by time | Target, ready-by time, prices, budget, and hard cap |
 | **Flow-booked hours** | Custom "run for X cheap hours before Y" automation | Your Flow enables power-limit control only during selected hours | Your Flow logic plus hard cap |
@@ -47,8 +47,8 @@ Daily budget is a whole-home pacing layer. It spreads a daily kWh budget across 
 
 Use it when:
 
-- You want the whole home to use less energy across the day.
-- You want cheap hours to get more of the day's available energy.
+- You want to spend less by letting cheap hours carry more of the day's load.
+- You want to hold the whole home under a daily energy ceiling — to cap cost, cut waste, or stay disciplined.
 - You do not care which device uses a cheap hour, as long as total usage shifts.
 
 This is useful when a water heater, room heating, or an EV charger may all take advantage of the same cheap window. Daily budget does not reserve cheap hours for a specific device. It creates a better whole-home pace.
