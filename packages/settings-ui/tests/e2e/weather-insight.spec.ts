@@ -111,6 +111,25 @@ test.describe('Weather insight', () => {
     expect(await readPersistedEnabled(page)).toBe(false);
   });
 
+  test('on: the over-hard-cap warning banner shows when the suggestion is capacity-capped', async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as Window & { __PELS_HOMEY_STUB__?: unknown }).__PELS_HOMEY_STUB__ = {
+        settings: {
+          weather_advisor_settings: {
+            enabled: true, outdoorDeviceId: 'dev_outdoor', forecastDeviceId: 'dev_forecast', cappedByCapacity: true,
+          },
+          daily_budget_enabled: true,
+          daily_budget_kwh: 50,
+        },
+      };
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await openBudgetTab(page);
+    const banner = page.locator('#weather-tomorrow-card #weather-overcap-banner');
+    await expect(banner).toBeVisible();
+    await expect(banner).toContainText('hard cap');
+  });
+
   test('on: Tomorrow card → Weather details → chart → Done loop', async ({ page }) => {
     await enableWeatherFlag(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });

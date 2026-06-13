@@ -116,6 +116,13 @@ export const WEATHER_REASON_DRIFT_WIDER = 'Recent days ran higher than usual, so
 export const WEATHER_REASON_BUDGET_LIMITING = 'Recent cold days were limited by your budget — '
   + 'the suggestion is raised to match.';
 
+// Over-hard-cap warning: tomorrow's expected usage is more than the hard cap can
+// physically deliver in a day, so the suggestion was capped at the cap. The cap
+// is physical — copy NEVER suggests raising it; it states what PELS will do.
+export const WEATHER_WARN_OVER_HARDCAP_TITLE = 'Tomorrow may need more than your hard cap allows';
+export const WEATHER_WARN_OVER_HARDCAP_BODY = 'Tomorrow’s expected usage is higher than your hard cap '
+  + 'can deliver in a day. PELS will hold the cap, so some managed usage may be limited on the coldest hours.';
+
 export type WeatherVerdictTone = 'ok' | 'warn';
 export type WeatherTomorrowVerdict = { text: string; tone: WeatherVerdictTone };
 

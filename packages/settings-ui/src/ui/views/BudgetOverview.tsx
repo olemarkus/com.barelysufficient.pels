@@ -234,7 +234,7 @@ const AllocationWarningBanner = ({
 }) => (
   <section
     id="budget-redesign-allocation-warning"
-    class="banner banner--warning budget-redesign-allocation-warning"
+    class="banner banner--warning banner--stacked"
     role="status"
   >
     <span class="banner__icon" aria-hidden="true"><WarningIcon /></span>

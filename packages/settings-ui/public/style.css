@@ -5208,11 +5208,13 @@ details[open] > summary .disclosure-chevron {
   --md-outlined-button-focus-state-layer-color: var(--color-state-warning-text);
 }
 
-.budget-redesign-allocation-warning {
+/* Shared "stacked" banner layout (icon + title-over-body), used by the budget
+   allocation warning and the weather over-hard-cap banner. */
+.banner--stacked {
   align-items: flex-start;
 }
 
-.budget-redesign-allocation-warning .banner__body {
+.banner--stacked .banner__body {
   flex: 1;
   min-width: 0;
   display: flex;
@@ -5220,15 +5222,15 @@ details[open] > summary .disclosure-chevron {
   gap: var(--spacing-1);
 }
 
-.budget-redesign-allocation-warning .banner__body > * {
+.banner--stacked .banner__body > * {
   margin: 0;
 }
 
-.budget-redesign-allocation-warning .banner__title {
+.banner--stacked .banner__title {
   font-weight: var(--font-weight-semibold);
 }
 
-.budget-redesign-allocation-warning .banner__text {
+.banner--stacked .banner__text {
   flex: initial;
 }
 

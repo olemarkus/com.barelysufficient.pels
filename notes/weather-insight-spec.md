@@ -86,7 +86,12 @@ card → `Choose temperature device` → Settings, Weather insight section.
   - `recent_no_device`: `If recent weather continues — no forecast device set.` (S7a)
   - `recent_device_unreadable`: `Forecast device isn’t reporting tomorrow’s temperature — using recent days.` (S7b)
 - `Suggested daily budget` is the q80-headroom figure, clamped [20, 360],
-  capped by capacity. Informational only.
+  capped by capacity. Display-only unless the user opted into auto-apply.
+- When the suggestion is clamped by the hard cap (`cappedByCapacity`), a warn-tone
+  over-cap banner (`.banner banner--warning banner--stacked`) renders before the
+  verdict: `Tomorrow may need more than your hard cap allows`. The cap is physical —
+  copy never suggests raising it; it states PELS will hold the cap. In that state the
+  ok-tone verdicts are suppressed (a capped day is never an "ok" landing).
 - Verdict line (exactly one, current budget vs prediction quantiles):
   - current ≥ q90: `Your budget covers tomorrow with room to spare.` (ok)
   - q80 ≤ current < q90: `Your budget should cover tomorrow.` (ok)

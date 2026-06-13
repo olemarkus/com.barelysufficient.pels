@@ -272,7 +272,11 @@ function resolveTomorrowOutlook(
     suggestion: {
       kwh: resolved.result.suggestedBudgetKwh,
       currentDailyBudgetKwh: input.currentDailyBudgetKwh ?? null,
-      cappedByCapacity: resolved.result.suggestedBudgetKwh >= capacityCapKwh - 1e-6,
+      // True only when tomorrow's EXPECTED usage exceeds what the cap can deliver
+      // in a day — the over-cap banner's actual claim. Gating on the predicted
+      // demand (not the clamped suggestion) avoids a false positive when a tiny
+      // hard cap clamps the [20,360] floor below the cap on a low-demand day.
+      cappedByCapacity: resolved.result.predictedKwh >= capacityCapKwh - 1e-6,
       budgetMayBeLimiting: resolved.result.budgetMayBeLimiting,
     },
     forecastStatus: resolveForecastStatusFromSource(resolved.source, input.settings.forecastDeviceId),
