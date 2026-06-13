@@ -1,7 +1,9 @@
 import type {
   EvObservedProbe,
   MeasuredPowerObservedProbe,
+  ReportedStepObservedProbe,
   StateOfChargeObservedProbe,
+  SteppedLoadDescriptorProbe,
   TargetDeviceSnapshot,
   TemperatureObservedProbe,
 } from '../../packages/contracts/src/types';
@@ -19,13 +21,19 @@ import type {
  *   `StateOfChargeObservedFields`).
  * - `MeasuredPowerObservedProbe` for `measuredPowerKw` /
  *   `measuredPowerObservedAtMs` (see `MeasuredPowerObservedFields`).
+ * - `SteppedLoadDescriptorProbe` for `steppedLoadProfile` / `targetPowerConfig`
+ *   (see `SteppedLoadDescriptorFields`).
+ * - `ReportedStepObservedProbe` for `reportedStepId` (see
+ *   `ReportedStepObservedFields`).
  *
  * This shape is for the transport/observer OWNER seams only. It must not leak
  * across the producer boundary — consumers receive `TargetDeviceSnapshot` (the
  * widened object is assignable to it) and narrow through `isEvObserved` /
  * `hasObservedTemperature` / `hasObservedStateOfCharge` /
- * `hasObservedMeasuredPower` (`packages/shared-domain/src/*ObservedState.ts`).
+ * `hasObservedMeasuredPower` / `isSteppedLoadSnapshot` / `hasObservedReportedStep`
+ * (`packages/shared-domain/src/*ObservedState.ts`).
  */
 export type TransportDeviceSnapshot =
   TargetDeviceSnapshot & EvObservedProbe & TemperatureObservedProbe
-  & StateOfChargeObservedProbe & MeasuredPowerObservedProbe;
+  & StateOfChargeObservedProbe & MeasuredPowerObservedProbe
+  & SteppedLoadDescriptorProbe & ReportedStepObservedProbe;

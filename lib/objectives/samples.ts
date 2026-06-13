@@ -7,11 +7,17 @@ import { isTemperatureControlDevice } from '../../packages/shared-domain/src/tem
 import { hasObservedTemperature } from '../../packages/shared-domain/src/temperatureObservedState';
 import { hasObservedStateOfCharge } from '../../packages/shared-domain/src/stateOfChargeObservedState';
 import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
+import {
+  hasObservedReportedStep,
+  isSteppedLoadSnapshot,
+} from '../../packages/shared-domain/src/steppedLoadObservedState';
 import type {
   DeviceDescriptor,
   MeasuredPowerObservedProbe,
   ObservedDeviceState,
+  ReportedStepObservedProbe,
   StateOfChargeObservedProbe,
+  SteppedLoadDescriptorProbe,
   TemperatureObservedProbe,
 } from '../../packages/contracts/src/types';
 import type { DeviceObjectiveProfileSample } from './types';
@@ -19,17 +25,20 @@ import type { DeviceObjectiveProfileSample } from './types';
 // Observed truth (temperature / SoC / measured power / reported step) plus the
 // few descriptor fields the kind predicates need — NOT the full producer-input
 // `TargetDeviceSnapshot`. Objectives is a downstream consumer; it depends on the
-// decomposed snapshot halves, never the raw producer snapshot. The
-// `TemperatureObservedProbe` / `StateOfChargeObservedProbe` /
-// `MeasuredPowerObservedProbe` widenings carry the observed temperature / SoC /
-// measured power the base type omits (this is a producer-fed funnel);
-// `hasObservedTemperature` / `hasObservedStateOfCharge` /
-// `hasObservedMeasuredPower` narrow them.
+// decomposed snapshot halves, never the raw producer snapshot. The observed
+// (`TemperatureObservedProbe` / `StateOfChargeObservedProbe` /
+// `MeasuredPowerObservedProbe` / `ReportedStepObservedProbe`) and stepped-descriptor
+// (`SteppedLoadDescriptorProbe`) widenings carry the cluster fields the base type
+// omits (this is a producer-fed funnel); `hasObservedTemperature` /
+// `hasObservedStateOfCharge` / `hasObservedMeasuredPower` / `hasObservedReportedStep`
+// / `isSteppedLoadSnapshot` narrow them.
 export type ObjectiveSampleDevice = ObservedDeviceState
   & TemperatureObservedProbe
   & StateOfChargeObservedProbe
   & MeasuredPowerObservedProbe
-  & Pick<DeviceDescriptor, 'steppedLoadProfile' | 'deviceClass' | 'deviceType' | 'controlCapabilityId'>;
+  & SteppedLoadDescriptorProbe
+  & ReportedStepObservedProbe
+  & Pick<DeviceDescriptor, 'deviceClass' | 'deviceType' | 'controlCapabilityId'>;
 
 export const OBJECTIVE_PROFILE_MAX_OBSERVATION_AGE_MS = 30 * 60 * 1000;
 export const OBJECTIVE_PROFILE_MAX_FUTURE_SKEW_MS = 5 * 1000;
@@ -96,9 +105,10 @@ function resolveCredibleDevicePower(
     };
   }
 
+  if (!isSteppedLoadSnapshot(device)) return {};
   const profile = device.steppedLoadProfile;
-  if (!profile) return {};
-  const reportedStep = getSteppedLoadStep(profile, device.reportedStepId);
+  const reportedStepId = hasObservedReportedStep(device) ? device.reportedStepId : undefined;
+  const reportedStep = getSteppedLoadStep(profile, reportedStepId);
   if (reportedStep && !isSteppedLoadOffStep(profile, reportedStep.id) && reportedStep.planningPowerW > 0) {
     return {
       crediblePowerW: Math.round(reportedStep.planningPowerW),

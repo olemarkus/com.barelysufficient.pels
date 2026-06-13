@@ -33,7 +33,12 @@ import {
 } from '../../lib/plan/planTypes';
 import { isBinaryPlanDevice } from '../../lib/plan/planBinaryDevice';
 import type { DeviceCapabilityMap } from '../../lib/device/managerControl';
-import type { MeasuredPowerObservedProbe, SteppedLoadProfile, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type {
+  MeasuredPowerObservedProbe,
+  ReportedStepObservedProbe,
+  SteppedLoadProfile,
+  TargetDeviceSnapshot,
+} from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { mockHomeyInstance } from '../mocks/homey';
 import { setRestClient } from '../../lib/device/transport/managerHomeyApi';
@@ -738,7 +743,7 @@ describe('native stepped-load wiring', () => {
         activationEnabled: true,
       },
       suggestedSteppedLoadProfile: steppedProfile,
-    } satisfies TargetDeviceSnapshot & MeasuredPowerObservedProbe;
+    } satisfies TargetDeviceSnapshot & MeasuredPowerObservedProbe & ReportedStepObservedProbe;
     let snapshots = [flowSnapshot];
     const helpers = new AppDeviceControlHelpers({
       getProfiles: () => ({ 'hoiax-1': steppedProfile }),
@@ -795,7 +800,7 @@ describe('native stepped-load wiring', () => {
         activationEnabled: true,
       },
       suggestedSteppedLoadProfile: steppedProfile,
-    } satisfies TargetDeviceSnapshot & MeasuredPowerObservedProbe;
+    } satisfies TargetDeviceSnapshot & MeasuredPowerObservedProbe & ReportedStepObservedProbe;
     const helpers = new AppDeviceControlHelpers({
       getProfiles: () => ({ 'hoiax-1': configuredProfile }),
       getDeviceSnapshots: () => [nativeSnapshot],

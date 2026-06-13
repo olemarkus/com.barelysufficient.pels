@@ -1,4 +1,8 @@
-import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
+import type {
+  SteppedLoadDescriptorProbe,
+  TargetDeviceSnapshot,
+} from '../../../packages/contracts/src/types';
+import { isSteppedLoadSnapshot } from '../../../packages/shared-domain/src/steppedLoadObservedState';
 import {
   CREATE_SMART_TASK_WIDGET_COPY,
 } from '../../../packages/shared-domain/src/deadlineLabels';
@@ -23,7 +27,7 @@ import type {
 export const EMPTY_NO_DEVICES_SUBTITLE = CREATE_SMART_TASK_WIDGET_COPY.emptyNoDevices;
 export const EMPTY_NO_DEVICES_HINT = CREATE_SMART_TASK_WIDGET_COPY.emptyNoDevicesHint;
 
-const buildDevice = (device: TargetDeviceSnapshot): CreateSmartTaskDevice | null => {
+const buildDevice = (device: TargetDeviceSnapshot & SteppedLoadDescriptorProbe): CreateSmartTaskDevice | null => {
   const kind = resolveSmartTaskDeviceKind(device);
   if (kind === null) return null;
   const bounds = resolveSmartTaskGoalBounds(device, kind);
@@ -47,13 +51,13 @@ const buildDevice = (device: TargetDeviceSnapshot): CreateSmartTaskDevice | null
     // compose toggle from ever being offered where it would be a no-op.
     supportsLimitLowerPriority:
       device.controlModel === 'stepped_load'
-      && device.steppedLoadProfile?.model === 'stepped_load'
+      && isSteppedLoadSnapshot(device)
       && device.priority === 1,
   };
 };
 
 export type CreateSmartTaskWidgetInput = {
-  devices: ReadonlyArray<TargetDeviceSnapshot>;
+  devices: ReadonlyArray<TargetDeviceSnapshot & SteppedLoadDescriptorProbe>;
 };
 
 export const buildCreateSmartTaskDevicesPayload = (

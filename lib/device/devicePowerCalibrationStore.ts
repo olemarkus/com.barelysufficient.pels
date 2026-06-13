@@ -23,6 +23,9 @@ import {
 import { POWER_CALIBRATION, POWER_CALIBRATION_INITIALIZED } from '../utils/settingsKeys';
 import type {
   MeasuredPowerObservedProbe,
+  ReportedStepObservedProbe,
+  SteppedLoadDescriptorFields,
+  SteppedLoadDescriptorProbe,
   SteppedLoadProfile,
   TargetDeviceSnapshot,
 } from '../../packages/contracts/src/types';
@@ -122,7 +125,8 @@ export class PowerCalibrationStore {
    * `recordSample`.
    */
   ingestDeviceSnapshot(
-    snapshot: TargetDeviceSnapshot & MeasuredPowerObservedProbe,
+    snapshot: TargetDeviceSnapshot & MeasuredPowerObservedProbe
+      & SteppedLoadDescriptorProbe & ReportedStepObservedProbe,
     nowMs: number,
   ): IngestDeviceSnapshotOutcome {
     const sample = buildSampleFromDeviceSnapshot(snapshot, nowMs);
@@ -396,7 +400,8 @@ function writeInitMarkerBestEffort(homey: HomeyRuntime): void {
 }
 
 function buildSampleFromDeviceSnapshot(
-  snapshot: TargetDeviceSnapshot & MeasuredPowerObservedProbe,
+  snapshot: TargetDeviceSnapshot & MeasuredPowerObservedProbe
+    & SteppedLoadDescriptorProbe & ReportedStepObservedProbe,
   nowMs: number,
 ): RecordSampleInput | null {
   if (!isEligiblePowerCalibrationSnapshot(snapshot)) return null;
@@ -419,10 +424,10 @@ function buildSampleFromDeviceSnapshot(
 }
 
 function isEligiblePowerCalibrationSnapshot(
-  snapshot: TargetDeviceSnapshot & MeasuredPowerObservedProbe,
-): snapshot is TargetDeviceSnapshot & {
+  snapshot: TargetDeviceSnapshot & MeasuredPowerObservedProbe
+    & SteppedLoadDescriptorProbe & ReportedStepObservedProbe,
+): snapshot is TargetDeviceSnapshot & SteppedLoadDescriptorFields & {
   controlModel: 'stepped_load';
-  steppedLoadProfile: SteppedLoadProfile;
   reportedStepId: string;
   measuredPowerKw: number;
   lastFreshDataMs: number;
@@ -503,7 +508,11 @@ export function createCalibrationSnapshotMutationHook(params: {
   /** Override the per-(device, step) debounce. Defaults to 30 s. Set to 0 to
    *  disable, primarily for tests. */
   minIntervalMs?: number;
-}): (snapshot: TargetDeviceSnapshot & MeasuredPowerObservedProbe, nowMs: number) => void {
+}): (
+  snapshot: TargetDeviceSnapshot & MeasuredPowerObservedProbe
+    & SteppedLoadDescriptorProbe & ReportedStepObservedProbe,
+  nowMs: number,
+) => void {
   const { getStore, debugStructured } = params;
   const minIntervalMs = params.minIntervalMs ?? DEFAULT_HOOK_CADENCE_MIN_INTERVAL_MS;
   const lastIngestMsByDeviceStep = new Map<string, number>();

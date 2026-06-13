@@ -756,7 +756,7 @@ export default tseslint.config(
     // split if registration gains deeper per-card behavior (god-file-policy.md).
     files: ['flowCards/registerFlowCards.ts'],
     rules: {
-      'max-lines': ['warn', { max: 1144, skipBlankLines: true, skipComments: true }],
+      'max-lines': ['warn', { max: 1147, skipBlankLines: true, skipComments: true }],
     },
   },
   {

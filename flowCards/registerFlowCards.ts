@@ -2,9 +2,12 @@ import { PriceLevel, PRICE_LEVEL_OPTIONS, PriceLevelOption } from '../lib/price/
 import CapacityGuard from '../lib/power/capacityGuard';
 import type {
   DecoratedDeviceSnapshot,
+  SteppedLoadDescriptorFields,
   StateOfChargeObservedProbe,
   TargetDeviceSnapshot,
+  TargetPowerSteppedLoadConfig,
 } from '../packages/contracts/src/types';
+import { isSteppedLoadSnapshot } from '../packages/shared-domain/src/steppedLoadObservedState';
 import type { DeferredObjectiveActivePlansV1 } from '../packages/contracts/src/deferredObjectiveActivePlans';
 import type { FlowHomeyLike, HomeyDeviceLike } from '../lib/utils/types';
 import type { ReportSteppedLoadActualStepResult } from '../setup/appDeviceControlHelpers';
@@ -302,7 +305,7 @@ function registerReportActualStepCard(deps: FlowCardDeps): void {
       if (!deviceId) return [];
       const snapshot = await deps.getSnapshot();
       const device = snapshot.find((entry) => entry.id === deviceId && entry.controlModel === 'stepped_load');
-      const steps = device?.steppedLoadProfile?.steps ?? [];
+      const steps = device && isSteppedLoadSnapshot(device) ? device.steppedLoadProfile.steps : [];
       const q = (query || '').toLowerCase();
       return steps
         .filter((step) => !q || step.id.toLowerCase().includes(q))
@@ -481,7 +484,7 @@ async function resolveSteppedLoadStepIdFromPowerInput(params: {
 
 function parseSteppedLoadPowerInput(params: {
   rawPower: unknown;
-  device: TargetDeviceSnapshot;
+  device: TargetDeviceSnapshot & SteppedLoadDescriptorFields;
 }): number | null {
   const { rawPower, device } = params;
   if (typeof rawPower === 'number' && Number.isFinite(rawPower)) {
@@ -513,7 +516,7 @@ function parseSteppedLoadPowerInput(params: {
 }
 
 function resolveEvTargetPowerPhaseCount(
-  config: TargetDeviceSnapshot['targetPowerConfig'],
+  config: TargetPowerSteppedLoadConfig | undefined,
 ): 1 | 3 | null {
   if (!config || config.enabled === false) return null;
   if (config.preset === 'ev_charger_1_phase') return 1;
@@ -628,19 +631,19 @@ function createSteppedLoadReportError(code: SteppedLoadReportErrorCode, message:
 async function getSteppedLoadDeviceSnapshot(
   deps: FlowCardDeps,
   deviceId: string,
-): Promise<TargetDeviceSnapshot & { controlModel: 'stepped_load' }> {
+): Promise<TargetDeviceSnapshot & { controlModel: 'stepped_load' } & SteppedLoadDescriptorFields> {
   const snapshot = await deps.getSnapshot();
   const device = snapshot.find((entry) => entry.id === deviceId);
   if (!device) {
     throw createSteppedLoadReportError('device_not_found', `Device '${deviceId}' was not found in the snapshot.`);
   }
-  if (device.controlModel !== 'stepped_load' || !device.steppedLoadProfile) {
+  if (device.controlModel !== 'stepped_load' || !isSteppedLoadSnapshot(device)) {
     throw createSteppedLoadReportError(
       'not_stepped_load',
       `Device '${device.name.trim()}' is not configured as a stepped load.`,
     );
   }
-  return device as TargetDeviceSnapshot & { controlModel: 'stepped_load' };
+  return device as TargetDeviceSnapshot & { controlModel: 'stepped_load' } & SteppedLoadDescriptorFields;
 }
 
 function emitSteppedLoadReportReceivedLog(params: {
@@ -751,7 +754,7 @@ async function emitSteppedLoadClampDeviationLog(params: {
   if (device.stepCommandPending === true) return;
   const commandedStepId = device.desiredStepId ?? device.targetStepId;
   if (!commandedStepId || commandedStepId === reportedStepId) return;
-  const steps = device.steppedLoadProfile?.steps ?? [];
+  const steps = isSteppedLoadSnapshot(device) ? device.steppedLoadProfile.steps : [];
   const commandedStep = steps.find((step) => step.id === commandedStepId);
   if (!commandedStep) return;
   const reportedStep = steps.find((step) => step.id === reportedStepId);

@@ -1,4 +1,8 @@
-import type { TargetDeviceSnapshot, SteppedLoadProfile } from '../../contracts/src/types';
+import type {
+  SteppedLoadDescriptorProbe,
+  SteppedLoadProfile,
+  TargetDeviceSnapshot,
+} from '../../contracts/src/types';
 
 const createElement = (tag: string, id?: string): HTMLElement => {
   const el = document.createElement(tag);
@@ -20,7 +24,7 @@ const setupDom = (): void => {
 const buildSteppedDevice = (
   id: string,
   steps: SteppedLoadProfile['steps'],
-): TargetDeviceSnapshot => ({
+): TargetDeviceSnapshot & SteppedLoadDescriptorProbe => ({
   id,
   name: `Stepped Device ${id}`,
   binaryControl: { on: true },

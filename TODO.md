@@ -181,6 +181,24 @@ program) remains deferred.*
       (`lib/plan/restore/observedDraw.ts`) — `isFiniteNumber`-gated, so a non-finite `powerKw` nameplate can no
       longer propagate through `??` (the old `measuredPowerKw ?? powerKw ?? 0` was NaN-blind). Type-level +
       one defensive-correctness improvement; no intended behavior change given the producer invariant.
+      **Stepped-descriptor field-move landed (2026-06-13): `steppedLoadProfile`/`targetPowerConfig` are OFF the
+      base `DeviceDescriptor` and `reportedStepId` is OFF the base `ObservedDeviceState` — the FINAL slice of
+      this P1.** An un-narrowed `snapshot.steppedLoadProfile`/`targetPowerConfig`/`reportedStepId` read is now a
+      hard TS2339. Two new browser-safe guards in `packages/shared-domain/src/steppedLoadObservedState.ts`:
+      `isSteppedLoadSnapshot` (narrows `SteppedLoadDescriptorFields`; checks `steppedLoadProfile?.model ===
+      'stepped_load'` — the snapshot-shaped twin of `lib/plan`'s `isSteppedLoadDevice`, so `steppedLoadProfile`
+      IS the kind discriminant) and the presence-only `hasObservedReportedStep` (narrows
+      `ReportedStepObservedFields`). New contracts types: `SteppedLoadDescriptorFields` (required
+      `steppedLoadProfile` + optional `targetPowerConfig`, which rides the cluster) + `SteppedLoadDescriptorProbe`
+      (optional owner-widening), and `ReportedStepObservedFields`/`ReportedStepObservedProbe`. `TransportDeviceSnapshot`
+      and `DecoratedDeviceSnapshot` now intersect both new probes (the transport produces and the app-layer
+      decorator re-resolves + writes these onto the carrier). `suggestedSteppedLoadProfile` STAYS on the base
+      (it is a CONFIGURE hint for non-stepped devices, not part of the stepped cluster). Consumers migrated:
+      objectives `resolveCredibleDevicePower`, the flow-card stepped-load + EV-phase paths, `app.ts`
+      `deviceSupportsLimitLowerPriority`, and the settings-UI device-detail carrier + smart-tasks widget payload;
+      owner/producer seams (transport parse/calibration-store/native-EV/debug-snapshot) probe-widen instead.
+      `targetPowerConfig` reads stay owner-probe reads (a continuous EV preset carries it without a full stepped
+      profile), not `isSteppedLoadSnapshot` narrows. Type-level only — zero runtime behavior change.
       **Temperature de-kind slice T1 landed (2026-06-07): planner branches on modality, not device kind.**
       Moved the starvation device-class set and the `deviceType === 'temperature'` checks out of
       `lib/plan/planDiagnostics.ts` into browser-safe shared-domain predicates (`isTemperatureControlDevice`,
@@ -198,14 +216,14 @@ program) remains deferred.*
       `lib/objectives` is now in `check-device-kind-vocab.mjs`'s `consumerDirs`, so the guard enforces all
       three consumer layers.
       Remaining under this item:
-      - **type discrimination:** the stepped descriptor field-level discrimination and the rest of the
-        `TargetDeviceSnapshot` discrimination — the type-tightening half, independent of the value-level
-        de-kinding above. The EV-observed and temperature-observed field-moves established the pattern for the
-        observed-snapshot side: orthogonal `*Fields` cluster + `*Probe` owner-widening + shared-domain guard.
-        The EV / temperature / SoC / measured-power observed fields have all moved off the base; the remaining
-        stepped-load discrimination spans both partitions — the observed `reportedStepId` (off
-        `ObservedDeviceState`) and the descriptor `steppedLoadProfile`/`targetPowerConfig` (off
-        `DeviceDescriptor`) — and many readers already gate on `isSteppedLoadDevice`.
+      - **type discrimination (snapshot side): COMPLETE.** All observed clusters (EV / temperature / SoC /
+        measured-power) AND the stepped clusters (descriptor `steppedLoadProfile`/`targetPowerConfig` off
+        `DeviceDescriptor`; observed `reportedStepId` off `ObservedDeviceState`) have moved off the base
+        snapshot types onto orthogonal `*Fields` clusters with `*Probe` owner-widening and shared-domain guards.
+        An un-narrowed read of any of these on a base-typed value is a hard TS2339. What is left is the
+        plan-layer discrimination still tracked under "Slice 1" above — converting the flat `DevicePlanDevice` /
+        `PlanInputDevice` bags to discriminated unions (`SteppedLoadKind`/temperature/EV kinds) — a separate
+        partition from the now-finished `TargetDeviceSnapshot`/`ObservedDeviceState`/`DeviceDescriptor` move.
 
 ## P2 Product, Observability, and Maintainability
 

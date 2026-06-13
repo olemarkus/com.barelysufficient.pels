@@ -12,7 +12,9 @@ import {
 import type {
   MeasuredPowerObservedProbe,
   ObservedDeviceState,
+  ReportedStepObservedProbe,
   SteppedLoadDecoration,
+  SteppedLoadDescriptorProbe,
 } from '../../packages/contracts/src/types';
 import type {
   ExecutableBinaryIntent,
@@ -153,7 +155,11 @@ export function buildExecutableObservedDeviceState(
   // Widened past the raw snapshot to carry the optional `selectedStepId`
   // decoration: the drift path feeds a live `PlanInputDevice` (decoration
   // present), the raw observed-state path feeds transport snapshots (absent).
-  snapshot: ExecutorDeviceSnapshot & Pick<SteppedLoadDecoration, 'selectedStepId'>,
+  // Producer-fed funnel: also carries the stepped-descriptor + reported-step +
+  // measured-power probes the base type omits, which the stepped-load projection
+  // (`buildObservedSteppedLoadState`) reads.
+  snapshot: ExecutorDeviceSnapshot & Pick<SteppedLoadDecoration, 'selectedStepId'>
+    & SteppedLoadDescriptorProbe & ReportedStepObservedProbe & MeasuredPowerObservedProbe,
 ): ExecutableObservedDeviceState {
   return {
     id: snapshot.id,
@@ -199,7 +205,8 @@ const buildObservedSteppedLoadState = (
   // transport snapshot carries no decoration), but on the drift path
   // (`planExecutionDrift` → live `PlanInputDevice`) it is the producer-resolved
   // effective step. The read must survive both, so widen past the raw snapshot.
-  snapshot: ExecutorDeviceSnapshot & Pick<SteppedLoadDecoration, 'selectedStepId'> & MeasuredPowerObservedProbe,
+  snapshot: ExecutorDeviceSnapshot & Pick<SteppedLoadDecoration, 'selectedStepId'>
+    & MeasuredPowerObservedProbe & ReportedStepObservedProbe,
 ): ExecutableObservedSteppedLoadState | null => {
   if (snapshot.controlModel !== 'stepped_load') return null;
   return {

@@ -9,7 +9,13 @@ import {
   POWER_CALIBRATION_VERSION,
   createEmptyPowerCalibrationSnapshot,
 } from '../../lib/device/devicePowerCalibration';
-import type { MeasuredPowerObservedProbe, SteppedLoadProfile, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type {
+  MeasuredPowerObservedProbe,
+  ReportedStepObservedProbe,
+  SteppedLoadDescriptorProbe,
+  SteppedLoadProfile,
+  TargetDeviceSnapshot,
+} from '../../packages/contracts/src/types';
 import { captureLogger } from '../utils/loggerCapture';
 import { POWER_CALIBRATION, POWER_CALIBRATION_INITIALIZED } from '../../lib/utils/settingsKeys';
 
@@ -24,8 +30,12 @@ const CONNECTED_300_PROFILE: SteppedLoadProfile = {
 };
 
 const baseDeviceSnapshot = (
-  overrides: Partial<TargetDeviceSnapshot & MeasuredPowerObservedProbe> = {},
-): TargetDeviceSnapshot & MeasuredPowerObservedProbe => ({
+  overrides: Partial<
+    TargetDeviceSnapshot & MeasuredPowerObservedProbe
+    & SteppedLoadDescriptorProbe & ReportedStepObservedProbe
+  > = {},
+): TargetDeviceSnapshot & MeasuredPowerObservedProbe
+  & SteppedLoadDescriptorProbe & ReportedStepObservedProbe => ({
   id: 'hoiax-1',
   name: 'Hoiax',
   targets: [],

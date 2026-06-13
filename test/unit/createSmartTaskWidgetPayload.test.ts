@@ -2,18 +2,30 @@
  * @vitest-environment node
  */
 import { describe, expect, it } from 'vitest';
-import type { StateOfChargeObservedProbe, TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
+import type {
+  StateOfChargeObservedProbe,
+  SteppedLoadDescriptorProbe,
+  SteppedLoadProfile,
+  TargetDeviceSnapshot,
+  TemperatureObservedProbe,
+} from '../../packages/contracts/src/types';
 import {
   buildCreateSmartTaskDevicesPayload,
   EMPTY_NO_DEVICES_HINT,
   EMPTY_NO_DEVICES_SUBTITLE,
 } from '../../widgets/create_smart_task/src/createSmartTaskWidgetPayload';
 
-const buildDevice = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe> & { id: string; name: string }): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe => ({
+const buildDevice = (
+  overrides: Partial<
+    TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe
+    & SteppedLoadDescriptorProbe
+  > & { id: string; name: string },
+): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe
+  & SteppedLoadDescriptorProbe => ({
   targets: [],
   binaryControl: { on: false },
   ...overrides,
-} as TargetDeviceSnapshot);
+} as TargetDeviceSnapshot & SteppedLoadDescriptorProbe);
 
 describe('buildCreateSmartTaskDevicesPayload', () => {
   it('returns the empty state with hint when no eligible devices', () => {
@@ -126,17 +138,23 @@ describe('buildCreateSmartTaskDevicesPayload', () => {
   });
 
   describe('supportsLimitLowerPriority (gate-on-effect)', () => {
-    const steppedHeater = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe>): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe => buildDevice({
+    const steppedHeater = (
+      overrides: Partial<
+        TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe
+        & SteppedLoadDescriptorProbe
+      >,
+    ): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe
+      & SteppedLoadDescriptorProbe => buildDevice({
       id: 'heater',
       name: 'Hot water',
       deviceType: 'temperature',
       currentTemperature: 48,
       targets: [{ id: 'target_temperature', value: 50, unit: 'C', min: 30, max: 85, step: 0.5 }],
       controlModel: 'stepped_load',
-      steppedLoadProfile: { model: 'stepped_load' } as TargetDeviceSnapshot['steppedLoadProfile'],
+      steppedLoadProfile: { model: 'stepped_load' } as SteppedLoadProfile,
       ...overrides,
     });
-    const firstDevice = (device: TargetDeviceSnapshot): boolean => {
+    const firstDevice = (device: TargetDeviceSnapshot & SteppedLoadDescriptorProbe): boolean => {
       const payload = buildCreateSmartTaskDevicesPayload({ devices: [device] });
       if (payload.state !== 'ready') throw new Error('expected ready');
       return payload.devices[0].supportsLimitLowerPriority;

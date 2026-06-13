@@ -145,9 +145,20 @@ export type DeviceDescriptor = {
     controlAdapter?: DeviceControlAdapterSnapshot;
     controlWriteCapabilityId?: string;
     controlObservationCapabilityId?: string;
-    steppedLoadProfile?: SteppedLoadProfile;
+    // `steppedLoadProfile`/`targetPowerConfig` are deliberately NOT here
+    // (stepped-descriptor slice of the discriminated-types refactor): they live on
+    // `SteppedLoadDescriptorFields`, regrouped onto the snapshot by the
+    // `isSteppedLoadSnapshot` guard
+    // (`packages/shared-domain/src/steppedLoadObservedState.ts`), so an un-narrowed
+    // `snapshot.steppedLoadProfile` read on a base-typed value is a hard compile
+    // error (TS2339). `steppedLoadProfile` IS the kind discriminant (its presence —
+    // `model` is always `'stepped_load'` — means the device is a stepped load); the
+    // guard mirrors the plan layer's `isSteppedLoadDevice`. Owner seams and
+    // producer-fed structural funnels widen with `SteppedLoadDescriptorProbe`
+    // instead. `suggestedSteppedLoadProfile` STAYS on the base: it is a
+    // CONFIGURE-stepping hint shown for NON-stepped (unconfigured) devices, so it is
+    // not part of the stepped cluster.
     suggestedSteppedLoadProfile?: SteppedLoadProfile;
-    targetPowerConfig?: TargetPowerSteppedLoadConfig;
     // Capabilities PELS writes when it natively controls this stepped-load
     // device (max_power_* / onoff / target_power). Populated for stepped-load
     // candidates even when native wiring is off. Used by native-wiring
@@ -252,7 +263,15 @@ export type ObservedDeviceState = {
     // at refresh, the `measure_power` branch of `applyFreshnessOnlyCapabilityUpdate`
     // at realtime) only write finite values. Owner seams and producer-fed
     // structural funnels widen with `MeasuredPowerObservedProbe` instead.
-    reportedStepId?: string;
+    // `reportedStepId` is deliberately NOT here (stepped-observed slice of the
+    // discriminated-types refactor): it lives on `ReportedStepObservedFields`,
+    // regrouped onto the snapshot by the presence-only `hasObservedReportedStep`
+    // guard (`packages/shared-domain/src/steppedLoadObservedState.ts`), so an
+    // un-narrowed `snapshot.reportedStepId` read on a base-typed value is a hard
+    // compile error (TS2339). A non-stepped device never reports a step; a stepped
+    // device only carries it once a native/flow step report lands (absent until
+    // then), so the guard is presence-only. Owner seams and producer-fed structural
+    // funnels widen with `ReportedStepObservedProbe` instead.
     /**
      * @deprecated Raw binary evidence is observer-owned transport state. Consumer
      * code must not read this directly; use observer helpers to resolve observed
@@ -436,6 +455,66 @@ export type MeasuredPowerObservedProbe = {
 };
 
 /**
+ * Stepped-load descriptor cluster (stepped slice of the discriminated-types
+ * refactor — the snapshot-level twin of the plan layer's `SteppedLoadKind`).
+ *
+ * `steppedLoadProfile` is THE kind discriminant: a `SteppedLoadProfile` always has
+ * `model: 'stepped_load'`, so its presence on a snapshot means the device is a
+ * stepped load. It is OMITTED from `DeviceDescriptor`, so an un-narrowed
+ * `snapshot.steppedLoadProfile` read is a hard compile error (TS2339); consumers
+ * pass through `isSteppedLoadSnapshot`
+ * (`packages/shared-domain/src/steppedLoadObservedState.ts`) — the snapshot-shaped
+ * mirror of `lib/plan`'s `isSteppedLoadDevice` — or hold an already-narrowed value
+ * first. `targetPowerConfig` is stepped-only descriptor config that travels with
+ * the profile (optional even on a stepped device until configured), so it rides
+ * the same cluster.
+ */
+export type SteppedLoadDescriptorFields = {
+    steppedLoadProfile: SteppedLoadProfile;
+    targetPowerConfig?: TargetPowerSteppedLoadConfig;
+};
+
+/**
+ * Stepped-load descriptor cluster as a plain optional: the "might be a stepped
+ * load" loose shape the OWNER seams carry (transport stores/mutates the snapshot;
+ * the projection and debug snapshot copy these before consumers narrow). Those
+ * producer-side surfaces widen with this probe
+ * (`TargetDeviceSnapshot & SteppedLoadDescriptorProbe`) instead of re-adding the
+ * fields to the base. Consumer code must NOT take this shape; it narrows through
+ * `isSteppedLoadSnapshot`.
+ */
+export type SteppedLoadDescriptorProbe = {
+    steppedLoadProfile?: SteppedLoadProfile;
+    targetPowerConfig?: TargetPowerSteppedLoadConfig;
+};
+
+/**
+ * Reported-step observed cluster (stepped-observed slice of the discriminated-types
+ * refactor). `reportedStepId` is the observed id of the step a stepped device last
+ * reported via a native/flow capability. It is OMITTED from `ObservedDeviceState`,
+ * so an un-narrowed `snapshot.reportedStepId` read is a hard compile error
+ * (TS2339); consumers pass through the presence-only `hasObservedReportedStep`
+ * guard (`packages/shared-domain/src/steppedLoadObservedState.ts`) first.
+ *
+ * PRESENCE-ONLY, like the other observed clusters: a non-stepped device never
+ * reports a step, and a stepped device carries `reportedStepId` only once a report
+ * lands (absent until then), so presence — not device kind — is the line the guard
+ * draws.
+ */
+export type ReportedStepObservedFields = {
+    reportedStepId: string;
+};
+
+/**
+ * Reported-step observed cluster as a plain optional: the owner-seam carrier
+ * (`TargetDeviceSnapshot & ReportedStepObservedProbe`). Consumer code narrows
+ * through `hasObservedReportedStep` instead of taking this shape.
+ */
+export type ReportedStepObservedProbe = {
+    reportedStepId?: string;
+};
+
+/**
  * Step-command / planning state the app-layer decorator
  * (`setup/appDeviceControlHelpers.decorateSnapshotWithDeviceControl`)
  * resolves for stepped-load devices and writes ON TOP of a
@@ -465,8 +544,16 @@ export type SteppedLoadDecoration = {
  * consumed by the planner producer + settings-UI. Lives here in contracts so
  * the settings-UI (which imports only from `packages/contracts`) can type the
  * decorated device list it receives.
+ *
+ * Intersects the stepped-descriptor + reported-step probes because the decorator
+ * (`decorateSnapshotWithDeviceControl`) is the OWNER seam that re-resolves the
+ * effective `steppedLoadProfile` and writes it (with `reportedStepId`) onto the
+ * carrier — the base type omits those fields. Consumers (flowCards, settings-UI)
+ * narrow through `isSteppedLoadSnapshot` / `hasObservedReportedStep`; the probes
+ * are all-optional, so they widen the carrier without changing its runtime shape.
  */
-export type DecoratedDeviceSnapshot = TargetDeviceSnapshot & SteppedLoadDecoration;
+export type DecoratedDeviceSnapshot = TargetDeviceSnapshot & SteppedLoadDecoration
+    & SteppedLoadDescriptorProbe & ReportedStepObservedProbe;
 
 export type SettingsUiLogLevel = 'info' | 'warn' | 'error';
 

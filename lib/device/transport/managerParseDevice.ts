@@ -2,7 +2,9 @@ import type {
   DeviceControlProfile,
   DeviceStateOfChargeSnapshot,
   EvChargingState,
+  SteppedLoadProfile,
   TargetDeviceSnapshot,
+  TargetPowerSteppedLoadConfig,
 } from '../../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike, Logger } from '../../utils/types';
@@ -71,7 +73,7 @@ export type DeviceTransportParseProviders = {
     getNativeEvWiringEnabled?: (deviceId: string) => boolean;
     getFlowConflict?: (deviceId: string) => TargetDeviceSnapshot['flowConflict'];
     getDeviceControlProfile?: (deviceId: string) => DeviceControlProfile | undefined;
-    getDeviceTargetPowerConfig?: (deviceId: string) => TargetDeviceSnapshot['targetPowerConfig'];
+    getDeviceTargetPowerConfig?: (deviceId: string) => TargetPowerSteppedLoadConfig | undefined;
     getFlowReportedCapabilities?: (deviceId: string) => FlowReportedCapabilitiesForDevice;
 };
 
@@ -326,9 +328,9 @@ function buildParsedDeviceSnapshot(params: {
     controlWriteCapabilityId?: string;
     controlObservationCapabilityId?: string;
     controlModel?: TargetDeviceSnapshot['controlModel'];
-    steppedLoadProfile?: TargetDeviceSnapshot['steppedLoadProfile'];
+    steppedLoadProfile?: SteppedLoadProfile;
     nativeWriteCapabilities?: TargetDeviceSnapshot['nativeWriteCapabilities'];
-    targetPowerConfig?: TargetDeviceSnapshot['targetPowerConfig'];
+    targetPowerConfig?: TargetPowerSteppedLoadConfig;
     canSetControl: boolean | undefined;
     binaryControlObservation: TargetDeviceSnapshot['binaryControlObservation'];
     available: boolean;

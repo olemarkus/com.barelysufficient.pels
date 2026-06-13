@@ -17,7 +17,9 @@ import {
 import type {
   DeviceControlProfiles,
   MeasuredPowerObservedProbe,
+  ReportedStepObservedProbe,
   SteppedLoadDecoration,
+  SteppedLoadDescriptorProbe,
   SteppedLoadProfile,
   TargetDeviceSnapshot,
 } from '../../packages/contracts/src/types';
@@ -38,8 +40,12 @@ const baseSnapshot = (
   // raw `TargetDeviceSnapshot`; tests seed them to assert the decorator ignores
   // any persisted decoration on its input. They flow through the spread and the
   // return is still a plain `TargetDeviceSnapshot`.
-  overrides: Partial<TargetDeviceSnapshot & MeasuredPowerObservedProbe> & Partial<SteppedLoadDecoration> = {},
-): TargetDeviceSnapshot & MeasuredPowerObservedProbe => ({
+  overrides: Partial<
+    TargetDeviceSnapshot & MeasuredPowerObservedProbe
+    & SteppedLoadDescriptorProbe & ReportedStepObservedProbe
+  > & Partial<SteppedLoadDecoration> = {},
+): TargetDeviceSnapshot & MeasuredPowerObservedProbe
+  & SteppedLoadDescriptorProbe & ReportedStepObservedProbe => ({
   id: 'dev-1',
   name: 'Water heater',
   targets: [],

@@ -26,7 +26,9 @@ import {
 } from '../../lib/plan/planTypes';
 import type {
   EvObservedProbe,
+  ReportedStepObservedProbe,
   SteppedLoadDecoration,
+  SteppedLoadDescriptorProbe,
   TargetDeviceSnapshot,
 } from '../../packages/contracts/src/types';
 import { buildLiveStatePlan, hasPlanExecutionDrift } from '../../lib/plan/planReconcileState';
@@ -1355,7 +1357,10 @@ describe('PlanExecutor stepped loads', () => {
   };
 
   const steppedSnapshot = (
-    overrides: Partial<TargetDeviceSnapshot & EvObservedProbe & SteppedLoadDecoration> = {},
+    overrides: Partial<
+      TargetDeviceSnapshot & EvObservedProbe & SteppedLoadDecoration
+      & SteppedLoadDescriptorProbe & ReportedStepObservedProbe
+    > = {},
   ): (TargetDeviceSnapshot & EvObservedProbe)[] => [{
     id: 'dev-1',
     name: 'Tank',
@@ -2698,8 +2703,11 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     // `selectedStepId` is a plan-device field, not an observed-snapshot field
     // (the snapshot carries `reportedStepId`); accepted on the loose override so
     // call sites can mirror the plan's selected step, then spread inertly.
-    overrides: Partial<TargetDeviceSnapshot & EvObservedProbe> & { selectedStepId?: string } = { binaryControl: { on: false } },
-  ): (TargetDeviceSnapshot & EvObservedProbe)[] => {
+    overrides: Partial<
+      TargetDeviceSnapshot & EvObservedProbe
+      & SteppedLoadDescriptorProbe & ReportedStepObservedProbe
+    > & { selectedStepId?: string } = { binaryControl: { on: false } },
+  ): (TargetDeviceSnapshot & EvObservedProbe & SteppedLoadDescriptorProbe)[] => {
     const { selectedStepId: _selectedStepId, ...snapshotOverrides } = overrides;
     return [{
       id: 'dev-1',

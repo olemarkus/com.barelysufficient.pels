@@ -1,7 +1,7 @@
 import type {
   DeviceControlAdapterSnapshot,
   SteppedLoadProfile,
-  TargetDeviceSnapshot,
+  TargetPowerSteppedLoadConfig,
 } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
 import type { StructuredDebugEmitter } from '../logging/logger';
@@ -75,7 +75,7 @@ export function resolveFlowCapabilityOverlay(params: {
   controlModel?: 'stepped_load';
   steppedLoadProfile?: SteppedLoadProfile;
   nativeWriteCapabilities?: string[];
-  targetPowerConfig?: TargetDeviceSnapshot['targetPowerConfig'];
+  targetPowerConfig?: TargetPowerSteppedLoadConfig;
   allReportedCapabilities: FlowReportedCapabilitiesForDevice;
 } {
   const {
@@ -272,7 +272,7 @@ function applySyntheticTargetPowerOverlay(params: {
   steppedLoadProfile?: SteppedLoadProfile;
   reportedStepId?: string;
   reportedStepObservedAtMs?: number;
-  targetPowerConfig?: TargetDeviceSnapshot['targetPowerConfig'];
+  targetPowerConfig?: TargetPowerSteppedLoadConfig;
 } {
   const config = params.providers.getDeviceTargetPowerConfig?.(params.deviceId)
     ?? resolveDeviceCompatibilityTargetPowerConfig(params.device);
@@ -313,13 +313,13 @@ function applySyntheticTargetPowerOverlay(params: {
 }
 
 function isEvTargetPowerPresetConfig(
-  config: TargetDeviceSnapshot['targetPowerConfig'] | undefined,
+  config: TargetPowerSteppedLoadConfig | undefined,
 ): boolean {
   return config?.preset === 'ev_charger_1_phase' || config?.preset === 'ev_charger_3_phase';
 }
 
 function resolveAvailableInstallationTargetPowerObservation(params: {
-  config: TargetDeviceSnapshot['targetPowerConfig'];
+  config: TargetPowerSteppedLoadConfig;
   capabilityObj: DeviceCapabilityMap;
 }): { value: number; observedAt?: DeviceCapabilityMap[string]['lastUpdated'] } | undefined {
   let phaseCount: number | undefined;

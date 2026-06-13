@@ -2,6 +2,7 @@ import type {
     EvObservedProbe,
     MeasuredPowerObservedProbe,
     ObservedDeviceState,
+    ReportedStepObservedProbe,
     StateOfChargeObservedProbe,
     TemperatureObservedProbe,
 } from '../../packages/contracts/src/types';
@@ -37,7 +38,7 @@ export function projectObservedState(snapshot: TransportDeviceSnapshot): Observe
     // `hasObservedStateOfCharge` / `hasObservedMeasuredPower` narrowing and the
     // read-model producer accessor.
     const projected: ObservedDeviceState & EvObservedProbe & TemperatureObservedProbe
-        & StateOfChargeObservedProbe & MeasuredPowerObservedProbe = {
+        & StateOfChargeObservedProbe & MeasuredPowerObservedProbe & ReportedStepObservedProbe = {
         id: snapshot.id,
         name: snapshot.name,
         targets: snapshot.targets.map((target) => ({ ...target })),

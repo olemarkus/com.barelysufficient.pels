@@ -27,6 +27,9 @@ __export(createSmartTaskWidgetPayload_exports, {
 });
 module.exports = __toCommonJS(createSmartTaskWidgetPayload_exports);
 
+// packages/shared-domain/src/steppedLoadObservedState.ts
+var isSteppedLoadSnapshot = (snapshot) => snapshot.steppedLoadProfile?.model === "stepped_load";
+
 // packages/shared-domain/src/deadlineLabels.ts
 var PENDING_REASON_MISSING_CAPACITY_COPY = "Learning energy use \u2014 needs power readings from this device.";
 var SMART_TASK_LIST_STATUS_LABELS = {
@@ -551,7 +554,7 @@ var buildDevice = (device) => {
     // floor is `priority === 1`). The stepped predicate mirrors app.ts
     // `deviceSupportsLimitLowerPriority`; the extra `priority === 1` keeps the
     // compose toggle from ever being offered where it would be a no-op.
-    supportsLimitLowerPriority: device.controlModel === "stepped_load" && device.steppedLoadProfile?.model === "stepped_load" && device.priority === 1
+    supportsLimitLowerPriority: device.controlModel === "stepped_load" && isSteppedLoadSnapshot(device) && device.priority === 1
   };
 };
 var buildCreateSmartTaskDevicesPayload = (input) => {
