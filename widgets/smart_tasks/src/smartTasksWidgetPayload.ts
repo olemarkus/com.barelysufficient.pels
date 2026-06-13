@@ -8,7 +8,8 @@ import type {
   ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
 import type { SettingsUiDeferredObjectivePlanHistoryPayload } from '../../../packages/contracts/src/settingsUiApi';
-import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
+import type { TargetDeviceSnapshot, TemperatureObservedProbe } from '../../../packages/contracts/src/types';
+import { hasObservedTemperature } from '../../../packages/shared-domain/src/temperatureObservedState';
 import { resolveActivePlanChartData } from '../../../packages/shared-domain/src/deferredActivePlanChartData';
 import {
   formatPlanHistoryMissedReason,
@@ -91,12 +92,14 @@ const toWidgetChart = (chart: DeferredPlanHistoryChartData): DeferredPlanHistory
 );
 
 const resolveCurrentValue = (
-  device: TargetDeviceSnapshot | undefined,
+  // Probe-widened: the snapshot physically carries the observed temperature the
+  // base type omits; `hasObservedTemperature` narrows it (present is finite).
+  device: (TargetDeviceSnapshot & TemperatureObservedProbe) | undefined,
   kind: ResolvedDeferredObjectiveActivePlanV1['objectiveKind'],
 ): number | null => {
   if (!device) return null;
   if (kind === 'temperature') {
-    return isFiniteNumber(device.currentTemperature) ? device.currentTemperature : null;
+    return hasObservedTemperature(device) ? device.currentTemperature : null;
   }
   const percent = device.stateOfCharge?.percent;
   return isFiniteNumber(percent) ? percent : null;

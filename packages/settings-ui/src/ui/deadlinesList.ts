@@ -17,7 +17,8 @@ import type {
   ResolvedDeferredObjectiveActivePlanV1,
 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import type { ResolvedDeferredObjectivePlanHistoryEntry } from '../../../contracts/src/deferredObjectivePlanHistory.ts';
-import type { ObservedDeviceState } from '../../../contracts/src/types.ts';
+import type { ObservedDeviceState, TemperatureObservedProbe } from '../../../contracts/src/types.ts';
+import { hasObservedTemperature } from '../../../shared-domain/src/temperatureObservedState.ts';
 import { buildDeadlineHref } from './deadlineUrls.ts';
 import { resolveBrowserTimeZone } from './deadlinePlanHistoryFetch.ts';
 import {
@@ -46,14 +47,15 @@ import {
 // active-plan recorder doesn't carry live device readings; the snapshot
 // fetched from `/ui_devices` (Homey SDK) does.
 const resolveCurrentValue = (
-  device: ObservedDeviceState | undefined,
+  // Probe-widened: the `/ui_devices` snapshot physically carries the observed
+  // temperature the base type omits; `hasObservedTemperature` narrows it (a
+  // present reading is finite by the producer invariant — no re-check).
+  device: (ObservedDeviceState & TemperatureObservedProbe) | undefined,
   kind: ResolvedDeferredObjectiveActivePlanV1['objectiveKind'],
 ): number | null => {
   if (!device) return null;
   if (kind === 'temperature') {
-    return typeof device.currentTemperature === 'number' && Number.isFinite(device.currentTemperature)
-      ? device.currentTemperature
-      : null;
+    return hasObservedTemperature(device) ? device.currentTemperature : null;
   }
   const percent = device.stateOfCharge?.percent;
   return typeof percent === 'number' && Number.isFinite(percent) ? percent : null;

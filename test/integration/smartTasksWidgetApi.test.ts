@@ -20,7 +20,7 @@ import type {
 } from '../../packages/contracts/src/deferredObjectivePlanHistory';
 import type { SettingsUiDeferredObjectivePlanHistoryPayload } from '../../packages/contracts/src/settingsUiApi';
 import { toResolvedPlanHistoryEntry } from '../../packages/shared-domain/src/deferredPlanHistoryResolvedView';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
 
 const NOW = Date.now();
 const H = 60 * 60 * 1000;
@@ -49,7 +49,7 @@ const activePlan = (o: Partial<DeferredObjectiveActivePlanV1> = {}): DeferredObj
   ...o,
 });
 
-const device = (o: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => ({
+const device = (o: Partial<TargetDeviceSnapshot & TemperatureObservedProbe> = {}): TargetDeviceSnapshot & TemperatureObservedProbe => ({
   id: 'wh',
   name: 'Water heater',
   zoneName: null,

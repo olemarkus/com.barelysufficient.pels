@@ -1,4 +1,8 @@
-import type { EvObservedProbe, ObservedDeviceState } from '../../packages/contracts/src/types';
+import type {
+    EvObservedProbe,
+    ObservedDeviceState,
+    TemperatureObservedProbe,
+} from '../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 
 /**
@@ -24,10 +28,11 @@ import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
  * tweak can't leak across the seam either.
  */
 export function projectObservedState(snapshot: TransportDeviceSnapshot): ObservedDeviceState {
-    // Probe-widened locally so the projection can copy `evChargingState` (the
-    // base type omits it; the observer's stored values must physically carry it
-    // for `isEvObserved` narrowing and the read-model producer accessor).
-    const projected: ObservedDeviceState & EvObservedProbe = {
+    // Probe-widened locally so the projection can copy the observed cluster
+    // fields the base type omits (`evChargingState` / `currentTemperature`); the
+    // observer's stored values must physically carry them for `isEvObserved` /
+    // `hasObservedTemperature` narrowing and the read-model producer accessor.
+    const projected: ObservedDeviceState & EvObservedProbe & TemperatureObservedProbe = {
         id: snapshot.id,
         name: snapshot.name,
         targets: snapshot.targets.map((target) => ({ ...target })),

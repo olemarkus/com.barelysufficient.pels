@@ -8,7 +8,7 @@ import type {
   DeferredObjectiveSettingsV1,
   DeferredObjectiveSettingsEntry,
 } from '../../contracts/src/deferredObjectiveSettings.ts';
-import type { TargetDeviceSnapshot } from '../../contracts/src/types.ts';
+import type { TargetDeviceSnapshot, TemperatureObservedProbe } from '../../contracts/src/types.ts';
 import { toResolvedPlanHistoryEntry } from '../../shared-domain/src/deferredPlanHistoryResolvedView.ts';
 import { toResolvedActivePlans } from '../../shared-domain/src/deferredActivePlanResolvedView.ts';
 
@@ -73,7 +73,7 @@ const enabledEvEntry: DeferredObjectiveSettingsEntry = {
   deadlineAtMs: T0 + 12 * HOUR_MS,
 };
 
-const devices: TargetDeviceSnapshot[] = [
+const devices: (TargetDeviceSnapshot & TemperatureObservedProbe)[] = [
   { id: 'dev_a', name: 'Living-room heater', targets: [], binaryControl: { on: false }, currentTemperature: 18.4 },
   {
     id: 'dev_b',

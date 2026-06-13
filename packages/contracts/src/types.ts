@@ -223,7 +223,15 @@ export type ObservedDeviceState = {
     // producer-fed structural funnels that physically carry the value before
     // consumers narrow widen with `EvObservedProbe` instead.
     stateOfCharge?: DeviceStateOfChargeSnapshot;
-    currentTemperature?: number;
+    // `currentTemperature` is deliberately NOT here (temperature-observed slice
+    // of the discriminated-types refactor): it lives on
+    // `TemperatureObservedFields`, regrouped onto the snapshot by the
+    // `hasObservedTemperature` guard
+    // (`packages/shared-domain/src/temperatureObservedState.ts`), so an
+    // un-narrowed `snapshot.currentTemperature` read on a base-typed value is a
+    // hard compile error (TS2339). Owner seams (transport/observer producers)
+    // and producer-fed structural funnels that physically carry the value
+    // before consumers narrow widen with `TemperatureObservedProbe` instead.
     measuredPowerKw?: number;
     measuredPowerObservedAtMs?: number;
     reportedStepId?: string;
@@ -281,6 +289,53 @@ export type EvObservedFields = {
  */
 export type EvObservedProbe = {
     evChargingState?: EvChargingState;
+};
+
+/**
+ * Temperature observed field cluster (temperature-observed slice of the
+ * discriminated-types refactor — the observer-snapshot twin of the plan layer's
+ * `TemperatureKind`).
+ *
+ * Like the EV cluster, this is ORTHOGONAL to every other axis and is NOT a union
+ * member; it is the intersection the `hasObservedTemperature` type-guard
+ * (`packages/shared-domain/src/temperatureObservedState.ts`) adds onto a
+ * snapshot. `currentTemperature` is OMITTED from `ObservedDeviceState`, so an
+ * un-narrowed `snapshot.currentTemperature` read is a hard compile error
+ * (TS2339); consumers must pass through `hasObservedTemperature` (or hold an
+ * already-narrowed value) first.
+ *
+ * `currentTemperature` is REQUIRED on the narrowed shape, AND present implies
+ * finite: all three producer write seams (`getCurrentTemperature` at parse,
+ * `applyMeasuredTemperatureObservation` at snapshot-refresh, and the
+ * `measure_temperature` branch of `applyFreshnessOnlyCapabilityUpdate` at
+ * realtime) write the field only for a `Number.isFinite` reading and skip
+ * anything else. So a narrowed consumer reads a usable `number` without
+ * re-checking finiteness — that `Number.isFinite` re-check is the source-distant
+ * fallback this slice removes.
+ *
+ * Unlike `EvObservedFields`, the guard does NOT gate on device kind:
+ * `currentTemperature` derives from the `measure_temperature` capability, which a
+ * non-temperature `deviceType` device can also carry (deviceType is keyed on
+ * target caps, not measure caps). A kind gate would reject a *present* reading
+ * (a present-but-rejected gap EV does not have). Consumers that also want the
+ * temperature-control kind compose `isTemperatureControlDevice(d) &&
+ * hasObservedTemperature(d)` explicitly (see `lib/objectives/samples.ts`).
+ */
+export type TemperatureObservedFields = {
+    currentTemperature: number;
+};
+
+/**
+ * Temperature observed cluster as a plain optional: the "might have an observed
+ * temperature" loose shape the OWNER seams carry (transport stores/mutates it in
+ * place; the observer projection and the debug snapshot copy it before consumers
+ * narrow). Those producer-side surfaces widen with this probe
+ * (`TargetDeviceSnapshot & TemperatureObservedProbe`) instead of re-adding the
+ * field to the base. Consumer code must NOT take this shape; it narrows through
+ * `hasObservedTemperature`.
+ */
+export type TemperatureObservedProbe = {
+    currentTemperature?: number;
 };
 
 /**

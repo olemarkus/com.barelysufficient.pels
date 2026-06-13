@@ -1,4 +1,5 @@
 import { DeviceTransport, type DeviceTransportBinarySettleOps, PLAN_LIVE_STATE_OBSERVED_EVENT, PLAN_RECONCILE_REALTIME_UPDATE_EVENT } from '../../lib/device/deviceTransport';
+import { hasObservedTemperature } from '../../packages/shared-domain/src/temperatureObservedState';
 import {
     createObservationState,
     mergeFresherCapabilityObservations,
@@ -12,7 +13,7 @@ import {
     startPendingBinarySettleWindow,
 } from '../../lib/observer/binarySettle';
 import type { LiveFeedHealth } from '../../lib/device/liveFeed';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
 import { isCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import { isManagedFilterActive } from '../../setup/appDeviceSupport';
@@ -6615,6 +6616,7 @@ describe('DeviceTransport', () => {
                     deviceManager.injectCapabilityUpdateForTest('dev1', 'measure_temperature', 21);
 
                     const snapshot = deviceManager.getSnapshot()[0];
+                    if (!hasObservedTemperature(snapshot)) throw new Error('expected observed temperature');
                     expect(snapshot.currentTemperature).toBe(21);
                     expect(snapshot.lastFreshDataMs).toBeGreaterThan(freshnessAtRefresh!);
                     expect(liveStateListener).toHaveBeenCalledOnce();
@@ -6624,6 +6626,31 @@ describe('DeviceTransport', () => {
                         capabilityId: 'measure_temperature',
                     }));
                     expect(reconcileListener).not.toHaveBeenCalled();
+                } finally {
+                    vi.useRealTimers();
+                }
+            });
+
+            it('realtime measure_temperature ignores a non-finite reading (present implies finite)', async () => {
+                vi.useFakeTimers();
+                try {
+                    await deviceManager.init();
+                    vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
+                    mockApiGet.mockResolvedValue(buildThermostatDevice());
+                    await deviceManager.refreshSnapshot();
+                    deviceManager.injectCapabilityUpdateForTest('dev1', 'measure_temperature', 21);
+                    const freshnessBefore = deviceManager.getSnapshot()[0].lastFreshDataMs;
+
+                    // NaN is a `number` in JS; the freshness-only seam must reject it
+                    // (no write, no freshness bump) so consumers reading the narrowed
+                    // `currentTemperature` never see a non-finite value.
+                    vi.setSystemTime(new Date('2026-04-01T12:01:00.000Z'));
+                    deviceManager.injectCapabilityUpdateForTest('dev1', 'measure_temperature', Number.NaN);
+
+                    const snapshot = deviceManager.getSnapshot()[0];
+                    if (!hasObservedTemperature(snapshot)) throw new Error('expected observed temperature');
+                    expect(snapshot.currentTemperature).toBe(21);
+                    expect(snapshot.lastFreshDataMs).toBe(freshnessBefore);
                 } finally {
                     vi.useRealTimers();
                 }
@@ -7160,7 +7187,7 @@ describe('DeviceTransport', () => {
                 // `lastUpdated`, and the merge only carries forward fresher prior observations.
                 const observationState = createObservationState();
                 const initialFreshAt = new Date('2026-04-01T11:55:00.000Z').getTime();
-                const previousSnapshot: TargetDeviceSnapshot[] = [{
+                const previousSnapshot: (TargetDeviceSnapshot & TemperatureObservedProbe)[] = [{
                     id: 'ev1',
                     name: 'Zaptec',
                     deviceClass: 'evcharger',
@@ -7171,7 +7198,7 @@ describe('DeviceTransport', () => {
                     powerCapable: false,
                     lastFreshDataMs: initialFreshAt,
                 }];
-                const nextSnapshot: TargetDeviceSnapshot[] = [{
+                const nextSnapshot: (TargetDeviceSnapshot & TemperatureObservedProbe)[] = [{
                     ...previousSnapshot[0],
                     binaryControlObservation: {
                         valid: true,

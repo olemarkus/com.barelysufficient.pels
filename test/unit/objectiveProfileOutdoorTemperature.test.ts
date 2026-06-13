@@ -4,7 +4,7 @@ import {
 } from '../../lib/objectives/profiles';
 import type { DeviceObjectiveProfileSample } from '../../lib/objectives/types';
 import type { PowerTrackerState } from '../../lib/power/tracker';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
 
 const startMs = Date.UTC(2026, 0, 10, 10, 0, 0);
 const HALF_HOUR_MS = 30 * 60 * 1000;
@@ -17,7 +17,7 @@ const sampleAt = (observedAtMs: number, value: number): DeviceObjectiveProfileSa
   powerSource: 'measured',
 });
 
-const temperatureDevice = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => ({
+const temperatureDevice = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedProbe> = {}): TargetDeviceSnapshot & TemperatureObservedProbe => ({
   id: 'heater-1',
   name: 'Water heater',
   targets: [],

@@ -318,7 +318,7 @@ function buildParsedDeviceSnapshot(params: {
     evCharging: TargetDeviceSnapshot['evCharging'];
     evChargingState: EvChargingState | undefined;
     stateOfCharge: TargetDeviceSnapshot['stateOfCharge'];
-    currentTemperature: TargetDeviceSnapshot['currentTemperature'];
+    currentTemperature: number | undefined;
     capabilities: string[];
     flowBackedCapabilityIds: FlowReportedCapabilityId[];
     controlAdapter?: TargetDeviceSnapshot['controlAdapter'];
