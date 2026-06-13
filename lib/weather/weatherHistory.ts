@@ -8,6 +8,7 @@ import type {
 import { isUnknownRecord } from '../utils/types';
 import { isFiniteNumber } from '../utils/appTypeGuards';
 import { getZonedParts, shiftDateKey } from '../utils/dateUtils';
+import { defaultStoredFit, defaultStoredSuggestion, normalizeLastAutoApply } from './weatherHistoryNormalize';
 
 /** Two years of daily records ≈ 90 KB JSON — well inside the persisted-state budget. */
 export const WEATHER_HISTORY_RETENTION_DAYS = 730;
@@ -235,6 +236,8 @@ export function mergeRecoveredState(
   );
   const latestFit = inMemory.latestFit ?? recovered.latestFit;
   const latestSuggestion = inMemory.latestSuggestion ?? recovered.latestSuggestion;
+  // Live audit wins, falling back to recovered.
+  const lastAutoApply = inMemory.lastAutoApply ?? recovered.lastAutoApply;
   return {
     records,
     accumulators: { ...(inMemory.accumulators ?? {}), ...(recovered.accumulators ?? {}) },
@@ -242,6 +245,7 @@ export function mergeRecoveredState(
     ...mergeBackfillMarkers(recovered, inMemory),
     ...(latestFit ? { latestFit } : {}),
     ...(latestSuggestion ? { latestSuggestion } : {}),
+    ...(lastAutoApply ? { lastAutoApply } : {}),
   };
 }
 
@@ -479,6 +483,7 @@ export function normalizeWeatherHistoryState(raw: unknown): WeatherHistoryState 
   const forecastHourly = isUnknownRecord(raw.forecastHourly)
     ? normalizeForecastHourly(raw.forecastHourly)
     : {};
+  const lastAutoApply = normalizeLastAutoApply(raw.lastAutoApply);
   return {
     // Core fields gate via isPlausibleRecord (reject-and-drop); the optional
     // suppression/kwhUncontrolled layer is sanitized strip-not-reject so a
@@ -496,26 +501,8 @@ export function normalizeWeatherHistoryState(raw: unknown): WeatherHistoryState 
     ...(isUnknownRecord(raw.latestSuggestion)
       ? { latestSuggestion: defaultStoredSuggestion(raw.latestSuggestion) }
       : {}),
+    ...(lastAutoApply ? { lastAutoApply } : {}),
   };
-}
-
-/**
- * A stored fit predating the suppression fields must still satisfy the contract
- * (the readout serves it verbatim before the first recompute). Real values win;
- * a missing field defaults to "no suppression" — exactly true of a fit computed
- * before the feature existed.
- */
-function defaultStoredFit(raw: Record<string, unknown>): WeatherHistoryState['latestFit'] {
-  return {
-    suppressedDaysExcluded: 0,
-    suppressionFilterRelaxed: false,
-    recentColdSuppressionSuspected: false,
-    ...raw,
-  } as WeatherHistoryState['latestFit'];
-}
-
-function defaultStoredSuggestion(raw: Record<string, unknown>): WeatherHistoryState['latestSuggestion'] {
-  return { budgetMayBeLimiting: false, ...raw } as WeatherHistoryState['latestSuggestion'];
 }
 
 function normalizeBackfillMarkers(

@@ -47,6 +47,7 @@ export async function assembleWeatherAdvisorReadout(params: {
     ...(outdoor.temperatureC !== undefined ? { currentOutdoorTempC: outdoor.temperatureC } : {}),
     ...(forecast.temperatureC !== undefined ? { currentForecastTempC: forecast.temperatureC } : {}),
     ...(currentDailyBudgetKwh !== undefined ? { currentDailyBudgetKwh } : {}),
+    dailyBudgetEnabled: ctx.homey.settings.get(DAILY_BUDGET_ENABLED) === true,
     ...(Number.isFinite(limitKw) && limitKw > 0 ? { capacityLimitKw: limitKw } : {}),
     nowMs: ctx.getNow().getTime(),
     timeZone: ctx.getTimeZone(),

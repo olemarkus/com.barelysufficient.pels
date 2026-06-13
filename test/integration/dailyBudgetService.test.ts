@@ -404,6 +404,53 @@ describe('DailyBudgetService', () => {
     vi.useRealTimers();
   });
 
+  it('applyAutoSuggestedBudget: no-op returning false when the daily budget is off', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW_MS);
+    const service = buildService();
+    service.applyModelSettings({ enabled: false });
+    const set = (service as any).__testHomey.settings.set as ReturnType<typeof vi.fn>;
+    set.mockClear();
+
+    expect(service.applyAutoSuggestedBudget(48)).toBe(false);
+    expect(service.isEnabled()).toBe(false);
+    // Leave-off semantics: no budget kWh write when the feature is disabled.
+    expect(set.mock.calls.some(([key]) => key === 'daily_budget_kwh')).toBe(false);
+    vi.useRealTimers();
+  });
+
+  it('applyAutoSuggestedBudget: applies the suggested kWh and returns true when enabled', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW_MS);
+    const service = buildService();
+    service.applyModelSettings({ enabled: true, dailyBudgetKWh: 30 });
+    const set = (service as any).__testHomey.settings.set as ReturnType<typeof vi.fn>;
+    set.mockClear();
+
+    expect(service.applyAutoSuggestedBudget(48)).toBe(true);
+    expect(service.isEnabled()).toBe(true);
+    expect(set).toHaveBeenCalledWith('daily_budget_kwh', 48);
+    vi.useRealTimers();
+  });
+
+  it('applyAutoSuggestedBudget: skips (no throw, no write) an out-of-range suggestion', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW_MS);
+    const service = buildService();
+    service.applyModelSettings({ enabled: true, dailyBudgetKWh: 30 });
+    const set = (service as any).__testHomey.settings.set as ReturnType<typeof vi.fn>;
+    set.mockClear();
+
+    // A sub-MIN suggestion (a pathological capacity cap) must not throw via
+    // applyModelSettings — it returns false and leaves the budget untouched.
+    expect(() => service.applyAutoSuggestedBudget(5)).not.toThrow();
+    expect(service.applyAutoSuggestedBudget(5)).toBe(false);
+    expect(service.applyAutoSuggestedBudget(9999)).toBe(false);
+    expect(service.applyAutoSuggestedBudget(Number.NaN)).toBe(false);
+    expect(set.mock.calls.some(([key]) => key === 'daily_budget_kwh')).toBe(false);
+    vi.useRealTimers();
+  });
+
   it('logs daily budget update failures as a structured event', () => {
     const error = vi.fn();
     const service = new DailyBudgetService({

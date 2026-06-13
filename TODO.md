@@ -249,6 +249,16 @@ CI failure, so future field-move slices can't silently grow the debt.*
       origin (Budget Tomorrow-card entry still returns to plan). Source: pels-ux-fit on the
       sub-page PR, 2026-06-13.
 
+- [ ] **Auto-apply "Last applied" line uses an absolute date with no anchor to now.** The Weather
+      sub-page shows `Last applied: 44 kWh on 12 Jun.` (`composeLastAutoApply`). Persona: an owner
+      who turned auto-apply on and later checks it's healthy; hypothesis: for a feature that acts
+      *every* day, a one-day-old absolute date can read as "did it stall?", and a genuinely stalled
+      apply (device went unreadable for a week) looks identical to a fresh one. Candidate fix: resolve
+      a relative cue in the producer (today / yesterday / N days ago) so a stalled auto-apply is
+      spottable. When budget is OFF but a prior apply exists, consider annotating the line
+      "— paused while the daily budget is off" so the inert hint + last-applied read as one story.
+      Source: pels-ux-fit + pels-m3-critic on the auto-apply PR, 2026-06-13.
+
 - [ ] **Give the armed budget-discard state a visible "keep changes" path.** The Budget header's
       two-step confirm shows only the destructive option ("Click again to discard"); the save path
       (Preview changes → Apply) is a sticky CTA further down, and the explanatory text lives in a

@@ -58,11 +58,28 @@ export type WeatherAdvisorReadoutInput = {
   currentForecastTempC?: number;
   /** Active daily budget (kWh); undefined when the daily budget is disabled. */
   currentDailyBudgetKwh?: number;
+  /** Whether the daily budget feature is on — gates the auto-apply inert hint. */
+  dailyBudgetEnabled?: boolean;
   /** Hard capacity cap (kW); the suggestion stays subordinate to it. */
   capacityLimitKw?: number;
   nowMs: number;
   timeZone: string;
 };
+
+/** The auto-apply echo, resolved once and shared by every payload branch. */
+type AutoApplyEcho = Pick<
+  WeatherAdvisorReadoutPayload,
+  'dailyBudgetEnabled' | 'autoApplyDailyBudget' | 'lastAutoApply'
+>;
+
+function resolveAutoApplyEcho(input: WeatherAdvisorReadoutInput): AutoApplyEcho {
+  const last = input.state.lastAutoApply;
+  return {
+    dailyBudgetEnabled: input.dailyBudgetEnabled ?? false,
+    autoApplyDailyBudget: input.settings.autoApplyDailyBudget ?? false,
+    lastAutoApply: last ? { dateKey: last.dateKey, kwh: last.kwh } : null,
+  };
+}
 
 /** Null = feature flag off → structural absence in the UI. */
 export function buildWeatherAdvisorReadout(
@@ -85,6 +102,7 @@ export function buildWeatherAdvisorReadout(
   // No configured device → an intentionally empty setup payload. Leftover
   // records (a previously-configured device's history) must not leak into the
   // setup card as if they described the current configuration.
+  const autoApplyEcho = resolveAutoApplyEcho(input);
   if (!settings.outdoorDeviceId) {
     return buildNeedsDevicePayload({
       settingsEcho,
@@ -92,6 +110,7 @@ export function buildWeatherAdvisorReadout(
       outdoorReading,
       forecastReading,
       dailyBudgetKwh,
+      autoApplyEcho,
       nowMs: input.nowMs,
     });
   }
@@ -117,6 +136,7 @@ export function buildWeatherAdvisorReadout(
     outdoorReading,
     forecastReading,
     dailyBudgetKwh,
+    ...autoApplyEcho,
     fit,
     coverage: buildCoverageBins(usableYearRecords, tomorrow?.prediction.tempMeanC),
     prediction: tomorrow?.prediction ?? null,
@@ -146,6 +166,7 @@ function buildNeedsDevicePayload(params: {
   outdoorReading: WeatherDeviceReading;
   forecastReading: WeatherDeviceReading;
   dailyBudgetKwh: number | null;
+  autoApplyEcho: AutoApplyEcho;
   nowMs: number;
 }): WeatherAdvisorReadoutPayload {
   return {
@@ -157,6 +178,7 @@ function buildNeedsDevicePayload(params: {
     outdoorReading: params.outdoorReading,
     forecastReading: params.forecastReading,
     dailyBudgetKwh: params.dailyBudgetKwh,
+    ...params.autoApplyEcho,
     fit: null,
     coverage: [],
     prediction: null,

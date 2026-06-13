@@ -411,6 +411,31 @@ export class DailyBudgetService {
     return this.recomputeTodayPlan();
   }
 
+  /** Whether the daily budget feature is currently on. */
+  isEnabled(): boolean {
+    return this.settings.enabled;
+  }
+
+  /**
+   * Weather-insight auto-apply entry point: set the daily budget kWh to the
+   * suggested value, keeping all other settings. Leave-off semantics — a no-op
+   * returning `false` when the daily budget feature is disabled (the UI shows a
+   * hint to turn it on), so auto-apply never silently enables a second feature.
+   * Returns `true` when the budget was applied.
+   */
+  applyAutoSuggestedBudget(suggestedKwh: number): boolean {
+    if (!this.settings.enabled) return false;
+    // The suggestion is normally a finite value clamped to [MIN,MAX], but a sub-MIN
+    // capacity cap can push it below MIN (and a NaN would slip past < / > since both
+    // compare false); applyModelSettings would then throw or no-op-claim-success.
+    // Skip unless it's a finite, in-range value.
+    if (!Number.isFinite(suggestedKwh) || suggestedKwh < MIN_DAILY_BUDGET_KWH || suggestedKwh > MAX_DAILY_BUDGET_KWH) {
+      return false;
+    }
+    this.applyModelSettings({ dailyBudgetKWh: suggestedKwh });
+    return true;
+  }
+
   private applyOverallModelConfidence(
     snapshot: DailyBudgetDayPayload | null,
     reference: DailyBudgetDayPayload,

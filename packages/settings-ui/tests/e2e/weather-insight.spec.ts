@@ -46,6 +46,15 @@ const readPersistedEnabled = (page: Page): Promise<boolean | undefined> => page.
   })
 ));
 
+const readPersistedAutoApply = (page: Page): Promise<boolean | undefined> => page.evaluate(() => (
+  new Promise<boolean | undefined>((resolve) => {
+    (window as unknown as { Homey: { get: (k: string, cb: (e: unknown, v: unknown) => void) => void } })
+      .Homey.get('weather_advisor_settings', (_error, value) => {
+        resolve((value as { autoApplyDailyBudget?: boolean } | undefined)?.autoApplyDailyBudget);
+      });
+  })
+));
+
 test.describe('Weather insight', () => {
   test('off: no weather card on Budget; sub-page shows the master switch, no pickers', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -129,6 +138,29 @@ test.describe('Weather insight', () => {
     await page.locator('#budget-redesign-mode-toggle').click();
     await expect(page.locator('#weather-insight-view')).toHaveCount(0);
     await expect(card).toBeVisible();
+  });
+
+  test('on: the auto-apply toggle persists and warns while the daily budget is off', async ({ page }) => {
+    // Weather on, daily budget explicitly OFF (the stub base defaults it on).
+    await page.addInitScript(() => {
+      (window as Window & { __PELS_HOMEY_STUB__?: unknown }).__PELS_HOMEY_STUB__ = {
+        settings: {
+          weather_advisor_settings: { enabled: true, outdoorDeviceId: 'dev_outdoor', forecastDeviceId: 'dev_forecast' },
+          daily_budget_enabled: false,
+        },
+      };
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.getByRole('tab', { name: 'Settings' }).click();
+    await page.locator('#weather-insight-nav-card').click();
+    await expect(page.locator('#weather-panel')).toBeVisible();
+    const sw = page.locator('#weather-auto-apply-switch');
+    await expect(sw).toBeVisible();
+    await expect(page.locator('#weather-auto-apply-needs-budget')).toHaveCount(0);
+    await sw.click();
+    // Auto-apply on while the daily budget is off → the inert hint appears, and the flag persists.
+    await expect(page.locator('#weather-auto-apply-needs-budget')).toBeVisible();
+    await expect.poll(() => readPersistedAutoApply(page)).toBe(true);
   });
 
   test('on: nav card opens the Weather insight sub-page with the two pickers', async ({ page }) => {

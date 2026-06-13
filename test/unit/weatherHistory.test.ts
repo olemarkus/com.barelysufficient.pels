@@ -420,6 +420,21 @@ describe('mergeRecoveredState markers', () => {
     const noRecoveredMarker = mergeRecoveredState({ records: [] }, inMemory);
     expect(noRecoveredMarker).toMatchObject({ backfilledDeviceId: 'dev-new', backfillVersion: 2 });
   });
+
+  it('keeps the live auto-apply audit, falling back to recovered when in-memory has none', () => {
+    const inMemoryAudit = { dateKey: '2026-01-09', kwh: 44, appliedAtMs: 2 };
+    const recoveredAudit = { dateKey: '2026-01-08', kwh: 40, appliedAtMs: 1 };
+    // Live (in-memory) audit wins.
+    expect(mergeRecoveredState(
+      { records: [], lastAutoApply: recoveredAudit },
+      { records: [], lastAutoApply: inMemoryAudit },
+    ).lastAutoApply).toEqual(inMemoryAudit);
+    // Falls back to recovered when in-memory has none.
+    expect(mergeRecoveredState(
+      { records: [], lastAutoApply: recoveredAudit },
+      { records: [] },
+    ).lastAutoApply).toEqual(recoveredAudit);
+  });
 });
 
 describe('periodsOverlapWindow', () => {
@@ -568,6 +583,20 @@ describe('normalizeWeatherHistoryState', () => {
       kwhUncontrolled: 31.5,
       suppression: { targetDeficitMs: 7_200_000, blockedByHeadroomMs: 1_800_000, deadlineMissedToBudget: true },
     });
+  });
+
+  it('round-trips a well-shaped lastAutoApply, and strips a malformed one (keeping records)', () => {
+    const base = { records: [liveRecord('2026-01-09')] };
+    const good = normalizeWeatherHistoryState(JSON.parse(JSON.stringify({
+      ...base, lastAutoApply: { dateKey: '2026-01-09', kwh: 44, appliedAtMs: 1_700_000_000_000 },
+    })));
+    expect(good?.lastAutoApply).toEqual({ dateKey: '2026-01-09', kwh: 44, appliedAtMs: 1_700_000_000_000 });
+    // Malformed (missing appliedAtMs) → field stripped, record survives.
+    const bad = normalizeWeatherHistoryState(JSON.parse(JSON.stringify({
+      ...base, lastAutoApply: { dateKey: '2026-01-09', kwh: 44 },
+    })));
+    expect(bad?.lastAutoApply).toBeUndefined();
+    expect(bad?.records).toHaveLength(1);
   });
 
   it('drops zero deficit/headroom fields so a no-censoring day persists no suppression', () => {

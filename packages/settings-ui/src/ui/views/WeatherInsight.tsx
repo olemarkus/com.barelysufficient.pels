@@ -27,6 +27,7 @@ import {
   formatWarmDayUsage,
   resolveTomorrowVerdict,
   resolveWeatherConfidenceChip,
+  WEATHER_AUTO_APPLY_STATUS,
   WEATHER_BACKFILL_BODY,
   WEATHER_BACKFILL_TITLE,
   WEATHER_BUTTON_ADJUST_BUDGET,
@@ -166,8 +167,17 @@ const TomorrowCard = ({ readout, onShowDetails, onAdjustBudget }: {
       {suggestion?.budgetMayBeLimiting === true && (
         <p class="pels-card-supporting weather-card__reason">{WEATHER_REASON_BUDGET_LIMITING}</p>
       )}
+      {/* Explains why the budget tracks the suggestion when auto-apply is on.
+          Gated on dailyBudgetEnabled too: with the budget off, auto-apply is inert,
+          so claiming PELS sets it daily would be false. Neutral informational tone. */}
+      {readout.autoApplyDailyBudget && readout.dailyBudgetEnabled && (
+        <p class="pels-card-supporting" id="weather-auto-apply-status">
+          {WEATHER_AUTO_APPLY_STATUS}
+        </p>
+      )}
       <div class="weather-card__actions">
-        {/* Opens the normal Adjust flow, UNPREFILLED — the suggestion is display-only. */}
+        {/* Opens the normal Adjust flow, UNPREFILLED — manual adjustment, separate
+            from the optional auto-apply opt-in. */}
         <MdTextButton id="weather-adjust-budget" onClick={onAdjustBudget}>
           {WEATHER_BUTTON_ADJUST_BUDGET}
         </MdTextButton>

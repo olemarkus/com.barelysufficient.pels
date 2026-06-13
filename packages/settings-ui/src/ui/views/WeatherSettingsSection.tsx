@@ -3,7 +3,11 @@ import type { WeatherDeviceReading } from '../../../../contracts/src/weatherAdvi
 import { MdSwitch } from './materialWebJSX.tsx';
 import {
   composeForecastReadingLine,
+  composeLastAutoApply,
   composeOutdoorReadingLine,
+  WEATHER_AUTO_APPLY_LABEL,
+  WEATHER_AUTO_APPLY_NEEDS_BUDGET,
+  WEATHER_AUTO_APPLY_SUPPORTING,
   WEATHER_DISABLED_PITCH,
   WEATHER_ENABLE_LABEL,
   WEATHER_ENABLE_SUPPORTING,
@@ -42,6 +46,13 @@ export type WeatherPickersProps = {
   forecastReading: WeatherDeviceReading;
   onOutdoorChange: (deviceId: string | null) => void;
   onForecastChange: (deviceId: string | null) => void;
+  /** Auto-apply the suggested daily budget at each rollup. */
+  autoApplyDailyBudget: boolean;
+  onAutoApplyChange: (on: boolean) => void;
+  /** Whether the daily budget feature is on — when off, auto-apply is inert. */
+  dailyBudgetEnabled: boolean;
+  /** Last auto-applied budget for the "Last applied" line; null when never applied. */
+  lastAutoApply: { dateKey: string; kwh: number } | null;
 };
 
 export type WeatherSettingsSectionProps = {
@@ -149,6 +160,37 @@ const DevicePickers = ({ pickers }: { pickers: WeatherPickersProps }) => (
   </section>
 );
 
+/**
+ * Auto-apply row — opt in to letting the suggested daily budget set the daily
+ * budget each rollup. Inert hint shows only once the user has turned it on but
+ * the daily budget is off (so the toggle's no-op is explained at the moment it
+ * matters); the "Last applied" line confirms it's actually acting.
+ */
+const AutoApplyRow = ({ pickers }: { pickers: WeatherPickersProps }) => (
+  <div class="md-switch-row settings-form-card" id="weather-auto-apply-row">
+    <MdSwitch
+      id="weather-auto-apply-switch"
+      aria-label={WEATHER_AUTO_APPLY_LABEL}
+      {...(pickers.autoApplyDailyBudget ? { selected: true } : {})}
+      onChange={(event: Event) => pickers.onAutoApplyChange((event.currentTarget as SwitchElement).selected)}
+    />
+    <span class="md-switch-row__content">
+      <span class="md-switch-row__label pels-text-settings-label">{WEATHER_AUTO_APPLY_LABEL}</span>
+      <small class="field__hint">{WEATHER_AUTO_APPLY_SUPPORTING}</small>
+      {pickers.autoApplyDailyBudget && !pickers.dailyBudgetEnabled && (
+        <small class="field__hint field__hint--alert" id="weather-auto-apply-needs-budget">
+          {WEATHER_AUTO_APPLY_NEEDS_BUDGET}
+        </small>
+      )}
+      {pickers.lastAutoApply !== null && (
+        <small class="field__hint weather-picker-status--ok" id="weather-auto-apply-last">
+          {composeLastAutoApply(pickers.lastAutoApply.dateKey, pickers.lastAutoApply.kwh)}
+        </small>
+      )}
+    </span>
+  </div>
+);
+
 /** Off-state body: a payoff-led pitch so the off page sells the feature. */
 const DisabledPitch = () => (
   <section id="weather-disabled-pitch" class="settings-form-card">
@@ -163,7 +205,12 @@ const WeatherSettingsSectionView = (props: WeatherSettingsSectionProps) => (
   <div id="weather-insight-settings-body">
     <MasterSwitch enabled={props.enabled} onEnabledChange={props.onEnabledChange} />
     {props.enabled && props.pickers !== null
-      ? <DevicePickers pickers={props.pickers} />
+      ? (
+        <>
+          <DevicePickers pickers={props.pickers} />
+          <AutoApplyRow pickers={props.pickers} />
+        </>
+      )
       : <DisabledPitch />}
   </div>
 );

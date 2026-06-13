@@ -1112,6 +1112,11 @@
     const dailyBudgetKwh = settings.daily_budget_enabled !== false && budgetValue > 0
       ? budgetValue
       : null;
+    // Mirror the producer's payload echoes: dailyBudgetEnabled gates the auto-apply
+    // inert hint (=== true), autoApply + lastAutoApply come from the config/state.
+    const dailyBudgetEnabled = settings.daily_budget_enabled === true;
+    const autoApplyDailyBudget = advisor.autoApplyDailyBudget === true;
+    const lastAutoApply = advisor.lastAutoApply ?? null;
     const emptyPayload = (state) => ({
       state,
       driftSuspected: false,
@@ -1121,6 +1126,9 @@
       outdoorReading,
       forecastReading,
       dailyBudgetKwh,
+      dailyBudgetEnabled,
+      autoApplyDailyBudget,
+      lastAutoApply,
       fit: null,
       coverage: [],
       prediction: null,
@@ -1183,6 +1191,9 @@
       outdoorReading,
       forecastReading,
       dailyBudgetKwh,
+      dailyBudgetEnabled,
+      autoApplyDailyBudget,
+      lastAutoApply,
       fit: {
         model: 'changepoint',
         baseLoadKwhPerDay: baseLoad,

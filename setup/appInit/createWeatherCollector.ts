@@ -58,6 +58,7 @@ export function createWeatherCollector(
     AppContext,
     'homey' | 'powerTracker' | 'getNow' | 'getTimeZone' | 'capacitySettings'
     | 'deviceDiagnosticsService' | 'deferredObjectivePlanHistoryRecorder' | 'resolveManagedState'
+    | 'dailyBudgetService'
   >,
 ): WeatherCollector {
   const logger = getLogger('weather');
@@ -102,6 +103,10 @@ export function createWeatherCollector(
       },
       logger,
     }),
+    // Auto-apply seam: lib/weather never imports lib/dailyBudget, so the apply
+    // goes through this flat callback. Resolved lazily — dailyBudgetService is
+    // constructed after the collector but before any midnight rollup fires.
+    applySuggestedDailyBudget: (kwh) => ctx.dailyBudgetService?.applyAutoSuggestedBudget(kwh) ?? false,
     logger,
   });
 }
