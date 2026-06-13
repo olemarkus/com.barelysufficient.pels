@@ -491,6 +491,57 @@ describe('PlanService', () => {
     }));
   });
 
+  it('records an overview change when only the producer control model flips (non-stepped deviceType flip)', async () => {
+    // A device can change its producer `deviceType` (`temperature_target ↔
+    // binary_power`) with NO other planner change. The planner no longer carries
+    // `controlModel`, so the overview-transition signature must restore it from
+    // the producer map (`getControlModelById`); otherwise both poles collapse to
+    // `controlModel: null` and the open settings-UI overview card stays stale.
+    const overviewDebugStructured = vi.fn();
+    // The plan device is byte-identical across both rebuilds — only the producer
+    // control-model map differs, exactly as a deviceType-only flip presents to the
+    // overview seam.
+    const samePlan = buildPlan(20, 'keep', {}, {
+      currentState: 'on',
+      plannedState: 'keep',
+      measuredPowerKw: 0,
+      expectedPowerKw: 3,
+    });
+    let controlModel: 'temperature_target' | 'binary_power' = 'temperature_target';
+    const { service } = createPlanService({
+      planEngine: {
+        ...createMockPlanEngine(),
+        buildDevicePlanSnapshot: vi.fn().mockResolvedValue(samePlan),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions: vi.fn().mockResolvedValue({ deviceWriteCount: 0 }),
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
+      } as any,
+      overviewDebugStructured,
+      getControlModelById: () => new Map([['dev-1', controlModel]]),
+    });
+
+    await service.rebuildPlanFromCache();
+    // First rebuild captured the initial signature (temperature_target).
+    expect(overviewDebugStructured).toHaveBeenCalledTimes(1);
+    overviewDebugStructured.mockClear();
+
+    // Flip ONLY the producer control model; the plan device is unchanged.
+    controlModel = 'binary_power';
+    await service.rebuildPlanFromCache();
+
+    // Without the fix the signature would be identical (`controlModel: null` both
+    // times) and nothing would be emitted; with the restored producer control
+    // model the signature moves and the change is recorded.
+    expect(overviewDebugStructured).toHaveBeenCalledTimes(1);
+    expect(overviewDebugStructured).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'device_overview_changed',
+      deviceId: 'dev-1',
+    }));
+  });
+
   it('does not log repeated identical overview snapshots', async () => {
     const overviewDebugStructured = vi.fn();
     const samePlan = buildPlan(20, 'keep', {}, {

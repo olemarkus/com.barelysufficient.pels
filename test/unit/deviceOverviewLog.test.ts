@@ -2,8 +2,11 @@ import {
   DeviceOverviewLogRecorder,
   DEVICE_OVERVIEW_LOG_MAX_DEVICES,
   DEVICE_OVERVIEW_LOG_MAX_ENTRIES_PER_DEVICE,
+  resolveOverviewControlModel,
 } from '../../lib/plan/deviceOverviewLog';
 import type { SettingsUiDeviceLogEntry } from '../../packages/contracts/src/settingsUiApi';
+import type { DeviceControlModel } from '../../packages/contracts/src/types';
+import { buildPlanDevice, steppedPlanDevice } from '../utils/planTestUtils';
 
 const entry = (atMs: number, overrides: Partial<SettingsUiDeviceLogEntry> = {}): SettingsUiDeviceLogEntry => ({
   atMs,
@@ -77,5 +80,31 @@ describe('DeviceOverviewLogRecorder', () => {
     const first = recorder.getUiPayload().entriesByDeviceId['dev-1'];
     first.push(entry(200));
     expect(recorder.getUiPayload().entriesByDeviceId['dev-1']).toHaveLength(1);
+  });
+});
+
+describe('resolveOverviewControlModel', () => {
+  it('keeps a stored-profile stepped device stepped even when the producer map says non-stepped', () => {
+    // Regression: the raw-snapshot-derived map only marks NATIVE stepped devices.
+    // A stored-profile stepped device is stepped on the decorated plan device but
+    // absent-stepped in the map — `isSteppedLoadDevice` must win, or it mis-signs as
+    // binary_power/temperature_target. (Under the old map-first order this returned
+    // 'binary_power'.)
+    const device = steppedPlanDevice({ id: 'heater' });
+    const map = new Map<string, DeviceControlModel>([['heater', 'binary_power']]);
+    expect(resolveOverviewControlModel(device, map).controlModel).toBe('stepped_load');
+  });
+
+  it('uses the producer map for a non-stepped temperature ↔ binary flip', () => {
+    const device = buildPlanDevice({ id: 'thermo', deviceType: 'temperature' });
+    expect(resolveOverviewControlModel(device, new Map([['thermo', 'temperature_target']])).controlModel)
+      .toBe('temperature_target');
+    expect(resolveOverviewControlModel(device, new Map([['thermo', 'binary_power']])).controlModel)
+      .toBe('binary_power');
+  });
+
+  it('returns the device unchanged when it is neither stepped nor in the map', () => {
+    const device = buildPlanDevice({ id: 'x' });
+    expect(resolveOverviewControlModel(device, new Map()).controlModel).toBeUndefined();
   });
 });

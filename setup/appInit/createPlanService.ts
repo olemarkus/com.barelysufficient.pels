@@ -3,6 +3,7 @@ import { evictMissingDeviceCacheEntries, toPlanDevice } from './toPlanDevice';
 import { PlanService } from '../../lib/plan/planService';
 import { DeviceOverviewLogRecorder } from '../../lib/plan/deviceOverviewLog';
 import type { AppContext } from '../../lib/app/appContext';
+import { buildControlModelMap } from '../appDeviceControlHelpers';
 import { PELS_STATUS } from '../../lib/utils/settingsKeys';
 import { isRuntimePlannedDevice } from '../appDeviceSupport';
 import { readObservedEvChargingState } from '../../lib/observer/observedDeviceStateProjection';
@@ -50,6 +51,17 @@ export function createPlanService(ctx: AppContext): PlanService {
       }
       return map;
     },
+    // Control-model map for the device-overview transition signature. Same RAW,
+    // undecorated source as `getDeviceTypeById` (`deviceManager.getSnapshot()` —
+    // NOT `latestTargetSnapshot`), so building it triggers no re-decoration.
+    // `recordOverviewChange` calls this ONCE per overview pass (not per device),
+    // so the scan stays O(n) and never re-enters the device manager inside the
+    // plan/apply cycle. `buildControlModelMap` DERIVES the three-way model via
+    // `resolveDefaultControlModel` — the raw snapshot's `controlModel` is only
+    // `'stepped_load' | undefined`, so a bare read would leave non-stepped devices
+    // out of the map and a `temperature_target ↔ binary_power` flip would never
+    // reach the signature.
+    getControlModelById: () => buildControlModelMap(ctx.deviceManager?.getSnapshot() ?? []),
     getCapacityDryRun: () => ctx.capacityDryRun,
     loggers: {
       structuredLog: ctx.getStructuredLogger('plan'),
