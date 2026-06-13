@@ -194,7 +194,7 @@ export const WeatherBudgetCard = ({ data, onShowDetails, onAdjustBudget }: {
     return (
       <StateCard id="weather-setup-card" title={WEATHER_INSIGHT_TITLE} body={WEATHER_SETUP_BODY}>
         <div class="weather-card__actions">
-          <MdTextButton id="weather-setup-pick-device" data-settings-target="settings">
+          <MdTextButton id="weather-setup-pick-device" data-settings-target="weather">
             {WEATHER_SETUP_BUTTON}
           </MdTextButton>
         </div>
@@ -380,7 +380,7 @@ const DeviceFooter = ({ readout }: { readout: WeatherAdvisorReadoutPayload }) =>
         forecastStatus: readout.forecastStatus,
       })}
     </p>
-    <MdTextButton id="weather-change-in-settings" data-settings-target="settings">
+    <MdTextButton id="weather-change-in-settings" data-settings-target="weather">
       {WEATHER_BUTTON_CHANGE_IN_SETTINGS}
     </MdTextButton>
   </section>

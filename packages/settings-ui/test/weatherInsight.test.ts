@@ -194,7 +194,8 @@ describe('WeatherBudgetCard (Budget plan slot)', () => {
     expect(card?.textContent).toContain(WEATHER_SETUP_BODY);
     const button = card?.querySelector('#weather-setup-pick-device');
     expect(button?.textContent).toContain(WEATHER_SETUP_BUTTON);
-    expect(button?.getAttribute('data-settings-target')).toBe('settings');
+    // Deep-links straight to the dedicated Weather insight sub-page.
+    expect(button?.getAttribute('data-settings-target')).toBe('weather');
   });
 
   it('S2: renders the backfilling card', () => {

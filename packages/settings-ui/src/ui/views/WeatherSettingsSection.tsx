@@ -9,7 +9,6 @@ import {
   WEATHER_OUTDOOR_PICKER_LABEL,
   WEATHER_PICKER_NONE,
   WEATHER_SETTINGS_SECTION_HINT,
-  WEATHER_SETTINGS_SECTION_TITLE,
   type WeatherReadingLine,
 } from '../../../../shared-domain/src/weatherInsightCopy.ts';
 
@@ -75,18 +74,10 @@ const DevicePicker = ({ id, label, hint, value, devices, reading, onChange }: {
   );
 };
 
+// The dedicated Weather insight sub-page provides the title via its hero; this
+// section renders only the intro hint + the two device pickers.
 const WeatherSettingsSectionView = (props: WeatherSettingsSectionProps) => (
-  <section
-    id="weather-insight-settings"
-    class="settings-form-card weather-settings-section"
-    aria-labelledby="weather-insight-settings-title"
-  >
-    <h3
-      class="field__label pels-text-settings-label weather-settings-section__title"
-      id="weather-insight-settings-title"
-    >
-      {WEATHER_SETTINGS_SECTION_TITLE}
-    </h3>
+  <section id="weather-insight-settings" class="settings-form-card weather-settings-section">
     <p class="muted weather-settings-section__hint">{WEATHER_SETTINGS_SECTION_HINT}</p>
     <DevicePicker
       id="weather-outdoor-select"

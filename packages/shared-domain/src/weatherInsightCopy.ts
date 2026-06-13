@@ -384,8 +384,9 @@ export const WEATHER_ERROR_BODY = 'Couldn’t load the weather readout. PELS wil
   + 'time you open this page.';
 
 // ── Settings section ───────────────────────────────────────────────────────
+// The sub-page title comes from the panel hero (static); this section renders
+// the intro hint + the two pickers.
 
-export const WEATHER_SETTINGS_SECTION_TITLE = WEATHER_INSIGHT_TITLE;
 export const WEATHER_SETTINGS_SECTION_HINT = 'Predict tomorrow’s usage from outside temperature. '
   + 'Pick the devices PELS should read.';
 export const WEATHER_OUTDOOR_PICKER_LABEL = 'Outdoor temperature device';

@@ -83,8 +83,8 @@ export const refreshWeatherInsightOnBudgetTab = async (): Promise<void> => {
   await fetchReadout();
 };
 
-/** Settings-tab activation hook: refresh the picker validity lines from a live readout. */
-export const refreshWeatherInsightOnSettingsTab = async (): Promise<void> => {
+/** Weather-insight sub-page activation hook: refresh the picker validity lines from a live readout. */
+export const refreshWeatherInsightOnWeatherPanel = async (): Promise<void> => {
   if (!currentSettings.enabled) return;
   await fetchReadout();
 };
@@ -150,6 +150,9 @@ const readingFor = (
 );
 
 const renderSettingsSection = (): void => {
+  // The nav card is the flag gate for the whole sub-page: unhidden only while the
+  // feature is enabled, so the hidden feature stays hidden (and unreachable).
+  document.getElementById('weather-insight-nav-card')?.toggleAttribute('hidden', !currentSettings.enabled);
   const mount = document.getElementById('weather-insight-settings-mount');
   if (!mount) return;
   renderWeatherSettingsSection(mount, currentSettings.enabled

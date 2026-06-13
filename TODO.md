@@ -211,6 +211,17 @@ program) remains deferred.*
       2026-06-13. (Note: the picker VALIDITY LINE is already device-correct — it uses an instant
       on-demand read — so this only affects the budget PREDICTION's forecast mean.)
 
+- [ ] **Weather sub-page → Budget cross-link is a one-way trip.** The Weather insight sub-page's
+      "See tomorrow's outlook in Budget" link opens the Budget weather detail view, but its Done
+      button returns to the Budget plan view, not back to the sub-page the user came from —
+      `openBudgetWeatherView()` sets no return target (unlike `budget-adjust`, which threads
+      `adjustReturnTarget`). Persona: an owner exploring config who taps the cross-link; hypothesis:
+      landing two surfaces from where they started mildly frays the "config here / payoff in Budget"
+      bridge, though it's defensible since they explicitly chose Budget. Candidate fix: thread a
+      referrer into `openBudgetWeatherView()` so Done returns to the Weather sub-page when that's the
+      origin (Budget Tomorrow-card entry still returns to plan). Source: pels-ux-fit on the
+      sub-page PR, 2026-06-13.
+
 - [ ] **Give the armed budget-discard state a visible "keep changes" path.** The Budget header's
       two-step confirm shows only the destructive option ("Click again to discard"); the save path
       (Preview changes → Apply) is a sticky CTA further down, and the explanatory text lives in a
