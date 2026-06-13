@@ -386,6 +386,16 @@ CI failure, so future field-move slices can't silently grow the debt.*
       P3 on the stage-4b PR, 2026-06-06. Files: `setup/appInit/toPlanDevice.ts`, `packages/contracts/src/types.ts`.
       (The three stage-4b *prerequisites* — seq-epoch co-creation, freeze-on-store, and the
       device-update-lag dispatch — shipped with the stage-4b reader PR.)
+      *Boot-seed PR (2026-06-13): the observed projection is now boot/hot-plug-seeded from the raw
+      snapshot before the main plan path's `toPlanDevice` reads run (`createPlanService.getPlanDevices`
+      → `ctx.seedObservedStateFromSnapshot` → `ObservedDeviceStateProjection.seedMissing`), so `observed`
+      is non-empty there for every committed-snapshot device. The fallback was DELIBERATELY KEPT — two
+      callers reach `toPlanDevice` WITHOUT the seed: the realtime-reconcile `getLiveDevices` and the
+      smart-task preview, which can resolve a `getUiPickerDevices()` device never in the committed snapshot
+      (so the projection has no entry — neither real nor seeded). Dropping it there would call
+      `isDeviceObservationStale(undefined)`, the exact silent flip above. Retire only with the freshness-field
+      strip, not before. `toPlanDevice.ts` now documents this; tests in
+      `appInitToPlanDeviceObservationStale.test.ts` (hot-plug/picker case) pin the retained behaviour.*
 
 *v2.10.0..HEAD release-review findings (2026-05-29, six-agent fan-out:
 `pels-runtime-reality` + `pels-layering-guardian` + `pels-copy-and-terminology` +
@@ -469,17 +479,6 @@ cosmetic chores — do them in passing or drop them; don't park them here.*
       *Why it's needed:* the one surface that reconstructs per-device history is wiped on every boot.
       Needs the Homey-SDK transient-read grace pattern before persisting. A later cross-device "recent
       activity" feed on Overview is a possible follow-on if the per-device view proves used.
-- [ ] **Close the boot-window EV-state-chip gap in the settings-UI read model.**
-      *Persona:* Homey owner (`notes/personas.md`) glancing at the device overview right after an app restart.
-      *Hypothesis:* the read model now sources `evChargingState` from the observer
-      (`getObservedEvChargingState` → `ctx.getObservedState`), which is event-driven and empty until the first
-      observation for a device lands, so the EV state chip can show generic copy ("Inactive" instead of "Car
-      unplugged") for the first cold-start cycle. A naive `ctx.latestTargetSnapshot` fallback is NOT the answer —
-      that getter re-decorates the whole snapshot per access (O(n²), re-entrant-unsafe; it broke the shed e2es).
-      *Why it's needed:* a brief generic chip on restart is a minor first-impression wobble on the EV surface the
-      owner cares about. A safe fix needs a cheap by-id observed/snapshot accessor (e.g. a memoized per-serialize
-      map, or seeding the observed projection at boot) rather than the live re-decorating getter. Low urgency
-      (single cycle, cosmetic; runtime control is unaffected — it reads the materialized `evCommandability`).
 - [ ] **Fold the same-file `capacityNote` literal onto `STARVATION_WAITING_FOR_POWER_COPY`.**
       *Persona:* maintainer / support (`notes/personas.md`) reading log/UI copy parity.
       *Hypothesis:* `capacityNote: 'Waiting for available power.'` in `planStarvation.ts` re-types the

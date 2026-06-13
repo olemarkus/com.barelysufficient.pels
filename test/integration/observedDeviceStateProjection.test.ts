@@ -461,3 +461,67 @@ describe('ObservedDeviceStateProjection apply guard', () => {
         expect(p.getObservedState('dev1')).toBeDefined();
     });
 });
+
+// Boot/hot-plug seed (`seedMissing`). The seed is strictly additive: it fills
+// empty slots from the committed snapshot so the cold-start window is closed for
+// boot-present devices, but it must never clobber a recorded observation and a
+// later real (seq'd) observation must always supersede the seed. These tests
+// exercise the seed's interaction with the ordered apply guard directly.
+describe('ObservedDeviceStateProjection seedMissing', () => {
+    const baseObserved = (id: string, currentOn: boolean) => ({
+        id,
+        name: id,
+        targets: [],
+        binaryControl: { on: currentOn },
+    });
+
+    const delta = (id: string, seq: number, currentOn: boolean): ObservedStateChangedEvent => ({
+        source: 'realtime_capability',
+        deviceId: id,
+        observationSeq: seq,
+        observed: baseObserved(id, currentOn),
+    });
+
+    it('fills empty slots and freezes the seeded value', () => {
+        const p = new ObservedDeviceStateProjection();
+        p.seedMissing([baseObserved('dev1', true), baseObserved('dev2', false)]);
+        expect(p.getObservedState('dev1')?.binaryControl?.on).toBe(true);
+        expect(p.getObservedState('dev2')?.binaryControl?.on).toBe(false);
+        // Frozen exactly like a dispatched value, so a reader cannot mutate truth.
+        const stored = p.getObservedState('dev1')!;
+        expect(Object.isFrozen(stored)).toBe(true);
+        expect(() => { stored.binaryControl!.on = false; }).toThrow();
+    });
+
+    it('never clobbers an already-recorded real observation', () => {
+        const p = new ObservedDeviceStateProjection();
+        p.applyDelta(delta('dev1', 7, true));
+        const recorded = p.getObservedState('dev1');
+        // Seeding with a CONFLICTING value must not overwrite the present entry.
+        p.seedMissing([baseObserved('dev1', false)]);
+        expect(p.getObservedState('dev1')).toBe(recorded);
+        expect(p.getObservedState('dev1')?.binaryControl?.on).toBe(true);
+    });
+
+    it('a later real observation always supersedes a seq-less seed (no fresher-wins inversion)', () => {
+        const p = new ObservedDeviceStateProjection();
+        p.seedMissing([baseObserved('dev1', false)]);
+        expect(p.getObservedState('dev1')?.binaryControl?.on).toBe(false);
+        // First real delta (any numeric seq) must win over the seed: the seed
+        // carries no seq/observedAtMs, so `shouldDrop` falls through to accept.
+        p.applyDelta(delta('dev1', 1, true));
+        expect(p.getObservedState('dev1')?.binaryControl?.on).toBe(true);
+    });
+
+    it('a refresh that omits a seeded device prunes it (the seed is not sticky)', () => {
+        const p = new ObservedDeviceStateProjection();
+        p.seedMissing([baseObserved('dev1', true), baseObserved('dev2', true)]);
+        const refresh: ObservedStateRefreshEvent = {
+            entries: [{ observationSeq: 1, observedAtMs: 1000, observed: baseObserved('dev1', true) }],
+        };
+        p.applyRefresh(refresh);
+        expect(p.getObservedState('dev1')).toBeDefined();
+        // dev2 was only seeded and is absent from the refresh → pruned as usual.
+        expect(p.getObservedState('dev2')).toBeUndefined();
+    });
+});

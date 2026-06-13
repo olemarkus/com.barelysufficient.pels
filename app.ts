@@ -119,6 +119,7 @@ import {
   evictMissingDeviceCacheEntries,
   persistDeferredObjectiveObservationWatermark,
   registerAppFlowCards,
+  toObservedStateSeed,
   toPlanDevice,
 } from './setup/appInit';
 import type { AppContext, StartupBootstrapConfig } from './lib/app/appContext';
@@ -856,6 +857,8 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi {
       getAllModes: () => app.getAllModes(),
       resolveManagedState: (deviceId) => app.resolveManagedState(deviceId),
       getObservedState: (deviceId) => app.observedDeviceStateProjection.getObservedState(deviceId),
+      seedObservedStateFromSnapshot: () => app.observedDeviceStateProjection
+        .seedMissing(toObservedStateSeed(app.deviceManager?.getSnapshot())),
       getCommunicationModel: (deviceId) => app.getCommunicationModel(deviceId),
       isCapacityControlEnabled: (deviceId) => app.isCapacityControlEnabled(deviceId),
       isBudgetExempt: (deviceId) => app.isBudgetExempt(deviceId),
@@ -1310,12 +1313,14 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi {
     // projection (via `toPlanDevice`'s `observationStale`); applying the event
     // here first ensures that pass sees the freshly-merged observed value for
     // the same event instead of the previous one (stage 4b).
-    this.observedStateEmitter.onObservedStateChanged((event) => {
-      this.observedDeviceStateProjection.applyDelta(event);
-    });
-    this.observedStateEmitter.onObservedStateRefresh((event) => {
-      this.observedDeviceStateProjection.applyRefresh(event);
-    });
+    this.observedStateEmitter.onObservedStateChanged((e) => this.observedDeviceStateProjection.applyDelta(e));
+    this.observedStateEmitter.onObservedStateRefresh((e) => this.observedDeviceStateProjection.applyRefresh(e));
+    // NB: the projection is seeded lazily on the first plan build
+    // (`createPlanService.getPlanDevices` → `ctx.seedObservedStateFromSnapshot`),
+    // not here: right after `initDeviceManager` the transport's `getSnapshot()`
+    // is still empty (transport `init()` only attaches the live feed; the first
+    // snapshot arrives with the bootstrap refresh, which dispatches its own
+    // refresh into the projection). Seeding here would be a guaranteed no-op.
     this.observedStateEmitter.onObservedStateChanged((event: ObservedStateChangedEvent) => {
       if (this.shouldRebuildPlanForRealtimeEvSocObservation(event)) {
         incPerfCounters([

@@ -68,4 +68,20 @@ describe('toPlanDevice — observationStale reads the observed-state projection'
     expect(toPlanDevice(ctx, buildSnapshot(stale)).observationStale).toBe(true);
     expect(toPlanDevice(ctx, buildSnapshot(fresh)).observationStale).toBe(false);
   });
+
+  // #2 decision: the `?? device` fallback is RETAINED (not retired) because not
+  // every `toPlanDevice` caller seeds the projection first. The main plan path
+  // (`createPlanService.getPlanDevices`) seeds boot-present devices, but the
+  // smart-task preview can resolve a device from `getUiPickerDevices()` that was
+  // never in the committed snapshot, so the projection has no entry for it. The
+  // snapshot's own freshness fields must still drive `observationStale` for that
+  // hot-plug/picker device — dropping the fallback would call
+  // `isDeviceObservationStale(undefined)`, a silent `unknown → non-stale` flip.
+  it('hot-plug/picker device (never seeded, never observed): snapshot freshness still governs, no silent flip', () => {
+    const ctx: AppContext = createAppContextMock();
+    // Projection empty for this id (a picker-only device, absent from the seed).
+    (ctx.getObservedState as ReturnType<typeof vi.fn>).mockReturnValue(undefined);
+    // A genuinely stale snapshot must stay stale (not flip to non-stale).
+    expect(toPlanDevice(ctx, buildSnapshot(stale)).observationStale).toBe(true);
+  });
 });

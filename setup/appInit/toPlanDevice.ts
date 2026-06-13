@@ -26,9 +26,25 @@ export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot & 
   // First real reader of the observer-owned observed-state projection (stage 4b).
   // The freshness fields (`lastFreshDataMs`/`lastLocalWriteMs`) are observed
   // state, so staleness is decided from the projection's maintained truth rather
-  // than the snapshot. Falls back to the snapshot until the first observation for
-  // this device lands (boot window), where the two are identical anyway. The
-  // resolved boolean is threaded into the residual-power credit below so both
+  // than the snapshot.
+  //
+  // The `?? device` snapshot fallback is RETAINED, not retired. Boot-seeding
+  // (`createPlanService.getPlanDevices` → `ctx.seedObservedStateFromSnapshot`)
+  // fills the projection from the raw snapshot before this runs on the main plan
+  // path, so for every device in the committed snapshot `observed` is now
+  // non-empty here (a real observation or the seed) — the boot-window arm is dead
+  // on that path. But two callers reach `toPlanDevice` WITHOUT that seed:
+  //   1. the realtime-reconcile `getLiveDevices` (app.ts), and
+  //   2. the smart-task plan preview (app.ts), which can resolve a device from
+  //      `getUiPickerDevices()` that was never in the committed snapshot, so the
+  //      projection has no entry — neither real nor seeded.
+  // For those, `observed` can still be undefined. Dropping the fallback would
+  // call `isDeviceObservationStale(undefined)` — a silent `unknown → non-stale`
+  // flip (and a runtime read of a removed field once `lastFreshDataMs` /
+  // `lastLocalWriteMs` leave the descriptor surface — TODO). The fallback is
+  // correct today only because `TargetDeviceSnapshot` still physically carries
+  // those freshness fields; retire it in lockstep with that strip, not before.
+  // The resolved boolean is threaded into the residual-power credit below so both
   // freshness consumers in this build share one source.
   const observed = ctx.getObservedState(device.id);
   const observationStale = isDeviceObservationStale(observed ?? device);
