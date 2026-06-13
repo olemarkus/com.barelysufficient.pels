@@ -16,7 +16,11 @@ import {
 describe('isEvChargerNotResumable', () => {
   it('is true only for the connected-but-not-resumable plugged_in state', () => {
     expect(isEvChargerNotResumable('plugged_in')).toBe(true);
-    expect(isEvChargerNotResumableForDevice({ evChargingState: 'plugged_in' })).toBe(true);
+    // Device-shaped form reads the producer-resolved flat bit (the raw
+    // `evChargingState` consumer arm is retired).
+    expect(isEvChargerNotResumableForDevice({ evChargerNotResumable: true })).toBe(true);
+    expect(isEvChargerNotResumableForDevice({ evChargerNotResumable: false })).toBe(false);
+    expect(isEvChargerNotResumableForDevice({})).toBe(false);
   });
 
   it('is false for the resumable / charging / unplugged states', () => {

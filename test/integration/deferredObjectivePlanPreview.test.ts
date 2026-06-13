@@ -38,9 +38,9 @@ const NOW_MS = Date.UTC(2026, 0, 1, 17, 0, 0);
 const buildEvDevice = (
   overrides: Partial<PlanInputDevice> & EvDiscriminantProbe & { evChargingState?: string } = {},
 // `withMaterializedEvPlugState` (NOT `withEvDiscriminant`) is the fixture
-// boundary here: the preview's `isEvChargerNotResumableForDevice` dual-read
-// keys off the materialized flat `evChargerNotResumable` (falling back to the
-// raw `evChargingState`). `withEvDiscriminant` *discards* `evChargingState`
+// boundary here: the preview's `isEvChargerNotResumableForDevice` reads the
+// materialized flat `evChargerNotResumable` only (the raw `evChargingState`
+// consumer arm is retired). `withEvDiscriminant` *discards* `evChargingState`
 // without materializing it, so it would erase the plug-state these tests set.
 // `withMaterializedEvPlugState` mirrors the producer: it derives the flat EV
 // fields from `evChargingState`, preserving the runtime resumability signal.

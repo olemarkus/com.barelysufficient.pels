@@ -45,7 +45,8 @@ export type ObjectiveDeviceInput = {
   priority?: number;
   // Producer-resolved EV plug-state decisions (the observer owns the raw
   // `evChargingState`); read via the shared `isEvSessionInactiveForDevice` /
-  // `isEvChargerNotResumableForDevice` dual-read resolvers.
+  // `isEvChargerNotResumableForDevice` resolvers (materialized-only — the raw
+  // `evChargingState` consumer arm is retired).
   evSessionInactive?: boolean;
   evChargerNotResumable?: boolean;
   powerKw?: number;

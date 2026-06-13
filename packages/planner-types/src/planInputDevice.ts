@@ -152,7 +152,8 @@ export type PlanInputDeviceBase = {
    * owns the raw plug-state; the planner carries only the resolved decisions).
    * Both/all are absent for non-EV devices; consumers read them through the
    * shared `resolveEvBlockReasonForDevice` / `isEvSessionInactiveForDevice` /
-   * `isEvChargerNotResumableForDevice` dual-read resolvers.
+   * `isEvChargerNotResumableForDevice` resolvers, which read only these
+   * materialized bits (the raw `evChargingState` consumer arm is retired).
    */
   evBlockReason?: string | null;
   evSessionInactive?: boolean;

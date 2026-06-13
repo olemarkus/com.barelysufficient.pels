@@ -78,28 +78,52 @@ describe('resolveCommandableNow — EV plug-state sub-classification', () => {
   });
 });
 
-describe('device-shaped EV resolvers — dual-read prefers the materialized flat bits', () => {
-  it('reads the flat fields when present, ignoring any raw evChargingState', () => {
-    // Materialized says inactive; raw (stale) says charging. The producer-resolved
-    // value must win so consumers never re-derive from the raw plug-state.
+describe('device-shaped EV resolvers — single materialized input (raw arm retired)', () => {
+  it('reads the producer-resolved flat fields', () => {
     const dev = {
-      evChargingState: 'plugged_in_charging' as const,
       evBlockReason: EV_COMMANDABLE_NOW_REASONS.plugged_out,
       evSessionInactive: true,
       evChargerNotResumable: false,
     };
     expect(isEvSessionInactiveForDevice(dev)).toBe(true);
     expect(isEvChargerNotResumableForDevice(dev)).toBe(false);
-    expect(resolveEvBlockReasonForDevice({ ...EV, ...dev })).toBe(EV_COMMANDABLE_NOW_REASONS.plugged_out);
+    expect(resolveEvBlockReasonForDevice(dev)).toBe(EV_COMMANDABLE_NOW_REASONS.plugged_out);
     expect(isEvBoostBlockedByPlugState(dev)).toBe(true);
   });
 
-  it('falls back to the raw evChargingState for snapshot-shaped callers (no flat bits)', () => {
-    expect(isEvSessionInactiveForDevice({ evChargingState: 'plugged_out' })).toBe(true);
-    expect(isEvChargerNotResumableForDevice({ evChargingState: 'plugged_in' })).toBe(true);
-    expect(resolveEvBlockReasonForDevice({ ...EV, evChargingState: 'plugged_in' }))
-      .toBe(EV_COMMANDABLE_NOW_REASONS.plugged_in);
-    expect(isEvBoostBlockedByPlugState({ evChargingState: 'plugged_in_discharging' })).toBe(true);
-    expect(isEvBoostBlockedByPlugState({ evChargingState: 'plugged_in_charging' })).toBe(false);
+  it('classifies a connected-but-not-resumable device off the flat bit', () => {
+    const dev = {
+      evBlockReason: EV_COMMANDABLE_NOW_REASONS.plugged_in,
+      evSessionInactive: false,
+      evChargerNotResumable: true,
+    };
+    expect(isEvSessionInactiveForDevice(dev)).toBe(false);
+    expect(isEvChargerNotResumableForDevice(dev)).toBe(true);
+    expect(resolveEvBlockReasonForDevice(dev)).toBe(EV_COMMANDABLE_NOW_REASONS.plugged_in);
+    expect(isEvBoostBlockedByPlugState(dev)).toBe(true);
+  });
+
+  it('defaults to not-blocked when the flat bits are absent (non-EV device)', () => {
+    // The raw `evChargingState` consumer arm is retired: a device with no
+    // materialized flat bits — every non-EV device, and the footgun case of a
+    // hand-constructed input that previously could smuggle in a raw plug-state —
+    // now resolves to not-blocked. The producer is the only reader of the raw
+    // plug-state, so this is the only safe single-input contract.
+    expect(isEvSessionInactiveForDevice({})).toBe(false);
+    expect(isEvChargerNotResumableForDevice({})).toBe(false);
+    expect(resolveEvBlockReasonForDevice({})).toBeNull();
+    expect(isEvBoostBlockedByPlugState({})).toBe(false);
+  });
+
+  it('cannot be bypassed by a hand-constructed non-EV input carrying a stale plug-state', () => {
+    // Previously the device-shaped resolvers dual-read the raw `evChargingState`,
+    // so a non-EV input that smuggled in `evChargingState: 'plugged_out'` would
+    // be classified as session-inactive (the resolvers themselves do not gate on
+    // `isEvDevice`). With the raw arm gone, an unknown extra property is inert —
+    // only the producer-materialized flat bits are honoured.
+    const handConstructed = { evChargingState: 'plugged_out' } as unknown as { evSessionInactive?: boolean };
+    expect(isEvSessionInactiveForDevice(handConstructed)).toBe(false);
+    expect(isEvChargerNotResumableForDevice(handConstructed)).toBe(false);
+    expect(isEvBoostBlockedByPlugState(handConstructed)).toBe(false);
   });
 });

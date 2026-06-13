@@ -112,6 +112,18 @@ describe('isCommandableNow — dual-read fallback', () => {
     expect(isCommandableNow({ available: false })).toBe(false);
     expect(isCommandableNow({ available: true })).toBe(true);
   });
+
+  it('honours the materialized commandableNow on an EV plan device and does NOT recompute from absent raw plug-state', () => {
+    // Regression guard for the consumer dual-read retirement. A `DevicePlanDevice`
+    // (produced by `toPlanDevice`) carries the materialized `commandableNow` and has
+    // the raw `evChargingState` STRIPPED. `isCommandableNow` must short-circuit on
+    // the materialized bit — recomputing via `resolveCommandableNow` from the absent
+    // `evChargingState` would resolve a genuinely-commandable charging EV to
+    // `state-unknown`/not-commandable, regressing EV resume on the executor's
+    // `hasStableBinaryReleaseActuation` path.
+    expect(isCommandableNow({ deviceClass: 'evcharger', commandableNow: true })).toBe(true);
+    expect(isCommandableNow({ deviceClass: 'evcharger', commandableNow: false })).toBe(false);
+  });
 });
 
 describe('resolveCanSetControl — producer', () => {
@@ -223,21 +235,23 @@ describe('isEvSessionInactive — shared plug-state predicate', () => {
     expect(isEvSessionInactive(undefined)).toBe(false);
   });
 
-  it('does NOT gate on EV-ness — the caller scopes that (isEvPhysicallyUnplugged composes both)', () => {
-    // A non-EV device that somehow carried one of these strings would read as
-    // inactive-session by the bare predicate; isEvPhysicallyUnplugged adds the
-    // isEvDevice guard so a non-EV device is never an "EV physical block".
+  it('composes the isEvDevice guard with the producer-resolved session bit', () => {
+    // The bare plug-state predicate does NOT gate on EV-ness; isEvPhysicallyUnplugged
+    // adds the isEvDevice guard so a non-EV device is never an "EV physical block".
+    // The session decision itself now reads the producer-materialized
+    // `evSessionInactive` flat bit (the raw `evChargingState` consumer arm is retired).
     expect(isEvSessionInactive('plugged_out')).toBe(true);
-    expect(isEvPhysicallyUnplugged({ evChargingState: 'plugged_out' })).toBe(false);
+    // Materialized session-inactive but NOT an EV device → not a physical block.
+    expect(isEvPhysicallyUnplugged({ evSessionInactive: true })).toBe(false);
     expect(isEvPhysicallyUnplugged({
       deviceClass: 'evcharger',
       controlCapabilityId: 'evcharger_charging',
-      evChargingState: 'plugged_out',
+      evSessionInactive: true,
     })).toBe(true);
     expect(isEvPhysicallyUnplugged({
       deviceClass: 'evcharger',
       controlCapabilityId: 'evcharger_charging',
-      evChargingState: 'plugged_in_charging',
+      evSessionInactive: false,
     })).toBe(false);
   });
 });
