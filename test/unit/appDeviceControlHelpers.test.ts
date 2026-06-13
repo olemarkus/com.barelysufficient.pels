@@ -16,6 +16,7 @@ import {
 } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import type {
   DeviceControlProfiles,
+  MeasuredPowerObservedProbe,
   SteppedLoadDecoration,
   SteppedLoadProfile,
   TargetDeviceSnapshot,
@@ -37,8 +38,8 @@ const baseSnapshot = (
   // raw `TargetDeviceSnapshot`; tests seed them to assert the decorator ignores
   // any persisted decoration on its input. They flow through the spread and the
   // return is still a plain `TargetDeviceSnapshot`.
-  overrides: Partial<TargetDeviceSnapshot> & Partial<SteppedLoadDecoration> = {},
-): TargetDeviceSnapshot => ({
+  overrides: Partial<TargetDeviceSnapshot & MeasuredPowerObservedProbe> & Partial<SteppedLoadDecoration> = {},
+): TargetDeviceSnapshot & MeasuredPowerObservedProbe => ({
   id: 'dev-1',
   name: 'Water heater',
   targets: [],

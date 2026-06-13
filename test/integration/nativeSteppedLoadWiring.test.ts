@@ -33,7 +33,7 @@ import {
 } from '../../lib/plan/planTypes';
 import { isBinaryPlanDevice } from '../../lib/plan/planBinaryDevice';
 import type { DeviceCapabilityMap } from '../../lib/device/managerControl';
-import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { MeasuredPowerObservedProbe, SteppedLoadProfile, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { mockHomeyInstance } from '../mocks/homey';
 import { setRestClient } from '../../lib/device/transport/managerHomeyApi';
@@ -74,7 +74,7 @@ const buildSteppedAction = (loose: SteppedActionInput) => {
       selectedStepId: device.selectedStepId,
       reportedStepId: device.reportedStepId,
       measuredPowerKw: device.measuredPowerKw,
-    }),
+    } as TargetDeviceSnapshot & MeasuredPowerObservedProbe),
   );
 };
 
@@ -727,7 +727,7 @@ describe('native stepped-load wiring', () => {
       targets: [],
       binaryControl: { on: true },
       measuredPowerKw: 1.75,
-    } satisfies TargetDeviceSnapshot;
+    } satisfies TargetDeviceSnapshot & MeasuredPowerObservedProbe;
     const nativeSnapshot = {
       ...flowSnapshot,
       reportedStepId: 'low',
@@ -738,7 +738,7 @@ describe('native stepped-load wiring', () => {
         activationEnabled: true,
       },
       suggestedSteppedLoadProfile: steppedProfile,
-    } satisfies TargetDeviceSnapshot;
+    } satisfies TargetDeviceSnapshot & MeasuredPowerObservedProbe;
     let snapshots = [flowSnapshot];
     const helpers = new AppDeviceControlHelpers({
       getProfiles: () => ({ 'hoiax-1': steppedProfile }),
@@ -795,7 +795,7 @@ describe('native stepped-load wiring', () => {
         activationEnabled: true,
       },
       suggestedSteppedLoadProfile: steppedProfile,
-    } satisfies TargetDeviceSnapshot;
+    } satisfies TargetDeviceSnapshot & MeasuredPowerObservedProbe;
     const helpers = new AppDeviceControlHelpers({
       getProfiles: () => ({ 'hoiax-1': configuredProfile }),
       getDeviceSnapshots: () => [nativeSnapshot],

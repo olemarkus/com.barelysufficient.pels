@@ -239,8 +239,19 @@ export type ObservedDeviceState = {
     // hard compile error (TS2339). Owner seams (transport/observer producers)
     // and producer-fed structural funnels that physically carry the value
     // before consumers narrow widen with `TemperatureObservedProbe` instead.
-    measuredPowerKw?: number;
-    measuredPowerObservedAtMs?: number;
+    // `measuredPowerKw`/`measuredPowerObservedAtMs` are deliberately NOT here
+    // (measured-power-observed slice of the discriminated-types refactor): they
+    // live together on `MeasuredPowerObservedFields`, regrouped onto the snapshot
+    // by the `hasObservedMeasuredPower` guard
+    // (`packages/shared-domain/src/measuredPowerObservedState.ts`), so an
+    // un-narrowed `snapshot.measuredPowerKw` read on a base-typed value is a hard
+    // compile error (TS2339). Power-measurement absence is the legitimate common
+    // case (most devices don't measure power), so the guard's "present implies a
+    // finite, non-negative kW" is what consumers lean on after narrowing — the
+    // producer write seams (`managerMeasuredPower` at parse, `managerObservation`
+    // at refresh, the `measure_power` branch of `applyFreshnessOnlyCapabilityUpdate`
+    // at realtime) only write finite values. Owner seams and producer-fed
+    // structural funnels widen with `MeasuredPowerObservedProbe` instead.
     reportedStepId?: string;
     /**
      * @deprecated Raw binary evidence is observer-owned transport state. Consumer
@@ -381,6 +392,47 @@ export type StateOfChargeObservedFields = {
  */
 export type StateOfChargeObservedProbe = {
     stateOfCharge?: DeviceStateOfChargeSnapshot;
+};
+
+/**
+ * Measured-power observed field cluster (measured-power-observed slice of the
+ * discriminated-types refactor). Like the other observed clusters, this is
+ * ORTHOGONAL and NOT a union member; it is the intersection the
+ * `hasObservedMeasuredPower` type-guard
+ * (`packages/shared-domain/src/measuredPowerObservedState.ts`) adds onto a
+ * snapshot. `measuredPowerKw`/`measuredPowerObservedAtMs` are OMITTED from
+ * `ObservedDeviceState`, so an un-narrowed `snapshot.measuredPowerKw` read is a
+ * hard compile error (TS2339); consumers pass through `hasObservedMeasuredPower`
+ * (or hold an already-narrowed value) first.
+ *
+ * The two fields travel together (a measurement and the time it was observed),
+ * so they are kept in one cluster. The guard gates on `measuredPowerKw` only —
+ * `measuredPowerObservedAtMs` stays optional on the narrowed shape, and the one
+ * staleness-sensitive consumer (`lib/power/sampleIngest.ts`) still checks it
+ * independently. `measuredPowerKw` is REQUIRED on the narrowed shape, AND present
+ * implies finite + non-negative: every producer write seam (`managerMeasuredPower`
+ * at parse, `managerObservation` at refresh, the `measure_power` branch of
+ * `applyFreshnessOnlyCapabilityUpdate` at realtime) writes the field only for a
+ * `Number.isFinite` reading. So a narrowed consumer reads a usable `number`
+ * without re-checking finiteness.
+ */
+export type MeasuredPowerObservedFields = {
+    measuredPowerKw: number;
+    measuredPowerObservedAtMs?: number;
+};
+
+/**
+ * Measured-power observed cluster as a plain optional: the "might have an
+ * observed measured power" loose shape the OWNER seams carry (transport
+ * stores/mutates it in place; the observer projection and the debug snapshot copy
+ * it before consumers narrow). Those producer-side surfaces widen with this probe
+ * (`TargetDeviceSnapshot & MeasuredPowerObservedProbe`) instead of re-adding the
+ * fields to the base. Consumer code must NOT take this shape; it narrows through
+ * `hasObservedMeasuredPower`.
+ */
+export type MeasuredPowerObservedProbe = {
+    measuredPowerKw?: number;
+    measuredPowerObservedAtMs?: number;
 };
 
 /**

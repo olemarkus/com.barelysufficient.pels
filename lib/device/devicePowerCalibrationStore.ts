@@ -21,7 +21,11 @@ import {
   recordSample,
 } from './devicePowerCalibration';
 import { POWER_CALIBRATION, POWER_CALIBRATION_INITIALIZED } from '../utils/settingsKeys';
-import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type {
+  MeasuredPowerObservedProbe,
+  SteppedLoadProfile,
+  TargetDeviceSnapshot,
+} from '../../packages/contracts/src/types';
 import { isFiniteNumber } from '../utils/appTypeGuards';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import { getLogger } from '../logging/logger';
@@ -118,7 +122,7 @@ export class PowerCalibrationStore {
    * `recordSample`.
    */
   ingestDeviceSnapshot(
-    snapshot: TargetDeviceSnapshot,
+    snapshot: TargetDeviceSnapshot & MeasuredPowerObservedProbe,
     nowMs: number,
   ): IngestDeviceSnapshotOutcome {
     const sample = buildSampleFromDeviceSnapshot(snapshot, nowMs);
@@ -392,7 +396,7 @@ function writeInitMarkerBestEffort(homey: HomeyRuntime): void {
 }
 
 function buildSampleFromDeviceSnapshot(
-  snapshot: TargetDeviceSnapshot,
+  snapshot: TargetDeviceSnapshot & MeasuredPowerObservedProbe,
   nowMs: number,
 ): RecordSampleInput | null {
   if (!isEligiblePowerCalibrationSnapshot(snapshot)) return null;
@@ -415,7 +419,7 @@ function buildSampleFromDeviceSnapshot(
 }
 
 function isEligiblePowerCalibrationSnapshot(
-  snapshot: TargetDeviceSnapshot,
+  snapshot: TargetDeviceSnapshot & MeasuredPowerObservedProbe,
 ): snapshot is TargetDeviceSnapshot & {
   controlModel: 'stepped_load';
   steppedLoadProfile: SteppedLoadProfile;
@@ -499,7 +503,7 @@ export function createCalibrationSnapshotMutationHook(params: {
   /** Override the per-(device, step) debounce. Defaults to 30 s. Set to 0 to
    *  disable, primarily for tests. */
   minIntervalMs?: number;
-}): (snapshot: TargetDeviceSnapshot, nowMs: number) => void {
+}): (snapshot: TargetDeviceSnapshot & MeasuredPowerObservedProbe, nowMs: number) => void {
   const { getStore, debugStructured } = params;
   const minIntervalMs = params.minIntervalMs ?? DEFAULT_HOOK_CADENCE_MIN_INTERVAL_MS;
   const lastIngestMsByDeviceStep = new Map<string, number>();

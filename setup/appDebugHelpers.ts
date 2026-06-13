@@ -15,7 +15,11 @@ import type { DevicePlan, StepPowerCalibrationView } from '../lib/plan/planTypes
 import { isTemperaturePlanDevice } from '../lib/plan/planTemperatureDevice';
 import type { HomeyDeviceLike } from '../lib/utils/types';
 import { isHomeyDeviceLike } from '../lib/utils/types';
-import type { TargetDeviceSnapshot, TemperatureObservedProbe } from '../packages/contracts/src/types';
+import type {
+  MeasuredPowerObservedProbe,
+  TargetDeviceSnapshot,
+  TemperatureObservedProbe,
+} from '../packages/contracts/src/types';
 import { normalizeError } from '../lib/utils/errorUtils';
 import { safeJsonStringify, sanitizeLogValue } from '../lib/utils/logUtils';
 import { getLogger } from '../lib/logging/logger';
@@ -319,7 +323,7 @@ const buildPelsSnapshotComparisonSource = (
 };
 
 const resolveComparisonPowerW = (
-  snapshot: PelsTargetSnapshotSummary | TargetDeviceSnapshot,
+  snapshot: PelsTargetSnapshotSummary | (TargetDeviceSnapshot & MeasuredPowerObservedProbe),
 ): number | null => {
   if (typeof snapshot.measuredPowerKw === 'number') {
     return Math.round(snapshot.measuredPowerKw * 1000);
@@ -429,7 +433,7 @@ const compactPelsTargetSnapshot = (
   // `measure_temperature` reading), so it reads through the owner probe rather
   // than `hasObservedTemperature` — a plain `TargetDeviceSnapshot` (from
   // `getSnapshot()`) stays assignable because the probe field is optional.
-  snapshot: (TargetDeviceSnapshot & TemperatureObservedProbe) | null,
+  snapshot: (TargetDeviceSnapshot & TemperatureObservedProbe & MeasuredPowerObservedProbe) | null,
 ): PelsTargetSnapshotSummary | null => {
   if (!snapshot) return null;
   return {

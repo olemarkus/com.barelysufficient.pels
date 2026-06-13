@@ -21,6 +21,7 @@
 import type {
   BinaryControlCapabilityId,
   DecoratedDeviceSnapshot,
+  MeasuredPowerObservedProbe,
   RestorePowerSource,
 } from '../../packages/contracts/src/types';
 import {
@@ -122,7 +123,7 @@ function toResidualShedBehavior(
 }
 
 function toResidualSteppedLoad(
-  device: DecoratedDeviceSnapshot,
+  device: DecoratedDeviceSnapshot & MeasuredPowerObservedProbe,
   controlCapabilityId: BinaryControlCapabilityId | undefined,
 ): ResidualKwShedSteppedDevice | undefined {
   if (device.controlModel !== 'stepped_load' || !device.steppedLoadProfile

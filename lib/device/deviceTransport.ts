@@ -1288,8 +1288,8 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     }
 
     private didSnapshotChangeCalibrationInputs(params: {
-        previousSnapshot: TargetDeviceSnapshot | undefined;
-        currentSnapshot: TargetDeviceSnapshot;
+        previousSnapshot: TransportDeviceSnapshot | undefined;
+        currentSnapshot: TransportDeviceSnapshot;
         observedCapabilityIds: readonly string[];
     }): boolean {
         const { previousSnapshot, currentSnapshot, observedCapabilityIds } = params;

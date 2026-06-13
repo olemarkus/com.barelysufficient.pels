@@ -10,6 +10,7 @@ import {
   isSwapTargetPendingReason,
 } from '../planContract/planDecisionSemantics';
 import type {
+  MeasuredPowerObservedProbe,
   ObservedDeviceState,
   SteppedLoadDecoration,
 } from '../../packages/contracts/src/types';
@@ -198,7 +199,7 @@ const buildObservedSteppedLoadState = (
   // transport snapshot carries no decoration), but on the drift path
   // (`planExecutionDrift` → live `PlanInputDevice`) it is the producer-resolved
   // effective step. The read must survive both, so widen past the raw snapshot.
-  snapshot: ExecutorDeviceSnapshot & Pick<SteppedLoadDecoration, 'selectedStepId'>,
+  snapshot: ExecutorDeviceSnapshot & Pick<SteppedLoadDecoration, 'selectedStepId'> & MeasuredPowerObservedProbe,
 ): ExecutableObservedSteppedLoadState | null => {
   if (snapshot.controlModel !== 'stepped_load') return null;
   return {

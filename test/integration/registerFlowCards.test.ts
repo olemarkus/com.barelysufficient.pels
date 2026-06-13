@@ -3,7 +3,7 @@ import type { FlowBackedCapabilityReportOutcome } from '../../lib/app/appContext
 import { PELS_MEASURE_STEP_CAPABILITY_ID } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 import { createEvTargetPowerConfig } from '../../packages/shared-domain/src/evTargetPowerConfig';
 import { DEVICE_TARGET_POWER_CONFIGS } from '../../lib/utils/settingsKeys';
-import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { MeasuredPowerObservedProbe, SteppedLoadProfile, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { FlowCard } from '../../lib/utils/types';
 import type { ReportSteppedLoadActualStepResult } from '../../setup/appDeviceControlHelpers';
 
@@ -16,7 +16,7 @@ const steppedProfile: SteppedLoadProfile = {
   ],
 };
 
-const nativeSteppedSnapshot = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => ({
+const nativeSteppedSnapshot = (overrides: Partial<TargetDeviceSnapshot & MeasuredPowerObservedProbe> = {}): TargetDeviceSnapshot & MeasuredPowerObservedProbe => ({
   id: 'dev-1',
   name: 'Connected 300',
   targets: [],

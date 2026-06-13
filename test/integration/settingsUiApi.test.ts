@@ -47,13 +47,14 @@ describe('settingsUiApi', () => {
     };
     // These entries pin the ui_devices wire carriage of the observed cluster
     // fields the base snapshot type omits: `evChargingState` (EV-observed move),
-    // `currentTemperature` (temperature-observed move), and `stateOfCharge`
-    // (SoC-observed move). The settings-UI `isEvObserved` /
-    // `hasObservedTemperature` / `hasObservedStateOfCharge` narrowing works only
-    // if the served objects physically carry these — a producer rebuild that
-    // drops any of them must fail here.
+    // `currentTemperature` (temperature-observed move), `stateOfCharge`
+    // (SoC-observed move), and `measuredPowerKw` (measured-power-observed move).
+    // The settings-UI `isEvObserved` / `hasObservedTemperature` /
+    // `hasObservedStateOfCharge` / `hasObservedMeasuredPower` narrowing (and
+    // `supportsPowerDevice`) works only if the served objects physically carry
+    // these — a producer rebuild that drops any of them must fail here.
     let latestDevices: Record<string, unknown>[] = [
-      { id: 'dev-1', name: 'Heater', deviceType: 'temperature', currentTemperature: 18.5 },
+      { id: 'dev-1', name: 'Heater', deviceType: 'temperature', currentTemperature: 18.5, measuredPowerKw: 1.2 },
       {
         id: 'ev-1',
         name: 'Charger',
@@ -359,7 +360,7 @@ describe('settingsUiApi', () => {
 
     expect(getSettingsUiDevicesPayload({ homey: homey as never })).toEqual({
       devices: [
-        { id: 'dev-1', name: 'Heater', deviceType: 'temperature', currentTemperature: 18.5 },
+        { id: 'dev-1', name: 'Heater', deviceType: 'temperature', currentTemperature: 18.5, measuredPowerKw: 1.2 },
         {
           id: 'ev-1',
           name: 'Charger',

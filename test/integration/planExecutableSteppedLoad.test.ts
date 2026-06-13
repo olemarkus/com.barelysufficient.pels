@@ -10,12 +10,12 @@ import {
 import type { DevicePlanDevice } from '../../lib/plan/planTypes';
 import { isBinaryPlanDevice } from '../../lib/plan/planBinaryDevice';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { MeasuredPowerObservedProbe, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { steppedPlanDevice } from '../utils/planTestUtils';
 
 const buildObservedState = (
   device: DevicePlanDevice,
-  overrides: Partial<TargetDeviceSnapshot> = {},
+  overrides: Partial<TargetDeviceSnapshot & MeasuredPowerObservedProbe> = {},
 ) => {
   const steppedLoadProfile = isSteppedLoadDevice(device) ? device.steppedLoadProfile : undefined;
   // Preserve the original runtime semantics: read the observed `on` from
@@ -44,7 +44,7 @@ const buildObservedState = (
 
 const buildAction = (
   device: DevicePlanDevice,
-  observedOverrides: Partial<TargetDeviceSnapshot> = {},
+  observedOverrides: Partial<TargetDeviceSnapshot & MeasuredPowerObservedProbe> = {},
 ) => buildExecutableSteppedLoadDevice(
   buildExecutableSteppedLoadIntent(device),
   buildObservedState(device, observedOverrides),
