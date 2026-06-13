@@ -342,10 +342,11 @@ export function isCanSetControl(dev: CanSetControlConsumerInput): boolean {
  * EV blocks and stay outside this gate.
  */
 export function isEvPhysicallyUnplugged(dev: CommandableNowResolveInput): boolean {
-  // Dual-read via the device-shaped resolver: plan-device callers carry the
-  // producer-resolved flat `evSessionInactive` bit (raw `evChargingState` is gone
-  // from the planner types), snapshot callers carry the raw string. Reading the raw
-  // field directly here would silently no-op on plan devices.
+  // Reads the producer-resolved flat `evSessionInactive` bit via the
+  // device-shaped resolver (the raw `evChargingState` consumer arm is retired;
+  // the bit is materialized once at the producer seam). The only production
+  // caller (`planOffStateReason`) passes a plan device that already carries the
+  // bit; `isEvDevice` keeps a non-EV device from ever reading as an EV block.
   return isEvDevice(dev) && isEvSessionInactiveForDevice(dev);
 }
 

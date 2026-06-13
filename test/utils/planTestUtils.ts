@@ -43,25 +43,33 @@ type MaterializedEvFields = {
   evBlockReason?: string | null;
   evSessionInactive?: boolean;
   evChargerNotResumable?: boolean;
+  commandableNow?: boolean;
+  commandableNowReason?: string | null;
 };
 
 /**
- * Test convenience: materialize the flat EV plug-state sub-fields from a
- * fixture's readable `evChargingState: 'plugged_out'` input so the plan devices
- * it builds carry the producer-resolved decisions the planner reads, and drop
- * the raw `evChargingState` (the observer owns it, not the planner).
+ * Test convenience: materialize the flat EV plug-state sub-fields (and the
+ * `commandableNow` bit) from a fixture's readable `evChargingState:
+ * 'plugged_out'` input so the plan devices it builds carry the producer-resolved
+ * decisions consumers read, and drop the raw `evChargingState` (the observer
+ * owns it, not the planner — the raw `evChargingState` consumer arm is retired,
+ * so an unmaterialized fixture would have NO plug-state signal at all).
  *
- * NOT a full mirror of the producer: `toPlanDevice` attaches the trio to EVERY
- * device (`null`/`false` for non-EV), whereas this helper omits the fields for
- * non-EV / unspecified fixtures. That is behaviourally identical for consumers —
- * the dual-read resolvers treat an absent field and a `false`/`null` value the
- * same — and keeps non-EV fixtures uncluttered.
+ * Mirrors the producer (`toPlanDevice`) for EV devices: it runs the same
+ * `resolveCommandableNow` and attaches `commandableNow` / `commandableNowReason`
+ * alongside the EV trio, so the fixture is faithful to a real `PlanInputDevice`
+ * (the executor drift path reads `commandableNow` off it). Crucially it
+ * materializes even when `evChargingState` is absent — a cold-start EV resolves
+ * to `'charger state unknown'` / `commandableNow: false`, exactly as the
+ * producer does for a device that has not yet reported a plug-state.
+ *
+ * Non-EV fixtures are left uncluttered (the resolvers default an absent field to
+ * `false`/`null`, identical to the producer's explicit `false`/`null`).
  */
 export const withMaterializedEvPlugState = <T extends { deviceClass?: string; controlCapabilityId?: string }>(
   overrides: T & { evChargingState?: string },
 ): Omit<T, 'evChargingState'> & MaterializedEvFields => {
   const { evChargingState, ...rest } = overrides;
-  if (evChargingState === undefined && !('evChargingState' in overrides)) return rest;
   if (!isEvDevice(rest)) return rest;
   const commandable = resolveCommandableNow({
     dev: { ...rest, evChargingState: evChargingState as EvChargingState | undefined },
@@ -70,6 +78,8 @@ export const withMaterializedEvPlugState = <T extends { deviceClass?: string; co
     evBlockReason: commandable.evBlockReason,
     evSessionInactive: commandable.evSessionInactive,
     evChargerNotResumable: commandable.evChargerNotResumable,
+    commandableNow: commandable.commandableNow,
+    commandableNowReason: commandable.reason,
   };
   return { ...rest, ...evFields };
 };

@@ -91,14 +91,16 @@ program) remains deferred.*
       new type in `@pels/contracts`) via `resolveEvCommandability` (shared-domain); it is threaded through
       the `planDevices`/`planReconcileState` carriers and the `withEvDiscriminant` regrouper. The device-shaped
       resolvers (`isEvSessionInactiveForDevice` / `isEvChargerNotResumableForDevice` /
-      `resolveEvBlockReasonForDevice` / `isEvBoostBlockedByPlugState`) dual-read it (prefer materialized, fall
-      back to raw `evChargingState` for snapshot-shaped callers), mirroring `isCommandableNow`. Architectural
+      `resolveEvBlockReasonForDevice` / `isEvBoostBlockedByPlugState`) read the materialized flat bits only —
+      the raw-`evChargingState` consumer arm was retired once every caller passed materialized fields; the sole
+      reader of the raw plug-state is the producer `resolveCommandableNow`. Architectural
       correction surfaced in review: the settings-UI read model used to read `evChargingState` off the plan
       device — but the **observer** is its canonical owner (`ObservedDeviceState.evChargingState`), so
       `settingsOverviewReadModel` now sources it via a `getObservedEvChargingState` planService dep wired to
       `ctx.getObservedState(id)`. `evChargingState` stays on `TargetDeviceSnapshot`/`ObservedDeviceState`
       (transport + observer + settings-UI display) as designed. Fixed in passing: `isEvPhysicallyUnplugged`
-      read the raw string directly (would have silently no-op'd on plan devices after the move) — now dual-reads.
+      read the raw string directly (would have silently no-op'd on plan devices after the move) — now reads the
+      materialized `evSessionInactive` bit.
       **`evChargingState` typed as the `EvChargingState` union (closed enum) — foundation landed.** Field +
       every consumer type now use `EvChargingState` (no `string`, no `null`); the producer
       (`getEvChargingState` + the two realtime seams) normalises any vendor value outside the capability enum
@@ -467,18 +469,6 @@ cosmetic chores — do them in passing or drop them; don't park them here.*
       *Why it's needed:* the one surface that reconstructs per-device history is wiped on every boot.
       Needs the Homey-SDK transient-read grace pattern before persisting. A later cross-device "recent
       activity" feed on Overview is a possible follow-on if the per-device view proves used.
-- [ ] **Retire the raw-`evChargingState` arm of the `EvStateConsumerInput` dual-read.**
-      *Persona:* maintainer (`notes/personas.md`) reasoning about the EV resolvers.
-      *Hypothesis:* now that the planner types carry only `evCommandability`, the dual-read in
-      `packages/shared-domain/src/commandableNow.ts` (`isEvSessionInactiveForDevice` /
-      `isEvChargerNotResumableForDevice` / `resolveEvBlockReasonForDevice` / `isEvBoostBlockedByPlugState`)
-      only needs its raw-`evChargingState` fallback for the remaining snapshot-shaped callers
-      (`TargetDeviceSnapshot`, executor restore helpers). Once those migrate to a materialized form, the
-      resolvers can drop the second input shape and stop carrying two paths.
-      *Why it's needed:* a single input shape removes a latent footgun — e.g. `resolveEvBlockReasonForDevice`
-      currently short-circuits on `evCommandability` *before* its `isEvDevice` gate, which is safe only because
-      `resolveEvCommandability` never produces a value for a non-EV device; a future hand-constructed input could
-      bypass the gate. Until then the dual-read is correct and commented.
 - [ ] **Close the boot-window EV-state-chip gap in the settings-UI read model.**
       *Persona:* Homey owner (`notes/personas.md`) glancing at the device overview right after an app restart.
       *Hypothesis:* the read model now sources `evChargingState` from the observer

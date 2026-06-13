@@ -41,12 +41,14 @@ export const isEvSessionInactive = (evChargingState?: EvChargingState): boolean 
 
 /**
  * Device-shaped form of {@link isEvSessionInactive} so EV-scoped consumers read
- * the resolved predicate off the device instead of touching the raw
+ * the producer-resolved flat bit off the device instead of touching the raw
  * `evChargingState` string themselves (the bug-magnet this de-couple removes:
- * consumers must never re-derive plug-state semantics). Caller scopes EV-ness.
+ * consumers must never re-derive plug-state semantics). The flat bit is
+ * materialized at the producer seam (`resolveCommandableNow` → `toPlanDevice`)
+ * and is absent (→ `false`) for non-EV devices. Caller scopes EV-ness.
  */
 export const isEvSessionInactiveForDevice = (dev: EvStateConsumerInput): boolean => (
-  dev.evSessionInactive ?? isEvSessionInactive(dev.evChargingState)
+  dev.evSessionInactive ?? false
 );
 
 /**
@@ -63,9 +65,13 @@ export const isEvChargerNotResumable = (evChargingState?: EvChargingState): bool
   evChargingState === 'plugged_in'
 );
 
-/** Device-shaped form of {@link isEvChargerNotResumable}. Caller scopes EV-ness. */
+/**
+ * Device-shaped form of {@link isEvChargerNotResumable}. Reads the
+ * producer-resolved flat bit (absent → `false` for non-EV). Caller scopes
+ * EV-ness.
+ */
 export const isEvChargerNotResumableForDevice = (dev: EvStateConsumerInput): boolean => (
-  dev.evChargerNotResumable ?? isEvChargerNotResumable(dev.evChargingState)
+  dev.evChargerNotResumable ?? false
 );
 
 /**
@@ -82,15 +88,16 @@ export const isEvBoostBlockedByPlugState = (dev: EvStateConsumerInput): boolean 
 );
 
 /**
- * Consumer input for the device-shaped EV resolvers. Dual-shaped: planner
- * call sites pass the producer-resolved flat bits (`evSessionInactive` /
- * `evChargerNotResumable`; raw `evChargingState` is absent — removed from the
- * planner types); snapshot call sites pass the raw `evChargingState` (no flat
- * bits). The resolvers prefer the materialized value when present, mirroring the
- * `isCommandableNow` dual-read.
+ * Consumer input for the device-shaped EV resolvers. Single-shaped: every call
+ * site passes the producer-resolved flat bits (`evSessionInactive` /
+ * `evChargerNotResumable`), materialized once at the producer seam
+ * (`resolveCommandableNow` → `toPlanDevice`). Both are absent for a non-EV
+ * device, so the resolvers default to `false`. The raw `evChargingState` arm
+ * that used to back snapshot-shaped callers is retired: the only sanctioned
+ * reader of the raw plug-state is the producer itself
+ * ({@link resolveCommandableNow}), which materializes these bits.
  */
 export type EvStateConsumerInput = {
-  evChargingState?: EvChargingState;
   evSessionInactive?: boolean;
   evChargerNotResumable?: boolean;
 };
@@ -148,19 +155,19 @@ export function resolveCommandableNow(params: {
 }): CommandableNowResolution {
   const { dev } = params;
 
-  // EV plug-state sub-classification, materialized alongside the commandable
-  // decision so consumers read flat bits instead of re-touching the raw
-  // `evChargingState`. The device-shaped resolvers dual-read: at this producer
-  // call site `dev` carries the raw `evChargingState`, so they fall back to it.
-  // Gate the bits on `isEvDevice` (as `resolveEvBlockReasonForDevice` already
-  // does) so the contract holds — `false`/`null` for non-EV — even if a non-EV
-  // device unexpectedly carries an `evChargingState`.
+  // EV plug-state sub-classification, materialized here at the producer seam
+  // from the raw `evChargingState` via the GATELESS plug-state primitives
+  // (`resolveEvBlockReason` / `isEvSessionInactive` / `isEvChargerNotResumable`),
+  // each scoped to `isEvDevice` so the contract holds — `false`/`null` for
+  // non-EV — even if a non-EV device unexpectedly carries an `evChargingState`.
+  // This is the ONE place the raw plug-state is read; downstream consumers read
+  // the flat bits below through the device-shaped resolvers (no raw arm).
   const isEv = isEvDevice(dev);
-  const evBlock = resolveEvBlockReasonForDevice(dev);
+  const evBlock = isEv ? resolveEvBlockReason(dev.evChargingState) : null;
   const evSub = {
     evBlockReason: evBlock,
-    evSessionInactive: isEv && isEvSessionInactiveForDevice(dev),
-    evChargerNotResumable: isEv && isEvChargerNotResumableForDevice(dev),
+    evSessionInactive: isEv && isEvSessionInactive(dev.evChargingState),
+    evChargerNotResumable: isEv && isEvChargerNotResumable(dev.evChargingState),
   };
 
   if (evBlock !== null) {
@@ -193,20 +200,21 @@ export function getCommandableNowReason(dev: CommandableNowConsumerInput): strin
 
 /**
  * EV block-reason for a device: `null` when commandable (or not an EV), else the
- * reason string. The device-shaped public resolver shared by `resolveCommandableNow`
- * AND the plan restore-reason gate, so neither re-derives the EV-state switch nor
- * touches the raw `evChargingState`. Gates EV-ness itself (the gateless switch is
- * `resolveEvBlockReason` in commandableNowReason). `undefined` → state_unknown: no
- * trusted plug-state (genuine cold start; transport's consolidated truth would
- * otherwise preserve a real value).
+ * reason string. The device-shaped public resolver consumed by the plan
+ * restore-reason gate (`getEvRestoreStateBlockReason`), which therefore never
+ * re-derives the EV-state switch nor touches the raw `evChargingState`.
+ *
+ * Reads ONLY the producer-resolved flat `evBlockReason`, materialized once at
+ * the producer seam (`resolveCommandableNow` → `toPlanDevice`) where it is
+ * already EV-scoped behind `isEvDevice` and stays EV-specific (`null` for a
+ * commandable EV, never the general 'device unavailable'; `state_unknown` for an
+ * EV with no trusted plug-state). Non-EV devices carry no flat field → `null`.
+ *
+ * Single materialized input: there is no raw-state read after any gate, so the
+ * historical "short-circuit before the `isEvDevice` gate" footgun cannot exist —
+ * a hand-constructed input can only set `evBlockReason`, which is exactly the
+ * producer-scoped value, never a raw plug-state the gate would have to filter.
  */
-export function resolveEvBlockReasonForDevice(dev: CommandableNowResolveInput): string | null {
-  // Prefer the producer-resolved flat field (planner devices); it is already
-  // EV-scoped (materialized behind `isEvDevice` at the producer seam) and stays
-  // EV-specific — `null` for a commandable EV, never the general 'device
-  // unavailable'. Snapshot-shaped callers carry no flat field and fall back to
-  // the raw read behind the `isEvDevice` gate.
-  if (dev.evBlockReason !== undefined) return dev.evBlockReason;
-  if (!isEvDevice(dev)) return null;
-  return resolveEvBlockReason(dev.evChargingState);
+export function resolveEvBlockReasonForDevice(dev: { evBlockReason?: string | null }): string | null {
+  return dev.evBlockReason ?? null;
 }
