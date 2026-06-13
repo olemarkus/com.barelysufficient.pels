@@ -33,6 +33,7 @@ import {
   WEATHER_SETUP_BODY,
   WEATHER_SETUP_BUTTON,
   WEATHER_SOURCE_FORECAST,
+  WEATHER_WARN_OVER_HARDCAP_TITLE,
 } from '../../shared-domain/src/weatherInsightCopy';
 
 /* -------------------------------------------------------------------------- *
@@ -290,6 +291,27 @@ describe('WeatherBudgetCard (Budget plan slot)', () => {
       weatherInsight: { readout: buildReadout({ autoApplyDailyBudget: false }), fetchFailed: false },
     }));
     expect(mount.querySelector('#weather-auto-apply-status')).toBeNull();
+  });
+
+  it('shows the over-hard-cap warning banner only when the suggestion is capped by capacity', () => {
+    const mount = mountIntoBody();
+    const capped = buildReadout({
+      suggestion: { kwh: 290, currentDailyBudgetKwh: 50, cappedByCapacity: true, budgetMayBeLimiting: false },
+    });
+    renderBudgetOverview(mount, buildProps({ weatherInsight: { readout: capped, fetchFailed: false } }));
+    const banner = mount.querySelector('#weather-overcap-banner');
+    expect(banner).not.toBeNull();
+    expect(banner?.textContent).toContain(WEATHER_WARN_OVER_HARDCAP_TITLE);
+    // The cap is physical — the banner must never suggest raising it.
+    expect(banner?.textContent?.toLowerCase()).not.toContain('raise');
+    // A capacity-capped day is never an "ok" landing — the ok-tone verdict is
+    // suppressed so it can't contradict the banner.
+    expect(mount.querySelector('.weather-card__verdict--ok')).toBeNull();
+
+    renderBudgetOverview(mount, buildProps({ weatherInsight: { readout: buildReadout(), fetchFailed: false } }));
+    expect(mount.querySelector('#weather-overcap-banner')).toBeNull();
+    // Uncapped: the ok verdict renders normally.
+    expect(mount.querySelector('.weather-card__verdict--ok')).not.toBeNull();
   });
 
   it('S8: shows the Rough estimate chip with the colder-than-observed reason', () => {

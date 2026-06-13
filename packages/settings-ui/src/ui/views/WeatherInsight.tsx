@@ -1,6 +1,6 @@
 import type { ComponentChildren } from 'preact';
 import { MdCircularProgress, MdElevation, MdTextButton } from './materialWebJSX.tsx';
-import { ExpandMoreIcon } from './icons.tsx';
+import { ExpandMoreIcon, WarningIcon } from './icons.tsx';
 import type {
   EnergySignatureFit,
   WeatherAdvisorReadoutPayload,
@@ -62,6 +62,8 @@ import {
   WEATHER_SETUP_BUDGET_HINT,
   WEATHER_SETUP_BUTTON,
   WEATHER_VALUE_NOT_CLEAR_YET,
+  WEATHER_WARN_OVER_HARDCAP_BODY,
+  WEATHER_WARN_OVER_HARDCAP_TITLE,
 } from '../../../../shared-domain/src/weatherInsightCopy.ts';
 import { WeatherCoverageBand, WeatherScatterChart } from './WeatherInsightChart.tsx';
 
@@ -99,6 +101,22 @@ const StateCard = ({ id, title, body, children }: {
   </section>
 );
 
+/**
+ * Shown when the suggestion was capped by the hard cap — i.e. tomorrow's expected
+ * usage is more than the cap can physically deliver in a day. Reuses the shared
+ * `.banner banner--warning` primitive. The cap is physical: copy never suggests
+ * raising it.
+ */
+const WeatherOverCapBanner = () => (
+  <section class="banner banner--warning banner--stacked" id="weather-overcap-banner" role="status">
+    <span class="banner__icon" aria-hidden="true"><WarningIcon /></span>
+    <div class="banner__body">
+      <p class="banner__title">{WEATHER_WARN_OVER_HARDCAP_TITLE}</p>
+      <p class="banner__text">{WEATHER_WARN_OVER_HARDCAP_BODY}</p>
+    </div>
+  </section>
+);
+
 const TomorrowCard = ({ readout, onShowDetails, onAdjustBudget }: {
   readout: WeatherAdvisorReadoutPayload;
 } & CardCallbacks) => {
@@ -106,7 +124,7 @@ const TomorrowCard = ({ readout, onShowDetails, onAdjustBudget }: {
   const roughReason = prediction?.beyondObservedCold
     ? WEATHER_REASON_COLDER_THAN_OBSERVED
     : (readout.driftSuspected ? WEATHER_REASON_DRIFT_WIDER : null);
-  const verdict = prediction && fit
+  const rawVerdict = prediction && fit
     ? resolveTomorrowVerdict({
       currentDailyBudgetKwh: suggestion?.currentDailyBudgetKwh ?? null,
       predictionKwh: prediction.kwh,
@@ -115,6 +133,9 @@ const TomorrowCard = ({ readout, onShowDetails, onAdjustBudget }: {
       residualQ90: fit.residualQ90,
     })
     : null;
+  // A capacity-capped day is never an "ok" landing; an ok-tone verdict would
+  // contradict the over-cap banner, so suppress it (the banner is the message).
+  const verdict = suggestion?.cappedByCapacity === true && rawVerdict?.tone === 'ok' ? null : rawVerdict;
   return (
     <section id="weather-tomorrow-card" class="pels-surface-card budget-redesign-card weather-card">
       <MdElevation aria-hidden="true" />
@@ -161,6 +182,9 @@ const TomorrowCard = ({ readout, onShowDetails, onAdjustBudget }: {
           )}
         </div>
       )}
+      {/* Tomorrow's demand exceeds what the hard cap can deliver — surfaced before
+          the verdict so the physical ceiling frames the budget judgment. */}
+      {suggestion?.cappedByCapacity === true && <WeatherOverCapBanner />}
       {verdict !== null && (
         <p class={`weather-card__verdict weather-card__verdict--${verdict.tone}`}>{verdict.text}</p>
       )}

@@ -287,7 +287,7 @@ export type WeatherAdvisorSuggestion = {
   kwh: number;
   /** The active daily budget for comparison; null when the daily budget is off. */
   currentDailyBudgetKwh: number | null;
-  /** The capacity ceiling (cap × 24 h) clamped the suggestion. */
+  /** Tomorrow's expected usage exceeds what the hard cap delivers in a day (cap × 24 h). */
   cappedByCapacity: boolean;
   /** Recent cold days were PELS-limited and tomorrow is cold — the suggestion was raised to match. */
   budgetMayBeLimiting: boolean;

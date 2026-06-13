@@ -257,14 +257,26 @@ describe('buildWeatherAdvisorReadout', () => {
       .toBe(50);
   });
 
-  it('marks the suggestion as capacity-capped when cap × 24h clamps it', () => {
+  it('marks the suggestion as capacity-capped when expected demand exceeds cap × 24h', () => {
     const payload = buildWeatherAdvisorReadout(withState(
       { records: recentDays(30), latestFit: fit() },
       { capacityLimitKw: 1, currentDailyBudgetKwh: 20 },
     ));
+    // Prediction (~29 kWh) > cap × 24 (24 kWh) → genuinely over-cap.
     expect(payload?.suggestion?.cappedByCapacity).toBe(true);
     expect(payload?.suggestion?.kwh).toBeLessThanOrEqual(24);
     expect(payload?.suggestion?.currentDailyBudgetKwh).toBe(20);
+  });
+
+  it('does NOT flag capacity-capped when expected demand fits under a tiny cap (floor clamps, not demand)', () => {
+    // A 0.5 kW cap (12 kWh/day) clamps the [20,360] suggestion floor below the cap,
+    // but tomorrow's predicted demand (8 kWh, uncorrelated) fits — so not over-cap.
+    const payload = buildWeatherAdvisorReadout(withState(
+      { records: recentDays(30), latestFit: fit({ model: 'uncorrelated', medianDayKwh: 8 }) },
+      { capacityLimitKw: 0.5 },
+    ));
+    expect(payload?.prediction?.kwh).toBeLessThan(12);
+    expect(payload?.suggestion?.cappedByCapacity).toBe(false);
   });
 
   it('decimates usable days into 1 °C bins and ships raw recent days with quality', () => {

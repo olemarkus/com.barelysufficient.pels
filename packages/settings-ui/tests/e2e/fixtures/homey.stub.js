@@ -1234,7 +1234,7 @@
         currentDailyBudgetKwh: settings.daily_budget_enabled !== false
           ? Number(settings.daily_budget_kwh ?? 0)
           : null,
-        cappedByCapacity: false,
+        cappedByCapacity: advisor.cappedByCapacity === true,
         budgetMayBeLimiting: false,
       },
       scatter,
