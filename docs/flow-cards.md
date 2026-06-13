@@ -1,5 +1,5 @@
 ---
-title: Flow Cards
+title: Homey Flow Cards for Power & Price Automation
 description: What each PELS Homey Flow card does and which ones matter most for a working automation setup.
 ---
 

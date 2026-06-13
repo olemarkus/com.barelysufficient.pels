@@ -1,5 +1,5 @@
 ---
-title: Smart Tasks
+title: "Smart Tasks: Schedule EV Charging & Heating by a Deadline"
 description: Use PELS Smart tasks to charge, heat, or prepare a managed device by a specific time using the best available hours.
 ---
 

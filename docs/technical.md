@@ -1,29 +1,11 @@
 ---
-title: Technical Reference
+title: "How PELS Works: Capacity Budget, Cooldowns & Price Math"
 description: Internal planner behavior, budget logic, cooldowns, estimation rules, and system assumptions used by PELS.
 ---
 
 # Technical Reference
 
 This document explains the internal logic and assumptions PELS uses to manage your devices. It uses the public vocabulary from the user guide in headings and prose. Raw planner terms are shown only in code-style text or where they are still part of diagnostics, metrics, or existing Homey Flow card names.
-
-## Table of Contents
-
-- [Permissions](#permissions)
-- [Capacity Budget Model](#capacity-budget-model-hourly)
-- [Terminology and Units](#terminology-and-units)
-- [Hour Transitions](#hour-transitions)
-- [Cooldown Logic](#cooldown-logic)
-- [Priority Swapping](#priority-swapping)
-- [Limiting Order](#limiting-order)
-- [Resume Order](#resume-order)
-- [Power Estimation](#power-estimation)
-- [Per-Device Diagnostics](#per-device-diagnostics)
-- [Power Usage Data Retention](#power-usage-data-retention)
-- [Daily Budget Weighting Math](#daily-budget-weighting-math)
-- [How PELS Drives Devices](#how-pels-drives-devices)
-
----
 
 ## Permissions
 

@@ -1,6 +1,6 @@
 ---
-title: PELS for norske hjem
-description: Oversikt over PELS for Homey Pro, strømstyring, kapasitetsledd, elbillading, varmtvannsbereder, varme, spotpris, nettleie, strømstøtte, Norgespris og Enova.
+title: "Strømstyring for Homey Pro: kapasitetsledd og elbillading"
+description: PELS styrer strømforbruket i Homey Pro etter kapasitetsledd og spotpris, og flytter elbillading, varmtvann og varme til de billigste timene helt automatisk.
 ---
 
 # PELS for norske hjem
@@ -88,6 +88,8 @@ Gulvvarme passer ofte godt med prisstyring fordi gulvet lagrer varme. PELS kan h
 PELS kan bruke flere priskilder. I Norge er den innebygde kilden laget for norske strømpriser og kan kombinere spotpris, nettleie, leverandørpåslag, avgifter og valgt ordning for strømstøtte eller Norgespris. Du velger dette i innstillingene.
 
 ## Gå videre
+
+Sidene under er foreløpig på engelsk.
 
 - [Kom i gang](/getting-started): installer PELS, koble til måler og sett første effektgrense.
 - [Konfigurasjon](/configuration): full oversikt over innstillingene.

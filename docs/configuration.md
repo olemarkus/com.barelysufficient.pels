@@ -1,5 +1,5 @@
 ---
-title: Configuration
+title: "Settings Guide — Limits, Devices, Modes & Prices"
 description: What each PELS settings page does and which controls matter most for a reliable setup.
 ---
 
@@ -69,6 +69,8 @@ See [Smart Tasks](/smart-tasks) for behavior details and [Book Cheap Hours With 
 
 This is where the core capacity settings and whole-home power source live.
 
+![PELS Limits and safety settings showing Hard cap 8 kW, Safety margin 0.4 kW, the resulting safe pace, and the whole-home power source](/screenshots/settings/limits-safety.png)
+
 | Setting | What it does |
 | --- | --- |
 | **Hard cap (kW)** | The upper boundary PELS tries not to exceed. Set this from your grid tariff step or breaker limit. |
@@ -83,6 +85,8 @@ Important:
 ## Settings > Devices
 
 The Devices page shows temperature devices, on-off devices, and supported EV chargers. Open a device to configure its detail panel.
+
+![PELS Devices page with Managed, Limit, and Price toggles for an EV charger, heaters, and a thermostat](/screenshots/settings/devices.png)
 
 Top-level controls:
 
@@ -103,6 +107,8 @@ Device detail sections:
 | **Setup** | Managed by PELS, power-limit control, price-based control, budget exemption, built-in device control, control model, and battery level. |
 | **Advanced diagnostics** | Read-only blocked time, activation instability, and penalty history. |
 
+![PELS device detail page for a heat pump showing Temperature per mode, Price response, Power limiting, and the Setup toggles including Managed by PELS and Power-limit control](/screenshots/device-detail/mw-thermostat-heatpump-full.png)
+
 Notes:
 
 - Devices without a usable power estimate cannot use power-limit control.
@@ -115,6 +121,8 @@ Notes:
 ## Settings > Modes
 
 Modes let you store different comfort and priority profiles such as **Home**, **Away**, **Night**, or **Vacation**.
+
+![PELS Modes settings showing per-mode priority order and target temperatures, with drag handles to reorder priority](/screenshots/settings/modes.png)
 
 ### What changes per mode
 
