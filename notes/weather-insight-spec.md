@@ -202,15 +202,26 @@ Tomorrow slot); detail view unreachable.
 **S2 — backfill running.** Same slot.
 > Title: `Reading your history…`
 > Body: `Matching the past year of your usage with past temperatures. This runs once and can take a few minutes the first time.`
-> Progress line when counts are available: `Checked 210 of 365 days.` —
-> otherwise the line is omitted (the current backfill is a single fetch with
-> no incremental counts, so v1 renders the title + body only).
+> Liveness cue: an indeterminate `md-circular-progress` spinner (accent) under
+> the body, so a slow single-fetch run reads as progress, not a freeze. The
+> backfill has no incremental counts, so the spinner is indeterminate (no
+> percentage / "Checked N of 365 days" line).
 
 **S3 — learning (< 21 usable days).**
 > Budget card: title `Learning your home`, body `PELS has 9 days of usage and temperature so far. The first estimate appears after about 21 days.` Button: `Weather details`.
+> Stuck note (warn, `.field__hint--alert`) when the configured outdoor device
+> reads `unreadable`: `PELS can’t read your outdoor device right now — if this keeps up, learning will stall. Check it in Settings.`
+> Conditional wording because the trigger is a single live read that may be a
+> transient miss — it must not assert the feature is broken on one failed read.
 > Detail view: summary and numbers cards hidden; scatter card renders with
 > whatever dots exist, subtitle swapped to `Each dot is one day. Estimates appear after about 21 days.`
 > The visibly filling scatter is the comeback hook.
+
+**First-estimate arrival.** The first time a `ready` readout is seen ON THE BUDGET
+TAB (where the outlook is visible), a one-time `ok`-tone toast fires:
+`Weather insight is ready — here’s tomorrow’s outlook.` Persisted behind a UI-only
+`weather_advisor_first_estimate_seen` key (written before the toast; the in-session
+flag is monotonic) so it fires once, never on the Settings sub-page.
 
 **S4 — winter-only data (balance temperature not identifiable).**
 > Summary headline: `On a day around 0 °C your home uses about 52 kWh, and about 2.1 kWh more for each degree colder.`

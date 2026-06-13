@@ -381,6 +381,18 @@ export const WEATHER_BACKFILL_BODY = 'Matching the past year of your usage with 
   + 'This runs once and can take a few minutes the first time.';
 
 export const WEATHER_LEARNING_TITLE = 'Learning your home';
+/**
+ * Warn note on the learning card when the configured outdoor device reads
+ * unreadable. Conditional ("right now" / "if this keeps up") because the signal
+ * is a single live read that may be a transient miss — it must not assert the
+ * feature is broken on one failed read.
+ */
+// Names the actual control to fix (mirrors WEATHER_OUTDOOR_PICKER_LABEL — that
+// const is declared later in this file, so the label is inlined here).
+export const WEATHER_LEARNING_STUCK = 'PELS can’t read your outdoor device right now — if this '
+  + 'keeps up, learning will stall. Check the Outdoor temperature device in Settings.';
+/** One-time celebration when the first estimate becomes available. */
+export const WEATHER_FIRST_ESTIMATE_TOAST = 'Weather insight is ready — here’s tomorrow’s outlook.';
 export const composeLearningBody = (usableDays: number): string => (
   `PELS has ${formatDays(usableDays)} of usage and temperature so far. The first estimate appears `
   + 'after about 21 days.'
