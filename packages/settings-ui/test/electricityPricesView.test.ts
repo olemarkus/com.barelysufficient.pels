@@ -56,6 +56,40 @@ describe('ElectricityPricesView', () => {
     });
   });
 
+  it('gives the grid-company placeholder a non-empty value so md-select never shows a blank field, and maps it back to empty on change', () => {
+    const mount = document.createElement('div');
+    document.body.appendChild(mount);
+
+    const onOrganizationChange = vi.fn();
+    renderElectricityPricesView(mount, buildProps({ organizationNumber: '', onOrganizationChange }));
+
+    const gridSelect = mount.querySelector(
+      'md-filled-select[aria-labelledby="electricity-prices-grid-company-label"]',
+    ) as (HTMLElement & { value: string }) | null;
+    expect(gridSelect).not.toBeNull();
+
+    // md-select renders nothing in the closed field for an empty value, so the
+    // placeholder option must carry a non-empty sentinel value while still
+    // reading "Select grid company".
+    const placeholderOption = gridSelect?.querySelector('md-select-option') as (HTMLElement & { value: string }) | null;
+    expect(placeholderOption?.textContent).toContain('Select grid company');
+    expect(placeholderOption?.value).toBeTruthy();
+    const sentinel = placeholderOption!.value;
+
+    // Picking the placeholder must surface as an empty organization number, never
+    // the internal sentinel; picking a real company passes its value through.
+    const fireChange = (value: string) => {
+      if (gridSelect) {
+        gridSelect.value = value;
+        gridSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    };
+    fireChange(sentinel);
+    expect(onOrganizationChange).toHaveBeenLastCalledWith('');
+    fireChange('123');
+    expect(onOrganizationChange).toHaveBeenLastCalledWith('123');
+  });
+
   it('renders the canonical price-level chip and last-fetched time in the summary card', () => {
     const mount = document.createElement('div');
     document.body.appendChild(mount);
