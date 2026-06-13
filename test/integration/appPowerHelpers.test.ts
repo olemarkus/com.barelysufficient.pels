@@ -24,7 +24,7 @@ import {
   PowerCalibrationStore,
   createCalibrationSnapshotMutationHook,
 } from '../../lib/device/devicePowerCalibrationStore';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { MeasuredPowerObservedProbe, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { shouldSkipShortfallRebuildFromPlanSummary } from '../../lib/plan/rebuildScheduler/shortfallSuppression';
 import { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
 import { getPerfSnapshot } from '../../lib/utils/perfCounters';
@@ -2150,7 +2150,7 @@ describe('recordPowerSampleForApp', () => {
 
 describe('createCalibrationSnapshotMutationHook', () => {
   const start = Date.UTC(2025, 0, 1, 0, 0, 0);
-  const makeSnapshot = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => ({
+  const makeSnapshot = (overrides: Partial<TargetDeviceSnapshot & MeasuredPowerObservedProbe> = {}): TargetDeviceSnapshot & MeasuredPowerObservedProbe => ({
     id: 'hoiax-1',
     name: 'Connected 300',
     targets: [],

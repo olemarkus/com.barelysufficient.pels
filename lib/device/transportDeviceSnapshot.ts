@@ -1,5 +1,6 @@
 import type {
   EvObservedProbe,
+  MeasuredPowerObservedProbe,
   StateOfChargeObservedProbe,
   TargetDeviceSnapshot,
   TemperatureObservedProbe,
@@ -16,12 +17,15 @@ import type {
  *   `TemperatureObservedFields`).
  * - `StateOfChargeObservedProbe` for `stateOfCharge` (see
  *   `StateOfChargeObservedFields`).
+ * - `MeasuredPowerObservedProbe` for `measuredPowerKw` /
+ *   `measuredPowerObservedAtMs` (see `MeasuredPowerObservedFields`).
  *
  * This shape is for the transport/observer OWNER seams only. It must not leak
  * across the producer boundary — consumers receive `TargetDeviceSnapshot` (the
  * widened object is assignable to it) and narrow through `isEvObserved` /
- * `hasObservedTemperature` / `hasObservedStateOfCharge`
- * (`packages/shared-domain/src/*ObservedState.ts`).
+ * `hasObservedTemperature` / `hasObservedStateOfCharge` /
+ * `hasObservedMeasuredPower` (`packages/shared-domain/src/*ObservedState.ts`).
  */
 export type TransportDeviceSnapshot =
-  TargetDeviceSnapshot & EvObservedProbe & TemperatureObservedProbe & StateOfChargeObservedProbe;
+  TargetDeviceSnapshot & EvObservedProbe & TemperatureObservedProbe
+  & StateOfChargeObservedProbe & MeasuredPowerObservedProbe;

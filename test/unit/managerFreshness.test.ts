@@ -1,5 +1,5 @@
 import { applyFreshnessOnlyCapabilityUpdate } from '../../lib/device/transport/managerFreshness';
-import type { EvObservedProbe, TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
+import type { EvObservedProbe, MeasuredPowerObservedProbe, TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
 
 // Minimal EV snapshot — the freshness handler only touches the EV fields below.
 const evSnapshot = (
@@ -18,12 +18,12 @@ const evSnapshot = (
 // junk write is observable as "prior value retained".
 const numericSnapshot = (
   fields: { measuredPowerKw?: number; currentTemperature?: number },
-): TargetDeviceSnapshot & TemperatureObservedProbe => ({
+): TargetDeviceSnapshot & TemperatureObservedProbe & MeasuredPowerObservedProbe => ({
   id: 'dev1',
   name: 'Device',
   targets: [],
   ...fields,
-} as unknown as TargetDeviceSnapshot & TemperatureObservedProbe);
+} as unknown as TargetDeviceSnapshot & TemperatureObservedProbe & MeasuredPowerObservedProbe);
 
 const NON_FINITE: ReadonlyArray<[string, unknown]> = [
   ['NaN', Number.NaN],

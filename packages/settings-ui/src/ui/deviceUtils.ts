@@ -1,6 +1,7 @@
 import type {
   DeviceDescriptor,
   EvBoostConfig,
+  MeasuredPowerObservedProbe,
   ObservedDeviceState,
   StateOfChargeObservedProbe,
   TemperatureBoostConfig,
@@ -15,10 +16,12 @@ export { isGrayStateDevice } from '../../../shared-domain/src/deviceStatePredica
 // so callers (e.g. `state.latestDevices`) pass unchanged. First surface of the
 // settings-UI snapshot-consumer decoupling (notes/state-management/).
 export type SettingsUiDeviceListItem = ObservedDeviceState
-  // The `/ui_devices` snapshot physically carries the observed SoC bag the base
-  // type omits (SoC-observed slice); the detail SoC/boost panes read it. Consumers
-  // keep their `status`/`percent` checks (the guard proves presence, not freshness).
+  // The `/ui_devices` snapshot physically carries the observed SoC bag and the
+  // measured-power reading the base type omits (SoC- and measured-power-observed
+  // slices); the detail SoC/boost panes and `supportsPowerDevice` read them.
+  // Consumers keep their `status`/`typeof` checks (the guard proves presence).
   & StateOfChargeObservedProbe
+  & MeasuredPowerObservedProbe
   & Pick<DeviceDescriptor,
     | 'deviceClass' | 'deviceType' | 'budgetExempt' | 'flowBacked'
     | 'powerCapable' | 'powerKw' | 'expectedPowerKw' | 'loadKw'

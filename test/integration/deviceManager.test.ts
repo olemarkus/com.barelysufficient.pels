@@ -14,7 +14,7 @@ import {
     startPendingBinarySettleWindow,
 } from '../../lib/observer/binarySettle';
 import type { LiveFeedHealth } from '../../lib/device/liveFeed';
-import type { EvObservedProbe, StateOfChargeObservedProbe, TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
+import type { EvObservedProbe, MeasuredPowerObservedProbe, StateOfChargeObservedProbe, TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { isCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import { isManagedFilterActive } from '../../setup/appDeviceSupport';
@@ -1263,7 +1263,7 @@ describe('DeviceTransport', () => {
             const snapshot = deviceManager.getSnapshot();
             expect(snapshot).toHaveLength(1);
             expect(snapshot[0].expectedPowerKw).toBeCloseTo(0.6, 3);
-            expect(snapshot[0].measuredPowerKw).toBe(0);
+            expect((snapshot[0] as TargetDeviceSnapshot & MeasuredPowerObservedProbe).measuredPowerKw).toBe(0);
         });
 
         it('treats settings.load=0 as unset configured load and keeps no-power thermostats unsupported', async () => {
@@ -1353,7 +1353,7 @@ describe('DeviceTransport', () => {
 
                 const snapshot = deviceManager.getSnapshot();
                 expect(snapshot).toHaveLength(1);
-                expect(snapshot[0].measuredPowerKw).toBeCloseTo(0.125, 6);
+                expect((snapshot[0] as TargetDeviceSnapshot & MeasuredPowerObservedProbe).measuredPowerKw).toBeCloseTo(0.125, 6);
                 expect(snapshot[0].expectedPowerSource).toBe('measured-peak');
                 expect(snapshot[0].expectedPowerKw).toBeCloseTo(0.125, 6);
                 expect(snapshot[0].powerKw).toBeCloseTo(0.125, 6);
@@ -1460,7 +1460,7 @@ describe('DeviceTransport', () => {
             await deviceManager.refreshSnapshot();
             const snapshot = deviceManager.getSnapshot();
 
-            expect(snapshot[0].measuredPowerKw).toBeCloseTo(1, 3);
+            expect((snapshot[0] as TargetDeviceSnapshot & MeasuredPowerObservedProbe).measuredPowerKw).toBeCloseTo(1, 3);
             expect(snapshot[0].powerCapable).toBe(true);
             expect(snapshot[0].lastFreshDataMs).toBe(new Date('2026-01-01T01:00:30.000Z').getTime());
 
@@ -1506,7 +1506,7 @@ describe('DeviceTransport', () => {
             await deviceManager.refreshSnapshot();
             const snapshot = deviceManager.getSnapshot();
 
-            expect(snapshot[0].measuredPowerKw).toBeUndefined();
+            expect((snapshot[0] as TargetDeviceSnapshot & MeasuredPowerObservedProbe).measuredPowerKw).toBeUndefined();
             expect(snapshot[0].expectedPowerSource).toBe('default');
 
             vi.useRealTimers();
@@ -1734,7 +1734,7 @@ describe('DeviceTransport', () => {
             await deviceManager.refreshSnapshot();
 
             // Verify initial state
-            expect(deviceManager.getSnapshot()[0].measuredPowerKw).toBe(1);
+            expect((deviceManager.getSnapshot()[0] as TargetDeviceSnapshot & MeasuredPowerObservedProbe).measuredPowerKw).toBe(1);
             debugStructuredMock.mockClear();
 
             // Trigger update 2000W via device.update
@@ -1749,7 +1749,7 @@ describe('DeviceTransport', () => {
             });
 
             const snapshot = deviceManager.getSnapshot();
-            expect(snapshot[0].measuredPowerKw).toBe(2);
+            expect((snapshot[0] as TargetDeviceSnapshot & MeasuredPowerObservedProbe).measuredPowerKw).toBe(2);
             expect(snapshot[0].powerKw).toBe(2);
             expect(debugStructuredMock).toHaveBeenCalledWith(expect.objectContaining({
                 event: 'device_update_processed',
@@ -2272,7 +2272,7 @@ describe('DeviceTransport', () => {
                 binaryControl: { on: false },
                 measuredPowerKw: 0.1,
                 binaryControlObservation: previousEvidence,
-            }]);
+            }] as (TargetDeviceSnapshot & MeasuredPowerObservedProbe)[]);
 
             deviceManager.injectDeviceUpdateForTest({
                 id: 'dev1',
@@ -6549,7 +6549,7 @@ describe('DeviceTransport', () => {
                     deviceManager.injectCapabilityUpdateForTest('dev1', 'measure_power', 2000);
 
                     const snapshot = deviceManager.getSnapshot()[0];
-                    expect(snapshot.measuredPowerKw).toBe(2);
+                    expect((snapshot as TargetDeviceSnapshot & MeasuredPowerObservedProbe).measuredPowerKw).toBe(2);
                     expect(snapshot.lastFreshDataMs).toBeGreaterThan(freshnessAtRefresh!);
                     expect(liveStateListener).toHaveBeenCalledOnce();
                     expect(liveStateListener).toHaveBeenCalledWith(expect.objectContaining({
@@ -6581,7 +6581,7 @@ describe('DeviceTransport', () => {
                     deviceManager.injectCapabilityUpdateForTest('dev1', 'measure_power', Number.POSITIVE_INFINITY);
 
                     const snapshot = deviceManager.getSnapshot()[0];
-                    expect(snapshot.measuredPowerKw).toBe(2);
+                    expect((snapshot as TargetDeviceSnapshot & MeasuredPowerObservedProbe).measuredPowerKw).toBe(2);
                     expect(snapshot.lastFreshDataMs).toBe(freshnessBefore);
                 } finally {
                     vi.useRealTimers();
@@ -7094,7 +7094,7 @@ describe('DeviceTransport', () => {
 
                     const snapshot = deviceManager.getSnapshot()[0];
                     expect(snapshot.binaryControl?.on).toBe(false);
-                    expect(snapshot.measuredPowerKw).toBe(0.5);
+                    expect((snapshot as TargetDeviceSnapshot & MeasuredPowerObservedProbe).measuredPowerKw).toBe(0.5);
                     expect(snapshot.lastFreshDataMs).toBe(new Date('2026-04-01T12:01:00.000Z').getTime());
                     expect(snapshot.binaryControlObservation).toBeUndefined();
                     expect(reconcileListener).not.toHaveBeenCalled();

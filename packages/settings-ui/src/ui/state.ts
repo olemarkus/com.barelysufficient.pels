@@ -4,6 +4,7 @@ import type {
   DeviceTargetPowerConfigs,
   EvBoostConfig,
   EvBoostSettings,
+  MeasuredPowerObservedProbe,
   TemperatureBoostConfig,
   TemperatureBoostSettings,
 } from '../../../contracts/src/types.ts';
@@ -34,8 +35,13 @@ export type PriceOptimizationConfig = {
  * context (`ctx.get*BoostConfig`), and the UI's authoritative source is
  * `state.{temperature,ev}BoostSettings`. The device-detail handlers write these
  * onto the live device object optimistically after a successful settings write.
+ *
+ * Probe-widened with `MeasuredPowerObservedProbe`: the `/ui_devices` snapshot
+ * physically carries the observed `measuredPowerKw` the base type omits
+ * (measured-power-observed slice), which the device-control-profile and
+ * target-power-config panes read.
  */
-export type SettingsUiDeviceView = DecoratedDeviceSnapshot & {
+export type SettingsUiDeviceView = DecoratedDeviceSnapshot & MeasuredPowerObservedProbe & {
   temperatureBoost?: TemperatureBoostConfig;
   evBoost?: EvBoostConfig;
 };

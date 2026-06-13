@@ -3,7 +3,8 @@ import type CapacityGuard from './capacityGuard';
 import type { PowerTrackerState } from './tracker';
 import type { StructuredDebugEmitter } from '../logging/logger';
 import { aggregateAndPruneHistory, recordPowerSample as recordPowerSampleCore } from './tracker';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { MeasuredPowerObservedProbe, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import { POWER_SAMPLE_STALE_THRESHOLD_MS } from '../../packages/shared-domain/src/powerFreshness';
 
@@ -59,23 +60,25 @@ export function recordDailyBudgetCap(params: {
 }
 
 const buildFreshMeasuredDevicePowerWById = (params: {
-  devices: TargetDeviceSnapshot[];
+  devices: (TargetDeviceSnapshot & MeasuredPowerObservedProbe)[];
   nowMs: number;
 }): Record<string, number> | undefined => {
   const entries = params.devices.flatMap((device) => {
-    const measuredPowerKw = device.measuredPowerKw;
+    // `hasObservedMeasuredPower` proves `measuredPowerKw` is finite (producer
+    // invariant); the cluster guard does NOT prove `measuredPowerObservedAtMs`,
+    // so this staleness-sensitive consumer still checks the observation time
+    // independently (the timestamp is optional on the narrowed shape).
+    if (!hasObservedMeasuredPower(device)) return [];
     const observedAtMs = device.measuredPowerObservedAtMs;
     if (
-      typeof measuredPowerKw !== 'number'
-      || !Number.isFinite(measuredPowerKw)
-      || typeof observedAtMs !== 'number'
+      typeof observedAtMs !== 'number'
       || !Number.isFinite(observedAtMs)
       || observedAtMs > params.nowMs
       || params.nowMs - observedAtMs >= POWER_SAMPLE_STALE_THRESHOLD_MS
     ) {
       return [];
     }
-    return [[device.id, Math.max(0, measuredPowerKw * 1000)] as const];
+    return [[device.id, Math.max(0, device.measuredPowerKw * 1000)] as const];
   });
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 };

@@ -6,8 +6,10 @@ import { isEvDevice } from '../../packages/shared-domain/src/commandableNow';
 import { isTemperatureControlDevice } from '../../packages/shared-domain/src/temperatureDeviceKind';
 import { hasObservedTemperature } from '../../packages/shared-domain/src/temperatureObservedState';
 import { hasObservedStateOfCharge } from '../../packages/shared-domain/src/stateOfChargeObservedState';
+import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
 import type {
   DeviceDescriptor,
+  MeasuredPowerObservedProbe,
   ObservedDeviceState,
   StateOfChargeObservedProbe,
   TemperatureObservedProbe,
@@ -18,12 +20,15 @@ import type { DeviceObjectiveProfileSample } from './types';
 // few descriptor fields the kind predicates need — NOT the full producer-input
 // `TargetDeviceSnapshot`. Objectives is a downstream consumer; it depends on the
 // decomposed snapshot halves, never the raw producer snapshot. The
-// `TemperatureObservedProbe` / `StateOfChargeObservedProbe` widenings carry the
-// observed temperature / SoC the base type omits (this is a producer-fed funnel);
-// `hasObservedTemperature` / `hasObservedStateOfCharge` narrow them.
+// `TemperatureObservedProbe` / `StateOfChargeObservedProbe` /
+// `MeasuredPowerObservedProbe` widenings carry the observed temperature / SoC /
+// measured power the base type omits (this is a producer-fed funnel);
+// `hasObservedTemperature` / `hasObservedStateOfCharge` /
+// `hasObservedMeasuredPower` narrow them.
 export type ObjectiveSampleDevice = ObservedDeviceState
   & TemperatureObservedProbe
   & StateOfChargeObservedProbe
+  & MeasuredPowerObservedProbe
   & Pick<DeviceDescriptor, 'steppedLoadProfile' | 'deviceClass' | 'deviceType' | 'controlCapabilityId'>;
 
 export const OBJECTIVE_PROFILE_MAX_OBSERVATION_AGE_MS = 30 * 60 * 1000;
@@ -80,11 +85,11 @@ function isFreshObservationTime(observedAtMs: number, nowMs: number): boolean {
 function resolveCredibleDevicePower(
   device: ObjectiveSampleDevice,
 ): Pick<DeviceObjectiveProfileSample, 'crediblePowerW' | 'powerSource'> {
-  if (
-    typeof device.measuredPowerKw === 'number'
-    && Number.isFinite(device.measuredPowerKw)
-    && device.measuredPowerKw > 0
-  ) {
+  // `hasObservedMeasuredPower` proves `measuredPowerKw` is a finite `number`
+  // (producer invariant — the write seams store only `Number.isFinite` values),
+  // so no `typeof`/`Number.isFinite` re-check here; `> 0` is the positive-draw
+  // gate (a measured 0 W is not credible device power), which stays.
+  if (hasObservedMeasuredPower(device) && device.measuredPowerKw > 0) {
     return {
       crediblePowerW: Math.round(device.measuredPowerKw * 1000),
       powerSource: 'measured',

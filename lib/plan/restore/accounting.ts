@@ -14,6 +14,7 @@ import {
   resolveActiveSteppedRestoreReservation,
   resolveSteppedRestoreObservedGapKw,
 } from '../planSteppedRestorePending';
+import { resolveObservedDrawKwWithNameplate } from './observedDraw';
 import type { RestorePowerSource } from '../../../packages/contracts/src/types';
 
 // Re-exported for plan-layer consumers (planReasons, restore/index, tests)
@@ -129,7 +130,7 @@ function resolvePendingRestoreGapKwForDevice(
   // this cycle) is never "observed off" here — same as the prior absent-field default.
   if (isBinaryPlanDevice(dev) && isBinaryObservedOff(dev)) return 0;
   const expectedKw = estimateRestorePower(dev);
-  const actualKw = Math.max(0, dev.measuredPowerKw ?? dev.powerKw ?? 0);
+  const actualKw = resolveObservedDrawKwWithNameplate(dev);
   if (actualKw >= expectedKw * PENDING_RESTORE_CONFIRMED_FRACTION) return 0;
   return expectedKw - actualKw;
 }

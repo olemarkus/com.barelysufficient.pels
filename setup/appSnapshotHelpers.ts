@@ -9,7 +9,8 @@ import {
   isDeviceObservationStaleByAge,
 } from '../lib/observer/observationFreshness';
 import type { PlanService } from '../lib/plan/planService';
-import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import type { MeasuredPowerObservedProbe, TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import { hasObservedMeasuredPower } from '../packages/shared-domain/src/measuredPowerObservedState';
 import { normalizeError } from '../lib/utils/errorUtils';
 import type { TimerRegistry } from '../lib/utils/timerRegistry';
 
@@ -488,9 +489,10 @@ export class AppSnapshotHelpers {
   }
 }
 
-function resolveSnapshotPowerW(device: TargetDeviceSnapshot): number | null {
-  const kw = typeof device.measuredPowerKw === 'number'
-    ? device.measuredPowerKw
-    : device.powerKw;
+function resolveSnapshotPowerW(device: TargetDeviceSnapshot & MeasuredPowerObservedProbe): number | null {
+  // `hasObservedMeasuredPower` proves `measuredPowerKw` is PRESENT (a finite value
+  // is the producer invariant the write seams uphold, not something the guard
+  // re-checks); the trailing `Number.isFinite` still guards the `powerKw` fallback.
+  const kw = hasObservedMeasuredPower(device) ? device.measuredPowerKw : device.powerKw;
   return typeof kw === 'number' && Number.isFinite(kw) ? kw * 1000 : null;
 }

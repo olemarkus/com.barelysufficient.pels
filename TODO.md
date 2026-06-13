@@ -163,6 +163,24 @@ program) remains deferred.*
       estimate. An exhaustive boundary unit test (`test/unit/managerFreshness.test.ts`) seals the freshness seam.
       With this, "validate-and-drop at the Homey boundary; present-implies-finite" holds for every numeric
       capability write seam and load-setting read — the invariant the observed-field clusters rely on.
+      **Measured-power-observed field-move landed (2026-06-13): `measuredPowerKw`/`measuredPowerObservedAtMs`
+      are OFF the base `ObservedDeviceState`/`TargetDeviceSnapshot`.** An un-narrowed `snapshot.measuredPowerKw`
+      read is now a hard TS2339; consumers narrow through `hasObservedMeasuredPower`
+      (`packages/shared-domain/src/measuredPowerObservedState.ts`, browser-safe, generic over the carrier). New
+      contracts types: `MeasuredPowerObservedFields` (required `measuredPowerKw` + optional
+      `measuredPowerObservedAtMs` — the two travel together) + `MeasuredPowerObservedProbe` (optional
+      owner-widening); `TransportDeviceSnapshot` now intersects all four observed probes. Power-measurement
+      absence is the legitimate common case, so the guard draws the present/absent line and "present implies a
+      finite, non-negative kW" is the producer invariant (the write seams store only finite values); the
+      staleness-sensitive `sampleIngest` still checks `measuredPowerObservedAtMs` independently. Consumers
+      migrated: objectives `resolveCredibleDevicePower`, `sampleIngest`, `executablePlanProjection`, the
+      transport calibration-store seams, and the settings-UI device-list/view carriers; the rest read off
+      local types (`PlanInputDevice`, etc.) that keep their own `measuredPowerKw?` and are unaffected.
+      **Retired the two NaN-blind `?? 0` restore-gap reads** (`planSteppedRestorePending`, `restore/accounting`)
+      into named helpers `resolveObservedDrawKw` / `resolveObservedDrawKwWithNameplate`
+      (`lib/plan/restore/observedDraw.ts`) — `isFiniteNumber`-gated, so a non-finite `powerKw` nameplate can no
+      longer propagate through `??` (the old `measuredPowerKw ?? powerKw ?? 0` was NaN-blind). Type-level +
+      one defensive-correctness improvement; no intended behavior change given the producer invariant.
       **Temperature de-kind slice T1 landed (2026-06-07): planner branches on modality, not device kind.**
       Moved the starvation device-class set and the `deviceType === 'temperature'` checks out of
       `lib/plan/planDiagnostics.ts` into browser-safe shared-domain predicates (`isTemperatureControlDevice`,
@@ -184,10 +202,10 @@ program) remains deferred.*
         `TargetDeviceSnapshot` discrimination — the type-tightening half, independent of the value-level
         de-kinding above. The EV-observed and temperature-observed field-moves established the pattern for the
         observed-snapshot side: orthogonal `*Fields` cluster + `*Probe` owner-widening + shared-domain guard.
-        Remaining observed-snapshot slices: the `measuredPowerKw` cluster (sibling of the SoC/temperature
-        moves; also retires the two NaN-blind `?? 0` restore-gap reads) and the stepped descriptor fields
-        (`reportedStepId`, `steppedLoadProfile`, `targetPowerConfig` — many readers already gate on
-        `isSteppedLoadDevice`).
+        The EV / temperature / SoC / measured-power observed fields have all moved off the base; the remaining
+        stepped-load discrimination spans both partitions — the observed `reportedStepId` (off
+        `ObservedDeviceState`) and the descriptor `steppedLoadProfile`/`targetPowerConfig` (off
+        `DeviceDescriptor`) — and many readers already gate on `isSteppedLoadDevice`.
 
 ## P2 Product, Observability, and Maintainability
 

@@ -1,5 +1,6 @@
 import type {
     EvObservedProbe,
+    MeasuredPowerObservedProbe,
     ObservedDeviceState,
     StateOfChargeObservedProbe,
     TemperatureObservedProbe,
@@ -30,10 +31,13 @@ import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
  */
 export function projectObservedState(snapshot: TransportDeviceSnapshot): ObservedDeviceState {
     // Probe-widened locally so the projection can copy the observed cluster
-    // fields the base type omits (`evChargingState` / `currentTemperature`); the
-    // observer's stored values must physically carry them for `isEvObserved` /
-    // `hasObservedTemperature` narrowing and the read-model producer accessor.
-    const projected: ObservedDeviceState & EvObservedProbe & TemperatureObservedProbe & StateOfChargeObservedProbe = {
+    // fields the base type omits (`evChargingState` / `currentTemperature` /
+    // `stateOfCharge` / `measuredPowerKw`); the observer's stored values must
+    // physically carry them for `isEvObserved` / `hasObservedTemperature` /
+    // `hasObservedStateOfCharge` / `hasObservedMeasuredPower` narrowing and the
+    // read-model producer accessor.
+    const projected: ObservedDeviceState & EvObservedProbe & TemperatureObservedProbe
+        & StateOfChargeObservedProbe & MeasuredPowerObservedProbe = {
         id: snapshot.id,
         name: snapshot.name,
         targets: snapshot.targets.map((target) => ({ ...target })),

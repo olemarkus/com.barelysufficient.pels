@@ -49,7 +49,12 @@ helpers. The observer was created but never handed the observation contract.
    `hasObservedTemperature` — no kind gate, because a non-temperature device can
    carry a `measure_temperature` reading; owner seams carry it through the
    `TemperatureObservedProbe` widening),
-   `measuredPowerKw`/`measuredPowerObservedAtMs`, `reportedStepId`,
+   `measuredPowerKw`/`measuredPowerObservedAtMs` (now type-gated off the base onto
+   `MeasuredPowerObservedFields`, narrowed via the presence-only
+   `hasObservedMeasuredPower` — absence is the common case, so the guard draws the
+   present/absent line and "present implies finite, non-negative kW" is the producer
+   invariant; the two fields travel together and owner seams carry them through the
+   `MeasuredPowerObservedProbe` widening), `reportedStepId`,
    `binaryControlObservation`, `available`, `lastFreshDataMs`/`lastLocalWriteMs`/
    `lastUpdated`, plus the observed `targets` value. This is the consolidated truth
    plan/executor decide on.
