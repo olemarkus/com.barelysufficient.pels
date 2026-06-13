@@ -218,6 +218,16 @@ Tomorrow slot); detail view unreachable.
 > the body, so a slow single-fetch run reads as progress, not a freeze. The
 > backfill has no incremental counts, so the spinner is indeterminate (no
 > percentage / "Checked N of 365 days" line).
+> S2 covers the WHOLE backfill chain (temperature → meter kWh → controlled
+> split), not just the temperature pass: `isBackfillRunning` reflects every
+> stage. This matters because the energy-signature fit is computed only once the
+> kWh layer settles — the temperature pass upserts a year of records but kWh
+> only for the recent tracker-retained days, so refitting there would persist a
+> recent-only (warm-skewed, low-R²) signature and surface it as a confident
+> `ready` card. With no fit yet, S2 (not S3 learning) shows for the whole chain;
+> when a prior fit exists (a redeploy re-running the chain) the card stays on
+> that good fit. The first `ready` only appears once the meter pass fills the
+> historical kWh (or, on a no-meter home, once the meter election concludes).
 
 **S3 — learning (< 21 usable days).**
 > Budget card: title `Learning your home`, body `PELS has 9 days of usage and temperature so far. The first estimate appears after about 21 days.` Button: `Weather details`.

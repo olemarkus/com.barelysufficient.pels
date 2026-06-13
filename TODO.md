@@ -279,6 +279,44 @@ CI failure, so future field-move slices can't silently grow the debt.*
       "— paused while the daily budget is off" so the inert hint + last-applied read as one story.
       Source: pels-ux-fit + pels-m3-critic on the auto-apply PR, 2026-06-13.
 
+- [ ] **Weather confidence honesty: kill the chip gradation, show a prediction band, give the
+      Tomorrow card three distinct exits, and let auto-apply abstain on low-trust days.** Today the
+      confidence enum (`learning`/`low`/`medium`/`high`) drives a chip via
+      `resolveWeatherConfidenceChip` that maps `low→Estimating`, `medium→Refining`, and — the bug —
+      both `learning` AND `high` to `null`, so the *most* and *least* trustworthy states look
+      identical (no chip), and the gradations in between aren't actionable to a user. Meanwhile the
+      Tomorrow card shows the same confident number + verdict shape whether the fit is solid or thin,
+      and auto-apply pushes the suggestion every day regardless of that day's trust. Personas: the
+      skeptic (a confident kW number on thin data destroys trust the moment they sanity-check it) and
+      the recovering user (a low-trust auto-apply can over-tighten the budget). Design direction
+      (from the 2026-06-13 chip/correlation think): (a) drop the Estimating/Refining gradation; keep
+      only a single reason-bearing "Rough estimate" chip when the fit is genuinely weak; (b) on the
+      scatter, render the prediction as two dashed clamped rails (a band), coverage-flared at the
+      sparse tails — NOT per-column background shading (correlation is a global property, not
+      per-temperature) and NOT a filled cloud (the spec already bans fill as "mud at 320px"); (c)
+      give the Tomorrow card three exits — Supported (clean number), Rough (number + range + the
+      reason it's rough), and Can't-predict-yet (SUPPRESS the number and the verdict entirely;
+      distinct from the S5 uncorrelated state); (d) have auto-apply abstain (keep current budget,
+      annotate why) on a day whose forecast falls in a low-coverage temperature region. **Mock
+      first** per the redesign rule — current-vs-proposed PNGs of the rails on the real noisy prod
+      cloud + the three card states, signed off before code. Source: user chip/correlation think +
+      low-R² investigation, 2026-06-13.
+
+- [ ] **Temperature backfill cascade re-runs the whole kWh chain even when the records are
+      unchanged.** On a completed temperature pass, `maybeStartBackfill` unconditionally strips
+      `meterKwhBackfillDone` + `controlledBackfillVersion` (the `markDone` marker-strip destructure
+      in `weatherCollector.ts`) so the meter and controlled-split backfills re-run — correct when a
+      new device or a widened stitch
+      actually changed the record set, but a temperature `TEMP_BACKFILL_VERSION` bump that produces
+      byte-identical records still forces a full REST sweep of every managed device's meter Insights.
+      Persona: the tinkerer on an upgrade boot; hypothesis: bounded (the backfills are idempotent and
+      validated, so the result is identical) but it's a redundant multi-device Insights sweep on every
+      temp-version bump, and on a flaky-network boot each re-run is another chance to transiently
+      fail. Candidate fix: cascade the marker strip only when `upsertBackfillRecords` reports the
+      record set actually changed (diff the upsert, or hash the kWh-relevant fields), leaving the
+      kWh markers latched when the re-stitch was a no-op. Source: self-review of the refit-once
+      backfill change, 2026-06-13.
+
 - [ ] **Give the armed budget-discard state a visible "keep changes" path.** The Budget header's
       two-step confirm shows only the destructive option ("Click again to discard"); the save path
       (Preview changes → Apply) is a sticky CTA further down, and the explanatory text lives in a
