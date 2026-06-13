@@ -13,6 +13,8 @@ import { getZonedParts, shiftDateKey } from '../utils/dateUtils';
 export const WEATHER_HISTORY_RETENTION_DAYS = 730;
 /** Bump only if a contaminated-kWh class is ever discovered again. */
 export const KWH_PURGE_VERSION = 1;
+/** Bump to re-run the controlled/uncontrolled split backfill over historical records. */
+export const CONTROLLED_BACKFILL_VERSION = 1;
 /** Keep in-progress accumulators for at most today + the two preceding days. */
 const ACCUMULATOR_RETENTION_DAYS = 2;
 /** How many future forecast dateKeys to retain (tomorrow + the day after around midnight). */
@@ -248,12 +250,13 @@ function mergeBackfillMarkers(
   inMemory: WeatherHistoryState,
 ): Pick<
   WeatherHistoryState,
-  'backfilledDeviceId' | 'backfillVersion' | 'meterKwhBackfillDone' | 'meterKwhDeviceId' | 'kwhPurgeVersion'
+  'backfilledDeviceId' | 'backfillVersion' | 'meterKwhBackfillDone' | 'meterKwhDeviceId'
+  | 'kwhPurgeVersion' | 'controlledBackfillVersion'
   > {
   // Temperature marker: prefer the recovered pair; the version describes the
   // same completed run as its deviceId, so they must travel together.
   const tempSource = recovered.backfilledDeviceId !== undefined ? recovered : inMemory;
-  // Meter markers and the purge stamp: recovered-only. An in-memory
+  // Meter markers and the purge/split stamps: recovered-only. An in-memory
   // completion was computed while the store was unreadable, against a record
   // set the recovered blob may extend by months — carrying it over would
   // latch those days unfilled (or unpurged) forever; dropping it costs one
@@ -266,6 +269,9 @@ function mergeBackfillMarkers(
     ...(recovered.meterKwhBackfillDone === true ? { meterKwhBackfillDone: true } : {}),
     ...(recovered.meterKwhDeviceId !== undefined ? { meterKwhDeviceId: recovered.meterKwhDeviceId } : {}),
     ...(recovered.kwhPurgeVersion !== undefined ? { kwhPurgeVersion: recovered.kwhPurgeVersion } : {}),
+    ...(recovered.controlledBackfillVersion !== undefined
+      ? { controlledBackfillVersion: recovered.controlledBackfillVersion }
+      : {}),
   };
 }
 
@@ -382,6 +388,69 @@ function recordKwhEquals(before: WeatherDailyRecord, after: WeatherDailyRecord):
 }
 
 /**
+ * Completes the controlled/uncontrolled split on RECONSTRUCTED days (a
+ * backfilled record carrying a whole-home `kwhTotal`). Two cases, by where the
+ * day's `kwhControlled` came from:
+ *
+ * - **Tracker-join day** (`kwhControlled` present, NOT a whole-home meter fill):
+ *   the temperature backfill already joined the tracker's own controlled total,
+ *   which is authoritative and consistent with live days. Keep it untouched and
+ *   only derive the missing `kwhUncontrolled = total − controlled`. Needs no
+ *   managed-meter sum.
+ * - **Meter-filled / controlled-less day** (`quality.kwhBackfilled`, or no
+ *   controlled at all): the controlled-split backfill owns it — write BOTH from
+ *   the validated managed-meter sum, clamped into [0, total]. Refresh, not
+ *   fill-once, so a later COMPLETE run corrects an earlier PARTIAL run that
+ *   missed a device window (the caller stamps its marker only on complete).
+ *
+ * Unchanged values are left untouched so a re-run is a no-op; live-rollup
+ * records (`quality.backfilled === false`) are never touched. The meter-sum
+ * split is APPROXIMATE — good for the uncontrolled-vs-temp slope, not per-day
+ * claims: a managed device with no cumulative meter leaves its share in
+ * uncontrolled, a per-day gap in one device's meter undercounts that day, and
+ * the sum uses today's managed set across all days (a managed-set change after
+ * latching is not retroactive). The median validation bounds the systematic
+ * level, not these per-day effects.
+ */
+export function applyControlledBackfill(
+  state: WeatherHistoryState,
+  controlledDailyKwh: Record<string, number>,
+): { state: WeatherHistoryState; patchedDays: number } {
+  let patchedDays = 0;
+  const records = state.records.map((record) => {
+    if (record.kwhTotal === undefined || record.quality.backfilled !== true) return record;
+    const next = controlledBackfillRecord(record, record.kwhTotal, controlledDailyKwh[record.dateKey]);
+    if (next === record) return record;
+    patchedDays += 1;
+    return next;
+  });
+  if (patchedDays === 0) return { state, patchedDays };
+  return { state: { ...state, records }, patchedDays };
+}
+
+function controlledBackfillRecord(
+  record: WeatherDailyRecord,
+  total: number,
+  meterControlled: number | undefined,
+): WeatherDailyRecord {
+  // A net-export day (negative whole-home total, legitimate on PV homes) has no
+  // meaningful controlled/uncontrolled split — clamping would produce a negative
+  // controlled. Leave it unsplit; it is excluded from the fit anyway (kwh > 0).
+  if (total <= 0) return record;
+  // Tracker-join day: keep the authoritative controlled, just derive uncontrolled.
+  if (record.kwhControlled !== undefined && record.quality.kwhBackfilled !== true) {
+    const uncontrolled = Math.max(0, total - record.kwhControlled);
+    return record.kwhUncontrolled === uncontrolled ? record : { ...record, kwhUncontrolled: uncontrolled };
+  }
+  // Meter-filled / controlled-less day: write both from the validated meter sum.
+  if (meterControlled === undefined) return record;
+  const clampedControlled = Math.min(Math.max(0, meterControlled), total);
+  const uncontrolled = Math.max(0, total - clampedControlled);
+  if (record.kwhControlled === clampedControlled && record.kwhUncontrolled === uncontrolled) return record;
+  return { ...record, kwhControlled: clampedControlled, kwhUncontrolled: uncontrolled };
+}
+
+/**
  * True when any measurement gap overlaps the [startMs, endMs) window.
  * Near-duplicate of lib/dailyBudget's overlap helper, accepted deliberately:
  * the `no-weather-to-peer` dependency-cruiser rule forbids importing it.
@@ -453,7 +522,8 @@ function normalizeBackfillMarkers(
   raw: Record<string, unknown>,
 ): Pick<
   WeatherHistoryState,
-  'backfilledDeviceId' | 'backfillVersion' | 'meterKwhBackfillDone' | 'meterKwhDeviceId' | 'kwhPurgeVersion'
+  'backfilledDeviceId' | 'backfillVersion' | 'meterKwhBackfillDone' | 'meterKwhDeviceId'
+  | 'kwhPurgeVersion' | 'controlledBackfillVersion'
   > {
   const isNonEmptyString = (value: unknown): value is string => typeof value === 'string' && value.length > 0;
   const isPositiveInteger = (value: unknown): value is number => (
@@ -465,6 +535,9 @@ function normalizeBackfillMarkers(
     ...(raw.meterKwhBackfillDone === true ? { meterKwhBackfillDone: true } : {}),
     ...(isNonEmptyString(raw.meterKwhDeviceId) ? { meterKwhDeviceId: raw.meterKwhDeviceId } : {}),
     ...(isPositiveInteger(raw.kwhPurgeVersion) ? { kwhPurgeVersion: raw.kwhPurgeVersion } : {}),
+    ...(isPositiveInteger(raw.controlledBackfillVersion)
+      ? { controlledBackfillVersion: raw.controlledBackfillVersion }
+      : {}),
   };
 }
 

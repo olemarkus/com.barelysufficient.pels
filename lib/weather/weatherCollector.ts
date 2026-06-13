@@ -15,6 +15,7 @@ import { readDeviceTemperature } from './weatherDeviceRead';
 import {
   applyActualSample,
   applyForecastSample,
+  CONTROLLED_BACKFILL_VERSION,
   emptyWeatherHistoryState,
   getLocalHourKey,
   KWH_PURGE_VERSION,
@@ -28,6 +29,7 @@ import {
 import type { WeatherHistoryStore } from './weatherHistoryStore';
 import { fetchBackfillDailyRecords, TEMP_BACKFILL_VERSION } from './weatherInsightsBackfill';
 import { resolveMeterDailyKwh, type MeterKwhBackfillOutcome } from './meterKwhBackfill';
+import { applyControlledOutcome, resolveControlledDailyKwh } from './controlledKwhBackfill';
 
 const HOUR_MS = 60 * 60 * 1000;
 const HOURLY_SAMPLE_OFFSET_MS = 90 * 1000;
@@ -53,6 +55,8 @@ export type WeatherCollectorDeps = {
   fetchInsights: (path: string) => Promise<unknown>;
   /** Flat kWh totals for a local day, sourced from the power tracker by the factory. */
   getDailyKwh: (dateKey: string) => { total?: number; controlled?: number; uncontrolled?: number };
+  /** Whether PELS manages (controls) a device — drives the historical controlled-split backfill. */
+  isManagedDevice: (deviceId: string) => boolean;
   getUnreliablePeriods: () => Array<{ start: number; end: number }>;
   /**
    * Censoring evidence for a local day (PELS-limited comfort/capacity, or a
@@ -99,6 +103,7 @@ export class WeatherCollector {
   private readonly lastWarnAtMsByKey = new Map<string, number>();
   private backfillRunning = false;
   private meterBackfillRunning = false;
+  private controlledBackfillRunning = false;
   private running = false;
   /**
    * Bumped on every stop(). Async continuations capture it before awaiting
@@ -146,6 +151,7 @@ export class WeatherCollector {
     }
     this.maybeStartBackfill(settings);
     this.maybeStartMeterKwhBackfill();
+    this.maybeStartControlledKwhBackfill();
     void this.sampleOnce().catch((error: unknown) => {
       this.deps.logger.warn({ event: 'weather_sample_failed', err: normalizeError(error) });
     });
@@ -472,9 +478,14 @@ export class WeatherCollector {
       // forfeiting a year of history to one transient empty response.
       const markDone = complete && records.length > 0;
       // A completed temperature pass changes the record set (new device or a
-      // widened stitch), so the kWh layer must re-resolve: drop the meter
-      // marker and let the idempotent meter backfill run again.
-      const { meterKwhBackfillDone: _staleDone, meterKwhDeviceId: _staleDevice, ...withoutMeterMarkers } = this.state;
+      // widened stitch), so the kWh layer must re-resolve: drop the meter AND
+      // controlled-split markers and let the idempotent backfills run again.
+      const {
+        meterKwhBackfillDone: _staleDone,
+        meterKwhDeviceId: _staleDevice,
+        controlledBackfillVersion: _staleControlled,
+        ...withoutMeterMarkers
+      } = this.state;
       const base = markDone ? withoutMeterMarkers : this.state;
       this.state = {
         ...upsertBackfillRecords(base, records),
@@ -572,6 +583,9 @@ export class WeatherCollector {
         changedDays,
         complete: result.complete,
       });
+      // Whole-home totals now exist; reconstruct the controlled/uncontrolled
+      // split for those historical days from the managed-device meters.
+      if (result.complete) this.maybeStartControlledKwhBackfill();
     }).catch((error: unknown) => {
       // Marker stays unset, so the next start() retries.
       this.deps.logger.warn({ event: 'weather_meter_backfill_failed', err: normalizeError(error) });
@@ -621,6 +635,54 @@ export class WeatherCollector {
       ...(result.outcome === 'no_comparable_source'
         ? { candidatesChecked: result.candidatesChecked, probeFailures: result.probeFailures }
         : {}),
+    });
+  }
+
+  /**
+   * One-shot reconstruction of the controlled/uncontrolled split for historical
+   * (meter-backfilled) days, by summing the managed devices' own cumulative
+   * meters. Gated on the whole-home totals existing (`meterKwhBackfillDone`)
+   * since uncontrolled = total − controlled, and on its own version marker.
+   * Validated median-only against the tracker's controlled totals (flow-mode
+   * makes the tracker the noisy reference). A no-devices / not-validated outcome
+   * never latches, so a later meter or config gets adopted at a subsequent start.
+   */
+  private maybeStartControlledKwhBackfill(): void {
+    const settings = this.deps.getSettings();
+    if (!settings.enabled || !settings.outdoorDeviceId) return;
+    if (this.controlledBackfillRunning) return;
+    if (this.state.controlledBackfillVersion === CONTROLLED_BACKFILL_VERSION) return;
+    if (this.state.meterKwhBackfillDone !== true) return;
+    // The temperature backfill must be SETTLED, not about to re-run: a stale
+    // version/device started asynchronously in start() will, on completion,
+    // clear the meter+controlled markers and re-chain the meter backfill. Were
+    // we to start now (on the still-stale `meterKwhBackfillDone`), this run could
+    // race that rebuild and stamp the controlled version against soon-to-be-
+    // replaced records — and the post-rebuild meter completion would then skip
+    // the controlled chain (version already set). Mirror the meter gate so the
+    // controlled split runs only once the chain ahead of it is up to date.
+    if (this.state.backfilledDeviceId !== settings.outdoorDeviceId
+      || this.state.backfillVersion !== TEMP_BACKFILL_VERSION) return;
+    this.controlledBackfillRunning = true;
+    const generationAtLaunch = this.runGeneration;
+    void resolveControlledDailyKwh({
+      fetchFromHomeyApi: this.deps.fetchInsights,
+      isManaged: this.deps.isManagedDevice,
+      getControlledDailyKwh: (dateKey) => this.deps.getDailyKwh(dateKey).controlled,
+      timeZone: this.deps.getTimeZone(),
+      nowMs: this.deps.getNowMs(),
+    }).then((result) => {
+      if (!this.running || generationAtLaunch !== this.runGeneration) return;
+      const { state, dirty } = applyControlledOutcome({ state: this.state, result, logger: this.deps.logger });
+      this.state = state;
+      if (dirty) this.markDirty();
+    }).catch((error: unknown) => {
+      this.deps.logger.warn({ event: 'weather_controlled_backfill_failed', err: normalizeError(error) });
+    }).finally(() => {
+      this.controlledBackfillRunning = false;
+      if (this.running && generationAtLaunch !== this.runGeneration) {
+        this.maybeStartControlledKwhBackfill();
+      }
     });
   }
 }

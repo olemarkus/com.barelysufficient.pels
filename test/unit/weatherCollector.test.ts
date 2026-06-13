@@ -36,6 +36,7 @@ const buildHarness = (overrides: Partial<WeatherCollectorDeps> = {}): Harness =>
     fetchInsights: vi.fn(async () => ({ step: 6 * HOUR_MS, values: [] })),
     getDailyKwh: vi.fn(() => ({ total: 42.5, controlled: 10, uncontrolled: 32.5 })),
     getDaySuppression: vi.fn(() => ({})),
+    isManagedDevice: vi.fn(() => false),
     getUnreliablePeriods: vi.fn(() => []),
     getSettings: vi.fn(() => ({ enabled: true, outdoorDeviceId: 'out-1' })),
     getNowMs: () => Date.now(),
@@ -422,6 +423,76 @@ describe('WeatherCollector', () => {
     await vi.advanceTimersByTimeAsync(0);
     collector.stop();
     expect(temperatureFetches()).toBe(fetchCallsAfterFirstRun);
+  });
+
+  it('runs the controlled-split backfill once the meter totals exist, filling uncontrolled', async () => {
+    vi.setSystemTime(Date.UTC(2026, 1, 1, 12, 0, 0)); // past the Jan series so all 20 days count
+    // Meter-filled history: whole-home kwhTotal present, no split, meter marker set.
+    const splitRecords = Array.from({ length: 20 }, (_, i) => ({
+      dateKey: `2026-01-${String(i + 1).padStart(2, '0')}`,
+      kwhTotal: 40,
+      tempMeanC: 0,
+      tempMinC: -2,
+      tempMaxC: 2,
+      tempSampleCount: 4,
+      quality: { partialTemp: false, missingKwh: false, unreliablePower: false, backfilled: true, kwhBackfilled: true },
+    }));
+    const controlledCounter = Array.from({ length: 21 * 4 + 1 }, (_, idx) => ({
+      t: new Date(Date.UTC(2025, 11, 31, 23, 0, 0) + idx * 6 * HOUR_MS).toISOString(),
+      v: 1000 + (idx / 4) * 25, // 25 kWh/day controlled
+    }));
+    const { collector, store, persisted } = buildHarness({
+      isManagedDevice: vi.fn((id: string) => id === 'therm-1'),
+      getDailyKwh: vi.fn(() => ({ total: 40, controlled: 25, uncontrolled: 15 })),
+      fetchInsights: vi.fn(async (path: string) => {
+        if (path === 'manager/devices/device') return { 'therm-1': { id: 'therm-1', capabilities: ['meter_power'] } };
+        if (path.includes('therm-1:meter_power')) return { step: 6 * HOUR_MS, values: controlledCounter };
+        return { step: 6 * HOUR_MS, values: [] };
+      }),
+    });
+    // Temp + meter backfills already done (markers set) → only the split runs.
+    persisted.value = {
+      records: splitRecords, backfilledDeviceId: 'out-1', backfillVersion: 2, meterKwhBackfillDone: true,
+    };
+    collector.start();
+    await vi.advanceTimersByTimeAsync(0);
+    collector.stop();
+    const written = lastWritten(store);
+    expect(written.controlledBackfillVersion).toBe(1);
+    const day = written.records.find((record) => record.dateKey === '2026-01-10');
+    expect(day?.kwhControlled).toBeCloseTo(25, 6);
+    expect(day?.kwhUncontrolled).toBeCloseTo(15, 6);
+  });
+
+  it('does NOT start the controlled split while a stale temperature backfill is about to re-run', async () => {
+    // meterKwhBackfillDone is stale-true but backfillVersion is old → the temp
+    // backfill will re-run and clear markers; the controlled split must wait.
+    const fetchInsights = vi.fn(async () => ({ step: 6 * HOUR_MS, values: [] }));
+    const { collector, store, persisted } = buildHarness({
+      isManagedDevice: vi.fn(() => true),
+      fetchInsights,
+    });
+    persisted.value = {
+      records: [{
+        dateKey: '2025-12-01',
+        kwhTotal: 40,
+        tempMeanC: 0,
+        tempMinC: -2,
+        tempMaxC: 2,
+        tempSampleCount: 4,
+        quality: { partialTemp: false, missingKwh: false, unreliablePower: false, backfilled: true, kwhBackfilled: true },
+      }],
+      backfilledDeviceId: 'out-1',
+      backfillVersion: 1, // stale vs TEMP_BACKFILL_VERSION (2) → temp re-runs
+      meterKwhBackfillDone: true,
+    };
+    collector.start();
+    await vi.advanceTimersByTimeAsync(0);
+    collector.stop();
+    // The controlled split never reached its device sweep, and never stamped.
+    const deviceListFetched = fetchInsights.mock.calls.some(([path]) => path === 'manager/devices/device');
+    expect(deviceListFetched).toBe(false);
+    expect(lastWritten(store).controlledBackfillVersion).toBeUndefined();
   });
 
   it('chains the meter kWh backfill after the temperature backfill and reconciles every record', async () => {

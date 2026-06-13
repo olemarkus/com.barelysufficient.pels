@@ -1,6 +1,7 @@
 import type { WeatherDailyRecord, WeatherHistoryState } from '../../packages/contracts/src/weatherAdvisorTypes';
 import {
   applyActualSample,
+  applyControlledBackfill,
   mergeRecoveredState,
   applyForecastSample,
   emptyWeatherHistoryState,
@@ -403,6 +404,14 @@ describe('mergeRecoveredState markers', () => {
     expect(recoveredDone.meterKwhDeviceId).toBe('meter-1');
   });
 
+  it('keeps only a RECOVERED controlled-split marker', () => {
+    const base = { records: [liveRecord('2026-01-08')] };
+    expect(mergeRecoveredState(base, { records: [], controlledBackfillVersion: 1 }).controlledBackfillVersion)
+      .toBeUndefined();
+    expect(mergeRecoveredState({ ...base, controlledBackfillVersion: 1 }, { records: [] }).controlledBackfillVersion)
+      .toBe(1);
+  });
+
   it('carries the temp backfill version with its deviceId as a pair', () => {
     const recovered = { records: [], backfilledDeviceId: 'dev-old', backfillVersion: 1 };
     const inMemory = { records: [], backfilledDeviceId: 'dev-new', backfillVersion: 2 };
@@ -418,6 +427,88 @@ describe('periodsOverlapWindow', () => {
     expect(periodsOverlapWindow([{ start: 0, end: 5 }], 4, 10)).toBe(true);
     expect(periodsOverlapWindow([{ start: 10, end: 12 }], 4, 10)).toBe(false);
     expect(periodsOverlapWindow([], 4, 10)).toBe(false);
+  });
+});
+
+describe('applyControlledBackfill', () => {
+  const meterDay = (dateKey: string, kwhTotal: number): WeatherDailyRecord => backfilledRecord(dateKey, {
+    kwhTotal,
+    quality: {
+      partialTemp: false, missingKwh: false, unreliablePower: false, backfilled: true, kwhBackfilled: true,
+    },
+  });
+
+  it('fills the split on a meter-backfilled day (kwhTotal, no split)', () => {
+    const { state, patchedDays } = applyControlledBackfill(
+      { records: [meterDay('2025-02-01', 50)] },
+      { '2025-02-01': 18 },
+    );
+    expect(patchedDays).toBe(1);
+    expect(state.records[0]).toMatchObject({ kwhTotal: 50, kwhControlled: 18, kwhUncontrolled: 32 });
+  });
+
+  it('clamps controlled into [0, total] (a noisy over-estimate cannot make uncontrolled negative)', () => {
+    const { state } = applyControlledBackfill({ records: [meterDay('2025-02-01', 30)] }, { '2025-02-01': 41 });
+    expect(state.records[0]).toMatchObject({ kwhControlled: 30, kwhUncontrolled: 0 });
+  });
+
+  it('never overwrites a live-rollup split or a day with no whole-home total', () => {
+    const live = liveRecord('2026-03-05', { kwhTotal: 44, kwhControlled: 12, kwhUncontrolled: 30 });
+    const missing = backfilledRecord('2025-02-02', {
+      kwhTotal: undefined,
+      quality: { partialTemp: false, missingKwh: true, unreliablePower: false, backfilled: true },
+    });
+    const { state, patchedDays } = applyControlledBackfill(
+      { records: [live, missing] },
+      { '2026-03-05': 5, '2025-02-02': 9 },
+    );
+    expect(patchedDays).toBe(0);
+    expect(state.records[0]).toMatchObject({ kwhControlled: 12, kwhUncontrolled: 30 });
+    expect(state.records[1].kwhControlled).toBeUndefined();
+  });
+
+  it('is an identity when no covered day matches', () => {
+    const original = { records: [meterDay('2025-02-01', 50)] };
+    const { state, patchedDays } = applyControlledBackfill(original, { '2020-01-01': 10 });
+    expect(patchedDays).toBe(0);
+    expect(state).toBe(original);
+  });
+
+  it('refreshes a backfilled split (a later complete run corrects an earlier partial undercount)', () => {
+    // A prior partial run wrote an undercounted controlled value (5 of 50).
+    const partial = meterDay('2025-02-01', 50);
+    const seeded = { records: [{ ...partial, kwhControlled: 5, kwhUncontrolled: 45 }] };
+    const { state, patchedDays } = applyControlledBackfill(seeded, { '2025-02-01': 18 });
+    expect(patchedDays).toBe(1);
+    expect(state.records[0]).toMatchObject({ kwhControlled: 18, kwhUncontrolled: 32 });
+  });
+
+  it('is a no-op (no patch) when the backfilled split already matches', () => {
+    const seeded = { records: [{ ...meterDay('2025-02-01', 50), kwhControlled: 18, kwhUncontrolled: 32 }] };
+    const { state, patchedDays } = applyControlledBackfill(seeded, { '2025-02-01': 18 });
+    expect(patchedDays).toBe(0);
+    expect(state).toBe(seeded);
+  });
+
+  it('leaves a net-export day (negative whole-home total) unsplit — no negative controlled', () => {
+    const exportDay = meterDay('2025-02-01', -4.2);
+    const { state, patchedDays } = applyControlledBackfill({ records: [exportDay] }, { '2025-02-01': 18 });
+    expect(patchedDays).toBe(0);
+    expect(state.records[0].kwhControlled).toBeUndefined();
+    expect(state.records[0].kwhUncontrolled).toBeUndefined();
+  });
+
+  it('derives uncontrolled from the authoritative tracker controlled on a tracker-join day, never overwriting it', () => {
+    // Temp-backfill tracker-join: kwhControlled from the tracker, no kwhBackfilled flag, no uncontrolled yet.
+    const trackerJoin = backfilledRecord('2026-02-10', {
+      kwhTotal: 50,
+      kwhControlled: 22,
+      quality: { partialTemp: false, missingKwh: false, unreliablePower: false, backfilled: true },
+    });
+    // The meter sum (19) must NOT replace the tracker's 22; only uncontrolled is derived.
+    const { state, patchedDays } = applyControlledBackfill({ records: [trackerJoin] }, { '2026-02-10': 19 });
+    expect(patchedDays).toBe(1);
+    expect(state.records[0]).toMatchObject({ kwhControlled: 22, kwhUncontrolled: 28 });
   });
 });
 
@@ -438,6 +529,7 @@ describe('normalizeWeatherHistoryState', () => {
       backfillVersion: 2,
       meterKwhBackfillDone: true,
       meterKwhDeviceId: 'meter-1',
+      controlledBackfillVersion: 1,
     };
     const withJunk = {
       ...valid,
