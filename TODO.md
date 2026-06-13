@@ -119,6 +119,22 @@ program) remains deferred.*
       `stateOfCharge` (independent presence semantics — SoC without plug-state is real, ~30 UI/widget/flowCard
       readers; needs its own slice with its own cluster shape) and `evCharging` (transport-internal only, zero
       outside readers).
+      **Temperature-observed field-move landed (2026-06-13): `currentTemperature` is OFF the base
+      `ObservedDeviceState`/`TargetDeviceSnapshot`.** An un-narrowed `snapshot.currentTemperature` read is now a
+      hard TS2339; consumers narrow through `hasObservedTemperature` (`packages/shared-domain/src/temperatureObservedState.ts`,
+      browser-safe, generic over the carrier). New contracts types: `TemperatureObservedFields` (required
+      `currentTemperature`) + `TemperatureObservedProbe` (optional owner-side widening); `TransportDeviceSnapshot`
+      now intersects both EV and temperature probes. Consumers migrated: `lib/objectives/samples.ts`
+      (`isFreshTemperatureDevice` composes `isTemperatureControlDevice && hasObservedTemperature`), the
+      settings-UI deadline progress readers (`deadlinesList.ts`, `deadlinePlanResolvers.ts`), the smart-tasks
+      widget payload, and the `appDebugHelpers` dump. **Deliberate divergence from `isEvObserved`: the guard is
+      PRESENCE-ONLY, not kind+presence.** `currentTemperature` comes from the `measure_temperature` capability,
+      which a non-temperature `deviceType` device can carry (deviceType is keyed on target caps), so a kind gate
+      would reject a *present* reading (a present-but-rejected gap EV does not have). Callers wanting the kind
+      compose it explicitly. **Fallbacks removed at source:** present implies finite (both producer seams —
+      `getCurrentTemperature` at parse, `applyMeasuredTemperatureObservation` at realtime — write only finite
+      values), so the scattered `Number.isFinite`/`isFiniteNumber` re-checks at consumers are gone. Type-level
+      only — zero runtime behavior change.
       **Temperature de-kind slice T1 landed (2026-06-07): planner branches on modality, not device kind.**
       Moved the starvation device-class set and the `deviceType === 'temperature'` checks out of
       `lib/plan/planDiagnostics.ts` into browser-safe shared-domain predicates (`isTemperatureControlDevice`,
@@ -136,12 +152,13 @@ program) remains deferred.*
       `lib/objectives` is now in `check-device-kind-vocab.mjs`'s `consumerDirs`, so the guard enforces all
       three consumer layers.
       Remaining under this item:
-      - **type discrimination:** the temperature (~21) / stepped (~34) field-level discrimination and the
-        rest of the `TargetDeviceSnapshot` discrimination — the type-tightening half, independent of the
-        value-level de-kinding above. The EV-observed field-move (above) established the pattern for the
-        observed-snapshot side: orthogonal `*Fields` cluster + `*Probe` owner-widening + shared-domain guard;
-        temperature (`currentTemperature`, observer idle-classifier consumers) and the EV `stateOfCharge`
-        cluster are the natural next slices, then the stepped descriptor fields.
+      - **type discrimination:** the stepped descriptor field-level discrimination and the rest of the
+        `TargetDeviceSnapshot` discrimination — the type-tightening half, independent of the value-level
+        de-kinding above. The EV-observed and temperature-observed field-moves established the pattern for the
+        observed-snapshot side: orthogonal `*Fields` cluster + `*Probe` owner-widening + shared-domain guard.
+        Remaining observed-snapshot slices: the EV `stateOfCharge` cluster (independent presence semantics,
+        ~30 UI/widget/flowCard readers) and the stepped descriptor fields (`reportedStepId`,
+        `steppedLoadProfile`, `targetPowerConfig` — many readers already gate on `isSteppedLoadDevice`).
 
 ## P2 Product, Observability, and Maintainability
 

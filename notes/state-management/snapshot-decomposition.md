@@ -39,7 +39,11 @@ helpers. The observer was created but never handed the observation contract.
    `evCharging`/`evChargingState` (the latter now type-gated off the base onto
    `EvObservedFields`, narrowed via `isEvObserved` — owner seams carry it through
    the `EvObservedProbe` widening; EV-observed slice of the discriminated-types
-   refactor), `stateOfCharge`, `currentTemperature`,
+   refactor), `stateOfCharge`, `currentTemperature` (now type-gated off the base
+   onto `TemperatureObservedFields`, narrowed via the presence-only
+   `hasObservedTemperature` — no kind gate, because a non-temperature device can
+   carry a `measure_temperature` reading; owner seams carry it through the
+   `TemperatureObservedProbe` widening),
    `measuredPowerKw`/`measuredPowerObservedAtMs`, `reportedStepId`,
    `binaryControlObservation`, `available`, `lastFreshDataMs`/`lastLocalWriteMs`/
    `lastUpdated`, plus the observed `targets` value. This is the consolidated truth

@@ -2548,7 +2548,7 @@ function isRawBinarySettlementEvidenceAllowed(
     return capabilityId !== 'evcharger_charging' || snapshot.evChargingState === undefined;
 }
 
-function summarizeSnapshotRefreshMetrics(snapshot: TargetDeviceSnapshot[]): SnapshotRefreshMetrics {
+function summarizeSnapshotRefreshMetrics(snapshot: TransportDeviceSnapshot[]): SnapshotRefreshMetrics {
     let availableDevices = 0;
     let temperatureKnownDevices = 0;
     let unavailableDevices = 0;

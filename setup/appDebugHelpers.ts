@@ -15,7 +15,7 @@ import type { DevicePlan, StepPowerCalibrationView } from '../lib/plan/planTypes
 import { isTemperaturePlanDevice } from '../lib/plan/planTemperatureDevice';
 import type { HomeyDeviceLike } from '../lib/utils/types';
 import { isHomeyDeviceLike } from '../lib/utils/types';
-import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import type { TargetDeviceSnapshot, TemperatureObservedProbe } from '../packages/contracts/src/types';
 import { normalizeError } from '../lib/utils/errorUtils';
 import { safeJsonStringify, sanitizeLogValue } from '../lib/utils/logUtils';
 import { getLogger } from '../lib/logging/logger';
@@ -424,7 +424,12 @@ const filterRelevantSettings = (settings: unknown): Record<string, unknown> | nu
 };
 
 const compactPelsTargetSnapshot = (
-  snapshot: TargetDeviceSnapshot | null,
+  // Probe-widened: this debug seam dumps the raw observed temperature for EVERY
+  // device (incl. non-temperature `deviceType` devices that carry a
+  // `measure_temperature` reading), so it reads through the owner probe rather
+  // than `hasObservedTemperature` — a plain `TargetDeviceSnapshot` (from
+  // `getSnapshot()`) stays assignable because the probe field is optional.
+  snapshot: (TargetDeviceSnapshot & TemperatureObservedProbe) | null,
 ): PelsTargetSnapshotSummary | null => {
   if (!snapshot) return null;
   return {

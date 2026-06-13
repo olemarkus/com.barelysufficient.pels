@@ -4,14 +4,22 @@ import {
 } from '../utils/deviceControlProfiles';
 import { isEvDevice } from '../../packages/shared-domain/src/commandableNow';
 import { isTemperatureControlDevice } from '../../packages/shared-domain/src/temperatureDeviceKind';
-import type { DeviceDescriptor, ObservedDeviceState } from '../../packages/contracts/src/types';
+import { hasObservedTemperature } from '../../packages/shared-domain/src/temperatureObservedState';
+import type {
+  DeviceDescriptor,
+  ObservedDeviceState,
+  TemperatureObservedProbe,
+} from '../../packages/contracts/src/types';
 import type { DeviceObjectiveProfileSample } from './types';
 
 // Observed truth (temperature / SoC / measured power / reported step) plus the
 // few descriptor fields the kind predicates need — NOT the full producer-input
 // `TargetDeviceSnapshot`. Objectives is a downstream consumer; it depends on the
-// decomposed snapshot halves, never the raw producer snapshot.
+// decomposed snapshot halves, never the raw producer snapshot. The
+// `TemperatureObservedProbe` widening carries the observed temperature the base
+// type omits (this is a producer-fed funnel); `hasObservedTemperature` narrows it.
 export type ObjectiveSampleDevice = ObservedDeviceState
+  & TemperatureObservedProbe
   & Pick<DeviceDescriptor, 'steppedLoadProfile' | 'deviceClass' | 'deviceType' | 'controlCapabilityId'>;
 
 export const OBJECTIVE_PROFILE_MAX_OBSERVATION_AGE_MS = 30 * 60 * 1000;
@@ -50,9 +58,11 @@ function isFreshTemperatureDevice(
   device: ObjectiveSampleDevice,
   nowMs: number,
 ): device is ObjectiveSampleDevice & { currentTemperature: number; lastFreshDataMs: number } {
+  // `hasObservedTemperature` proves `currentTemperature` is a finite `number`
+  // (producer invariant), so no `typeof`/`Number.isFinite` re-check here — the
+  // kind question is asked separately via `isTemperatureControlDevice`.
   return isTemperatureControlDevice(device)
-    && typeof device.currentTemperature === 'number'
-    && Number.isFinite(device.currentTemperature)
+    && hasObservedTemperature(device)
     && typeof device.lastFreshDataMs === 'number'
     && Number.isFinite(device.lastFreshDataMs)
     && isFreshObservationTime(device.lastFreshDataMs, nowMs);

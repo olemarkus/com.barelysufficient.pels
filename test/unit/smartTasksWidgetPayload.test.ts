@@ -11,7 +11,7 @@ import type {
 } from '../../packages/contracts/src/deferredObjectivePlanHistory';
 import type { SettingsUiDeferredObjectivePlanHistoryPayload } from '../../packages/contracts/src/settingsUiApi';
 import { toResolvedPlanHistoryEntry } from '../../packages/shared-domain/src/deferredPlanHistoryResolvedView';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
 import { SMART_TASK_WIDGET_EMPTY_HINT } from '../../packages/shared-domain/src/deadlineLabels';
 import {
   buildSmartTasksWidgetPayload,
@@ -47,7 +47,7 @@ const buildPlan = (overrides: Partial<DeferredObjectiveActivePlanV1>): DeferredO
   ...overrides,
 });
 
-const buildDevice = (overrides: Partial<TargetDeviceSnapshot>): TargetDeviceSnapshot => ({
+const buildDevice = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedProbe>): TargetDeviceSnapshot & TemperatureObservedProbe => ({
   id: 'dev',
   name: 'Device',
   zoneName: null,

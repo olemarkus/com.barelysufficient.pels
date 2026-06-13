@@ -5,7 +5,8 @@ import type {
   ObjectiveProfileConfidence,
 } from '../../../contracts/src/objectiveProfileTypes.ts';
 import type { PowerTrackerState } from '../../../contracts/src/powerTrackerTypes.ts';
-import type { DecoratedDeviceSnapshot } from '../../../contracts/src/types.ts';
+import type { DecoratedDeviceSnapshot, TemperatureObservedProbe } from '../../../contracts/src/types.ts';
+import { hasObservedTemperature } from '../../../shared-domain/src/temperatureObservedState.ts';
 import type {
   DeferredObjectiveActivePlanRevisionV1,
   DeferredObjectiveActivePlanSpeedMode,
@@ -49,13 +50,16 @@ export type DeadlineProgress = {
 };
 
 export const resolveProgress = (params: {
-  device: DecoratedDeviceSnapshot;
+  // Probe-widened: the live reading rides on the `/ui_devices` snapshot the base
+  // type omits; `hasObservedTemperature` narrows it (present implies finite),
+  // falling back to the profile sample when there is no live reading.
+  device: DecoratedDeviceSnapshot & TemperatureObservedProbe;
   objective: DeferredObjectiveSettingsEntry;
   profile: DeviceObjectiveProfile | null;
 }): DeadlineProgress | null => {
   const { device, objective, profile } = params;
   if (objective.kind === 'temperature') {
-    const currentTemperature = isFiniteNumber(device.currentTemperature)
+    const currentTemperature = hasObservedTemperature(device)
       ? device.currentTemperature
       : resolveProfileSampleValue(profile, 'degree_c');
     if (!isFiniteNumber(currentTemperature)) return null;

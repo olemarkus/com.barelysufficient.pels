@@ -32,7 +32,14 @@ export function applyFreshnessOnlyCapabilityUpdate(params: {
     snapshot.measuredPowerKw = kw;
     return { changed: true, normalizedValue: kw };
   }
-  if (capabilityId === 'measure_temperature' && typeof value === 'number') {
+  // `Number.isFinite` gate matches the other two `currentTemperature` write
+  // seams (`getCurrentTemperature` at parse, `applyMeasuredTemperatureObservation`
+  // at snapshot-refresh) so "present implies finite" holds at EVERY producer
+  // seam — the invariant the `TemperatureObservedFields` consumers rely on when
+  // they read the narrowed field without a finiteness re-check. A non-finite
+  // realtime `measure_temperature` event is not a usable reading: skip the write
+  // (and the freshness bump), mirroring the observation seam's early return.
+  if (capabilityId === 'measure_temperature' && typeof value === 'number' && Number.isFinite(value)) {
     if (Object.is(snapshot.currentTemperature, value)) return { changed: false, normalizedValue: value };
     snapshot.currentTemperature = value;
     return { changed: true, normalizedValue: value };
