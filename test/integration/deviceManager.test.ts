@@ -6562,6 +6562,31 @@ describe('DeviceTransport', () => {
                 }
             });
 
+            it('realtime measure_power ignores a non-finite reading (present implies finite)', async () => {
+                vi.useFakeTimers();
+                try {
+                    await deviceManager.init();
+                    vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
+                    mockApiGet.mockResolvedValue(buildOnoffDevice());
+                    await deviceManager.refreshSnapshot();
+                    deviceManager.injectCapabilityUpdateForTest('dev1', 'measure_power', 2000);
+                    const freshnessBefore = deviceManager.getSnapshot()[0].lastFreshDataMs;
+
+                    // NaN/Infinity are `number`s in JS; the freshness-only seam must
+                    // drop them (no write, no freshness bump) so the power sum and
+                    // shed decisions never see junk.
+                    vi.setSystemTime(new Date('2026-04-01T12:01:00.000Z'));
+                    deviceManager.injectCapabilityUpdateForTest('dev1', 'measure_power', Number.NaN);
+                    deviceManager.injectCapabilityUpdateForTest('dev1', 'measure_power', Number.POSITIVE_INFINITY);
+
+                    const snapshot = deviceManager.getSnapshot()[0];
+                    expect(snapshot.measuredPowerKw).toBe(2);
+                    expect(snapshot.lastFreshDataMs).toBe(freshnessBefore);
+                } finally {
+                    vi.useRealTimers();
+                }
+            });
+
             it('flags when measure_power wakes from insignificant to significant', async () => {
                 vi.useFakeTimers();
                 try {

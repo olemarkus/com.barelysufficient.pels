@@ -18,7 +18,9 @@ export async function getDeviceLoadSetting(params: {
 
 function getSnapshotLoad(deviceId: string, snapshot: TargetDeviceSnapshot[]): number | null {
   const snapshotLoad = snapshot.find((d) => d.id === deviceId)?.loadKw;
-  if (typeof snapshotLoad === 'number' && snapshotLoad > 0) {
+  // `Number.isFinite` (not a bare `typeof`) so a non-finite `loadKw` is dropped at
+  // the boundary: a raw `Infinity` would pass `snapshotLoad > 0` and propagate.
+  if (typeof snapshotLoad === 'number' && Number.isFinite(snapshotLoad) && snapshotLoad > 0) {
     return snapshotLoad * 1000;
   }
   return null;
@@ -31,8 +33,12 @@ async function getApiLoad(params: {
   const { deviceId, error } = params;
   try {
     const device = await getRawDevice(deviceId) as RawHomeyManagerDevice;
-    if (device && typeof device.settings?.load === 'number') {
-      return device.settings.load;
+    const load = device?.settings?.load;
+    // Drop a non-finite or non-positive settings-sourced load at the boundary (a
+    // raw `Infinity` would propagate as an infinite estimate; a `<= 0` load is not
+    // a valid estimate) — consistent with `getSnapshotLoad` / `getLoadSettingWatts`.
+    if (typeof load === 'number' && Number.isFinite(load) && load > 0) {
+      return load;
     }
   } catch (errorValue) {
     const errObj = errorValue as { status?: number; response?: { status?: number } };
