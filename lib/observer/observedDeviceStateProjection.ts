@@ -1,4 +1,9 @@
-import type { EvChargingState, EvObservedProbe, ObservedDeviceState } from '../../packages/contracts/src/types';
+import type {
+  EvChargingState,
+  EvObservedProbe,
+  ObservedDeviceState,
+  StateOfChargeObservedProbe,
+} from '../../packages/contracts/src/types';
 import type {
     ObservedStateChangedEvent,
     ObservedStateRefreshEvent,
@@ -39,7 +44,7 @@ type ProjectionEntry = {
  * aliases no producer state) and closes the last by-reference mutation vector —
  * e.g. `getObservedState(id).binaryControl.on = false`. Idempotent and cheap.
  */
-function freezeObserved(value: ObservedDeviceState): ObservedDeviceState {
+function freezeObserved(value: ObservedDeviceState & StateOfChargeObservedProbe): ObservedDeviceState {
     for (const target of value.targets) Object.freeze(target);
     Object.freeze(value.targets);
     if (value.binaryControl) Object.freeze(value.binaryControl);

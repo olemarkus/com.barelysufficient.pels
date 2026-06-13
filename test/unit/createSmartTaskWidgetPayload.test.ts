@@ -2,14 +2,14 @@
  * @vitest-environment node
  */
 import { describe, expect, it } from 'vitest';
-import type { TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
+import type { StateOfChargeObservedProbe, TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
 import {
   buildCreateSmartTaskDevicesPayload,
   EMPTY_NO_DEVICES_HINT,
   EMPTY_NO_DEVICES_SUBTITLE,
 } from '../../widgets/create_smart_task/src/createSmartTaskWidgetPayload';
 
-const buildDevice = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedProbe> & { id: string; name: string }): TargetDeviceSnapshot & TemperatureObservedProbe => ({
+const buildDevice = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe> & { id: string; name: string }): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe => ({
   targets: [],
   binaryControl: { on: false },
   ...overrides,
@@ -126,7 +126,7 @@ describe('buildCreateSmartTaskDevicesPayload', () => {
   });
 
   describe('supportsLimitLowerPriority (gate-on-effect)', () => {
-    const steppedHeater = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedProbe>): TargetDeviceSnapshot & TemperatureObservedProbe => buildDevice({
+    const steppedHeater = (overrides: Partial<TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe>): TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe => buildDevice({
       id: 'heater',
       name: 'Hot water',
       deviceType: 'temperature',

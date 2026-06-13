@@ -5,8 +5,13 @@ import type {
   ObjectiveProfileConfidence,
 } from '../../../contracts/src/objectiveProfileTypes.ts';
 import type { PowerTrackerState } from '../../../contracts/src/powerTrackerTypes.ts';
-import type { DecoratedDeviceSnapshot, TemperatureObservedProbe } from '../../../contracts/src/types.ts';
+import type {
+  DecoratedDeviceSnapshot,
+  StateOfChargeObservedProbe,
+  TemperatureObservedProbe,
+} from '../../../contracts/src/types.ts';
 import { hasObservedTemperature } from '../../../shared-domain/src/temperatureObservedState.ts';
+import { hasObservedStateOfCharge } from '../../../shared-domain/src/stateOfChargeObservedState.ts';
 import type {
   DeferredObjectiveActivePlanRevisionV1,
   DeferredObjectiveActivePlanSpeedMode,
@@ -50,10 +55,11 @@ export type DeadlineProgress = {
 };
 
 export const resolveProgress = (params: {
-  // Probe-widened: the live reading rides on the `/ui_devices` snapshot the base
-  // type omits; `hasObservedTemperature` narrows it (present implies finite),
-  // falling back to the profile sample when there is no live reading.
-  device: DecoratedDeviceSnapshot & TemperatureObservedProbe;
+  // Probe-widened: the live reading (temperature or SoC) rides on the
+  // `/ui_devices` snapshot the base type omits; `hasObservedTemperature` /
+  // `hasObservedStateOfCharge` narrow it (present implies finite), falling back to
+  // the profile sample when there is no live reading.
+  device: DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe;
   objective: DeferredObjectiveSettingsEntry;
   profile: DeviceObjectiveProfile | null;
 }): DeadlineProgress | null => {
@@ -72,7 +78,12 @@ export const resolveProgress = (params: {
     };
   }
 
-  const percent = isFiniteNumber(device.stateOfCharge?.percent)
+  // A present SoC bag carries a producer-guaranteed finite, in-range `percent`
+  // (`normalizeStateOfChargePercent`), mirroring the temperature branch above —
+  // so we narrow on presence, not finiteness. The trailing `isFiniteNumber` still
+  // guards the profile-sample fallback (which can be `null`) and drops any junk
+  // `percent` should that invariant ever regress, rather than rendering it.
+  const percent = hasObservedStateOfCharge(device)
     ? device.stateOfCharge.percent
     : resolveProfileSampleValue(profile, 'percent');
   if (!isFiniteNumber(percent)) return null;

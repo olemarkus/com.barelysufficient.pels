@@ -1,6 +1,10 @@
 import { PriceLevel, PRICE_LEVEL_OPTIONS, PriceLevelOption } from '../lib/price/priceLevels';
 import CapacityGuard from '../lib/power/capacityGuard';
-import type { DecoratedDeviceSnapshot, TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import type {
+  DecoratedDeviceSnapshot,
+  StateOfChargeObservedProbe,
+  TargetDeviceSnapshot,
+} from '../packages/contracts/src/types';
 import type { DeferredObjectiveActivePlansV1 } from '../packages/contracts/src/deferredObjectiveActivePlans';
 import type { FlowHomeyLike, HomeyDeviceLike } from '../lib/utils/types';
 import type { ReportSteppedLoadActualStepResult } from '../setup/appDeviceControlHelpers';
@@ -1076,7 +1080,7 @@ function parseEvSocCardArgs(args: unknown): {
 function buildEvSocLogPayload(params: {
   charger: TargetDeviceSnapshot;
   chargerDeviceId: string;
-  updatedCharger: TargetDeviceSnapshot | undefined;
+  updatedCharger: (TargetDeviceSnapshot & StateOfChargeObservedProbe) | undefined;
   percent: number;
   observedAtMs: number;
 }) {

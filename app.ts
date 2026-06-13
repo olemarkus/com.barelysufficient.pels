@@ -27,6 +27,7 @@ import type {
   DecoratedDeviceSnapshot,
   DeviceControlProfiles,
   DeviceTargetPowerConfigs,
+  StateOfChargeObservedProbe,
   TargetDeviceSnapshot,
 } from './packages/contracts/src/types';
 import type { HomeyDeviceLike } from './lib/utils/types';
@@ -665,12 +666,14 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi {
   }
 
   private canEvSocFreshnessBecomeFreshForBoost(
-    device: TargetDeviceSnapshot | undefined,
+    // Probe-widened: the snapshot physically carries the observed SoC bag the
+    // base type omits; this app-layer seam mutates a copy's freshness in place.
+    device: (TargetDeviceSnapshot & StateOfChargeObservedProbe) | undefined,
     reportedAt: number,
   ): boolean {
     const stateOfCharge = device?.stateOfCharge;
     if (!device || !stateOfCharge || stateOfCharge.status === 'fresh') return false;
-    const nextDevice: TargetDeviceSnapshot = {
+    const nextDevice: TargetDeviceSnapshot & StateOfChargeObservedProbe = {
       ...device,
       targets: [...device.targets],
       stateOfCharge: { ...stateOfCharge },

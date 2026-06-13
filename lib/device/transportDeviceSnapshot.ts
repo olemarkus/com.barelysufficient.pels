@@ -1,5 +1,6 @@
 import type {
   EvObservedProbe,
+  StateOfChargeObservedProbe,
   TargetDeviceSnapshot,
   TemperatureObservedProbe,
 } from '../../packages/contracts/src/types';
@@ -13,10 +14,14 @@ import type {
  * - `EvObservedProbe` for `evChargingState` (see `EvObservedFields`).
  * - `TemperatureObservedProbe` for `currentTemperature` (see
  *   `TemperatureObservedFields`).
+ * - `StateOfChargeObservedProbe` for `stateOfCharge` (see
+ *   `StateOfChargeObservedFields`).
  *
  * This shape is for the transport/observer OWNER seams only. It must not leak
  * across the producer boundary — consumers receive `TargetDeviceSnapshot` (the
  * widened object is assignable to it) and narrow through `isEvObserved` /
- * `hasObservedTemperature` (`packages/shared-domain/src/*ObservedState.ts`).
+ * `hasObservedTemperature` / `hasObservedStateOfCharge`
+ * (`packages/shared-domain/src/*ObservedState.ts`).
  */
-export type TransportDeviceSnapshot = TargetDeviceSnapshot & EvObservedProbe & TemperatureObservedProbe;
+export type TransportDeviceSnapshot =
+  TargetDeviceSnapshot & EvObservedProbe & TemperatureObservedProbe & StateOfChargeObservedProbe;

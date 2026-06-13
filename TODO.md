@@ -136,6 +136,21 @@ program) remains deferred.*
       `measure_temperature` branch of `applyFreshnessOnlyCapabilityUpdate` at realtime — write only finite
       values), so the scattered `Number.isFinite`/`isFiniteNumber` re-checks at consumers are gone. Type-level
       only — zero runtime behavior change.
+      **State-of-charge-observed field-move landed (2026-06-13): `stateOfCharge` is OFF the base
+      `ObservedDeviceState`/`TargetDeviceSnapshot`.** An un-narrowed `snapshot.stateOfCharge` read is now a hard
+      TS2339; consumers narrow through `hasObservedStateOfCharge`
+      (`packages/shared-domain/src/stateOfChargeObservedState.ts`, browser-safe, generic over the carrier). New
+      contracts types: `StateOfChargeObservedFields` (required `stateOfCharge`) + `StateOfChargeObservedProbe`
+      (optional owner-side widening); `TransportDeviceSnapshot` now intersects EV, temperature, and SoC probes.
+      **Presence-only, like the temperature guard:** it proves the `stateOfCharge` snapshot *object* is present,
+      NOT `status === 'fresh'` — that bag keeps its own `status`, so consumers retain their freshness/`status`
+      gates after narrowing (the guard only removes the outer `?.`/`if (!soc)`). The one spot that differs from
+      the scalar slices: `freezeObserved` (`lib/observer/observedDeviceStateProjection.ts`) still deep-freezes the
+      nested SoC bag. Consumers migrated: `lib/objectives/samples.ts` (EV-SoC sample composes `isEvDevice &&
+      hasObservedStateOfCharge && status === 'fresh'`), the EV-SoC freshness/boost seams in `app.ts` +
+      `flowCards/registerFlowCards.ts` (probe-widened owner reads), the settings-UI device-list + deadline readers,
+      and the smart-tasks widget payload. `percent` finiteness was already a producer guarantee
+      (`normalizeStateOfChargePercent`), so this is pure type-tightening — zero runtime behavior change.
       **Boundary-finiteness sweep landed (2026-06-13): `measure_power` realtime seam was the last ungated one.**
       A read-only audit (map + adversarial-verify) confirmed the producer layer validates finiteness everywhere
       EXCEPT the `measure_power` branch of `applyFreshnessOnlyCapabilityUpdate` (`lib/device/transport/managerFreshness.ts`),
@@ -169,9 +184,10 @@ program) remains deferred.*
         `TargetDeviceSnapshot` discrimination — the type-tightening half, independent of the value-level
         de-kinding above. The EV-observed and temperature-observed field-moves established the pattern for the
         observed-snapshot side: orthogonal `*Fields` cluster + `*Probe` owner-widening + shared-domain guard.
-        Remaining observed-snapshot slices: the EV `stateOfCharge` cluster (independent presence semantics,
-        ~30 UI/widget/flowCard readers) and the stepped descriptor fields (`reportedStepId`,
-        `steppedLoadProfile`, `targetPowerConfig` — many readers already gate on `isSteppedLoadDevice`).
+        Remaining observed-snapshot slices: the `measuredPowerKw` cluster (sibling of the SoC/temperature
+        moves; also retires the two NaN-blind `?? 0` restore-gap reads) and the stepped descriptor fields
+        (`reportedStepId`, `steppedLoadProfile`, `targetPowerConfig` — many readers already gate on
+        `isSteppedLoadDevice`).
 
 ## P2 Product, Observability, and Maintainability
 

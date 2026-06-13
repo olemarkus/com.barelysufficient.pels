@@ -8,8 +8,13 @@ import type {
   ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../../packages/contracts/src/deferredObjectivePlanHistory';
 import type { SettingsUiDeferredObjectivePlanHistoryPayload } from '../../../packages/contracts/src/settingsUiApi';
-import type { TargetDeviceSnapshot, TemperatureObservedProbe } from '../../../packages/contracts/src/types';
+import type {
+  StateOfChargeObservedProbe,
+  TargetDeviceSnapshot,
+  TemperatureObservedProbe,
+} from '../../../packages/contracts/src/types';
 import { hasObservedTemperature } from '../../../packages/shared-domain/src/temperatureObservedState';
+import { hasObservedStateOfCharge } from '../../../packages/shared-domain/src/stateOfChargeObservedState';
 import { resolveActivePlanChartData } from '../../../packages/shared-domain/src/deferredActivePlanChartData';
 import {
   formatPlanHistoryMissedReason,
@@ -92,17 +97,17 @@ const toWidgetChart = (chart: DeferredPlanHistoryChartData): DeferredPlanHistory
 );
 
 const resolveCurrentValue = (
-  // Probe-widened: the snapshot physically carries the observed temperature the
-  // base type omits; `hasObservedTemperature` narrows it (present is finite).
-  device: (TargetDeviceSnapshot & TemperatureObservedProbe) | undefined,
+  // Probe-widened: the snapshot physically carries the observed temperature / SoC
+  // the base type omits; `hasObservedTemperature` / `hasObservedStateOfCharge`
+  // narrow it (present is finite by the producer invariant).
+  device: (TargetDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe) | undefined,
   kind: ResolvedDeferredObjectiveActivePlanV1['objectiveKind'],
 ): number | null => {
   if (!device) return null;
   if (kind === 'temperature') {
     return hasObservedTemperature(device) ? device.currentTemperature : null;
   }
-  const percent = device.stateOfCharge?.percent;
-  return isFiniteNumber(percent) ? percent : null;
+  return hasObservedStateOfCharge(device) ? device.stateOfCharge.percent : null;
 };
 
 const resolvePlannerEtaMs = (plan: ResolvedDeferredObjectiveActivePlanV1): number | null => {
