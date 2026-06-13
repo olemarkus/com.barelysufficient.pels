@@ -159,10 +159,12 @@ Once you have worked through the steps above, verify:
 - **Available power** — how much more load PELS can fit right now before it reaches the current safe pace, in **kW**.
 - **Daily budget** — an optional soft guide for total energy in a day, in **kWh**. Used to spend less by shifting load into cheap hours or to hold the home under a daily energy ceiling; it never overrides the hourly hard cap. See [Daily Energy Budget](/daily-budget#why-set-a-daily-budget).
 
+For the full vocabulary, see the [Glossary](/glossary).
+
 ## What to read next
 
+- [How PELS Decides](/how-pels-decides) for the plain-language mental model
 - [Configuration](/configuration) for the full settings reference
-- [Flow Cards](/flow-cards) for all available Homey automation cards
 - [Cost-Saving Functions](/cost-saving-functions) for choosing between power limiting, budget, price shift, tasks, and Flows
 - [Smart Tasks](/smart-tasks) for charging or heating a device by a ready-by time
 - [Book Cheap Hours With Flows](/how-to-book-cheap-hours-with-flows) for fixed cheapest-hour windows
@@ -170,3 +172,5 @@ Once you have worked through the steps above, verify:
 - [Configure an EV Charger](/ev-charger) for current-controlled EV charging
 - [Tips and Best Practices](/tips-and-best-practices) for tuning advice
 - [Daily Energy Budget](/daily-budget) for daily pacing and budget control
+- [Glossary](/glossary) for any term, defined
+- [Troubleshooting](/troubleshooting) when something isn't behaving as expected
