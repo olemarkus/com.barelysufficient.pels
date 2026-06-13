@@ -107,6 +107,12 @@ export type WeatherHistoryState = {
    * beyond every source's reach are kept, never stripped. Producer-internal.
    */
   kwhPurgeVersion?: number;
+  /**
+   * Version of the controlled/uncontrolled split backfill (summed managed-device
+   * meters) last applied to historical records. Bumping it re-runs the split
+   * fill; cleared with the meter markers on a device switch. Producer-internal.
+   */
+  controlledBackfillVersion?: number;
   /** Derived after each rollup/backfill; recomputed from records, never hand-edited. */
   latestFit?: EnergySignatureFit;
   latestSuggestion?: EnergySignatureSuggestion;

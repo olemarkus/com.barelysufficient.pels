@@ -104,7 +104,9 @@ export async function resolveMeterDailyKwh(deps: MeterKwhBackfillDeps): Promise<
   }
   const best = probe.best;
 
-  const { collection, failures: failureCount } = await collectCandidatePoints(best, FULL_RESOLUTIONS, deps);
+  const { collection, failures: failureCount } = await collectCandidatePoints(
+    best, FULL_RESOLUTIONS, deps.fetchFromHomeyApi,
+  );
   const dailyKwh = dailyKwhFromCounterPoints(collection, deps.timeZone, todayKey);
   // Re-validated on the full span: the deep windows must agree with the
   // tracker as well as the probe window did. Counted as a probe failure for
@@ -133,6 +135,33 @@ export async function resolveMeterDailyKwh(deps: MeterKwhBackfillDeps): Promise<
 
 type MeterCandidate = { deviceId: string; capability: string; exportedCapability?: string };
 
+/** The cumulative meter capability a device exposes (import side), or undefined if none. */
+export function meterCapabilityOf(capabilities: readonly string[]): string | undefined {
+  return CANDIDATE_CAPABILITIES.find((candidate) => capabilities.includes(candidate));
+}
+
+/**
+ * Daily kWh from ONE device's cumulative meter across the full resolution
+ * stitch — the per-device primitive the controlled-split backfill sums over.
+ * `complete` is false if any window failed to read (the caller must not latch
+ * a one-shot marker on a partial device).
+ */
+export async function fetchDeviceDailyKwh(params: {
+  deviceId: string;
+  capability: string;
+  fetchFromHomeyApi: (path: string) => Promise<unknown>;
+  timeZone: string;
+  nowMs: number;
+}): Promise<{ dailyKwh: Record<string, number>; complete: boolean }> {
+  const { collection, failures } = await collectCandidatePoints(
+    { deviceId: params.deviceId, capability: params.capability },
+    FULL_RESOLUTIONS,
+    params.fetchFromHomeyApi,
+  );
+  const todayKey = getDateKeyInTimeZone(new Date(params.nowMs), params.timeZone);
+  return { dailyKwh: dailyKwhFromCounterPoints(collection, params.timeZone, todayKey), complete: failures === 0 };
+}
+
 /**
  * Imported and (when the device meters both directions) exported cumulative
  * counters. The tracker integrates NET power on a HAN home, so an
@@ -151,7 +180,7 @@ function listMeterCandidates(devicesResponse: unknown): MeterCandidate[] {
     const deviceId = device.id;
     if (typeof deviceId !== 'string' || deviceId.length === 0) return [];
     const capabilities = Array.isArray(device.capabilities) ? device.capabilities : [];
-    const capability = CANDIDATE_CAPABILITIES.find((candidate) => capabilities.includes(candidate));
+    const capability = meterCapabilityOf(capabilities);
     if (capability === undefined) return [];
     // Any device that ALSO meters export is bidirectional gear — net it,
     // whether its import counter is `.imported` or generic `meter_power`.
@@ -165,7 +194,7 @@ function listMeterCandidates(devicesResponse: unknown): MeterCandidate[] {
 async function collectCandidatePoints(
   candidate: MeterCandidate,
   resolutions: readonly string[],
-  deps: MeterKwhBackfillDeps,
+  fetchFromHomeyApi: (path: string) => Promise<unknown>,
 ): Promise<{ collection: CounterCollection; failures: number }> {
   const imported = new Map<number, number>();
   const exported = candidate.exportedCapability === undefined ? undefined : new Map<number, number>();
@@ -177,7 +206,7 @@ async function collectCandidatePoints(
         // not readable), unlike a well-formed empty window (a young meter
         // simply has no older history — failing that would retry forever).
         const path = entryPath(candidate.deviceId, capability, resolution);
-        if (!ingestCounterResponse(await deps.fetchFromHomeyApi(path), points)) {
+        if (!ingestCounterResponse(await fetchFromHomeyApi(path), points)) {
           windowFailures += 1;
         }
       } catch {
@@ -211,7 +240,7 @@ async function probeCandidates(
   let best: { candidate: MeterCandidate; validation: CandidateValidation } | undefined;
   let failures = 0;
   for (const candidate of candidates) {
-    const probe = await collectCandidatePoints(candidate, [PROBE_RESOLUTION], deps);
+    const probe = await collectCandidatePoints(candidate, [PROBE_RESOLUTION], deps.fetchFromHomeyApi);
     if (probe.failures > 0) {
       failures += 1;
       continue;
@@ -367,7 +396,7 @@ function parseEntryTimestamp(raw: unknown): number | undefined {
 }
 
 /** Linear-interpolated quantile over an ascending-sorted sample. */
-function quantileSorted(sorted: number[], p: number): number {
+export function quantileSorted(sorted: number[], p: number): number {
   const position = (sorted.length - 1) * p;
   const lower = Math.floor(position);
   const upper = Math.ceil(position);

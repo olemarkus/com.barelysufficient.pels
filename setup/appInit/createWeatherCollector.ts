@@ -57,7 +57,7 @@ export function createWeatherCollector(
   ctx: Pick<
     AppContext,
     'homey' | 'powerTracker' | 'getNow' | 'getTimeZone' | 'capacitySettings'
-    | 'deviceDiagnosticsService' | 'deferredObjectivePlanHistoryRecorder'
+    | 'deviceDiagnosticsService' | 'deferredObjectivePlanHistoryRecorder' | 'resolveManagedState'
   >,
 ): WeatherCollector {
   const logger = getLogger('weather');
@@ -70,6 +70,8 @@ export function createWeatherCollector(
       timeZone: ctx.getTimeZone(),
       source: ctx.powerTracker,
     }),
+    // PELS-managed = the controlled set the historical split is summed from.
+    isManagedDevice: (deviceId) => ctx.resolveManagedState(deviceId),
     // Composed from two planner-orthogonal sources so lib/weather sees only
     // primitives: diagnostics (comfort/capacity deficit durations) and the
     // smart-task history (deadline-miss-to-budget). Absent services → {}.
