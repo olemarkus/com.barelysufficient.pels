@@ -26,19 +26,25 @@ export function applyFreshnessOnlyCapabilityUpdate(params: {
   value: unknown;
 }): FreshnessOnlyCapabilityUpdateResult {
   const { snapshot, capabilityId, value } = params;
-  if (capabilityId === 'measure_power' && typeof value === 'number') {
+  // `Number.isFinite` gate matches the other two `measuredPowerKw` write seams
+  // (`resolveMeasuredPowerKw` at parse, `applyMeasuredPowerObservation` at
+  // snapshot-refresh) so a realtime `NaN`/`Infinity` power event from the Homey
+  // live feed is DROPPED (no write, no freshness bump) rather than polluting the
+  // snapshot. Junk is validated out at the boundary, not propagated to the power
+  // sum / shed decisions downstream.
+  if (capabilityId === 'measure_power' && typeof value === 'number' && Number.isFinite(value)) {
     const kw = value / 1000;
     if (Object.is(snapshot.measuredPowerKw, kw)) return { changed: false, normalizedValue: kw };
     snapshot.measuredPowerKw = kw;
     return { changed: true, normalizedValue: kw };
   }
-  // `Number.isFinite` gate matches the other two `currentTemperature` write
-  // seams (`getCurrentTemperature` at parse, `applyMeasuredTemperatureObservation`
-  // at snapshot-refresh) so "present implies finite" holds at EVERY producer
-  // seam — the invariant the `TemperatureObservedFields` consumers rely on when
-  // they read the narrowed field without a finiteness re-check. A non-finite
-  // realtime `measure_temperature` event is not a usable reading: skip the write
-  // (and the freshness bump), mirroring the observation seam's early return.
+  // Same `Number.isFinite` boundary gate as `measure_power` above and the other
+  // two `currentTemperature` write seams (`getCurrentTemperature` at parse,
+  // `applyMeasuredTemperatureObservation` at snapshot-refresh) so "present
+  // implies finite" holds at EVERY producer seam — the invariant the
+  // `TemperatureObservedFields` consumers rely on when they read the narrowed
+  // field without a finiteness re-check. A non-finite realtime `measure_temperature`
+  // event is not a usable reading: skip the write (and the freshness bump).
   if (capabilityId === 'measure_temperature' && typeof value === 'number' && Number.isFinite(value)) {
     if (Object.is(snapshot.currentTemperature, value)) return { changed: false, normalizedValue: value };
     snapshot.currentTemperature = value;

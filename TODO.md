@@ -131,10 +131,23 @@ program) remains deferred.*
       PRESENCE-ONLY, not kind+presence.** `currentTemperature` comes from the `measure_temperature` capability,
       which a non-temperature `deviceType` device can carry (deviceType is keyed on target caps), so a kind gate
       would reject a *present* reading (a present-but-rejected gap EV does not have). Callers wanting the kind
-      compose it explicitly. **Fallbacks removed at source:** present implies finite (both producer seams —
-      `getCurrentTemperature` at parse, `applyMeasuredTemperatureObservation` at realtime — write only finite
+      compose it explicitly. **Fallbacks removed at source:** present implies finite (all three producer seams —
+      `getCurrentTemperature` at parse, `applyMeasuredTemperatureObservation` at snapshot-refresh, and the
+      `measure_temperature` branch of `applyFreshnessOnlyCapabilityUpdate` at realtime — write only finite
       values), so the scattered `Number.isFinite`/`isFiniteNumber` re-checks at consumers are gone. Type-level
       only — zero runtime behavior change.
+      **Boundary-finiteness sweep landed (2026-06-13): `measure_power` realtime seam was the last ungated one.**
+      A read-only audit (map + adversarial-verify) confirmed the producer layer validates finiteness everywhere
+      EXCEPT the `measure_power` branch of `applyFreshnessOnlyCapabilityUpdate` (`lib/device/transport/managerFreshness.ts`),
+      which gated only on `typeof === 'number'` — so a realtime `NaN`/`Infinity` power event was stored on
+      `measuredPowerKw` (the sibling of the temperature P1; it also rendered "NaN kW" via the unguarded
+      `planSteppedCardText` reader and falsely advanced the freshness clock). Fixed drop-at-source
+      (`&& Number.isFinite(value)` → no write, no freshness bump). Swept the same class in the load-setting
+      reads too: `getLoadSettingWatts` (`devicePowerEstimate.ts`) and `getSnapshotLoad`/`getApiLoad`
+      (`lib/device/load.ts`) now drop a non-finite settings/snapshot `load` instead of propagating an infinite
+      estimate. An exhaustive boundary unit test (`test/unit/managerFreshness.test.ts`) seals the freshness seam.
+      With this, "validate-and-drop at the Homey boundary; present-implies-finite" holds for every numeric
+      capability write seam and load-setting read — the invariant the observed-field clusters rely on.
       **Temperature de-kind slice T1 landed (2026-06-07): planner branches on modality, not device kind.**
       Moved the starvation device-class set and the `deviceType === 'temperature'` checks out of
       `lib/plan/planDiagnostics.ts` into browser-safe shared-domain predicates (`isTemperatureControlDevice`,
