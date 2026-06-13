@@ -106,6 +106,10 @@ function namedMeta(name: string, content: string): HeadConfig {
   return ['meta', { name, content }];
 }
 
+function jsonLdScript(data: Record<string, unknown>): HeadConfig {
+  return ['script', { type: 'application/ld+json' }, JSON.stringify(data)];
+}
+
 export default defineConfig({
   srcExclude: ['images/README.md'],
   ...(outDir ? { outDir } : {}),
@@ -211,6 +215,33 @@ export default defineConfig({
       namedMeta('twitter:description', pageDescription),
       namedMeta('twitter:image', imageUrl),
       namedMeta('twitter:image:alt', imageAlt),
+      // SoftwareApplication entity markup belongs on one canonical page (the
+      // homepage), not repeated on every doc page — so it is built only here.
+      // Fields are kept to what we can state truthfully: no price/rating is
+      // asserted, so the store link is carried by installUrl + sameAs rather
+      // than a fabricated Offer.
+      ...(pageData.relativePath === 'index.md'
+        ? [
+            jsonLdScript({
+              '@context': 'https://schema.org',
+              '@type': 'SoftwareApplication',
+              name: 'PELS',
+              applicationCategory: 'UtilitiesApplication',
+              operatingSystem: 'Homey Pro',
+              description: defaultDescription,
+              url: siteUrl,
+              image: imageUrl,
+              installUrl: 'https://homey.app/a/com.barelysufficient.pels',
+              softwareHelp: siteUrl,
+              inLanguage: 'en',
+              author: { '@type': 'Person', name: 'Ole Markus With' },
+              sameAs: [
+                'https://homey.app/a/com.barelysufficient.pels',
+                'https://github.com/olemarkus/com.barelysufficient.pels',
+              ],
+            }),
+          ]
+        : []),
     ];
   },
   transformHtml(code, id) {
