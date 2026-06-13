@@ -1112,6 +1112,7 @@
       yesterday: null,
       usableDays: 0,
       backfilledDays: 0,
+      suppressedDaysExcluded: 0,
       generatedAtMs: nowMs,
     });
     if (!advisor.outdoorDeviceId) return emptyPayload('needs_device');
@@ -1177,6 +1178,9 @@
         curvatureSteeperWhenCold: false,
         heatLossWPerK: 75,
         driftSuspected: false,
+        suppressedDaysExcluded: 0,
+        suppressionFilterRelaxed: false,
+        recentColdSuppressionSuspected: false,
         residualQ10: -5,
         residualQ50: 0,
         residualQ80: 5,
@@ -1199,6 +1203,7 @@
           ? Number(settings.daily_budget_kwh ?? 0)
           : null,
         cappedByCapacity: false,
+        budgetMayBeLimiting: false,
       },
       scatter,
       recentDays,
@@ -1210,6 +1215,7 @@
       },
       usableDays: 287,
       backfilledDays: 240,
+      suppressedDaysExcluded: 0,
       generatedAtMs: nowMs,
     };
   };

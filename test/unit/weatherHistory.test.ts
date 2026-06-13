@@ -112,6 +112,29 @@ describe('rollupDay', () => {
     expect(state.accumulators?.['2026-01-10']).toBeUndefined();
   });
 
+  it('records the uncontrolled split and a non-empty suppression covariate', () => {
+    const state = rollupDay(baseState(), {
+      dateKey: '2026-01-10',
+      dayLengthHours: 24,
+      kwhTotal: 42.5,
+      kwhControlled: 11,
+      kwhUncontrolled: 31.5,
+      unreliablePower: false,
+      suppression: { targetDeficitMs: 7_200_000, deadlineMissedToBudget: true },
+    });
+    expect(state.records[0]).toMatchObject({
+      kwhUncontrolled: 31.5,
+      suppression: { targetDeficitMs: 7_200_000, deadlineMissedToBudget: true },
+    });
+  });
+
+  it('omits an all-empty suppression object so absent stays "unknown"', () => {
+    const state = rollupDay(baseState(), {
+      dateKey: '2026-01-10', dayLengthHours: 24, kwhTotal: 42.5, unreliablePower: false, suppression: {},
+    });
+    expect(state.records[0].suppression).toBeUndefined();
+  });
+
   it('flags partial temperature coverage and missing kWh', () => {
     let state = emptyWeatherHistoryState();
     state = applyActualSample(state, { dateKey: '2026-01-10', hourKey: '08', temperatureC: 1 });
@@ -208,6 +231,37 @@ describe('reconcileKwhSources', () => {
     '2026-03-05': { total: 44, controlled: 12 },
   };
   const getDailyKwh = (dateKey: string): { total?: number; controlled?: number } => trackerByDay[dateKey] ?? {};
+
+  it('preserves the suppression covariate and refreshes the uncontrolled split on a tracker win', () => {
+    const live = liveRecord('2026-03-05', {
+      kwhTotal: 40, kwhControlled: 8, kwhUncontrolled: 30, suppression: { targetDeficitMs: 3_600_000 },
+    });
+    const getKwh = (dateKey: string): { total?: number; controlled?: number; uncontrolled?: number } => (
+      dateKey === '2026-03-05' ? { total: 44, controlled: 12, uncontrolled: 31 } : {}
+    );
+    const { state } = reconcileKwhSources(
+      { records: [live] },
+      { getDailyKwh: getKwh, meterDailyKwh: {}, allowStrip: true },
+    );
+    expect(state.records[0]).toMatchObject({
+      kwhTotal: 44, kwhControlled: 12, kwhUncontrolled: 31, suppression: { targetDeficitMs: 3_600_000 },
+    });
+  });
+
+  it('drops a stale controlled/uncontrolled split when the tracker total has no fresh split', () => {
+    const live = liveRecord('2026-03-05', { kwhTotal: 40, kwhControlled: 8, kwhUncontrolled: 30 });
+    // Tracker has a real total for the day but no controlled/uncontrolled split.
+    const getKwh = (dateKey: string): { total?: number; controlled?: number; uncontrolled?: number } => (
+      dateKey === '2026-03-05' ? { total: 44 } : {}
+    );
+    const { state } = reconcileKwhSources(
+      { records: [live] },
+      { getDailyKwh: getKwh, meterDailyKwh: {}, allowStrip: true },
+    );
+    expect(state.records[0].kwhTotal).toBe(44);
+    expect(state.records[0].kwhControlled).toBeUndefined();
+    expect(state.records[0].kwhUncontrolled).toBeUndefined();
+  });
 
   it('applies the trust ladder: tracker wins, meter fills, unvalidated backfilled kWh is stripped', () => {
     const missing = backfilledRecord('2025-02-01', {
@@ -409,5 +463,44 @@ describe('normalizeWeatherHistoryState', () => {
     const broken = { ...liveRecord('2026-01-09'), tempSampleCount: Number.POSITIVE_INFINITY };
     const normalized = normalizeWeatherHistoryState({ records: [broken] });
     expect(normalized?.records).toEqual([]);
+  });
+
+  it('round-trips the suppression covariate and the uncontrolled split', () => {
+    const record = {
+      ...liveRecord('2026-01-09'),
+      kwhUncontrolled: 31.5,
+      suppression: { targetDeficitMs: 7_200_000, blockedByHeadroomMs: 1_800_000, deadlineMissedToBudget: true },
+    };
+    const normalized = normalizeWeatherHistoryState(JSON.parse(JSON.stringify({ records: [record] })));
+    expect(normalized?.records[0]).toMatchObject({
+      kwhUncontrolled: 31.5,
+      suppression: { targetDeficitMs: 7_200_000, blockedByHeadroomMs: 1_800_000, deadlineMissedToBudget: true },
+    });
+  });
+
+  it('drops zero deficit/headroom fields so a no-censoring day persists no suppression', () => {
+    const record = {
+      ...liveRecord('2026-01-09'),
+      suppression: { targetDeficitMs: 0, blockedByHeadroomMs: 0 },
+    };
+    const normalized = normalizeWeatherHistoryState(JSON.parse(JSON.stringify({ records: [record] })));
+    expect(normalized?.records[0].suppression).toBeUndefined();
+    // A real deficit still survives even when paired with a zero field.
+    const mixed = { ...liveRecord('2026-01-10'), suppression: { targetDeficitMs: 3_600_000, blockedByHeadroomMs: 0 } };
+    const normalizedMixed = normalizeWeatherHistoryState(JSON.parse(JSON.stringify({ records: [mixed] })));
+    expect(normalizedMixed?.records[0].suppression).toEqual({ targetDeficitMs: 3_600_000 });
+  });
+
+  it('strips a malformed suppression/kwhUncontrolled but KEEPS the record (and its temperature)', () => {
+    const record = {
+      ...liveRecord('2026-01-09'),
+      kwhUncontrolled: 'junk',
+      suppression: { targetDeficitMs: 'nope', deadlineMissedToBudget: 'yes' },
+    };
+    const normalized = normalizeWeatherHistoryState(JSON.parse(JSON.stringify({ records: [record] })));
+    expect(normalized?.records).toHaveLength(1);
+    expect(normalized?.records[0].tempMeanC).toBe(liveRecord('2026-01-09').tempMeanC);
+    expect(normalized?.records[0].suppression).toBeUndefined();
+    expect(normalized?.records[0].kwhUncontrolled).toBeUndefined();
   });
 });

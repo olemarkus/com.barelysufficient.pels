@@ -138,6 +138,78 @@ describe('fitEnergySignature', () => {
   });
 });
 
+describe('fitEnergySignature — suppression awareness', () => {
+  const HOUR_MS = 60 * 60 * 1000;
+  // Censor the coldest six days to a near-zero total (kept "usable" so they only
+  // leave the fit via the suppression flag, not the kwhTotal>0 quality gate).
+  const censorColdest = (days: WeatherDailyRecord[], flag: boolean): WeatherDailyRecord[] => {
+    const coldestKeys = new Set(
+      [...days].sort((a, b) => a.tempMeanC - b.tempMeanC).slice(0, 6).map((entry) => entry.dateKey),
+    );
+    return days.map((record) => (coldestKeys.has(record.dateKey)
+      ? { ...record, kwhTotal: 1, ...(flag ? { suppression: { deadlineMissedToBudget: true } } : {}) }
+      : record));
+  };
+
+  it('excludes deadline-miss-to-budget days, keeping the q05 floor at true demand', () => {
+    const clean = fitEnergySignature(heatingDays(60), NOW_MS);
+    const flagged = fitEnergySignature(censorColdest(heatingDays(60), true), NOW_MS);
+    if (!clean || !flagged) throw new Error('expected fits');
+    expect(flagged.suppressedDaysExcluded).toBe(6);
+    expect(flagged.suppressionFilterRelaxed).toBe(false);
+    // The censored 1-kWh days are out of the fit → the suggestion's q05 floor
+    // stays at real demand instead of being dragged toward zero.
+    expect(flagged.lowObservedDayKwh).toBeGreaterThan(15);
+    expect(Math.abs(flagged.lowObservedDayKwh - clean.lowObservedDayKwh)).toBeLessThan(3);
+    // …and the robust slope is unharmed by removing the (true-line) cold tail.
+    expect(Math.abs(flagged.slopeKwhPerDegree - clean.slopeKwhPerDegree)).toBeLessThan(0.3);
+  });
+
+  it('drags the q05 floor toward zero if the same censored days are NOT flagged (the flag does the work)', () => {
+    const unflagged = fitEnergySignature(censorColdest(heatingDays(60), false), NOW_MS);
+    if (!unflagged) throw new Error('expected fit');
+    // Censored 1-kWh days kept → they become the new low → q05 collapses, which
+    // is exactly the floor the budget suggestion would inherit. This is the loop.
+    expect(unflagged.lowObservedDayKwh).toBeLessThan(5);
+    expect(unflagged.suppressedDaysExcluded).toBe(0);
+  });
+
+  it('admits days with absent suppression as unsuppressed', () => {
+    const fit = fitEnergySignature(heatingDays(60), NOW_MS);
+    expect(fit?.suppressedDaysExcluded).toBe(0);
+    expect(fit?.suppressionFilterRelaxed).toBe(false);
+    expect(fit?.recentColdSuppressionSuspected).toBe(false);
+  });
+
+  it('relaxes the filter rather than blanking the fit when exclusion would starve it', () => {
+    // 25 quality days, 10 flagged ⇒ kept 15 < MIN_USABLE_DAYS(21) ⇒ fall back.
+    const days = heatingDays(25).map((record, index) => (
+      index % 2 === 0 && index < 20 ? { ...record, suppression: { deadlineMissedToBudget: true } } : record
+    ));
+    const fit = fitEnergySignature(days, NOW_MS);
+    expect(fit).not.toBeNull();
+    expect(fit?.suppressionFilterRelaxed).toBe(true);
+    expect(fit?.suppressedDaysExcluded).toBe(0);
+    expect(fit?.usableDays).toBe(25);
+  });
+
+  it('flags recentColdSuppressionSuspected for a recent cold day that was comfort-limited', () => {
+    const recentColdLimited = heatingDays(60).map((record, index) => (
+      index === 59
+        ? {
+          ...record, tempMeanC: 0, tempMinC: -3, tempMaxC: 3, kwhTotal: 50, suppression: { targetDeficitMs: 2 * HOUR_MS },
+        }
+        : record
+    ));
+    expect(fitEnergySignature(recentColdLimited, NOW_MS)?.recentColdSuppressionSuspected).toBe(true);
+    // Control: same recent cold day, no suppression recorded.
+    const control = heatingDays(60).map((record, index) => (
+      index === 59 ? { ...record, tempMeanC: 0, kwhTotal: 50 } : record
+    ));
+    expect(fitEnergySignature(control, NOW_MS)?.recentColdSuppressionSuspected).toBe(false);
+  });
+});
+
 describe('predictDailyKwh', () => {
   it('predicts along the hinge for changepoint fits and undefined when uncorrelated', () => {
     const fit = fitEnergySignature(heatingDays(60), NOW_MS);

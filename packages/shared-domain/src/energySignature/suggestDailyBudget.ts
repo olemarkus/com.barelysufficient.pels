@@ -37,6 +37,8 @@ export type DailyBudgetSuggestionResult = {
   suggestedBudgetKwh: number;
   beyondObservedCold: boolean;
   beyondObservedWarm: boolean;
+  /** Recent cold days were PELS-limited and tomorrow is cold — headroom leaned q80→q90. */
+  budgetMayBeLimiting: boolean;
 };
 
 const MIN_RELATIVE_HEADROOM = 0.05;
@@ -56,7 +58,17 @@ export function suggestDailyBudgetKwh(input: DailyBudgetSuggestionInput): DailyB
   );
   const predictedKwh = predictDailyKwh(fit, evaluationTempC) ?? fit.medianDayKwh;
 
-  const headroom = Math.max(fit.residualQ80, MIN_RELATIVE_HEADROOM * predictedKwh);
+  // Raise-lean: when recent cold days were PELS-limited and tomorrow is cold,
+  // the fit already reads true-demand (deadline-miss days are excluded), but
+  // the comfort/capacity censoring that v1 does NOT exclude still drags the
+  // slope a little low. Widen the headroom q80→q90 so a starved home is nudged
+  // UP, never lower — the suggestion may only ever over-cover here, so a rough
+  // detection threshold is safe. A cold forecast is one below the heating knee
+  // (or below the warmest observed when no balance point is identified).
+  const coldKneeC = fit.balancePointC ?? fit.observedTempMaxC;
+  const budgetMayBeLimiting = fit.recentColdSuppressionSuspected && forecastMeanTempC < coldKneeC;
+  const headroomQuantile = budgetMayBeLimiting ? fit.residualQ90 : fit.residualQ80;
+  const headroom = Math.max(headroomQuantile, MIN_RELATIVE_HEADROOM * predictedKwh);
   const floored = Math.max(predictedKwh + headroom, fit.lowObservedDayKwh);
   const capacityCapKwh = capacityLimitKw !== undefined && capacityLimitKw > 0
     ? capacityLimitKw * 24
@@ -78,5 +90,6 @@ export function suggestDailyBudgetKwh(input: DailyBudgetSuggestionInput): DailyB
     suggestedBudgetKwh,
     beyondObservedCold,
     beyondObservedWarm,
+    budgetMayBeLimiting,
   };
 }

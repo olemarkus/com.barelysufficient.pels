@@ -1456,3 +1456,56 @@ describe('DeviceDiagnosticsService', () => {
     });
   });
 });
+
+describe('DeviceDiagnosticsService.getDaySuppressionTotals', () => {
+  const aggregate = (targetDeficitMs: number, blockedByHeadroomMs: number) => ({
+    unmetDemandMs: 0,
+    blockedByHeadroomMs,
+    blockedByCooldownBackoffMs: 0,
+    targetDeficitMs,
+    shedCount: 0,
+    restoreCount: 0,
+    failedActivationCount: 0,
+    stableActivationCount: 0,
+    shedToRestoreCount: 0,
+    shedToRestoreTotalMs: 0,
+    restoreToSetbackCount: 0,
+    restoreToSetbackTotalMs: 0,
+    restoreToSetbackMinMs: null,
+    restoreToSetbackMaxMs: null,
+    penaltyBumpCount: 0,
+    penaltyMaxLevelSeen: 0,
+  });
+
+  it('sums targetDeficit + blockedByHeadroom across devices, undefined for an unrecorded day', () => {
+    // A recent dateKey so construction's 21-day prune doesn't drop it.
+    const recentKey = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const { service } = createDeps({
+      initialState: {
+        version: 2,
+        windowDays: 21,
+        generatedAt: Date.now(),
+        devicesById: {
+          'heater-1': { daysByDateKey: { [recentKey]: aggregate(100, 10) } },
+          'heater-2': { daysByDateKey: { [recentKey]: aggregate(200, 20) } },
+        },
+      },
+    });
+    expect(service.getDaySuppressionTotals(recentKey)).toEqual({ targetDeficitMs: 300, blockedByHeadroomMs: 30 });
+    expect(service.getDaySuppressionTotals('1999-01-01')).toBeUndefined();
+  });
+
+  it('returns undefined for a day that has aggregates but zero deficit and zero headroom-block', () => {
+    const recentKey = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const { service } = createDeps({
+      initialState: {
+        version: 2,
+        windowDays: 21,
+        generatedAt: Date.now(),
+        // A shed/activation created the aggregate, but no comfort deficit accrued.
+        devicesById: { 'heater-1': { daysByDateKey: { [recentKey]: aggregate(0, 0) } } },
+      },
+    });
+    expect(service.getDaySuppressionTotals(recentKey)).toBeUndefined();
+  });
+});

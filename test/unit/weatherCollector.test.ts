@@ -34,7 +34,8 @@ const buildHarness = (overrides: Partial<WeatherCollectorDeps> = {}): Harness =>
       capabilitiesObj: { measure_temperature: { value: deviceId === 'fc-1' ? -7 : 3.5 } },
     })),
     fetchInsights: vi.fn(async () => ({ step: 6 * HOUR_MS, values: [] })),
-    getDailyKwh: vi.fn(() => ({ total: 42.5, controlled: 10 })),
+    getDailyKwh: vi.fn(() => ({ total: 42.5, controlled: 10, uncontrolled: 32.5 })),
+    getDaySuppression: vi.fn(() => ({})),
     getUnreliablePeriods: vi.fn(() => []),
     getSettings: vi.fn(() => ({ enabled: true, outdoorDeviceId: 'out-1' })),
     getNowMs: () => Date.now(),
@@ -199,6 +200,26 @@ describe('WeatherCollector', () => {
     });
     // The 00:01:30 local sample opened the new day's accumulator.
     expect(written.accumulators?.['2026-01-11']?.count).toBe(1);
+  });
+
+  it('threads the uncontrolled split and the day suppression covariate into the record', async () => {
+    vi.setSystemTime(Date.UTC(2026, 0, 10, 22, 30, 0)); // Oslo 23:30
+    const getDaySuppression = vi.fn(() => ({ targetDeficitMs: 7_200_000, deadlineMissedToBudget: true }));
+    const { collector, store, deps } = buildHarness({
+      getDailyKwh: vi.fn(() => ({ total: 42.5, controlled: 10, uncontrolled: 32.5 })),
+      getDaySuppression,
+    });
+    collector.start();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(36 * 60 * 1000);
+    collector.stop();
+    expect(getDaySuppression).toHaveBeenCalledWith('2026-01-10');
+    expect((deps.getDaySuppression as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(0);
+    const record = lastWritten(store).records.find((entry) => entry.dateKey === '2026-01-10');
+    expect(record).toMatchObject({
+      kwhUncontrolled: 32.5,
+      suppression: { targetDeficitMs: 7_200_000, deadlineMissedToBudget: true },
+    });
   });
 
   it('catches up rollups for accumulator days the app slept through', async () => {
