@@ -35,7 +35,7 @@ Chips stay short. The status line below a chip explains why a device is waiting,
 | **Limited by the hard cap** | PELS is lowering or pausing the device to protect the hourly hard cap. |
 | **Limited by today's daily budget** | Daily budget pacing is currently the tighter constraint. |
 | **Limited — this hour is near the hard cap** | The current hour is close enough to the hard cap that PELS is holding the device back. |
-| **Manual action needed — hard cap may be exceeded** | PELS projects an hourly hard-cap breach and cannot limit any more load. Use the **Capacity guard: manual action needed** trigger for alerts. |
+| **Manual action needed — hard cap may be exceeded** | PELS projects an hourly hard-cap breach and cannot limit any more load. Use the **Hard cap breach imminent — manual action needed** trigger for alerts. |
 | **Waiting before resuming** | PELS is respecting a cooldown so devices do not rapidly cycle. |
 | **Waiting for power reading to stabilise** | PELS recently changed or observed a device and is waiting for meter readings to settle. |
 | **Delaying restart after recent failed attempt** | A previous resume caused new pressure, so PELS is waiting longer before trying again. |

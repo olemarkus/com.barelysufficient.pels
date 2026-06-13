@@ -67,6 +67,19 @@ Start here:
 
 [Smart Tasks](../smart-tasks.md)
 
+### What the shift saves (illustrative)
+
+A water heater that uses about 5 kWh a day to stay hot doesn't care *when* it
+heats. Move that load out of a 1.20 kr/kWh evening and into 0.40 kr/kWh night
+hours, and you pay roughly **2 kr instead of 6 kr** for the same hot water — about
+4 kr a day, or ~120 kr a month, from one device.
+
+The numbers are illustrative: your savings depend on your own price spread and how
+much load you can actually shift, and a budget caps energy, not money. PELS does
+the shifting automatically once the heater is price-aware or booked into cheap
+hours. To see *your* figures, watch the **Budget → Hourly plan** view (managed
+load against the price line) and the price level on [PELS Insights](../insights-device.md).
+
 ## Heating example
 
 Heating is often flexible, but only within comfort limits.

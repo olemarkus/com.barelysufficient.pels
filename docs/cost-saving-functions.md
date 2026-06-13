@@ -111,3 +111,22 @@ Add price-based temperature shift for thermal devices that can preheat or coast 
 Add Smart tasks when one specific device must be ready by a specific time.
 
 Use Flow-booked hours when you want a fixed number of cheap hours and prefer to own the scheduling logic in Homey Flows.
+
+## How do I see what I saved?
+
+The savings are real, but they show up as *load landing in cheaper hours*, not as a
+single "you saved X" number. To check that PELS is actually shifting your load:
+
+- **Budget → Hourly plan view** overlays managed-device energy on the price line,
+  so you can see flexible load sitting in the cheaper hours. See
+  [Daily Energy Budget](/daily-budget#what-you-ll-see-on-the-budget-page).
+- **Usage tab** shows hourly and daily totals split into managed and background
+  use, so you can confirm *when* the home drew power.
+- **[PELS Insights](/insights-device)** surfaces the current price level and
+  daily-budget figures for dashboards and quick checks.
+
+For a worked, illustrative example of the kroner involved, see the
+[water heater](/use-cases/homey-water-heater-cheap-hours#what-the-shift-saves-illustrative)
+and [EV charging](/use-cases/homey-ev-charging-power-limit#what-cheap-hour-charging-saves-illustrative)
+use cases. Remember a budget caps **energy, not money** — the saving comes from
+shifting load into cheap hours, not from the kWh number itself.

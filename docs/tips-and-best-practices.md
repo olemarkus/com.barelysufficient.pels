@@ -53,6 +53,8 @@ Once the behavior matches your expectations, expand the managed device set.
 | No price data | Confirm the configured source is correct and external Flow payloads contain full-day JSON. |
 | EV charger current does not change | Check the EV control mode, the **EV charger current (A)** Flow tag, and the charger app action that sets available current. |
 
+For a symptom-by-symptom guide across all of PELS, see the full [Troubleshooting guide](/troubleshooting).
+
 ## When to dive deeper
 
 - Use [Daily Energy Budget](/daily-budget) if you want to understand whole-day pacing.

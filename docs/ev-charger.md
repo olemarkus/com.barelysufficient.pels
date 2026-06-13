@@ -114,6 +114,8 @@ Start with **Simulation mode** if you are still tuning the rest of PELS. Then ve
 | Battery level does not update in PELS | Check that the battery reporting Flow uses the same charger device as the current-control Flow. |
 | PELS never limits the charger | Check the charger priority, hard cap, safety margin, and whether Simulation mode is still enabled. |
 
+For problems beyond the charger — budget, capacity, or a missed task — see the full [Troubleshooting guide](/troubleshooting).
+
 ## Related Pages
 
 - [Getting Started](/getting-started)

@@ -148,6 +148,7 @@ editLink: false
         <a href="cost-saving-functions.html">Compare cost-saving functions</a>
       </article>
     </div>
+    <p class="landing-note">New to PELS? <a href="how-pels-decides.html">How PELS decides</a> explains it in plain language, the <a href="glossary.html">Glossary</a> defines every term, and <a href="troubleshooting.html">Troubleshooting</a> fixes the common snags.</p>
     <p class="landing-note">Looking for the source code or want to contribute? See <a href="contributor-setup.html">Contributor Setup</a> or <a href="https://github.com/olemarkus/com.barelysufficient.pels">GitHub</a>.</p>
   </section>
 </div>

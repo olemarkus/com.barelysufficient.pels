@@ -225,3 +225,5 @@ This is useful for rooms or water heaters where the exact ready time matters mor
 | The task starts too early | Check whether **Power-limit control** is on; with it on, normal PELS behavior can still run the device outside planned task hours. |
 | The task cannot meet the target | Check target size, ready-by time, planning power/current, daily budget, and device priority. |
 | A completed task starts tracking again | This is expected if a fresh reading drops below the target before the ready-by time. |
+
+For problems beyond Smart tasks — capacity, budget, or missing data — see the full [Troubleshooting guide](/troubleshooting).

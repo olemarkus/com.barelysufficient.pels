@@ -3,9 +3,9 @@ import type { DefaultTheme } from 'vitepress';
 export const navItems: DefaultTheme.NavItem[] = [
   { text: 'App Store', link: 'https://homey.app/a/com.barelysufficient.pels' },
   { text: 'Getting Started', link: '/getting-started' },
-  { text: 'Use Cases', link: '/#start-by-problem' },
+  { text: 'Start by problem', link: '/#start-by-problem' },
   { text: 'Configuration', link: '/configuration' },
-  { text: 'Flow Cards', link: '/flow-cards' },
+  { text: 'Troubleshooting', link: '/troubleshooting' },
 ];
 
 export const sidebar: DefaultTheme.SidebarItem[] = [
@@ -16,11 +16,21 @@ export const sidebar: DefaultTheme.SidebarItem[] = [
       { text: 'For norske hjem', link: '/stromstyring-norge' },
       { text: 'Getting Started', link: '/getting-started' },
       { text: 'Configuration', link: '/configuration' },
-      { text: 'Flow Cards', link: '/flow-cards' },
-      { text: 'PELS Insights', link: '/insights-device' },
-      { text: 'Dashboard Widgets', link: '/widgets' },
       { text: 'Using Homey Energy', link: '/homey-energy' },
+    ],
+  },
+  {
+    text: 'Understand PELS',
+    items: [
+      { text: 'How PELS Decides', link: '/how-pels-decides' },
+      { text: 'Glossary', link: '/glossary' },
       { text: 'Tips and Best Practices', link: '/tips-and-best-practices' },
+    ],
+  },
+  {
+    text: 'Troubleshooting',
+    items: [
+      { text: 'When something goes wrong', link: '/troubleshooting' },
     ],
   },
   {
@@ -66,6 +76,9 @@ export const sidebar: DefaultTheme.SidebarItem[] = [
       { text: 'Plan States', link: '/plan-states' },
       { text: 'Daily Budget Weighting', link: '/daily-budget-weights' },
       { text: 'Architecture Contract', link: '/architecture' },
+      { text: 'Flow Cards', link: '/flow-cards' },
+      { text: 'PELS Insights', link: '/insights-device' },
+      { text: 'Dashboard Widgets', link: '/widgets' },
     ],
   },
   {
