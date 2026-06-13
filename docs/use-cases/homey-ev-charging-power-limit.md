@@ -75,6 +75,19 @@ PELS can move flexible charging toward cheaper hours, but it should not blindly 
 
 PELS therefore treats the hard cap as the safety boundary. Price shifting happens inside that boundary.
 
+## What cheap-hour charging saves (illustrative)
+
+Charging is the biggest single load most homes can move, so it's where shifting
+pays off most. Add 40 kWh in a session during 0.40 kr/kWh night hours instead of
+a 1.20 kr/kWh evening peak, and you pay about **16 kr instead of 48 kr** — roughly
+30 kr a charge, with no change to how charged the car is by morning.
+
+The figures are illustrative; the wider your day's cheap-to-expensive price
+spread, the more there is to save. A [Smart task](../smart-tasks.md) or
+[Flow-booked hours](../how-to-book-cheap-hours-with-flows.md) place the charging
+for you, inside the hard cap. To check your own numbers, see the **Budget → Hourly plan**
+view and the price level on [PELS Insights](../insights-device.md).
+
 ## What you need
 
 You normally need:

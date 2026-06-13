@@ -80,7 +80,7 @@ This is where the core capacity settings and whole-home power source live.
 Important:
 
 - The hourly hard cap is the only urgent safety boundary.
-- The **Capacity guard: manual action needed** trigger fires only when PELS projects an hourly hard-cap breach and cannot limit any more load.
+- The **Hard cap breach imminent — manual action needed** trigger fires only when PELS projects an hourly hard-cap breach and cannot limit any more load.
 
 ## Settings > Devices
 
