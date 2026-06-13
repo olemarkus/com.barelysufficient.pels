@@ -14,6 +14,12 @@ export type WeatherAdvisorSettings = {
    * tomorrow's hourly temperature profile incrementally across today.
    */
   forecastDeviceId?: string;
+  /**
+   * Opt-in: at each daily rollup, apply the suggested daily budget to the
+   * configured daily budget. No-op when the daily budget feature is off (the UI
+   * shows a hint to turn it on). Absent ⇒ false (advisory-only, the default).
+   */
+  autoApplyDailyBudget?: boolean;
 };
 
 export type WeatherDailyQuality = {
@@ -116,6 +122,12 @@ export type WeatherHistoryState = {
   /** Derived after each rollup/backfill; recomputed from records, never hand-edited. */
   latestFit?: EnergySignatureFit;
   latestSuggestion?: EnergySignatureSuggestion;
+  /**
+   * Audit of the last auto-applied daily budget (set only when auto-apply is on
+   * and a suggestion was applied at a rollup). Drives the "Last applied" line in
+   * the Settings sub-page. Producer-internal — consumers read it as flat values.
+   */
+  lastAutoApply?: { dateKey: string; kwh: number; appliedAtMs: number };
 };
 
 /**
@@ -184,7 +196,7 @@ export type EnergySignatureSuggestion = {
   predictedKwh: number;
   predictedLowKwh: number;
   predictedHighKwh: number;
-  /** Advisory only — never auto-applied to the daily budget. */
+  /** Suggested daily budget — display-only unless the user opts into auto-apply. */
   suggestedBudgetKwh: number;
   /** Forecast colder than any observed day; evaluated at the coldest observed instead. */
   beyondObservedCold: boolean;
@@ -271,7 +283,7 @@ export type WeatherAdvisorPrediction = {
 };
 
 export type WeatherAdvisorSuggestion = {
-  /** Advisory only — the UI never applies it; `Adjust budget` opens unprefilled. */
+  /** Suggested daily budget. Display-only unless auto-apply is on; `Adjust budget` opens unprefilled. */
   kwh: number;
   /** The active daily budget for comparison; null when the daily budget is off. */
   currentDailyBudgetKwh: number | null;
@@ -305,6 +317,12 @@ export type WeatherAdvisorReadoutPayload = {
   forecastReading: WeatherDeviceReading;
   /** Active daily budget (kWh); null when disabled — drives the setup card's budget hint. */
   dailyBudgetKwh: number | null;
+  /** Whether the daily budget feature is on — gates the auto-apply inert hint. */
+  dailyBudgetEnabled: boolean;
+  /** Whether auto-apply of the suggested daily budget is enabled. */
+  autoApplyDailyBudget: boolean;
+  /** Last auto-applied budget (date + kWh) for the "Last applied" line; null when never applied. */
+  lastAutoApply: { dateKey: string; kwh: number } | null;
   fit: EnergySignatureFit | null;
   coverage: WeatherCoverageBin[];
   prediction: WeatherAdvisorPrediction | null;

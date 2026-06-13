@@ -14,8 +14,9 @@ User-facing feature name: **Weather insight**. Never "model", "regression",
 "fit", "R²", "HDD", or "Theil–Sen" anywhere in copy. Confidence is words, not
 numbers, reusing the smart-task vocabulary (`Estimating` / `Refining` / no
 chip). Remedies name the daily budget, never the hard cap (the cap is
-physical). The suggested budget is display-only — `Adjust budget` opens the
-normal Adjust flow with **nothing prefilled**.
+physical). The suggested budget is display-only by default — `Adjust budget`
+opens the normal Adjust flow with **nothing prefilled**. The user may opt in to
+auto-applying it daily (a switch on the Weather sub-page; off by default).
 
 ---
 
@@ -282,17 +283,19 @@ empty slot.
 
 ## 6. What not to build (deliberate)
 
-1. Auto-applying the suggested budget (or a one-tap "apply suggestion").
-2. W/K heat loss as a headline number — caveated expander row only.
-3. Percentage confidence or any goodness-of-fit number.
-4. Confidence-band shading on the scatter (mud at 320 px) — uncertainty
+1. W/K heat loss as a headline number — caveated expander row only.
+2. Percentage confidence or any goodness-of-fit number.
+3. Confidence-band shading on the scatter (mud at 320 px) — uncertainty
    surfaces as the text range and the Tomorrow band.
-5. Cost prediction for tomorrow (prices partial until ~13:00).
-6. Anything on Overview (chip, hero subline, widget, notification).
-7. Scatter controls (date filters, season toggles, zoom, overlays).
-8. Manual model overrides (editable balance point, excluded days).
-9. Weather notifications.
-10. "Compare with similar homes."
+4. Cost prediction for tomorrow (prices partial until ~13:00).
+5. Anything on Overview (chip, hero subline, widget, notification).
+6. Scatter controls (date filters, season toggles, zoom, overlays).
+7. Manual model overrides (editable balance point, excluded days).
+8. Weather notifications.
+9. "Compare with similar homes."
+
+(Auto-applying the suggested budget was originally a non-goal; it now ships as an
+explicit, off-by-default opt-in — see § 1 and the Settings sub-page.)
 
 Documented future follow-ups: deep-link from a budget-overshoot postmortem
 (persona 5), money on the Tomorrow card once same-evening price completeness

@@ -424,6 +424,26 @@ export const WEATHER_DISABLED_PITCH = 'See whether tomorrow’s weather will fit
   + 'budget. Turn it on and pick your outdoor temperature device to start.';
 
 export const WEATHER_SETTINGS_SECTION_HINT = 'Pick the devices PELS should read.';
+
+// ── Auto-apply suggested budget ────────────────────────────────────────────
+// A switch on the sub-page (below the pickers) that lets the suggested daily
+// budget set the daily budget automatically each day. Off by default.
+
+export const WEATHER_AUTO_APPLY_LABEL = 'Apply the suggestion automatically';
+// Names the COST, not just the action: it replaces a number the user set by hand.
+export const WEATHER_AUTO_APPLY_SUPPORTING = 'Each day, PELS replaces your daily budget with the '
+  + 'suggested value.';
+/** Inert-state hint: names the control AND where to reach it, so it isn't a dead end. */
+export const WEATHER_AUTO_APPLY_NEEDS_BUDGET = 'Enable the daily budget in Budget settings for this '
+  + 'to take effect.';
+/** Tomorrow-card status line, shown when auto-apply is on, explaining why the budget tracks the suggestion. */
+export const WEATHER_AUTO_APPLY_STATUS = 'PELS sets your daily budget automatically each day.';
+
+/** "Last applied: 44 kWh on 13 Jun." under the auto-apply switch. */
+export const composeLastAutoApply = (dateKey: string, kwh: number): string => (
+  `Last applied: ${formatDailyKwh(kwh)} on ${formatTooltipDate(dateKey)}.`
+);
+
 /** Shown when no Homey device exposes a temperature reading PELS can use. */
 export const WEATHER_NO_TEMPERATURE_DEVICES = 'PELS found no temperature devices in Homey. Add a '
   + 'device that reports outdoor temperature on its main reading, then pick it here.';

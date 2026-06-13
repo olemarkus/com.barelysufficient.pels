@@ -88,6 +88,32 @@ describe('buildWeatherAdvisorReadout', () => {
     expect(payload?.coverage).toEqual([]);
   });
 
+  it('echoes the auto-apply state (and last-applied) in both ready and needs_device payloads', () => {
+    const ready = buildWeatherAdvisorReadout(withState(
+      { records: recentDays(30), latestFit: fit(), lastAutoApply: { dateKey: '2026-06-12', kwh: 44, appliedAtMs: NOW_MS } },
+      { settings: { enabled: true, outdoorDeviceId: 'dev-outdoor', autoApplyDailyBudget: true }, dailyBudgetEnabled: true },
+    ));
+    // appliedAtMs is producer-internal — the payload echo carries only date + kWh.
+    expect(ready).toMatchObject({
+      state: 'ready', autoApplyDailyBudget: true, dailyBudgetEnabled: true,
+      lastAutoApply: { dateKey: '2026-06-12', kwh: 44 },
+    });
+
+    const needsDevice = buildWeatherAdvisorReadout(baseInput({
+      settings: { enabled: true, autoApplyDailyBudget: true }, dailyBudgetEnabled: false,
+    }));
+    expect(needsDevice).toMatchObject({
+      state: 'needs_device', autoApplyDailyBudget: true, dailyBudgetEnabled: false, lastAutoApply: null,
+    });
+  });
+
+  it('defaults the auto-apply echo to false/null when unset', () => {
+    const payload = buildWeatherAdvisorReadout(withState({ records: recentDays(30), latestFit: fit() }));
+    expect(payload).toMatchObject({
+      autoApplyDailyBudget: false, dailyBudgetEnabled: false, lastAutoApply: null,
+    });
+  });
+
   it('resolves backfilling only while no fit exists yet', () => {
     const learning = buildWeatherAdvisorReadout(baseInput({ backfillRunning: true }));
     expect(learning?.state).toBe('backfilling');

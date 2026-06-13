@@ -88,6 +88,9 @@ const buildReadout = (
   outdoorReading: { status: 'reading', tempC: 4 },
   forecastReading: { status: 'reading', tempC: 2 },
   dailyBudgetKwh: 50,
+  dailyBudgetEnabled: true,
+  autoApplyDailyBudget: false,
+  lastAutoApply: null,
   fit: buildFit(),
   coverage: [
     { fromC: -10, toC: -5, days: 6, sufficient: false },
@@ -270,6 +273,25 @@ describe('WeatherBudgetCard (Budget plan slot)', () => {
     expect(card?.querySelector('#weather-details-button')).not.toBeNull();
   });
 
+  it('shows the auto-apply status line only when auto-apply is on AND the daily budget is on', () => {
+    const mount = mountIntoBody();
+    renderBudgetOverview(mount, buildProps({
+      weatherInsight: { readout: buildReadout({ autoApplyDailyBudget: true, dailyBudgetEnabled: true }), fetchFailed: false },
+    }));
+    expect(mount.querySelector('#weather-auto-apply-status')).not.toBeNull();
+
+    // Auto-apply on but budget off → inert, so the card must not claim PELS sets it daily.
+    renderBudgetOverview(mount, buildProps({
+      weatherInsight: { readout: buildReadout({ autoApplyDailyBudget: true, dailyBudgetEnabled: false }), fetchFailed: false },
+    }));
+    expect(mount.querySelector('#weather-auto-apply-status')).toBeNull();
+
+    renderBudgetOverview(mount, buildProps({
+      weatherInsight: { readout: buildReadout({ autoApplyDailyBudget: false }), fetchFailed: false },
+    }));
+    expect(mount.querySelector('#weather-auto-apply-status')).toBeNull();
+  });
+
   it('S8: shows the Rough estimate chip with the colder-than-observed reason', () => {
     const mount = mountIntoBody();
     const readout = buildReadout({
@@ -352,6 +374,10 @@ describe('WeatherSettingsSection', () => {
     forecastReading: { status: 'no_device' },
     onOutdoorChange: () => {},
     onForecastChange: () => {},
+    autoApplyDailyBudget: false,
+    onAutoApplyChange: () => {},
+    dailyBudgetEnabled: true,
+    lastAutoApply: null,
     ...overrides,
   });
 
@@ -458,5 +484,55 @@ describe('WeatherSettingsSection', () => {
     expect(mount.querySelector('#weather-insight-settings')).toBeNull();
     expect(mount.querySelector('#weather-disabled-pitch')).not.toBeNull();
     expect(mount.querySelector('#weather-enable-switch')).not.toBeNull();
+  });
+
+  it('renders the auto-apply switch and reports toggles', () => {
+    const mount = mountIntoBody();
+    const onAutoApplyChange = vi.fn();
+    renderWeatherSettingsSection(mount, {
+      enabled: true, onEnabledChange: () => {}, pickers: buildPickers({ onAutoApplyChange }),
+    });
+    const sw = mount.querySelector('#weather-auto-apply-switch') as HTMLElement & { selected: boolean };
+    expect(sw).not.toBeNull();
+    sw.selected = true;
+    sw.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(onAutoApplyChange).toHaveBeenCalledWith(true);
+  });
+
+  it('shows the inert hint only when auto-apply is on but the daily budget is off', () => {
+    const mount = mountIntoBody();
+    // On + budget off → hint shows.
+    renderWeatherSettingsSection(mount, {
+      enabled: true,
+      onEnabledChange: () => {},
+      pickers: buildPickers({ autoApplyDailyBudget: true, dailyBudgetEnabled: false }),
+    });
+    expect(mount.querySelector('#weather-auto-apply-needs-budget')).not.toBeNull();
+    // On + budget on → no hint.
+    renderWeatherSettingsSection(mount, {
+      enabled: true,
+      onEnabledChange: () => {},
+      pickers: buildPickers({ autoApplyDailyBudget: true, dailyBudgetEnabled: true }),
+    });
+    expect(mount.querySelector('#weather-auto-apply-needs-budget')).toBeNull();
+    // Off + budget off → no hint (don't nag before they opt in).
+    renderWeatherSettingsSection(mount, {
+      enabled: true,
+      onEnabledChange: () => {},
+      pickers: buildPickers({ autoApplyDailyBudget: false, dailyBudgetEnabled: false }),
+    });
+    expect(mount.querySelector('#weather-auto-apply-needs-budget')).toBeNull();
+  });
+
+  it('shows the last-applied line when an auto-apply has happened', () => {
+    const mount = mountIntoBody();
+    renderWeatherSettingsSection(mount, {
+      enabled: true,
+      onEnabledChange: () => {},
+      pickers: buildPickers({ lastAutoApply: { dateKey: '2026-06-12', kwh: 44 } }),
+    });
+    const last = mount.querySelector('#weather-auto-apply-last');
+    expect(last?.textContent).toContain('Last applied');
+    expect(last?.textContent).toContain('44 kWh');
   });
 });

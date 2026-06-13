@@ -19,7 +19,18 @@ describe('buildWeatherAdvisorSettings', () => {
     const result = buildWeatherAdvisorSettings({
       settings: settingsWith({ enabled: true, outdoorDeviceId: 'dev-1', forecastDeviceId: 'dev-2' }),
     });
-    expect(result).toEqual({ enabled: true, outdoorDeviceId: 'dev-1', forecastDeviceId: 'dev-2' });
+    expect(result).toEqual({
+      enabled: true, outdoorDeviceId: 'dev-1', forecastDeviceId: 'dev-2', autoApplyDailyBudget: false,
+    });
+  });
+
+  it('reads autoApplyDailyBudget only for a strict true', () => {
+    expect(buildWeatherAdvisorSettings({
+      settings: settingsWith({ enabled: true, outdoorDeviceId: 'dev-1', autoApplyDailyBudget: true }),
+    }).autoApplyDailyBudget).toBe(true);
+    expect(buildWeatherAdvisorSettings({
+      settings: settingsWith({ enabled: true, outdoorDeviceId: 'dev-1', autoApplyDailyBudget: 'true' }),
+    }).autoApplyDailyBudget).toBe(false);
   });
 
   it('trims surrounding whitespace off device ids', () => {
@@ -33,6 +44,8 @@ describe('buildWeatherAdvisorSettings', () => {
     const result = buildWeatherAdvisorSettings({
       settings: settingsWith({ enabled: 'true', outdoorDeviceId: '  ', forecastDeviceId: 7 }),
     });
-    expect(result).toEqual({ enabled: false, outdoorDeviceId: undefined, forecastDeviceId: undefined });
+    expect(result).toEqual({
+      enabled: false, outdoorDeviceId: undefined, forecastDeviceId: undefined, autoApplyDailyBudget: false,
+    });
   });
 });

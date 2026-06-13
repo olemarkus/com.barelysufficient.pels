@@ -30,6 +30,7 @@ import type { WeatherHistoryStore } from './weatherHistoryStore';
 import { fetchBackfillDailyRecords, TEMP_BACKFILL_VERSION } from './weatherInsightsBackfill';
 import { resolveMeterDailyKwh, type MeterKwhBackfillOutcome } from './meterKwhBackfill';
 import { applyControlledOutcome, resolveControlledDailyKwh } from './controlledKwhBackfill';
+import { performBudgetAutoApply } from './weatherAutoApply';
 
 const HOUR_MS = 60 * 60 * 1000;
 const HOURLY_SAMPLE_OFFSET_MS = 90 * 1000;
@@ -76,6 +77,13 @@ export type WeatherCollectorDeps = {
    * the records change. Injected so the collector stays a pure data layer.
    */
   recomputeDerived?: (state: WeatherHistoryState) => WeatherHistoryState;
+  /**
+   * Applies the suggested daily budget at a rollup when the user opted into
+   * auto-apply. Returns `true` when applied, `false` when the daily budget
+   * feature is off (leave-off semantics). Injected so `lib/weather` never
+   * imports `lib/dailyBudget` (the `no-weather-to-peer` boundary).
+   */
+  applySuggestedDailyBudget?: (suggestedKwh: number) => boolean;
   logger: PinoLogger;
 };
 
@@ -413,9 +421,11 @@ export class WeatherCollector {
     for (const dateKey of pendingKeys) this.rollup(dateKey);
     // One refit for the whole batch: the Theil–Sen fit is O(n²) over a
     // year-deep window, so refitting per caught-up day would multiply a
-    // second-scale synchronous cost by the days slept through.
+    // second-scale synchronous cost by the days slept through. Then apply the
+    // fresh suggestion to the daily budget once if opted in (never per caught-up
+    // day — the suggestion targets the just-started day).
     if (pendingKeys.length > 0) {
-      this.state = this.deps.recomputeDerived?.(this.state) ?? this.state;
+      this.state = performBudgetAutoApply(this.deps.recomputeDerived?.(this.state) ?? this.state, this.deps);
       this.markDirty();
     }
   }

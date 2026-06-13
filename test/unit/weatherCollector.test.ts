@@ -181,6 +181,68 @@ describe('WeatherCollector', () => {
     expect(lastWritten(store).latestFit).toEqual({ model: 'uncorrelated' });
   });
 
+  // Auto-apply: at the midnight rollup, push the fresh suggestion to the daily
+  // budget when opted in. recomputeDerived seeds the suggestion the step reads.
+  const withFreshSuggestion = (state: WeatherHistoryState): WeatherHistoryState => ({
+    ...state,
+    latestFit: { model: 'uncorrelated' } as WeatherHistoryState['latestFit'],
+    latestSuggestion: {
+      targetDateKey: '2026-01-11', suggestedBudgetKwh: 48,
+    } as WeatherHistoryState['latestSuggestion'],
+  });
+
+  it('auto-applies the suggested budget at rollup when opted in, and records the audit', async () => {
+    const applySuggestedDailyBudget = vi.fn(() => true);
+    vi.setSystemTime(Date.UTC(2026, 0, 10, 22, 30, 0)); // Oslo 23:30
+    const { collector, store, logger } = buildHarness({
+      recomputeDerived: vi.fn(withFreshSuggestion),
+      applySuggestedDailyBudget,
+      getSettings: vi.fn(() => ({ enabled: true, outdoorDeviceId: 'out-1', autoApplyDailyBudget: true })),
+    });
+    collector.start();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(36 * 60 * 1000); // past midnight rollup
+    collector.stop();
+    expect(applySuggestedDailyBudget).toHaveBeenCalledTimes(1);
+    expect(applySuggestedDailyBudget).toHaveBeenCalledWith(48);
+    expect(lastWritten(store).lastAutoApply).toMatchObject({ dateKey: '2026-01-11', kwh: 48 });
+    expect(logger.info.mock.calls.some(([fields]) => (
+      (fields as { event?: string })?.event === 'weather_advisor_budget_auto_applied'
+    ))).toBe(true);
+  });
+
+  it('does not auto-apply when the opt-in is off', async () => {
+    const applySuggestedDailyBudget = vi.fn(() => true);
+    vi.setSystemTime(Date.UTC(2026, 0, 10, 22, 30, 0));
+    const { collector, store } = buildHarness({
+      recomputeDerived: vi.fn(withFreshSuggestion),
+      applySuggestedDailyBudget,
+      getSettings: vi.fn(() => ({ enabled: true, outdoorDeviceId: 'out-1', autoApplyDailyBudget: false })),
+    });
+    collector.start();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(36 * 60 * 1000);
+    collector.stop();
+    expect(applySuggestedDailyBudget).not.toHaveBeenCalled();
+    expect(lastWritten(store).lastAutoApply).toBeUndefined();
+  });
+
+  it('records no audit when the daily budget is off (applier returns false)', async () => {
+    const applySuggestedDailyBudget = vi.fn(() => false);
+    vi.setSystemTime(Date.UTC(2026, 0, 10, 22, 30, 0));
+    const { collector, store } = buildHarness({
+      recomputeDerived: vi.fn(withFreshSuggestion),
+      applySuggestedDailyBudget,
+      getSettings: vi.fn(() => ({ enabled: true, outdoorDeviceId: 'out-1', autoApplyDailyBudget: true })),
+    });
+    collector.start();
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(36 * 60 * 1000);
+    collector.stop();
+    expect(applySuggestedDailyBudget).toHaveBeenCalledWith(48);
+    expect(lastWritten(store).lastAutoApply).toBeUndefined();
+  });
+
   it('rolls up yesterday shortly after local midnight with kWh snapshot and quality', async () => {
     vi.setSystemTime(Date.UTC(2026, 0, 10, 22, 30, 0)); // Oslo 23:30
     const { collector, store, deps } = buildHarness();

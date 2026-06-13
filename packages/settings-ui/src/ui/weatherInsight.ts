@@ -23,12 +23,14 @@ type WeatherAdvisorUiSettings = {
   enabled: boolean;
   outdoorDeviceId: string | null;
   forecastDeviceId: string | null;
+  autoApplyDailyBudget: boolean;
 };
 
 const DISABLED_SETTINGS: WeatherAdvisorUiSettings = {
   enabled: false,
   outdoorDeviceId: null,
   forecastDeviceId: null,
+  autoApplyDailyBudget: false,
 };
 
 let currentSettings: WeatherAdvisorUiSettings = DISABLED_SETTINGS;
@@ -54,6 +56,7 @@ const normalizeSettings = (raw: unknown): WeatherAdvisorUiSettings => {
     enabled: blob.enabled === true,
     outdoorDeviceId: asDeviceId(blob.outdoorDeviceId),
     forecastDeviceId: asDeviceId(blob.forecastDeviceId),
+    autoApplyDailyBudget: blob.autoApplyDailyBudget === true,
   };
 };
 
@@ -151,15 +154,18 @@ const persistWeatherSettings = async (): Promise<void> => {
     enabled: currentSettings.enabled,
     ...(currentSettings.outdoorDeviceId !== null ? { outdoorDeviceId: currentSettings.outdoorDeviceId } : {}),
     ...(currentSettings.forecastDeviceId !== null ? { forecastDeviceId: currentSettings.forecastDeviceId } : {}),
+    autoApplyDailyBudget: currentSettings.autoApplyDailyBudget,
   };
   // The runtime watches this key (collector reload); our own settings.set
   // event then round-trips handleWeatherAdvisorSettingsChanged → fresh readout.
   await setSetting(WEATHER_ADVISOR_SETTINGS, blob);
 };
 
-const writeSettings = async (
-  patch: Partial<Pick<WeatherAdvisorUiSettings, 'enabled' | 'outdoorDeviceId' | 'forecastDeviceId'>>,
-): Promise<void> => {
+type WeatherSettingsPatch = Partial<Pick<
+  WeatherAdvisorUiSettings, 'enabled' | 'outdoorDeviceId' | 'forecastDeviceId' | 'autoApplyDailyBudget'
+>>;
+
+const writeSettings = async (patch: WeatherSettingsPatch): Promise<void> => {
   currentSettings = { ...currentSettings, ...patch };
   // Turning the feature on needs the picker list ready for the section it reveals.
   if (patch.enabled === true) void ensurePickerDevicesLoaded();
@@ -217,6 +223,12 @@ const renderSettingsSection = (): void => {
         forecastReading: readingFor('forecastDeviceId', 'forecastReading'),
         onOutdoorChange: (deviceId) => { void writeSettings({ outdoorDeviceId: deviceId }); },
         onForecastChange: (deviceId) => { void writeSettings({ forecastDeviceId: deviceId }); },
+        autoApplyDailyBudget: currentSettings.autoApplyDailyBudget,
+        onAutoApplyChange: (on) => { void writeSettings({ autoApplyDailyBudget: on }); },
+        // Default true until the readout confirms otherwise, so the inert hint
+        // only appears once we positively know the daily budget is off.
+        dailyBudgetEnabled: latestReadout?.dailyBudgetEnabled ?? true,
+        lastAutoApply: latestReadout?.lastAutoApply ?? null,
       }
       : null,
   });
