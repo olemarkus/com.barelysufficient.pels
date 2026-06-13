@@ -467,19 +467,6 @@ cosmetic chores — do them in passing or drop them; don't park them here.*
       *Why it's needed:* the one surface that reconstructs per-device history is wiped on every boot.
       Needs the Homey-SDK transient-read grace pattern before persisting. A later cross-device "recent
       activity" feed on Overview is a possible follow-on if the per-device view proves used.
-- [ ] **Restore non-stepped control-mode granularity to the device-overview change signature.**
-      *Persona:* Homey owner (`notes/personas.md`) watching the device-overview/activity-log refresh.
-      *Hypothesis:* now that the planner no longer carries `controlModel`, the overview/log seam
-      (`PlanService.recordOverviewChange`) restores only the STEPPED value (`isSteppedLoadDevice`), so
-      `buildDeviceOverviewTransitionSignature` no longer distinguishes a non-stepped `temperature_target` ↔
-      `binary_power` flip (both collapse to `undefined`). A device that changes deviceType with no other planner
-      change could leave an open settings-UI card stale until the next plan change.
-      *Why it's needed:* full restoration needs the producer `deviceType` (a `deviceManager.getSnapshot()` call),
-      but the overview loop runs INSIDE the plan/apply cycle where re-entering the device manager breaks the
-      SDK-boundary shed e2es — so the cheap fix isn't safe. A real fix needs a cycle-safe `deviceType` source
-      (e.g. caching the map at plan-build time, or carrying a producer-resolved control-mode kind on the plan
-      device). Very low urgency: a runtime deviceType flip is a rare device-capability change and self-heals on
-      the next plan change. Source: Codex review on PR #1594.
 - [ ] **Retire the raw-`evChargingState` arm of the `EvStateConsumerInput` dual-read.**
       *Persona:* maintainer (`notes/personas.md`) reasoning about the EV resolvers.
       *Hypothesis:* now that the planner types carry only `evCommandability`, the dual-read in

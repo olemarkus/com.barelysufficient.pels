@@ -74,6 +74,26 @@ export const resolveDefaultControlModel = (device: TargetDeviceSnapshot): Device
   return 'binary_power';
 };
 
+/**
+ * Pure deviceId → control-model map for the device-overview transition signature.
+ *
+ * CRITICAL: the RAW snapshot's `controlModel` is only ever `'stepped_load'` or
+ * `undefined` (the producer sets it solely for stepped profiles —
+ * `managerNativeEv.ts`); the full three-way model is derived from `deviceType`.
+ * So this resolves EVERY device through `resolveDefaultControlModel` (not a bare
+ * `device.controlModel` read) — otherwise the map stays empty for temperature /
+ * on-off devices and a `temperature_target ↔ binary_power` flip never reaches the
+ * signature. Pure (no device-manager access), so the caller can build it once per
+ * overview pass off the cached `getSnapshot()` array without re-entering the SDK.
+ */
+export const buildControlModelMap = (
+  devices: readonly TargetDeviceSnapshot[],
+): Map<string, DeviceControlModel> => {
+  const map = new Map<string, DeviceControlModel>();
+  for (const device of devices) map.set(device.id, resolveDefaultControlModel(device));
+  return map;
+};
+
 const asSteppedLoadProfile = (
   profile: SteppedLoadProfile | undefined,
 ): SteppedLoadProfile | null => (

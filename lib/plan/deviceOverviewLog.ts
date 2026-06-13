@@ -9,10 +9,12 @@ import {
   getDeviceOverviewReportedStepId,
 } from '../../packages/shared-domain/src/deviceOverview';
 import { formatDeviceReasonUserFacing } from '../../packages/shared-domain/src/planReasonSemantics';
+import { isSteppedLoadDevice } from './planSteppedLoad';
 import type {
   SettingsUiDeviceLogEntry,
   SettingsUiDeviceLogPayload,
 } from '../../packages/contracts/src/settingsUiApi';
+import type { DeviceControlModel } from '../../packages/contracts/src/types';
 import type { DevicePlanDevice } from './planTypes';
 
 // Per-device cap on retained transition entries. The recorder is purely
@@ -41,6 +43,37 @@ function resolveOverviewTargetStepId(device: DevicePlanDevice): string | null {
 // log, so the two surfaces report identical wording.
 export function buildOverviewSignatureForDevice(device: DevicePlanDevice): string {
   return buildDeviceOverviewTransitionSignature(device);
+}
+
+// Restore the device's control model onto the overview/log device so the
+// shared-domain helpers (which branch on `controlModel`) render and SIGN correctly.
+// The planner no longer carries `controlModel`, so without this a non-stepped
+// `temperature_target ↔ binary_power` flip collapses to `controlModel: null` on both
+// poles and the signature can't distinguish it (leaving an open overview card stale).
+// Precedence: the device's OWN stepped status (`isSteppedLoadDevice`, which reflects
+// the decorated plan device's effective profile — native OR stored) wins first; only
+// for non-stepped devices do we read the producer map for the three-way model. The map
+// is built from the RAW `getSnapshot()`, whose `controlModel` is stepped-only, so it
+// cannot be trusted to mark a stored-profile stepped device as stepped — hence the
+// stepped check must come first. When neither resolves a model, return the device
+// unchanged (the helpers treat a missing `controlModel` as non-stepped, signature
+// records `null`). The `controlModel:` key is a WRITE, not a read, so the control-model
+// containment guard (`check-control-model-vocab`) is satisfied — the planner still
+// never BRANCHES on a `.controlModel` read.
+export function resolveOverviewControlModel(
+  device: DevicePlanDevice,
+  controlModelById: Map<string, DeviceControlModel>,
+): DevicePlanDevice & { controlModel?: DeviceControlModel } {
+  // The decorated plan device's OWN stepped status wins first: a stored-profile
+  // stepped device (`steppedLoadProfile` from `deviceControlProfiles`, not the raw
+  // native snapshot) is stepped here but absent-stepped in the raw-derived map, so
+  // applying the map first would mis-sign it as `binary_power`/`temperature_target`.
+  if (isSteppedLoadDevice(device)) return { ...device, controlModel: 'stepped_load' as const };
+  // Non-stepped: the producer map supplies the three-way `temperature_target ↔
+  // binary_power` model the planner no longer carries.
+  const producerControlModel = controlModelById.get(device.id);
+  if (producerControlModel) return { ...device, controlModel: producerControlModel };
+  return device;
 }
 
 // The structured per-device debug event emitted on an overview change.

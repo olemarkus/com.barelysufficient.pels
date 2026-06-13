@@ -31,7 +31,6 @@ import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import { recordOpRssDelta, safeRss } from '../utils/opRssTracker';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
 import { formatDeviceOverview } from '../../packages/shared-domain/src/deviceOverview';
-import { isSteppedLoadDevice } from './planSteppedLoad';
 import type { IdleClassification } from '../../packages/shared-domain/src/idleClassificationCopy';
 import {
   buildPlanCapacityStateSummary,
@@ -46,6 +45,7 @@ import {
   buildOverviewBatchEvent,
   buildOverviewEventForDevice,
   buildOverviewSignatureForDevice,
+  resolveOverviewControlModel,
   type DeviceOverviewLogRecorder,
 } from './deviceOverviewLog';
 import {
@@ -93,7 +93,7 @@ import type {
   HeadroomUsageObservation,
 } from './planHeadroomDevice';
 import type { PlanActuationMode } from '../executor/executorTypes';
-import type { EvChargingState } from '../../packages/contracts/src/types';
+import type { DeviceControlModel, EvChargingState } from '../../packages/contracts/src/types';
 import type { PlanActuationResult } from '../executor/planExecutor';
 import type { SnapshotWarmupGate } from './snapshotWarmupGate';
 
@@ -130,6 +130,16 @@ export type PlanServiceDeps = {
   // (the planner no longer carries `controlModel`). Built once per serialize from
   // the raw snapshot; see `SettingsOverviewReadModelDeps.getDeviceTypeById`.
   getDeviceTypeById?: () => Map<string, 'temperature' | 'onoff'>;
+  // Producer `controlModel` map for the device-overview transition signature
+  // (the planner no longer carries `controlModel`). Built ONCE per
+  // `emitOverviewTransitions` pass from the raw, undecorated device snapshot
+  // (`deviceManager.getSnapshot()`) — NOT `latestTargetSnapshot` — so capturing
+  // it triggers no re-decoration and never re-enters the device manager
+  // per-device inside the plan/apply cycle. Restoring the real control model
+  // (not just the stepped value) lets the signature distinguish a non-stepped
+  // `temperature_target ↔ binary_power` flip; without it both collapse to
+  // `null` and a deviceType-only change leaves an open overview card stale.
+  getControlModelById?: () => Map<string, DeviceControlModel>;
   getCapacityDryRun: () => boolean;
   isCurrentHourCheap: () => boolean;
   isCurrentHourExpensive: () => boolean;
@@ -634,21 +644,17 @@ export class PlanService {
     device: DevicePlan['devices'][number],
     recorder: DeviceOverviewLogRecorder | undefined,
     debugEnabled: boolean,
+    controlModelById: Map<string, DeviceControlModel>,
   ): { captured: boolean; event: Record<string, unknown> | null } {
-    // The shared-domain overview/log helpers (and `formatDeviceOverview`) ask
-    // "is this stepped?" via `controlModel`, a producer SETTING the plan device no
-    // longer carries. Restore the STEPPED value for the display/log seam from the
-    // profile-presence truth (`isSteppedLoadDevice`) so stepped devices render and
-    // sign correctly. Non-stepped devices need no restoration here (the helpers
-    // only branch on the `stepped_load` value). We deliberately do NOT resolve the
-    // temperature-vs-binary split here: it would need the producer `deviceType`
-    // (a `deviceManager.getSnapshot()` call), and this runs INSIDE the plan/apply
-    // cycle where re-entering the device manager breaks the SDK-boundary e2es. The
-    // non-stepped controlModel granularity in the change signature is tracked as a
-    // P3 in TODO.md (rare, self-healing). This is display, not planning.
-    const overviewDevice = isSteppedLoadDevice(device)
-      ? { ...device, controlModel: 'stepped_load' as const }
-      : device;
+    // The shared-domain overview/log helpers (and `formatDeviceOverview`) branch
+    // on `controlModel`, a producer SETTING the plan device no longer carries.
+    // Restore the device's real control model for the display/log seam from the
+    // producer map captured ONCE per pass (`emitOverviewTransitions`) — a pure
+    // by-id lookup, no per-device `deviceManager.getSnapshot()` re-entry inside the
+    // plan/apply cycle (that breaks the SDK-boundary e2es). See
+    // `resolveOverviewControlModel` for the full rationale. This is display, not
+    // planning.
+    const overviewDevice = resolveOverviewControlModel(device, controlModelById);
     const signature = buildOverviewSignatureForDevice(overviewDevice);
     const previousSignature = this.lastOverviewSignatureByDeviceId.get(device.id);
     this.lastOverviewSignatureByDeviceId.set(device.id, signature);
@@ -673,12 +679,18 @@ export class PlanService {
     const recorder = this.deps.deviceOverviewLogRecorder;
     if (!debugEnabled && !recorder) return false;
 
+    // Build the producer control-model map ONCE per pass (not per device) so the
+    // raw-snapshot scan stays O(n) and never re-enters the device manager
+    // per-device inside the plan/apply cycle. Mirrors the read-model's
+    // `getDeviceTypeById` capture in `buildSettingsOverviewReadModel`.
+    const controlModelById = this.deps.getControlModelById?.() ?? new Map<string, DeviceControlModel>();
+
     const nextDeviceIds = new Set<string>();
     const changedDevices: Record<string, unknown>[] = [];
     let captured = false;
     for (const device of plan.devices) {
       nextDeviceIds.add(device.id);
-      const result = this.recordOverviewChange(device, recorder, debugEnabled);
+      const result = this.recordOverviewChange(device, recorder, debugEnabled, controlModelById);
       if (result.captured) captured = true;
       if (result.event) changedDevices.push(result.event);
     }
