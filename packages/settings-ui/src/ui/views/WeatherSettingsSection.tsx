@@ -5,6 +5,7 @@ import {
   composeOutdoorReadingLine,
   WEATHER_FORECAST_PICKER_HINT,
   WEATHER_FORECAST_PICKER_LABEL,
+  WEATHER_NO_TEMPERATURE_DEVICES,
   WEATHER_OUTDOOR_PICKER_HINT,
   WEATHER_OUTDOOR_PICKER_LABEL,
   WEATHER_PICKER_NONE,
@@ -24,6 +25,8 @@ export type WeatherSettingsSectionProps = {
   outdoorDeviceId: string | null;
   forecastDeviceId: string | null;
   devices: WeatherDeviceOption[];
+  /** False while the device list is still loading; gates the no-devices empty state. */
+  devicesLoaded: boolean;
   outdoorReading: WeatherDeviceReading;
   forecastReading: WeatherDeviceReading;
   onOutdoorChange: (deviceId: string | null) => void;
@@ -78,7 +81,9 @@ const DevicePicker = ({ id, label, hint, value, devices, reading, onChange }: {
 // section renders only the intro hint + the two device pickers.
 const WeatherSettingsSectionView = (props: WeatherSettingsSectionProps) => (
   <section id="weather-insight-settings" class="settings-form-card weather-settings-section">
-    <p class="muted weather-settings-section__hint">{WEATHER_SETTINGS_SECTION_HINT}</p>
+    {props.devicesLoaded && props.devices.length === 0
+      ? <p class="muted weather-settings-section__hint" id="weather-no-devices">{WEATHER_NO_TEMPERATURE_DEVICES}</p>
+      : <p class="muted weather-settings-section__hint">{WEATHER_SETTINGS_SECTION_HINT}</p>}
     <DevicePicker
       id="weather-outdoor-select"
       label={WEATHER_OUTDOOR_PICKER_LABEL}

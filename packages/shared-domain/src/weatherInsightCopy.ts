@@ -389,6 +389,9 @@ export const WEATHER_ERROR_BODY = 'Couldn’t load the weather readout. PELS wil
 
 export const WEATHER_SETTINGS_SECTION_HINT = 'Predict tomorrow’s usage from outside temperature. '
   + 'Pick the devices PELS should read.';
+/** Shown when no Homey device exposes a temperature reading PELS can use. */
+export const WEATHER_NO_TEMPERATURE_DEVICES = 'PELS found no temperature devices in Homey. Add a '
+  + 'device that reports outdoor temperature on its main reading, then pick it here.';
 export const WEATHER_OUTDOOR_PICKER_LABEL = 'Outdoor temperature device';
 export const WEATHER_OUTDOOR_PICKER_HINT = 'Pick a device that reports the current outdoor '
   + 'temperature at your home.';

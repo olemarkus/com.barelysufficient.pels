@@ -320,6 +320,7 @@ describe('WeatherSettingsSection', () => {
         { id: 'dev-a', label: 'Hall sensor' },
         { id: 'dev-b', label: 'Yr forecast' },
       ],
+      devicesLoaded: true,
       outdoorReading: { status: 'no_device' },
       forecastReading: { status: 'no_device' },
       onOutdoorChange,
@@ -339,6 +340,7 @@ describe('WeatherSettingsSection', () => {
       outdoorDeviceId: 'dev-a',
       forecastDeviceId: 'dev-b',
       devices: [{ id: 'dev-a', label: 'Hall sensor' }, { id: 'dev-b', label: 'Yr forecast' }],
+      devicesLoaded: true,
       outdoorReading: { status: 'reading', tempC: 4 },
       forecastReading: { status: 'unreadable' },
       onOutdoorChange: () => {},
@@ -351,12 +353,28 @@ describe('WeatherSettingsSection', () => {
     expect(warn?.textContent).toContain('recent days');
   });
 
+  it('shows an empty state when loaded with no temperature devices', () => {
+    const mount = mountIntoBody();
+    renderWeatherSettingsSection(mount, {
+      outdoorDeviceId: null,
+      forecastDeviceId: null,
+      devices: [],
+      devicesLoaded: true,
+      outdoorReading: { status: 'no_device' },
+      forecastReading: { status: 'no_device' },
+      onOutdoorChange: () => {},
+      onForecastChange: () => {},
+    });
+    expect(mount.querySelector('#weather-no-devices')?.textContent).toContain('no temperature devices');
+  });
+
   it('clears to structural absence when rendered with null props (flag off)', () => {
     const mount = mountIntoBody();
     renderWeatherSettingsSection(mount, {
       outdoorDeviceId: null,
       forecastDeviceId: null,
       devices: [],
+      devicesLoaded: false,
       outdoorReading: { status: 'no_device' },
       forecastReading: { status: 'no_device' },
       onOutdoorChange: () => {},
