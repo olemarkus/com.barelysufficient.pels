@@ -1,7 +1,7 @@
 ---
-title: PELS
+title: "PELS — Power-limit control & cheap-hour load shifting for Homey Pro"
 titleTemplate: false
-description: Homey Pro app for power-limit control, EV charging, heating, hot water, ventilation, Smart tasks, and cheap-hour load shifting.
+description: PELS keeps your Homey Pro home under its hourly power limit and shifts EV charging, heating, and hot water into the cheapest hours — automatically, every hour.
 aside: false
 outline: false
 editLink: false
@@ -21,8 +21,8 @@ editLink: false
   </div>
   <div class="landing-panel landing-panel-accent">
     <figure class="landing-screenshot-frame">
-      <img class="landing-screenshot" src="/screenshots/landing-overview.png" alt="PELS overview showing live device states and power usage" />
-      <figcaption>The overview shows current whole-home power, the Safe pace now threshold, and which devices PELS is limiting or resuming.</figcaption>
+      <img class="landing-screenshot" src="/screenshots/landing-overview.png" alt="PELS Overview tab showing whole-home power now, the Safe pace now marker, and which managed devices are limited or resuming" />
+      <figcaption>The overview shows current whole-home power, the Safe pace now marker, and which devices PELS is limiting or resuming.</figcaption>
     </figure>
   </div>
 </section>
@@ -65,7 +65,7 @@ editLink: false
 
   If your charger is paired in Homey, PELS can calculate the charging current while still protecting the house limit. Your Flow maps the PELS current value to the charger app. If the real goal is a battery target by morning, use deadline charging with state of charge.
 
-  [Read the EV charging use case](./use-cases/homey-ev-charging-power-limit.md) · [Deadline Charging With SoC](./how-to-deadline-charging-soc.md) · [Configure an EV charger](./ev-charger.md) · [Zaptec example](./zaptec-ev-charger.md)
+  [Read the EV charging use case](./use-cases/homey-ev-charging-power-limit.md) · [Deadline Charging With State of Charge](./how-to-deadline-charging-soc.md) · [Configure an EV charger](./ev-charger.md) · [Zaptec example](./zaptec-ev-charger.md)
 
   ### Move hot water, heating or ventilation toward cheap hours
 
@@ -94,7 +94,7 @@ editLink: false
     <div class="landing-grid landing-grid-two">
       <article class="landing-card landing-card-with-screenshot">
         <figure class="landing-card-media">
-          <img class="landing-card-screenshot" src="/screenshots/landing-devices.png" alt="PELS device list showing managed devices" />
+          <img class="landing-card-screenshot" src="/screenshots/landing-devices.png" alt="PELS Devices page listing managed heaters, a water heater, and an EV charger with Managed, Limit, and Price toggles" />
           <figcaption>The device list is where you choose which devices are managed, can be limited to stay under the hard cap, or adjusted by price.</figcaption>
         </figure>
         <h3>Device control</h3>
@@ -103,7 +103,7 @@ editLink: false
       </article>
       <article class="landing-card landing-card-with-screenshot">
         <figure class="landing-card-media">
-          <img class="landing-card-screenshot" src="/screenshots/landing-usage.png" alt="PELS usage tab showing hourly energy chart" />
+          <img class="landing-card-screenshot" src="/screenshots/landing-usage.png" alt="PELS Usage tab showing an hourly energy bar chart of managed and background power use" />
           <figcaption>Usage shows hourly and daily energy history so you can see how the home behaves over time.</figcaption>
         </figure>
         <h3>Usage and insights</h3>
@@ -112,7 +112,7 @@ editLink: false
       </article>
       <article class="landing-card landing-card-with-screenshot">
         <figure class="landing-card-media">
-          <img class="landing-card-screenshot" src="/screenshots/landing-price.png" alt="PELS price tab showing cheap and expensive hours" />
+          <img class="landing-card-screenshot" src="/screenshots/landing-price.png" alt="PELS price view showing the current price source and the cheap and expensive hours used to shift flexible load" />
           <figcaption>Price settings show the current price source and the cheap/expensive hours PELS can use to choose when flexible devices should run.</figcaption>
         </figure>
         <h3>Price optimization</h3>

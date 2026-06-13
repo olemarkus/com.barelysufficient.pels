@@ -1,5 +1,5 @@
 ---
-title: Tips and Best Practices
+title: "Tuning PELS: Priority, Capacity Margin & Price Tips"
 description: Practical advice for priorities, capacity tuning, price optimization, and basic troubleshooting in PELS.
 ---
 
@@ -28,7 +28,7 @@ Once the behavior matches your expectations, expand the managed device set.
 
 - Set the limit slightly below the actual grid limit if you want extra safety.
 - The Getting Started default of `0.3` to `0.5 kW` for the safety margin is a reasonable starting point. Narrow it if PELS keeps limiting devices when the home is well below the hard cap. Widen toward `1.0 kW` if PELS reacts later than you want — a larger margin pushes the safe pace further below the hard cap, so PELS starts limiting sooner.
-- Use **Simulation mode** first if you want to observe planner decisions without touching real devices.
+- Use **Simulation mode** first if you want to see what PELS would do without touching real devices.
 
 ## Price optimization advice
 

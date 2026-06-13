@@ -1,6 +1,6 @@
 ---
 title: Configure a Zaptec EV Charger
-description: Zaptec-specific Flow details for the generic PELS EV charger setup.
+description: "Wire a Zaptec EV charger to PELS: send the PELS charging current to Zaptec through a Homey Flow for capacity-aware, cheap-hour charging."
 ---
 
 # Configure a Zaptec EV Charger

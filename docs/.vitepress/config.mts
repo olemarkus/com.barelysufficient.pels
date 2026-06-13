@@ -175,6 +175,18 @@ export default defineConfig({
     const pageTitle = title || 'PELS';
     const pageDescription = description || defaultDescription;
     const imageUrl = `${siteUrl}${withBase('social-card.png')}`;
+    const imageAlt =
+      'PELS — automatic power-limit control and cheap-hour load shifting for Homey Pro';
+    const isNorwegian = pageData.relativePath === 'stromstyring-norge.md';
+    const ogLocale = isNorwegian ? 'nb_NO' : 'en_US';
+    // Only declare an alternate locale where a cross-language counterpart
+    // actually exists: the English homepage and the Norwegian overview point at
+    // each other. No other page has a translated alternate, so it gets none.
+    const alternateLocaleByPage: Record<string, string> = {
+      'index.md': 'nb_NO',
+      'stromstyring-norge.md': 'en_US',
+    };
+    const ogLocaleAlternate = alternateLocaleByPage[pageData.relativePath];
 
     return [
       ['link', { rel: 'canonical', href: pageUrl }],
@@ -183,14 +195,31 @@ export default defineConfig({
         pageData.relativePath === 'index.md' ? 'website' : 'article',
       ),
       propertyMeta('og:site_name', 'PELS'),
+      propertyMeta('og:locale', ogLocale),
+      ...(ogLocaleAlternate
+        ? [propertyMeta('og:locale:alternate', ogLocaleAlternate)]
+        : []),
       propertyMeta('og:url', pageUrl),
       propertyMeta('og:title', pageTitle),
       propertyMeta('og:description', pageDescription),
       propertyMeta('og:image', imageUrl),
+      propertyMeta('og:image:width', '1000'),
+      propertyMeta('og:image:height', '700'),
+      propertyMeta('og:image:alt', imageAlt),
       namedMeta('twitter:card', 'summary_large_image'),
       namedMeta('twitter:title', pageTitle),
       namedMeta('twitter:description', pageDescription),
       namedMeta('twitter:image', imageUrl),
+      namedMeta('twitter:image:alt', imageAlt),
     ];
+  },
+  transformHtml(code, id) {
+    // VitePress hardcodes <html lang> to the site lang (en-US). The Norwegian
+    // overview is written entirely in Norwegian, so correct its lang attribute
+    // for that one page instead of standing up a parallel i18n locale tree.
+    if (id.endsWith('stromstyring-norge.html')) {
+      return code.replace('<html lang="en-US"', '<html lang="nb-NO"');
+    }
+    return code;
   },
 });

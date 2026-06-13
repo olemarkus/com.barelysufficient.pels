@@ -1,5 +1,5 @@
 ---
-title: Plan States and Status Lines
+title: "Overview Device Status: Limited, Resuming, Idle & Manual"
 description: How the Overview page maps planner output to user-facing device state and status text.
 ---
 

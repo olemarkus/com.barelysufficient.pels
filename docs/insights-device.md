@@ -5,7 +5,7 @@ description: Add the PELS Insights virtual device to Homey dashboards and see mo
 
 # PELS Insights Device
 
-PELS includes a virtual device called **PELS Insights**. It is the easiest way to surface planner status in dashboards, favorites, and quick checks inside Homey.
+PELS includes a virtual device called **PELS Insights**. It is the easiest way to see what PELS is doing in dashboards, favorites, and quick checks inside Homey.
 
 ## Add the device
 

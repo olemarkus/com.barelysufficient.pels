@@ -1,5 +1,5 @@
 ---
-title: Getting Started
+title: "Setup Guide: Connect Your Power Meter & Set a Capacity Limit"
 description: Install PELS on Homey Pro, connect your power meter, set a capacity limit, and get your first useful setup running.
 ---
 
