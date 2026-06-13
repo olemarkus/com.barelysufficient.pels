@@ -7,9 +7,15 @@ import type {
   DeferredObjectiveActivePlanV1,
   DeferredObjectiveActivePlansV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
+import {
+  DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION,
+  normalizeDeferredObjectiveActivePlansShape,
+} from '../../../packages/shared-domain/src/deferredObjectiveActivePlanShape';
 import { isFiniteNumber } from '../../utils/appTypeGuards';
 
-export const DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION = 1 as const;
+// Re-exported from shared-domain (its long-term home) so existing runtime
+// importers (`activePlanRecorder.ts`) keep their `./activePlanSettings` path.
+export { DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION };
 
 const VALID_REASONS: ReadonlySet<DeferredObjectiveActivePlanRevisionReason> = new Set([
   'flow_card',
@@ -307,15 +313,7 @@ const isActivePlan = (value: unknown): value is DeferredObjectiveActivePlanV1 =>
 
 export const normalizeDeferredObjectiveActivePlans = (
   raw: unknown,
-): DeferredObjectiveActivePlansV1 => {
-  if (!raw || typeof raw !== 'object') return createEmptyActivePlans();
-  const r = raw as Record<string, unknown>;
-  if (r.version !== DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION) return createEmptyActivePlans();
-  if (!r.plansByDeviceId || typeof r.plansByDeviceId !== 'object') return createEmptyActivePlans();
-  const entries = Object.entries(r.plansByDeviceId as Record<string, unknown>)
-    .filter(([, plan]) => isActivePlan(plan)) as [string, DeferredObjectiveActivePlanV1][];
-  return {
-    version: DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION,
-    plansByDeviceId: Object.fromEntries(entries),
-  };
-};
+): DeferredObjectiveActivePlansV1 => normalizeDeferredObjectiveActivePlansShape(raw, {
+  isValidPlan: isActivePlan,
+  empty: createEmptyActivePlans,
+});

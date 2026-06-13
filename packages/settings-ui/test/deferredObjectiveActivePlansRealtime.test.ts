@@ -81,13 +81,29 @@ describe('coerceDeferredObjectiveActivePlans', () => {
     expect(coerceDeferredObjectiveActivePlans({ plansByDeviceId: 7 })).toBeNull();
   });
 
-  it('passes through a well-formed payload by reference, preserving nested fields', () => {
+  it('returns null when the version literal does not match the recognised schema', () => {
+    const stale = { ...planFor('ev-1', 1), version: 2 };
+    expect(coerceDeferredObjectiveActivePlans(stale)).toBeNull();
+  });
+
+  it('passes through a well-formed payload, preserving nested fields', () => {
     const raw = planFor('ev-1', 2);
     const result = coerceDeferredObjectiveActivePlans(raw);
     expect(result).not.toBeNull();
     expect(result?.version).toBe(1);
-    expect(result?.plansByDeviceId).toBe(raw.plansByDeviceId);
+    expect(result?.plansByDeviceId['ev-1']).toBe(raw.plansByDeviceId['ev-1']);
     expect(result?.plansByDeviceId['ev-1']?.latest?.revision).toBe(2);
+  });
+
+  it('filters out non-object per-device entries', () => {
+    const raw = planFor('ev-1', 2);
+    const tampered = {
+      version: 1 as const,
+      plansByDeviceId: { ...raw.plansByDeviceId, 'ev-bad': 7 as unknown },
+    };
+    const result = coerceDeferredObjectiveActivePlans(tampered);
+    expect(result).not.toBeNull();
+    expect(Object.keys(result?.plansByDeviceId ?? {})).toEqual(['ev-1']);
   });
 });
 
