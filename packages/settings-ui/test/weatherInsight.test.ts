@@ -78,6 +78,7 @@ const buildReadout = (
     forecastDeviceId: 'dev-forecast',
     forecastDeviceName: 'Yr forecast',
   },
+  forecastStatus: 'forecast',
   fit: buildFit(),
   coverage: [
     { fromC: -10, toC: -5, days: 6, sufficient: false },
@@ -86,7 +87,6 @@ const buildReadout = (
   ],
   prediction: {
     tempMeanC: 2,
-    source: 'forecast',
     kwh: 42.8,
     lowKwh: 38,
     highKwh: 50,
@@ -239,7 +239,6 @@ describe('WeatherBudgetCard (Budget plan slot)', () => {
     const readout = buildReadout({
       prediction: {
         tempMeanC: -18,
-        source: 'forecast',
         kwh: 68,
         lowKwh: 60,
         highKwh: 80,

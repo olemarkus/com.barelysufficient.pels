@@ -14,6 +14,7 @@
 import type {
   EnergySignatureConfidence,
   WeatherCoverageBin,
+  WeatherForecastStatus,
 } from '../../contracts/src/weatherAdvisorTypes';
 
 // U+2212 minus (repo convention for negative numbers in UI copy).
@@ -88,6 +89,16 @@ export const composeTomorrowTitle = (tempC: number): string => (
 
 export const WEATHER_SOURCE_FORECAST = 'Forecast for tomorrow’s average';
 export const WEATHER_SOURCE_PERSISTENCE = 'If recent weather continues — no forecast device set.';
+/** A forecast device IS configured but isn't reporting tomorrow's temperature. */
+export const WEATHER_SOURCE_FORECAST_UNREADABLE = 'Forecast device isn’t reporting tomorrow’s '
+  + 'temperature — using recent days.';
+
+/** Maps the producer-resolved forecast provenance to the Tomorrow-card source line. */
+export const composeForecastSourceLine = (status: WeatherForecastStatus): string => {
+  if (status === 'forecast') return WEATHER_SOURCE_FORECAST;
+  if (status === 'recent_device_unreadable') return WEATHER_SOURCE_FORECAST_UNREADABLE;
+  return WEATHER_SOURCE_PERSISTENCE;
+};
 
 export const WEATHER_ROW_EXPECTED_USAGE = 'Expected usage';
 export const WEATHER_ROW_SUGGESTED_BUDGET = 'Suggested daily budget';
@@ -319,13 +330,33 @@ export const composeCoverageCaption = (bins: WeatherCoverageBin[]): string => {
 
 export const composeDeviceFooter = (params: {
   outdoorDeviceName: string | null;
+  outdoorDeviceConfigured: boolean;
   forecastDeviceName: string | null;
+  /** Producer-resolved forecast provenance — the footer maps it straight to copy. */
+  forecastStatus: WeatherForecastStatus;
+}): string => (
+  `${composeFooterOutdoor(params)} · ${composeFooterForecast(params)}`
+);
+
+const composeFooterOutdoor = (params: {
+  outdoorDeviceName: string | null;
+  outdoorDeviceConfigured: boolean;
 }): string => {
-  const outdoor = `Temperature: ${params.outdoorDeviceName ?? 'not set'}`;
-  const forecast = params.forecastDeviceName !== null
-    ? `Forecast: ${params.forecastDeviceName}`
-    : 'Forecast: none — using recent days';
-  return `${outdoor} · ${forecast}`;
+  if (params.outdoorDeviceName !== null) return `Temperature: ${params.outdoorDeviceName}`;
+  // A configured device whose name couldn't be read is "not responding", never
+  // "not set" — the user must be able to tell a lost setting from a quiet device.
+  return params.outdoorDeviceConfigured ? 'Temperature: not responding' : 'Temperature: not set';
+};
+
+const composeFooterForecast = (params: {
+  forecastDeviceName: string | null;
+  forecastStatus: WeatherForecastStatus;
+}): string => {
+  if (params.forecastStatus === 'recent_no_device') return 'Forecast: none — using recent days';
+  const name = params.forecastDeviceName ?? 'device';
+  return params.forecastStatus === 'forecast'
+    ? `Forecast: ${name}`
+    : `Forecast: ${name} isn’t reporting — using recent days`;
 };
 
 export const WEATHER_BUTTON_CHANGE_IN_SETTINGS = 'Change in Settings';
@@ -339,7 +370,7 @@ export const WEATHER_SETUP_BUTTON = 'Choose temperature device';
 
 export const WEATHER_BACKFILL_TITLE = 'Reading your history…';
 export const WEATHER_BACKFILL_BODY = 'Matching the past year of your usage with past temperatures. '
-  + 'This runs once and usually takes about a minute.';
+  + 'This runs once and can take a few minutes the first time.';
 
 export const WEATHER_LEARNING_TITLE = 'Learning your home';
 export const composeLearningBody = (usableDays: number): string => (
@@ -357,8 +388,10 @@ export const WEATHER_SETTINGS_SECTION_TITLE = WEATHER_INSIGHT_TITLE;
 export const WEATHER_SETTINGS_SECTION_HINT = 'Predict tomorrow’s usage from outside temperature. '
   + 'Pick the devices PELS should read.';
 export const WEATHER_OUTDOOR_PICKER_LABEL = 'Outdoor temperature device';
-export const WEATHER_OUTDOOR_PICKER_HINT = 'The device that measures outdoor temperature at your home.';
+export const WEATHER_OUTDOOR_PICKER_HINT = 'Pick a device that reports the current outdoor '
+  + 'temperature at your home.';
 export const WEATHER_FORECAST_PICKER_LABEL = 'Forecast device';
-export const WEATHER_FORECAST_PICKER_HINT = 'Optional. A device reporting tomorrow’s temperature, '
-  + 'like a Yr device set 24 hours ahead. Without one, PELS assumes recent weather continues.';
+export const WEATHER_FORECAST_PICKER_HINT = 'Optional. Point this at a device that reports '
+  + 'tomorrow’s outdoor temperature on its main temperature reading — a Yr “next 24 hours” device '
+  + 'works. If PELS can’t read a forecast, it uses your recent days instead.';
 export const WEATHER_PICKER_NONE = 'No device';

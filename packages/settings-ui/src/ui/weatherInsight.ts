@@ -80,9 +80,11 @@ export const refreshWeatherInsightOnBudgetTab = async (): Promise<void> => {
   await fetchReadout();
 };
 
-const toPickerOption = (device: { id: string; name: string; class?: string }): WeatherDeviceOption => ({
+const toPickerOption = (device: { id: string; name: string }): WeatherDeviceOption => ({
   id: device.id,
-  label: device.class ? `${device.name} (${device.class})` : device.name,
+  // Name only — the Homey class ("sensor") disambiguates nothing for the
+  // temperature devices a user would pick and just leaks an internal token.
+  label: device.name,
 });
 
 const ensurePickerDevicesLoaded = async (): Promise<void> => {

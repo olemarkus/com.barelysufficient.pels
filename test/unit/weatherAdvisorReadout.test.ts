@@ -70,6 +70,10 @@ const withState = (state: Partial<WeatherHistoryState>, overrides: Partial<Weath
   baseInput({ state: { records: [], ...state }, ...overrides })
 );
 
+const SETTINGS_WITH_FORECAST = {
+  enabled: true, outdoorDeviceId: 'dev-outdoor', forecastDeviceId: 'dev-forecast',
+};
+
 describe('buildWeatherAdvisorReadout', () => {
   it('returns null when the flag is off (structural absence)', () => {
     expect(buildWeatherAdvisorReadout(baseInput({ settings: { enabled: false } }))).toBeNull();
@@ -121,8 +125,9 @@ describe('buildWeatherAdvisorReadout', () => {
         budgetMayBeLimiting: false,
         computedAtMs: NOW_MS,
       },
-    }));
-    expect(payload?.prediction).toMatchObject({ tempMeanC: -2, source: 'forecast', kwh: 50, lowKwh: 44, highKwh: 58 });
+    }, { settings: SETTINGS_WITH_FORECAST }));
+    expect(payload?.prediction).toMatchObject({ tempMeanC: -2, kwh: 50, lowKwh: 44, highKwh: 58 });
+    expect(payload?.forecastStatus).toBe('forecast');
     expect(payload?.suggestion?.kwh).toBe(55);
   });
 
@@ -147,20 +152,54 @@ describe('buildWeatherAdvisorReadout', () => {
         computedAtMs: NOW_MS,
       },
       forecastHourly: { [TOMORROW]: forecastHours },
-    }));
+    }, { settings: SETTINGS_WITH_FORECAST }));
     // 23 + 1.8 × (13 − 4) = 39.2 — recomputed from the fit, not the stale 99.
-    expect(payload?.prediction?.source).toBe('forecast');
+    expect(payload?.forecastStatus).toBe('forecast');
     expect(payload?.prediction?.tempMeanC).toBe(4);
     expect(payload?.prediction?.kwh).toBeCloseTo(39.2, 5);
   });
 
-  it('falls back to persistence (recent) when tomorrow has no forecast profile', () => {
+  it('falls back to persistence with recent_no_device when no forecast device is configured', () => {
     const payload = buildWeatherAdvisorReadout(withState({
       records: recentDays(30),
       latestFit: fit(),
     }));
-    expect(payload?.prediction?.source).toBe('recent');
+    expect(payload?.forecastStatus).toBe('recent_no_device');
     expect(payload?.suggestion).not.toBeNull();
+  });
+
+  it('reports recent_device_unreadable when a forecast device is set but not reporting', () => {
+    const payload = buildWeatherAdvisorReadout(withState(
+      { records: recentDays(30), latestFit: fit() },
+      { settings: SETTINGS_WITH_FORECAST },
+    ));
+    expect(payload?.forecastStatus).toBe('recent_device_unreadable');
+  });
+
+  it('reports recent_no_device when a forecast-derived suggestion lingers after the device was removed', () => {
+    // Stored suggestion is forecast-derived, but the forecast device is no longer
+    // configured — status must reflect the current (deviceless) wiring so the
+    // footer says "none" instead of claiming the removed device.
+    const payload = buildWeatherAdvisorReadout(withState({
+      records: recentDays(30),
+      latestFit: fit(),
+      latestSuggestion: {
+        targetDateKey: TOMORROW, forecastMeanTempC: -2, forecastSource: 'forecast_device',
+        predictedKwh: 50, predictedLowKwh: 44, predictedHighKwh: 58, suggestedBudgetKwh: 55,
+        beyondObservedCold: false, beyondObservedWarm: false, budgetMayBeLimiting: false,
+        computedAtMs: NOW_MS,
+      },
+    }));
+    expect(payload?.prediction?.kwh).toBe(50); // still reuses the stored forecast number…
+    expect(payload?.forecastStatus).toBe('recent_no_device'); // …but wiring is deviceless now
+  });
+
+  it('resolves forecastStatus even in the needs_device state (no outdoor device)', () => {
+    const payload = buildWeatherAdvisorReadout(baseInput({
+      settings: { enabled: true, forecastDeviceId: 'dev-forecast' },
+    }));
+    expect(payload?.state).toBe('needs_device');
+    expect(payload?.forecastStatus).toBe('recent_device_unreadable');
   });
 
   it('marks the suggestion as capacity-capped when cap × 24h clamps it', () => {

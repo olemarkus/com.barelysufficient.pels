@@ -1098,11 +1098,14 @@
       forecastDeviceId: advisor.forecastDeviceId ?? null,
       forecastDeviceName: advisor.forecastDeviceId ? 'Yr forecast' : null,
     };
+    // Mirrors the producer's payload-level forecastStatus resolution.
+    const forecastStatus = advisor.forecastDeviceId ? 'forecast' : 'recent_no_device';
     const emptyPayload = (state) => ({
       state,
       driftSuspected: false,
       driftDeviationKwh: null,
       settings: settingsEcho,
+      forecastStatus,
       fit: null,
       coverage: [],
       prediction: null,
@@ -1161,6 +1164,7 @@
       driftSuspected: false,
       driftDeviationKwh: null,
       settings: settingsEcho,
+      forecastStatus,
       fit: {
         model: 'changepoint',
         baseLoadKwhPerDay: baseLoad,
@@ -1190,7 +1194,6 @@
       coverage,
       prediction: {
         tempMeanC: 2,
-        source: advisor.forecastDeviceId ? 'forecast' : 'recent',
         kwh: Number(predictedKwh.toFixed(1)),
         lowKwh: Number((predictedKwh - 5).toFixed(1)),
         highKwh: Number((predictedKwh + 7).toFixed(1)),
