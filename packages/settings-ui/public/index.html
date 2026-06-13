@@ -431,9 +431,9 @@
           <span slot="supporting-text" class="settings-nav-card__description">Devices that respond to cheap and expensive hours</span>
           <svg slot="end" class="settings-nav-card__chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m8.59 16.59 4.58-4.59-4.58-4.59L10 6l6 6-6 6-1.41-1.41z" fill="currentColor"/></svg>
         </md-list-item>
-        <!-- Flag-gated: the weatherInsight controller unhides this only when the
-             weather_advisor_settings flag is on (hidden = the feature stays hidden). -->
-        <md-list-item type="button" class="settings-nav-card" data-settings-target="weather" id="weather-insight-nav-card" hidden>
+        <!-- Always visible: the feature is toggled by the master switch on the
+             sub-page, so the entry point must stay reachable even when off. -->
+        <md-list-item type="button" class="settings-nav-card" data-settings-target="weather" id="weather-insight-nav-card">
           <svg slot="start" class="settings-nav-card__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 13.5V5a2 2 0 1 0-4 0v8.5a3.5 3.5 0 1 0 4 0z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
           <span slot="headline" class="settings-nav-card__title pels-text-card-title">Weather insight</span>
           <span slot="supporting-text" class="settings-nav-card__description">Outdoor temperature, tomorrow&rsquo;s forecast</span>
@@ -454,10 +454,9 @@
       </md-list>
     </section>
 
-    <!-- Flag-gated Weather insight sub-page. Reached via the (controller-unhidden)
-         nav card or the Budget setup card's deep-link; unreachable when the flag
-         is off. The controller renders the Preact pickers + validity lines into
-         the mount (structural absence when off — no dead controls). -->
+    <!-- Weather insight sub-page. Reached via the always-visible nav card or the
+         Budget setup card's deep-link. The controller renders the Preact master
+         switch (the feature gate) + pickers + validity lines into the mount. -->
     <section class="card panel hidden settings-detail-panel" id="weather-panel" data-panel="weather" aria-labelledby="weather-panel-title">
       <md-text-button type="button" class="settings-back-button" data-settings-target="settings">
         <svg slot="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
@@ -470,7 +469,9 @@
         </div>
       </header>
       <div id="weather-insight-settings-mount"></div>
-      <md-text-button type="button" id="weather-see-in-budget" class="settings-cross-link" data-settings-target="budget-weather">
+      <!-- Hidden by default; the controller un-hides it only while the feature is
+           on (off ⇒ there is no "tomorrow's outlook" to link to). -->
+      <md-text-button type="button" id="weather-see-in-budget" class="settings-cross-link" data-settings-target="budget-weather" hidden>
         See tomorrow&rsquo;s outlook in Budget
       </md-text-button>
     </section>

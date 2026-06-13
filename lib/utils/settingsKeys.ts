@@ -55,7 +55,8 @@ export const HOMEY_PRICES_TOMORROW = 'homey_prices_tomorrow';
 export const HOMEY_PRICES_CURRENCY = 'homey_prices_currency';
 export const POWER_CALIBRATION = 'power_calibration';
 export const POWER_CALIBRATION_INITIALIZED = 'power_calibration_initialized';
-// Hidden weather-insight feature: config blob (enable flag + device ids, only
-// written via `homey api` for now) and the persisted usage/temperature history.
+// Weather-insight feature: config blob (enable flag + device ids, written by the
+// Settings UI master switch/pickers or via `homey api`) plus the persisted
+// usage/temperature history.
 export const WEATHER_ADVISOR_SETTINGS = 'weather_advisor_settings';
 export const WEATHER_HISTORY_STATE = 'weather_history_state';

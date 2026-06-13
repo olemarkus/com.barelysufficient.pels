@@ -1,8 +1,12 @@
 import { render } from 'preact';
 import type { WeatherDeviceReading } from '../../../../contracts/src/weatherAdvisorTypes.ts';
+import { MdSwitch } from './materialWebJSX.tsx';
 import {
   composeForecastReadingLine,
   composeOutdoorReadingLine,
+  WEATHER_DISABLED_PITCH,
+  WEATHER_ENABLE_LABEL,
+  WEATHER_ENABLE_SUPPORTING,
   WEATHER_FORECAST_PICKER_HINT,
   WEATHER_FORECAST_PICKER_LABEL,
   WEATHER_NO_TEMPERATURE_DEVICES,
@@ -15,15 +19,20 @@ import {
   type WeatherReadingLine,
 } from '../../../../shared-domain/src/weatherInsightCopy.ts';
 
-// Flag-gated "Weather insight" section on the Settings home panel: two native
-// `<select>` device pickers (native + `.field` per the form-styling rule —
-// never `md-outlined-*`). Rendered into `#weather-insight-settings-mount` by
-// the weatherInsight controller; flag off ⇒ `render(null)` ⇒ the mount stays
-// empty (structural absence).
+// "Weather insight" sub-page body: a master on/off switch (the feature gate),
+// then — only while on — two native `<select>` device pickers (native + `.field`
+// per the form-styling rule, never `md-outlined-*`). Rendered into
+// `#weather-insight-settings-mount` by the weatherInsight controller. The switch
+// always renders so a disabled feature can be turned on from the UI; off ⇒ only
+// the switch row shows.
 
 export type WeatherDeviceOption = { id: string; label: string };
 
-export type WeatherSettingsSectionProps = {
+/** md-switch exposes its state as a `.selected` property (Material Web interop). */
+type SwitchElement = HTMLElement & { selected: boolean };
+
+/** Device-picker config — present only when the feature is enabled. */
+export type WeatherPickersProps = {
   outdoorDeviceId: string | null;
   forecastDeviceId: string | null;
   devices: WeatherDeviceOption[];
@@ -33,6 +42,13 @@ export type WeatherSettingsSectionProps = {
   forecastReading: WeatherDeviceReading;
   onOutdoorChange: (deviceId: string | null) => void;
   onForecastChange: (deviceId: string | null) => void;
+};
+
+export type WeatherSettingsSectionProps = {
+  enabled: boolean;
+  onEnabledChange: (enabled: boolean) => void;
+  /** Null while disabled — the pickers only exist once the feature is on. */
+  pickers: WeatherPickersProps | null;
 };
 
 const DevicePicker = ({ id, label, hint, value, devices, devicesLoaded, reading, onChange }: {
@@ -86,39 +102,75 @@ const DevicePicker = ({ id, label, hint, value, devices, devicesLoaded, reading,
   );
 };
 
-// The dedicated Weather insight sub-page provides the title via its hero; this
-// section renders only the intro hint + the two device pickers.
-const WeatherSettingsSectionView = (props: WeatherSettingsSectionProps) => (
+/** Master on/off row — the feature gate. Always rendered (off ⇒ the only row). */
+const MasterSwitch = ({ enabled, onEnabledChange }: {
+  enabled: boolean;
+  onEnabledChange: (enabled: boolean) => void;
+}) => (
+  <div class="md-switch-row settings-form-card" id="weather-enable-row">
+    <MdSwitch
+      id="weather-enable-switch"
+      aria-label={WEATHER_ENABLE_LABEL}
+      {...(enabled ? { selected: true } : {})}
+      onChange={(event: Event) => onEnabledChange((event.currentTarget as SwitchElement).selected)}
+    />
+    <span class="md-switch-row__content">
+      <span class="md-switch-row__label pels-text-settings-label">{WEATHER_ENABLE_LABEL}</span>
+      <small class="field__hint">{WEATHER_ENABLE_SUPPORTING}</small>
+    </span>
+  </div>
+);
+
+const DevicePickers = ({ pickers }: { pickers: WeatherPickersProps }) => (
   <section id="weather-insight-settings" class="settings-form-card weather-settings-section">
-    {props.devicesLoaded && props.devices.length === 0
+    {pickers.devicesLoaded && pickers.devices.length === 0
       ? <p class="muted weather-settings-section__hint" id="weather-no-devices">{WEATHER_NO_TEMPERATURE_DEVICES}</p>
       : <p class="muted weather-settings-section__hint">{WEATHER_SETTINGS_SECTION_HINT}</p>}
     <DevicePicker
       id="weather-outdoor-select"
       label={WEATHER_OUTDOOR_PICKER_LABEL}
       hint={WEATHER_OUTDOOR_PICKER_HINT}
-      value={props.outdoorDeviceId}
-      devices={props.devices}
-      devicesLoaded={props.devicesLoaded}
-      reading={composeOutdoorReadingLine(props.outdoorReading)}
-      onChange={props.onOutdoorChange}
+      value={pickers.outdoorDeviceId}
+      devices={pickers.devices}
+      devicesLoaded={pickers.devicesLoaded}
+      reading={composeOutdoorReadingLine(pickers.outdoorReading)}
+      onChange={pickers.onOutdoorChange}
     />
     <DevicePicker
       id="weather-forecast-select"
       label={WEATHER_FORECAST_PICKER_LABEL}
       hint={WEATHER_FORECAST_PICKER_HINT}
-      value={props.forecastDeviceId}
-      devices={props.devices}
-      devicesLoaded={props.devicesLoaded}
-      reading={composeForecastReadingLine(props.forecastReading)}
-      onChange={props.onForecastChange}
+      value={pickers.forecastDeviceId}
+      devices={pickers.devices}
+      devicesLoaded={pickers.devicesLoaded}
+      reading={composeForecastReadingLine(pickers.forecastReading)}
+      onChange={pickers.onForecastChange}
     />
   </section>
 );
 
+/** Off-state body: a payoff-led pitch so the off page sells the feature. */
+const DisabledPitch = () => (
+  <section id="weather-disabled-pitch" class="settings-form-card">
+    <p class="pels-card-supporting">{WEATHER_DISABLED_PITCH}</p>
+  </section>
+);
+
+// The dedicated Weather insight sub-page provides the title via its hero; this
+// body renders the master switch, then either the off-state pitch or the device
+// pickers depending on whether the feature is on.
+const WeatherSettingsSectionView = (props: WeatherSettingsSectionProps) => (
+  <div id="weather-insight-settings-body">
+    <MasterSwitch enabled={props.enabled} onEnabledChange={props.onEnabledChange} />
+    {props.enabled && props.pickers !== null
+      ? <DevicePickers pickers={props.pickers} />
+      : <DisabledPitch />}
+  </div>
+);
+
 export const renderWeatherSettingsSection = (
   surface: HTMLElement,
-  props: WeatherSettingsSectionProps | null,
+  props: WeatherSettingsSectionProps,
 ): void => {
-  render(props === null ? null : <WeatherSettingsSectionView {...props} />, surface);
+  render(<WeatherSettingsSectionView {...props} />, surface);
 };

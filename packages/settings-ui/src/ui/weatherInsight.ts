@@ -92,8 +92,11 @@ export const refreshWeatherInsightOnBudgetTab = async (): Promise<void> => {
   await maybeCelebrateFirstEstimate();
 };
 
-/** Weather-insight sub-page activation hook: refresh the picker validity lines from a live readout. */
+/** Weather-insight sub-page activation hook: render the master switch, then (when on) the validity lines. */
 export const refreshWeatherInsightOnWeatherPanel = async (): Promise<void> => {
+  // Render unconditionally so the master switch is present even when the feature
+  // is off — the sub-page is now the place a disabled feature gets turned on.
+  renderSettingsSection();
   if (!currentSettings.enabled) return;
   await fetchReadout();
 };
@@ -137,11 +140,13 @@ const ensurePickerDevicesLoaded = async (): Promise<void> => {
   }
 };
 
-const writeDeviceSelection = async (
-  patch: Partial<Pick<WeatherAdvisorUiSettings, 'outdoorDeviceId' | 'forecastDeviceId'>>,
-): Promise<void> => {
-  currentSettings = { ...currentSettings, ...patch };
-  renderSettingsSection();
+// Serialize persistence so a rapid on/off/on flurry can't land out of order at
+// the SDK and leave the wrong final state. Each step writes the LATEST snapshot
+// (built at send time from currentSettings), so the last write wins; a failed
+// write is swallowed so it can't wedge the chain for later writes.
+let persistChain: Promise<void> = Promise.resolve();
+
+const persistWeatherSettings = async (): Promise<void> => {
   const blob = {
     enabled: currentSettings.enabled,
     ...(currentSettings.outdoorDeviceId !== null ? { outdoorDeviceId: currentSettings.outdoorDeviceId } : {}),
@@ -150,6 +155,24 @@ const writeDeviceSelection = async (
   // The runtime watches this key (collector reload); our own settings.set
   // event then round-trips handleWeatherAdvisorSettingsChanged → fresh readout.
   await setSetting(WEATHER_ADVISOR_SETTINGS, blob);
+};
+
+const writeSettings = async (
+  patch: Partial<Pick<WeatherAdvisorUiSettings, 'enabled' | 'outdoorDeviceId' | 'forecastDeviceId'>>,
+): Promise<void> => {
+  currentSettings = { ...currentSettings, ...patch };
+  // Turning the feature on needs the picker list ready for the section it reveals.
+  if (patch.enabled === true) void ensurePickerDevicesLoaded();
+  renderSettingsSection();
+  // Append to the serialized chain, then own the failure here: callers fire this
+  // as `void writeSettings(...)`, so a rejected persist must be logged rather
+  // than surface as an unhandled rejection.
+  persistChain = persistChain.catch(() => {}).then(persistWeatherSettings);
+  try {
+    await persistChain;
+  } catch (error) {
+    await logSettingsError('Failed to persist weather settings', error, 'weatherInsight');
+  }
 };
 
 // Before the first readout lands, the picker shows no status line (the readout
@@ -172,25 +195,31 @@ const readingFor = (
 );
 
 const renderSettingsSection = (): void => {
-  // The nav card is the flag gate for the whole sub-page: unhidden only while the
-  // feature is enabled, so the hidden feature stays hidden (and unreachable).
-  document.getElementById('weather-insight-nav-card')?.toggleAttribute('hidden', !currentSettings.enabled);
+  // The section always renders the master switch (the feature gate is now the
+  // switch, not the nav card's visibility), then the pickers once enabled.
+  // The Budget cross-link promises a "tomorrow's outlook" that only exists while
+  // the feature is on, so it's hidden when off (it lives outside the Preact mount).
+  document.getElementById('weather-see-in-budget')?.toggleAttribute('hidden', !currentSettings.enabled);
   const mount = document.getElementById('weather-insight-settings-mount');
   if (!mount) return;
-  renderWeatherSettingsSection(mount, currentSettings.enabled
-    ? {
-      outdoorDeviceId: currentSettings.outdoorDeviceId,
-      forecastDeviceId: currentSettings.forecastDeviceId,
-      devices: pickerDevices ?? [],
-      // Distinguishes "still loading" from "loaded, no temperature devices" so the
-      // section can show an honest empty state instead of a bare empty dropdown.
-      devicesLoaded: pickerDevices !== null,
-      outdoorReading: readingFor('outdoorDeviceId', 'outdoorReading'),
-      forecastReading: readingFor('forecastDeviceId', 'forecastReading'),
-      onOutdoorChange: (deviceId) => { void writeDeviceSelection({ outdoorDeviceId: deviceId }); },
-      onForecastChange: (deviceId) => { void writeDeviceSelection({ forecastDeviceId: deviceId }); },
-    }
-    : null);
+  renderWeatherSettingsSection(mount, {
+    enabled: currentSettings.enabled,
+    onEnabledChange: (enabled) => { void writeSettings({ enabled }); },
+    pickers: currentSettings.enabled
+      ? {
+        outdoorDeviceId: currentSettings.outdoorDeviceId,
+        forecastDeviceId: currentSettings.forecastDeviceId,
+        devices: pickerDevices ?? [],
+        // Distinguishes "still loading" from "loaded, no temperature devices" so the
+        // section can show an honest empty state instead of a bare empty dropdown.
+        devicesLoaded: pickerDevices !== null,
+        outdoorReading: readingFor('outdoorDeviceId', 'outdoorReading'),
+        forecastReading: readingFor('forecastDeviceId', 'forecastReading'),
+        onOutdoorChange: (deviceId) => { void writeSettings({ outdoorDeviceId: deviceId }); },
+        onForecastChange: (deviceId) => { void writeSettings({ forecastDeviceId: deviceId }); },
+      }
+      : null,
+  });
 };
 
 const reloadSettings = async (): Promise<void> => {

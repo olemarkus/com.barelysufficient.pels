@@ -1,7 +1,9 @@
 # Weather insight — UI copy and state spec (design of record)
 
-Design-of-record for the hidden weather-insight surface (PR 3 of the
-weather-advisor plan). Runtime/data design lives in the plan notes; this file
+Design-of-record for the weather-insight surface (PR 3 of the
+weather-advisor plan). The feature ships default-off but is now enableable from
+the UI: the Settings nav card is always visible and its sub-page carries a
+master on/off switch (the feature gate). Runtime/data design lives in the plan notes; this file
 owns the user-facing surface: surface map, card layouts, exact state copy
 (S1–S8), formatting rules, and the chart marker grammar. All strings live in
 `packages/shared-domain/src/weatherInsightCopy.ts`; UI components must consume
@@ -23,11 +25,14 @@ normal Adjust flow with **nothing prefilled**.
 |---|---|---|
 | Budget page, plan view | One card appended after the chart card: the **Tomorrow card** (prediction + suggested budget + verdict). In pre-ready states the same slot renders the setup / backfill / learning card instead. | Budget's mission is "where will I land". Tomorrow's predicted kWh vs the daily budget is a landing question. Not Overview (protects persona 1's one-glance hero), not Usage (retrospective). Appended last so the existing hero → warning → confidence → chart order is untouched. |
 | Budget page, `localView: 'weather'` | The **Weather insight detail view**: summary sentence card, "Your home in numbers", scatter + coverage band, device footer. Header per the Budget-Adjust precedent: eyebrow `Budget`, headline `Weather insight`, outlined `Done` returning to plan. | The tinkerer's exploration surface; reuses Budget's existing local-view mechanism, page count stays zero. |
-| Settings | Flag-gated **Weather insight** section with two device pickers (native `select` + `.field`, `/homey_devices`). The Budget setup card deep-links here via `data-settings-target`. | Device configuration is a Settings concern everywhere else in PELS. |
+| Settings | An always-visible **Weather insight** nav card → a dedicated sub-page. The sub-page always renders a master on/off switch (the feature gate); when off it adds a payoff-led pitch, when on it adds the two device pickers (native `select` + `.field`, `/homey_devices`) and a `See tomorrow's outlook in Budget` cross-link. The Budget setup card deep-links here via `data-settings-target`. | Device configuration is a Settings concern everywhere else in PELS; the master switch is the discoverable way to turn the feature on without the CLI. |
 | Overview / Usage / Smart tasks / widgets / notifications | Nothing. | Deliberate — v1 makes zero claims on shared real estate. |
 
-When the flag is off: structural absence everywhere — no DOM ids, no hidden
-cards, no dead Settings controls. The Playwright flag-off spec is the guard.
+When the feature is off: structural absence on Budget/Overview/Usage/etc. — no
+weather DOM ids, no hidden cards, no Budget Tomorrow card. The **exception** is
+the Settings sub-page, which is always reachable and renders the master switch
+(off) + the pitch, so the feature can be turned on from the UI. The Budget
+cross-link is hidden while off. Playwright guards both the off and on states.
 
 **Navigation:** Budget plan → Tomorrow card → `Weather details` →
 `localView='weather'` → `Done` → plan. Budget plan (no device yet) → setup
@@ -158,8 +163,9 @@ One muted row: `Temperature: Outdoor sensor · Forecast: Yr` + text button
 
 ### Settings section — device pickers + live validity
 
-The flag-gated **Weather insight** Settings sub-page (reached via the Settings
-nav card or the Budget setup card's deep-link) has the two native `select`
+The **Weather insight** Settings sub-page (reached via the always-visible
+Settings nav card or the Budget setup card's deep-link) leads with the master
+on/off switch; once on it shows the two native `select`
 pickers, each **hard-filtered to temperature devices**: `/homey_devices` exposes
 `hasTemperature` (a bare `measure_temperature` capability) and the picker lists
 only those, so a guaranteed-broken non-temperature pick isn't even offered. A
@@ -290,4 +296,5 @@ empty slot.
 
 Documented future follow-ups: deep-link from a budget-overshoot postmortem
 (persona 5), money on the Tomorrow card once same-evening price completeness
-exists (persona 4), out-of-hiding once trusted.
+exists (persona 4). The UI enable switch (master switch on the sub-page) has
+shipped; remaining pre-promotion polish lives in `TODO.md`.

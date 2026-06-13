@@ -78,7 +78,6 @@ import { loadDeferredObjectiveSettings } from './deferredObjectiveSettings.ts';
 import { reloadDeferredObjectiveActivePlans } from './deferredObjectiveActivePlans.ts';
 import { clearUsageReturnLink } from './usageReturnLink.ts';
 import {
-  getWeatherInsightView,
   handleWeatherAdvisorSettingsChanged,
   refreshWeatherInsightOnBudgetTab,
   refreshWeatherInsightOnWeatherPanel,
@@ -323,17 +322,12 @@ const reloadActivePlansIfActivePlansKey = (key: string, context: string): void =
 // weather settings snapshot and (when enabled) refetch the readout so the
 // Budget card and Settings pickers track the new state without a reload.
 // Fires for BOTH settings.set and settings.unset (clearing the blob disables).
+// The sub-page stays open when the feature is toggled off — its master switch
+// lives there, so the user must remain on the page to turn it back on.
 const reloadWeatherInsightIfWeatherKey = (key: string, context: string): void => {
   if (key !== WEATHER_ADVISOR_SETTINGS) return;
   runLoggedTask(
-    handleWeatherAdvisorSettingsChanged().then(() => {
-      // If the feature was disabled while its sub-page is open, leave it: the
-      // panel would otherwise linger with an empty mount, and "flag off" must be
-      // unreachable. getWeatherInsightView() is null once disabled.
-      if (getWeatherInsightView() === null && isPanelVisible('#weather-panel')) {
-        showTab('settings');
-      }
-    }),
+    handleWeatherAdvisorSettingsChanged(),
     'Failed to reload weather insight',
     context,
   );
