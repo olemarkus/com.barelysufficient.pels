@@ -124,7 +124,7 @@ export = {
   ),
   homey_devices: withApiLogging('homey_devices', async (
     { homey }: ApiContext,
-  ): Promise<Array<{ id: string; name: string; class?: string }>> => {
+  ): Promise<Array<{ id: string; name: string; class?: string; hasTemperature: boolean }>> => {
     const app = getApp(homey);
     if (!app) return [];
     const devices = await getHomeyDevicesForDebugFromApp(app);
@@ -136,6 +136,12 @@ export = {
           id: device.id,
           name: device.name,
           class: deviceClass,
+          // Whether the device exposes a bare measure_temperature capability —
+          // lets the Weather insight pickers filter to temperature devices.
+          // Array.isArray-guarded (matching the runtime's other capability checks)
+          // since `device` crosses the SDK boundary and types aren't guaranteed.
+          hasTemperature: Array.isArray(device.capabilities)
+            && device.capabilities.includes('measure_temperature'),
         };
       });
   }),

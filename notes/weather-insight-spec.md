@@ -158,9 +158,18 @@ One muted row: `Temperature: Outdoor sensor · Forecast: Yr` + text button
 
 ### Settings section — device pickers + live validity
 
-The flag-gated **Weather insight** Settings section has the two native `select`
-pickers, each followed by a producer-resolved **live validity line** so a chosen
-device confirms itself instead of making the owner wait ~21 days. The producer
+The flag-gated **Weather insight** Settings sub-page (reached via the Settings
+nav card or the Budget setup card's deep-link) has the two native `select`
+pickers, each **hard-filtered to temperature devices**: `/homey_devices` exposes
+`hasTemperature` (a bare `measure_temperature` capability) and the picker lists
+only those, so a guaranteed-broken non-temperature pick isn't even offered. A
+device exposing temperature only on a sub-capability is **excluded** here (no
+bare `measure_temperature`), so it never reaches the picker; when the filter
+leaves nothing, the section shows an explicit empty state. The live validity line
+below is the backstop for devices that DO pass the filter but still fail to
+deliver a readable value at runtime. Each picker is followed by that
+producer-resolved **live validity line** so a chosen device confirms itself
+instead of making the owner wait ~21 days. The producer
 resolves `outdoorReading` / `forecastReading` on the payload from an INSTANT
 on-demand read of each device's bare `measure_temperature` (done in the
 assembler — the collector's cached sample is cleared on the restart a selection

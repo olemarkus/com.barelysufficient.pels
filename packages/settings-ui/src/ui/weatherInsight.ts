@@ -89,6 +89,8 @@ export const refreshWeatherInsightOnWeatherPanel = async (): Promise<void> => {
   await fetchReadout();
 };
 
+type HomeyDeviceListEntry = { id: string; name: string; class?: string; hasTemperature?: boolean };
+
 const toPickerOption = (device: { id: string; name: string }): WeatherDeviceOption => ({
   id: device.id,
   // Name only — the Homey class ("sensor") disambiguates nothing for the
@@ -96,17 +98,28 @@ const toPickerOption = (device: { id: string; name: string }): WeatherDeviceOpti
   label: device.name,
 });
 
+/**
+ * Hard-filter the device list to temperature devices for the pickers: only a
+ * device exposing a bare measure_temperature can be read, so listing the rest
+ * just invites guaranteed-broken picks. The live validity line then backstops
+ * the devices that DO pass — e.g. a forecast device whose bare temperature
+ * isn't tomorrow's. (A device exposing temperature only on a sub-capability is
+ * excluded here; an empty result is surfaced as an explicit empty state rather
+ * than a silent dead-end — see WeatherSettingsSection.) Sorted by name.
+ */
+export const toTemperatureDeviceOptions = (devices: HomeyDeviceListEntry[]): WeatherDeviceOption[] => (
+  devices
+    .filter((device) => device.hasTemperature === true)
+    .map((device) => toPickerOption(device))
+    .sort((a, b) => a.label.localeCompare(b.label))
+);
+
 const ensurePickerDevicesLoaded = async (): Promise<void> => {
   if (pickerDevices !== null || pickerDevicesLoading) return;
   pickerDevicesLoading = true;
   try {
-    const devices = await callApi<Array<{ id: string; name: string; class?: string }> | null>(
-      'GET',
-      '/homey_devices',
-    );
-    pickerDevices = (devices ?? [])
-      .map((device) => toPickerOption(device))
-      .sort((a, b) => a.label.localeCompare(b.label));
+    const devices = await callApi<HomeyDeviceListEntry[] | null>('GET', '/homey_devices');
+    pickerDevices = toTemperatureDeviceOptions(devices ?? []);
     renderSettingsSection();
   } catch (error) {
     await logSettingsError('Failed to load devices for weather pickers', error, 'weatherInsight');
@@ -160,6 +173,9 @@ const renderSettingsSection = (): void => {
       outdoorDeviceId: currentSettings.outdoorDeviceId,
       forecastDeviceId: currentSettings.forecastDeviceId,
       devices: pickerDevices ?? [],
+      // Distinguishes "still loading" from "loaded, no temperature devices" so the
+      // section can show an honest empty state instead of a bare empty dropdown.
+      devicesLoaded: pickerDevices !== null,
       outdoorReading: readingFor('outdoorDeviceId', 'outdoorReading'),
       forecastReading: readingFor('forecastDeviceId', 'forecastReading'),
       onOutdoorChange: (deviceId) => { void writeDeviceSelection({ outdoorDeviceId: deviceId }); },
