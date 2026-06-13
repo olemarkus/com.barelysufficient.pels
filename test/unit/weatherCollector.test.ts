@@ -589,6 +589,145 @@ describe('WeatherCollector', () => {
     expect(recomputeDerived).toHaveBeenCalled();
   });
 
+  it('defers the refit until the meter kWh layer settles — never on the temperature pass alone', async () => {
+    // The temperature backfill upserts a year of records but kWh only for the
+    // tracker-covered recent days; refitting there would persist a low-R²
+    // recent-only signature. Hang the meter VALUE fetch so the chain pauses
+    // after the temperature pass but before the kWh layer resolves.
+    let releaseMeter: (() => void) | undefined;
+    let meterHung = false;
+    const recomputeDerived = vi.fn((state: WeatherHistoryState) => state);
+    const { collector } = buildHarness({
+      getDailyKwh: vi.fn(trackerKwhForMeterDays),
+      recomputeDerived,
+      fetchInsights: vi.fn(async (path: string) => {
+        if (path === 'manager/devices/device') return METER_DEVICES;
+        if (path.includes('meter-1:meter_power.imported')) {
+          // The meter pass probes then fully pulls the same series; hang only
+          // the first (probe) call so the chain pauses with the kWh unresolved.
+          if (!meterHung) {
+            meterHung = true;
+            await new Promise<void>((resolve) => { releaseMeter = resolve; });
+          }
+          return { step: 6 * HOUR_MS, values: meterCounterValues() };
+        }
+        return path.includes('lastYear')
+          ? { step: 6 * HOUR_MS, values: meterTempPoints() }
+          : { step: 6 * HOUR_MS, values: [] };
+      }),
+    });
+    collector.start();
+    await vi.advanceTimersByTimeAsync(0);
+    // Temperature pass done, meter pass blocked on its value fetch: no refit yet,
+    // and the UI must read as still backfilling (not learning/ready).
+    expect(recomputeDerived).not.toHaveBeenCalled();
+    expect(collector.isBackfillRunning()).toBe(true);
+    releaseMeter?.();
+    await vi.advanceTimersByTimeAsync(0);
+    // kWh settled → the fit is computed exactly once, on the full-year records.
+    expect(recomputeDerived).toHaveBeenCalledTimes(1);
+    collector.stop();
+  });
+
+  it('keeps the partial fills but defers the refit when the meter resolution is incomplete', async () => {
+    // The meter validates on its probe + most windows, but one deep window fails,
+    // so resolveMeterDailyKwh returns resolved with complete:false and the caller
+    // leaves the marker unlatched for a next-boot retry. The kWh layer is not
+    // settled, so the fit must NOT be recomputed on the partially-filled records
+    // — the same transient-fit path this change removes — even though the partial
+    // fills are still persisted.
+    const recomputeDerived = vi.fn((state: WeatherHistoryState) => state);
+    const { collector, store } = buildHarness({
+      getDailyKwh: vi.fn(trackerKwhForMeterDays),
+      recomputeDerived,
+      fetchInsights: vi.fn(async (path: string) => {
+        if (path === 'manager/devices/device') return METER_DEVICES;
+        if (path.includes('meter-1:meter_power.imported')) {
+          if (path.includes('resolution=thisYear')) throw new Error('deep window unreadable');
+          return { step: 6 * HOUR_MS, values: meterCounterValues() };
+        }
+        return path.includes('lastYear')
+          ? { step: 6 * HOUR_MS, values: meterTempPoints() }
+          : { step: 6 * HOUR_MS, values: [] };
+      }),
+    });
+    collector.start();
+    await vi.advanceTimersByTimeAsync(0);
+    collector.stop();
+    const written = lastWritten(store);
+    // Resolved-but-incomplete: marker stays unset for retry, partial meter fill kept…
+    expect(written.meterKwhBackfillDone).toBeUndefined();
+    expect(written.records.find((record) => record.dateKey === meterDateKey(0))?.kwhTotal).toBeCloseTo(40, 6);
+    // …but no fit was computed on the still-unsettled kWh layer.
+    expect(recomputeDerived).not.toHaveBeenCalled();
+  });
+
+  it('seeds the first fit on a no-meter home once the meter election concludes', async () => {
+    // No cumulative meter exists, but the tracker joined kWh onto recent
+    // backfilled days. The temperature pass no longer refits, so the meter
+    // no-source handler must seed the first signature rather than leaving the
+    // card on "learning" until the next midnight rollup.
+    const recomputeDerived = vi.fn((state: WeatherHistoryState) => ({
+      ...state,
+      latestFit: { model: 'uncorrelated' } as WeatherHistoryState['latestFit'],
+    }));
+    const { collector, store } = buildHarness({
+      getDailyKwh: vi.fn(trackerKwhForMeterDays),
+      recomputeDerived,
+      fetchInsights: vi.fn(async (path: string) => {
+        if (path === 'manager/devices/device') return {}; // no meter on this home
+        return path.includes('lastYear')
+          ? { step: 6 * HOUR_MS, values: meterTempPoints() }
+          : { step: 6 * HOUR_MS, values: [] };
+      }),
+    });
+    collector.start();
+    await vi.advanceTimersByTimeAsync(0);
+    collector.stop();
+    expect(recomputeDerived).toHaveBeenCalledTimes(1);
+    expect(lastWritten(store).latestFit).toEqual({ model: 'uncorrelated' });
+  });
+
+  it('refits exactly once on a no-meter purge that lands below the fit threshold', async () => {
+    // Purge strips a legacy day (changedDays > 0) but the result is still too
+    // thin to fit, so recomputeDerived returns NO latestFit. The terminal refit
+    // must fire once — not twice (a purge refit followed by a re-triggered seed
+    // because latestFit stayed undefined), which would double the O(n²) pass and
+    // duplicate the `weather_advisor_fit` log line.
+    const recomputeDerived = vi.fn((state: WeatherHistoryState) => {
+      const { latestFit: _drop, ...rest } = state;
+      return rest; // sub-threshold data → fit stripped, latestFit stays undefined
+    });
+    const { collector, persisted } = buildHarness({
+      getDailyKwh: vi.fn(() => ({})),
+      recomputeDerived,
+      fetchInsights: vi.fn(async (path: string) => (
+        path === 'manager/devices/device'
+          ? {} // no meter → conclusive no-candidate election
+          : { step: 6 * HOUR_MS, values: [] }
+      )),
+    });
+    // A contaminated legacy record (unflagged kWh, no tracker source) the
+    // conclusive purge strips → changedDays > 0 with a still-thin usable set.
+    persisted.value = {
+      records: [{
+        dateKey: '2025-03-01',
+        kwhTotal: 19.5,
+        tempMeanC: 1,
+        tempMinC: 0,
+        tempMaxC: 2,
+        tempSampleCount: 4,
+        quality: { partialTemp: false, missingKwh: false, unreliablePower: false, backfilled: true },
+      }],
+      backfilledDeviceId: 'out-1',
+      backfillVersion: 2,
+    };
+    collector.start();
+    await vi.advanceTimersByTimeAsync(0);
+    collector.stop();
+    expect(recomputeDerived).toHaveBeenCalledTimes(1);
+  });
+
   it('purges legacy kWh once on a conclusive no-candidate election, then stamps', async () => {
     const points = sixHourZeroPoints(Date.UTC(2026, 0, 4, 23, 0, 0));
     const devicesPaths: string[] = [];

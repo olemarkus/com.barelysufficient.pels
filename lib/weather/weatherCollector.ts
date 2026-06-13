@@ -203,9 +203,18 @@ export class WeatherCollector {
     return this.state;
   }
 
-  /** Whether the one-shot Insights backfill is in flight (UI "backfilling" state). */
+  /**
+   * Whether any stage of the one-shot backfill chain — temperature → meter kWh
+   * → controlled split — is in flight; drives the UI "backfilling" state. All
+   * three stages rewrite the record set the energy-signature fit reads, and the
+   * fit is now computed only once the kWh layer settles (mid-to-late in the
+   * chain), so the UI must read as backfilling until the whole chain quiesces,
+   * not just during the temperature pass. (When a prior fit already exists — a
+   * redeploy re-running the chain — the readout still shows that fit as `ready`;
+   * this only flips the no-fit-yet state from `learning` to `backfilling`.)
+   */
   isBackfillRunning(): boolean {
-    return this.backfillRunning;
+    return this.backfillRunning || this.meterBackfillRunning || this.controlledBackfillRunning;
   }
 
   /** Persist immediately, bypassing the debounce (shutdown path). Still honors the load grace. */
@@ -457,6 +466,20 @@ export class WeatherCollector {
     });
   }
 
+  /**
+   * Recompute the energy-signature fit/suggestion from records the caller has
+   * established are settled (the kWh layer will not change further), and mark
+   * the state for persistence so the refreshed fit survives a restart. Called
+   * only from the backfill stages that own the settled-kWh guarantee — never the
+   * temperature stage, whose records are still missing historical kWh. A no-op
+   * when no recompute dep is wired (so callers need no extra guard).
+   */
+  private refitFromSettledRecords(): void {
+    if (!this.deps.recomputeDerived) return;
+    this.state = this.deps.recomputeDerived(this.state);
+    this.markDirty();
+  }
+
   private maybeStartBackfill(settings: WeatherAdvisorSettings): void {
     const deviceId = settings.outdoorDeviceId;
     if (!deviceId || this.backfillRunning) return;
@@ -501,10 +524,14 @@ export class WeatherCollector {
         ...upsertBackfillRecords(base, records),
         ...(markDone ? { backfilledDeviceId: deviceId, backfillVersion: TEMP_BACKFILL_VERSION } : {}),
       };
-      if (records.length > 0) {
-        // The backfill is what gives the fit a year of data on day one.
-        this.state = this.deps.recomputeDerived?.(this.state) ?? this.state;
-      }
+      // The temperature stage deliberately does NOT refit here. The records it
+      // just upserted carry kWh only for the recent days the power tracker still
+      // retains; the older days stay kWh-less until the meter backfill chained
+      // below resolves them. A fit now would be built on that recent-only usable
+      // subset (in summer, a warm-skewed low-R² signature) and then persisted,
+      // logged as `weather_advisor_fit`, and — with auto-apply on — pushed to the
+      // daily budget. The refit happens once the kWh layer settles: at the
+      // meter-resolved stage, or in handleMeterNoSource when no meter exists.
       if (records.length > 0 || markDone) this.markDirty();
       this.deps.logger.info({
         event: 'weather_backfill_completed',
@@ -578,9 +605,19 @@ export class WeatherCollector {
           ? { meterKwhBackfillDone: true, meterKwhDeviceId: result.deviceId, kwhPurgeVersion: KWH_PURGE_VERSION }
           : {}),
       };
-      if (changedDays > 0) {
-        this.state = this.deps.recomputeDerived?.(this.state) ?? this.state;
-      }
+      // Settled-kWh refit point — but ONLY on a complete fetch. A complete meter
+      // pass has filled the historical days the temperature stage left kWh-less,
+      // so the usable set now spans the year; the controlled split chained below
+      // only rewrites the controlled/uncontrolled breakdown (never kwhTotal/temp)
+      // so it can't move the fit, making here-before-it correct. An INCOMPLETE
+      // resolution (a deep window or competing probe failed) leaves the kWh layer
+      // unsettled and the marker unlatched for a next-boot retry — refitting on
+      // its partially-filled records is the very transient-fit path this change
+      // removes, so defer. The persist below still keeps the partial fills (they
+      // are real and additive); only the fit waits. On a complete fetch also seed
+      // when nothing changed (a home already wholly tracker-covered, so the meter
+      // filled no new days) — else its first fit would wait for the midnight rollup.
+      if (result.complete && (changedDays > 0 || this.state.latestFit === undefined)) this.refitFromSettledRecords();
       if (changedDays > 0 || result.complete) this.markDirty();
       this.deps.logger.info({
         event: 'weather_meter_backfill_completed',
@@ -621,6 +658,7 @@ export class WeatherCollector {
    */
   private handleMeterNoSource(result: Exclude<MeterKwhBackfillOutcome, { outcome: 'resolved' }>): void {
     const electionConclusive = result.outcome === 'no_candidates' || result.probeFailures === 0;
+    let purgeChangedDays = 0;
     // One-shot: tracker-joined backfill kWh is indistinguishable from the
     // legacy class once the tracker's retention passes it, so a recurring
     // strip on no-meter homes would erase legitimate values day by day.
@@ -631,13 +669,24 @@ export class WeatherCollector {
         allowStrip: true,
       });
       this.state = { ...state, kwhPurgeVersion: KWH_PURGE_VERSION };
+      purgeChangedDays = changedDays;
       this.markDirty();
-      if (changedDays > 0) {
-        this.state = this.deps.recomputeDerived?.(this.state) ?? this.state;
-      }
-      if (strippedDays > 0) {
-        this.deps.logger.info({ event: 'weather_kwh_legacy_purged', strippedDays });
-      }
+      if (strippedDays > 0) this.deps.logger.info({ event: 'weather_kwh_legacy_purged', strippedDays });
+    }
+    // Single terminal refit for the no-meter path: when the purge moved the
+    // usable set, OR to seed the very first fit for a genuinely no-meter home
+    // whose only kWh is the tracker-joined recent days the temperature stage
+    // upserted (which no longer refits on its half-filled records) — else that
+    // home would sit on `learning` until the next midnight rollup. ONE call, so
+    // a purge that lands below MIN_USABLE_DAYS (fit still null) can't re-trigger
+    // a second refit + duplicate `weather_advisor_fit` line. Gated on a
+    // CONCLUSIVE election: an inconclusive one (a probe transiently failed)
+    // leaves the marker unset so the next boot retries the meter — the kWh layer
+    // may still fill, so defer rather than seed a thin fit. A steady-state reboot
+    // already carries a fit and skips the O(n²) refit; later days arrive via
+    // rollup.
+    if (electionConclusive && (purgeChangedDays > 0 || this.state.latestFit === undefined)) {
+      this.refitFromSettledRecords();
     }
     this.deps.logger.info({
       event: 'weather_meter_backfill_no_source',
