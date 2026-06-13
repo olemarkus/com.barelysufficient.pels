@@ -9,6 +9,7 @@ import {
   composeBasedOnDays,
   composeDeviceFooter,
   composeDriftNotice,
+  composeForecastSourceLine,
   composeHeatLossDetail,
   composeLearningBody,
   composeNumbersFootnote,
@@ -57,8 +58,6 @@ import {
   WEATHER_SCATTER_TITLE,
   WEATHER_SETUP_BODY,
   WEATHER_SETUP_BUTTON,
-  WEATHER_SOURCE_FORECAST,
-  WEATHER_SOURCE_PERSISTENCE,
   WEATHER_VALUE_NOT_CLEAR_YET,
 } from '../../../../shared-domain/src/weatherInsightCopy.ts';
 import { WeatherCoverageBand, WeatherScatterChart } from './WeatherInsightChart.tsx';
@@ -126,7 +125,7 @@ const TomorrowCard = ({ readout, onShowDetails, onAdjustBudget }: {
       </div>
       {prediction && (
         <p class="pels-card-supporting">
-          {prediction.source === 'forecast' ? WEATHER_SOURCE_FORECAST : WEATHER_SOURCE_PERSISTENCE}
+          {composeForecastSourceLine(readout.forecastStatus)}
         </p>
       )}
       {roughReason !== null && (
@@ -376,7 +375,9 @@ const DeviceFooter = ({ readout }: { readout: WeatherAdvisorReadoutPayload }) =>
     <p class="pels-card-supporting">
       {composeDeviceFooter({
         outdoorDeviceName: readout.settings.outdoorDeviceName,
+        outdoorDeviceConfigured: readout.settings.outdoorDeviceId !== null,
         forecastDeviceName: readout.settings.forecastDeviceName,
+        forecastStatus: readout.forecastStatus,
       })}
     </p>
     <MdTextButton id="weather-change-in-settings" data-settings-target="settings">

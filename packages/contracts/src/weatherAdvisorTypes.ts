@@ -237,9 +237,18 @@ export type WeatherRecentDay = {
   quality: WeatherDailyQuality;
 };
 
+/**
+ * Producer-resolved forecast provenance for honest copy. A configured forecast
+ * device that isn't reporting (`recent_device_unreadable`) is a distinct state
+ * from no device at all (`recent_no_device`) — both fall back to persistence.
+ * Resolved once at the payload level so every state (incl. learning, where
+ * there is no prediction) shares one answer; consumers map it straight to copy
+ * and never re-derive it from settings (resolution-in-producer).
+ */
+export type WeatherForecastStatus = 'forecast' | 'recent_no_device' | 'recent_device_unreadable';
+
 export type WeatherAdvisorPrediction = {
   tempMeanC: number;
-  source: 'forecast' | 'recent';
   kwh: number;
   /** q10 of the expected range. */
   lowKwh: number;
@@ -276,6 +285,8 @@ export type WeatherAdvisorReadoutPayload = {
   /** Median kWh/day recent days run above typical; set only while drift is suspected. */
   driftDeviationKwh: number | null;
   settings: WeatherAdvisorSettingsEcho;
+  /** Forecast provenance, resolved for every state so copy is honest with or without a prediction. */
+  forecastStatus: WeatherForecastStatus;
   fit: EnergySignatureFit | null;
   coverage: WeatherCoverageBin[];
   prediction: WeatherAdvisorPrediction | null;

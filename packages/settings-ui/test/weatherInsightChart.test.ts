@@ -64,7 +64,6 @@ const baseInput = (overrides: Partial<WeatherChartOptionInput> = {}): WeatherCha
   fit: fit(),
   prediction: {
     tempMeanC: 2,
-    source: 'forecast',
     kwh: 42.8,
     lowKwh: 38,
     highKwh: 50,

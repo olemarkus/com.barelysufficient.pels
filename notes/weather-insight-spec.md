@@ -74,8 +74,11 @@ card → `Choose temperature device` → Settings, Weather insight section.
 ```
 
 - Title carries the temperature: `Tomorrow: around 2 °C`.
-- Source line: `Forecast for tomorrow’s average` (forecast device) /
-  `If recent weather continues — no forecast device set.` (persistence, S7).
+- Source line, by producer-resolved `forecastStatus` (one field on the readout
+  payload, valid in every state):
+  - `forecast`: `Forecast for tomorrow’s average`
+  - `recent_no_device`: `If recent weather continues — no forecast device set.` (S7a)
+  - `recent_device_unreadable`: `Forecast device isn’t reporting tomorrow’s temperature — using recent days.` (S7b)
 - `Suggested daily budget` is the q80-headroom figure, clamped [20, 360],
   capped by capacity. Informational only.
 - Verdict line (exactly one, current budget vs prediction quantiles):
@@ -146,8 +149,12 @@ and `sensitivity` (jargon-adjacent).
 ### Detail card 4 — device footer
 
 One muted row: `Temperature: Outdoor sensor · Forecast: Yr` + text button
-`Change in Settings` (deep-link). No forecast device: `Forecast: none — using
-recent days`.
+`Change in Settings` (deep-link). Both halves are producer-resolved:
+- Temperature: device name; `not set` when no outdoor device is configured;
+  `not responding` when one is configured but its name couldn’t be read.
+- Forecast (by `forecastStatus`): name when reporting; `none — using recent
+  days` when no device is configured; `<name> isn’t reporting — using recent
+  days` when a device is configured but silent.
 
 ---
 
@@ -161,7 +168,7 @@ Tomorrow slot); detail view unreachable.
 
 **S2 — backfill running.** Same slot.
 > Title: `Reading your history…`
-> Body: `Matching the past year of your usage with past temperatures. This runs once and usually takes about a minute.`
+> Body: `Matching the past year of your usage with past temperatures. This runs once and can take a few minutes the first time.`
 > Progress line when counts are available: `Checked 210 of 365 days.` —
 > otherwise the line is omitted (the current backfill is a single fetch with
 > no incremental counts, so v1 renders the title + body only).
@@ -187,10 +194,17 @@ Tomorrow slot); detail view unreachable.
 > Detail summary subline (warn tone): `Recent days run about 5 kWh/day above what’s typical for the temperature. If something changed — a new device, guests, heating settings — the estimate will catch up over a few weeks.`
 > Tomorrow card adds one supporting line: `Recent days ran higher than usual, so the range is wider.` (+ `Rough estimate` chip)
 
-**S7 — no forecast device (persistence fallback).**
+**S7a — no forecast device (persistence fallback).**
 > Tomorrow card title: `Tomorrow: around 4 °C`; supporting line: `If recent weather continues — no forecast device set.`
 > Detail device footer: `Forecast: none — using recent days` + `Change in Settings`.
-> Settings picker hint: `Optional. A device reporting tomorrow’s temperature, like a Yr device set 24 hours ahead. Without one, PELS assumes recent weather continues.`
+
+**S7b — forecast device configured but not reporting (persistence fallback).**
+> A forecast device is set, but PELS can’t read tomorrow’s temperature from it
+> (e.g. a Yr device exposing its forecast on a sub-capability). The prediction
+> falls back to recent days — but the copy must NOT claim no device is set.
+> Tomorrow card supporting line: `Forecast device isn’t reporting tomorrow’s temperature — using recent days.`
+> Detail device footer: `Forecast: <name> isn’t reporting — using recent days`.
+> Settings forecast-picker hint: `Optional. Point this at a device that reports tomorrow’s outdoor temperature on its main temperature reading — a Yr “next 24 hours” device works. If PELS can’t read a forecast, it uses your recent days instead.`
 
 **S8 — colder than anything observed.**
 > Tomorrow card chip: `Rough estimate`; reason line: `Tomorrow looks colder than any day PELS has measured — the range is wider than usual.`

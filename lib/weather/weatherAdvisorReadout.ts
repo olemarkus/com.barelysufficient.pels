@@ -8,6 +8,7 @@ import type {
   WeatherAdvisorYesterday,
   WeatherCoverageBin,
   WeatherDailyRecord,
+  WeatherForecastStatus,
   WeatherHistoryState,
   WeatherRecentDay,
   WeatherScatterBin,
@@ -66,15 +67,19 @@ export function buildWeatherAdvisorReadout(
   if (!settings.enabled) return null;
 
   const settingsEcho = resolveSettingsEcho(input);
+  const todayKey = getDateKeyInTimeZone(new Date(input.nowMs), input.timeZone);
+  const tomorrowKey = shiftDateKey(todayKey, 1);
 
   // No configured device → an intentionally empty setup payload. Leftover
   // records (a previously-configured device's history) must not leak into the
   // setup card as if they described the current configuration.
   if (!settings.outdoorDeviceId) {
-    return buildNeedsDevicePayload(settingsEcho, input.nowMs);
+    return buildNeedsDevicePayload(
+      settingsEcho,
+      resolvePayloadForecastStatus(state, settings.forecastDeviceId, tomorrowKey),
+      input.nowMs,
+    );
   }
-
-  const todayKey = getDateKeyInTimeZone(new Date(input.nowMs), input.timeZone);
   const fit = state.latestFit ?? null;
   const readoutState = resolveReadoutState(input.backfillRunning, fit);
 
@@ -84,12 +89,20 @@ export function buildWeatherAdvisorReadout(
   const usableYearRecords = yearRecords.filter((record) => isUsableSignatureDay(record));
 
   const tomorrow = fit ? resolveTomorrowOutlook(input, fit, todayKey) : null;
+  // When a prediction exists, forecastStatus follows ITS provenance (a reused
+  // forecast-derived suggestion stays "forecast" even if the live profile lapsed).
+  // Without a prediction (learning/backfilling), fall back to live availability so
+  // the always-rendered device footer is still honest.
+  const forecastStatus = tomorrow
+    ? tomorrow.forecastStatus
+    : resolvePayloadForecastStatus(state, settings.forecastDeviceId, tomorrowKey);
 
   return {
     state: readoutState,
     driftSuspected: fit?.driftSuspected ?? false,
     driftDeviationKwh: resolveDriftDeviationKwh(fit, usableYearRecords),
     settings: settingsEcho,
+    forecastStatus,
     fit,
     coverage: buildCoverageBins(usableYearRecords, tomorrow?.prediction.tempMeanC),
     prediction: tomorrow?.prediction ?? null,
@@ -115,6 +128,7 @@ function resolveSettingsEcho(input: WeatherAdvisorReadoutInput): WeatherAdvisorR
 
 function buildNeedsDevicePayload(
   settingsEcho: WeatherAdvisorReadoutPayload['settings'],
+  forecastStatus: WeatherForecastStatus,
   nowMs: number,
 ): WeatherAdvisorReadoutPayload {
   return {
@@ -122,6 +136,7 @@ function buildNeedsDevicePayload(
     driftSuspected: false,
     driftDeviationKwh: null,
     settings: settingsEcho,
+    forecastStatus,
     fit: null,
     coverage: [],
     prediction: null,
@@ -163,7 +178,11 @@ function resolveTomorrowOutlook(
   input: WeatherAdvisorReadoutInput,
   fit: EnergySignatureFit,
   todayKey: string,
-): { prediction: WeatherAdvisorPrediction; suggestion: WeatherAdvisorSuggestion } | null {
+): {
+  prediction: WeatherAdvisorPrediction;
+  suggestion: WeatherAdvisorSuggestion;
+  forecastStatus: WeatherForecastStatus;
+} | null {
   const tomorrowKey = shiftDateKey(todayKey, 1);
   const stored = input.state.latestSuggestion;
   const resolved = stored && stored.targetDateKey === tomorrowKey
@@ -189,7 +208,6 @@ function resolveTomorrowOutlook(
   return {
     prediction: {
       tempMeanC: resolved.meanTempC,
-      source: resolved.source === 'forecast_device' ? 'forecast' : 'recent',
       kwh: resolved.result.predictedKwh,
       lowKwh: resolved.result.predictedLowKwh,
       highKwh: resolved.result.predictedHighKwh,
@@ -202,6 +220,7 @@ function resolveTomorrowOutlook(
       cappedByCapacity: resolved.result.suggestedBudgetKwh >= capacityCapKwh - 1e-6,
       budgetMayBeLimiting: resolved.result.budgetMayBeLimiting,
     },
+    forecastStatus: resolveForecastStatusFromSource(resolved.source, input.settings.forecastDeviceId),
   };
 }
 
@@ -227,6 +246,38 @@ function recomputeTomorrowSuggestion(
       capacityLimitKw: input.capacityLimitKw,
     }),
   };
+}
+
+/**
+ * Forecast status for an existing PREDICTION. Reflects the CURRENT wiring, not
+ * stale provenance: with no forecast device configured now it is `recent_no_device`
+ * even when a forecast-derived stored suggestion is still being reused (e.g. the
+ * device was just removed) — otherwise the device footer would claim a device
+ * that is gone. With a device configured, a forecast-derived prediction is
+ * `forecast`; a recent-days one means the configured device is silent.
+ */
+function resolveForecastStatusFromSource(
+  source: 'forecast_device' | 'recent_days',
+  forecastDeviceId: string | undefined,
+): WeatherForecastStatus {
+  if (!forecastDeviceId) return 'recent_no_device';
+  return source === 'forecast_device' ? 'forecast' : 'recent_device_unreadable';
+}
+
+/**
+ * Forecast provenance when there is NO prediction (learning / backfilling /
+ * needs_device) — resolved from live forecast availability so the always-rendered
+ * device footer stays honest before the first fit exists.
+ */
+function resolvePayloadForecastStatus(
+  state: WeatherHistoryState,
+  forecastDeviceId: string | undefined,
+  tomorrowKey: string,
+): WeatherForecastStatus {
+  if (!forecastDeviceId) return 'recent_no_device';
+  return resolveForecastDeviceMeanTempC(state, tomorrowKey) !== undefined
+    ? 'forecast'
+    : 'recent_device_unreadable';
 }
 
 /** 1 °C bins over usable days — the count-weighted symbols the chart renders. */
