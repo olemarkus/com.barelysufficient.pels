@@ -1098,14 +1098,22 @@
       forecastDeviceId: advisor.forecastDeviceId ?? null,
       forecastDeviceName: advisor.forecastDeviceId ? 'Yr forecast' : null,
     };
-    // Mirrors the producer's payload-level forecastStatus resolution.
+    // Mirrors the producer's payload-level forecastStatus + live device readings.
     const forecastStatus = advisor.forecastDeviceId ? 'forecast' : 'recent_no_device';
+    const outdoorReading = advisor.outdoorDeviceId
+      ? { status: 'reading', tempC: 4 }
+      : { status: 'no_device' };
+    const forecastReading = advisor.forecastDeviceId
+      ? { status: 'reading', tempC: 2 }
+      : { status: 'no_device' };
     const emptyPayload = (state) => ({
       state,
       driftSuspected: false,
       driftDeviationKwh: null,
       settings: settingsEcho,
       forecastStatus,
+      outdoorReading,
+      forecastReading,
       fit: null,
       coverage: [],
       prediction: null,
@@ -1165,6 +1173,8 @@
       driftDeviationKwh: null,
       settings: settingsEcho,
       forecastStatus,
+      outdoorReading,
+      forecastReading,
       fit: {
         model: 'changepoint',
         baseLoadKwhPerDay: baseLoad,

@@ -247,6 +247,18 @@ export type WeatherRecentDay = {
  */
 export type WeatherForecastStatus = 'forecast' | 'recent_no_device' | 'recent_device_unreadable';
 
+/**
+ * Live reading of a configured device, resolved by the producer so the Settings
+ * pickers can confirm a chosen device actually works the instant it's picked.
+ * `reading` carries the current value; `unreadable` = configured but PELS can't
+ * read a temperature (wrong device, sub-capability-only, dead sensor, transient);
+ * `no_device` = nothing configured (the picker shows its hint, no status line).
+ */
+export type WeatherDeviceReading =
+  | { status: 'reading'; tempC: number }
+  | { status: 'unreadable' }
+  | { status: 'no_device' };
+
 export type WeatherAdvisorPrediction = {
   tempMeanC: number;
   kwh: number;
@@ -287,6 +299,10 @@ export type WeatherAdvisorReadoutPayload = {
   settings: WeatherAdvisorSettingsEcho;
   /** Forecast provenance, resolved for every state so copy is honest with or without a prediction. */
   forecastStatus: WeatherForecastStatus;
+  /** Live outdoor-device reading for the Settings picker validity line. */
+  outdoorReading: WeatherDeviceReading;
+  /** Live forecast-device reading (tomorrow's mean) for the Settings picker validity line. */
+  forecastReading: WeatherDeviceReading;
   fit: EnergySignatureFit | null;
   coverage: WeatherCoverageBin[];
   prediction: WeatherAdvisorPrediction | null;

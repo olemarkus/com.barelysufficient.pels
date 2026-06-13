@@ -8,6 +8,7 @@ import type {
   WeatherAdvisorYesterday,
   WeatherCoverageBin,
   WeatherDailyRecord,
+  WeatherDeviceReading,
   WeatherForecastStatus,
   WeatherHistoryState,
   WeatherRecentDay,
@@ -51,6 +52,10 @@ export type WeatherAdvisorReadoutInput = {
   backfillRunning: boolean;
   outdoorDeviceName?: string;
   forecastDeviceName?: string;
+  /** Live outdoor temperature (on-demand read); undefined when unreadable. */
+  currentOutdoorTempC?: number;
+  /** Live forecast-device read (a +24h device reports tomorrow's temp); undefined when unreadable. */
+  currentForecastTempC?: number;
   /** Active daily budget (kWh); undefined when the daily budget is disabled. */
   currentDailyBudgetKwh?: number;
   /** Hard capacity cap (kW); the suggestion stays subordinate to it. */
@@ -69,16 +74,24 @@ export function buildWeatherAdvisorReadout(
   const settingsEcho = resolveSettingsEcho(input);
   const todayKey = getDateKeyInTimeZone(new Date(input.nowMs), input.timeZone);
   const tomorrowKey = shiftDateKey(todayKey, 1);
+  // Both validity lines use the INSTANT on-demand device read (resolved in the
+  // assembler), so a just-picked device confirms itself immediately and a
+  // sub-capability-only forecast device is caught at once — rather than waiting
+  // for a sample cycle (outdoor) or a full tomorrow profile (forecast).
+  const outdoorReading = resolveDeviceReading(settings.outdoorDeviceId, input.currentOutdoorTempC);
+  const forecastReading = resolveDeviceReading(settings.forecastDeviceId, input.currentForecastTempC);
 
   // No configured device → an intentionally empty setup payload. Leftover
   // records (a previously-configured device's history) must not leak into the
   // setup card as if they described the current configuration.
   if (!settings.outdoorDeviceId) {
-    return buildNeedsDevicePayload(
+    return buildNeedsDevicePayload({
       settingsEcho,
-      resolvePayloadForecastStatus(state, settings.forecastDeviceId, tomorrowKey),
-      input.nowMs,
-    );
+      forecastStatus: resolvePayloadForecastStatus(state, settings.forecastDeviceId, tomorrowKey),
+      outdoorReading,
+      forecastReading,
+      nowMs: input.nowMs,
+    });
   }
   const fit = state.latestFit ?? null;
   const readoutState = resolveReadoutState(input.backfillRunning, fit);
@@ -103,6 +116,8 @@ export function buildWeatherAdvisorReadout(
     driftDeviationKwh: resolveDriftDeviationKwh(fit, usableYearRecords),
     settings: settingsEcho,
     forecastStatus,
+    outdoorReading,
+    forecastReading,
     fit,
     coverage: buildCoverageBins(usableYearRecords, tomorrow?.prediction.tempMeanC),
     prediction: tomorrow?.prediction ?? null,
@@ -126,17 +141,21 @@ function resolveSettingsEcho(input: WeatherAdvisorReadoutInput): WeatherAdvisorR
   };
 }
 
-function buildNeedsDevicePayload(
-  settingsEcho: WeatherAdvisorReadoutPayload['settings'],
-  forecastStatus: WeatherForecastStatus,
-  nowMs: number,
-): WeatherAdvisorReadoutPayload {
+function buildNeedsDevicePayload(params: {
+  settingsEcho: WeatherAdvisorReadoutPayload['settings'];
+  forecastStatus: WeatherForecastStatus;
+  outdoorReading: WeatherDeviceReading;
+  forecastReading: WeatherDeviceReading;
+  nowMs: number;
+}): WeatherAdvisorReadoutPayload {
   return {
     state: 'needs_device',
     driftSuspected: false,
     driftDeviationKwh: null,
-    settings: settingsEcho,
-    forecastStatus,
+    settings: params.settingsEcho,
+    forecastStatus: params.forecastStatus,
+    outdoorReading: params.outdoorReading,
+    forecastReading: params.forecastReading,
     fit: null,
     coverage: [],
     prediction: null,
@@ -147,8 +166,21 @@ function buildNeedsDevicePayload(
     usableDays: 0,
     backfilledDays: 0,
     suppressedDaysExcluded: 0,
-    generatedAtMs: nowMs,
+    generatedAtMs: params.nowMs,
   };
+}
+
+/**
+ * Live reading of a configured device, for the Settings picker validity line.
+ * No device → `no_device` (the picker shows only its hint); configured but no
+ * current value → `unreadable`; otherwise the live reading.
+ */
+function resolveDeviceReading(
+  deviceId: string | undefined,
+  tempC: number | undefined,
+): WeatherDeviceReading {
+  if (!deviceId) return { status: 'no_device' };
+  return tempC === undefined ? { status: 'unreadable' } : { status: 'reading', tempC };
 }
 
 function resolveDriftDeviationKwh(

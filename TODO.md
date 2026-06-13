@@ -199,6 +199,18 @@ program) remains deferred.*
       disabled" (no timers, correct) from "blob unreadable" (schedule a bounded re-check).
       Source: pels-runtime-reality on the weather-collection PR, 2026-06-11.
 
+- [ ] **Weather forecast samples aren't device-stamped, so a just-changed forecast device can
+      briefly inherit the old device's tomorrow profile.** `WeatherHistoryState.forecastHourly` is
+      keyed only by day/hour; `resolveForecastDeviceMeanTempC` returns the accumulated mean
+      regardless of which device filled it. After switching forecast devices, the prediction (and
+      the Settings picker validity line) reflect the previous device until the new one's profile
+      replaces it or the day rolls. Persona: the tinkerer swapping their Yr device; hypothesis:
+      bounded (self-heals within a day) but reads as a wrong-device confirmation in the exact
+      surface meant to inspire confidence. Candidate fix: stamp `forecastHourly` with the device id
+      and clear/ignore it on a forecast-device change. Source: Codex on the picker-validity PR,
+      2026-06-13. (Note: the picker VALIDITY LINE is already device-correct — it uses an instant
+      on-demand read — so this only affects the budget PREDICTION's forecast mean.)
+
 - [ ] **Give the armed budget-discard state a visible "keep changes" path.** The Budget header's
       two-step confirm shows only the destructive option ("Click again to discard"); the save path
       (Preview changes → Apply) is a sticky CTA further down, and the explanatory text lives in a

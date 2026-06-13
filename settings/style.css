@@ -8455,3 +8455,10 @@ md-switch {
 .weather-settings-section__hint {
   margin: 0;
 }
+
+/* Live picker validity line, success tone (accent). The warning tone reuses the
+   canonical .field__hint--alert primitive, so it has no rule here. */
+.weather-picker-status--ok {
+  color: var(--accent);
+  font-weight: var(--font-weight-medium);
+}

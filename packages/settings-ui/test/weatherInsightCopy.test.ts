@@ -1,6 +1,8 @@
 import {
   composeDeviceFooter,
+  composeForecastReadingLine,
   composeForecastSourceLine,
+  composeOutdoorReadingLine,
 } from '../../shared-domain/src/weatherInsightCopy';
 
 describe('composeForecastSourceLine', () => {
@@ -52,5 +54,39 @@ describe('composeDeviceFooter', () => {
     const footer = composeDeviceFooter({ ...base, forecastStatus: 'recent_device_unreadable' });
     expect(footer).toContain('Forecast: Yr forecast isn’t reporting — using recent days');
     expect(footer).not.toContain('Forecast: none');
+  });
+});
+
+describe('composeOutdoorReadingLine', () => {
+  it('shows the live reading with an ok tone', () => {
+    expect(composeOutdoorReadingLine({ status: 'reading', tempC: 4 }))
+      .toEqual({ text: 'Reading 4 °C now', tone: 'ok' });
+  });
+
+  it('warns when a configured device cannot be read', () => {
+    const line = composeOutdoorReadingLine({ status: 'unreadable' });
+    expect(line?.tone).toBe('warn');
+    expect(line?.text).toContain('can’t read a temperature');
+  });
+
+  it('renders no line when no device is configured', () => {
+    expect(composeOutdoorReadingLine({ status: 'no_device' })).toBeNull();
+  });
+});
+
+describe('composeForecastReadingLine', () => {
+  it('shows tomorrow’s reading with an ok tone', () => {
+    expect(composeForecastReadingLine({ status: 'reading', tempC: 2 }))
+      .toEqual({ text: 'Reading tomorrow ≈ 2 °C', tone: 'ok' });
+  });
+
+  it('warns (and names the recent-days fallback) when the device is silent', () => {
+    const line = composeForecastReadingLine({ status: 'unreadable' });
+    expect(line?.tone).toBe('warn');
+    expect(line?.text).toContain('recent days');
+  });
+
+  it('renders no line when no device is configured', () => {
+    expect(composeForecastReadingLine({ status: 'no_device' })).toBeNull();
   });
 });
