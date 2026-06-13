@@ -4,6 +4,8 @@ import { PELS_MEASURE_STEP_CAPABILITY_ID } from '../../packages/shared-domain/sr
 import { createEvTargetPowerConfig } from '../../packages/shared-domain/src/evTargetPowerConfig';
 import { DEVICE_TARGET_POWER_CONFIGS } from '../../lib/utils/settingsKeys';
 import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { FlowCard } from '../../lib/utils/types';
+import type { ReportSteppedLoadActualStepResult } from '../../setup/appDeviceControlHelpers';
 
 const steppedProfile: SteppedLoadProfile = {
   model: 'stepped_load',
@@ -52,7 +54,7 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
   const actionAutocompleteListeners: Record<string, Record<string, (query: string, args?: Record<string, unknown>) => Promise<unknown>>> = {};
   const triggerListeners: Record<string, (args: unknown, state?: unknown) => Promise<unknown>> = {};
   const triggerAutocompleteListeners: Record<string, Record<string, (query: string, args?: Record<string, unknown>) => Promise<unknown>>> = {};
-  const createCard = (cardId: string, kind: 'action' | 'condition' | 'trigger' = 'action') => ({
+  const createCard = (cardId: string, kind: 'action' | 'condition' | 'trigger' = 'action'): FlowCard => ({
     registerRunListener: (listener: (args: unknown, state?: unknown) => Promise<unknown>) => {
       if (kind === 'trigger') {
         triggerListeners[cardId] = (args, state) => listener(args, state);
@@ -68,7 +70,7 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
       };
     },
     trigger: vi.fn(),
-  });
+  } as unknown as FlowCard);
   const deps: FlowCardDeps = {
     homey: {
       flow: {
@@ -76,7 +78,7 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
         getConditionCard: (cardId: string) => createCard(cardId, 'condition'),
         getTriggerCard: (cardId: string) => createCard(cardId, 'trigger'),
       },
-      settings: { get: vi.fn(), set: vi.fn() },
+      settings: { get: vi.fn(), set: vi.fn(), unset: vi.fn(), getKeys: vi.fn(() => []) },
     },
     structuredLog: { info: vi.fn() },
     resolveModeName: (mode) => mode,
@@ -92,7 +94,7 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
     refreshSnapshot: vi.fn().mockResolvedValue(undefined),
     getHomeyDevicesForFlow: vi.fn().mockResolvedValue([]),
     reportFlowBackedCapability: vi.fn(() => stateChangedOutcome()),
-    reportSteppedLoadActualStep: vi.fn(() => 'changed'),
+    reportSteppedLoadActualStep: vi.fn((): ReportSteppedLoadActualStepResult => 'changed'),
     getDeviceLoadSetting: vi.fn().mockResolvedValue(null),
     setExpectedOverride: vi.fn(() => false),
     storeFlowPriceData: vi.fn(),
@@ -103,8 +105,13 @@ const buildDeps = (overrides: Partial<FlowCardDeps> = {}) => {
     getCombinedHourlyPrices: vi.fn(() => []),
     getTimeZone: vi.fn(() => 'Europe/Oslo'),
     getNow: vi.fn(() => new Date('2026-03-11T10:00:00Z')),
-    getStructuredLogger: vi.fn(() => ({ info: structuredInfo, warn: structuredWarn, error: structuredError })),
+    getStructuredLogger: vi.fn(
+      (): ReturnType<FlowCardDeps['getStructuredLogger']> =>
+        ({ info: structuredInfo, warn: structuredWarn, error: structuredError }) as unknown as ReturnType<FlowCardDeps['getStructuredLogger']>,
+    ),
     debugStructured: vi.fn(),
+    upsertDeferredObjectiveForDevice: vi.fn(() => ({ persisted: true }) as const),
+    clearDeferredObjectiveForDevice: vi.fn(() => ({ persisted: true }) as const),
     ...overrides,
   };
   return {
@@ -252,7 +259,7 @@ describe('registerFlowCards', () => {
           }),
         },
         settings: { get: settingsGet, set: settingsSet },
-      } as FlowCardDeps['homey'],
+      } as unknown as FlowCardDeps['homey'],
       getSnapshot: vi.fn().mockResolvedValue([{ id: 'dev-1', name: 'Heater' }]),
     });
 
@@ -752,7 +759,7 @@ describe('registerFlowCards', () => {
 
   it('treats an echoed stepped-load step report as a successful no-op', async () => {
     const { deps, actionListeners } = buildDeps({
-      reportSteppedLoadActualStep: vi.fn(() => 'unchanged'),
+      reportSteppedLoadActualStep: vi.fn((): ReportSteppedLoadActualStepResult => 'unchanged'),
       getSnapshot: vi.fn().mockResolvedValue([
         {
           id: 'dev-1',
@@ -842,7 +849,7 @@ describe('registerFlowCards', () => {
 
   it('logs one terminal rejection event when the service rejects the reported step', async () => {
     const { deps, actionListeners, structuredInfo, structuredWarn } = buildDeps({
-      reportSteppedLoadActualStep: vi.fn(() => 'invalid'),
+      reportSteppedLoadActualStep: vi.fn((): ReportSteppedLoadActualStepResult => 'invalid'),
       getSnapshot: vi.fn().mockResolvedValue([
         {
           id: 'dev-1',

@@ -15,6 +15,7 @@ import {
   createDeferredObjectiveHoursRemainingTracker,
 } from '../../lib/objectives/deferredObjectives/hoursRemainingCrossings';
 import type { ObjectiveDeviceInput } from '../../lib/objectives/types';
+import { withMaterializedEvPlugState } from '../utils/planTestUtils';
 
 const HOUR_MS = 60 * 60 * 1000;
 const NOW_MS = Date.UTC(2026, 0, 1, 17, 0, 0);
@@ -22,7 +23,9 @@ const NOW_MS = Date.UTC(2026, 0, 1, 17, 0, 0);
 // A plugged-in EV the controller can run: stepped profile + fresh, below-target
 // SoC so the diagnostic resolves to a real (non-`unknown`) trajectory status
 // rather than short-circuiting on missing data.
-const buildEvDevice = (overrides: Partial<ObjectiveDeviceInput> = {}): ObjectiveDeviceInput => ({
+const buildEvDevice = (
+  overrides: Partial<ObjectiveDeviceInput> & { evChargingState?: string } = {},
+): ObjectiveDeviceInput => withMaterializedEvPlugState({
   id: 'ev-1',
   name: 'Driveway EV',
   deviceClass: 'evcharger',
@@ -37,7 +40,7 @@ const buildEvDevice = (overrides: Partial<ObjectiveDeviceInput> = {}): Objective
   },
   lastFreshDataMs: NOW_MS,
   ...overrides,
-});
+}) as ObjectiveDeviceInput;
 
 const buildEvSettings = (deadlineAtMs: number): DeferredObjectiveSettingsV1 => ({
   version: 1,

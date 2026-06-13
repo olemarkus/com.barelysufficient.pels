@@ -15,7 +15,7 @@ const createHarness = () => {
       return handle as TimerHandle & ReturnType<typeof setTimeout>;
     },
     clearTimeoutFn: (handle) => {
-      timers.delete((handle as TimerHandle).id);
+      timers.delete((handle as unknown as TimerHandle).id);
     },
     resolveDueAtMs: (intent, state) => {
       if (intent.kind === 'flow') return state.pendingDueMs ?? (state.nowMs + 30_000);
@@ -164,7 +164,7 @@ describe('PlanRebuildScheduler', () => {
         return handle as TimerHandle & ReturnType<typeof setTimeout>;
       },
       clearTimeoutFn: (handle) => {
-        timers.delete((handle as TimerHandle).id);
+        timers.delete((handle as unknown as TimerHandle).id);
       },
       resolveDueAtMs: (intent, state) => {
         if (intent.kind === 'flow') return state.pendingDueMs ?? (state.nowMs + 30_000);
@@ -223,7 +223,7 @@ describe('PlanRebuildScheduler', () => {
         return handle as TimerHandle & ReturnType<typeof setTimeout>;
       },
       clearTimeoutFn: (handle) => {
-        timers.delete((handle as TimerHandle).id);
+        timers.delete((handle as unknown as TimerHandle).id);
       },
       resolveDueAtMs: (_intent, state) => state.nowMs,
       executeIntent: async (intent) => {
@@ -274,7 +274,7 @@ describe('PlanRebuildScheduler', () => {
         return handle as TimerHandle & ReturnType<typeof setTimeout>;
       },
       clearTimeoutFn: (handle) => {
-        harness.timers.delete((handle as TimerHandle).id);
+        harness.timers.delete((handle as unknown as TimerHandle).id);
       },
       resolveDueAtMs: (_intent, state) => (allowFlow ? state.nowMs + 100 : Number.POSITIVE_INFINITY),
       executeIntent: async (intent) => {

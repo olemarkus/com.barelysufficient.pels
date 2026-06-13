@@ -1032,6 +1032,8 @@ describe('shouldSkipShortfallRebuildFromPlanSummary', () => {
   it('suppresses when unrelated restore cooldown blockers are counted', () => {
     const summary = {
       ...buildEmptyCapacityStateSummary(),
+      summarySource: null,
+      summarySourceAtMs: null,
       remainingActionableControlledLoad: false,
       blockedByCooldownDevices: 1,
     };
@@ -1045,6 +1047,8 @@ describe('shouldSkipShortfallRebuildFromPlanSummary', () => {
   it('suppresses when unrelated restore activation backoff blockers are counted', () => {
     const summary = {
       ...buildEmptyCapacityStateSummary(),
+      summarySource: null,
+      summarySourceAtMs: null,
       remainingActionableControlledLoad: false,
       blockedByPenaltyDevices: 1,
     };
@@ -1058,6 +1062,8 @@ describe('shouldSkipShortfallRebuildFromPlanSummary', () => {
   it('suppresses when no actionable shortfall load remains', () => {
     const summary = {
       ...buildEmptyCapacityStateSummary(),
+      summarySource: null,
+      summarySourceAtMs: null,
       remainingActionableControlledLoad: false,
     };
 
@@ -1070,6 +1076,8 @@ describe('shouldSkipShortfallRebuildFromPlanSummary', () => {
   it('suppresses while actuation is still marked in-flight once no actionable load remains', () => {
     const summary = {
       ...buildEmptyCapacityStateSummary(),
+      summarySource: null,
+      summarySourceAtMs: null,
       remainingActionableControlledLoad: false,
       actuationInFlight: true,
     };

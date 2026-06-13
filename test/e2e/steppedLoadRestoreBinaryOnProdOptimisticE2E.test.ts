@@ -72,6 +72,8 @@ import { CONNECTED_200_STEPPED_LOAD_PROFILE } from '../../lib/device/nativeStepp
 import { legacyDeviceReason } from '../utils/deviceReasonTestUtils';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import type { DevicePlan } from '../../lib/plan/planTypes';
+import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
+import { steppedPlanDevice } from '../utils/planTestUtils';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { CapabilityValue, HomeyDeviceLike, Logger } from '../../lib/utils/types';
 
@@ -234,11 +236,6 @@ const buildExecutor = (initialSnapshot: TargetDeviceSnapshot, device: HomeyDevic
     getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
     markSteppedLoadDesiredStepIssued: vi.fn(),
     logTargetRetryComparison: vi.fn(),
-    structuredLog: { info: vi.fn(), debug: vi.fn(), error: vi.fn() } as never,
-    debugStructured: vi.fn(),
-    log: vi.fn(),
-    logDebug: vi.fn(),
-    error: vi.fn(),
     pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
   };
   return {
@@ -256,24 +253,31 @@ const buildExecutor = (initialSnapshot: TargetDeviceSnapshot, device: HomeyDevic
 // step materialized).
 const buildRestoreToLowPlan = (selectedStepId: 'max' | 'low'): DevicePlan => ({
   meta: { totalKw: 0, softLimitKw: 5, headroomKw: 5 },
-  devices: [{
-    id: DEVICE_ID,
-    name: 'Connected 300',
-    deviceClass: 'water_heater',
-    // Honest false — mirrors the parsed snapshot's currentOn:false (the onoff
-    // readback is absent, so there is no trusted binary observation; the
-    // defensive turn-on keys off the 'unknown' observation, not currentOn).
-    binaryControl: { on: false },
-    currentState: 'off',
-    plannedState: 'keep',
-    currentTarget: null,
-    controllable: true,
-    steppedLoadProfile: CONNECTED_200_STEPPED_LOAD_PROFILE,
-    controlCapabilityId: 'onoff',
-    selectedStepId,
-    desiredStepId: 'low',
-    reason: KEEP_REASON,
-  }],
+  devices: [
+    // `binaryControl`, `currentTarget` and `steppedLoadProfile` live on their
+    // orthogonal discriminant clusters; route the stepped/temperature parts
+    // through `steppedPlanDevice` and re-tie the binary cluster with
+    // `withBinaryDiscriminant` (the device is binary — `controlCapabilityId` set).
+    withBinaryDiscriminant({
+      ...steppedPlanDevice({
+        id: DEVICE_ID,
+        name: 'Connected 300',
+        deviceClass: 'water_heater',
+        currentState: 'off',
+        plannedState: 'keep',
+        controllable: true,
+        steppedLoadProfile: CONNECTED_200_STEPPED_LOAD_PROFILE,
+        controlCapabilityId: 'onoff',
+        selectedStepId,
+        desiredStepId: 'low',
+        reason: KEEP_REASON,
+      }),
+      // Honest false — mirrors the parsed snapshot's currentOn:false (the onoff
+      // readback is absent, so there is no trusted binary observation; the
+      // defensive turn-on keys off the 'unknown' observation, not currentOn).
+      binaryControl: { on: false },
+    }),
+  ],
 });
 
 const setCapabilityCallList = (

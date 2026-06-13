@@ -13,7 +13,42 @@ import { clearMissingSwapTarget } from '../../lib/plan/swap/lifecycle';
 import { SWAP_TIMEOUT_MS } from '../../lib/plan/planConstants';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
-import { buildPlanDevice, steppedPlanDevice } from '../utils/planTestUtils';
+import {
+  buildPlanDevice as baseBuildPlanDevice,
+  steppedPlanDevice as baseSteppedPlanDevice,
+} from '../utils/planTestUtils';
+import {
+  type BinaryControlDiscriminantProbe,
+  type DevicePlanDevice,
+  type SteppedDiscriminantProbe,
+  type TemperatureDiscriminantProbe,
+  withBinaryDiscriminant,
+} from '../../lib/plan/planTypes';
+
+// Local wrappers that route a `binaryControl` override through the binary
+// discriminant regrouper — the field moved off the `DevicePlanDevice` base onto
+// the orthogonal binary cluster, so the shared builders no longer accept it as
+// a flat override.
+const buildPlanDevice = (
+  overrides: Parameters<typeof baseBuildPlanDevice>[0] & BinaryControlDiscriminantProbe = {},
+): DevicePlanDevice => {
+  const { binaryControl, ...rest } = overrides;
+  return withBinaryDiscriminant({
+    ...baseBuildPlanDevice(rest),
+    ...(binaryControl !== undefined ? { binaryControl } : {}),
+  }) as DevicePlanDevice;
+};
+
+const steppedPlanDevice = (
+  overrides: Partial<DevicePlanDevice> & SteppedDiscriminantProbe & TemperatureDiscriminantProbe
+    & BinaryControlDiscriminantProbe = {},
+): DevicePlanDevice => {
+  const { binaryControl, ...rest } = overrides;
+  return withBinaryDiscriminant({
+    ...baseSteppedPlanDevice(rest),
+    ...(binaryControl !== undefined ? { binaryControl } : {}),
+  }) as DevicePlanDevice;
+};
 
 const emptySwapState = (): SwapState => buildSwapState(createPlanEngineState());
 

@@ -237,7 +237,7 @@ describe('create smart task widget browser', () => {
       const controller = installWidget(window as WidgetWindow, document);
       expect(controller).not.toBeNull();
       // The Homey SDK bridge wires the real client in via onHomeyReady.
-      (window as WidgetWindow).onHomeyReady?.(homey);
+      ((window as WidgetWindow).onHomeyReady as ((homey: unknown) => void) | undefined)?.(homey);
       await flushPromises();
 
       click('[data-device-button]');
@@ -279,7 +279,7 @@ describe('create smart task widget browser', () => {
         ready: () => undefined,
       };
       installWidget(window as WidgetWindow, document);
-      (window as WidgetWindow).onHomeyReady?.(homey);
+      ((window as WidgetWindow).onHomeyReady as ((homey: unknown) => void) | undefined)?.(homey);
       await flushPromises();
 
       const list = document.querySelector('[data-device-list]') as HTMLElement;
@@ -322,7 +322,7 @@ describe('create smart task widget browser', () => {
         ready: () => undefined,
       };
       installWidget(window as WidgetWindow, document);
-      (window as WidgetWindow).onHomeyReady?.(homey);
+      ((window as WidgetWindow).onHomeyReady as ((homey: unknown) => void) | undefined)?.(homey);
       await flushPromises();
 
       const empty = document.querySelector('[data-picker-empty]') as HTMLElement;
@@ -353,7 +353,7 @@ describe('create smart task widget browser', () => {
         ready: () => undefined,
       };
       installWidget(window as WidgetWindow, document);
-      (window as WidgetWindow).onHomeyReady?.(homey);
+      ((window as WidgetWindow).onHomeyReady as ((homey: unknown) => void) | undefined)?.(homey);
       await flushPromises();
 
       click('[data-device-button]');
@@ -391,7 +391,7 @@ describe('create smart task widget browser', () => {
         ready: () => undefined,
       };
       installWidget(window as WidgetWindow, document);
-      (window as WidgetWindow).onHomeyReady?.(homey);
+      ((window as WidgetWindow).onHomeyReady as ((homey: unknown) => void) | undefined)?.(homey);
       await flushPromises();
 
       click('[data-device-button]');
@@ -428,7 +428,7 @@ describe('create smart task widget browser', () => {
         costEstimate: null,
         ...estimate,
       },
-    } as CreateSmartTaskPreviewResponse);
+    } as unknown as CreateSmartTaskPreviewResponse);
 
     const buildHomey = (previewResponse: CreateSmartTaskPreviewResponse, createCalls: unknown[] = []): WidgetHomey => ({
       api: async (method: string, path: string, body?: unknown) => {
@@ -447,7 +447,7 @@ describe('create smart task widget browser', () => {
         estimate: { ...OK_PREVIEW.estimate, status: 'cannot_meet' as const },
       };
       installWidget(window as WidgetWindow, document);
-      (window as WidgetWindow).onHomeyReady?.(buildHomey(cannotMeetPreview, createCalls));
+      ((window as WidgetWindow).onHomeyReady as ((homey: unknown) => void) | undefined)?.(buildHomey(cannotMeetPreview, createCalls));
       await flushPromises();
 
       click('[data-device-button]');
@@ -473,7 +473,7 @@ describe('create smart task widget browser', () => {
         unavailableReason: 'missing_reading',
       });
       installWidget(window as WidgetWindow, document);
-      (window as WidgetWindow).onHomeyReady?.(buildHomey(unavailablePreview, createCalls));
+      ((window as WidgetWindow).onHomeyReady as ((homey: unknown) => void) | undefined)?.(buildHomey(unavailablePreview, createCalls));
       await flushPromises();
 
       click('[data-device-button]');
@@ -497,7 +497,7 @@ describe('create smart task widget browser', () => {
         unavailableReason: 'needs_observation',
       });
       installWidget(window as WidgetWindow, document);
-      (window as WidgetWindow).onHomeyReady?.(buildHomey(unavailablePreview));
+      ((window as WidgetWindow).onHomeyReady as ((homey: unknown) => void) | undefined)?.(buildHomey(unavailablePreview));
       await flushPromises();
 
       click('[data-device-button]');
@@ -514,7 +514,7 @@ describe('create smart task widget browser', () => {
     test('an unavailable preview with no reason keeps the generic line', async () => {
       const unavailablePreview = previewWith({ status: 'unavailable' });
       installWidget(window as WidgetWindow, document);
-      (window as WidgetWindow).onHomeyReady?.(buildHomey(unavailablePreview));
+      ((window as WidgetWindow).onHomeyReady as ((homey: unknown) => void) | undefined)?.(buildHomey(unavailablePreview));
       await flushPromises();
 
       click('[data-device-button]');
@@ -529,7 +529,7 @@ describe('create smart task widget browser', () => {
     test('an already-met goal shows the goal-met copy, not the missing-data line', async () => {
       const satisfiedPreview = previewWith({ status: 'satisfied' });
       installWidget(window as WidgetWindow, document);
-      (window as WidgetWindow).onHomeyReady?.(buildHomey(satisfiedPreview));
+      ((window as WidgetWindow).onHomeyReady as ((homey: unknown) => void) | undefined)?.(buildHomey(satisfiedPreview));
       await flushPromises();
 
       click('[data-device-button]');
@@ -564,7 +564,7 @@ describe('create smart task widget browser', () => {
         ready: () => undefined,
       };
       installWidget(window as WidgetWindow, document);
-      (window as WidgetWindow).onHomeyReady?.(homey);
+      ((window as WidgetWindow).onHomeyReady as ((homey: unknown) => void) | undefined)?.(homey);
       await flushPromises();
 
       // Select device A, fire its preview (still pending), then back out and
@@ -606,7 +606,7 @@ describe('create smart task widget browser', () => {
         estimate: { ...OK_PREVIEW.estimate, status: 'at_risk' as const },
       };
       installWidget(window as WidgetWindow, document);
-      (window as WidgetWindow).onHomeyReady?.(buildHomeyWithPreview(atRiskPreview));
+      ((window as WidgetWindow).onHomeyReady as ((homey: unknown) => void) | undefined)?.(buildHomeyWithPreview(atRiskPreview));
       await flushPromises();
       click('[data-device-button]');
       click('[data-preview-btn]');
@@ -626,7 +626,7 @@ describe('create smart task widget browser', () => {
 
     test('an on_track verdict shows no feasibility warning', async () => {
       installWidget(window as WidgetWindow, document);
-      (window as WidgetWindow).onHomeyReady?.(buildHomeyWithPreview(OK_PREVIEW));
+      ((window as WidgetWindow).onHomeyReady as ((homey: unknown) => void) | undefined)?.(buildHomeyWithPreview(OK_PREVIEW));
       await flushPromises();
       click('[data-device-button]');
       click('[data-preview-btn]');
@@ -654,7 +654,7 @@ describe('create smart task widget browser', () => {
     test('offers limit-lower-priority only for an eligible device, gated behind budget, and sends both on create', async () => {
       const createCalls: unknown[] = [];
       installWidget(window as WidgetWindow, document);
-      (window as WidgetWindow).onHomeyReady?.(buildHomey([steppedDevice], createCalls));
+      ((window as WidgetWindow).onHomeyReady as ((homey: unknown) => void) | undefined)?.(buildHomey([steppedDevice], createCalls));
       await flushPromises();
       click('[data-device-button]');
 
@@ -677,7 +677,7 @@ describe('create smart task widget browser', () => {
     test('hides limit-lower-priority for an ineligible device; a budget-only create omits it', async () => {
       const createCalls: unknown[] = [];
       installWidget(window as WidgetWindow, document);
-      (window as WidgetWindow).onHomeyReady?.(buildHomey([plainDevice], createCalls));
+      ((window as WidgetWindow).onHomeyReady as ((homey: unknown) => void) | undefined)?.(buildHomey([plainDevice], createCalls));
       await flushPromises();
       click('[data-device-button]');
 
@@ -694,7 +694,7 @@ describe('create smart task widget browser', () => {
 
     test('turning budget exemption back off forces limit-lower-priority off too', async () => {
       installWidget(window as WidgetWindow, document);
-      (window as WidgetWindow).onHomeyReady?.(buildHomey([steppedDevice], []));
+      ((window as WidgetWindow).onHomeyReady as ((homey: unknown) => void) | undefined)?.(buildHomey([steppedDevice], []));
       await flushPromises();
       click('[data-device-button]');
 
@@ -751,7 +751,7 @@ describe('create smart task widget browser', () => {
         setHeight,
       };
       installWidget(window as WidgetWindow, document);
-      (window as WidgetWindow).onHomeyReady?.(homey);
+      ((window as WidgetWindow).onHomeyReady as ((homey: unknown) => void) | undefined)?.(homey);
       await flushPromises();
 
       triggers[0]();

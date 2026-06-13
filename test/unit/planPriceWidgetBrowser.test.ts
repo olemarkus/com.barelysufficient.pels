@@ -47,11 +47,11 @@ const MARKUP = `
 
 const setDocumentMarkup = (): SVGSVGElement => {
   document.body.innerHTML = MARKUP;
-  return document.getElementById('chart') as SVGSVGElement;
+  return document.getElementById('chart') as unknown as SVGSVGElement;
 };
 
 const resolveTargets = (): WidgetTargets => ({
-  chartEl: document.getElementById('chart') as SVGSVGElement,
+  chartEl: document.getElementById('chart') as unknown as SVGSVGElement,
   summaryEl: document.querySelector('[data-summary]') as HTMLElement,
   summaryHeadlineEl: document.querySelector('[data-summary-headline]') as HTMLElement,
   summaryStatusEl: document.querySelector('[data-summary-status]') as HTMLElement,
@@ -528,7 +528,7 @@ describe('plan budget widget browser', () => {
     // this previously repainted the NO-DATA empty state and wiped the error copy.
     measuredHeight = 600;
     expect(resizeCb).not.toBeNull();
-    resizeCb?.();
+    (resizeCb as (() => void) | null)?.();
 
     // Error copy survives the resize — NOT the no-data subtitle.
     expect(targets.chartEl.querySelector('.chart__empty-subtitle')?.textContent).toBe('Could not load. Reopen the dashboard.');

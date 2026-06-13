@@ -11,6 +11,7 @@ import {
   getStarvationRescueDevices,
   previewStarvationRescue,
 } from '../../widgets/starvation_rescue/src/api';
+import type { StarvationRescueHostApi } from '../../packages/contracts/src/widgetHostApi';
 
 const TIME_ZONE = 'Europe/Oslo';
 const NOW_MS = Date.UTC(2026, 0, 1, 4, 0, 0);
@@ -70,7 +71,10 @@ const freshPreviewPlan = (estimate = buildEstimate()) => vi.fn(
 );
 
 const buildContext = (app: Partial<AppMock>) => ({
-  homey: { app, clock: { getTimezone: () => TIME_ZONE } },
+  homey: {
+    app: app as unknown as StarvationRescueHostApi,
+    clock: { getTimezone: () => TIME_ZONE },
+  },
 });
 
 beforeEach(() => {

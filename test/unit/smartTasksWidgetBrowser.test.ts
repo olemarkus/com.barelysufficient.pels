@@ -163,7 +163,10 @@ describe('smart tasks widget detail view', () => {
       ready: () => {},
     };
     activeController = installWidget(window as WidgetWindow, document);
-    (window as WidgetWindow).onHomeyReady!(homey);
+    // `WidgetWindowBase.onHomeyReady` declares its param as `never` (the bridge
+    // hands a widget-specific homey the installer narrows); the test drives the
+    // bridge entry point with the concrete `WidgetHomey`.
+    (window as WidgetWindow).onHomeyReady!(homey as never);
     await flushPromises();
     expect((document.querySelector('[data-empty]') as HTMLElement).textContent).toBe('Loading…');
 
@@ -232,7 +235,10 @@ describe('smart tasks widget detail view', () => {
     });
 
     activeController = installWidget(window as WidgetWindow, document);
-    (window as WidgetWindow).onHomeyReady!(homey);
+    // `WidgetWindowBase.onHomeyReady` declares its param as `never` (the bridge
+    // hands a widget-specific homey the installer narrows); the test drives the
+    // bridge entry point with the concrete `WidgetHomey`.
+    (window as WidgetWindow).onHomeyReady!(homey as never);
     await flushPromises();
     expect(setHeight).toHaveBeenCalledWith(120);
 

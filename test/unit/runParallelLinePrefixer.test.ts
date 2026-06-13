@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+// `run-parallel.mjs` is a plain build script with no type declaration; the
+// import is value-only and exercised at runtime by these tests.
+// @ts-expect-error -- untyped .mjs build helper, no declaration file
 import { createLinePrefixer } from '../../scripts/lib/run-parallel.mjs';
 
 const collect = (): { write: (line: string) => void; lines: string[] } => {

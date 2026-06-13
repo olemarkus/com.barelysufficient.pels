@@ -1,13 +1,15 @@
 import { DeferredObjectiveDecorationController } from '../../lib/objectives/deferredObjectives';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
+import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 
-const buildDevice = (): PlanInputDevice => ({
+const buildDevice = (): PlanInputDevice => withBinaryDiscriminant({
   id: 'dev',
   name: 'Device',
   targets: [],
+  controlCapabilityId: 'onoff',
   binaryControl: { on: false },
   controllable: true,
-});
+}) as PlanInputDevice;
 
 const buildPowerTracker = () => ({ lastTimestamp: Date.now() });
 

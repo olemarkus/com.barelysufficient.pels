@@ -15,8 +15,41 @@ import {
 } from '../../lib/plan/planSteppedLoadState';
 import { getCurrentDrawKw } from '../../lib/observer/observedPower';
 import { getPrimaryTargetCapability } from '../../lib/utils/targetCapabilities';
-import { buildPlanDevice, buildPlanInputDevice, steppedProfile } from '../utils/planTestUtils';
-import type { PlanInputDevice } from '../../lib/plan/planTypes';
+import {
+  buildPlanDevice as baseBuildPlanDevice,
+  buildPlanInputDevice as baseBuildPlanInputDevice,
+  steppedProfile,
+} from '../utils/planTestUtils';
+import {
+  type BinaryControlDiscriminantProbe,
+  type DevicePlanDevice,
+  type PlanInputDevice,
+  type SteppedDiscriminantProbe,
+  withBinaryDiscriminant,
+} from '../../lib/plan/planTypes';
+
+// Local wrappers that route a `binaryControl` override through the binary
+// discriminant regrouper — the field moved off the base device types onto the
+// orthogonal binary cluster, so the shared builders no longer accept it flat.
+const buildPlanDevice = (
+  overrides: Parameters<typeof baseBuildPlanDevice>[0] & BinaryControlDiscriminantProbe = {},
+): DevicePlanDevice => {
+  const { binaryControl, ...rest } = overrides;
+  return withBinaryDiscriminant({
+    ...baseBuildPlanDevice(rest),
+    ...(binaryControl !== undefined ? { binaryControl } : {}),
+  }) as DevicePlanDevice;
+};
+
+const buildPlanInputDevice = (
+  overrides: Parameters<typeof baseBuildPlanInputDevice>[0] & BinaryControlDiscriminantProbe = {},
+): PlanInputDevice => {
+  const { binaryControl, ...rest } = overrides;
+  return withBinaryDiscriminant({
+    ...baseBuildPlanInputDevice(rest),
+    ...(binaryControl !== undefined ? { binaryControl } : {}),
+  }) as PlanInputDevice;
+};
 
 describe('resolveRemainingSheddableLoadKw — stale observation handling', () => {
   const turnOffBehavior: RemainingShedBehavior = { action: 'turn_off' };
@@ -243,10 +276,13 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
     // compute it inline rather than importing the wiring helper because the
     // helper takes a `TargetDeviceSnapshot`, not a `PlanInputDevice`.
     const producerDevices = fixtures.map((device): PlanInputDevice => {
+      // `steppedLoadProfile` lives on the stepped discriminant cluster; widen a
+      // local probe view to read it without re-adding the field to the base type.
+      const steppedDevice = device as PlanInputDevice & SteppedDiscriminantProbe;
       const shedBehavior: ResidualKwShedBehavior = device.id === temperatureNoopShed.id
         ? { action: 'set_temperature', temperature: 18 }
         : { action: 'turn_off' };
-      const stepState = device.controlModel === 'stepped_load' && device.steppedLoadProfile
+      const stepState = device.controlModel === 'stepped_load' && steppedDevice.steppedLoadProfile
         ? normalizeSteppedLoadStepStateFromLegacyFields({
           fields: device,
           selectedStepFallbackIsPlanningAssumption: true,
@@ -268,10 +304,10 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
               },
             }
             : {}),
-          ...(device.controlModel === 'stepped_load' && device.steppedLoadProfile && stepState
+          ...(device.controlModel === 'stepped_load' && steppedDevice.steppedLoadProfile && stepState
             ? {
               steppedLoad: {
-                profile: device.steppedLoadProfile,
+                profile: steppedDevice.steppedLoadProfile,
                 ...(device.selectedStepId !== undefined ? { selectedStepId: device.selectedStepId } : {}),
                 hasKnownEffectiveStep: resolveKnownEffectiveStepId(stepState) !== undefined,
                 ...(typeof device.measuredPowerKw === 'number'
@@ -355,11 +391,12 @@ describe('sumRemainingSheddableLoadKw — chunk-3 producer-resolved path parity'
       fields: device,
       selectedStepFallbackIsPlanningAssumption: true,
     });
+    const steppedDevice = device as PlanInputDevice & SteppedDiscriminantProbe;
     const producerShed = resolveResidualKwShed({
       device: {
         currentDrawKw: getCurrentDrawKw(device),
         steppedLoad: {
-          profile: device.steppedLoadProfile!,
+          profile: steppedDevice.steppedLoadProfile!,
           hasKnownEffectiveStep: resolveKnownEffectiveStepId(stepState) !== undefined,
           measuredPowerKw: device.measuredPowerKw,
           controlCapabilityId: device.controlCapabilityId,

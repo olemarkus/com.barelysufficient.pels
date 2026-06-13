@@ -14,6 +14,7 @@ import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dail
 import { getLatestPlanSnapshotForTests, MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
 import { cleanupApps, createApp, getLatestTargetSnapshotForTests } from '../utils/appTestUtils';
 import { reasonText } from '../utils/deviceReasonTestUtils';
+import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 
 type EaseeChargingState =
   | 'plugged_in_charging'
@@ -52,7 +53,10 @@ type SnapshotEntry = {
   name: string;
   deviceClass?: string;
   controlCapabilityId?: string;
-  currentOn: boolean;
+  // The observed binary state moved off `currentOn` onto the `binaryControl`
+  // cluster; `evChargingState` rides on the EV-observed cluster. This local view
+  // DTO carries both as the assertions read them.
+  binaryControl?: { on: boolean };
   evChargingState?: string;
   expectedPowerSource?: string;
   powerKw?: number;
@@ -61,7 +65,7 @@ type SnapshotEntry = {
 type PlanDeviceEntry = {
   id: string;
   plannedState?: string;
-  reason?: string;
+  reason?: DeviceReason;
   deferredReleaseIntent?: 'binary_restore' | 'binary_release';
 };
 
@@ -781,7 +785,11 @@ function buildEvDeadlineDay(params: {
       startLocalLabels,
       plannedWeight: Array.from({ length: 24 }, () => 1),
       plannedKWh: zeros,
+      plannedUncontrolledKWh: zeros,
+      plannedControlledKWh: zeros,
       actualKWh: zeros,
+      actualControlledKWh: Array.from({ length: 24 }, () => null),
+      actualUncontrolledKWh: Array.from({ length: 24 }, () => null),
       allowedCumKWh: zeros,
       price: pricesByHour,
     },
@@ -818,7 +826,10 @@ async function rebuildPlan(
 async function refreshSnapshot(app: InternalApp): Promise<SnapshotEntry[]> {
   await app.refreshTargetDevicesSnapshot({ fast: false });
   await flushPromises();
-  return getLatestTargetSnapshotForTests() as SnapshotEntry[];
+  // `getLatestTargetSnapshotForTests` returns the full `TargetDeviceSnapshot[]`;
+  // `SnapshotEntry` is a narrow view DTO over it (and `evChargingState` rides on
+  // the EV-observed cluster, off the base type), so widen through `unknown`.
+  return getLatestTargetSnapshotForTests() as unknown as SnapshotEntry[];
 }
 
 function getSnapshotEntry(snapshot: SnapshotEntry[], deviceId: string): SnapshotEntry | undefined {

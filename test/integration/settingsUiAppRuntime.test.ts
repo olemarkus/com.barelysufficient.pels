@@ -63,8 +63,9 @@ describe('settings UI app runtime helpers', () => {
     const previousHourKey = getHourBucketKey(nowMs - 3600_000);
 
     vi.spyOn(Date, 'now').mockReturnValue(nowMs);
-    const updateDailyBudgetAndRecordCap = vi.spyOn(app as never, 'updateDailyBudgetAndRecordCap').mockImplementation(() => {});
-    const persistPowerTrackerState = vi.spyOn(app as never, 'persistPowerTrackerState').mockImplementation(() => {});
+    const appWithPrivates = app as unknown as Record<string, (...args: unknown[]) => unknown>;
+    const updateDailyBudgetAndRecordCap = vi.spyOn(appWithPrivates, 'updateDailyBudgetAndRecordCap').mockImplementation(() => {});
+    const persistPowerTrackerState = vi.spyOn(appWithPrivates, 'persistPowerTrackerState').mockImplementation(() => {});
 
     (app as { powerTracker: Record<string, unknown> }).powerTracker = {
       lastPowerW: 4300,

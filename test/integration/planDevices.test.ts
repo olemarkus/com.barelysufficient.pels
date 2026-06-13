@@ -9,14 +9,67 @@ import { createPlanEngineState, type PlanEngineState } from '../../lib/plan/plan
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import type { PlanContext } from '../../lib/plan/planContext';
 import type { PlanDevicesDeps } from '../../lib/plan/planDevices';
+import type {
+  BinaryControlDiscriminantProbe,
+  DevicePlanDevice,
+  EvDiscriminantProbe,
+  PlanInputDevice,
+  TemperatureDiscriminantProbe,
+} from '../../lib/plan/planTypes';
+import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
+import { isEvPlanDevice } from '../../lib/plan/planEvDevice';
 import { buildExecutableTargetIntent } from '../../lib/executor/executableTargetProjection';
 import { buildPlanInputDevice, steppedInputDevice } from '../utils/planTestUtils';
-import { reasonText } from '../utils/deviceReasonTestUtils';
+import { legacyDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
+
+/**
+ * Local fixture wrappers that widen the stable shared builders with the
+ * discriminant probes this file's fixtures exercise (temperature / binary / EV).
+ * The stable builders already regroup those clusters internally; the wrappers
+ * only re-open the param type so the loose fixture literals typecheck, then
+ * forward unchanged.
+ */
+const inputDevice = (
+  o: Partial<PlanInputDevice>
+    & BinaryControlDiscriminantProbe
+    & TemperatureDiscriminantProbe
+    & EvDiscriminantProbe
+    & { evChargingState?: string; deviceType?: 'temperature' | 'onoff' } = {},
+): PlanInputDevice => buildPlanInputDevice(o as Parameters<typeof buildPlanInputDevice>[0]);
+
+const steppedInput = (
+  o: Partial<PlanInputDevice>
+    & BinaryControlDiscriminantProbe
+    & TemperatureDiscriminantProbe
+    & EvDiscriminantProbe
+    & { evChargingState?: string; deviceType?: 'temperature' | 'onoff' } = {},
+): PlanInputDevice => steppedInputDevice(o as Parameters<typeof steppedInputDevice>[0]);
+
+/** Build a `shedReasons` map from string reason codes (test convenience). */
+const shedReasonMap = (entries: [string, string][]): Map<string, NonNullable<ReturnType<typeof legacyDeviceReason>>> =>
+  new Map(entries.map(([id, reason]) => [id, legacyDeviceReason(reason)!]));
+
+/** Narrow a plan device to read its commanded `plannedTarget` in assertions. */
+const plannedTargetOf = (device: DevicePlanDevice): number | undefined =>
+  (isTemperaturePlanDevice(device) ? device.plannedTarget : undefined);
+
+/** Narrow a plan device to read its observed `currentTarget` in assertions. */
+const currentTargetOf = (device: DevicePlanDevice): number | null | undefined =>
+  (isTemperaturePlanDevice(device) ? device.currentTarget : undefined);
+
+/** Narrow a plan device to read its EV boost-active flag in assertions. */
+const evBoostActiveOf = (device: DevicePlanDevice): boolean | undefined =>
+  (isEvPlanDevice(device) ? device.evBoostActive : undefined);
 
 const buildContext = (devices: PlanContext['devices']): PlanContext => ({
   devices,
   desiredForMode: {},
   total: 3,
+  powerKnown: true,
+  hasLivePowerSample: true,
+  powerSampleAgeMs: 0,
+  powerFreshnessState: 'fresh',
+  hourBucketKey: '2025-01-01T00',
   softLimit: 2,
   capacitySoftLimit: 2,
   dailySoftLimit: null,
@@ -59,7 +112,7 @@ describe('buildInitialPlanDevices', () => {
     // supplies the physical hysteresis.
     const state = createPlanEngineState();
     const build = (currentTemperature: number) => buildInitialPlanDevices({
-      context: buildContext([steppedInputDevice({
+      context: buildContext([steppedInput({
         id: 'tank',
         name: 'Water tank',
         deviceType: 'temperature',
@@ -80,7 +133,7 @@ describe('buildInitialPlanDevices', () => {
 
   it('does not enable temperature boost for stale temperature observations', () => {
     const [planDevice] = buildInitialPlanDevices({
-      context: buildContext([steppedInputDevice({
+      context: buildContext([steppedInput({
         id: 'tank',
         name: 'Water tank',
         deviceType: 'temperature',
@@ -100,7 +153,7 @@ describe('buildInitialPlanDevices', () => {
 
   it('does not enable temperature boost without a target temperature capability', () => {
     const [planDevice] = buildInitialPlanDevices({
-      context: buildContext([steppedInputDevice({
+      context: buildContext([steppedInput({
         id: 'tank',
         name: 'Water tank',
         deviceType: 'temperature',
@@ -122,7 +175,7 @@ describe('buildInitialPlanDevices', () => {
     const state = createPlanEngineState();
 
     buildInitialPlanDevices({
-      context: buildContext([steppedInputDevice({
+      context: buildContext([steppedInput({
         id: 'tank',
         name: 'Water tank',
         deviceType: 'temperature',
@@ -156,7 +209,7 @@ describe('buildInitialPlanDevices', () => {
     state.temperatureBoostActiveByDevice.tank = true;
 
     buildInitialPlanDevices({
-      context: buildContext([steppedInputDevice({
+      context: buildContext([steppedInput({
         id: 'tank',
         name: 'Water tank',
         deviceType: 'temperature',
@@ -183,7 +236,7 @@ describe('buildInitialPlanDevices', () => {
     state.hourlyBudgetExhausted = true;
 
     const [planDevice] = buildInitialPlanDevices({
-      context: buildContext([buildPlanInputDevice({
+      context: buildContext([inputDevice({
         id: 'dev-1',
         name: 'Heater',
         binaryControl: { on: true },
@@ -205,7 +258,7 @@ describe('buildInitialPlanDevices', () => {
     const state = createPlanEngineState();
 
     const [planDevice] = buildInitialPlanDevices({
-      context: buildContext([steppedInputDevice({
+      context: buildContext([steppedInput({
         id: 'charger',
         name: 'Driveway charger',
         deviceClass: 'evcharger',
@@ -223,13 +276,13 @@ describe('buildInitialPlanDevices', () => {
       deps: defaultDeps,
     });
 
-    expect(planDevice.evBoostActive).toBe(true);
+    expect(evBoostActiveOf(planDevice)).toBe(true);
     expect(planDevice.budgetExempt).toBe(false);
     expect(state.evBoostActiveByDevice.charger).toBe(true);
   });
 
   it('keeps stepped loads on temperature shedding when that is the chosen shed behavior', () => {
-    const steppedDevice = steppedInputDevice({
+    const steppedDevice = steppedInput({
       id: 'dev-1',
       name: 'Water Heater',
       deviceType: 'temperature',
@@ -246,7 +299,7 @@ describe('buildInitialPlanDevices', () => {
       context: buildContext([steppedDevice]),
       state: createPlanEngineState(),
       shedSet: new Set(['dev-1']),
-      shedReasons: new Map([['dev-1', 'shed due to capacity']]),
+      shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
@@ -263,16 +316,15 @@ describe('buildInitialPlanDevices', () => {
     expect(planDevice.shedAction).toBe('set_temperature');
     expect(planDevice.shedTemperature).toBe(55);
     expect(planDevice.releaseShedStepId).toBeNull();
-    expect(planDevice.plannedTarget).toBe(55);
+    expect(plannedTargetOf(planDevice)).toBe(55);
     expect(planDevice.desiredStepId).toBe('max');
   });
 
   it('resolves stepped set_step shed action via the producer cascade when no step id is configured', () => {
-    const steppedDevice: PlanInputDevice = {
+    const steppedDevice = steppedInput({
       id: 'dev-1',
       name: 'Water Heater',
       deviceType: 'temperature',
-      controlModel: 'stepped_load',
       steppedLoadProfile: {
         model: 'stepped_load',
         steps: [
@@ -288,13 +340,13 @@ describe('buildInitialPlanDevices', () => {
       controllable: true,
       expectedPowerKw: 3,
       measuredPowerKw: 0.5,
-    };
+    });
 
     const [planDevice] = buildInitialPlanDevices({
       context: buildContext([steppedDevice]),
       state: createPlanEngineState(),
       shedSet: new Set(['dev-1']),
-      shedReasons: new Map([['dev-1', 'shed due to capacity']]),
+      shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
@@ -318,10 +370,9 @@ describe('buildInitialPlanDevices', () => {
   });
 
   it('advances past a pending lower stepped shed target during materialization', () => {
-    const steppedDevice: PlanInputDevice = {
+    const steppedDevice = steppedInput({
       id: 'dev-1',
       name: 'Water Heater',
-      controlModel: 'stepped_load',
       steppedLoadProfile: {
         model: 'stepped_load',
         steps: [
@@ -338,13 +389,13 @@ describe('buildInitialPlanDevices', () => {
       controllable: true,
       expectedPowerKw: 3,
       measuredPowerKw: 3,
-    };
+    });
 
     const [planDevice] = buildInitialPlanDevices({
       context: buildContext([steppedDevice]),
       state: createPlanEngineState(),
       shedSet: new Set(['dev-1']),
-      shedReasons: new Map([['dev-1', 'shed due to capacity']]),
+      shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
@@ -364,10 +415,9 @@ describe('buildInitialPlanDevices', () => {
   it('forces a shed stepped load to lowest active step while another device is recovering', () => {
     const state = createPlanEngineState();
     state.shedDecidedMs.gang = Date.now() - 60_000;
-    const steppedDevice: PlanInputDevice = {
+    const steppedDevice = steppedInput({
       id: 'dev-1',
       name: 'Water Heater',
-      controlModel: 'stepped_load',
       steppedLoadProfile: {
         model: 'stepped_load',
         steps: [
@@ -382,8 +432,8 @@ describe('buildInitialPlanDevices', () => {
       controllable: true,
       expectedPowerKw: 3,
       measuredPowerKw: 3,
-    };
-    const recoveringDevice = buildPlanInputDevice({
+    });
+    const recoveringDevice = inputDevice({
       id: 'gang',
       name: 'Hall thermostat',
       binaryControl: { on: false },
@@ -395,7 +445,7 @@ describe('buildInitialPlanDevices', () => {
       context: buildContext([steppedDevice, recoveringDevice]),
       state,
       shedSet: new Set(['dev-1']),
-      shedReasons: new Map([['dev-1', 'shed due to capacity']]),
+      shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
@@ -413,10 +463,9 @@ describe('buildInitialPlanDevices', () => {
   });
 
   it('uses measured-power fallback for shed stepped loads without a known current step', () => {
-    const steppedDevice: PlanInputDevice = {
+    const steppedDevice = steppedInput({
       id: 'dev-1',
       name: 'Water Heater',
-      controlModel: 'stepped_load',
       steppedLoadProfile: {
         model: 'stepped_load',
         steps: [
@@ -430,13 +479,13 @@ describe('buildInitialPlanDevices', () => {
       binaryControl: { on: true },
       controllable: true,
       measuredPowerKw: 3,
-    };
+    });
 
     const [planDevice] = buildInitialPlanDevices({
       context: buildContext([steppedDevice]),
       state: createPlanEngineState(),
       shedSet: new Set(['dev-1']),
-      shedReasons: new Map([['dev-1', 'shed due to capacity']]),
+      shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
@@ -455,10 +504,9 @@ describe('buildInitialPlanDevices', () => {
   });
 
   it('does not advance from a stale lower desired step when no step command is pending', () => {
-    const steppedDevice: PlanInputDevice = {
+    const steppedDevice = steppedInput({
       id: 'dev-1',
       name: 'Water Heater',
-      controlModel: 'stepped_load',
       steppedLoadProfile: {
         model: 'stepped_load',
         steps: [
@@ -475,13 +523,13 @@ describe('buildInitialPlanDevices', () => {
       controllable: true,
       expectedPowerKw: 3,
       measuredPowerKw: 3,
-    };
+    });
 
     const [planDevice] = buildInitialPlanDevices({
       context: buildContext([steppedDevice]),
       state: createPlanEngineState(),
       shedSet: new Set(['dev-1']),
-      shedReasons: new Map([['dev-1', 'shed due to capacity']]),
+      shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
@@ -499,7 +547,7 @@ describe('buildInitialPlanDevices', () => {
   });
 
   it('does not let stale restore intent raise the shed target for set_step shedding', () => {
-    const steppedDevice = steppedInputDevice({
+    const steppedDevice = steppedInput({
       id: 'dev-1',
       name: 'Water Heater',
       selectedStepId: 'low',
@@ -514,7 +562,7 @@ describe('buildInitialPlanDevices', () => {
       context: buildContext([steppedDevice]),
       state: createPlanEngineState(),
       shedSet: new Set(['dev-1']),
-      shedReasons: new Map([['dev-1', 'shed due to capacity']]),
+      shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
@@ -534,7 +582,7 @@ describe('buildInitialPlanDevices', () => {
   });
 
   it('exposes binaryCommandPending when a pending binary command exists for the device', () => {
-    const device = buildPlanInputDevice({ id: 'dev-1', name: 'Heater', binaryControl: { on: false } });
+    const device = inputDevice({ id: 'dev-1', name: 'Heater', binaryControl: { on: false } });
 
     const state = createPlanEngineState();
     state.pendingBinaryCommands['dev-1'] = {
@@ -564,7 +612,7 @@ describe('buildInitialPlanDevices', () => {
   });
 
   it('propagates communicationModel into planned devices', () => {
-    const device = steppedInputDevice({
+    const device = steppedInput({
       id: 'dev-1',
       name: 'Cloud Heater',
       communicationModel: 'cloud',
@@ -591,7 +639,7 @@ describe('buildInitialPlanDevices', () => {
   });
 
   it('omits binaryCommandPending when no pending binary command exists', () => {
-    const device = buildPlanInputDevice({ id: 'dev-1', name: 'Heater', binaryControl: { on: true } });
+    const device = inputDevice({ id: 'dev-1', name: 'Heater', binaryControl: { on: true } });
 
     const [planDevice] = buildInitialPlanDevices({
       context: buildContext([device]),
@@ -614,7 +662,7 @@ describe('buildInitialPlanDevices', () => {
   });
 
   it('omits binaryCommandPending when pending command is a shed (desired=false)', () => {
-    const device = buildPlanInputDevice({ id: 'dev-1', name: 'Heater', binaryControl: { on: true } });
+    const device = inputDevice({ id: 'dev-1', name: 'Heater', binaryControl: { on: true } });
 
     const state = createPlanEngineState();
     state.pendingBinaryCommands['dev-1'] = {
@@ -644,7 +692,7 @@ describe('buildInitialPlanDevices', () => {
   });
 
   it('treats stale binary observations as unknown instead of confirmed off', () => {
-    const device = buildPlanInputDevice({
+    const device = inputDevice({
       id: 'dev-1',
       name: 'Heater',
       binaryControl: { on: false },
@@ -674,7 +722,7 @@ describe('buildInitialPlanDevices', () => {
   });
 
   it('detects shed drift for off stepped devices and drives them to the off-step during shortfall', () => {
-    const steppedDevice = steppedInputDevice({
+    const steppedDevice = steppedInput({
       id: 'dev-1',
       name: 'Water Heater',
       selectedStepId: 'max',
@@ -715,7 +763,7 @@ describe('buildInitialPlanDevices', () => {
   });
 
   it('keeps off-state restore analysis out of the public reason field', () => {
-    const device = buildPlanInputDevice({
+    const device = inputDevice({
       id: 'dev-1',
       name: 'Hall Heater',
       binaryControl: { on: false },
@@ -747,7 +795,7 @@ describe('buildInitialPlanDevices', () => {
   });
 
   it('forces already-shed off stepped devices to keep the off-step during shortfall', () => {
-    const steppedDevice = steppedInputDevice({
+    const steppedDevice = steppedInput({
       id: 'dev-1',
       name: 'Water Heater',
       selectedStepId: 'max',
@@ -761,7 +809,7 @@ describe('buildInitialPlanDevices', () => {
       context: buildContext([steppedDevice]),
       state: createPlanEngineState(),
       shedSet: new Set(['dev-1']),
-      shedReasons: new Map([['dev-1', 'shed due to capacity']]),
+      shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
       guardInShortfall: true,
       deps: {
         getPriorityForDevice: () => 100,
@@ -784,7 +832,7 @@ describe('buildInitialPlanDevices', () => {
     // The plan must normalize desiredStepId to 'off' (not an intermediate shed step)
     // and set expectedPowerKw to the lowest positive step power (1.25 kW), not zero,
     // so that restore planning uses a realistic power estimate.
-    const steppedDevice = steppedInputDevice({
+    const steppedDevice = steppedInput({
       id: 'dev-1',
       name: 'Tank Heater',
       selectedStepId: 'off',
@@ -798,7 +846,7 @@ describe('buildInitialPlanDevices', () => {
       context: buildContext([steppedDevice]),
       state: createPlanEngineState(),
       shedSet: new Set(['dev-1']),
-      shedReasons: new Map([['dev-1', 'shed due to capacity']]),
+      shedReasons: shedReasonMap([['dev-1', 'shed due to capacity']]),
       guardInShortfall: false,
       deps: {
         getPriorityForDevice: () => 100,
@@ -821,7 +869,7 @@ describe('buildInitialPlanDevices', () => {
     // Simulates a stale snapshot: device capability last reported as 'on' (charging) but
     // evChargingState was updated to 'plugged_out'. Without the fix, this would produce
     // plannedState='keep' because applyOffStateReason skips non-off devices.
-    const charger = buildPlanInputDevice({
+    const charger = inputDevice({
       id: 'charger-1',
       name: 'EV Charger',
       controlCapabilityId: 'evcharger_charging',
@@ -856,7 +904,7 @@ describe('buildInitialPlanDevices', () => {
     // Moving that check before the currentState guard would incorrectly block shedding
     // of a charging EV. Only the physical state block (plugged_out etc.) should pre-empt
     // the off-state guard.
-    const charger = buildPlanInputDevice({
+    const charger = inputDevice({
       id: 'charger-1',
       name: 'EV Charger',
       controlCapabilityId: 'evcharger_charging',
@@ -889,7 +937,7 @@ describe('buildInitialPlanDevices', () => {
   it('does not mark an EV with undefined evChargingState as inactive when currently on', () => {
     // evChargingState===undefined is ambiguous (capability not yet read). It should not
     // pre-empt the off-state guard for an active device — defer until confirmed off.
-    const charger = buildPlanInputDevice({
+    const charger = inputDevice({
       id: 'charger-1',
       name: 'EV Charger',
       controlCapabilityId: 'evcharger_charging',
@@ -939,7 +987,7 @@ const buildTurnOffDeps = (overrides: Partial<PlanDevicesDeps> = {}): PlanDevices
 describe('stepped-load turn_off shed action selection (Group 1)', () => {
   // Test 1.1: turn_off is valid for a stepped device that has binary control.
   it('turn_off is a valid shed action for a stepped device with onoff', () => {
-    const device = steppedInputDevice({
+    const device = steppedInput({
       id: 'dev-1',
       controlCapabilityId: 'onoff',
       selectedStepId: 'max',
@@ -950,7 +998,7 @@ describe('stepped-load turn_off shed action selection (Group 1)', () => {
       context: buildContext([device]),
       state: createPlanEngineState(),
       shedSet: new Set(['dev-1']),
-      shedReasons: new Map([['dev-1', 'capacity']]),
+      shedReasons: shedReasonMap([['dev-1', 'capacity']]),
       guardInShortfall: false,
       deps: buildTurnOffDeps(),
     });
@@ -961,7 +1009,7 @@ describe('stepped-load turn_off shed action selection (Group 1)', () => {
   // Test 1.2: turn_off must be rejected when the device has no binary control.
   // Current: shedAction resolves to 'turn_off' regardless of hasBinaryControl.
   it('turn_off must not be selected as shed action for a stepped device without binary control', () => {
-    const device = steppedInputDevice({
+    const device = steppedInput({
       id: 'dev-1',
       controlCapabilityId: undefined,
       selectedStepId: 'max',
@@ -972,7 +1020,7 @@ describe('stepped-load turn_off shed action selection (Group 1)', () => {
       context: buildContext([device]),
       state: createPlanEngineState(),
       shedSet: new Set(['dev-1']),
-      shedReasons: new Map([['dev-1', 'capacity']]),
+      shedReasons: shedReasonMap([['dev-1', 'capacity']]),
       guardInShortfall: false,
       deps: buildTurnOffDeps(),
     });
@@ -985,7 +1033,7 @@ describe('stepped-load turn_off: desiredStepId targets lowest step (Group 2)', (
   // Test 2.1: turn_off shed must set desiredStepId to the lowest (off) step, not the
   // current step. Current: desiredStepId stays at the current selectedStepId for turn_off.
   it('turn_off shed sets desiredStepId to the lowest step, not the current medium step', () => {
-    const device = steppedInputDevice({
+    const device = steppedInput({
       id: 'dev-1',
       controlCapabilityId: 'onoff',
       selectedStepId: 'medium',
@@ -996,7 +1044,7 @@ describe('stepped-load turn_off: desiredStepId targets lowest step (Group 2)', (
       context: buildContext([device]),
       state: createPlanEngineState(),
       shedSet: new Set(['dev-1']),
-      shedReasons: new Map([['dev-1', 'capacity']]),
+      shedReasons: shedReasonMap([['dev-1', 'capacity']]),
       guardInShortfall: false,
       deps: buildTurnOffDeps(),
     });
@@ -1008,7 +1056,7 @@ describe('stepped-load turn_off: desiredStepId targets lowest step (Group 2)', (
 
   // Test 2.2: same assertion when the lowest step is the zero-usage off step.
   it('turn_off shed targets the zero-usage off step when starting from max step', () => {
-    const device = steppedInputDevice({
+    const device = steppedInput({
       id: 'dev-1',
       controlCapabilityId: 'onoff',
       selectedStepId: 'max',
@@ -1019,7 +1067,7 @@ describe('stepped-load turn_off: desiredStepId targets lowest step (Group 2)', (
       context: buildContext([device]),
       state: createPlanEngineState(),
       shedSet: new Set(['dev-1']),
-      shedReasons: new Map([['dev-1', 'capacity']]),
+      shedReasons: shedReasonMap([['dev-1', 'capacity']]),
       guardInShortfall: false,
       deps: buildTurnOffDeps(),
     });
@@ -1033,7 +1081,7 @@ describe('stepped-load turn_off: desiredStepId targets lowest step (Group 2)', (
   // This passes because initialDesiredStepId returns the current step ('off') which
   // happens to already be correct. The test guards against a regression that over-corrects.
   it('turn_off shed keeps desiredStepId=off when device is already at the lowest step', () => {
-    const device = steppedInputDevice({
+    const device = steppedInput({
       id: 'dev-1',
       controlCapabilityId: 'onoff',
       selectedStepId: 'off',
@@ -1044,7 +1092,7 @@ describe('stepped-load turn_off: desiredStepId targets lowest step (Group 2)', (
       context: buildContext([device]),
       state: createPlanEngineState(),
       shedSet: new Set(['dev-1']),
-      shedReasons: new Map([['dev-1', 'capacity']]),
+      shedReasons: shedReasonMap([['dev-1', 'capacity']]),
       guardInShortfall: false,
       deps: buildTurnOffDeps(),
     });
@@ -1060,7 +1108,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
   // Current: desiredStepId echoes selectedStepId ('off') because
   // resolveSteppedLoadInitialDesiredStepId just reflects the current step.
   it('restore (keep) normalizes off-step desiredStepId to lowest non-zero step', () => {
-    const device = steppedInputDevice({
+    const device = steppedInput({
       id: 'dev-1',
       controlCapabilityId: 'onoff',
       selectedStepId: 'off',
@@ -1082,7 +1130,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
   });
 
   it('preserves runtime stepped restore intent for keep devices while confirmation is still pending', () => {
-    const device = steppedInputDevice({
+    const device = steppedInput({
       id: 'dev-1',
       controlCapabilityId: 'onoff',
       binaryControl: { on: true },
@@ -1109,7 +1157,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
   });
 
   it('restore (keep) normalizes unknown-step off devices to lowest non-zero step and expected load', () => {
-    const device = steppedInputDevice({
+    const device = steppedInput({
       id: 'dev-1',
       controlCapabilityId: 'onoff',
       selectedStepId: undefined,
@@ -1133,7 +1181,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
   });
 
   it('leaves stepped restore intent unchanged when no positive restore step exists', () => {
-    const device = steppedInputDevice({
+    const device = steppedInput({
       id: 'dev-1',
       controlCapabilityId: 'onoff',
       binaryControl: { on: false },
@@ -1163,7 +1211,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
   });
 
   it('leaves expectedPowerKw undefined when all configured power fields are non-finite', () => {
-    const device = buildPlanInputDevice({
+    const device = inputDevice({
       id: 'dev-1',
       name: 'Broken heater',
       measuredPowerKw: Number.NaN,
@@ -1185,7 +1233,13 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
   });
 
   describe('deferred temperature objective override', () => {
-    const tempInputDevice = (overrides: Partial<Parameters<typeof buildPlanInputDevice>[0]> = {}) => buildPlanInputDevice({
+    const tempInputDevice = (
+      overrides: Partial<PlanInputDevice>
+        & BinaryControlDiscriminantProbe
+        & TemperatureDiscriminantProbe
+        & EvDiscriminantProbe
+        & { evChargingState?: string; deviceType?: 'temperature' | 'onoff' } = {},
+    ) => inputDevice({
       id: 'tank',
       name: 'Water tank',
       deviceType: 'temperature',
@@ -1204,7 +1258,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         deps: defaultDeps,
       });
 
-      expect(planDevice.plannedTarget).toBe(60);
+      expect(plannedTargetOf(planDevice)).toBe(60);
     });
 
     it('keeps the mode target when it already exceeds the deadline target', () => {
@@ -1217,7 +1271,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         deps: defaultDeps,
       });
 
-      expect(planDevice.plannedTarget).toBe(65);
+      expect(plannedTargetOf(planDevice)).toBe(65);
     });
 
     it('does not double-apply the cheap-hour delta on top of the deadline target', () => {
@@ -1236,7 +1290,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       });
 
       // mode 50 + cheap delta 2 = 52; deadline 60 wins. Delta is not stacked on top of 60.
-      expect(planDevice.plannedTarget).toBe(60);
+      expect(plannedTargetOf(planDevice)).toBe(60);
     });
 
     it('lets mode + cheap delta win when the result still exceeds the deadline target', () => {
@@ -1255,7 +1309,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       });
 
       // mode 55 + cheap delta 3 = 58; deadline 56 — mode side already higher, no override.
-      expect(planDevice.plannedTarget).toBe(58);
+      expect(plannedTargetOf(planDevice)).toBe(58);
     });
 
     it('seeds plannedTarget from the deadline target when no mode target is configured', () => {
@@ -1268,7 +1322,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         deps: defaultDeps,
       });
 
-      expect(planDevice.plannedTarget).toBe(58);
+      expect(plannedTargetOf(planDevice)).toBe(58);
     });
 
     it('clips the deadline target to the device capability max', () => {
@@ -1282,7 +1336,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       });
 
       // capability max is 70 per tempInputDevice fixture.
-      expect(planDevice.plannedTarget).toBe(70);
+      expect(plannedTargetOf(planDevice)).toBe(70);
     });
 
     it('does not override when the device has no deadline floor stamped', () => {
@@ -1295,7 +1349,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         deps: defaultDeps,
       });
 
-      expect(planDevice.plannedTarget).toBe(50);
+      expect(plannedTargetOf(planDevice)).toBe(50);
     });
 
     it('shed temperature still wins over the deadline override when shedding via set_temperature', () => {
@@ -1304,7 +1358,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         context: { ...buildContext([device]), desiredForMode: { tank: 50 } },
         state: createPlanEngineState(),
         shedSet: new Set(['tank']),
-        shedReasons: new Map([['tank', 'shed due to capacity']]),
+        shedReasons: shedReasonMap([['tank', 'shed due to capacity']]),
         guardInShortfall: false,
         deps: {
           ...defaultDeps,
@@ -1313,12 +1367,18 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       });
 
       expect(planDevice.plannedState).toBe('shed');
-      expect(planDevice.plannedTarget).toBe(40);
+      expect(plannedTargetOf(planDevice)).toBe(40);
     });
   });
 
   describe('mode target fallback', () => {
-    const tempInputDevice = (overrides: Partial<Parameters<typeof buildPlanInputDevice>[0]> = {}) => buildPlanInputDevice({
+    const tempInputDevice = (
+      overrides: Partial<PlanInputDevice>
+        & BinaryControlDiscriminantProbe
+        & TemperatureDiscriminantProbe
+        & EvDiscriminantProbe
+        & { evChargingState?: string; deviceType?: 'temperature' | 'onoff' } = {},
+    ) => inputDevice({
       id: 'tank',
       name: 'Water tank',
       deviceType: 'temperature',
@@ -1338,7 +1398,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         deps: { ...defaultDeps, debugStructured, getOperatingMode: () => 'home' },
       });
 
-      expect(planDevice.plannedTarget).toBe(55);
+      expect(plannedTargetOf(planDevice)).toBe(55);
       expect(debugStructured).not.toHaveBeenCalledWith(
         expect.objectContaining({ event: 'missing_mode_target' }),
       );
@@ -1355,7 +1415,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         deps: { ...defaultDeps, debugStructured, getOperatingMode: () => 'home' },
       });
 
-      expect(planDevice.plannedTarget).toBe(50);
+      expect(plannedTargetOf(planDevice)).toBe(50);
       expect(debugStructured).toHaveBeenCalledWith({
         event: 'missing_mode_target',
         deviceId: 'tank',
@@ -1400,7 +1460,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       });
 
       // currentTarget = 50, deferred = 58 — max wins.
-      expect(planDevice.plannedTarget).toBe(58);
+      expect(plannedTargetOf(planDevice)).toBe(58);
     });
 
     it('does not apply price-opt delta when the seed comes from the current-target fallback', () => {
@@ -1421,7 +1481,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
 
       // currentTarget = 50; no mode target → fallback path. Cheap-hour delta of +2 must NOT
       // apply, so PELS remains a no-op against the existing setpoint.
-      expect(planDevice.plannedTarget).toBe(50);
+      expect(plannedTargetOf(planDevice)).toBe(50);
     });
 
     it('rescues a device with no mode target and no current target value via an active deferred objective', () => {
@@ -1442,7 +1502,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       });
 
       expect(planDevice).toBeDefined();
-      expect(planDevice.plannedTarget).toBe(58);
+      expect(plannedTargetOf(planDevice)).toBe(58);
       expect(debugStructured).toHaveBeenCalledWith(
         expect.objectContaining({ event: 'missing_mode_target_and_current_target' }),
       );
@@ -1456,7 +1516,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
   //    misconfigured device does not flood the log buffer when the `plan`
   //    debug topic is enabled.
   describe('mode-target abandon-grace and emit throttle', () => {
-    const tempDeviceWithValue = (value: number | undefined) => buildPlanInputDevice({
+    const tempDeviceWithValue = (value: number | undefined) => inputDevice({
       id: 'tank',
       name: 'Water tank',
       deviceType: 'temperature',
@@ -1481,7 +1541,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         guardInShortfall: false,
         deps,
       });
-      expect(primed.plannedTarget).toBe(50);
+      expect(plannedTargetOf(primed)).toBe(50);
       expect(debugStructured).toHaveBeenCalledTimes(1);
       expect(debugStructured).toHaveBeenCalledWith(
         expect.objectContaining({ event: 'missing_mode_target' }),
@@ -1503,7 +1563,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
           deps,
         });
         expect(planDevice).toBeDefined();
-        expect(planDevice.plannedTarget).toBeUndefined();
+        expect(plannedTargetOf(planDevice)).toBeUndefined();
       }
       expect(debugStructured).not.toHaveBeenCalled();
 
@@ -1556,8 +1616,8 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
         // its measured power — it is just held with no actuation intent.
         expect(planDevice).toBeDefined();
         expect(planDevice.id).toBe('tank');
-        expect(planDevice.plannedTarget).toBeUndefined();
-        expect(planDevice.currentTarget).toBeNull();
+        expect(plannedTargetOf(planDevice)).toBeUndefined();
+        expect(currentTargetOf(planDevice)).toBeNull();
 
         // Executor entry point: no target intent → no ExecutableTargetUpdate
         // is produced for this device during grace.
@@ -1768,7 +1828,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       // `hasTemperatureBoostTarget` after the primary capability re-orders.
       buildInitialPlanDevices({
         context: {
-          ...buildContext([buildPlanInputDevice({
+          ...buildContext([inputDevice({
             id: 'tank',
             name: 'Water tank',
             deviceType: 'temperature',
@@ -1794,7 +1854,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       // (read from `target_temperature`) must NOT be reused under grace —
       // fall through to skip even though grace cycles haven't been exhausted.
       debugStructured.mockClear();
-      const reorderedDevice = buildPlanInputDevice({
+      const reorderedDevice = inputDevice({
         id: 'tank',
         name: 'Water tank',
         deviceType: 'temperature',
@@ -1849,7 +1909,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
   // keep is capped at its lowest non-zero step. Wires through buildInitialPlanDevices to
   // confirm the shedSet-derived flag flows into resolveSteppedKeepDesiredStepId end-to-end.
   describe('stepped keep invariant (shed side)', () => {
-    const buildStepped = (overrides = {}) => steppedInputDevice({
+    const buildStepped = (overrides = {}) => steppedInput({
       id: 'heater',
       name: 'Water heater',
       selectedStepId: 'medium',
@@ -1858,7 +1918,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       ...overrides,
     });
 
-    const buildBinary = (id: string) => buildPlanInputDevice({
+    const buildBinary = (id: string) => inputDevice({
       id,
       name: id,
       binaryControl: { on: true },
@@ -1897,7 +1957,7 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       // step — resolveSteppedLoadDirectShedStepId returns the same step (no change). Mirrors the
       // phantom case that hasExecutableShedDevices filters out of keep-invariant posture.
       const keepStepped = buildStepped({ id: 'heater' });
-      const phantomStepped = steppedInputDevice({
+      const phantomStepped = steppedInput({
         id: 'phantom',
         name: 'phantom',
         selectedStepId: 'low',

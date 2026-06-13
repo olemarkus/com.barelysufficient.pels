@@ -5,11 +5,81 @@ import {
 } from '../../lib/plan/planBinaryControl';
 import {
   createPendingBinaryCommandStore,
-  syncPendingBinaryCommands,
+  syncPendingBinaryCommands as syncPendingBinaryCommandsRaw,
+  type PendingBinaryLiveDevice,
 } from '../../lib/observer/pendingBinaryCommands';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
-import { runBinaryControlCycle as setBinaryControl } from '../utils/binaryControlTestHelpers';
+import { runBinaryControlCycle } from '../utils/binaryControlTestHelpers';
+import type {
+  EvChargingState,
+  EvObservedProbe,
+  TargetDeviceSnapshot,
+} from '../../packages/contracts/src/types';
+
+// Loose snapshot fixtures omit the (required) `targets` field and physically
+// carry the EV-observed `evChargingState` before consumers narrow; route them
+// through this builder so they land as a real `TargetDeviceSnapshot`
+// (EV-observed cluster widened via `EvObservedProbe`, `targets` defaulted).
+type LooseSnapshot = Partial<TargetDeviceSnapshot> & EvObservedProbe & { id: string; name: string };
+const buildSnapshot = (loose: LooseSnapshot): TargetDeviceSnapshot =>
+  ({ targets: [], ...loose }) as TargetDeviceSnapshot;
+
+// `runBinaryControlCycle` does not consume the legacy logging deps these
+// fixtures still pass (`log`/`logDebug`/`error`/`updateLocalSnapshot`/
+// `structuredLog`/`debugStructured`); accept and discard them here so the call
+// sites stay unchanged, and normalize the loose snapshot through `buildSnapshot`.
+type RunBinaryControlParams = Parameters<typeof runBinaryControlCycle>[0];
+const setBinaryControl = (
+  params: Omit<RunBinaryControlParams, 'snapshot'> & {
+    snapshot?: LooseSnapshot;
+    updateLocalSnapshot?: unknown;
+    log?: unknown;
+    logDebug?: unknown;
+    error?: unknown;
+    structuredLog?: unknown;
+    debugStructured?: unknown;
+  },
+): Promise<boolean> => {
+  const {
+    updateLocalSnapshot: _updateLocalSnapshot,
+    log: _log,
+    logDebug: _logDebug,
+    error: _error,
+    structuredLog: _structuredLog,
+    debugStructured: _debugStructured,
+    snapshot,
+    ...rest
+  } = params;
+  return runBinaryControlCycle({
+    ...rest,
+    ...(snapshot !== undefined ? { snapshot: buildSnapshot(snapshot) } : {}),
+  });
+};
+
+// `PendingBinaryLiveDevice` only carries `id`/`name`/`communicationModel`/
+// `binaryControlObservation` plus the EV-observed `evChargingState`; the
+// fixtures still spread `binaryControl`/`controlCapabilityId`/`targets` (not on
+// that type) and an unused `logDebug` dep. Accept and drop the surplus here.
+type LooseLiveDevice = PendingBinaryLiveDevice & {
+  binaryControl?: { on: boolean };
+  controlCapabilityId?: string;
+  targets?: unknown[];
+};
+const liveDevice = (loose: LooseLiveDevice): PendingBinaryLiveDevice => {
+  const { binaryControl: _binaryControl, controlCapabilityId: _controlCapabilityId, targets: _targets, ...device } = loose;
+  return device;
+};
+type SyncPendingBinaryCommandsParams = Parameters<typeof syncPendingBinaryCommandsRaw>[0];
+const syncPendingBinaryCommands = (
+  params: Omit<SyncPendingBinaryCommandsParams, 'liveDevices'> & {
+    liveDevices: LooseLiveDevice[];
+    logDebug?: unknown;
+  },
+): boolean => {
+  const { logDebug: _logDebug, liveDevices, ...rest } = params;
+  return syncPendingBinaryCommandsRaw({ ...rest, liveDevices: liveDevices.map(liveDevice) });
+};
 
 let logCapture: LoggerCapture;
 
@@ -128,23 +198,23 @@ describe('plan binary control helpers', () => {
 
   it('resolves binary control plans and EV restore blocks', () => {
     expect(getBinaryControlPlan()).toBeNull();
-    expect(getBinaryControlPlan({
+    expect(getBinaryControlPlan(buildSnapshot({
       id: 'dev1',
       name: 'Socket',
       controlCapabilityId: 'onoff',
       canSetControl: true,
-    })).toEqual({ capabilityId: 'onoff', observedStateComparable: true, canSet: true });
-    expect(getBinaryControlPlan({
+    }))).toEqual({ capabilityId: 'onoff', observedStateComparable: true, canSet: true });
+    expect(getBinaryControlPlan(buildSnapshot({
       id: 'ev1',
       name: 'EV',
       capabilities: ['evcharger_charging'],
       canSetControl: false,
-    })).toEqual({ capabilityId: 'evcharger_charging', observedStateComparable: false, canSet: false });
+    }))).toEqual({ capabilityId: 'evcharger_charging', observedStateComparable: false, canSet: false });
 
-    expect(getEvRestoreBlockReason({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging', expectedPowerSource: 'default' })).toBe('charger state unknown');
-    expect(getEvRestoreBlockReason({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging' })).toBe('charger state unknown');
-    expect(getEvRestoreBlockReason({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging', evChargingState: 'plugged_out' })).toBe('charger is unplugged');
-    expect(getEvRestoreBlockReason({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging', evChargingState: 'plugged_in' })).toBe('charger is not resumable');
+    expect(getEvRestoreBlockReason(buildSnapshot({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging', expectedPowerSource: 'default' }))).toBe('charger state unknown');
+    expect(getEvRestoreBlockReason(buildSnapshot({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging' }))).toBe('charger state unknown');
+    expect(getEvRestoreBlockReason(buildSnapshot({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging', evChargingState: 'plugged_out' }))).toBe('charger is unplugged');
+    expect(getEvRestoreBlockReason(buildSnapshot({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging', evChargingState: 'plugged_in' }))).toBe('charger is not resumable');
   });
 
   it('handles EV and standard binary control actions', async () => {
@@ -987,7 +1057,8 @@ describe('plan binary control helpers', () => {
         id: 'ev1',
         name: 'EV',
         binaryControl: { on: false },
-        evChargingState: 'mystery',
+        // Deliberately-invalid plug-state value the reconciler must reject.
+        evChargingState: 'mystery' as EvChargingState,
         controlCapabilityId: 'evcharger_charging',
         binaryControlObservation: binaryObservation('evcharger_charging', false, 1_001),
         targets: [],

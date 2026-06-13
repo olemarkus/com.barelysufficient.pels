@@ -1,4 +1,8 @@
-import type { PlanInputDevice } from '../../lib/plan/planTypes';
+import type {
+  BinaryControlDiscriminantProbe,
+  EvDiscriminantProbe,
+  PlanInputDevice,
+} from '../../lib/plan/planTypes';
 import { buildPlanInputDevice } from '../helpers/buildPlanInputDevice';
 
 describe('buildPlanInputDevice', () => {
@@ -14,15 +18,16 @@ describe('buildPlanInputDevice', () => {
   });
 
   it('lets overrides win over the defaults', () => {
-    const device = buildPlanInputDevice({
+    const overrides: Partial<PlanInputDevice> & { id: string } & BinaryControlDiscriminantProbe = {
       id: 'dev-2',
       name: 'Living room heater',
       binaryControl: { on: false },
-    });
+    };
+    const device = buildPlanInputDevice(overrides);
 
     expect(device.id).toBe('dev-2');
     expect(device.name).toBe('Living room heater');
-    expect(device.binaryControl?.on).toBe(false);
+    expect((device as PlanInputDevice & BinaryControlDiscriminantProbe).binaryControl?.on).toBe(false);
     expect(device.targets).toEqual([]);
   });
 
@@ -41,7 +46,7 @@ describe('buildPlanInputDevice', () => {
     expect(device.powerKw).toBe(7.2);
     // Sanity: unrelated optionals stay absent rather than being defaulted.
     expect(device.expectedPowerKw).toBeUndefined();
-    expect(device.evChargingState).toBeUndefined();
+    expect((device as PlanInputDevice & EvDiscriminantProbe).evChargingState).toBeUndefined();
   });
 
   it('replaces the default targets array when an override is supplied', () => {

@@ -7,6 +7,7 @@ import {
 } from '../mocks/homey';
 import { schedulePlanRebuildFromPowerSample } from '../../lib/plan/rebuildScheduler/powerDriven';
 import type { LiveFeedHealth } from '../../lib/device/liveFeed';
+import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 
 // Prevent real socket.io connections in app tests.
 vi.mock('../../lib/device/liveFeed', () => {
@@ -1114,7 +1115,8 @@ describe('MyApp initialization', () => {
     const passes = [createDeferred(), createDeferred()];
     const calls: Array<{ currentPowerW: number; nowMs: number }> = [];
     const beforePerf = getPerfSnapshot();
-    const runSpy = vi.spyOn((app as any).powerSamplePipeline as any, 'runPowerSample').mockImplementation(async (currentPowerW: number, nowMs: number) => {
+    const runSpy = vi.spyOn((app as any).powerSamplePipeline as any, 'runPowerSample').mockImplementation(async (...args: unknown[]) => {
+      const [currentPowerW, nowMs] = args as [number, number];
       calls.push({ currentPowerW, nowMs });
       const pass = passes[calls.length - 1];
       if (!pass) throw new Error(`Unexpected power sample pass ${calls.length}`);
@@ -1197,7 +1199,8 @@ describe('MyApp initialization', () => {
     const app = createApp();
     const passes = [createDeferred(), createDeferred()];
     const calls: Array<{ currentPowerW: number; nowMs: number }> = [];
-    const runSpy = vi.spyOn((app as any).powerSamplePipeline as any, 'runPowerSample').mockImplementation(async (currentPowerW: number, nowMs: number) => {
+    const runSpy = vi.spyOn((app as any).powerSamplePipeline as any, 'runPowerSample').mockImplementation(async (...args: unknown[]) => {
+      const [currentPowerW, nowMs] = args as [number, number];
       calls.push({ currentPowerW, nowMs });
       const pass = passes[calls.length - 1];
       if (!pass) throw new Error(`Unexpected power sample pass ${calls.length}`);
@@ -1255,7 +1258,8 @@ describe('MyApp initialization', () => {
           trailingRequest = (app as any).powerSamplePipeline.recordPowerSample(2400, 24);
         });
     };
-    const runSpy = vi.spyOn((app as any).powerSamplePipeline as any, 'runPowerSample').mockImplementation(async (currentPowerW: number, nowMs: number) => {
+    const runSpy = vi.spyOn((app as any).powerSamplePipeline as any, 'runPowerSample').mockImplementation(async (...args: unknown[]) => {
+      const [currentPowerW, nowMs] = args as [number, number];
       calls.push({ currentPowerW, nowMs });
       if (calls.length === 1) {
         scheduleTrailingRequest();
@@ -3255,7 +3259,7 @@ describe('periodic snapshot refresh scheduling', () => {
         'ev-1': { enabled: true, boostBelowPercent: 40 },
       };
       (app as any).deviceManager = withGetSnapshotByDeviceId({
-        getSnapshot: () => [
+        getSnapshot: (): TargetDeviceSnapshot[] => [
           {
             id: 'ev-1',
             name: 'Garage Charger',
@@ -3267,7 +3271,6 @@ describe('periodic snapshot refresh scheduling', () => {
               percent: previousPercent,
               observedAtMs: Date.parse('2026-03-20T09:00:00Z'),
               status: 'fresh',
-              source: 'flow',
             },
           },
         ],
@@ -3306,7 +3309,7 @@ describe('periodic snapshot refresh scheduling', () => {
       'ev-1': { enabled: true, boostBelowPercent: 40 },
     };
     (app as any).deviceManager = withGetSnapshotByDeviceId({
-      getSnapshot: () => [
+      getSnapshot: (): TargetDeviceSnapshot[] => [
         {
           id: 'ev-1',
           name: 'Garage Charger',
@@ -3349,7 +3352,7 @@ describe('periodic snapshot refresh scheduling', () => {
     const app = createApp();
     const reportedAt = Date.parse('2026-03-20T09:05:00Z');
     (app as any).deviceManager = withGetSnapshotByDeviceId({
-      getSnapshot: () => [
+      getSnapshot: (): TargetDeviceSnapshot[] => [
         {
           id: 'ev-1',
           name: 'Garage Charger',
@@ -3359,7 +3362,6 @@ describe('periodic snapshot refresh scheduling', () => {
             percent: 42,
             observedAtMs: Date.parse('2026-03-20T09:00:00Z'),
             status: 'fresh',
-            source: 'flow',
           },
         },
       ],
@@ -3393,7 +3395,7 @@ describe('periodic snapshot refresh scheduling', () => {
       'battery-1': { enabled: true, boostBelowPercent: 40 },
     };
     (app as any).deviceManager = withGetSnapshotByDeviceId({
-      getSnapshot: () => [
+      getSnapshot: (): TargetDeviceSnapshot[] => [
         {
           id: 'battery-1',
           name: 'Battery Sensor',
@@ -3403,7 +3405,6 @@ describe('periodic snapshot refresh scheduling', () => {
             percent: 42,
             observedAtMs: Date.parse('2026-03-20T09:00:00Z'),
             status: 'fresh',
-            source: 'flow',
           },
         },
       ],
@@ -3491,7 +3492,7 @@ describe('periodic snapshot refresh scheduling', () => {
     (app as any).evBoostSettings = {
       'ev-1': { enabled: true, boostBelowPercent: 40 },
     };
-    const snapshot = [{
+    const snapshot: TargetDeviceSnapshot[] = [{
       id: 'ev-1',
       name: 'Garage Charger',
       deviceClass: 'evcharger',
@@ -3502,7 +3503,6 @@ describe('periodic snapshot refresh scheduling', () => {
         percent: 32,
         observedAtMs: previousReportedAt,
         status: 'stale',
-        source: 'flow',
       },
     }];
     (app as any).deviceManager = withGetSnapshotByDeviceId({
@@ -3541,7 +3541,7 @@ describe('periodic snapshot refresh scheduling', () => {
     (app as any).evBoostSettings = {
       'ev-1': { enabled: true, boostBelowPercent: 40 },
     };
-    const snapshot = [{
+    const snapshot: TargetDeviceSnapshot[] = [{
       id: 'ev-1',
       name: 'Garage Charger',
       deviceClass: 'evcharger',
@@ -3552,7 +3552,6 @@ describe('periodic snapshot refresh scheduling', () => {
         percent: 32,
         observedAtMs: previousReportedAt,
         status: 'stale',
-        source: 'native',
       },
     }];
     (app as any).deviceManager = withGetSnapshotByDeviceId({
@@ -3589,11 +3588,12 @@ describe('periodic snapshot refresh scheduling', () => {
     const settingsSetSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
     const initialReportedAt = Date.parse('2026-03-20T09:00:00Z');
     const nextReportedAt = Date.parse('2026-03-20T09:05:00Z');
-    const snapshot = [{
+    const snapshot: TargetDeviceSnapshot[] = [{
       id: 'dev-1',
       name: 'Relay',
       flowBacked: true,
       flowBackedCapabilityIds: ['onoff'],
+      targets: [],
       lastFreshDataMs: initialReportedAt,
       lastUpdated: initialReportedAt,
     }];
@@ -3640,11 +3640,12 @@ describe('periodic snapshot refresh scheduling', () => {
     const app = createApp();
     const initialReportedAt = Date.parse('2026-03-20T09:00:00Z');
     const nextReportedAt = Date.parse('2026-03-20T09:05:00Z');
-    const snapshot = [{
+    const snapshot: TargetDeviceSnapshot[] = [{
       id: 'dev-1',
       name: 'Relay',
       flowBacked: true,
       flowBackedCapabilityIds: ['onoff'],
+      targets: [],
       lastFreshDataMs: initialReportedAt,
       lastUpdated: initialReportedAt,
     }];
@@ -3677,7 +3678,7 @@ describe('periodic snapshot refresh scheduling', () => {
     const app = createApp();
     const initialReportedAt = Date.now();
     const nextReportedAt = initialReportedAt + 60_000;
-    const snapshot = [{
+    const snapshot: TargetDeviceSnapshot[] = [{
       id: 'ev-1',
       name: 'Garage Charger',
       deviceClass: 'evcharger',
@@ -3688,7 +3689,6 @@ describe('periodic snapshot refresh scheduling', () => {
         percent: 80,
         observedAtMs: initialReportedAt,
         status: 'fresh',
-        source: 'flow',
       },
     }];
     const dispatchObservedStateForDevice = vi.fn();
@@ -3722,12 +3722,13 @@ describe('periodic snapshot refresh scheduling', () => {
     const settingsSetSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
     const initialReportedAt = Date.parse('2026-03-20T09:00:00Z');
     const nextReportedAt = Date.parse('2026-03-20T09:05:00Z');
-    const snapshot = [{
+    const snapshot: TargetDeviceSnapshot[] = [{
       id: 'ev-1',
       name: 'Garage Charger',
       deviceClass: 'evcharger',
       flowBacked: true,
       flowBackedCapabilityIds: ['evcharger_charging', 'alarm_generic.car_connected'],
+      targets: [],
       lastFreshDataMs: initialReportedAt,
       lastUpdated: initialReportedAt,
     }];

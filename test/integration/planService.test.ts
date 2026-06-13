@@ -1,6 +1,21 @@
+import type { Mock } from 'vitest';
 import { PlanService } from '../../lib/plan/planService';
 import { buildExecutablePlan } from '../../lib/executor/executablePlanProjection';
-import type { DevicePlan, PlanInputDevice } from '../../lib/plan/planTypes';
+import type {
+  DevicePlan,
+  PlanInputDevice,
+  BinaryControlDiscriminantProbe,
+  TemperatureDiscriminantProbe,
+  SteppedDiscriminantProbe,
+} from '../../lib/plan/planTypes';
+import {
+  withBinaryDiscriminant,
+  withTemperatureDiscriminant,
+  withSteppedDiscriminant,
+} from '../../lib/plan/planTypes';
+import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
+import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
+import { steppedInputDevice } from '../utils/planTestUtils';
 import type { BinaryControlObservation } from '../../packages/contracts/src/types';
 import * as pelsStatusModule from '../../lib/plan/pelsStatus';
 import { getRecentPlanRebuildTraces } from '../../lib/utils/planRebuildTrace';
@@ -16,12 +31,15 @@ import { DeviceOverviewLogRecorder } from '../../lib/plan/deviceOverviewLog';
 const LEGACY_PLAN_SNAPSHOT_SETTING = ['device', 'plan', 'snapshot'].join('_');
 
 const buildPlan = (
-  currentTarget: number,
+  currentTarget: number | null,
   reason: string | DeviceReason,
   metaOverrides: Partial<DevicePlan['meta']> = {},
-  deviceOverrides: Partial<DevicePlan['devices'][number]> = {},
+  deviceOverrides: Partial<DevicePlan['devices'][number]>
+    & BinaryControlDiscriminantProbe
+    & TemperatureDiscriminantProbe
+    & SteppedDiscriminantProbe = {},
 ): DevicePlan => {
-  const normalizedReason = typeof reason === 'string' ? legacyDeviceReason(reason) : reason;
+  const normalizedReason = typeof reason === 'string' ? legacyDeviceReason(reason)! : reason;
   return {
     meta: {
       totalKw: 1,
@@ -30,20 +48,20 @@ const buildPlan = (
       ...metaOverrides,
     },
     devices: [
-      {
+      withSteppedDiscriminant(withTemperatureDiscriminant(withBinaryDiscriminant({
         id: 'dev-1',
         name: 'Heater',
-        deviceType: 'temperature',
+        deviceType: 'temperature' as const,
         binaryControl: { on: true },
         currentState: 'on',
-        plannedState: 'keep',
+        plannedState: 'keep' as const,
         currentTarget,
         plannedTarget: 20,
         reason: normalizedReason,
         controllable: true,
-        controlCapabilityId: 'onoff',
+        controlCapabilityId: 'onoff' as const,
         ...deviceOverrides,
-      },
+      }))) as DevicePlan['devices'][number],
     ],
   };
 };
@@ -131,7 +149,8 @@ describe('PlanService', () => {
     await service.rebuildPlanFromCache();
 
     expect(settingsSet).not.toHaveBeenCalledWith(LEGACY_PLAN_SNAPSHOT_SETTING, expect.anything());
-    expect(service.getLatestPlanSnapshot()?.devices[0].currentTarget).toBe(21);
+    const latestDevice = service.getLatestPlanSnapshot()?.devices[0];
+    expect(latestDevice && isTemperaturePlanDevice(latestDevice) ? latestDevice.currentTarget : undefined).toBe(21);
 
     const planUpdatedCalls = realtime.mock.calls.filter((call: unknown[]) => call[0] === 'plan_updated');
     expect(planUpdatedCalls).toHaveLength(2);
@@ -212,36 +231,39 @@ describe('PlanService', () => {
         headroomKw: -0.97,
       },
       devices: [
-        {
+        withTemperatureDiscriminant(withBinaryDiscriminant({
           id: 'dev-1',
           name: 'Heater 1',
+          controlCapabilityId: 'onoff' as const,
           binaryControl: { on: false },
           currentState: 'off',
-          plannedState: 'shed',
+          plannedState: 'shed' as const,
           currentTarget: null,
           controllable: true,
-          reason: legacyDeviceReason('insufficient headroom to restore (need 0.98kW, available -0.97kW)'),
-        },
-        {
+          reason: legacyDeviceReason('insufficient headroom to restore (need 0.98kW, available -0.97kW)')!,
+        })) as DevicePlan['devices'][number],
+        withTemperatureDiscriminant(withBinaryDiscriminant({
           id: 'dev-2',
           name: 'Heater 2',
+          controlCapabilityId: 'onoff' as const,
           binaryControl: { on: false },
           currentState: 'off',
-          plannedState: 'shed',
+          plannedState: 'shed' as const,
           currentTarget: null,
           controllable: true,
-          reason: legacyDeviceReason('insufficient headroom to restore (need 1.10kW, available -0.97kW)'),
-        },
-        {
+          reason: legacyDeviceReason('insufficient headroom to restore (need 1.10kW, available -0.97kW)')!,
+        })) as DevicePlan['devices'][number],
+        withTemperatureDiscriminant(withBinaryDiscriminant({
           id: 'ev-1',
           name: 'EV',
+          controlCapabilityId: 'onoff' as const,
           binaryControl: { on: false },
           currentState: 'off',
-          plannedState: 'inactive',
+          plannedState: 'inactive' as const,
           currentTarget: null,
           controllable: true,
-          reason: legacyDeviceReason('inactive (charger is unplugged)'),
-        },
+          reason: legacyDeviceReason('inactive (charger is unplugged)')!,
+        })) as DevicePlan['devices'][number],
       ],
     };
     const debugStructured = vi.fn();
@@ -307,7 +329,7 @@ describe('PlanService', () => {
     const overview = formatDeviceOverview({
       currentState: 'on',
       plannedState: 'keep',
-      reason: legacyDeviceReason('keep'),
+      reason: legacyDeviceReason('keep')!,
       measuredPowerKw: 0,
       expectedPowerKw: 3,
       controllable: true,
@@ -361,7 +383,7 @@ describe('PlanService', () => {
     const overview = formatDeviceOverview({
       currentState: 'on',
       plannedState: 'keep',
-      reason: legacyDeviceReason('keep'),
+      reason: legacyDeviceReason('keep')!,
       measuredPowerKw: 0,
       expectedPowerKw: 3,
       controllable: true,
@@ -384,17 +406,17 @@ describe('PlanService', () => {
       measuredPowerKw: 0,
       expectedPowerKw: 3,
     });
-    plan.devices.push({
+    plan.devices.push(withBinaryDiscriminant({
       ...plan.devices[0],
       id: 'dev-2',
       name: 'Bedroom',
       currentState: 'off',
       binaryControl: { on: false },
-      plannedState: 'shed',
+      plannedState: 'shed' as const,
       measuredPowerKw: 0,
       expectedPowerKw: 1.2,
-      reason: legacyDeviceReason('shed due to capacity'),
-    });
+      reason: legacyDeviceReason('shed due to capacity')!,
+    }) as DevicePlan['devices'][number]);
     const { service } = createPlanService({
       planEngine: {
         ...createMockPlanEngine(),
@@ -695,7 +717,7 @@ describe('PlanService', () => {
         getOverviewStarvation: vi.fn(() => ({
           isStarved: true,
           accumulatedMs: 30 * 60 * 1000,
-          cause: 'capacity',
+          cause: 'capacity' as const,
           startedAtMs: 1_234,
         })),
       },
@@ -720,7 +742,6 @@ describe('PlanService', () => {
         shedAction: 'set_temperature',
         shedTemperature: 12,
         deviceClass: 'thermostat',
-        controlModel: 'temperature_target',
         priority: 3,
         zone: 'Living room',
         budgetExempt: false,
@@ -1041,13 +1062,13 @@ describe('PlanService', () => {
       expect(buildExecutablePlan(plan).devices[0].release).toBeNull();
       return { deviceWriteCount: 0, commandRequestCount: 0 };
     });
-    const liveDevices: PlanInputDevice[] = [{
+    const liveDevices: PlanInputDevice[] = [withBinaryDiscriminant({
       id: 'ev-1',
       name: 'EV Charger',
       deviceClass: 'evcharger',
-      controlCapabilityId: 'evcharger_charging',
+      controlCapabilityId: 'evcharger_charging' as const,
       binaryControl: { on: false },
-    }];
+    }) as PlanInputDevice];
     const service = new PlanService({
       writePelsStatus: vi.fn(),
       homey: {
@@ -2498,7 +2519,7 @@ describe('PlanService', () => {
 
   it('queues external live plan sync behind an in-flight rebuild', async () => {
     let resolveBuild: (() => void) | undefined;
-    const syncPendingTargetCommands = vi.fn(() => true);
+    const syncPendingTargetCommands = vi.fn((_devices: unknown, _source?: string) => true);
     const planEngine = {
       ...createMockPlanEngine(),
       buildDevicePlanSnapshot: vi.fn().mockImplementation(
@@ -2730,15 +2751,15 @@ describe('PlanService', () => {
       id: 'dev-1',
       name: 'Heater',
       targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
-      deviceType: 'temperature',
-      controlCapabilityId: 'onoff',
+      deviceType: 'temperature' as const,
+      controlCapabilityId: 'onoff' as const,
       currentTemperature: 21,
     };
-    let liveDevices = [{
+    let liveDevices: PlanInputDevice[] = [withTemperatureDiscriminant(withBinaryDiscriminant({
       ...liveDeviceBase,
       binaryControl: { on: true },
       binaryControlObservation: buildBinaryObservation('onoff', true),
-    }];
+    })) as PlanInputDevice];
 
     const planEngine = {
       ...createMockPlanEngine(),
@@ -2782,11 +2803,11 @@ describe('PlanService', () => {
     expect(applyPlanActions).toHaveBeenCalledTimes(1);
     applyPlanActions.mockClear();
 
-    liveDevices = [{
+    liveDevices = [withTemperatureDiscriminant(withBinaryDiscriminant({
       ...liveDeviceBase,
       binaryControl: { on: false },
       binaryControlObservation: buildBinaryObservation('onoff', false),
-    }];
+    })) as PlanInputDevice];
 
     await service.rebuildPlanFromCache('detail_only_live_off');
     expect(applyPlanActions).not.toHaveBeenCalled();
@@ -3004,7 +3025,7 @@ describe('PlanService', () => {
 
     await service.rebuildPlanFromCache('seed');
     structuredLog.info.mockClear();
-    (deps.planEngine.buildDevicePlanSnapshot as vi.Mock).mockImplementation(async () => {
+    (deps.planEngine.buildDevicePlanSnapshot as Mock).mockImplementation(async () => {
       vi.advanceTimersByTime(1501);
       return buildPlan(20, 'stable');
     });
@@ -3036,7 +3057,7 @@ describe('PlanService', () => {
     structuredLog.debug.mockClear();
 
     // Return a plan with different plannedState to trigger actionChanged
-    (deps.planEngine.buildDevicePlanSnapshot as vi.Mock).mockResolvedValueOnce(
+    (deps.planEngine.buildDevicePlanSnapshot as Mock).mockResolvedValueOnce(
       buildPlan(20, 'stable', {}, { plannedState: 'shed' }),
     );
     await service.rebuildPlanFromCache('power_delta');
@@ -3077,7 +3098,7 @@ describe('PlanService', () => {
 
     await service.rebuildPlanFromCache('power_delta');
 
-    expect((deps.planEngine.applyPlanActions as vi.Mock)).toHaveBeenCalled();
+    expect((deps.planEngine.applyPlanActions as Mock)).toHaveBeenCalled();
     expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
       event: 'plan_rebuild_completed',
       reasonCode: 'power_delta',
@@ -3117,7 +3138,7 @@ describe('PlanService', () => {
 
     await service.rebuildPlanFromCache('power_delta');
 
-    expect((deps.planEngine.applyPlanActions as vi.Mock)).toHaveBeenCalled();
+    expect((deps.planEngine.applyPlanActions as Mock)).toHaveBeenCalled();
     expect(schedulePostActuationRefresh).toHaveBeenCalledTimes(1);
     expect(structuredLog.info).toHaveBeenCalledWith(expect.objectContaining({
       event: 'plan_rebuild_completed',
@@ -3166,7 +3187,7 @@ describe('PlanService', () => {
 
     await service.rebuildPlanFromCache('power_delta');
 
-    expect((deps.planEngine.applyPlanActions as vi.Mock)).toHaveBeenCalled();
+    expect((deps.planEngine.applyPlanActions as Mock)).toHaveBeenCalled();
     expect(structuredLog.debug).toHaveBeenCalledWith(expect.objectContaining({
       event: 'plan_rebuild_completed',
       reasonCode: 'power_delta',
@@ -3189,7 +3210,7 @@ describe('PlanService', () => {
     const { service, deps } = createPlanService({
       loggers: { structuredLog: structuredLog as any },
     });
-    (deps.planEngine.buildDevicePlanSnapshot as vi.Mock).mockImplementation(async () => {
+    (deps.planEngine.buildDevicePlanSnapshot as Mock).mockImplementation(async () => {
       vi.advanceTimersByTime(17);
       throw new Error('plan exploded');
     });
@@ -3299,7 +3320,6 @@ describe('PlanService', () => {
     const steppedPlan = buildPlan(20, 'stable', {}, {
       currentState: 'on',
       plannedState: 'keep',
-      controlModel: 'stepped_load',
       steppedLoadProfile: {
         model: 'stepped_load',
         steps: [
@@ -3324,7 +3344,7 @@ describe('PlanService', () => {
       applySheddingToDevice: vi.fn().mockResolvedValue(false),
       shouldApplyStablePlanActions: vi.fn(() => (
         steppedPlan.devices.some((device) => (
-          device.controlModel === 'stepped_load'
+          isSteppedLoadDevice(device)
           && device.plannedState === 'keep'
           && device.selectedStepId !== device.desiredStepId
           && device.stepCommandPending !== true
@@ -3339,18 +3359,22 @@ describe('PlanService', () => {
         flow: {},
       } as any,
       planEngine: planEngine as any,
-      getPlanDevices: () => [{
-        id: 'dev-1',
-        name: 'RovikCharger',
-        targets: [],
-        deviceType: 'onoff',
-        controlModel: 'stepped_load',
-        controlCapabilityId: 'onoff',
-        steppedLoadProfile: steppedPlan.devices[0].steppedLoadProfile,
-        binaryControl: { on: true },
-        selectedStepId: 'step_1',
-        desiredStepId: 'step_2',
-      }],
+      getPlanDevices: () => {
+        const planDevice = steppedPlan.devices[0];
+        const steppedLoadProfile = isSteppedLoadDevice(planDevice)
+          ? planDevice.steppedLoadProfile
+          : undefined;
+        return [steppedInputDevice({
+          id: 'dev-1',
+          name: 'RovikCharger',
+          targets: [],
+          deviceType: 'onoff',
+          controlCapabilityId: 'onoff',
+          steppedLoadProfile,
+          selectedStepId: 'step_1',
+          desiredStepId: 'step_2',
+        })];
+      },
       getCapacityDryRun: () => false,
       isCurrentHourCheap: () => false,
       isCurrentHourExpensive: () => false,

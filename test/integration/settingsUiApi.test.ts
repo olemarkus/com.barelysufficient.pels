@@ -217,8 +217,10 @@ describe('settingsUiApi', () => {
     const result = await buildSettingsUiBootstrap({ homey: homey as never });
 
     expect(Object.keys(result.settings)).toEqual([...SETTINGS_UI_BOOTSTRAP_KEYS]);
-    expect(result.settings.target_devices_snapshot).toBeUndefined();
-    expect(result.settings.combined_prices).toBeUndefined();
+    // These keys are no longer part of the bootstrap settings union; assert they
+    // are absent by reading them through an index view.
+    expect((result.settings as Record<string, unknown>).target_devices_snapshot).toBeUndefined();
+    expect((result.settings as Record<string, unknown>).combined_prices).toBeUndefined();
     expect(result.dailyBudget).toEqual({ days: {}, todayKey: '2026-03-03' });
     expect((result as unknown as Record<string, unknown>).devices).toBeUndefined();
     expect(result.plan).toEqual({

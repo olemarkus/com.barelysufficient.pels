@@ -35,6 +35,11 @@ import { CONNECTED_200_STEPPED_LOAD_PROFILE } from '../../lib/device/nativeStepp
 import { legacyDeviceReason } from '../utils/deviceReasonTestUtils';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import type { DevicePlan } from '../../lib/plan/planTypes';
+import {
+  withBinaryDiscriminant,
+  withTemperatureDiscriminant,
+  withSteppedDiscriminant,
+} from '../../lib/plan/planTypes';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import type { CapabilityValue, HomeyDeviceLike, Logger } from '../../lib/utils/types';
 
@@ -206,11 +211,6 @@ const buildExecutor = (snapshot: TargetDeviceSnapshot, device: HomeyDeviceLike) 
     getShedBehavior: () => ({ action: 'turn_off' as const, temperature: null, stepId: null }),
     markSteppedLoadDesiredStepIssued: vi.fn(),
     logTargetRetryComparison: vi.fn(),
-    structuredLog: { info: vi.fn(), debug: vi.fn(), error: vi.fn() } as never,
-    debugStructured: vi.fn(),
-    log: vi.fn(),
-    logDebug: vi.fn(),
-    error: vi.fn(),
     pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
   };
   return {
@@ -224,7 +224,7 @@ const buildExecutor = (snapshot: TargetDeviceSnapshot, device: HomeyDeviceLike) 
 // off. Plain DevicePlan — the real executable projection derives the intent.
 const buildRestoreToLowPlan = (): DevicePlan => ({
   meta: { totalKw: 0, softLimitKw: 5, headroomKw: 5 },
-  devices: [{
+  devices: [withSteppedDiscriminant(withTemperatureDiscriminant(withBinaryDiscriminant({
     id: DEVICE_ID,
     name: 'Connected 300',
     deviceClass: 'water_heater',
@@ -232,18 +232,18 @@ const buildRestoreToLowPlan = (): DevicePlan => ({
     // currentOn:false with no trusted binary observation.
     binaryControl: { on: false },
     currentState: 'off',
-    plannedState: 'keep',
+    plannedState: 'keep' as const,
     currentTarget: null,
     controllable: true,
     steppedLoadProfile: CONNECTED_200_STEPPED_LOAD_PROFILE,
-    controlCapabilityId: 'onoff',
+    controlCapabilityId: 'onoff' as const,
     // The device is already calibrated at step 'low'; the deferred objective
     // wants it kept on at low. The only outstanding action is the binary
     // turn-on (the device was turned off externally / is physically off).
     selectedStepId: 'low',
     desiredStepId: 'low',
     reason: KEEP_REASON,
-  }],
+  }))) as DevicePlan['devices'][number]],
 });
 
 let logCapture: LoggerCapture;

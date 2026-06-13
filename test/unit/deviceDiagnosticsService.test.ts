@@ -1378,7 +1378,7 @@ describe('DeviceDiagnosticsService', () => {
     const setTimeoutSpy = vi.spyOn(global, 'setTimeout').mockImplementation(((handler: TimerHandler) => {
       void handler;
       return { unref } as never;
-    }) as typeof setTimeout);
+    }) as unknown as typeof setTimeout);
 
     try {
       const { service } = createDeps();

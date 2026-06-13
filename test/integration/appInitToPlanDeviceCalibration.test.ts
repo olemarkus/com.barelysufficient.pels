@@ -18,7 +18,10 @@ import {
 import type { PowerCalibrationSnapshot } from '../../packages/contracts/src/powerCalibration';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import type { AppContext } from '../../lib/app/appContext';
-import type { SteppedLoadProfile, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type {
+  SteppedLoadProfile,
+  DecoratedDeviceSnapshot,
+} from '../../packages/contracts/src/types';
 
 const HOIAX_PROFILE: SteppedLoadProfile = {
   model: 'stepped_load',
@@ -50,7 +53,7 @@ const buildSnapshotWithMediumEntry = (): PowerCalibrationSnapshot => {
   return snapshot;
 };
 
-const buildDeviceSnapshot = (overrides: Partial<TargetDeviceSnapshot> = {}): TargetDeviceSnapshot => ({
+const buildDeviceSnapshot = (overrides: Partial<DecoratedDeviceSnapshot> = {}): DecoratedDeviceSnapshot => ({
   id: 'hoiax-1',
   name: 'Hoiax',
   targets: [],
@@ -58,7 +61,7 @@ const buildDeviceSnapshot = (overrides: Partial<TargetDeviceSnapshot> = {}): Tar
   steppedLoadProfile: HOIAX_PROFILE,
   binaryControl: { on: true },
   ...overrides,
-}) as TargetDeviceSnapshot;
+}) as DecoratedDeviceSnapshot;
 
 const ctxWithSnapshot = (snapshot: PowerCalibrationSnapshot): AppContext => {
   const ctx = createAppContextMock();

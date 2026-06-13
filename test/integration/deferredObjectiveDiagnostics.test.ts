@@ -17,7 +17,13 @@ import { buildDeferredObjectiveDebugPayload } from '../../lib/objectives/deferre
 import { DeferredObjectivePlanHistoryRecorder } from '../../lib/objectives/deferredObjectives/planHistory';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { PowerTrackerState } from '../../lib/power/tracker';
-import type { PlanInputDevice } from '../../lib/plan/planTypes';
+import {
+  type EvDiscriminantProbe,
+  type PlanInputDevice,
+  type TemperatureDiscriminantProbe,
+  withBinaryDiscriminant,
+  withTemperatureDiscriminant,
+} from '../../lib/plan/planTypes';
 import { withMaterializedEvPlugState } from '../utils/planTestUtils';
 import type { DeferredObjectiveActivePlansV1 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectivePlanHistoryV4 } from '../../packages/contracts/src/deferredObjectivePlanHistory';
@@ -31,7 +37,7 @@ const NOW_MS = Date.UTC(2026, 0, 1, 17, 0, 0);
 // objective-diagnostics fixtures exercise the materialized path the planner
 // actually consumes, not the raw snapshot-fallback arm of the dual-read.
 const buildDevice = (
-  overrides: Partial<PlanInputDevice> & { evChargingState?: string } = {},
+  overrides: Partial<PlanInputDevice> & EvDiscriminantProbe & { evChargingState?: string } = {},
 ): PlanInputDevice => withMaterializedEvPlugState({
   id: 'ev-1',
   name: 'Driveway EV',
@@ -56,13 +62,16 @@ const buildDevice = (
   ...overrides,
 }) as PlanInputDevice;
 
-const buildTemperatureDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice => ({
+const buildTemperatureDevice = (
+  overrides: Partial<PlanInputDevice> & TemperatureDiscriminantProbe = {},
+): PlanInputDevice => withTemperatureDiscriminant(withBinaryDiscriminant({
   id: 'heater-1',
   name: 'Connected 300',
   targets: [{ id: 'target_temperature', value: 55, unit: 'C', min: 0, max: 95, step: 0.5 }],
   binaryControl: { on: false },
-  deviceType: 'temperature',
-  controlModel: 'stepped_load',
+  deviceType: 'temperature' as const,
+  controlModel: 'stepped_load' as const,
+  controlCapabilityId: 'onoff' as const,
   currentTemperature: 55,
   lastFreshDataMs: NOW_MS,
   steppedLoadProfile: {
@@ -73,7 +82,7 @@ const buildTemperatureDevice = (overrides: Partial<PlanInputDevice> = {}): PlanI
     ],
   },
   ...overrides,
-});
+})) as PlanInputDevice;
 
 const resolveDeadlineAtMsFor = (deadlineLocalTime: string, nowMs: number = NOW_MS): number => {
   const resolution = resolveDeferredObjectiveDeadline({
@@ -249,19 +258,27 @@ const buildDay = (params: {
       confidence: 1,
       priceShapingActive: true,
     },
+    // `plannedUncontrolledKWh` stays CONDITIONAL: the policy horizon keys its
+    // per-bucket background cap off this field's presence, so the legacy-snapshot
+    // fixtures (which omit it) must NOT carry a fabricated zero array — that would
+    // introduce a daily-budget cap the legacy path never had. The current contract
+    // marks the field required, so cast the literal at this fixture boundary.
     buckets: {
       startUtc,
       startLocalLabels: startUtc.map((_, index) => `${String(index).padStart(2, '0')}:00`),
       plannedWeight: Array.from({ length: 24 }, () => 1 / 24),
       plannedKWh: Array.from({ length: 24 }, () => 1),
+      plannedControlledKWh: Array.from({ length: 24 }, () => 1),
       actualKWh: Array.from({ length: 24 }, () => 0),
+      actualControlledKWh: Array.from({ length: 24 }, () => 0),
+      actualUncontrolledKWh: Array.from({ length: 24 }, () => 0),
       allowedCumKWh: params.allowedCumKWh ?? Array.from({ length: 24 }, (_, index) => index + 1),
       price: prices,
       ...(params.plannedUncontrolledKWh ? { plannedUncontrolledKWh: params.plannedUncontrolledKWh } : {}),
       ...(params.includePriceFactor === false
         ? {}
         : { priceFactor: prices.map((price) => (price <= 10 ? 1.2 : 0.8)) }),
-    },
+    } as DailyBudgetDayPayload['buckets'],
   };
 };
 
@@ -276,7 +293,8 @@ const combinedFromSnapshot = (snapshot: DailyBudgetUiPayload | null): CombinedPr
   for (const [dateKey, day] of Object.entries(snapshot.days)) {
     const hours: CombinedPriceEntry[] = day.buckets.startUtc.map((startsAt, index) => ({
       startsAt,
-      total: day.buckets.price[index],
+      // `buildDay` always populates a numeric `price` array (optional on the type).
+      total: day.buckets.price![index]!,
       isCheap: false,
       isExpensive: false,
     }));
@@ -2290,19 +2308,20 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // to user-visible `pendingReason: 'missing_capacity'` forever. With the
     // thermal fallback (measured → expected → power), the planner builds a
     // horizon plan from the live draw and the smart task can progress.
-    const heater: PlanInputDevice = {
+    const heater = withTemperatureDiscriminant(withBinaryDiscriminant({
       id: 'heater-1',
       name: 'Mill v2 Panel Heater',
       targets: [{ id: 'target_temperature', value: 22, unit: 'C', min: 5, max: 30, step: 0.5 }],
       binaryControl: { on: true },
+      controlCapabilityId: 'onoff' as const,
       deviceClass: 'thermostat',
-      deviceType: 'temperature',
+      deviceType: 'temperature' as const,
       currentTemperature: 19,
       lastFreshDataMs: NOW_MS,
       measuredPowerKw: 1.5,
       // No `steppedLoadProfile`, no `planningPowerKw` — this is what the bug
       // depends on.
-    };
+    })) as PlanInputDevice;
     const deadlineAtMs = resolveDeadlineAtMsFor('21:00');
     const powerTracker: PowerTrackerState = {
       objectiveProfiles: {
@@ -2375,20 +2394,21 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // 0 kW step. The producer must walk down the candidate list to
     // `expectedPowerKw` (load-setting / Homey Energy approximation) so the
     // horizon plan still builds.
-    const heater: PlanInputDevice = {
+    const heater = withTemperatureDiscriminant(withBinaryDiscriminant({
       id: 'heater-1',
       name: 'Idle Panel Heater',
       targets: [{ id: 'target_temperature', value: 22, unit: 'C', min: 5, max: 30, step: 0.5 }],
       binaryControl: { on: false },
+      controlCapabilityId: 'onoff' as const,
       deviceClass: 'thermostat',
-      deviceType: 'temperature',
+      deviceType: 'temperature' as const,
       currentTemperature: 19,
       lastFreshDataMs: NOW_MS,
       // Heater is currently idle — measured draw is zero.
       measuredPowerKw: 0,
       expectedPowerKw: 2.0,
       powerKw: 2.0,
-    };
+    })) as PlanInputDevice;
     const deadlineAtMs = resolveDeadlineAtMsFor('21:00');
     const powerTracker: PowerTrackerState = {
       objectiveProfiles: {
@@ -2438,17 +2458,18 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     // which `activePlanRecorder` will surface as `pendingReason:
     // missing_capacity` for thermal kinds (intentional cold-start hero
     // copy). Guards against the fallback over-reaching.
-    const heater: PlanInputDevice = {
+    const heater = withTemperatureDiscriminant(withBinaryDiscriminant({
       id: 'heater-1',
       name: 'Powerless Thermostat',
       targets: [{ id: 'target_temperature', value: 22, unit: 'C', min: 5, max: 30, step: 0.5 }],
       binaryControl: { on: false },
+      controlCapabilityId: 'onoff' as const,
       deviceClass: 'thermostat',
-      deviceType: 'temperature',
+      deviceType: 'temperature' as const,
       currentTemperature: 19,
       lastFreshDataMs: NOW_MS,
       // No power fields populated at all.
-    };
+    })) as PlanInputDevice;
     const deadlineAtMs = resolveDeadlineAtMsFor('21:00');
     const powerTracker: PowerTrackerState = {
       objectiveProfiles: {
@@ -3002,6 +3023,7 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
         startedAtMs: NOW_MS - HOUR_MS,
         pending: false,
         objectiveSignature: JSON.stringify(['ev_soc', null, 60, deadlineAtMs, 'soft']),
+        original: null,
         latest: {
           revision: 1,
           revisedAtMs: NOW_MS - HOUR_MS,

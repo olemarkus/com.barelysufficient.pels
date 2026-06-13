@@ -6,9 +6,13 @@ const flushMicrotasks = async (): Promise<void> => {
   await Promise.resolve();
 };
 
-type ApiMock = ReturnType<typeof vi.fn>;
+// Mirrors `ReporterHomey['api']` (not exported from the module under test); the
+// bare `vi.fn()` infers `Mock<Procedure>`, which is not assignable to this
+// precise call signature, so the mock is annotated to the real shape.
+type ReporterApi = (method: 'POST', path: string, body?: unknown) => Promise<unknown>;
+type ApiMock = ReturnType<typeof vi.fn<ReporterApi>>;
 
-const makeHomey = (api: ApiMock) => ({ api });
+const makeHomey = (api: ApiMock): { api: ReporterApi } => ({ api });
 
 describe('widgetClientLog reporter', () => {
   it('POSTs an error entry to the widget /log endpoint with a normalized detail', async () => {
@@ -126,7 +130,7 @@ describe('widgetClientLog reporter', () => {
 
   it('widgetErrorReporter binds the widget id and late-bound client', async () => {
     const api = vi.fn().mockResolvedValue(undefined);
-    let homey: { api: ApiMock } | null = null;
+    let homey: { api: ReporterApi } | null = null;
     const reporter = widgetErrorReporter('starvation_rescue', () => homey);
 
     // No client yet → dropped.

@@ -2,6 +2,10 @@ import { isActivationObservationActiveNow } from '../../lib/plan/admission';
 
 describe('isActivationObservationActiveNow', () => {
   it('is true when the device reports effectively on', () => {
+    // `controlCapabilityId` is load-bearing: `isActivationObservationActiveNow`
+    // delegates to `isObservedOn`, whose `hasBinaryCapability` gate keys off it,
+    // so the binary `on` evidence is only honoured when it is present. The field
+    // is now declared on `ActivationBackoffObservation`, so no cast is needed.
     expect(isActivationObservationActiveNow({
       binaryControl: { on: true },
       controlCapabilityId: 'onoff',

@@ -12,7 +12,13 @@ import type { StructuredDebugEmitter } from '../../lib/logging/logger';
 import type { ShedBehavior } from '../../lib/plan/planTypes';
 import type { PriceOptimizationSettings } from '../../lib/price/priceOptimizer';
 import type { DebugLoggingTopic } from '../../packages/shared-domain/src/utils/debugLogging';
-import type { DeviceControlProfiles, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type {
+  DeviceControlProfiles,
+  DeviceTargetPowerConfigs,
+  EvBoostSettings,
+  TargetDeviceSnapshot,
+  TemperatureBoostSettings,
+} from '../../packages/contracts/src/types';
 import type { FlowCard, FlowHomeyLike } from '../../lib/utils/types';
 import type { SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUiApi';
 import { createEmptyPowerCalibrationSnapshot } from '../../lib/device/devicePowerCalibration';
@@ -98,6 +104,9 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
   let budgetExemptDevices: Record<string, boolean> = {};
   let deviceDriverOverrides: Record<string, string> = {};
   let deviceControlProfiles: DeviceControlProfiles = {};
+  let deviceTargetPowerConfigs: DeviceTargetPowerConfigs = {};
+  let temperatureBoostSettings: TemperatureBoostSettings = {};
+  let evBoostSettings: EvBoostSettings = {};
   let deviceCommunicationModels: Record<string, 'local' | 'cloud'> = {};
   let shedBehaviors: Record<string, ShedBehavior> = {};
   let debugLoggingTopics = new Set<DebugLoggingTopic>();
@@ -109,6 +118,9 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
   const priceOptimizationEnabled = priceOptimizationEnabledOverride ?? false;
   const priceOptimizationSettings = priceOptimizationSettingsOverride ?? {};
 
+  // Partial stand-in for the AppSnapshotHelpers deps: the test only wires the
+  // subset of dependencies these helpers exercise. Cast to the constructor's
+  // deps type so the partial mock satisfies the (wider) real interface.
   const snapshotHelpers = snapshotHelpersOverride ?? new AppSnapshotHelpers({
     getPowerSource: () => normalizePowerSource(homey.settings.get('power_source')),
     timers,
@@ -119,14 +131,13 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     resolveManagedState: () => false,
     isCapacityControlEnabled: () => false,
     getStructuredLogger: () => undefined,
-    logDebug: vi.fn(),
     getNow: () => new Date('2026-04-16T00:00:00.000Z'),
     logPeriodicStatus: vi.fn(),
     disableUnsupportedDevices: vi.fn(),
     getFlowReportedDeviceIds: vi.fn(() => []),
     emitFlowBackedRefreshRequests: vi.fn(async () => undefined),
     recordPowerSample: vi.fn(async () => undefined),
-  });
+  } as unknown as ConstructorParameters<typeof AppSnapshotHelpers>[0]);
   const homeyEnergyHelpers = homeyEnergyHelpersOverride ?? new HomeyEnergyPollSource({
     getPowerSource: () => normalizePowerSource(homey.settings.get('power_source')),
     timers,
@@ -169,6 +180,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     getCurrentPriceLevel: vi.fn(),
     isCurrentHourCheap: vi.fn(() => false),
     isCurrentHourExpensive: vi.fn(() => false),
+    areFlowBackedCardsAvailable: vi.fn(() => false),
     getDeviceLoadSetting: vi.fn(async () => null),
     setExpectedOverride: vi.fn(() => false),
     storeFlowPriceData: vi.fn(),
@@ -185,10 +197,12 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     getAllModes: vi.fn(() => new Set<string>()),
     resolveManagedState: vi.fn(() => false),
     getObservedState: vi.fn(() => undefined),
-    getCommunicationModel: vi.fn(() => 'local'),
+    getCommunicationModel: vi.fn((): 'local' | 'cloud' => 'local'),
     isCapacityControlEnabled: vi.fn(() => false),
     isBudgetExempt: vi.fn(() => false),
-    getShedBehavior: vi.fn(() => ({ action: 'turn_off', temperature: null, stepId: null })),
+    getTemperatureBoostConfig: vi.fn(() => undefined),
+    getEvBoostConfig: vi.fn(() => undefined),
+    getShedBehavior: vi.fn((): ReturnType<AppContext['getShedBehavior']> => ({ action: 'turn_off', temperature: null, stepId: null })),
     computeDynamicSoftLimit: vi.fn(() => 0),
     getDynamicSoftLimitOverride: vi.fn(() => null),
     evaluateHeadroomForDevice: vi.fn(() => null),
@@ -220,6 +234,12 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     set deviceDriverOverrides(value) { deviceDriverOverrides = value; },
     get deviceControlProfiles() { return deviceControlProfiles; },
     set deviceControlProfiles(value) { deviceControlProfiles = value; },
+    get deviceTargetPowerConfigs() { return deviceTargetPowerConfigs; },
+    set deviceTargetPowerConfigs(value) { deviceTargetPowerConfigs = value; },
+    get temperatureBoostSettings() { return temperatureBoostSettings; },
+    set temperatureBoostSettings(value) { temperatureBoostSettings = value; },
+    get evBoostSettings() { return evBoostSettings; },
+    set evBoostSettings(value) { evBoostSettings = value; },
     get deviceCommunicationModels() { return deviceCommunicationModels; },
     set deviceCommunicationModels(value) { deviceCommunicationModels = value; },
     get shedBehaviors() { return shedBehaviors; },
@@ -236,8 +256,30 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     get powerSampleRebuildState() { return powerSampleRebuildState; },
     set powerSampleRebuildState(value) { powerSampleRebuildState = value; },
     get latestTargetSnapshot() { return latestTargetSnapshot; },
+    getUiPickerDevices: () => latestTargetSnapshot,
+    getCreateSmartTaskCandidateDevices: () => latestTargetSnapshot,
     get priceOptimizationEnabled() { return priceOptimizationEnabled; },
     get priceOptimizationSettings() { return priceOptimizationSettings; },
+    // Mirror the real `DeferredObjectiveStatusBus` surface. The lifecycle emitter
+    // reads `getCurrent`/`hasActive` and writes via `publish`/`setCurrent`, so a
+    // `{ subscribe, emit }` shim crashes any code that touches the bus. Default
+    // reads return "no active objective"; writers are inert spies.
+    deferredObjectiveStatusBus: {
+      publish: vi.fn(),
+      setCurrent: vi.fn(),
+      forgetDevice: vi.fn(),
+      getCurrent: vi.fn(() => null),
+      hasActive: vi.fn(() => false),
+      listDeviceIds: vi.fn(() => []),
+      onTransition: vi.fn(() => () => {}),
+    } as never,
+    deferredObjectivePlanRevisionBus: { subscribe: vi.fn(() => () => {}), emit: vi.fn() } as never,
+    deferredObjectiveEndedBus: { subscribe: vi.fn(() => () => {}), emit: vi.fn() } as never,
+    deferredObjectiveHoursRemainingBus: { subscribe: vi.fn(() => () => {}), emit: vi.fn() } as never,
+    // Mirror the real `DeferredObjectiveHoursRemainingTracker` surface
+    // (`observe` + `forgetDevice`); `disableDeferredObjectiveInSettings` calls
+    // `forgetDevice`, so the mock must expose it or the disable path crashes.
+    deferredObjectiveHoursRemainingTracker: { observe: vi.fn(), forgetDevice: vi.fn() } as never,
     capacityGuard: {
       getHeadroom: vi.fn(() => null),
       setLimit: vi.fn(),

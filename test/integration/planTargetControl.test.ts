@@ -6,31 +6,38 @@ import {
   syncPendingTargetCommands,
 } from '../../lib/plan/planTargetControl';
 import type { DevicePlan, PlanInputDevice } from '../../lib/plan/planTypes';
+import { withBinaryDiscriminant, withTemperatureDiscriminant } from '../../lib/plan/planTypes';
 import { TARGET_WAITING_LOG_REPEAT_MS } from '../../lib/plan/planConstants';
+import { legacyDeviceReason } from '../utils/deviceReasonTestUtils';
 
-const buildLiveDevice = (deviceId: string, name: string, target: number): PlanInputDevice => ({
-  id: deviceId,
-  name,
-  deviceType: 'temperature',
-  binaryControl: { on: true },
-  currentTemperature: 21,
-  targets: [{ id: 'target_temperature', value: target, unit: '°C' }],
-});
+const buildLiveDevice = (deviceId: string, name: string, target: number): PlanInputDevice =>
+  // `planTargetControl` reads only `targets`; the device has no control
+  // capability, so the binary regrouper drops the (inert) `binaryControl` —
+  // behaviourally identical, since the field is never read on this path.
+  withBinaryDiscriminant(withTemperatureDiscriminant({
+    id: deviceId,
+    name,
+    deviceType: 'temperature' as const,
+    binaryControl: { on: true },
+    currentTemperature: 21,
+    targets: [{ id: 'target_temperature', value: target, unit: '°C' }],
+  })) as PlanInputDevice;
 
 const buildPlanDevice = (
   deviceId: string,
   name: string,
   currentTarget: number,
   plannedTarget: number,
-): DevicePlan['devices'][number] => ({
+): DevicePlan['devices'][number] => withTemperatureDiscriminant({
   id: deviceId,
   name,
   currentState: 'on',
-  plannedState: 'keep',
+  plannedState: 'keep' as const,
   currentTarget,
   plannedTarget,
   controllable: true,
-});
+  reason: legacyDeviceReason('keep')!,
+}) as DevicePlan['devices'][number];
 
 describe('syncPendingTargetCommands', () => {
   it('logs a user-visible waiting message on the first unresolved observation', () => {

@@ -2,10 +2,28 @@ import CapacityGuard from '../../lib/power/capacityGuard';
 import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import type { DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
-import type { PlanInputDevice } from '../../lib/plan/planTypes';
+import {
+  type BinaryControlDiscriminantProbe,
+  type PlanInputDevice,
+  withBinaryDiscriminant,
+} from '../../lib/plan/planTypes';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 
 const emptyPendingStore = createPendingBinaryCommandStore({});
+
+// `binaryControl` moved off the `PlanInputDevice` base onto the binary cluster.
+// Route a loose fixture (with `controlCapabilityId` so the device stays binary)
+// through the discriminant regrouper to reattach it.
+const buildInputDevice = (
+  loose: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & {
+    id: string;
+    name: string;
+    targets: PlanInputDevice['targets'];
+  },
+): PlanInputDevice => withBinaryDiscriminant({
+  controlCapabilityId: 'onoff' as const,
+  ...loose,
+}) as PlanInputDevice;
 
 const buildDailyBudgetSnapshot = (params: {
   nowIso: string;
@@ -42,7 +60,11 @@ const buildDailyBudgetSnapshot = (params: {
         startLocalLabels: ['10', '11'],
         plannedWeight: [0.5, 0.5],
         plannedKWh: [params.plannedKWh, 0.5],
+        plannedUncontrolledKWh: [0, 0],
+        plannedControlledKWh: [params.plannedKWh, 0.5],
         actualKWh: [3, 0],
+        actualControlledKWh: [3, 0],
+        actualUncontrolledKWh: [0, 0],
         allowedCumKWh: [params.plannedKWh, params.plannedKWh + 0.5],
       },
     },
@@ -68,7 +90,7 @@ describe('PlanBuilder budget exemption handling', () => {
     capacityGuard.reportTotalPower(3);
 
     const devices: PlanInputDevice[] = [
-      {
+      buildInputDevice({
         id: 'budget-exempt',
         name: 'Budget Exempt Heater',
         targets: [],
@@ -76,15 +98,15 @@ describe('PlanBuilder budget exemption handling', () => {
         controllable: true,
         budgetExempt: true,
         measuredPowerKw: 2,
-      },
-      {
+      }),
+      buildInputDevice({
         id: 'regular',
         name: 'Regular Heater',
         targets: [],
         binaryControl: { on: true },
         controllable: true,
         measuredPowerKw: 1,
-      },
+      }),
     ];
 
     const builder = new PlanBuilder({
@@ -114,7 +136,7 @@ describe('PlanBuilder budget exemption handling', () => {
         plannedKWh: 1.5,
       }),
       getPriorityForDevice: (deviceId: string) => (deviceId === 'budget-exempt' ? 100 : 10),
-      getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
+      getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
       getDynamicSoftLimitOverride: () => 10,
       log: vi.fn(),
       logDebug: vi.fn(),
@@ -161,7 +183,7 @@ describe('PlanBuilder budget exemption handling', () => {
       }),
       getDailyBudgetSnapshot: () => null,
       getPriorityForDevice: () => 100,
-      getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
+      getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
       getDynamicSoftLimitOverride: () => 10,
       log: vi.fn(),
       logDebug: vi.fn(),
@@ -204,7 +226,7 @@ describe('PlanBuilder budget exemption handling', () => {
       }),
       getDailyBudgetSnapshot: () => null,
       getPriorityForDevice: () => 100,
-      getShedBehavior: () => ({ action: 'turn_off', temperature: null }),
+      getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
       getDynamicSoftLimitOverride: () => 10,
       log: vi.fn(),
       logDebug: vi.fn(),

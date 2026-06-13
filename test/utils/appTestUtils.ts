@@ -16,7 +16,10 @@ type CreateAppOptions = {
  * Call cleanupApps() in afterEach to properly stop all intervals.
  */
 export function createApp(options: CreateAppOptions = {}): any {
-  const app = new MyApp();
+  // Access private lifecycle members through an untyped view: this test seam
+  // intentionally reaches into `initPlanEngine`/`planEngine` to suppress the
+  // startup restore-stabilization window, which the public API does not expose.
+  const app = new MyApp() as any;
   if (!options.preserveStartupRestoreStabilization) {
     const originalInitPlanEngine = app.initPlanEngine.bind(app);
     app.initPlanEngine = (...args: unknown[]) => {

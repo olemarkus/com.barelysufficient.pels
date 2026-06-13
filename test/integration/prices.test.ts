@@ -1,3 +1,4 @@
+import type { Mock } from 'vitest';
 import https from 'https';
 import {
   getLatestPlanSnapshotForTests,
@@ -218,7 +219,7 @@ const createMockHttpsResponse = (statusCode: number, data: any) => {
 };
 
 describe('Spot price fetching', () => {
-  let mockHttpsGet: vi.Mock;
+  let mockHttpsGet: Mock;
   let allowConsoleErrorUntilCleanup = false;
   // Use require to avoid ESM extension issues in TS tests
   const { setAllowConsoleError } = require('../setup.ts');
@@ -232,7 +233,7 @@ describe('Spot price fetching', () => {
     mockHomeyInstance.flow._triggerCardTriggers = {};
     mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
     vi.clearAllTimers();
-    mockHttpsGet = https.get as vi.Mock;
+    mockHttpsGet = https.get as Mock;
     mockHttpsGet.mockReset();
   });
 
@@ -752,7 +753,7 @@ describe('Grid tariff fetching', () => {
     mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Husholdning');
 
     // Mock fetch response
-    (global.fetch as vi.Mock).mockResolvedValue({
+    (global.fetch as Mock).mockResolvedValue({
       ok: true,
       json: async () => mockNveGridTariffResponse,
     });
@@ -812,7 +813,7 @@ describe('Grid tariff fetching', () => {
     mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Husholdning');
 
     // Mock fetch to return error for every NVE attempt
-    (global.fetch as vi.Mock).mockResolvedValue({
+    (global.fetch as Mock).mockResolvedValue({
       ok: false,
       status: 500,
       statusText: 'Internal Server Error',
@@ -858,7 +859,7 @@ describe('Grid tariff fetching', () => {
     mockHomeyInstance.settings.set('nettleie_orgnr', '999999999');
     mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Husholdning');
 
-    (global.fetch as vi.Mock).mockResolvedValue({
+    (global.fetch as Mock).mockResolvedValue({
       ok: false,
       status: 500,
       statusText: 'Internal Server Error',
@@ -901,7 +902,7 @@ describe('Grid tariff fetching', () => {
       source: 'fallback',
     }]);
 
-    (global.fetch as vi.Mock).mockResolvedValue({
+    (global.fetch as Mock).mockResolvedValue({
       ok: false,
       status: 500,
       statusText: 'Internal Server Error',
@@ -933,7 +934,7 @@ describe('Grid tariff fetching', () => {
     mockHomeyInstance.settings.set('nettleie_tariffgruppe', 'Hytter og fritidshus');
 
     let capturedUrl = '';
-    (global.fetch as vi.Mock).mockImplementation((url: string) => {
+    (global.fetch as Mock).mockImplementation((url: string) => {
       capturedUrl = url;
       return Promise.resolve({
         ok: true,
@@ -986,7 +987,7 @@ describe('Grid tariff fetching', () => {
     try {
       const { today, yesterday, week } = buildExpectedGridTariffDates(now);
       const requestedDates: string[] = [];
-      (global.fetch as vi.Mock).mockImplementation((url: string) => {
+      (global.fetch as Mock).mockImplementation((url: string) => {
         const date = new URL(url).searchParams.get('ValgtDato') ?? '';
         requestedDates.push(date);
         const payload = date === week ? mockNveGridTariffResponse : [];
@@ -999,7 +1000,7 @@ describe('Grid tariff fetching', () => {
       const app = createApp();
       await app.onInit();
       requestedDates.length = 0;
-      (global.fetch as vi.Mock).mockClear();
+      (global.fetch as Mock).mockClear();
 
       mockHomeyInstance.settings.set('refresh_nettleie', Date.now());
       await flushPromises();
@@ -1060,7 +1061,7 @@ describe('Grid tariff fetching', () => {
     try {
       const { today, yesterday, week, month } = buildExpectedGridTariffDates(now);
       const requestedDates: string[] = [];
-      (global.fetch as vi.Mock).mockImplementation((url: string) => {
+      (global.fetch as Mock).mockImplementation((url: string) => {
         const date = new URL(url).searchParams.get('ValgtDato') ?? '';
         requestedDates.push(date);
         return Promise.resolve({
@@ -1072,7 +1073,7 @@ describe('Grid tariff fetching', () => {
       const app = createApp();
       await app.onInit();
       requestedDates.length = 0;
-      (global.fetch as vi.Mock).mockClear();
+      (global.fetch as Mock).mockClear();
 
       mockHomeyInstance.settings.set('refresh_nettleie', Date.now());
       await flushPromises();
@@ -1135,7 +1136,7 @@ describe('Price data structures', () => {
 });
 
 describe('Price optimization', () => {
-  let mockHttpsGet: vi.Mock;
+  let mockHttpsGet: Mock;
   let originalFetch: typeof global.fetch;
   const HOUR_MS = 60 * 60 * 1000;
   const MINUTE_MS = 60 * 1000;
@@ -1365,7 +1366,7 @@ describe('Price optimization', () => {
     mockHomeyInstance.flow._triggerCardTriggers = {};
     mockHomeyInstance.flow._triggerCardAutocompleteListeners = {};
     vi.clearAllTimers();
-    mockHttpsGet = https.get as vi.Mock;
+    mockHttpsGet = https.get as Mock;
     mockHttpsGet.mockReset();
     originalFetch = global.fetch;
     global.fetch = vi.fn();

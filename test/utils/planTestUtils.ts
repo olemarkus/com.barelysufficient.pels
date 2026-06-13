@@ -1,10 +1,12 @@
 import type {
   DevicePlanDevice,
   PlanInputDevice,
+  SteppedDiscriminantProbe,
   TemperatureDiscriminantProbe,
+  TemperatureKind,
 } from '../../lib/plan/planTypes';
-import { withTemperatureDiscriminant } from '../../lib/plan/planTypes';
-import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
+import { withBinaryDiscriminant, withTemperatureDiscriminant } from '../../lib/plan/planTypes';
+import type { EvChargingState, SteppedLoadProfile } from '../../packages/contracts/src/types';
 import { isEvDevice, resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import { legacyDeviceReason } from './deviceReasonTestUtils.ts';
 
@@ -20,11 +22,15 @@ import { legacyDeviceReason } from './deviceReasonTestUtils.ts';
  */
 const withFixtureTemperatureKind = <T extends { deviceType?: 'temperature' | 'onoff' }>(
   fields: T & TemperatureDiscriminantProbe,
-): Omit<T, keyof TemperatureDiscriminantProbe> => {
+):
+| Omit<T, keyof TemperatureDiscriminantProbe>
+| (Omit<T, keyof TemperatureDiscriminantProbe> & TemperatureKind) => {
   const hasTemperatureSignal = fields.currentTarget !== undefined
     || fields.currentTemperature !== undefined;
   if (!hasTemperatureSignal) {
-    const { currentTarget: _ct, currentTemperature: _cte, ...rest } = fields;
+    const {
+      currentTarget: _ct, currentTemperature: _cte, plannedTarget: _pt, ...rest
+    } = fields;
     return rest;
   }
   return withTemperatureDiscriminant({
@@ -57,7 +63,9 @@ export const withMaterializedEvPlugState = <T extends { deviceClass?: string; co
   const { evChargingState, ...rest } = overrides;
   if (evChargingState === undefined && !('evChargingState' in overrides)) return rest;
   if (!isEvDevice(rest)) return rest;
-  const commandable = resolveCommandableNow({ dev: { ...rest, evChargingState } });
+  const commandable = resolveCommandableNow({
+    dev: { ...rest, evChargingState: evChargingState as EvChargingState | undefined },
+  });
   const evFields: MaterializedEvFields = {
     evBlockReason: commandable.evBlockReason,
     evSessionInactive: commandable.evSessionInactive,
@@ -110,7 +118,7 @@ export const buildPlanInputDevice = (
   } = {},
 ): PlanInputDevice => {
   const { currentTarget: _currentTarget, currentTemperature, ...rest } = overrides;
-  return {
+  return withBinaryDiscriminant({
     id: 'dev',
     name: 'Device',
     targets: [],
@@ -121,10 +129,12 @@ export const buildPlanInputDevice = (
       ...withMaterializedEvPlugState(rest),
       ...(currentTemperature !== undefined ? { currentTemperature } : {}),
     }),
-  } as PlanInputDevice;
+  }) as PlanInputDevice;
 };
 
-export const steppedPlanDevice = (overrides: Partial<DevicePlanDevice> = {}): DevicePlanDevice => {
+export const steppedPlanDevice = (
+  overrides: Partial<DevicePlanDevice> & SteppedDiscriminantProbe = {},
+): DevicePlanDevice => {
   const profile = overrides.steppedLoadProfile ?? steppedProfile;
   const selectedStepId = overrides.selectedStepId ?? 'max';
   const step = profile.steps.find((s) => s.id === selectedStepId);
@@ -141,7 +151,7 @@ export const steppedPlanDevice = (overrides: Partial<DevicePlanDevice> = {}): De
 };
 
 export const steppedInputDevice = (
-  overrides: Partial<PlanInputDevice> & { evChargingState?: string } = {},
+  overrides: Partial<PlanInputDevice> & SteppedDiscriminantProbe & { evChargingState?: string } = {},
 ): PlanInputDevice => {
   const profile = overrides.steppedLoadProfile ?? steppedProfile;
   const selectedStepId = overrides.selectedStepId ?? 'max';

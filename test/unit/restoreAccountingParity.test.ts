@@ -33,13 +33,46 @@ import {
   estimateRestorePower,
   resolveRestorePowerSource,
 } from '../../lib/plan/restore/accounting';
-import type { DevicePlanDevice } from '../../lib/plan/planTypes';
-import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
+import type {
+  DevicePlanDevice,
+  BinaryControlDiscriminantProbe,
+  TemperatureDiscriminantProbe,
+} from '../../lib/plan/planTypes';
+import type { DeviceControlModel, SteppedLoadProfile } from '../../packages/contracts/src/types';
 import {
   resolveResidualKwRestore,
 } from '../../lib/device/deviceResidualKw';
 import { getRestoreDrawKw } from '../../lib/observer/observedPower';
 import { steppedProfile, buildPlanDevice } from '../utils/planTestUtils';
+
+// Local fixture shape: the discriminated output device plus the orthogonal
+// binary-control cluster and the producer-only `controlModel` setting — both
+// are read by the restore-accounting cascade (`isBinaryObservedOff` and
+// `getRestoreDrawKw`) even though neither rides on the bare `DevicePlanDevice`
+// union, so the fixtures carry them explicitly.
+type RestoreFixture = DevicePlanDevice & {
+  binaryControl?: { on: boolean };
+  controlModel?: DeviceControlModel;
+  // `steppedLoadProfile` rides on the stepped variant of the `DevicePlanDevice`
+  // union; surface it as a flat optional here so the wiring mirror below can
+  // read it the same way `setup/appInit/residualKwForPlanDevice.ts` does
+  // (guarded by `controlModel === 'stepped_load'`).
+  steppedLoadProfile?: SteppedLoadProfile;
+};
+
+// Wrap the shared output-device builder so a fixture can also carry the binary
+// cluster + `controlModel`. The shared builder already forwards both through
+// its spread at runtime (they are read by the restore cascade); this only
+// widens the param type so the extra fields type-check — the produced object is
+// byte-identical to the previous direct `buildPlanDevice(...)` call.
+const buildRestoreFixture = (
+  overrides: Partial<DevicePlanDevice>
+    & TemperatureDiscriminantProbe
+    & BinaryControlDiscriminantProbe
+    & { evChargingState?: string; controlModel?: DeviceControlModel; deviceType?: 'temperature' | 'onoff' },
+): RestoreFixture => buildPlanDevice(
+  overrides as Parameters<typeof buildPlanDevice>[0],
+) as RestoreFixture;
 
 // A degenerate stepped profile whose every step has `planningPowerW <= 0`.
 // `getSteppedLoadRestoreStep` falls back to `getSteppedLoadHighestStep` and
@@ -58,7 +91,7 @@ const zeroPowerSteppedProfile: SteppedLoadProfile = {
   ],
 };
 
-function withProducerResolvedRestore(dev: DevicePlanDevice): DevicePlanDevice {
+function withProducerResolvedRestore(dev: RestoreFixture): RestoreFixture {
   // Mirror the wiring in `setup/appInit/residualKwForPlanDevice.ts`. The
   // wiring layer is what the real runtime uses; this test recomputes it from
   // the plan-device snapshot directly so we can compare legacy vs producer
@@ -89,7 +122,7 @@ describe('restore accounting parity — producer vs legacy chain', () => {
   //   B — binary water heater, currently on (uses measured power directly).
   //   C — stepped device at a low step (observed-on with positive planning kW).
   //   D — stepped device observed-off (uses profile lowest-active step).
-  const deviceA = buildPlanDevice({
+  const deviceA = buildRestoreFixture({
     id: 'A-ev',
     name: 'EV',
     binaryControl: { on: false },
@@ -97,7 +130,7 @@ describe('restore accounting parity — producer vs legacy chain', () => {
     controlCapabilityId: 'evcharger_charging',
     // No measured / expected / planning kW — exercises the EV fallback path.
   });
-  const deviceB = buildPlanDevice({
+  const deviceB = buildRestoreFixture({
     id: 'B-heater',
     name: 'Heater',
     binaryControl: { on: true },
@@ -105,7 +138,7 @@ describe('restore accounting parity — producer vs legacy chain', () => {
     measuredPowerKw: 2.4,
     planningPowerKw: 2,
   });
-  const deviceC = buildPlanDevice({
+  const deviceC = buildRestoreFixture({
     id: 'C-stepped-on',
     name: 'Stepped on',
     binaryControl: { on: true },
@@ -115,7 +148,7 @@ describe('restore accounting parity — producer vs legacy chain', () => {
     selectedStepId: 'low',
     planningPowerKw: 1.25,
   });
-  const deviceD = buildPlanDevice({
+  const deviceD = buildRestoreFixture({
     id: 'D-stepped-off',
     name: 'Stepped off',
     binaryControl: { on: false },
@@ -135,7 +168,7 @@ describe('restore accounting parity — producer vs legacy chain', () => {
   //     `> 0` guard. Both legacy and producer fall through to path-3
   //     `getRestoreDrawKw`, which (with no measured/expected/planning kW)
   //     returns the generic 1.0 kW fallback.
-  const deviceE = buildPlanDevice({
+  const deviceE = buildRestoreFixture({
     id: 'E-stepped-lowest-no-binary',
     name: 'Stepped lowest no-binary',
     binaryControl: { on: false },
@@ -152,7 +185,7 @@ describe('restore accounting parity — producer vs legacy chain', () => {
   //     `dev.currentState !== 'off' && planningPowerKw > 0` branch fails. The
   //     profile's lowest-active step is still positive, so both legacy and
   //     producer take path-2 (source `'stepped'`, kw from lowest-active step).
-  const deviceF = buildPlanDevice({
+  const deviceF = buildRestoreFixture({
     id: 'F-stepped-step-absent-unknown',
     name: 'Stepped unknown step',
     binaryControl: { on: true },
@@ -168,7 +201,7 @@ describe('restore accounting parity — producer vs legacy chain', () => {
   //     `planningPowerKw`, both paths still take path-2 (source `'stepped'`).
   //     This pins that the producer's `hasKnownEffectiveStep` flag does not
   //     accidentally change the restore-side resolution.
-  const deviceG = buildPlanDevice({
+  const deviceG = buildRestoreFixture({
     id: 'G-stepped-reported',
     name: 'Stepped reported only',
     binaryControl: { on: true },
@@ -183,7 +216,7 @@ describe('restore accounting parity — producer vs legacy chain', () => {
   //     (shed semantics live on the shed-residual producer); both legacy and
   //     producer route through path-3 `getRestoreDrawKw` which returns the
   //     highest of measured/expected/planning/configured.
-  const deviceH = buildPlanDevice({
+  const deviceH = buildRestoreFixture({
     id: 'H-temperature-noop-shed',
     name: 'Thermostat at shed setpoint',
     binaryControl: { on: true },

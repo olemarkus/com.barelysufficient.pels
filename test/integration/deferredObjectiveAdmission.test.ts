@@ -11,6 +11,7 @@ import {
   type DeferredObjectiveSettingsV1,
 } from '../../lib/objectives/deferredObjectives';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
+import { withBinaryDiscriminant, withTemperatureDiscriminant } from '../../lib/plan/planTypes';
 
 const emptyPendingStore = createPendingBinaryCommandStore({});
 
@@ -65,7 +66,11 @@ const buildDay = (): DailyBudgetDayPayload => {
       startLocalLabels,
       plannedWeight,
       plannedKWh,
+      plannedUncontrolledKWh: plannedKWh.map(() => 0),
+      plannedControlledKWh: plannedKWh.map(() => 0),
       actualKWh,
+      actualControlledKWh: actualKWh.map(() => null),
+      actualUncontrolledKWh: actualKWh.map(() => null),
       allowedCumKWh,
       price: HOURLY_PRICES,
     },
@@ -125,7 +130,7 @@ const buildDevice = (params: {
   nowMs: number;
   currentOn: boolean;
   selectedStepId: string;
-}): PlanInputDevice => ({
+}): PlanInputDevice => withTemperatureDiscriminant(withBinaryDiscriminant({
   id: DEVICE_ID,
   name: 'Water Heater',
   controllable: false, // capacity-based control toggle is OFF for this scenario
@@ -147,7 +152,7 @@ const buildDevice = (params: {
   expectedPowerKw: params.currentOn ? 1.5 : 0,
   planningPowerKw: params.currentOn ? 1.5 : 0,
   targets: [{ id: 'target_temperature', value: TARGET_C, unit: '°C', min: 30, max: 75, step: 1 }],
-});
+})) as PlanInputDevice;
 
 const DEADLINE_AT_MS = Date.UTC(2026, 4, 10, 6, 0, 0);
 
@@ -222,7 +227,7 @@ const buildContender = (params: {
   currentOn: boolean;
   nowMs: number;
   controllable?: boolean;
-}): PlanInputDevice => ({
+}): PlanInputDevice => withBinaryDiscriminant({
   id: CONTENDER_ID,
   name: 'Contender',
   controllable: params.controllable ?? true,
@@ -234,7 +239,7 @@ const buildContender = (params: {
   observationStale: false,
   lastFreshDataMs: params.nowMs,
   targets: [],
-});
+}) as PlanInputDevice;
 
 describe('PlanBuilder deferred-objective admission walkthrough', () => {
   beforeEach(() => {
@@ -355,7 +360,10 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
     // Cycle 0 is a planned hour (cheap-bucket selection from the test fixture's price series).
     expect(device.plannedState).toBe('keep');
     // The override raises plannedTarget to the deadline target; without the fix it would be 50.
-    expect(device.plannedTarget).toBe(TARGET_C);
+    // This device carries a temperature setpoint alongside its stepped/onoff control, so
+    // `deviceType` is not 'temperature' and `isTemperaturePlanDevice` does not narrow it.
+    // Read the planner-output `plannedTarget` directly (its runtime home on `TemperatureKind`).
+    expect((device as { plannedTarget?: number }).plannedTarget).toBe(TARGET_C);
   });
 
   // The deferred horizon planner and admission decision do not read operating mode, and
@@ -394,7 +402,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
         hour,
         mode: modeRef.current,
         plannedState: device.plannedState,
-        priority: device.priority,
+        priority: device.priority!,
       });
 
       if (device.plannedState !== 'shed') {
@@ -486,7 +494,7 @@ describe('PlanBuilder deferred-objective admission walkthrough', () => {
         mode: modeRef.current,
         defer: defer.plannedState,
         contend: contend.plannedState,
-        deferPriority: defer.priority,
+        deferPriority: defer.priority!,
       });
 
       if (defer.plannedState !== 'shed') {

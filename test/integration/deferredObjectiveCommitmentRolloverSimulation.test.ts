@@ -68,6 +68,7 @@ const bucketsTo = (nowMs: number, deadlineAtMs: number): DeferredObjectiveHorizo
 };
 
 const settingsEntry = (deadlineAtMs: number): DeferredObjectiveSettingsEntry => ({
+  enabled: true,
   kind: 'temperature',
   targetTemperatureC: TARGET_TEMPERATURE_C,
   deadlineAtMs,
@@ -89,6 +90,7 @@ const seed = (deadlineAtMs: number): ActivePlanFlowCardSeed => ({
   targetTemperatureC: TARGET_TEMPERATURE_C,
   targetPercent: null,
   deadlineAtMs,
+  enforcement: 'soft',
 });
 
 const diagnosticFor = (
@@ -107,12 +109,19 @@ const diagnosticFor = (
   currentPercent: null,
   targetTemperatureC: TARGET_TEMPERATURE_C,
   currentTemperatureC: 60,
+  currentValue: 60,
+  targetValue: TARGET_TEMPERATURE_C,
   deadlineAtMs,
   deadlineLocalTime: '06:00',
   energyNeededKWh,
   kWhPerUnitBanded: 1.5,
+  kwhPerUnitLearnedMean: 1.5,
   rateConfidence: 'high',
+  displayConfidence: 'high',
   kwhPerUnitSource: 'learned',
+  kwhPerUnitAcceptedSamples: 0,
+  kwhPerUnitLastAcceptedAtMs: null,
+  planningSpeedKw: null,
   horizonBucketCount: plan.plannedBuckets.length,
   dailyBudgetExhaustedBucketCount: 0,
   expectedStepId: plan.expectedStepId,

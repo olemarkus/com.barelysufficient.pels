@@ -281,7 +281,7 @@ describe('progressCurrentValue', () => {
     currentTemperatureC: null,
     reasonCode: null,
     ...overrides,
-  });
+  } as DeferredObjectiveProgressResolution);
 
   it('returns currentPercent for ev_soc objectives', () => {
     expect(progressCurrentValue({

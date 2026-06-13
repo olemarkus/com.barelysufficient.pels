@@ -85,9 +85,6 @@ describe('Price level flow cards', () => {
       isCurrentHourExpensive: () => false,
       getCombinedPrices: () => mockHomeyInstance.settings.get('combined_prices'),
       getLastPowerUpdate: () => null,
-      log: vi.fn(),
-      logDebug: vi.fn(),
-      error: vi.fn(),
     });
 
     planService.updatePelsStatus({

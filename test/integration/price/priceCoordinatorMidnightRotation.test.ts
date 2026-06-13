@@ -129,7 +129,7 @@ describe('PriceCoordinator midnight rotation scheduler', () => {
       capturedCallbacks.push(handler);
       // Return an opaque handle; clearTimeout is also stubbed below so it's never used.
       return { __captured: true } as never;
-    }) as typeof setTimeout);
+    }) as unknown as typeof setTimeout);
     const clearTimeoutSpy = vi.spyOn(global, 'clearTimeout').mockImplementation(() => undefined);
 
     const coordinator = createCoordinator();

@@ -22,18 +22,26 @@ const baseDiagnostic = (overrides: Partial<DeferredObjectiveDiagnostic> & {
   reasonCode: 'objective_progress_stale',
   targetPercent: null,
   currentPercent: null,
+  currentValue: 50,
+  targetValue: 55,
   targetTemperatureC: 55,
   currentTemperatureC: 50,
   deadlineAtMs: 0,
   deadlineLocalTime: '07:00',
   energyNeededKWh: 1.5,
   kWhPerUnitBanded: 0.3,
+  kwhPerUnitLearnedMean: null,
   rateConfidence: null,
+  displayConfidence: null,
+  kwhPerUnitSource: null,
+  kwhPerUnitAcceptedSamples: 0,
+  kwhPerUnitLastAcceptedAtMs: null,
+  planningSpeedKw: null,
   horizonBucketCount: 1,
   dailyBudgetExhaustedBucketCount: 0,
   expectedStepId: null,
   ...overrides,
-});
+} as DeferredObjectiveDiagnostic);
 
 const setup = () => {
   const bus = createDeferredObjectiveHoursRemainingBus();

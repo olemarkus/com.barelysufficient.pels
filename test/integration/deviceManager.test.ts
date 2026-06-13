@@ -1,3 +1,4 @@
+import type { Mock } from 'vitest';
 import { DeviceTransport, type DeviceTransportBinarySettleOps, PLAN_LIVE_STATE_OBSERVED_EVENT, PLAN_RECONCILE_REALTIME_UPDATE_EVENT } from '../../lib/device/deviceTransport';
 import { hasObservedTemperature } from '../../packages/shared-domain/src/temperatureObservedState';
 import {
@@ -13,8 +14,8 @@ import {
     startPendingBinarySettleWindow,
 } from '../../lib/observer/binarySettle';
 import type { LiveFeedHealth } from '../../lib/device/liveFeed';
-import type { TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
-import type { HomeyDeviceLike } from '../../lib/utils/types';
+import type { EvObservedProbe, TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
+import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 import { isCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import { isManagedFilterActive } from '../../setup/appDeviceSupport';
 import {
@@ -110,13 +111,13 @@ async function populateSnapshotForGrace(transport: DeviceTransport): Promise<voi
 describe('DeviceTransport', () => {
     let deviceManager: DeviceTransport;
     let homeyMock: Homey.App;
-    let loggerMock: {
-        log: vi.Mock;
-        debug: vi.Mock;
-        error: vi.Mock;
-        structuredLog: { info: vi.Mock; error: vi.Mock; debug: vi.Mock; warn: vi.Mock };
+    let loggerMock: Logger & {
+        log: Mock;
+        debug: Mock;
+        error: Mock;
+        structuredLog: Logger['structuredLog'] & { info: Mock; error: Mock; debug: Mock; warn: Mock };
     };
-    let debugStructuredMock: vi.Mock;
+    let debugStructuredMock: Mock;
 
     afterEach(() => {
         vi.restoreAllMocks();
@@ -143,7 +144,7 @@ describe('DeviceTransport', () => {
                 error: vi.fn(),
                 debug: vi.fn(),
                 warn: vi.fn(),
-            },
+            } as unknown as Logger['structuredLog'] & { info: Mock; error: Mock; debug: Mock; warn: Mock },
         };
         debugStructuredMock = vi.fn();
         deviceManager = new DeviceTransport(
@@ -287,7 +288,7 @@ describe('DeviceTransport', () => {
                 class: 'thermostat',
                 capabilities: ['onoff', 'measure_temperature', 'target_temperature'],
                 capabilitiesObj: {
-                    onoff: { value: 'unexpected', id: 'onoff' },
+                    onoff: { value: 'unexpected' as unknown as boolean, id: 'onoff' },
                     measure_temperature: { value: 20, id: 'measure_temperature', units: '°C' },
                     target_temperature: { value: 22, id: 'target_temperature', units: '°C' },
                 },
@@ -372,7 +373,7 @@ describe('DeviceTransport', () => {
                 capabilitiesObj: {
                     onoff: { value: true, id: 'onoff' },
                     measure_temperature: { value: 20, id: 'measure_temperature', units: '°C' },
-                    target_temperature: { value: '21', id: 'target_temperature', units: '°C', min: 5, max: 35, step: 0.5 },
+                    target_temperature: { value: '21' as unknown as number, id: 'target_temperature', units: '°C', min: 5, max: 35, step: 0.5 },
                 },
             }]);
 
@@ -512,7 +513,7 @@ describe('DeviceTransport', () => {
             loggerMock.structuredLog.error.mockClear();
             await dm.refreshSnapshot();
             const dropEvents = loggerMock.structuredLog.error.mock.calls
-                .filter(([payload]: [unknown]) => (payload as { event?: string })?.event === 'device_snapshot_control_state_dropped');
+                .filter((call: unknown[]) => (call[0] as { event?: string })?.event === 'device_snapshot_control_state_dropped');
             expect(dropEvents).toEqual([]);
             dm.destroy();
         });
@@ -547,7 +548,7 @@ describe('DeviceTransport', () => {
             const ids = picker.map((d) => d.id).sort();
             expect(ids).toEqual(['badDev', 'dev2']);
             const dropEvents = loggerMock.structuredLog.error.mock.calls
-                .filter(([payload]: [unknown]) => (payload as { event?: string })?.event === 'device_snapshot_control_state_dropped');
+                .filter((call: unknown[]) => (call[0] as { event?: string })?.event === 'device_snapshot_control_state_dropped');
             expect(dropEvents).toEqual([]);
             dm.destroy();
         });
@@ -826,7 +827,7 @@ describe('DeviceTransport', () => {
         it('includes the normalized error in the structured refresh failure log', async () => {
             await deviceManager.init();
             const refreshFailure = new Error('refresh failed');
-            vi.spyOn(deviceManager as never, 'fetchDevicesForSnapshot').mockRejectedValueOnce(refreshFailure);
+            vi.spyOn(deviceManager as unknown as { fetchDevicesForSnapshot: () => Promise<unknown> }, 'fetchDevicesForSnapshot').mockRejectedValueOnce(refreshFailure);
 
             await deviceManager.refreshSnapshot();
 
@@ -2234,7 +2235,7 @@ describe('DeviceTransport', () => {
                 capabilities: ['onoff'],
                 class: 'heater',
                 capabilitiesObj: {
-                    onoff: { value: 'unknown', id: 'onoff' },
+                    onoff: { value: 'unknown' as unknown as boolean, id: 'onoff' },
                 },
             });
 
@@ -2279,7 +2280,7 @@ describe('DeviceTransport', () => {
                 capabilities: ['onoff', 'measure_temperature', 'measure_power', 'target_temperature'],
                 class: 'thermostat',
                 capabilitiesObj: {
-                    onoff: { value: 'unknown', id: 'onoff' },
+                    onoff: { value: 'unknown' as unknown as boolean, id: 'onoff' },
                     measure_temperature: { value: 20, id: 'measure_temperature', units: '°C' },
                     measure_power: { value: 500, id: 'measure_power' },
                     target_temperature: { value: 19, id: 'target_temperature', units: '°C' },
@@ -2568,7 +2569,7 @@ describe('DeviceTransport', () => {
                 evCharging: false,
                 evChargingState: 'plugged_in_paused',
                 binaryControlObservation: previousEvidence,
-            }]);
+            }] as (TargetDeviceSnapshot & EvObservedProbe)[]);
             mockApiGet.mockResolvedValue({
                 ev1: {
                     id: 'ev1',
@@ -2623,7 +2624,7 @@ describe('DeviceTransport', () => {
                 evCharging: false,
                 evChargingState: 'plugged_in_paused',
                 binaryControlObservation: newerEvidence,
-            }]);
+            }] as (TargetDeviceSnapshot & EvObservedProbe)[]);
             mockApiGet.mockResolvedValue({
                 ev1: {
                     id: 'ev1',
@@ -2818,7 +2819,7 @@ describe('DeviceTransport', () => {
                     evCharging: false,
                     evChargingState: 'plugged_in_paused',
                     binaryControlObservation: previousEvidence,
-                }]);
+                }] as (TargetDeviceSnapshot & EvObservedProbe)[]);
 
                 vi.setSystemTime(new Date('2026-04-01T12:00:00.000Z'));
                 evDeviceManager.injectCapabilityUpdateForTest('ev1', 'evcharger_charging_state', 'mystery');
@@ -3116,7 +3117,7 @@ describe('DeviceTransport', () => {
                 capabilityId: 'onoff',
                 changes: [{ capabilityId: 'onoff', previousValue: 'off', nextValue: 'on' }],
             }));
-            const driftEvent = realtimeListener.mock.calls[0][0];
+            const driftEvent = (realtimeListener.mock.calls as unknown[][])[0]?.[0] as { observationSeq: unknown; observedAtMs: unknown };
             expect(liveStateListener).toHaveBeenCalledOnce();
             expect(liveStateListener.mock.calls[0][0]).toEqual(expect.objectContaining({
                 source: 'realtime_capability',
@@ -6640,7 +6641,7 @@ describe('DeviceTransport', () => {
 
                     deviceManager.injectCapabilityUpdateForTest('dev1', 'measure_temperature', 21);
 
-                    const snapshot = deviceManager.getSnapshot()[0];
+                    const snapshot = deviceManager.getSnapshot()[0] as TargetDeviceSnapshot & TemperatureObservedProbe;
                     if (!hasObservedTemperature(snapshot)) throw new Error('expected observed temperature');
                     expect(snapshot.currentTemperature).toBe(21);
                     expect(snapshot.lastFreshDataMs).toBeGreaterThan(freshnessAtRefresh!);
@@ -6672,7 +6673,7 @@ describe('DeviceTransport', () => {
                     vi.setSystemTime(new Date('2026-04-01T12:01:00.000Z'));
                     deviceManager.injectCapabilityUpdateForTest('dev1', 'measure_temperature', Number.NaN);
 
-                    const snapshot = deviceManager.getSnapshot()[0];
+                    const snapshot = deviceManager.getSnapshot()[0] as TargetDeviceSnapshot & TemperatureObservedProbe;
                     if (!hasObservedTemperature(snapshot)) throw new Error('expected observed temperature');
                     expect(snapshot.currentTemperature).toBe(21);
                     expect(snapshot.lastFreshDataMs).toBe(freshnessBefore);
@@ -6849,7 +6850,7 @@ describe('DeviceTransport', () => {
                         capabilitiesObj: {
                             onoff: { value: true, id: 'onoff', lastUpdated: '2026-04-01T12:01:00.000Z' },
                             target_temperature: {
-                                value: 'unknown',
+                                value: 'unknown' as unknown as number,
                                 id: 'target_temperature',
                                 units: '°C',
                                 min: 5,
@@ -7086,7 +7087,7 @@ describe('DeviceTransport', () => {
                         class: 'heater',
                         capabilities: ['onoff', 'measure_power'],
                         capabilitiesObj: {
-                            onoff: { value: 'unknown', id: 'onoff' },
+                            onoff: { value: 'unknown' as unknown as boolean, id: 'onoff' },
                             measure_power: { value: 500, id: 'measure_power' },
                         },
                     });

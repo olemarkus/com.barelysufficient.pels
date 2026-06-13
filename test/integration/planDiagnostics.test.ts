@@ -1,20 +1,31 @@
 import { buildDeviceDiagnosticsObservations } from '../../lib/plan/planDiagnostics';
 import type { PlanContext } from '../../lib/plan/planContext';
 import type { RestorePlanResult } from '../../lib/plan/restore';
-import type { DevicePlanDevice, PlanInputDevice } from '../../lib/plan/planTypes';
+import type {
+  DevicePlanDevice,
+  PlanInputDevice,
+  BinaryControlDiscriminantProbe,
+  TemperatureDiscriminantProbe,
+} from '../../lib/plan/planTypes';
+import { buildPlanInputDevice, buildPlanDevice } from '../utils/planTestUtils';
 import { legacyDeviceReason } from '../utils/deviceReasonTestUtils';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 
-const r = legacyDeviceReason;
+const r = (reason: string) => legacyDeviceReason(reason)!;
 
 const buildContext = (device: PlanInputDevice, desiredForMode: Record<string, number> = {}): PlanContext => ({
   devices: [device],
   desiredForMode,
   total: 4,
+  powerKnown: true,
+  hasLivePowerSample: true,
+  powerSampleAgeMs: 0,
+  powerFreshnessState: 'fresh',
   softLimit: 5,
   capacitySoftLimit: 5,
   dailySoftLimit: null,
   softLimitSource: 'capacity',
+  hourBucketKey: '2026-01-01T00',
   budgetKWh: 4,
   usedKWh: 1,
   minutesRemaining: 30,
@@ -36,16 +47,32 @@ const buildRestoreResult = (overrides: Partial<RestorePlanResult> = {}): Restore
   activeOvershoot: false,
   restoreCooldownSeconds: 0,
   shedCooldownRemainingSec: null,
+  shedCooldownStartedAtMs: null,
+  shedCooldownTotalSec: null,
   restoreCooldownRemainingSec: null,
+  restoreCooldownStartedAtMs: null,
+  restoreCooldownTotalSec: null,
   inShedWindow: false,
   restoreCooldownMs: 60 * 1000,
   lastRestoreCooldownBumpMs: null,
   ...overrides,
 });
 
+type InputDeviceFixture = Partial<PlanInputDevice>
+  & BinaryControlDiscriminantProbe
+  & TemperatureDiscriminantProbe
+  & { evChargingState?: string; deviceType?: 'temperature' | 'onoff' };
+type PlanDeviceFixture = Partial<DevicePlanDevice>
+  & TemperatureDiscriminantProbe
+  & {
+    reason?: DevicePlanDevice['reason'] | string;
+    evChargingState?: string;
+    deviceType?: 'temperature' | 'onoff';
+  };
+
 const buildObservation = (params: {
-  inputDevice: PlanInputDevice;
-  planDevice: DevicePlanDevice;
+  inputDevice: InputDeviceFixture;
+  planDevice: PlanDeviceFixture;
   restoreResult?: Partial<RestorePlanResult>;
   desiredForMode?: Record<string, number>;
   priceOptimizationEnabled?: boolean;
@@ -53,12 +80,12 @@ const buildObservation = (params: {
   isCurrentHourCheap?: () => boolean;
   isCurrentHourExpensive?: () => boolean;
 }) => buildDeviceDiagnosticsObservations({
-  context: buildContext(params.inputDevice, params.desiredForMode),
+  context: buildContext(buildPlanInputDevice(params.inputDevice), params.desiredForMode),
   // Production always stamps the plan device's `deviceType` from the snapshot, so
   // mirror the input device's modality onto the plan device the fixture builds.
   // The temperature-cluster reads (`currentTarget` / `currentTemperature`) on the
   // plan device narrow through `isTemperaturePlanDevice`, which keys on it.
-  planDevices: [{ deviceType: params.inputDevice.deviceType, ...params.planDevice } as DevicePlanDevice],
+  planDevices: [buildPlanDevice({ deviceType: params.inputDevice.deviceType, ...params.planDevice })],
   restoreResult: buildRestoreResult(params.restoreResult),
   priceOptimizationEnabled: params.priceOptimizationEnabled ?? false,
   priceOptimizationSettings: params.priceOptimizationSettings ?? {},
@@ -284,7 +311,7 @@ describe('plan diagnostics observations', () => {
   });
 
   it('resolves the commanded target from the planned setpoint, falling back to the current setpoint', () => {
-    const inputDevice: PlanInputDevice = {
+    const inputDevice: PlanInputDevice = buildPlanInputDevice({
       id: 'heater-1',
       name: 'Hall Heater',
       deviceClass: 'thermostat',
@@ -293,10 +320,9 @@ describe('plan diagnostics observations', () => {
       controllable: true,
       available: true,
       currentTemperature: 18,
-      binaryControl: { on: true },
       targets: [{ id: 'target_temperature', value: 18, unit: 'C', step: 0.5 }],
-    };
-    const basePlanDevice: DevicePlanDevice = {
+    });
+    const basePlanDevice: DevicePlanDevice = buildPlanDevice({
       id: 'heater-1',
       name: 'Hall Heater',
       deviceClass: 'thermostat',
@@ -307,7 +333,7 @@ describe('plan diagnostics observations', () => {
       controllable: true,
       available: true,
       currentTemperature: 18,
-    };
+    });
 
     // Planned setpoint present → that is what PELS is commanding.
     expect(buildObservation({
@@ -325,7 +351,7 @@ describe('plan diagnostics observations', () => {
   });
 
   it('flags a turn_off shed of a temperature device as a PELS-commanded off shed', () => {
-    const inputDevice: PlanInputDevice = {
+    const inputDevice: PlanInputDevice = buildPlanInputDevice({
       id: 'heater-1',
       name: 'Hall Heater',
       deviceClass: 'thermostat',
@@ -334,10 +360,9 @@ describe('plan diagnostics observations', () => {
       controllable: true,
       available: true,
       currentTemperature: 16,
-      binaryControl: { on: true },
       targets: [{ id: 'target_temperature', value: 18, unit: 'C', step: 0.5 }],
-    };
-    const basePlanDevice: DevicePlanDevice = {
+    });
+    const basePlanDevice: DevicePlanDevice = buildPlanDevice({
       id: 'heater-1',
       name: 'Hall Heater',
       deviceClass: 'thermostat',
@@ -349,7 +374,7 @@ describe('plan diagnostics observations', () => {
       controllable: true,
       available: true,
       currentTemperature: 16,
-    };
+    });
 
     // turn_off shed → no lowered setpoint, but flagged as a PELS off shed.
     expect(buildObservation({

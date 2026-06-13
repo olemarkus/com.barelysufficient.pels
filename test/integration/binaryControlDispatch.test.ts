@@ -1,5 +1,7 @@
 import { createPlanEngineState } from '../../lib/plan/planState';
+import type { BinaryControlDecisionSnapshot } from '../../lib/plan/planBinaryControlHelpers';
 import { decideBinaryControl } from '../../lib/plan/planBinaryControl';
+import type { EvObservedProbe } from '../../packages/contracts/src/types';
 import {
   type BinaryControlTransport,
   decideAndDispatchBinaryControl,
@@ -25,6 +27,19 @@ const buildObservation = (snapshots: { id: string; currentOn?: boolean }[] = [])
   withGetSnapshotByDeviceId({
     getSnapshot: vi.fn().mockReturnValue(snapshots),
   });
+
+/**
+ * Fixture builder for the decomposed `BinaryControlDecisionSnapshot` the
+ * decision/dispatch entry points read. Defaults the required `targets` array and
+ * widens with `EvObservedProbe` so EV fixtures can carry the observer-owned
+ * `evChargingState` (regrouped onto the snapshot, off the base type).
+ */
+const snapshot = (
+  overrides: Partial<BinaryControlDecisionSnapshot> & EvObservedProbe & { id: string; name: string },
+): BinaryControlDecisionSnapshot & EvObservedProbe => ({
+  targets: [],
+  ...overrides,
+});
 
 /**
  * Build a `BinaryControlTransport` whose write seam is a real actuator over the
@@ -64,13 +79,13 @@ describe('decideBinaryControl (plan-side decision producer)', () => {
       deviceId: 'socket1',
       name: 'Socket',
       desired: true,
-      snapshot: {
+      snapshot: snapshot({
         id: 'socket1',
         name: 'Socket',
         controlCapabilityId: 'onoff',
         canSetControl: true,
         binaryControl: { on: false },
-      },
+      }),
       logContext: 'capacity',
     });
 
@@ -99,13 +114,13 @@ describe('decideBinaryControl (plan-side decision producer)', () => {
       deviceId: 'socket1',
       name: 'Socket',
       desired: true,
-      snapshot: {
+      snapshot: snapshot({
         id: 'socket1',
         name: 'Socket',
         controlCapabilityId: 'onoff',
         canSetControl: true,
         binaryControl: { on: true },
-      },
+      }),
       logContext: 'capacity',
     });
 
@@ -123,14 +138,14 @@ describe('decideBinaryControl (plan-side decision producer)', () => {
       deviceId: 'ev1',
       name: 'EV',
       desired: false,
-      snapshot: {
+      snapshot: snapshot({
         id: 'ev1',
         name: 'EV',
         controlCapabilityId: 'evcharger_charging',
         canSetControl: true,
         flowBackedCapabilityIds: ['evcharger_charging'],
         evChargingState: 'plugged_in_charging',
-      },
+      }),
       logContext: 'capacity',
       reason: 'shedding',
     });
@@ -159,11 +174,11 @@ describe('dispatchBinaryControlDecision (executor-side dispatcher)', () => {
         actuationMode: 'plan',
       },
       transport,
-      snapshot: {
+      snapshot: snapshot({
         id: 'socket1',
         name: 'Socket',
         controlCapabilityId: 'onoff',
-      },
+      }),
     });
 
     expect(result).toEqual({ ok: true });
@@ -198,12 +213,12 @@ describe('dispatchBinaryControlDecision (executor-side dispatcher)', () => {
         actuationMode: 'plan',
       },
       transport,
-      snapshot: {
+      snapshot: snapshot({
         id: 'socket1',
         name: 'Socket',
         controlCapabilityId: 'onoff',
         flowBackedCapabilityIds: ['onoff'],
-      },
+      }),
     });
 
     expect(result).toEqual({ ok: true });
@@ -242,11 +257,11 @@ describe('dispatchBinaryControlDecision (executor-side dispatcher)', () => {
         actuationMode: 'plan',
       },
       transport,
-      snapshot: {
+      snapshot: snapshot({
         id: 'socket1',
         name: 'Socket',
         controlCapabilityId: 'onoff',
-      },
+      }),
     });
 
     expect(result).toEqual({ ok: false, reason: 'dispatch_failed' });
@@ -274,12 +289,12 @@ describe('dispatchBinaryControlDecision (executor-side dispatcher)', () => {
         actuationMode: 'plan',
       },
       transport,
-      snapshot: {
+      snapshot: snapshot({
         id: 'socket1',
         name: 'Socket',
         controlCapabilityId: 'onoff',
         flowBackedCapabilityIds: ['onoff'],
-      },
+      }),
     });
 
     expect(result).toEqual({ ok: false, reason: 'dispatch_failed' });
@@ -301,13 +316,13 @@ describe('decideAndDispatchBinaryControl (executor-side convenience)', () => {
       deviceId: 'socket1',
       name: 'Socket',
       desired: true,
-      snapshot: {
+      snapshot: snapshot({
         id: 'socket1',
         name: 'Socket',
         controlCapabilityId: 'onoff',
         canSetControl: true,
         binaryControl: { on: true }, // already matches
-      },
+      }),
       logContext: 'capacity',
     });
 
@@ -325,13 +340,13 @@ describe('decideAndDispatchBinaryControl (executor-side convenience)', () => {
       deviceId: 'socket1',
       name: 'Socket',
       desired: true,
-      snapshot: {
+      snapshot: snapshot({
         id: 'socket1',
         name: 'Socket',
         controlCapabilityId: 'onoff',
         canSetControl: true,
         binaryControl: { on: false },
-      },
+      }),
       logContext: 'capacity',
     });
 
@@ -350,14 +365,14 @@ describe('decideAndDispatchBinaryControl (executor-side convenience)', () => {
       deviceId: 'ev1',
       name: 'EV',
       desired: false,
-      snapshot: {
+      snapshot: snapshot({
         id: 'ev1',
         name: 'EV',
         controlCapabilityId: 'evcharger_charging',
         canSetControl: true,
         binaryControl: { on: true },
         flowBackedCapabilityIds: ['evcharger_charging'],
-      },
+      }),
       logContext: 'capacity',
     });
 

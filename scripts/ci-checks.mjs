@@ -4,6 +4,7 @@ await runParallel([
   { label: 'tsc:runtime', command: 'npx', args: ['tsc', '--noEmit'] },
   { label: 'tsc:settings-ui', command: 'npx', args: ['tsc', '-p', 'packages/settings-ui/tsconfig.json', '--noEmit'] },
   { label: 'tsc:widgets', command: 'npx', args: ['tsc', '-p', 'tsconfig.widgets.json', '--noEmit'] },
+  { label: 'tsc:tests', command: 'npx', args: ['tsc', '-p', 'tsconfig.tests.json', '--noEmit'] },
   { label: 'tsc:unused', command: 'npm', args: ['run', 'typecheck:unused'] },
   { label: 'lint', command: 'npm', args: ['run', 'lint'] },
   { label: 'lint:css', command: 'npm', args: ['run', 'lint:css'] },

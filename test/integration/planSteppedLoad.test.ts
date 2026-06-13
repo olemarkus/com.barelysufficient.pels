@@ -11,6 +11,21 @@ import {
 } from '../../lib/plan/planSteppedLoad';
 import { resolveObservedSteppedLoadCurrentState } from '../../lib/plan/planCurrentState';
 import { steppedInputDevice, steppedPlanDevice, steppedProfile } from '../utils/planTestUtils';
+import {
+  type BinaryControlDiscriminantProbe,
+  withBinaryDiscriminant,
+} from '../../lib/plan/planTypes';
+import type { PlanInputDevice } from '../../lib/plan/planTypes';
+
+// `binaryControl` moved off `PlanInputDevice`'s base onto the orthogonal
+// `BinaryControlKind` cluster, so `steppedInputDevice`'s param no longer accepts
+// it. Split the cluster off, build through the shared helper, then re-attach it.
+const steppedBinaryInputDevice = (
+  overrides: Parameters<typeof steppedInputDevice>[0] & BinaryControlDiscriminantProbe,
+): PlanInputDevice => {
+  const { binaryControl, ...rest } = overrides;
+  return withBinaryDiscriminant({ ...steppedInputDevice(rest), binaryControl }) as PlanInputDevice;
+};
 
 describe('planSteppedLoad', () => {
   it('resolves initial desired step and next restore step', () => {
@@ -313,7 +328,6 @@ describe('planSteppedLoad', () => {
     };
     expect(getSteppedLoadShedTargetStep({
       device: {
-        controlModel: 'stepped_load',
         steppedLoadProfile: zeroOnlyProfile,
         selectedStepId: 'idle',
       },
@@ -323,12 +337,12 @@ describe('planSteppedLoad', () => {
 
   it('resolves current state from binary onoff or stepped profile', () => {
     expect(resolveObservedSteppedLoadCurrentState(steppedInputDevice({ selectedStepId: undefined }))).toBe('unknown');
-    expect(resolveObservedSteppedLoadCurrentState(steppedInputDevice({ binaryControl: { on: true }, selectedStepId: 'low' }))).toBe('on');
-    expect(resolveObservedSteppedLoadCurrentState(steppedInputDevice({ binaryControl: { on: false }, selectedStepId: 'low' }))).toBe('off');
-    expect(resolveObservedSteppedLoadCurrentState(steppedInputDevice({ binaryControl: { on: true }, selectedStepId: 'off' }))).toBe('off');
-    expect(resolveObservedSteppedLoadCurrentState(steppedInputDevice({ controlModel: 'binary_power', steppedLoadProfile: undefined, binaryControl: { on: true } }))).toBe('on');
-    expect(resolveObservedSteppedLoadCurrentState(steppedInputDevice({ controlModel: 'binary_power', steppedLoadProfile: undefined, binaryControl: { on: false } }))).toBe('off');
-    expect(resolveObservedSteppedLoadCurrentState(steppedInputDevice({ controlModel: 'binary_power', steppedLoadProfile: undefined, binaryControl: { on: true } }))).toBe('on');
+    expect(resolveObservedSteppedLoadCurrentState(steppedBinaryInputDevice({ binaryControl: { on: true }, selectedStepId: 'low' }))).toBe('on');
+    expect(resolveObservedSteppedLoadCurrentState(steppedBinaryInputDevice({ binaryControl: { on: false }, selectedStepId: 'low' }))).toBe('off');
+    expect(resolveObservedSteppedLoadCurrentState(steppedBinaryInputDevice({ binaryControl: { on: true }, selectedStepId: 'off' }))).toBe('off');
+    expect(resolveObservedSteppedLoadCurrentState(steppedBinaryInputDevice({ controlModel: 'binary_power', steppedLoadProfile: undefined, binaryControl: { on: true } }))).toBe('on');
+    expect(resolveObservedSteppedLoadCurrentState(steppedBinaryInputDevice({ controlModel: 'binary_power', steppedLoadProfile: undefined, binaryControl: { on: false } }))).toBe('off');
+    expect(resolveObservedSteppedLoadCurrentState(steppedBinaryInputDevice({ controlModel: 'binary_power', steppedLoadProfile: undefined, binaryControl: { on: true } }))).toBe('on');
   });
 
   it('uses planning power for restore math and measured power for immediate shed relief', () => {

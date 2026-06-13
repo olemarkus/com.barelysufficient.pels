@@ -8,8 +8,9 @@ import {
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { PLAN_STATE_HELD_FALLBACK_STATUS } from '../../packages/shared-domain/src/planStateLabels';
 import { legacyDeviceReason } from '../utils/deviceReasonTestUtils';
+import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 
-const r = legacyDeviceReason;
+const r = (reason: string): DeviceReason => legacyDeviceReason(reason)!;
 
 describe('device overview formatter', () => {
   it('formats active devices with measured and expected power', () => {
@@ -262,6 +263,7 @@ describe('device overview formatter', () => {
       observationStale: true,
       reportedStepId: 'low',
       targetStepId: 'max',
+      reason: r('keep'),
     })).toBe(false);
   });
 
@@ -333,13 +335,13 @@ describe('device overview transition signatures', () => {
       currentState: 'off',
       plannedState: 'shed',
       reason: r('activation backoff (1535s remaining)'),
-      shedAction: 'turn_off',
+      shedAction: 'turn_off' as const,
     };
     const activationBackoffTick = {
       currentState: 'off',
       plannedState: 'shed',
       reason: r('activation backoff (1503s remaining)'),
-      shedAction: 'turn_off',
+      shedAction: 'turn_off' as const,
     };
 
     expect(buildDeviceOverviewTransitionSignature(restoreCooldown))
@@ -352,13 +354,13 @@ describe('device overview transition signatures', () => {
     const restoreCooldown = {
       currentState: 'on',
       plannedState: 'shed',
-      shedAction: 'turn_off',
+      shedAction: 'turn_off' as const,
       reason: r('cooldown (restore, 30s remaining)'),
     };
     const restoreCooldownTick = {
       currentState: 'on',
       plannedState: 'shed',
-      shedAction: 'turn_off',
+      shedAction: 'turn_off' as const,
       reason: r('cooldown (restore, 24s remaining)'),
     };
 
@@ -393,13 +395,13 @@ describe('device overview transition signatures', () => {
     const base = {
       currentState: 'off',
       plannedState: 'shed',
-      shedAction: 'turn_off',
+      shedAction: 'turn_off' as const,
       reason: r('shortfall (need 1.21kW, headroom -1.23kW)'),
     };
     const jitterOnly = {
       currentState: 'off',
       plannedState: 'shed',
-      shedAction: 'turn_off',
+      shedAction: 'turn_off' as const,
       reason: r('shortfall (need 1.24kW, headroom -1.24kW)'),
     };
 
@@ -429,7 +431,7 @@ describe('device overview transition signatures', () => {
       buildDeviceOverviewTransitionSignature({
         currentState: 'on',
         plannedState: 'shed',
-        shedAction: 'turn_off',
+        shedAction: 'turn_off' as const,
         reason: r('keep'),
         measuredPowerKw: 0,
         expectedPowerKw: 1,
@@ -448,7 +450,7 @@ describe('device overview transition signatures', () => {
 
   it('changes when stepped observed-vs-target semantics change', () => {
     const base = {
-      controlModel: 'stepped_load',
+      controlModel: 'stepped_load' as const,
       currentState: 'on',
       plannedState: 'keep',
       reportedStepId: 'low',
@@ -457,7 +459,7 @@ describe('device overview transition signatures', () => {
     };
 
     expect(buildDeviceOverviewTransitionSignature(base)).not.toBe(buildDeviceOverviewTransitionSignature({
-        controlModel: 'stepped_load',
+        controlModel: 'stepped_load' as const,
         currentState: 'on',
         plannedState: 'keep',
         reportedStepId: 'low',

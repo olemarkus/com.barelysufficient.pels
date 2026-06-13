@@ -1,13 +1,40 @@
-import { describe, expect, test } from 'vitest';
+import { beforeAll, describe, expect, test } from 'vitest';
 
-// Loaded via dynamic import because the source is a plain ESM .mjs script
-// outside the TypeScript build graph.
-const {
-  filterArrayLiteral,
-  rewriteSidebarSource,
-  matchNestedItems,
-  splitArrayEntries,
-} = await import('../../scripts/sidebarFilter.mjs');
+// The source is a plain ESM .mjs script outside the TypeScript build graph, so
+// it carries no `.d.ts`. Load it via a dynamic import in `beforeAll` (a
+// top-level `await import` is rejected under `module: nodenext` in a
+// CommonJS-mode test file) and project the untyped namespace onto a typed shape.
+type SidebarFilterModule = {
+  splitArrayEntries: (arrayLiteral: string) => string[];
+  matchNestedItems: (entry: string) => { inner: string; fullMatch: string } | null;
+  filterArrayLiteral: (
+    arrayLiteral: string,
+    pageExists: (link: string) => Promise<boolean>,
+  ) => Promise<string>;
+  rewriteSidebarSource: (
+    source: string,
+    pageExists: (link: string) => Promise<boolean>,
+  ) => Promise<string>;
+};
+
+let filterArrayLiteral: SidebarFilterModule['filterArrayLiteral'];
+let rewriteSidebarSource: SidebarFilterModule['rewriteSidebarSource'];
+let matchNestedItems: SidebarFilterModule['matchNestedItems'];
+let splitArrayEntries: SidebarFilterModule['splitArrayEntries'];
+
+beforeAll(async () => {
+  // The specifier is widened to `string` so module resolution stays dynamic and
+  // the untyped `.mjs` does not surface as an implicit-any import error.
+  const sidebarFilterModule = await import(
+    '../../scripts/sidebarFilter.mjs' as string
+  ) as SidebarFilterModule;
+  ({
+    filterArrayLiteral,
+    rewriteSidebarSource,
+    matchNestedItems,
+    splitArrayEntries,
+  } = sidebarFilterModule);
+});
 
 function pageExistsFor(existing: ReadonlyArray<string>) {
   const set = new Set(existing);

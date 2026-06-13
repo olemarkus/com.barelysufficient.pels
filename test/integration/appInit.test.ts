@@ -92,7 +92,7 @@ describe('app init plan service wiring', () => {
     }));
 
     expect(engine).toBeDefined();
-    (capturedPlanEngineDeps.current as { logDebug: (...args: unknown[]) => void }).logDebug('debug payload', 123);
+    (capturedPlanEngineDeps.current as unknown as { logDebug: (...args: unknown[]) => void }).logDebug('debug payload', 123);
 
     expect(logDebug).toHaveBeenCalledWith('plan', 'debug payload', 123);
   });
@@ -104,6 +104,7 @@ describe('app init plan service wiring', () => {
         {
           id: 'socket-1',
           name: 'Socket',
+          targets: [],
           capabilities: ['onoff'],
           controlCapabilityId: 'onoff',
         },
@@ -111,12 +112,14 @@ describe('app init plan service wiring', () => {
           id: 'ev-1',
           name: 'EV',
           deviceClass: 'evcharger',
+          targets: [],
           capabilities: ['evcharger_charging', 'evcharger_charging_state'],
           controlCapabilityId: 'evcharger_charging',
         },
         {
           id: 'temp-1',
           name: 'Thermostat',
+          targets: [],
           capabilities: ['measure_temperature', 'target_temperature'],
         },
       ],
@@ -378,8 +381,17 @@ describe('app init plan service wiring', () => {
       deadlineLocalTime: '06:00',
       energyNeededKWh: 1,
       kWhPerUnitBanded: 1,
+      currentValue: 50,
+      targetValue: 65,
+      kwhPerUnitLearnedMean: 1,
       rateConfidence: 'high',
+      displayConfidence: 'high',
+      kwhPerUnitSource: 'learned',
+      kwhPerUnitAcceptedSamples: 50,
+      kwhPerUnitLastAcceptedAtMs: 0,
+      planningSpeedKw: 1,
       horizonBucketCount: 6,
+      dailyBudgetExhaustedBucketCount: 0,
       expectedStepId: null,
     }], 0);
     recorder.observe([], 6 * 60 * 60 * 1000); // deadline-passed → finalized → dirty
@@ -440,7 +452,7 @@ describe('app init plan service wiring', () => {
 
     capturedEmitterDeps.current = null;
     createDeferredObjectiveLifecycleEmitter(ctx);
-    const observe = (capturedEmitterDeps.current as {
+    const observe = (capturedEmitterDeps.current as unknown as {
       observeDeferredObjectivePlanHistory: (diagnostics: readonly unknown[], nowMs: number) => void;
     }).observeDeferredObjectivePlanHistory;
 
@@ -490,8 +502,17 @@ describe('app init plan service wiring', () => {
       deadlineLocalTime: '06:00',
       energyNeededKWh: 1,
       kWhPerUnitBanded: 1,
+      currentValue: 50,
+      targetValue: 65,
+      kwhPerUnitLearnedMean: 1,
       rateConfidence: 'high',
+      displayConfidence: 'high',
+      kwhPerUnitSource: 'learned',
+      kwhPerUnitAcceptedSamples: 50,
+      kwhPerUnitLastAcceptedAtMs: 0,
+      planningSpeedKw: 1,
       horizonBucketCount: 6,
+      dailyBudgetExhaustedBucketCount: 0,
       expectedStepId: null,
     }], 0);
     recorder.observe([], 1_000);
@@ -501,7 +522,7 @@ describe('app init plan service wiring', () => {
 
     capturedEmitterDeps.current = null;
     createDeferredObjectiveLifecycleEmitter(ctx);
-    const observe = (capturedEmitterDeps.current as {
+    const observe = (capturedEmitterDeps.current as unknown as {
       observeDeferredObjectivePlanHistory: (diagnostics: readonly unknown[], nowMs: number) => void;
     }).observeDeferredObjectivePlanHistory;
 

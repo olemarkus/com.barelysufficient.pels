@@ -1,29 +1,29 @@
 import { applyFreshnessOnlyCapabilityUpdate } from '../../lib/device/transport/managerFreshness';
-import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { EvObservedProbe, TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
 
 // Minimal EV snapshot — the freshness handler only touches the EV fields below.
 const evSnapshot = (
   evChargingState: string | undefined,
   evCharging: boolean,
-): TargetDeviceSnapshot => ({
+): TargetDeviceSnapshot & EvObservedProbe => ({
   id: 'ev1',
   name: 'EV',
   evChargingState,
   evCharging,
   binaryControl: { on: evCharging },
-} as unknown as TargetDeviceSnapshot);
+} as unknown as TargetDeviceSnapshot & EvObservedProbe);
 
 // Minimal numeric snapshot for the scalar boundary seams (measure_power /
 // measure_temperature). Pre-seeded with a known-good prior value so a dropped
 // junk write is observable as "prior value retained".
 const numericSnapshot = (
   fields: { measuredPowerKw?: number; currentTemperature?: number },
-): TargetDeviceSnapshot => ({
+): TargetDeviceSnapshot & TemperatureObservedProbe => ({
   id: 'dev1',
   name: 'Device',
   targets: [],
   ...fields,
-} as unknown as TargetDeviceSnapshot);
+} as unknown as TargetDeviceSnapshot & TemperatureObservedProbe);
 
 const NON_FINITE: ReadonlyArray<[string, unknown]> = [
   ['NaN', Number.NaN],

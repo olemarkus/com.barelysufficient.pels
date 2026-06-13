@@ -48,7 +48,7 @@ const flatExportedValues = (): Array<{ t: string; v: number }> => (
 
 const buildFetch = (overrides: FetchOverrides = {}) => vi.fn(async (path: string) => {
   for (const [needle, handler] of Object.entries(overrides)) {
-    if (path.includes(needle)) return handler(path);
+    if (handler && path.includes(needle)) return handler(path);
   }
   if (path === 'manager/devices/device') return DEVICES;
   if (path.includes('han-1:meter_power.imported')) return { step: 6 * HOUR_MS, values: counterValues() };

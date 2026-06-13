@@ -3,7 +3,12 @@ import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { PowerTrackerState } from '../../lib/power/tracker';
-import type { DevicePlanDevice, PlanInputDevice } from '../../lib/plan/planTypes';
+import {
+  type DevicePlanDevice,
+  type PlanInputDevice,
+  withBinaryDiscriminant,
+  withTemperatureDiscriminant,
+} from '../../lib/plan/planTypes';
 import type { DailyBudgetUiPayload, DailyBudgetDayPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import { buildPriceHorizonFromCombined } from '../../lib/price/priceStore';
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
@@ -73,7 +78,11 @@ const buildDay = (hoursInDay = 24): DailyBudgetDayPayload => {
       startLocalLabels,
       plannedWeight,
       plannedKWh,
+      plannedUncontrolledKWh: Array.from({ length: hoursInDay }, () => 0),
+      plannedControlledKWh: plannedKWh.slice(),
       actualKWh,
+      actualControlledKWh: Array.from({ length: hoursInDay }, () => 0),
+      actualUncontrolledKWh: Array.from({ length: hoursInDay }, () => 0),
       allowedCumKWh,
       price: Array.from({ length: hoursInDay }, () => 30),
     },
@@ -129,7 +138,9 @@ const buildPowerTracker = (nowMs: number): PowerTrackerState => ({
 });
 
 // Cap-ON managed temperature device, currently running (so it is a shed candidate).
-const buildDevice = (nowMs: number): PlanInputDevice => ({
+// `binaryControl`/`currentTemperature` are regrouped onto their discriminant
+// clusters; the rest is the base shape.
+const buildDevice = (nowMs: number): PlanInputDevice => withTemperatureDiscriminant(withBinaryDiscriminant({
   id: DEVICE_ID,
   name: 'Water Heater',
   controllable: true, // capacity-based control is ON — the budget-starvation scenario
@@ -151,7 +162,7 @@ const buildDevice = (nowMs: number): PlanInputDevice => ({
   expectedPowerKw: 1.5,
   planningPowerKw: 1.5,
   targets: [{ id: 'target_temperature', value: TARGET_C, unit: '°C', min: 30, max: 75, step: 1 }],
-});
+})) as PlanInputDevice;
 
 const buildSettings = (rescue?: DeferredObjectiveRescuePermissions): DeferredObjectiveSettingsV1 => ({
   version: 1,

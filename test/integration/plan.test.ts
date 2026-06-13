@@ -2293,7 +2293,7 @@ describe('Device plan snapshot', () => {
 
     const snapshot = getLatestTargetSnapshotForTests();
     const device = snapshot.find((d: any) => d.id === 'dev-1');
-    expect(device.powerKw).toBeCloseTo(1.2, 3);
+    expect(device!.powerKw).toBeCloseTo(1.2, 3);
   });
 
   it('includes Hoiax water heater in device snapshot with target_temperature', async () => {

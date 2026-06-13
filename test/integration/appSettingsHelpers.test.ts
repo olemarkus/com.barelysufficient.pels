@@ -4,6 +4,8 @@ import {
   type CapacitySettingsSnapshot,
 } from '../../setup/appSettingsHelpers';
 import type { AppContext } from '../../lib/app/appContext';
+import type { ShedAction } from '../../lib/plan/planTypes';
+import type { DebugLoggingTopic } from '../../packages/shared-domain/src/utils/debugLogging';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import {
   CAPACITY_LIMIT_KW,
@@ -38,6 +40,9 @@ const buildContext = (): AppContext => {
   const settingsListeners = new Map<string, (...args: unknown[]) => void>();
   const priceRefresh = vi.fn();
   const timers = new TimerRegistry();
+  // Deliberate partial of the broad AppContext surface — this suite exercises the
+  // settings-handler wiring, not the full context, so the unrelated flow-backed
+  // capability methods are intentionally absent.
   return {
     homey: {
       settings: {
@@ -86,12 +91,12 @@ const buildContext = (): AppContext => {
     resolveModeName: vi.fn((name: string) => name),
     getAllModes: vi.fn(() => new Set<string>()),
     resolveManagedState: vi.fn(() => false),
-    getCommunicationModel: vi.fn(() => 'local'),
+    getCommunicationModel: vi.fn((): 'local' | 'cloud' => 'local'),
     isCapacityControlEnabled: vi.fn(() => false),
     isBudgetExempt: vi.fn(() => false),
     getTemperatureBoostConfig: vi.fn(() => undefined),
     getEvBoostConfig: vi.fn(() => undefined),
-    getShedBehavior: vi.fn(() => ({ action: 'turn_off', temperature: null, stepId: null })),
+    getShedBehavior: vi.fn(() => ({ action: 'turn_off' as ShedAction, temperature: null, stepId: null })),
     computeDynamicSoftLimit: vi.fn(() => 0),
     getDynamicSoftLimitOverride: vi.fn(() => null),
     evaluateHeadroomForDevice: vi.fn(() => null),
@@ -132,7 +137,7 @@ const buildContext = (): AppContext => {
     set deviceCommunicationModels(_value) {},
     get shedBehaviors() { return {}; },
     set shedBehaviors(_value) {},
-    get debugLoggingTopics() { return new Set(); },
+    get debugLoggingTopics() { return new Set<DebugLoggingTopic>(); },
     set debugLoggingTopics(_value) {},
     get defaultComputeDynamicSoftLimit() { return undefined; },
     set defaultComputeDynamicSoftLimit(_value) {},
@@ -167,7 +172,7 @@ const buildContext = (): AppContext => {
       rebuildPlanFromCache: vi.fn(async () => undefined),
     } as never,
     timers,
-  };
+  } as unknown as AppContext;
 };
 
 describe('initSettingsHandlerForApp', () => {

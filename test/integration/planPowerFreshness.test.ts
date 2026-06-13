@@ -6,12 +6,15 @@ import {
   POWER_SAMPLE_STALE_THRESHOLD_MS,
 } from '../../lib/plan/planPowerFreshness';
 import { createPlanEngineState } from '../../lib/plan/planState';
-import type { PlanInputDevice } from '../../lib/plan/planTypes';
+import type { PlanInputDevice, BinaryControlDiscriminantProbe } from '../../lib/plan/planTypes';
+import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 
 const emptyPendingStore = createPendingBinaryCommandStore({});
 
-const buildDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice => ({
+const buildDevice = (
+  overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe = {},
+): PlanInputDevice => withBinaryDiscriminant({
   id: 'dev',
   name: 'Device',
   targets: [],
@@ -22,7 +25,7 @@ const buildDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice 
   controllable: true,
   expectedPowerKw: 1.2,
   ...overrides,
-});
+}) as PlanInputDevice;
 
 describe('power sample freshness policy', () => {
   beforeEach(() => {

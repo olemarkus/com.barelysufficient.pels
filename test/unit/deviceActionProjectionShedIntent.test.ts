@@ -73,7 +73,6 @@ describe('resolveShedIntent', () => {
       shedBehavior: { action: 'set_step', temperature: null, stepId: 'low' },
       controllable: true,
       controlCapabilityId: 'onoff',
-      controlModel: 'stepped_load',
       steppedLoadProfile: steppedProfile,
     })).toEqual({ kind: 'set_step', targetStepId: 'low' });
   });
@@ -83,7 +82,6 @@ describe('resolveShedIntent', () => {
       shedBehavior: { action: 'set_step', temperature: null, stepId: null },
       controllable: true,
       controlCapabilityId: undefined,
-      controlModel: 'stepped_load',
       steppedLoadProfile: steppedProfile,
     })).toEqual({ kind: 'set_step', targetStepId: 'low' });
   });
@@ -93,7 +91,6 @@ describe('resolveShedIntent', () => {
       shedBehavior: { action: 'set_step', temperature: null, stepId: 'does_not_exist' },
       controllable: true,
       controlCapabilityId: undefined,
-      controlModel: 'stepped_load',
       steppedLoadProfile: steppedProfile,
     })).toEqual({ kind: 'set_step', targetStepId: 'low' });
   });
@@ -103,7 +100,6 @@ describe('resolveShedIntent', () => {
       shedBehavior: { action: 'turn_off', temperature: null, stepId: null },
       controllable: true,
       controlCapabilityId: undefined,
-      controlModel: 'stepped_load',
       steppedLoadProfile: steppedProfile,
     })).toEqual({ kind: 'set_step', targetStepId: 'low' });
   });
@@ -113,7 +109,6 @@ describe('resolveShedIntent', () => {
       shedBehavior: { action: 'turn_off', temperature: null, stepId: null },
       controllable: true,
       controlCapabilityId: 'onoff',
-      controlModel: 'stepped_load',
       steppedLoadProfile: steppedProfile,
     })).toEqual({ kind: 'turn_off' });
   });
@@ -131,7 +126,6 @@ describe('resolveShedIntent', () => {
       shedBehavior: { action: 'set_step', temperature: null, stepId: 'low' },
       controllable: false,
       controlCapabilityId: undefined,
-      controlModel: 'stepped_load',
       // @ts-expect-error - exercising the runtime guard for a malformed profile
       steppedLoadProfile: { model: 'not_stepped_load', steps: [] },
     })).toEqual({ kind: 'turn_off' });
@@ -153,7 +147,6 @@ describe('resolveShedIntent', () => {
         shedBehavior: { action: 'set_temperature', temperature: 17, stepId: null },
         controllable: false,
         controlCapabilityId: 'onoff',
-        controlModel: 'stepped_load',
         steppedLoadProfile: steppedProfile,
         primaryTarget: target(),
       })).toEqual({ kind: 'turn_off' });
@@ -164,7 +157,6 @@ describe('resolveShedIntent', () => {
         shedBehavior: { action: 'set_step', temperature: null, stepId: null },
         controllable: false,
         controlCapabilityId: undefined,
-        controlModel: 'stepped_load',
         steppedLoadProfile: steppedProfile,
       })).toEqual({ kind: 'set_step', targetStepId: 'low' });
     });
@@ -174,7 +166,6 @@ describe('resolveShedIntent', () => {
         shedBehavior: { action: 'set_step', temperature: null, stepId: null },
         controllable: false,
         controlCapabilityId: 'onoff',
-        controlModel: 'stepped_load',
         steppedLoadProfile: steppedProfile,
       })).toEqual({ kind: 'turn_off' });
     });
@@ -203,7 +194,6 @@ describe('resolveShedIntent', () => {
         controllable: true,
         // De-drift: no resolved control capability, so the binary gate is off.
         controlCapabilityId: undefined,
-        controlModel: 'stepped_load',
         steppedLoadProfile: steppedProfile,
       })).toEqual({ kind: 'set_step', targetStepId: 'low' });
     });

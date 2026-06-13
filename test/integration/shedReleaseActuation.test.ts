@@ -164,7 +164,8 @@ describe('applyShedReleaseIntent', () => {
     const result = await applyShedReleaseIntent({
       intent: buildIntent(),
       steppedLoadIntent: null,
-      observed: buildObserved({ observedBinaryState: 'unknown' }),
+      // 'unknown' is an off-union sentinel for "no trusted observation yet".
+      observed: buildObserved({ observedBinaryState: 'unknown' as ExecutableObservedDeviceState['observedBinaryState'] }),
       snapshot: { id: 'dev-1', binaryControl: { on: true }, controlCapabilityId: 'onoff' } as never,
       mode: 'plan',
       deps,

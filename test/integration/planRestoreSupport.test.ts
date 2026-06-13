@@ -1,5 +1,7 @@
 import { reserveHeadroomForPendingRestores } from '../../lib/plan/restore/support';
 import { PENDING_RESTORE_WINDOW_MS } from '../../lib/plan/planConstants';
+import type { DevicePlanDevice } from '../../lib/plan/planTypes';
+import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { buildPlanDevice } from '../utils/planTestUtils';
 
 describe('reserveHeadroomForPendingRestores', () => {
@@ -12,13 +14,15 @@ describe('reserveHeadroomForPendingRestores', () => {
 
     const adjusted = reserveHeadroomForPendingRestores({
       rawHeadroom: 5,
-      planDevices: [buildPlanDevice({
-        id: 'dev-1',
-        name: 'Heater',
+      planDevices: [withBinaryDiscriminant({
+        ...buildPlanDevice({
+          id: 'dev-1',
+          name: 'Heater',
+          powerKw: 2,
+          measuredPowerKw: 0,
+        }),
         binaryControl: { on: true },
-        powerKw: 2,
-        measuredPowerKw: 0,
-      })],
+      }) as DevicePlanDevice],
       lastDeviceRestoreMs: { 'dev-1': now - (PENDING_RESTORE_WINDOW_MS / 2) },
       measurementTs: null,
       debugStructured,

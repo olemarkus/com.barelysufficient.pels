@@ -1,3 +1,4 @@
+import type { BinaryControlCapabilityId } from '../../../packages/contracts/src/types';
 import type {
   ActivationAttemptState,
   ActivationAttemptSource,
@@ -19,6 +20,10 @@ export const ACTIVATION_BACKOFF_MAX_LEVEL = 4;
 export type ActivationBackoffObservation = {
   available?: boolean;
   binaryControl?: { on: boolean };
+  // Load-bearing: forwarded to `isObservedOn`/`isObservedOff`, whose
+  // `hasBinaryCapability` gate keys on its presence. Declared here (not omitted)
+  // so callers can't silently drop the field the binary-state read depends on.
+  controlCapabilityId?: BinaryControlCapabilityId;
   currentState?: string;
   measuredPowerKw?: number;
   observationStale?: boolean;

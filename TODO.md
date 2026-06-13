@@ -177,17 +177,10 @@ program) remains deferred.*
 
 *v2.11.0..HEAD release-review findings (2026-06-02). Non-blocking follow-ups.*
 
-- [ ] **The runtime test tree is type-blind — add a test-tier typecheck lane.** No tsc project
-      includes `test/**` (root + runtime-unused exclude it; eslint runs without type info there;
-      vitest transpiles via esbuild), so type drift in test fixtures is invisible: the EV-observed
-      field-move (2026-06-12) initially shipped five masked TS2561s in the guard's own spec, and a
-      pre-existing baseline of ~185 same-class errors (stale `Partial<PlanInputDevice>` literals
-      etc.) already sits in the tree. The settings-ui tier IS typechecked (`tsc -p
-      packages/settings-ui` covers its tests) — the asymmetry is the gap. Persona: contributor;
-      hypothesis: a `tsconfig.tests.json` (extends root, includes `test/**` + vitest globals) wired
-      into `ci:checks` turns silent fixture rot into compile errors; needs a one-off cleanup of the
-      existing baseline first. Source: pels-runtime-reality + typing lens on the EV-observed
-      field-move PR, 2026-06-12.
+*The runtime test tree is now typechecked: `tsconfig.tests.json` + the `tsc:tests` `ci:checks` lane
+landed 2026-06-13, after a one-off cleanup of all ~1,555 masked errors (field-move fixture drift via
+the discriminant regroupers + pre-existing mock-shape debt). Test-fixture type drift is now a hard
+CI failure, so future field-move slices can't silently grow the debt.*
 
 - [ ] **Weather collector: transient miss of `weather_advisor_settings` silently halts sampling
       until the next restart or settings write.** `WeatherCollector.start()` registers no timers

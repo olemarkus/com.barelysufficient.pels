@@ -12,6 +12,7 @@ import {
     startPendingBinarySettleWindow,
 } from '../../lib/observer/binarySettle';
 import type { DeviceTransportBinarySettleOps } from '../../lib/device/deviceTransport';
+import type { Logger } from '../../lib/utils/types';
 import type { LiveFeedHealth } from '../../lib/device/liveFeed';
 import type {
     ObservedStateChangedEvent,
@@ -82,7 +83,7 @@ async function buildHarness(): Promise<Harness> {
 
     const transport = new DeviceTransport(
         mockHomeyInstance as unknown as Homey.App,
-        loggerMock,
+        loggerMock as unknown as Logger,
         undefined,
         undefined,
         {

@@ -12,8 +12,30 @@ import { buildRestoreHeadroomReason } from '../../lib/plan/planReasonStrings';
 import { getCurrentDrawKw, getRestoreDrawKw } from '../../lib/observer/observedPower';
 import { PENDING_RESTORE_WINDOW_MS } from '../../lib/plan/planConstants';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
+import type { DevicePlanDevice } from '../../lib/plan/planTypes';
+import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { buildPlanDevice, steppedPlanDevice } from '../utils/planTestUtils';
 import { reasonText } from '../utils/deviceReasonTestUtils';
+
+// Fixture shape carrying the orthogonal binary-control cluster, which
+// `getCurrentDrawKw` / `getRestoreDrawKw` read. The shared output builders set a
+// default `controlCapabilityId`, so the binary regrouper re-ties `binaryControl`
+// onto the result.
+type BinaryFixture = DevicePlanDevice & { binaryControl?: { on: boolean } };
+
+const binaryDevice = (
+  overrides: Parameters<typeof buildPlanDevice>[0] & { binaryControl?: { on: boolean } } = {},
+): BinaryFixture => {
+  const { binaryControl, ...rest } = overrides;
+  return withBinaryDiscriminant({ ...buildPlanDevice(rest), binaryControl }) as BinaryFixture;
+};
+
+const binarySteppedDevice = (
+  overrides: Parameters<typeof steppedPlanDevice>[0] & { binaryControl?: { on: boolean } } = {},
+): BinaryFixture => {
+  const { binaryControl, ...rest } = overrides;
+  return withBinaryDiscriminant({ ...steppedPlanDevice(rest), binaryControl }) as BinaryFixture;
+};
 
 describe('buildSwapCandidates', () => {
   it('excludes devices with equal or higher restore priority', () => {
@@ -374,7 +396,7 @@ describe('observed power boundary — current draw vs restore draw', () => {
   it('keeps shed-candidate current draw aligned with restore admission for an active device', () => {
     // A device drawing 3kW with configured 1kW: shedding frees the observed 3kW,
     // restore admission would also reserve 3kW (the highest known demand).
-    const device = buildPlanDevice({
+    const device = binaryDevice({
       currentState: 'on',
       binaryControl: { on: true },
       measuredPowerKw: 3,
@@ -385,7 +407,7 @@ describe('observed power boundary — current draw vs restore draw', () => {
   });
 
   it('reports current draw as zero for an off device while restore admission keeps the stable configured demand', () => {
-    const offDevice = buildPlanDevice({
+    const offDevice = binaryDevice({
       currentState: 'off',
       binaryControl: { on: false },
       measuredPowerKw: 0,
@@ -406,20 +428,20 @@ describe('computePendingRestorePowerKw', () => {
   const recentMs = now - 30_000; // 30s ago — within window
 
   it('reserves gap for recently restored device whose element has not fired', () => {
-    const dev = buildPlanDevice({ id: 'therm', binaryControl: { on: true }, expectedPowerKw: 2, measuredPowerKw: 0 });
+    const dev = binaryDevice({ id: 'therm', binaryControl: { on: true }, expectedPowerKw: 2, measuredPowerKw: 0 });
     const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
     expect(result.deviceIds).toEqual(['therm']);
     expect(result.pendingKw).toBeCloseTo(2, 5); // full gap: expected 2, actual 0
   });
 
   it('reserves only the gap, not full expected power, when device is partially drawing', () => {
-    const dev = buildPlanDevice({ id: 'therm', binaryControl: { on: true }, expectedPowerKw: 3, measuredPowerKw: 0.5 });
+    const dev = binaryDevice({ id: 'therm', binaryControl: { on: true }, expectedPowerKw: 3, measuredPowerKw: 0.5 });
     const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
     expect(result.pendingKw).toBeCloseTo(2.5, 5); // gap: 3 - 0.5
   });
 
   it('skips device that has confirmed its draw (>=50% of expected)', () => {
-    const dev = buildPlanDevice({ id: 'therm', binaryControl: { on: true }, expectedPowerKw: 2, measuredPowerKw: 1.5 });
+    const dev = binaryDevice({ id: 'therm', binaryControl: { on: true }, expectedPowerKw: 2, measuredPowerKw: 1.5 });
     const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
     expect(result.pendingKw).toBe(0);
     expect(result.deviceIds).toHaveLength(0);
@@ -427,13 +449,13 @@ describe('computePendingRestorePowerKw', () => {
 
   it('skips device restored outside the pending window', () => {
     const oldMs = now - PENDING_RESTORE_WINDOW_MS - 1000;
-    const dev = buildPlanDevice({ id: 'therm', binaryControl: { on: true }, expectedPowerKw: 2, measuredPowerKw: 0 });
+    const dev = binaryDevice({ id: 'therm', binaryControl: { on: true }, expectedPowerKw: 2, measuredPowerKw: 0 });
     const result = computePendingRestorePowerKw([dev], { therm: oldMs }, now);
     expect(result.pendingKw).toBe(0);
   });
 
   it('reserves full low-step headroom for an off-path stepped restore while awaiting confirmation', () => {
-    const dev = steppedPlanDevice({
+    const dev = binarySteppedDevice({
       id: 'therm',
       binaryControl: { on: false },
       currentState: 'off',
@@ -451,7 +473,7 @@ describe('computePendingRestorePowerKw', () => {
   });
 
   it('keeps off-path low-step headroom reserved after confirmation until a fresh whole-home sample arrives', () => {
-    const dev = steppedPlanDevice({
+    const dev = binarySteppedDevice({
       id: 'therm',
       binaryControl: { on: false },
       currentState: 'off',
@@ -469,7 +491,7 @@ describe('computePendingRestorePowerKw', () => {
   });
 
   it('releases off-path low-step headroom after a fresh whole-home sample arrives post-confirmation', () => {
-    const dev = steppedPlanDevice({
+    const dev = binarySteppedDevice({
       id: 'therm',
       binaryControl: { on: false },
       currentState: 'off',
@@ -487,7 +509,7 @@ describe('computePendingRestorePowerKw', () => {
   });
 
   it('releases off-path low-step reservation once the stepped restore has fallen into retry backoff', () => {
-    const dev = steppedPlanDevice({
+    const dev = binarySteppedDevice({
       id: 'therm',
       binaryControl: { on: false },
       currentState: 'off',
@@ -506,7 +528,7 @@ describe('computePendingRestorePowerKw', () => {
   });
 
   it('reserves only the incremental gap for stepped restore while awaiting step confirmation', () => {
-    const dev = steppedPlanDevice({
+    const dev = binarySteppedDevice({
       id: 'therm',
       binaryControl: { on: true },
       selectedStepId: 'low',
@@ -525,7 +547,7 @@ describe('computePendingRestorePowerKw', () => {
   });
 
   it('keeps stepped pending restore headroom reserved after step confirmation until a fresh whole-home sample arrives', () => {
-    const dev = steppedPlanDevice({
+    const dev = binarySteppedDevice({
       id: 'therm',
       binaryControl: { on: true },
       selectedStepId: 'medium',
@@ -543,7 +565,7 @@ describe('computePendingRestorePowerKw', () => {
   });
 
   it('keeps stepped pending restore headroom reserved after 60 seconds if no fresh whole-home sample has arrived', () => {
-    const dev = steppedPlanDevice({
+    const dev = binarySteppedDevice({
       id: 'therm',
       binaryControl: { on: true },
       selectedStepId: 'medium',
@@ -561,7 +583,7 @@ describe('computePendingRestorePowerKw', () => {
   });
 
   it('releases stepped pending restore headroom after a fresh whole-home sample arrives post-confirmation', () => {
-    const dev = steppedPlanDevice({
+    const dev = binarySteppedDevice({
       id: 'therm',
       binaryControl: { on: true },
       selectedStepId: 'medium',
@@ -579,7 +601,7 @@ describe('computePendingRestorePowerKw', () => {
   });
 
   it('does not treat configured powerKw as settled stepped power without measure_power', () => {
-    const dev = steppedPlanDevice({
+    const dev = binarySteppedDevice({
       id: 'therm',
       binaryControl: { on: true },
       selectedStepId: 'medium',
@@ -598,7 +620,7 @@ describe('computePendingRestorePowerKw', () => {
   });
 
   it('releases stepped pending restore headroom once the attempt has fallen into retry backoff', () => {
-    const dev = steppedPlanDevice({
+    const dev = binarySteppedDevice({
       id: 'therm',
       binaryControl: { on: true },
       selectedStepId: 'low',
@@ -618,7 +640,7 @@ describe('computePendingRestorePowerKw', () => {
 
   it('skips ordinary (non-stepped) device that is off within the window', () => {
     // Restore command may not have taken effect, or device was turned back off — no latent load.
-    const dev = buildPlanDevice({ id: 'therm', binaryControl: { on: false }, expectedPowerKw: 2, measuredPowerKw: 0 });
+    const dev = binaryDevice({ id: 'therm', binaryControl: { on: false }, expectedPowerKw: 2, measuredPowerKw: 0 });
     const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
     expect(result.pendingKw).toBe(0);
     expect(result.deviceIds).toHaveLength(0);
@@ -627,7 +649,7 @@ describe('computePendingRestorePowerKw', () => {
   it('uses powerKw as observed draw fallback when measuredPowerKw is absent', () => {
     // Installations without live power only populate powerKw. Treat it as actual draw so
     // a device already drawing via powerKw is not double-reserved for the full expected load.
-    const dev = buildPlanDevice({ id: 'therm', binaryControl: { on: true }, expectedPowerKw: 3, powerKw: 1 });
+    const dev = binaryDevice({ id: 'therm', binaryControl: { on: true }, expectedPowerKw: 3, powerKw: 1 });
     const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
     expect(result.pendingKw).toBeCloseTo(2, 5); // gap: 3 - 1 (1 < 3*0.5 — not yet confirmed)
   });
@@ -635,7 +657,7 @@ describe('computePendingRestorePowerKw', () => {
   it('uses the same conservative restore estimate for pending restore reservation', () => {
     // If a device has recently shown a higher draw than its current planning target, keep
     // reserving against that higher draw until confirmation catches up.
-    const dev = buildPlanDevice({
+    const dev = binaryDevice({
       id: 'stepper',
       binaryControl: { on: true },
       currentState: 'on',
@@ -649,7 +671,7 @@ describe('computePendingRestorePowerKw', () => {
 
   it('considers powerKw-only device confirmed when powerKw meets threshold', () => {
     // powerKw=1.2 meets the 50% threshold of expectedPowerKw=2 — device is confirmed, no reservation.
-    const dev = buildPlanDevice({ id: 'therm', binaryControl: { on: true }, expectedPowerKw: 2, powerKw: 1.2 });
+    const dev = binaryDevice({ id: 'therm', binaryControl: { on: true }, expectedPowerKw: 2, powerKw: 1.2 });
     const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
     expect(result.pendingKw).toBe(0);
     expect(result.deviceIds).toHaveLength(0);
@@ -657,21 +679,21 @@ describe('computePendingRestorePowerKw', () => {
 
   it('skips device already planned to be shed this cycle', () => {
     // Re-shed device keeps its recent restore timestamp but must not block unrelated restores.
-    const dev = buildPlanDevice({ id: 'therm', binaryControl: { on: true }, plannedState: 'shed', expectedPowerKw: 2, measuredPowerKw: 0 });
+    const dev = binaryDevice({ id: 'therm', binaryControl: { on: true }, plannedState: 'shed', expectedPowerKw: 2, measuredPowerKw: 0 });
     const result = computePendingRestorePowerKw([dev], { therm: recentMs }, now);
     expect(result.pendingKw).toBe(0);
     expect(result.deviceIds).toHaveLength(0);
   });
 
   it('skips device with no restore timestamp in state', () => {
-    const dev = buildPlanDevice({ id: 'therm', binaryControl: { on: true }, expectedPowerKw: 2, measuredPowerKw: 0 });
+    const dev = binaryDevice({ id: 'therm', binaryControl: { on: true }, expectedPowerKw: 2, measuredPowerKw: 0 });
     const result = computePendingRestorePowerKw([dev], {}, now);
     expect(result.pendingKw).toBe(0);
   });
 
   it('accumulates pending power across multiple qualifying devices', () => {
-    const dev1 = buildPlanDevice({ id: 'd1', binaryControl: { on: true }, expectedPowerKw: 2, measuredPowerKw: 0 });
-    const dev2 = buildPlanDevice({ id: 'd2', binaryControl: { on: true }, expectedPowerKw: 3, measuredPowerKw: 0 });
+    const dev1 = binaryDevice({ id: 'd1', binaryControl: { on: true }, expectedPowerKw: 2, measuredPowerKw: 0 });
+    const dev2 = binaryDevice({ id: 'd2', binaryControl: { on: true }, expectedPowerKw: 3, measuredPowerKw: 0 });
     const result = computePendingRestorePowerKw(
       [dev1, dev2],
       { d1: recentMs, d2: recentMs },

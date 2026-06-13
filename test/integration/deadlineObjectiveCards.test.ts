@@ -1,3 +1,4 @@
+import type { Mock } from 'vitest';
 import { registerDeadlineObjectiveCards } from '../../flowCards/deadlineObjectiveCards';
 import {
   clearObjectiveForDevice,
@@ -174,6 +175,9 @@ const buildPlanRevisionEvent = (
     ...revisionOverrides,
     planStatus,
   });
+  // `revision.reason` widens to `'pending' | DeferredObjectiveActivePlanRevisionReason`,
+  // but this builder always produces a `revision_written` event (whose `reason`
+  // excludes `'pending'`); assert the union member after construction.
   return {
     eventType: 'revision_written',
     deviceId: 'heater-1',
@@ -186,7 +190,7 @@ const buildPlanRevisionEvent = (
     projectedFinishAtMs: null,
     revision,
     ...eventOverrides,
-  };
+  } as DeferredObjectivePlanRevisionEvent;
 };
 
 const buildHoursRemainingDiagnostic = (
@@ -195,16 +199,17 @@ const buildHoursRemainingDiagnostic = (
     deadlineAtMs: number | null;
   },
 ): DeferredObjectiveDiagnostic => ({
-  deviceId: overrides.deviceId,
+  // The override spread is `Partial<DeferredObjectiveDiagnostic>` (a union), which
+  // loosens the ev_soc discriminant; assert the resolved member back after the
+  // spread rather than annotating the construction literal directly.
   deviceName: 'Garage charger',
   objectiveId: `${overrides.deviceId}:ev_soc`,
-  objectiveKind: 'ev_soc',
-  enforcement: 'soft',
-  status: 'on_track',
-  reasonCode: 'objective_progress_stale',
+  objectiveKind: 'ev_soc' as const,
+  enforcement: 'soft' as const,
+  status: 'on_track' as const,
+  reasonCode: 'objective_progress_stale' as const,
   targetPercent: 80,
   currentPercent: 60,
-  deadlineAtMs: overrides.deadlineAtMs,
   deadlineLocalTime: '07:00',
   energyNeededKWh: 4,
   kWhPerUnitBanded: 0.2,
@@ -218,7 +223,7 @@ const buildHoursRemainingDiagnostic = (
   dailyBudgetExhaustedBucketCount: 0,
   expectedStepId: null,
   ...overrides,
-});
+} as DeferredObjectiveDiagnostic);
 
 type MockRecorders = {
   activePlanRecorder: DeferredObjectiveActivePlanRecorder;
@@ -249,7 +254,7 @@ const buildDeps = (overrides: {
   hoursRemainingBus?: DeferredObjectiveHoursRemainingBus;
   hoursRemainingTracker?: DeferredObjectiveHoursRemainingTracker;
   activePlans?: DeferredObjectiveActivePlansV1 | null;
-  rebuildPlan?: ReturnType<typeof vi.fn>;
+  rebuildPlan?: Mock<(reason: string) => unknown>;
   recorders?: MockRecorders;
   structuredError?: ReturnType<typeof vi.fn>;
 }): { deps: FlowCardDeps; mock: ReturnType<typeof createMockHomey>; recorders: MockRecorders } => {

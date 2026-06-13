@@ -17,7 +17,13 @@ import type { ActivePlanPersistDeps } from '../../lib/objectives/deferredObjecti
 import type { DeferredObjectiveSettingsV1 } from '../../lib/objectives/deferredObjectives/settings';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { PowerTrackerState } from '../../lib/power/tracker';
-import type { PlanInputDevice } from '../../lib/plan/planTypes';
+import type {
+  EvDiscriminantProbe,
+  PlanInputDevice,
+  TemperatureDiscriminantProbe,
+} from '../../lib/plan/planTypes';
+import { withTemperatureDiscriminant } from '../../lib/plan/planTypes';
+import { withMaterializedEvPlugState } from '../utils/planTestUtils';
 import type {
   DeferredObjectiveActivePlansV1,
 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
@@ -29,7 +35,16 @@ const NOW_MS = Date.UTC(2026, 0, 1, 17, 0, 0);
 // preview is exercised against the same device/profile/snapshot shapes the
 // live diagnostic path uses) ────────────────────────────────────────────────
 
-const buildEvDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice => ({
+const buildEvDevice = (
+  overrides: Partial<PlanInputDevice> & EvDiscriminantProbe & { evChargingState?: string } = {},
+// `withMaterializedEvPlugState` (NOT `withEvDiscriminant`) is the fixture
+// boundary here: the preview's `isEvChargerNotResumableForDevice` dual-read
+// keys off the materialized flat `evChargerNotResumable` (falling back to the
+// raw `evChargingState`). `withEvDiscriminant` *discards* `evChargingState`
+// without materializing it, so it would erase the plug-state these tests set.
+// `withMaterializedEvPlugState` mirrors the producer: it derives the flat EV
+// fields from `evChargingState`, preserving the runtime resumability signal.
+): PlanInputDevice => withMaterializedEvPlugState({
   id: 'ev-1',
   name: 'Driveway EV',
   targets: [],
@@ -47,26 +62,33 @@ const buildEvDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevic
     ],
   },
   ...overrides,
-});
+}) as unknown as PlanInputDevice;
 
-const buildTemperatureDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice => ({
+const buildTemperatureDevice = (
+  overrides: Partial<PlanInputDevice> & TemperatureDiscriminantProbe = {},
+// This fixture carries `binaryControl` WITHOUT a `controlCapabilityId`, so it must
+// NOT route through `withBinaryDiscriminant` (whose runtime stripping drops
+// `binaryControl` when the capability id is absent). Keep the additive
+// `withTemperatureDiscriminant` regrouper and cast at the fixture boundary so the
+// `binaryControl` + `controlModel` survive verbatim, matching the original literal.
+): PlanInputDevice => withTemperatureDiscriminant({
   id: 'heater-1',
   name: 'Connected 300',
   targets: [{ id: 'target_temperature', value: 55, unit: 'C', min: 0, max: 95, step: 0.5 }],
   binaryControl: { on: false },
-  deviceType: 'temperature',
-  controlModel: 'stepped_load',
+  deviceType: 'temperature' as const,
+  controlModel: 'stepped_load' as const,
   currentTemperature: 55,
   lastFreshDataMs: NOW_MS,
   steppedLoadProfile: {
-    model: 'stepped_load',
+    model: 'stepped_load' as const,
     steps: [
       { id: 'off', planningPowerW: 0 },
       { id: 'heat', planningPowerW: 3000 },
     ],
   },
   ...overrides,
-});
+}) as unknown as PlanInputDevice;
 
 const resolveDeadlineAtMsFor = (deadlineLocalTime: string, nowMs: number = NOW_MS): number => {
   const resolution = resolveDeferredObjectiveDeadline({ nowMs, timeZone: 'UTC', deadlineLocalTime });
@@ -172,7 +194,7 @@ const combinedFromSnapshot = (snapshot: DailyBudgetUiPayload | null): CombinedPr
   for (const [dateKey, day] of Object.entries(snapshot.days)) {
     const hours: CombinedPriceEntry[] = day.buckets.startUtc.map((startsAt, index) => ({
       startsAt,
-      total: day.buckets.price[index],
+      total: day.buckets.price?.[index] ?? 0,
       isCheap: false,
       isExpensive: false,
     }));

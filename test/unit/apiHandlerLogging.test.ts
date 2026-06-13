@@ -72,7 +72,7 @@ describe('api handler error logging', () => {
       // homey present but homey.app missing — this is the early-restart shape
       // where Homey hands the API a context before the app is constructed.
       await expect(
-        (api as Record<string, (ctx: { homey: { app?: undefined } }) => Promise<unknown>>)
+        (api as unknown as Record<string, (ctx: { homey: { app?: undefined } }) => Promise<unknown>>)
           .ui_bootstrap({ homey: {} as never }),
       ).rejects.toBe(cause);
       expect(consoleSpy).toHaveBeenCalledExactlyOnceWith('api ui_bootstrap failed', cause);
@@ -87,7 +87,7 @@ describe('api handler error logging', () => {
       const cause = new Error(`${handler} blew up`);
       stubFor(stub).mockImplementation(() => { throw cause; });
 
-      const fn = (api as Record<string, Handler>)[handler];
+      const fn = (api as unknown as Record<string, Handler>)[handler];
       await expect(fn({ homey })).rejects.toBe(cause);
       expect(logger.error).toHaveBeenCalledExactlyOnceWith(
         expect.objectContaining({ event: 'api_handler_failed', handler, err: cause }),
@@ -99,7 +99,7 @@ describe('api handler error logging', () => {
       const result = { ok: true, handler };
       stubFor(stub).mockReturnValue(result);
 
-      const fn = (api as Record<string, Handler>)[handler];
+      const fn = (api as unknown as Record<string, Handler>)[handler];
       await expect(fn({ homey })).resolves.toBe(result);
       expect(logger.error).not.toHaveBeenCalled();
     });

@@ -1,8 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
-const repoRoot = path.resolve(fileURLToPath(new URL('.', import.meta.url)), '../..');
+const repoRoot = path.resolve(__dirname, '../..');
 const runtimeRoots = [
   path.join(repoRoot, 'app.ts'),
   path.join(repoRoot, 'flowCards'),

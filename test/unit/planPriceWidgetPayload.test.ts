@@ -42,7 +42,11 @@ const buildDay = (bucketCount: number): DailyBudgetDayPayload => {
       startLocalLabels: Array.from({ length: bucketCount }, (_value, index) => `${String(index).padStart(2, '0')}:00`),
       plannedWeight: zeroes,
       plannedKWh: Array.from({ length: bucketCount }, (_value, index) => 0.25 + (index * 0.01)),
+      plannedUncontrolledKWh: zeroes,
+      plannedControlledKWh: zeroes,
       actualKWh: Array.from({ length: bucketCount }, (_value, index) => (index <= 10 ? 0.2 + (index * 0.01) : 0)),
+      actualControlledKWh: Array.from({ length: bucketCount }, () => null),
+      actualUncontrolledKWh: Array.from({ length: bucketCount }, () => null),
       allowedCumKWh: zeroes,
       price: Array.from({ length: bucketCount }, (_value, index) => 75 + index),
     },
@@ -64,6 +68,7 @@ describe('plan price widget payload', () => {
     });
 
     expect(payload.state).toBe('ready');
+    if (payload.state !== 'ready') throw new Error('expected a ready payload');
     expect(payload.target).toBe('today');
     expect(payload.showActual).toBe(true);
     expect(payload.showNow).toBe(true);
@@ -329,6 +334,7 @@ describe('plan price widget payload', () => {
     });
 
     expect(payload.state).toBe('ready');
+    if (payload.state !== 'ready') throw new Error('expected a ready payload');
     expect(payload.target).toBe('tomorrow');
     expect(payload.showActual).toBe(false);
     expect(payload.showNow).toBe(false);

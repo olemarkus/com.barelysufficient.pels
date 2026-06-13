@@ -29,7 +29,7 @@ import { DeferredObjectiveActivePlanRecorder } from '../../lib/objectives/deferr
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../lib/dailyBudget/dailyBudgetTypes';
 import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/priceTypes';
 import type { PowerTrackerState } from '../../lib/power/tracker';
-import type { PlanInputDevice } from '../../lib/plan/planTypes';
+import { type PlanInputDevice, withBinaryDiscriminant } from '../../lib/plan/planTypes';
 
 const HOUR_MS = 60 * 60 * 1000;
 const MIN_MS = 60 * 1000;
@@ -58,10 +58,13 @@ const todayPrices = Array.from({ length: 24 }, (_, h) => todayPriceFor(h));
 const tomorrowPrices = Array.from({ length: 24 }, (_, h) => (h <= 5 ? CHEAP : OUT_OF_HORIZON));
 const priceForHourOfDay = (hod: number): number => (hod < 24 ? todayPrices[hod]! : tomorrowPrices[hod - 24]!);
 
-const buildDevice = (tempC: number, nowMs: number): PlanInputDevice => ({
+const buildDevice = (tempC: number, nowMs: number): PlanInputDevice => withBinaryDiscriminant({
   id: DEVICE_ID,
   name: 'Connected 300',
   targets: [{ id: 'target_temperature', value: TARGET_C, unit: 'C', min: 0, max: 95, step: 0.5 }],
+  // `binaryControl` moved onto the binary cluster; `controlCapabilityId` makes
+  // the device binary so the regrouper retains the on-state.
+  controlCapabilityId: 'onoff' as const,
   binaryControl: { on: false },
   controllable: false, // cap-off: the deferred objective is the only reason PELS drives it
   deviceType: 'temperature',
@@ -76,7 +79,7 @@ const buildDevice = (tempC: number, nowMs: number): PlanInputDevice => ({
       { id: 'max', planningPowerW: ELEMENT_KW * 1000 },
     ],
   },
-});
+}) as PlanInputDevice;
 
 const buildPowerTracker = (nowMs: number): PowerTrackerState => ({
   objectiveProfiles: {
@@ -109,7 +112,11 @@ const buildDay = (dateKey: string, startMs: number, prices: number[], nowMs: num
       startLocalLabels: startUtc.map((_, i) => `${String(i).padStart(2, '0')}:00`),
       plannedWeight: Array.from({ length: 24 }, () => 1 / 24),
       plannedKWh: Array.from({ length: 24 }, () => 1),
+      plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0),
+      plannedControlledKWh: Array.from({ length: 24 }, () => 1),
       actualKWh: Array.from({ length: 24 }, () => 0),
+      actualControlledKWh: Array.from({ length: 24 }, () => 0),
+      actualUncontrolledKWh: Array.from({ length: 24 }, () => 0),
       allowedCumKWh: Array.from({ length: 24 }, (_, i) => (i + 1) * 4),
       price: prices,
       priceFactor: prices.map((p) => (p <= 10 ? 1.2 : 0.8)),

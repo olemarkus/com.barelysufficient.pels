@@ -5,6 +5,7 @@ import type { ShedCandidateParams } from '../../lib/plan/shedding/types';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { PlanInputDevice, DevicePlanDevice } from '../../lib/plan/planTypes';
 import { getRestoreCandidates, getOffDevices } from '../../lib/plan/restore/devices';
+import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 
 // Two managed devices that were never assigned a stored priority, drawing the
 // SAME effective power. Without a deterministic final tiebreak their relative
@@ -12,7 +13,7 @@ import { getRestoreCandidates, getOffDevices } from '../../lib/plan/restore/devi
 // vs restore could disagree). These tests pin a single, stable deviceId order
 // on BOTH sides.
 
-const buildShedDevice = (id: string): PlanInputDevice => ({
+const buildShedDevice = (id: string): PlanInputDevice => withBinaryDiscriminant({
   id,
   name: id,
   targets: [],
@@ -22,7 +23,7 @@ const buildShedDevice = (id: string): PlanInputDevice => ({
   controlCapabilityId: 'onoff',
   binaryControl: { on: true },
   measuredPowerKw: 1.5,
-});
+}) as PlanInputDevice;
 
 const buildShedParams = (devices: PlanInputDevice[]): ShedCandidateParams => ({
   devices,

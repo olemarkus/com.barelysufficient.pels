@@ -186,7 +186,7 @@ describe('PlanService.rebuildPlanFromCache warmup gate', () => {
     const buildDevicePlanSnapshot = vi.fn(async () => ({ meta: {}, devices: [] } as never));
     const warmupGate = new SnapshotWarmupGate({ timeoutMs: 60_000 });
 
-    const { PlanService } = await import('../../lib/plan/planService');
+    const { PlanService } = await import('../../lib/plan/planService.js');
     const planService = new PlanService({
       writePelsStatus: vi.fn(),
       homey: { settings: { set: vi.fn() } } as never,
@@ -232,7 +232,7 @@ describe('PlanService.rebuildPlanFromCache warmup gate', () => {
     const buildDevicePlanSnapshot = vi.fn(async () => ({ meta: {}, devices: [] } as never));
     const warmupGate = new SnapshotWarmupGate({ timeoutMs: 60_000 });
 
-    const { PlanService } = await import('../../lib/plan/planService');
+    const { PlanService } = await import('../../lib/plan/planService.js');
     const planService = new PlanService({
       writePelsStatus: vi.fn(),
       homey: { settings: { set: vi.fn() } } as never,
@@ -269,7 +269,7 @@ describe('PlanService.rebuildPlanFromCache warmup gate', () => {
     const warmupGate = new SnapshotWarmupGate({ timeoutMs: 0 });
     expect(warmupGate.isReleased()).toBe(true);
 
-    const { PlanService } = await import('../../lib/plan/planService');
+    const { PlanService } = await import('../../lib/plan/planService.js');
     const planService = new PlanService({
       writePelsStatus: vi.fn(),
       homey: { settings: { set: vi.fn() } } as never,

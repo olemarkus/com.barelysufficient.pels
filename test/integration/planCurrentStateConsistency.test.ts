@@ -4,9 +4,19 @@ import { buildLiveStatePlan } from '../../lib/plan/planReconcileState';
 import { isBinaryRestoreCandidate } from '../../lib/plan/restore/devices';
 import { buildSheddingPlan } from '../../lib/plan/shedding';
 import { createPlanEngineState } from '../../lib/plan/planState';
-import type { DevicePlan, PlanInputDevice } from '../../lib/plan/planTypes';
+import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
+import type {
+  BinaryControlDiscriminantProbe,
+  DevicePlan,
+  DevicePlanDevice,
+  PlanInputDevice,
+  TemperatureDiscriminantProbe,
+} from '../../lib/plan/planTypes';
+import { withBinaryDiscriminant, withTemperatureDiscriminant } from '../../lib/plan/planTypes';
 
-const buildLiveDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDevice => ({
+const buildLiveDevice = (
+  overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe = {},
+): PlanInputDevice => withBinaryDiscriminant({
   id: 'dev-1',
   name: 'Heater',
   targets: [],
@@ -15,30 +25,37 @@ const buildLiveDevice = (overrides: Partial<PlanInputDevice> = {}): PlanInputDev
   controllable: true,
   expectedPowerKw: 1.8,
   ...overrides,
-});
+}) as PlanInputDevice;
 
-const buildPlan = (overrides: Partial<DevicePlan['devices'][number]> = {}): DevicePlan => ({
+const buildPlan = (
+  overrides: Partial<DevicePlanDevice> & BinaryControlDiscriminantProbe & TemperatureDiscriminantProbe = {},
+): DevicePlan => ({
   meta: {
     totalKw: 5,
     softLimitKw: 4,
     headroomKw: -1,
   },
-  devices: [{
+  devices: [withBinaryDiscriminant(withTemperatureDiscriminant({
     id: 'dev-1',
     name: 'Heater',
     binaryControl: { on: false },
     currentState: 'off',
     plannedState: 'keep',
     currentTarget: null,
-    controllable: true,
+    controlCapabilityId: 'onoff',
     ...overrides,
-  }],
+  })) as DevicePlanDevice],
 });
 
 const buildContext = (device: PlanInputDevice): PlanContext => ({
   devices: [device],
   desiredForMode: {},
   total: 5,
+  powerKnown: true,
+  hasLivePowerSample: true,
+  powerSampleAgeMs: 0,
+  powerFreshnessState: 'fresh',
+  hourBucketKey: '2025-01-01T00',
   softLimit: 4,
   capacitySoftLimit: 4,
   dailySoftLimit: null,
@@ -80,8 +97,8 @@ describe('planner current-state consistency', () => {
         powerTracker: { lastTimestamp: 100 } as PowerTrackerState,
         getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
         getPriorityForDevice: () => 100,
+        pendingBinaryCommandStore: createPendingBinaryCommandStore(state.pendingBinaryCommands),
         log: vi.fn(),
-        logDebug: vi.fn(),
       },
       true,
     );

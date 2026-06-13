@@ -113,7 +113,6 @@ describe('resolveObservedCurrentState — string projection stays consistent', (
     expect(resolveObservedSteppedLoadCurrentState({
       binaryControl: { on: false },
       controlCapabilityId: undefined,
-      controlModel: 'stepped_load',
       steppedLoadProfile: steppedProfile,
       selectedStepId: 'medium',
     })).toBe('on');
