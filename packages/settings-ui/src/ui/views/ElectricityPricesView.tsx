@@ -20,6 +20,15 @@ type ValueElement = HTMLElement & { value: string };
 
 const readValue = (event: Event): string => (event.currentTarget as ValueElement).value;
 
+// md-select treats an empty `value` as "no selection" and renders nothing in the
+// closed field (Material expects a floating label to fill that space, but PELS
+// renders the field label outside the control) — so a `value=""` placeholder
+// option shows a blank box. Routing the "nothing chosen" state through a
+// non-empty sentinel makes md-select display the placeholder option's text the
+// same way it does for every real option. The sentinel never leaves this view:
+// it is mapped back to `''` on change and from `''` on render.
+const GRID_COMPANY_NONE = '__none__';
+
 const readFiniteNumber = (event: Event): number | null => {
   const value = Number.parseFloat(readValue(event));
   return Number.isFinite(value) ? value : null;
@@ -227,11 +236,14 @@ const NorwaySection = ({
     <div class="field">
       <span class="field__label pels-text-settings-label" id="electricity-prices-grid-company-label">Grid company</span>
       <MdFilledSelect
-        value={organizationNumber}
+        value={organizationNumber || GRID_COMPANY_NONE}
         aria-labelledby="electricity-prices-grid-company-label"
-        onChange={(e) => onOrganizationChange(readValue(e))}
+        onChange={(e) => {
+          const next = readValue(e);
+          onOrganizationChange(next === GRID_COMPANY_NONE ? '' : next);
+        }}
       >
-        <MdSelectOption value=""><div slot="headline">Select grid company</div></MdSelectOption>
+        <MdSelectOption value={GRID_COMPANY_NONE}><div slot="headline">Select grid company</div></MdSelectOption>
         {gridCompanyOptions.map((c) => (
           <MdSelectOption key={c.organizationNumber} value={c.organizationNumber}>
             <div slot="headline">{c.name}</div>

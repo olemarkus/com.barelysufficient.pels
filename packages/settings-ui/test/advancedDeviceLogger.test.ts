@@ -87,6 +87,30 @@ describe('advanced device logger', () => {
     expect(toast.showToast).not.toHaveBeenCalled();
   });
 
+  it('sets displayText on every option so the closed field is never blank on first paint', async () => {
+    // md-select reads `firstSelectedOption.displayText` synchronously while
+    // resolving its value; relying on the `[slot="headline"]` slot alone races
+    // first paint and leaves the closed field empty. Each option must therefore
+    // carry an explicit, non-empty `displayText` — including the placeholder.
+    const homey = await import('../src/ui/homey.ts') as unknown as { callApi: ReturnType<typeof vi.fn> };
+    homey.callApi.mockResolvedValue([{ id: 'dev-1', name: 'Pump', class: 'pump' }]);
+
+    const advanced = await import('../src/ui/advanced.ts');
+    await advanced.refreshAdvancedDeviceLogger();
+
+    const options = Array.from(
+      document.querySelectorAll('#advanced-api-device-select md-select-option'),
+    ) as (HTMLElement & { displayText?: string })[];
+
+    expect(options.length).toBeGreaterThan(0);
+    for (const option of options) {
+      expect(option.displayText).toBeTruthy();
+      expect(option.displayText).toBe(option.querySelector('[slot="headline"]')?.textContent);
+    }
+    // Placeholder (index 0) is the case that regressed — assert it explicitly.
+    expect(options[0].displayText).toBe('Select a device');
+  });
+
   it('filters out invalid Homey API devices without a name', async () => {
     const homey = await import('../src/ui/homey.ts') as unknown as { callApi: ReturnType<typeof vi.fn>; setSetting: ReturnType<typeof vi.fn> };
     homey.callApi.mockResolvedValue([
