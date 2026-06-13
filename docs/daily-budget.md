@@ -25,6 +25,31 @@ The daily budget is a **soft pacing target**, separate from the hourly hard cap.
 
 PELS reads your existing whole-home power meter to track today's usage — the same data you already see in the Usage tab. You do not need to set up anything extra.
 
+## What you'll see on the Budget page
+
+The figures below are the **Budget** page on a phone, a little after 11:00 on a day with a 20 kWh budget.
+
+![PELS Budget page Plan view showing energy used versus today's budget, budget confidence, and a progress chart tracing actual usage against the planned curve.](screenshots/daily-budget/plan-progress.png)
+*Figure 1. The Plan view answers, "where will I land today?" The big number is the projected end-of-day usage against today's budget — 9.0 of 20.0 kWh, with 11.0 kWh to spare — alongside how much budget is left to spend right now and an estimated cost. The Progress chart traces actual usage (black) against the planned curve (green) and the budget ceiling (dashed).*
+
+The Hourly plan view is where you can see how the day's energy lines up with prices:
+
+![PELS Budget page Hourly plan view showing planned energy per hour split into background and managed-device usage, with the electricity price line on top.](screenshots/daily-budget/hourly-plan.png)
+*Figure 2. The Hourly plan view shows planned energy per hour, split into background usage (blue) and managed-device usage (orange), with the price line (purple) on top. This is the view where you check whether managed load is landing in the cheaper hours: with price optimization on, the budget steers it that way.*
+
+## What a budget saves you (an example)
+
+The numbers here are **illustrative** — your real savings depend on your own prices and how much load you can actually move. Imagine a day with 24 kWh of flexible load (a water heater and an EV) on a typical Norwegian price curve: cheap overnight, expensive morning and evening (about 0.40 kr/kWh in the cheap hours, 1.20 kr/kWh in the dear ones).
+
+| | Budget off (runs whenever) | Budget on (price-shaped) |
+| --- | --- | --- |
+| Energy in the cheapest hours | 8 kWh | 18 kWh |
+| Energy in the priciest hours | 16 kWh | 6 kWh |
+| Average price paid | ~0.93 kr/kWh | ~0.60 kr/kWh |
+| Day's energy cost | ~22 kr | ~14 kr |
+
+Same total energy, same comfort — about a third less cost, just by letting the budget place the flexible load in the cheapest hours. The bigger the gap between cheap and expensive hours, the more a budget is worth; on a day when prices are flat there is little to shift and little to save. (If you instead lower the budget so the home uses *fewer* kWh, you save on top of this — but then something gives up energy, so set it where comfort allows.)
+
 ## Budget-Exempt Devices
 
 Budget exemption is a control rule, not a meter rewrite:
