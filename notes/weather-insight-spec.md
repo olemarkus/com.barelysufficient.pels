@@ -26,7 +26,7 @@ auto-applying it daily (a switch on the Weather sub-page; off by default).
 |---|---|---|
 | Budget page, plan view | One card appended after the chart card: the **Tomorrow card** (prediction + suggested budget + verdict). In pre-ready states the same slot renders the setup / backfill / learning card instead. | Budget's mission is "where will I land". Tomorrow's predicted kWh vs the daily budget is a landing question. Not Overview (protects persona 1's one-glance hero), not Usage (retrospective). Appended last so the existing hero → warning → confidence → chart order is untouched. |
 | Budget page, `localView: 'weather'` | The **Weather insight detail view**: summary sentence card, "Your home in numbers", scatter + coverage band, device footer. Header per the Budget-Adjust precedent: eyebrow `Budget`, headline `Weather insight`, outlined `Done` returning to plan. | The tinkerer's exploration surface; reuses Budget's existing local-view mechanism, page count stays zero. |
-| Settings | An always-visible **Weather insight** nav card → a dedicated sub-page. The sub-page always renders a master on/off switch (the feature gate); when off it adds a payoff-led pitch, when on it adds the two device pickers (native `select` + `.field`, `/homey_devices`) and a `See tomorrow's outlook in Budget` cross-link. The Budget setup card deep-links here via `data-settings-target`. | Device configuration is a Settings concern everywhere else in PELS; the master switch is the discoverable way to turn the feature on without the CLI. |
+| Settings | An always-visible **Weather insight** nav card → a dedicated sub-page. The sub-page always renders a master on/off switch (the feature gate); when off it adds a payoff-led pitch, when on it adds the **outdoor temperature device** picker (native `select` + `.field`, `/homey_devices`) and a `See tomorrow's outlook in Budget` cross-link. There is **no forecast-device picker** — the forecast comes from a direct MET Norway fetch. The Budget setup card deep-links here via `data-settings-target`. | Device configuration is a Settings concern everywhere else in PELS; the master switch is the discoverable way to turn the feature on without the CLI. |
 | Overview / Usage / Smart tasks / widgets / notifications | Nothing. | Deliberate — v1 makes zero claims on shared real estate. |
 
 When the feature is off: structural absence on Budget/Overview/Usage/etc. — no
@@ -53,6 +53,7 @@ card → `Choose temperature device` → Settings, Weather insight section.
 | Slope range (Sen CI, never called that) | sentence form | `Usually between +1.5 and +2.1 kWh per degree.` |
 | Balance temperature | whole °C, `≈` prefix | `≈ 13 °C` |
 | Forecast temp | whole °C | `2 °C` |
+| Tomorrow low/high | whole °C, U+2212 minus, `·` separator | `Low −4 °C · High 6 °C` |
 | Heat loss | nearest 10 W | `≈ 150 W per °C` |
 | Days | exact integer | `Based on 287 days` |
 | Negative numbers | U+2212 minus | `−8 °C` |
@@ -68,6 +69,7 @@ card → `Choose temperature device` → Settings, Weather insight section.
 ┌──────────────────────────────────────────┐
 │ Tomorrow: around 2 °C          [chip?]   │  h3 plan-card__title
 │ Forecast for tomorrow’s average          │  pels-card-supporting
+│ Low −4 °C · High 6 °C                     │  pels-card-supporting (tomorrow swing)
 │ ──────────────────────────────────────── │
 │ Expected usage              41–52 kWh    │  budget-setting-row
 │ Suggested daily budget      54 kWh       │  budget-setting-row
@@ -75,16 +77,25 @@ card → `Choose temperature device` → Settings, Weather insight section.
 │ ──────────────────────────────────────── │
 │ Tomorrow may be tight — a cold evening   │  verdict paragraph
 │ could use the whole budget.              │
+│ Weather data from MET Norway             │  muted attribution (CC-BY)
 │ [Adjust budget]        [Weather details] │  text buttons
 └──────────────────────────────────────────┘
 ```
 
 - Title carries the temperature: `Tomorrow: around 2 °C`.
+- The forecast comes from a direct **MET Norway Locationforecast 2.0** fetch (the
+  `+24h forecast device` was retired). There is **no forecast-device picker**;
+  the historical **outdoor device** picker (the regression covariate) stays.
 - Source line, by producer-resolved `forecastStatus` (one field on the readout
   payload, valid in every state):
-  - `forecast`: `Forecast for tomorrow’s average`
-  - `recent_no_device`: `If recent weather continues — no forecast device set.` (S7a)
-  - `recent_device_unreadable`: `Forecast device isn’t reporting tomorrow’s temperature — using recent days.` (S7b)
+  - `forecast`: `Forecast for tomorrow’s average` (MET supplied tomorrow's profile)
+  - `recent_days`: `Forecast unavailable — showing what recent weather suggests.` (S7 — MET unavailable, partial, or no hub geolocation)
+- **Tomorrow low/high** (`Low −4 °C · High 6 °C`): producer-resolved
+  `prediction.tempMinC`/`tempMaxC` from the MET day summary; rendered only when
+  both are present, so a swingy day reads as more than its mean.
+- **Attribution** (`Weather data from MET Norway`, CC-BY 4.0): a HARD MET ToS
+  requirement wherever the forecast shows; a muted line on the card (only with a
+  prediction) and the forecast half of the detail footer.
 - `Suggested daily budget` is the q80-headroom figure, clamped [20, 360],
   capped by capacity. Display-only unless the user opted into auto-apply.
 - When the suggestion is clamped by the hard cap (`cappedByCapacity`), a warn-tone
@@ -95,7 +106,11 @@ card → `Choose temperature device` → Settings, Weather insight section.
 - Verdict line (exactly one, current budget vs prediction quantiles):
   - current ≥ q90: `Your budget covers tomorrow with room to spare.` (ok)
   - q80 ≤ current < q90: `Your budget should cover tomorrow.` (ok)
-  - q50 ≤ current < q80: `Tomorrow may be tight — a cold evening could use the whole budget.` (warn)
+  - q50 ≤ current < q80 (warn): the tier is quantile-driven, but the REASON clause is
+    gated on the producer-resolved `coldEveningSuspected` (forecast evening hours below the
+    balance point) so the "cold evening" claim is never made on a mild day:
+    - cold evening forecast: `Tomorrow may be tight — a cold evening could use the whole budget.`
+    - otherwise: `Tomorrow may be tight — a heavier-than-usual day could use the whole budget.`
   - current < q50: `Tomorrow likely needs more than your budget. PELS will hold managed devices back to stay inside it.` (warn)
 - Optional chip (one max): `Rough estimate` for colder-than-observed or drift,
   with a reason line (S6/S8).
@@ -159,44 +174,43 @@ and `sensitivity` (jargon-adjacent).
 
 ### Detail card 4 — device footer
 
-One muted row: `Temperature: Outdoor sensor · Forecast: Yr` + text button
-`Change in Settings` (deep-link). Both halves are producer-resolved:
-- Temperature: device name; `not set` when no outdoor device is configured;
-  `not responding` when one is configured but its name couldn’t be read.
-- Forecast (by `forecastStatus`): name when reporting; `none — using recent
-  days` when no device is configured; `<name> isn’t reporting — using recent
-  days` when a device is configured but silent.
+One muted row: `Temperature: Outdoor sensor · Weather data from MET Norway` +
+text button `Change in Settings` (deep-link).
+- Temperature (producer-resolved): device name; `not set` when no outdoor device
+  is configured; `not responding` when one is configured but its name couldn’t be
+  read.
+- Forecast half: the fixed MET Norway CC-BY attribution (`Weather data from MET
+  Norway`). The forecast no longer comes from a device, so there is no device name
+  or per-status forecast text here — the attribution is always shown.
 
-### Settings section — device pickers + live validity
+### Settings section — outdoor device picker + live validity
 
 The **Weather insight** Settings sub-page (reached via the always-visible
 Settings nav card or the Budget setup card's deep-link) leads with the master
-on/off switch; once on it shows the two native `select`
-pickers, each **hard-filtered to temperature devices**: `/homey_devices` exposes
-`hasTemperature` (a bare `measure_temperature` capability) and the picker lists
-only those, so a guaranteed-broken non-temperature pick isn't even offered. A
-device exposing temperature only on a sub-capability is **excluded** here (no
-bare `measure_temperature`), so it never reaches the picker; when the filter
-leaves nothing, the section shows an explicit empty state. The live validity line
-below is the backstop for devices that DO pass the filter but still fail to
-deliver a readable value at runtime. Each picker is followed by that
-producer-resolved **live validity line** so a chosen device confirms itself
-instead of making the owner wait ~21 days. The producer
-resolves `outdoorReading` / `forecastReading` on the payload from an INSTANT
-on-demand read of each device's bare `measure_temperature` (done in the
-assembler — the collector's cached sample is cleared on the restart a selection
-change triggers, so it can't be trusted right after a pick). Three states per
-picker:
+on/off switch; once on it shows a single native `select` picker for the
+**outdoor temperature device**, **hard-filtered to temperature devices**:
+`/homey_devices` exposes `hasTemperature` (a bare `measure_temperature`
+capability) and the picker lists only those, so a guaranteed-broken
+non-temperature pick isn't even offered. A device exposing temperature only on a
+sub-capability is **excluded** here (no bare `measure_temperature`), so it never
+reaches the picker; when the filter leaves nothing, the section shows an explicit
+empty state. There is **no forecast-device picker** — the forecast is a direct
+MET Norway fetch. The live validity line below is the backstop for a device that
+DOES pass the filter but still fails to deliver a readable value at runtime, so a
+chosen device confirms itself instead of making the owner wait ~21 days. The
+producer resolves `outdoorReading` on the payload from an INSTANT on-demand read
+of the device's bare `measure_temperature` (done in the assembler — the
+collector's cached sample is cleared on the restart a selection change triggers,
+so it can't be trusted right after a pick). Three states:
 
-- **reading** — accent line. Outdoor: `Reading 4 °C now`. Forecast: `Reading tomorrow ≈ 2 °C`.
+- **reading** — accent line: `Reading 4 °C now`.
 - **unreadable** — `.field__hint--alert` warning line, self-contained (the static
-  hint is hidden once a device is selected). Outdoor: `PELS can’t read a temperature
+  hint is hidden once a device is selected): `PELS can’t read a temperature
   from this device — pick one that reports temperature on its main reading.`
-  Forecast: `This device isn’t reporting tomorrow’s temperature on its main reading — using recent days for now.`
 - **no_device** — no line; the static picker hint shows instead.
 
-The reading is checked per-picker against the current selection, so a just-changed
-device shows its hint (not the previous device's reading) until the re-fetch lands.
+The reading is checked against the current selection, so a just-changed device
+shows its hint (not the previous device's reading) until the re-fetch lands.
 
 The line is suppressed (hint shows) until a readout matching the CURRENT selection
 arrives, so a just-changed device never shows the previous device's reading.
@@ -260,17 +274,20 @@ flag is monotonic) so it fires once, never on the Settings sub-page.
 > Detail summary subline (warn tone): `Recent days run about 5 kWh/day above what’s typical for the temperature. If something changed — a new device, guests, heating settings — the estimate will catch up over a few weeks.`
 > Tomorrow card adds one supporting line: `Recent days ran higher than usual, so the range is wider.` (+ `Rough estimate` chip)
 
-**S7a — no forecast device (persistence fallback).**
-> Tomorrow card title: `Tomorrow: around 4 °C`; supporting line: `If recent weather continues — no forecast device set.`
-> Detail device footer: `Forecast: none — using recent days` + `Change in Settings`.
-
-**S7b — forecast device configured but not reporting (persistence fallback).**
-> A forecast device is set, but PELS can’t read tomorrow’s temperature from it
-> (e.g. a Yr device exposing its forecast on a sub-capability). The prediction
-> falls back to recent days — but the copy must NOT claim no device is set.
-> Tomorrow card supporting line: `Forecast device isn’t reporting tomorrow’s temperature — using recent days.`
-> Detail device footer: `Forecast: <name> isn’t reporting — using recent days`.
-> Settings forecast-picker hint: `Optional. Point this at a device that reports tomorrow’s outdoor temperature on its main temperature reading — a Yr “next 24 hours” device works. If PELS can’t read a forecast, it uses your recent days instead.`
+**S7 — forecast provenance (MET vs recent days).** The forecast comes from a
+direct MET Norway fetch, so provenance is binary, resolved as `forecastStatus`:
+> - `forecast` (MET supplied tomorrow's full forward profile):
+>   Tomorrow card supporting line `Forecast for tomorrow’s average`; the
+>   `Low −4 °C · High 6 °C` swing line and the `Weather data from MET Norway`
+>   attribution render. Detail footer forecast half: `Weather data from MET Norway`.
+> - `recent_days` (MET unavailable, partial coverage, or **no hub geolocation** —
+>   PELS can't request a forecast without coordinates): the prediction falls back
+>   to the trailing week of observed days.
+>   Tomorrow card supporting line: `Forecast unavailable — showing what recent weather suggests.`
+>   Detail footer forecast half: still `Weather data from MET Norway` (the
+>   attribution is fixed; the source line carries the fallback).
+> No-location is folded into `recent_days` copy for now; a location-aware hint is
+> a tracked follow-up (see `TODO.md`).
 
 **S8 — colder than anything observed.**
 > Tomorrow card chip: `Rough estimate`; reason line: `Tomorrow looks colder than any day PELS has measured — the range is wider than usual.`

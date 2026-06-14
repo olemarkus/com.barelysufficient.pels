@@ -266,6 +266,16 @@ CI failure, so future field-move slices can't silently grow the debt.*
       also clears the threshold (and the day includes its midnight hour), keeping the persisted flag
       consistent with its evidence. Source: CodeRabbit on the MET PR, 2026-06-14.
 
+- [ ] **Weather: share the in-flight MET refresh with a near-simultaneous rollup.** When the app
+      starts within seconds of the midnight rollup, the rollup's `refreshMetForecast` is skipped by
+      the single-flight guard (same generation as the boot refresh already in flight) and may roll up
+      on a not-yet-refreshed cache → the day falls to the `recent_days` persistence fallback. Bounded
+      (one day), self-healing (the next refresh fixes it), and inert while auto-apply is off. Persona:
+      a tinkerer restarting the app near midnight; hypothesis: rare, and it self-heals at the next
+      refresh, so the cost is at most one day on a recent-days budget instead of MET. Candidate fix:
+      have an in-flight `refreshMetForecast` return/await the shared in-flight promise rather than
+      skip, so the rollup observes the freshly-refreshed cache. Source: Codex on the MET PR, 2026-06-14.
+
 - [ ] **Weather sub-page → Budget cross-link is a one-way trip.** The Weather insight sub-page's
       "See tomorrow's outlook in Budget" link opens the Budget weather detail view, but its Done
       button returns to the Budget plan view, not back to the sub-page the user came from —
@@ -516,6 +526,18 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
 *Entry bar: each item states a **hypothesis**, **why it's needed**, and the **persona**
 (`notes/personas.md`) it serves. Items that can't name all three are maintainability/
 cosmetic chores — do them in passing or drop them; don't park them here.*
+
+- [ ] **Weather: a location-aware hint when MET can't be reached for lack of geolocation.**
+      *Persona:* curious tinkerer (`notes/personas.md`) who turned the feature on but never set the
+      hub's location, so the forecast silently runs on recent days.
+      *Hypothesis:* the no-geolocation case is currently folded into the generic `recent_days` copy
+      (`Forecast unavailable — showing what recent weather suggests.`), which doesn't name the one
+      fix the owner controls — setting the Homey hub location — so a fixable miss reads as an
+      unexplained fallback.
+      *Why it's needed:* a no-location-specific source line (e.g. naming the Homey location setting)
+      would turn a permanent silent fallback into a one-tap fix. Out of scope for the picker-removal
+      PR (would need a producer-resolved no-geolocation `forecastStatus` arm + copy). Source: PR 2
+      MET UI-cleanup scope decision, 2026-06-14.
 
 - [ ] **Persist the device Activity-log so it survives a restart.**
       *Persona:* curious tinkerer (`notes/personas.md`) — wants to debug their own setup over time.

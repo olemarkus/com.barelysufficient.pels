@@ -15,6 +15,7 @@ import {
   composeNumbersFootnote,
   composeSlopeRange,
   composeSummaryHeadline,
+  composeTomorrowLowHigh,
   composeTomorrowTitle,
   composeUncorrelatedSummary,
   composeWinterOnlyHeadline,
@@ -27,6 +28,7 @@ import {
   formatWarmDayUsage,
   resolveTomorrowVerdict,
   resolveWeatherConfidenceChip,
+  WEATHER_ATTRIBUTION_MET,
   WEATHER_AUTO_APPLY_STATUS,
   WEATHER_BACKFILL_BODY,
   WEATHER_BACKFILL_TITLE,
@@ -131,6 +133,7 @@ const TomorrowCard = ({ readout, onShowDetails, onAdjustBudget }: {
       residualQ50: fit.residualQ50,
       residualQ80: fit.residualQ80,
       residualQ90: fit.residualQ90,
+      coldEveningSuspected: suggestion?.coldEveningSuspected,
     })
     : null;
   // A capacity-capped day is never an "ok" landing; an ok-tone verdict would
@@ -150,6 +153,13 @@ const TomorrowCard = ({ readout, onShowDetails, onAdjustBudget }: {
       {prediction && (
         <p class="pels-card-supporting">
           {composeForecastSourceLine(readout.forecastStatus)}
+        </p>
+      )}
+      {/* Tomorrow's swing — so a cold-evening day reads as more than its mean.
+          Producer-resolved low/high; only present when the MET summary supplied them. */}
+      {typeof prediction?.tempMinC === 'number' && typeof prediction?.tempMaxC === 'number' && (
+        <p class="pels-card-supporting weather-card__lowhigh" id="weather-tomorrow-lowhigh">
+          {composeTomorrowLowHigh(prediction.tempMinC, prediction.tempMaxC)}
         </p>
       )}
       {roughReason !== null && (
@@ -197,6 +207,14 @@ const TomorrowCard = ({ readout, onShowDetails, onAdjustBudget }: {
       {readout.autoApplyDailyBudget && readout.dailyBudgetEnabled && (
         <p class="pels-card-supporting" id="weather-auto-apply-status">
           {WEATHER_AUTO_APPLY_STATUS}
+        </p>
+      )}
+      {/* MET Norway CC-BY 4.0 attribution — shown only when the displayed forecast
+          is actually MET-backed; a recent-days fallback shows no MET data, so the
+          source line above carries it instead (no false MET claim). */}
+      {prediction && readout.forecastStatus === 'forecast' && (
+        <p class="weather-card__attribution" id="weather-tomorrow-attribution">
+          {WEATHER_ATTRIBUTION_MET}
         </p>
       )}
       <div class="weather-card__actions">
@@ -431,8 +449,7 @@ const DeviceFooter = ({ readout }: { readout: WeatherAdvisorReadoutPayload }) =>
       {composeDeviceFooter({
         outdoorDeviceName: readout.settings.outdoorDeviceName,
         outdoorDeviceConfigured: readout.settings.outdoorDeviceId !== null,
-        forecastDeviceName: readout.settings.forecastDeviceName,
-        forecastStatus: readout.forecastStatus,
+        forecastFromMet: readout.forecastStatus === 'forecast',
       })}
     </p>
     <MdTextButton id="weather-change-in-settings" data-settings-target="weather">

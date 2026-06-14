@@ -1,23 +1,20 @@
 import {
   composeDeviceFooter,
-  composeForecastReadingLine,
   composeForecastSourceLine,
   composeOutdoorReadingLine,
+  composeTomorrowLowHigh,
+  WEATHER_ATTRIBUTION_MET,
 } from '../../shared-domain/src/weatherInsightCopy';
 
 describe('composeForecastSourceLine', () => {
-  it('names a reporting forecast device', () => {
+  it('names the MET forecast for a real prediction', () => {
     expect(composeForecastSourceLine('forecast')).toBe('Forecast for tomorrow’s average');
   });
 
-  it('says no device is set when none is configured', () => {
-    expect(composeForecastSourceLine('recent_no_device')).toContain('no forecast device set');
-  });
-
-  it('distinguishes a configured-but-silent forecast device from no device', () => {
-    const line = composeForecastSourceLine('recent_device_unreadable');
-    expect(line).toContain('isn’t reporting');
-    expect(line).not.toContain('no forecast device set');
+  it('names the recent-days fallback when MET is unavailable', () => {
+    const line = composeForecastSourceLine('recent_days');
+    expect(line).toContain('recent weather');
+    expect(line).not.toContain('forecast device');
   });
 });
 
@@ -25,35 +22,42 @@ describe('composeDeviceFooter', () => {
   const base = {
     outdoorDeviceName: 'Outdoor sensor',
     outdoorDeviceConfigured: true,
-    forecastDeviceName: 'Yr forecast',
-    forecastStatus: 'forecast' as const,
+    forecastFromMet: true,
   };
 
-  it('shows both device names when each reports', () => {
-    expect(composeDeviceFooter(base)).toBe('Temperature: Outdoor sensor · Forecast: Yr forecast');
+  it('shows the outdoor device name and the MET attribution', () => {
+    expect(composeDeviceFooter(base)).toBe(`Temperature: Outdoor sensor · ${WEATHER_ATTRIBUTION_MET}`);
+  });
+
+  it('carries the MET attribution when the forecast is MET-backed (CC-BY requirement)', () => {
+    expect(composeDeviceFooter(base)).toContain('Weather data from MET Norway');
+  });
+
+  it('shows a recent-days note (NOT a false MET credit) when MET is unavailable', () => {
+    const footer = composeDeviceFooter({ ...base, forecastFromMet: false });
+    expect(footer).not.toContain('MET Norway');
+    expect(footer).toContain('Forecast: recent days');
   });
 
   it('says "not set" only when no outdoor device is configured', () => {
-    expect(composeDeviceFooter({ ...base, outdoorDeviceName: null, outdoorDeviceConfigured: false }))
+    expect(composeDeviceFooter({ outdoorDeviceName: null, outdoorDeviceConfigured: false, forecastFromMet: true }))
       .toContain('Temperature: not set');
   });
 
   it('says "not responding" for a configured outdoor device whose name could not be read', () => {
-    const footer = composeDeviceFooter({ ...base, outdoorDeviceName: null, outdoorDeviceConfigured: true });
+    const footer = composeDeviceFooter({ outdoorDeviceName: null, outdoorDeviceConfigured: true, forecastFromMet: true });
     expect(footer).toContain('Temperature: not responding');
     expect(footer).not.toContain('not set');
   });
+});
 
-  it('shows "none — using recent days" when no forecast device is configured', () => {
-    expect(composeDeviceFooter({
-      ...base, forecastDeviceName: null, forecastStatus: 'recent_no_device',
-    })).toContain('Forecast: none — using recent days');
+describe('composeTomorrowLowHigh', () => {
+  it('formats whole °C with the typographic minus', () => {
+    expect(composeTomorrowLowHigh(-4, 6)).toBe('Low −4 °C · High 6 °C');
   });
 
-  it('names a configured-but-silent forecast device as not reporting (never "none")', () => {
-    const footer = composeDeviceFooter({ ...base, forecastStatus: 'recent_device_unreadable' });
-    expect(footer).toContain('Forecast: Yr forecast isn’t reporting — using recent days');
-    expect(footer).not.toContain('Forecast: none');
+  it('rounds to whole degrees', () => {
+    expect(composeTomorrowLowHigh(-3.6, 5.4)).toBe('Low −4 °C · High 5 °C');
   });
 });
 
@@ -71,22 +75,5 @@ describe('composeOutdoorReadingLine', () => {
 
   it('renders no line when no device is configured', () => {
     expect(composeOutdoorReadingLine({ status: 'no_device' })).toBeNull();
-  });
-});
-
-describe('composeForecastReadingLine', () => {
-  it('shows tomorrow’s reading with an ok tone', () => {
-    expect(composeForecastReadingLine({ status: 'reading', tempC: 2 }))
-      .toEqual({ text: 'Reading tomorrow ≈ 2 °C', tone: 'ok' });
-  });
-
-  it('warns (and names the recent-days fallback) when the device is silent', () => {
-    const line = composeForecastReadingLine({ status: 'unreadable' });
-    expect(line?.tone).toBe('warn');
-    expect(line?.text).toContain('recent days');
-  });
-
-  it('renders no line when no device is configured', () => {
-    expect(composeForecastReadingLine({ status: 'no_device' })).toBeNull();
   });
 });
