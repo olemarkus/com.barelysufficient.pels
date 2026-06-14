@@ -1,9 +1,7 @@
-import type { Logger as PinoLogger } from 'pino';
 import type {
   WeatherAdvisorSettings,
   WeatherHistoryState,
 } from '../../packages/contracts/src/weatherAdvisorTypes';
-import type { RawHomeyDeviceLike } from '../utils/types';
 import { normalizeError } from '../utils/errorUtils';
 import {
   getDateKeyInTimeZone,
@@ -12,9 +10,10 @@ import {
   shiftDateKey,
 } from '../utils/dateUtils';
 import { readDeviceTemperature } from './weatherDeviceRead';
+import { metRefreshedLogFields, runMetForecastRefresh } from './metForecastRefresh';
+import type { WeatherCollectorDeps } from './weatherCollectorDeps';
 import {
   applyActualSample,
-  applyForecastSample,
   CONTROLLED_BACKFILL_VERSION,
   emptyWeatherHistoryState,
   getLocalHourKey,
@@ -26,7 +25,6 @@ import {
   rollupDay,
   upsertBackfillRecords,
 } from './weatherHistory';
-import type { WeatherHistoryStore } from './weatherHistoryStore';
 import { fetchBackfillDailyRecords, TEMP_BACKFILL_VERSION } from './weatherInsightsBackfill';
 import { resolveMeterDailyKwh, type MeterKwhBackfillOutcome } from './meterKwhBackfill';
 import { applyControlledOutcome, resolveControlledDailyKwh } from './controlledKwhBackfill';
@@ -46,52 +44,16 @@ const PERSIST_RETRY_MS = 60 * 1000;
  */
 const LOAD_GRACE_MS = 5 * 60 * 1000;
 const CURRENT_TEMP_STALENESS_MS = 2 * HOUR_MS;
-const FORECAST_OFFSET_MS = 24 * HOUR_MS;
 const READ_WARN_THROTTLE_MS = HOUR_MS;
 
-export type WeatherCollectorDeps = {
-  store: WeatherHistoryStore;
-  readDevice: (deviceId: string) => Promise<RawHomeyDeviceLike>;
-  /** Read-only GET against the Homey Web API (Insights backfills + meter discovery). */
-  fetchInsights: (path: string) => Promise<unknown>;
-  /** Flat kWh totals for a local day, sourced from the power tracker by the factory. */
-  getDailyKwh: (dateKey: string) => { total?: number; controlled?: number; uncontrolled?: number };
-  /** Whether PELS manages (controls) a device — drives the historical controlled-split backfill. */
-  isManagedDevice: (deviceId: string) => boolean;
-  getUnreliablePeriods: () => Array<{ start: number; end: number }>;
-  /**
-   * Censoring evidence for a local day (PELS-limited comfort/capacity, or a
-   * deadline-miss-to-budget), composed by the factory from diagnostics + smart-
-   * task history. Absent fields = signal unavailable (treated as unsuppressed).
-   */
-  getDaySuppression: (dateKey: string) => {
-    targetDeficitMs?: number;
-    blockedByHeadroomMs?: number;
-    deadlineMissedToBudget?: boolean;
-  };
-  getSettings: () => WeatherAdvisorSettings;
-  getNowMs: () => number;
-  getTimeZone: () => string;
-  /**
-   * Recomputes derived fields (energy-signature fit, budget suggestion) after
-   * the records change. Injected so the collector stays a pure data layer.
-   */
-  recomputeDerived?: (state: WeatherHistoryState) => WeatherHistoryState;
-  /**
-   * Applies the suggested daily budget at a rollup when the user opted into
-   * auto-apply. Returns `true` when applied, `false` when the daily budget
-   * feature is off (leave-off semantics). Injected so `lib/weather` never
-   * imports `lib/dailyBudget` (the `no-weather-to-peer` boundary).
-   */
-  applySuggestedDailyBudget?: (suggestedKwh: number) => boolean;
-  logger: PinoLogger;
-};
+export type { WeatherCollectorDeps } from './weatherCollectorDeps';
 
 /**
  * Owns the hidden weather-history collection loop: samples the configured
- * outdoor (and optional forecast) device hourly, finalizes each local day
- * shortly after midnight, and persists through a dirty/debounce/grace cycle.
- * Holds no domain math — the energy-signature fit consumes its records later.
+ * outdoor device hourly, refreshes tomorrow's MET Norway forecast (cache-gated,
+ * ≤ hourly per MET ToS), finalizes each local day shortly after midnight, and
+ * persists through a dirty/debounce/grace cycle. Holds no domain math — the
+ * energy-signature fit consumes its records later.
  */
 export class WeatherCollector {
   private state: WeatherHistoryState = emptyWeatherHistoryState();
@@ -112,6 +74,8 @@ export class WeatherCollector {
   private backfillRunning = false;
   private meterBackfillRunning = false;
   private controlledBackfillRunning = false;
+  /** Single-flights the MET refresh so the periodic timer can't overlap the rollup-path one. */
+  private metRefreshInFlight = false;
   private running = false;
   /**
    * Bumped on every stop(). Async continuations capture it before awaiting
@@ -147,16 +111,21 @@ export class WeatherCollector {
     this.deps.logger.info({
       event: 'weather_collector_started',
       outdoorDeviceId: settings.outdoorDeviceId,
-      hasForecastDevice: settings.forecastDeviceId !== undefined,
+      hasMetForecast: this.deps.fetchForecast !== undefined,
       recordCount: this.state.records.length,
     });
-    try {
-      this.catchUpRollups();
-    } catch (error) {
-      // A throwing kWh/period getter must not abort the whole start — the
-      // orphaned accumulators get another chance at the next midnight tick.
-      this.deps.logger.error({ event: 'weather_rollup_failed', err: normalizeError(error) });
-    }
+    // Refresh tomorrow's forecast at boot, THEN catch up rollups — so a boot
+    // landing after local midnight recomputes/auto-applies on the fresh MET
+    // cache rather than a stale-day one (which would fall back to persistence).
+    // The fetch is bounded by a timeout, so this cannot stall start() forever;
+    // the catch-up is gated on running+generation so a stop() mid-fetch discards
+    // it. A throwing kWh/period getter is swallowed inside catchUpRollupsSafely —
+    // the orphaned accumulators get another chance at the next midnight tick.
+    const generation = this.runGeneration;
+    void this.refreshMetForecastSafely().finally(() => {
+      if (!this.running || generation !== this.runGeneration) return;
+      this.catchUpRollupsSafely();
+    });
     this.maybeStartBackfill(settings);
     this.maybeStartMeterKwhBackfill();
     this.maybeStartControlledKwhBackfill();
@@ -313,12 +282,15 @@ export class WeatherCollector {
     const settings = this.deps.getSettings();
     if (!settings.enabled || !settings.outdoorDeviceId) return;
     await this.sampleOutdoor(settings.outdoorDeviceId);
-    if (settings.forecastDeviceId) await this.sampleForecast(settings.forecastDeviceId);
+    // Reuse the hourly sample cadence for the MET refresh; it is cache-gated by
+    // the `Expires` header so an in-window cache means no network call (≤ hourly
+    // per MET ToS regardless of how often this fires).
+    await this.refreshMetForecast();
   }
 
   private async sampleOutdoor(deviceId: string): Promise<void> {
     const generation = this.runGeneration;
-    const temperatureC = await this.readTemperature(deviceId, 'outdoor');
+    const temperatureC = await this.readTemperature(deviceId);
     // A late-resolving read must not mutate a stopped collector — nor a NEW
     // run that may have switched to a different outdoor device.
     if (temperatureC === undefined || generation !== this.runGeneration || !this.running) return;
@@ -335,40 +307,48 @@ export class WeatherCollector {
     this.markDirty();
   }
 
-  // No consumer reads forecastHourly yet (the budget-suggestion stage does);
-  // sampling it from PR 1 deliberately production-validates the yr.no
-  // period=+24h device path while the feature is still dark, so the
-  // suggestion ships against proven data.
-  private async sampleForecast(deviceId: string): Promise<void> {
+  /** Single-flights `runMetForecastRefresh` (the cache-gate + fetch + fallback chain live in that module). */
+  private async refreshMetForecast(): Promise<void> {
+    if (!this.deps.fetchForecast || this.metRefreshInFlight) return;
+    this.metRefreshInFlight = true;
     const generation = this.runGeneration;
-    const temperatureC = await this.readTemperature(deviceId, 'forecast');
-    if (temperatureC === undefined || generation !== this.runGeneration || !this.running) return;
-    const nowMs = this.deps.getNowMs();
-    const timeZone = this.deps.getTimeZone();
-    const target = new Date(nowMs + FORECAST_OFFSET_MS);
-    this.state = applyForecastSample(this.state, {
-      targetDateKey: getDateKeyInTimeZone(target, timeZone),
-      hourKey: getLocalHourKey(target, timeZone),
-      temperatureC,
-      todayKey: getDateKeyInTimeZone(new Date(nowMs), timeZone),
-    });
-    this.markDirty();
+    try {
+      const todayKey = (): string => getDateKeyInTimeZone(new Date(this.deps.getNowMs()), this.deps.getTimeZone());
+      await runMetForecastRefresh({
+        fetchForecast: this.deps.fetchForecast,
+        getCache: () => this.state.metForecast,
+        getNowMs: () => this.deps.getNowMs(),
+        getTodayKey: todayKey,
+        getTomorrowKey: () => shiftDateKey(todayKey(), 1),
+        isStillCurrent: () => generation === this.runGeneration && this.running,
+        storeCache: (cache) => { this.state = { ...this.state, metForecast: cache }; this.markDirty(); },
+        logRefreshed: (cache) => this.deps.logger.info(metRefreshedLogFields(cache)),
+        warnUnavailable: (outcome) => this.warnThrottled({ event: 'weather_met_forecast_unavailable', outcome }),
+      });
+    } finally {
+      this.metRefreshInFlight = false;
+      // A reload during the (timeout-bounded) fetch superseded this run, and the
+      // new run's start()-time refresh was blocked by the in-flight flag. Kick
+      // the new run's refresh now rather than waiting for its next sample/rollup
+      // tick. Gated on supersession so a persistently-failing fetch cannot
+      // hot-loop (mirrors the meter/controlled backfill re-kick pattern).
+      if (this.running && generation !== this.runGeneration) {
+        void this.refreshMetForecast();
+      }
+    }
   }
 
-  private async readTemperature(
-    deviceId: string,
-    role: 'outdoor' | 'forecast',
-  ): Promise<number | undefined> {
+  private async readTemperature(deviceId: string): Promise<number | undefined> {
     try {
       const device = await this.deps.readDevice(deviceId);
       const temperatureC = readDeviceTemperature(device);
       if (temperatureC === undefined) {
-        this.warnThrottled({ event: 'weather_device_no_temperature', role, deviceId });
+        this.warnThrottled({ event: 'weather_device_no_temperature', role: 'outdoor', deviceId });
       }
       return temperatureC;
     } catch (error) {
       this.warnThrottled({
-        event: 'weather_device_read_failed', role, deviceId, err: normalizeError(error),
+        event: 'weather_device_read_failed', role: 'outdoor', deviceId, err: normalizeError(error),
       });
       return undefined;
     }
@@ -407,18 +387,44 @@ export class WeatherCollector {
     const timeZone = this.deps.getTimeZone();
     const targetMs = getNextLocalDayStartUtcMs(nowMs, timeZone) + MIDNIGHT_ROLLUP_OFFSET_MS;
     if (this.rollupTimer) clearTimeout(this.rollupTimer);
+    // Capture the generation so a stop() (or a new run) during the awaited
+    // refresh discards this continuation: without it, the catch-up would mutate
+    // state and reschedule a timer on a stopped/superseded collector.
+    const generation = this.runGeneration;
     this.rollupTimer = setTimeout(() => {
-      try {
-        // Catch-up loop rather than a single yesterday-rollup: if a midnight
-        // fire was skipped (clock jump, long stall) the orphaned accumulator
-        // would otherwise age past pruning without ever becoming a record.
-        this.catchUpRollups();
-      } catch (error) {
-        this.deps.logger.error({ event: 'weather_rollup_failed', err: normalizeError(error) });
-      } finally {
+      // Refresh tomorrow's forecast BEFORE the catch-up recompute so the midnight
+      // suggestion is built on a fresh complete MET profile (cache-gated, so an
+      // in-window cache is a no-op). A refresh failure must not skip the rollup —
+      // the suggestion then falls back to persistence.
+      void this.refreshMetForecastSafely().finally(() => {
+        if (!this.running || generation !== this.runGeneration) return;
+        this.catchUpRollupsSafely();
         this.scheduleNextRollup();
-      }
+      });
     }, Math.max(1000, targetMs - nowMs));
+  }
+
+  /** refreshMetForecast wrapped so a transient failure logs instead of rejecting the caller. */
+  private async refreshMetForecastSafely(): Promise<void> {
+    try {
+      await this.refreshMetForecast();
+    } catch (error) {
+      this.deps.logger.warn({ event: 'weather_met_forecast_refresh_failed', err: normalizeError(error) });
+    }
+  }
+
+  /**
+   * Catch-up loop rather than a single yesterday-rollup: if a midnight fire was
+   * skipped (clock jump, long stall) the orphaned accumulator would otherwise
+   * age past pruning without ever becoming a record. Swallows getter throws so
+   * one bad day cannot abort boot or the rollup timer.
+   */
+  private catchUpRollupsSafely(): void {
+    try {
+      this.catchUpRollups();
+    } catch (error) {
+      this.deps.logger.error({ event: 'weather_rollup_failed', err: normalizeError(error) });
+    }
   }
 
   /** Roll any accumulator days the app slept through (boot catch-up). */

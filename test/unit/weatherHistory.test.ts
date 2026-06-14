@@ -3,7 +3,6 @@ import {
   applyActualSample,
   applyControlledBackfill,
   mergeRecoveredState,
-  applyForecastSample,
   emptyWeatherHistoryState,
   normalizeWeatherHistoryState,
   periodsOverlapWindow,
@@ -54,29 +53,6 @@ describe('applyActualSample', () => {
     state = applyActualSample(state, { dateKey: '2026-01-10', hourKey: '23', temperatureC: -4 });
     state = applyActualSample(state, { dateKey: '2026-01-11', hourKey: '00', temperatureC: -5 });
     expect(Object.keys(state.accumulators ?? {})).toEqual(['2026-01-10', '2026-01-11']);
-  });
-});
-
-describe('applyForecastSample', () => {
-  it('stores readings under the target day and hour, ignoring non-future targets', () => {
-    let state = emptyWeatherHistoryState();
-    state = applyForecastSample(state, {
-      targetDateKey: '2026-01-11', hourKey: '14', temperatureC: -2, todayKey: '2026-01-10',
-    });
-    state = applyForecastSample(state, {
-      targetDateKey: '2026-01-10', hourKey: '15', temperatureC: 9, todayKey: '2026-01-10',
-    });
-    expect(state.forecastHourly).toEqual({ '2026-01-11': { '14': -2 } });
-  });
-
-  it('retains at most two future target days', () => {
-    let state = emptyWeatherHistoryState();
-    for (const target of ['2026-01-11', '2026-01-12', '2026-01-13']) {
-      state = applyForecastSample(state, {
-        targetDateKey: target, hourKey: '00', temperatureC: 0, todayKey: '2026-01-10',
-      });
-    }
-    expect(Object.keys(state.forecastHourly ?? {}).sort()).toEqual(['2026-01-11', '2026-01-12']);
   });
 });
 
@@ -173,21 +149,16 @@ describe('rollupDay', () => {
     expect(state.records.map((record) => record.dateKey)).toEqual(['2026-01-10']);
   });
 
-  it('drops stale forecast days and old accumulators', () => {
+  it('drops old accumulators beyond the retention window', () => {
     let state = baseState();
-    state = applyForecastSample(state, {
-      targetDateKey: '2026-01-11', hourKey: '10', temperatureC: 0, todayKey: '2026-01-10',
-    });
     state = {
       ...state,
       accumulators: { ...state.accumulators, '2026-01-05': { sumC: 1, count: 1, minC: 1, maxC: 1 } },
-      forecastHourly: { ...state.forecastHourly, '2026-01-09': { '01': 5 } },
     };
     state = rollupDay(state, {
       dateKey: '2026-01-10', dayLengthHours: 24, kwhTotal: 40, unreliablePower: false,
     });
     expect(state.accumulators?.['2026-01-05']).toBeUndefined();
-    expect(Object.keys(state.forecastHourly ?? {})).toEqual(['2026-01-11']);
   });
 });
 
@@ -558,6 +529,50 @@ describe('normalizeWeatherHistoryState', () => {
       // Sorted ascending; junk dropped.
       records: [liveRecord('2026-01-08'), liveRecord('2026-01-09')],
     });
+  });
+
+  it('round-trips a valid per-day metForecast cache and drops malformed days', () => {
+    const today = {
+      dateKey: '2026-01-10', meanTempC: -1, minTempC: -4, maxTempC: 2, hourCount: 24, fullDayCoverage: true,
+    };
+    const tomorrow = {
+      dateKey: '2026-01-11',
+      meanTempC: -3,
+      minTempC: -7,
+      maxTempC: 1,
+      eveningMinTempC: -6,
+      symbolCode: 'cloudy',
+      precipMmTotal: 0.4,
+      hourCount: 24,
+      fullDayCoverage: true,
+    };
+    const metForecast = {
+      byDay: { '2026-01-10': today, '2026-01-11': tomorrow },
+      fetchedAtMs: 1_700_000_000_000,
+      expires: 'Sat, 10 Jan 2026 10:30:00 GMT',
+      lastModified: 'Sat, 10 Jan 2026 09:00:00 GMT',
+    };
+    const normalized = normalizeWeatherHistoryState({ records: [], metForecast });
+    expect(normalized?.metForecast).toEqual(metForecast);
+
+    // A malformed DAY is dropped but a valid sibling day survives (strip-not-reject).
+    const mixed = normalizeWeatherHistoryState({
+      records: [],
+      metForecast: {
+        byDay: {
+          '2026-01-10': { dateKey: '2026-01-10', meanTempC: 'cold', minTempC: -4, maxTempC: 2 },
+          '2026-01-11': tomorrow,
+        },
+        fetchedAtMs: 1,
+      },
+    });
+    expect(Object.keys(mixed?.metForecast?.byDay ?? {})).toEqual(['2026-01-11']);
+
+    // No usable day → the whole cache is dropped (suggestion falls back to persistence).
+    const allBad = normalizeWeatherHistoryState({
+      records: [], metForecast: { byDay: { x: { dateKey: 'x', meanTempC: 'cold' } }, fetchedAtMs: 1 },
+    });
+    expect(allBad?.metForecast).toBeUndefined();
   });
 
   it('keeps records its own writer can produce: negative kWh (net export) must not drop the day', () => {
