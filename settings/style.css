@@ -8311,6 +8311,18 @@ md-switch {
   margin: 0;
 }
 
+.weather-card__lowhigh {
+  margin: 0;
+}
+
+.weather-card__attribution {
+  margin: 0;
+  font-size: var(--pels-text-caption-font-size);
+  /* Secondary tone — matches the detail-view footer attribution so the one CC-BY
+     string reads at a single grey across surfaces (not the dimmer .muted alias). */
+  color: var(--pels-text-secondary);
+}
+
 .weather-card__chips {
   display: flex;
   gap: var(--spacing-2);

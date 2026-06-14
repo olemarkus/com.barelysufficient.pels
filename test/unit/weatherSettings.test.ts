@@ -17,11 +17,19 @@ describe('buildWeatherAdvisorSettings', () => {
 
   it('normalizes a valid blob', () => {
     const result = buildWeatherAdvisorSettings({
-      settings: settingsWith({ enabled: true, outdoorDeviceId: 'dev-1', forecastDeviceId: 'dev-2' }),
+      settings: settingsWith({ enabled: true, outdoorDeviceId: 'dev-1' }),
     });
     expect(result).toEqual({
-      enabled: true, outdoorDeviceId: 'dev-1', forecastDeviceId: 'dev-2', autoApplyDailyBudget: false,
+      enabled: true, outdoorDeviceId: 'dev-1', autoApplyDailyBudget: false,
     });
+  });
+
+  it('ignores a legacy forecastDeviceId blob field (the forecast comes from MET now)', () => {
+    const result = buildWeatherAdvisorSettings({
+      settings: settingsWith({ enabled: true, outdoorDeviceId: 'dev-1', forecastDeviceId: 'dev-2' }),
+    });
+    expect(result).toEqual({ enabled: true, outdoorDeviceId: 'dev-1', autoApplyDailyBudget: false });
+    expect(result).not.toHaveProperty('forecastDeviceId');
   });
 
   it('reads autoApplyDailyBudget only for a strict true', () => {
@@ -42,10 +50,10 @@ describe('buildWeatherAdvisorSettings', () => {
 
   it('drops empty or non-string device ids and non-boolean enabled', () => {
     const result = buildWeatherAdvisorSettings({
-      settings: settingsWith({ enabled: 'true', outdoorDeviceId: '  ', forecastDeviceId: 7 }),
+      settings: settingsWith({ enabled: 'true', outdoorDeviceId: '  ' }),
     });
     expect(result).toEqual({
-      enabled: false, outdoorDeviceId: undefined, forecastDeviceId: undefined, autoApplyDailyBudget: false,
+      enabled: false, outdoorDeviceId: undefined, autoApplyDailyBudget: false,
     });
   });
 });

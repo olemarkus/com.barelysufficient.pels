@@ -1095,16 +1095,14 @@
     const settingsEcho = {
       outdoorDeviceId: advisor.outdoorDeviceId ?? null,
       outdoorDeviceName: advisor.outdoorDeviceId ? 'Outdoor sensor' : null,
-      forecastDeviceId: advisor.forecastDeviceId ?? null,
-      forecastDeviceName: advisor.forecastDeviceId ? 'Yr forecast' : null,
     };
-    // Mirrors the producer's payload-level forecastStatus + live device readings.
-    const forecastStatus = advisor.forecastDeviceId ? 'forecast' : 'recent_no_device';
+    // The forecast comes from a direct MET Norway fetch (not a device), so the
+    // ready payload always reports `forecast` (met_api); persistence fallback
+    // would be `recent_days`. Tests pin recent_days via runtimeOverrides.
+    // Normalise to the contracted union so an override can only pin a valid value.
+    const forecastStatus = advisor.forecastStatus === 'recent_days' ? 'recent_days' : 'forecast';
     const outdoorReading = advisor.outdoorDeviceId
       ? { status: 'reading', tempC: 4 }
-      : { status: 'no_device' };
-    const forecastReading = advisor.forecastDeviceId
-      ? { status: 'reading', tempC: 2 }
       : { status: 'no_device' };
     // Mirrors the producer's resolveDailyBudgetKwh: enabled AND a positive number,
     // else null (a 0/negative budget is "no budget", not a literal 0).
@@ -1124,7 +1122,6 @@
       settings: settingsEcho,
       forecastStatus,
       outdoorReading,
-      forecastReading,
       dailyBudgetKwh,
       dailyBudgetEnabled,
       autoApplyDailyBudget,
@@ -1189,7 +1186,6 @@
       settings: settingsEcho,
       forecastStatus,
       outdoorReading,
-      forecastReading,
       dailyBudgetKwh,
       dailyBudgetEnabled,
       autoApplyDailyBudget,
@@ -1223,6 +1219,9 @@
       coverage,
       prediction: {
         tempMeanC: 2,
+        // Producer-resolved tomorrow low/high from the MET day summary.
+        tempMinC: -4,
+        tempMaxC: 6,
         kwh: Number(predictedKwh.toFixed(1)),
         lowKwh: Number((predictedKwh - 5).toFixed(1)),
         highKwh: Number((predictedKwh + 7).toFixed(1)),
@@ -1259,7 +1258,6 @@
       // (which filter on hasTemperature). Mirrors the api.ts homey_devices shape.
       return [
         { id: 'dev_outdoor', name: 'Outdoor sensor', hasTemperature: true },
-        { id: 'dev_forecast', name: 'Yr forecast', hasTemperature: true },
         { id: 'dev_heatpump', name: 'Living Room Heat Pump', hasTemperature: true },
         { id: 'dev_floorheat', name: 'Bathroom Floor Heat', hasTemperature: true },
         { id: 'dev_waterheater', name: 'Water Heater', hasTemperature: false },

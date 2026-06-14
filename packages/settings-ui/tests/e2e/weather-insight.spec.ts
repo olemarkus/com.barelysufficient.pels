@@ -11,6 +11,9 @@
  * On drives the real navigation loop: Tomorrow card → `Weather details`
  * → detail view (header `Weather insight`, scatter chart with a non-empty
  * SVG) → `Done` → back to the plan view.
+ *
+ * The forecast comes from a direct MET Norway fetch, so there is no forecast
+ * device picker — the only device picker is the outdoor (historical) one.
  */
 import { expect, test, type Page } from './fixtures/test';
 
@@ -21,7 +24,6 @@ const enableWeatherFlag = async (page: Page) => {
         weather_advisor_settings: {
           enabled: true,
           outdoorDeviceId: 'dev_outdoor',
-          forecastDeviceId: 'dev_forecast',
         },
         // Generous budget so the stub's deterministic verdict is the calm one.
         daily_budget_kwh: 50,
@@ -79,14 +81,14 @@ test.describe('Weather insight', () => {
     await expect(page.locator('#weather-see-in-budget')).toBeHidden();
   });
 
-  test('off → enabling from the master switch reveals the device pickers and persists', async ({ page }) => {
+  test('off → enabling from the master switch reveals the outdoor picker and persists', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.getByRole('tab', { name: 'Settings' }).click();
     await page.locator('#weather-insight-nav-card').click();
     await expect(page.locator('#weather-panel')).toBeVisible();
     await expect(page.locator('#weather-insight-settings')).toHaveCount(0);
-    // Turn the feature on from its master switch → the pickers appear and the
-    // cross-link is revealed; the flag is persisted (not just optimistically shown).
+    // Turn the feature on from its master switch → the outdoor picker appears and
+    // the cross-link is revealed; the flag is persisted (not just optimistically shown).
     await page.locator('#weather-enable-switch').click();
     await expect(page.locator('#weather-insight-settings')).toBeVisible();
     await expect(page.locator('#weather-outdoor-select')).toBeVisible();
@@ -116,7 +118,7 @@ test.describe('Weather insight', () => {
       (window as Window & { __PELS_HOMEY_STUB__?: unknown }).__PELS_HOMEY_STUB__ = {
         settings: {
           weather_advisor_settings: {
-            enabled: true, outdoorDeviceId: 'dev_outdoor', forecastDeviceId: 'dev_forecast', cappedByCapacity: true,
+            enabled: true, outdoorDeviceId: 'dev_outdoor', cappedByCapacity: true,
           },
           daily_budget_enabled: true,
           daily_budget_kwh: 50,
@@ -164,7 +166,7 @@ test.describe('Weather insight', () => {
     await page.addInitScript(() => {
       (window as Window & { __PELS_HOMEY_STUB__?: unknown }).__PELS_HOMEY_STUB__ = {
         settings: {
-          weather_advisor_settings: { enabled: true, outdoorDeviceId: 'dev_outdoor', forecastDeviceId: 'dev_forecast' },
+          weather_advisor_settings: { enabled: true, outdoorDeviceId: 'dev_outdoor' },
           daily_budget_enabled: false,
         },
       };
@@ -182,11 +184,11 @@ test.describe('Weather insight', () => {
     await expect.poll(() => readPersistedAutoApply(page)).toBe(true);
   });
 
-  test('on: nav card opens the Weather insight sub-page with the two pickers', async ({ page }) => {
+  test('on: nav card opens the Weather insight sub-page with the outdoor picker', async ({ page }) => {
     await enableWeatherFlag(page);
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.getByRole('tab', { name: 'Settings' }).click();
-    // The nav card opens the dedicated sub-page; with the feature on the pickers render.
+    // The nav card opens the dedicated sub-page; with the feature on the outdoor picker renders.
     const navCard = page.locator('#weather-insight-nav-card');
     await expect(navCard).toBeVisible();
     await navCard.click();
@@ -194,7 +196,8 @@ test.describe('Weather insight', () => {
     const section = page.locator('#weather-insight-settings');
     await expect(section).toBeVisible();
     await expect(section.locator('#weather-outdoor-select')).toBeVisible();
-    await expect(section.locator('#weather-forecast-select')).toBeVisible();
+    // The forecast comes from MET, not a device — no forecast picker.
+    await expect(section.locator('#weather-forecast-select')).toHaveCount(0);
     // The cross-link back to the Budget payoff is present.
     await expect(page.locator('#weather-see-in-budget')).toBeVisible();
   });

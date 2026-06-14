@@ -24,7 +24,6 @@ import {
   WEATHER_DISABLED_PITCH,
   WEATHER_ENABLE_LABEL,
   WEATHER_ERROR_TITLE,
-  WEATHER_FORECAST_PICKER_LABEL,
   WEATHER_INSIGHT_TITLE,
   WEATHER_LEARNING_STUCK,
   WEATHER_OUTDOOR_PICKER_LABEL,
@@ -82,12 +81,9 @@ const buildReadout = (
   settings: {
     outdoorDeviceId: 'dev-outdoor',
     outdoorDeviceName: 'Outdoor sensor',
-    forecastDeviceId: 'dev-forecast',
-    forecastDeviceName: 'Yr forecast',
   },
   forecastStatus: 'forecast',
   outdoorReading: { status: 'reading', tempC: 4 },
-  forecastReading: { status: 'reading', tempC: 2 },
   dailyBudgetKwh: 50,
   dailyBudgetEnabled: true,
   autoApplyDailyBudget: false,
@@ -100,6 +96,8 @@ const buildReadout = (
   ],
   prediction: {
     tempMeanC: 2,
+    tempMinC: -4,
+    tempMaxC: 6,
     kwh: 42.8,
     lowKwh: 38,
     highKwh: 50,
@@ -262,6 +260,11 @@ describe('WeatherBudgetCard (Budget plan slot)', () => {
     const card = mount.querySelector('#weather-tomorrow-card');
     expect(card?.textContent).toContain(composeTomorrowTitle(2));
     expect(card?.textContent).toContain(WEATHER_SOURCE_FORECAST);
+    // Tomorrow's swing (producer-resolved low/high) renders.
+    expect(card?.querySelector('#weather-tomorrow-lowhigh')?.textContent).toBe('Low −4 °C · High 6 °C');
+    // MET Norway attribution (CC-BY) shows wherever the forecast is displayed.
+    expect(card?.querySelector('#weather-tomorrow-attribution')?.textContent)
+      .toContain('Weather data from MET Norway');
     expect(card?.textContent).toContain(formatKwhRange(38, 50));
     expect(card?.textContent).toContain(formatDailyKwh(48));
     expect(card?.textContent).toContain(formatDailyKwh(50));
@@ -272,6 +275,17 @@ describe('WeatherBudgetCard (Budget plan slot)', () => {
     expect(card?.querySelector('.weather-card__verdict')?.textContent).toBe(verdict?.text);
     expect(card?.querySelector('#weather-adjust-budget')).not.toBeNull();
     expect(card?.querySelector('#weather-details-button')).not.toBeNull();
+  });
+
+  it('only claims a "cold evening" in the tight verdict when one is actually forecast', () => {
+    const tight = { currentDailyBudgetKwh: 40, predictionKwh: 38, residualQ50: 0, residualQ80: 5, residualQ90: 9 };
+    // q50 ≤ budget < q80 → tight tier either way; the clause depends on the flag.
+    expect(resolveTomorrowVerdict({ ...tight, coldEveningSuspected: true })?.text).toContain('cold evening');
+    expect(resolveTomorrowVerdict({ ...tight, coldEveningSuspected: false })?.text).not.toContain('cold evening');
+    expect(resolveTomorrowVerdict({ ...tight })?.text).not.toContain('cold evening'); // absent ⇒ neutral
+    // Both stay warn-toned and never contradict the tier.
+    expect(resolveTomorrowVerdict({ ...tight, coldEveningSuspected: true })?.tone).toBe('warn');
+    expect(resolveTomorrowVerdict({ ...tight, coldEveningSuspected: false })?.tone).toBe('warn');
   });
 
   it('shows the auto-apply status line only when auto-apply is on AND the daily budget is on', () => {
@@ -359,7 +373,10 @@ describe('WeatherInsightDetail (localView weather)', () => {
     }));
     expect(mount.querySelector('#weather-numbers-card')).not.toBeNull();
     expect(mount.querySelector('#weather-scatter-card')).not.toBeNull();
-    expect(mount.querySelector('#weather-device-footer')).not.toBeNull();
+    const footer = mount.querySelector('#weather-device-footer');
+    expect(footer).not.toBeNull();
+    // The footer's forecast half is the MET Norway CC-BY attribution.
+    expect(footer?.textContent).toContain('Weather data from MET Norway');
   });
 
   it('S5: uncorrelated homes get the honest summary and no numbers card', () => {
@@ -389,13 +406,10 @@ describe('WeatherInsightDetail (localView weather)', () => {
 describe('WeatherSettingsSection', () => {
   const buildPickers = (overrides: Partial<WeatherPickersProps> = {}): WeatherPickersProps => ({
     outdoorDeviceId: null,
-    forecastDeviceId: null,
     devices: [{ id: 'dev-a', label: 'Hall sensor' }, { id: 'dev-b', label: 'Yr forecast' }],
     devicesLoaded: true,
     outdoorReading: { status: 'no_device' },
-    forecastReading: { status: 'no_device' },
     onOutdoorChange: () => {},
-    onForecastChange: () => {},
     autoApplyDailyBudget: false,
     onAutoApplyChange: () => {},
     dailyBudgetEnabled: true,
@@ -425,7 +439,7 @@ describe('WeatherSettingsSection', () => {
     expect(onEnabledChange).toHaveBeenCalledWith(true);
   });
 
-  it('renders two native selects and reports changes when enabled', () => {
+  it('renders the outdoor select (no forecast picker) and reports changes when enabled', () => {
     const mount = mountIntoBody();
     const onOutdoorChange = vi.fn();
     renderWeatherSettingsSection(mount, {
@@ -433,30 +447,33 @@ describe('WeatherSettingsSection', () => {
     });
     expect(mount.querySelector('#weather-enable-switch')).not.toBeNull();
     expect(mount.textContent).toContain(WEATHER_OUTDOOR_PICKER_LABEL);
-    expect(mount.textContent).toContain(WEATHER_FORECAST_PICKER_LABEL);
+    // The forecast now comes from MET — no forecast device picker exists.
+    expect(mount.querySelector('#weather-forecast-select')).toBeNull();
     const outdoor = mount.querySelector('#weather-outdoor-select') as HTMLSelectElement;
     outdoor.value = 'dev-a';
     outdoor.dispatchEvent(new Event('change', { bubbles: true }));
     expect(onOutdoorChange).toHaveBeenCalledWith('dev-a');
   });
 
-  it('shows a live validity line under each picker (ok reading vs warn unreadable)', () => {
+  it('shows the outdoor live validity line (ok reading vs warn unreadable)', () => {
     const mount = mountIntoBody();
     renderWeatherSettingsSection(mount, {
       enabled: true,
       onEnabledChange: () => {},
       pickers: buildPickers({
         outdoorDeviceId: 'dev-a',
-        forecastDeviceId: 'dev-b',
         outdoorReading: { status: 'reading', tempC: 4 },
-        forecastReading: { status: 'unreadable' },
       }),
     });
-    const ok = mount.querySelector('.weather-picker-status--ok');
-    expect(ok?.textContent).toContain('Reading 4 °C now');
-    // Warn tone reuses the canonical .field__hint--alert primitive (no bespoke class).
-    const warn = mount.querySelector('.field__hint--alert');
-    expect(warn?.textContent).toContain('recent days');
+    expect(mount.querySelector('.weather-picker-status--ok')?.textContent).toContain('Reading 4 °C now');
+
+    // Unreadable outdoor device → the warn line reuses .field__hint--alert.
+    renderWeatherSettingsSection(mount, {
+      enabled: true,
+      onEnabledChange: () => {},
+      pickers: buildPickers({ outdoorDeviceId: 'dev-a', outdoorReading: { status: 'unreadable' } }),
+    });
+    expect(mount.querySelector('.field__hint--alert')?.textContent).toContain('can’t read a temperature');
   });
 
   it('labels a configured-but-deleted device as no-longer-available, never the raw id', () => {

@@ -22,7 +22,6 @@ export function buildWeatherAdvisorSettings(params: { settings: SettingsPort }):
   return {
     enabled: blob.enabled === true,
     outdoorDeviceId: asDeviceId(blob.outdoorDeviceId),
-    forecastDeviceId: asDeviceId(blob.forecastDeviceId),
     autoApplyDailyBudget: blob.autoApplyDailyBudget === true,
   };
 }

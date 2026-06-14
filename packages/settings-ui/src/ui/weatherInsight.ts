@@ -22,14 +22,12 @@ import {
 type WeatherAdvisorUiSettings = {
   enabled: boolean;
   outdoorDeviceId: string | null;
-  forecastDeviceId: string | null;
   autoApplyDailyBudget: boolean;
 };
 
 const DISABLED_SETTINGS: WeatherAdvisorUiSettings = {
   enabled: false,
   outdoorDeviceId: null,
-  forecastDeviceId: null,
   autoApplyDailyBudget: false,
 };
 
@@ -55,7 +53,6 @@ const normalizeSettings = (raw: unknown): WeatherAdvisorUiSettings => {
   return {
     enabled: blob.enabled === true,
     outdoorDeviceId: asDeviceId(blob.outdoorDeviceId),
-    forecastDeviceId: asDeviceId(blob.forecastDeviceId),
     autoApplyDailyBudget: blob.autoApplyDailyBudget === true,
   };
 };
@@ -153,7 +150,6 @@ const persistWeatherSettings = async (): Promise<void> => {
   const blob = {
     enabled: currentSettings.enabled,
     ...(currentSettings.outdoorDeviceId !== null ? { outdoorDeviceId: currentSettings.outdoorDeviceId } : {}),
-    ...(currentSettings.forecastDeviceId !== null ? { forecastDeviceId: currentSettings.forecastDeviceId } : {}),
     autoApplyDailyBudget: currentSettings.autoApplyDailyBudget,
   };
   // The runtime watches this key (collector reload); our own settings.set
@@ -162,7 +158,7 @@ const persistWeatherSettings = async (): Promise<void> => {
 };
 
 type WeatherSettingsPatch = Partial<Pick<
-  WeatherAdvisorUiSettings, 'enabled' | 'outdoorDeviceId' | 'forecastDeviceId' | 'autoApplyDailyBudget'
+  WeatherAdvisorUiSettings, 'enabled' | 'outdoorDeviceId' | 'autoApplyDailyBudget'
 >>;
 
 const writeSettings = async (patch: WeatherSettingsPatch): Promise<void> => {
@@ -186,17 +182,14 @@ const writeSettings = async (patch: WeatherSettingsPatch): Promise<void> => {
 // next fetch (settings-tab activation or a selection write).
 const NO_READING = { status: 'no_device' } as const;
 
-// Only trust a reading when the readout describes the CURRENTLY selected device
-// for THAT picker. Right after a selection change the previous readout lingers
-// until the re-fetch lands; showing its reading would attribute the old device's
-// value to the just-picked one. Checked PER-PICKER so changing one device doesn't
-// blank the other's still-valid line; an unmatched picker falls back to its hint.
-const readingFor = (
-  pickerId: 'outdoorDeviceId' | 'forecastDeviceId',
-  readingKey: 'outdoorReading' | 'forecastReading',
-): WeatherDeviceReading => (
-  latestReadout !== null && latestReadout.settings[pickerId] === currentSettings[pickerId]
-    ? latestReadout[readingKey]
+// Only trust the outdoor reading when the readout describes the CURRENTLY
+// selected outdoor device. Right after a selection change the previous readout
+// lingers until the re-fetch lands; showing its reading would attribute the old
+// device's value to the just-picked one, so fall back to the hint until the
+// re-fetch matches.
+const outdoorReadingFor = (): WeatherDeviceReading => (
+  latestReadout !== null && latestReadout.settings.outdoorDeviceId === currentSettings.outdoorDeviceId
+    ? latestReadout.outdoorReading
     : NO_READING
 );
 
@@ -214,15 +207,12 @@ const renderSettingsSection = (): void => {
     pickers: currentSettings.enabled
       ? {
         outdoorDeviceId: currentSettings.outdoorDeviceId,
-        forecastDeviceId: currentSettings.forecastDeviceId,
         devices: pickerDevices ?? [],
         // Distinguishes "still loading" from "loaded, no temperature devices" so the
         // section can show an honest empty state instead of a bare empty dropdown.
         devicesLoaded: pickerDevices !== null,
-        outdoorReading: readingFor('outdoorDeviceId', 'outdoorReading'),
-        forecastReading: readingFor('forecastDeviceId', 'forecastReading'),
+        outdoorReading: outdoorReadingFor(),
         onOutdoorChange: (deviceId) => { void writeSettings({ outdoorDeviceId: deviceId }); },
-        onForecastChange: (deviceId) => { void writeSettings({ forecastDeviceId: deviceId }); },
         autoApplyDailyBudget: currentSettings.autoApplyDailyBudget,
         onAutoApplyChange: (on) => { void writeSettings({ autoApplyDailyBudget: on }); },
         // Default true until the readout confirms otherwise, so the inert hint

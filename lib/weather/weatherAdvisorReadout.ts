@@ -53,11 +53,8 @@ export type WeatherAdvisorReadoutInput = {
   state: WeatherHistoryState;
   backfillRunning: boolean;
   outdoorDeviceName?: string;
-  forecastDeviceName?: string;
   /** Live outdoor temperature (on-demand read); undefined when unreadable. */
   currentOutdoorTempC?: number;
-  /** @deprecated The +24h forecast device was replaced by MET; ignored. Removed in PR 2. */
-  currentForecastTempC?: number;
   /** Active daily budget (kWh); undefined when the daily budget is disabled. */
   currentDailyBudgetKwh?: number;
   /** Whether the daily budget feature is on — gates the auto-apply inert hint. */
@@ -98,10 +95,8 @@ export function buildWeatherAdvisorReadout(
   // sub-capability-only forecast device is caught at once — rather than waiting
   // for a sample cycle (outdoor) or a full tomorrow profile (forecast).
   const outdoorReading = resolveDeviceReading(settings.outdoorDeviceId, input.currentOutdoorTempC);
-  // The forecast no longer comes from a device (MET Norway replaced the +24h
-  // device), so there is no device reading to validate. PR 2 removes this field
-  // and the picker entirely; for now it always reports `no_device`.
-  const forecastReading: WeatherDeviceReading = { status: 'no_device' };
+  // The forecast comes from a direct MET Norway fetch, not a device — there is
+  // no forecast device to validate, so the picker and its reading are gone.
   const dailyBudgetKwh = input.currentDailyBudgetKwh ?? null;
 
   // No configured device → an intentionally empty setup payload. Leftover
@@ -113,7 +108,6 @@ export function buildWeatherAdvisorReadout(
       settingsEcho,
       forecastStatus: resolvePayloadForecastStatus(state, tomorrowKey),
       outdoorReading,
-      forecastReading,
       dailyBudgetKwh,
       autoApplyEcho,
       nowMs: input.nowMs,
@@ -137,7 +131,6 @@ export function buildWeatherAdvisorReadout(
     settings: settingsEcho,
     forecastStatus,
     outdoorReading,
-    forecastReading,
     dailyBudgetKwh,
     ...autoApplyEcho,
     fit,
@@ -158,8 +151,6 @@ function resolveSettingsEcho(input: WeatherAdvisorReadoutInput): WeatherAdvisorR
   return {
     outdoorDeviceId: input.settings.outdoorDeviceId ?? null,
     outdoorDeviceName: input.outdoorDeviceName ?? null,
-    forecastDeviceId: input.settings.forecastDeviceId ?? null,
-    forecastDeviceName: input.forecastDeviceName ?? null,
   };
 }
 
@@ -167,7 +158,6 @@ function buildNeedsDevicePayload(params: {
   settingsEcho: WeatherAdvisorReadoutPayload['settings'];
   forecastStatus: WeatherForecastStatus;
   outdoorReading: WeatherDeviceReading;
-  forecastReading: WeatherDeviceReading;
   dailyBudgetKwh: number | null;
   autoApplyEcho: AutoApplyEcho;
   nowMs: number;
@@ -179,7 +169,6 @@ function buildNeedsDevicePayload(params: {
     settings: params.settingsEcho,
     forecastStatus: params.forecastStatus,
     outdoorReading: params.outdoorReading,
-    forecastReading: params.forecastReading,
     dailyBudgetKwh: params.dailyBudgetKwh,
     ...params.autoApplyEcho,
     fit: null,
@@ -239,6 +228,29 @@ type ResolvedOutlook = {
   >;
 };
 
+/** Whether a forecast source is one the current pipeline emits (vs a legacy persisted value). */
+const isCurrentForecastSource = (source: string): boolean => (
+  source === 'met_api' || source === 'recent_days'
+);
+
+/**
+ * The stored suggestion to reuse for tomorrow's outlook, or undefined to recompute.
+ * Reused only when it targets tomorrow AND carries a CURRENT source: a pre-MET
+ * upgrade can leave a `forecast_device`-sourced suggestion whose device-derived
+ * numbers would be mislabeled `recent_days` if reused, so any legacy source is
+ * recomputed through the MET/persistence resolver instead.
+ */
+const reusableStoredSuggestion = (
+  stored: EnergySignatureSuggestion | undefined,
+  tomorrowKey: string,
+): EnergySignatureSuggestion | undefined => (
+  stored !== undefined
+    && stored.targetDateKey === tomorrowKey
+    && isCurrentForecastSource(stored.forecastSource)
+    ? stored
+    : undefined
+);
+
 /**
  * The card is forward-looking, so the outlook always targets TOMORROW. The
  * persisted `latestSuggestion` already targets tomorrow (MET gives a complete
@@ -256,11 +268,11 @@ function resolveTomorrowOutlook(
   forecastStatus: WeatherForecastStatus;
 } | null {
   const tomorrowKey = shiftDateKey(todayKey, 1);
-  const stored = input.state.latestSuggestion;
+  const stored = reusableStoredSuggestion(input.state.latestSuggestion, tomorrowKey);
   // `!= null` (loose) for the persisted-optional fields: a JSON round-trip can
   // store `null`, and a strict `!== undefined` would let that null leak into a
   // `number` (tempMin/Max) or `boolean` (coldEvening) field.
-  const resolved: ResolvedOutlook | null = stored && stored.targetDateKey === tomorrowKey
+  const resolved: ResolvedOutlook | null = stored
     ? {
       meanTempC: stored.forecastMeanTempC,
       source: stored.forecastSource,
@@ -338,14 +350,15 @@ function resolveOutlookForecastStatus(
 }
 
 /**
- * There is no forecast device anymore: `met_api` → `forecast`, anything else
- * (persistence fallback) → `recent_no_device`. The retired `forecast_device`
- * source maps to `forecast` for BC with any lingering stored suggestion.
+ * The forecast comes from MET Norway: `met_api` → `forecast`; the persistence
+ * fallback (`recent_days`) → `recent_days`. A lingering stored suggestion from
+ * the retired +24h-device source would also be a non-`met_api` value, so it maps
+ * to `recent_days` (its mean was a recent-days proxy anyway).
  */
 function resolveForecastStatusFromSource(
   source: EnergySignatureSuggestion['forecastSource'],
 ): WeatherForecastStatus {
-  return source === 'met_api' || source === 'forecast_device' ? 'forecast' : 'recent_no_device';
+  return source === 'met_api' ? 'forecast' : 'recent_days';
 }
 
 /**
@@ -357,7 +370,10 @@ function resolvePayloadForecastStatus(
   state: WeatherHistoryState,
   tomorrowKey: string,
 ): WeatherForecastStatus {
-  return resolveMetDay(state.metForecast, tomorrowKey) !== undefined ? 'forecast' : 'recent_no_device';
+  // Mirror the suggestion path (resolveComingDayFromState): only credit MET when
+  // tomorrow is FULLY covered. A partial cached day is rejected for the numbers
+  // (→ recent_days), so the footer/attribution must not label it `forecast` either.
+  return resolveMetDay(state.metForecast, tomorrowKey)?.fullDayCoverage === true ? 'forecast' : 'recent_days';
 }
 
 /** 1 °C bins over usable days — the count-weighted symbols the chart renders. */

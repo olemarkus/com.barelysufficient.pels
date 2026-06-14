@@ -2,7 +2,6 @@ import { render } from 'preact';
 import type { WeatherDeviceReading } from '../../../../contracts/src/weatherAdvisorTypes.ts';
 import { MdSwitch } from './materialWebJSX.tsx';
 import {
-  composeForecastReadingLine,
   composeLastAutoApply,
   composeOutdoorReadingLine,
   WEATHER_AUTO_APPLY_LABEL,
@@ -11,8 +10,6 @@ import {
   WEATHER_DISABLED_PITCH,
   WEATHER_ENABLE_LABEL,
   WEATHER_ENABLE_SUPPORTING,
-  WEATHER_FORECAST_PICKER_HINT,
-  WEATHER_FORECAST_PICKER_LABEL,
   WEATHER_NO_TEMPERATURE_DEVICES,
   WEATHER_OUTDOOR_PICKER_HINT,
   WEATHER_OUTDOOR_PICKER_LABEL,
@@ -24,11 +21,12 @@ import {
 } from '../../../../shared-domain/src/weatherInsightCopy.ts';
 
 // "Weather insight" sub-page body: a master on/off switch (the feature gate),
-// then — only while on — two native `<select>` device pickers (native + `.field`
-// per the form-styling rule, never `md-outlined-*`). Rendered into
-// `#weather-insight-settings-mount` by the weatherInsight controller. The switch
-// always renders so a disabled feature can be turned on from the UI; off ⇒ only
-// the switch row shows.
+// then — only while on — the outdoor (historical) temperature device picker
+// (native `<select>` + `.field` per the form-styling rule, never `md-outlined-*`).
+// The forecast comes from a direct MET Norway fetch, so there is no forecast
+// device picker. Rendered into `#weather-insight-settings-mount` by the
+// weatherInsight controller. The switch always renders so a disabled feature can
+// be turned on from the UI; off ⇒ only the switch row shows.
 
 export type WeatherDeviceOption = { id: string; label: string };
 
@@ -38,14 +36,11 @@ type SwitchElement = HTMLElement & { selected: boolean };
 /** Device-picker config — present only when the feature is enabled. */
 export type WeatherPickersProps = {
   outdoorDeviceId: string | null;
-  forecastDeviceId: string | null;
   devices: WeatherDeviceOption[];
   /** False while the device list is still loading; gates the no-devices empty state. */
   devicesLoaded: boolean;
   outdoorReading: WeatherDeviceReading;
-  forecastReading: WeatherDeviceReading;
   onOutdoorChange: (deviceId: string | null) => void;
-  onForecastChange: (deviceId: string | null) => void;
   /** Auto-apply the suggested daily budget at each rollup. */
   autoApplyDailyBudget: boolean;
   onAutoApplyChange: (on: boolean) => void;
@@ -146,16 +141,6 @@ const DevicePickers = ({ pickers }: { pickers: WeatherPickersProps }) => (
       devicesLoaded={pickers.devicesLoaded}
       reading={composeOutdoorReadingLine(pickers.outdoorReading)}
       onChange={pickers.onOutdoorChange}
-    />
-    <DevicePicker
-      id="weather-forecast-select"
-      label={WEATHER_FORECAST_PICKER_LABEL}
-      hint={WEATHER_FORECAST_PICKER_HINT}
-      value={pickers.forecastDeviceId}
-      devices={pickers.devices}
-      devicesLoaded={pickers.devicesLoaded}
-      reading={composeForecastReadingLine(pickers.forecastReading)}
-      onChange={pickers.onForecastChange}
     />
   </section>
 );

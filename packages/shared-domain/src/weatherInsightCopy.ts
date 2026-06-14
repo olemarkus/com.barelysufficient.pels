@@ -51,6 +51,11 @@ export const formatTempC = (value: number): string => {
 /** Approximate temperature (`≈ 13 °C`). */
 export const formatApproxTempC = (value: number): string => `≈ ${formatTempC(value)}`;
 
+/** Tomorrow's forecast low/high (`Low −4 °C · High 6 °C`); whole °C, U+2212 minus. */
+export const composeTomorrowLowHigh = (lowC: number, highC: number): string => (
+  `Low ${formatTempC(lowC)} · High ${formatTempC(highC)}`
+);
+
 /** Heat loss to the nearest 10 W (`≈ 150 W per °C`). */
 export const formatHeatLossW = (wPerK: number): string => (
   `≈ ${Math.round(wPerK / 10) * 10} W per °C`
@@ -72,6 +77,12 @@ export const formatTooltipDate = (dateKey: string): string => {
 
 export const WEATHER_INSIGHT_TITLE = 'Weather insight';
 export const WEATHER_CHIP_ROUGH_ESTIMATE = 'Rough estimate';
+/**
+ * MET Norway CC-BY 4.0 attribution — a HARD requirement wherever the forecast
+ * shows (the detail device footer is its home; also rendered on the Tomorrow
+ * card). The data is fetched from MET Norway Locationforecast 2.0.
+ */
+export const WEATHER_ATTRIBUTION_MET = 'Weather data from MET Norway';
 
 /** Smart-task confidence vocabulary: low → Estimating, medium → Refining, high → no chip. */
 export const resolveWeatherConfidenceChip = (
@@ -89,17 +100,16 @@ export const composeTomorrowTitle = (tempC: number): string => (
 );
 
 export const WEATHER_SOURCE_FORECAST = 'Forecast for tomorrow’s average';
-export const WEATHER_SOURCE_PERSISTENCE = 'If recent weather continues — no forecast device set.';
-/** A forecast device IS configured but isn't reporting tomorrow's temperature. */
-export const WEATHER_SOURCE_FORECAST_UNREADABLE = 'Forecast device isn’t reporting tomorrow’s '
-  + 'temperature — using recent days.';
+/**
+ * MET unavailable / partial / no hub geolocation → the prediction leans on the
+ * trailing week of observed days.
+ */
+export const WEATHER_SOURCE_PERSISTENCE = 'Forecast unavailable — showing what recent weather suggests.';
 
 /** Maps the producer-resolved forecast provenance to the Tomorrow-card source line. */
-export const composeForecastSourceLine = (status: WeatherForecastStatus): string => {
-  if (status === 'forecast') return WEATHER_SOURCE_FORECAST;
-  if (status === 'recent_device_unreadable') return WEATHER_SOURCE_FORECAST_UNREADABLE;
-  return WEATHER_SOURCE_PERSISTENCE;
-};
+export const composeForecastSourceLine = (status: WeatherForecastStatus): string => (
+  status === 'forecast' ? WEATHER_SOURCE_FORECAST : WEATHER_SOURCE_PERSISTENCE
+);
 
 export const WEATHER_ROW_EXPECTED_USAGE = 'Expected usage';
 export const WEATHER_ROW_SUGGESTED_BUDGET = 'Suggested daily budget';
@@ -128,14 +138,23 @@ export type WeatherTomorrowVerdict = { text: string; tone: WeatherVerdictTone };
 
 export const WEATHER_VERDICT_COVERS_WITH_ROOM = 'Your budget covers tomorrow with room to spare.';
 export const WEATHER_VERDICT_SHOULD_COVER = 'Your budget should cover tomorrow.';
-export const WEATHER_VERDICT_MAY_BE_TIGHT = 'Tomorrow may be tight — a cold evening could use the whole budget.';
+/** Tight-tier reason when tomorrow genuinely has a cold evening (producer-resolved). */
+export const WEATHER_VERDICT_MAY_BE_TIGHT_COLD_EVENING
+  = 'Tomorrow may be tight — a cold evening could use the whole budget.';
+/** Tight-tier reason otherwise: the tightness is variance, not a forecast cold snap. */
+export const WEATHER_VERDICT_MAY_BE_TIGHT
+  = 'Tomorrow may be tight — a heavier-than-usual day could use the whole budget.';
 export const WEATHER_VERDICT_LIKELY_SHORT = 'Tomorrow likely needs more than your budget. '
   + 'PELS will hold managed devices back to stay inside it.';
 
 /**
  * Verdict ladder: the active daily budget vs tomorrow's prediction quantiles
  * (q50/q80/q90 = prediction + residual quantiles). Null when no daily budget
- * is set — the card then shows the numbers without a judgment.
+ * is set — the card then shows the numbers without a judgment. The TIER is
+ * driven purely by the quantiles so it never contradicts the suggested budget;
+ * `coldEveningSuspected` only chooses WHICH tight-tier sentence to show, so the
+ * "cold evening" clause is never claimed on a mild day (it is producer-resolved
+ * from the forecast's evening hours vs the balance point).
  */
 export const resolveTomorrowVerdict = (params: {
   currentDailyBudgetKwh: number | null;
@@ -143,6 +162,7 @@ export const resolveTomorrowVerdict = (params: {
   residualQ50: number;
   residualQ80: number;
   residualQ90: number;
+  coldEveningSuspected?: boolean;
 }): WeatherTomorrowVerdict | null => {
   const { currentDailyBudgetKwh, predictionKwh, residualQ50, residualQ80, residualQ90 } = params;
   if (currentDailyBudgetKwh === null || !Number.isFinite(currentDailyBudgetKwh)) return null;
@@ -153,7 +173,12 @@ export const resolveTomorrowVerdict = (params: {
     return { text: WEATHER_VERDICT_SHOULD_COVER, tone: 'ok' };
   }
   if (currentDailyBudgetKwh >= predictionKwh + residualQ50) {
-    return { text: WEATHER_VERDICT_MAY_BE_TIGHT, tone: 'warn' };
+    return {
+      text: params.coldEveningSuspected === true
+        ? WEATHER_VERDICT_MAY_BE_TIGHT_COLD_EVENING
+        : WEATHER_VERDICT_MAY_BE_TIGHT,
+      tone: 'warn',
+    };
   }
   return { text: WEATHER_VERDICT_LIKELY_SHORT, tone: 'warn' };
 };
@@ -336,15 +361,25 @@ export const composeCoverageCaption = (bins: WeatherCoverageBin[]): string => {
 
 // ── Detail view: device footer ─────────────────────────────────────────────
 
+/**
+ * Detail device footer: the outdoor (historical) temperature device + the MET
+ * Norway forecast attribution. The forecast now comes from a direct MET fetch,
+ * not a device, so the old "Forecast: <device>" half is the mandatory CC-BY
+ * attribution line.
+ */
+/** Footer forecast half when MET is unavailable and the prediction leans on recent days. */
+export const WEATHER_FOOTER_FORECAST_RECENT = 'Forecast: recent days';
+
 export const composeDeviceFooter = (params: {
   outdoorDeviceName: string | null;
   outdoorDeviceConfigured: boolean;
-  forecastDeviceName: string | null;
-  /** Producer-resolved forecast provenance — the footer maps it straight to copy. */
-  forecastStatus: WeatherForecastStatus;
-}): string => (
-  `${composeFooterOutdoor(params)} · ${composeFooterForecast(params)}`
-);
+  /** Whether tomorrow's forecast is MET-backed — gates the CC-BY MET credit so it
+   *  is shown only when MET data is actually displayed (never above a recent-days fallback). */
+  forecastFromMet: boolean;
+}): string => {
+  const forecast = params.forecastFromMet ? WEATHER_ATTRIBUTION_MET : WEATHER_FOOTER_FORECAST_RECENT;
+  return `${composeFooterOutdoor(params)} · ${forecast}`;
+};
 
 const composeFooterOutdoor = (params: {
   outdoorDeviceName: string | null;
@@ -354,17 +389,6 @@ const composeFooterOutdoor = (params: {
   // A configured device whose name couldn't be read is "not responding", never
   // "not set" — the user must be able to tell a lost setting from a quiet device.
   return params.outdoorDeviceConfigured ? 'Temperature: not responding' : 'Temperature: not set';
-};
-
-const composeFooterForecast = (params: {
-  forecastDeviceName: string | null;
-  forecastStatus: WeatherForecastStatus;
-}): string => {
-  if (params.forecastStatus === 'recent_no_device') return 'Forecast: none — using recent days';
-  const name = params.forecastDeviceName ?? 'device';
-  return params.forecastStatus === 'forecast'
-    ? `Forecast: ${name}`
-    : `Forecast: ${name} isn’t reporting — using recent days`;
 };
 
 export const WEATHER_BUTTON_CHANGE_IN_SETTINGS = 'Change in Settings';
@@ -430,7 +454,8 @@ export const WEATHER_ENABLE_SUPPORTING = 'Predict tomorrow’s usage from outsid
 export const WEATHER_DISABLED_PITCH = 'See whether tomorrow’s weather will fit inside your daily '
   + 'budget. Turn it on and pick your outdoor temperature device to start.';
 
-export const WEATHER_SETTINGS_SECTION_HINT = 'Pick the devices PELS should read.';
+export const WEATHER_SETTINGS_SECTION_HINT
+  = 'PELS reads outdoor temperature from this sensor. Tomorrow’s forecast comes from MET Norway automatically.';
 
 // ── Auto-apply suggested budget ────────────────────────────────────────────
 // A switch on the sub-page (below the pickers) that lets the suggested daily
@@ -457,10 +482,6 @@ export const WEATHER_NO_TEMPERATURE_DEVICES = 'PELS found no temperature devices
 export const WEATHER_OUTDOOR_PICKER_LABEL = 'Outdoor temperature device';
 export const WEATHER_OUTDOOR_PICKER_HINT = 'Pick a device that reports the current outdoor '
   + 'temperature at your home.';
-export const WEATHER_FORECAST_PICKER_LABEL = 'Forecast device';
-export const WEATHER_FORECAST_PICKER_HINT = 'Optional. Point this at a device that reports '
-  + 'tomorrow’s outdoor temperature on its main temperature reading — a Yr “next 24 hours” device '
-  + 'works. If PELS can’t read a forecast, it uses your recent days instead.';
 export const WEATHER_PICKER_NONE = 'No device';
 /** A previously-selected device that is no longer in Homey (kept selectable so the setting isn't lost). */
 export const WEATHER_PICKER_ORPHAN = 'Previously selected device (no longer available)';
@@ -482,21 +503,6 @@ export const composeOutdoorReadingLine = (reading: WeatherDeviceReading): Weathe
   // because the static hint is hidden once a device is selected.
   return {
     text: 'PELS can’t read a temperature from this device — pick one that reports temperature on its main reading.',
-    tone: 'warn',
-  };
-};
-
-/** Live forecast reading under the forecast picker; null when no device is configured. */
-export const composeForecastReadingLine = (reading: WeatherDeviceReading): WeatherReadingLine | null => {
-  if (reading.status === 'no_device') return null;
-  if (reading.status === 'reading') {
-    return { text: `Reading tomorrow ${formatApproxTempC(reading.tempC)}`, tone: 'ok' };
-  }
-  // The on-demand read means a warn = the device's main temperature reading isn't
-  // readable (sub-capability-only, wrong device, or transient); name that fix and
-  // the recent-days fallback. Mirrors the outdoor warn's "main reading" remedy.
-  return {
-    text: 'This device isn’t reporting tomorrow’s temperature on its main reading — using recent days for now.',
     tone: 'warn',
   };
 };

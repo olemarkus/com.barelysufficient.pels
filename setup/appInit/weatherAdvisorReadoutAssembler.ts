@@ -25,13 +25,9 @@ export async function assembleWeatherAdvisorReadout(params: {
   const { ctx, collector } = params;
   const settings = buildWeatherAdvisorSettings({ settings: ctx.homey.settings });
   if (!settings.enabled || !collector) return null;
-  // The +24h forecast device was replaced by a direct MET fetch — no forecast
-  // device read here anymore. The forecast-device name is still echoed for BC
-  // (the readout reports forecastReading as no_device). PR 2 removes both.
-  const [outdoor, forecast] = await Promise.all([
-    readDevice(settings.outdoorDeviceId),
-    readDevice(settings.forecastDeviceId),
-  ]);
+  // The forecast comes from a direct MET Norway fetch, not a device — only the
+  // outdoor (historical) device is read here, for its name + live validity line.
+  const outdoor = await readDevice(settings.outdoorDeviceId);
   const limitKw = ctx.capacitySettings.limitKw;
   const currentDailyBudgetKwh = resolveDailyBudgetKwh(ctx);
   // Validity uses ONLY the on-demand read (which reads the currently-selected
@@ -46,7 +42,6 @@ export async function assembleWeatherAdvisorReadout(params: {
     state: collector.getHistoryStateSnapshot(),
     backfillRunning: collector.isBackfillRunning(),
     ...(outdoor.name !== undefined ? { outdoorDeviceName: outdoor.name } : {}),
-    ...(forecast.name !== undefined ? { forecastDeviceName: forecast.name } : {}),
     ...(outdoor.temperatureC !== undefined ? { currentOutdoorTempC: outdoor.temperatureC } : {}),
     ...(currentDailyBudgetKwh !== undefined ? { currentDailyBudgetKwh } : {}),
     dailyBudgetEnabled: ctx.homey.settings.get(DAILY_BUDGET_ENABLED) === true,

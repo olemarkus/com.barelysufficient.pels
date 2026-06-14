@@ -9,12 +9,6 @@ export type WeatherAdvisorSettings = {
   /** Device whose `measure_temperature` reports the current outdoor temperature. */
   outdoorDeviceId?: string;
   /**
-   * Optional device reporting the forecast temperature ~24 h ahead (a yr.no
-   * device configured with `period: 24`). Sampled hourly, its readings build
-   * tomorrow's hourly temperature profile incrementally across today.
-   */
-  forecastDeviceId?: string;
-  /**
    * Opt-in: at each daily rollup, apply the suggested daily budget to the
    * configured daily budget. No-op when the daily budget feature is off (the UI
    * shows a hint to turn it on). Absent ⇒ false (advisory-only, the default).
@@ -153,8 +147,9 @@ export type WeatherHistoryState = {
   metForecast?: WeatherMetForecastCache;
   /**
    * Forecast target dateKey → local hour ("00".."23") → °C. Legacy +24h-device
-   * profile; no longer written (MET replaced it). Kept readable for BC so a state
-   * persisted by an older version still normalizes. @deprecated removed in PR 2.
+   * profile; no longer written or consumed (MET replaced it). Kept readable for
+   * BC so a state persisted by an older version still normalizes (the value is
+   * dropped after the next rollup). @deprecated never read; do not reintroduce.
    */
   forecastHourly?: Record<string, Record<string, number>>;
   /** Device id the one-shot Insights backfill last completed for. */
@@ -252,10 +247,10 @@ export type EnergySignatureSuggestion = {
   forecastMeanTempC: number;
   /**
    * Where the coming-day mean came from. `met_api` is the direct MET Norway
-   * fetch; `recent_days` is the trailing-week persistence fallback.
-   * `forecast_device` is the retired +24h device source, kept for BC.
+   * fetch; `recent_days` is the trailing-week persistence fallback (MET
+   * unavailable, partial, or no hub geolocation).
    */
-  forecastSource: 'forecast_device' | 'recent_days' | 'met_api';
+  forecastSource: 'met_api' | 'recent_days';
   predictedKwh: number;
   predictedLowKwh: number;
   predictedHighKwh: number;
@@ -293,8 +288,6 @@ export type WeatherAdvisorReadoutState = 'needs_device' | 'backfilling' | 'learn
 export type WeatherAdvisorSettingsEcho = {
   outdoorDeviceId: string | null;
   outdoorDeviceName: string | null;
-  forecastDeviceId: string | null;
-  forecastDeviceName: string | null;
 };
 
 /** 5 °C coverage bin; `sufficient` = ≥ 14 usable days (the solid shade). */
@@ -323,14 +316,14 @@ export type WeatherRecentDay = {
 };
 
 /**
- * Producer-resolved forecast provenance for honest copy. A configured forecast
- * device that isn't reporting (`recent_device_unreadable`) is a distinct state
- * from no device at all (`recent_no_device`) — both fall back to persistence.
- * Resolved once at the payload level so every state (incl. learning, where
- * there is no prediction) shares one answer; consumers map it straight to copy
- * and never re-derive it from settings (resolution-in-producer).
+ * Producer-resolved forecast provenance for honest copy. `forecast` = MET Norway
+ * provided tomorrow's full forward profile; `recent_days` = MET was unavailable,
+ * partial, or no hub geolocation, so the prediction falls back to the trailing
+ * week of observed days. Resolved once at the payload level so every state (incl.
+ * learning, where there is no prediction) shares one answer; consumers map it
+ * straight to copy and never re-derive it from settings (resolution-in-producer).
  */
-export type WeatherForecastStatus = 'forecast' | 'recent_no_device' | 'recent_device_unreadable';
+export type WeatherForecastStatus = 'forecast' | 'recent_days';
 
 /**
  * Live reading of a configured device, resolved by the producer so the Settings
@@ -392,8 +385,6 @@ export type WeatherAdvisorReadoutPayload = {
   forecastStatus: WeatherForecastStatus;
   /** Live outdoor-device reading for the Settings picker validity line. */
   outdoorReading: WeatherDeviceReading;
-  /** Live forecast-device reading (tomorrow's mean) for the Settings picker validity line. */
-  forecastReading: WeatherDeviceReading;
   /** Active daily budget (kWh); null when disabled — drives the setup card's budget hint. */
   dailyBudgetKwh: number | null;
   /** Whether the daily budget feature is on — gates the auto-apply inert hint. */
