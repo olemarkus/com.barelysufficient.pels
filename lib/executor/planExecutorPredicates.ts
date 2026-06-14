@@ -6,8 +6,11 @@ import type {
   ExecutableSteppedLoadDevice,
   ExecutableSteppedLoadIntent,
 } from './executablePlan';
-import { isObservedOff } from '../observer/observedState';
-import { isSteppedLoadDevice, resolveSteppedKeepDesiredStepId } from '../plan/planSteppedLoad';
+import {
+  isPlanDeviceObservedOff,
+  isSteppedLoadDevice,
+  resolveSteppedKeepDesiredStepId,
+} from '../plan/planSteppedLoad';
 import { isBinaryPlanDevice } from '../plan/planBinaryDevice';
 import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
 import {
@@ -38,7 +41,7 @@ export function hasStableUncontrolledRestoreActuation(
 ): boolean {
   return dev.controllable === false
     && dev.plannedState === 'keep'
-    && isObservedOff(dev)
+    && isPlanDeviceObservedOff(dev)
     && Boolean(state.shedDecidedMs[dev.id]);
 }
 
@@ -91,8 +94,11 @@ export function hasStableSteppedLoadStepActuation(dev: DevicePlan['devices'][num
   const desiredStep = getSteppedLoadStep(dev.steppedLoadProfile, desiredStepId);
   if (!selectedStep || !desiredStep) return false;
   if (desiredStep.planningPowerW < selectedStep.planningPowerW) {
-    return !isObservedOff(dev)
-      || !isRestoreHoldReason(dev.reason);
+    // Stepping down. "Off" is kind-aware: a binary stepper via `currentOn`, a
+    // step-only stepper (no onoff handle) via the step axis. Not-off ⇒ it can
+    // still shed further (stable); when off, stability hinges on not being held
+    // for a restore.
+    return !isPlanDeviceObservedOff(dev) || !isRestoreHoldReason(dev.reason);
   }
   return desiredStep.planningPowerW > selectedStep.planningPowerW
     && allowsSteppedLoadKeepInvariantRestore(dev.reason);

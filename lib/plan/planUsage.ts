@@ -1,14 +1,20 @@
-import type { BinaryControlCapabilityId } from '../../packages/contracts/src/types';
+import type { BinaryControlCapabilityId, SteppedLoadProfile } from '../../packages/contracts/src/types';
 import { getHighestKnownPowerKw, getMeasuredDrawKw } from '../observer/observedPower';
-import { isObservedOff } from '../observer/observedState';
+import { isPlanDeviceObservedOff } from './planSteppedLoad';
 import { isFiniteNumber } from '../utils/appTypeGuards';
 
 type UsageDevice = {
   controllable?: boolean;
   budgetExempt?: boolean;
   binaryControl?: { on: boolean };
+  // Producer-resolved on/off truth, present iff the device is binary
+  // (`controlCapabilityId` set). A step-only stepper carries no `currentOn`; its
+  // off-state is read from the step axis, so the stepped fields travel too.
+  currentOn?: boolean;
   currentState?: string;
   controlCapabilityId?: BinaryControlCapabilityId;
+  steppedLoadProfile?: SteppedLoadProfile;
+  selectedStepId?: string;
   plannedState?: string;
   measuredPowerKw?: number;
   expectedPowerKw?: number;
@@ -25,7 +31,7 @@ function isFiniteNonNegative(value: number | undefined): value is number {
 // plan side. Behavior preserved from the previous resolveLiveUsagePowerKw helper.
 const resolveShedUsageKw = (dev: UsageDevice, measured: number | null): number | null => {
   if (measured !== null) return measured;
-  return isObservedOff(dev) ? 0 : null;
+  return isPlanDeviceObservedOff(dev) ? 0 : null;
 };
 
 const resolveObservedOffUsageKw = (dev: UsageDevice, measured: number | null): number => {
@@ -47,7 +53,7 @@ const resolveObservedOnUsageKw = (dev: UsageDevice, measured: number | null): nu
 const resolveUsageKw = (dev: UsageDevice): number | null => {
   const measured = getMeasuredDrawKw(dev);
   if (dev.plannedState === 'shed') return resolveShedUsageKw(dev, measured);
-  if (isObservedOff(dev)) return resolveObservedOffUsageKw(dev, measured);
+  if (isPlanDeviceObservedOff(dev)) return resolveObservedOffUsageKw(dev, measured);
   return resolveObservedOnUsageKw(dev, measured);
 };
 

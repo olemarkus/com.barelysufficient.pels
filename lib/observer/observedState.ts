@@ -1,18 +1,23 @@
 /**
- * Observer-owned observed-state resolution. Plan-facing consumers read two
- * flat booleans — `isObservedOff` and `isObservedOn` — derived per capability:
+ * Observer-owned observed-state resolution.
  *
- *  - **binary-only device:** the answer is the binary on/off.
- *  - **step-only device:** the answer is whether the selected step draws power.
- *  - **binary + step device:** the AND of the two — confirmed on means binary
- *    on AND step at an active (non-off) step; confirmed off means binary off
- *    OR step at the off step.
- *  - **no capability (target-only / not_applicable):** neither helper returns
- *    true. The planner does not make binary intent for such devices.
+ * The on/off truth is a single strict boolean, `currentOn`, resolved by
+ * `resolveCurrentOn` and stamped on the binary plan kinds by the producer.
+ * Consumers narrow via `isBinaryPlanDevice` and read `currentOn` directly — the
+ * on/off question is meaningful ONLY for binary devices, so there is no
+ * kind-agnostic wrapper (the retired `isObservedOff`/`isObservedOn`).
  *
- * Stale observations collapse to "neither confirmed off nor confirmed on" so
- * downstream planning conservatively treats the device as on (mirrors the
- * stale-off rule from slice 2's `getCurrentDrawKw`).
+ *  - **binary / binary+stepped device:** `currentOn` is the resolved on-state —
+ *    confirmed-off when the binary axis reads off OR the stepped axis is parked
+ *    at its off step; otherwise on. A stale observation keeps its last value
+ *    (no staleness gate; Homey reports on change, so stale-off stays off).
+ *  - **non-binary (target-only) device:** carries no `currentOn`; the planner
+ *    makes no binary intent for it and routes through the target/temperature
+ *    paths.
+ *
+ * `resolveObservedCurrentState` produces the SEPARATE four-valued `currentState`
+ * label (`on`/`off`/`unknown`/`not_applicable`) for reason/UI rendering only —
+ * it must never be consulted as the on/off truth.
  */
 import { getSteppedLoadStep, isSteppedLoadOffStep } from '../utils/deviceControlProfiles';
 import type {
@@ -62,13 +67,32 @@ function stepIsAtOff(
   return isSteppedLoadOffStep(device.steppedLoadProfile, step.id);
 }
 
-function stepIsAtActive(
-  device: Pick<CurrentStateInput, 'steppedLoadProfile' | 'selectedStepId'>,
+/**
+ * Producer resolution of a binary device's strict-boolean on-state — the single
+ * public on/off truth, carried as `currentOn` on the binary plan kinds
+ * (`BinaryPlanInputKind` / `BinaryControlKind`).
+ *
+ * A binary device (one with binary control) is NEVER "unknown": its on-state is
+ * the latched observed value the transport already resolved to a concrete
+ * boolean. Confirmed-off when the binary axis reads off OR the stepped axis is
+ * parked at its off step; otherwise on ("may draw, stays sheddable"). There is
+ * no staleness gate — a stale observation keeps its last value (Homey reports
+ * capabilities only on change, so stale-off stays off).
+ *
+ * The four-valued `currentState` string (`resolveObservedCurrentState`) is a
+ * SEPARATE producer concern for reason/UI rendering; it carries 'unknown' /
+ * 'not_applicable' for labelling and MUST NOT be consulted as the on/off truth.
+ *
+ * Precondition: the device has binary control. Non-binary devices have no on/off
+ * truth and never carry `currentOn` — consumers narrow through `isBinaryPlanDevice`
+ * first and read `currentOn` directly in that specialised branch.
+ */
+export function resolveCurrentOn(
+  device: Pick<ObservedCurrentStateInput, 'binaryControl' | 'steppedLoadProfile' | 'selectedStepId'>,
 ): boolean {
-  if (!device.steppedLoadProfile || !device.selectedStepId) return false;
-  const step = getSteppedLoadStep(device.steppedLoadProfile, device.selectedStepId);
-  if (!step) return false;
-  return !isSteppedLoadOffStep(device.steppedLoadProfile, step.id);
+  const binaryOff = device.binaryControl?.on === false;
+  const steppedOff = hasSteppedCapability(device) && stepIsAtOff(device);
+  return !(binaryOff || steppedOff);
 }
 
 /**
@@ -129,50 +153,8 @@ export function resolveObservedCurrentState(
   return (device.binaryControl?.on ?? true) ? 'on' : 'off';
 }
 
-/**
- * True iff observation confirms the device is currently off via any of its
- * controllable capabilities. Stale observations return false (planner
- * conservatively treats them as not-confirmed-off). Devices with no
- * controllable capability return false — the planner makes no binary intent
- * for them and routes shed/restore through the target/temperature paths.
- */
-export function isObservedOff(device: CurrentStateInput): boolean {
-  if (device.observationStale === true) return false;
-
-  // Trust a precomputed `currentState` string when present — DevicePlanDevice
-  // consumers carry the projection from `resolveObservedCurrentState` and rely
-  // on it as the canonical answer. The projection is computed from the same
-  // per-capability rules used below.
-  if (typeof device.currentState === 'string') {
-    return device.currentState === 'off';
-  }
-
-  const binary = hasBinaryCapability(device);
-  const stepped = hasSteppedCapability(device);
-  if (!binary && !stepped) return false;
-
-  if (binary && device.binaryControl?.on === false) return true;
-  if (stepped && stepIsAtOff(device)) return true;
-  return false;
-}
-
-/**
- * True iff observation confirms the device is currently on via every
- * controllable capability the device exposes. Stale observations return false.
- * Devices with no controllable capability return false.
- */
-export function isObservedOn(device: CurrentStateInput): boolean {
-  if (device.observationStale === true) return false;
-
-  if (typeof device.currentState === 'string') {
-    return device.currentState === 'on';
-  }
-
-  const binary = hasBinaryCapability(device);
-  const stepped = hasSteppedCapability(device);
-  if (!binary && !stepped) return false;
-
-  if (binary && (device.binaryControl?.on ?? true) !== true) return false;
-  if (stepped && !stepIsAtActive(device)) return false;
-  return true;
-}
+// `isObservedOff` / `isObservedOn` are retired. The on/off question is a
+// binary-only concern: consumers narrow via `isBinaryPlanDevice` and read the
+// producer-resolved `currentOn` boolean directly (see `resolveCurrentOn`). No
+// kind-agnostic wrapper remains, so binary and non-binary handling stay in
+// separate, specialised branches.

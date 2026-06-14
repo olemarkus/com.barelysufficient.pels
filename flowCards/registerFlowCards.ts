@@ -1,5 +1,6 @@
 import { PriceLevel, PRICE_LEVEL_OPTIONS, PriceLevelOption } from '../lib/price/priceLevels';
 import CapacityGuard from '../lib/power/capacityGuard';
+import { withHeadroomCurrentOn } from '../lib/plan/planHeadroomSupport';
 import type {
   DecoratedDeviceSnapshot,
   SteppedLoadDescriptorFields,
@@ -1205,9 +1206,11 @@ async function checkHeadroomForDevice(
   if (!deviceSnap) return false;
 
   const decision = deps.evaluateHeadroomForDevice({
-    devices: snapshot,
+    // Stamp the whole array, not just the target: the activation in/active reads
+    // run over every element and need each one's producer-resolved `currentOn`.
+    devices: snapshot.map(withHeadroomCurrentOn),
     deviceId,
-    device: deviceSnap,
+    device: withHeadroomCurrentOn(deviceSnap),
     headroom,
     requiredKw,
     cleanupMissingDevices: true,

@@ -6,7 +6,7 @@ import type {
 import type { DevicePlanDevice, PlanInputDevice } from './planTypes';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { getPrimaryTargetCapability, normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
-import { isObservedOff } from '../observer/observedState';
+import { isBinaryPlanDevice } from './planBinaryDevice';
 import { getCurrentDrawKw } from '../observer/observedPower';
 import {
   getSteppedLoadShedTargetStep,
@@ -43,6 +43,8 @@ type RemainingSheddableBaseDevice = RemainingSheddablePowerFields & RemainingShe
   id: string;
   controllable: boolean;
   binaryControl?: { on: boolean };
+  // Producer-resolved on/off truth, present iff binary; read via `isBinaryPlanDevice`.
+  currentOn?: boolean;
   currentState?: string;
   budgetExempt: boolean;
   controlCapabilityId?: BinaryControlCapabilityId;
@@ -118,6 +120,7 @@ type RemainingSheddableSourceDevice = RemainingSheddablePowerFields & RemainingS
   id: string;
   controllable?: boolean;
   binaryControl?: { on: boolean };
+  currentOn?: boolean;
   currentState?: string;
   budgetExempt?: boolean;
   controlCapabilityId?: BinaryControlCapabilityId;
@@ -239,7 +242,7 @@ export function resolveRemainingSheddableLoadKw(params: RemainingSheddableLoadPa
   } = params;
 
   if (device.controllable === false) return 0;
-  if (isObservedOff(device)) return 0;
+  if (isBinaryPlanDevice(device) && !device.currentOn) return 0;
   if (alreadyShed) return 0;
   if (limitSource === 'daily' && !capacityBreached && device.budgetExempt) return 0;
 
@@ -289,6 +292,7 @@ function toRemainingSheddableBaseDevice(device: RemainingSheddableSourceDevice):
     id: device.id,
     controllable: device.controllable !== false,
     binaryControl: device.binaryControl,
+    currentOn: device.currentOn,
     currentState: device.currentState,
     budgetExempt: device.budgetExempt === true,
     controlCapabilityId: device.controlCapabilityId,

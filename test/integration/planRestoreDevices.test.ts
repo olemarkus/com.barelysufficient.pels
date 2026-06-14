@@ -6,6 +6,8 @@ import {
   getOnDevices,
   getRestoreCandidates,
   isRestoreLiveEligibleDevice,
+  isSteppedRestoreCandidate,
+  isOffSteppedRestoreCandidate,
   getSteppedRestoreCandidates,
   markOffDevicesStayOff,
 } from '../../lib/plan/restore/devices';
@@ -109,7 +111,10 @@ describe('plan restore device helpers', () => {
     ]);
   });
 
-  it('ignores stale observations when selecting restore and swap candidates', () => {
+  // Behaviour change (resolved-control refactor): on/off is the latched `currentOn`
+  // with no staleness gate (stale-off = trusted-off, stale-on = trusted-on), so
+  // stale devices are classified by their last value rather than excluded.
+  it('trusts stale observations (last value) when selecting restore and swap candidates', () => {
     const devices = [
       makeDevice({ id: 'fresh-off', priority: 1, currentState: 'off' }),
       makeDevice({ id: 'stale-off', priority: 2, currentState: 'off', observationStale: true }),
@@ -203,13 +208,57 @@ describe('plan restore device helpers', () => {
       makeDevice({ id: 'stale-on', priority: 6, currentState: 'on', observationStale: true }),
     ];
 
-    expect(getOffDevices(devices).map((device) => device.id)).toEqual(['fresh-off']);
+    expect(getOffDevices(devices).map((device) => device.id)).toEqual(['fresh-off', 'stale-off']);
+    // `no-binary-step` (a stepped device with no `controlCapabilityId`, e.g. a
+    // target-power load) carries no binary `currentOn`, but on/off is still a real
+    // question answered by the STEP axis: parked at an active, below-highest step it
+    // is restore-eligible (step it up), exactly as the retired `isObservedOn` resolved
+    // it. The step lanes drive these devices (`deviceActionProjection` → `set_step`),
+    // so they must not silently drop out of restore after a cap.
     expect(getSteppedRestoreCandidates(devices).map((device) => device.id))
-      .toEqual(['unknown-step-off', 'fresh-step', 'high-step-off', 'no-binary-step']);
+      .toEqual(['unknown-step-off', 'fresh-step', 'stale-step', 'high-step-off', 'no-binary-step']);
+    // Stale-on / stale-step are now trusted-on (last value), so they join the swap-out set.
     expect(getOnDevices(devices, () => ({ action: 'turn_off', temperature: null, stepId: null }))
-      .map((device) => device.id)).toEqual(['fresh-on', 'fresh-step', 'unknown-step-on']);
+      .map((device) => device.id)).toEqual(['stale-on', 'fresh-on', 'stale-step', 'fresh-step', 'unknown-step-on']);
     expect(getOnDevices(devices, () => ({ action: 'set_step', temperature: null, stepId: 'low' }))
-      .map((device) => device.id)).toEqual(['fresh-on']);
+      .map((device) => device.id)).toEqual(['stale-on', 'fresh-on']);
+  });
+
+  it('classifies a step-only stepped device (no binary handle) for restore via the step axis', () => {
+    // A target-power stepped load has no `controlCapabilityId`/`currentOn`, so its
+    // restore eligibility comes from the STEP axis (mirrors the retired
+    // `isObservedOff`/`isObservedOn`): off step ⇒ restore from off; active but
+    // below-highest step ⇒ step up; highest step ⇒ nothing to restore. Without this
+    // the device is capped via `set_step` and never stepped back up.
+    const steppedProfile = {
+      model: 'stepped_load' as const,
+      steps: [
+        { id: 'off', planningPowerW: 0 },
+        { id: 'low', planningPowerW: 1250 },
+        { id: 'max', planningPowerW: 3000 },
+      ],
+    };
+    const stepOnly = (selectedStepId: string, currentState: string): DevicePlanDevice =>
+      makeDevice({
+        id: `step-only-${selectedStepId}`,
+        priority: 1,
+        controlCapabilityId: undefined,
+        currentState,
+        steppedLoadProfile: steppedProfile,
+        selectedStepId,
+      });
+
+    const atOffStep = stepOnly('off', 'off');
+    expect(isSteppedRestoreCandidate(atOffStep)).toBe(true);
+    expect(isOffSteppedRestoreCandidate(atOffStep)).toBe(true);
+
+    const atLowStep = stepOnly('low', 'on');
+    expect(isSteppedRestoreCandidate(atLowStep)).toBe(true);
+    expect(isOffSteppedRestoreCandidate(atLowStep)).toBe(false);
+
+    const atMaxStep = stepOnly('max', 'on');
+    expect(isSteppedRestoreCandidate(atMaxStep)).toBe(false);
+    expect(isOffSteppedRestoreCandidate(atMaxStep)).toBe(false);
   });
 
   it('evaluates EV restore blocks and marks off devices as staying off', () => {
@@ -311,7 +360,8 @@ describe('plan restore device helpers', () => {
 
     expect(isRestoreLiveEligibleDevice(eligible)).toBe(true);
     expect(isBinaryRestoreCandidate(eligible)).toBe(true);
-    expect(isBinaryRestoreCandidate(stale)).toBe(false);
+    // Stale-off is now trusted-off (no staleness gate) -> a valid restore candidate.
+    expect(isBinaryRestoreCandidate(stale)).toBe(true);
     expect(isBinaryRestoreCandidate(shed)).toBe(false);
   });
 

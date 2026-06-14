@@ -8,9 +8,10 @@ import {
   formatDeviceReason,
   PLAN_REASON_CODES,
 } from '../../../packages/shared-domain/src/planReasonSemantics';
-import { isObservedOff, isObservedOn } from '../../observer/observedState';
 import {
   getSteppedRestoreCandidates,
+  isActiveSteppedRestoreCandidate,
+  isOffSteppedRestoreCandidate,
   NEUTRAL_STARTUP_HOLD_REASON,
 } from './devices';
 import {
@@ -118,7 +119,12 @@ export function markSteppedDevicesStayAtCurrentLevel(params: {
   } = params;
   const steppedDevices = getSteppedRestoreCandidates(Array.from(deviceMap.values()));
   for (const dev of steppedDevices) {
-    const currentOff = isObservedOff(dev);
+    // "Off" here must use the SAME step-axis resolution as the candidacy filter:
+    // a step-only stepped device (no binary handle) parked at its off step is off
+    // too. A binary-only `!currentOn` check would skip the cooldown/startup hold
+    // for such a device, letting the executor step a `keep`-normalised load back
+    // up during a restore-blocked window without admission.
+    const currentOff = isOffSteppedRestoreCandidate(dev);
     const neverControlledStartupHold = timing.inStartupStabilization
       && currentOff
       && getLastControlledMs?.(dev.id) === undefined;
@@ -406,8 +412,9 @@ export function planRestoreForSteppedDevice(params: {
 
   const phase = resolveRestoreDecisionPhase(state.currentRebuildReason);
   // Active stepped devices (ON but below their target step) must not be blocked by the global
-  // restore cooldown or meter-settling gate — per-device restore timing still applies.
-  const deviceIsActive = isObservedOn(dev);
+  // restore cooldown or meter-settling gate — per-device restore timing still applies. Resolve
+  // "active" via the step axis so a step-only stepper (no binary handle) is recognised too.
+  const deviceIsActive = isActiveSteppedRestoreCandidate(dev);
   const nextStep = getSteppedLoadNextRestoreStep(dev);
   if (applySteppedDeviceGates({
     dev,
@@ -583,7 +590,7 @@ function admitSteppedRestore(params: {
 }
 
 function resolveRejectedSteppedSwapUpdate(dev: DevicePlanDevice): Partial<DevicePlanDevice> {
-  return isObservedOff(dev)
+  return isOffSteppedRestoreCandidate(dev)
     ? buildOffSteppedRestoreShedUpdate(dev)
     : { plannedState: 'keep' };
 }
@@ -669,7 +676,7 @@ function canUseSwapForSteppedRestore(params: {
 }): boolean {
   const { dev, nextStep, lowestNonZeroStep } = params;
   if (lowestNonZeroStep === null) return false;
-  if (isObservedOff(dev) && nextStep.id === lowestNonZeroStep.id) return true;
+  if (isOffSteppedRestoreCandidate(dev) && nextStep.id === lowestNonZeroStep.id) return true;
   return isBoostEffectiveForEscalation(dev);
 }
 
@@ -711,7 +718,7 @@ function rejectSteppedRestoreForInsufficientHeadroom(params: {
     postReserveMarginKw: admission.postReserveMarginKw,
     minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
   });
-  const update: Partial<DevicePlanDevice> = isObservedOff(dev)
+  const update: Partial<DevicePlanDevice> = isOffSteppedRestoreCandidate(dev)
     ? { ...buildOffSteppedRestoreShedUpdate(dev), reason }
     : { reason };
   setRestorePlanDevice(deviceMap, dev.id, update);

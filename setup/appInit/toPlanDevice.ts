@@ -1,4 +1,5 @@
 import { isDeviceObservationStale } from '../../lib/observer/observationFreshness';
+import { resolveCurrentOn } from '../../lib/observer/observedState';
 import {
   resolveCanSetControl,
   resolveCommandableNow,
@@ -110,6 +111,11 @@ export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot & 
     stepCommandPending: device.stepCommandPending,
     stepCommandStatus: device.stepCommandStatus,
     observationStale,
+    // The public on/off truth, resolved once here for binary devices (present
+    // IFF `controlCapabilityId` is set this cycle, mirroring `binaryControl`).
+    // `isBinaryPlanDevice` re-asserts it as a required `boolean`; non-binary
+    // devices carry no on/off truth.
+    ...(device.controlCapabilityId !== undefined ? { currentOn: resolveCurrentOn(device) } : {}),
     managed: ctx.resolveManagedState(device.id),
     controllable,
     budgetExempt: ctx.isBudgetExempt(device.id),

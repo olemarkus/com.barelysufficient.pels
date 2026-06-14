@@ -16,12 +16,13 @@ import {
 } from '../../lib/plan/planReconcileState';
 import { hasPlanExecutionDriftForDevice as hasExecutorPlanExecutionDriftForDevice } from '../../lib/executor/planExecutionDrift';
 import { buildBinaryObservation } from '../utils/binaryObservationTestUtils';
-import { withMaterializedEvPlugState } from '../utils/planTestUtils';
+import { withMaterializedEvPlugState, resolveFixtureCurrentOn } from '../utils/planTestUtils';
 import type { BinaryControlObservation } from '../../packages/contracts/src/types';
 
 type LooseOutputDevice = Partial<DevicePlan['devices'][number]>
   & TemperatureDiscriminantProbe
-  & EvDiscriminantProbe;
+  & EvDiscriminantProbe
+  & BinaryControlDiscriminantProbe;
 
 // Regroup a loose output-device override bag (temperature/EV fields flat on the
 // base) onto the discriminated `DevicePlanDevice` shape.
@@ -67,32 +68,39 @@ const steppedProfile = {
 
 const buildSteppedDevice = (
   overrides: LooseOutputDevice = {},
-): DevicePlan['devices'][number] => asOutputDevice({
-  id: 'dev-1',
-  name: 'Tank',
-  currentState: 'on',
-  plannedState: 'keep',
-  currentTarget: null,
-  controllable: true,
-  steppedLoadProfile: steppedProfile,
-  selectedStepId: 'low',
-  desiredStepId: 'low',
-  ...overrides,
-});
+): DevicePlan['devices'][number] => {
+  const merged = {
+    id: 'dev-1',
+    name: 'Tank',
+    currentState: 'on',
+    plannedState: 'keep' as const,
+    currentTarget: null,
+    controllable: true,
+    controlCapabilityId: 'onoff' as const,
+    steppedLoadProfile: steppedProfile,
+    selectedStepId: 'low',
+    desiredStepId: 'low',
+    ...overrides,
+  };
+  return asOutputDevice({ ...merged, currentOn: resolveFixtureCurrentOn(merged) });
+};
 
 const buildBinaryDevice = (
   overrides: LooseOutputDevice = {},
-): DevicePlan['devices'][number] => asOutputDevice({
-  id: 'dev-2',
-  name: 'Heater',
-  currentState: 'on',
-  plannedState: 'keep',
-  currentTarget: 21,
-  plannedTarget: 21,
-  controllable: true,
-  controlCapabilityId: 'onoff',
-  ...overrides,
-});
+): DevicePlan['devices'][number] => {
+  const merged = {
+    id: 'dev-2',
+    name: 'Heater',
+    currentState: 'on',
+    plannedState: 'keep' as const,
+    currentTarget: 21,
+    plannedTarget: 21,
+    controllable: true,
+    controlCapabilityId: 'onoff' as const,
+    ...overrides,
+  };
+  return asOutputDevice({ ...merged, currentOn: resolveFixtureCurrentOn(merged) });
+};
 
 const buildEvDevice = (
   overrides: LooseOutputDevice = {},
@@ -797,6 +805,32 @@ describe('planReconcileState stepped device drift', () => {
       expect(result.devices[0].currentState).toBe('off');
     });
 
+    it('recomputes currentOn from the merged stepped profile when live binary state lacks the profile', () => {
+      const plan = buildPlan([buildSteppedDevice({
+        currentState: 'off',
+        currentOn: false,
+        selectedStepId: 'off',
+      })]);
+      const liveDevices: PlanInputDevice[] = [inputDevice({
+        id: 'dev-1',
+        name: 'Tank',
+        binaryControl: { on: true },
+        currentOn: true,
+        controlCapabilityId: 'onoff',
+        selectedStepId: 'off',
+        targets: [],
+      })];
+
+      const result = buildLiveStatePlan(plan, liveDevices);
+
+      expect(result.devices[0]).toEqual(expect.objectContaining({
+        binaryControl: { on: true },
+        currentOn: false,
+        currentState: 'off',
+        selectedStepId: 'off',
+      }));
+    });
+
     it('treats stale live binary observations as unknown in the merged plan', () => {
       const plan = buildPlan([buildBinaryDevice({ currentState: 'on' })]);
       const liveDevices: PlanInputDevice[] = [inputDevice({
@@ -926,34 +960,42 @@ describe('planReconcileState stepped device drift', () => {
 describe('expected binary state for stepped turn_off / turn_on (Group 4)', () => {
   const buildSteppedShedDevice = (
     overrides: LooseOutputDevice = {},
-  ): DevicePlan['devices'][number] => asOutputDevice({
-    id: 'dev-1',
-    name: 'Tank',
-    currentState: 'on',
-    plannedState: 'shed',
-    currentTarget: null,
-    controllable: true,
-    steppedLoadProfile: steppedProfile,
-    selectedStepId: 'low',
-    desiredStepId: 'low',
-    shedAction: 'turn_off',
-    ...overrides,
-  });
+  ): DevicePlan['devices'][number] => {
+    const merged = {
+      id: 'dev-1',
+      name: 'Tank',
+      currentState: 'on',
+      plannedState: 'shed' as const,
+      currentTarget: null,
+      controllable: true,
+      controlCapabilityId: 'onoff' as const,
+      steppedLoadProfile: steppedProfile,
+      selectedStepId: 'low',
+      desiredStepId: 'low',
+      shedAction: 'turn_off' as const,
+      ...overrides,
+    };
+    return asOutputDevice({ ...merged, currentOn: resolveFixtureCurrentOn(merged) });
+  };
 
   const buildKeepDevice = (
     overrides: LooseOutputDevice = {},
-  ): DevicePlan['devices'][number] => asOutputDevice({
-    id: 'dev-1',
-    name: 'Tank',
-    currentState: 'off',
-    plannedState: 'keep',
-    currentTarget: null,
-    controllable: true,
-    steppedLoadProfile: steppedProfile,
-    selectedStepId: 'low',
-    desiredStepId: 'low',
-    ...overrides,
-  });
+  ): DevicePlan['devices'][number] => {
+    const merged = {
+      id: 'dev-1',
+      name: 'Tank',
+      currentState: 'off',
+      plannedState: 'keep' as const,
+      currentTarget: null,
+      controllable: true,
+      controlCapabilityId: 'onoff' as const,
+      steppedLoadProfile: steppedProfile,
+      selectedStepId: 'low',
+      desiredStepId: 'low',
+      ...overrides,
+    };
+    return asOutputDevice({ ...merged, currentOn: resolveFixtureCurrentOn(merged) });
+  };
 
   const buildLiveInput = (
     overrides: LooseInputDevice = {},

@@ -7,6 +7,7 @@ import { recordPowerSampleForApp } from '../lib/power/sampleIngest';
 import { PowerSampleRebuildState } from '../lib/plan/rebuildScheduler/powerDriven';
 import { schedulePlanRebuildFromSignal } from '../lib/plan/rebuildScheduler/signalDriven';
 import { splitControlledUsageKw, sumBudgetExemptLiveUsageKw } from '../lib/plan/planUsage';
+import { withHeadroomCurrentOn } from '../lib/plan/planHeadroomSupport';
 import { updateObjectiveProfilesFromSnapshot } from '../lib/objectives/profiles';
 import { isPlanActivelyConverging } from '../lib/plan/planStateHelpers';
 import { buildPlanCapacityStateSummary } from '../lib/plan/planLogging';
@@ -136,8 +137,15 @@ export class PowerSamplePipeline {
         getLatestTargetSnapshot: () => this.deps.getLatestTargetSnapshot(),
         powerTracker,
         capacityGuard,
-        splitControlledUsage: (params) => splitControlledUsageKw(params),
-        sumBudgetExemptUsage: (devices) => sumBudgetExemptLiveUsageKw(devices),
+        // Stamp the producer-resolved `currentOn` onto the raw snapshots before the
+        // plan-layer usage math: these devices come straight from the transport and
+        // carry `binaryControl` but no `currentOn`, so the usage on/off reads would
+        // otherwise treat an idle-but-on binary device as off and charge expected kW.
+        splitControlledUsage: (params) => splitControlledUsageKw({
+          ...params,
+          devices: params.devices.map(withHeadroomCurrentOn),
+        }),
+        sumBudgetExemptUsage: (devices) => sumBudgetExemptLiveUsageKw(devices.map(withHeadroomCurrentOn)),
         updateObjectiveProfiles: (params) => updateObjectiveProfilesFromSnapshot({
           ...params,
           debugStructured: this.deps.getStructuredDebugEmitter('objective_profiles', 'objective_profiles'),

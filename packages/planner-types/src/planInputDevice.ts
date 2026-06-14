@@ -100,6 +100,13 @@ export type TemperaturePlanInputKind = {
  */
 export type BinaryPlanInputKind = {
   binaryControl: { on: boolean };
+  // The single public on/off truth for a binary device: a strict boolean the
+  // producer resolves once (`resolveCurrentOn` — binary axis AND stepped-off fold,
+  // no staleness gate). Consumers narrow via `isBinaryPlanDevice` and read this
+  // directly; the on/off question is meaningful ONLY for binary devices, so there
+  // is no kind-agnostic wrapper. `binaryControl` is retiring to transport/observer
+  // internals — read `currentOn`, not `binaryControl.on`.
+  currentOn: boolean;
 };
 
 export type PlanInputDevice =

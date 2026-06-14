@@ -202,7 +202,8 @@ describe('P1 bug proofs', () => {
       plannedShedDevices: 1,
       pendingPlannedShedDevices: 1,
       activePlannedShedDevices: 1,
-      activeControlledDevices: 1,
+      // Behaviour change: a stale-on device is now trusted-on, so it counts active.
+      activeControlledDevices: 2,
       zeroDrawControlledDevices: 1,
       staleControlledDevices: 1,
       pendingControlledDevices: 1,
@@ -210,7 +211,11 @@ describe('P1 bug proofs', () => {
     }));
   });
 
-  it('applies the same unknown-state restore eligibility rules to stepped and non-stepped devices', () => {
+  // Behaviour change (resolved-control refactor): binary/stepped devices have no
+  // 'unknown' on/off state — 'unknown' is only a label. With no off-evidence the
+  // device resolves to `currentOn: true`, so the stepped device at an active step
+  // below its top is an eligible step-up restore candidate.
+  it('treats unknown-label stepped devices as on (no unknown state) for restore eligibility', () => {
     const devices = [
       buildPlanDevice({
         id: 'binary',
@@ -237,7 +242,7 @@ describe('P1 bug proofs', () => {
     ];
 
     expect(getOffDevices(devices)).toHaveLength(0);
-    expect(getSteppedRestoreCandidates(devices)).toHaveLength(0);
+    expect(getSteppedRestoreCandidates(devices)).toHaveLength(1);
   });
 
   it('uses the same controlled/uncontrolled split in planning and power tracking for stepped off-step devices', async () => {

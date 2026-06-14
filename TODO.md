@@ -226,6 +226,51 @@ program) remains deferred.*
         plan-layer discrimination still tracked under "Slice 1" above — converting the flat `DevicePlanDevice` /
         `PlanInputDevice` bags to discriminated unions (`SteppedLoadKind`/temperature/EV kinds) — a separate
         partition from the now-finished `TargetDeviceSnapshot`/`ObservedDeviceState`/`DeviceDescriptor` move.
+      - **binary on/off discrimination (plan side): `currentOn` slice landed (2026-06-14).** The on/off truth
+        is now a strict-boolean `currentOn` on the binary plan kinds (`BinaryPlanInputKind`/`BinaryControlKind`),
+        resolved once by the producer (`resolveCurrentOn` — binary axis AND stepped-off fold, no staleness gate)
+        and stamped at `toPlanDevice`/`planDevices`. The kind-agnostic `isObservedOff`/`isObservedOn` wrappers
+        were DELETED; all consumers narrow via `isBinaryPlanDevice` and read `currentOn` directly (list sites
+        partitioned by kind), so on/off is unaskable on a non-binary device and the four-valued `currentState`
+        survives only as a UI/reason label. Behaviour change (intended): on/off is the latched last value with no
+        staleness gate (stale-off = trusted-off, stale-on = trusted-on, active step = on). Remaining: drop
+        `binaryControl` from the consumer plan kinds (transport keeps it), then the separate `observationStale`
+        removal.
+        *Step-only stepper on/off resolved on the step axis (2026-06-14): a stepped device without `onoff` reads
+        off/on from its step; restore/usage/overshoot/reconcile/activation/swap-completion + the executor all fixed.*
+        Open follow-ups (P2/P3, deferred):
+        - *planSteppedLoad masking is emergent (P3).* The `planSteppedLoad.ts` direct-`currentOn` sites (L161/266/299)
+          are masked-safe for a step-only stepper ONLY because the lowest step is the single off step at sorted index
+          0, so "next higher from off" == "restore step". **Hypothesis:** a profile with multiple zero-power sub-steps
+          below the first active step would make those unequal, silently regressing the restore target. **Persona:**
+          an installer with a multi-step `target_power` heater. Add a `getSteppedLoadNextRestoreStep` regression test
+          pinning a step-only device on a `[off(0), idle(0), low(>0), …]` profile; not a code change now.
+        - *Fixture `currentOn` precedence (deferred, P2, test-only).* `resolveFixtureCurrentOn`
+          (`test/utils/planTestUtils.ts`) lets an explicit `currentState` label win over structural
+          (binary+stepped) resolution, diverging from production `currentOn` stamping (production never consults the
+          label). Reordering to resolve structurally first is more faithful but cascades: ~31 stepped fixtures
+          express off-ness via `currentState` alone without a structural `binaryControl: { on: false }` signal and
+          flip `currentOn` under the reorder. **Hypothesis:** those underspecified fixtures can mask a planner/
+          executor regression where production resolves `currentOn` differently than the fixture asserts.
+          **Persona:** a maintainer touching stepped shed/restore. Do it as a focused PR: reorder the helper, then
+          add explicit `binaryControl` to each fixture that intends "off". (CodeRabbit #1728.)
+        - *Activation-seam end-to-end coverage.* The realtime snapshot-refresh (`appSnapshotHelpers`) and Flow
+          headroom card now stamp `currentOn` onto raw snapshots (the Flow card stamps the whole `devices` array)
+          before the activation in/active reads, and a step-only stepper carries `steppedLoadProfile`/`selectedStepId`
+          to the same reads. Unit-covered via `resolveCurrentOn`/the predicates, but not driven end-to-end (the
+          appSnapshotHelpers test mocks `syncHeadroomCardState`). **Hypothesis:** a future change could drop the seam
+          stamp/propagation and silently degrade activation-attempt close/active detection. **Persona:** a maintainer
+          refactoring the headroom/snapshot wiring. Add an integration test driving the real
+          `syncHeadroomCardState`/`evaluateHeadroomForDevice` with (a) a raw-snapshot binary device and (b) a
+          step-only stepper parked at its off step, asserting the attempt closes as inactive.
+        - *Step-axis stale-trust is undocumented (P2).* `resolveRestoreObservedState` (and the new step-axis
+          predicates) read `selectedStepId` + profile with NO `observationStale` gate, so a stale step-only stepper
+          at its off step resolves authoritatively to off — sound (`selectedStepId` is PELS's latched last-commanded
+          step) and consistent with the documented "stale observation is trusted" invariant, but it extends
+          stale-trust from the binary axis to the step axis without a dedicated note or test. **Hypothesis:** a future
+          change to step latching could silently flip stale step-only restore eligibility. **Persona:** an installer
+          with a `target_power` load. Add a one-line note in `lib/observer/AGENTS.md` + an integration test pinning a
+          stale step-only stepper's restore/shed classification.
 
 ## P2 Product, Observability, and Maintainability
 

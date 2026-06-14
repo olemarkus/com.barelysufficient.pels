@@ -66,18 +66,25 @@ describe('planSteppedLoad', () => {
       selectedStepId: 'medium',
       desiredStepId: 'max',
     }))).toBe('low');
+    // Behaviour change (resolved-control refactor): a binary/stepped device has
+    // no 'unknown' on/off state. The four-valued 'unknown' is only a label now;
+    // the device's `currentOn` resolves from the active step ('medium' -> on), so
+    // the on-branch applies and returns the desired step rather than holding the
+    // current step.
     expect(resolveSteppedKeepDesiredStepId(steppedPlanDevice({
       currentState: 'unknown',
       plannedState: 'keep',
       selectedStepId: 'medium',
       desiredStepId: 'max',
-    }))).toBe('medium');
+    }))).toBe('max');
+    // Same behaviour change: 'unknown' is only a label; with no off-evidence the
+    // device resolves to `currentOn: true`, so the on-branch returns the desired step.
     expect(resolveSteppedKeepDesiredStepId(steppedPlanDevice({
       currentState: 'unknown',
       plannedState: 'keep',
       selectedStepId: undefined as unknown as string,
       desiredStepId: 'max',
-    }))).toBe('low');
+    }))).toBe('max');
 
     const normalizedKeepDesiredStepId = resolveSteppedKeepDesiredStepId(steppedPlanDevice({
       currentState: 'off',

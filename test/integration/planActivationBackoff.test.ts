@@ -9,6 +9,7 @@ describe('isActivationObservationActiveNow', () => {
     expect(isActivationObservationActiveNow({
       binaryControl: { on: true },
       controlCapabilityId: 'onoff',
+      currentOn: true,
     })).toBe(true);
   });
 

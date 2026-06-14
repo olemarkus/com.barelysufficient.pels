@@ -6,8 +6,8 @@ import { isBinaryPlanDevice } from './planBinaryDevice';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
 import type { SteppedLoadProfile } from '../../packages/contracts/src/types';
+import { resolveCurrentOn } from '../observer/observedState';
 import { resolveObservedCurrentState } from './planCurrentState';
-import { isObservedOff, isObservedOn } from '../observer/observedState';
 import { getPrimaryTargetCapability } from '../utils/targetCapabilities';
 import {
   normalizeSteppedLoadStepStateFromLegacyFields,
@@ -32,6 +32,16 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
       // stripping any stale `steppedLoadProfile` the spread carried over.
       const mergedProfile = (isSteppedLoadDevice(live) ? live.steppedLoadProfile : undefined)
         ?? (isSteppedLoadDevice(device) ? device.steppedLoadProfile : undefined);
+      const mergedCurrentState = resolveCurrentStateFromPlanInput(
+        live,
+        mergedProfile,
+        liveStepState.selectedStepId,
+      );
+      const liveBinaryFields = resolveLiveBinaryFields(
+        live,
+        mergedProfile,
+        liveStepState.selectedStepId,
+      );
       // The EV cluster (`evBoost` / `evBoostActive` / `stateOfCharge`) is
       // orthogonal to the stepped axis and off the base, so the `...device`
       // spread does not carry it at the type level. Re-source it explicitly from
@@ -56,7 +66,7 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
         evBoostActive: evDevice?.evBoostActive,
         stateOfCharge: evDevice?.stateOfCharge,
         steppedLoadProfile: mergedProfile,
-        currentState: resolveCurrentStateFromPlanInput(device, live),
+        currentState: mergedCurrentState,
         currentTarget: getPrimaryTargetCapability(live.targets)?.value ?? null,
         observationStale: live.observationStale ?? device.observationStale,
         selectedStepId: liveStepState.selectedStepId,
@@ -83,6 +93,12 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
         controllable: live.controllable ?? device.controllable,
         stepCommandPending: live.stepCommandPending ?? device.stepCommandPending,
         stepCommandStatus: live.stepCommandStatus ?? device.stepCommandStatus,
+        // Re-source the binary on/off truth from the same merged step/profile
+        // inputs used for `currentState`. A live snapshot can lack the stepped
+        // profile while still reporting the selected step; copying live.currentOn
+        // would then ignore the previous profile preserved above and let
+        // `currentState`/`currentOn` disagree on the merged device.
+        ...liveBinaryFields,
       })));
     }),
   };
@@ -176,16 +192,46 @@ export function hasPlanExecutionDriftAgainstIntent(
 }
 
 function resolveCurrentStateFromPlanInput(
-  previousDevice: DevicePlan['devices'][number],
   liveDevice: PlanInputDevice,
+  mergedProfile: SteppedLoadProfile | undefined,
+  mergedSelectedStepId: string | undefined,
 ): string {
   return resolveObservedCurrentState({
     ...(isBinaryPlanDevice(liveDevice) ? { binaryControl: liveDevice.binaryControl } : {}),
     controlCapabilityId: liveDevice.controlCapabilityId,
     observationStale: liveDevice.observationStale,
-    steppedLoadProfile: isSteppedLoadDevice(previousDevice) ? previousDevice.steppedLoadProfile : undefined,
-    selectedStepId: liveDevice.selectedStepId,
+    steppedLoadProfile: mergedProfile,
+    selectedStepId: mergedSelectedStepId,
   });
+}
+
+function resolveLiveBinaryFields(
+  liveDevice: PlanInputDevice,
+  mergedProfile: SteppedLoadProfile | undefined,
+  mergedSelectedStepId: string | undefined,
+): { binaryControl?: { on: boolean }; currentOn?: boolean } {
+  if (!isBinaryPlanDevice(liveDevice)) return {};
+  return {
+    binaryControl: liveDevice.binaryControl,
+    currentOn: resolveCurrentOn({
+      binaryControl: liveDevice.binaryControl,
+      steppedLoadProfile: mergedProfile,
+      selectedStepId: mergedSelectedStepId,
+    }),
+  };
+}
+
+// The binary on/off settle check: a planned binary restore is settled only once
+// the live device reads on (`currentOn`), a planned binary shed only once it reads
+// off. On/off is binary-only, so a non-binary live device is never confirmed
+// on/off and the corresponding restore/shed never reads settled here.
+function hasSettledBinaryActuation(
+  baseDevice: DevicePlan['devices'][number],
+  liveDevice: DevicePlan['devices'][number],
+): boolean {
+  if (requiresBinaryRestore(baseDevice) && !(isBinaryPlanDevice(liveDevice) && liveDevice.currentOn)) return false;
+  if (requiresBinaryShed(baseDevice) && !(isBinaryPlanDevice(liveDevice) && !liveDevice.currentOn)) return false;
+  return true;
 }
 
 function hasSettledPostActuationState(
@@ -200,8 +246,7 @@ function hasSettledPostActuationState(
   ) {
     return false;
   }
-  if (requiresBinaryRestore(baseDevice) && !isObservedOn(liveDevice)) return false;
-  if (requiresBinaryShed(baseDevice) && !isObservedOff(liveDevice)) return false;
+  if (!hasSettledBinaryActuation(baseDevice, liveDevice)) return false;
   const liveCurrentTarget = isTemperaturePlanDevice(liveDevice) ? liveDevice.currentTarget : null;
   const basePlannedTarget = isTemperaturePlanDevice(baseDevice) ? baseDevice.plannedTarget : undefined;
   if (requiresTargetUpdate(baseDevice) && liveCurrentTarget !== basePlannedTarget) return false;
@@ -211,13 +256,16 @@ function hasSettledPostActuationState(
 function requiresBinaryRestore(device: DevicePlan['devices'][number]): boolean {
   return device.controllable !== false
     && device.plannedState === 'keep'
-    && isObservedOff(device);
+    && isBinaryPlanDevice(device) && !device.currentOn;
 }
 
 function requiresBinaryShed(device: DevicePlan['devices'][number]): boolean {
-  return device.plannedState === 'shed'
-    && !isObservedOff(device)
-    && device.shedAction !== 'set_temperature';
+  // Only a `turn_off` shed settles on the binary axis. `set_step` and
+  // `set_temperature` sheds settle on the step / target axis — a step-only
+  // stepper (no binary handle) sheds via `set_step` and must NOT be held for a
+  // binary-off read it can never produce. (An already-off binary device's
+  // `turn_off` still settles immediately via the live binary-off read.)
+  return device.plannedState === 'shed' && device.shedAction === 'turn_off';
 }
 
 function requiresTargetUpdate(device: DevicePlan['devices'][number]): boolean {

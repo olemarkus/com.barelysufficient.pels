@@ -62,7 +62,6 @@ import {
   OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS,
   SOFT_OVERSHOOT_DEADBAND_KW,
 } from './planConstants';
-import { isObservedOff } from '../observer/observedState';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import { isPendingBinaryCommandActive } from './planObservationPolicy';
 import { resolveSoftOvershootDecision, type SoftOvershootDecision } from './planOvershoot';
@@ -1152,7 +1151,10 @@ function trackPlanDeviceForOvershoot(
     currentState: device.currentState,
     // Source the binary cluster only when the device is binary this cycle (a
     // transient capability drop revokes binary status; see `isBinaryPlanDevice`).
-    ...(isBinaryPlanDevice(device) ? { binaryControl: device.binaryControl } : {}),
+    // `currentOn` rides along as the resolved on/off truth for overshoot power.
+    ...(isBinaryPlanDevice(device)
+      ? { binaryControl: device.binaryControl, currentOn: device.currentOn }
+      : {}),
     measuredPowerKw: device.measuredPowerKw,
     expectedPowerKw: device.expectedPowerKw,
     planningPowerKw: device.planningPowerKw,
@@ -1227,13 +1229,16 @@ function attachDeferredReleaseIntents(
 function resolveOvershootDevicePower(
   device: Pick<
     OvershootTrackedPlanDevice,
-    'currentState' | 'binaryControl' | 'measuredPowerKw' | 'expectedPowerKw' | 'planningPowerKw'
+    'currentOn' | 'currentState' | 'measuredPowerKw' | 'expectedPowerKw' | 'planningPowerKw'
   > | undefined,
 ): { kw: number | null; source: ResolvedPowerSource } {
   if (!device) return { kw: null, source: 'unknown' };
   const measuredPowerKw = resolveFiniteNumber(device.measuredPowerKw);
   if (measuredPowerKw !== null) return { kw: measuredPowerKw, source: 'measured' };
-  if (isObservedOff(device)) return { kw: 0, source: 'off' };
+  // A confirmed-off device draws nothing. `currentOn === false` is the binary
+  // off truth; a step-only stepper carries no `currentOn`, so its off-state is
+  // the producer-resolved step-axis label `currentState === 'off'`.
+  if (device.currentOn === false || device.currentState === 'off') return { kw: 0, source: 'off' };
   const expectedPowerKw = resolveFiniteNumber(device.expectedPowerKw);
   if (expectedPowerKw !== null) return { kw: expectedPowerKw, source: 'expected' };
   const planningPowerKw = resolveFiniteNumber(device.planningPowerKw);

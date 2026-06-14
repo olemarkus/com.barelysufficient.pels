@@ -1,5 +1,5 @@
 import { getSteppedLoadStep } from '../../utils/deviceControlProfiles';
-import { isObservedOn } from '../../observer/observedState';
+import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
 import type { DevicePlanDevice } from '../planTypes';
 import type { SwapState } from './state';
@@ -8,8 +8,17 @@ export function isSwapTargetComplete(
   device: DevicePlanDevice,
   swapState: SwapState,
 ): boolean {
-  if (!isObservedOn(device)) return false;
-  if (!isSteppedLoadDevice(device)) return true;
+  // A binary swap target that is off is not yet complete. A step-only stepper has
+  // no binary handle (no `currentOn`) — its completion is decided ENTIRELY on the
+  // step axis (the confirmed-step check below), so it must not be short-circuited
+  // here just for being non-binary, or its swapped-out source is held until the
+  // stale-swap timeout instead of being released the moment the step confirms.
+  if (isBinaryPlanDevice(device) && !device.currentOn) return false;
+  if (!isSteppedLoadDevice(device)) {
+    // Non-stepped: a binary device completes when on; a device with neither a
+    // binary handle nor a step has no completion concept.
+    return isBinaryPlanDevice(device);
+  }
 
   const requestedStepId = resolveRequestedStepId(device, swapState);
   if (!requestedStepId) return false;

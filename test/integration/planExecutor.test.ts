@@ -35,6 +35,7 @@ import { buildLiveStatePlan, hasPlanExecutionDrift } from '../../lib/plan/planRe
 import { legacyDeviceReason } from '../utils/deviceReasonTestUtils';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
+import { resolveFixtureCurrentOn } from '../utils/planTestUtils';
 
 const KEEP_REASON = legacyDeviceReason('keep')!;
 const CAPACITY_REASON = legacyDeviceReason('shed due to capacity')!;
@@ -72,7 +73,7 @@ const pd = (
       evChargingState?: string;
     },
 ): DevicePlanDevice => withTemperatureDiscriminant(
-  withSteppedDiscriminant(withBinaryDiscriminant(loose)),
+  withSteppedDiscriminant(withBinaryDiscriminant({ ...loose, currentOn: resolveFixtureCurrentOn(loose) })),
 ) as DevicePlanDevice;
 
 const buildPlan = (): DevicePlan => ({
@@ -1374,30 +1375,37 @@ describe('PlanExecutor stepped loads', () => {
     ...overrides,
   } as TargetDeviceSnapshot & EvObservedProbe];
 
-  const steppedPlan = (overrides: Record<string, unknown> = {}): DevicePlan => ({
-    meta: {
-      totalKw: 1,
-      softLimitKw: 5,
-      headroomKw: 4,
-    },
-    devices: [
-      withTemperatureDiscriminant(withSteppedDiscriminant({
-        id: 'dev-1',
-        name: 'Tank',
-        deviceType: 'temperature' as const,
-        currentState: 'on',
-        plannedState: 'keep' as const,
-        currentTarget: 68,
-        plannedTarget: 68,
-        controllable: true,
-        reason: KEEP_REASON,
-        steppedLoadProfile: steppedProfile,
-        selectedStepId: 'low',
-        desiredStepId: 'max',
-        ...overrides,
-      })),
-    ],
-  });
+  const steppedPlan = (overrides: Record<string, unknown> = {}): DevicePlan => {
+    const merged = {
+      id: 'dev-1',
+      name: 'Tank',
+      deviceType: 'temperature' as const,
+      plannedState: 'keep' as const,
+      currentTarget: 68,
+      plannedTarget: 68,
+      controllable: true,
+      controlCapabilityId: 'onoff' as const,
+      reason: KEEP_REASON,
+      steppedLoadProfile: steppedProfile,
+      selectedStepId: 'low',
+      desiredStepId: 'max',
+      ...overrides,
+    };
+    return {
+      meta: {
+        totalKw: 1,
+        softLimitKw: 5,
+        headroomKw: 4,
+      },
+      devices: [
+        withTemperatureDiscriminant(withSteppedDiscriminant({
+          ...merged,
+          currentState: (merged as { currentState?: string }).currentState ?? 'on',
+          currentOn: resolveFixtureCurrentOn(merged),
+        })),
+      ],
+    };
+  };
 
   it('triggers desired stepped-load change and records the issued command', async () => {
     const { executor, deviceManager, desiredSteppedTrigger, state, deps } = buildExecutor(
@@ -2678,6 +2686,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       plannedState: 'keep',
       currentTarget: null,
       controllable: true,
+      controlCapabilityId: 'onoff',
       reason: KEEP_REASON,
       steppedLoadProfile: steppedProfile,
       selectedStepId: 'low',
@@ -2688,16 +2697,22 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
 
   const buildLiveDevices = (
     overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe & SteppedDiscriminantProbe = {},
-  ): PlanInputDevice[] => [
-    withBinaryDiscriminant(withSteppedDiscriminant({
+  ): PlanInputDevice[] => {
+    const merged = {
       id: 'dev-1',
       name: 'Tank',
       targets: [],
       steppedLoadProfile: steppedProfile,
       controlCapabilityId: 'onoff' as const,
       ...overrides,
-    })) as PlanInputDevice,
-  ];
+    };
+    return [
+      withBinaryDiscriminant(withSteppedDiscriminant({
+        ...merged,
+        currentOn: resolveFixtureCurrentOn(merged),
+      })) as PlanInputDevice,
+    ];
+  };
 
   const buildSnapshot = (
     // `selectedStepId` is a plan-device field, not an observed-snapshot field
@@ -3278,6 +3293,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
           plannedState: 'shed',
           currentTarget: null,
           controllable: true,
+          controlCapabilityId: 'onoff',
           reason: CAPACITY_REASON,
         }),
         pd({
@@ -3287,6 +3303,7 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
           plannedState: 'keep',
           currentTarget: null,
           controllable: true,
+          controlCapabilityId: 'onoff',
           reason: KEEP_REASON,
           steppedLoadProfile: steppedProfile,
           selectedStepId: 'max',
@@ -3415,11 +3432,13 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const shedDevice = {
       id: 'shed-1', name: 'Heater', currentState: 'off' as const, plannedState: 'shed' as const,
       currentTarget: null, controllable: true, reason: CAPACITY_REASON,
+      controlCapabilityId: 'onoff' as const, currentOn: false,
     };
     const steppedDevice = (desiredStepId: string) => ({
       id: 'dev-1', name: 'Tank', currentState: 'off' as const, plannedState: 'keep' as const,
       currentTarget: null, controllable: true, reason: KEEP_REASON,
       controlModel: 'stepped_load' as const,
+      controlCapabilityId: 'onoff' as const, currentOn: false,
       steppedLoadProfile: multiStepProfile,
       selectedStepId: 'off',
       desiredStepId,
