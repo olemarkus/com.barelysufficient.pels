@@ -499,14 +499,14 @@
           <small class="field__hint" id="settings-capacity-reaction">Safe pace stays below the hard cap.</small>
           <small class="field__hint field__hint--alert" id="settings-capacity-margin-alert" hidden></small>
         </label>
-        <label class="field">
+        <div class="field">
           <span class="field__label pels-text-settings-label" id="settings-power-source-label">Power source</span>
           <md-filled-select id="settings-power-source" name="settings_power_source" aria-labelledby="settings-power-source-label">
             <md-select-option value="flow" selected><div slot="headline">Flow card</div></md-select-option>
             <md-select-option value="homey_energy"><div slot="headline">Homey Energy</div></md-select-option>
           </md-filled-select>
           <small class="field__hint">Where whole-home power readings come from.</small>
-        </label>
+        </div>
       </form>
     </section>
 
@@ -618,11 +618,11 @@
         </summary>
         <div class="collapse-content">
           <div class="form-grid">
-            <label class="field">
+            <div class="field">
               <span class="field__label pels-text-settings-label" id="advanced-device-select-label">Device</span>
               <md-filled-select id="advanced-device-select" aria-labelledby="advanced-device-select-label"></md-filled-select>
               <small class="field__hint">Removes PELS settings for this device only.</small>
-            </label>
+            </div>
             <div class="inline-actions">
               <md-outlined-button type="button" id="advanced-device-clear">Clear device data</md-outlined-button>
             </div>
@@ -638,11 +638,11 @@
         </summary>
         <div class="collapse-content">
           <div class="form-grid">
-            <label class="field">
+            <div class="field">
               <span class="field__label pels-text-settings-label" id="advanced-api-device-select-label">Homey device</span>
               <md-filled-select id="advanced-api-device-select" aria-labelledby="advanced-api-device-select-label"></md-filled-select>
               <small class="field__hint">Loads the raw device from the Homey API.</small>
-            </label>
+            </div>
             <div class="inline-actions">
               <md-outlined-button type="button" id="advanced-api-device-refresh">Refresh list</md-outlined-button>
               <md-outlined-button type="button" id="advanced-api-device-log">Log device</md-outlined-button>
