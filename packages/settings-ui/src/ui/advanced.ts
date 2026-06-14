@@ -100,10 +100,28 @@ const resolveUnknownDeviceIdsFromSettings = (): string[] => {
   return Array.from(collectDeviceIdsFromSettings()).filter((id) => !knownIds.has(id));
 };
 
+let lastAdvancedDeviceOptionsSignature: string | null = null;
+
 const renderAdvancedDeviceOptions = () => {
   if (!advancedDeviceSelect) return;
   const devices = resolveDeviceOptionsFromSettings();
   const unknownIds = resolveUnknownDeviceIdsFromSettings();
+  // `devices-updated` fires on every power/state tick, but the device *set*
+  // rarely changes. Rebuilding the <md-select> options on every tick closes the
+  // menu mid-selection and resets the user's choice, so skip when unchanged.
+  // Capture the RAW `device.name` (not the trimmed `formatDisplayDeviceName`
+  // label): the transform is pure, so the raw value is the true cache key and a
+  // genuine rename still busts the memo. Sort by id so the signature tracks the
+  // device *set*, not the settings-map key order — a pure reorder must not bust
+  // the memo and close an open menu (the render already sorts by name).
+  const signature = JSON.stringify({
+    devices: devices
+      .map((device) => [device.id, device.name])
+      .sort((a, b) => a[0].localeCompare(b[0])),
+    unknown: [...unknownIds].sort(),
+  });
+  if (signature === lastAdvancedDeviceOptionsSignature) return;
+  lastAdvancedDeviceOptionsSignature = signature;
   advancedDeviceSelect.replaceChildren(
     createSelectOption('', devices.length ? 'Select a device' : 'No devices in settings', true),
   );
