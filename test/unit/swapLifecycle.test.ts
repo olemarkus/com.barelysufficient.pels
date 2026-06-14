@@ -93,6 +93,31 @@ describe('swap lifecycle completion', () => {
     expect(isSwapTargetComplete(target, swapState)).toBe(true);
   });
 
+  it('completes a step-only swap target (no binary handle) once the requested step is reported', () => {
+    // Regression: a step-only stepper (controlCapabilityId undefined) used to be
+    // short-circuited to "not complete" by the binary gate, holding its source
+    // until the stale-swap timeout. Completion must be decided on the step axis.
+    const swapState = emptySwapState();
+    swapState.pendingSwapTargets.add('target');
+    swapState.requestedTargetByDevice.set('target', { targetStepId: 'medium' });
+
+    const reachedTarget = steppedPlanDevice({
+      id: 'target',
+      controlCapabilityId: undefined,
+      currentState: 'on',
+      reportedStepId: 'max',
+    });
+    expect(isSwapTargetComplete(reachedTarget, swapState)).toBe(true);
+
+    const belowTarget = steppedPlanDevice({
+      id: 'target',
+      controlCapabilityId: undefined,
+      currentState: 'on',
+      reportedStepId: 'low',
+    });
+    expect(isSwapTargetComplete(belowTarget, swapState)).toBe(false);
+  });
+
   it('does not complete on optimistic selectedStepId ahead of the reported step', () => {
     const swapState = emptySwapState();
     swapState.pendingSwapTargets.add('target');

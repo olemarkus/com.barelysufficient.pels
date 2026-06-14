@@ -308,14 +308,12 @@ describe('activation backoff', () => {
       state,
       deviceId: 'dev-1',
       nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 2 * 60_000 + 5_000,
-      // `controlCapabilityId` is load-bearing at runtime: `syncActivationPenaltyState`
-      // forwards the observation to `isObservedOff`, whose `hasBinaryCapability` gate
-      // keys off this field. Dropping it makes the off-evidence invisible. The field
-      // is declared on `ActivationBackoffObservation`, so it is set directly.
+      // `currentOn: false` is the off-evidence the explicit-inactive check reads
+      // (the producer-resolved on/off truth). It is declared on
+      // `ActivationBackoffObservation`, so it is set directly.
       observation: {
-        binaryControl: { on: false },
+        currentOn: false,
         available: true,
-        controlCapabilityId: 'onoff',
       },
     });
     expect(inactiveSync.attemptOpen).toBe(false);
@@ -617,13 +615,10 @@ describe('activation backoff', () => {
       state,
       deviceId: 'dev-1',
       nowTs: start + 20_000,
-      // See above: `controlCapabilityId` gates `isObservedOff`'s binary-capability
-      // check, so the off evidence is only seen when it is present. The field is
-      // declared on `ActivationBackoffObservation`, so it is set directly.
+      // `currentOn: false` is the off-evidence the explicit-inactive check reads.
       observation: {
-        binaryControl: { on: false },
+        currentOn: false,
         available: true,
-        controlCapabilityId: 'onoff',
       },
     });
     expect(inactiveSync.attemptOpen).toBe(false);
@@ -1316,6 +1311,7 @@ describe('activation backoff', () => {
         id: 'dev-1',
         name: 'Heater',
         binaryControl: { on: false },
+        currentOn: false,
         currentState: 'off',
         expectedPowerKw: 0,
         powerKw: 0,

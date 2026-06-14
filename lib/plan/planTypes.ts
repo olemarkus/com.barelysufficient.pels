@@ -23,6 +23,7 @@ export type ShedAction = 'turn_off' | 'set_temperature' | 'set_step';
 // continues to surface this name for compatibility with the many target-
 // command callers that already import it from here.
 import type { PendingObservationSource } from '../observer/pendingBinaryCommandTypes';
+import { resolveCurrentOn } from '../observer/observedState';
 export type PendingTargetObservationSource = PendingObservationSource;
 
 export type PendingTargetCommandStatus =
@@ -180,6 +181,13 @@ export type TemperatureKind = {
  */
 export type BinaryControlKind = {
   binaryControl: { on: boolean };
+  // The single public on/off truth for a binary device: a strict boolean the
+  // producer resolves once (`resolveCurrentOn` — binary axis AND stepped-off fold,
+  // no staleness gate). Consumers narrow via `isBinaryPlanDevice` and read this
+  // directly; the on/off question is meaningful ONLY for binary devices, so there
+  // is no kind-agnostic wrapper. `binaryControl` is retiring to transport/observer
+  // internals — read `currentOn`, not `binaryControl.on`.
+  currentOn: boolean;
 };
 
 export type SteppedPlanDevice = DevicePlanDeviceBase & SteppedLoadKind;
@@ -326,6 +334,7 @@ export function withTemperatureDiscriminant<TBase extends object>(
  */
 export type BinaryControlDiscriminantProbe = {
   binaryControl?: { on: boolean };
+  currentOn?: boolean;
 };
 
 /**
@@ -342,16 +351,34 @@ export type BinaryControlDiscriminantProbe = {
  * key, so a stale `binaryControl` would otherwise survive onto a non-binary
  * result. When binary, the producer always resolves a concrete on-state;
  * `?? { on: false }` mirrors the transport's `resolveBinaryControl` fallback for
- * the (invariant-impossible) case a spread dropped the value.
+ * the (invariant-impossible) case a spread dropped the value. `currentOn` (the
+ * public strict-boolean on/off truth) is regrouped alongside: a caller that
+ * pre-resolved it (the production producer always does) keeps that value;
+ * otherwise the regrouper resolves the correct on-state from the same binary +
+ * stepped-off inputs via `resolveCurrentOn`, so the produced `BinaryControlKind`
+ * always carries a faithful `currentOn` rather than a placeholder.
  */
 export function withBinaryDiscriminant<TBase extends { controlCapabilityId?: BinaryControlCapabilityId }>(
   loose: TBase & BinaryControlDiscriminantProbe,
 ):
   | (Omit<TBase, keyof BinaryControlDiscriminantProbe> & BinaryControlKind)
   | Omit<TBase, keyof BinaryControlDiscriminantProbe> {
-  const { binaryControl, ...base } = loose;
+  const { binaryControl, currentOn, ...base } = loose;
   if (base.controlCapabilityId !== undefined) {
-    return { ...base, binaryControl: binaryControl ?? { on: false } };
+    const stepped = base as { steppedLoadProfile?: SteppedLoadProfile; selectedStepId?: string };
+    // Resolve the binary cluster once and feed the SAME value into both the
+    // returned `binaryControl` and `resolveCurrentOn`, so the two can never
+    // disagree (e.g. `binaryControl:{on:false}` with `currentOn:true`).
+    const resolvedBinaryControl = binaryControl ?? { on: false };
+    return {
+      ...base,
+      binaryControl: resolvedBinaryControl,
+      currentOn: currentOn ?? resolveCurrentOn({
+        binaryControl: resolvedBinaryControl,
+        steppedLoadProfile: stepped.steppedLoadProfile,
+        selectedStepId: stepped.selectedStepId,
+      }),
+    };
   }
   return { ...base };
 }

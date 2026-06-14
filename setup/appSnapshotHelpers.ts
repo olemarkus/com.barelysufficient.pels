@@ -9,6 +9,7 @@ import {
   isDeviceObservationStaleByAge,
 } from '../lib/observer/observationFreshness';
 import type { PlanService } from '../lib/plan/planService';
+import { withHeadroomCurrentOn } from '../lib/plan/planHeadroomSupport';
 import type { MeasuredPowerObservedProbe, TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import { hasObservedMeasuredPower } from '../packages/shared-domain/src/measuredPowerObservedState';
 import { normalizeError } from '../lib/utils/errorUtils';
@@ -379,7 +380,9 @@ export class AppSnapshotHelpers {
     this.deps.disableUnsupportedDevices(snapshot);
     this.deps.seedMissingModeTargets(snapshot);
     const enforcedSnapshot = snapshot.map((device) => ({
-      ...device,
+      // `withHeadroomCurrentOn` stamps the on/off truth the headroom/activation
+      // path now reads (a raw snapshot carries no `currentOn`).
+      ...withHeadroomCurrentOn(device),
       managed: this.deps.resolveManagedState(device.id),
       controllable: this.deps.isCapacityControlEnabled(device.id),
     }));

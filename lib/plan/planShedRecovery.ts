@@ -1,6 +1,6 @@
 import type { PlanEngineState } from './planState';
 import type { PlanInputDevice } from './planTypes';
-import { isObservedOff } from '../observer/observedState';
+import { isBinaryPlanDevice } from './planBinaryDevice';
 import { isSteppedLoadDevice } from './planSteppedLoad';
 
 /**
@@ -15,7 +15,11 @@ export function isNonSteppedDeviceRecovering(
   candidate: PlanInputDevice,
   state: Pick<PlanEngineState, 'shedDecidedMs' | 'lastDeviceRestoreMs' | 'swapByDevice'>,
 ): boolean {
-  if (candidate.controllable === false || isSteppedLoadDevice(candidate) || !isObservedOff(candidate)) {
+  // "Observed off" is meaningful only for binary devices; a non-binary or
+  // binary-but-on candidate is not recovering. (Stepped devices are excluded
+  // above, so the remaining binary devices read `currentOn` directly.)
+  if (candidate.controllable === false || isSteppedLoadDevice(candidate)
+    || !isBinaryPlanDevice(candidate) || candidate.currentOn) {
     return false;
   }
   if (state.swapByDevice[candidate.id]?.swappedOutFor || state.swapByDevice[candidate.id]?.pendingTarget) {

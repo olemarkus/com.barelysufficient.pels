@@ -1,7 +1,7 @@
 import type { PlanEngineState } from '../planState';
 import type { PlanInputDevice, ShedAction } from '../planTypes';
 import type { SteppedLoadProfile } from '../../../packages/contracts/src/types';
-import { isObservedOff } from '../../observer/observedState';
+import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { getCurrentDrawKw } from '../../observer/observedPower';
 import { isCanSetControl } from '../../device/deviceActionProjection';
 import type { PendingBinaryCommandStore } from '../../observer/pendingBinaryCommands';
@@ -218,7 +218,9 @@ function buildBinaryCandidate(
 }
 
 function isEligibleForShedding(device: PlanInputDevice): boolean {
-  return !isObservedOff(device);
+  // Eligible unless a binary device is confirmed off; non-binary devices
+  // (setpoint/step shed) have no on/off truth and stay eligible.
+  return !isBinaryPlanDevice(device) || device.currentOn;
 }
 
 function buildTemperatureCandidate(params: {

@@ -8,7 +8,8 @@
  * (`'simple' | 'temperature' | 'stepped' | 'stepped_temperature'`) into a
  * single number on `PlanInputDevice.residualKw.shed`, computed at the producer
  * seam. Consumers in `lib/plan/planRemainingSheddableLoad.ts` keep their flat
- * plan-cycle gates (`controllable`, `isObservedOff`, `alreadyShed`,
+ * plan-cycle gates (`controllable`, the binary off-gate
+ * `isBinaryPlanDevice(d) && !d.currentOn`, `alreadyShed`,
  * daily-budget-without-cap-breach) and otherwise read this number directly.
  *
  * "Residual kW for restore" = the kW the consumer would add by restoring this
@@ -27,8 +28,9 @@
  * funnels the pre-resolved `{ kw, source }` in via `restoreFallback`.
  *
  * Layering note: this helper deliberately does NOT consult observed-off state.
- * The `isObservedOff(device) => 0` gate in `planRemainingSheddableLoad.ts` runs
- * before the consumer reads `residualKw.shed`, so the producer can stay free
+ * The `isBinaryPlanDevice(d) && !d.currentOn => 0` gate in
+ * `planRemainingSheddableLoad.ts` runs before the consumer reads
+ * `residualKw.shed`, so the producer can stay free
  * of the `lib/observer/**` dependency (which would violate the
  * `no-device-to-peer-except-power` rule). Likewise the producer must not
  * depend on `lib/plan/**`, so the stepped-load logic is implemented here
@@ -203,8 +205,8 @@ function canShedFromUnknownCurrentStep(
 
 /**
  * Structural counterpart of `getSteppedLoadShedTargetStep` in
- * `lib/plan/planSteppedLoad.ts`, minus the `isObservedOff(device)` branch.
- * The observed-off case is covered by the consumer-side flat gate in
+ * `lib/plan/planSteppedLoad.ts`, minus the `isBinaryPlanDevice(d) && !d.currentOn`
+ * branch. The observed-off case is covered by the consumer-side flat gate in
  * `planRemainingSheddableLoad.ts`, so this producer-side resolver can stay
  * free of the `lib/observer/**` dependency.
  */

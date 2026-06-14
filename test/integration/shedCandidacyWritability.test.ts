@@ -79,6 +79,7 @@ const writableBinary: PlanInputDevice = {
   targets: [],
   controlCapabilityId: 'onoff',
   binaryControl: { on: true },
+  currentOn: true,
   controllable: true,
   expectedPowerKw: 2,
 } as unknown as PlanInputDevice;

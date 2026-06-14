@@ -44,6 +44,7 @@ import {
   getOnDevices,
   getRestoreCandidates,
   getSteppedRestoreCandidates,
+  isActiveSteppedRestoreCandidate,
   isBinaryRestoreCandidate,
   isOffSteppedRestoreCandidate,
   markOffDevicesStayOff,
@@ -78,7 +79,7 @@ import {
   reserveHeadroomForPendingRestores,
 } from './support';
 import { buildMeterSettlingReason, buildShortfallReason } from '../planReasonStrings';
-import { isObservedOff, isObservedOn } from '../../observer/observedState';
+import { isBinaryPlanDevice } from '../planBinaryDevice';
 
 const logger = getLogger('plan/restore');
 
@@ -330,7 +331,7 @@ function applyActiveSteppedRestoreCandidates(params: {
 }): RestoreLoopState {
   let { availableHeadroom, restoredOneThisCycle } = params;
   const activeSteppedDevices = getSteppedRestoreCandidates(Array.from(params.deviceMap.values()))
-    .filter((dev) => isObservedOn(dev));
+    .filter((dev) => isActiveSteppedRestoreCandidate(dev));
   for (const dev of activeSteppedDevices) {
     ({ availableHeadroom, restoredOneThisCycle } = planSteppedRestoreThroughSourceHold({
       dev,
@@ -479,7 +480,7 @@ function applyRestorePlanInCooldown(params: {
   // an active stepped-swap target must not escalate while its swapped-out sources are still on.
   const steppedCandidates = getSteppedRestoreCandidates(Array.from(deviceMap.values()));
   const eligibleStepped = meterSettlingRemainingSec !== null
-    ? steppedCandidates.filter((dev) => isObservedOn(dev))
+    ? steppedCandidates.filter((dev) => isActiveSteppedRestoreCandidate(dev))
     : steppedCandidates;
   for (const dev of eligibleStepped) {
     ({ availableHeadroom, restoredOneThisCycle } = planSteppedRestoreThroughSourceHold({
@@ -524,7 +525,7 @@ function markRestoreCandidatesStayShedForShortfall(params: {
   });
 
   for (const dev of steppedCandidates) {
-    const currentOff = isObservedOff(dev);
+    const currentOff = isOffSteppedRestoreCandidate(dev);
     const reason = buildRestoreShortfallReason(dev, headroomKw);
     let update: Partial<DevicePlanDevice> = {
       reason,
@@ -1156,7 +1157,15 @@ function hasPendingSwapSourcesStillOn(params: {
   for (const [deviceId, swappedOutFor] of swapState.swappedOutFor) {
     if (swappedOutFor !== targetDeviceId) continue;
     const sourceDevice = deviceMap.get(deviceId);
-    if (!sourceDevice || !isObservedOff(sourceDevice)) return true;
+    if (!sourceDevice) return true;
+    // A swap source can be any kind: a binary device is off via `!currentOn`, a
+    // step-only stepper via the step axis. Partition rather than assume binary —
+    // a binary-only check would treat an off step-only source as "still on" and
+    // hold its swap target indefinitely.
+    const sourceOff = isBinaryPlanDevice(sourceDevice)
+      ? !sourceDevice.currentOn
+      : isOffSteppedRestoreCandidate(sourceDevice);
+    if (!sourceOff) return true;
   }
   return false;
 }
@@ -1338,7 +1347,7 @@ function rejectSwapRestoreUntilFreshMeasurement(params: {
 
 function buildSwapPendingTargetUpdate(dev: DevicePlanDevice): Partial<DevicePlanDevice> {
   const reason = { code: PLAN_REASON_CODES.swapPending, targetName: null } as const;
-  if (isSteppedLoadDevice(dev) && !isObservedOff(dev)) {
+  if (isSteppedLoadDevice(dev) && !isOffSteppedRestoreCandidate(dev)) {
     return { plannedState: 'keep', reason };
   }
   return { plannedState: 'shed', reason };
@@ -1392,7 +1401,7 @@ function markOffDevicesMeterSettling(params: {
 
   const meterSettlingDevices = [
     ...getOffDevices(snapshot),
-    ...getSteppedRestoreCandidates(snapshot).filter((dev) => isObservedOff(dev)),
+    ...getSteppedRestoreCandidates(snapshot).filter((dev) => isOffSteppedRestoreCandidate(dev)),
   ];
 
   for (const dev of meterSettlingDevices) {

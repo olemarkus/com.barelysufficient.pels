@@ -10,8 +10,8 @@ import {
   PLAN_REASON_CODES,
   type DeviceReason,
 } from '../../packages/shared-domain/src/planReasonSemantics';
-import { isObservedOff, isObservedOn } from '../observer/observedState';
-import { isSteppedLoadDevice } from './planSteppedLoad';
+import { isBinaryPlanDevice } from './planBinaryDevice';
+import { isPlanDeviceObservedOn, isSteppedLoadDevice } from './planSteppedLoad';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import type { DevicePlan, DevicePlanDevice, PlanInputDevice } from './planTypes';
 import {
@@ -216,13 +216,15 @@ export function buildPlanSignature(plan: DevicePlan): string {
 }
 
 function isActiveControlledDevice(device: DevicePlanDevice): boolean {
-  // `isObservedOn` already short-circuits on stale observations.
-  return isObservedOn(device);
+  // "Active" = on. Kind-aware: a binary device via `currentOn`, a step-only
+  // stepper via its (active) step — so step-only steppers are counted too.
+  return isPlanDeviceObservedOn(device);
 }
 
 function isActiveInputDevice(device: PlanInputDevice): boolean {
-  // `isObservedOn` already short-circuits on stale observations.
-  return isObservedOn(device);
+  // "Active" = on. Kind-aware: a binary device via `currentOn`, a step-only
+  // stepper via its (active) step — so step-only steppers are counted too.
+  return isPlanDeviceObservedOn(device);
 }
 
 function isZeroDrawControlledDevice(device: DevicePlanDevice): boolean {
@@ -241,7 +243,7 @@ function isZeroDrawInputDevice(device: PlanInputDevice): boolean {
 
 function isActionableShortfallCandidate(device: DevicePlanDevice): boolean {
   if (device.controllable === false) return false;
-  if (isObservedOff(device)) return false;
+  if (isBinaryPlanDevice(device) && !device.currentOn) return false;
   if (device.plannedState === 'shed') return false;
   if (isBlockedByCooldown(device) || isBlockedByPenalty(device)) {
     return false;

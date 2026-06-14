@@ -3,7 +3,7 @@ import { getSheddingClearThresholdKw } from '../../power/capacityGuard';
 import type { PlanCapacityStateSummary } from '../../power/capacityStateSummary';
 import type { PlanInputDevice, ShedAction } from '../planTypes';
 import type { PlanContext } from '../planContext';
-import { isObservedOff } from '../../observer/observedState';
+import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { buildPlanInputCapacityStateSummary } from '../planLogging';
 import {
   isCapacityBreached,
@@ -139,7 +139,11 @@ export function countRemainingCandidates(params: {
   if (headroom >= 0) return 0;
   const capacityBreached = isCapacityBreached(total, capacitySoftLimit);
   return devices
-    .filter((d) => d.controllable !== false && !isObservedOff(d) && !shedSet.has(d.id))
+    .filter((d) => d.controllable !== false && !shedSet.has(d.id))
+    // On/off is a binary-only question: a binary device is still a remaining
+    // candidate only while on; non-binary (setpoint/step) devices stay eligible
+    // regardless. `currentOn` is read only after narrowing to the binary kind.
+    .filter((d) => !isBinaryPlanDevice(d) || d.currentOn)
     .filter((d) => limitSource !== 'daily' || capacityBreached || d.budgetExempt !== true)
     .filter((d) => resolveRemainingSheddableLoadKw({
       device: toInputRemainingSheddableDevice(d),

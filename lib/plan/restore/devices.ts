@@ -1,8 +1,12 @@
-import { getSteppedLoadHighestStep } from '../../utils/deviceControlProfiles';
+import {
+  getSteppedLoadHighestStep,
+  getSteppedLoadStep,
+  isSteppedLoadOffStep,
+} from '../../utils/deviceControlProfiles';
 import { PLAN_REASON_CODES, type DeviceReason } from '../../../packages/shared-domain/src/planReasonSemantics';
 import { resolveEvBlockReasonForDevice } from '../../../packages/shared-domain/src/commandableNow';
 import type { DevicePlanDevice } from '../planTypes';
-import { isObservedOff, isObservedOn } from '../../observer/observedState';
+import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { compareDeviceIdAsc, sortByPriorityAsc, sortByPriorityDesc } from '../planSort';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
 import { isTemperaturePlanDevice } from '../planTemperatureDevice';
@@ -15,11 +19,6 @@ export type RestoreCandidate = {
 };
 
 export function isRestoreLiveEligibleDevice(device: DevicePlanDevice): boolean {
-  // No explicit staleness check: `resolveRestoreObservedState` reads
-  // `isObservedOff` / `isObservedOn` from observer, both of which already
-  // short-circuit on stale observations. A stale device resolves to 'unknown'
-  // / 'target_only' there and is not classified as a binary or stepped
-  // restore candidate.
   return device.controllable !== false
     && device.plannedState !== 'shed';
 }
@@ -27,8 +26,26 @@ export function isRestoreLiveEligibleDevice(device: DevicePlanDevice): boolean {
 type RestoreObservedState = 'off' | 'on' | 'target_only' | 'unknown';
 
 function resolveRestoreObservedState(device: DevicePlanDevice): RestoreObservedState {
-  if (isObservedOff(device)) return 'off';
-  if (isObservedOn(device)) return 'on';
+  // On/off is a binary-only question — narrow first, then read the resolved
+  // `currentOn` (a binary device is never 'unknown'). `currentOn` already folds
+  // the stepped-off step for binary+stepped devices, so a capped binary stepper
+  // reads 'off' here.
+  if (isBinaryPlanDevice(device)) {
+    return device.currentOn ? 'on' : 'off';
+  }
+  // A step-only stepped device (no binary handle — e.g. target-power) carries no
+  // `currentOn`, but its on/off is still a real question answered by the STEP
+  // axis: parked at the off step ⇒ 'off', at an active step ⇒ 'on'. The step
+  // shed/restore lanes drive these devices (`deviceActionProjection` resolves
+  // them to `set_step`), so they must stay restore-eligible after a cap — read
+  // the step primitives directly, not the `currentState` label.
+  if (isSteppedLoadDevice(device)) {
+    const { steppedLoadProfile: profile, selectedStepId } = device;
+    if (!profile || selectedStepId === undefined) return 'unknown';
+    const step = getSteppedLoadStep(profile, selectedStepId);
+    if (!step) return 'unknown';
+    return isSteppedLoadOffStep(profile, step.id) ? 'off' : 'on';
+  }
   return device.currentState === 'not_applicable' ? 'target_only' : 'unknown';
 }
 
@@ -54,6 +71,16 @@ export function isOffSteppedRestoreCandidate(device: DevicePlanDevice): boolean 
   if (!isSteppedLoadDevice(device) || !device.steppedLoadProfile?.steps?.length) return false;
   if (!isRestoreLiveEligibleDevice(device)) return false;
   return resolveRestoreObservedState(device) === 'off';
+}
+
+// Active counterpart of `isOffSteppedRestoreCandidate`: a stepped device observed
+// ON via the step axis (an active, below-target step). Step-only steppers (no
+// binary handle) resolve their on-state from the step too, so a binary-only
+// `currentOn` check would drop them — use this at the "active stepped" sites.
+export function isActiveSteppedRestoreCandidate(device: DevicePlanDevice): boolean {
+  if (!isSteppedLoadDevice(device) || !device.steppedLoadProfile?.steps?.length) return false;
+  if (!isRestoreLiveEligibleDevice(device)) return false;
+  return resolveRestoreObservedState(device) === 'on';
 }
 
 export function isSwapRestoreCandidate(device: DevicePlanDevice): boolean {

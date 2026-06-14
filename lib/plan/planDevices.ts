@@ -359,9 +359,15 @@ function resolveInputCurrentTemperature(dev: PlanInputDevice): number | undefine
 }
 
 // Source the binary cluster only when the input device is binary this cycle;
-// `withBinaryDiscriminant` re-derives presence from `controlCapabilityId`.
-function resolveInputBinaryControlField(dev: PlanInputDevice): { binaryControl?: { on: boolean } } {
-  return isBinaryPlanDevice(dev) ? { binaryControl: dev.binaryControl } : {};
+// `withBinaryDiscriminant` re-derives presence from `controlCapabilityId`. The
+// producer-resolved `currentOn` (the public on/off truth) is forwarded from the
+// input device unchanged — it is resolved once at `toPlanDevice`, not recomputed.
+function resolveInputBinaryControlField(
+  dev: PlanInputDevice,
+): { binaryControl?: { on: boolean }; currentOn?: boolean } {
+  return isBinaryPlanDevice(dev)
+    ? { binaryControl: dev.binaryControl, currentOn: dev.currentOn }
+    : {};
 }
 
 function buildBasePlanDevice(params: {

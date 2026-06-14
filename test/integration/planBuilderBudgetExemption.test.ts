@@ -8,6 +8,7 @@ import {
   withBinaryDiscriminant,
 } from '../../lib/plan/planTypes';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
+import { resolveFixtureCurrentOn } from '../utils/planTestUtils';
 
 const emptyPendingStore = createPendingBinaryCommandStore({});
 
@@ -20,10 +21,17 @@ const buildInputDevice = (
     name: string;
     targets: PlanInputDevice['targets'];
   },
-): PlanInputDevice => withBinaryDiscriminant({
-  controlCapabilityId: 'onoff' as const,
-  ...loose,
-}) as PlanInputDevice;
+): PlanInputDevice => {
+  const merged = {
+    controlCapabilityId: 'onoff' as const,
+    binaryControl: { on: true },
+    ...loose,
+  };
+  return withBinaryDiscriminant({
+    ...merged,
+    currentOn: resolveFixtureCurrentOn(merged),
+  }) as PlanInputDevice;
+};
 
 const buildDailyBudgetSnapshot = (params: {
   nowIso: string;

@@ -3,8 +3,7 @@ import { resolveObservedDrawKw } from './restore/observedDraw';
 import { buildMeterSettlingReason, buildRestorePendingReason } from './planReasonStrings';
 import { resolveSteppedLoadCommandPendingMs } from './planObservationPolicy';
 import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
-import { isSteppedLoadDevice } from './planSteppedLoad';
-import { isObservedOff } from '../observer/observedState';
+import { isPlanDeviceObservedOff, isSteppedLoadDevice } from './planSteppedLoad';
 import { RESTORE_COOLDOWN_MS } from './planConstants';
 
 export type SteppedRestoreAttemptState = {
@@ -117,7 +116,11 @@ function resolveSteppedRestoreReservation(
   const requestedStep = getSteppedLoadStep(dev.steppedLoadProfile, requestedStepId);
   if (!requestedStep || requestedStep.planningPowerW <= 0) return null;
 
-  const observedOff = isObservedOff(dev);
+  // On/off is kind-aware: a binary stepper via `currentOn`, a step-only stepper
+  // (no binary handle) via the step axis (off step ⇒ off). A step-only device
+  // parked at its off step must read off here so its off→active restore gets a
+  // zero baseline and a non-null reservation (pending-confirmation + headroom gate).
+  const observedOff = isPlanDeviceObservedOff(dev);
   const baselineStepId = observedOff
     ? undefined
     : (dev.previousStepId ?? dev.selectedStepId);

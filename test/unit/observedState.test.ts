@@ -1,98 +1,55 @@
 import {
-  isObservedOff,
-  isObservedOn,
+  resolveCurrentOn,
   resolveObservedCurrentState,
   resolveObservedSteppedLoadCurrentState,
 } from '../../lib/observer/observedState';
 import { steppedProfile } from '../utils/planTestUtils';
 
-describe('isObservedOff / isObservedOn — binary-only devices', () => {
-  it('reports off iff fresh and binary says off', () => {
-    expect(isObservedOff({ binaryControl: { on: false }, controlCapabilityId: 'onoff' })).toBe(true);
-    expect(isObservedOff({ binaryControl: { on: true }, controlCapabilityId: 'onoff' })).toBe(false);
-    expect(isObservedOn({ binaryControl: { on: false }, controlCapabilityId: 'onoff' })).toBe(false);
-    expect(isObservedOn({ binaryControl: { on: true }, controlCapabilityId: 'onoff' })).toBe(true);
+describe('resolveCurrentOn — binary devices', () => {
+  it('is the binary on/off as a strict boolean', () => {
+    expect(resolveCurrentOn({ binaryControl: { on: true } })).toBe(true);
+    expect(resolveCurrentOn({ binaryControl: { on: false } })).toBe(false);
   });
 
-  it('treats stale observations as neither confirmed off nor on', () => {
-    expect(isObservedOff({ binaryControl: { on: false }, controlCapabilityId: 'onoff', observationStale: true })).toBe(false);
-    expect(isObservedOn({ binaryControl: { on: true }, controlCapabilityId: 'onoff', observationStale: true })).toBe(false);
+  it('trusts the last observed value — no staleness gate', () => {
+    // `resolveCurrentOn` reads no freshness signal: a stale observation keeps its
+    // last value (Homey reports capabilities only on change, so stale-off stays
+    // off). This is the deliberate behaviour change from the retired
+    // `isObservedOff`/`isObservedOn`, which collapsed stale to "neither".
+    expect(resolveCurrentOn({ binaryControl: { on: false } })).toBe(false);
+    expect(resolveCurrentOn({ binaryControl: { on: true } })).toBe(true);
   });
 });
 
-describe('isObservedOff / isObservedOn — stepped + binary devices', () => {
-  const stepInput = (overrides: Record<string, unknown>) => ({
-    binaryControl: { on: true },
-    controlCapabilityId: 'onoff',
-    controlModel: 'stepped_load' as const,
+describe('resolveCurrentOn — stepped + binary devices (step-off folds in)', () => {
+  const stepInput = (
+    overrides: Partial<{ binaryControl: { on: boolean }; selectedStepId: string | undefined }>,
+  ) => ({
+    binaryControl: { on: true } as { on: boolean },
     steppedLoadProfile: steppedProfile,
     ...overrides,
   });
 
-  it('reports off when binary is off, regardless of step', () => {
-    expect(isObservedOff(stepInput({ binaryControl: { on: false }, selectedStepId: 'medium' }))).toBe(true);
-    expect(isObservedOn(stepInput({ binaryControl: { on: false }, selectedStepId: 'medium' }))).toBe(false);
+  it('is off when binary is off, regardless of step', () => {
+    expect(resolveCurrentOn(stepInput({ binaryControl: { on: false }, selectedStepId: 'medium' }))).toBe(false);
   });
 
-  it('reports off when binary is on but step is at the off step', () => {
-    expect(isObservedOff(stepInput({ selectedStepId: 'off' }))).toBe(true);
-    expect(isObservedOn(stepInput({ selectedStepId: 'off' }))).toBe(false);
+  it('is off when binary is on but the step is at the off step', () => {
+    expect(resolveCurrentOn(stepInput({ selectedStepId: 'off' }))).toBe(false);
   });
 
-  it('reports on only when binary is on AND step is active', () => {
-    expect(isObservedOn(stepInput({ selectedStepId: 'low' }))).toBe(true);
-    expect(isObservedOff(stepInput({ selectedStepId: 'low' }))).toBe(false);
+  it('is on when binary is on AND the step is active', () => {
+    expect(resolveCurrentOn(stepInput({ selectedStepId: 'low' }))).toBe(true);
   });
 
-  it('reports neither confirmed when step is unknown', () => {
-    expect(isObservedOff(stepInput({ selectedStepId: undefined }))).toBe(false);
-    expect(isObservedOn(stepInput({ selectedStepId: undefined }))).toBe(false);
+  it('is on (may-draw default) when the step is unknown', () => {
+    // A binary device is never "unknown": an unresolved step collapses to
+    // on/sheddable rather than introducing a third state.
+    expect(resolveCurrentOn(stepInput({ selectedStepId: undefined }))).toBe(true);
   });
 });
 
-describe('isObservedOff / isObservedOn — step-only devices (no binary capability)', () => {
-  const stepOnlyInput = (overrides: Record<string, unknown>) => ({
-    // Step-only devices have no onoff capability; the defaulted currentOn=false
-    // must not be inferred as authoritative — only the step state matters.
-    binaryControl: { on: false },
-    controlCapabilityId: undefined,
-    controlModel: 'stepped_load' as const,
-    steppedLoadProfile: steppedProfile,
-    ...overrides,
-  });
-
-  it('reports off when the selected step is the off step, ignoring defaulted currentOn', () => {
-    expect(isObservedOff(stepOnlyInput({ selectedStepId: 'off' }))).toBe(true);
-    expect(isObservedOn(stepOnlyInput({ selectedStepId: 'off' }))).toBe(false);
-  });
-
-  it('reports on when the selected step is an active step, ignoring defaulted currentOn', () => {
-    // Regression: under the old logic, currentOn=false short-circuited to off
-    // for step-only devices too — masking the active step.
-    expect(isObservedOn(stepOnlyInput({ selectedStepId: 'medium' }))).toBe(true);
-    expect(isObservedOff(stepOnlyInput({ selectedStepId: 'medium' }))).toBe(false);
-  });
-});
-
-describe('isObservedOff / isObservedOn — devices with no controllable capability', () => {
-  it('returns false for both helpers — planner makes no binary intent for such devices', () => {
-    expect(isObservedOff({ binaryControl: { on: false }, controlCapabilityId: undefined })).toBe(false);
-    expect(isObservedOn({ binaryControl: { on: false }, controlCapabilityId: undefined })).toBe(false);
-    expect(isObservedOn({ binaryControl: { on: true }, controlCapabilityId: undefined })).toBe(false);
-  });
-});
-
-describe('precomputed currentState string', () => {
-  it('honors an explicit precomputed state when callers pass one', () => {
-    expect(isObservedOff({ currentState: 'off' })).toBe(true);
-    expect(isObservedOff({ currentState: 'on' })).toBe(false);
-    expect(isObservedOff({ currentState: 'unknown' })).toBe(false);
-    expect(isObservedOn({ currentState: 'on' })).toBe(true);
-    expect(isObservedOn({ currentState: 'off' })).toBe(false);
-  });
-});
-
-describe('resolveObservedCurrentState — string projection stays consistent', () => {
+describe('resolveObservedCurrentState — four-valued label (separate from the on/off truth)', () => {
   it('returns "unknown" for stale observations with binary control', () => {
     expect(resolveObservedCurrentState({
       binaryControl: { on: false },

@@ -40,7 +40,7 @@ describe('sumControlledUsageKw', () => {
 
   it('uses planning demand for off devices when telemetry is absent', () => {
     const result = sumControlledUsageKw([
-      { controllable: true, currentState: 'off', expectedPowerKw: 1.2, planningPowerKw: 1.4 },
+      { controllable: true, controlCapabilityId: 'onoff', currentOn: false, expectedPowerKw: 1.2, planningPowerKw: 1.4 },
     ]);
 
     expect(result).toBe(1.4);
@@ -82,7 +82,7 @@ describe('sumControlledUsageKw', () => {
     expect(splitControlledUsageKw({
       totalKw: 1.25,
       devices: [
-        { controllable: true, plannedState: 'shed', currentState: 'off', expectedPowerKw: 1.25 },
+        { controllable: true, plannedState: 'shed', controlCapabilityId: 'onoff', currentOn: false, expectedPowerKw: 1.25 },
       ],
     })).toEqual({
       controlledKw: 0,

@@ -2,8 +2,31 @@ import type { DeviceDiagnosticsTrackedTransitionReconciliation } from '../diagno
 import { RESTORE_COOLDOWN_MS, SHED_COOLDOWN_MS } from './planConstants';
 import type { HeadroomCardState, PlanEngineState } from './planState';
 import { isFiniteNumber } from '../utils/appTypeGuards';
+import { resolveCurrentOn } from '../observer/observedState';
+import type { BinaryControlCapabilityId, SteppedLoadProfile } from '../../packages/contracts/src/types';
 
 export { isFiniteNumber };
+
+type RawHeadroomDevice = {
+  controlCapabilityId?: BinaryControlCapabilityId;
+  binaryControl?: { on: boolean };
+  steppedLoadProfile?: SteppedLoadProfile;
+  selectedStepId?: string;
+};
+
+/**
+ * Stamp the producer-resolved `currentOn` onto a raw snapshot-shaped device for
+ * the headroom/activation path (mirrors `toPlanDevice`): present iff binary,
+ * resolved from the binary + stepped-off inputs. The seams that feed raw
+ * snapshots (realtime snapshot-refresh in `appSnapshotHelpers`, the Flow headroom
+ * card) carry no `currentOn` otherwise, so the activation in/active reads would
+ * mis-detect a device that turned off/on mid-window.
+ */
+export function withHeadroomCurrentOn<T extends RawHeadroomDevice>(device: T): T & { currentOn?: boolean } {
+  return device.controlCapabilityId !== undefined
+    ? { ...device, currentOn: resolveCurrentOn(device) }
+    : device;
+}
 
 export type HeadroomCardCooldownSource = 'pels_shed' | 'pels_restore';
 export type HeadroomUsageObservation = { kw: number; freshnessMs?: number };
@@ -25,7 +48,15 @@ export type HeadroomCardDeviceLike = {
   measuredPowerKw?: number;
   lastFreshDataMs?: number;
   binaryControl?: { on: boolean };
+  // Producer-resolved on/off truth (present iff binary). The activation in/active
+  // reads consume this; the seams that feed raw snapshots (appSnapshotHelpers,
+  // the Flow headroom card) stamp it before the device reaches this path. A
+  // step-only stepper carries no `currentOn`; the activation reads resolve its
+  // on/off from the step axis, so the stepped fields travel with it.
+  currentOn?: boolean;
   currentState?: string;
+  steppedLoadProfile?: SteppedLoadProfile;
+  selectedStepId?: string;
   available?: boolean;
 };
 

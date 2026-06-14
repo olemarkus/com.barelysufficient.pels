@@ -8,7 +8,35 @@ import type {
 import { withBinaryDiscriminant, withTemperatureDiscriminant } from '../../lib/plan/planTypes';
 import type { EvChargingState, SteppedLoadProfile } from '../../packages/contracts/src/types';
 import { isEvDevice, resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
+import { resolveCurrentOn } from '../../lib/observer/observedState';
 import { legacyDeviceReason } from './deviceReasonTestUtils.ts';
+
+/**
+ * Mirror the production producer: a binary fixture's `currentOn` is the resolved
+ * on/off truth. Prefer an explicit override; then the structural resolution
+ * (binary axis AND stepped-off fold via `resolveCurrentOn`) when the fixture
+ * carries those signals; then the four-valued `currentState` label as a last
+ * resort. Keeps fixtures' on/off truth consistent with the runtime stamping so
+ * consumers reading `currentOn` behave identically to production.
+ */
+export const resolveFixtureCurrentOn = (device: {
+  currentOn?: boolean;
+  currentState?: string;
+  binaryControl?: { on: boolean };
+  steppedLoadProfile?: SteppedLoadProfile;
+  selectedStepId?: string;
+}): boolean => {
+  if (typeof device.currentOn === 'boolean') return device.currentOn;
+  // An EXPLICIT `currentState` is the production-consistent on/off label (it
+  // already folds binary + step — e.g. "off at a higher step" sets `'off'` with
+  // an active `selectedStepId`), so it wins over re-resolving from raw signals.
+  if (device.currentState === 'off') return false;
+  if (device.currentState === 'on') return true;
+  if (device.binaryControl !== undefined || device.steppedLoadProfile !== undefined) {
+    return resolveCurrentOn(device);
+  }
+  return true;
+};
 
 /**
  * Treat a fixture's `currentTarget` / `currentTemperature` override as the
@@ -103,6 +131,11 @@ export const buildPlanDevice = (
 ):
 DevicePlanDevice => {
   const { reason, currentTarget, currentTemperature, ...rest } = overrides;
+  const o = overrides as {
+    currentOn?: boolean; currentState?: string; binaryControl?: { on: boolean };
+    steppedLoadProfile?: SteppedLoadProfile; selectedStepId?: string;
+  };
+  const currentOn = resolveFixtureCurrentOn(o);
   return {
     id: 'dev',
     name: 'Device',
@@ -115,6 +148,9 @@ DevicePlanDevice => {
       ...(currentTarget !== undefined ? { currentTarget } : {}),
       ...(currentTemperature !== undefined ? { currentTemperature } : {}),
     }),
+    // Spread (not a direct property) so the `as DevicePlanDevice` cast accepts it:
+    // `currentOn` lives on the orthogonal `BinaryControlKind`, reached via the guard.
+    ...({ currentOn }),
     ...(reason !== undefined
       ? { reason: typeof reason === 'string' ? legacyDeviceReason(reason)! : reason }
       : {}),
@@ -128,6 +164,11 @@ export const buildPlanInputDevice = (
   } = {},
 ): PlanInputDevice => {
   const { currentTarget: _currentTarget, currentTemperature, ...rest } = overrides;
+  const o = overrides as {
+    currentOn?: boolean; currentState?: string; binaryControl?: { on: boolean };
+    steppedLoadProfile?: SteppedLoadProfile; selectedStepId?: string;
+  };
+  const currentOn = resolveFixtureCurrentOn({ ...o, binaryControl: o.binaryControl ?? { on: true } });
   return withBinaryDiscriminant({
     id: 'dev',
     name: 'Device',
@@ -139,6 +180,7 @@ export const buildPlanInputDevice = (
       ...withMaterializedEvPlugState(rest),
       ...(currentTemperature !== undefined ? { currentTemperature } : {}),
     }),
+    currentOn,
   }) as PlanInputDevice;
 };
 

@@ -3199,7 +3199,7 @@ describe('restore admission floor — 0.250 kW postReserveMarginKw minimum', () 
         selectedStepId: 'low',
         desiredStepId: 'low',
         measuredPowerKw: 0,
-        controlCapabilityId: undefined,
+        controlCapabilityId: 'onoff',
         shedAction: 'set_step',
       })],
     ]);

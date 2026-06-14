@@ -4,22 +4,28 @@ import { PlanBuilder } from '../../lib/plan/planBuilder';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import type { PlanInputDevice, BinaryControlDiscriminantProbe } from '../../lib/plan/planTypes';
 import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
-import { steppedInputDevice } from '../utils/planTestUtils';
+import { resolveFixtureCurrentOn, steppedInputDevice } from '../utils/planTestUtils';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 
 const emptyPendingStore = createPendingBinaryCommandStore({});
 
 const buildDevice = (
   overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe = {},
-): PlanInputDevice => withBinaryDiscriminant({
-  id: 'dev',
-  name: 'Device',
-  targets: [],
-  binaryControl: { on: true },
-  controllable: true,
-  controlCapabilityId: 'onoff',
-  ...overrides,
-}) as PlanInputDevice;
+): PlanInputDevice => {
+  const merged = {
+    id: 'dev',
+    name: 'Device',
+    targets: [],
+    binaryControl: { on: true },
+    controllable: true,
+    controlCapabilityId: 'onoff' as const,
+    ...overrides,
+  };
+  return withBinaryDiscriminant({
+    ...merged,
+    currentOn: resolveFixtureCurrentOn(merged),
+  }) as PlanInputDevice;
+};
 
 // `steppedInputDevice` (shared) does not accept the orthogonal binary cluster;
 // wrap it so the stepped fixtures here can also carry `binaryControl` (the
@@ -29,7 +35,17 @@ const binarySteppedInputDevice = (
   overrides: Parameters<typeof steppedInputDevice>[0] & BinaryControlDiscriminantProbe = {},
 ): PlanInputDevice => {
   const { binaryControl, ...rest } = overrides;
-  return withBinaryDiscriminant({ ...steppedInputDevice(rest), binaryControl }) as PlanInputDevice;
+  const merged = {
+    ...steppedInputDevice(rest),
+    ...(binaryControl !== undefined ? { binaryControl } : {}),
+  };
+  return withBinaryDiscriminant({
+    ...merged,
+    // Re-resolve from the post-override signals: `resolveFixtureCurrentOn`
+    // short-circuits on an existing boolean, so clear any `currentOn` the shared
+    // builder precomputed before the `binaryControl` override was applied.
+    currentOn: resolveFixtureCurrentOn({ ...merged, currentOn: undefined }),
+  }) as PlanInputDevice;
 };
 
 describe('PlanBuilder overshoot diagnostics', () => {

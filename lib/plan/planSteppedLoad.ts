@@ -7,10 +7,17 @@ import {
   getSteppedLoadRestoreStep,
   getSteppedLoadStep,
   getSteppedLoadLowestStep,
+  isSteppedDeviceAtActiveStep,
+  isSteppedDeviceAtOffStep,
   isSteppedLoadOffStep,
   resolveSteppedLoadPlanningPowerKw,
 } from '../utils/deviceControlProfiles';
-import type { SteppedLoadProfile, SteppedLoadStep } from '../../packages/contracts/src/types';
+import type {
+  BinaryControlCapabilityId,
+  SteppedLoadProfile,
+  SteppedLoadStep,
+} from '../../packages/contracts/src/types';
+import { isBinaryPlanDevice } from './planBinaryDevice';
 import type {
   DevicePlanDevice,
   PlanInputDevice,
@@ -19,7 +26,6 @@ import type {
   SteppedPlanDevice,
   SteppedPlanInputDevice,
 } from './planTypes';
-import { isObservedOff, isObservedOn } from '../observer/observedState';
 import type { ShedAction } from './planTypes';
 import {
   isReportedStep,
@@ -61,6 +67,10 @@ type StepTransitionCapableDevice = {
   selectedStepId?: StepCapableDevice['selectedStepId'];
   desiredStepId?: StepCapableDevice['desiredStepId'];
   currentState?: string;
+  // Producer-resolved on/off truth (present iff binary). Read directly; for a
+  // stepped device this folds the step-off axis, so it equals the old
+  // `currentState === 'off'` decision the helpers used.
+  currentOn?: boolean;
   binaryControl?: { on: boolean };
   controlCapabilityId?: DevicePlanDevice['controlCapabilityId'];
   plannedState?: string;
@@ -113,6 +123,39 @@ export function isSteppedLoadDevice(
   return (device as SteppedDiscriminantProbe).steppedLoadProfile?.model === 'stepped_load';
 }
 
+type ObservedOnOffDevice = {
+  controlCapabilityId?: BinaryControlCapabilityId;
+  currentOn?: boolean;
+  steppedLoadProfile?: SteppedLoadProfile;
+  selectedStepId?: string;
+};
+
+/**
+ * Kind-aware "is this device observed off?" — the faithful successor of the
+ * retired `isObservedOff`. On/off is a binary question for a binary device (read
+ * the resolved `currentOn`, which already folds the stepped-off step for a
+ * binary+stepped device) and a STEP question for a step-only stepper (no binary
+ * handle, so no `currentOn`): parked at the off step ⇒ off. A device with neither
+ * a binary handle nor a step (or at an unknown step) is not off.
+ */
+export const isPlanDeviceObservedOff = (device: ObservedOnOffDevice): boolean => (
+  isBinaryPlanDevice(device)
+    ? !device.currentOn
+    : isSteppedDeviceAtOffStep(device)
+);
+
+/**
+ * Kind-aware "is this device observed on?" — successor of the retired
+ * `isObservedOn`. Binary devices read `currentOn === true`; a step-only stepper
+ * is on iff parked at an active (non-off) step. Mirrors {@link isPlanDeviceObservedOff}:
+ * an unknown/invalid step is neither off nor on.
+ */
+export const isPlanDeviceObservedOn = (device: ObservedOnOffDevice): boolean => (
+  isBinaryPlanDevice(device)
+    ? device.currentOn === true
+    : isSteppedDeviceAtActiveStep(device)
+);
+
 const getSteppedLoadProfileForDevice = (
   device: SteppedDiscriminantProbe | PlanInputDevice | DevicePlanDevice,
 ): SteppedLoadProfile | null => {
@@ -155,7 +198,7 @@ export const resolveSteppedLoadTransition = (
     };
   }
 
-  if (device.plannedState === 'keep' && isObservedOff(device)) {
+  if (device.plannedState === 'keep' && device.currentOn === false) {
     const commandStepId = lowestActiveStep?.id ?? desiredStep?.id;
     const stepPrepared = commandStepId !== undefined
       && selectedStep?.id === commandStepId
@@ -196,8 +239,12 @@ export const resolveSteppedLoadTransition = (
 /* eslint-enable complexity, sonarjs/cognitive-complexity */
 
 export const resolveSteppedKeepDesiredStepId = (
-  device: Pick<StepCapableDevice, 'steppedLoadProfile'> & StepIdentityFields
-  & { currentState?: string; plannedState?: string },
+  device: Pick<StepCapableDevice, 'steppedLoadProfile'> & StepIdentityFields & {
+    controlCapabilityId?: BinaryControlCapabilityId;
+    currentState?: string;
+    currentOn?: boolean;
+    plannedState?: string;
+  },
   options: { anyOtherDeviceLimited?: boolean } = {},
 ): string | undefined => {
   const profile = getSteppedLoadProfileForDevice(device);
@@ -208,7 +255,11 @@ export const resolveSteppedKeepDesiredStepId = (
   const lowestActiveStepId = lowestActiveStep?.id;
   if (!lowestActiveStepId || !lowestActiveStep) return device.desiredStepId;
 
-  if (isObservedOn(device)) {
+  // On/off is kind-aware: a binary stepper reads `currentOn`, a step-only stepper
+  // the step axis. A strict `currentOn === true/false` would skip BOTH branches
+  // for a step-only device (no `currentOn`) and fall through to the reported-step
+  // path below, abandoning an in-flight step-down toward `desiredStepId`.
+  if (isPlanDeviceObservedOn(device)) {
     const baseStepId = device.desiredStepId && isSteppedLoadOffStep(profile, device.desiredStepId)
       ? lowestActiveStepId
       : device.desiredStepId;
@@ -220,7 +271,7 @@ export const resolveSteppedKeepDesiredStepId = (
     });
   }
 
-  if (isObservedOff(device)) {
+  if (isPlanDeviceObservedOff(device)) {
     return lowestActiveStepId;
   }
 
@@ -255,12 +306,17 @@ const clampToLowestActiveWhenOtherDevicesLimited = (params: {
 
 export const getSteppedLoadNextRestoreStep = (
   device: Pick<StepCapableDevice, 'steppedLoadProfile'> & StepIdentityFields
-  & { currentState?: string },
+  & { currentState?: string; currentOn?: boolean },
 ) => {
   const profile = getSteppedLoadProfileForDevice(device);
   if (!profile) return null;
 
-  if (isObservedOff(device)) {
+  // `currentOn === false` is a shortcut to the restore step; a step-only stepper
+  // (no `currentOn`) skips it and falls to the next-higher path below. That stays
+  // correct ONLY while the off step is the lowest step in the profile, so "next
+  // higher from off" == the restore step (lowest active). A profile with extra
+  // zero-power sub-steps below the first active step would break the equivalence.
+  if (device.currentOn === false) {
     return getSteppedLoadRestoreStep(profile);
   }
 
@@ -274,7 +330,7 @@ export const getSteppedLoadNextRestoreStep = (
 
 export const getSteppedLoadShedTargetStep = (params: {
   device: Pick<StepCapableDevice, 'steppedLoadProfile'> & StepIdentityFields
-  & { currentState?: string };
+  & { currentState?: string; currentOn?: boolean };
   shedAction: 'turn_off' | 'set_step';
   currentDesiredStepId?: string;
 }): ReturnType<typeof getSteppedLoadStep> => {
@@ -293,7 +349,7 @@ export const getSteppedLoadShedTargetStep = (params: {
     : getSteppedLoadOffStep(profile) ?? getSteppedLoadLowestStep(profile);
   if (!targetStep) return null;
 
-  if (isObservedOff(device)) {
+  if (device.currentOn === false) {
     return targetStep;
   }
 
@@ -383,7 +439,7 @@ type RestoreDeltaDevice =
     StepCapableDevice,
     'steppedLoadProfile' | 'measuredPowerKw' | 'stepPowerCalibration'
   >
-  & { currentState?: string };
+  & { currentState?: string; currentOn?: boolean };
 
 export const resolveSteppedLoadRestoreDeltaKw = (params: {
   device: RestoreDeltaDevice;
@@ -421,7 +477,7 @@ function resolveRestoreFromContribution(params: {
   // cases the calibrated delivery / nameplate estimate is the safer proxy
   // for "what this device contributes right now."
   const { device, measured, deliveryFromKw } = params;
-  if (isObservedOff(device)) return 0;
+  if (device.currentOn === false) return 0;
   if (measured !== null && measured > 0) return Math.min(measured, deliveryFromKw);
   return deliveryFromKw;
 }

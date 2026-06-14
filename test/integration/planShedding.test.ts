@@ -11,6 +11,7 @@ import { buildSheddingPlan } from '../../lib/plan/shedding';
 import type { SheddingDeps } from '../../lib/plan/shedding/types';
 import { resolveSoftOvershootDecision } from '../../lib/plan/planOvershoot';
 import { reasonText } from '../utils/deviceReasonTestUtils';
+import { resolveFixtureCurrentOn } from '../utils/planTestUtils';
 
 // Shared empty pending-binary-command store for deps blocks that build their
 // engine state inline (or declare it after the deps object) and never seed
@@ -19,17 +20,23 @@ const emptyPendingStore = createPendingBinaryCommandStore({});
 
 const buildDevice = (
   overrides: Partial<PlanInputDevice> & BinaryControlDiscriminantProbe = {},
-): PlanInputDevice =>
-  withBinaryDiscriminant({
+): PlanInputDevice => {
+  const merged = {
     id: 'dev',
     name: 'Device',
     targets: [],
     // Real parse output resolves a binary control capability for a sheddable
     // device; shed candidacy gates on writability (`isCanSetControl`), so model
     // that here. A cap-less device overrides with `controlCapabilityId: undefined`.
-    controlCapabilityId: 'onoff',
+    controlCapabilityId: 'onoff' as const,
+    binaryControl: { on: true },
     ...overrides,
+  };
+  return withBinaryDiscriminant({
+    ...merged,
+    currentOn: resolveFixtureCurrentOn(merged),
   }) as PlanInputDevice;
+};
 
 const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => {
   const total = overrides.total ?? null;
@@ -471,7 +478,7 @@ describe('buildSheddingPlan', () => {
     }));
   });
 
-  it('keeps stale off observations eligible for shedding so stale snapshots do not hide live load', async () => {
+  it('does not shed a device reporting off, even with a stale measured draw (an off device cannot be commanded off)', async () => {
     const state = createPlanEngineState();
     const capacityGuard = {
       isSheddingActive: vi.fn().mockReturnValue(false),
@@ -512,8 +519,12 @@ describe('buildSheddingPlan', () => {
       },
     );
 
-    expect(result.shedSet.has('dev-stale')).toBe(true);
-    expect(reasonText(result.shedReasons.get('dev-stale'))).toBe('shed due to capacity');
+    // Behaviour change (resolved-control refactor): on/off is `currentOn` only,
+    // with no staleness gate. A device reporting off (`binaryControl.on === false`
+    // -> `currentOn === false`) is not shed-eligible regardless of a
+    // (stale/contradictory) measured draw — an already-off device cannot be
+    // commanded off, so shedding it would be futile churn, not protection.
+    expect(result.shedSet.has('dev-stale')).toBe(false);
   });
 
   it('treats live measured stepped load as actionable even when the current step is unknown', async () => {
