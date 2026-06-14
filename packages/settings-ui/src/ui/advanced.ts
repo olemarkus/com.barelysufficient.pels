@@ -100,10 +100,21 @@ const resolveUnknownDeviceIdsFromSettings = (): string[] => {
   return Array.from(collectDeviceIdsFromSettings()).filter((id) => !knownIds.has(id));
 };
 
+let lastAdvancedDeviceOptionsSignature: string | null = null;
+
 const renderAdvancedDeviceOptions = () => {
   if (!advancedDeviceSelect) return;
   const devices = resolveDeviceOptionsFromSettings();
   const unknownIds = resolveUnknownDeviceIdsFromSettings();
+  // `devices-updated` fires on every power/state tick, but the device *set*
+  // rarely changes. Rebuilding the <md-select> options on every tick closes the
+  // menu mid-selection and resets the user's choice, so skip when unchanged.
+  const signature = JSON.stringify({
+    devices: devices.map((device) => `${device.id} ${device.name}`).sort(),
+    unknown: [...unknownIds].sort(),
+  });
+  if (signature === lastAdvancedDeviceOptionsSignature) return;
+  lastAdvancedDeviceOptionsSignature = signature;
   advancedDeviceSelect.replaceChildren(
     createSelectOption('', devices.length ? 'Select a device' : 'No devices in settings', true),
   );
