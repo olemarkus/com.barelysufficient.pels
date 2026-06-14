@@ -415,9 +415,36 @@ export const mockHomeyInstance = {
   platform: 'local',
   platformVersion: 2,
   version: '1.0.0',
+  // Minimal app.json manifest — the weather MET fetcher reads id/version/contact
+  // off it to build the mandatory User-Agent.
+  manifest: {
+    id: 'com.barelysufficient.pels',
+    version: '1.0.0',
+    homepage: 'https://pels.barelysufficient.org/',
+  },
   clock: {
     getTimezone: () => 'Europe/Oslo',
     getTimezoneOffset: () => -60, // CET in winter
+  },
+  // ManagerGeolocation mirror. Defaults to an Oslo-ish location; mutate via
+  // setMockGeolocation in tests that need a specific (or absent) location.
+  geolocation: {
+    _latitude: 59.91,
+    _longitude: 10.75,
+    getLatitude(): number {
+      return mockHomeyInstance.geolocation._latitude;
+    },
+    getLongitude(): number {
+      return mockHomeyInstance.geolocation._longitude;
+    },
+    getAccuracy: () => 10,
+    getMode: () => 'manual',
+    on() {
+      return mockHomeyInstance.geolocation;
+    },
+    off() {
+      return mockHomeyInstance.geolocation;
+    },
   },
   images: {
     createImage: async () => ({
@@ -578,6 +605,19 @@ export const mockHomeyInstance = {
   drivers: {
     getDrivers: (): Record<string, MockDriver> => ({}),
   },
+};
+
+/**
+ * Configure (or clear) the mock hub location for the weather MET fetcher. Pass
+ * `null`/`undefined` for either coordinate to clear it (normalized to NaN), which
+ * drives the fetcher's `no_location` fallback the same way an unset hub does.
+ */
+export const setMockGeolocation = (
+  latitude: number | null | undefined,
+  longitude: number | null | undefined,
+): void => {
+  mockHomeyInstance.geolocation._latitude = latitude ?? Number.NaN;
+  mockHomeyInstance.geolocation._longitude = longitude ?? Number.NaN;
 };
 
 export const setMockDrivers = (drivers: Record<string, MockDriver>) => {

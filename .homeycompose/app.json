@@ -77,7 +77,8 @@
     ]
   },
   "permissions": [
-    "homey:manager:api"
+    "homey:manager:api",
+    "homey:manager:geolocation"
   ],
   "api": {
     "ui_bootstrap": {

@@ -246,17 +246,25 @@ CI failure, so future field-move slices can't silently grow the debt.*
       disabled" (no timers, correct) from "blob unreadable" (schedule a bounded re-check).
       Source: pels-runtime-reality on the weather-collection PR, 2026-06-11.
 
-- [ ] **Weather forecast samples aren't device-stamped, so a just-changed forecast device can
-      briefly inherit the old device's tomorrow profile.** `WeatherHistoryState.forecastHourly` is
-      keyed only by day/hour; `resolveForecastDeviceMeanTempC` returns the accumulated mean
-      regardless of which device filled it. After switching forecast devices, the prediction (and
-      the Settings picker validity line) reflect the previous device until the new one's profile
-      replaces it or the day rolls. Persona: the tinkerer swapping their Yr device; hypothesis:
-      bounded (self-heals within a day) but reads as a wrong-device confirmation in the exact
-      surface meant to inspire confidence. Candidate fix: stamp `forecastHourly` with the device id
-      and clear/ignore it on a forecast-device change. Source: Codex on the picker-validity PR,
-      2026-06-13. (Note: the picker VALIDITY LINE is already device-correct — it uses an instant
-      on-demand read — so this only affects the budget PREDICTION's forecast mean.)
+- [ ] **MET fetch flattens 403/429 to a generic `failed` (no status-aware back-off).**
+      `fetchMetForecast` maps every non-200 (and timeout) to `{outcome:'failed'}`, so a 403
+      (banned User-Agent) and a 429 (rate-limited, possibly with `Retry-After`) are
+      indistinguishable and get the same throttled-warn + keep-cache treatment. Persona: n/a
+      (operational / MET ToS); hypothesis: harmless at today's ≤hourly Expires-gated cadence (a
+      429 just keeps the cache and the next attempt is ≥1h out anyway), but a future faster cadence
+      or a sustained 403 would benefit from distinct handling (surface a 403 as a louder "fix your
+      User-Agent/contact" signal; honor `Retry-After` on 429). Candidate fix: carry the HTTP status
+      on the `failed` outcome and branch the warn/back-off. Source: CodeRabbit on the MET PR,
+      2026-06-14.
+
+- [ ] **`normalizeMetForecast` trusts a persisted `fullDayCoverage` independent of `hourCount`.**
+      Now that `fullDayCoverage` GATES the auto-apply active-day budget, a corrupted persisted cache
+      claiming `fullDayCoverage:true` with a low `hourCount` (or vice-versa) would mis-gate. We only
+      ever WRITE consistent pairs, so this is corruption-defense, not a live bug. Persona: n/a
+      (robustness); hypothesis: negligible (the store is app-written), but cheap to harden a
+      load-bearing flag. Candidate fix: on load, force `fullDayCoverage` false unless `hourCount`
+      also clears the threshold (and the day includes its midnight hour), keeping the persisted flag
+      consistent with its evidence. Source: CodeRabbit on the MET PR, 2026-06-14.
 
 - [ ] **Weather sub-page → Budget cross-link is a one-way trip.** The Weather insight sub-page's
       "See tomorrow's outlook in Budget" link opens the Budget weather detail view, but its Done

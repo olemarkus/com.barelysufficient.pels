@@ -92,12 +92,70 @@ export type WeatherDayAccumulator = {
   lastHourKey?: string;
 };
 
+/**
+ * One hub-local calendar day of MET Norway forecast aggregates. `meanTempC` is a
+ * SIMPLE per-hour arithmetic mean (the only value that feeds the kWh prediction;
+ * same estimator the fit trains on); min/max/evening are display/verdict context
+ * and symbol/precip are display-only. Producer-internal: consumers read it only
+ * via the resolved suggestion/prediction fields.
+ */
+export type MetDaySummary = {
+  /** Hub-local calendar day (YYYY-MM-DD) this summary describes. */
+  dateKey: string;
+  /**
+   * Simple per-hour arithmetic mean of this day's hourly air_temperature — the
+   * ONLY value that enters the kWh prediction (same aggregate the fit trains on).
+   */
+  meanTempC: number;
+  minTempC: number;
+  maxTempC: number;
+  /** Evening (local 17:00–23:00) aggregates; undefined when no evening hours landed. */
+  eveningMinTempC?: number;
+  eveningMeanTempC?: number;
+  /** Display-only weather glyph; never fed to the fit. */
+  symbolCode?: string;
+  /** Display-only total precipitation (mm); never fed to the fit. */
+  precipMmTotal?: number;
+  /** Hourly entries that fell in this day's bucket. */
+  hourCount: number;
+  /** This day had near-complete hourly coverage (vs only the 6-hourly tail). */
+  fullDayCoverage: boolean;
+};
+
+/**
+ * Cached MET Norway forecast — the persisted result of the direct fetch that
+ * replaced the +24h forecast device. Holds a PER-LOCAL-DAY summary map so each
+ * consumer reads the day it needs: the midnight auto-apply path reads the
+ * just-started day (`byDay[todayKey]`) while the forward-looking readout card
+ * reads tomorrow (`byDay[tomorrowKey]`). The HTTP caching validators (`expires`,
+ * `lastModified`) gate the collector's refetch per MET ToS. Producer-internal:
+ * consumers read it only via the resolved suggestion/prediction fields.
+ */
+export type WeatherMetForecastCache = {
+  /** Hub-local dateKey (YYYY-MM-DD) → that day's MET summary. Holds today + tomorrow. */
+  byDay: Record<string, MetDaySummary>;
+  fetchedAtMs: number;
+  /** HTTP `Expires` header — refetch is skipped while still in the future. */
+  expires?: string;
+  /** HTTP `Last-Modified` header — sent as `If-Modified-Since` to enable 304 reuse. */
+  lastModified?: string;
+};
+
 export type WeatherHistoryState = {
   /** Ascending by dateKey; pruned to the retention window. */
   records: WeatherDailyRecord[];
   /** dateKey → in-progress accumulation (today, plus yesterday until rollup). */
   accumulators?: Record<string, WeatherDayAccumulator>;
-  /** Forecast target dateKey → local hour ("00".."23") → °C. Only near-future dateKeys are kept. */
+  /**
+   * Cached MET forecast summary for tomorrow. The mean-consumers read it for the
+   * coming-day temperature; refreshed by the collector honoring `Expires`.
+   */
+  metForecast?: WeatherMetForecastCache;
+  /**
+   * Forecast target dateKey → local hour ("00".."23") → °C. Legacy +24h-device
+   * profile; no longer written (MET replaced it). Kept readable for BC so a state
+   * persisted by an older version still normalizes. @deprecated removed in PR 2.
+   */
   forecastHourly?: Record<string, Record<string, number>>;
   /** Device id the one-shot Insights backfill last completed for. */
   backfilledDeviceId?: string;
@@ -192,7 +250,12 @@ export type EnergySignatureSuggestion = {
   /** Local day the suggestion targets — at the midnight recompute this is the just-started day. */
   targetDateKey: string;
   forecastMeanTempC: number;
-  forecastSource: 'forecast_device' | 'recent_days';
+  /**
+   * Where the coming-day mean came from. `met_api` is the direct MET Norway
+   * fetch; `recent_days` is the trailing-week persistence fallback.
+   * `forecast_device` is the retired +24h device source, kept for BC.
+   */
+  forecastSource: 'forecast_device' | 'recent_days' | 'met_api';
   predictedKwh: number;
   predictedLowKwh: number;
   predictedHighKwh: number;
@@ -204,6 +267,16 @@ export type EnergySignatureSuggestion = {
   beyondObservedWarm: boolean;
   /** Recent cold days were PELS-limited and tomorrow is cold — the suggestion was leaned up. */
   budgetMayBeLimiting: boolean;
+  /** Tomorrow's forecast low (°C), when the MET summary supplied it — display context only. */
+  tempMinC?: number;
+  /** Tomorrow's forecast high (°C), when the MET summary supplied it — display context only. */
+  tempMaxC?: number;
+  /**
+   * Producer-resolved verdict context: tomorrow's evening genuinely swings cold
+   * (evening below the fit's balance point while the day mean is at/above it).
+   * Display/verdict only — never enters the kWh number.
+   */
+  coldEveningSuspected?: boolean;
   computedAtMs: number;
 };
 
@@ -273,6 +346,10 @@ export type WeatherDeviceReading =
 
 export type WeatherAdvisorPrediction = {
   tempMeanC: number;
+  /** Tomorrow's forecast low (°C); set only when the MET summary supplied it. */
+  tempMinC?: number;
+  /** Tomorrow's forecast high (°C); set only when the MET summary supplied it. */
+  tempMaxC?: number;
   kwh: number;
   /** q10 of the expected range. */
   lowKwh: number;
@@ -291,6 +368,8 @@ export type WeatherAdvisorSuggestion = {
   cappedByCapacity: boolean;
   /** Recent cold days were PELS-limited and tomorrow is cold — the suggestion was raised to match. */
   budgetMayBeLimiting: boolean;
+  /** Tomorrow swings genuinely cold in the evening — chooses the cold-evening verdict clause. */
+  coldEveningSuspected?: boolean;
 };
 
 /** Yesterday vs typical-for-its-temperature, resolved server-side. */

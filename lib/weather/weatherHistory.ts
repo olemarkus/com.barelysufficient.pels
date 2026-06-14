@@ -8,7 +8,12 @@ import type {
 import { isUnknownRecord } from '../utils/types';
 import { isFiniteNumber } from '../utils/appTypeGuards';
 import { getZonedParts, shiftDateKey } from '../utils/dateUtils';
-import { defaultStoredFit, defaultStoredSuggestion, normalizeLastAutoApply } from './weatherHistoryNormalize';
+import {
+  defaultStoredFit,
+  defaultStoredSuggestion,
+  normalizeLastAutoApply,
+  normalizeMetForecast,
+} from './weatherHistoryNormalize';
 
 /** Two years of daily records ≈ 90 KB JSON — well inside the persisted-state budget. */
 export const WEATHER_HISTORY_RETENTION_DAYS = 730;
@@ -18,8 +23,6 @@ export const KWH_PURGE_VERSION = 1;
 export const CONTROLLED_BACKFILL_VERSION = 1;
 /** Keep in-progress accumulators for at most today + the two preceding days. */
 const ACCUMULATOR_RETENTION_DAYS = 2;
-/** How many future forecast dateKeys to retain (tomorrow + the day after around midnight). */
-const FORECAST_DATEKEY_LIMIT = 2;
 /** Physically plausible outdoor range; readings outside are sensor glitches. */
 const MIN_PLAUSIBLE_C = -60;
 const MAX_PLAUSIBLE_C = 60;
@@ -80,35 +83,10 @@ export function applyActualSample(
 }
 
 /**
- * Records one forecast-device reading against the hour it predicts (~24 h
- * ahead). Only near-future dateKeys are retained; sampling across today fills
- * tomorrow's profile one hour at a time.
- */
-export function applyForecastSample(
-  state: WeatherHistoryState,
-  params: { targetDateKey: string; hourKey: string; temperatureC: number; todayKey: string },
-): WeatherHistoryState {
-  const { targetDateKey, hourKey, temperatureC, todayKey } = params;
-  if (targetDateKey <= todayKey) return state;
-  const merged = {
-    ...(state.forecastHourly ?? {}),
-    [targetDateKey]: { ...(state.forecastHourly?.[targetDateKey] ?? {}), [hourKey]: temperatureC },
-  };
-  const keptKeys = Object.keys(merged)
-    .filter((key) => key > todayKey)
-    .sort()
-    .slice(0, FORECAST_DATEKEY_LIMIT);
-  return {
-    ...state,
-    forecastHourly: Object.fromEntries(keptKeys.map((key) => [key, merged[key]])),
-  };
-}
-
-/**
  * Finalizes a closed local day: converts its accumulator into a permanent
  * record (joined with the day's kWh totals, snapshotted now because the power
  * tracker prunes its reliability metadata after ~30 days), then prunes
- * accumulators, stale forecast entries, and records beyond retention.
+ * accumulators and records beyond retention.
  *
  * A live rollup never overwrites an existing live record, but does replace a
  * backfilled one (live sampling beats reconstruction). Without an accumulator
@@ -139,16 +117,12 @@ export function rollupDay(
     : state.records;
 
   const accumulatorCutoff = shiftDateKey(dateKey, -ACCUMULATOR_RETENTION_DAYS);
-  const todayKey = shiftDateKey(dateKey, 1);
   return {
     ...state,
     records: pruneRecords(records, dateKey),
     accumulators: Object.fromEntries(
       Object.entries(state.accumulators ?? {})
         .filter(([key]) => key !== dateKey && key >= accumulatorCutoff),
-    ),
-    forecastHourly: Object.fromEntries(
-      Object.entries(state.forecastHourly ?? {}).filter(([key]) => key >= todayKey),
     ),
   };
 }
@@ -213,8 +187,8 @@ export function upsertBackfillRecords(
  * while the store was unreadable. The recovered blob is the richer base
  * (potentially years of records); the in-memory state holds only what this
  * process collected since boot, so recovered data wins wherever both exist —
- * except forecast hours and the derived fit/suggestion, where in-memory is
- * the fresher computation, and records the recovered blob simply lacks.
+ * except the cached MET forecast and the derived fit/suggestion, where
+ * in-memory is the fresher computation, and records the recovered blob lacks.
  */
 export function mergeRecoveredState(
   recovered: WeatherHistoryState,
@@ -224,16 +198,9 @@ export function mergeRecoveredState(
   for (const record of inMemory.records) {
     records = upsertRecord(records, record, { overwriteLive: false });
   }
-  const forecastKeys = new Set([
-    ...Object.keys(recovered.forecastHourly ?? {}),
-    ...Object.keys(inMemory.forecastHourly ?? {}),
-  ]);
-  const forecastHourly = Object.fromEntries(
-    [...forecastKeys].sort().map((dateKey) => [dateKey, {
-      ...(recovered.forecastHourly?.[dateKey] ?? {}),
-      ...(inMemory.forecastHourly?.[dateKey] ?? {}),
-    }]),
-  );
+  // In-memory forecast/fit/suggestion are the fresher computation; fall back to
+  // the recovered blob's when this process has not refreshed one yet.
+  const metForecast = inMemory.metForecast ?? recovered.metForecast;
   const latestFit = inMemory.latestFit ?? recovered.latestFit;
   const latestSuggestion = inMemory.latestSuggestion ?? recovered.latestSuggestion;
   // Live audit wins, falling back to recovered.
@@ -241,7 +208,7 @@ export function mergeRecoveredState(
   return {
     records,
     accumulators: { ...(inMemory.accumulators ?? {}), ...(recovered.accumulators ?? {}) },
-    ...(forecastKeys.size > 0 ? { forecastHourly } : {}),
+    ...(metForecast ? { metForecast } : {}),
     ...mergeBackfillMarkers(recovered, inMemory),
     ...(latestFit ? { latestFit } : {}),
     ...(latestSuggestion ? { latestSuggestion } : {}),
@@ -484,13 +451,16 @@ export function normalizeWeatherHistoryState(raw: unknown): WeatherHistoryState 
     ? normalizeForecastHourly(raw.forecastHourly)
     : {};
   const lastAutoApply = normalizeLastAutoApply(raw.lastAutoApply);
+  const metForecast = normalizeMetForecast(raw.metForecast);
   return {
     // Core fields gate via isPlausibleRecord (reject-and-drop); the optional
     // suppression/kwhUncontrolled layer is sanitized strip-not-reject so a
     // malformed extra never costs the record its irreplaceable temperature.
     records: raw.records.filter(isPlausibleRecord).map(sanitizeRecordOptionalFields).sort(byDateKeyAscending),
     ...(Object.keys(accumulators).length > 0 ? { accumulators } : {}),
+    // Legacy +24h-device profile, no longer written; read for BC only (PR 2 drops it).
     ...(Object.keys(forecastHourly).length > 0 ? { forecastHourly } : {}),
+    ...(metForecast ? { metForecast } : {}),
     ...normalizeBackfillMarkers(raw),
     // Derived fields: producer-written and recomputed after every records
     // change, so a shallow shape check suffices — corruption self-heals at

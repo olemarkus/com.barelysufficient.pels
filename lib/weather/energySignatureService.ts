@@ -1,21 +1,35 @@
 import type { Logger as PinoLogger } from 'pino';
 import type {
+  EnergySignatureFit,
   EnergySignatureSuggestion,
+  MetDaySummary,
   WeatherHistoryState,
 } from '../../packages/contracts/src/weatherAdvisorTypes';
 import { fitEnergySignature } from '../../packages/shared-domain/src/energySignature/energySignature';
 import { suggestDailyBudgetKwh } from '../../packages/shared-domain/src/energySignature/suggestDailyBudget';
-import { getDateKeyInTimeZone, shiftDateKey } from '../utils/dateUtils';
+import { getDateKeyInTimeZone } from '../utils/dateUtils';
 
 /**
- * Derives the energy-signature fit and tomorrow's budget suggestion from the
- * collected history, stamping both onto the state blob (so the future UI
- * endpoint reads flat values) and emitting one structured log line — the only
- * surfacing the hidden feature has until the UI ships.
+ * Derives the energy-signature fit and the budget suggestion from the collected
+ * history, stamping both onto the state blob (so the future UI endpoint reads
+ * flat values) and emitting one structured log line — the only surfacing the
+ * hidden feature has until the UI ships.
+ *
+ * AUTO-APPLY TARGET DAY: this runs at the 00:05 midnight rollup, and the
+ * suggestion it stamps is what `performBudgetAutoApply` writes to the ACTIVE
+ * daily budget. So the suggestion must target the JUST-STARTED day (today), not
+ * tomorrow — applying tomorrow's forecast to today's active budget would be wrong
+ * by one day. The forward-looking readout card resolves tomorrow separately (it
+ * reads `byDay[tomorrowKey]`); the per-day MET cache lets each consumer read the
+ * day it needs.
+ *
+ * The coming-day mean comes from the cached MET Norway forecast (`met_api`) when
+ * it covers the target day, else the trailing-week persistence mean
+ * (`recent_days`). MET supplies a SIMPLE per-hour mean — the same estimator the
+ * fit was trained on — so it feeds the prediction directly; its min/max and
+ * evening window are display/verdict context that never enter the kWh number.
  */
 
-/** Hours of tomorrow's profile the forecast device must have filled to beat persistence. */
-const MIN_FORECAST_HOURS = 12;
 /** Persistence fallback: average the trailing week of observed daily means. */
 const PERSISTENCE_LOOKBACK_DAYS = 7;
 
@@ -25,6 +39,16 @@ export type EnergySignatureServiceDeps = {
   /** Hard capacity cap (kW); the suggestion stays subordinate to it. */
   getCapacityLimitKw: () => number | undefined;
   logger: PinoLogger;
+};
+
+/** Coming-day mean + the producer-resolved display/verdict context that travels with it. */
+export type ResolvedComingDay = {
+  targetDateKey: string;
+  meanTempC: number;
+  source: EnergySignatureSuggestion['forecastSource'];
+  tempMinC?: number;
+  tempMaxC?: number;
+  coldEveningSuspected?: boolean;
 };
 
 export function computeEnergySignatureUpdate(
@@ -43,19 +67,9 @@ export function computeEnergySignatureUpdate(
     return rest;
   }
 
-  const forecast = resolveComingDayMeanTempC(state, nowMs, deps.getTimeZone());
-  const suggestion: EnergySignatureSuggestion | undefined = forecast
-    ? {
-      targetDateKey: forecast.targetDateKey,
-      forecastMeanTempC: forecast.meanTempC,
-      forecastSource: forecast.source,
-      ...suggestDailyBudgetKwh({
-        fit,
-        forecastMeanTempC: forecast.meanTempC,
-        capacityLimitKw: deps.getCapacityLimitKw(),
-      }),
-      computedAtMs: nowMs,
-    }
+  const forecast = resolveComingDayMeanTempC(state, fit, nowMs, deps.getTimeZone());
+  const suggestion = forecast
+    ? buildSuggestion(fit, forecast, deps.getCapacityLimitKw(), nowMs)
     : undefined;
 
   deps.logger.info({
@@ -79,6 +93,9 @@ export function computeEnergySignatureUpdate(
       targetDateKey: suggestion.targetDateKey,
       forecastSource: suggestion.forecastSource,
       forecastMeanTempC: round2(suggestion.forecastMeanTempC),
+      forecastTempMinC: suggestion.tempMinC !== undefined ? round2(suggestion.tempMinC) : null,
+      forecastTempMaxC: suggestion.tempMaxC !== undefined ? round2(suggestion.tempMaxC) : null,
+      coldEveningSuspected: suggestion.coldEveningSuspected ?? null,
       predictedKwhTargetDay: round2(suggestion.predictedKwh),
       suggestedBudgetKwh: round2(suggestion.suggestedBudgetKwh),
       beyondObservedCold: suggestion.beyondObservedCold,
@@ -98,44 +115,103 @@ export function computeEnergySignatureUpdate(
   };
 }
 
-/**
- * Resolves the expected mean temperature for the coming day. At the midnight
- * recompute the actionable budget day is the JUST-STARTED day — and that is
- * the day whose +24h forecast profile was filled across yesterday and is now
- * complete. Tomorrow's profile holds only ~one hour at that moment, so trying
- * today first is what makes the forecast device reachable in steady state
- * (and avoids the cold-biased night-hours-only prefix of a partial profile).
- */
-function resolveComingDayMeanTempC(
-  state: WeatherHistoryState,
+/** Assembles the budget suggestion from the fit + resolved coming-day mean (drops undefined optionals). */
+function buildSuggestion(
+  fit: EnergySignatureFit,
+  forecast: ResolvedComingDay,
+  capacityLimitKw: number | undefined,
   nowMs: number,
-  timeZone: string,
-): { targetDateKey: string; meanTempC: number; source: EnergySignatureSuggestion['forecastSource'] } | undefined {
-  const todayKey = getDateKeyInTimeZone(new Date(nowMs), timeZone);
-  for (const targetDateKey of [todayKey, shiftDateKey(todayKey, 1)]) {
-    const forecast = resolveForecastDeviceMeanTempC(state, targetDateKey);
-    if (forecast !== undefined) {
-      return { targetDateKey, meanTempC: forecast, source: 'forecast_device' };
-    }
-  }
-  const persistence = resolvePersistenceMeanTempC(state);
-  if (persistence === undefined) return undefined;
-  return { targetDateKey: todayKey, meanTempC: persistence, source: 'recent_days' };
+): EnergySignatureSuggestion {
+  return {
+    targetDateKey: forecast.targetDateKey,
+    forecastMeanTempC: forecast.meanTempC,
+    forecastSource: forecast.source,
+    ...suggestDailyBudgetKwh({ fit, forecastMeanTempC: forecast.meanTempC, capacityLimitKw }),
+    ...(forecast.tempMinC !== undefined ? { tempMinC: forecast.tempMinC } : {}),
+    ...(forecast.tempMaxC !== undefined ? { tempMaxC: forecast.tempMaxC } : {}),
+    ...(forecast.coldEveningSuspected !== undefined
+      ? { coldEveningSuspected: forecast.coldEveningSuspected } : {}),
+    computedAtMs: nowMs,
+  };
 }
 
 /**
- * Mean of the forecast-device profile for one specific local day, or
- * undefined when fewer than `MIN_FORECAST_HOURS` hours have accumulated.
- * Shared with the settings-UI readout builder, which always targets TOMORROW
- * (the card is forward-looking), unlike the midnight recompute above.
+ * Resolves the expected mean temperature for the day this rollup acts on — the
+ * JUST-STARTED local day (today), because the stamped suggestion drives
+ * `performBudgetAutoApply`, which writes the ACTIVE daily budget. The MET cache
+ * (`met_api`) wins when `byDay` covers today; otherwise the trailing-week
+ * persistence mean (`recent_days`). (The readout card resolves tomorrow
+ * separately for its forward-looking display.)
  */
-export function resolveForecastDeviceMeanTempC(
+function resolveComingDayMeanTempC(
   state: WeatherHistoryState,
+  fit: EnergySignatureFit,
+  nowMs: number,
+  timeZone: string,
+): ResolvedComingDay | undefined {
+  const currentDayKey = getDateKeyInTimeZone(new Date(nowMs), timeZone);
+  const resolved = resolveComingDayFromState(state, fit, currentDayKey);
+  if (resolved) return resolved;
+  const persistence = resolvePersistenceMeanTempC(state);
+  if (persistence === undefined) return undefined;
+  return { targetDateKey: currentDayKey, meanTempC: persistence, source: 'recent_days' };
+}
+
+/**
+ * Shared MET resolution for one target day, used by both the midnight recompute
+ * (today, the just-started day) and the settings-UI readout (tomorrow). Returns
+ * the producer-resolved mean + display/verdict context when the cache covers the
+ * day, else undefined (caller falls back to persistence). `coldEveningSuspected`
+ * is resolved HERE, where the fit's balance point lives.
+ */
+export function resolveComingDayFromState(
+  state: WeatherHistoryState,
+  fit: EnergySignatureFit,
   targetDateKey: string,
-): number | undefined {
-  const forecastHours = Object.values(state.forecastHourly?.[targetDateKey] ?? {});
-  if (forecastHours.length < MIN_FORECAST_HOURS) return undefined;
-  return mean(forecastHours);
+): ResolvedComingDay | undefined {
+  const met = resolveMetDay(state.metForecast, targetDateKey);
+  // Only budget off a day MET covers in full. A boot/catch-up after the local
+  // day is already underway yields a partial today (MET forecasts from "now"
+  // forward, missing the elapsed hours) → a biased mean; fall back to
+  // persistence rather than auto-apply a half-day budget. Tomorrow is always
+  // full when fetched, so this only excludes the mid-day-restart active day.
+  if (!met || !met.fullDayCoverage) return undefined;
+  return {
+    targetDateKey,
+    meanTempC: met.meanTempC,
+    source: 'met_api',
+    tempMinC: met.minTempC,
+    tempMaxC: met.maxTempC,
+    coldEveningSuspected: deriveColdEveningSuspected(met, fit),
+  };
+}
+
+/** The cached MET day summary for `dateKey` (exact match); undefined when absent. */
+export function resolveMetDay(
+  cache: WeatherHistoryState['metForecast'],
+  dateKey: string,
+): MetDaySummary | undefined {
+  return cache?.byDay[dateKey];
+}
+
+/**
+ * A genuine evening swing toward cold: the evening dips below the fit's balance
+ * point while the day MEAN is still at/above it (a flat-cold day already reads
+ * cold from the mean — that is not an "evening" story). Display/verdict only.
+ * Undefined when there is no balance point (linear/uncorrelated fits) or no
+ * evening sample.
+ *
+ * `!= null` (loose) guards both `fit.balancePointC` and `met.eveningMinTempC`:
+ * either can deserialize from persisted state as `null` (a JSON-round-tripped
+ * optional), and a strict `=== undefined` would let `null` through, where
+ * `eveningMinTempC < null` coerces null→0 and reads a bogus 0 °C balance point.
+ */
+function deriveColdEveningSuspected(
+  met: MetDaySummary,
+  fit: EnergySignatureFit,
+): boolean | undefined {
+  if (fit.balancePointC == null || met.eveningMinTempC == null) return undefined;
+  return met.eveningMinTempC < fit.balancePointC && met.meanTempC >= fit.balancePointC;
 }
 
 /** Persistence fallback: trailing-week mean of observed daily temperatures. */

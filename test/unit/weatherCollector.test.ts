@@ -1,5 +1,6 @@
 import type { Logger as PinoLogger } from 'pino';
 import { WeatherCollector, type WeatherCollectorDeps } from '../../lib/weather/weatherCollector';
+import type { MetDaySummaryWithCoverage, MetForecastFetchResult } from '../../lib/weather/metForecast';
 import type { WeatherHistoryState } from '../../packages/contracts/src/weatherAdvisorTypes';
 
 const OSLO = 'Europe/Oslo';
@@ -135,21 +136,17 @@ describe('WeatherCollector', () => {
     collector.stop();
   });
 
-  it('samples hourly and accumulates forecast readings against tomorrow', async () => {
-    const { collector, store, deps } = buildHarness({
-      getSettings: vi.fn(() => ({ enabled: true, outdoorDeviceId: 'out-1', forecastDeviceId: 'fc-1' })),
-    });
+  it('samples the outdoor device hourly (no forecast device path anymore)', async () => {
+    const { collector, store, deps } = buildHarness();
     collector.start();
     await vi.advanceTimersByTimeAsync(0);
-    expect(deps.readDevice).toHaveBeenCalledTimes(2);
+    // Only the outdoor device is read — the +24h forecast device is gone.
+    expect(deps.readDevice).toHaveBeenCalledTimes(1);
     // Next sample at the top of the hour + 90 s.
     await vi.advanceTimersByTimeAsync(HOUR_MS + 90_000);
-    expect(deps.readDevice).toHaveBeenCalledTimes(4);
+    expect(deps.readDevice).toHaveBeenCalledTimes(2);
     collector.stop();
-    const written = lastWritten(store);
-    expect(written.accumulators?.['2026-01-10']?.count).toBe(2);
-    // 10:00Z is 11:00 in Oslo; the +24 h targets land on tomorrow's same-ish hours.
-    expect(written.forecastHourly?.['2026-01-11']).toEqual({ '11': -7, '12': -7 });
+    expect(lastWritten(store).accumulators?.['2026-01-10']?.count).toBe(2);
   });
 
   it('dedupes a restart re-sample landing in the same local hour', async () => {
@@ -966,5 +963,241 @@ describe('WeatherCollector', () => {
     settings.mockReturnValue({ enabled: false });
     collector.start();
     expect(collector.getCurrentOutdoorTemperatureC()).toBeUndefined();
+  });
+
+  // ── MET forecast refresh ───────────────────────────────────────────────────
+  // Collector clock: START_MS = Oslo 2026-01-10 11:00 → today 2026-01-10, tomorrow 2026-01-11.
+  const TODAY_KEY = '2026-01-10';
+  const TOMORROW_KEY = '2026-01-11';
+  const metDay = (
+    dateKey: string,
+    overrides: Partial<MetDaySummaryWithCoverage> = {},
+  ): MetDaySummaryWithCoverage => ({
+    dateKey,
+    meanTempC: -3,
+    minTempC: -7,
+    maxTempC: 1,
+    eveningMinTempC: -6,
+    eveningMeanTempC: -5,
+    hourCount: 24,
+    eveningHourCount: 7,
+    fullDayCoverage: true,
+    symbolCode: 'cloudy',
+    precipMmTotal: 0.4,
+    ...overrides,
+  });
+  /** A full per-day result covering today + tomorrow (what a fresh 200 produces). */
+  const metDays = () => ({
+    byDay: { [TODAY_KEY]: metDay(TODAY_KEY), [TOMORROW_KEY]: metDay(TOMORROW_KEY) },
+  });
+  /** A persisted cache covering both needed days, with overridable validators. */
+  const cachedBothDays = (extra: Record<string, unknown> = {}) => ({
+    byDay: { [TODAY_KEY]: metDay(TODAY_KEY, { meanTempC: -1 }), [TOMORROW_KEY]: metDay(TOMORROW_KEY, { meanTempC: -1 }) },
+    fetchedAtMs: START_MS - HOUR_MS,
+    ...extra,
+  });
+
+  it('stores a fresh MET forecast on ok and marks the state dirty', async () => {
+    const fetchForecast = vi.fn(async (): Promise<MetForecastFetchResult> => ({
+      outcome: 'ok',
+      days: metDays(),
+      expires: new Date(START_MS + 30 * 60 * 1000).toUTCString(),
+      lastModified: 'Sat, 10 Jan 2026 09:00:00 GMT',
+    }));
+    const { collector, store } = buildHarness({ fetchForecast });
+    collector.start();
+    await vi.advanceTimersByTimeAsync(30_000);
+    collector.stop();
+    expect(fetchForecast).toHaveBeenCalledTimes(1);
+    const cache = lastWritten(store).metForecast;
+    expect(Object.keys(cache?.byDay ?? {}).sort()).toEqual([TODAY_KEY, TOMORROW_KEY]);
+    expect(cache?.byDay[TOMORROW_KEY]).toMatchObject({
+      dateKey: TOMORROW_KEY,
+      meanTempC: -3,
+      minTempC: -7,
+      maxTempC: 1,
+      eveningMinTempC: -6,
+      symbolCode: 'cloudy',
+    });
+    // The fetch-time-only eveningHourCount is NOT persisted (matches the contract).
+    expect(cache?.byDay[TOMORROW_KEY]).not.toHaveProperty('eveningHourCount');
+    expect(cache?.lastModified).toBe('Sat, 10 Jan 2026 09:00:00 GMT');
+    expect(cache?.fetchedAtMs).toBe(START_MS);
+  });
+
+  it('keeps the prior cached forecast on a failed fetch (transient-read discipline)', async () => {
+    const fetchForecast = vi.fn(async (): Promise<MetForecastFetchResult> => ({ outcome: 'failed' }));
+    const { collector, store, persisted, logger } = buildHarness({ fetchForecast });
+    persisted.value = { records: [], metForecast: cachedBothDays() };
+    collector.start();
+    await vi.advanceTimersByTimeAsync(30_000);
+    collector.stop();
+    expect(lastWritten(store).metForecast?.byDay[TOMORROW_KEY]?.meanTempC).toBe(-1);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'weather_met_forecast_unavailable', outcome: 'failed' }),
+    );
+  });
+
+  it('keeps the prior cached forecast when the hub has no location', async () => {
+    const fetchForecast = vi.fn(async (): Promise<MetForecastFetchResult> => ({ outcome: 'no_location' }));
+    const { collector, store, persisted } = buildHarness({ fetchForecast });
+    persisted.value = { records: [], metForecast: cachedBothDays({}) };
+    collector.start();
+    await vi.advanceTimersByTimeAsync(30_000);
+    collector.stop();
+    expect(lastWritten(store).metForecast?.byDay[TOMORROW_KEY]?.meanTempC).toBe(-1);
+  });
+
+  it('keeps the cached forecast unchanged on a 304 not_modified', async () => {
+    const fetchForecast = vi.fn(async (): Promise<MetForecastFetchResult> => ({ outcome: 'not_modified' }));
+    // Cached, covers both days, but already expired → a conditional refetch (304).
+    const { collector, store, persisted } = buildHarness({ fetchForecast });
+    persisted.value = {
+      records: [],
+      metForecast: cachedBothDays({
+        expires: new Date(START_MS - 60_000).toUTCString(),
+        lastModified: 'Sat, 10 Jan 2026 08:00:00 GMT',
+      }),
+    };
+    collector.start();
+    await vi.advanceTimersByTimeAsync(30_000);
+    collector.stop();
+    // Both days present → If-Modified-Since IS sent (refetch is for content-freshness).
+    expect(fetchForecast).toHaveBeenCalledWith({ ifModifiedSince: 'Sat, 10 Jan 2026 08:00:00 GMT' });
+    expect(lastWritten(store).metForecast?.byDay[TOMORROW_KEY]?.meanTempC).toBe(-1);
+  });
+
+  it('skips the fetch entirely while the cached Expires is in the future AND both days are present', async () => {
+    const fetchForecast = vi.fn(async (): Promise<MetForecastFetchResult> => ({ outcome: 'ok', days: metDays() }));
+    const { collector, persisted } = buildHarness({ fetchForecast });
+    persisted.value = {
+      records: [],
+      metForecast: cachedBothDays({ expires: new Date(START_MS + 2 * HOUR_MS).toUTCString() }),
+    };
+    collector.start();
+    // Boot refresh + hourly tick both fall inside the cached Expires window.
+    await vi.advanceTimersByTimeAsync(HOUR_MS + 90_000);
+    collector.stop();
+    expect(fetchForecast).not.toHaveBeenCalled();
+  });
+
+  it('refetches on a day rollover even with Expires in the future (a needed day is missing)', async () => {
+    // Fetched just before midnight: Expires outlives midnight, but the cache only
+    // covers yesterday+today, so the now-needed tomorrow (2026-01-11) is missing.
+    const fetchForecast = vi.fn(async (): Promise<MetForecastFetchResult> => ({
+      outcome: 'ok', days: metDays(),
+    }));
+    const { collector, store, persisted } = buildHarness({ fetchForecast });
+    persisted.value = {
+      records: [],
+      metForecast: {
+        // Covers 2026-01-09 + 2026-01-10 — tomorrow (2026-01-11) is absent.
+        byDay: { '2026-01-09': metDay('2026-01-09', { meanTempC: -1 }), [TODAY_KEY]: metDay(TODAY_KEY, { meanTempC: -1 }) },
+        fetchedAtMs: START_MS - 60_000,
+        expires: new Date(START_MS + 2 * HOUR_MS).toUTCString(), // still in the future
+        lastModified: 'Sat, 10 Jan 2026 08:00:00 GMT',
+      },
+    };
+    collector.start();
+    await vi.advanceTimersByTimeAsync(30_000);
+    collector.stop();
+    // A missing needed day forces a 200 — If-Modified-Since is OMITTED (a 304 has
+    // no body and could not rebuild byDay for the new tomorrow).
+    expect(fetchForecast).toHaveBeenCalledWith({});
+    // The stale cache was replaced with the fresh fetch covering today + tomorrow.
+    expect(Object.keys(lastWritten(store).metForecast?.byDay ?? {}).sort()).toEqual([TODAY_KEY, TOMORROW_KEY]);
+    expect(lastWritten(store).metForecast?.byDay[TOMORROW_KEY]?.meanTempC).toBe(-3);
+  });
+
+  it('advances the cache validators on a 304 without changing the summary', async () => {
+    const newExpires = new Date(START_MS + 90 * 60 * 1000).toUTCString();
+    const fetchForecast = vi.fn(async (): Promise<MetForecastFetchResult> => ({
+      outcome: 'not_modified', expires: newExpires, lastModified: 'Sat, 10 Jan 2026 10:00:00 GMT',
+    }));
+    const { collector, store, persisted, logger } = buildHarness({ fetchForecast });
+    persisted.value = {
+      records: [],
+      metForecast: cachedBothDays({
+        expires: new Date(START_MS - 60_000).toUTCString(), // already lapsed → conditional refetch
+        lastModified: 'Sat, 10 Jan 2026 08:00:00 GMT',
+      }),
+    };
+    collector.start();
+    await vi.advanceTimersByTimeAsync(30_000);
+    collector.stop();
+    const written = lastWritten(store).metForecast;
+    // Temperature data unchanged; Expires/Last-Modified advanced so the next tick
+    // is skipped (no "refreshed" log line for a 304 validators-only merge).
+    expect(written?.byDay[TOMORROW_KEY]?.meanTempC).toBe(-1);
+    expect(written).toMatchObject({ expires: newExpires, lastModified: 'Sat, 10 Jan 2026 10:00:00 GMT' });
+    expect(logger.info).not.toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'weather_met_forecast_refreshed' }),
+    );
+  });
+
+  it('discards the post-midnight rollup when stop() lands during the refresh', async () => {
+    // Hold the midnight refresh open, stop() the collector while it's in flight,
+    // then release: the continuation must NOT roll up or reschedule a timer on a
+    // stopped collector (post-stop mutation / dirty drift). Only the rollup-path
+    // refresh is armed to hang (earlier hourly/boot refreshes resolve fast so
+    // they don't claim the single-flight first).
+    let releaseRefresh: (() => void) | undefined;
+    let armHang = false;
+    const fetchForecast = vi.fn(async (): Promise<MetForecastFetchResult> => {
+      if (armHang) {
+        await new Promise<void>((resolve) => { releaseRefresh = resolve; });
+      }
+      return { outcome: 'failed' };
+    });
+    vi.setSystemTime(Date.UTC(2026, 0, 10, 22, 30, 0)); // Oslo 23:30 — close to midnight rollup
+    const recomputeDerived = vi.fn((state: WeatherHistoryState) => state);
+    const { collector, persisted, deps } = buildHarness({ fetchForecast, recomputeDerived });
+    // No slept-through accumulator: the boot sample opens today's (2026-01-10),
+    // which only the midnight rollup (not boot catch-up) will roll.
+    persisted.value = { records: [], backfilledDeviceId: 'out-1' };
+    collector.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect((deps.getDailyKwh as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0); // boot rolled nothing
+    // Let the hourly sample (+31.5 min) fire and resolve its refresh fast, so it
+    // doesn't claim the single-flight before the rollup refresh.
+    await vi.advanceTimersByTimeAsync(33 * 60 * 1000);
+    // Arm the hang so the midnight rollup's (+35 min) refresh blocks on the gate.
+    armHang = true;
+    fetchForecast.mockClear();
+    await vi.advanceTimersByTimeAsync(3 * 60 * 1000);
+    expect(releaseRefresh).toBeDefined(); // the rollup refresh is in flight
+    // Stop the collector while the refresh is in flight, then release it.
+    collector.stop();
+    releaseRefresh?.();
+    await vi.advanceTimersByTimeAsync(0);
+    // The continuation bailed: today's accumulator was never rolled up
+    // (getDailyKwh never called) and no timer was rescheduled.
+    expect((deps.getDailyKwh as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('re-kicks a superseded in-flight MET refresh on the new generation', async () => {
+    // A reload while the prior run's fetch is in flight: the new run's boot
+    // refresh is blocked by the single-flight flag, so the superseded run's
+    // finally must re-kick a fresh refresh for the new generation rather than
+    // leaving it without MET until its next tick.
+    let releaseFirst: (() => void) | undefined;
+    let calls = 0;
+    const fetchForecast = vi.fn(async (): Promise<MetForecastFetchResult> => {
+      calls += 1;
+      if (calls === 1) {
+        await new Promise<void>((resolve) => { releaseFirst = resolve; });
+      }
+      return { outcome: 'ok', days: metDays() };
+    });
+    const { collector } = buildHarness({ fetchForecast });
+    collector.start();
+    await vi.advanceTimersByTimeAsync(0); // first (boot) refresh now hanging in flight
+    collector.start(); // reload: new generation; its boot refresh is blocked by the in-flight flag
+    await vi.advanceTimersByTimeAsync(0);
+    releaseFirst?.(); // the superseded fetch resolves (discarded — generation moved)
+    await vi.advanceTimersByTimeAsync(0); // its finally re-kicks the new generation's refresh
+    collector.stop();
+    expect(calls).toBeGreaterThanOrEqual(2);
   });
 });

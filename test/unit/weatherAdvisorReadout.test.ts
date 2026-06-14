@@ -1,5 +1,6 @@
 import type {
   EnergySignatureFit,
+  MetDaySummary,
   WeatherDailyRecord,
   WeatherHistoryState,
 } from '../../packages/contracts/src/weatherAdvisorTypes';
@@ -48,6 +49,16 @@ const fit = (overrides: Partial<EnergySignatureFit> = {}): EnergySignatureFit =>
   residualQ80: 4,
   residualQ90: 6,
   fittedAtMs: NOW_MS,
+  ...overrides,
+});
+
+const metDay = (dateKey: string, overrides: Partial<MetDaySummary> = {}): MetDaySummary => ({
+  dateKey,
+  meanTempC: 0,
+  minTempC: -4,
+  maxTempC: 4,
+  hourCount: 24,
+  fullDayCoverage: true,
   ...overrides,
 });
 
@@ -157,17 +168,18 @@ describe('buildWeatherAdvisorReadout', () => {
     expect(payload?.suggestion?.kwh).toBe(55);
   });
 
-  it('recomputes for tomorrow when the stored suggestion targets the running day', () => {
-    const forecastHours = Object.fromEntries(
-      Array.from({ length: 24 }, (_, hour) => [String(hour).padStart(2, '0'), 4]),
-    );
+  it('recomputes for tomorrow from the MET cache when the stored suggestion targets the running day', () => {
     const payload = buildWeatherAdvisorReadout(withState({
       records: recentDays(30),
       latestFit: fit(),
+      metForecast: {
+        byDay: { [TOMORROW]: metDay(TOMORROW, { meanTempC: 4, minTempC: 0, maxTempC: 8 }) },
+        fetchedAtMs: NOW_MS,
+      },
       latestSuggestion: {
         targetDateKey: TODAY,
         forecastMeanTempC: 12,
-        forecastSource: 'forecast_device',
+        forecastSource: 'met_api',
         predictedKwh: 99,
         predictedLowKwh: 90,
         predictedHighKwh: 110,
@@ -177,15 +189,64 @@ describe('buildWeatherAdvisorReadout', () => {
         budgetMayBeLimiting: false,
         computedAtMs: NOW_MS,
       },
-      forecastHourly: { [TOMORROW]: forecastHours },
-    }, { settings: SETTINGS_WITH_FORECAST }));
-    // 23 + 1.8 × (13 − 4) = 39.2 — recomputed from the fit, not the stale 99.
+    }));
+    // 23 + 1.8 × (13 − 4) = 39.2 — recomputed from the fit + MET cache, not the stale 99.
     expect(payload?.forecastStatus).toBe('forecast');
     expect(payload?.prediction?.tempMeanC).toBe(4);
+    expect(payload?.prediction?.tempMinC).toBe(0);
+    expect(payload?.prediction?.tempMaxC).toBe(8);
     expect(payload?.prediction?.kwh).toBeCloseTo(39.2, 5);
   });
 
-  it('falls back to persistence with recent_no_device when no forecast device is configured', () => {
+  it('reads the TOMORROW day from a cache that also holds today (card is forward-looking)', () => {
+    // The per-day cache carries both today and tomorrow; the readout card must
+    // resolve TOMORROW (warm), not today (cold) — the opposite of the auto-apply path.
+    const payload = buildWeatherAdvisorReadout(withState({
+      records: recentDays(30),
+      latestFit: fit(),
+      metForecast: {
+        byDay: {
+          [TODAY]: metDay(TODAY, { meanTempC: -10, minTempC: -14, maxTempC: -6 }),
+          [TOMORROW]: metDay(TOMORROW, { meanTempC: 5, minTempC: 1, maxTempC: 9 }),
+        },
+        fetchedAtMs: NOW_MS,
+      },
+    }));
+    expect(payload?.forecastStatus).toBe('forecast');
+    expect(payload?.prediction?.tempMeanC).toBe(5); // tomorrow, not today's -10
+    expect(payload?.prediction?.tempMinC).toBe(1);
+  });
+
+  it('filters a persisted null out of a reused stored suggestion (tempMin/Max round-trip)', () => {
+    // A suggestion that round-tripped through JSON can carry null where the field
+    // is optional; `!= null` must keep it out of the number-typed prediction field.
+    const payload = buildWeatherAdvisorReadout(withState({
+      records: recentDays(30),
+      latestFit: fit(),
+      latestSuggestion: {
+        targetDateKey: TOMORROW,
+        forecastMeanTempC: -2,
+        forecastSource: 'met_api',
+        predictedKwh: 50,
+        predictedLowKwh: 44,
+        predictedHighKwh: 58,
+        suggestedBudgetKwh: 55,
+        beyondObservedCold: false,
+        beyondObservedWarm: false,
+        budgetMayBeLimiting: false,
+        tempMinC: null as unknown as number,
+        tempMaxC: null as unknown as number,
+        coldEveningSuspected: null as unknown as boolean,
+        computedAtMs: NOW_MS,
+      },
+    }));
+    expect(payload?.prediction?.kwh).toBe(50);
+    expect(payload?.prediction?.tempMinC).toBeUndefined();
+    expect(payload?.prediction?.tempMaxC).toBeUndefined();
+    expect(payload?.suggestion?.coldEveningSuspected).toBeUndefined();
+  });
+
+  it('falls back to persistence with recent_no_device when there is no MET cache for tomorrow', () => {
     const payload = buildWeatherAdvisorReadout(withState({
       records: recentDays(30),
       latestFit: fit(),
@@ -194,18 +255,36 @@ describe('buildWeatherAdvisorReadout', () => {
     expect(payload?.suggestion).not.toBeNull();
   });
 
-  it('reports recent_device_unreadable when a forecast device is set but not reporting', () => {
-    const payload = buildWeatherAdvisorReadout(withState(
-      { records: recentDays(30), latestFit: fit() },
-      { settings: SETTINGS_WITH_FORECAST },
-    ));
-    expect(payload?.forecastStatus).toBe('recent_device_unreadable');
+  it('reports forecast (met_api) when the MET cache covers tomorrow', () => {
+    const payload = buildWeatherAdvisorReadout(withState({
+      records: recentDays(30),
+      latestFit: fit(),
+      metForecast: {
+        byDay: { [TOMORROW]: metDay(TOMORROW, { meanTempC: -2, minTempC: -6, maxTempC: 2, eveningMinTempC: -5 }) },
+        fetchedAtMs: NOW_MS,
+      },
+    }));
+    expect(payload?.forecastStatus).toBe('forecast');
+    expect(payload?.prediction?.tempMinC).toBe(-6);
+    // 1 °C mean (mild day) below balance? mean -2 < balance 13 → flat cold, not an evening swing.
+    expect(payload?.suggestion?.coldEveningSuspected).toBe(false);
   });
 
-  it('reports recent_no_device when a forecast-derived suggestion lingers after the device was removed', () => {
-    // Stored suggestion is forecast-derived, but the forecast device is no longer
-    // configured — status must reflect the current (deviceless) wiring so the
-    // footer says "none" instead of claiming the removed device.
+  it('surfaces coldEveningSuspected from a mild-day MET cache with a cold evening', () => {
+    const payload = buildWeatherAdvisorReadout(withState({
+      records: recentDays(30),
+      latestFit: fit(), // balancePointC 13
+      metForecast: {
+        byDay: { [TOMORROW]: metDay(TOMORROW, { meanTempC: 14, minTempC: 8, maxTempC: 19, eveningMinTempC: 10 }) },
+        fetchedAtMs: NOW_MS,
+      },
+    }));
+    expect(payload?.suggestion?.coldEveningSuspected).toBe(true);
+  });
+
+  it('reuses a lingering forecast_device suggestion as forecast (BC) when it targets tomorrow', () => {
+    // A suggestion persisted by the retired +24h-device path still maps to the
+    // forecast footer state for BC (PR 2 drops the legacy source).
     const payload = buildWeatherAdvisorReadout(withState({
       records: recentDays(30),
       latestFit: fit(),
@@ -216,38 +295,35 @@ describe('buildWeatherAdvisorReadout', () => {
         computedAtMs: NOW_MS,
       },
     }));
-    expect(payload?.prediction?.kwh).toBe(50); // still reuses the stored forecast number…
-    expect(payload?.forecastStatus).toBe('recent_no_device'); // …but wiring is deviceless now
+    expect(payload?.prediction?.kwh).toBe(50);
+    expect(payload?.forecastStatus).toBe('forecast');
   });
 
-  it('resolves outdoor/forecast device readings from the on-demand device reads', () => {
+  it('resolves the outdoor reading from the on-demand read; forecast is always no_device now', () => {
     const reading = buildWeatherAdvisorReadout(withState(
       { records: recentDays(30), latestFit: fit() },
-      { settings: SETTINGS_WITH_FORECAST, currentOutdoorTempC: 3.4, currentForecastTempC: 1.5 },
+      { settings: SETTINGS_WITH_FORECAST, currentOutdoorTempC: 3.4 },
     ));
     expect(reading?.outdoorReading).toEqual({ status: 'reading', tempC: 3.4 });
-    expect(reading?.forecastReading).toEqual({ status: 'reading', tempC: 1.5 });
+    // No forecast device source anymore — forecastReading is always no_device.
+    expect(reading?.forecastReading).toEqual({ status: 'no_device' });
 
-    // Devices configured but nothing readable → unreadable, not silently "no device".
+    // Outdoor configured but nothing readable → unreadable.
     const unreadable = buildWeatherAdvisorReadout(withState(
       { records: recentDays(30), latestFit: fit() },
       { settings: SETTINGS_WITH_FORECAST },
     ));
     expect(unreadable?.outdoorReading).toEqual({ status: 'unreadable' });
-    expect(unreadable?.forecastReading).toEqual({ status: 'unreadable' });
-
-    // No forecast device configured → no_device (picker shows only its hint).
-    const noForecast = buildWeatherAdvisorReadout(baseInput({ currentOutdoorTempC: 5 }));
-    expect(noForecast?.outdoorReading).toEqual({ status: 'reading', tempC: 5 });
-    expect(noForecast?.forecastReading).toEqual({ status: 'no_device' });
+    expect(unreadable?.forecastReading).toEqual({ status: 'no_device' });
   });
 
   it('resolves forecastStatus even in the needs_device state (no outdoor device)', () => {
     const payload = buildWeatherAdvisorReadout(baseInput({
-      settings: { enabled: true, forecastDeviceId: 'dev-forecast' },
+      settings: { enabled: true },
     }));
     expect(payload?.state).toBe('needs_device');
-    expect(payload?.forecastStatus).toBe('recent_device_unreadable');
+    // No MET cache for tomorrow → recent_no_device.
+    expect(payload?.forecastStatus).toBe('recent_no_device');
   });
 
   it('surfaces the active daily budget (null when disabled) for the setup-card hint', () => {

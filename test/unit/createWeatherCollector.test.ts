@@ -1,5 +1,5 @@
 import type { DeferredObjectivePlanHistoryRecorder } from '../../lib/objectives/deferredObjectives/planHistory';
-import { deadlineMissedToBudgetOnDay } from '../../setup/appInit/createWeatherCollector';
+import { deadlineMissedToBudgetOnDay, readHubCoordinates } from '../../setup/appInit/createWeatherCollector';
 
 // 2026-02-10T12:00Z → local day "2026-02-10" in UTC.
 const DEADLINE_MS = Date.UTC(2026, 1, 10, 12, 0, 0);
@@ -47,5 +47,28 @@ describe('deadlineMissedToBudgetOnDay', () => {
     expect(deadlineMissedToBudgetOnDay(recorderWith([missed({ outcome: 'met' })]), '2026-02-10', 'UTC')).toBe(false);
     expect(deadlineMissedToBudgetOnDay(recorderWith([missed()]), '2026-02-11', 'UTC')).toBe(false);
     expect(deadlineMissedToBudgetOnDay(undefined, '2026-02-10', 'UTC')).toBe(false);
+  });
+});
+
+describe('readHubCoordinates', () => {
+  it('returns finite coords from a well-formed geolocation manager', () => {
+    const geo = { getLatitude: () => 59.91, getLongitude: () => 10.75 };
+    expect(readHubCoordinates(geo)).toEqual({ latitude: 59.91, longitude: 10.75 });
+  });
+
+  it('returns undefined when the manager is absent or not an object', () => {
+    expect(readHubCoordinates(undefined)).toBeUndefined();
+    expect(readHubCoordinates(null)).toBeUndefined();
+    expect(readHubCoordinates(42)).toBeUndefined();
+  });
+
+  it('returns undefined when the getter methods are missing (no throw)', () => {
+    expect(readHubCoordinates({})).toBeUndefined();
+    expect(readHubCoordinates({ getLatitude: () => 59.91 })).toBeUndefined();
+  });
+
+  it('returns undefined when the coords are non-finite (NaN / non-number)', () => {
+    expect(readHubCoordinates({ getLatitude: () => Number.NaN, getLongitude: () => 10.75 })).toBeUndefined();
+    expect(readHubCoordinates({ getLatitude: () => 59.91, getLongitude: () => '10.75' })).toBeUndefined();
   });
 });

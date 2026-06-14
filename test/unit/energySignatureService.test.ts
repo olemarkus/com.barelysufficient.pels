@@ -1,6 +1,15 @@
 import type { Logger as PinoLogger } from 'pino';
-import type { WeatherDailyRecord, WeatherHistoryState } from '../../packages/contracts/src/weatherAdvisorTypes';
-import { computeEnergySignatureUpdate } from '../../lib/weather/energySignatureService';
+import type {
+  EnergySignatureFit,
+  MetDaySummary,
+  WeatherHistoryState,
+  WeatherDailyRecord,
+} from '../../packages/contracts/src/weatherAdvisorTypes';
+import {
+  computeEnergySignatureUpdate,
+  resolveComingDayFromState,
+  resolveMetDay,
+} from '../../lib/weather/energySignatureService';
 
 // 2026-06-01T00:00Z; Oslo is UTC+2 → todayKey 2026-06-01, tomorrow 2026-06-02.
 const NOW_MS = Date.UTC(2026, 5, 1, 10, 0, 0);
@@ -35,13 +44,36 @@ const buildDeps = () => {
 };
 
 describe('computeEnergySignatureUpdate', () => {
-  it('stamps fit and suggestion onto the state and logs one structured event', () => {
+  // The auto-apply rollup targets the JUST-STARTED day (today = 2026-06-01); the
+  // MET cache must carry that day for met_api to win.
+  const TODAY = '2026-06-01';
+  const TOMORROW = '2026-06-02';
+  const metDay = (overrides: Partial<MetDaySummary> = {}): MetDaySummary => ({
+    dateKey: TODAY,
+    meanTempC: -2,
+    minTempC: -6,
+    maxTempC: 2,
+    eveningMinTempC: -5,
+    eveningMeanTempC: -4,
+    hourCount: 24,
+    fullDayCoverage: true,
+    ...overrides,
+  });
+  const metCache = (
+    day: Partial<MetDaySummary> = {},
+  ): NonNullable<WeatherHistoryState['metForecast']> => {
+    const today = metDay(day);
+    return { byDay: { [today.dateKey]: today }, fetchedAtMs: NOW_MS };
+  };
+
+  it('stamps fit and the persistence-fallback suggestion (targets the just-started day) and logs one event', () => {
     const { deps, logger } = buildDeps();
     const state: WeatherHistoryState = { records: heatingHistory() };
     const next = computeEnergySignatureUpdate(state, deps);
     expect(next.latestFit?.model).toBe('changepoint');
+    // No MET cache → persistence fallback, targeting the just-started day.
     expect(next.latestSuggestion?.forecastSource).toBe('recent_days');
-    expect(next.latestSuggestion?.targetDateKey).toBe('2026-06-01');
+    expect(next.latestSuggestion?.targetDateKey).toBe(TODAY);
     expect(next.latestSuggestion?.suggestedBudgetKwh).toBeGreaterThan(0);
     expect(logger.info).toHaveBeenCalledWith(expect.objectContaining({
       event: 'weather_advisor_fit',
@@ -50,41 +82,107 @@ describe('computeEnergySignatureUpdate', () => {
     }));
   });
 
-  it('prefers a sufficiently filled forecast-device profile for tomorrow', () => {
+  it('reads the MET cache for the just-started day (NOT tomorrow) as the coming-day mean', () => {
     const { deps } = buildDeps();
-    const forecastHours = Object.fromEntries(
-      Array.from({ length: 14 }, (_, hour) => [String(hour).padStart(2, '0'), -2]),
-    );
-    const state: WeatherHistoryState = {
-      records: heatingHistory(),
-      forecastHourly: { '2026-06-02': forecastHours },
-    };
+    const state: WeatherHistoryState = { records: heatingHistory(), metForecast: metCache() };
     const next = computeEnergySignatureUpdate(state, deps);
-    expect(next.latestSuggestion?.forecastSource).toBe('forecast_device');
-    expect(next.latestSuggestion?.targetDateKey).toBe('2026-06-02');
+    expect(next.latestSuggestion?.forecastSource).toBe('met_api');
+    // The auto-apply suggestion targets the just-started day, so the active daily
+    // budget is set from THAT day's forecast — not D+1's.
+    expect(next.latestSuggestion?.targetDateKey).toBe(TODAY);
     expect(next.latestSuggestion?.forecastMeanTempC).toBe(-2);
+    expect(next.latestSuggestion?.tempMinC).toBe(-6);
+    expect(next.latestSuggestion?.tempMaxC).toBe(2);
     // Colder forecast ⇒ a markedly higher prediction than the warm recent days.
     expect(next.latestSuggestion?.predictedKwh).toBeGreaterThan(40);
   });
 
-  it('prefers the just-started day at the midnight recompute (its profile is complete)', () => {
+  it('does NOT read a cache that only covers tomorrow for the auto-apply (just-started) day', () => {
     const { deps } = buildDeps();
-    const fullDay = Object.fromEntries(
-      Array.from({ length: 24 }, (_, hour) => [String(hour).padStart(2, '0'), 1]),
-    );
+    // Cache holds tomorrow only — the readout card would use it, but auto-apply
+    // needs the just-started day, so it falls back to persistence.
+    const tomorrowOnly = metDay({ dateKey: TOMORROW });
     const state: WeatherHistoryState = {
       records: heatingHistory(),
-      // At Oslo 00:05 on 06-02, "today" is 06-02 — filled across yesterday —
-      // while 06-03 holds a single hour so far.
-      forecastHourly: { '2026-06-02': fullDay, '2026-06-03': { '00': 5 } },
+      metForecast: { byDay: { [TOMORROW]: tomorrowOnly }, fetchedAtMs: NOW_MS },
     };
-    const next = computeEnergySignatureUpdate(state, {
-      ...deps,
-      getNowMs: () => Date.UTC(2026, 5, 1, 22, 5, 0), // Oslo 2026-06-02 00:05
-    });
-    expect(next.latestSuggestion?.forecastSource).toBe('forecast_device');
-    expect(next.latestSuggestion?.targetDateKey).toBe('2026-06-02');
-    expect(next.latestSuggestion?.forecastMeanTempC).toBe(1);
+    const next = computeEnergySignatureUpdate(state, deps);
+    expect(next.latestSuggestion?.forecastSource).toBe('recent_days');
+    expect(next.latestSuggestion?.targetDateKey).toBe(TODAY);
+  });
+
+  it('falls back to persistence when the MET cache covers no relevant day', () => {
+    const { deps } = buildDeps();
+    const state: WeatherHistoryState = {
+      records: heatingHistory(),
+      metForecast: metCache({ dateKey: '2026-05-30' }), // stale: neither today nor tomorrow
+    };
+    const next = computeEnergySignatureUpdate(state, deps);
+    expect(next.latestSuggestion?.forecastSource).toBe('recent_days');
+    expect(next.latestSuggestion?.targetDateKey).toBe(TODAY);
+  });
+
+  it('falls back to persistence when the just-started day is only PARTIALLY covered (mid-day restart)', () => {
+    const { deps } = buildDeps();
+    // A boot/catch-up after the day is underway yields a partial today (MET only
+    // forecasts from "now" forward) — budgeting off that half-day mean is biased,
+    // so auto-apply must fall back to persistence rather than use it.
+    const state: WeatherHistoryState = {
+      records: heatingHistory(),
+      metForecast: metCache({ fullDayCoverage: false, hourCount: 9 }),
+    };
+    const next = computeEnergySignatureUpdate(state, deps);
+    expect(next.latestSuggestion?.forecastSource).toBe('recent_days');
+    expect(next.latestSuggestion?.targetDateKey).toBe(TODAY);
+  });
+
+  it('derives coldEveningSuspected when the evening dips below balance but the day mean does not', () => {
+    const { deps } = buildDeps();
+    // changepoint fit's balance point is ~15 °C here; a mild day (mean above
+    // balance) with a cold evening below it is a genuine evening swing.
+    const state: WeatherHistoryState = {
+      records: heatingHistory(),
+      metForecast: metCache({ meanTempC: 16, minTempC: 5, maxTempC: 20, eveningMinTempC: 8 }),
+    };
+    const next = computeEnergySignatureUpdate(state, deps);
+    const balance = next.latestFit?.balancePointC ?? 0;
+    expect(balance).toBeGreaterThan(8);
+    expect(next.latestSuggestion?.coldEveningSuspected).toBe(true);
+  });
+
+  it('does not flag coldEveningSuspected on a flat-cold day (mean already below balance)', () => {
+    const { deps } = buildDeps();
+    const state: WeatherHistoryState = {
+      records: heatingHistory(),
+      metForecast: metCache({ meanTempC: -2, eveningMinTempC: -5 }),
+    };
+    const next = computeEnergySignatureUpdate(state, deps);
+    expect(next.latestSuggestion?.coldEveningSuspected).toBe(false);
+  });
+
+  it('does not derive a bogus coldEveningSuspected when balancePointC is null (persisted round-trip)', () => {
+    // A mild day (mean 16) with a cold evening (8) would trip the verdict — but
+    // the fit's balancePointC deserialized as null. A strict `=== undefined` would
+    // let null through and `8 < null` coerces to `8 < 0` → false, while `16 >= 0`
+    // → true, fabricating a verdict against a 0 °C balance. The `!= null` guard
+    // must instead return undefined.
+    const fitWithNullBalance = {
+      balancePointC: null, model: 'linear', slopeKwhPerDegree: 1,
+    } as unknown as EnergySignatureFit;
+    const state: WeatherHistoryState = {
+      records: [],
+      metForecast: metCache({ dateKey: TODAY, meanTempC: 16, minTempC: 5, maxTempC: 20, eveningMinTempC: 8 }),
+    };
+    const resolved = resolveComingDayFromState(state, fitWithNullBalance, TODAY);
+    expect(resolved?.source).toBe('met_api');
+    expect(resolved?.coldEveningSuspected).toBeUndefined();
+  });
+
+  it('resolveMetDay returns the entry only on an exact dateKey match', () => {
+    const cache = metCache({ dateKey: TODAY });
+    expect(resolveMetDay(cache, TODAY)?.dateKey).toBe(TODAY);
+    expect(resolveMetDay(cache, TOMORROW)).toBeUndefined();
+    expect(resolveMetDay(undefined, TODAY)).toBeUndefined();
   });
 
   it('strips a stale suggestion when the forecast is unresolvable beside a fresh fit', () => {

@@ -1,5 +1,6 @@
 import type {
   EnergySignatureFit,
+  EnergySignatureSuggestion,
   WeatherAdvisorPrediction,
   WeatherAdvisorReadoutPayload,
   WeatherAdvisorReadoutState,
@@ -23,7 +24,8 @@ import {
 import { suggestDailyBudgetKwh } from '../../packages/shared-domain/src/energySignature/suggestDailyBudget';
 import { getDateKeyInTimeZone, shiftDateKey } from '../utils/dateUtils';
 import {
-  resolveForecastDeviceMeanTempC,
+  resolveComingDayFromState,
+  resolveMetDay,
   resolvePersistenceMeanTempC,
 } from './energySignatureService';
 
@@ -54,7 +56,7 @@ export type WeatherAdvisorReadoutInput = {
   forecastDeviceName?: string;
   /** Live outdoor temperature (on-demand read); undefined when unreadable. */
   currentOutdoorTempC?: number;
-  /** Live forecast-device read (a +24h device reports tomorrow's temp); undefined when unreadable. */
+  /** @deprecated The +24h forecast device was replaced by MET; ignored. Removed in PR 2. */
   currentForecastTempC?: number;
   /** Active daily budget (kWh); undefined when the daily budget is disabled. */
   currentDailyBudgetKwh?: number;
@@ -96,7 +98,10 @@ export function buildWeatherAdvisorReadout(
   // sub-capability-only forecast device is caught at once — rather than waiting
   // for a sample cycle (outdoor) or a full tomorrow profile (forecast).
   const outdoorReading = resolveDeviceReading(settings.outdoorDeviceId, input.currentOutdoorTempC);
-  const forecastReading = resolveDeviceReading(settings.forecastDeviceId, input.currentForecastTempC);
+  // The forecast no longer comes from a device (MET Norway replaced the +24h
+  // device), so there is no device reading to validate. PR 2 removes this field
+  // and the picker entirely; for now it always reports `no_device`.
+  const forecastReading: WeatherDeviceReading = { status: 'no_device' };
   const dailyBudgetKwh = input.currentDailyBudgetKwh ?? null;
 
   // No configured device → an intentionally empty setup payload. Leftover
@@ -106,7 +111,7 @@ export function buildWeatherAdvisorReadout(
   if (!settings.outdoorDeviceId) {
     return buildNeedsDevicePayload({
       settingsEcho,
-      forecastStatus: resolvePayloadForecastStatus(state, settings.forecastDeviceId, tomorrowKey),
+      forecastStatus: resolvePayloadForecastStatus(state, tomorrowKey),
       outdoorReading,
       forecastReading,
       dailyBudgetKwh,
@@ -123,9 +128,7 @@ export function buildWeatherAdvisorReadout(
   const usableYearRecords = yearRecords.filter((record) => isUsableSignatureDay(record));
 
   const tomorrow = fit ? resolveTomorrowOutlook(input, fit, todayKey) : null;
-  const forecastStatus = resolveOutlookForecastStatus(
-    tomorrow, state, settings.forecastDeviceId, tomorrowKey,
-  );
+  const forecastStatus = resolveOutlookForecastStatus(tomorrow, state, tomorrowKey);
 
   return {
     state: readoutState,
@@ -222,12 +225,26 @@ function resolveReadoutState(
   return backfillRunning ? 'backfilling' : 'learning';
 }
 
+/** A resolved coming-day mean + the suggestion result + display/verdict context. */
+type ResolvedOutlook = {
+  meanTempC: number;
+  source: EnergySignatureSuggestion['forecastSource'];
+  tempMinC?: number;
+  tempMaxC?: number;
+  coldEveningSuspected?: boolean;
+  result: Pick<
+    EnergySignatureSuggestion,
+    'predictedKwh' | 'predictedLowKwh' | 'predictedHighKwh' | 'suggestedBudgetKwh'
+    | 'beyondObservedCold' | 'beyondObservedWarm' | 'budgetMayBeLimiting'
+  >;
+};
+
 /**
  * The card is forward-looking, so the outlook always targets TOMORROW. The
- * persisted `latestSuggestion` targets the just-started day for most of the
- * day (the midnight recompute's actionable day), so it is reused only when it
- * already points at tomorrow; otherwise the cheap suggestion layer is
- * recomputed here from the persisted fit + tomorrow's forecast/persistence.
+ * persisted `latestSuggestion` already targets tomorrow (MET gives a complete
+ * forward profile, so the midnight recompute targets tomorrow directly), so it
+ * is reused as-is when it points there; otherwise the cheap suggestion layer is
+ * recomputed here from the persisted fit + tomorrow's MET cache / persistence.
  */
 function resolveTomorrowOutlook(
   input: WeatherAdvisorReadoutInput,
@@ -240,19 +257,17 @@ function resolveTomorrowOutlook(
 } | null {
   const tomorrowKey = shiftDateKey(todayKey, 1);
   const stored = input.state.latestSuggestion;
-  const resolved = stored && stored.targetDateKey === tomorrowKey
+  // `!= null` (loose) for the persisted-optional fields: a JSON round-trip can
+  // store `null`, and a strict `!== undefined` would let that null leak into a
+  // `number` (tempMin/Max) or `boolean` (coldEvening) field.
+  const resolved: ResolvedOutlook | null = stored && stored.targetDateKey === tomorrowKey
     ? {
       meanTempC: stored.forecastMeanTempC,
       source: stored.forecastSource,
-      result: {
-        predictedKwh: stored.predictedKwh,
-        predictedLowKwh: stored.predictedLowKwh,
-        predictedHighKwh: stored.predictedHighKwh,
-        suggestedBudgetKwh: stored.suggestedBudgetKwh,
-        beyondObservedCold: stored.beyondObservedCold,
-        beyondObservedWarm: stored.beyondObservedWarm,
-        budgetMayBeLimiting: stored.budgetMayBeLimiting,
-      },
+      ...(stored.tempMinC != null ? { tempMinC: stored.tempMinC } : {}),
+      ...(stored.tempMaxC != null ? { tempMaxC: stored.tempMaxC } : {}),
+      ...(stored.coldEveningSuspected != null ? { coldEveningSuspected: stored.coldEveningSuspected } : {}),
+      result: stored,
     }
     : recomputeTomorrowSuggestion(input, fit, tomorrowKey);
   if (!resolved) return null;
@@ -263,6 +278,8 @@ function resolveTomorrowOutlook(
   return {
     prediction: {
       tempMeanC: resolved.meanTempC,
+      ...(resolved.tempMinC !== undefined ? { tempMinC: resolved.tempMinC } : {}),
+      ...(resolved.tempMaxC !== undefined ? { tempMaxC: resolved.tempMaxC } : {}),
       kwh: resolved.result.predictedKwh,
       lowKwh: resolved.result.predictedLowKwh,
       highKwh: resolved.result.predictedHighKwh,
@@ -278,8 +295,10 @@ function resolveTomorrowOutlook(
       // hard cap clamps the [20,360] floor below the cap on a low-demand day.
       cappedByCapacity: resolved.result.predictedKwh >= capacityCapKwh - 1e-6,
       budgetMayBeLimiting: resolved.result.budgetMayBeLimiting,
+      ...(resolved.coldEveningSuspected !== undefined
+        ? { coldEveningSuspected: resolved.coldEveningSuspected } : {}),
     },
-    forecastStatus: resolveForecastStatusFromSource(resolved.source, input.settings.forecastDeviceId),
+    forecastStatus: resolveForecastStatusFromSource(resolved.source),
   };
 }
 
@@ -287,18 +306,16 @@ function recomputeTomorrowSuggestion(
   input: WeatherAdvisorReadoutInput,
   fit: EnergySignatureFit,
   tomorrowKey: string,
-): {
-  meanTempC: number;
-  source: 'forecast_device' | 'recent_days';
-  result: ReturnType<typeof suggestDailyBudgetKwh>;
-} | null {
-  const forecastMean = resolveForecastDeviceMeanTempC(input.state, tomorrowKey);
-  const persistenceMean = forecastMean === undefined ? resolvePersistenceMeanTempC(input.state) : undefined;
-  const meanTempC = forecastMean ?? persistenceMean;
+): ResolvedOutlook | null {
+  const met = resolveComingDayFromState(input.state, fit, tomorrowKey);
+  const meanTempC = met?.meanTempC ?? resolvePersistenceMeanTempC(input.state);
   if (meanTempC === undefined) return null;
   return {
     meanTempC,
-    source: forecastMean !== undefined ? 'forecast_device' : 'recent_days',
+    source: met ? met.source : 'recent_days',
+    ...(met?.tempMinC !== undefined ? { tempMinC: met.tempMinC } : {}),
+    ...(met?.tempMaxC !== undefined ? { tempMaxC: met.tempMaxC } : {}),
+    ...(met?.coldEveningSuspected !== undefined ? { coldEveningSuspected: met.coldEveningSuspected } : {}),
     result: suggestDailyBudgetKwh({
       fit,
       forecastMeanTempC: meanTempC,
@@ -308,50 +325,39 @@ function recomputeTomorrowSuggestion(
 }
 
 /**
- * Forecast status for an existing PREDICTION. Reflects the CURRENT wiring, not
- * stale provenance: with no forecast device configured now it is `recent_no_device`
- * even when a forecast-derived stored suggestion is still being reused (e.g. the
- * device was just removed) — otherwise the device footer would claim a device
- * that is gone. With a device configured, a forecast-derived prediction is
- * `forecast`; a recent-days one means the configured device is silent.
- */
-/**
- * Payload forecastStatus: when a prediction exists it follows ITS provenance (a
- * reused forecast-derived suggestion stays "forecast" even if the live profile
- * lapsed); without one (learning/backfilling), fall back to live availability so
- * the always-rendered device footer stays honest.
+ * Payload forecastStatus: a prediction follows ITS provenance; without one
+ * (learning / backfilling / needs_device), fall back to whether the MET cache
+ * covers tomorrow so the always-rendered footer stays honest before the first fit.
  */
 function resolveOutlookForecastStatus(
   outlook: { forecastStatus: WeatherForecastStatus } | null,
   state: WeatherHistoryState,
-  forecastDeviceId: string | undefined,
   tomorrowKey: string,
 ): WeatherForecastStatus {
-  return outlook ? outlook.forecastStatus : resolvePayloadForecastStatus(state, forecastDeviceId, tomorrowKey);
-}
-
-function resolveForecastStatusFromSource(
-  source: 'forecast_device' | 'recent_days',
-  forecastDeviceId: string | undefined,
-): WeatherForecastStatus {
-  if (!forecastDeviceId) return 'recent_no_device';
-  return source === 'forecast_device' ? 'forecast' : 'recent_device_unreadable';
+  return outlook ? outlook.forecastStatus : resolvePayloadForecastStatus(state, tomorrowKey);
 }
 
 /**
- * Forecast provenance when there is NO prediction (learning / backfilling /
- * needs_device) — resolved from live forecast availability so the always-rendered
- * device footer stays honest before the first fit exists.
+ * There is no forecast device anymore: `met_api` → `forecast`, anything else
+ * (persistence fallback) → `recent_no_device`. The retired `forecast_device`
+ * source maps to `forecast` for BC with any lingering stored suggestion.
+ */
+function resolveForecastStatusFromSource(
+  source: EnergySignatureSuggestion['forecastSource'],
+): WeatherForecastStatus {
+  return source === 'met_api' || source === 'forecast_device' ? 'forecast' : 'recent_no_device';
+}
+
+/**
+ * Forecast provenance when there is NO prediction — resolved from whether the
+ * MET cache covers tomorrow so the always-rendered footer stays honest before
+ * the first fit exists.
  */
 function resolvePayloadForecastStatus(
   state: WeatherHistoryState,
-  forecastDeviceId: string | undefined,
   tomorrowKey: string,
 ): WeatherForecastStatus {
-  if (!forecastDeviceId) return 'recent_no_device';
-  return resolveForecastDeviceMeanTempC(state, tomorrowKey) !== undefined
-    ? 'forecast'
-    : 'recent_device_unreadable';
+  return resolveMetDay(state.metForecast, tomorrowKey) !== undefined ? 'forecast' : 'recent_no_device';
 }
 
 /** 1 °C bins over usable days — the count-weighted symbols the chart renders. */

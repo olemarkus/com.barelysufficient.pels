@@ -4,12 +4,49 @@ import { WeatherCollector } from '../../lib/weather/weatherCollector';
 import { buildWeatherAdvisorSettings } from '../../lib/weather/weatherSettings';
 import { resolveDailyKwh } from '../../lib/weather/dailyKwhResolve';
 import { computeEnergySignatureUpdate } from '../../lib/weather/energySignatureService';
+import { fetchMetForecast, type MetForecastFetchResult } from '../../lib/weather/metForecast';
 import { getRawDevice, getRawFromHomeyApi } from '../../lib/device/transport/managerHomeyApi';
 import { getDateKeyInTimeZone } from '../../lib/utils/dateUtils';
 import { getLogger } from '../../lib/logging/logger';
 import { createWeatherHistoryStore } from '../weatherHistoryStateAdapter';
 
 const LONG_GAP_THRESHOLD_MS = 60 * 60 * 1000;
+/** Fallback contact for the MET User-Agent when the manifest has no homepage/support. */
+const FALLBACK_CONTACT_URL = 'https://github.com/olemarkus/com.barelysufficient.pels';
+
+/**
+ * Builds the MET-mandatory User-Agent `"<app-id>/<version> (<contact>)"` from the
+ * Homey app manifest (app.json), falling back to a stable id/version and the
+ * GitHub repo when a field is missing. MET returns 403 without a real UA.
+ */
+export function buildMetUserAgent(manifest: unknown): string {
+  const blob = (typeof manifest === 'object' && manifest !== null ? manifest : {}) as Record<string, unknown>;
+  const id = typeof blob.id === 'string' && blob.id.length > 0 ? blob.id : 'com.barelysufficient.pels';
+  const version = typeof blob.version === 'string' && blob.version.length > 0 ? blob.version : '0.0.0';
+  const homepage = typeof blob.homepage === 'string' && blob.homepage.length > 0 ? blob.homepage : undefined;
+  const support = typeof blob.support === 'string' && blob.support.length > 0 ? blob.support : undefined;
+  return `${id}/${version} (${homepage ?? support ?? FALLBACK_CONTACT_URL})`;
+}
+
+/**
+ * Reads the hub's coordinates from the Homey geolocation manager, defensively:
+ * the manager (or its getters) may be absent if the SDK has not initialized it
+ * or the app lacks the permission edge-case, so probe method existence before
+ * calling — a raw `getLatitude()` on an undefined manager would throw a
+ * TypeError out of the collector's refresh loop. Returns undefined when the
+ * manager/methods are missing or the coords aren't finite; the caller then maps
+ * that to `no_location` (skipping the fetch) instead of crashing.
+ */
+export function readHubCoordinates(geolocation: unknown): { latitude: number; longitude: number } | undefined {
+  if (typeof geolocation !== 'object' || geolocation === null) return undefined;
+  const manager = geolocation as { getLatitude?: unknown; getLongitude?: unknown };
+  if (typeof manager.getLatitude !== 'function' || typeof manager.getLongitude !== 'function') return undefined;
+  const latitude = (manager.getLatitude as () => unknown)();
+  const longitude = (manager.getLongitude as () => unknown)();
+  if (typeof latitude !== 'number' || !Number.isFinite(latitude)) return undefined;
+  if (typeof longitude !== 'number' || !Number.isFinite(longitude)) return undefined;
+  return { latitude, longitude };
+}
 
 /**
  * Did a deadline-bound smart task miss on this local day BECAUSE the daily
@@ -94,6 +131,25 @@ export function createWeatherCollector(
     getSettings: () => buildWeatherAdvisorSettings({ settings: ctx.homey.settings }),
     getNowMs: () => ctx.getNow().getTime(),
     getTimeZone: () => ctx.getTimeZone(),
+    // Direct MET Norway fetch for the forecast (replaces the +24h device).
+    // Coordinates come from the Homey SDK geolocation manager — guarded so a
+    // missing manager/getter or non-finite coords maps to `no_location` (skip the
+    // fetch) rather than throwing out of the refresh loop. The User-Agent is built
+    // from the app manifest; the collector hands back its cached Last-Modified as
+    // ifModifiedSince so MET can answer 304.
+    fetchForecast: ({ ifModifiedSince }): Promise<MetForecastFetchResult> => {
+      const coords = readHubCoordinates(ctx.homey.geolocation);
+      if (!coords) return Promise.resolve({ outcome: 'no_location' });
+      return fetchMetForecast({
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+        timeZone: ctx.getTimeZone(),
+        nowMs: ctx.getNow().getTime(),
+        userAgent: buildMetUserAgent(ctx.homey.manifest),
+        ...(ifModifiedSince !== undefined ? { ifModifiedSince } : {}),
+        errorLog: (...args) => logger.warn({ event: 'weather_met_forecast_fetch', detail: args }),
+      });
+    },
     recomputeDerived: (state) => computeEnergySignatureUpdate(state, {
       getNowMs: () => ctx.getNow().getTime(),
       getTimeZone: () => ctx.getTimeZone(),
