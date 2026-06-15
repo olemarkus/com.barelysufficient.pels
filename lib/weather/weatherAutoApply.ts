@@ -18,6 +18,8 @@ type AutoApplyDeps = {
   getNowMs: () => number;
   /** Returns true when applied, false when the daily budget feature is off (leave-off semantics). */
   applySuggestedDailyBudget?: (suggestedKwh: number) => boolean;
+  /** Notifies setup that the auto-apply landed so it can fire the Flow trigger; see WeatherCollectorDeps. */
+  onDailyBudgetAutoApplied?: (info: { budgetKwh: number; forecastMeanTempC: number }) => void;
   logger: PinoLogger;
 };
 
@@ -41,6 +43,10 @@ export function performBudgetAutoApply(state: WeatherHistoryState, deps: AutoApp
     event: 'weather_advisor_budget_auto_applied',
     dateKey: suggestion.targetDateKey,
     toKwh: suggestion.suggestedBudgetKwh,
+  });
+  deps.onDailyBudgetAutoApplied?.({
+    budgetKwh: suggestion.suggestedBudgetKwh,
+    forecastMeanTempC: suggestion.forecastMeanTempC,
   });
   return {
     ...state,

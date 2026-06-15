@@ -38,6 +38,7 @@ Whole-home power data is what unlocks every other planner feature — the meter 
 | **Smart task ended** | Fires once when a task run concludes. The **Outcome** tag is `succeeded`, `missed`, or `abandoned`. Filter on the tag downstream — for example, send a notification only when `Outcome = missed`. |
 | **Smart task time is running low** | Fires once when the time left before a task's ready-by drops to or below a chosen number of hours, re-arming if the ready-by is rescheduled. Exposes an `hours_remaining` tag. Use it to act a fixed lead-time before a deadline, such as 2 hours left. |
 | **PELS price list was updated** | Fires when today's or tomorrow's adjusted prices change in a way that matters (new day-ahead prices arrived, grid tariffs re-fetched, local midnight rollover). Exposes a `prices_json` token with the full hourly array. See [Price Tags in Flow & HomeyScript](/price-tags). |
+| **Daily budget adjusted for the weather forecast** | Fires once a day when PELS sets your daily budget from the weather forecast (requires the weather insight's automatic apply to be turned on). Exposes a `budget_kwh` token (the new daily budget) and a `forecast_temperature` token (the forecast °C that set it). Manual and Flow budget changes do not fire it. |
 
 Use **Capacity guard: manual action needed** for urgent notifications, not for normal daily pacing.
 

@@ -8,7 +8,7 @@ const logger = { info: vi.fn() } as unknown as PinoLogger;
 const baseState = (over: Partial<WeatherHistoryState> = {}): WeatherHistoryState => ({
   records: [],
   latestSuggestion: {
-    targetDateKey: '2026-01-11', suggestedBudgetKwh: 48,
+    targetDateKey: '2026-01-11', suggestedBudgetKwh: 48, forecastMeanTempC: -4,
   } as WeatherHistoryState['latestSuggestion'],
   ...over,
 });
@@ -17,6 +17,7 @@ const deps = (over: Partial<Parameters<typeof performBudgetAutoApply>[1]> = {}) 
   getSettings: () => ({ enabled: true, autoApplyDailyBudget: true }),
   getNowMs: () => NOW_MS,
   applySuggestedDailyBudget: vi.fn(() => true),
+  onDailyBudgetAutoApplied: vi.fn(),
   logger,
   ...over,
 });
@@ -27,6 +28,24 @@ describe('performBudgetAutoApply', () => {
     const next = performBudgetAutoApply(baseState(), d);
     expect(d.applySuggestedDailyBudget).toHaveBeenCalledWith(48);
     expect(next.lastAutoApply).toEqual({ dateKey: '2026-01-11', kwh: 48, appliedAtMs: NOW_MS });
+  });
+
+  it('notifies the Flow-trigger seam with the applied budget and the forecast temp that drove it', () => {
+    const d = deps();
+    performBudgetAutoApply(baseState(), d);
+    expect(d.onDailyBudgetAutoApplied).toHaveBeenCalledWith({ budgetKwh: 48, forecastMeanTempC: -4 });
+  });
+
+  it('does NOT notify the Flow-trigger seam when nothing was applied', () => {
+    const idempotent = deps();
+    const prior = { dateKey: '2026-01-11', kwh: 40, appliedAtMs: 1 };
+    performBudgetAutoApply(baseState({ lastAutoApply: prior }), idempotent);
+
+    const budgetOff = deps({ applySuggestedDailyBudget: vi.fn(() => false) });
+    performBudgetAutoApply(baseState(), budgetOff);
+
+    expect(idempotent.onDailyBudgetAutoApplied).not.toHaveBeenCalled();
+    expect(budgetOff.onDailyBudgetAutoApplied).not.toHaveBeenCalled();
   });
 
   it('is idempotent — skips a target day already applied (boot catch-up safety)', () => {
