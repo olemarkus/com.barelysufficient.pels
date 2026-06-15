@@ -403,5 +403,8 @@
   },
   "2.11.5": {
     "en": "Added workaround for Homey sometimes failing to load widgets. Various other stability and UI tweaks."
+  },
+  "2.12.0": {
+    "en": "PELS can now set tomorrow's budget based on learnt daily consumption and weather forecast."
   }
 }
