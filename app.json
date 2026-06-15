@@ -199,6 +199,36 @@
         "id": "capacity_shortfall"
       },
       {
+        "id": "daily_budget_weather_adjusted",
+        "title": {
+          "en": "Daily budget adjusted for the weather forecast"
+        },
+        "titleFormatted": {
+          "en": "Daily budget adjusted for the weather forecast"
+        },
+        "hint": {
+          "en": "Fires once a day when PELS sets your daily budget from the weather forecast. Requires the weather insight's automatic apply to be turned on. Manual and Flow budget changes do not fire it."
+        },
+        "tokens": [
+          {
+            "name": "budget_kwh",
+            "type": "number",
+            "title": {
+              "en": "New daily budget (kWh)"
+            },
+            "example": 72
+          },
+          {
+            "name": "forecast_temperature",
+            "type": "number",
+            "title": {
+              "en": "Forecast temperature (°C)"
+            },
+            "example": -5
+          }
+        ]
+      },
+      {
         "title": {
           "en": "Smart task ended"
         },

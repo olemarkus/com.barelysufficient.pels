@@ -7,6 +7,7 @@ import { computeEnergySignatureUpdate } from '../../lib/weather/energySignatureS
 import { fetchMetForecast, type MetForecastFetchResult } from '../../lib/weather/metForecast';
 import { getRawDevice, getRawFromHomeyApi } from '../../lib/device/transport/managerHomeyApi';
 import { getDateKeyInTimeZone } from '../../lib/utils/dateUtils';
+import { normalizeError } from '../../lib/utils/errorUtils';
 import { getLogger } from '../../lib/logging/logger';
 import { createWeatherHistoryStore } from '../weatherHistoryStateAdapter';
 
@@ -82,6 +83,26 @@ export function deadlineMissedToBudgetOnDay(
     if ((causalPlan?.dailyBudgetExhaustedBucketCount ?? 0) <= 0) return false;
     return getDateKeyInTimeZone(new Date(entry.deadlineAtMs), timeZone) === dateKey;
   });
+}
+
+/** Flow trigger fired when the weather insight auto-applies a daily budget. */
+const DAILY_BUDGET_WEATHER_ADJUSTED_TRIGGER_ID = 'daily_budget_weather_adjusted';
+
+/**
+ * Shapes the auto-apply numbers into the trigger's token bag: budget to 0.1 kWh
+ * (the setting's step), forecast temperature to whole °C (how the UI shows it).
+ * Returns `null` when either value is non-finite — a number token cannot be null
+ * and would coerce to a real-looking `0`, so we skip firing rather than report a
+ * misleading 0 kWh / 0 °C.
+ */
+export function buildWeatherBudgetAdjustedTokens(
+  info: { budgetKwh: number; forecastMeanTempC: number },
+): { budget_kwh: number; forecast_temperature: number } | null {
+  if (!Number.isFinite(info.budgetKwh) || !Number.isFinite(info.forecastMeanTempC)) return null;
+  return {
+    budget_kwh: Math.round(info.budgetKwh * 10) / 10,
+    forecast_temperature: Math.round(info.forecastMeanTempC),
+  };
 }
 
 /**
@@ -163,6 +184,17 @@ export function createWeatherCollector(
     // goes through this flat callback. Resolved lazily — dailyBudgetService is
     // constructed after the collector but before any midnight rollup fires.
     applySuggestedDailyBudget: (kwh) => ctx.dailyBudgetService?.applyAutoSuggestedBudget(kwh) ?? false,
+    // Fire-and-forget the Flow trigger once the auto-apply lands. lib/weather
+    // hands back the values that drove the change; we shape the tokens and fire.
+    onDailyBudgetAutoApplied: (info) => {
+      const tokens = buildWeatherBudgetAdjustedTokens(info);
+      if (!tokens) return;
+      const card = ctx.homey.flow?.getTriggerCard?.(DAILY_BUDGET_WEATHER_ADJUSTED_TRIGGER_ID);
+      if (!card) return;
+      card.trigger(tokens).catch((error: unknown) => {
+        logger.warn({ event: 'daily_budget_weather_adjusted_fire_failed', err: normalizeError(error) });
+      });
+    },
     logger,
   });
 }

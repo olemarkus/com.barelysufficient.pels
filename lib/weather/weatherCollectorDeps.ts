@@ -56,5 +56,12 @@ export type WeatherCollectorDeps = {
    * imports `lib/dailyBudget` (the `no-weather-to-peer` boundary).
    */
   applySuggestedDailyBudget?: (suggestedKwh: number) => boolean;
+  /**
+   * Fired once per target day, right after a successful weather auto-apply, so
+   * the setup layer can fire the `daily_budget_weather_adjusted` Flow trigger.
+   * A flat callback (not the SDK) keeps `lib/weather` off `flowCards`/the SDK:
+   * the domain emits the values that drove the change; setup shapes the tokens.
+   */
+  onDailyBudgetAutoApplied?: (info: { budgetKwh: number; forecastMeanTempC: number }) => void;
   logger: PinoLogger;
 };

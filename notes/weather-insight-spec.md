@@ -327,9 +327,28 @@ empty slot.
 9. "Compare with similar homes."
 
 (Auto-applying the suggested budget was originally a non-goal; it now ships as an
-explicit, off-by-default opt-in — see § 1 and the Settings sub-page.)
+explicit, off-by-default opt-in — see § 1 and the Settings sub-page. The auto-apply
+also emits a Flow trigger — `daily_budget_weather_adjusted`, "Daily budget adjusted
+for the weather forecast", with `budget_kwh` + `forecast_temperature` tokens — so a
+Flow author can build their own notification. That does not breach item 8: PELS still
+pushes no weather notification of its own, and the trigger only emits the event, per
+the trigger-emits-the-thing-that-changed flow-card rule.)
 
 Documented future follow-ups: deep-link from a budget-overshoot postmortem
 (persona 5), money on the Tomorrow card once same-evening price completeness
 exists (persona 4). The UI enable switch (master switch on the sub-page) has
 shipped; remaining pre-promotion polish lives in `TODO.md`.
+
+Evening "tomorrow's budget" preview Flow trigger (follow-up to the apply-time
+`daily_budget_weather_adjusted` trigger): the auto-apply only writes the ACTIVE
+(today's) budget at the midnight rollup, but tomorrow's suggestion already exists
+the evening before (the Tomorrow card shows it). A separate, INFORMATIONAL trigger
+fired in the evening — carrying tomorrow's *suggested* budget + forecast temp —
+would let a Flow author notify "PELS will set tomorrow's budget to ~X kWh (≈Y °C)"
+without touching today's live budget. Personas: the tinkerer (3) wires it, the
+skeptic/optimiser (4) plans the next day around it, the notification-driven
+visitor (6) consumes it. Design tension to resolve first: WHEN to fire / how to
+debounce — tomorrow's MET forecast refreshes ≤hourly, so firing on every
+refinement would spam; candidate is fire-once when the full tomorrow profile first
+lands (or only on a *material* change to the suggested kWh). Out of scope for the
+apply-time trigger; needs its own spike.
