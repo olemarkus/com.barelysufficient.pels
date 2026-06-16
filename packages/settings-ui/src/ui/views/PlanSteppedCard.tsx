@@ -18,7 +18,7 @@ import {
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 import { resolveDisplayPlanDeviceSnapshot } from '../planLiveData.ts';
 import { cardActivationProps } from '../cardActivation.ts';
-import { DeadlineChip } from './PlanDeviceCards.tsx';
+import { BudgetExemptChip, DeadlineChip } from './PlanDeviceCards.tsx';
 import type { PlanDeviceSnapshot, PlanSnapshot } from '../planTypes.ts';
 import type { SteppedLoadProfile } from '../../../../contracts/src/types.ts';
 
@@ -150,6 +150,7 @@ export const PlanSteppedCard = ({
           {displayDev.temperatureBoostActive !== true && displayDev.evBoostActive === true && (
             <span class="plan-chip plan-chip--ok" data-tooltip="EV boost is active">Boost</span>
           )}
+          <BudgetExemptChip dev={displayDev} />
           <DeadlineChip deviceId={dev.id} deviceName={dev.name} nowMs={nowMs} />
         </div>
       </div>

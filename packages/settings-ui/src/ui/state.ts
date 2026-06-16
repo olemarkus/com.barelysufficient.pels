@@ -70,6 +70,11 @@ export type UiState = {
   deferredObjectiveSettings: DeferredObjectiveSettingsV1;
   deferredObjectiveActivePlans: OverviewDeferredObjectiveActivePlans | null;
   priceOptimizationSettings: Record<string, PriceOptimizationConfig>;
+  // Device IDs the overview "Let it run now" rescue chip may offer the action on,
+  // resolved server-side (budget-caused + task-free + a known target). The card
+  // view gates the chip on membership so a shown chip's create call cannot be
+  // rejected as not-rescuable. Empty until the first rescuable-devices fetch.
+  starvationRescuableDeviceIds: Set<string>;
 };
 
 export const defaultPriceOptimizationConfig: PriceOptimizationConfig = {
@@ -103,6 +108,7 @@ export const state: UiState = {
   deferredObjectiveSettings: createEmptyDeferredObjectiveSettings(),
   deferredObjectiveActivePlans: null,
   priceOptimizationSettings: {},
+  starvationRescuableDeviceIds: new Set<string>(),
 };
 
 export const resolveManagedState = (deviceId: string): boolean => {

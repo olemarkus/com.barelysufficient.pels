@@ -6,6 +6,8 @@ import {
   PLAN_STATE_HOURLY_BUDGET_STATUS,
   resolvePlanStateKind,
 } from './planStateLabels';
+import { formatStarvationReason } from './planStarvation';
+import type { SettingsUiPlanDeviceStarvation } from '../../contracts/src/settingsUiApi';
 import type { DeviceOverviewSnapshot } from './deviceOverview';
 
 type TemperatureDevice = DeviceOverviewSnapshot & {
@@ -13,6 +15,7 @@ type TemperatureDevice = DeviceOverviewSnapshot & {
   currentTemperature?: number;
   currentTarget?: unknown;
   plannedTarget?: number;
+  starvation?: SettingsUiPlanDeviceStarvation;
 };
 
 const isWaitingReason = (code: string): boolean => (
@@ -96,6 +99,19 @@ const resolveLimitedReasonLabel = (reasonCode: string): string | null => {
   return null;
 };
 
+// The producer-resolved budget starvation cause wins over any reason.code
+// framing: a budget-held device reads "Limited to stay within today's budget",
+// never the insufficient-headroom waiting copy or the hard-cap fallback —
+// mirrors `resolveReasonText` on the generic card. Capacity-cause starvation
+// returns null here so the reason.code paths produce the correct "Waiting for
+// available power" copy (the hard cap is physical — feedback_hard_cap_is_physical).
+// Extracted so the parent resolver stays under the complexity caps.
+const resolveBudgetStarvationReason = (device: TemperatureDevice): string | null => (
+  device.starvation?.isStarved && device.starvation.cause === 'budget'
+    ? formatStarvationReason(device.starvation)
+    : null
+);
+
 export const resolveTemperatureReasonLine = (device: TemperatureDevice): string | null => {
   const { currentTemperature, plannedTarget } = device;
   if (typeof currentTemperature !== 'number' || typeof plannedTarget !== 'number') return null;
@@ -106,6 +122,8 @@ export const resolveTemperatureReasonLine = (device: TemperatureDevice): string 
   if (kind !== 'held' && kind !== 'idle' && kind !== 'resuming') return null;
   if (kind === 'idle') return null;
   if (kind === 'resuming') return 'Resuming';
+  const budgetReason = resolveBudgetStarvationReason(device);
+  if (budgetReason !== null) return budgetReason;
   if (isWaitingReason(reasonCode)) return resolveWaitingText(device.reason);
   const limitedLabel = resolveLimitedReasonLabel(reasonCode);
   if (limitedLabel !== null) return limitedLabel;

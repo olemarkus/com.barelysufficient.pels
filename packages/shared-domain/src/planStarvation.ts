@@ -245,6 +245,68 @@ export const starvationRowOffersRescue = (
   cause: SettingsUiPlanDeviceStarvation['cause'],
 ): boolean => cause === 'budget';
 
+// ─── Overview held-card "Let it run now" rescue affordance ───────────────────
+//
+// Copy + gate for the contextual action surfaced on an Overview device card
+// when the device is held back BY THE DAILY BUDGET (the releasable case). The
+// affordance triggers the SAME bounded budget-exempt rescue as the
+// starvation_rescue widget's "Let it run now": one tap arms a confirm, and the
+// confirm creates a fresh deferred objective carrying `exemptFromBudget` (≈ now
+// +3h, until the device reaches its normal target). It is NOT a deep-link into
+// the standing per-device exempt toggle — a budget exemption is always BOUNDED
+// to a smart task, never a permanent lever (the standing toggle stays available
+// on the device-detail page as a separate feature). The chip reuses the widget's
+// canonical rescue verb so the two surfaces speak one language. Housed beside
+// the rest of the starvation/held-back vocabulary so the copy stays single-homed
+// and a future runtime log breadcrumb could reuse the same word
+// (feedback_ui_text_shared_with_logs).
+//
+// ONLY budget-caused, task-free, rescuable held cards get the affordance:
+// capacity is physical (the hard cap is not a tuning knob —
+// feedback_hard_cap_is_physical), a device with its own smart task is brought
+// back by that task, and a device with no known target has nothing to aim the
+// rescue at. Already-exempt devices show the standing "Always on" badge instead.
+export const BUDGET_EXEMPT_CARD_ACTION_COPY = {
+  // Chip label — the canonical rescue verb, identical to the held-back widget's
+  // `rescueButton` ("Let it run now"). Device-scoped: it releases THIS device
+  // from today's budget so it runs now, never a hard-cap change. The leading
+  // bolt glyph distinguishes it from the adjacent "Budget limited" status badge.
+  label: STARVATION_RESCUE_WIDGET_COPY.rescueButton,
+  // Tooltip / accessible description — the same honest money-action consequence
+  // the widget's confirm sheet names: the rescue lets the device use power
+  // beyond today's budget until it reaches its normal target. Never suggests
+  // raising the hard cap (it is physical).
+  tooltip: STARVATION_RESCUE_WIDGET_COPY.rescueConsequence,
+  // Armed-confirm label (the two-step settings-UI confirm pattern): the first
+  // tap arms this, the second commits the rescue. Reuses the widget's confirm
+  // verb so the action word is shared across surfaces.
+  confirmLabel: STARVATION_RESCUE_WIDGET_COPY.rescueConfirmButton,
+} as const;
+
+// Whether an Overview device card is eligible (by the data the card itself
+// carries) to surface the rescue chip: budget-caused, held, and not already
+// exempt. This is the CAUSE-and-state gate; the full rescuable gate (task-free +
+// a known target) is enforced server-side and reflected in the rescuable-device
+// list the card view intersects against, so a shown chip's create call cannot be
+// rejected as not-rescuable. The `cause` gate mirrors `starvationRowOffersRescue`
+// (budget-only); the already-exempt suppression mirrors the card's "Always on"
+// badge so the two never render together.
+export const shouldOfferBudgetExemptCardAction = (
+  starvation: SettingsUiPlanDeviceStarvation | null | undefined,
+  budgetExempt: boolean | undefined,
+): boolean => (
+  Boolean(starvation?.isStarved)
+  && starvation?.cause === 'budget'
+  && budgetExempt !== true
+);
+
+// Accessible label for the rescue action, naming the device so a screen-reader
+// user hears which card the action belongs to (mirrors DeadlineChip's aria
+// pattern). Phrased as the rescue ("Let … run now"), matching the chip verb.
+export const budgetExemptCardActionAriaLabel = (deviceName: string): string => (
+  deviceName !== '' ? `Let ${deviceName} run now` : 'Let this device run now'
+);
+
 // Whether a starved row can actually be rescued NOW: a budget-caused row AND a
 // known intended normal target to aim the rescue at. This mirrors the
 // server-side guardrail in the widget API (`resolveRescuableDevice`, which

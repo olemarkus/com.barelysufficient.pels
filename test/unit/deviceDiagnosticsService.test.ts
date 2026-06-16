@@ -524,6 +524,38 @@ describe('DeviceDiagnosticsService', () => {
     expect(service.getStarvedRescueEntries()).toHaveLength(0);
   });
 
+  it('excludes clear-window devices from the rescue entries while keeping the latched overview badge', () => {
+    const { service } = createDeps();
+    const start = Date.now();
+    const budget = buildObservation({ countingCause: 'daily_budget', intendedNormalTargetC: 65 });
+
+    // Starve under the daily budget, then PELS commands the device back to its
+    // full target — entering the 10-minute CLEAR-hysteresis window.
+    for (const offset of [0, 9, 16]) {
+      service.observePlanSample({ nowTs: start + offset * 60 * 1000, observations: [budget] });
+    }
+    expect(service.getStarvedRescueEntries()).toHaveLength(1);
+
+    // `commandedTargetC === intendedNormalTargetC` (and no turn-off shed) means
+    // PELS no longer holds the device below target → `clearQualified`.
+    service.observePlanSample({
+      nowTs: start + 17 * 60 * 1000,
+      observations: [buildObservation({
+        countingCause: null,
+        suppressionState: 'none',
+        commandedTargetC: 65,
+        intendedNormalTargetC: 65,
+        appliedStateSummary: '65.0C',
+      })],
+    });
+
+    // The episode is still latched (badge stays attributed through the window)…
+    expect(getStarvationState(service)?.isStarved).toBe(true);
+    expect(service.getOverviewStarvation('heater-1')).toMatchObject({ isStarved: true, cause: 'budget' });
+    // …but the rescue list drops it: PELS is no longer holding it below target.
+    expect(service.getStarvedRescueEntries()).toHaveLength(0);
+  });
+
   it('maps shortfall starvation to the compact capacity cause', () => {
     const { service } = createDeps();
     const start = Date.now();

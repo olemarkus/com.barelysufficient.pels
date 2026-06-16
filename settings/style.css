@@ -1556,6 +1556,63 @@ md-filled-button.is-busy {
   transform: translateY(1px);
 }
 
+/* Leading-icon assist-chip variant. A tappable link chip may carry a leading
+   glyph (e.g. the Overview "Let it run now" rescue action) so it reads as an
+   action and stays visually distinct from look-alike status badges sitting in
+   the same chip row. The chip is already `inline-flex` / `align-items: center`,
+   so this only adds the icon↔label gap. The icon inherits the chip's
+   `currentColor` and sizes off the chip font (`1em`, per the inline-SVG icon
+   convention in `views/icons.tsx`), so no separate colour or pixel size is
+   introduced. */
+.plan-chip--leading-icon {
+  gap: var(--spacing-1);
+}
+
+/* Armed-confirm state for the "Let it run now" rescue chip (the two-step
+   settings-UI confirm pattern: first tap arms, second commits). The rescue is a
+   money action — it lets the device spend beyond today's budget — so the armed
+   chip carries the warning tone, mirroring the Budget tab's two-step confirm
+   button precedent. The state-pair tokens carry the per-theme contrast the bare
+   `--warning` amber lacks. Colour-only emphasis, no layout shift. */
+.plan-chip.confirming {
+  background: var(--color-state-warning-bg);
+  border-color: var(--color-state-warning-border);
+  color: var(--color-state-warning-text);
+}
+
+/* "Let it run now" rescue chip + its armed-state consequence caption. The
+   wrapper dissolves (`display: contents`) so the chip stays a normal flex item
+   in the header's right-aligned chip block, while the caption can fold onto its
+   own full-width row beneath it (`flex: 1 0 100%`). The caption is only present
+   while armed — it carries the touch-reachable money-action consequence + the
+   bounded "By {time}" horizon BEFORE the confirming tap, since a hover tooltip
+   is unreachable on Homey's WebView. */
+.plan-card__rescue {
+  display: contents;
+}
+
+.plan-card__rescue-caption {
+  flex: 1 0 100%;
+  margin: var(--spacing-1) 0 0;
+  text-align: left;
+  font-size: var(--font-size-sm);
+  line-height: var(--font-line-height-cozy);
+  /* The warning tone ties the caption to the armed amber "Confirm" chip — this
+     is a money action, and the soft-warning text token carries the per-theme
+     contrast the bare amber lacks. */
+  color: var(--color-state-warning-text);
+  position: relative;
+  z-index: 1;
+}
+
+.plan-chip__icon {
+  flex-shrink: 0;
+  /* Slightly larger than the xs chip label so the glyph stays legible at the
+     480/320 px webview without dominating the word — an M3 assist-chip's
+     leading icon runs marginally above its label cap-height. */
+  font-size: var(--font-size-sm);
+}
+
 /* Selected/pressed link chip (e.g. the past-tasks device-filter row, PR-29).
    `aria-pressed="true"` is the single source of selection truth — the markup
    no longer layers a `--info` tone, which collided with the informational
@@ -3068,6 +3125,13 @@ md-filled-button.is-busy {
   align-items: center;
   gap: var(--spacing-2);
   justify-content: space-between;
+  /* Allow the chip block to drop onto a second line when the title + chips
+     can't share one row at narrow widths. A long unbreakable device title
+     (e.g. "Varmtvannsbereder") plus a wide action chip ("Exempt from budget")
+     otherwise pushes the chips past the card's right edge at 320px — the chips
+     can't fold within their own block because each `.plan-chip` is
+     `white-space: nowrap`. Wrapping the header keeps the row honest. */
+  flex-wrap: wrap;
 }
 
 .plan-card__title {
@@ -3102,6 +3166,15 @@ md-filled-button.is-busy {
   justify-content: flex-end;
   gap: 6px;
   flex-wrap: wrap;
+  /* Let the chip block shrink within the header flex row so its own
+     `flex-wrap` can fold chips onto a second line at narrow widths. Without a
+     zero min-width, a long unbreakable device title (`flex: 1 1 auto`
+     title-wrap) starves the chip block of space and a wide action chip (e.g.
+     "Exempt from budget") spills past the card's right edge at 320px. The
+     block still won't grow (`flex-grow: 0`), so a calm card keeps its chips
+     hugged to the right. */
+  min-width: 0;
+  flex: 0 1 auto;
 }
 
 .plan-state-chip-wrap {

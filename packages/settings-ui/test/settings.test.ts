@@ -2075,3 +2075,91 @@ describe('Plan sorting', () => {
     expect(calls[calls.length - 1]?.[1]).toEqual({ Home: { 'dev-1': 45 } });
   });
 });
+
+describe('Overview "Let it run now" rescue-gate freshness on tab activation', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    buildDom();
+    window.localStorage.clear();
+  });
+
+  // A budget-held card: cause='budget' + isStarved offers the chip by card data;
+  // the server-resolved rescuable gate then decides whether it actually renders.
+  const budgetHeldPlan = {
+    meta: { totalKw: 2.0, softLimitKw: 9.0, headroomKw: 7.0 },
+    devices: [
+      {
+        id: 'heater-1',
+        name: 'Termostat Synne',
+        priority: 1,
+        currentState: 'on',
+        plannedState: 'shed',
+        budgetExempt: false,
+        starvation: { isStarved: true, accumulatedMs: 5 * 60_000, cause: 'budget', startedAtMs: 0 },
+        reason: buildComparablePlanReason('shed due to capacity'),
+      },
+    ],
+  };
+
+  const rescueChipButton = (): HTMLButtonElement | null => (
+    document.querySelector('#plan-cards .plan-card__rescue button')
+  );
+
+  it('refreshes the rescuable gate when Overview opens, so a device held back off-tab shows the chip', async () => {
+    // Boot with the device budget-held but NOT yet in the rescuable set (it
+    // became rescuable only later, while the user was on another tab).
+    const homey = installHomeyMock({
+      settings: buildSettingsHomeyState({}),
+      uiState: {
+        devices: [],
+        plan: budgetHeldPlan,
+        starvationRescuableDeviceIds: [],
+      },
+    });
+
+    await loadSettingsScript();
+    // Overview is the boot tab; with the empty gate the chip stays hidden.
+    await flushPromises();
+    expect(rescueChipButton()).toBeNull();
+
+    // Leave Overview, then the gate flips off-tab (the device entered the
+    // server-resolved rescuable set). The `plan_updated` gate refresh is
+    // Overview-only, so nothing updates `state.starvationRescuableDeviceIds`
+    // while the user is away.
+    (document.querySelector('[data-tab="settings"]') as HTMLButtonElement | null)?.click();
+    await flushPromises();
+    homey.__uiState.starvationRescuableDeviceIds = ['heater-1'];
+
+    // Re-opening Overview must refresh the gate alongside the plan, so the now-
+    // rescuable device's chip appears (a fresh plan against a stale gate would
+    // miss it).
+    (document.querySelector('[data-tab="overview"]') as HTMLButtonElement | null)?.click();
+    await waitFor(() => rescueChipButton() !== null);
+    expect(rescueChipButton()?.textContent).toBe('Let it run now');
+  });
+
+  it('clears a stale chip when the device leaves the rescuable set while off-tab', async () => {
+    // Boot rescuable → the chip renders on the boot Overview.
+    const homey = installHomeyMock({
+      settings: buildSettingsHomeyState({}),
+      uiState: {
+        devices: [],
+        plan: budgetHeldPlan,
+        starvationRescuableDeviceIds: ['heater-1'],
+      },
+    });
+
+    await loadSettingsScript();
+    await waitFor(() => rescueChipButton() !== null);
+
+    // Off-tab, the device leaves the rescuable set (it recovered / gained a
+    // task). Re-opening Overview must refresh the gate so the stale chip clears.
+    (document.querySelector('[data-tab="settings"]') as HTMLButtonElement | null)?.click();
+    await flushPromises();
+    homey.__uiState.starvationRescuableDeviceIds = [];
+
+    (document.querySelector('[data-tab="overview"]') as HTMLButtonElement | null)?.click();
+    await waitFor(() => rescueChipButton() === null);
+    expect(rescueChipButton()).toBeNull();
+  });
+});

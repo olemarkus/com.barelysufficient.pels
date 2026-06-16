@@ -102,6 +102,22 @@ var STARVATION_RESCUE_WIDGET_COPY = {
   deadlinePassed: "That timing just passed. Try again."
 };
 var STARVATION_RESCUE_DANGER_THRESHOLD_MS = 30 * 6e4;
+var BUDGET_EXEMPT_CARD_ACTION_COPY = {
+  // Chip label — the canonical rescue verb, identical to the held-back widget's
+  // `rescueButton` ("Let it run now"). Device-scoped: it releases THIS device
+  // from today's budget so it runs now, never a hard-cap change. The leading
+  // bolt glyph distinguishes it from the adjacent "Budget limited" status badge.
+  label: STARVATION_RESCUE_WIDGET_COPY.rescueButton,
+  // Tooltip / accessible description — the same honest money-action consequence
+  // the widget's confirm sheet names: the rescue lets the device use power
+  // beyond today's budget until it reaches its normal target. Never suggests
+  // raising the hard cap (it is physical).
+  tooltip: STARVATION_RESCUE_WIDGET_COPY.rescueConsequence,
+  // Armed-confirm label (the two-step settings-UI confirm pattern): the first
+  // tap arms this, the second commits the rescue. Reuses the widget's confirm
+  // verb so the action word is shared across surfaces.
+  confirmLabel: STARVATION_RESCUE_WIDGET_COPY.rescueConfirmButton
+};
 var ONE_HOUR_MS = 60 * 60 * 1e3;
 
 // widgets/starvation_rescue/src/starvationRescueWidgetPayload.ts

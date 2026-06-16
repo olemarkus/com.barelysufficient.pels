@@ -1,5 +1,11 @@
+export type OpenDeviceDetailDetail = {
+  deviceId: string;
+};
+
 export const dispatchOpenDeviceDetail = (deviceId: string): void => {
-  document.dispatchEvent(new CustomEvent('open-device-detail', { detail: { deviceId } }));
+  document.dispatchEvent(
+    new CustomEvent<OpenDeviceDetailDetail>('open-device-detail', { detail: { deviceId } }),
+  );
 };
 
 export const cardActivationProps = (deviceId: string) => ({

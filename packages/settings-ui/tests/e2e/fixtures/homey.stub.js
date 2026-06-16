@@ -1291,6 +1291,10 @@
     'GET /ui_deferred_objective_settings': () => (
       settings.deferred_objectives ?? { version: 1, objectivesByDeviceId: {} }
     ),
+    // The overview boots a rescuable-device fetch (the "Let it run now" chip gate).
+    // Serve an empty set so the call resolves cleanly — no chip in the default e2e
+    // state, and no unhandled-key error noise from the dispatch chokepoint.
+    'GET /ui_starvation_rescue_devices': () => ({ rescuableDeviceIds: [] }),
     'GET /ui_weather_advisor_readout': () => buildWeatherReadoutPayload(),
     'POST /settings_ui_log': () => ({ ok: true }),
     'POST /log_homey_device': () => ({ ok: true }),

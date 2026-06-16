@@ -1,9 +1,10 @@
 /**
  * @vitest-environment node
  */
-import { describe, expect, it } from 'vitest';
 import {
+  BUDGET_EXEMPT_CARD_ACTION_COPY,
   STARVATION_RESCUE_WIDGET_COPY,
+  budgetExemptCardActionAriaLabel,
   formatStarvationOverflowCue,
   formatStarvationRowChip,
   resolveStarvationRescueRejectCopy,
@@ -11,10 +12,12 @@ import {
   resolveStarvationRowSubtext,
   resolveStarvationRowTone,
   scheduledHoursIncludeCurrentHour,
+  shouldOfferBudgetExemptCardAction,
   starvationDurationMinutes,
   starvationRowIsRescuable,
   starvationRowOffersRescue,
 } from '../../packages/shared-domain/src/planStarvation';
+import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUiApi';
 
 describe('starvation-rescue shared helpers', () => {
   describe('starvationDurationMinutes', () => {
@@ -153,6 +156,72 @@ describe('starvation-rescue shared helpers', () => {
 
     it('ignores a past hour (a stale earlier bucket never counts as now)', () => {
       expect(scheduledHoursIncludeCurrentHour([{ startsAtMs: nowMs - HOUR }], nowMs)).toBe(false);
+    });
+  });
+
+  describe('budget-exempt overview-card affordance', () => {
+    const starvation = (
+      overrides: Partial<SettingsUiPlanDeviceStarvation> = {},
+    ): SettingsUiPlanDeviceStarvation => ({
+      isStarved: true,
+      accumulatedMs: 5 * 60_000,
+      cause: 'budget',
+      startedAtMs: 0,
+      ...overrides,
+    });
+
+    describe('shouldOfferBudgetExemptCardAction', () => {
+      it('offers the affordance for a budget-held device that is not already exempt', () => {
+        expect(shouldOfferBudgetExemptCardAction(starvation(), false)).toBe(true);
+        expect(shouldOfferBudgetExemptCardAction(starvation(), undefined)).toBe(true);
+      });
+
+      it('never offers it for a capacity-held device (the hard cap is physical)', () => {
+        expect(shouldOfferBudgetExemptCardAction(starvation({ cause: 'capacity' }), false)).toBe(false);
+      });
+
+      it('suppresses it when the device is already budget exempt (the "Always on" badge covers that)', () => {
+        expect(shouldOfferBudgetExemptCardAction(starvation(), true)).toBe(false);
+      });
+
+      it('does not offer it when the device is not held back at all', () => {
+        expect(shouldOfferBudgetExemptCardAction(starvation({ isStarved: false }), false)).toBe(false);
+        expect(shouldOfferBudgetExemptCardAction(null, false)).toBe(false);
+        expect(shouldOfferBudgetExemptCardAction(undefined, false)).toBe(false);
+      });
+
+      it('shares the budget-only cause gate with starvationRowOffersRescue', () => {
+        // Both surfaces release the SAME budget-caused devices; a capacity row
+        // never offers either lever.
+        expect(shouldOfferBudgetExemptCardAction(starvation(), false))
+          .toBe(starvationRowOffersRescue('budget'));
+        expect(shouldOfferBudgetExemptCardAction(starvation({ cause: 'capacity' }), false))
+          .toBe(starvationRowOffersRescue('capacity'));
+      });
+    });
+
+    describe('copy + aria', () => {
+      it('reuses the held-back widget rescue verb so the two surfaces speak one language', () => {
+        // The bounded rescue, not the standing exempt toggle — the chip uses the
+        // SAME "Let it run now" verb the held-back widget's rescue button uses.
+        expect(BUDGET_EXEMPT_CARD_ACTION_COPY.label).toBe('Let it run now');
+        expect(BUDGET_EXEMPT_CARD_ACTION_COPY.label).toBe(STARVATION_RESCUE_WIDGET_COPY.rescueButton);
+        // The armed-confirm verb reuses the widget's confirm word.
+        expect(BUDGET_EXEMPT_CARD_ACTION_COPY.confirmLabel).toBe(STARVATION_RESCUE_WIDGET_COPY.rescueConfirmButton);
+      });
+
+      it('names the money-action consequence without suggesting the hard cap be raised', () => {
+        // The tooltip is the canonical rescue consequence shared with the widget.
+        expect(BUDGET_EXEMPT_CARD_ACTION_COPY.tooltip).toBe(STARVATION_RESCUE_WIDGET_COPY.rescueConsequence);
+        expect(BUDGET_EXEMPT_CARD_ACTION_COPY.tooltip).toContain('budget');
+        expect(BUDGET_EXEMPT_CARD_ACTION_COPY.tooltip.toLowerCase()).not.toContain('hard cap');
+        expect(BUDGET_EXEMPT_CARD_ACTION_COPY.tooltip.toLowerCase()).not.toContain('raise');
+      });
+
+      it('names the device in the aria-label (rescue phrasing), with a generic fallback', () => {
+        expect(budgetExemptCardActionAriaLabel('Termostat Synne')).toBe('Let Termostat Synne run now');
+        expect(budgetExemptCardActionAriaLabel('')).toBe('Let this device run now');
+      });
     });
   });
 });

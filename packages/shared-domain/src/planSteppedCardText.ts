@@ -1,7 +1,9 @@
 import type { EvChargingState, SteppedLoadProfile } from '../../contracts/src/types';
+import type { SettingsUiPlanDeviceStarvation } from '../../contracts/src/settingsUiApi';
 import type { DeviceOverviewSnapshot } from './deviceOverview';
 import { PLAN_REASON_CODES } from './planReasonSemanticsCore';
 import type { DeviceReason } from './planReasonSemanticsCore';
+import { formatStarvationReason } from './planStarvation';
 import {
   PLAN_STATE_DAILY_BUDGET_STATUS,
   PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
@@ -53,6 +55,7 @@ type SteppedLoadCardState = {
 
 type SteppedCardDevice = DeviceOverviewSnapshot & {
   steppedLoad?: SteppedLoadCardState;
+  starvation?: SettingsUiPlanDeviceStarvation;
 };
 
 const resolveCurrentStepId = (device: SteppedCardDevice): string | null => (
@@ -271,15 +274,43 @@ const resolveOffStatusLine = (device: SteppedDevice): string | null => {
   return null;
 };
 
+// The producer-resolved budget starvation cause wins over every reason.code
+// framing in the status line: a budget-held water heater reads "Limited to stay
+// within today's budget", never the insufficient-headroom waiting copy or the
+// hard-cap fallback — mirrors `resolveReasonText` on the generic card.
+// Capacity-cause starvation returns null so the reason.code paths produce the
+// correct "Waiting for available power" copy (the hard cap is physical —
+// feedback_hard_cap_is_physical). Extracted so the parent resolver stays under
+// the cognitive-complexity cap.
+const resolveBudgetStarvationStatus = (device: SteppedDevice): string | null => (
+  device.starvation?.isStarved && device.starvation.cause === 'budget'
+    ? formatStarvationReason(device.starvation)
+    : null
+);
+
 export const resolveSteppedStatusLine = (
   device: SteppedDevice,
   profile: SteppedLoadProfile,
   nowMs: number,
 ): string | null => {
+  // Active-movement states win first: a budget-held device commanded back up
+  // (transit) or settling after a command is RECOVERING, but diagnostics keeps
+  // `starvation.isStarved` latched through the 10-min clear window — so the
+  // budget override must NOT preempt "Turning on/increasing" / settling copy
+  // during recovery. It still wins over the static reason.code fallbacks below.
+  // A suppressed at-target headroom-settling latch is also a recovery state: it must
+  // read neutral ("Maintaining level"), not the latched budget hold, so skip the
+  // override there too (the budget line still wins over the static fallbacks below).
+  let skipBudgetOverride = false;
   if (isSteppedTransit(device)) return resolveTransitStatusLine(device, profile);
   if (isSettlingReason(device.reason.code)) {
     const suppressed = isHeadroomCheckSettlingReason(device.reason.code) && isAtTargetStep(device);
     if (!suppressed) return resolveSettlingStatusLine(device.reason, nowMs);
+    skipBudgetOverride = true;
+  }
+  if (!skipBudgetOverride) {
+    const budgetStatus = resolveBudgetStarvationStatus(device);
+    if (budgetStatus !== null) return budgetStatus;
   }
   if (device.reason.code === PLAN_REASON_CODES.shedInvariant) {
     const r = device.reason;
