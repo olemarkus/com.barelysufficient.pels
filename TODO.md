@@ -284,7 +284,7 @@ CI failure, so future field-move slices can't silently grow the debt.*
 - [ ] **Weather collector: transient miss of `weather_advisor_settings` silently halts sampling
       until the next restart or settings write.** `WeatherCollector.start()` registers no timers
       when the config blob reads absent/malformed, and nothing re-checks later (the hourly
-      re-read in `sampleOnce` never runs because no timer exists). Persona: the tinkerer running
+      re-read in `sampleOnce` never runs because no timer exists). Persona: the Orchestrator running
       the hidden weather feature; hypothesis: one transient SDK read miss at boot costs a full
       day of temperature samples (unreconstructable for the live path) and the gap is only
       visible as a `partialTemp` day much later. Candidate fix: distinguish "blob present and
@@ -316,7 +316,7 @@ CI failure, so future field-move slices can't silently grow the debt.*
       the single-flight guard (same generation as the boot refresh already in flight) and may roll up
       on a not-yet-refreshed cache → the day falls to the `recent_days` persistence fallback. Bounded
       (one day), self-healing (the next refresh fixes it), and inert while auto-apply is off. Persona:
-      a tinkerer restarting the app near midnight; hypothesis: rare, and it self-heals at the next
+      an Orchestrator restarting the app near midnight; hypothesis: rare, and it self-heals at the next
       refresh, so the cost is at most one day on a recent-days budget instead of MET. Candidate fix:
       have an in-flight `refreshMetForecast` return/await the shared in-flight promise rather than
       skip, so the rollup observes the freshly-refreshed cache. Source: Codex on the MET PR, 2026-06-14.
@@ -350,8 +350,8 @@ CI failure, so future field-move slices can't silently grow the debt.*
       identical (no chip), and the gradations in between aren't actionable to a user. Meanwhile the
       Tomorrow card shows the same confident number + verdict shape whether the fit is solid or thin,
       and auto-apply pushes the suggestion every day regardless of that day's trust. Personas: the
-      skeptic (a confident kW number on thin data destroys trust the moment they sanity-check it) and
-      the recovering user (a low-trust auto-apply can over-tighten the budget). Design direction
+      Optimiser (a confident kW number on thin data destroys trust the moment they sanity-check it) and
+      the Failing-scenario (recovering) visitor (a low-trust auto-apply can over-tighten the budget). Design direction
       (from the 2026-06-13 chip/correlation think): (a) drop the Estimating/Refining gradation; keep
       only a single reason-bearing "Rough estimate" chip when the fit is genuinely weak; (b) on the
       scatter, render the prediction as two dashed clamped rails (a band), coverage-flared at the
@@ -372,7 +372,7 @@ CI failure, so future field-move slices can't silently grow the debt.*
       new device or a widened stitch
       actually changed the record set, but a temperature `TEMP_BACKFILL_VERSION` bump that produces
       byte-identical records still forces a full REST sweep of every managed device's meter Insights.
-      Persona: the tinkerer on an upgrade boot; hypothesis: bounded (the backfills are idempotent and
+      Persona: the Orchestrator on an upgrade boot; hypothesis: bounded (the backfills are idempotent and
       validated, so the result is identical) but it's a redundant multi-device Insights sweep on every
       temp-version bump, and on a flaky-network boot each re-run is another chance to transiently
       fail. Candidate fix: cascade the marker strip only when `upsertBackfillRecords` reports the
@@ -385,7 +385,7 @@ CI failure, so future field-move slices can't silently grow the debt.*
       (Preview changes → Apply) is a sticky CTA further down, and the explanatory text lives in a
       hover-only `title` that touch users never see. Surface a one-line inline hint near the armed
       button (or render the armed moment as a Keep editing / Discard pair). Persona: returning
-      tweaker (persona 4); hypothesis: a user who tapped Done absent-mindedly reads only "discard",
+      Optimiser; hypothesis: a user who tapped Done absent-mindedly reads only "discard",
       assumes their edits are already lost, and re-enters them from scratch. Source: pels-ux-fit on
       the budget-settings-access PR, 2026-06-10.
 
@@ -394,7 +394,7 @@ CI failure, so future field-move slices can't silently grow the debt.*
       budget row instead lands on the Budget tab where the way back is a trailing "Done" whose
       destination is only in a hover `title`. When `adjustReturnTarget === 'settings'`, render the
       shared `.settings-back-button` affordance above the Budget header (it can coexist with Done).
-      Persona: settings-first owner (persona 1); hypothesis: without the visible back affordance the
+      Persona: Set-and-forget owner; hypothesis: without the visible back affordance the
       tab-indicator jump (Settings → Budget) reads as "I got teleported", not "this is a sub-page of
       what I was doing". Source: pels-ux-fit, 2026-06-10.
 
@@ -402,7 +402,7 @@ CI failure, so future field-move slices can't silently grow the debt.*
       the tuning-selects retirement, Advanced ("Diagnostics, cleanup, logs, experiments") hosts a
       lone display preference — a scent mismatch on both ends. Put the toggle on the chart it
       controls (overflow or inline on the Budget chart card) and let Advanced be purely diagnostics.
-      Persona: chart-curious optimiser (persona 4); hypothesis: nobody looking at the budget chart
+      Persona: Optimiser; hypothesis: nobody looking at the budget chart
       thinks to open Advanced to change how the chart renders. Source: pels-ux-fit + pels-m3-critic,
       2026-06-10.
 
@@ -412,7 +412,7 @@ CI failure, so future field-move slices can't silently grow the debt.*
       newly-applied active). Pre-existing behavior (old single-click Done had the same race; the
       two-step confirm only adds friction), so not fixed in the access PR. Fix: disable the toggle
       while `busy`, or honor the `draftRevision` guard in `applyBudgetAdjust`'s success path the way
-      preview already does. Persona: impatient tweaker; hypothesis: rapid preview→apply→Done
+      preview already does. Persona: impatient Optimiser; hypothesis: rapid preview→apply→Done
       sequences on slow Homey bridges leave the Adjust view claiming unsaved changes that were in
       fact applied. Source: adversarial correctness lens, 2026-06-10.
 
@@ -443,7 +443,7 @@ CI failure, so future field-move slices can't silently grow the debt.*
 - [ ] **Give the smart-task live schedule chart's encodings an on-chart decode path.** The
       schedule card's three encodings (price-tone colour, opacity = scheduled, changed-hour dot)
       have no legend; disclosure is scrub-readout-only. Hypothesis: a 4-word caption legend
-      closes the first-read gap; persona: the first-time/skeptic visitor who hasn't discovered
+      closes the first-read gap; persona: the Onboarding / Optimiser visitor who hasn't discovered
       scrubbing. Flagged for owner walk in the PR body. Files:
       `packages/settings-ui/src/ui/views/DeadlinePlan.tsx` (schedule card caption). Source:
       #1679 reviews, 2026-06-11.
@@ -452,7 +452,7 @@ CI failure, so future field-move slices can't silently grow the debt.*
       renders "Why: Didn't reach the target before the deadline." — circular (it restates the
       Missed outcome it annotates). Compose an actual cause the way the revised/refined miss
       paths already do (e.g. from delivered-vs-needed or the final plan snapshot). Persona:
-      recovering-from-mistake owner (#5). Files: `packages/shared-domain/src/deferredPlanHistory.ts`
+      Failing scenario (recovering). Files: `packages/shared-domain/src/deferredPlanHistory.ts`
       (`formatPlanHistoryMissedReason` final fallback, ~line 402), rendered via
       `packages/settings-ui/src/ui/deadlinePlanHistoryDetailHero.ts`. Source: pels-ux-fit on
       PR #1681, 2026-06-11.
@@ -573,7 +573,7 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
 cosmetic chores — do them in passing or drop them; don't park them here.*
 
 - [ ] **Weather: a location-aware hint when MET can't be reached for lack of geolocation.**
-      *Persona:* curious tinkerer (`notes/personas.md`) who turned the feature on but never set the
+      *Persona:* Orchestrator (`notes/personas.md`) who turned the feature on but never set the
       hub's location, so the forecast silently runs on recent days.
       *Hypothesis:* the no-geolocation case is currently folded into the generic `recent_days` copy
       (`Forecast unavailable — showing what recent weather suggests.`), which doesn't name the one
@@ -585,10 +585,10 @@ cosmetic chores — do them in passing or drop them; don't park them here.*
       MET UI-cleanup scope decision, 2026-06-14.
 
 - [ ] **Persist the device Activity-log so it survives a restart.**
-      *Persona:* curious tinkerer (`notes/personas.md`) — wants to debug their own setup over time.
+      *Persona:* Orchestrator (`notes/personas.md`) — wants to debug their own setup over time.
       *Hypothesis:* the Activity-log recorder (`lib/plan/deviceOverviewLog.ts`, served via
       `/ui_device_log`) is session-only, so the log is empty after a restart; a persisted ring buffer
-      would let the tinkerer review what happened overnight.
+      would let the Orchestrator review what happened overnight.
       *Why it's needed:* the one surface that reconstructs per-device history is wiped on every boot.
       Needs the Homey-SDK transient-read grace pattern before persisting. A later cross-device "recent
       activity" feed on Overview is a possible follow-on if the per-device view proves used.
@@ -604,7 +604,7 @@ cosmetic chores — do them in passing or drop them; don't park them here.*
       the regenerated widget bundles. Source: pels-copy-and-terminology on PR #1535, 2026-06-06.
 
 - [ ] **Create-screen `Extra permissions` opt-out is additive-only.**
-      *Persona:* skeptical optimiser / curious tinkerer (`notes/personas.md` #4/#3) who expects
+      *Persona:* Optimiser / Orchestrator (`notes/personas.md`) who expects
       the compose screen to reflect the standing permissions already granted for the device.
       *Hypothesis:* because `createDeferredObjective` preserves existing smart-task permissions,
       a user can read the compose screen as authoritative while it only shows additive opt-ins.
@@ -626,12 +626,12 @@ cosmetic chores — do them in passing or drop them; don't park them here.*
       `getDeviceStandingRescue` (gate on `hasDeferredObjectiveForDevice`), the standing-and-toggles merge
       into BOTH preview and create candidates, and the route-agnostic `Already allowed:` copy.
 
-*Smart-task failure-investigation & live UX — the underserved panic / skeptical
-visitors (`notes/personas.md` #4–6).*
+*Smart-task failure-investigation & live UX — the underserved Optimiser and the
+Failing-scenario (acute/recovering) visitors (`notes/personas.md`).*
 
 - [ ] **Deadline-hero "Need X kWh" shows the original requirement, not live remaining.**
-      *Persona:* curious tinkerer (watches the plan progress and expects the number to tick
-      down) and skeptical optimiser (cross-checks remaining vs delivered).
+      *Persona:* Optimiser (watches the plan progress and expects the number to tick
+      down, and cross-checks remaining vs delivered).
       *Hypothesis:* the active-plan recorder no longer persists `energyNeededKWh`/`plannedKWh`
       decrements within an unchanged schedule (to avoid Homey settings churn), so the hero
       reads the original starting energy until the schedule/status/source/objective changes —
@@ -644,7 +644,7 @@ visitors (`notes/personas.md` #4–6).*
       `packages/settings-ui/src/ui/deadlinePlan.ts`, `.../deadlinePlanResolvers.ts`.
 - [ ] **Breadcrumb a recent miss on the active-task hero.** Show "Last [kind] task missed:
       {short reason}" for ~24 h after a finalized miss.
-      *Persona:* notification-driven panic visitor (#6) — reopens the app worried about a
+      *Persona:* Failing scenario (acute) — reopens the app worried about a
       repeating deadline pattern, and lands on the *active* task, not history.
       *Hypothesis:* a 24 h breadcrumb sourced from the same postmortem resolver as history
       detail gives the prior-failure context on the surface they actually land on, without the
@@ -654,7 +654,7 @@ visitors (`notes/personas.md` #4–6).*
       Files: `packages/settings-ui/src/ui/deadlinePlanHero.ts`, `.../deadlinePlan.ts`
       (recent-miss query against `DeferredObjectivePlanHistoryEntry`).
 - [ ] **Fold the revision-history panel into "What PELS has learned" at 320 px.**
-      *Persona:* curious tinkerer (#3) — expands cards to debug their own setup.
+      *Persona:* Orchestrator — expands cards to debug their own setup.
       *Hypothesis:* at 320 px the standalone collapsed panel costs ~80–96 px of chrome before
       any content; nesting "…and what changed since the plan was first written" inside the
       existing `PlanInputsCard` recovers that space and groups related debug info.
@@ -662,10 +662,10 @@ visitors (`notes/personas.md` #4–6).*
       revision content below the fold, weakening the one surface this persona uses to
       reconstruct what changed. Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`,
       `PlanInputsCard`. Source: pels-m3-critic/ux-fit on PR #1197 (batches 1–3 shipped).
-*EV charging — the skeptical optimiser / EV commuter (`notes/personas.md` #4).*
+*EV charging — the Optimiser / EV commuter (`notes/personas.md`).*
 
 - [ ] **EV deadline polish: manual override actions + imminent-deadline urgency rule.**
-      *Persona:* notification-driven panic visitor (#6) with EV-commuter overlap (#4) —
+      *Persona:* Failing scenario (acute) with EV-commuter / Optimiser overlap —
       realizes mid-evening the car won't be ready by morning and needs to intervene.
       *Hypothesis:* exposing `charge_now` / `pause_until_next_planned_slot` actions and
       force-admitting planned charging when `(deadline − now) < requiredHours + 1 h buffer`
@@ -677,11 +677,11 @@ visitors (`notes/personas.md` #4–6).*
       the trigger tokens — that token work lives in the P2 observability entry, not here.)
       Design: `notes/ev-ready-by/README.md`. Files: new flow action JSONs + registrations.
 
-*Usage & budget — the curious tinkerer and set-and-forget owner (`notes/personas.md` #1, #3).*
+*Usage & budget — the Orchestrator and Set-and-forget owner (`notes/personas.md`).*
 
 - [ ] **Per-device usage history page with step-change context.**
-      *Persona:* curious tinkerer ("what did this device cost last week?") and skeptical
-      optimiser (per-device kWh/cost, did it run in cheap hours).
+      *Persona:* Orchestrator ("what did this device cost last week?") and Optimiser
+      (per-device kWh/cost, did it run in cheap hours).
       *Hypothesis:* users debugging their own setup want measured kWh over time per device,
       and the number is uninterpretable without knowing which step/mode was active during each
       period — so the page needs step-change context to be trustworthy.
@@ -689,11 +689,11 @@ visitors (`notes/personas.md` #4–6).*
       drill-down PELS doesn't render today. Build the page and the 30-day hourly-retention
       per-device step-change tracker that feeds it together — the tracker is not shippable on
       its own. Files: future device-level step-change tracker; per-device usage-history route + chart.
-*Planner accuracy for multi-device homes — the skeptical optimiser (`notes/personas.md` #4).
+*Planner accuracy for multi-device homes — the Optimiser (`notes/personas.md`).
 Both are data-gated: act only when prod evidence shows the gap, else leave alone.*
 
 - [ ] **Promote committed-task floor reservations beyond priority 1.**
-      *Persona:* skeptical optimiser with several managed devices — a deadline-committed device
+      *Persona:* Optimiser with several managed devices — a deadline-committed device
       that isn't the single top-priority one.
       *Hypothesis:* floor promotion is gated on `priority === 1 && both rescue permissions ===
       'always'` because the reserved-headroom forecast (`hardCap − uncontrolled`) assumes every
@@ -702,7 +702,7 @@ Both are data-gated: act only when prod evidence shows the gap, else leave alone
       would let the gate broaden to "highest priority present on this Homey", so a default-priority
       committed device's rescue stops being budget-exemption-only and can claim a guaranteed floor.
       *Why it's needed:* today a non-top committed device can still `cannot_meet` while its rescue
-      grant sits inert; the optimiser with a mixed-priority home is the one who hits it. *Validate
+      grant sits inert; the Optimiser with a mixed-priority home is the one who hits it. *Validate
       first:* pick up only if post-Slice-2 prod logs show a long-tail `cannot_meet` rate on
       non-top-priority tasks (user-confirmed the design is safe — it only sheds strictly
       lower-priority devices than the rescued one; the success flash stays honest meanwhile).
@@ -713,24 +713,24 @@ Both are data-gated: act only when prod evidence shows the gap, else leave alone
 persona but no current support-cost pressure; reframed to the P3 bar.*
 
 - [ ] **Miss-streak rollup on Overview.**
-      *Persona:* recovering-from-mistake owner (#5) — reaches Overview from a notification, not via
+      *Persona:* Failing scenario (recovering) — reaches Overview from a notification, not via
       Smart-tasks.
       *Hypothesis:* `formatMissStreakAggregateLine` already renders on the Smart-tasks list but never
-      reaches persona-5 on Overview; a per-device miss chip/rail on Overview answers "is this the same
+      reaches the Failing-scenario (recovering) visitor on Overview; a per-device miss chip/rail on Overview answers "is this the same
       task failing again?" on the surface they actually land on.
       *Why:* the highest-intensity persona lands where the data isn't. Needs a new Overview API field
       (history isn't fetched there today). Files: `packages/contracts/src/settingsUiApi.ts`,
       `packages/settings-ui/src/ui/views/PlanOverview.tsx`.
 - [ ] **Per-device kWh + money column on Usage.**
-      *Persona:* skeptical optimiser (#4).
+      *Persona:* Optimiser.
       *Hypothesis:* Usage emits total kWh only while the smart-task hero and Budget already show kr, so
-      the optimiser can't answer "what did this device cost last week?"; a per-device kr column
+      the Optimiser can't answer "what did this device cost last week?"; a per-device kr column
       (`Σ priceValue × deviceKwh`, derivable today) closes it.
       *Why:* money visibility is exactly this persona's question; Usage is the one surface that withholds
       it. Needs a per-device kWh API field. Files: `packages/contracts/src/settingsUiApi.ts`,
       `packages/settings-ui/src/ui/usageHero.ts`, `.../usageStatsChartsEcharts.ts`.
 - [ ] **Sticky/debounced `at_risk` smart-task rescue (phase 2).**
-      *Persona:* skeptical optimiser whose plan churns around the satisfied↔at_risk boundary.
+      *Persona:* Optimiser whose plan churns around the satisfied↔at_risk boundary.
       *Hypothesis:* the contract/runtime already parse an `at_risk` rescue mode that the JSON dropdown
       deliberately doesn't expose; if exposed without hysteresis it would flap and remove its own
       trigger, so it needs sticky/debounced engage-once-at-risk / exit-only-after-solidly-not semantics
@@ -748,7 +748,7 @@ persona but no current support-cost pressure; reframed to the P3 bar.*
       missed-shed has been tied to it yet — benchmark before optimizing. Files: `lib/plan/planBuilder.ts`,
       `lib/plan/planService.ts`, `lib/diagnostics/perfLogging.ts`.
 - [ ] **Model backup-hour reservations for committed smart-task schedules.**
-      *Persona:* skeptical optimiser with a tight deadline.
+      *Persona:* Optimiser with a tight deadline.
       *Hypothesis:* day-zero committed schedules degrade straight to `cannot_meet` with no backup-hour
       spill; modeling backup hours distinct from committed delivery hours (and reserving budget for them)
       would let a task that can't deliver in its committed hours use reserved capacity instead of failing.
@@ -756,14 +756,14 @@ persona but no current support-cost pressure; reframed to the P3 bar.*
       `lib/objectives/deferredObjectives/horizonPlanner.ts`, `.../bucketAllocation.ts`,
       `notes/deferred-load-objectives/`.
 - [ ] **Finish the starvation rollout beyond detection.**
-      *Persona:* curious tinkerer building their own automations.
+      *Persona:* Orchestrator building their own automations.
       *Hypothesis:* starvation detection + the user-initiated rescue widget shipped, but there are no
-      per-episode/duration flow triggers or insights coverage, so a tinkerer can't react to starvation
+      per-episode/duration flow triggers or insights coverage, so an Orchestrator can't react to starvation
       in their own Flows.
       *Why:* future product rollout against `notes/starvation/README.md`; the feature works without it.
       Files: `flowCards/**`, `drivers/pels_insights/**`, plan snapshot/contract wiring.
 - [ ] **Rework device detail into focused Behavior / Setup / Diagnostics sections.**
-      *Persona:* curious tinkerer configuring a device, and support reading diagnostics.
+      *Persona:* Orchestrator configuring a device, and support reading diagnostics.
       *Hypothesis:* device detail is one long mixed scroll (modes, deadline, price, limiting, stepped,
       boost, setup, control model, native wiring, SoC, diagnostics); a focused IA keeps common controls
       reachable and moves the dense read-only diagnostics surface off the primary path.
@@ -771,7 +771,7 @@ persona but no current support-cost pressure; reframed to the P3 bar.*
       the bottom of operational controls — functional but unloved. Files:
       `packages/settings-ui/src/ui/deviceDetail/**`, device-detail e2e/screenshots.
 - [ ] **Define the binary operating precondition for temperature-lowered devices.**
-      *Persona:* skeptical optimiser with a device that is both temperature- and binary-controllable.
+      *Persona:* Optimiser with a device that is both temperature- and binary-controllable.
       *Hypothesis:* `set_temperature` limiting only lowers the target; if such a device is observed
       off, the lowered target never takes effect — decide whether drift detection should turn it back
       on, then encode that as executable intent rather than special-casing drift.

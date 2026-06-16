@@ -22,19 +22,19 @@ Widgets (compose `name`): `create_smart_task` → **New smart task**; `headroom`
 
 Cohesive, honest, dark-mode-clean, and shippable — every widget has a real job
 and the names are truthful. But "refinements, not breakage" (the first pass) was
-too generous for a desirability train that named personas 4/5/6 as the target:
+too generous for a desirability train that named the Optimiser and the Failing-scenario (acute/recovering) visitors as the target:
 two of the five quietly underserve the persona they were built for, two passive
 widgets break the UI-text-matches-logs contract, and the densest widget (the
 budget chart) is the hardest to read. None block, but they're more than polish.
 
 ## Findings (reconciled, by priority)
 
-### P1 — Budget & Price serves the tinkerer, not the optimiser (persona 4) — and is the hardest tile to read
+### P1 — Budget & Price serves the Orchestrator, not its rubric primary the Optimiser — and is the hardest tile to read
 - **Persona miss** (ux-fit): the payload (`planPriceWidgetTypes.ts`) carries
   `plannedKwh`/`actualKwh`/`priceSeries` but **no cost, no projected total, no
-  kr figure, no avg price**. Persona 4's two questions ("did it pick cheap hours
+  kr figure, no avg price**. The Optimiser's two questions ("did it pick cheap hours
   / what will it cost") are answerable only by integrating a red line over green
-  bars across 24 buckets; glance personas (1/2) get no "where will I land." A
+  bars across 24 buckets; glance personas (Set-and-forget owner / Onboarding) get no "where will I land." A
   budget widget that shows *no money* is the single biggest miss in the set.
   → Add a one-line summary above the chart: projected kWh + projected **kr** +
   on-track/over tone. `Σ priceSeries[i] × plannedKwh[i]` is already in the payload
@@ -76,7 +76,7 @@ the helper + check log-parity expectations before changing.
 ### P2 — "Get power now" header vs its (healthy) empty state
 Action-promising header over a passive `No device is being held back right now`,
 in a **fixed 240 px** card that reserves a tall slab for one muted line. The empty
-copy is good (calm, persona-6-appropriate) — keep it. → State-neutral header
+copy is good (calm, Failing-scenario (acute)-appropriate) — keep it. → State-neutral header
 ("Held-back devices") with "Get power now" as the CTA only when a device IS
 starved; make the healthy state compact (Homey widgets can be height-adaptive).
 
