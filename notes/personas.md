@@ -1,299 +1,406 @@
 # PELS Personas
 
 Cross-cutting personas for every PELS surface — Overview, Budget, Usage,
-Smart tasks (list + detail), Settings/Advanced. Lifted and generalised
-from the Smart-tasks UI review (`notes/smart-task-ui/README.md`, where
-they were originally scoped to one feature).
+Smart-tasks (list + plan detail + history detail), Settings/Advanced.
 
-The list is ordered by **how well the product serves the persona
-today**, best first. The point of the ordering is the asymmetry it
-exposes, not the ranking itself.
+This model is **motivation- and disposition-first**, not engagement-state-first
+(it replaces the older "six engagement-state personas ordered by how well we
+serve them" structure — see [§ Old → new mapping](#old--new-mapping)). The
+governing rule:
 
-## Two lenses: before and after
+> **The persona's need is the spec. "What ships today" is a gap/roadmap layer,
+> never a reason to trim a need.** We adapt the product to the personas, not the
+> personas to the backlog.
 
-These six are **engagement-state** personas — they describe *how someone
-uses the running app*. Each also has a **before**: the real-world
-problem that sends a Norwegian homeowner searching long before they have
-heard of PELS, what they type into Google, where they ask for help, and
-the path by which they land on the App Store page. That acquisition lens
-— triggers, the actual search queries, the discovery funnel, and
-citations to real forum/community threads — lives in its companion note
-[`notes/persona-acquisition.md`](persona-acquisition.md). This file
-keeps the per-surface *after* rubric that `pels-ux-fit` consumes; each
-persona below carries a one-line **Arrives because…** pointer into the
-companion.
+Companion note: the **before** angle (who each persona is *before* they have
+heard of PELS — triggers, search queries, communities, arrival channel) lives in
+[`notes/persona-acquisition.md`](persona-acquisition.md). This file is the
+**after** angle — the per-surface UX rubric that `pels-ux-fit` consumes. The two
+map 1:1 by persona.
 
-Two things hold across every persona and are worth stating once:
+---
 
-- **The qualifying gate.** Every PELS user has already outgrown
-  Tibber-style smart charging plus their charger's own built-in load
-  balancing. Those tools each own one axis — price *or* the fuse, one
-  device — and the households they fully satisfy never become PELS
-  users. PELS converts the home that has hit the *seam* where those
-  tools fail: whole-home capacity **and** price **and** several devices
-  **and** a deadline, coordinated together. Read every persona's
-  acquisition story as starting *after* that gate.
-- **One household, several states.** A single home moves through these
-  personas over time, so the personas are moments, not different people.
-  Personas 1, 2 and 6 are the same household at three moments —
-  onboarding (2), steady state (1), and the exception minute a Homey
-  push drags them back (6). Persona 3 is the verify-first branch of 2
-  (the builder who pops every hood before relaxing). Persona 4 is the
-  priced cut — the same EV / heat-tank owner asking "did it pick the
-  cheap hours, and what did it cost?". Persona 5 is persona 6 cooled
-  down: same failure, calmer, planning the next run.
+## How to read this in one screen
 
-## Thesis
+PELS personas are built from three layers, in order of importance:
 
-> PELS today is shaped as a **confirmation receipt for the set-and-
-> forget user**. The personas it underserves are the users who arrive
-> distressed — pushed by a notification, scanning a failing task, or
-> staring at a budget number that doesn't match what they expected.
-> The highest-emotional-intensity visitors are the least-served. Every
-> surface should be judged against the question *"does this page earn
-> its visit for the persona most likely to land on it under stress?"*
+1. **Foundation (shared by everyone).** Every PELS user wants the same primary
+   job done — **Safety/Reliability**: never feel a breach (no tripped fuse, no
+   cold shower, no uncharged EV, no surprise capacity-tier jump). And everyone
+   needs the same evidence layer — **Trust/Verification**: proof it did what it
+   claimed, and a different rendering when it fails. These are *universal*, so
+   they don't differentiate personas — they define the product.
+   See [§ The foundation](#the-foundation-safety-trust-and-the-qualifying-gate).
 
-The framing applies per-page. The Overview hero, the Budget projection,
-the Usage breakdown, the Smart-tasks list, the history detail and
-Settings each have a different "stressed visitor" profile, and each
-should pay them off differently.
+2. **Personas (what actually varies).** Households differ on **disposition**
+   (how hands-on they want to be — Control ↔ Convenience) and on their
+   **dominant secondary job** (save money? self-consume solar?). That gives four
+   personas (one still emerging). See [§ The personas](#the-personas).
 
-## Personas
+3. **Scenarios (the moment they're in).** Every persona passes through
+   **Onboarding → Steady → Verifying → Failing**. These are *scenarios layered
+   over each persona*, not personas in their own right. The **Failing** scenario
+   carries the emotional-intensity asymmetry and the "failure renders
+   differently from success" mandate. See [§ Scenarios](#scenarios-cross-cutting).
 
-### 1. Set-and-forget owner — *served well*
+Plus three guardrails: a **Negative persona** (who we deliberately don't serve),
+**region as market-config** (re-weight the same jobs per market, never a separate
+persona set), and an **evidence tier** on every need (these are proto-personas —
+treat unvalidated needs as untrimmable *hypotheses*, not proven requirements).
 
-**Arrives because…** the nettleie bill crept up a capacity tier (the
-"tre-timers-regelen", reported as far as ~4 500 kr/year) or the main
-fuse tripped mid-evening with the EV charging while dinner cooked — and
-they want it handled *for* them, "the way Tibber does," with zero
-appetite for a project. See
-[acquisition § 1](persona-acquisition.md#1-set-and-forget-owner-the-just-make-it-work-buyer).
+**Evidence tier (read before treating any need as spec).** These personas are
+**qualitative / proto** — grounded in forum + search-trigger research (see the
+acquisition note's sourcing caveat), *not* in interviews, analytics, or churn
+data. So: a **validated** need is an untrimmable spec; a **proto** need is an
+untrimmable *hypothesis* that still gates features but is itself flagged for
+validation. Until we run primary research, treat every need below as proto unless
+marked otherwise. **Validation trigger:** real user interviews / support-ticket
+coding / churn analysis — and refresh on each new-market launch (NL/DE/SE) and
+when solar ships.
 
-Monthly visitor. Opens the app to confirm nothing is on fire, closes
-it. Wants green chips and one sentence per page.
+---
 
-| Surface | What they want |
-|---|---|
-| Overview | "OK right now" hero, no further action implied. |
-| Budget | "On track for today" + projected landing number. |
-| Usage | A glance at yesterday's total; no drill-down. |
-| Smart tasks | All-green chip column on the list. |
-| Settings | Never opens it after onboarding. |
+## The foundation: Safety, Trust, and the qualifying gate
 
-Served well today. Risk: features added for power users must not
-displace the one-glance summary this persona depends on — and the
-chart-overhaul depth (per-hour tooltips, cost narratives, postmortems)
-added for personas 3–6 is exactly the kind of density that must stay
-behind expand/detail, never on the first-glance hero.
+**The qualifying gate.** Every PELS user has already outgrown the two things most
+Norwegian homes reach for first — **price-only smart charging** and their
+**charger's own built-in load balancing**. Each owns one axis (price *or* the
+fuse, one device). The households those tools fully satisfy never become PELS
+users. PELS converts the home at the **seam** where one-axis tools fail:
+whole-home capacity **and** price **and** several devices **and** a deadline,
+coordinated together. Read every persona as starting *after* this gate.
 
-### 2. First-time user — *served well*
+**Safety/Reliability is the universal job.** It is *why the product exists*, not a
+segment: nobody installs a capacity controller to feel a breach. The **hard cap
+is physical** — a breaker/tariff boundary, not a money knob — so copy must never
+suggest raising it (recommend lowering the daily budget instead). Because every
+persona shares this job, it cannot differentiate them; it is the floor under all
+four.
 
-**Arrives because…** they either burned out hand-building a Homey Flow
-that sums device wattage and gates the charger (and gave up when the
-price window crossed midnight and the loads flapped), or they own
-Tibber + Easee balancing and learned it only protects one charger
-against the fuse, not the whole-home tier. They have decided to stop
-coding and install a dedicated app — but do **not** trust it yet. See
-[acquisition § 2](persona-acquisition.md#2-first-time-user-the-flow-burnout-graduate).
+**Trust/Verification is the universal evidence need.** A burned single-axis
+veteran believes a tool only when it shows its work — hour by hour, krone by
+krone — and renders failure *differently* from success. This need is strongest
+for the Optimiser and most acute in the Verifying and Failing scenarios, but
+every persona carries it. It is baked in, not a persona of its own.
 
-Just installed PELS, or just fired their first Flow card. Needs to
-understand what the app *is doing for them* before they trust it.
+---
 
-| Surface | What they want |
-|---|---|
-| Overview | "Watching N devices, capacity X kW" — proof of life. |
-| Budget | "Today's budget Y kWh, Z kWh spent so far" with units explained. |
-| Usage | "Yesterday: A kWh across N devices" — first data point. |
-| Smart tasks | The `Building plan…` pending hero (currently the strongest copy in PELS — `pendingHeroByReason` external-flow vs managed-prices distinction). |
-| Settings | Defaults that read as opinionated, not blank. |
+## Negative persona — deliberately out of scope
 
-Served well on Smart tasks. The Overview hero and Budget first-glance
-need similar "what is this number, and why is it good" framing for
-first contact. The finished-run receipt (`≈ 3.10 kr · 0.52 kr/kWh on
-average · 6.0 kWh delivered`) is this persona's proof-of-value moment —
-it is what converts a first-time user who has just escaped a fiddly DIY
-flow into the set-and-forget owner.
+**The single-axis-satisfied household.** A home whose whole problem is *one*
+axis: only the EV charger vs the fuse, or only price-shifting one device.
+Price-only smart charging, a charger's own built-in load balancing, or a
+smart-plug timer already satisfies them, and they never hit the coordination seam. We do **not** design for them,
+and we do not bloat the product to court them. This is the cheapest scope-control
+device we have: when a request is justified only by "but the price-only / fuse-only
+user would want it," the answer is that they are the Negative persona.
 
-### 3. Curious tinkerer — *served adequately*
+---
 
-**Arrives because…** they are the frustrated Homey Flow-builder whose
-hand-rolled capacity rule ballooned into "litt strevsomt å teste /
-vedlikeholde / endre" — the unmaintainable state machine of summed
-power, hysteresis, priority shedding and a midnight-crossing price
-window the standard cards can't hold. They want the engine handed to
-them, but will still pop every hood. See
-[acquisition § 3](persona-acquisition.md#3-curious-tinkerer-the-frustrated-flow-builder).
+## The personas
 
-Daily for the first week, weekly after. Configuring devices, hovering
-tooltips, expanding cards. Wants enough internals exposed to *debug
-their own setup*, but not so much that the page becomes a dashboard.
+Each persona below is one *disposition + dominant job*, with a one-line
+**signature** (managed-device profile + comfort tolerance — the levers PELS
+actually negotiates), and a per-surface table. The table's **Need** column is the
+spec (needs-first); the **Today** column is the gap/roadmap layer (✅ shipped ·
+◐ partial · ○ gap) and never reorders or trims the persona.
 
-| Surface | What they want |
-|---|---|
-| Overview | Per-device current draw, recent limit/resume activity. |
-| Budget | The hourly bar chart with planned-vs-actual; tooltip with numbers. |
-| Usage | Per-device breakdown; "what did this device cost last week?". |
-| Smart tasks | Per-hour tooltips on the chart, expanded inputs card, `Estimating` chip + the `Energy needed per °C` learned-rate row. |
-| Settings | Visible reasoning ("this defaults to X because Y"). |
+The four sit on the **disposition spectrum**, which is also the **maturity arc** —
+households tend to move Control → Convenience as trust is earned:
 
-Served adequately. Per-surface tooltip depth is uneven — the Smart-
-tasks chart leads; Budget and Usage tooltips are thinner than they
-should be. (Two corrections vs the earlier draft of this table: the
-learned-rate row ships as `Energy needed per °C` / `Energy needed per
-%`, not the old `Energy per unit 0.59 kWh/°C` example; and the
-Overview want reads `recent limit/resume activity`, never the
-user-facing-banned `shed/restore`.)
+```
+ hands-on  ◀───────────────────────────────────────────────▶  hands-off
+ Orchestrator        Optimiser              Set-and-forget owner
+ (own the policy)    (prove the savings)    (delegate it all)
+                Prosumer (emerging) sits across the middle,
+                differentiated by ASSET (solar), not disposition.
+```
 
-### 4. Skeptical optimiser (EV commuter / heat-tank owner) — *underserved on aggregate surfaces*
+---
 
-**Arrives because…** a single-axis tool betrayed them — scheduled
-charging silently didn't fire and the car was empty before the commute,
-or the water heater left the last person a cold shower, or the bill
-"snublet opp ett trinn" from EV-plus-cooking. They've been lied to by a
-schedule before, so they demand to *verify*: did it pick the cheap
-hours, and what did it cost? See
-[acquisition § 4](persona-acquisition.md#4-skeptical-optimiser-the-burned-single-axis-veteran).
+### 1. Set-and-forget owner — *Convenience*
 
-Daily, after a charge or a heating cycle. Wants two answers:
-**did it pick the cheap hours?** and **what did that cost?**
+**Disposition:** hands-off. Wants it to disappear: install, set the cap, walk
+away. The purest expression of delegation; the family household lives here too
+(it must "just work" for everyone — no fiddling, no cold showers, no surprises).
+**Dominant job:** Safety, fully delegated. Cost matters but only as a background
+win they never manage.
+**Signature:** EV + water heater + a couple of thermostats; *low* comfort
+tolerance for intrusion (a cold shower is a veto, not an inconvenience); low
+appetite for any controllable-load tuning.
+**Absorbs:** old #1 (set-and-forget) + the relax-into-delegation half of old #2
+(first-time).
 
-| Surface | What they want |
-|---|---|
-| Overview | "Today's avg price 0.84 kr/kWh, N kWh shifted to cheap hours." — **unbuilt.** |
-| Budget | Projected end-of-day cost in money, not just kWh — **unbuilt.** |
-| Usage | Per-device cost column alongside kWh — **unbuilt; the strongest open ask.** |
-| Smart tasks | "Picked N of the M hours it can use · avg P kr/kWh" + a money figure on the hero/receipt — **shipped.** |
-| Settings | The price source and currency in one obvious place. |
+| Surface | Need (the spec) | Today |
+|---|---|---|
+| Overview | "OK right now" hero — one glance, no action implied. | ✅ |
+| Budget | "On track for today" + projected landing, stated as a verdict. | ◐ (number shown; verdict wording weak) |
+| Usage | Yesterday's total at a glance; no drill-down. | ✅ |
+| Smart-tasks list | All-green chip column. | ✅ |
+| Smart-task detail (plan) | "It's handled, lands on time" — reassurance, not internals. | ✅ |
+| Smart-task history detail | "It worked" receipt; only surfaces if they look. | ✅ |
+| Settings | Opinionated defaults; rarely reopened after onboarding. | ✅ |
+| *(family)* | modes / guest / comfort-floor presets ("morning/away/night") so the household never feels a shed. | ○ **gap** — no turnkey mode presets ship; modes are user-wired. |
 
-Re-rated per-surface (it was blanket *underserved*). The
-chart-overhaul + history-detail receipt train shipped a single-number
-cost answer exactly where this persona looks first — a smart-task run:
-the live hero renders `Cost ≈ X.XX kr`, the schedule trust caption
-renders `Picked N of the M hours it can use · avg P kr/kWh` (no `vs
-baseline` comparison — the window-average compare was deliberately
-dropped with the two-chart split; the muted unplanned bars carry the
-baseline visually), and the finalized receipt renders `≈ 3.10 kr · 0.52
-kr/kWh on average · 6.0 kWh delivered`. So the old anchoring premise —
-"answers cost nowhere as a single number" — is now **false on
-smart-task surfaces** and must not be repeated. What stays genuinely
-underserved is the **aggregate** view: Overview has no avg-price /
-kWh-shifted line, and Usage has no per-device cost column. This persona
-is the strongest argument for that **money column in Usage** and an
-**avg-price line on Overview** — but no longer for a money figure on the
-Smart-task hero, which now exists.
+> The one-glance summary is **sacred**: density added for the Orchestrator/Optimiser
+> (per-hour tooltips, cost narratives, postmortems) must stay behind expand/detail,
+> never on this persona's first-glance hero.
 
-### 5. Recovering-from-mistake user — *poorly served on aggregate surfaces*
+---
 
-**Arrives because…** a trusted automation failed in a way the household
-felt — cold shower from a VVB relay that stayed off, an uncharged car at
-07:00, a capacity-tier jump because two big loads coincided. They are
-doing damage control, not optimising, and the 24-hour data lag means
-"skaden har allerede skjedd" by the time they see it. See
-[acquisition § 5](persona-acquisition.md#5-recovering-from-mistake-user-the-burned-automator).
+### 2. Orchestrator — *Control*
 
-Opens PELS after something went wrong — a missed deadline, a budget
-overshoot, a device that didn't ease off when expected. Planning the
-*next* run. Wants *what changed*, *why*, and *what to do about it*.
+**Disposition:** hands-on. Wants the engine handed over but still pops every
+hood; owns the policy — per-mode priority order, the managed/exempt device set,
+capacity/margin tuning, Flow-card composition, manual overrides, the "Get power
+now" rescue lane. Distrusts a black box "taking over" a device.
+**Dominant job:** the single differentiating job is **control/authorship of the
+safety+cost policy** — Cost and Climate are levers exercised *through* that
+control, not co-equal jobs. Climate rides here as a weak frugality lever (lean the
+budget down, find what to turn off) — see [§ Climate](#climate--a-facet-not-a-persona).
+**Signature:** richest device set (EV, water heater, panel heaters, heat pump);
+*high* tolerance for intrusion if they authored the rule; wants legible levers,
+not magic.
+**Absorbs:** the configure-and-compose half of old #3 (tinkerer) + the
+build-my-first-Flow-card half of old #2.
 
-| Surface | What they want |
-|---|---|
-| Overview | Aggregate signal: "3 misses this week" — not just current state. **Unbuilt.** |
-| Budget | "You hit the cap at 18:42 because…" — a postmortem line, not just the bar. **Unbuilt.** |
-| Usage | "This device drew 2× more than last week" — anomaly hinting. **Unbuilt.** |
-| Smart tasks | Miss-streak on the list; postmortem sentence on detail; CTA to lower daily budget / review device. **Shipped.** |
-| Settings | A path back to the specific setting implicated in the failure. (Partial — via the Smart-tasks `Review device` deep-link.) |
+| Surface | Need (the spec) | Today |
+|---|---|---|
+| Overview | Per-device current draw + recent limit/resume activity. | ◐ |
+| Budget | Hourly bar chart, planned-vs-actual, numbers in the tooltip. | ✅ |
+| Budget / Settings *(Climate facet)* | Lean the daily budget down to the weather forecast; frugality / "use less". | ✅ (weather energy-signature + daily budget ship) |
+| Usage | Per-device kWh breakdown — *which device, and what can I turn off?* | ○ **gap** — only managed/background aggregate ships. |
+| Smart-tasks list | Status legible at a glance; composable from Flow. | ✅ |
+| Smart-task detail (plan) | "Why these hours?" + the permission matrix (go-over-budget / limit-lower-priority, scoped). | ✅ |
+| Smart-task history detail | Learned-rate row (`Energy needed per °C / %`), per-hour tooltips. | ✅ |
+| Settings | Visible reasoning ("defaults to X because Y"); a consolidated manual-control surface. | ◐ (reasoning thin; overrides scattered across Flow/Settings/widget) |
 
-Re-rated per-surface (it was blanket *poorly served*). The Smart-tasks
-column is now served: the past-tasks list leads with the rolling 7-day
-hit-rate strip and per-device miss-streak badges, and the missed
-history-detail hero renders a postmortem `Why:` sentence, a muted
-shortfall chip, and a one-tap recourse button (`Lower daily budget` /
-`Review device`) — exactly the wants this row used to list as unserved.
-The data behind the *aggregate* gaps (`cannotMeetDailyBudgetExhausted`,
-`dailyBudgetExhaustedBucketCount`, shortfall, `objective_invalid_session`,
-abandoned-by-user, plus the daily-budget exhaustion bucket counts on the
-Budget side) is still captured — but on **Overview / Budget / Usage** it
-does not yet compose into a sentence on the surface the user actually
-visits. That is the live frontier for this persona.
+---
 
-### 6. Notification-driven panic visitor — *least served on aggregate surfaces*
+### 3. Optimiser — *Cost, verification-first*
 
-**Arrives because…** they are mid-incident — pushed by a Homey
-notification while the EV sits uncharged before work, or the last person
-gets a cold shower, or the fuse just tripped with kids in a cold flat.
-Maximum emotion, zero patience, and they blame the tool they trusted. As
-an acquisition story this overlaps personas 2 and 4 almost entirely; as
-an engagement state it is reached through the notification deep-link.
-See [acquisition § 6](persona-acquisition.md#6-notification-driven-panic-visitor-the-mid-incident-victim).
+**Disposition:** middle — will touch settings to chase a win, but wants the
+system to do the work and then **prove it**. A burned single-axis veteran (EV
+commuter / heat-tank owner) who has been lied to by a schedule before.
+**Dominant job:** **Cost** — shift load to the cheap hours and *see* the saving.
+The Optimiser is differentiated by **Cost, not by Trust**: Trust is universal
+(foundation), the Optimiser merely lives in the **Verifying** scenario most often
+and gates belief earliest. "Verification-first" is an *intensity* marker, not a
+claim that Trust belongs to this persona.
+**Signature:** EV (smart charger) + relay-controlled water heater; *medium* comfort
+tolerance; cares about øre/kWh and the capacity-tier penalty equally.
+**Absorbs:** old #4 (skeptical optimiser) + the verify-your-own-setup half of old
+#3.
 
-Pushed via a Homey notification — "Smart task missed", "Budget cap
-hit", "Capacity exceeded". Possibly mid-shower with no hot water,
-or watching the EV not charge before a morning commute. Most
-emotionally invested at point of contact. Has zero patience for
-chart navigation.
+| Surface | Need (the spec) | Today |
+|---|---|---|
+| Overview | "Today's avg price X kr/kWh · N kWh moved to cheap hours." | ○ **gap** |
+| Budget | Projected end-of-day cost in **money**, not just kWh. | ○ **gap** |
+| Usage | Per-device **cost** column alongside kWh. | ○ **gap — strongest open ask** |
+| Smart-tasks list | Per-task cost recap on the card. | ✅ |
+| Smart-task detail (plan) | The schedule-trust caption (`Picked N of M hours · avg P kr/kWh`) + live `Cost ≈ X.XX kr`. | ✅ |
+| Smart-task history detail | Receipt: `≈ 3.10 kr · 0.52 kr/kWh on average · 6.0 kWh delivered`. | ✅ |
+| Settings | Price source + currency in one obvious place. | ◐ |
+| *(counterfactual)* | "≈ X kr saved vs not using PELS" — the credibility holy grail. | ○ **gap** — no vs-baseline number exists anywhere (the ingredients do). |
 
-| Surface | What they want |
-|---|---|
-| Overview | The notification's reason restated in one line, with context. **Unbuilt for capacity/budget pushes.** |
-| Budget | If notified about a cap hit: when, why, what to change. **Unbuilt.** |
-| Usage | Almost never their landing surface — but should not bury the recent failure. |
-| Smart tasks | The deep-linked detail answers *why* in the first sentence, not just *what* and *when*. **Shipped.** |
-| Settings | A deep-link from the postmortem CTA, never a hunt. (Shipped on the Smart-tasks recourse; absent from Overview/Budget.) |
+> **Do not repeat the stale premise** "cost is answered nowhere as a single
+> number" — it is **false on smart-task surfaces** now. The live frontier is the
+> **aggregate** view (Usage money column, Overview avg-price line, Budget money
+> projection) and the **vs-no-PELS counterfactual**.
 
-Re-rated per-surface (it was blanket *least served*). For a missed
-Smart task — the most common deep-link target — the history-detail hero
-now answers *why* in its first line (`Why:` sentence + shortfall chip +
-recourse CTA), so the panic visitor gets diagnosis + next action without
-touching a chart. The "restate the notification text and stop" verdict
-now holds only for the **capacity-exceeded** and **budget-cap** pushes,
-which still deep-link to Overview / Budget aggregate surfaces that don't
-compose a failure sentence. This is the persona the reviewer-question
-"does this page earn its visit?" applies most sharply to, and the
-Smart-tasks failure path is the proof it can be earned.
+---
 
-## The asymmetry
+### 4. Prosumer — *Autonomy* *(emerging — gate on solar shipping)*
 
-Personas 5 and 6 — the recovering-from-mistake user and the
-notification-driven panic visitor — are the *highest emotional
-intensity* visitors and the *least served* across the aggregate
-surfaces. The single design move worth investing in is **failure paths
-should render differently from success paths**, on every page, not just
-on Smart tasks. Smart-tasks detail is no longer the *aspirational*
-worked example — it is the **shipped** one (succeeded = receipt; missed
-= diagnosis + CTA; abandoned = log), via the chart-overhaul +
-history-detail receipt train (#1677–#1681). The open frontier is
-generalising that same shape to **Budget overshoot**,
-**capacity-exceeded** notifications, and any **aggregate** failure
-signal on Overview — the surfaces where personas 5 and 6 still land on a
-page that only restates the current state.
+**Disposition:** varies; **differentiated by ASSET, not disposition.** Owns (or is
+adding) solar PV and wants to *self-consume* their own production rather than
+export it for little money.
+**Dominant job:** maximize self-consumption — a genuinely *distinct* goal (PV
+flips the objective from "minimize grid draw under a cap" to "soak up my own
+surplus"), which is why it earns its own persona once solar lands rather than
+folding into Cost/Climate. Until then it is a **named placeholder**, not a
+shipped target.
+**Signature:** PV (no battery in v1), EV + heat pump + VVB as surplus sinks; cares
+about self-consumption rate as the headline KPI.
+**Absorbs:** new — the market signal behind the solar direction. Strongest in
+NL (net-metering phase-out) and DE; nascent in NO.
 
-The before/after framing sharpens why: the acquisition wound that
-*creates* personas 5 and 6 (a single-axis tool that silently failed) is
-the same family of event PELS then risks reproducing if its own failures
-render as silently as a green success. Winning persona 4's trust with a
-verifiable receipt is the cheapest insurance against the worst-served
-states downstream — they are the same household, a few bad runs apart.
+| Surface | Need (the spec) | Today |
+|---|---|---|
+| Overview | Self-consumption rate + "surplus going to the EV/tank now." | ○ **gap** — PELS is surplus-blind today (clamps net to ≥0). |
+| Budget | Solar-aware budget (own production isn't "spend"). | ○ **gap** |
+| Usage | kWh self-consumed vs exported. | ○ **gap** |
+| Smart tasks | "Charge from your own surplus by deadline." | ○ **gap** |
+| Settings | PV/inverter source + self-consume-vs-price honesty when they conflict. | ○ **gap** |
+
+> Keep this persona in the doc as the **goal** the solar work serves, but do not
+> let `pels-ux-fit` grade surfaces against it until the feature ships. Its needs
+> are the spec for solar; its "Today" is uniformly a gap by design.
+
+---
+
+## Climate — a facet, not a persona
+
+There is **no climate/green persona**, deliberately. The reduce-total-kWh motive
+is real but a **weak lever** in PELS's home market and not a distinct goal:
+
+- **Value-action gap:** large majorities express green concern but don't act on it
+  when offered (the documented ~30% concerned-but-inactive; a majority of "green"
+  clusters are still primarily price-driven).
+- **Clean grid:** Norway's ~99% low-carbon (hydro/wind) grid genuinely guts the
+  kWh-for-CO₂ argument; consumption drops there track *price*, not carbon, and
+  subsidies dampen the saving urge.
+
+So Climate is a **frugality / anti-waste facet of Cost** — hunt standby/"always-on"
+wasters, lean the daily budget to the weather forecast — owned by the Orchestrator's
+table (it must be a *served* row there, since weather/daily-budget genuinely ships,
+not an orphan). Surface it with **honest numbers, never a CO₂ badge**, and never let
+green framing lead. *(Market caveat: this calibration is NO-specific; revisit
+whether Climate re-weights up enough to promote in DE/NL — see
+[§ Region](#region--market-config).)*
+
+---
+
+## Scenarios (cross-cutting)
+
+Every persona passes through these four moments. They are **scenarios, not
+personas** — the same household at different minutes. Each persona's per-surface
+needs above are the *Steady* baseline; the other three re-shape what a surface
+must do.
+
+| Scenario | What it is | What every surface owes |
+|---|---|---|
+| **Onboarding** | First contact; does not trust the app yet. The trust-establishment window — high-stakes, not P2/P3 polish. | "What is this number, and why is it good?" framing; proof-of-life ("Watching N devices, capacity X kW"); the `Building plan…` pending hero (currently the strongest copy in PELS). |
+| **Steady** | The monthly green-chip glance. | The persona's baseline table above. |
+| **Verifying** | "Did it pick the cheap hours? what did it cost?" | The Trust/receipt rubric: schedule-trust caption, `Cost ≈ X.XX kr`, the finished-run receipt. |
+| **Failing** | Pushed mid-incident, or recovering and planning the next run. | See the rubric below — this is the load-bearing one. |
+
+### The Failing scenario — where the asymmetry lives
+
+This is the single most actionable property in the whole model, and it replaces
+the old "personas 5 & 6." The principle:
+
+> **Failure must render differently from success — on every page, in the first
+> sentence, with a one-tap recourse — never the current state merely restated.**
+
+It has **two landing profiles**, which need *different* things (do not let one
+absorb the other):
+
+- **Acute (push deep-link):** arrives mid-incident via a Homey notification, zero
+  patience. Needs the failure reason **in sentence one on the exact surface the
+  deep-link lands on**, plus the single thing to change.
+- **Recovering (self-navigating, later):** calmer, planning the next run. Needs an
+  **aggregate** postmortem signal ("3 misses this week", "hit the cap at 18:42
+  because…").
+
+**Shipped worked example:** Smart-tasks (succeeded = receipt; missed = `Why:`
+diagnosis + shortfall chip + `Lower daily budget` / `Review device` recourse;
+abandoned = log), via the chart-overhaul + history-detail receipt train
+(#1677–#1681). **Open frontier:** generalise that shape to Budget overshoot,
+capacity-exceeded pushes, and aggregate-failure lines on Overview — the data
+(`cannotMeetDailyBudgetExhausted`, exhaustion bucket counts, shortfall,
+`objective_invalid_session`) is captured but composes into no on-surface sentence.
+
+**Review rule (wire into `pels-ux-fit`):** evaluate each surface for its **single
+primary persona**, in **both** its Steady and Failing scenarios — a surface passes
+only if it serves the primary in both. The Failing scenario always carries the
+P0/P1 weight.
+
+---
+
+## The gap & roadmap layer (the asymmetry, made pointable)
+
+This is where "served / unserved" lives — a prioritization map, **not** the
+persona ordering. P0/P1 weight goes to the highest-emotion, least-served cells
+(the Failing scenario on aggregate surfaces). Current frontier, roughly ranked:
+
+1. **Aggregate failure rendering** (Failing × Overview/Budget) — capacity-exceeded
+   and budget-cap pushes still land on surfaces that only restate current state. *P0.*
+2. **Usage per-device cost column** (Optimiser) + **per-device kWh** (Orchestrator/Climate)
+   — one build serves both; answers "what cost me / what to turn off". *P1.*
+3. **Overview avg-price / kWh-moved line** + **Budget money projection** (Optimiser). *P1.*
+4. **vs-no-PELS counterfactual** (Optimiser) — the credibility grail; ingredients exist. *P1/P2.*
+5. **Family modes / comfort-floor presets** (Set-and-forget). *P2.*
+6. **Solar self-consumption** (Prosumer) — the whole table; tracked by the solar direction. *roadmap.*
+
+---
+
+## Per-surface primary persona
+
+Cooper's axiom is "design each interface for a single primary persona." Each PELS
+surface is its own interface, so each names **one** primary persona — and the
+Failing *scenario* it must most withstand (a scenario, not a second persona):
+
+| Surface | Primary persona | Failure-state priority scenario |
+|---|---|---|
+| Overview | Set-and-forget owner | Failing (acute) |
+| Budget | Optimiser | Failing (acute) |
+| Usage | Optimiser | Failing (recovering) |
+| Smart-tasks list | Set-and-forget owner | Failing (recovering) |
+| Smart-task detail (plan) | Orchestrator | Failing (acute) |
+| Smart-task history detail | Optimiser | Failing (both) |
+| Settings | Orchestrator | Failing (recovering, via recourse deep-link) |
+
+*Prosumer is intentionally absent: it becomes a candidate primary for
+solar-specific surfaces once solar ships (see [§ persona 4](#4-prosumer--autonomy-emerging--gate-on-solar-shipping)).*
+
+---
+
+## Region — market-config
+
+Region is **not** a persona axis. The same jobs recur in every market; what
+changes is their *ranking* and the *mechanism* they attach to — a market-config
+layer that re-weights the same personas, never a parallel persona set.
+
+- **Norway / Sweden** — two-axis cost (spot price **+** effekttariff/effektabonnemang
+  peak-shaving); Climate weak (clean grid); Orchestrator + Set-and-forget dominate.
+- **Netherlands** — the net-metering (salderingsregeling) phase-out flips
+  **self-consumption/autonomy** to the front and makes the surplus-blind framing a
+  poor fit; the Prosumer persona is most urgent here.
+- **Germany** — §14a dimmable-loads mechanism; higher grid carbon means **Climate
+  may re-weight up** enough to revisit its facet status (open question).
+
+Region drives copy emphasis, default feature set, and which persona a surface
+leads with — not the persona list.
+
+---
 
 ## How to use this document
 
-- When designing a new view: walk the table for the persona most
-  likely to land on it under stress, not the median visitor.
-- When reviewing copy: ask which persona the sentence is talking to.
-  If the answer is only persona 1, it probably needs a second
-  sentence for persona 5 or 6.
-- When triaging UX findings: P0/P1 weight goes to fixes that move a
-  surface for personas 4–6. With the Smart-tasks failure path now
-  shipped, that weight shifts to the still-unserved **aggregate**
-  surfaces — the Usage money column, the Overview avg-price and
-  aggregate-failure lines, and the Budget postmortem line. Persona 1–2
-  polish is P2/P3.
-- When positioning, writing docs, or shaping onboarding: walk the
-  **before** angle in [`persona-acquisition.md`](persona-acquisition.md)
-  — the trigger, the search query, and the discovery funnel are what a
-  new user has just lived through when they first open a PELS surface.
-- The `pels-ux-fit` review agent is the natural consumer of this
-  rubric — its page-mission framing (Overview / Budget / Usage /
-  Smart-tasks list / Smart-task detail / Settings) already mirrors
-  the per-surface columns above. Keep the two aligned when either
-  one changes; a follow-up can wire the agent prompt to cite this
-  file explicitly.
+- **Designing a view:** find the surface's primary in [§ Per-surface primary](#per-surface-primary-persona),
+  design for it, then run the Failing check. One primary per surface.
+- **Reviewing copy:** ask which persona and which scenario the sentence serves. If
+  it only serves Set-and-forget/Steady, it likely needs a Failing-scenario sentence.
+- **Triaging UX findings:** P0/P1 weight follows the [gap & roadmap layer](#the-gap--roadmap-layer-the-asymmetry-made-pointable) —
+  highest-emotion least-served cells first. Never let "what ships today" trim a
+  need; file the gap instead.
+- **Treating a need as spec:** check its evidence tier. Proto needs gate features
+  as hypotheses but are themselves flagged for validation; never size a feature on
+  surveyed/forum-stated willingness (it runs well above realised behaviour).
+- **Positioning / onboarding:** walk the **before** angle in
+  [`persona-acquisition.md`](persona-acquisition.md).
+- **`pels-ux-fit`:** this file is its rubric. Keep the two aligned; the per-surface
+  primary table + the Failing rule are the parts it executes most directly.
+
+---
+
+## Old → new mapping
+
+For updating cross-references (`TODO.md`, `notes/smart-task-ui/README.md`,
+`notes/widget-review.md` cite the old `#1`–`#6`):
+
+| Old engagement-state persona | New home |
+|---|---|
+| #1 Set-and-forget owner | **Set-and-forget owner** (primary inhabitant) |
+| #2 First-time user | **Scenario: Onboarding** (cross-cutting) — relax-half → Set-and-forget; build-half → Orchestrator |
+| #3 Curious tinkerer | split: configure-half → **Orchestrator**; verify-half → **Optimiser** |
+| #4 Skeptical optimiser | **Optimiser** (primary inhabitant) |
+| #5 Recovering-from-mistake | **Scenario: Failing (recovering)** (cross-cutting) |
+| #6 Notification-driven panic | **Scenario: Failing (acute)** (cross-cutting) |
+
+Key structural changes from the old model: motivation/disposition replaces
+engagement-state as the spine; engagement-states #2/#5/#6 become **scenarios**;
+Safety + Trust move to the **foundation** (universal, not personas); the
+served-rating that used to *order* personas moves to the **gap & roadmap layer**;
+**Prosumer** is added as an emerging persona; a **Negative persona** and **evidence
+tiers** are introduced.

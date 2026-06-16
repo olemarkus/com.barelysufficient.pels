@@ -73,11 +73,14 @@ copy.
 
 ## Personas
 
-The six personas this review originally enumerated have been promoted
-to a PELS-wide rubric — see [`notes/personas.md`](../personas.md). The
-asymmetric-treatment thesis below (personas 5 and 6 are the highest-
-emotional-intensity, least-served visitors) is the through-line that
-the rest of this review builds on.
+The personas this review originally enumerated have been promoted
+to a PELS-wide rubric — now four personas (Set-and-forget owner,
+Orchestrator, Optimiser, Prosumer) plus cross-cutting scenarios
+(Onboarding / Steady / Verifying / Failing) — see
+[`notes/personas.md`](../personas.md). The asymmetric-treatment thesis
+below (the Failing scenario — the panic deep-link and the recovering
+visitor — is the highest-emotional-intensity, least-served case) is the
+through-line that the rest of this review builds on.
 
 ## What the data already supports
 
