@@ -54,6 +54,15 @@ export const buildDeviceDiagnosticsObservations = (
     inputDevice: inputDeviceById.get(device.id),
     device,
     restoreResult: params.restoreResult,
+    // A headroom-blocked restore hold is releasable by the budget rescue ONLY when the
+    // daily budget is the binding limit AND the power sample is fresh (`powerKnown`).
+    // Hourly-cap exhaustion forces `softLimitSource` to 'capacity' (capacitySoftLimit → 0),
+    // and any non-fresh meter (`stale_hold` uses a synthetic 0 headroom, `stale_fail_closed`
+    // forces -1) blocks the restore for reasons the daily budget can't lift — the rescue
+    // never raises the physical hard cap and can't make restoring safe until power is fresh.
+    // Those stay in the capacity bucket. Resolved to a flat boolean HERE so no consumer re-derives it.
+    budgetReleasableHeadroomHold:
+      params.context.softLimitSource === 'daily' && params.context.powerKnown,
     priceOptimizationEnabled: params.priceOptimizationEnabled,
     priceOptimizationSettings: params.priceOptimizationSettings,
     isCurrentHourCheap: params.isCurrentHourCheap,
@@ -161,11 +170,36 @@ const resolveEligibleForStarvation = (params: {
     && device.available !== false;
 };
 
-const resolveSuppressionFromReason = (reason: DeviceReason): StarvationSuppressionNormalization => {
+// A restore held for `insufficient_headroom` is blocked against the binding soft limit.
+// When that hold is BUDGET-RELEASABLE — the daily budget is the binding limit and the
+// power sample is trustworthy (`budgetReleasableHeadroomHold`, resolved in the producer)
+// — the physical capacity cap is not the constraint doing the work; the daily budget is,
+// and it is the releasable lever the owner can rescue against. Re-attribute the counting
+// cause to `daily_budget` so the overview budget-vs-capacity bucket, the rescue-widget
+// gating, and the emitted `device_starvation_started` cause all read the true, releasable
+// cause — without any consumer re-deriving the source. This mirrors the shed-time
+// re-attribution `resolveShedReason`/`buildBaseReason` already perform for capacity→daily.
+// A genuine capacity-bound shortfall — physical capacity, an exhausted hourly cap (which
+// forces `softLimitSource` to 'capacity'), or a non-fresh meter (stale hold/fail-closed, so
+// `powerKnown` is false) — keeps `insufficient_headroom` (→ the capacity bucket, no rescue
+// the budget exemption can honor).
+const reattributeHeadroomShortfallCause = (
+  countingCause: DeviceDiagnosticsStarvationCountingCause | null,
+  budgetReleasableHeadroomHold: boolean,
+): DeviceDiagnosticsStarvationCountingCause | null => (
+  countingCause === 'insufficient_headroom' && budgetReleasableHeadroomHold
+    ? 'daily_budget'
+    : countingCause
+);
+
+const resolveSuppressionFromReason = (
+  reason: DeviceReason,
+  budgetReleasableHeadroomHold: boolean,
+): StarvationSuppressionNormalization => {
   const semantics = resolveStarvationSuppressionSemantics(reason);
   return {
     suppressionState: semantics.state,
-    countingCause: semantics.countingCause,
+    countingCause: reattributeHeadroomShortfallCause(semantics.countingCause, budgetReleasableHeadroomHold),
     pauseReason: semantics.pauseReason,
   };
 };
@@ -174,13 +208,14 @@ const resolveStarvationSuppression = (params: {
   device: DevicePlanDevice;
   inputDevice?: PlanInputDevice;
   isEv: boolean;
+  budgetReleasableHeadroomHold: boolean;
 }): StarvationSuppressionNormalization => {
-  const { device, inputDevice, isEv } = params;
+  const { device, inputDevice, isEv, budgetReleasableHeadroomHold } = params;
   if (isEv || !inputDevice || device.controllable === false || inputDevice.controllable !== true) {
     return noStarvationSuppression();
   }
   const reason = device.reason;
-  const normalized = resolveSuppressionFromReason(reason);
+  const normalized = resolveSuppressionFromReason(reason, budgetReleasableHeadroomHold);
   if (normalized.suppressionState !== 'none') {
     return normalized;
   }
@@ -220,6 +255,7 @@ const buildDiagnosticsObservation = (params: {
   inputDevice?: PlanInputDevice;
   device: DevicePlanDevice;
   restoreResult: RestorePlanResult;
+  budgetReleasableHeadroomHold: boolean;
   priceOptimizationEnabled: boolean;
   priceOptimizationSettings: Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
   isCurrentHourCheap: () => boolean;
@@ -230,6 +266,7 @@ const buildDiagnosticsObservation = (params: {
     inputDevice,
     device,
     restoreResult,
+    budgetReleasableHeadroomHold,
     priceOptimizationEnabled,
     priceOptimizationSettings,
     isCurrentHourCheap,
@@ -269,6 +306,7 @@ const buildDiagnosticsObservation = (params: {
     device,
     inputDevice,
     isEv,
+    budgetReleasableHeadroomHold,
   });
   const targetDeficitActive = includeDemandMetrics
     && desiredTarget !== null
