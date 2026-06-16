@@ -80,6 +80,12 @@ const STARVATION_COOLDOWN_PAUSE_REASON_CODES = new Set<PlanReasonCode>([
   PLAN_REASON_CODES.meterSettling,
 ]);
 
+// This table is a PURE reason-code → counting-cause map; it must stay free of planner
+// state (`softLimitSource`, `powerFreshnessState`, …). The source-aware fold that
+// re-attributes `insufficient_headroom` → `daily_budget` for a budget-releasable hold
+// lives one layer up in the producer (`lib/plan/planDiagnostics.ts`,
+// `reattributeHeadroomShortfallCause`, gated on `budgetReleasableHeadroomHold`). Do not
+// pull that condition in here — it would break the resolution-in-producer boundary.
 const COUNTING_SUPPRESSION_CAUSES: Partial<Record<PlanReasonCode, PlanStarvationCountingCause>> = {
   [PLAN_REASON_CODES.capacity]: 'capacity',
   [PLAN_REASON_CODES.dailyBudget]: 'daily_budget',

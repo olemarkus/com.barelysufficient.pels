@@ -406,6 +406,18 @@ CI failure, so future field-move slices can't silently grow the debt.*
       thinks to open Advanced to change how the chart renders. Source: pels-ux-fit + pels-m3-critic,
       2026-06-10.
 
+- [ ] **Hysteresis on `resolveSoftLimitSource` so the starvation rescue affordance doesn't flicker at the
+      daily≈capacity crossover.** `lib/plan/planBuilder.ts:resolveSoftLimitSource` picks `daily` vs `capacity`
+      from a per-cycle `Math.abs(daily - capacity) <= SOFT_LIMIT_EPSILON` comparison with no hysteresis and no
+      `both` state. When the daily pace and capacity soft limit hover within epsilon, `softLimitSource`
+      oscillates cycle-to-cycle; since the starvation cause now folds through it (`reattributeHeadroomShortfallCause`),
+      a held device's overview bucket — and thus the "Let it run now" rescue button — can flicker budget↔capacity
+      at that boundary. Persona: Optimiser running a tight daily budget near their capacity pace; hypothesis: a
+      rescue button that appears and vanishes every few seconds reads as a bug and erodes trust. Candidate fix:
+      add hysteresis (or a `both`-leaning-to-budget tiebreak) to `resolveSoftLimitSource`. Out of scope for the
+      cause-classification fix (#1735) because it also moves the hero "Safe pace now" source label. Source:
+      pels-runtime-reality on #1735, 2026-06-16.
+
 - [ ] **Busy-gate the Budget header toggle (inherited apply race).** `onToggleClick` ignores
       `adjust.busy`: confirming a discard while an apply is in flight yields a post-navigation
       "Daily budget updated." toast and a lingering dirty status (workingDraft = pre-apply values vs
