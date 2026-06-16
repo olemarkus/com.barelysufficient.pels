@@ -18,6 +18,9 @@ import {
   logSettingsUiMessage,
   applySettingsUiDailyBudgetModel,
   previewSettingsUiDailyBudgetModel,
+  createSettingsUiStarvationRescue,
+  getSettingsUiStarvationRescueDevices,
+  previewSettingsUiStarvationRescue,
   refreshSettingsUiDevices,
   refreshSettingsUiGridTariff,
   refreshSettingsUiPrices,
@@ -160,6 +163,21 @@ export = {
   ui_reset_power_stats: withApiLogging('ui_reset_power_stats', ({ homey }: ApiContext) => (
     resetSettingsUiPowerStats({ homey })
   )),
+  ui_starvation_rescue_devices: withApiLogging('ui_starvation_rescue_devices', ({ homey }: ApiContext) => (
+    getSettingsUiStarvationRescueDevices({ homey })
+  )),
+  ui_starvation_rescue_preview: withApiLogging(
+    'ui_starvation_rescue_preview',
+    ({ homey, body }: ApiContext & { body?: unknown }) => (
+      previewSettingsUiStarvationRescue({ homey, body })
+    ),
+  ),
+  ui_starvation_rescue_create: withApiLogging(
+    'ui_starvation_rescue_create',
+    ({ homey, body }: ApiContext & { body?: unknown }) => (
+      createSettingsUiStarvationRescue({ homey, body })
+    ),
+  ),
   log_homey_device: withApiLogging('log_homey_device', async (
     { homey, body }: ApiContext & { body?: { id?: string } },
   ): Promise<{ ok: boolean; error?: string }> => {

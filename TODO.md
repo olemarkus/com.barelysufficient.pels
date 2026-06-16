@@ -281,6 +281,26 @@ landed 2026-06-13, after a one-off cleanup of all ~1,555 masked errors (field-mo
 the discriminant regroupers + pre-existing mock-shape debt). Test-fixture type drift is now a hard
 CI failure, so future field-move slices can't silently grow the debt.*
 
+- [ ] **Generation-guard the rescue-gate state commit in `loadStarvationRescuableDevices`.** `overviewRescueGate`
+      now guards the *repaint* after a gate refresh, but the controller's
+      `state.starvationRescuableDeviceIds = new Set(ids)` (`packages/settings-ui/src/ui/starvationRescue.ts`) still
+      commits whichever overlapping `/ui_starvation_rescue_devices` response lands last. Two `plan_updated` events
+      while Overview is visible can let an older response overwrite the set after a newer one, so a later live/power
+      tick repaints the latest plan against a stale global set — briefly hiding a valid "Let it run now" chip or
+      showing one that should have gone. Fix: a monotonic generation token captured before the await, committed only
+      if still latest (mirror the repaint guard). Persona: Optimiser watching a budget-held device on Overview;
+      hypothesis: a chip that flickers on/off across plan updates reads as a bug. P2 edge (needs overlapping gate
+      loads; self-corrects on the next refresh). Same family: the chip's on-arm preview response
+      (`BudgetExemptChip` in `PlanDeviceCards.tsx`) can also land late and overwrite cleared/re-armed state, so a
+      stale `deadlineAtMs`/label could be shown or reused on a later confirm — guard it the same way. Source: codex +
+      coderabbit on #1736, 2026-06-17.
+
+- [ ] **Extract the settings-UI starvation-rescue handlers out of `setup/settingsUiApi.ts`.** The `get`/`preview`/
+      `create` rescue handlers were added to the already multi-purpose `settingsUiApi.ts`; a dedicated rescue-wiring
+      module would lower coupling and future churn. Pure refactor (no behaviour change). Persona: maintainer;
+      hypothesis: the rescue surface will keep growing and is easier to evolve isolated. P2 maintainability. Source:
+      coderabbit on #1736, 2026-06-17.
+
 - [ ] **Weather collector: transient miss of `weather_advisor_settings` silently halts sampling
       until the next restart or settings write.** `WeatherCollector.start()` registers no timers
       when the config blob reads absent/malformed, and nothing re-checks later (the hourly

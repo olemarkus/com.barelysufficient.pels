@@ -28,6 +28,9 @@ import {
   SETTINGS_UI_RECOMPUTE_DAILY_BUDGET_PATH,
   SETTINGS_UI_RESET_POWER_STATS_PATH,
   SETTINGS_UI_WEATHER_ADVISOR_READOUT_PATH,
+  SETTINGS_UI_STARVATION_RESCUE_DEVICES_PATH,
+  SETTINGS_UI_STARVATION_RESCUE_PREVIEW_PATH,
+  SETTINGS_UI_STARVATION_RESCUE_CREATE_PATH,
 } from '../../../contracts/src/settingsUiApi.ts';
 import type { DeferredObjectiveActivePlansV1 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import {
@@ -75,6 +78,13 @@ export type MockHomeyUiState = {
   power?: unknown;
   prices?: unknown;
   weatherAdvisorReadout?: unknown;
+  // Overview "Let it run now" rescue endpoints. The set of device IDs the chip
+  // may offer the rescue on, plus the preview/create responses. Defaults mirror
+  // production's "nothing rescuable yet" steady state (empty set, unavailable
+  // preview/create); tests seed these to exercise the chip's arm/commit path.
+  starvationRescuableDeviceIds?: string[];
+  starvationRescuePreview?: unknown;
+  starvationRescueCreate?: unknown;
 };
 
 export type MockHomeyApiContext = {
@@ -338,6 +348,18 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
     power: await buildUiPower(homey),
     dailyBudget: getUiOverride(homey, 'dailyBudget') ?? null,
   }),
+  // Overview "Let it run now" rescue. Defaults: an empty rescuable set (so the
+  // chip's membership gate fails closed) and an unavailable preview/create.
+  // Tests seed `uiState.starvationRescuable*` to drive the arm/commit path.
+  [buildRouteKey('GET', SETTINGS_UI_STARVATION_RESCUE_DEVICES_PATH)]: (homey) => async () => ({
+    rescuableDeviceIds: (getUiOverride(homey, 'starvationRescuableDeviceIds') as string[] | undefined) ?? [],
+  }),
+  [buildRouteKey('POST', SETTINGS_UI_STARVATION_RESCUE_PREVIEW_PATH)]: (homey) => async () => (
+    getUiOverride(homey, 'starvationRescuePreview') ?? { ok: false, reason: 'unavailable' }
+  ),
+  [buildRouteKey('POST', SETTINGS_UI_STARVATION_RESCUE_CREATE_PATH)]: (homey) => async () => (
+    getUiOverride(homey, 'starvationRescueCreate') ?? { ok: false, reason: 'unavailable' }
+  ),
   [buildRouteKey('POST', LOG_HOMEY_DEVICE_PATH)]: () => async () => ({ ok: true }),
 };
 

@@ -11,6 +11,7 @@ import { getApiReadModel } from './homey.ts';
 import { getPricesReadModel } from './prices.ts';
 import { renderPlanOverview } from './views/PlanOverview.tsx';
 import { planNeedsLiveUpdates } from './planLiveData.ts';
+import { registerPlanSurfaceRenderer } from './planSurfaceRefresh.ts';
 import { state } from './state.ts';
 import type { PlanDeviceSnapshot, PlanSnapshot } from './planTypes.ts';
 
@@ -99,6 +100,11 @@ export const renderPlan = (plan: PlanSnapshot | null) => {
 export const bumpPlanSurface = (): void => {
   doRender();
 };
+
+// Expose the render to controllers via the leaf refresh module, so they can
+// refresh after a write without importing this orchestrator (avoids a
+// view → controller → orchestrator cycle). See planSurfaceRefresh.ts.
+registerPlanSurfaceRenderer(doRender);
 
 export const updatePlanPower = (power: SettingsUiPowerStatus | null): void => {
   cachedPowerStatus = power;

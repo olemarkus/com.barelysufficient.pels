@@ -1,5 +1,5 @@
 import { h } from 'preact';
-import { useRef, useLayoutEffect } from 'preact/hooks';
+import { useRef, useLayoutEffect, useState } from 'preact/hooks';
 import { MdElevation, MdRipple } from './materialWebJSX.tsx';
 import { chipModifierForTone } from './chipModifier.ts';
 import { PLAN_REASON_CODES } from '../../../../shared-domain/src/planReasonSemanticsCore.ts';
@@ -28,12 +28,24 @@ import {
   resolveCooldownRemainingSec,
 } from '../../../../shared-domain/src/planCooldown.ts';
 import { resolveHeldStateActionLabel } from '../../../../shared-domain/src/deviceOverview.ts';
+import {
+  BUDGET_EXEMPT_CARD_ACTION_COPY,
+  budgetExemptCardActionAriaLabel,
+  shouldOfferBudgetExemptCardAction,
+  STARVATION_RESCUE_WIDGET_COPY,
+} from '../../../../shared-domain/src/planStarvation.ts';
+import { BoltIcon } from './icons.tsx';
 import { resolveEvCardStateLine } from '../../../../shared-domain/src/deadlineLabels.ts';
 import { formatIdleClassificationCopy } from '../../../../shared-domain/src/idleClassificationCopy.ts';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 import { resolveDisplayPlanDeviceSnapshot } from '../planLiveData.ts';
 import { formatReasonSummary } from '../planReasonSummary.ts';
 import { cardActivationProps } from '../cardActivation.ts';
+import {
+  createStarvationRescue,
+  isStarvationRescuable,
+  previewStarvationRescue,
+} from '../starvationRescue.ts';
 import { state } from '../state.ts';
 import { buildDeadlineHref } from '../deadlineUrls.ts';
 import type { PlanDeviceSnapshot, PlanSnapshot } from '../planTypes.ts';
@@ -122,6 +134,127 @@ export const EvDeadlineStateLine = ({ deviceId, nowMs }: { deviceId: string; now
   return <p class="plan-card__ev-state">{text}</p>;
 };
 
+// Contextual rescue surfaced on a device card that PELS is holding back BY THE
+// DAILY BUDGET (the releasable case): triggers the SAME bounded budget-exempt
+// rescue as the held-back widget's "Let it run now" — a fresh deferred objective
+// carrying `exemptFromBudget` (≈ now+3h, until the device reaches its normal
+// target). It is NOT a deep-link to the standing per-device toggle; a budget
+// exemption is always bounded to a smart task (feedback_hard_cap_is_physical).
+//
+// Two-step confirm (the canonical settings-UI armed-button pattern): the first
+// tap arms (and best-effort previews the bounded "By …" window), the second
+// commits. A `<button>` activates on Enter/Space natively; we only suppress
+// propagation so the parent card's whole-surface tap (which would open the
+// device-detail overlay) does not also fire.
+//
+// GATED on the rescue's REAL preconditions: budget-caused + held + not exempt
+// (`shouldOfferBudgetExemptCardAction`, from card data) AND server-confirmed
+// rescuable (task-free + a known target; `isStarvationRescuable`, mirroring
+// `getStarvedRescueDevices`). A device with its own smart task, a capacity hold,
+// or no known target never renders the chip — so the create call can't be
+// rejected for a shown chip.
+type RescueChipState = 'idle' | 'armed' | 'busy';
+
+// Compose the armed-state consequence caption shown BEFORE the second tap. The
+// money-action consequence ("…uses power beyond today's budget until it reaches
+// its normal target.") is surfaced inline — on Homey's touch WebView a hover
+// tooltip is unreachable, so the consequence must be visible at the card before
+// the user authorizes the over-budget spend. When the preview resolved a bounded
+// window, the shared "By {time}" anchor (`byLabel` + the server-formatted local
+// deadline label — the SAME pairing the rescue widget's confirm sheet uses, no
+// browser Date math) is appended so the user also sees the action is
+// time-bounded. With no preview, the consequence already names the bound
+// ("…until it reaches its normal target."), so the caption stands alone.
+const formatArmedRescueCaption = (deadlineLabel: string | undefined): string => {
+  const consequence = STARVATION_RESCUE_WIDGET_COPY.rescueConsequence;
+  if (deadlineLabel === undefined || deadlineLabel === '') return consequence;
+  return `${consequence} ${STARVATION_RESCUE_WIDGET_COPY.byLabel} ${deadlineLabel}`;
+};
+
+export const BudgetExemptChip = ({
+  dev,
+}: {
+  dev: PlanDeviceSnapshot;
+}) => {
+  const [chipState, setChipState] = useState<RescueChipState>('idle');
+  // The previewed deadline (when a preview ran) is echoed to the create call so
+  // a confirm left open across an hour boundary persists what the user saw.
+  const [deadlineAtMs, setDeadlineAtMs] = useState<number | undefined>(undefined);
+  // The server-formatted local "By {time}" anchor (e.g. "Today 17:00"), shown in
+  // the armed caption so the bounded horizon is visible on touch. Sourced from
+  // the same preview response as `deadlineAtMs` — the producer formats it in the
+  // Homey timezone so the view does no Date math (mirrors the rescue widget).
+  const [deadlineLabel, setDeadlineLabel] = useState<string | undefined>(undefined);
+
+  if (!shouldOfferBudgetExemptCardAction(dev.starvation, dev.budgetExempt)) return null;
+  if (!isStarvationRescuable(dev.id)) return null;
+
+  const displayName = dev.name ? formatDisplayDeviceName(dev.name) : '';
+  const ariaLabel = budgetExemptCardActionAriaLabel(displayName);
+
+  const arm = (): void => {
+    setChipState('armed');
+    // Best-effort: enrich the armed state with the bounded window. A failed /
+    // unavailable preview leaves a plain confirm — the create still works, and
+    // the caption falls back to the target-only consequence phrasing.
+    void previewStarvationRescue(dev.id).then((response) => {
+      if (response.ok) {
+        setDeadlineAtMs(response.deadlineAtMs);
+        setDeadlineLabel(response.deadlineLabel);
+      }
+    }).catch(() => undefined);
+  };
+
+  const commit = (): void => {
+    setChipState('busy');
+    void createStarvationRescue(dev.id, deadlineAtMs).finally(() => {
+      // The device drops out of the rescuable set on success, so the chip stops
+      // rendering; on failure, return to idle so the user can retry.
+      setChipState('idle');
+      setDeadlineAtMs(undefined);
+      setDeadlineLabel(undefined);
+    });
+  };
+
+  const activate = (event: Event): void => {
+    event.stopPropagation();
+    if (chipState === 'busy') return;
+    if (chipState === 'idle') arm();
+    else commit();
+  };
+
+  const armed = chipState === 'armed';
+  const busy = chipState === 'busy';
+  const label = busy
+    ? STARVATION_RESCUE_WIDGET_COPY.rescuePending
+    : armed
+      ? BUDGET_EXEMPT_CARD_ACTION_COPY.confirmLabel
+      : BUDGET_EXEMPT_CARD_ACTION_COPY.label;
+
+  return (
+    <span class="plan-card__rescue">
+      <button
+        type="button"
+        class={`plan-chip plan-chip--info plan-chip--link plan-chip--leading-icon hy-nostyle${armed ? ' confirming' : ''}`}
+        onClick={activate}
+        onKeyDown={stopActivation}
+        onKeyUp={stopActivation}
+        disabled={busy}
+        aria-label={ariaLabel}
+        data-tooltip={BUDGET_EXEMPT_CARD_ACTION_COPY.tooltip}
+      >
+        <BoltIcon class="plan-chip__icon" />
+        {label}
+      </button>
+      {armed && (
+        <p class="plan-card__rescue-caption" onClick={stopActivation}>
+          {formatArmedRescueCaption(deadlineLabel)}
+        </p>
+      )}
+    </span>
+  );
+};
+
 const resolveIdleCopy = (dev: PlanDeviceSnapshot) => {
   if (
     dev.idleClassification !== 'near_target_idle'
@@ -204,7 +337,17 @@ const isDeviceReason = (reason: unknown): reason is DeviceReason => (
 );
 
 const resolveReasonText = (dev: PlanDeviceSnapshot): string => {
-  if (dev.starvation?.isStarved && dev.starvation.cause === 'capacity') {
+  // A held card's reason line must name the actual binding constraint. For ANY
+  // starved device, the producer-resolved cause already determines the copy:
+  // budget → "Limited to stay within today's budget"; capacity → "Waiting for
+  // available power". Firing the override for both causes (not just capacity)
+  // keeps a budget-held card from falling through to the
+  // `PLAN_STATE_HELD_FALLBACK_STATUS = "Limited by the hard cap"` line, which
+  // would wrongly imply the hard cap is the lever (it is physical —
+  // feedback_hard_cap_is_physical). `formatStarvationReason` returns a
+  // non-empty string for both `budget` and `capacity`, so neither case regresses
+  // to the empty fallback.
+  if (dev.starvation?.isStarved) {
     const override = formatStarvationReason(dev.starvation);
     if (override) return override;
   }
@@ -362,6 +505,7 @@ export const PlanGenericCard = ({
               {starvationBadge.label}
             </span>
           )}
+          <BudgetExemptChip dev={displayDev} />
           <DeadlineChip deviceId={dev.id} deviceName={dev.name} nowMs={nowMs} />
         </div>
       </div>
@@ -438,6 +582,7 @@ export const PlanTemperatureCard = ({
             </span>
           )}
           <IdleClassificationChip dev={displayDev} />
+          <BudgetExemptChip dev={displayDev} />
           <DeadlineChip deviceId={dev.id} deviceName={dev.name} nowMs={nowMs} />
         </div>
       </div>

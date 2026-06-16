@@ -30,6 +30,13 @@ export const SETTINGS_UI_WEATHER_ADVISOR_READOUT_PATH = '/ui_weather_advisor_rea
 export const SETTINGS_UI_RECOMPUTE_DAILY_BUDGET_PATH = '/ui_recompute_daily_budget';
 export const SETTINGS_UI_PREVIEW_DAILY_BUDGET_MODEL_PATH = '/ui_preview_daily_budget_model';
 export const SETTINGS_UI_APPLY_DAILY_BUDGET_MODEL_PATH = '/ui_apply_daily_budget_model';
+// Budget-exempt rescue from the overview device card (the bounded "Let it run
+// now" path, identical to the starvation_rescue widget's rescue). Devices = the
+// gate (which cards may offer the chip); preview = the optional bounded-window
+// readout; create = the committed rescue.
+export const SETTINGS_UI_STARVATION_RESCUE_DEVICES_PATH = '/ui_starvation_rescue_devices';
+export const SETTINGS_UI_STARVATION_RESCUE_PREVIEW_PATH = '/ui_starvation_rescue_preview';
+export const SETTINGS_UI_STARVATION_RESCUE_CREATE_PATH = '/ui_starvation_rescue_create';
 
 // Sentinel prefix the runtime API layer uses when the Homey app shell exists
 // but the PELS runtime services have not finished initializing yet (e.g.

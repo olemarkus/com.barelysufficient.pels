@@ -12,6 +12,7 @@ import {
   PLAN_STATE_HELD_FALLBACK_STATUS,
 } from '../../shared-domain/src/planStateLabels.ts';
 import type { SteppedLoadProfile } from '../../contracts/src/types.ts';
+import type { SettingsUiPlanDeviceStarvation } from '../../contracts/src/settingsUiApi.ts';
 
 const NOW_MS = 1_000_000;
 
@@ -662,5 +663,63 @@ describe('resolveSteppedActiveStepId', () => {
       steppedLoad: steppedLoad({ reportedStepId: 'medium' }),
     };
     expect(resolveSteppedActiveStepId(device, profile)).toBe('medium');
+  });
+});
+
+describe('resolveSteppedStatusLine — budget hold vs active recovery', () => {
+  const budgetHeld: SettingsUiPlanDeviceStarvation = {
+    isStarved: true,
+    accumulatedMs: 60_000,
+    cause: 'budget',
+    startedAtMs: NOW_MS - 60_000,
+  };
+
+  it('shows the budget line for a budget-held device that is not moving', () => {
+    const result = resolveSteppedStatusLine(
+      {
+        ...baseDevice,
+        currentState: 'off',
+        steppedLoad: steppedLoad({ reportedStepId: 'off', commandPending: false }),
+        starvation: budgetHeld,
+      },
+      profileWithOff,
+      NOW_MS,
+    );
+    expect(result).toBe("Limited to stay within today's budget");
+  });
+
+  it('lets an in-flight step command win over the latched budget hold during recovery', () => {
+    // After a budget device is commanded back up, diagnostics keeps `isStarved`
+    // latched through the clear window; the status line must show the transit
+    // state, not the stale budget hold.
+    const transiting = {
+      ...baseDevice,
+      currentState: 'on',
+      steppedLoad: steppedLoad({ reportedStepId: 'low', targetStepId: 'max', commandPending: true }),
+      starvation: budgetHeld,
+    };
+    const withBudget = resolveSteppedStatusLine(transiting, profile, NOW_MS);
+    const withoutBudget = resolveSteppedStatusLine({ ...transiting, starvation: undefined }, profile, NOW_MS);
+    expect(withBudget).not.toBe("Limited to stay within today's budget");
+    expect(withBudget).toBe(withoutBudget);
+  });
+
+  it('stays neutral for a suppressed at-target settling latch even while budget-starved', () => {
+    // A headroom-check settling that is suppressed because the device is AT target
+    // is a recovery latch — it must read neutral ("Maintaining level"), not the
+    // latched budget hold.
+    const result = resolveSteppedStatusLine(
+      {
+        ...baseDevice,
+        currentState: 'on',
+        steppedLoad: steppedLoad({ reportedStepId: 'medium', targetStepId: 'medium' }),
+        reason: { code: 'meter_settling', remainingSec: 14 },
+        starvation: budgetHeld,
+      },
+      profile,
+      NOW_MS,
+    );
+    expect(result).toBe('Maintaining level');
+    expect(result).not.toBe("Limited to stay within today's budget");
   });
 });

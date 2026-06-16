@@ -129,10 +129,67 @@ var STARVATION_RESCUE_WIDGET_COPY = {
 };
 var STARVATION_RESCUE_DANGER_THRESHOLD_MS = 30 * 6e4;
 var starvationRowOffersRescue = (cause) => cause === "budget";
+var BUDGET_EXEMPT_CARD_ACTION_COPY = {
+  // Chip label — the canonical rescue verb, identical to the held-back widget's
+  // `rescueButton` ("Let it run now"). Device-scoped: it releases THIS device
+  // from today's budget so it runs now, never a hard-cap change. The leading
+  // bolt glyph distinguishes it from the adjacent "Budget limited" status badge.
+  label: STARVATION_RESCUE_WIDGET_COPY.rescueButton,
+  // Tooltip / accessible description — the same honest money-action consequence
+  // the widget's confirm sheet names: the rescue lets the device use power
+  // beyond today's budget until it reaches its normal target. Never suggests
+  // raising the hard cap (it is physical).
+  tooltip: STARVATION_RESCUE_WIDGET_COPY.rescueConsequence,
+  // Armed-confirm label (the two-step settings-UI confirm pattern): the first
+  // tap arms this, the second commits the rescue. Reuses the widget's confirm
+  // verb so the action word is shared across surfaces.
+  confirmLabel: STARVATION_RESCUE_WIDGET_COPY.rescueConfirmButton
+};
+var starvationRowIsRescuable = (cause, intendedNormalTargetC, hasSmartTask = false) => starvationRowOffersRescue(cause) && !hasSmartTask && intendedNormalTargetC !== null && Number.isFinite(intendedNormalTargetC);
 var ONE_HOUR_MS = 60 * 60 * 1e3;
 var scheduledHoursIncludeCurrentHour = (scheduledHours, nowMs) => {
   const currentHourStartMs = Math.floor(nowMs / ONE_HOUR_MS) * ONE_HOUR_MS;
   return scheduledHours.some((hour) => hour.startsAtMs === currentHourStartMs);
+};
+
+// packages/shared-domain/src/starvationRescueShared.ts
+var RESCUE_DEADLINE_HORIZON_MS = 3 * 60 * 60 * 1e3;
+var parseRescueRequest = (body) => {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return null;
+  const candidate = body;
+  const deviceId = typeof candidate.deviceId === "string" ? candidate.deviceId.trim() : "";
+  if (!deviceId) return null;
+  const deadlineAtMs = typeof candidate.deadlineAtMs === "number" && Number.isFinite(candidate.deadlineAtMs) ? candidate.deadlineAtMs : void 0;
+  return deadlineAtMs === void 0 ? { deviceId } : { deviceId, deadlineAtMs };
+};
+var resolveRescuableDeviceFromList = (devices, deviceId) => {
+  if (devices === null) return { ok: false, reason: "unavailable" };
+  const device = devices.find((entry) => entry.deviceId === deviceId);
+  if (!device || !starvationRowIsRescuable(device.cause, device.intendedNormalTargetC, device.hasSmartTask)) {
+    if (device && device.cause === "budget" && !device.hasSmartTask && (device.intendedNormalTargetC === null || !Number.isFinite(device.intendedNormalTargetC))) {
+      return { ok: false, reason: "no_target" };
+    }
+    return { ok: false, reason: "not_rescuable" };
+  }
+  return { ok: true, targetTemperatureC: device.intendedNormalTargetC };
+};
+var buildRescueCandidate = (targetTemperatureC, deadlineAtMs) => ({
+  kind: "temperature",
+  enforcement: "soft",
+  targetTemperatureC,
+  deadlineAtMs,
+  // The rescue requests BOTH permissions; the create engine's
+  // `gateCandidateExtraPermissions` keeps `exemptFromBudget` for any device and
+  // the `limitLowerPriorityDevices` grant only where it has effect (stepped-load
+  // + top priority), so the surfaces never need the device profile here.
+  rescue: { exemptFromBudget: "always", limitLowerPriorityDevices: "always" }
+});
+var mapAppRescueReason = (reason) => {
+  if (reason === "device_not_found") return "device_not_found";
+  if (reason === "device_not_planned") return "device_not_planned";
+  if (reason === "device_not_eligible") return "device_not_eligible";
+  if (reason === "write_conflict" || reason === "write_refused") return "write_conflict";
+  return "invalid_candidate";
 };
 
 // packages/shared-domain/src/smartTaskDeadlineFormat.ts
@@ -226,48 +283,14 @@ var buildStarvationRescueDevicesPayload = (input) => {
 };
 
 // widgets/starvation_rescue/src/api.ts
-var RESCUE_DEADLINE_HORIZON_MS = 3 * 60 * 60 * 1e3;
 var readTimeZone = (homey) => {
   const tz = homey.clock?.getTimezone?.();
   return typeof tz === "string" && tz.length > 0 ? tz : "UTC";
 };
-var parseRescueRequest = (body) => {
-  if (!body || typeof body !== "object" || Array.isArray(body)) return null;
-  const candidate = body;
-  const deviceId = typeof candidate.deviceId === "string" ? candidate.deviceId.trim() : "";
-  if (!deviceId) return null;
-  const deadlineAtMs = typeof candidate.deadlineAtMs === "number" && Number.isFinite(candidate.deadlineAtMs) ? candidate.deadlineAtMs : void 0;
-  return deadlineAtMs === void 0 ? { deviceId } : { deviceId, deadlineAtMs };
-};
-var resolveRescuableDevice = (app) => {
+var resolveRescuableDevice = (app, deviceId) => {
   const devices = typeof app?.getStarvedRescueDevices === "function" ? app.getStarvedRescueDevices() : null;
-  if (devices === null) {
-    return () => ({ ok: false, reason: "unavailable" });
-  }
-  const byId = new Map(devices.map((device) => [device.deviceId, device]));
-  return (deviceId) => {
-    const device = byId.get(deviceId);
-    if (!device || !starvationRowOffersRescue(device.cause) || device.hasSmartTask) {
-      return { ok: false, reason: "not_rescuable" };
-    }
-    const target = device.intendedNormalTargetC;
-    if (target === null || !Number.isFinite(target)) {
-      return { ok: false, reason: "no_target" };
-    }
-    return { ok: true, targetTemperatureC: target };
-  };
+  return resolveRescuableDeviceFromList(devices, deviceId);
 };
-var buildRescueCandidate = (targetTemperatureC, deadlineAtMs) => ({
-  kind: "temperature",
-  enforcement: "soft",
-  targetTemperatureC,
-  deadlineAtMs,
-  // The rescue requests BOTH permissions; the create engine's
-  // `gateCandidateExtraPermissions` keeps `exemptFromBudget` for any device and
-  // the `limitLowerPriorityDevices` grant only where it has effect (stepped-load
-  // + top priority), so the widget never needs the device profile here.
-  rescue: { exemptFromBudget: "always", limitLowerPriorityDevices: "always" }
-});
 var previewReject = (reason) => ({
   ok: false,
   reason
@@ -276,13 +299,6 @@ var createReject = (reason) => ({
   ok: false,
   reason
 });
-var mapAppReason = (reason) => {
-  if (reason === "device_not_found") return "device_not_found";
-  if (reason === "device_not_planned") return "device_not_planned";
-  if (reason === "device_not_eligible") return "device_not_eligible";
-  if (reason === "write_conflict" || reason === "write_refused") return "write_conflict";
-  return "invalid_candidate";
-};
 var getStarvationRescueDevices = async ({ homey }) => {
   const devices = typeof homey.app?.getStarvedRescueDevices === "function" ? homey.app.getStarvedRescueDevices() : null;
   return buildStarvationRescueDevicesPayload({ devices });
@@ -291,7 +307,7 @@ var previewStarvationRescue = async ({ homey, body }) => {
   const request = parseRescueRequest(body);
   if (!request) return previewReject("invalid_request");
   if (typeof homey.app?.previewStarvationRescuePlan !== "function") return previewReject("unavailable");
-  const rescuable = resolveRescuableDevice(homey.app)(request.deviceId);
+  const rescuable = resolveRescuableDevice(homey.app, request.deviceId);
   if (!rescuable.ok) return previewReject(rescuable.reason);
   const timeZone = readTimeZone(homey);
   const nowMs = Date.now();
@@ -309,7 +325,7 @@ var createStarvationRescue = async ({ homey, body }) => {
   const request = parseRescueRequest(body);
   if (!request) return createReject("invalid_request");
   if (typeof homey.app?.rescueDeviceWithBudgetExemption !== "function") return createReject("unavailable");
-  const rescuable = resolveRescuableDevice(homey.app)(request.deviceId);
+  const rescuable = resolveRescuableDevice(homey.app, request.deviceId);
   if (!rescuable.ok) return createReject(rescuable.reason);
   const nowMs = Date.now();
   const deadlineAtMs = request.deadlineAtMs ?? nowMs + RESCUE_DEADLINE_HORIZON_MS;
@@ -318,7 +334,7 @@ var createStarvationRescue = async ({ homey, body }) => {
   }
   const candidate = buildRescueCandidate(rescuable.targetTemperatureC, deadlineAtMs);
   const result = homey.app.rescueDeviceWithBudgetExemption(request.deviceId, candidate);
-  if (!result.ok) return createReject(mapAppReason(result.reason));
+  if (!result.ok) return createReject(mapAppRescueReason(result.reason));
   const post = homey.app.previewStarvationRescuePlan?.(request.deviceId, candidate);
   return {
     ok: true,

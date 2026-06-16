@@ -56,3 +56,14 @@ export const WarningIcon = (props: IconProps) => (
     <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z" />
   </svg>
 );
+
+// Material `bolt` glyph. Leads the Overview "Exempt from budget" action chip:
+// the lightning bolt reads as "let it run / give it power now", the consequence
+// of exempting the device from today's budget. It also visually separates the
+// tappable action chip from the adjacent "Budget limited" status badge (which
+// has no icon).
+export const BoltIcon = (props: IconProps) => (
+  <svg {...baseSvgProps(props)}>
+    <path d="M7 2v11h3v9l7-12h-4l4-8z" />
+  </svg>
+);

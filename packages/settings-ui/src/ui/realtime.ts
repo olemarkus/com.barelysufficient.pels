@@ -75,6 +75,10 @@ import { state } from './state.ts';
 import { logSettingsError, logSettingsWarn } from './logging.ts';
 import { refreshDeadlinesList } from './deadlinesList.ts';
 import { loadDeferredObjectiveSettings } from './deferredObjectiveSettings.ts';
+import {
+  refreshOverviewPlanWithRescueGate,
+  repaintOverviewWithRescueGate,
+} from './overviewRescueGate.ts';
 import { reloadDeferredObjectiveActivePlans } from './deferredObjectiveActivePlans.ts';
 import { clearUsageReturnLink } from './usageReturnLink.ts';
 import {
@@ -400,6 +404,22 @@ const handlePlanUpdated = (plan: unknown) => {
   invalidateApiCache(SETTINGS_UI_DEVICE_LOG_PATH);
   document.dispatchEvent(new CustomEvent('plan-updated', { detail: { plan: parsedPlan } }));
   if (!isPanelVisible('#overview-panel')) return;
+  // Refresh the rescuable-device set so the "Let it run now" chip's gate tracks
+  // the live starvation state (a device that just entered / left budget-caused
+  // starvation, gained / lost a smart task, or learned its target). Overview-only
+  // so it never fetches while the user is on another tab. The guarded repaint
+  // follows the fetch so the chip appears / disappears once it loads, but only if
+  // this plan is still current (`overviewRescueGate` sequence-guards it so a slow
+  // older fetch can't roll the Overview back over a newer plan). The synchronous
+  // `renderPlan` below always paints the freshest plan immediately.
+  runLoggedTask(
+    repaintOverviewWithRescueGate(
+      parsedPlan as PlanSnapshot | null,
+      () => isPanelVisible('#overview-panel'),
+    ),
+    'Failed to refresh rescuable devices',
+    'plan_updated',
+  );
   renderPlan(parsedPlan as PlanSnapshot | null);
 };
 
@@ -455,7 +475,7 @@ const DEVICE_DEPENDENT_TABS = new Set([
 const runTabActivationSideEffects = (tabId: string) => {
   if (tabId === 'overview') {
     document.dispatchEvent(new Event('overview-tab-activated'));
-    refreshPlanForUi('showTab');
+    runLoggedTask(refreshOverviewPlanWithRescueGate(), 'Failed to refresh plan', 'showTab');
     return;
   }
   if (tabId === 'electricity-prices' || tabId === 'price-aware-devices') {

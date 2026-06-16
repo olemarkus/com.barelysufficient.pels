@@ -11,7 +11,6 @@ import {
   deviceDetailClose,
   deviceDetailManaged,
   deviceDetailControllable,
-  deviceDetailBudgetExempt,
   deviceDetailPriceOpt,
   deviceDetailControlModelRow,
   deviceDetailControlModel,
@@ -28,10 +27,7 @@ import { renderPriorities } from '../modes.ts';
 import { renderPriceOptimization } from '../priceOptimization.ts';
 import { state } from '../state.ts';
 import { renderDeviceDetailModes } from './modes.ts';
-import {
-  BUDGET_EXEMPT_DEVICES,
-  DEVICE_CONTROL_PROFILES,
-} from '../../../../contracts/src/settingsKeys.ts';
+import { DEVICE_CONTROL_PROFILES } from '../../../../contracts/src/settingsKeys.ts';
 import {
   isDeviceDetailDiagnosticsExpanded,
   refreshDeviceDetailDiagnostics,
@@ -75,7 +71,7 @@ import {
   loadTemperatureBoostSettings,
   renderTemperatureBoostSettings,
 } from './temperatureBoost.ts';
-import { createSerializedAsyncRunner, readRecordSettingStrict, writeFreshSetting } from './settingsWrite.ts';
+import { createSerializedAsyncRunner, writeFreshSetting } from './settingsWrite.ts';
 import {
   clearPendingNativeWiringEnable,
   initDeviceDetailNativeWiringHandler,
@@ -95,12 +91,19 @@ import {
   syncDeviceDetailControlModeOptions,
 } from './controlMode.ts';
 import { resolveDeviceDetailControlState } from './controlState.ts';
+import {
+  createPendingDeviceDetailOpen,
+  type OpenDeviceDetailDetail,
+} from './focus.ts';
+import {
+  initDeviceDetailBudgetExemptHandler,
+  setDeviceDetailBudgetExemptState,
+} from './budgetExempt.ts';
 import { initDeviceDetailManagedControlHandlers } from './managedControl.ts';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
-import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 
 let currentDetailDeviceId: string | null = null;
-let pendingOpenDeviceId: string | null = null;
+const pendingDeviceDetailOpen = createPendingDeviceDetailOpen();
 const runSerializedDeviceControlProfileWrite = createSerializedAsyncRunner();
 
 const getCurrentDetailDeviceId = () => currentDetailDeviceId;
@@ -109,19 +112,6 @@ const getDeviceById = (deviceId: string) => state.latestDevices.find((device) =>
 
 const setDeviceDetailTitle = (name: string) => {
   if (deviceDetailTitle) deviceDetailTitle.textContent = formatDisplayDeviceName(name);
-};
-
-const setDeviceDetailBudgetExemptState = (device: SettingsUiDeviceDetailItem | null) => {
-  if (!deviceDetailBudgetExempt || !device) return;
-  deviceDetailBudgetExempt.selected = state.budgetExemptMap[device.id] === true || device.budgetExempt === true;
-  deviceDetailBudgetExempt.disabled = false;
-};
-
-const updateCurrentDeviceBudgetExemptSnapshot = (deviceId: string, budgetExempt: boolean) => {
-  const device = getDeviceById(deviceId);
-  if (device) {
-    device.budgetExempt = budgetExempt;
-  }
 };
 
 const refreshSharedDeviceViews = () => {
@@ -387,41 +377,6 @@ const initDeviceDetailControlModelHandler = () => {
   });
 };
 
-const initDeviceDetailBudgetExemptHandler = () => {
-  deviceDetailBudgetExempt?.addEventListener('change', async () => {
-    const deviceId = currentDetailDeviceId;
-    if (!deviceId || !deviceDetailBudgetExempt) return;
-
-    const nextChecked = deviceDetailBudgetExempt.selected;
-    await writeFreshSetting<Record<string, boolean>>({
-      key: BUDGET_EXEMPT_DEVICES,
-      context: 'device detail',
-      logMessage: 'Failed to update budget exempt device',
-      toastMessage: 'Failed to update budget exempt device.',
-      // Use the live budget-exempt snapshot as the fallback so a transient
-      // null SDK read does not erase entries for other devices.
-      fallbackValue: state.budgetExemptMap,
-      readFresh: readRecordSettingStrict<boolean>,
-      mutate: (currentMap) => {
-        const nextMap = { ...currentMap };
-        if (nextChecked) {
-          nextMap[deviceId] = true;
-        } else {
-          delete nextMap[deviceId];
-        }
-        return nextMap;
-      },
-      commit: (nextMap) => {
-        state.budgetExemptMap = nextMap;
-        updateCurrentDeviceBudgetExemptSnapshot(deviceId, nextChecked);
-        refreshSharedDeviceViews();
-        refreshOpenDeviceDetail();
-      },
-      rollback: refreshOpenDeviceDetail,
-    });
-  });
-};
-
 const initDeviceDetailEscapeHandler = () => {
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && deviceDetailOverlay && !deviceDetailOverlay.hidden) {
@@ -432,14 +387,14 @@ const initDeviceDetailEscapeHandler = () => {
 
 const initDeviceDetailOpenHandler = () => {
   document.addEventListener('open-device-detail', (event) => {
-    const custom = event as CustomEvent<{ deviceId: string }>;
+    const custom = event as CustomEvent<OpenDeviceDetailDetail>;
     const deviceId = custom.detail?.deviceId;
     if (!deviceId) return;
 
     if (getDeviceById(deviceId)) {
       openDeviceDetail(deviceId);
     } else {
-      pendingOpenDeviceId = deviceId;
+      pendingDeviceDetailOpen.set(deviceId);
       document.dispatchEvent(new CustomEvent('request-load-devices'));
     }
   });
@@ -464,12 +419,20 @@ const initDeviceDetailDiagnosticsHandler = () => {
 
 const initDeviceDetailRefreshHandlers = () => {
   document.addEventListener('devices-updated', () => {
-    if (pendingOpenDeviceId) {
-      const deviceId = pendingOpenDeviceId;
-      pendingOpenDeviceId = null;
-      openDeviceDetail(deviceId);
+    // Only consume the queued open request once its device is actually present:
+    // a `devices-updated` can fire while the requested device is still absent
+    // (partial list / unrelated change), and taking it unconditionally would
+    // drop the request before the device ever loads. Leave it queued for a later
+    // `devices-updated` instead.
+    const pending = pendingDeviceDetailOpen.peek();
+    if (pending && getDeviceById(pending.deviceId)) {
+      pendingDeviceDetailOpen.take();
+      openDeviceDetail(pending.deviceId);
       return;
     }
+    // A pending open whose device hasn't loaded yet stays queued for a later
+    // `devices-updated` — but must NOT block refreshing a currently-open detail
+    // below (an absent pending request would otherwise freeze the open pane).
     if (!currentDetailDeviceId) return;
 
     const deviceId = currentDetailDeviceId;
@@ -524,7 +487,12 @@ export const initDeviceDetailHandlers = () => {
     getCurrentDetailDeviceId,
     getDeviceById,
   });
-  initDeviceDetailBudgetExemptHandler();
+  initDeviceDetailBudgetExemptHandler({
+    getCurrentDetailDeviceId,
+    getDeviceById,
+    refreshSharedDeviceViews,
+    refreshOpenDeviceDetail,
+  });
   initDeviceDetailShedHandlers({
     getCurrentDetailDeviceId,
     getDeviceById,

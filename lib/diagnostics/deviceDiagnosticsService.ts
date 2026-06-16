@@ -652,6 +652,15 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
   // target — the value a budget-rescue smart task must aim for so the device
   // reaches its normal comfort/storage target. Name/kind are joined by the
   // caller against the device snapshot (see `App.getStarvedRescueDevices`).
+  //
+  // Excludes devices in the CLEAR-hysteresis window (`clearQualifiedStartedAt`
+  // set): once `clearQualified` fires, PELS has already commanded the device back
+  // to its full mode target and is no longer holding it below. `isStarved` stays
+  // latched through the 10-min window only so the overview BADGE keeps its
+  // attribution (see `applyStarvationClearProgress`) — but a rescue must not be
+  // offered for a device PELS is no longer holding below target, so the rescue
+  // list (the widget held-back rows + the overview "Let it run now" chip gate)
+  // drops it immediately. The badge path (`getOverviewStarvation`) is untouched.
   getStarvedRescueEntries(): Array<{
     deviceId: string;
     starvation: SettingsUiPlanDeviceStarvation;
@@ -665,6 +674,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     for (const deviceId of Object.keys(this.liveByDeviceId)) {
       const starvation = this.getOverviewStarvation(deviceId);
       if (!starvation) continue;
+      if (isFiniteNumber(this.liveByDeviceId[deviceId]?.starvation.clearQualifiedStartedAt)) continue;
       entries.push({
         deviceId,
         starvation,

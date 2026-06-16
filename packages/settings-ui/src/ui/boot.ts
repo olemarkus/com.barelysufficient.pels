@@ -84,6 +84,7 @@ import {
   loadTemperatureBoostSettings,
 } from './deviceDetail/index.ts';
 import { loadDeferredObjectiveSettings } from './deferredObjectiveSettings.ts';
+import { loadStarvationRescuableDevices } from './starvationRescue.ts';
 import { coerceDeferredObjectiveActivePlans } from './deferredObjectiveActivePlans.ts';
 import { loadDeviceControlProfiles } from './deviceControlProfiles.ts';
 import {
@@ -315,6 +316,7 @@ const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
     loadTemperatureBoostSettings(),
     loadEvBoostSettings(),
     loadDeferredObjectiveSettings(),
+    loadStarvationRescuableDevices(),
     loadAdvancedSettings(),
     initWeatherInsight(),
   ]);

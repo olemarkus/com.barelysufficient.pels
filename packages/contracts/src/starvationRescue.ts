@@ -4,6 +4,7 @@
 // for the bounded budget-exempt rescue. Type-only; imports nothing from `lib/`.
 
 import type { SettingsUiPlanStarvationCause } from './settingsUiApi.js';
+import type { DeferredObjectivePlanPreviewEstimate } from './deferredObjectivePlanPreview.js';
 
 // One currently-starved device the rescue widget lists. `accumulatedMs` is the
 // counted starvation duration (the widget floors it to whole minutes for
@@ -36,4 +37,64 @@ export type StarvationRescueDevicesPayload = {
   // Why the list is empty: nothing is starved (the calm steady state), no data
   // could load, or the widget is still wiring up to the app.
   subtitle: string;
+};
+
+// ─── Settings-UI overview device-card rescue (the "Let it run now" chip) ─────
+//
+// The overview chip offers the SAME bounded budget-exempt rescue as the
+// starvation_rescue widget, surfaced from the device card. The settings UI talks
+// to the same app methods over these endpoints, so the request/response shapes
+// live here (contract-homed) rather than the widget-local types — both the
+// runtime handlers (`api.ts` / `setup/settingsUiApi.ts`) and the settings UI
+// import them.
+
+export type StarvationRescueRejectReason =
+  | 'invalid_request'
+  // The device is not a currently-starved BUDGET-caused row (it cleared, its
+  // cause changed to capacity, or it never offered a rescue).
+  | 'not_rescuable'
+  // No intended normal target known for the device yet, so there is nothing to
+  // aim the rescue at.
+  | 'no_target'
+  // The resolved near-term deadline slipped into the past (clock skew) — retryable.
+  | 'deadline_passed'
+  | 'device_not_found'
+  | 'device_not_planned'
+  | 'device_not_eligible'
+  | 'invalid_candidate'
+  // The hardened write primitive refused (suspected transient-empty settings
+  // read while other tasks are live). Transient — the user can retry.
+  | 'write_conflict'
+  | 'unavailable';
+
+// The device IDs the overview chip may offer the rescue on, resolved server-side
+// from the SAME `getStarvedRescueDevices` list the widget gates on (budget-caused
+// + task-free + a known target). The settings UI gates the chip on membership in
+// this set, so a shown chip's create call can never be rejected as not-rescuable.
+export type SettingsUiStarvationRescueDevicesPayload = {
+  rescuableDeviceIds: string[];
+};
+
+// Optional bounded-window readout shown on the confirm step (the rescue reaches
+// the device's normal target BY `deadlineAtMs`). Mirrors the widget's preview.
+export type SettingsUiStarvationRescuePreviewResponse = {
+  ok: true;
+  deadlineAtMs: number;
+  // Pre-formatted local deadline label ("Today 17:00"), server-side in the app
+  // timezone so the browser does no Date math.
+  deadlineLabel: string;
+  estimate: DeferredObjectivePlanPreviewEstimate;
+} | {
+  ok: false;
+  reason: StarvationRescueRejectReason;
+};
+
+export type SettingsUiStarvationRescueCreateResponse = {
+  ok: true;
+  // Whether the just-persisted plan runs the device in the CURRENT clock hour
+  // (vs only later, cheaper hours) — drives the honest success flash.
+  runsCurrentHour: boolean;
+} | {
+  ok: false;
+  reason: StarvationRescueRejectReason;
 };
