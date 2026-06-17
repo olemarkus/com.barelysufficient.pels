@@ -7,6 +7,7 @@ import type { EChartsOption, SeriesOption } from './echartsRegistry.ts';
 import type { CostDisplay } from './dailyBudgetCost.ts';
 import { formatHourAxisLabel, readChartPalette, resolveLabelEvery } from './dayViewChart.ts';
 import { resolvePriceUnitLabel } from './priceUnit.ts';
+import { priceRateLabelToAmountUnit } from '../../../shared-domain/src/price/priceUnitLabel.ts';
 import { prefersCoarsePointer } from './chartReadout.ts';
 import {
   buildChartTooltipBase,
@@ -17,7 +18,9 @@ import {
 import {
   normalizePriceValues,
   resolveActualUpToIndex,
+  resolveProgressMoneySeriesData,
   resolveProgressSeriesData,
+  type BudgetChartUnit,
   type BudgetRedesignDayView,
 } from './budgetRedesignChartData.ts';
 
@@ -179,12 +182,44 @@ const buildBaseOption = (params: {
   };
 };
 
+// The single green reference is the stable budget-pace curve; it ends AT the cap
+// (energy) or its fully-priced cost (money), so an end-stop dot carries the
+// terminal number — no separate flat line, which would double-encode it. Energy
+// gates the dot on a positive configured budget (preserved behaviour); money on
+// a positive priced terminal (no cost view renders for a 0-kr day).
+const resolveProgressEndStop = (params: {
+  payload: DailyBudgetDayPayload;
+  labels: string[];
+  planCumulative: number[];
+  referenceFloor: number;
+  isMoney: boolean;
+  costDisplay: CostDisplay;
+}): { show: boolean; label: string; paceTerminal: number } => {
+  const { payload, labels, planCumulative, referenceFloor, isMoney, costDisplay } = params;
+  const paceTerminal = planCumulative.length
+    ? (planCumulative[planCumulative.length - 1] ?? referenceFloor)
+    : referenceFloor;
+  const budgetConfigured = Number.isFinite(payload.budget.dailyBudgetKWh) && payload.budget.dailyBudgetKWh > 0;
+  const show = labels.length > 0 && Number.isFinite(paceTerminal) && paceTerminal > 0 && (isMoney || budgetConfigured);
+  const label = isMoney
+    ? `Budget ${paceTerminal.toFixed(2)} ${priceRateLabelToAmountUnit(costDisplay.unit)}`.trimEnd()
+    : `Budget ${paceTerminal.toFixed(1)} kWh`;
+  return { show, label, paceTerminal };
+};
+
 export const buildProgressOption = (params: {
   payload: DailyBudgetDayPayload;
   view: BudgetRedesignDayView;
   palette: BudgetChartPalette;
   readouts: ChartReadoutContent[];
   dataMaxOverride?: number;
+  // The cumulative unit. 'money' reads the producer cost series scaled through
+  // the CostDisplay divisor; defaults to 'energy' so existing callers (and the
+  // Adjust comparison charts) keep the kWh view unchanged. `costDisplay` is
+  // required (never defaulted) so the money path can't silently assume a
+  // currency/divisor — the øre→kr 100× trap if a caller forgot to pass it.
+  unit?: BudgetChartUnit;
+  costDisplay: CostDisplay;
 }): EChartsOption => {
   const {
     payload,
@@ -192,14 +227,22 @@ export const buildProgressOption = (params: {
     palette,
     readouts,
     dataMaxOverride,
+    unit = 'energy',
+    costDisplay,
   } = params;
-  const { labels, planCumulative, actualCumulative, projection } = resolveProgressSeriesData(payload, view);
+  const isMoney = unit === 'money';
+  const { labels, planCumulative, actualCumulative, projection } = isMoney
+    ? resolveProgressMoneySeriesData(payload, view, costDisplay)
+    : resolveProgressSeriesData(payload, view);
   const values = [
     ...planCumulative,
     ...actualCumulative.filter((value): value is number => Number.isFinite(value)),
     ...projection.filter((value): value is number => Number.isFinite(value)),
   ];
-  const computedMax = Math.max(...values, payload.budget.dailyBudgetKWh);
+  // Energy floors the axis at the configured cap so the end-stop sits on-scale;
+  // money has no configured cost target, so the series themselves set the max.
+  const referenceFloor = isMoney ? 0 : payload.budget.dailyBudgetKWh;
+  const computedMax = Math.max(...values, referenceFloor);
   const dataMax = dataMaxOverride !== undefined ? Math.max(computedMax, dataMaxOverride) : computedMax;
   const option = buildBaseOption({
     labels,
@@ -208,13 +251,7 @@ export const buildProgressOption = (params: {
     scaleKind: 'progress',
     readouts,
   });
-  const budgetKWh = payload.budget.dailyBudgetKWh;
-  // The single green reference is the stable budget-pace curve; it ends AT the
-  // cap, so an end-stop dot carries the budget number (its TRUE terminal value)
-  // — no separate flat budget line, which would double-encode the cap.
-  const paceTerminal = planCumulative.length
-    ? (planCumulative[planCumulative.length - 1] ?? budgetKWh)
-    : budgetKWh;
+  const endStop = resolveProgressEndStop({ payload, labels, planCumulative, referenceFloor, isMoney, costDisplay });
   const series: SeriesOption[] = [
     {
       type: 'line',
@@ -225,7 +262,7 @@ export const buildProgressOption = (params: {
       lineStyle: { color: palette.plan, width: 3 },
       areaStyle: { color: palette.planFill },
       emphasis: { disabled: true },
-      ...(Number.isFinite(budgetKWh) && budgetKWh > 0 && labels.length > 0
+      ...(endStop.show
         ? {
           markPoint: {
             symbol: 'circle',
@@ -236,11 +273,11 @@ export const buildProgressOption = (params: {
             label: {
               show: true,
               position: 'left' as const,
-              formatter: `Budget ${paceTerminal.toFixed(1)} kWh`,
+              formatter: endStop.label,
               color: palette.muted,
               fontSize: 10,
             },
-            data: [{ coord: [labels[labels.length - 1], paceTerminal] }],
+            data: [{ coord: [labels[labels.length - 1], endStop.paceTerminal] }],
           },
         }
         : {}),

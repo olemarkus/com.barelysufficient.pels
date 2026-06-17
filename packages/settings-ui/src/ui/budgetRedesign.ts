@@ -12,6 +12,7 @@ import {
   type BudgetOverviewProps,
 } from './views/BudgetOverview.tsx';
 import { type BudgetRedesignChartMode } from './budgetRedesignChart.ts';
+import { type BudgetChartUnit } from './budgetRedesignChartData.ts';
 import {
   applyBudgetAdjust,
   discardBudgetAdjust,
@@ -57,6 +58,10 @@ let currentBudgetLocalView: BudgetLocalView = 'plan';
 // started from the Budget page header (or the allocation-warning CTA).
 let adjustReturnTarget: 'plan' | 'settings' = 'plan';
 let currentChartMode: BudgetRedesignChartMode = 'progress';
+// The kWh⇄kr toggle's requested unit. Persists across mode switches so a user
+// who picked kr keeps it when returning to the progress chart; resolveChartData
+// falls it back to energy whenever the cost view isn't available.
+let currentChartUnit: BudgetChartUnit = 'energy';
 let latestRenderState: RenderState = {
   payload: null,
   view: 'today',
@@ -157,7 +162,14 @@ const buildProps = (): BudgetOverviewProps => {
     localView: effectiveLocalView,
     view,
     hero: resolveHeroData(viewPayload, view, costDisplay, status, budgetEnabled),
-    chart: resolveChartData(planPayload, view, currentChartMode, status, costDisplay),
+    chart: resolveChartData({
+      viewPayload: planPayload,
+      view,
+      mode: currentChartMode,
+      status,
+      costDisplay,
+      requestedUnit: currentChartUnit,
+    }),
     confidence: resolveConfidenceData(planPayload, view, status),
     adjust,
     allocationWarning: view === 'today' ? resolveAllocationWarning(planPayload) : null,
@@ -181,6 +193,7 @@ const buildProps = (): BudgetOverviewProps => {
     },
     onDayChange: externalOnDayChange,
     onChartModeChange: (v) => { currentChartMode = v; doRender(); },
+    onChartUnitChange: (v) => { currentChartUnit = v; doRender(); },
     onAdjustFieldChange: (patch) => updateBudgetAdjustField(patch),
     onPreview: () => { void previewBudgetAdjust(); },
     onApply: () => { void applyBudgetAdjust(); },

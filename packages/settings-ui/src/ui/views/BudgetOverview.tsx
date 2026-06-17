@@ -12,6 +12,7 @@ import { ExpandMoreIcon, TuneIcon, WarningIcon } from './icons.tsx';
 import {
   renderBudgetRedesignChart,
   clearBudgetRedesignChart,
+  type BudgetChartUnit,
   type BudgetRedesignChartMode,
   type BudgetRedesignDayView,
 } from '../budgetRedesignChart.ts';
@@ -36,6 +37,7 @@ import {
 import type { BudgetAdjustDraft, BudgetAdjustStatus } from '../budgetAdjustController.ts';
 import type { AllocationWarning } from '../dailyBudgetAllocationWarning.ts';
 import type { PriceLevelChip } from '../../../../shared-domain/src/priceLevelChips.ts';
+import { priceRateLabelToAmountUnit } from '../../../../shared-domain/src/price/priceUnitLabel.ts';
 import { WEATHER_INSIGHT_TITLE } from '../../../../shared-domain/src/weatherInsightCopy.ts';
 import {
   WeatherBudgetCard,
@@ -62,6 +64,10 @@ export type BudgetChartData = {
   payload: DailyBudgetDayPayload;
   view: BudgetRedesignDayView;
   mode: BudgetRedesignChartMode;
+  // Effective progress-chart unit (kWh⇄kr) and whether the money view may be
+  // selected for this day. Resolved in the producer — the view only reads them.
+  unit: BudgetChartUnit;
+  costViewAvailable: boolean;
   showPrice: boolean;
   showProjection: boolean;
   // True when the hourly chart renders the planned-load split as two stacked
@@ -123,6 +129,7 @@ export type BudgetOverviewProps = {
   onLocalViewChange: (v: BudgetLocalView) => void;
   onDayChange: (v: BudgetRedesignDayView) => void;
   onChartModeChange: (v: BudgetRedesignChartMode) => void;
+  onChartUnitChange: (v: BudgetChartUnit) => void;
   onAdjustFieldChange: (patch: Partial<BudgetAdjustDraft>) => void;
   onPreview: () => void;
   onApply: () => void;
@@ -307,6 +314,7 @@ const EChartsCanvas = ({ chart }: { chart: NonNullable<BudgetChartData> }) => {
       view: chart.view,
       priceReliable: chart.showPrice,
       costDisplay: chart.costDisplay,
+      unit: chart.unit,
       readoutHost: readoutRef.current,
     });
   });
@@ -336,11 +344,19 @@ const EChartsCanvas = ({ chart }: { chart: NonNullable<BudgetChartData> }) => {
 const BudgetChartCard = ({
   chart,
   onModeChange,
+  onUnitChange,
 }: {
   chart: BudgetChartData;
   onModeChange: (v: BudgetRedesignChartMode) => void;
+  onUnitChange: (v: BudgetChartUnit) => void;
 }) => {
   if (!chart) return null;
+  // The kWh⇄kr unit toggle appears only when the cost view is available (a
+  // fully-priced day) — hidden otherwise rather than shown disabled, so the chart
+  // card never carries a dead control whose touch users can't see the "why".
+  // The money label is the live display unit (kr/øre/…) stripped to the amount
+  // unit (a TOTAL is never labelled "kr/kWh"), never a hardcoded currency.
+  const moneyUnitLabel = priceRateLabelToAmountUnit(chart.costDisplay.unit).trim() || 'kr';
   return (
     <section class="pels-surface-card budget-redesign-card budget-chart-card">
       <MdElevation aria-hidden="true" />
@@ -359,6 +375,19 @@ const BudgetChartCard = ({
           onChange={onModeChange}
         />
       </div>
+      {chart.mode === 'progress' && chart.costViewAvailable && (
+        <div class="budget-chart-unit-row">
+          <ToggleGroup
+            options={[
+              { value: 'energy' as const, label: 'kWh' },
+              { value: 'money' as const, label: moneyUnitLabel },
+            ]}
+            value={chart.unit}
+            ariaLabel="Budget chart unit"
+            onChange={onUnitChange}
+          />
+        </div>
+      )}
       <ChartLegend
         view={chart.view}
         showProjection={chart.showProjection}
@@ -976,6 +1005,7 @@ const BudgetOverviewRoot = ({
   onLocalViewChange,
   onDayChange,
   onChartModeChange,
+  onChartUnitChange,
   onAdjustFieldChange,
   onPreview,
   onApply,
@@ -1014,7 +1044,7 @@ const BudgetOverviewRoot = ({
           />
         )}
         <BudgetConfidenceCard confidence={confidence} />
-        <BudgetChartCard chart={chart} onModeChange={onChartModeChange} />
+        <BudgetChartCard chart={chart} onModeChange={onChartModeChange} onUnitChange={onChartUnitChange} />
         <WeatherBudgetCard
           data={weatherInsight}
           onShowDetails={() => onLocalViewChange('weather')}

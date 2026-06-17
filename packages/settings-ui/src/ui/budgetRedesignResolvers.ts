@@ -14,6 +14,10 @@ import type {
   BudgetRedesignDayView,
 } from './budgetRedesignChart.ts';
 import {
+  resolveBudgetCostViewAvailable,
+  type BudgetChartUnit,
+} from './budgetRedesignChartData.ts';
+import {
   BUDGET_CHART_TITLE_HOURLY_PLAN,
   BUDGET_CHART_TITLE_PROGRESS,
   BUDGET_COMPARISON_SHOWING_TODAY,
@@ -363,21 +367,48 @@ const hasPlannedSplitBuckets = (payload: DailyBudgetDayPayload): boolean => {
     && (payload.buckets.plannedControlledKWh || []).length === bucketCount;
 };
 
-export const resolveChartData = (
-  viewPayload: DailyBudgetDayPayload | null,
-  view: BudgetDayView,
+// The money toggle is a progress-mode affordance; the cost view is only
+// available when the producer priced every budget-pace bucket. Resolved to a
+// flat effective unit here — the requested 'money' falls back to 'energy'
+// whenever it isn't available, so consumers never branch on availability.
+const resolveChartUnit = (
+  viewPayload: DailyBudgetDayPayload,
   mode: BudgetRedesignChartMode,
-  status: BudgetStatus,
+  requestedUnit: BudgetChartUnit,
   costDisplay: CostDisplay,
-): BudgetChartData => {
+): { unit: BudgetChartUnit; costViewAvailable: boolean } => {
+  // Money needs BOTH a fully-priced day AND a real display unit. Flow/Homey power
+  // sources can report priced buckets with a blank unit (`{unit:'', divisor:1}`,
+  // see priceUnit.ts) — offering a "kr"-labelled toggle there would render
+  // unit-less, un-scaled numbers. Stay on kWh when there's no currency to show.
+  const costViewAvailable = mode === 'progress'
+    && costDisplay.unit.trim() !== ''
+    && resolveBudgetCostViewAvailable(viewPayload);
+  const unit: BudgetChartUnit = requestedUnit === 'money' && costViewAvailable ? 'money' : 'energy';
+  return { unit, costViewAvailable };
+};
+
+export const resolveChartData = (params: {
+  viewPayload: DailyBudgetDayPayload | null;
+  view: BudgetDayView;
+  mode: BudgetRedesignChartMode;
+  status: BudgetStatus;
+  costDisplay: CostDisplay;
+  // Requested progress-chart unit (kWh⇄kr toggle); defaults to energy.
+  requestedUnit?: BudgetChartUnit;
+}): BudgetChartData => {
+  const { viewPayload, view, mode, status, costDisplay, requestedUnit = 'energy' } = params;
   if (!viewPayload || viewPayload.budget.enabled !== true || status === 'noPlan') return null;
   const priceReliable = isPriceReliable(viewPayload);
   const priceShaping = Boolean(viewPayload.budget.priceShapingEnabled);
   const isHourly = mode === 'hourlyPlan';
+  const { unit, costViewAvailable } = resolveChartUnit(viewPayload, mode, requestedUnit, costDisplay);
   return {
     payload: viewPayload,
     view,
     mode,
+    unit,
+    costViewAvailable,
     showPrice: isHourly && priceReliable && priceShaping,
     showProjection: mode === 'progress' && view === 'today',
     showSplit: isHourly && hasPlannedSplitBuckets(viewPayload),

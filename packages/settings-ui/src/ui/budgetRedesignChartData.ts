@@ -5,13 +5,21 @@
 import type { DailyBudgetDayPayload } from '../../../contracts/src/dailyBudgetTypes.ts';
 import type { CostDisplay } from './dailyBudgetCost.ts';
 import { resolvePriceUnitLabel } from './priceUnit.ts';
+import { priceRateLabelToAmountUnit } from '../../../shared-domain/src/price/priceUnitLabel.ts';
 import {
   buildBudgetHourlyReadout,
+  buildBudgetMoneyProgressReadout,
   buildBudgetProgressReadout,
   type ChartReadoutContent,
 } from './chartTooltipFormat.ts';
 
 export type BudgetRedesignDayView = 'today' | 'tomorrow' | 'yesterday';
+
+// The progress chart's two units: cumulative energy (kWh) or cumulative cost
+// (the price major unit, e.g. kr). The money view reads the producer's cost
+// cumulative series; it is only offered when the day is fully priced (see
+// `resolveBudgetCostViewAvailable`).
+export type BudgetChartUnit = 'energy' | 'money';
 
 const cumulative = (values: number[]): number[] => {
   let total = 0;
@@ -30,6 +38,47 @@ const isFiniteSeriesOfLength = (values: number[] | undefined, length: number): v
   && values.length === length
   && values.every((value) => Number.isFinite(value))
 );
+
+// The producer cost cumulatives are `Array<number | null>` (null entries where
+// un-priceable). The money view is only authoritative when the budget-pace cost
+// series covers every bucket with finite values — PR-A nulls the WHOLE series
+// when any energy-bearing bucket lacks a price, so a finite full-length series
+// is the honest "fully priced" gate.
+const isFiniteCostSeriesOfLength = (
+  values: Array<number | null> | undefined,
+  length: number,
+): values is number[] => (
+  Array.isArray(values)
+  && values.length === length
+  && values.every((value): value is number => Number.isFinite(value))
+);
+
+// True when the kWh⇄kr toggle may offer the money view for this day: the
+// producer priced every bucket of the stable budget-pace reference. Falls back
+// to the energy view otherwise — the toggle's money option is disabled, never
+// rendering a half-priced curve.
+export const resolveBudgetCostViewAvailable = (payload: DailyBudgetDayPayload): boolean => {
+  const length = (payload.buckets.startLocalLabels || []).length;
+  if (length === 0) return false;
+  return isFiniteCostSeriesOfLength(payload.buckets.budgetPaceCostCumMinor, length);
+};
+
+// Scale a producer cost cumulative (price minor unit, e.g. øre) into the major
+// display unit (e.g. kr) via the shared `CostDisplay` divisor — the single
+// division point for the money view (PR-A's "divisor unification"). Preserves
+// null entries and pads to `length` so a short producer array still aligns with
+// the label axis.
+const scaleCostMinorToMajor = (
+  values: Array<number | null> | undefined,
+  length: number,
+  divisor: number,
+): Array<number | null> => {
+  const safeDivisor = Math.max(1, divisor);
+  return Array.from({ length }, (_unused, index) => {
+    const value = values?.[index];
+    return Number.isFinite(value) ? Number(((value as number) / safeDivisor).toFixed(4)) : null;
+  });
+};
 
 export const resolveActualUpToIndex = (
   payload: DailyBudgetDayPayload,
@@ -190,6 +239,40 @@ export const resolveProgressSeriesData = (
   return { labels, planCumulative, actualCumulative, projection };
 };
 
+// Money-view counterpart to resolveProgressSeriesData: the same three cumulative
+// curves (budget pace / actual-so-far / now-forward projection) read from the
+// producer's cost series instead of kWh, scaled minor→major. Assumes the caller
+// gated on `resolveBudgetCostViewAvailable`; the budget-pace reference is then a
+// finite full-length series, so its nulls coerce to 0 (parallels the energy
+// `planCumulative` being a plain `number[]`).
+export const resolveProgressMoneySeriesData = (
+  payload: DailyBudgetDayPayload,
+  view: BudgetRedesignDayView,
+  costDisplay: CostDisplay,
+): ProgressSeriesData => {
+  const labels = payload.buckets.startLocalLabels || [];
+  const { divisor } = costDisplay;
+  const actualUpToIndex = resolveActualUpToIndex(payload, view);
+  const planCumulative = scaleCostMinorToMajor(payload.buckets.budgetPaceCostCumMinor, labels.length, divisor)
+    .map((value) => value ?? 0);
+  // Producer actual cost is already elapsed-only (null past "now"); re-mask
+  // against the view's actualUpToIndex defensively so the chart never draws an
+  // actual cost segment ahead of measured reality.
+  const actualCumulative = scaleCostMinorToMajor(payload.buckets.actualCostCumMinor, labels.length, divisor)
+    .map((value, index) => (index > actualUpToIndex ? null : value));
+  const producerProjection = scaleCostMinorToMajor(payload.buckets.projectionCostCumMinor, labels.length, divisor);
+  let projection: Array<number | null>;
+  if (view !== 'today' || actualUpToIndex < 0) {
+    // No forward projection off the today view, nor before the first actual
+    // lands (mirrors the energy resolver — avoids a premature dashed line from
+    // midnight).
+    projection = labels.map((): number | null => null);
+  } else {
+    projection = producerProjection.map((value, index): number | null => (index < actualUpToIndex ? null : value));
+  }
+  return { labels, planCumulative, actualCumulative, projection };
+};
+
 export type BudgetReadoutBundle = {
   readouts: ChartReadoutContent[];
   defaultIndex: number;
@@ -224,6 +307,44 @@ export const buildBudgetProgressReadoutBundle = (
     // Today follows the current hour; yesterday/tomorrow anchor on the
     // end-of-day column — the cumulative chart's answer for a finished (or
     // fully planned) day is its total, not its peak hour.
+    defaultIndex: view === 'today'
+      ? resolveBudgetDefaultReadoutIndex(payload, view)
+      : Math.max(0, labels.length - 1),
+    selectSeriesIndexes: [],
+    markerValues,
+  };
+};
+
+// Money-view progress content: `By 14:00` / `Budget 24.10 kr · Actual 18.30 kr`
+// + `Projection 26.40 kr`. Mirrors the energy bundle's anchoring and marker
+// rules — the only difference is the cost series + the kr-formatted readout.
+// Exported for the exact-string content-resolver suites.
+export const buildBudgetMoneyProgressReadoutBundle = (
+  payload: DailyBudgetDayPayload,
+  view: BudgetRedesignDayView,
+  costDisplay: CostDisplay,
+): BudgetReadoutBundle => {
+  const { labels, planCumulative, actualCumulative, projection } = resolveProgressMoneySeriesData(
+    payload,
+    view,
+    costDisplay,
+  );
+  // The money view labels TOTALS (Σ kWh × price), so strip any per-kWh rate
+  // suffix: a "kr/kWh" display unit must read "kr" on a cumulative cost, not
+  // "kr/kWh" (matches the deferred-history cost surfaces).
+  const unit = priceRateLabelToAmountUnit(costDisplay.unit);
+  const readouts = labels.map((_label, index) => buildBudgetMoneyProgressReadout({
+    endLabel: resolveProgressEndLabel(labels, index),
+    budgetCost: planCumulative[index] ?? 0,
+    actualCost: actualCumulative[index] ?? null,
+    projectionCost: projection[index] ?? null,
+    unit,
+  }));
+  const markerValues = labels.map((_label, index) => (
+    actualCumulative[index] ?? projection[index] ?? planCumulative[index] ?? null
+  ));
+  return {
+    readouts,
     defaultIndex: view === 'today'
       ? resolveBudgetDefaultReadoutIndex(payload, view)
       : Math.max(0, labels.length - 1),
