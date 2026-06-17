@@ -1,8 +1,11 @@
 import {
   buildBudgetHourlyReadoutBundle,
+  buildBudgetMoneyProgressReadoutBundle,
   buildBudgetProgressReadoutBundle,
   buildProjectionCumulative,
+  resolveBudgetCostViewAvailable,
   resolveBudgetDefaultReadoutIndex,
+  resolveProgressMoneySeriesData,
   resolveProgressSeriesData,
 } from '../src/ui/budgetRedesignChartData.ts';
 import { buildProgressOption, type BudgetChartPalette } from '../src/ui/budgetRedesignChartOptions.ts';
@@ -110,6 +113,82 @@ describe('budget readout content (progress mode)', () => {
   });
 });
 
+// Cost-cumulative buckets (price minor unit, øre) layered onto the base day so
+// the money view has a fully-priced series to read. CostDisplay {unit:'kr',
+// divisor:100} ⇒ ÷100 to kr. Actual is elapsed-only (null past currentBucketIndex 1).
+const COST_DISPLAY = { unit: 'kr', divisor: 100 };
+const buildPricedDayPayload = (
+  overrides: Parameters<typeof buildDayPayload>[0] = {},
+): DailyBudgetDayPayload => buildDayPayload({
+  ...overrides,
+  buckets: {
+    budgetPaceCostCumMinor: [500, 1420, 2020, 2420],
+    actualCostCumMinor: [450, 1230, null, null],
+    projectionCostCumMinor: [450, 1370, 1970, 2370],
+    ...overrides.buckets,
+  },
+});
+
+describe('budget money view (kWh⇄kr)', () => {
+  it('resolveBudgetCostViewAvailable gates on a fully-priced budget-pace series', () => {
+    expect(resolveBudgetCostViewAvailable(buildPricedDayPayload())).toBe(true);
+    // A single un-priceable bucket nulls the producer series → money view off.
+    expect(resolveBudgetCostViewAvailable(buildPricedDayPayload({
+      buckets: { budgetPaceCostCumMinor: [500, 1420, 2020, null] },
+    }))).toBe(false);
+    // Absent series (un-priced day) → money view off.
+    expect(resolveBudgetCostViewAvailable(buildDayPayload())).toBe(false);
+  });
+
+  it('formats the cumulative budget/actual cost line and projection in the major unit', () => {
+    const bundle = buildBudgetMoneyProgressReadoutBundle(buildPricedDayPayload(), 'today', COST_DISPLAY);
+    expect(bundle.readouts[1]).toEqual({
+      when: 'By 14:00',
+      values: [
+        { text: `${nb('Budget 14.20 kr')}${sep}${nb('Actual 12.30 kr')}` },
+        { text: nb('Projection 13.70 kr') },
+      ],
+    });
+  });
+
+  it('omits actual and projection on the tomorrow view', () => {
+    const bundle = buildBudgetMoneyProgressReadoutBundle(buildPricedDayPayload(), 'tomorrow', COST_DISPLAY);
+    expect(bundle.readouts[1]).toEqual({
+      when: 'By 14:00',
+      values: [{ text: nb('Budget 14.20 kr') }],
+    });
+  });
+
+  it('masks the actual past now and the projection before now', () => {
+    const series = resolveProgressMoneySeriesData(buildPricedDayPayload(), 'today', COST_DISPLAY);
+    // Budget pace is the full-day green reference (nulls coerced to 0).
+    expect(series.planCumulative).toEqual([5, 14.2, 20.2, 24.2]);
+    // Actual stops at the current bucket (index 1); future buckets are null.
+    expect(series.actualCumulative).toEqual([4.5, 12.3, null, null]);
+    // Projection is null before "now" and carries the producer value from the
+    // current bucket forward.
+    expect(series.projection[0]).toBeNull();
+    expect(series.projection[1]).toBeCloseTo(13.7, 5);
+    expect(series.projection[3]).toBeCloseTo(23.7, 5);
+  });
+
+  it('anchors money readouts like the energy view (today=current hour, else end-of-day)', () => {
+    expect(buildBudgetMoneyProgressReadoutBundle(buildPricedDayPayload(), 'today', COST_DISPLAY).defaultIndex).toBe(1);
+    expect(buildBudgetMoneyProgressReadoutBundle(buildPricedDayPayload(), 'yesterday', COST_DISPLAY).defaultIndex)
+      .toBe(3);
+    expect(buildBudgetMoneyProgressReadoutBundle(buildPricedDayPayload(), 'tomorrow', COST_DISPLAY).defaultIndex)
+      .toBe(3);
+  });
+
+  it('strips a per-kWh rate suffix from money readout totals (kr/kWh ⇒ kr)', () => {
+    // A rate-shaped display unit (Flow/Homey) must label a cumulative TOTAL as an
+    // amount ("kr"), never the rate ("kr/kWh").
+    const bundle = buildBudgetMoneyProgressReadoutBundle(buildPricedDayPayload(), 'today', { unit: 'kr/kWh', divisor: 100 });
+    expect(bundle.readouts[1].values[0].text).toContain(nb('Budget 14.20 kr'));
+    expect(bundle.readouts[1].values[0].text).not.toContain('kWh');
+  });
+});
+
 describe('budget readout content (hourly mode)', () => {
   const costDisplay = { unit: 'kr', divisor: 100 };
 
@@ -204,6 +283,7 @@ describe('buildProgressOption', () => {
       view: 'today',
       palette,
       readouts: [],
+      costDisplay: COST_DISPLAY,
     });
     const budgetSeries = (option.series as Array<Record<string, unknown>>)
       .find((series) => series.name === 'Budget');
@@ -215,10 +295,45 @@ describe('buildProgressOption', () => {
   it('omits the budget end-stop when no positive daily budget is set', () => {
     const payload = buildDayPayload();
     payload.budget = { ...payload.budget, dailyBudgetKWh: 0 };
-    const option = buildProgressOption({ payload, view: 'today', palette, readouts: [] });
+    const option = buildProgressOption({ payload, view: 'today', palette, readouts: [], costDisplay: COST_DISPLAY });
     const budgetSeries = (option.series as Array<Record<string, unknown>>)
       .find((series) => series.name === 'Budget');
     expect(budgetSeries?.markPoint).toBeUndefined();
+  });
+
+  it('labels the end-stop in the money unit and at the priced terminal when unit is money', () => {
+    const option = buildProgressOption({
+      payload: buildPricedDayPayload(),
+      view: 'today',
+      palette,
+      readouts: [],
+      unit: 'money',
+      costDisplay: COST_DISPLAY,
+    });
+    const budgetSeries = (option.series as Array<Record<string, unknown>>)
+      .find((series) => series.name === 'Budget');
+    const markPoint = budgetSeries?.markPoint as {
+      label?: { formatter?: string };
+      data?: Array<{ coord: [string, number] }>;
+    } | undefined;
+    // Budget-pace cost terminal = 2420 øre ÷ 100 = 24.20 kr.
+    expect(markPoint?.label?.formatter).toBe('Budget 24.20 kr');
+    expect(markPoint?.data?.[0]?.coord[1]).toBeCloseTo(24.2, 5);
+  });
+
+  it('strips a per-kWh rate suffix from the money end-stop label (kr/kWh ⇒ kr)', () => {
+    const option = buildProgressOption({
+      payload: buildPricedDayPayload(),
+      view: 'today',
+      palette,
+      readouts: [],
+      unit: 'money',
+      costDisplay: { unit: 'kr/kWh', divisor: 100 },
+    });
+    const budgetSeries = (option.series as Array<Record<string, unknown>>)
+      .find((series) => series.name === 'Budget');
+    const markPoint = budgetSeries?.markPoint as { label?: { formatter?: string } } | undefined;
+    expect(markPoint?.label?.formatter).toBe('Budget 24.20 kr');
   });
 });
 

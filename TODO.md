@@ -819,3 +819,16 @@ persona but no current support-cost pressure; reframed to the P3 bar.*
       `packages/contracts/src/deferredObjectiveSettings.ts`, `flowCards/deadlineObjectiveCards.ts`,
       `lib/objectives/deferredObjectives/diagnosticsBridge.ts`,
       `.homeycompose/flow/actions/set_ev_charge_deadline.json`.
+- [ ] **Gate the budget chart money (kr) view on actual/projection cost, not just budget pace.**
+      *Persona:* Optimiser on a partially-priced day looking at the Budget chart's kr view.
+      *Hypothesis:* `resolveBudgetCostViewAvailable` checks only `budgetPaceCostCumMinor`; the producer
+      nulls the three cost series independently from different increment arrays (`paceInc` vs
+      `actualInc`/`projInc`), so a bucket with near-zero pace increment but un-priceable actual/projected
+      energy can leave the pace series finite while nulling actual/projection — the kr view then renders
+      with the actual or projection line silently missing.
+      *Why:* degrades gracefully (a dropped line, never a wrong number) and needs partial intra-day
+      pricing, which the dominant whole-day-priced Nordpool scheme never produces — hence P3, surfaced by
+      PR-C adversarial review. *Validate first:* construct a partial-pricing fixture; a view-aware gate
+      must still allow the legitimately-null projection on yesterday/tomorrow views. Files:
+      `packages/settings-ui/src/ui/budgetRedesignChartData.ts` (`resolveBudgetCostViewAvailable`),
+      `lib/dailyBudget/dailyBudgetProjection.ts`.

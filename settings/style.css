@@ -5354,6 +5354,25 @@ details[open] > summary .disclosure-chevron {
   margin-top: 0;
 }
 
+/* The kWh⇄kr unit toggle sits on its own row under the chart header, right-
+ * aligned beneath the mode toggle so the title row stays uncrowded at 320 px.
+ * `.budget-chart-card` is a grid, so this row spans the column; the grid gap
+ * supplies the vertical rhythm (no margins). */
+.budget-chart-unit-row {
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+/* Compact the unit toggle to its content so flex-end right-aligns it as a
+ * SECONDARY control — visually subordinate to the full-width Progress/Hourly
+ * mode toggle above it (the base `.segmented` is width:100%, which would
+ * otherwise make the two toggles read as co-equal). Touch-target min-height is
+ * inherited from the base, so each segment stays tappable. */
+.budget-chart-unit-row .segmented {
+  width: auto;
+}
+
 .budget-chart-card {
   display: grid;
   gap: var(--pels-card-gap);

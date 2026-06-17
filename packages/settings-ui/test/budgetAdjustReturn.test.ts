@@ -53,6 +53,7 @@ const buildProps = (overrides: Partial<BudgetOverviewProps> = {}): BudgetOvervie
   onLocalViewChange: () => {},
   onDayChange: () => {},
   onChartModeChange: () => {},
+  onChartUnitChange: () => {},
   onAdjustFieldChange: () => {},
   onPreview: () => {},
   onApply: () => {},

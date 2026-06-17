@@ -334,6 +334,7 @@ const buildBudgetProps = (overrides: Partial<BudgetOverviewProps> = {}): BudgetO
   onLocalViewChange: () => {},
   onDayChange: () => {},
   onChartModeChange: () => {},
+  onChartUnitChange: () => {},
   onAdjustFieldChange: () => {},
   onPreview: () => {},
   onApply: () => {},

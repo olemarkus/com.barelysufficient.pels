@@ -163,6 +163,33 @@ export const buildBudgetProgressReadout = (params: {
   return { when: `By ${params.endLabel}`, values };
 };
 
+// Budget progress chart, money (kr) view of the kWh⇄kr toggle: `By 14:00` /
+// `Budget 24.10 kr · Actual 18.30 kr`, plus `Projection 26.40 kr` when the
+// projection covers the hour. Values arrive already in the major unit — the
+// consumer applies the shared `CostDisplay` divisor once when building the
+// cumulative series — so this only appends `unit`. Two-decimal precision
+// matches the hero's `formatCost`, the day's other money figure.
+export const buildBudgetMoneyProgressReadout = (params: {
+  endLabel: string;
+  budgetCost: number;
+  actualCost: number | null;
+  projectionCost: number | null;
+  unit: string;
+}): ChartReadoutContent => {
+  const unit = params.unit.trim();
+  const suffix = unit ? ` ${unit}` : '';
+  const fmt = (value: number): string => `${value.toFixed(2)}${suffix}`;
+  const segments = [nonBreaking(`Budget ${fmt(params.budgetCost)}`)];
+  if (params.actualCost !== null && Number.isFinite(params.actualCost)) {
+    segments.push(nonBreaking(`Actual ${fmt(params.actualCost)}`));
+  }
+  const values: ChartReadoutValue[] = [{ text: segments.join(SEPARATOR) }];
+  if (params.projectionCost !== null && Number.isFinite(params.projectionCost)) {
+    values.push({ text: nonBreaking(`Projection ${fmt(params.projectionCost)}`) });
+  }
+  return { when: `By ${params.endLabel}`, values };
+};
+
 // Budget hourly-plan chart: `13:00–14:00` / `Budget 0.92 kWh (Managed 0.51 ·
 // Background 0.41)` plus `Price 0.84 kr/kWh` (display-scaled unit via
 // `resolvePriceUnitLabel`) and `Actual 0.71 kWh` when present. The split

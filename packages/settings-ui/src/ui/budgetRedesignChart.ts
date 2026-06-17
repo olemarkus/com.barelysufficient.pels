@@ -9,7 +9,10 @@ import { attachTabShownResize } from './chartVisibilityResize.ts';
 import { attachChartReadout, type ChartReadoutHandle } from './chartReadout.ts';
 import {
   buildBudgetHourlyReadoutBundle,
+  buildBudgetMoneyProgressReadoutBundle,
   buildBudgetProgressReadoutBundle,
+  type BudgetChartUnit,
+  type BudgetReadoutBundle,
   type BudgetRedesignDayView,
 } from './budgetRedesignChartData.ts';
 import {
@@ -20,7 +23,7 @@ import {
 } from './budgetRedesignChartOptions.ts';
 
 export type BudgetRedesignChartMode = 'progress' | 'hourlyPlan';
-export type { BudgetRedesignDayView } from './budgetRedesignChartData.ts';
+export type { BudgetChartUnit, BudgetRedesignDayView } from './budgetRedesignChartData.ts';
 
 type BudgetRedesignChartParams = {
   container: HTMLElement;
@@ -29,6 +32,9 @@ type BudgetRedesignChartParams = {
   view: BudgetRedesignDayView;
   priceReliable: boolean;
   costDisplay: CostDisplay;
+  // Progress-mode cumulative unit (kWh⇄kr toggle). Ignored in hourly mode.
+  // Defaults to energy so the Adjust comparison charts stay on kWh.
+  unit?: BudgetChartUnit;
   dataMaxOverride?: number;
   // Pinned readout row under the chart (chart-overhaul Phase 3). Optional:
   // the Adjust view's small comparison charts render without one.
@@ -140,15 +146,22 @@ export const renderBudgetRedesignChart = (params: BudgetRedesignChartParams) => 
     view,
     priceReliable,
     costDisplay,
+    unit = 'energy',
     dataMaxOverride,
     readoutHost = null,
   } = params;
   const palette = resolveBudgetChartPalette(container);
-  const bundle = mode === 'progress'
-    ? buildBudgetProgressReadoutBundle(payload, view)
-    : buildBudgetHourlyReadoutBundle({ payload, view, priceReliable, costDisplay });
+  const isMoney = mode === 'progress' && unit === 'money';
+  let bundle: BudgetReadoutBundle;
+  if (mode !== 'progress') {
+    bundle = buildBudgetHourlyReadoutBundle({ payload, view, priceReliable, costDisplay });
+  } else if (isMoney) {
+    bundle = buildBudgetMoneyProgressReadoutBundle(payload, view, costDisplay);
+  } else {
+    bundle = buildBudgetProgressReadoutBundle(payload, view);
+  }
   const option = mode === 'progress'
-    ? buildProgressOption({ payload, view, palette, readouts: bundle.readouts, dataMaxOverride })
+    ? buildProgressOption({ payload, view, palette, readouts: bundle.readouts, dataMaxOverride, unit, costDisplay })
     : buildHourlyOption({
       payload, view, palette, priceReliable, costDisplay, readouts: bundle.readouts, dataMaxOverride,
     });

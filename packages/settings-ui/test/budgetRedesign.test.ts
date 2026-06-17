@@ -229,10 +229,58 @@ describe('resolveChartData', () => {
 
   it('uses the shared-domain chart titles so the toggle and heading stay in lockstep', () => {
     const payload = buildPayload();
-    const hourly = resolveChartData(payload, 'today', 'hourlyPlan', 'within', costDisplay);
-    const progress = resolveChartData(payload, 'today', 'progress', 'within', costDisplay);
+    const hourly = resolveChartData({
+      viewPayload: payload, view: 'today', mode: 'hourlyPlan', status: 'within', costDisplay,
+    });
+    const progress = resolveChartData({
+      viewPayload: payload, view: 'today', mode: 'progress', status: 'within', costDisplay,
+    });
     expect(hourly?.chartTitle).toBe(BUDGET_CHART_TITLE_HOURLY_PLAN);
     expect(progress?.chartTitle).toBe(BUDGET_CHART_TITLE_PROGRESS);
+  });
+
+  it('falls the kWh⇄kr unit back to energy and hides the cost view on an unpriced day', () => {
+    const payload = buildPayload();
+    const progress = resolveChartData({
+      viewPayload: payload, view: 'today', mode: 'progress', status: 'within', costDisplay, requestedUnit: 'money',
+    });
+    // No producer cost series ⇒ cost view unavailable ⇒ requested money resolves
+    // back to energy so the chart never branches on availability itself.
+    expect(progress?.costViewAvailable).toBe(false);
+    expect(progress?.unit).toBe('energy');
+    // The cost view is a progress-mode affordance — never offered in hourly mode.
+    const hourly = resolveChartData({
+      viewPayload: payload, view: 'today', mode: 'hourlyPlan', status: 'within', costDisplay, requestedUnit: 'money',
+    });
+    expect(hourly?.costViewAvailable).toBe(false);
+    expect(hourly?.unit).toBe('energy');
+  });
+
+  it('offers the money view only when fully priced AND a real display unit is set', () => {
+    const base = buildPayload();
+    const priced = {
+      ...base,
+      buckets: {
+        ...base.buckets,
+        startLocalLabels: ['00:00', '01:00', '02:00'],
+        budgetPaceCostCumMinor: [100, 200, 300],
+      },
+    } as DailyBudgetDayPayload;
+    // Fully priced + a real unit (kr) ⇒ money view available and selected.
+    const kr = resolveChartData({
+      viewPayload: priced, view: 'today', mode: 'progress', status: 'within',
+      costDisplay: { unit: 'kr', divisor: 100 }, requestedUnit: 'money',
+    });
+    expect(kr?.costViewAvailable).toBe(true);
+    expect(kr?.unit).toBe('money');
+    // Same priced day but a blank display unit (flow/homey without a price unit)
+    // ⇒ no money view — it would render unit-less numbers under a "kr" label.
+    const noUnit = resolveChartData({
+      viewPayload: priced, view: 'today', mode: 'progress', status: 'within',
+      costDisplay: { unit: '', divisor: 1 }, requestedUnit: 'money',
+    });
+    expect(noUnit?.costViewAvailable).toBe(false);
+    expect(noUnit?.unit).toBe('energy');
   });
 });
 
