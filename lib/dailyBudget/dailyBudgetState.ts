@@ -13,7 +13,12 @@ import {
   resolveCurrentBucketIndex,
   sumArray,
 } from './dailyBudgetMath';
-import type { ConfidenceDebug, DailyBudgetDayPayload, DailyBudgetSettings } from './dailyBudgetTypes';
+import { alignWeightsToBuckets, buildBudgetProjection } from './dailyBudgetProjection';
+import type {
+  ConfidenceDebug,
+  DailyBudgetDayPayload,
+  DailyBudgetSettings,
+} from './dailyBudgetTypes';
 
 export type DayContext = {
   nowMs: number;
@@ -345,6 +350,10 @@ export const buildDailyBudgetSnapshot = (params: {
   frozen: boolean;
   confidenceDebug?: ConfidenceDebug;
   usableCapacityKw?: number;
+  // Stable day-start profile weights (sum ≈ 1) — drives the chart's single
+  // budget-pace reference and the producer-resolved projection. Today's caller
+  // passes the profile's combinedWeights; other paths fall back to plan weights.
+  stableWeights?: number[];
 }): DailyBudgetDayPayload => {
   const {
     context,
@@ -358,6 +367,7 @@ export const buildDailyBudgetSnapshot = (params: {
     frozen,
     confidenceDebug,
     usableCapacityKw,
+    stableWeights,
   } = params;
   const allocationPressure = computeAllocationPressure({
     dailyBudgetKWh: settings.dailyBudgetKWh,
@@ -365,6 +375,24 @@ export const buildDailyBudgetSnapshot = (params: {
     context,
     plannedKWh,
     usableCapacityKw,
+  });
+
+  // Stable day-start pace weights. Today's caller passes the profile's
+  // combinedWeights (stable); tomorrow/yesterday have no intraday re-pacing, so
+  // the plan weights are already stable and serve as the fallback. Profile
+  // weights are fixed-24, so realign to the actual local-day bucket count
+  // (23/25 on DST days) before pairing them with the bucket-sized usage/prices.
+  const paceWeights = alignWeightsToBuckets(
+    stableWeights ?? buildWeightsFromPlan(plannedKWh),
+    context.bucketStartLocalLabels,
+  );
+  const projection = buildBudgetProjection({
+    dailyBudgetKWh: settings.dailyBudgetKWh,
+    weights: paceWeights,
+    actualKWh: context.bucketUsage,
+    currentBucketIndex: context.currentBucketIndex,
+    currentBucketProgress: context.currentBucketProgress,
+    prices: priceData.prices,
   });
 
   return {
@@ -389,6 +417,11 @@ export const buildDailyBudgetSnapshot = (params: {
       priceShapingActive: priceData.priceShapingActive,
       allocationPressure,
       confidenceDebug,
+      projection: {
+        endOfDayKWh: projection.endOfDayKWh,
+        endOfDayCostMinor: projection.endOfDayCostMinor,
+        status: projection.status,
+      },
     },
     buckets: {
       startUtc: context.bucketKeys,
@@ -401,6 +434,11 @@ export const buildDailyBudgetSnapshot = (params: {
       actualControlledKWh: context.bucketUsageControlled,
       actualUncontrolledKWh: context.bucketUsageUncontrolled,
       allowedCumKWh: budget.allowedCumKWh,
+      budgetPaceCumKWh: projection.budgetPaceCumKWh,
+      projectionCumKWh: projection.projectionCumKWh,
+      actualCostCumMinor: projection.actualCostCumMinor,
+      budgetPaceCostCumMinor: projection.budgetPaceCostCumMinor,
+      projectionCostCumMinor: projection.projectionCostCumMinor,
       price: priceData.prices,
       priceFactor: priceData.priceFactors,
     },

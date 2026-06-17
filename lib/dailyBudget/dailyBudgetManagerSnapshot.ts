@@ -83,6 +83,8 @@ export function buildSnapshot(params: {
     frozen: Boolean(state.frozen),
     confidenceDebug,
     usableCapacityKw,
+    // Stable day-start weights for the single budget-pace reference + projection.
+    stableWeights: profileData.combinedWeights,
   });
 }
 
