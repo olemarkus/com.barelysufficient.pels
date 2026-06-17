@@ -112,7 +112,12 @@ const resolveComparisonValue = (
 ): number => {
   if (view === 'yesterday') return sum(payload.buckets.actualKWh);
   if (view === 'tomorrow') return sum(payload.buckets.plannedKWh);
-  return computeProjectedUse(payload);
+  // Today reads the producer-resolved end-of-day projection so the comparison
+  // line matches the chart curve and the widget exactly (one source of truth).
+  // Only trust a finite producer value — NaN/Infinity fall back to the local
+  // recompute rather than leaking into the comparison/delta text.
+  const projected = payload.state.projection?.endOfDayKWh;
+  return Number.isFinite(projected) ? (projected as number) : computeProjectedUse(payload);
 };
 
 const formatComparisonLine = (
@@ -129,12 +134,18 @@ export const resolveStatus = (payload: DailyBudgetDayPayload | null, view: Budge
   const budget = payload.budget.dailyBudgetKWh;
   if (!Number.isFinite(budget) || budget <= 0) return 'noPlan';
   const tolerance = Math.max(0.1, budget * 0.01);
-  let comparable = computeProjectedUse(payload);
-  if (view === 'yesterday') comparable = sum(payload.buckets.actualKWh);
   if (view === 'tomorrow') {
-    comparable = sum(payload.buckets.plannedKWh);
+    const comparable = sum(payload.buckets.plannedKWh);
     return comparable > budget + tolerance ? 'over' : 'within';
   }
+  // Today reads the producer-resolved status so the verdict matches the chart's
+  // projection exactly (one source of truth, shared with the widget). Yesterday
+  // and the no-producer fallback keep the local threshold computation.
+  const producerStatus = payload.state.projection?.status;
+  if (view !== 'yesterday' && producerStatus) return producerStatus;
+  const comparable = view === 'yesterday'
+    ? sum(payload.buckets.actualKWh)
+    : computeProjectedUse(payload);
   if (comparable > budget + tolerance) return 'over';
   if (comparable >= budget - tolerance) return 'tight';
   return 'within';
@@ -261,7 +272,15 @@ export const resolveBudgetRemainingLine = (
   const status = Number.isFinite(remaining) && remaining < 0
     ? composeBudgetUsedOver(formatKWh(Math.abs(remaining), 1))
     : composeBudgetRemainingToday(formatKWh(remaining, 1));
-  const cost = computeEstimatedCost({ payload, view: 'today' });
+  // Source the cost from the SAME producer projection the headline kWh uses
+  // (resolveComparisonValue) so projected energy and projected cost describe one
+  // end-of-day scenario — otherwise an over-pace day shows producer-projected
+  // kWh while understating cost with the plan-based estimate. Same minor units
+  // (øre); fall back to the local estimate only when the producer value is absent.
+  const projectedCostMinor = payload.state.projection?.endOfDayCostMinor;
+  const cost = Number.isFinite(projectedCostMinor)
+    ? (projectedCostMinor as number)
+    : computeEstimatedCost({ payload, view: 'today' });
   if (cost === null) return status;
   return composeBudgetRemainingLineWithEstimate(status, formatCost(cost, costDisplay));
 };

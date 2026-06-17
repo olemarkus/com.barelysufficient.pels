@@ -209,13 +209,13 @@ describe('chart readout content resolvers', () => {
   it('formats the budget progress readout with the spec example figures', () => {
     expect(buildBudgetProgressReadout({
       endLabel: '14:00',
-      planKWh: 8.4,
+      budgetKWh: 8.4,
       actualKWh: 7.9,
       projectionKWh: 8.6,
     })).toEqual({
       when: 'By 14:00',
       values: [
-        { text: `${nb('Plan 8.4 kWh')}${sep}${nb('Actual 7.9 kWh')}` },
+        { text: `${nb('Budget 8.4 kWh')}${sep}${nb('Actual 7.9 kWh')}` },
         { text: nb('Projection 8.6 kWh') },
       ],
     });
@@ -224,7 +224,7 @@ describe('chart readout content resolvers', () => {
   it('formats the budget hourly readout with the spec example figures', () => {
     expect(buildBudgetHourlyReadout({
       hourRange: '13:00–14:00',
-      planKWh: 0.92,
+      budgetKWh: 0.92,
       managedKWh: 0.51,
       backgroundKWh: 0.41,
       price: { value: 0.84, unitLabel: 'kr/kWh' },
@@ -232,7 +232,7 @@ describe('chart readout content resolvers', () => {
     })).toEqual({
       when: '13:00–14:00',
       values: [
-        { text: `${nb('Plan 0.92 kWh')} ${nb('(Managed 0.51')}${sep}${nb('Background 0.41)')}` },
+        { text: `${nb('Budget 0.92 kWh')} ${nb('(Managed 0.51')}${sep}${nb('Background 0.41)')}` },
         { text: nb('Price 0.84 kr/kWh') },
         { text: nb('Actual 0.71 kWh') },
       ],
@@ -242,13 +242,13 @@ describe('chart readout content resolvers', () => {
   it('renders a bare price value when the payload supplies no price unit', () => {
     expect(buildBudgetHourlyReadout({
       hourRange: '13:00–14:00',
-      planKWh: 0.92,
+      budgetKWh: 0.92,
       managedKWh: null,
       backgroundKWh: null,
       price: { value: 0.84, unitLabel: null },
       actualKWh: null,
     }).values).toEqual([
-      { text: nb('Plan 0.92 kWh') },
+      { text: nb('Budget 0.92 kWh') },
       { text: nb('Price 0.84') },
     ]);
   });

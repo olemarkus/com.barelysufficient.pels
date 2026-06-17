@@ -140,7 +140,7 @@ export const buildDailyHistoryReadout = (params: {
   return { when: dateLabel, values };
 };
 
-// Budget progress chart (cumulative lines): `By 14:00` / `Plan 8.4 kWh ·
+// Budget progress chart (cumulative lines): `By 14:00` / `Budget 8.4 kWh ·
 // Actual 7.9 kWh`, plus `Projection 8.6 kWh` when the projection covers the
 // hour. Cumulative figures keep the Budget tab's one-decimal kWh precision
 // (the hero/budget vocabulary), unlike the two-decimal per-hour buckets.
@@ -148,11 +148,11 @@ export const buildDailyHistoryReadout = (params: {
 // (`By midnight` — see `notes/ui-terminology.md`).
 export const buildBudgetProgressReadout = (params: {
   endLabel: string;
-  planKWh: number;
+  budgetKWh: number;
   actualKWh: number | null;
   projectionKWh: number | null;
 }): ChartReadoutContent => {
-  const segments = [nonBreaking(`Plan ${params.planKWh.toFixed(1)} kWh`)];
+  const segments = [nonBreaking(`Budget ${params.budgetKWh.toFixed(1)} kWh`)];
   if (params.actualKWh !== null && Number.isFinite(params.actualKWh)) {
     segments.push(nonBreaking(`Actual ${params.actualKWh.toFixed(1)} kWh`));
   }
@@ -163,28 +163,28 @@ export const buildBudgetProgressReadout = (params: {
   return { when: `By ${params.endLabel}`, values };
 };
 
-// Budget hourly-plan chart: `13:00–14:00` / `Plan 0.92 kWh (Managed 0.51 ·
+// Budget hourly-plan chart: `13:00–14:00` / `Budget 0.92 kWh (Managed 0.51 ·
 // Background 0.41)` plus `Price 0.84 kr/kWh` (display-scaled unit via
 // `resolvePriceUnitLabel`) and `Actual 0.71 kWh` when present. The split
-// halves inside the parenthetical drop their unit — the leading Plan figure
+// halves inside the parenthetical drop their unit — the leading Budget figure
 // already names kWh for the whole line.
 export const buildBudgetHourlyReadout = (params: {
   hourRange: string;
-  planKWh: number;
+  budgetKWh: number;
   managedKWh: number | null;
   backgroundKWh: number | null;
   price: { value: number; unitLabel: string | null } | null;
   actualKWh: number | null;
 }): ChartReadoutContent => {
-  const plan = nonBreaking(`Plan ${params.planKWh.toFixed(2)} kWh`);
+  const budget = nonBreaking(`Budget ${params.budgetKWh.toFixed(2)} kWh`);
   const split = params.managedKWh !== null && params.backgroundKWh !== null
     ? [
       nonBreaking(`(Managed ${params.managedKWh.toFixed(2)}`),
       nonBreaking(`Background ${params.backgroundKWh.toFixed(2)})`),
     ].join(SEPARATOR)
     : null;
-  const planLine = split === null ? plan : `${plan} ${split}`;
-  const values: ChartReadoutValue[] = [{ text: planLine }];
+  const budgetLine = split === null ? budget : `${budget} ${split}`;
+  const values: ChartReadoutValue[] = [{ text: budgetLine }];
   if (params.price !== null && Number.isFinite(params.price.value)) {
     const priceText = params.price.unitLabel
       ? `Price ${params.price.value.toFixed(2)} ${params.price.unitLabel}`

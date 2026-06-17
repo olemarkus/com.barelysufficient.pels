@@ -180,7 +180,7 @@ test('budget chart drives the readout in both modes and stays coherent across th
   // single-symbol marker series carries the visible selection identity
   // (native select is invisible on the line series).
   await expect(readoutPrimary).toHaveText(/^By \d{2}:\d{2}$/);
-  await expect(readoutSecondary).toContainText('Plan');
+  await expect(readoutSecondary).toContainText('Budget');
   expect(await countSelectionToneShapes(page, 'progress-marker')).toBeGreaterThanOrEqual(1);
 
   // Two taps on distinct columns must move the readout — a dead tap (both
@@ -194,8 +194,10 @@ test('budget chart drives the readout in both modes and stays coherent across th
   expect(progressSecondTap).not.toBe(progressFirstTap);
 
   // No floating tooltip materialises on tap — the pinned row is the only
-  // caption surface on touch.
-  await expect(page.locator('#budget-redesign-chart').getByText(/Plan/)).toHaveCount(0);
+  // caption surface on touch. Probe for `Projection`: it appears only in the
+  // floating structured-readout tooltip, never as permanent chart text (the
+  // end-stop markPoint label is `Budget N kWh`, so `/Budget/` would always match).
+  await expect(page.locator('#budget-redesign-chart').getByText(/Projection/)).toHaveCount(0);
 
   // Mode toggle: the selection survives and re-resolves into the hourly
   // grammar — the selected hour's end is the same boundary the progress
@@ -204,7 +206,7 @@ test('budget chart drives the readout in both modes and stays coherent across th
   await page.locator('#budget-panel .segmented__option').filter({ hasText: 'Hourly plan' }).click();
   await expect(page.locator('#budget-redesign-chart svg')).toBeVisible();
   await expect(readoutPrimary).toHaveText(new RegExp(`^\\d{2}:\\d{2}–${selectedEnd}$`));
-  await expect(readoutSecondary).toContainText('Plan');
+  await expect(readoutSecondary).toContainText('Budget');
 
   // Surface the hourly-mode DEFAULT selection (current hour) before the
   // in-grid taps: an outside tap restores it, and capturing its exact text

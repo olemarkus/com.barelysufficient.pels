@@ -276,7 +276,7 @@ const ChartLegend = ({
         { label: 'Background', cls: 'budget-chart-legend__swatch--background' },
         { label: 'Managed', cls: 'budget-chart-legend__swatch--managed' },
       ]
-      : [{ label: 'Plan', cls: '' }]),
+      : [{ label: 'Budget', cls: '' }]),
     ...(showProjection ? [{ label: 'Projection', cls: 'budget-chart-legend__swatch--forecast' }] : []),
     ...(showPrice ? [{ label: 'Price', cls: 'budget-chart-legend__swatch--price' }] : []),
   ];
