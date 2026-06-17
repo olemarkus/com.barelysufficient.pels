@@ -406,6 +406,31 @@ describe('resolveBudgetRemainingLine', () => {
     expect(resolveBudgetRemainingLine(payload, costDisplay))
       .toMatch(/^1\.3 kWh over budget already used/);
   });
+
+  it('sources estimated cost from the producer projection so kWh and cost share one forecast', () => {
+    const payload = buildPayload({
+      remainingKWh: 7.7,
+      priceShapingEnabled: true,
+      price: Array.from({ length: 24 }, () => 100),
+    });
+    // Producer projection cost in øre (9000 ÷ 100 = 90.00 kr), deliberately
+    // distinct from the plan-based computeEstimatedCost (5520 øre = 55.20 kr).
+    payload.state.projection = { endOfDayKWh: 58, endOfDayCostMinor: 9000, status: 'within' };
+    const line = resolveBudgetRemainingLine(payload, costDisplay);
+    expect(line).toContain('estimated 90.00 kr today');
+    expect(line).not.toContain('55.20');
+  });
+
+  it('falls back to the plan-based estimate when the projection carries no cost', () => {
+    const payload = buildPayload({
+      remainingKWh: 7.7,
+      priceShapingEnabled: true,
+      price: Array.from({ length: 24 }, () => 100),
+    });
+    payload.state.projection = { endOfDayKWh: 58, endOfDayCostMinor: null, status: 'within' };
+    // (12 past × 2.1 actual + 12 future × 2.5 planned) × 100 øre = 5520 → 55.20 kr.
+    expect(resolveBudgetRemainingLine(payload, costDisplay)).toContain('estimated 55.20 kr today');
+  });
 });
 
 describe('resolveBudgetPlannedDayKWh', () => {

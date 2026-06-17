@@ -179,28 +179,6 @@ const buildBaseOption = (params: {
   };
 };
 
-// Dashed daily-budget mark line for Progress mode — the Usage tab's
-// daily-history budget-line convention (dashed warn-toned rule, muted
-// `Budget N.N kWh` label tucked inside the top end).
-const buildDailyBudgetMarkLine = (budgetKWh: number, palette: BudgetChartPalette) => ({
-  symbol: 'none',
-  silent: true,
-  animation: false,
-  label: {
-    show: true,
-    position: 'insideEndTop' as const,
-    formatter: `Budget ${budgetKWh.toFixed(1)} kWh`,
-    color: palette.muted,
-    fontSize: 10,
-  },
-  lineStyle: {
-    color: palette.overBudget,
-    type: 'dashed' as const,
-    width: 1,
-  },
-  data: [{ yAxis: budgetKWh }],
-});
-
 export const buildProgressOption = (params: {
   payload: DailyBudgetDayPayload;
   view: BudgetRedesignDayView;
@@ -231,22 +209,40 @@ export const buildProgressOption = (params: {
     readouts,
   });
   const budgetKWh = payload.budget.dailyBudgetKWh;
+  // The single green reference is the stable budget-pace curve; it ends AT the
+  // cap, so an end-stop dot carries the budget number (its TRUE terminal value)
+  // — no separate flat budget line, which would double-encode the cap.
+  const paceTerminal = planCumulative.length
+    ? (planCumulative[planCumulative.length - 1] ?? budgetKWh)
+    : budgetKWh;
   const series: SeriesOption[] = [
     {
       type: 'line',
-      name: 'Plan',
+      name: 'Budget',
       data: planCumulative,
       showSymbol: false,
       smooth: true,
       lineStyle: { color: palette.plan, width: 3 },
       areaStyle: { color: palette.planFill },
       emphasis: { disabled: true },
-      // The daily budget is the chart's reference value — mark it as a
-      // dashed line so "how close does the plan run to the budget?" is
-      // answerable at a glance. Always within the axis range: the y-scale's
-      // dataMax already includes `dailyBudgetKWh` above.
-      ...(Number.isFinite(budgetKWh) && budgetKWh > 0
-        ? { markLine: buildDailyBudgetMarkLine(budgetKWh, palette) }
+      ...(Number.isFinite(budgetKWh) && budgetKWh > 0 && labels.length > 0
+        ? {
+          markPoint: {
+            symbol: 'circle',
+            symbolSize: 5,
+            silent: true,
+            animation: false,
+            itemStyle: { color: palette.plan },
+            label: {
+              show: true,
+              position: 'left' as const,
+              formatter: `Budget ${paceTerminal.toFixed(1)} kWh`,
+              color: palette.muted,
+              fontSize: 10,
+            },
+            data: [{ coord: [labels[labels.length - 1], paceTerminal] }],
+          },
+        }
         : {}),
     },
   ];
@@ -399,7 +395,7 @@ export const buildHourlyOption = (params: BuildHourlyParams): EChartsOption => {
     : [
       {
         type: 'bar',
-        name: 'Plan',
+        name: 'Budget',
         data: planned,
         z: 2,
         barMaxWidth: 10,

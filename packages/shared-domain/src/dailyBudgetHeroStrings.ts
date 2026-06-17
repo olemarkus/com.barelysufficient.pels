@@ -216,8 +216,8 @@ export const resolveChartSubtitle = (params: {
   if (view === 'yesterday') {
     return status === 'over' ? CHART_FINISHED_OVER_DAILY_BUDGET : CHART_FINISHED_WITHIN_BUDGET;
   }
-  if (view === 'tomorrow') return 'Shows the planned cumulative budget.';
+  if (view === 'tomorrow') return 'Shows the budget pace for the day.';
   if (status === 'over') return 'Projected to finish over budget.';
-  if (status === 'tight') return 'Close to the daily budget.';
-  return 'On track to finish within budget.';
+  if (status === 'tight') return 'On track — close to today\'s budget.';
+  return 'On track to finish under budget.';
 };

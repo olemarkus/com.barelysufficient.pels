@@ -3,6 +3,7 @@ import {
   buildBudgetProgressReadoutBundle,
   buildProjectionCumulative,
   resolveBudgetDefaultReadoutIndex,
+  resolveProgressSeriesData,
 } from '../src/ui/budgetRedesignChartData.ts';
 import { buildProgressOption, type BudgetChartPalette } from '../src/ui/budgetRedesignChartOptions.ts';
 import type { DailyBudgetDayPayload } from '../../contracts/src/dailyBudgetTypes.ts';
@@ -65,7 +66,7 @@ describe('budget readout content (progress mode)', () => {
     expect(bundle.readouts[1]).toEqual({
       when: 'By 14:00',
       values: [
-        { text: `${nb('Plan 1.4 kWh')}${sep}${nb('Actual 1.2 kWh')}` },
+        { text: `${nb('Budget 1.4 kWh')}${sep}${nb('Actual 1.2 kWh')}` },
         { text: nb('Projection 1.4 kWh') },
       ],
     });
@@ -75,7 +76,7 @@ describe('budget readout content (progress mode)', () => {
     const bundle = buildBudgetProgressReadoutBundle(buildDayPayload(), 'tomorrow');
     expect(bundle.readouts[1]).toEqual({
       when: 'By 14:00',
-      values: [{ text: nb('Plan 1.4 kWh') }],
+      values: [{ text: nb('Budget 1.4 kWh') }],
     });
   });
 
@@ -84,7 +85,7 @@ describe('budget readout content (progress mode)', () => {
     // Yesterday: every bucket has actual, none has a projection.
     expect(bundle.readouts[0]).toEqual({
       when: 'By 13:00',
-      values: [{ text: `${nb('Plan 0.5 kWh')}${sep}${nb('Actual 0.5 kWh')}` }],
+      values: [{ text: `${nb('Budget 0.5 kWh')}${sep}${nb('Actual 0.5 kWh')}` }],
     });
     // The cumulative end-of-day column reads "By midnight" — "By 00:00"
     // misreads as the day's start. The hourly range form keeps `…–00:00`.
@@ -122,7 +123,7 @@ describe('budget readout content (hourly mode)', () => {
     expect(bundle.readouts[1]).toEqual({
       when: '13:00–14:00',
       values: [
-        { text: `${nb('Plan 0.92 kWh')} ${nb('(Managed 0.51')}${sep}${nb('Background 0.41)')}` },
+        { text: `${nb('Budget 0.92 kWh')} ${nb('(Managed 0.51')}${sep}${nb('Background 0.41)')}` },
         { text: nb('Price 0.84 kr/kWh') },
         { text: nb('Actual 0.71 kWh') },
       ],
@@ -142,12 +143,12 @@ describe('budget readout content (hourly mode)', () => {
     expect(bundle.readouts[2]).toEqual({
       when: '14:00–15:00',
       values: [
-        { text: `${nb('Plan 0.60 kWh')} ${nb('(Managed 0.30')}${sep}${nb('Background 0.30)')}` },
+        { text: `${nb('Budget 0.60 kWh')} ${nb('(Managed 0.30')}${sep}${nb('Background 0.30)')}` },
       ],
     });
   });
 
-  it('falls back to the single Plan line when the split is missing', () => {
+  it('falls back to the single Budget line when the split is missing', () => {
     const bundle = buildBudgetHourlyReadoutBundle({
       payload: buildDayPayload({
         buckets: { plannedControlledKWh: [], plannedUncontrolledKWh: [] },
@@ -158,7 +159,7 @@ describe('budget readout content (hourly mode)', () => {
     });
     expect(bundle.readouts[1]).toEqual({
       when: '13:00–14:00',
-      values: [{ text: nb('Plan 0.92 kWh') }],
+      values: [{ text: nb('Budget 0.92 kWh') }],
     });
     expect(bundle.selectSeriesIndexes).toEqual([0]);
   });
@@ -197,30 +198,27 @@ describe('buildProgressOption', () => {
     tooltipBorder: '#af',
   };
 
-  it('marks the daily budget with a dashed line at the budget value', () => {
+  it('marks the daily budget with an end-stop on the Budget pace curve', () => {
     const option = buildProgressOption({
       payload: buildDayPayload(),
       view: 'today',
       palette,
       readouts: [],
     });
-    const planSeries = (option.series as Array<Record<string, unknown>>)
-      .find((series) => series.name === 'Plan');
-    expect(planSeries?.markLine).toMatchObject({
-      silent: true,
-      label: { formatter: 'Budget 12.0 kWh' },
-      lineStyle: { type: 'dashed', color: '#ab' },
-      data: [{ yAxis: 12 }],
-    });
+    const budgetSeries = (option.series as Array<Record<string, unknown>>)
+      .find((series) => series.name === 'Budget');
+    expect(budgetSeries).toBeDefined();
+    const markPoint = budgetSeries?.markPoint as { label?: { formatter?: string } } | undefined;
+    expect(markPoint?.label?.formatter).toMatch(/^Budget \d+\.\d kWh$/);
   });
 
-  it('omits the budget mark line when no positive daily budget is set', () => {
+  it('omits the budget end-stop when no positive daily budget is set', () => {
     const payload = buildDayPayload();
     payload.budget = { ...payload.budget, dailyBudgetKWh: 0 };
     const option = buildProgressOption({ payload, view: 'today', palette, readouts: [] });
-    const planSeries = (option.series as Array<Record<string, unknown>>)
-      .find((series) => series.name === 'Plan');
-    expect(planSeries?.markLine).toBeUndefined();
+    const budgetSeries = (option.series as Array<Record<string, unknown>>)
+      .find((series) => series.name === 'Budget');
+    expect(budgetSeries?.markPoint).toBeUndefined();
   });
 });
 
@@ -241,5 +239,47 @@ describe('Budget redesign chart helpers', () => {
       actualUpToIndex: 0,
       view: 'today',
     })).toEqual([1.2, 2.2, 3.2]);
+  });
+});
+
+describe('resolveProgressSeriesData — producer trust + fallback', () => {
+  it('uses the producer budget-pace and projection series verbatim when valid', () => {
+    const series = resolveProgressSeriesData(buildDayPayload({
+      buckets: {
+        budgetPaceCumKWh: [1, 2, 3, 4],
+        projectionCumKWh: [10, 20, 30, 40],
+      },
+    }), 'today');
+    expect(series.planCumulative).toEqual([1, 2, 3, 4]);
+    // currentBucketIndex 1 ⇒ projection masked before "now", drawn from there on.
+    expect(series.projection).toEqual([null, 20, 30, 40]);
+  });
+
+  it.each([
+    ['empty', []],
+    ['short', [1, 2, 3]],
+    ['non-finite', [1, 2, Number.NaN, 4]],
+  ])('falls back to the local plan cumulative when budgetPaceCumKWh is %s', (_label, pace) => {
+    const series = resolveProgressSeriesData(buildDayPayload({
+      buckets: { budgetPaceCumKWh: pace },
+    }), 'today');
+    // cumulative([0.5, 0.92, 0.6, 0.4]) — the legacy recompute, never the bad array.
+    expect(series.planCumulative).toEqual([0.5, 1.42, 2.02, 2.42]);
+  });
+
+  it('falls back to the local projection when projectionCumKWh is empty', () => {
+    const producerEmpty = resolveProgressSeriesData(buildDayPayload({
+      buckets: { projectionCumKWh: [] },
+    }), 'today');
+    const localOnly = resolveProgressSeriesData(buildDayPayload(), 'today');
+    expect(producerEmpty.projection).toEqual(localOnly.projection);
+  });
+
+  it('draws no projection before the first actual lands (cold start)', () => {
+    const series = resolveProgressSeriesData(buildDayPayload({
+      currentBucketIndex: -1,
+      buckets: { projectionCumKWh: [10, 20, 30, 40] },
+    }), 'today');
+    expect(series.projection).toEqual([null, null, null, null]);
   });
 });

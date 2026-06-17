@@ -21,6 +21,16 @@ const cumulative = (values: number[]): number[] => {
   });
 };
 
+// A producer cumulative series is only authoritative when it covers every
+// bucket with finite values. An absent, empty (`[]` is truthy), short, or
+// NaN-bearing array falls back to the local recompute rather than leaking a
+// truncated curve or NaN readouts into the chart.
+const isFiniteSeriesOfLength = (values: number[] | undefined, length: number): values is number[] => (
+  Array.isArray(values)
+  && values.length === length
+  && values.every((value) => Number.isFinite(value))
+);
+
 export const resolveActualUpToIndex = (
   payload: DailyBudgetDayPayload,
   view: BudgetRedesignDayView,
@@ -153,9 +163,30 @@ export const resolveProgressSeriesData = (
   const actual = payload.buckets.actualKWh || [];
   const labels = payload.buckets.startLocalLabels || [];
   const actualUpToIndex = resolveActualUpToIndex(payload, view);
-  const planCumulative = cumulative(planned);
+  // The single green reference is the producer's STABLE budget-pace curve
+  // (PR-A) — dailyBudgetKWh spread by the day-start profile, ending at the cap,
+  // and NOT re-paced as the user under/over-spends. Fall back to the legacy plan
+  // cumulative only if the producer field is absent.
+  const planCumulative = isFiniteSeriesOfLength(payload.buckets.budgetPaceCumKWh, labels.length)
+    ? payload.buckets.budgetPaceCumKWh
+    : cumulative(planned);
   const actualCumulative = buildActualCumulative(actual, actualUpToIndex);
-  const projection = buildProjectionCumulative({ planned, actualCumulative, actualUpToIndex, view });
+  // Projection comes from the producer (one source of truth, shared with the
+  // hero verdict and the widget), rendered dashed from "now" forward. Only the
+  // today view has a forward projection. Fall back to the local recompute if the
+  // producer field is absent.
+  const producerProjection = payload.buckets.projectionCumKWh;
+  let projection: Array<number | null>;
+  if (view !== 'today' || actualUpToIndex < 0) {
+    // No forward projection off the today view, and none before the first
+    // actual lands — otherwise the producer's cold-start projection (~0 with no
+    // usage to extrapolate from) would draw a premature dashed line from midnight.
+    projection = labels.map((): number | null => null);
+  } else if (isFiniteSeriesOfLength(producerProjection, labels.length)) {
+    projection = producerProjection.map((value, index): number | null => (index < actualUpToIndex ? null : value));
+  } else {
+    projection = buildProjectionCumulative({ planned, actualCumulative, actualUpToIndex, view });
+  }
   return { labels, planCumulative, actualCumulative, projection };
 };
 
@@ -170,7 +201,7 @@ export type BudgetReadoutBundle = {
   markerValues: Array<number | null> | null;
 };
 
-// Progress mode content: `By 14:00` / `Plan 8.4 kWh · Actual 7.9 kWh` +
+// Progress mode content: `By 14:00` / `Budget 8.4 kWh · Actual 7.9 kWh` +
 // `Projection 8.6 kWh` when the projection covers the hour; the end-of-day
 // column reads `By midnight`. Exported for the exact-string content-resolver
 // suites.
@@ -181,7 +212,7 @@ export const buildBudgetProgressReadoutBundle = (
   const { labels, planCumulative, actualCumulative, projection } = resolveProgressSeriesData(payload, view);
   const readouts = labels.map((_label, index) => buildBudgetProgressReadout({
     endLabel: resolveProgressEndLabel(labels, index),
-    planKWh: planCumulative[index] ?? 0,
+    budgetKWh: planCumulative[index] ?? 0,
     actualKWh: actualCumulative[index] ?? null,
     projectionKWh: projection[index] ?? null,
   }));
@@ -201,7 +232,7 @@ export const buildBudgetProgressReadoutBundle = (
   };
 };
 
-// Hourly mode content: `13:00–14:00` / `Plan 0.92 kWh (Managed 0.51 ·
+// Hourly mode content: `13:00–14:00` / `Budget 0.92 kWh (Managed 0.51 ·
 // Background 0.41)` + `Price 0.84 kr/kWh` + `Actual 0.71 kWh`. Exported for
 // the exact-string content-resolver suites.
 export const buildBudgetHourlyReadoutBundle = (params: {
@@ -226,7 +257,7 @@ export const buildBudgetHourlyReadoutBundle = (params: {
   const priceUnit = costDisplay.unit.trim() ? resolvePriceUnitLabel(costDisplay) : null;
   const readouts = labels.map((_label, index) => buildBudgetHourlyReadout({
     hourRange: resolveBucketHourRange(labels, index),
-    planKWh: Number.isFinite(planned[index]) ? planned[index] : 0,
+    budgetKWh: Number.isFinite(planned[index]) ? planned[index] : 0,
     managedKWh: hasSplit ? plannedManaged[index] : null,
     backgroundKWh: hasSplit ? plannedBackground[index] : null,
     price: hasPrice ? { value: priceValues[index], unitLabel: priceUnit } : null,

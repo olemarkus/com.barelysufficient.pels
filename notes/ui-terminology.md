@@ -409,13 +409,13 @@ Vocabulary stays canonical: `Measured` / `Managed` / `Background` / `budget` —
 
 ### Budget tab chart readout (pinned, one interaction grammar)
 
-The Budget chart (Progress + Hourly plan modes) reuses the same pinned-readout primitive. Vocabulary: `Plan` / `Actual` / `Projection` / `Price`. Resolvers live in `packages/settings-ui/src/ui/budgetRedesignChartData.ts` + `chartTooltipFormat.ts`.
+The Budget chart (Progress + Hourly plan modes) reuses the same pinned-readout primitive. Vocabulary: `Budget` / `Actual` / `Projection` / `Price`. The green reference is the **budget pace** (the daily budget spread across the day, cumulative) — it is labelled `Budget`, never `Plan` (the weather-blind "Plan" line was retired; "typical usage" lives on the Usage and Weather surfaces, not here). Resolvers live in `packages/settings-ui/src/ui/budgetRedesignChartData.ts` + `chartTooltipFormat.ts`.
 
-- Progress (cumulative): primary line uses the cumulative `By HH:MM` form — the value reached at that bucket's END boundary, e.g. `By 14:00` / `Plan 8.4 kWh · Actual 7.9 kWh`, plus `Projection 8.6 kWh` when the projection covers the hour. One-decimal kWh (the Budget hero's precision). The end-of-day column reads `By midnight`, never `By 00:00` — a cumulative "by" anchored at 00:00 misreads as the day's start.
-- Hourly plan: primary line uses the hourly range form `13:00–14:00` (closing the day at `23:00–00:00`), e.g. `Plan 0.92 kWh (Managed 0.51 · Background 0.41)` plus `Price 0.84 kr/kWh` and `Actual 0.71 kWh`. Two-decimal per-hour buckets; the split halves inside the parenthetical drop their unit (the leading Plan figure names kWh for the line).
+- Progress (cumulative): primary line uses the cumulative `By HH:MM` form — the value reached at that bucket's END boundary, e.g. `By 14:00` / `Budget 8.4 kWh · Actual 7.9 kWh`, plus `Projection 8.6 kWh` when the projection covers the hour. One-decimal kWh (the Budget hero's precision). The end-of-day column reads `By midnight`, never `By 00:00` — a cumulative "by" anchored at 00:00 misreads as the day's start.
+- Hourly plan: primary line uses the hourly range form `13:00–14:00` (closing the day at `23:00–00:00`), e.g. `Budget 0.92 kWh (Managed 0.51 · Background 0.41)` plus `Price 0.84 kr/kWh` and `Actual 0.71 kWh`. Two-decimal per-hour buckets; the split halves inside the parenthetical drop their unit (the leading Budget figure names kWh for the line).
 - Default selection: Today follows the current hour in both modes; yesterday/tomorrow anchor on the end-of-day column in Progress mode (the cumulative chart's answer is how the day ends) and on the day's peak hour in Hourly plan mode.
 
-Deliberate distinction: the Budget readout says `Actual` — it pairs with `Plan` (plan vs. actual) — while the Usage readouts say `Measured` (a bare measurement with no plan to compare against). Both terms stay; do not unify them.
+Deliberate distinction: the Budget readout says `Actual` — it pairs with `Budget` (budget vs. actual) — while the Usage readouts say `Measured` (a bare measurement with no budget to compare against). Both terms stay; do not unify them.
 
 ## Mode label
 
