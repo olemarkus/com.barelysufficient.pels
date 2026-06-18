@@ -11,6 +11,9 @@ import {
   CAPACITY_LIMIT_KW,
   DEVICE_DRIVER_OVERRIDES,
   DEVICE_TARGET_POWER_CONFIGS,
+  ENERGY_BUDGET_ADMISSION_ENABLED,
+  DEFAULT_MIN_RUN_MINUTES,
+  DEVICE_MIN_RUN_MINUTES,
 } from '../../lib/utils/settingsKeys';
 
 const buildCapacitySnapshot = (
@@ -33,6 +36,9 @@ const buildCapacitySnapshot = (
   deviceTargetPowerConfigs: {},
   deviceCommunicationModels: {},
   shedBehaviors: {},
+  energyBudgetAdmissionEnabled: false,
+  defaultMinRunMinutes: undefined,
+  deviceMinRunMinutes: {},
   ...overrides,
 });
 
@@ -376,5 +382,88 @@ describe('buildCapacitySettingsSnapshot', () => {
     expect(next.deviceTargetPowerConfigs).toEqual({
       charger: { enabled: true, preset: 'ev_charger_1_phase' },
     });
+  });
+
+  it('is behaviour-neutral when minimum-run-time settings are unset', () => {
+    const settings = { get: vi.fn(() => undefined) };
+
+    const next = buildCapacitySettingsSnapshot({
+      settings: settings as never,
+      current: buildCapacitySnapshot(),
+    });
+
+    expect(next.energyBudgetAdmissionEnabled).toBe(false);
+    expect(next.defaultMinRunMinutes).toBeUndefined();
+    expect(next.deviceMinRunMinutes).toEqual({});
+  });
+
+  it('loads the minimum-run-time toggle, default, and per-device overrides', () => {
+    const settings = {
+      get: vi.fn((key: string) => {
+        if (key === ENERGY_BUDGET_ADMISSION_ENABLED) return true;
+        if (key === DEFAULT_MIN_RUN_MINUTES) return 15;
+        if (key === DEVICE_MIN_RUN_MINUTES) {
+          return { ' charger ': 20, opted_out: 0 };
+        }
+        return undefined;
+      }),
+    };
+
+    const next = buildCapacitySettingsSnapshot({
+      settings: settings as never,
+      current: buildCapacitySnapshot(),
+    });
+
+    expect(next.energyBudgetAdmissionEnabled).toBe(true);
+    expect(next.defaultMinRunMinutes).toBe(15);
+    // Keys are trimmed; `0` (explicit opt-out) is RETAINED.
+    expect(next.deviceMinRunMinutes).toEqual({ charger: 20, opted_out: 0 });
+  });
+
+  it('drops invalid default and per-device minimum-run-time entries', () => {
+    const settings = {
+      get: vi.fn((key: string) => {
+        if (key === ENERGY_BUDGET_ADMISSION_ENABLED) return true;
+        // Negative default is invalid -> falls back to legacy (undefined).
+        if (key === DEFAULT_MIN_RUN_MINUTES) return -5;
+        if (key === DEVICE_MIN_RUN_MINUTES) {
+          return { good: 10, negative: -3, notNumber: 'x', infinite: Number.POSITIVE_INFINITY };
+        }
+        return undefined;
+      }),
+    };
+
+    const next = buildCapacitySettingsSnapshot({
+      settings: settings as never,
+      current: buildCapacitySnapshot(),
+    });
+
+    expect(next.defaultMinRunMinutes).toBeUndefined();
+    expect(next.deviceMinRunMinutes).toEqual({ good: 10 });
+  });
+
+  it('preserves the current default AND per-device min-run on a transient empty read', () => {
+    // A transient SDK blip resolves every min-run key to undefined even though
+    // valid values were previously loaded. The loader must keep the in-memory
+    // default AND the per-device override map rather than wipe them (the toggle
+    // stays on; wiping would silently drop devices to the legacy grace and strip
+    // explicit per-device values, including 0 opt-outs).
+    const settings = {
+      get: vi.fn((key: string) => (key === ENERGY_BUDGET_ADMISSION_ENABLED ? true : undefined)),
+    };
+
+    const next = buildCapacitySettingsSnapshot({
+      settings: settings as never,
+      current: buildCapacitySnapshot({
+        energyBudgetAdmissionEnabled: true,
+        defaultMinRunMinutes: 15,
+        deviceMinRunMinutes: { charger: 30, opted_out: 0 },
+      }),
+    });
+
+    expect(next.energyBudgetAdmissionEnabled).toBe(true);
+    expect(next.defaultMinRunMinutes).toBe(15);
+    // Per-device overrides (incl. the 0 opt-out) survive the transient read.
+    expect(next.deviceMinRunMinutes).toEqual({ charger: 30, opted_out: 0 });
   });
 });

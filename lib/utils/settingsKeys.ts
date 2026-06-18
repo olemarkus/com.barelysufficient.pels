@@ -22,6 +22,13 @@ export const NATIVE_EV_WIRING_DEVICES = 'native_ev_wiring_devices';
 export const DEVICE_DRIVER_OVERRIDES = 'device_driver_overrides';
 export const DEVICE_CONTROL_PROFILES = 'device_control_profiles';
 export const DEVICE_TARGET_POWER_CONFIGS = 'device_target_power_configs';
+// Per-device minimum run time ("anti-cycle hold"): a global enable toggle, a
+// global default length in minutes, and a per-device override map. The
+// effective per-device value is resolved in the producer (app.ts
+// `getDeviceMinRunMinutes`); `0`/`undefined` both mean "legacy 3-minute grace".
+export const ENERGY_BUDGET_ADMISSION_ENABLED = 'energy_budget_admission_enabled';
+export const DEFAULT_MIN_RUN_MINUTES = 'default_min_run_minutes';
+export const DEVICE_MIN_RUN_MINUTES = 'device_min_run_minutes';
 export const DEVICE_COMMUNICATION_MODELS = 'device_communication_models';
 export const DEVICE_LAST_CONTROLLED_MS = 'device_last_controlled_ms';
 export const OVERSHOOT_BEHAVIORS = 'overshoot_behaviors';

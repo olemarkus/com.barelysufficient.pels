@@ -119,6 +119,12 @@ export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot & 
     managed: ctx.resolveManagedState(device.id),
     controllable,
     budgetExempt: ctx.isBudgetExempt(device.id),
+    // Resolution-in-producer: the effective per-device minimum-run-time (the
+    // anti-cycle hold). Resolved via the same accessor transport stamps on the
+    // snapshot, so callers that bypass the snapshot stamp (plan preview from
+    // `getUiPickerDevices`) still get the resolved value. `undefined` ⇒ legacy
+    // grace; the planner reads only this flat number.
+    minRunMinutes: ctx.getDeviceMinRunMinutes(device.id),
     temperatureBoost: ctx.getTemperatureBoostConfig?.(device.id),
     evBoost: ctx.getEvBoostConfig?.(device.id),
     binaryCommandPending: pendingBinaryCommand !== null && pendingBinaryCommand !== undefined,

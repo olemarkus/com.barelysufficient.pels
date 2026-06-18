@@ -106,6 +106,11 @@ export const settingsSimulationModeInput = document.querySelector(
   '#settings-simulation-mode',
 ) as MdSwitchElement | null;
 export const dailyBudgetBreakdownInput = document.querySelector('#daily-budget-breakdown') as MdSwitchElement;
+export const minRunEnabledInput = document.querySelector('#min-run-enabled') as MdSwitchElement | null;
+export const minRunDefaultRow = qs('#min-run-default-row');
+export const minRunDefaultMinutesInput = document.querySelector(
+  '#min-run-default-minutes',
+) as MdFilledTextFieldElement | null;
 export const dryRunBanner = qs('#dry-run-banner');
 export const simulationDisableButton = document.querySelector('#simulation-disable-button') as MdButtonElement | null;
 export const staleDataBanner = qs('#stale-data-banner');
@@ -204,6 +209,15 @@ export const deviceDetailTargetPowerSave = document.querySelector(
 export const deviceDetailTargetPowerClear = document.querySelector(
   '#device-detail-target-power-clear',
 ) as MdButtonElement;
+export const deviceDetailMinRunMinutes = document.querySelector(
+  '#device-detail-min-run-minutes',
+) as MdFilledTextFieldElement | null;
+export const deviceDetailMinRunSave = document.querySelector(
+  '#device-detail-min-run-save',
+) as MdButtonElement | null;
+export const deviceDetailMinRunClear = document.querySelector(
+  '#device-detail-min-run-clear',
+) as MdButtonElement | null;
 export const deviceDetailTemperatureBoost = qs('#device-detail-temperature-boost');
 export const deviceDetailTemperatureBoostEnabled = document.querySelector(
   '#device-detail-temperature-boost-enabled',

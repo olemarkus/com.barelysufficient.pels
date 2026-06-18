@@ -84,6 +84,10 @@ import {
   renderTargetPowerConfig,
 } from './targetPowerConfig.ts';
 import {
+  initMinRunConfigHandlers,
+  renderMinRunConfig,
+} from './minRunConfig.ts';
+import {
   isControlModeAllowedForDevice,
   normalizeDeviceDetailControlMode,
   resolveDeviceDetailControlMode,
@@ -241,6 +245,7 @@ const refreshOpenDeviceDetail = () => {
   });
   renderSteppedLoadDraft(device);
   renderTargetPowerConfig(device);
+  renderMinRunConfig(device);
   renderTemperatureBoostSettings(device);
   renderEvBoostSettings(device);
   setDeviceDetailDeltaValues(currentDetailDeviceId);
@@ -278,6 +283,7 @@ export const openDeviceDetail = (deviceId: string) => {
   });
   renderSteppedLoadDraft(device);
   renderTargetPowerConfig(device);
+  renderMinRunConfig(device);
   renderTemperatureBoostSettings(device);
   renderEvBoostSettings(device);
   renderDeviceDetailModes(device);
@@ -505,6 +511,10 @@ export const initDeviceDetailHandlers = () => {
     refreshOpenDeviceDetail,
   });
   initTargetPowerConfigHandlers({
+    getCurrentDetailDeviceId,
+    refreshOpenDeviceDetail,
+  });
+  initMinRunConfigHandlers({
     getCurrentDetailDeviceId,
     refreshOpenDeviceDetail,
   });

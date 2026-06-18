@@ -22,6 +22,7 @@ import type {
 import type { FlowCard, FlowHomeyLike } from '../../lib/utils/types';
 import type { SettingsUiPlanSnapshot } from '../../packages/contracts/src/settingsUiApi';
 import { createEmptyPowerCalibrationSnapshot } from '../../lib/device/devicePowerCalibration';
+import { resolveEffectiveMinRunMinutes } from '../../lib/utils/minRunResolution';
 
 type MockHomey = FlowHomeyLike & {
   settings: FlowHomeyLike['settings'] & {
@@ -105,6 +106,9 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
   let deviceDriverOverrides: Record<string, string> = {};
   let deviceControlProfiles: DeviceControlProfiles = {};
   let deviceTargetPowerConfigs: DeviceTargetPowerConfigs = {};
+  let energyBudgetAdmissionEnabled = false;
+  let defaultMinRunMinutes: number | undefined;
+  let deviceMinRunMinutes: Record<string, number> = {};
   let temperatureBoostSettings: TemperatureBoostSettings = {};
   let evBoostSettings: EvBoostSettings = {};
   let deviceCommunicationModels: Record<string, 'local' | 'cloud'> = {};
@@ -201,6 +205,11 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     getCommunicationModel: vi.fn((): 'local' | 'cloud' => 'local'),
     isCapacityControlEnabled: vi.fn(() => false),
     isBudgetExempt: vi.fn(() => false),
+    getDeviceMinRunMinutes: (deviceId: string) => resolveEffectiveMinRunMinutes({
+      deviceOverride: deviceMinRunMinutes[deviceId],
+      energyBudgetAdmissionEnabled,
+      defaultMinRunMinutes,
+    }),
     getTemperatureBoostConfig: vi.fn(() => undefined),
     getEvBoostConfig: vi.fn(() => undefined),
     getShedBehavior: vi.fn((): ReturnType<AppContext['getShedBehavior']> => ({ action: 'turn_off', temperature: null, stepId: null })),
@@ -237,6 +246,12 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     set deviceControlProfiles(value) { deviceControlProfiles = value; },
     get deviceTargetPowerConfigs() { return deviceTargetPowerConfigs; },
     set deviceTargetPowerConfigs(value) { deviceTargetPowerConfigs = value; },
+    get energyBudgetAdmissionEnabled() { return energyBudgetAdmissionEnabled; },
+    set energyBudgetAdmissionEnabled(value) { energyBudgetAdmissionEnabled = value; },
+    get defaultMinRunMinutes() { return defaultMinRunMinutes; },
+    set defaultMinRunMinutes(value) { defaultMinRunMinutes = value; },
+    get deviceMinRunMinutes() { return deviceMinRunMinutes; },
+    set deviceMinRunMinutes(value) { deviceMinRunMinutes = value; },
     get temperatureBoostSettings() { return temperatureBoostSettings; },
     set temperatureBoostSettings(value) { temperatureBoostSettings = value; },
     get evBoostSettings() { return evBoostSettings; },
