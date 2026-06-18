@@ -406,5 +406,8 @@
   },
   "2.12.0": {
     "en": "PELS can now set tomorrow's budget based on learnt daily consumption and weather forecast."
+  },
+  "2.13.0": {
+    "en": "Devices held back by today's budget now offer a quick option on the Overview to let them run anyway until they reach their normal target, matching the rescue already available from the dashboard widget. The Budget tab's chart now traces a steady budget pace line and lets you switch between viewing energy used and estimated cost."
   }
 }
