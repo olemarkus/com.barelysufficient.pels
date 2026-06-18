@@ -246,6 +246,17 @@ export type PlanInputDeviceBase = {
   controllable?: boolean;
   managed?: boolean;
   budgetExempt?: boolean;
+  /**
+   * Producer-resolved effective per-device minimum run time, in minutes — the
+   * "anti-cycle hold": how long a freshly-resumed device is protected from
+   * being limited again before overshoot can re-shed it. Resolved once in the
+   * app producer (`getDeviceMinRunMinutes`): an explicit per-device override
+   * wins (incl. `0` = opt-out), else the global default applies only while the
+   * admission toggle is on. `0`/`undefined` both mean the legacy
+   * `RECENT_RESTORE_SHED_GRACE_MS` (3-minute) grace — consumers must treat both
+   * as "use the legacy constant" and never branch on the global toggle/default.
+   */
+  minRunMinutes?: number;
   available?: boolean;
   zone?: string;
   lastFreshDataMs?: number;

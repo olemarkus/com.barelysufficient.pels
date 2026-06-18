@@ -70,6 +70,7 @@ import {
 import { refreshAdvancedDeviceCleanup } from './advanced.ts';
 import { loadEvBoostSettings, loadShedBehaviors, loadTemperatureBoostSettings } from './deviceDetail/index.ts';
 import { loadDeviceControlProfiles } from './deviceControlProfiles.ts';
+import { handleMinRunSettingChange } from './minRunSettings.ts';
 import { getPowerUsage, renderPowerStats, renderPowerUsage } from './power.ts';
 import { state } from './state.ts';
 import { logSettingsError, logSettingsWarn } from './logging.ts';
@@ -377,6 +378,7 @@ const createSettingsSetHandler = () => (key: string) => {
   if (key === DEVICE_CONTROL_PROFILES || key === DEVICE_TARGET_POWER_CONFIGS) {
     runLoggedTask(loadDeviceControlProfiles(), 'Failed to load device control profiles', 'settings.set');
   }
+  handleMinRunSettingChange(key, refreshPlanForUi, refreshModeAndDeviceControls);
   if (DEVICE_CONTROL_KEYS.has(key)) {
     refreshModeAndDeviceControls();
   }

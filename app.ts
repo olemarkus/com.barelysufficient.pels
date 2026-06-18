@@ -76,6 +76,7 @@ import {
 } from './lib/utils/settingsKeys';
 import { normalizePowerSource, type PowerSource } from './lib/power/powerSource';
 import { isNumberMap } from './lib/utils/appTypeGuards';
+import { resolveEffectiveMinRunMinutes } from './lib/utils/minRunResolution';
 import {
   executePendingPowerRebuild,
   PowerSampleRebuildState,
@@ -379,6 +380,13 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi {
   private flowDeviceAutocompleteRequest?: Promise<HomeyDeviceLike[]>;
   private deviceControlProfiles: DeviceControlProfiles = {};
   private deviceTargetPowerConfigs: DeviceTargetPowerConfigs = {};
+  // Minimum-run-time ("anti-cycle hold") config. Behaviour-neutral defaults:
+  // toggle off, no global default (legacy grace), empty per-device override map.
+  // `getDeviceMinRunMinutes` resolves the effective per-device value once here
+  // (resolution-in-producer); the planner consumes a flat number|undefined.
+  private energyBudgetAdmissionEnabled = false;
+  private defaultMinRunMinutes: number | undefined = undefined;
+  private deviceMinRunMinutes: Record<string, number> = {};
   private deviceCommunicationModels: Record<string, 'local' | 'cloud'> = {};
   private shedBehaviors: Record<string, ShedBehavior> = {};
   private debugLoggingTopics = new Set<DebugLoggingTopic>();
@@ -913,6 +921,13 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi {
       set deviceControlProfiles(value) { appRef.deviceControlProfiles = value; },
       get deviceTargetPowerConfigs() { return app.deviceTargetPowerConfigs; },
       set deviceTargetPowerConfigs(value) { appRef.deviceTargetPowerConfigs = value; },
+      get energyBudgetAdmissionEnabled() { return app.energyBudgetAdmissionEnabled; },
+      set energyBudgetAdmissionEnabled(value) { appRef.energyBudgetAdmissionEnabled = value; },
+      get defaultMinRunMinutes() { return app.defaultMinRunMinutes; },
+      set defaultMinRunMinutes(value) { appRef.defaultMinRunMinutes = value; },
+      get deviceMinRunMinutes() { return app.deviceMinRunMinutes; },
+      set deviceMinRunMinutes(value) { appRef.deviceMinRunMinutes = value; },
+      getDeviceMinRunMinutes: (deviceId) => app.getDeviceMinRunMinutes(deviceId),
       get deviceCommunicationModels() { return app.deviceCommunicationModels; },
       set deviceCommunicationModels(value) { appRef.deviceCommunicationModels = value; },
       get shedBehaviors() { return app.shedBehaviors; },
@@ -1280,6 +1295,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi {
       getDeviceDriverIdOverride: (id) => this.getDeviceDriverIdOverride(id),
       getDeviceControlProfile: (id) => this.deviceControlProfiles[id],
       getDeviceTargetPowerConfig: (id) => this.deviceTargetPowerConfigs[id],
+      getDeviceMinRunMinutes: (id) => this.getDeviceMinRunMinutes(id),
       getFlowReportedCapabilities: (deviceId) => this.getFlowReportedCapabilitiesForDevice(deviceId),
     }, {
       expectedPowerKwOverrides: this.expectedPowerKwOverrides,
@@ -1696,6 +1712,9 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi {
         deviceTargetPowerConfigs: this.deviceTargetPowerConfigs,
         deviceCommunicationModels: this.deviceCommunicationModels,
         shedBehaviors: this.shedBehaviors,
+        energyBudgetAdmissionEnabled: this.energyBudgetAdmissionEnabled,
+        defaultMinRunMinutes: this.defaultMinRunMinutes,
+        deviceMinRunMinutes: this.deviceMinRunMinutes,
       },
     });
     this.capacitySettings = next.capacitySettings;
@@ -1715,6 +1734,9 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi {
     this.deviceTargetPowerConfigs = next.deviceTargetPowerConfigs;
     this.deviceCommunicationModels = next.deviceCommunicationModels;
     this.shedBehaviors = next.shedBehaviors;
+    this.energyBudgetAdmissionEnabled = next.energyBudgetAdmissionEnabled;
+    this.defaultMinRunMinutes = next.defaultMinRunMinutes;
+    this.deviceMinRunMinutes = next.deviceMinRunMinutes;
     this.updatePriceOptimizationEnabled();
     void this.updateOverheadToken(this.capacitySettings.marginKw);
   }
@@ -1999,6 +2021,18 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi {
     this.managedDevices[deviceId] === true && this.controllableDevices[deviceId] === true
   );
   private isBudgetExempt = (deviceId: string) => this.budgetExemptDevices[deviceId] === true;
+  // Resolution-in-producer for the per-device minimum run time. An explicit
+  // per-device override ALWAYS wins (including `0` = opt-out); otherwise the
+  // global default applies only when the admission toggle is on. Returns
+  // `number | undefined`; `0`/`undefined` both mean "legacy 3-minute grace"
+  // downstream. The planner consumes only this flat value.
+  private getDeviceMinRunMinutes = (deviceId: string): number | undefined => (
+    resolveEffectiveMinRunMinutes({
+      deviceOverride: this.deviceMinRunMinutes[deviceId],
+      energyBudgetAdmissionEnabled: this.energyBudgetAdmissionEnabled,
+      defaultMinRunMinutes: this.defaultMinRunMinutes,
+    })
+  );
   private getTemperatureBoostConfig = (deviceId: string) => this.temperatureBoostSettings[deviceId];
   private getEvBoostConfig = (deviceId: string) => this.evBoostSettings[deviceId];
   private getShedBehavior = (deviceId: string) => getShedBehaviorHelper(deviceId, this.shedBehaviors);

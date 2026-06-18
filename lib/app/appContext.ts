@@ -192,6 +192,16 @@ export type AppContext = {
   set deviceControlProfiles(value: DeviceControlProfiles);
   get deviceTargetPowerConfigs(): DeviceTargetPowerConfigs;
   set deviceTargetPowerConfigs(value: DeviceTargetPowerConfigs);
+  get energyBudgetAdmissionEnabled(): boolean;
+  set energyBudgetAdmissionEnabled(value: boolean);
+  get defaultMinRunMinutes(): number | undefined;
+  set defaultMinRunMinutes(value: number | undefined);
+  get deviceMinRunMinutes(): Record<string, number>;
+  set deviceMinRunMinutes(value: Record<string, number>);
+  // Resolution-in-producer accessor for the effective per-device minimum run
+  // time (minutes). Returns `number | undefined`; `0`/`undefined` both mean the
+  // legacy 3-minute anti-cycle grace downstream.
+  getDeviceMinRunMinutes: (deviceId: string) => number | undefined;
   get deviceCommunicationModels(): Record<string, 'local' | 'cloud'>;
   set deviceCommunicationModels(value: Record<string, 'local' | 'cloud'>);
   get shedBehaviors(): Record<string, ShedBehavior>;
