@@ -13,9 +13,6 @@ import {
   DEVICE_COMMUNICATION_MODELS,
   DEVICE_DRIVER_OVERRIDES,
   DEVICE_TARGET_POWER_CONFIGS,
-  ENERGY_BUDGET_ADMISSION_ENABLED,
-  DEFAULT_MIN_RUN_MINUTES,
-  DEVICE_MIN_RUN_MINUTES,
   DAILY_BUDGET_ENABLED,
   DAILY_BUDGET_KWH,
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
@@ -90,9 +87,6 @@ const DEDUPED_CAPACITY_KEYS = [
   BUDGET_EXEMPT_DEVICES,
   DEVICE_CONTROL_PROFILES,
   DEVICE_TARGET_POWER_CONFIGS,
-  ENERGY_BUDGET_ADMISSION_ENABLED,
-  DEFAULT_MIN_RUN_MINUTES,
-  DEVICE_MIN_RUN_MINUTES,
   DEVICE_COMMUNICATION_MODELS,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
@@ -315,21 +309,6 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
       deps.loadCapacitySettings();
       await refreshSnapshotWithLog(deps, 'device_target_power_change');
       await rebuildPlanFromSettings(deps, DEVICE_TARGET_POWER_CONFIGS);
-    },
-    [ENERGY_BUDGET_ADMISSION_ENABLED]: async () => {
-      deps.loadCapacitySettings();
-      await refreshSnapshotWithLog(deps, 'min_run_admission_toggle_change');
-      await rebuildPlanFromSettings(deps, ENERGY_BUDGET_ADMISSION_ENABLED);
-    },
-    [DEFAULT_MIN_RUN_MINUTES]: async () => {
-      deps.loadCapacitySettings();
-      await refreshSnapshotWithLog(deps, 'default_min_run_minutes_change');
-      await rebuildPlanFromSettings(deps, DEFAULT_MIN_RUN_MINUTES);
-    },
-    [DEVICE_MIN_RUN_MINUTES]: async () => {
-      deps.loadCapacitySettings();
-      await refreshSnapshotWithLog(deps, 'device_min_run_minutes_change');
-      await rebuildPlanFromSettings(deps, DEVICE_MIN_RUN_MINUTES);
     },
     [DEVICE_COMMUNICATION_MODELS]: async () => {
       deps.loadCapacitySettings();

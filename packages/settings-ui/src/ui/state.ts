@@ -63,13 +63,6 @@ export type UiState = {
   nativeWiringMap: Record<string, boolean>;
   deviceControlProfiles: DeviceControlProfiles;
   deviceTargetPowerConfigs: DeviceTargetPowerConfigs;
-  // Minimum-run-time ("anti-cycle hold") config mirror. The toggle gates the
-  // global default; the per-device map is an explicit override (0 = opt-out).
-  // The effective per-device value is resolved by the runtime producer — the UI
-  // only reads/writes these raw inputs.
-  energyBudgetAdmissionEnabled: boolean;
-  defaultMinRunMinutes: number | undefined;
-  deviceMinRunMinutes: Record<string, number>;
   modeAliases: Record<string, string>;
   shedBehaviors: Record<string, ShedBehavior>;
   temperatureBoostSettings: TemperatureBoostSettings;
@@ -108,9 +101,6 @@ export const state: UiState = {
   nativeWiringMap: {},
   deviceControlProfiles: {},
   deviceTargetPowerConfigs: {},
-  energyBudgetAdmissionEnabled: false,
-  defaultMinRunMinutes: undefined,
-  deviceMinRunMinutes: {},
   modeAliases: {},
   shedBehaviors: {},
   temperatureBoostSettings: {},

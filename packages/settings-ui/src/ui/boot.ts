@@ -78,10 +78,6 @@ import {
   loadDailyBudgetBreakdownSetting,
 } from './dailyBudgetTuning.ts';
 import {
-  initMinRunSettingsHandlers,
-  loadMinRunSettings,
-} from './minRunSettings.ts';
-import {
   initDeviceDetailHandlers,
   loadEvBoostSettings,
   loadShedBehaviors,
@@ -270,7 +266,6 @@ const initAdvancedHandlers = () => {
   initAdvancedDeviceCleanupHandlers();
   initAdvancedDeviceLoggerHandlers();
   initDailyBudgetBreakdownHandlers();
-  initMinRunSettingsHandlers();
 };
 
 const loadBootstrapData = async (): Promise<SettingsUiBootstrap | null> => {
@@ -317,7 +312,6 @@ const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
     loadBudgetAdjust(),
     loadStaleDataStatus(),
     loadDeviceControlProfiles(),
-    loadMinRunSettings(),
     loadShedBehaviors(),
     loadTemperatureBoostSettings(),
     loadEvBoostSettings(),

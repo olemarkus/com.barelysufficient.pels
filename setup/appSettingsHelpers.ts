@@ -24,7 +24,6 @@ import {
 } from '../lib/utils/appTypeGuards';
 import { normalizeDeviceTargetPowerConfigs } from '../lib/utils/targetPowerConfig';
 import { normalizeModePriorities } from '../packages/shared-domain/src/modePriorities';
-import { normalizeMinRunMinutesMap } from '../packages/shared-domain/src/minRunMinutes';
 import {
   BUDGET_EXEMPT_DEVICES,
   CAPACITY_DRY_RUN,
@@ -34,9 +33,6 @@ import {
   DEVICE_COMMUNICATION_MODELS,
   DEVICE_DRIVER_OVERRIDES,
   DEVICE_TARGET_POWER_CONFIGS,
-  ENERGY_BUDGET_ADMISSION_ENABLED,
-  DEFAULT_MIN_RUN_MINUTES,
-  DEVICE_MIN_RUN_MINUTES,
   EV_BOOST_SETTINGS,
   NATIVE_EV_WIRING_DEVICES,
   CONTROLLABLE_DEVICES,
@@ -67,13 +63,6 @@ export type CapacitySettingsSnapshot = {
   deviceTargetPowerConfigs: DeviceTargetPowerConfigs;
   deviceCommunicationModels: Record<string, 'local' | 'cloud'>;
   shedBehaviors: Record<string, ShedBehavior>;
-  // Minimum-run-time ("anti-cycle hold") config. The toggle gates whether the
-  // global default applies; the per-device map is an explicit override that
-  // always wins (incl. 0 = opt-out). Resolution-in-producer happens in app.ts
-  // `getDeviceMinRunMinutes`; these are the raw, validated inputs to it.
-  energyBudgetAdmissionEnabled: boolean;
-  defaultMinRunMinutes: number | undefined;
-  deviceMinRunMinutes: Record<string, number>;
 };
 
 export function buildCapacitySettingsSnapshot(params: {
@@ -95,7 +84,6 @@ export function buildCapacitySettingsSnapshot(params: {
   const rawShedBehaviors = settings.get(OVERSHOOT_BEHAVIORS) as unknown;
   const rawTemperatureBoostSettings = settings.get(TEMPERATURE_BOOST_SETTINGS) as unknown;
   const rawEvBoostSettings = settings.get(EV_BOOST_SETTINGS) as unknown;
-  const minRunSettings = readMinRunSettings({ settings, current });
 
   const nextCapacity = {
     limitKw: isFiniteNumber(limit) ? limit : current.capacitySettings.limitKw,
@@ -141,52 +129,6 @@ export function buildCapacitySettingsSnapshot(params: {
     deviceTargetPowerConfigs: deviceSettings.deviceTargetPowerConfigs,
     deviceCommunicationModels: deviceSettings.deviceCommunicationModels,
     shedBehaviors: nextBehaviors,
-    energyBudgetAdmissionEnabled: minRunSettings.energyBudgetAdmissionEnabled,
-    defaultMinRunMinutes: minRunSettings.defaultMinRunMinutes,
-    deviceMinRunMinutes: minRunSettings.deviceMinRunMinutes,
-  };
-}
-
-// Minimum-run-time inputs. Behaviour-neutral defaults when unset: the toggle
-// reads false, the global default reads `undefined` (legacy grace), and the
-// per-device map reads `{}`. The default tolerates being absent even when the
-// toggle is on — the settings UI enforces "enable requires a default", but the
-// runtime falls back to the legacy 3-minute grace rather than trusting an
-// invalid (non-finite / negative) value.
-function readMinRunSettings(params: {
-  settings: Homey.App['homey']['settings'];
-  current: CapacitySettingsSnapshot;
-}): Pick<
-  CapacitySettingsSnapshot,
-  'energyBudgetAdmissionEnabled' | 'defaultMinRunMinutes' | 'deviceMinRunMinutes'
-> {
-  const { settings, current } = params;
-  const rawEnabled = settings.get(ENERGY_BUDGET_ADMISSION_ENABLED) as unknown;
-  const rawDefault = settings.get(DEFAULT_MIN_RUN_MINUTES) as unknown;
-  const rawDeviceMap = settings.get(DEVICE_MIN_RUN_MINUTES) as unknown;
-  const parsedDeviceMap = parseRecordSetting(rawDeviceMap);
-  return {
-    energyBudgetAdmissionEnabled: typeof rawEnabled === 'boolean'
-      ? rawEnabled
-      : current.energyBudgetAdmissionEnabled,
-    // Fall back to the live in-memory default on an invalid/transient read
-    // (Homey SDK reads can transiently resolve empty — feedback_homey_sdk_unreliable).
-    // `loadCapacitySettings` overwrites the field unconditionally, so resetting
-    // to `undefined` here would wipe a valid default while the toggle stays on,
-    // silently dropping devices to the legacy grace until the next good read.
-    // Mirrors the toggle / limit / margin fallbacks above.
-    defaultMinRunMinutes: isFiniteNumber(rawDefault) && rawDefault >= 0
-      ? rawDefault
-      : current.defaultMinRunMinutes,
-    // `parseRecordSetting` handles the object | JSON-string | malformed cases;
-    // the shared normalizer drops invalid entries and retains 0 (opt-out). Fall
-    // back to the live in-memory map on a transient/empty/malformed read so one
-    // flaky SDK read can't strip per-device overrides (including 0 opt-outs) —
-    // same abandon-grace as the toggle/default above (feedback_homey_sdk_unreliable),
-    // mirroring the deviceTargetPowerConfigs loader.
-    deviceMinRunMinutes: parsedDeviceMap
-      ? normalizeMinRunMinutesMap(parsedDeviceMap)
-      : current.deviceMinRunMinutes,
   };
 }
 

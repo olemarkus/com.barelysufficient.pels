@@ -179,12 +179,6 @@ export type DeviceDescriptor = {
     managed?: boolean;
     budgetExempt?: boolean;
     priority?: number;
-    // Producer-resolved effective per-device minimum run time, minutes. The
-    // "anti-cycle hold": how long a freshly-resumed device is protected from
-    // being limited again. `0`/`undefined` both mean the legacy 3-minute grace.
-    // Resolution-in-producer (app.ts `getDeviceMinRunMinutes`); consumers read
-    // this flat value and never branch on the global toggle/default.
-    minRunMinutes?: number;
     // Nameplate / configured power hints — a planning input, NOT measured
     // telemetry (`measuredPowerKw` is the observed value). Kept on the
     // descriptor per the lib/device/AGENTS.md invariant that estimated power stays distinct

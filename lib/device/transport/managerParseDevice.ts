@@ -59,7 +59,7 @@ import {
 
 type ParsedDeviceSettings = Pick<
     TargetDeviceSnapshot,
-    'communicationModel' | 'priority' | 'controllable' | 'managed' | 'budgetExempt' | 'minRunMinutes' | 'flowConflict'
+    'communicationModel' | 'priority' | 'controllable' | 'managed' | 'budgetExempt' | 'flowConflict'
 >;
 
 export type DeviceTransportParseProviders = {
@@ -68,10 +68,6 @@ export type DeviceTransportParseProviders = {
     getManaged?: (deviceId: string) => boolean;
     isManagedFilterActive?: () => boolean;
     getBudgetExempt?: (deviceId: string) => boolean;
-    // Producer-resolved effective per-device minimum run time (minutes), or
-    // `undefined` for legacy anti-cycle grace. Resolution lives in the app
-    // producer (`getDeviceMinRunMinutes`); transport only stamps the flat value.
-    getDeviceMinRunMinutes?: (deviceId: string) => number | undefined;
     getCommunicationModel?: (deviceId: string) => 'local' | 'cloud';
     getDeviceDriverIdOverride?: (deviceId: string) => string | undefined;
     getNativeEvWiringEnabled?: (deviceId: string) => boolean;
@@ -495,7 +491,6 @@ function resolveParsedDeviceSettings(
         controllable: providers.getControllable?.(deviceId),
         managed: providers.getManaged?.(deviceId),
         budgetExempt: providers.getBudgetExempt?.(deviceId),
-        minRunMinutes: providers.getDeviceMinRunMinutes?.(deviceId),
         flowConflict: providers.getFlowConflict?.(deviceId),
     };
 }
