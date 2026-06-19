@@ -35,8 +35,9 @@ allowedKw     = min(burstRate, drainCeiling)
   governs — full freedom to use the budget.
 - **As the hour ends** the ceiling collapses toward `sustainable`, pulling the
   allowed pace down **gradually**. At `minutesRemaining → 0` the ceiling **is**
-  `sustainable`, so the boundary is crossed at the steady rate and the next hour
-  starts clean.
+  `sustainable`, so the planner target reaches the steady rate at the boundary.
+  Physical draw can still lag this target when a slow device app takes time to
+  apply the command; see the trade-off below.
 
 `allowedKw` is the capacity soft limit; `headroom = softLimit − measuredTotal`
 (`planContext.ts`). A negative headroom drives shedding, so the drain both blocks
@@ -102,8 +103,9 @@ restoring the step.
   allowance *below* burst, never above. This also handles a nearly-spent budget:
   when `burstRate < sustainable`, the `min` collapses to `burstRate` and the
   drain ceiling is irrelevant.
-- **Crosses the boundary at the sustainable rate.** `e^0 = 1`, so at
-  `minutesRemaining = 0` the ceiling is exactly `sustainable`.
+- **Planner ceiling reaches the sustainable rate at the boundary.** `e^0 = 1`,
+  so at `minutesRemaining = 0` the ceiling is exactly `sustainable`; actual
+  device draw can lag if command/effect latency spans the boundary.
 - **`burstRate` floor.** `remainingHours` is floored at
   `BURST_RATE_MIN_REMAINING_MIN` (10 min) so the burst rate stays finite as the
   hour ends; this is a divisor floor only, unrelated to the drain.
@@ -118,9 +120,9 @@ side needs boundary protection. See `docs/daily-budget.md`.
 ## Tests
 
 `test/integration/planBudget.test.ts` (pure math: drain near hour end, no cliff
-at the 10-minute mark, boundary crossing at sustainable, monotone taper over the
-final minutes) and `test/integration/app.test.ts` (`computeDynamicSoftLimit`
-through the app).
+at the 10-minute mark, planner ceiling reaches sustainable at the boundary,
+monotone taper over the final minutes) and `test/integration/app.test.ts`
+(`computeDynamicSoftLimit` through the app).
 
 `test/e2e/capacityEndOfHourDrain.e2e.test.ts` drives the full SDK-boundary stack
 (energy poll → planner → executor → `api.put`) with the faked clock stepped toward
