@@ -18,7 +18,7 @@ import {
   type DeviceReason,
 } from '../../packages/shared-domain/src/planReasonSemantics';
 import { getRestoreDrawKw } from '../observer/observedPower';
-import { resolveRecentRestoreGraceMs } from './planConstants';
+import { RECENT_RESTORE_SHED_GRACE_MS } from './planConstants';
 import { isPendingBinaryCommandActive } from './planObservationPolicy';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
 import {
@@ -150,7 +150,7 @@ export function buildInitialPlanDevices(params: {
       devices: context.devices,
       state,
       priority,
-      recentlyRestored: isRecentlyRestored(state.lastDeviceRestoreMs[dev.id], dev.minRunMinutes),
+      recentlyRestored: isRecentlyRestored(state.lastDeviceRestoreMs[dev.id]),
       binaryCommandPending: isPendingBinaryCommandActive({
         pending: deps.pendingBinaryCommandStore.peek(dev.id),
         communicationModel: dev.communicationModel,
@@ -515,12 +515,9 @@ function pickPropagatedPlanFields(
     ...(dev.residualKw ? { residualKw: dev.residualKw } : {}),
   };
 }
-function isRecentlyRestored(
-  lastRestoreMs: number | undefined,
-  minRunMinutes: number | undefined,
-): boolean {
+function isRecentlyRestored(lastRestoreMs: number | undefined): boolean {
   if (!lastRestoreMs) return false;
-  return Date.now() - lastRestoreMs < resolveRecentRestoreGraceMs(minRunMinutes);
+  return Date.now() - lastRestoreMs < RECENT_RESTORE_SHED_GRACE_MS;
 }
 // Mirrors isDroppedUnderspecifiedSetStepShed at plan-build time, minus the
 // !isHeldByRestoreAdmission conjunct: plan reasons aren't computed at this pre-pass.

@@ -10,18 +10,6 @@ export const RECENT_SHED_RESTORE_MULTIPLIER = 1.15; // Require ~15% more headroo
 export const RECENT_SHED_EXTRA_BUFFER_KW = 0.15; // Or at least an extra 0.15 kW cushion when re-restoring
 // Avoid re-shedding a freshly restored device for 3 minutes unless overshoot is large.
 export const RECENT_RESTORE_SHED_GRACE_MS = 3 * 60 * 1000;
-
-// Resolve the per-device anti-cycle grace window from the producer-resolved
-// effective minimum-run-time (minutes). A positive value scales the window;
-// `0`/`undefined` (and any negative — defensively rejected) fall back to the
-// legacy `RECENT_RESTORE_SHED_GRACE_MS`, so behaviour is byte-identical when the
-// feature is unset/off. Consumers must not branch on the global toggle/default —
-// they receive only the flat per-device value.
-export function resolveRecentRestoreGraceMs(minRunMinutes: number | undefined): number {
-  return typeof minRunMinutes === 'number' && minRunMinutes > 0
-    ? minRunMinutes * 60_000
-    : RECENT_RESTORE_SHED_GRACE_MS;
-}
 export const RECENT_RESTORE_OVERSHOOT_BYPASS_KW = 0.5; // Allow immediate re-shed if overshoot is >= 0.5 kW
 // Block restore of a device that was restored right before an overshoot event.
 export const OVERSHOOT_RESTORE_ATTRIBUTION_WINDOW_MS = 2 * 60 * 1000;

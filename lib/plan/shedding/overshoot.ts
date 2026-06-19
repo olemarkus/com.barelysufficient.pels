@@ -4,7 +4,7 @@ import type { PlanEngineState } from '../planState';
 import type { PlanInputDevice } from '../planTypes';
 import {
   RECENT_RESTORE_OVERSHOOT_BYPASS_KW,
-  resolveRecentRestoreGraceMs,
+  RECENT_RESTORE_SHED_GRACE_MS,
 } from '../planConstants';
 import type { OvershootStats } from './types';
 
@@ -59,7 +59,7 @@ export function emitOvershootEscalationBlocked(params: {
 }
 
 export function resolveRecentRestoreState(params: {
-  device: Pick<PlanInputDevice, 'id' | 'name' | 'minRunMinutes'>;
+  device: Pick<PlanInputDevice, 'id' | 'name'>;
   state: PlanEngineState;
   nowTs: number;
   needed: number;
@@ -75,8 +75,7 @@ export function resolveRecentRestoreState(params: {
   const lastRestore = state.lastDeviceRestoreMs[device.id];
   if (!lastRestore) return false;
   const sinceRestoreMs = nowTs - lastRestore;
-  const graceMs = resolveRecentRestoreGraceMs(device.minRunMinutes);
-  const recentlyRestored = sinceRestoreMs < graceMs;
+  const recentlyRestored = sinceRestoreMs < RECENT_RESTORE_SHED_GRACE_MS;
   const overshootSevere = needed > RECENT_RESTORE_OVERSHOOT_BYPASS_KW;
   if (recentlyRestored && !overshootSevere) {
     debugStructured?.({

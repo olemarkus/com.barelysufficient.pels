@@ -579,10 +579,7 @@ live-walk screenshots.*
       decisions), `lib/plan/planService.ts` (~936, reconcile vs rebuild), `lib/executor/steppedLoadExecutor.ts`
       (~845), `lib/objectives/deferredObjectives/activePlanRecorder.ts` (~1208, replay split) and
       `diagnosticsBridge.ts` (~1028, per-concern payload builders), `setup/appDebugHelpers.ts` (~779, comparison
-      serializer), `app.ts` (~1930 — extract the per-device-config accessor/provider cluster
-      (priority/managed/budgetExempt/targetPowerConfig/min-run get/set pairs) to a `setup/appInit/**` factory;
-      the per-device min-run PR ratcheted the `eslint.config.mjs` ceiling 1900→1930). Persona: contributor.
-      Large structural splits — out of scope for the exemption sweep.
+      serializer). Persona: contributor. Large structural splits — out of scope for the exemption sweep.
       Files: as listed.
 *Smart-task controller extraction (2026-05-30, `feat/smarttask-lifecycle-producer`).
 Program to make the planner know nothing about smart tasks (deferred objectives):

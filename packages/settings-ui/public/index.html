@@ -597,39 +597,6 @@
       </details>
       <details class="settings-collapse">
         <summary>
-          <h3 class="section-title">Minimum run time</h3>
-          <span class="section-hint">Keep managed devices on once they start</span>
-          <svg class="disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" fill="currentColor"/></svg>
-        </summary>
-        <div class="collapse-content">
-          <div class="form-grid">
-            <div class="md-switch-row">
-              <md-switch id="min-run-enabled" aria-labelledby="min-run-enabled-label"></md-switch>
-              <span class="md-switch-row__content">
-                <span class="md-switch-row__label pels-text-settings-label" id="min-run-enabled-label">Apply a minimum run time</span>
-                <small class="field__hint">After PELS resumes a managed device, keep it on for at least the time below before limiting it again. Set a per-device override in each device's settings.</small>
-              </span>
-            </div>
-            <div class="field" id="min-run-default-row" hidden>
-              <span class="field__label pels-text-settings-label" id="min-run-default-label">Default minimum run time</span>
-              <md-filled-text-field
-                id="min-run-default-minutes"
-                name="min_run_default_minutes"
-                type="number"
-                step="1"
-                min="0"
-                inputmode="numeric"
-                autocomplete="off"
-                suffix-text="min"
-                aria-labelledby="min-run-default-label"
-              ></md-filled-text-field>
-              <small class="field__hint">Minutes. Required when minimum run time is on.</small>
-            </div>
-          </div>
-        </div>
-      </details>
-      <details class="settings-collapse">
-        <summary>
           <h3 class="section-title">Data management</h3>
           <span class="section-hint">Reset stored history</span>
           <svg class="disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" fill="currentColor"/></svg>
@@ -765,35 +732,6 @@
                   ></md-filled-text-field>
                   <small class="field__hint">Added to target during expensive hours, for example -5.</small>
                 </div>
-              </div>
-            </div>
-          </details>
-        </section>
-
-        <section class="detail-section" id="device-detail-min-run-section">
-          <details class="settings-collapse detail-collapse" open>
-            <summary>
-              <h3 class="section-title">Minimum run time</h3>
-              <span class="section-hint">How long this device stays on once it starts</span>
-              <svg class="disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" fill="currentColor"/></svg>
-            </summary>
-            <div class="collapse-content">
-              <p class="muted">Once PELS resumes this device, it keeps it on for at least this long before limiting it again. Leave blank to use the global default. Set 0 to opt this device out.</p>
-              <div class="md-field-row">
-                <md-filled-text-field
-                  id="device-detail-min-run-minutes"
-                  label="Minimum run time"
-                  type="number"
-                  step="1"
-                  min="0"
-                  inputmode="numeric"
-                  suffix-text="min"
-                ></md-filled-text-field>
-                <small class="field__hint">Minutes. Overrides the global default for this device.</small>
-              </div>
-              <div class="detail-stepped-actions">
-                <md-filled-button id="device-detail-min-run-save">Save</md-filled-button>
-                <md-text-button id="device-detail-min-run-clear">Use default</md-text-button>
               </div>
             </div>
           </details>
