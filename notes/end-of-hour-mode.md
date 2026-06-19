@@ -121,3 +121,12 @@ side needs boundary protection. See `docs/daily-budget.md`.
 at the 10-minute mark, boundary crossing at sustainable, monotone taper over the
 final minutes) and `test/integration/app.test.ts` (`computeDynamicSoftLimit`
 through the app).
+
+`test/e2e/capacityEndOfHourDrain.e2e.test.ts` drives the full SDK-boundary stack
+(energy poll → planner → executor → `api.put`) with the faked clock stepped toward
+`:00`: a heterogeneous fleet (on/off + thermostat, distinct priorities) is left
+running past the 10-minute mark and then wound down to the sustainable rate in
+priority order. It starts late in an unused hour so the burst budget stays above
+the fleet draw — the drain ceiling is the binding constraint — and uses a feedback
+energy model (the reported home total reflects each device's commanded state) so
+the wind-down self-limits.
