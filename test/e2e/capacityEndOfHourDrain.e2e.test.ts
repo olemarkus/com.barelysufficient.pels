@@ -136,6 +136,12 @@ describe('End-of-hour drain across the hour boundary (SDK-boundary e2e)', () => 
   };
   const isShedCall = (spec: DeviceSpec, call: unknown[]): boolean =>
     spec.kind === 'onoff' ? isOnoffShed(spec.id, call) : isSetbackShed(spec.id, call);
+  const isRestoreCall = (spec: DeviceSpec, call: unknown[]): boolean => {
+    const value = (call[1] as { value?: unknown } | undefined)?.value;
+    return spec.kind === 'onoff'
+      ? call[0] === cap(spec.id, 'onoff') && value === true
+      : call[0] === cap(spec.id, 'target_temperature') && typeof value === 'number' && value > SETBACK_TARGET;
+  };
   const specOf = (id: string): DeviceSpec => FLEET.find((s) => s.id === id)!;
   const wasShed = (id: string): boolean =>
     putSpy.mock.calls.some((call: unknown[]) => isShedCall(specOf(id), call));
@@ -246,26 +252,26 @@ describe('End-of-hour drain across the hour boundary (SDK-boundary e2e)', () => 
     // Cross the actual boundary: fire the HH:00 poll and roll into the next hourly
     // bucket. Observed purely through the SDK boundary (device capability state + the
     // feedback energy total — no internal planner reads): the surviving load carries
-    // cleanly under the sustainable rate, and the shed devices stay shed (the new
-    // hour's ~0.5 kW of headroom fits none of them, so nothing is restored). Guards a
-    // regression that only surfaces at minutesRemaining == 0 or on the new bucket.
+    // under the sustainable rate, and the shed devices stay shed.
     const writeCountBeforeBoundary = putSpy.mock.calls.length;
     await stepTo(hourStartMs + 60 * MIN_MS + POLL_MS); // :00:10 in the next hour
     await flushDetached();
     expect((await computeFleetPowerW(devices)) / 1000).toBeLessThanOrEqual(SUSTAINABLE_KW + 0.001);
     for (const id of SURVIVORS_EXPECTED) expect(wasShed(id)).toBe(false);
 
-    // No restore write lands for a shed device across the roll. Checking the WRITES
-    // (not just the end state) catches a restore-then-re-limit flap, which would leave
-    // the same shed end state but violate the "nothing is restored" boundary invariant.
+    // Keep polling past the 60 s limit cooldown opened by the :59:50 shed. The new
+    // hour's ~0.5 kW of available power fits none of the shed devices, so no restore
+    // write should land even after the global restore gate can reopen.
+    await stepTo(hourStartMs + 61 * MIN_MS + POLL_MS); // :01:10 in the next hour
+    await flushDetached();
+    expect((await computeFleetPowerW(devices)) / 1000).toBeLessThanOrEqual(SUSTAINABLE_KW + 0.001);
+
+    // Checking the WRITES (not just the end state) catches a restore-then-re-limit
+    // flap, which would leave the same shed end state but violate the "nothing is
+    // restored" boundary invariant.
     const boundaryWrites = putSpy.mock.calls.slice(writeCountBeforeBoundary);
     for (const id of SHED_EXPECTED) {
-      const restored = boundaryWrites.some((call: unknown[]) => {
-        const value = (call[1] as { value?: unknown } | undefined)?.value;
-        return specOf(id).kind === 'onoff'
-          ? call[0] === cap(id, 'onoff') && value === true
-          : call[0] === cap(id, 'target_temperature') && typeof value === 'number' && value > SETBACK_TARGET;
-      });
+      const restored = boundaryWrites.some((call: unknown[]) => isRestoreCall(specOf(id), call));
       expect(restored).toBe(false);
     }
 

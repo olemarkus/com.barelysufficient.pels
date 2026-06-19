@@ -56,7 +56,7 @@ Rather than simply comparing instantaneous power against your hard cap, PELS cal
 
 ### End-of-Hour Drain (Hourly Capacity Only)
 
-To prevent "end of hour bursting" — where devices ramp up to use remaining budget and then carry that high draw across the hour boundary into the next hour — PELS gradually tightens the hourly safe pace down to the sustainable rate as the hour ends. Rather than a hard cut-off, the ceiling decays smoothly over the final minutes: it stays generous until roughly the last 8 minutes, tapers through the last 5, and reaches the sustainable rate exactly at the top of the hour. So managed devices keep running as long as the budget allows and are wound down gradually, and the new hour starts at the steady rate. (Even with available power at 11:55, PELS will not let a burst of heaters push you into a draw that would still be running at noon.)
+To prevent "end of hour bursting" — where devices ramp up to use remaining budget and then carry that high draw across the hour boundary into the next hour — PELS gradually tightens the hourly safe pace down to the sustainable rate as the hour ends. Rather than a hard cut-off, the ceiling decays smoothly over the final minutes: it stays generous until roughly the last 8 minutes, tapers through the last 5, and reaches the sustainable-rate target at the top of the hour. So managed devices keep running as long as the budget allows and are limited gradually; slow device apps may still carry some load briefly across the boundary, but the planner is no longer allowing a high burst that would be expected to keep running at noon.
 
 This drain is hourly-only by design — the daily budget is a pacing target and there is no grid penalty for landing slightly above it at any particular minute, so the planner stays free to make the right call at 23:55.
 
@@ -318,7 +318,7 @@ Heaters and chargers on local protocols respond within seconds; cloud-mediated d
 
 ### Hourly Enforcement
 
-PELS enforces the hard cap on the **current hour**, the same hour your grid tariff is measured against. The end-of-hour drain tightens the safe pace toward the sustainable rate as the hour ends, so the boundary is crossed at the steady rate and the next hour starts clean.
+PELS enforces the hard cap on the **current hour**, the same hour your grid tariff is measured against. The end-of-hour drain tightens the safe pace toward the sustainable rate as the hour ends, so the planner aims to cross the boundary near the steady rate. Slow device response can briefly carry some load into the next hour, and the next planning cycle corrects that if needed.
 
 ### Local Control
 
