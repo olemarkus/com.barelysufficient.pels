@@ -764,10 +764,13 @@ export default tseslint.config(
   {
     // Binary restore gating + priority-swap flow kept together so the
     // restore-decision state machine reads top-to-bottom. Target: <=500 once the
-    // swap-flow helpers split from the per-device restore gating.
+    // swap-flow helpers split from the per-device restore gating. The banked
+    // min-run admission path (PR 1b) added the `admitBinaryRestore` emit helper
+    // and admission-path threading; the pure decision logic lives in the sibling
+    // `bankedMinRunAdmission.ts`.
     files: ['lib/plan/restore/index.ts'],
     rules: {
-      'max-lines': ['warn', { max: 1340, skipBlankLines: true, skipComments: true }],
+      'max-lines': ['warn', { max: 1375, skipBlankLines: true, skipComments: true }],
     },
   },
   {

@@ -1,6 +1,7 @@
 import CapacityGuard from '../power/capacityGuard';
 import { resolveUsableCapacityKw } from '../power/capacityModel';
 import type { PowerTrackerState } from '../power/tracker';
+import { computeShortfallThreshold } from './planBudget';
 import { getCurrentHourContext } from './planHourContext';
 import { resolvePowerSampleFreshness, type PowerFreshnessState } from './planPowerFreshness';
 import type { PlanInputDevice } from './planTypes';
@@ -35,6 +36,14 @@ export type PlanContext = {
   headroomRaw: number;
   headroom: number;
   restoreMarginPlanning: number;
+  /**
+   * Hard-cap burst rate (kW) — the instantaneous draw that, sustained for the
+   * rest of the hour, would exactly exhaust the PHYSICAL hard-cap hourly budget
+   * (`limitKw`, NOT `limitKw - marginKw`). Producer-resolved here so consumers
+   * (banked min-run admission) read a flat value and never re-read the clock or
+   * `capacitySettings`. Equals `(limitKw - used) / remainingHours`.
+   */
+  hardCapBurstRateKw: number;
   dailyBudget?: DailyBudgetContext;
 };
 
@@ -75,6 +84,9 @@ export function buildPlanContext(params: {
   const hourContext = getCurrentHourContext(powerTracker, now);
   const usedKWh = hourContext.usedKWh;
   const minutesRemaining = hourContext.minutesRemaining;
+  // Physical hard-cap burst rate (limitKw, not limitKw - marginKw). Resolved
+  // once here so the banked min-run admission gate reads a flat value.
+  const hardCapBurstRateKw = computeShortfallThreshold({ capacitySettings, powerTracker });
 
   let headroomRaw = 0;
   if (powerKnown && total !== null) {
@@ -110,6 +122,7 @@ export function buildPlanContext(params: {
     headroomRaw,
     headroom,
     restoreMarginPlanning: Math.max(0.1, capacitySettings.marginKw || 0),
+    hardCapBurstRateKw,
     dailyBudget,
   };
 }

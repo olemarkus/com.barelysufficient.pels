@@ -525,6 +525,13 @@ function admitSteppedRestore(params: {
   const needed = deltaKw + restoreBuffer;
   const admission = buildRestoreAdmissionMetrics({ availableKw: availableHeadroom, neededKw: needed });
   const shedDeviceCount = countShedDevices(deviceMap, dev.id);
+  // TODO(min-run PR 1b): the banked-energy admission relaxation is wired into the
+  // BINARY restore path only (lib/plan/restore/index.ts → resolveBankedMinRunAdmission).
+  // The stepped path admits an incremental step *delta* (deltaKw), not a full
+  // device draw, so the banked reservation semantics (run-at-step-for-minRun vs.
+  // a step-up delta) and the hard-cap safety gate need separate design before it
+  // can relax this gate. Deferred to keep the safety reasoning sound; the
+  // headline PR-1b case (large interruptible binary loads) is covered.
   if (admission.postReserveMarginKw < RESTORE_ADMISSION_FLOOR_KW) {
     if (swapExecutor
         && canUseSwapForSteppedRestore({ dev, nextStep, lowestNonZeroStep })) {

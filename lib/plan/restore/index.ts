@@ -80,6 +80,12 @@ import {
 } from './support';
 import { buildMeterSettlingReason, buildShortfallReason } from '../planReasonStrings';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
+import {
+  buildBankedAdmissionContext,
+  resolveBinaryAdmissionPath,
+  type BankedAdmissionContext,
+  type BinaryAdmissionPath,
+} from './bankedMinRunAdmission';
 
 const logger = getLogger('plan/restore');
 
@@ -174,6 +180,7 @@ export function applyRestorePlan(params: {
     timing: effectiveTiming,
     availableHeadroom,
   });
+  const bankedAdmission = buildBankedAdmissionContext(context);
 
   if (guardInShortfall) {
     markRestoreCandidatesStayShedForShortfall({
@@ -205,6 +212,7 @@ export function applyRestorePlan(params: {
       restoredThisCycle,
       restoredOneThisCycle,
       batchState,
+      bankedAdmission,
       deps,
       steppedSwapExecutor,
     }));
@@ -262,6 +270,7 @@ function applyRestoreCandidates(params: {
   restoredThisCycle: Set<string>;
   restoredOneThisCycle: boolean;
   batchState: RestoreBatchState;
+  bankedAdmission: BankedAdmissionContext;
   deps: RestoreDeps;
   steppedSwapExecutor: SteppedSwapExecutor;
 }): RestoreLoopState {
@@ -278,6 +287,7 @@ function applyRestoreCandidates(params: {
       restoredThisCycle: params.restoredThisCycle,
       restoredOneThisCycle,
       batchState: params.batchState,
+      bankedAdmission: params.bankedAdmission,
       deps: params.deps,
       steppedSwapExecutor: params.steppedSwapExecutor,
     });
@@ -359,6 +369,7 @@ function applyRestoreCandidate(params: {
   restoredThisCycle: Set<string>;
   restoredOneThisCycle: boolean;
   batchState: RestoreBatchState;
+  bankedAdmission: BankedAdmissionContext;
   deps: RestoreDeps;
   steppedSwapExecutor: SteppedSwapExecutor;
 }): RestoreLoopState {
@@ -385,6 +396,7 @@ function applyRestoreCandidate(params: {
       restoredThisCycle: params.restoredThisCycle,
       restoredOneThisCycle: params.restoredOneThisCycle,
       batchState: params.batchState,
+      bankedAdmission: params.bankedAdmission,
       deps: params.deps,
     });
   }
@@ -584,6 +596,7 @@ function planRestoreForDevice(params: {
   restoredThisCycle: Set<string>;
   restoredOneThisCycle: boolean;
   batchState: RestoreBatchState;
+  bankedAdmission: BankedAdmissionContext;
   deps: RestoreDeps;
 }): { availableHeadroom: number; restoredOneThisCycle: boolean } {
   const {
@@ -597,6 +610,7 @@ function planRestoreForDevice(params: {
     restoredThisCycle,
     restoredOneThisCycle,
     batchState,
+    bankedAdmission,
     deps,
   } = params;
 
@@ -746,31 +760,23 @@ function planRestoreForDevice(params: {
   }
   const admission = buildRestoreAdmissionMetrics({ availableKw: availableHeadroom, neededKw: restoreNeed.needed });
   const powerSource = resolveRestorePowerSource(dev);
-  if (admission.postReserveMarginKw >= RESTORE_ADMISSION_FLOOR_KW) {
-    emitRestoreDebugEventOnChange({
-      state,
-      key: restoreDebugKey,
-      payload: {
-        event: 'restore_admitted',
-        restoreType: 'binary',
-        deviceId: dev.id,
-        deviceName: dev.name,
-        phase,
-        estimatedPowerKw: restoreNeed.devPower,
-        powerSource,
-        neededKw: restoreNeed.needed,
-        availableKw: availableHeadroom,
-        ...buildRestoreAdmissionLogFields(admission),
-        minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
-        decision: 'admitted',
-        penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
-        penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
-      },
+  // Legacy instantaneous soft-rail gate, OR — for a min-run device — the banked
+  // energy path (relaxes admission only, gated by the physical hard cap).
+  // `bankedAdmission` is a once-per-cycle snapshot that is NOT decremented as
+  // devices are admitted, so the banked path admits ONLY as the first restore of
+  // the cycle (`firstRestoreOfCycle`): it then always evaluates against a clean,
+  // un-stale `usedThisHourKWh` / `currentTotalPowerKw`, so the hard-cap projection
+  // can never be computed against a total that omits an in-cycle banked admit.
+  // At most one banked device is admitted per cycle; the rest start next cycle.
+  const admissionPath = resolveBinaryAdmissionPath({
+    admission, dev, restoreNeed, bankedAdmission, firstRestoreOfCycle: !restoredOneThisCycle,
+  });
+  if (admissionPath) {
+    return admitBinaryRestore({
+      state, dev, phase, restoreNeed, admission, powerSource,
+      availableHeadroom, restoredThisCycle, batchState, restoreDebugKey, admissionPath,
       debugStructured: deps.debugStructured,
     });
-    restoredThisCycle.add(dev.id);
-    recordBatchAdmission(batchState, restoreNeed.needed);
-    return { availableHeadroom: availableHeadroom - restoreNeed.needed, restoredOneThisCycle: true };
   }
 
   return handleInsufficientBinaryRestoreHeadroom({
@@ -791,6 +797,53 @@ function planRestoreForDevice(params: {
     restoreDebugKey,
     deps,
   });
+}
+
+// Emits the restore_admitted event (carrying the admission path) and records the
+// admission against the cycle's restore + batch state.
+function admitBinaryRestore(params: {
+  state: PlanEngineState;
+  dev: DevicePlanDevice;
+  phase: ReturnType<typeof resolveRestoreDecisionPhase>;
+  restoreNeed: ReturnType<typeof getRestoreNeed>;
+  admission: ReturnType<typeof buildRestoreAdmissionMetrics>;
+  powerSource: ReturnType<typeof resolveRestorePowerSource>;
+  availableHeadroom: number;
+  restoredThisCycle: Set<string>;
+  batchState: RestoreBatchState;
+  restoreDebugKey: string;
+  admissionPath: BinaryAdmissionPath;
+  debugStructured: RestoreDeps['debugStructured'];
+}): { availableHeadroom: number; restoredOneThisCycle: boolean } {
+  const {
+    state, dev, phase, restoreNeed, admission, powerSource, availableHeadroom,
+    restoredThisCycle, batchState, restoreDebugKey, admissionPath, debugStructured,
+  } = params;
+  emitRestoreDebugEventOnChange({
+    state,
+    key: restoreDebugKey,
+    payload: {
+      event: 'restore_admitted',
+      restoreType: 'binary',
+      deviceId: dev.id,
+      deviceName: dev.name,
+      phase,
+      estimatedPowerKw: restoreNeed.devPower,
+      powerSource,
+      neededKw: restoreNeed.needed,
+      availableKw: availableHeadroom,
+      ...buildRestoreAdmissionLogFields(admission),
+      minimumRequiredPostReserveMarginKw: RESTORE_ADMISSION_FLOOR_KW,
+      decision: 'admitted',
+      admissionPath,
+      penaltyLevel: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyLevel : undefined,
+      penaltyExtraKw: restoreNeed.penaltyLevel > 0 ? restoreNeed.penaltyExtraKw : undefined,
+    },
+    debugStructured,
+  });
+  restoredThisCycle.add(dev.id);
+  recordBatchAdmission(batchState, restoreNeed.needed);
+  return { availableHeadroom: availableHeadroom - restoreNeed.needed, restoredOneThisCycle: true };
 }
 
 function buildRestoreBatchState(params: {

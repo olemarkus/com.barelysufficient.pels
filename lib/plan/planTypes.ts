@@ -449,6 +449,11 @@ type DevicePlanDeviceBase = {
   zone?: string;
   controllable?: boolean;
   budgetExempt?: boolean;
+  // Producer-resolved per-device minimum run time (minutes). Carried flat on the
+  // base like `priority`/`budgetExempt` so restore-side consumers (banked min-run
+  // admission, anti-cycle grace) read it off the output plan device. `0`/
+  // `undefined` both mean the legacy grace — never branch on the global toggle.
+  minRunMinutes?: number;
   temperatureBoost?: TemperatureBoostConfig;
   temperatureBoostActive?: boolean;
   /**

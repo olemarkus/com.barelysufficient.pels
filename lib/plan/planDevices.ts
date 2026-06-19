@@ -486,6 +486,7 @@ function buildBasePlanDevice(params: {
     zone: dev.zone || 'Unknown',
     controllable,
     budgetExempt: dev.budgetExempt,
+    minRunMinutes: dev.minRunMinutes,
     available: dev.available,
     ...buildBoostPlanDeviceFields({ dev, temperatureBoostActive, evBoostActive }),
     stepCommandPending: dev.stepCommandPending,
