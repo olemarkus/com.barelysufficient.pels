@@ -2235,7 +2235,7 @@ describe('computeDynamicSoftLimit', () => {
     vi.clearAllTimers();
   });
 
-  it('caps soft limit to sustainable rate in last 10 minutes even when burst rate is higher', async () => {
+  it('drains the soft limit toward sustainable near hour end even when burst is higher', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
@@ -2248,10 +2248,10 @@ describe('computeDynamicSoftLimit', () => {
     const app = createApp();
     await initApp(app);
 
-    // Simulate end of hour scenario (last 10 minutes) where burst rate would be very high:
-    // If 5 minutes left in hour and only 0.5 kWh used, remaining = 4.5 kWh
-    // burstRate = 4.5 / (5/60) = 54 kW (way over sustainable!)
-    // But with capping in last 10 minutes, it should never exceed 5 kW (sustainable rate)
+    // Simulate end of hour scenario (last 10 minutes) where burst rate would be high:
+    // 5 minutes left, only 0.5 kWh used, remaining = 4.5 kWh; remaining time is floored
+    // to 10 min so burstRate = 4.5 / (10/60) = 27 kW. The exponential drain ceiling
+    // pulls the allowed pace below that as the hour ends.
 
     // Mock Date.now to be at :55 (5 minutes left - within last 10 minutes)
     const now = new Date();
@@ -2269,10 +2269,13 @@ describe('computeDynamicSoftLimit', () => {
     const softLimit = (app as any).computeDynamicSoftLimit();
 
     // With 5 kWh budget, 0.5 used, 4.5 remaining, 5 minutes left:
-    // - burstRate = 54 kW (very high)
-    // - but in last 10 minutes, it should be capped to sustainableRate = 5 kW
-    expect(softLimit).toBeLessThanOrEqual(5);
-    expect(softLimit).toBeGreaterThan(0);
+    // - burstRate = 27 kW (remaining time floored to 10 min)
+    // - drain ceiling = 5 * e^(5/4) = 17.45 kW; allowed = min(27, 17.45) = 17.45 kW.
+    // The end-of-hour drain pulls the pace below burst but well above the steady
+    // sustainable rate (5 kW) — a smooth taper rather than a cliff to sustainable.
+    expect(softLimit).toBeCloseTo(17.45, 1);
+    expect(softLimit).toBeGreaterThan(5);
+    expect(softLimit).toBeLessThan(27);
 
     vi.restoreAllMocks();
   });
@@ -2385,8 +2388,9 @@ describe('computeDynamicSoftLimit', () => {
     vi.restoreAllMocks();
   });
 
-  it('caps to sustainable rate in the last 10 minutes of the hour', async () => {
-    // Test: At :52 (8 minutes left), the rate cap should kick in
+  it('does not cap at 8 minutes left — burst still governs until the drain binds', async () => {
+    // Test: At :52 (8 minutes left), the exponential drain ceiling is still far
+    // above burst, so the budget-driven burst rate governs (no early cliff).
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
@@ -2413,16 +2417,18 @@ describe('computeDynamicSoftLimit', () => {
 
     const softLimit = (app as any).computeDynamicSoftLimit();
 
-    // With 6.7 kWh budget, 3 used, 3.7 remaining, ~0.133 hours (8 min) left:
-    // burstRate = 3.7 / 0.133 = ~27.8 kW (way over sustainable!)
-    // In last 10 minutes, should cap to sustainable rate = 6.7 kW
-    expect(softLimit).toBeLessThanOrEqual(6.7);
+    // With 6.7 kWh budget, 3 used, 3.7 remaining, remaining time floored to 10 min:
+    // burstRate = 3.7 / (10/60) = 22.2 kW.
+    // drain ceiling = 6.7 * e^(8/4) ≈ 49.5 kW, so burst governs: allowed ≈ 22.2 kW.
+    // (The legacy hard cliff would have clamped this to 6.7 kW at 8 minutes left.)
+    expect(softLimit).toBeCloseTo(22.2, 1);
+    expect(softLimit).toBeGreaterThan(6.7);
 
     vi.restoreAllMocks();
   });
 
-  it('caps to sustainable rate at :59 to prevent next-hour overshoot', async () => {
-    // Test: At :59 (1 minute left), should definitely cap to sustainable rate
+  it('drains close to the sustainable rate at :59 to protect the next hour', async () => {
+    // Test: At :59 (1 minute left), the drain ceiling pulls the pace down near sustainable
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({
       driverA: new MockDriver('driverA', [heater]),
@@ -2449,10 +2455,13 @@ describe('computeDynamicSoftLimit', () => {
 
     const softLimit = (app as any).computeDynamicSoftLimit();
 
-    // With 6.7 kWh budget, 2 used, 4.7 remaining, ~0.017 hours (1 min) left:
-    // burstRate = 4.7 / 0.017 = ~280 kW (extreme!)
-    // At :59, must cap to sustainable rate = 6.7 kW to avoid next-hour overshoot
-    expect(softLimit).toBeLessThanOrEqual(6.7);
+    // With 6.7 kWh budget, 2 used, 4.7 remaining, remaining time floored to 10 min:
+    // burstRate = 4.7 / (10/60) = 28.2 kW.
+    // drain ceiling = 6.7 * e^(1/4) = 8.60 kW; allowed = min(28.2, 8.60) = 8.60 kW —
+    // approaching the sustainable rate (6.7 kW) so the next hour starts clean.
+    expect(softLimit).toBeCloseTo(8.6, 1);
+    expect(softLimit).toBeGreaterThan(6.7);
+    expect(softLimit).toBeLessThan(10);
 
     vi.restoreAllMocks();
   });
