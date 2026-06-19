@@ -2,8 +2,20 @@ import type { PowerTrackerState } from '../power/tracker';
 import { resolveUsableCapacityKw } from '../power/capacityModel';
 import { getCurrentHourContext } from './planHourContext';
 
-const SUSTAINABLE_RATE_THRESHOLD_MIN = 10;
-const SUSTAINABLE_RATE_THRESHOLD_HOURS = SUSTAINABLE_RATE_THRESHOLD_MIN / 60;
+// Floor on the remaining-time divisor for the burst rate, so the rate stays
+// finite as the hour ends (avoids remaining/→0 blow-up). Shared by the hourly
+// and daily pacing calculations.
+const BURST_RATE_MIN_REMAINING_MIN = 10;
+const BURST_RATE_MIN_REMAINING_HOURS = BURST_RATE_MIN_REMAINING_MIN / 60;
+
+// End-of-hour drain time-constant (minutes). The hourly safe pace is capped by
+// an exponential ceiling that decays toward the steady sustainable rate as the
+// hour ends — `sustainable · e^(minutesRemaining / TAU)` — so managed devices
+// are wound down gradually over the final minutes instead of cliff-shed at a
+// fixed threshold. The ceiling is ~sustainable at :00 and far above any feasible
+// burst earlier in the hour (so the budget-driven burst rate governs then). See
+// notes/end-of-hour-mode.md for the rationale and the TAU trade-off.
+const EOH_DRAIN_TAU_MIN = 4;
 
 export function computeDynamicSoftLimit(params: {
   capacitySettings: { limitKw: number; marginKw: number };
@@ -15,7 +27,7 @@ export function computeDynamicSoftLimit(params: {
 
   const now = Date.now();
   const hourContext = getCurrentHourContext(powerTracker, now);
-  const remainingHours = Math.max(hourContext.remainingHours, SUSTAINABLE_RATE_THRESHOLD_HOURS);
+  const remainingHours = Math.max(hourContext.remainingHours, BURST_RATE_MIN_REMAINING_HOURS);
   const usedKWh = hourContext.usedKWh;
   const remainingKWh = Math.max(0, netBudgetKWh - usedKWh);
   const hourlyBudgetExhausted = remainingKWh <= 0;
@@ -23,15 +35,15 @@ export function computeDynamicSoftLimit(params: {
   // Calculate instantaneous rate needed to use remaining budget
   const burstRateKw = remainingKWh / remainingHours;
 
-  // Only cap to sustainable rate in the last 10 minutes of the hour.
-  // This prevents the "end of hour burst" problem where devices ramp up
-  // to use remaining budget, then immediately overshoot the next hour.
-  // Earlier in the hour, allow the full burst rate since there's time to recover.
-  const minutesRemaining = hourContext.minutesRemaining;
+  // End-of-hour drain: cap the burst rate by an exponential ceiling that decays
+  // toward the steady sustainable rate as the hour ends. This prevents the "end
+  // of hour burst" (devices ramping up to spend remaining budget then overshooting
+  // the next hour) while winding devices down gradually instead of in one cliff.
+  // Earlier in the hour the ceiling sits far above any feasible burst, so the
+  // budget-driven burst rate governs and there is time to recover.
   const sustainableRateKw = netBudgetKWh; // kWh/h = kW at steady state
-  const allowedKw = minutesRemaining <= SUSTAINABLE_RATE_THRESHOLD_MIN
-    ? Math.min(burstRateKw, sustainableRateKw)
-    : burstRateKw;
+  const drainCeilingKw = sustainableRateKw * Math.exp(hourContext.minutesRemaining / EOH_DRAIN_TAU_MIN);
+  const allowedKw = Math.min(burstRateKw, drainCeilingKw);
 
   return { allowedKw, hourlyBudgetExhausted };
 }
@@ -54,7 +66,7 @@ export function computeDailyUsageSoftLimit(params: {
   if (!Number.isFinite(bucketStartMs) || !Number.isFinite(bucketEndMs) || bucketEndMs <= bucketStartMs) return 0;
   const boundedNowMs = Math.min(Math.max(nowMs, bucketStartMs), bucketEndMs);
   const remainingMs = Math.max(0, bucketEndMs - boundedNowMs);
-  const remainingHours = Math.max(remainingMs / 3600000, SUSTAINABLE_RATE_THRESHOLD_HOURS);
+  const remainingHours = Math.max(remainingMs / 3600000, BURST_RATE_MIN_REMAINING_HOURS);
   const safeUsed = Number.isFinite(usedKWh) ? Math.max(0, usedKWh) : 0;
   const remainingKWh = Math.max(0, plannedKWh - safeUsed);
   const burstRateKw = remainingKWh / remainingHours;

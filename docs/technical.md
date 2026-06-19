@@ -54,11 +54,11 @@ Rather than simply comparing instantaneous power against your hard cap, PELS cal
 - Time left: 0.5 hours
 - Burst rate: 5 ÷ 0.5 = 10 kW allowed
 
-### Sustainable Rate Cap (Hourly Capacity Only)
+### End-of-Hour Drain (Hourly Capacity Only)
 
-To prevent "end of hour bursting" where devices ramp up to use remaining budget then overshoot the next hour, the hourly safe pace is capped at the sustainable rate during the last ~10 minutes. This means even if there is available power at 11:55, PELS will not turn on 5 kW of heaters that would overshoot noon.
+To prevent "end of hour bursting" — where devices ramp up to use remaining budget and then carry that high draw across the hour boundary into the next hour — PELS gradually tightens the hourly safe pace down to the sustainable rate as the hour ends. Rather than a hard cut-off, the ceiling decays smoothly over the final minutes: it stays generous until roughly the last 8 minutes, tapers through the last 5, and reaches the sustainable rate exactly at the top of the hour. So managed devices keep running as long as the budget allows and are wound down gradually, and the new hour starts at the steady rate. (Even with available power at 11:55, PELS will not let a burst of heaters push you into a draw that would still be running at noon.)
 
-End-of-hour capping is hourly-only by design — the daily budget is a pacing target and there is no grid penalty for landing slightly above it at any particular minute, so the planner stays free to make the right call at 23:55.
+This drain is hourly-only by design — the daily budget is a pacing target and there is no grid penalty for landing slightly above it at any particular minute, so the planner stays free to make the right call at 23:55.
 
 ---
 
@@ -80,7 +80,7 @@ PELS handles this automatically—there's no manual intervention needed.
 The daily energy budget is a **soft constraint** that helps pace energy use throughout the day. Unlike the hourly capacity limit:
 
 - **Never triggers manual-action alarms**: If PELS cannot limit enough devices to meet the daily budget, it continues operating without emergency alarms.
-- **No end-of-hour capping**: Daily budget pacing is not time-critical, so it does not apply the sustainable rate cap.
+- **No end-of-hour drain**: Daily budget pacing is not time-critical, so it does not tighten toward the sustainable rate as the hour ends.
 - **Combined with hourly**: The planner uses the smaller of the hourly safe pace and daily budget pace for limiting decisions.
 - **Budget exemption is control-only**: Budget-exempt devices are ignored by daily-budget control, but their real usage still appears in reporting and they still count for hourly capacity protection.
 
@@ -318,7 +318,7 @@ Heaters and chargers on local protocols respond within seconds; cloud-mediated d
 
 ### Hourly Enforcement
 
-PELS enforces the hard cap on the **current hour**, the same hour your grid tariff is measured against. The sustainable rate cap protects the boundary across the hour roll, so the next hour starts clean.
+PELS enforces the hard cap on the **current hour**, the same hour your grid tariff is measured against. The end-of-hour drain tightens the safe pace toward the sustainable rate as the hour ends, so the boundary is crossed at the steady rate and the next hour starts clean.
 
 ### Local Control
 
