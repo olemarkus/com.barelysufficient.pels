@@ -3,6 +3,7 @@ import { registerFlowCards } from '../../flowCards/registerFlowCards';
 import type { AppContext } from '../../lib/app/appContext';
 import { normalizePowerSource } from '../../lib/power/powerSource';
 import { POWER_SOURCE } from '../../lib/utils/settingsKeys';
+import { FlowPowerSampleFreshnessClock } from '../flowPowerSampleFreshnessClock';
 import {
   clearObjectiveForDevice,
   migrateBlobToPerKeyIfNeeded,
@@ -12,6 +13,12 @@ import {
 import { buildDeferredObjectiveDeviceWriteDeps } from './deferredRecorders';
 
 export function registerAppFlowCards(ctx: AppContext): void {
+  const flowPowerSampleFreshnessClock = new FlowPowerSampleFreshnessClock({
+    timers: ctx.timers,
+    getNowMs: () => ctx.getNow().getTime(),
+    getPowerSource: () => normalizePowerSource(ctx.homey.settings.get(POWER_SOURCE)),
+    requestPlanRebuild: (reason) => ctx.requestFlowPlanRebuild(reason),
+  });
   registerFlowCards({
     homey: requireFlowHomey(ctx),
     structuredLog: ctx.getStructuredLogger('devices'),
@@ -21,11 +28,13 @@ export function registerAppFlowCards(ctx: AppContext): void {
     handleOperatingModeChange: (rawMode) => ctx.handleOperatingModeChange(rawMode),
     getCurrentPriceLevel: () => ctx.getCurrentPriceLevel(),
     areFlowBackedCardsAvailable: () => ctx.areFlowBackedCardsAvailable(),
-    recordPowerSample: (powerW) => {
+    recordPowerSample: async (powerW) => {
       if (normalizePowerSource(ctx.homey.settings.get(POWER_SOURCE)) === 'homey_energy') {
-        return Promise.resolve();
+        return;
       }
-      return ctx.recordPowerSample(powerW);
+      const nowMs = ctx.getNow().getTime();
+      await ctx.recordPowerSample(powerW, nowMs);
+      flowPowerSampleFreshnessClock.noteSample(nowMs);
     },
     getCapacityGuard: () => ctx.capacityGuard,
     getHeadroom: () => ctx.capacityGuard?.getHeadroom() ?? null,
