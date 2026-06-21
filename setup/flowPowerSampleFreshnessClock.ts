@@ -7,6 +7,7 @@ import {
 
 const FLOW_POWER_SAMPLE_HOLD_REBUILD_INTERVAL_MS = 10 * 1000;
 const FLOW_POWER_SAMPLE_FRESHNESS_TIMER = 'flowPowerSampleFreshness';
+const registeredClocks = new WeakMap<TimerRegistry, FlowPowerSampleFreshnessClock>();
 
 export type FlowPowerSampleFreshnessClockDeps = {
   timers: TimerRegistry;
@@ -17,6 +18,30 @@ export type FlowPowerSampleFreshnessClockDeps = {
 
 export function clearFlowPowerSampleFreshnessTimer(timers: TimerRegistry): void {
   timers.clear(FLOW_POWER_SAMPLE_FRESHNESS_TIMER);
+}
+
+export function registerFlowPowerSampleFreshnessClock(
+  timers: TimerRegistry,
+  clock: FlowPowerSampleFreshnessClock,
+): void {
+  registeredClocks.get(timers)?.stop();
+  registeredClocks.set(timers, clock);
+}
+
+export function stopFlowPowerSampleFreshnessClock(timers: TimerRegistry): void {
+  const clock = registeredClocks.get(timers);
+  if (clock) {
+    clock.stop();
+    return;
+  }
+  clearFlowPowerSampleFreshnessTimer(timers);
+}
+
+export function syncFlowPowerSampleFreshnessClock(
+  timers: TimerRegistry,
+  sampleAtMs: number | null | undefined,
+): void {
+  registeredClocks.get(timers)?.syncLatestSample(sampleAtMs);
 }
 
 /**
@@ -37,6 +62,26 @@ export class FlowPowerSampleFreshnessClock {
   constructor(private readonly deps: FlowPowerSampleFreshnessClockDeps) {}
 
   noteSample(sampleAtMs: number): void {
+    this.trackSample(sampleAtMs, { requestElapsedTransitions: false });
+  }
+
+  syncLatestSample(sampleAtMs: number | null | undefined): void {
+    if (this.deps.getPowerSource() !== 'flow') {
+      this.stop();
+      return;
+    }
+    if (typeof sampleAtMs !== 'number' || !Number.isFinite(sampleAtMs)) {
+      this.stop();
+      return;
+    }
+
+    this.trackSample(sampleAtMs, { requestElapsedTransitions: true });
+  }
+
+  private trackSample(
+    sampleAtMs: number,
+    options: { requestElapsedTransitions: boolean },
+  ): void {
     if (this.deps.getPowerSource() !== 'flow') {
       this.stop();
       return;
@@ -47,6 +92,9 @@ export class FlowPowerSampleFreshnessClock {
     this.lastSampleAtMs = sampleAtMs;
     this.staleHoldRebuildRequested = false;
     this.failClosedRebuildRequested = false;
+
+    if (options.requestElapsedTransitions && this.requestElapsedTransitions()) return;
+
     this.scheduleNext();
   }
 
@@ -85,6 +133,24 @@ export class FlowPowerSampleFreshnessClock {
       this.failClosedRebuildRequested = true;
       this.deps.requestPlanRebuild('flow_power_sample_fail_closed');
     }
+  }
+
+  private requestElapsedTransitions(): boolean {
+    if (this.lastSampleAtMs === null) return false;
+
+    const ageMs = Math.max(0, this.deps.getNowMs() - this.lastSampleAtMs);
+    if (ageMs >= POWER_SAMPLE_STALE_SHED_TIMEOUT_MS) {
+      this.failClosedRebuildRequested = true;
+      this.deps.requestPlanRebuild('flow_power_sample_fail_closed');
+      return true;
+    }
+
+    if (ageMs >= POWER_SAMPLE_STALE_THRESHOLD_MS) {
+      this.staleHoldRebuildRequested = true;
+      this.deps.requestPlanRebuild('flow_power_sample_stale_hold');
+    }
+
+    return false;
   }
 
   private scheduleNext(): void {
