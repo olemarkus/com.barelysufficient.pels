@@ -72,4 +72,32 @@ describe('HomeyEnergyPollSource', () => {
     await vi.advanceTimersByTimeAsync(10_000);
     expect(pollHomePower).toHaveBeenCalledTimes(3);
   });
+
+  it('drops an in-flight reading when the source switches away from Homey Energy', async () => {
+    mockHomeyInstance.settings.set('power_source', 'homey_energy');
+    let resolvePoll: (value: number) => void = () => undefined;
+    const pollHomePower = vi.fn(() => new Promise<number>((resolve) => {
+      resolvePoll = resolve;
+    }));
+    const recordPowerSample = vi.fn().mockResolvedValue(undefined);
+    const source = new HomeyEnergyPollSource({
+      getPowerSource: mockPowerSource,
+      timers: new TimerRegistry(),
+      pollHomePower,
+      recordPowerSample,
+      debugStructured: vi.fn(),
+      error: vi.fn(),
+    });
+
+    source.start();
+    expect(pollHomePower).toHaveBeenCalledTimes(1);
+
+    mockHomeyInstance.settings.set('power_source', 'flow');
+    source.restart();
+    resolvePoll(2100);
+    await Promise.resolve();
+
+    expect(recordPowerSample).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });

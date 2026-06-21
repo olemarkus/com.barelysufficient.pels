@@ -9,6 +9,7 @@ vi.mock('../../flowCards/registerFlowCards', () => ({
 import { registerAppFlowCards } from '../../setup/appInit';
 import type { AppContext } from '../../lib/app/appContext';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
+import type { PowerTrackerState } from '../../lib/power/tracker';
 
 describe('registerAppFlowCards', () => {
   beforeEach(() => {
@@ -25,6 +26,7 @@ describe('registerAppFlowCards', () => {
     recordPowerSample?: AppContext['recordPowerSample'];
     requestFlowPlanRebuild?: AppContext['requestFlowPlanRebuild'];
     timers?: TimerRegistry;
+    powerTracker?: PowerTrackerState;
   } = {}): AppContext => {
     const now = params.now ?? new Date('2026-04-16T00:00:00.000Z');
     return {
@@ -62,6 +64,8 @@ describe('registerAppFlowCards', () => {
       log: vi.fn(),
       error: vi.fn(),
       timers: params.timers ?? new TimerRegistry(),
+      get powerTracker() { return params.powerTracker ?? {}; },
+      set powerTracker(_value) {},
     } as unknown as AppContext;
   };
 
@@ -101,6 +105,8 @@ describe('registerAppFlowCards', () => {
       getStructuredDebugEmitter: vi.fn(() => vi.fn()),
       log: vi.fn(),
       error: vi.fn(),
+      timers: new TimerRegistry(),
+      powerTracker: {},
     } as unknown as AppContext;
 
     registerAppFlowCards(ctx);
@@ -152,6 +158,8 @@ describe('registerAppFlowCards', () => {
       getStructuredDebugEmitter: vi.fn(() => vi.fn()),
       log: vi.fn(),
       error: vi.fn(),
+      timers: new TimerRegistry(),
+      powerTracker: {},
     } as unknown as AppContext;
 
     registerAppFlowCards(ctx);
@@ -183,6 +191,27 @@ describe('registerAppFlowCards', () => {
     await deps.recordPowerSample(1234);
 
     expect(recordPowerSample).toHaveBeenCalledWith(1234, now.getTime());
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(requestFlowPlanRebuild).toHaveBeenCalledWith('flow_power_sample_hold');
+  });
+
+  it('starts the freshness clock from the persisted Flow sample timestamp during registration', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-16T10:05:30.000Z'));
+    const now = new Date('2026-04-16T10:05:30.000Z');
+    const recordPowerSample = vi.fn(async () => undefined);
+    const requestFlowPlanRebuild = vi.fn();
+    const ctx = buildContext({
+      powerSource: 'flow',
+      now,
+      recordPowerSample,
+      requestFlowPlanRebuild,
+      powerTracker: { lastTimestamp: now.getTime() - 15_000 },
+    });
+
+    registerAppFlowCards(ctx);
+
+    expect(recordPowerSample).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(10_000);
     expect(requestFlowPlanRebuild).toHaveBeenCalledWith('flow_power_sample_hold');
   });

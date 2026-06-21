@@ -3,7 +3,10 @@ import { registerFlowCards } from '../../flowCards/registerFlowCards';
 import type { AppContext } from '../../lib/app/appContext';
 import { normalizePowerSource } from '../../lib/power/powerSource';
 import { POWER_SOURCE } from '../../lib/utils/settingsKeys';
-import { FlowPowerSampleFreshnessClock } from '../flowPowerSampleFreshnessClock';
+import {
+  FlowPowerSampleFreshnessClock,
+  registerFlowPowerSampleFreshnessClock,
+} from '../flowPowerSampleFreshnessClock';
 import {
   clearObjectiveForDevice,
   migrateBlobToPerKeyIfNeeded,
@@ -19,6 +22,10 @@ export function registerAppFlowCards(ctx: AppContext): void {
     getPowerSource: () => normalizePowerSource(ctx.homey.settings.get(POWER_SOURCE)),
     requestPlanRebuild: (reason) => ctx.requestFlowPlanRebuild(reason),
   });
+  registerFlowPowerSampleFreshnessClock(ctx.timers, flowPowerSampleFreshnessClock);
+  const syncLatestSample = () => {
+    flowPowerSampleFreshnessClock.syncLatestSample(ctx.powerTracker.lastTimestamp);
+  };
   registerFlowCards({
     homey: requireFlowHomey(ctx),
     structuredLog: ctx.getStructuredLogger('devices'),
@@ -93,4 +100,5 @@ export function registerAppFlowCards(ctx: AppContext): void {
     getStructuredLogger: (component) => ctx.getStructuredLogger(component),
     debugStructured: ctx.getStructuredDebugEmitter('flow', 'settings'),
   });
+  syncLatestSample();
 }

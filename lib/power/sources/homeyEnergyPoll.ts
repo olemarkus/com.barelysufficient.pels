@@ -56,6 +56,8 @@ export class HomeyEnergyPollSource {
 
   async pollNow(): Promise<void> {
     const homePowerW = await this.deps.pollHomePower();
+    if (this.deps.getPowerSource() !== 'homey_energy') return;
+
     if (typeof homePowerW === 'number') {
       this.deps.debugStructured({ event: 'homey_energy_poll', homePowerW });
       await this.deps.recordPowerSample(homePowerW);
