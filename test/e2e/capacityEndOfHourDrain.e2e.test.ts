@@ -344,4 +344,61 @@ describe('End-of-hour drain across the hour boundary (SDK-boundary e2e)', () => 
     await drainUntil(() => soloShed());
     expect(soloShed()).toBe(true);
   });
+
+  it('replans from a held Flow sample during short silence as the end-of-hour drain falls', async () => {
+    const hourStartMs = Date.UTC(2026, 0, 15, 10, 0, 0);
+    let nowMs = hourStartMs + 57 * MIN_MS + 50 * 1000;
+    vi.setSystemTime(nowMs);
+
+    const device = new MockDevice('solo', 'Workshop heater', ['onoff', 'measure_power', 'meter_power'], 'socket');
+    await device.setCapabilityValue('onoff', true);
+    await device.setCapabilityValue('measure_power', 8000);
+    setMockDrivers({ driverA: new MockDriver('driverA', [device]) });
+
+    mockHomeyInstance.settings.set('power_source', 'flow');
+    mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, SUSTAINABLE_KW);
+    mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);
+    mockHomeyInstance.settings.set(CAPACITY_DRY_RUN, false);
+    mockHomeyInstance.settings.set(OPERATING_MODE_SETTING, 'Home');
+    mockHomeyInstance.settings.set('controllable_devices', { solo: true });
+    mockHomeyInstance.settings.set('managed_devices', { solo: true });
+    mockHomeyInstance.settings.set('capacity_priorities', { Home: { solo: 1 } });
+    mockHomeyInstance.settings.set(OVERSHOOT_BEHAVIORS, { solo: { action: 'turn_off' } });
+
+    const getSpy = vi.spyOn(mockHomeyInstance.api, 'get');
+    putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+
+    const app = createApp();
+    await app.onInit();
+
+    const stepTo = async (targetMs: number): Promise<void> => {
+      while (nowMs < targetMs) {
+        const delta = Math.min(POLL_MS, targetMs - nowMs);
+        await vi.advanceTimersByTimeAsync(delta);
+        nowMs += delta;
+        await flushDetached();
+      }
+    };
+    const flushFlowScheduler = async (): Promise<void> => {
+      await vi.advanceTimersByTimeAsync(1);
+      nowMs += 1;
+      await flushDetached(20);
+    };
+    const soloShed = (): boolean => putSpy.mock.calls.some((call: unknown[]) => isOnoffShed('solo', call));
+    const reportPowerUsage = mockHomeyInstance.flow._actionCardListeners.report_power_usage;
+
+    await reportPowerUsage({ power: 8000 });
+    await flushDetached(20);
+    expect(soloShed()).toBe(false);
+
+    await stepTo(hourStartMs + 58 * MIN_MS);
+    await flushFlowScheduler();
+    expect(soloShed()).toBe(false);
+
+    await stepTo(hourStartMs + 58 * MIN_MS + POLL_MS);
+    await flushFlowScheduler();
+    await drainUntil(() => soloShed());
+    expect(soloShed()).toBe(true);
+    expect(getSpy.mock.calls.some((call: unknown[]) => call[0] === 'manager/energy/live')).toBe(false);
+  });
 });
