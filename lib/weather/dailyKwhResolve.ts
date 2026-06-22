@@ -51,7 +51,9 @@ export function resolveDailyKwh(params: {
  */
 function combineDisjointSums(bucketSum: number | undefined, agedTotal: number | undefined): number | undefined {
   if (bucketSum === undefined && agedTotal === undefined) return undefined;
-  return (bucketSum ?? 0) + (agedTotal ?? 0);
+  // Floor each side: a solar-export hour can leave a negative kWh in a persisted bucket
+  // or aged daily total, which must not deflate the energy-signature day sum.
+  return Math.max(0, bucketSum ?? 0) + Math.max(0, agedTotal ?? 0);
 }
 
 function sumBucketsInWindow(
@@ -66,7 +68,7 @@ function sumBucketsInWindow(
     const timestampMs = Date.parse(isoKey);
     if (!Number.isFinite(timestampMs) || timestampMs < startMs || timestampMs >= endMs) continue;
     if (typeof kWh !== 'number' || !Number.isFinite(kWh)) continue;
-    sum += kWh;
+    sum += Math.max(0, kWh); // export hours can persist a negative kWh; don't deflate the day sum
     found = true;
   }
   return found ? sum : undefined;

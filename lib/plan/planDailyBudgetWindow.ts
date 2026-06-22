@@ -75,8 +75,11 @@ export function resolveDailySoftLimitBucket(
   if (!input) return null;
   const window = resolveDailySoftLimitWindow(input);
   if (!window) return null;
-  const meteredUsedKWh = powerTracker.buckets?.[input.bucketStartIso] ?? 0;
-  const exemptUsedKWh = powerTracker.exemptBuckets?.[input.bucketStartIso] ?? 0;
+  // Floor metered usage (a persisted solar-export hour can be negative) and clamp exempt to
+  // it — exempt is grossed up at the tracker, so bound it by the net metered total here, matching
+  // the other budget-control consumers (dailyBudgetState/Learning/ObservedStats).
+  const meteredUsedKWh = Math.max(0, powerTracker.buckets?.[input.bucketStartIso] ?? 0);
+  const exemptUsedKWh = Math.max(0, Math.min(meteredUsedKWh, powerTracker.exemptBuckets?.[input.bucketStartIso] ?? 0));
   return {
     plannedKWh: input.plannedKWh,
     usedKWh: Math.max(0, meteredUsedKWh - exemptUsedKWh),

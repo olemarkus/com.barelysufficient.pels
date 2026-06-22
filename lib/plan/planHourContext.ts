@@ -18,7 +18,9 @@ export function getCurrentHourContext(
   const bucketKey = getHourBucketKey(nowMs);
   const hourStartMs = new Date(bucketKey).getTime();
   const hourEndMs = hourStartMs + 60 * 60 * 1000;
-  const usedKWh = powerTracker.buckets?.[bucketKey] || 0;
+  // Floor at 0: a persisted solar-export hour can hold a negative kWh, which would
+  // otherwise inflate remaining-budget / burst-rate pacing. Billed usage can't be negative.
+  const usedKWh = Math.max(0, powerTracker.buckets?.[bucketKey] || 0);
   const remainingMs = Math.max(0, hourEndMs - nowMs);
   const remainingHours = remainingMs / 3600000;
   const minutesRemaining = remainingMs / 60000;

@@ -99,6 +99,7 @@ function resolveCapacityStatusMetrics(params: {
 
 function getCurrentHourUsage(powerTracker: PowerTrackerState): { usedKWh: number } {
   const bucketKey = getHourBucketKey();
-  const usedKWh = powerTracker.buckets?.[bucketKey] || 0;
+  // Floor at 0: a persisted solar-export hour can hold a negative kWh; billed usage can't be negative.
+  const usedKWh = Math.max(0, powerTracker.buckets?.[bucketKey] || 0);
   return { usedKWh };
 }

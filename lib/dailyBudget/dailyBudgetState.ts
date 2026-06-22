@@ -169,7 +169,9 @@ export const buildBucketUsage = (params: {
 } => {
   const { bucketStartUtcMs, powerTracker } = params;
   const bucketKeys = bucketStartUtcMs.map((ts) => new Date(ts).toISOString());
-  const bucketUsage = bucketKeys.map((key) => powerTracker.buckets?.[key] ?? 0);
+  // Floor at 0: a legacy solar-export hour can persist a negative kWh, which would otherwise
+  // deflate the metered/remaining/exceeded/projection reporting figures derived from this.
+  const bucketUsage = bucketKeys.map((key) => Math.max(0, powerTracker.buckets?.[key] ?? 0));
   const controlledRaw = powerTracker.controlledBuckets ?? {};
   const uncontrolledRaw = powerTracker.uncontrolledBuckets ?? {};
   const exemptRaw = powerTracker.exemptBuckets ?? {};

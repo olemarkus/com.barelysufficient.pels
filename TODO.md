@@ -276,6 +276,27 @@ program) remains deferred.*
 
 *v2.11.0..HEAD release-review findings (2026-06-02). Non-blocking follow-ups.*
 
+- [ ] **Two-figure gross/net split for `reservedHeadroomKw` under solar.** Hypothesis: the
+      smart-task physical-headroom reserve (`policyHorizon.ts` `resolveReservedHeadroomKw`) subtracts a
+      NET-collapsed background (`backgroundKWh` derives from the net `plannedUncontrolledKWh`), so under PV
+      self-consumption it under-states true gross background and over-states available headroom. Why it's only
+      P2: the cohort is narrow (a top-priority dual-permission multi-step rescue task running under PV with the
+      daily budget on) and the capacity guard (net) plus per-cycle re-solve are the physical backstop — the
+      symptom is commit-then-shed hysteresis / a false floor-step promotion, not an over-draw. Persona: the
+      skeptical PV owner who relies on a guaranteed rescue task completing without churn. Fix: keep the NET
+      reserve floor for the budget-side consumers (`resolveMaxUsefulEnergyKWh`); add a SEPARATE gross-background
+      forecast (prefer the gross `uncontrolledBuckets` in `resolveWindowBucketUsage`, carry `grossBackgroundKWh`
+      alongside `backgroundKWh` on `PolicyBucketSource`) and have `resolveReservedHeadroomKw` subtract the gross
+      figure. Non-solar homes stay byte-identical (gross===net). Do NOT re-flag as a phantom P0.
+
+- [ ] **Weather controlled-kWh backfill still net-clamps the gross device split.** Hypothesis:
+      `lib/weather/controlledKwhBackfill.ts` derives `kwhUncontrolled = net daily total − controlled`, clamping
+      gross device meters to the net total, so the displayed energy-signature controlled/uncontrolled split is
+      wrong under solar (the FIT itself reads `kwhTotal + temp` only, so the budget suggestion is unaffected —
+      display-only, behind the hidden weather-insight feature). Why P2/P3: display-only, gated feature. Persona:
+      the skeptical PV user inspecting the energy-signature split. Fix: keep both sides gross (route through
+      `resolveAttributionSplit` or use a gross daily total); do not clamp gross controlled to a net total.
+
 *The runtime test tree is now typechecked: `tsconfig.tests.json` + the `tsc:tests` `ci:checks` lane
 landed 2026-06-13, after a one-off cleanup of all ~1,555 masked errors (field-move fixture drift via
 the discriminant regroupers + pre-existing mock-shape debt). Test-fixture type drift is now a hard

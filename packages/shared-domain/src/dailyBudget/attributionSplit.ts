@@ -8,10 +8,11 @@
  * so the split is NOT clamped to the net total. When no gross uncontrolled bucket exists
  * (legacy persisted state) it falls back to deriving the split from the net total.
  *
- * This is attribution only — consumed by the Power view, the daily-budget breakdown view,
- * the learned-profile weights, and the observed reserve floors. Budget PACING
- * (`budgetControlUsedNowKWh = net total − exempt`) and the capacity cap read the NET total
- * directly and never go through this split. Keeping the rule in one place stops the four
+ * This is attribution DISPLAY only — consumed by the Power view, the daily-budget
+ * breakdown view, and plan.meta. Budget PACING (`budgetControlUsedNowKWh = net total −
+ * exempt`), the capacity cap, the learned-profile weights, and the observed reserve floors
+ * all read the NET total directly and never go through this split (split-by-purpose:
+ * attribution gross, billing + reserve net). Keeping the rule in one place stops the
  * former copies from drifting (and from re-clamping gross data back to net).
  */
 export const resolveAttributionSplit = (params: {
