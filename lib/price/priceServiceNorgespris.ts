@@ -31,7 +31,7 @@ export const getCurrentMonthUsageKwh = (homey: HomeyApi, timeZone: string): numb
       if (!Number.isFinite(ts)) return;
       if (ts < monthStartMs) return;
       if (hasFiniteMonthEnd && ts >= monthEndMs) return;
-      usageKwh += value;
+      usageKwh += Math.max(0, value); // export hours can persist negative kWh; grid usage can't be negative
     });
   }
 
@@ -48,7 +48,7 @@ export const getCurrentMonthUsageKwh = (homey: HomeyApi, timeZone: string): numb
       const isFullyInsideMonth = dayStartUtcMs >= monthStartMs
         && (!hasFiniteMonthEnd || dayEndUtcMs <= monthEndMs);
       if (isFullyInsideMonth) {
-        usageKwh += value;
+        usageKwh += Math.max(0, value);
       }
     });
   }
