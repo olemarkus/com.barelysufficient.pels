@@ -158,7 +158,9 @@ export type { DeviceDebugObservedSource, DeviceDebugObservedSources } from './tr
 
 const createEstimateDecisionLogState = (): Map<string, { signature: string; emittedAt: number }> => new Map();
 const createPeakPowerLogState = (): Map<string, { signature: string; emittedAt: number }> => new Map();
-const buildEmptyLivePowerReport = (): LivePowerReport => ({ byDeviceId: {}, homePowerW: null, deviceCount: 0 });
+const buildEmptyLivePowerReport = (): LivePowerReport => ({
+  byDeviceId: {}, homePowerW: null, generationW: null, deviceCount: 0,
+});
 
 type DeviceTransportPowerState = PowerEstimateState & {
     lastPositiveMeasuredPowerKw?: Record<string, { kw: number; ts: number }>;
@@ -276,6 +278,13 @@ export type TransportObservedStateDispatcher = {
      * it over here, no longer caching it locally.
      */
     setHomePowerW: (w: number | null) => void;
+    /**
+     * Push the gross PV generation (W) resolved from the same energy report into
+     * observer's holder, or `null` when absent. Used only to gross up the
+     * authoritative whole-home actual consumption for the managed/unmanaged
+     * split — it never reaches the hard-cap import path.
+     */
+    setGenerationW: (w: number | null) => void;
 };
 
 type DeviceTransportOptions = {
@@ -2294,6 +2303,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         // longer caches the value locally. The return value still feeds the
         // direct `pollHomePowerW()` caller (homey_energy poll source).
         this.observedStateDispatcher?.setHomePowerW(report.homePowerW);
+        this.observedStateDispatcher?.setGenerationW(report.generationW);
         return report.homePowerW;
     }
     getLiveFeedHealth(): LiveFeedHealth | null { return this.liveFeed?.getHealth() ?? null; }

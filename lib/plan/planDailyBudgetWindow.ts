@@ -1,8 +1,8 @@
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 import type { PowerTrackerState } from '../power/tracker';
 import type { PlanContext } from './planContext';
-import { clamp } from '../utils/mathUtils';
 import { isFiniteNumber } from '../utils/appTypeGuards';
+import { resolveAttributionSplit } from '../../packages/shared-domain/src/dailyBudget/attributionSplit';
 
 export type CurrentHourUsageSplit = {
   totalKWh?: number;
@@ -35,23 +35,18 @@ export function resolveHourlyUsageSplit(params: {
 
   if (hasTotal) {
     const totalKWh = Math.max(0, totalRaw);
-    if (hasControlled) {
-      const controlledKWh = clamp(controlledRaw, 0, totalKWh);
-      return {
-        totalKWh,
-        controlledKWh,
-        uncontrolledKWh: Math.max(0, totalKWh - controlledKWh),
-      };
-    }
-    if (hasUncontrolled) {
-      const uncontrolledKWh = clamp(uncontrolledRaw, 0, totalKWh);
-      return {
-        totalKWh,
-        controlledKWh: Math.max(0, totalKWh - uncontrolledKWh),
-        uncontrolledKWh,
-      };
-    }
-    return { totalKWh };
+    // plan.meta DISPLAY split (hourControlledKWh/hourUncontrolledKWh) via the shared
+    // gross-preferring resolver, consistent with the Power view and daily-budget view.
+    const { controlled, uncontrolled } = resolveAttributionSplit({
+      totalNet: totalKWh,
+      controlledGross: hasControlled ? controlledRaw : undefined,
+      uncontrolledGross: hasUncontrolled ? uncontrolledRaw : undefined,
+    });
+    return {
+      totalKWh,
+      controlledKWh: controlled ?? undefined,
+      uncontrolledKWh: uncontrolled ?? undefined,
+    };
   }
 
   if (hasControlled || hasUncontrolled) {

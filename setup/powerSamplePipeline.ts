@@ -41,6 +41,13 @@ export type PowerSamplePipelineDeps = {
   getStructuredDebugEmitter: (component: string, debugTopic: 'objective_profiles') => StructuredDebugEmitter;
   /** Latest outdoor temperature (hidden weather feature); undefined when unavailable or stale. */
   getOutdoorTemperatureC?: () => number | undefined;
+  /**
+   * Latest gross PV generation (W) co-temporal with the whole-home sample, or
+   * undefined when no generation signal is present. Used to gross up the
+   * authoritative actual consumption for the managed/unmanaged split — it never
+   * influences the hard-cap import calculation.
+   */
+  getGenerationW?: () => number | undefined;
 };
 
 /**
@@ -132,6 +139,7 @@ export class PowerSamplePipeline {
       const capacityGuard = this.deps.getCapacityGuard();
       await recordPowerSampleForApp({
         currentPowerW,
+        generationW: this.deps.getGenerationW?.(),
         nowMs,
         capacitySettings,
         getLatestTargetSnapshot: () => this.deps.getLatestTargetSnapshot(),

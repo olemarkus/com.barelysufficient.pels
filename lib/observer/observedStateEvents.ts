@@ -110,6 +110,12 @@ export type ObservedStateEmitterDispatcher = {
      * here. PR2a of the observer/transport split.
      */
     setHomePowerW: (w: number | null) => void;
+    /**
+     * Push the gross PV generation reading (watts) into observer's
+     * `ObservedHomePower` holder, or `null` when absent. Same source/poll as
+     * `setHomePowerW`; used only to gross up actual consumption for the split.
+     */
+    setGenerationW: (w: number | null) => void;
 };
 
 /**
@@ -157,6 +163,7 @@ export class ObservedStateEmitter {
             observedStateRefresh: (event) => this.emitObservedStateRefresh(event),
             planReconcile: (event) => this.emitPlanReconcile(event),
             setHomePowerW: (w) => homePower.setHomePowerW(w),
+            setGenerationW: (w) => homePower.setGenerationW(w),
         };
     }
 }

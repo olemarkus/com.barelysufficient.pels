@@ -845,6 +845,7 @@ describe('DeviceTransport', () => {
             // home power; it pushes the Homey-SDK-sourced scalar to observer via
             // the injected `observedStateDispatcher.setHomePowerW`.
             const setHomePowerW = vi.fn();
+            const setGenerationW = vi.fn();
             const dispatchingManager = new DeviceTransport(homeyMock, loggerMock, undefined, undefined, {
                 ...withRealBinarySettle(),
                 observedStateDispatcher: {
@@ -852,6 +853,7 @@ describe('DeviceTransport', () => {
                     observedStateRefresh: vi.fn(),
                     planReconcile: vi.fn(),
                     setHomePowerW,
+                    setGenerationW,
                 },
             });
             await dispatchingManager.init();
@@ -867,15 +869,19 @@ describe('DeviceTransport', () => {
                     { type: 'device', id: 'dev1', values: { W: 500 } },
                     { type: 'cumulative', values: { W: 4500 } },
                 ],
+                totalGenerated: { W: 1200 },
             });
 
             await dispatchingManager.refreshSnapshot();
 
             expect(setHomePowerW).toHaveBeenCalledWith(4500);
+            // Gross generation from the same payload is pushed alongside net power.
+            expect(setGenerationW).toHaveBeenCalledWith(1200);
         });
 
         it('pushes null home power when no cumulative item exists', async () => {
             const setHomePowerW = vi.fn();
+            const setGenerationW = vi.fn();
             const dispatchingManager = new DeviceTransport(homeyMock, loggerMock, undefined, undefined, {
                 ...withRealBinarySettle(),
                 observedStateDispatcher: {
@@ -883,6 +889,7 @@ describe('DeviceTransport', () => {
                     observedStateRefresh: vi.fn(),
                     planReconcile: vi.fn(),
                     setHomePowerW,
+                    setGenerationW,
                 },
             });
             await dispatchingManager.init();
@@ -900,6 +907,8 @@ describe('DeviceTransport', () => {
             await dispatchingManager.refreshSnapshot();
 
             expect(setHomePowerW).toHaveBeenCalledWith(null);
+            // No generation signal in the payload -> null pushed (no-op gross-up).
+            expect(setGenerationW).toHaveBeenCalledWith(null);
         });
 
         it('includes airtreatment temperature devices in snapshot', async () => {

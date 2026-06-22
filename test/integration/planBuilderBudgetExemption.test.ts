@@ -162,7 +162,7 @@ describe('PlanBuilder budget exemption handling', () => {
     ]));
   });
 
-  it('derives plan meta hourly other energy from total minus controlled when raw uncontrolled is stale', async () => {
+  it('uses the producer-resolved gross uncontrolled bucket for plan meta hourly other energy', async () => {
     const currentHourIso = '2026-03-11T10:00:00.000Z';
     const capacityGuard = new CapacityGuard({ limitKw: 10, softMarginKw: 0.2 });
     capacityGuard.reportTotalPower(2.5);
@@ -200,8 +200,10 @@ describe('PlanBuilder budget exemption handling', () => {
 
     const plan = await builder.buildDevicePlanSnapshot([]);
 
+    // Gross attribution: managed (0.6) + background (0.15) come straight from the buckets,
+    // not re-derived from the net total (usedKWh stays the net 1.8 for pacing).
     expect(plan.meta.hourControlledKWh).toBeCloseTo(0.6, 6);
-    expect(plan.meta.hourUncontrolledKWh).toBeCloseTo(1.2, 6);
+    expect(plan.meta.hourUncontrolledKWh).toBeCloseTo(0.15, 6);
     expect(plan.meta.usedKWh).toBeCloseTo(1.8, 6);
   });
 

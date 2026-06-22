@@ -25,6 +25,30 @@ export const extractLiveHomePowerWatts = (liveReport: unknown): number | null =>
   return null;
 };
 
+/**
+ * Gross PV generation in watts from the same `manager/energy/live` payload, or
+ * `null` when no generation signal is present. PELS's whole-home `cumulative.W`
+ * is NET grid power (consumption minus generation); to recover the authoritative
+ * whole-home *actual consumption* (`net + generation`) for the managed/unmanaged
+ * split, accounting needs the production term. Source per the solar plan: the
+ * top-level `totalGenerated.W` aggregate, falling back to the `generator`-type
+ * item. Generation is `+`-only; this never feeds the hard-cap import path.
+ */
+export const extractLiveGenerationWatts = (liveReport: unknown): number | null => {
+  const report = asRecord(liveReport);
+  if (!report) return null;
+  const topLevel = toFiniteNumber(asRecord(report.totalGenerated)?.W);
+  if (topLevel !== null) return Math.max(0, topLevel);
+  if (!Array.isArray(report.items)) return null;
+  for (const rawItem of report.items) {
+    const item = asRecord(rawItem);
+    if (!item || item.type !== 'generator') continue;
+    const watts = toFiniteNumber(asRecord(item.values)?.W);
+    if (watts !== null) return Math.max(0, watts);
+  }
+  return null;
+};
+
 export const extractLivePowerWattsByDeviceId = (liveReport: unknown): LiveDevicePowerWatts => {
   const report = asRecord(liveReport);
   if (!report || !Array.isArray(report.items)) return {};

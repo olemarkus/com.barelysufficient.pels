@@ -8,7 +8,7 @@ import type { BudgetState, DayContext } from '../../lib/dailyBudget/dailyBudgetS
 import type { DailyBudgetSettings } from '../../lib/dailyBudget/dailyBudgetTypes';
 
 describe('daily budget state helpers', () => {
-  it('buildBucketUsage clamps split data to total usage', () => {
+  it('buildBucketUsage keeps the gross split (managed+background can exceed the net total under solar)', () => {
     const hourMs = 60 * 60 * 1000;
     const dayStart = Date.UTC(2024, 0, 1, 0, 0, 0);
     const bucketStartUtcMs = [
@@ -37,8 +37,11 @@ describe('daily budget state helpers', () => {
       },
     });
 
+    // bucket[0]: both gross buckets present -> used directly (4 + 4 = 8 > net total 5,
+    // i.e. ~3 kWh was self-consumed solar). bucket[1]: only controlled -> legacy
+    // net-derive (clamp 5 to net 3). bucket[2]: only the gross uncontrolled bucket.
     expect(result.bucketUsageControlled).toEqual([4, 3, 0]);
-    expect(result.bucketUsageUncontrolled).toEqual([1, 0, 2]);
+    expect(result.bucketUsageUncontrolled).toEqual([4, 0, 5]);
   });
 
   it('buildBucketUsage treats exempt usage as uncontrolled for budget breakdowns', () => {
@@ -67,12 +70,16 @@ describe('daily budget state helpers', () => {
       },
     });
 
-    expect(result.bucketUsageControlled).toEqual([2, 0]);
-    expect(result.bucketUsageUncontrolled).toEqual([2, 4]);
+    // bucket[0]: no gross uncontrolled bucket -> legacy net-derive, exempt(1) folded into
+    // the uncontrolled side (controlled 3-1=2, uncontrolled 4-2=2). bucket[1]: gross
+    // uncontrolled bucket(1) + exempt(1.5) on the background side (2.5); controlled is the
+    // net-total remainder (4-2.5=1.5).
+    expect(result.bucketUsageControlled).toEqual([2, 1.5]);
+    expect(result.bucketUsageUncontrolled).toEqual([2, 2.5]);
     expect(result.bucketUsageExempt).toEqual([1, 1.5]);
   });
 
-  it('buildBucketUsage falls back to fully uncontrolled usage when controlled data is missing', () => {
+  it('buildBucketUsage uses the gross uncontrolled bucket when controlled data is missing', () => {
     const dayStart = Date.UTC(2024, 0, 1, 0, 0, 0);
     const bucketStartUtcMs = [dayStart];
     const bucketKeys = bucketStartUtcMs.map((ts) => new Date(ts).toISOString());
@@ -92,8 +99,10 @@ describe('daily budget state helpers', () => {
       },
     });
 
-    expect(result.bucketUsageControlled).toEqual([0]);
-    expect(result.bucketUsageUncontrolled).toEqual([4]);
+    // Gross uncontrolled bucket (1) + exempt(1.5) on the background side (2.5); controlled
+    // is the net-total remainder (4 - 2.5 = 1.5).
+    expect(result.bucketUsageControlled).toEqual([1.5]);
+    expect(result.bucketUsageUncontrolled).toEqual([2.5]);
     expect(result.bucketUsageExempt).toEqual([1.5]);
   });
 

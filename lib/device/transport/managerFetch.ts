@@ -6,6 +6,7 @@ import { isHomeyDeviceLike } from '../../utils/types';
 const moduleLogger = getLogger('device/manager-fetch');
 import {
   extractLiveHomePowerWatts,
+  extractLiveGenerationWatts,
   extractLivePowerWattsByDeviceId,
   type LiveDevicePowerWatts,
 } from '../managerEnergy';
@@ -108,6 +109,8 @@ export async function fetchDevicesByIds(params: {
 export type LivePowerReport = {
   byDeviceId: LiveDevicePowerWatts;
   homePowerW: number | null;
+  /** Gross PV generation (W) from the same payload; null when absent. `+`-only. */
+  generationW: number | null;
   deviceCount: number;
 };
 
@@ -123,20 +126,22 @@ export async function fetchLivePowerReport(params: {
         event: 'energy_live_report_unavailable',
         reasonCode: 'rest_client_not_initialized',
       });
-      return { byDeviceId: {}, homePowerW: null, deviceCount: 0 };
+      return { byDeviceId: {}, homePowerW: null, generationW: null, deviceCount: 0 };
     }
     const byDeviceId = extractLivePowerWattsByDeviceId(report);
     const homePowerW = extractLiveHomePowerWatts(report);
+    const generationW = extractLiveGenerationWatts(report);
     const deviceCount = Object.keys(byDeviceId).length;
     (debugStructured ?? ((p: Record<string, unknown>) => moduleLogger.debug(p)))({
       event: 'energy_live_report_received',
       source: 'homey_energy',
       homePowerW,
+      generationW,
       deviceCount,
     });
-    return { byDeviceId, homePowerW, deviceCount };
+    return { byDeviceId, homePowerW, generationW, deviceCount };
   } catch (error) {
     logDeviceTransportRuntimeError(logger, { event: 'energy_live_report_fetch_failed' }, error);
-    return { byDeviceId: {}, homePowerW: null, deviceCount: 0 };
+    return { byDeviceId: {}, homePowerW: null, generationW: null, deviceCount: 0 };
   }
 }
