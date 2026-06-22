@@ -13,6 +13,8 @@
 export class ObservedHomePower {
     private homePowerW: number | null = null;
 
+    private generationW: number | null = null;
+
     /** Push the latest whole-home reading (watts), or `null` when absent. */
     setHomePowerW(w: number | null): void {
         this.homePowerW = w;
@@ -24,5 +26,24 @@ export class ObservedHomePower {
      */
     getHomePowerW(): number | null {
         return this.homePowerW;
+    }
+
+    /**
+     * Push the latest gross PV generation reading (watts), or `null` when no
+     * generation signal is present. Co-temporal with `setHomePowerW` (both come
+     * from the same energy-report poll). `+`-only.
+     */
+    setGenerationW(w: number | null): void {
+        this.generationW = w;
+    }
+
+    /**
+     * Returns the gross PV generation in watts as last reported by transport, or
+     * `null` when no generation signal is available. Consumed only to gross up
+     * the authoritative whole-home actual consumption for the managed/unmanaged
+     * split — never the hard-cap import path.
+     */
+    getGenerationW(): number | null {
+        return this.generationW;
     }
 }

@@ -6,6 +6,7 @@ import {
   getNextLocalDayStartUtcMs,
 } from '../utils/dateUtils.ts';
 import { clamp } from '../utils/math.ts';
+import { resolveAttributionSplit } from './attributionSplit.ts';
 
 export type DayContext = {
   nowMs: number;
@@ -47,31 +48,11 @@ const buildBucketUsage = (params: {
   const bucketUsage = bucketKeys.map((key) => powerTracker.buckets?.[key] ?? 0);
   const controlledRaw = powerTracker.controlledBuckets ?? {};
   const uncontrolledRaw = powerTracker.uncontrolledBuckets ?? {};
-  const splitUsage = bucketKeys.map((key, index) => {
-    const total = Math.max(0, bucketUsage[index] ?? 0);
-    const rawControlled = controlledRaw[key];
-    const rawUncontrolled = uncontrolledRaw[key];
-    const hasControlled = typeof rawControlled === 'number' && Number.isFinite(rawControlled);
-    const hasUncontrolled = typeof rawUncontrolled === 'number' && Number.isFinite(rawUncontrolled);
-
-    if (!hasControlled && !hasUncontrolled) {
-      return { controlled: null, uncontrolled: null };
-    }
-
-    if (hasControlled) {
-      const controlled = clamp(rawControlled as number, 0, total);
-      return {
-        controlled,
-        uncontrolled: Math.max(0, total - controlled),
-      };
-    }
-
-    const uncontrolled = clamp(rawUncontrolled as number, 0, total);
-    return {
-      controlled: Math.max(0, total - uncontrolled),
-      uncontrolled,
-    };
-  });
+  const splitUsage = bucketKeys.map((key, index) => resolveAttributionSplit({
+    totalNet: bucketUsage[index] ?? 0,
+    controlledGross: controlledRaw[key],
+    uncontrolledGross: uncontrolledRaw[key],
+  }));
 
   const bucketUsageControlled = splitUsage.map((entry) => entry.controlled);
   const bucketUsageUncontrolled = splitUsage.map((entry) => entry.uncontrolled);

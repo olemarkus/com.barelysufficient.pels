@@ -424,6 +424,12 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
     state, currentPowerW, controlledPowerW, exemptPowerW, currentDevicePowerWById, nowMs = Date.now(), capacityGuard,
     hourBudgetKWh, rebuildPlanFromCache, saveState,
   } = params;
+  // Authoritative whole-home actual consumption (net import + generation). Used
+  // only to bound the managed/unmanaged split below so a partly-solar-fed managed
+  // device is not clamped down to the smaller net total. Defaults to the net
+  // value, so non-solar callers are unchanged. The total energy bucket and the
+  // capacity guard deliberately keep `currentPowerW` (net import).
+  const grossConsumptionW = Math.max(0, params.grossConsumptionW ?? currentPowerW);
 
   const {
     nextBuckets,
@@ -445,7 +451,10 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
     controlledPowerW: boundedControlledPowerW,
     uncontrolledPowerW: boundedUncontrolledPowerW,
   } = resolveControlledSample({
-    currentPowerW,
+    // Split is bounded by gross consumption, not net import, so managed load that
+    // runs off self-consumed solar is attributed in full and the unmanaged
+    // residual (gross − managed) reflects true background load.
+    currentPowerW: grossConsumptionW,
     controlledPowerW,
   });
   const boundedExemptPowerW = resolveBoundedTrackedPowerW(currentPowerW, exemptPowerW);
