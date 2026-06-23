@@ -13,16 +13,18 @@ describe('plan daily budget current-hour usage split', () => {
     vi.useRealTimers();
   });
 
-  it('derives uncontrolled current-hour usage from total minus controlled when controlled data exists', () => {
+  it('uses both gross split buckets directly when present (managed+background reflect actual consumption)', () => {
     const result = resolveHourlyUsageSplit({
       totalRaw: 1.8,
       controlledRaw: 0.6,
       uncontrolledRaw: 0.15,
     });
 
+    // Gross attribution: managed (0.6) + background (0.15) are used as-is and are NOT
+    // re-derived from the net total (so they may sum to less/more than the net under solar).
     expect(result.totalKWh).toBe(1.8);
     expect(result.controlledKWh).toBe(0.6);
-    expect(result.uncontrolledKWh).toBeCloseTo(1.2, 6);
+    expect(result.uncontrolledKWh).toBe(0.15);
   });
 
   it('uses raw uncontrolled only when controlled data is missing', () => {
@@ -82,7 +84,7 @@ describe('plan daily budget current-hour usage split', () => {
     }, currentHourKey)).toEqual({
       totalKWh: 2.4,
       controlledKWh: 1.1,
-      uncontrolledKWh: 1.2999999999999998,
+      uncontrolledKWh: 0.2,
     });
   });
 });

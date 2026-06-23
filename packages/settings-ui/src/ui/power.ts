@@ -73,6 +73,30 @@ const MIN_RELIABLE_SAMPLES_PER_HOUR = 2;
 const DAILY_HISTORY_DAYS = 14;
 const ZERO_KWH_EPSILON = 1e-9;
 
+const normalizeUsageKWh = (value: unknown): number => Math.max(0, Number(value) || 0);
+
+const normalizeUsageBuckets = (
+  buckets: Record<string, number> | null | undefined,
+): Record<string, number> | undefined => {
+  if (!buckets) return undefined;
+  const normalized: Record<string, number> = {};
+  for (const [iso, value] of Object.entries(buckets)) {
+    normalized[iso] = normalizeUsageKWh(value);
+  }
+  return normalized;
+};
+
+const normalizeUsageHourlyAverages = (
+  averages: Record<string, { sum: number; count: number }> | null | undefined,
+): Record<string, { sum: number; count: number }> | undefined => {
+  if (!averages) return undefined;
+  const normalized: Record<string, { sum: number; count: number }> = {};
+  for (const [key, value] of Object.entries(averages)) {
+    normalized[key] = { ...value, sum: normalizeUsageKWh(value.sum) };
+  }
+  return normalized;
+};
+
 let powerUsageWeekOffset = 0;
 let powerUsageEntries: PowerUsageEntry[] = [];
 let powerUsageNavReady = false;
@@ -289,31 +313,32 @@ export const getPowerStats = async (): Promise<{ stats: PowerStatsSummary; timeZ
   const now = new Date();
   const timeZone = getHomeyTimezone();
   const timeContext = getPowerTimeContext(now, timeZone);
+  const usageBuckets = normalizeUsageBuckets(tracker.buckets);
+  const usageDailyTotals = normalizeUsageBuckets(tracker.dailyTotals);
+  const usageHourlyAverages = normalizeUsageHourlyAverages(
+    tracker.hourlyAverages as Record<string, { sum: number; count: number }> | null | undefined,
+  );
   const dayContext = buildDayContext({
     nowMs: now.getTime(),
     timeZone,
-    powerTracker: tracker,
+    powerTracker: { ...tracker, buckets: usageBuckets },
   });
   const today = dayContext.usedNowKWh;
-  const derivedDailyTotals = mergeDailyTotals(tracker.dailyTotals, tracker.buckets, timeZone);
-  const derivedHourlyAverages = mergeHourlyAverages(
-    tracker.hourlyAverages as Record<string, { sum: number; count: number }> | null | undefined,
-    tracker.buckets,
-    timeZone,
-  );
+  const derivedDailyTotals = mergeDailyTotals(usageDailyTotals, usageBuckets, timeZone);
+  const derivedHourlyAverages = mergeHourlyAverages(usageHourlyAverages, usageBuckets, timeZone);
   const totals = getWeekMonthTotals(derivedDailyTotals, timeContext, today, timeZone);
   const averages = getWeekdayWeekendAverages(derivedDailyTotals, timeContext.todayKey, timeZone);
   const hourlyPatternAll = buildHourlyPattern(derivedHourlyAverages);
   const hourlyPatternWeekday = buildHourlyPattern(derivedHourlyAverages, (d) => d >= 1 && d <= 5);
   const hourlyPatternWeekend = buildHourlyPattern(derivedHourlyAverages, (d) => d === 0 || d === 6);
-  const hourlyPatternMeta = getHourlyPatternMeta(tracker.buckets, timeZone);
+  const hourlyPatternMeta = getHourlyPatternMeta(usageBuckets, timeZone);
   const dailyHistory = buildDailyHistory(derivedDailyTotals, timeContext.todayKey);
   // Producer-resolved: consumers (chart + readout) get a flat flag instead of
   // re-deriving bucket coverage for the window's oldest day.
   const dailyHistoryLeadingPartial = isLeadingHistoryDayPartial({
     history: dailyHistory,
-    persistedDailyTotals: tracker.dailyTotals,
-    buckets: tracker.buckets,
+    persistedDailyTotals: usageDailyTotals,
+    buckets: usageBuckets,
     timeZone,
   });
 
@@ -347,7 +372,7 @@ export const getPowerUsage = async (): Promise<PowerUsageEntry[]> => {
       const date = new Date(iso);
       const start = date.getTime();
       const end = start + 3600000;
-      const kWh = Number(value) || 0;
+      const kWh = normalizeUsageKWh(value);
       const sampleCount = tracker.hourlySampleCounts?.[iso];
       const hasRepeatedSamples = typeof sampleCount === 'number'
         && Number.isFinite(sampleCount)

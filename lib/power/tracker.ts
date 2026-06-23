@@ -5,6 +5,7 @@ import { addPerfDuration } from '../utils/perfCounters';
 import {
   accumulateDevicePowerIfAvailable,
   calculateEnergyAcrossBoundaries,
+  foldAgedHourIntoDay,
   normalizeDevicePowerWById,
   pruneHourlyBucketsOnly,
   serializeDeviceBuckets,
@@ -320,10 +321,7 @@ export function aggregateAndPruneHistory(
 
         if (timestamp < hourlyThreshold) {
           const { dateKey, hourOfDay } = resolveDayHourKey(new Date(isoKey), timeZone);
-          const hours = dayHourBuckets.get(dateKey) ?? new Map<number, number>();
-          hours.set(hourOfDay, (hours.get(hourOfDay) ?? 0) + kWh);
-          dayHourBuckets.set(dateKey, hours);
-          nextDailyTotals.set(dateKey, (nextDailyTotals.get(dateKey) || 0) + kWh);
+          foldAgedHourIntoDay(dayHourBuckets, nextDailyTotals, dateKey, hourOfDay, kWh);
         } else {
           nextBuckets.set(isoKey, kWh);
         }
@@ -424,6 +422,12 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
     state, currentPowerW, controlledPowerW, exemptPowerW, currentDevicePowerWById, nowMs = Date.now(), capacityGuard,
     hourBudgetKWh, rebuildPlanFromCache, saveState,
   } = params;
+  // Authoritative whole-home actual consumption (net import + generation). Used
+  // only to bound the managed/unmanaged split below so a partly-solar-fed managed
+  // device is not clamped down to the smaller net total. Defaults to the net
+  // value, so non-solar callers are unchanged. The total energy bucket and the
+  // capacity guard deliberately keep `currentPowerW` (net import).
+  const grossConsumptionW = Math.max(0, params.grossConsumptionW ?? currentPowerW);
 
   const {
     nextBuckets,
@@ -445,10 +449,17 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
     controlledPowerW: boundedControlledPowerW,
     uncontrolledPowerW: boundedUncontrolledPowerW,
   } = resolveControlledSample({
-    currentPowerW,
+    // Split is bounded by gross consumption, not net import, so managed load that
+    // runs off self-consumed solar is attributed in full and the unmanaged
+    // residual (gross − managed) reflects true background load.
+    currentPowerW: grossConsumptionW,
     controlledPowerW,
   });
-  const boundedExemptPowerW = resolveBoundedTrackedPowerW(currentPowerW, exemptPowerW);
+  // Exempt is a managed-device draw (gross at the appliance); bound it by GROSS
+  // consumption like controlled, so under solar self-consumption it isn't clamped to
+  // the smaller net total (which would leak exempt load back into the managed bucket).
+  // Billing stays correct: every budget consumer re-clamps exempt against the net total.
+  const boundedExemptPowerW = resolveBoundedTrackedPowerW(grossConsumptionW, exemptPowerW);
   const normalizedDevicePowerWById = normalizeDevicePowerWById(currentDevicePowerWById);
 
   if (shouldResetSamplingState(state, nowMs)) {
@@ -482,7 +493,11 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
   calculateEnergyAcrossBoundaries({
     startTs: previousTs,
     endTs: nowMs,
-    powerW: previousPower,
+    // Floor at 0: this is the BILLED total energy bucket and billed kWh can't decrease.
+    // On the homey_energy source the net `cumulative.W` goes negative during solar export;
+    // `lastPowerW` keeps that signed value for the capacity guard (export legitimately
+    // grows headroom), but it must not subtract kWh from the total bucket.
+    powerW: Math.max(0, previousPower),
     buckets: nextBuckets,
     budgets: nextBudgets,
     budgetKWh,

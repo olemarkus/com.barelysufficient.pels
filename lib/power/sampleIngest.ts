@@ -98,6 +98,16 @@ export type UpdateObjectiveProfiles = (params: {
 
 export async function recordPowerSampleForApp(params: {
   currentPowerW: number;
+  /**
+   * Gross PV generation (W) co-temporal with `currentPowerW`, or undefined when
+   * no generation signal is present. `currentPowerW` is NET grid power (already
+   * reduced by self-consumed solar), so the authoritative whole-home *actual
+   * consumption* is `net + generation`. This is the single place the gross-up is
+   * derived (`grossConsumptionW`), and it feeds ONLY the managed/unmanaged split
+   * attribution — never the hard-cap import path or the billed-kWh total bucket,
+   * which both stay on the net `currentPowerW` (the "split by purpose" rule).
+   */
+  generationW?: number;
   nowMs?: number;
   capacitySettings: { limitKw: number; marginKw: number };
   getLatestTargetSnapshot: () => TargetDeviceSnapshot[];
@@ -112,6 +122,7 @@ export async function recordPowerSampleForApp(params: {
   const snapshotStart = Date.now();
   const {
     currentPowerW,
+    generationW,
     nowMs = Date.now(),
     capacitySettings,
     getLatestTargetSnapshot,
@@ -123,12 +134,20 @@ export async function recordPowerSampleForApp(params: {
     sumBudgetExemptUsage,
     updateObjectiveProfiles,
   } = params;
+  // Authoritative whole-home actual consumption = net grid import + gross
+  // generation. With no generation signal this is exactly `currentPowerW`, so
+  // non-solar / flow-source homes are byte-for-byte unchanged. The split below
+  // measures against gross so a managed device whose draw is partly solar-fed is
+  // not clamped down to the (smaller) net total; the cap path keeps `currentPowerW`.
+  // Floored at 0: actual consumption can't be negative, so a noisy net+generation
+  // (e.g. a transient export sample exceeding the reported generation) clamps to 0.
+  const grossConsumptionW = Math.max(0, currentPowerW + Math.max(0, generationW ?? 0));
   const hourBudgetKWh = Math.max(0, capacitySettings.limitKw - capacitySettings.marginKw);
   const snapshot = getLatestTargetSnapshot();
   const { controlledKw } = snapshot.length
     ? splitControlledUsage({
       devices: snapshot,
-      totalKw: currentPowerW / 1000,
+      totalKw: grossConsumptionW / 1000,
     })
     : { controlledKw: null };
   const exemptKw = snapshot.length ? sumBudgetExemptUsage(snapshot) : null;
@@ -144,6 +163,7 @@ export async function recordPowerSampleForApp(params: {
   await recordPowerSampleCore({
     state: profilingState,
     currentPowerW,
+    grossConsumptionW,
     controlledPowerW,
     exemptPowerW,
     currentDevicePowerWById,

@@ -12,6 +12,10 @@ import {
 } from '../lib/utils/capacityHelpers';
 import { createSettingsHandler } from '../lib/utils/settingsHandlers';
 import {
+  stopFlowPowerSampleFreshnessClock,
+  syncFlowPowerSampleFreshnessClock,
+} from './flowPowerSampleFreshnessClock';
+import {
   isDeviceControlProfiles,
   isBooleanMap,
   isCommunicationModelMap,
@@ -288,6 +292,11 @@ export function initSettingsHandlerForApp(ctx: AppContext): { handle: SettingsHa
     updateOverheadToken: ctx.updateOverheadToken,
     updateDebugLoggingEnabled: ctx.updateDebugLoggingEnabled,
     restartHomeyEnergyPoll: () => ctx.homeyEnergyHelpers.restart(),
+    stopFlowPowerSampleFreshnessClock: () => stopFlowPowerSampleFreshnessClock(ctx.timers),
+    syncFlowPowerSampleFreshnessClock: () => syncFlowPowerSampleFreshnessClock(
+      ctx.timers,
+      ctx.powerTracker.lastTimestamp,
+    ),
     reloadWeatherAdvisor: () => ctx.reloadWeatherCollector?.(),
   });
   const onSettingsSet = async (key: string) => {

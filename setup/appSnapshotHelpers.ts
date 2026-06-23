@@ -35,6 +35,11 @@ export type RefreshTargetDevicesSnapshotOptions = {
   emitFlowBackedRefresh?: boolean;
 };
 
+type HomePowerSample = {
+  powerW: number;
+  generationW?: number;
+};
+
 export class AppSnapshotHelpers {
   private snapshotRefreshTimer?: ReturnType<typeof setTimeout>;
   private staleObservationRefreshTimer?: ReturnType<typeof setTimeout>;
@@ -80,14 +85,7 @@ export class AppSnapshotHelpers {
     getFlowReportedDeviceIds: () => string[];
     emitFlowBackedRefreshRequests: (deviceIds: string[]) => Promise<void>;
     emitSettingsUiDevicesUpdated: () => void;
-    recordPowerSample: (powerW: number) => Promise<void>;
-    /**
-     * Reads the observer-owned whole-home power scalar (PR2a of the
-     * observer/transport split). The value originates from a Homey SDK energy
-     * report in the device layer; transport pushes it to the observer's holder
-     * and this reads it back. Wiring (`lib/app/`) → observer is an allowed edge.
-     */
-    getHomePowerW: () => number | null;
+    recordPowerSample: (sample: HomePowerSample) => Promise<void>;
   }) {}
 
   getPostActuationRefreshTimer(): ReturnType<typeof setTimeout> | undefined {
@@ -371,7 +369,7 @@ export class AppSnapshotHelpers {
     this.deps.getStructuredDebugEmitter('snapshot', 'devices')({
       event: 'target_snapshot_refresh_started',
     });
-    await deviceManager.refreshSnapshot({
+    const homePowerSample = await deviceManager.refreshSnapshot({
       includeLivePower: options.fast !== true,
       targetedRefresh: options.targeted,
     });
@@ -403,11 +401,12 @@ export class AppSnapshotHelpers {
       targetedRefresh: options.targeted === true,
     });
     this.deps.emitSettingsUiDevicesUpdated();
-    await this.recordImplicitHomeyEnergySample(options);
+    await this.recordImplicitHomeyEnergySample(options, homePowerSample);
   }
 
   private async recordImplicitHomeyEnergySample(
     options: RefreshTargetDevicesSnapshotOptions,
+    sample: HomePowerSample | null,
   ): Promise<void> {
     if (
       options.recordHomeyEnergySample === false
@@ -416,9 +415,8 @@ export class AppSnapshotHelpers {
       return;
     }
 
-    const homePowerW = this.deps.getHomePowerW();
-    if (typeof homePowerW === 'number') {
-      await this.deps.recordPowerSample(homePowerW);
+    if (sample) {
+      await this.deps.recordPowerSample(sample);
     }
   }
 

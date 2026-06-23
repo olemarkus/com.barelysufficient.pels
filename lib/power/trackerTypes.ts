@@ -31,6 +31,14 @@ export type PowerTrackerState = {
 export type RecordPowerSampleParams = {
   state: PowerTrackerState;
   currentPowerW: number;
+  /**
+   * Authoritative whole-home actual consumption (W) = net grid import + gross
+   * generation. Feeds ONLY the managed/unmanaged split (controlled/uncontrolled
+   * bound + residual); the total energy bucket and the capacity guard stay on
+   * `currentPowerW` (net import). Defaults to `currentPowerW` when omitted, so
+   * callers without a generation signal keep the prior net-only behaviour.
+   */
+  grossConsumptionW?: number;
   controlledPowerW?: number;
   exemptPowerW?: number;
   currentDevicePowerWById?: Record<string, number>;

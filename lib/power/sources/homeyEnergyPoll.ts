@@ -4,11 +4,16 @@ import type { StructuredDebugEmitter } from '../../logging/logger';
 
 const HOMEY_ENERGY_POLL_INTERVAL_MS = 10_000;
 
+export type HomeyEnergyPowerSample = {
+  powerW: number;
+  generationW?: number;
+};
+
 /**
  * Whole-home power source that polls Homey Energy every 10 s when the
- * `power_source` setting is `homey_energy`. Hands each sample to the
- * injected `recordPowerSample(watts)` callback — knows nothing about
- * what the consumer does with it.
+ * `power_source` setting is `homey_energy`. Hands each co-temporal net power
+ * and generation sample to the injected callback — knows nothing about what
+ * the consumer does with it.
  *
  * Lives under `lib/power/sources/` because it produces the whole-home
  * power signal; the per-device shape of devices is irrelevant here.
@@ -22,8 +27,8 @@ export class HomeyEnergyPollSource {
   constructor(private readonly deps: {
     getPowerSource: () => PowerSource;
     timers: TimerRegistry;
-    pollHomePower: () => Promise<number | null | undefined>;
-    recordPowerSample: (powerW: number) => Promise<void>;
+    pollHomePower: () => Promise<HomeyEnergyPowerSample | null | undefined>;
+    recordPowerSample: (sample: HomeyEnergyPowerSample) => Promise<void>;
     debugStructured: StructuredDebugEmitter;
     error: (...args: unknown[]) => void;
   }) {}
@@ -55,10 +60,16 @@ export class HomeyEnergyPollSource {
   }
 
   async pollNow(): Promise<void> {
-    const homePowerW = await this.deps.pollHomePower();
-    if (typeof homePowerW === 'number') {
-      this.deps.debugStructured({ event: 'homey_energy_poll', homePowerW });
-      await this.deps.recordPowerSample(homePowerW);
+    const sample = await this.deps.pollHomePower();
+    if (this.deps.getPowerSource() !== 'homey_energy') return;
+
+    if (sample) {
+      this.deps.debugStructured({
+        event: 'homey_energy_poll',
+        homePowerW: sample.powerW,
+        generationW: sample.generationW,
+      });
+      await this.deps.recordPowerSample(sample);
       return;
     }
 

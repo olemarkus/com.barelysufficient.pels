@@ -171,6 +171,53 @@ describe('power page stats (buckets-only)', () => {
     expect(chartRoot?.querySelector('.usage-row--daily')).toBeNull();
   });
 
+  it('floors legacy negative export buckets in the hourly Usage entries', async () => {
+    const exportHour = '2026-01-15T12:00:00.000Z';
+    await installHomeyClient({
+      buckets: {
+        [exportHour]: -0.5,
+      },
+    });
+
+    const { getPowerUsage } = await import('../src/ui/power.ts');
+    const entries = await getPowerUsage();
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.kWh).toBe(0);
+  });
+
+  it('floors legacy negative export buckets in Usage stats and history', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(Date.UTC(2026, 0, 16, 12, 0, 0)));
+    const exportHour = '2026-01-15T12:00:00.000Z';
+    await installHomeyClient({
+      dailyTotals: {
+        '2026-01-14': -0.7,
+      },
+      hourlyAverages: {
+        '3_9': { sum: -0.4, count: 1 },
+      },
+      buckets: {
+        [exportHour]: -0.5,
+      },
+    });
+
+    const { getPowerStats } = await import('../src/ui/power.ts');
+    const { stats } = await getPowerStats();
+
+    expect(stats.week).toBe(0);
+    expect(stats.month).toBe(0);
+    expect(stats.dailyHistory).toEqual([
+      { date: '2026-01-15', kWh: 0 },
+      { date: '2026-01-14', kWh: 0 },
+    ]);
+    expect(stats.hourlyPatternAll).toEqual([
+      { hour: 9, avg: 0 },
+      { hour: 12, avg: 0 },
+    ]);
+    vi.useRealTimers();
+  });
+
   // Regression: `aggregateAndPruneHistory` in `lib/power/tracker.ts` only
   // moves buckets older than 30 days into `dailyTotals`. When both maps are
   // populated, the Daily-usage chart used to read from `dailyTotals` alone,

@@ -1,3 +1,5 @@
+import { resolveAttributionSplit } from '../../../shared-domain/src/dailyBudget/attributionSplit.ts';
+
 export type UsageSplit = {
   controlledKWh?: number;
   uncontrolledKWh?: number;
@@ -7,31 +9,22 @@ const hasFiniteNumber = (value: unknown): value is number => (
   typeof value === 'number' && Number.isFinite(value)
 );
 
-const clampValue = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
-
+// Power-view per-hour managed vs background split. Uses the shared gross-preferring
+// resolver so it matches the daily-budget breakdown view and the raw tracker buckets
+// (managed + background reflect actual consumption, not the net total reduced by solar).
 export const resolveUsageSplit = (params: {
   totalKWh: number;
   rawControlled: unknown;
   rawUncontrolled: unknown;
 }): UsageSplit => {
   const { totalKWh, rawControlled, rawUncontrolled } = params;
-  const total = Math.max(0, totalKWh);
-
-  if (hasFiniteNumber(rawControlled)) {
-    const controlled = clampValue(rawControlled, 0, total);
-    return {
-      controlledKWh: controlled,
-      uncontrolledKWh: Math.max(0, total - controlled),
-    };
-  }
-
-  if (hasFiniteNumber(rawUncontrolled)) {
-    const uncontrolled = clampValue(rawUncontrolled, 0, total);
-    return {
-      controlledKWh: Math.max(0, total - uncontrolled),
-      uncontrolledKWh: uncontrolled,
-    };
-  }
-
-  return {};
+  const { controlled, uncontrolled } = resolveAttributionSplit({
+    totalNet: totalKWh,
+    controlledGross: hasFiniteNumber(rawControlled) ? rawControlled : undefined,
+    uncontrolledGross: hasFiniteNumber(rawUncontrolled) ? rawUncontrolled : undefined,
+  });
+  return {
+    controlledKWh: controlled ?? undefined,
+    uncontrolledKWh: uncontrolled ?? undefined,
+  };
 };

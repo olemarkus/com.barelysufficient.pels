@@ -67,6 +67,25 @@ export function pruneHourlyBucketsOnly(params: {
   return nextBuckets;
 }
 
+// Floor each aged hour before folding it into the per-day total: a legacy solar-export hour
+// (persisted before the write-side clamp) carries negative kWh that a read-side
+// `Math.max(0, dailyTotal)` can't repair once it has been summed into the day.
+export function foldAgedHourIntoDay(
+  dayHourBuckets: Map<string, Map<number, number>>,
+  nextDailyTotals: Map<string, number>,
+  dateKey: string,
+  hourOfDay: number,
+  kWh: number,
+): void {
+  const agedKWh = Math.max(0, kWh);
+  const hours = dayHourBuckets.get(dateKey) ?? new Map<number, number>();
+  hours.set(hourOfDay, Math.max(0, hours.get(hourOfDay) ?? 0) + agedKWh);
+  dayHourBuckets.set(dateKey, hours);
+  // Floor the existing per-day baseline too: an earlier prune may have stored a negative
+  // daily total for a partially-aged solar-export day before the clamp landed.
+  nextDailyTotals.set(dateKey, Math.max(0, nextDailyTotals.get(dateKey) || 0) + agedKWh);
+}
+
 export function accumulateDevicePowerIfAvailable(params: {
   previousPowerWById?: Record<string, number>;
   nextPowerWById?: Record<string, number>;

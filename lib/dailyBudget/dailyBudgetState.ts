@@ -6,6 +6,7 @@ import {
   getNextLocalDayStartUtcMs,
 } from '../utils/dateUtils';
 import { clamp } from '../utils/mathUtils';
+import { resolveAttributionSplit } from '../../packages/shared-domain/src/dailyBudget/attributionSplit';
 import {
   buildAllowedCumKWh,
   buildWeightsFromPlan,
@@ -168,40 +169,21 @@ export const buildBucketUsage = (params: {
 } => {
   const { bucketStartUtcMs, powerTracker } = params;
   const bucketKeys = bucketStartUtcMs.map((ts) => new Date(ts).toISOString());
-  const bucketUsage = bucketKeys.map((key) => powerTracker.buckets?.[key] ?? 0);
+  // Floor at 0: a legacy solar-export hour can persist a negative kWh, which would otherwise
+  // deflate the metered/remaining/exceeded/projection reporting figures derived from this.
+  const bucketUsage = bucketKeys.map((key) => Math.max(0, powerTracker.buckets?.[key] ?? 0));
   const controlledRaw = powerTracker.controlledBuckets ?? {};
   const uncontrolledRaw = powerTracker.uncontrolledBuckets ?? {};
   const exemptRaw = powerTracker.exemptBuckets ?? {};
-  const splitUsage = bucketKeys.map((key, index) => {
-    const total = Math.max(0, bucketUsage[index] ?? 0);
-    const rawControlled = controlledRaw[key];
-    const rawUncontrolled = uncontrolledRaw[key];
-    const rawExempt = exemptRaw[key];
-    const hasControlled = typeof rawControlled === 'number' && Number.isFinite(rawControlled);
-    const hasUncontrolled = typeof rawUncontrolled === 'number' && Number.isFinite(rawUncontrolled);
-    const exempt = typeof rawExempt === 'number' && Number.isFinite(rawExempt)
-      ? clamp(rawExempt, 0, total)
-      : 0;
-
-    if (!hasControlled && !hasUncontrolled) {
-      return { controlled: null, uncontrolled: null };
-    }
-
-    if (hasControlled) {
-      // Exempt load stays in the uncontrolled side of budget learning/breakdown even
-      // if the device is still capacity-controllable at runtime.
-      const controlled = clamp((rawControlled as number) - exempt, 0, total);
-      return {
-        controlled,
-        uncontrolled: Math.max(0, total - controlled),
-      };
-    }
-
-    return {
-      controlled: 0,
-      uncontrolled: total,
-    };
-  });
+  // ATTRIBUTION split (managed vs background of ACTUAL consumption) via the shared
+  // gross-preferring resolver. Budget PACING is unaffected — it uses `bucketUsage` (net
+  // total) minus exempt, not this split.
+  const splitUsage = bucketKeys.map((key, index) => resolveAttributionSplit({
+    totalNet: bucketUsage[index] ?? 0,
+    controlledGross: controlledRaw[key],
+    uncontrolledGross: uncontrolledRaw[key],
+    exemptGross: exemptRaw[key],
+  }));
   const bucketUsageControlled = splitUsage.map((entry) => entry.controlled);
   const bucketUsageUncontrolled = splitUsage.map((entry) => entry.uncontrolled);
   const bucketUsageExempt = bucketKeys.map((key, index) => {

@@ -183,6 +183,7 @@ export const resolveDeltaPill = (
 
 const SPLIT_COVERAGE_THRESHOLD = 0.5;
 const BACKGROUND_SHARE_GAP = 0.1;
+const GROSS_SPLIT_EXCEEDS_NET_EPSILON_KWH = 0.05;
 
 const sumElapsed = (values: number[], buckets: number): number => {
   let total = 0;
@@ -230,8 +231,21 @@ export const resolveSplitLine = (payload: DailyBudgetDayPayload): string => {
   // Managed would overstate the split even with Background floored at 0.0.
   const elapsed = Math.max(0, payload.currentBucketIndex + 1);
   const actualTotal = sumElapsed(payload.buckets.actualKWh, elapsed);
+  const actualManaged = resolveTodayManagedKWh(payload);
+  const actualBackground = sumElapsedNullable(payload.buckets.actualUncontrolledKWh, elapsed);
+  const splitTotal = actualManaged + actualBackground;
+  if (
+    actualTotal > 0
+    && splitTotal >= actualTotal * SPLIT_COVERAGE_THRESHOLD
+    && splitTotal > actualTotal + GROSS_SPLIT_EXCEEDS_NET_EPSILON_KWH
+  ) {
+    return `Before solar: ${composeManagedBackgroundLine(
+      roundDisplayKWh(actualManaged),
+      roundDisplayKWh(actualBackground),
+    )}`;
+  }
   const roundedTotal = Math.max(0, roundDisplayKWh(actualTotal));
-  const managed = Math.min(roundDisplayKWh(resolveTodayManagedKWh(payload)), roundedTotal);
+  const managed = Math.min(roundDisplayKWh(actualManaged), roundedTotal);
   const background = Math.max(0, roundDisplayKWh(roundedTotal - managed));
   return composeManagedBackgroundLine(managed, background);
 };

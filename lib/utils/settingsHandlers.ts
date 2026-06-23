@@ -72,6 +72,8 @@ export type SettingsHandlerDeps = {
   updateOverheadToken: (value?: number) => Promise<void>;
   updateDebugLoggingEnabled: (logChange?: boolean) => void;
   restartHomeyEnergyPoll?: () => void;
+  stopFlowPowerSampleFreshnessClock?: () => void;
+  syncFlowPowerSampleFreshnessClock?: () => void;
   reloadWeatherAdvisor?: () => void;
 };
 
@@ -482,6 +484,8 @@ async function handleDailyBudgetPriceChange(deps: SettingsHandlerDeps): Promise<
 async function handlePowerSourceChange(deps: SettingsHandlerDeps): Promise<void> {
   settingsLogger.info({ event: 'power_source_changed' });
   deps.restartHomeyEnergyPoll?.();
+  deps.stopFlowPowerSampleFreshnessClock?.();
+  deps.syncFlowPowerSampleFreshnessClock?.();
   await refreshSnapshotWithLog(deps, 'power_source_change');
   await rebuildPlanFromSettings(deps, 'power_source');
 }

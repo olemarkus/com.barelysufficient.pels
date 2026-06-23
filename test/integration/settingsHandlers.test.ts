@@ -70,6 +70,8 @@ const buildDeps = (overrides: Partial<SettingsHandlerDeps> = {}): SettingsHandle
     updateOverheadToken: vi.fn().mockResolvedValue(undefined),
     updateDebugLoggingEnabled: vi.fn(),
     restartHomeyEnergyPoll: vi.fn(),
+    stopFlowPowerSampleFreshnessClock: vi.fn(),
+    syncFlowPowerSampleFreshnessClock: vi.fn(),
     ...overrides,
   };
 };
@@ -575,6 +577,8 @@ describe('createSettingsHandler', () => {
 
     expect(settingsLoggerInfo).toHaveBeenCalledWith(expect.objectContaining({ event: 'power_source_changed' }));
     expect(deps.restartHomeyEnergyPoll).toHaveBeenCalled();
+    expect(deps.stopFlowPowerSampleFreshnessClock).toHaveBeenCalled();
+    expect(deps.syncFlowPowerSampleFreshnessClock).toHaveBeenCalled();
     expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalled();
     expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith('settings:power_source');
   });
