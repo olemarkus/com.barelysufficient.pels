@@ -3,6 +3,7 @@ import {
   finalizePreviousDayLearning,
   hasUnreliableOverlap,
 } from '../../lib/dailyBudget/dailyBudgetLearning';
+import { resolveWindowBucketUsage } from '../../lib/dailyBudget/dailyBudgetObservedBucketUsage';
 import { ensureObservedHourlyStats, getObservedStatsConfigKey } from '../../lib/dailyBudget/dailyBudgetObservedStats';
 import { buildDefaultProfile } from '../../lib/dailyBudget/dailyBudgetManager';
 import {
@@ -197,6 +198,30 @@ describe('daily budget learning utilities', () => {
 
     expect(result.bucketUsageControlled).toEqual([1.5, 1.5]);
     expect(result.bucketUsageUncontrolled).toEqual([2.5, 1.5]);
+  });
+
+  it('keeps exempt managed load out of physical gross background reserve learning', () => {
+    const timeZone = 'UTC';
+    const dateKey = '2024-01-14';
+    const dayStart = getDateKeyStartMs(dateKey, timeZone);
+    const key = new Date(dayStart).toISOString();
+
+    const result = resolveWindowBucketUsage({
+      key,
+      totalRaw: 4,
+      controlledBuckets: { [key]: 3 },
+      uncontrolledBuckets: { [key]: 2 },
+      exemptBuckets: { [key]: 1.5 },
+      timeZone,
+      windowStartUtcMs: dayStart,
+      windowEndUtcMs: dayStart + 60 * 60 * 1000,
+    });
+
+    expect(result).toMatchObject({
+      controlled: 1.5,
+      uncontrolled: 2.5,
+      grossUncontrolled: 2,
+    });
   });
 
   it('hasUnreliableOverlap handles boundary and overlap cases', () => {
@@ -584,6 +609,73 @@ describe('daily budget learning utilities', () => {
     expect(result.nextState.profileObservedP50UncontrolledKWh?.[targetHour]).toBeCloseTo(3, 6);
     expect(result.nextState.profileObservedP75UncontrolledKWh?.[targetHour]).toBeCloseTo(5, 6);
     expect(result.nextState.profileObservedP90UncontrolledKWh?.[targetHour]).toBeCloseTo(6.8, 6);
+  });
+
+  it('keeps gross background samples when solar makes net usage lower', () => {
+    const timeZone = 'UTC';
+    const nowMs = Date.UTC(2024, 0, 20, 12, 0, 0);
+    const targetHour = 7;
+    const key = new Date(Date.UTC(2024, 0, 19, targetHour, 0, 0)).toISOString();
+
+    const result = ensureObservedHourlyStats({
+      state: {},
+      powerTracker: {
+        buckets: { [key]: 0.5 },
+        controlledBuckets: { [key]: 2 },
+        uncontrolledBuckets: { [key]: 1 },
+      },
+      timeZone,
+      nowMs,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.nextState.profileObservedP50UncontrolledKWh?.[targetHour]).toBeCloseTo(0, 6);
+    expect(result.nextState.profileObservedUncontrolledSampleCounts?.[targetHour]).toBe(0);
+    expect(result.nextState.profileObservedMaxControlledKWh?.[targetHour]).toBeCloseTo(0.5, 6);
+    expect(result.nextState.profileObservedP50GrossUncontrolledKWh?.[targetHour]).toBeCloseTo(1, 6);
+    expect(result.nextState.profileObservedGrossUncontrolledSampleCounts?.[targetHour]).toBe(1);
+  });
+
+  it('preserves existing net reserves while backfilling missing gross reserves', () => {
+    const timeZone = 'UTC';
+    const nowMs = Date.UTC(2024, 0, 20, 12, 0, 0);
+    const targetHour = 7;
+    const key = new Date(Date.UTC(2024, 0, 19, targetHour, 0, 0)).toISOString();
+    const legacyNetP50 = Array.from({ length: 24 }, () => 1.25);
+    const legacyNetP75 = Array.from({ length: 24 }, () => 1.75);
+    const legacyNetP90 = Array.from({ length: 24 }, () => 2.25);
+    const legacyNetSampleCounts = Array.from({ length: 24 }, () => 30);
+
+    const result = ensureObservedHourlyStats({
+      state: {
+        profileObservedMaxUncontrolledKWh: Array.from({ length: 24 }, () => 3),
+        profileObservedMaxControlledKWh: Array.from({ length: 24 }, () => 2),
+        profileObservedMinUncontrolledKWh: Array.from({ length: 24 }, () => 0.25),
+        profileObservedMinControlledKWh: Array.from({ length: 24 }, () => 0.5),
+        profileObservedP50UncontrolledKWh: legacyNetP50,
+        profileObservedP75UncontrolledKWh: legacyNetP75,
+        profileObservedP90UncontrolledKWh: legacyNetP90,
+        profileObservedUncontrolledSampleCounts: legacyNetSampleCounts,
+        profileObservedStatsConfigKey: getObservedStatsConfigKey(),
+      },
+      powerTracker: {
+        buckets: { [key]: 0.5 },
+        controlledBuckets: { [key]: 2 },
+        uncontrolledBuckets: { [key]: 1 },
+      },
+      timeZone,
+      nowMs,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.nextState.profileObservedP50UncontrolledKWh).toBe(legacyNetP50);
+    expect(result.nextState.profileObservedP75UncontrolledKWh).toBe(legacyNetP75);
+    expect(result.nextState.profileObservedP90UncontrolledKWh).toBe(legacyNetP90);
+    expect(result.nextState.profileObservedUncontrolledSampleCounts).toBe(legacyNetSampleCounts);
+    expect(result.nextState.profileObservedP50GrossUncontrolledKWh?.[targetHour]).toBeCloseTo(1, 6);
+    expect(result.nextState.profileObservedP75GrossUncontrolledKWh?.[targetHour]).toBeCloseTo(1, 6);
+    expect(result.nextState.profileObservedP90GrossUncontrolledKWh?.[targetHour]).toBeCloseTo(1, 6);
+    expect(result.nextState.profileObservedGrossUncontrolledSampleCounts?.[targetHour]).toBe(1);
   });
 
   it('recomputes observed peaks from a rolling window and drops stale season peaks', () => {

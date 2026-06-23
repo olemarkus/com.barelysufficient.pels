@@ -129,37 +129,72 @@ const resolveObservedUncontrolledSampleCounts = (state: DailyBudgetState): numbe
   resolveObservedSeries(state.profileObservedUncontrolledSampleCounts, EMPTY_HOURLY_COUNTS)
 );
 
+const resolveObservedP50GrossUncontrolled = (state: DailyBudgetState): number[] => (
+  resolveObservedSeries(state.profileObservedP50GrossUncontrolledKWh, EMPTY_HOURLY_MIN)
+);
+
+const resolveObservedP75GrossUncontrolled = (state: DailyBudgetState): number[] => (
+  resolveObservedSeries(state.profileObservedP75GrossUncontrolledKWh, EMPTY_HOURLY_MIN)
+);
+
+const resolveObservedP90GrossUncontrolled = (state: DailyBudgetState): number[] => (
+  resolveObservedSeries(state.profileObservedP90GrossUncontrolledKWh, EMPTY_HOURLY_MIN)
+);
+
+const resolveObservedGrossUncontrolledSampleCounts = (state: DailyBudgetState): number[] => (
+  resolveObservedSeries(state.profileObservedGrossUncontrolledSampleCounts, EMPTY_HOURLY_COUNTS)
+);
+
+type ResolvedProfileState = {
+  profileUncontrolled: DailyBudgetProfile;
+  profileControlled: DailyBudgetProfile;
+  controlledShare: number;
+  sampleCount: number;
+  splitSampleCount: number;
+  observedMaxUncontrolled: number[];
+  observedMaxControlled: number[];
+  observedMinUncontrolled: number[];
+  observedMinControlled: number[];
+  observedP50Uncontrolled: number[];
+  observedP75Uncontrolled: number[];
+  observedP90Uncontrolled: number[];
+  observedUncontrolledSampleCounts: number[];
+  observedP50GrossUncontrolled: number[];
+  observedP75GrossUncontrolled: number[];
+  observedP90GrossUncontrolled: number[];
+  observedGrossUncontrolledSampleCounts: number[];
+};
+
 const hasProfileChanges = (
   state: DailyBudgetState,
-  next: {
-    profileUncontrolled: DailyBudgetProfile;
-    profileControlled: DailyBudgetProfile;
-    controlledShare: number;
-    sampleCount: number;
-    splitSampleCount: number;
-    observedMaxUncontrolled: number[];
-    observedMaxControlled: number[];
-    observedMinUncontrolled: number[];
-    observedMinControlled: number[];
-    observedP50Uncontrolled: number[];
-    observedP75Uncontrolled: number[];
-    observedP90Uncontrolled: number[];
-    observedUncontrolledSampleCounts: number[];
-  },
+  next: ResolvedProfileState,
 ): boolean => (
   next.profileUncontrolled !== state.profileUncontrolled
   || next.profileControlled !== state.profileControlled
   || next.controlledShare !== state.profileControlledShare
   || next.sampleCount !== state.profileSampleCount
   || next.splitSampleCount !== state.profileSplitSampleCount
-  || next.observedMaxUncontrolled !== state.profileObservedMaxUncontrolledKWh
-  || next.observedMaxControlled !== state.profileObservedMaxControlledKWh
-  || next.observedMinUncontrolled !== state.profileObservedMinUncontrolledKWh
-  || next.observedMinControlled !== state.profileObservedMinControlledKWh
-  || next.observedP50Uncontrolled !== state.profileObservedP50UncontrolledKWh
-  || next.observedP75Uncontrolled !== state.profileObservedP75UncontrolledKWh
-  || next.observedP90Uncontrolled !== state.profileObservedP90UncontrolledKWh
-  || next.observedUncontrolledSampleCounts !== state.profileObservedUncontrolledSampleCounts
+  || hasObservedProfileChanges(state, next)
+);
+
+const hasObservedProfileChanges = (
+  state: DailyBudgetState,
+  next: ResolvedProfileState,
+): boolean => (
+  [
+    [next.observedMaxUncontrolled, state.profileObservedMaxUncontrolledKWh],
+    [next.observedMaxControlled, state.profileObservedMaxControlledKWh],
+    [next.observedMinUncontrolled, state.profileObservedMinUncontrolledKWh],
+    [next.observedMinControlled, state.profileObservedMinControlledKWh],
+    [next.observedP50Uncontrolled, state.profileObservedP50UncontrolledKWh],
+    [next.observedP75Uncontrolled, state.profileObservedP75UncontrolledKWh],
+    [next.observedP90Uncontrolled, state.profileObservedP90UncontrolledKWh],
+    [next.observedUncontrolledSampleCounts, state.profileObservedUncontrolledSampleCounts],
+    [next.observedP50GrossUncontrolled, state.profileObservedP50GrossUncontrolledKWh],
+    [next.observedP75GrossUncontrolled, state.profileObservedP75GrossUncontrolledKWh],
+    [next.observedP90GrossUncontrolled, state.profileObservedP90GrossUncontrolledKWh],
+    [next.observedGrossUncontrolledSampleCounts, state.profileObservedGrossUncontrolledSampleCounts],
+  ].some(([left, right]) => left !== right)
 );
 
 export const ensureDailyBudgetProfile = (
@@ -185,6 +220,10 @@ export const ensureDailyBudgetProfile = (
     observedP75Uncontrolled: resolveObservedP75Uncontrolled(state),
     observedP90Uncontrolled: resolveObservedP90Uncontrolled(state),
     observedUncontrolledSampleCounts: resolveObservedUncontrolledSampleCounts(state),
+    observedP50GrossUncontrolled: resolveObservedP50GrossUncontrolled(state),
+    observedP75GrossUncontrolled: resolveObservedP75GrossUncontrolled(state),
+    observedP90GrossUncontrolled: resolveObservedP90GrossUncontrolled(state),
+    observedGrossUncontrolledSampleCounts: resolveObservedGrossUncontrolledSampleCounts(state),
   };
 
   if (!hasProfileChanges(state, next)) return { state, changed: false };
@@ -204,6 +243,10 @@ export const ensureDailyBudgetProfile = (
       profileObservedP75UncontrolledKWh: next.observedP75Uncontrolled,
       profileObservedP90UncontrolledKWh: next.observedP90Uncontrolled,
       profileObservedUncontrolledSampleCounts: next.observedUncontrolledSampleCounts,
+      profileObservedP50GrossUncontrolledKWh: next.observedP50GrossUncontrolled,
+      profileObservedP75GrossUncontrolledKWh: next.observedP75GrossUncontrolled,
+      profileObservedP90GrossUncontrolledKWh: next.observedP90GrossUncontrolled,
+      profileObservedGrossUncontrolledSampleCounts: next.observedGrossUncontrolledSampleCounts,
     },
     changed: true,
   };

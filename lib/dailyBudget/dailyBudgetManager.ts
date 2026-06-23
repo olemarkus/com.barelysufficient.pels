@@ -28,6 +28,7 @@ import {
 } from './dailyBudgetManagerTypes';
 import { CONTROLLED_USAGE_WEIGHT } from './dailyBudgetConstants';
 import { finalizePreviousDayLearning } from './dailyBudgetLearning';
+import { resetDailyBudgetLearningState } from './dailyBudgetLearningReset';
 import { ensureObservedHourlyStats } from './dailyBudgetObservedStats';
 import {
   ensureDailyBudgetProfile,
@@ -44,6 +45,10 @@ import {
 } from './dailyBudgetConfidence';
 import { resolveDailyBudgetPersistReason } from './dailyBudgetStatePersistence';
 import { getLogger } from '../logging/logger';
+import {
+  resolveStoredPlanBreakdown,
+  type StoredPlanBreakdown,
+} from './dailyBudgetStoredPlanBreakdown';
 
 const DEFAULT_PROFILE = buildDefaultProfile();
 const moduleLogger = getLogger('daily_budget');
@@ -74,21 +79,7 @@ export class DailyBudgetManager {
     return state;
   }
   resetLearning(): void {
-    this.state.profileUncontrolled = { weights: [...DEFAULT_PROFILE], sampleCount: 0 };
-    this.state.profileControlled = { weights: [...DEFAULT_PROFILE], sampleCount: 0 };
-    this.state.profileControlledShare = 0;
-    this.state.profileSampleCount = 0;
-    this.state.profileSplitSampleCount = 0;
-    this.state.profileObservedMaxUncontrolledKWh = Array.from({ length: 24 }, () => 0);
-    this.state.profileObservedMaxControlledKWh = Array.from({ length: 24 }, () => 0);
-    this.state.profileObservedMinUncontrolledKWh = Array.from({ length: 24 }, () => 0);
-    this.state.profileObservedMinControlledKWh = Array.from({ length: 24 }, () => 0);
-    this.state.profileObservedP50UncontrolledKWh = Array.from({ length: 24 }, () => 0);
-    this.state.profileObservedP75UncontrolledKWh = Array.from({ length: 24 }, () => 0);
-    this.state.profileObservedP90UncontrolledKWh = Array.from({ length: 24 }, () => 0);
-    this.state.profileObservedUncontrolledSampleCounts = Array.from({ length: 24 }, () => 0);
-    this.state.profile = undefined;
-    this.state.frozen = false;
+    this.state = resetDailyBudgetLearningState(this.state, DEFAULT_PROFILE);
   }
   update(params: DailyBudgetUpdateParams): DailyBudgetUpdate {
     const {
@@ -279,6 +270,7 @@ export class DailyBudgetManager {
       return {
         plannedKWh: rebuilt.plannedKWh,
         plannedUncontrolledKWh: rebuilt.plannedUncontrolledKWh,
+        plannedGrossUncontrolledKWh: rebuilt.plannedGrossUncontrolledKWh,
         plannedControlledKWh: rebuilt.plannedControlledKWh,
         priceData: rebuilt.priceData,
         shouldLog,
@@ -289,10 +281,17 @@ export class DailyBudgetManager {
 
     const priceData = this.resolvePriceData(params);
     const plannedKWh = enabled && this.state.plannedKWh ? this.state.plannedKWh : context.bucketUsage.map(() => 0);
-    const storedBreakdown = enabled ? this.getStoredPlanBreakdown(plannedKWh.length) : {};
+    const storedBreakdown: StoredPlanBreakdown = enabled
+      ? this.getStoredPlanBreakdown({
+        bucketCount: plannedKWh.length,
+        context,
+        controlledUsageWeight: params.settings.controlledUsageWeight,
+      })
+      : { grossBackfilled: false, grossBackfillComplete: false };
     return {
       plannedKWh,
       plannedUncontrolledKWh: storedBreakdown.plannedUncontrolledKWh,
+      plannedGrossUncontrolledKWh: storedBreakdown.plannedGrossUncontrolledKWh,
       plannedControlledKWh: storedBreakdown.plannedControlledKWh,
       priceData,
       shouldLog,
@@ -305,7 +304,10 @@ export class DailyBudgetManager {
     combinedPrices?: CombinedPriceData | null; priceOptimizationEnabled: boolean;
     capacityBudgetKWh?: number;
   }): {
-    plannedKWh: number[]; plannedUncontrolledKWh: number[]; plannedControlledKWh: number[];
+    plannedKWh: number[];
+    plannedUncontrolledKWh: number[];
+    plannedGrossUncontrolledKWh: number[];
+    plannedControlledKWh: number[];
     priceData: PriceData;
     planDebug: RebuildPlanDebug;
     uncontrolledReserveDiagnostics: ReturnType<typeof buildPlan>['uncontrolledReserveDiagnostics'];
@@ -340,6 +342,7 @@ export class DailyBudgetManager {
       priceShapingFlexShare: settings.priceShapingFlexShare,
       previousPlannedKWh: existingPlan ?? undefined,
       previousPlannedUncontrolledKWh: this.state.plannedUncontrolledKWh,
+      previousPlannedGrossUncontrolledKWh: this.state.plannedGrossUncontrolledKWh,
       previousPlannedControlledKWh: this.state.plannedControlledKWh,
       capacityBudgetKWh,
       lockCurrentBucket: lockState.lockCurrentBucket,
@@ -352,9 +355,14 @@ export class DailyBudgetManager {
       profileObservedP75UncontrolledKWh: this.state.profileObservedP75UncontrolledKWh,
       profileObservedP90UncontrolledKWh: this.state.profileObservedP90UncontrolledKWh,
       profileObservedUncontrolledSampleCounts: this.state.profileObservedUncontrolledSampleCounts,
+      profileObservedP50GrossUncontrolledKWh: this.state.profileObservedP50GrossUncontrolledKWh,
+      profileObservedP75GrossUncontrolledKWh: this.state.profileObservedP75GrossUncontrolledKWh,
+      profileObservedP90GrossUncontrolledKWh: this.state.profileObservedP90GrossUncontrolledKWh,
+      profileObservedGrossUncontrolledSampleCounts: this.state.profileObservedGrossUncontrolledSampleCounts,
     });
     this.state.plannedKWh = buildResult.plannedKWh;
     this.state.plannedUncontrolledKWh = buildResult.plannedUncontrolledKWh.slice();
+    this.state.plannedGrossUncontrolledKWh = buildResult.plannedGrossUncontrolledKWh.slice();
     this.state.plannedControlledKWh = buildResult.plannedControlledKWh.slice();
     const previousPlanBucketStartUtcMs = this.state.lastPlanBucketStartUtcMs;
     this.state.lastPlanBucketStartUtcMs = lockState.currentBucketStartUtcMs;
@@ -364,6 +372,7 @@ export class DailyBudgetManager {
     return {
       plannedKWh: buildResult.plannedKWh,
       plannedUncontrolledKWh: buildResult.plannedUncontrolledKWh,
+      plannedGrossUncontrolledKWh: buildResult.plannedGrossUncontrolledKWh,
       plannedControlledKWh: buildResult.plannedControlledKWh,
       priceData: {
         prices: buildResult.price,
@@ -400,19 +409,21 @@ export class DailyBudgetManager {
 
   private clearStoredPlanBreakdown(): void {
     this.state.plannedUncontrolledKWh = undefined;
+    this.state.plannedGrossUncontrolledKWh = undefined;
     this.state.plannedControlledKWh = undefined;
   }
 
-  private getStoredPlanBreakdown(bucketCount: number): {
-    plannedUncontrolledKWh?: number[]; plannedControlledKWh?: number[];
-  } {
-    const { plannedUncontrolledKWh, plannedControlledKWh } = this.state;
-    const hasStoredSplit = Array.isArray(plannedUncontrolledKWh)
-      && Array.isArray(plannedControlledKWh)
-      && plannedUncontrolledKWh.length === bucketCount
-      && plannedControlledKWh.length === bucketCount;
-    if (!hasStoredSplit) return {};
-    return { plannedUncontrolledKWh, plannedControlledKWh };
+  private getStoredPlanBreakdown(params: {
+    bucketCount: number;
+    context: DayContext;
+    controlledUsageWeight: number;
+  }): StoredPlanBreakdown {
+    const result = resolveStoredPlanBreakdown({ state: this.state, ...params });
+    if (result.grossBackfilled && result.grossBackfillComplete && result.plannedGrossUncontrolledKWh) {
+      this.state.plannedGrossUncontrolledKWh = result.plannedGrossUncontrolledKWh.slice();
+      this.markDirty('plan');
+    }
+    return result;
   }
 
   private maybeUpdateObservedStats(
@@ -500,6 +511,10 @@ export class DailyBudgetManager {
       profileObservedP75UncontrolledKWh: this.state.profileObservedP75UncontrolledKWh,
       profileObservedP90UncontrolledKWh: this.state.profileObservedP90UncontrolledKWh,
       profileObservedUncontrolledSampleCounts: this.state.profileObservedUncontrolledSampleCounts,
+      profileObservedP50GrossUncontrolledKWh: this.state.profileObservedP50GrossUncontrolledKWh,
+      profileObservedP75GrossUncontrolledKWh: this.state.profileObservedP75GrossUncontrolledKWh,
+      profileObservedP90GrossUncontrolledKWh: this.state.profileObservedP90GrossUncontrolledKWh,
+      profileObservedGrossUncontrolledSampleCounts: this.state.profileObservedGrossUncontrolledSampleCounts,
     });
   }
 

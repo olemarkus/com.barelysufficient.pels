@@ -95,11 +95,21 @@ export function resolveRemainingFloors(params: {
   profileObservedP75UncontrolledKWh?: number[];
   profileObservedP90UncontrolledKWh?: number[];
   profileObservedUncontrolledSampleCounts?: number[];
+  profileObservedP50GrossUncontrolledKWh?: number[];
+  profileObservedP75GrossUncontrolledKWh?: number[];
+  profileObservedP90GrossUncontrolledKWh?: number[];
+  profileObservedGrossUncontrolledSampleCounts?: number[];
   observedPeakMarginRatio?: number;
   usedInCurrent: number;
   remainingStartIndex: number;
   currentBucketIndex: number;
-}): { floors: number[]; uncontrolledReserves: number[]; diagnostics: UncontrolledReservePlanDiagnostics } {
+}): {
+  floors: number[];
+  uncontrolledReserves: number[];
+  grossUncontrolledReserves: number[];
+  grossUncontrolledReserveHasData: boolean[];
+  diagnostics: UncontrolledReservePlanDiagnostics;
+} {
   const {
     bucketStartUtcMs,
     timeZone,
@@ -110,6 +120,10 @@ export function resolveRemainingFloors(params: {
     profileObservedP75UncontrolledKWh,
     profileObservedP90UncontrolledKWh,
     profileObservedUncontrolledSampleCounts,
+    profileObservedP50GrossUncontrolledKWh,
+    profileObservedP75GrossUncontrolledKWh,
+    profileObservedP90GrossUncontrolledKWh,
+    profileObservedGrossUncontrolledSampleCounts,
     observedPeakMarginRatio,
     usedInCurrent,
     remainingStartIndex,
@@ -157,9 +171,30 @@ export function resolveRemainingFloors(params: {
     applyFromIndex: remainingStartIndex,
     reserveAggressiveness,
   });
+  const grossUncontrolledReserves = buildUncontrolledReserveFloors({
+    bucketStartUtcMs,
+    timeZone,
+    profileObservedMinUncontrolledKWh,
+    profileObservedP50UncontrolledKWh: profileObservedP50GrossUncontrolledKWh ?? profileObservedP50UncontrolledKWh,
+    profileObservedP75UncontrolledKWh: profileObservedP75GrossUncontrolledKWh ?? profileObservedP75UncontrolledKWh,
+    profileObservedP90UncontrolledKWh: profileObservedP90GrossUncontrolledKWh ?? profileObservedP90UncontrolledKWh,
+    profileObservedUncontrolledSampleCounts: profileObservedGrossUncontrolledSampleCounts
+      ?? profileObservedUncontrolledSampleCounts,
+    observedPeakMarginRatio,
+    applyFromIndex: currentBucketIndex,
+    reserveAggressiveness,
+  });
+  const grossUncontrolledReserveHasData = buildUncontrolledReserveDataPresence({
+    bucketStartUtcMs,
+    timeZone,
+    profileObservedUncontrolledSampleCounts: profileObservedGrossUncontrolledSampleCounts,
+    applyFromIndex: currentBucketIndex,
+  });
   return {
     floors,
     uncontrolledReserves,
+    grossUncontrolledReserves,
+    grossUncontrolledReserveHasData,
     diagnostics: summarizeUncontrolledReserveDiagnostics(diagnosticsHours),
   };
 }
@@ -204,6 +239,25 @@ export function buildUncontrolledReserveFloors(params: {
       marginRatio,
       reserveAggressiveness,
     }).reservedUncontrolledKWh;
+  });
+}
+
+function buildUncontrolledReserveDataPresence(params: {
+  bucketStartUtcMs: number[];
+  timeZone: string;
+  profileObservedUncontrolledSampleCounts?: number[];
+  applyFromIndex: number;
+}): boolean[] {
+  const {
+    bucketStartUtcMs,
+    timeZone,
+    profileObservedUncontrolledSampleCounts,
+    applyFromIndex,
+  } = params;
+  return bucketStartUtcMs.map((bucketStartMs, index) => {
+    if (index < applyFromIndex) return false;
+    const hour = getZonedParts(new Date(bucketStartMs), timeZone).hour;
+    return normalizeSampleCount(profileObservedUncontrolledSampleCounts?.[hour]) > 0;
   });
 }
 

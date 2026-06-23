@@ -63,10 +63,10 @@ export const resolveHorizonPlanWithRescue = (params: {
   hardCapKw?: number | null;
   // Device priority on the same scale used by `planSort` (lower number = more
   // important; `1` is top). Slice-2 floor promotion only fires when the device
-  // is strictly top-priority: the reserved-headroom forecast
-  // (`hardCap − uncontrolled`) implicitly assumes any controlled concurrent
-  // load can be displaced, which is only true at priority 1. Non-top-priority
-  // tasks stay on the min-step floor even with both rescue permissions set.
+  // is strictly top-priority: the reserved-headroom forecast (`hardCap − gross
+  // background`) implicitly assumes any controlled concurrent load can be
+  // displaced, which is only true at priority 1. Non-top-priority tasks stay on
+  // the min-step floor even with both rescue permissions set.
   devicePriority?: number;
   // Count of priority-1 fully-reserved smart tasks competing for the same
   // reserved headroom this cycle (this task included). The exempt rebuild
@@ -99,8 +99,8 @@ export const resolveHorizonPlanWithRescue = (params: {
   //  2. limit-lower-priority `'always'` lets the task displace lower-priority
   //     controlled devices when claiming physical headroom.
   //  3. device is strictly top priority (`=== 1`). The reserved-headroom
-  //     forecast (`hardCap − uncontrolled`) implicitly assumes every controlled
-  //     concurrent watt can be displaced, which only holds at the top. A
+  //     forecast (`hardCap − gross background`) implicitly assumes every
+  //     controlled concurrent watt can be displaced, which only holds at the top. A
   //     non-top task with both permissions can still be denied by a *higher*-
   //     priority controlled device (which `limit-lower-priority` cannot shed),
   //     so the capacity guard would catch the wall but verdicts would

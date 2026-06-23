@@ -324,6 +324,200 @@ describe('daily budget planning', () => {
     expect(secondPlanned).toBeCloseTo(firstPlanned, 6);
   });
 
+  it('preserves gross background reservation when rebuilding a locked current bucket', () => {
+    const manager = buildManager();
+    const settings = buildSettings({ dailyBudgetKWh: 10 });
+    const dateKey = getDateKeyInTimeZone(new Date(Date.UTC(2024, 0, 15, 0, 30)), TZ);
+    const dayStart = getDateKeyStartMs(dateKey, TZ);
+    const now = dayStart + 10 * 60 * 1000;
+    const bucketKey = new Date(dayStart).toISOString();
+    const previousPlan = Array.from({ length: 24 }, () => 1);
+    const previousGross = Array.from({ length: 24 }, () => 0.2);
+    previousGross[0] = 3.5;
+
+    manager.loadState({
+      dateKey,
+      dayStartUtcMs: dayStart,
+      plannedKWh: previousPlan,
+      plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0.2),
+      plannedGrossUncontrolledKWh: previousGross,
+      plannedControlledKWh: Array.from({ length: 24 }, () => 0.8),
+      lastPlanBucketStartUtcMs: dayStart,
+      profile: {
+        weights: normalizeWeights(Array.from({ length: 24 }, () => 1)),
+        sampleCount: 14,
+      },
+    });
+
+    const update = manager.update({
+      nowMs: now,
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: { [bucketKey]: 0.1 } },
+      priceOptimizationEnabled: false,
+      forcePlanRebuild: true,
+    });
+
+    expect(update.snapshot.buckets.plannedKWh[0]).toBeCloseTo(previousPlan[0], 6);
+    expect(update.snapshot.buckets.plannedUncontrolledKWh[0]).toBeCloseTo(0.2, 6);
+    expect(update.snapshot.buckets.plannedGrossUncontrolledKWh?.[0]).toBeCloseTo(3.5, 6);
+    expect(manager.exportState().plannedGrossUncontrolledKWh?.[0]).toBeCloseTo(3.5, 6);
+  });
+
+  it('backfills locked current bucket gross reservation for legacy plans without gross split', () => {
+    const manager = buildManager();
+    const settings = buildSettings({ dailyBudgetKWh: 10 });
+    const dateKey = getDateKeyInTimeZone(new Date(Date.UTC(2024, 0, 15, 0, 30)), TZ);
+    const dayStart = getDateKeyStartMs(dateKey, TZ);
+    const bucketKey = new Date(dayStart).toISOString();
+    const observedGrossBackground = Array.from({ length: 24 }, () => 0);
+    observedGrossBackground[0] = 3.5;
+
+    manager.loadState({
+      dateKey,
+      dayStartUtcMs: dayStart,
+      plannedKWh: Array.from({ length: 24 }, () => 1),
+      plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0.2),
+      plannedControlledKWh: Array.from({ length: 24 }, () => 0.8),
+      lastPlanBucketStartUtcMs: dayStart,
+      profile: {
+        weights: normalizeWeights(Array.from({ length: 24 }, () => 1)),
+        sampleCount: 14,
+      },
+      profileObservedP50GrossUncontrolledKWh: observedGrossBackground,
+      profileObservedP75GrossUncontrolledKWh: observedGrossBackground,
+      profileObservedP90GrossUncontrolledKWh: observedGrossBackground,
+      profileObservedGrossUncontrolledSampleCounts: Array.from({ length: 24 }, () => 30),
+    });
+
+    const update = manager.update({
+      nowMs: dayStart + 10 * 60 * 1000,
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: { [bucketKey]: 0.1 } },
+      priceOptimizationEnabled: false,
+      forcePlanRebuild: true,
+    });
+
+    expect(update.snapshot.buckets.plannedUncontrolledKWh[0]).toBeCloseTo(0.2, 6);
+    expect(update.snapshot.buckets.plannedGrossUncontrolledKWh?.[0]).toBeCloseTo(3.5, 6);
+    expect(manager.exportState().plannedGrossUncontrolledKWh?.[0]).toBeCloseTo(3.5, 6);
+  });
+
+  it('backfills gross reservation for frozen legacy plans without rebuilding', () => {
+    const debugStructured = vi.fn();
+    const manager = buildManager({ debugStructured });
+    const settings = buildSettings({ dailyBudgetKWh: 10 });
+    const dateKey = getDateKeyInTimeZone(new Date(Date.UTC(2024, 0, 15, 0, 30)), TZ);
+    const dayStart = getDateKeyStartMs(dateKey, TZ);
+    const bucketKey = new Date(dayStart).toISOString();
+    const observedGrossBackground = Array.from({ length: 24 }, () => 0);
+    observedGrossBackground[0] = 3.5;
+
+    manager.loadState({
+      dateKey,
+      dayStartUtcMs: dayStart,
+      frozen: true,
+      plannedKWh: Array.from({ length: 24 }, () => 1),
+      plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0.2),
+      plannedControlledKWh: Array.from({ length: 24 }, () => 0.8),
+      lastPlanBucketStartUtcMs: dayStart,
+      profile: {
+        weights: normalizeWeights(Array.from({ length: 24 }, () => 1)),
+        sampleCount: 14,
+      },
+      profileObservedP50GrossUncontrolledKWh: observedGrossBackground,
+      profileObservedP75GrossUncontrolledKWh: observedGrossBackground,
+      profileObservedP90GrossUncontrolledKWh: observedGrossBackground,
+      profileObservedGrossUncontrolledSampleCounts: Array.from({ length: 24 }, () => 30),
+    });
+
+    const update = manager.update({
+      nowMs: dayStart + 10 * 60 * 1000,
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: { [bucketKey]: 0.2 } },
+      priceOptimizationEnabled: false,
+    });
+    const emittedPlanDebug = debugStructured.mock.calls.some(([payload]) => (
+      payload.event === 'daily_budget_plan_debug'
+    ));
+
+    expect(emittedPlanDebug).toBe(false);
+    expect(update.snapshot.state.frozen).toBe(true);
+    expect(update.snapshot.buckets.plannedUncontrolledKWh[0]).toBeCloseTo(0.2, 6);
+    expect(update.snapshot.buckets.plannedGrossUncontrolledKWh?.[0]).toBeCloseTo(3.5, 6);
+    expect(manager.exportState().plannedGrossUncontrolledKWh?.[0]).toBeCloseTo(3.5, 6);
+  });
+
+  it('refreshes partial frozen gross backfills when later samples arrive', () => {
+    const settings = buildSettings({ dailyBudgetKWh: 10 });
+    const dateKey = getDateKeyInTimeZone(new Date(Date.UTC(2024, 0, 15, 0, 30)), TZ);
+    const dayStart = getDateKeyStartMs(dateKey, TZ);
+    const bucket0 = new Date(dayStart).toISOString();
+    const bucket1 = new Date(dayStart + 60 * 60 * 1000).toISOString();
+    const observedGrossBackground = Array.from({ length: 24 }, () => 0);
+    const grossSampleCounts = Array.from({ length: 24 }, () => 0);
+    observedGrossBackground[0] = 3.5;
+    grossSampleCounts[0] = 30;
+    const legacyState = {
+      dateKey,
+      dayStartUtcMs: dayStart,
+      frozen: true,
+      plannedKWh: Array.from({ length: 24 }, () => 1),
+      plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0.2),
+      plannedControlledKWh: Array.from({ length: 24 }, () => 0.8),
+      lastPlanBucketStartUtcMs: dayStart,
+      profile: {
+        weights: normalizeWeights(Array.from({ length: 24 }, () => 1)),
+        sampleCount: 14,
+      },
+      profileObservedP50GrossUncontrolledKWh: observedGrossBackground,
+      profileObservedP75GrossUncontrolledKWh: observedGrossBackground,
+      profileObservedP90GrossUncontrolledKWh: observedGrossBackground,
+      profileObservedGrossUncontrolledSampleCounts: grossSampleCounts,
+    };
+    const manager = buildManager();
+    manager.loadState(legacyState);
+
+    const first = manager.update({
+      nowMs: dayStart + 10 * 60 * 1000,
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: { [bucket0]: 0.2 } },
+      priceOptimizationEnabled: false,
+      refreshObservedStats: false,
+    });
+    expect(first.snapshot.buckets.plannedGrossUncontrolledKWh?.[0]).toBeCloseTo(3.5, 6);
+    expect(first.snapshot.buckets.plannedGrossUncontrolledKWh?.[1]).toBeCloseTo(0.2, 6);
+    expect(manager.exportState().plannedGrossUncontrolledKWh).toBeUndefined();
+
+    const nextGrossBackground = [...observedGrossBackground];
+    const nextSampleCounts = [...grossSampleCounts];
+    nextGrossBackground[1] = 2.5;
+    nextSampleCounts[1] = 30;
+    const reloaded = buildManager();
+    reloaded.loadState({
+      ...manager.exportState(),
+      profileObservedP50GrossUncontrolledKWh: nextGrossBackground,
+      profileObservedP75GrossUncontrolledKWh: nextGrossBackground,
+      profileObservedP90GrossUncontrolledKWh: nextGrossBackground,
+      profileObservedGrossUncontrolledSampleCounts: nextSampleCounts,
+    });
+
+    const second = reloaded.update({
+      nowMs: dayStart + 70 * 60 * 1000,
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: { [bucket0]: 1, [bucket1]: 0.2 } },
+      priceOptimizationEnabled: false,
+      refreshObservedStats: false,
+    });
+
+    expect(second.snapshot.buckets.plannedGrossUncontrolledKWh?.[0]).toBeCloseTo(3.5, 6);
+    expect(second.snapshot.buckets.plannedGrossUncontrolledKWh?.[1]).toBeCloseTo(2.5, 6);
+  });
+
   it('preserves planned values for past buckets when rebuilding', () => {
     const manager = buildManager();
     const settings = buildSettings({ dailyBudgetKWh: 10 });
@@ -1050,6 +1244,43 @@ describe('daily budget preview', () => {
     expect(preview.state.allowedNowKWh).toBe(0);
     const plannedTotal = preview.buckets.plannedKWh.reduce((sum, value) => sum + value, 0);
     expect(plannedTotal).toBeCloseTo(settings.dailyBudgetKWh, 6);
+  });
+
+  it('includes gross background reserves in tomorrow preview plans', () => {
+    const manager = buildManager();
+    const settings = buildSettings({ dailyBudgetKWh: 12 });
+    const dayStart = getDateKeyStartMs('2024-01-15', TZ);
+    const flatProfile = normalizeWeights(Array.from({ length: 24 }, () => 1));
+    const observedGrossBackground = Array.from({ length: 24 }, () => 0.2);
+
+    manager.loadState({
+      profileUncontrolled: {
+        weights: flatProfile,
+        sampleCount: 30,
+      },
+      profileControlled: {
+        weights: flatProfile,
+        sampleCount: 30,
+      },
+      profileControlledShare: 0,
+      profileSampleCount: 30,
+      profileSplitSampleCount: 30,
+      profileObservedP50GrossUncontrolledKWh: observedGrossBackground,
+      profileObservedP75GrossUncontrolledKWh: observedGrossBackground,
+      profileObservedP90GrossUncontrolledKWh: observedGrossBackground,
+      profileObservedGrossUncontrolledSampleCounts: Array.from({ length: 24 }, () => 30),
+    });
+
+    const preview = manager.buildPreview({
+      dayStartUtcMs: dayStart,
+      timeZone: TZ,
+      settings,
+      priceOptimizationEnabled: false,
+    });
+
+    expect(preview.buckets.plannedUncontrolledKWh[0]).toBeGreaterThan(0.2);
+    expect(preview.buckets.plannedGrossUncontrolledKWh).toHaveLength(preview.buckets.plannedKWh.length);
+    expect(preview.buckets.plannedGrossUncontrolledKWh?.[0]).toBeCloseTo(0.2, 6);
   });
 });
 

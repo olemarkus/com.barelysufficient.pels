@@ -77,6 +77,7 @@ export function buildSnapshot(params: {
     settings,
     enabled,
     plannedKWh: plan.plannedKWh,
+    plannedGrossUncontrolledKWh: plan.plannedGrossUncontrolledKWh,
     ...resolvePlannedSplit(plan.plannedKWh, breakdown),
     priceData: plan.priceData,
     budget,

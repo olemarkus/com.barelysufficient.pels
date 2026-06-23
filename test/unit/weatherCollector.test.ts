@@ -1,6 +1,7 @@
 import type { Logger as PinoLogger } from 'pino';
 import { WeatherCollector, type WeatherCollectorDeps } from '../../lib/weather/weatherCollector';
 import type { MetDaySummaryWithCoverage, MetForecastFetchResult } from '../../lib/weather/metForecast';
+import { CONTROLLED_BACKFILL_VERSION } from '../../lib/weather/weatherHistory';
 import type { WeatherHistoryState } from '../../packages/contracts/src/weatherAdvisorTypes';
 
 const OSLO = 'Europe/Oslo';
@@ -510,14 +511,19 @@ describe('WeatherCollector', () => {
       }),
     });
     // Temp + meter backfills already done (markers set) → only the split runs.
+    // A v1 split marker is intentionally stale so the gross solar split migrates.
     persisted.value = {
-      records: splitRecords, backfilledDeviceId: 'out-1', backfillVersion: 2, meterKwhBackfillDone: true,
+      records: splitRecords,
+      backfilledDeviceId: 'out-1',
+      backfillVersion: 2,
+      meterKwhBackfillDone: true,
+      controlledBackfillVersion: 1,
     };
     collector.start();
     await vi.advanceTimersByTimeAsync(0);
     collector.stop();
     const written = lastWritten(store);
-    expect(written.controlledBackfillVersion).toBe(1);
+    expect(written.controlledBackfillVersion).toBe(CONTROLLED_BACKFILL_VERSION);
     const day = written.records.find((record) => record.dateKey === '2026-01-10');
     expect(day?.kwhControlled).toBeCloseTo(25, 6);
     expect(day?.kwhUncontrolled).toBeCloseTo(15, 6);

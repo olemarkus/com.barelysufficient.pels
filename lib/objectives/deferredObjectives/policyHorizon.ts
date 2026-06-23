@@ -38,6 +38,7 @@ type PolicyBucketSource = {
   endMs: number;
   price: number;
   backgroundKWh: number | null;
+  grossBackgroundKWh: number | null;
   perBucketBudgetKWh: number | null;
   // True when the per-bucket budget collapsed to 0 specifically because
   // `buildAllowedCumKWh` plateaued at the daily budget cap (i.e. the cumulative
@@ -81,7 +82,7 @@ export const buildDeferredObjectivePolicyHorizon = (params: {
   priceHorizon: PriceHorizonEntry[];
   // OPTIONAL budget overlay. When a day-bucket matches a price-horizon hour
   // (its `startUtc` floors to the same epoch hour), its `perBucketBudgetKWh` /
-  // `backgroundKWh` / `dailyBudgetExhausted` are overlaid onto that bucket.
+  // `backgroundKWh` / `grossBackgroundKWh` / `dailyBudgetExhausted` are overlaid onto that bucket.
   // When absent, the bucket runs with no daily-budget cap and the per-hour
   // hard cap becomes the only constraint.
   dailyBudgetSnapshot: DailyBudgetUiPayload | null;
@@ -91,12 +92,11 @@ export const buildDeferredObjectivePolicyHorizon = (params: {
   // soft daily-budget throttle; physical capacity stays enforced downstream at
   // admission and the capacity guard.
   exemptFromBudget?: boolean;
-  // Configured hard cap in kW. When provided alongside the daily-budget
-  // snapshot's `plannedUncontrolledKWh`, each bucket gets a
-  // `reservedHeadroomKw` forecast (`hardCapKw − plannedUncontrolledKw`) that a
-  // fully-reserved smart task can use to promote its committed floor step
-  // (Slice 2 of Cause #2 in `TODO.md`). Optional: missing → no forecast → the
-  // planner stays on the min-step floor.
+  // Configured hard cap in kW. When provided alongside the daily-budget snapshot's
+  // gross background forecast, each bucket gets a `reservedHeadroomKw` forecast
+  // (`hardCapKw − grossBackgroundKw`) that a fully-reserved smart task can use to
+  // promote its committed floor step. Optional: missing → no forecast → the planner
+  // stays on the min-step floor.
   hardCapKw?: number | null;
   // Number of priority-1 fully-reserved smart tasks that could share this
   // bucket's reserved headroom. The producer divides `reservedHeadroomKw` by
@@ -238,6 +238,7 @@ const unavailable = (
 // daily-budget snapshot. `null` means there was no matching snapshot bucket.
 type BudgetOverlay = {
   backgroundKWh: number | null;
+  grossBackgroundKWh: number | null;
   perBucketBudgetKWh: number | null;
   dailyBudgetExhausted: boolean;
 };
@@ -248,6 +249,7 @@ type BudgetOverlay = {
 // `resolveMaxUsefulEnergyKWh` null (no daily-budget cap).
 const NO_BUDGET_OVERLAY: BudgetOverlay = {
   backgroundKWh: 0,
+  grossBackgroundKWh: 0,
   perBucketBudgetKWh: null,
   dailyBudgetExhausted: false,
 };
@@ -298,6 +300,7 @@ const collectPriceBuckets = (params: {
       endMs,
       price: entry.price,
       backgroundKWh: overlay.backgroundKWh,
+      grossBackgroundKWh: overlay.grossBackgroundKWh,
       perBucketBudgetKWh: overlay.perBucketBudgetKWh,
       dailyBudgetExhausted: overlay.dailyBudgetExhausted,
     }];
@@ -324,6 +327,7 @@ const buildBudgetOverlayByHour = (
       if (!byHour.has(hour)) {
         byHour.set(hour, {
           backgroundKWh: overlay.backgroundKWh,
+          grossBackgroundKWh: overlay.grossBackgroundKWh,
           perBucketBudgetKWh: overlay.perBucketBudgetKWh,
           dailyBudgetExhausted: overlay.dailyBudgetExhausted,
         });
@@ -347,16 +351,21 @@ const collectDayBudgetOverlays = (
   const starts = day.buckets.startUtc;
   if (!Array.isArray(starts)) return [];
   const allowedCumKWh = day.buckets.allowedCumKWh;
-  const plannedUncontrolledKWh = day.buckets.plannedUncontrolledKWh;
+  const plannedUncontrolledKWh = Array.isArray(day.buckets.plannedUncontrolledKWh)
+    ? day.buckets.plannedUncontrolledKWh
+    : [];
+  const plannedGrossUncontrolledKWh = day.buckets.plannedGrossUncontrolledKWh;
   // Reached only for enabled days (disabled returned above), so no `: null` branch.
   const dailyBudgetKWh = day.budget.dailyBudgetKWh;
   return starts.flatMap((startIso, index) => {
     const startMs = new Date(startIso).getTime();
     if (!Number.isFinite(startMs)) return [];
     const perBucketBudgetKWh = resolvePerBucketBudget(allowedCumKWh, index);
+    const backgroundKWh = finiteOrNull(plannedUncontrolledKWh[index]);
     return [{
       startMs,
-      backgroundKWh: finiteOrNull(plannedUncontrolledKWh?.[index]),
+      backgroundKWh,
+      grossBackgroundKWh: finiteOrNull(plannedGrossUncontrolledKWh?.[index]) ?? backgroundKWh,
       perBucketBudgetKWh,
       dailyBudgetExhausted: isDailyBudgetExhausted({
         allowedCumKWh,
@@ -385,7 +394,10 @@ const collectDayPriceBuckets = (day: DailyBudgetDayPayload): PolicyBucketSource[
   const prices = day.buckets.price;
   if (!Array.isArray(starts) || !Array.isArray(prices)) return [];
   const allowedCumKWh = day.buckets.allowedCumKWh;
-  const plannedUncontrolledKWh = day.buckets.plannedUncontrolledKWh;
+  const plannedUncontrolledKWh = Array.isArray(day.buckets.plannedUncontrolledKWh)
+    ? day.buckets.plannedUncontrolledKWh
+    : [];
+  const plannedGrossUncontrolledKWh = day.buckets.plannedGrossUncontrolledKWh;
   const dailyBudgetKWh = day.budget.enabled ? day.budget.dailyBudgetKWh : null;
   return starts.flatMap((startIso, index) => {
     const startMs = new Date(startIso).getTime();
@@ -401,12 +413,14 @@ const collectDayPriceBuckets = (day: DailyBudgetDayPayload): PolicyBucketSource[
       return [];
     }
     const perBucketBudgetKWh = resolvePerBucketBudget(allowedCumKWh, index);
+    const backgroundKWh = finiteOrNull(plannedUncontrolledKWh[index]);
     return [{
       id: startIso,
       startMs,
       endMs,
       price,
-      backgroundKWh: finiteOrNull(plannedUncontrolledKWh?.[index]),
+      backgroundKWh,
+      grossBackgroundKWh: finiteOrNull(plannedGrossUncontrolledKWh?.[index]) ?? backgroundKWh,
       perBucketBudgetKWh,
       dailyBudgetExhausted: isDailyBudgetExhausted({
         allowedCumKWh,
@@ -528,8 +542,8 @@ const resolveEligibleShare = (concurrentEligibleCount: number): number => (
 );
 
 // Reserved physical headroom for a fully-reserved smart task in this bucket:
-// `(hardCapKw − planned uncontrolled load) ÷ concurrentEligibleCount`. The
-// per-bucket budget (hardCap minus the non-PELS-managed forecast) is divided
+// `(hardCapKw − gross background load) ÷ concurrentEligibleCount`. The
+// per-bucket forecast (hardCap minus the non-PELS-managed forecast) is divided
 // equally across the eligible top-priority fully-reserved tasks so two such
 // tasks don't both promote their committed floor to the *full* forecast and
 // double-book the reserved slot in diagnostic verdicts. Equal-share allocation
@@ -546,10 +560,11 @@ const resolveReservedHeadroomKw = (
   sharePerTask: number,
 ): number | null => {
   if (hardCapKw === null || !Number.isFinite(hardCapKw) || hardCapKw <= 0) return null;
-  if (bucket.backgroundKWh === null) return null;
+  const physicalBackgroundKWh = bucket.grossBackgroundKWh ?? bucket.backgroundKWh;
+  if (physicalBackgroundKWh === null) return null;
   const durationHours = (bucket.endMs - bucket.startMs) / (60 * 60 * 1000);
   if (durationHours <= 0) return null;
-  const uncontrolledKw = bucket.backgroundKWh / durationHours;
+  const uncontrolledKw = Math.max(0, physicalBackgroundKWh / durationHours);
   return Math.max(0, hardCapKw - uncontrolledKw) * sharePerTask;
 };
 

@@ -76,12 +76,13 @@ export type DeferredObjectiveHorizonBucket = {
   price?: number | null;
   maxUsefulEnergyKWh?: number;
   // Producer-resolved per-bucket forecast of physical headroom available to a
-  // fully-reserved smart task: `hardCapKw − plannedUncontrolledKw` (the hard
-  // cap minus the forecast non-PELS-managed load, since a fully-reserved task
-  // can displace lower-priority controlled devices up to the cap). Consumed by
-  // `resolveFloorStep` to promote the committed floor when the objective is
-  // fully reserved. Optional/backward-compat: missing means "no forecast" and
-  // the floor stays at min step.
+  // fully-reserved smart task: hard cap minus the gross background forecast
+  // (`plannedGrossUncontrolledKWh / duration`). This stays separate from the net
+  // `plannedUncontrolledKWh` daily-budget cap input, because solar can make net
+  // background lower than physical background load. Consumed by `resolveFloorStep`
+  // to promote the committed floor when the objective is fully reserved.
+  // Optional/backward-compat: missing means "no forecast" and the floor stays at
+  // min step.
   reservedHeadroomKw?: number;
 };
 

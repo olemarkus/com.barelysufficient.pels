@@ -20,7 +20,7 @@ export const WEATHER_HISTORY_RETENTION_DAYS = 730;
 /** Bump only if a contaminated-kWh class is ever discovered again. */
 export const KWH_PURGE_VERSION = 1;
 /** Bump to re-run the controlled/uncontrolled split backfill over historical records. */
-export const CONTROLLED_BACKFILL_VERSION = 1;
+export const CONTROLLED_BACKFILL_VERSION = 2;
 /** Keep in-progress accumulators for at most today + the two preceding days. */
 const ACCUMULATOR_RETENTION_DAYS = 2;
 /** Physically plausible outdoor range; readings outside are sensor glitches. */
@@ -404,10 +404,6 @@ function controlledBackfillRecord(
   total: number,
   meterControlled: number | undefined,
 ): WeatherDailyRecord {
-  // A net-export day (negative whole-home total, legitimate on PV homes) has no
-  // meaningful controlled/uncontrolled split — clamping would produce a negative
-  // controlled. Leave it unsplit; it is excluded from the fit anyway (kwh > 0).
-  if (total <= 0) return record;
   // Tracker-join day: keep the authoritative controlled, just derive uncontrolled.
   if (record.kwhControlled !== undefined && record.quality.kwhBackfilled !== true) {
     const uncontrolled = Math.max(0, total - record.kwhControlled);
@@ -415,10 +411,10 @@ function controlledBackfillRecord(
   }
   // Meter-filled / controlled-less day: write both from the validated meter sum.
   if (meterControlled === undefined) return record;
-  const clampedControlled = Math.min(Math.max(0, meterControlled), total);
-  const uncontrolled = Math.max(0, total - clampedControlled);
-  if (record.kwhControlled === clampedControlled && record.kwhUncontrolled === uncontrolled) return record;
-  return { ...record, kwhControlled: clampedControlled, kwhUncontrolled: uncontrolled };
+  const controlled = Math.max(0, meterControlled);
+  const uncontrolled = Math.max(0, total - controlled);
+  if (record.kwhControlled === controlled && record.kwhUncontrolled === uncontrolled) return record;
+  return { ...record, kwhControlled: controlled, kwhUncontrolled: uncontrolled };
 }
 
 /**

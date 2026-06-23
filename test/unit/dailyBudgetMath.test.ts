@@ -390,6 +390,105 @@ describe('daily budget math helpers', () => {
     expect(result.plannedUncontrolledKWh[0]).toBeGreaterThan(1);
   });
 
+  it('publishes gross uncontrolled reserve separately from the net planned split', () => {
+    const observedGrossBackground = Array.from({ length: 24 }, () => 2);
+    const result = buildPlan({
+      bucketStartUtcMs,
+      bucketUsage: [0, 0, 0, 0],
+      currentBucketIndex: 0,
+      usedNowKWh: 0,
+      dailyBudgetKWh: 1,
+      profileWeights: Array.from({ length: 24 }, () => 1),
+      profileWeightsControlled: Array.from({ length: 24 }, () => 0),
+      profileWeightsUncontrolled: Array.from({ length: 24 }, () => 1),
+      timeZone,
+      combinedPrices: null,
+      priceOptimizationEnabled: false,
+      priceShapingEnabled: false,
+      observedPeakMarginRatio: 0,
+      profileObservedP50GrossUncontrolledKWh: observedGrossBackground,
+      profileObservedP75GrossUncontrolledKWh: observedGrossBackground,
+      profileObservedP90GrossUncontrolledKWh: observedGrossBackground,
+      profileObservedGrossUncontrolledSampleCounts: Array.from({ length: 24 }, () => 30),
+    });
+
+    expect(result.plannedUncontrolledKWh[0]).toBeLessThan(2);
+    expect(result.plannedGrossUncontrolledKWh[0]).toBeCloseTo(2, 6);
+  });
+
+  it('does not inflate gross background with the net daily-budget allowance', () => {
+    const observedGrossBackground = Array.from({ length: 24 }, () => 1);
+    const result = buildPlan({
+      bucketStartUtcMs,
+      bucketUsage: [0, 0, 0, 0],
+      currentBucketIndex: 0,
+      usedNowKWh: 0,
+      dailyBudgetKWh: 12,
+      profileWeights: Array.from({ length: 24 }, () => 1),
+      profileWeightsControlled: Array.from({ length: 24 }, () => 0),
+      profileWeightsUncontrolled: Array.from({ length: 24 }, () => 1),
+      timeZone,
+      combinedPrices: null,
+      priceOptimizationEnabled: false,
+      priceShapingEnabled: false,
+      observedPeakMarginRatio: 0,
+      profileObservedP50GrossUncontrolledKWh: observedGrossBackground,
+      profileObservedP75GrossUncontrolledKWh: observedGrossBackground,
+      profileObservedP90GrossUncontrolledKWh: observedGrossBackground,
+      profileObservedGrossUncontrolledSampleCounts: Array.from({ length: 24 }, () => 30),
+    });
+
+    expect(result.plannedUncontrolledKWh[0]).toBeGreaterThan(1);
+    expect(result.plannedGrossUncontrolledKWh[0]).toBeCloseTo(1, 6);
+  });
+
+  it('falls back to net planned background when gross reserve has no samples yet', () => {
+    const result = buildPlan({
+      bucketStartUtcMs,
+      bucketUsage: [0, 0, 0, 0],
+      currentBucketIndex: 0,
+      usedNowKWh: 0,
+      dailyBudgetKWh: 12,
+      profileWeights: Array.from({ length: 24 }, () => 1),
+      profileWeightsControlled: Array.from({ length: 24 }, () => 0),
+      profileWeightsUncontrolled: Array.from({ length: 24 }, () => 1),
+      timeZone,
+      combinedPrices: null,
+      priceOptimizationEnabled: false,
+      priceShapingEnabled: false,
+      observedPeakMarginRatio: 0,
+    });
+
+    expect(result.plannedGrossUncontrolledKWh[0]).toBeCloseTo(result.plannedUncontrolledKWh[0], 6);
+    expect(result.plannedGrossUncontrolledKWh[0]).toBeGreaterThan(0);
+  });
+
+  it('preserves previous gross uncontrolled reserve for locked buckets', () => {
+    const previousPlan = [1, 1, 1, 1];
+    const result = buildPlan({
+      bucketStartUtcMs,
+      bucketUsage: [0, 0.2, 0, 0],
+      currentBucketIndex: 1,
+      usedNowKWh: 0.2,
+      dailyBudgetKWh: 4,
+      profileWeights: Array.from({ length: 24 }, () => 1),
+      profileWeightsControlled: Array.from({ length: 24 }, () => 0),
+      profileWeightsUncontrolled: Array.from({ length: 24 }, () => 1),
+      timeZone,
+      combinedPrices: null,
+      priceOptimizationEnabled: false,
+      priceShapingEnabled: false,
+      previousPlannedKWh: previousPlan,
+      previousPlannedUncontrolledKWh: [0.25, 0.25, 0.25, 0.25],
+      previousPlannedGrossUncontrolledKWh: [3, 4, 0.25, 0.25],
+      previousPlannedControlledKWh: [0.75, 0.75, 0.75, 0.75],
+      lockCurrentBucket: true,
+    });
+
+    expect(result.plannedGrossUncontrolledKWh[0]).toBeCloseTo(3, 6);
+    expect(result.plannedGrossUncontrolledKWh[1]).toBeCloseTo(4, 6);
+  });
+
   it('scales observed min floors down when budget is lower than floors', () => {
     const result = buildPlan({
       bucketStartUtcMs,

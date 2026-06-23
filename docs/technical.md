@@ -31,6 +31,10 @@ Canonical terminology and unit definitions are maintained in the user guide:
 
 This technical document uses those same definitions.
 
+### Solar Accounting
+
+When Homey Energy reports solar production, PELS keeps two accounting figures separate. The net grid import drives hard-cap protection, daily-budget totals, and billed-usage buckets; negative export is floored at zero for kWh totals. Gross consumption (`net + generation`) is used only where the UI or smart-task reservation needs to understand real managed/background usage before solar production offsets it.
+
 ### Hard Cap and Hourly Safe Pace
 
 - **Hard cap**: Your contracted grid capacity limit (`limitKw`). This corresponds to an hourly hard-cap energy budget of `limitKw` kWh for each hour. Exceeding this for a full hour triggers penalties.

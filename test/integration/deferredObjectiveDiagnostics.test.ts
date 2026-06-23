@@ -194,6 +194,7 @@ const buildSnapshot = (params: {
   includePriceFactor?: boolean;
   prices?: number[];
   plannedUncontrolledKWh?: number[];
+  plannedGrossUncontrolledKWh?: number[];
   allowedCumKWh?: number[];
 } = {}): DailyBudgetUiPayload => {
   const nowMs = params.nowMs ?? NOW_MS;
@@ -204,6 +205,7 @@ const buildSnapshot = (params: {
     includePriceFactor: params.includePriceFactor,
     prices: params.prices,
     plannedUncontrolledKWh: params.plannedUncontrolledKWh,
+    plannedGrossUncontrolledKWh: params.plannedGrossUncontrolledKWh,
     allowedCumKWh: params.allowedCumKWh,
   });
   const days: DailyBudgetUiPayload['days'] = { [today.dateKey]: today };
@@ -215,6 +217,7 @@ const buildSnapshot = (params: {
       includePriceFactor: params.includePriceFactor,
       prices: params.prices,
       plannedUncontrolledKWh: params.plannedUncontrolledKWh,
+      plannedGrossUncontrolledKWh: params.plannedGrossUncontrolledKWh,
       allowedCumKWh: params.allowedCumKWh,
     });
     days[tomorrow.dateKey] = tomorrow;
@@ -233,6 +236,7 @@ const buildDay = (params: {
   includePriceFactor?: boolean;
   prices?: number[];
   plannedUncontrolledKWh?: number[];
+  plannedGrossUncontrolledKWh?: number[];
   allowedCumKWh?: number[];
 }): DailyBudgetDayPayload => {
   const startUtc = Array.from({ length: 24 }, (_, index) => new Date(params.startMs + index * HOUR_MS).toISOString());
@@ -275,6 +279,9 @@ const buildDay = (params: {
       allowedCumKWh: params.allowedCumKWh ?? Array.from({ length: 24 }, (_, index) => index + 1),
       price: prices,
       ...(params.plannedUncontrolledKWh ? { plannedUncontrolledKWh: params.plannedUncontrolledKWh } : {}),
+      ...(params.plannedGrossUncontrolledKWh
+        ? { plannedGrossUncontrolledKWh: params.plannedGrossUncontrolledKWh }
+        : {}),
       ...(params.includePriceFactor === false
         ? {}
         : { priceFactor: prices.map((price) => (price <= 10 ? 1.2 : 0.8)) }),
@@ -653,6 +660,43 @@ describe('buildDeferredObjectivePolicyHorizon', () => {
     for (const bucket of split.buckets) {
       // Same 9.5 kW now split between two eligible tasks → 4.75 kW each.
       expect(bucket.reservedHeadroomKw).toBeCloseTo(4.75);
+    }
+  });
+
+  it('uses gross background for reservedHeadroomKw but net background for the daily-budget cap', () => {
+    const result = buildDeferredObjectivePolicyHorizon({
+      nowMs: NOW_MS,
+      deadlineAtMs: NOW_MS + 4 * HOUR_MS,
+      priceOptimizationEnabled: true,
+      dailyBudgetSnapshot: buildSnapshot({
+        allowedCumKWh: Array.from({ length: 24 }, (_, index) => (index + 1) * 2),
+        plannedUncontrolledKWh: Array.from({ length: 24 }, () => 0.5),
+        plannedGrossUncontrolledKWh: Array.from({ length: 24 }, () => 2.5),
+      }),
+      hardCapKw: 5,
+    });
+
+    expect(result.reasonCode).toBeNull();
+    for (const bucket of result.buckets) {
+      expect(bucket.maxUsefulEnergyKWh).toBeCloseTo(1.5);
+      expect(bucket.reservedHeadroomKw).toBeCloseTo(2.5);
+    }
+  });
+
+  it('does not let negative net-background fallback raise reservedHeadroomKw above the hard cap', () => {
+    const result = buildDeferredObjectivePolicyHorizon({
+      nowMs: NOW_MS,
+      deadlineAtMs: NOW_MS + 4 * HOUR_MS,
+      priceOptimizationEnabled: true,
+      dailyBudgetSnapshot: buildSnapshot({
+        plannedUncontrolledKWh: Array.from({ length: 24 }, () => -1),
+      }),
+      hardCapKw: 5,
+    });
+
+    expect(result.reasonCode).toBeNull();
+    for (const bucket of result.buckets) {
+      expect(bucket.reservedHeadroomKw).toBeCloseTo(5);
     }
   });
 

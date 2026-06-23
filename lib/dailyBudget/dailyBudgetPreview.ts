@@ -37,7 +37,26 @@ type BuildDailyBudgetPreviewParams = {
   profileObservedP75UncontrolledKWh?: number[];
   profileObservedP90UncontrolledKWh?: number[];
   profileObservedUncontrolledSampleCounts?: number[];
+  profileObservedP50GrossUncontrolledKWh?: number[];
+  profileObservedP75GrossUncontrolledKWh?: number[];
+  profileObservedP90GrossUncontrolledKWh?: number[];
+  profileObservedGrossUncontrolledSampleCounts?: number[];
 };
+
+const buildObservedProfilePlanParams = (params: BuildDailyBudgetPreviewParams) => ({
+  profileObservedMaxUncontrolledKWh: params.profileObservedMaxUncontrolledKWh,
+  profileObservedMaxControlledKWh: params.profileObservedMaxControlledKWh,
+  profileObservedMinUncontrolledKWh: params.profileObservedMinUncontrolledKWh,
+  profileObservedMinControlledKWh: params.profileObservedMinControlledKWh,
+  profileObservedP50UncontrolledKWh: params.profileObservedP50UncontrolledKWh,
+  profileObservedP75UncontrolledKWh: params.profileObservedP75UncontrolledKWh,
+  profileObservedP90UncontrolledKWh: params.profileObservedP90UncontrolledKWh,
+  profileObservedUncontrolledSampleCounts: params.profileObservedUncontrolledSampleCounts,
+  profileObservedP50GrossUncontrolledKWh: params.profileObservedP50GrossUncontrolledKWh,
+  profileObservedP75GrossUncontrolledKWh: params.profileObservedP75GrossUncontrolledKWh,
+  profileObservedP90GrossUncontrolledKWh: params.profileObservedP90GrossUncontrolledKWh,
+  profileObservedGrossUncontrolledSampleCounts: params.profileObservedGrossUncontrolledSampleCounts,
+});
 
 const resolvePlannedBreakdown = (params: {
   enabled: boolean;
@@ -88,14 +107,6 @@ export const buildDailyBudgetPreview = (params: BuildDailyBudgetPreviewParams): 
     profileSampleCount,
     profileSplitSampleCount,
     profileBreakdown,
-    profileObservedMaxUncontrolledKWh,
-    profileObservedMaxControlledKWh,
-    profileObservedMinUncontrolledKWh,
-    profileObservedMinControlledKWh,
-    profileObservedP50UncontrolledKWh,
-    profileObservedP75UncontrolledKWh,
-    profileObservedP90UncontrolledKWh,
-    profileObservedUncontrolledSampleCounts,
   } = params;
 
   const nextDayStartUtcMs = getNextLocalDayStartUtcMs(dayStartUtcMs, timeZone);
@@ -148,14 +159,7 @@ export const buildDailyBudgetPreview = (params: BuildDailyBudgetPreviewParams): 
       priceShapingFlexShare: settings.priceShapingFlexShare,
       capacityBudgetKWh,
       controlledUsageWeight: settings.controlledUsageWeight,
-      profileObservedMaxUncontrolledKWh,
-      profileObservedMaxControlledKWh,
-      profileObservedMinUncontrolledKWh,
-      profileObservedMinControlledKWh,
-      profileObservedP50UncontrolledKWh,
-      profileObservedP75UncontrolledKWh,
-      profileObservedP90UncontrolledKWh,
-      profileObservedUncontrolledSampleCounts,
+      ...buildObservedProfilePlanParams(params),
     });
   }
   const plannedKWh = buildResult?.plannedKWh ?? bucketStartUtcMs.map(() => 0);
@@ -192,6 +196,7 @@ export const buildDailyBudgetPreview = (params: BuildDailyBudgetPreviewParams): 
     settings,
     enabled,
     plannedKWh,
+    plannedGrossUncontrolledKWh: buildResult?.plannedGrossUncontrolledKWh,
     ...resolvePlannedSplit(plannedKWh, breakdown),
     priceData,
     budget,

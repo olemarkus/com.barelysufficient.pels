@@ -433,9 +433,9 @@ describe('applyControlledBackfill', () => {
     expect(state.records[0]).toMatchObject({ kwhTotal: 50, kwhControlled: 18, kwhUncontrolled: 32 });
   });
 
-  it('clamps controlled into [0, total] (a noisy over-estimate cannot make uncontrolled negative)', () => {
+  it('keeps gross controlled kWh when solar makes the net total lower', () => {
     const { state } = applyControlledBackfill({ records: [meterDay('2025-02-01', 30)] }, { '2025-02-01': 41 });
-    expect(state.records[0]).toMatchObject({ kwhControlled: 30, kwhUncontrolled: 0 });
+    expect(state.records[0]).toMatchObject({ kwhControlled: 41, kwhUncontrolled: 0 });
   });
 
   it('never overwrites a live-rollup split or a day with no whole-home total', () => {
@@ -476,12 +476,11 @@ describe('applyControlledBackfill', () => {
     expect(state).toBe(seeded);
   });
 
-  it('leaves a net-export day (negative whole-home total) unsplit — no negative controlled', () => {
+  it('records gross controlled kWh on a net-export day without making background negative', () => {
     const exportDay = meterDay('2025-02-01', -4.2);
     const { state, patchedDays } = applyControlledBackfill({ records: [exportDay] }, { '2025-02-01': 18 });
-    expect(patchedDays).toBe(0);
-    expect(state.records[0].kwhControlled).toBeUndefined();
-    expect(state.records[0].kwhUncontrolled).toBeUndefined();
+    expect(patchedDays).toBe(1);
+    expect(state.records[0]).toMatchObject({ kwhControlled: 18, kwhUncontrolled: 0 });
   });
 
   it('derives uncontrolled from the authoritative tracker controlled on a tracker-join day, never overwriting it', () => {

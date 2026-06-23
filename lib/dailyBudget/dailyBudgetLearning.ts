@@ -254,6 +254,10 @@ const buildNextLearningState = (params: {
   observedP75Uncontrolled: number[];
   observedP90Uncontrolled: number[];
   observedUncontrolledSampleCounts: number[];
+  observedP50GrossUncontrolled: number[];
+  observedP75GrossUncontrolled: number[];
+  observedP90GrossUncontrolled: number[];
+  observedGrossUncontrolledSampleCounts: number[];
 }): DailyBudgetState => {
   const {
     state,
@@ -271,6 +275,10 @@ const buildNextLearningState = (params: {
     observedP75Uncontrolled,
     observedP90Uncontrolled,
     observedUncontrolledSampleCounts,
+    observedP50GrossUncontrolled,
+    observedP75GrossUncontrolled,
+    observedP90GrossUncontrolled,
+    observedGrossUncontrolledSampleCounts,
   } = params;
   const previousSampleCount = resolveProfileSampleCount(state);
   const previousSplitSampleCount = resolveProfileSplitSampleCount(state);
@@ -312,6 +320,10 @@ const buildNextLearningState = (params: {
     profileObservedP75UncontrolledKWh: observedP75Uncontrolled,
     profileObservedP90UncontrolledKWh: observedP90Uncontrolled,
     profileObservedUncontrolledSampleCounts: observedUncontrolledSampleCounts,
+    profileObservedP50GrossUncontrolledKWh: observedP50GrossUncontrolled,
+    profileObservedP75GrossUncontrolledKWh: observedP75GrossUncontrolled,
+    profileObservedP90GrossUncontrolledKWh: observedP90GrossUncontrolled,
+    profileObservedGrossUncontrolledSampleCounts: observedGrossUncontrolledSampleCounts,
   });
 };
 
@@ -376,6 +388,10 @@ export function finalizePreviousDayLearning(params: {
     observedP75Uncontrolled,
     observedP90Uncontrolled,
     observedUncontrolledSampleCounts,
+    observedP50GrossUncontrolled,
+    observedP75GrossUncontrolled,
+    observedP90GrossUncontrolled,
+    observedGrossUncontrolledSampleCounts,
     windowBucketCount,
   } = buildObservedHourlyStatsFromWindow({
     powerTracker,
@@ -399,6 +415,10 @@ export function finalizePreviousDayLearning(params: {
     observedP75Uncontrolled,
     observedP90Uncontrolled,
     observedUncontrolledSampleCounts,
+    observedP50GrossUncontrolled,
+    observedP75GrossUncontrolled,
+    observedP90GrossUncontrolled,
+    observedGrossUncontrolledSampleCounts,
   });
 
   const usageKindLabel = bucketUsage.usedControlledData ? 'split' : 'total';
@@ -467,6 +487,7 @@ function resetLearningPlanState(state: DailyBudgetState): DailyBudgetState {
     lastPlanBucketStartUtcMs: null,
     plannedKWh: [],
     plannedUncontrolledKWh: [],
+    plannedGrossUncontrolledKWh: [],
     plannedControlledKWh: [],
   };
 }
