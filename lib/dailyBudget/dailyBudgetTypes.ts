@@ -18,6 +18,7 @@ export type DailyBudgetState = {
   dayStartUtcMs?: number | null;
   plannedKWh?: number[];
   plannedUncontrolledKWh?: number[];
+  plannedGrossUncontrolledKWh?: number[];
   plannedControlledKWh?: number[];
   frozen?: boolean;
   lastPlanBucketStartUtcMs?: number | null;
@@ -36,6 +37,10 @@ export type DailyBudgetState = {
   profileObservedP75UncontrolledKWh?: number[];
   profileObservedP90UncontrolledKWh?: number[];
   profileObservedUncontrolledSampleCounts?: number[];
+  profileObservedP50GrossUncontrolledKWh?: number[];
+  profileObservedP75GrossUncontrolledKWh?: number[];
+  profileObservedP90GrossUncontrolledKWh?: number[];
+  profileObservedGrossUncontrolledSampleCounts?: number[];
   profileObservedStatsConfigKey?: string;
 };
 

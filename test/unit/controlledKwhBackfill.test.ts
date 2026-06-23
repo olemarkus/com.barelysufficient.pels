@@ -1,6 +1,7 @@
 import type { Logger as PinoLogger } from 'pino';
 import type { WeatherDailyRecord, WeatherHistoryState } from '../../packages/contracts/src/weatherAdvisorTypes';
 import { applyControlledOutcome, resolveControlledDailyKwh } from '../../lib/weather/controlledKwhBackfill';
+import { CONTROLLED_BACKFILL_VERSION } from '../../lib/weather/weatherHistory';
 
 const OSLO = 'Europe/Oslo';
 const HOUR_MS = 60 * 60 * 1000;
@@ -158,7 +159,7 @@ describe('applyControlledOutcome', () => {
       logger,
     });
     expect(dirty).toBe(true);
-    expect(state.controlledBackfillVersion).toBe(1);
+    expect(state.controlledBackfillVersion).toBe(CONTROLLED_BACKFILL_VERSION);
     expect(state.records[0]).toMatchObject({ kwhControlled: 18, kwhUncontrolled: 32 });
   });
 

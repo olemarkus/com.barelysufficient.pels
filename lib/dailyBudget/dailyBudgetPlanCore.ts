@@ -44,6 +44,7 @@ type BuildPlanParams = {
   priceShapingFlexShare?: number;
   previousPlannedKWh?: number[];
   previousPlannedUncontrolledKWh?: number[];
+  previousPlannedGrossUncontrolledKWh?: number[];
   previousPlannedControlledKWh?: number[];
   capacityBudgetKWh?: number;
   lockCurrentBucket?: boolean;
@@ -56,12 +57,17 @@ type BuildPlanParams = {
   profileObservedP75UncontrolledKWh?: number[];
   profileObservedP90UncontrolledKWh?: number[];
   profileObservedUncontrolledSampleCounts?: number[];
+  profileObservedP50GrossUncontrolledKWh?: number[];
+  profileObservedP75GrossUncontrolledKWh?: number[];
+  profileObservedP90GrossUncontrolledKWh?: number[];
+  profileObservedGrossUncontrolledSampleCounts?: number[];
   observedPeakMarginRatio?: number;
 };
 
 type BuildPlanResult = {
   plannedKWh: number[];
   plannedUncontrolledKWh: number[];
+  plannedGrossUncontrolledKWh: number[];
   plannedControlledKWh: number[];
   price?: Array<number | null>;
   priceFactor?: Array<number | null>;
@@ -85,6 +91,8 @@ type PlanSetup = {
 type PlannedTotalsResult = {
   plannedKWh: number[];
   uncontrolledReserveFloors: number[];
+  grossUncontrolledReserveFloors: number[];
+  grossUncontrolledReserveHasData: boolean[];
   uncontrolledReserveDiagnostics?: UncontrolledReservePlanDiagnostics;
 };
 
@@ -123,6 +131,14 @@ export function buildPlan(params: BuildPlanParams): BuildPlanResult {
   return {
     plannedKWh,
     plannedUncontrolledKWh: plannedSplit.map((entry) => entry.plannedUncontrolled),
+    plannedGrossUncontrolledKWh: buildPlannedGrossUncontrolledKWh({
+      plannedSplit,
+      grossUncontrolledReserveFloors: plannedTotals.grossUncontrolledReserveFloors,
+      grossUncontrolledReserveHasData: plannedTotals.grossUncontrolledReserveHasData,
+      previousPlannedGrossUncontrolledKWh: params.previousPlannedGrossUncontrolledKWh,
+      currentBucketIndex: setup.bounds.safeCurrentBucketIndex,
+      shouldLockCurrent: setup.bounds.shouldLockCurrent,
+    }),
     plannedControlledKWh: plannedSplit.map((entry) => entry.plannedControlled),
     price: setup.priceShape.prices,
     priceFactor: setup.priceShape.priceFactors,
@@ -255,6 +271,10 @@ const resolvePlannedTotals = (params: {
       profileObservedP75UncontrolledKWh,
       profileObservedP90UncontrolledKWh,
       profileObservedUncontrolledSampleCounts,
+      profileObservedP50GrossUncontrolledKWh,
+      profileObservedP75GrossUncontrolledKWh,
+      profileObservedP90GrossUncontrolledKWh,
+      profileObservedGrossUncontrolledSampleCounts,
       observedPeakMarginRatio,
     },
     bounds,
@@ -304,6 +324,10 @@ const resolvePlannedTotals = (params: {
     profileObservedP75UncontrolledKWh,
     profileObservedP90UncontrolledKWh,
     profileObservedUncontrolledSampleCounts,
+    profileObservedP50GrossUncontrolledKWh,
+    profileObservedP75GrossUncontrolledKWh,
+    profileObservedP90GrossUncontrolledKWh,
+    profileObservedGrossUncontrolledSampleCounts,
     observedPeakMarginRatio,
     usedInCurrent,
     remainingStartIndex: bounds.remainingStartIndex,
@@ -332,9 +356,43 @@ const resolvePlannedTotals = (params: {
   return {
     plannedKWh: planned,
     uncontrolledReserveFloors: remainingFloorsResult.uncontrolledReserves,
+    grossUncontrolledReserveFloors: remainingFloorsResult.grossUncontrolledReserves,
+    grossUncontrolledReserveHasData: remainingFloorsResult.grossUncontrolledReserveHasData,
     uncontrolledReserveDiagnostics: remainingFloorsResult.diagnostics,
   };
 };
+
+function buildPlannedGrossUncontrolledKWh(params: {
+  plannedSplit: Array<{ plannedUncontrolled: number; plannedControlled: number }>;
+  grossUncontrolledReserveFloors: number[];
+  grossUncontrolledReserveHasData: boolean[];
+  previousPlannedGrossUncontrolledKWh?: number[];
+  currentBucketIndex: number;
+  shouldLockCurrent: boolean;
+}): number[] {
+  const {
+    plannedSplit,
+    grossUncontrolledReserveFloors,
+    grossUncontrolledReserveHasData,
+    previousPlannedGrossUncontrolledKWh,
+    currentBucketIndex,
+    shouldLockCurrent,
+  } = params;
+  const hasPreviousGross = Array.isArray(previousPlannedGrossUncontrolledKWh)
+    && previousPlannedGrossUncontrolledKWh.length === plannedSplit.length;
+
+  return plannedSplit.map((entry, index) => {
+    const shouldPreservePrevious = hasPreviousGross
+      && (index < currentBucketIndex || (shouldLockCurrent && index === currentBucketIndex));
+    const previousGross = shouldPreservePrevious ? previousPlannedGrossUncontrolledKWh?.[index] : undefined;
+    const grossReserve = Number.isFinite(previousGross)
+      ? previousGross as number
+      : (grossUncontrolledReserveFloors[index] ?? 0);
+    return Number.isFinite(previousGross) || grossUncontrolledReserveHasData[index] === true
+      ? Math.max(0, grossReserve)
+      : Math.max(0, entry.plannedUncontrolled);
+  });
+}
 
 function resolveRemainingWeights(params: {
   baseWeights: number[];

@@ -25,6 +25,8 @@ The daily budget is a **soft pacing target**, separate from the hourly hard cap.
 
 PELS reads your existing whole-home power meter to track today's usage — the same data you already see in the Usage tab. You do not need to set up anything extra.
 
+If you have solar production, Homey Energy may report the whole-home total as net grid import. PELS uses that net total for budget totals and pacing, so exported solar does not subtract energy below zero. The managed/background split can still show `Before solar:` when device meters show gross usage that solar production covered locally.
+
 ## What you'll see on the Budget page
 
 The figures below are the **Budget** page on a phone, a little after 11:00 on a day with a 20 kWh budget.

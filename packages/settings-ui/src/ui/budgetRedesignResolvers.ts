@@ -235,7 +235,7 @@ export const resolveSplitLine = (payload: DailyBudgetDayPayload): string => {
   const actualBackground = sumElapsedNullable(payload.buckets.actualUncontrolledKWh, elapsed);
   const splitTotal = actualManaged + actualBackground;
   if (
-    actualTotal > 0
+    splitTotal > GROSS_SPLIT_EXCEEDS_NET_EPSILON_KWH
     && splitTotal >= actualTotal * SPLIT_COVERAGE_THRESHOLD
     && splitTotal > actualTotal + GROSS_SPLIT_EXCEEDS_NET_EPSILON_KWH
   ) {

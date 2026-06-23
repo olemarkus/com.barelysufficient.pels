@@ -44,6 +44,8 @@ export type DailyBudgetDayPayload = {
     plannedWeight: number[];
     plannedKWh: number[];
     plannedUncontrolledKWh: number[];
+    /** Gross background forecast used for physical-capacity reservation; budget math uses plannedUncontrolledKWh. */
+    plannedGrossUncontrolledKWh?: number[];
     plannedControlledKWh: number[];
     actualKWh: number[];
     actualControlledKWh: Array<number | null>;

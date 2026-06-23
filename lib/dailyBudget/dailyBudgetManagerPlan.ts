@@ -270,6 +270,12 @@ function buildObservedStatsDebugMeta(state: DailyBudgetState): Record<string, un
     profileObservedP75UncontrolledKWh: summarizeNumericArray(state.profileObservedP75UncontrolledKWh),
     profileObservedP90UncontrolledKWh: summarizeNumericArray(state.profileObservedP90UncontrolledKWh),
     profileObservedUncontrolledSampleCounts: summarizeNumericArray(state.profileObservedUncontrolledSampleCounts),
+    profileObservedP50GrossUncontrolledKWh: summarizeNumericArray(state.profileObservedP50GrossUncontrolledKWh),
+    profileObservedP75GrossUncontrolledKWh: summarizeNumericArray(state.profileObservedP75GrossUncontrolledKWh),
+    profileObservedP90GrossUncontrolledKWh: summarizeNumericArray(state.profileObservedP90GrossUncontrolledKWh),
+    profileObservedGrossUncontrolledSampleCounts: summarizeNumericArray(
+      state.profileObservedGrossUncontrolledSampleCounts,
+    ),
   };
 }
 

@@ -47,6 +47,7 @@ export type DailyBudgetUpdateParams = {
 export type PlanResult = {
   plannedKWh: number[];
   plannedUncontrolledKWh?: number[];
+  plannedGrossUncontrolledKWh?: number[];
   plannedControlledKWh?: number[];
   priceData: PriceData;
   shouldLog: boolean;
@@ -120,9 +121,14 @@ export const isDailyBudgetState = (value: unknown): value is DailyBudgetState =>
     , isHourlyArrayOrUndefined(state.profileObservedP75UncontrolledKWh)
     , isHourlyArrayOrUndefined(state.profileObservedP90UncontrolledKWh)
     , isHourlyArrayOrUndefined(state.profileObservedUncontrolledSampleCounts)
+    , isHourlyArrayOrUndefined(state.profileObservedP50GrossUncontrolledKWh)
+    , isHourlyArrayOrUndefined(state.profileObservedP75GrossUncontrolledKWh)
+    , isHourlyArrayOrUndefined(state.profileObservedP90GrossUncontrolledKWh)
+    , isHourlyArrayOrUndefined(state.profileObservedGrossUncontrolledSampleCounts)
     , isNullableStringOrUndefined(state.profileObservedStatsConfigKey)
     , isFiniteNumberArrayOrUndefined(state.plannedKWh)
     , isFiniteNumberArrayOrUndefined(state.plannedUncontrolledKWh)
+    , isFiniteNumberArrayOrUndefined(state.plannedGrossUncontrolledKWh)
     , isFiniteNumberArrayOrUndefined(state.plannedControlledKWh)
     , isNullableStringOrUndefined(state.dateKey)
     , isNullableFiniteNumberOrUndefined(state.dayStartUtcMs)

@@ -326,6 +326,7 @@ export const buildDailyBudgetSnapshot = (params: {
   enabled: boolean;
   plannedKWh: number[];
   plannedUncontrolledKWh: number[];
+  plannedGrossUncontrolledKWh?: number[];
   plannedControlledKWh: number[];
   priceData: PriceData;
   budget: BudgetState;
@@ -343,6 +344,7 @@ export const buildDailyBudgetSnapshot = (params: {
     enabled,
     plannedKWh,
     plannedUncontrolledKWh,
+    plannedGrossUncontrolledKWh,
     plannedControlledKWh,
     priceData,
     budget,
@@ -411,6 +413,10 @@ export const buildDailyBudgetSnapshot = (params: {
       plannedWeight: budget.plannedWeight,
       plannedKWh,
       plannedUncontrolledKWh,
+      ...(Array.isArray(plannedGrossUncontrolledKWh)
+        && plannedGrossUncontrolledKWh.length === plannedKWh.length
+        ? { plannedGrossUncontrolledKWh }
+        : {}),
       plannedControlledKWh,
       actualKWh: context.bucketUsage,
       actualControlledKWh: context.bucketUsageControlled,

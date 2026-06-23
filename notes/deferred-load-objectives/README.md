@@ -237,10 +237,11 @@ the allocator actually applies stacks three caps via `Math.min`:
 - **Daily-budget pacing slice** — `bucket.usefulEnergyCapKWh`, derived from
   `perBucketBudgetKWh − backgroundKWh` (Infinity for `exemptFromBudget` tasks).
 - **Forecast hard-cap headroom** — `bucket.reservedHeadroomKw × durationHours`, where
-  `reservedHeadroomKw = (hardCapKw − backgroundKWh/duration) × sharePerTask` is the
-  per-bucket physical headroom forecast from `policyHorizon.ts`. When the forecast is
-  unavailable (`undefined`), this term is skipped; a forecast of zero correctly caps the
-  hour at zero kWh.
+  `reservedHeadroomKw = (hardCapKw − grossBackgroundKWh/duration) × sharePerTask` is the
+  per-bucket physical headroom forecast from `policyHorizon.ts`. `backgroundKWh` remains the
+  net daily-budget reserve for the pacing slice above; `grossBackgroundKWh` prevents solar
+  self-consumption from overstating physical room. When the forecast is unavailable
+  (`undefined`), this term is skipped; a forecast of zero correctly caps the hour at zero kWh.
 
 `allocateCommittedEnergyToBuckets` fills each committed hour up to that stacked ceiling,
 so slow drift in `energyNeededKWh` is absorbed into the existing committed hours

@@ -402,6 +402,26 @@ describe('resolveSplitLine', () => {
     });
     expect(resolveSplitLine(payload)).toBe('Before solar: Managed 2.0 kWh · Background 1.0 kWh');
   });
+
+  it('labels gross attribution when solar fully offsets the measured net', () => {
+    const payload = buildPayload({
+      currentBucketIndex: 0,
+      actualKWh: [0, ...Array.from({ length: 23 }, () => 0)],
+      actualControlledKWh: [2.0, ...Array.from({ length: 23 }, () => null)],
+      actualUncontrolledKWh: [1.0, ...Array.from({ length: 23 }, () => null)],
+    });
+    expect(resolveSplitLine(payload)).toBe('Before solar: Managed 2.0 kWh · Background 1.0 kWh');
+  });
+
+  it('does not label negative net with no gross split as before-solar attribution', () => {
+    const payload = buildPayload({
+      currentBucketIndex: 0,
+      actualKWh: [-1, ...Array.from({ length: 23 }, () => 0)],
+      actualControlledKWh: [0, ...Array.from({ length: 23 }, () => null)],
+      actualUncontrolledKWh: [0, ...Array.from({ length: 23 }, () => null)],
+    });
+    expect(resolveSplitLine(payload)).toBe('Managed 0.0 kWh · Background 0.0 kWh');
+  });
 });
 
 describe('resolveDominantCause', () => {
