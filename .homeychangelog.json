@@ -412,5 +412,8 @@
   },
   "2.13.1": {
     "en": "Managed devices now ease off gradually toward the end of each hour instead of all at once, plus more reliable handling of power readings that come in through a Flow."
+  },
+  "2.13.2": {
+    "en": "Fixed a few calculation issues for homes with solar."
   }
 }
