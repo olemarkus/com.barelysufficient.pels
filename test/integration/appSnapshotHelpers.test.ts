@@ -47,7 +47,6 @@ describe('appSnapshotHelpers', () => {
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
-      getHomePowerW: () => null,
     });
 
     helper.startPeriodicSnapshotRefresh();
@@ -96,7 +95,6 @@ describe('appSnapshotHelpers', () => {
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
-      getHomePowerW: () => null,
     });
 
     await (helper as any).runSnapshotRefreshCycle({ refreshSnapshot } as any, { targeted: true });
@@ -157,7 +155,6 @@ describe('appSnapshotHelpers', () => {
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
       emitSettingsUiDevicesUpdated,
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
-      getHomePowerW: () => null,
     });
 
     await (helper as any).runSnapshotRefreshCycle({ refreshSnapshot } as any, { targeted: true });
@@ -221,7 +218,6 @@ describe('appSnapshotHelpers', () => {
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
-      getHomePowerW: () => null,
     });
 
     await (helper as any).runSnapshotRefreshCycle({ refreshSnapshot } as any, { targeted: true });
@@ -281,7 +277,6 @@ describe('appSnapshotHelpers', () => {
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
-      getHomePowerW: () => null,
     });
 
     await (helper as any).runSnapshotRefreshCycle({ refreshSnapshot } as any, { targeted: true });
@@ -322,7 +317,6 @@ describe('appSnapshotHelpers', () => {
       emitFlowBackedRefreshRequests,
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
-      getHomePowerW: () => null,
     });
     helperRef.current = helper;
     (helper as any).staleObservationRefreshStopped = false;
@@ -368,7 +362,6 @@ describe('appSnapshotHelpers', () => {
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
-      getHomePowerW: () => null,
     });
     (helper as any).staleObservationRefreshStopped = false;
 
@@ -419,7 +412,6 @@ describe('appSnapshotHelpers', () => {
       emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
       emitSettingsUiDevicesUpdated: vi.fn(),
       recordPowerSample: vi.fn().mockResolvedValue(undefined),
-      getHomePowerW: () => null,
     });
     (helper as any).staleObservationRefreshStopped = false;
 
@@ -517,7 +509,6 @@ describe('appSnapshotHelpers', () => {
         emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
         emitSettingsUiDevicesUpdated: vi.fn(),
         recordPowerSample: vi.fn().mockResolvedValue(undefined),
-        getHomePowerW: () => null,
       });
     }
 
@@ -663,7 +654,6 @@ describe('appSnapshotHelpers', () => {
         emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
         emitSettingsUiDevicesUpdated: vi.fn(),
         recordPowerSample: vi.fn().mockResolvedValue(undefined),
-        getHomePowerW: () => null,
       });
     }
 

@@ -41,14 +41,27 @@ export type PowerSamplePipelineDeps = {
   getStructuredDebugEmitter: (component: string, debugTopic: 'objective_profiles') => StructuredDebugEmitter;
   /** Latest outdoor temperature (hidden weather feature); undefined when unavailable or stale. */
   getOutdoorTemperatureC?: () => number | undefined;
-  /**
-   * Latest gross PV generation (W) co-temporal with the whole-home sample, or
-   * undefined when no generation signal is present. Used to gross up the
-   * authoritative actual consumption for the managed/unmanaged split — it never
-   * influences the hard-cap import calculation.
-   */
-  getGenerationW?: () => number | undefined;
 };
+
+type PowerSampleOptions = {
+  generationW?: number;
+};
+
+type PowerSampleRequest = {
+  currentPowerW: number;
+  nowMs: number;
+  generationW?: number;
+};
+
+const buildPowerSampleRequest = (
+  currentPowerW: number,
+  nowMs: number,
+  options: PowerSampleOptions,
+): PowerSampleRequest => (
+  typeof options.generationW === 'number' && Number.isFinite(options.generationW)
+    ? { currentPowerW, nowMs, generationW: Math.max(0, options.generationW) }
+    : { currentPowerW, nowMs }
+);
 
 /**
  * Lives in `setup/` because the only state it owns is the coalescing
@@ -71,13 +84,17 @@ export type PowerSamplePipelineDeps = {
 export class PowerSamplePipeline {
   private powerSampleLoop?: Promise<void>;
   private powerSampleRerunRequested = false;
-  private pendingPowerSampleRequest?: { currentPowerW: number; nowMs: number };
+  private pendingPowerSampleRequest?: PowerSampleRequest;
 
   constructor(private readonly deps: PowerSamplePipelineDeps) {}
 
-  async recordPowerSample(currentPowerW: number, nowMs: number = Date.now()): Promise<void> {
+  async recordPowerSample(
+    currentPowerW: number,
+    nowMs: number = Date.now(),
+    options: PowerSampleOptions = {},
+  ): Promise<void> {
     incPerfCounter('power_sample_requested_total');
-    const request = { currentPowerW, nowMs };
+    const request = buildPowerSampleRequest(currentPowerW, nowMs, options);
 
     if (this.powerSampleLoop) {
       if (this.powerSampleRerunRequested) {
@@ -95,13 +112,17 @@ export class PowerSamplePipeline {
     return loopPromise;
   }
 
-  private async runCoalescedPowerSamples(initialRequest: { currentPowerW: number; nowMs: number }): Promise<void> {
+  private async runCoalescedPowerSamples(initialRequest: PowerSampleRequest): Promise<void> {
     let request = initialRequest;
     try {
       while (true) {
         this.powerSampleRerunRequested = false;
         this.pendingPowerSampleRequest = undefined;
-        await this.runPowerSample(request.currentPowerW, request.nowMs);
+        if (typeof request.generationW === 'number') {
+          await this.runPowerSample(request.currentPowerW, request.nowMs, { generationW: request.generationW });
+        } else {
+          await this.runPowerSample(request.currentPowerW, request.nowMs);
+        }
         if (!this.powerSampleRerunRequested) return;
         incPerfCounter('power_sample_rerun_executed_total');
         request = this.pendingPowerSampleRequest ?? request;
@@ -115,7 +136,11 @@ export class PowerSamplePipeline {
     }
   }
 
-  private async runPowerSample(currentPowerW: number, nowMs: number = Date.now()): Promise<void> {
+  private async runPowerSample(
+    currentPowerW: number,
+    nowMs: number = Date.now(),
+    options: PowerSampleOptions = {},
+  ): Promise<void> {
     const sampleStart = Date.now();
     const powerTracker = this.deps.getPowerTracker();
     const previousSampleTs = powerTracker.lastTimestamp;
@@ -139,7 +164,7 @@ export class PowerSamplePipeline {
       const capacityGuard = this.deps.getCapacityGuard();
       await recordPowerSampleForApp({
         currentPowerW,
-        generationW: this.deps.getGenerationW?.(),
+        generationW: options.generationW,
         nowMs,
         capacitySettings,
         getLatestTargetSnapshot: () => this.deps.getLatestTargetSnapshot(),

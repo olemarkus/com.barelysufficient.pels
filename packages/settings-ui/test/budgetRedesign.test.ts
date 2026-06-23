@@ -392,6 +392,16 @@ describe('resolveSplitLine', () => {
     });
     expect(resolveSplitLine(payload)).toBe('Managed 0.3 kWh · Background 0.0 kWh');
   });
+
+  it('labels gross managed and background attribution when solar makes the measured net lower', () => {
+    const payload = buildPayload({
+      currentBucketIndex: 0,
+      actualKWh: [0.5, ...Array.from({ length: 23 }, () => 0)],
+      actualControlledKWh: [2.0, ...Array.from({ length: 23 }, () => null)],
+      actualUncontrolledKWh: [1.0, ...Array.from({ length: 23 }, () => null)],
+    });
+    expect(resolveSplitLine(payload)).toBe('Before solar: Managed 2.0 kWh · Background 1.0 kWh');
+  });
 });
 
 describe('resolveDominantCause', () => {

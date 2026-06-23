@@ -2842,16 +2842,17 @@ describe('periodic snapshot refresh scheduling', () => {
     const app = createApp();
     await initApp(app);
     const recordSpy = vi.spyOn((app as any).powerSamplePipeline as any, 'recordPowerSample').mockResolvedValue(undefined);
-    const getHomePowerSpy = vi.spyOn((app as any).observedHomePower, 'getHomePowerW').mockReturnValue(2600);
+    const refreshSpy = vi.spyOn((app as any).deviceManager, 'refreshSnapshot')
+      .mockResolvedValue({ powerW: 2600, generationW: 900 });
 
     try {
       await (app as any).refreshTargetDevicesSnapshot();
     } finally {
-      getHomePowerSpy.mockRestore();
+      refreshSpy.mockRestore();
     }
 
     expect(recordSpy).toHaveBeenCalledTimes(1);
-    expect(recordSpy).toHaveBeenCalledWith(2600);
+    expect(recordSpy).toHaveBeenCalledWith(2600, undefined, { powerW: 2600, generationW: 900 });
   });
 
   it('does not arm multiple concurrent post-actuation refresh timers', async () => {

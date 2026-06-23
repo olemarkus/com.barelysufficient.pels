@@ -45,7 +45,7 @@ const buildBucketUsage = (params: {
 } => {
   const { bucketStartUtcMs, powerTracker } = params;
   const bucketKeys = bucketStartUtcMs.map((ts) => new Date(ts).toISOString());
-  const bucketUsage = bucketKeys.map((key) => powerTracker.buckets?.[key] ?? 0);
+  const bucketUsage = bucketKeys.map((key) => Math.max(0, powerTracker.buckets?.[key] ?? 0));
   const controlledRaw = powerTracker.controlledBuckets ?? {};
   const uncontrolledRaw = powerTracker.uncontrolledBuckets ?? {};
   const splitUsage = bucketKeys.map((key, index) => resolveAttributionSplit({

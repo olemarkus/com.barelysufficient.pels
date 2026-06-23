@@ -101,6 +101,19 @@ describe('chart readout content resolvers', () => {
     });
   });
 
+  it('labels the usage split as before solar when gross attribution exceeds measured net', () => {
+    expect(buildUsageDayReadout({
+      hourRange: '13:00–14:00',
+      measuredKWh: 0.5,
+      managedKWh: 2,
+      backgroundKWh: 1,
+      unreliable: false,
+    }).values).toEqual([
+      { text: nb('Measured 0.50 kWh') },
+      { text: `${nb('Before solar:')} ${nb('Managed 2.00 kWh')}${sep}${nb('Background 1.00 kWh')}` },
+    ]);
+  });
+
   it('suffixes the in-progress hour measurement with "so far"', () => {
     expect(buildUsageDayReadout({
       hourRange: '12:00–13:00',
