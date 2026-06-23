@@ -47,7 +47,13 @@ const SOLAR_W = 2500; // panels producing 2.5 kW -> net = 3.0 - 2.5 = 0.5 kW (se
 // keeps drawing its full 2.0 kW throughout — we are testing accounting, not control.
 const CAP_KW = 20;
 
-type PlanRebuildEvent = { event?: string; totalKw?: number; hardCapHeadroomKw?: number };
+type PlanRebuildEvent = {
+  event?: string;
+  totalKw?: number;
+  hardCapHeadroomKw?: number;
+  controlledPowerW?: number;
+  uncontrolledPowerW?: number;
+};
 
 // Drive `manager/energy/live` with a fixed net watt value and optional gross
 // generation (the PV signal path). Returns a setter so a test can flip state.
@@ -214,5 +220,42 @@ describe('Managed vs unmanaged split while solar produces (SDK-boundary e2e)', (
     expect(split.netW).toBeCloseTo(TRUE_TOTAL_W - SOLAR_W, -1); // ~500 W
     expect(capView?.totalKw).toBeCloseTo((TRUE_TOTAL_W - SOLAR_W) / 1000, 2); // 0.5 kW, NOT 3.0
     expect(capView?.hardCapHeadroomKw).toBeCloseTo(CAP_KW - (TRUE_TOTAL_W - SOLAR_W) / 1000, 1); // 19.5
+  });
+
+  it('does not reuse Homey Energy generation when a later Flow sample arrives', async () => {
+    const hourStartMs = Date.UTC(2026, 0, 15, 14, 0, 0);
+    vi.setSystemTime(hourStartMs + 5 * 60 * 1000);
+    const bucketKey = new Date(hourStartMs).toISOString();
+
+    setMockDrivers({ driverA: new MockDriver('driverA', [await buildEv()]) });
+    seedSettings();
+    driveHomeEnergy({ netW: TRUE_TOTAL_W - SOLAR_W, generationW: SOLAR_W });
+
+    const app = createApp();
+    spyPlanLogs(app);
+    await app.onInit();
+
+    await vi.advanceTimersByTimeAsync(POLL_MS);
+    await flushDetached(20);
+    await drainUntil(() => {
+      const split = readSplit(bucketKey);
+      return split.netW === TRUE_TOTAL_W - SOLAR_W && Number.isFinite(split.uncontrolledW);
+    });
+
+    mockHomeyInstance.settings.set('power_source', 'flow');
+    const reportPowerUsage = mockHomeyInstance.flow._actionCardListeners.report_power_usage;
+    await reportPowerUsage({ power: TRUE_TOTAL_W });
+    await flushDetached(20);
+
+    await drainUntil(() => {
+      const event = latestCapView();
+      return event?.totalKw === TRUE_TOTAL_W / 1000
+        && typeof event.controlledPowerW === 'number'
+        && typeof event.uncontrolledPowerW === 'number';
+    });
+    const split = latestCapView();
+
+    expect(split?.controlledPowerW).toBeCloseTo(EV_DRAW_W, -1);
+    expect(split?.uncontrolledPowerW).toBeCloseTo(BACKGROUND_W, -1);
   });
 });

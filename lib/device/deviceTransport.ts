@@ -1803,7 +1803,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             purpose: 'ui_picker',
         });
     }
-    async pollHomePowerW(): Promise<number | null> {
+    async pollHomePowerW(): Promise<{ powerW: number; generationW?: number } | null> {
         return this.updateHomePowerFromReport(await this.fetchLivePowerReport());
     }
     setSnapshotForTests(snapshot: TargetDeviceSnapshot[]): void {
@@ -1898,32 +1898,22 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         });
     }
 
-    async refreshSnapshot(options: { includeLivePower?: boolean; targetedRefresh?: boolean } = {}): Promise<void> {
+    async refreshSnapshot(
+        options: { includeLivePower?: boolean; targetedRefresh?: boolean } = {},
+    ): Promise<{ powerW: number; generationW?: number } | null> {
         const stopSpan = startRuntimeSpan('device_snapshot_refresh');
         const start = Date.now();
         try {
             const previousSnapshot = this.latestSnapshot;
             const isTargetedRefresh = options.targetedRefresh === true && this.latestSnapshot.length > 0;
-            let fetchResult: Awaited<ReturnType<typeof fetchDevicesWithFallback>>;
-            try {
-                fetchResult = isTargetedRefresh
-                    ? await this.fetchDevicesByKnownIds()
-                    : await this.fetchDevicesForSnapshot();
-            } catch (error) {
-                const normalizedError = normalizeError(error);
-                (this.logger.structuredLog ?? moduleLogger).error({
-                    event: 'device_snapshot_refresh_failed',
-                    reasonCode: 'refresh_failed',
-                    targetedRefresh: isTargetedRefresh,
-                    err: normalizedError,
-                });
-                return;
-            }
+            const fetchResult = await this.fetchDevicesForSnapshotRefresh(isTargetedRefresh);
+            if (!fetchResult) return null;
             const { devices: list, fetchSource } = fetchResult;
-            const livePowerReport = options.includeLivePower === false
-                ? buildEmptyLivePowerReport()
-                : await this.fetchLivePowerReport();
-            this.updateHomePowerFromReport(livePowerReport);
+            const shouldReadLivePower = options.includeLivePower !== false;
+            const livePowerReport = shouldReadLivePower
+                ? await this.fetchLivePowerReport()
+                : buildEmptyLivePowerReport();
+            const homePowerSample = shouldReadLivePower ? this.updateHomePowerFromReport(livePowerReport) : null;
             const effectiveList = list.map((device) => this.applyDeviceDriverOverride(device));
             const snapshot = this.parseDeviceList(effectiveList, livePowerReport.byDeviceId);
             mergeFresherCapabilityObservations({
@@ -1944,7 +1934,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
                 rawWasEmpty: effectiveList.length === 0,
                 nowMs: start,
             });
-            if (!committed) return;
+            if (!committed) return homePowerSample;
             this.adoptCommittedDeviceList(effectiveList, isTargetedRefresh);
             recordSnapshotRefreshObservations({
                 state: this.observationState,
@@ -1976,9 +1966,29 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
                 previousSnapshot,
                 nextSnapshot: snapshot,
             });
+            return homePowerSample;
         } finally {
             stopSpan();
             addPerfDuration('device_refresh_ms', Date.now() - start);
+        }
+    }
+
+    private async fetchDevicesForSnapshotRefresh(
+        isTargetedRefresh: boolean,
+    ): Promise<Awaited<ReturnType<typeof fetchDevicesWithFallback>> | null> {
+        try {
+            return isTargetedRefresh
+                ? await this.fetchDevicesByKnownIds()
+                : await this.fetchDevicesForSnapshot();
+        } catch (error) {
+            const normalizedError = normalizeError(error);
+            (this.logger.structuredLog ?? moduleLogger).error({
+                event: 'device_snapshot_refresh_failed',
+                reasonCode: 'refresh_failed',
+                targetedRefresh: isTargetedRefresh,
+                err: normalizedError,
+            });
+            return null;
         }
     }
 
@@ -2295,19 +2305,21 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     private async fetchLivePowerReport(): Promise<LivePowerReport> {
         return fetchLivePowerReport({ logger: this.logger, debugStructured: this.debugStructured });
     }
-
-    private updateHomePowerFromReport(report: LivePowerReport): number | null {
+    private updateHomePowerFromReport(report: LivePowerReport): { powerW: number; generationW?: number } | null {
         // PR2a of the observer/transport split: observer owns the home-power
         // read. Transport produces the scalar from the Homey SDK energy report
         // and pushes it to observer's holder via the injected dispatcher; it no
-        // longer caches the value locally. The return value still feeds the
-        // direct `pollHomePowerW()` caller (homey_energy poll source).
+        // longer caches the value locally. The return value still feeds the direct
+        // `pollHomePowerW()` caller (homey_energy poll source), with generation
+        // carried from the same report so later Flow samples cannot inherit it.
         this.observedStateDispatcher?.setHomePowerW(report.homePowerW);
         this.observedStateDispatcher?.setGenerationW(report.generationW);
-        return report.homePowerW;
+        if (report.homePowerW === null) return null;
+        return report.generationW === null
+            ? { powerW: report.homePowerW }
+            : { powerW: report.homePowerW, generationW: report.generationW };
     }
     getLiveFeedHealth(): LiveFeedHealth | null { return this.liveFeed?.getHealth() ?? null; }
-
     private shouldTrackRealtimeDevice(deviceId: string): boolean {
         return this.providers.getManaged ? this.providers.getManaged(deviceId) === true : true;
     }

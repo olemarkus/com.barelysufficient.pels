@@ -18,7 +18,7 @@ describe('HomeyEnergyPollSource', () => {
   });
 
   it('starts polling only when Homey Energy is the configured power source', async () => {
-    const pollHomePower = vi.fn().mockResolvedValue(2100);
+    const pollHomePower = vi.fn().mockResolvedValue({ powerW: 2100 });
     const recordPowerSample = vi.fn().mockResolvedValue(undefined);
     const source = new HomeyEnergyPollSource({
       getPowerSource: mockPowerSource,
@@ -38,7 +38,7 @@ describe('HomeyEnergyPollSource', () => {
     await Promise.resolve();
 
     expect(pollHomePower).toHaveBeenCalledTimes(1);
-    expect(recordPowerSample).toHaveBeenCalledWith(2100);
+    expect(recordPowerSample).toHaveBeenCalledWith({ powerW: 2100 });
     expect(vi.getTimerCount()).toBe(1);
 
     await vi.advanceTimersByTimeAsync(10_000);
@@ -75,8 +75,8 @@ describe('HomeyEnergyPollSource', () => {
 
   it('drops an in-flight reading when the source switches away from Homey Energy', async () => {
     mockHomeyInstance.settings.set('power_source', 'homey_energy');
-    let resolvePoll: (value: number) => void = () => undefined;
-    const pollHomePower = vi.fn(() => new Promise<number>((resolve) => {
+    let resolvePoll: (value: { powerW: number }) => void = () => undefined;
+    const pollHomePower = vi.fn(() => new Promise<{ powerW: number }>((resolve) => {
       resolvePoll = resolve;
     }));
     const recordPowerSample = vi.fn().mockResolvedValue(undefined);
@@ -94,7 +94,7 @@ describe('HomeyEnergyPollSource', () => {
 
     mockHomeyInstance.settings.set('power_source', 'flow');
     source.restart();
-    resolvePoll(2100);
+    resolvePoll({ powerW: 2100 });
     await Promise.resolve();
 
     expect(recordPowerSample).not.toHaveBeenCalled();

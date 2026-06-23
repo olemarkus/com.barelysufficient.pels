@@ -412,7 +412,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi {
   private observedStateEmitter: ObservedStateEmitter = new ObservedStateEmitter();
   // Observer-owned whole-home power scalar (PR2a of the observer/transport
   // split). Transport pushes the Homey-SDK-sourced reading here via the
-  // dispatcher; wiring reads it back through `getHomePowerW()`.
+  // dispatcher; Homey Energy sample paths use the co-temporal transport return.
   private observedHomePower: ObservedHomePower = new ObservedHomePower();
   // Observer-owned maintained projection of `ObservedDeviceState`, fed by the
   // dispatcher push (per-capability deltas + full-refresh batches). Stage 4a of
@@ -474,7 +474,6 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi {
     savePowerTracker: (state) => this.savePowerTracker(state),
     getStructuredDebugEmitter: (component, topic) => this.getStructuredDebugEmitter(component, topic),
     getOutdoorTemperatureC: () => this.weatherCollector?.getCurrentOutdoorTemperatureC(),
-    getGenerationW: () => this.observedHomePower.getGenerationW() ?? undefined,
   });
   private realtimeDeviceReconcileState = realtimeReconcile.createRealtimeDeviceReconcileState();
   private stopSettingsHandler?: () => void;
@@ -522,16 +521,13 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi {
       this.homey,
       (message, error) => this.error(message, error),
     ),
-    recordPowerSample: async (powerW) => this.powerSamplePipeline.recordPowerSample(powerW),
-    // Home power is owned by the observer (PR2a of the observer/transport
-    // split); transport pushes the Homey-SDK-sourced scalar there.
-    getHomePowerW: () => this.observedHomePower.getHomePowerW(),
+    recordPowerSample: async (sample) => this.powerSamplePipeline.recordPowerSample(sample.powerW, undefined, sample),
   });
   private readonly homeyEnergyHelpers = new HomeyEnergyPollSource({
     getPowerSource: () => this.getPowerSource(),
     timers: this.timers,
     pollHomePower: async () => (await this.deviceManager?.pollHomePowerW()) ?? null,
-    recordPowerSample: async (powerW) => this.powerSamplePipeline.recordPowerSample(powerW),
+    recordPowerSample: async (sample) => this.powerSamplePipeline.recordPowerSample(sample.powerW, undefined, sample),
     debugStructured: this.getStructuredDebugEmitter('devices', 'devices'),
     error: (...args) => this.error(...args),
   });

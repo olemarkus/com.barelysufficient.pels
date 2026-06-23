@@ -872,11 +872,12 @@ describe('DeviceTransport', () => {
                 totalGenerated: { W: 1200 },
             });
 
-            await dispatchingManager.refreshSnapshot();
+            const sample = await dispatchingManager.refreshSnapshot();
 
             expect(setHomePowerW).toHaveBeenCalledWith(4500);
             // Gross generation from the same payload is pushed alongside net power.
             expect(setGenerationW).toHaveBeenCalledWith(1200);
+            expect(sample).toEqual({ powerW: 4500, generationW: 1200 });
         });
 
         it('pushes null home power when no cumulative item exists', async () => {
@@ -909,6 +910,35 @@ describe('DeviceTransport', () => {
             expect(setHomePowerW).toHaveBeenCalledWith(null);
             // No generation signal in the payload -> null pushed (no-op gross-up).
             expect(setGenerationW).toHaveBeenCalledWith(null);
+        });
+
+        it('does not publish empty home power evidence when live power is skipped', async () => {
+            const setHomePowerW = vi.fn();
+            const setGenerationW = vi.fn();
+            const dispatchingManager = new DeviceTransport(homeyMock, loggerMock, undefined, undefined, {
+                ...withRealBinarySettle(),
+                observedStateDispatcher: {
+                    observedStateChanged: vi.fn(),
+                    observedStateRefresh: vi.fn(),
+                    planReconcile: vi.fn(),
+                    setHomePowerW,
+                    setGenerationW,
+                },
+            });
+            await dispatchingManager.init();
+            mockApiGet.mockResolvedValue({
+                dev1: {
+                    id: 'dev1', name: 'Heater', class: 'heater',
+                    capabilities: ['measure_power', 'onoff'],
+                    capabilitiesObj: { measure_power: { value: 500, id: 'measure_power' } },
+                },
+            });
+
+            const sample = await dispatchingManager.refreshSnapshot({ includeLivePower: false });
+
+            expect(sample).toBeNull();
+            expect(setHomePowerW).not.toHaveBeenCalled();
+            expect(setGenerationW).not.toHaveBeenCalled();
         });
 
         it('includes airtreatment temperature devices in snapshot', async () => {
@@ -995,7 +1025,7 @@ describe('DeviceTransport', () => {
                 },
             });
 
-            await expect(deviceManager.refreshSnapshot()).resolves.toBeUndefined();
+            await expect(deviceManager.refreshSnapshot()).resolves.toBeNull();
 
             const snapshot = deviceManager.getSnapshot();
             expect(snapshot).toHaveLength(1);
