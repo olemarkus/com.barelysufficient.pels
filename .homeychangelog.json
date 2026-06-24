@@ -415,5 +415,8 @@
   },
   "2.13.2": {
     "en": "Fixed a few calculation issues for homes with solar."
+  },
+  "2.13.3": {
+    "en": "Minor stability fixes."
   }
 }
