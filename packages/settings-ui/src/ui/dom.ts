@@ -170,6 +170,11 @@ export const deviceDetailCheapDelta = document.querySelector('#device-detail-che
 export const deviceDetailExpensiveDelta = document.querySelector(
   '#device-detail-expensive-delta',
 ) as MdFilledTextFieldElement;
+export const deviceDetailSurplusSection = qs('#device-detail-surplus-section');
+export const deviceDetailSurplusOpt = document.querySelector('#device-detail-surplus-opt') as MdSwitchElement;
+export const deviceDetailSurplusDelta = document.querySelector(
+  '#device-detail-surplus-delta',
+) as MdFilledTextFieldElement;
 export const deviceDetailShedAction = document.querySelector('#device-detail-overshoot') as MdFilledSelectElement;
 export const deviceDetailShedTempRow = qs('#device-detail-overshoot-temp-row');
 export const deviceDetailShedTemp = document.querySelector(

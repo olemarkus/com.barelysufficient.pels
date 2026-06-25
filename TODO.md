@@ -314,6 +314,15 @@ CI failure, so future field-move slices can't silently grow the debt.*
       hypothesis: the rescue surface will keep growing and is easier to evolve isolated. P2 maintainability. Source:
       coderabbit on #1736, 2026-06-17.
 
+- [ ] **Gate the device-detail Price-response + Solar-surplus sections on `canManageDevice`, not just `resolveManagedState`.**
+      Both sections (and the Price/Surplus Control toggles) gate visibility/enable on `resolveManagedState`
+      (`deviceDetail/priceOpt.ts`, `deviceDetail/solarSurplus.ts`), but a device can be `managed` while
+      `resolveDeviceDetailControlState().canManageDevice` is false (it still needs built-in device control activation).
+      In that state the sections stay visible with editable deltas even though the action can't take effect. Persona: an
+      owner mid-setup on a not-yet-controllable device; hypothesis: an editable control that silently does nothing reads
+      as broken. P2 (pre-existing price-opt behaviour the surplus section mirrors; fix both together for consistency).
+      Source: Codex on the surplus-absorb UI PR #1759, 2026-06-25.
+
 - [ ] **Surplus-absorb: release the setpoint lift early when surplus is unambiguously gone, not only after a passing-cloud
       dip.** The eligibility gate (`lib/plan/admission/surplusAbsorb.ts`) holds a raised setpoint for the full
       `SURPLUS_ABSORB_MIN_DWELL_MS` (5 min) after engage even when whole-home power has gone stale/unknown

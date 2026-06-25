@@ -12,6 +12,7 @@ import {
   deviceDetailManaged,
   deviceDetailControllable,
   deviceDetailPriceOpt,
+  deviceDetailSurplusOpt,
   deviceDetailControlModelRow,
   deviceDetailControlModel,
   deviceDetailShedAction,
@@ -46,6 +47,11 @@ import {
   setDeviceDetailDeltaValues,
   updateDeltaSectionVisibility,
 } from './priceOpt.ts';
+import {
+  initDeviceDetailSurplusOptHandlers,
+  setDeviceDetailSurplusValues,
+  updateSurplusSectionVisibility,
+} from './solarSurplus.ts';
 import {
   initDeviceDetailShedHandlers,
   loadShedBehaviors,
@@ -128,6 +134,10 @@ const refreshCurrentDeviceControlStates = () => {
     currentDetailDeviceId: activeDeviceId,
     getDeviceById,
   });
+  updateSurplusSectionVisibility({
+    currentDetailDeviceId: activeDeviceId,
+    getDeviceById,
+  });
 };
 
 const notifyDevicesUpdated = () => {
@@ -138,6 +148,20 @@ const showDeviceDetailOverlay = () => {
   if (deviceDetailOverlay) {
     deviceDetailOverlay.hidden = false;
   }
+};
+
+// A price/surplus switch is on only for a managed temperature device, and is
+// disabled (greyed) otherwise — the shared gate for both detail toggles.
+const setTemperatureGatedSwitch = (
+  switchEl: { selected: boolean; disabled: boolean } | null,
+  active: boolean | undefined,
+  controlState: { supportsTemperature: boolean; isManaged: boolean },
+): void => {
+  if (!switchEl) return;
+  /* eslint-disable no-param-reassign -- intentional DOM element mutation via a shared helper */
+  switchEl.selected = controlState.supportsTemperature && controlState.isManaged && active === true;
+  switchEl.disabled = !controlState.supportsTemperature || !controlState.isManaged;
+  /* eslint-enable no-param-reassign */
 };
 
 const setDeviceDetailControlStates = (deviceId: string) => {
@@ -154,13 +178,9 @@ const setDeviceDetailControlStates = (deviceId: string) => {
     deviceDetailControllable.selected = controlState.supportsPower && state.controllableMap[deviceId] === true;
     deviceDetailControllable.disabled = !controlState.supportsPower || !controlState.isManaged;
   }
-  if (deviceDetailPriceOpt) {
-    const priceConfig = state.priceOptimizationSettings[deviceId];
-    deviceDetailPriceOpt.selected = controlState.supportsTemperature
-      && controlState.isManaged
-      && priceConfig?.enabled === true;
-    deviceDetailPriceOpt.disabled = !controlState.supportsTemperature || !controlState.isManaged;
-  }
+  const priceConfig = state.priceOptimizationSettings[deviceId];
+  setTemperatureGatedSwitch(deviceDetailPriceOpt, priceConfig?.enabled, controlState);
+  setTemperatureGatedSwitch(deviceDetailSurplusOpt, priceConfig?.surplusWilling, controlState);
 
   setDeviceDetailBudgetExemptState(device);
   setDeviceDetailSocState(device);
@@ -244,8 +264,13 @@ const refreshOpenDeviceDetail = () => {
   renderTemperatureBoostSettings(device);
   renderEvBoostSettings(device);
   setDeviceDetailDeltaValues(currentDetailDeviceId);
+  setDeviceDetailSurplusValues(currentDetailDeviceId);
   renderDeviceDetailModes(device);
   updateDeltaSectionVisibility({
+    currentDetailDeviceId,
+    getDeviceById,
+  });
+  updateSurplusSectionVisibility({
     currentDetailDeviceId,
     getDeviceById,
   });
@@ -282,7 +307,12 @@ export const openDeviceDetail = (deviceId: string) => {
   renderEvBoostSettings(device);
   renderDeviceDetailModes(device);
   setDeviceDetailDeltaValues(deviceId);
+  setDeviceDetailSurplusValues(deviceId);
   updateDeltaSectionVisibility({
+    currentDetailDeviceId: deviceId,
+    getDeviceById,
+  });
+  updateSurplusSectionVisibility({
     currentDetailDeviceId: deviceId,
     getDeviceById,
   });
@@ -484,6 +514,10 @@ export const initDeviceDetailHandlers = () => {
   });
   initDeviceDetailControlModelHandler();
   initDeviceDetailPriceOptHandlers({
+    getCurrentDetailDeviceId,
+    getDeviceById,
+  });
+  initDeviceDetailSurplusOptHandlers({
     getCurrentDetailDeviceId,
     getDeviceById,
   });
