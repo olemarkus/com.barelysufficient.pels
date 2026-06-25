@@ -302,6 +302,28 @@ CI failure, so future field-move slices can't silently grow the debt.*
       hypothesis: the rescue surface will keep growing and is easier to evolve isolated. P2 maintainability. Source:
       coderabbit on #1736, 2026-06-17.
 
+- [ ] **Surplus-absorb: release the setpoint lift early when surplus is unambiguously gone, not only after a passing-cloud
+      dip.** The eligibility gate (`lib/plan/admission/surplusAbsorb.ts`) holds a raised setpoint for the full
+      `SURPLUS_ABSORB_MIN_DWELL_MS` (5 min) after engage even when whole-home power has gone stale/unknown
+      (`!powerOk` → `underlyingSurplus = -Infinity`) or swung to sustained import — so a willing thermostat can import
+      grid power for up to 5 min honouring the lift (the capacity layer still sheds it, but with headroom it draws). The
+      dwell is the right guard for the genuine passing-cloud case (surplus dipped but still present); it over-holds the
+      "sun set / meter stale" case. Fix: short-circuit the dwell floor on a hard-off condition (`!powerOk`, or import
+      sustained past the settle window), keeping the dwell only when surplus is still positive but dipped. Persona:
+      cost-conscious self-consumer on a fast-moving cloud day; hypothesis: a +2 °C water-tank lift held 5 min after the
+      sun is gone reads as wasteful. P2 (bounded + capacity-subordinate; tune the semantics on real dogfood data).
+      Source: pels-runtime-reality + adversarial review on the surplus-absorb backend PR, 2026-06-25.
+
+- [ ] **Consolidate the per-device price-opt + surplus-absorb blob shape into one contract.** The
+      `{ enabled, cheapDelta, expensiveDelta, surplusWilling?, surplusDelta? }` shape is now tracked independently in
+      `lib/price/priceOptimizer.ts` (`PriceOptimizationSettings`), the inline copies in `planEngine.ts`/`planBuilder.ts`,
+      the new `PriceOptDeviceConfig` in `lib/plan/planSurplusAbsorb.ts`, and the validator literal in
+      `setup/priceOptimizationSettingsAdapter.ts`. The optional fields mean tsc won't catch a *missing* propagation when
+      the blob next grows. Persona: engineer extending the price-opt/surplus blob; hypothesis: a future field-add
+      silently desyncs one copy (the validator or a plan-side literal). P3 (pattern predates this PR; revisit once the
+      surplus UI lands and the lib/plan ↛ lib/price local-copy convention can be re-evaluated). Source:
+      pels-layering-guardian on the surplus-absorb backend PR, 2026-06-25.
+
 - [ ] **Weather collector: transient miss of `weather_advisor_settings` silently halts sampling
       until the next restart or settings write.** `WeatherCollector.start()` registers no timers
       when the config blob reads absent/malformed, and nothing re-checks later (the hourly

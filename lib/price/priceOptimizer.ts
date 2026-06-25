@@ -13,6 +13,12 @@ export type PriceOptimizationSettings = {
   enabled: boolean;
   cheapDelta: number;
   expensiveDelta: number;
+  // Surplus-absorb rides this same per-device blob (a distinct cause from price —
+  // triggered by exporting, not a cheap hour). `surplusWilling` opts the device in;
+  // `surplusDelta` is the raise-only setpoint lift (°C). Optional so existing
+  // persisted blobs and non-solar homes stay byte-identical.
+  surplusWilling?: boolean;
+  surplusDelta?: number;
 };
 
 export type PriceOptimizerDeps = {

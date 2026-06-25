@@ -18,6 +18,7 @@ import {
   type DeviceReason,
 } from '../../packages/shared-domain/src/planReasonSemantics';
 import { getRestoreDrawKw } from '../observer/observedPower';
+import { applySurplusAbsorbDelta, resolveSurplusEligibility, type PriceOptDeviceConfig } from './planSurplusAbsorb';
 import { RECENT_RESTORE_SHED_GRACE_MS } from './planConstants';
 import { isPendingBinaryCommandActive } from './planObservationPolicy';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
@@ -66,7 +67,7 @@ export type PlanDevicesDeps = {
   isCurrentHourCheap: () => boolean;
   isCurrentHourExpensive: () => boolean;
   getPriceOptimizationEnabled: () => boolean;
-  getPriceOptimizationSettings: () => Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
+  getPriceOptimizationSettings: () => Record<string, PriceOptDeviceConfig>;
   getOperatingMode?: () => string;
   // Observer-owned pending-binary-command store; plan-side raw reads go
   // through `peek(id)` rather than `state.pendingBinaryCommands[id]`.
@@ -110,6 +111,18 @@ export function buildInitialPlanDevices(params: {
   let setupMs = 0;
   let baseMs = 0;
   let offStateMs = 0;
+  // Producer pass: resolve surplus-absorb eligibility across all willing devices,
+  // reserving the export budget in priority order, before per-device target prep
+  // reads the resulting flat bit. Capacity-independent — it reads the signed net
+  // (context.total) + device draws, never headroom/shed state.
+  resolveSurplusEligibility({
+    devices: context.devices,
+    state,
+    signedNetKw: context.total,
+    powerKnown: context.powerKnown,
+    getConfig: (deviceId) => deps.getPriceOptimizationSettings()[deviceId],
+    getPriority: deps.getPriorityForDevice,
+  });
   const result = context.devices.flatMap((dev) => {
     const t0 = Date.now();
     const supportsTemperature = supportsTemperatureDevice(dev);
@@ -227,12 +240,22 @@ function resolvePlannedTarget(params: {
     return undefined;
   }
   let plannedTarget = seed.value;
-  // Price-opt only modulates a configured mode setpoint. When the seed is the current
-  // thermostat reading (fallback) or a deadline rescue target, leaving it unmodulated keeps
-  // PELS a no-op against whatever the user / deadline already chose.
+  // Price-opt and surplus-absorb only modulate a configured mode setpoint. When the
+  // seed is the current thermostat reading (fallback) or a deadline rescue target,
+  // leaving it unmodulated keeps PELS a no-op against whatever the user / deadline
+  // already chose.
   const priceOptConfig = deps.getPriceOptimizationSettings()[dev.id];
-  if (seed.kind === 'mode' && deps.getPriceOptimizationEnabled() && priceOptConfig?.enabled) {
-    plannedTarget = applyPriceOptimizationDelta(plannedTarget, priceOptConfig, deps);
+  if (seed.kind === 'mode') {
+    if (deps.getPriceOptimizationEnabled() && priceOptConfig?.enabled) {
+      plannedTarget = applyPriceOptimizationDelta(plannedTarget, priceOptConfig, deps);
+    }
+    plannedTarget = applySurplusAbsorbDelta({
+      baseTarget: seed.value,
+      pricedTarget: plannedTarget,
+      dev,
+      config: priceOptConfig,
+      state,
+    });
   }
   if (hasDeferred) {
     // Deferred target is the floor, never further modulated by price-opt.
