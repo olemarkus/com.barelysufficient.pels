@@ -42,6 +42,19 @@ export type ActivationAttemptState = {
   cleanWholeHomeSampleAtMs?: number;
 };
 
+/**
+ * Per-device surplus-absorb eligibility state, owned by
+ * `lib/plan/admission/surplusAbsorb.ts`. `eligible` is the latched decision;
+ * `sinceMs` stamps when it last flipped (the min-dwell floor) and
+ * `pendingSinceMs` stamps when the opposite-flip condition first held (the
+ * settle window). Absent entry == not eligible, no pending flip. In-memory only.
+ */
+export type SurplusEligibilityState = {
+  eligible?: boolean;
+  sinceMs?: number;
+  pendingSinceMs?: number;
+};
+
 export type HeadroomCardState = {
   lastUsageKw?: number;
   lastUsageFreshnessMs?: number;
@@ -115,6 +128,7 @@ export type PlanEngineState = {
   shedDecidedMs: Record<string, number>;
   lastDeviceRestoreMs: Record<string, number>;
   activationAttemptByDevice: Record<string, ActivationAttemptState>;
+  surplusEligibilityByDevice: Record<string, SurplusEligibilityState>;
   headroomCardByDevice: Record<string, HeadroomCardState>;
   pendingSheds: Set<string>;
   pendingRestores: Set<string>;
@@ -206,6 +220,7 @@ export function createPlanEngineState(nowTs = Date.now()): PlanEngineState {
     shedDecidedMs: {},
     lastDeviceRestoreMs: {},
     activationAttemptByDevice: {},
+    surplusEligibilityByDevice: {},
     headroomCardByDevice: {},
     pendingSheds: new Set<string>(),
     pendingRestores: new Set<string>(),

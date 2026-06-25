@@ -19,10 +19,19 @@ const isPriceOptimizationDeviceSettings = (
   if (!value || typeof value !== 'object') return false;
   return Object.values(value as Record<string, unknown>).every((entry) => {
     if (!entry || typeof entry !== 'object') return false;
-    const record = entry as { enabled?: unknown; cheapDelta?: unknown; expensiveDelta?: unknown };
+    const record = entry as {
+      enabled?: unknown; cheapDelta?: unknown; expensiveDelta?: unknown;
+      surplusWilling?: unknown; surplusDelta?: unknown;
+    };
+    // Require FINITE deltas: typeof NaN/Infinity === 'number', and a NaN delta
+    // poisons the planned setpoint (NaN <= 0 is false, so it survives the apply
+    // guard and propagates through Math.max to the executor).
     return typeof record.enabled === 'boolean'
-      && typeof record.cheapDelta === 'number'
-      && typeof record.expensiveDelta === 'number';
+      && Number.isFinite(record.cheapDelta)
+      && Number.isFinite(record.expensiveDelta)
+      // Surplus-absorb fields are optional (older blobs / non-solar homes omit them).
+      && (record.surplusWilling === undefined || typeof record.surplusWilling === 'boolean')
+      && (record.surplusDelta === undefined || Number.isFinite(record.surplusDelta));
   });
 };
 

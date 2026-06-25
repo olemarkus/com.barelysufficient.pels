@@ -4,6 +4,7 @@ import type { PlanEngineState } from './planState';
 import { incPerfCounter } from '../utils/perfCounters';
 import {
   ACTIVATION_BACKOFF_CLEAR_WINDOW_MS,
+  clearSurplusEligibility,
   closeActivationAttemptForDevice,
   isActivationObservationActiveNow,
   syncActivationPenaltyState,
@@ -44,7 +45,10 @@ const removeHeadroomCardStateForDevice = (
 };
 
 const collectTrackedDeviceIds = (state: PlanEngineState): Set<string> => (
-  new Set(Object.keys(state.headroomCardByDevice))
+  new Set([
+    ...Object.keys(state.headroomCardByDevice),
+    ...Object.keys(state.surplusEligibilityByDevice),
+  ])
 );
 
 const cleanupMissingHeadroomDevices = (
@@ -57,6 +61,10 @@ const cleanupMissingHeadroomDevices = (
   for (const deviceId of trackedIds) {
     if (activeIds.has(deviceId)) continue;
     removeHeadroomCardStateForDevice(state, deviceId);
+    // Drop surplus-absorb eligibility for a device that left the snapshot, in
+    // lockstep with the other per-device plan maps (it self-cleans while a device
+    // keeps cycling, but an unpaired-while-eligible device would otherwise leak).
+    clearSurplusEligibility(state, deviceId);
     // A missing snapshot should close any open attempt, but it must not forgive prior failed activations.
     stateChanged = closeActivationAttemptForDevice(state, deviceId) || true;
   }

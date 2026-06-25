@@ -20,6 +20,14 @@ export {
 } from './activationBackoff';
 export type { ActivationAttemptSource } from './activationBackoff';
 
+export {
+  clearSurplusEligibility,
+  SURPLUS_ABSORB_MIN_DWELL_MS,
+  SURPLUS_ABSORB_RESERVE_KW,
+  SURPLUS_ABSORB_SETTLE_MS,
+  syncSurplusEligibilityState,
+} from './surplusAbsorb';
+
 // The deferred-objective (smart-task) admission appliers moved to the smart-task
 // controller in lib/objectives/deferredObjectives (PR-D2 of the controller
 // extraction); the planner no longer owns them. The release-intent union lives
