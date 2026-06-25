@@ -1152,6 +1152,18 @@ describe('Settings UI', () => {
       expect(expensiveDelta).toBeTruthy();
     });
 
+    test('device detail shows solar surplus section', async () => {
+      // Panel should be open
+      const isHidden = await page.$eval('#device-detail-overlay', (el) => (el as HTMLElement).hidden);
+      if (isHidden) await page.click('.device-row__name');
+
+      const surplusOpt = await page.$('#device-detail-surplus-opt');
+      const surplusDelta = await page.$('#device-detail-surplus-delta');
+
+      expect(surplusOpt).toBeTruthy();
+      expect(surplusDelta).toBeTruthy();
+    });
+
     test('overshoot temperature input appears when choosing set temperature', async () => {
       const isHidden = await page.$eval('#device-detail-overlay', (el) => (el as HTMLElement).hidden);
       if (isHidden) await page.click('.device-row__name');

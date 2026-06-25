@@ -26,6 +26,11 @@ export type PriceOptimizationConfig = {
   enabled: boolean;
   cheapDelta: number;
   expensiveDelta: number;
+  // Surplus-absorb rides this same per-device blob (a distinct cause from price —
+  // triggered by exporting, not a cheap hour). Optional so non-solar blobs stay
+  // byte-identical.
+  surplusWilling?: boolean;
+  surplusDelta?: number;
 };
 
 /**
@@ -81,6 +86,8 @@ export const defaultPriceOptimizationConfig: PriceOptimizationConfig = {
   enabled: false,
   cheapDelta: 5,
   expensiveDelta: -5,
+  surplusWilling: false,
+  surplusDelta: 2,
 };
 
 
