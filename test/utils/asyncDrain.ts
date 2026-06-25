@@ -35,6 +35,21 @@ export async function drainUntil(
   }
 }
 
+/**
+ * Flush a bounded number of timer + microtask turns without waiting on any
+ * condition. For NEGATIVE assertions ("this write must never happen"): drive the
+ * detached poll → rebuild → executor chain to quiescence so a write queued on the
+ * final poll cannot land *after* the test scans `mock.calls`. Uses the same
+ * machinery as {@link drainUntil}; unlike it, it never throws (there is no
+ * positive condition to satisfy).
+ */
+export async function drainPending(rounds = 50): Promise<void> {
+  for (let attempt = 0; attempt < rounds; attempt += 1) {
+    await vi.advanceTimersByTimeAsync(0);
+    await nextTick();
+  }
+}
+
 type CallSpy = { mock: { calls: unknown[][] } };
 
 /**
