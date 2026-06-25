@@ -27,10 +27,15 @@ export const calculateThresholds = (avgPrice: number, thresholdPercent: number):
   const safeAvg = toNumber(avgPrice, 0);
   const safePercent = toNumber(thresholdPercent, 0);
   const multiplier = safePercent / 100;
-  return {
-    low: safeAvg * (1 - multiplier),
-    high: safeAvg * (1 + multiplier),
-  };
+  const lower = safeAvg * (1 - multiplier);
+  const upper = safeAvg * (1 + multiplier);
+  // Order the bounds so the band never inverts: for a negative average (e.g. NL
+  // midday negative spot under heavy solar) `avg*(1 - m)` is the *higher* value,
+  // and min/max also stays ordered for a degenerate negative percent. For
+  // avgPrice >= 0 with a non-negative percent these are already ordered, so
+  // thresholds remain bit-identical to the prior form and existing
+  // combined-prices payloads are not rewritten on upgrade.
+  return { low: Math.min(lower, upper), high: Math.max(lower, upper) };
 };
 
 export const getPriceLevelFlags = (params: {

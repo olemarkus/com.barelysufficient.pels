@@ -38,6 +38,31 @@ describe('buildCombinedPricePayload (V2)', () => {
     expect(payload.lastFetched).toBeDefined();
   });
 
+  test('carries exportPrice (incl negative) onto the persisted entry, omits when absent', () => {
+    const start = Date.UTC(2026, 2, 18, 23, 0, 0); // local Oslo 2026-03-19 00:00
+    const withExport: CombinedHourlyPrice = {
+      startsAt: new Date(start).toISOString(),
+      totalPrice: 100,
+      exportPrice: -5,
+    };
+    const withoutExport: CombinedHourlyPrice = {
+      startsAt: new Date(start + 3600_000).toISOString(),
+      totalPrice: 120,
+    };
+    const payload = buildCombinedPricePayload({
+      combined: [withExport, withoutExport],
+      priceScheme: 'norway',
+      priceUnit: 'NOK/kWh',
+      thresholdPercent: 25,
+      minDiffOre: 0,
+      now: new Date(start + 5 * 3600_000),
+      timeZone: TZ,
+    });
+    const hours = payload.days['2026-03-19'].hours;
+    expect(hours[0].exportPrice).toBe(-5);
+    expect(hours[1].exportPrice).toBeUndefined();
+  });
+
   test('drops hours outside yesterday/today/tomorrow window', () => {
     const start = Date.UTC(2026, 2, 14, 23, 0, 0); // 2026-03-15 local
     const hours = buildHours(start, 24 * 7);

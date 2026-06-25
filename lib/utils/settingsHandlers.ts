@@ -21,6 +21,9 @@ import {
   DAILY_BUDGET_RESET,
   DEBUG_LOGGING_TOPICS,
   EV_BOOST_SETTINGS,
+  EXPORT_FIXED,
+  EXPORT_PRICE_ENABLED,
+  EXPORT_SPOT_FACTOR,
   FLOW_PRICES_TODAY,
   FLOW_PRICES_TOMORROW,
   HOMEY_PRICES_CURRENCY,
@@ -107,6 +110,9 @@ const DEDUPED_PRICE_KEYS = [
   'provider_surcharge',
   'price_threshold_percent',
   'price_min_diff_ore',
+  EXPORT_PRICE_ENABLED,
+  EXPORT_SPOT_FACTOR,
+  EXPORT_FIXED,
   PRICE_OPTIMIZATION_SETTINGS,
   PRICE_OPTIMIZATION_ENABLED,
 ];
@@ -398,6 +404,9 @@ function buildPriceSettingsHandlers(
     provider_surcharge: async () => refreshPriceDerivedState(deps),
     price_threshold_percent: async () => refreshPriceDerivedState(deps),
     price_min_diff_ore: async () => refreshPriceDerivedState(deps),
+    [EXPORT_PRICE_ENABLED]: async () => refreshPriceDerivedState(deps),
+    [EXPORT_SPOT_FACTOR]: async () => refreshPriceDerivedState(deps),
+    [EXPORT_FIXED]: async () => refreshPriceDerivedState(deps),
     [PRICE_OPTIMIZATION_SETTINGS]: async () => {
       deps.loadPriceOptimizationSettings();
       await refreshSnapshotWithLog(deps, 'price_optimization_settings_change');

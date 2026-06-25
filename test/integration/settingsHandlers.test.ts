@@ -315,6 +315,21 @@ describe('createSettingsHandler', () => {
     expect(deps.rebuildPlanFromCache).toHaveBeenCalled();
   });
 
+  it('recomputes combined prices when an export-price setting changes', async () => {
+    const enabledDeps = buildDeps();
+    await createSettingsHandler(enabledDeps)('export_price_enabled');
+    expect(enabledDeps.priceService.updateCombinedPrices).toHaveBeenCalled();
+    expect(enabledDeps.rebuildPlanFromCache).toHaveBeenCalled();
+
+    const factorDeps = buildDeps();
+    await createSettingsHandler(factorDeps)('export_spot_factor');
+    expect(factorDeps.priceService.updateCombinedPrices).toHaveBeenCalled();
+
+    const fixedDeps = buildDeps();
+    await createSettingsHandler(fixedDeps)('export_fixed');
+    expect(fixedDeps.priceService.updateCombinedPrices).toHaveBeenCalled();
+  });
+
   it('recomputes combined prices when provider surcharge changes', async () => {
     const deps = buildDeps();
     const handler = createSettingsHandler(deps);

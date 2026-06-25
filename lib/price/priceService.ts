@@ -49,6 +49,7 @@ import {
   getHourlyUsageEstimateKwh,
 } from './priceServiceNorgespris';
 import { buildCombinedHourlyPricesNorway } from './priceServiceNorway';
+import { readExportPriceConfig } from './exportPrice';
 import { fetchSpotPricesForDate } from './spotPriceFetch';
 import { getCurrentHourPrice, isCurrentHourAtLevel } from './priceLevelUtils';
 import { formatFlowPriceInfo, formatNorwayPriceInfo } from './priceInfoFormatters';
@@ -334,6 +335,11 @@ export default class PriceService {
       now: new Date(),
       currentMonthKey,
       timeZone,
+      // Off by default; CLI-writable for dogfooding before the settings UI lands.
+      exportConfig: readExportPriceConfig({
+        getRaw: (key) => this.getSettingValue(key),
+        getNumber: (key, fallback) => this.getNumberSetting(key, fallback),
+      }),
     });
   }
 

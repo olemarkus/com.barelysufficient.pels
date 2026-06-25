@@ -25,6 +25,40 @@ describe('priceMath', () => {
     expect(thresholds.high).toBe(125);
   });
 
+  it('keeps the cheap/expensive band ordered when the average is negative', () => {
+    // NL midday negative spot under heavy solar: avg < 0 must not invert the
+    // band. half-width = |avg| * pct, so low < high and the most-negative hour
+    // is still "cheap".
+    const thresholds = calculateThresholds(-10, 25);
+    expect(thresholds.low).toBe(-12.5);
+    expect(thresholds.high).toBe(-7.5);
+    expect(thresholds.low).toBeLessThan(thresholds.high);
+
+    const veryNegative = getPriceLevelFlags({
+      price: -15,
+      avgPrice: -10,
+      thresholds,
+      minDiff: 0,
+    });
+    expect(veryNegative.isCheap).toBe(true);
+    expect(veryNegative.isExpensive).toBe(false);
+
+    const lessNegative = getPriceLevelFlags({
+      price: -5,
+      avgPrice: -10,
+      thresholds,
+      minDiff: 0,
+    });
+    expect(lessNegative.isCheap).toBe(false);
+    expect(lessNegative.isExpensive).toBe(true);
+  });
+
+  it('treats a zero average as a degenerate band gated by minDiff', () => {
+    const thresholds = calculateThresholds(0, 25);
+    expect(thresholds.low).toBe(0);
+    expect(thresholds.high).toBe(0);
+  });
+
   it('respects minDiff when resolving cheap/expensive', () => {
     const thresholds = { low: 75, high: 125 };
     const cheap = getPriceLevelFlags({
