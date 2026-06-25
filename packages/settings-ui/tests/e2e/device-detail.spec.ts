@@ -149,6 +149,34 @@ test.describe('Device detail panel', () => {
     }, { timeout: 3000 }).toMatchObject({ cheapDelta: 3, expensiveDelta: -2.5 });
   });
 
+  test('Use solar surplus toggle reveals the boost section and persists', async ({ page }) => {
+    await openDeviceDetail(page, 'dev_heatpump');
+    await page.locator('#device-detail-setup-section summary').click();
+
+    const section = page.locator('#device-detail-surplus-section');
+    const delta = page.locator('#device-detail-surplus-delta');
+
+    // Field-only section is hidden until the "Use solar surplus" toggle (in the
+    // Control cluster) is on — mirrors how "Price response" gates on its switch.
+    await expect(section).toBeHidden();
+    await setMdSwitch(page, '#device-detail-surplus-opt', true);
+    await expect(section).toBeVisible();
+    await expect(delta).toBeVisible();
+
+    await setMdValue(page, '#device-detail-surplus-delta', '3');
+    await expect.poll(async () => {
+      const settings = await readHomeySetting<Record<string, { surplusWilling?: boolean; surplusDelta?: number }>>(
+        page,
+        'price_optimization_settings',
+      );
+      return settings?.dev_heatpump;
+    }, { timeout: 3000 }).toMatchObject({ surplusWilling: true, surplusDelta: 3 });
+
+    // Disabling hides the field-only section again.
+    await setMdSwitch(page, '#device-detail-surplus-opt', false);
+    await expect(section).toBeHidden();
+  });
+
   test('Shedding segmented control mirrors hidden select and toggles conditional rows', async ({ page }) => {
     await openDeviceDetail(page, 'dev_heatpump');
 
