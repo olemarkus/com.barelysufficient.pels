@@ -1,6 +1,13 @@
 export type CombinedHourlyPrice = {
   startsAt: string;
   totalPrice: number;
+  /**
+   * Export (feed-in) price for this hour, incl VAT, in the same unit as
+   * `totalPrice`. Signed — may be <= 0 under feed-in fees / negative spot.
+   * `undefined` when export pricing is disabled. Independent of the import
+   * cost stack (carries none of grid tariff / consumption tax / VAT-on-those).
+   */
+  exportPrice?: number;
   spotPriceExVat?: number;
   gridTariffExVat?: number;
   providerSurchargeExVat?: number;
@@ -20,6 +27,8 @@ export type PriceScheme = 'norway' | 'flow' | 'homey';
 export type CombinedPriceEntry = {
   startsAt: string;
   total: number;
+  /** Export (feed-in) price, incl VAT, same unit as `total`; signed, may be <= 0; undefined when disabled. */
+  exportPrice?: number;
   spotPriceExVat?: number;
   gridTariffExVat?: number;
   providerSurchargeExVat?: number;

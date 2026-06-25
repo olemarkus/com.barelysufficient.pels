@@ -142,6 +142,7 @@ const buildEntry = (
     isExpensive: flags.isExpensive,
   };
   const extra: Partial<CombinedPriceEntry> = {
+    ...(hasNumber(source.exportPrice) ? { exportPrice: source.exportPrice } : {}),
     ...(hasNumber(source.spotPriceExVat) ? { spotPriceExVat: source.spotPriceExVat } : {}),
     ...(hasNumber(source.gridTariffExVat) ? { gridTariffExVat: source.gridTariffExVat } : {}),
     ...(hasNumber(source.providerSurchargeExVat)
