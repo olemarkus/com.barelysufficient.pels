@@ -49,7 +49,7 @@ import {
   getHourlyUsageEstimateKwh,
 } from './priceServiceNorgespris';
 import { buildCombinedHourlyPricesNorway } from './priceServiceNorway';
-import { readExportPriceConfig } from './exportPrice';
+import { applyExportPrices, readExportPriceConfig } from './exportPrice';
 import { fetchSpotPricesForDate } from './spotPriceFetch';
 import { getCurrentHourPrice, isCurrentHourAtLevel } from './priceLevelUtils';
 import { formatFlowPriceInfo, formatNorwayPriceInfo } from './priceInfoFormatters';
@@ -310,6 +310,15 @@ export default class PriceService {
   }
 
   getCombinedHourlyPrices(): CombinedHourlyPrice[] {
+    // Export (feed-in) pricing is kept separate from the import scheme and applied
+    // scheme-independently to the import series — see `applyExportPrices`.
+    return applyExportPrices(this.buildImportHourlyPrices(), readExportPriceConfig({
+      getRaw: (key) => this.getSettingValue(key),
+      getNumber: (key, fallback) => this.getNumberSetting(key, fallback),
+    }));
+  }
+
+  private buildImportHourlyPrices(): CombinedHourlyPrice[] {
     const scheme = this.getPriceScheme();
     if (scheme === 'flow') return this.getCombinedHourlyPricesFromFlow();
     if (scheme === 'homey') return this.getCombinedHourlyPricesFromHomey();
@@ -335,11 +344,6 @@ export default class PriceService {
       now: new Date(),
       currentMonthKey,
       timeZone,
-      // Off by default; CLI-writable for dogfooding before the settings UI lands.
-      exportConfig: readExportPriceConfig({
-        getRaw: (key) => this.getSettingValue(key),
-        getNumber: (key, fallback) => this.getNumberSetting(key, fallback),
-      }),
     });
   }
 

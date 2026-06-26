@@ -1,4 +1,5 @@
 import { EXPORT_FIXED, EXPORT_PRICE_ENABLED, EXPORT_SPOT_FACTOR } from '../utils/settingsKeys';
+import type { CombinedHourlyPrice } from './priceTypes';
 
 /**
  * Export (feed-in) price model.
@@ -82,4 +83,34 @@ export const resolveExportPriceInclVat = (params: {
   // would be attached in memory but dropped by the finite-only persist guard,
   // desyncing the live and stored seams — collapse it to "no export price".
   return Number.isFinite(result) ? result : undefined;
+};
+
+/**
+ * Layer export (feed-in) prices onto a combined hourly-price series, SCHEME-
+ * INDEPENDENTLY. Export pricing is a decoration applied AFTER whichever import
+ * scheme (Norway / flow / Homey) built the import series — it carries none of the
+ * import cost stack and depends only on the export config plus each hour's
+ * wholesale spot (when one is isolatable). Kept entirely separate from import
+ * configuration: no import-scheme builder calls this, and this never branches on
+ * the active scheme. No-op (returns the input untouched) when export pricing is
+ * disabled, keeping non-prosumer behaviour byte-identical.
+ *
+ * Where no spot is isolatable (the flow/Homey schemes — e.g. NL), each entry's
+ * `spotPriceExVat` is absent and `resolveExportPriceInclVat` yields the fixed
+ * feed-in tariff for a fixed-tariff config (`spotFactorPercent = 0`) and no
+ * export price for a spot-linked one — exactly as documented above.
+ */
+export const applyExportPrices = (
+  prices: CombinedHourlyPrice[],
+  config: ExportPriceConfig,
+): CombinedHourlyPrice[] => {
+  if (!config.enabled) return prices;
+  return prices.map((entry) => {
+    const exportPrice = resolveExportPriceInclVat({
+      spotPriceExVat: entry.spotPriceExVat,
+      vatMultiplier: entry.vatMultiplier,
+      config,
+    });
+    return typeof exportPrice === 'number' ? { ...entry, exportPrice } : entry;
+  });
 };

@@ -283,14 +283,15 @@ the discriminant regroupers + pre-existing mock-shape debt). Test-fixture type d
 CI failure, so future field-move slices can't silently grow the debt.*
 
 - [ ] **Solar export price — finish the remaining increments.** The export (feed-in) price model
-      shipped off by default (`export_price_enabled`, Norway scheme only): a per-hour `exportPrice`
-      computed as VAT-grossed spot × `export_spot_factor` + `export_fixed`, alongside a negative-safe
-      price-level threshold fix. Remaining: (a) the derived `budgetPrice` (opportunity-cost blend of
-      export below forecast surplus vs import above) and rewiring the daily-budget / smart-task /
-      price-opt consumers to read it; (b) export pricing for the flow/homey schemes (fixed-tariff only,
-      since spot isn't isolatable there — today a flow/homey user with export enabled gets no
-      `exportPrice`); (c) the settings-UI export section + contracts `settingsKeys` mirror +
-      "Grid price" / "Export price" / "Planning price" labels + a Budget-tab export subline.
+      shipped off by default (`export_price_enabled`): a per-hour `exportPrice` computed as VAT-grossed
+      spot × `export_spot_factor` + `export_fixed`, alongside a negative-safe price-level threshold fix.
+      Export pricing is now applied scheme-independently (decoupled from the import scheme): the Norway
+      scheme links to its isolatable spot, while the flow/Homey schemes (e.g. NL) get the fixed feed-in
+      tariff (a spot-linked config yields no export price there, since no spot is isolatable). Remaining:
+      (a) the derived `budgetPrice` (opportunity-cost blend of export below forecast surplus vs import
+      above) and rewiring the daily-budget / smart-task / price-opt consumers to read it; (b) the
+      settings-UI export section + contracts `settingsKeys` mirror + "Grid price" / "Export price" /
+      "Planning price" labels + a Budget-tab export subline.
       *Persona:* prosumer (Norwegian plusskunde, or NL post-saldering) self-consuming solar.
       *P2:* usable as a no-op today; the user-facing value lands with the `budgetPrice` blend.
 
