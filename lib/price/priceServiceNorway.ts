@@ -5,7 +5,6 @@ import {
   getNorgesprisMonthlyCapForTariffGroup,
   NORGESPRIS_TARGET_EX_VAT,
 } from './norwayPriceDefaults';
-import { EXPORT_PRICE_DISABLED, resolveExportPriceInclVat, type ExportPriceConfig } from './exportPrice';
 import type { CombinedHourlyPrice } from './priceTypes';
 
 export type NorwayPriceModel = 'stromstotte' | 'norgespris';
@@ -144,28 +143,6 @@ const getRemainingCap = (params: {
   return monthlyCapKwh;
 };
 
-/**
- * Layer export (feed-in) prices onto a freshly built import-price series. Export
- * price is pure math on the same spot, carrying none of the import cost stack, so
- * it is a decoration on top rather than part of the per-hour import build. No-op
- * (and returns the input untouched) when export pricing is disabled, keeping
- * non-prosumer behaviour byte-identical.
- */
-const applyExportPrices = (
-  prices: CombinedHourlyPrice[],
-  exportConfig: ExportPriceConfig,
-): CombinedHourlyPrice[] => {
-  if (!exportConfig.enabled) return prices;
-  return prices.map((entry) => {
-    const exportPrice = resolveExportPriceInclVat({
-      spotPriceExVat: entry.spotPriceExVat,
-      vatMultiplier: entry.vatMultiplier,
-      config: exportConfig,
-    });
-    return typeof exportPrice === 'number' ? { ...entry, exportPrice } : entry;
-  });
-};
-
 export const buildCombinedHourlyPricesNorway = (params: {
   spotPrices: unknown;
   gridTariffData: unknown;
@@ -179,7 +156,6 @@ export const buildCombinedHourlyPricesNorway = (params: {
   now?: Date;
   currentMonthKey?: string;
   timeZone?: string;
-  exportConfig?: ExportPriceConfig;
 }): CombinedHourlyPrice[] => {
   const {
     spotPrices,
@@ -194,7 +170,6 @@ export const buildCombinedHourlyPricesNorway = (params: {
     now = new Date(),
     currentMonthKey,
     timeZone = 'UTC',
-    exportConfig = EXPORT_PRICE_DISABLED,
   } = params;
 
   const rules = getRegionalPricingRules(priceArea, countyCode);
@@ -227,7 +202,7 @@ export const buildCombinedHourlyPricesNorway = (params: {
     monthUsageKwh: validMonthUsageKwh,
   });
 
-  return applyExportPrices(normalizedSpotList.reduce<CombinedHourlyPrice[]>((prices, { spot, timeInfo }) => {
+  return normalizedSpotList.reduce<CombinedHourlyPrice[]>((prices, { spot, timeInfo }) => {
     const { hour, monthKey, startsAtMs } = timeInfo;
     const spotPriceExVat = resolveSpotPriceExVat(spot, vatMultiplier);
     const gridTariffExVat = gridTariffByHour.get(hour) || 0;
@@ -297,5 +272,5 @@ export const buildCombinedHourlyPricesNorway = (params: {
       ...(typeof norgesprisAdjustment === 'number' ? { norgesprisAdjustment } : {}),
       },
     ];
-  }, []), exportConfig);
+  }, []);
 };
