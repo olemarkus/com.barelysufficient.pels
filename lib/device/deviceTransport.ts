@@ -42,6 +42,7 @@ import {
 } from './managerControl';
 import { normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
 import { type LiveDevicePowerWatts } from './managerEnergy';
+import { BatteryStateProducer } from './batteryStateProducer';
 import { DeviceMeasuredPowerResolver } from './measuredPowerResolver';
 import {
   fetchDevicesByIds,
@@ -1772,6 +1773,9 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         this.onSnapshotMutated = options?.onSnapshotMutated;
         this.pendingPredicate = options?.pendingPredicate;
         this.observedStateDispatcher = options?.observedStateDispatcher;
+        this.batteryStateProducer = new BatteryStateProducer(
+            (p) => (this.logger.structuredLog ?? moduleLogger).info(p),
+        );
         this.binarySettleOps = options?.binarySettleOps ?? createInertBinarySettleOps();
         this.binarySettleState = options?.binarySettleState ?? createEmptyBinarySettleState();
         if (providers) this.providers = providers;
@@ -1905,6 +1909,11 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         const start = Date.now();
         try {
             const previousSnapshot = this.latestSnapshot;
+            // An EMPTY managed snapshot must stay on the DISCOVERING full-fetch path:
+            // `fetchDevicesByKnownIds` only re-reads KNOWN ids, so gating targeted on a
+            // remembered battery id alone would strand a later-appearing managed device
+            // (offline-EV / battery-only boot) on the by-id path forever. The battery
+            // stays fresh regardless via the battery-id union inside the by-id fetch.
             const isTargetedRefresh = options.targetedRefresh === true && this.latestSnapshot.length > 0;
             const fetchResult = await this.fetchDevicesForSnapshotRefresh(isTargetedRefresh);
             if (!fetchResult) return null;
@@ -1915,6 +1924,9 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
                 : buildEmptyLivePowerReport();
             const homePowerSample = shouldReadLivePower ? this.updateHomePowerFromReport(livePowerReport) : null;
             const effectiveList = list.map((device) => this.applyDeviceDriverOverride(device));
+            // Read-only battery awareness from the same fetched devices (no extra fetch).
+            // 'raw_manager_devices' = the FULL list (re-derives the battery-id set).
+            this.batteryStateProducer.observe(effectiveList, { fullRefresh: fetchSource === 'raw_manager_devices' });
             const snapshot = this.parseDeviceList(effectiveList, livePowerReport.byDeviceId);
             mergeFresherCapabilityObservations({
                 state: this.observationState,
@@ -2290,9 +2302,8 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     }> {
         const start = Date.now();
         try {
-            const deviceIds = this.latestSnapshot.map((d) => d.id);
             return await fetchDevicesByIds({
-                deviceIds,
+                deviceIds: this.targetedRefreshDeviceIds(),
                 logger: this.logger,
             });
         } finally {
@@ -2318,6 +2329,20 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         return report.generationW === null
             ? { powerW: report.homePowerW }
             : { powerW: report.homePowerW, generationW: report.generationW };
+    }
+
+    // Read-only home-battery awareness producer. Emits the current observed battery
+    // aggregate each poll and holds the detected battery-id set for the targeted-
+    // refresh perf hint; never feeds the hard-cap import path. See
+    // `batteryStateProducer.ts`. Constructed in the constructor body (its emit needs
+    // the already-assigned logger).
+    private readonly batteryStateProducer: BatteryStateProducer;
+
+    // Device ids a targeted refresh must re-fetch: the parsed snapshot PLUS known
+    // home batteries (non-managed, so absent from the snapshot but still re-read).
+    private targetedRefreshDeviceIds(): string[] {
+        const ids = this.latestSnapshot.map((d) => d.id);
+        return Array.from(new Set([...ids, ...this.batteryStateProducer.getBatteryDeviceIds()]));
     }
     getLiveFeedHealth(): LiveFeedHealth | null { return this.liveFeed?.getHealth() ?? null; }
     private shouldTrackRealtimeDevice(deviceId: string): boolean {

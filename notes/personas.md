@@ -222,6 +222,11 @@ folding into Cost/Climate. Until then it is a **named placeholder**, not a
 shipped target.
 **Signature:** PV (no battery in v1), EV + heat pump + VVB as surplus sinks; cares
 about self-consumption rate as the headline KPI.
+> *Update:* read-only home-battery awareness now lands at the runtime seam
+> (home-battery SoC + signed power observed and logged as `battery_state_observed`,
+> never feeding the hard-cap import path). PELS does not yet *control* the battery
+> or surface it in the UI — it's the sensor foundation for later cap-relief /
+> surplus-routing. The Overview battery subline is the next UI step (see TODO.md).
 **Absorbs:** new — the market signal behind the solar direction. Strongest in
 NL (net-metering phase-out) and DE; nascent in NO.
 

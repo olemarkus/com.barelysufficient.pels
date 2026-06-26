@@ -467,7 +467,6 @@ describe('DeviceTransport', () => {
                 onoff: { value: capValue, id: 'onoff' },
             },
         });
-
         it('drops unmanaged devices from the runtime snapshot when at least one device is explicitly managed', async () => {
             const dm = new DeviceTransport(homeyMock, loggerMock, {
                 getManaged: (deviceId) => deviceId === 'dev1',
@@ -530,6 +529,19 @@ describe('DeviceTransport', () => {
                 onoff: { value: capValue, id: 'onoff' },
             },
         });
+        const buildBatteryDevice = (id: string) => ({
+            id,
+            name: id,
+            class: 'battery',
+            capabilities: ['measure_battery', 'measure_power'],
+            capabilitiesObj: {
+                measure_battery: { value: 62, id: 'measure_battery' },
+                measure_power: { value: 1200, id: 'measure_power' },
+            },
+        });
+        const batteryEvents = () => loggerMock.structuredLog.info.mock.calls
+            .map((call: unknown[]) => call[0] as { event?: string; batterySoc?: number; batteryPowerW?: number })
+            .filter((p) => p?.event === 'battery_state_observed');
 
         it('returns only unmanaged-eligible devices and tolerates malformed onoff without an error log', async () => {
             const dm = new DeviceTransport(homeyMock, loggerMock, {
@@ -572,6 +584,169 @@ describe('DeviceTransport', () => {
             await dm.refreshSnapshot({ targetedRefresh: true });
 
             expect(dm.getUiPickerDevices().map((d) => d.id)).toEqual(['dev2']);
+            dm.destroy();
+        });
+
+        // FIX 1 regression: a removed home battery must not leave a stale id that
+        // forces every targeted refresh to re-request (and fall back to) a full
+        // fetch forever. The known-battery-id set is re-derived on each FULL
+        // refresh, so removing the battery prunes it on the next full cycle.
+        it('prunes a removed battery id so targeted refreshes stop requesting it', async () => {
+            // Path-aware mock: full fetch ('manager/devices/device') returns the map;
+            // targeted fetch ('manager/devices/device/<id>') returns that one device
+            // and records the requested id so we can assert the targeted id set.
+            const targetedIdRequests: string[] = [];
+            const wireApi = (devicesById: Record<string, unknown>): void => {
+                mockApiGet.mockImplementation(async (path: string) => {
+                    if (path === 'manager/devices/device') return devicesById;
+                    const match = /^manager\/devices\/device\/(.+)$/.exec(path);
+                    if (match) {
+                        const id = match[1];
+                        targetedIdRequests.push(id);
+                        const device = devicesById[id];
+                        if (!device) throw new Error(`device ${id} absent`);
+                        return device;
+                    }
+                    return {};
+                });
+            };
+
+            const dm = new DeviceTransport(homeyMock, loggerMock, {
+                getManaged: (deviceId) => deviceId === 'dev1',
+                isManagedFilterActive: () => true,
+            });
+            await dm.init();
+
+            // FULL refresh sees managed dev1 + a home battery -> battery id seeded.
+            wireApi({ dev1: buildDevice('dev1', true), bat1: buildBatteryDevice('bat1') });
+            await dm.refreshSnapshot();
+
+            // Targeted refresh: the battery id is consulted, so it IS requested.
+            targetedIdRequests.length = 0;
+            await dm.refreshSnapshot({ targetedRefresh: true });
+            expect(targetedIdRequests).toContain('bat1');
+
+            // Battery removed; a FULL refresh re-derives the set wholesale -> pruned.
+            wireApi({ dev1: buildDevice('dev1', true) });
+            await dm.refreshSnapshot();
+
+            // A subsequent targeted refresh must NOT re-request the gone battery id
+            // (which would 404 and force a full-fetch fallback every cycle).
+            targetedIdRequests.length = 0;
+            await dm.refreshSnapshot({ targetedRefresh: true });
+            expect(targetedIdRequests).not.toContain('bat1');
+            dm.destroy();
+        });
+
+        // Event-only: a present battery emits typed numbers; once removed, NO
+        // further battery event is emitted (no retained value, no fake "cleared"
+        // event — the read simply stops producing observations).
+        it('emits battery_state_observed while present and nothing after the battery is removed', async () => {
+            const dm = new DeviceTransport(homeyMock, loggerMock, {
+                getManaged: (deviceId) => deviceId === 'dev1',
+                isManagedFilterActive: () => true,
+            });
+            await dm.init();
+
+            mockApiGet.mockResolvedValue({ dev1: buildDevice('dev1', true), bat1: buildBatteryDevice('bat1') });
+            await dm.refreshSnapshot();
+            expect(batteryEvents().at(-1)).toMatchObject({ batterySoc: 62, batteryPowerW: 1200, batteryDeviceCount: 1 });
+
+            // Battery removed; dev1 still present. No battery was read this poll, so
+            // no battery_state_observed event is emitted at all.
+            loggerMock.structuredLog.info.mockClear();
+            mockApiGet.mockResolvedValue({ dev1: buildDevice('dev1', true) });
+            await dm.refreshSnapshot();
+            expect(batteryEvents()).toEqual([]);
+            dm.destroy();
+        });
+
+        // FIX A: an OFFLINE battery (still in the device list, retained stale caps)
+        // emits NO event, but its id is KEPT so a targeted refresh keeps polling it
+        // (it recovers when back online). Asserted via the by-id fetch requesting it.
+        it('emits nothing for an offline battery but keeps re-polling its id', async () => {
+            const offlineBattery = { ...buildBatteryDevice('bat1'), available: false };
+            const targetedIdRequests: string[] = [];
+            mockApiGet.mockImplementation(async (path: string) => {
+                if (path === 'manager/devices/device') {
+                    return { dev1: buildDevice('dev1', true), bat1: offlineBattery };
+                }
+                const match = /^manager\/devices\/device\/(.+)$/.exec(path);
+                if (match) {
+                    targetedIdRequests.push(match[1]);
+                    const map: Record<string, unknown> = { dev1: buildDevice('dev1', true), bat1: offlineBattery };
+                    const device = map[match[1]];
+                    if (!device) throw new Error(`device ${match[1]} absent`);
+                    return device;
+                }
+                return {};
+            });
+
+            const dm = new DeviceTransport(homeyMock, loggerMock, {
+                getManaged: (deviceId) => deviceId === 'dev1',
+                isManagedFilterActive: () => true,
+            });
+            await dm.init();
+
+            // Full refresh: offline battery is detected (id seeded) but emits nothing.
+            await dm.refreshSnapshot();
+            expect(batteryEvents()).toEqual([]); // no stale offline reading surfaced
+
+            // A targeted refresh STILL requests the offline battery's id (kept for re-poll).
+            targetedIdRequests.length = 0;
+            await dm.refreshSnapshot({ targetedRefresh: true });
+            expect(targetedIdRequests).toContain('bat1');
+            dm.destroy();
+        });
+
+        // CHANGE 2: a home with ONLY a battery (no managed device -> empty parsed
+        // snapshot) must still reach the targeted-refresh path and re-read the
+        // battery, rather than full-fetching every cycle.
+        // Regression (Codex P2): an EMPTY managed snapshot + a remembered battery id
+        // must STAY on the discovering FULL-fetch path. `fetchDevicesByKnownIds` only
+        // re-reads known ids, so if a remembered battery id flipped the gate to
+        // targeted, a managed device that appears later (offline-EV / battery-only
+        // boot) would never be discovered into `latestSnapshot`. The battery stays
+        // fresh anyway via the by-id union when targeted IS active.
+        it('keeps an empty managed snapshot on the full-fetch path so a later managed device is discovered', async () => {
+            const fetchPaths: string[] = [];
+            const wireApi = (devicesById: Record<string, unknown>): void => {
+                mockApiGet.mockImplementation(async (path: string) => {
+                    fetchPaths.push(path);
+                    if (path === 'manager/devices/device') return devicesById;
+                    const match = /^manager\/devices\/device\/(.+)$/.exec(path);
+                    if (match) {
+                        const device = devicesById[match[1]];
+                        if (!device) throw new Error(`device ${match[1]} absent`);
+                        return device;
+                    }
+                    return {};
+                });
+            };
+            const dm = new DeviceTransport(homeyMock, loggerMock, {
+                getManaged: (deviceId) => deviceId === 'dev1',
+                isManagedFilterActive: () => true,
+            });
+            await dm.init();
+
+            // Boot with ONLY a battery (the managed EV is offline). The parsed managed
+            // snapshot is empty, but the battery id is remembered.
+            wireApi({ bat1: buildBatteryDevice('bat1') });
+            await dm.refreshSnapshot();
+            expect(dm.getSnapshot().map((d) => d.id)).toEqual([]); // battery is non-managed
+
+            // A SCHEDULED targeted refresh now fires; the managed dev1 has come online.
+            // Because the managed snapshot is still empty, the refresh MUST take the
+            // full-fetch path ('manager/devices/device') and discover dev1 — a by-id
+            // fetch of only {bat1} could never have surfaced it.
+            wireApi({ dev1: buildDevice('dev1', true), bat1: buildBatteryDevice('bat1') });
+            fetchPaths.length = 0;
+            await dm.refreshSnapshot({ targetedRefresh: true });
+
+            expect(fetchPaths).toContain('manager/devices/device'); // full fetch, not by-id
+            expect(dm.getSnapshot().map((d) => d.id)).toEqual(['dev1']); // discovered
+            // ...and the battery was read on that same full fetch.
+            expect(batteryEvents().at(-1)).toMatchObject({ batterySoc: 62, batteryPowerW: 1200 });
             dm.destroy();
         });
 

@@ -9,6 +9,10 @@
  * bag (`setHomePowerW`) at construction time. Observer never imports `lib/device/`
  * or `lib/power/` — it only holds the value transport hands it, and wiring
  * (`lib/app/`) reads it back via `getHomePowerW()`.
+ *
+ * The holder also carries one further awareness-only signal: gross PV generation
+ * (`setGenerationW`/`getGenerationW`, co-temporal with the home-power poll), which
+ * never feeds the hard-cap import path.
  */
 export class ObservedHomePower {
     private homePowerW: number | null = null;

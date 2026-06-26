@@ -295,6 +295,37 @@ CI failure, so future field-move slices can't silently grow the debt.*
       *Persona:* prosumer (Norwegian plusskunde, or NL post-saldering) self-consuming solar.
       *P2:* usable as a no-op today; the user-facing value lands with the `budgetPrice` blend.
 
+- [ ] **Surface a read-only battery subline on the Overview hero.** Read-only home-battery awareness
+      now lands at the runtime seam: on a successful device fetch `extractBatteryState` →
+      `BatteryStateProducer` emits a `battery_state_observed` event with typed `number`
+      `batterySoc`/`batteryPowerW`/`batteryDeviceCount` — but ONLY when a battery is present and both
+      caps read as finite numbers (no battery / unreadable cap / failed fetch → no event; nothing is
+      retained, nothing nullable crosses out of the device layer, never feeds the hard-cap path). v1 is
+      event-only — there is NO holder. Surface it as an Overview subline — e.g. "Battery 62% · charging
+      1.2 kW" / "· discharging 1.5 kW" / "· idle" — sourced from a shared-domain copy helper (so log/UI
+      strings stay in sync). This PR MUST add a synchronous holder/cache WITH its own freshness window
+      (the producer keeps no value to read), plus a contract field on the live snapshot DTO carrying the
+      scalars to the settings UI (backend-only seam; settings-ui ↛ runtime).
+      *Hypothesis:* a battery owner glancing at Overview wants the one-line "am I charging or drawing the
+      battery right now?" answer without opening the Homey battery device; today PELS observes it but
+      stays silent, so the owner can't tell PELS even sees the battery. *Persona:* prosumer with a
+      home battery (no battery control yet — pure awareness, the sensor foundation for later cap-relief /
+      surplus-routing). *P2:* backend signal is live and tested; the UI surface + the read-side holder remain.
+      *Consumer caveats (the cap-relief / surplus-routing PR MUST handle before reading the values):*
+      (1) `measure_power` SIGN is a hardcoded `+`charging / `−`discharging assumption — some Homey battery
+      integrations report the opposite sign; the consumer must normalize per-device sign (e.g. a settings
+      flag or driver-aware mapping) rather than trust the raw aggregate direction. (2) Multi-battery SoC is
+      a simple mean (existing TODO above): capacity-weight it once per-battery kWh capacity is surfaced.
+
+- [ ] **Extract the read-only battery wiring out of `deviceTransport.ts` (god-file Bucket B).** origin/main
+      already sat at the file's documented 2185 `max-lines` ceiling, so the minimal battery wiring (the
+      `batteryStateProducer` field + constructor construction, and the `targetedRefreshDeviceIds()` snapshot+
+      battery-id union) nudged the waiver to 2193. Fold this into the broader transport-subsystem peel-off
+      (snapshot-refresh seam) so the ceiling can drop back toward 2185, not creep. *Hypothesis:* the waiver
+      ratchets upward with each transport feature until a subsystem is genuinely extracted; doing it as part
+      of the snapshot-refresh split keeps the god-file from normalising. *Persona:* contributor maintaining
+      the transport hub. *P2:* mechanical once the snapshot seam is drawn.
+
 - [ ] **Generation-guard the rescue-gate state commit in `loadStarvationRescuableDevices`.** `overviewRescueGate`
       now guards the *repaint* after a gate refresh, but the controller's
       `state.starvationRescuableDeviceIds = new Set(ids)` (`packages/settings-ui/src/ui/starvationRescue.ts`) still
