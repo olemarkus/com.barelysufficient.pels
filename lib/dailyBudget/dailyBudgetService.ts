@@ -105,6 +105,12 @@ export class DailyBudgetService {
     this.persistencePolicy.initialize(this.manager.exportState());
   }
 
+  /** Learned gross uncontrolled background (kWh) for a local hour-of-day; the PV the
+   *  always-on load consumes before any surplus is available to flexible load. */
+  getGrossBackgroundKwh(hourOfDay: number): number | undefined {
+    return this.manager.observedGrossBackgroundKwh(hourOfDay);
+  }
+
   private createManagerClone(): DailyBudgetManager {
     const manager = new DailyBudgetManager({
       log: (...args: unknown[]) => this.deps.log(...args),

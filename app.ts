@@ -84,6 +84,7 @@ import { assembleActivePlansWithTrajectory } from './setup/deferredObjectiveActi
 import { BackgroundTasksController } from './setup/backgroundTasksController';
 import { PowerSamplePipeline } from './setup/powerSamplePipeline';
 import { startBackgroundCollectors } from './setup/appInit/startBackgroundCollectors';
+import { wireBudgetPrice } from './setup/appInit/wireBudgetPrice';
 import type { PvForecastController } from './setup/appInit/createPvForecastService';
 import { assembleWeatherAdvisorReadout } from './setup/appInit/weatherAdvisorReadoutAssembler';
 import type { WeatherAdvisorReadoutPayload } from './packages/contracts/src/weatherAdvisorTypes';
@@ -1044,6 +1045,9 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi {
     const collectors = startBackgroundCollectors(this.ctx, (c) => this.backgroundTasks.startWeatherCollector(c));
     this.weatherCollector = collectors.weatherCollector;
     this.pvForecast = collectors.pvForecast;
+    // Join the PV forecast + daily-budget background into the planning price, now
+    // that the forecast exists (the boot price bootstrap ran before it).
+    wireBudgetPrice(this.ctx, (ms) => this.pvForecast?.service.forecast([ms])?.[0]?.generationKwh);
     // Clock-driven smart-task lifecycle emission (status/hours-remaining/ended +
     // history). PlanService exists by now, so the emitter's getDevices reads the
     // live plan-device source. Runs off the power path — fixes the flow-mode lag.
@@ -1204,13 +1208,12 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi {
   }
   private async initPriceCoordinator(): Promise<void> {
     this.priceCoordinator = createPriceCoordinator(this.ctx);
-    const publisher = createPriceFlowTagPublisher(this.ctx);
-    this.priceFlowTagPublisher = publisher;
-    await publisher.init();
+    this.priceFlowTagPublisher = createPriceFlowTagPublisher(this.ctx);
+    await this.priceFlowTagPublisher.init();
     // Publish whatever the persisted price store already holds, so HomeyScript
     // reads at startup see real data (and the right `unit`) instead of the
     // placeholder default — without waiting for the first price refresh.
-    await publisher.publish('startup');
+    await this.priceFlowTagPublisher.publish('startup');
   }
   private initDailyBudgetService(): void {
     this.dailyBudgetService = createDailyBudgetService(this.ctx);

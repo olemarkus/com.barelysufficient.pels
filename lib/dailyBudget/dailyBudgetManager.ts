@@ -71,6 +71,22 @@ export class DailyBudgetManager {
     (this.deps.debugStructured ?? debugFallbackEmit)(payload);
   }
   loadState(raw: unknown): void { if (isDailyBudgetState(raw)) this.state = { ...raw }; }
+  /**
+   * Learned p50 GROSS uncontrolled (always-on background) reserve for a local
+   * hour-of-day (kWh), or `undefined` until that hour has real samples. The p50
+   * array is zero-seeded as a fallback at startup, so an unlearned hour must NOT
+   * surface a fabricated 0 — gate on a positive sample count first.
+   */
+  observedGrossBackgroundKwh(hourOfDay: number): number | undefined {
+    // Note: deliberately `Number.isFinite` + `typeof` rather than the shared
+    // `isFiniteNumber` guard — importing `lib/utils/appTypeGuards` here would pull
+    // `deviceControlProfiles` into the settings-ui typecheck graph (this manager is
+    // transitively reachable from it), tripping an ES2020 `.at()` lib mismatch.
+    const samples = this.state.profileObservedGrossUncontrolledSampleCounts?.[hourOfDay];
+    if (typeof samples !== 'number' || !Number.isFinite(samples) || samples <= 0) return undefined;
+    const p50 = this.state.profileObservedP50GrossUncontrolledKWh?.[hourOfDay];
+    return typeof p50 === 'number' && Number.isFinite(p50) ? p50 : undefined;
+  }
   exportState(): DailyBudgetState {
     const state = { ...this.state };
     if (typeof state.profileSampleCount === 'number' && state.profile) state.profile = {

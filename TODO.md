@@ -287,13 +287,23 @@ CI failure, so future field-move slices can't silently grow the debt.*
       spot × `export_spot_factor` + `export_fixed`, alongside a negative-safe price-level threshold fix.
       Export pricing is now applied scheme-independently (decoupled from the import scheme): the Norway
       scheme links to its isolatable spot, while the flow/Homey schemes (e.g. NL) get the fixed feed-in
-      tariff (a spot-linked config yields no export price there, since no spot is isolatable). Remaining:
-      (a) the derived `budgetPrice` (opportunity-cost blend of export below forecast surplus vs import
-      above) and rewiring the daily-budget / smart-task / price-opt consumers to read it; (b) the
-      settings-UI export section + contracts `settingsKeys` mirror + "Grid price" / "Export price" /
-      "Planning price" labels + a Budget-tab export subline.
+      tariff (a spot-linked config yields no export price there, since no spot is isolatable). The derived
+      `budgetPrice` now ships too — a coverage-weighted blend of export (over the forecast surplus) vs
+      import — computed, persisted, and fed from the live PV forecast minus the gross uncontrolled
+      background. Remaining: (a) **rewire the planning consumers to read `budgetPrice ?? total`** — the
+      daily-budget shaping (`lib/dailyBudget/dailyBudgetPrices.ts`), smart-task horizons
+      (`lib/price/priceStore.ts`), and price-opt — so prosumer homes actually plan against the planning
+      price instead of the import price (a deliberate, capacity-sensitive behaviour change needing its own
+      tests; today `budgetPrice` is produced but unconsumed). That increment also owns **snapshot freshness**:
+      the persisted `combined_prices` only carries `budgetPrice` from the next natural price refresh after the
+      PV forecast is learned (the async Open-Meteo fetch lands after boot). Once consumers read it, recompute
+      `combined_prices` on PV-forecast-refresh completion (a controller completion hook) — NOT a boot-time
+      forced recompute, which re-fires `onCombinedPricesUpdated` mid-startup and perturbs the planner.
+      (b) the settings-UI export section +
+      contracts `settingsKeys` mirror + "Grid price" / "Export price" / "Planning price" labels + a
+      Budget-tab export subline.
       *Persona:* prosumer (Norwegian plusskunde, or NL post-saldering) self-consuming solar.
-      *P2:* usable as a no-op today; the user-facing value lands with the `budgetPrice` blend.
+      *P2:* `budgetPrice` is produced + persisted today; the user-facing value lands when consumers read it (a).
 
 - [ ] **Generation-guard the rescue-gate state commit in `loadStarvationRescuableDevices`.** `overviewRescueGate`
       now guards the *repaint* after a gate refresh, but the controller's
