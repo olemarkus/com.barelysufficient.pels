@@ -24,6 +24,14 @@ export function resolveDeviceCapabilities(params: {
   const hasPower = hasPowerCapability(capabilities);
   const targetCaps = getTargetCaps(capabilities);
   const hasOnOff = capabilities.includes('onoff');
+  // A home battery has neither a temperature target nor `onoff` (PELS never
+  // controls it), so it would otherwise be dropped by the no-control gate below.
+  // Keep it as a power-capable, NON-controllable snapshot entry: it rides the
+  // managed snapshot as a managed observe-only device (SoC + charge/discharge
+  // power tracked), and the existing control gates keep it inert.
+  if (deviceClassKey === 'battery') {
+    return { targetCaps: [], hasPower };
+  }
   if (deviceClassKey === 'evcharger') {
     if (!capabilities.includes('evcharger_charging')) {
       debugStructured?.({
