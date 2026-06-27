@@ -19,6 +19,7 @@
 - In performance-sensitive loops, avoid creating new arrays on each iteration (no `reduce` with spread; use `push` or `for`).
 - Lazy-load large dependencies not needed at startup.
 - When parsing external output, normalise empty/unexpected results to `null`, not empty strings.
+- Validate untrusted external input at the boundary before handing it inward: finiteness-gate numbers (`Number.isFinite`) and shape-guard objects so a raw `NaN`/`Infinity`/malformed value never reaches a sum, comparison, persisted write, or control decision. Express absence as `null`/`undefined` (or skip the write), never a fabricated `0`. References: `lib/device/transport/managerFreshness.ts`, `lib/device/managerEnergy.ts`. (Root `AGENTS.md` → "Validation belongs at the boundary".)
 
 ## Doc comments
 
