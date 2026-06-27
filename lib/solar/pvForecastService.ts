@@ -3,13 +3,15 @@
 // math together:
 //
 //   record:   generation power → per-hour energy (pvGenerationHistory) + the
-//             concurrent MET cloud stamped per hour
-//   learn:    complete recorded hours → (clear-sky, cloud, generation) training
-//             points → fitPvGain
-//   forecast: forward hours → clear-sky × MET-cloud-forecast × learned gain
+//             concurrent shortwave irradiance stamped per hour
+//   learn:    complete recorded hours → (irradiance, generation) training points
+//             → fitPvGain
+//   forecast: forward hours → forecast irradiance × learned gain
 //
-// SDK-free: coordinates and cloud cover are injected (the setup layer wires the
-// Homey geolocation manager and the MET cloud provider; tests mock them).
+// SDK-free: the irradiance provider is injected (the setup layer wires the
+// Open-Meteo-backed provider; tests mock it). The provider encapsulates location,
+// so the service needs no coordinates of its own — the fit is `generation /
+// irradiance`, which is location-agnostic.
 
 import {
   emptyPvGenerationHistory,
@@ -18,146 +20,117 @@ import {
   recordPvSample,
   type PvGenerationHistory,
 } from '../../packages/shared-domain/src/solar/pvGenerationHistory';
-import { clearSkyGhiWm2 } from '../../packages/shared-domain/src/solar/clearSky';
 import { fitPvGain, type PvGainFit, type PvGainTrainingPoint } from '../../packages/shared-domain/src/solar/pvGain';
 import { forecastPvKwh } from '../../packages/shared-domain/src/solar/pvForecast';
+import { isFiniteNumber } from '../utils/appTypeGuards';
 
 const HOUR_MS = 3_600_000;
-const HALF_HOUR_MS = 1_800_000;
 const DEFAULT_RETENTION_MS = 90 * 24 * HOUR_MS;
 
-export type GeoCoordinates = { latitude: number; longitude: number };
-
 /**
- * Per-hour cloud cover (0 clear .. 1 overcast) for a UTC hour-start. Serves both
- * the recorded nowcast (cloud at the time generation occurred, for training) and
- * the forward forecast. `undefined` when MET has no reading for that hour.
+ * Per-hour shortwave irradiance (W/m²) for a UTC hour-start. Serves both the
+ * recorded nowcast (irradiance at the time generation occurred, for training) and
+ * the forward forecast. `undefined` when the source has no value for that hour.
  */
-export type PvCloudProvider = {
-  getCloudFraction: (hourStartMs: number) => number | undefined;
+export type PvIrradianceProvider = {
+  getIrradiance: (hourStartMs: number) => number | undefined;
 };
 
 export type PvForecastServiceState = {
   history: PvGenerationHistory;
-  /** MET cloud cover (0..1) recorded for each UTC hour-start, for training. */
-  cloudByHour: Record<string, number>;
+  /** Shortwave irradiance (W/m²) recorded for each UTC hour-start, for training. */
+  irradianceByHour: Record<string, number>;
 };
 
 export type PvForecastHour = { hourStartMs: number; generationKwh: number };
 
 export type PvForecastServiceDeps = {
-  getCoordinates: () => GeoCoordinates | null;
-  clouds: PvCloudProvider;
+  irradiance: PvIrradianceProvider;
   retentionMs?: number;
   initialState?: PvForecastServiceState;
 };
 
 const hourStartMs = (ms: number): number => Math.floor(ms / HOUR_MS) * HOUR_MS;
 
-const clampUnit = (value: number): number => Math.min(1, Math.max(0, value));
-
 export class PvForecastService {
   private history: PvGenerationHistory;
-  private cloudByHour: Record<string, number>;
-  // Memoised gain: the fit walks the whole recorded window (trig per hour), so it
-  // is computed at most once per data change rather than on every forecast call.
-  // `undefined` = stale (recompute on next read); `null` = fit but still learning.
-  // Keyed by the coordinates it was computed from — a geolocation change re-derives
-  // every clear-sky training point, so it must invalidate the cache too.
+  private irradianceByHour: Record<string, number>;
+  // Memoised gain: the fit walks the whole recorded window, so it is computed at
+  // most once per data change rather than on every forecast call. `undefined` =
+  // stale (recompute on next read); `null` = fit but still learning. Only data
+  // (history + recorded irradiance) feeds the fit, so a sample/prune invalidation
+  // is sufficient — there is no location to key on.
   private cachedFit: PvGainFit | null | undefined;
-  private cachedFitCoordinates: GeoCoordinates | undefined;
-  private readonly getCoordinates: () => GeoCoordinates | null;
-  private readonly clouds: PvCloudProvider;
+  private readonly irradiance: PvIrradianceProvider;
   private readonly retentionMs: number;
 
   constructor(deps: PvForecastServiceDeps) {
-    this.getCoordinates = deps.getCoordinates;
-    this.clouds = deps.clouds;
+    this.irradiance = deps.irradiance;
     this.retentionMs = deps.retentionMs ?? DEFAULT_RETENTION_MS;
     this.history = deps.initialState?.history ?? emptyPvGenerationHistory();
-    this.cloudByHour = { ...(deps.initialState?.cloudByHour ?? {}) };
+    this.irradianceByHour = { ...(deps.initialState?.irradianceByHour ?? {}) };
   }
 
-  /** Fold one generation power sample (W) and stamp the hour's concurrent cloud. */
+  /** Fold one generation power sample (W) and stamp the hour's concurrent irradiance. */
   recordSample(generationW: number, atMs: number): void {
     this.history = recordPvSample(this.history, generationW, atMs);
-    const cloud = this.clouds.getCloudFraction(hourStartMs(atMs));
-    if (typeof cloud === 'number' && Number.isFinite(cloud)) {
-      this.cloudByHour[String(hourStartMs(atMs))] = clampUnit(cloud);
+    const irradianceWm2 = this.irradiance.getIrradiance(hourStartMs(atMs));
+    if (isFiniteNumber(irradianceWm2) && irradianceWm2 >= 0) {
+      this.irradianceByHour[String(hourStartMs(atMs))] = irradianceWm2;
     }
     this.cachedFit = undefined; // new data ⇒ re-fit on next read
   }
 
-  /** Drop recorded generation + cloud older than the retention window. */
+  /** Drop recorded generation + irradiance older than the retention window. */
   prune(nowMs: number): void {
     this.history = pruneOldHours(this.history, nowMs, this.retentionMs);
     const cutoff = nowMs - this.retentionMs;
-    const cloudByHour: Record<string, number> = {};
-    for (const [key, value] of Object.entries(this.cloudByHour)) {
-      if (Number(key) >= cutoff) cloudByHour[key] = value;
+    const irradianceByHour: Record<string, number> = {};
+    for (const [key, value] of Object.entries(this.irradianceByHour)) {
+      if (Number(key) >= cutoff) irradianceByHour[key] = value;
     }
-    this.cloudByHour = cloudByHour;
+    this.irradianceByHour = irradianceByHour;
     this.cachedFit = undefined;
   }
 
-  /** The persistable state (history + recorded cloud). */
+  /** The persistable state (history + recorded irradiance). */
   getState(): PvForecastServiceState {
-    return { history: this.history, cloudByHour: { ...this.cloudByHour } };
+    return { history: this.history, irradianceByHour: { ...this.irradianceByHour } };
   }
 
   /**
-   * Fit the device gain from complete recorded hours that also carry a cloud
-   * reading, or `null` while still learning (too few usable hours / no location).
+   * Fit the device gain from complete recorded hours that also carry an irradiance
+   * reading, or `null` while still learning (too few usable hours).
    */
   getFit(): PvGainFit | null {
-    const coordinates = this.getCoordinates();
-    // Never cache a no-location result: geolocation can appear AFTER the first
-    // forecast attempt (e.g. with persisted history already present), and a cached
-    // null would suppress the forecast until an unrelated sample invalidated it.
-    if (!coordinates) return null;
-    const sameLocation = this.cachedFitCoordinates !== undefined
-      && this.cachedFitCoordinates.latitude === coordinates.latitude
-      && this.cachedFitCoordinates.longitude === coordinates.longitude;
-    if (this.cachedFit !== undefined && sameLocation) return this.cachedFit;
-    this.cachedFit = this.computeFit(coordinates);
-    // Snapshot the numeric values — a provider returning a mutated-in-place object
-    // would otherwise alias the live object and defeat the equality check above.
-    this.cachedFitCoordinates = { latitude: coordinates.latitude, longitude: coordinates.longitude };
+    if (this.cachedFit !== undefined) return this.cachedFit;
+    this.cachedFit = this.computeFit();
     return this.cachedFit;
   }
 
-  private computeFit(coordinates: GeoCoordinates): PvGainFit | null {
+  private computeFit(): PvGainFit | null {
     const points: PvGainTrainingPoint[] = [];
     for (const hour of pvTrainingHours(this.history)) {
-      const cloudFraction = this.cloudByHour[String(hour.hourStartMs)];
-      if (typeof cloudFraction !== 'number') continue;
-      points.push({
-        clearSkyWm2: clearSkyGhiWm2(coordinates.latitude, coordinates.longitude, hour.hourStartMs + HALF_HOUR_MS),
-        cloudFraction,
-        generationKwh: hour.generationKwh,
-      });
+      const irradianceWm2 = this.irradianceByHour[String(hour.hourStartMs)];
+      if (!isFiniteNumber(irradianceWm2)) continue;
+      points.push({ irradianceWm2, generationKwh: hour.generationKwh });
     }
     return fitPvGain(points);
   }
 
   /**
-   * Forecast generation (kWh) for the given forward UTC hour-starts. Empty when
-   * not yet armed (no fit / no location); hours without a cloud forecast are
-   * skipped rather than guessed.
+   * Forecast generation (kWh) for the given forward UTC hour-starts. Empty when not
+   * yet armed (no fit); hours without a forecast irradiance are skipped rather than
+   * guessed.
    */
   forecast(hourStarts: readonly number[]): PvForecastHour[] {
     const fit = this.getFit();
-    const coordinates = this.getCoordinates();
-    if (!fit || !coordinates) return [];
+    if (!fit) return [];
     const result: PvForecastHour[] = [];
     for (const hourStart of hourStarts) {
-      const cloudFraction = this.clouds.getCloudFraction(hourStart);
-      if (typeof cloudFraction !== 'number') continue;
-      const clearSkyWm2 = clearSkyGhiWm2(coordinates.latitude, coordinates.longitude, hourStart + HALF_HOUR_MS);
-      result.push({
-        hourStartMs: hourStart,
-        generationKwh: forecastPvKwh(fit.gainKwhPerWm2, clearSkyWm2, cloudFraction),
-      });
+      const irradianceWm2 = this.irradiance.getIrradiance(hourStart);
+      if (!isFiniteNumber(irradianceWm2)) continue;
+      result.push({ hourStartMs: hourStart, generationKwh: forecastPvKwh(fit.gainKwhPerWm2, irradianceWm2) });
     }
     return result;
   }
