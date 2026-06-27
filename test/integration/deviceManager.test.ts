@@ -566,12 +566,57 @@ describe('DeviceTransport', () => {
             await dm.refreshSnapshot();
             expect(dm.getUiPickerDevices().map((d) => d.id)).toEqual(['dev2']);
 
-            mockApiGet.mockResolvedValue({
-                dev1: buildDevice('dev1', false),
+            // A genuine targeted refresh re-reads only the managed id (dev1) via the
+            // by-id path; it does NOT touch the raw-device cache, so the
+            // unmanaged-eligible dev2 stays visible in the picker.
+            const byIdPath = 'manager/devices/device/dev1';
+            mockApiGet.mockImplementation(async (path: string) => {
+                if (path === byIdPath) return buildDevice('dev1', false);
+                throw new Error(`unexpected full fetch: ${path}`);
             });
             await dm.refreshSnapshot({ targetedRefresh: true });
 
             expect(dm.getUiPickerDevices().map((d) => d.id)).toEqual(['dev2']);
+            dm.destroy();
+        });
+
+        it('refreshes the raw-device cache when a targeted refresh falls back to full (UI picker not stale)', async () => {
+            // Regression: when every by-id read fails, the targeted refresh falls
+            // back to a FULL read. `latestRawDevices` (the UI-picker source) must be
+            // refreshed from that full read, keyed off the resolved fetchSource —
+            // not gated on the originally-requested targeted flag.
+            const dm = new DeviceTransport(homeyMock, loggerMock, {
+                getManaged: (deviceId) => deviceId === 'dev1',
+                isManagedFilterActive: () => true,
+            });
+            await dm.init();
+            const fullPath = 'manager/devices/device';
+            // Initial full read: only dev1 (managed) + dev2 (unmanaged-eligible).
+            mockApiGet.mockImplementation(async (path: string) => {
+                if (path === fullPath) {
+                    return { dev1: buildDevice('dev1', true), dev2: buildDevice('dev2', true) };
+                }
+                throw new Error(`404 ${path}`); // by-id reads fail
+            });
+            await dm.refreshSnapshot();
+            expect(dm.getUiPickerDevices().map((d) => d.id)).toEqual(['dev2']);
+
+            // The full read now GROWS to include dev3 (also unmanaged-eligible). A
+            // targeted refresh whose by-id reads all fail → full fallback. The
+            // picker must reflect the grown set, not the pre-failure list.
+            mockApiGet.mockImplementation(async (path: string) => {
+                if (path === fullPath) {
+                    return {
+                        dev1: buildDevice('dev1', true),
+                        dev2: buildDevice('dev2', true),
+                        dev3: buildDevice('dev3', true),
+                    };
+                }
+                throw new Error(`404 ${path}`);
+            });
+            await dm.refreshSnapshot({ targetedRefresh: true });
+
+            expect(dm.getUiPickerDevices().map((d) => d.id).sort()).toEqual(['dev2', 'dev3']);
             dm.destroy();
         });
 

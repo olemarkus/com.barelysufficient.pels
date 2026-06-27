@@ -16,7 +16,12 @@ export type ObservedDeviceStateRefreshEntry = {
     observed: ObservedDeviceState;
 };
 
-/** Batch payload for a full snapshot refresh — one entry per committed device. */
+/**
+ * Batch payload for a snapshot refresh — one entry per committed device. The
+ * committed snapshot is always complete truth for the known device set (a full
+ * read, or a targeted overlay with the per-device miss grace already applied),
+ * so the projection prunes devices absent from the batch unconditionally.
+ */
 export type ObservedDeviceStateRefreshPayload = {
     entries: ObservedDeviceStateRefreshEntry[];
 };

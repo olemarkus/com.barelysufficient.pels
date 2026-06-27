@@ -40,11 +40,13 @@ const createLogger = () => ({
   error: vi.fn(),
   structuredLog: {
     debug: vi.fn(),
+    warn: vi.fn(),
   },
 }) as unknown as Logger & {
   log: Mock;
   debug: Mock;
   error: Mock;
+  structuredLog: { debug: Mock; warn: Mock };
 };
 
 const mockRestClient = { get: vi.fn(), put: vi.fn() };
@@ -410,19 +412,55 @@ describe('device manager support helpers', () => {
     expect(result.fetchSource).toBe('targeted_by_id');
   });
 
-  it('fetchDevicesByIds falls back to full fetch on any failure', async () => {
+  // A targeted (by-id) refresh is update-only. When SOME ids fail but at least
+  // one succeeds, the surviving devices commit and the failed ids are simply
+  // absent from this cycle — no cascade to the bulk full fetch.
+  it('fetchDevicesByIds commits the surviving devices on a partial failure (no full fetch)', async () => {
+    const deviceA = { id: 'a', name: 'A' };
+    // `manager/devices/device/a` resolves; `.../b` rejects; the bulk full-fetch
+    // path (`manager/devices/device`, no id) must never be hit.
+    const mockGet = vi.fn(async (path: string) => {
+      if (path === 'manager/devices/device/a') return deviceA;
+      if (path === 'manager/devices/device/b') throw new Error('404');
+      throw new Error(`unexpected full fetch: ${path}`);
+    });
+    setRestClient({ get: mockGet, put: vi.fn() });
+    const logger = createLogger();
+
+    const result = await fetchDevicesByIds({
+      deviceIds: ['a', 'b'],
+      logger,
+    });
+
+    expect(result.fetchSource).toBe('targeted_by_id');
+    expect(result.devices).toEqual([deviceA]);
+    expect(result.devices.map((d) => (d as { id: string }).id)).not.toContain('b');
+    // The bulk full-fetch path was never called — no cascade.
+    expect(mockGet).not.toHaveBeenCalledWith('manager/devices/device');
+    // Structured log records the partial outcome with the failure count, with
+    // per-fetch context (logger.structuredLog), not the module-scope logger.
+    expect(logger.structuredLog.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'targeted_fetch_partial', succeeded: 1, failed: 1 }),
+    );
+  });
+
+  // When EVERY requested id fails, there is nothing to commit, so the
+  // authoritative full-fetch recovery path still fires.
+  it('fetchDevicesByIds falls back to full fetch when every requested id fails', async () => {
     const allDevices = [
       { id: 'a', name: 'A' },
       { id: 'b', name: 'B' },
       { id: 'c', name: 'C' },
     ];
-    const mockGet = vi.fn()
-      .mockResolvedValueOnce(allDevices[0])
-      .mockRejectedValueOnce(new Error('not found'))
-      // Full fetch fallback returns all devices as object
-      .mockResolvedValueOnce(
-        Object.fromEntries(allDevices.map((d) => [d.id, d])),
-      );
+    const fullFetch = vi.fn();
+    const mockGet = vi.fn(async (path: string) => {
+      if (path === 'manager/devices/device') {
+        fullFetch();
+        return Object.fromEntries(allDevices.map((d) => [d.id, d]));
+      }
+      // Every targeted by-id read fails.
+      throw new Error('not found');
+    });
     setRestClient({ get: mockGet, put: vi.fn() });
     const logger = createLogger();
 
@@ -433,6 +471,7 @@ describe('device manager support helpers', () => {
 
     expect(result.fetchSource).toBe('raw_manager_devices');
     expect(result.devices).toHaveLength(3);
+    expect(fullFetch).toHaveBeenCalled();
     expect(logger.debug).toHaveBeenCalledWith(
       expect.objectContaining({ event: 'targeted_fetch_fallback_to_full' }),
     );

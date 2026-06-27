@@ -28,6 +28,13 @@ import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import { projectObservedState } from './observedStateProjection';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
 import { getDeviceId } from './transport/managerHelpers';
+import {
+  SNAPSHOT_ABANDON_GRACE_MS,
+  SNAPSHOT_ABANDON_GRACE_READS,
+  mergeTargetedRefreshSnapshot,
+  overlayRetainedTrackedDevices,
+  type TargetedMissState,
+} from './transport/targetedSnapshotMerge';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
 import { estimatePower, type PowerEstimateState } from './devicePowerEstimate';
 import { startRuntimeSpan } from '../utils/runtimeTrace';
@@ -75,7 +82,7 @@ import {
   type ObservedDeviceStateRefreshEvent,
   type PlanRealtimeUpdateEvent,
 } from './transport/managerRealtimeHandlers';
-import type { DeviceFetchSource } from './transport/managerFetch';
+import type { DeviceFetchResult, DeviceFetchSource } from './transport/managerFetch';
 import { normalizeError } from '../utils/errorUtils';
 import { shouldEmitWindowed } from '../logging/logDedupe';
 // Binary-settle operations live in observer (`lib/observer/binarySettle.ts`)
@@ -146,8 +153,10 @@ const REALTIME_CAPABILITY_EVENT_WINDOW_MS = 2 * 1000;
 // lib/objectives/deferredObjectives/planHistory.ts: only accept an empty
 // snapshot once it has persisted for a grace window OR across enough consecutive
 // reads, so a genuinely-emptied home still commits but a transient blip does not.
-const EMPTY_SNAPSHOT_ABANDON_GRACE_MS = 5 * 60 * 1000;
-const EMPTY_SNAPSHOT_ABANDON_GRACE_READS = 3;
+// The numerics are shared with the per-device targeted-miss grace (one source of
+// truth in `targetedSnapshotMerge`).
+const EMPTY_SNAPSHOT_ABANDON_GRACE_MS = SNAPSHOT_ABANDON_GRACE_MS;
+const EMPTY_SNAPSHOT_ABANDON_GRACE_READS = SNAPSHOT_ABANDON_GRACE_READS;
 export const PLAN_RECONCILE_REALTIME_UPDATE_EVENT = 'plan_reconcile_realtime_update';
 export const PLAN_LIVE_STATE_OBSERVED_EVENT = 'plan_live_state_observed';
 // Fallback event-name for the full-refresh batch when no dispatcher is injected
@@ -353,6 +362,12 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     // Tracks a run of transient empty SDK reads while a populated snapshot is held,
     // so we only abandon the populated snapshot after the grace window/read count.
     private emptySnapshotGrace: { firstSeenMs: number; reads: number } | null = null;
+    // Per-device transient-miss state for targeted (by-id) refreshes. A device
+    // present in the targeted request set but absent from the read result this
+    // cycle advances its {misses,firstMissMs}; a successful read (or any full
+    // refresh) resets it. Owned here, mutated by `mergeTargetedRefreshSnapshot`,
+    // which drives the read-count + wall-clock retain-vs-drop grace.
+    private targetedMissByDeviceId: Map<string, TargetedMissState> = new Map();
     private latestTrackedDevicesById: Map<string, HomeyDeviceLike> = new Map();
     private latestRawDevices: HomeyDeviceLike[] = [];
     private powerState: Required<PowerEstimateState>;
@@ -1259,6 +1274,44 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     }
 
     /**
+     * Resolve the snapshot to commit. For a TARGETED (by-id) overlay, `failedIds`
+     * is the set of ids whose NETWORK read failed this cycle: overlay onto the
+     * prior snapshot via the per-device miss grace (`mergeTargetedRefreshSnapshot`)
+     * — a network-missed device is RETAINED with its prior entry (stays planned,
+     * keeps its plan state, stays in the targeted set so it is retried, ages via
+     * the staleness backstop), while a device that was fetched fine but parsed out
+     * is dropped immediately. A FULL read passes `failedIds = null` — authoritative,
+     * take it wholesale and reset the miss state. The committed snapshot is always
+     * complete truth for the known device set, so the projection prunes to match.
+     */
+    private resolveCommittedRefreshSnapshot(
+        presentSnapshot: TransportDeviceSnapshot[],
+        previousSnapshot: readonly TransportDeviceSnapshot[],
+        failedIds: readonly string[] | null,
+        nowMs: number,
+    ): TransportDeviceSnapshot[] {
+        if (failedIds === null) {
+            this.targetedMissByDeviceId.clear();
+            return presentSnapshot;
+        }
+        const { snapshot, graceExceededIds } = mergeTargetedRefreshSnapshot({
+            presentSnapshot,
+            previousSnapshot,
+            failedIds,
+            missByDeviceId: this.targetedMissByDeviceId,
+            nowMs,
+        });
+        for (const deviceId of graceExceededIds) {
+            (this.logger.structuredLog ?? moduleLogger).warn({
+                component: 'devices',
+                event: 'targeted_device_miss_grace_exceeded',
+                deviceId,
+            });
+        }
+        return snapshot;
+    }
+
+    /**
      * Commits a refreshed snapshot unless the abandon-grace guard defers it.
      * Returns `true` when committed, `false` when a transient empty read was held
      * back so the caller can skip the post-commit recording/logging.
@@ -1908,23 +1961,34 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             const isTargetedRefresh = options.targetedRefresh === true && this.latestSnapshot.length > 0;
             const fetchResult = await this.fetchDevicesForSnapshotRefresh(isTargetedRefresh);
             if (!fetchResult) return null;
-            const { devices: list, fetchSource } = fetchResult;
+            const { devices: list, fetchSource, failedIds } = fetchResult;
             const shouldReadLivePower = options.includeLivePower !== false;
             const livePowerReport = shouldReadLivePower
                 ? await this.fetchLivePowerReport()
                 : buildEmptyLivePowerReport();
             const homePowerSample = shouldReadLivePower ? this.updateHomePowerFromReport(livePowerReport) : null;
             const effectiveList = list.map((device) => this.applyDeviceDriverOverride(device));
-            const snapshot = this.parseDeviceList(effectiveList, livePowerReport.byDeviceId);
+            const presentSnapshot = this.parseDeviceList(effectiveList, livePowerReport.byDeviceId);
             mergeFresherCapabilityObservations({
                 state: this.observationState,
                 previousSnapshot,
-                nextSnapshot: snapshot,
+                nextSnapshot: presentSnapshot,
                 devices: effectiveList,
                 logger: this.logger,
                 debugStructured: this.debugStructured,
             });
-            this.reconcileBinarySettleEvidenceAfterSnapshotRefresh(snapshot, effectiveList);
+            this.reconcileBinarySettleEvidenceAfterSnapshotRefresh(presentSnapshot, effectiveList);
+            // `fetchSource` resolves whether this committed read is a targeted
+            // overlay or a full read — a targeted refresh that fell back to full
+            // (every id failed) reports `raw_manager_devices`, so it is treated as
+            // authoritative here even though `isTargetedRefresh` was requested.
+            const isTargetedOverlay = isTargetedRefresh && fetchSource === 'targeted_by_id';
+            const snapshot = this.resolveCommittedRefreshSnapshot(
+                presentSnapshot,
+                previousSnapshot,
+                isTargetedOverlay ? failedIds : null,
+                start,
+            );
             // Skip both the snapshot commit AND the raw-device cache update when the
             // abandon-grace guard defers a transient empty read, so getUiPickerDevices()
             // doesn't briefly report zero devices during the blip we're masking.
@@ -1935,7 +1999,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
                 nowMs: start,
             });
             if (!committed) return homePowerSample;
-            this.adoptCommittedDeviceList(effectiveList, isTargetedRefresh);
+            this.adoptCommittedDeviceList(effectiveList, fetchSource, snapshot);
             recordSnapshotRefreshObservations({
                 state: this.observationState,
                 snapshot,
@@ -2268,10 +2332,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     }
     private async fetchDevices(): Promise<HomeyDeviceLike[]> { return (await this.fetchDevicesForSnapshot()).devices; }
 
-    private async fetchDevicesForSnapshot(): Promise<{
-        devices: HomeyDeviceLike[];
-        fetchSource: DeviceFetchSource;
-    }> {
+    private async fetchDevicesForSnapshot(): Promise<DeviceFetchResult> {
         const start = Date.now();
         try {
             return await fetchDevicesWithFallback({
@@ -2284,10 +2345,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         }
     }
 
-    private async fetchDevicesByKnownIds(): Promise<{
-        devices: HomeyDeviceLike[];
-        fetchSource: DeviceFetchSource;
-    }> {
+    private async fetchDevicesByKnownIds(): Promise<DeviceFetchResult> {
         const start = Date.now();
         try {
             const deviceIds = this.latestSnapshot.map((d) => d.id);
@@ -2386,9 +2444,29 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     // native adapters and refresh the raw-device cache. Run only after the
     // abandon-grace guard commits, so a deferred transient empty read leaves the
     // previously-tracked devices, their native adapters, and the raw cache intact.
-    private adoptCommittedDeviceList(effectiveList: HomeyDeviceLike[], isTargetedRefresh: boolean): void {
-        this.syncTrackedDevices(effectiveList);
-        if (!isTargetedRefresh) this.latestRawDevices = effectiveList;
+    //
+    // Keyed off `fetchSource` (NOT the requested-targeted flag): a FULL read
+    // (`raw_manager_devices`, whether intended-full OR a targeted refresh that
+    // fell back to full) is authoritative — refresh `latestRawDevices` so the UI
+    // picker doesn't show a stale list. A genuine targeted overlay
+    // (`targeted_by_id`) may retain a network-missed device absent from
+    // `effectiveList`, so its tracking is overlaid from the prior raw entries and
+    // the raw cache is left intact (the partial read isn't the full picker list).
+    private adoptCommittedDeviceList(
+        effectiveList: HomeyDeviceLike[],
+        fetchSource: DeviceFetchSource,
+        committedSnapshot: readonly TargetDeviceSnapshot[],
+    ): void {
+        const isFullRead = fetchSource === 'raw_manager_devices';
+        const trackingList = isFullRead
+            ? effectiveList
+            : overlayRetainedTrackedDevices({
+                effectiveList,
+                committedSnapshot,
+                priorRawById: this.latestTrackedDevicesById,
+            });
+        this.syncTrackedDevices(trackingList);
+        if (isFullRead) this.latestRawDevices = effectiveList;
     }
 
     private parseDevice(
@@ -2491,13 +2569,17 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     }
 
     /**
-     * Fan-out of the full-refresh batch. Built from the just-committed snapshot:
+     * Fan-out of the refresh batch. Built from the just-committed snapshot:
      * each device gets a FRESH per-device cursor (so the refresh supersedes any
      * in-flight per-capability delta) and the decided observed value. Mirrors
      * `dispatchObservedStateChanged`'s dispatcher-or-fallback shape. Fired from
      * `commitRefreshedSnapshot` only after `setSnapshot`, so the grace-deferred
      * path (commit returns false before `setSnapshot`) never fires it.
      * Stage 4a of the snapshot decomposition.
+     *
+     * The committed snapshot is always complete truth for the known device set (a
+     * full read, or a targeted overlay with the per-device grace already applied),
+     * so `applyRefresh` prunes devices absent from this batch unconditionally.
      */
     private dispatchObservedStateRefresh(snapshot: TargetDeviceSnapshot[]): void {
         // One timestamp for the whole batch: every entry in a single refresh

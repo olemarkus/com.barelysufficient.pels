@@ -20,14 +20,25 @@ import {
 
 export type DeviceFetchSource = 'raw_manager_devices' | 'targeted_by_id';
 
+/**
+ * Result of a device-list fetch. `failedIds` is the set of requested ids whose
+ * by-id NETWORK read actually failed this cycle (404/timeout/invalid payload) —
+ * the ONLY ids the targeted-refresh grace may retain. It is always empty for a
+ * full (`raw_manager_devices`) read, which either succeeds wholly or throws.
+ * A device that was fetched successfully but later dropped by PARSING (unmanaged
+ * /unsupported/ineligible) is NOT in `failedIds` and must not be retained.
+ */
+export type DeviceFetchResult = {
+  devices: HomeyDeviceLike[];
+  fetchSource: DeviceFetchSource;
+  failedIds: string[];
+};
+
 const DEVICE_FETCH_RETRY_DELAYS_MS = [2000, 4000, 8000, 16000];
 
 export async function fetchDevicesWithFallback(params: {
   logger: Logger;
-}): Promise<{
-  devices: HomeyDeviceLike[];
-  fetchSource: DeviceFetchSource;
-}> {
+}): Promise<DeviceFetchResult> {
   const { logger } = params;
   let lastError: unknown;
   for (let attempt = 0; attempt <= DEVICE_FETCH_RETRY_DELAYS_MS.length; attempt += 1) {
@@ -43,6 +54,7 @@ export async function fetchDevicesWithFallback(params: {
       return {
         devices: list,
         fetchSource: 'raw_manager_devices',
+        failedIds: [],
       };
     } catch (error) {
       lastError = error;
@@ -64,13 +76,10 @@ export async function fetchDevicesWithFallback(params: {
 export async function fetchDevicesByIds(params: {
   deviceIds: string[];
   logger: Logger;
-}): Promise<{
-  devices: HomeyDeviceLike[];
-  fetchSource: DeviceFetchSource;
-}> {
+}): Promise<DeviceFetchResult> {
   const { deviceIds, logger } = params;
   if (deviceIds.length === 0) {
-    return { devices: [], fetchSource: 'targeted_by_id' };
+    return { devices: [], fetchSource: 'targeted_by_id', failedIds: [] };
   }
   const results = await Promise.allSettled(
     deviceIds.map((id) => getRawDevice(id)),
@@ -96,14 +105,34 @@ export async function fetchDevicesByIds(params: {
       });
     }
   }
-  if (failedIds.length > 0) {
+  // A targeted (by-id) refresh is UPDATE-ONLY — it refreshes the devices we
+  // already know about. So any read that returns at least one device is enough
+  // to commit those successes. A device whose by-id NETWORK read failed THIS
+  // cycle (404, timeout, invalid payload) is reported in `failedIds`: the
+  // transport's snapshot overlay RETAINS those ids for a per-device grace
+  // (`mergeTargetedRefreshSnapshot`) — they are transient misses, not removals.
+  // The projection then prunes to the committed (overlaid) batch. (A device that
+  // was fetched fine but parsed out is NOT in `failedIds`, so it is dropped
+  // immediately, never retained.) Cascading every flaky single-device read to a
+  // full re-fetch is what once let one bad device stall the whole snapshot the
+  // capacity controller relies on. We fall back to the full fetch ONLY when
+  // EVERY requested id failed (`devices` is empty) — there is nothing to commit,
+  // so a genuine recovery path is warranted.
+  if (devices.length === 0 && failedIds.length > 0) {
     logger.debug({
       event: 'targeted_fetch_fallback_to_full',
       failures: failedIds.length,
     });
     return fetchDevicesWithFallback({ logger });
   }
-  return { devices, fetchSource: 'targeted_by_id' };
+  if (failedIds.length > 0) {
+    (logger.structuredLog ?? moduleLogger).warn({
+      event: 'targeted_fetch_partial',
+      succeeded: devices.length,
+      failed: failedIds.length,
+    });
+  }
+  return { devices, fetchSource: 'targeted_by_id', failedIds };
 }
 
 export type LivePowerReport = {
