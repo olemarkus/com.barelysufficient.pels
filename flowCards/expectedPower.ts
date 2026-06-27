@@ -1,6 +1,7 @@
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import type { FlowCard, FlowHomeyLike } from '../lib/utils/types';
 import type { Logger as PinoLogger } from '../lib/logging/logger';
+import { isObserveOnlyRoleClassKey } from '../lib/device/transport/managerHelpers';
 import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
 
 type DeviceRef = RawFlowDeviceArg;
@@ -89,9 +90,15 @@ export function registerExpectedPowerCard(
   card.registerArgumentAutocompleteListener('device', async (query: string) => {
     const snapshot = await deps.getSnapshot();
     return buildDeviceAutocompleteOptions(
-      snapshot
-        .filter((d) => d.controlModel !== 'stepped_load')
-        .filter((d) => !d.loadKw || d.loadKw <= 0),
+      // An observe-only role device (home battery / PV) is force-managed but
+      // non-controllable, so an expected-power override on it is a no-op pick.
+      // Keyed on the immutable observe-only ROLE (same predicate as the
+      // settings-UI hide + deviceSettingsCards), not on the live flag.
+      snapshot.filter(
+        (d) => !isObserveOnlyRoleClassKey(d.deviceClass)
+          && d.controlModel !== 'stepped_load'
+          && (!d.loadKw || d.loadKw <= 0),
+      ),
       query,
     );
   });

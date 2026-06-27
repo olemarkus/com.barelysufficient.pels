@@ -45,6 +45,39 @@ describe('Expected power flow card', () => {
     await app.onUninit?.();
   });
 
+  it('omits auto-tracked observe-only battery/PV devices from the expected-power autocomplete', async () => {
+    // A role-detected home battery (class:'battery') and PV (class:'solarpanel') are
+    // FORCE-MANAGED observe-only devices: tracked in the snapshot but non-controllable,
+    // so an expected-power override on them is a meaningless no-op pick. They must not
+    // be OFFERED in the autocomplete. A normal controllable heater still IS.
+    const heater = new MockDevice('dev-heater', 'Heater', ['target_temperature']);
+    const battery = new MockDevice('dev-batt', 'Home Battery', ['measure_battery', 'measure_power'], 'battery');
+    const solar = new MockDevice('dev-pv', 'Solar Roof', ['measure_power', 'meter_power'], 'solarpanel');
+
+    setMockDrivers({ driverA: new MockDriver('driverA', [heater, battery, solar]) });
+    // The user never opts the battery/PV into managed — they ride the snapshot purely
+    // from role detection (managed observe-only). Only the heater is user-managed.
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-heater': true });
+    mockHomeyInstance.settings.set('managed_devices', { 'dev-heater': true });
+
+    const app = createApp();
+    await app.onInit();
+
+    // Sanity: the observe-only devices DO ride the backend snapshot (still tracked).
+    const snapshot = (app as any).latestTargetSnapshot as Array<{ id: string }>;
+    expect(snapshot.map((d) => d.id)).toEqual(expect.arrayContaining(['dev-batt', 'dev-pv']));
+
+    const actionAutocomplete = mockHomeyInstance.flow._actionCardAutocompleteListeners.set_expected_power_usage?.device;
+    expect(actionAutocomplete).toBeDefined();
+    const options = await actionAutocomplete?.('') || [];
+    const offeredIds = options.map((option: { id: string }) => option.id);
+    expect(offeredIds).toContain('dev-heater');
+    expect(offeredIds).not.toContain('dev-batt');
+    expect(offeredIds).not.toContain('dev-pv');
+
+    await app.onUninit?.();
+  });
+
   it('sets temporary expected power until real measurement arrives', async () => {
     const device = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff', 'measure_power']);
     await device.setCapabilityValue('onoff', true);
