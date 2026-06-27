@@ -143,6 +143,7 @@ const buildEntry = (
   };
   const extra: Partial<CombinedPriceEntry> = {
     ...(hasNumber(source.exportPrice) ? { exportPrice: source.exportPrice } : {}),
+    ...(hasNumber(source.budgetPrice) ? { budgetPrice: source.budgetPrice } : {}),
     ...(hasNumber(source.spotPriceExVat) ? { spotPriceExVat: source.spotPriceExVat } : {}),
     ...(hasNumber(source.gridTariffExVat) ? { gridTariffExVat: source.gridTariffExVat } : {}),
     ...(hasNumber(source.providerSurchargeExVat)

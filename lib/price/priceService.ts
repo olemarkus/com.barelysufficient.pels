@@ -50,6 +50,7 @@ import {
 } from './priceServiceNorgespris';
 import { buildCombinedHourlyPricesNorway } from './priceServiceNorway';
 import { applyExportPrices, readExportPriceConfig } from './exportPrice';
+import { applyBudgetPrices, type BudgetPriceInputs } from './budgetPrice';
 import { fetchSpotPricesForDate } from './spotPriceFetch';
 import { getCurrentHourPrice, isCurrentHourAtLevel } from './priceLevelUtils';
 import { formatFlowPriceInfo, formatNorwayPriceInfo } from './priceInfoFormatters';
@@ -76,6 +77,11 @@ export default class PriceService {
   setOnCombinedPricesUpdated(listener: ((reason: string) => void) | undefined): void {
     this.onCombinedPricesUpdated = listener;
   }
+  // Forecast-surplus inputs for the planning price, injected by the wiring layer
+  // (composed from the PV forecast minus the gross uncontrolled background). Unset
+  // for non-prosumers ⇒ budgetPrice is never produced and behaviour is unchanged.
+  private budgetPriceInputs?: BudgetPriceInputs;
+  setBudgetPriceInputs(inputs: BudgetPriceInputs | undefined): void { this.budgetPriceInputs = inputs; }
   private getSettingValue(key: string): unknown { return this.homey.settings.get(key) as unknown; }
   private getNumberSetting(key: string, fallback: number): number {
     const value = this.getSettingValue(key);
@@ -311,11 +317,13 @@ export default class PriceService {
 
   getCombinedHourlyPrices(): CombinedHourlyPrice[] {
     // Export (feed-in) pricing is kept separate from the import scheme and applied
-    // scheme-independently to the import series — see `applyExportPrices`.
-    return applyExportPrices(this.buildImportHourlyPrices(), readExportPriceConfig({
+    // scheme-independently to the import series — see `applyExportPrices`. The
+    // planning price (budgetPrice) is then derived on top from the injected forecast
+    // surplus — see `applyBudgetPrices` (no-op for non-prosumers).
+    return applyBudgetPrices(applyExportPrices(this.buildImportHourlyPrices(), readExportPriceConfig({
       getRaw: (key) => this.getSettingValue(key),
       getNumber: (key, fallback) => this.getNumberSetting(key, fallback),
-    }));
+    })), this.budgetPriceInputs);
   }
 
   private buildImportHourlyPrices(): CombinedHourlyPrice[] {
@@ -459,8 +467,7 @@ export default class PriceService {
   }
 
   getCurrentHourPriceInfo(): string {
-    const prices = this.getCombinedHourlyPrices();
-    const current = getCurrentHourPrice(prices);
+    const current = getCurrentHourPrice(this.getCombinedHourlyPrices());
     if (!current) return 'price unknown';
     return this.getPriceScheme() === 'norway'
       ? formatNorwayPriceInfo(current)
@@ -487,8 +494,7 @@ export default class PriceService {
   }
 
   private getNorwayPriceModel(): 'stromstotte' | 'norgespris' {
-    const raw = this.getSettingValue(NORWAY_PRICE_MODEL);
-    return raw === 'norgespris' ? 'norgespris' : 'stromstotte';
+    return this.getSettingValue(NORWAY_PRICE_MODEL) === 'norgespris' ? 'norgespris' : 'stromstotte';
   }
 
   private isCurrentHourAtLevel(level: 'cheap' | 'expensive'): boolean {
@@ -503,8 +509,7 @@ export default class PriceService {
   getCurrentHourStartMs(): number {
     const current = getCurrentHourPrice(this.getCombinedHourlyPrices());
     if (current) return new Date(current.startsAt).getTime();
-    const timeZone = this.getTimeZone();
-    return getHourStartInTimeZone(new Date(), timeZone);
+    return getHourStartInTimeZone(new Date(), this.getTimeZone());
   }
 
   private async refreshHomeyEnergyPrices(forceRefresh: boolean): Promise<void> {

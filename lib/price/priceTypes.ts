@@ -8,6 +8,13 @@ export type CombinedHourlyPrice = {
    * cost stack (carries none of grid tariff / consumption tax / VAT-on-those).
    */
   exportPrice?: number;
+  /**
+   * Planning price for this hour (a derived coverage-weighted blend of `exportPrice`
+   * for the forecast-surplus band and `totalPrice` above it), same unit as
+   * `totalPrice`. Drives flexible-load scheduling; `undefined` ⇒ falls back to
+   * `totalPrice`. Never used for money/receipts (those stay on `totalPrice`).
+   */
+  budgetPrice?: number;
   spotPriceExVat?: number;
   gridTariffExVat?: number;
   providerSurchargeExVat?: number;
@@ -29,6 +36,8 @@ export type CombinedPriceEntry = {
   total: number;
   /** Export (feed-in) price, incl VAT, same unit as `total`; signed, may be <= 0; undefined when disabled. */
   exportPrice?: number;
+  /** Planning price (derived blend of export + import over the forecast surplus); undefined ⇒ `total`. */
+  budgetPrice?: number;
   spotPriceExVat?: number;
   gridTariffExVat?: number;
   providerSurchargeExVat?: number;
