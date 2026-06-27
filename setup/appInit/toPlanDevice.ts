@@ -73,7 +73,16 @@ export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot & 
     canSetOnOff: (device as TargetDeviceSnapshot & { canSetOnOff?: boolean }).canSetOnOff,
   });
   const shedBehavior = ctx.getShedBehavior(device.id);
-  const controllable = ctx.isCapacityControlEnabled(device.id);
+  // A home battery is managed observe-only. Read its `managed`/`controllable` from the
+  // STRUCTURAL snapshot stamp (`resolveParsedDeviceSettings` set them from the device
+  // object at parse, on every parse path) rather than re-resolving via the settings-
+  // derived `ctx` functions — those depend on the transport's async-populated battery-
+  // id set, which the realtime `device.update` path does not refresh, so re-resolving
+  // could briefly read `controllable: true` for a battery whose settings say so. The
+  // structural stamp closes that window: a present battery is NEVER controllable here.
+  // Non-battery resolution is unchanged (the stamp equals the re-resolved value).
+  const isBattery = device.deviceClass === 'battery';
+  const controllable = isBattery ? device.controllable === true : ctx.isCapacityControlEnabled(device.id);
   const residualKw = buildResidualKwForPlanDevice({
     device,
     controlCapabilityId: device.controlCapabilityId,
@@ -116,7 +125,8 @@ export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot & 
     // `isBinaryPlanDevice` re-asserts it as a required `boolean`; non-binary
     // devices carry no on/off truth.
     ...(device.controlCapabilityId !== undefined ? { currentOn: resolveCurrentOn(device) } : {}),
-    managed: ctx.resolveManagedState(device.id),
+    // Battery: structural stamp (always managed observe-only); else re-resolve.
+    managed: isBattery ? device.managed !== false : ctx.resolveManagedState(device.id),
     controllable,
     budgetExempt: ctx.isBudgetExempt(device.id),
     temperatureBoost: ctx.getTemperatureBoostConfig?.(device.id),

@@ -659,6 +659,19 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
 (`notes/personas.md`) it serves. Items that can't name all three are maintainability/
 cosmetic chores — do them in passing or drop them; don't park them here.*
 
+- [ ] **Home battery: distinguish a real home battery from a controllable load mislabeled with the `homeBattery` energy role.**
+      *Persona:* Orchestrator (`notes/personas.md`) running a third-party driver that sets
+      `energy.homeBattery` on a device that is actually a controllable load.
+      *Hypothesis:* `resolveDeviceClassKey` normalizes ANY device declaring the `homeBattery`
+      energy role (or `class:'battery'`) to the `'battery'` class-key and forces it managed
+      observe-only, so a misconfigured/mislabeled driver would make PELS silently stop controlling
+      a load the owner expected it to manage.
+      *Why it's needed:* the role/class signal is the only evidence today; an inferred edge with no
+      known real instance, but if it occurs the failure is silent (no shed/restore, no warning). A
+      guard could require a battery-specific capability (`measure_battery`) alongside the role before
+      forcing observe-only, or surface a diagnostic when a `homeBattery`-flagged device also has a
+      control capability. Source: PR-C flow-card-leak review, 2026-06-27.
+
 - [ ] **Weather: a location-aware hint when MET can't be reached for lack of geolocation.**
       *Persona:* Orchestrator (`notes/personas.md`) who turned the feature on but never set the
       hub's location, so the forecast silently runs on recent days.

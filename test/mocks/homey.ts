@@ -79,6 +79,8 @@ export class MockDevice {
   private behaviorByCapability = new Map<string, MockCapabilityBehaviorConfig>();
   private capabilityMetadata = new Map<string, MockCapabilityMetadata>();
   private capabilityListeners = new Map<string, Set<(value: unknown) => void>>();
+  // Mirrors the real SDK's `device.available` (offline = false). Defaults online.
+  private available = true;
 
   constructor(
     private id: string,
@@ -122,6 +124,12 @@ export class MockDevice {
 
   getDeviceClass(): string {
     return this.deviceClass;
+  }
+
+  // Toggle the device's availability, mirroring the real SDK's `device.available`
+  // (offline = false). The next snapshot fetch reflects it.
+  setAvailable(available: boolean): void {
+    this.available = available;
   }
 
   getData() {
@@ -288,7 +296,7 @@ export class MockDevice {
       capabilitiesObj,
       settings: this.settings,
       makeCapabilityInstance: this.makeCapabilityInstance.bind(this),
-      available: true,
+      available: this.available,
       ready: true,
     };
   }

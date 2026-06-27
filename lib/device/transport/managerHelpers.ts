@@ -1,4 +1,5 @@
 import type { HomeyDeviceLike } from '../../utils/types';
+import { isHomeBatteryDevice } from '../managerEnergy';
 
 const SUPPORTED_DEVICE_CLASSES = new Set([
   'thermostat',
@@ -7,12 +8,25 @@ const SUPPORTED_DEVICE_CLASSES = new Set([
   'heatpump',
   'airconditioning',
   'airtreatment',
+  // NB: home batteries are NOT listed here — `resolveDeviceClassKey` normalizes a
+  // role-detected battery (class OR `homeBattery` energy role) to the 'battery'
+  // class-key BEFORE this set check, so it survives regardless of its real class.
+  // Batteries ride the snapshot as MANAGED OBSERVE-ONLY devices (resolved to
+  // `controllable: false` + non-temperature, so every control gate excludes them).
   'evcharger',
 ]);
 
 export const getDeviceId = (device: HomeyDeviceLike): string => device.id;
 
 export const resolveDeviceClassKey = (device: HomeyDeviceLike): string | null => {
+  // Normalize EVERY role-detected home battery to the 'battery' class-key — by class
+  // OR the canonical `homeBattery` energy role — at this single point. This makes
+  // detection (`isHomeBatteryDevice`) and snapshot SURVIVAL use the SAME predicate:
+  // an energy-role-only battery (whose real `class` may be 'sensor'/'other', not in
+  // the supported set) still resolves to 'battery', so it survives identity and every
+  // downstream `deviceClassKey === 'battery'` gate fires consistently. A battery is
+  // then stamped managed observe-only structurally in `resolveParsedDeviceSettings`.
+  if (isHomeBatteryDevice(device)) return 'battery';
   const deviceClass = typeof device.class === 'string' ? device.class.trim() : '';
   if (!deviceClass) return null;
   const deviceClassKey = deviceClass.toLowerCase();

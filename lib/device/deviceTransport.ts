@@ -49,6 +49,7 @@ import {
 } from './managerControl';
 import { normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
 import { type LiveDevicePowerWatts } from './managerEnergy';
+import { BatteryStateProducer } from './batteryStateProducer';
 import { DeviceMeasuredPowerResolver } from './measuredPowerResolver';
 import {
   fetchDevicesByIds,
@@ -1121,6 +1122,11 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             this.latestTrackedDevicesById.delete(deviceId);
         }
         const effectiveDevice = this.applyDeviceDriverOverride(device);
+        // Keep the battery membership set non-empty for a present battery even before
+        // the first full refresh — the realtime path parses the battery (stamped
+        // managed observe-only structurally), so the deviceId-only resolve* consumers
+        // must agree. Additive: a full refresh re-derives the set; this never narrows it.
+        this.batteryStateProducer.noteBatteryDevice(effectiveDevice);
         const previousSnapshot = this.latestSnapshotById.get(deviceId);
         const binarySafeUpdate = deviceId
             ? this.clearInvalidBinarySettleEvidenceFromDeviceUpdate(deviceId, effectiveDevice, previousSnapshot)
@@ -1804,6 +1810,33 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     private debugStructured: StructuredDebugEmitter | undefined;
     private pendingPredicate: DeviceTransportOptions['pendingPredicate'] | undefined;
     private observedStateDispatcher: TransportObservedStateDispatcher | undefined;
+    // Read-only home-battery awareness producer. Holds the detected battery-id set
+    // (the authoritative role-membership set the app's managed/controllable
+    // resolution consults) and emits `battery_state_observed`; never feeds the
+    // hard-cap import path. See `batteryStateProducer.ts`. Constructed in the
+    // constructor body (its emit needs the already-assigned logger).
+    private readonly batteryStateProducer: BatteryStateProducer;
+
+    /** Whether `deviceId` is a currently-detected home battery (incl. offline). */
+    isBatteryDevice(deviceId: string): boolean {
+        return this.batteryStateProducer.isBatteryDevice(deviceId);
+    }
+
+    // Detect home batteries from the RAW fetched devices BEFORE parse, then pass the
+    // list through unchanged. Ordering matters: parse routes `getManaged`/
+    // `getControllable` (→ the app's battery-aware resolve functions) which consult
+    // this same battery-id set, so the set must be current first. This makes
+    // role-detected batteries resolve managed + non-controllable, so they ride the
+    // managed snapshot as observe-only devices; it also emits the read-only
+    // `battery_state_observed` event. A FULL read (`raw_manager_devices`) re-derives
+    // the set; a targeted by-id read re-reads the SAME known ids and must not narrow it.
+    private observeBatteryStateFromList(
+        effectiveList: HomeyDeviceLike[],
+        fetchSource: DeviceFetchSource,
+    ): HomeyDeviceLike[] {
+        this.batteryStateProducer.observe(effectiveList, { fullRefresh: fetchSource === 'raw_manager_devices' });
+        return effectiveList;
+    }
 
     /* eslint-disable complexity --
      * Constructor wires every option in the bag; complexity is in the
@@ -1825,6 +1858,9 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         this.onSnapshotMutated = options?.onSnapshotMutated;
         this.pendingPredicate = options?.pendingPredicate;
         this.observedStateDispatcher = options?.observedStateDispatcher;
+        this.batteryStateProducer = new BatteryStateProducer(
+            (p) => (this.logger.structuredLog ?? moduleLogger).info(p),
+        );
         this.binarySettleOps = options?.binarySettleOps ?? createInertBinarySettleOps();
         this.binarySettleState = options?.binarySettleState ?? createEmptyBinarySettleState();
         if (providers) this.providers = providers;
@@ -1967,7 +2003,10 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
                 ? await this.fetchLivePowerReport()
                 : buildEmptyLivePowerReport();
             const homePowerSample = shouldReadLivePower ? this.updateHomePowerFromReport(livePowerReport) : null;
-            const effectiveList = list.map((device) => this.applyDeviceDriverOverride(device));
+            const effectiveList = this.observeBatteryStateFromList(
+                list.map((device) => this.applyDeviceDriverOverride(device)),
+                fetchSource,
+            );
             const presentSnapshot = this.parseDeviceList(effectiveList, livePowerReport.byDeviceId);
             mergeFresherCapabilityObservations({
                 state: this.observationState,

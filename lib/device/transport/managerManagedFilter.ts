@@ -42,8 +42,18 @@ export function shouldDropAfterControlState(params: {
   purpose: ParseDevicePurpose;
   decision: ManagedFilterDecision;
   currentOn: boolean | undefined;
+  deviceClassKey?: string;
 }): boolean {
-  const { purpose, decision, currentOn } = params;
+  const { purpose, decision, currentOn, deviceClassKey } = params;
+  // A home battery is a FORCE-MANAGED observe-only device with no on/off control
+  // capability, so its `currentOn` is legitimately `undefined`.
+  //   - RUNTIME: keep it (it rides the managed snapshot for SoC/power tracking) —
+  //     it must NOT be dropped on the `currentOn === undefined` basis.
+  //   - UI PICKER: drop it. The picker offers devices the user can opt into managing;
+  //     a battery is always managed observe-only, so its "manage" toggle is a no-op.
+  //     Dropping it here keeps it OUT of the unmanaged-eligible picker list, so it
+  //     renders exactly once in the settings UI (the managed list), never twice.
+  if (deviceClassKey === 'battery') return purpose === 'ui_picker';
   if (purpose !== 'ui_picker') return currentOn === undefined;
   // Drop well-formed managed devices in the picker — they are already in the
   // runtime snapshot. Keep managed devices whose `currentOn` is undefined so
