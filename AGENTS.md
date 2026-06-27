@@ -61,6 +61,12 @@ Test Code             test/**, packages/settings-ui/test/**, packages/settings-u
 
 **Known transitional allowance:** `lib/utils/**` still has some imports from `lib/device`, `lib/power`, and `lib/plan` (`todo-tighten-utils-layering`). Tracked in `TODO.md`; do not expand.
 
+**Validation belongs at the boundary (convention, not cruiser-enforced):**
+- Every external/outer layer — Homey SDK reads, network fetches, the settings/persisted store, flow-card args, inbound API bodies, the clock — must validate and discriminate untrusted input into a strongly-typed, resolved value *before* handing it to an adjacent layer. Finiteness-gate numbers (`Number.isFinite`), shape-guard objects, and express absence as a flat `null`/`undefined` (or skip the write). Never let a raw `NaN`/`Infinity`/malformed/partial value flow inward into a sum, comparison, persisted write, or control decision.
+- Downstream layers may then assume the typed invariant holds; they must not re-validate or branch on the input's source/provenance (the consumer-side dual — "Resolution belongs in the producer", `docs/architecture.md`).
+- Transient external failures get an abandon-grace window, never a destructive reset of persisted state (`notes/persisted-settings-state.md`).
+- Reference implementations: `lib/device/transport/managerFreshness.ts` (drops a non-finite realtime event — no write, no freshness bump) and `lib/device/managerEnergy.ts` (`asRecord` + `toFiniteNumber` resolve an untrusted live report to `null` on junk).
+
 ---
 
 ## Key Modules
