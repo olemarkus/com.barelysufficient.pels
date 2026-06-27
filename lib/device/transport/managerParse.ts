@@ -1,6 +1,7 @@
 import type { TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import type { DeviceCapabilityMap } from '../managerControl';
+import { isObserveOnlyRoleClassKey } from './managerHelpers';
 
 const TARGET_CAPABILITY_PREFIXES = ['target_temperature'];
 const POWER_CAPABILITY_PREFIXES = ['measure_power', 'meter_power'] as const;
@@ -24,12 +25,12 @@ export function resolveDeviceCapabilities(params: {
   const hasPower = hasPowerCapability(capabilities);
   const targetCaps = getTargetCaps(capabilities);
   const hasOnOff = capabilities.includes('onoff');
-  // A home battery has neither a temperature target nor `onoff` (PELS never
-  // controls it), so it would otherwise be dropped by the no-control gate below.
-  // Keep it as a power-capable, NON-controllable snapshot entry: it rides the
-  // managed snapshot as a managed observe-only device (SoC + charge/discharge
-  // power tracked), and the existing control gates keep it inert.
-  if (deviceClassKey === 'battery') {
+  // A home battery or solar device has neither a temperature target nor `onoff` (PELS
+  // never controls it), so it would otherwise be dropped by the no-control gate below.
+  // Keep it as a power-capable, NON-controllable snapshot entry: it rides the managed
+  // snapshot as a managed observe-only device (battery SoC + charge/discharge power, or
+  // PV production tracked), and the existing control gates keep it inert.
+  if (isObserveOnlyRoleClassKey(deviceClassKey)) {
     return { targetCaps: [], hasPower };
   }
   if (deviceClassKey === 'evcharger') {

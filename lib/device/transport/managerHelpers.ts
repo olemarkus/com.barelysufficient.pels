@@ -1,5 +1,5 @@
 import type { HomeyDeviceLike } from '../../utils/types';
-import { isHomeBatteryDevice } from '../managerEnergy';
+import { isHomeBatteryDevice, isSolarPanelDevice } from '../managerEnergy';
 
 const SUPPORTED_DEVICE_CLASSES = new Set([
   'thermostat',
@@ -8,13 +8,28 @@ const SUPPORTED_DEVICE_CLASSES = new Set([
   'heatpump',
   'airconditioning',
   'airtreatment',
-  // NB: home batteries are NOT listed here — `resolveDeviceClassKey` normalizes a
-  // role-detected battery (class OR `homeBattery` energy role) to the 'battery'
-  // class-key BEFORE this set check, so it survives regardless of its real class.
-  // Batteries ride the snapshot as MANAGED OBSERVE-ONLY devices (resolved to
-  // `controllable: false` + non-temperature, so every control gate excludes them).
+  // NB: home batteries and solar devices are NOT listed here — `resolveDeviceClassKey`
+  // normalizes a role-detected battery (class OR `homeBattery` energy role) to the
+  // 'battery' class-key and a role-detected solar device (class:'solarpanel' OR the
+  // `meterPowerExportedCapability` producer designation) to the 'solarpanel' class-key
+  // BEFORE this set check, so each survives regardless of its real class. Both ride the
+  // snapshot as MANAGED OBSERVE-ONLY devices (resolved to `controllable: false` +
+  // non-temperature, so every control gate excludes them).
   'evcharger',
 ]);
+
+// The normalized class-keys that `resolveDeviceClassKey` assigns to the two
+// observe-only ROLES (battery → 'battery', solar → 'solarpanel'). PELS tracks but
+// never controls a device with one of these class-keys: it is kept as a power-capable,
+// non-controllable, non-temperature snapshot entry and excluded from flow-backed
+// control. Consumers that only have a `deviceClassKey` string in hand (the capability
+// branch, the managed-filter ui_picker drop, the flow-card guard) match on this set so
+// battery + solar share the same observe-only treatment from one definition.
+const OBSERVE_ONLY_ROLE_CLASS_KEYS = new Set(['battery', 'solarpanel']);
+
+export const isObserveOnlyRoleClassKey = (deviceClassKey: string | undefined): boolean => (
+  deviceClassKey !== undefined && OBSERVE_ONLY_ROLE_CLASS_KEYS.has(deviceClassKey)
+);
 
 export const getDeviceId = (device: HomeyDeviceLike): string => device.id;
 
@@ -27,6 +42,12 @@ export const resolveDeviceClassKey = (device: HomeyDeviceLike): string | null =>
   // downstream `deviceClassKey === 'battery'` gate fires consistently. A battery is
   // then stamped managed observe-only structurally in `resolveParsedDeviceSettings`.
   if (isHomeBatteryDevice(device)) return 'battery';
+  // Same machinery for a role-detected solar device — by class:'solarpanel' OR the
+  // `meterPowerExportedCapability` producer designation — normalized to the
+  // 'solarpanel' class-key so an energy-role-only PV (real class 'sensor'/'other')
+  // also survives identity and every downstream `deviceClassKey === 'solarpanel'`
+  // gate fires. Stamped managed observe-only structurally in `resolveParsedDeviceSettings`.
+  if (isSolarPanelDevice(device)) return 'solarpanel';
   const deviceClass = typeof device.class === 'string' ? device.class.trim() : '';
   if (!deviceClass) return null;
   const deviceClassKey = deviceClass.toLowerCase();

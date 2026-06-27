@@ -64,6 +64,19 @@ const buildFreshMeasuredDevicePowerWById = (params: {
   nowMs: number;
 }): Record<string, number> | undefined => {
   const entries = params.devices.flatMap((device) => {
+    // A solar device is a PRODUCER: its `measure_power` is POSITIVE when generating, so
+    // recording it here (where every value is `Math.max(0, …)` floored and folded into
+    // the per-device CONSUMPTION buckets) would show PV production as device usage.
+    // Exclude observe-only PV producers entirely — production is tracked separately as
+    // the `solar_production_observed` telemetry, never as a consumed/background load.
+    //
+    // ONLY solar is excluded, NOT a battery: a battery's positive `measure_power` is a
+    // real CHARGE DRAW — the home genuinely consumes that power off the grid (the grid
+    // meter rises), so attributing it to the battery's per-device bucket is physically
+    // accurate household/background load. Excluding it would leave an attribution gap
+    // (home consumed it, no device credited). PV's positive `measure_power` is the
+    // opposite — generation, not draw — so the asymmetry is correct.
+    if (device.deviceClass === 'solarpanel') return [];
     // `hasObservedMeasuredPower` proves `measuredPowerKw` is finite (producer
     // invariant); the cluster guard does NOT prove `measuredPowerObservedAtMs`,
     // so this staleness-sensitive consumer still checks the observation time

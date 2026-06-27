@@ -50,6 +50,7 @@ import {
 import { normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
 import { type LiveDevicePowerWatts } from './managerEnergy';
 import { BatteryStateProducer } from './batteryStateProducer';
+import { SolarProductionProducer } from './solarProductionProducer';
 import { DeviceMeasuredPowerResolver } from './measuredPowerResolver';
 import {
   fetchDevicesByIds,
@@ -1127,6 +1128,11 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         // managed observe-only structurally), so the deviceId-only resolve* consumers
         // must agree. Additive: a full refresh re-derives the set; this never narrows it.
         this.batteryStateProducer.noteBatteryDevice(effectiveDevice);
+        // Same machinery for a present solar device: keep the solar membership set
+        // non-empty before the first full refresh so the deviceId-only resolve* consumers
+        // agree with the structural managed observe-only stamp. Additive; full refresh
+        // re-derives the set.
+        this.solarProductionProducer.noteSolarDevice(effectiveDevice);
         const previousSnapshot = this.latestSnapshotById.get(deviceId);
         const binarySafeUpdate = deviceId
             ? this.clearInvalidBinarySettleEvidenceFromDeviceUpdate(deviceId, effectiveDevice, previousSnapshot)
@@ -1816,25 +1822,39 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     // hard-cap import path. See `batteryStateProducer.ts`. Constructed in the
     // constructor body (its emit needs the already-assigned logger).
     private readonly batteryStateProducer: BatteryStateProducer;
+    // Read-only PV / solar production awareness producer. Holds the detected solar-id
+    // set (the authoritative role-membership set the app's managed/controllable
+    // resolution consults) and emits `solar_production_observed`; never feeds the
+    // hard-cap import path nor the whole-home generation aggregate. See
+    // `solarProductionProducer.ts`.
+    private readonly solarProductionProducer: SolarProductionProducer;
 
     /** Whether `deviceId` is a currently-detected home battery (incl. offline). */
     isBatteryDevice(deviceId: string): boolean {
         return this.batteryStateProducer.isBatteryDevice(deviceId);
     }
 
-    // Detect home batteries from the RAW fetched devices BEFORE parse, then pass the
-    // list through unchanged. Ordering matters: parse routes `getManaged`/
-    // `getControllable` (→ the app's battery-aware resolve functions) which consult
-    // this same battery-id set, so the set must be current first. This makes
-    // role-detected batteries resolve managed + non-controllable, so they ride the
+    /** Whether `deviceId` is a currently-detected solar device (incl. offline). */
+    isSolarDevice(deviceId: string): boolean {
+        return this.solarProductionProducer.isSolarDevice(deviceId);
+    }
+
+    // Detect observe-only devices (home batteries + solar) from the RAW fetched devices
+    // BEFORE parse, then pass the list through unchanged. Ordering matters: parse routes
+    // `getManaged`/`getControllable` (→ the app's observe-only-aware resolve functions)
+    // which consult these same id sets, so they must be current first. This makes
+    // role-detected batteries/solar resolve managed + non-controllable, so they ride the
     // managed snapshot as observe-only devices; it also emits the read-only
-    // `battery_state_observed` event. A FULL read (`raw_manager_devices`) re-derives
-    // the set; a targeted by-id read re-reads the SAME known ids and must not narrow it.
+    // `battery_state_observed` / `solar_production_observed` events. A FULL read
+    // (`raw_manager_devices`) re-derives the sets; a targeted by-id read re-reads the
+    // SAME known ids and must not narrow them.
     private observeBatteryStateFromList(
         effectiveList: HomeyDeviceLike[],
         fetchSource: DeviceFetchSource,
     ): HomeyDeviceLike[] {
-        this.batteryStateProducer.observe(effectiveList, { fullRefresh: fetchSource === 'raw_manager_devices' });
+        const fullRefresh = fetchSource === 'raw_manager_devices';
+        this.batteryStateProducer.observe(effectiveList, { fullRefresh });
+        this.solarProductionProducer.observe(effectiveList, { fullRefresh });
         return effectiveList;
     }
 
@@ -1859,6 +1879,9 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         this.pendingPredicate = options?.pendingPredicate;
         this.observedStateDispatcher = options?.observedStateDispatcher;
         this.batteryStateProducer = new BatteryStateProducer(
+            (p) => (this.logger.structuredLog ?? moduleLogger).info(p),
+        );
+        this.solarProductionProducer = new SolarProductionProducer(
             (p) => (this.logger.structuredLog ?? moduleLogger).info(p),
         );
         this.binarySettleOps = options?.binarySettleOps ?? createInertBinarySettleOps();

@@ -32,7 +32,7 @@ import {
 } from './managerParse';
 import {
     hasPotentialHomeyEnergyEstimate,
-    isHomeBatteryDevice,
+    isObserveOnlyRoleDevice,
     type LiveDevicePowerWatts,
 } from '../managerEnergy';
 import { updateLastKnownPower } from '../managerRuntime';
@@ -497,19 +497,19 @@ function resolveParsedDeviceSettings(
         budgetExempt: providers.getBudgetExempt?.(deviceId),
         flowConflict: providers.getFlowConflict?.(deviceId),
     };
-    // A role-detected home battery is stamped MANAGED OBSERVE-ONLY STRUCTURALLY, from
-    // the device object in hand — independent of any async-populated id set. This is
-    // the single authoritative resolution: it applies on EVERY parse path (full
-    // refresh AND realtime `device.update`), so there is no window (boot,
-    // realtime-before-first-full-refresh, or any settings combo) where a present
-    // battery resolves `controllable: true` or enters the planner controllable/
-    // actuated. The app's `resolveManagedState`/`isCapacityControlEnabled` agree via
-    // the transport's battery-id set; the planner reads THIS structural stamp on the
-    // snapshot, never the settings-derived flags. Detection (`isHomeBatteryDevice` =
-    // class OR homeBattery role) is the SAME predicate the snapshot-survival gates use,
-    // so detection, stamping, and survival can never diverge (an energy-role-only
-    // battery is detected, stamped, AND survives consistently).
-    return isHomeBatteryDevice(device) ? { ...base, managed: true, controllable: false } : base;
+    // A role-detected OBSERVE-ONLY device (home battery OR solar) is stamped MANAGED
+    // OBSERVE-ONLY STRUCTURALLY, from the device object in hand — independent of any
+    // async-populated id set. This is the single authoritative resolution: it applies on
+    // EVERY parse path (full refresh AND realtime `device.update`), so there is no window
+    // (boot, realtime-before-first-full-refresh, or any settings combo) where a present
+    // battery/solar device resolves `controllable: true` or enters the planner
+    // controllable/actuated. The app's `resolveManagedState`/`isCapacityControlEnabled`
+    // agree via the transport's observe-only-id set; the planner reads THIS structural
+    // stamp on the snapshot, never the settings-derived flags. Detection
+    // (`isObserveOnlyRoleDevice`) is the SAME predicate the class-key normalization /
+    // snapshot-survival gates use, so detection, stamping, and survival can never diverge
+    // (an energy-role-only battery/solar device is detected, stamped, AND survives).
+    return isObserveOnlyRoleDevice(device) ? { ...base, managed: true, controllable: false } : base;
 }
 
 export function isDevicePowerCapable(params: {
