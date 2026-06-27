@@ -18,6 +18,10 @@ import type {
     ObservedStateChangedEvent,
     ObservedStateRefreshEvent,
 } from '../../lib/observer/observedStateEvents';
+import {
+    TARGETED_DEVICE_MISS_GRACE_MS,
+    TARGETED_DEVICE_MISS_GRACE_READS,
+} from '../../lib/device/transport/targetedSnapshotMerge';
 import { mockHomeyInstance } from '../mocks/homey';
 import Homey from 'homey';
 import * as homeyApi from '../../lib/device/transport/managerHomeyApi';
@@ -445,18 +449,23 @@ describe('ObservedDeviceStateProjection apply guard', () => {
         expect(p.getObservedState('dev1')?.binaryControl?.on).toBe(false);
     });
 
-    it('refresh prunes devices absent from the batch', () => {
+    const refreshEvent = (ids: string[]): ObservedStateRefreshEvent => ({
+        entries: ids.map((id, index) => ({
+            observationSeq: index + 1,
+            observedAtMs: 1000 + index,
+            observed: baseObserved(id, true),
+        })),
+    });
+
+    // The committed snapshot is always complete truth (a targeted refresh is
+    // overlaid with the per-device grace before commit), so the projection prunes
+    // to the batch unconditionally. Retain-vs-drop for a transient targeted miss
+    // is exercised through the real refresh path below.
+    it('a refresh prunes devices absent from the batch', () => {
         const p = new ObservedDeviceStateProjection();
-        const refresh = (ids: string[]): ObservedStateRefreshEvent => ({
-            entries: ids.map((id, index) => ({
-                observationSeq: index + 1,
-                observedAtMs: 1000 + index,
-                observed: baseObserved(id, true),
-            })),
-        });
-        p.applyRefresh(refresh(['dev1', 'dev2']));
+        p.applyRefresh(refreshEvent(['dev1', 'dev2']));
         expect(p.getAllObservedStates().map((o) => o.id).sort()).toEqual(['dev1', 'dev2']);
-        p.applyRefresh(refresh(['dev1']));
+        p.applyRefresh(refreshEvent(['dev1']));
         expect(p.getObservedState('dev2')).toBeUndefined();
         expect(p.getObservedState('dev1')).toBeDefined();
     });
@@ -521,7 +530,151 @@ describe('ObservedDeviceStateProjection seedMissing', () => {
         };
         p.applyRefresh(refresh);
         expect(p.getObservedState('dev1')).toBeDefined();
-        // dev2 was only seeded and is absent from the refresh → pruned as usual.
+        // dev2 was only seeded and is absent from the refresh → pruned.
         expect(p.getObservedState('dev2')).toBeUndefined();
     });
+});
+
+// Targeted (by-id) refresh merge-overlay + per-device miss grace, driven through
+// the real DeviceTransport over the SDK seam (the by-id GET path), observed via
+// `getSnapshot()` and the projection. A targeted refresh is UPDATE-ONLY: a
+// device whose single by-id read fails is RETAINED (within grace), kept in the
+// snapshot, and retried; only after the grace is it dropped + pruned.
+describe('targeted refresh merge-overlay and per-device miss grace', () => {
+    const TARGETED_PATH = (id: string) => `manager/devices/device/${id}`;
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockGetLiveReport.mockResolvedValue({ items: [] });
+        vi.spyOn(mockHomeyInstance.api, 'put').mockImplementation(mockApiPut);
+        vi.spyOn(homeyApi, 'getEnergyLiveReport').mockImplementation(() => mockGetLiveReport());
+    });
+
+    // Serve the full-fetch path from `full`, and each by-id path from `present`
+    // (a device id absent from `present` rejects, simulating a 404).
+    type DeviceMap = Record<string, Record<string, unknown>>;
+    const serveDevices = (full: DeviceMap, present: DeviceMap) => {
+        vi.spyOn(mockHomeyInstance.api, 'get').mockImplementation(async (path: string): Promise<Record<string, unknown>> => {
+            if (path === 'manager/devices/device') return full;
+            for (const [id, dev] of Object.entries(present)) {
+                if (path === TARGETED_PATH(id)) return dev;
+            }
+            throw new Error(`404 ${path}`);
+        });
+    };
+
+    const ids = (h: Harness) => h.transport.getSnapshot().map((d) => d.id).sort();
+
+    it('retains a missed device (present updated, absent retained) and prunes nothing within grace', async () => {
+        const h = await buildHarness();
+        const full = {
+            dev1: onoffDevice('dev1', false, '2026-03-20T06:00:00.000Z'),
+            dev2: onoffDevice('dev2', false, '2026-03-20T06:00:00.000Z'),
+        };
+        serveDevices(full, full);
+        await h.transport.refreshSnapshot(); // full refresh primes both devices
+        expect(ids(h)).toEqual(['dev1', 'dev2']);
+
+        // Targeted refresh: dev1 reads (updated to on:true), dev2's by-id read 404s.
+        serveDevices(full, { dev1: onoffDevice('dev1', true, '2026-03-20T07:00:00.000Z') });
+        await h.transport.refreshSnapshot({ targetedRefresh: true });
+
+        // Both retained: dev1 updated, dev2 retained with its prior entry.
+        expect(ids(h)).toEqual(['dev1', 'dev2']);
+        expect(h.transport.getSnapshotByDeviceId('dev1')?.binaryControl?.on).toBe(true);
+        expect(h.projection.getObservedState('dev2')).toBeDefined();
+        h.transport.destroy();
+    });
+
+    it('drops + prunes a device only after GRACE misses AND the wall-clock floor, and resets on a successful read', async () => {
+        // The per-device grace gates on BOTH a read count and a wall-clock floor,
+        // so the drop path must advance the faked clock past the floor.
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(Date.UTC(2026, 2, 20, 6, 0, 0));
+        try {
+            const h = await buildHarness();
+            const full = {
+                dev1: onoffDevice('dev1', false, '2026-03-20T06:00:00.000Z'),
+                dev2: onoffDevice('dev2', false, '2026-03-20T06:00:00.000Z'),
+            };
+            serveDevices(full, full);
+            await h.transport.refreshSnapshot();
+
+            // dev2's by-id read fails; dev1 keeps reading.
+            serveDevices(full, { dev1: onoffDevice('dev1', false, '2026-03-20T07:00:00.000Z') });
+
+            // Several rapid misses (count met) but still inside the wall-clock floor:
+            // retained.
+            for (let i = 0; i < TARGETED_DEVICE_MISS_GRACE_READS + 1; i += 1) {
+                vi.advanceTimersByTime(1_000); // 1s apart
+                await h.transport.refreshSnapshot({ targetedRefresh: true });
+            }
+            expect(ids(h)).toEqual(['dev1', 'dev2']);
+
+            // Reset-on-success: dev2 reads again → counter + first-miss cleared.
+            serveDevices(full, full);
+            await h.transport.refreshSnapshot({ targetedRefresh: true });
+            expect(ids(h)).toEqual(['dev1', 'dev2']);
+
+            // Now miss it again, spread past the wall-clock floor → dropped + pruned.
+            serveDevices(full, { dev1: onoffDevice('dev1', false, '2026-03-20T08:00:00.000Z') });
+            for (let i = 0; i < TARGETED_DEVICE_MISS_GRACE_READS; i += 1) {
+                await h.transport.refreshSnapshot({ targetedRefresh: true });
+                vi.advanceTimersByTime(TARGETED_DEVICE_MISS_GRACE_MS);
+            }
+            expect(ids(h)).toEqual(['dev1']);
+            expect(h.projection.getObservedState('dev2')).toBeUndefined();
+            h.transport.destroy();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('a full refresh stays authoritative — a genuinely-absent device drops immediately', async () => {
+        const h = await buildHarness();
+        serveDevices({
+            dev1: onoffDevice('dev1', false, '2026-03-20T06:00:00.000Z'),
+            dev2: onoffDevice('dev2', false, '2026-03-20T06:00:00.000Z'),
+        }, {});
+        await h.transport.refreshSnapshot();
+        expect(ids(h)).toEqual(['dev1', 'dev2']);
+
+        // Full refresh now returns only dev1 → dev2 is genuinely gone, dropped now.
+        serveDevices({ dev1: onoffDevice('dev1', false, '2026-03-20T07:00:00.000Z') }, {});
+        await h.transport.refreshSnapshot();
+        expect(ids(h)).toEqual(['dev1']);
+        expect(h.projection.getObservedState('dev2')).toBeUndefined();
+        h.transport.destroy();
+    });
+
+    it('a fetched-but-parsed-out device drops IMMEDIATELY (no 5-min grace)', async () => {
+        const h = await buildHarness();
+        const full = {
+            dev1: onoffDevice('dev1', false, '2026-03-20T06:00:00.000Z'),
+            dev2: onoffDevice('dev2', false, '2026-03-20T06:00:00.000Z'),
+        };
+        serveDevices(full, full);
+        await h.transport.refreshSnapshot();
+        expect(ids(h)).toEqual(['dev1', 'dev2']);
+
+        // Targeted refresh: dev1 reads fine; dev2's by-id read SUCCEEDS but returns
+        // a payload with no usable capabilities — parsing drops it. It is NOT a
+        // network miss, so it must drop immediately, not be retained for grace.
+        const parsedOutDev2 = { id: 'dev2', name: 'dev2', class: 'sensor', capabilities: [], capabilitiesObj: {} };
+        serveDevices(full, {
+            dev1: onoffDevice('dev1', false, '2026-03-20T07:00:00.000Z'),
+            dev2: parsedOutDev2,
+        });
+        await h.transport.refreshSnapshot({ targetedRefresh: true });
+
+        expect(ids(h)).toEqual(['dev1']);
+        expect(h.transport.getSnapshotByDeviceId('dev2')).toBeUndefined();
+        expect(h.projection.getObservedState('dev2')).toBeUndefined();
+        h.transport.destroy();
+    });
+
 });

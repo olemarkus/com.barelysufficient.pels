@@ -496,6 +496,18 @@ export const mockHomeyInstance = {
         }
         return devices;
       }
+      // Targeted by-id fetch (`getRawDevice`): `manager/devices/device/<id>`.
+      // The real transport reads a single device on a targeted refresh; the mock
+      // serves it from the same driver-backed devices so per-id rejection (a 404
+      // for one flaky/removed device) is expressible at this SDK seam.
+      const byIdMatch = path.match(/^manager\/devices\/device\/([^/]+)$/);
+      if (byIdMatch) {
+        const device = findMockDeviceById(byIdMatch[1]);
+        if (!device) {
+          throw new Error(`Mock API GET 404 for device: ${byIdMatch[1]}`);
+        }
+        return device.toHomeyApiDevice();
+      }
       if (path === 'manager/energy/live') {
         return { items: [] };
       }

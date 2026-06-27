@@ -88,9 +88,16 @@ export class ObservedDeviceStateProjection {
     }
 
     /**
-     * Record a full-refresh batch, then PRUNE devices absent from the batch
-     * (mirrors transport's active-id pruning so a vanished device stops being
-     * served).
+     * Record a refresh batch, then PRUNE devices absent from the batch (mirrors
+     * transport's active-id pruning so a vanished device stops being served).
+     *
+     * The committed snapshot driving this batch is always complete truth for the
+     * known device set: a FULL read knows every device, and a TARGETED
+     * (update-only) refresh is overlaid with the per-device miss grace BEFORE it
+     * is committed — a device that merely failed one by-id read is retained in
+     * the batch (so it is not pruned here), and a device only drops out once it
+     * has exceeded the grace (a genuine removal). So pruning to the batch is
+     * always correct.
      */
     applyRefresh(event: ObservedStateRefreshEvent): void {
         const presentIds = new Set<string>();
