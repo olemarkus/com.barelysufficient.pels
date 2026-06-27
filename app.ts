@@ -83,7 +83,8 @@ import {
 import { assembleActivePlansWithTrajectory } from './setup/deferredObjectiveActivePlansUiAssembler';
 import { BackgroundTasksController } from './setup/backgroundTasksController';
 import { PowerSamplePipeline } from './setup/powerSamplePipeline';
-import { createWeatherCollector } from './setup/appInit/createWeatherCollector';
+import { startBackgroundCollectors } from './setup/appInit/startBackgroundCollectors';
+import type { PvForecastController } from './setup/appInit/createPvForecastService';
 import { assembleWeatherAdvisorReadout } from './setup/appInit/weatherAdvisorReadoutAssembler';
 import type { WeatherAdvisorReadoutPayload } from './packages/contracts/src/weatherAdvisorTypes';
 import type { WeatherCollector } from './lib/weather/weatherCollector';
@@ -443,9 +444,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi {
     isDebugTopicEnabled: (topic) => this.debugLoggingTopics.has(topic),
     getNowMs: () => this.getPlanRebuildNowMs(),
     getPowerSampleRebuildState: () => this.powerSampleRebuildState,
-    setPowerSampleRebuildState: (state) => {
-      this.powerSampleRebuildState = state;
-    },
+    setPowerSampleRebuildState: (state) => { this.powerSampleRebuildState = state; },
   });
   private readonly planRebuildScheduler = new PlanRebuildScheduler({
     getNowMs: getAppPlanRebuildNowMs,
@@ -466,18 +465,18 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi {
     getDeviceManager: () => this.deviceManager,
     planRebuildScheduler: this.planRebuildScheduler,
     getPowerSampleRebuildState: () => this.powerSampleRebuildState,
-    setPowerSampleRebuildState: (state) => {
-      this.powerSampleRebuildState = state;
-    },
+    setPowerSampleRebuildState: (state) => { this.powerSampleRebuildState = state; },
     getLatestTargetSnapshot: () => this.latestTargetSnapshot,
     getPlanRebuildNowMs: () => this.getPlanRebuildNowMs(),
     savePowerTracker: (state) => this.savePowerTracker(state),
     getStructuredDebugEmitter: (component, topic) => this.getStructuredDebugEmitter(component, topic),
     getOutdoorTemperatureC: () => this.weatherCollector?.getCurrentOutdoorTemperatureC(),
+    recordPvGenerationSample: (generationW, nowMs) => this.pvForecast?.recordSample(generationW, nowMs),
   });
   private realtimeDeviceReconcileState = realtimeReconcile.createRealtimeDeviceReconcileState();
   private stopSettingsHandler?: () => void;
   private weatherCollector?: WeatherCollector;
+  private pvForecast?: PvForecastController;
   private readonly backgroundTasks = new BackgroundTasksController({
     homey: this.homey,
     log: (...args: unknown[]) => this.log(...args),
@@ -1042,11 +1041,9 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi {
 
   private startPostStartupBackgroundTasks(): void {
     this.startPowerTrackerPruning();
-    // Hidden weather-history collector. Created here (not earlier) because its
-    // device reads ride on the transport REST client initialized during
-    // `initDeviceManager`. No-op unless `weather_advisor_settings` enables it.
-    this.weatherCollector = createWeatherCollector(this.ctx);
-    this.backgroundTasks.startWeatherCollector(this.weatherCollector);
+    const collectors = startBackgroundCollectors(this.ctx, (c) => this.backgroundTasks.startWeatherCollector(c));
+    this.weatherCollector = collectors.weatherCollector;
+    this.pvForecast = collectors.pvForecast;
     // Clock-driven smart-task lifecycle emission (status/hours-remaining/ended +
     // history). PlanService exists by now, so the emitter's getDevices reads the
     // live plan-device source. Runs off the power path — fixes the flow-mode lag.
@@ -1482,6 +1479,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi {
     this.clearUninitTimers();
     realtimeReconcile.clearRealtimeDeviceReconcileState(this.realtimeDeviceReconcileState);
     this.stopUninitServices();
+    this.pvForecast?.stop();
     // Release the warmup gate so any rebuild awaiting it during a partial
     // startup unblocks (cancelAll below then drops the intent), instead of
     // dangling on a promise the gate would otherwise resolve via its
