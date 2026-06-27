@@ -659,6 +659,20 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
 (`notes/personas.md`) it serves. Items that can't name all three are maintainability/
 cosmetic chores — do them in passing or drop them; don't park them here.*
 
+- [ ] **Observe-only device wiring: extract it out of the recurring-ceiling god-files (`app.ts`, `deviceTransport.ts`).**
+      *Persona:* Contributor (`notes/personas.md`) extending the observe-only-device family (battery, solar,
+      and any future tracked-but-uncontrolled role) without re-tripping the `max-lines` ceilings.
+      *Hypothesis:* the managed-observe-only feature spreads thin wiring across two Bucket-B god-files — the
+      deviceId-only `isObserveOnlyRoleDevice`/`resolveManagedState`/`isCapacityControlEnabled` resolution in
+      `app.ts`, and the producer fields + `observeBatteryStateFromList` + `note*Device` realtime top-ups in
+      `lib/device/deviceTransport.ts`. Each new observe-only role nudges both ceilings up again (battery:
+      app.ts 1900→1906, deviceTransport 2234→2250; solar: 1906→1907, 2250→2261), so the bumps are a smell, not
+      a fix.
+      *Why it's needed:* a small `ObserveOnlyDeviceRegistry` (owning the per-role producers + the membership-set
+      resolution) would let app.ts/deviceTransport delegate instead of grow, and make the next role a localized
+      add. Tracked alongside the broader Bucket-B split of `deviceTransport.ts` above. Source: PR-D runtime-reality
+      review, 2026-06-27.
+
 - [ ] **Home battery: distinguish a real home battery from a controllable load mislabeled with the `homeBattery` energy role.**
       *Persona:* Orchestrator (`notes/personas.md`) running a third-party driver that sets
       `energy.homeBattery` on a device that is actually a controllable load.

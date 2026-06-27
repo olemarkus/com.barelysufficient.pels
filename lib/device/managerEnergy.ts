@@ -131,6 +131,46 @@ export const isHomeBatteryDevice = (device: HomeyDeviceLike): boolean => (
   || asRecord(device.energy)?.homeBattery === true
 );
 
+/**
+ * Role detection for a PV / solar device — strictly by `class === 'solarpanel'`, the
+ * canonical signal. Unlike the battery, there is NO `solarPanel` energy flag.
+ *
+ * Deliberately NOT keyed on the `meterPowerExportedCapability` energy property: a generic
+ * BIDIRECTIONAL meter (a grid / P1 import+export meter, class 'sensor'/'other') also
+ * declares an exported-energy capability, and the repo already treats such export-capable
+ * meters as ordinary bidirectional gear, not generators (see
+ * `lib/weather/meterKwhBackfill.ts`). Using the export property as the IDENTITY gate
+ * would mis-classify a grid meter as observe-only solar — wrongly excluding its real
+ * consumption from the per-device buckets and emitting a false `solar_production_observed`.
+ * The export property may legitimately LOCATE the production capability ON an
+ * already-confirmed solar device, but it must never decide the role.
+ *
+ * Mirrors `isHomeBatteryDevice`'s availability-agnostic intent: an offline solar device
+ * is still a solar device (whether it is AVAILABLE gates EMISSION, not membership — see
+ * `extractSolarProductionState`).
+ *
+ * This is the SINGLE rule that makes a solar device managed observe-only, applied via the
+ * shared `isObserveOnlyRoleDevice` predicate at the same four parse seams the battery uses
+ * (class-key normalization, the structural managed/controllable stamp, the managed-filter
+ * exemption, and the flow-card guard).
+ */
+export const isSolarPanelDevice = (device: HomeyDeviceLike): boolean => (
+  device.class === 'solarpanel'
+);
+
+/**
+ * Shared OBSERVE-ONLY ROLE predicate: a battery OR a solar device. PELS TRACKS such a
+ * device (it rides the managed snapshot, telemetry observed + logged) but NEVER
+ * controls it — it resolves `managed: true, controllable: false`. Battery and solar
+ * share this one predicate at every generalizable parse seam so the observe-only
+ * machinery is defined once. Battery behaviour is unchanged: an observe-only-role
+ * device is exactly `isHomeBatteryDevice || isSolarPanelDevice`, so the battery arm is
+ * byte-identical to the pre-generalization battery-only check.
+ */
+export const isObserveOnlyRoleDevice = (device: HomeyDeviceLike): boolean => (
+  isHomeBatteryDevice(device) || isSolarPanelDevice(device)
+);
+
 const readCapabilityValue = (device: HomeyDeviceLike, capabilityId: string): unknown => {
   const caps = asRecord(device.capabilitiesObj);
   const capability = asRecord(caps?.[capabilityId]);
@@ -185,6 +225,68 @@ export const extractBatteryState = (devices: readonly HomeyDeviceLike[]): Batter
     (present) => present.reduce((sum, power) => sum + power, 0),
   );
   return { batterySoc, batteryPowerW, batteryDeviceCount: availableBatteries.length, batteryDeviceIds };
+};
+
+/**
+ * Read-only per-device PV production aggregate resolved from the parsed device list.
+ *
+ * Mirrors `extractBatteryState`'s two-concern shape (role membership vs emission) but
+ * for solar:
+ *   - `solarDeviceIds` = EVERY role-detected solar device, INCLUDING offline ones —
+ *     the authoritative role-membership set that makes a solar device resolve
+ *     `managed: true, controllable: false` consistently across the deviceId-only
+ *     resolution consumers.
+ *   - The emitted `productionW` = summed `measure_power` across only AVAILABLE solar
+ *     devices, ALL-OR-NULL: emitted only when EVERY available solar device has a valid
+ *     reading, else `null` (a dropped term would understate production). A solarpanel's
+ *     `measure_power` is POSITIVE when generating; production can't be negative, so a
+ *     noisy negative sample is floored to 0 per device.
+ *
+ * READ-ONLY telemetry: this NEVER feeds the hard-cap import path NOR the whole-home
+ * generation aggregate (`extractLiveGenerationWatts`, which grosses up the
+ * managed/unmanaged split from the SEPARATE `totalGenerated.W` energy report) — feeding
+ * per-device PV here would double-count. It is surfaced purely as the
+ * `solar_production_observed` event for a future consumer (savings-viz / per-inverter
+ * display).
+ */
+export type SolarProductionAggregate = {
+  /** Summed PV production (W, ≥ 0) across available solar devices, or `null` when absent. */
+  productionW: number | null;
+  /** Number of AVAILABLE solar devices contributing to the aggregate (0 when none). */
+  solarDeviceCount: number;
+  /**
+   * IDs of every role-detected solar device (INCLUDING offline ones). The authoritative
+   * role-membership set: a device in this set resolves managed + non-controllable.
+   */
+  solarDeviceIds: string[];
+};
+
+// Per-solar production: finite watts floored at 0 (production is non-negative), else
+// `null`. `null` makes the all-or-null aggregate drop, so one unreadable inverter
+// suppresses the production emission rather than understating the total.
+const readSolarProductionW = (device: HomeyDeviceLike): number | null => {
+  const value = toFiniteNumber(readCapabilityValue(device, 'measure_power'));
+  return value === null ? null : Math.max(0, value);
+};
+
+export const extractSolarProductionState = (
+  devices: readonly HomeyDeviceLike[],
+): SolarProductionAggregate => {
+  // ID SET: every role-detected solar device, INCLUDING offline ones.
+  const solarDevices = devices.filter(isSolarPanelDevice);
+  const solarDeviceIds = solarDevices.map((device) => device.id);
+
+  // EMISSION SET: only AVAILABLE solar devices contribute to the surfaced aggregate —
+  // an offline device's retained `measure_power` is stale and must never be emitted.
+  const availableSolar = solarDevices.filter((device) => device.available !== false);
+  if (availableSolar.length === 0) {
+    return { productionW: null, solarDeviceCount: 0, solarDeviceIds };
+  }
+  const productionW = aggregateAllOrNull(
+    availableSolar.map(readSolarProductionW),
+    (present) => present.reduce((sum, watts) => sum + watts, 0),
+  );
+  return { productionW, solarDeviceCount: availableSolar.length, solarDeviceIds };
 };
 
 export const extractLivePowerWattsByDeviceId = (liveReport: unknown): LiveDevicePowerWatts => {

@@ -1984,21 +1984,23 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi {
   );
   private resolveModeName = (name: string) => resolveModeNameHelper(name, this.modeAliases);
   private getAllModes = () => getAllModesHelper(this.operatingMode, this.capacityPriorities, this.modeDeviceTargets);
-  // A role-detected home battery is ALWAYS managed observe-only. The AUTHORITATIVE
-  // resolution is STRUCTURAL at parse (`resolveParsedDeviceSettings` stamps
-  // `managed: true, controllable: false` from the device object on every parse path),
-  // and the planner reads that snapshot stamp (`toPlanDevice`). These two functions
-  // are the SECONDARY agreement for deviceId-only callers (autocomplete, the
-  // shortfall-power-rebuild hint) that have no device object: they consult the
-  // transport's battery-id set (`isBatteryDevice`, kept non-empty for a present
-  // battery) so their answer matches the structural stamp. Non-controllability is the
-  // companion `isCapacityControlEnabled` override below; together they keep the
-  // battery inert (reinforced by its non-temperature class).
-  private isHomeBatteryDevice = (deviceId: string) => (
+  // A role-detected OBSERVE-ONLY device (home battery OR solar) is ALWAYS managed
+  // observe-only. The AUTHORITATIVE resolution is STRUCTURAL at parse
+  // (`resolveParsedDeviceSettings` stamps `managed: true, controllable: false` from the
+  // device object on every parse path), and the planner reads that snapshot stamp
+  // (`toPlanDevice`). These two functions are the SECONDARY agreement for deviceId-only
+  // callers (autocomplete, the shortfall-power-rebuild hint) that have no device object:
+  // they consult the transport's battery + solar id sets (`isBatteryDevice` /
+  // `isSolarDevice`, kept non-empty for a present device) so their answer matches the
+  // structural stamp. Non-controllability is the companion `isCapacityControlEnabled`
+  // override below; together they keep the device inert (reinforced by its
+  // non-temperature class).
+  private isObserveOnlyRoleDevice = (deviceId: string) => (
     this.deviceManager?.isBatteryDevice(deviceId) === true
+    || this.deviceManager?.isSolarDevice(deviceId) === true
   );
   private resolveManagedState = (deviceId: string) =>
-    this.isHomeBatteryDevice(deviceId) || this.managedDevices[deviceId] === true;
+    this.isObserveOnlyRoleDevice(deviceId) || this.managedDevices[deviceId] === true;
   private isManagedFilterActive = () => isManagedFilterActiveHelper(this.managedDevices);
   private getCommunicationModel = (deviceId: string): 'local' | 'cloud' => (
     this.deviceCommunicationModels[deviceId] ?? 'local'
@@ -2008,12 +2010,12 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi {
     return override || undefined;
   };
   private isCapacityControlEnabled = (deviceId: string) => (
-    // A home battery is managed observe-only: NEVER capacity-controlled, regardless of
-    // the settings maps. `controllable: false` is what keeps it out of shed/restore/
-    // boost/starvation; combined with its non-temperature class (no `resolvePlannedTarget`)
-    // the battery is tracked but inert. Secondary (deviceId-only) agreement with the
-    // structural parse stamp — see `resolveManagedState` above.
-    !this.isHomeBatteryDevice(deviceId)
+    // A home battery or solar device is managed observe-only: NEVER capacity-controlled,
+    // regardless of the settings maps. `controllable: false` is what keeps it out of
+    // shed/restore/boost/starvation; combined with its non-temperature class (no
+    // `resolvePlannedTarget`) the device is tracked but inert. Secondary (deviceId-only)
+    // agreement with the structural parse stamp — see `resolveManagedState` above.
+    !this.isObserveOnlyRoleDevice(deviceId)
     && this.managedDevices[deviceId] === true
     && this.controllableDevices[deviceId] === true
   );

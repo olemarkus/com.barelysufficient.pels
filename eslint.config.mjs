@@ -618,13 +618,13 @@ export default tseslint.config(
     // app class that constructs and connects every runtime service. The prior blanket
     // `/* eslint-disable max-lines */` masked the true size; with it removed the file
     // measures ~1885 effective lines. Bucket B for now with a ceiling just above current.
-    // The battery-role-aware managed/controllable resolution (`isHomeBatteryDevice` +
-    // the two override consumers) nudges it up a handful of lines. Target: <=500 once
-    // the delegate/timer/AppContext extraction (TODO "Continue thinning app.ts ...")
-    // moves the remaining wiring into `setup/appInit/**`.
+    // The observe-only-role managed/controllable resolution (`isObserveOnlyRoleDevice`
+    // = battery OR solar, plus the two override consumers) nudges it up a handful of
+    // lines. Target: <=500 once the delegate/timer/AppContext extraction (TODO "Continue
+    // thinning app.ts ...") moves the remaining wiring into `setup/appInit/**`.
     files: ['app.ts'],
     rules: {
-      'max-lines': ['warn', { max: 1906, skipBlankLines: true, skipComments: true }],
+      'max-lines': ['warn', { max: 1907, skipBlankLines: true, skipComments: true }],
     },
   },
   {
@@ -749,14 +749,16 @@ export default tseslint.config(
     // transport subsystem peels off. The targeted-refresh overlay/grace logic
     // lives in `transport/targetedSnapshotMerge.ts`; only its thin call sites
     // and the miss-state field remain here.
-    // The minimal managed-observe-only battery wiring (the producer field +
-    // construction, the `isBatteryDevice` accessor, the `observeBatteryStateFromList`
-    // detect-before-parse hook, and the realtime `noteBatteryDevice` top-up) overflows
-    // the prior ceiling by a handful of lines; the per-poll resolution itself lives in
-    // `batteryStateProducer.ts`. Tracked for extraction in TODO.md (Bucket B).
+    // The minimal managed-observe-only battery + solar wiring (the two producer fields +
+    // construction, the `isBatteryDevice`/`isSolarDevice` accessors, the shared
+    // `observeBatteryStateFromList` detect-before-parse hook driving both producers, and
+    // the realtime `noteBatteryDevice`/`noteSolarDevice` top-ups) overflows the prior
+    // ceiling by a handful of lines; the per-poll resolution itself lives in
+    // `batteryStateProducer.ts` / `solarProductionProducer.ts`. Tracked for extraction
+    // in TODO.md (Bucket B).
     files: ['lib/device/deviceTransport.ts'],
     rules: {
-      'max-lines': ['warn', { max: 2250, skipBlankLines: true, skipComments: true }],
+      'max-lines': ['warn', { max: 2261, skipBlankLines: true, skipComments: true }],
     },
   },
   {

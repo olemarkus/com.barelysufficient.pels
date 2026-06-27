@@ -1,6 +1,6 @@
 import type { HomeyDeviceLike } from '../../utils/types';
 import type { DeviceCapabilityMap, DeviceCapabilityValue } from '../managerControl';
-import { getCapabilities, resolveDeviceClassKey } from './managerHelpers';
+import { getCapabilities, isObserveOnlyRoleClassKey, resolveDeviceClassKey } from './managerHelpers';
 
 export const FLOW_REPORTED_CAPABILITY_IDS = [
   'onoff',
@@ -226,14 +226,15 @@ export function resolveFlowAugmentedDeviceType(params: {
 }): FlowAugmentedDeviceType {
   const { deviceClassKey, targetCapabilityIds } = params;
   if (deviceClassKey === 'evcharger') return 'evcharger';
-  // A home battery is a MANAGED OBSERVE-ONLY device: PELS never controls it. Without
-  // this guard a battery (no target caps, not an evcharger) would fall through to
-  // `binary` and become eligible for flow-backed binary device cards — a CONTROL /
-  // actuation surface (the action listener persists a reported `onoff` state). That
-  // violates the observe-only contract, so a battery is `unsupported` for flow
-  // augmentation: it is excluded from the binary classification AND from flow-backed
-  // card registration / onoff-persistence (both gate on this single result).
-  if (deviceClassKey === 'battery') return 'unsupported';
+  // A home battery or solar device is a MANAGED OBSERVE-ONLY device: PELS never
+  // controls it. Without this guard such a device (no target caps, not an evcharger)
+  // would fall through to `binary` and become eligible for flow-backed binary device
+  // cards — a CONTROL / actuation surface (the action listener persists a reported
+  // `onoff` state). That violates the observe-only contract, so an observe-only device
+  // is `unsupported` for flow augmentation: it is excluded from the binary
+  // classification AND from flow-backed card registration / onoff-persistence (both
+  // gate on this single result).
+  if (isObserveOnlyRoleClassKey(deviceClassKey)) return 'unsupported';
   if (targetCapabilityIds.length > 0) return 'unsupported';
   return 'binary';
 }
