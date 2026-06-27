@@ -1648,4 +1648,27 @@ describe('daily budget default profile shape', () => {
     expect(maxIndex).toBeGreaterThanOrEqual(17);
     expect(maxIndex).toBeLessThanOrEqual(22);
   });
+
+  it('observedGrossBackgroundKwh returns the learned p50 gross reserve for a local hour-of-day', () => {
+    const manager = buildManager();
+    manager.loadState({
+      profileObservedP50GrossUncontrolledKWh: Array.from({ length: 24 }, (_, h) => h * 0.1),
+      profileObservedGrossUncontrolledSampleCounts: Array.from({ length: 24 }, () => 30),
+    });
+    expect(manager.observedGrossBackgroundKwh(12)).toBeCloseTo(1.2, 9);
+    expect(manager.observedGrossBackgroundKwh(0)).toBe(0); // learned zero (30 samples) is a real value
+  });
+
+  it('observedGrossBackgroundKwh returns undefined for an hour with no learned samples (seeded fallback)', () => {
+    const manager = buildManager();
+    manager.loadState({
+      profileObservedP50GrossUncontrolledKWh: Array.from({ length: 24 }, () => 0), // zero-seeded fallback
+      profileObservedGrossUncontrolledSampleCounts: Array.from({ length: 24 }, () => 0), // but no samples
+    });
+    expect(manager.observedGrossBackgroundKwh(12)).toBeUndefined();
+  });
+
+  it('observedGrossBackgroundKwh returns undefined when no gross-background profile is learned', () => {
+    expect(buildManager().observedGrossBackgroundKwh(12)).toBeUndefined();
+  });
 });

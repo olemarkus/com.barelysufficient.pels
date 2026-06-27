@@ -17,6 +17,7 @@ import type { SettingsPort, ApiPort } from '../ports/homeyRuntime';
 import { PriceOptimizer } from './priceOptimizer';
 import { PriceLevel } from './priceLevels';
 import PriceService from './priceService';
+import type { BudgetPriceInputs } from './budgetPrice';
 import { type CombinedHourlyPrice, isCombinedPricesV1 } from './priceTypes';
 import { shouldCatchUpCombinedPricesRotation } from './priceServiceCombined';
 import { COMBINED_PRICES } from '../utils/settingsKeys';
@@ -289,6 +290,11 @@ export class PriceCoordinator {
 
   getCombinedHourlyPrices(): CombinedHourlyPrice[] {
     return this.priceService.getCombinedHourlyPrices();
+  }
+
+  /** Inject (or clear) the forecast-surplus inputs that derive the planning price. */
+  setBudgetPriceInputs(inputs: BudgetPriceInputs | undefined): void {
+    this.priceService.setBudgetPriceInputs(inputs);
   }
 
   getPriceUnitLabel(): string {
