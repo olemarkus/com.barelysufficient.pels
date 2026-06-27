@@ -24,6 +24,8 @@ describe('settingsUiApi', () => {
       cloudHomeyId?: string;
       latestPlanSnapshot?: Record<string, unknown> | null;
       settings?: Record<string, unknown>;
+      latestDevicesOverride?: Record<string, unknown>[];
+      uiPickerDevices?: Record<string, unknown>[];
     } = {},
   ) => {
     const store = new Map<string, unknown>([
@@ -56,7 +58,7 @@ describe('settingsUiApi', () => {
     // / `hasObservedReportedStep` narrowing (and `supportsPowerDevice`) works only
     // if the served objects physically carry these — a producer rebuild that drops
     // any of them must fail here.
-    let latestDevices: Record<string, unknown>[] = [
+    let latestDevices: Record<string, unknown>[] = options.latestDevicesOverride ?? [
       { id: 'dev-1', name: 'Heater', deviceType: 'temperature', currentTemperature: 18.5, measuredPowerKw: 1.2 },
       {
         id: 'ev-1',
@@ -192,6 +194,7 @@ describe('settingsUiApi', () => {
       get latestTargetSnapshot() {
         return latestDevices;
       },
+      getUiPickerDevices: () => options.uiPickerDevices ?? [],
       get powerTracker() {
         return powerTracker;
       },
@@ -417,6 +420,43 @@ describe('settingsUiApi', () => {
         'dev-1': expect.objectContaining({ currentPenaltyLevel: 2 }),
       }),
     });
+  });
+
+  it('hides auto-tracked observe-only battery/PV devices from the settings-UI device list', () => {
+    // Home batteries (class-key 'battery') and PV (class-key 'solarpanel') are
+    // FORCE-MANAGED observe-only devices: they ride the backend snapshot
+    // (`latestTargetSnapshot`) for telemetry but the user never opted into
+    // managing them and cannot control them. They must NOT leak into the
+    // user-facing device list with a no-op "Manage" toggle. The managed half
+    // (`latestTargetSnapshot`) carries them; the picker half already drops them
+    // (managerManagedFilter) — assert BOTH inputs filter, and that a normal
+    // managed heater stays present.
+    const homey = createHomey({
+      latestDevicesOverride: [
+        { id: 'heater-1', name: 'Heater', deviceType: 'temperature' },
+        { id: 'batt-1', name: 'Home Battery', deviceClass: 'battery' },
+        { id: 'pv-1', name: 'Solar Roof', deviceClass: 'solarpanel' },
+      ],
+      // A picker that (defensively) still surfaced an observe-only device must
+      // also be filtered out here, so the payload never double-renders it.
+      uiPickerDevices: [
+        { id: 'pump-1', name: 'Pump', deviceType: 'onoff' },
+        { id: 'batt-2', name: 'Other Battery', deviceClass: 'battery' },
+      ],
+    });
+
+    const { devices } = getSettingsUiDevicesPayload({ homey: homey as never });
+    const ids = devices.map((device) => device.id);
+
+    expect(ids).toContain('heater-1');
+    expect(ids).toContain('pump-1');
+    expect(ids).not.toContain('batt-1');
+    expect(ids).not.toContain('pv-1');
+    expect(ids).not.toContain('batt-2');
+    // The BACKEND snapshot is untouched — the force-managed observe-only devices
+    // are still tracked there for telemetry; only this UI payload excludes them.
+    const backendSnapshot = homey.app.latestTargetSnapshot as Record<string, unknown>[];
+    expect(backendSnapshot.map((device) => device.id)).toEqual(['heater-1', 'batt-1', 'pv-1']);
   });
 
   it('returns an empty diagnostics payload when the app has no diagnostics API yet', () => {
