@@ -41,6 +41,8 @@ export type PowerSamplePipelineDeps = {
   getStructuredDebugEmitter: (component: string, debugTopic: 'objective_profiles') => StructuredDebugEmitter;
   /** Latest outdoor temperature (hidden weather feature); undefined when unavailable or stale. */
   getOutdoorTemperatureC?: () => number | undefined;
+  /** Feed the per-sample gross generation (W) to the learned PV forecast; no-op when absent. */
+  recordPvGenerationSample?: (generationW: number | undefined, nowMs: number) => void;
 };
 
 type PowerSampleOptions = {
@@ -142,6 +144,9 @@ export class PowerSamplePipeline {
     options: PowerSampleOptions = {},
   ): Promise<void> {
     const sampleStart = Date.now();
+    // Record gross generation for the learned PV forecast, independent of the
+    // capacity/plan path below (a pure data tap — never affects shed decisions).
+    this.deps.recordPvGenerationSample?.(options.generationW, nowMs);
     const powerTracker = this.deps.getPowerTracker();
     const previousSampleTs = powerTracker.lastTimestamp;
     try {

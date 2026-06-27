@@ -66,3 +66,5 @@ export const POWER_CALIBRATION_INITIALIZED = 'power_calibration_initialized';
 // usage/temperature history.
 export const WEATHER_ADVISOR_SETTINGS = 'weather_advisor_settings';
 export const WEATHER_HISTORY_STATE = 'weather_history_state';
+// Learned PV-generation forecast: recorded generation history + concurrent irradiance.
+export const PV_FORECAST_STATE = 'pv_forecast_state';
