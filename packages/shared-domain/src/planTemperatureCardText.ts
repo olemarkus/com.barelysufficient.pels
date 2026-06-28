@@ -18,6 +18,11 @@ type TemperatureDevice = DeviceOverviewSnapshot & {
   starvation?: SettingsUiPlanDeviceStarvation;
 };
 
+// Shown when a surplus-absorb lift raised this device's setpoint to self-consume solar
+// export — explains why the room is warmer than the user's own target. Plain language
+// (no "self-consume"/"export" jargon); consistent with the "Use solar surplus" control.
+export const TEMPERATURE_SURPLUS_REASON = 'Raised to use your solar power';
+
 const isWaitingReason = (code: string): boolean => (
   code === PLAN_REASON_CODES.insufficientHeadroom
   || code === PLAN_REASON_CODES.shortfall
@@ -112,12 +117,27 @@ const resolveBudgetStarvationReason = (device: TemperatureDevice): string | null
     : null
 );
 
+// A surplus-absorb raise is a benign, user-opted-in boost — surface it ONLY while the device
+// is actively running (`kind === 'active'`), the one state where "PELS is running this hotter
+// to use your solar" is true. Gating on `active` (rather than excluding held/resuming) keeps
+// the line off an off/idle, manual (uncontrolled), or unavailable (offline) card, where the
+// claim would contradict the visible "Off · 0.0 kW" state. Extracted so the parent resolver
+// stays under the SonarJS / ESLint complexity caps.
+const resolveSurplusAbsorbReason = (device: TemperatureDevice, kind: string): string | null => (
+  device.surplusAbsorbActive === true && kind === 'active'
+    ? TEMPERATURE_SURPLUS_REASON
+    : null
+);
+
 export const resolveTemperatureReasonLine = (device: TemperatureDevice): string | null => {
   const { currentTemperature, plannedTarget } = device;
   if (typeof currentTemperature !== 'number' || typeof plannedTarget !== 'number') return null;
 
   const reasonCode = (device.reason as { code?: string } | undefined)?.code ?? '';
   const kind = resolvePlanStateKind(device);
+
+  const surplusReason = resolveSurplusAbsorbReason(device, kind);
+  if (surplusReason !== null) return surplusReason;
 
   if (kind !== 'held' && kind !== 'idle' && kind !== 'resuming') return null;
   if (kind === 'idle') return null;

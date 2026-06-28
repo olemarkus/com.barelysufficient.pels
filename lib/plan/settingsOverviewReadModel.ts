@@ -140,6 +140,7 @@ export function buildSettingsOverviewDeviceReadModel(
     budgetExempt: device.budgetExempt,
     temperatureBoost: device.temperatureBoost,
     temperatureBoostActive: device.temperatureBoostActive,
+    surplusAbsorbActive: device.surplusAbsorbActive,
     evBoost: ev?.evBoost,
     evBoostActive: ev?.evBoostActive,
     observationStale: device.observationStale,

@@ -58,6 +58,10 @@ export type DeviceOverviewSnapshot = {
   desiredStepId?: string;
   binaryCommandPending?: boolean;
   observationStale?: boolean;
+  // Drives the "Raised to use your solar power" reason line; included in the overview
+  // transition signature so a flip (true→false) re-renders the card even when the
+  // normalized plannedTarget is unchanged.
+  surplusAbsorbActive?: boolean;
   stateOfCharge?: {
     percent: number;
     status: 'unknown' | 'fresh' | 'stale' | 'invalid';
@@ -331,6 +335,7 @@ export const buildDeviceOverviewTransitionSignature = (
     measuredPowerKw: normalizeSignatureNumber(device.measuredPowerKw),
     expectedPowerKw: normalizeSignatureNumber(getDeviceOverviewExpectedPowerKw(device)),
     reason: buildComparableDeviceReason(device.reason),
+    surplusAbsorbActive: device.surplusAbsorbActive === true,
     reportedStepId: getDeviceOverviewReportedStepId(device) ?? null,
     targetStepId: getTargetStepId(device) ?? null,
   })

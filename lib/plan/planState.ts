@@ -175,6 +175,10 @@ export type PlanEngineState = {
   lastPlanDevicesById: Record<string, OvershootTrackedPlanDevice>;
   temperatureBoostActiveByDevice: Record<string, boolean>;
   evBoostActiveByDevice: Record<string, boolean>;
+  // Per-device: true when a surplus-absorb lift is the binding cause of this cycle's
+  // planned target (it raised the setpoint above the price/base target and no deadline
+  // floor overrode it). Drives the device card's "Raised to use your solar power" reason.
+  surplusAbsorbActiveByDevice: Record<string, boolean>;
   lastOvershootSummarySignature: string | null;
   steppedRestoreRejectedByDevice: Record<string, {
     requestedStepId: string;
@@ -250,6 +254,7 @@ export function createPlanEngineState(nowTs = Date.now()): PlanEngineState {
     lastPlanDevicesById: {},
     temperatureBoostActiveByDevice: {},
     evBoostActiveByDevice: {},
+    surplusAbsorbActiveByDevice: {},
     lastOvershootSummarySignature: null,
     steppedRestoreRejectedByDevice: {},
     keepInvariantShedBlockedByDevice: {},
