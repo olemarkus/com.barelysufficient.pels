@@ -70,7 +70,7 @@ const buildContext = (signedNetKw: number, measuredDrawKw = 0): PlanContext => (
   restoreMarginPlanning: 0.2,
 });
 
-const deps = (surplusWilling: boolean): PlanDevicesDeps => ({
+const deps = (surplusWilling: boolean, surplusDelta = SURPLUS_DELTA_C): PlanDevicesDeps => ({
   getPriorityForDevice: () => 100,
   getShedBehavior: () => ({ action: 'turn_off', temperature: null, stepId: null }),
   isCurrentHourCheap: () => false,
@@ -82,7 +82,7 @@ const deps = (surplusWilling: boolean): PlanDevicesDeps => ({
       cheapDelta: 0,
       expensiveDelta: 0,
       surplusWilling,
-      surplusDelta: SURPLUS_DELTA_C,
+      surplusDelta,
     },
   }),
   pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
@@ -107,6 +107,28 @@ const cycle = (
   return device && isTemperaturePlanDevice(device) ? device.plannedTarget : undefined;
 };
 
+// Same single cycle, but returns the whole plan device so the producer-resolved
+// `surplusAbsorbActive` reason flag can be asserted alongside the planned target.
+const cycleDevice = (
+  state: PlanEngineState,
+  signedNetKw: number,
+  surplusWilling = true,
+  measuredDrawKw = 0,
+  surplusDelta = SURPLUS_DELTA_C,
+) => buildInitialPlanDevices({
+  context: buildContext(signedNetKw, measuredDrawKw),
+  state,
+  shedSet: new Set(),
+  shedReasons: new Map(),
+  guardInShortfall: false,
+  deps: deps(surplusWilling, surplusDelta),
+})[0];
+
+// `plannedTarget` lives on the temperature variant, so narrow before reading it.
+const targetOf = (device: ReturnType<typeof cycleDevice>): number | undefined => (
+  device && isTemperaturePlanDevice(device) ? device.plannedTarget : undefined
+);
+
 describe('surplus-absorb setpoint raise (planner prep integration)', () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date'] });
@@ -123,6 +145,35 @@ describe('surplus-absorb setpoint raise (planner prep integration)', () => {
     // After the settle window, with export sustained, the setpoint lifts.
     vi.setSystemTime(SURPLUS_ABSORB_SETTLE_MS);
     expect(cycle(state, EXPORTING_KW)).toBe(MODE_C + SURPLUS_DELTA_C);
+  });
+
+  it('flags surplusAbsorbActive only while the lift is the binding cause', () => {
+    // `surplusAbsorbActive` is a base field readable directly; `targetOf` narrows the target.
+    const state = createPlanEngineState();
+    // Importing: no lift, not active.
+    const importing = cycleDevice(state, IMPORTING_KW);
+    expect(targetOf(importing)).toBe(MODE_C);
+    expect(importing?.surplusAbsorbActive).toBe(false);
+    // First export cycle opens the settle window — still no lift, still not active.
+    expect(cycleDevice(state, EXPORTING_KW)?.surplusAbsorbActive).toBe(false);
+    // After the settle window the lift binds — the flag follows the actuated target.
+    vi.setSystemTime(SURPLUS_ABSORB_SETTLE_MS);
+    const lifted = cycleDevice(state, EXPORTING_KW);
+    expect(targetOf(lifted)).toBe(MODE_C + SURPLUS_DELTA_C);
+    expect(lifted?.surplusAbsorbActive).toBe(true);
+  });
+
+  it('does NOT flag surplus when a sub-step delta rounds back to the original setpoint', () => {
+    // The device target has step 0.5°C; a 0.2°C surplus lift normalizes back to MODE_C, so
+    // the commanded target is identical to the no-solar target — surplus is not the binding
+    // cause and the card must not claim "Raised to use your solar power".
+    const SUB_STEP_DELTA = 0.2;
+    const state = createPlanEngineState();
+    cycleDevice(state, EXPORTING_KW, true, 0, SUB_STEP_DELTA); // open settle window
+    vi.setSystemTime(SURPLUS_ABSORB_SETTLE_MS);
+    const rounded = cycleDevice(state, EXPORTING_KW, true, 0, SUB_STEP_DELTA);
+    expect(targetOf(rounded)).toBe(MODE_C); // 20.2 → snapped to the 0.5 step → 20.0
+    expect(rounded?.surplusAbsorbActive).toBe(false);
   });
 
   it('refuses to lift when export cannot cover the expected draw (overshoot-fit gate)', () => {

@@ -320,6 +320,23 @@ describe('device overview transition signatures', () => {
       .not.toBe(buildDeviceOverviewTransitionSignature(usageOnly));
   });
 
+  it('changes when surplusAbsorbActive flips even if the normalized target is unchanged', () => {
+    // The "Raised to use your solar power" reason line is driven by surplusAbsorbActive, so a
+    // flip must re-render the card even when nothing else (target, state, reason.code) moved —
+    // otherwise the line goes stale until some unrelated plan change.
+    const withoutSurplus = {
+      currentState: 'on',
+      plannedState: 'keep',
+      reason: r('keep'),
+      measuredPowerKw: 1,
+      expectedPowerKw: 1,
+      surplusAbsorbActive: false,
+    };
+    const withSurplus = { ...withoutSurplus, surplusAbsorbActive: true };
+    expect(buildDeviceOverviewTransitionSignature(withoutSurplus))
+      .not.toBe(buildDeviceOverviewTransitionSignature(withSurplus));
+  });
+
   it('ignores countdown-only cooldown and backoff changes', () => {
     const restoreCooldown = {
       currentState: 'off',

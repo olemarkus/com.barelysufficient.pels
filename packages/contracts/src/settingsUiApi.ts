@@ -171,6 +171,9 @@ export type SettingsUiPlanDeviceSnapshot = DeviceOverviewSnapshot & {
   budgetExempt?: boolean;
   temperatureBoost?: TemperatureBoostConfig;
   temperatureBoostActive?: boolean;
+  // True when a surplus-absorb lift is the binding cause of this device's planned target
+  // (raised to self-consume solar). Drives the "Raised to use your solar power" reason line.
+  surplusAbsorbActive?: boolean;
   evBoost?: EvBoostConfig;
   evBoostActive?: boolean;
   currentTemperature?: number;

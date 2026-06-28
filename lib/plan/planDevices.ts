@@ -178,6 +178,8 @@ export function buildInitialPlanDevices(params: {
       shedReasons,
       temperatureBoostActive: active,
       evBoostActive,
+      // Set by resolvePlannedTarget above (read after it ran for this device).
+      surplusAbsorbActive: state.surplusAbsorbActiveByDevice[dev.id] === true,
     });
     baseMs += Date.now() - t1;
     state.temperatureBoostActiveByDevice[dev.id] = base.temperatureBoostActive === true;
@@ -213,6 +215,9 @@ function resolvePlannedTarget(params: {
     state,
     deps,
   } = params;
+  // Default: surplus is not the binding cause unless the mode branch below proves it is.
+  // Reset every cycle for every device so a stale true never lingers.
+  state.surplusAbsorbActiveByDevice[dev.id] = false;
   if (!supportsTemperature) return undefined;
   const target = getPrimaryTargetCapability(dev.targets);
   const deferredC = dev.deadlineFloorTargetC;
@@ -240,15 +245,18 @@ function resolvePlannedTarget(params: {
     return undefined;
   }
   let plannedTarget = seed.value;
-  // Price-opt and surplus-absorb only modulate a configured mode setpoint. When the
-  // seed is the current thermostat reading (fallback) or a deadline rescue target,
-  // leaving it unmodulated keeps PELS a no-op against whatever the user / deadline
-  // already chose.
+  // Track the same target with NO surplus lift in parallel, so surplus's "binding cause" can
+  // be decided AFTER all floors AND capability normalization/rounding (below) — not latched
+  // mid-computation. Price-opt and surplus-absorb only modulate a configured mode setpoint;
+  // for a current-reading fallback or deadline rescue seed, leaving it unmodulated keeps PELS
+  // a no-op against whatever the user / deadline already chose.
+  let nonSurplusTarget = seed.value;
   const priceOptConfig = deps.getPriceOptimizationSettings()[dev.id];
   if (seed.kind === 'mode') {
     if (deps.getPriceOptimizationEnabled() && priceOptConfig?.enabled) {
       plannedTarget = applyPriceOptimizationDelta(plannedTarget, priceOptConfig, deps);
     }
+    nonSurplusTarget = plannedTarget;
     plannedTarget = applySurplusAbsorbDelta({
       baseTarget: seed.value,
       pricedTarget: plannedTarget,
@@ -258,10 +266,20 @@ function resolvePlannedTarget(params: {
     });
   }
   if (hasDeferred) {
-    // Deferred target is the floor, never further modulated by price-opt.
+    // The deadline floor applies to both the actual and the non-surplus target.
     plannedTarget = Math.max(plannedTarget, deferredC);
+    nonSurplusTarget = Math.max(nonSurplusTarget, deferredC);
   }
-  return normalizeTargetCapabilityValue({ target, value: plannedTarget });
+  const normalizedTarget = normalizeTargetCapabilityValue({ target, value: plannedTarget });
+  const normalizedNonSurplus = normalizeTargetCapabilityValue({ target, value: nonSurplusTarget });
+  // Surplus is the binding cause only when, after floors AND capability normalization, the
+  // commanded target is strictly higher than it would be WITHOUT the lift. This is false when
+  // a deadline floor lands on the surplus value (no extra lift) and when a sub-step delta
+  // rounds back to the original setpoint (the device would draw identically without solar).
+  state.surplusAbsorbActiveByDevice[dev.id] = typeof normalizedTarget === 'number'
+    && typeof normalizedNonSurplus === 'number'
+    && normalizedTarget > normalizedNonSurplus;
+  return normalizedTarget;
 }
 
 function resolveTemperatureSeed(
@@ -410,6 +428,7 @@ function buildBasePlanDevice(params: {
   shedReasons: Map<string, DeviceReason>;
   temperatureBoostActive: boolean;
   evBoostActive: boolean;
+  surplusAbsorbActive: boolean;
 }): DevicePlanDevice {
   const {
     dev,
@@ -427,6 +446,7 @@ function buildBasePlanDevice(params: {
     shedReasons,
     temperatureBoostActive,
     evBoostActive,
+    surplusAbsorbActive,
   } = params;
   const initialDesiredStepId = resolveSteppedLoadInitialDesiredStepId(dev);
   const runtimeDesiredStepId = dev.desiredStepId ?? initialDesiredStepId;
@@ -510,7 +530,7 @@ function buildBasePlanDevice(params: {
     controllable,
     budgetExempt: dev.budgetExempt,
     available: dev.available,
-    ...buildBoostPlanDeviceFields({ dev, temperatureBoostActive, evBoostActive }),
+    ...buildBoostPlanDeviceFields({ dev, temperatureBoostActive, evBoostActive, surplusAbsorbActive }),
     stepCommandPending: dev.stepCommandPending,
     stepCommandStatus: dev.stepCommandStatus,
     binaryCommandPending: binaryCommandPending || undefined,

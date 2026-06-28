@@ -281,6 +281,7 @@ export function buildPlanDetailSignature(plan: DevicePlan): string {
       controlKind: isSteppedLoadDevice(d) ? 'stepped_load' : undefined,
       plannedState: d.plannedState,
       plannedTarget: isTemperaturePlanDevice(d) ? d.plannedTarget : undefined,
+      surplusAbsorbActive: d.surplusAbsorbActive === true,
       selectedStepId: d.selectedStepId,
       desiredStepId: d.desiredStepId,
       lastDesiredStepId: d.lastDesiredStepId,

@@ -458,6 +458,10 @@ type DevicePlanDeviceBase = {
    * single bit instead of recomputing the OR per call.
    */
   boostActive?: boolean;
+  // Producer-resolved: `true` when a surplus-absorb lift is the binding cause of this
+  // cycle's planned target (raised the setpoint to self-consume solar, not overridden by a
+  // deadline floor). Drives the device card's "Raised to use your solar power" reason line.
+  surplusAbsorbActive?: boolean;
   stepCommandPending?: boolean;
   stepCommandStatus?: SteppedLoadCommandStatus;
   binaryCommandPending?: boolean;

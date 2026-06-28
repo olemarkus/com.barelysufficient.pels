@@ -45,13 +45,15 @@ export function buildBoostPlanDeviceFields(params: {
   dev: PlanInputDevice;
   temperatureBoostActive: boolean;
   evBoostActive: boolean;
+  surplusAbsorbActive: boolean;
 }): Pick<
   DevicePlanDevice,
   | 'temperatureBoost'
   | 'temperatureBoostActive'
   | 'boostActive'
+  | 'surplusAbsorbActive'
 > & EvKind {
-  const { dev, temperatureBoostActive, evBoostActive } = params;
+  const { dev, temperatureBoostActive, evBoostActive, surplusAbsorbActive } = params;
   // The EV cluster (`evBoost`, `stateOfCharge`) is sourced only from EV
   // devices; gate the reads on the EV narrowing. `evBoostActive` is resolved by
   // the caller and carried regardless (it is `false` for non-EV devices). The
@@ -64,6 +66,7 @@ export function buildBoostPlanDeviceFields(params: {
     temperatureBoost: dev.temperatureBoost,
     temperatureBoostActive,
     boostActive: resolveBoostActive({ temperatureBoostActive, evBoostActive }),
+    surplusAbsorbActive,
     evBoost: ev?.evBoost,
     evBoostActive,
     stateOfCharge: ev?.stateOfCharge,

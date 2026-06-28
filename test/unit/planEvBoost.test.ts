@@ -116,6 +116,7 @@ describe('buildBoostPlanDeviceFields — boostActive aggregate', () => {
       dev,
       temperatureBoostActive: true,
       evBoostActive: false,
+      surplusAbsorbActive: false,
     }).boostActive).toBe(true);
   });
 
@@ -124,6 +125,7 @@ describe('buildBoostPlanDeviceFields — boostActive aggregate', () => {
       dev,
       temperatureBoostActive: false,
       evBoostActive: true,
+      surplusAbsorbActive: false,
     }).boostActive).toBe(true);
   });
 
@@ -132,6 +134,7 @@ describe('buildBoostPlanDeviceFields — boostActive aggregate', () => {
       dev,
       temperatureBoostActive: true,
       evBoostActive: true,
+      surplusAbsorbActive: false,
     }).boostActive).toBe(true);
   });
 
@@ -140,6 +143,7 @@ describe('buildBoostPlanDeviceFields — boostActive aggregate', () => {
       dev,
       temperatureBoostActive: false,
       evBoostActive: false,
+      surplusAbsorbActive: false,
     }).boostActive).toBe(false);
   });
 });
