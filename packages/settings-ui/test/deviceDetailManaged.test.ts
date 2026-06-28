@@ -478,8 +478,11 @@ describe('device detail managed state saves', () => {
     expect((document.querySelector('#device-detail-soc-row') as HTMLElement | null)?.hidden).toBe(false);
     expect((document.querySelector('#device-detail-soc-value') as HTMLElement | null)?.textContent)
       .toBe('42 % - stale');
-    expect((document.querySelector('#device-detail-soc-updated') as HTMLElement | null)?.textContent)
-      .toContain('Status: stale');
+    // The subline carries only the freshness time; the raw status enum must not leak —
+    // the value line above ("42 % - stale") already states the consequence in plain words.
+    const updated = (document.querySelector('#device-detail-soc-updated') as HTMLElement | null)?.textContent;
+    expect(updated).toContain('Updated');
+    expect(updated).not.toContain('Status:');
   });
 
   it('restores the controllable checkbox when saving fails', async () => {
