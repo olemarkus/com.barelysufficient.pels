@@ -1275,6 +1275,9 @@
     }),
     'GET /ui_devices': () => ({
       devices: settings.target_devices_snapshot,
+      // This fixture home has a tracked solar/PV device, so the per-device
+      // "Use solar surplus" control is offered (see device-detail.spec surplus test).
+      hasManagedSolarDevice: true,
     }),
     'GET /ui_plan': () => ({
       plan: buildPlanPayload(),
@@ -1300,6 +1303,7 @@
     'POST /log_homey_device': () => ({ ok: true }),
     'POST /ui_refresh_devices': () => ({
       devices: settings.target_devices_snapshot,
+      hasManagedSolarDevice: true,
     }),
     'POST /ui_refresh_prices': () => buildPricesPayload(),
     'POST /ui_refresh_grid_tariff': () => buildPricesPayload(),

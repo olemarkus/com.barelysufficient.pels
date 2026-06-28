@@ -305,6 +305,7 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
   [buildRouteKey('GET', SETTINGS_UI_BOOTSTRAP_PATH)]: (homey) => async () => buildUiBootstrap(homey),
   [buildRouteKey('GET', SETTINGS_UI_DEVICES_PATH)]: (homey) => async () => ({
     devices: await resolveUiDevices(homey),
+    hasManagedSolarDevice: false,
   }),
   [buildRouteKey('GET', SETTINGS_UI_PLAN_PATH)]: (homey) => async () => ({
     plan: await buildUiPlan(homey),
@@ -329,6 +330,7 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
   [buildRouteKey('GET', HOMEY_DEVICES_PATH)]: (homey) => async () => getUiOverride(homey, 'homeyDevices') ?? [],
   [buildRouteKey('POST', SETTINGS_UI_REFRESH_DEVICES_PATH)]: (homey) => async () => ({
     devices: await resolveUiDevices(homey),
+    hasManagedSolarDevice: false,
   }),
   [buildRouteKey('POST', SETTINGS_UI_REFRESH_PRICES_PATH)]: (homey) => async () => buildUiPrices(homey),
   [buildRouteKey('POST', SETTINGS_UI_REFRESH_GRID_TARIFF_PATH)]: (homey) => async () => buildUiPrices(homey),

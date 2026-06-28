@@ -171,6 +171,7 @@ export const deviceDetailExpensiveDelta = document.querySelector(
   '#device-detail-expensive-delta',
 ) as MdFilledTextFieldElement;
 export const deviceDetailSurplusSection = qs('#device-detail-surplus-section');
+export const deviceDetailSurplusOptRow = qs('#device-detail-surplus-opt-row');
 export const deviceDetailSurplusOpt = document.querySelector('#device-detail-surplus-opt') as MdSwitchElement;
 export const deviceDetailSurplusDelta = document.querySelector(
   '#device-detail-surplus-delta',

@@ -210,6 +210,12 @@ export type SettingsUiDevicesPayload = {
   // carriage is pinned by the ui_devices payload test instead
   // (`test/integration/settingsUiApi.test.ts`).
   devices: DecoratedDeviceSnapshot[];
+  // True when the home has at least one auto-tracked solar/PV device (deviceClass
+  // 'solarpanel'). The PV device itself is excluded from `devices` (observe-only), so
+  // this home-level flag is the only signal the settings UI has that solar exists — it
+  // gates the per-device "Use solar surplus" control, which is otherwise meaningless
+  // (and misleading) in a home that does not export.
+  hasManagedSolarDevice: boolean;
 };
 
 export type SettingsUiDeferredObjectivePlanHistoryPayload = {

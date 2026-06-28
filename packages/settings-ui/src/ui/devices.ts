@@ -33,6 +33,7 @@ import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDevic
 
 export const getTargetDevices = async (): Promise<SettingsUiDeviceListItem[]> => {
   const payload = await getApiReadModel<SettingsUiDevicesPayload>(SETTINGS_UI_DEVICES_PATH);
+  state.hasManagedSolarDevice = payload?.hasManagedSolarDevice === true;
   return Array.isArray(payload?.devices) ? payload.devices : [];
 };
 
@@ -344,11 +345,17 @@ export const refreshDevices = async (options?: { render?: boolean }) => {
     const response = await callApi<SettingsUiDevicesPayload>('POST', SETTINGS_UI_REFRESH_DEVICES_PATH, {});
     const hasDevices = Array.isArray(response?.devices);
     if (hasDevices) {
-      primeApiCache(SETTINGS_UI_DEVICES_PATH, { devices: response.devices });
+      primeApiCache(SETTINGS_UI_DEVICES_PATH, {
+        devices: response.devices,
+        hasManagedSolarDevice: response.hasManagedSolarDevice === true,
+      });
+      state.hasManagedSolarDevice = response.hasManagedSolarDevice === true;
     } else {
       invalidateApiCache(SETTINGS_UI_DEVICES_PATH);
     }
 
+    // When the refresh returns no devices we fall back to the cached read model via
+    // getTargetDevices(), which also re-derives state.hasManagedSolarDevice.
     const devices = hasDevices ? response.devices : await getTargetDevices();
     state.latestDevices = devices;
     state.devicesLoaded = true;
