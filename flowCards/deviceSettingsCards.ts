@@ -6,20 +6,20 @@ import type { FlowCardDeps } from './registerFlowCards';
 import { buildDeviceAutocompleteOptions } from './deviceArgs';
 import { readFlowDeviceArg } from './flowArgParsers';
 
-// An OBSERVE-ONLY device (a home battery / solar device) is structurally stamped
-// `controllable: false` and is NEVER capacity-controllable, whatever the settings row
-// says. PELS already overrides any stray `controllable_devices` entry to non-controllable
-// at the backend, so no actuation can escape — but letting a user pick one into the
-// capacity-control card would write an inconsistent, no-op settings row. Both the
-// autocomplete and the write skip such devices, so the picker offers only genuinely
-// eligible devices.
+// An OBSERVE-ONLY device (a home battery / solar device) is auto-tracked but is NOT a
+// user-facing device: PELS never controls it and it carries no managed-load semantics, so
+// it must never be OFFERED in a device picker. Letting a user pick one would either write
+// an inconsistent, no-op settings row (capacity-control / budget-exemption) or expose an
+// internal-only device in a condition card. Every device-arg autocomplete (and every write
+// that takes one) filters on this predicate so the picker offers only genuinely eligible
+// devices.
 //
 // Keyed on the observe-only ROLE (`deviceClass` is 'battery'/'solarpanel'), NOT on the
-// device's CURRENT `controllable` flag: a normal device that the user has not yet opted in
-// is legitimately `controllable: false` right now, and the capacity-control card is exactly
-// the path to flip it on — filtering on the live flag would block that real enable flow.
-// The role is the immutable signal that the device can NEVER be capacity-controlled.
-const isControllableEligibleDevice = (device: TargetDeviceSnapshot): boolean => (
+// device's CURRENT `controllable`/`managed` flags: a normal device the user has not yet
+// opted in is legitimately `controllable: false` right now, and the capacity-control card
+// is exactly the path to flip it on — filtering on a live flag would block that real enable
+// flow. The role is the immutable signal that the device is observe-only forever.
+const isUserSelectableDevice = (device: TargetDeviceSnapshot): boolean => (
   !isObserveOnlyRoleClassKey(device.deviceClass)
 );
 
@@ -30,7 +30,7 @@ export function registerDeviceCapacityControlCards(deps: FlowCardDeps): void {
     settingKey: CONTROLLABLE_DEVICES,
     label: 'capacity control',
     settingKind: 'capacity_control',
-    deviceFilter: isControllableEligibleDevice,
+    deviceFilter: isUserSelectableDevice,
     deps,
   });
   registerDeviceBooleanActionCard({
@@ -39,7 +39,7 @@ export function registerDeviceCapacityControlCards(deps: FlowCardDeps): void {
     settingKey: CONTROLLABLE_DEVICES,
     label: 'capacity control',
     settingKind: 'capacity_control',
-    deviceFilter: isControllableEligibleDevice,
+    deviceFilter: isUserSelectableDevice,
     deps,
   });
 }
@@ -51,6 +51,7 @@ export function registerBudgetExemptionCards(deps: FlowCardDeps): void {
     settingKey: BUDGET_EXEMPT_DEVICES,
     label: 'budget exemption',
     settingKind: 'budget_exemption',
+    deviceFilter: isUserSelectableDevice,
     deps,
   });
   registerDeviceBooleanActionCard({
@@ -59,6 +60,7 @@ export function registerBudgetExemptionCards(deps: FlowCardDeps): void {
     settingKey: BUDGET_EXEMPT_DEVICES,
     label: 'budget exemption',
     settingKind: 'budget_exemption',
+    deviceFilter: isUserSelectableDevice,
     deps,
   });
 }
@@ -123,11 +125,19 @@ function registerDeviceSnapshotCondition(params: {
 }): void {
   const { cardId, predicate, deps } = params;
   const card = deps.homey.flow.getConditionCard(cardId);
+  // The run listener answers truthfully for whatever device the flow references — an
+  // observe-only battery genuinely IS `managed` internally, so an existing flow that
+  // already points at one keeps evaluating correctly. We only keep observe-only devices
+  // out of the AUTOCOMPLETE so they are never offered as a new pick (the "hide fully"
+  // contract), without silently breaking a flow a user built before the filter landed.
   card.registerRunListener(async (args: unknown) => {
     const device = await resolveDeviceFromArgs(args, deps);
     return device ? predicate(device) : false;
   });
-  card.registerArgumentAutocompleteListener('device', async (query: string) => getDeviceOptions(deps, query));
+  card.registerArgumentAutocompleteListener(
+    'device',
+    async (query: string) => getDeviceOptions(deps, query, isUserSelectableDevice),
+  );
 }
 
 async function resolveDeviceFromArgs(args: unknown, deps: FlowCardDeps): Promise<TargetDeviceSnapshot | null> {
