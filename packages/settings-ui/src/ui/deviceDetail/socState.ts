@@ -33,14 +33,17 @@ export function setDeviceDetailSocState(device: SettingsUiDeviceDetailItem | nul
     deviceDetailSocValue.textContent = `${soc.percent} %`;
   }
 
+  // The value line above already states the consequence in plain words ("N % - stale",
+  // "Invalid report", "Not reported"), so the subline only carries the freshness time —
+  // it must NOT leak the raw status enum ("Status: stale") to the user.
   if (typeof soc.observedAtMs === 'number' && Number.isFinite(soc.observedAtMs)) {
     const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
     deviceDetailSocUpdated.textContent = `Updated ${getTimeAgo(
       new Date(soc.observedAtMs),
       new Date(),
       timeZone,
-    )} - Status: ${soc.status}`;
+    )}`;
   } else {
-    deviceDetailSocUpdated.textContent = `Status: ${soc.status}`;
+    deviceDetailSocUpdated.textContent = '';
   }
 }
