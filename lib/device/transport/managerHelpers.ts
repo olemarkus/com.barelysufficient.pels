@@ -18,18 +18,11 @@ const SUPPORTED_DEVICE_CLASSES = new Set([
   'evcharger',
 ]);
 
-// The normalized class-keys that `resolveDeviceClassKey` assigns to the two
-// observe-only ROLES (battery → 'battery', solar → 'solarpanel'). PELS tracks but
-// never controls a device with one of these class-keys: it is kept as a power-capable,
-// non-controllable, non-temperature snapshot entry and excluded from flow-backed
-// control. Consumers that only have a `deviceClassKey` string in hand (the capability
-// branch, the managed-filter ui_picker drop, the flow-card guard) match on this set so
-// battery + solar share the same observe-only treatment from one definition.
-const OBSERVE_ONLY_ROLE_CLASS_KEYS = new Set(['battery', 'solarpanel']);
-
-export const isObserveOnlyRoleClassKey = (deviceClassKey: string | undefined): boolean => (
-  deviceClassKey !== undefined && OBSERVE_ONLY_ROLE_CLASS_KEYS.has(deviceClassKey)
-);
+// The observe-only role class-key predicate is pure, browser-safe domain knowledge,
+// so its canonical home is shared-domain (`observeOnlyRole.ts`); it is re-exported here
+// for the device-layer call sites (the capability branch, the managed-filter ui_picker
+// drop, the flow-card guard) that already import it from `./managerHelpers`.
+export { isObserveOnlyRoleClassKey } from '../../../packages/shared-domain/src/observeOnlyRole';
 
 export const getDeviceId = (device: HomeyDeviceLike): string => device.id;
 

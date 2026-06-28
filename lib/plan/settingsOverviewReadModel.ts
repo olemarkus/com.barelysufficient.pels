@@ -5,6 +5,7 @@ import {
   resolvePlanStateKind,
   resolvePlanStateTone,
 } from '../../packages/shared-domain/src/planStateLabels';
+import { isObserveOnlyRoleClassKey } from '../../packages/shared-domain/src/observeOnlyRole';
 import type {
   SettingsUiPlanDeviceSnapshot,
   SettingsUiPlanMetaSnapshot,
@@ -169,10 +170,18 @@ export function buildSettingsOverviewReadModel(
   return {
     generatedAtMs: plan.generatedAtMs,
     meta: buildSettingsOverviewMetaReadModel(plan.meta),
-    devices: plan.devices.map((device) => buildSettingsOverviewDeviceReadModel(
-      device,
-      deps,
-      deviceTypeById.get(device.id),
-    )),
+    // Auto-tracked observe-only role devices (home batteries → 'battery', solar/PV →
+    // 'solarpanel') ride the plan internally (the planner observes them) but are NOT
+    // user-facing: PELS never controls them and they carry no managed-load semantics on
+    // the overview. The device-list endpoint already drops them (`getSettingsUiDevices`);
+    // the overview derives from the plan snapshot, so it must drop them here too, or an
+    // auto-tracked battery renders as a clickable no-op card.
+    devices: plan.devices
+      .filter((device) => !isObserveOnlyRoleClassKey(device.deviceClass))
+      .map((device) => buildSettingsOverviewDeviceReadModel(
+        device,
+        deps,
+        deviceTypeById.get(device.id),
+      )),
   };
 }

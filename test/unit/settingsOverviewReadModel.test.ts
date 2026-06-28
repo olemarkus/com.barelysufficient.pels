@@ -35,6 +35,31 @@ describe('settingsOverviewReadModel', () => {
     });
   });
 
+  it('excludes auto-tracked observe-only role devices (battery / solar) from the overview devices', () => {
+    const heater = buildPlanDevice({ id: 'heater', deviceClass: 'heater', reason: { code: PLAN_REASON_CODES.none } });
+    const battery = buildPlanDevice({ id: 'home-battery', deviceClass: 'battery', reason: { code: PLAN_REASON_CODES.none } });
+    const solar = buildPlanDevice({ id: 'solar', deviceClass: 'solarpanel', reason: { code: PLAN_REASON_CODES.none } });
+
+    const readModel = buildSettingsOverviewReadModel({
+      meta: {
+        totalKw: 0.6,
+        softLimitKw: 4.5,
+        headroomKw: 3.9,
+        usedKWh: 0.02,
+        budgetKWh: 9.5,
+        capacityLimitKw: 5,
+        dailyBudgetHourKWh: 12,
+      },
+      devices: [heater, battery, solar],
+    });
+
+    const ids = (readModel?.devices ?? []).map((d) => d.id);
+    expect(ids).toContain('heater');
+    expect(ids).not.toContain('home-battery');
+    expect(ids).not.toContain('solar');
+    expect(readModel?.devices).toHaveLength(1);
+  });
+
   it('uses daily budget allocation as the effective hour budget when tighter', () => {
     const device = buildPlanDevice({
       reason: { code: PLAN_REASON_CODES.none },
