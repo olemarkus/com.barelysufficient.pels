@@ -391,6 +391,7 @@ describe('settingsUiApi', () => {
           reportedStepId: 'low',
         },
       ],
+      hasManagedSolarDevice: false,
     });
     expect(getSettingsUiPlanPayload({ homey: homey as never })).toEqual({
       plan: {
@@ -457,6 +458,21 @@ describe('settingsUiApi', () => {
     // are still tracked there for telemetry; only this UI payload excludes them.
     const backendSnapshot = homey.app.latestTargetSnapshot as Record<string, unknown>[];
     expect(backendSnapshot.map((device) => device.id)).toEqual(['heater-1', 'batt-1', 'pv-1']);
+    // Although the PV device is excluded from `devices`, its presence is still reported as
+    // the home-level solar flag so the UI can gate the per-device "Use solar surplus" control.
+    expect(getSettingsUiDevicesPayload({ homey: homey as never }).hasManagedSolarDevice).toBe(true);
+  });
+
+  it('reports hasManagedSolarDevice=false when the home has only a battery and no PV', () => {
+    // A home battery is observe-only but is NOT solar — surplus self-consumption requires
+    // generation, so a battery alone must not unlock the solar surplus control.
+    const homey = createHomey({
+      latestDevicesOverride: [
+        { id: 'heater-1', name: 'Heater', deviceType: 'temperature' },
+        { id: 'batt-1', name: 'Home Battery', deviceClass: 'battery' },
+      ],
+    });
+    expect(getSettingsUiDevicesPayload({ homey: homey as never }).hasManagedSolarDevice).toBe(false);
   });
 
   it('returns an empty diagnostics payload when the app has no diagnostics API yet', () => {

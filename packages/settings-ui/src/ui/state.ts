@@ -75,6 +75,10 @@ export type UiState = {
   deferredObjectiveSettings: DeferredObjectiveSettingsV1;
   deferredObjectiveActivePlans: OverviewDeferredObjectiveActivePlans | null;
   priceOptimizationSettings: Record<string, PriceOptimizationConfig>;
+  // Home-level: true when an auto-tracked solar/PV device is present (from the
+  // `/ui_devices` payload). The per-device "Use solar surplus" control is hidden
+  // unless this is true — the feature is meaningless in a home that does not export.
+  hasManagedSolarDevice: boolean;
   // Device IDs the overview "Let it run now" rescue chip may offer the action on,
   // resolved server-side (budget-caused + task-free + a known target). The card
   // view gates the chip on membership so a shown chip's create call cannot be
@@ -115,6 +119,7 @@ export const state: UiState = {
   deferredObjectiveSettings: createEmptyDeferredObjectiveSettings(),
   deferredObjectiveActivePlans: null,
   priceOptimizationSettings: {},
+  hasManagedSolarDevice: false,
   starvationRescuableDeviceIds: new Set<string>(),
 };
 

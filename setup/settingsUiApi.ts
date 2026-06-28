@@ -133,20 +133,14 @@ const asDailyBudgetModelSettings = (value: unknown): Partial<DailyBudgetModelSet
   };
 };
 
-const getSettingsUiDevices = ({ homey }: ApiContext): TargetDeviceSnapshot[] => {
+// The raw candidate list BEFORE the observe-only filter: the force-managed snapshot
+// (`latestTargetSnapshot`) plus the unmanaged-but-eligible picker devices. Auto-tracked
+// observe-only role devices (home batteries → 'battery', PV → 'solarpanel') ride the
+// managed half here; callers decide whether to expose or merely detect them.
+const getRawSettingsUiDeviceCandidates = ({ homey }: ApiContext): TargetDeviceSnapshot[] => {
   const managed = getLatestDevicesForUiFromApp(homey) ?? [];
   const unmanagedEligible = getUiPickerDevicesFromApp(homey);
-  // Auto-tracked observe-only role devices (home batteries → 'battery',
-  // PV → 'solarpanel') are force-managed in the backend snapshot for telemetry,
-  // but the user never opted into managing them and cannot control them. They
-  // leak into the `managed` list from `latestTargetSnapshot` with a misleading
-  // no-op "Manage" toggle, so drop them from the user-facing device list here.
-  // The BACKEND snapshot + telemetry stay untouched — only this UI payload
-  // excludes them. The picker side already drops them (managerManagedFilter),
-  // so this only ever trims the `managed` half. They earn a proper tracked /
-  // EMS view later; for now they are not exposed half-baked.
-  return [...managed, ...unmanagedEligible]
-    .filter((device) => !isObserveOnlyRoleClassKey(device.deviceClass));
+  return [...managed, ...unmanagedEligible];
 };
 
 const getSettingsUiPlan = ({ homey }: ApiContext): SettingsUiPlanSnapshot | null => (
@@ -220,9 +214,21 @@ export const buildSettingsUiBootstrap = async ({ homey }: ApiContext): Promise<S
   };
 };
 
-export const getSettingsUiDevicesPayload = ({ homey }: ApiContext): SettingsUiDevicesPayload => ({
-  devices: getSettingsUiDevices({ homey }),
-});
+export const getSettingsUiDevicesPayload = ({ homey }: ApiContext): SettingsUiDevicesPayload => {
+  const candidates = getRawSettingsUiDeviceCandidates({ homey });
+  return {
+    // Auto-tracked observe-only role devices are force-managed in the backend snapshot for
+    // telemetry, but the user never opted into managing them and cannot control them — they
+    // leak into the `managed` list with a misleading no-op "Manage" toggle, so drop them from
+    // the user-facing device list. The BACKEND snapshot + telemetry stay untouched; they earn
+    // a proper tracked / EMS view later.
+    devices: candidates.filter((device) => !isObserveOnlyRoleClassKey(device.deviceClass)),
+    // A solar/PV device is tracked observe-only and excluded from `devices`, so its presence
+    // is the only home-level signal the settings UI gets that the home has solar. The
+    // normalized class-key for any role-detected PV is 'solarpanel' (`resolveDeviceClassKey`).
+    hasManagedSolarDevice: candidates.some((device) => device.deviceClass === 'solarpanel'),
+  };
+};
 
 export const getSettingsUiPlanPayload = ({ homey }: ApiContext): SettingsUiPlanPayload => ({
   plan: getSettingsUiPlan({ homey }),

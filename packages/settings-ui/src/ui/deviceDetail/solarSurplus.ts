@@ -44,10 +44,12 @@ export const updateSurplusSectionVisibility = (params: {
   const isManaged = params.currentDetailDeviceId ? resolveManagedState(params.currentDetailDeviceId) : false;
   // Field-only section, shown only when the "Use solar surplus" toggle (in the
   // Control section) is on — mirrors how "Price response" gates on its switch.
-  // Self-consumption only applies to a managed temperature device; the
-  // hasGeneration gate is deferred, so for now it shows on every managed thermostat.
+  // Solar-only: gated on the home having a tracked solar/PV device, so it never appears
+  // in a home that does not export; and only on a managed temperature device (the only
+  // kind that self-consumes by raising a setpoint).
   deviceDetailSurplusSection.style.display
-    = supportsTemperatureDevice(device) && isManaged && deviceDetailSurplusOpt.selected ? 'block' : 'none';
+    = state.hasManagedSolarDevice && supportsTemperatureDevice(device) && isManaged && deviceDetailSurplusOpt.selected
+      ? 'block' : 'none';
 };
 
 export const initDeviceDetailSurplusOptHandlers = (params: {

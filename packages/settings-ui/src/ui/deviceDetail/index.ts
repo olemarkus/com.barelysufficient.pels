@@ -13,6 +13,7 @@ import {
   deviceDetailControllable,
   deviceDetailPriceOpt,
   deviceDetailSurplusOpt,
+  deviceDetailSurplusOptRow,
   deviceDetailControlModelRow,
   deviceDetailControlModel,
   deviceDetailShedAction,
@@ -181,6 +182,13 @@ const setDeviceDetailControlStates = (deviceId: string) => {
   const priceConfig = state.priceOptimizationSettings[deviceId];
   setTemperatureGatedSwitch(deviceDetailPriceOpt, priceConfig?.enabled, controlState);
   setTemperatureGatedSwitch(deviceDetailSurplusOpt, priceConfig?.surplusWilling, controlState);
+  if (deviceDetailSurplusOptRow) {
+    // The surplus control is solar-only: hide the whole row unless the home has a tracked
+    // solar/PV device AND this is a temperature device (the only kind that can self-consume
+    // by raising a setpoint). On a non-solar home or a non-temperature device it is hidden
+    // outright rather than shown disabled, so it never clutters a home that cannot export.
+    deviceDetailSurplusOptRow.hidden = !(state.hasManagedSolarDevice && controlState.supportsTemperature);
+  }
 
   setDeviceDetailBudgetExemptState(device);
   setDeviceDetailSocState(device);
