@@ -3,6 +3,7 @@ import {
   getSteppedLoadLowestActiveStep,
   getSteppedLoadStep,
 } from '../utils/deviceControlProfiles';
+import { logSteppedLoadRestoreBinaryUndriven } from './steppedLoadRestoreDiagnostics';
 import type { SteppedLoadProfile, SteppedLoadStep } from '../../packages/contracts/src/types';
 import {
   canTurnOnDevice,
@@ -304,7 +305,10 @@ export const applySteppedLoadRestore = async (
   options: { preRestoreStepIssued?: boolean } = {},
 ): Promise<SteppedLoadRestoreResult> => {
   const name = action.name;
-  if (action.desired.on !== true) return NOT_RESTORED;
+  if (action.desired.on !== true) {
+    logSteppedLoadRestoreBinaryUndriven(action, mode);
+    return NOT_RESTORED;
+  }
   const {
     stepActuation,
     matchingRestoreAttempt,
