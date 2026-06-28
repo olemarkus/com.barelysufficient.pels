@@ -183,6 +183,53 @@ describe('planReconcileState stepped device drift', () => {
       expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-2')).toBe(true);
     });
 
+    it('treats a kept stepped device observed off as drift even though native step telemetry still reads low', () => {
+      // Prod incident shape (Høiax "Connected 300"): PELS wants the tank kept on
+      // at 'low', but the device is observed off (onoff:false) while its native
+      // max_power step telemetry still honestly reads 'low'. The masked-looking
+      // step must NOT hide the drift — drift keys off the binary axis, so the
+      // reconcile path re-drives onoff=true rather than concluding it is settled.
+      const plan = buildPlan([buildSteppedDevice({
+        currentState: 'off',
+        plannedState: 'keep',
+        selectedStepId: 'low',
+        desiredStepId: 'low',
+      })]);
+      const liveDevices: PlanInputDevice[] = [inputDevice({
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        steppedLoadProfile: steppedProfile,
+        selectedStepId: 'low',
+        binaryControl: { on: false },
+        binaryControlObservation: buildBinaryObservation('onoff', false),
+        targets: [{ id: 'target_temperature', value: 65, unit: '°C' }],
+      })];
+
+      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-1')).toBe(true);
+    });
+
+    it('CONTROL: reports no drift once the kept stepped device is observed back on at low', () => {
+      const plan = buildPlan([buildSteppedDevice({
+        currentState: 'off',
+        plannedState: 'keep',
+        selectedStepId: 'low',
+        desiredStepId: 'low',
+      })]);
+      const liveDevices: PlanInputDevice[] = [inputDevice({
+        id: 'dev-1',
+        name: 'Tank',
+        controlCapabilityId: 'onoff',
+        steppedLoadProfile: steppedProfile,
+        selectedStepId: 'low',
+        binaryControl: { on: true },
+        binaryControlObservation: buildBinaryObservation('onoff', true),
+        targets: [{ id: 'target_temperature', value: 65, unit: '°C' }],
+      })];
+
+      expect(hasPlanExecutionDriftForDevice(plan, liveDevices, 'dev-1')).toBe(false);
+    });
+
     it('does not treat target-only keep devices as binary drift', () => {
       const plan = buildPlan([buildBinaryDevice({
         currentState: 'not_applicable',

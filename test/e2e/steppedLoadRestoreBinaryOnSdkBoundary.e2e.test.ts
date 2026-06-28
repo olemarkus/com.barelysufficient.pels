@@ -311,4 +311,57 @@ describe('stepped-load restore binary onoff at the SDK boundary', () => {
     // pins the trigger to the missing/unknown binary observation.
     expect(deviceManager.setCapability).toHaveBeenCalledWith(DEVICE_ID, 'onoff', true);
   });
+
+  it('re-drives onoff=true in reconcile mode when a kept stepped load is observed off', async () => {
+    // Eventual-consistency guard for cloud devices that DROP the onoff write
+    // (modelled on a Høiax stepped load — same dual-control family as the
+    // "Connected 300" incident that stayed off ~1h40m via myUplink). PELS must
+    // not rely on a single write landing — when drift detects the device still
+    // observed off while it wants it kept on, the reconcile pass must re-issue
+    // onoff=true at the SDK boundary, the same as a normal plan pass.
+    const logger = createLogger();
+    const device = buildHoiaxDevice({ kind: 'trusted-off' });
+    const snapshot = parseHoiaxSnapshot({ kind: 'trusted-off' }, logger);
+
+    const { executor, deviceManager } = buildExecutor(snapshot, device);
+    await executor.applyPlanActions(buildRestoreToLowPlan(), 'reconcile');
+
+    expect(deviceManager.setCapability).toHaveBeenCalledWith(DEVICE_ID, 'onoff', true);
+  });
+
+  it('keeps re-driving onoff=true across cycles while the device stays off (no permanent silence)', async () => {
+    // The premise behind ever blaming the device for a stuck heater: PELS must
+    // keep RE-DRIVING the turn-on while the device stays off, not give up after
+    // one attempt. The only cross-cycle throttle is the time-windowed pending
+    // command store (`pendingRestores` is a within-pass re-entrancy guard). So
+    // once that window expires while the device is STILL observed off (the write
+    // was dropped device-side), the next cycle must re-issue onoff=true.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const base = Date.parse(FRESH_ISO) + 1_000;
+      vi.setSystemTime(base);
+      const logger = createLogger();
+      // The device keeps reporting OFF every cycle (the onoff=true write never
+      // lands). The snapshot's observationStale is baked false at parse time, so
+      // advancing the clock does not stale it — only the pending window expires.
+      const device = buildHoiaxDevice({ kind: 'trusted-off' });
+      const snapshot = parseHoiaxSnapshot({ kind: 'trusted-off' }, logger);
+      const { executor, deviceManager } = buildExecutor(snapshot, device);
+      const onWrites = (): number => deviceManager.setCapability.mock.calls
+        .filter((call: unknown[]) => call[0] === DEVICE_ID && call[1] === 'onoff' && call[2] === true)
+        .length;
+
+      // Cycle 1: device off, kept-on intent -> onoff=true issued.
+      await executor.applyPlanActions(buildRestoreToLowPlan(), 'plan');
+      expect(onWrites()).toBe(1);
+
+      // Cycle 2, well past the pending-command window, device STILL off:
+      // the re-drive resumes — PELS does not fall permanently silent.
+      vi.setSystemTime(base + 120_000);
+      await executor.applyPlanActions(buildRestoreToLowPlan(), 'plan');
+      expect(onWrites()).toBeGreaterThanOrEqual(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
