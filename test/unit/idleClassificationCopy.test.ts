@@ -27,15 +27,22 @@ describe('formatIdleClassificationCopy', () => {
     expect(copy.detail).toContain('61.5° / 65°');
   });
 
-  it('builds a warning status line for unresponsive with temperatures', () => {
+  it('builds an understated status line for unresponsive with temperatures', () => {
     const copy = formatIdleClassificationCopy({
       classification: 'unresponsive',
       currentTemperatureC: 55,
       targetTemperatureC: 65,
     });
     expect(copy.tone).toBe('warning');
-    expect(copy.statusLine).toBe('Not responding (55° / 65°)');
-    expect(copy.detail).toContain('breaker');
+    expect(copy.statusLine).toBe('Not drawing power (55° / 65°)');
+    // Chip label stays short and carries NO temperature pair (chips stay short,
+    // white-space: nowrap); the pair lives in the status line + tooltip only.
+    expect(copy.chipLabel).toBe('Not drawing power');
+    expect(copy.chipLabel).not.toContain('/');
+    // No breaker/wiring assertion — the fault framing was too strong for a case
+    // that is almost always the device's own controller pausing.
+    expect(copy.detail).not.toContain('breaker');
+    expect(copy.detail).toContain('not drawing power');
   });
 
   it('degrades gracefully when temperatures are missing', () => {

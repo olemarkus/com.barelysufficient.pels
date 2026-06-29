@@ -5,8 +5,10 @@
  *    drawing — a deliberate hold by the device's own controller (water
  *    heater stratification, thermostat hysteresis). Neutral status line.
  *
- *  - `unresponsive`: device should be heating (well below setpoint) but is
- *    drawing nothing. Warning chip — likely a fault the user should act on.
+ *  - `unresponsive`: device is below setpoint but drawing nothing. Far more
+ *    often the device's own controller pausing between cycles than an actual
+ *    fault, so the copy stays understated (no breaker/wiring assertion) and the
+ *    chip is only a mild heads-up, not an alarm.
  *
  *  - `capped_idle`: device is well below the PELS-commanded target but its
  *    own internal setpoint cap has opened — temperature parks at a stable
@@ -30,9 +32,10 @@ export type IdleClassification = 'near_target_idle' | 'unresponsive' | 'capped_i
  * `near_target_idle` (parked inside the hysteresis band) and `capped_idle`
  * (parked at the device's own internal cap below the PELS target) both mean
  * the device's own controller has stopped — pushing harder won't move it, so
- * the deferred objective is "as met as it gets". `unresponsive` (likely a
- * fault) and `undefined` (active / no classification) deliberately do NOT
- * count — a tripped breaker must never read as satisfied.
+ * the deferred objective is "as met as it gets". `unresponsive` (below target
+ * and not drawing) and `undefined` (active / no classification) deliberately do
+ * NOT count — a device that isn't actually reaching its target must never read
+ * as satisfied.
  *
  * Used by BOTH the live status producer (`diagnosticsBridge`) and the
  * postmortem met-reason mapping (`stallClassificationToMetReason`) so the
@@ -66,8 +69,14 @@ export type IdleClassificationCopyInput = {
 };
 
 export type IdleClassificationCopy = {
-  /** Short status line for the device card. */
+  /** Short status line for the device card (carries the temperature pair). */
   statusLine: string;
+  /**
+   * Very short fixed label for a header chip — NO temperature pair. Chips stay
+   * short and `white-space: nowrap`, so the pair lives in `statusLine` + the
+   * `detail` tooltip only, not the chip.
+   */
+  chipLabel: string;
   /** Longer explanation suitable for a tooltip or diagnostic event. */
   detail: string;
   /** UI tone for the chip; warning is shown for unresponsive only. */
@@ -98,19 +107,29 @@ const buildNearTargetIdleCopy = (
   pair: string | null,
 ): IdleClassificationCopy => ({
   statusLine: pair ? `Holding near setpoint (${pair})` : 'Holding near setpoint',
+  chipLabel: 'Holding near setpoint',
   detail: pair
     ? `${NEAR_TARGET_DETAIL_PREFIX} (${pair}). ${NEAR_TARGET_DETAIL_SUFFIX}`
     : `${NEAR_TARGET_DETAIL_PREFIX}. ${NEAR_TARGET_DETAIL_SUFFIX}`,
   tone: 'neutral',
 });
 
+// Deliberately understated: a device commanded on yet drawing nothing is far
+// more often its own controller pausing between cycles (anti-cycle / overshoot
+// guard / a wide internal hysteresis band) than an electrical fault. State the
+// observation plainly and only *suggest* a look if it persists — do not assert a
+// breaker/wiring fault the data can't support.
+const UNRESPONSIVE_DETAIL_SUFFIX = "Usually the device's own controller pausing between cycles; "
+  + 'if it stays this way for a long time, it may be worth a look.';
+
 const buildUnresponsiveCopy = (
   pair: string | null,
 ): IdleClassificationCopy => ({
-  statusLine: pair ? `Not responding (${pair})` : 'Not responding',
+  statusLine: pair ? `Not drawing power (${pair})` : 'Not drawing power',
+  chipLabel: 'Not drawing power',
   detail: pair
-    ? `Device should be heating (${pair}) but is drawing no power. Check the breaker, power supply, or device wiring.`
-    : 'Device should be heating but is drawing no power. Check the breaker, power supply, or device wiring.',
+    ? `Below target (${pair}) but not drawing power right now. ${UNRESPONSIVE_DETAIL_SUFFIX}`
+    : `Below target but not drawing power right now. ${UNRESPONSIVE_DETAIL_SUFFIX}`,
   tone: 'warning',
 });
 
@@ -130,6 +149,7 @@ const buildCappedIdleCopy = (
   statusLine: pair
     ? `Device reached its own setpoint cap (${pair})`
     : 'Device reached its own setpoint cap',
+  chipLabel: 'At setpoint cap',
   detail: pair
     ? `${CAPPED_IDLE_DETAIL_PREFIX} (${pair}). ${CAPPED_IDLE_DETAIL_SUFFIX}`
     : `${CAPPED_IDLE_DETAIL_PREFIX}. ${CAPPED_IDLE_DETAIL_SUFFIX}`,
