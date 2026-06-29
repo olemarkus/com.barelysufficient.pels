@@ -654,18 +654,6 @@ export default tseslint.config(
     },
   },
   {
-    // planExecutor keeps the remaining binary-control dispatch table local so the actuation path
-    // stays navigable in one place. Predicate helpers now live in `planExecutorPredicates.ts`
-    // and shed_release actuation lives in `shedReleaseActuation.ts`. The cap ticks up as the
-    // actuator-write-seam migration (PR1b) routes write sites through the injected `Actuator`
-    // dep; it shrinks again once binary/target/step dispatch is fully migrated. Target: <=600 if
-    // the binary dispatch table itself is later split per control type.
-    files: ['lib/executor/planExecutor.ts'],
-    rules: {
-      'max-lines': ['warn', { max: 734, skipBlankLines: true, skipComments: true }],
-    },
-  },
-  {
     // The receipt producer composes six asymmetric smart-task history surfaces
     // (succeeded timeline, missed shortfall chip, cost chip, abandoned details,
     // ISO-week archive, 7-day strip). Externalizing its user-visible strings
@@ -768,16 +756,6 @@ export default tseslint.config(
     files: ['lib/device/transport/managerObservation.ts'],
     rules: {
       'max-lines': ['warn', { max: 1015, skipBlankLines: true, skipComments: true }],
-    },
-  },
-  {
-    // Extracted stepped-load actuation is one cohesive, invariant-heavy
-    // sequencing pipeline (step selection, recent-draw escalation, confirmation)
-    // that must stay local after the executor split. Companion to the
-    // `targetExecutor` / `binaryExecutor` Bucket-B entries.
-    files: ['lib/executor/steppedLoadExecutor.ts'],
-    rules: {
-      'max-lines': ['warn', { max: 785, skipBlankLines: true, skipComments: true }],
     },
   },
   {
