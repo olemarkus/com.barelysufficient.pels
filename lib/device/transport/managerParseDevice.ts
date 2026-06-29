@@ -1,67 +1,30 @@
 import type {
   DeviceControlProfile,
-  DeviceStateOfChargeSnapshot,
-  EvChargingState,
-  SteppedLoadProfile,
   TargetDeviceSnapshot,
   TargetPowerSteppedLoadConfig,
 } from '../../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike, Logger } from '../../utils/types';
-import {
-    getCapabilities,
-    getDeviceId,
-    resolveZoneLabel,
-} from './managerHelpers';
+import { getDeviceId } from './managerHelpers';
 import { estimatePower, type PowerEstimateState } from '../devicePowerEstimate';
-import {
-    type FlowReportedCapabilityId,
-    type FlowReportedCapabilitiesForDevice,
-} from './flowReportedCapabilities';
-import {
-  getControlCapabilityId,
-  getEvCharging,
-  getEvChargingState,
-  resolveEvChargingStateBinaryEvidence,
-  type DeviceCapabilityMap,
-} from '../managerControl';
-import {
-    buildTargets,
-    getCurrentTemperature,
-    resolveDeviceCapabilities,
-} from './managerParse';
+import { type FlowReportedCapabilitiesForDevice } from './flowReportedCapabilities';
+import { type DeviceCapabilityMap } from '../managerControl';
+import { resolveDeviceCapabilities } from './managerParse';
 import {
     hasPotentialHomeyEnergyEstimate,
-    isObserveOnlyRoleDevice,
     type LiveDevicePowerWatts,
 } from '../managerEnergy';
-import { updateLastKnownPower } from '../managerRuntime';
 import type { DeviceMeasuredPowerResolver } from '../measuredPowerResolver';
-import { resolveMeasuredPowerKw } from '../managerMeasuredPower';
-import {
-    resolveCandidateCapabilities,
-    resolveFlowCapabilityOverlay,
-} from '../managerNativeEv';
-import { shouldSkipFlowBackedCandidate } from '../managerFlowSupport';
-import {
-    resolveLastFreshDataMs,
-    resolveBinaryControlObservation,
-} from './managerParseSnapshot';
-import { resolveStateOfChargeSnapshot } from './stateOfCharge';
 import type { StructuredDebugEmitter } from '../../logging/logger';
-import { resolveDeviceParsedControlState } from './managerParsedControlState';
-import { resolveAvailable as resolveAvail } from './managerParsedAvailability';
 import { resolveParseDeviceIdentity } from './managerParseIdentity';
 import {
     resolveManagedFilterDecision,
-    shouldDropAfterControlState,
     shouldDropEarly,
 } from './managerManagedFilter';
-
-type ParsedDeviceSettings = Pick<
-    TargetDeviceSnapshot,
-    'communicationModel' | 'priority' | 'controllable' | 'managed' | 'budgetExempt' | 'flowConflict'
->;
+import {
+    assembleDeviceSnapshot,
+    resolveDeviceCapabilityProfile,
+} from './managerParseDeviceFields';
 
 export type DeviceTransportParseProviders = {
     getPriority?: (deviceId: string) => number;
@@ -125,391 +88,25 @@ export function parseDevice(params: {
     purpose?: ParseDevicePurpose;
 }): TransportDeviceSnapshot | null {
     const { device, now, livePowerWByDeviceId = {}, previousSnapshot, deps, purpose = 'runtime' } = params;
-    const {
-        logger,
-        providers,
-        powerState,
-        measuredPowerResolver,
-        getCapabilityObj,
-        isPowerCapable,
-        resolveLatestLocalWriteMs,
-    } = deps;
-
     const identity = resolveParseDeviceIdentity({ device });
     if (!identity) return null;
-    const {
-        deviceId,
-        effectiveDevice,
-        deviceClassKey,
-        deviceLabel,
-    } = identity;
-    const managedDecision = resolveManagedFilterDecision({ providers, deviceId });
+    const managedDecision = resolveManagedFilterDecision({
+        providers: deps.providers, deviceId: identity.deviceId,
+    });
     if (shouldDropEarly({ purpose, decision: managedDecision })) return null;
-    const rawCapabilities = getCapabilities(effectiveDevice);
-    const rawCapabilityObj = getCapabilityObj(effectiveDevice);
-    const {
-        capabilities,
-        capabilityObj,
-        controlAdapter,
-        controlWriteCapabilityId,
-        controlObservationCapabilityId,
-        flowAugmentedDeviceType,
-        flowBackedCapabilityIds,
-        requiredFlowCapabilityIds,
-        reportedCapabilities,
-        reportedStepId, reportedStepObservedAtMs,
-        suggestedSteppedLoadProfile,
-        controlModel,
-        steppedLoadProfile,
-        nativeWriteCapabilities,
-        targetPowerConfig,
-    } = resolveFlowCapabilityOverlay({
-        device: effectiveDevice,
-        deviceClassKey,
-        deviceId,
-        rawCapabilities,
-        rawCapabilityObj,
-        providers,
-        logger,
-    });
-    const capsStatus = resolveCandidateCapabilities({
-        deviceClassKey,
-        deviceId,
-        deviceLabel,
-        capabilities,
-        controlAdapter,
-        steppedLoadProfile,
-        debugStructured: deps.debugStructured,
-    });
-    if (!capsStatus) return null;
-    const { currentTemperature, measuredPower, powerEstimate } = resolveDevicePowerState({
-        device: effectiveDevice,
-        deviceId,
-        deviceLabel,
-        capabilities,
-        capabilityObj,
-        livePowerWByDeviceId,
+    const profile = resolveDeviceCapabilityProfile({ identity, deps });
+    if (!profile) return null;
+    return assembleDeviceSnapshot({
+        identity,
+        deps,
+        overlay: profile.overlay,
+        capsStatus: profile.capsStatus,
         now,
-        measuredPowerResolver,
-        powerState,
-        logger,
-    });
-    const targetCaps = capsStatus.targetCaps;
-    const targets = buildTargets({
-        targetCaps, capabilityObj, deviceId, deviceLabel,
-        debugStructured: deps.debugStructured,
-    });
-    const controlCapabilityId = getControlCapabilityId({ deviceClassKey, capabilities });
-    const evCharging = getEvCharging(capabilityObj), evChargingState = getEvChargingState(capabilityObj);
-    const { resolvedOn, binaryControl, canSetControl, observedCurrentOn, hasTrustedControlState }
-        = resolveDeviceParsedControlState({
-        logger,
-        debugStructured: deps.debugStructured, deviceId, deviceName: effectiveDevice.name ?? null,
-        deviceLabel,
-        deviceClassKey,
-        controlCapabilityId,
-        controlWriteCapabilityId,
-        capabilityObj,
-        evCharging,
-        evChargingState,
-        flowBackedCapabilityIds,
+        livePowerWByDeviceId,
         previousSnapshot,
-        suppressDropLog: purpose === 'ui_picker',
+        purpose,
+        managedDecision,
     });
-    if (shouldDropAfterControlState({ purpose, decision: managedDecision, currentOn: resolvedOn, deviceClassKey })) {
-        return null;
-    }
-    const available = resolveAvail(controlCapabilityId, hasTrustedControlState, steppedLoadProfile, effectiveDevice);
-    const powerCapable = isPowerCapable(effectiveDevice, capsStatus, powerEstimate);
-    if (shouldSkipFlowBackedCandidate({
-        flowAugmentedDeviceType, flowBackedCapabilityIds, capabilities, capabilityObj,
-        requiredFlowCapabilityIds, reportedCapabilities, powerCapable,
-    })) {
-        return null;
-    }
-    const lastFreshDataMs = resolveParsedLastFreshDataMs({
-        capabilityObj, controlCapabilityId, observedCurrentOn, evChargingState,
-        targetCaps, reportedStepObservedAtMs, measuredPowerObservedAtMs: measuredPower.observedAtMs,
-    });
-    return buildParsedDeviceSnapshot({
-        device: effectiveDevice,
-        deviceId,
-        deviceClassKey,
-        providers,
-        targets,
-        targetCaps,
-        controlCapabilityId,
-        powerEstimate,
-        powerCapable,
-        binaryControl,
-        evCharging,
-        evChargingState,
-        stateOfCharge: resolveParsedSoc(
-            deviceClassKey, now, capabilityObj, reportedCapabilities,
-        ),
-        currentTemperature,
-        capabilities,
-        flowBackedCapabilityIds,
-        controlAdapter,
-        controlWriteCapabilityId,
-        controlObservationCapabilityId,
-        controlModel,
-        steppedLoadProfile,
-        nativeWriteCapabilities,
-        targetPowerConfig,
-        canSetControl,
-        binaryControlObservation: resolveBinaryControlObservation(
-            { capabilityObj, controlCapabilityId, controlObservationCapabilityId },
-        ),
-        available,
-        reportedStepId, suggestedSteppedLoadProfile, measuredPowerObservedAtMs: measuredPower.observedAtMs,
-        lastFreshDataMs,
-        lastLocalWriteMs: resolveLatestLocalWriteMs(deviceId),
-    });
-}
-
-function resolveParsedLastFreshDataMs(params: {
-    capabilityObj: DeviceCapabilityMap;
-    controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
-    observedCurrentOn?: boolean;
-    evChargingState: EvChargingState | undefined;
-    targetCaps: readonly string[];
-    reportedStepObservedAtMs?: number;
-    measuredPowerObservedAtMs?: number;
-}): number | undefined {
-    const {
-        capabilityObj, controlCapabilityId, observedCurrentOn, evChargingState,
-        targetCaps, reportedStepObservedAtMs, measuredPowerObservedAtMs,
-    } = params;
-    return resolveLastFreshDataMs({
-        capabilityObj,
-        controlCapabilityId: observedCurrentOn !== undefined ? controlCapabilityId : undefined,
-        includeEvChargingState: evChargingState === undefined
-            || resolveEvChargingStateBinaryEvidence(evChargingState) !== undefined,
-        targetCaps,
-        observedCapabilityAtMs: reportedStepObservedAtMs,
-        measuredPowerObservedAtMs,
-    });
-}
-
-function resolveTargetDeviceType(targetCaps: readonly string[]): TargetDeviceSnapshot['deviceType'] {
-    return targetCaps.length > 0 ? 'temperature' : 'onoff';
-}
-
-function resolveParsedSoc(
-    deviceClassKey: string,
-    nowMs: number,
-    capabilityObj: DeviceCapabilityMap,
-    reportedCapabilities: FlowReportedCapabilitiesForDevice,
-): DeviceStateOfChargeSnapshot | undefined {
-    return resolveStateOfChargeSnapshot({
-        deviceClassKey,
-        nowMs,
-        capabilityObj,
-        reportedCapabilities,
-    });
-}
-
-function buildParsedDeviceSnapshot(params: {
-    device: HomeyDeviceLike;
-    deviceId: string;
-    deviceClassKey: string;
-    providers: DeviceTransportParseProviders;
-    targets: TargetDeviceSnapshot['targets'];
-    targetCaps: readonly string[];
-    controlCapabilityId?: TargetDeviceSnapshot['controlCapabilityId'];
-    powerEstimate: ReturnType<typeof estimatePower>;
-    powerCapable: boolean;
-    binaryControl: TargetDeviceSnapshot['binaryControl'];
-    evCharging: TargetDeviceSnapshot['evCharging'];
-    evChargingState: EvChargingState | undefined;
-    stateOfCharge: DeviceStateOfChargeSnapshot | undefined;
-    currentTemperature: number | undefined;
-    capabilities: string[];
-    flowBackedCapabilityIds: FlowReportedCapabilityId[];
-    controlAdapter?: TargetDeviceSnapshot['controlAdapter'];
-    controlWriteCapabilityId?: string;
-    controlObservationCapabilityId?: string;
-    controlModel?: TargetDeviceSnapshot['controlModel'];
-    steppedLoadProfile?: SteppedLoadProfile;
-    nativeWriteCapabilities?: TargetDeviceSnapshot['nativeWriteCapabilities'];
-    targetPowerConfig?: TargetPowerSteppedLoadConfig;
-    canSetControl: boolean | undefined;
-    binaryControlObservation: TargetDeviceSnapshot['binaryControlObservation'];
-    available: boolean;
-    reportedStepId?: string;
-    suggestedSteppedLoadProfile?: TargetDeviceSnapshot['suggestedSteppedLoadProfile'];
-    measuredPowerObservedAtMs?: number;
-    lastFreshDataMs?: number;
-    lastLocalWriteMs?: number;
-}): TransportDeviceSnapshot {
-    const {
-        device,
-        deviceId,
-        deviceClassKey,
-        providers,
-        targets,
-        targetCaps,
-        controlCapabilityId,
-        powerEstimate,
-        powerCapable,
-        binaryControl,
-        evCharging,
-        evChargingState,
-        stateOfCharge,
-        currentTemperature,
-        capabilities,
-        flowBackedCapabilityIds,
-        controlAdapter,
-        controlWriteCapabilityId,
-        controlObservationCapabilityId,
-        controlModel,
-        steppedLoadProfile,
-        nativeWriteCapabilities,
-        targetPowerConfig,
-        canSetControl,
-        binaryControlObservation,
-        available,
-        reportedStepId,
-        suggestedSteppedLoadProfile,
-        measuredPowerObservedAtMs,
-        lastFreshDataMs,
-        lastLocalWriteMs,
-    } = params;
-
-    return {
-        id: deviceId,
-        name: device.name,
-        targets,
-        deviceClass: deviceClassKey,
-        deviceType: resolveTargetDeviceType(targetCaps),
-        ...resolveParsedDeviceSettings(device, deviceId, providers),
-        controlModel,
-        steppedLoadProfile,
-        nativeWriteCapabilities,
-        targetPowerConfig,
-        controlCapabilityId,
-        powerKw: powerEstimate.powerKw,
-        expectedPowerKw: powerEstimate.expectedPowerKw,
-        expectedPowerSource: powerEstimate.expectedPowerSource,
-        loadKw: powerEstimate.loadKw,
-        powerCapable,
-        binaryControl,
-        evCharging,
-        evChargingState,
-        stateOfCharge,
-        currentTemperature,
-        measuredPowerKw: powerEstimate.measuredPowerKw,
-        measuredPowerObservedAtMs,
-        zone: resolveZoneLabel(device),
-        capabilities,
-        controlAdapter,
-        controlWriteCapabilityId,
-        controlObservationCapabilityId,
-        binaryControlObservation,
-        reportedStepId,
-        suggestedSteppedLoadProfile,
-        ...(flowBackedCapabilityIds.length > 0 ? {
-            flowBacked: true,
-            flowBackedCapabilityIds,
-        } : {}),
-        canSetControl,
-        available,
-        lastFreshDataMs,
-        lastLocalWriteMs,
-        lastUpdated: lastFreshDataMs,
-    };
-}
-
-function resolveDevicePowerState(params: {
-    device: HomeyDeviceLike;
-    deviceId: string;
-    deviceLabel: string;
-    capabilities: string[];
-    capabilityObj: DeviceCapabilityMap;
-    livePowerWByDeviceId: LiveDevicePowerWatts;
-    now: number;
-    measuredPowerResolver: DeviceMeasuredPowerResolver;
-    powerState: Required<PowerEstimateState>;
-    logger: Logger;
-}): {
-    currentTemperature: number | undefined;
-    measuredPower: ReturnType<typeof resolveMeasuredPowerKw>;
-    powerEstimate: ReturnType<typeof estimatePower>;
-} {
-    const {
-        device,
-        deviceId,
-        deviceLabel,
-        capabilities,
-        capabilityObj,
-        livePowerWByDeviceId,
-        now,
-        measuredPowerResolver,
-        powerState,
-        logger,
-    } = params;
-    const currentTemperature = getCurrentTemperature(capabilityObj);
-    const measuredPower = resolveMeasuredPowerKw({
-        deviceId,
-        deviceLabel,
-        capabilities,
-        capabilityObj,
-        livePowerWByDeviceId,
-        now,
-        measuredPowerResolver,
-        powerState,
-        logger,
-    });
-    const powerEstimate = estimatePower({
-        device,
-        deviceId,
-        deviceLabel,
-        measuredPowerKw: measuredPower.measuredPowerKw,
-        now,
-        state: powerState,
-        logger,
-        updateLastKnownPower: (id, kw, label) => updateLastKnownPower({
-            state: powerState,
-            logger,
-            deviceId: id,
-            measuredKw: kw,
-            deviceLabel: label,
-        }),
-    });
-    return {
-        currentTemperature,
-        measuredPower,
-        powerEstimate,
-    };
-}
-
-function resolveParsedDeviceSettings(
-    device: HomeyDeviceLike,
-    deviceId: string,
-    providers: DeviceTransportParseProviders,
-): ParsedDeviceSettings {
-    const base = {
-        communicationModel: providers.getCommunicationModel?.(deviceId) ?? 'local',
-        priority: providers.getPriority?.(deviceId),
-        controllable: providers.getControllable?.(deviceId),
-        managed: providers.getManaged?.(deviceId),
-        budgetExempt: providers.getBudgetExempt?.(deviceId),
-        flowConflict: providers.getFlowConflict?.(deviceId),
-    };
-    // A role-detected OBSERVE-ONLY device (home battery OR solar) is stamped MANAGED
-    // OBSERVE-ONLY STRUCTURALLY, from the device object in hand — independent of any
-    // async-populated id set. This is the single authoritative resolution: it applies on
-    // EVERY parse path (full refresh AND realtime `device.update`), so there is no window
-    // (boot, realtime-before-first-full-refresh, or any settings combo) where a present
-    // battery/solar device resolves `controllable: true` or enters the planner
-    // controllable/actuated. The app's `resolveManagedState`/`isCapacityControlEnabled`
-    // agree via the transport's observe-only-id set; the planner reads THIS structural
-    // stamp on the snapshot, never the settings-derived flags. Detection
-    // (`isObserveOnlyRoleDevice`) is the SAME predicate the class-key normalization /
-    // snapshot-survival gates use, so detection, stamping, and survival can never diverge
-    // (an energy-role-only battery/solar device is detected, stamped, AND survives).
-    return isObserveOnlyRoleDevice(device) ? { ...base, managed: true, controllable: false } : base;
 }
 
 export function isDevicePowerCapable(params: {

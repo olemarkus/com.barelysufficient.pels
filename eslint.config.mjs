@@ -637,23 +637,6 @@ export default tseslint.config(
     },
   },
   {
-    // parseDevice keeps Homey snapshot normalization local while target/power parsing continues to
-    // settle at the Homey boundary. Target: <=140 after the next helper extraction pass.
-    files: ['lib/device/transport/managerParseDevice.ts'],
-    rules: {
-      'max-lines-per-function': ['warn', { max: 150, skipBlankLines: true, skipComments: true }],
-    },
-  },
-  {
-    // Stateful starvation diagnostics keep persistence, episode accounting, and Settings UI
-    // payload shaping in one service until the notes/starvation rollout finishes. Target: <=1200
-    // until that follow-up split is ready.
-    files: ['lib/diagnostics/deviceDiagnosticsService.ts'],
-    rules: {
-      'max-lines': ['warn', { max: 1200, skipBlankLines: true, skipComments: true }],
-    },
-  },
-  {
     // The receipt producer composes six asymmetric smart-task history surfaces
     // (succeeded timeline, missed shortfall chip, cost chip, abandoned details,
     // ISO-week archive, 7-day strip). Externalizing its user-visible strings
@@ -746,16 +729,6 @@ export default tseslint.config(
     files: ['flowCards/registerFlowCards.ts'],
     rules: {
       'max-lines': ['warn', { max: 1148, skipBlankLines: true, skipComments: true }],
-    },
-  },
-  {
-    // Observation tracking keeps freshness, retained observations, and debug
-    // source state together for one device-observation lifecycle. (Retains its
-    // separate file-level `max-params` exception below for the move-only field
-    // mirroring.) Target: <=500 once retained-observation accounting splits out.
-    files: ['lib/device/transport/managerObservation.ts'],
-    rules: {
-      'max-lines': ['warn', { max: 1015, skipBlankLines: true, skipComments: true }],
     },
   },
   {

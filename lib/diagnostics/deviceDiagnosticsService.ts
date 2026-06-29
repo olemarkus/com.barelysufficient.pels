@@ -1,442 +1,83 @@
-import {
-  getDateKeyInTimeZone,
-  getDateKeyStartMs,
-  getNextLocalDayStartUtcMs,
-} from '../utils/dateUtils';
-import { ACTIVATION_BACKOFF_MAX_LEVEL, type ActivationAttemptSource } from '../plan/admission';
+import type { SettingsUiDeviceDiagnosticsPayload } from '../../packages/contracts/src/deviceDiagnosticsTypes';
+import type { SettingsUiPlanDeviceStarvation } from '../../packages/contracts/src/settingsUiApi';
 import type {
-  DeviceDiagnosticsSummary,
+  DeviceDiagnosticsBackoffTransition,
+  DeviceDiagnosticsControlEvent,
+  DeviceDiagnosticsPlanObservation,
+  DeviceDiagnosticsRecorder,
+  DeviceDiagnosticsServiceDeps,
+  LiveDemandObservation,
+  LiveDeviceDiagnostics,
+} from './deviceDiagnosticsServiceTypes';
+import type { StructuredDebugEmitter } from '../logging/logger';
+import { getLogger } from '../logging/logger';
+import { clampPenaltyLevel, isFiniteNumber } from './deviceDiagnosticsNumbers';
+import { DeviceDiagnosticsPersistence } from './deviceDiagnosticsPersistence';
+import {
+  StarvationTracker,
+  createEmptyStarvationState,
+  normalizeStarvationObservation,
+  starvationTargetChanged,
+} from './deviceDiagnosticsEpisodes';
+import { logObservationTransition, logTrackedUsageEvent } from './deviceDiagnosticsLogging';
+import {
+  buildUiPayload,
+  getCurrentStarvedDeviceCount as computeCurrentStarvedDeviceCount,
+  getOverviewStarvation as computeOverviewStarvation,
+  getStarvedRescueEntries as computeStarvedRescueEntries,
+  type StarvedRescueEntry,
+} from './deviceDiagnosticsUiPayload';
+
+export type {
+  DeviceDiagnosticsBlockCause,
+  DeviceDiagnosticsStarvationSuppressionState,
+  DeviceDiagnosticsPlanObservation,
+  DeviceDiagnosticsTrackedTransitionReconciliation,
+  DeviceDiagnosticsControlEvent,
+  DeviceDiagnosticsBackoffTransition,
+  DeviceDiagnosticsRecorder,
+} from './deviceDiagnosticsServiceTypes';
+export type {
   DeviceDiagnosticsStarvationCountingCause,
   DeviceDiagnosticsStarvationPauseReason,
-  DeviceDiagnosticsStarvationSummary,
-  DeviceDiagnosticsWindowKey,
-  SettingsUiDeviceDiagnosticsPayload,
 } from '../../packages/contracts/src/deviceDiagnosticsTypes';
-import type {
-  SettingsUiPlanDeviceStarvation,
-  SettingsUiPlanStarvationCause,
-} from '../../packages/contracts/src/settingsUiApi';
-import {
-  buildWindowSummary,
-  countPersistedDays,
-  countPersistedDevices,
-  createEmptyDayAggregate,
-  createEmptyPersistedState,
-  getRecentDateKeys,
-  type PersistedDayAggregate,
-  type PersistedDiagnosticsState,
-} from './deviceDiagnosticsModel';
-import type { DeviceDiagnosticsStateStore } from './deviceDiagnosticsStateStore';
-import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
-import { getLogger } from '../logging/logger';
-import { normalizeError } from '../utils/errorUtils';
+export {
+  DEVICE_DIAGNOSTICS_STATE_KEY,
+  DEVICE_DIAGNOSTICS_WINDOW_DAYS,
+  DEVICE_DIAGNOSTICS_PERSIST_VERSION,
+} from './deviceDiagnosticsPersistence';
 
 const moduleLogger = getLogger('diagnostics/device');
 // Hoisted once so `emitDebug` allocates no per-call closure on the (test-only;
 // production always wires `debugStructured`) fallback path.
 const debugFallbackEmit: StructuredDebugEmitter = (payload) => moduleLogger.debug(payload);
 
-export const DEVICE_DIAGNOSTICS_STATE_KEY = 'device_diagnostics_v1';
-export const DEVICE_DIAGNOSTICS_WINDOW_DAYS = 21;
-export const DEVICE_DIAGNOSTICS_PERSIST_VERSION = 2;
-
-const DEVICE_DIAGNOSTICS_FLUSH_THROTTLE_MS = 5 * 60 * 1000;
 const DEVICE_DIAGNOSTICS_MAX_SAMPLE_GAP_MS = 10 * 60 * 1000;
-const DEVICE_DIAGNOSTICS_STARVATION_ENTRY_MS = 15 * 60 * 1000;
-const DEVICE_DIAGNOSTICS_STARVATION_CLEAR_MS = 10 * 60 * 1000;
-
-export type DeviceDiagnosticsBlockCause = 'not_blocked' | 'headroom' | 'cooldown_backoff';
-export type DeviceDiagnosticsStarvationSuppressionState = 'counting' | 'paused' | 'none';
-export type {
-  DeviceDiagnosticsStarvationCountingCause,
-  DeviceDiagnosticsStarvationPauseReason,
-} from '../../packages/contracts/src/deviceDiagnosticsTypes';
-
-type DeviceDiagnosticsStarvationResetReasonCode = 'device_no_longer_eligible';
-export type DeviceDiagnosticsPlanObservation = {
-  deviceId: string;
-  name: string;
-  includeDemandMetrics: boolean;
-  unmetDemand: boolean;
-  blockCause: DeviceDiagnosticsBlockCause;
-  targetDeficitActive: boolean;
-  desiredStateSummary: string;
-  appliedStateSummary: string;
-  eligibleForStarvation: boolean;
-  currentTemperatureC: number | null;
-  intendedNormalTargetC: number | null;
-  // The effective target PELS is currently COMMANDING the device toward (the
-  // applied/held setpoint, quantized to the device's target step). A device is
-  // starved only when PELS holds this BELOW `intendedNormalTargetC` — i.e. PELS
-  // is actively limiting the device, not merely waiting for it to reach a target
-  // it is already commanding in full.
-  commandedTargetC: number | null;
-  targetStepC: number | null;
-  // True when PELS is shedding this temperature device by commanding it OFF
-  // (`plannedState === 'shed'` with the `turn_off` shed behavior). A turn_off
-  // shed cuts power without lowering a setpoint, so the commanded-vs-intended
-  // target check alone cannot see it; this flag carries the "PELS holds the
-  // device off" signal so a below-target turn_off shed still counts as
-  // suppression. A device the USER turned off (PELS not shedding it) has
-  // `plannedState !== 'shed'` and never sets this.
-  pelsCommandsTurnOffShed: boolean;
-  suppressionState: DeviceDiagnosticsStarvationSuppressionState;
-  countingCause: DeviceDiagnosticsStarvationCountingCause | null;
-  pauseReason: DeviceDiagnosticsStarvationPauseReason | null;
-  observationFresh: boolean;
-};
-
-type DeviceDiagnosticsControlEventBase = {
-  deviceId: string;
-  name?: string;
-  nowTs?: number;
-};
-
-export type DeviceDiagnosticsTrackedTransitionReconciliation =
-  | 'startup'
-  | 'snapshot_refresh'
-  | 'post_actuation';
-
-export type DeviceDiagnosticsControlEvent =
-  | (DeviceDiagnosticsControlEventBase & {
-    kind: 'pels_shed' | 'pels_restore';
-  })
-  | (DeviceDiagnosticsControlEventBase & {
-    kind: 'tracked_usage_rise' | 'tracked_usage_drop';
-    fromKw: number;
-    toKw: number;
-    reconciliation?: DeviceDiagnosticsTrackedTransitionReconciliation;
-  });
-
-export type DeviceDiagnosticsBackoffTransition =
-  | {
-    kind: 'attempt_started';
-    deviceId: string;
-    source: ActivationAttemptSource;
-    penaltyLevel: number;
-    nowTs: number;
-  }
-  | {
-    kind: 'setback_failed';
-    deviceId: string;
-    source: ActivationAttemptSource | null;
-    previousPenaltyLevel: number;
-    penaltyLevel: number;
-    elapsedMs: number;
-    nowTs: number;
-  }
-  | {
-    kind: 'attempt_closed_inactive';
-    deviceId: string;
-    source: ActivationAttemptSource | null;
-    penaltyLevel: number;
-    elapsedMs: number;
-    nowTs: number;
-  }
-  | {
-    kind: 'attempt_closed_by_shed';
-    deviceId: string;
-    source: ActivationAttemptSource | null;
-    penaltyLevel: number;
-    elapsedMs: number;
-    nowTs: number;
-  }
-  | {
-    kind: 'attempt_closed_by_admission';
-    deviceId: string;
-    source: ActivationAttemptSource | null;
-    previousPenaltyLevel: number;
-    penaltyLevel: 0;
-    elapsedMs: number;
-    nowTs: number;
-  };
-
-export type DeviceDiagnosticsRecorder = {
-  observePlanSample: (params: {
-    observations: DeviceDiagnosticsPlanObservation[];
-    nowTs?: number;
-  }) => void;
-  recordControlEvent: (event: DeviceDiagnosticsControlEvent) => void;
-  recordActivationTransition: (transition: DeviceDiagnosticsBackoffTransition, params: {
-    name?: string;
-  }) => void;
-  getUiPayload: (nowTs?: number) => SettingsUiDeviceDiagnosticsPayload;
-};
-
-type LiveDemandObservation = {
-  includeDemandMetrics: boolean;
-  unmetDemand: boolean;
-  blockCause: DeviceDiagnosticsBlockCause;
-  targetDeficitActive: boolean;
-  desiredStateSummary: string;
-  appliedStateSummary: string;
-};
-
-
-type LiveStarvationObservation = {
-  eligibleForStarvation: boolean;
-  observationFresh: boolean;
-  currentTemperatureC: number | null;
-  intendedNormalTargetC: number | null;
-  commandedTargetC: number | null;
-  targetStepC: number | null;
-  pelsCommandsTurnOffShed: boolean;
-  suppressionState: DeviceDiagnosticsStarvationSuppressionState;
-  countingCause: DeviceDiagnosticsStarvationCountingCause | null;
-  pauseReason: DeviceDiagnosticsStarvationPauseReason | null;
-  // True when PELS is holding the device below its intended/mode target — the
-  // entry signal for starvation. Either PELS commands a lowered setpoint
-  // (`commandedTargetC < intendedNormalTargetC` by at least the target step) OR
-  // PELS sheds the device by turning it OFF while its temperature sits below the
-  // intended target. Both are PELS actively limiting the device; a device PELS
-  // commands in full (`keep`) is never below.
-  pelsHoldsBelowTarget: boolean;
-};
-
-type StarvationEvaluation = {
-  validObservation: boolean;
-  // PELS is actively limiting the device (a real capacity/budget/shortfall
-  // suppression) AND commanding it below its intended/mode target.
-  counting: boolean;
-  // Starvation may ENTER or keep ACCUMULATING: PELS holds the device below its
-  // mode target right now. A device PELS commands in full (`keep`) never starves,
-  // regardless of how far its physical temperature sits below target.
-  entryQualified: boolean;
-  // PELS no longer holds the device below its mode target — clear the episode.
-  clearQualified: boolean;
-  pauseReason: DeviceDiagnosticsStarvationPauseReason;
-};
-
-type LiveStarvationState = {
-  isStarved: boolean;
-  pendingEntryStartedAt?: number;
-  clearQualifiedStartedAt?: number;
-  starvedAccumulatedMs: number;
-  starvationEpisodeStartedAt?: number;
-  starvationLastResumedAt?: number;
-  starvationCause: DeviceDiagnosticsStarvationCountingCause | null;
-  starvationPauseReason: DeviceDiagnosticsStarvationPauseReason | null;
-};
-
-type LiveDeviceDiagnostics = {
-  name: string;
-  lastObservedTs?: number;
-  lastObservationBatchId?: number;
-  lastObservation?: LiveDemandObservation;
-  lastStarvationObservation?: LiveStarvationObservation;
-  openShedTs?: number;
-  openRestoreTs?: number;
-  currentPenaltyLevel: number;
-  starvation: LiveStarvationState;
-};
-
-type DeviceDiagnosticsServiceDeps = {
-  diagnosticsStateStore: DeviceDiagnosticsStateStore;
-  getTimeZone: () => string;
-  isDebugEnabled?: () => boolean;
-  structuredLog?: Pick<PinoLogger, 'info' | 'error'>;
-  debugStructured?: StructuredDebugEmitter;
-};
-
-const isFiniteNumber = (value: unknown): value is number => (
-  typeof value === 'number' && Number.isFinite(value)
-);
-
-const clampPenaltyLevel = (value: unknown): number => {
-  if (!isFiniteNumber(value)) return 0;
-  return Math.max(0, Math.min(ACTIVATION_BACKOFF_MAX_LEVEL, Math.trunc(value)));
-};
-
-const createEmptyStarvationState = (): LiveStarvationState => ({
-  isStarved: false,
-  starvedAccumulatedMs: 0,
-  starvationCause: null,
-  starvationPauseReason: null,
-});
 
 const UNKNOWN_DEVICE_NAME = 'unknown device';
 
-const createEmptyStarvationSummary = (): DeviceDiagnosticsStarvationSummary => ({
-  isStarved: false,
-  starvedAccumulatedMs: 0,
-  starvationEpisodeStartedAt: null,
-  starvationLastResumedAt: null,
-  intendedNormalTargetC: null,
-  currentTemperatureC: null,
-  starvationCause: null,
-  starvationPauseReason: null,
-});
-
-const buildStarvationSummary = (
-  live: LiveDeviceDiagnostics | undefined,
-): DeviceDiagnosticsStarvationSummary => {
-  if (!live) return createEmptyStarvationSummary();
-
-  const { starvation } = live;
-  const observation = live.lastStarvationObservation;
-
-  return {
-    isStarved: starvation.isStarved,
-    starvedAccumulatedMs: starvation.starvedAccumulatedMs,
-    starvationEpisodeStartedAt: starvation.isStarved
-      ? starvation.starvationEpisodeStartedAt ?? null
-      : null,
-    starvationLastResumedAt: starvation.isStarved
-      ? starvation.starvationLastResumedAt ?? null
-      : null,
-    intendedNormalTargetC: observation?.intendedNormalTargetC ?? null,
-    currentTemperatureC: observation?.currentTemperatureC ?? null,
-    starvationCause: starvation.starvationCause,
-    starvationPauseReason: starvation.starvationPauseReason,
-  };
-};
-
-const OVERVIEW_BUDGET_STARVATION_CAUSES = new Set<DeviceDiagnosticsStarvationCountingCause>([
-  'daily_budget',
-  'hourly_budget',
-]);
-
-// Every starvation episode now carries a real counting cause (capacity/budget):
-// PELS only starves a device it is actively holding below its mode target, so a
-// starved device always has a `countingCause` (retained across pauses). The
-// overview surfaces exactly two buckets — budget (releasable) vs capacity
-// (physical). There is no manual or external bucket: a below-target device PELS
-// merely keeps is not starved. The null fallback is defensive only and maps to
-// the physical-capacity bucket (the non-actionable default).
-const resolveOverviewStarvationCause = (
-  countingCause: DeviceDiagnosticsStarvationCountingCause | null,
-): SettingsUiPlanStarvationCause => (
-  countingCause !== null && OVERVIEW_BUDGET_STARVATION_CAUSES.has(countingCause) ? 'budget' : 'capacity'
-);
-
-// PELS is holding the device below its intended/mode target when the target it
-// is COMMANDING sits more than half a target step under the intended target. That
-// half-step epsilon keeps float quantization noise from reading equal commands as
-// "below". A device PELS commands in full (commanded == intended) is never below.
-const pelsCommandsBelowTarget = (
-  intendedNormalTargetC: number | null,
-  commandedTargetC: number | null,
-  targetStepC: number | null,
-): boolean => {
-  if (!isFiniteNumber(intendedNormalTargetC) || !isFiniteNumber(commandedTargetC)) return false;
-  const epsilon = isFiniteNumber(targetStepC) && targetStepC > 0 ? targetStepC / 2 : 0.25;
-  return commandedTargetC < intendedNormalTargetC - epsilon;
-};
-
-// PELS is holding a turn_off-shed device below its intended target when it has
-// commanded the device OFF as a shed AND the device's temperature still sits
-// more than half a target step under the intended target. The turn_off shed
-// itself is PELS limiting the device (no setpoint is lowered, so
-// `pelsCommandsBelowTarget` cannot see it); the temperature comparison excludes
-// a device that is off because it has already reached / overshot its target
-// (genuinely satisfied, not starved). Only PELS-commanded turn_off sheds set
-// `pelsCommandsTurnOffShed` — a user-off device never qualifies.
-const pelsHoldsOffBelowTarget = (
-  pelsCommandsTurnOffShed: boolean,
-  intendedNormalTargetC: number | null,
-  currentTemperatureC: number | null,
-  targetStepC: number | null,
-): boolean => {
-  if (!pelsCommandsTurnOffShed) return false;
-  if (!isFiniteNumber(intendedNormalTargetC) || !isFiniteNumber(currentTemperatureC)) return false;
-  const epsilon = isFiniteNumber(targetStepC) && targetStepC > 0 ? targetStepC / 2 : 0.25;
-  return currentTemperatureC < intendedNormalTargetC - epsilon;
-};
-
-const normalizeStarvationObservation = (
-  observation: DeviceDiagnosticsPlanObservation,
-): LiveStarvationObservation => ({
-  eligibleForStarvation: observation.eligibleForStarvation,
-  observationFresh: observation.observationFresh,
-  currentTemperatureC: observation.currentTemperatureC,
-  intendedNormalTargetC: observation.intendedNormalTargetC,
-  commandedTargetC: observation.commandedTargetC,
-  targetStepC: observation.targetStepC,
-  pelsCommandsTurnOffShed: observation.pelsCommandsTurnOffShed,
-  suppressionState: observation.suppressionState,
-  countingCause: observation.countingCause,
-  pauseReason: observation.pauseReason,
-  pelsHoldsBelowTarget: pelsCommandsBelowTarget(
-    observation.intendedNormalTargetC,
-    observation.commandedTargetC,
-    observation.targetStepC,
-  ) || pelsHoldsOffBelowTarget(
-    observation.pelsCommandsTurnOffShed,
-    observation.intendedNormalTargetC,
-    observation.currentTemperatureC,
-    observation.targetStepC,
-  ),
-});
-
-const isValidStarvationObservation = (observation: LiveStarvationObservation): boolean => (
-  observation.eligibleForStarvation
-  && observation.observationFresh
-  && isFiniteNumber(observation.intendedNormalTargetC)
-  // A setpoint comparison needs a finite commanded target; a turn_off shed
-  // instead compares the device's temperature against the intended target, so a
-  // turn_off shed with a known current temperature is equally valid.
-  && (
-    isFiniteNumber(observation.commandedTargetC)
-    || (observation.pelsCommandsTurnOffShed && isFiniteNumber(observation.currentTemperatureC))
-  )
-);
-
-const isCountingStarvationObservation = (observation: LiveStarvationObservation): boolean => (
-  isValidStarvationObservation(observation)
-  && observation.suppressionState === 'counting'
-  && observation.countingCause !== null
-);
-
-const starvationTargetChanged = (
-  previous: LiveStarvationObservation | undefined,
-  next: LiveStarvationObservation,
-): boolean => (
-  previous !== undefined
-  && previous.intendedNormalTargetC !== next.intendedNormalTargetC
-);
-
-const evaluateStarvationObservation = (
-  observation: LiveStarvationObservation,
-): StarvationEvaluation => {
-  const validObservation = isValidStarvationObservation(observation);
-  const counting = isCountingStarvationObservation(observation);
-  const pauseReason = !validObservation
-    ? 'invalid_observation'
-    : observation.pauseReason ?? (
-      observation.suppressionState === 'none' ? 'suppression_none' : 'unknown_suppression_reason'
-    );
-  return {
-    validObservation,
-    counting,
-    // ENTER / ACCUMULATE only when PELS is actively limiting the device (a real
-    // counting suppression) AND commanding it below its mode target. A device PELS
-    // commands in full (`keep`) never enters, however cold it physically is.
-    entryQualified: counting && observation.pelsHoldsBelowTarget,
-    // CLEAR only when PELS has restored the device to its full mode target
-    // (commanded == intended). A still-below device under a transient pause
-    // (cooldown/keep/suppression_none) stays latched-and-paused — not cleared —
-    // so a brief non-counting blip never resets an episode mid-hold.
-    clearQualified: validObservation && !observation.pelsHoldsBelowTarget,
-    pauseReason,
-  };
-};
-
 export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
-  private persistedState: PersistedDiagnosticsState = createEmptyPersistedState({
-    persistVersion: DEVICE_DIAGNOSTICS_PERSIST_VERSION,
-    windowDays: DEVICE_DIAGNOSTICS_WINDOW_DAYS,
-  });
   private liveByDeviceId: Record<string, LiveDeviceDiagnostics> = {};
-  private dirty = false;
-  private dirtyDeviceIds = new Set<string>();
-  private flushTimer?: ReturnType<typeof setTimeout>;
-  private lastFlushMs = 0;
-  private lastSkippedFlushLogMs = 0;
-  private lastSeenDateKey: string | null = null;
   private latestObservationBatchId = 0;
+  // Stable bound emitter so the demand-transition logging helpers receive a
+  // single closure instead of allocating one per observation cycle.
+  private readonly emit: StructuredDebugEmitter = (payload) => this.emitDebug(payload);
+  private readonly persistence: DeviceDiagnosticsPersistence;
+  private readonly starvation: StarvationTracker;
 
   constructor(private deps: DeviceDiagnosticsServiceDeps) {
-    this.loadFromSettings();
+    this.persistence = new DeviceDiagnosticsPersistence({
+      diagnosticsStateStore: deps.diagnosticsStateStore,
+      getTimeZone: deps.getTimeZone,
+      isDebugEnabled: deps.isDebugEnabled,
+      structuredLog: deps.structuredLog,
+      debugStructured: deps.debugStructured,
+    });
+    this.starvation = new StarvationTracker({
+      getLiveDeviceState: (deviceId) => this.getLiveDeviceState(deviceId),
+      structuredLog: deps.structuredLog,
+      emitDebug: this.emit,
+    });
   }
 
   // Topic-gated (`diagnostics`) structured debug emit. Mirrors the
@@ -453,16 +94,16 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     const nowTs = params.nowTs ?? Date.now();
     this.latestObservationBatchId += 1;
     const observationBatchId = this.latestObservationBatchId;
-    this.ensureDayRollover(nowTs);
+    this.persistence.ensureDayRollover(nowTs);
     for (const observation of params.observations) {
       this.observeDeviceSample(observation, nowTs, observationBatchId);
     }
-    this.scheduleFlush(nowTs);
+    this.persistence.scheduleFlush(nowTs);
   }
 
   recordControlEvent(event: DeviceDiagnosticsControlEvent): void {
     const nowTs = event.nowTs ?? Date.now();
-    this.ensureDayRollover(nowTs);
+    this.persistence.ensureDayRollover(nowTs);
     const live = this.getLiveDeviceState(event.deviceId);
     if (typeof event.name === 'string' && event.name.length > 0) {
       live.name = event.name;
@@ -470,17 +111,17 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     switch (event.kind) {
       case 'pels_shed':
         this.recordPelsShedEvent(event.deviceId, nowTs);
-        this.scheduleFlush(nowTs);
+        this.persistence.scheduleFlush(nowTs);
         break;
       case 'pels_restore':
         this.recordPelsRestoreEvent(event.deviceId, nowTs);
-        this.scheduleFlush(nowTs);
+        this.persistence.scheduleFlush(nowTs);
         break;
       case 'tracked_usage_rise':
-        this.logTrackedUsageEvent('rise', event, live.name);
+        logTrackedUsageEvent(this.emit, 'rise', event, live.name);
         break;
       case 'tracked_usage_drop':
-        this.logTrackedUsageEvent('drop', event, live.name);
+        logTrackedUsageEvent(this.emit, 'drop', event, live.name);
         break;
       default: {
         const exhaustiveCheck: never = event;
@@ -497,7 +138,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     if (typeof params.name === 'string' && params.name.length > 0) {
       live.name = params.name;
     }
-    this.ensureDayRollover(transition.nowTs);
+    this.persistence.ensureDayRollover(transition.nowTs);
 
     switch (transition.kind) {
       case 'attempt_started':
@@ -512,9 +153,9 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
         });
         break;
       case 'setback_failed':
-        this.addCount(transition.deviceId, transition.nowTs, 'failedActivationCount', 1);
-        this.addCount(transition.deviceId, transition.nowTs, 'penaltyBumpCount', 1);
-        this.updatePenaltyMaxSeen(transition.deviceId, transition.nowTs, transition.penaltyLevel);
+        this.persistence.addCount(transition.deviceId, transition.nowTs, 'failedActivationCount', 1);
+        this.persistence.addCount(transition.deviceId, transition.nowTs, 'penaltyBumpCount', 1);
+        this.persistence.updatePenaltyMaxSeen(transition.deviceId, transition.nowTs, transition.penaltyLevel);
         live.currentPenaltyLevel = clampPenaltyLevel(transition.penaltyLevel);
         this.emitDebug({
           event: 'diagnostics_activation_transition',
@@ -552,7 +193,7 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
         });
         break;
       case 'attempt_closed_by_admission':
-        this.addCount(transition.deviceId, transition.nowTs, 'stableActivationCount', 1);
+        this.persistence.addCount(transition.deviceId, transition.nowTs, 'stableActivationCount', 1);
         live.currentPenaltyLevel = 0;
         this.emitDebug({
           event: 'diagnostics_activation_transition',
@@ -569,160 +210,38 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
         return;
     }
 
-    this.scheduleFlush(transition.nowTs);
+    this.persistence.scheduleFlush(transition.nowTs);
   }
 
-  /**
-   * Home-level censoring evidence for one local day: Σ targetDeficitMs +
-   * Σ blockedByHeadroomMs across every device's persisted aggregate. Returns
-   * undefined when the day carries NO censoring (no device recorded it, or
-   * every device recorded zero deficit and zero headroom-block — the common
-   * case, since an aggregate exists for any shed/activation). The weather
-   * collector then leaves the day's suppression "unknown" rather than writing
-   * a misleading all-zero object. Read-only, dateKey-scoped — diagnostics
-   * stays planner-orthogonal.
-   */
   getDaySuppressionTotals(dateKey: string): { targetDeficitMs: number; blockedByHeadroomMs: number } | undefined {
-    let targetDeficitMs = 0;
-    let blockedByHeadroomMs = 0;
-    for (const deviceState of Object.values(this.persistedState.devicesById)) {
-      const aggregate = deviceState.daysByDateKey[dateKey];
-      if (!aggregate) continue;
-      targetDeficitMs += aggregate.targetDeficitMs;
-      blockedByHeadroomMs += aggregate.blockedByHeadroomMs;
-    }
-    return targetDeficitMs > 0 || blockedByHeadroomMs > 0 ? { targetDeficitMs, blockedByHeadroomMs } : undefined;
+    return this.persistence.getDaySuppressionTotals(dateKey);
   }
 
   getUiPayload(nowTs: number = Date.now()): SettingsUiDeviceDiagnosticsPayload {
-    this.ensureDayRollover(nowTs);
-    const timeZone = this.deps.getTimeZone();
-    const currentDateKey = getDateKeyInTimeZone(new Date(nowTs), timeZone);
-    const dateKeysByWindow = this.buildWindowDateKeys(currentDateKey);
-    const diagnosticsByDeviceId: Record<string, DeviceDiagnosticsSummary> = {};
-    const deviceIds = new Set([
-      ...Object.keys(this.persistedState.devicesById),
-      ...Object.keys(this.liveByDeviceId),
-    ]);
-
-    for (const deviceId of deviceIds) {
-      const live = this.liveByDeviceId[deviceId];
-      const freshLive = live?.lastObservationBatchId === this.latestObservationBatchId ? live : undefined;
-      diagnosticsByDeviceId[deviceId] = {
-        currentPenaltyLevel: live?.currentPenaltyLevel ?? 0,
-        starvation: buildStarvationSummary(freshLive),
-        windows: {
-          '1d': buildWindowSummary(this.persistedState.devicesById[deviceId], dateKeysByWindow['1d']),
-          '7d': buildWindowSummary(this.persistedState.devicesById[deviceId], dateKeysByWindow['7d']),
-          '21d': buildWindowSummary(this.persistedState.devicesById[deviceId], dateKeysByWindow['21d']),
-        },
-      };
-    }
-
-    return {
-      generatedAt: nowTs,
-      windowDays: DEVICE_DIAGNOSTICS_WINDOW_DAYS,
-      diagnosticsByDeviceId,
-    };
+    this.persistence.ensureDayRollover(nowTs);
+    return buildUiPayload({
+      liveByDeviceId: this.liveByDeviceId,
+      latestObservationBatchId: this.latestObservationBatchId,
+      persistence: this.persistence,
+      timeZone: this.deps.getTimeZone(),
+      nowTs,
+    });
   }
 
   getCurrentStarvedDeviceCount(): number {
-    return Object.values(this.liveByDeviceId)
-      .filter((live) => live.lastObservationBatchId === this.latestObservationBatchId)
-      .filter((live) => live.starvation.isStarved)
-      .length;
+    return computeCurrentStarvedDeviceCount(this.liveByDeviceId, this.latestObservationBatchId);
   }
 
   getOverviewStarvation(deviceId: string): SettingsUiPlanDeviceStarvation | null {
-    const live = this.liveByDeviceId[deviceId];
-    if (!live?.lastStarvationObservation?.eligibleForStarvation) return null;
-    if (live.lastObservationBatchId !== this.latestObservationBatchId) return null;
-    if (!live.starvation.isStarved) return null;
-    return {
-      isStarved: true,
-      accumulatedMs: live.starvation.starvedAccumulatedMs,
-      cause: resolveOverviewStarvationCause(live.starvation.starvationCause),
-      startedAtMs: live.starvation.starvationEpisodeStartedAt ?? null,
-    };
+    return computeOverviewStarvation(this.liveByDeviceId[deviceId], this.latestObservationBatchId);
   }
 
-  // Currently-starved devices for the starvation-rescue widget. Mirrors
-  // `getOverviewStarvation` (only fresh, eligible, latched-starved devices) but
-  // enumerates the whole live set and also returns the device's intended normal
-  // target — the value a budget-rescue smart task must aim for so the device
-  // reaches its normal comfort/storage target. Name/kind are joined by the
-  // caller against the device snapshot (see `App.getStarvedRescueDevices`).
-  //
-  // Excludes devices in the CLEAR-hysteresis window (`clearQualifiedStartedAt`
-  // set): once `clearQualified` fires, PELS has already commanded the device back
-  // to its full mode target and is no longer holding it below. `isStarved` stays
-  // latched through the 10-min window only so the overview BADGE keeps its
-  // attribution (see `applyStarvationClearProgress`) — but a rescue must not be
-  // offered for a device PELS is no longer holding below target, so the rescue
-  // list (the widget held-back rows + the overview "Let it run now" chip gate)
-  // drops it immediately. The badge path (`getOverviewStarvation`) is untouched.
-  getStarvedRescueEntries(): Array<{
-    deviceId: string;
-    starvation: SettingsUiPlanDeviceStarvation;
-    intendedNormalTargetC: number | null;
-  }> {
-    const entries: Array<{
-      deviceId: string;
-      starvation: SettingsUiPlanDeviceStarvation;
-      intendedNormalTargetC: number | null;
-    }> = [];
-    for (const deviceId of Object.keys(this.liveByDeviceId)) {
-      const starvation = this.getOverviewStarvation(deviceId);
-      if (!starvation) continue;
-      if (isFiniteNumber(this.liveByDeviceId[deviceId]?.starvation.clearQualifiedStartedAt)) continue;
-      entries.push({
-        deviceId,
-        starvation,
-        intendedNormalTargetC: this.liveByDeviceId[deviceId]?.lastStarvationObservation?.intendedNormalTargetC ?? null,
-      });
-    }
-    return entries;
+  getStarvedRescueEntries(): StarvedRescueEntry[] {
+    return computeStarvedRescueEntries(this.liveByDeviceId, this.latestObservationBatchId);
   }
 
   destroy(): void {
-    if (this.flushTimer) {
-      clearTimeout(this.flushTimer);
-      this.flushTimer = undefined;
-    }
-    this.flush('shutdown', { force: true });
-  }
-
-  private isDiagnosticsDebugEnabled(): boolean {
-    return this.deps.isDebugEnabled?.() ?? true;
-  }
-
-  private loadFromSettings(): void {
-    const sanitized = this.deps.diagnosticsStateStore.read();
-    this.persistedState = sanitized.state;
-    const prunedDayCount = this.pruneExpiredDays(Date.now());
-    this.lastSeenDateKey = getDateKeyInTimeZone(new Date(), this.deps.getTimeZone());
-
-    if (sanitized.resetReason) {
-      this.emitDebug({ event: 'diagnostics_persisted_payload_reset', reason: sanitized.resetReason });
-      this.dirty = true;
-      this.flush('startup_repair', { force: true });
-      return;
-    }
-
-    if (prunedDayCount > 0 || sanitized.repaired) {
-      this.dirty = true;
-      this.flush('startup_repair', { force: true });
-    }
-
-    this.emitDebug({
-      event: 'diagnostics_persisted_payload_loaded',
-      version: this.persistedState.version,
-      devices: countPersistedDevices(this.persistedState),
-      days: countPersistedDays(this.persistedState),
-    });
-    if (prunedDayCount > 0) {
-      this.emitDebug({ event: 'diagnostics_pruned_expired_days', count: prunedDayCount });
-    }
+    this.persistence.destroy();
   }
 
   private observeDeviceSample(
@@ -752,13 +271,12 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
           deviceName: live.name,
           gapMs,
         });
-        this.handleStarvationGap(observation.deviceId, nowTs);
+        this.starvation.handleGap(observation.deviceId, nowTs);
       } else {
-        this.accumulateObservationSpan(observation.deviceId, live.lastObservedTs, nowTs, live.lastObservation);
+        this.persistence.recordDemandSpan(observation.deviceId, live.lastObservedTs, nowTs, live.lastObservation);
         if (live.lastStarvationObservation) {
-          this.applyStarvationObservationSpan(
+          this.starvation.applyObservationSpan(
             observation.deviceId,
-            live,
             live.lastStarvationObservation,
             live.lastObservedTs,
             nowTs,
@@ -767,13 +285,12 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
       }
     }
 
-    this.logObservationTransition(observation.deviceId, live.name, live.lastObservation, nextObservation);
+    logObservationTransition(this.emit, observation.deviceId, live.name, live.lastObservation, nextObservation);
     if (starvationTargetChanged(live.lastStarvationObservation, nextStarvationObservation)) {
-      this.handleStarvationTargetChange(observation.deviceId, nowTs);
+      this.starvation.handleTargetChange(observation.deviceId, nowTs);
     }
-    this.applyStarvationObservationSpan(
+    this.starvation.applyObservationSpan(
       observation.deviceId,
-      live,
       nextStarvationObservation,
       nowTs,
       nowTs,
@@ -783,337 +300,12 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     live.lastObservedTs = nowTs;
   }
 
-  private applyStarvationObservationSpan(
-    deviceId: string,
-    live: LiveDeviceDiagnostics,
-    observation: LiveStarvationObservation,
-    startTs: number,
-    endTs: number,
-  ): void {
-    if (!observation.eligibleForStarvation) {
-      this.hardResetStarvation(deviceId, 'device_no_longer_eligible', startTs);
-      return;
-    }
-    const evaluation = evaluateStarvationObservation(observation);
-    if (!live.starvation.isStarved) {
-      this.applyStarvationEntryProgress(deviceId, observation, evaluation, { startTs, endTs });
-      return;
-    }
-    if (evaluation.clearQualified) {
-      this.applyStarvationClearProgress(deviceId, { startTs, endTs });
-      return;
-    }
-    if (evaluation.entryQualified) {
-      this.applyStarvationAccumulationProgress(deviceId, observation, startTs, endTs);
-      return;
-    }
-    this.pauseStarvation(deviceId, evaluation.pauseReason, startTs);
-  }
-
-  private handleStarvationGap(
-    deviceId: string,
-    nowTs: number,
-  ): void {
-    const live = this.getLiveDeviceState(deviceId);
-    // In-place mutation: avoid allocating a fresh starvation object on every
-    // observation cycle. The class instance is the only holder of this state
-    // (no consumers cache the reference), so mutating in place is safe and
-    // halves the per-cycle allocation churn that was inflating heapTotal.
-    live.starvation.pendingEntryStartedAt = undefined;
-    live.starvation.clearQualifiedStartedAt = undefined;
-    if (!live.starvation.isStarved) return;
-    this.pauseStarvation(deviceId, 'sample_gap', nowTs);
-  }
-
-  private handleStarvationTargetChange(deviceId: string, nowTs: number): void {
-    const live = this.getLiveDeviceState(deviceId);
-    if (!live.starvation.isStarved) {
-      live.starvation.pendingEntryStartedAt = undefined;
-      live.starvation.clearQualifiedStartedAt = undefined;
-      live.starvation.starvationCause = null;
-      live.starvation.starvationPauseReason = null;
-      this.emitDebug({
-        event: 'diagnostics_starvation_pending_reset',
-        deviceId,
-        deviceName: live.name,
-        reason: 'target_changed',
-        atMs: nowTs,
-      });
-      return;
-    }
-    live.starvation.clearQualifiedStartedAt = undefined;
-    this.emitDebug({
-      event: 'diagnostics_starvation_thresholds_refreshed',
-      deviceId,
-      deviceName: live.name,
-      reason: 'target_changed',
-      atMs: nowTs,
-    });
-  }
-
-  private resetStarvationState(deviceId: string): void {
-    this.getLiveDeviceState(deviceId).starvation = createEmptyStarvationState();
-  }
-
-  private applyStarvationEntryProgress(
-    deviceId: string,
-    observation: LiveStarvationObservation,
-    evaluation: StarvationEvaluation,
-    span: { startTs: number; endTs: number },
-  ): void {
-    const live = this.getLiveDeviceState(deviceId);
-    const { startTs, endTs } = span;
-    if (!evaluation.entryQualified) {
-      live.starvation.pendingEntryStartedAt = undefined;
-      live.starvation.starvationCause = null;
-      live.starvation.starvationPauseReason = null;
-      return;
-    }
-    const pendingEntryStartedAt = isFiniteNumber(live.starvation.pendingEntryStartedAt)
-      ? live.starvation.pendingEntryStartedAt
-      : startTs;
-    const entryAt = pendingEntryStartedAt + DEVICE_DIAGNOSTICS_STARVATION_ENTRY_MS;
-    live.starvation.pendingEntryStartedAt = pendingEntryStartedAt;
-    if (endTs < entryAt) return;
-
-    // `entryQualified` implies a real counting cause (PELS holds the device below
-    // its mode target), so every starting episode carries a capacity/budget cause.
-    const accumulatedMs = endTs > entryAt ? endTs - entryAt : 0;
-    live.starvation = {
-      isStarved: true,
-      pendingEntryStartedAt: undefined,
-      clearQualifiedStartedAt: undefined,
-      starvedAccumulatedMs: accumulatedMs,
-      starvationEpisodeStartedAt: entryAt,
-      starvationLastResumedAt: entryAt,
-      starvationCause: observation.countingCause,
-      starvationPauseReason: null,
-    };
-    (this.deps.structuredLog ?? moduleLogger).info({
-      event: 'device_starvation_started',
-      deviceId,
-      deviceName: live.name,
-      cause: observation.countingCause,
-      starvationEpisodeStartedAtMs: entryAt,
-      starvedDurationMs: accumulatedMs,
-    });
-  }
-
-  private applyStarvationClearProgress(
-    deviceId: string,
-    span: { startTs: number; endTs: number },
-  ): void {
-    const live = this.getLiveDeviceState(deviceId);
-    const { startTs, endTs } = span;
-    const clearQualifiedStartedAt = isFiniteNumber(live.starvation.clearQualifiedStartedAt)
-      ? live.starvation.clearQualifiedStartedAt
-      : startTs;
-    const clearAt = clearQualifiedStartedAt + DEVICE_DIAGNOSTICS_STARVATION_CLEAR_MS;
-    live.starvation.clearQualifiedStartedAt = clearQualifiedStartedAt;
-    live.starvation.starvationLastResumedAt = undefined;
-    // Hold the original capacity/budget cause through the clear-hysteresis window
-    // so the overview badge stays attributed until the episode fully resets.
-    live.starvation.starvationPauseReason = null;
-    if (endTs < clearAt) return;
-    (this.deps.structuredLog ?? moduleLogger).info({
-      event: 'device_starvation_cleared',
-      deviceId,
-      deviceName: live.name,
-      transitionAtMs: clearAt,
-      starvedDurationMs: live.starvation.starvedAccumulatedMs,
-    });
-    this.resetStarvationState(deviceId);
-  }
-
-  private applyStarvationAccumulationProgress(
-    deviceId: string,
-    observation: LiveStarvationObservation,
-    startTs: number,
-    endTs: number,
-  ): void {
-    const live = this.getLiveDeviceState(deviceId);
-    if (!isFiniteNumber(live.starvation.starvationLastResumedAt)) {
-      (this.deps.structuredLog ?? moduleLogger).info({
-        event: 'device_starvation_resumed',
-        deviceId,
-        deviceName: live.name,
-        cause: observation.countingCause,
-        transitionAtMs: startTs,
-        starvedDurationMs: live.starvation.starvedAccumulatedMs,
-      });
-    }
-    live.starvation.clearQualifiedStartedAt = undefined;
-    if (!isFiniteNumber(live.starvation.starvationLastResumedAt)) {
-      live.starvation.starvationLastResumedAt = startTs;
-    }
-    live.starvation.starvedAccumulatedMs += Math.max(0, endTs - startTs);
-    // Accumulation runs only while `entryQualified` (a real counting hold), so the
-    // cause stays the capacity/budget cause; it is never a pause reason.
-    live.starvation.starvationCause = observation.countingCause;
-    live.starvation.starvationPauseReason = null;
-  }
-
-  private pauseStarvation(
-    deviceId: string,
-    pauseReason: DeviceDiagnosticsStarvationPauseReason,
-    nowTs: number,
-  ): void {
-    const live = this.getLiveDeviceState(deviceId);
-    if (isFiniteNumber(live.starvation.starvationLastResumedAt)) {
-      (this.deps.structuredLog ?? moduleLogger).info({
-        event: 'device_starvation_paused',
-        deviceId,
-        deviceName: live.name,
-        pauseReason,
-        transitionAtMs: nowTs,
-        starvedDurationMs: live.starvation.starvedAccumulatedMs,
-      });
-    }
-    live.starvation.clearQualifiedStartedAt = undefined;
-    live.starvation.starvationLastResumedAt = undefined;
-    // Keep the original capacity/budget cause so a paused-but-latched episode
-    // still reports its true cause to the overview badge (capacity vs budget) —
-    // a pause does not change WHY the device became starved.
-    live.starvation.starvationPauseReason = pauseReason;
-  }
-
-  private hardResetStarvation(
-    deviceId: string,
-    reasonCode: DeviceDiagnosticsStarvationResetReasonCode,
-    nowTs: number,
-  ): void {
-    const live = this.getLiveDeviceState(deviceId);
-    const starvation = live.starvation;
-    if (
-      !starvation.isStarved
-      && !isFiniteNumber(starvation.pendingEntryStartedAt)
-      && starvation.starvedAccumulatedMs === 0
-    ) {
-      return;
-    }
-    (this.deps.structuredLog ?? moduleLogger).info({
-      event: 'device_starvation_hard_reset',
-      deviceId,
-      deviceName: live.name,
-      reasonCode,
-      transitionAtMs: nowTs,
-      starvedDurationMs: starvation.starvedAccumulatedMs,
-      wasStarved: starvation.isStarved,
-    });
-    this.resetStarvationState(deviceId);
-  }
-
-  private accumulateObservationSpan(
-    deviceId: string,
-    startTs: number,
-    endTs: number,
-    observation: LiveDemandObservation,
-  ): void {
-    if (!observation.includeDemandMetrics || !observation.unmetDemand || endTs <= startTs) return;
-    this.addDurationByDay(deviceId, startTs, endTs, 'unmetDemandMs');
-    if (observation.targetDeficitActive) {
-      this.addDurationByDay(deviceId, startTs, endTs, 'targetDeficitMs');
-    }
-    if (observation.blockCause === 'headroom') {
-      this.addDurationByDay(deviceId, startTs, endTs, 'blockedByHeadroomMs');
-    } else if (observation.blockCause === 'cooldown_backoff') {
-      this.addDurationByDay(deviceId, startTs, endTs, 'blockedByCooldownBackoffMs');
-    }
-  }
-
-  private logObservationTransition(
-    deviceId: string,
-    name: string,
-    previous: LiveDemandObservation | undefined,
-    next: LiveDemandObservation,
-  ): void {
-    const previousUnmet = previous?.includeDemandMetrics === true && previous.unmetDemand;
-    const nextUnmet = next.includeDemandMetrics && next.unmetDemand;
-    const transition = {
-      deviceId,
-      name,
-      previous,
-      next,
-      previousUnmet,
-      nextUnmet,
-    };
-    this.logDemandBoundary(transition);
-    this.logBlockCauseChange(transition);
-  }
-
-  private logDemandBoundary(transition: {
-    deviceId: string;
-    name: string;
-    previous: LiveDemandObservation | undefined;
-    next: LiveDemandObservation;
-    previousUnmet: boolean;
-    nextUnmet: boolean;
-  }): void {
-    const {
-      deviceId,
-      name,
-      previous,
-      next,
-      previousUnmet,
-      nextUnmet,
-    } = transition;
-    if (!previousUnmet && nextUnmet) {
-      this.emitDebug({
-        event: 'diagnostics_unmet_demand_started',
-        deviceId,
-        deviceName: name,
-        desired: next.desiredStateSummary,
-        applied: next.appliedStateSummary,
-        cause: next.blockCause,
-      });
-      return;
-    }
-    if (!previousUnmet || nextUnmet) return;
-    this.emitDebug({
-      event: 'diagnostics_unmet_demand_ended',
-      deviceId,
-      deviceName: name,
-      desired: previous?.desiredStateSummary ?? 'unknown',
-      applied: previous?.appliedStateSummary ?? 'unknown',
-    });
-  }
-
-  private logBlockCauseChange(transition: {
-    deviceId: string;
-    name: string;
-    previous: LiveDemandObservation | undefined;
-    next: LiveDemandObservation;
-    previousUnmet: boolean;
-    nextUnmet: boolean;
-  }): void {
-    const {
-      deviceId,
-      name,
-      previous,
-      next,
-      previousUnmet,
-      nextUnmet,
-    } = transition;
-    const previousCause = previousUnmet ? previous?.blockCause : 'not_blocked';
-    const nextCause = nextUnmet ? next.blockCause : 'not_blocked';
-    if (!(previousUnmet || nextUnmet) || previousCause === nextCause) return;
-    this.emitDebug({
-      event: 'diagnostics_block_cause_changed',
-      deviceId,
-      deviceName: name,
-      desired: next.desiredStateSummary,
-      applied: next.appliedStateSummary,
-      previousCause: previousCause ?? 'not_blocked',
-      nextCause,
-    });
-  }
-
   private recordPelsShedEvent(deviceId: string, nowTs: number): void {
     const live = this.getLiveDeviceState(deviceId);
-    this.addCount(deviceId, nowTs, 'shedCount', 1);
+    this.persistence.addCount(deviceId, nowTs, 'shedCount', 1);
     if (isFiniteNumber(live.openRestoreTs)) {
       const durationMs = Math.max(0, nowTs - live.openRestoreTs);
-      this.addRestoreToSetback(deviceId, nowTs, durationMs);
+      this.persistence.addRestoreToSetback(deviceId, nowTs, durationMs);
       live.openRestoreTs = undefined;
       this.emitDebug({
         event: 'diagnostics_restore_to_setback_completed',
@@ -1128,10 +320,10 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
 
   private recordPelsRestoreEvent(deviceId: string, nowTs: number): void {
     const live = this.getLiveDeviceState(deviceId);
-    this.addCount(deviceId, nowTs, 'restoreCount', 1);
+    this.persistence.addCount(deviceId, nowTs, 'restoreCount', 1);
     if (isFiniteNumber(live.openShedTs)) {
       const durationMs = Math.max(0, nowTs - live.openShedTs);
-      this.addShedToRestore(deviceId, nowTs, durationMs);
+      this.persistence.addShedToRestore(deviceId, nowTs, durationMs);
       live.openShedTs = undefined;
       this.emitDebug({
         event: 'diagnostics_shed_to_restore_completed',
@@ -1142,107 +334,6 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
     }
     live.openRestoreTs = nowTs;
     this.emitDebug({ event: 'diagnostics_restore_recorded', deviceId, deviceName: live.name });
-  }
-
-  private logTrackedUsageEvent(
-    direction: 'rise' | 'drop',
-    event: Extract<DeviceDiagnosticsControlEvent, { kind: 'tracked_usage_rise' | 'tracked_usage_drop' }>,
-    deviceName: string,
-  ): void {
-    this.emitDebug({
-      event: 'diagnostics_tracked_usage',
-      direction,
-      deviceId: event.deviceId,
-      deviceName,
-      fromKw: event.fromKw,
-      toKw: event.toKw,
-      ...(event.reconciliation ? { reconciliation: event.reconciliation } : {}),
-    });
-  }
-
-  private addDurationByDay(
-    deviceId: string,
-    startTs: number,
-    endTs: number,
-    key: keyof Pick<
-      PersistedDayAggregate,
-      'unmetDemandMs' | 'blockedByHeadroomMs' | 'blockedByCooldownBackoffMs' | 'targetDeficitMs'
-    >,
-  ): void {
-    if (endTs <= startTs) return;
-    let cursorTs = startTs;
-    const timeZone = this.deps.getTimeZone();
-    while (cursorTs < endTs) {
-      const dateKey = getDateKeyInTimeZone(new Date(cursorTs), timeZone);
-      const dayStartTs = getDateKeyStartMs(dateKey, timeZone);
-      const nextDayStartTs = getNextLocalDayStartUtcMs(dayStartTs, timeZone);
-      const sliceEndTs = Math.min(endTs, nextDayStartTs);
-      const aggregate = this.getDayAggregate(deviceId, dateKey);
-      aggregate[key] += Math.max(0, sliceEndTs - cursorTs);
-      cursorTs = sliceEndTs;
-      this.markDirty(deviceId);
-    }
-  }
-
-  private addCount(
-    deviceId: string,
-    nowTs: number,
-    key: keyof Pick<
-      PersistedDayAggregate,
-      'shedCount' | 'restoreCount' | 'failedActivationCount' | 'stableActivationCount' | 'penaltyBumpCount'
-    >,
-    delta: number,
-  ): void {
-    if (delta <= 0) return;
-    const aggregate = this.getDayAggregateForTs(deviceId, nowTs);
-    aggregate[key] += delta;
-    this.markDirty(deviceId);
-  }
-
-  private addShedToRestore(deviceId: string, nowTs: number, durationMs: number): void {
-    const aggregate = this.getDayAggregateForTs(deviceId, nowTs);
-    aggregate.shedToRestoreCount += 1;
-    aggregate.shedToRestoreTotalMs += Math.max(0, durationMs);
-    this.markDirty(deviceId);
-  }
-
-  private addRestoreToSetback(deviceId: string, nowTs: number, durationMs: number): void {
-    const aggregate = this.getDayAggregateForTs(deviceId, nowTs);
-    aggregate.restoreToSetbackCount += 1;
-    aggregate.restoreToSetbackTotalMs += Math.max(0, durationMs);
-    aggregate.restoreToSetbackMinMs = aggregate.restoreToSetbackMinMs === null
-      ? Math.max(0, durationMs)
-      : Math.min(aggregate.restoreToSetbackMinMs, Math.max(0, durationMs));
-    aggregate.restoreToSetbackMaxMs = aggregate.restoreToSetbackMaxMs === null
-      ? Math.max(0, durationMs)
-      : Math.max(aggregate.restoreToSetbackMaxMs, Math.max(0, durationMs));
-    this.markDirty(deviceId);
-  }
-
-  private updatePenaltyMaxSeen(deviceId: string, nowTs: number, penaltyLevel: number): void {
-    const aggregate = this.getDayAggregateForTs(deviceId, nowTs);
-    aggregate.penaltyMaxLevelSeen = Math.max(aggregate.penaltyMaxLevelSeen, clampPenaltyLevel(penaltyLevel));
-    this.markDirty(deviceId);
-  }
-
-  private getDayAggregateForTs(deviceId: string, nowTs: number): PersistedDayAggregate {
-    const dateKey = getDateKeyInTimeZone(new Date(nowTs), this.deps.getTimeZone());
-    return this.getDayAggregate(deviceId, dateKey);
-  }
-
-  private getDayAggregate(deviceId: string, dateKey: string): PersistedDayAggregate {
-    let deviceState = this.persistedState.devicesById[deviceId];
-    if (!deviceState) {
-      deviceState = { daysByDateKey: {} };
-      this.persistedState.devicesById[deviceId] = deviceState;
-    }
-    let aggregate = deviceState.daysByDateKey[dateKey];
-    if (!aggregate) {
-      aggregate = createEmptyDayAggregate();
-      deviceState.daysByDateKey[dateKey] = aggregate;
-      this.markDirty(deviceId);
-    }
-    return aggregate;
   }
 
   private getLiveDeviceState(deviceId: string): LiveDeviceDiagnostics {
@@ -1256,132 +347,5 @@ export class DeviceDiagnosticsService implements DeviceDiagnosticsRecorder {
       this.liveByDeviceId[deviceId] = live;
     }
     return live;
-  }
-
-  private buildWindowDateKeys(currentDateKey: string): Record<DeviceDiagnosticsWindowKey, string[]> {
-    return {
-      '1d': this.getRecentDateKeys(currentDateKey, 1),
-      '7d': this.getRecentDateKeys(currentDateKey, 7),
-      '21d': this.getRecentDateKeys(currentDateKey, 21),
-    };
-  }
-
-  private getRecentDateKeys(currentDateKey: string, count: number): string[] {
-    return getRecentDateKeys({
-      currentDateKey,
-      count,
-      timeZone: this.deps.getTimeZone(),
-    });
-  }
-
-  private pruneExpiredDays(nowTs: number): number {
-    const timeZone = this.deps.getTimeZone();
-    const currentDateKey = getDateKeyInTimeZone(new Date(nowTs), timeZone);
-    const allowedKeys = new Set(this.getRecentDateKeys(currentDateKey, DEVICE_DIAGNOSTICS_WINDOW_DAYS));
-    let removed = 0;
-    for (const [deviceId, deviceState] of Object.entries(this.persistedState.devicesById)) {
-      let removedForDevice = false;
-      for (const dateKey of Object.keys(deviceState.daysByDateKey)) {
-        if (allowedKeys.has(dateKey)) continue;
-        delete deviceState.daysByDateKey[dateKey];
-        removed += 1;
-        removedForDevice = true;
-      }
-      if (Object.keys(deviceState.daysByDateKey).length === 0) {
-        delete this.persistedState.devicesById[deviceId];
-        removedForDevice = true;
-      }
-      if (removedForDevice) {
-        this.markDirty(deviceId);
-      }
-    }
-    return removed;
-  }
-
-  private ensureDayRollover(nowTs: number): void {
-    const currentDateKey = getDateKeyInTimeZone(new Date(nowTs), this.deps.getTimeZone());
-    if (this.lastSeenDateKey === null) {
-      this.lastSeenDateKey = currentDateKey;
-      return;
-    }
-    if (this.lastSeenDateKey === currentDateKey) return;
-    this.flush('day_rollover', { force: true });
-    const pruned = this.pruneExpiredDays(nowTs);
-    if (pruned > 0) {
-      this.emitDebug({ event: 'diagnostics_pruned_expired_days', count: pruned });
-    }
-    this.lastSeenDateKey = currentDateKey;
-  }
-
-  private scheduleFlush(nowTs: number): void {
-    if (!this.dirty) {
-      this.logSkippedFlush(nowTs, 'no changes');
-      return;
-    }
-    if (this.flushTimer) return;
-    const waitMs = this.lastFlushMs === 0
-      ? 0
-      : Math.max(0, DEVICE_DIAGNOSTICS_FLUSH_THROTTLE_MS - (nowTs - this.lastFlushMs));
-    this.flushTimer = setTimeout(() => {
-      this.flushTimer = undefined;
-      this.flush('throttle');
-    }, waitMs);
-    if (typeof this.flushTimer === 'object' && this.flushTimer !== null && 'unref' in this.flushTimer
-      && typeof this.flushTimer.unref === 'function') {
-      this.flushTimer.unref();
-    }
-  }
-
-  private logSkippedFlush(nowTs: number, detail: string): void {
-    if (nowTs - this.lastSkippedFlushLogMs < DEVICE_DIAGNOSTICS_FLUSH_THROTTLE_MS) return;
-    this.lastSkippedFlushLogMs = nowTs;
-    this.emitDebug({ event: 'diagnostics_flush_skipped', detail });
-  }
-
-  private flush(reason: 'startup_repair' | 'throttle' | 'day_rollover' | 'shutdown', options: {
-    force?: boolean;
-  } = {}): void {
-    const nowTs = Date.now();
-    if (!this.dirty) {
-      this.logSkippedFlush(nowTs, `nothing dirty (${reason})`);
-      return;
-    }
-    if (!options.force && this.lastFlushMs > 0 && (nowTs - this.lastFlushMs) < DEVICE_DIAGNOSTICS_FLUSH_THROTTLE_MS) {
-      this.scheduleFlush(nowTs);
-      return;
-    }
-
-    this.persistedState.generatedAt = nowTs;
-    try {
-      this.deps.diagnosticsStateStore.write(this.persistedState);
-      this.lastFlushMs = nowTs;
-      this.dirty = false;
-      const dirtyDeviceCount = this.dirtyDeviceIds.size;
-      const dayCount = countPersistedDays(this.persistedState);
-      const bytes = this.isDiagnosticsDebugEnabled()
-        ? Buffer.byteLength(JSON.stringify(this.persistedState), 'utf8')
-        : undefined;
-      this.dirtyDeviceIds.clear();
-      this.emitDebug({
-        event: 'diagnostics_flushed',
-        reason,
-        dirtyDevices: dirtyDeviceCount,
-        days: dayCount,
-        ...(bytes === undefined ? {} : { bytes }),
-      });
-    } catch (error) {
-      (this.deps.structuredLog ?? moduleLogger).error({
-        event: 'diagnostics_persist_failed',
-        reason,
-        err: normalizeError(error),
-      });
-    }
-  }
-
-  private markDirty(deviceId: string): void {
-    this.dirty = true;
-    if (deviceId) {
-      this.dirtyDeviceIds.add(deviceId);
-    }
   }
 }
