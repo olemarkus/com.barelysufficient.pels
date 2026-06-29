@@ -51,13 +51,25 @@ export type ExecutableObservedDeviceState = {
   name: string;
   snapshot: ExecutorDeviceSnapshot;
   available: boolean | null;
-  // Present iff binary control; absence is the old fabricated `currentOn: true`.
+  // The raw observed binary axis, carried for the actuation-path readers
+  // (`executableSteppedLoadProjection` / `shedReleaseActuation` read it via
+  // `isBinaryOnOrUnknown`). Present on the executor/dispatch path (raw snapshot);
+  // absent (undefined) on the drift/reconcile path, which feeds a plan device that
+  // carries `currentOn` instead — those readers are never reached on that path.
   binaryControl?: { on: boolean };
   /**
-   * Binary observed state for drift comparison, resolved from the
-   * producer-resolved binary state (an honest boolean — an unobserved binary
-   * control resolves to a non-optimistic `false`). The executor actuates against
-   * the observed value; freshness/abandon-grace is the producer's concern.
+   * Binary observed state for drift comparison, an honest boolean (an unobserved
+   * binary control resolves to a non-optimistic `false`). The executor actuates
+   * against the observed value; freshness/abandon-grace is the producer's concern.
+   *
+   * Path-dependent by design: built from a live `PlanInputDevice` (drift/reconcile
+   * path) it is the producer-resolved `currentOn` (binary axis AND stepped-off
+   * fold); built from a raw transport snapshot (executor/dispatch path, no
+   * `currentOn`) it is the raw binary axis (`isBinaryOnOrUnknown`). The two agree
+   * for pure-binary devices and diverge only for a binary+stepped device parked at
+   * its off step — where the drift path WANTS the folded "effectively off" value
+   * (the stepped step-drift catches the step) and the dispatch path WANTS the raw
+   * axis (`shedReleaseActuation` decides whether to also issue a binary-on).
    */
   observedBinaryState: 'on' | 'off';
   target: ExecutableObservedTargetState | null;

@@ -93,11 +93,13 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
         controllable: live.controllable ?? device.controllable,
         stepCommandPending: live.stepCommandPending ?? device.stepCommandPending,
         stepCommandStatus: live.stepCommandStatus ?? device.stepCommandStatus,
-        // Re-source the binary on/off truth from the same merged step/profile
-        // inputs used for `currentState`. A live snapshot can lack the stepped
-        // profile while still reporting the selected step; copying live.currentOn
-        // would then ignore the previous profile preserved above and let
-        // `currentState`/`currentOn` disagree on the merged device.
+        // Re-fold the on/off truth against the merged step/profile, using the
+        // producer-resolved `live.currentOn` as the binary signal — NOT the raw
+        // `binaryControl` (which no longer rides on the plan kinds). A live snapshot
+        // can lack the stepped profile while still reporting the selected step; in
+        // that case `live.currentOn` is exactly the binary axis (no stepped fold),
+        // so recombining it with the preserved profile keeps `currentState`/
+        // `currentOn` consistent with the merged device.
         ...liveBinaryFields,
       })));
     }),
@@ -196,8 +198,13 @@ function resolveCurrentStateFromPlanInput(
   mergedProfile: SteppedLoadProfile | undefined,
   mergedSelectedStepId: string | undefined,
 ): string {
+  // Recompute the four-valued label against the MERGED step/profile, feeding the
+  // producer-resolved `live.currentOn` in as the binary signal (the raw
+  // `binaryControl` no longer rides on the plan input). When the live snapshot
+  // lacked the profile, `live.currentOn` is exactly the binary axis; when it had
+  // it, `{ on: currentOn }` still resolves to the same merged label.
   return resolveObservedCurrentState({
-    ...(isBinaryPlanDevice(liveDevice) ? { binaryControl: liveDevice.binaryControl } : {}),
+    ...(isBinaryPlanDevice(liveDevice) ? { binaryControl: { on: liveDevice.currentOn } } : {}),
     controlCapabilityId: liveDevice.controlCapabilityId,
     observationStale: liveDevice.observationStale,
     steppedLoadProfile: mergedProfile,
@@ -209,12 +216,14 @@ function resolveLiveBinaryFields(
   liveDevice: PlanInputDevice,
   mergedProfile: SteppedLoadProfile | undefined,
   mergedSelectedStepId: string | undefined,
-): { binaryControl?: { on: boolean }; currentOn?: boolean } {
+): { currentOn?: boolean } {
   if (!isBinaryPlanDevice(liveDevice)) return {};
   return {
-    binaryControl: liveDevice.binaryControl,
+    // Recombine the binary signal (`live.currentOn`) with the merged stepped
+    // profile, so a device whose live snapshot dropped its profile still folds the
+    // preserved off-step. No raw `binaryControl` needed.
     currentOn: resolveCurrentOn({
-      binaryControl: liveDevice.binaryControl,
+      binaryControl: { on: liveDevice.currentOn },
       steppedLoadProfile: mergedProfile,
       selectedStepId: mergedSelectedStepId,
     }),

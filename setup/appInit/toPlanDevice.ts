@@ -1,5 +1,5 @@
 import { isDeviceObservationStale } from '../../lib/observer/observationFreshness';
-import { resolveCurrentOn } from '../../lib/observer/observedState';
+import { resolveCurrentOn, resolveObservedCurrentState } from '../../lib/observer/observedState';
 import {
   resolveCanSetControl,
   resolveCommandableNow,
@@ -121,10 +121,17 @@ export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot & 
     stepCommandPending: device.stepCommandPending,
     stepCommandStatus: device.stepCommandStatus,
     observationStale,
+    // The four-valued observed-state label, resolved once here from the full
+    // snapshot (which keeps the raw `binaryControl` + stepped descriptor) plus the
+    // resolved `observationStale` above. Plan consumers
+    // (`planDevices.resolveCurrentState`, `planReconcileState`) trust this producer
+    // resolution instead of re-resolving from the raw binary axis, so
+    // `binaryControl` can stay off the plan kinds.
+    currentState: resolveObservedCurrentState({ ...device, observationStale }),
     // The public on/off truth, resolved once here for binary devices (present
-    // IFF `controlCapabilityId` is set this cycle, mirroring `binaryControl`).
-    // `isBinaryPlanDevice` re-asserts it as a required `boolean`; non-binary
-    // devices carry no on/off truth.
+    // IFF `controlCapabilityId` is set this cycle). `isBinaryPlanDevice`
+    // re-asserts it as a required `boolean`; non-binary devices carry no on/off
+    // truth.
     ...(device.controlCapabilityId !== undefined ? { currentOn: resolveCurrentOn(device) } : {}),
     // Observe-only role (battery/solar): structural stamp (always managed observe-only);
     // else re-resolve.

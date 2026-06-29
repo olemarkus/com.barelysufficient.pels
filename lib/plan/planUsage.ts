@@ -6,7 +6,6 @@ import { isFiniteNumber } from '../utils/appTypeGuards';
 type UsageDevice = {
   controllable?: boolean;
   budgetExempt?: boolean;
-  binaryControl?: { on: boolean };
   // Producer-resolved on/off truth, present iff the device is binary
   // (`controlCapabilityId` set). A step-only stepper carries no `currentOn`; its
   // off-state is read from the step axis, so the stepped fields travel too.

@@ -159,7 +159,8 @@ export function buildExecutableObservedDeviceState(
   // measured-power probes the base type omits, which the stepped-load projection
   // (`buildObservedSteppedLoadState`) reads.
   snapshot: ExecutorDeviceSnapshot & Pick<SteppedLoadDecoration, 'selectedStepId'>
-    & SteppedLoadDescriptorProbe & ReportedStepObservedProbe & MeasuredPowerObservedProbe,
+    & SteppedLoadDescriptorProbe & ReportedStepObservedProbe & MeasuredPowerObservedProbe
+    & { currentOn?: boolean },
 ): ExecutableObservedDeviceState {
   return {
     id: snapshot.id,
@@ -182,9 +183,14 @@ export function buildExecutableObservedDeviceState(
  * old `binaryControlObservation` "no trusted evidence" signal.
  */
 export const resolveObservedBinaryStateFromSnapshot = (
-  // Stage 5: narrowed to the observed surface — reads only `binaryControl`.
-  snapshot: Pick<ObservedDeviceState, 'binaryControl'>,
-): 'on' | 'off' => (isBinaryOnOrUnknown(snapshot) ? 'on' : 'off');
+  // Prefer the producer-resolved `currentOn` — the drift path feeds a live plan
+  // device that carries it (not the raw `binaryControl`); the raw-snapshot executor
+  // path has no `currentOn`, so it falls back to the observed binary axis.
+  snapshot: Pick<ObservedDeviceState, 'binaryControl'> & { currentOn?: boolean },
+): 'on' | 'off' => {
+  if (typeof snapshot.currentOn === 'boolean') return snapshot.currentOn ? 'on' : 'off';
+  return isBinaryOnOrUnknown(snapshot) ? 'on' : 'off';
+};
 
 // Stage 5: narrowed to the observed surface — reads only `targets`.
 const buildObservedTargetState = (
@@ -206,11 +212,11 @@ const buildObservedSteppedLoadState = (
   // (`planExecutionDrift` → live `PlanInputDevice`) it is the producer-resolved
   // effective step. The read must survive both, so widen past the raw snapshot.
   snapshot: ExecutorDeviceSnapshot & Pick<SteppedLoadDecoration, 'selectedStepId'>
-    & MeasuredPowerObservedProbe & ReportedStepObservedProbe,
+    & MeasuredPowerObservedProbe & ReportedStepObservedProbe & { currentOn?: boolean },
 ): ExecutableObservedSteppedLoadState | null => {
   if (snapshot.controlModel !== 'stepped_load') return null;
   return {
-    on: isBinaryOnOrUnknown(snapshot),
+    on: typeof snapshot.currentOn === 'boolean' ? snapshot.currentOn : isBinaryOnOrUnknown(snapshot),
     stepId: snapshot.selectedStepId,
     reportedStepId: snapshot.reportedStepId,
     measuredPowerKw: snapshot.measuredPowerKw,

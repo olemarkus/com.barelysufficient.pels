@@ -3,11 +3,9 @@ import { isActivationObservationActiveNow } from '../../lib/plan/admission';
 describe('isActivationObservationActiveNow', () => {
   it('is true when the device reports effectively on', () => {
     // `controlCapabilityId` is load-bearing: `isActivationObservationActiveNow`
-    // delegates to `isObservedOn`, whose `hasBinaryCapability` gate keys off it,
-    // so the binary `on` evidence is only honoured when it is present. The field
-    // is now declared on `ActivationBackoffObservation`, so no cast is needed.
+    // reads the producer-resolved `currentOn`, which is the on/off truth only for
+    // a binary device (`controlCapabilityId` set).
     expect(isActivationObservationActiveNow({
-      binaryControl: { on: true },
       controlCapabilityId: 'onoff',
       currentOn: true,
     })).toBe(true);
@@ -15,7 +13,6 @@ describe('isActivationObservationActiveNow', () => {
 
   it('is true when measured power is above the activation threshold', () => {
     expect(isActivationObservationActiveNow({
-      binaryControl: { on: false },
       measuredPowerKw: 0.5,
     })).toBe(true);
   });
@@ -23,7 +20,6 @@ describe('isActivationObservationActiveNow', () => {
   it('is false when the device is reported unavailable', () => {
     expect(isActivationObservationActiveNow({
       available: false,
-      binaryControl: { on: true },
       measuredPowerKw: 5,
     })).toBe(false);
   });

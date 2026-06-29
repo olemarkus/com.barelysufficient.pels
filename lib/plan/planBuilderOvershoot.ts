@@ -480,11 +480,11 @@ function trackPlanDeviceForOvershoot(
     controllable: device.controllable,
     plannedState: device.plannedState,
     currentState: device.currentState,
-    // Source the binary cluster only when the device is binary this cycle (a
+    // Source the binary on/off truth only when the device is binary this cycle (a
     // transient capability drop revokes binary status; see `isBinaryPlanDevice`).
-    // `currentOn` rides along as the resolved on/off truth for overshoot power.
+    // `currentOn` is the resolved on/off truth used for overshoot power.
     ...(isBinaryPlanDevice(device)
-      ? { binaryControl: device.binaryControl, currentOn: device.currentOn }
+      ? { currentOn: device.currentOn }
       : {}),
     measuredPowerKw: device.measuredPowerKw,
     expectedPowerKw: device.expectedPowerKw,

@@ -78,8 +78,8 @@ export function getRestoreNeed(
     observation: {
       available: dev.available,
       // Binary status follows control-capability presence (drop revokes it).
-      // `currentOn` (the on/off truth) rides along for the activation in/active reads.
-      ...(isBinaryPlanDevice(dev) ? { binaryControl: dev.binaryControl, currentOn: dev.currentOn } : {}),
+      // `currentOn` (the on/off truth) is forwarded for the activation in/active reads.
+      ...(isBinaryPlanDevice(dev) ? { currentOn: dev.currentOn } : {}),
       currentState: dev.currentState,
       measuredPowerKw: dev.measuredPowerKw,
     },

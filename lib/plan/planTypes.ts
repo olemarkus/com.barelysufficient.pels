@@ -168,25 +168,25 @@ export type TemperatureKind = {
  * axis (a stepped device also has an onoff control), so this is NOT a union
  * member; it is the intersection the `isBinaryPlanDevice` type-guard
  * (`lib/plan/planBinaryDevice.ts`) adds onto whichever stepped variant the
- * device is. `binaryControl` is OMITTED from `DevicePlanDeviceBase`, so an
- * un-narrowed `device.binaryControl` read is a hard compile error (TS2339);
+ * device is. `currentOn` is OMITTED from `DevicePlanDeviceBase`, so an
+ * un-narrowed `device.currentOn` read is a hard compile error (TS2339);
  * consumers must pass through `isBinaryPlanDevice` first.
  *
- * `binaryControl` is REQUIRED on the narrowed shape: a binary device's observed
- * on-state is always resolved to a concrete `{ on: boolean }` by the producer.
- * The guard's runtime discriminant is `controlCapabilityId !== undefined` (a flat
- * base field) — so a device whose control capability is absent THIS cycle (e.g.
- * a transient capability drop) is NOT a binary device this cycle and the cluster
- * is omitted: capability presence is the source of truth for binary status.
+ * `currentOn` is REQUIRED on the narrowed shape: a binary device's on-state is
+ * always resolved to a concrete boolean by the producer. The guard's runtime
+ * discriminant is `controlCapabilityId !== undefined` (a flat base field) — so a
+ * device whose control capability is absent THIS cycle (e.g. a transient
+ * capability drop) is NOT a binary device this cycle and the cluster is omitted:
+ * capability presence is the source of truth for binary status.
  */
 export type BinaryControlKind = {
-  binaryControl: { on: boolean };
   // The single public on/off truth for a binary device: a strict boolean the
   // producer resolves once (`resolveCurrentOn` — binary axis AND stepped-off fold,
   // no staleness gate). Consumers narrow via `isBinaryPlanDevice` and read this
   // directly; the on/off question is meaningful ONLY for binary devices, so there
-  // is no kind-agnostic wrapper. `binaryControl` is retiring to transport/observer
-  // internals — read `currentOn`, not `binaryControl.on`.
+  // is no kind-agnostic wrapper. The raw observed `binaryControl` no longer rides
+  // on the plan kinds — it stays transport/observer-internal; the producer folds
+  // it into `currentState`/`currentOn` once at `toPlanDevice`.
   currentOn: boolean;
 };
 
@@ -366,15 +366,15 @@ export function withBinaryDiscriminant<TBase extends { controlCapabilityId?: Bin
   const { binaryControl, currentOn, ...base } = loose;
   if (base.controlCapabilityId !== undefined) {
     const stepped = base as { steppedLoadProfile?: SteppedLoadProfile; selectedStepId?: string };
-    // Resolve the binary cluster once and feed the SAME value into both the
-    // returned `binaryControl` and `resolveCurrentOn`, so the two can never
-    // disagree (e.g. `binaryControl:{on:false}` with `currentOn:true`).
-    const resolvedBinaryControl = binaryControl ?? { on: false };
+    // The raw `binaryControl` is STRIPPED off the result (it stays
+    // transport/observer-internal). It still feeds the on/off fold here when the
+    // caller didn't pre-resolve `currentOn` — the production producer always
+    // pre-resolves it at `toPlanDevice`, so this fallback is the invariant-safety
+    // path for a loose bag that carried only the raw binary state.
     return {
       ...base,
-      binaryControl: resolvedBinaryControl,
       currentOn: currentOn ?? resolveCurrentOn({
-        binaryControl: resolvedBinaryControl,
+        binaryControl: binaryControl ?? { on: false },
         steppedLoadProfile: stepped.steppedLoadProfile,
         selectedStepId: stepped.selectedStepId,
       }),

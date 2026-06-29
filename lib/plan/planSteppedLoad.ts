@@ -71,7 +71,6 @@ type StepTransitionCapableDevice = {
   // stepped device this folds the step-off axis, so it equals the old
   // `currentState === 'off'` decision the helpers used.
   currentOn?: boolean;
-  binaryControl?: { on: boolean };
   controlCapabilityId?: DevicePlanDevice['controlCapabilityId'];
   plannedState?: string;
   shedAction?: ShedAction;

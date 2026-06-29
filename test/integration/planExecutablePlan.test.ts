@@ -23,6 +23,36 @@ const planWithDevices = (devices: DevicePlan['devices']): DevicePlan => ({
 });
 
 describe('planExecutablePlan', () => {
+  describe('observedBinaryState fold preference', () => {
+    it('prefers the producer-resolved currentOn (folds stepped-off) over the raw binary axis', () => {
+      // Drift-path input: a binary+stepped device whose onoff axis reads on but is
+      // parked at its off step → producer-resolved `currentOn` is false. The
+      // executable observed state must reflect the folded on/off truth, NOT the raw
+      // binary axis (which would say 'on'). A revert to reading only `binaryControl`
+      // would make this assertion fail.
+      const folded = buildExecutableObservedDeviceState({
+        id: 'dev-1',
+        name: 'Tank',
+        currentOn: false,
+        binaryControl: { on: true },
+        targets: [],
+      });
+      expect(folded.observedBinaryState).toBe('off');
+    });
+
+    it('falls back to the raw binary axis when no producer currentOn is present (executor/dispatch path)', () => {
+      // Raw transport-snapshot input carries `binaryControl` but no `currentOn`, so
+      // the projection reads the binary axis directly.
+      const rawOn = buildExecutableObservedDeviceState({
+        id: 'dev-1',
+        name: 'Tank',
+        binaryControl: { on: true },
+        targets: [],
+      });
+      expect(rawOn.observedBinaryState).toBe('on');
+    });
+  });
+
   it('projects executable plan devices as intent, not planner-device wrappers', () => {
     const steppedDevice = steppedPlanDevice({
       id: 'step-1',

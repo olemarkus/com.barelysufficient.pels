@@ -8,7 +8,8 @@ import type {
 import { withBinaryDiscriminant, withTemperatureDiscriminant } from '../../lib/plan/planTypes';
 import type { EvChargingState, SteppedLoadProfile } from '../../packages/contracts/src/types';
 import { isEvDevice, resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
-import { resolveCurrentOn } from '../../lib/observer/observedState';
+import { resolveCurrentOn, resolveObservedCurrentState } from '../../lib/observer/observedState';
+import type { BinaryControlCapabilityId } from '../../packages/contracts/src/types';
 import { legacyDeviceReason } from './deviceReasonTestUtils.ts';
 
 /**
@@ -36,6 +37,38 @@ export const resolveFixtureCurrentOn = (device: {
     return resolveCurrentOn(device);
   }
   return true;
+};
+
+/**
+ * Mirror the production producer (`toPlanDevice` → `resolveObservedCurrentState`):
+ * the four-valued `currentState` label is resolved ONCE from the raw observed
+ * signals and carried on the plan device, so plan consumers
+ * (`planDevices.resolveCurrentState`, `planReconcileState`) can trust it without
+ * re-resolving from the raw binary axis. An explicit fixture `currentState` wins;
+ * otherwise resolve from the binary axis (explicit `binaryControl`, else derived
+ * from the resolved `currentOn` for a binary device) + the stepped profile +
+ * staleness — the SAME resolver the runtime producer uses, so a fixture's label
+ * matches what production would stamp for the same observed signals.
+ */
+export const resolveFixtureCurrentState = (device: {
+  currentState?: string;
+  currentOn?: boolean;
+  binaryControl?: { on: boolean };
+  controlCapabilityId?: string;
+  steppedLoadProfile?: SteppedLoadProfile;
+  selectedStepId?: string;
+  observationStale?: boolean;
+}): string => {
+  if (typeof device.currentState === 'string') return device.currentState;
+  const binaryControl = device.binaryControl
+    ?? (device.controlCapabilityId !== undefined ? { on: resolveFixtureCurrentOn(device) } : undefined);
+  return resolveObservedCurrentState({
+    binaryControl,
+    controlCapabilityId: device.controlCapabilityId as BinaryControlCapabilityId | undefined,
+    steppedLoadProfile: device.steppedLoadProfile,
+    selectedStepId: device.selectedStepId,
+    observationStale: device.observationStale,
+  });
 };
 
 /**
@@ -123,23 +156,31 @@ export const steppedProfile: SteppedLoadProfile = {
 };
 
 export const buildPlanDevice = (
+  // `currentOn`/`binaryControl` live on the orthogonal `BinaryControlKind` cluster
+  // (not on the `Partial<DevicePlanDevice>` base), so accept them here: the builder
+  // resolves the producer-owned `currentOn`/`currentState` from whichever the
+  // fixture supplies (mirroring `toPlanDevice`).
   overrides: Partial<DevicePlanDevice> & TemperatureDiscriminantProbe & {
     reason?: DevicePlanDevice['reason'] | string;
     evChargingState?: string;
     deviceType?: 'temperature' | 'onoff';
+    currentOn?: boolean;
+    binaryControl?: { on: boolean };
   } = {},
 ):
 DevicePlanDevice => {
   const { reason, currentTarget, currentTemperature, ...rest } = overrides;
   const o = overrides as {
     currentOn?: boolean; currentState?: string; binaryControl?: { on: boolean };
-    steppedLoadProfile?: SteppedLoadProfile; selectedStepId?: string;
+    controlCapabilityId?: BinaryControlCapabilityId;
+    steppedLoadProfile?: SteppedLoadProfile; selectedStepId?: string; observationStale?: boolean;
   };
   const currentOn = resolveFixtureCurrentOn(o);
   return {
     id: 'dev',
     name: 'Device',
-    currentState: 'on',
+    // Producer-resolved label (an explicit override in `...rest` still wins below).
+    currentState: resolveFixtureCurrentState({ ...o, controlCapabilityId: o.controlCapabilityId ?? 'onoff' }),
     plannedState: 'keep',
     controlCapabilityId: 'onoff',
     reason: legacyDeviceReason('keep')!,
@@ -158,17 +199,30 @@ DevicePlanDevice => {
 };
 
 export const buildPlanInputDevice = (
+  // `currentOn`/`binaryControl` live on the orthogonal `BinaryPlanInputKind` cluster
+  // (not on the `Partial<PlanInputDevice>` base), so accept them here: the builder
+  // resolves the producer-owned `currentOn`/`currentState` from whichever the
+  // fixture supplies (mirroring `toPlanDevice`).
   overrides: Partial<PlanInputDevice> & TemperatureDiscriminantProbe & {
     evChargingState?: string;
     deviceType?: 'temperature' | 'onoff';
+    currentOn?: boolean;
+    binaryControl?: { on: boolean };
   } = {},
 ): PlanInputDevice => {
   const { currentTarget: _currentTarget, currentTemperature, ...rest } = overrides;
   const o = overrides as {
     currentOn?: boolean; currentState?: string; binaryControl?: { on: boolean };
-    steppedLoadProfile?: SteppedLoadProfile; selectedStepId?: string;
+    controlCapabilityId?: BinaryControlCapabilityId;
+    steppedLoadProfile?: SteppedLoadProfile; selectedStepId?: string; observationStale?: boolean;
   };
   const currentOn = resolveFixtureCurrentOn({ ...o, binaryControl: o.binaryControl ?? { on: true } });
+  // Producer-resolved label (an explicit override in `...rest` still wins below).
+  const currentState = resolveFixtureCurrentState({
+    ...o,
+    binaryControl: o.binaryControl ?? { on: true },
+    controlCapabilityId: o.controlCapabilityId ?? 'onoff',
+  });
   return withBinaryDiscriminant({
     id: 'dev',
     name: 'Device',
@@ -176,6 +230,7 @@ export const buildPlanInputDevice = (
     binaryControl: { on: true },
     controllable: true,
     controlCapabilityId: 'onoff',
+    currentState,
     ...withFixtureTemperatureKind({
       ...withMaterializedEvPlugState(rest),
       ...(currentTemperature !== undefined ? { currentTemperature } : {}),
@@ -185,7 +240,8 @@ export const buildPlanInputDevice = (
 };
 
 export const steppedPlanDevice = (
-  overrides: Partial<DevicePlanDevice> & SteppedDiscriminantProbe = {},
+  overrides: Partial<DevicePlanDevice> & SteppedDiscriminantProbe
+    & { binaryControl?: { on: boolean }; currentOn?: boolean } = {},
 ): DevicePlanDevice => {
   const profile = overrides.steppedLoadProfile ?? steppedProfile;
   const selectedStepId = overrides.selectedStepId ?? 'max';
@@ -203,7 +259,8 @@ export const steppedPlanDevice = (
 };
 
 export const steppedInputDevice = (
-  overrides: Partial<PlanInputDevice> & SteppedDiscriminantProbe & { evChargingState?: string } = {},
+  overrides: Partial<PlanInputDevice> & SteppedDiscriminantProbe
+    & { evChargingState?: string; binaryControl?: { on: boolean }; currentOn?: boolean } = {},
 ): PlanInputDevice => {
   const profile = overrides.steppedLoadProfile ?? steppedProfile;
   const selectedStepId = overrides.selectedStepId ?? 'max';

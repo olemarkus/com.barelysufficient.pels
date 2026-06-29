@@ -73,7 +73,10 @@ const buildSteppedAction = (loose: SteppedActionInput) => {
     buildExecutableObservedDeviceState({
       id: device.id,
       name: device.name,
-      binaryControl: isBinaryPlanDevice(device) ? device.binaryControl : undefined,
+      // Rebuild the observed snapshot's binaryControl from the plan device's
+      // resolved on/off truth (`currentOn`); the plan kinds no longer carry the
+      // raw `binaryControl`.
+      binaryControl: isBinaryPlanDevice(device) ? { on: device.currentOn } : undefined,
       targets: [],
       controlModel: 'stepped_load',
       selectedStepId: device.selectedStepId,

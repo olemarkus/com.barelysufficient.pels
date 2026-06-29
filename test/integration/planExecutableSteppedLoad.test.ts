@@ -18,12 +18,12 @@ const buildObservedState = (
   overrides: Partial<TargetDeviceSnapshot & MeasuredPowerObservedProbe> = {},
 ) => {
   const steppedLoadProfile = isSteppedLoadDevice(device) ? device.steppedLoadProfile : undefined;
-  // Preserve the original runtime semantics: read the observed `on` from
-  // `binaryControl` when it is actually present, otherwise fall back to the
+  // Preserve the original runtime semantics: read the observed `on` from the
+  // resolved `currentOn` when the device is binary, otherwise fall back to the
   // device's `currentState`. `isBinaryPlanDevice` only checks for a
-  // `controlCapabilityId`, so the narrowed `binaryControl` can still be absent
-  // on these fixtures — keep the optional read + fallback rather than asserting it.
-  const observedOn = (isBinaryPlanDevice(device) ? device.binaryControl?.on : undefined)
+  // `controlCapabilityId`, so `currentOn` can still be absent on these fixtures —
+  // keep the optional read + fallback rather than asserting it.
+  const observedOn = (isBinaryPlanDevice(device) ? device.currentOn : undefined)
     ?? device.currentState === 'on';
   return buildExecutableObservedDeviceState({
     id: device.id,

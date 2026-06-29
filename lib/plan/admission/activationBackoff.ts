@@ -19,7 +19,6 @@ export const ACTIVATION_BACKOFF_MAX_LEVEL = 4;
 
 export type ActivationBackoffObservation = {
   available?: boolean;
-  binaryControl?: { on: boolean };
   controlCapabilityId?: BinaryControlCapabilityId;
   currentState?: string;
   // The producer-resolved on/off truth (present iff binary). The in/active reads

@@ -47,7 +47,6 @@ export type HeadroomCardDeviceLike = {
   expectedPowerKw?: number;
   measuredPowerKw?: number;
   lastFreshDataMs?: number;
-  binaryControl?: { on: boolean };
   // Producer-resolved on/off truth (present iff binary). The activation in/active
   // reads consume this; the seams that feed raw snapshots (appSnapshotHelpers,
   // the Flow headroom card) stamp it before the device reaches this path. A

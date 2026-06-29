@@ -3,7 +3,6 @@ import { createObjectivePriceHorizonBuilder } from './objectivePriceHorizon';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 import { isBinaryPlanDevice } from '../../lib/plan/planBinaryDevice';
-import { getBinaryOn } from '../../packages/shared-domain/src/binaryControlState';
 import type { DeferredObjectiveDiagnostic } from '../../lib/objectives/deferredObjectives';
 import {
   DeferredObjectiveLifecycleEmitter,
@@ -142,21 +141,21 @@ export const buildShedActuator = (ctx: AppContext): Actuator | null => buildDevi
 const TERMINAL_RELEASE_DISARM_GRACE_MS = 5 * 60 * 1000;
 
 // Binary on/off for the terminal release, read directly from the
-// producer-resolved `binaryControl.on` bit for EVERY device kind, EV chargers
-// included. `binaryControl.on` IS the trusted binary read: the producer latches
-// prior trusted evidence on a missing/transient control read, and when it can
-// only synthesize an untrusted value it surfaces that as `available === false`
+// producer-resolved `currentOn` bit for EVERY device kind, EV chargers included.
+// `currentOn` IS the trusted binary read: the producer latches prior trusted
+// evidence on a missing/transient control read, and when it can only synthesize an
+// untrusted value it surfaces that as `available === false`
 // (`managerParsedAvailability.resolveAvailable`) — a commandability fact handled
 // at the actuation decision in `handleDeferredDeadlineReached`, NOT a state-read
 // concern. So this is a 2-state read with no observation-trust / staleness gate:
 // re-deriving trust here would reinvent the `binaryControlObservation` coupling
-// the producer already owns. (`binaryControl.on === true` for EV iff
-// `plugged_in_charging`, per `resolveEvCurrentOn` — a paused charger is off.)
+// the producer already owns. (`currentOn === true` for EV iff `plugged_in_charging`,
+// per `resolveEvCurrentOn` — a paused charger is off.)
 const resolveTerminalBinaryState = (device: PlanInputDevice): 'on' | 'off' => (
   // Non-binary (no control capability this cycle) reads as "on" — it may always
   // draw — matching the prior `binaryControl?.on ?? true`. Only a confirmed
   // binary-off device resolves to "off".
-  isBinaryPlanDevice(device) && !getBinaryOn(device) ? 'off' : 'on'
+  isBinaryPlanDevice(device) && !device.currentOn ? 'off' : 'on'
 );
 
 export const readTerminalObserved = (

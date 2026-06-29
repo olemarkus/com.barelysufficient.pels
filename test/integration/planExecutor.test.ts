@@ -1682,7 +1682,9 @@ describe('PlanExecutor stepped loads', () => {
     devices: [pd({
       id: 'ev-1',
       name: 'EV Charger',
-      currentState: 'on',
+      // `currentOn` is derived from `binaryControl` per-case (paused default = off,
+      // charging override = on); a hardcoded `currentState: 'on'` would contradict
+      // the paused default's off-state now that consumers read `currentOn`.
       plannedState: 'keep',
       currentTarget: null,
       controllable: true,
