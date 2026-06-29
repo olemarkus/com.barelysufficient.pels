@@ -46,64 +46,67 @@ export class PriceOptimizer {
 
   constructor(private deps: PriceOptimizerDeps) {}
 
-  /* eslint-disable-next-line max-statements -- adds 3 instrumentation statements (timing + RSS sampling). */
   async applyOnce(): Promise<void> {
     const stopSpan = startRuntimeSpan('price_optimizer_apply');
     const opStart = Date.now();
     const rssBefore = safeRss();
     try {
-      if (!this.deps.isEnabled()) {
-        this.deps.debugStructured({ event: 'price_optimization_disabled_globally' });
-        this.lastMode = null;
-        return;
-      }
-
-      const settings = this.deps.getSettings();
-      if (!settings || Object.keys(settings).length === 0) {
-        (this.deps.structuredLog ?? moduleLogger).info({ event: 'price_optimization_no_devices_configured' });
-        this.lastMode = null;
-        return;
-      }
-
-      const resolvedLevel = this.deps.priceStatus.getCurrentLevel();
-      const isCheap = resolvedLevel === PriceLevel.CHEAP || this.deps.priceStatus.isCurrentHourCheap();
-      const isExpensive = resolvedLevel === PriceLevel.EXPENSIVE || this.deps.priceStatus.isCurrentHourExpensive();
-
-      const prices = this.deps.priceStatus.getCombinedHourlyPrices();
-      const currentHourStartMs = this.deps.priceStatus.getCurrentHourStartMs();
-      const currentPrice = prices.find((p) => new Date(p.startsAt).getTime() === currentHourStartMs);
-      const avgPrice = prices.length > 0 ? prices.reduce((sum, p) => sum + p.totalPrice, 0) / prices.length : 0;
-      const thresholdPercent = this.deps.getThresholdPercent();
-      const minDiffOre = this.deps.getMinDiffOre();
-      const resultingMode = PriceOptimizer.resolveHourLabel(isCheap, isExpensive);
-      const previousMode = this.lastMode;
-      (this.deps.structuredLog ?? moduleLogger).info({
-        event: 'price_optimization_completed',
-        previousMode,
-        resultingMode,
-        mode: resultingMode,
-        transition: previousMode === resultingMode ? 'steady' : 'hour_boundary_transition',
-        devicesCount: Object.keys(settings).length,
-        currentPriceAvailable: currentPrice != null,
-        currentPriceOre: currentPrice?.totalPrice ?? null,
-        avgPriceOre: Math.round(avgPrice * 10) / 10,
-        thresholdPercent,
-        minDiffOre,
-        isCheap,
-        isExpensive,
-      });
-      this.lastMode = resultingMode;
-      incPerfCounters([
-        'plan_rebuild_requested_total',
-        'plan_rebuild_requested.price_optimizer_total',
-        `plan_rebuild_requested.price_optimizer.${resultingMode}_total`,
-      ]);
-      await this.deps.rebuildPlan(`price optimization (${resultingMode} hour)`);
+      await this.applyOnceCore();
     } finally {
       stopSpan();
       addPerfDuration('price_optimizer_apply_ms', Date.now() - opStart);
       recordOpRssDelta('price_optimizer_apply_ms', rssBefore, safeRss());
     }
+  }
+
+  private async applyOnceCore(): Promise<void> {
+    if (!this.deps.isEnabled()) {
+      this.deps.debugStructured({ event: 'price_optimization_disabled_globally' });
+      this.lastMode = null;
+      return;
+    }
+
+    const settings = this.deps.getSettings();
+    if (!settings || Object.keys(settings).length === 0) {
+      (this.deps.structuredLog ?? moduleLogger).info({ event: 'price_optimization_no_devices_configured' });
+      this.lastMode = null;
+      return;
+    }
+
+    const resolvedLevel = this.deps.priceStatus.getCurrentLevel();
+    const isCheap = resolvedLevel === PriceLevel.CHEAP || this.deps.priceStatus.isCurrentHourCheap();
+    const isExpensive = resolvedLevel === PriceLevel.EXPENSIVE || this.deps.priceStatus.isCurrentHourExpensive();
+
+    const prices = this.deps.priceStatus.getCombinedHourlyPrices();
+    const currentHourStartMs = this.deps.priceStatus.getCurrentHourStartMs();
+    const currentPrice = prices.find((p) => new Date(p.startsAt).getTime() === currentHourStartMs);
+    const avgPrice = prices.length > 0 ? prices.reduce((sum, p) => sum + p.totalPrice, 0) / prices.length : 0;
+    const thresholdPercent = this.deps.getThresholdPercent();
+    const minDiffOre = this.deps.getMinDiffOre();
+    const resultingMode = PriceOptimizer.resolveHourLabel(isCheap, isExpensive);
+    const previousMode = this.lastMode;
+    (this.deps.structuredLog ?? moduleLogger).info({
+      event: 'price_optimization_completed',
+      previousMode,
+      resultingMode,
+      mode: resultingMode,
+      transition: previousMode === resultingMode ? 'steady' : 'hour_boundary_transition',
+      devicesCount: Object.keys(settings).length,
+      currentPriceAvailable: currentPrice != null,
+      currentPriceOre: currentPrice?.totalPrice ?? null,
+      avgPriceOre: Math.round(avgPrice * 10) / 10,
+      thresholdPercent,
+      minDiffOre,
+      isCheap,
+      isExpensive,
+    });
+    this.lastMode = resultingMode;
+    incPerfCounters([
+      'plan_rebuild_requested_total',
+      'plan_rebuild_requested.price_optimizer_total',
+      `plan_rebuild_requested.price_optimizer.${resultingMode}_total`,
+    ]);
+    await this.deps.rebuildPlan(`price optimization (${resultingMode} hour)`);
   }
 
   async start(applyImmediately = true): Promise<void> {

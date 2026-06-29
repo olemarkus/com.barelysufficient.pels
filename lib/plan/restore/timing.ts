@@ -33,7 +33,9 @@ type RestoreCooldownState = {
   lastRestoreCooldownBumpMs: number | null;
 };
 
-/* eslint-disable complexity -- restore timing combines independent cooldown windows. */
+const ceilSecondsOrNull = (ms: number | null): number | null =>
+  (ms !== null ? Math.ceil(ms / 1000) : null);
+
 export const buildRestoreTiming = (
   state: PlanEngineState,
   headroomRaw: number,
@@ -60,22 +62,16 @@ export const buildRestoreTiming = (
   const restoreCooldownSeconds = sinceRestore !== null
     ? Math.max(0, Math.ceil((cooldownState.restoreCooldownMs - sinceRestore) / 1000))
     : Math.ceil(cooldownState.restoreCooldownMs / 1000);
-  const shedCooldownRemainingSec = cooldownRemainingMs !== null ? Math.ceil(cooldownRemainingMs / 1000) : null;
+  const shedCooldownRemainingSec = ceilSecondsOrNull(cooldownRemainingMs);
   const shedCooldownStartedAtMs = cooldown.cooldownStartedAtMs;
-  const shedCooldownTotalSec = cooldown.cooldownTotalMs !== null
-    ? Math.ceil(cooldown.cooldownTotalMs / 1000)
-    : null;
+  const shedCooldownTotalSec = ceilSecondsOrNull(cooldown.cooldownTotalMs);
   const restoreCooldownRemainingMs = sinceRestore !== null
     ? Math.max(0, cooldownState.restoreCooldownMs - sinceRestore)
     : null;
-  const restoreCooldownRemainingSec = restoreCooldownRemainingMs !== null
-    ? Math.ceil(restoreCooldownRemainingMs / 1000)
-    : null;
+  const restoreCooldownRemainingSec = ceilSecondsOrNull(restoreCooldownRemainingMs);
   const restoreCooldownStartedAtMs = typeof state.lastRestoreMs === 'number' ? state.lastRestoreMs : null;
   const restoreCooldownTotalSec = Math.ceil(cooldownState.restoreCooldownMs / 1000);
-  const startupStabilizationRemainingSec = startupBlockRemainingMs !== null
-    ? Math.ceil(startupBlockRemainingMs / 1000)
-    : null;
+  const startupStabilizationRemainingSec = ceilSecondsOrNull(startupBlockRemainingMs);
   const inShedWindow = inCooldown || activeOvershoot || inRestoreCooldown || inStartupStabilization;
 
   return {
@@ -97,7 +93,6 @@ export const buildRestoreTiming = (
     ...cooldownState,
   };
 };
-/* eslint-enable complexity */
 
 export const shouldPlanRestores = (
   _headroomRaw: number,
