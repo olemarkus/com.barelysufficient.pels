@@ -666,16 +666,6 @@ export default tseslint.config(
     },
   },
   {
-    // planDevices is the main materialiser for `DevicePlanDevice` from `PlanInputDevice`; every
-    // chunk of the planner-detype refactor touches it. Chunk 5 added a producer-resolved
-    // `shedIntent` dual-read path alongside the legacy `resolveShedAction` branches; chunk 6
-    // removes the legacy fallback (and shrinks the file back to <500). Bump the cap until then.
-    files: ['lib/plan/planDevices.ts'],
-    rules: {
-      'max-lines': ['warn', { max: 540, skipBlankLines: true, skipComments: true }],
-    },
-  },
-  {
     // The receipt producer composes six asymmetric smart-task history surfaces
     // (succeeded timeline, missed shortfall chip, cost chip, abandoned details,
     // ISO-week archive, 7-day strip). Externalizing its user-visible strings
@@ -771,24 +761,6 @@ export default tseslint.config(
     },
   },
   {
-    // Binary restore gating + priority-swap flow kept together so the
-    // restore-decision state machine reads top-to-bottom. Target: <=500 once the
-    // swap-flow helpers split from the per-device restore gating.
-    files: ['lib/plan/restore/index.ts'],
-    rules: {
-      'max-lines': ['warn', { max: 1340, skipBlankLines: true, skipComments: true }],
-    },
-  },
-  {
-    // Plan builder composes planning context, overshoot tracking, and plan-meta
-    // construction in one cohesive pass over the device set. Target: <=500 once
-    // overshoot tracking and meta construction split into sibling builders.
-    files: ['lib/plan/planBuilder.ts'],
-    rules: {
-      'max-lines': ['warn', { max: 1075, skipBlankLines: true, skipComments: true }],
-    },
-  },
-  {
     // Observation tracking keeps freshness, retained observations, and debug
     // source state together for one device-observation lifecycle. (Retains its
     // separate file-level `max-params` exception below for the move-only field
@@ -796,25 +768,6 @@ export default tseslint.config(
     files: ['lib/device/transport/managerObservation.ts'],
     rules: {
       'max-lines': ['warn', { max: 1015, skipBlankLines: true, skipComments: true }],
-    },
-  },
-  {
-    // Reason normalization and shed-temperature hold decisions share stateful
-    // helpers here (the hold-cause gating reads several mutually-exclusive
-    // reasons). Target: <=500 once reason normalization splits from the
-    // temperature-hold decision table.
-    files: ['lib/plan/planReasons.ts'],
-    rules: {
-      'max-lines': ['warn', { max: 1015, skipBlankLines: true, skipComments: true }],
-    },
-  },
-  {
-    // Plan service keeps rebuild/reconcile sequencing in one place so the
-    // intent-queue ordering stays navigable. Target: <=500 once reconcile
-    // sequencing splits from rebuild orchestration.
-    files: ['lib/plan/planService.ts'],
-    rules: {
-      'max-lines': ['warn', { max: 790, skipBlankLines: true, skipComments: true }],
     },
   },
   {
@@ -853,15 +806,6 @@ export default tseslint.config(
     files: ['setup/appDebugHelpers.ts'],
     rules: {
       'max-lines': ['warn', { max: 720, skipBlankLines: true, skipComments: true }],
-    },
-  },
-  {
-    // Restore helper decisions and their countdown/back-off metadata are kept
-    // together so a restore decision and the data it emits read as one unit.
-    // Target: <=500 once countdown-metadata shaping splits from the decisions.
-    files: ['lib/plan/restore/helpers.ts'],
-    rules: {
-      'max-lines': ['warn', { max: 710, skipBlankLines: true, skipComments: true }],
     },
   },
   {

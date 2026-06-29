@@ -22,63 +22,36 @@
  * decisions. `syncLivePlanState*` is cheaper than either: it settles pending
  * command bookkeeping and refreshes the published snapshot, with no actuation.
  *
+ * The rebuild pipeline itself lives in `planServiceRebuild.ts` (driven through
+ * the `PlanRebuildHost` seam built in the constructor); signature-change
+ * tracking lives in `PlanChangeTracker`; device-overview transition emission in
+ * `planOverviewEmit.ts`. This file keeps the serialized public surface plus the
+ * reconcile/sync sequencing.
+ *
  * Governing references: `docs/technical.md`, `lib/plan/AGENTS.md`.
  */
-import { randomUUID } from 'node:crypto';
-import type { SettingsPort, FlowPort, ApiPort } from '../ports/homeyRuntime';
 import { PriceLevel } from '../price/priceLevels';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
-import { recordOpRssDelta, safeRss } from '../utils/opRssTracker';
-import { startRuntimeSpan } from '../utils/runtimeTrace';
-import { formatDeviceOverview } from '../../packages/shared-domain/src/deviceOverview';
-import type { IdleClassification } from '../../packages/shared-domain/src/idleClassificationCopy';
-import {
-  buildPlanCapacityStateSummary,
-  buildPlanDebugSummaryEvent,
-  buildPlanDebugSummarySignatureFromEvent,
-  buildPlanDetailSignature,
-  buildPlanSignature,
-} from './planLogging';
-import { hasShedding } from './planServiceInternals';
-import {
-  buildDeviceLogEntry,
-  buildOverviewBatchEvent,
-  buildOverviewEventForDevice,
-  buildOverviewSignatureForDevice,
-  resolveOverviewControlModel,
-  type DeviceOverviewLogRecorder,
-} from './deviceOverviewLog';
-import {
-  buildPlanHeadroomLogFields,
-  createPlanRebuildOutcome,
-  getPlanRebuildLogLevel,
-  recordPlanRebuildMetrics,
-} from './planRebuildMetrics';
 import { normalizeError } from '../utils/errorUtils';
-import { isFiniteNumber } from '../utils/appTypeGuards';
-import type { Loggers, StructuredDebugEmitter } from '../logging/logger';
-import { getLogger, withRebuildContext } from '../logging/logger';
-
-const logger = getLogger('plan/service');
+import type { IdleClassification } from '../../packages/shared-domain/src/idleClassificationCopy';
+import { buildPlanDetailSignature } from './planLogging';
+import { createPlanRebuildOutcome } from './planRebuildMetrics';
+import { getLogger } from '../logging/logger';
 import type {
   SettingsUiDeviceLogPayload,
-  SettingsUiPlanDeviceSnapshot,
   SettingsUiPlanSnapshot,
 } from '../../packages/contracts/src/settingsUiApi';
-import { normalizePlanMeta } from './planStatusHelpers';
 import { buildSettingsOverviewReadModel } from './settingsOverviewReadModel';
 import { createIdleClassifier, type IdleClassifier, type IdleClassifierDeviceInput } from '../observer/idleClassifier';
 import { isTemperaturePlanDevice } from './planTemperatureDevice';
 import type { PendingBinaryLiveDevice } from '../observer/pendingBinaryCommands';
 import { PlanStatusWriter } from './planStatusWriter';
-import type { buildPelsStatus } from './pelsStatus';
 import {
   buildLiveStatePlan,
   canRefreshPlanSnapshotFromLiveState,
   hasPlanExecutionDriftAgainstIntent,
 } from './planReconcileState';
 import { resolvePowerSampleFreshness } from './planPowerFreshness';
-import type { PlanEngine } from './planEngine';
 import type {
   DevicePlan,
   PendingTargetObservationSource,
@@ -93,9 +66,15 @@ import type {
   HeadroomUsageObservation,
 } from './planHeadroomDevice';
 import type { PlanActuationMode } from '../executor/executorTypes';
-import type { DeviceControlModel, EvChargingState } from '../../packages/contracts/src/types';
 import type { PlanActuationResult } from '../executor/planExecutor';
-import type { SnapshotWarmupGate } from './snapshotWarmupGate';
+import { PlanChangeTracker } from './planChangeTracker';
+import { emitDeviceOverviewTransitions } from './planOverviewEmit';
+import { performPlanRebuild, type PlanRebuildHost } from './planServiceRebuild';
+import type { PlanServiceDeps } from './planServiceDeps';
+
+const logger = getLogger('plan/service');
+
+export type { PlanServiceDeps } from './planServiceDeps';
 
 const serializePlanForUi = (
   plan: DevicePlan | null,
@@ -110,77 +89,17 @@ const serializePlanForUi = (
   });
 };
 
-export type PlanServiceDeps = {
-  homey: { settings: SettingsPort; flow: FlowPort; api: ApiPort };
-  writePelsStatus: (status: ReturnType<typeof buildPelsStatus>['status']) => void;
-  planEngine: PlanEngine;
-  getPlanDevices: () => PlanInputDevice[];
-  // Binary-settle evidence (`binaryControlObservation`) is observer-internal and NOT
-  // exposed on `PlanInputDevice`; the settle reads it off the device snapshot directly.
-  // PRODUCTION MUST PROVIDE THIS (the raw device snapshot) — when omitted it falls back
-  // to `getPlanDevices`, which carries no `binaryControlObservation`, so the settle would
-  // never confirm. The fallback exists only so tests that don't exercise the settle can
-  // omit it.
-  getSettleDevices?: () => PendingBinaryLiveDevice[];
-  // EV charging state for the settings-UI read model, sourced from the observer
-  // (its canonical owner — `ObservedDeviceState`), not the plan device. The
-  // planner no longer carries the raw `evChargingState`.
-  getObservedEvChargingState?: (deviceId: string) => EvChargingState | undefined;
-  // Producer `deviceType` map for the settings-UI control-mode card selection
-  // (the planner no longer carries `controlModel`). Built once per serialize from
-  // the raw snapshot; see `SettingsOverviewReadModelDeps.getDeviceTypeById`.
-  getDeviceTypeById?: () => Map<string, 'temperature' | 'onoff'>;
-  // Producer `controlModel` map for the device-overview transition signature
-  // (the planner no longer carries `controlModel`). Built ONCE per
-  // `emitOverviewTransitions` pass from the raw, undecorated device snapshot
-  // (`deviceManager.getSnapshot()`) — NOT `latestTargetSnapshot` — so capturing
-  // it triggers no re-decoration and never re-enters the device manager
-  // per-device inside the plan/apply cycle. Restoring the real control model
-  // (not just the stepped value) lets the signature distinguish a non-stepped
-  // `temperature_target ↔ binary_power` flip; without it both collapse to
-  // `null` and a deviceType-only change leaves an open overview card stale.
-  getControlModelById?: () => Map<string, DeviceControlModel>;
-  getCapacityDryRun: () => boolean;
-  isCurrentHourCheap: () => boolean;
-  isCurrentHourExpensive: () => boolean;
-  getCombinedPrices: () => unknown;
-  getLastPowerUpdate: () => number | null;
-  schedulePostActuationRefresh?: () => void;
-  loggers?: Loggers;
-  overviewDebugStructured?: StructuredDebugEmitter;
-  isOverviewDebugEnabled?: () => boolean;
-  // Optional in-memory recorder for the settings-UI device-log view. Captures
-  // the SAME overview-transition change boundary the debug log uses, but is
-  // NOT gated on the debug topic, so the view has data without the user
-  // enabling debug logging first.
-  deviceOverviewLogRecorder?: DeviceOverviewLogRecorder;
-  isPlanDebugEnabled?: () => boolean;
-  deviceDiagnostics?: {
-    getOverviewStarvation?: (deviceId: string) => SettingsUiPlanDeviceSnapshot['starvation'] | null;
-  };
-  // Hold the first plan rebuild until the first device snapshot resolves (or
-  // a bounded timeout expires). Without the gate, a price/settings/realtime
-  // trigger that arrives between `initDeviceManager` and the first snapshot
-  // refresh runs the planner against an empty snapshot and publishes a
-  // one-cycle `deferred_objective_unknown reasonCode:objective_missing_device`
-  // status, which fires a spurious `waiting → unachievable` flow trigger.
-  snapshotWarmupGate?: SnapshotWarmupGate;
-};
-
 export class PlanService {
-  private lastActionPlanSignature = '';
-  private lastDetailPlanSignature = '';
-  private lastPlanMetaSignature = '';
-  private lastPlanDebugSummarySignature = '';
   private latestPlanSnapshot: DevicePlan | null = null;
   private latestPlanSnapshotUpdatedAtMs: number | null = null;
   private latestReconcilePlanSnapshot: DevicePlan | null = null;
   private lastOverviewSignatureByDeviceId = new Map<string, string>();
   private planOperationQueue: Promise<void> = Promise.resolve();
   private queuedRebuilds = 0;
-  private currentBuildReason: string | null = null;
   private planStatusWriter: PlanStatusWriter;
   private idleClassifier: IdleClassifier;
+  private changeTracker: PlanChangeTracker;
+  private readonly rebuildHost: PlanRebuildHost;
   private lastTickedPlanRef: DevicePlan | null = null;
 
   constructor(private deps: PlanServiceDeps) {
@@ -197,6 +116,26 @@ export class PlanService {
       getLastPowerUpdate: deps.getLastPowerUpdate,
       structuredLog: deps.loggers?.structuredLog,
     });
+    this.changeTracker = new PlanChangeTracker({
+      debugStructured: deps.loggers?.debugStructured,
+      isPlanDebugEnabled: deps.isPlanDebugEnabled,
+    });
+    this.rebuildHost = {
+      deps,
+      getLatestPlanSnapshot: () => this.latestPlanSnapshot,
+      setLatestPlanSnapshot: (plan) => { this.latestPlanSnapshot = plan; },
+      getLatestPlanSnapshotUpdatedAtMs: () => this.latestPlanSnapshotUpdatedAtMs,
+      setLatestPlanSnapshotUpdatedAtMs: (ms) => { this.latestPlanSnapshotUpdatedAtMs = ms; },
+      getLatestReconcilePlanSnapshot: () => this.latestReconcilePlanSnapshot,
+      setLatestReconcilePlanSnapshot: (plan) => { this.latestReconcilePlanSnapshot = plan; },
+      settleDevices: () => this.settleDevices(),
+      trackChanges: (plan, metaSignature) => this.changeTracker.track(plan, metaSignature),
+      updatePlanSnapshot: (plan, changes) => this.updatePlanSnapshot(plan, changes),
+      updatePelsStatus: (plan, changes) => this.updatePelsStatus(plan, changes),
+      stampPlanGeneratedAt: (plan, nowMs) => this.stampPlanGeneratedAt(plan, nowMs),
+      preservePlanGeneratedAt: (plan, basePlan) => this.preservePlanGeneratedAt(plan, basePlan),
+      emitPlanUpdated: (plan) => this.emitPlanUpdated(plan),
+    };
   }
 
   buildDevicePlanSnapshot(devices: PlanInputDevice[]): Promise<DevicePlan> {
@@ -450,7 +389,7 @@ export class PlanService {
         if (waitMs > 0) {
           incPerfCounter('plan_rebuild_queue_waited_total');
         }
-        return this.performPlanRebuild({ reason, queueWaitMs: waitMs, queueDepth });
+        return performPlanRebuild(this.rebuildHost, { reason, queueWaitMs: waitMs, queueDepth });
       },
       'Failed to rebuild plan',
       fallbackOutcome,
@@ -508,83 +447,6 @@ export class PlanService {
     return true;
   }
 
-  private trackPlanChanges(plan: DevicePlan, metaSignature: string): PlanChangeSet {
-    const actionSignature = buildPlanSignature(plan);
-    const detailSignature = buildPlanDetailSignature(plan);
-    const actionChanged = actionSignature !== this.lastActionPlanSignature;
-    const detailChanged = detailSignature !== this.lastDetailPlanSignature;
-    const metaChanged = metaSignature !== this.lastPlanMetaSignature;
-    const debugSummaryState = this.resolveDebugSummaryState({
-      plan,
-      actionChanged,
-      detailChanged,
-      metaChanged,
-    });
-
-    if (actionChanged) {
-      incPerfCounter('plan_rebuild_action_signature_changed_total');
-    } else if (detailChanged || metaChanged) {
-      incPerfCounter('plan_rebuild_reason_or_meta_only_changed_total');
-      if (detailChanged) {
-        incPerfCounter('plan_rebuild_reason_or_state_only_changed_total');
-      }
-      if (metaChanged) {
-        incPerfCounter('plan_rebuild_meta_only_changed_total');
-      }
-    } else {
-      incPerfCounter('plan_rebuild_no_change_total');
-    }
-
-    if (debugSummaryState.changed && debugSummaryState.event) {
-      const emit = this.deps.loggers?.debugStructured ?? ((p: Record<string, unknown>) => logger.debug(p));
-      emit(debugSummaryState.event);
-    }
-
-    this.lastActionPlanSignature = actionSignature;
-    this.lastDetailPlanSignature = detailSignature;
-    this.lastPlanMetaSignature = metaSignature;
-    if (debugSummaryState.emitted && debugSummaryState.signature !== null) {
-      this.lastPlanDebugSummarySignature = debugSummaryState.signature;
-    }
-
-    return {
-      actionSignature,
-      detailSignature,
-      metaSignature,
-      actionChanged,
-      detailChanged,
-      metaChanged,
-    };
-  }
-
-  private resolveDebugSummaryState(params: {
-    plan: DevicePlan;
-    actionChanged: boolean;
-    detailChanged: boolean;
-    metaChanged: boolean;
-  }): {
-    event: ReturnType<typeof buildPlanDebugSummaryEvent> | null;
-    signature: string | null;
-    changed: boolean;
-    emitted: boolean;
-  } {
-    const { plan, actionChanged, detailChanged, metaChanged } = params;
-    const shouldCheck = (actionChanged || detailChanged || metaChanged)
-      && Boolean(this.deps.loggers?.debugStructured)
-      && (this.deps.isPlanDebugEnabled?.() ?? true);
-    if (!shouldCheck) {
-      return { event: null, signature: null, changed: false, emitted: false };
-    }
-    const event = buildPlanDebugSummaryEvent(plan);
-    const signature = buildPlanDebugSummarySignatureFromEvent(event);
-    return {
-      event,
-      signature,
-      changed: signature !== this.lastPlanDebugSummarySignature,
-      emitted: true,
-    };
-  }
-
   private updatePlanSnapshot(plan: DevicePlan, changes: PlanChangeSet): void {
     this.tickIdleClassifier(plan);
     const changed = changes.actionChanged || changes.detailChanged || changes.metaChanged;
@@ -634,344 +496,20 @@ export class PlanService {
     }
   }
 
-  // Per-device: detect a change against the last-known signature, capture it
-  // into the device-log recorder, and (when debug logging is on) build the
-  // structured debug event. `captured` is true whenever the signature moved
-  // (independent of the debug topic), so the caller can decide to notify the
-  // open UI; `event` is the debug payload (null when nothing changed or debug
-  // is off).
-  private recordOverviewChange(
-    device: DevicePlan['devices'][number],
-    recorder: DeviceOverviewLogRecorder | undefined,
-    debugEnabled: boolean,
-    controlModelById: Map<string, DeviceControlModel>,
-  ): { captured: boolean; event: Record<string, unknown> | null } {
-    // The shared-domain overview/log helpers (and `formatDeviceOverview`) branch
-    // on `controlModel`, a producer SETTING the plan device no longer carries.
-    // Restore the device's real control model for the display/log seam from the
-    // producer map captured ONCE per pass (`emitOverviewTransitions`) — a pure
-    // by-id lookup, no per-device `deviceManager.getSnapshot()` re-entry inside the
-    // plan/apply cycle (that breaks the SDK-boundary e2es). See
-    // `resolveOverviewControlModel` for the full rationale. This is display, not
-    // planning.
-    const overviewDevice = resolveOverviewControlModel(device, controlModelById);
-    const signature = buildOverviewSignatureForDevice(overviewDevice);
-    const previousSignature = this.lastOverviewSignatureByDeviceId.get(device.id);
-    this.lastOverviewSignatureByDeviceId.set(device.id, signature);
-    if (signature === previousSignature) return { captured: false, event: null };
-    const overview = formatDeviceOverview(overviewDevice);
-    recorder?.record(device.id, buildDeviceLogEntry(overviewDevice, overview));
-    return {
-      captured: true,
-      event: debugEnabled ? buildOverviewEventForDevice(overviewDevice, overview) : null,
-    };
-  }
-
   // Returns true when at least one device's overview signature changed (and was
   // captured into the recorder / batched for debug), so the caller can refresh
-  // the open settings-UI activity-log view.
+  // the open settings-UI activity-log view. State (`lastOverviewSignatureByDeviceId`)
+  // stays on this class; the emission logic lives in `planOverviewEmit.ts`.
   private emitOverviewTransitions(plan: DevicePlan): boolean {
-    // The recorder must capture even when the debug-log topic is off, so the
-    // settings-UI device-log view has data without the user first enabling
-    // debug logging. Bail only when there is nothing at all to do.
-    const debugEnabled = (this.deps.isOverviewDebugEnabled?.() ?? false)
-      && this.deps.overviewDebugStructured !== undefined;
-    const recorder = this.deps.deviceOverviewLogRecorder;
-    if (!debugEnabled && !recorder) return false;
-
-    // Build the producer control-model map ONCE per pass (not per device) so the
-    // raw-snapshot scan stays O(n) and never re-enters the device manager
-    // per-device inside the plan/apply cycle. Mirrors the read-model's
-    // `getDeviceTypeById` capture in `buildSettingsOverviewReadModel`.
-    const controlModelById = this.deps.getControlModelById?.() ?? new Map<string, DeviceControlModel>();
-
-    const nextDeviceIds = new Set<string>();
-    const changedDevices: Record<string, unknown>[] = [];
-    let captured = false;
-    for (const device of plan.devices) {
-      nextDeviceIds.add(device.id);
-      const result = this.recordOverviewChange(device, recorder, debugEnabled, controlModelById);
-      if (result.captured) captured = true;
-      if (result.event) changedDevices.push(result.event);
-    }
-
-    for (const deviceId of this.lastOverviewSignatureByDeviceId.keys()) {
-      if (!nextDeviceIds.has(deviceId)) {
-        this.lastOverviewSignatureByDeviceId.delete(deviceId);
-      }
-    }
-    // The device-log recorder deliberately retains devices that transiently
-    // leave the plan; its LRU device cap alone bounds memory (see
-    // deviceOverviewLog.ts). So no prune-on-not-in-plan here.
-
-    this.emitOverviewDebugBatch(changedDevices, debugEnabled);
-    return captured;
-  }
-
-  private emitOverviewDebugBatch(changedDevices: Record<string, unknown>[], debugEnabled: boolean): void {
-    if (!this.deps.overviewDebugStructured || !debugEnabled) return;
-    if (changedDevices.length === 1) {
-      this.deps.overviewDebugStructured(changedDevices[0]);
-    } else if (changedDevices.length > 1) {
-      this.deps.overviewDebugStructured(buildOverviewBatchEvent(changedDevices));
-    }
-  }
-
-  private async performPlanRebuild(params: {
-    reason: string;
-    queueWaitMs: number;
-    queueDepth: number;
-  }): Promise<PlanRebuildOutcome> {
-    const { reason, queueWaitMs, queueDepth } = params;
-    const isDryRun = this.deps.getCapacityDryRun();
-    const rebuildId = `rb_${randomUUID()}`;
-    const rebuildStart = Date.now();
-    const rssBefore = safeRss();
-    const stopSpan = startRuntimeSpan(`plan_rebuild(${reason})`);
-    const outcome = createPlanRebuildOutcome(isDryRun);
-
-    const run = async (): Promise<void> => {
-      try {
-        await this.executePlanRebuild(reason, isDryRun, outcome);
-      } catch (error) {
-        outcome.failed = true;
-        incPerfCounter('plan_rebuild_failed_total');
-        throw error;
-      } finally {
-        const durationMs = Date.now() - rebuildStart;
-        recordPlanRebuildMetrics({
-          reason, queueWaitMs, queueDepth, rebuildStart, outcome,
-        });
-        recordOpRssDelta('plan_rebuild_ms', rssBefore, safeRss());
-        stopSpan();
-        const rebuildLogLevel = getPlanRebuildLogLevel(reason, durationMs, outcome);
-        if (rebuildLogLevel) {
-          (this.deps.loggers?.structuredLog ?? logger)[rebuildLogLevel]({
-            event: 'plan_rebuild_completed',
-            durationMs,
-            buildMs: outcome.buildMs,
-            snapshotMs: outcome.snapshotMs,
-            statusMs: outcome.statusMs,
-            applyMs: outcome.applyMs,
-            reasonCode: reason,
-            actionChanged: outcome.actionChanged,
-            detailChanged: outcome.detailChanged,
-            metaChanged: outcome.metaChanged,
-            hadShedding: outcome.hadShedding,
-            appliedActions: outcome.appliedActions,
-            deviceWriteCount: outcome.deviceWriteCount,
-            commandRequestCount: outcome.commandRequestCount,
-            failed: outcome.failed,
-            ...buildPlanHeadroomLogFields(this.latestPlanSnapshot),
-            ...buildPlanCapacityStateSummary(this.latestPlanSnapshot, {
-              summarySource: 'plan_snapshot',
-              summarySourceAtMs: this.latestPlanSnapshotUpdatedAtMs,
-            }),
-          });
-        }
-      }
-    };
-
-    await withRebuildContext(rebuildId, run);
-    return outcome;
-  }
-
-  private async executePlanRebuild(
-    reason: string,
-    isDryRun: boolean,
-    outcome: PlanRebuildOutcome,
-  ): Promise<void> {
-    const { plan, buildMs } = await this.buildPlanForRebuild(reason);
-    const nowMs = Date.now();
-    const stampedPlan = this.stampPlanGeneratedAt(plan, nowMs);
-    this.latestPlanSnapshot = stampedPlan;
-    this.latestPlanSnapshotUpdatedAtMs = nowMs;
-    const { changes, changeMs } = this.measurePlanChanges(stampedPlan);
-    const { snapshotMs } = this.measureSnapshotUpdate(stampedPlan, changes);
-    const { statusMs, statusWriteMs } = this.measureStatusUpdate(stampedPlan, changes);
-    const hadShedding = hasShedding(stampedPlan);
-
-    if (isDryRun && hadShedding) {
-      (this.deps.loggers?.structuredLog ?? logger).info({
-        event: 'shedding_dry_run_skipped',
-        message: 'Dry run: shedding planned but not executed',
-      });
-    }
-
-    const { applyMs, appliedActions, deviceWriteCount, commandRequestCount } = await this.maybeApplyPlanChanges(
-      stampedPlan,
-      changes,
-      isDryRun,
-    );
-    if (changes.actionChanged || !this.latestReconcilePlanSnapshot) {
-      this.latestReconcilePlanSnapshot = this.latestPlanSnapshot ?? stampedPlan;
-    }
-    Object.assign(outcome, {
-      buildMs,
-      changeMs,
-      snapshotMs,
-      statusMs,
-      statusWriteMs,
-      applyMs,
-      actionChanged: changes.actionChanged,
-      detailChanged: changes.detailChanged,
-      metaChanged: changes.metaChanged,
-      appliedActions,
-      deviceWriteCount,
-      commandRequestCount,
-      hadShedding,
-    });
-  }
-
-  private async buildPlanForRebuild(reason: string): Promise<{ plan: DevicePlan; buildMs: number }> {
-    const liveDevices = this.deps.getPlanDevices();
-    this.deps.planEngine.syncPendingTargetCommands(liveDevices, 'rebuild');
-    this.deps.planEngine.syncPendingBinaryCommands(this.settleDevices(), 'rebuild');
-    const buildStart = Date.now();
-    this.currentBuildReason = reason;
-    if (this.deps.planEngine.state) {
-      // Restore/target planning reads the active rebuild reason from shared plan state so
-      // nested helpers do not need another plumbing parameter through the entire call stack.
-      this.deps.planEngine.state.currentRebuildReason = this.currentBuildReason;
-    }
-    let plan: DevicePlan;
-    try {
-      plan = await this.buildDevicePlanSnapshot(liveDevices);
-    } finally {
-      this.currentBuildReason = null;
-      if (this.deps.planEngine.state) {
-        this.deps.planEngine.state.currentRebuildReason = null;
-      }
-    }
-    this.deps.planEngine.prunePendingTargetCommands(plan);
-    plan = this.decoratePlanWithPendingTargetCommands(plan);
-    return {
-      plan,
-      buildMs: Date.now() - buildStart,
-    };
-  }
-
-  private measurePlanChanges(plan: DevicePlan): {
-    changes: PlanChangeSet;
-    changeMs: number;
-  } {
-    const metaSignature = JSON.stringify(normalizePlanMeta(plan.meta));
-    const changeStart = Date.now();
-    const changes = this.trackPlanChanges(plan, metaSignature);
-    return {
-      changes,
-      changeMs: Date.now() - changeStart,
-    };
-  }
-
-  private measureSnapshotUpdate(
-    plan: DevicePlan,
-    changes: PlanChangeSet,
-  ): {
-    snapshotMs: number;
-  } {
-    const snapshotStart = Date.now();
-    this.updatePlanSnapshot(plan, changes);
-    return {
-      snapshotMs: Date.now() - snapshotStart,
-    };
-  }
-
-  private measureStatusUpdate(
-    plan: DevicePlan,
-    changes: PlanChangeSet,
-  ): {
-    statusMs: number;
-    statusWriteMs: number;
-  } {
-    const statusStart = Date.now();
-    const statusWriteMs = this.updatePelsStatus(plan, changes);
-    return {
-      statusMs: Date.now() - statusStart,
-      statusWriteMs,
-    };
-  }
-
-  private async maybeApplyPlanChanges(
-    plan: DevicePlan,
-    changes: PlanChangeSet,
-    isDryRun: boolean,
-  ): Promise<{ applyMs: number; appliedActions: boolean; deviceWriteCount: number; commandRequestCount: number }> {
-    const shouldApplyStablePlanActions = this.deps.planEngine.shouldApplyStablePlanActions(plan);
-    if (isDryRun || (!changes.actionChanged && !shouldApplyStablePlanActions)) {
-      return { applyMs: 0, appliedActions: false, deviceWriteCount: 0, commandRequestCount: 0 };
-    }
-
-    const applyStart = Date.now();
-    let appliedActions = false;
-    let deviceWriteCount = 0;
-    let commandRequestCount = 0;
-    try {
-      const actuation = await this.applyPlanActions(plan);
-      const rawDeviceWriteCount = actuation?.deviceWriteCount;
-      const rawCommandRequestCount = actuation?.commandRequestCount;
-      deviceWriteCount = sanitizeActuationCount(rawDeviceWriteCount);
-      commandRequestCount = sanitizeActuationCount(rawCommandRequestCount);
-      appliedActions = deviceWriteCount > 0 || commandRequestCount > 0;
-      if (appliedActions) {
-        this.deps.schedulePostActuationRefresh?.();
-      }
-      const refreshed = this.refreshLatestPlanSnapshotFromSettledLiveState(plan);
-      if (!refreshed) {
-        this.refreshLatestPlanSnapshotPendingState();
-      }
-    } catch (error) {
-      (this.deps.loggers?.structuredLog ?? logger).error({
-        event: 'plan_actions_apply_failed',
-        error: normalizeError(error),
-      });
-    }
-    return {
-      applyMs: Date.now() - applyStart,
-      appliedActions,
-      deviceWriteCount,
-      commandRequestCount,
-    };
+    return emitDeviceOverviewTransitions(plan, this.lastOverviewSignatureByDeviceId, this.deps);
   }
 
   updatePelsStatus(plan: DevicePlan, changes?: StatusPlanChanges): number {
     return this.planStatusWriter.update(plan, changes);
   }
 
-  private refreshLatestPlanSnapshotFromSettledLiveState(basePlan: DevicePlan): boolean {
-    const livePlan = this.decoratePlanWithPendingTargetCommands(
-      buildLiveStatePlan(basePlan, this.deps.getPlanDevices()),
-    );
-    if (!canRefreshPlanSnapshotFromLiveState(basePlan, livePlan)) return false;
-    const refreshedPlan = this.preservePlanGeneratedAt(livePlan, basePlan);
-    const nowMs = Date.now();
-    this.latestPlanSnapshot = refreshedPlan;
-    this.latestPlanSnapshotUpdatedAtMs = nowMs;
-    this.latestReconcilePlanSnapshot = refreshedPlan;
-    this.emitPlanUpdated(refreshedPlan);
-    return true;
-  }
-
-  private refreshLatestPlanSnapshotPendingState(): boolean {
-    if (!this.latestPlanSnapshot) return false;
-    const nextPlan = this.decoratePlanWithPendingTargetCommands(this.latestPlanSnapshot);
-    if (buildPlanDetailSignature(nextPlan) === buildPlanDetailSignature(this.latestPlanSnapshot)) {
-      return false;
-    }
-    const refreshedPlan = this.preservePlanGeneratedAt(nextPlan, this.latestPlanSnapshot);
-    const nowMs = Date.now();
-    this.latestPlanSnapshot = refreshedPlan;
-    this.latestPlanSnapshotUpdatedAtMs = nowMs;
-    this.emitPlanUpdated(refreshedPlan);
-    return true;
-  }
-
   private decoratePlanWithPendingTargetCommands(plan: DevicePlan): DevicePlan {
     return this.deps.planEngine.decoratePlanWithPendingTargetCommands(plan);
   }
 
-}
-
-function sanitizeActuationCount(value: unknown): number {
-  return isFiniteNumber(value) ? Math.max(0, Math.trunc(value)) : 0;
 }
