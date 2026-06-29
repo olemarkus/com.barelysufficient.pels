@@ -13,29 +13,21 @@ import { getCurrentDrawKw, getRestoreDrawKw } from '../../lib/observer/observedP
 import { PENDING_RESTORE_WINDOW_MS } from '../../lib/plan/planConstants';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { DevicePlanDevice } from '../../lib/plan/planTypes';
-import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 import { buildPlanDevice, steppedPlanDevice } from '../utils/planTestUtils';
 import { reasonText } from '../utils/deviceReasonTestUtils';
 
-// Fixture shape carrying the orthogonal binary-control cluster, which
-// `getCurrentDrawKw` / `getRestoreDrawKw` read. The shared output builders set a
-// default `controlCapabilityId`, so the binary regrouper re-ties `binaryControl`
-// onto the result.
+// Fixture shape: the shared output builders resolve the producer-owned `currentOn`
+// (the on/off truth `getCurrentDrawKw` / `getRestoreDrawKw` now read) from the
+// fixture's `binaryControl`, mirroring `toPlanDevice`.
 type BinaryFixture = DevicePlanDevice & { binaryControl?: { on: boolean } };
 
 const binaryDevice = (
-  overrides: Parameters<typeof buildPlanDevice>[0] & { binaryControl?: { on: boolean } } = {},
-): BinaryFixture => {
-  const { binaryControl, ...rest } = overrides;
-  return withBinaryDiscriminant({ ...buildPlanDevice(rest), binaryControl }) as BinaryFixture;
-};
+  overrides: Parameters<typeof buildPlanDevice>[0] = {},
+): BinaryFixture => buildPlanDevice(overrides) as BinaryFixture;
 
 const binarySteppedDevice = (
-  overrides: Parameters<typeof steppedPlanDevice>[0] & { binaryControl?: { on: boolean } } = {},
-): BinaryFixture => {
-  const { binaryControl, ...rest } = overrides;
-  return withBinaryDiscriminant({ ...steppedPlanDevice(rest), binaryControl }) as BinaryFixture;
-};
+  overrides: Parameters<typeof steppedPlanDevice>[0] = {},
+): BinaryFixture => steppedPlanDevice(overrides) as BinaryFixture;
 
 describe('buildSwapCandidates', () => {
   it('excludes devices with equal or higher restore priority', () => {

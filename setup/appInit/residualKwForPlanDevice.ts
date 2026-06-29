@@ -33,7 +33,7 @@ import {
   type ResidualKwShedTemperatureTarget,
 } from '../../lib/device/deviceResidualKw';
 import { getCurrentDrawKw, getRestoreDrawKw } from '../../lib/observer/observedPower';
-import { resolveObservedCurrentState } from '../../lib/observer/observedState';
+import { resolveCurrentOn, resolveObservedCurrentState } from '../../lib/observer/observedState';
 import {
   normalizeSteppedLoadStepStateFromLegacyFields,
   resolveKnownEffectiveStepId,
@@ -60,6 +60,13 @@ export function buildResidualKwForPlanDevice(params: {
   const { device, controlCapabilityId, shedBehavior, observationStale } = params;
   const currentDrawKw = getCurrentDrawKw({
     ...device,
+    // `getCurrentDrawKw` reads the resolved on/off truth, not the raw `binaryControl`.
+    // Resolve it from the snapshot ONLY for binary devices (mirror `toPlanDevice`'s
+    // `controlCapabilityId` gate): a non-binary step-only stepper carries no
+    // `currentOn`, and its off-step is handled by the stepped residual path below —
+    // folding it into `getCurrentDrawKw` here would zero a draw the configured
+    // fallback should still surface.
+    ...(controlCapabilityId !== undefined ? { currentOn: resolveCurrentOn(device) } : {}),
     observationStale,
   });
   const shed = resolveResidualKwShed({

@@ -256,7 +256,7 @@ describe('activation backoff', () => {
       state,
       deviceId: 'dev-1',
       nowTs: secondAttemptStart + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS,
-      observation: { binaryControl: { on: true }, available: true, measuredPowerKw: 2 },
+      observation: { available: true, measuredPowerKw: 2 },
     });
     expect(stuckInfo.penaltyLevel).toBe(1);
     expect(stuckInfo.attemptOpen).toBe(false);
@@ -283,7 +283,7 @@ describe('activation backoff', () => {
       state,
       deviceId: 'dev-1',
       nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS - 1,
-      observation: { binaryControl: { on: true }, available: true, measuredPowerKw: 1.2 },
+      observation: { available: true, measuredPowerKw: 1.2 },
     });
     expect(firstSync.attemptOpen).toBe(true);
     expect(firstSync.transitions).toEqual([]);
@@ -292,7 +292,7 @@ describe('activation backoff', () => {
       state,
       deviceId: 'dev-1',
       nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS,
-      observation: { binaryControl: { on: true }, available: true, measuredPowerKw: 1.2 },
+      observation: { available: true, measuredPowerKw: 1.2 },
     });
     expect(secondSync.attemptOpen).toBe(false);
     expect(secondSync.transitions).toEqual([]);
@@ -358,7 +358,7 @@ describe('activation backoff', () => {
       state,
       deviceId: 'dev-1',
       nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 1_000,
-      observation: { binaryControl: { on: true }, available: true, measuredPowerKw: 0.25 },
+      observation: { available: true, measuredPowerKw: 0.25 },
     });
     expect(closingSync.attemptOpen).toBe(false);
     expect(state.activationAttemptByDevice['dev-1']).toBeUndefined();
@@ -398,7 +398,7 @@ describe('activation backoff', () => {
       state,
       deviceId: 'dev-1',
       nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 1_000,
-      observation: { binaryControl: { on: true }, available: true, measuredPowerKw: 0.25 },
+      observation: { available: true, measuredPowerKw: 0.25 },
     });
 
     expect(closingSync.attemptOpen).toBe(false);
@@ -444,7 +444,7 @@ describe('activation backoff', () => {
       state,
       deviceId: 'ev-1',
       nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 1_000,
-      observation: { binaryControl: { on: true }, available: true, measuredPowerKw: 0 },
+      observation: { available: true, measuredPowerKw: 0 },
     });
 
     expect(closingSync.attemptOpen).toBe(false);
@@ -480,7 +480,7 @@ describe('activation backoff', () => {
       state,
       deviceId: 'dev-1',
       nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 1_000,
-      observation: { binaryControl: { on: true }, available: true, measuredPowerKw: 0.25 },
+      observation: { available: true, measuredPowerKw: 0.25 },
     });
 
     expect(closingSync.transitions).toEqual([
@@ -540,7 +540,7 @@ describe('activation backoff', () => {
       state,
       deviceId: 'dev-1',
       nowTs: postWindowMs + 1_000,
-      observation: { binaryControl: { on: true }, available: true, measuredPowerKw: 0.2 },
+      observation: { available: true, measuredPowerKw: 0.2 },
     });
     expect(closingSync.attemptOpen).toBe(false);
     expect(closingSync.penaltyLevel).toBe(2);
@@ -579,7 +579,7 @@ describe('activation backoff', () => {
       state,
       deviceId: 'dev-1',
       nowTs: start + ACTIVATION_ATTEMPT_ATTRIBUTION_WINDOW_MS + 1_000,
-      observation: { binaryControl: { on: true }, available: true, measuredPowerKw: 0.25 },
+      observation: { available: true, measuredPowerKw: 0.25 },
     });
 
     expect(closingSync.attemptOpen).toBe(false);
@@ -740,7 +740,7 @@ describe('activation backoff', () => {
       state,
       deviceId: 'dev-1',
       nowTs: now - 10_000,
-      observation: { binaryControl: { on: true }, available: true },
+      observation: { available: true },
     });
 
     const setback = recordActivationSetback({
@@ -1008,7 +1008,6 @@ describe('activation backoff', () => {
       devices: [{
         id: 'dev-1',
         name: 'Heater',
-        binaryControl: { on: true },
         available: true,
         expectedPowerKw: 3.2,
         measuredPowerKw: 3.2,
@@ -1092,7 +1091,6 @@ describe('activation backoff', () => {
       devices: [{
         id: 'dev-1',
         name: 'Heater',
-        binaryControl: { on: true },
         available: true,
         expectedPowerKw: 3.2,
         measuredPowerKw: 3.2,
@@ -1441,7 +1439,6 @@ describe('activation backoff', () => {
       devices: [{
         id: 'dev-1',
         name: 'Nordic S4 REL',
-        binaryControl: { on: true },
         currentState: 'not_applicable',
         available: true,
         expectedPowerKw: 0,
@@ -1456,7 +1453,6 @@ describe('activation backoff', () => {
       devices: [{
         id: 'dev-1',
         name: 'Nordic S4 REL',
-        binaryControl: { on: true },
         currentState: 'not_applicable',
         available: true,
         expectedPowerKw: 1.0,
@@ -1477,7 +1473,6 @@ describe('activation backoff', () => {
       devices: [{
         id: 'dev-1',
         name: 'Nordic S4 REL',
-        binaryControl: { on: true },
         currentState: 'not_applicable',
         available: true,
         expectedPowerKw: 0,

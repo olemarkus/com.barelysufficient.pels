@@ -233,9 +233,16 @@ program) remains deferred.*
         were DELETED; all consumers narrow via `isBinaryPlanDevice` and read `currentOn` directly (list sites
         partitioned by kind), so on/off is unaskable on a non-binary device and the four-valued `currentState`
         survives only as a UI/reason label. Behaviour change (intended): on/off is the latched last value with no
-        staleness gate (stale-off = trusted-off, stale-on = trusted-on, active step = on). Remaining: drop
-        `binaryControl` from the consumer plan kinds (transport keeps it), then the separate `observationStale`
-        removal.
+        staleness gate (stale-off = trusted-off, stale-on = trusted-on, active step = on).
+        **`binaryControl` drop landed:** `binaryControl` is OFF the consumer plan kinds
+        (`BinaryControlKind`/`BinaryPlanInputKind` carry only `currentOn`); `withBinaryDiscriminant` emits
+        `currentOn` and strips the raw axis. `toPlanDevice` now also resolves `currentState` so the plan path and
+        reconcile trust the producer instead of re-resolving from `binaryControl`; `observedPower`,
+        `planExecutionDrift` (via `observedBinaryState`, which prefers `currentOn`), `planHeadroomDevice`, restore
+        accounting, and the deferred-objective terminal release all read `currentOn`. Reconcile recombines
+        `currentOn` with the merged stepped profile (no raw axis). Transport/observer/shared-domain and the
+        executable-from-snapshot projection keep `binaryControl` as the observed binary axis. Remaining: the
+        separate `observationStale` removal.
         *Step-only stepper on/off resolved on the step axis (2026-06-14): a stepped device without `onoff` reads
         off/on from its step; restore/usage/overshoot/reconcile/activation/swap-completion + the executor all fixed.*
         Open follow-ups (P2/P3, deferred):

@@ -47,15 +47,23 @@ type LooseInputDevice = Partial<PlanInputDevice>
 // Regroup a loose live-input override bag (binaryControl flat on the base,
 // optional readable `evChargingState`) onto the discriminated `PlanInputDevice`
 // shape: materialize the EV plug-state flat fields (mirroring the producer) and
-// cast to preserve the fixtures' `binaryControl` verbatim. These fixtures
-// deliberately carry `binaryControl` alongside `controlCapabilityId: undefined`
-// to exercise the reconcile path, so they must NOT go through
-// `withBinaryDiscriminant` (whose runtime stripping would drop it) — the cast is
-// the fixture-constructor boundary, not a per-test smuggle.
+// resolve the producer-owned `currentOn` for binary devices from the fixture's
+// observed binary + stepped signals — production live devices always carry it
+// (`toPlanDevice`), and the reconcile path now reads `currentOn`, not the raw
+// `binaryControl`. The fixtures still carry `binaryControl` verbatim (kept by the
+// cast) so the loose `evChargingState`/observation evidence stays inert; the cast
+// is the fixture-constructor boundary, not a per-test smuggle.
 const inputDevice = (
   loose: LooseInputDevice,
-): PlanInputDevice =>
-  withMaterializedEvPlugState(loose) as unknown as PlanInputDevice;
+): PlanInputDevice => {
+  const materialized = withMaterializedEvPlugState(loose);
+  return {
+    ...materialized,
+    ...(materialized.controlCapabilityId !== undefined
+      ? { currentOn: materialized.currentOn ?? resolveFixtureCurrentOn(materialized) }
+      : {}),
+  } as unknown as PlanInputDevice;
+};
 
 const steppedProfile = {
   model: 'stepped_load' as const,
@@ -823,8 +831,11 @@ describe('planReconcileState stepped device drift', () => {
 
       const result = buildLiveStatePlan(plan, liveDevices);
 
+      // `binaryControl` no longer rides on the reconciled plan device; `currentOn`
+      // is recombined from the binary signal + the preserved (merged) stepped
+      // profile, so the 'off' step folds in even though the live snapshot lacked
+      // the profile and reported `currentOn: true`.
       expect(result.devices[0]).toEqual(expect.objectContaining({
-        binaryControl: { on: true },
         currentOn: false,
         currentState: 'off',
         selectedStepId: 'off',

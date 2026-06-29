@@ -1,4 +1,3 @@
-import { isBinaryObservedOff, isBinaryOnOrUnknown } from '../../packages/shared-domain/src/binaryControlState';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import type { DevicePlan } from '../plan/planTypes';
 import type { PlanEngineState } from '../plan/planState';
@@ -67,12 +66,14 @@ export function hasStableBinaryReleaseActuation(dev: DevicePlan['devices'][numbe
   if (dev.deferredReleaseIntent === 'binary_restore') {
     // Released = off-but-commandable, the only state a restore acts on. A device
     // with no control capability this cycle is not binary → not "observed off".
-    return isBinaryPlanDevice(dev) && isBinaryObservedOff(dev) && isCommandableNow(dev);
+    // `currentOn` is the producer-resolved on/off truth (binary axis + stepped-off).
+    return isBinaryPlanDevice(dev) && dev.currentOn === false && isCommandableNow(dev);
   }
   if (dev.deferredReleaseIntent === 'binary_release') {
-    // On (the consolidated binary truth). Non-binary keeps the prior "on/unknown"
-    // default (true) so a release without observed-off evidence is not yet stable.
-    return isBinaryPlanDevice(dev) ? isBinaryOnOrUnknown(dev) : true;
+    // On (the consolidated binary truth = `currentOn`). Non-binary keeps the prior
+    // "on/unknown" default (true) so a release without observed-off evidence is not
+    // yet stable.
+    return isBinaryPlanDevice(dev) ? dev.currentOn : true;
   }
   return false;
 }

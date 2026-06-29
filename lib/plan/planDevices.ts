@@ -18,7 +18,6 @@ import {
 } from '../utils/targetCapabilities';
 import { applyOffStateReason } from './planOffStateReason';
 import { isSteppedLoadDevice } from './planSteppedLoad';
-import { resolveObservedCurrentState } from '../observer/observedState';
 import { buildBasePlanDevice } from './planDevicesBase';
 import {
   emitEvBoostStateChange,
@@ -311,7 +310,10 @@ function applyPriceOptimizationDelta(
   return target;
 }
 function resolveCurrentState(device: PlanInputDevice): string {
-  return resolveObservedCurrentState(device);
+  // Trust the producer-resolved label (`toPlanDevice` resolves it from the raw
+  // observed state once); the raw binary axis it was folded from no longer rides
+  // on the plan input.
+  return device.currentState ?? 'unknown';
 }
 function isRecentlyRestored(lastRestoreMs: number | undefined): boolean {
   if (!lastRestoreMs) return false;

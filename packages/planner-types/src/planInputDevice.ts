@@ -92,20 +92,20 @@ export type TemperaturePlanInputKind = {
  * the stepped axis (a stepped device also has an onoff control), so this is NOT a
  * union member; it is the intersection the `isBinaryPlanDevice` type-guard
  * (`lib/plan/planBinaryDevice.ts`) adds onto whichever stepped variant the device
- * is. `binaryControl` is OMITTED from `PlanInputDeviceBase`, so an un-narrowed
- * `device.binaryControl` read is a hard compile error; it is REQUIRED on the
- * narrowed shape (a binary device's observed on-state is always resolved to a
- * concrete boolean). The guard's runtime discriminant is `controlCapabilityId
+ * is. `currentOn` is OMITTED from `PlanInputDeviceBase`, so an un-narrowed
+ * `device.currentOn` read is a hard compile error; it is REQUIRED on the
+ * narrowed shape (a binary device's on-state is always resolved to a concrete
+ * boolean). The guard's runtime discriminant is `controlCapabilityId
  * !== undefined` — capability presence is the source of truth for binary status.
  */
 export type BinaryPlanInputKind = {
-  binaryControl: { on: boolean };
   // The single public on/off truth for a binary device: a strict boolean the
   // producer resolves once (`resolveCurrentOn` — binary axis AND stepped-off fold,
   // no staleness gate). Consumers narrow via `isBinaryPlanDevice` and read this
   // directly; the on/off question is meaningful ONLY for binary devices, so there
-  // is no kind-agnostic wrapper. `binaryControl` is retiring to transport/observer
-  // internals — read `currentOn`, not `binaryControl.on`.
+  // is no kind-agnostic wrapper. The raw observed `binaryControl` no longer rides
+  // on the plan kinds — it stays transport/observer-internal; the producer folds
+  // it into `currentState`/`currentOn` once at `toPlanDevice`.
   currentOn: boolean;
 };
 
@@ -210,9 +210,12 @@ export type PlanInputDeviceBase = {
       source: RestorePowerSource;
     };
   };
-  // `binaryControl` is split off onto the orthogonal `BinaryPlanInputKind` cluster;
-  // reach it through the `isBinaryPlanDevice` guard (`lib/plan/planBinaryDevice.ts`).
-  // Present IFF the device has binary control (`controlCapabilityId` set) this cycle.
+  // The binary on/off truth (`currentOn`) is split off onto the orthogonal
+  // `BinaryPlanInputKind` cluster; reach it through the `isBinaryPlanDevice` guard
+  // (`lib/plan/planBinaryDevice.ts`), present IFF the device has binary control
+  // (`controlCapabilityId` set) this cycle. The raw observed `binaryControl` is no
+  // longer carried — it stays transport/observer-internal. `currentState` (the
+  // four-valued reason/UI label) is producer-resolved at `toPlanDevice`.
   currentState?: string;
   // EV fields (`evBoost`, `stateOfCharge`) are split off onto the orthogonal
   // `EvPlanInputKind` cluster; reach them through the `isEvPlanDevice` guard

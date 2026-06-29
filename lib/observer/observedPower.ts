@@ -29,13 +29,16 @@ export type ObservedPowerInput = {
 };
 
 export type ObservedStateInput = {
-  binaryControl?: { on: boolean };
+  // The producer-resolved on/off truth (binary axis AND stepped-off fold). Plan
+  // callers pass plan devices' `currentOn`; the residual producer resolves it
+  // from the snapshot. The raw `binaryControl` is no longer read here.
+  currentOn?: boolean;
   observationStale?: boolean;
 };
 
 export type ActivelyDrawingInput = {
   available?: boolean;
-  binaryControl?: { on: boolean };
+  currentOn?: boolean;
   measuredPowerKw?: number;
 };
 
@@ -102,7 +105,7 @@ export function getCurrentDrawKw(
 ): number {
   const measured = getMeasuredDrawKw(device);
   if (measured !== null) return measured;
-  if (device.binaryControl?.on === false && device.observationStale !== true) return 0;
+  if (device.currentOn === false && device.observationStale !== true) return 0;
   return resolveConfiguredOrFallbackKw(device);
 }
 
@@ -138,7 +141,7 @@ export function getRestoreDrawKw(
  */
 export function isActivelyDrawing(observation: ActivelyDrawingInput): boolean {
   if (observation.available === false) return false;
-  if (observation.binaryControl?.on === true) return true;
+  if (observation.currentOn === true) return true;
   return isFiniteNumber(observation.measuredPowerKw)
     && observation.measuredPowerKw > MIN_ACTIVE_MEASURED_POWER_KW;
 }

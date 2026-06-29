@@ -42,7 +42,6 @@ type RemainingSheddableResidualFields = {
 type RemainingSheddableBaseDevice = RemainingSheddablePowerFields & RemainingSheddableResidualFields & {
   id: string;
   controllable: boolean;
-  binaryControl?: { on: boolean };
   // Producer-resolved on/off truth, present iff binary; read via `isBinaryPlanDevice`.
   currentOn?: boolean;
   currentState?: string;
@@ -119,7 +118,6 @@ export type RemainingSheddableLoadParams = {
 type RemainingSheddableSourceDevice = RemainingSheddablePowerFields & RemainingSheddableResidualFields & {
   id: string;
   controllable?: boolean;
-  binaryControl?: { on: boolean };
   currentOn?: boolean;
   currentState?: string;
   budgetExempt?: boolean;
@@ -291,7 +289,6 @@ function toRemainingSheddableBaseDevice(device: RemainingSheddableSourceDevice):
   return {
     id: device.id,
     controllable: device.controllable !== false,
-    binaryControl: device.binaryControl,
     currentOn: device.currentOn,
     currentState: device.currentState,
     budgetExempt: device.budgetExempt === true,

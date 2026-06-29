@@ -1,4 +1,3 @@
-import { isBinaryObservedOff } from '../../../packages/shared-domain/src/binaryControlState';
 import type { DevicePlanDevice } from '../planTypes';
 import { isBinaryPlanDevice } from '../planBinaryDevice';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
@@ -124,11 +123,12 @@ function resolvePendingRestoreGapKwForDevice(
 
   const restoreMs = lastDeviceRestoreMs[dev.id];
   if (!restoreMs || nowTs - restoreMs > PENDING_RESTORE_WINDOW_MS) return 0;
-  // This branch is non-stepped (stepped exits earlier). The raw `currentOn` is
-  // authoritative for binary-only devices, and matches the rest of the binary
-  // pending-restore-gap math below. A non-binary device (no control capability
-  // this cycle) is never "observed off" here — same as the prior absent-field default.
-  if (isBinaryPlanDevice(dev) && isBinaryObservedOff(dev)) return 0;
+  // This branch is non-stepped (stepped exits earlier). The producer-resolved
+  // `currentOn` is authoritative for binary-only devices, and matches the rest of
+  // the binary pending-restore-gap math below. A non-binary device (no control
+  // capability this cycle) is never "observed off" here — same as the prior
+  // absent-field default.
+  if (isBinaryPlanDevice(dev) && dev.currentOn === false) return 0;
   const expectedKw = estimateRestorePower(dev);
   const actualKw = resolveObservedDrawKwWithNameplate(dev);
   if (actualKw >= expectedKw * PENDING_RESTORE_CONFIRMED_FRACTION) return 0;

@@ -11,20 +11,19 @@ import {
 } from '../../lib/plan/planSteppedLoad';
 import { resolveObservedSteppedLoadCurrentState } from '../../lib/plan/planCurrentState';
 import { steppedInputDevice, steppedPlanDevice, steppedProfile } from '../utils/planTestUtils';
-import {
-  type BinaryControlDiscriminantProbe,
-  withBinaryDiscriminant,
-} from '../../lib/plan/planTypes';
+import type { BinaryControlDiscriminantProbe } from '../../lib/plan/planTypes';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 
-// `binaryControl` moved off `PlanInputDevice`'s base onto the orthogonal
-// `BinaryControlKind` cluster, so `steppedInputDevice`'s param no longer accepts
-// it. Split the cluster off, build through the shared helper, then re-attach it.
+// This fixture feeds the OBSERVER resolver `resolveObservedSteppedLoadCurrentState`,
+// which reads the raw observed `binaryControl` + stepped step (NOT the plan-side
+// `currentOn`). So keep `binaryControl` on the fixture — do NOT strip it through
+// `withBinaryDiscriminant` (which would drop it, leaving the resolver to read
+// `undefined`).
 const steppedBinaryInputDevice = (
   overrides: Parameters<typeof steppedInputDevice>[0] & BinaryControlDiscriminantProbe,
 ): PlanInputDevice => {
   const { binaryControl, ...rest } = overrides;
-  return withBinaryDiscriminant({ ...steppedInputDevice(rest), binaryControl }) as PlanInputDevice;
+  return { ...steppedInputDevice(rest), binaryControl } as unknown as PlanInputDevice;
 };
 
 describe('planSteppedLoad', () => {
