@@ -52,6 +52,7 @@ export const sidebar: DefaultTheme.SidebarItem[] = [
     items: [
       { text: 'Compare Cost-Saving Functions', link: '/cost-saving-functions' },
       { text: 'Daily Energy Budget', link: '/daily-budget' },
+      { text: 'Solar and Self-Consumption', link: '/solar' },
       { text: 'Weather Insight', link: '/weather-insight' },
       { text: 'Smart Tasks', link: '/smart-tasks' },
       { text: 'Deadline Charging With State of Charge', link: '/how-to-deadline-charging-soc' },
