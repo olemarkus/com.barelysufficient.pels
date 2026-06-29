@@ -14,6 +14,7 @@
 import {
   classifyIdleState,
   pruneIdleDetectorState,
+  IDLE_MEASURED_POWER_THRESHOLD_KW,
   type IdleClassification,
   type IdleDetectorInput,
   type IdleDetectorResult,
@@ -168,20 +169,82 @@ const emitTransitionLog = (params: {
   }
 };
 
+const POWER_DRAW_STOPPED_EVENT = 'device_power_draw_stopped';
+const POWER_DRAW_RESUMED_EVENT = 'device_power_draw_resumed';
+
+/**
+ * Log measured-power edges (drawing ⇄ idle) for a device PELS has commanded on,
+ * so the coasting behaviour of self-cycling heaters can be read straight off the
+ * logs: the temperature at which the device stops drawing, and the temperature at
+ * which it resumes. Pairing the two edges with their temperatures characterises
+ * the device's own hold/anti-cycle band without manually sweeping setpoints.
+ *
+ * Gated to `currentState === 'on'` (a stepped device on is at a non-off, drawing
+ * step, so a drop to ~0 W is the coast onset — not a commanded-off) plus a live
+ * temperature reading. Devices PELS is shedding, or whose observation is stale,
+ * are skipped: a 0 W there is PELS's own doing or untrusted, not the device's
+ * control. Edges route to the topic-gated debug emitter (diagnostic detail).
+ */
+const emitPowerEdge = (params: {
+  device: IdleClassifierDeviceInput;
+  lastDrawingById: Map<string, boolean>;
+  debugLog: StructuredDebugEmitter;
+}): void => {
+  const { device, lastDrawingById, debugLog } = params;
+  if (
+    device.observationStale === true
+    || device.currentState !== 'on'
+    || device.plannedState === 'shed'
+    || !isFiniteNumber(device.currentTemperature)
+  ) {
+    // Not a state where a 0 W reading is the device's own coast — drop the streak
+    // so the next eligible tick re-seeds instead of firing a spurious edge.
+    lastDrawingById.delete(device.id);
+    return;
+  }
+  // A missing / non-finite power sample (transient sensor or transport dropout)
+  // carries no information about a draw edge — hold the prior streak and wait for
+  // the next trusted sample rather than fabricating a stop (then resume) edge.
+  if (!isFiniteNumber(device.measuredPowerKw)) return;
+  const drawingNow = device.measuredPowerKw > IDLE_MEASURED_POWER_THRESHOLD_KW;
+  const wasDrawing = lastDrawingById.get(device.id);
+  lastDrawingById.set(device.id, drawingNow);
+  if (wasDrawing === undefined || wasDrawing === drawingNow) return;
+  debugLog({
+    event: drawingNow ? POWER_DRAW_RESUMED_EVENT : POWER_DRAW_STOPPED_EVENT,
+    component: 'observer',
+    deviceId: device.id,
+    deviceName: device.name,
+    measuredPowerKw: device.measuredPowerKw,
+    currentTemperatureC: device.currentTemperature,
+    targetTemperatureC: isFiniteNumber(device.currentTarget) ? device.currentTarget : undefined,
+    temperatureGapC: isFiniteNumber(device.currentTarget)
+      ? device.currentTarget - device.currentTemperature
+      : undefined,
+  });
+};
+
 export function createIdleClassifier(deps: IdleClassifierDeps = {}): IdleClassifier {
   const state: IdleDetectorState = new Map();
   const lastResultById = new Map<string, IdleDetectorResult>();
+  const lastDrawingById = new Map<string, boolean>();
   const debugLog: StructuredDebugEmitter = deps.debugStructured ?? (() => {});
 
   const classifyAll = (
     devices: readonly IdleClassifierDeviceInput[],
     now: number,
   ): void => {
-    pruneIdleDetectorState(state, devices.map((device) => device.id));
+    const liveIds = devices.map((device) => device.id);
+    pruneIdleDetectorState(state, liveIds);
+    const liveSet = new Set(liveIds);
+    for (const id of [...lastDrawingById.keys()]) {
+      if (!liveSet.has(id)) lastDrawingById.delete(id);
+    }
     lastResultById.clear();
     for (const device of devices) {
       const result = classifyIdleState(toDetectorInput(device, now), state);
       emitTransitionLog({ device, result, logger: deps.structuredLog, debugLog });
+      emitPowerEdge({ device, lastDrawingById, debugLog });
       lastResultById.set(device.id, result);
     }
   };

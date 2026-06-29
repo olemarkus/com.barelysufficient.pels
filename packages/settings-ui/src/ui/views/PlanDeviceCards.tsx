@@ -289,7 +289,7 @@ export const IdleClassificationChip = ({ dev }: { dev: PlanDeviceSnapshot }) => 
   if (!copy) return null;
   return (
     <span class="plan-chip plan-chip--warn" data-tooltip={copy.detail}>
-      Not responding
+      {copy.chipLabel}
     </span>
   );
 };

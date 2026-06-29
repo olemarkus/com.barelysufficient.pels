@@ -914,3 +914,17 @@ persona but no current support-cost pressure; reframed to the P3 bar.*
       must still allow the legitimately-null projection on yesterday/tomorrow views. Files:
       `packages/settings-ui/src/ui/budgetRedesignChartData.ts` (`resolveBudgetCostViewAvailable`),
       `lib/dailyBudget/dailyBudgetProjection.ts`.
+- [ ] **Re-document or retire `capped_idle`: its canonical device (Høiax Connected 300) is not actually cap-cycling.**
+      *Persona:* Contributor (`notes/personas.md`) maintaining the idle classifier against the design-of-record.
+      *Hypothesis:* `capped_idle` was designed around the Connected 300 as a device "cycling at a ~60 °C internal
+      cap" (`notes/idle-classification.md` capped_idle row + "Why 20 min", and the `lib/observer/idleDetector.ts`
+      docblock). Field logs show the device has **no** cap (it reaches ~90 °C) and a **fixed 6 °C hysteresis**, so
+      it holds a *flat* 0 W (it does not cycle) down to ~setpoint−6 — which is exactly why the cycling-required
+      `capped_idle` never fired and it fell to `unresponsive`. With the near-target band now widened to 6 °C
+      (this PR) that device classifies as `near_target_idle`, so the documented canonical `capped_idle` example
+      is false and the state's cycling trigger may have no known real instance.
+      *Why it's needed:* the design-of-record now contradicts observed behaviour; either name a real device that
+      genuinely cycles below target at an internal cap (and keep `capped_idle`), or retire the state. Not urgent —
+      the band widening already routes the real device to the correct benign `near_target_idle`. Source: idle
+      log-review + hysteresis investigation, 2026-06-29. Files: `notes/idle-classification.md`,
+      `lib/observer/idleDetector.ts`, `packages/shared-domain/src/idleClassificationCopy.ts`.

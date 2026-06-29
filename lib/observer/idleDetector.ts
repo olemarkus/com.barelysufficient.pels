@@ -12,10 +12,11 @@
  *    water heater that stops drawing within its internal hysteresis band).
  *    Surfaced as a neutral status line on the device card.
  *
- *  - `unresponsive`: device is well below setpoint and has been idle long
- *    enough that the most likely explanation is a fault (tripped breaker,
- *    lost contactor, child-lock, wrong wiring). Surfaced as a warning chip
- *    so the user can act.
+ *  - `unresponsive`: device is below setpoint and has drawn nothing for an
+ *    extended period — beyond the device's own hysteresis band. Usually still
+ *    the device's own controller pausing between cycles; only rarely an actual
+ *    fault. Surfaced as a mild warning chip (understated copy — no breaker/
+ *    wiring assertion the data can't support).
  *
  *  - `capped_idle`: device is well below the PELS-commanded target but its
  *    own thermostat / internal setpoint cap has opened — temperature parks
@@ -56,8 +57,16 @@ export type IdleClassification =
 export const IDLE_MEASURED_POWER_THRESHOLD_KW = 0.05;
 export const IDLE_HOLD_MIN_DURATION_MS = 5 * 60 * 1000;
 export const IDLE_UNRESPONSIVE_MIN_DURATION_MS = 15 * 60 * 1000;
-export const NEAR_TARGET_TEMPERATURE_DELTA_C = 5;
-export const NEAR_TARGET_TEMPERATURE_EXIT_DELTA_C = 5.5;
+// The near-target "benign hold" band must be at least as wide as a managed
+// device's own thermostat hysteresis — otherwise the bottom of the device's
+// healthy deadband reads as a fault. The Høiax Connected 300 water heater runs
+// a fixed 6 °C hysteresis (re-engages only once temperature falls 6 °C below
+// setpoint), so a device idling correctly inside that band sits at a gap up to
+// 6 °C. A tighter 5 °C band misclassified the 5–6 °C sliver of the healthy band
+// as `unresponsive`. Entry covers the full 6 °C; exit adds 0.5 °C so brief drift
+// at the bottom of the band doesn't bounce the classification.
+export const NEAR_TARGET_TEMPERATURE_DELTA_C = 6;
+export const NEAR_TARGET_TEMPERATURE_EXIT_DELTA_C = 6.5;
 
 // Tight-gap variant: when the device sits within 1 °C of its setpoint and has
 // been idle for at least 1 min, that is already strong evidence the device's

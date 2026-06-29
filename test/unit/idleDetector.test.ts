@@ -145,7 +145,7 @@ describe('classifyIdleState — near_target_idle', () => {
     const drifting = classifyIdleState(
       baseInput({
         now: t0 + IDLE_HOLD_MIN_DURATION_MS + 1_000,
-        currentTemperature: 59.7, // gap 5.3 — outside entry but inside exit hysteresis
+        currentTemperature: 58.8, // gap 6.2 — outside entry (6) but inside exit hysteresis (6.5)
       }),
       state,
     );
@@ -264,6 +264,21 @@ describe('classifyIdleState — unresponsive', () => {
       state,
     );
     expect(result.classification).toBe('unresponsive');
+  });
+
+  it('treats a device idling within a 6 °C hysteresis (Høiax Connected 300) as near_target_idle, not unresponsive', () => {
+    // 59.4 °C against a 65 °C target — gap 5.6 °C, inside the device's own 6 °C
+    // re-engage band. A 5 °C band misread this healthy hold as a fault; the
+    // widened band must keep it benign even past the unresponsive window.
+    const state: IdleDetectorState = new Map();
+    const t0 = 1_000_000;
+    const inBand = baseInput({ currentTemperature: 59.4, targetTemperature: 65, measuredPowerKw: 0 });
+    classifyIdleState({ ...inBand, now: t0 }, state);
+    const result = classifyIdleState(
+      { ...inBand, now: t0 + IDLE_UNRESPONSIVE_MIN_DURATION_MS },
+      state,
+    );
+    expect(result.classification).toBe('near_target_idle');
   });
 
   it('does not report unresponsive until the longer duration elapses', () => {
@@ -403,12 +418,13 @@ describe('classifyIdleState — capped_idle', () => {
   };
 
   it('classifies a cycling heater stuck at its own cap as capped_idle', () => {
-    // Connected 300 worked example: internal cap parks the tank ~5–7 °C
-    // below the PELS smart-task target (60 °C cap against 65 °C target =
-    // 5 °C gap; the bug TODO cites runs landing in the 5–7 °C band).
-    // Temperature stays at 58 °C (7 °C gap, strictly greater than the
-    // 5 °C `NEAR_TARGET_TEMPERATURE_DELTA_C` threshold) while power
-    // cycles on and off over the 20-min window.
+    // A device parked at an internal cap several degrees below the PELS
+    // target while power cycles. Temperature stays at 58 °C (7 °C gap,
+    // strictly greater than the 6 °C `NEAR_TARGET_TEMPERATURE_DELTA_C`
+    // threshold, so not near_target_idle) while power cycles on and off
+    // over the 20-min window. (NB: the Connected 300 is no longer the
+    // example here — it has no cap and holds flat, not cycling; see the
+    // capped_idle re-document/retire TODO.)
     const state: IdleDetectorState = new Map();
     const t0 = 1_000_000;
     const cursor = driveCycling(state, {

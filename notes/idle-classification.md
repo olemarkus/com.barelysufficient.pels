@@ -16,7 +16,7 @@ a false-missed verdict — the planner itself doesn't read the classification.
 | State | Meaning | UI | Log event | Producer effect |
 |-------|---------|----|-----------|-----------------|
 | `near_target_idle` | Device has stopped drawing while close to its setpoint. Normal behaviour — the device's own controller (water-heater stratification, thermostat hysteresis) decided to hold. | Neutral status line on the temperature card (`Holding near setpoint (61.5° / 65°)`). No chip. | `device_near_target_idle_started` / `..._cleared` | Promotes deferred-objective run to `met` with `metReason: 'stalled'`. |
-| `unresponsive` | Device is well below setpoint and drawing nothing for an extended period. Likely a fault (tripped breaker, lost contactor, child-lock, wrong wiring). | Warning chip (`Not responding`) plus a warning status line. | `device_unresponsive_started` / `..._cleared` | None — a tripped breaker shouldn't be silently called "succeeded". |
+| `unresponsive` | Device is below setpoint and drawing nothing for an extended period. Almost always the device's own controller pausing between cycles (anti-cycle / overshoot guard / a wide internal hysteresis band); only rarely an actual fault. Copy stays understated — no breaker/wiring assertion. | Mild warning chip (`Not drawing power`) plus a status line. | `device_unresponsive_started` / `..._cleared` | None — a device that isn't actually reaching its target shouldn't be silently called "succeeded". |
 | `capped_idle` | Device is well below the PELS-commanded target but its own internal setpoint cap has opened. Temperature parks at a stable plateau several degrees below target while power cycles around the device's own anti-cycle hysteresis (e.g. Connected 300 capped internally at ~60 °C with a 65 °C PELS target). | Neutral status line (`Device reached its own setpoint cap (58° / 65°)`). No chip — the device is doing the right thing against its own cap. | `device_capped_idle_started` / `..._cleared` | Promotes run to `met` with `metReason: 'stalled_device_capped'`. Postmortem variant `met-by-device-cap` names the device's own setpoint cap as recourse (deliberately not the PELS-canonical "hard cap" per `feedback_hard_cap_is_physical.md`). |
 
 ## Detection criteria
@@ -55,35 +55,50 @@ devices.
   - the temperature spread across the window is
     ≤ `CAPPED_IDLE_MAX_TEMPERATURE_SPREAD_C` (1.0 °C — the "stuck"
     discriminator from `active`, which would still be climbing), AND
-  - `gap > NEAR_TARGET_TEMPERATURE_DELTA_C` (5 °C — the discriminator from
+  - `gap > NEAR_TARGET_TEMPERATURE_DELTA_C` (6 °C — the discriminator from
     `near_target_idle`, which is already in the hysteresis band), AND
   - the device has been observed continuously for at least the full
     window (guards against a half-populated window after a restart) →
     **capped_idle**.
 - Otherwise, with the device currently measured-idle:
   - `idleDurationMs ≥ IDLE_HOLD_MIN_DURATION_MS` (5 min)
-    - and `gap ≤ NEAR_TARGET_TEMPERATURE_DELTA_C` (5 °C) → **near_target_idle**
+    - and `gap ≤ NEAR_TARGET_TEMPERATURE_DELTA_C` (6 °C) → **near_target_idle**
   - `idleDurationMs ≥ IDLE_HOLD_TIGHT_GAP_MIN_DURATION_MS` (1 min)
     - and `gap ≤ NEAR_TARGET_TIGHT_GAP_C` (1 °C) → **near_target_idle**
     - (tight-gap fast path — see *Why a tight-gap fast path* below)
   - `idleDurationMs ≥ IDLE_UNRESPONSIVE_MIN_DURATION_MS` (15 min)
-    - and `gap > NEAR_TARGET_TEMPERATURE_DELTA_C` (5 °C) → **unresponsive**
+    - and `gap > NEAR_TARGET_TEMPERATURE_DELTA_C` (6 °C) → **unresponsive**
 - otherwise → **active**
 
 ### Exit hysteresis
 
 Once a device is `near_target_idle`, the exit threshold widens to
-`NEAR_TARGET_TEMPERATURE_EXIT_DELTA_C` (5.5 °C). This prevents a thermostat
+`NEAR_TARGET_TEMPERATURE_EXIT_DELTA_C` (6.5 °C). This prevents a thermostat
 hovering right at the entry boundary from flapping every cycle. Exit on
 measured draw is immediate — no hysteresis on the power side.
 
-### Why 5 °C / 15 min / 20 min
+### Why 6 °C / 15 min / 20 min
 
-The Connected 300 water heater is observed to stall around 61.5 °C with a
-65 °C setpoint (gap ≈ 3.5 °C). A tighter 3 °C window would mis-classify this
-as `unresponsive`. The shared 5 °C threshold for both holding-entry and
-unresponsive-floor avoids a gap-zone (a gap that is "neither holding nor
-unresponsive") and keeps a single tuning knob.
+The band must be at least as wide as a managed device's own thermostat
+hysteresis, or the bottom of the device's healthy deadband reads as a fault.
+The Høiax Connected 300 water heater runs a **fixed 6 °C hysteresis** — once
+it reaches a 65 °C setpoint it won't re-engage until the temperature falls
+~6 °C (to ~59 °C), so a device idling correctly inside its own band sits at a
+gap of up to 6 °C drawing 0 W. A tighter 5 °C threshold misread the 5–6 °C
+sliver of that healthy band as `unresponsive` (observed repeatedly at
+59.4 °C / 65 °C). The shared 6 °C threshold for both holding-entry and
+unresponsive-floor covers the full hysteresis, avoids a gap-zone (a gap that
+is "neither holding nor unresponsive"), and keeps a single tuning knob.
+
+The band is **global, not per-device** — a deliberate tradeoff. Widening it to
+6 °C means any temperature device whose *real* hysteresis is narrower and is
+genuinely stuck at a 5–6 °C gap now reads `near_target_idle` (silently
+satisfied) rather than `unresponsive`, across the whole fleet, not just the
+Høiax. Accepted because a genuine 5–6 °C-gap fault holding flat for 15 min is
+far rarer than the Høiax-style healthy hysteresis hold, and the conservative
+15 min floor still catches anything that keeps cooling past 6 °C. A
+per-device hysteresis input (so the band tracks each device) is the cleaner
+long-term fix if narrower-hysteresis devices ever need tighter fault-surfacing.
 
 15 min for unresponsive is conservative — fewer false alarms at the cost of
 slower fault surfacing. Long enough to outlast any plausible recovery cycle
@@ -100,7 +115,7 @@ but tight enough that a genuinely-climbing heater (rate-limited charging,
 
 ### Why a tight-gap fast path (1 °C / 1 min)
 
-The standard 5 °C / 5 min path was tuned for slow-cycling water heaters
+The standard 6 °C / 5 min path was tuned for slow-cycling water heaters
 (Connected 300 type loads). Floor / Tuya-style thermostats cycle much
 faster: typical duty 1–3 min on / 1–3 min off. A device that has reached
 its setpoint and is satisfying via short on/off cycles never accumulates
@@ -114,11 +129,11 @@ reasonable interpretation: 1 °C is well inside any reasonable thermostat
 hysteresis band, so even 1 min of idle there is strong evidence the
 local control loop has hit its setpoint deadband. Entry uses the tight
 1 °C gap; once classified, the standard exit hysteresis
-(`NEAR_TARGET_TEMPERATURE_EXIT_DELTA_C` = 5.5 °C) keeps the device in the
+(`NEAR_TARGET_TEMPERATURE_EXIT_DELTA_C` = 6.5 °C) keeps the device in the
 hold band so brief gap drift past 1 °C does not bounce the
 classification on the next tick.
 
-The standard 5 °C / 5 min path stays as-is for devices that satisfy
+The standard 6 °C / 5 min path stays as-is for devices that satisfy
 further from setpoint or with slower duty cycles — the tight-gap path
 is strictly additive (anything qualifying under the standard path still
 does).
@@ -139,7 +154,7 @@ does).
   of UI status-line strings and the matching `detail` text. Used by both
   the temperature card and structured-log payloads so the two cannot drift.
 - `packages/settings-ui/src/ui/views/PlanDeviceCards.tsx` — renders the
-  status line below the temperature card body and a `Not responding`
+  status line below the temperature card body and a `Not drawing power`
   warning chip in the header.
 
 ### Short-deadline smart-task interaction
