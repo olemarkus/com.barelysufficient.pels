@@ -73,6 +73,12 @@ editLink: false
 
   [Read the hot water and heating use case](./use-cases/homey-water-heater-cheap-hours.md) · [Compare cost-saving functions](./cost-saving-functions.md) · [Smart Tasks](./smart-tasks.md) · [Book cheap hours with Flows](./how-to-book-cheap-hours-with-flows.md)
 
+  ### Use more of your own rooftop solar
+
+  If you have solar panels, PELS protects your capacity for free when the sun is out and can nudge a heater to soak surplus instead of exporting it, while keeping your energy accounting honest under export.
+
+  [Solar and Self-Consumption](./solar.md) · [Solar accounting](./technical.md#solar-accounting)
+
   ### Use Home, Away and Night for different energy behavior
 
   If your home should behave differently when you are home, away or asleep, configure modes and switch them from Homey Flows. Modes can change comfort targets and priorities without rebuilding your automations.
