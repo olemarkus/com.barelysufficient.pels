@@ -292,11 +292,8 @@ export const getRecentDateKeys = (params: {
   timeZone: string;
 }): string[] => {
   const currentDayStartMs = getDateKeyStartMs(params.currentDateKey, params.timeZone);
-  const keys: string[] = [];
-  for (let offset = 0; offset < params.count; offset += 1) {
+  return Array.from({ length: params.count }, (_unused, offset) => {
     const date = new Date(currentDayStartMs + (12 * 60 * 60 * 1000) - (offset * 24 * 60 * 60 * 1000));
-    // eslint-disable-next-line functional/immutable-data -- Local key collection is a simple mutable accumulator.
-    keys.push(getDateKeyInTimeZone(date, params.timeZone));
-  }
-  return keys;
+    return getDateKeyInTimeZone(date, params.timeZone);
+  });
 };

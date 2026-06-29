@@ -45,69 +45,66 @@ const logger = getLogger('observer/pending-binary-commands');
  * exclusively through `get` (freshness-evicting) or `peek` (raw) so the
  * store is the single source of truth in both directions.
  */
-export type PendingBinaryCommandStore = {
+export class PendingBinaryCommandStore {
+  constructor(private readonly backing: Record<string, PendingBinaryCommand>) {}
+
   /** Record a freshly issued command keyed by `deviceId`; replaces any prior entry. */
-  record(deviceId: string, command: PendingBinaryCommand): void;
+  record(deviceId: string, command: PendingBinaryCommand): void {
+    this.backing[deviceId] = command;
+  }
+
   /** Clear the pending entry for a device, if any. */
-  clear(deviceId: string): void;
+  clear(deviceId: string): void {
+    delete this.backing[deviceId];
+  }
+
   /** Return the active pending entry, transparently evicting stale entries. */
-  get(deviceId: string): PendingBinaryCommand | undefined;
+  get(deviceId: string): PendingBinaryCommand | undefined {
+    const entry = this.backing[deviceId];
+    if (!entry) return undefined;
+    const nowMs = Date.now();
+    if (isPendingBinaryCommandActive({ pending: entry, nowMs })) return entry;
+    delete this.backing[deviceId];
+    logger.debug({
+      event: 'pending_binary_command_cleared',
+      reason: 'stale_age',
+      deviceId,
+      capabilityId: entry.capabilityId,
+      desired: entry.desired,
+      ageMs: nowMs - entry.startedMs,
+      timeoutMs: getPendingBinaryCommandWindowMs(entry),
+    });
+    return undefined;
+  }
+
   /**
    * Return the raw pending entry without freshness-eviction; used by plan
    * helpers that read fields like `desired` even after the window expired.
    */
-  peek(deviceId: string): PendingBinaryCommand | undefined;
+  peek(deviceId: string): PendingBinaryCommand | undefined {
+    return this.backing[deviceId];
+  }
+
   /** True if the device currently has any pending entry (active or expired). */
-  has(deviceId: string): boolean;
+  has(deviceId: string): boolean {
+    return Object.prototype.hasOwnProperty.call(this.backing, deviceId);
+  }
+
   /** True if the store carries at least one entry. */
-  hasAny(): boolean;
+  hasAny(): boolean {
+    return Object.keys(this.backing).length > 0;
+  }
+
   /** Iterate all entries (active + expired). Order is insertion order. */
-  entries(): Array<[string, PendingBinaryCommand]>;
-};
+  entries(): Array<[string, PendingBinaryCommand]> {
+    return Object.entries(this.backing);
+  }
+}
 
 export function createPendingBinaryCommandStore(
   backing: Record<string, PendingBinaryCommand>,
 ): PendingBinaryCommandStore {
-  /* eslint-disable functional/immutable-data, no-param-reassign --
-     observer-owned mutator: backing is the engine-state field plan reads transparently. */
-  return {
-    record(deviceId, command) {
-      backing[deviceId] = command;
-    },
-    clear(deviceId) {
-      delete backing[deviceId];
-    },
-    get(deviceId) {
-      const entry = backing[deviceId];
-      if (!entry) return undefined;
-      const nowMs = Date.now();
-      if (isPendingBinaryCommandActive({ pending: entry, nowMs })) return entry;
-      delete backing[deviceId];
-      logger.debug({
-        event: 'pending_binary_command_cleared',
-        reason: 'stale_age',
-        deviceId,
-        capabilityId: entry.capabilityId,
-        desired: entry.desired,
-        ageMs: nowMs - entry.startedMs,
-        timeoutMs: getPendingBinaryCommandWindowMs(entry),
-      });
-      return undefined;
-    },
-    peek(deviceId) {
-      return backing[deviceId];
-    },
-    has(deviceId) {
-      return Object.prototype.hasOwnProperty.call(backing, deviceId);
-    },
-    hasAny() {
-      return Object.keys(backing).length > 0;
-    },
-    entries() {
-      return Object.entries(backing);
-    },
-  };
-  /* eslint-enable functional/immutable-data, no-param-reassign */
+  return new PendingBinaryCommandStore(backing);
 }
 
 /**
