@@ -122,7 +122,7 @@ export const applyBinaryRestoreWithSnapshot = async (
           reasonCode: mode === 'reconcile' ? 'reconcile_restore' : ctx.getRestoreLogSource(deviceId),
         });
         recordBinaryRestoreActuation(ctx, { deviceId, name, mode });
-        clearPendingSwapTarget(ctx, deviceId);
+        ctx.state.clearPendingSwapTarget(deviceId);
       }
       return true;
     } catch (error) {
@@ -172,10 +172,8 @@ export const applyCapacityControlOffRestoreWithSnapshot = async (
         mode: 'plan',
         reasonCode: 'capacity_control_off_restore',
       });
-      // eslint-disable-next-line no-param-reassign, functional/immutable-data -- Shared executor state update.
-      delete ctx.state.lastDeviceShedMs[deviceId];
-      // eslint-disable-next-line no-param-reassign, functional/immutable-data -- Shared executor state update.
-      delete ctx.state.shedDecidedMs[deviceId];
+      ctx.state.clearDeviceShed(deviceId);
+      ctx.state.clearShedDecision(deviceId);
     }
     return true;
   } catch (error) {
@@ -211,18 +209,5 @@ const recordBinaryRestoreActuation = (
       name,
       nowTs: Date.now(),
     });
-  }
-};
-
-const clearPendingSwapTarget = (ctx: PlanExecutorBinaryContext, deviceId: string): void => {
-  const swapEntry = ctx.state.swapByDevice[deviceId];
-  if (!swapEntry) return;
-  // eslint-disable-next-line functional/immutable-data -- Shared executor state update.
-  delete swapEntry.pendingTarget;
-  // eslint-disable-next-line functional/immutable-data -- Shared executor state update.
-  delete swapEntry.timestamp;
-  if (!swapEntry.swappedOutFor && swapEntry.lastPlanMeasurementTs === undefined) {
-    // eslint-disable-next-line no-param-reassign, functional/immutable-data -- Shared executor state update.
-    delete ctx.state.swapByDevice[deviceId];
   }
 };

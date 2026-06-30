@@ -332,11 +332,10 @@ export const applyKeepInvariantShedBlock = (
       lowestNonZeroStepId: lowestNonZeroStep.id,
       rejectionReason: 'shed_invariant',
     });
-    // eslint-disable-next-line no-param-reassign, functional/immutable-data -- Shared executor state update.
-    ctx.state.keepInvariantShedBlockedByDevice[action.id] = {
+    ctx.state.setKeepInvariantShedBlock(action.id, {
       desiredStepId,
       lowestNonZeroStepId: lowestNonZeroStep.id,
-    };
+    });
   }
   return true;
 };
