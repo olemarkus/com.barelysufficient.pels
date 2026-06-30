@@ -52,8 +52,8 @@ export type SteppedLoadReportedRuntimeState = {
 };
 
 export type DeviceControlRuntimeState = {
-  steppedLoadDesiredByDeviceId: Record<string, SteppedLoadDesiredRuntimeState>;
-  steppedLoadReportedByDeviceId: Record<string, SteppedLoadReportedRuntimeState>;
+  steppedLoadDesiredByDeviceId: Map<string, SteppedLoadDesiredRuntimeState>;
+  steppedLoadReportedByDeviceId: Map<string, SteppedLoadReportedRuntimeState>;
 };
 export type ReportSteppedLoadActualStepResult = 'changed' | 'unchanged' | 'invalid';
 export type MarkSteppedLoadDesiredStepIssuedParams = {
@@ -64,8 +64,8 @@ export type MarkSteppedLoadDesiredStepIssuedParams = {
   pendingWindowMs?: number;
 };
 export const createDeviceControlRuntimeState = (): DeviceControlRuntimeState => ({
-  steppedLoadDesiredByDeviceId: {},
-  steppedLoadReportedByDeviceId: {},
+  steppedLoadDesiredByDeviceId: new Map(),
+  steppedLoadReportedByDeviceId: new Map(),
 });
 export const normalizeStoredDeviceControlProfiles = normalizeDeviceControlProfiles;
 export const resolveDefaultControlModel = (device: TargetDeviceSnapshot): DeviceControlModel => {
@@ -157,27 +157,25 @@ export const decorateSnapshotWithDeviceControl = (params: {
 
   pruneStaleSteppedLoadCommandStates(runtimeState, nowMs);
 
-  const desired = runtimeState.steppedLoadDesiredByDeviceId[snapshot.id];
-  const reported = runtimeState.steppedLoadReportedByDeviceId[snapshot.id];
+  const desired = runtimeState.steppedLoadDesiredByDeviceId.get(snapshot.id);
+  const reported = runtimeState.steppedLoadReportedByDeviceId.get(snapshot.id);
   const nativeSteppedControlEnabled = nativeProfile !== null;
   const snapshotReportedStepId = getSteppedLoadStep(profile, snapshot.reportedStepId)?.id;
   const nativeReportedStepId = nativeSteppedControlEnabled ? snapshotReportedStepId : undefined;
   if (nativeSteppedControlEnabled && reported) {
-    /* eslint-disable-next-line functional/immutable-data -- Shared stepped-load runtime cache update. */
-    delete runtimeState.steppedLoadReportedByDeviceId[snapshot.id];
+    runtimeState.steppedLoadReportedByDeviceId.delete(snapshot.id);
   }
   const confirmedReportedStepId = nativeReportedStepId ?? snapshotReportedStepId;
   if (confirmedReportedStepId && desired?.stepId === confirmedReportedStepId) {
-    /* eslint-disable-next-line functional/immutable-data -- Shared stepped-load runtime cache update. */
-    runtimeState.steppedLoadDesiredByDeviceId[snapshot.id] = {
+    runtimeState.steppedLoadDesiredByDeviceId.set(snapshot.id, {
       ...desired,
       retryCount: 0,
       nextRetryAtMs: undefined,
       pending: false,
       status: 'success',
-    };
+    });
   }
-  const currentDesired = runtimeState.steppedLoadDesiredByDeviceId[snapshot.id];
+  const currentDesired = runtimeState.steppedLoadDesiredByDeviceId.get(snapshot.id);
   const fallbackStepId = getSteppedLoadLowestActiveStep(profile)?.id;
   const stepFields = buildSteppedLoadSnapshotStepFields({
     profile,
@@ -235,14 +233,13 @@ export const markSteppedLoadDesiredStepIssued = (params: {
     issuedAtMs = Date.now(),
     pendingWindowMs,
   } = params;
-  const previousDesired = runtimeState.steppedLoadDesiredByDeviceId[deviceId];
+  const previousDesired = runtimeState.steppedLoadDesiredByDeviceId.get(deviceId);
   const shouldIncrementRetryCount = previousDesired?.stepId === desiredStepId
     && previousDesired.status !== 'success';
   const retryCount = shouldIncrementRetryCount
     ? previousDesired.retryCount + 1
     : 0;
-  /* eslint-disable functional/immutable-data -- Shared runtime cache update. */
-  runtimeState.steppedLoadDesiredByDeviceId[deviceId] = {
+  runtimeState.steppedLoadDesiredByDeviceId.set(deviceId, {
     capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
     stepId: desiredStepId,
     previousStepId,
@@ -253,8 +250,7 @@ export const markSteppedLoadDesiredStepIssued = (params: {
     nextRetryAtMs: undefined,
     pending: true,
     status: 'pending',
-  };
-  /* eslint-enable functional/immutable-data */
+  });
 };
 
 const preserveSteppedLoadDesiredStep = (params: {
@@ -273,8 +269,7 @@ const preserveSteppedLoadDesiredStep = (params: {
     changedAtMs = Date.now(),
     status = 'idle',
   } = params;
-  /* eslint-disable functional/immutable-data -- Shared runtime cache update. */
-  runtimeState.steppedLoadDesiredByDeviceId[deviceId] = {
+  runtimeState.steppedLoadDesiredByDeviceId.set(deviceId, {
     capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
     stepId: desiredStepId,
     previousStepId,
@@ -283,8 +278,7 @@ const preserveSteppedLoadDesiredStep = (params: {
     nextRetryAtMs: undefined,
     pending: false,
     status,
-  };
-  /* eslint-enable functional/immutable-data */
+  });
 };
 
 export const reportSteppedLoadActualStep = (params: {
@@ -306,27 +300,23 @@ export const reportSteppedLoadActualStep = (params: {
     return 'invalid';
   }
 
-  const previousReport = runtimeState.steppedLoadReportedByDeviceId[deviceId];
-  /* eslint-disable functional/immutable-data -- Shared runtime cache update. */
-  runtimeState.steppedLoadReportedByDeviceId[deviceId] = {
+  const previousReport = runtimeState.steppedLoadReportedByDeviceId.get(deviceId);
+  runtimeState.steppedLoadReportedByDeviceId.set(deviceId, {
     capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
     stepId,
     updatedAtMs: reportedAtMs,
     source: 'flow',
-  };
-  /* eslint-enable functional/immutable-data */
+  });
 
-  const desired = runtimeState.steppedLoadDesiredByDeviceId[deviceId];
+  const desired = runtimeState.steppedLoadDesiredByDeviceId.get(deviceId);
   if (desired?.stepId === stepId) {
-    /* eslint-disable functional/immutable-data -- Shared runtime cache update. */
-    runtimeState.steppedLoadDesiredByDeviceId[deviceId] = {
+    runtimeState.steppedLoadDesiredByDeviceId.set(deviceId, {
       ...desired,
       retryCount: 0,
       nextRetryAtMs: undefined,
       pending: false,
       status: 'success',
-    };
-    /* eslint-enable functional/immutable-data */
+    });
   }
 
   return previousReport?.stepId !== stepId ? 'changed' : 'unchanged';
@@ -337,14 +327,11 @@ export const pruneStaleSteppedLoadCommandStates = (
   nowMs: number = Date.now(),
 ): boolean => {
   let changed = false;
-  for (const [deviceId, desired] of Object.entries(runtimeState.steppedLoadDesiredByDeviceId)) {
+  for (const [deviceId, desired] of runtimeState.steppedLoadDesiredByDeviceId.entries()) {
     if (!desired.pending || typeof desired.lastIssuedAtMs !== 'number') continue;
     const pendingWindowMs = desired.pendingWindowMs ?? STEPPED_LOAD_COMMAND_STALE_MS;
     if (nowMs - desired.lastIssuedAtMs < pendingWindowMs) continue;
-    /* eslint-disable functional/immutable-data, no-param-reassign --
-     * Shared runtime cache update during stale-step pruning.
-     */
-    runtimeState.steppedLoadDesiredByDeviceId[deviceId] = {
+    runtimeState.steppedLoadDesiredByDeviceId.set(deviceId, {
       ...desired,
       nextRetryAtMs:
         desired.lastIssuedAtMs
@@ -352,8 +339,7 @@ export const pruneStaleSteppedLoadCommandStates = (
         + resolveSteppedLoadCommandRetryDelayMs(desired.retryCount),
       pending: false,
       status: 'stale',
-    };
-    /* eslint-enable functional/immutable-data, no-param-reassign */
+    });
     changed = true;
   }
   return changed;
@@ -418,7 +404,7 @@ export class AppDeviceControlHelpers {
     // only carry `deviceName` when actually known (never an id-derived placeholder).
     const knownDeviceName = snapshot ? snapshot.name.trim() : undefined;
     if (snapshot && isNativeSteppedLoadControlEnabled(snapshot)) {
-      delete this.runtimeState.steppedLoadReportedByDeviceId[deviceId];
+      this.runtimeState.steppedLoadReportedByDeviceId.delete(deviceId);
       this.deps.debugStructured({
         event: 'stepped_load_feedback_ignored', reason: 'native_wiring_enabled', deviceId, deviceName: knownDeviceName,
       });
@@ -447,8 +433,8 @@ export class AppDeviceControlHelpers {
       });
       return 'unchanged';
     }
-    const previousReportedStepId = this.runtimeState.steppedLoadReportedByDeviceId[deviceId]?.stepId;
-    const previousDesired = this.runtimeState.steppedLoadDesiredByDeviceId[deviceId];
+    const previousReportedStepId = this.runtimeState.steppedLoadReportedByDeviceId.get(deviceId)?.stepId;
+    const previousDesired = this.runtimeState.steppedLoadDesiredByDeviceId.get(deviceId);
     const previousDesiredStepId = this.resolvePreviousDesiredStepId(profile, previousDesired);
     const latestPlanDesiredStepId = this.resolveLatestPlanDesiredStepId(deviceId, profile);
     const plannedDesiredStepId = latestPlanDesiredStepId ?? previousDesiredStepId;

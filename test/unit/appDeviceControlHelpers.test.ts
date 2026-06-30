@@ -70,7 +70,7 @@ describe('appDeviceControlHelpers', () => {
     });
 
     expect(pruneStaleSteppedLoadCommandStates(runtimeState, 61_000)).toBe(false);
-    expect(runtimeState.steppedLoadDesiredByDeviceId['dev-1']).toMatchObject({
+    expect(runtimeState.steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
       capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
       stepId: 'max',
       retryCount: 0,
@@ -80,7 +80,7 @@ describe('appDeviceControlHelpers', () => {
     });
 
     expect(pruneStaleSteppedLoadCommandStates(runtimeState, 181_001)).toBe(true);
-    expect(runtimeState.steppedLoadDesiredByDeviceId['dev-1']).toMatchObject({
+    expect(runtimeState.steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
       capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
       stepId: 'max',
       retryCount: 0,
@@ -447,7 +447,7 @@ describe('appDeviceControlHelpers', () => {
       stepId: 'low',
       reportedAtMs: 1600,
     })).toBe('changed');
-    expect(runtimeState.steppedLoadReportedByDeviceId['dev-1']).toMatchObject({
+    expect(runtimeState.steppedLoadReportedByDeviceId.get('dev-1')).toMatchObject({
       capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
       source: 'flow',
       stepId: 'low',
@@ -496,7 +496,7 @@ describe('appDeviceControlHelpers', () => {
       deviceId: 'dev-1',
       desiredStepId: 'off',
     });
-    expect(runtimeState.steppedLoadDesiredByDeviceId['dev-1']).toMatchObject({
+    expect(runtimeState.steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
       capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
       changedAtMs: 4242,
       lastIssuedAtMs: 4242,
@@ -564,7 +564,7 @@ describe('appDeviceControlHelpers', () => {
       reportedAtMs: 1100,
     })).toBe('changed');
 
-    expect(runtimeState.steppedLoadDesiredByDeviceId['dev-1']).toMatchObject({
+    expect(runtimeState.steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
       capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
       stepId: 'max',
       retryCount: 0,
@@ -592,12 +592,12 @@ describe('appDeviceControlHelpers', () => {
     expect(helpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
 
     const runtimeState = helpers.getRuntimeStateForTests();
-    expect(runtimeState.steppedLoadReportedByDeviceId['dev-1']).toMatchObject({
+    expect(runtimeState.steppedLoadReportedByDeviceId.get('dev-1')).toMatchObject({
       capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
       source: 'flow',
       stepId: 'max',
     });
-    expect(runtimeState.steppedLoadDesiredByDeviceId['dev-1']).toMatchObject({
+    expect(runtimeState.steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
       capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
       stepId: 'low',
       previousStepId: 'max',
@@ -636,7 +636,7 @@ describe('appDeviceControlHelpers', () => {
     });
 
     expect(helpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
-    expect(helpers.getRuntimeStateForTests().steppedLoadReportedByDeviceId['dev-1']).toMatchObject({
+    expect(helpers.getRuntimeStateForTests().steppedLoadReportedByDeviceId.get('dev-1')).toMatchObject({
       capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
       source: 'flow',
       stepId: 'max',
@@ -698,7 +698,7 @@ describe('appDeviceControlHelpers', () => {
 
     expect(helpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
 
-    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId['dev-1']).toMatchObject({
+    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
       capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
       stepId: 'low',
       previousStepId: 'max',
@@ -740,12 +740,12 @@ describe('appDeviceControlHelpers', () => {
     expect(helpers.reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
 
     const runtimeState = helpers.getRuntimeStateForTests();
-    expect(runtimeState.steppedLoadReportedByDeviceId['dev-1']).toMatchObject({
+    expect(runtimeState.steppedLoadReportedByDeviceId.get('dev-1')).toMatchObject({
       capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
       source: 'flow',
       stepId: 'low',
     });
-    expect(runtimeState.steppedLoadDesiredByDeviceId['dev-1']).toMatchObject({
+    expect(runtimeState.steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
       capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
       stepId: 'low',
       previousStepId: 'low',
@@ -795,7 +795,7 @@ describe('appDeviceControlHelpers', () => {
 
     expect(helpers.reportSteppedLoadActualStep('dev-1', 'low')).toBe('unchanged');
 
-    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId['dev-1']).toMatchObject({
+    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
       capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
       stepId: 'low',
       retryCount: 0,
@@ -821,8 +821,8 @@ describe('appDeviceControlHelpers', () => {
 
     expect(helpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('unchanged');
 
-    expect(helpers.getRuntimeStateForTests().steppedLoadReportedByDeviceId['dev-1']).toBeUndefined();
-    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId['dev-1']).toMatchObject({
+    expect(helpers.getRuntimeStateForTests().steppedLoadReportedByDeviceId.get('dev-1')).toBeUndefined();
+    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
       capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
       stepId: 'max',
       pending: true,
@@ -840,7 +840,7 @@ describe('appDeviceControlHelpers', () => {
     });
 
     expect(helpers.reportSteppedLoadActualStep('dev-1', 'missing')).toBe('invalid');
-    expect(helpers.getRuntimeStateForTests().steppedLoadReportedByDeviceId['dev-1']).toBeUndefined();
+    expect(helpers.getRuntimeStateForTests().steppedLoadReportedByDeviceId.get('dev-1')).toBeUndefined();
   });
 
   it('increments stepped-load retry metadata when the same desired step is re-issued', () => {
@@ -856,7 +856,7 @@ describe('appDeviceControlHelpers', () => {
     });
 
     expect(pruneStaleSteppedLoadCommandStates(runtimeState, 91_001)).toBe(true);
-    expect(runtimeState.steppedLoadDesiredByDeviceId['dev-1']).toMatchObject({
+    expect(runtimeState.steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
       capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
       retryCount: 0,
       nextRetryAtMs: 121_000,
@@ -873,7 +873,7 @@ describe('appDeviceControlHelpers', () => {
       pendingWindowMs: 90_000,
     });
 
-    expect(runtimeState.steppedLoadDesiredByDeviceId['dev-1']).toMatchObject({
+    expect(runtimeState.steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
       capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
       retryCount: 1,
       nextRetryAtMs: undefined,
@@ -910,7 +910,7 @@ describe('appDeviceControlHelpers', () => {
       pendingWindowMs: 90_000,
     });
 
-    expect(runtimeState.steppedLoadDesiredByDeviceId['dev-1']).toMatchObject({
+    expect(runtimeState.steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
       capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
       retryCount: 0,
       nextRetryAtMs: undefined,

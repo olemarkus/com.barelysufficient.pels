@@ -606,17 +606,17 @@ describe('MyApp initialization', () => {
       previousStepId: 'low',
     });
     const runtimeState = (app as any).deviceControlHelpers.getRuntimeStateForTests();
-    runtimeState.steppedLoadDesiredByDeviceId['dev-1'] = {
-      ...runtimeState.steppedLoadDesiredByDeviceId['dev-1'],
+    runtimeState.steppedLoadDesiredByDeviceId.set('dev-1', {
+      ...runtimeState.steppedLoadDesiredByDeviceId.get('dev-1')!,
       pending: false,
       status: 'stale',
-    };
-    runtimeState.steppedLoadReportedByDeviceId['dev-1'] = {
+    });
+    runtimeState.steppedLoadReportedByDeviceId.set('dev-1', {
       capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
       stepId: 'low',
       updatedAtMs: Date.now() - 1000,
       source: 'flow',
-    };
+    });
 
     expect((app as any).deviceControlHelpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
     expect(infoSpy).toHaveBeenCalledWith(expect.objectContaining({
