@@ -421,5 +421,8 @@
   },
   "2.14.0": {
     "en": "PELS can now put excess solar power to use at home instead of exporting it. On heating devices where you turn on the new 'Use solar surplus' option, which appears once you have a solar inverter, PELS raises the target slightly while you have surplus solar so the energy is used at home, and the Overview explains when this is happening.\n\nHome batteries and solar inverters are now recognised and accounted for, without PELS trying to control them, and they no longer clutter the device selection lists. Price levels are also handled correctly during periods when electricity prices go negative, alongside smaller fixes to battery status display and to how device readings are refreshed."
+  },
+  "2.14.1": {
+    "en": "Managed heating devices that pause within their own temperature range are no longer mistaken for not responding, so you will see fewer false warnings on a water heater or thermostat that is simply holding its temperature. When a device does stop drawing power well below its target, the on-screen note is now calmer and points to a concrete thing to check.\n\nThis release also includes a behind-the-scenes fix that keeps electricity price updates working reliably after the price service changed its security certificate, plus minor internal improvements."
   }
 }
