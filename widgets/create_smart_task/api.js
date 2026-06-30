@@ -4508,6 +4508,35 @@ var getLogger = (module2) => {
   return proxy;
 };
 
+// lib/objectives/deferredObjectives/trajectoryMilestone.ts
+var ONE_HOUR_MS = 60 * 60 * 1e3;
+
+// lib/objectives/deferredObjectives/settleWindow.ts
+var ONE_HOUR_MS2 = 60 * 60 * 1e3;
+var SCHEDULE_SETTLE_OFFSET_MS = 58 * 60 * 1e3;
+
+// lib/objectives/rejectionLogging.ts
+var OBJECTIVE_PROFILE_REJECTION_LOG_THROTTLE_MS = 15 * 60 * 1e3;
+
+// lib/objectives/recovery.ts
+var RECOVERY_SAFETY_TIMEOUT_MS = 24 * 60 * 60 * 1e3;
+var RECOVERY_NO_PROGRESS_MIN_DURATION_MS = 30 * 60 * 1e3;
+
+// packages/shared-domain/src/steppedLoadObservedState.ts
+var isSteppedLoadSnapshot = (snapshot) => snapshot.steppedLoadProfile?.model === "stepped_load";
+
+// lib/objectives/samples.ts
+var OBJECTIVE_PROFILE_MAX_OBSERVATION_AGE_MS = 30 * 60 * 1e3;
+var OBJECTIVE_PROFILE_MAX_FUTURE_SKEW_MS = 5 * 1e3;
+
+// lib/objectives/profiles.ts
+var OBJECTIVE_PROFILE_RETENTION_MS = 30 * 24 * 60 * 60 * 1e3;
+var OBJECTIVE_PROFILE_MIN_INTERVAL_MS = 5 * 60 * 1e3;
+var OBJECTIVE_PROFILE_MAX_INTERVAL_MS = 6 * 60 * 60 * 1e3;
+
+// lib/objectives/deferredObjectives/concurrentEligibleTasks.ts
+var ELIGIBILITY_ABANDON_GRACE_MS = 60 * 60 * 1e3;
+
 // lib/utils/dateUtils.ts
 var timeZoneOffsetErrorLogged = /* @__PURE__ */ new Set();
 var DAY_START_SEARCH_WINDOW_MS = 72 * 60 * 60 * 1e3;
@@ -4712,48 +4741,21 @@ var parseLocalTime = (localTime) => {
   };
 };
 
+// lib/objectives/deferredObjectives/frozenHorizonPlan.ts
+var ONE_HOUR_MS3 = 60 * 60 * 1e3;
+
 // lib/objectives/deferredObjectives/policyHorizon.ts
 var HOUR_MS3 = 60 * 60 * 1e3;
 var PRICE_WINDOW_HOUR_MS = 60 * 60 * 1e3;
 
+// lib/objectives/deferredObjectives/frozenDiagnostic.ts
+var FROZEN_DEADLINE_RESERVE_MS = 60 * 60 * 1e3;
+var ONE_HOUR_MS4 = 60 * 60 * 1e3;
+
 // lib/objectives/deferredObjectives/rescueReplan.ts
 var DEFAULT_DEADLINE_RESERVE_MS = 60 * 60 * 1e3;
 
-// lib/objectives/deferredObjectives/trajectoryMilestone.ts
-var ONE_HOUR_MS = 60 * 60 * 1e3;
-
-// lib/objectives/deferredObjectives/settleWindow.ts
-var ONE_HOUR_MS2 = 60 * 60 * 1e3;
-var SCHEDULE_SETTLE_OFFSET_MS = 58 * 60 * 1e3;
-
-// lib/objectives/deferredObjectives/frozenHorizonPlan.ts
-var ONE_HOUR_MS3 = 60 * 60 * 1e3;
-
-// lib/objectives/rejectionLogging.ts
-var OBJECTIVE_PROFILE_REJECTION_LOG_THROTTLE_MS = 15 * 60 * 1e3;
-
-// lib/objectives/recovery.ts
-var RECOVERY_SAFETY_TIMEOUT_MS = 24 * 60 * 60 * 1e3;
-var RECOVERY_NO_PROGRESS_MIN_DURATION_MS = 30 * 60 * 1e3;
-
-// packages/shared-domain/src/steppedLoadObservedState.ts
-var isSteppedLoadSnapshot = (snapshot) => snapshot.steppedLoadProfile?.model === "stepped_load";
-
-// lib/objectives/samples.ts
-var OBJECTIVE_PROFILE_MAX_OBSERVATION_AGE_MS = 30 * 60 * 1e3;
-var OBJECTIVE_PROFILE_MAX_FUTURE_SKEW_MS = 5 * 1e3;
-
-// lib/objectives/profiles.ts
-var OBJECTIVE_PROFILE_RETENTION_MS = 30 * 24 * 60 * 60 * 1e3;
-var OBJECTIVE_PROFILE_MIN_INTERVAL_MS = 5 * 60 * 1e3;
-var OBJECTIVE_PROFILE_MAX_INTERVAL_MS = 6 * 60 * 60 * 1e3;
-
-// lib/objectives/deferredObjectives/concurrentEligibleTasks.ts
-var ELIGIBILITY_ABANDON_GRACE_MS = 60 * 60 * 1e3;
-
 // lib/objectives/deferredObjectives/diagnosticsBridge.ts
-var FROZEN_DEADLINE_RESERVE_MS = 60 * 60 * 1e3;
-var ONE_HOUR_MS4 = 60 * 60 * 1e3;
 var logger = getLogger("plan/deferred-diag-bridge");
 
 // lib/objectives/deferredObjectives/hoursRemainingCrossings.ts

@@ -636,63 +636,6 @@ export default tseslint.config(
       'max-lines': ['warn', { max: 900, skipBlankLines: true, skipComments: true }],
     },
   },
-  {
-    // The receipt producer composes six asymmetric smart-task history surfaces
-    // (succeeded timeline, missed shortfall chip, cost chip, abandoned details,
-    // ISO-week archive, 7-day strip). Externalizing its user-visible strings
-    // into `deferredPlanHistoryReceiptStrings.ts`
-    // (per `feedback_ui_text_shared_with_logs`) adds a ~30-line named-import
-    // block that pushes the producer just over the 500 cap; the strings
-    // themselves now live in the sibling module. Capped tightly so the producer
-    // can't grow new logic under the allowance — the +5 over the original 540
-    // is the cost-divisor scaling wiring (the øre→kr fix); its actual scaling
-    // helper + `WeekCostDisplay` type live in the sibling strings module, so
-    // only the import + per-producer divisor threading remains here. Bumped to
-    // 555 for cost-display provenance: each cost line now resolves the entry's
-    // RECORDED `CostDisplay` (so a scheme switch can't relabel an archived
-    // figure) and the ISO-week roll-up sums per-entry display cost + resolves a
-    // heading unit for mixed-scheme weeks. Bumped to 560 for the Phase 1B
-    // receipt-first cost narrative (the Succeeded chip's avg + delivered
-    // fragments); the figure formatting itself lives in the strings module.
-    // Reinforces the split-out target.
-    files: ['packages/shared-domain/src/deferredPlanHistoryReceipt.ts'],
-    rules: {
-      'max-lines': ['warn', { max: 560, skipBlankLines: true, skipComments: true }],
-    },
-  },
-  {
-    // The compatibility wrapper still keeps power-sample state and promise plumbing local while
-    // PlanRebuildScheduler owns the cross-intent queue. `schedulePlanRebuildFromPowerSample`
-    // remains a long orchestration function — keep `max-lines-per-function` raised until
-    // its decision-table flow can be split.
-    files: ['lib/plan/rebuildScheduler/powerDriven.ts'],
-    rules: {
-      'max-lines-per-function': ['warn', { max: 150, skipBlankLines: true, skipComments: true }],
-    },
-  },
-  {
-    // deferredPlanHistory aggregates the smart-task history formatters (postmortem, missed
-    // reason, observed coverage, overshoot line, chart-data resolver). v2.7.2 PR 6 added the
-    // overshoot helper + Usage-link label + miss-streak resolver; v2.7.3 stall promotion
-    // added `met-by-stall` variant + `resolveStalledMetPostmortem`, pushing the file
-    // further past the 500-line budget. Target: <=500 once a future PR splits the
-    // chart-data resolver (`deferredPlanHistoryChartData.ts`) out from the
-    // postmortem/list-shape helpers. Bumped in v2.9.x for the
-    // `met-by-device-cap` postmortem variant + resolver, then again for the
-    // `unknown`-with-plan postmortem branch (PR #1074 follow-up). Bumped
-    // again for the revision-log `hourDiffAriaLabel` formatter + normalize
-    // helper (PR #1197 follow-up batch 3). Bumped for the met-then-cooled
-    // displayed-end resolver (`resolveDisplayedEndValue`) that floors a met
-    // run's shown end at target so a "Succeeded · 64 → 39 °C" row no longer
-    // reads as a drop — and again when that resolver took a `metReason` arg to
-    // exclude stall-promoted mets (whose below-target plateau is intentional).
-    // Bumped by one to 656 for the cost-display provenance fallback resolver.
-    // Still targeting <=500 once the split lands.
-    files: ['packages/shared-domain/src/deferredPlanHistory.ts'],
-    rules: {
-      'max-lines': ['warn', { max: 656, skipBlankLines: true, skipComments: true }],
-    },
-  },
   // ---------------------------------------------------------------------------
   // Documented `max-lines` exceptions migrated out of file-level blanket
   // `/* eslint-disable max-lines */` pragmas (Bucket B in
@@ -709,24 +652,6 @@ export default tseslint.config(
     files: ['flowCards/registerFlowCards.ts'],
     rules: {
       'max-lines': ['warn', { max: 1148, skipBlankLines: true, skipComments: true }],
-    },
-  },
-  {
-    // Active-plan recorder keeps recording, diagnostics, and replay for one
-    // deferred-objective lifecycle together (they share the recorded-revision
-    // state). Target: <=500 once replay splits from the recorder.
-    files: ['lib/objectives/deferredObjectives/activePlanRecorder.ts'],
-    rules: {
-      'max-lines': ['warn', { max: 755, skipBlankLines: true, skipComments: true }],
-    },
-  },
-  {
-    // Diagnostics bridge keeps one payload-build pipeline per concern, mapping
-    // objective/power state into Settings-UI diagnostics shapes. Target: <=500
-    // once the per-concern payload builders split into sibling modules.
-    files: ['lib/objectives/deferredObjectives/diagnosticsBridge.ts'],
-    rules: {
-      'max-lines': ['warn', { max: 750, skipBlankLines: true, skipComments: true }],
     },
   },
   {

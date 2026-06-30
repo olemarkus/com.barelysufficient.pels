@@ -1037,8 +1037,19 @@ function formatTimeInTimeZone(date, options, timeZone) {
   return date.toLocaleTimeString([], { timeZone, ...options });
 }
 
+// packages/shared-domain/src/deferredPlanHistoryShared.ts
+var MINUTE_MS = 60 * 1e3;
+var HOUR_MS2 = 60 * MINUTE_MS;
+var snapshotShowsBudgetExhausted = (snapshot) => snapshot !== null && typeof snapshot.dailyBudgetExhaustedBucketCount === "number" && snapshot.dailyBudgetExhaustedBucketCount > 0;
+var pickLastPlan = (entry) => (
+  // Prefer the final plan's status — it reflects the planner's last word
+  // before finalization. Fall back to the original snapshot when the run
+  // finalized before the planner replanned (no finalPlan recorded).
+  entry.finalPlan ?? entry.originalPlan
+);
+
 // packages/shared-domain/src/deferredPlanHistoryHourlyStrip.ts
-var HOUR_MS2 = 60 * 60 * 1e3;
+var HOUR_MS3 = 60 * 60 * 1e3;
 
 // packages/shared-domain/src/deferredPlanHistory.ts
 var formatTemperature = (value) => value === null ? null : `${value.toFixed(1)} \xB0C`;
@@ -1089,15 +1100,6 @@ var OUTCOME_TONES = {
 };
 var getPlanHistoryOutcomeLabel = (outcome) => OUTCOME_LABELS[outcome];
 var getPlanHistoryOutcomeTone = (outcome) => OUTCOME_TONES[outcome];
-var MINUTE_MS = 60 * 1e3;
-var HOUR_MS3 = 60 * MINUTE_MS;
-var snapshotShowsBudgetExhausted = (snapshot) => snapshot !== null && typeof snapshot.dailyBudgetExhaustedBucketCount === "number" && snapshot.dailyBudgetExhaustedBucketCount > 0;
-var pickLastPlan = (entry) => (
-  // Prefer the final plan's status — it reflects the planner's last word
-  // before finalization. Fall back to the original snapshot when the run
-  // finalized before the planner replanned (no finalPlan recorded).
-  entry.finalPlan ?? entry.originalPlan
-);
 var formatPlanHistoryMissedReason = (entry) => {
   if (entry.outcome !== "missed") return null;
   const lastPlan = pickLastPlan(entry);
