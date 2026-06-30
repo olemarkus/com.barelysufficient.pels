@@ -1,9 +1,15 @@
 import https from 'https';
 
-// CA certificates for hvakosterstrommen.no (Cloudflare + SSL.com chain)
-// These are included to work around Homey's incomplete CA certificate bundle.
-// The chain is: hvakosterstrommen.no -> Cloudflare TLS Issuing ECC CA 1
-// -> SSL.com TLS Transit ECC CA R2 -> AAA Certificate Services
+// Pinned CA bundle, retained only as a *fallback* trust anchor for hosts whose
+// chain Homey's (historically incomplete) default CA bundle cannot build.
+//
+// These two certs were pinned when hvakosterstrommen.no chained through
+// Cloudflare -> SSL.com TLS Transit ECC CA R2 -> AAA Certificate Services (Comodo).
+// As of 2026-06-30 that host has rotated to a Google Trust Services chain
+// (hvakosterstrommen.no -> WE1 -> GTS Root R4 -> GlobalSign Root CA), which the
+// standard trust store validates — so the default path (tried first below) now
+// succeeds on its own and this pinned bundle no longer matches that host's live
+// chain. It is kept as a generic safety net; revisit if no host needs it.
 
 // AAA Certificate Services (Comodo Root CA) - expires 2028-12-31
 const COMODO_AAA_ROOT_CA = `-----BEGIN CERTIFICATE-----
@@ -71,10 +77,40 @@ class NotFoundError extends Error {
   public readonly statusCode = 404;
 }
 
+type TlsStrategy = {
+  name: string;
+  requestOptions: { rejectUnauthorized: boolean; ca?: string };
+};
+
 /**
-  * Make an HTTPS GET request and parse JSON response.
-  * For hvakosterstrommen.no, uses pinned CA certificates to work around Homey's incomplete CA bundle.
-  * Falls back to insecure connection only if pinned CA verification fails (e.g., CA changed).
+ * Ordered TLS strategies, most-standard first. The next strategy is tried only
+ * when the current one fails with an SSL/cert error; any other failure (network,
+ * timeout, non-200) rejects immediately — escalating TLS would not fix it.
+ *
+ * 1. default-ca — the standard trust store. Correct whenever the host's chain is
+ *    publicly anchored (true for hvakosterstrommen.no since its rotation to a
+ *    Google Trust Services / GlobalSign chain), so this normally succeeds outright.
+ * 2. pinned-ca  — the pinned bundle, only for `pinnedHosts`. Safety net for a Homey
+ *    trust store missing a root the host's chain needs.
+ * 3. insecure   — `rejectUnauthorized: false`, last resort, gated by `allowInsecureFallback`.
+ */
+function buildTlsStrategies(isPinnedHost: boolean, allowInsecureFallback: boolean): TlsStrategy[] {
+  return [
+    { name: 'default-ca', requestOptions: { rejectUnauthorized: true } },
+    ...(isPinnedHost
+      ? [{ name: 'pinned-ca', requestOptions: { rejectUnauthorized: true, ca: PINNED_CA_BUNDLE } }]
+      : []),
+    ...(allowInsecureFallback
+      ? [{ name: 'insecure', requestOptions: { rejectUnauthorized: false } }]
+      : []),
+  ];
+}
+
+/**
+  * Make an HTTPS GET request and parse the JSON response.
+  * Tries the standard trust store first, then (for pinned hosts) the pinned CA
+  * bundle, then an insecure connection — each step only on a TLS verification
+  * error. See `buildTlsStrategies` for the ordering and rationale.
   */
 export function httpsGetJson(url: string, options: HttpsJsonOptions = {}): Promise<unknown> {
   const {
@@ -87,13 +123,15 @@ export function httpsGetJson(url: string, options: HttpsJsonOptions = {}): Promi
   return new Promise((resolve, reject) => {
     const urlObj = new URL(url);
     const isPinnedHost = pinnedHosts.some((host) => urlObj.hostname === host || urlObj.hostname.endsWith(`.${host}`));
+    const strategies = buildTlsStrategies(isPinnedHost, allowInsecureFallback);
 
-    const makeRequest = (requestOptions: { rejectUnauthorized: boolean; ca?: string }) => {
+    const attempt = (index: number): void => {
+      const strategy = strategies[index];
       const req = https.get(
         url,
         {
           headers: { Accept: 'application/json' },
-          ...requestOptions,
+          ...strategy.requestOptions,
         },
         (res) => {
           if (res.statusCode === 404) {
@@ -120,9 +158,14 @@ export function httpsGetJson(url: string, options: HttpsJsonOptions = {}): Promi
       );
 
       req.on('error', (err: NodeJS.ErrnoException) => {
-        if (requestOptions.rejectUnauthorized && allowInsecureFallback && isSslError(err)) {
-          log?.(`SSL verification failed for ${url}, retrying with insecure fallback`);
-          makeRequest({ rejectUnauthorized: false });
+        const next = strategies[index + 1];
+        if (next && isSslError(err)) {
+          const reason = err.code ?? 'certificate error';
+          // Log host only (not the full URL) — httpsGetJson is generic and a URL may carry query secrets.
+          log?.(
+            `SSL verification failed for ${urlObj.host} via ${strategy.name} (${reason}); retrying with ${next.name}`,
+          );
+          attempt(index + 1);
           return;
         }
         reject(err);
@@ -134,11 +177,7 @@ export function httpsGetJson(url: string, options: HttpsJsonOptions = {}): Promi
       });
     };
 
-    if (isPinnedHost) {
-      makeRequest({ rejectUnauthorized: true, ca: PINNED_CA_BUNDLE });
-    } else {
-      makeRequest({ rejectUnauthorized: true });
-    }
+    attempt(0);
   });
 }
 
