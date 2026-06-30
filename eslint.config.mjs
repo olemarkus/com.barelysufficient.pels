@@ -703,26 +703,6 @@ export default tseslint.config(
   // in TODO.md (persona: contributor).
   // ---------------------------------------------------------------------------
   {
-    // Centralized device transport: owns SDK setup, snapshot refresh, realtime
-    // drift reconciliation, binary-settle ops, observedStateDispatcher wiring,
-    // and all device writes in one coordination point. Only split on a clear
-    // subsystem boundary (god-file-policy.md Bucket B). Target: <=500 once a
-    // transport subsystem peels off. The targeted-refresh overlay/grace logic
-    // lives in `transport/targetedSnapshotMerge.ts`; only its thin call sites
-    // and the miss-state field remain here.
-    // The minimal managed-observe-only battery + solar wiring (the two producer fields +
-    // construction, the `isBatteryDevice`/`isSolarDevice` accessors, the shared
-    // `observeBatteryStateFromList` detect-before-parse hook driving both producers, and
-    // the realtime `noteBatteryDevice`/`noteSolarDevice` top-ups) overflows the prior
-    // ceiling by a handful of lines; the per-poll resolution itself lives in
-    // `batteryStateProducer.ts` / `solarProductionProducer.ts`. Tracked for extraction
-    // in TODO.md (Bucket B).
-    files: ['lib/device/deviceTransport.ts'],
-    rules: {
-      'max-lines': ['warn', { max: 2261, skipBlankLines: true, skipComments: true }],
-    },
-  },
-  {
     // Flat Homey Flow-card registration surface — one big registrar that wires
     // every trigger/condition/action card. No branching logic to extract; only
     // split if registration gains deeper per-card behavior (god-file-policy.md).
