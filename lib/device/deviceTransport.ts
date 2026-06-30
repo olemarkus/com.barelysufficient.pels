@@ -29,10 +29,9 @@ import type {
 import type { TransportDeviceSnapshot } from './transportDeviceSnapshot';
 import { projectObservedState } from './observedStateProjection';
 import type { HomeyDeviceLike, Logger } from '../utils/types';
-import { getDeviceId } from './transport/managerHelpers';
-import { type TargetedMissState } from './transport/targetedSnapshotMerge';
-import { type PowerEstimateState } from './devicePowerEstimate';
-import { type LiveDevicePowerWatts } from './managerEnergy';
+import type { TargetedMissState } from './transport/targetedSnapshotMerge';
+import type { PowerEstimateState } from './devicePowerEstimate';
+import type { LiveDevicePowerWatts } from './managerEnergy';
 import { BatteryStateProducer } from './batteryStateProducer';
 import { SolarProductionProducer } from './solarProductionProducer';
 import { DeviceMeasuredPowerResolver } from './measuredPowerResolver';
@@ -47,11 +46,11 @@ import {
 import type { StructuredDebugEmitter } from '../logging/logger';
 import { getLogger } from '../logging/logger';
 import { createDeviceLiveFeed, type DeviceLiveFeed, type LiveFeedHealth } from './liveFeed';
-import {
-  type ObservationCursor,
-  type ObservedDeviceStateEvent,
-  type ObservedDeviceStateRefreshEvent,
-  type PlanRealtimeUpdateEvent,
+import type {
+  ObservationCursor,
+  ObservedDeviceStateEvent,
+  ObservedDeviceStateRefreshEvent,
+  PlanRealtimeUpdateEvent,
 } from './transport/managerRealtimeHandlers';
 import { normalizeError } from '../utils/errorUtils';
 import {
@@ -60,12 +59,11 @@ import {
   type DeviceDebugObservedSources,
   type DeviceTransportObservationState,
 } from './transport/managerObservation';
-import {
-  type DeviceTransportParseProviders,
+import type {
+  DeviceTransportParseProviders,
 } from './transport/managerParseDevice';
 import { applyDeviceDriverOverride } from './transport/managerParseIdentity';
 import { syncNativeSteppedLoadCommandAdapters } from './managerNativeSteppedCommand';
-import { applyDeviceCompatibilityMetadata } from './compatibility';
 import type { DeviceObservation } from './deviceObservation';
 import type { TransportContext } from './transport/transportContext';
 import type { BinarySettleState } from '../observer/binarySettle';
@@ -280,7 +278,9 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             consultPendingPredicate: (deviceId, capabilityId) => t.consultPendingPredicate(deviceId, capabilityId),
             shouldTrackRealtimeDevice: (deviceId) => t.shouldTrackRealtimeDevice(deviceId),
             getBinarySettleDeps: () => t.getBinarySettleDeps(),
-            applyDeviceDriverOverride: (device) => t.applyDeviceDriverOverride(device),
+            applyDeviceDriverOverride: (device) => (
+                applyDeviceDriverOverride(device, t.providers.getDeviceDriverIdOverride)
+            ),
             parseDevice: (device, now, livePowerWByDeviceId) => t.parseDevice(device, now, livePowerWByDeviceId),
             syncTrackedNativeSteppedLoadAdapters: () => t.syncTrackedNativeSteppedLoadAdapters(),
             setTrackedDevice: (deviceId, device) => { t.latestTrackedDevicesById.set(deviceId, device); },
@@ -373,7 +373,8 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     // snapshot parse pipeline produces) so test assertions can read the
     // stepped-descriptor + reported-step probe fields the base type omits.
     parseDeviceListForTests(list: HomeyDeviceLike[]): TransportDeviceSnapshot[] {
-        const effectiveList = list.map((device) => this.applyDeviceDriverOverride(device));
+        const resolveOverride = this.providers.getDeviceDriverIdOverride;
+        const effectiveList = list.map((device) => applyDeviceDriverOverride(device, resolveOverride));
         runSyncTrackedDevices(this.ctx, effectiveList);
         return parseSnapshotDeviceList(this.ctx, effectiveList, {}, 'unfiltered');
     }
@@ -494,14 +495,6 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     getLiveFeedHealth(): LiveFeedHealth | null { return this.liveFeed?.getHealth() ?? null; }
     private shouldTrackRealtimeDevice(deviceId: string): boolean {
         return this.providers.getManaged ? this.providers.getManaged(deviceId) === true : true;
-    }
-
-    private applyDeviceDriverOverride(device: HomeyDeviceLike): HomeyDeviceLike {
-        const compatibleDevice = applyDeviceCompatibilityMetadata(device);
-        return applyDeviceDriverOverride(
-            compatibleDevice,
-            this.providers.getDeviceDriverIdOverride?.(getDeviceId(device)),
-        );
     }
 
     public destroy(): void {

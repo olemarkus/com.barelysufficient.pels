@@ -172,7 +172,9 @@ export const resolveSteppedLoadInitialDesiredStepId = (
   return getSteppedLoadStep(profile, resolvePlannerEffectiveStepId(device))?.id ?? undefined;
 };
 
-/* eslint-disable complexity, sonarjs/cognitive-complexity */
+/* eslint-disable complexity, sonarjs/cognitive-complexity --
+   stepped-load transition decision table: mutually-exclusive shed/restore/step
+   cases read clearer as one top-to-bottom table than split across helpers. */
 export const resolveSteppedLoadTransition = (
   device: StepTransitionCapableDevice,
   plannedDesiredStepId = device.desiredStepId,

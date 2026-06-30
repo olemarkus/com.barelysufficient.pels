@@ -531,13 +531,6 @@ CI failure, so future field-move slices can't silently grow the debt.*
       `getKeys()` as untrusted and retries instead of committing). Source: pels-runtime-reality
       on PR #1678, 2026-06-11.
 
-- [ ] **Split `packages/shared-domain/src/deferredPlanHistoryReceipt.ts`.** The eslint
-      `max-lines` waiver has been ratcheted twice (540→555→560 in `eslint.config.mjs`) and the
-      waiver comment itself names the file a split-out target. The producer composes six
-      asymmetric surfaces with natural seams (succeeded timeline / miss chips / abandoned
-      details / ISO-week archive / 7-day strip); split along them so the next surface doesn't
-      ratchet again. Source: pels-layering-guardian on PR #1681, 2026-06-11.
-
 - [ ] **Give the smart-task live schedule chart's encodings an on-chart decode path.** The
       schedule card's three encodings (price-tone colour, opacity = scheduled, changed-hour dot)
       have no legend; disclosure is scrub-readout-only. Hypothesis: a 4-word caption legend
@@ -611,17 +604,19 @@ live-walk screenshots.*
       Files: `lib/plan/restore/index.ts` (returns `{ plannedState, reason }` bundled),
       `lib/plan/planReasons.ts` (mixes reason normalization with shed-temperature hold decisions),
       plan/executor/rendering boundaries.
-- [ ] Split the larger Bucket-B god-files toward <=500 when next touched (named here so the ceilings in
-      `eslint.config.mjs` are accountable, not permanent): `lib/device/deviceTransport.ts` (~2578, peel off a
-      transport subsystem on a clear boundary), `lib/plan/restore/index.ts` (~1414, swap-flow vs per-device
-      restore gating), `flowCards/registerFlowCards.ts` (~1258, only if registration gains per-card behavior),
-      `lib/plan/planBuilder.ts` (~1257, overshoot/meta builders), `lib/device/transport/managerObservation.ts`
-      (~1082, retained-observation accounting), `lib/plan/planReasons.ts` (~1124, reason-normalization vs hold
-      decisions), `lib/plan/planService.ts` (~936, reconcile vs rebuild), `lib/executor/steppedLoadExecutor.ts`
-      (~845), `lib/objectives/deferredObjectives/activePlanRecorder.ts` (~1208, replay split) and
-      `diagnosticsBridge.ts` (~1028, per-concern payload builders), `setup/appDebugHelpers.ts` (~779, comparison
-      serializer). Persona: contributor. Large structural splits — out of scope for the exemption sweep.
-      Files: as listed.
+- [ ] **Split the `PelsApp` class so `app.ts` reaches <=500** — the last Bucket-B god-file still
+      carrying a `max-lines` override (lowered 1907→1110 by the eslint-cleanup train, not deleted).
+      Every other Bucket-B god-file was decomposed under 500 and its override deleted (the
+      eslint-cleanup train, PRs #1786–#1796: deviceTransport 2261→491, restore/index 1340→379,
+      registerFlowCards 1148→148, deviceDiagnosticsService 1200→320, plus planBuilder / planReasons /
+      planService / planExecutor / steppedLoadExecutor / managerObservation / planDevices /
+      activePlanRecorder / diagnosticsBridge / deferredPlanHistory(+Receipt) / powerDriven /
+      appDebugHelpers). Remaining: `app.ts` is the `Homey.App` composition root (~40 service fields +
+      the `implements AppContext` delegator surface + the smart-task widget API); reaching <500 needs
+      splitting `PelsApp` into sub-controllers — a large entrypoint restructure, out of scope for the
+      behavior-neutral exemption sweep. The `import-x/max-dependencies` overrides on `app.ts` (50) and
+      `setup/appServiceWiring.ts` (30) — the two composition roots — are accountable here too.
+      Persona: contributor.
 *Smart-task controller extraction (2026-05-30, `feat/smarttask-lifecycle-producer`).
 Program to make the planner know nothing about smart tasks (deferred objectives):
 relocate the lifecycle out of `lib/plan` into a clock-driven controller that
@@ -656,8 +651,9 @@ cosmetic chores — do them in passing or drop them; don't park them here.*
       a fix.
       *Why it's needed:* a small `ObserveOnlyDeviceRegistry` (owning the per-role producers + the membership-set
       resolution) would let app.ts/deviceTransport delegate instead of grow, and make the next role a localized
-      add. Tracked alongside the broader Bucket-B split of `deviceTransport.ts` above. Source: PR-D runtime-reality
-      review, 2026-06-27.
+      add. Update: `deviceTransport.ts` was since decomposed to 491 lines with its `max-lines` override DELETED
+      (eslint-cleanup train), so the deviceTransport-ceiling motivation no longer applies; this is now a cohesion
+      improvement (and helps the remaining `app.ts` class-split above). Source: PR-D runtime-reality review, 2026-06-27.
 
 - [ ] **Home battery: distinguish a real home battery from a controllable load mislabeled with the `homeBattery` energy role.**
       *Persona:* Orchestrator (`notes/personas.md`) running a third-party driver that sets

@@ -21,7 +21,7 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
   return {
     ...plan,
     // Keeping the live-plan merge in one place makes reconciliation easier to audit.
-    // eslint-disable-next-line complexity
+    // eslint-disable-next-line complexity -- wide live/prior field merge; ?? fallbacks + discriminant re-tie inherent
     devices: plan.devices.map((device) => {
       const live = liveById.get(device.id);
       if (!live) return device;

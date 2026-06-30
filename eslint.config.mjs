@@ -5,6 +5,7 @@ import functional from 'eslint-plugin-functional';
 import sonarjs from 'eslint-plugin-sonarjs';
 import unicorn from 'eslint-plugin-unicorn';
 import noUnsanitized from 'eslint-plugin-no-unsanitized';
+import importX from 'eslint-plugin-import-x';
 import globals from 'globals';
 
 const sharedTypeScriptRules = {
@@ -34,6 +35,7 @@ const sharedGeneralRules = {
   'max-nested-callbacks': ['warn', 3],
   'max-params': ['warn', 5],
   'max-statements': ['warn', 30],
+  'max-classes-per-file': ['warn', 1],
   'complexity': ['warn', 15],
   'comma-dangle': ['error', 'always-multiline'],
   'operator-linebreak': ['error', 'before'],
@@ -467,6 +469,7 @@ export default tseslint.config(
       'sonarjs/no-identical-functions': 'off',
       'sonarjs/no-duplicated-branches': 'off',
       'max-len': 'off',
+      'max-classes-per-file': 'off',
     },
   },
   // Settings UI files - browser environment
@@ -611,6 +614,7 @@ export default tseslint.config(
       'sonarjs/no-identical-functions': 'off',
       'sonarjs/no-duplicated-branches': 'off',
       'max-len': 'off',
+      'max-classes-per-file': 'off',
     },
   },
   {
@@ -627,15 +631,6 @@ export default tseslint.config(
     files: ['app.ts'],
     rules: {
       'max-lines': ['warn', { max: 1110, skipBlankLines: true, skipComments: true }],
-    },
-  },
-  {
-    // DeviceManager still owns snapshot refresh, realtime drift reconciliation, and binary settle
-    // windows over one shared mutable snapshot. Target: <=850 after the post-Phase-7 helper
-    // cleanup trims the remaining orchestration bulk.
-    files: ['lib/device/manager.ts'],
-    rules: {
-      'max-lines': ['warn', { max: 900, skipBlankLines: true, skipComments: true }],
     },
   },
   // ---------------------------------------------------------------------------
@@ -664,6 +659,44 @@ export default tseslint.config(
     ],
     rules: {
       'no-console': 'error',
+    },
+  },
+  // Governance: cap a runtime module's VALUE-import fan-in as a god-module guard
+  // (ignoreTypeImports, so type-only deps don't count). Domain/backend modules
+  // must stay under 20 distinct runtime deps; this is the responsibility-fan-in
+  // signal that line count alone misses. The one legitimately-high file (the
+  // composition root) gets the explicit override just below.
+  {
+    files: ['app.ts', 'api.ts', 'lib/**/*.ts', 'setup/**/*.ts', 'flowCards/**/*.ts', 'drivers/**/*.ts'],
+    ignores: ['**/*.test.ts'],
+    plugins: { 'import-x': importX },
+    rules: {
+      'import-x/max-dependencies': ['error', { max: 20, ignoreTypeImports: true }],
+    },
+  },
+  // app.ts is the Homey.App composition root: it constructs and wires the ~22
+  // service/adapter objects as fields, so its runtime fan-in is inherently high
+  // and not reducible without laundering the imports into another setup/* file
+  // that would breach the same cap. The single principled exception (the only
+  // backend file over 20 after the type-only conversions; deviceTransport was
+  // brought under 20 instead of overridden).
+  {
+    files: ['app.ts'],
+    plugins: { 'import-x': importX },
+    rules: {
+      'import-x/max-dependencies': ['error', { max: 50, ignoreTypeImports: true }],
+    },
+  },
+  // setup/appServiceWiring.ts is the service-construction half of the composition
+  // root (PR8 moved the `new Service(...)`/`createService(...)` calls here out of
+  // app.ts). Its value-import fan-in is the set of service constructors it wires,
+  // inherently high and not type-only-reducible. The second principled override;
+  // splitting it further would only fragment the boot graph and launder the count.
+  {
+    files: ['setup/appServiceWiring.ts'],
+    plugins: { 'import-x': importX },
+    rules: {
+      'import-x/max-dependencies': ['error', { max: 30, ignoreTypeImports: true }],
     },
   },
 );
