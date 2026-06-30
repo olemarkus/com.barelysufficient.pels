@@ -261,8 +261,7 @@ const turnOffDevice = async (
     const hasTarget = Array.isArray(snapshotEntry?.targets) && snapshotEntry.targets.length > 0;
     if (shedActuationStampsCapacityMarkers(lifecycleRelease)) {
       const now = Date.now();
-      // eslint-disable-next-line no-param-reassign, functional/immutable-data -- Shared executor state update.
-      ctx.state.lastDeviceShedMs[deviceId] = now;
+      ctx.state.markDeviceShed(deviceId, now);
     }
     logger.debug({
       event: 'binary_command_skipped',

@@ -95,9 +95,23 @@ export type OvershootTrackedPlanDevice = Pick<
     pendingTargetCommand: boolean;
   };
 
-export type PlanEngineState = {
+/**
+ * Shared plan-engine state. Modelled as a `class` (not a plain object) so the
+ * executor's cross-cutting mutations go through narrow mutator METHODS: in
+ * `lib/executor` (where `functional/immutable-data` / `no-param-reassign` are
+ * ON) the old in-place `state.x = …` writes needed a per-site disable, whereas
+ * `this.*` writes inside these methods are exempt via the rules' `ignoreClasses`.
+ * All data fields stay PUBLIC; they're read transparently by reference across
+ * `lib/plan`, and the planner mutates them directly there (allowed because
+ * `lib/plan` is a hot-path dir with `functional/immutable-data` off). Construct
+ * only via `createPlanEngineState`. No code spreads/clones this object, so the
+ * loss of methods under a hypothetical spread is moot.
+ */
+export class PlanEngineState {
   appStartedAtMs: number;
-  lastDeviceControlledMs: Record<string, number>;
+
+  lastDeviceControlledMs: Record<string, number> = {};
+
   /**
    * Actuation-time clock: the timestamp the executor last actually turned a
    * device off for capacity. Written by the executor — `recordShedActuation`
@@ -109,7 +123,8 @@ export type PlanEngineState = {
    * already off (write skipped) has no entry here. That decision-time
    * question is `shedDecidedMs`.
    */
-  lastDeviceShedMs: Record<string, number>;
+  lastDeviceShedMs: Record<string, number> = {};
+
   /**
    * Decision-time clock: the timestamp the planner decided a device should be
    * held in capacity-shed posture. Owned by the planner — edge-set at plan
@@ -124,13 +139,20 @@ export type PlanEngineState = {
    * under-stamps and lets a device restore early. See
    * `notes/state-management/deferred-objective-lifecycle-carveout.md`.
    */
-  shedDecidedMs: Record<string, number>;
-  lastDeviceRestoreMs: Record<string, number>;
-  activationAttemptByDevice: Record<string, ActivationAttemptState>;
-  surplusEligibilityByDevice: Record<string, SurplusEligibilityState>;
-  headroomCardByDevice: Record<string, HeadroomCardState>;
-  pendingSheds: Set<string>;
-  pendingRestores: Set<string>;
+  shedDecidedMs: Record<string, number> = {};
+
+  lastDeviceRestoreMs: Record<string, number> = {};
+
+  activationAttemptByDevice: Record<string, ActivationAttemptState> = {};
+
+  surplusEligibilityByDevice: Record<string, SurplusEligibilityState> = {};
+
+  headroomCardByDevice: Record<string, HeadroomCardState> = {};
+
+  pendingSheds: Set<string> = new Set<string>();
+
+  pendingRestores: Set<string> = new Set<string>();
+
   pendingBinaryCommands: Record<string, {
     capabilityId: BinaryControlCapabilityId;
     desired: boolean;
@@ -148,47 +170,78 @@ export type PlanEngineState = {
     lastObservedValue?: boolean | string;
     lastObservedSource?: PendingTargetObservationSource;
     lastObservedAtMs?: number;
-  }>;
-  pendingTargetCommands: Record<string, PendingTargetCommandState>;
-  lastInstabilityMs: number | null;
-  lastRecoveryMs: number | null;
-  lastRestoreMs: number | null;
-  lastPlannedShedIds: Set<string>;
-  lastShedPlanMeasurementTs: number | null;
-  swapByDevice: Record<string, SwapEntry>;
-  inShortfall: boolean;
-  restoreCooldownMs: number;
-  lastRestoreCooldownBumpMs: number | null;
-  startupRestoreBlockedUntilMs: number | null;
-  currentRebuildReason: string | null;
-  lastPowerFreshnessState: PowerFreshnessState | null;
-  hourlyBudgetExhausted: boolean;
-  wasOvershoot: boolean;
-  overshootLogged: boolean;
-  softOvershootPendingSinceMs: number | null;
-  overshootStartedMs: number | null;
-  lastOvershootEscalationMs: number | null;
-  lastOvershootMitigationMs: number | null;
-  lastPlanTotalKw: number | null;
-  lastPlanBuiltAtMs: number | null;
-  lastPlanDevicesById: Record<string, OvershootTrackedPlanDevice>;
-  temperatureBoostActiveByDevice: Record<string, boolean>;
-  evBoostActiveByDevice: Record<string, boolean>;
+  }> = {};
+
+  pendingTargetCommands: Record<string, PendingTargetCommandState> = {};
+
+  lastInstabilityMs: number | null = null;
+
+  lastRecoveryMs: number | null = null;
+
+  lastRestoreMs: number | null = null;
+
+  lastPlannedShedIds: Set<string> = new Set<string>();
+
+  lastShedPlanMeasurementTs: number | null = null;
+
+  swapByDevice: Record<string, SwapEntry> = {};
+
+  inShortfall: boolean = false;
+
+  restoreCooldownMs: number = RESTORE_COOLDOWN_MS;
+
+  lastRestoreCooldownBumpMs: number | null = null;
+
+  startupRestoreBlockedUntilMs: number | null = null;
+
+  currentRebuildReason: string | null = null;
+
+  lastPowerFreshnessState: PowerFreshnessState | null = null;
+
+  hourlyBudgetExhausted: boolean = false;
+
+  wasOvershoot: boolean = false;
+
+  overshootLogged: boolean = false;
+
+  softOvershootPendingSinceMs: number | null = null;
+
+  overshootStartedMs: number | null = null;
+
+  lastOvershootEscalationMs: number | null = null;
+
+  lastOvershootMitigationMs: number | null = null;
+
+  lastPlanTotalKw: number | null = null;
+
+  lastPlanBuiltAtMs: number | null = null;
+
+  lastPlanDevicesById: Record<string, OvershootTrackedPlanDevice> = {};
+
+  temperatureBoostActiveByDevice: Record<string, boolean> = {};
+
+  evBoostActiveByDevice: Record<string, boolean> = {};
+
   // Per-device: true when a surplus-absorb lift is the binding cause of this cycle's
   // planned target (it raised the setpoint above the price/base target and no deadline
   // floor overrode it). Drives the device card's "Raised to use your solar power" reason.
-  surplusAbsorbActiveByDevice: Record<string, boolean>;
-  lastOvershootSummarySignature: string | null;
+  surplusAbsorbActiveByDevice: Record<string, boolean> = {};
+
+  lastOvershootSummarySignature: string | null = null;
+
   steppedRestoreRejectedByDevice: Record<string, {
     requestedStepId: string;
     lowestNonZeroStepId: string;
     shedDeviceCount: number;
-  }>;
+  }> = {};
+
   keepInvariantShedBlockedByDevice: Record<string, {
     desiredStepId: string;
     lowestNonZeroStepId: string;
-  }>;
-  restoreDecisionLogByKey: Record<string, string>;
+  }> = {};
+
+  restoreDecisionLogByKey: Record<string, string> = {};
+
   /**
    * Per-device transient state for the mode-target capability read in
    * `resolveTemperatureSeed`. Used by the abandon-grace window so a single
@@ -212,52 +265,60 @@ export type PlanEngineState = {
     cachedTargetCapabilityId?: string;
     lastEmitAtMs?: number;
     lastEmitEvent?: 'missing_mode_target' | 'missing_mode_target_and_current_target';
-  }>;
-};
+  }> = {};
+
+  constructor(nowTs = Date.now()) {
+    this.appStartedAtMs = nowTs;
+  }
+
+  /** Stamp the actuation-time shed clock for a device (executor turn-off). */
+  markDeviceShed(deviceId: string, nowMs: number): void {
+    this.lastDeviceShedMs[deviceId] = nowMs;
+  }
+
+  /** Clear the actuation-time shed clock for a device. */
+  clearDeviceShed(deviceId: string): void {
+    delete this.lastDeviceShedMs[deviceId];
+  }
+
+  /** Clear the decision-time shed clock for a device. */
+  clearShedDecision(deviceId: string): void {
+    delete this.shedDecidedMs[deviceId];
+  }
+
+  /** Record a stepped-load keep-invariant shed block for a device. */
+  setKeepInvariantShedBlock(
+    deviceId: string,
+    entry: PlanEngineState['keepInvariantShedBlockedByDevice'][string],
+  ): void {
+    this.keepInvariantShedBlockedByDevice[deviceId] = entry;
+  }
+
+  /** Clear a stepped-load keep-invariant shed block for a device. */
+  clearKeepInvariantShedBlock(deviceId: string): void {
+    delete this.keepInvariantShedBlockedByDevice[deviceId];
+  }
+
+  /** Drop the pending target-command record for a device (confirmed/settled). */
+  deletePendingTargetCommand(deviceId: string): void {
+    delete this.pendingTargetCommands[deviceId];
+  }
+
+  /**
+   * Clear the pending-target markers on a device's swap entry, dropping the
+   * entry entirely once it carries no residual swap state.
+   */
+  clearPendingSwapTarget(deviceId: string): void {
+    const swapEntry = this.swapByDevice[deviceId];
+    if (!swapEntry) return;
+    delete swapEntry.pendingTarget;
+    delete swapEntry.timestamp;
+    if (!swapEntry.swappedOutFor && swapEntry.lastPlanMeasurementTs === undefined) {
+      delete this.swapByDevice[deviceId];
+    }
+  }
+}
 
 export function createPlanEngineState(nowTs = Date.now()): PlanEngineState {
-  return {
-    appStartedAtMs: nowTs,
-    lastDeviceControlledMs: {},
-    lastDeviceShedMs: {},
-    shedDecidedMs: {},
-    lastDeviceRestoreMs: {},
-    activationAttemptByDevice: {},
-    surplusEligibilityByDevice: {},
-    headroomCardByDevice: {},
-    pendingSheds: new Set<string>(),
-    pendingRestores: new Set<string>(),
-    pendingBinaryCommands: {},
-    pendingTargetCommands: {},
-    lastInstabilityMs: null,
-    lastRecoveryMs: null,
-    lastRestoreMs: null,
-    lastPlannedShedIds: new Set<string>(),
-    lastShedPlanMeasurementTs: null,
-    swapByDevice: {},
-    inShortfall: false,
-    restoreCooldownMs: RESTORE_COOLDOWN_MS,
-    lastRestoreCooldownBumpMs: null,
-    startupRestoreBlockedUntilMs: null,
-    currentRebuildReason: null,
-    lastPowerFreshnessState: null,
-    hourlyBudgetExhausted: false,
-    wasOvershoot: false,
-    overshootLogged: false,
-    softOvershootPendingSinceMs: null,
-    overshootStartedMs: null,
-    lastOvershootEscalationMs: null,
-    lastOvershootMitigationMs: null,
-    lastPlanTotalKw: null,
-    lastPlanBuiltAtMs: null,
-    lastPlanDevicesById: {},
-    temperatureBoostActiveByDevice: {},
-    evBoostActiveByDevice: {},
-    surplusAbsorbActiveByDevice: {},
-    lastOvershootSummarySignature: null,
-    steppedRestoreRejectedByDevice: {},
-    keepInvariantShedBlockedByDevice: {},
-    restoreDecisionLogByKey: {},
-    modeTargetMissingByDevice: {},
-  };
+  return new PlanEngineState(nowTs);
 }

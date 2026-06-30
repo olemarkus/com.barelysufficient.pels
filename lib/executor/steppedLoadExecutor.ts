@@ -153,8 +153,7 @@ export const applySteppedLoadRestore = async (
     });
   }
   if (applyKeepInvariantShedBlock(ctx, action, name, hasShedDevices, requestedStepId)) return NOT_RESTORED;
-  // eslint-disable-next-line no-param-reassign, functional/immutable-data -- Shared executor state update.
-  delete ctx.state.keepInvariantShedBlockedByDevice[action.id];
+  ctx.state.clearKeepInvariantShedBlock(action.id);
   const binaryRestoreSkip = maybeSkipSteppedLoadRestoreBinary(ctx, {
     action,
     snapshot,

@@ -28,8 +28,7 @@ export const syncPendingTargetCommandAfterActuation = async (
   const latestObservedValueAfterActuation = getLatestObservedTargetValue(ctx, deviceId, targetCap);
   let pendingStillExists = hasMatchingPendingTargetCommand(ctx, deviceId, targetCap, desired);
   if (pendingStillExists && Object.is(latestObservedValueAfterActuation, desired)) {
-    // eslint-disable-next-line no-param-reassign, functional/immutable-data -- Shared executor state update.
-    delete ctx.state.pendingTargetCommands[deviceId];
+    ctx.state.deletePendingTargetCommand(deviceId);
     pendingStillExists = false;
     ctx.syncLivePlanStateAfterTargetActuation?.('realtime_capability');
     logger.debug({
