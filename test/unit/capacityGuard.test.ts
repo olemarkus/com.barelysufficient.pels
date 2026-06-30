@@ -218,7 +218,6 @@ describe('CapacityGuard', () => {
         activePlannedShedDevices: 2,
         activeControlledDevices: 2,
         zeroDrawControlledDevices: 0,
-        staleControlledDevices: 0,
         pendingControlledDevices: 1,
         blockedByCooldownDevices: 0,
         blockedByPenaltyDevices: 0,

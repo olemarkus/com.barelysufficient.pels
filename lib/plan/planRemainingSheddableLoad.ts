@@ -47,7 +47,6 @@ type RemainingSheddableBaseDevice = RemainingSheddablePowerFields & RemainingShe
   currentState?: string;
   budgetExempt: boolean;
   controlCapabilityId?: BinaryControlCapabilityId;
-  observationStale?: boolean;
 };
 
 export type RemainingSheddableTemperatureTarget = {
@@ -122,7 +121,6 @@ type RemainingSheddableSourceDevice = RemainingSheddablePowerFields & RemainingS
   currentState?: string;
   budgetExempt?: boolean;
   controlCapabilityId?: BinaryControlCapabilityId;
-  observationStale?: boolean;
 };
 
 export function normalizeRemainingShedBehavior(behavior: RawShedBehavior): RemainingShedBehavior {
@@ -293,7 +291,6 @@ function toRemainingSheddableBaseDevice(device: RemainingSheddableSourceDevice):
     currentState: device.currentState,
     budgetExempt: device.budgetExempt === true,
     controlCapabilityId: device.controlCapabilityId,
-    observationStale: device.observationStale,
     measuredPowerKw: device.measuredPowerKw,
     expectedPowerKw: device.expectedPowerKw,
     planningPowerKw: device.planningPowerKw,

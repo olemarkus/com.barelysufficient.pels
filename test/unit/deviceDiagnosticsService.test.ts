@@ -4,6 +4,10 @@ import {
   DeviceDiagnosticsService,
 } from '../../lib/diagnostics/deviceDiagnosticsService';
 import type { DeviceDiagnosticsPlanObservation } from '../../lib/diagnostics/deviceDiagnosticsService';
+import {
+  isDeviceObservationStale,
+  STALE_DEVICE_OBSERVATION_MS,
+} from '../../lib/observer/observationFreshness';
 import { createDeviceDiagnosticsStateStore } from '../../setup/deviceDiagnosticsStateAdapter';
 
 type MockSettings = {
@@ -65,6 +69,7 @@ const buildObservation = (
   suppressionState: 'counting',
   countingCause: 'capacity',
   pauseReason: null,
+  // Observer-resolved freshness; a fresh observation is eligible to count.
   observationFresh: true,
   ...overrides,
 });
@@ -1032,7 +1037,6 @@ describe('DeviceDiagnosticsService', () => {
       nowTs: start + (57 * 60 * 1000),
       observations: [buildObservation({
         eligibleForStarvation: false,
-        observationFresh: false,
         currentTemperatureC: null,
         intendedNormalTargetC: null,
         targetStepC: null,
@@ -1048,6 +1052,33 @@ describe('DeviceDiagnosticsService', () => {
     expect(starvation?.starvationEpisodeStartedAt).toBeUndefined();
     expect(starvation?.starvationCause).toBeNull();
     expect(starvation?.starvationPauseReason).toBeNull();
+  });
+
+  it('does NOT count starvation while the observation is stale (REAL freshness over aged lastFreshDataMs)', () => {
+    // A stale observation is not "confirmed no progress": even though the device
+    // is eligible and PELS holds it below target (suppressionState 'counting'),
+    // a not-fresh observation gates it out of counting. Drive the REAL freshness
+    // resolver over an aged `lastFreshDataMs` (not a hand-set flag), so removing
+    // the `observationFresh` gate would make this accumulate and fail.
+    const { service } = createDeps();
+    const start = Date.now();
+    const observationFresh = !isDeviceObservationStale(
+      { lastFreshDataMs: start - STALE_DEVICE_OBSERVATION_MS - 60_000 },
+      start,
+    );
+    expect(observationFresh).toBe(false);
+
+    for (const minute of [0, 9, 16, 30, 45]) {
+      service.observePlanSample({
+        nowTs: start + (minute * 60 * 1000),
+        observations: [buildObservation({ observationFresh })],
+      });
+    }
+
+    const starvation = getStarvationState(service);
+    expect(starvation?.isStarved).toBe(false);
+    expect(starvation?.starvedAccumulatedMs).toBe(0);
+    expect(starvation?.starvationEpisodeStartedAt).toBeUndefined();
   });
 
   it('emits structured logs for starvation lifecycle transitions', () => {
@@ -1156,7 +1187,6 @@ describe('DeviceDiagnosticsService', () => {
       nowTs: start + (18 * 60 * 1000),
       observations: [buildObservation({
         eligibleForStarvation: false,
-        observationFresh: false,
         currentTemperatureC: null,
         intendedNormalTargetC: null,
         targetStepC: null,

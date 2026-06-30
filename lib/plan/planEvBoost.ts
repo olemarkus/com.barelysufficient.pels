@@ -37,7 +37,6 @@ export function emitEvBoostStateChange(params: {
     // block reason as a flat base field. Log that instead (null when the charger
     // is commandable).
     evBlockReason: dev.evBlockReason ?? null,
-    observationStale: dev.observationStale === true,
   });
 }
 

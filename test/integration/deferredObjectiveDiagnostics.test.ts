@@ -1779,20 +1779,16 @@ describe('buildDeferredObjectiveDiagnostics', () => {
   it('plans a temperature objective from a quiescent thermostat whose last observation has aged out', () => {
     // Many Homey thermostat drivers only push capability updates on value
     // change, so a perfectly working device steady at setpoint can sit
-    // aged-out for hours. `appInit.ts` flips `observationStale` to true on
-    // those devices via the same 40-minute heuristic — so the production
-    // device snapshot carries both an aged `lastFreshDataMs` AND
-    // `observationStale: true`. Smart-task planning must still credit the
-    // last-seen temperature in that case. See
-    // `lib/observer/observationFreshness.ts` for the doctrine and
+    // aged-out for hours — the device snapshot carries an aged `lastFreshDataMs`.
+    // Smart-task planning must still credit the last-seen temperature in that
+    // case. See `lib/observer/observationFreshness.ts` for the doctrine and
     // `lib/objectives/deferredObjectives/diagnosticProgress.ts` for why this gate
-    // deliberately does not consult `observationStale`.
+    // deliberately does not gate on observation freshness.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       nowMs: NOW_MS,
       timeZone: 'UTC',
       devices: [buildTemperatureDevice({
         lastFreshDataMs: NOW_MS - 2 * 60 * 60 * 1000,
-        observationStale: true,
       })],
       settings: normalizeDeferredObjectiveSettings(buildTemperatureSettings()),
       powerTracker: buildTemperaturePowerTracker(),

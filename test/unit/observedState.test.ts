@@ -50,18 +50,18 @@ describe('resolveCurrentOn — stepped + binary devices (step-off folds in)', ()
 });
 
 describe('resolveObservedCurrentState — four-valued label (separate from the on/off truth)', () => {
-  it('returns "unknown" for stale observations with binary control', () => {
+  it('resolves a binary device to its latched on/off label, never "unknown" from staleness', () => {
+    // The producer no longer emits 'unknown' from staleness; a binary device
+    // resolves to its latched bit (here off).
     expect(resolveObservedCurrentState({
       binaryControl: { on: false },
       controlCapabilityId: 'onoff',
-      observationStale: true,
-    })).toBe('unknown');
+    })).toBe('off');
   });
 
-  it('returns "not_applicable" for stale observations on a target-only device', () => {
+  it('returns "not_applicable" for a target-only device (no binary capability) — structural, not staleness', () => {
     expect(resolveObservedCurrentState({
       binaryControl: { on: false },
-      observationStale: true,
       controlCapabilityId: undefined,
     })).toBe('not_applicable');
   });

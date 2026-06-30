@@ -1,4 +1,3 @@
-import { isDeviceObservationStale } from '../../lib/observer/observationFreshness';
 import { resolveCurrentOn, resolveObservedCurrentState } from '../../lib/observer/observedState';
 import {
   resolveCanSetControl,
@@ -24,31 +23,11 @@ import type { PlanInputDevice } from '../../lib/plan/planTypes';
 // spread. The decorated snapshots the caller holds physically carry the field
 // (transport writes it); the base type omits it for consumers.
 export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot & EvObservedProbe): PlanInputDevice {
-  // First real reader of the observer-owned observed-state projection (stage 4b).
-  // The freshness fields (`lastFreshDataMs`/`lastLocalWriteMs`) are observed
-  // state, so staleness is decided from the projection's maintained truth rather
-  // than the snapshot.
-  //
-  // The `?? device` snapshot fallback is RETAINED, not retired. Boot-seeding
-  // (`createPlanService.getPlanDevices` → `ctx.seedObservedStateFromSnapshot`)
-  // fills the projection from the raw snapshot before this runs on the main plan
-  // path, so for every device in the committed snapshot `observed` is now
-  // non-empty here (a real observation or the seed) — the boot-window arm is dead
-  // on that path. But two callers reach `toPlanDevice` WITHOUT that seed:
-  //   1. the realtime-reconcile `getLiveDevices` (app.ts), and
-  //   2. the smart-task plan preview (app.ts), which can resolve a device from
-  //      `getUiPickerDevices()` that was never in the committed snapshot, so the
-  //      projection has no entry — neither real nor seeded.
-  // For those, `observed` can still be undefined. Dropping the fallback would
-  // call `isDeviceObservationStale(undefined)` — a silent `unknown → non-stale`
-  // flip (and a runtime read of a removed field once `lastFreshDataMs` /
-  // `lastLocalWriteMs` leave the descriptor surface — TODO). The fallback is
-  // correct today only because `TargetDeviceSnapshot` still physically carries
-  // those freshness fields; retire it in lockstep with that strip, not before.
-  // The resolved boolean is threaded into the residual-power credit below so both
-  // freshness consumers in this build share one source.
-  const observed = ctx.getObservedState(device.id);
-  const observationStale = isDeviceObservationStale(observed ?? device);
+  // Staleness is no longer resolved here: the producer emits the CONCRETE latched
+  // observed state (`currentState`/`currentOn`), never an 'unknown' driven by
+  // staleness, and the plan device carries no staleness flag. Freshness reporting
+  // (overview gray-state, idle classifier, diagnostics) is sourced from the
+  // observer projection at its own wiring seams (`getObservationStale`).
   const pendingBinaryCommand = ctx.planEngine?.getPendingBinaryCommandForDevice?.(
     device.id,
     device.communicationModel,
@@ -88,7 +67,6 @@ export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot & 
     device,
     controlCapabilityId: device.controlCapabilityId,
     shedBehavior,
-    observationStale,
   });
   // The plan-input device type is a discriminated union on the stepped
   // discriminant; the `...device` spread decouples `controlModel` from
@@ -120,14 +98,13 @@ export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot & 
     nextStepCommandRetryAtMs: device.nextStepCommandRetryAtMs,
     stepCommandPending: device.stepCommandPending,
     stepCommandStatus: device.stepCommandStatus,
-    observationStale,
     // The four-valued observed-state label, resolved once here from the full
-    // snapshot (which keeps the raw `binaryControl` + stepped descriptor) plus the
-    // resolved `observationStale` above. Plan consumers
-    // (`planDevices.resolveCurrentState`, `planReconcileState`) trust this producer
-    // resolution instead of re-resolving from the raw binary axis, so
-    // `binaryControl` can stay off the plan kinds.
-    currentState: resolveObservedCurrentState({ ...device, observationStale }),
+    // snapshot (which keeps the raw `binaryControl` + stepped descriptor). The
+    // producer emits the CONCRETE latched label (never 'unknown' from staleness);
+    // plan consumers (`planDevices.resolveCurrentState`, `planReconcileState`)
+    // trust this producer resolution instead of re-resolving from the raw binary
+    // axis, so `binaryControl` can stay off the plan kinds.
+    currentState: resolveObservedCurrentState(device),
     // The public on/off truth, resolved once here for binary devices (present
     // IFF `controlCapabilityId` is set this cycle). `isBinaryPlanDevice`
     // re-asserts it as a required `boolean`; non-binary devices carry no on/off

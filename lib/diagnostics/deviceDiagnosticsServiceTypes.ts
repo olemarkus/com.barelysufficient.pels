@@ -41,6 +41,11 @@ export type DeviceDiagnosticsPlanObservation = {
   suppressionState: DeviceDiagnosticsStarvationSuppressionState;
   countingCause: DeviceDiagnosticsStarvationCountingCause | null;
   pauseReason: DeviceDiagnosticsStarvationPauseReason | null;
+  // Observer-resolved freshness for the device (NOT a plan-device field). The
+  // starvation model must not count stale-but-unobserved time as "confirmed no
+  // progress", so a stale observation is gated out of counting downstream. Sourced
+  // from the observer projection at the producer seam (see
+  // `buildDeviceDiagnosticsObservations`' `getObservationStale` dep).
   observationFresh: boolean;
 };
 
@@ -133,6 +138,8 @@ export type LiveDemandObservation = {
 
 export type LiveStarvationObservation = {
   eligibleForStarvation: boolean;
+  // Observer-resolved freshness (see `DeviceDiagnosticsPlanObservation`). A stale
+  // observation is not "confirmed no progress", so it is gated out of counting.
   observationFresh: boolean;
   currentTemperatureC: number | null;
   intendedNormalTargetC: number | null;

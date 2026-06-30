@@ -1307,8 +1307,8 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi {
     });
     // Feed the projection FIRST, before any listener that reads it. Listeners
     // fire in registration order, and `syncLivePlanState` below reads the
-    // projection (via `toPlanDevice`'s `observationStale`); applying the event
-    // here first ensures that pass sees the freshly-merged observed value for
+    // projection (via `toPlanDevice`'s `currentOn`/`currentState`); applying the
+    // event here first ensures that pass sees the freshly-merged observed value for
     // the same event instead of the previous one (stage 4b).
     this.observedStateEmitter.onObservedStateChanged((e) => this.observedDeviceStateProjection.applyDelta(e));
     this.observedStateEmitter.onObservedStateRefresh((e) => this.observedDeviceStateProjection.applyRefresh(e));

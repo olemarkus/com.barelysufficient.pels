@@ -68,7 +68,6 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
         steppedLoadProfile: mergedProfile,
         currentState: mergedCurrentState,
         currentTarget: getPrimaryTargetCapability(live.targets)?.value ?? null,
-        observationStale: live.observationStale ?? device.observationStale,
         selectedStepId: liveStepState.selectedStepId,
         desiredStepId: clampShedDesiredStepId(
           device,
@@ -202,11 +201,12 @@ function resolveCurrentStateFromPlanInput(
   // producer-resolved `live.currentOn` in as the binary signal (the raw
   // `binaryControl` no longer rides on the plan input). When the live snapshot
   // lacked the profile, `live.currentOn` is exactly the binary axis; when it had
-  // it, `{ on: currentOn }` still resolves to the same merged label.
+  // it, `{ on: currentOn }` still resolves to the same merged label. The producer
+  // emits the CONCRETE latched label and never folds staleness into 'unknown', so
+  // this recompute agrees with `toPlanDevice` (both concrete/latched).
   return resolveObservedCurrentState({
     ...(isBinaryPlanDevice(liveDevice) ? { binaryControl: { on: liveDevice.currentOn } } : {}),
     controlCapabilityId: liveDevice.controlCapabilityId,
-    observationStale: liveDevice.observationStale,
     steppedLoadProfile: mergedProfile,
     selectedStepId: mergedSelectedStepId,
   });

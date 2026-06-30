@@ -88,11 +88,7 @@ type ControllableFlags = {
   available?: boolean;
 };
 
-type ObservationFreshness = {
-  observationStale?: boolean;
-};
-
-export type EvBoostResolveInput = SteppedLoadIdentity & ControllableFlags & ObservationFreshness & {
+export type EvBoostResolveInput = SteppedLoadIdentity & ControllableFlags & {
   deviceClass?: string;
   controlCapabilityId?: BinaryControlCapabilityId;
   evSessionInactive?: boolean;
@@ -102,7 +98,7 @@ export type EvBoostResolveInput = SteppedLoadIdentity & ControllableFlags & Obse
   stateOfCharge?: DeviceStateOfChargeSnapshot;
 };
 
-export type TemperatureBoostResolveInput = SteppedLoadIdentity & ControllableFlags & ObservationFreshness & {
+export type TemperatureBoostResolveInput = SteppedLoadIdentity & ControllableFlags & {
   targets: readonly TargetCapabilitySnapshot[];
   forceBoostActive?: boolean;
   temperatureBoost?: TemperatureBoostConfig;

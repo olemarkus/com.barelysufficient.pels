@@ -805,7 +805,6 @@ describe('PlanService', () => {
         currentTemperature: 16,
         measuredPowerKw: 1.2,
         expectedPowerKw: 2.5,
-        observationStale: false,
         pendingTargetCommand: {
           desired: 20,
           retryCount: 1,

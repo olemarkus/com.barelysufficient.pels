@@ -57,7 +57,6 @@ describe('plan logging helpers', () => {
           controlCapabilityId: 'onoff',
           currentOn: true,
           currentState: 'unknown',
-          observationStale: true,
           controllable: true,
           reason: KEEP_REASON,
         },
@@ -113,10 +112,10 @@ describe('plan logging helpers', () => {
       plannedShedDevices: 1,
       pendingPlannedShedDevices: 1,
       activePlannedShedDevices: 1,
-      // Behaviour change: a stale-on device is now trusted-on, so it counts active.
+      // The 'stale' device (currentState 'unknown', currentOn true) is trusted-on
+      // via its latched `currentOn`, so it counts active.
       activeControlledDevices: 5,
       zeroDrawControlledDevices: 1,
-      staleControlledDevices: 1,
       pendingControlledDevices: 1,
       blockedByCooldownDevices: 1,
       blockedByPenaltyDevices: 1,
@@ -333,7 +332,6 @@ describe('plan logging helpers', () => {
       activePlannedShedDevices: null,
       activeControlledDevices: null,
       zeroDrawControlledDevices: null,
-      staleControlledDevices: null,
       pendingControlledDevices: null,
       blockedByCooldownDevices: null,
       blockedByPenaltyDevices: null,

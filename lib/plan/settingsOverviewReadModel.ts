@@ -28,6 +28,11 @@ export type SettingsOverviewReadModelDeps = {
   // read model surfaces the raw string for display, so it reads it from the
   // observer here rather than off the plan device (which no longer carries it).
   getObservedEvChargingState?: (deviceId: string) => EvChargingState | undefined;
+  // Observation staleness is observer-owned freshness state — the plan device no
+  // longer carries it (the plan has no right to distrust observer data). The
+  // gray-state UI label is a display concern, so the read model sources staleness
+  // from the observer projection here, NOT off the plan device.
+  getObservationStale?: (deviceId: string) => boolean;
   // `controlModel` is a producer-only SETTING the planner no longer carries, but
   // the settings-UI still needs it to pick the device card (stepped / temperature
   // / generic). Stepped is the decorated truth (`isSteppedLoadDevice` on the plan
@@ -143,7 +148,8 @@ export function buildSettingsOverviewDeviceReadModel(
     surplusAbsorbActive: device.surplusAbsorbActive,
     evBoost: ev?.evBoost,
     evBoostActive: ev?.evBoostActive,
-    observationStale: device.observationStale,
+    // Display-only staleness, sourced from the observer (not the plan device).
+    observationStale: deps.getObservationStale?.(device.id) ?? false,
     shedAction: device.shedAction,
     shedTemperature: device.shedTemperature,
     selectedStepId: device.selectedStepId,

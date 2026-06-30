@@ -17,7 +17,9 @@
  *
  * `resolveObservedCurrentState` produces the SEPARATE four-valued `currentState`
  * label (`on`/`off`/`unknown`/`not_applicable`) for reason/UI rendering only —
- * it must never be consulted as the on/off truth.
+ * it must never be consulted as the on/off truth. The producer never emits
+ * 'unknown' from staleness — that label is reserved for the STRUCTURAL stepped
+ * "step not known" case; a stale binary read resolves to its latched on/off.
  */
 import { getSteppedLoadStep, isSteppedLoadOffStep } from '../utils/deviceControlProfiles';
 import type {
@@ -30,7 +32,6 @@ export type ObservedCurrentStateInput = {
   // Present iff binary control; absence is the old fabricated `currentOn: true`.
   binaryControl?: { on: boolean };
   controlCapabilityId?: BinaryControlCapabilityId;
-  observationStale?: boolean;
   controlModel?: DeviceControlModel;
   steppedLoadProfile?: SteppedLoadProfile;
   selectedStepId?: string;
@@ -135,9 +136,11 @@ export function resolveObservedCurrentStateValue(device: CurrentStateInput): str
 export function resolveObservedCurrentState(
   device: ObservedCurrentStateInput,
 ): string {
-  if (device.observationStale === true) {
-    return hasBinaryCapability(device) ? 'unknown' : 'not_applicable';
-  }
+  // The producer resolves the CONCRETE latched label — it never emits 'unknown'
+  // from staleness (the plan has no right to distrust observer data, and a stale
+  // binary read is still the latched bit: Homey reports capabilities on change).
+  // The only 'unknown' here is the STRUCTURAL stepped "step not known" case below
+  // (`resolveObservedSteppedLoadCurrentState` with no selectedStepId).
   if (hasSteppedCapability(device) && device.steppedLoadProfile) {
     const steppedState = resolveObservedSteppedLoadCurrentState({
       steppedLoadProfile: device.steppedLoadProfile,

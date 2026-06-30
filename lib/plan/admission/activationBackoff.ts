@@ -28,7 +28,6 @@ export type ActivationBackoffObservation = {
   steppedLoadProfile?: SteppedLoadProfile;
   selectedStepId?: string;
   measuredPowerKw?: number;
-  observationStale?: boolean;
   lastFreshDataMs?: number;
 };
 

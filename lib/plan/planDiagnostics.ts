@@ -17,7 +17,6 @@ import {
   isTemperatureControlDevice,
 } from '../../packages/shared-domain/src/temperatureDeviceKind';
 import { getPrimaryTargetCapability } from '../utils/targetCapabilities';
-import { isDeviceObservationTrusted } from '../observer/observationTrust';
 
 const TARGET_DEFICIT_EPSILON_C = 0.5;
 const STARVATION_LOW_TEMP_STEP_C = 0.5;
@@ -43,6 +42,11 @@ type BuildDeviceDiagnosticsObservationsParams = {
   priceOptimizationSettings: Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
   isCurrentHourCheap: () => boolean;
   isCurrentHourExpensive: () => boolean;
+  // Observer-resolved per-device staleness, supplied by the producer/wiring layer
+  // (createPlanEngine wires `isDeviceObservationStale(ctx.getObservedState(id))`).
+  // The starvation freshness gate must source from the observer, NOT a plan-device
+  // field — the plan device carries no staleness.
+  getObservationStale: (deviceId: string) => boolean;
 };
 
 export const buildDeviceDiagnosticsObservations = (
@@ -67,6 +71,9 @@ export const buildDeviceDiagnosticsObservations = (
     priceOptimizationSettings: params.priceOptimizationSettings,
     isCurrentHourCheap: params.isCurrentHourCheap,
     isCurrentHourExpensive: params.isCurrentHourExpensive,
+    // Freshness is observer-resolved (not read off the plan device); a stale
+    // observation is gated out of starvation counting downstream.
+    observationFresh: !params.getObservationStale(device.id),
   }));
 };
 
@@ -145,14 +152,6 @@ const resolveTargetStepC = (
   }
   return intendedNormalTargetC < 30 ? STARVATION_LOW_TEMP_STEP_C : STARVATION_HIGH_TEMP_STEP_C;
 };
-
-const resolveObservationFresh = (
-  device: DevicePlanDevice,
-  inputDevice?: PlanInputDevice,
-): boolean => (
-  isDeviceObservationTrusted(device)
-  && (inputDevice === undefined || isDeviceObservationTrusted(inputDevice))
-);
 
 const resolveEligibleForStarvation = (params: {
   device: DevicePlanDevice;
@@ -260,6 +259,7 @@ const buildDiagnosticsObservation = (params: {
   priceOptimizationSettings: Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
   isCurrentHourCheap: () => boolean;
   isCurrentHourExpensive: () => boolean;
+  observationFresh: boolean;
 }): DeviceDiagnosticsPlanObservation => {
   const {
     desiredForMode,
@@ -271,6 +271,7 @@ const buildDiagnosticsObservation = (params: {
     priceOptimizationSettings,
     isCurrentHourCheap,
     isCurrentHourExpensive,
+    observationFresh,
   } = params;
   const isEv = isEvLikeDevice(device, inputDevice);
   const includeDemandMetrics = !isEv && device.controllable !== false && device.available !== false;
@@ -296,7 +297,6 @@ const buildDiagnosticsObservation = (params: {
     isTemperatureInputDevice(inputDevice),
   );
   const targetStepC = resolveTargetStepC(inputDevice, intendedNormalTargetC);
-  const observationFresh = resolveObservationFresh(device, inputDevice);
   const eligibleForStarvation = resolveEligibleForStarvation({
     device,
     inputDevice,

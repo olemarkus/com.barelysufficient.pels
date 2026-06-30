@@ -193,7 +193,6 @@ export function buildBasePlanDevice(params: {
     currentTarget,
     currentTemperature: resolveInputCurrentTemperature(dev),
     ...(resolvedPlannedTarget !== undefined ? { plannedTarget: resolvedPlannedTarget } : {}),
-    observationStale: dev.observationStale,
     communicationModel: dev.communicationModel,
     steppedLoadProfile: isSteppedLoadDevice(dev) ? dev.steppedLoadProfile : undefined,
     reportedStepId: dev.reportedStepId,

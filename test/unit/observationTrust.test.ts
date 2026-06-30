@@ -1,34 +1,18 @@
 import {
   getTrustedCurrentTemperatureC,
   getTrustedStateOfCharge,
-  isDeviceObservationTrusted,
 } from '../../lib/utils/observationTrust';
 
-describe('observation trust', () => {
-  describe('isDeviceObservationTrusted', () => {
-    it('returns true when observationStale is undefined', () => {
-      expect(isDeviceObservationTrusted({})).toBe(true);
-    });
-
-    it('returns true when observationStale is explicitly false', () => {
-      expect(isDeviceObservationTrusted({ observationStale: false })).toBe(true);
-    });
-
-    it('returns false when observationStale is true', () => {
-      expect(isDeviceObservationTrusted({ observationStale: true })).toBe(false);
-    });
-  });
-
+describe('observation value accessors', () => {
   describe('getTrustedCurrentTemperatureC', () => {
-    it('returns the temperature when observation is fresh and value is finite', () => {
+    it('returns the temperature when the value is finite', () => {
       expect(getTrustedCurrentTemperatureC({ currentTemperature: 21.5 })).toBe(21.5);
     });
 
-    it('returns undefined when observation is stale', () => {
-      expect(getTrustedCurrentTemperatureC({
-        observationStale: true,
-        currentTemperature: 21.5,
-      })).toBeUndefined();
+    it('returns the temperature regardless of staleness (no staleness gate)', () => {
+      // The plan device carries no staleness, and boost trusts the latched finite
+      // temperature — there is no staleness gate here (intended).
+      expect(getTrustedCurrentTemperatureC({ currentTemperature: 21.5 })).toBe(21.5);
     });
 
     it('returns undefined when temperature is missing', () => {
@@ -46,15 +30,8 @@ describe('observation trust', () => {
       status: 'fresh' as const,
     };
 
-    it('returns the snapshot when fresh', () => {
+    it('returns the snapshot when its own status is fresh', () => {
       expect(getTrustedStateOfCharge({ stateOfCharge: freshSoC })).toEqual(freshSoC);
-    });
-
-    it('returns undefined when observation is stale', () => {
-      expect(getTrustedStateOfCharge({
-        observationStale: true,
-        stateOfCharge: freshSoC,
-      })).toBeUndefined();
     });
 
     it('returns undefined when SoC status is not fresh', () => {

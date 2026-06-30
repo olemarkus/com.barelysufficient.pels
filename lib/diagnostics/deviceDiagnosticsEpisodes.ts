@@ -84,6 +84,8 @@ export const normalizeStarvationObservation = (
 
 const isValidStarvationObservation = (observation: LiveStarvationObservation): boolean => (
   observation.eligibleForStarvation
+  // A stale observation is not "confirmed no progress" — never count
+  // stale-but-unobserved time toward starvation (the freshness is observer-resolved).
   && observation.observationFresh
   && isFiniteNumber(observation.intendedNormalTargetC)
   // A setpoint comparison needs a finite commanded target; a turn_off shed

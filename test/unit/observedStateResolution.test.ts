@@ -15,19 +15,17 @@ describe('plan state resolution', () => {
     })).toBe('not_applicable');
   });
 
-  it('returns not_applicable for stale devices without binary control', () => {
+  it('returns not_applicable for a device without binary capability (structural, not staleness)', () => {
     expect(resolveObservedCurrentState({
       binaryControl: { on: false },
       controlCapabilityId: undefined,
-      observationStale: true,
     })).toBe('not_applicable');
   });
 
-  it('returns unknown for stale binary devices', () => {
+  it('resolves a binary device to its latched off label — never unknown from staleness', () => {
     expect(resolveObservedCurrentState({
       binaryControl: { on: false },
       controlCapabilityId: 'onoff',
-      observationStale: true,
-    })).toBe('unknown');
+    })).toBe('off');
   });
 });
