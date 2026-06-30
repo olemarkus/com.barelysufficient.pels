@@ -615,16 +615,18 @@ export default tseslint.config(
   },
   {
     // app.ts is the central Homey app-lifecycle/service-wiring entrypoint: it owns the
-    // app class that constructs and connects every runtime service. The prior blanket
-    // `/* eslint-disable max-lines */` masked the true size; with it removed the file
-    // measures ~1885 effective lines. Bucket B for now with a ceiling just above current.
-    // The observe-only-role managed/controllable resolution (`isObserveOnlyRoleDevice`
-    // = battery OR solar, plus the two override consumers) nudges it up a handful of
-    // lines. Target: <=500 once the delegate/timer/AppContext extraction (TODO "Continue
-    // thinning app.ts ...") moves the remaining wiring into `setup/appInit/**`.
+    // app class that constructs and connects every runtime service. The boot/teardown
+    // orchestration and per-service construction now live in `setup/appServiceWiring.ts`;
+    // app.ts keeps slim `onInit`/`onUninit` plus the thin `init*` delegators the
+    // integration-test boot helper calls directly. What remains is irreducible without
+    // breaking documented test seams: the field/helper declarations, the ~60 thin
+    // AppContext/PelsWidgetHostApi delegators, and the smart-task widget API surface.
+    // Ceiling just above current. Target: <=500 needs the smart-task/deferred-objective
+    // API cluster and the per-domain delegator surface extracted next (TODO "Continue
+    // thinning app.ts ...").
     files: ['app.ts'],
     rules: {
-      'max-lines': ['warn', { max: 1907, skipBlankLines: true, skipComments: true }],
+      'max-lines': ['warn', { max: 1110, skipBlankLines: true, skipComments: true }],
     },
   },
   {
