@@ -1,45 +1,28 @@
 import type { PowerTrackerState } from '../../power/tracker';
-import {
-  resolveProfileEnergy,
-  type DeferredObjectiveEnergyResolution,
-  type DeferredObjectiveKwhPerUnitSource,
+import type {
+  DeferredObjectiveEnergyResolution,
 } from './profileEnergyResolution';
 import { buildDeferredObjectiveDebugPayload } from './diagnosticDebugPayload';
 import type { DailyBudgetUiPayload } from '../../../packages/contracts/src/dailyBudgetTypes';
 import { getLogger } from '../../logging/logger';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import type {
-  DeferredObjectiveActivePlanHourV1,
   DeferredObjectiveActivePlansV1,
-  DeferredObjectiveActivePlanStatusV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { ObjectiveDeviceInput } from '../../objectives/types';
-import { formatDeadlineLocalTime } from './deadline';
-import { resolveHorizonPlanWithRescue } from './rescueReplan';
 import { resolveObjectiveSteps } from './objectiveSteps';
 import { resolveActiveCommittedPlan } from './resolveCommittedHours';
 import { isAheadOfHourMilestone } from './trajectoryMilestone';
 import { isPastHourSettleMark } from './settleWindow';
-import { buildFrozenHorizonPlan } from './frozenHorizonPlan';
-import { resolvePlanningSpeedKw } from './planningSpeed';
 import {
   resolveObjectiveProgress,
   type DeferredObjectiveProgressResolution,
 } from './diagnosticProgress';
-import type { DeferredObjectiveKind } from './types';
 import {
-  classificationImpliesStallSatisfied,
-  type IdleClassification,
-} from '../../../packages/shared-domain/src/idleClassificationCopy';
-import {
-  buildDeferredObjectivePolicyHorizon,
-  resolvePriceHorizonAvailableUpToMs,
   type DeferredObjectivePolicyHorizonResult,
-  type DeferredObjectivePolicyHorizonUnavailableReason,
   type PriceHorizonEntry,
 } from './policyHorizon';
 import type {
-  DeferredObjectiveRescuePermissions,
   DeferredObjectiveSettingsEntry,
   DeferredObjectiveSettingsV1,
 } from './settings';
@@ -47,281 +30,45 @@ import {
   ConcurrentEligibleTaskTracker,
   resolveConcurrentEligibleCount,
 } from './concurrentEligibleTasks';
-import type { DeferredObjectiveHorizonPlan, DeferredObjectiveStep } from './types';
+import {
+  classificationImpliesStallSatisfied,
+  type IdleClassification,
+} from '../../../packages/shared-domain/src/idleClassificationCopy';
+import type {
+  BuildPriceHorizon,
+  DeferredObjectiveDiagnostic,
+  DeferredObjectiveDiagnosticReasonCode,
+} from './diagnosticTypes';
+import {
+  buildDiagnosticBase,
+  buildKnownEnergyFields,
+  mergeProgressFields,
+  progressCurrentValue,
+  resolveProgressEnergy,
+  withUnknown,
+  ZERO_ENERGY_RESOLUTION,
+} from './diagnosticFields';
+import {
+  buildDeadlineAwarePolicyHorizon,
+  buildFrozenDiagnostic,
+  EMPTY_POLICY_HORIZON,
+  resolveDeadlineBoundFrozenReadInputs,
+  type FrozenReadInputs,
+} from './frozenDiagnostic';
+import {
+  buildFreshDiagnostic,
+  buildHorizonUnavailableDiagnostic,
+} from './freshDiagnostic';
 
-// Injected by the wiring layer: resolves the price-layer allocation horizon for
-// `[nowMs, deadlineAtMs)`. Defined as a closure (not a `CombinedPricesV2` input)
-// so this leafward subsystem never imports the `lib/price` peer — the producer
-// (`buildPriceHorizonFromCombined` in lib/price) lives in the price layer.
-export type BuildPriceHorizon = (nowMs: number, deadlineAtMs: number) => PriceHorizonEntry[];
-
-// Frozen mid-hour metadata sourced from the coherent active committed-plan view.
-// Present ⇒ the per-cycle path reads the frozen plan instead of running the
-// allocator (see `buildFrozenHorizonPlan`).
-type FrozenReadInputs = {
-  planStatus: DeferredObjectiveActivePlanStatusV1;
-  dailyBudgetExhaustedBucketCount: number;
-  // The SETTLED revision's hours (`latest.hours`), NOT the schedule-floor
-  // `commitment.hours`. A `:58` revision that refines kWh on the same hour set
-  // (`rate_refined`, `measured_deviation`) updates `latest` but not `commitment`
-  // (the merge only re-commits on a schedule change), so reading `commitment`
-  // would serve stale energy / `cheaperHourAhead`. `latest.hours` is the
-  // Math.max-merged floored plan — the freshest thing the device should follow.
-  hours: readonly DeferredObjectiveActivePlanHourV1[];
-};
-
-// Metadata-only deadline reserve for the frozen plan (matches rescueReplan's
-// `DEFAULT_DEADLINE_RESERVE_MS`); used for `planningEndMs`/`horizonEndMs`, which no
-// frozen-path consumer reads. The `:58` settle recomputes the authoritative plan.
-const FROZEN_DEADLINE_RESERVE_MS = 60 * 60 * 1000;
-const FROZEN_EPSILON_KWH = 0.001;
-const ONE_HOUR_MS = 60 * 60 * 1000;
-
-// Energy resolution for an already-satisfied objective (`remainingUnits <= 0`):
-// no energy needed, no rate consulted.
-const ZERO_ENERGY_RESOLUTION: DeferredObjectiveEnergyResolution = {
-  energyNeededKWh: 0,
-  energyExpectedKWh: 0,
-  kWhPerUnit: null,
-  kWhPerUnitBuffered: null,
-  kWhPerUnitMean: null,
-  rateConfidence: null,
-  displayConfidence: null,
-  kwhPerUnitSource: null,
-  reasonCode: null,
-};
-
-// Resolve the frozen-read inputs for the per-cycle (mid-hour) path, or null when
-// the allocator must run instead. A frozen read requires a coherent active plan
-// (`commitment` + `latest`) whose commitment still covers the active hour; legacy
-// or corrupt shapes without `latest` are left to the fresh path. See
-// execution-adaptation.md ("Interaction with the per-cycle frozen read"). The
-// caller decides whether to use this vs re-plan — re-planning runs the allocator only at
-// the `:58` settle AND when the price horizon is available, so a committed device
-// is never dropped to inactive on a transient horizon gap.
-const resolveFrozenReadInputs = (params: {
-  activePlans?: DeferredObjectiveActivePlansV1 | null;
-  deviceId: string;
-  objective: DeferredObjectiveSettingsEntry;
-  nowMs: number;
-}): FrozenReadInputs | null => {
-  const activePlan = resolveActiveCommittedPlan({
-    activePlans: params.activePlans,
-    deviceId: params.deviceId,
-    objective: params.objective,
-  });
-  if (activePlan === undefined) return null;
-  const currentHourStartMs = Math.floor(params.nowMs / ONE_HOUR_MS) * ONE_HOUR_MS;
-  if (!activePlan.commitmentHours.some((hour) => hour.startsAtMs >= currentHourStartMs)) return null;
-  const { latest } = activePlan;
-  return {
-    planStatus: latest.planStatus,
-    dailyBudgetExhaustedBucketCount: latest.dailyBudgetExhaustedBucketCount ?? 0,
-    // Settled revision's hours (freshest floored plan). The active-plan accessor
-    // already rejected legacy/corrupt shapes without a latest revision, so the
-    // frozen path never falls back to the commitment floor for control data.
-    hours: latest.hours,
-  };
-};
-
-const resolveDeadlineBoundFrozenReadInputs = (params: {
-  activePlans?: DeferredObjectiveActivePlansV1 | null;
-  deviceId: string;
-  objective: DeferredObjectiveSettingsEntry;
-  nowMs: number;
-}): FrozenReadInputs | null => (
-  params.objective.deadlineAtMs > params.nowMs ? resolveFrozenReadInputs(params) : null
-);
-
-// Stand-in for the frozen mid-hour path, where the allocator is skipped so the
-// policy horizon is unused. (Also reused when the price horizon is temporarily
-// unavailable but a commitment exists — we serve frozen rather than going inactive.)
-const EMPTY_POLICY_HORIZON: Extract<DeferredObjectivePolicyHorizonResult, { reasonCode: null }> = {
-  buckets: [],
-  horizonBucketCount: 0,
-  dailyBudgetExhaustedBucketCount: 0,
-  reasonCode: null,
-};
-
-type DeferredObjectivePolicyHorizonParams = Parameters<typeof buildDeferredObjectivePolicyHorizon>[0];
-
-const buildDeadlineAwarePolicyHorizon = (
-  params: DeferredObjectivePolicyHorizonParams,
-): DeferredObjectivePolicyHorizonResult => (
-  params.deadlineAtMs <= params.nowMs ? EMPTY_POLICY_HORIZON : buildDeferredObjectivePolicyHorizon(params)
-);
-
-// Assemble the diagnostic from the persisted commitment + live measured value
-// (folded into `aheadOfHourMilestone`), skipping the allocator. Mirrors the shape
-// `buildDiagnosticWithPolicyHorizon` returns on the fresh path.
-const buildFrozenDiagnostic = (params: {
-  nowMs: number;
-  base: DeferredObjectiveDiagnostic;
-  progress: DeferredObjectiveProgressResolution;
-  objective: DeferredObjectiveSettingsEntry;
-  deviceId: string;
-  deadlineAtMs: number;
-  profileEnergy: Extract<DeferredObjectiveEnergyResolution, { reasonCode: null }>;
-  aheadOfHourMilestone: boolean;
-  steps: DeferredObjectiveStep[];
-  frozenRead: FrozenReadInputs;
-}): DeferredObjectiveDiagnostic => {
-  const {
-    nowMs, base, progress, objective, deviceId, deadlineAtMs,
-    profileEnergy, aheadOfHourMilestone, steps, frozenRead,
-  } = params;
-  const horizonPlan = buildFrozenHorizonPlan({
-    nowMs,
-    objectiveId: `${deviceId}:${objective.kind}`,
-    objectiveKind: objective.kind,
-    enforcement: objective.enforcement,
-    deadlineAtMs,
-    deadlineMarginMs: FROZEN_DEADLINE_RESERVE_MS,
-    committedHours: frozenRead.hours,
-    planStatus: frozenRead.planStatus,
-    energyNeededKWh: profileEnergy.energyNeededKWh,
-    aheadOfHourMilestone,
-    steps,
-    epsilonKWh: FROZEN_EPSILON_KWH,
-  });
-  return {
-    ...mergeProgressFields(base, progress.currentPercent, progress.currentTemperatureC),
-    status: horizonPlan.status,
-    reasonCode: horizonPlan.statusDetail,
-    ...buildKnownEnergyFields({ objective, profileEnergy }),
-    horizonBucketCount: frozenRead.hours.length,
-    dailyBudgetExhaustedBucketCount: frozenRead.dailyBudgetExhaustedBucketCount,
-    expectedStepId: horizonPlan.expectedStepId,
-    budgetExemptApplied: objective.rescue?.exemptFromBudget === 'always'
-      && isCurrentBucketPlanned(horizonPlan),
-    limitLowerPriorityApplied: objective.rescue?.limitLowerPriorityDevices === 'always',
-    horizonPlan,
-  };
-};
+export type {
+  BuildPriceHorizon,
+  DeferredObjectiveDiagnostic,
+  DeferredObjectiveDiagnosticReasonCode,
+  DeferredObjectiveKwhPerUnitSource,
+} from './diagnosticTypes';
+export { progressCurrentValue } from './diagnosticFields';
 
 const logger = getLogger('plan/deferred-diag-bridge');
-
-export type DeferredObjectiveDiagnosticReasonCode =
-  | DeferredObjectivePolicyHorizonUnavailableReason
-  | 'objective_charger_not_resumable'
-  | 'objective_invalid_deadline'
-  | 'objective_invalid_session'
-  | 'objective_missing_capacity'
-  | 'objective_missing_charge_rate'
-  | 'objective_missing_device'
-  | 'objective_missing_temperature'
-  | 'objective_progress_stale'
-  // Live status resolved to `satisfied` because the device parked in a stall
-  // classification (see `resolveStallReportedStatus`). `near_target` = inside
-  // the hysteresis band; `device_capped` = at the device's own internal cap.
-  | 'objective_stalled_near_target'
-  | 'objective_stalled_device_capped';
-
-export type { DeferredObjectiveKwhPerUnitSource } from './profileEnergyResolution';
-
-type BaseDeferredObjectiveDiagnostic = {
-  deviceId: string;
-  deviceName?: string;
-  objectiveId: string;
-  enforcement: DeferredObjectiveSettingsEntry['enforcement'];
-  status: 'unknown' | DeferredObjectiveHorizonPlan['status'];
-  reasonCode: DeferredObjectiveDiagnosticReasonCode | DeferredObjectiveHorizonPlan['statusDetail'];
-  targetPercent: number | null;
-  currentPercent: number | null;
-  // Unit-AGNOSTIC current/target reading, identical to the kind-split
-  // `currentTemperatureC`/`targetTemperatureC` (temperature) or
-  // `currentPercent`/`targetPercent` (ev_soc) for this diagnostic. A heater and
-  // an EV are the same planning problem; the unit is only a display label
-  // (resolve it via `unitForObjectiveKind(objectiveKind)`). Consumers read these
-  // instead of forking on `objectiveKind` to pick a value. Invariant, for every
-  // diagnostic:
-  //   currentValue === (objectiveKind === 'temperature' ? currentTemperatureC : currentPercent)
-  //   targetValue  === (objectiveKind === 'temperature' ? targetTemperatureC  : targetPercent)
-  // (a `?: never` ev-variant temperature field counts as null).
-  currentValue: number | null;
-  targetValue: number | null;
-  deadlineAtMs: number | null;
-  deadlineLocalTime: string;
-  energyNeededKWh: number | null;
-  // Mean-based estimate (no variance buffer). Pairs with the buffered
-  // `energyNeededKWh` so the UI can render an `expected…planned` range. Omitted
-  // on the unresolved paths; absent or equal to `energyNeededKWh` means there is
-  // no buffer to show (cold-start, bootstrap, steady device).
-  energyExpectedKWh?: number | null;
-  // Banded remaining-interval display average (kWh/unit), kind-agnostic. Shifts
-  // as a task crosses bands. Sourced from `profileEnergy.kWhPerUnit`.
-  kWhPerUnitBanded: number | null;
-  // Buffered per-unit rate (`energyNeededKWh / remainingUnits`), kind-agnostic.
-  // The buffered-currency analog of the mean `kWhPerUnitBanded`.
-  // Consumed by the unit-milestone stamp so the cumulative milestone lands on
-  // target instead of overshooting by the buffer ratio. Optional/back-compatible:
-  // absent on legacy diagnostics, where the stamp falls back to the mean rate.
-  kWhPerUnitBuffered?: number | null;
-  // Sample-driven global learned mean (kWh/unit), kind-agnostic. Distinct from
-  // `kWhPerUnitBanded`, which is the banded remaining-interval display average
-  // and so shifts as a task crosses bands.
-  // This only moves on genuine rate drift, so it is the stable statistic the
-  // active-plan recorder's `measured_deviation` detector compares. Null on
-  // bootstrap / unresolved. See `profileEnergyResolution.kWhPerUnitMean`.
-  kwhPerUnitLearnedMean: number | null;
-  rateConfidence: string | null;
-  // Band-aware aggregated confidence for the smart-task chip. Honest about
-  // whether the *model in use* (bands integrated for this resolution) is
-  // well-supported, instead of the raw per-sample CV which sits at "low" on
-  // thermal devices effectively forever. Null on bootstrap / unresolved.
-  displayConfidence: 'low' | 'medium' | 'high' | null;
-  kwhPerUnitSource: DeferredObjectiveKwhPerUnitSource | null;
-  // Number of accepted samples that produced the learned profile mean. Zero
-  // when `kwhPerUnitSource` is `bootstrap` or null. Surfaced so the UI can
-  // explain EV learning progress without re-reading the profile store.
-  kwhPerUnitAcceptedSamples: number;
-  // UTC ms of the last accepted sample. Null when no learned profile exists
-  // yet (bootstrap or unresolved).
-  kwhPerUnitLastAcceptedAtMs: number | null;
-  // The "useful" planning power in kW that the planner would commit per
-  // active hour. For stepped devices this is the lowest non-zero step's
-  // useful power; for binary devices (EV chargers) it is the single step's
-  // useful power. Null when no steps were resolvable. Surfaced as the
-  // "Y.Y kW" speed-mode reading in the hero meta line.
-  planningSpeedKw: number | null;
-  // Planning-affecting rescue permissions participate in the active-plan signature
-  // so permission edits invalidate stale committed schedules.
-  rescue?: DeferredObjectiveRescuePermissions;
-  horizonBucketCount: number;
-  // Number of buckets in the horizon whose per-bucket cap collapsed to zero
-  // because the daily budget cap had already been reached at the start of the
-  // bucket. Lets the UI explain a `cannot_meet` outcome that would otherwise
-  // look like a device or schedule problem.
-  dailyBudgetExhaustedBucketCount: number;
-  expectedStepId: string | null;
-  horizonPlan?: DeferredObjectiveHorizonPlan;
-  // True only while the current bucket is a planned bucket for a smart task whose "exempt
-  // from budget" rescue permission is active. Admission consumes this flat flag to set the
-  // device's existing `budgetExempt` for that bucket; idle/background cycles stay normal.
-  budgetExemptApplied?: boolean;
-  // True when the "limit lower-priority devices" rescue permission is granted (mode
-  // 'always'). Admission consumes this flat flag to engage the device's boost while the
-  // task is in its planned hours, so the existing escalation/shedding machinery claims
-  // capacity from lower-priority devices. Producer resolves it; consumers don't re-derive.
-  limitLowerPriorityApplied?: boolean;
-};
-
-// Discriminated by `objectiveKind`. Temperature variants always carry a
-// numeric `targetTemperatureC` (the setting requires it); EV variants omit
-// both temperature fields entirely so consumers can't accidentally read
-// them. `currentTemperatureC` stays `number | null` on the temperature
-// variant because sensor reads can legitimately fail.
-export type DeferredObjectiveDiagnostic =
-  | (BaseDeferredObjectiveDiagnostic & {
-    objectiveKind: 'temperature';
-    targetTemperatureC: number;
-    currentTemperatureC: number | null;
-  })
-  | (BaseDeferredObjectiveDiagnostic & {
-    objectiveKind: 'ev_soc';
-    targetTemperatureC?: never;
-    currentTemperatureC?: never;
-  });
 
 export const buildDeferredObjectiveDiagnostics = (params: {
   nowMs: number;
@@ -455,109 +202,6 @@ export const emitDeferredObjectiveDiagnostics = (params: {
     }
   }
 };
-
-// Maps the progress resolution back to a single input-value for the banded
-// estimator. Temperature objectives integrate by °C, EV SoC objectives by %.
-// `generic_energy` has no profile-band path so we return undefined and the
-// estimator falls back to the global mean.
-export const progressCurrentValue = (params: {
-  progress: DeferredObjectiveProgressResolution;
-  objectiveKind: DeferredObjectiveKind;
-}): number | undefined => {
-  const { progress, objectiveKind } = params;
-  if (progress.reasonCode) return undefined;
-  if (objectiveKind === 'ev_soc') {
-    return typeof progress.currentPercent === 'number' ? progress.currentPercent : undefined;
-  }
-  if (objectiveKind === 'temperature') {
-    return typeof progress.currentTemperatureC === 'number' ? progress.currentTemperatureC : undefined;
-  }
-  return undefined;
-};
-
-const canReportFreshProgressWhileUnknown = (reasonCode: DeferredObjectiveDiagnosticReasonCode): boolean => (
-  reasonCode === 'objective_missing_price_horizon'
-    || reasonCode === 'objective_price_feature_disabled'
-);
-
-// Single entry point for resolving learned/buffered energy from progress, so
-// both diagnostic paths pass the objective's enforcement (which sets the
-// variance buffer `k`) and current value identically.
-const resolveProgressEnergy = (params: {
-  powerTracker: PowerTrackerState;
-  deviceId: string;
-  objective: DeferredObjectiveSettingsEntry;
-  remainingUnits: number;
-  progress: DeferredObjectiveProgressResolution;
-}): DeferredObjectiveEnergyResolution => resolveProfileEnergy({
-  powerTracker: params.powerTracker,
-  deviceId: params.deviceId,
-  objectiveKind: params.objective.kind,
-  enforcement: params.objective.enforcement,
-  remainingUnits: params.remainingUnits,
-  currentValue: progressCurrentValue({ progress: params.progress, objectiveKind: params.objective.kind }),
-});
-
-// Variant-preserving merge of progress-derived fields onto an existing
-// diagnostic. The discriminated union forbids assigning
-// `currentTemperatureC` on the EV variant, so we branch on the diagnostic's
-// own `objectiveKind` rather than spreading both fields blindly.
-const mergeProgressFields = (
-  base: DeferredObjectiveDiagnostic,
-  currentPercent: number | null,
-  currentTemperatureC: number | null,
-): DeferredObjectiveDiagnostic => {
-  if (base.objectiveKind === 'temperature') {
-    return { ...base, currentPercent, currentTemperatureC, currentValue: currentTemperatureC };
-  }
-  return { ...base, currentPercent, currentValue: currentPercent };
-};
-
-const buildPolicyGatedKnownInputs = (
-  base: DeferredObjectiveDiagnostic,
-  progress: DeferredObjectiveProgressResolution,
-  policyReasonCode: DeferredObjectivePolicyHorizonUnavailableReason,
-  ctx: { powerTracker: PowerTrackerState; deviceId: string; objective: DeferredObjectiveSettingsEntry },
-): DeferredObjectiveDiagnostic => {
-  const { powerTracker, deviceId, objective } = ctx;
-  const { remainingUnits } = progress;
-  if (!canReportFreshProgressWhileUnknown(policyReasonCode)) return base;
-
-  const profileEnergy = !progress.reasonCode && remainingUnits > 0
-    && policyReasonCode === 'objective_missing_price_horizon'
-    ? resolveProgressEnergy({ powerTracker, deviceId, objective, remainingUnits, progress })
-    : null;
-
-  const withProgress = mergeProgressFields(
-    base,
-    !progress.reasonCode ? progress.currentPercent : null,
-    !progress.reasonCode ? progress.currentTemperatureC : null,
-  );
-  return {
-    ...withProgress,
-    ...(!progress.reasonCode && remainingUnits <= 0 ? { energyNeededKWh: 0 } : {}),
-    ...(profileEnergy && !profileEnergy.reasonCode ? buildKnownEnergyFields({ objective, profileEnergy }) : {}),
-  };
-};
-
-// Shape the `unknown` diagnostic for an unavailable policy horizon (price feature
-// off, or a transient missing horizon with no frozen fallback). Folds the gated
-// known-progress inputs and the horizon's bucket counts onto the verdict.
-type UnavailablePolicyHorizon = Extract<
-  DeferredObjectivePolicyHorizonResult,
-  { reasonCode: DeferredObjectivePolicyHorizonUnavailableReason }
->;
-
-const buildHorizonUnavailableDiagnostic = (
-  base: DeferredObjectiveDiagnostic,
-  progress: DeferredObjectiveProgressResolution,
-  rawPolicyHorizon: UnavailablePolicyHorizon,
-  ctx: { powerTracker: PowerTrackerState; deviceId: string; objective: DeferredObjectiveSettingsEntry },
-): DeferredObjectiveDiagnostic => withUnknown({
-  ...buildPolicyGatedKnownInputs(base, progress, rawPolicyHorizon.reasonCode, ctx),
-  horizonBucketCount: rawPolicyHorizon.horizonBucketCount,
-  dailyBudgetExhaustedBucketCount: rawPolicyHorizon.dailyBudgetExhaustedBucketCount,
-}, rawPolicyHorizon.reasonCode);
 
 // Exported so the plan-preview composition (`previewDeferredObjectivePlan`)
 // can build a diagnostic for a single CANDIDATE objective through the exact
@@ -820,209 +464,3 @@ const buildDiagnosticWithPolicyHorizon = (params: {
     concurrentEligibleCount: params.concurrentEligibleCount,
   });
 };
-
-// Fresh-path diagnostic: run the allocator (via the rescue resolver) and shape the
-// result. The bootstrap / `:58`-settle counterpart to `buildFrozenDiagnostic`.
-const buildFreshDiagnostic = (params: {
-  nowMs: number;
-  deviceId: string;
-  objective: DeferredObjectiveSettingsEntry;
-  device: ObjectiveDeviceInput;
-  base: DeferredObjectiveDiagnostic;
-  progress: DeferredObjectiveProgressResolution;
-  policyHorizon: Extract<DeferredObjectivePolicyHorizonResult, { reasonCode: null }>;
-  deadlineAtMs: number;
-  priceOptimizationEnabled: boolean;
-  priceHorizon: PriceHorizonEntry[];
-  dailyBudgetSnapshot: DailyBudgetUiPayload | null;
-  steps: DeferredObjectiveStep[];
-  commitment: DeferredObjectiveActivePlanHourV1[] | undefined;
-  aheadOfHourMilestone: boolean;
-  profileEnergy: Extract<DeferredObjectiveEnergyResolution, { reasonCode: null }>;
-  hardCapKw?: number | null;
-  concurrentEligibleCount?: number | ((bucketStartMs: number) => number);
-}): DeferredObjectiveDiagnostic => {
-  const {
-    nowMs, deviceId, objective, device, base, progress, policyHorizon, deadlineAtMs,
-    priceOptimizationEnabled, priceHorizon, dailyBudgetSnapshot, steps, commitment,
-    aheadOfHourMilestone, profileEnergy,
-  } = params;
-  const { plan: horizonPlan, dailyBudgetExhaustedBucketCount } = resolveHorizonPlanWithRescue({
-    nowMs,
-    deviceId,
-    objective,
-    energyNeededKWh: profileEnergy.energyNeededKWh,
-    energyExpectedKWh: profileEnergy.energyExpectedKWh,
-    deadlineAtMs,
-    steps,
-    commitment,
-    aheadOfHourMilestone,
-    policyHorizon,
-    priceOptimizationEnabled,
-    priceHorizon,
-    dailyBudgetSnapshot,
-    hardCapKw: params.hardCapKw,
-    // Strict top-priority gate for Slice-2 floor promotion; see comment in
-    // rescueReplan.ts. Lower number = more important on PELS's planSort scale;
-    // `=== 1` is the only safe v1 floor for the reserved-headroom forecast.
-    devicePriority: device.priority,
-    // Producer-resolved equal-share allocator for the reserved-headroom forecast
-    // when more than one priority-1 fully-reserved task shares the cycle. The
-    // exempt rebuild reuses it so the rebuilt buckets carry the same divided
-    // forecast as the baseline buckets above.
-    concurrentEligibleCount: params.concurrentEligibleCount,
-  });
-
-  // Stamp the price-availability watermark from the SOURCE price horizon (not the
-  // deadline-clamped allocator buckets), so the recorder can tell a genuine
-  // price-publication advance (`prices_revised`) from an internal schedule
-  // reshuffle (`schedule_revised`). The fresh path always has the real horizon
-  // here; the planner deliberately never sees `priceHorizon`, so we resolve it at
-  // the bridge and attach it to the plan it produced.
-  const planWithPriceWatermark: DeferredObjectiveHorizonPlan = {
-    ...horizonPlan,
-    pricesAvailableUpToMs: resolvePriceHorizonAvailableUpToMs(priceHorizon),
-  };
-
-  return {
-    ...mergeProgressFields(base, progress.currentPercent, progress.currentTemperatureC),
-    status: planWithPriceWatermark.status,
-    reasonCode: planWithPriceWatermark.statusDetail,
-    ...buildKnownEnergyFields({ objective, profileEnergy }),
-    horizonBucketCount: policyHorizon.horizonBucketCount,
-    dailyBudgetExhaustedBucketCount,
-    expectedStepId: planWithPriceWatermark.expectedStepId,
-    budgetExemptApplied: objective.rescue?.exemptFromBudget === 'always'
-      && isCurrentBucketPlanned(planWithPriceWatermark),
-    limitLowerPriorityApplied: objective.rescue?.limitLowerPriorityDevices === 'always',
-    horizonPlan: planWithPriceWatermark,
-  };
-};
-
-// "Is the current bucket actually running this cycle?" — gates the
-// `budgetExemptApplied` diagnostic. A price-deferral-eligible OR cold-start-released
-// hour is released (admission idles the device), so the budget exemption is NOT
-// active even though the committed bucket still carries booked energy; report it
-// false so the structured log matches what the device is actually doing. Mirrors
-// admission's `isReleasedCurrentHour` for the booked-but-released cases.
-const isCurrentBucketPlanned = (horizonPlan: DeferredObjectiveHorizonPlan): boolean => (
-  !horizonPlan.priceDeferralEligible
-  && !horizonPlan.coldStartReleaseEligible
-  && (horizonPlan.currentBucket?.plannedUsefulEnergyKWh ?? 0) > 0
-);
-
-const buildDiagnosticBase = (params: {
-  deviceId: string;
-  device?: ObjectiveDeviceInput;
-  objective: DeferredObjectiveSettingsEntry;
-  timeZone: string;
-  powerTracker: PowerTrackerState;
-  currentPercent: number | null;
-  currentTemperatureC: number | null;
-  energyNeededKWh: number | null;
-  kWhPerUnitBanded: number | null;
-  rateConfidence: string | null;
-  displayConfidence: 'low' | 'medium' | 'high' | null;
-  kwhPerUnitSource: DeferredObjectiveKwhPerUnitSource | null;
-}): DeferredObjectiveDiagnostic => {
-  const deadlineAtMs = Number.isFinite(params.objective.deadlineAtMs) && params.objective.deadlineAtMs > 0
-    ? params.objective.deadlineAtMs
-    : null;
-  const profileSnapshot = resolveProfileSnapshot({
-    powerTracker: params.powerTracker,
-    deviceId: params.deviceId,
-    objectiveKind: params.objective.kind,
-  });
-  const common: BaseDeferredObjectiveDiagnostic = {
-    deviceId: params.deviceId,
-    deviceName: params.device?.name,
-    objectiveId: `${params.deviceId}:${params.objective.kind}`,
-    enforcement: params.objective.enforcement,
-    ...(params.objective.rescue ? { rescue: params.objective.rescue } : {}),
-    status: 'unknown',
-    reasonCode: 'objective_progress_stale',
-    targetPercent: params.objective.kind === 'ev_soc' ? params.objective.targetPercent : null,
-    currentPercent: params.currentPercent,
-    // Unit-agnostic pair. Seeded for the ev_soc shape here; the temperature
-    // variant below overrides both with the °C readings so the invariant holds.
-    currentValue: params.currentPercent,
-    targetValue: params.objective.kind === 'ev_soc' ? params.objective.targetPercent : null,
-    deadlineAtMs,
-    deadlineLocalTime: deadlineAtMs !== null ? formatDeadlineLocalTime(deadlineAtMs, params.timeZone) : '',
-    energyNeededKWh: params.energyNeededKWh,
-    kWhPerUnitBanded: params.kWhPerUnitBanded,
-    // Base default; resolved diagnostics override via `buildKnownEnergyFields`.
-    kwhPerUnitLearnedMean: null,
-    rateConfidence: params.rateConfidence,
-    displayConfidence: params.displayConfidence,
-    kwhPerUnitSource: params.kwhPerUnitSource,
-    kwhPerUnitAcceptedSamples: profileSnapshot.acceptedSamples,
-    kwhPerUnitLastAcceptedAtMs: profileSnapshot.lastAcceptedAtMs,
-    planningSpeedKw: resolvePlanningSpeedKw(params.device),
-    horizonBucketCount: 0,
-    dailyBudgetExhaustedBucketCount: 0,
-    expectedStepId: null,
-  };
-  if (params.objective.kind === 'temperature') {
-    return {
-      ...common,
-      objectiveKind: 'temperature',
-      targetTemperatureC: params.objective.targetTemperatureC,
-      currentTemperatureC: params.currentTemperatureC,
-      // Override the ev_soc-shaped seed: temperature reads in °C.
-      currentValue: params.currentTemperatureC,
-      targetValue: params.objective.targetTemperatureC,
-    };
-  }
-  return {
-    ...common,
-    objectiveKind: 'ev_soc',
-  };
-};
-
-// Pulls accepted-sample provenance from the active learned profile. Returns
-// zeros / nulls when no profile or the profile's kind doesn't match the
-// objective so legacy callers see safe defaults.
-const resolveProfileSnapshot = (params: {
-  powerTracker: PowerTrackerState;
-  deviceId: string;
-  objectiveKind: DeferredObjectiveSettingsEntry['kind'];
-}): { acceptedSamples: number; lastAcceptedAtMs: number | null } => {
-  const profile = params.powerTracker.objectiveProfiles?.[params.deviceId];
-  if (!profile || profile.kind !== params.objectiveKind) {
-    return { acceptedSamples: 0, lastAcceptedAtMs: null };
-  }
-  const lastAcceptedAtMs = profile.kwhPerUnit?.lastUpdatedMs ?? null;
-  return {
-    acceptedSamples: profile.acceptedSamples,
-    lastAcceptedAtMs: Number.isFinite(lastAcceptedAtMs) ? lastAcceptedAtMs : null,
-  };
-};
-
-const withUnknown = (
-  diagnostic: DeferredObjectiveDiagnostic,
-  reasonCode: DeferredObjectiveDiagnosticReasonCode,
-): DeferredObjectiveDiagnostic => ({
-  ...diagnostic,
-  status: 'unknown',
-  reasonCode,
-  expectedStepId: null,
-});
-
-const buildKnownEnergyFields = (params: {
-  objective: DeferredObjectiveSettingsEntry;
-  profileEnergy: Extract<DeferredObjectiveEnergyResolution, { reasonCode: null }>;
-}): Pick<
-  DeferredObjectiveDiagnostic,
-  'energyNeededKWh' | 'energyExpectedKWh' | 'kWhPerUnitBanded'
-  | 'kWhPerUnitBuffered' | 'kwhPerUnitLearnedMean' | 'rateConfidence' | 'displayConfidence' | 'kwhPerUnitSource'
-> => ({
-  energyNeededKWh: params.profileEnergy.energyNeededKWh,
-  energyExpectedKWh: params.profileEnergy.energyExpectedKWh,
-  kWhPerUnitBanded: params.profileEnergy.kWhPerUnit,
-  kWhPerUnitBuffered: params.profileEnergy.kWhPerUnitBuffered,
-  kwhPerUnitLearnedMean: params.profileEnergy.kWhPerUnitMean,
-  rateConfidence: params.profileEnergy.rateConfidence,
-  displayConfidence: params.profileEnergy.displayConfidence,
-  kwhPerUnitSource: params.profileEnergy.kwhPerUnitSource,
-});
