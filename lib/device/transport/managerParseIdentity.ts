@@ -1,4 +1,5 @@
 import type { HomeyDeviceLike } from '../../utils/types';
+import { applyDeviceCompatibilityMetadata } from '../compatibility';
 import {
   getDeviceId,
   resolveDeviceClassKey,
@@ -14,9 +15,9 @@ export type ParsedDeviceIdentity = {
 
 /**
  * Resolves identity fields (id, deviceClassKey, label) from an already-effective
- * device. Callers must apply `applyDeviceCompatibilityMetadata` and
- * `applyDeviceDriverOverride` upstream (see `DeviceTransport.applyDeviceDriverOverride`)
- * so the override is propagated through the snapshot pipeline once instead of
+ * device. Callers must apply `applyDeviceDriverOverride` upstream (which itself
+ * stamps `applyDeviceCompatibilityMetadata` before applying the override) so the
+ * effective device is propagated through the snapshot pipeline once instead of
  * being re-applied at every layer. The single application sites are:
  *   - `DeviceTransport.refreshSnapshot` (snapshot pipeline)
  *   - `DeviceTransport.handleRealtimeDeviceUpdate` (realtime pipeline)
@@ -38,16 +39,25 @@ export function resolveParseDeviceIdentity(params: {
     : null;
 }
 
+/**
+ * Produces the "effective" device used across the snapshot/realtime parse
+ * pipeline: first stamps compatibility metadata
+ * (`applyDeviceCompatibilityMetadata`), then applies the per-device driver-id
+ * override resolved from `resolveDriverIdOverride` (keyed by the original device
+ * id). Folded here from `DeviceTransport` so compatibility + override resolution
+ * sit behind one homey-free seam.
+ */
 export function applyDeviceDriverOverride(
   device: HomeyDeviceLike,
-  driverIdOverride: string | undefined,
+  resolveDriverIdOverride: ((deviceId: string) => string | undefined) | undefined,
 ): HomeyDeviceLike {
-  const driverId = normalizeDriverIdOverride(driverIdOverride);
-  if (!driverId || driverId === device.driverId) return device;
+  const compatibleDevice = applyDeviceCompatibilityMetadata(device);
+  const driverId = normalizeDriverIdOverride(resolveDriverIdOverride?.(getDeviceId(device)));
+  if (!driverId || driverId === compatibleDevice.driverId) return compatibleDevice;
   return {
-    ...device,
+    ...compatibleDevice,
     driverId,
-    realDriverId: device.realDriverId ?? device.driverId,
+    realDriverId: compatibleDevice.realDriverId ?? compatibleDevice.driverId,
   };
 }
 

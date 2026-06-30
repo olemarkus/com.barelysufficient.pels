@@ -1,19 +1,19 @@
 import Homey from 'homey';
-import CapacityGuard from './lib/power/capacityGuard';
-import { DeviceTransport } from './lib/device/deviceTransport';
+import type CapacityGuard from './lib/power/capacityGuard';
+import type { DeviceTransport } from './lib/device/deviceTransport';
 import { ObservedStateEmitter } from './lib/observer/observedStateEvents';
 import { ObservedHomePower } from './lib/observer/observedHomePower';
 import { ObservedDeviceStateProjection } from './lib/observer/observedDeviceStateProjection';
-import { PlanEngine } from './lib/plan/planEngine';
+import type { PlanEngine } from './lib/plan/planEngine';
 import {
   createBinarySettleState,
   type BinarySettleState,
 } from './lib/observer/binarySettle';
-import { DevicePlan, ShedBehavior } from './lib/plan/planTypes';
+import type { DevicePlan, ShedBehavior } from './lib/plan/planTypes';
 import type { PendingTargetObservationSource } from './lib/plan/planTypes';
-import { PlanService } from './lib/plan/planService';
+import type { PlanService } from './lib/plan/planService';
 import type { HeadroomForDeviceDecision } from './lib/plan/planHeadroomDevice';
-import { SnapshotWarmupGate } from './lib/plan/snapshotWarmupGate';
+import type { SnapshotWarmupGate } from './lib/plan/snapshotWarmupGate';
 import type { PowerCalibrationSnapshot } from './packages/contracts/src/powerCalibration';
 import type {
   DecoratedDeviceSnapshot,
@@ -24,9 +24,9 @@ import type {
   TargetDeviceSnapshot,
 } from './packages/contracts/src/types';
 import type { HomeyDeviceLike } from './lib/utils/types';
-import { PriceCoordinator } from './lib/price/priceCoordinator';
-import { PriceFlowTagPublisher } from './lib/price/priceFlowTags';
-import { PowerTrackerState } from './lib/power/tracker';
+import type { PriceCoordinator } from './lib/price/priceCoordinator';
+import type { PriceFlowTagPublisher } from './lib/price/priceFlowTags';
+import type { PowerTrackerState } from './lib/power/tracker';
 import { PriceLevel } from './lib/price/priceLevels';
 import type { CombinedHourlyPrice } from './lib/price/priceTypes';
 import { createObjectivePriceHorizonBuilder } from './setup/appInit/objectivePriceHorizon';
@@ -45,7 +45,7 @@ import type {
 } from './lib/dailyBudget/dailyBudgetTypes';
 import type { SettingsUiPlanSnapshot } from './packages/contracts/src/settingsUiApi';
 import type { PelsWidgetHostApi } from './packages/contracts/src/widgetHostApi';
-import { type DebugLoggingTopic } from './packages/shared-domain/src/utils/debugLogging';
+import type { DebugLoggingTopic } from './packages/shared-domain/src/utils/debugLogging';
 import {
   resolveSmartTaskDeviceKind,
   resolveSmartTaskGoalBounds,
@@ -122,9 +122,9 @@ import {
 import { migrateManagedDevices as migrateManagedDevicesHelper } from './setup/appManagedDeviceMigration';
 import { runBootMigrations as runBootMigrationsHelper } from './setup/appBootMigrations';
 import * as realtimeReconcile from './setup/appRealtimeDeviceReconcile';
-import {
-  type Logger as PinoLogger,
-  type StructuredDebugEmitter,
+import type {
+  Logger as PinoLogger,
+  StructuredDebugEmitter,
 } from './lib/logging/logger';
 import { normalizeError } from './lib/utils/errorUtils';
 import { logHomeyDeviceComparisonForDebugFromApp } from './setup/appDebugHelpers';
