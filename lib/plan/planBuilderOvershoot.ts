@@ -489,7 +489,6 @@ function trackPlanDeviceForOvershoot(
     measuredPowerKw: device.measuredPowerKw,
     expectedPowerKw: device.expectedPowerKw,
     planningPowerKw: device.planningPowerKw,
-    observationStale: device.observationStale,
     binaryCommandPending: pendingBinaryCommandActive && pendingBinaryCommand?.desired === true,
     pendingBinaryOnCommand: pendingBinaryCommandActive && pendingBinaryCommand?.desired === true,
     pendingBinaryOffCommand: pendingBinaryCommandActive && pendingBinaryCommand?.desired === false,

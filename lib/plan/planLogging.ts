@@ -55,7 +55,6 @@ export function buildPlanCapacityStateSummary(
     summary.activePlannedShedDevices += plannedShedCounts.activePlannedShedDevices;
     summary.activeControlledDevices += Number(isActiveControlledDevice(device));
     summary.zeroDrawControlledDevices += Number(isZeroDrawControlledDevice(device));
-    summary.staleControlledDevices += Number(device.observationStale === true);
     summary.pendingControlledDevices += Number(hasPendingCommand(device));
     summary.blockedByCooldownDevices += Number(isBlockedByCooldown(device));
     summary.blockedByPenaltyDevices += Number(isBlockedByPenalty(device));
@@ -101,7 +100,6 @@ export function buildPlanInputCapacityStateSummary(
     summary.activePlannedShedDevices += plannedShedCounts.activePlannedShedDevices;
     summary.activeControlledDevices += Number(isActiveInputDevice(device));
     summary.zeroDrawControlledDevices += Number(isZeroDrawInputDevice(device));
-    summary.staleControlledDevices += Number(device.observationStale === true);
     summary.pendingControlledDevices += Number(hasPendingInputCommand(device));
   }
   return {

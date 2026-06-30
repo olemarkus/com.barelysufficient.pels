@@ -253,7 +253,6 @@ describe('planReconcileState stepped device drift', () => {
         name: 'Heater',
         binaryControl: { on: false },
         controlCapabilityId: undefined,
-        observationStale: true,
         targets: [{ id: 'target_temperature', value: 19, unit: '°C' }],
       })];
 
@@ -439,9 +438,8 @@ describe('planReconcileState stepped device drift', () => {
         name: 'Heater',
         binaryControl: { on: false },
         controlCapabilityId: 'onoff',
-        observationStale: true,
         // Stale observation still counts as evidence — `binaryControlObservation`
-        // is present, just old.
+        // is present, just old; the live off-read drives drift against the plan's on.
         binaryControlObservation: buildBinaryObservation('onoff', false),
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
       })];
@@ -842,21 +840,23 @@ describe('planReconcileState stepped device drift', () => {
       }));
     });
 
-    it('treats stale live binary observations as unknown in the merged plan', () => {
+    it('merges a stale live binary observation to its latched off label (trusts currentOn, not unknown)', () => {
+      // The reconcile merge recomputes the label from the producer-resolved
+      // `currentOn` (the latched on/off truth) and no longer re-applies staleness:
+      // a confirmed-off live binary device merges to 'off', not 'unknown'. Homey
+      // reports capabilities on change, so the latched off IS the trusted state.
       const plan = buildPlan([buildBinaryDevice({ currentState: 'on' })]);
       const liveDevices: PlanInputDevice[] = [inputDevice({
         id: 'dev-2',
         name: 'Heater',
         binaryControl: { on: false },
         controlCapabilityId: 'onoff',
-        observationStale: true,
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
       })];
 
       const result = buildLiveStatePlan(plan, liveDevices);
 
-      expect(result.devices[0].currentState).toBe('unknown');
-      expect(result.devices[0].observationStale).toBe(true);
+      expect(result.devices[0].currentState).toBe('off');
     });
 
     it('refreshes binaryCommandPending from live state so cleared pending does not stick', () => {

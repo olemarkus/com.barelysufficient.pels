@@ -33,7 +33,6 @@ export type ObservedStateInput = {
   // callers pass plan devices' `currentOn`; the residual producer resolves it
   // from the snapshot. The raw `binaryControl` is no longer read here.
   currentOn?: boolean;
-  observationStale?: boolean;
 };
 
 export type ActivelyDrawingInput = {
@@ -88,11 +87,12 @@ export function getMeasuredDrawKw(device: ObservedPowerInput): number | null {
  * Observer looks at measurement and observed binary state only.
  *
  *  - measured value if present (including 0).
- *  - 0 when explicitly observed off **and** the observation is fresh —
- *    shedding gives no immediate relief from a confirmed-off device. A stale
- *    `currentOn: false` is not trusted as authoritative; the device may still
- *    be drawing, so we fall through to the configured fallback instead of
- *    hiding the potential load from shed/swap accounting.
+ *  - 0 when the producer-resolved on/off truth is confirmed-off
+ *    (`currentOn === false`) — shedding gives no immediate relief from an
+ *    off device. The producer-resolved `currentOn` is trusted directly: it is
+ *    the latched on/off value (Homey reports capabilities on change, so a stale
+ *    `currentOn: false` is a trusted-off), and the plan/executor has no right to
+ *    distrust the observer's resolution. There is no staleness gate here.
  *  - otherwise the device's preferred configured demand (expected, then
  *    planning, then configured), respecting an explicit zero as authoritative,
  *    with EV / default fallback when nothing is configured.
@@ -105,7 +105,7 @@ export function getCurrentDrawKw(
 ): number {
   const measured = getMeasuredDrawKw(device);
   if (measured !== null) return measured;
-  if (device.currentOn === false && device.observationStale !== true) return 0;
+  if (device.currentOn === false) return 0;
   return resolveConfiguredOrFallbackKw(device);
 }
 

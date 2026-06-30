@@ -241,8 +241,12 @@ program) remains deferred.*
         `planExecutionDrift` (via `observedBinaryState`, which prefers `currentOn`), `planHeadroomDevice`, restore
         accounting, and the deferred-objective terminal release all read `currentOn`. Reconcile recombines
         `currentOn` with the merged stepped profile (no raw axis). Transport/observer/shared-domain and the
-        executable-from-snapshot projection keep `binaryControl` as the observed binary axis. Remaining: the
-        separate `observationStale` removal.
+        executable-from-snapshot projection keep `binaryControl` as the observed binary axis.
+        **`observationStale` removal landed:** the field is OFF the plan kinds — the plan trusts
+        producer-resolved control state (no plan-side distrust gate), `resolveObservedCurrentState` resolves a
+        concrete latched label (never `unknown` from staleness), and the idle/overview/starvation freshness gates
+        source staleness from the observer (`getObservationStale` dep, `isDeviceObservationStale` over the
+        projection). With this the plan-side binary-discrimination program is complete (open P2/P3 below).
         *Step-only stepper on/off resolved on the step axis (2026-06-14): a stepped device without `onoff` reads
         off/on from its step; restore/usage/overshoot/reconcile/activation/swap-completion + the executor all fixed.*
         Open follow-ups (P2/P3, deferred):
@@ -566,31 +570,6 @@ CI failure, so future field-move slices can't silently grow the debt.*
       settings-UI module — single source of truth, `settings-ui ↛ lib` boundary intact. **Trigger:
       do this before/with the next active-plans schema-version bump.** Source: pels-layering-guardian
       on PR #1517, 2026-06-05.
-
-- [ ] **Retire the `observed ?? device` boot-window fallback in `toPlanDevice` once freshness leaves
-      the descriptor surface.** Stage 4b wired the first projection reader: `toPlanDevice`
-      (`setup/appInit/toPlanDevice.ts`, fallback at ~line 25) resolves `observationStale` from
-      `ctx.getObservedState(id)`, falling back to the snapshot only until the first observation lands.
-      The fallback is correct *today* solely because
-      `TargetDeviceSnapshot = DeviceDescriptor & ObservedDeviceState` so the snapshot still physically
-      carries `lastFreshDataMs`/`lastLocalWriteMs`. Once a later stage strips those freshness fields off
-      the descriptor surface, the `?? device` arm reads `undefined` and silently flips `unknown` → non-stale.
-      Remove the fallback (or re-point it) in lockstep with that strip, so the "identical anyway" boot-window
-      assumption doesn't outlive its invariant. Persona: contributor; hypothesis: a stale fallback that
-      reads a removed field is a silent correctness trap for the next stage. Source: pels-layering-guardian
-      P3 on the stage-4b PR, 2026-06-06. Files: `setup/appInit/toPlanDevice.ts`, `packages/contracts/src/types.ts`.
-      (The three stage-4b *prerequisites* — seq-epoch co-creation, freeze-on-store, and the
-      device-update-lag dispatch — shipped with the stage-4b reader PR.)
-      *Boot-seed PR (2026-06-13): the observed projection is now boot/hot-plug-seeded from the raw
-      snapshot before the main plan path's `toPlanDevice` reads run (`createPlanService.getPlanDevices`
-      → `ctx.seedObservedStateFromSnapshot` → `ObservedDeviceStateProjection.seedMissing`), so `observed`
-      is non-empty there for every committed-snapshot device. The fallback was DELIBERATELY KEPT — two
-      callers reach `toPlanDevice` WITHOUT the seed: the realtime-reconcile `getLiveDevices` and the
-      smart-task preview, which can resolve a `getUiPickerDevices()` device never in the committed snapshot
-      (so the projection has no entry — neither real nor seeded). Dropping it there would call
-      `isDeviceObservationStale(undefined)`, the exact silent flip above. Retire only with the freshness-field
-      strip, not before. `toPlanDevice.ts` now documents this; tests in
-      `appInitToPlanDeviceObservationStale.test.ts` (hot-plug/picker case) pin the retained behaviour.*
 
 *v2.10.0..HEAD release-review findings (2026-05-29, six-agent fan-out:
 `pels-runtime-reality` + `pels-layering-guardian` + `pels-copy-and-terminology` +

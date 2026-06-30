@@ -7,7 +7,6 @@ export type PlanCapacityStateCounts = {
   activePlannedShedDevices: number | null;
   activeControlledDevices: number | null;
   zeroDrawControlledDevices: number | null;
-  staleControlledDevices: number | null;
   pendingControlledDevices: number | null;
   blockedByCooldownDevices: number | null;
   blockedByPenaltyDevices: number | null;
@@ -33,7 +32,6 @@ export type KnownPlanCapacityStateCounts = {
   activePlannedShedDevices: number;
   activeControlledDevices: number;
   zeroDrawControlledDevices: number;
-  staleControlledDevices: number;
   pendingControlledDevices: number;
   blockedByCooldownDevices: number;
   blockedByPenaltyDevices: number;
@@ -55,7 +53,6 @@ export function buildNullCapacityStateSummary(): PlanCapacityStateSummary {
     activePlannedShedDevices: null,
     activeControlledDevices: null,
     zeroDrawControlledDevices: null,
-    staleControlledDevices: null,
     pendingControlledDevices: null,
     blockedByCooldownDevices: null,
     blockedByPenaltyDevices: null,
@@ -80,7 +77,6 @@ export function buildEmptyCapacityStateSummary(): KnownPlanCapacityStateCounts {
     activePlannedShedDevices: 0,
     activeControlledDevices: 0,
     zeroDrawControlledDevices: 0,
-    staleControlledDevices: 0,
     pendingControlledDevices: 0,
     blockedByCooldownDevices: 0,
     blockedByPenaltyDevices: 0,

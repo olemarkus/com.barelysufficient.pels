@@ -1,4 +1,8 @@
 import { buildDeviceDiagnosticsObservations } from '../../lib/plan/planDiagnostics';
+import {
+  isDeviceObservationStale,
+  STALE_DEVICE_OBSERVATION_MS,
+} from '../../lib/observer/observationFreshness';
 import type { PlanContext } from '../../lib/plan/planContext';
 import type { RestorePlanResult } from '../../lib/plan/restore';
 import type {
@@ -92,6 +96,9 @@ const buildObservation = (params: {
   priceOptimizationSettings?: Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
   isCurrentHourCheap?: () => boolean;
   isCurrentHourExpensive?: () => boolean;
+  // Observer-resolved staleness for the device (defaults fresh). Drives the
+  // diagnostics freshness gate exactly as the production observer dep does.
+  getObservationStale?: (deviceId: string) => boolean;
 }) => buildDeviceDiagnosticsObservations({
   context: buildContext(
     buildPlanInputDevice(params.inputDevice),
@@ -99,6 +106,7 @@ const buildObservation = (params: {
     params.softLimitSource,
     params.powerFreshnessState,
   ),
+  getObservationStale: params.getObservationStale ?? (() => false),
   // Production always stamps the plan device's `deviceType` from the snapshot, so
   // mirror the input device's modality onto the plan device the fixture builds.
   // The temperature-cluster reads (`currentTarget` / `currentTemperature`) on the
@@ -316,7 +324,6 @@ describe('plan diagnostics observations', () => {
 
     expect(observation).toMatchObject({
       eligibleForStarvation: true,
-      observationFresh: true,
       currentTemperatureC: 18,
       intendedNormalTargetC: 21,
       // PELS commands the held 18° setpoint (3° under the 21° mode target).
@@ -459,8 +466,17 @@ describe('plan diagnostics observations', () => {
     expect(observation.targetStepC).toBe(0.5);
   });
 
-  it('marks stale temperature observations as not fresh without inventing continuity', () => {
+  it('marks a stale observation as not fresh (observer-sourced) so starvation will not count it', () => {
+    // Freshness is sourced from the OBSERVER (the `getObservationStale` dep wired
+    // from `ctx.getObservedState`), NOT off a plan-device field. Drive the REAL
+    // freshness resolver over an aged `lastFreshDataMs` (not a manual flag): a stale
+    // device is still eligible (eligibility ignores freshness) but `observationFresh`
+    // is false, which gates it out of starvation counting downstream
+    // (`isValidStarvationObservation`). A stale sample is not "confirmed no progress".
     const observation = buildObservation({
+      getObservationStale: () => isDeviceObservationStale({
+        lastFreshDataMs: Date.now() - STALE_DEVICE_OBSERVATION_MS - 60_000,
+      }),
       inputDevice: {
         id: 'heater-1',
         name: 'Hall Heater',
@@ -469,7 +485,6 @@ describe('plan diagnostics observations', () => {
         managed: true,
         controllable: true,
         available: true,
-        observationStale: true,
         currentTemperature: 18,
         binaryControl: { on: true },
         targets: [{ id: 'target_temperature', value: 18, unit: 'C' }],
@@ -478,14 +493,13 @@ describe('plan diagnostics observations', () => {
         id: 'heater-1',
         name: 'Hall Heater',
         deviceClass: 'thermostat',
-        currentState: 'unknown',
+        currentState: 'on',
         plannedState: 'shed',
         currentTarget: 18,
         plannedTarget: 18,
         reason: r('shed due to capacity'),
         controllable: true,
         available: true,
-        observationStale: true,
         currentTemperature: 18,
       },
       desiredForMode: { 'heater-1': 21 },
@@ -493,7 +507,43 @@ describe('plan diagnostics observations', () => {
 
     expect(observation.eligibleForStarvation).toBe(true);
     expect(observation.observationFresh).toBe(false);
-    expect(observation.currentTemperatureC).toBe(18);
+  });
+
+  it('marks a fresh observation as fresh (observer-sourced) — eligible to count', () => {
+    const observation = buildObservation({
+      getObservationStale: () => isDeviceObservationStale({ lastFreshDataMs: Date.now() }),
+      inputDevice: {
+        id: 'heater-1',
+        name: 'Hall Heater',
+        deviceClass: 'thermostat',
+        deviceType: 'temperature',
+        managed: true,
+        controllable: true,
+        available: true,
+        currentTemperature: 18,
+        binaryControl: { on: true },
+        targets: [{ id: 'target_temperature', value: 18, unit: 'C' }],
+      },
+      planDevice: {
+        id: 'heater-1',
+        name: 'Hall Heater',
+        deviceClass: 'thermostat',
+        currentState: 'on',
+        plannedState: 'shed',
+        currentTarget: 18,
+        plannedTarget: 18,
+        reason: r('shed due to capacity'),
+        controllable: true,
+        available: true,
+        currentTemperature: 18,
+      },
+      desiredForMode: { 'heater-1': 21 },
+    });
+
+    expect(observation.eligibleForStarvation).toBe(true);
+    expect(observation.observationFresh).toBe(true);
+    expect(observation.suppressionState).toBe('counting');
+    expect(observation.countingCause).toBe('capacity');
   });
 
   it('keeps unknown shed reasons explicitly attributed instead of mapping them to a known cause', () => {

@@ -51,13 +51,8 @@ export function buildResidualKwForPlanDevice(params: {
   device: DecoratedDeviceSnapshot;
   controlCapabilityId?: BinaryControlCapabilityId;
   shedBehavior: ResidualKwForPlanDeviceShedBehavior;
-  // Resolved once by the caller (`toPlanDevice`) from the observer projection so
-  // every freshness consumer in a single plan-device build shares one source of
-  // truth — the residual-power credit and the device's `observationStale` flag
-  // can't disagree within the same pass.
-  observationStale: boolean;
 }): { shed: number; restore: { kw: number; source: RestorePowerSource } } {
-  const { device, controlCapabilityId, shedBehavior, observationStale } = params;
+  const { device, controlCapabilityId, shedBehavior } = params;
   const currentDrawKw = getCurrentDrawKw({
     ...device,
     // `getCurrentDrawKw` reads the resolved on/off truth, not the raw `binaryControl`.
@@ -65,9 +60,9 @@ export function buildResidualKwForPlanDevice(params: {
     // `controlCapabilityId` gate): a non-binary step-only stepper carries no
     // `currentOn`, and its off-step is handled by the stepped residual path below —
     // folding it into `getCurrentDrawKw` here would zero a draw the configured
-    // fallback should still surface.
+    // fallback should still surface. `getCurrentDrawKw` trusts the resolved
+    // `currentOn`; there is no staleness gate.
     ...(controlCapabilityId !== undefined ? { currentOn: resolveCurrentOn(device) } : {}),
-    observationStale,
   });
   const shed = resolveResidualKwShed({
     device: {
@@ -78,7 +73,7 @@ export function buildResidualKwForPlanDevice(params: {
     shedBehavior: toResidualShedBehavior(shedBehavior),
   });
   const restore = resolveResidualKwRestore({
-    steppedLoad: toRestoreSteppedLoad(device, controlCapabilityId, observationStale),
+    steppedLoad: toRestoreSteppedLoad(device, controlCapabilityId),
     restoreFallback: getRestoreDrawKw(device),
   });
   return { shed, restore };
@@ -87,7 +82,6 @@ export function buildResidualKwForPlanDevice(params: {
 function toRestoreSteppedLoad(
   device: DecoratedDeviceSnapshot,
   controlCapabilityId: BinaryControlCapabilityId | undefined,
-  observationStale: boolean,
 ): ResidualKwRestoreSteppedDevice | undefined {
   if (
     device.controlModel !== 'stepped_load'
@@ -97,13 +91,12 @@ function toRestoreSteppedLoad(
     return undefined;
   }
   // Mirrors `dev.currentState !== 'off'` in the legacy
-  // `resolveSteppedRestorePower` chain. `currentState` is observer-resolved,
-  // so the wiring layer computes the same projection here and funnels the
-  // resolved boolean into the producer.
+  // `resolveSteppedRestorePower` chain. `currentState` is observer-resolved
+  // (the concrete latched label — no staleness gate), so the wiring layer
+  // computes the same projection here and funnels the resolved boolean.
   const currentState = resolveObservedCurrentState({
     binaryControl: device.binaryControl,
     controlCapabilityId,
-    observationStale,
     controlModel: device.controlModel,
     steppedLoadProfile: device.steppedLoadProfile,
     selectedStepId: device.selectedStepId,

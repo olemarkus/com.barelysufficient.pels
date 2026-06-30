@@ -3,7 +3,6 @@ import { getInactiveReason, isRestoreLiveEligibleDevice } from './devices';
 import { isSteppedLoadDevice } from '../planSteppedLoad';
 import { isTemperaturePlanDevice } from '../planTemperatureDevice';
 import { getSteppedLoadStep } from '../../utils/deviceControlProfiles';
-import { isDeviceObservationTrusted } from '../../observer/observationTrust';
 
 function isTargetRestorePending(device: DevicePlanDevice): boolean {
   if (!isTemperaturePlanDevice(device)) return false;
@@ -31,7 +30,6 @@ function isDeviceBlockingSteppedRestore(
   device: DevicePlanDevice,
   shedDecidedMs: Record<string, number>,
 ): boolean {
-  if (!isDeviceObservationTrusted(device)) return false;
   if (!shedDecidedMs[device.id] || device.plannedState !== 'keep') return false;
   return device.currentState === 'off'
     || device.currentState === 'unknown'
@@ -41,7 +39,6 @@ function isDeviceBlockingSteppedRestore(
 }
 
 function isDeviceUnconfirmedRecoveryInFlight(device: DevicePlanDevice): boolean {
-  if (!isDeviceObservationTrusted(device)) return false;
   if (device.plannedState !== 'keep') return false;
   return device.binaryCommandPending === true
     || isTargetRestorePending(device)

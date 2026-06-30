@@ -211,10 +211,17 @@ store, because:
      live in `packages/contracts/src/**` (deploy-excluded source; runtime may only
      `import type` from it, enforced by `test/runtimePackaging.test.ts`).
    - **4b — IN PROGRESS:** route real readers onto the projection (wiring-side observed
-     reads first). **First reader wired:** `toPlanDevice` (`setup/appInit.ts`) now resolves
+     reads first). **First reader wired:** `toPlanDevice` (`setup/appInit.ts`) resolved
      `observationStale` from `ctx.getObservedState(id)` (the projection's maintained truth)
      instead of the snapshot's freshness fields, falling back to the snapshot only for the
-     boot window before the first observation lands (identical values there). The test seam
+     boot window before the first observation lands (identical values there).
+     **Superseded:** `observationStale` was subsequently removed from the plan kinds entirely
+     (the plan trusts producer-resolved control state and must not distrust observer data), so
+     `toPlanDevice` no longer resolves it. The projection-reader pattern this stage established
+     stands for the remaining observed fields; the staleness-dependent features (idle
+     classification, overview gray-state, starvation freshness) read freshness from the
+     observer via a `getObservationStale` dep (`isDeviceObservationStale` over the projection).
+     The test seam
      `DeviceTransport.setSnapshotForTests` now mirrors the production refresh funnel
      (`setSnapshot` + `dispatchObservedStateRefresh`) so the whole suite exercises the
      projection-fed reader rather than the fallback. All three prereqs below were paid first.

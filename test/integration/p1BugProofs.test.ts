@@ -188,7 +188,6 @@ describe('P1 bug proofs', () => {
           binaryControl: { on: true },
           controllable: true,
           controlCapabilityId: 'onoff',
-          observationStale: true,
         }) as PlanInputDevice,
       ],
       shedSet: new Set(['shed']),
@@ -202,10 +201,9 @@ describe('P1 bug proofs', () => {
       plannedShedDevices: 1,
       pendingPlannedShedDevices: 1,
       activePlannedShedDevices: 1,
-      // Behaviour change: a stale-on device is now trusted-on, so it counts active.
+      // The 'stale' device is trusted-on via its latched binary state, so it counts active.
       activeControlledDevices: 2,
       zeroDrawControlledDevices: 1,
-      staleControlledDevices: 1,
       pendingControlledDevices: 1,
       summarySource: 'plan_input',
     }));

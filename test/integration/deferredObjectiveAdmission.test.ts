@@ -147,7 +147,6 @@ const buildDevice = (params: {
   binaryControl: { on: params.currentOn },
   currentTemperature: params.currentTemperatureC,
   lastFreshDataMs: params.nowMs,
-  observationStale: false,
   measuredPowerKw: params.currentOn ? 1.5 : 0,
   expectedPowerKw: params.currentOn ? 1.5 : 0,
   planningPowerKw: params.currentOn ? 1.5 : 0,
@@ -236,7 +235,6 @@ const buildContender = (params: {
   measuredPowerKw: params.currentOn ? 1.5 : 0,
   expectedPowerKw: 1.5,
   planningPowerKw: 1.5,
-  observationStale: false,
   lastFreshDataMs: params.nowMs,
   targets: [],
 }) as PlanInputDevice;

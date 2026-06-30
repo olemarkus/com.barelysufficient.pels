@@ -18,6 +18,10 @@ import type {
 } from '../../lib/plan/planTypes';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
 import { isEvPlanDevice } from '../../lib/plan/planEvDevice';
+import {
+  isDeviceObservationStale,
+  STALE_DEVICE_OBSERVATION_MS,
+} from '../../lib/observer/observationFreshness';
 import { buildExecutableTargetIntent } from '../../lib/executor/executableTargetProjection';
 import { buildPlanInputDevice, steppedInputDevice } from '../utils/planTestUtils';
 import { legacyDeviceReason, reasonText } from '../utils/deviceReasonTestUtils';
@@ -131,14 +135,30 @@ describe('buildInitialPlanDevices', () => {
     expect(build(57).temperatureBoostActive).toBe(false);
   });
 
-  it('does not enable temperature boost for stale temperature observations', () => {
+  it('enables temperature boost from the producer-resolved temperature (plan does not distrust the observer)', () => {
+    // Behaviour change (trust the observer): the plan device no longer carries
+    // observation staleness, and the plan has no right to distrust observer data.
+    // Temperature boost is resolved from the producer-resolved temperature
+    // (finiteness-checked, not gated on staleness at the plan layer), so a device
+    // below its floor boosts on the last-seen temperature. (`getTrustedCurrentTemperatureC`
+    // still drops a non-finite reading — only the staleness gate is gone.)
+    //
+    // The boost decision reads ONLY `currentTemperature` — it has no freshness
+    // input at this layer by design, so the trusted-last-seen behaviour holds
+    // regardless of age. The assertion below documents that the chosen age IS
+    // stale by the real resolver; it is NOT wired into the boost path (a genuine
+    // reintroduction guard isn't constructible here without first re-plumbing
+    // freshness into the boost decision). The real guard is the end-state assertion
+    // (`temperatureBoostActive === true` from a finite latched reading) below.
+    expect(isDeviceObservationStale({
+      lastFreshDataMs: Date.now() - STALE_DEVICE_OBSERVATION_MS - 60_000,
+    })).toBe(true);
     const [planDevice] = buildInitialPlanDevices({
       context: buildContext([steppedInput({
         id: 'tank',
         name: 'Water tank',
         deviceType: 'temperature',
         currentTemperature: 50,
-        observationStale: true,
         temperatureBoost: { enabled: true, boostBelowC: 55 },
       })]),
       state: createPlanEngineState(),
@@ -148,7 +168,7 @@ describe('buildInitialPlanDevices', () => {
       deps: defaultDeps,
     });
 
-    expect(planDevice.temperatureBoostActive).toBe(false);
+    expect(planDevice.temperatureBoostActive).toBe(true);
   });
 
   it('does not enable temperature boost without a target temperature capability', () => {
@@ -196,7 +216,6 @@ describe('buildInitialPlanDevices', () => {
       previousActive: false,
       currentTemperatureC: 54.9,
       boostBelowC: 55,
-      observationStale: false,
     });
   });
 
@@ -691,13 +710,18 @@ describe('buildInitialPlanDevices', () => {
     expect(planDevice.binaryCommandPending).toBeUndefined();
   });
 
-  it('treats stale binary observations as unknown instead of confirmed off', () => {
+  it('carries the producer-resolved unknown label for a stale binary device', () => {
+    // Staleness is folded into the observer's four-valued label at the producer
+    // (`toPlanDevice` → `resolveObservedCurrentState`), so a stale binary device
+    // arrives with `currentState: 'unknown'`. The planner TRUSTS that label
+    // (`planDevices.resolveCurrentState`) — it does not re-derive off/unknown from
+    // staleness, which the plan device no longer carries.
     const device = inputDevice({
       id: 'dev-1',
       name: 'Heater',
       binaryControl: { on: false },
       controlCapabilityId: 'onoff',
-      observationStale: true,
+      currentState: 'unknown',
     });
 
     const [planDevice] = buildInitialPlanDevices({
@@ -718,7 +742,6 @@ describe('buildInitialPlanDevices', () => {
     });
 
     expect(planDevice.currentState).toBe('unknown');
-    expect(planDevice.observationStale).toBe(true);
   });
 
   it('detects shed drift for off stepped devices and drives them to the off-step during shortfall', () => {

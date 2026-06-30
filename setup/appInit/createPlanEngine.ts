@@ -1,6 +1,7 @@
 import { buildDeviceActuator } from './buildDeviceActuator';
 import { requireDeviceManager } from './contextGuards';
 import { PlanEngine as PlanEngineClass } from '../../lib/plan/planEngine';
+import { isDeviceObservationStale } from '../../lib/observer/observationFreshness';
 import { CAPACITY_IN_SHORTFALL, DEVICE_LAST_CONTROLLED_MS } from '../../lib/utils/settingsKeys';
 import type { DeviceDiagnosticsRecorder } from '../../lib/diagnostics/deviceDiagnosticsService';
 import type { AppContext } from '../../lib/app/appContext';
@@ -53,6 +54,14 @@ export function createPlanEngine(ctx: AppContext) {
     persistLastControlledMs: (lastControlledMs) => ctx.homey.settings.set(DEVICE_LAST_CONTROLLED_MS, lastControlledMs),
     deviceManager,
     getObservedState: (deviceId) => ctx.getObservedState(deviceId),
+    // Observer-resolved per-device staleness for the diagnostics freshness gate
+    // (starvation must not count stale-but-unobserved time). Same observer-projection
+    // seam as createPlanService.getObservationStale; resolved to a flat boolean here.
+    // A device with no projection entry yet is treated as not stale.
+    getObservationStale: (deviceId) => {
+      const observed = ctx.getObservedState(deviceId);
+      return observed !== undefined && isDeviceObservationStale(observed);
+    },
     actuator,
     getCapacityGuard: () => ctx.capacityGuard,
     getCapacitySettings: () => ctx.capacitySettings,

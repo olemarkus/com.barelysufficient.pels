@@ -117,13 +117,13 @@ describe('readTerminalObserved — 2-state read of the producer binaryControl.on
   it('reads binaryControl.on directly — no observation-trust / staleness gate', () => {
     // binaryControl.on IS the trusted binary read (the producer latches prior
     // trusted evidence on a missing read). The terminal state read does NOT
-    // re-derive trust from observationStale — that would reinvent the
-    // binaryControlObservation coupling the producer owns. Stale-or-not, the read
-    // is the bit. Commandability (`available`) is gated at the actuation decision,
-    // not here.
-    expect(readTerminalObserved(binaryDevice({ binaryControl: { on: true }, observationStale: true })).binaryState)
+    // re-derive trust from staleness — the plan device carries no staleness flag,
+    // and a stale read is still the bit (Homey reports capabilities on change, so
+    // the latched value is the trusted state). Commandability (`available`) is
+    // gated at the actuation decision, not here.
+    expect(readTerminalObserved(binaryDevice({ binaryControl: { on: true } })).binaryState)
       .toBe('on');
-    expect(readTerminalObserved(binaryDevice({ binaryControl: { on: false }, observationStale: true })).binaryState)
+    expect(readTerminalObserved(binaryDevice({ binaryControl: { on: false } })).binaryState)
       .toBe('off');
     expect(readTerminalObserved(binaryDevice({ binaryControl: { on: false }, available: false })).binaryState)
       .toBe('off');

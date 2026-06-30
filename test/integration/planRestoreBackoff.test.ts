@@ -537,7 +537,6 @@ describe('restore cooldown backoff', () => {
           id: 'dev-off',
           name: 'Critical heater',
           currentState: 'unknown',
-          observationStale: true,
           plannedState: 'keep',
           expectedPowerKw: 2,
           measuredPowerKw: 0,

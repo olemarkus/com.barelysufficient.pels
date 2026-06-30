@@ -79,6 +79,11 @@ export type PlanBuilderDeps = {
   // single source of truth for that map (observer/transport split).
   pendingBinaryCommandStore: PendingBinaryCommandStore;
   deviceDiagnostics?: DeviceDiagnosticsRecorder;
+  // Observer-resolved per-device staleness for the diagnostics freshness gate
+  // (starvation must not count stale-but-unobserved time). Sourced from the
+  // observer projection at the wiring layer (createPlanEngine); absent in tests
+  // that don't exercise freshness, which then treat every device as fresh.
+  getObservationStale?: (deviceId: string) => boolean;
   structuredLog?: PinoLogger;
   debugStructured?: StructuredDebugEmitter;
   // Smart-task (deferred-objective) decoration seam. The smart-task controller
@@ -491,6 +496,9 @@ export class PlanBuilder {
       priceOptimizationSettings: this.priceOptimizationSettings,
       isCurrentHourCheap: () => this.deps.isCurrentHourCheap(),
       isCurrentHourExpensive: () => this.deps.isCurrentHourExpensive(),
+      // No staleness dep wired (e.g. tests) ⇒ treat every device as fresh, so the
+      // freshness gate is a no-op and starvation counts as before.
+      getObservationStale: this.deps.getObservationStale ?? (() => false),
     });
     this.deps.deviceDiagnostics.observePlanSample({ observations, nowTs });
   }

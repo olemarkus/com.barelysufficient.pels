@@ -13,10 +13,10 @@
  * produced a trusted observation, and only suppresses planning when the
  * device has never reported a value at all (`lastFreshDataMs` absent —
  * mirrors `getDeviceObservationFreshness === 'unknown'`). Note: this gate
- * deliberately does **not** consult `observationStale`, because in this
- * repo today that flag is produced by the same age-based heuristic
- * (`appInit.ts` → `isDeviceObservationStale`) — re-applying it here would
- * just reinstate the bug.
+ * deliberately does **not** suppress on staleness — a device steady at setpoint
+ * legitimately falls silent for hours, and crediting its last trusted reading is
+ * correct. (The plan no longer carries an `observationStale` flag at all;
+ * observer-resolved freshness is used only where a feature genuinely needs it.)
  *
  * EV SoC stays strictly fresh because charger session validity genuinely
  * requires per-session telemetry.

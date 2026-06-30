@@ -75,20 +75,14 @@ describe('getCurrentDrawKw', () => {
     expect(getCurrentDrawKw({})).toBe(1);
   });
 
-  it('treats a stale currentOn=false as unknown and falls through to configured demand', () => {
-    // Regression: shed/swap eligibility passes stale devices through to
-    // getCurrentDrawKw (resolveEffectiveCurrentOn returns null for stale,
-    // which is `!== false`). A stale `currentOn: false` must not zero the
-    // device out — the device may still be drawing and shedding it could
-    // still relieve load.
+  it('trusts a confirmed-off currentOn=false as zero draw (no staleness gate)', () => {
+    // The plan trusts the producer-resolved on/off truth: a confirmed-off device
+    // draws 0 for shed accounting. `currentOn` is the latched value (Homey reports
+    // capabilities on change, so a stale `currentOn: false` is a trusted-off) —
+    // there is no staleness gate here. Matches the stale-off = trusted-off
+    // principle that `resolveCurrentOn` already enforces.
     expect(getCurrentDrawKw({
       currentOn: false,
-      observationStale: true,
-      expectedPowerKw: 2,
-    })).toBe(2);
-    expect(getCurrentDrawKw({
-      currentOn: false,
-      observationStale: false,
       expectedPowerKw: 2,
     })).toBe(0);
   });

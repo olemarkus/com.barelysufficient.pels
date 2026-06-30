@@ -57,7 +57,6 @@ export const resolveFixtureCurrentState = (device: {
   controlCapabilityId?: string;
   steppedLoadProfile?: SteppedLoadProfile;
   selectedStepId?: string;
-  observationStale?: boolean;
 }): string => {
   if (typeof device.currentState === 'string') return device.currentState;
   const binaryControl = device.binaryControl
@@ -67,7 +66,6 @@ export const resolveFixtureCurrentState = (device: {
     controlCapabilityId: device.controlCapabilityId as BinaryControlCapabilityId | undefined,
     steppedLoadProfile: device.steppedLoadProfile,
     selectedStepId: device.selectedStepId,
-    observationStale: device.observationStale,
   });
 };
 
@@ -173,7 +171,7 @@ DevicePlanDevice => {
   const o = overrides as {
     currentOn?: boolean; currentState?: string; binaryControl?: { on: boolean };
     controlCapabilityId?: BinaryControlCapabilityId;
-    steppedLoadProfile?: SteppedLoadProfile; selectedStepId?: string; observationStale?: boolean;
+    steppedLoadProfile?: SteppedLoadProfile; selectedStepId?: string;
   };
   const currentOn = resolveFixtureCurrentOn(o);
   return {
@@ -214,7 +212,7 @@ export const buildPlanInputDevice = (
   const o = overrides as {
     currentOn?: boolean; currentState?: string; binaryControl?: { on: boolean };
     controlCapabilityId?: BinaryControlCapabilityId;
-    steppedLoadProfile?: SteppedLoadProfile; selectedStepId?: string; observationStale?: boolean;
+    steppedLoadProfile?: SteppedLoadProfile; selectedStepId?: string;
   };
   const currentOn = resolveFixtureCurrentOn({ ...o, binaryControl: o.binaryControl ?? { on: true } });
   // Producer-resolved label (an explicit override in `...rest` still wins below).

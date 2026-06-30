@@ -91,6 +91,10 @@ export type PlanEngineDeps = {
   getPriceOptimizationSettings: () => Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
   isCurrentHourCheap: () => boolean;
   isCurrentHourExpensive: () => boolean;
+  // Observer-resolved per-device staleness for the builder's diagnostics
+  // freshness gate. Forwarded straight to the builder; the engine does not
+  // consult it. Wired at setup from the observer projection.
+  getObservationStale?: (deviceId: string) => boolean;
   getPowerTracker: () => PowerTrackerState;
   getDailyBudgetSnapshot?: () => DailyBudgetUiPayload | null;
   // Pre-built smart-task decoration function (the app wiring constructs the
@@ -184,6 +188,7 @@ export class PlanEngine {
       isCurrentHourExpensive: deps.isCurrentHourExpensive,
       getPowerTracker: deps.getPowerTracker,
       getDailyBudgetSnapshot: deps.getDailyBudgetSnapshot,
+      getObservationStale: deps.getObservationStale,
       getPriorityForDevice: deps.getPriorityForDevice,
       getShedBehavior: deps.getShedBehavior,
       getDynamicSoftLimitOverride: deps.getDynamicSoftLimitOverride,

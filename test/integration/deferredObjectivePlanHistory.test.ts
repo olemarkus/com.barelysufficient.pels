@@ -2828,7 +2828,6 @@ describe('DeferredObjectivePlanHistoryRecorder', () => {
           name: 'Connected 300',
           currentState: 'on',
           binaryControl: { on: true },
-          observationStale: false,
           measuredPowerKw: drawing ? 1.2 : 0,
           currentTemperature: 58,
           currentTarget: 65,

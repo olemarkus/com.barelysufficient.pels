@@ -32,6 +32,5 @@ export function emitTemperatureBoostStateChange(params: {
     previousActive,
     currentTemperatureC: typeof currentTemperature === 'number' ? currentTemperature : null,
     boostBelowC: typeof boostBelowC === 'number' ? boostBelowC : null,
-    observationStale: dev.observationStale === true,
   });
 }

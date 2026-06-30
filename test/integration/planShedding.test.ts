@@ -495,7 +495,6 @@ describe('buildSheddingPlan', () => {
             id: 'dev-stale',
             name: 'Stale Heater',
             binaryControl: { on: false },
-            observationStale: true,
             controllable: true,
             measuredPowerKw: 0.8,
           }),

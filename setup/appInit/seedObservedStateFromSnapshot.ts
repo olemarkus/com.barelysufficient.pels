@@ -9,9 +9,9 @@ import type { ObservedDeviceState, TargetDeviceSnapshot } from '../../packages/c
  * The observed-state projection is fed by the dispatcher PUSH (per-capability
  * deltas + full-refresh batches), so it is EMPTY for a device until that
  * device's first observation lands — the cold-start window. A reader hitting it
- * then (the settings-UI EV chip via `getObservedEvChargingState`, or
- * `toPlanDevice`'s freshness) would otherwise get generic copy / a snapshot
- * fallback for cycle 1.
+ * then (the settings-UI EV chip via `getObservedEvChargingState`, or the
+ * `getObservationStale` freshness seam used by the idle/overview/starvation
+ * surfaces) would otherwise get generic copy / a not-stale default for cycle 1.
  *
  * The seed source MUST be the RAW cached snapshot (`deviceManager.getSnapshot()`)
  * — NOT `latestTargetSnapshot`, which re-decorates and is O(n^2)/re-entrant-unsafe

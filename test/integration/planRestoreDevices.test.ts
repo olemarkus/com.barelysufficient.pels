@@ -117,7 +117,7 @@ describe('plan restore device helpers', () => {
   it('trusts stale observations (last value) when selecting restore and swap candidates', () => {
     const devices = [
       makeDevice({ id: 'fresh-off', priority: 1, currentState: 'off' }),
-      makeDevice({ id: 'stale-off', priority: 2, currentState: 'off', observationStale: true }),
+      makeDevice({ id: 'stale-off', priority: 2, currentState: 'off' }),
       makeDevice({
         id: 'fresh-step',
         priority: 3,
@@ -136,7 +136,6 @@ describe('plan restore device helpers', () => {
         id: 'stale-step',
         priority: 4,
         currentState: 'on',
-        observationStale: true,
         steppedLoadProfile: {
           model: 'stepped_load',
           steps: [
@@ -205,7 +204,7 @@ describe('plan restore device helpers', () => {
         selectedStepId: 'low',
       }),
       makeDevice({ id: 'fresh-on', priority: 5, currentState: 'on' }),
-      makeDevice({ id: 'stale-on', priority: 6, currentState: 'on', observationStale: true }),
+      makeDevice({ id: 'stale-on', priority: 6, currentState: 'on' }),
     ];
 
     expect(getOffDevices(devices).map((device) => device.id)).toEqual(['fresh-off', 'stale-off']);
@@ -355,7 +354,7 @@ describe('plan restore device helpers', () => {
 
   it('shares the same live eligibility gate across restore candidate paths', () => {
     const eligible = makeDevice({ id: 'eligible', currentState: 'off' });
-    const stale = makeDevice({ id: 'stale', currentState: 'off', observationStale: true });
+    const stale = makeDevice({ id: 'stale', currentState: 'off' });
     const shed = makeDevice({ id: 'shed', currentState: 'off', plannedState: 'shed' });
 
     expect(isRestoreLiveEligibleDevice(eligible)).toBe(true);

@@ -24,18 +24,18 @@ describe('planCurrentState', () => {
     });
   });
 
-  it('returns unknown for stale binary observations instead of collapsing to off', () => {
+  it('resolves a binary observation to its latched off — never unknown from staleness', () => {
+    // The producer no longer collapses a stale binary read to 'unknown'; it
+    // resolves the latched bit (here off), and the effective on/off follows.
     expect(resolveObservedCurrentState({
       binaryControl: { on: false },
       controlCapabilityId: 'onoff',
-      observationStale: true,
-    })).toBe('unknown');
+    })).toBe('off');
 
     expect(resolveEffectiveCurrentOn({
       binaryControl: { on: false },
       controlCapabilityId: 'onoff',
-      observationStale: true,
-    })).toBeNull();
+    })).toBe(false);
   });
 
   it('maps target-only devices to not_applicable and an unknown on/off state', () => {

@@ -209,6 +209,7 @@ describe('solar device as managed observe-only — control-path exclusion lock',
       priceOptimizationSettings: {},
       isCurrentHourCheap: () => false,
       isCurrentHourExpensive: () => false,
+      getObservationStale: () => false,
     });
     const solarObservation = observations.find((o) => o.deviceId === SOLAR_ID);
     expect(solarObservation?.eligibleForStarvation).toBe(false);

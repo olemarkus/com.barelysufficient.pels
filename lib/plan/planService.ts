@@ -85,6 +85,7 @@ const serializePlanForUi = (
     getOverviewStarvation: (deviceId) => deps.deviceDiagnostics?.getOverviewStarvation?.(deviceId),
     getIdleClassification: (deviceId) => idleClassifier.getClassification(deviceId),
     getObservedEvChargingState: (deviceId) => deps.getObservedEvChargingState?.(deviceId),
+    getObservationStale: (deviceId) => deps.getObservationStale?.(deviceId) ?? false,
     getDeviceTypeById: deps.getDeviceTypeById,
   });
 };
@@ -472,9 +473,16 @@ export class PlanService {
     // Narrow the temperature cluster via the guard so the classifier never reads
     // `currentTarget`/`currentTemperature` off an un-narrowed plan device — a
     // non-temperature device contributes `currentTarget: null` (its old base value).
-    const idleInputs = plan.devices.map((device): IdleClassifierDeviceInput => (
-      isTemperaturePlanDevice(device) ? device : { ...device, currentTarget: null }
-    ));
+    // The idle classifier is an observer-side diagnostic tap whose "unresponsive"
+    // detection legitimately needs staleness; the plan device no longer carries
+    // `observationStale`, so source it from the observer projection here.
+    const idleInputs = plan.devices.map((device): IdleClassifierDeviceInput => {
+      const observationStale = this.deps.getObservationStale?.(device.id) ?? false;
+      const narrowed = isTemperaturePlanDevice(device)
+        ? device
+        : { ...device, currentTarget: null };
+      return { ...narrowed, observationStale };
+    });
     this.idleClassifier.classifyAll(idleInputs, Date.now());
   }
 

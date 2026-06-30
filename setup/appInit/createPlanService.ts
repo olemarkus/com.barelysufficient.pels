@@ -7,6 +7,7 @@ import { buildControlModelMap } from '../appDeviceControlHelpers';
 import { PELS_STATUS } from '../../lib/utils/settingsKeys';
 import { isRuntimePlannedDevice } from '../appDeviceSupport';
 import { readObservedEvChargingState } from '../../lib/observer/observedDeviceStateProjection';
+import { isDeviceObservationStale } from '../../lib/observer/observationFreshness';
 
 export function createPlanService(ctx: AppContext): PlanService {
   return new PlanService({
@@ -49,6 +50,21 @@ export function createPlanService(ctx: AppContext): PlanService {
     // raw snapshot before the read model serializes, so a boot-present EV's real
     // plug-state is materialized for cycle 1.
     getObservedEvChargingState: (deviceId) => readObservedEvChargingState(ctx.getObservedState(deviceId)),
+    // Observation staleness for the settings-UI gray-state label and the idle
+    // classifier, sourced from the observer projection — the same seam as
+    // `getObservedEvChargingState`. The plan device no longer carries
+    // `observationStale`; the plan trusts the observer's resolved on/off truth.
+    // A device with no projection entry yet (never observed) is treated as not
+    // stale here. This is only ever invoked over COMMITTED plan devices (the
+    // overview serialize + idle tick), which were built from the seeded snapshot,
+    // so it can read the projection directly with no `?? snapshot` fallback. A
+    // future caller must NOT wire it to an unseeded path (the smart-task picker or
+    // realtime-reconcile devices), where the projection may have no entry and this
+    // would silently report not-stale.
+    getObservationStale: (deviceId) => {
+      const observed = ctx.getObservedState(deviceId);
+      return observed !== undefined && isDeviceObservationStale(observed);
+    },
     // Producer `deviceType` for the settings-UI control-mode card. Sourced from
     // the RAW, undecorated device snapshot (`deviceManager.getSnapshot()`) — NOT
     // `latestTargetSnapshot` — so building this map triggers no re-decoration

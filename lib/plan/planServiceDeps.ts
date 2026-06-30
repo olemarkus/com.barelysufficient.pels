@@ -32,6 +32,12 @@ export type PlanServiceDeps = {
   // (its canonical owner — `ObservedDeviceState`), not the plan device. The
   // planner no longer carries the raw `evChargingState`.
   getObservedEvChargingState?: (deviceId: string) => EvChargingState | undefined;
+  // Observation staleness for the settings-UI gray-state label AND the idle
+  // classifier's "unresponsive" detection, sourced from the observer (its
+  // canonical owner — `ObservedDeviceState` freshness), not the plan device. The
+  // plan no longer carries `observationStale`: the plan trusts producer-resolved
+  // `currentOn`/`currentState`, and staleness reporting belongs to the observer.
+  getObservationStale?: (deviceId: string) => boolean;
   // Producer `deviceType` map for the settings-UI control-mode card selection
   // (the planner no longer carries `controlModel`). Built once per serialize from
   // the raw snapshot; see `SettingsOverviewReadModelDeps.getDeviceTypeById`.

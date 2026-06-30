@@ -157,7 +157,6 @@ const buildDevice = (nowMs: number): PlanInputDevice => withTemperatureDiscrimin
   binaryControl: { on: true },
   currentTemperature: 50,
   lastFreshDataMs: nowMs,
-  observationStale: false,
   measuredPowerKw: 1.5,
   expectedPowerKw: 1.5,
   planningPowerKw: 1.5,

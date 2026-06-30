@@ -187,7 +187,6 @@ const buildSteppedDevice = (nowMs: number): PlanInputDevice => withSteppedDiscri
     selectedStepId: 'low',
     currentTemperature: 50,
     lastFreshDataMs: nowMs,
-    observationStale: false,
     measuredPowerKw: STEP_LOW_KW,
     expectedPowerKw: STEP_LOW_KW,
     planningPowerKw: STEP_LOW_KW,
@@ -206,7 +205,6 @@ const buildLowerPriorityDevice = (nowMs: number): PlanInputDevice => withBinaryD
     measuredPowerKw: 0,
   expectedPowerKw: LOWER_PRIORITY_RESTORE_KW,
   planningPowerKw: LOWER_PRIORITY_RESTORE_KW,
-  observationStale: false,
   lastFreshDataMs: nowMs,
   targets: [],
 }) as PlanInputDevice;

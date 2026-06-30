@@ -404,8 +404,10 @@ type DevicePlanDeviceBase = {
   // are split off onto the orthogonal `TemperatureKind` cluster; reach them
   // through the `isTemperaturePlanDevice` guard
   // (`lib/plan/planTemperatureDevice.ts`). The boost cluster
-  // (`temperatureBoost*`) stays on the base.
-  observationStale?: boolean;
+  // (`temperatureBoost*`) stays on the base. There is intentionally no
+  // `observationStale` field: the plan has no right to distrust observer data
+  // (it trusts the producer-resolved `currentOn`/`currentState`), and staleness
+  // *reporting* is the observer's concern, not the plan's.
   communicationModel?: 'local' | 'cloud';
   reportedStepId?: string;
   targetStepId?: string;
