@@ -18,7 +18,7 @@ type CombinedPricesReaderDeps = {
    * migration path: V1 already carries every entry, so we migrate in place
    * synchronously. Re-entrant calls within the same read are guarded by the
    * per-instance `refetchInFlight` flag; this relies on a single shared reader
-   * (constructed once in `createAppContext`), so the guard covers all reads.
+   * (constructed once as the app's `combinedPricesReader` field), so the guard covers all reads.
    */
   requestRefetch: () => void;
 };
@@ -75,8 +75,8 @@ export const createCombinedPricesReader = (deps: CombinedPricesReaderDeps): Comb
 
 /**
  * App-wiring convenience: builds the shared reader with the standard
- * coordinator-driven refetch. Kept here (rather than inline in `createAppContext`)
- * so the wiring — and the lazy coordinator lookup — live with the adapter.
+ * coordinator-driven refetch. Kept here (rather than inline in the app's context
+ * wiring) so the wiring — and the lazy coordinator lookup — live with the adapter.
  */
 export const createCombinedPricesReaderForApp = (
   homey: Homey.App['homey'],
