@@ -646,25 +646,6 @@ export default tseslint.config(
   // in TODO.md (persona: contributor).
   // ---------------------------------------------------------------------------
   {
-    // Flat Homey Flow-card registration surface — one big registrar that wires
-    // every trigger/condition/action card. No branching logic to extract; only
-    // split if registration gains deeper per-card behavior (god-file-policy.md).
-    files: ['flowCards/registerFlowCards.ts'],
-    rules: {
-      'max-lines': ['warn', { max: 1148, skipBlankLines: true, skipComments: true }],
-    },
-  },
-  {
-    // Debug-dump helpers intentionally keep every emitted debug-payload shape in
-    // one place so the dump format is reviewable top-to-bottom. (Retains its
-    // file-level `functional/immutable-data` exception for local payload
-    // assembly.) Target: <=500 once the comparison serializer splits out.
-    files: ['setup/appDebugHelpers.ts'],
-    rules: {
-      'max-lines': ['warn', { max: 720, skipBlankLines: true, skipComments: true }],
-    },
-  },
-  {
     // The settings UI and dashboard widgets run inside Homey's WebView, whose
     // console is unreachable on the mobile dashboard — a `console.*` there is a
     // diagnostic that silently disappears (the original "Unable to load with no
