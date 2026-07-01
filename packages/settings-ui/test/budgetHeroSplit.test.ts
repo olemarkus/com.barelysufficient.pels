@@ -23,6 +23,7 @@ const buildProps = (overrides: Partial<BudgetOverviewProps> = {}): BudgetOvervie
       managedKWh: 1.8, backgroundKWh: 2.7, beforeSolar: false, budgetKWh: 12, usedKWh: 4.5,
     },
     priceTagline: null,
+    exportPriceLine: null,
     decision: null,
     heroTone: 'ok',
   },

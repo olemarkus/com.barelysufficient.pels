@@ -8,6 +8,7 @@ import {
   resolveDeltaPill,
   resolveDominantCause,
   resolveEffectiveLocalView,
+  resolveExportPriceNowLine,
   resolveBudgetRemainingLine,
   resolveHeroData,
   resolvePlanPayload,
@@ -197,7 +198,7 @@ describe('resolveDecisionLine', () => {
 
 describe('resolveHeroData', () => {
   it('uses persisted disabled state even when the day payload is still enabled', () => {
-    const hero = resolveHeroData(buildPayload({ enabled: true }), 'today', costDisplay, 'within', false);
+    const hero = resolveHeroData({ viewPayload: buildPayload({ enabled: true }), view: 'today', costDisplay, status: 'within', budgetEnabled: false });
     expect(hero.comparison).toBe('Daily budget off');
     expect(hero.decision).toBe(BUDGET_NO_PLAN_ENABLE_FOR_TODAY);
     expect(hero.headlineLabel).toBeNull();
@@ -205,20 +206,77 @@ describe('resolveHeroData', () => {
 
   it('labels the today headline as projected so it does not read as used-so-far', () => {
     const payload = buildPayload();
-    const hero = resolveHeroData(payload, 'today', costDisplay, 'within', true);
+    const hero = resolveHeroData({ viewPayload: payload, view: 'today', costDisplay, status: 'within', budgetEnabled: true });
     expect(hero.headlineLabel).toBe('Projected today');
   });
 
   it("labels yesterday's headline as a finished total", () => {
     const payload = buildPayload();
-    const hero = resolveHeroData(payload, 'yesterday', costDisplay, 'within', true);
+    const hero = resolveHeroData({ viewPayload: payload, view: 'yesterday', costDisplay, status: 'within', budgetEnabled: true });
     expect(hero.headlineLabel).toBe("Yesterday's total");
   });
 
   it("labels tomorrow's headline as planned", () => {
     const payload = buildPayload();
-    const hero = resolveHeroData(payload, 'tomorrow', costDisplay, 'within', true);
+    const hero = resolveHeroData({ viewPayload: payload, view: 'tomorrow', costDisplay, status: 'within', budgetEnabled: true });
     expect(hero.headlineLabel).toBe('Planned for tomorrow');
+  });
+
+  it('carries the export subline on the today view only, including the disabled-budget hero', () => {
+    const line = 'Export price now: 0.34 kr/kWh';
+    const payload = buildPayload();
+    expect(resolveHeroData({ viewPayload: payload, view: 'today', costDisplay, status: 'within', budgetEnabled: true, exportPriceNowLine: line }).exportPriceLine).toBe(line);
+    expect(resolveHeroData({ viewPayload: payload, view: 'tomorrow', costDisplay, status: 'within', budgetEnabled: true, exportPriceNowLine: line }).exportPriceLine).toBeNull();
+    expect(resolveHeroData({ viewPayload: payload, view: 'yesterday', costDisplay, status: 'within', budgetEnabled: true, exportPriceNowLine: line }).exportPriceLine).toBeNull();
+    // A prosumer without the daily budget enabled still sees today's export price.
+    expect(resolveHeroData({ viewPayload: payload, view: 'today', costDisplay, status: 'within', budgetEnabled: false, exportPriceNowLine: line }).exportPriceLine).toBe(line);
+    expect(resolveHeroData({ viewPayload: payload, view: 'today', costDisplay, status: 'within', budgetEnabled: true }).exportPriceLine).toBeNull();
+  });
+});
+
+describe('resolveExportPriceNowLine', () => {
+  const nowMs = Date.parse('2026-05-17T10:30:00.000Z');
+  const hourRow = (hourIso: string, exportPrice?: number) => ({
+    startsAt: hourIso,
+    total: 50,
+    ...(exportPrice === undefined ? {} : { exportPrice }),
+  });
+
+  it('formats the current hour through the CostDisplay divisor (øre never rendered as kr)', () => {
+    const line = resolveExportPriceNowLine(
+      [hourRow('2026-05-17T09:00:00.000Z', 99), hourRow('2026-05-17T10:00:00.000Z', 34)],
+      nowMs,
+      costDisplay,
+    );
+    expect(line).toBe('Export price now: 0.34 kr/kWh');
+  });
+
+  it('renders a negative (you-pay) export price correctly', () => {
+    const line = resolveExportPriceNowLine([hourRow('2026-05-17T10:00:00.000Z', -2)], nowMs, costDisplay);
+    expect(line).toBe('Export price now: -0.02 kr/kWh');
+  });
+
+  it('snaps sub-half-cent magnitudes to zero so a tiny negative never renders "-0.00"', () => {
+    // -0.4 øre scales to -0.004 kr — toFixed(2) alone would print "-0.00".
+    const line = resolveExportPriceNowLine([hourRow('2026-05-17T10:00:00.000Z', -0.4)], nowMs, costDisplay);
+    expect(line).toBe('Export price now: 0.00 kr/kWh');
+  });
+
+  it('returns null when no export price covers the current hour', () => {
+    expect(resolveExportPriceNowLine([], nowMs, costDisplay)).toBeNull();
+    // Rows exist but none carries an export price (non-prosumer payload).
+    expect(resolveExportPriceNowLine([hourRow('2026-05-17T10:00:00.000Z')], nowMs, costDisplay)).toBeNull();
+    // An export price exists only for a different hour.
+    expect(resolveExportPriceNowLine([hourRow('2026-05-17T11:00:00.000Z', 34)], nowMs, costDisplay)).toBeNull();
+  });
+
+  it('renders the bare scaled number when the display unit is blank (flow/homey placeholder)', () => {
+    const line = resolveExportPriceNowLine(
+      [hourRow('2026-05-17T10:00:00.000Z', 0.25)],
+      nowMs,
+      { unit: '', divisor: 1 },
+    );
+    expect(line).toBe('Export price now: 0.25');
   });
 });
 
@@ -461,7 +519,7 @@ describe('resolveSplitData', () => {
       actualControlledKWh: Array.from({ length: 24 }, (_, i) => (i < 12 ? 1.0 : null)),
       actualUncontrolledKWh: Array.from({ length: 24 }, (_, i) => (i < 12 ? 1.5 : null)),
     });
-    const today = resolveHeroData(payload, 'today', costDisplay, 'within', true);
+    const today = resolveHeroData({ viewPayload: payload, view: 'today', costDisplay, status: 'within', budgetEnabled: true });
     expect(today.split).toEqual({
       managedKWh: 12.0,
       backgroundKWh: 18.0,
@@ -469,7 +527,7 @@ describe('resolveSplitData', () => {
       budgetKWh: 60,
       usedKWh: 30.0,
     });
-    const yesterday = resolveHeroData(payload, 'yesterday', costDisplay, 'within', true);
+    const yesterday = resolveHeroData({ viewPayload: payload, view: 'yesterday', costDisplay, status: 'within', budgetEnabled: true });
     expect(yesterday.split).toBeNull();
   });
 });

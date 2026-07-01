@@ -1,6 +1,8 @@
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../../contracts/src/dailyBudgetTypes.ts';
 import { formatCost, type CostDisplay } from './dailyBudgetCost.ts';
 import { formatKWh } from './dailyBudgetFormat.ts';
+import type { CombinedPriceRow } from './combinedPrices.ts';
+import { resolvePriceUnitLabel } from './priceUnit.ts';
 import type {
   BudgetChartData,
   BudgetConfidenceData,
@@ -40,6 +42,7 @@ import {
   composeBudgetRemainingLineWithEstimate,
   composeBudgetRemainingToday,
   composeBudgetUsedOver,
+  composeExportPriceNow,
   resolveChartSubtitle as resolveSharedChartSubtitle,
   resolveNoPlanLine as resolveSharedNoPlanLine,
   resolveTodayLine as resolveSharedTodayLine,
@@ -347,13 +350,48 @@ export const resolveDecisionLine = (
   return resolveTodayLine(payload, status);
 };
 
-export const resolveHeroData = (
-  viewPayload: DailyBudgetDayPayload | null,
-  view: BudgetDayView,
+const ONE_HOUR_MS = 3_600_000;
+
+// "Export price now" hero subline — the current hour's export (feed-in)
+// price, or null when no export price covers the hour (absence renders
+// nothing; non-prosumers never see an empty placeholder). The value is scaled
+// through the SAME CostDisplay {unit, divisor} the hero's other money figures
+// use (øre → kr ÷ 100) so a raw øre value is never rendered as kr; signed
+// values pass through unclamped (negative = the home pays to export).
+export const resolveExportPriceNowLine = (
+  rows: CombinedPriceRow[],
+  nowMs: number,
   costDisplay: CostDisplay,
-  status: BudgetStatus,
-  budgetEnabled: boolean,
-): BudgetHeroData => {
+): string | null => {
+  const current = rows.find((row) => {
+    if (typeof row.exportPrice !== 'number') return false;
+    const startsAtMs = new Date(row.startsAt).getTime();
+    return Number.isFinite(startsAtMs) && startsAtMs <= nowMs && nowMs < startsAtMs + ONE_HOUR_MS;
+  });
+  if (!current || typeof current.exportPrice !== 'number') return null;
+  const scaledValue = current.exportPrice / Math.max(1, costDisplay.divisor);
+  // Snap sub-half-cent magnitudes to zero so a tiny negative export price
+  // never renders as "-0.00".
+  const scaled = (Math.abs(scaledValue) < 0.005 ? 0 : scaledValue).toFixed(2);
+  // Rate grammar matches the Budget readout's price segment (`0.84 kr/kWh`);
+  // flow/homey payloads with a blank display unit render the bare number,
+  // mirroring chartTooltipFormat's unit-less price fallback.
+  const priceText = costDisplay.unit.trim() ? `${scaled} ${resolvePriceUnitLabel(costDisplay)}` : scaled;
+  return composeExportPriceNow(priceText);
+};
+
+export const resolveHeroData = (params: {
+  viewPayload: DailyBudgetDayPayload | null;
+  view: BudgetDayView;
+  costDisplay: CostDisplay;
+  status: BudgetStatus;
+  budgetEnabled: boolean;
+  exportPriceNowLine?: string | null;
+}): BudgetHeroData => {
+  const { viewPayload, view, costDisplay, status, budgetEnabled, exportPriceNowLine = null } = params;
+  // "Now" is view-independent, but the hero is per-view: only the today view
+  // carries the export subline so yesterday/tomorrow never show a live price.
+  const exportPriceLine = view === 'today' ? exportPriceNowLine : null;
   if (!budgetEnabled || !viewPayload || viewPayload.budget.enabled !== true || status === 'noPlan') {
     return {
       headlineLabel: null,
@@ -362,6 +400,7 @@ export const resolveHeroData = (
       budgetRemainingLine: null,
       split: null,
       priceTagline: null,
+      exportPriceLine,
       decision: resolveSharedNoPlanLine(view, budgetEnabled),
       heroTone: 'ok',
     };
@@ -373,6 +412,7 @@ export const resolveHeroData = (
     budgetRemainingLine: view === 'today' ? resolveBudgetRemainingLine(viewPayload, costDisplay) : null,
     split: view === 'today' ? resolveSplitData(viewPayload) : null,
     priceTagline: resolvePriceTagline(viewPayload, view),
+    exportPriceLine,
     decision: resolveDecisionLine(viewPayload, view, status, budgetEnabled),
     heroTone: resolveTone(status),
   };

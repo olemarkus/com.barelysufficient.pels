@@ -806,6 +806,28 @@
 
   ensureEvSupportState();
 
+  // Mirror the runtime producer (`lib/price/exportPrice.ts` applyExportPrices):
+  // when export pricing is enabled, each hour gains an incl-VAT export price =
+  // (spotPriceExVat × vatMultiplier) × export_spot_factor/100 + export_fixed.
+  // A spot-linked config (factor ≠ 0) on an hour without an isolatable spot
+  // yields NO export price — exactly as production. Runs after the settings
+  // merge so tests enable it via `__PELS_HOMEY_STUB__.settings`.
+  const applyExportPricesToCombined = () => {
+    if (settings.export_price_enabled !== true) return;
+    const combined = settings.combined_prices;
+    if (!combined || !Array.isArray(combined.prices)) return;
+    const factor = (Number.isFinite(settings.export_spot_factor) ? settings.export_spot_factor : 0) / 100;
+    const fixed = Number.isFinite(settings.export_fixed) ? settings.export_fixed : 0;
+    combined.prices.forEach((entry) => {
+      if (factor !== 0 && !Number.isFinite(entry.spotPriceExVat)) return;
+      const spotInclVat = (Number.isFinite(entry.spotPriceExVat) ? entry.spotPriceExVat : 0)
+        * (Number.isFinite(entry.vatMultiplier) ? entry.vatMultiplier : 1);
+      entry.exportPrice = spotInclVat * factor + fixed;
+    });
+  };
+
+  applyExportPricesToCombined();
+
   const buildPowerPayload = () => {
     // Branch on `!== undefined` (not `?? baseline`) so a scenario can force a
     // null power payload to exercise the "power feed missing" UI state.
@@ -1067,6 +1089,9 @@
     nettleie_fylke: settings.nettleie_fylke,
     nettleie_orgnr: settings.nettleie_orgnr,
     nettleie_tariffgruppe: settings.nettleie_tariffgruppe,
+    export_price_enabled: settings.export_price_enabled,
+    export_spot_factor: settings.export_spot_factor,
+    export_fixed: settings.export_fixed,
     daily_budget_enabled: settings.daily_budget_enabled,
     daily_budget_kwh: settings.daily_budget_kwh,
     daily_budget_price_shaping_enabled: settings.daily_budget_price_shaping_enabled,

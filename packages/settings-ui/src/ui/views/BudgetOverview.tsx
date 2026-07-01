@@ -77,6 +77,10 @@ export type BudgetHeroData = {
   budgetRemainingLine: string | null;
   split: BudgetHeroSplitData | null;
   priceTagline: string | null;
+  // Prosumer subline (`Export price now: …`) — null renders nothing, so
+  // non-solar homes never see an empty placeholder. Resolved in the producer
+  // (resolveExportPriceNowLine); the view only paints it.
+  exportPriceLine: string | null;
   decision: string | null;
   heroTone: 'ok' | 'warn' | 'alert';
 };
@@ -308,6 +312,11 @@ const BudgetHero = ({ hero }: { hero: BudgetHeroData }) => (
       {hero.split !== null && <BudgetHeroSplit split={hero.split} />}
       {hero.priceTagline !== null && (
         <div class="plan-hero__subline plan-hero__subline--muted">{hero.priceTagline}</div>
+      )}
+      {hero.exportPriceLine !== null && (
+        <div id="budget-export-price-now" class="plan-hero__subline plan-hero__subline--muted">
+          {hero.exportPriceLine}
+        </div>
       )}
       {hero.decision !== null && (
         <p class="plan-hero__decision">{hero.decision}</p>

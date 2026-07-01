@@ -131,6 +131,7 @@ const buildBudgetProps = (overrides: Partial<BudgetOverviewProps> = {}): BudgetO
     budgetRemainingLine: null,
     split: null,
     priceTagline: null,
+    exportPriceLine: null,
     decision: null,
     heroTone: 'ok',
   },

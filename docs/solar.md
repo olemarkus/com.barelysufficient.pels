@@ -70,13 +70,22 @@ If you also have a battery: because PELS only sees net power and cannot command 
 - It does not drive your grid export to exactly zero — it uses surplus opportunistically (the heating boost, plus whatever your flexible loads want), but it does not trim a device moment to moment to match your surplus, and it cannot tell your inverter to produce less.
 - It does not show a self-consumption rate, or split your usage into self-consumed versus exported kWh.
 - It does not charge a home battery from surplus, or control a battery or inverter — and battery control is not on the near-term roadmap.
-- Export and feed-in pricing do not change scheduling yet — see below.
 
-## Export pricing and feed-in costs (what's coming)
+## Export pricing
 
-In some markets, exported solar is worth far less than the power you would otherwise buy — and in some it will soon cost you. In the Netherlands, the end of net metering (*salderingsregeling*) from 2027 means suppliers increasingly add feed-in costs (*terugleverkosten*): exporting can actively cost money, so using your own solar becomes a direct saving rather than a smaller return.
+In some markets, exported solar is worth far less than the power you would otherwise buy — and in some it can cost you. In the Netherlands, the end of net metering (*salderingsregeling*) from 2027 means suppliers increasingly charge for exported power (*terugleverkosten*): exporting can actively cost money, so using your own solar becomes a direct saving rather than a smaller return.
 
-The groundwork for this is already in place — PELS can work out an export or feed-in price internally — and the direction from here is export-aware scheduling, steering flexible load such as deadline EV charging into sunny hours. **None of this changes scheduling today**; it is noted so you know where solar support is heading.
+PELS lets you tell it what exported power is worth to you. Under **Settings → Electricity prices**, turn on **"Use an export price"** (the section appears once a solar device is present) and enter what your power company pays you:
+
+- **Share of spot price (%)** — how much of the hourly spot price (incl. VAT) you are paid per exported kWh. Available on the Norway price source, which has an hourly spot price; if your contract pays the raw spot price, enter 80.
+- **Fixed amount** — added for every exported kWh, in the same unit as your other prices. It can be negative if you pay to export. On the Flow and Homey Energy price sources this fixed amount is the whole export price, since no hourly spot price is available there.
+
+Once it is on:
+
+- the **Budget tab** shows **"Export price now"** — the current hour's export price;
+- scheduling uses it through the **planning price**: in hours where PELS expects your solar surplus to cover flexible load, it plans against what that energy is actually worth to you (the export price) rather than the import price — steering flexible load such as deadline EV charging into sunny hours.
+
+Your money figures stay honest: receipts, usage costs, and the budget's money view remain on the import price you are billed, so they reconcile with your invoice.
 
 ## See also
 
