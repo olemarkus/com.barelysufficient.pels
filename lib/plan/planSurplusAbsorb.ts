@@ -3,6 +3,7 @@ import type { PlanInputDevice } from './planTypes';
 import { getRestoreDrawKw } from '../observer/observedPower';
 import {
   clearSurplusEligibility,
+  SURPLUS_ABSORB_HARD_OFF_IMPORT_KW,
   SURPLUS_ABSORB_RESERVE_KW,
   syncSurplusEligibilityState,
 } from './admission';
@@ -37,6 +38,15 @@ const positiveOrZero = (value: unknown): number => (isFiniteNumber(value) && val
 // devices.
 const willingWithLift = (config: SurplusConfig | undefined): boolean => (
   config?.surplusWilling === true && isFiniteNumber(config.surplusDelta) && config.surplusDelta > 0
+);
+
+// Hard-off: the release condition is unambiguous — the whole-home signal is
+// lost, or the home is drawing sustained grid import beyond what a zero-export
+// controller's standing import can explain. The gate may then release an
+// engaged lift without waiting out the min dwell (the dwell only protects the
+// passing-cloud dip, where net hovers near zero).
+const isHardOffCondition = (powerOk: boolean, signedNetKw: number | null): boolean => (
+  !powerOk || (isFiniteNumber(signedNetKw) && signedNetKw > SURPLUS_ABSORB_HARD_OFF_IMPORT_KW)
 );
 
 /**
@@ -87,6 +97,7 @@ export function resolveSurplusEligibility(params: {
   if (willing.length === 0) return;
 
   const powerOk = params.powerKnown && isFiniteNumber(params.signedNetKw);
+  const hardOff = isHardOffCondition(powerOk, params.signedNetKw);
   if (!powerOk) {
     // Power unknown/stale: no surplus to allocate — let every willing device release.
     for (const dev of willing) {
@@ -96,6 +107,7 @@ export function resolveSurplusEligibility(params: {
         willing: true,
         availableSurplusKw: null,
         expectedDrawKw: getRestoreDrawKw(dev).kw,
+        hardOff,
         nowTs,
       });
     }
@@ -120,6 +132,7 @@ export function resolveSurplusEligibility(params: {
       willing: true,
       availableSurplusKw: poolKw,
       expectedDrawKw,
+      hardOff,
       nowTs,
     });
     // Reserve the draw of any device that is eligible OR settling toward engage, so

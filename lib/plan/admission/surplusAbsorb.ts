@@ -1,5 +1,8 @@
 import type { PlanEngineState, SurplusEligibilityState } from '../planState';
 import { RESTORE_ADMISSION_RESERVE_KW } from '../planConstants';
+import { getLogger } from '../../logging/logger';
+
+const logger = getLogger('plan/surplus-absorb');
 
 // Local guard — kept off lib/utils so this admission module stays self-contained
 // (per the lib/plan ↛ lib/utils path rule).
@@ -34,6 +37,25 @@ const isFiniteNumber = (value: unknown): value is number => (
  *   bespoke tick counter.
  * - `availableSurplusKw === null` (power unknown / stale) yields "no surplus",
  *   which can only release or block engage — never raise blind.
+ * - Hard-off (release direction only): when the caller flags the release
+ *   condition as unambiguous (`hardOff` — power signal lost, or sustained
+ *   whole-home import beyond `SURPLUS_ABSORB_HARD_OFF_IMPORT_KW`) and it has
+ *   been sustained for a full settle window, the release skips the min dwell.
+ *   The settle confirmation always applies, and the bypass term never applies
+ *   in the engage direction. The dwell keeps guarding the ordinary dip
+ *   (surplus collapsed but the home is not clearly importing).
+ * - Release aftermath is cause-asymmetric. A `dwell_elapsed` release drops the
+ *   settled-off entry (as every release historically did), so a recovery after
+ *   a passing cloud may re-engage after a single settle window. A `hard_off`
+ *   release RETAINS the settled-off entry until its dwell floor expires, so
+ *   the next engage owes the full off-state min dwell. A sustained hard-off at
+ *   release time classifies the release `hard_off` even when the dwell has
+ *   also elapsed — precedence matters, or a lift engaged longer than the dwell
+ *   would escape retention. That retention bounds the measured-feedback limit
+ *   cycle: a device whose engaged draw exceeds its off-state estimate by more
+ *   than reserve + hard-off bar manufactures its own sustained import and
+ *   hard-offs itself; without the owed dwell it would re-engage every settle
+ *   window (~200 s period at ~50% import duty).
  */
 
 // Engage when the allocated surplus covers expected draw plus this reserve;
@@ -44,6 +66,18 @@ export const SURPLUS_ABSORB_RESERVE_KW = RESTORE_ADMISSION_RESERVE_KW;
 export const SURPLUS_ABSORB_SETTLE_MS = 90 * 1000;
 // Minimum time an eligibility state holds after a flip (limit-cycle / chatter guard).
 export const SURPLUS_ABSORB_MIN_DWELL_MS = 5 * 60 * 1000;
+// Whole-home import above this marks the surplus as unambiguously gone (hard-off):
+// an engaged release may then skip the min dwell (the settle confirmation still
+// applies). Deliberately NOT derived from the reserve. Rationale: it must clear
+// the ~100–200 W standing import a zero-export controller holds, with margin;
+// and together with the engage bar (expectedDraw + the reserve of export) it
+// keeps ≥ 0.6 kW of whole-home swing between re-engage and hard-off — but only
+// ASSUMING a stable expectedDraw. A device whose engaged draw exceeds its
+// off-state estimate (measured-feedback inflation) can swing net past both
+// bounds regardless of this value and open a churn band; the hard_off release
+// keeping its dwell floor (see the release-aftermath invariant above) is what
+// bounds that cycle, not this threshold. Dogfood-tunable.
+export const SURPLUS_ABSORB_HARD_OFF_IMPORT_KW = 0.35;
 
 export type SurplusEligibilityInfo = {
   eligible: boolean;
@@ -64,30 +98,112 @@ const flipConditionMet = (
     : availableSurplusKw >= expectedDrawKw + SURPLUS_ABSORB_RESERVE_KW
 );
 
+// What drove a release flip (drives the structured release log AND the entry
+// retention). 'hard_off' = the sustained hard-off condition was active at
+// release time — it takes precedence over an elapsed dwell when both hold, so
+// a long-running lift that hard-offs itself (measured-feedback import) is
+// still retained with the owed off-state dwell. 'dwell_elapsed' = an ordinary
+// dip release with NO sustained hard-off clock — entry dropped, fast
+// re-engage. `null` when this call did not release (no flip, or an engage).
+type ReleaseCause = 'dwell_elapsed' | 'hard_off' | null;
+
 // Advance the settle window, toggling `working.eligible` once the flip condition
-// has persisted past the settle window AND the current state has held the min
-// dwell. Mutates `working` in place.
+// has persisted past the settle window AND either the current state has held the
+// min dwell or — release direction only — the hard-off condition has been
+// sustained for a full settle window. Mutates `working` in place.
 const advanceFlip = (params: {
   working: SurplusEligibilityState;
   entry: SurplusEligibilityState | undefined;
   flipCondition: boolean;
   currentEligible: boolean;
   nowTs: number;
-}): void => {
+}): ReleaseCause => {
   const { working, entry, flipCondition, currentEligible, nowTs } = params;
   if (!flipCondition) {
     delete working.pendingSinceMs;
-    return;
+    return null;
   }
   if (working.pendingSinceMs === undefined) {
     working.pendingSinceMs = nowTs;
   }
   const settled = nowTs - (working.pendingSinceMs ?? nowTs) >= SURPLUS_ABSORB_SETTLE_MS;
-  if (settled && dwellSatisfied(entry, nowTs)) {
+  const dwellOk = dwellSatisfied(entry, nowTs);
+  // Release direction only: a hard-off sustained for a full settle window
+  // bypasses the min dwell (the dwell exists for the passing-cloud dip, not for
+  // an unambiguously gone surplus). Engage keeps the plain dwell gate.
+  const hardOffBypass = currentEligible
+    && isFiniteNumber(working.hardOffSinceMs)
+    && nowTs - working.hardOffSinceMs >= SURPLUS_ABSORB_SETTLE_MS;
+  if (settled && (dwellOk || hardOffBypass)) {
     working.eligible = !currentEligible;
     working.sinceMs = nowTs;
     delete working.pendingSinceMs;
+    delete working.hardOffSinceMs;
+    delete working.hardOffReleased;
+    if (!currentEligible) return null; // engage flip — no release to report
+    if (hardOffBypass) {
+      // Sustained hard-off at release time takes precedence over an elapsed
+      // dwell: mark the entry so it is retained until the dwell floor expires
+      // and the next engage owes the full off-state dwell. Without the
+      // precedence, a lift engaged longer than the dwell that then hard-offs
+      // itself (its own draw manufacturing the import) would classify as
+      // dwell_elapsed, drop the entry, and re-engage after one settle window —
+      // the exact limit cycle the retention rule exists to bound.
+      working.hardOffReleased = true;
+      return 'hard_off';
+    }
+    return 'dwell_elapsed';
   }
+  return null;
+};
+
+// A settled-off entry with nothing pending is idle and droppable — UNLESS it
+// came from a hard_off release and its dwell floor is still running: dropping
+// it would erase the owed off-state dwell (`dwellSatisfied(undefined)` is
+// true), letting the device re-engage after a bare settle window.
+const isDroppableIdleEntry = (working: SurplusEligibilityState, nowTs: number): boolean => (
+  working.eligible !== true
+  && working.pendingSinceMs === undefined
+  && !(working.hardOffReleased === true && !dwellSatisfied(working, nowTs))
+);
+
+// Hard-off clock: stamp while an engaged device sees the unambiguous-release
+// condition; reset the moment it clears (or when not engaged; a flip deletes it
+// too, in `advanceFlip`). Only a hard-off held at every observation across a
+// settle window can bypass the dwell — a brief import blip between plan builds
+// cannot.
+const trackHardOffClock = (params: {
+  working: SurplusEligibilityState;
+  currentEligible: boolean;
+  hardOff: boolean;
+  nowTs: number;
+}): void => {
+  const { working } = params;
+  if (params.currentEligible && params.hardOff) {
+    working.hardOffSinceMs ??= params.nowTs;
+  } else {
+    delete working.hardOffSinceMs;
+  }
+};
+
+// Structured release record. 'hard_off' = the sustained hard-off condition
+// drove the release (entry retained, dwell owed — whether or not the dwell had
+// also elapsed); 'dwell_elapsed' = the normal dip-release path with no
+// sustained hard-off. No-op when this cycle did not release.
+const emitReleaseLog = (params: {
+  deviceId: string;
+  releaseCause: ReleaseCause;
+  engagedSinceMs: number | undefined;
+  nowTs: number;
+}): void => {
+  const { deviceId, releaseCause, engagedSinceMs, nowTs } = params;
+  if (releaseCause === null) return;
+  logger.debug({
+    event: 'surplus_absorb_released',
+    deviceId,
+    releaseCause,
+    heldMs: isFiniteNumber(engagedSinceMs) ? nowTs - engagedSinceMs : null,
+  });
 };
 
 /**
@@ -103,6 +219,11 @@ export function syncSurplusEligibilityState(params: {
   // is unknown/stale (treated as no surplus).
   availableSurplusKw: number | null;
   expectedDrawKw: number;
+  // True when the release condition is unambiguous (power signal lost, or
+  // sustained whole-home import beyond SURPLUS_ABSORB_HARD_OFF_IMPORT_KW):
+  // sustained for a settle window it lets a release skip the min dwell. Must
+  // stay false for the ordinary passing-cloud dip, which keeps the dwell.
+  hardOff: boolean;
   nowTs?: number;
 }): SurplusEligibilityInfo {
   const { deviceId, willing } = params;
@@ -126,16 +247,20 @@ export function syncSurplusEligibilityState(params: {
     : Number.NEGATIVE_INFINITY;
 
   const working: SurplusEligibilityState = entry ?? {};
-  advanceFlip({
+  trackHardOffClock({ working, currentEligible, hardOff: params.hardOff, nowTs });
+  const engagedSinceMs = entry?.sinceMs;
+  const releaseCause = advanceFlip({
     working,
     entry,
     flipCondition: flipConditionMet(currentEligible, surplus, expectedDrawKw),
     currentEligible,
     nowTs,
   });
+  emitReleaseLog({ deviceId, releaseCause, engagedSinceMs, nowTs });
 
-  if (working.eligible !== true && working.pendingSinceMs === undefined) {
-    // Settled-off with nothing pending: drop the entry so idle devices hold no state.
+  if (isDroppableIdleEntry(working, nowTs)) {
+    // Idle (settled-off, nothing pending, no live hard-off dwell floor): drop
+    // the entry so idle devices hold no state.
     delete map[deviceId];
     return { eligible: false };
   }

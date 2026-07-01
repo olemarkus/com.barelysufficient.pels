@@ -45,14 +45,22 @@ export type ActivationAttemptState = {
 /**
  * Per-device surplus-absorb eligibility state, owned by
  * `lib/plan/admission/surplusAbsorb.ts`. `eligible` is the latched decision;
- * `sinceMs` stamps when it last flipped (the min-dwell floor) and
+ * `sinceMs` stamps when it last flipped (the min-dwell floor),
  * `pendingSinceMs` stamps when the opposite-flip condition first held (the
- * settle window). Absent entry == not eligible, no pending flip. In-memory only.
+ * settle window), and `hardOffSinceMs` stamps when the unambiguous-release
+ * (hard-off) condition first held while engaged — sustained for a full settle
+ * window it lets a release skip the min dwell. `hardOffReleased` marks a
+ * settled-off entry produced by a hard-off release; it keeps the entry alive
+ * until the dwell floor expires so the next engage owes the full off-state
+ * dwell (limit-cycle bound). Absent entry == not eligible, no pending flip.
+ * In-memory only.
  */
 export type SurplusEligibilityState = {
   eligible?: boolean;
   sinceMs?: number;
   pendingSinceMs?: number;
+  hardOffSinceMs?: number;
+  hardOffReleased?: boolean;
 };
 
 export type HeadroomCardState = {
