@@ -117,10 +117,12 @@ const buildNearTargetIdleCopy = (
 // Deliberately understated: a device commanded on yet drawing nothing is far
 // more often its own controller pausing between cycles (anti-cycle / overshoot
 // guard / a wide internal hysteresis band) than an electrical fault. State the
-// observation plainly and only *suggest* a look if it persists — do not assert a
-// breaker/wiring fault the data can't support.
-const UNRESPONSIVE_DETAIL_SUFFIX = "Usually the device's own controller pausing between cycles; "
-  + 'if it stays this way for a long time, it may be worth a look.';
+// observation plainly and name one concrete, non-alarming check if it persists —
+// do not assert a breaker/wiring fault the data can't support. (This state now
+// fires only past the device's own hysteresis band, so a *sustained* version is
+// the genuinely-suspicious case and deserves a real next step, not "look later".)
+const UNRESPONSIVE_DETAIL_SUFFIX = "Usually the device's own controller pausing between cycles. "
+  + 'If it stays well below target, check the device still has power.';
 
 const buildUnresponsiveCopy = (
   pair: string | null,
@@ -128,8 +130,8 @@ const buildUnresponsiveCopy = (
   statusLine: pair ? `Not drawing power (${pair})` : 'Not drawing power',
   chipLabel: 'Not drawing power',
   detail: pair
-    ? `Below target (${pair}) but not drawing power right now. ${UNRESPONSIVE_DETAIL_SUFFIX}`
-    : `Below target but not drawing power right now. ${UNRESPONSIVE_DETAIL_SUFFIX}`,
+    ? `Below target (${pair}) but not drawing power. ${UNRESPONSIVE_DETAIL_SUFFIX}`
+    : `Below target but not drawing power. ${UNRESPONSIVE_DETAIL_SUFFIX}`,
   tone: 'warning',
 });
 
