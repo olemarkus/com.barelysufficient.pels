@@ -143,6 +143,7 @@ export const buildFreshDiagnostic = (params: {
     budgetExemptApplied: objective.rescue?.exemptFromBudget === 'always'
       && isCurrentBucketPlanned(planWithPriceWatermark),
     limitLowerPriorityApplied: objective.rescue?.limitLowerPriorityDevices === 'always',
+    pauseLowerPriorityApplied: objective.rescue?.pauseLowerPriorityDevices === 'always',
     horizonPlan: planWithPriceWatermark,
   };
 };

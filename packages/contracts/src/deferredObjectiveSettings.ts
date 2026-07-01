@@ -14,6 +14,13 @@ export type DeferredObjectiveRescueMode = 'always' | 'at_risk';
 export type DeferredObjectiveRescuePermissions = {
   exemptFromBudget?: DeferredObjectiveRescueMode;
   limitLowerPriorityDevices?: DeferredObjectiveRescueMode;
+  // Proactive priority-hold. While the reserved smart-task device is in a
+  // plannable state and not yet active, lower-priority managed devices are held
+  // off (up to — never above — the hard cap) so it can start. Distinct from
+  // `limitLowerPriorityDevices`: this does NOT boost the device (no
+  // `forceBoostActive`); it only clears room, and the device runs at its own /
+  // lowest step.
+  pauseLowerPriorityDevices?: DeferredObjectiveRescueMode;
 };
 
 export type DeferredObjectiveSettingsKind = 'ev_soc' | 'temperature';
@@ -125,10 +132,14 @@ const normalizeRescuePermissions = (
   const limitLowerPriorityDevices = isRescueMode(value.limitLowerPriorityDevices)
     ? value.limitLowerPriorityDevices
     : undefined;
-  if (!exemptFromBudget && !limitLowerPriorityDevices) return undefined;
+  const pauseLowerPriorityDevices = isRescueMode(value.pauseLowerPriorityDevices)
+    ? value.pauseLowerPriorityDevices
+    : undefined;
+  if (!exemptFromBudget && !limitLowerPriorityDevices && !pauseLowerPriorityDevices) return undefined;
   return {
     ...(exemptFromBudget ? { exemptFromBudget } : {}),
     ...(limitLowerPriorityDevices ? { limitLowerPriorityDevices } : {}),
+    ...(pauseLowerPriorityDevices ? { pauseLowerPriorityDevices } : {}),
   };
 };
 

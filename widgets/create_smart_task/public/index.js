@@ -215,7 +215,8 @@
   };
   var SMART_TASK_EXTRA_PERMISSION_LABELS = {
     exemptFromBudget: "May go over daily budget",
-    limitLowerPriorityDevices: "May limit lower-priority devices"
+    limitLowerPriorityDevices: "May limit lower-priority devices",
+    pauseLowerPriorityDevices: "May pause lower-priority devices"
   };
   var SMART_TASK_LIST_ROW_LABELS = {
     target: "Target",

@@ -29,8 +29,10 @@ const rescueFields = (
 ): Record<string, unknown> => ({
   rescueExemptMode: diagnostic.rescue?.exemptFromBudget ?? 'off',
   rescueLimitMode: diagnostic.rescue?.limitLowerPriorityDevices ?? 'off',
+  rescuePauseMode: diagnostic.rescue?.pauseLowerPriorityDevices ?? 'off',
   budgetExemptApplied: diagnostic.budgetExemptApplied ?? false,
   limitLowerPriorityApplied: diagnostic.limitLowerPriorityApplied ?? false,
+  pauseLowerPriorityApplied: diagnostic.pauseLowerPriorityApplied ?? false,
 });
 
 export const buildDeferredObjectiveDebugPayload = (

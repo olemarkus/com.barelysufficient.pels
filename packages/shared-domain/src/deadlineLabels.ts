@@ -662,6 +662,7 @@ export const SMART_TASK_LIMIT_LOWER_PRIORITY_DEVICES_NOTE = 'Lower-priority devi
 export const SMART_TASK_EXTRA_PERMISSION_LABELS: Record<keyof DeferredObjectiveRescuePermissions, string> = {
   exemptFromBudget: 'May go over daily budget',
   limitLowerPriorityDevices: 'May limit lower-priority devices',
+  pauseLowerPriorityDevices: 'May pause lower-priority devices',
 };
 
 const SMART_TASK_RESCUE_MODE_SUFFIX: Record<DeferredObjectiveRescueMode, string> = {
@@ -682,6 +683,12 @@ export const formatSmartTaskExtraPermissionsValue = (
     parts.push(
       `${SMART_TASK_EXTRA_PERMISSION_LABELS.limitLowerPriorityDevices}`
       + `${SMART_TASK_RESCUE_MODE_SUFFIX[rescue.limitLowerPriorityDevices]}`,
+    );
+  }
+  if (rescue?.pauseLowerPriorityDevices) {
+    parts.push(
+      `${SMART_TASK_EXTRA_PERMISSION_LABELS.pauseLowerPriorityDevices}`
+      + `${SMART_TASK_RESCUE_MODE_SUFFIX[rescue.pauseLowerPriorityDevices]}`,
     );
   }
   if (parts.length === 0) return null;

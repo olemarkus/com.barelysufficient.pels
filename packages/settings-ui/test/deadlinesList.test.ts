@@ -177,6 +177,7 @@ describe('resolveDeadlinesListCards', () => {
           rescue: {
             exemptFromBudget: 'always',
             limitLowerPriorityDevices: 'at_risk',
+            pauseLowerPriorityDevices: 'always',
           },
         },
       }),
@@ -184,7 +185,7 @@ describe('resolveDeadlinesListCards', () => {
       nowMs: T0,
     });
     expect(cards[0].extraPermissionsValue).toBe(
-      'May go over daily budget · May limit lower-priority devices if at risk',
+      'May go over daily budget · May limit lower-priority devices if at risk · May pause lower-priority devices',
     );
   });
 

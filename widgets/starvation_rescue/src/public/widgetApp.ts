@@ -69,6 +69,7 @@ const PREVIEW_RESPONSE: StarvationRescuePreviewResponse = {
     grantedRescuePermissions: {
       exemptFromBudget: true,
       limitLowerPriorityDevices: true,
+      pauseLowerPriorityDevices: true,
     },
   },
 };

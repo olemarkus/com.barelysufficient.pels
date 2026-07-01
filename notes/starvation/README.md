@@ -58,6 +58,12 @@ The detection feature is detection only:
 - no budget adjustment (the v2 widget rescue is user-initiated, not an automatic
   budget adjustment by the planner)
 
+The one sanctioned exception to "no shed-order changes" is user-initiated and
+objective-scoped: the smart-task `pause lower-priority devices` permission
+(`lib/plan/shedding/pauseHold.ts`) proactively holds lower-priority managed devices
+off, so a reserved task can start. It is opt-in per task, never an automatic planner
+decision from starvation detection, and stays within the hard cap.
+
 ## Scope
 
 Starvation applies only to devices that are formally eligible in the PELS device model.

@@ -146,6 +146,7 @@ export const buildFrozenDiagnostic = (params: {
     budgetExemptApplied: objective.rescue?.exemptFromBudget === 'always'
       && isCurrentBucketPlanned(horizonPlan),
     limitLowerPriorityApplied: objective.rescue?.limitLowerPriorityDevices === 'always',
+    pauseLowerPriorityApplied: objective.rescue?.pauseLowerPriorityDevices === 'always',
     horizonPlan,
   };
 };

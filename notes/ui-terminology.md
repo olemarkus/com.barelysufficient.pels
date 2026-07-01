@@ -285,7 +285,7 @@ Reserve *plan* for the planning layer. Smart-task surfaces use *deadline*, *obje
 
 ### Smart-task Flow permissions
 
-The `allow_smart_task_rescue` Flow action grants permission. Copy says PELS can let a task go over today's budget, or can limit lower-priority devices so the smart task gets the power it needs. Stay forward: action verbs over hedge phrasing, no "does not guarantee" disclaimer (the hard cap is physical and is documented elsewhere — every smart-task surface doesn't need to repeat the disclaimer).
+The `allow_smart_task_rescue` Flow action grants permission. Copy says PELS can let a task go over today's budget, limit lower-priority devices, or pause lower-priority devices entirely until the task starts, so the smart task gets the power it needs. Stay forward: action verbs over hedge phrasing, no "does not guarantee" disclaimer (the hard cap is physical and is documented elsewhere — every smart-task surface doesn't need to repeat the disclaimer).
 
 The smart-task detail and list surfaces render the granted permissions on a
 single row whose canonical label is **`Extra permissions (set via Flow)`**
@@ -293,8 +293,11 @@ single row whose canonical label is **`Extra permissions (set via Flow)`**
 `packages/shared-domain/src/deadlineLabels.ts`). The label hoists `(set via
 Flow)` onto the row owner — what kind of setting this is — so it doesn't read
 as a qualifier on the last joined permission clause. Value clauses are
-`May go over daily budget` and `May limit lower-priority devices`, optionally
-suffixed with ` if at risk` when the mode is `at_risk`.
+`May go over daily budget`, `May limit lower-priority devices`, and
+`May pause lower-priority devices`, optionally suffixed with ` if at risk` when
+the mode is `at_risk`. `pause` is the stronger, boost-free sibling of `limit` (it
+holds lower-priority devices fully off until the task starts, rather than boosting
+past them) — say "pause", and never conflate it with boost.
 
 In user-facing copy this scope is `Extra permissions`. It is **not**
 `Allowances`, `Overrides`, `Rescue`, `Rescue scope`, `Rescue permissions`, or

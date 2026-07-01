@@ -11,6 +11,9 @@ export type DeferredAdmissionDecision =
       kind: 'planned';
       budgetExempt: boolean;
       engageBoost: boolean;
+      // Boost-free proactive hold: the plan layer should hold lower-priority managed devices
+      // off (up to the hard cap) so this device can start. Distinct from engageBoost.
+      holdLowerPriority: boolean;
       expectedStepId: string | null;
       releaseIntent?: 'binary_restore';
     }
@@ -90,6 +93,11 @@ const resolveDecision = (
   // is in its planned hours (the 'planned' decision below) — so it claims capacity from
   // lower-priority devices only when it is actually scheduled to run.
   const engageBoost = diagnostic.limitLowerPriorityApplied === true && PLANNABLE_STATUSES.has(diagnostic.status);
+  // Boost-free sibling of engageBoost: the pause-lower-priority permission asks the plan layer
+  // to proactively hold lower-priority managed devices off so this device can start. The plan
+  // layer (lib/plan/shedding/pauseHold.ts) owns the release-on-active and mathematical
+  // feasibility-lift decisions — here we only surface the granted intent for planned hours.
+  const holdLowerPriority = diagnostic.pauseLowerPriorityApplied === true && PLANNABLE_STATUSES.has(diagnostic.status);
   if (!PLANNABLE_STATUSES.has(diagnostic.status)) {
     if (!shouldEmitTerminalRelease(diagnostic, device)) return { kind: 'inactive', budgetExempt: false };
     const releaseIntent = resolveReleaseIntentForCapOff(device);
@@ -127,6 +135,7 @@ const resolveDecision = (
     kind: 'planned',
     budgetExempt,
     engageBoost,
+    holdLowerPriority,
     expectedStepId: horizonPlan.currentBucket?.expectedStepId ?? null,
     ...(releasesViaBinary ? { releaseIntent: 'binary_restore' as const } : {}),
   };
@@ -163,6 +172,23 @@ const resolveBoostFields = (engageBoost: boolean): { forceBoostActive?: true } =
   engageBoost ? { forceBoostActive: true } : {}
 );
 
+// The per-device decoration spread. Hoisted out of the map callback so that callback's
+// cyclomatic complexity stays within budget; each flag is only ever added when set.
+const buildAdmissionDecoration = (params: {
+  override: boolean;
+  budgetExempt: boolean;
+  engageBoost: boolean;
+  holdLowerPriority: boolean;
+  hasDeadlineFloor: boolean;
+  deadlineFloorTargetC: number;
+}): Partial<PlanInputDevice> => ({
+  ...(params.override ? { controllable: true } : {}),
+  ...(params.budgetExempt ? { budgetExempt: true } : {}),
+  ...resolveBoostFields(params.engageBoost),
+  ...(params.holdLowerPriority ? { holdLowerPriority: true } : {}),
+  ...(params.hasDeadlineFloor ? { deadlineFloorTargetC: params.deadlineFloorTargetC } : {}),
+});
+
 // Translate an active deferred objective into a temporary capacity-control-on signal for the
 // shedding/restore pipeline. The shedding and restore modules stay agnostic of objectives:
 // they only see a managed device and (for idle hours) a seeded shed-set entry. The deadline
@@ -191,16 +217,24 @@ export const applyDeferredAdmissionToInput = (
     // from lower-priority devices — the deferred target override already commands the task's
     // target. Physical capacity stays enforced by the capacity guard.
     const engageBoost = decision.kind === 'planned' && decision.engageBoost;
+    // Boost-free proactive hold: flag the device so the plan layer holds lower-priority
+    // managed devices off. Only during planned hours (same gate as engageBoost); it never
+    // sets forceBoostActive.
+    const holdLowerPriority = decision.kind === 'planned' && decision.holdLowerPriority;
     // The rescue budget exemption applies cap-agnostically, but only during the
     // planned current bucket. It should not turn idle/background cycles into the
     // device's standing budget-exemption setting.
-    if (!override && !decision.budgetExempt && !engageBoost && !hasDeadlineFloor) return device;
+    if (!override && !decision.budgetExempt && !engageBoost && !holdLowerPriority && !hasDeadlineFloor) return device;
     return {
       ...device,
-      ...(override ? { controllable: true } : {}),
-      ...(decision.budgetExempt ? { budgetExempt: true } : {}),
-      ...resolveBoostFields(engageBoost),
-      ...(hasDeadlineFloor ? { deadlineFloorTargetC } : {}),
+      ...buildAdmissionDecoration({
+        override,
+        budgetExempt: decision.budgetExempt,
+        engageBoost,
+        holdLowerPriority,
+        hasDeadlineFloor,
+        deadlineFloorTargetC,
+      }),
     };
   });
   return { devices: transformed, forceShedSet };

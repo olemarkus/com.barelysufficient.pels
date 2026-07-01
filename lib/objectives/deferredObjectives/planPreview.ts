@@ -106,11 +106,13 @@ export const previewDeferredObjectivePlan = (
 // block rather than claiming a permission the rescue won't grant.
 const resolveGrantedRescuePermissions = (
   rescue: DeferredObjectiveRescuePermissions | undefined,
-): { exemptFromBudget: boolean; limitLowerPriorityDevices: boolean } | undefined => {
+): { exemptFromBudget: boolean; limitLowerPriorityDevices: boolean; pauseLowerPriorityDevices: boolean }
+  | undefined => {
   if (rescue === undefined) return undefined;
   return {
     exemptFromBudget: rescue.exemptFromBudget !== undefined,
     limitLowerPriorityDevices: rescue.limitLowerPriorityDevices !== undefined,
+    pauseLowerPriorityDevices: rescue.pauseLowerPriorityDevices !== undefined,
   };
 };
 
