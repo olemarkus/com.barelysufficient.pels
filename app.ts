@@ -69,6 +69,7 @@ import {
   executePendingPowerRebuild,
   PowerSampleRebuildState,
 } from './lib/plan/rebuildScheduler/powerDriven';
+import { TIGHT_UNACTIONABLE_MIN_REBUILD_INTERVAL_MS } from './lib/plan/rebuildScheduler/policy';
 import { assembleActivePlansWithTrajectory } from './setup/deferredObjectiveActivePlansUiAssembler';
 import { BackgroundTasksController } from './setup/backgroundTasksController';
 import { PowerSamplePipeline } from './setup/powerSamplePipeline';
@@ -656,9 +657,20 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
   }
   private resolvePlanRebuildDueAtMs(intent: RebuildIntent, state: ReturnType<PlanRebuildScheduler['now']>): number {
     const nowMs = state.nowMs;
-    if (intent.kind === 'hardCap') return nowMs;
+    // Execution-side floor: while nothing is actionable, no trigger (signal or
+    // hardCap) may execute a rebuild faster than the floor after the last one.
+    // Anchored to `lastMs` (set only on a real execution) so `now` deterministically
+    // passes it after the interval rather than sliding forward on each recompute.
+    // Requires `lastMs > 0`: with a monotonic clock (`performance.now`) an un-run
+    // scheduler (`lastMs === 0`) is process start, and `0 + interval` is a real
+    // future time that would wrongly defer the very first (initial-sample) rebuild.
+    const floorMs = this.powerSampleRebuildState.tightUnactionable === true
+      && this.powerSampleRebuildState.lastMs > 0
+      ? this.powerSampleRebuildState.lastMs + TIGHT_UNACTIONABLE_MIN_REBUILD_INTERVAL_MS
+      : Number.NEGATIVE_INFINITY;
+    if (intent.kind === 'hardCap') return Math.max(nowMs, floorMs);
     if (intent.kind === 'signal') {
-      return this.powerSampleRebuildState.pendingDueMs ?? nowMs;
+      return Math.max(this.powerSampleRebuildState.pendingDueMs ?? nowMs, floorMs);
     }
     if (intent.kind === 'flow') {
       if (state.activeIntent?.kind === 'flow') {

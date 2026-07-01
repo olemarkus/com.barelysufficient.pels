@@ -17,6 +17,7 @@ import {
   shouldApplyTightMitigationHoldoff,
   shouldApplyTightNoopBackoff,
   TIGHT_MITIGATION_HOLDOFF_MS,
+  TIGHT_UNACTIONABLE_MIN_REBUILD_INTERVAL_MS,
   type HardCapBreach,
   type RebuildDecision,
   type RebuildOutcome,
@@ -44,6 +45,12 @@ export const handleSkippedRebuildDecision = (params: {
   }
   if (hardCapBreach?.breached !== true && nextState.lastHardCapBreached === true) {
     nextState = { ...nextState, lastHardCapBreached: false, lastHardCapDeficitKw: undefined };
+  }
+  // Keep the persisted execution-floor flag in sync on skips too (requests stamp it
+  // in `stagePendingRebuildRequest`). Clears a stale `tightUnactionable` once the
+  // state is no longer tight, so a recovered state can't carry an old floor forward.
+  if (nextState.tightUnactionable !== decision.tightUnactionable) {
+    nextState = { ...nextState, tightUnactionable: decision.tightUnactionable };
   }
   if (nextState !== state) setState(nextState);
   incPerfCounters([
@@ -205,6 +212,7 @@ const stagePendingRebuildRequest = (params: {
     pendingHardCapBreach: hardCapBreach,
     pendingIsInShortfall: isInShortfall,
     pendingOnTightNoopHardCapBreach: onTightNoopHardCapBreach,
+    tightUnactionable: decision.tightUnactionable,
   };
   if (intentKind === 'hardCap' && hasTightNoopBackoffState(nextState)) {
     nextState = resetTightNoopBackoff(nextState);
@@ -277,8 +285,19 @@ export const getLegacyPowerScheduler = (params: {
   const scheduler = new PlanRebuildScheduler({
     getNowMs,
     resolveDueAtMs: (intent, state) => {
-      if (intent.kind === 'hardCap') return state.nowMs;
-      if (intent.kind === 'signal') return getState().pendingDueMs ?? state.nowMs;
+      const st = getState();
+      // Execution-side floor: while nothing is actionable, no trigger (signal or
+      // hardCap) may execute a rebuild faster than the floor after the last one.
+      // Anchored to `lastMs` (set only on a real execution), so `now` deterministically
+      // passes it after the interval instead of sliding forward on each recompute.
+      // Requires `lastMs > 0`: with a monotonic clock an un-run scheduler
+      // (`lastMs === 0`) is process start, and `0 + interval` is a real future time
+      // that would wrongly defer the very first (initial-sample) rebuild.
+      const floorMs = st.tightUnactionable === true && st.lastMs > 0
+        ? st.lastMs + TIGHT_UNACTIONABLE_MIN_REBUILD_INTERVAL_MS
+        : Number.NEGATIVE_INFINITY;
+      if (intent.kind === 'hardCap') return Math.max(state.nowMs, floorMs);
+      if (intent.kind === 'signal') return Math.max(st.pendingDueMs ?? state.nowMs, floorMs);
       return Number.POSITIVE_INFINITY;
     },
     executeIntent: (intent) => {
@@ -354,7 +373,12 @@ export function executePendingPowerRebuild(params: {
     })
     .catch((error: unknown) => {
       const normalizedError = error instanceof Error ? error : new Error(String(error));
-      setState(clearInFlightState(updateTightRebuildSuppressionAfterError(getState(), reason, getNowMs())));
+      // Clear the invalidation latch here too (the success path already does),
+      // so a failed re-check rebuild can't leave it set and permanently disarm the
+      // unactionable throttle for the rest of the incident — keep it a true one-shot.
+      setState(clearInFlightState(clearShortfallSuppressionInvalidation(
+        updateTightRebuildSuppressionAfterError(getState(), reason, getNowMs()),
+      )));
       pendingReject?.(normalizedError);
       throw normalizedError;
     });
@@ -387,6 +411,7 @@ export const resolvePowerSampleDecision = (params: {
   isInShortfall?: boolean;
   hardCapBreach?: HardCapBreach;
   planConvergenceActive?: boolean;
+  unactionable?: boolean;
 }): { decision: RebuildDecision; triggerReason: string } => {
   const {
     state,
@@ -400,6 +425,7 @@ export const resolvePowerSampleDecision = (params: {
     isInShortfall,
     hardCapBreach,
     planConvergenceActive,
+    unactionable,
   } = params;
   const decision = resolveRebuildDecision({
     state,
@@ -413,6 +439,7 @@ export const resolvePowerSampleDecision = (params: {
     isInShortfall,
     hardCapBreach,
     planConvergenceActive,
+    unactionable,
   });
   const triggerReason = resolveRebuildReason({
     state,

@@ -165,6 +165,13 @@ export class PowerSamplePipeline {
         summary: latestPlanSummary,
         state: this.deps.getPowerSampleRebuildState(),
       });
+      // Unwinnable state: the last plan proved there is nothing left to shed AND
+      // nothing left to reduce. A full rebuild cannot change any action, so the
+      // scheduler throttles it to the max-interval cadence rather than burning
+      // ~1.4s of CPU on every power sample (which trips Homey's cpuwarn watchdog).
+      // `=== false` (not `!== true`) so a null/startup summary is not unactionable.
+      const planUnactionable = latestPlanSummary.remainingActionableControlledLoad === false
+        && latestPlanSummary.remainingReducibleControlledLoad === false;
       const capacitySettings = this.deps.getCapacitySettings();
       const capacityGuard = this.deps.getCapacityGuard();
       await recordPowerSampleForApp({
@@ -204,6 +211,7 @@ export class PowerSamplePipeline {
             capacityGuard,
             planConvergenceActive,
             skipWhileShortfallUnrecoverable,
+            unactionable: planUnactionable,
           });
         },
         saveState: (state) => this.deps.savePowerTracker(state),
