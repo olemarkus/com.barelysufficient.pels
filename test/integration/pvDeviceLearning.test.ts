@@ -32,9 +32,15 @@ const trueGenerationKwh = (hourStartMs: number): number => TRUE_GAIN * irradianc
 // Constant power over the hour whose energy equals the hour's true generation.
 const trueGenerationW = (hourStartMs: number): number => trueGenerationKwh(hourStartMs) * 1000;
 
-const recordDays = (service: PvForecastService, startMs: number, days: number): void => {
+const recordDays = (
+  service: PvForecastService,
+  startMs: number,
+  days: number,
+  opts: { outputFactor?: number; netW?: number } = {},
+): void => {
+  const factor = opts.outputFactor ?? 1;
   for (let t = startMs; t < startMs + days * 24 * HOUR_MS; t += 5 * 60_000) {
-    service.recordSample(trueGenerationW(Math.floor(t / HOUR_MS) * HOUR_MS), t);
+    service.recordSample(factor * trueGenerationW(Math.floor(t / HOUR_MS) * HOUR_MS), t, opts.netW);
   }
 };
 
@@ -68,5 +74,43 @@ describe('Learning a PV device (irradiance mocked)', () => {
     recordDays(service, startMs, 1); // a single day — below the learning threshold
     expect(service.getFit()).toBeNull();
     expect(service.forecast([startMs + 100 * HOUR_MS])).toEqual([]);
+  });
+
+  it('segments training on net evidence: sustained import trains the median, a zero-export clamp the quantile', () => {
+    const startMs = Date.UTC(2026, 5, 1, 0);
+    const days = 18;
+
+    // Import-dominant home: PV never covers the house load — every sample carries
+    // a deep positive net (+800 W) ⇒ hours are provably unclamped ⇒ the fit is the
+    // plain median over them, at full confidence.
+    const importHome = new PvForecastService({ irradiance: mockIrradiance });
+    recordDays(importHome, startMs, days, { netW: 800 });
+    const importFit = importHome.getFit();
+    expect(importFit).not.toBeNull();
+    expect(importFit!.trainingMode).toBe('unclamped_median');
+    expect(importFit!.gainKwhPerWm2).toBeCloseTo(TRUE_GAIN, 7);
+    expect(importFit!.confidence).toBe('high');
+
+    // Zero-export home: the inverter clamps output to house consumption — the
+    // measured output is 40% of potential while net hovers at a +50 W standing
+    // import (below the import-evidence bar) ⇒ every hour is clamp-suspect ⇒ the
+    // fit falls back to the quantile, forced-low confidence. All clamped hours
+    // read identically here, so the quantile equals the observed (clamped) gain —
+    // it is bounded by what was actually seen.
+    const clampedHome = new PvForecastService({ irradiance: mockIrradiance });
+    recordDays(clampedHome, startMs, days, { outputFactor: 0.4, netW: 50 });
+    const clampedFit = clampedHome.getFit();
+    expect(clampedFit).not.toBeNull();
+    expect(clampedFit!.trainingMode).toBe('clamp_aware_quantile');
+    expect(clampedFit!.confidence).toBe('low');
+    expect(clampedFit!.gainKwhPerWm2).toBeCloseTo(0.4 * TRUE_GAIN, 7);
+
+    // forecast() consumes the learned gain identically in both modes — no
+    // trainingMode branching downstream of the fit (observability only).
+    const noon = startMs + days * 24 * HOUR_MS + 12 * HOUR_MS;
+    expect(importHome.forecast([noon])[0].generationKwh)
+      .toBeCloseTo(importFit!.gainKwhPerWm2 * irradianceAt(noon), 9);
+    expect(clampedHome.forecast([noon])[0].generationKwh)
+      .toBeCloseTo(clampedFit!.gainKwhPerWm2 * irradianceAt(noon), 9);
   });
 });

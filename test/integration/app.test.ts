@@ -1009,6 +1009,24 @@ describe('MyApp initialization', () => {
     });
   });
 
+  it('taps the co-sampled generation + SIGNED net power into the PV forecast recorder', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    const app = createApp();
+    await initApp(app);
+    const recordSample = vi.fn();
+    (app as any).pvForecast = { recordSample };
+
+    const now = new Date('2026-03-03T11:20:00.000Z').getTime();
+    // Net is negative while exporting — it must reach the recorder unfloored,
+    // before the capacity path runs.
+    await (app as any).powerSamplePipeline.recordPowerSample(-1200, now, { generationW: 900 });
+    expect(recordSample).toHaveBeenCalledWith(900, now, -1200);
+  });
+
   it('does not schedule convergence rebuilds for passive recent restore history alone', async () => {
     const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
     setMockDrivers({

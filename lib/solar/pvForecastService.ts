@@ -71,9 +71,11 @@ export class PvForecastService {
     this.irradianceByHour = { ...(deps.initialState?.irradianceByHour ?? {}) };
   }
 
-  /** Fold one generation power sample (W) and stamp the hour's concurrent irradiance. */
-  recordSample(generationW: number, atMs: number): void {
-    this.history = recordPvSample(this.history, generationW, atMs);
+  /** Fold one generation power sample (W) and stamp the hour's concurrent
+   *  irradiance. `netW` is the co-sampled SIGNED net home power (W, import
+   *  positive) used as zero-export-clamp evidence; omitted when unknown. */
+  recordSample(generationW: number, atMs: number, netW?: number): void {
+    this.history = recordPvSample(this.history, generationW, atMs, { netW });
     const irradianceWm2 = this.irradiance.getIrradiance(hourStartMs(atMs));
     if (isFiniteNumber(irradianceWm2) && irradianceWm2 >= 0) {
       this.irradianceByHour[String(hourStartMs(atMs))] = irradianceWm2;
@@ -113,7 +115,12 @@ export class PvForecastService {
     for (const hour of pvTrainingHours(this.history)) {
       const irradianceWm2 = this.irradianceByHour[String(hour.hourStartMs)];
       if (!isFiniteNumber(irradianceWm2)) continue;
-      points.push({ irradianceWm2, generationKwh: hour.generationKwh });
+      points.push({
+        irradianceWm2,
+        generationKwh: hour.generationKwh,
+        // 'unknown' is expressed as an absent field on the training point.
+        ...(hour.netEvidence === 'unknown' ? {} : { netEvidence: hour.netEvidence }),
+      });
     }
     return fitPvGain(points);
   }

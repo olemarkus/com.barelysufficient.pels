@@ -73,15 +73,20 @@ export class PvForecastController {
     this.active = Object.keys(this.service.getState().history.hourly).length > 0;
   }
 
-  /** Fold a generation power sample from the power pipeline (no-op if unknown). */
-  recordSample(generationW: number | undefined, nowMs: number): void {
-    if (!isFiniteNumber(generationW)) return;
+  /** Fold a generation power sample from the power pipeline (no-op if unknown).
+   *  `netPowerW` is the co-sampled SIGNED net home power (import positive) used as
+   *  zero-export-clamp evidence for gain training — finiteness-gated here at the
+   *  boundary so junk never reaches the pure history math. */
+  recordSample(generationW: number | undefined, nowMs: number, netPowerW?: number): void {
+    // Boundary gate: a non-finite timestamp would mint junk hour keys downstream
+    // (persisted `irradianceByHour['NaN']`, unusable history cursor) — drop the sample.
+    if (!isFiniteNumber(generationW) || !isFiniteNumber(nowMs)) return;
     if (!this.active) {
       if (generationW <= 0) return; // still dormant — wait for real production
       this.active = true; // first positive generation ⇒ start forecasting
       void this.refresh();
     }
-    this.service.recordSample(generationW, nowMs);
+    this.service.recordSample(generationW, nowMs, isFiniteNumber(netPowerW) ? netPowerW : undefined);
     this.dirty = true;
   }
 
@@ -131,6 +136,8 @@ export class PvForecastController {
       gainKwhPerWm2: fit.gainKwhPerWm2,
       confidence: fit.confidence,
       sampleCount: fit.sampleCount,
+      // Observability for tuning the clamp-evidence thresholds — never branched on.
+      trainingMode: fit.trainingMode,
     });
   }
 
