@@ -319,7 +319,7 @@ CI failure, so future field-move slices can't silently grow the debt.*
       *Persona:* prosumer (Norwegian plusskunde, or NL post-saldering) self-consuming solar.
       *P2:* planning consumers ship; the user-facing labels/controls are the remaining work.
 
-- [ ] **Planning price — two deliberate exclusions to revisit.** (1) The `price_lowest_before` /
+- [ ] **Planning price — three deliberate exclusions to revisit.** (1) The `price_lowest_before` /
       `price_lowest_today` flow cards and their 30 s trigger checker
       (`lib/price/priceLowestFlowEvaluator.ts`) deliberately stay on the Grid price `total`: their
       `current_price` token is money the user compares against their bill, and ranking the trigger by
@@ -330,7 +330,12 @@ CI failure, so future field-move slices can't silently grow the debt.*
       the capacity limit (the budgetPrice blend denominator) updates live cheap/expensive classification
       immediately (computed on read) while the persisted `combined_prices` flags/budgetPrice wait for the
       next natural refresh or PV-forecast hook (≤3 h). Harmless drift window; wire `CAPACITY_LIMIT_KW`
-      into a combined-prices recompute if it ever matters.
+      into a combined-prices recompute if it ever matters. (3) Consumer re-read cadence after the
+      PV-forecast hook: the hook only rewrites `combined_prices` (parity with every existing price
+      refresh) — the daily-budget snapshot and smart-task horizon pick the new planning price up on
+      their own next cycle (power sample / clock tick / :58 settle), which in a flow-source home with
+      sparse samples can lag. If dogfood shows it mattering, fire the planner's existing `signal`
+      rebuild intent on `onCombinedPricesUpdated('changed')` rather than a bespoke nudge.
       *Persona:* prosumer with export pricing configured who tunes their main-fuse capacity limit.
       *Hypothesis:* the ≤3 h persisted-flag drift is invisible in practice; the flow-card token split is
       the one a user could notice (trigger fires on a "cheap" surplus hour whose money token looks high).
