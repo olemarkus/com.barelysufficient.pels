@@ -38,6 +38,20 @@ export const resolveBudgetPrice = (params: {
   return Number.isFinite(blended) ? blended : undefined;
 };
 
+/**
+ * Resolve the planning price for one entry: the finite `budgetPrice` when the
+ * producer derived one, else the import `total`. The single fallback rule every
+ * planning consumer (daily-budget shaping, smart-task horizons, price levels,
+ * cheapest-hours) applies — so an absent `budgetPrice` is byte-identical to
+ * planning on `total`. Boundary-safe for persisted payloads: a present but
+ * non-finite `budgetPrice` (junk write) falls back to the total. Never used for
+ * money/receipts (those stay on `total`), and never clamped — a `<= 0` planning
+ * price is legal (self-consuming surplus can be cheaper than free).
+ */
+export const resolvePlanningPrice = (budgetPrice: number | undefined, totalPrice: number): number => (
+  typeof budgetPrice === 'number' && Number.isFinite(budgetPrice) ? budgetPrice : totalPrice
+);
+
 /** Per-hour inputs the blend needs beyond the price entry itself. */
 export type BudgetPriceInputs = {
   /** Forecast self-consumable solar surplus for the hour starting at `startsAtMs` (kWh). */

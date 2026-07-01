@@ -805,6 +805,48 @@ describe('daily budget price shaping', () => {
     expect(result.priceFactors?.[0]).toBeGreaterThanOrEqual(0.7);
   });
 
+  it('shapes the day plan on the planning price while publishing money prices on total', () => {
+    const manager = buildManager();
+    const settings = buildSettings({
+      dailyBudgetKWh: 10,
+      priceShapingEnabled: true,
+      priceShapingFlexShare: 0.5,
+    });
+    const dateKey = getDateKeyInTimeZone(new Date(Date.UTC(2024, 0, 15, 0, 30)), TZ);
+    const dayStart = getDateKeyStartMs(dateKey, TZ);
+    const now = dayStart + 30 * 60 * 1000;
+    const bucketKey0 = new Date(dayStart).toISOString();
+    const surplusIndex = 12;
+    // Flat totals ⇒ zero total-based shaping signal; the only spread comes from
+    // the surplus bucket's planning price.
+    const combinedPrices = {
+      prices: Array.from({ length: 24 }, (_, index) => ({
+        startsAt: new Date(dayStart + index * 60 * 60 * 1000).toISOString(),
+        total: 100,
+        ...(index === surplusIndex ? { budgetPrice: 10 } : {}),
+      })),
+    };
+
+    const { snapshot } = manager.update({
+      nowMs: now,
+      timeZone: TZ,
+      settings,
+      powerTracker: { buckets: { [bucketKey0]: 0 } },
+      combinedPrices,
+      priceOptimizationEnabled: true,
+    });
+
+    // Money surface: the published per-bucket price stays the import total.
+    expect(snapshot.buckets.price).toEqual(Array.from({ length: 24 }, () => 100));
+    // Planning surface: shaping favours the planning-cheap bucket.
+    expect(snapshot.state.priceShapingActive).toBe(true);
+    expect(snapshot.buckets.priceFactor?.[surplusIndex]).toBeCloseTo(1.3, 6);
+    expect(snapshot.buckets.priceFactor?.[surplusIndex + 1]).toBeCloseTo(1, 6);
+    // And the planned allocation actually moves energy into that bucket.
+    const planned = snapshot.buckets.plannedKWh;
+    expect(planned[surplusIndex]).toBeGreaterThan(planned[surplusIndex + 1]);
+  });
+
   it('retains effective price shaping flex share in non-rebuild price data', () => {
     const manager = buildManager();
     const settings = buildSettings({

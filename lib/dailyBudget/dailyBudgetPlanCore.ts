@@ -208,7 +208,10 @@ const resolvePlanSetup = (params: BuildPlanParams): PlanSetup => {
     combinedWeights: planWeights.combined,
     usedInCurrent: bucketUsage[bounds.safeCurrentBucketIndex] ?? 0,
     priceShape,
-    remainingPrices: priceShape.prices?.slice(bounds.remainingStartIndex),
+    // Allocation is a planning surface: spread the remaining budget over the
+    // planning price (`budgetPrice ?? total`), not the money series the payload
+    // publishes as `buckets.price`. Identical when no entry carries a budgetPrice.
+    remainingPrices: priceShape.planningPrices?.slice(bounds.remainingStartIndex),
     effectivePriceShapingFlexShare,
   };
 };

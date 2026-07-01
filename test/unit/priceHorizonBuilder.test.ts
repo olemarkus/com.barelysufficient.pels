@@ -9,9 +9,10 @@ import type { CombinedPriceEntry, CombinedPricesV2 } from '../../lib/price/price
 
 const HOUR_MS = 60 * 60 * 1000;
 
-const entry = (startsAt: string, total: number): CombinedPriceEntry => ({
+const entry = (startsAt: string, total: number, budgetPrice?: number): CombinedPriceEntry => ({
   startsAt,
   total,
+  ...(budgetPrice === undefined ? {} : { budgetPrice }),
   isCheap: false,
   isExpensive: false,
 });
@@ -73,5 +74,67 @@ describe('buildPriceHorizonFromCombined', () => {
       base + HOUR_MS,
     );
     expect(horizon).toEqual([{ startMs: base, price: 50 }]);
+  });
+
+  describe('planning price (budgetPrice ?? total)', () => {
+    const base = Date.parse('2026-01-01T00:00:00Z');
+    const iso = (h: number): string => new Date(base + h * HOUR_MS).toISOString();
+
+    it('carries the budgetPrice when present — a <= 0 planning price is legal', () => {
+      const horizon = buildPriceHorizonFromCombined(
+        store([entry(iso(0), 100, -2.5), entry(iso(1), 100)]),
+        base,
+        base + 2 * HOUR_MS,
+      );
+      expect(horizon).toEqual([
+        { startMs: base, price: -2.5 },
+        { startMs: base + HOUR_MS, price: 100 },
+      ]);
+    });
+
+    it('falls back to total when budgetPrice is present but non-finite (boundary junk)', () => {
+      const horizon = buildPriceHorizonFromCombined(
+        store([entry(iso(0), 42, Number.NaN)]),
+        base,
+        base + HOUR_MS,
+      );
+      expect(horizon).toEqual([{ startMs: base, price: 42 }]);
+    });
+
+    it('keeps an hour whose total is junk but whose budgetPrice is finite (resolved-value gate)', () => {
+      const horizon = buildPriceHorizonFromCombined(
+        store([entry(iso(0), Number.NaN, 7)]),
+        base,
+        base + HOUR_MS,
+      );
+      expect(horizon).toEqual([{ startMs: base, price: 7 }]);
+    });
+
+    it('skips an hour with no finite price at all (as before)', () => {
+      const horizon = buildPriceHorizonFromCombined(
+        store([entry(iso(0), Number.NaN, Number.NaN), entry(iso(1), 10)]),
+        base,
+        base + 2 * HOUR_MS,
+      );
+      expect(horizon).toEqual([{ startMs: base + HOUR_MS, price: 10 }]);
+    });
+
+    it('invariance: budgetPrice === total is byte-identical to entries without budgetPrice', () => {
+      const withEqual = buildPriceHorizonFromCombined(
+        store([entry(iso(0), 42, 42), entry(iso(1), 43, 43)]),
+        base,
+        base + 2 * HOUR_MS,
+      );
+      const without = buildPriceHorizonFromCombined(
+        store([entry(iso(0), 42), entry(iso(1), 43)]),
+        base,
+        base + 2 * HOUR_MS,
+      );
+      expect(withEqual).toEqual(without);
+      expect(withEqual).toEqual([
+        { startMs: base, price: 42 },
+        { startMs: base + HOUR_MS, price: 43 },
+      ]);
+    });
   });
 });

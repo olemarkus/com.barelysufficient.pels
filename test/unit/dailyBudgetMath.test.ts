@@ -11,7 +11,7 @@ import {
   normalizeWeights,
   resolveCurrentBucketIndex,
 } from '../../lib/dailyBudget/dailyBudgetMath';
-import { buildPriceFactors as buildPriceFactorsFromPrices, buildPriceSeries } from '../../lib/dailyBudget/dailyBudgetPrices';
+import { buildPriceFactors as buildPriceFactorsFromPrices, buildPriceSeriesPair } from '../../lib/dailyBudget/dailyBudgetPrices';
 import { buildPlanBreakdown } from '../../lib/dailyBudget/dailyBudgetBreakdown';
 
 describe('allocateBudgetWithCaps', () => {
@@ -189,9 +189,9 @@ describe('daily budget math helpers', () => {
   });
 
   it('maps combined prices onto buckets and ignores invalid entries', () => {
-    expect(buildPriceSeries({ bucketStartUtcMs, combinedPrices: { prices: [] } })).toBeUndefined();
+    expect(buildPriceSeriesPair({ bucketStartUtcMs, combinedPrices: { prices: [] } })).toBeUndefined();
 
-    const prices = buildPriceSeries({
+    const pair = buildPriceSeriesPair({
       bucketStartUtcMs,
       combinedPrices: {
         prices: [
@@ -202,7 +202,9 @@ describe('daily budget math helpers', () => {
       },
     });
 
-    expect(prices).toEqual([1, null, 3, null]);
+    expect(pair?.prices).toEqual([1, null, 3, null]);
+    // No budgetPrice anywhere ⇒ the planning series is identical.
+    expect(pair?.planningPrices).toEqual([1, null, 3, null]);
   });
 
   it('builds price factors only when shaping is enabled and data is complete', () => {
@@ -246,6 +248,78 @@ describe('daily budget math helpers', () => {
     expect(enabled.priceShapingActive).toBe(true);
     expect(enabled.priceFactors?.[0]).toBeNull();
     expect(typeof enabled.priceFactors?.[1]).toBe('number');
+  });
+
+  it('buildPriceSeriesPair maps money on total and planning on budgetPrice ?? total', () => {
+    const combinedPrices = {
+      prices: [
+        { startsAt: new Date(bucketStartUtcMs[0]).toISOString(), total: 100, budgetPrice: 10 },
+        { startsAt: new Date(bucketStartUtcMs[1]).toISOString(), total: 100, budgetPrice: Number.NaN },
+        { startsAt: new Date(bucketStartUtcMs[2]).toISOString(), total: 100 },
+      ],
+    };
+    const pair = buildPriceSeriesPair({ bucketStartUtcMs, combinedPrices });
+    // Money series stays on `total` even when a budgetPrice exists — it feeds
+    // `buckets.price` and the Budget-chart cost lines.
+    expect(pair?.prices).toEqual([100, 100, 100, null]);
+    // Planning series resolves budgetPrice ?? total; junk budgetPrice falls back.
+    expect(pair?.planningPrices).toEqual([10, 100, 100, null]);
+  });
+
+  it('computes price factors over the planning price while keeping the money series on total', () => {
+    // Flat totals ⇒ no total-based shaping signal; a low budgetPrice on bucket 0
+    // is the only spread. Shaping must favour that bucket.
+    const combinedPrices = {
+      prices: bucketStartUtcMs.map((ts, index) => ({
+        startsAt: new Date(ts).toISOString(),
+        total: 100,
+        ...(index === 0 ? { budgetPrice: 10 } : {}),
+      })),
+    };
+    const shaped = buildPriceFactorsFromPrices({
+      bucketStartUtcMs,
+      currentBucketIndex: 0,
+      combinedPrices,
+      priceOptimizationEnabled: true,
+      priceShapingEnabled: true,
+    });
+    expect(shaped.priceShapingActive).toBe(true);
+    expect(shaped.prices).toEqual([100, 100, 100, 100]); // money series untouched
+    expect(shaped.planningPrices).toEqual([10, 100, 100, 100]);
+    // median 100, spread 90 ⇒ the surplus bucket's factor clamps at the max.
+    expect(shaped.priceFactors?.[0]).toBeCloseTo(1.3, 6);
+    expect(shaped.priceFactors?.[1]).toBeCloseTo(1, 6);
+    expect(shaped.priceSpreadFactor).toBeCloseTo(0.9, 6);
+  });
+
+  it('invariance: absent or total-equal budgetPrice yields the total-based factors', () => {
+    const combinedPrices = {
+      prices: bucketStartUtcMs.map((ts, index) => ({
+        startsAt: new Date(ts).toISOString(),
+        total: 10 + index,
+      })),
+    };
+    const withEqualBudget = {
+      prices: combinedPrices.prices.map((entry) => ({ ...entry, budgetPrice: entry.total })),
+    };
+    const plain = buildPriceFactorsFromPrices({
+      bucketStartUtcMs,
+      currentBucketIndex: 0,
+      combinedPrices,
+      priceOptimizationEnabled: true,
+      priceShapingEnabled: true,
+    });
+    const equal = buildPriceFactorsFromPrices({
+      bucketStartUtcMs,
+      currentBucketIndex: 0,
+      combinedPrices: withEqualBudget,
+      priceOptimizationEnabled: true,
+      priceShapingEnabled: true,
+    });
+    expect(plain.planningPrices).toEqual(plain.prices);
+    expect(equal.priceFactors).toEqual(plain.priceFactors);
+    expect(equal.prices).toEqual(plain.prices);
+    expect(equal.priceSpreadFactor).toBe(plain.priceSpreadFactor);
   });
 
   it('blends price factors into a flex share of weights', () => {

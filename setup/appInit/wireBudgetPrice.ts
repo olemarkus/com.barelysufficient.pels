@@ -40,9 +40,10 @@ export function wireBudgetPrice(
       return Math.max(0, pvKwh - backgroundKwh);
     },
   });
-  // No forced recompute here: `getCombinedHourlyPrices()` is live, so the planning
-  // price appears on the next natural price refresh once the PV forecast is learned.
-  // (A boot-time recompute would re-fire `onCombinedPricesUpdated` mid-startup; and
-  // budgetPrice has no consumers yet — see the snapshot-freshness note in TODO's
-  // solar export-price item, to be handled with the consumer-wiring increment.)
+  // No forced recompute here: `getCombinedHourlyPrices()` is live, and a boot-time
+  // recompute would re-fire `onCombinedPricesUpdated` mid-startup. Snapshot
+  // freshness is instead handled by the PV-forecast completion hook the caller
+  // registers right after this (`PvForecastController.setOnRefreshed` →
+  // `updateCombinedPrices`), so the persisted planning price lands as soon as a
+  // forecast refresh succeeds.
 }

@@ -1,4 +1,5 @@
 import { shiftDateKey } from '../utils/dateUtils';
+import { resolvePlanningPrice } from '../price/budgetPrice';
 import type { CombinedPriceData, CombinedPriceEntry } from './dailyBudgetPrices';
 import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from './dailyBudgetTypes';
 
@@ -47,7 +48,11 @@ const preserveAdjacentDay = (
 // tier flags flip, or when per-entry `total` values change (e.g., a
 // surcharge/tariff/raw-price refresh rebuilds combined_prices with the same
 // horizon but different totals that feed `buckets.price`, `priceFactor`, and
-// planned allocation in the rebuilt tomorrow/yesterday snapshots). Excludes
+// planned allocation in the rebuilt tomorrow/yesterday snapshots). A per-entry
+// `budgetPrice` (the planning price the allocation shapes on) is appended ONLY
+// when it is finite and differs from `total`, so existing non-prosumer
+// fingerprints are unchanged on upgrade (no one-time re-seed churn) while a
+// PV-forecast-driven planning-price change still re-seeds. Excludes
 // `lastFetched` because `PriceService.updateCombinedPrices` may bump the
 // timestamp on a no-op refresh — including it would trigger a rebuild on
 // every price tick even when the horizon hasn't changed. Including the date
@@ -72,7 +77,16 @@ export const computeAdjacentDaysSeedSignature = (
 
 const encodePriceEntryFingerprint = (entry: CombinedPriceEntry | undefined): string => {
   if (!entry) return ';';
-  return `${encodePriceTier(entry)}${entry.total};`;
+  return `${encodePriceTier(entry)}${entry.total}${encodePlanningPriceSuffix(entry)};`;
+};
+
+// Planning-price suffix: only when the shared planning-price rule resolves to
+// something other than the total — an absent/equal/junk budgetPrice leaves the
+// fingerprint identical to the pre-budgetPrice format. The finiteness guard
+// keeps a junk `total` from fingerprinting as ":NaN".
+const encodePlanningPriceSuffix = (entry: CombinedPriceEntry): string => {
+  const planning = resolvePlanningPrice(entry.budgetPrice, entry.total);
+  return Number.isFinite(planning) && planning !== entry.total ? `:${planning}` : '';
 };
 
 const encodePriceTier = (entry: CombinedPriceEntry): string => {

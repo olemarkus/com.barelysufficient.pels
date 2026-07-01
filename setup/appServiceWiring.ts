@@ -232,6 +232,23 @@ export class AppServiceWiring {
     // Join the PV forecast + daily-budget background into the planning price, now
     // that the forecast exists (the boot price bootstrap ran before it).
     wireBudgetPrice(ctx, (ms) => this.deps.getPvForecast()?.service.forecast([ms])?.[0]?.generationKwh);
+    // Recompute the persisted combined prices when a PV-forecast refresh lands, so
+    // the snapshot picks up the planning price (budgetPrice) without waiting for
+    // the next natural 3-hourly price refresh (the async Open-Meteo fetch lands
+    // after boot). Registered AFTER wireBudgetPrice so the hook can never fire
+    // before the budget-price inputs are wired; deliberately NOT a boot-time
+    // forced recompute (that would re-fire onCombinedPricesUpdated mid-startup).
+    // The recompute is fingerprint-deduped, so a no-change pass is a cheap no-op.
+    this.deps.getPvForecast()?.setOnRefreshed(() => {
+      try {
+        ctx.priceCoordinator?.updateCombinedPrices();
+      } catch (error) {
+        ctx.getStructuredLogger('solar')?.warn({
+          event: 'pv_forecast_price_recompute_failed',
+          err: normalizeError(error),
+        });
+      }
+    });
     // Clock-driven smart-task lifecycle emission (status/hours-remaining/ended +
     // history). PlanService exists by now, so the emitter's getDevices reads the
     // live plan-device source. Runs off the power path — fixes the flow-mode lag.

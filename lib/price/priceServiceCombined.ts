@@ -10,6 +10,7 @@ import {
   type PriceScheme,
 } from './priceTypes';
 import { calculateAveragePrice, calculateThresholds, getPriceLevelFlags } from './priceMath';
+import { resolvePlanningPrice } from './budgetPrice';
 import { getDateKeyInTimeZone, shiftDateKey } from '../utils/dateUtils';
 import { toStableFingerprint } from '../utils/stableFingerprint';
 
@@ -129,8 +130,12 @@ const buildEntry = (
   avgPrice: number,
   minDiffOre: number,
 ): CombinedPriceEntry => {
+  // Tier flags classify the PLANNING price (`budgetPrice ?? totalPrice`), matching
+  // the live level classification in `priceLevelUtils` — scheduling-consistent
+  // cheap/expensive verdicts for a prosumer, identical when no export price is
+  // configured. `total` itself stays the import money price.
   const flags = getPriceLevelFlags({
-    price: source.totalPrice,
+    price: resolvePlanningPrice(source.budgetPrice, source.totalPrice),
     avgPrice,
     thresholds,
     minDiff: minDiffOre,
@@ -225,7 +230,14 @@ export const buildCombinedPricePayload = (params: {
     };
   }
 
-  const avgPrice = calculateAveragePrice(combined, (entry) => entry.totalPrice);
+  // Average + thresholds over the PLANNING price so the persisted `isCheap`/
+  // `isExpensive` flags classify what the planner schedules against.
+  // Constraint: the persisted `avgPrice`/thresholds are flag context only —
+  // they must never be rendered as money (money surfaces read per-entry `total`).
+  const avgPrice = calculateAveragePrice(
+    combined,
+    (entry) => resolvePlanningPrice(entry.budgetPrice, entry.totalPrice),
+  );
   const { low: lowThreshold, high: highThreshold } = calculateThresholds(avgPrice, thresholdPercent);
   const thresholds = { low: lowThreshold, high: highThreshold };
   const entries = combined.map((source) => buildEntry(source, thresholds, avgPrice, minDiffOre));

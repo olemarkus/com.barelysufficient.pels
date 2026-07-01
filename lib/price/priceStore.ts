@@ -3,6 +3,7 @@ import {
   type CombinedPricesV2,
 } from './priceTypes';
 import type { CombinedPricesReader } from './combinedPricesReader';
+import { resolvePlanningPrice } from './budgetPrice';
 import type { PriceHorizonEntry } from '../../packages/planner-types/src/priceHorizon';
 
 const PRICE_HORIZON_HOUR_MS = 60 * 60 * 1000;
@@ -21,6 +22,13 @@ const PRICE_HORIZON_HOUR_MS = 60 * 60 * 1000;
  * timezones (local day starts at :30/:45 past the UTC hour) the bucket grid
  * stays phase-aligned with the daily-budget overlay (whose `startUtc` carries
  * the same instants). The epoch-hour floor is used ONLY as the dedupe/join key.
+ *
+ * Each hour carries the PLANNING price (`budgetPrice ?? total` — see
+ * `resolvePlanningPrice`): the horizon exists to schedule flexible load, so a
+ * prosumer's forecast-surplus hours rank by the blended planning price. The
+ * finiteness gate applies to the RESOLVED value, so an entry with a junk
+ * `total` but a finite `budgetPrice` still contributes; only an hour with no
+ * finite price at all is skipped.
  */
 export const buildPriceHorizonFromCombined = (
   store: CombinedPricesV2 | null,
@@ -30,12 +38,13 @@ export const buildPriceHorizonFromCombined = (
   const byHour = new Map<number, PriceHorizonEntry>();
   for (const entry of flattenAllHours(store)) {
     const startMs = new Date(entry.startsAt).getTime();
-    if (!Number.isFinite(startMs) || !Number.isFinite(entry.total)) continue;
+    const price = resolvePlanningPrice(entry.budgetPrice, entry.total);
+    if (!Number.isFinite(startMs) || !Number.isFinite(price)) continue;
     const hourKey = Math.floor(startMs / PRICE_HORIZON_HOUR_MS) * PRICE_HORIZON_HOUR_MS;
     // Overlap test on the price hour `[startMs, startMs + HOUR)`.
     if (startMs + PRICE_HORIZON_HOUR_MS <= nowMs || startMs >= deadlineAtMs) continue;
     // First-write wins: keep the earliest entry that floors to this epoch hour.
-    if (!byHour.has(hourKey)) byHour.set(hourKey, { startMs, price: entry.total });
+    if (!byHour.has(hourKey)) byHour.set(hourKey, { startMs, price });
   }
   return [...byHour.values()].sort((left, right) => left.startMs - right.startMs);
 };

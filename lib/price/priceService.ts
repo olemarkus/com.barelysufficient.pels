@@ -15,6 +15,7 @@ import {
 import {
   addDays,
   fetchGridTariffWithDateFallback,
+  findCheapestHoursFromCombined,
   getSpotPriceCacheDecision,
   getSpotPriceDates,
 } from './priceServiceUtils';
@@ -441,21 +442,7 @@ export default class PriceService {
   }
 
   findCheapestHours(count: number): string[] {
-    const now = new Date();
-    const in24Hours = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-
-    const prices = this.getCombinedHourlyPrices()
-      .filter((p) => {
-        const time = new Date(p.startsAt);
-        return time >= now && time < in24Hours;
-      });
-
-    if (prices.length === 0) return [];
-
-    return prices
-      .sort((a, b) => a.totalPrice - b.totalPrice)
-      .slice(0, count)
-      .map((p) => p.startsAt);
+    return findCheapestHoursFromCombined(this.getCombinedHourlyPrices(), count, Date.now());
   }
 
   isCurrentHourCheap(): boolean {

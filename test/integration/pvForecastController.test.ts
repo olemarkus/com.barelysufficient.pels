@@ -47,6 +47,89 @@ describe('PvForecastController', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  describe('refresh-completion hook (setOnRefreshed)', () => {
+    // Non-empty radiation payload ⇒ the provider refresh outcome is 'ok'.
+    const radiationWithData = {
+      ok: true,
+      json: async () => ({ hourly: { time: [1_600_000_000], shortwave_radiation: [100] } }),
+    };
+
+    it('invokes the hook after each successful provider refresh', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => radiationWithData));
+      const controller = new PvForecastController(makeCtx());
+      const onRefreshed = vi.fn();
+      controller.setOnRefreshed(onRefreshed);
+
+      controller.recordSample(500, 1000); // arms ⇒ triggers the first refresh
+      await flushMicro();
+      expect(onRefreshed).toHaveBeenCalledTimes(1);
+
+      await controller.refresh();
+      expect(onRefreshed).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not invoke the hook when the provider refresh fails or throws', async () => {
+      // Empty radiation arrays parse to nothing ⇒ provider outcome 'failed'.
+      vi.stubGlobal('fetch', vi.fn(async () => radiationOk));
+      const failing = new PvForecastController(makeCtx());
+      const onFailedRefresh = vi.fn();
+      failing.setOnRefreshed(onFailedRefresh);
+      failing.recordSample(500, 1000);
+      await flushMicro();
+      await failing.refresh();
+      expect(onFailedRefresh).not.toHaveBeenCalled();
+
+      vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('network down'); }));
+      const throwing = new PvForecastController(makeCtx());
+      const onThrownRefresh = vi.fn();
+      throwing.setOnRefreshed(onThrownRefresh);
+      throwing.recordSample(500, 1000);
+      await flushMicro();
+      await expect(throwing.refresh()).resolves.toBeUndefined(); // failure is swallowed
+      expect(onThrownRefresh).not.toHaveBeenCalled();
+    });
+
+    it('a refresh that completed before registration does not fire the hook retroactively', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => radiationWithData));
+      const controller = new PvForecastController(makeCtx());
+      controller.recordSample(500, 1000); // successful refresh, no hook registered yet
+      await flushMicro();
+
+      const onRefreshed = vi.fn();
+      controller.setOnRefreshed(onRefreshed);
+      expect(onRefreshed).not.toHaveBeenCalled(); // only future refreshes fire it
+
+      await controller.refresh();
+      expect(onRefreshed).toHaveBeenCalledTimes(1);
+    });
+
+    it('stays silent while dormant (refresh is a no-op before the first positive sample)', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => radiationWithData));
+      const controller = new PvForecastController(makeCtx());
+      const onRefreshed = vi.fn();
+      controller.setOnRefreshed(onRefreshed);
+      await controller.refresh();
+      expect(onRefreshed).not.toHaveBeenCalled();
+    });
+
+    it('never fires after stop() — an in-flight fetch resolving post-teardown is dropped', async () => {
+      let resolveFetch: (value: unknown) => void = () => {};
+      vi.stubGlobal('fetch', vi.fn(() => new Promise((resolve) => { resolveFetch = resolve; })));
+      const controller = new PvForecastController(makeCtx());
+      const onRefreshed = vi.fn();
+      controller.setOnRefreshed(onRefreshed);
+
+      controller.recordSample(500, 1000); // arms ⇒ refresh parked on the in-flight fetch
+      controller.stop(); // app uninit while the Open-Meteo fetch is still in flight
+      resolveFetch(radiationWithData); // fetch lands AFTER teardown
+      await flushMicro();
+
+      expect(onRefreshed).not.toHaveBeenCalled();
+      await controller.refresh(); // and any later refresh call is a no-op too
+      expect(onRefreshed).not.toHaveBeenCalled();
+    });
+  });
+
   it('swallows a persistence failure — logs it, never throws', () => {
     const warn = vi.fn();
     const controller = new PvForecastController(makeCtx({

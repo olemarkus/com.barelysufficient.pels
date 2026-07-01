@@ -47,6 +47,14 @@ export class PvForecastController {
   private readonly logger: PvForecastLogger;
   private timers: Array<ReturnType<typeof setInterval>> = [];
   private dirty = false;
+  // Completion hook: fires after each SUCCESSFUL provider refresh (fresh
+  // irradiance landed). Wiring registers it AFTER the budget-price inputs are
+  // wired (`wireBudgetPrice`), so it can never trigger a combined-prices
+  // recompute before the planning-price inputs exist. Unset ⇒ no-op.
+  private onRefreshed?: () => void;
+  // Latched by stop(): an Open-Meteo fetch still in flight at app uninit must
+  // not drive the hook (or any other completion work) after teardown.
+  private stopped = false;
   // Dormant until the home shows POSITIVE solar generation: non-solar homes report
   // no `generationW` (and a generation device can report 0 at night before any
   // production), so neither must reach Open-Meteo. Armed by recorded history at boot
@@ -77,16 +85,25 @@ export class PvForecastController {
     this.dirty = true;
   }
 
+  /** Register the refresh-completion hook (invoked only after a successful provider refresh). */
+  setOnRefreshed(callback: () => void): void {
+    this.onRefreshed = callback;
+  }
+
   /** Refetch the irradiance forecast and emit the learned gain. No-op while dormant
    *  (a non-solar home never reaches the network); failures are logged, not thrown. */
   async refresh(): Promise<void> {
-    if (!this.active) return;
-    try {
-      await this.provider.refresh();
-    } catch (error) {
+    if (!this.active || this.stopped) return;
+    const outcome = await this.provider.refresh().catch((error: unknown) => {
       this.logger.warn({ event: 'pv_forecast_refresh_failed', err: normalizeError(error) });
-    }
+      return 'failed' as const;
+    });
+    // Torn down while the fetch was in flight — drop the completion entirely.
+    if (this.stopped) return;
     this.emitLearnedForecast();
+    // Only a real forecast update completes the hook — a failed/location-less
+    // refresh changed nothing, so nothing downstream needs recomputing.
+    if (outcome === 'ok') this.onRefreshed?.();
   }
 
   start(): void {
@@ -97,6 +114,9 @@ export class PvForecastController {
   }
 
   stop(): void {
+    this.stopped = true;
+    // Drop the hook so a late completion can never reach the price layer.
+    this.onRefreshed = undefined;
     for (const timer of this.timers) clearInterval(timer);
     this.timers = [];
     this.persistIfDirty();

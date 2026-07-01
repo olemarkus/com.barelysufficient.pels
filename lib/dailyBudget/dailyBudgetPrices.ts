@@ -1,4 +1,5 @@
 import { clamp } from '../utils/mathUtils';
+import { resolvePlanningPrice } from '../price/budgetPrice';
 import {
   PRICE_SHAPING_FLEX_SHARE,
   PRICE_SHAPING_PRICE_RANGE_EPSILON,
@@ -7,6 +8,11 @@ import {
 export type CombinedPriceEntry = {
   startsAt: string;
   total: number;
+  // Optional planning price (`budgetPrice ?? total` at consumption time) — the
+  // export/import blend the producer derives over the forecast solar surplus
+  // (see lib/price/budgetPrice.ts). Absent for non-prosumers, in which case
+  // every consumer falls back to `total` and behaviour is byte-identical.
+  budgetPrice?: number;
   // Optional price-tier flags. Present on the canonical price store entries
   // (see lib/price/priceTypes.ts) and consumed by the snapshot signature so
   // that threshold/surcharge changes which only flip these flags still
@@ -57,26 +63,42 @@ export function buildPriceDebugData(params: {
 }
 
 /**
- * Map combined price entries onto the bucket timestamps.
+ * Map combined price entries onto the bucket timestamps, producing both series
+ * in one pass over the entries:
+ * - `prices` — the import money price (`total`). Feeds the published
+ *   `buckets.price` and every cost/money surface (Budget chart actuals, pace and
+ *   projection cost lines) — those MUST stay on `total`.
+ * - `planningPrices` — the planning price (`budgetPrice ?? total`, the shared
+ *   `resolvePlanningPrice` rule). Feeds price shaping and the remaining-budget
+ *   allocation only, so a prosumer's day plan shifts load toward
+ *   forecast-surplus hours. Identical to `prices` when no entry carries a
+ *   `budgetPrice`.
+ *
+ * Returns `undefined` when there are no entries; otherwise both series exist
+ * and cover the same buckets (a bucket is priced on both or on neither).
  */
-export function buildPriceSeries(params: {
+export function buildPriceSeriesPair(params: {
   bucketStartUtcMs: number[];
   combinedPrices?: CombinedPriceData | null;
-}): Array<number | null> | undefined {
+}): { prices: Array<number | null>; planningPrices: Array<number | null> } | undefined {
   const { bucketStartUtcMs, combinedPrices } = params;
   const entries = combinedPrices?.prices;
   if (!entries || entries.length === 0) {
     return undefined;
   }
-  const priceByStart = new Map<number, number>();
+  const byStart = new Map<number, { total: number; planning: number }>();
   for (const entry of entries) {
     const ts = new Date(entry.startsAt).getTime();
-    if (Number.isFinite(ts)) priceByStart.set(ts, entry.total);
+    if (!Number.isFinite(ts)) continue;
+    byStart.set(ts, {
+      total: entry.total,
+      planning: resolvePlanningPrice(entry.budgetPrice, entry.total),
+    });
   }
-  return bucketStartUtcMs.map((ts) => {
-    const value = priceByStart.get(ts);
-    return typeof value === 'number' ? value : null;
-  });
+  return {
+    prices: bucketStartUtcMs.map((ts) => byStart.get(ts)?.total ?? null),
+    planningPrices: bucketStartUtcMs.map((ts) => byStart.get(ts)?.planning ?? null),
+  };
 }
 
 export function buildPriceFactors(params: {
@@ -87,6 +109,8 @@ export function buildPriceFactors(params: {
   priceShapingEnabled: boolean;
 }): {
   prices?: Array<number | null>;
+  /** Planning-price series (`budgetPrice ?? total`); ≡ `prices` for non-prosumers. */
+  planningPrices?: Array<number | null>;
   priceFactors?: Array<number | null>;
   priceShapingActive: boolean;
   priceSpreadFactor?: number;
@@ -100,16 +124,19 @@ export function buildPriceFactors(params: {
   } = params;
 
   const safeCurrentBucketIndex = Math.max(0, currentBucketIndex);
-  const pricesAll = buildPriceSeries({ bucketStartUtcMs, combinedPrices });
-  if (!pricesAll) {
+  const series = buildPriceSeriesPair({ bucketStartUtcMs, combinedPrices });
+  if (!series) {
     return { priceShapingActive: false };
   }
+  // Money series (`prices`, on `total`) is what the payload publishes and cost
+  // lines consume; the planning series drives shaping/allocation below.
+  const { prices: pricesAll, planningPrices: planningPricesAll } = series;
   if (!priceOptimizationEnabled || !priceShapingEnabled) {
-    return { prices: pricesAll, priceShapingActive: false };
+    return { prices: pricesAll, planningPrices: planningPricesAll, priceShapingActive: false };
   }
-  const remainingPrices = pricesAll.slice(safeCurrentBucketIndex);
+  const remainingPrices = planningPricesAll.slice(safeCurrentBucketIndex);
   if (remainingPrices.some((value) => typeof value !== 'number')) {
-    return { prices: pricesAll, priceShapingActive: false };
+    return { prices: pricesAll, planningPrices: planningPricesAll, priceShapingActive: false };
   }
   const numericPrices = remainingPrices as number[];
   const priceList = [...numericPrices].sort((a, b) => a - b);
@@ -134,6 +161,7 @@ export function buildPriceFactors(params: {
 
   return {
     prices: pricesAll,
+    planningPrices: planningPricesAll,
     priceFactors: priceFactorsAll,
     priceShapingActive: true,
     priceSpreadFactor,

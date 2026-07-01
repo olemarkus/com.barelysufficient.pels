@@ -15,7 +15,9 @@ import {
 import { PriceCoordinator } from '../../lib/price/priceCoordinator';
 import { createPriceOptimizationSettingsStore } from '../../setup/priceOptimizationSettingsAdapter';
 import { createPriceDataStore } from '../../setup/priceDataAdapter';
-import { flattenAllHours } from '../../lib/price/priceStore';
+import { createCombinedPricesReader } from '../../setup/priceCombinedPricesAdapter';
+import { flattenAllHours, readCombinedPriceData } from '../../lib/price/priceStore';
+import { buildPriceFactors } from '../../lib/dailyBudget/dailyBudgetPrices';
 import type { CombinedPricesV2 } from '../../lib/price/priceTypes';
 import { PriceLevel } from '../../lib/price/priceLevels';
 import {
@@ -1637,6 +1639,106 @@ describe('Price optimization', () => {
     for (let i = 1; i < cheapestPrices.length; i++) {
       expect(cheapestPrices[i]).toBeGreaterThanOrEqual(cheapestPrices[i - 1]);
     }
+  });
+
+  it('ranks cheapest hours by the planning price when a solar surplus is forecast', async () => {
+    // Fixed non-DST instant, app-local hour start.
+    const now = new Date('2026-06-15T10:00:00.000Z');
+    const hourStartMs = now.getTime();
+    const surplusHourMs = hourStartMs + 2 * HOUR_MS;
+    const surplusHourIso = new Date(surplusHourMs).toISOString();
+    const cheapestTotalIso = new Date(hourStartMs).toISOString();
+    // Hour 0 has by far the lowest spot (cheapest total); the surplus hour has
+    // by far the highest. The gaps dwarf any per-hour tariff variation.
+    const spotByHour = [10, 200, 400, 200, 200, 200];
+    mockHomeyInstance.settings.set('electricity_prices', spotByHour.map((spotPriceExVat, hour) => ({
+      startsAt: new Date(hourStartMs + hour * HOUR_MS).toISOString(),
+      spotPriceExVat,
+      currency: 'NOK',
+    })));
+    mockHomeyInstance.settings.set('nettleie_data', []);
+    // Pure fixed feed-in tariff of 1 øre ⇒ every hour's exportPrice is 1.
+    mockHomeyInstance.settings.set('export_price_enabled', true);
+    mockHomeyInstance.settings.set('export_spot_factor', 0);
+    mockHomeyInstance.settings.set('export_fixed', 1);
+
+    await withMockedNow(now, async () => {
+      const coordinator = createPriceCoordinatorForTest();
+
+      // Invariance leg: no budget-price inputs ⇒ ranking is by total, exactly
+      // as before — the lowest-spot hour wins.
+      expect(coordinator.findCheapestHours(1)).toEqual([cheapestTotalIso]);
+
+      // Full surplus coverage for the surplus hour ⇒ its planning price is the
+      // export price (1 øre), far below every total.
+      coordinator.setBudgetPriceInputs({
+        expectedManagedDrawKwh: 5,
+        getSurplusKwh: (startsAtMs) => (startsAtMs === surplusHourMs ? 5 : undefined),
+      });
+      expect(coordinator.findCheapestHours(1)).toEqual([surplusHourIso]);
+      // Sanity: the surplus hour really is the most expensive by total.
+      const combined = coordinator.getCombinedHourlyPrices();
+      const surplusEntry = combined.find((entry) => entry.startsAt === surplusHourIso);
+      const maxTotal = Math.max(...combined.map((entry) => entry.totalPrice));
+      expect(surplusEntry?.totalPrice).toBe(maxTotal);
+      expect(surplusEntry?.budgetPrice).toBe(1);
+    });
+  });
+
+  it('persists budgetPrice end-to-end: producer → settings payload → reader → daily-budget shaping', async () => {
+    // Pins the full chain against a future field-whitelisting re-map: the
+    // producer's budgetPrice must survive the persisted `combined_prices`
+    // payload and come back through the typed reader, and the daily-budget
+    // shaping must actually shift off that read-back value.
+    const now = new Date('2026-06-15T10:00:00.000Z');
+    const hourStartMs = now.getTime();
+    const surplusIndex = 2;
+    const hourStarts = [0, 1, 2, 3, 4, 5].map((h) => hourStartMs + h * HOUR_MS);
+    const surplusHourMs = hourStarts[surplusIndex];
+    const surplusHourIso = new Date(surplusHourMs).toISOString();
+    mockHomeyInstance.settings.set('electricity_prices', hourStarts.map((startMs) => ({
+      startsAt: new Date(startMs).toISOString(),
+      spotPriceExVat: 50,
+      currency: 'NOK',
+    })));
+    mockHomeyInstance.settings.set('nettleie_data', []);
+    // Pure fixed feed-in tariff of 1 øre ⇒ every hour's exportPrice is 1.
+    mockHomeyInstance.settings.set('export_price_enabled', true);
+    mockHomeyInstance.settings.set('export_spot_factor', 0);
+    mockHomeyInstance.settings.set('export_fixed', 1);
+
+    await withMockedNow(now, async () => {
+      const coordinator = createPriceCoordinatorForTest();
+      coordinator.setBudgetPriceInputs({
+        expectedManagedDrawKwh: 5,
+        getSurplusKwh: (startsAtMs) => (startsAtMs === surplusHourMs ? 5 : undefined),
+      });
+      coordinator.updateCombinedPrices();
+
+      // Read back through the persisted-store reader path (the adapter every
+      // combined-prices consumer uses), not the in-memory producer.
+      const reader = createCombinedPricesReader({
+        homey: mockHomeyInstance as never,
+        requestRefetch: () => {},
+      });
+      const data = readCombinedPriceData(reader, new Date(), APP_TIME_ZONE);
+      const persisted = data?.prices?.find((entry) => entry.startsAt === surplusHourIso);
+      expect(persisted?.budgetPrice).toBe(1);
+      expect(persisted?.exportPrice).toBe(1);
+      expect(persisted?.total).toBeGreaterThan(1); // money price untouched
+
+      // Daily-budget shaping consumes the read-back planning price.
+      const shaped = buildPriceFactors({
+        bucketStartUtcMs: hourStarts,
+        currentBucketIndex: 0,
+        combinedPrices: data,
+        priceOptimizationEnabled: true,
+        priceShapingEnabled: true,
+      });
+      expect(shaped.planningPrices?.[surplusIndex]).toBe(1);
+      expect(shaped.prices?.[surplusIndex]).toBe(persisted?.total ?? Number.NaN);
+      expect(shaped.priceFactors?.[surplusIndex] ?? 0).toBeGreaterThan(1);
+    });
   });
 
   it('applies cheapDelta temperature during cheap hours', async () => {
