@@ -22,6 +22,7 @@ export type { ActivationAttemptSource } from './activationBackoff';
 
 export {
   clearSurplusEligibility,
+  SURPLUS_ABSORB_HARD_OFF_IMPORT_KW,
   SURPLUS_ABSORB_MIN_DWELL_MS,
   SURPLUS_ABSORB_RESERVE_KW,
   SURPLUS_ABSORB_SETTLE_MS,

@@ -129,6 +129,26 @@ const targetOf = (device: ReturnType<typeof cycleDevice>): number | undefined =>
   device && isTemperaturePlanDevice(device) ? device.plannedTarget : undefined
 );
 
+// One plan cycle with the whole-home power signal LOST (stale/unknown): the
+// allocator's `powerOk` gate fails, which is a hard-off release condition.
+const cyclePowerUnknown = (state: PlanEngineState): number | undefined => {
+  const device = buildInitialPlanDevices({
+    context: {
+      ...buildContext(0),
+      total: null,
+      powerKnown: false,
+      hasLivePowerSample: false,
+      powerFreshnessState: 'stale_hold',
+    },
+    state,
+    shedSet: new Set(),
+    shedReasons: new Map(),
+    guardInShortfall: false,
+    deps: deps(true),
+  })[0];
+  return device && isTemperaturePlanDevice(device) ? device.plannedTarget : undefined;
+};
+
 describe('surplus-absorb setpoint raise (planner prep integration)', () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date'] });
@@ -197,6 +217,57 @@ describe('surplus-absorb setpoint raise (planner prep integration)', () => {
     // ...then, past the dwell and once the release settles, it drops back.
     vi.setSystemTime(2 * SURPLUS_ABSORB_SETTLE_MS + SURPLUS_ABSORB_MIN_DWELL_MS);
     expect(cycle(state, IMPORTING_KW)).toBe(MODE_C);
+  });
+
+  it('releases early on sustained import beyond the hard-off bar, without waiting out the min dwell', () => {
+    const state = createPlanEngineState();
+    cycle(state, EXPORTING_KW);
+    vi.setSystemTime(SURPLUS_ABSORB_SETTLE_MS);
+    expect(cycle(state, EXPORTING_KW)).toBe(MODE_C + SURPLUS_DELTA_C);
+
+    // Sun sets: sustained 1 kW import — unambiguously beyond the 0.35 kW hard-off bar.
+    const importStart = SURPLUS_ABSORB_SETTLE_MS + 10_000;
+    vi.setSystemTime(importStart);
+    expect(cycle(state, IMPORTING_KW)).toBe(MODE_C + SURPLUS_DELTA_C); // settle still applies
+    // One settle window into the import — far inside the 5-min dwell — the lift releases.
+    const releaseAt = importStart + SURPLUS_ABSORB_SETTLE_MS;
+    // Sanity: well before the dwell (engage at SETTLE + 5-min dwell) would allow it.
+    expect(releaseAt).toBeLessThan(SURPLUS_ABSORB_SETTLE_MS + SURPLUS_ABSORB_MIN_DWELL_MS);
+    vi.setSystemTime(releaseAt);
+    expect(cycle(state, IMPORTING_KW)).toBe(MODE_C);
+  });
+
+  it('releases early when whole-home power goes unknown, without waiting out the min dwell', () => {
+    const state = createPlanEngineState();
+    cycle(state, EXPORTING_KW);
+    vi.setSystemTime(SURPLUS_ABSORB_SETTLE_MS);
+    expect(cycle(state, EXPORTING_KW)).toBe(MODE_C + SURPLUS_DELTA_C);
+
+    // The meter goes stale: no surplus to allocate AND a hard-off condition.
+    const lostAt = SURPLUS_ABSORB_SETTLE_MS + 10_000;
+    vi.setSystemTime(lostAt);
+    expect(cyclePowerUnknown(state)).toBe(MODE_C + SURPLUS_DELTA_C); // settle still applies
+    vi.setSystemTime(lostAt + SURPLUS_ABSORB_SETTLE_MS);
+    expect(cyclePowerUnknown(state)).toBe(MODE_C);
+  });
+
+  it('holds the dwell for a genuine dip: import below the hard-off bar releases only after the dwell', () => {
+    const DIP_IMPORT_KW = 0.2; // below the 0.35 kW hard-off bar — a passing cloud
+    const state = createPlanEngineState();
+    cycle(state, EXPORTING_KW);
+    vi.setSystemTime(SURPLUS_ABSORB_SETTLE_MS);
+    expect(cycle(state, EXPORTING_KW)).toBe(MODE_C + SURPLUS_DELTA_C);
+
+    const dipStart = SURPLUS_ABSORB_SETTLE_MS + 10_000;
+    vi.setSystemTime(dipStart);
+    expect(cycle(state, DIP_IMPORT_KW)).toBe(MODE_C + SURPLUS_DELTA_C);
+    // One settle window into the dip — where a hard-off would already have
+    // released — the min dwell still holds the lift (the passing-cloud pin).
+    vi.setSystemTime(dipStart + SURPLUS_ABSORB_SETTLE_MS);
+    expect(cycle(state, DIP_IMPORT_KW)).toBe(MODE_C + SURPLUS_DELTA_C);
+    // Past the dwell (and the release settle) it drops back on the normal path.
+    vi.setSystemTime(SURPLUS_ABSORB_SETTLE_MS + SURPLUS_ABSORB_MIN_DWELL_MS + SURPLUS_ABSORB_SETTLE_MS);
+    expect(cycle(state, DIP_IMPORT_KW)).toBe(MODE_C);
   });
 
   it('holds the lift via own-draw add-back when the device consumes its own surplus', () => {
