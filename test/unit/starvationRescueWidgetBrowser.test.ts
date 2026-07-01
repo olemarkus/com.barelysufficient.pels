@@ -103,7 +103,7 @@ const OK_PREVIEW = {
     ],
     // The default fixture is an eligible (stepped-load, top-priority) device, so
     // both rescue permissions survive the backend gate.
-    grantedRescuePermissions: { exemptFromBudget: true, limitLowerPriorityDevices: true },
+    grantedRescuePermissions: { exemptFromBudget: true, limitLowerPriorityDevices: true, pauseLowerPriorityDevices: true },
   },
 };
 
@@ -280,7 +280,7 @@ describe('starvation rescue widget browser', () => {
     expect(chart.querySelector('.pchart__band')).not.toBeNull();
   });
 
-  test('an eligible device shows BOTH canonical granted Extra permissions', async () => {
+  test('an eligible device shows ALL canonical granted Extra permissions', async () => {
     const controller = installWidget(window as WidgetWindow, document);
     controller!.bootstrap(buildHomey());
     await flushPromises();
@@ -292,13 +292,14 @@ describe('starvation rescue widget browser', () => {
     expect(perms.hidden).toBe(false);
     expect((document.querySelector('[data-confirm-perms-title]') as HTMLElement).textContent)
       .toBe(STARVATION_RESCUE_WIDGET_COPY.extraPermissionsTitle);
-    // Both standing permissions the rescue grants, using the canonical labels
+    // All standing permissions the rescue grants, using the canonical labels
     // (shared with the create widget's toggles + runtime log breadcrumbs).
     const items = Array.from(document.querySelectorAll('[data-confirm-perms-list] li'))
       .map((li) => li.textContent);
     expect(items).toEqual([
       SMART_TASK_EXTRA_PERMISSION_LABELS.exemptFromBudget,
       SMART_TASK_EXTRA_PERMISSION_LABELS.limitLowerPriorityDevices,
+      SMART_TASK_EXTRA_PERMISSION_LABELS.pauseLowerPriorityDevices,
     ]);
   });
 
@@ -314,7 +315,7 @@ describe('starvation rescue widget browser', () => {
             ...OK_PREVIEW,
             estimate: {
               ...OK_PREVIEW.estimate,
-              grantedRescuePermissions: { exemptFromBudget: true, limitLowerPriorityDevices: false },
+              grantedRescuePermissions: { exemptFromBudget: true, limitLowerPriorityDevices: false, pauseLowerPriorityDevices: false },
             },
           };
         }

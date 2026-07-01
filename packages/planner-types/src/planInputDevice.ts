@@ -240,6 +240,13 @@ export type PlanInputDeviceBase = {
   // device's own boost config/threshold, so the escalation/shedding machinery claims capacity
   // from lower-priority devices.
   forceBoostActive?: boolean;
+  // Set by the pause-lower-priority rescue lane (admission) when the reserved smart-task
+  // device is in a planned hour. The plan layer (lib/plan/shedding/pauseHold.ts) reads this
+  // and proactively holds lower-priority MANAGED devices off — up to, never above, the hard
+  // cap — so this device can start at its own/lowest step. BOOST-FREE and independent of
+  // `forceBoostActive`: it does not escalate this device's own step, it only clears room. The
+  // plan layer owns the release-on-active and mathematical feasibility-lift decisions.
+  holdLowerPriority?: boolean;
   /**
    * Producer-resolved deadline floor for the thermostat setpoint, °C — the
    * deadline-target plus learned over-command. Stamped by

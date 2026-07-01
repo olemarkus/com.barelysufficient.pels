@@ -5278,10 +5278,12 @@ var normalizeRescuePermissions = (raw) => {
   const value = raw;
   const exemptFromBudget = isRescueMode(value.exemptFromBudget) ? value.exemptFromBudget : void 0;
   const limitLowerPriorityDevices = isRescueMode(value.limitLowerPriorityDevices) ? value.limitLowerPriorityDevices : void 0;
-  if (!exemptFromBudget && !limitLowerPriorityDevices) return void 0;
+  const pauseLowerPriorityDevices = isRescueMode(value.pauseLowerPriorityDevices) ? value.pauseLowerPriorityDevices : void 0;
+  if (!exemptFromBudget && !limitLowerPriorityDevices && !pauseLowerPriorityDevices) return void 0;
   return {
     ...exemptFromBudget ? { exemptFromBudget } : {},
-    ...limitLowerPriorityDevices ? { limitLowerPriorityDevices } : {}
+    ...limitLowerPriorityDevices ? { limitLowerPriorityDevices } : {},
+    ...pauseLowerPriorityDevices ? { pauseLowerPriorityDevices } : {}
   };
 };
 var isValidDeadlineAtMs = (value) => typeof value === "number" && Number.isFinite(value) && value > 0;

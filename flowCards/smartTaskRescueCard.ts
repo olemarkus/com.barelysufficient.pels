@@ -19,16 +19,17 @@ import {
 } from '../packages/shared-domain/src/smartTaskRescueStrings';
 import type { FlowCardDeps } from './registerFlowCards';
 
-type RescuePropertyId = 'exempt_from_budget' | 'limit_lower_priority';
+type RescuePropertyId = 'exempt_from_budget' | 'limit_lower_priority' | 'pause_lower_priority';
 
 const RESCUE_PROPERTY_KEYS: Record<RescuePropertyId, keyof DeferredObjectiveRescuePermissions> = {
   exempt_from_budget: 'exemptFromBudget',
   limit_lower_priority: 'limitLowerPriorityDevices',
+  pause_lower_priority: 'pauseLowerPriorityDevices',
 };
 
 const resolveRescuePropertyId = (raw: DropdownArg | undefined): RescuePropertyId => {
   const id = getDropdownId(raw);
-  if (id === 'exempt_from_budget' || id === 'limit_lower_priority') return id;
+  if (id === 'exempt_from_budget' || id === 'limit_lower_priority' || id === 'pause_lower_priority') return id;
   throw new Error(SMART_TASK_RESCUE_INVALID_PROPERTY);
 };
 
@@ -52,10 +53,16 @@ const withRescuePermission = (
   const limitLowerPriorityDevices = key === 'limitLowerPriorityDevices'
     ? mode
     : entry.rescue?.limitLowerPriorityDevices;
-  const rescue: DeferredObjectiveRescuePermissions | undefined = exemptFromBudget || limitLowerPriorityDevices
+  const pauseLowerPriorityDevices = key === 'pauseLowerPriorityDevices'
+    ? mode
+    : entry.rescue?.pauseLowerPriorityDevices;
+  const rescue: DeferredObjectiveRescuePermissions | undefined = (
+    exemptFromBudget || limitLowerPriorityDevices || pauseLowerPriorityDevices
+  )
     ? {
       ...(exemptFromBudget ? { exemptFromBudget } : {}),
       ...(limitLowerPriorityDevices ? { limitLowerPriorityDevices } : {}),
+      ...(pauseLowerPriorityDevices ? { pauseLowerPriorityDevices } : {}),
     }
     : undefined;
   return { ...entry, rescue };

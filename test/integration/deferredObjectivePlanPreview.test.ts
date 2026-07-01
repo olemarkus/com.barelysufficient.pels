@@ -473,6 +473,7 @@ describe('previewDeferredObjectivePlan', () => {
     expect(estimate.grantedRescuePermissions).toEqual({
       exemptFromBudget: true,
       limitLowerPriorityDevices: true,
+      pauseLowerPriorityDevices: false,
     });
   });
 
@@ -493,6 +494,7 @@ describe('previewDeferredObjectivePlan', () => {
     expect(estimate.grantedRescuePermissions).toEqual({
       exemptFromBudget: true,
       limitLowerPriorityDevices: false,
+      pauseLowerPriorityDevices: false,
     });
   });
 

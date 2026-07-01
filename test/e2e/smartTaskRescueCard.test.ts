@@ -80,6 +80,30 @@ describe('allow_smart_task_rescue flow card', () => {
     await app.onUninit?.();
   });
 
+  it('sets pause-lower-priority independently and coexists with the other permissions', async () => {
+    seedTemperatureTask('dev-1');
+    const app = await initApp();
+
+    // Independent toggle: pause stands alone (not gated on budget/limit).
+    await expect(listener()({ device: 'dev-1', property: 'pause_lower_priority', when: 'always' })).resolves.toBe(true);
+    expect(readEntry('dev-1')?.rescue).toEqual({ pauseLowerPriorityDevices: 'always' });
+
+    // All three permissions coexist without clobbering one another.
+    await listener()({ device: 'dev-1', property: 'exempt_from_budget', when: 'always' });
+    await listener()({ device: 'dev-1', property: 'limit_lower_priority', when: 'always' });
+    expect(readEntry('dev-1')?.rescue).toEqual({
+      exemptFromBudget: 'always',
+      limitLowerPriorityDevices: 'always',
+      pauseLowerPriorityDevices: 'always',
+    });
+
+    // Clearing pause leaves the other two intact.
+    await listener()({ device: 'dev-1', property: 'pause_lower_priority', when: 'never' });
+    expect(readEntry('dev-1')?.rescue).toEqual({ exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' });
+
+    await app.onUninit?.();
+  });
+
   it('drops the rescue object entirely when the last permission is set to never', async () => {
     seedTemperatureTask('dev-1');
     const app = await initApp();

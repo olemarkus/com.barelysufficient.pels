@@ -10,11 +10,12 @@
  * belongs to the executor.
  *
  * Shed-selection invariant (`lib/plan/shedding/AGENTS.md`): the shed set is
- * fixed once `buildSheddingPlan` returns, plus the decoration seam's
- * `forceShedSet` merged here before materialization. Every later stage —
- * materialization, restore, hold, reason normalization — only copies
- * `shedSet` membership into per-device `plannedState`/shed actions, or
- * declines to lift an existing shed; none of them may add a device to the
+ * fixed once `buildSheddingPlan` returns, plus two post-shedding merges here
+ * before materialization — the decoration seam's `forceShedSet` and the
+ * pause-lower-priority hold (`resolvePauseHold`, `lib/plan/shedding/pauseHold.ts`).
+ * Every later stage — materialization, restore, hold, reason normalization —
+ * only copies `shedSet` membership into per-device `plannedState`/shed actions,
+ * or declines to lift an existing shed; none of them may add a device to the
  * shed set.
  *
  * Boundary (`lib/plan/AGENTS.md`): smart-task-agnostic — objectives reach
@@ -28,6 +29,7 @@ import type { PlanEngineState } from './planState';
 import { computeDailyUsageSoftLimit, computeDynamicSoftLimit, computeShortfallThreshold } from './planBudget';
 import { buildPlanContext, type PlanContext, type SoftLimitSource } from './planContext';
 import { buildSheddingPlan, type SheddingPlan } from './shedding';
+import { resolvePauseHold } from './shedding/pauseHold';
 import { buildInitialPlanDevices } from './planDevices';
 import { applyRestorePlan, type RestorePlanResult } from './restore';
 import { sumBudgetExemptLiveUsageKw } from './planUsage';
@@ -217,6 +219,18 @@ export class PlanBuilder {
     } = await this.buildContextAndShedding(admittedDevices, nowTs, dailyBudgetSnapshot);
     const deviceNameById = new Map(admittedDevices.map((d) => [d.id, d.name]));
     for (const id of forceShedSet) sheddingPlan.shedSet.add(id);
+    // Proactive priority-hold: a smart task with the pause-lower-priority permission holds
+    // lower-priority managed devices off (up to — never above — the hard cap) so the reserved
+    // device can start. The helper owns release-on-active + the mathematical feasibility-lift.
+    const pauseHoldIds = resolvePauseHold({
+      devices: admittedDevices,
+      total: context.total,
+      powerKnown: context.powerKnown,
+      hardCapKw: this.capacitySettings.limitKw,
+      marginKw: this.capacitySettings.marginKw,
+      getPriorityForDevice: (deviceId) => this.deps.getPriorityForDevice(deviceId),
+    }).holdIds;
+    for (const id of pauseHoldIds) sheddingPlan.shedSet.add(id);
 
     let planDevices = this.buildPlanDevices(context, sheddingPlan);
     const restoreResult = this.applyRestorePlanWithTiming(planDevices, context, sheddingPlan, deviceNameById);

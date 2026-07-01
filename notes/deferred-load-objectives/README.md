@@ -838,6 +838,15 @@ device settings:
   make room from lower-priority devices when the planned task is allowed to
   run. It does not guarantee the target can be reached and never raises the
   hard cap.
+- `pause lower-priority devices` is the stronger, BOOST-FREE sibling. While the
+  reserved device is in a planned hour and not yet running, the plan layer holds
+  every lower-priority MANAGED device off (up to — never above — the hard cap) so
+  it can start at its own/lowest step. Distinct from `limit lower-priority devices`
+  (which boosts the device): pause only clears room. It RELEASES once the device is
+  drawing at ≥ its lowest step, and LIFTS entirely when it is mathematically
+  impossible to admit the device even with all lower-priority devices off
+  (`lib/plan/shedding/pauseHold.ts`). An independent permission — not gated on the
+  other two.
 
 Changing a rescue permission changes the authority of the active objective.
 Treat it like an objective input change for commitment/history purposes:

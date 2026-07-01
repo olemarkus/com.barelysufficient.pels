@@ -486,7 +486,8 @@
   };
   var SMART_TASK_EXTRA_PERMISSION_LABELS = {
     exemptFromBudget: "May go over daily budget",
-    limitLowerPriorityDevices: "May limit lower-priority devices"
+    limitLowerPriorityDevices: "May limit lower-priority devices",
+    pauseLowerPriorityDevices: "May pause lower-priority devices"
   };
   var SMART_TASK_LIST_ROW_LABELS = {
     target: "Target",
@@ -987,6 +988,7 @@
     const labels = [];
     if (granted.exemptFromBudget) labels.push(SMART_TASK_EXTRA_PERMISSION_LABELS.exemptFromBudget);
     if (granted.limitLowerPriorityDevices) labels.push(SMART_TASK_EXTRA_PERMISSION_LABELS.limitLowerPriorityDevices);
+    if (granted.pauseLowerPriorityDevices) labels.push(SMART_TASK_EXTRA_PERMISSION_LABELS.pauseLowerPriorityDevices);
     return labels;
   };
   var renderExtraPermissionsSummary = (targets, labels) => {
@@ -1117,7 +1119,8 @@
       // permissions" summary with its canonical labels.
       grantedRescuePermissions: {
         exemptFromBudget: true,
-        limitLowerPriorityDevices: true
+        limitLowerPriorityDevices: true,
+        pauseLowerPriorityDevices: true
       }
     }
   };

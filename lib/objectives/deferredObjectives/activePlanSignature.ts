@@ -13,15 +13,23 @@ type ObjectiveSignatureParams = {
 // (rather than an object) so the persisted signature string stays a tiny JSON
 // array — the recorder rewrites the field on every revision and the persisted
 // form has shipped this layout since the rescue permission feature landed.
-type RescueSegment = ['rescue', string | null, string | null];
+type RescueSegment =
+  | ['rescue', string | null, string | null]
+  | ['rescue', string | null, string | null, string | null];
 
 const buildRescueSignatureSegment = (
   rescue: DeferredObjectiveRescuePermissions | undefined,
 ): RescueSegment | null => {
   const exemptFromBudget = rescue?.exemptFromBudget ?? null;
   const limitLowerPriorityDevices = rescue?.limitLowerPriorityDevices ?? null;
-  if (!exemptFromBudget && !limitLowerPriorityDevices) return null;
-  return ['rescue', exemptFromBudget, limitLowerPriorityDevices];
+  const pauseLowerPriorityDevices = rescue?.pauseLowerPriorityDevices ?? null;
+  if (!exemptFromBudget && !limitLowerPriorityDevices && !pauseLowerPriorityDevices) return null;
+  // Append `pause` only when set, so existing tasks (exempt/limit only) keep their shipped
+  // 3-tuple signature and don't churn a spurious `flow_permission_changed` revision on deploy;
+  // toggling `pause` is itself a real permission change and correctly re-versions the plan.
+  return pauseLowerPriorityDevices
+    ? ['rescue', exemptFromBudget, limitLowerPriorityDevices, pauseLowerPriorityDevices]
+    : ['rescue', exemptFromBudget, limitLowerPriorityDevices];
 };
 
 export const buildObjectiveSignature = (params: ObjectiveSignatureParams): string => {

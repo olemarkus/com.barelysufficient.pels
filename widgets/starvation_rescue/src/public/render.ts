@@ -247,6 +247,7 @@ const resolveGrantedPermissionLabels = (
   const labels: string[] = [];
   if (granted.exemptFromBudget) labels.push(SMART_TASK_EXTRA_PERMISSION_LABELS.exemptFromBudget);
   if (granted.limitLowerPriorityDevices) labels.push(SMART_TASK_EXTRA_PERMISSION_LABELS.limitLowerPriorityDevices);
+  if (granted.pauseLowerPriorityDevices) labels.push(SMART_TASK_EXTRA_PERMISSION_LABELS.pauseLowerPriorityDevices);
   return labels;
 };
 

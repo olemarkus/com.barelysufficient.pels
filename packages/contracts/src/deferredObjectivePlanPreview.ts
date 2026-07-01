@@ -152,5 +152,6 @@ export type DeferredObjectivePlanPreviewEstimate = {
   grantedRescuePermissions?: {
     exemptFromBudget: boolean;
     limitLowerPriorityDevices: boolean;
+    pauseLowerPriorityDevices: boolean;
   };
 };

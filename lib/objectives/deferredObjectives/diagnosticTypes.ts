@@ -118,6 +118,13 @@ type BaseDeferredObjectiveDiagnostic = {
   // task is in its planned hours, so the existing escalation/shedding machinery claims
   // capacity from lower-priority devices. Producer resolves it; consumers don't re-derive.
   limitLowerPriorityApplied?: boolean;
+  // True when the "pause lower-priority devices" rescue permission is granted (mode
+  // 'always'). Admission consumes this flat flag to set the device's `holdLowerPriority`
+  // while the task is in its planned hours. Unlike `limitLowerPriorityApplied`, this does
+  // NOT engage boost — the plan layer proactively holds lower-priority managed devices off
+  // (up to the hard cap) so this device can start at its own/lowest step. Producer resolves
+  // it; consumers don't re-derive.
+  pauseLowerPriorityApplied?: boolean;
 };
 
 export type { BaseDeferredObjectiveDiagnostic };

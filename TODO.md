@@ -548,6 +548,25 @@ CI failure, so future field-move slices can't silently grow the debt.*
       `packages/settings-ui/src/ui/deadlinePlanHistoryDetailHero.ts`. Source: pels-ux-fit on
       PR #1681, 2026-06-11.
 
+- [ ] **Add the "pause lower-priority devices" toggle to the create-smart-task widget.** The
+      `pauseLowerPriorityDevices` rescue permission ships with a Flow entry (`allow_smart_task_rescue`)
+      and full runtime behaviour (`lib/plan/shedding/pauseHold.ts`), but the create-smart-task widget
+      (`widgets/create_smart_task/src/public/render.ts` + `src/api.ts`) still offers only the budget +
+      limit toggles, so it can't be set at creation time from the widget. Add the third (ungated)
+      toggle for parity, mapping to `'always'` like the others. Persona: Orchestrator. Needs
+      pels-ux-fit + pels-m3-critic + a Playwright screenshot pass (mobile 480 px). Source:
+      pause-lower-priority feature, 2026-07-01.
+
+- [ ] **Damp the pause-hold re-shed with a recent-restore / hysteresis guard.** `resolvePauseHold`
+      (`lib/plan/shedding/pauseHold.ts`) unions held ids straight into `sheddingPlan.shedSet` after
+      `buildSheddingPlan`, so a re-shed skips the normal `recentlyRestored` /
+      `RECENT_RESTORE_SHED_GRACE_MS` grace (`lib/plan/shedding/candidates.ts`). The shipped
+      release-threshold (observed draw ≥ ~lowest step) removes the main flap driver, but a reserved
+      device whose measured draw genuinely oscillates around the threshold could still churn ON→OFF
+      on a just-restored lower-priority device (relay/compressor wear). Add a shed-side recent-restore
+      guard so the hold honors the same grace the normal shed path applies. Source:
+      pels-runtime-reality on the pause-lower-priority feature, 2026-07-01.
+
 - [ ] **Hoist the active-plan shape guard into shared-domain so the UI and runtime can't drift.**
       The settings-UI `coerceDeferredObjectiveActivePlans`
       (`packages/settings-ui/src/ui/deferredObjectiveActivePlans.ts`) is a leaner duplicate of the
@@ -639,6 +658,17 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
 *Entry bar: each item states a **hypothesis**, **why it's needed**, and the **persona**
 (`notes/personas.md`) it serves. Items that can't name all three are maintainability/
 cosmetic chores — do them in passing or drop them; don't park them here.*
+
+- [ ] **Give pause-held devices their own shed reason instead of defaulting to `capacity`.**
+      *Hypothesis:* a lower-priority device held off for a smart task surfaces on Overview / in logs as
+      capacity-limited ("Above safe pace") because `resolvePauseHold` adds it to `shedSet` with no
+      `shedReasons` entry, and `normalizeShedReasons` (`lib/plan/planReasons.ts`) defaults a
+      reason-less shed to `{ code: capacity }`. *Why it's needed:* the cause is user-initiated (a
+      paused-for-task hold), not raw capacity pressure, so the current label misattributes intent and
+      confuses "why is this device off?". Add a producer-side pause reason code and route the copy
+      through pels-copy-and-terminology (no "shed" / no "held back" — that's reserved for the budget
+      widget). *Persona:* Set-and-forget owner / Orchestrator. Source: pels-runtime-reality on the
+      pause-lower-priority feature, 2026-07-01.
 
 - [ ] **Observe-only device wiring: extract it out of the recurring-ceiling god-files (`app.ts`, `deviceTransport.ts`).**
       *Persona:* Contributor (`notes/personas.md`) extending the observe-only-device family (battery, solar,
