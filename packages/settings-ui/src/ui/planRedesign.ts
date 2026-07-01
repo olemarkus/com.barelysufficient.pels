@@ -70,12 +70,37 @@ const readPowerStatusForPlanRefresh = async (): Promise<SettingsUiPowerStatus | 
   }
 };
 
+// Whether the static first-paint skeleton in `#plan-redesign-surface`
+// (hero shimmer + the two `data-overview-cards-placeholder` card shims in
+// index.html) has been cleared. Preact's first render into a non-empty
+// container tries to ADOPT the existing nodes as its own tree, which used to
+// strand the static `#plan-cards` + placeholder as ghost cards below the real
+// device list. The clear happens on the FIRST render, whatever triggers it —
+// which can be a pre-payload render (`bumpPlanSurface` / `updatePlanPower`
+// run `doRender` before the first plan fetch resolves). That is safe: with
+// `plan === null` PlanHero renders the same skeleton markup as the static
+// one, and the "No plan available yet" empty state is gated on
+// `planPayloadReceived` so a slow boot keeps showing the skeleton instead of
+// a premature empty-state verdict.
+let surfaceSkeletonCleared = false;
+
+// True once a plan payload has been DELIVERED (`renderPlan` ran; the payload
+// itself may legitimately be null, meaning the runtime has no plan yet).
+// Gates the Overview empty-state copy — before the first delivery the
+// surface shows the loading skeleton, not "No plan available yet…".
+let planPayloadReceived = false;
+
 const doRender = () => {
   const surface = getPlanSurface();
   if (!surface) return;
+  if (!surfaceSkeletonCleared) {
+    surface.replaceChildren();
+    surfaceSkeletonCleared = true;
+  }
   const now = Date.now();
   renderPlanOverview(surface, {
     plan: currentPlan,
+    planResolved: planPayloadReceived,
     power: cachedPowerStatus,
     prices: cachedPrices,
     context: { dryRun: state.dryRun },
@@ -94,6 +119,7 @@ const doRender = () => {
 export const renderPlan = (plan: PlanSnapshot | null) => {
   currentPlan = plan;
   currentRenderedAtMs = Date.now();
+  planPayloadReceived = true;
   doRender();
 };
 

@@ -15,7 +15,7 @@ import { renderPriceOptimization, savePriceOptimizationSettings } from './priceO
 import { createIconToggle } from './components.ts';
 import { logSettingsError, logSettingsWarn } from './logging.ts';
 import { debouncedSetSetting } from './utils.ts';
-import { setTooltip } from './tooltips.ts';
+import { prefersTouch, setTooltip } from './tooltips.ts';
 import {
   getRowDisabledReasons,
   type RowSwitchTitles,
@@ -209,7 +209,9 @@ const createRedesignDetailButton = (device: SettingsUiDeviceListItem): HTMLEleme
   button.setAttribute('type', 'button');
   const displayName = formatDisplayDeviceName(device.name);
   button.setAttribute('aria-label', `Open settings for ${displayName}`);
-  setTooltip(button, `Open settings for ${displayName}`);
+  // Touch tap = navigate; the click-triggered tooltip would open at the same
+  // moment and strand itself over the detail overlay (see tooltips.ts).
+  if (!prefersTouch()) setTooltip(button, `Open settings for ${displayName}`);
 
   const SVG_NS = 'http://www.w3.org/2000/svg';
   const icon = document.createElementNS(SVG_NS, 'svg');
