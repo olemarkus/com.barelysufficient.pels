@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PvForecastController, type PvForecastControllerCtx } from '../../setup/appInit/createPvForecastService';
+import { PV_FORECAST_STATE } from '../../lib/utils/settingsKeys';
+
+const HOUR_MS = 3_600_000;
 
 const flushMicro = async (): Promise<void> => {
   for (let i = 0; i < 5; i += 1) await Promise.resolve();
@@ -128,6 +131,52 @@ describe('PvForecastController', () => {
       await controller.refresh(); // and any later refresh call is a no-op too
       expect(onRefreshed).not.toHaveBeenCalled();
     });
+  });
+
+  it('finiteness-gates netPowerW at the boundary; a finite signed net persists as the anchor', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => radiationOk));
+    const stored = new Map<string, unknown>();
+    const controller = new PvForecastController(makeCtx({
+      homey: {
+        settings: { get: (key) => stored.get(key), set: (key, value) => { stored.set(key, value); } },
+        geolocation: {},
+      },
+    }));
+    type PersistedHistory = { history?: { lastNetW?: number } } | undefined;
+
+    controller.recordSample(500, 1000, Number.NaN); // junk net must not anchor
+    controller.stop(); // persists the dirty state
+    expect((stored.get(PV_FORECAST_STATE) as PersistedHistory)?.history?.lastNetW).toBeUndefined();
+
+    controller.recordSample(600, 2000, -250); // finite SIGNED net (export) threads through
+    controller.stop();
+    expect((stored.get(PV_FORECAST_STATE) as PersistedHistory)?.history?.lastNetW).toBe(-250);
+    await flushMicro(); // let the arming refresh settle before teardown
+  });
+
+  it('emits trainingMode in the pv_forecast_learned structured log', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => radiationOk));
+    // Seed 30 complete legacy daylight hours (no net evidence) ⇒ boot-armed
+    // controller learns via the unsegmented median.
+    const startMs = Date.UTC(2026, 5, 1, 8, 0, 0);
+    const hourly: Record<string, { kwh: number; coveredMs: number }> = {};
+    const irradianceByHour: Record<string, number> = {};
+    for (let h = 0; h < 30; h += 1) {
+      hourly[String(startMs + h * HOUR_MS)] = { kwh: 0.3, coveredMs: HOUR_MS };
+      irradianceByHour[String(startMs + h * HOUR_MS)] = 600;
+    }
+    const seeded = { history: { lastSampleMs: startMs + 40 * HOUR_MS, hourly }, irradianceByHour };
+    const info = vi.fn();
+    const controller = new PvForecastController(makeCtx({
+      homey: { settings: { get: () => seeded, set: () => {} }, geolocation: {} },
+      logger: { info, warn: vi.fn() },
+    }));
+    await controller.refresh();
+    expect(info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'pv_forecast_learned',
+      trainingMode: 'unsegmented_median',
+      confidence: 'low',
+    }));
   });
 
   it('swallows a persistence failure — logs it, never throws', () => {

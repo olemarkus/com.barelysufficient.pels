@@ -59,7 +59,7 @@ const flush = async (): Promise<void> => {
   }
 };
 
-type Structured = { event?: string; gainKwhPerWm2?: number };
+type Structured = { event?: string; gainKwhPerWm2?: number; trainingMode?: string };
 
 describe('Learning a PV device through the app (SDK-boundary e2e, Open-Meteo mocked)', () => {
   beforeEach(() => {
@@ -115,15 +115,23 @@ describe('Learning a PV device through the app (SDK-boundary e2e, Open-Meteo moc
     const learned = events.filter((e) => e.event === 'pv_forecast_learned');
     expect(learned.length).toBeGreaterThan(0);
     expect(learned.at(-1)!.gainKwhPerWm2).toBeCloseTo(TRUE_GAIN, 6);
+    // Every learned event carries the training-mode observability field.
+    for (const event of learned) {
+      expect(['unclamped_median', 'clamp_aware_quantile', 'unsegmented_median']).toContain(event.trainingMode);
+    }
 
     // RECORDED — a live generation sample through the real power pipeline, observed
-    // through the persisted state once the persist timer fires.
+    // through the persisted state once the persist timer fires. The pipeline's
+    // currentPowerW is the SIGNED net home power and must persist as the net anchor.
     const liveNowMs = Date.UTC(2026, 5, 19, 12, 0, 0);
     await (app as { powerSamplePipeline: { recordPowerSample: (w: number, ms: number, o: { generationW: number }) => Promise<void> } })
       .powerSamplePipeline.recordPowerSample(1500, liveNowMs, { generationW: 800 });
     await vi.advanceTimersByTimeAsync(5 * 60_000); // fire the persist timer
     await flush();
-    const persisted = mockHomeyInstance.settings.get(PV_FORECAST_STATE) as { history?: { lastSampleMs?: number } };
+    const persisted = mockHomeyInstance.settings.get(PV_FORECAST_STATE) as {
+      history?: { lastSampleMs?: number; lastNetW?: number };
+    };
     expect(persisted.history?.lastSampleMs).toBe(liveNowMs);
+    expect(persisted.history?.lastNetW).toBe(1500);
   });
 });

@@ -379,6 +379,38 @@ CI failure, so future field-move slices can't silently grow the debt.*
       `docs/public/screenshots/landing-usage.png` (the Usage chart is now stacked), then fix the caption
       wording. Deliberately deferred out of PR #1806, which commits no PNGs.
 
+- [ ] **Disambiguate PV clamp-suspect hours with the battery signal (battery-observe train).** The PV-gain
+      net evidence (`classifyHourNetEvidence`, `packages/shared-domain/src/solar/pvGenerationHistory.ts`)
+      deliberately conflates zero-export clamp / battery absorb / balanced load into one 'suspect' class —
+      a charging home battery absorbs surplus, so a battery home's bright hours read suspect and only thin
+      the unclamped training pool. Once battery devices are observed (managed & !controllable train), join
+      the battery charge signal into the evidence producer so battery-absorb hours with real grid headroom
+      classify unclamped again. *Persona:* prosumer with PV + home battery. *Hypothesis:* battery homes sit
+      in the clamp-aware quantile mode (forced-low confidence) longer than their data warrants.
+
+- [ ] **Decide confidence attenuation for the PV forecast at the surplus seam (curtailment-lane PR).** The
+      clamp-aware quantile fit deliberately forces `confidence: 'low'`, but that signal is erased before it
+      reaches consumers: `wireBudgetPrice`'s surplus provider reads `forecast()`, which emits kWh only
+      (`setup/appServiceWiring.ts` → `PvForecastService.forecast`). For the TRUE zero-export home the P90
+      potential IS the design intent (the forecast must claim the surplus the clamp hides, or the home never
+      shifts load to uncover it). Decide in the curtailment-lane PR whether low-confidence forecasts should
+      carry a discount before feeding surplus/budget-price consumers (the design's 0.9/0.8 dogfood-tunable
+      factors), rather than baking a discount into the fit. *Persona:* prosumer whose budgetPrice consumers
+      (live since #1808) plan against the forecast. *Hypothesis:* an undiscounted P90 forecast on a
+      low-confidence fit occasionally overstates surplus and schedules load into hours the sun doesn't
+      cover; the cost asymmetry (mild import vs staying curtailed) decides the factor.
+
+- [ ] **Give the `pv_forecast_state` boot read an abandon-grace window.** `createPvForecastStore.read()`
+      runs once in the PvForecastController constructor; a single transient-failed/empty settings read
+      starts the service empty and the 5-minute persist timer then overwrites up to 90 days of recorded
+      generation history. Pre-existing gap (the history was always re-learnable), but stakes are higher
+      now: net-evidence accrual restarts too and every hour re-classifies from 'unknown', so a wipe drops
+      a zero-export home back into the legacy median underestimate until evidence re-accrues. Follow
+      `notes/persisted-settings-state.md`: treat an empty boot read as suspect for a grace window (or
+      require a confirming read) before the first destructive persist. *Persona:* prosumer on a Homey Pro
+      that restarts under memory pressure. *Hypothesis:* transient settings-read failures are common enough
+      on the Homey SDK that a 90-day history will eventually be lost to a boot race.
+
 - [ ] **Generation-guard the rescue-gate state commit in `loadStarvationRescuableDevices`.** `overviewRescueGate`
       now guards the *repaint* after a gate refresh, but the controller's
       `state.starvationRescuableDeviceIds = new Set(ids)` (`packages/settings-ui/src/ui/starvationRescue.ts`) still

@@ -41,8 +41,9 @@ export type PowerSamplePipelineDeps = {
   getStructuredDebugEmitter: (component: string, debugTopic: 'objective_profiles') => StructuredDebugEmitter;
   /** Latest outdoor temperature (hidden weather feature); undefined when unavailable or stale. */
   getOutdoorTemperatureC?: () => number | undefined;
-  /** Feed the per-sample gross generation (W) to the learned PV forecast; no-op when absent. */
-  recordPvGenerationSample?: (generationW: number | undefined, nowMs: number) => void;
+  /** Feed the per-sample gross generation (W) plus the co-sampled SIGNED net home
+   *  power (W, import positive) to the learned PV forecast; no-op when absent. */
+  recordPvGenerationSample?: (generationW: number | undefined, nowMs: number, netPowerW?: number) => void;
 };
 
 type PowerSampleOptions = {
@@ -146,7 +147,10 @@ export class PowerSamplePipeline {
     const sampleStart = Date.now();
     // Record gross generation for the learned PV forecast, independent of the
     // capacity/plan path below (a pure data tap — never affects shed decisions).
-    this.deps.recordPvGenerationSample?.(options.generationW, nowMs);
+    // `currentPowerW` is the SIGNED net home power co-sampled with generation
+    // (Homey-Energy mode); flow-driven samples carry no generationW, so this
+    // stays a no-op for flow homes.
+    this.deps.recordPvGenerationSample?.(options.generationW, nowMs, currentPowerW);
     const powerTracker = this.deps.getPowerTracker();
     const previousSampleTs = powerTracker.lastTimestamp;
     try {
