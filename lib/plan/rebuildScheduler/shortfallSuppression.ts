@@ -37,17 +37,23 @@ export const shouldSkipUnrecoverableShortfallRebuild = (params: {
   state: PowerSampleRebuildState;
   isInShortfall: boolean;
   planConvergenceActive?: boolean;
+  maxIntervalExceeded?: boolean;
 }): boolean => {
   const {
     skipWhileShortfallUnrecoverable,
     state,
     isInShortfall,
     planConvergenceActive,
+    maxIntervalExceeded,
   } = params;
   return (
     skipWhileShortfallUnrecoverable
     && state.shortfallSuppressionInvalidated !== true
     && isInShortfall
     && planConvergenceActive !== true
+    // Always yield a rebuild at least every max-interval so a stale "unactionable"
+    // summary can never suppress rebuilds indefinitely (e.g. a device that returned
+    // load without a measure_power signal would otherwise never be re-discovered).
+    && maxIntervalExceeded !== true
   );
 };

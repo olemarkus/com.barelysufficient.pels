@@ -873,6 +873,45 @@ persona but no current support-cost pressure; reframed to the P3 bar.*
       *Why:* degraded reactivity is felt as the app being slow to protect the cap. *Validate first:* no
       missed-shed has been tied to it yet — benchmark before optimizing. Files: `lib/plan/planBuilder.ts`,
       `lib/plan/planService.ts`, `lib/diagnostics/perfLogging.ts`.
+      *Update (2026-07-01):* the unactionable-shortfall rebuild storm that had turned this ~1.4 s build
+      cost into a `cpuwarn` crash-loop (background load over a low hard cap with nothing left to shed) is
+      fixed by the rebuild-scheduler unactionable throttle. What remains here is the raw build latency
+      (reactivity), not crash survival — memoize per-device `getPriorityForDevice`/`getShedBehavior` within
+      a build and skip deferred-objective decoration when no objectives are enabled.
+- [ ] **Add a CPU-pressure circuit breaker that throttles plan rebuilds before Homey's watchdog fires.**
+      *Persona:* every persona — the app surviving CPU pressure instead of crash-looping.
+      *Hypothesis:* Homey's `cpuwarn` signal (`lib/diagnostics/resourceWarnings.ts`) is logged but never
+      feeds back into scheduling; wiring it via an injected sink into an escalating rebuild backoff would
+      make the app self-throttle its most expensive periodic work for *any* future CPU-runaway cause, not
+      just the unactionable-shortfall trigger already fixed. Keep actionable `hardCap` intents exempt so a
+      genuine shed is never starved.
+      *Why:* defense-in-depth backstop; the specific 2026-07-01 crash-loop trigger is fixed by the
+      unactionable rebuild throttle, but no general guard exists. Files: `lib/diagnostics/resourceWarnings.ts`,
+      `lib/plan/rebuildScheduler/`, `setup/backgroundTasksController.ts`, `app.ts`.
+- [ ] **Tighten shortfall entry/clear detection during the unactionable rebuild throttle.**
+      *Persona:* every persona watching the "limited" state settle after load changes.
+      *Hypothesis:* while the unactionable throttle is active the throttled skip no longer drives
+      `checkShortfall` at all (it used to, but that entered shortfall without a rebuild and could deadlock
+      the unrecoverable-shortfall skip), so both shortfall *entry* and *clear* detection now ride the 30 s
+      max-interval rebuild. A skip-path `checkShortfall` that only *progresses* state when already
+      `isInShortfall` (never enters shortfall) would restore per-sample cadence without reintroducing the
+      deadlock.
+      *Why:* minor recovery-latency polish; bounded to the 30 s max-interval and inside the 60–300 s
+      restore cooldown, so not a correctness issue. Files: `lib/plan/rebuildScheduler/powerDriven.ts`,
+      `lib/power/capacityGuard.ts`.
+- [ ] **Tighten shedding of newly-returned load during an unactionable throttle without reviving the storm.**
+      *Persona:* every persona — the app reacting promptly when a managed device starts drawing again.
+      *Hypothesis:* the 15 s execution floor is deliberately independent of the `measurePowerBecameSignificantlyPositive`
+      invalidation latch (so a device flickering across the 5 W threshold under a hard-cap breach can't re-arm
+      the one-shot latch each sample and revive the rebuild-storm). The cost is that a genuine device-return
+      re-check can be delayed ≤15 s, and because the power-sample loop awaits the scheduled rebuild,
+      `capacityGuard` updates pause for that window. A bounded mitigation (e.g. a capped consecutive-latch-bypass
+      allowance, or making the sample loop not block on a deferred rebuild) would restore reactivity while
+      keeping storm-safety.
+      *Why:* bounded (≤15 s, inside the 60 s re-shed cooldown) and only in a state where nothing was sheddable
+      anyway, so accepted for now; a cleaner reactivity/storm-safety balance is the follow-up. Files:
+      `lib/plan/rebuildScheduler/powerDrivenScheduling.ts`, `lib/plan/rebuildScheduler/powerDriven.ts`,
+      `setup/powerSamplePipeline.ts`, `lib/power/sampleIngest.ts`.
 - [ ] **Model backup-hour reservations for committed smart-task schedules.**
       *Persona:* Optimiser with a tight deadline.
       *Hypothesis:* day-zero committed schedules degrade straight to `cannot_meet` with no backup-hour

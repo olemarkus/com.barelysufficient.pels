@@ -7,6 +7,7 @@ export type RebuildDecisionState = {
   lastHardCapDeficitKw?: number;
   backoffUntilMs?: number;
   mitigationHoldoffUntilMs?: number;
+  shortfallSuppressionInvalidated?: boolean;
 };
 
 export type RebuildDecision = {
@@ -17,6 +18,11 @@ export type RebuildDecision = {
   maxIntervalExceeded: boolean;
   headroomTight: boolean;
   backoffActive: boolean;
+  // The last plan proved nothing can be shed or restored while a capacity
+  // boundary is active (tight/shortfall/hard-cap breach). Gates the
+  // execution-side floor so no trigger can rebuild faster than the floor
+  // while the state is unwinnable — see `TIGHT_UNACTIONABLE_MIN_REBUILD_INTERVAL_MS`.
+  tightUnactionable: boolean;
 };
 
 export type RebuildIntentKind = 'hardCap' | 'signal';
@@ -38,6 +44,12 @@ const MIN_HARD_CAP_DEFICIT_DELTA_KW = 0.001;
 const TIGHT_NOOP_BACKOFF_MS = [15_000, 30_000, 60_000];
 const TIGHT_NOOP_BACKOFF_MAX_MS = 120_000;
 export const TIGHT_MITIGATION_HOLDOFF_MS = 15_000;
+// Hard floor between *executed* rebuilds while a capacity boundary is active and
+// the last plan proved nothing is actionable. A ~1.4s build at 15s ≈ 9% CPU (vs
+// ~20% at the 6–9s per-sample cadence that trips Homey's cpuwarn watchdog). Kept
+// below the 30s max-interval so it never delays the intended refresh — it only
+// bites if the decision throttle is bypassed (e.g. the one-shot invalidation latch).
+export const TIGHT_UNACTIONABLE_MIN_REBUILD_INTERVAL_MS = 15_000;
 
 export const resolveHeadroomTight = (headroomKw: number | null | undefined): boolean => {
   return typeof headroomKw === 'number' && headroomKw <= 0;
@@ -59,6 +71,46 @@ export const resolvePowerDelta = (params: {
   return { deltaW, deltaMeaningful: deltaW >= deltaThresholdW };
 };
 
+// The last plan proved nothing can be shed or restored, so a full rebuild cannot
+// change any device action no matter how urgent the trigger. Throttle to the
+// max-interval cadence. Excludes the convergence path (which legitimately rebuilds
+// on power deltas) and yields for one re-check when a device returns load (the
+// invalidation latch), so newly-actionable load re-enters the normal decision
+// gates. (The execution-side floor may still space that re-check by up to its
+// interval — see `TIGHT_UNACTIONABLE_MIN_REBUILD_INTERVAL_MS`.)
+export const isUnactionableThrottleActive = (params: {
+  unactionable?: boolean;
+  planConvergenceActive?: boolean;
+  suppressionInvalidated?: boolean;
+}): boolean => (
+  params.unactionable === true
+  && params.planConvergenceActive !== true
+  && params.suppressionInvalidated !== true
+);
+
+// Derives the execution-floor gate. Extracted from `resolveRebuildDecision` to keep
+// that function under the cyclomatic-complexity ceiling. Anchored to the raw breach
+// so it holds for a first/steady breach; excludes convergence (productive rebuilds)
+// but stays independent of the latch so the floor still bites when the latch bypasses
+// the decision throttle.
+const resolveTightUnactionable = (params: {
+  unactionable?: boolean;
+  planConvergenceActive?: boolean;
+  headroomTight: boolean;
+  isInShortfall?: boolean;
+  hardCapBreachActive: boolean;
+}): boolean => {
+  const {
+    unactionable,
+    planConvergenceActive,
+    headroomTight,
+    isInShortfall,
+    hardCapBreachActive,
+  } = params;
+  const boundaryActive = headroomTight || Boolean(isInShortfall) || hardCapBreachActive;
+  return unactionable === true && planConvergenceActive !== true && boundaryActive;
+};
+
 export const shouldRebuildFromDecision = (params: {
   isInitialSample: boolean;
   controlBoundaryActive: boolean;
@@ -68,6 +120,8 @@ export const shouldRebuildFromDecision = (params: {
   backoffActive: boolean;
   deltaMeaningful: boolean;
   maxIntervalExceeded: boolean;
+  unactionable?: boolean;
+  suppressionInvalidated?: boolean;
 }): boolean => {
   const {
     isInitialSample,
@@ -77,8 +131,16 @@ export const shouldRebuildFromDecision = (params: {
     backoffActive,
     deltaMeaningful,
     maxIntervalExceeded,
+    unactionable,
+    suppressionInvalidated,
   } = params;
   if (isInitialSample) return true;
+  // Sits above the hard-cap and backoff gates: when nothing is actionable, a
+  // hard-cap breach or meaningful delta cannot change the outcome, so refresh
+  // only on the max-interval cadence instead of every power sample.
+  if (isUnactionableThrottleActive({ unactionable, planConvergenceActive, suppressionInvalidated })) {
+    return maxIntervalExceeded;
+  }
   if (hardCapBreachActive) return true;
   if (backoffActive) return false;
   return controlBoundaryActive
@@ -98,6 +160,7 @@ export const resolveRebuildDecision = (params: {
   isInShortfall?: boolean;
   hardCapBreach?: HardCapBreach;
   planConvergenceActive?: boolean;
+  unactionable?: boolean;
 }): RebuildDecision => {
   const {
     state,
@@ -111,7 +174,9 @@ export const resolveRebuildDecision = (params: {
     isInShortfall,
     hardCapBreach,
     planConvergenceActive,
+    unactionable,
   } = params;
+  const suppressionInvalidated = state.shortfallSuppressionInvalidated;
   const headroomTight = resolveHeadroomTight(headroomKw);
   const controlBoundaryActive = headroomTight || Boolean(isInShortfall);
   const hardCapBreachActive = hardCapBreach?.breached ?? false;
@@ -149,6 +214,15 @@ export const resolveRebuildDecision = (params: {
     backoffActive,
     deltaMeaningful,
     maxIntervalExceeded,
+    unactionable,
+    suppressionInvalidated,
+  });
+  const tightUnactionable = resolveTightUnactionable({
+    unactionable,
+    planConvergenceActive,
+    headroomTight,
+    isInShortfall,
+    hardCapBreachActive,
   });
   return {
     shouldRebuild,
@@ -158,6 +232,7 @@ export const resolveRebuildDecision = (params: {
     maxIntervalExceeded,
     headroomTight,
     backoffActive,
+    tightUnactionable,
   };
 };
 

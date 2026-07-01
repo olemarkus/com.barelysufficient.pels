@@ -62,6 +62,7 @@ export function schedulePlanRebuildFromSignal(params: {
   capacityGuard?: CapacityGuard;
   planConvergenceActive?: boolean;
   skipWhileShortfallUnrecoverable?: boolean;
+  unactionable?: boolean;
 }): Promise<void | string> {
   const rebuildStart = Date.now();
   const {
@@ -80,6 +81,7 @@ export function schedulePlanRebuildFromSignal(params: {
     capacityGuard,
     planConvergenceActive,
     skipWhileShortfallUnrecoverable = false,
+    unactionable,
   } = params;
   const softLimitKw = capacityGuard?.getSoftLimit()
     ?? Math.max(0, capacitySettings.limitKw - capacitySettings.marginKw);
@@ -98,11 +100,14 @@ export function schedulePlanRebuildFromSignal(params: {
     currentPowerW,
     guardPower,
   });
+  const maxIntervalExceeded = maxIntervalMs > 0
+    && (getNowMs() - currentState.lastMs) >= maxIntervalMs;
   if (shouldSkipUnrecoverableShortfallRebuild({
     skipWhileShortfallUnrecoverable,
     state: currentState,
     isInShortfall,
     planConvergenceActive,
+    maxIntervalExceeded,
   })) {
     incPerfCounter('plan_rebuild_skipped_shortfall_unrecoverable_total');
     return Promise.resolve(capacityGuard?.checkShortfall(false, hardCapBreach.deficitKw)).finally(() => {
@@ -138,6 +143,7 @@ export function schedulePlanRebuildFromSignal(params: {
     onTightNoopHardCapBreach: async (deficitKw) => {
       await capacityGuard?.checkShortfall(false, deficitKw);
     },
+    unactionable,
   }).finally(() => {
     addPerfDuration('power_sample_rebuild_ms', Date.now() - rebuildStart);
   });

@@ -20,6 +20,9 @@ export type PowerSampleRebuildState = {
   lastHardCapBreached?: boolean;
   lastHardCapDeficitKw?: number;
   shortfallSuppressionInvalidated?: boolean;
+  // Stamped from the last decision so the execution-side due-time floor can bound
+  // rebuild frequency while nothing is actionable, independent of decision logic.
+  tightUnactionable?: boolean;
   tightNoopStreak?: number;
   backoffUntilMs?: number;
   mitigationHoldoffUntilMs?: number;
@@ -54,6 +57,7 @@ export function schedulePlanRebuildFromPowerSample(params: {
   planConvergenceActive?: boolean;
   hardCapBreach?: HardCapBreach;
   onTightNoopHardCapBreach?: (deficitKw: number) => Promise<void>;
+  unactionable?: boolean;
 }): Promise<void | string> {
   const {
     scheduler,
@@ -73,6 +77,7 @@ export function schedulePlanRebuildFromPowerSample(params: {
     planConvergenceActive,
     hardCapBreach,
     onTightNoopHardCapBreach,
+    unactionable,
   } = params;
   const resolvedScheduler = scheduler ?? getLegacyPowerScheduler({
     getState,
@@ -97,6 +102,7 @@ export function schedulePlanRebuildFromPowerSample(params: {
     isInShortfall,
     hardCapBreach,
     planConvergenceActive,
+    unactionable,
   });
 
   if (!decision.shouldRebuild) {
@@ -108,6 +114,13 @@ export function schedulePlanRebuildFromPowerSample(params: {
       isInShortfall,
       setState,
     });
+    // Deliberately do NOT drive `checkShortfall` from the throttled skip: entering
+    // shortfall without a rebuild having observed the live device state would let a
+    // stale "unactionable" summary keep the unrecoverable-shortfall skip bypassing
+    // rebuilds — a device that returned load could then never be discovered/shed.
+    // Shortfall entry/clear detection rides the max-interval rebuild instead (the
+    // decision throttle always yields a rebuild at least every max-interval, and the
+    // unrecoverable-shortfall skip in `signalDriven.ts` now honours it too).
     return Promise.resolve();
   }
 

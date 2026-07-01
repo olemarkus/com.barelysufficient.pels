@@ -1031,6 +1031,256 @@ describe('schedulePlanRebuildFromPowerSample', () => {
 
     expect(rebuildPlanFromCache).toHaveBeenCalledWith('shortfall');
   });
+
+  // Regression: the CPU-watchdog crash-loop. A hard-cap breach with an oscillating
+  // (meaningful-delta) uncontrolled load used to force a full ~1.4s rebuild on every
+  // power sample even when nothing was actionable, saturating CPU.
+  // Also guards the P1 fix: the throttled skip must NOT enter shortfall (calling
+  // checkShortfall here without a rebuild would let a stale "unactionable" summary
+  // deadlock the unrecoverable-shortfall skip against ever discovering returned load).
+  it('throttles an unactionable hard-cap breach without entering shortfall from the skip', async () => {
+    let state: PowerSampleRebuildState = {
+      lastMs: Date.now() - 5000,
+      lastRebuildPowerW: 10_400,
+      lastHardCapBreached: true,
+    };
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+    const onTightNoopHardCapBreach = vi.fn().mockResolvedValue(undefined);
+
+    await schedulePlanRebuildFromPowerSample({
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 2000,
+      maxIntervalMs: 30_000,
+      rebuildPlanFromCache,
+      logError: vi.fn(),
+      currentPowerW: 10_600, // 200 W delta vs last — "meaningful", but nothing to shed
+      limitKw: 10,
+      softLimitKw: 9,
+      headroomKw: -1.6,
+      isInShortfall: false,
+      hardCapBreach: { breached: true, deficitKw: 0.6 },
+      onTightNoopHardCapBreach,
+      unactionable: true,
+    });
+
+    expect(rebuildPlanFromCache).not.toHaveBeenCalled();
+    expect(onTightNoopHardCapBreach).not.toHaveBeenCalled();
+  });
+
+  it('still refreshes an unactionable state once the max interval elapses', async () => {
+    let state: PowerSampleRebuildState = {
+      lastMs: Date.now() - 31_000,
+      lastRebuildPowerW: 10_400,
+      lastHardCapBreached: true,
+    };
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+
+    await schedulePlanRebuildFromPowerSample({
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 2000,
+      maxIntervalMs: 30_000,
+      rebuildPlanFromCache,
+      logError: vi.fn(),
+      currentPowerW: 10_600,
+      limitKw: 10,
+      softLimitKw: 9,
+      headroomKw: -1.6,
+      hardCapBreach: { breached: true, deficitKw: 0.6 },
+      unactionable: true,
+    });
+
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not throttle a hard-cap breach when there is still something to shed', async () => {
+    let state: PowerSampleRebuildState = {
+      lastMs: Date.now() - 5000,
+      lastRebuildPowerW: 10_400,
+      lastHardCapBreached: true,
+    };
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+
+    await schedulePlanRebuildFromPowerSample({
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 2000,
+      maxIntervalMs: 30_000,
+      rebuildPlanFromCache,
+      logError: vi.fn(),
+      currentPowerW: 10_600,
+      limitKw: 10,
+      softLimitKw: 9,
+      headroomKw: -1.6,
+      hardCapBreach: { breached: true, deficitKw: 0.6 },
+      unactionable: false,
+    });
+
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not throttle an unactionable state while the plan is actively converging', async () => {
+    let state: PowerSampleRebuildState = {
+      lastMs: Date.now() - 5000,
+      lastRebuildPowerW: 10_400,
+      lastHardCapBreached: true,
+    };
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+
+    await schedulePlanRebuildFromPowerSample({
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 2000,
+      maxIntervalMs: 30_000,
+      rebuildPlanFromCache,
+      logError: vi.fn(),
+      currentPowerW: 10_600,
+      limitKw: 10,
+      softLimitKw: 9,
+      headroomKw: -1.6,
+      hardCapBreach: { breached: true, deficitKw: 0.6 },
+      planConvergenceActive: true,
+      unactionable: true,
+    });
+
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+  });
+
+  it('allows one re-check rebuild when the invalidation latch is set, then clears the latch', async () => {
+    let state: PowerSampleRebuildState = {
+      lastMs: Date.now() - 20_000, // floor already elapsed → executes immediately
+      lastRebuildPowerW: 10_400,
+      lastHardCapBreached: true,
+      shortfallSuppressionInvalidated: true,
+    };
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+
+    await schedulePlanRebuildFromPowerSample({
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 2000,
+      maxIntervalMs: 30_000,
+      rebuildPlanFromCache,
+      logError: vi.fn(),
+      currentPowerW: 10_600,
+      limitKw: 10,
+      softLimitKw: 9,
+      headroomKw: -1.6,
+      hardCapBreach: { breached: true, deficitKw: 0.6 },
+      unactionable: true,
+    });
+
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+    expect(state.shortfallSuppressionInvalidated).toBeFalsy();
+  });
+
+  it('clears the invalidation latch when a re-check rebuild rejects (error-path one-shot)', async () => {
+    let state: PowerSampleRebuildState = {
+      lastMs: Date.now() - 20_000, // floor elapsed → executes immediately, then rejects
+      lastRebuildPowerW: 10_400,
+      lastHardCapBreached: true,
+      shortfallSuppressionInvalidated: true,
+    };
+    const rebuildPlanFromCache = vi.fn().mockRejectedValue(new Error('boom'));
+
+    await expect(
+      schedulePlanRebuildFromPowerSample({
+        getState: () => state,
+        setState: (next) => {
+          state = next;
+        },
+        minIntervalMs: 2000,
+        maxIntervalMs: 30_000,
+        rebuildPlanFromCache,
+        logError: vi.fn(),
+        currentPowerW: 10_600,
+        limitKw: 10,
+        softLimitKw: 9,
+        headroomKw: -1.6,
+        hardCapBreach: { breached: true, deficitKw: 0.6 },
+        unactionable: true,
+      }),
+    ).rejects.toThrow('boom');
+
+    expect(state.shortfallSuppressionInvalidated).toBeFalsy();
+  });
+
+  it('floors executed rebuilds while unactionable — even a hard-cap intent waits out the interval', async () => {
+    let state: PowerSampleRebuildState = {
+      lastMs: Date.now() - 5000, // floor = lastMs + 15s = now + 10s
+      lastRebuildPowerW: 10_400,
+      lastHardCapBreached: true,
+      // Latch set so the decision throttle is bypassed and ONLY the execution floor gates.
+      shortfallSuppressionInvalidated: true,
+    };
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+
+    const pending = schedulePlanRebuildFromPowerSample({
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      minIntervalMs: 2000,
+      maxIntervalMs: 30_000,
+      rebuildPlanFromCache,
+      logError: vi.fn(),
+      currentPowerW: 10_600,
+      limitKw: 10,
+      softLimitKw: 9,
+      headroomKw: -1.6,
+      hardCapBreach: { breached: true, deficitKw: 0.6 },
+      unactionable: true,
+    });
+
+    vi.advanceTimersByTime(9000);
+    await Promise.resolve();
+    expect(rebuildPlanFromCache).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1000);
+    await pending;
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not floor the initial rebuild (lastMs 0) on a monotonic clock', async () => {
+    // Reproduces prod: getPlanRebuildNowMs is performance.now() (monotonic, small
+    // values) and the scheduler starts un-run at lastMs 0. Without the `lastMs > 0`
+    // floor guard, an unactionable initial sample would floor its due time to
+    // 0 + 15_000 and defer the first rebuild to uptime 15s, despite the initial
+    // sample being required to rebuild immediately.
+    let state: PowerSampleRebuildState = { lastMs: 0 };
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue(undefined);
+
+    await schedulePlanRebuildFromPowerSample({
+      getState: () => state,
+      setState: (next) => {
+        state = next;
+      },
+      getNowMs: () => 5000, // uptime 5s on a monotonic clock
+      minIntervalMs: 2000,
+      maxIntervalMs: 30_000,
+      rebuildPlanFromCache,
+      logError: vi.fn(),
+      currentPowerW: 10_600,
+      limitKw: 10,
+      softLimitKw: 9,
+      headroomKw: -1.6,
+      hardCapBreach: { breached: true, deficitKw: 0.6 },
+      unactionable: true,
+    });
+
+    expect(rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('shouldSkipShortfallRebuildFromPlanSummary', () => {
@@ -1649,7 +1899,7 @@ describe('schedulePlanRebuildFromSignal', () => {
     expect(checkShortfallSpy).toHaveBeenLastCalledWith(false, expect.closeTo(0.306, 3));
   });
 
-  it('keeps shortfall recovery checks alive while full rebuilds are suppressed', async () => {
+  it('drives recovery checks during suppression then yields a rebuild at the max interval', async () => {
     let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 5267, lastSoftLimitKw: 3.9 };
     const onShortfallCleared = vi.fn();
     const capacityGuard = new CapacityGuard({
@@ -1662,12 +1912,15 @@ describe('schedulePlanRebuildFromSignal', () => {
     capacityGuard.setShortfallThresholdProvider(() => 4.961);
     capacityGuard.reportTotalPower(5.267);
     await capacityGuard.checkShortfall(false, 0.306);
+    const checkShortfallSpy = vi.spyOn(capacityGuard, 'checkShortfall');
     const rebuildPlanFromCache = vi.fn().mockResolvedValue({
       actionChanged: false,
       appliedActions: false,
       failed: false,
     });
 
+    // Within the max interval, the unrecoverable-shortfall skip suppresses the full
+    // rebuild but still drives `checkShortfall`, so recovery detection stays alive.
     capacityGuard.reportTotalPower(4.6);
     await schedulePlanRebuildFromSignal({
       getState: () => state,
@@ -1685,10 +1938,12 @@ describe('schedulePlanRebuildFromSignal', () => {
       skipWhileShortfallUnrecoverable: true,
     });
 
-    expect(capacityGuard.isInShortfall()).toBe(true);
-    expect(onShortfallCleared).not.toHaveBeenCalled();
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
+    expect(checkShortfallSpy).toHaveBeenCalled();
+    expect(capacityGuard.isInShortfall()).toBe(true);
 
+    // Past the max interval, the escape yields a real rebuild rather than suppressing
+    // forever — otherwise a stale "unactionable" summary could deadlock the skip.
     vi.advanceTimersByTime(60_000);
     await schedulePlanRebuildFromSignal({
       getState: () => state,
@@ -1706,9 +1961,7 @@ describe('schedulePlanRebuildFromSignal', () => {
       skipWhileShortfallUnrecoverable: true,
     });
 
-    expect(capacityGuard.isInShortfall()).toBe(false);
-    expect(onShortfallCleared).toHaveBeenCalledTimes(1);
-    expect(rebuildPlanFromCache).not.toHaveBeenCalled();
+    expect(rebuildPlanFromCache).toHaveBeenCalled();
   });
 
   it('rebuilds when shortfall suppression was invalidated by newly returned controlled load', async () => {
