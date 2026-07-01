@@ -3034,6 +3034,23 @@ md-filled-button.is-busy {
   border-radius: inherit;
 }
 
+/* The card-level `md-elevation` never renders a visible shadow: the shadow
+ * pseudos paint OUTSIDE their `inset: 0` box, and the primitive's
+ * `overflow: hidden` clips that region entirely (verified empirically —
+ * even a forced `--md-elevation-level: 5` paints nothing outside or inside
+ * the card). Its only observable output is a compositing leak: Chromium
+ * rasterizes the clipped shadow layer at fractional device-pixel offsets
+ * and tints card interiors ~2/255 darker in invalidation-dependent bands,
+ * which reads as faint empty rectangles inside card headers (Usage "Today
+ * so far" at 480 px). Suppress the paint; the element stays in the
+ * templates so a future non-clipped elevation treatment can re-enable it.
+ * The `--md-elevation-level` hover/active chain further down (the
+ * `data-interactive` / `.plan-card` lift rules) is likewise intentionally
+ * retained-but-inert behind this `display: none` for the same reason. */
+.pels-surface-card > md-elevation {
+  display: none;
+}
+
 .pels-surface-card > md-ripple {
   z-index: 0;
 }
@@ -4914,13 +4931,14 @@ details[open] > summary .disclosure-chevron {
   padding: var(--spacing-2) var(--spacing-3);
   cursor: pointer;
   text-align: center;
-  white-space: normal;
-  /* `break-word` only inserts a break when no other opportunity exists, so
-   * "Conservative" stays on a single line instead of breaking after the
-   * second `i`. The earlier `anywhere` value caused mid-word breaks at
-   * narrow widths. */
-  overflow-wrap: break-word;
-  word-break: normal;
+  /* Segment labels never break mid-word ("Weekday/s" at 320 px). The
+   * earlier `overflow-wrap: break-word` still broke as a last resort once
+   * the 96 px floor was relaxed at narrow widths; `nowrap` + the reduced
+   * narrow-viewport padding below keep every label on one line, and
+   * `ellipsis` degrades gracefully if a label ever outgrows its segment. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   line-height: var(--font-line-height-tight);
   transition: background var(--transition-fast), color var(--transition-fast);
 }
@@ -4957,11 +4975,13 @@ details[open] > summary .disclosure-chevron {
 
 /* At 320 px the 96 px per-option floor would push a 3-option control past
  * the viewport (3 × 96 + 2 px gap = 290 px > available column). Relax the
- * floor so the buttons can shrink to fit the container while keeping the
- * 48 px touch target and break-word wrap protection. */
+ * floor so the buttons can shrink to fit the container, and slim the
+ * horizontal padding so the longest stock label ("Weekdays") still fits on
+ * one line inside a three-way split without truncating. */
 @media (max-width: 360px) {
   .segmented button.segmented__option.segmented__option.segmented__option {
     min-width: 0;
+    padding-inline: var(--spacing-2);
   }
 }
 
@@ -5844,23 +5864,26 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   flex-direction: column;
   gap: var(--spacing-3);
   background: var(--bg);
-  padding: calc(max(var(--pels-homey-mobile-chrome), env(safe-area-inset-top, 0px)) + var(--spacing-2)) 0 0;
+  /* No top inset: the panel is a normal in-flow sibling of the tab panels
+   * inside `main.screen`, so it always sits below the tab bar and any
+   * banners — never at the viewport top. The former
+   * `max(--pels-homey-mobile-chrome, env(safe-area-inset-top))` padding
+   * (added by eb8f0720 when this view could still open at the viewport top)
+   * became vestigial when the panel moved in-flow below the always-visible
+   * tab bar (ce3357cf) and rendered only as a dead ~64 px band between the
+   * banner and the back button. Institutional note: nothing in the app
+   * reserves a top inset for Homey's native mobile chrome anymore — the
+   * `homey-mobile-chrome` token was deleted from tokens/component.json
+   * along with this padding. If Homey ever overlays chrome inside the
+   * iframe again, an app-wide inset strategy is needed, not a per-panel
+   * padding. */
+  padding: 0;
 }
 
 .deadline-plan-panel__surface {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-3);
-}
-
-@media (hover: none) and (pointer: coarse) {
-  /* Coarse-pointer (touch) clients are the only place Homey overlays its
-   * native mobile chrome ("PELS / Done") on top of the iframe. The
-   * desktop my.homey.app iframe has no such chrome, so the token defaults
-   * to 0 in tokens/component.json and is raised here only for touch. */
-  :root {
-    --pels-homey-mobile-chrome: 56px;
-  }
 }
 
 /* Doubled-class + panel-scoped cascade so these rules beat both the host
@@ -8069,6 +8092,13 @@ md-switch {
 
 #device-detail-panel .slide-panel__content {
   display: grid;
+  /* `start` keeps the auto rows content-sized. Without it the default
+   * `align-content: stretch` distributes the panel's leftover viewport
+   * height (the slide panel is 100vh and this grid is its `flex: 1` body)
+   * equally across every row, inflating the hero and every collapsed
+   * section with hundreds of px of dead space whenever the content is
+   * shorter than the screen. */
+  align-content: start;
   gap: var(--spacing-3);
   padding: var(--spacing-3);
 }

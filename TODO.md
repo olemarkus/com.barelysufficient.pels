@@ -48,6 +48,13 @@ stepped-restore-wrapper / stepped-swap-completion refactors, the settings.test.t
 plan_budget truncation, the starvation confirm-sheet sub-parts, and the shared widget runtime.
 What remains open is below.*
 
+- [ ] **Overview simulation-mode status copy states actuations as fact.** With simulation on,
+      device cards read "Turned off by PELS" while the hero says "1 device would be limited if
+      simulation mode were off" — the card copy claims an actuation that never happened. Status
+      copy should read "Would be turned off (simulation)" (or equivalent per
+      `notes/ui-terminology.md`) whenever simulation is on. Source: PR #1807 review gates
+      (2026-07-01).
+
 ### P1 — targeted refactors (deferred)
 
 *Concrete, bounded changes to specific named surfaces (not structural re-splits — those stay P2).
@@ -664,6 +671,25 @@ app-wiring; rule flipped to `error`), **PR-E #1338 (clock-driven terminal device
 disable — Goal 2 output side, the "disable-after-task-ends" end-game)**. PR-D1b
 dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5).
 **PROGRAM COMPLETE; remaining items below are non-blocking follow-ups.***
+
+- [ ] **Release spot-check: smart-task detail deep-link on a real phone.** PR #1807 removed the
+      `.deadline-plan-panel` mobile-chrome top inset (vestigial since ce3357cf put the panel
+      in-flow below the always-visible tab bar). Repo evidence says the back button clears
+      Homey's app chrome; after this ships, open `?page=deadline-plan` on a real phone once to
+      confirm and close the loop. Source: PR #1807 review gates (2026-07-01).
+
+- [ ] **Device-detail hero: add a one-line live status under the device name.** The hero now hugs
+      its content (PR #1807) but carries only eyebrow + name — an identity card. Add one line of
+      live status (state + current draw, the same producer-resolved data the Overview card
+      renders) to turn it into a confidence card ("is PELS seeing this device right now?").
+      Source: PR #1807 review gates (2026-07-01).
+
+- [ ] **Playwright stub: seeded smart-task data is internally inconsistent.** The
+      `dev_connected300` fixture claims "Needs 12.0 kWh" and an on-track verdict, but the seeded
+      learned rate (0.75 kW) × 6 picked hours cannot deliver 12 kWh. Fix the fixture so
+      screenshot-gated reviews of the smart-task detail page are trustworthy — a reviewer
+      reconciling the numbers today would flag a phantom bug (or miss a real one). Source:
+      PR #1807 review gates (2026-07-01).
 
 ## P3 Future and Exploratory Work
 

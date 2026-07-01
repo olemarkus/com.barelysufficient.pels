@@ -10,6 +10,11 @@ import type {
 
 type OverviewProps = {
   plan: PlanSnapshot | null;
+  // True once a plan payload has been delivered (even a null one). While
+  // false the overview is still loading: keep showing the hero skeleton and
+  // suppress the "No plan available yet" empty state, which would otherwise
+  // flash as a premature verdict during a slow boot.
+  planResolved: boolean;
   power: SettingsUiPowerStatus | null;
   prices: SettingsUiPricesPayload | null;
   context: HeroContext;
@@ -42,14 +47,15 @@ const PlanCard = ({
   return <PlanGenericCard dev={dev} plan={plan} renderedAtMs={renderedAtMs} nowMs={nowMs} />;
 };
 
-const PlanOverviewRoot = ({ plan, power, prices, context, renderedAtMs, nowMs }: OverviewProps) => {
+const PlanOverviewRoot = ({ plan, planResolved, power, prices, context, renderedAtMs, nowMs }: OverviewProps) => {
   const devices = plan
     ? [...(plan.devices ?? [])].sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999))
     : [];
 
   let emptyMessage: string | null = null;
-  if (plan === null) emptyMessage = 'No plan available yet. Send power data or refresh devices.';
-  else if (devices.length === 0) emptyMessage = 'No managed devices.';
+  if (plan === null) {
+    if (planResolved) emptyMessage = 'No plan available yet. Send power data or refresh devices.';
+  } else if (devices.length === 0) emptyMessage = 'No managed devices.';
 
   return (
     <div>
@@ -73,6 +79,12 @@ const PlanOverviewRoot = ({ plan, power, prices, context, renderedAtMs, nowMs }:
 
 // ─── Mount and render ─────────────────────────────────────────────────────────
 
+// NOTE: the caller must hand over an EMPTY (or Preact-managed) surface. The
+// static `#plan-redesign-surface` markup in index.html ships a first-paint
+// skeleton; Preact's first render into a non-empty container tries to ADOPT
+// those static nodes as its own tree and strands the leftovers (`#plan-cards`
+// + `data-overview-cards-placeholder`) as ghost cards below the real device
+// list. `planRedesign.ts` clears the skeleton once before the first render.
 export const renderPlanOverview = (surface: HTMLElement, props: OverviewProps): void => {
   render(<PlanOverviewRoot {...props} />, surface);
 };

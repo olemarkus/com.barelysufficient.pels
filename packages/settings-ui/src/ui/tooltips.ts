@@ -19,7 +19,12 @@ export const setTooltip = (element: HTMLElement | null, content?: string | null)
   element.removeAttribute('title');
 };
 
-const prefersTouch = (): boolean => {
+// Exported so controls that NAVIGATE on tap (e.g. the device-list detail
+// button) can skip attaching a tooltip on touch: with the touch `click`
+// trigger, a single tap would both navigate AND open the tooltip, which then
+// floats stranded over the new view with nothing left to dismiss it. Keep the
+// `aria-label` on such controls — only the visual tooltip is suppressed.
+export const prefersTouch = (): boolean => {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
   return window.matchMedia('(hover: none), (pointer: coarse)').matches;
 };

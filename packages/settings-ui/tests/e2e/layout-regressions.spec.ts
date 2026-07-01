@@ -115,6 +115,17 @@ test.describe('settings shell layout regressions', () => {
       await openApp(page, 320);
       await appPage.open(page);
       await expectNoHorizontalOverflow(page, appPage.label);
+      // Segment labels are `white-space: nowrap` + `text-overflow: ellipsis`,
+      // so a too-long label no longer wraps mid-word — it clips silently.
+      // Pin the invariant that no visible segment label is actually clipped
+      // at 320 px (scrollWidth beyond clientWidth = hidden ellipsis).
+      const clippedSegments = await page.evaluate(() => (
+        [...document.querySelectorAll<HTMLElement>('.segmented__option')]
+          .filter((opt) => opt.getBoundingClientRect().width > 0)
+          .filter((opt) => opt.scrollWidth > opt.clientWidth + 1)
+          .map((opt) => ({ label: opt.textContent?.trim(), scrollWidth: opt.scrollWidth, clientWidth: opt.clientWidth }))
+      ));
+      expect(clippedSegments, `${appPage.label}: segment labels must not clip at 320px`).toEqual([]);
     });
   }
 
@@ -132,6 +143,103 @@ test.describe('settings shell layout regressions', () => {
     expect(box!.right).toBeLessThanOrEqual(320);
     expect(box!.top).toBeGreaterThanOrEqual(0);
     await expectNoHorizontalOverflow(page, 'Deadline plan');
+  });
+
+  test('removes the Overview first-paint skeleton once real plan cards render', async ({ page }) => {
+    await openApp(page, 480);
+    await openTopTab(page, 'Overview');
+    // Real cards come from the stub plan payload; once they exist the static
+    // index.html placeholder must be gone from the DOM entirely — it used to
+    // survive Preact's first render and trail the list as two ghost cards.
+    await expect(page.locator('#plan-cards .plan-card').first()).toBeVisible();
+    await expect(page.locator('[data-overview-cards-placeholder]')).toHaveCount(0);
+    // The device list must also end with visible content, not an empty shell.
+    const lastCardText = await page.locator('#plan-cards > :last-child').innerText();
+    expect(lastCardText.trim().length).toBeGreaterThan(0);
+  });
+
+  test('stacks the smart-task detail back button one gap below the banner on deep-link entry', async ({ page }) => {
+    await page.setViewportSize({ width: 480, height: 2400 });
+    await page.goto('/?page=deadline-plan&deviceId=dev_connected300', { waitUntil: 'domcontentloaded' });
+    const back = page.locator('#deadline-plan-panel [data-deadline-plan-close]');
+    await expect(back).toBeVisible();
+    const banner = page.locator('#dry-run-banner');
+    await expect(banner).toBeVisible();
+    const gap = await page.evaluate(() => {
+      const bannerRect = document.getElementById('dry-run-banner')!.getBoundingClientRect();
+      const backRect = document.querySelector('[data-deadline-plan-close]')!.getBoundingClientRect();
+      return backRect.top - bannerRect.bottom;
+    });
+    // One `main.screen` grid gap (16 px) separates the banner from the panel;
+    // the panel itself must not add its own top inset (the old mobile-chrome
+    // padding rendered a dead ~80 px band here).
+    expect(gap).toBeGreaterThanOrEqual(0);
+    expect(gap).toBeLessThanOrEqual(24);
+  });
+
+  test('keeps the device-detail hero and sections content-sized on a tall viewport', async ({ page }) => {
+    // Tall viewport so the slide panel's grid body has free space — the
+    // regression was `align-content: stretch` distributing that free space
+    // into every row (hero void + huge inter-section gaps).
+    await page.setViewportSize({ width: 480, height: 2400 });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => typeof (window as { Homey?: unknown }).Homey === 'object');
+    await openSettingsSection(page, 'devices');
+    const row = page.locator('#devices-panel [data-device-id="dev_heatpump"]').first();
+    await expect(row).toBeVisible();
+    await row.locator('.pels-device-card__detail-button').click();
+    await expect(page.locator('#device-detail-overlay')).toBeVisible();
+    const metrics = await page.evaluate(() => {
+      const hero = document.querySelector('#device-detail-panel .device-detail-heading')!;
+      const heroRect = hero.getBoundingClientRect();
+      const heroContent = hero.firstElementChild!.getBoundingClientRect();
+      const sections = [...document.querySelectorAll<HTMLElement>('#device-detail-panel .detail-section')]
+        .filter((s) => s.getBoundingClientRect().height > 0);
+      const sectionSlack = sections.map((s) => {
+        const child = s.firstElementChild!.getBoundingClientRect();
+        return Math.round(s.getBoundingClientRect().height - child.height);
+      });
+      const gaps: number[] = [];
+      for (let i = 1; i < sections.length; i += 1) {
+        gaps.push(Math.round(sections[i].getBoundingClientRect().top - sections[i - 1].getBoundingClientRect().bottom));
+      }
+      return {
+        heroSlack: Math.round(heroRect.height - heroContent.height),
+        sectionSlack,
+        maxGap: Math.max(...gaps),
+      };
+    });
+    // Hero hugs its content (only its own padding remains around the child).
+    expect(metrics.heroSlack).toBeLessThanOrEqual(32);
+    // Each section wraps its collapsible exactly — no stretched dead space.
+    for (const slack of metrics.sectionSlack) expect(slack).toBeLessThanOrEqual(2);
+    // Adjacent sections sit at the standard grid gap.
+    expect(metrics.maxGap).toBeLessThanOrEqual(16);
+  });
+
+  test('does not strand a tooltip after tapping through to device detail on touch', async ({ browser, browserName, baseURL }) => {
+    test.skip(browserName !== 'chromium', 'Touch emulation needs chromium isMobile.');
+    const context = await browser.newContext({
+      baseURL,
+      viewport: { width: 480, height: 900 },
+      isMobile: true,
+      hasTouch: true,
+    });
+    try {
+      const page = await context.newPage();
+      await page.goto('/', { waitUntil: 'domcontentloaded' });
+      await page.waitForFunction(() => typeof (window as { Homey?: unknown }).Homey === 'object');
+      await openSettingsSection(page, 'devices');
+      const row = page.locator('#devices-panel [data-device-id="dev_heatpump"]').first();
+      await expect(row).toBeVisible();
+      await row.locator('.pels-device-card__detail-button').click();
+      await expect(page.locator('#device-detail-overlay')).toBeVisible();
+      // The tap must only navigate — no click-triggered tooltip may float
+      // over the detail overlay (it had no dismiss path on touch).
+      await expect(page.locator('.tippy-box')).toHaveCount(0);
+    } finally {
+      await context.close();
+    }
   });
 
   test('keeps banned planner terminology out of normal redesigned UI copy', async ({ page }) => {
