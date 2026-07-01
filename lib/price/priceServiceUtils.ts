@@ -66,14 +66,15 @@ export const findCheapestHoursFromCombined = (
   const planningPrice = (p: { totalPrice: number; budgetPrice?: number }): number => (
     resolvePlanningPrice(p.budgetPrice, p.totalPrice)
   );
+  const safeCount = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
   return prices
-    .filter((p) => {
-      const timeMs = new Date(p.startsAt).getTime();
-      return timeMs >= nowMs && timeMs < windowEndMs;
-    })
-    .sort((a, b) => planningPrice(a) - planningPrice(b))
-    .slice(0, count)
-    .map((p) => p.startsAt);
+    .map((p) => ({ entry: p, timeMs: new Date(p.startsAt).getTime(), price: planningPrice(p) }))
+    .filter(({ timeMs, price }) => (
+      timeMs >= nowMs && timeMs < windowEndMs && Number.isFinite(price)
+    ))
+    .sort((a, b) => a.price - b.price || a.timeMs - b.timeMs)
+    .slice(0, safeCount)
+    .map(({ entry }) => entry.startsAt);
 };
 
 export const subtractMonths = (date: Date, months: number): Date => {
