@@ -21,6 +21,12 @@ import {
 } from './priceSettingsPersistence.ts';
 import { pushSettingWriteIfChanged } from './settingWrites.ts';
 import {
+  applyExportSchemeChangePlan,
+  createExportPriceHandlers,
+  readExportPriceSettings,
+  resolveExportSchemeChangePlan,
+} from './exportPriceSettings.ts';
+import {
   PRICE_OPTIMIZATION_ENABLED,
   PRICE_SCHEME,
 } from '../../../contracts/src/settingsKeys.ts';
@@ -68,6 +74,10 @@ type PriceConfigState = {
   // is the pre-formatted short clock time from the combined-prices read-model.
   currentPriceLevel: string | null;
   lastFetchedShort: string | null;
+  // Export (feed-in) price settings — normalized by `readExportPriceSettings`.
+  exportPriceEnabled: boolean;
+  exportSpotFactor: number;
+  exportFixed: number;
 };
 
 let configState: PriceConfigState = {
@@ -85,6 +95,9 @@ let configState: PriceConfigState = {
   homeyStatus: null,
   currentPriceLevel: null,
   lastFetchedShort: null,
+  exportPriceEnabled: false,
+  exportSpotFactor: 0,
+  exportFixed: 0,
 };
 
 // Narrow the unknown `combinedPrices` read-model to the one field the live
@@ -142,6 +155,14 @@ const renderElectricityPrices = () => {
     lastFetchedShort: configState.lastFetchedShort,
     gridCompanyOptions: getGridCompanyOptions(configState.countyCode),
     showPriceAwareDevicesLink: false,
+    // Prosumer gate: a managed solar device (home-level flag from the devices
+    // payload — populated by the device-dependent-tab lazy load this panel
+    // triggers) OR an already-enabled export config, so an enabled user is
+    // never stranded behind the gate.
+    showExportSection: state.hasManagedSolarDevice || configState.exportPriceEnabled,
+    exportPriceEnabled: configState.exportPriceEnabled,
+    exportSpotFactor: configState.exportSpotFactor,
+    exportFixed: configState.exportFixed,
     onSchemeChange: handleSchemeChange,
     onNorwayModelChange: handleNorwayModelChange,
     onPriceAreaChange: handlePriceAreaChange,
@@ -153,6 +174,9 @@ const renderElectricityPrices = () => {
     onTariffGroupChange: handleTariffGroupChange,
     onRefreshPrices: handleRefreshPrices,
     onRefreshGridTariff: handleRefreshGridTariff,
+    onExportEnabledChange: exportPriceHandlers.onEnabledChange,
+    onExportSpotFactorChange: exportPriceHandlers.onSpotFactorChange,
+    onExportFixedChange: exportPriceHandlers.onFixedChange,
   };
   renderElectricityPricesView(electricityPricesSurface, props);
 };
@@ -220,14 +244,37 @@ const handleOptimizationToggle = async (enabled: boolean) => {
 };
 
 const handleSchemeChange = async (scheme: PriceScheme) => {
+  // Crossing the Norway unit boundary in either direction changes what an
+  // enabled export config means — a fixed amount can't cross it (export turns
+  // off) and a spot-linked share has no spot on flow/homey (share normalizes
+  // to 0). See exportPriceSettings.ts for the full rationale.
+  // Only the scheme is patched optimistically; export state mutates strictly
+  // AFTER its follow-up write lands, so a failed save never shows a state the
+  // store does not hold.
   configState = { ...configState, priceScheme: scheme };
   renderAll();
   try {
+    // The plan resolves against the PERSISTED scheme, not the optimistic UI
+    // one: the stored fixed amount's unit follows the scheme active when it
+    // was entered, and after a failed save the two can diverge.
+    const { priceScheme: persistedScheme } = await readCurrentPriceSettings();
+    const exportPlan = resolveExportSchemeChangePlan({
+      ...configState,
+      previousScheme: persistedScheme,
+      nextScheme: scheme,
+    });
     await validateAndSavePriceSettings();
+    // Export follow-up write runs only after the scheme save itself landed —
+    // if it failed, the store never changed scheme and disabling/zeroing
+    // would silently degrade a live export config.
+    const { patch, toast } = await applyExportSchemeChangePlan(exportPlan);
+    configState = { ...configState, ...patch };
     await refreshStatusInfo();
     renderAll();
-    await showToast('Price settings saved.', 'ok');
+    await showToast(toast, 'ok');
   } catch (error) {
+    // Repaint so the view reflects the unchanged stored export config.
+    renderAll();
     await logSettingsError('Failed to save price scheme', error, 'priceConfig');
     await showToastError(error, 'Failed to save price settings. If this keeps happening, send a diagnostics report.');
   }
@@ -335,6 +382,14 @@ const handleTariffGroupChange = async (group: string) => {
     await showToastError(error, 'Failed to save grid tariff settings.');
   }
 };
+
+// Export-section handlers live in exportPriceSettings.ts; config state and the
+// surface repaint stay owned here via the context callbacks.
+const exportPriceHandlers = createExportPriceHandlers({
+  getState: () => configState,
+  patchState: (patch) => { configState = { ...configState, ...patch }; },
+  rerender: () => renderElectricityPrices(),
+});
 
 const handleDeviceCheapDeltaChange = async (deviceId: string, val: number) => {
   const existing = state.priceOptimizationSettings[deviceId] || { ...defaultPriceOptimizationConfig };
@@ -449,6 +504,7 @@ const loadPriceConfigSettings = async () => {
     organizationNumber,
     tariffGroup,
     priceOptSettings,
+    exportSettings,
   ] = await Promise.all([
     getSetting(PRICE_SCHEME),
     getSetting('norway_price_model'),
@@ -461,6 +517,7 @@ const loadPriceConfigSettings = async () => {
     getSetting('nettleie_orgnr'),
     getSetting('nettleie_tariffgruppe'),
     getSetting('price_optimization_settings'),
+    readExportPriceSettings(),
   ]);
 
   if (priceOptSettings && typeof priceOptSettings === 'object') {
@@ -479,6 +536,9 @@ const loadPriceConfigSettings = async () => {
     countyCode: stringSetting(countyCode, '03'),
     organizationNumber: stringSettingOrEmpty(organizationNumber),
     tariffGroup: stringSetting(tariffGroup, 'Husholdning'),
+    exportPriceEnabled: exportSettings.enabled,
+    exportSpotFactor: exportSettings.spotFactorPercent,
+    exportFixed: exportSettings.fixed,
   };
   settingsLoaded = true;
 };
@@ -490,6 +550,9 @@ const ensureLoaded = async () => {
 export const updatePriceConfigDevices = (devices: SettingsUiDeviceView[]) => {
   state.latestDevices = devices;
   renderPriceAwareDevices();
+  // The devices payload also carries the home-level managed-solar flag that
+  // gates the export-price section, so the prices view must repaint too.
+  renderElectricityPrices();
 };
 
 export const refreshPriceConfigView = async () => {

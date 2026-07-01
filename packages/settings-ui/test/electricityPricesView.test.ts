@@ -19,6 +19,10 @@ const buildProps = (overrides: Partial<ElectricityPricesViewProps> = {}): Electr
     { name: 'Grid Company', organizationNumber: '123' },
   ],
   showPriceAwareDevicesLink: true,
+  showExportSection: false,
+  exportPriceEnabled: false,
+  exportSpotFactor: 0,
+  exportFixed: 0,
   onSchemeChange: vi.fn(),
   onNorwayModelChange: vi.fn(),
   onPriceAreaChange: vi.fn(),
@@ -30,6 +34,9 @@ const buildProps = (overrides: Partial<ElectricityPricesViewProps> = {}): Electr
   onTariffGroupChange: vi.fn(),
   onRefreshPrices: vi.fn(),
   onRefreshGridTariff: vi.fn(),
+  onExportEnabledChange: vi.fn(),
+  onExportSpotFactorChange: vi.fn(),
+  onExportFixedChange: vi.fn(),
   ...overrides,
 });
 
@@ -137,6 +144,121 @@ describe('ElectricityPricesView', () => {
     expect(summary?.querySelector('.plan-chip')).toBeNull();
     expect(summary?.textContent).toContain('Awaiting prices');
     expect(summary?.textContent).not.toContain('Normal');
+  });
+
+  describe('export price section', () => {
+    const mountView = (overrides: Partial<ElectricityPricesViewProps>) => {
+      const mount = document.createElement('div');
+      document.body.appendChild(mount);
+      renderElectricityPricesView(mount, buildProps(overrides));
+      return mount;
+    };
+
+    it('renders no export section when the prosumer gate is off', () => {
+      const mount = mountView({ showExportSection: false });
+      expect(mount.querySelector('#electricity-prices-export-section')).toBeNull();
+    });
+
+    it('shows only the toggle while export pricing is off', () => {
+      const mount = mountView({ showExportSection: true, exportPriceEnabled: false });
+      const section = mount.querySelector('#electricity-prices-export-section');
+      expect(section).not.toBeNull();
+      expect(section?.querySelector('#electricity-prices-export-enabled')).not.toBeNull();
+      // Fields stay structurally absent (not CSS-hidden) until the toggle is on.
+      expect(section?.querySelector('#electricity-prices-export-spot-factor')).toBeNull();
+      expect(section?.querySelector('#electricity-prices-export-fixed')).toBeNull();
+    });
+
+    it('reveals both fields with Norwegian units when enabled on the norway scheme', () => {
+      const mount = mountView({
+        showExportSection: true,
+        exportPriceEnabled: true,
+        exportSpotFactor: 90,
+        exportFixed: -5,
+        priceScheme: 'norway',
+      });
+      const factor = mount.querySelector('#electricity-prices-export-spot-factor') as (HTMLElement & { value: string; disabled?: boolean }) | null;
+      const fixed = mount.querySelector('#electricity-prices-export-fixed') as (HTMLElement & { value: string }) | null;
+      expect(factor?.value).toBe('90');
+      expect(Boolean(factor?.disabled)).toBe(false);
+      expect(fixed?.value).toBe('-5');
+      expect(mount.textContent).toContain('Fixed amount (øre/kWh, incl. VAT)');
+      expect(mount.textContent).not.toContain('Needs a spot price');
+      // The hint states the VAT-inclusive basis and the raw-spot conversion
+      // recipe (a raw-spot contract enters 80, not 100).
+      expect(mount.textContent).toContain('Share of the hourly spot price (incl. VAT)');
+      expect(mount.textContent).toContain('If your contract pays the raw spot price, enter 80');
+    });
+
+    it('disables a settled spot-price share (0) with the fixed-only note on flow/homey schemes', () => {
+      const mount = mountView({
+        showExportSection: true,
+        exportPriceEnabled: true,
+        exportSpotFactor: 0,
+        priceScheme: 'flow',
+      });
+      const factor = mount.querySelector('#electricity-prices-export-spot-factor') as (HTMLElement & { value: string; disabled?: boolean }) | null;
+      expect(factor?.value).toBe('0');
+      expect(Boolean(factor?.disabled)).toBe(true);
+      expect(mount.textContent).toContain('Needs a spot price');
+      expect(mount.textContent).toContain('Only the fixed amount applies');
+      expect(mount.textContent).not.toContain('Set the share to 0');
+      // External schemes drop the Norwegian unit from the fixed-amount label.
+      expect(mount.textContent).toContain('Fixed amount');
+      expect(mount.textContent).not.toContain('Fixed amount (øre/kWh, incl. VAT)');
+    });
+
+    it('surfaces a stored non-zero share on a spot-less scheme as editable with the repair note', () => {
+      // A stale spot-linked share (CLI-set, or a failed normalization write)
+      // yields NO export price at all — the field must show the real value,
+      // stay editable so the user can zero it, and name the repair, never
+      // pretend a working 0.
+      const mount = mountView({
+        showExportSection: true,
+        exportPriceEnabled: true,
+        exportSpotFactor: 90,
+        priceScheme: 'flow',
+      });
+      const factor = mount.querySelector('#electricity-prices-export-spot-factor') as (HTMLElement & { value: string; disabled?: boolean }) | null;
+      expect(factor?.value).toBe('90');
+      expect(Boolean(factor?.disabled)).toBe(false);
+      expect(mount.textContent).toContain('Needs a spot price');
+      expect(mount.textContent).toContain('Set the share to 0 to use the fixed amount only');
+      expect(mount.textContent).not.toContain('Only the fixed amount applies.');
+    });
+
+    it('routes toggle and field changes through the handlers', () => {
+      const onExportEnabledChange = vi.fn();
+      const onExportSpotFactorChange = vi.fn();
+      const onExportFixedChange = vi.fn();
+      const mount = mountView({
+        showExportSection: true,
+        exportPriceEnabled: true,
+        onExportEnabledChange,
+        onExportSpotFactorChange,
+        onExportFixedChange,
+      });
+
+      const toggle = mount.querySelector('#electricity-prices-export-enabled') as (HTMLElement & { selected: boolean }) | null;
+      expect(toggle).not.toBeNull();
+      toggle!.selected = false;
+      toggle!.dispatchEvent(new Event('change', { bubbles: true }));
+      expect(onExportEnabledChange).toHaveBeenLastCalledWith(false);
+
+      const fireChange = (selector: string, value: string) => {
+        const field = mount.querySelector(selector) as (HTMLElement & { value: string });
+        field.value = value;
+        field.dispatchEvent(new Event('change', { bubbles: true }));
+      };
+      // Numeric handlers also receive the field element (the snap-back seam).
+      fireChange('#electricity-prices-export-spot-factor', '85');
+      expect(onExportSpotFactorChange).toHaveBeenLastCalledWith(85, expect.anything());
+      fireChange('#electricity-prices-export-fixed', '-2.5');
+      expect(onExportFixedChange).toHaveBeenLastCalledWith(-2.5, expect.anything());
+      // Non-finite input never reaches the handler (boundary gate).
+      fireChange('#electricity-prices-export-fixed', 'junk');
+      expect(onExportFixedChange).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('hides the last-fetched timestamp while awaiting prices (no fetched-vs-awaiting contradiction)', () => {

@@ -12,11 +12,18 @@ import {
   MdFilledTextField,
   MdOutlinedButton,
   MdSelectOption,
+  MdSwitch,
   MdTextButton,
 } from './materialWebJSX.tsx';
 import { ArrowBackIcon } from './icons.tsx';
+import {
+  EXPORT_FIXED_LIMIT,
+  EXPORT_SPOT_FACTOR_MAX,
+  EXPORT_SPOT_FACTOR_MIN,
+} from '../exportPriceSettings.ts';
 
 type ValueElement = HTMLElement & { value: string };
+type SwitchElement = HTMLElement & { selected: boolean };
 
 const readValue = (event: Event): string => (event.currentTarget as ValueElement).value;
 
@@ -55,6 +62,13 @@ export type ElectricityPricesViewProps = {
   homeyStatus: HomeyStatus | null;
   gridCompanyOptions: GridCompanyOption[];
   showPriceAwareDevicesLink: boolean;
+  // Export (feed-in) price section. Prosumer-gated by the orchestrator: shown
+  // when the home has a managed solar device OR export pricing is already on
+  // (never strand an enabled user behind the gate).
+  showExportSection: boolean;
+  exportPriceEnabled: boolean;
+  exportSpotFactor: number;
+  exportFixed: number;
   onSchemeChange: (scheme: PriceScheme) => void;
   onNorwayModelChange: (model: NorwayPriceModel) => void;
   onPriceAreaChange: (area: string) => void;
@@ -66,6 +80,11 @@ export type ElectricityPricesViewProps = {
   onTariffGroupChange: (group: string) => void;
   onRefreshPrices: () => void;
   onRefreshGridTariff: () => void;
+  onExportEnabledChange: (enabled: boolean) => void;
+  // Numeric export handlers also receive the field element so a rejected or
+  // unsaved value can be snapped back to the stored one (see ExportPriceForm).
+  onExportSpotFactorChange: (val: number, field: { value: string }) => void;
+  onExportFixedChange: (val: number, field: { value: string }) => void;
 };
 
 const Header = () => (
@@ -397,6 +416,141 @@ const SourceForm = (props: ElectricityPricesViewProps) => {
   );
 };
 
+// Spot-share hint, three-way:
+//   • Norway: the percentage multiplies the VAT-INCLUSIVE spot (the same
+//     grossed spot the import price uses — lib/price/exportPrice.ts), but
+//     contracts typically quote a share of the raw ex-VAT spot. State the
+//     basis and give the conversion recipe: 100% of raw spot = 100 / 1.25 =
+//     80% of the incl-VAT spot.
+//   • Spot-less scheme with a stored non-zero share: nothing applies until
+//     the share is 0 — name the repair.
+//   • Spot-less scheme, share settled at 0: the fixed amount is the whole
+//     export price.
+const spotShareHint = (hasSpotPrice: boolean, staleSpotShare: boolean): string => {
+  if (hasSpotPrice) {
+    return 'Share of the hourly spot price (incl. VAT) you’re paid per exported kWh. '
+      + 'If your contract pays the raw spot price, enter 80. 0 means the fixed amount only.';
+  }
+  if (staleSpotShare) {
+    return 'Needs a spot price, which only the Norway price source provides. '
+      + 'Set the share to 0 to use the fixed amount only.';
+  }
+  return 'Needs a spot price, which only the Norway price source provides. Only the fixed amount applies.';
+};
+
+// Export (feed-in) price — a distinct section, deliberately separate from the
+// import-price config above it: the export price is built from the wholesale
+// spot plus the user's feed-in contract terms, never from the import price
+// (`lib/price/exportPrice.ts`). Labels follow `notes/ui-terminology.md`
+// § "Solar and export price vocabulary".
+const ExportPriceForm = ({
+  priceScheme,
+  exportPriceEnabled,
+  exportSpotFactor,
+  exportFixed,
+  onExportEnabledChange,
+  onExportSpotFactorChange,
+  onExportFixedChange,
+}: {
+  priceScheme: PriceScheme;
+  exportPriceEnabled: boolean;
+  exportSpotFactor: number;
+  exportFixed: number;
+  onExportEnabledChange: (enabled: boolean) => void;
+  onExportSpotFactorChange: (val: number, field: { value: string }) => void;
+  onExportFixedChange: (val: number, field: { value: string }) => void;
+}) => {
+  // A spot-linked share is only meaningful where an hourly spot price is
+  // isolatable, which only the Norway source provides. On the flow / Homey
+  // sources a share settled at 0 renders disabled with the fixed-only note.
+  // A stored NON-ZERO share there (CLI-configured, or a failed normalization
+  // write) yields NO export price at all (lib/price/exportPrice.ts) — never
+  // mask it as a working 0: surface the real value, keep the field editable,
+  // and tell the user the repair (set it to 0 — an explicit user write).
+  const hasSpotPrice = priceScheme === 'norway';
+  const staleSpotShare = !hasSpotPrice && exportSpotFactor !== 0;
+  const shareEditable = hasSpotPrice || staleSpotShare;
+  return (
+    <form
+      id="electricity-prices-export-section"
+      class="form-grid settings-form-card"
+      onSubmit={(e) => e.preventDefault()}
+    >
+      <h3 class="section-title">Export price</h3>
+      <p class="muted">
+        What you’re paid for power you send to the grid — check what your power company pays you.
+        The Budget tab shows the current export price while this is on.
+      </p>
+      <div class="field checkbox-field">
+        <MdSwitch
+          id="electricity-prices-export-enabled"
+          aria-label="Use an export price"
+          {...(exportPriceEnabled ? { selected: true } : {})}
+          onChange={(e) => onExportEnabledChange((e.currentTarget as SwitchElement).selected)}
+        />
+        <span class="checkbox-field__content">
+          <span class="field__label pels-text-settings-label">Use an export price</span>
+        </span>
+      </div>
+      {exportPriceEnabled && (
+        <>
+          <label class="field">
+            <span class="field__label pels-text-settings-label" id="electricity-prices-export-spot-factor-label">
+              Share of spot price (%)
+            </span>
+            <MdFilledTextField
+              id="electricity-prices-export-spot-factor"
+              type="number"
+              value={String(exportSpotFactor)}
+              min={String(EXPORT_SPOT_FACTOR_MIN)}
+              max={String(EXPORT_SPOT_FACTOR_MAX)}
+              step="1"
+              inputmode="decimal"
+              {...(shareEditable ? {} : { disabled: true })}
+              aria-labelledby="electricity-prices-export-spot-factor-label"
+              onChange={(e) => {
+                const val = readFiniteNumber(e);
+                // Pass the element so a rejected value can be snapped back:
+                // Preact's retained VDOM won't rewrite a value prop that
+                // didn't change, so the handler resets it imperatively.
+                if (val !== null) onExportSpotFactorChange(val, e.currentTarget as ValueElement);
+              }}
+            />
+            <small class="field__hint">
+              {spotShareHint(hasSpotPrice, staleSpotShare)}
+            </small>
+          </label>
+          <label class="field">
+            <span class="field__label pels-text-settings-label" id="electricity-prices-export-fixed-label">
+              {hasSpotPrice ? 'Fixed amount (øre/kWh, incl. VAT)' : 'Fixed amount'}
+            </span>
+            <MdFilledTextField
+              id="electricity-prices-export-fixed"
+              type="number"
+              value={String(exportFixed)}
+              min={String(-EXPORT_FIXED_LIMIT)}
+              max={String(EXPORT_FIXED_LIMIT)}
+              step="0.1"
+              inputmode="decimal"
+              aria-labelledby="electricity-prices-export-fixed-label"
+              onChange={(e) => {
+                const val = readFiniteNumber(e);
+                // Same snap-back contract as the spot-share field above.
+                if (val !== null) onExportFixedChange(val, e.currentTarget as ValueElement);
+              }}
+            />
+            <small class="field__hint">
+              {hasSpotPrice
+                ? 'Added for every exported kWh. Negative means you pay to export.'
+                : 'Added for every exported kWh, in the same unit as your prices. Negative means you pay to export.'}
+            </small>
+          </label>
+        </>
+      )}
+    </form>
+  );
+};
+
 const ThresholdForm = ({
   thresholdPercent,
   minDiffOre,
@@ -470,6 +624,17 @@ const ElectricityPricesRoot = (props: ElectricityPricesViewProps) => {
         lastFetchedShort={props.lastFetchedShort}
       />
       <SourceForm {...props} />
+      {props.showExportSection && (
+        <ExportPriceForm
+          priceScheme={props.priceScheme}
+          exportPriceEnabled={props.exportPriceEnabled}
+          exportSpotFactor={props.exportSpotFactor}
+          exportFixed={props.exportFixed}
+          onExportEnabledChange={props.onExportEnabledChange}
+          onExportSpotFactorChange={props.onExportSpotFactorChange}
+          onExportFixedChange={props.onExportFixedChange}
+        />
+      )}
       <ThresholdForm
         thresholdPercent={props.thresholdPercent}
         minDiffOre={props.minDiffOre}

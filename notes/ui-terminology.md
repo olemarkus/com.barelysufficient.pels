@@ -420,6 +420,35 @@ The Budget chart (Progress + Hourly plan modes) reuses the same pinned-readout p
 
 Deliberate distinction: the Budget readout says `Actual` — it pairs with `Budget` (budget vs. actual) — while the Usage readouts say `Measured` (a bare measurement with no budget to compare against). Both terms stay; do not unify them.
 
+## Solar and export price vocabulary
+
+Solar (prosumer) homes introduce two more price concepts next to the one price
+every user already knows. Keep the three names distinct — every priced figure
+names exactly one of them:
+
+| Concept | Label | Per-hour field | Notes |
+|---|---|---|---|
+| The import price you're billed — the only price non-solar users ever see | **Import price** | `total` | Money and receipts stay on this; a receipt must reconcile to the bill. "Import price" is the disambiguator used ONLY on surfaces that also show the Export or Planning price; surfaces that show one price concept (all of today's non-solar UI) keep their established bare labels (`Price`, `Current price`). |
+| What you're paid — or charged — for exported power | **Export price** | `exportPrice` | Signed: negative means you pay to export. The Budget tab's prosumer-gated subline is the canonical rendering: `Export price now: 0.34 kr/kWh` (`composeExportPriceNow` in `packages/shared-domain/src/dailyBudgetHeroStrings.ts`), rendered only when an export price exists for the current hour. |
+| The derived price PELS plans against | **Planning price** | `budgetPrice` | Reason line: `using your solar`. Always labelled an estimate, never "the bill". |
+
+"Grid price" was considered and rejected for the import concept: it collides
+with the established **Grid tariff** (nettleie) vocabulary on the same
+Electricity prices view — for Norwegian users "grid" reads as the nettleie
+component, not the all-in billed price.
+
+Shipped solar control labels stay canonical (device-detail surface):
+
+| Control | Label |
+|---|---|
+| Per-device opt-in to absorb exported solar | **Use solar surplus** |
+| The setpoint lift applied while the home exports | **Solar-surplus boost (°C)** |
+
+`feed-in`, `plusskunde`, `self-consume`, `curtail`, and `surplus-absorb` are
+internal/market terms — user-facing copy says what happens (e.g. "use your own
+power instead of exporting it", "what you're paid for power you send to the
+grid").
+
 ## Mode label
 
 The Settings page renders the current operating mode as a single selector
