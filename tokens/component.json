@@ -211,8 +211,14 @@
       "plan": { "value": "{color.role.good}" },
       "plan-fill": { "value": "color-mix(in srgb, {color.role.good} 10%, transparent)" },
       "measured": { "value": "{color.semantic.accent}" },
-      "managed": { "value": "{color.role.warn}" },
-      "background": { "value": "{color.role.info}" },
+      "managed": {
+        "value": "{color.role.good}",
+        "comment": "Managed (PELS-influenceable) share of a usage split. Mint — the same family the Overview hero's managed power segment uses (`--pels-status-good`), so 'managed' reads as one colour across the hero bar, the Budget hourly stack, and the Usage stack. Previously `color.role.warn`, which collided with the amber `pels.chart.warn` unreliable-hour encoding."
+      },
+      "background": {
+        "value": "{color.semantic.text.muted}",
+        "comment": "Background (non-managed) share of a usage split. Neutral slate matching the Overview hero's background power segment tone; deliberately NOT `color.role.info`, which the semantic viz palette reserves for projection/forecast."
+      },
       "warn": { "value": "{color.role.warn}" },
       "danger": { "value": "{color.role.danger}" },
       "forecast": { "value": "{color.role.info}" },
@@ -227,6 +233,10 @@
       "hour-tone-skipped-outline": { "value": "{color.semantic.text.muted}" },
       "heatmap-border": { "value": "{color.surface.1}" },
       "disabled-bar": { "value": "{color.surface.4}" },
+      "unattributed": {
+        "value": "{color.surface.5}",
+        "comment": "Usage-stack segment for measured energy the managed/background split does not attribute (gross tracking gap). One surface step above `disabled-bar` so the claim-free region is visible against the plot without claiming a meaning; deliberately off-legend — the tapped readout carries the exact numbers."
+      },
       "unreliable-cell": { "value": "{color.surface.5}" },
       "cell-radius": {
         "value": "{radius.xs}",

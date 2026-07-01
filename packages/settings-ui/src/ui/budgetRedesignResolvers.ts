@@ -6,6 +6,7 @@ import type {
   BudgetConfidenceData,
   BudgetDeltaTone,
   BudgetHeroData,
+  BudgetHeroSplitData,
   BudgetLocalView,
   BudgetStatus,
 } from './views/BudgetOverview.tsx';
@@ -39,7 +40,6 @@ import {
   composeBudgetRemainingLineWithEstimate,
   composeBudgetRemainingToday,
   composeBudgetUsedOver,
-  composeManagedBackgroundLine,
   resolveChartSubtitle as resolveSharedChartSubtitle,
   resolveNoPlanLine as resolveSharedNoPlanLine,
   resolveTodayLine as resolveSharedTodayLine,
@@ -183,7 +183,10 @@ export const resolveDeltaPill = (
 
 const SPLIT_COVERAGE_THRESHOLD = 0.5;
 const BACKGROUND_SHARE_GAP = 0.1;
-const GROSS_SPLIT_EXCEEDS_NET_EPSILON_KWH = 0.05;
+// Day-level slack before the hero labels a gross-vs-net gap "Before solar:"
+// (distinct from the per-hour `SPLIT_KWH_EPSILON` in `chartTooltipFormat.ts`
+// — a whole day accumulates more benign drift than a single bucket).
+const HERO_BEFORE_SOLAR_EPSILON_KWH = 0.05;
 
 const sumElapsed = (values: number[], buckets: number): number => {
   let total = 0;
@@ -214,12 +217,18 @@ const resolveTodayManagedKWh = (payload: DailyBudgetDayPayload): number => {
   return managed;
 };
 
-// One-decimal rounding matching `composeManagedBackgroundLine`'s display
-// precision, so the residual subtraction below operates on the exact figures
-// the user sees.
+// One-decimal rounding matching the split labels' display precision
+// (`composeManagedSplitLabel` / `composeBackgroundSplitLabel`), so the
+// residual subtraction below operates on the exact figures the user sees.
 const roundDisplayKWh = (value: number): number => Math.round(value * 10) / 10;
 
-export const resolveSplitLine = (payload: DailyBudgetDayPayload): string => {
+// Structured managed/background split for the hero's stacked split bar. The
+// kWh figures are the DISPLAY values (one-decimal, residual-rounded) so the
+// bar segments and their labels describe identical numbers; `budgetKWh` and
+// `usedKWh` let the view scale the segments against the DAY'S BUDGET — the
+// empty track remainder is then literally the "left in today's budget" kWh
+// the subline above it names.
+export const resolveSplitData = (payload: DailyBudgetDayPayload): BudgetHeroSplitData => {
   // Residual rounding: the Budget chart readout displays the cumulative
   // actual total at the same one-decimal precision ("Actual 0.4 kWh").
   // Rounding Managed and Background independently can visibly contradict it
@@ -234,20 +243,32 @@ export const resolveSplitLine = (payload: DailyBudgetDayPayload): string => {
   const actualManaged = resolveTodayManagedKWh(payload);
   const actualBackground = sumElapsedNullable(payload.buckets.actualUncontrolledKWh, elapsed);
   const splitTotal = actualManaged + actualBackground;
+  const budgetKWh = Number.isFinite(payload.budget.dailyBudgetKWh) && payload.budget.dailyBudgetKWh > 0
+    ? payload.budget.dailyBudgetKWh
+    : null;
+  const usedKWh = Math.max(0, roundDisplayKWh(actualTotal));
   if (
-    splitTotal > GROSS_SPLIT_EXCEEDS_NET_EPSILON_KWH
+    splitTotal > HERO_BEFORE_SOLAR_EPSILON_KWH
     && splitTotal >= actualTotal * SPLIT_COVERAGE_THRESHOLD
-    && splitTotal > actualTotal + GROSS_SPLIT_EXCEEDS_NET_EPSILON_KWH
+    && splitTotal > actualTotal + HERO_BEFORE_SOLAR_EPSILON_KWH
   ) {
-    return `Before solar: ${composeManagedBackgroundLine(
-      roundDisplayKWh(actualManaged),
-      roundDisplayKWh(actualBackground),
-    )}`;
+    return {
+      managedKWh: roundDisplayKWh(actualManaged),
+      backgroundKWh: roundDisplayKWh(actualBackground),
+      beforeSolar: true,
+      budgetKWh,
+      usedKWh,
+    };
   }
-  const roundedTotal = Math.max(0, roundDisplayKWh(actualTotal));
-  const managed = Math.min(roundDisplayKWh(actualManaged), roundedTotal);
-  const background = Math.max(0, roundDisplayKWh(roundedTotal - managed));
-  return composeManagedBackgroundLine(managed, background);
+  const managed = Math.min(roundDisplayKWh(actualManaged), usedKWh);
+  const background = Math.max(0, roundDisplayKWh(usedKWh - managed));
+  return {
+    managedKWh: managed,
+    backgroundKWh: background,
+    beforeSolar: false,
+    budgetKWh,
+    usedKWh,
+  };
 };
 
 export type DominantCause = 'managed' | 'background';
@@ -339,7 +360,7 @@ export const resolveHeroData = (
       comparison: budgetEnabled ? DAILY_BUDGET_DISABLED_WAITING : DAILY_BUDGET_DISABLED_OFF,
       delta: null,
       budgetRemainingLine: null,
-      splitLine: null,
+      split: null,
       priceTagline: null,
       decision: resolveSharedNoPlanLine(view, budgetEnabled),
       heroTone: 'ok',
@@ -350,7 +371,7 @@ export const resolveHeroData = (
     comparison: formatComparisonLine(viewPayload, view),
     delta: resolveDeltaPill(viewPayload, view, status),
     budgetRemainingLine: view === 'today' ? resolveBudgetRemainingLine(viewPayload, costDisplay) : null,
-    splitLine: view === 'today' ? resolveSplitLine(viewPayload) : null,
+    split: view === 'today' ? resolveSplitData(viewPayload) : null,
     priceTagline: resolvePriceTagline(viewPayload, view),
     decision: resolveDecisionLine(viewPayload, view, status, budgetEnabled),
     heroTone: resolveTone(status),

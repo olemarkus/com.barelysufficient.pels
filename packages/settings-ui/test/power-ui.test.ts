@@ -1043,6 +1043,291 @@ describe('power page stats (buckets-only)', () => {
   });
 });
 
+describe('usage day stacked managed/background split', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    // Earlier tests in this file register doMocks for these modules;
+    // unregister them so this block exercises the real chart module (only
+    // the echarts registry is re-mocked per test where needed).
+    vi.doUnmock('../src/ui/usageDayChartEcharts.ts');
+    vi.doUnmock('../src/ui/usageStatsChartsEcharts.ts');
+    vi.doUnmock('../src/ui/echartsRegistry.ts');
+    buildPowerDom();
+  });
+
+  const mockEcharts = () => {
+    const setOption = vi.fn();
+    vi.doMock('../src/ui/echartsRegistry.ts', () => ({
+      initEcharts: vi.fn(() => ({
+        setOption,
+        resize: vi.fn(),
+        dispose: vi.fn(),
+      })),
+      encodeHtml: (value: string) => value,
+    }));
+    return setOption;
+  };
+
+  type CapturedSeries = {
+    name?: string;
+    type?: string;
+    stack?: string;
+    data?: Array<{ value: number } | number | null>;
+  };
+  type CapturedOption = {
+    legend?: { data?: Array<string | { name?: string }> };
+    series?: CapturedSeries[];
+  };
+
+  const legendNamesOf = (option: CapturedOption): Array<string | undefined> => (
+    (option.legend?.data ?? []).map((entry) => (typeof entry === 'string' ? entry : entry.name))
+  );
+
+  const seriesValueAt = (option: CapturedOption, name: string, index: number): number => {
+    const series = option.series?.find((entry) => entry.name === name);
+    const item = series?.data?.[index];
+    if (item === null || item === undefined) return 0;
+    return typeof item === 'number' ? item : item.value;
+  };
+
+  it('resolves stack segments that always sum to the measured total', async () => {
+    const { resolveUsageDayStackSegments } = await import('../src/ui/usageDayChartEcharts.ts');
+
+    // Exact split: no remainder.
+    expect(resolveUsageDayStackSegments({
+      measuredKWh: 2.5,
+      split: { managedKWh: 1.1, backgroundKWh: 1.4 },
+      warn: false,
+    })).toEqual({ backgroundKWh: 1.4, managedKWh: 1.1, unattributedKWh: 0, fallbackKWh: null });
+
+    // Under-attributed split: the measured remainder becomes the neutral
+    // third segment instead of inflating either side.
+    const withRemainder = resolveUsageDayStackSegments({
+      measuredKWh: 2.0,
+      split: { managedKWh: 0.6, backgroundKWh: 0.9 },
+      warn: false,
+    });
+    expect(withRemainder.unattributedKWh).toBeCloseTo(0.5, 9);
+    expect(withRemainder.backgroundKWh + withRemainder.managedKWh + withRemainder.unattributedKWh)
+      .toBeCloseTo(2.0, 9);
+
+    // Gross split exceeds measured net (self-consumed solar): both sides
+    // scale proportionally so the bar still totals the measured value; the
+    // readout carries the unscaled gross figures with "Before solar:".
+    const solar = resolveUsageDayStackSegments({
+      measuredKWh: 1.0,
+      split: { managedKWh: 2.0, backgroundKWh: 1.0 },
+      warn: false,
+    });
+    expect(solar.backgroundKWh + solar.managedKWh).toBeCloseTo(1.0, 9);
+    expect(solar.managedKWh / solar.backgroundKWh).toBeCloseTo(2.0, 9);
+
+    // FP-drift epsilon: a tracker sum a hair BELOW the measured total (float
+    // noise, not a real gap) still counts as fully attributed — no invisible
+    // unattributed sliver stealing the rounded top corners.
+    const drift = resolveUsageDayStackSegments({
+      measuredKWh: 2.0 + 1e-13,
+      split: { managedKWh: 1.0, backgroundKWh: 1.0 },
+      warn: false,
+    });
+    expect(drift.unattributedKWh).toBe(0);
+    expect(drift.backgroundKWh + drift.managedKWh).toBeCloseTo(2.0, 9);
+
+    // No split / warn hours fall back to the single full-height bar.
+    expect(resolveUsageDayStackSegments({ measuredKWh: 1.2, split: null, warn: false }).fallbackKWh).toBe(1.2);
+    expect(resolveUsageDayStackSegments({
+      measuredKWh: 1.2,
+      split: { managedKWh: 0.5, backgroundKWh: 0.4 },
+      warn: true,
+    }).fallbackKWh).toBe(1.2);
+
+    // A barely-started hour falls back to the single Measured bar so its
+    // `barMinHeight` stub stays visible (a stacked pair would be sub-pixel).
+    expect(resolveUsageDayStackSegments({
+      measuredKWh: 0.03,
+      split: { managedKWh: 0.02, backgroundKWh: 0.01 },
+      warn: false,
+    }).fallbackKWh).toBe(0.03);
+  });
+
+  it('renders stacked Background/Managed series whose sum equals each measured total', async () => {
+    const setOption = mockEcharts();
+    const { renderUsageDayChartEcharts } = await import('../src/ui/usageDayChartEcharts.ts');
+    const barsEl = document.querySelector('#usage-day-bars') as HTMLElement;
+    const labelsEl = document.querySelector('#usage-day-labels') as HTMLElement;
+
+    const bars = [
+      { label: '00:00', value: 2.5 },
+      { label: '01:00', value: 2.0 },
+      { label: '02:00', value: 0 },
+      // Gross-exceeds-net (solar) hour: the rendered column must still total
+      // the measured 1.0 kWh, split at the gross 2:1 ratio.
+      { label: '03:00', value: 1.0 },
+    ];
+    renderUsageDayChartEcharts({
+      bars,
+      splits: [
+        { managedKWh: 1.1, backgroundKWh: 1.4 },
+        { managedKWh: 0.6, backgroundKWh: 0.9 },
+        null,
+        { managedKWh: 2.0, backgroundKWh: 1.0 },
+      ],
+      labels: ['00:00', '01:00', '02:00', '03:00'],
+      currentBucketIndex: -1,
+      enabled: true,
+      barsEl,
+      labelsEl,
+    });
+
+    const option = setOption.mock.calls[0][0] as CapturedOption;
+    const stackNames = ['Background', 'Managed', 'Unattributed', 'Measured'];
+    // Series ordering is load-bearing: the readout's select dispatch list is
+    // built from these positions (`buildBarSeries` colocates both).
+    expect(option.series?.map((entry) => entry.name)).toEqual(stackNames);
+    for (const name of stackNames) {
+      const series = option.series?.find((entry) => entry.name === name);
+      expect(series?.type).toBe('bar');
+      expect(series?.stack).toBe('measured');
+    }
+    bars.forEach((bar, index) => {
+      const total = stackNames.reduce((sum, name) => sum + seriesValueAt(option, name, index), 0);
+      expect(total).toBeCloseTo(bar.value, 9);
+    });
+    // Split hours render through the stack (fallback series has NO data point
+    // there — a zero would paint a barMinHeight stub on top of the column).
+    const measuredSeries = option.series?.find((entry) => entry.name === 'Measured');
+    expect(measuredSeries?.data?.[0]).toBeNull();
+    expect(seriesValueAt(option, 'Unattributed', 1)).toBeCloseTo(0.5, 9);
+    // The zero-value no-split hour emits NO datum at all — a zero would still
+    // paint a barMinHeight nub the legend deliberately does not explain.
+    expect(measuredSeries?.data?.[2]).toBeNull();
+    // Solar column: proportional rescale, gross ratio preserved, no
+    // unattributed sliver.
+    expect(seriesValueAt(option, 'Managed', 3) / seriesValueAt(option, 'Background', 3)).toBeCloseTo(2.0, 9);
+    expect(seriesValueAt(option, 'Unattributed', 3)).toBe(0);
+  });
+
+  it('shows exactly the two split legend entries when split data covers the measured hours', async () => {
+    const setOption = mockEcharts();
+    const { renderUsageDayChartEcharts } = await import('../src/ui/usageDayChartEcharts.ts');
+    const barsEl = document.querySelector('#usage-day-bars') as HTMLElement;
+    const labelsEl = document.querySelector('#usage-day-labels') as HTMLElement;
+
+    renderUsageDayChartEcharts({
+      bars: [
+        { label: '00:00', value: 2.5 },
+        // Future hour: zero measurement, no split — must not force a
+        // "Measured" legend entry.
+        { label: '01:00', value: 0 },
+      ],
+      splits: [{ managedKWh: 1.1, backgroundKWh: 1.4 }, null],
+      labels: ['00:00', '01:00'],
+      currentBucketIndex: 0,
+      enabled: true,
+      barsEl,
+      labelsEl,
+    });
+
+    const option = setOption.mock.calls[0][0] as CapturedOption;
+    expect(legendNamesOf(option)).toEqual(['Background', 'Managed']);
+  });
+
+  it('adds the Measured legend entry when a measured hour lacks split data', async () => {
+    const setOption = mockEcharts();
+    const { renderUsageDayChartEcharts } = await import('../src/ui/usageDayChartEcharts.ts');
+    const barsEl = document.querySelector('#usage-day-bars') as HTMLElement;
+    const labelsEl = document.querySelector('#usage-day-labels') as HTMLElement;
+
+    renderUsageDayChartEcharts({
+      bars: [
+        { label: '00:00', value: 2.5 },
+        { label: '01:00', value: 1.2 },
+      ],
+      splits: [{ managedKWh: 1.1, backgroundKWh: 1.4 }, null],
+      labels: ['00:00', '01:00'],
+      currentBucketIndex: -1,
+      enabled: true,
+      barsEl,
+      labelsEl,
+    });
+
+    const option = setOption.mock.calls[0][0] as CapturedOption;
+    expect(legendNamesOf(option)).toEqual(['Background', 'Managed', 'Measured']);
+    // The no-split hour renders as a single full-height Measured bar.
+    expect(seriesValueAt(option, 'Measured', 1)).toBe(1.2);
+    expect(seriesValueAt(option, 'Background', 1)).toBe(0);
+    expect(seriesValueAt(option, 'Managed', 1)).toBe(0);
+  });
+
+  it('keeps warn hours as full-height Warning-toned bars and lists both legends', async () => {
+    const setOption = mockEcharts();
+    const { renderUsageDayChartEcharts } = await import('../src/ui/usageDayChartEcharts.ts');
+    const barsEl = document.querySelector('#usage-day-bars') as HTMLElement;
+    const labelsEl = document.querySelector('#usage-day-labels') as HTMLElement;
+
+    renderUsageDayChartEcharts({
+      bars: [
+        { label: '00:00', value: 2.5 },
+        { label: '01:00', value: 1.2, state: 'warn' as const },
+      ],
+      splits: [
+        { managedKWh: 1.1, backgroundKWh: 1.4 },
+        // The warn hour's split is ignored — attributing an unreliable
+        // hour's samples would over-claim.
+        { managedKWh: 0.5, backgroundKWh: 0.4 },
+      ],
+      labels: ['00:00', '01:00'],
+      currentBucketIndex: -1,
+      enabled: true,
+      barsEl,
+      labelsEl,
+    });
+
+    const option = setOption.mock.calls[0][0] as CapturedOption;
+    expect(legendNamesOf(option)).toEqual(['Background', 'Managed', 'Warning']);
+    expect(seriesValueAt(option, 'Measured', 1)).toBe(1.2);
+    expect(seriesValueAt(option, 'Background', 1)).toBe(0);
+    expect(seriesValueAt(option, 'Managed', 1)).toBe(0);
+  });
+
+  it('passes splits that reconcile with the tapped-hour readout numbers', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(Date.UTC(2025, 0, 6, 12, 0, 0)));
+    await installHomeyClient({}, 'UTC');
+    type CapturedParams = {
+      bars: Array<{ value: number }>;
+      splits?: Array<{ managedKWh: number; backgroundKWh: number } | null>;
+      readouts?: Array<{ when: string; values: Array<{ text: string }> }>;
+    };
+    let captured: CapturedParams | null = null;
+    const renderUsageDayChartEcharts = vi.fn((params: CapturedParams) => {
+      captured = params;
+      return true;
+    });
+    vi.doMock('../src/ui/usageDayChartEcharts.ts', () => ({ renderUsageDayChartEcharts }));
+    const { renderUsageDayView } = await import('../src/ui/usageDayView.ts');
+
+    renderUsageDayView([{
+      hour: new Date('2025-01-06T00:00:00.000Z'),
+      kWh: 2.5,
+      controlledKWh: 1.1,
+      uncontrolledKWh: 1.4,
+    }]);
+
+    const params = captured as CapturedParams | null;
+    // The stack and the readout read the SAME bucket values, so the tapped
+    // hour's numbers reconcile with the segment heights by construction.
+    expect(params?.splits?.[0]).toEqual({ managedKWh: 1.1, backgroundKWh: 1.4 });
+    const splitLine = params?.readouts?.[0]?.values[1]?.text ?? '';
+    // Readout segments join their tokens with NBSP (see chartTooltipFormat.ts).
+    expect(splitLine).toContain('Managed 1.10 kWh'.split(' ').join(' '));
+    expect(splitLine).toContain('Background 1.40 kWh'.split(' ').join(' '));
+    // Hours without buckets carry no split.
+    expect(params?.splits?.[1]).toBeNull();
+    vi.useRealTimers();
+  });
+});
+
 describe('resolveActiveDailyBudgetKWh', () => {
   const payloadWith = (budget: { enabled: boolean; dailyBudgetKWh: number }) => ({
     todayKey: '2025-01-06',

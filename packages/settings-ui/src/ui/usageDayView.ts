@@ -16,7 +16,7 @@ import { getHomeyTimezone } from './homey.ts';
 import { createToggleGroup } from './components.ts';
 import type { DayViewBar } from './dayViewChart.ts';
 import { buildUsageDayReadout, type ChartReadoutContent } from './chartTooltipFormat.ts';
-import { renderUsageDayChartEcharts } from './usageDayChartEcharts.ts';
+import { renderUsageDayChartEcharts, type UsageDaySplit } from './usageDayChartEcharts.ts';
 import {
   buildLocalDayBuckets,
   formatDateInTimeZone,
@@ -230,9 +230,21 @@ const getUsageDayBars = (buckets: UsageDayBucket[], currentBucketIndex: number):
       value: bucket.measuredKWh,
       state,
       className: warn ? 'usage-day-bar is-warn' : 'usage-day-bar',
-      segments: [{ value: bucket.measuredKWh, className: 'day-view-bar__segment--measured' }],
     };
   })
+);
+
+// Per-hour managed/background split feeding the chart's stacked bars. Both
+// halves must exist (the shared resolver returns them as a pair); hours
+// without a split render as a single Measured-toned bar. The same bucket
+// values feed the readout via `buildUsageDayBucketReadout`, so the stack and
+// the tapped-hour numbers reconcile by construction.
+const getUsageDaySplits = (buckets: UsageDayBucket[]): Array<UsageDaySplit | null> => (
+  buckets.map((bucket) => (
+    bucket.controlledKWh !== null && bucket.uncontrolledKWh !== null
+      ? { managedKWh: bucket.controlledKWh, backgroundKWh: bucket.uncontrolledKWh }
+      : null
+  ))
 );
 
 // Default readout selection: the current hour on the Today view (the most
@@ -273,6 +285,7 @@ export const renderUsageDayView = (entries: UsageDayEntry[]) => {
   ));
   const renderedWithEcharts = renderUsageDayChartEcharts({
     bars,
+    splits: getUsageDaySplits(buckets),
     labels,
     readouts,
     readoutHost: usageDayReadout,
