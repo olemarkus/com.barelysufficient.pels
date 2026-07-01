@@ -306,22 +306,23 @@ CI failure, so future field-move slices can't silently grow the debt.*
       Export pricing is now applied scheme-independently (decoupled from the import scheme): the Norway
       scheme links to its isolatable spot, while the flow/Homey schemes (e.g. NL) get the fixed feed-in
       tariff (a spot-linked config yields no export price there, since no spot is isolatable). The derived
-      `budgetPrice` ships and the planning consumers now read it (`budgetPrice ?? total`): daily-budget
+      `budgetPrice` ships and the planning consumers read it (`budgetPrice ?? total`): daily-budget
       shaping/allocation, smart-task horizons, price levels (live + persisted flags), and cheapest-hours —
       while money/receipt surfaces (`buckets.price`, Budget-chart cost lines, postmortem `priceValue`,
       price-info strings) stay on `total`. Snapshot freshness is handled by the PV-forecast-refresh
       completion hook (`PvForecastController.setOnRefreshed` → `updateCombinedPrices`, registered after
-      `wireBudgetPrice`). Remaining: the settings-UI export section +
-      contracts `settingsKeys` mirror + "Grid price" / "Export price" / "Planning price" labels + a
-      Budget-tab export subline. Also fold in the smart-task *preview* price reader, which still sources
-      `buckets.price` (total-based) from the daily-budget snapshot pending the preview migration, so the
-      preview curve/cost can disagree with the planning-price allocation for prosumers.
+      `wireBudgetPrice`). The settings-UI increment shipped too: the prosumer-gated "Export price"
+      section in ElectricityPricesView, the contracts `settingsKeys` mirror (+ bootstrap keys), the
+      Import/Export/Planning price vocabulary in `notes/ui-terminology.md`, and the Budget-tab
+      "Export price now" subline. Remaining: fold in the smart-task *preview* price reader, which still
+      sources `buckets.price` (total-based) from the daily-budget snapshot pending the preview migration,
+      so the preview curve/cost can disagree with the planning-price allocation for prosumers.
       *Persona:* prosumer (Norwegian plusskunde, or NL post-saldering) self-consuming solar.
-      *P2:* planning consumers ship; the user-facing labels/controls are the remaining work.
+      *P2:* consumers + settings UI ship; the preview-reader fold-in is the remaining work.
 
 - [ ] **Planning price — three deliberate exclusions to revisit.** (1) The `price_lowest_before` /
       `price_lowest_today` flow cards and their 30 s trigger checker
-      (`lib/price/priceLowestFlowEvaluator.ts`) deliberately stay on the Grid price `total`: their
+      (`lib/price/priceLowestFlowEvaluator.ts`) deliberately stay on the Import price `total`: their
       `current_price` token is money the user compares against their bill, and ranking the trigger by
       the planning price would emit a token that no longer matches the price that picked the hour.
       Decide separately whether to migrate (planning-ranked hour + total-money token, or a second
@@ -410,6 +411,38 @@ CI failure, so future field-move slices can't silently grow the debt.*
       require a confirming read) before the first destructive persist. *Persona:* prosumer on a Homey Pro
       that restarts under memory pressure. *Hypothesis:* transient settings-read failures are common enough
       on the Homey SDK that a 90-day history will eventually be lost to a boot race.
+
+- [ ] **Budget hero: group the passive readout sublines before a fifth one lands.** The hero now
+      stacks four muted sublines on a prosumer today-view (budget remaining + estimated cost,
+      managed/background split, "Using cheaper hours", "Export price now") — each earned its slot,
+      but the stack is at the edge of scan-friendly. Before any further subline is added, fold the
+      passive readouts into a grouped presentation (e.g. a two-column readout row or a compact
+      key-value block) so the decision line keeps its prominence. *Persona:* Set-and-forget owner —
+      the Budget glance must stay one-breath readable. *Hypothesis:* a fifth stacked subline turns
+      the hero from a verdict into a list. *P2 (M3 review, export-price PR).*
+
+- [ ] **Electricity prices "Right now" card: show the export price beside "Current price", and attach
+      the "using your solar" reason line when the planning price ships to the UI.** The live summary
+      card answers "what is power worth right now?" for the import side only; a prosumer with export
+      pricing on has no equivalent glance on the page where they configured it (the value lives only
+      on the Budget tab). When the planning-price display increment (consumer-rewiring follow-up)
+      lands, add the export price row here and the canonical `using your solar` reason line where the
+      planning price surfaces. *Persona:* Prosumer verifying their export config does something.
+      *P2 (UX-fit review, export-price PR).*
+
+- [ ] **Norway→flow→norway export round trip: pure-share configs lose the share; fixed-amount
+      configs come back with a re-enable — accepted trade-offs.** Leaving the Norway scheme with
+      export pricing enabled takes one of two paths (`resolveExportSchemeChangePlan` in
+      `exportPriceSettings.ts`): a non-zero fixed amount turns export pricing OFF (øre/kWh cannot
+      cross into the flow/homey source unit — carried raw, −5 øre would become −5 source-units),
+      keeping the stored numbers inert so switching back to Norway only needs a re-enable; a pure
+      share config (fixed = 0) normalizes `export_spot_factor` to 0 (a spot-linked share without an
+      isolatable spot yields NO export price), so the share is re-entered on return. Both are
+      toasted; a stale non-zero share on a spot-less scheme (CLI-set or a failed write) renders
+      editable with a "set the share to 0" repair note rather than a masked 0. Deliberate
+      (honest-state over config memory); revisit only if scheme switching turns out to be a real
+      workflow. *Persona:* Orchestrator experimenting with price sources. *P3 (adversarial review
+      rounds 2+4, export-price PR).*
 
 - [ ] **Generation-guard the rescue-gate state commit in `loadStarvationRescuableDevices`.** `overviewRescueGate`
       now guards the *repaint* after a gate refresh, but the controller's

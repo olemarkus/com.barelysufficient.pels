@@ -77,4 +77,27 @@ describe('normalizeCombinedPrices', () => {
     expect(normalizeCombinedPrices(42)).toEqual([]);
     expect(normalizeCombinedPrices({})).toEqual([]);
   });
+
+  it('carries finite exportPrice and budgetPrice through, including negatives', () => {
+    const rows = normalizeCombinedPrices([
+      { startsAt: '2026-05-17T10:00:00.000Z', total: 0.42, exportPrice: 0.34, budgetPrice: 0.38 },
+      // Negative export price (you-pay case) is legal and must survive.
+      { startsAt: '2026-05-17T11:00:00.000Z', total: 0.42, exportPrice: -0.02 },
+    ]);
+    expect(rows).toEqual([
+      { startsAt: '2026-05-17T10:00:00.000Z', total: 0.42, exportPrice: 0.34, budgetPrice: 0.38 },
+      { startsAt: '2026-05-17T11:00:00.000Z', total: 0.42, exportPrice: -0.02 },
+    ]);
+  });
+
+  it('drops non-finite or malformed exportPrice/budgetPrice without dropping the row', () => {
+    const rows = normalizeCombinedPrices([
+      { startsAt: '2026-05-17T12:00:00.000Z', total: 0.42, exportPrice: Number.NaN, budgetPrice: Number.POSITIVE_INFINITY },
+      { startsAt: '2026-05-17T13:00:00.000Z', total: 0.42, exportPrice: '0.34', budgetPrice: null },
+    ]);
+    expect(rows).toEqual([
+      { startsAt: '2026-05-17T12:00:00.000Z', total: 0.42 },
+      { startsAt: '2026-05-17T13:00:00.000Z', total: 0.42 },
+    ]);
+  });
 });
