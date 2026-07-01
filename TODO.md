@@ -299,22 +299,34 @@ CI failure, so future field-move slices can't silently grow the debt.*
       Export pricing is now applied scheme-independently (decoupled from the import scheme): the Norway
       scheme links to its isolatable spot, while the flow/Homey schemes (e.g. NL) get the fixed feed-in
       tariff (a spot-linked config yields no export price there, since no spot is isolatable). The derived
-      `budgetPrice` now ships too — a coverage-weighted blend of export (over the forecast surplus) vs
-      import — computed, persisted, and fed from the live PV forecast minus the gross uncontrolled
-      background. Remaining: (a) **rewire the planning consumers to read `budgetPrice ?? total`** — the
-      daily-budget shaping (`lib/dailyBudget/dailyBudgetPrices.ts`), smart-task horizons
-      (`lib/price/priceStore.ts`), and price-opt — so prosumer homes actually plan against the planning
-      price instead of the import price (a deliberate, capacity-sensitive behaviour change needing its own
-      tests; today `budgetPrice` is produced but unconsumed). That increment also owns **snapshot freshness**:
-      the persisted `combined_prices` only carries `budgetPrice` from the next natural price refresh after the
-      PV forecast is learned (the async Open-Meteo fetch lands after boot). Once consumers read it, recompute
-      `combined_prices` on PV-forecast-refresh completion (a controller completion hook) — NOT a boot-time
-      forced recompute, which re-fires `onCombinedPricesUpdated` mid-startup and perturbs the planner.
-      (b) the settings-UI export section +
+      `budgetPrice` ships and the planning consumers now read it (`budgetPrice ?? total`): daily-budget
+      shaping/allocation, smart-task horizons, price levels (live + persisted flags), and cheapest-hours —
+      while money/receipt surfaces (`buckets.price`, Budget-chart cost lines, postmortem `priceValue`,
+      price-info strings) stay on `total`. Snapshot freshness is handled by the PV-forecast-refresh
+      completion hook (`PvForecastController.setOnRefreshed` → `updateCombinedPrices`, registered after
+      `wireBudgetPrice`). Remaining: the settings-UI export section +
       contracts `settingsKeys` mirror + "Grid price" / "Export price" / "Planning price" labels + a
-      Budget-tab export subline.
+      Budget-tab export subline. Also fold in the smart-task *preview* price reader, which still sources
+      `buckets.price` (total-based) from the daily-budget snapshot pending the preview migration, so the
+      preview curve/cost can disagree with the planning-price allocation for prosumers.
       *Persona:* prosumer (Norwegian plusskunde, or NL post-saldering) self-consuming solar.
-      *P2:* `budgetPrice` is produced + persisted today; the user-facing value lands when consumers read it (a).
+      *P2:* planning consumers ship; the user-facing labels/controls are the remaining work.
+
+- [ ] **Planning price — two deliberate exclusions to revisit.** (1) The `price_lowest_before` /
+      `price_lowest_today` flow cards and their 30 s trigger checker
+      (`lib/price/priceLowestFlowEvaluator.ts`) deliberately stay on the Grid price `total`: their
+      `current_price` token is money the user compares against their bill, and ranking the trigger by
+      the planning price would emit a token that no longer matches the price that picked the hour.
+      Decide separately whether to migrate (planning-ranked hour + total-money token, or a second
+      planning-price token). (2) Capacity-limit staleness window: `CAPACITY_LIMIT_KW` sits in
+      `DEDUPED_CAPACITY_KEYS`, not `DEDUPED_PRICE_KEYS` (`lib/utils/settingsHandlers.ts`), so changing
+      the capacity limit (the budgetPrice blend denominator) updates live cheap/expensive classification
+      immediately (computed on read) while the persisted `combined_prices` flags/budgetPrice wait for the
+      next natural refresh or PV-forecast hook (≤3 h). Harmless drift window; wire `CAPACITY_LIMIT_KW`
+      into a combined-prices recompute if it ever matters.
+      *Persona:* prosumer with export pricing configured who tunes their main-fuse capacity limit.
+      *Hypothesis:* the ≤3 h persisted-flag drift is invisible in practice; the flow-card token split is
+      the one a user could notice (trigger fires on a "cheap" surplus hour whose money token looks high).
 
 - [ ] **Generation-guard the rescue-gate state commit in `loadStarvationRescuableDevices`.** `overviewRescueGate`
       now guards the *repaint* after a gate refresh, but the controller's

@@ -145,13 +145,16 @@ export const buildDeferredObjectivePolicyHorizon = (params: {
   };
 };
 
-// Per-bucket spot price keyed by bucket id (the bucket's ISO start string,
-// which is also `DeferredObjectivePlannedBucket.sourceBucketId`). Built from
-// the SAME `collectSnapshotPriceBuckets` source the policy horizon consumes,
-// so a cost estimate computed by multiplying planned kWh by these prices uses
-// exactly the price data the planner saw. Returns an empty map when the
-// snapshot has no usable price buckets. Used by the plan-preview composition,
-// which needs the raw per-bucket price to cost the plan.
+// Per-bucket Grid price (`total`) keyed by bucket id (the bucket's ISO start
+// string, which is also `DeferredObjectivePlannedBucket.sourceBucketId`), read
+// from the daily-budget snapshot's money series (`buckets.price`). Deliberately
+// split from what the allocation ranks on: the planner schedules against the
+// planning-price horizon (`budgetPrice ?? total` via
+// `buildPriceHorizonFromCombined`), while this cost map stays on the money
+// price — so for a prosumer the preview's price curve/cost can diverge from the
+// planner's ranking (TODO-tracked with the preview migration). Returns an empty
+// map when the snapshot has no usable price buckets. Used by the plan-preview
+// composition, which needs the raw per-bucket price to cost the plan.
 // TODO: preview reader still sources price from the daily-budget snapshot pending the preview migration.
 export const buildDeferredObjectivePolicyBucketPrices = (
   dailyBudgetSnapshot: DailyBudgetUiPayload | null,

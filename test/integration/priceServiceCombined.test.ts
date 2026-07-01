@@ -63,6 +63,86 @@ describe('buildCombinedPricePayload (V2)', () => {
     expect(hours[1].exportPrice).toBeUndefined();
   });
 
+  test('carries budgetPrice + exportPrice (incl negative budgetPrice) into the persisted V2 entry', () => {
+    const start = Date.UTC(2026, 2, 18, 23, 0, 0); // local Oslo 2026-03-19 00:00
+    const payload = buildCombinedPricePayload({
+      combined: [
+        { startsAt: new Date(start).toISOString(), totalPrice: 100, exportPrice: 4, budgetPrice: -2.5 },
+        { startsAt: new Date(start + 3600_000).toISOString(), totalPrice: 120 },
+        { startsAt: new Date(start + 2 * 3600_000).toISOString(), totalPrice: 110, budgetPrice: Number.NaN },
+      ],
+      priceScheme: 'norway',
+      priceUnit: 'NOK/kWh',
+      thresholdPercent: 25,
+      minDiffOre: 0,
+      now: new Date(start + 5 * 3600_000),
+      timeZone: TZ,
+    });
+    const hours = payload.days['2026-03-19'].hours;
+    // Negative planning prices are legal and persisted unclamped; `total` stays
+    // the import money price.
+    expect(hours[0].budgetPrice).toBe(-2.5);
+    expect(hours[0].exportPrice).toBe(4);
+    expect(hours[0].total).toBe(100);
+    expect(hours[1].budgetPrice).toBeUndefined();
+    // Non-finite budgetPrice is dropped at the persistence boundary.
+    expect(hours[2].budgetPrice).toBeUndefined();
+  });
+
+  test('computes avg/thresholds/tier flags over the planning price (budgetPrice ?? totalPrice)', () => {
+    const start = Date.UTC(2026, 2, 18, 23, 0, 0); // local Oslo 2026-03-19 00:00
+    const payload = buildCombinedPricePayload({
+      combined: [
+        // Highest total but a surplus-blended planning price of 10.
+        { startsAt: new Date(start).toISOString(), totalPrice: 200, budgetPrice: 10 },
+        { startsAt: new Date(start + 3600_000).toISOString(), totalPrice: 100 },
+      ],
+      priceScheme: 'norway',
+      priceUnit: 'NOK/kWh',
+      thresholdPercent: 25,
+      minDiffOre: 0,
+      now: new Date(start + 5 * 3600_000),
+      timeZone: TZ,
+    });
+    // Planning avg = (10 + 100) / 2 = 55; low = 41.25, high = 68.75.
+    expect(payload.avgPrice).toBeCloseTo(55, 9);
+    expect(payload.lowThreshold).toBeCloseTo(41.25, 9);
+    expect(payload.highThreshold).toBeCloseTo(68.75, 9);
+    const hours = payload.days['2026-03-19'].hours;
+    // Total-based flags would call the 200-total hour expensive-vs-avg-150 —
+    // the planning-price flags instead classify the blend it schedules at.
+    expect(hours[0].isCheap).toBe(true);
+    expect(hours[0].isExpensive).toBe(false);
+    expect(hours[1].isCheap).toBe(false);
+    expect(hours[1].isExpensive).toBe(true);
+  });
+
+  test('invariance: no budgetPrice (or budgetPrice === totalPrice) yields the historical flags', () => {
+    const start = Date.UTC(2026, 2, 18, 23, 0, 0); // local Oslo 2026-03-19 00:00
+    const build = (withEqualBudget: boolean) => buildCombinedPricePayload({
+      combined: [
+        { startsAt: new Date(start).toISOString(), totalPrice: 50, ...(withEqualBudget ? { budgetPrice: 50 } : {}) },
+        { startsAt: new Date(start + 3600_000).toISOString(), totalPrice: 100, ...(withEqualBudget ? { budgetPrice: 100 } : {}) },
+        { startsAt: new Date(start + 2 * 3600_000).toISOString(), totalPrice: 150, ...(withEqualBudget ? { budgetPrice: 150 } : {}) },
+      ],
+      priceScheme: 'norway',
+      priceUnit: 'NOK/kWh',
+      thresholdPercent: 25,
+      minDiffOre: 0,
+      now: new Date(start + 5 * 3600_000),
+      timeZone: TZ,
+    });
+    for (const payload of [build(false), build(true)]) {
+      // Historical total-based classification: avg 100, low 75, high 125.
+      expect(payload.avgPrice).toBe(100);
+      expect(payload.lowThreshold).toBe(75);
+      expect(payload.highThreshold).toBe(125);
+      const hours = payload.days['2026-03-19'].hours;
+      expect(hours.map((h) => h.isCheap)).toEqual([true, false, false]);
+      expect(hours.map((h) => h.isExpensive)).toEqual([false, false, true]);
+    }
+  });
+
   test('drops hours outside yesterday/today/tomorrow window', () => {
     const start = Date.UTC(2026, 2, 14, 23, 0, 0); // 2026-03-15 local
     const hours = buildHours(start, 24 * 7);
