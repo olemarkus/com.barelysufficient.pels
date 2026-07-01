@@ -186,6 +186,7 @@
   --pels-chart-price-fill: color-mix(in srgb, var(--color-base-price-default) 18%, transparent);
   --pels-chart-heatmap-border: var(--color-surface-1);
   --pels-chart-disabled-bar: var(--color-surface-4);
+  --pels-chart-unattributed: var(--color-surface-5); /** Usage-stack segment for measured energy the managed/background split does not attribute (gross tracking gap). One surface step above `disabled-bar` so the claim-free region is visible against the plot without claiming a meaning; deliberately off-legend — the tapped readout carries the exact numbers. */
   --pels-chart-unreliable-cell: var(--color-surface-5);
   --pels-chart-cell-radius: var(--radius-xs); /** Heatmap-cell corner radius shared by powerWeekChartEcharts.ts (ECharts `borderRadius`) and `.usage-legend__swatch--unreliable`. Promoted from a parallel `--radius-xs` literal so the legend/cell shape contract is enforced at the chart token layer. */
   --pels-chart-grid: var(--color-border-medium);
@@ -230,8 +231,8 @@
   --pels-chart-plan: var(--color-role-good);
   --pels-chart-plan-fill: color-mix(in srgb, var(--color-role-good) 10%, transparent);
   --pels-chart-measured: var(--color-semantic-accent);
-  --pels-chart-managed: var(--color-role-warn);
-  --pels-chart-background: var(--color-role-info);
+  --pels-chart-managed: var(--color-role-good); /** Managed (PELS-influenceable) share of a usage split. Mint — the same family the Overview hero's managed power segment uses (`--pels-status-good`), so 'managed' reads as one colour across the hero bar, the Budget hourly stack, and the Usage stack. Previously `color.role.warn`, which collided with the amber `pels.chart.warn` unreliable-hour encoding. */
+  --pels-chart-background: var(--color-semantic-text-muted); /** Background (non-managed) share of a usage split. Neutral slate matching the Overview hero's background power segment tone; deliberately NOT `color.role.info`, which the semantic viz palette reserves for projection/forecast. */
   --pels-chart-warn: var(--color-role-warn);
   --pels-chart-danger: var(--color-role-danger);
   --pels-chart-forecast: var(--color-role-info);

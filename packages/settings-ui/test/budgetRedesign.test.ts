@@ -11,7 +11,7 @@ import {
   resolveBudgetRemainingLine,
   resolveHeroData,
   resolvePlanPayload,
-  resolveSplitLine,
+  resolveSplitData,
 } from '../src/ui/budgetRedesignResolvers.ts';
 import { resolveAllocationWarning } from '../src/ui/dailyBudgetAllocationWarning.ts';
 import {
@@ -31,8 +31,9 @@ import {
   BUDGET_TOMORROW_PRICE_SHAPED,
   YESTERDAY_FINISHED_OVER_BUDGET,
   YESTERDAY_FINISHED_WITHIN_BUDGET,
+  composeBackgroundSplitLabel,
   composeBudgetHeroOverBy,
-  composeManagedBackgroundLine,
+  composeManagedSplitLabel,
   resolveNoPlanLine,
   resolveTomorrowLine,
 } from '../../shared-domain/src/dailyBudgetHeroStrings';
@@ -327,19 +328,26 @@ describe('resolveDeltaPill', () => {
   });
 });
 
-describe('resolveSplitLine', () => {
-  it('renders managed and background totals when split arrays present', () => {
+describe('resolveSplitData', () => {
+  it('returns the display-rounded structured split feeding the hero split bar', () => {
     const payload = buildPayload({
       actualKWh: Array.from({ length: 24 }, (_, i) => (i < 12 ? 2.5 : 0)),
       actualControlledKWh: Array.from({ length: 24 }, (_, i) => (i < 12 ? 1.0 : null)),
       actualUncontrolledKWh: Array.from({ length: 24 }, (_, i) => (i < 12 ? 1.5 : null)),
     });
-    expect(resolveSplitLine(payload)).toBe('Managed 12.0 kWh · Background 18.0 kWh');
+    expect(resolveSplitData(payload)).toEqual({
+      managedKWh: 12.0,
+      backgroundKWh: 18.0,
+      beforeSolar: false,
+      budgetKWh: 60,
+      usedKWh: 30.0,
+    });
   });
 
   it('zero-fills managed when split arrays are missing', () => {
-    const payload = buildPayload();
-    expect(resolveSplitLine(payload)).toMatch(/^Managed 0\.0 kWh · Background /);
+    const split = resolveSplitData(buildPayload());
+    expect(split.managedKWh).toBe(0);
+    expect(split.beforeSolar).toBe(false);
   });
 
   it('includes the in-progress current bucket so the split tracks the headline', () => {
@@ -361,7 +369,9 @@ describe('resolveSplitLine', () => {
         return null;
       }),
     });
-    expect(resolveSplitLine(payload)).toBe('Managed 12.5 kWh · Background 18.7 kWh');
+    const split = resolveSplitData(payload);
+    expect(split.managedKWh).toBe(12.5);
+    expect(split.backgroundKWh).toBe(18.7);
   });
 
   it('keeps the split summing to the rounded actual total (residual rounding)', () => {
@@ -375,7 +385,10 @@ describe('resolveSplitLine', () => {
       actualControlledKWh: [0.14, ...Array.from({ length: 23 }, () => null)],
       actualUncontrolledKWh: [0.22, ...Array.from({ length: 23 }, () => null)],
     });
-    expect(resolveSplitLine(payload)).toBe('Managed 0.1 kWh · Background 0.3 kWh');
+    const split = resolveSplitData(payload);
+    expect(split.managedKWh).toBe(0.1);
+    expect(split.backgroundKWh).toBe(0.3);
+    expect(split.managedKWh + split.backgroundKWh).toBeCloseTo(split.usedKWh, 9);
   });
 
   it('clamps rounded managed to the rounded total so no component overstates it', () => {
@@ -390,37 +403,74 @@ describe('resolveSplitLine', () => {
       actualControlledKWh: [0.35, ...Array.from({ length: 23 }, () => null)],
       actualUncontrolledKWh: [0, ...Array.from({ length: 23 }, () => null)],
     });
-    expect(resolveSplitLine(payload)).toBe('Managed 0.3 kWh · Background 0.0 kWh');
+    const split = resolveSplitData(payload);
+    expect(split.managedKWh).toBe(0.3);
+    expect(split.backgroundKWh).toBe(0);
+    expect(split.usedKWh).toBe(0.3);
   });
 
-  it('labels gross managed and background attribution when solar makes the measured net lower', () => {
+  it('flags before-solar attribution when the gross split exceeds the measured net', () => {
     const payload = buildPayload({
       currentBucketIndex: 0,
       actualKWh: [0.5, ...Array.from({ length: 23 }, () => 0)],
       actualControlledKWh: [2.0, ...Array.from({ length: 23 }, () => null)],
       actualUncontrolledKWh: [1.0, ...Array.from({ length: 23 }, () => null)],
     });
-    expect(resolveSplitLine(payload)).toBe('Before solar: Managed 2.0 kWh · Background 1.0 kWh');
+    // Gross labels stay unscaled; `usedKWh` carries the NET total the bar
+    // paints against the budget.
+    expect(resolveSplitData(payload)).toEqual({
+      managedKWh: 2.0,
+      backgroundKWh: 1.0,
+      beforeSolar: true,
+      budgetKWh: 60,
+      usedKWh: 0.5,
+    });
   });
 
-  it('labels gross attribution when solar fully offsets the measured net', () => {
+  it('flags gross attribution when solar fully offsets the measured net', () => {
     const payload = buildPayload({
       currentBucketIndex: 0,
       actualKWh: [0, ...Array.from({ length: 23 }, () => 0)],
       actualControlledKWh: [2.0, ...Array.from({ length: 23 }, () => null)],
       actualUncontrolledKWh: [1.0, ...Array.from({ length: 23 }, () => null)],
     });
-    expect(resolveSplitLine(payload)).toBe('Before solar: Managed 2.0 kWh · Background 1.0 kWh');
+    const split = resolveSplitData(payload);
+    expect(split.beforeSolar).toBe(true);
+    expect(split.managedKWh).toBe(2.0);
+    expect(split.backgroundKWh).toBe(1.0);
+    expect(split.usedKWh).toBe(0);
   });
 
-  it('does not label negative net with no gross split as before-solar attribution', () => {
+  it('does not flag negative net with no gross split as before-solar attribution', () => {
     const payload = buildPayload({
       currentBucketIndex: 0,
       actualKWh: [-1, ...Array.from({ length: 23 }, () => 0)],
       actualControlledKWh: [0, ...Array.from({ length: 23 }, () => null)],
       actualUncontrolledKWh: [0, ...Array.from({ length: 23 }, () => null)],
     });
-    expect(resolveSplitLine(payload)).toBe('Managed 0.0 kWh · Background 0.0 kWh');
+    const split = resolveSplitData(payload);
+    expect(split.beforeSolar).toBe(false);
+    expect(split.managedKWh).toBe(0);
+    expect(split.backgroundKWh).toBe(0);
+    expect(split.usedKWh).toBe(0);
+  });
+
+  it('feeds the hero split only on the today view', () => {
+    const payload = buildPayload({
+      actualKWh: Array.from({ length: 24 }, (_, i) => (i < 12 ? 2.5 : 0)),
+      actualControlledKWh: Array.from({ length: 24 }, (_, i) => (i < 12 ? 1.0 : null)),
+      actualUncontrolledKWh: Array.from({ length: 24 }, (_, i) => (i < 12 ? 1.5 : null)),
+    });
+    const today = resolveHeroData(payload, 'today', costDisplay, 'within', true);
+    expect(today.split).toEqual({
+      managedKWh: 12.0,
+      backgroundKWh: 18.0,
+      beforeSolar: false,
+      budgetKWh: 60,
+      usedKWh: 30.0,
+    });
+    const yesterday = resolveHeroData(payload, 'yesterday', costDisplay, 'within', true);
+    expect(yesterday.split).toBeNull();
   });
 });
 
@@ -792,18 +842,15 @@ describe('composeBudgetHeroOverBy', () => {
   });
 });
 
-describe('composeManagedBackgroundLine', () => {
-  it('renders both totals to one decimal with the middle dot separator', () => {
-    expect(composeManagedBackgroundLine(12, 18)).toBe('Managed 12.0 kWh · Background 18.0 kWh');
+describe('split label helpers', () => {
+  it('renders each side to one decimal with the canonical split word', () => {
+    expect(composeManagedSplitLabel(12.46)).toBe('Managed 12.5 kWh');
+    expect(composeBackgroundSplitLabel(18.74)).toBe('Background 18.7 kWh');
   });
 
-  it('rounds each side independently to one decimal', () => {
-    expect(composeManagedBackgroundLine(12.46, 18.74)).toBe('Managed 12.5 kWh · Background 18.7 kWh');
-  });
-
-  it('substitutes a placeholder for non-finite sides instead of NaN', () => {
-    expect(composeManagedBackgroundLine(Number.NaN, 4)).toBe('Managed -- kWh · Background 4.0 kWh');
-    expect(composeManagedBackgroundLine(4, Number.NaN)).toBe('Managed 4.0 kWh · Background -- kWh');
+  it('substitutes a placeholder for non-finite values instead of NaN', () => {
+    expect(composeManagedSplitLabel(Number.NaN)).toBe('Managed -- kWh');
+    expect(composeBackgroundSplitLabel(Number.NaN)).toBe('Background -- kWh');
   });
 });
 

@@ -1,10 +1,5 @@
 export type DayViewBarState = 'past' | 'current' | 'warn';
 
-export type DayViewSegment = {
-  value: number;
-  className?: string;
-};
-
 export type DayViewMarker = {
   value: number;
   className?: string;
@@ -20,7 +15,6 @@ export type DayViewBar = {
   title?: string;
   className?: string;
   stackClassName?: string;
-  segments?: DayViewSegment[];
   marker?: DayViewMarker;
 };
 

@@ -20,6 +20,11 @@ import {
   BUDGET_ADJUST_BUDGET_BUTTON,
   BUDGET_CHART_TITLE_HOURLY_PLAN,
   BUDGET_CHART_TITLE_PROGRESS,
+  BUDGET_SPLIT_BEFORE_SOLAR_PREFIX,
+  SPLIT_BACKGROUND_LABEL,
+  SPLIT_MANAGED_LABEL,
+  composeBackgroundSplitLabel,
+  composeManagedSplitLabel,
   type BudgetConfidenceLabel,
 } from '../../../../shared-domain/src/dailyBudgetHeroStrings.ts';
 import type { DailyBudgetDayPayload } from '../../../../contracts/src/dailyBudgetTypes.ts';
@@ -49,12 +54,28 @@ export type BudgetLocalView = 'plan' | 'adjust' | 'weather';
 export type BudgetStatus = 'noPlan' | 'within' | 'tight' | 'over';
 export type BudgetDeltaTone = 'ok' | 'warn' | 'alert';
 
+// Today's managed/background attribution split, display-rounded in the
+// producer (`resolveSplitData`) so bar segments and labels describe
+// identical values. `beforeSolar` marks a gross split that exceeds the
+// measured net total (self-consumed solar) — the labels then carry the Usage
+// readout's "Before solar:" prefix while the bar shows the net `usedKWh`.
+// `budgetKWh` is the day's configured budget (null when unconfigured): the
+// split bar scales against it so the empty track remainder IS the remaining
+// budget, matching the meter grammar the Overview hero established.
+export type BudgetHeroSplitData = {
+  managedKWh: number;
+  backgroundKWh: number;
+  beforeSolar: boolean;
+  budgetKWh: number | null;
+  usedKWh: number;
+};
+
 export type BudgetHeroData = {
   headlineLabel: string | null;
   comparison: string;
   delta: { label: string; tone: BudgetDeltaTone } | null;
   budgetRemainingLine: string | null;
-  splitLine: string | null;
+  split: BudgetHeroSplitData | null;
   priceTagline: string | null;
   decision: string | null;
   heroTone: 'ok' | 'warn' | 'alert';
@@ -200,6 +221,73 @@ const deltaChipClass = (tone: BudgetDeltaTone): string => {
   return 'plan-chip plan-chip--ok';
 };
 
+// Compact labeled stacked bar for today's managed/background split — the
+// glanceable replacement for the former dim "Managed … · Background …" meta
+// text. Track reuses the shared `.pels-meter-track`/`.pels-meter-segments`
+// hero-meter primitive; the label row reuses the Budget chart's legend
+// primitive so the swatch colours are the same chart tokens the Hourly plan
+// stack renders with.
+//
+// Meter grammar (the one the Overview hero established): segments scale
+// against the DAY'S BUDGET, so the empty track remainder IS the "left in
+// today's budget" kWh the subline above names — a half-used day reads as a
+// half-full bar, never as "budget exhausted". Days already over budget fill
+// the whole track and the trailing segment carries the warning overflow tone
+// (`data-over-budget`). On before-solar days the bar shows the measured NET
+// usage (gross labels keep the "Before solar:" prefix), so the fill never
+// overstates what actually counted against the budget.
+const BudgetHeroSplit = ({ split }: { split: BudgetHeroSplitData }) => {
+  const { managedKWh, backgroundKWh, beforeSolar, budgetKWh, usedKWh } = split;
+  const grossTotal = managedKWh + backgroundKWh;
+  // Convert the (possibly gross) label values into the net fill the bar
+  // paints; 1 on ordinary days, < 1 on before-solar days.
+  const netFactor = grossTotal > 0 ? usedKWh / grossTotal : 0;
+  const scaleKWh = budgetKWh !== null ? Math.max(budgetKWh, usedKWh) : 0;
+  const managedPct = scaleKWh > 0 ? ((managedKWh * netFactor) / scaleKWh) * 100 : 0;
+  const backgroundPct = scaleKWh > 0 ? ((backgroundKWh * netFactor) / scaleKWh) * 100 : 0;
+  const overBudget = budgetKWh !== null && usedKWh > budgetKWh;
+  // The overflow tone marks the trailing rendered segment only — the same
+  // grammar as the Overview hero's PowerMeterSegments.
+  const managedTrailing = backgroundPct <= 0;
+  return (
+    <div id="budget-redesign-split" class="budget-hero-split">
+      {budgetKWh !== null && (
+        <div class="pels-meter-track budget-hero-split__track" aria-hidden="true">
+          <span class="pels-meter-segments">
+            {managedPct > 0 && (
+              <span
+                class="pels-meter-segments__seg budget-hero-split__seg--managed"
+                style={{ width: `${managedPct}%` }}
+                data-over-budget={overBudget && managedTrailing ? '' : undefined}
+              />
+            )}
+            {backgroundPct > 0 && (
+              <span
+                class="pels-meter-segments__seg budget-hero-split__seg--background"
+                style={{ width: `${backgroundPct}%` }}
+                data-over-budget={overBudget ? '' : undefined}
+              />
+            )}
+          </span>
+        </div>
+      )}
+      <div class="budget-chart-legend budget-hero-split__labels">
+        {beforeSolar && (
+          <span class="budget-hero-split__prefix">{BUDGET_SPLIT_BEFORE_SOLAR_PREFIX}</span>
+        )}
+        <span class="budget-chart-legend__item">
+          <span class="budget-chart-legend__swatch budget-chart-legend__swatch--managed" />
+          <span>{composeManagedSplitLabel(managedKWh)}</span>
+        </span>
+        <span class="budget-chart-legend__item">
+          <span class="budget-chart-legend__swatch budget-chart-legend__swatch--background" />
+          <span>{composeBackgroundSplitLabel(backgroundKWh)}</span>
+        </span>
+      </div>
+    </div>
+  );
+};
+
 const BudgetHero = ({ hero }: { hero: BudgetHeroData }) => (
   <section class="plan-hero pels-hero" data-tone={hero.heroTone}>
     <div id="budget-plan-summary" class="plan-hero__section">
@@ -217,9 +305,7 @@ const BudgetHero = ({ hero }: { hero: BudgetHeroData }) => (
       {hero.budgetRemainingLine !== null && (
         <div class="plan-hero__subline plan-hero__subline--muted">{hero.budgetRemainingLine}</div>
       )}
-      {hero.splitLine !== null && (
-        <div class="plan-hero__subline plan-hero__subline--muted">{hero.splitLine}</div>
-      )}
+      {hero.split !== null && <BudgetHeroSplit split={hero.split} />}
       {hero.priceTagline !== null && (
         <div class="plan-hero__subline plan-hero__subline--muted">{hero.priceTagline}</div>
       )}
@@ -280,8 +366,8 @@ const ChartLegend = ({
     // legend always names what the user actually sees.
     ...(showSplit
       ? [
-        { label: 'Background', cls: 'budget-chart-legend__swatch--background' },
-        { label: 'Managed', cls: 'budget-chart-legend__swatch--managed' },
+        { label: SPLIT_BACKGROUND_LABEL, cls: 'budget-chart-legend__swatch--background' },
+        { label: SPLIT_MANAGED_LABEL, cls: 'budget-chart-legend__swatch--managed' },
       ]
       : [{ label: 'Budget', cls: '' }]),
     ...(showProjection ? [{ label: 'Projection', cls: 'budget-chart-legend__swatch--forecast' }] : []),

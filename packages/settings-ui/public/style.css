@@ -5518,6 +5518,48 @@ details[open] > summary .disclosure-chevron {
   background: transparent;
 }
 
+/* Budget hero managed/background split: a compact labeled stacked bar in the
+   hero (replaces the former dim "Managed … · Background …" meta text). Track
+   reuses the shared hero-meter primitive AT ITS FULL 14px HEIGHT (the 480px
+   Overview meters' size — also what keeps the slate segment legible against
+   the empty track); segments and label swatches bind to the same chart
+   tokens the Budget hourly stack and Usage stack render with, so
+   "managed = mint, background = slate" reads as one convention. Segments
+   scale against the day's budget, so the empty track remainder carries the
+   Overview-established meaning: room left. */
+.budget-hero-split {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-2);
+  margin-top: var(--spacing-2);
+}
+
+.budget-hero-split__seg--managed {
+  background: var(--pels-chart-managed);
+}
+
+.budget-hero-split__seg--background {
+  background: var(--pels-chart-background);
+}
+
+/* Day already over budget: the trailing rendered segment carries the warning
+   overflow tone — the same overflow grammar as the Overview power bar's
+   `data-over-safe-pace` treatment, keyed to the budget semantics. */
+.budget-hero-split__seg--managed[data-over-budget],
+.budget-hero-split__seg--background[data-over-budget] {
+  background: var(--pels-status-warning);
+}
+
+.budget-hero-split__labels {
+  /* The legend primitive's muted text is too dim for a hero data row —
+     lift to the secondary tone so the split is readable at arm's length. */
+  color: var(--pels-text-secondary);
+}
+
+.budget-hero-split__prefix {
+  color: var(--pels-text-muted);
+}
+
 #budget-redesign-adjust-view {
   /* On-primary / on-secondary text sits on the saturated accent green —
      use `--color-base-accent-on` (a theme-invariant near-black) instead
@@ -6482,20 +6524,6 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 .day-view-bar__segment--planned,
 .daily-budget-bar__segment--planned {
   background: var(--day-view-color-planned, var(--day-view-color-primary, var(--accent)));
-}
-
-.day-view-bar__segment--uncontrolled,
-.daily-budget-bar__segment--uncontrolled {
-  background: var(--pels-chart-background, var(--color-role-info));
-}
-
-.day-view-bar__segment--controlled,
-.daily-budget-bar__segment--controlled {
-  background: var(--pels-chart-managed, var(--color-role-warn));
-}
-
-.day-view-bar__segment--measured {
-  background: var(--day-view-color-primary, var(--accent));
 }
 
 .day-view-bar__segment--warn {

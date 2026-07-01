@@ -74,18 +74,29 @@ export const composeWithinBudgetOf = (budgetKWh: number): string => (
 export const BUDGET_HERO_USING_CHEAPER_HOURS = 'Using cheaper hours';
 export const BUDGET_HERO_USING_CHEAPER_HOURS_NO_PRICES = 'Using cheaper hours (price data unavailable)';
 
-// Today-view split-line that names managed vs background kWh totals. The
-// helper formats both numbers to one decimal (matching the prior settings-ui
-// `formatKWh(value, 1)` call) so a runtime logger that quotes the line gets
-// byte-identical output.
-export const composeManagedBackgroundLine = (
-  managedKWh: number,
-  backgroundKWh: number,
-): string => {
-  const managed = Number.isFinite(managedKWh) ? `${managedKWh.toFixed(1)} kWh` : '-- kWh';
-  const background = Number.isFinite(backgroundKWh) ? `${backgroundKWh.toFixed(1)} kWh` : '-- kWh';
-  return `Managed ${managed} · Background ${background}`;
-};
+// Canonical words for the two sides of a usage attribution split. One home
+// so the Usage chart legend, the Budget hourly-plan chart legend, and the
+// Budget hero split-bar labels cannot drift apart (`notes/ui-terminology.md`
+// pins the vocabulary: Managed / Background — never controlled/uncontrolled).
+export const SPLIT_MANAGED_LABEL = 'Managed';
+export const SPLIT_BACKGROUND_LABEL = 'Background';
+
+// Today-view split labels that name managed vs background kWh totals,
+// rendered beside the swatches under the Budget hero's stacked split bar.
+// One decimal matches the settings-ui `formatKWh(value, 1)` precision used
+// for the day's other hero figures.
+const formatSplitKWh = (value: number): string => (
+  Number.isFinite(value) ? `${value.toFixed(1)} kWh` : '-- kWh'
+);
+export const composeManagedSplitLabel = (managedKWh: number): string => (
+  `${SPLIT_MANAGED_LABEL} ${formatSplitKWh(managedKWh)}`
+);
+export const composeBackgroundSplitLabel = (backgroundKWh: number): string => (
+  `${SPLIT_BACKGROUND_LABEL} ${formatSplitKWh(backgroundKWh)}`
+);
+// Prefix for a split whose gross attribution exceeds the measured net total
+// (self-consumed solar) — shared with the Usage readout's convention.
+export const BUDGET_SPLIT_BEFORE_SOLAR_PREFIX = 'Before solar:';
 
 // Today-view budget-status templates. Caller passes the formatted kWh
 // quantity (e.g. `"1.2 kWh"`); shared-domain owns the surrounding language.

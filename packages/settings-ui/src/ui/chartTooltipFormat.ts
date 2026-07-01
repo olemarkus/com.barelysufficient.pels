@@ -8,6 +8,7 @@
 // block so the floating boxes look the same on every chart.
 import { encodeHtml } from './echartsRegistry.ts';
 import {
+  BUDGET_SPLIT_BEFORE_SOLAR_PREFIX,
   composeKWhOverBudget,
   composeWithinBudgetOf,
 } from '../../../shared-domain/src/dailyBudgetHeroStrings.ts';
@@ -105,7 +106,23 @@ const SEPARATOR = ` ·${NBSP}`;
 // legend / stat strip keep their established one-word "Unreliable"/"Warnings"
 // labels; this is the readout's reason line.
 const UNRELIABLE_HOUR_WARNING = 'Unreliable — some readings missing this hour';
-const GROSS_SPLIT_EXCEEDS_NET_EPSILON_KWH = 0.005;
+
+// Per-hour slack for comparing a managed+background attribution sum against
+// the hour's measured net total. Tracker sums accumulate ±1e-13-scale float
+// drift with random sign, so exact comparisons misclassify most hours. ONE
+// epsilon, two directions, shared by the readout ("Before solar:" prefix)
+// and the Usage stacked chart (fully-attributed vs remainder branch) so the
+// two surfaces can never disagree about the same hour.
+export const SPLIT_KWH_EPSILON = 0.005;
+// Split fully covers the measured total (any shortfall is float drift, not a
+// real unattributed remainder).
+export const splitCoversMeasured = (splitSumKWh: number, measuredKWh: number): boolean => (
+  splitSumKWh >= measuredKWh - SPLIT_KWH_EPSILON
+);
+// Gross split meaningfully exceeds the measured net (self-consumed solar).
+export const splitExceedsMeasured = (splitSumKWh: number, measuredKWh: number): boolean => (
+  splitSumKWh > Math.max(0, measuredKWh) + SPLIT_KWH_EPSILON
+);
 
 // Typical-day chart: `13:00–14:00` / `Average 1.24 kWh`.
 export const buildHourlyPatternReadout = (
@@ -243,10 +260,12 @@ export const buildUsageDayReadout = (params: {
     { text: nonBreaking(`Measured ${params.measuredKWh.toFixed(2)} kWh${suffix}`) },
   ];
   if (params.managedKWh !== null && params.backgroundKWh !== null) {
-    const splitExceedsMeasured = params.managedKWh + params.backgroundKWh
-      > Math.max(0, params.measuredKWh) + GROSS_SPLIT_EXCEEDS_NET_EPSILON_KWH;
-    const managed = splitExceedsMeasured
-      ? `${nonBreaking('Before solar:')} ${nonBreaking(`Managed ${params.managedKWh.toFixed(2)} kWh`)}`
+    const exceedsMeasured = splitExceedsMeasured(
+      params.managedKWh + params.backgroundKWh,
+      params.measuredKWh,
+    );
+    const managed = exceedsMeasured
+      ? `${nonBreaking(BUDGET_SPLIT_BEFORE_SOLAR_PREFIX)} ${nonBreaking(`Managed ${params.managedKWh.toFixed(2)} kWh`)}`
       : nonBreaking(`Managed ${params.managedKWh.toFixed(2)} kWh`);
     const background = nonBreaking(`Background ${params.backgroundKWh.toFixed(2)} kWh`);
     values.push({ text: `${managed}${SEPARATOR}${background}` });

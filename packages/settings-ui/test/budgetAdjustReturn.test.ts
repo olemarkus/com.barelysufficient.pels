@@ -24,7 +24,7 @@ const buildProps = (overrides: Partial<BudgetOverviewProps> = {}): BudgetOvervie
     comparison: 'Daily budget off',
     delta: null,
     budgetRemainingLine: null,
-    splitLine: null,
+    split: null,
     priceTagline: null,
     decision: null,
     heroTone: 'ok',

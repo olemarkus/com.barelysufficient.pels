@@ -335,6 +335,45 @@ CI failure, so future field-move slices can't silently grow the debt.*
       *Hypothesis:* the ≤3 h persisted-flag drift is invisible in practice; the flow-card token split is
       the one a user could notice (trigger fires on a "cheap" surplus hour whose money token looks high).
 
+- [ ] **Split-pair label order differs by surface — pick one convention app-wide.** The Budget hero
+      split bar labels Managed→Background (matching its left-to-right bar segment order), while the
+      Usage chart and Budget hourly-plan chart legends read Background→Managed (matching bottom-to-top
+      stack order). Both are internally consistent but the pair flips between adjacent surfaces.
+      Decide one canonical order (likely legend = stack order everywhere, or reading-priority order
+      everywhere) and align `BudgetHeroSplit`, `buildLegendData` (usageDayChartEcharts.ts), and
+      `ChartLegend` (BudgetOverview.tsx).
+      *From PR #1806 review (managed/background split visibility).*
+
+- [ ] **Unattributed usage remainder is visible ink but unnamed in the tapped readout.** The Usage
+      stack renders measured energy the split does not attribute as a neutral third segment
+      (`--pels-chart-unattributed`, off-legend by design). The tapped readout shows Measured +
+      Managed + Background, so the user can subtract — but the segment itself has no name anywhere.
+      Needs a `notes/ui-terminology.md` decision (candidate words: "unattributed", "other") before
+      naming it in the readout or legend; do not invent the word ad hoc in a view.
+      *From PR #1806 review.*
+
+- [ ] **Extract the duplicated ECharts select-style identity object.** The on-surface select border
+      (`select: { itemStyle: { borderColor: palette.text, borderWidth: 2 } }`) is copy-pasted at ~5
+      sites (usageDayChartEcharts.ts `shared`, budgetRedesignChartOptions.ts `barSelect`, plus the
+      smart-task/stats charts). One shared helper (chartReadout.ts or chartTooltipFormat.ts
+      neighborhood) keeps the selection identity visually identical across charts by construction.
+      *From PR #1806 review.*
+
+- [ ] **Hoist `resolveUsageDayStackSegments` into the bucket producer (`usageDayView.ts`).** Today the
+      chart resolves per-hour stack segments while `buildUsageDayBucketReadout` independently feeds the
+      readout from the same bucket fields — the two reconcile because they share inputs plus the shared
+      `SPLIT_KWH_EPSILON` predicates, not because there is one resolved value. Producing one resolved
+      per-hour structure (segments + a single beforeSolar flag) in the bucket builder and passing it to
+      both consumers would make the reconciliation structural (resolution-in-producer).
+      *From PR #1806 review.*
+
+- [ ] **Post-release docs updates for the managed/background split colours.** `docs/daily-budget.md`
+      (Figure 2 caption, ~line 40) still describes the hourly-plan stack as blue/orange; the stack now
+      renders slate/mint. Retake `docs/screenshots/daily-budget/hourly-plan.png` and
+      `docs/screenshots/daily-budget/plan-progress.png` (the Budget hero now shows the split bar), and
+      `docs/public/screenshots/landing-usage.png` (the Usage chart is now stacked), then fix the caption
+      wording. Deliberately deferred out of PR #1806, which commits no PNGs.
+
 - [ ] **Generation-guard the rescue-gate state commit in `loadStarvationRescuableDevices`.** `overviewRescueGate`
       now guards the *repaint* after a gate refresh, but the controller's
       `state.starvationRescuableDeviceIds = new Set(ids)` (`packages/settings-ui/src/ui/starvationRescue.ts`) still
