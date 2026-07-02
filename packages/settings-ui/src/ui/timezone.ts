@@ -1,6 +1,6 @@
 export {
   buildLocalDayBuckets,
-  formatDateInTimeZone,
+  formatDayFirstInTimeZone,
   formatTimeInTimeZone,
   getDateKeyInTimeZone,
   getDateKeyStartMs,

@@ -14,7 +14,7 @@ describe('resolveTemperatureLine', () => {
       currentTarget: 21,
       plannedTarget: 21,
       reason: { code: 'none' },
-    })).toBe('20.2° · target 21°');
+    })).toBe('20.2 °C · target 21 °C');
   });
 
   it('shows the current target to planned target transition when PELS is changing it', () => {
@@ -23,7 +23,7 @@ describe('resolveTemperatureLine', () => {
       currentTarget: 18,
       plannedTarget: 21,
       reason: { code: 'none' },
-    })).toBe('20.2° · target 18° → 21°');
+    })).toBe('20.2 °C · target 18 °C → 21 °C');
   });
 
   it('reports sensor offline when the planned target is known but currentTemperature is missing', () => {
@@ -31,7 +31,7 @@ describe('resolveTemperatureLine', () => {
       currentTarget: 21,
       plannedTarget: 21,
       reason: { code: 'none' },
-    })).toBe('target 21° · sensor unavailable');
+    })).toBe('target 21 °C · sensor unavailable');
   });
 });
 

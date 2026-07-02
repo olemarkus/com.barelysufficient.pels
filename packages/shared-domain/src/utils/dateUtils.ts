@@ -168,6 +168,21 @@ export function formatDateInTimeZone(date: Date, options: Intl.DateTimeFormatOpt
     return date.toLocaleDateString([], { timeZone, ...options });
 }
 
+// The one day-first ("Fri 15 May", "1–15 May") English-pinned date grammar for
+// every user-facing Usage-tab date label. Pinned to en-GB so a month-first
+// default locale (en-US on CI) can never flip it to "May 15" — one grammar
+// across the week chart, solar rows, daily-history axis, hourly-pattern range,
+// week range, and day header. Deliberately distinct from `formatDateInTimeZone`
+// (default-locale), which the deferred-plan history archive keeps for its own
+// locale handling — do not route those callers here.
+export function formatDayFirstInTimeZone(
+    date: Date,
+    options: Intl.DateTimeFormatOptions,
+    timeZone: string,
+): string {
+    return new Intl.DateTimeFormat('en-GB', { timeZone, ...options }).format(date);
+}
+
 export function formatTimeInTimeZone(date: Date, options: Intl.DateTimeFormatOptions, timeZone: string): string {
     return date.toLocaleTimeString([], { timeZone, ...options });
 }

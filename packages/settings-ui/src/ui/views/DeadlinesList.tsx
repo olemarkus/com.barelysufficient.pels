@@ -269,7 +269,7 @@ const Hero = ({ copy }: { copy: DeadlinesListHeroCopy }) => {
             >
               <MdRipple aria-hidden="true" />
               <span class="deadlines-list-hero__nav-target-text">{copy.subline}</span>
-              <span class="deadlines-list-hero__nav-target-chevron" aria-hidden="true">›</span>
+              <ChevronRightIcon class="deadlines-list-hero__nav-target-chevron" />
             </button>
           </p>
         ) : (

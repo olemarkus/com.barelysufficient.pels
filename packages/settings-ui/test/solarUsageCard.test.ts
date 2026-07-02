@@ -73,6 +73,19 @@ describe('resolveSolarUsageCardProps + SolarUsageCard', () => {
     expect(history!.textContent).not.toContain('used at home');
   });
 
+  it('labels previous-day history rows day-first (never month-first)', () => {
+    // Regression guard for the copy-sweep gap: the solar history rows resolved
+    // their date through a default-locale formatter, so on an en-US host they
+    // read month-first ("Jun 14"), inconsistent with the day-first grammar the
+    // rest of the Usage tab pins. Routed through the shared
+    // `formatDayFirstInTimeZone` — 2026-06-14 in Oslo reads "14 Jun".
+    const props = resolveProps();
+    expect(props?.history.length).toBeGreaterThan(0);
+    const label = props!.history[0]!.label;
+    expect(label).toContain('14 Jun');
+    expect(label).not.toContain('Jun 14');
+  });
+
   it('avoided-only tier (import prices without export price) shows the export-price hint', () => {
     const props = resolveProps({
       combined: pricesBoth.map((row) => ({ startsAt: row.startsAt, total: row.total })),

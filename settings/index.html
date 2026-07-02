@@ -163,12 +163,11 @@
               <md-filled-tonal-button type="button" id="mode-name-confirm">Create</md-filled-tonal-button>
             </div>
           </div>
-          <small class="field__hint">Drag to reorder priorities (top = keep on longest). Set desired temps per mode.</small>
+          <small class="field__hint">Drag to reorder — the top device keeps running longest. Changes save automatically.</small>
         </div>
         <ul id="priority-list" class="device-list tight-list"></ul>
         <p id="priority-empty" class="muted" hidden>No controllable devices found. Refresh devices first.</p>
       </form>
-      <p class="muted">Tip: Drag to reorder priorities (auto-saves). Temperatures save automatically when changed.</p>
       <md-dialog id="mode-delete-dialog">
         <div slot="headline">Delete mode?</div>
         <form slot="content" id="mode-delete-form" method="dialog">
@@ -287,8 +286,8 @@
             <span class="usage-metric__label metric-label">Peak hour</span>
             <span class="usage-metric__value" id="usage-day-peak">-- kWh</span>
           </div>
-          <div class="usage-metric">
-            <span class="usage-metric__label metric-label">Unreliable hours</span>
+          <div class="usage-metric" id="usage-day-warnings-metric">
+            <span class="usage-metric__label metric-label">Warnings</span>
             <span class="usage-metric__value" id="usage-day-over-cap">--</span>
           </div>
         </div>
@@ -655,7 +654,7 @@
       <details class="settings-collapse">
         <summary>
           <h3 class="section-title">Device log</h3>
-          <span class="section-hint">Homey API payload</span>
+          <span class="section-hint">Raw device data from Homey</span>
           <svg class="disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" fill="currentColor"/></svg>
         </summary>
         <div class="collapse-content">
@@ -744,11 +743,11 @@
                     label="Expensive-hour reduction"
                     type="number"
                     step="0.5"
-                    value="-5"
+                    value="5"
                     inputmode="decimal"
                     suffix-text="°C"
                   ></md-filled-text-field>
-                  <small class="field__hint">Added to target during expensive hours, for example -5.</small>
+                  <small class="field__hint">Lowers the target by this much during expensive hours.</small>
                 </div>
               </div>
             </div>
@@ -886,7 +885,7 @@
 
               <div class="detail-stepped-header" aria-hidden="true">
                 <span>Step</span>
-                <span>Planning</span>
+                <span>Power</span>
                 <span></span>
               </div>
               <div class="detail-stepped-list" id="device-detail-stepped-steps"></div>

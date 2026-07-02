@@ -77,7 +77,7 @@ tokens (do not introduce new palettes).
 
 ## Out of scope / keep
 
-- The "Planning N deadlines." active hero is the reference for good hierarchy —
+- The "Planning N smart tasks" active hero is the reference for good hierarchy —
   match it, don't redo it.
 - Week dividers (#1243), the active-card tier (#1265), and the chip row exist —
   build on them.

@@ -96,11 +96,11 @@ const renderHost = (host: HTMLElement, content: ChartReadoutContent | null): voi
   const secondary = document.createElement('div');
   secondary.className = 'chart-readout__secondary';
   content.values.forEach((value, index) => {
-    // The separator binds non-breaking to the FOLLOWING segment: a regular
-    // space (the row's only wrap opportunity) followed by `·` glued to the
-    // next segment with NBSP, so a wrapped line leads with "· Price …"
-    // instead of stranding the dot at the end of the previous line.
-    if (index > 0) secondary.append(' ·\u00A0');
+    // The separator binds the dot to the PRECEDING segment (NBSP before `·`,
+    // regular space after), so the row's only wrap opportunity is the space
+    // AFTER the dot: a wrapped line never leads with a floating "· Price …" —
+    // the dot rides the end of the previous line and the next segment starts clean.
+    if (index > 0) secondary.append('\u00A0· ');
     const span = document.createElement('span');
     if (value.tone === 'warn') span.className = 'chart-readout__value--warn';
     span.textContent = value.text;

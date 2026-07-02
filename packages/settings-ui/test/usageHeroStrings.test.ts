@@ -26,16 +26,16 @@ describe('usageHeroStrings', () => {
   });
 
   it('formats the projection line, dropping the direction inside the dead-band', () => {
-    expect(formatProjectionLine(12, 0.1, true)).toBe('On track for ~12.0 kWh by midnight.');
-    expect(formatProjectionLine(15, 3, false)).toBe('On track for ~15.0 kWh by midnight (above typical).');
-    expect(formatProjectionLine(8, -4, false)).toBe('On track for ~8.0 kWh by midnight (below typical).');
+    expect(formatProjectionLine(12, 0.1, true)).toBe('On track for ≈ 12.0 kWh by midnight.');
+    expect(formatProjectionLine(15, 3, false)).toBe('On track for ≈ 15.0 kWh by midnight (above typical).');
+    expect(formatProjectionLine(8, -4, false)).toBe('On track for ≈ 8.0 kWh by midnight (below typical).');
   });
 
   it('formats the day-aware comparison and collecting lines', () => {
     // Monday = 1
-    expect(formatUsageComparisonLine('Mon, Jun 8', 1, 13.4))
-      .toBe('Today · Mon, Jun 8. Your typical Monday runs 13.4 kWh.');
-    expect(formatUsageCollectingLine('Mon, Jun 8'))
-      .toBe('Today · Mon, Jun 8. Collecting history…');
+    expect(formatUsageComparisonLine('Mon, 8 Jun', 1, 13.4))
+      .toBe('Today · Mon, 8 Jun. Your typical Monday runs 13.4 kWh.');
+    expect(formatUsageCollectingLine('Mon, 8 Jun'))
+      .toBe('Today · Mon, 8 Jun. Collecting history…');
   });
 });

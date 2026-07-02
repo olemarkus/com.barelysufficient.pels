@@ -421,23 +421,6 @@ CI failure, so future field-move slices can't silently grow the debt.*
       disabled-pending treatment (opacity/tone) so the two states are distinguishable. Persona:
       Set-and-forget owner; pre-existing. Source: PR #1822 M3 review (2026-07-02). [PR-6b control grammar]
 
-- [ ] **Modes screen states "Drag to reorder priorities" twice.** The priority-list field hint
-      ("Drag to reorder priorities (top = keep on longest)...") and the trailing "Tip: Drag to
-      reorder priorities (auto-saves)..." line duplicate the same instruction. Keep one, or split
-      the facts (how-to vs auto-save) without repeating the verb phrase. Copy only. Source: PR #1822
-      review (2026-07-02). [PR-6b copy]
-
-- [ ] **Terse "Planning" column header on the Devices screen.** The "Planning" column header is
-      jargon-adjacent and unclear about what it shows. Reword to something a Homey owner reads as
-      "what PELS will do" without planner-internal vocabulary. Copy only. Source: PR #1822 review
-      (2026-07-02). [PR-6b copy]
-
-- [ ] **User-added stepped step defaults to raw id "step_2", surfaced verbatim in copy.** A step
-      added in the device-detail stepped editor defaults to id `step_2`, which then shows literally
-      in user-facing copy like Set to step "step_2". De-jargon the default label (or format the id)
-      so users never see the internal `step_N` token. Copy / de-jargon. Source: PR #1822 review
-      (2026-07-02). [PR-8 de-jargon]
-
 - [ ] **Export scheme-change has no rollback when the export-disable write fails.** `applyExportSchemeChangePlan`
       (`packages/settings-ui/src/ui/exportPriceSettings.ts`) is called by `handleSchemeChange` AFTER the new
       `price_scheme` has already been persisted. When the plan is `disable_export` (a non-zero fixed export
@@ -1018,6 +1001,28 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
       screenshot-gated reviews of the smart-task detail page are trustworthy — a reviewer
       reconciling the numbers today would flag a phantom bug (or miss a real one). Source:
       PR #1807 review gates (2026-07-01).
+
+- [ ] **docs/widgets.md smart-tasks section still says "deadlines".** `docs/widgets.md:37`
+      ("Answers *are my deadlines on track?*") uses the pre-rename "deadlines" phrasing; the
+      user-facing surface (and the smart-tasks-surface spec) now says "smart tasks". Post-release
+      docs pass — VitePress human-facing site, decoupled from the app copy sweep. Source: PR #1826
+      copy-sweep review gates (2026-07-02).
+
+- [ ] **Smart-task live hero shows "65 °C" but the target line shows "65.0 °C" (double precision).**
+      Pre-existing: `formatProgressValueForUnit` (`packages/shared-domain/src/deadlineLabels.ts`)
+      renders one temperature with a trailing zero and another without on the same live smart-task
+      hero, so the same figure reads at two precisions. Reconcile the temperature precision across
+      the hero's current/target lines. Follow-up, out of scope for the copy sweep (which only
+      touched the temperature-card / idle / stepped / starvation surfaces). Source: PR #1826
+      copy-sweep review gates (2026-07-02).
+
+- [ ] **Canon note: en-GB date pinning forces English months beside a localized daily readout.**
+      The Usage-tab date grammar is now English-pinned day-first (`formatDayFirstInTimeZone`, en-GB)
+      so CI can't flip to month-first, but that means a non-English Homey renders English month
+      abbreviations ("15 May") next to an otherwise-localized daily readout. Decide + document the
+      canon in `notes/ui-terminology.md` (§ date grammar, cross-refs the "Thu 4 Jun" line at :439):
+      either accept English months as the one pinned grammar, or move the pin to a locale that
+      still guarantees day-first. Source: PR #1826 copy-sweep review gates (2026-07-02).
 
 ## P3 Future and Exploratory Work
 

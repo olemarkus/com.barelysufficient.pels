@@ -94,12 +94,12 @@ const padHour = (hour: number): string => String(hour).padStart(2, '0');
 const NBSP = ' ';
 const nonBreaking = (text: string): string => text.split(' ').join(NBSP);
 
-// In-value segment separator, same forward-binding shape as the readout
-// row's separator in `chartReadout.ts`: the leading regular space is the
-// wrap opportunity, the NBSP glues the dot to the FOLLOWING segment — a
-// wrapped line leads with "· Background …" instead of stranding the dot
-// at the end of the previous line.
-const SEPARATOR = ` ·${NBSP}`;
+// In-value segment separator, same shape as the readout row's separator in
+// `chartReadout.ts`: the NBSP binds the dot to the PRECEDING segment and the
+// trailing regular space is the wrap opportunity, so a wrapped line never
+// leads with a floating "· Background …" — the dot rides the end of the
+// previous line instead.
+const SEPARATOR = `${NBSP}· `;
 
 // Consequence-language warning for an hour with gaps in its samples — names
 // what went wrong instead of the bare "Unreliable data" verdict. The chart

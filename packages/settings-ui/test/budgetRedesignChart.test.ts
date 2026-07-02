@@ -20,7 +20,7 @@ import type { DailyBudgetDayPayload } from '../../contracts/src/dailyBudgetTypes
 // assertions below stay byte-accurate. `sep` is the forward-binding
 // separator (regular space, then `·` glued forward with NBSP).
 const nb = (text: string): string => text.split(' ').join(' ');
-const sep = ' ·\u00A0';
+const sep = '\u00A0· ';
 
 // Minimal 4-bucket day payload. Labels use the runtime producer's `HH:MM`
 // shape; bucket-specific overrides patch the fields under test.

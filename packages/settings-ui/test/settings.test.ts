@@ -556,7 +556,7 @@ describe('settings script', () => {
 
     expect(shedAction.value).toBe('set_step');
     expect(tempOption.hidden).toBe(false);
-    expect(stepOption.textContent).toBe('Set to step "low"');
+    expect(stepOption.textContent).toBe('Set to Low');
     expect(tempRow.hidden).toBe(true);
     expect(stepRow.hidden).toBe(true); // Step selection removed - always uses lowest active step
   });
@@ -708,13 +708,13 @@ describe('settings script', () => {
       document.querySelectorAll('#device-detail-stepped-steps [data-step-field="planningPowerW"]'),
     ) as HTMLInputElement[];
 
-    expect(stepOption.textContent).toBe('Set to step "eco"');
+    expect(stepOption.textContent).toBe('Set to Eco');
 
     planningInputs[1].value = '0';
     planningInputs[1].dispatchEvent(new Event('change', { bubbles: true }));
     await flushPromises();
 
-    expect(stepOption.textContent).toBe('Set to step "max"');
+    expect(stepOption.textContent).toBe('Set to Max');
   });
 
   it('does not persist the stepped-load profile when the shed-behavior write fails', async () => {
@@ -1750,7 +1750,7 @@ describe('Plan sorting', () => {
 
     const metric = document.querySelector('#plan-cards .plan-card__state-power') as HTMLElement | null;
     expect(metric?.dataset.variant).toBe('expected');
-    expect(metric?.textContent).toContain('~1.5 kW when active');
+    expect(metric?.textContent).toContain('≈ 1.5 kW when active');
   });
 
   it('shows expected draw label when on but not drawing power', async () => {
@@ -1786,7 +1786,7 @@ describe('Plan sorting', () => {
 
     const metric = document.querySelector('#plan-cards .plan-card__state-power') as HTMLElement | null;
     expect(metric?.dataset.variant).toBe('expected');
-    expect(metric?.textContent).toContain('~0.1 kW when active');
+    expect(metric?.textContent).toContain('≈ 0.1 kW when active');
   });
 
   it('keeps the last rendered plan when a realtime plan update is malformed', async () => {

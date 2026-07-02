@@ -4,6 +4,7 @@ import {
   sortSteppedLoadSteps,
 } from '../../../../contracts/src/deviceControlProfiles.ts';
 import type { SteppedLoadProfile } from '../../../../contracts/src/types.ts';
+import { formatStepDisplayLabel } from '../../../../shared-domain/src/planSteppedCardText.ts';
 import type { SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 import {
   deviceDetailShedAction,
@@ -158,8 +159,8 @@ const buildSteppedLoadStepRow = (params: {
 
   // Per-row field labels are dropped in favour of the shared column headers
   // (`.detail-stepped-header`) so each row reads value-first. The step column
-  // uses a placeholder for the empty state; the planning column keeps its unit
-  // as a trailing in-field suffix (never doubled in a label).
+  // uses a placeholder for the empty state; the power column keeps its unit
+  // as a trailing in-field suffix (never doubled in the "Power" header).
   const idInput = document.createElement('md-filled-text-field') as HTMLElement & {
     value: string; disabled: boolean;
   };
@@ -172,8 +173,8 @@ const buildSteppedLoadStepRow = (params: {
   const planningInput = document.createElement('md-filled-text-field') as HTMLElement & {
     value: string; disabled: boolean;
   };
-  planningInput.setAttribute('placeholder', 'Planning');
-  planningInput.setAttribute('aria-label', 'Planning power');
+  planningInput.setAttribute('placeholder', 'Power');
+  planningInput.setAttribute('aria-label', 'Step power');
   planningInput.setAttribute('type', 'number');
   planningInput.setAttribute('step', '50');
   planningInput.setAttribute('min', '0');
@@ -224,8 +225,11 @@ export const updateSetStepOptionLabel = (
       ?? getSteppedLoadDraft(device.id)
       ?? resolveSavedSteppedLoadProfile(device);
     const lowestActiveStepId = profile ? getSteppedLoadLowestActiveStep(profile)?.id : null;
+    // Format the id through the same helper the Overview uses (`6a` → `6 A`,
+    // the editor's default `step_2` → `Step 2`) so an internal token never
+    // surfaces raw, and drop the quotes.
     setOptionLabel(setStepOption, lowestActiveStepId
-      ? `Set to step "${lowestActiveStepId}"`
+      ? `Set to ${formatStepDisplayLabel(lowestActiveStepId)}`
       : DEFAULT_SET_STEP_OPTION_LABEL);
   }
 

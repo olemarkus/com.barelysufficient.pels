@@ -787,7 +787,7 @@ const BudgetAdjustView = ({
           <div class="budget-setting-row budget-setting-row--editable">
             <span>
               <span class="budget-setting-row__label">Use cheaper hours</span>
-              <FieldHint>Shape managed usage toward cheaper hours when prices are usable.</FieldHint>
+              <FieldHint>Shape managed usage toward cheaper hours when price data is available.</FieldHint>
             </span>
             <MdSwitch
               id="budget-redesign-price-shaping"
@@ -1190,9 +1190,9 @@ const BudgetOverviewRoot = ({
       <div class="budget-redesign-view">
         <ToggleGroup
           options={[
-            { value: 'yesterday' as const, label: 'Yesterday', shortLabel: 'Yest.' },
+            { value: 'yesterday' as const, label: 'Yesterday' },
             { value: 'today' as const, label: 'Today' },
-            { value: 'tomorrow' as const, label: 'Tomorrow', shortLabel: 'Tom.' },
+            { value: 'tomorrow' as const, label: 'Tomorrow' },
           ]}
           value={view}
           ariaLabel="Budget day"

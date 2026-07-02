@@ -21,7 +21,7 @@ import {
   resolveSolarCardVisible,
   type SolarDayRow,
 } from './solarStats.ts';
-import { formatDateInTimeZone, getDateKeyInTimeZone, getDateKeyStartMs } from './timezone.ts';
+import { formatDayFirstInTimeZone, getDateKeyInTimeZone, getDateKeyStartMs } from './timezone.ts';
 import {
   renderSolarUsageCard,
   type SolarHistoryRow,
@@ -98,7 +98,7 @@ const resolveMoneyBlock = (params: {
 
 const toHistoryRow = (row: SolarDayRow, timeZone: string): SolarHistoryRow => ({
   ...row,
-  label: formatDateInTimeZone(
+  label: formatDayFirstInTimeZone(
     new Date(getDateKeyStartMs(row.dateKey, timeZone)),
     { weekday: 'short', day: 'numeric', month: 'short' },
     timeZone,

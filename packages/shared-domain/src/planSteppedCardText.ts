@@ -29,7 +29,11 @@ const formatStepDisplayLabelInternal = (stepId: string): string => {
   if (trimmed.length === 0) return '';
   const match = AMPERE_STEP_PATTERN.exec(trimmed);
   if (match) return `${match[1]} A`;
-  return capitalize(trimmed);
+  // Humanize underscore-delimited ids so an internal token never surfaces raw:
+  // the device-detail editor's default new-step id `step_2` renders `Step 2`,
+  // not `Step_2`. Named/level ids (`low`, `max`) carry no underscore and are
+  // just capitalized.
+  return capitalize(trimmed.replace(/_+/g, ' '));
 };
 
 const isOffLikeId = (id: string | undefined): boolean => {
@@ -333,7 +337,7 @@ export const resolveSteppedTemperatureText = (device: {
   const { currentTemperature, plannedTarget } = device;
   if (typeof currentTemperature !== 'number') return null;
   if (typeof plannedTarget !== 'number') return null;
-  return `${currentTemperature.toFixed(1)}° → ${plannedTarget.toFixed(0)}°`;
+  return `${currentTemperature.toFixed(1)} °C → ${plannedTarget.toFixed(0)} °C`;
 };
 
 export const resolveSteppedPowerText = (device: {

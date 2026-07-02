@@ -64,11 +64,15 @@ export const renderEvBoostSettings = (device: SettingsUiDeviceView | null) => {
     config?.boostBelowPercent ?? DEFAULT_BOOST_BELOW_PERCENT,
     DEFAULT_BOOST_BELOW_PERCENT,
   );
-  deviceDetailEvBoostStatus.textContent = buildEvBoostStatusText({
+  const statusText = buildEvBoostStatusText({
     device,
     enabled,
     boostBelowPercent,
   });
+  deviceDetailEvBoostStatus.textContent = statusText;
+  // Don't render an orphan status line when boost is off — the toggle already
+  // states the off state; a lone "Disabled." row just restates it.
+  deviceDetailEvBoostStatus.hidden = statusText.length === 0;
 };
 
 function buildEvBoostStatusText(params: {
@@ -77,7 +81,7 @@ function buildEvBoostStatusText(params: {
   boostBelowPercent: number;
 }): string {
   const { device, enabled, boostBelowPercent } = params;
-  if (!enabled) return 'Disabled.';
+  if (!enabled) return '';
   // Narrow through the EV-observed guard: the base device type omits the raw
   // plug-state, and an unobserved plug-state never blocks boost (matches the
   // resolver's undefined branch before the field-move).

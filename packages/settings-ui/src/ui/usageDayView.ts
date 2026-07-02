@@ -19,7 +19,7 @@ import { buildUsageDayReadout, type ChartReadoutContent } from './chartTooltipFo
 import { renderUsageDayChartEcharts, type UsageDaySplit } from './usageDayChartEcharts.ts';
 import {
   buildLocalDayBuckets,
-  formatDateInTimeZone,
+  formatDayFirstInTimeZone,
   getDateKeyInTimeZone,
   getDateKeyStartMs,
   getNextLocalDayStartUtcMs,
@@ -160,11 +160,15 @@ const renderUsageDayHeader = (dateKey: string, timeZone: string) => {
   if (!usageDayTitle || !usageDayLabel) return;
   usageDayTitle.textContent = formatUsageDayTitle(usageDayView);
   const dayStart = new Date(getDateKeyStartMs(dateKey, timeZone));
-  usageDayLabel.textContent = `${formatDateInTimeZone(dayStart, {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  }, timeZone)} · ${timeZone}`;
+  // Day-first date, one grammar with the smart-task surfaces ("Fri 15 May"),
+  // and no raw IANA zone suffix. Via the shared `formatDayFirstInTimeZone`
+  // grammar (English-pinned) so CI (en-US default) renders day-before-month
+  // instead of "May 15".
+  usageDayLabel.textContent = formatDayFirstInTimeZone(
+    dayStart,
+    { weekday: 'short', day: 'numeric', month: 'short' },
+    timeZone,
+  );
   if (usageDayMeta) {
     usageDayMeta.textContent = usageDayView === 'today'
       ? 'Hourly kWh within your local day (updates live). '
@@ -172,6 +176,11 @@ const renderUsageDayHeader = (dateKey: string, timeZone: string) => {
       : 'Hourly kWh for the previous local day. '
         + 'Typical usage below is per-hour average; daily history is one bar per day.';
   }
+};
+
+const setWarningsMetricHidden = (hidden: boolean) => {
+  const metric = document.getElementById('usage-day-warnings-metric');
+  if (metric instanceof HTMLElement) metric.hidden = hidden;
 };
 
 const renderUsageDayNoData = () => {
@@ -191,6 +200,9 @@ const renderUsageDayNoData = () => {
   setUsageDaySummaryValue(usageDayTotal, '-- kWh', true);
   setUsageDaySummaryValue(usageDayPeak, '-- kWh', true);
   setUsageDaySummaryValue(usageDayOverCap, '--', true);
+  // Reset the has-data hide so a day with warnings that switches to an empty
+  // day doesn't strand the metric hidden.
+  setWarningsMetricHidden(false);
 };
 
 const renderUsageDayHasData = (buckets: UsageDayBucket[]) => {
@@ -207,6 +219,9 @@ const renderUsageDayHasData = (buckets: UsageDayBucket[]) => {
   setUsageDaySummaryValue(usageDayTotal, `${totalKWh.toFixed(1)} kWh`);
   setUsageDaySummaryValue(usageDayPeak, `${peakBucket.label} · ${peakBucket.measuredKWh.toFixed(2)} kWh`);
   setUsageDaySummaryValue(usageDayOverCap, warnHours.toString());
+  // The Warnings stat is only meaningful when a reading was missing — hide the
+  // whole metric at zero rather than showing a stat-strip "0".
+  setWarningsMetricHidden(warnHours === 0);
 
   if (warnHours > 0) {
     setUsageDayStatus(`Warnings (${warnHours}h)`, 'warn');

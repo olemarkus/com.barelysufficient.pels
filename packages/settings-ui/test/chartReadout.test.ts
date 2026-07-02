@@ -21,7 +21,7 @@ import type { EChartsType } from '../src/ui/echartsRegistry.ts';
 // below stay byte-accurate. `sep` is the forward-binding separator (regular
 // space, then `·` glued to the FOLLOWING segment with NBSP).
 const nb = (text: string): string => text.split(' ').join(' ');
-const sep = ' ·\u00A0';
+const sep = '\u00A0· ';
 
 describe('chart readout content resolvers', () => {
   it('formats the hourly pattern readout as hour range + average', () => {
@@ -163,20 +163,20 @@ describe('chart readout content resolvers', () => {
 
   it('formats the power-week heatmap readout as day · hour range / total', () => {
     expect(buildPowerWeekReadout({
-      dayLabel: 'Thu, Jun 4',
+      dayLabel: 'Thu, 4 Jun',
       hour: 13,
       kWh: 1.243,
       aggregated: false,
       unreliable: false,
     })).toEqual({
-      when: 'Thu, Jun 4 · 13:00–14:00',
+      when: 'Thu, 4 Jun · 13:00–14:00',
       values: [{ text: nb('1.24 kWh') }],
     });
   });
 
   it('keeps the aggregated-cell "kWh total" suffix on the heatmap readout', () => {
     expect(buildPowerWeekReadout({
-      dayLabel: 'Sun, Oct 25',
+      dayLabel: 'Sun, 25 Oct',
       hour: 2,
       kWh: 2.4,
       aggregated: true,
@@ -186,7 +186,7 @@ describe('chart readout content resolvers', () => {
 
   it('adds the unreliable consequence line to flagged heatmap cells', () => {
     expect(buildPowerWeekReadout({
-      dayLabel: 'Thu, Jun 4',
+      dayLabel: 'Thu, 4 Jun',
       hour: 19,
       kWh: 0.92,
       aggregated: false,
@@ -201,12 +201,12 @@ describe('chart readout content resolvers', () => {
 
   it('wraps the heatmap hour range across midnight', () => {
     expect(buildPowerWeekReadout({
-      dayLabel: 'Thu, Jun 4',
+      dayLabel: 'Thu, 4 Jun',
       hour: 23,
       kWh: 0.5,
       aggregated: false,
       unreliable: false,
-    }).when).toBe('Thu, Jun 4 · 23:00–00:00');
+    }).when).toBe('Thu, 4 Jun · 23:00–00:00');
   });
 
   it('labels heatmap days from local-day midnight in negative-offset zones', () => {
@@ -217,6 +217,18 @@ describe('chart readout content resolvers', () => {
     expect(label).toMatch(/^Thu/);
     expect(label).toContain('4');
     expect(label).not.toContain('3');
+  });
+
+  it('labels heatmap days day-first (never month-first), regardless of host locale', () => {
+    // Regression guard for the copy-sweep gap: the week-chart label producer
+    // formatted with a default-locale formatter, so on an en-US host it read
+    // month-first ("May 15"), inconsistent with the day-first grammar every
+    // other Usage-tab surface pins. The shared `formatDayFirstInTimeZone`
+    // grammar is English-pinned day-first.
+    const label = buildPowerWeekDayLabel('2026-05-15', 'UTC');
+    expect(label).toContain('15 May');
+    expect(label).not.toContain('May 15');
+    expect(label.indexOf('15')).toBeLessThan(label.indexOf('May'));
   });
 
   it('formats the budget progress readout with the spec example figures', () => {
@@ -471,7 +483,7 @@ describe('attachChartReadout', () => {
     // The separator's NBSP glues the `·` to the FOLLOWING segment so a
     // wrapped line leads with the dot instead of stranding it at a line end.
     expect(host.querySelector('.chart-readout__secondary')?.textContent)
-      .toBe('15.2 kWh ·\u00A01.2 kWh over budget');
+      .toBe('15.2 kWh\u00A0· 1.2 kWh over budget');
   });
 
   it('skips the native select/unselect dispatch when selectSeriesIndexes is empty', () => {

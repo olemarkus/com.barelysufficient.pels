@@ -623,7 +623,7 @@ describe('resolveSteppedStatusLine', () => {
 describe('resolveSteppedTemperatureText', () => {
   it('returns formatted arrow text when both temperatures are present', () => {
     expect(resolveSteppedTemperatureText({ currentTemperature: 20.5, plannedTarget: 50 }))
-      .toBe('20.5° → 50°');
+      .toBe('20.5 °C → 50 °C');
   });
 
   it('returns null when currentTemperature is absent', () => {
@@ -636,7 +636,7 @@ describe('resolveSteppedTemperatureText', () => {
 
   it('rounds target temperature to integer', () => {
     expect(resolveSteppedTemperatureText({ currentTemperature: 37.2, plannedTarget: 49.8 }))
-      .toBe('37.2° → 50°');
+      .toBe('37.2 °C → 50 °C');
   });
 });
 

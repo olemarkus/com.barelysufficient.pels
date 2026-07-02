@@ -20,8 +20,14 @@ const getAllModes = () => {
 };
 
 const getPriorityLabel = (mode: string, deviceId: string) => {
-  const priority = state.capacityPriorities[mode]?.[deviceId] ?? 100;
-  return `Priority: #${priority <= 100 ? priority : '—'}`;
+  // The stored map only carries an explicit rank once the user has ordered
+  // devices for that mode (drag on the Modes screen assigns 1..N). An unset
+  // device falls back to the lowest slot (100), which reads as noise as a
+  // "#100" — surface a humane "not set" instead, and drop the "#" jargon on the
+  // real ranks.
+  const priority = state.capacityPriorities[mode]?.[deviceId];
+  if (typeof priority !== 'number' || priority >= 100) return 'Priority not set';
+  return `Priority ${priority}`;
 };
 
 const getTargetInputValue = (mode: string, device: SettingsUiDeviceDetailItem) => {

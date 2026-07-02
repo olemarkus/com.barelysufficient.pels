@@ -339,7 +339,7 @@ const estimateTimeShortfall = (
  * fabricated audit). The chip never carries red tone: the producer emits a
  * tone-neutral string and the view paints it as muted/info.
  *
- * Example: `Delivered 17 of 24 kWh · short ~23 min.`
+ * Example: `Delivered 17 of 24 kWh · short ≈ 23 min.`
  */
 export const formatPlanHistoryShortfallChip = (
   entry: Pick<

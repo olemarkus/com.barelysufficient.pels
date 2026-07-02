@@ -41,7 +41,7 @@ import {
 import { getActiveDailyBudgetKWh, setActiveDailyBudgetChangeListener } from './activeDailyBudget.ts';
 import { renderSolarUsageSection } from './solarUsageSection.ts';
 import {
-  formatDateInTimeZone,
+  formatDayFirstInTimeZone,
   getDateKeyInTimeZone,
   getDateKeyStartMs,
   getWeekStartInTimeZone,
@@ -123,11 +123,15 @@ const getTimeZoneWeekRange = (now: Date, weekOffset: number, timeZone: string) =
   return { startMs, endMs };
 };
 
+// Day-first date labels ("15 May" / "Fri 15 May") via the shared
+// `formatDayFirstInTimeZone` grammar — one grammar with the smart-task and
+// day-card surfaces, English-pinned so CI (en-US default) never flips to
+// month-first "May 15".
 const formatWeekLabel = (startMs: number, endMs: number, timeZone: string) => {
   const start = new Date(startMs);
   const end = new Date(endMs - 1);
-  const startText = formatDateInTimeZone(start, { month: 'short', day: 'numeric' }, timeZone);
-  const endText = formatDateInTimeZone(end, { month: 'short', day: 'numeric' }, timeZone);
+  const startText = formatDayFirstInTimeZone(start, { month: 'short', day: 'numeric' }, timeZone);
+  const endText = formatDayFirstInTimeZone(end, { month: 'short', day: 'numeric' }, timeZone);
   return `${startText}–${endText}`;
 };
 
@@ -162,7 +166,7 @@ const renderPowerSummary = (
   solarSelfUsedKWh: number | null,
 ) => {
   const now = new Date();
-  const todayText = formatDateInTimeZone(now, { weekday: 'short', month: 'short', day: 'numeric' }, timeZone);
+  const todayText = formatDayFirstInTimeZone(now, { weekday: 'short', month: 'short', day: 'numeric' }, timeZone);
 
   if (usageToday) usageToday.textContent = `${stats.today.toFixed(1)} kWh`;
   if (usageWeek) usageWeek.textContent = `${stats.week.toFixed(1)} kWh`;
