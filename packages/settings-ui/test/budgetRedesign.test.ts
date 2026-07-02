@@ -315,6 +315,56 @@ describe('resolveChartData', () => {
     expect(hourly?.unit).toBe('energy');
   });
 
+  // Build a fully-priced, price-shaped day whose buckets carry real UTC starts
+  // so a combined-price row can join by timestamp.
+  const buildPricedHourlyPayload = (): DailyBudgetDayPayload => {
+    const startUtc = Array.from({ length: 24 }, (_v, i) => (
+      new Date(Date.UTC(2026, 4, 11, i, 0, 0, 0)).toISOString()
+    ));
+    const base = buildPayload({ priceShapingEnabled: true, price: Array.from({ length: 24 }, () => 100) });
+    return {
+      ...base,
+      buckets: {
+        ...base.buckets,
+        startUtc,
+        startLocalLabels: Array.from({ length: 24 }, (_v, i) => `${String(i).padStart(2, '0')}:00`),
+      },
+    } as DailyBudgetDayPayload;
+  };
+
+  it('overlays the hourly price curve with the planning price where a prosumer hour diverges', () => {
+    const payload = buildPricedHourlyPayload();
+    const priceRows = [
+      // Hour 3 self-consumes solar → planning price far below the import 100.
+      { startsAt: payload.buckets.startUtc[3], total: 100, budgetPrice: 10 },
+    ];
+    const chart = resolveChartData({
+      viewPayload: payload, view: 'today', mode: 'hourlyPlan', status: 'within', costDisplay, priceRows,
+    });
+    expect(chart?.showPrice).toBe(true);
+    // Only the diverging hour flips; the rest stay on the import price.
+    expect(chart?.payload.buckets.price?.[3]).toBe(10);
+    expect(chart?.payload.buckets.price?.[2]).toBe(100);
+    expect(chart?.planningPriceNote).toBe('using your solar');
+  });
+
+  it('is byte-identical (payload untouched, no note) when no hour diverges from import', () => {
+    const payload = buildPricedHourlyPayload();
+    // No rows at all.
+    const noRows = resolveChartData({
+      viewPayload: payload, view: 'today', mode: 'hourlyPlan', status: 'within', costDisplay,
+    });
+    expect(noRows?.payload).toBe(payload); // reference-equal → untouched
+    expect(noRows?.planningPriceNote).toBeNull();
+    // Rows whose budgetPrice equals total must also leave the payload untouched.
+    const equalRows = resolveChartData({
+      viewPayload: payload, view: 'today', mode: 'hourlyPlan', status: 'within', costDisplay,
+      priceRows: [{ startsAt: payload.buckets.startUtc[3], total: 100, budgetPrice: 100 }],
+    });
+    expect(equalRows?.payload).toBe(payload);
+    expect(equalRows?.planningPriceNote).toBeNull();
+  });
+
   it('offers the money view only when fully priced AND a real display unit is set', () => {
     const base = buildPayload();
     const priced = {

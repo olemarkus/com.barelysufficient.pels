@@ -205,6 +205,9 @@ const buildProps = (): BudgetOverviewProps => {
       status,
       costDisplay,
       requestedUnit: currentChartUnit,
+      // The hourly price curve follows the planning price (`budgetPrice ??
+      // total`) for a prosumer; the rows carry the per-hour `budgetPrice`.
+      priceRows: latestRenderState.priceRows,
     }),
     confidence: resolveConfidenceData(planPayload, view, status),
     adjust,

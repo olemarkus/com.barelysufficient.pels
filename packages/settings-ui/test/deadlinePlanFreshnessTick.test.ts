@@ -47,6 +47,7 @@ const buildPlanInputsPayloadWithFreshnessRow = (params: {
     deadlineAxisX: 0.5,
     deadlineMarkLabel: 'deadline Mon 06:00',
     cheapestHoursCaption: null,
+    planningPriceNote: null,
   },
   trajectory: {
     cardTitle: 'Will it reach 60% in time?',

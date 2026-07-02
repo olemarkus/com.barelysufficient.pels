@@ -106,14 +106,24 @@ const resolveYAxisScale = (dataMax: number, kind: ChartScaleKind): { max: number
   };
 };
 
-const resolvePriceYAxisScale = (prices: number[]): { min: number; max: number; interval: number } => {
-  if (prices.length === 0) return { min: 0, max: 1, interval: 0.5 };
-  const dataMin = Math.min(...prices);
-  const dataMax = Math.max(...prices);
+export const resolvePriceYAxisScale = (prices: number[]): { min: number; max: number; interval: number } => {
+  // Boundary guard: the production caller (`normalizePriceValues`) already yields
+  // a finite-only array, but this is a public helper — filter defensively so a
+  // stray null/NaN/Infinity can't poison `Math.min`/`Math.max` and read as an
+  // all-zero axis. An empty (or fully-filtered) set falls back to the same safe
+  // default. The negative-min behaviour then runs on the filtered numbers.
+  const finite = prices.filter((value) => Number.isFinite(value));
+  if (finite.length === 0) return { min: 0, max: 1, interval: 0.5 };
+  const dataMin = Math.min(...finite);
+  const dataMax = Math.max(...finite);
   const span = Math.max(0.01, dataMax - dataMin);
   const pad = span * 0.1;
   const interval = span <= 1.2 ? 0.3 : 0.5;
-  const minPadded = Math.max(0, Math.floor((dataMin - pad) / interval) * interval);
+  // A legal <= 0 planning price (deep surplus / negative export — the NL case)
+  // must draw below the axis, not clip at a 0 floor and read as ~0. Keep 0 as
+  // the floor only when every point is >= 0.
+  const rawMin = Math.floor((dataMin - pad) / interval) * interval;
+  const minPadded = dataMin < 0 ? rawMin : Math.max(0, rawMin);
   const maxPadded = Math.ceil((dataMax + pad) / interval) * interval;
   return {
     min: Number(minPadded.toFixed(2)),

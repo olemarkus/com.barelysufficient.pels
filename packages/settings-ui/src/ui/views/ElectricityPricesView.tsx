@@ -7,6 +7,7 @@ import type {
   GridCompanyOption,
 } from '../priceConfigTypes.ts';
 import { resolvePriceLevelChip } from '../../../../shared-domain/src/priceLevelChips.ts';
+import { EXPORT_PRICE_LABEL } from '../../../../shared-domain/src/price/planningPrice.ts';
 import {
   MdFilledSelect,
   MdFilledTextField,
@@ -51,6 +52,11 @@ export type ElectricityPricesViewProps = {
   // time (or null when prices have not been fetched yet).
   currentPriceLevel: string | null;
   lastFetchedShort: string | null;
+  // Current-hour export price (pre-scaled display text) and the `using your
+  // solar` reason line for the "Right now" card. Both null for a non-prosumer,
+  // so the card renders exactly as before outside a solar home.
+  currentExportPriceText: string | null;
+  planningPriceReasonLine: string | null;
   norwayPriceModel: NorwayPriceModel;
   priceArea: string;
   providerSurcharge: number;
@@ -110,9 +116,20 @@ const StatusRow = ({ label, value, tone }: { label: string; value: string; tone?
 const LiveSummaryCard = ({
   currentPriceLevel,
   lastFetchedShort,
+  currentExportPriceText,
+  planningPriceReasonLine,
 }: {
   currentPriceLevel: string | null;
   lastFetchedShort: string | null;
+  // Current-hour export (feed-in) price, pre-formatted and scaled through the
+  // CostDisplay divisor (e.g. `0.34 kr/kWh`), or null when no export price
+  // covers this hour. A non-prosumer never has one, so the row never renders.
+  currentExportPriceText: string | null;
+  // The registered `using your solar` reason line, present only when the
+  // current-hour planning price (which the "Current price" level tiers on
+  // post-#1808) diverges from the import price. Null otherwise, so a
+  // non-prosumer sees nothing new.
+  planningPriceReasonLine: string | null;
 }) => {
   const chip = resolvePriceLevelChip(currentPriceLevel);
   const chipToneCls = chip ? (chip.tone === 'warn' ? 'plan-chip--warn' : 'plan-chip--info') : '';
@@ -129,16 +146,27 @@ const LiveSummaryCard = ({
   return (
     <section class="settings-form-card electricity-prices-live-summary">
       <h3 class="section-title">Right now</h3>
-      <div class="price-config-status-row">
-        <span class="price-config-status-label">Current price</span>
-        {chip ? (
-          <span class={`plan-chip ${chipToneCls}`} data-price-level={chip.priceLevel}>
-            {chip.label}
-          </span>
-        ) : (
-          <span class="price-config-status-value">{calmValue}</span>
-        )}
+      <div class="electricity-prices-current-price">
+        <div class="price-config-status-row">
+          <span class="price-config-status-label">Current price</span>
+          {chip ? (
+            <span class={`plan-chip ${chipToneCls}`} data-price-level={chip.priceLevel}>
+              {chip.label}
+            </span>
+          ) : (
+            <span class="price-config-status-value">{calmValue}</span>
+          )}
+        </div>
+        {/* Sub-note under the Current price row it explains: the level tiers on
+            the planning price for a prosumer. Same grey (pels-card-supporting)
+            as the Budget chart's note so the shared string reads as one voice. */}
+        {planningPriceReasonLine !== null ? (
+          <p class="pels-card-supporting electricity-prices-planning-reason">{planningPriceReasonLine}</p>
+        ) : null}
       </div>
+      {currentExportPriceText !== null ? (
+        <StatusRow label={EXPORT_PRICE_LABEL} value={currentExportPriceText} />
+      ) : null}
       {hasUsablePriceLevel ? (
         <StatusRow label="Last fetched" value={lastFetchedShort ?? '—'} />
       ) : null}
@@ -462,7 +490,7 @@ const ExportPriceForm = ({
       class="form-grid settings-form-card"
       onSubmit={(e) => e.preventDefault()}
     >
-      <h3 class="section-title">Export price</h3>
+      <h3 class="section-title">{EXPORT_PRICE_LABEL}</h3>
       <p class="muted">
         What you’re paid for power you send to the grid — check what your power company pays you.
         The Budget tab shows the current export price while this is on.
@@ -608,6 +636,8 @@ const ElectricityPricesRoot = (props: ElectricityPricesViewProps) => {
       <LiveSummaryCard
         currentPriceLevel={props.currentPriceLevel}
         lastFetchedShort={props.lastFetchedShort}
+        currentExportPriceText={props.currentExportPriceText}
+        planningPriceReasonLine={props.planningPriceReasonLine}
       />
       <SourceForm {...props} />
       {props.showExportSection && (

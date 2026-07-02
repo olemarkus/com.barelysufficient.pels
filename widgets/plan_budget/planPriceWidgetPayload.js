@@ -72,6 +72,15 @@ var resolvePlanPriceCostDisplay = (params) => {
   };
 };
 
+// packages/shared-domain/src/price/planningPrice.ts
+var DISPLAY_HALF_CENT = 5e-3;
+var planningPriceDivergesFromImport = (budgetPrice, totalPrice, divisor) => {
+  if (typeof budgetPrice !== "number" || !Number.isFinite(budgetPrice)) return false;
+  if (!Number.isFinite(totalPrice)) return false;
+  const rawThreshold = DISPLAY_HALF_CENT * Math.max(1, divisor);
+  return Math.abs(budgetPrice - totalPrice) > rawThreshold;
+};
+
 // widgets/plan_budget/src/planPriceWidgetPayload.ts
 var WIDGET_TITLE = PLAN_PRICE_WIDGET_TITLE;
 var EMPTY_STATE_SUBTITLES = {
@@ -101,25 +110,46 @@ var resolveLabelEvery = (bucketCount) => {
   if (bucketCount <= 24) return 4;
   return Math.max(1, Math.round(bucketCount / 6));
 };
-var resolvePriceSeries = (params) => {
-  const { bucketStartUtc, bucketPrices, combinedPrices } = params;
-  if (bucketPrices.length === bucketStartUtc.length) {
-    return bucketPrices.map((value) => isFiniteNumber(value) ? value : null);
-  }
-  if (!combinedPrices?.prices || bucketStartUtc.length === 0) {
-    return bucketStartUtc.map(() => null);
-  }
-  const priceByStart = /* @__PURE__ */ new Map();
+var buildBudgetPriceByStart = (combinedPrices) => {
+  const byStart = /* @__PURE__ */ new Map();
+  if (!combinedPrices || !Array.isArray(combinedPrices.prices)) return byStart;
   for (const entry of combinedPrices.prices) {
     if (!entry || typeof entry !== "object") continue;
     const timestamp = Date.parse(entry.startsAt);
-    if (!Number.isFinite(timestamp) || !isFiniteNumber(entry.total)) continue;
-    priceByStart.set(timestamp, entry.total);
+    if (Number.isFinite(timestamp) && isFiniteNumber(entry.budgetPrice)) {
+      byStart.set(timestamp, entry.budgetPrice);
+    }
   }
-  return bucketStartUtc.map((iso) => {
-    const timestamp = Date.parse(iso);
-    if (!Number.isFinite(timestamp)) return null;
-    return priceByStart.get(timestamp) ?? null;
+  return byStart;
+};
+var resolvePriceSeries = (params) => {
+  const { bucketStartUtc, bucketPrices, combinedPrices, divisor = 1 } = params;
+  let base;
+  if (bucketPrices.length === bucketStartUtc.length) {
+    base = bucketPrices.map((value) => isFiniteNumber(value) ? value : null);
+  } else if (!combinedPrices || !Array.isArray(combinedPrices.prices) || bucketStartUtc.length === 0) {
+    return bucketStartUtc.map(() => null);
+  } else {
+    const totalByStart = /* @__PURE__ */ new Map();
+    for (const entry of combinedPrices.prices) {
+      if (!entry || typeof entry !== "object") continue;
+      const timestamp = Date.parse(entry.startsAt);
+      if (!Number.isFinite(timestamp) || !isFiniteNumber(entry.total)) continue;
+      totalByStart.set(timestamp, entry.total);
+    }
+    base = bucketStartUtc.map((iso) => {
+      const timestamp = Date.parse(iso);
+      if (!Number.isFinite(timestamp)) return null;
+      return totalByStart.get(timestamp) ?? null;
+    });
+  }
+  const budgetPriceByStart = buildBudgetPriceByStart(combinedPrices);
+  if (budgetPriceByStart.size === 0) return base;
+  return base.map((total, index) => {
+    if (!isFiniteNumber(total)) return total;
+    const timestamp = Date.parse(bucketStartUtc[index] ?? "");
+    const budgetPrice = Number.isFinite(timestamp) ? budgetPriceByStart.get(timestamp) : void 0;
+    return planningPriceDivergesFromImport(budgetPrice, total, divisor) ? budgetPrice : total;
   });
 };
 var resolveProjectionKwh = (params) => {
@@ -236,11 +266,16 @@ var buildPlanPriceWidgetPayload = (params) => {
     { length: bucketCount },
     (_value, index) => resolveLabel(labels, bucketStartUtc, index)
   );
+  const costDisplay = resolvePlanPriceCostDisplay({
+    priceScheme: params.priceScheme,
+    priceUnit: params.combinedPrices?.priceUnit
+  });
   const priceSeries = normalizeSeriesLength(
     resolvePriceSeries({
       bucketStartUtc,
       bucketPrices: Array.isArray(day.buckets.price) ? day.buckets.price : [],
-      combinedPrices: params.combinedPrices
+      combinedPrices: params.combinedPrices,
+      divisor: costDisplay.costDivisor
     }),
     bucketCount
   );
@@ -248,10 +283,6 @@ var buildPlanPriceWidgetPayload = (params) => {
   const isToday = resolvedTarget === "today";
   const { actualKwh, showActual } = resolveActualSeries(day, bucketCount, isToday);
   const { currentIndex, showNow } = resolveCurrentState(day, bucketCount, isToday);
-  const costDisplay = resolvePlanPriceCostDisplay({
-    priceScheme: params.priceScheme,
-    priceUnit: params.combinedPrices?.priceUnit
-  });
   const projectionKwh = resolveProjectionKwh({
     plannedKwh,
     actualKwh,

@@ -192,6 +192,12 @@ export type DeadlinePlanPayload = {
     // Null when the summary can't be stated honestly (no planned hours, a
     // single-hour window, or a missing price unit).
     cheapestHoursCaption: string | null;
+    // The registered `using your solar` reason line, present only when a
+    // prosumer's per-hour PLANNING price (what the schedule chart + readout
+    // show) visibly diverges from the import money price (what the hero's
+    // cost line shows). Bridges that gap so the ~3× planning-vs-import figure
+    // difference is explained. Null for a non-prosumer (byte-identical).
+    planningPriceNote: string | null;
   };
   trajectory: DeadlineTrajectoryPayload;
   planInputs: {
@@ -923,6 +929,9 @@ const ScheduleQuestionCards = ({ payload }: { payload: DeadlinePlanPayload }) =>
           <p class="deadline-horizon-caption pels-card-supporting">{payload.timeline.cheapestHoursCaption}</p>
         )}
         <p class="deadline-horizon-caption pels-card-supporting">{SMART_TASK_SCHEDULE_CHART_KEY}</p>
+        {payload.timeline.planningPriceNote && (
+          <p class="deadline-horizon-caption pels-card-supporting">{payload.timeline.planningPriceNote}</p>
+        )}
       </section>
       <section
         class="pels-surface-card budget-redesign-card deadline-horizon-card"

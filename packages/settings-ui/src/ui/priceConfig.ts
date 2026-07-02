@@ -39,6 +39,7 @@ import {
   type SettingsUiPricesPayload,
 } from '../../../contracts/src/settingsUiApi.ts';
 import { buildFlowStatus, buildHomeyStatus } from './priceConfigStatus.ts';
+import { resolveLiveSummarySignals, type LiveSummarySignals } from './livePriceSignals.ts';
 import {
   renderElectricityPricesView,
   type ElectricityPricesViewProps,
@@ -69,11 +70,13 @@ type PriceConfigState = {
   tariffGroup: string;
   flowStatus: FlowStatus | null;
   homeyStatus: HomeyStatus | null;
-  // Live summary signals. `currentPriceLevel` is the raw Homey level read from
-  // the power read-model (same field the budget hero consumes); `lastFetchedShort`
-  // is the pre-formatted short clock time from the combined-prices read-model.
+  // `currentPriceLevel` is the raw Homey level read from the power read-model
+  // (same field the budget hero consumes). The rest of the "Right now" card's
+  // signals — last-fetched time, current-hour export price, and the `using your
+  // solar` reason line — are the combined-prices derivations in `liveSummary`
+  // (byte-identical to today for a non-prosumer; see livePriceSignals.ts).
   currentPriceLevel: string | null;
-  lastFetchedShort: string | null;
+  liveSummary: LiveSummarySignals;
   // Export (feed-in) price settings — normalized by `readExportPriceSettings`.
   exportPriceEnabled: boolean;
   exportSpotFactor: number;
@@ -94,24 +97,10 @@ let configState: PriceConfigState = {
   flowStatus: null,
   homeyStatus: null,
   currentPriceLevel: null,
-  lastFetchedShort: null,
+  liveSummary: { lastFetchedShort: null, exportText: null, planningReasonLine: null },
   exportPriceEnabled: false,
   exportSpotFactor: 0,
   exportFixed: 0,
-};
-
-// Narrow the unknown `combinedPrices` read-model to the one field the live
-// summary needs, then format it as a short local clock time. Mirrors the
-// pending-hero `formatLastFetched` narrowing in `deadlinePlanPending.ts` so the
-// two surfaces read "last fetched" from the exact same shape. Returns null when
-// the payload is missing/unrecognised so the card shows the neutral dash.
-const resolveLastFetchedShort = (combinedPrices: unknown): string | null => {
-  if (!combinedPrices || typeof combinedPrices !== 'object') return null;
-  const raw = (combinedPrices as { lastFetched?: unknown }).lastFetched;
-  if (typeof raw !== 'string' || raw.length === 0) return null;
-  const ms = new Date(raw).getTime();
-  if (!Number.isFinite(ms)) return null;
-  return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
 };
 
 let electricityPricesSurface: HTMLElement | null = null;
@@ -152,7 +141,16 @@ const renderElectricityPrices = () => {
     flowStatus: configState.flowStatus,
     homeyStatus: configState.homeyStatus,
     currentPriceLevel: configState.currentPriceLevel,
-    lastFetchedShort: configState.lastFetchedShort,
+    lastFetchedShort: configState.liveSummary.lastFetchedShort,
+    // Gate the live export/planning signals on the CURRENT enabled setting, not
+    // the cached prices: `combined_prices` keeps carrying exportPrice/budgetPrice
+    // for up to an hour after the user turns export pricing off (the prices only
+    // drop them on the next rebuild), and `onEnabledChange` repaints without
+    // recomputing `liveSummary`. Reading the live flag here suppresses the export
+    // row and the `using your solar` reason line the instant the toggle flips —
+    // an enabled user is byte-identical.
+    currentExportPriceText: configState.exportPriceEnabled ? configState.liveSummary.exportText : null,
+    planningPriceReasonLine: configState.exportPriceEnabled ? configState.liveSummary.planningReasonLine : null,
     gridCompanyOptions: getGridCompanyOptions(configState.countyCode),
     showPriceAwareDevicesLink: false,
     // Prosumer gate: any home that exhibits solar — a managed solar device OR
@@ -474,7 +472,7 @@ const refreshStatusInfo = async () => {
       // Same `priceLevel` field the budget hero reads, so the tier chip never
       // disagrees across surfaces.
       currentPriceLevel: powerPayload?.status?.priceLevel ?? null,
-      lastFetchedShort: resolveLastFetchedShort(payload.combinedPrices),
+      liveSummary: resolveLiveSummarySignals(payload.combinedPrices, Date.now()),
     };
   } catch (error) {
     await logSettingsError('Failed to refresh price status', error, 'priceConfig');

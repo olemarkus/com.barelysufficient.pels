@@ -1,4 +1,5 @@
 import type { SettingsUiPricesPayload } from '../../../contracts/src/settingsUiApi.ts';
+import { resolvePlanningPrice } from '../../../shared-domain/src/price/planningPrice.ts';
 import { normalizeCombinedPrices, isFiniteNumber } from './combinedPrices.ts';
 
 export const ONE_HOUR_MS = 60 * 60 * 1000;
@@ -8,7 +9,17 @@ export { isFiniteNumber };
 export type HorizonHour = {
   startsAtMs: number;
   endMs: number;
+  // Import price (`total`) — the MONEY basis. The hero's delivered/planned cost
+  // lines reconcile to the bill, so they must stay on this (see
+  // `resolveLiveCostAndDelivery` in `deadlinePlan.ts`).
   price: number;
+  // Planning price (`budgetPrice ?? total`) — the DISPLAY basis for the
+  // schedule chart, its readout, and the trust caption, so the "at what price"
+  // timeline follows the same signal the scheduler picked hours on. Equals
+  // `price` for a non-prosumer (byte-identical).
+  planningPrice: number;
+  isCheap?: boolean;
+  isExpensive?: boolean;
 };
 
 export const collectHorizonHours = (params: {
@@ -28,6 +39,9 @@ export const collectHorizonHours = (params: {
       startsAtMs,
       endMs: startsAtMs + ONE_HOUR_MS,
       price: price.total,
+      planningPrice: resolvePlanningPrice(price.budgetPrice, price.total),
+      isCheap: price.isCheap,
+      isExpensive: price.isExpensive,
     }))
     .filter((hour) => hour.endMs > params.windowStartMs && hour.startsAtMs < params.deadlineAtMs)
     .sort((left, right) => left.startsAtMs - right.startsAtMs)

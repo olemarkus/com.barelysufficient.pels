@@ -207,6 +207,7 @@ const buildReadyPayloadWithDeviceRecourse = (deviceId: string): DeadlinePlanPayl
     deadlineAxisX: 0.5,
     deadlineMarkLabel: 'deadline Mon 18:00',
     cheapestHoursCaption: null,
+    planningPriceNote: null,
   },
   trajectory: {
     cardTitle: 'Will it reach 22.0 °C in time?',

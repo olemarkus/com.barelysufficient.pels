@@ -357,6 +357,109 @@ describe('plan price widget payload', () => {
     expect(series).toEqual([null, 123]);
   });
 
+  test('follows the planning price (budgetPrice) where a prosumer hour diverges', () => {
+    const bucketStartUtc = [
+      '2026-03-19T00:00:00.000Z',
+      '2026-03-19T01:00:00.000Z',
+    ];
+    // Bucket prices carry the import total; the combined rows add the planning
+    // price for the second hour (a surplus hour, cheaper). The first hour has no
+    // budgetPrice → stays on the import total.
+    const series = resolvePriceSeries({
+      bucketStartUtc,
+      bucketPrices: [100, 200],
+      combinedPrices: {
+        prices: [
+          { startsAt: bucketStartUtc[0], total: 100 },
+          { startsAt: bucketStartUtc[1], total: 200, budgetPrice: 20 },
+        ],
+      },
+    });
+    expect(series).toEqual([100, 20]);
+  });
+
+  test('is byte-identical to the import price when no hour carries a budgetPrice', () => {
+    const bucketStartUtc = [
+      '2026-03-19T00:00:00.000Z',
+      '2026-03-19T01:00:00.000Z',
+    ];
+    const withRows = resolvePriceSeries({
+      bucketStartUtc,
+      bucketPrices: [100, 200],
+      combinedPrices: {
+        prices: [
+          { startsAt: bucketStartUtc[0], total: 100 },
+          { startsAt: bucketStartUtc[1], total: 200 },
+        ],
+      },
+    });
+    // A budgetPrice equal to total must not count as a divergence either.
+    const withEqualBudgetPrice = resolvePriceSeries({
+      bucketStartUtc,
+      bucketPrices: [100, 200],
+      combinedPrices: {
+        prices: [
+          { startsAt: bucketStartUtc[0], total: 100, budgetPrice: 100 },
+          { startsAt: bucketStartUtc[1], total: 200, budgetPrice: 200 },
+        ],
+      },
+    });
+    expect(withRows).toEqual([100, 200]);
+    expect(withEqualBudgetPrice).toEqual([100, 200]);
+  });
+
+  test('projected cost is summed on the planning price for a prosumer', () => {
+    const today = buildDay(2);
+    today.buckets.plannedKWh = [1, 1];
+    today.buckets.price = [100, 200];
+    today.budget.enabled = true;
+    today.budget.dailyBudgetKWh = 10;
+    const snapshot: DailyBudgetUiPayload = {
+      days: { [today.dateKey]: today },
+      todayKey: today.dateKey,
+    };
+    const payload = buildPlanPriceWidgetPayload({
+      snapshot,
+      combinedPrices: {
+        priceUnit: 'øre/kWh',
+        prices: [
+          { startsAt: today.buckets.startUtc[0], total: 100 },
+          { startsAt: today.buckets.startUtc[1], total: 200, budgetPrice: 20 },
+        ],
+      },
+      target: 'today',
+      priceScheme: 'norway',
+    });
+    // Import cost would be (100 + 200) / 100 = 3.00 kr; planning drops the
+    // surplus hour to (100 + 20) / 100 = 1.20 kr.
+    expect(payload.state).toBe('ready');
+    if (payload.state === 'ready') {
+      expect(payload.priceSeries).toEqual([100, 20]);
+      expect(payload.projectedCost).toBeCloseTo(1.2, 5);
+    }
+  });
+
+  test('does not throw when combined_prices.prices is a malformed non-array (untrusted settings read)', () => {
+    const bucketStartUtc = ['2026-03-19T00:00:00.000Z', '2026-03-19T01:00:00.000Z'];
+    // A corrupt persisted `combined_prices` could carry a non-array `prices`.
+    // The planning overlay must degrade to the import series, never throw.
+    const series = resolvePriceSeries({
+      bucketStartUtc,
+      bucketPrices: [100, 200],
+      combinedPrices: { prices: 'garbage' as unknown as [] },
+      divisor: 100,
+    });
+    expect(series).toEqual([100, 200]);
+    // Same guard on the join fallback (misaligned bucket prices): a non-iterable
+    // `{}` for `prices` must return nulls, not throw on `for...of`.
+    expect(resolvePriceSeries({
+      bucketStartUtc,
+      bucketPrices: [1],
+      combinedPrices: { prices: {} as unknown as [] },
+      divisor: 100,
+    })).toEqual([null, null]);
+  });
+
   test('handles empty price sources and invalid labels safely', () => {
     expect(resolvePriceSeries({
       bucketStartUtc: [],

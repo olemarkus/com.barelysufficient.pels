@@ -302,16 +302,21 @@ const resolvePlannedWindowCheaperThanNow = (params: {
   currentChargeByStartMs: Map<number, number>;
   nowMs: number;
 }): boolean => {
+  // Compares on the PLANNING price (`budgetPrice ?? total`) so the "cheaper than
+  // now" claim reconciles with the schedule chart the user sees below it (also
+  // planning-priced) and with the hours the scheduler actually ranked. Equals
+  // the import-price comparison for a non-prosumer. The divisor cancels out of
+  // a relative comparison, so raw planning prices are compared directly.
   const plannedPrices = params.hours
     .filter((hour) => (params.currentChargeByStartMs.get(hour.startsAtMs) ?? 0) > 0)
-    .map((hour) => hour.price);
+    .map((hour) => hour.planningPrice);
   if (plannedPrices.length === 0) return false;
   const currentHour = params.hours.find((hour) => (
     params.nowMs >= hour.startsAtMs && params.nowMs < hour.endMs
   ));
   if (!currentHour) return false;
   const plannedAverage = plannedPrices.reduce((sum, price) => sum + price, 0) / plannedPrices.length;
-  return plannedAverage < currentHour.price;
+  return plannedAverage < currentHour.planningPrice;
 };
 
 // Prorate one bucket's `actualKWh` against the plan's run interval. Tracker

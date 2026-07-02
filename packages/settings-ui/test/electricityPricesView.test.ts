@@ -15,6 +15,8 @@ const buildProps = (overrides: Partial<ElectricityPricesViewProps> = {}): Electr
   homeyStatus: null,
   currentPriceLevel: null,
   lastFetchedShort: null,
+  currentExportPriceText: null,
+  planningPriceReasonLine: null,
   gridCompanyOptions: [
     { name: 'Grid Company', organizationNumber: '123' },
   ],
@@ -129,6 +131,40 @@ describe('ElectricityPricesView', () => {
     expect(summary?.querySelector('.plan-chip')).toBeNull();
     expect(summary?.textContent).toContain('Normal');
     expect(summary?.textContent).toContain('—');
+  });
+
+  it('adds the export-price row and "using your solar" reason line for a prosumer', () => {
+    const mount = document.createElement('div');
+    document.body.appendChild(mount);
+
+    renderElectricityPricesView(mount, buildProps({
+      currentPriceLevel: 'cheap',
+      lastFetchedShort: '14:05',
+      currentExportPriceText: '0.34 kr/kWh',
+      planningPriceReasonLine: 'using your solar',
+    }));
+
+    const summary = mount.querySelector('.electricity-prices-live-summary');
+    expect(summary?.textContent).toContain('Export price');
+    expect(summary?.textContent).toContain('0.34 kr/kWh');
+    expect(summary?.querySelector('.electricity-prices-planning-reason')?.textContent)
+      .toBe('using your solar');
+  });
+
+  it('stays byte-identical for a non-prosumer: no export row, no reason line', () => {
+    const mount = document.createElement('div');
+    document.body.appendChild(mount);
+
+    renderElectricityPricesView(mount, buildProps({
+      currentPriceLevel: 'cheap',
+      lastFetchedShort: '14:05',
+      currentExportPriceText: null,
+      planningPriceReasonLine: null,
+    }));
+
+    const summary = mount.querySelector('.electricity-prices-live-summary');
+    expect(summary?.textContent).not.toContain('Export price');
+    expect(summary?.querySelector('.electricity-prices-planning-reason')).toBeNull();
   });
 
   it('shows "Awaiting prices" (not "Normal") for the unknown level before prices arrive', () => {

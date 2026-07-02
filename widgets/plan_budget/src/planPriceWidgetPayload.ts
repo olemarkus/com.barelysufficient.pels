@@ -6,6 +6,9 @@ import {
   resolvePlanPriceCostDisplay,
   type PlanPriceSummaryTone,
 } from '../../../packages/shared-domain/src/planPriceWidgetCopy';
+import {
+  planningPriceDivergesFromImport,
+} from '../../../packages/shared-domain/src/price/planningPrice';
 import type {
   PlanPriceWidgetEmptyPayload,
   PlanPriceWidgetPayload,
@@ -63,33 +66,77 @@ export const resolveLabelEvery = (bucketCount: number): number => {
   return Math.max(1, Math.round(bucketCount / 6));
 };
 
+// Index the per-hour PLANNING price (`budgetPrice`) from the combined-price
+// rows, keyed by hour-start epoch ms. Only finite `budgetPrice` values land in
+// the map — an absent/junk value leaves the hour on the import price, so a
+// non-prosumer's overlay is a no-op (byte-identical).
+const buildBudgetPriceByStart = (combinedPrices: CombinedPriceData | null): Map<number, number> => {
+  const byStart = new Map<number, number>();
+  // `combinedPrices` is the raw `combined_prices` settings read (untrusted): a
+  // malformed persisted value could carry a non-array `prices`, so array-guard
+  // before iterating rather than letting `for...of` throw. `Array.isArray` /
+  // the local `isFiniteNumber` — no `lib/**` import (widget can't reach it).
+  if (!combinedPrices || !Array.isArray(combinedPrices.prices)) return byStart;
+  for (const entry of combinedPrices.prices) {
+    if (!entry || typeof entry !== 'object') continue;
+    const timestamp = Date.parse(entry.startsAt);
+    if (Number.isFinite(timestamp) && isFiniteNumber(entry.budgetPrice)) {
+      byStart.set(timestamp, entry.budgetPrice);
+    }
+  }
+  return byStart;
+};
+
 export const resolvePriceSeries = (params: {
   bucketStartUtc: ReadonlyArray<string>;
   bucketPrices: ReadonlyArray<number | null | undefined>;
   combinedPrices: CombinedPriceData | null;
+  // Price minor→major divisor (øre→kr ÷100; flow/homey ÷1). Gates the planning
+  // overlay on the DISPLAY resolution so a sub-cent surplus never flips a curve
+  // point without a visible change. Defaults to 1 (no scaling) for legacy
+  // callers/tests that don't pass it.
+  divisor?: number;
 }): Array<number | null> => {
-  const { bucketStartUtc, bucketPrices, combinedPrices } = params;
+  const { bucketStartUtc, bucketPrices, combinedPrices, divisor = 1 } = params;
 
+  // Base import-price (`total`) series — from the bucket prices when they
+  // align, else joined from the combined rows by hour start.
+  let base: Array<number | null>;
   if (bucketPrices.length === bucketStartUtc.length) {
-    return bucketPrices.map((value) => (isFiniteNumber(value) ? value : null));
-  }
-
-  if (!combinedPrices?.prices || bucketStartUtc.length === 0) {
+    base = bucketPrices.map((value) => (isFiniteNumber(value) ? value : null));
+    // Array-guard the untrusted `combined_prices.prices` before the fallback
+    // `for...of` — a non-array (e.g. `{}`) is not iterable and would throw.
+  } else if (!combinedPrices || !Array.isArray(combinedPrices.prices) || bucketStartUtc.length === 0) {
     return bucketStartUtc.map(() => null);
+  } else {
+    const totalByStart = new Map<number, number>();
+    for (const entry of combinedPrices.prices) {
+      if (!entry || typeof entry !== 'object') continue;
+      const timestamp = Date.parse(entry.startsAt);
+      if (!Number.isFinite(timestamp) || !isFiniteNumber(entry.total)) continue;
+      totalByStart.set(timestamp, entry.total);
+    }
+    base = bucketStartUtc.map((iso) => {
+      const timestamp = Date.parse(iso);
+      if (!Number.isFinite(timestamp)) return null;
+      return totalByStart.get(timestamp) ?? null;
+    });
   }
 
-  const priceByStart = new Map<number, number>();
-  for (const entry of combinedPrices.prices) {
-    if (!entry || typeof entry !== 'object') continue;
-    const timestamp = Date.parse(entry.startsAt);
-    if (!Number.isFinite(timestamp) || !isFiniteNumber(entry.total)) continue;
-    priceByStart.set(timestamp, entry.total);
-  }
-
-  return bucketStartUtc.map((iso) => {
-    const timestamp = Date.parse(iso);
-    if (!Number.isFinite(timestamp)) return null;
-    return priceByStart.get(timestamp) ?? null;
+  // Overlay the PLANNING price (`budgetPrice ?? total`) so the widget's price
+  // curve AND projected cost estimate follow the same signal the scheduler
+  // plans against — a prosumer's flexible load shifts toward self-consuming
+  // solar. Only replace an hour whose planning price actually diverges from
+  // its import price, so a non-prosumer (or a no-surplus hour) is byte-
+  // identical. Never used for a bill; the widget's "Projected …" framing is an
+  // estimate, not the delivered cost.
+  const budgetPriceByStart = buildBudgetPriceByStart(combinedPrices);
+  if (budgetPriceByStart.size === 0) return base;
+  return base.map((total, index) => {
+    if (!isFiniteNumber(total)) return total;
+    const timestamp = Date.parse(bucketStartUtc[index] ?? '');
+    const budgetPrice = Number.isFinite(timestamp) ? budgetPriceByStart.get(timestamp) : undefined;
+    return planningPriceDivergesFromImport(budgetPrice, total, divisor) ? (budgetPrice as number) : total;
   });
 };
 
@@ -290,11 +337,19 @@ export const buildPlanPriceWidgetPayload = (params: {
     { length: bucketCount },
     (_value, index) => resolveLabel(labels, bucketStartUtc, index),
   );
+  // Resolve the cost display first: its divisor gates the planning-price overlay
+  // in `resolvePriceSeries` on the display resolution (so a sub-cent surplus
+  // never flips a curve point without a visible change).
+  const costDisplay = resolvePlanPriceCostDisplay({
+    priceScheme: params.priceScheme,
+    priceUnit: params.combinedPrices?.priceUnit,
+  });
   const priceSeries = normalizeSeriesLength(
     resolvePriceSeries({
       bucketStartUtc,
       bucketPrices: Array.isArray(day.buckets.price) ? day.buckets.price : [],
       combinedPrices: params.combinedPrices,
+      divisor: costDisplay.costDivisor,
     }),
     bucketCount,
   );
@@ -302,11 +357,6 @@ export const buildPlanPriceWidgetPayload = (params: {
   const isToday = resolvedTarget === 'today';
   const { actualKwh, showActual } = resolveActualSeries(day, bucketCount, isToday);
   const { currentIndex, showNow } = resolveCurrentState(day, bucketCount, isToday);
-
-  const costDisplay = resolvePlanPriceCostDisplay({
-    priceScheme: params.priceScheme,
-    priceUnit: params.combinedPrices?.priceUnit,
-  });
   // Base the projection on actual usage to date plus planned for the remainder,
   // so an overrun already incurred is reflected (and can't read "On track").
   // Only fold in actuals when we have a trustworthy elapsed boundary

@@ -141,6 +141,31 @@ test.describe('Export price settings', () => {
   });
 });
 
+test.describe('Electricity prices "Right now" card', () => {
+  test('adds the export-price row for a prosumer, and none when export is off', async ({ page }) => {
+    // Pure fixed tariff (factor 0, -5 øre) → deterministic export price
+    // "-0.05 kr/kWh" after the {kr, ÷100} scaling, signed and unclamped.
+    await seedStubSettings(page, {
+      export_price_enabled: true,
+      export_spot_factor: 0,
+      export_fixed: -5,
+    });
+    await openElectricityPrices(page);
+
+    const summary = page.locator('.electricity-prices-live-summary');
+    await expect(summary).toBeVisible();
+    await expect(summary).toContainText('Export price');
+    await expect(summary).toContainText('-0.05 kr/kWh');
+  });
+
+  test('shows no export row when export pricing is off', async ({ page }) => {
+    await openElectricityPrices(page);
+    const summary = page.locator('.electricity-prices-live-summary');
+    await expect(summary).toBeVisible();
+    await expect(summary).not.toContainText('Export price');
+  });
+});
+
 test.describe('Budget tab export subline', () => {
   test('shows the current hour\'s export price, negative rendered through the cost display', async ({ page }) => {
     // Pure fixed tariff (factor 0) makes the stub's export price deterministic:

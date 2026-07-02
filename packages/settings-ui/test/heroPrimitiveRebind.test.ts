@@ -279,6 +279,7 @@ const buildReadyPayload = (): DeadlinePlanPayload => ({
     deadlineAxisX: 0.5,
     deadlineMarkLabel: 'deadline Mon 06:00',
     cheapestHoursCaption: null,
+    planningPriceNote: null,
   },
   trajectory: {
     cardTitle: 'Will it reach 65.0 °C in time?',
