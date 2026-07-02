@@ -7,6 +7,10 @@
       "gray": {
         "50": { "value": "#e6ecf5" },
         "100": { "value": "#9ba6b7" },
+        "200": {
+          "value": "#838c9d",
+          "comment": "Muted secondary-text step, raised one notch above the old dimmest grey (gray.300 #6b7280). Clears ~4.5:1 on the dark card surfaces (5.20:1 on surface-1 #141923, 4.60:1 on surface-3 #1d2430) so helper/caption copy stays legible at arm's length, while staying visibly below the brighter secondary tier (gray.100). gray.300 is now reserved for genuinely disabled controls."
+        },
         "300": { "value": "#6b7280" },
         "900": { "value": "#0d1117" }
       },
@@ -69,7 +73,14 @@
       "text": {
         "primary": { "value": "{color.base.gray.50}" },
         "secondary": { "value": "{color.base.gray.100}" },
-        "muted": { "value": "{color.base.gray.300}" },
+        "muted": {
+          "value": "{color.base.gray.200}",
+          "comment": "Helper/caption tier. Raised from gray.300 (#6b7280, ~3.6:1 on cards — dissolved) to gray.200 (#838c9d, ~5.2:1 on surface-1) so muted copy clears WCAG AA on the dark card surfaces. The old dimmest grey now lives on `text.disabled`; chart-muted tones were decoupled to `color.base.viz.slate` so this text raise does not recolour any chart."
+        },
+        "disabled": {
+          "value": "{color.base.gray.300}",
+          "comment": "Reserved for genuinely disabled controls/text — the former (dissolved) muted grey #6b7280. Kept dim on purpose: disabled content should recede. Do not use for helper/caption copy (use text.muted)."
+        },
         "inverse": { "value": "{color.base.accent.on}" }
       },
       "accent": { "value": "{color.base.accent.default}" },

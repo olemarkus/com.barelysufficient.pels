@@ -632,9 +632,16 @@ describe('resolveDominantCause', () => {
 });
 
 describe('resolveBudgetRemainingLine', () => {
-  it('frames positive remaining as energy left in the budget', () => {
+  it('frames a positive remainder as consumption (used so far), not a second "left" number', () => {
+    // Budget 60, remaining 7.7 → 52.3 kWh used so far. The delta chip is the
+    // single "how much is left" answer; this line names USED instead.
     const payload = buildPayload({ remainingKWh: 7.7 });
-    expect(resolveBudgetRemainingLine(payload, costDisplay)).toMatch(/^7\.7 kWh left in today's budget/);
+    expect(resolveBudgetRemainingLine(payload, costDisplay)).toMatch(/^52\.3 kWh used so far today/);
+  });
+
+  it('never restates the remainder as a second "left" number (the delta chip owns that)', () => {
+    const line = resolveBudgetRemainingLine(buildPayload({ remainingKWh: 7.7 }), costDisplay);
+    expect(line).not.toMatch(/left/i);
   });
 
   it('frames negative remaining as already-used overdraw', () => {

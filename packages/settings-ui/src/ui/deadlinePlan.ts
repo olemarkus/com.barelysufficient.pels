@@ -224,10 +224,6 @@ const resolveFiniteNumber = (value: number | null | undefined): number | null =>
   typeof value === 'number' && Number.isFinite(value) ? value : null
 );
 
-const resolveNonEmptyString = (value: string | undefined): string | null => (
-  typeof value === 'string' && value.length > 0 ? value : null
-);
-
 // Resolves the live-derived cost + delivered-kWh fields piped into the hero.
 // Sits next to `buildTimeline` because they consume the same per-hour shape;
 // kept as a small helper so `buildReadyPayload` stays under the complexity
@@ -256,14 +252,11 @@ const resolveLiveCostAndDelivery = (params: {
   nowMs: number;
 }): {
   plannedTotalCost: number;
-  deliveredCostSoFar: number | null;
   deliveredKWh: number;
 } => {
   const divisor = Math.max(1, params.costDisplay.divisor);
   let plannedTotalCost = 0;
-  let deliveredCostSoFar = 0;
   let deliveredKWh = 0;
-  let sawAnyActual = false;
   for (const hour of params.hours) {
     const displayPrice = hour.price / divisor;
     const plannedKWh = params.currentChargeByStartMs.get(hour.startsAtMs) ?? 0;
@@ -275,17 +268,9 @@ const resolveLiveCostAndDelivery = (params: {
       startedAtMs: params.startedAtMs,
       nowMs: params.nowMs,
     });
-    if (proratedKWh > 0) {
-      sawAnyActual = true;
-      deliveredCostSoFar += displayPrice * proratedKWh;
-      deliveredKWh += proratedKWh;
-    }
+    if (proratedKWh > 0) deliveredKWh += proratedKWh;
   }
-  return {
-    plannedTotalCost,
-    deliveredCostSoFar: sawAnyActual ? deliveredCostSoFar : null,
-    deliveredKWh,
-  };
+  return { plannedTotalCost, deliveredKWh };
 };
 
 // Producer-side price comparison feeding the queued hero's "Cheaper than now"
@@ -369,7 +354,6 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
   const progressPerKWh = energyNeededKWh > 0 ? progress.remainingUnits / energyNeededKWh : 0;
   const cannotMeet = latest.planStatus === 'cannot_meet' || latest.planStatus === 'at_risk';
   const firstChargingHour = hours.find((hour) => currentChargeByStartMs.has(hour.startsAtMs));
-  const hoursLeft = Math.max(0, Math.ceil((deadlineAtMs - nowMs) / ONE_HOUR_MS));
   const costAndDelivery = resolveLiveCostAndDelivery({
     bootstrap, deviceId, hours, currentChargeByStartMs, costDisplay: input.costDisplay,
     startedAtMs: activePlan!.startedAtMs,
@@ -449,7 +433,6 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
       deadlineAtMs,
       energyNeededKWh,
       energyExpectedKWh: heroEnergy.energyExpectedKWh,
-      hoursLeft,
       confidence: energy?.confidence ?? null,
       learning: heroEnergy.learning,
       planStatus: latest.planStatus,
@@ -466,21 +449,8 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
       plannedWindowCheaperThanNow: resolvePlannedWindowCheaperThanNow({
         hours, currentChargeByStartMs, nowMs,
       }),
-      // Plan-level snapshot frozen at first-revision time. Read from the
-      // plan, not the latest revision, so the hero meta line shows the
-      // "total duration" the user agreed to at plan creation rather than
-      // shrinking as energy is consumed each cycle. Legacy persisted plans
-      // (recorded before this snapshot shipped) fall back to the per-revision
-      // values so the surface stays populated; the snapshot will land the
-      // first time those plans hit a replan revision.
-      planningSpeedKw,
-      estimatedDurationText: resolveNonEmptyString(
-        activePlan!.initialEstimatedDurationText ?? latest.estimatedDurationText,
-      ),
-      speedMode: displayRate.speedMode,
       tone: resolveDeadlineHeroTone(latest.planStatus),
       plannedTotalCost: costAndDelivery.plannedTotalCost,
-      deliveredCostSoFar: costAndDelivery.deliveredCostSoFar,
       costUnit: input.costDisplay.unit,
       deliveredKWh: costAndDelivery.deliveredKWh,
       plannedTotalKWh: energyNeededKWh,

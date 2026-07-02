@@ -113,8 +113,14 @@ export const composeExportPriceNow = (priceText: string): string => (
 export const composeBudgetUsedOver = (remainingFormatted: string): string => (
   `${remainingFormatted} over budget already used`
 );
-export const composeBudgetRemainingToday = (remainingFormatted: string): string => (
-  `${remainingFormatted} left in today's budget`
+// Consumption framing for the under-budget today view. The hero's delta chip
+// ("N kWh to spare") is the single answer to "how much is left"; this subline
+// names USED so far — a distinct quantity — rather than restating the
+// remainder, so exactly one number on the card answers "how much is left"
+// (`notes/ui-terminology.md` legibility item). Caller passes the formatted
+// used-so-far kWh (`dailyBudgetKWh − remainingKWh`).
+export const composeBudgetUsedSoFar = (usedFormatted: string): string => (
+  `${usedFormatted} used so far today`
 );
 
 // Appends today's estimated-cost suffix to one of the budget-status lines

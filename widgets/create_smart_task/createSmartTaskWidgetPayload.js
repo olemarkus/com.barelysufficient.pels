@@ -360,10 +360,11 @@ var DEADLINE_LABELS = {
     // misread as a wild temperature anomaly. The underlying shortfall is energy
     // / time against the plan, not a raw temperature gap; the chip + headline
     // already say the verdict ("Cannot finish"); body states the cause and the
-    // user-side levers. The hero meta line follows with the "Needs N kWh · Y
-    // hours left · …" line via `formatMetaLine`, which is the right surface for
-    // magnitude. Recourse copy names the two levers that aren't the daily
-    // budget; the budget remedy is handled by the dedicated
+    // user-side levers. The magnitude (needs N kWh, estimated cost) now lives
+    // in the hero stat pairs (Needs / Estimated cost), so this reason line
+    // carries only the diagnosis — no appended "Needs N kWh · hours left" tail.
+    // Recourse copy names the two levers that aren't the daily budget; the
+    // budget remedy is handled by the dedicated
     // `cannotMeetDailyBudgetExhausted` branch above.
     cannotMeetShortfall: () => "Not enough time for this target. Lower the target or move the deadline.",
     cannotMeetDailyBudgetExhausted: "Today's daily budget is fully booked. Lower it so future days reserve power earlier, or move the deadline.",

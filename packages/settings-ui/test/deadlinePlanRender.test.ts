@@ -194,8 +194,8 @@ const buildReadyPayloadWithDeviceRecourse = (deviceId: string): DeadlinePlanPayl
     headline: 'Heating from 16:00',
     headlineReason: null,
     subline: 'Connected 300 • Target 22.0 °C by 18:00',
-    metaLine: 'Not enough time for this target. Lower the target or move the deadline. Needs 4.0 kWh · 2 hours left · Auto',
-    costMetaLine: null,
+    stats: [{ label: 'Needs', value: '4.0 kWh' }],
+    metaLine: 'Not enough time for this target. Lower the target or move the deadline.',
     deliveredSoFarLine: null,
     recourse: { label: 'Adjust device', targetTab: 'overview', deviceId },
   },
@@ -226,7 +226,12 @@ const buildReadyPayloadWithDeviceRecourse = (deviceId: string): DeadlinePlanPayl
     yMin: 16,
     yMax: 24,
     yFloorLabel: '16.0 °C',
-    stateline: { emphasis: '18.0 °C now', rest: 'on track — projected ready ≈ Mon 17:00, 1 hour before the deadline', tone: 'ok' },
+    stateline: {
+      emphasis: '18.0 °C now',
+      rest: 'on track — projected ready ≈ Mon 17:00, 1 hour before the deadline',
+      tone: 'ok',
+      verdict: { label: 'On track', supporting: 'projected ready ≈ Mon 17:00, 1 hour before the deadline' },
+    },
     shortfall: null,
   },
   planInputs: {
@@ -277,6 +282,35 @@ describe('DeadlinePlan live-hero recourse button', () => {
     expect(button).not.toBeNull();
     expect(button?.getAttribute('data-deadline-recourse-tab')).toBe('overview');
     expect(button?.getAttribute('data-deadline-recourse-device-id')).toBe('dev_heater_42');
+  });
+});
+
+describe('DeadlinePlan on-track hero status row', () => {
+  it('renders the trajectory verdict as a hero status row on the healthy branch', () => {
+    // "Am I on track?" must be answerable from the hero without scrolling to
+    // the trajectory card's stateline. The row surfaces the check glyph +
+    // "On track" label + the projected-ready supporting phrase.
+    const payload = buildReadyPayloadWithDeviceRecourse('dev_x');
+    payload.hero.tone = 'good';
+    payload.hero.recourse = null;
+    const mount = mountIntoBody();
+    renderDeadlinePlan(mount, { status: 'ready', payload });
+    const statusRow = mount.querySelector<HTMLElement>('.deadline-hero-status');
+    expect(statusRow).not.toBeNull();
+    expect(statusRow?.querySelector('.deadline-hero-status__label')?.textContent).toBe('On track');
+    expect(statusRow?.querySelector('.deadline-hero-status__supporting')?.textContent)
+      .toContain('projected ready ≈');
+    expect(statusRow?.querySelector('svg')).not.toBeNull();
+  });
+
+  it('suppresses the status row on the at-risk (warn) branch so it never contradicts the chip', () => {
+    // The default helper builds a warn/at-risk hero; the status row is
+    // healthy-branch only, so the At-risk chip stays the single verdict.
+    const payload = buildReadyPayloadWithDeviceRecourse('dev_x');
+    expect(payload.hero.tone).toBe('warn');
+    const mount = mountIntoBody();
+    renderDeadlinePlan(mount, { status: 'ready', payload });
+    expect(mount.querySelector('.deadline-hero-status')).toBeNull();
   });
 });
 

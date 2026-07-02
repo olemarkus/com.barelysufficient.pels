@@ -1,15 +1,13 @@
-import type {
-  DeferredObjectiveActivePlanSpeedMode,
-  DeferredObjectiveActivePlanStatusV1,
-} from '../../../contracts/src/deferredObjectiveActivePlans.ts';
+import type { DeferredObjectiveActivePlanStatusV1 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import type { DeferredObjectiveSettingsEntry } from '../../../contracts/src/deferredObjectiveSettings.ts';
 import type { ObjectiveProfileConfidence } from '../../../contracts/src/objectiveProfileTypes.ts';
 import type { ObservedDeviceState } from '../../../contracts/src/types.ts';
 import {
   formatConfidenceChipLabel,
-  formatDeadlineCostMetaLine,
   formatDeadlineDeliveredSoFarLine,
   formatEnergyEstimateKWh,
+  formatEstimatedCostStatValue,
+  SMART_TASK_HERO_STAT_LABELS,
   type DeadlineCannotMeetRecourse,
   type DeadlineLabels,
 } from '../../../shared-domain/src/deadlineLabels.ts';
@@ -20,7 +18,7 @@ import {
   formatHourLabel,
   formatTarget,
 } from './deadlinePlanFormatters.ts';
-import type { DeadlinePlanHeroTone, DeadlinePlanPayload } from './views/DeadlinePlan.tsx';
+import type { DeadlineHeroStat, DeadlinePlanHeroTone, DeadlinePlanPayload } from './views/DeadlinePlan.tsx';
 
 export type DeadlineHeroStatusChip = { text: string; tone: 'alert' | 'warn' };
 
@@ -173,16 +171,17 @@ export const resolveQueuedHeadlineReason = (params: {
   });
 };
 
-// Resolves the user-visible cannot-meet sentence; `formatMetaLine` is then
-// appended by `buildHero` so the rich "Needs X kWh · Y hours left · …" context
-// coexists with the reason. Only ever called on a `cannot_meet` / `at_risk`
-// plan (see `buildHero`), so the target genuinely won't be reached — the
-// budget-exhausted cause gets its own copy and everything else falls through
-// to the blameless "may not reach the target" shortfall sentence. We do not
-// re-derive a UI-side shortfall to gate this: that recomputation (inverse of
-// the low-confidence learned rate) disagreed with the planner's verdict and
-// produced a "can't determine why" dead-end on plans the planner had already
-// classified as cannot-meet.
+// Resolves the user-visible cannot-meet reason sentence rendered as the hero's
+// `metaLine`. The magnitude context ("Needs X kWh", estimated cost) now lives
+// in the hero stat pairs (Needs / Estimated cost), so this line carries ONLY
+// the cannot-finish diagnosis — no appended "Needs … · hours left" tail. Only
+// ever called on a `cannot_meet` plan (see `buildHero`), so the target
+// genuinely won't be reached — the budget-exhausted cause gets its own copy
+// and everything else falls through to the blameless "may not reach the
+// target" shortfall sentence. We do not re-derive a UI-side shortfall to gate
+// this: that recomputation (inverse of the low-confidence learned rate)
+// disagreed with the planner's verdict and produced a "can't determine why"
+// dead-end on plans the planner had already classified as cannot-meet.
 export const resolveCannotMeetMeta = (params: {
   labels: DeadlineLabels;
   dailyBudgetExhausted: boolean;
@@ -219,41 +218,6 @@ export const resolveCannotMeetRecourse = (params: {
   return { ...params.labels.cannotMeetRecourse.openOverview, deviceId: params.deviceId };
 };
 
-// Falls back to the "Needs X kWh · N hours left" form when planning speed or
-// estimated duration aren't carried on the latest revision (legacy persisted
-// plans, devices missing calibration).
-const formatMetaLine = (params: {
-  energyNeededKWh: number;
-  energyExpectedKWh: number;
-  hoursLeft: number;
-  planningSpeedKw: number | null;
-  estimatedDurationText: string | null;
-  speedModeLabel: string;
-}): string => {
-  // Range "8.0–10.0 kWh" while a buffer is booked, collapsing to a single
-  // figure once the rate is learned (planned == expected).
-  const energy = formatEnergyEstimateKWh({
-    energyPlannedKWh: params.energyNeededKWh,
-    energyExpectedKWh: params.energyExpectedKWh,
-  });
-  if (params.planningSpeedKw !== null && params.estimatedDurationText !== null) {
-    const speed = `${params.planningSpeedKw.toFixed(1)} kW`;
-    return `Needs ${energy} · ${speed} · ${params.estimatedDurationText} · ${params.speedModeLabel}`;
-  }
-  const hourWord = params.hoursLeft === 1 ? 'hour' : 'hours';
-  return `Needs ${energy} · ${params.hoursLeft} ${hourWord} left · ${params.speedModeLabel}`;
-};
-
-// Presentation copy for each producer-resolved speed-mode enum. The enum is
-// resolved in the recorder (`activePlanRecorder.ts:resolveSpeedMode`); only the
-// human strings live here per `feedback_ui_text_shared_with_logs`. `Manual` /
-// `Conservative` are future enum members (per the speed-mode design note) and
-// would extend this map if/when they ship.
-const SPEED_MODE_LABELS: Record<DeferredObjectiveActivePlanSpeedMode, string> = {
-  auto: 'Auto',
-  learning: 'Learning…',
-};
-
 export type BuildHeroInput = {
   device: ObservedDeviceState;
   // Active task's device id. Threaded onto the device-side cannot-meet recourse
@@ -270,7 +234,6 @@ export type BuildHeroInput = {
   // Mean-based estimate paired with the buffered `energyNeededKWh` for the
   // `expected…planned` range; equals `energyNeededKWh` when no buffer is booked.
   energyExpectedKWh: number;
-  hoursLeft: number;
   confidence: ObjectiveProfileConfidence | null;
   // True only during genuine cold-start; gates the "Estimating" confidence chip.
   learning: boolean;
@@ -291,29 +254,18 @@ export type BuildHeroInput = {
   // Producer-verified price comparison gating the "Cheaper than now" queued
   // reason line (see `resolveQueuedHeadlineReason`).
   plannedWindowCheaperThanNow: boolean;
-  planningSpeedKw: number | null;
-  estimatedDurationText: string | null;
-  // Producer-resolved presentation-speed mode enum off the latest revision.
-  // The caller (`deadlinePlan.ts`) supplies the back-compat fallback for
-  // legacy revisions that predate the field.
-  speedMode: DeferredObjectiveActivePlanSpeedMode;
   // Producer-resolved CSS rim tone, derived from the latest revision's
   // `planStatus`. Carried through the payload so the view layer never branches
   // on planner internals.
   tone: DeadlinePlanHeroTone;
   // Σ (display-scaled price × deviceKwh) across the timeline's planned hours,
   // in the user's display currency (e.g. kr). Producer sums each render cycle
-  // so the live cost reflects the latest revision. Zero / non-finite values
-  // suppress the cost line at the shared-domain formatter.
+  // so the live cost reflects the latest revision. Drives the "Estimated cost"
+  // stat; non-finite / no-unit values suppress the stat at the formatter.
   plannedTotalCost: number;
-  // Σ priceValue × actualDeviceKwh for hours where `actualDeviceKwh` is known
-  // (delivery so far in this run). Null when no run is active yet or no
-  // delivery has been observed — the formatter collapses to the planned-only
-  // form instead of fabricating a "0.00 kr so far" value.
-  deliveredCostSoFar: number | null;
-  // Cost-unit suffix (e.g. `kr`). Empty / null suppresses the cost line at
-  // the shared-domain formatter — Flow / Homey schemes without a unit don't
-  // get a misleading Norwegian-specific label.
+  // Cost-unit suffix (e.g. `kr`). Empty / null suppresses the "Estimated cost"
+  // stat at the shared-domain formatter — Flow / Homey schemes without a unit
+  // don't get a misleading Norwegian-specific label.
   costUnit: string;
   // Σ actualDeviceKwh across the run (kWh delivered so far). Zero when the
   // run hasn't started consuming yet — the formatter renders `0.0 of Y kWh`
@@ -382,23 +334,34 @@ export const buildHero = (params: BuildHeroInput): DeadlinePlanPayload['hero'] =
   const target = formatTarget(params.objective);
   const deadline = formatDeadlineFull(params.deadlineAtMs);
   const subline = `${formatDisplayDeviceName(params.device.name)} • Target ${target} by ${deadline}`;
-  const speedModeLabel = SPEED_MODE_LABELS[params.speedMode];
-  const baseMetaLine = formatMetaLine({
-    energyNeededKWh: params.energyNeededKWh,
-    energyExpectedKWh: params.energyExpectedKWh,
-    hoursLeft: params.hoursLeft,
-    planningSpeedKw: params.planningSpeedKw,
-    estimatedDurationText: params.estimatedDurationText,
-    speedModeLabel,
+  // Stat pairs carry the payoff numbers (energy + estimated cost) as loud
+  // values, replacing the old grey `Needs … · N hours left · Auto` +
+  // `Cost ≈ …` line pair. The energy figure keeps the `expected…planned`
+  // range while a buffer is booked (`formatEnergyEstimateKWh`) — that range is
+  // the "still learning / provisional" signal, so no speed-mode badge is
+  // needed. Labels come from shared-domain so log breadcrumbs match the UI.
+  const stats: DeadlineHeroStat[] = [
+    {
+      label: SMART_TASK_HERO_STAT_LABELS.energy,
+      value: formatEnergyEstimateKWh({
+        energyPlannedKWh: params.energyNeededKWh,
+        energyExpectedKWh: params.energyExpectedKWh,
+      }),
+    },
+  ];
+  const estimatedCost = formatEstimatedCostStatValue({
+    plannedTotalCost: params.plannedTotalCost,
+    costUnit: params.costUnit,
   });
-  // When the hero is warning/failure shaped we must not fall back to the
-  // on-track meta copy alone — that loses the answer to "how bad is this?"
-  // (e.g. "29.6 °C short" is meaningless without "needs 17 kWh, 8 hours
-  // left"). Compose the reasoned sentence with the `Needs N kWh · …` context
-  // so both signals coexist on a single line.
-  const metaLine = params.cannotMeet
-    ? `${resolveCannotMeetMeta(params)} ${baseMetaLine}`
-    : baseMetaLine;
+  if (estimatedCost !== null) {
+    stats.push({ label: SMART_TASK_HERO_STAT_LABELS.cost, value: estimatedCost });
+  }
+  // The reason line now carries ONLY the cannot-finish diagnosis ("Not enough
+  // time for this target. …" / "Today's daily budget is fully booked. …") —
+  // the "how bad is this?" context ("needs 17 kWh") lives in the stat pairs
+  // above, so a running task no longer stacks a reason paragraph. Null on
+  // healthy / at-risk / queued heroes.
+  const metaLine = params.cannotMeet ? resolveCannotMeetMeta(params) : null;
   const confidenceChipText = resolveLiveHeroConfidenceChipText({
     confidence: params.confidence,
     planStatus: params.planStatus,
@@ -417,12 +380,8 @@ export const buildHero = (params: BuildHeroInput): DeadlinePlanPayload['hero'] =
     headline,
     headlineReason: resolveQueuedHeadlineReason(params),
     subline,
+    stats,
     metaLine,
-    costMetaLine: formatDeadlineCostMetaLine({
-      plannedTotalCost: params.plannedTotalCost,
-      deliveredCost: params.deliveredCostSoFar,
-      costUnit: params.costUnit,
-    }),
     deliveredSoFarLine: resolveDeliveredSoFarLine(params),
     recourse: resolveCannotMeetRecourse(params),
   };

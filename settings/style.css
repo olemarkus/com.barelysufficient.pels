@@ -60,7 +60,8 @@
     --color-base-black-rgb: 246, 247, 251;
     --color-base-gray-50: #181818;     /* Homey mono-90 / primary text */
     --color-base-gray-100: #7a7b7d;    /* Homey mono-50 / secondary */
-    --color-base-gray-300: #939496;    /* Homey mono-40 / text-light */
+    --color-base-gray-200: #939496;    /* Homey mono-40 / text-light — muted tier; on the light desktop canvas Homey mono-40 already reads fine, so the mobile-dark muted raise doesn't apply here */
+    --color-base-gray-300: #939496;    /* Homey mono-40 / text-light — disabled tier (desktop leans on opacity for disabled states) */
     --color-base-gray-900: #ffffff;
     /* Keep the designer-tuned dark on-accent text from the mobile palette —
        `#ffffff` text on the `#16a34a` calm green-600 accent is only ~3.30 : 1
@@ -1115,6 +1116,43 @@ md-primary-tab.tab[active] {
   font-weight: var(--font-weight-medium);
 }
 
+/* Promoted computed-result row: the payoff number of a settings card, in
+   neutral bold so it reads as the answer the inputs produce — not a muted
+   caption. Neutral (not accent) matches the smart-task hero's stat-pair values
+   (`.deadline-hero-stats__value`): one "loud passive readout" language
+   app-wide, with accent reserved for actions / selection / status. */
+.settings-result {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--spacing-1) var(--spacing-2);
+  padding: var(--spacing-2) var(--spacing-3);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  background: var(--pels-surface-container-high);
+}
+
+.settings-result__label {
+  color: var(--pels-text-secondary);
+  font-size: var(--pels-text-supporting-font-size);
+  line-height: var(--pels-text-supporting-font-line-height);
+}
+
+.settings-result__value {
+  color: var(--text);
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--font-line-height-tight);
+}
+
+/* Derivation note after the value ("(hard cap minus safety margin)") — the
+   quiet "why" behind the computed ceiling, so it stays legible but recessive. */
+.settings-result__note {
+  color: var(--pels-text-supporting-color);
+  font-size: var(--pels-text-supporting-font-size);
+  line-height: var(--pels-text-supporting-font-line-height);
+}
+
 .form__actions {
   display: flex;
   gap: var(--spacing-3);
@@ -1575,6 +1613,19 @@ md-filled-button.is-busy {
      small-text AA needs 4.5:1). Primary text gives ~9:1 in both modes
      while the "muted" feel is still carried by the chip's neutral container
      background and smaller font size. */
+  color: var(--text);
+}
+
+/* Quiet outline chip: transparent (no fill) with a subtle border, for a
+   TYPE/category label that must read as structural metadata, not a state
+   signal. Pairs with the tonal (filled) status chips so a list card can show
+   "Temperature" (outline) next to "Scheduled" (tonal) and the two never blur
+   into one grey pair. Text stays `--text` for the same small-text AA reason
+   the `--muted` variant documents; the missing fill is what makes it quiet. */
+.plan-chip--outline,
+.plan-chip[data-tone="outline"] {
+  background: transparent;
+  border-color: var(--pels-surface-outline);
   color: var(--text);
 }
 
@@ -2740,6 +2791,71 @@ md-filled-button.is-busy {
   .plan-hero__subline:not(.plan-hero__subline--muted)
   + .plan-hero__subline--muted {
   color: var(--pels-text-primary);
+}
+
+/* Smart-task hero on-track status row. Hoists the trajectory's on-track
+ * verdict onto the hero so "am I on track?" is answerable above the fold —
+ * check glyph + "On track" in the success tone, then the projected-ready
+ * supporting phrase in primary body copy. Baseline-aligned so the glyph sits
+ * on the label's cap line; wraps the supporting phrase onto its own run at
+ * narrow widths without dropping the glyph. */
+.deadline-hero-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--spacing-1) var(--spacing-2);
+  margin: var(--spacing-2) 0 0;
+}
+
+.deadline-hero-status__icon {
+  color: var(--pels-status-on-good);
+  font-size: var(--font-size-md);
+  /* Nudge the round glyph onto the text baseline (icons sit low otherwise). */
+  transform: translateY(0.12em);
+}
+
+.deadline-hero-status__label {
+  color: var(--pels-status-on-good);
+  font-weight: var(--font-weight-semibold);
+}
+
+.deadline-hero-status__supporting {
+  color: var(--pels-text-primary);
+  font-size: var(--pels-text-supporting-font-size);
+  line-height: var(--pels-text-supporting-font-line-height);
+}
+
+/* Smart-task hero stat pairs (Needs / Est. cost). Replaces the old grey
+ * `Needs … · N hours left · Auto` + cost-line metadata wall with compact
+ * label-over-value pairs so the payoff numbers are the loud element, not a
+ * muted sentence. `<dl>`/`<dd>` default margins are reset — the flex column
+ * owns the spacing. */
+.deadline-hero-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-2) var(--spacing-4);
+  margin: var(--spacing-2) 0 0;
+}
+
+.deadline-hero-stats__pair {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  min-width: 0;
+}
+
+.deadline-hero-stats__label {
+  color: var(--pels-text-supporting-color);
+  font-size: var(--pels-text-supporting-font-size);
+  line-height: var(--font-line-height-tight);
+}
+
+.deadline-hero-stats__value {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--font-line-height-tight);
 }
 
 /* Recourse action row beneath the cannot-finish meta line. The 48 px floor
@@ -5028,7 +5144,9 @@ details[open] > summary .disclosure-chevron {
 }
 
 .segmented button.segmented__option.segmented__option:disabled:not([aria-checked="true"]):not([aria-pressed="true"]) {
-  color: var(--pels-text-muted);
+  /* Disabled text uses the reserved dim tier, not the raised muted tier — a
+     disabled control should recede, not read brighter than active helper copy. */
+  color: var(--pels-text-disabled);
   opacity: 0.6;
 }
 
@@ -5631,6 +5749,16 @@ details[open] > summary .disclosure-chevron {
   flex-direction: column;
   gap: var(--spacing-2);
   margin-top: var(--spacing-2);
+}
+
+/* Budget hero metadata role tiers. The running-total fact ("N kWh used so far
+ * today · estimated M kr today") reads at primary tone — it is the card's key
+ * "where am I now?" answer and summarises the split bar directly below it.
+ * The price-context notes below keep their `--muted` supporting tone, so the
+ * two roles (primary fact vs muted notes) no longer read as one flat grey
+ * block — no extra class needed, the `--muted` variant already carries them. */
+.budget-hero__usage-line {
+  color: var(--pels-text-primary);
 }
 
 .budget-hero-split__seg--managed {
@@ -6994,7 +7122,8 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 }
 
 .value-adjuster__btn:disabled {
-  color: var(--pels-text-muted);
+  /* Reserved dim tier for disabled content (not the raised muted helper tier). */
+  color: var(--pels-text-disabled);
   cursor: not-allowed;
   opacity: 0.45;
 }
@@ -7169,8 +7298,24 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--spacing-2);
-  flex: 0 1 auto;
+  /* `flex-basis: 100%` drops the chip group onto its own row beneath the title
+     at every width (not only when it can't share the title's row), so the
+     status + type chips read as a coherent block below the name and never
+     crowd the chevron in the trailing column. */
+  flex: 0 0 100%;
   min-width: 0;
+}
+
+/* The neutral "Scheduled" status chip (`--muted`) defaults to a
+   container-high fill — the SAME surface the card itself uses — so it read as
+   an invisible-fill pill barely distinguishable from the transparent outline
+   type chip beside it. Lift the list-card status chip a surface step so the
+   tonal (filled) status pill is clearly distinct from the outline type pill
+   even in the common neutral state. Tonal status variants (ok/warn/alert)
+   already carry their own container and are unaffected. */
+.deadline-list-card__chips .plan-chip--muted {
+  background: var(--pels-surface-container-highest);
+  border-color: var(--color-border-strong);
 }
 
 .deadline-list-card__chevron {

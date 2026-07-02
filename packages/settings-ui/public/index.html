@@ -495,9 +495,13 @@
         <label class="field">
           <span class="field__label pels-text-settings-label" id="settings-capacity-margin-label">Safety margin (kW)</span>
           <md-filled-text-field id="settings-capacity-margin" name="settings_capacity_margin" type="number" step="0.05" min="0" inputmode="decimal" autocomplete="off" required aria-labelledby="settings-capacity-margin-label"></md-filled-text-field>
-          <small class="field__hint" id="settings-capacity-reaction">Safe pace stays below the hard cap.</small>
           <small class="field__hint field__hint--alert" id="settings-capacity-margin-alert" hidden></small>
         </label>
+        <div class="settings-result" role="group" aria-labelledby="settings-capacity-reaction-label">
+          <span class="settings-result__label" id="settings-capacity-reaction-label">With these settings, safe pace is at most</span>
+          <strong class="settings-result__value" id="settings-capacity-reaction">&mdash;</strong>
+          <span class="settings-result__note">(hard cap minus safety margin)</span>
+        </div>
         <div class="field">
           <span class="field__label pels-text-settings-label" id="settings-power-source-label">Power source</span>
           <md-filled-select id="settings-power-source" name="settings_power_source" aria-labelledby="settings-power-source-label">
@@ -676,7 +680,6 @@
           <details class="settings-collapse detail-collapse" open>
             <summary>
               <h3 class="section-title">Temperature per mode</h3>
-              <span class="section-hint">Per-mode target temperatures</span>
               <svg class="disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" fill="currentColor"/></svg>
             </summary>
             <div class="collapse-content">
@@ -756,7 +759,6 @@
           <details class="settings-collapse detail-collapse" open>
             <summary>
               <h3 class="section-title">Power limiting</h3>
-              <span class="section-hint">What PELS does when power needs to be lowered</span>
               <svg class="disclosure-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6-1.41-1.41z" fill="currentColor"/></svg>
             </summary>
             <div class="collapse-content">

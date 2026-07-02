@@ -82,9 +82,13 @@ export const syncDryRunBannerVisibility = (): void => {
 
 const updateCapacityReactionHint = (limit: number, margin: number) => {
   if (!settingsCapacityReactionHint) return;
+  // The result row's static label ("With these settings, safe pace is at most")
+  // frames this as a ceiling derived from the current inputs, not an absolute
+  // "safe pace now" — that live value is the Overview hero's job and can differ
+  // when today's daily budget is the tighter constraint. This element carries
+  // only the loud accent value so the two surfaces never contradict.
   const reactionAt = Math.max(0, limit - margin).toFixed(1);
-  settingsCapacityReactionHint.textContent
-    = `Safe pace now ${reactionAt} kW — hard cap minus safety margin.`;
+  settingsCapacityReactionHint.textContent = `${reactionAt} kW`;
 };
 
 export const MARGIN_NOT_BELOW_LIMIT_MESSAGE

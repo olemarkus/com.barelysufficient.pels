@@ -399,13 +399,14 @@ CI failure, so future field-move slices can't silently grow the debt.*
       stray control, a titled row reads as "this is the feature's on/off". Source: PR #1813 review
       gates (2026-07-02). [PR-6 control grammar]
 
-- [ ] **"Safe pace now" names two different numbers across surfaces.** The Limits & safety helper
-      hardcodes the cap-derived value (`Safe pace now 7.6 kW — hard cap minus safety margin`), while
-      the Overview hero shows the actual daily-budget-constrained binding value under the same "Safe
-      pace now" label — so the two surfaces can disagree on what "safe pace now" is. Reword the
-      Limits helper to a bound, not a live figure: `With these settings, safe pace is at most
-      7.6 kW`. Keep the live "Safe pace now" label for the Overview hero, which shows the actual
-      binding value. Source: PR #1813 review gates (2026-07-02). [PR-7 legibility/copy]
+- [ ] **Smart-task pre-start status reads differently across the two surfaces.** For a task whose
+      first hour is still in the future, the Smart-tasks list card shows the `Scheduled` status chip
+      while the detail hero's on-track status row shows `On track` — the same task answers "am I on
+      track?" with two different words depending on where you look. Consider affirming on-track on the
+      list card pre-start (e.g. an `On track` chip once the plan is allocated and healthy, reserving
+      `Scheduled` for the not-yet-allocated case), or otherwise reconciling the two vocabularies.
+      Persona: Verifying owner glancing the list then opening the detail; hypothesis: two words for
+      one state reads as a discrepancy. Source: PR #1821 review gates (2026-07-02). [legibility/copy]
 
 - [ ] **Export scheme-change has no rollback when the export-disable write fails.** `applyExportSchemeChangePlan`
       (`packages/settings-ui/src/ui/exportPriceSettings.ts`) is called by `handleSchemeChange` AFTER the new

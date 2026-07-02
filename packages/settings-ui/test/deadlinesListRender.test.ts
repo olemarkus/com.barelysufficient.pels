@@ -57,6 +57,33 @@ describe('DeadlinesList', () => {
     expect(chips).not.toContain('Confidence medium');
   });
 
+  it('renders the card type chip as a quiet outline and the status as a tonal chip in the chip group', () => {
+    const mount = mountIntoBody();
+    renderDeadlinesList(mount, {
+      status: 'ready',
+      cards: [buildCard({ statusId: 'queued' })],
+    });
+    const chipGroup = mount.querySelector<HTMLElement>('.deadline-list-card .deadline-list-card__chips');
+    expect(chipGroup).not.toBeNull();
+    const typeChip = chipGroup?.querySelector<HTMLElement>('.plan-chip--outline');
+    // Type chip = quiet outline carrying the kind category.
+    expect(typeChip?.textContent).toBe('Temperature');
+    // Status chip = tonal fill carrying the canonical list-status vocabulary.
+    const statusChip = Array.from(chipGroup?.querySelectorAll<HTMLElement>('.plan-chip') ?? [])
+      .find((el) => el.textContent === 'Scheduled');
+    expect(statusChip).not.toBeUndefined();
+    expect(statusChip?.classList.contains('plan-chip--outline')).toBe(false);
+  });
+
+  it('answers "am I on track?" from the list card via the on_track status chip', () => {
+    const mount = mountIntoBody();
+    renderDeadlinesList(mount, { status: 'ready', cards: [buildCard({ statusId: 'on_track' })] });
+    const chips = Array.from(
+      mount.querySelectorAll('.deadline-list-card .deadline-list-card__chips .plan-chip'),
+    ).map((el) => el.textContent ?? '');
+    expect(chips).toContain('On track');
+  });
+
   // drop-card-colour-rail: the tonal hero is now a plain neutral surface (no
   // left colour-rail), so an attention hero must carry its severity in a status
   // chip — otherwise an at-risk/cannot-meet/paused state would read identically

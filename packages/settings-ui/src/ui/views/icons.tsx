@@ -57,6 +57,15 @@ export const WarningIcon = (props: IconProps) => (
   </svg>
 );
 
+// Material `check_circle` glyph. Leads the smart-task hero's on-track status
+// row so the "am I on track?" verdict reads as a positive state signal (paired
+// with the success tone), not just another line of copy.
+export const CheckCircleIcon = (props: IconProps) => (
+  <svg {...baseSvgProps(props)}>
+    <path d="M12 2a10 10 0 100 20 10 10 0 000-20zm-2 15-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
+  </svg>
+);
+
 // Material `bolt` glyph. Leads the Overview "Exempt from budget" action chip:
 // the lightning bolt reads as "let it run / give it power now", the consequence
 // of exempting the device from today's budget. It also visually separates the
