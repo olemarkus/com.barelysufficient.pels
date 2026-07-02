@@ -172,11 +172,17 @@
         "padding-inline": { "value": "{spacing.2}" },
         "padding-inline-compact": { "value": "{spacing.1}" },
         "radius": { "value": "{radius.md}" },
-        "label-color": { "value": "{pels.text.secondary}" },
+        "label-color": {
+          "value": "{pels.text.primary}",
+          "comment": "Inactive tab labels raised one step (secondary → primary) so unselected destinations stay clearly readable on the strip. Selection is carried by the M3 underline + semibold weight (the base label weight drops to medium), matching M3 secondary-tab colour semantics: one on-surface label colour, the indicator marks the active tab."
+        },
         "label-hover-color": { "value": "{pels.text.primary}" },
         "label-size": { "value": "{font.size.sm}" },
         "label-size-compact": { "value": "{font.size.xs}" },
-        "label-weight": { "value": "{font.weight.semibold}" },
+        "label-weight": {
+          "value": "{font.weight.medium}",
+          "comment": "Resting weight for inactive tabs; the `.tab.active` rule lifts the selected label to semibold so weight + underline (not a pill fill) distinguish the active destination."
+        },
         "selected-indicator-color": {
           "value": "{color.role.accent}",
           "comment": "M3 underline-indicator colour for the selected nav tab. The selected tab now reads as a modern M3 tab strip — an accent underline bar plus a primary-text label — rather than a filled pill. Accent (brand green) is the canonical M3 active-indicator colour and stays distinct from the tonal segmented-control fill used elsewhere."

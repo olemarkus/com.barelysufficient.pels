@@ -295,7 +295,7 @@ export type DeadlinePlanLoadState =
 const chipClass = (tone: DeadlinePlanChipTone): string => `plan-chip plan-chip--${tone}`;
 
 const DeadlineHero = ({ payload }: { payload: DeadlinePlanPayload }) => (
-  <section class="plan-hero pels-hero" data-tone={payload.hero.tone} aria-labelledby="deadline-plan-title">
+  <section class="plan-hero pels-hero" data-tone={payload.hero.tone} aria-labelledby="deadline-plan-hero-title">
     <div class="plan-hero__chips">
       {payload.hero.chips.map((chip) => (
         <span
@@ -308,7 +308,7 @@ const DeadlineHero = ({ payload }: { payload: DeadlinePlanPayload }) => (
       ))}
     </div>
     <div class="plan-hero__section">
-      <p class="eyebrow plan-hero__section-label" id="deadline-plan-title">{payload.hero.sectionLabel}</p>
+      <p class="eyebrow plan-hero__section-label" id="deadline-plan-hero-title">{payload.hero.sectionLabel}</p>
       {payload.hero.headline !== null && (
         <h2 class="plan-hero__headline">{payload.hero.headline}</h2>
       )}

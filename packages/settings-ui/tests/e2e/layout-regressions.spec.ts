@@ -76,6 +76,7 @@ test.describe('settings shell layout regressions', () => {
           text: renderedText,
           width: Math.round(rect.width),
           height: Math.round(rect.height),
+          top: Math.round(rect.top),
           right: Math.round(rect.right),
           // Scroll width > client width signals the label is being clipped
           // by overflow:hidden; the 320 px shell must not truncate labels.
@@ -85,19 +86,86 @@ test.describe('settings shell layout regressions', () => {
       }));
 
     expect(tabMetrics.map((tab) => tab.text)).toEqual(['Overview', 'Budget', 'Usage', 'Smart tasks', 'Settings']);
-    // Width bound is unchanged. Height bound rises to 72 px because
-    // "Smart tasks" wraps to two lines at 320 px — the wrap is the explicit
-    // remedy for the previous ellipsis-truncation regression. Touch target
-    // still ≥ 48 px via the tab container token.
+    // Every label sits on a SINGLE line at one shared baseline: tabs size to
+    // their label (`flex: 1 1 auto`) instead of the equal-width split that
+    // used to starve "Smart tasks" into a two-line wrap. Height stays at the
+    // 48 px touch-target token (a wrapped label would exceed 56 px), all tabs
+    // share one top edge, and no label is clipped (scrollWidth beyond
+    // clientWidth = hidden ellipsis).
     expect(
-      tabMetrics.every((tab) => tab.width <= 116 && tab.height <= 72 && tab.height >= 48),
+      tabMetrics.every((tab) => tab.width <= 116 && tab.height <= 56 && tab.height >= 48),
       JSON.stringify(tabMetrics),
     ).toBe(true);
+    expect(
+      new Set(tabMetrics.map((tab) => tab.top)).size,
+      `all tabs must share one baseline: ${JSON.stringify(tabMetrics)}`,
+    ).toBe(1);
+    expect(
+      new Set(tabMetrics.map((tab) => tab.height)).size,
+      `all tabs must share one height: ${JSON.stringify(tabMetrics)}`,
+    ).toBe(1);
     expect(
       tabMetrics.every((tab) => tab.scrollWidth <= tab.clientWidth + 1),
       `tab labels must not be horizontally clipped: ${JSON.stringify(tabMetrics)}`,
     ).toBe(true);
     await expectNoHorizontalOverflow(page, '320px shell nav');
+  });
+
+  test('marks the active tab with exactly one treatment — the M3 underline, no pill fill', async ({ page }) => {
+    await openApp(page, 480);
+    await openTopTab(page, 'Usage');
+    // A tap on touch hardware leaves the tab in a sticky `:hover` state that
+    // used to paint a phantom filled pill behind the last-tapped tab. The
+    // host background must stay transparent; only the underline indicator
+    // (shadow-DOM `.indicator`) marks the selection.
+    const activeTab = page.locator('#shell-nav md-primary-tab[data-tab="usage"]');
+    await expect(activeTab).toHaveClass(/active/);
+    const bg = await activeTab.evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(bg).toBe('rgba(0, 0, 0, 0)');
+  });
+
+  test('renders the identical app-bar back row on every sub-page', async ({ page }) => {
+    await openApp(page, 480);
+    const readAppbar = async () => page.evaluate(() => {
+      const visiblePanel = [...document.querySelectorAll<HTMLElement>('.panel:not(.hidden)')]
+        .find((panel) => panel.querySelector('.pels-appbar'));
+      const bar = visiblePanel?.querySelector<HTMLElement>('.pels-appbar');
+      const back = bar?.querySelector<HTMLElement>('.pels-appbar__back');
+      const title = bar?.querySelector<HTMLElement>('.pels-appbar__title');
+      if (!bar || !back || !title) return null;
+      const barRect = bar.getBoundingClientRect();
+      const backRect = back.getBoundingClientRect();
+      const titleStyle = getComputedStyle(title);
+      return {
+        barLeft: Math.round(barRect.left),
+        barHeight: Math.round(barRect.height),
+        backWidth: Math.round(backRect.width),
+        backHeight: Math.round(backRect.height),
+        titleOffset: Math.round(title.getBoundingClientRect().left - barRect.left),
+        titleFontSize: titleStyle.fontSize,
+        titleFontWeight: titleStyle.fontWeight,
+        carded: getComputedStyle(bar).backgroundColor !== 'rgba(0, 0, 0, 0)',
+      };
+    });
+
+    // Three different sub-page families: a static settings section, a
+    // Preact-rendered settings section, and the smart-task detail panel.
+    await openSettingsSection(page, 'limits');
+    const limits = await readAppbar();
+    await openSettingsSection(page, 'electricity-prices');
+    const prices = await readAppbar();
+    await page.goto('/?page=deadline-plan&deviceId=dev_connected300', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#deadline-plan-panel .pels-appbar')).toBeVisible();
+    const smartTask = await readAppbar();
+
+    expect(limits, 'limits app bar must render').not.toBeNull();
+    // One geometry everywhere: same bar height, same un-carded chrome, same
+    // 48 px back control, same title slot and type.
+    expect(prices).toEqual(limits);
+    expect(smartTask).toEqual(limits);
+    expect(limits!.backWidth).toBeGreaterThanOrEqual(48);
+    expect(limits!.backHeight).toBeGreaterThanOrEqual(48);
+    expect(limits!.carded).toBe(false);
   });
 
   const appPages: Array<{ label: string; open: (page: Page) => Promise<void> }> = [
@@ -177,7 +245,7 @@ test.describe('settings shell layout regressions', () => {
     expect(gap).toBeLessThanOrEqual(24);
   });
 
-  test('keeps the device-detail hero and sections content-sized on a tall viewport', async ({ page }) => {
+  test('keeps the device-detail app-bar header and sections content-sized on a tall viewport', async ({ page }) => {
     // Tall viewport so the slide panel's grid body has free space — the
     // regression was `align-content: stretch` distributing that free space
     // into every row (hero void + huge inter-section gaps).
@@ -190,9 +258,10 @@ test.describe('settings shell layout regressions', () => {
     await row.locator('.pels-device-card__detail-button').click();
     await expect(page.locator('#device-detail-overlay')).toBeVisible();
     const metrics = await page.evaluate(() => {
-      const hero = document.querySelector('#device-detail-panel .device-detail-heading')!;
-      const heroRect = hero.getBoundingClientRect();
-      const heroContent = hero.firstElementChild!.getBoundingClientRect();
+      // The identity hero card is gone — the device name now lives in the
+      // slide panel's app-bar header. The header must stay a compact chrome
+      // strip, and the sections below must stay content-sized.
+      const header = document.querySelector('#device-detail-panel .slide-panel__header.pels-appbar')!;
       const sections = [...document.querySelectorAll<HTMLElement>('#device-detail-panel .detail-section')]
         .filter((s) => s.getBoundingClientRect().height > 0);
       const sectionSlack = sections.map((s) => {
@@ -204,13 +273,15 @@ test.describe('settings shell layout regressions', () => {
         gaps.push(Math.round(sections[i].getBoundingClientRect().top - sections[i - 1].getBoundingClientRect().bottom));
       }
       return {
-        heroSlack: Math.round(heroRect.height - heroContent.height),
+        headerHeight: Math.round(header.getBoundingClientRect().height),
+        hasTitle: Boolean(header.querySelector('#device-detail-title.pels-appbar__title')),
         sectionSlack,
         maxGap: Math.max(...gaps),
       };
     });
-    // Hero hugs its content (only its own padding remains around the child).
-    expect(metrics.heroSlack).toBeLessThanOrEqual(32);
+    // App-bar header stays one compact row (48 px control + padding).
+    expect(metrics.hasTitle).toBe(true);
+    expect(metrics.headerHeight).toBeLessThanOrEqual(72);
     // Each section wraps its collapsible exactly — no stretched dead space.
     for (const slack of metrics.sectionSlack) expect(slack).toBeLessThanOrEqual(2);
     // Adjacent sections sit at the standard grid gap.
