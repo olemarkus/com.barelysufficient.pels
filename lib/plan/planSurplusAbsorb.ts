@@ -210,6 +210,14 @@ export function resolveSurplusEligibility(params: {
   for (const deviceId of Object.keys(state.surplusEligibilityByDevice)) {
     if (!willingIds.has(deviceId)) clearSurplusEligibility(state, deviceId);
   }
+  // Prune the parallel lift-active map too: a device that departed the snapshot
+  // (or stopped being a candidate) while its `surplusAbsorbActiveByDevice` flag
+  // was true would otherwise keep it true forever, so `Object.values(...).some()`
+  // in the curtailment estimator reports an engaged lift indefinitely and its
+  // `lastLiftEngaged` never clears.
+  for (const deviceId of Object.keys(state.surplusAbsorbActiveByDevice)) {
+    if (!willingIds.has(deviceId)) delete state.surplusAbsorbActiveByDevice[deviceId];
+  }
 
   if (willing.length === 0) return;
 

@@ -334,6 +334,10 @@ describe('settingsUiApi', () => {
       dailyBudgetCaps: {},
       dailyTotals: {},
       hourlyAverages: {},
+      generationBuckets: {},
+      exportBuckets: {},
+      generationDailyTotals: {},
+      exportDailyTotals: {},
       unreliablePeriods: [],
     });
     expect(result.dailyBudget).toEqual({ days: {}, todayKey: '2026-03-03' });

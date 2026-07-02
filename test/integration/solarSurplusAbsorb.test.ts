@@ -324,6 +324,17 @@ describe('surplus-absorb setpoint raise (planner prep integration)', () => {
     expect(state.surplusEligibilityByDevice[DEVICE_ID]).toBeUndefined();
   });
 
+  it('prunes the lift-active flag for a device that departed the snapshot', () => {
+    const state = createPlanEngineState();
+    // A device that engaged a lift and then left the snapshot would leave a stale
+    // `surplusAbsorbActiveByDevice` flag (its per-cycle setter no longer runs), so
+    // the curtailment estimator's `Object.values(...).some()` engaged-lift check
+    // would report it forever. The eligibility cleanup must prune it too.
+    state.surplusAbsorbActiveByDevice['ghost-device'] = true;
+    cycle(state, EXPORTING_KW); // ghost-device is absent from this cycle's snapshot
+    expect(state.surplusAbsorbActiveByDevice['ghost-device']).toBeUndefined();
+  });
+
   describe('curtailment-inferred surplus (zero-export homes)', () => {
     // One plan cycle with the producer-resolved inferred term injected through
     // the same `PlanDevicesDeps` seam the app wires (`getInferredSurplusKw`).

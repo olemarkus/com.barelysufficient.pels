@@ -184,6 +184,14 @@ export const resetSettingsUiPowerStatsForApp = async (homey: Homey.App['homey'])
     uncontrolledBuckets: preserveCurrentHour(currentState.uncontrolledBuckets),
     exemptBuckets: preserveCurrentHour(currentState.exemptBuckets),
     hourlyBudgets: preserveCurrentHour(currentState.hourlyBudgets),
+    // Solar families (generation + export). Without these the `...currentState`
+    // spread leaves them intact, so "Reset usage history" would leave the Solar
+    // card's produced/exported history behind. Clear history, keep the current
+    // hour, matching the consumption buckets above.
+    generationBuckets: preserveCurrentHour(currentState.generationBuckets),
+    exportBuckets: preserveCurrentHour(currentState.exportBuckets),
+    generationDailyTotals: {},
+    exportDailyTotals: {},
     dailyBudgetCaps: {},
     dailyTotals: {},
     hourlyAverages: {},
