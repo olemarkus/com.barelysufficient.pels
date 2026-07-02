@@ -10,6 +10,7 @@ import {
 } from './planSteppedShedResolution';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 import { applySurplusAbsorbDelta, type PriceOptDeviceConfig } from './planSurplusAbsorb';
+import { isEligibleAndRunnable } from './shedding/surplusHold';
 import { RECENT_RESTORE_SHED_GRACE_MS } from './planConstants';
 import { isPendingBinaryCommandActive } from './planObservationPolicy';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
@@ -366,7 +367,14 @@ function isSurplusOnlyHoldShed(params: {
   shedReasons: Map<string, DeviceReason>;
 }): boolean {
   const { dev, state, shedReasons } = params;
+  // Mirror `resolveSurplusHold` EXACTLY: a surplusOnly device with no fresh
+  // capacity shed reason is a solar hold (excluded from capacity-pressure
+  // counting) whenever it is NOT eligible-and-runnable — which covers both the
+  // not-eligible case AND the release-pending window (eligible latched, still
+  // off, `pendingSinceMs` set). Using the raw `eligible !== true` proxy here
+  // missed that window, letting a pump waiting for solar clamp unrelated stepped
+  // loads to their lowest step.
   return dev.surplusOnly === true
     && !shedReasons.has(dev.id)
-    && state.surplusEligibilityByDevice[dev.id]?.eligible !== true;
+    && !isEligibleAndRunnable(dev, state.surplusEligibilityByDevice[dev.id]);
 }

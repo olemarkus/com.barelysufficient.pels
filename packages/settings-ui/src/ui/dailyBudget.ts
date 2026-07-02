@@ -1,5 +1,5 @@
 import type { DailyBudgetUiPayload } from '../../../contracts/src/dailyBudgetTypes.ts';
-import { callApi } from './homey.ts';
+import { callApi, getSetting } from './homey.ts';
 import { logSettingsError } from './logging.ts';
 import { type CostDisplay } from './dailyBudgetCost.ts';
 import { getPricesReadModel } from './prices.ts';
@@ -20,6 +20,20 @@ let costDisplay: CostDisplay = resolveCostDisplayFromCombinedPrices(null);
 // Normalized combined-price rows for the hero's "Export price now" subline —
 // refreshed alongside costDisplay from the same prices read-model fetch.
 let latestPriceRows: CombinedPriceRow[] = [];
+
+// The planning-price (`budgetPrice`) overlay and the "Export price now" subline
+// must follow the CURRENT export-price setting, not the cached prices:
+// `combined_prices` keeps carrying `budgetPrice`/`exportPrice` for up to an hour
+// after the user disables export pricing (they only drop on the next rebuild).
+// When export is off, drop both so the Budget chart never shows a stale "using
+// your solar" divergence or export subline — mirrors the Electricity "Right now"
+// card gate. Reference-identical row objects when enabled (no re-map).
+export const gateExportPriceRows = (
+  rows: CombinedPriceRow[],
+  exportEnabled: boolean,
+): CombinedPriceRow[] => (
+  exportEnabled ? rows : rows.map((row) => ({ ...row, budgetPrice: undefined, exportPrice: undefined }))
+);
 
 const renderDailyBudget = (payload: DailyBudgetUiPayload | null) => {
   latestDailyBudgetPayload = payload;
@@ -47,14 +61,15 @@ export const updateBudgetPower = (
 export const refreshDailyBudgetPlan = async (payloadOverride?: DailyBudgetUiPayload | null) => {
   try {
     const hasExplicitPayload = payloadOverride !== undefined;
-    const [payload, combinedPrices] = await Promise.all([
+    const [payload, combinedPrices, exportEnabled] = await Promise.all([
       hasExplicitPayload
         ? Promise.resolve(payloadOverride)
         : callApi<DailyBudgetUiPayload | null>('GET', '/daily_budget'),
       getPricesReadModel().then((prices) => prices.combinedPrices).catch(() => null),
+      getSetting('export_price_enabled').then((value) => value === true).catch(() => false),
     ]);
     costDisplay = resolveCostDisplayFromCombinedPrices(combinedPrices);
-    latestPriceRows = normalizeCombinedPrices(combinedPrices);
+    latestPriceRows = gateExportPriceRows(normalizeCombinedPrices(combinedPrices), exportEnabled);
     renderDailyBudget(payload);
   } catch (error) {
     await logSettingsError('Failed to load daily budget plan', error, 'refreshDailyBudgetPlan');

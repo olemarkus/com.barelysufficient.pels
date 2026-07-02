@@ -83,7 +83,11 @@ export function resolveSurplusHold(params: {
 //     restore lane before its ON has materialized on real export.
 // A non-binary surplusOnly device is invariant-impossible (candidacy requires a
 // binary control capability); it defensively reads `currentOn` as false.
-const isEligibleAndRunnable = (
+// Exported so the plan-side keep-invariant predicate (`isSurplusOnlyHoldShed` in
+// planDevices.ts) mirrors this EXACT condition — a device held here for surplus
+// (still-off + release-pending, or not eligible) must not be counted as capacity
+// pressure that clamps unrelated stepped loads.
+export const isEligibleAndRunnable = (
   device: PlanInputDevice,
   entry: PlanEngineState['surplusEligibilityByDevice'][string] | undefined,
 ): boolean => {
