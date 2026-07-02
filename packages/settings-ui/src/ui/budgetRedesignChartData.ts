@@ -204,6 +204,26 @@ type ProgressSeriesData = {
   projection: Array<number | null>;
 };
 
+// Honest fallback pace: when the producer budget-pace series is absent, the
+// legacy `plannedKWh` cumulative can sum to something other than the daily
+// budget (it is the planner's day plan, not the budget) — yet the chart labels
+// the series `Budget`. Rescale it so the terminal genuinely IS the configured
+// daily budget: the budget spread by the planned profile shape. When either
+// the budget or the planned total is non-positive there is nothing honest to
+// scale to, so the raw cumulative passes through (the option layer then
+// suppresses the `Budget N kWh` end annotation for a mismatched terminal).
+const scaleCumulativeToDailyBudget = (
+  values: number[],
+  dailyBudgetKWh: number,
+): number[] => {
+  const terminal = values.length ? values[values.length - 1] : 0;
+  if (!Number.isFinite(dailyBudgetKWh) || dailyBudgetKWh <= 0 || !Number.isFinite(terminal) || terminal <= 0) {
+    return values;
+  }
+  const scale = dailyBudgetKWh / terminal;
+  return values.map((value) => Number((value * scale).toFixed(3)));
+};
+
 export const resolveProgressSeriesData = (
   payload: DailyBudgetDayPayload,
   view: BudgetRedesignDayView,
@@ -212,13 +232,15 @@ export const resolveProgressSeriesData = (
   const actual = payload.buckets.actualKWh || [];
   const labels = payload.buckets.startLocalLabels || [];
   const actualUpToIndex = resolveActualUpToIndex(payload, view);
-  // The single green reference is the producer's STABLE budget-pace curve
+  // The single reference is the producer's STABLE budget-pace curve
   // (PR-A) — dailyBudgetKWh spread by the day-start profile, ending at the cap,
   // and NOT re-paced as the user under/over-spends. Fall back to the legacy plan
-  // cumulative only if the producer field is absent.
+  // cumulative only if the producer field is absent — rescaled to end at the
+  // daily budget so the `Budget` label stays honest (see
+  // `scaleCumulativeToDailyBudget`).
   const planCumulative = isFiniteSeriesOfLength(payload.buckets.budgetPaceCumKWh, labels.length)
     ? payload.buckets.budgetPaceCumKWh
-    : cumulative(planned);
+    : scaleCumulativeToDailyBudget(cumulative(planned), payload.budget.dailyBudgetKWh);
   const actualCumulative = buildActualCumulative(actual, actualUpToIndex);
   // Projection comes from the producer (one source of truth, shared with the
   // hero verdict and the widget), rendered dashed from "now" forward. Only the

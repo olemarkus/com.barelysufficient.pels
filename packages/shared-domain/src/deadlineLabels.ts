@@ -1981,9 +1981,16 @@ export const formatCheapestHoursCaption = (params: {
 // `feedback_ui_text_shared_with_logs.md`) and the view stays a flat renderer
 // (per `feedback_layering_resolution_in_producer.md`).
 
-// Card title for the schedule chart. Kind-agnostic — the kind verb lives in
-// the planned-band label ("Heating"/"Charging" via `deviceSeriesName`).
+// Card title for the schedule chart. Kind-agnostic — the kind verb lives on
+// the trajectory chart's labelled run band ("Heating"/"Charging" via
+// `deviceSeriesName`).
 export const SMART_TASK_SCHEDULE_CARD_TITLE = 'When will it run, and at what price?';
+
+// One-line key under the schedule chart decoding its one-hue-two-states bar
+// encoding (filled mint = picked, dimmed = eligible but not picked). "Picked"
+// is the trust caption's vocabulary (`Picked N of the M hours it can use`), so
+// the key and the caption speak the same language.
+export const SMART_TASK_SCHEDULE_CHART_KEY = 'Filled bars are the picked hours · dimmed bars were not picked';
 
 // Kind-aware trajectory card title: "Will it reach 65 °C in time?" /
 // "Will it reach 80% in time?". The target label is composed from the same

@@ -75,10 +75,13 @@ test.describe('Deadline plan', () => {
     // two-chart split).
     await expect(panel.getByText('When will it run, and at what price?', { exact: true })).toBeVisible();
     await expect(panel.getByText('Will it reach 65.0 °C in time?', { exact: true })).toBeVisible();
-    // Kind verb lives in the planned-band markArea label inside the chart —
-    // temperature must say Heating and never Charging.
-    await expect(panel.getByLabel(/Smart task schedule/).getByText('Heating', { exact: true })).toBeVisible();
-    await expect(panel.getByLabel(/Smart task schedule/).getByText('Charging', { exact: true })).toHaveCount(0);
+    // Kind verb lives on the trajectory chart's labelled run band —
+    // temperature must say Heating and never Charging. The schedule chart
+    // carries no band anymore (picked hours are the filled bars, decoded by
+    // the caption key below the chart).
+    await expect(panel.getByLabel(/progress trajectory/).getByText('Heating', { exact: true })).toBeVisible();
+    await expect(panel.getByLabel(/progress trajectory/).getByText('Charging', { exact: true })).toHaveCount(0);
+    await expect(panel.getByText('Filled bars are the picked hours · dimmed bars were not picked', { exact: true })).toBeVisible();
     await expect(panel.locator('.deadline-schedule-chart svg')).toBeVisible();
     await expect(panel.locator('.deadline-trajectory-chart svg')).toBeVisible();
     // Trajectory stateline answers the card's question in one sentence.

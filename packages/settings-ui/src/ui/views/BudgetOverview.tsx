@@ -359,26 +359,44 @@ type LegendItem = { label: string; cls: string };
 
 const ChartLegend = ({
   view,
+  mode,
   showProjection,
   showPrice,
   showSplit,
 }: {
   view: BudgetRedesignDayView;
+  mode: BudgetRedesignChartMode;
   showProjection: boolean;
   showPrice: boolean;
   showSplit: boolean;
 }) => {
   const items: LegendItem[] = [
-    ...(view !== 'tomorrow' ? [{ label: 'Actual', cls: 'budget-chart-legend__swatch--actual' }] : []),
+    // Legend glyphs match the plotted strokes per mode: the progress chart's
+    // Actual is the mint line; the hourly chart's Actual is the on-surface
+    // overlay riding the mint/slate stack (a mint swatch there would claim
+    // the Managed colour).
+    ...(view !== 'tomorrow'
+      ? [{
+        label: 'Actual',
+        cls: mode === 'progress'
+          ? 'budget-chart-legend__swatch--actual'
+          : 'budget-chart-legend__swatch--actual-overlay',
+      }]
+      : []),
     // When the chart renders the planned-load split, the bars are Background +
-    // Managed; show those swatches instead of the single Plan swatch so the
-    // legend always names what the user actually sees.
+    // Managed; show those swatches instead of the single Budget swatch so the
+    // legend always names what the user actually sees. The progress mode's
+    // Budget entry is the dashed reference stroke; the hourly mode's is the
+    // ice-blue planned-allocation bar — the glyphs match what is plotted.
     ...(showSplit
       ? [
         { label: SPLIT_BACKGROUND_LABEL, cls: 'budget-chart-legend__swatch--background' },
         { label: SPLIT_MANAGED_LABEL, cls: 'budget-chart-legend__swatch--managed' },
       ]
-      : [{ label: 'Budget', cls: '' }]),
+      : [{
+        label: 'Budget',
+        cls: mode === 'progress' ? 'budget-chart-legend__swatch--reference' : 'budget-chart-legend__swatch--plan',
+      }]),
     ...(showProjection ? [{ label: 'Projection', cls: 'budget-chart-legend__swatch--forecast' }] : []),
     ...(showPrice ? [{ label: 'Price', cls: 'budget-chart-legend__swatch--price' }] : []),
   ];
@@ -485,6 +503,7 @@ const BudgetChartCard = ({
       )}
       <ChartLegend
         view={chart.view}
+        mode={chart.mode}
         showProjection={chart.showProjection}
         showPrice={chart.showPrice}
         showSplit={chart.showSplit}

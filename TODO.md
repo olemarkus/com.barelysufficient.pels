@@ -713,14 +713,6 @@ CI failure, so future field-move slices can't silently grow the debt.*
       `getKeys()` as untrusted and retries instead of committing). Source: pels-runtime-reality
       on PR #1678, 2026-06-11.
 
-- [ ] **Give the smart-task live schedule chart's encodings an on-chart decode path.** The
-      schedule card's three encodings (price-tone colour, opacity = scheduled, changed-hour dot)
-      have no legend; disclosure is scrub-readout-only. Hypothesis: a 4-word caption legend
-      closes the first-read gap; persona: the Onboarding / Optimiser visitor who hasn't discovered
-      scrubbing. Flagged for owner walk in the PR body. Files:
-      `packages/settings-ui/src/ui/views/DeadlinePlan.tsx` (schedule card caption). Source:
-      #1679 reviews, 2026-06-11.
-
 - [ ] **Compose a real cause for the plain-miss history hero's "Why" line.** The fallback branch
       renders "Why: Didn't reach the target before the deadline." — circular (it restates the
       Missed outcome it annotates). Compose an actual cause the way the revised/refined miss
@@ -729,6 +721,53 @@ CI failure, so future field-move slices can't silently grow the debt.*
       (`formatPlanHistoryMissedReason` final fallback, ~line 402), rendered via
       `packages/settings-ui/src/ui/deadlinePlanHistoryDetailHero.ts`. Source: pels-ux-fit on
       PR #1681, 2026-06-11.
+
+- [ ] **Say WHY an eligible-but-unpicked cheap hour wasn't picked in the schedule readout.** The
+      schedule chart's one-hue-two-states encoding + caption key ("dimmed bars were not picked")
+      makes a dimmed CHEAPEST bar (often the in-progress Now hour) an open question the surface
+      never answers — the readout gives a what ("Idle — heating starts 15:00"), not a why (e.g.
+      the current hour can't contribute a full hour, or the plan already has enough energy).
+      Persona: Optimiser reading "Scheduled for the cheapest hours it can use" next to a dimmed
+      cheapest bar. Hypothesis: one producer-resolved reason clause on the readout's third
+      segment for eligible-unpicked hours closes the credibility gap the key opened. Files:
+      `packages/shared-domain/src/deadlineLabels.ts` (`formatSmartTaskHourReadoutPrimary`),
+      `packages/settings-ui/src/ui/deadlinePlanTimeline.ts`. Source: pels-ux-fit on the
+      data-viz palette PR, 2026-07-02.
+
+- [ ] **Fix the smart-task walkthrough fixture's impossible physics.** The e2e stub's live
+      smart task says "Needs 12.0 kWh · 8 hours left" with "Device power used 0.75 kW" — even
+      running all 8 hours delivers 6 kWh, yet the surface reads on-track and the trajectory
+      climbs 13.9 °C in ~6 h (≈11 kWh at the stated 0.80 kWh/°C). Pre-existing (identical in
+      before-captures), but this fixture feeds every walkthrough/screenshot surface. Make the
+      numbers consistent (e.g. 1.8 kW device power, or a 4.5 kWh need) and re-pin affected
+      deadline-plan spec assertions. Persona: owner poking at simulation mode. Files:
+      `packages/settings-ui/tests/e2e/fixtures/homey.stub.js` (smart-task objective fixture).
+      Source: pels-ux-fit on the data-viz palette PR, 2026-07-02.
+
+- [ ] **Disambiguate the smart-task schedule chart's two kinds of dimmed bar.** With the
+      one-hue-two-states encoding, a bar is dimmed both when it is outside the task's allowed
+      window (e.g. the in-progress "Now" bar, before the 15:00 start) and when it is inside the
+      window but too expensive to pick — same styling, two meanings. Either distinguish "outside
+      window / not yet allowed" from "available but too expensive", or exclude the pre-start Now
+      bar from the pickable set so "not picked" only ever means too-expensive. Persona: Optimiser
+      reading a dimmed cheapest Now bar. Files: `packages/settings-ui/src/ui/views/DeadlinePlan.tsx`
+      (schedule bar item styling), `packages/settings-ui/src/ui/deadlinePlanTimeline.ts`. Source:
+      pels-m3-critic + pels-ux-fit on the data-viz palette PR, 2026-07-02. [UX P2]
+
+- [ ] **Move the Budget-chart inline series/legend/pill labels into shared-domain.** The Budget
+      charts still build `Actual` / `Budget` / `Projection` / `Price` / `Managed` / `Background`
+      and the `Budget N kWh` end pill inline in `packages/settings-ui/src/ui/views/BudgetOverview.tsx`
+      + `budgetRedesignChartOptions.ts`, unlike the smart-task charts which source their strings
+      from `packages/shared-domain`. Migrate them so the Budget charts follow the
+      `feedback_ui_text_shared_with_logs` pattern (runtime logs can mirror on-screen wording).
+      Source: adversarial-review on the data-viz palette PR, 2026-07-02. [P3 copy]
+
+- [ ] **Regenerate the docs screenshots stale after the chart recolor.** The semantic-palette
+      recolor changed the Budget progress, hourly-plan, and landing chart surfaces, so the
+      committed docs images no longer match production: `docs/screenshots/daily-budget/plan-progress.png`,
+      `docs/screenshots/daily-budget/hourly-plan.png`, `docs/public/screenshots/landing-usage.png`,
+      `docs/public/screenshots/landing-overview.png`. Regenerate post-release. Source:
+      adversarial-review on the data-viz palette PR, 2026-07-02.
 
 - [ ] **Add the "pause lower-priority devices" toggle to the create-smart-task widget.** The
       `pauseLowerPriorityDevices` rescue permission ships with a Flow entry (`allow_smart_task_rescue`)

@@ -494,6 +494,7 @@ const buildOption = (params: UsageDayChartEchartsParams): {
   const { series, selectSeriesIndexes } = buildBarSeries({
     bars, stacks, currentBucketIndex, enabled, palette, hasWarnBars,
   });
+  const legendData = buildLegendData({ bars, stacks, hasWarnBars });
 
   const option: EChartsOption = {
     animation: false,
@@ -502,18 +503,24 @@ const buildOption = (params: UsageDayChartEchartsParams): {
       left: 6,
       right: 10,
       top: 6,
-      bottom: 46,
+      // Without a legend the reserved legend row would render as a dead void
+      // under the axis labels — hug them instead.
+      bottom: legendData.length >= 2 ? 46 : 28,
       containLabel: true,
     },
     legend: {
-      show: true,
+      // A one-entry legend explains nothing (a fallback-only day would show a
+      // lone "Measured" chip under a chart with exactly one bar colour) —
+      // render the legend only when there are at least two series to tell
+      // apart.
+      show: legendData.length >= 2,
       left: 'center',
       bottom: 0,
       selectedMode: false,
       itemWidth: 12,
       itemHeight: 8,
       itemGap: 16,
-      data: buildLegendData({ bars, stacks, hasWarnBars }),
+      data: legendData,
       textStyle: {
         color: palette.muted,
         fontSize: 11,

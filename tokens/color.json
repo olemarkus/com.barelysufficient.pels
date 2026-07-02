@@ -36,6 +36,24 @@
       },
       "info": {
         "default": { "value": "#60a5fa" }
+      },
+      "viz": {
+        "mint-dim": {
+          "value": "#48a998",
+          "comment": "Data-viz only. Dimmer, desaturated step of the mint family (`color.base.good.default` #5eead4) for measured totals that carry no managed/background claim — visually between the bright managed mint and the neutral slate so a mixed chart can't read a plain measured column as 'fully managed'."
+        },
+        "ice": {
+          "value": "#5cbdf0",
+          "comment": "Data-viz only. Cyan-leaning ice-blue for projection / plan / forecast series. Bright and saturated enough that a thin dotted projection stroke reads as distinctly BLUE — not grey — against the neutral slate budget reference on a small dark 320 px chart (the previous desaturated #8ec1e4 sampled as technically distinct but read grey at mobile size). Kept cyan-leaning (more green than blue) so it never collides with the indigo `color.base.info.default` (#60a5fa) status/level tone, and clear of both the teal mint Actual and the grey slate reference."
+        },
+        "slate": {
+          "value": "#6b7280",
+          "comment": "Data-viz only. Neutral slate for background (non-managed) usage fills. Same rendered colour as `color.base.gray.300`, but deliberately its own value: aliasing the text tone would let a future text tweak silently recolor three charts."
+        },
+        "slate-bright": {
+          "value": "#9ba6b7",
+          "comment": "Data-viz only. Brighter slate step for dashed reference strokes (budget lines) that must stay findable above the gridlines while remaining a neutral non-judgment tone. Same rendered colour as `color.base.gray.100`, decoupled for the same reason as `viz.slate`."
+        }
       }
     },
     "role": {

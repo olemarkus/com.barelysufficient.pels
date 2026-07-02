@@ -2257,8 +2257,16 @@ md-filled-button.is-busy {
   background: var(--pels-status-good);
 }
 
+/* State-coloured fill per the hero spec's status tones: under safe pace the
+   WHOLE fill reads success-toned — managed at full mint, background as a
+   dimmer step of the same success tone — so an all-background household no
+   longer sees a grey-on-grey gauge. The two segments stay distinguishable
+   (bright vs dim), and the supporting "Managed X kW · Background Y kW" line
+   carries the split meaning (colour never carries meaning alone). Above safe
+   pace / hard cap the trailing segment flips to the warning / critical tone
+   below. */
 .pels-meter-segments__seg--background {
-  background: color-mix(in srgb, var(--pels-text-secondary) 55%, transparent);
+  background: color-mix(in srgb, var(--pels-status-good) 42%, var(--pels-surface-container-high));
 }
 
 /* When current power crosses safe pace / hard cap, the trailing rendered
@@ -2311,33 +2319,63 @@ md-filled-button.is-busy {
   gap: var(--spacing-1);
 }
 
-/* Legend swatch geometry mirrors the matching marker rule so the key reads as
-   a faithful 1:1 of the bar. The default tone is the neutral secondary-text
-   reference used by the target/safe-pace marker; the projected swatch overrides
-   it per status tone below. */
+/* Legend swatches render as MINI-TRACKS: a short rounded track sample with
+   the marker glyph riding on it, exactly as it appears on the real bar. A
+   bare vertical tick or hollow dot floating beside its label reads as ASCII
+   punctuation ("| Safe pace", "o Projected") — the track underneath is what
+   makes each glyph read as a key to the meter. The default tone is the
+   neutral secondary-text reference used by the target/safe-pace marker; the
+   projected swatch overrides it per status tone below. */
 .plan-hero__legend-swatch {
   --legend-tone: var(--pels-text-secondary);
+  position: relative;
   display: inline-block;
   flex: 0 0 auto;
+  width: 24px;
+  height: 10px;
+  border-radius: var(--radius-full);
+  background: var(--pels-surface-container-highest);
+  overflow: visible;
 }
 
-.plan-hero__legend-swatch--target {
+.plan-hero__legend-swatch::after {
+  content: "";
+  position: absolute;
+}
+
+/* Thin threshold tick, centred on the mini-track (mirrors --marker--target,
+   including its surface-toned separation halo). */
+.plan-hero__legend-swatch--target::after {
+  top: 50%;
+  left: 50%;
   width: 3px;
   height: 12px;
+  transform: translate(-50%, -50%);
   border-radius: var(--radius-full);
   background: var(--legend-tone);
+  box-shadow: 0 0 0 1px var(--pels-surface-container-highest);
 }
 
-.plan-hero__legend-swatch--cap {
+/* Hard-cap end stop: warning-toned tick at the track's end (the cap marker
+   sits at the scale end on the real bar). */
+.plan-hero__legend-swatch--cap::after {
+  top: 50%;
+  right: 0;
   width: 4px;
   height: 12px;
+  transform: translateY(-50%);
   border-radius: var(--radius-full);
   background: var(--pels-status-warning);
 }
 
-.plan-hero__legend-swatch--projected {
+/* Hollow projected dot, centred on the mini-track (mirrors
+   --marker--projected). */
+.plan-hero__legend-swatch--projected::after {
+  top: 50%;
+  left: 50%;
   width: 8px;
   height: 8px;
+  transform: translate(-50%, -50%);
   border: 2px solid var(--legend-tone);
   border-radius: var(--radius-full);
   background: var(--pels-surface-container-high);
@@ -5486,16 +5524,25 @@ details[open] > summary .disclosure-chevron {
   gap: var(--spacing-1);
 }
 
+/* Base swatch carries geometry only — every usage picks its fill/stroke via
+   a modifier below, so a default fill would be unreachable ink. */
 .budget-chart-legend__swatch {
   width: 12px;
   height: 8px;
   border-radius: var(--radius-sm);
-  background: var(--pels-chart-plan);
 }
 
+/* Solid mint Actual line — matches the progress chart's width-3 stroke. */
 .budget-chart-legend__swatch--actual {
-  height: 2px;
+  height: 3px;
   background: var(--pels-chart-actual);
+}
+
+/* Hourly-mode Actual overlay: on-surface ink riding the mint/slate stack
+   (a mint swatch here would claim the Managed colour). */
+.budget-chart-legend__swatch--actual-overlay {
+  height: 2px;
+  background: var(--text);
 }
 
 .budget-chart-legend__swatch--background {
@@ -5506,9 +5553,22 @@ details[open] > summary .disclosure-chevron {
   background: var(--pels-chart-managed);
 }
 
+/* Ice-blue planned-allocation bar (Budget hourly chart, no-split path). */
+.budget-chart-legend__swatch--plan {
+  background: var(--pels-chart-plan);
+}
+
+/* Dashed slate budget reference — the progress chart's Budget stroke. */
+.budget-chart-legend__swatch--reference {
+  height: 2px;
+  border-top: 2px dashed var(--pels-chart-budget-reference);
+  background: transparent;
+}
+
+/* Dotted ice-blue projection — matches the plotted dotted stroke. */
 .budget-chart-legend__swatch--forecast {
   height: 2px;
-  border-top: 2px dashed var(--pels-chart-forecast);
+  border-top: 2px dotted var(--pels-chart-forecast);
   background: transparent;
 }
 

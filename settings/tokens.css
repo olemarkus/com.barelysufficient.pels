@@ -71,6 +71,10 @@
   --color-base-warning-soft: #fcd34d;
   --color-base-warning-strong: #b45309;
   --color-base-info-default: #60a5fa;
+  --color-base-viz-mint-dim: #48a998; /** Data-viz only. Dimmer, desaturated step of the mint family (`color.base.good.default` #5eead4) for measured totals that carry no managed/background claim — visually between the bright managed mint and the neutral slate so a mixed chart can't read a plain measured column as 'fully managed'. */
+  --color-base-viz-ice: #5cbdf0; /** Data-viz only. Cyan-leaning ice-blue for projection / plan / forecast series. Bright and saturated enough that a thin dotted projection stroke reads as distinctly BLUE — not grey — against the neutral slate budget reference on a small dark 320 px chart (the previous desaturated #8ec1e4 sampled as technically distinct but read grey at mobile size). Kept cyan-leaning (more green than blue) so it never collides with the indigo `color.base.info.default` (#60a5fa) status/level tone, and clear of both the teal mint Actual and the grey slate reference. */
+  --color-base-viz-slate: #6b7280; /** Data-viz only. Neutral slate for background (non-managed) usage fills. Same rendered colour as `color.base.gray.300`, but deliberately its own value: aliasing the text tone would let a future text tweak silently recolor three charts. */
+  --color-base-viz-slate-bright: #9ba6b7; /** Data-viz only. Brighter slate step for dashed reference strokes (budget lines) that must stay findable above the gridlines while remaining a neutral non-judgment tone. Same rendered colour as `color.base.gray.100`, decoupled for the same reason as `viz.slate`. */
   --color-surface-1: #141923;
   --color-surface-2: #181e29;
   --color-surface-3: #1d2430;
@@ -182,6 +186,11 @@
   --pels-shell-nav-tab-label-weight: var(--font-weight-semibold);
   --pels-shell-nav-tab-selected-hover-background: rgba(var(--color-base-accent-default-rgb), 0.38); /** Tonal accent-tint hover fill. No longer used by the nav tab (which is underline-only) but still consumed by `.plan-chip--link[aria-pressed=true]:hover`, so the token stays. */
   --pels-deadline-close-size: var(--pels-touch-target-min);
+  --pels-chart-plan: var(--color-base-viz-ice); /** Planned hourly allocation bars (Budget hourly chart's single-series legacy path, when no managed/background split exists). Ice-blue — the palette's plan/forecast family. The dashed budget REFERENCE stroke is `pels.chart.budget-reference`, not this. */
+  --pels-chart-budget-reference: var(--color-base-viz-slate-bright); /** Dashed budget reference strokes: the Budget progress chart's budget-pace line and the Usage daily chart's budget markLine, plus their legend swatches and label pills. A reference is a neutral guideline, not a judgment — so it is slate, never amber (amber = warning only). */
+  --pels-chart-measured: var(--color-base-viz-mint-dim); /** Measured totals without a managed/background claim: the Usage day chart's fallback bars, the typical-day and hourly-pattern averages, and the daily-history bars. One dim/desaturated step below the managed mint so a mixed day (split hours next to fallback hours) can't read fallback columns as 'fully managed'. Previously the saturated grass-green accent. */
+  --pels-chart-background: var(--color-base-viz-slate); /** Background (non-managed) share of a usage split. Neutral slate; its own viz value (same rendered colour as the former `color.semantic.text.muted` alias) so a future text-tone tweak can't silently recolor three charts. Deliberately NOT `color.role.info`, which the semantic viz palette reserves for projection/forecast. */
+  --pels-chart-forecast: var(--color-base-viz-ice); /** Projection / forecast strokes (Budget progress projection, comparison forecasts). Dotted ice-blue per the semantic viz palette — quiet, provisional ink, distinct from the saturated info-blue status tone. */
   --pels-chart-price-line: var(--color-base-price-default);
   --pels-chart-price-fill: color-mix(in srgb, var(--color-base-price-default) 18%, transparent);
   --pels-chart-heatmap-border: var(--color-surface-1);
@@ -227,17 +236,13 @@
   --pels-shell-nav-tab-selected-indicator-color: var(--color-role-accent); /** M3 underline-indicator colour for the selected nav tab. The selected tab now reads as a modern M3 tab strip — an accent underline bar plus a primary-text label — rather than a filled pill. Accent (brand green) is the canonical M3 active-indicator colour and stays distinct from the tonal segmented-control fill used elsewhere. */
   --pels-deadline-close-background: var(--pels-surface-container-high);
   --pels-deadline-close-outline: var(--pels-surface-outline);
-  --pels-chart-actual: var(--color-semantic-text-primary);
-  --pels-chart-plan: var(--color-role-good);
-  --pels-chart-plan-fill: color-mix(in srgb, var(--color-role-good) 10%, transparent);
-  --pels-chart-measured: var(--color-semantic-accent);
+  --pels-chart-actual: var(--color-role-good); /** SEMANTIC DATA-VIZ PALETTE — one hue, one meaning across every chart: mint (`color.role.good`) = actual / measured / delivered / picked; dim mint (`color.base.viz.mint-dim`) = measured totals carrying no managed/background claim; ice-blue (`color.base.viz.ice`) = projection / plan / forecast; amber (`pels.chart.warn`) = warning only; red (`pels.chart.danger`) = error / over-hard-cap only; slate (`color.base.viz.slate`) = background / neutral, with `viz.slate-bright` for dashed reference strokes. Auxiliary identities that sit outside the series family and keep their own meaning: purple = money/price axis (`price-line`), and the price-LEVEL tones on the hour strips (`hour-tone-*`). No chart may introduce a hue outside this set. This token: the Actual (measured) stroke on the Budget charts — previously the near-white text tone. */
   --pels-chart-managed: var(--color-role-good); /** Managed (PELS-influenceable) share of a usage split. Mint — the same family the Overview hero's managed power segment uses (`--pels-status-good`), so 'managed' reads as one colour across the hero bar, the Budget hourly stack, and the Usage stack. Previously `color.role.warn`, which collided with the amber `pels.chart.warn` unreliable-hour encoding. */
-  --pels-chart-background: var(--color-semantic-text-muted); /** Background (non-managed) share of a usage split. Neutral slate matching the Overview hero's background power segment tone; deliberately NOT `color.role.info`, which the semantic viz palette reserves for projection/forecast. */
+  --pels-chart-picked: var(--color-role-good); /** Hours a smart task picked, on the schedule chart: picked hours render as filled mint bars, non-picked hours as the same hue dimmed/outlined (opacity derived in-chart). Mint = the palette's 'picked/delivered' meaning; the bar height already carries the price, so price-level colour-coding stays off this chart. */
   --pels-chart-warn: var(--color-role-warn);
   --pels-chart-danger: var(--color-role-danger);
-  --pels-chart-forecast: var(--color-role-info);
-  --pels-chart-heatmap-low: color-mix(in srgb, var(--color-semantic-accent) 18%, var(--color-surface-1));
-  --pels-chart-heatmap-high: var(--color-semantic-accent);
+  --pels-chart-heatmap-low: color-mix(in srgb, var(--color-role-good) 18%, var(--color-surface-1));
+  --pels-chart-heatmap-high: var(--color-role-good); /** Power-week heatmap ramp = measured energy, so it runs surface→mint (the palette's measured family). Previously the saturated grass-green accent, which sat outside the semantic viz set. */
   --pels-chart-hour-tone-cheap: var(--color-role-good);
   --pels-chart-hour-tone-normal: var(--color-role-info);
   --pels-chart-hour-tone-expensive: var(--color-role-danger);

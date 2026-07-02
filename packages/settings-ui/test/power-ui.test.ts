@@ -687,7 +687,9 @@ describe('power page stats (buckets-only)', () => {
   });
 
   // Regression: TODO 1122. Without warn bars the chart should not register a
-  // ghost "Warning" entry — the legend is a single-item row.
+  // ghost "Warning" entry — and a would-be single-item legend (a lone
+  // "Measured" chip under one-colour bars) is hidden entirely: one entry
+  // explains nothing.
   it('omits the Warning legend entry when no warn bars are present', async () => {
     const setOption = vi.fn();
     const initEcharts = vi.fn(() => ({
@@ -716,13 +718,14 @@ describe('power page stats (buckets-only)', () => {
     });
 
     const option = setOption.mock.calls[0][0] as {
-      legend?: { data?: Array<string | { name?: string }> };
+      legend?: { show?: boolean; data?: Array<string | { name?: string }> };
       series?: Array<{ name?: string }>;
     };
     const legendNames = (option.legend?.data ?? []).map((entry) => (
       typeof entry === 'string' ? entry : entry.name
     ));
     expect(legendNames).toEqual(['Measured']);
+    expect(option.legend?.show).toBe(false);
     expect(option.series?.find((series) => series.name === 'Warning')).toBeUndefined();
   });
 

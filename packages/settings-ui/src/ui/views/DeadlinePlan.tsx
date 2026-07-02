@@ -18,6 +18,7 @@ import {
   SMART_TASK_LOADING_LABEL,
   SMART_TASK_READOUT_SCRUB_HINT,
   SMART_TASK_SCHEDULE_CARD_TITLE,
+  SMART_TASK_SCHEDULE_CHART_KEY,
   type DeadlineCannotMeetRecourse,
   type DeadlineLabels,
   type DeadlinePlanUnavailableReason,
@@ -42,7 +43,6 @@ import { logSettingsWarn } from '../logging.ts';
 // same critical (red) tone as the hero rim instead of a warning (amber) tone
 // that contradicted it.
 type DeadlinePlanChipTone = 'alert' | 'info' | 'muted' | 'ok' | 'warn';
-type DeadlinePlanHourTone = 'cheap' | 'expensive' | 'normal';
 
 // Maps to the CSS `[data-tone="…"]` rim/background variants on `.pels-hero` /
 // `.plan-hero` (style.css ~1287-1325). `good` is the on-track / satisfied
@@ -74,7 +74,6 @@ type DeadlinePlanHour = {
   time: string;
   price: string;
   priceValue: number;
-  tone: DeadlinePlanHourTone;
   planned: boolean;
   changed: boolean;
   // Pinned-readout lines for this hour, fully resolved at the producer
@@ -182,9 +181,6 @@ export type DeadlinePlanPayload = {
     deadlineAxisX: number;
     // "deadline Sun 09:00" markLine label, producer-composed.
     deadlineMarkLabel: string;
-    // Contiguous planned-hour ranges for the markArea bands; only the first
-    // carries the kind-verb label.
-    plannedRanges: Array<{ from: number; to: number; label: string | null }>;
     // "Picked N of M hours before the deadline · avg P kr/kWh" trust
     // caption rendered under the chart. Resolved producer-side from the
     // per-hour `priceValue` + `planned` flag via `formatCheapestHoursCaption`
@@ -340,14 +336,21 @@ const DeadlineHero = ({ payload }: { payload: DeadlinePlanPayload }) => (
 );
 
 export type DeadlineChartPalette = {
-  priceCheap: string;
-  priceNormal: string;
-  priceExpensive: string;
-  // Accent series colour: planned-band tint, measured trajectory line, now
-  // dot. The band uses it at low opacity so planned ranges read as a wash
-  // behind the full-opacity bars.
+  // Picked-hour bar fill on the schedule chart: one hue, two states — picked
+  // hours filled, other hours the same hue dimmed/outlined. Mint per the
+  // semantic viz palette (`pels.chart.picked`).
+  picked: string;
+  // Accent series colour: run-band tint, measured trajectory line, now dot.
+  // Mint (`pels.chart.actual`) — measured/delivered ink, the same family as
+  // the picked bars. The band uses it at low opacity so the run range reads
+  // as a wash behind the staircase.
   accent: string;
-  // Muted staircase / guide colour for the planned trajectory ahead.
+  // Projected staircase ahead of now — ice-blue (`pels.chart.forecast`), the
+  // palette's projection ink, so the trajectory forecast speaks the same
+  // language as the Budget chart's dotted projection and stays
+  // distinguishable from the muted target/deadline reference lines.
+  forecast: string;
+  // Muted guide colour for the target/deadline reference lines and labels.
   muted: string;
   grid: string;
   text: string;
@@ -369,14 +372,12 @@ const cssNumber = (element: HTMLElement, variable: string, fallback: number): nu
 };
 
 const resolvePalette = (element: HTMLElement): DeadlineChartPalette => ({
-  // Canonical price-tone tokens shared with the history hourly strip — the
-  // same cheap/normal/expensive vocabulary on both smart-task surfaces.
-  priceCheap: cssVar(element, '--pels-chart-hour-tone-cheap'),
-  priceNormal: cssVar(element, '--pels-chart-hour-tone-normal'),
-  priceExpensive: cssVar(element, '--pels-chart-hour-tone-expensive'),
-  // Semantic role token (not the raw base token) so the chart accent follows
-  // any future role remap with the rest of the surface.
-  accent: cssVar(element, '--color-role-accent'),
+  picked: cssVar(element, '--pels-chart-picked'),
+  // Mint measured/delivered ink per the semantic viz palette — the trajectory
+  // measured line, now dot, and run-band tint. (Previously the saturated
+  // grass-green accent role, which sat outside the viz palette.)
+  accent: cssVar(element, '--pels-chart-actual'),
+  forecast: cssVar(element, '--pels-chart-forecast'),
   muted: cssVar(element, '--pels-text-supporting-color'),
   grid: cssVar(element, '--pels-surface-outline'),
   text: cssVar(element, '--text'),
@@ -385,14 +386,10 @@ const resolvePalette = (element: HTMLElement): DeadlineChartPalette => ({
 
 export type ChartTypography = {
   labelFontSize: number;
-  axisNameFontSize: number;
-  axisNameFontWeight: number;
 };
 
 const resolveTypography = (element: HTMLElement): ChartTypography => ({
   labelFontSize: cssNumber(element, '--font-size-xs', 11),
-  axisNameFontSize: cssNumber(element, '--font-size-xs', 11),
-  axisNameFontWeight: cssNumber(element, '--font-weight-bold', 700),
 });
 
 // Container-specific sizers. Fallback heights must match the
@@ -418,16 +415,17 @@ const resolveTrajectoryChartSize = resolveChartSizeWithFallback(TRAJECTORY_CHART
 const ONE_HOUR_MS = 60 * 60 * 1000;
 
 // Schedule chart ("When will it run, and at what price?"): one grid, one
-// zero-baselined price axis on the right, tone-coloured price bars (planned
-// hours full opacity, unplanned muted), a solid-tint markArea band over the
-// planned ranges labeled with the kind verb, a dot markPoint over changed
-// hours (replaces the undiscoverable 1px border), and now/deadline markLines
-// at their TRUE fractional x-positions. No legend; the ECharts tooltip is
+// zero-baselined price axis on the right, one-hue-two-states price bars —
+// picked hours are filled mint, other hours the same hue dimmed and outlined
+// (the bar height already carries the price, so price-level colour-coding
+// stays off this chart; the caption key under the chart decodes the two
+// states). A dot markPoint marks changed hours (replaces the undiscoverable
+// 1px border), and now/deadline markLines sit at their TRUE fractional
+// x-positions. The markArea band over the planned range was dropped: the
+// filled bars themselves now carry "when it runs", and the kind verb lives on
+// the trajectory chart's labelled run band. No legend; the ECharts tooltip is
 // fully disabled — the pinned readout row below the chart is the only
 // tap/scrub surface, so a floating box would double-fire.
-//
-// NOTE on dash grammar: planned ranges are SOLID tint. Dashed banding is
-// reserved for "planned but didn't run" on the history page.
 export const buildScheduleChartOption = (
   payload: DeadlinePlanPayload,
   palette: DeadlineChartPalette,
@@ -449,17 +447,11 @@ export const buildScheduleChartOption = (
   // Changed-hour dot sits a fixed fraction of the axis span above the bar so
   // it clears the bar cap at every viewport without per-bar measurements.
   const changedDotOffset = (priceMax - priceAxisMin) * 0.07;
-  const axisNameStyle = {
-    color: palette.text,
-    fontSize: typography.axisNameFontSize,
-    fontWeight: typography.axisNameFontWeight,
-    align: 'center' as const,
-  };
   return {
     animation: false,
     backgroundColor: 'transparent',
     textStyle: { color: palette.text, fontFamily: 'inherit' },
-    grid: { left: 8, right: 56, top: 24, bottom: 24, containLabel: true },
+    grid: { left: 8, right: 12, top: 24, bottom: 24, containLabel: true },
     xAxis: {
       type: 'category',
       data: labels,
@@ -469,8 +461,11 @@ export const buildScheduleChartOption = (
       axisLabel: {
         color: palette.muted,
         fontSize: typography.labelFontSize,
+        // Evenly spaced hour ticks, anchored at the "Now" column so the
+        // cadence includes it — never the old mixed rule that also forced
+        // the final column and produced adjacent-label crowding (20:00 21:00).
         interval: (index: number) => (
-          index === timeline.nowIndex || index === hourCount - 1 || index % showLabelEvery === 0
+          (index - timeline.nowIndex) % showLabelEvery === 0
         ),
         formatter: (value: string, index: number) => (
           index === timeline.nowIndex ? NOW_MARKER_WORD : value
@@ -480,17 +475,12 @@ export const buildScheduleChartOption = (
     yAxis: {
       type: 'value',
       position: 'right',
-      name: payload.priceUnitLabel,
-      nameLocation: 'middle',
-      nameGap: 44,
-      nameRotate: 0,
-      nameTextStyle: axisNameStyle,
       min: priceAxisMin,
       max: priceMax,
-      // Force a single tick at min / max so the axis labels stay readable —
-      // without this, kr/kWh values can fall into ECharts' default 5-tick
-      // layout and overlap at 320 px.
-      interval: Math.max(0.01, priceMax - priceAxisMin),
+      // Halved span = a mid gridline between min and max, so the plot carries
+      // three horizontal guides instead of two without crowding the axis at
+      // 320 px.
+      interval: Math.max(0.01, (priceMax - priceAxisMin) / 2),
       splitLine: { lineStyle: { color: palette.grid, opacity: 0.55 } },
       axisLine: { show: false },
       axisTick: { show: false },
@@ -498,11 +488,14 @@ export const buildScheduleChartOption = (
         color: palette.text,
         fontSize: typography.labelFontSize,
         // One-decimal precision matches the Budget chart's price axis so
-        // users see the same number format on both surfaces. The readout
-        // retains two-decimal precision via `formatPrice` in `deadlinePlan.ts`.
+        // users see the same number format on both surfaces (the readout
+        // retains two-decimal precision via `formatPrice` in
+        // `deadlinePlan.ts`). The unit is anchored to the top tick's number —
+        // one `0.6 kr/kWh` label instead of a floating unit — and the grid's
+        // `containLabel` reserves its width.
         formatter: (value: number) => {
           if (priceAxisMin < 0 && Math.abs(value - priceAxisMin) < 0.001) return priceAxisMin.toFixed(1);
-          if (Math.abs(value - priceMax) < 0.001) return priceMax.toFixed(1);
+          if (Math.abs(value - priceMax) < 0.001) return `${priceMax.toFixed(1)} ${payload.priceUnitLabel}`;
           return '';
         },
       },
@@ -514,38 +507,33 @@ export const buildScheduleChartOption = (
         type: 'bar',
         barCategoryGap: '25%',
         barMinHeight: 3,
+        // One hue, two states: picked hours are filled mint; hours the task
+        // can use but didn't pick keep the same hue as a dim outlined shell,
+        // so "which hours run" is answerable at a glance without a colour
+        // code for price levels (the bar height is the price).
         data: timeline.hours.map((hour) => ({
           value: hour.priceValue,
-          itemStyle: {
-            color: hour.tone === 'cheap'
-              ? palette.priceCheap
-              : hour.tone === 'expensive'
-                ? palette.priceExpensive
-                : palette.priceNormal,
-            opacity: hour.planned ? 1 : 0.4,
-            borderRadius: [3, 3, 0, 0],
-          },
+          itemStyle: hour.planned
+            ? {
+              color: palette.picked,
+              opacity: 1,
+              borderRadius: [3, 3, 0, 0],
+            }
+            : {
+              color: palette.picked,
+              opacity: 0.3,
+              borderColor: palette.picked,
+              borderWidth: 1,
+              borderType: 'solid' as const,
+              borderRadius: [3, 3, 0, 0],
+            },
         })),
         // Selected-hour highlight, driven imperatively via
         // `dispatchAction({type:'highlight'})` from the scrub handler. The
         // border alone carries the selection; opacity is deliberately NOT
-        // overridden so the selected bar keeps its planned/unplanned channel
+        // overridden so the selected bar keeps its picked/unpicked channel
         // (ECharts emphasis inherits unspecified itemStyle props per-datum).
         emphasis: { itemStyle: { borderColor: palette.text, borderWidth: 2 } },
-        markArea: {
-          silent: true,
-          itemStyle: { color: palette.accent, opacity: 0.12 },
-          label: {
-            show: true,
-            color: palette.accent,
-            fontSize: typography.labelFontSize,
-            position: 'insideTop' as const,
-          },
-          data: timeline.plannedRanges.map((range) => ([
-            { name: range.label ?? '', xAxis: range.from },
-            { xAxis: range.to },
-          ])),
-        },
         markPoint: {
           silent: true,
           symbol: 'circle',
@@ -673,7 +661,13 @@ export const buildTrajectoryChartOption = (
         data: trajectory.plannedPoints,
         silent: true,
         symbol: 'none',
-        lineStyle: { color: palette.muted, width: 1.5 },
+        // Projection ink (ice-blue) — the same brightened forecast token the
+        // Budget projection uses, so "projection/forecast = ice-blue" holds
+        // across all three charts. NOT the muted reference grey: the
+        // target/deadline lines on this same chart already own the muted tone.
+        // Width 2 (over the 1 px reference lines) so the forecast reads as a
+        // distinct blue staircase at 320 px, not a thin grey guide.
+        lineStyle: { color: palette.forecast, width: 2 },
       },
       {
         id: 'target-line',
@@ -925,6 +919,7 @@ const ScheduleQuestionCards = ({ payload }: { payload: DeadlinePlanPayload }) =>
         {payload.timeline.cheapestHoursCaption && (
           <p class="deadline-horizon-caption pels-card-supporting">{payload.timeline.cheapestHoursCaption}</p>
         )}
+        <p class="deadline-horizon-caption pels-card-supporting">{SMART_TASK_SCHEDULE_CHART_KEY}</p>
       </section>
       <section
         class="pels-surface-card budget-redesign-card deadline-horizon-card"

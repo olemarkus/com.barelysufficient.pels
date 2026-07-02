@@ -5,7 +5,13 @@
 import type { DailyBudgetDayPayload } from '../../../contracts/src/dailyBudgetTypes.ts';
 import type { EChartsOption, SeriesOption } from './echartsRegistry.ts';
 import type { CostDisplay } from './dailyBudgetCost.ts';
-import { formatHourAxisLabel, readChartPalette, resolveLabelEvery } from './dayViewChart.ts';
+import {
+  BUDGET_REFERENCE_MARGIN_PX,
+  buildBudgetReferencePillLabel,
+  formatHourAxisLabel,
+  readChartPalette,
+  resolveLabelEvery,
+} from './dayViewChart.ts';
 import { resolvePriceUnitLabel } from './priceUnit.ts';
 import { priceRateLabelToAmountUnit } from '../../../shared-domain/src/price/priceUnitLabel.ts';
 import { prefersCoarsePointer } from './chartReadout.ts';
@@ -25,9 +31,12 @@ import {
 } from './budgetRedesignChartData.ts';
 
 export type BudgetChartPalette = {
+  // Semantic viz palette (see `pels.chart.actual` in tokens/component.json):
+  // mint Actual stroke, ice-blue plan bars / projection stroke, slate-bright
+  // dashed budget reference.
   actual: string;
   plan: string;
-  planFill: string;
+  budgetReference: string;
   background: string;
   managed: string;
   forecast: string;
@@ -35,13 +44,16 @@ export type BudgetChartPalette = {
   priceFill: string;
   muted: string;
   grid: string;
-  // Warn tone for the dashed daily-budget mark line (same token the Usage
-  // tab's daily-history budget line uses).
+  // Warn tone for over-budget encodings (same token the Usage tab's
+  // daily-history over-budget segments use).
   overBudget: string;
   // On-surface high-contrast tone for the selected column's identity — the
   // hourly bars' select border and the progress lines' selection marker
   // symbol (same selection identity as the Usage-tab charts).
   text: string;
+  // Card surface behind the chart — the "now" dot's punch-out ring (the
+  // trajectory chart's now-dot idiom).
+  surface: string;
   tooltipBackground: string;
   tooltipText: string;
   tooltipBorder: string;
@@ -50,7 +62,7 @@ export type BudgetChartPalette = {
 const BUDGET_CHART_PALETTE_VARS = {
   actual: '--pels-chart-actual',
   plan: '--pels-chart-plan',
-  planFill: '--pels-chart-plan-fill',
+  budgetReference: '--pels-chart-budget-reference',
   background: '--pels-chart-background',
   managed: '--pels-chart-managed',
   forecast: '--pels-chart-forecast',
@@ -60,6 +72,7 @@ const BUDGET_CHART_PALETTE_VARS = {
   grid: '--pels-chart-grid',
   overBudget: '--pels-chart-warn',
   text: '--text',
+  surface: '--pels-surface-container-lowest',
   tooltipBackground: '--pels-chart-tooltip-bg',
   tooltipText: '--pels-chart-tooltip-text',
   tooltipBorder: '--pels-chart-tooltip-border',
@@ -182,11 +195,16 @@ const buildBaseOption = (params: {
   };
 };
 
-// The single green reference is the stable budget-pace curve; it ends AT the cap
-// (energy) or its fully-priced cost (money), so an end-stop dot carries the
-// terminal number — no separate flat line, which would double-encode it. Energy
-// gates the dot on a positive configured budget (preserved behaviour); money on
-// a positive priced terminal (no cost view renders for a 0-kr day).
+// The reference is the stable budget-pace curve; it ends AT the cap (energy)
+// or its fully-priced cost (money), so an end-stop pill carries the terminal
+// number — no separate flat line, which would double-encode it. Energy gates
+// the pill on a positive configured budget AND on the plotted terminal
+// actually matching that budget: a mismatched terminal (a legacy planned
+// cumulative the resolver could not honestly rescale) must not be annotated
+// `Budget N kWh` — the word `Budget` carries exactly one number per screen.
+// Money gates on a positive priced terminal (no cost view renders for a
+// 0-kr day). The label is pre-split onto two lines for the pill chip pinned
+// in the reserved right margin (see `buildBudgetReferencePillLabel`).
 const resolveProgressEndStop = (params: {
   payload: DailyBudgetDayPayload;
   labels: string[];
@@ -199,12 +217,68 @@ const resolveProgressEndStop = (params: {
   const paceTerminal = planCumulative.length
     ? (planCumulative[planCumulative.length - 1] ?? referenceFloor)
     : referenceFloor;
-  const budgetConfigured = Number.isFinite(payload.budget.dailyBudgetKWh) && payload.budget.dailyBudgetKWh > 0;
-  const show = labels.length > 0 && Number.isFinite(paceTerminal) && paceTerminal > 0 && (isMoney || budgetConfigured);
+  const budgetKWh = payload.budget.dailyBudgetKWh;
+  const budgetConfigured = Number.isFinite(budgetKWh) && budgetKWh > 0;
+  const terminalMatchesBudget = budgetConfigured
+    && Math.abs(paceTerminal - budgetKWh) <= Math.max(0.05, budgetKWh * 0.02);
+  const show = labels.length > 0
+    && Number.isFinite(paceTerminal)
+    && paceTerminal > 0
+    && (isMoney || terminalMatchesBudget);
   const label = isMoney
-    ? `Budget ${paceTerminal.toFixed(2)} ${priceRateLabelToAmountUnit(costDisplay.unit)}`.trimEnd()
-    : `Budget ${paceTerminal.toFixed(1)} kWh`;
+    ? `Budget\n${paceTerminal.toFixed(2)} ${priceRateLabelToAmountUnit(costDisplay.unit)}`.trimEnd()
+    : `Budget\n${paceTerminal.toFixed(1)} kWh`;
   return { show, label, paceTerminal };
+};
+
+// Solid mint Actual stroke, ending at a visible "now" dot on the today view —
+// the handoff point where the dotted projection takes over. Punch-out ring in
+// the card surface tone, the trajectory chart's now-dot idiom.
+const buildActualSeries = (params: {
+  labels: string[];
+  actualCumulative: Array<number | null>;
+  view: BudgetRedesignDayView;
+  palette: BudgetChartPalette;
+}): SeriesOption => {
+  const { labels, actualCumulative, view, palette } = params;
+  const lastActualIndex = actualCumulative.reduce(
+    (best, value, index) => (Number.isFinite(value) ? index : best),
+    -1,
+  );
+  const lastActualValue = lastActualIndex >= 0 ? actualCumulative[lastActualIndex] : null;
+  const showNowDot = view === 'today'
+    && lastActualIndex >= 0
+    && lastActualIndex < labels.length
+    && Number.isFinite(lastActualValue);
+  return {
+    type: 'line',
+    name: 'Actual',
+    data: actualCumulative,
+    showSymbol: false,
+    smooth: true,
+    connectNulls: false,
+    lineStyle: { color: palette.actual, width: 3 },
+    emphasis: { disabled: true },
+    ...(showNowDot
+      ? {
+        markPoint: {
+          symbol: 'circle',
+          symbolSize: 9,
+          silent: true,
+          animation: false,
+          itemStyle: { color: palette.actual, borderColor: palette.surface, borderWidth: 2 },
+          label: { show: false },
+          // Anchor by NUMERIC bucket index, not the string hour label (the
+          // readout selection marker does the same): on a DST fall-back day
+          // `buildLocalDayBuckets` emits two "02:00" labels, so a string
+          // category coord would attach the dot to the FIRST match instead of
+          // `lastActualIndex`, disagreeing with the actual/projection handoff.
+          // ECharts reads a numeric coord on a category axis as the data index.
+          data: [{ coord: [lastActualIndex, lastActualValue as number] }],
+        },
+      }
+      : {}),
+  };
 };
 
 export const buildProgressOption = (params: {
@@ -252,6 +326,16 @@ export const buildProgressOption = (params: {
     readouts,
   });
   const endStop = resolveProgressEndStop({ payload, labels, planCumulative, referenceFloor, isMoney, costDisplay });
+  if (endStop.show) {
+    // Reserve the right gutter for the budget pill so the annotation sits
+    // entirely off the data at 320 and 480 px.
+    option.grid = { ...(option.grid as Record<string, unknown>), right: BUDGET_REFERENCE_MARGIN_PX };
+  }
+  // Stroke honesty (one grammar, mirrored by the HTML legend swatches):
+  // solid mint Actual up to a visible "now" dot, dotted ice-blue Projection
+  // after it, dashed slate Budget reference. No area fill under the
+  // reference — a filled region would claim data weight a guideline does
+  // not have.
   const series: SeriesOption[] = [
     {
       type: 'line',
@@ -259,8 +343,7 @@ export const buildProgressOption = (params: {
       data: planCumulative,
       showSymbol: false,
       smooth: true,
-      lineStyle: { color: palette.plan, width: 3 },
-      areaStyle: { color: palette.planFill },
+      lineStyle: { color: palette.budgetReference, width: 2, type: 'dashed' },
       emphasis: { disabled: true },
       ...(endStop.show
         ? {
@@ -269,13 +352,16 @@ export const buildProgressOption = (params: {
             symbolSize: 5,
             silent: true,
             animation: false,
-            itemStyle: { color: palette.plan },
+            itemStyle: { color: palette.budgetReference },
             label: {
-              show: true,
-              position: 'left' as const,
-              formatter: endStop.label,
-              color: palette.muted,
-              fontSize: 10,
+              ...buildBudgetReferencePillLabel({
+                text: endStop.label,
+                borderColor: palette.budgetReference,
+                backgroundColor: palette.tooltipBackground,
+                textColor: palette.tooltipText,
+              }),
+              position: 'right' as const,
+              distance: 6,
             },
             data: [{ coord: [labels[labels.length - 1], endStop.paceTerminal] }],
           },
@@ -284,16 +370,7 @@ export const buildProgressOption = (params: {
     },
   ];
   if (view !== 'tomorrow') {
-    series.unshift({
-      type: 'line',
-      name: 'Actual',
-      data: actualCumulative,
-      showSymbol: false,
-      smooth: true,
-      connectNulls: false,
-      lineStyle: { color: palette.actual, width: 3 },
-      emphasis: { disabled: true },
-    });
+    series.unshift(buildActualSeries({ labels, actualCumulative, view, palette }));
   }
   if (projection.some((value) => Number.isFinite(value))) {
     series.push({
@@ -303,7 +380,11 @@ export const buildProgressOption = (params: {
       showSymbol: false,
       smooth: true,
       connectNulls: false,
-      lineStyle: { color: palette.forecast, width: 2, type: 'dashed', opacity: 0.7 },
+      // Width 2.5 (over the 2 px reference/target strokes) plus the brightened
+      // ice-blue token so "projection below budget" is readable from the
+      // strokes alone at 320 px — the dotted ice reads as blue, distinct from
+      // the dashed slate Budget reference. Kept dotted (reference is dashed).
+      lineStyle: { color: palette.forecast, width: 2.5, type: 'dotted' },
       emphasis: { disabled: true },
     });
   }
@@ -464,7 +545,13 @@ export const buildHourlyOption = (params: BuildHourlyParams): EChartsOption => {
       z: 4,
       showSymbol: false,
       connectNulls: false,
-      lineStyle: { color: palette.actual, width: 2 },
+      // On-surface ink, NOT the mint `palette.actual`: this overlay rides on
+      // top of the split stack whose Managed segments are themselves mint —
+      // an identical hue would make the line vanish exactly where actual ≤
+      // the bar top. The hourly-mode legend swatch mirrors this stroke
+      // (`--actual-overlay`); the progress chart keeps the mint Actual
+      // grammar.
+      lineStyle: { color: palette.text, width: 2 },
       emphasis: { disabled: true },
     });
   }

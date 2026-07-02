@@ -261,7 +261,6 @@ const buildReadyPayload = (): DeadlinePlanPayload => ({
     nowAxisX: -0.5,
     deadlineAxisX: 0.5,
     deadlineMarkLabel: 'deadline Mon 06:00',
-    plannedRanges: [],
     cheapestHoursCaption: null,
   },
   trajectory: {

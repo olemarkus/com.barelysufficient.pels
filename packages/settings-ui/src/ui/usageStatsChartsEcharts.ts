@@ -4,7 +4,13 @@ import {
   readChartPalette,
   resolveLabelEvery,
   roundedAxisMaxToInterval,
+  Y_AXIS_SPLIT_NUMBER,
 } from './dayViewChart.ts';
+import {
+  buildDailyHistoryOption,
+  formatDateKeyLabel,
+  resolveDailyHistorySegments,
+} from './usageDailyHistoryOption.ts';
 import {
   buildChartTooltipBase,
   buildDailyHistoryReadout,
@@ -14,11 +20,10 @@ import {
   type ChartReadoutContent,
 } from './chartTooltipFormat.ts';
 import { attachChartReadout, prefersCoarsePointer, type ChartReadoutHandle } from './chartReadout.ts';
-import { formatDateInTimeZone, getDateKeyStartMs } from './timezone.ts';
 import { logSettingsWarn } from './logging.ts';
 import { attachTabShownResize } from './chartVisibilityResize.ts';
 
-type UsageStatsPalette = {
+export type UsageStatsPalette = {
   bar: string;
   muted: string;
   grid: string;
@@ -31,6 +36,10 @@ type UsageStatsPalette = {
   tooltipText: string;
   tooltipBorder: string;
   overBudget: string;
+  // Neutral slate for the dashed budget reference line + its label pill —
+  // a guideline, not a judgment (amber is reserved for the over-budget
+  // portion of the bars).
+  budgetReference: string;
 };
 
 export type HourlyPatternPoint = {
@@ -55,7 +64,6 @@ type PlotState = {
 
 const DEFAULT_CHART_HEIGHT = 196;
 const DEFAULT_CHART_WIDTH = 480;
-const Y_AXIS_SPLIT_NUMBER = 4;
 const hourlyPatternState: PlotState = {
   plot: null,
   container: null,
@@ -85,6 +93,7 @@ const USAGE_STATS_PALETTE_VARS = {
   tooltipText: '--pels-chart-tooltip-text',
   tooltipBorder: '--pels-chart-tooltip-border',
   overBudget: '--pels-chart-warn',
+  budgetReference: '--pels-chart-budget-reference',
 } as const satisfies Record<keyof UsageStatsPalette, string>;
 
 const resolvePalette = (container: HTMLElement): UsageStatsPalette => (
@@ -184,6 +193,10 @@ const updateReadout = (params: {
   kind: PlotKind;
   itemCount: number;
   defaultIndex: number;
+  // Series the column select dispatches to. The daily history passes both
+  // stack series so the select border wraps the whole column (mint base +
+  // amber over segment); single-series charts omit it (defaults to series 0).
+  selectSeriesIndexes?: number[];
   resolveContent: (index: number) => ChartReadoutContent | null;
 }) => {
   const state = getPlotState(params.kind);
@@ -192,6 +205,7 @@ const updateReadout = (params: {
   state.readout.update({
     itemCount: params.itemCount,
     defaultIndex: params.defaultIndex,
+    selectSeriesIndexes: params.selectSeriesIndexes,
     resolveContent: params.resolveContent,
   });
 };
@@ -286,132 +300,6 @@ const buildHourlyPatternOption = (params: {
   };
 };
 
-const BAR_RADIUS: [number, number, number, number] = [4, 4, 0, 0];
-
-// Daily-history `date` keys are LOCAL calendar days (`YYYY-MM-DD` in the
-// configured zone). Anchoring them at UTC midnight (`T00:00:00.000Z`) makes
-// negative-offset zones (America/*) format the PREVIOUS local day, so axis
-// labels, the readout, and the tooltip would all be one day off. Resolve the
-// key's local day start in the configured zone before formatting.
-const formatDateKeyLabel = (
-  dateKey: string,
-  options: Intl.DateTimeFormatOptions,
-  timeZone: string,
-): string => formatDateInTimeZone(new Date(getDateKeyStartMs(dateKey, timeZone)), options, timeZone);
-
-const resolveBarItemStyle = (value: number, budgetKWh: number | null, palette: UsageStatsPalette) => {
-  if (budgetKWh !== null && Number.isFinite(value) && value > budgetKWh) {
-    return { color: palette.overBudget, borderRadius: BAR_RADIUS };
-  }
-  return { color: palette.bar, borderRadius: BAR_RADIUS };
-};
-
-const buildBudgetMarkLine = (budgetKWh: number, palette: UsageStatsPalette) => ({
-  symbol: 'none',
-  silent: true,
-  animation: false,
-  label: {
-    show: true,
-    position: 'insideEndTop' as const,
-    formatter: `Budget ${budgetKWh.toFixed(1)} kWh`,
-    color: palette.muted,
-    fontSize: 10,
-  },
-  lineStyle: {
-    color: palette.overBudget,
-    type: 'dashed' as const,
-    width: 1,
-  },
-  data: [{ yAxis: budgetKWh }],
-});
-
-const buildDailyHistoryOption = (params: {
-  ordered: DailyHistoryPoint[];
-  readouts: ChartReadoutContent[];
-  timeZone: string;
-  palette: UsageStatsPalette;
-  budgetKWh: number | null;
-}): EChartsOption => {
-  const { ordered, readouts, timeZone, palette, budgetKWh } = params;
-  const values = ordered.map((point) => point.kWh);
-  const labels = ordered.map((point) => (
-    formatDateKeyLabel(point.date, { month: 'short', day: 'numeric' }, timeZone)
-  ));
-  const labelEvery = resolveLabelEvery(labels.length);
-  // When the budget line would sit above the tallest bar, include it in the
-  // axis ceiling so the reference still renders inside the chart frame.
-  const showBudgetLine = budgetKWh !== null && Number.isFinite(budgetKWh) && budgetKWh > 0;
-  const maxValue = Math.max(1, ...values, showBudgetLine ? (budgetKWh as number) : 0);
-  const yAxis = roundedAxisMaxToInterval(maxValue, Y_AXIS_SPLIT_NUMBER);
-
-  return {
-    animation: false,
-    stateAnimation: { duration: 0 },
-    grid: {
-      left: 8,
-      right: 10,
-      top: 8,
-      bottom: 30,
-      containLabel: true,
-    },
-    tooltip: {
-      ...buildChartTooltipBase(palette),
-      show: !prefersCoarsePointer(),
-      formatter: (rawParams: unknown) => {
-        const index = resolveTooltipDataIndex(rawParams);
-        if (index < 0 || index >= readouts.length) return '';
-        return readoutToTooltipHtml(readouts[index], { warnColor: palette.overBudget });
-      },
-    },
-    xAxis: {
-      type: 'category',
-      data: labels,
-      axisTick: { show: false },
-      axisLine: { lineStyle: { color: palette.grid } },
-      axisLabel: {
-        color: palette.muted,
-        fontSize: 11,
-        formatter: (_label: string, index: number) => (
-          index % labelEvery !== 0 && index !== labels.length - 1 ? '' : labels[index]
-        ),
-      },
-    },
-    yAxis: {
-      type: 'value',
-      min: 0,
-      max: yAxis.max,
-      interval: yAxis.interval,
-      axisTick: { show: false },
-      axisLine: { show: false },
-      axisLabel: {
-        color: palette.muted,
-        fontSize: 11,
-        formatter: (value: number) => formatAxisTick(value, yAxis.interval),
-      },
-      splitLine: {
-        lineStyle: {
-          color: palette.grid,
-          width: 1,
-        },
-      },
-    },
-    series: [
-      {
-        name: 'Daily total',
-        type: 'bar',
-        data: values.map((value) => ({ value, itemStyle: resolveBarItemStyle(value, budgetKWh, palette) })),
-        barMaxWidth: 16,
-        barMinHeight: 2,
-        emphasis: { disabled: true },
-        blur: { disabled: true },
-        selectedMode: 'single',
-        select: { itemStyle: { borderColor: palette.text, borderWidth: 2 } },
-        ...(showBudgetLine ? { markLine: buildBudgetMarkLine(budgetKWh as number, palette) } : {}),
-      },
-    ],
-  };
-};
-
 export const renderHourlyPatternChartEcharts = (params: {
   container: HTMLElement;
   points: HourlyPatternPoint[];
@@ -492,12 +380,20 @@ export const renderDailyHistoryChartEcharts = (params: {
       palette: resolvePalette(container),
       budgetKWh,
     }), { notMerge: true });
+    // Same segment resolution the option builder uses, so the select
+    // dispatch list matches the rendered series count (base only, or base +
+    // the amber over-budget series).
+    const hasOverSeries = resolveDailyHistorySegments(
+      ordered.map((point) => point.kWh),
+      budgetKWh !== null && Number.isFinite(budgetKWh) && budgetKWh > 0 ? budgetKWh : null,
+    ).over.some((value) => value > 0);
     updateReadout({
       kind: 'daily',
       itemCount: ordered.length,
       // Most recent complete day (the producer already excludes today) — a
       // 14-day-peak default would pin a stale date as the row's anchor.
       defaultIndex: ordered.length - 1,
+      selectSeriesIndexes: hasOverSeries ? [0, 1] : [0],
       resolveContent: (index) => (
         index >= 0 && index < readouts.length ? readouts[index] : null
       ),

@@ -1,9 +1,9 @@
 // Producer for the smart-task live page's trajectory card ("Will it reach
-// 65 °C in time?") plus the contiguous-range helper shared with the schedule
-// chart's planned markArea bands. Split out of `deadlinePlan.ts` so the
-// payload assembly file stays under the max-lines ceiling; this module owns
-// every trajectory-side resolution (series points, axis bounds, stateline,
-// shortfall) so the view renders flat data only.
+// 65 °C in time?") plus its contiguous-range helper for the scheduled-run
+// bands. Split out of `deadlinePlan.ts` so the payload assembly file stays
+// under the max-lines ceiling; this module owns every trajectory-side
+// resolution (series points, axis bounds, stateline, shortfall) so the view
+// renders flat data only.
 import type {
   ResolvedDeferredObjectiveActivePlanV1,
   DeferredObjectiveActivePlanRevisionV1,
@@ -25,11 +25,11 @@ import { formatDeadlineFull, formatHourLabel } from './deadlinePlanFormatters.ts
 import { ONE_HOUR_MS, type HorizonHour } from './deadlinePlanData.ts';
 import type { DeadlineTrajectoryPayload } from './views/DeadlinePlan.tsx';
 
-// Contiguous true-ranges over an hour grid. The schedule chart uses it for
-// the planned markArea bands (index coordinates); the trajectory chart uses
-// it for the scheduled-run bands (ms coordinates, mapped by the caller).
-// Only the first range carries the label — repeating it on every band reads
-// as clutter at 320 px.
+// Contiguous true-ranges over an hour grid, feeding the trajectory chart's
+// scheduled-run bands (ms coordinates, mapped by the caller). Only the first
+// range carries the label — repeating it on every band reads as clutter at
+// 320 px. (The schedule chart no longer draws a band: its filled bars carry
+// chosen-ness.)
 export const collectPlannedRanges = (
   planned: readonly boolean[],
   label: string,

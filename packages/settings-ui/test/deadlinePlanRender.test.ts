@@ -207,7 +207,6 @@ const buildReadyPayloadWithDeviceRecourse = (deviceId: string): DeadlinePlanPayl
     nowAxisX: -0.5,
     deadlineAxisX: 0.5,
     deadlineMarkLabel: 'deadline Mon 18:00',
-    plannedRanges: [],
     cheapestHoursCaption: null,
   },
   trajectory: {
@@ -282,25 +281,30 @@ describe('DeadlinePlan live-hero recourse button', () => {
 });
 
 describe('DeadlinePlan cheapest-hours caption', () => {
-  it('renders the producer-resolved caption under the horizon chart', () => {
+  it('renders the producer-resolved caption above the chart-key caption', () => {
     const payload = buildReadyPayloadWithDeviceRecourse('dev_heater_42');
     payload.timeline.cheapestHoursCaption =
       'Picked 2 of the 4 hours it can use · avg 0.15 kr/kWh';
     const mount = mountIntoBody();
     renderDeadlinePlan(mount, { status: 'ready', payload });
-    const caption = mount.querySelector('.deadline-horizon-caption');
-    expect(caption).not.toBeNull();
-    expect(caption?.textContent).toBe(
+    const captions = [...mount.querySelectorAll('.deadline-horizon-caption')];
+    expect(captions.map((node) => node.textContent)).toEqual([
       'Picked 2 of the 4 hours it can use · avg 0.15 kr/kWh',
-    );
+      'Filled bars are the picked hours · dimmed bars were not picked',
+    ]);
   });
 
-  it('suppresses the caption slot when the producer returns null', () => {
+  it('suppresses the trust caption when the producer returns null, keeping the chart key', () => {
     const payload = buildReadyPayloadWithDeviceRecourse('dev_heater_42');
     payload.timeline.cheapestHoursCaption = null;
     const mount = mountIntoBody();
     renderDeadlinePlan(mount, { status: 'ready', payload });
-    expect(mount.querySelector('.deadline-horizon-caption')).toBeNull();
+    const captions = [...mount.querySelectorAll('.deadline-horizon-caption')];
+    // The one-line key decodes the filled/dimmed bar encoding and renders
+    // unconditionally — the chart never ships an unexplained encoding.
+    expect(captions.map((node) => node.textContent)).toEqual([
+      'Filled bars are the picked hours · dimmed bars were not picked',
+    ]);
   });
 });
 

@@ -207,25 +207,47 @@
       "outline": { "value": "{pels.surface-outline}" }
     },
     "chart": {
-      "actual": { "value": "{color.semantic.text.primary}" },
-      "plan": { "value": "{color.role.good}" },
-      "plan-fill": { "value": "color-mix(in srgb, {color.role.good} 10%, transparent)" },
-      "measured": { "value": "{color.semantic.accent}" },
+      "actual": {
+        "value": "{color.role.good}",
+        "comment": "SEMANTIC DATA-VIZ PALETTE — one hue, one meaning across every chart: mint (`color.role.good`) = actual / measured / delivered / picked; dim mint (`color.base.viz.mint-dim`) = measured totals carrying no managed/background claim; ice-blue (`color.base.viz.ice`) = projection / plan / forecast; amber (`pels.chart.warn`) = warning only; red (`pels.chart.danger`) = error / over-hard-cap only; slate (`color.base.viz.slate`) = background / neutral, with `viz.slate-bright` for dashed reference strokes. Auxiliary identities that sit outside the series family and keep their own meaning: purple = money/price axis (`price-line`), and the price-LEVEL tones on the hour strips (`hour-tone-*`). No chart may introduce a hue outside this set. This token: the Actual (measured) stroke on the Budget charts — previously the near-white text tone."
+      },
+      "plan": {
+        "value": "{color.base.viz.ice}",
+        "comment": "Planned hourly allocation bars (Budget hourly chart's single-series legacy path, when no managed/background split exists). Ice-blue — the palette's plan/forecast family. The dashed budget REFERENCE stroke is `pels.chart.budget-reference`, not this."
+      },
+      "budget-reference": {
+        "value": "{color.base.viz.slate-bright}",
+        "comment": "Dashed budget reference strokes: the Budget progress chart's budget-pace line and the Usage daily chart's budget markLine, plus their legend swatches and label pills. A reference is a neutral guideline, not a judgment — so it is slate, never amber (amber = warning only)."
+      },
+      "measured": {
+        "value": "{color.base.viz.mint-dim}",
+        "comment": "Measured totals without a managed/background claim: the Usage day chart's fallback bars, the typical-day and hourly-pattern averages, and the daily-history bars. One dim/desaturated step below the managed mint so a mixed day (split hours next to fallback hours) can't read fallback columns as 'fully managed'. Previously the saturated grass-green accent."
+      },
       "managed": {
         "value": "{color.role.good}",
         "comment": "Managed (PELS-influenceable) share of a usage split. Mint — the same family the Overview hero's managed power segment uses (`--pels-status-good`), so 'managed' reads as one colour across the hero bar, the Budget hourly stack, and the Usage stack. Previously `color.role.warn`, which collided with the amber `pels.chart.warn` unreliable-hour encoding."
       },
       "background": {
-        "value": "{color.semantic.text.muted}",
-        "comment": "Background (non-managed) share of a usage split. Neutral slate matching the Overview hero's background power segment tone; deliberately NOT `color.role.info`, which the semantic viz palette reserves for projection/forecast."
+        "value": "{color.base.viz.slate}",
+        "comment": "Background (non-managed) share of a usage split. Neutral slate; its own viz value (same rendered colour as the former `color.semantic.text.muted` alias) so a future text-tone tweak can't silently recolor three charts. Deliberately NOT `color.role.info`, which the semantic viz palette reserves for projection/forecast."
+      },
+      "picked": {
+        "value": "{color.role.good}",
+        "comment": "Hours a smart task picked, on the schedule chart: picked hours render as filled mint bars, non-picked hours as the same hue dimmed/outlined (opacity derived in-chart). Mint = the palette's 'picked/delivered' meaning; the bar height already carries the price, so price-level colour-coding stays off this chart."
       },
       "warn": { "value": "{color.role.warn}" },
       "danger": { "value": "{color.role.danger}" },
-      "forecast": { "value": "{color.role.info}" },
+      "forecast": {
+        "value": "{color.base.viz.ice}",
+        "comment": "Projection / forecast strokes (Budget progress projection, comparison forecasts). Dotted ice-blue per the semantic viz palette — quiet, provisional ink, distinct from the saturated info-blue status tone."
+      },
       "price-line": { "value": "{color.base.price.default}" },
       "price-fill": { "value": "color-mix(in srgb, {color.base.price.default} 18%, transparent)" },
-      "heatmap-low": { "value": "color-mix(in srgb, {color.semantic.accent} 18%, {color.surface.1})" },
-      "heatmap-high": { "value": "{color.semantic.accent}" },
+      "heatmap-low": { "value": "color-mix(in srgb, {color.role.good} 18%, {color.surface.1})" },
+      "heatmap-high": {
+        "value": "{color.role.good}",
+        "comment": "Power-week heatmap ramp = measured energy, so it runs surface→mint (the palette's measured family). Previously the saturated grass-green accent, which sat outside the semantic viz set."
+      },
       "hour-tone-cheap": { "value": "{color.role.good}" },
       "hour-tone-normal": { "value": "{color.role.info}" },
       "hour-tone-expensive": { "value": "{color.role.danger}" },
