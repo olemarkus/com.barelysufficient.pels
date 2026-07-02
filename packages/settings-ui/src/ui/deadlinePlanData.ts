@@ -9,8 +9,6 @@ export type HorizonHour = {
   startsAtMs: number;
   endMs: number;
   price: number;
-  isCheap?: boolean;
-  isExpensive?: boolean;
 };
 
 export const collectHorizonHours = (params: {
@@ -30,8 +28,6 @@ export const collectHorizonHours = (params: {
       startsAtMs,
       endMs: startsAtMs + ONE_HOUR_MS,
       price: price.total,
-      isCheap: price.isCheap,
-      isExpensive: price.isExpensive,
     }))
     .filter((hour) => hour.endMs > params.windowStartMs && hour.startsAtMs < params.deadlineAtMs)
     .sort((left, right) => left.startsAtMs - right.startsAtMs)

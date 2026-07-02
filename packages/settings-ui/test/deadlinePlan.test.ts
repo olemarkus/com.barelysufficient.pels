@@ -517,9 +517,6 @@ describe('deadline plan page payload', () => {
     expect(payload.timeline.hours[1]).toMatchObject({ changed: true, planned: false });
     expect(payload.timeline.hours[2]).toMatchObject({ changed: true, planned: true });
     expect(payload.timeline.hours[2]?.readout.primary).toContain('Heating 2.0 kWh planned');
-    // Planned ranges feed the markArea bands: exactly one contiguous range
-    // over the planned hour, labeled with the kind verb.
-    expect(payload.timeline.plannedRanges).toEqual([{ from: 2, to: 2, label: 'Heating' }]);
   });
 
   it('maps measured per-device buckets into deadline timeline actuals', () => {
@@ -3877,7 +3874,6 @@ describe('deadline plan page payload', () => {
     expect(timeline.nowAxisX).toBe(-0.5);
     expect(timeline.deadlineAxisX).toBe(-0.5);
     expect(timeline.deadlineMarkLabel).toMatch(/^deadline /);
-    expect(timeline.plannedRanges).toEqual([]);
     expect(timeline.cheapestHoursCaption).toBeNull();
   });
 
@@ -4863,10 +4859,10 @@ describe('resolveCannotMeetRecourse', () => {
 
 describe('schedule + trajectory chart option builders', () => {
   const stubPalette = {
-    priceCheap: '#0f0', priceNormal: '#888', priceExpensive: '#f00',
+    picked: '#0f0', forecast: '#0af',
     accent: '#0ff', muted: '#aaa', grid: '#444', text: '#fff', danger: '#f33',
   };
-  const stubTypography = { labelFontSize: 11, axisNameFontSize: 11, axisNameFontWeight: 700 };
+  const stubTypography = { labelFontSize: 11 };
 
   const buildMinimalTrajectory = (
     overrides: Partial<import('../src/ui/views/DeadlinePlan.tsx').DeadlineTrajectoryPayload> = {},
@@ -4920,7 +4916,6 @@ describe('schedule + trajectory chart option builders', () => {
           time: `${13 + i}:00`,
           price: (priceValues[i] ?? 100).toFixed(2),
           priceValue: priceValues[i] ?? 100,
-          tone: 'normal' as const,
           planned: h.planned,
           changed: h.changed ?? false,
           readout: { primary: `${13 + i}:00 · 1.00 øre/kWh · Not scheduled`, secondary: null },
@@ -4929,9 +4924,6 @@ describe('schedule + trajectory chart option builders', () => {
         nowAxisX: -0.5,
         deadlineAxisX: hours.length - 0.5,
         deadlineMarkLabel: 'deadline Mon 06:00',
-        plannedRanges: hours.flatMap((h, i) => (
-          h.planned ? [{ from: i, to: i, label: i === 0 ? 'Charging' : null }] : []
-        )),
         cheapestHoursCaption: null,
       },
       trajectory: buildMinimalTrajectory(),
@@ -4950,11 +4942,18 @@ describe('schedule + trajectory chart option builders', () => {
   type ScheduleOptionShape = {
     legend?: unknown;
     tooltip?: unknown;
-    yAxis: { min?: number; max?: number; axisLabel?: { formatter?: (value: number) => string } };
+    xAxis: { axisLabel?: { interval?: (index: number) => boolean } };
+    yAxis: {
+      min?: number;
+      max?: number;
+      interval?: number;
+      name?: string;
+      axisLabel?: { formatter?: (value: number) => string };
+    };
     series: Array<{
       type: string;
-      data: Array<{ value: number; itemStyle: { opacity?: number } }>;
-      markArea: { data: Array<Array<{ name?: string; xAxis: number }>> };
+      data: Array<{ value: number; itemStyle: { color?: string; opacity?: number; borderWidth?: number } }>;
+      markArea?: { data: Array<Array<{ name?: string; xAxis: number }>> };
       markPoint: { data: Array<{ coord: [number, number] }> };
       markLine: { data: Array<{ xAxis: number; label?: { formatter?: string } }> };
     }>;
@@ -4970,18 +4969,40 @@ describe('schedule + trajectory chart option builders', () => {
     expect(option.series[0]?.type).toBe('bar');
   });
 
-  it('mutes unplanned hours and overlays a labeled markArea band on planned ranges', async () => {
+  it('encodes picked hours as filled mint and other hours as the same hue dimmed/outlined', async () => {
     const { buildScheduleChartOption } = await import('../src/ui/views/DeadlinePlan.tsx');
     const payload = buildMinimalPayload([{ planned: true }, { planned: false }]);
     const option = buildScheduleChartOption(payload, stubPalette, stubTypography) as ScheduleOptionShape;
     const bars = option.series[0]?.data ?? [];
+    // One hue, two states: both bars bind the picked token; only the state
+    // channel (fill vs dimmed outline) differs.
+    expect(bars[0]?.itemStyle.color).toBe(stubPalette.picked);
     expect(bars[0]?.itemStyle.opacity).toBe(1);
+    expect(bars[1]?.itemStyle.color).toBe(stubPalette.picked);
     expect(bars[1]?.itemStyle.opacity).toBeLessThan(1);
-    const bandData = option.series[0]?.markArea.data ?? [];
-    expect(bandData).toHaveLength(1);
-    expect(bandData[0]?.[0]?.name).toBe('Charging');
-    expect(bandData[0]?.[0]?.xAxis).toBe(0);
-    expect(bandData[0]?.[1]?.xAxis).toBe(0);
+    expect(bars[1]?.itemStyle.borderWidth).toBe(1);
+    // The ambiguous background band is gone — the bars carry chosen-ness.
+    expect(option.series[0]?.markArea).toBeUndefined();
+  });
+
+  it('anchors the axis unit to the top tick and spaces hour ticks evenly from Now', async () => {
+    const { buildScheduleChartOption } = await import('../src/ui/views/DeadlinePlan.tsx');
+    const payload = buildMinimalPayload(
+      Array.from({ length: 12 }, () => ({ planned: false })),
+      Array.from({ length: 12 }, (_unused, i) => (i === 3 ? 1.31 : 0.5)),
+    );
+    const option = buildScheduleChartOption(payload, stubPalette, stubTypography) as ScheduleOptionShape;
+    // `1.3 øre/kWh` is ONE label — no floating axis-name unit.
+    expect(option.yAxis.name).toBeUndefined();
+    expect(option.yAxis.axisLabel?.formatter?.(1.31)).toBe('1.3 øre/kWh');
+    // Halved interval ⇒ a mid gridline between the zero baseline and the max.
+    expect(option.yAxis.interval).toBeCloseTo(0.655, 5);
+    // Even cadence anchored at the Now column (nowIndex 0, 12 hours ⇒ every
+    // 4th): 0, 4, 8 — never the old "always label the last column" special.
+    const interval = option.xAxis.axisLabel?.interval;
+    expect([0, 1, 2, 3, 4, 11].map((i) => interval?.(i))).toEqual(
+      [true, false, false, false, true, false],
+    );
   });
 
   it('marks changed hours with a dot markPoint instead of a border', async () => {
@@ -5072,10 +5093,17 @@ describe('schedule + trajectory chart option builders', () => {
     // collide when the staircase converges on the target at the deadline).
     expect(target?.markPoint?.label?.position).toBe('top');
     const bands = option.series.find((entry) => entry.id === 'run-bands');
-    // Same word as the schedule chart's planned band — one vocabulary across
-    // both cards.
+    // The kind verb lives on this chart's labelled run band (the schedule
+    // chart's band was retired — its filled bars carry chosen-ness).
     expect(bands?.markArea?.data?.[0]?.[0]?.name).toBe('Charging');
     expect(option.series.find((entry) => entry.id === 'shortfall')).toBeUndefined();
+    // Stroke semantics: measured = mint accent, projected staircase = the
+    // ice forecast ink (never the muted reference grey the target/deadline
+    // lines own).
+    expect(option.series.find((entry) => entry.id === 'measured')?.lineStyle?.color).toBe(stubPalette.accent);
+    expect(option.series.find((entry) => entry.id === 'planned-staircase')?.lineStyle?.color)
+      .toBe(stubPalette.forecast);
+    expect(target?.lineStyle?.color).toBe(stubPalette.muted);
   });
 
   it('trajectory: danger variant adds the shortfall segment and tones the deadline line', async () => {

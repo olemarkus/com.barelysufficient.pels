@@ -436,6 +436,20 @@
         price.push(Number(p.toFixed(1)));
       }
 
+      // Producer-mirroring budget pace (PR-A): the daily budget spread by the
+      // day's profile weights, ending exactly at the cap — the series the
+      // Budget progress chart labels `Budget`. Without it the chart falls back
+      // to the planned cumulative, whose terminal is NOT the budget.
+      const totalWeight = plannedWeight.reduce((sum, w) => sum + w, 0);
+      let cumWeight = 0;
+      const budgetPaceCumKWh = plannedWeight.map((w) => {
+        cumWeight += w;
+        // Guard an all-zero weight profile: `cumWeight / 0` is NaN, which would
+        // populate budgetPaceCumKWh with NaN and crash ECharts / fail asserts.
+        const ratio = totalWeight > 0 ? cumWeight / totalWeight : 0;
+        return Number((dailyBudgetKWh * ratio).toFixed(3));
+      });
+
       const dateKey = dateKeyUtc(dayStartMs);
       const currentBucketIndex = Math.max(0, Math.min(23, Math.floor((nowMs - dayStartMs) / (3600 * 1000))));
       const usedNowKWh = actualKWh.slice(0, currentBucketIndex + 1).reduce((sum, v) => sum + v, 0);
@@ -479,6 +493,7 @@
             i <= currentBucketIndex ? Number((value * 0.6).toFixed(3)) : null
           )),
           allowedCumKWh,
+          budgetPaceCumKWh,
           price,
         },
       };
@@ -1002,6 +1017,9 @@
       }
       if (Array.isArray(buckets.allowedCumKWh)) {
         buckets.allowedCumKWh = buckets.allowedCumKWh.map((v) => Number(((v ?? 0) * ratio).toFixed(3)));
+      }
+      if (Array.isArray(buckets.budgetPaceCumKWh)) {
+        buckets.budgetPaceCumKWh = buckets.budgetPaceCumKWh.map((v) => Number(((v ?? 0) * ratio).toFixed(3)));
       }
       days[key] = {
         ...day,

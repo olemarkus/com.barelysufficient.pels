@@ -64,12 +64,13 @@ const buildDayPayload = (overrides: {
 describe('budget readout content (progress mode)', () => {
   it('formats the cumulative plan/actual line and the projection when present', () => {
     // currentBucketIndex 1 on today: actual covers buckets 0-1, projection
-    // starts at the current bucket.
+    // starts at the current bucket. The Budget values are the fallback pace
+    // rescaled to the 12 kWh daily budget (1.42 × 12 / 2.42 ≈ 7.0).
     const bundle = buildBudgetProgressReadoutBundle(buildDayPayload(), 'today');
     expect(bundle.readouts[1]).toEqual({
       when: 'By 14:00',
       values: [
-        { text: `${nb('Budget 1.4 kWh')}${sep}${nb('Actual 1.2 kWh')}` },
+        { text: `${nb('Budget 7.0 kWh')}${sep}${nb('Actual 1.2 kWh')}` },
         { text: nb('Projection 1.4 kWh') },
       ],
     });
@@ -79,7 +80,7 @@ describe('budget readout content (progress mode)', () => {
     const bundle = buildBudgetProgressReadoutBundle(buildDayPayload(), 'tomorrow');
     expect(bundle.readouts[1]).toEqual({
       when: 'By 14:00',
-      values: [{ text: nb('Budget 1.4 kWh') }],
+      values: [{ text: nb('Budget 7.0 kWh') }],
     });
   });
 
@@ -88,7 +89,7 @@ describe('budget readout content (progress mode)', () => {
     // Yesterday: every bucket has actual, none has a projection.
     expect(bundle.readouts[0]).toEqual({
       when: 'By 13:00',
-      values: [{ text: `${nb('Budget 0.5 kWh')}${sep}${nb('Actual 0.5 kWh')}` }],
+      values: [{ text: `${nb('Budget 2.5 kWh')}${sep}${nb('Actual 0.5 kWh')}` }],
     });
     // The cumulative end-of-day column reads "By midnight" — "By 00:00"
     // misreads as the day's start. The hourly range form keeps `…–00:00`.
@@ -262,7 +263,7 @@ describe('buildProgressOption', () => {
   const palette: BudgetChartPalette = {
     actual: '#a1',
     plan: '#a2',
-    planFill: '#a3',
+    budgetReference: '#a3',
     background: '#a4',
     managed: '#a5',
     forecast: '#a6',
@@ -272,12 +273,13 @@ describe('buildProgressOption', () => {
     grid: '#aa',
     overBudget: '#ab',
     text: '#ac',
+    surface: '#b0',
     tooltipBackground: '#ad',
     tooltipText: '#ae',
     tooltipBorder: '#af',
   };
 
-  it('marks the daily budget with an end-stop on the Budget pace curve', () => {
+  it('marks the daily budget with an end-stop pill on the Budget pace curve', () => {
     const option = buildProgressOption({
       payload: buildDayPayload(),
       view: 'today',
@@ -288,14 +290,85 @@ describe('buildProgressOption', () => {
     const budgetSeries = (option.series as Array<Record<string, unknown>>)
       .find((series) => series.name === 'Budget');
     expect(budgetSeries).toBeDefined();
-    const markPoint = budgetSeries?.markPoint as { label?: { formatter?: string } } | undefined;
-    expect(markPoint?.label?.formatter).toMatch(/^Budget \d+\.\d kWh$/);
+    const markPoint = budgetSeries?.markPoint as {
+      label?: { formatter?: string; backgroundColor?: string; borderColor?: string; position?: string };
+    } | undefined;
+    // Two-line pill: the scaled fallback pace ends at the configured 12 kWh
+    // budget, so the annotated number is the hero's budget — never a second
+    // "Budget" figure.
+    expect(markPoint?.label?.formatter).toBe('Budget\n12.0 kWh');
+    // Pill chrome + pinned in the reserved right margin, off the data.
+    expect(markPoint?.label?.backgroundColor).toBe(palette.tooltipBackground);
+    expect(markPoint?.label?.borderColor).toBe(palette.budgetReference);
+    expect(markPoint?.label?.position).toBe('right');
+    expect((option.grid as { right?: number }).right).toBe(72);
+  });
+
+  it('gives the three series the stroke grammar the legend promises', () => {
+    const option = buildProgressOption({
+      payload: buildDayPayload(),
+      view: 'today',
+      palette,
+      readouts: [],
+      costDisplay: COST_DISPLAY,
+    });
+    const series = option.series as Array<Record<string, unknown>>;
+    const byName = (name: string) => series.find((entry) => entry.name === name);
+    // Dashed slate budget reference, no area fill claiming data weight.
+    expect(byName('Budget')?.lineStyle).toMatchObject({ color: palette.budgetReference, type: 'dashed' });
+    expect(byName('Budget')?.areaStyle).toBeUndefined();
+    // Solid mint Actual, ending in a visible "now" dot on the today view.
+    expect(byName('Actual')?.lineStyle).toMatchObject({ color: palette.actual, width: 3 });
+    const nowDot = byName('Actual')?.markPoint as {
+      itemStyle?: { color?: string; borderColor?: string };
+      data?: Array<{ coord: [string, number] }>;
+    } | undefined;
+    expect(nowDot?.itemStyle?.color).toBe(palette.actual);
+    expect(nowDot?.itemStyle?.borderColor).toBe(palette.surface);
+    // currentBucketIndex 1 ⇒ the dot sits at the last actual point (13:00),
+    // anchored by NUMERIC bucket index (1), not the string label — DST
+    // fall-back days emit duplicate hour labels, so a string coord could
+    // attach the dot to the wrong bucket.
+    expect(nowDot?.data?.[0]?.coord[0]).toBe(1);
+    // Dotted ice-blue projection after the now dot.
+    expect(byName('Projection')?.lineStyle).toMatchObject({ color: palette.forecast, type: 'dotted' });
+  });
+
+  it('omits the now dot off the today view', () => {
+    const option = buildProgressOption({
+      payload: buildDayPayload(),
+      view: 'yesterday',
+      palette,
+      readouts: [],
+      costDisplay: COST_DISPLAY,
+    });
+    const actualSeries = (option.series as Array<Record<string, unknown>>)
+      .find((series) => series.name === 'Actual');
+    expect(actualSeries).toBeDefined();
+    expect(actualSeries?.markPoint).toBeUndefined();
   });
 
   it('omits the budget end-stop when no positive daily budget is set', () => {
     const payload = buildDayPayload();
     payload.budget = { ...payload.budget, dailyBudgetKWh: 0 };
     const option = buildProgressOption({ payload, view: 'today', palette, readouts: [], costDisplay: COST_DISPLAY });
+    const budgetSeries = (option.series as Array<Record<string, unknown>>)
+      .find((series) => series.name === 'Budget');
+    expect(budgetSeries?.markPoint).toBeUndefined();
+    expect((option.grid as { right?: number }).right).toBe(8);
+  });
+
+  it('suppresses the Budget annotation when the plotted terminal does not match the budget', () => {
+    // A producer-sent pace that ends away from the configured budget must not
+    // be labelled `Budget N kWh` — the annotation names the hero's number or
+    // nothing.
+    const option = buildProgressOption({
+      payload: buildDayPayload({ buckets: { budgetPaceCumKWh: [2, 4, 6, 9] } }),
+      view: 'today',
+      palette,
+      readouts: [],
+      costDisplay: COST_DISPLAY,
+    });
     const budgetSeries = (option.series as Array<Record<string, unknown>>)
       .find((series) => series.name === 'Budget');
     expect(budgetSeries?.markPoint).toBeUndefined();
@@ -317,7 +390,7 @@ describe('buildProgressOption', () => {
       data?: Array<{ coord: [string, number] }>;
     } | undefined;
     // Budget-pace cost terminal = 2420 øre ÷ 100 = 24.20 kr.
-    expect(markPoint?.label?.formatter).toBe('Budget 24.20 kr');
+    expect(markPoint?.label?.formatter).toBe('Budget\n24.20 kr');
     expect(markPoint?.data?.[0]?.coord[1]).toBeCloseTo(24.2, 5);
   });
 
@@ -333,7 +406,7 @@ describe('buildProgressOption', () => {
     const budgetSeries = (option.series as Array<Record<string, unknown>>)
       .find((series) => series.name === 'Budget');
     const markPoint = budgetSeries?.markPoint as { label?: { formatter?: string } } | undefined;
-    expect(markPoint?.label?.formatter).toBe('Budget 24.20 kr');
+    expect(markPoint?.label?.formatter).toBe('Budget\n24.20 kr');
   });
 });
 
@@ -378,7 +451,16 @@ describe('resolveProgressSeriesData — producer trust + fallback', () => {
     const series = resolveProgressSeriesData(buildDayPayload({
       buckets: { budgetPaceCumKWh: pace },
     }), 'today');
-    // cumulative([0.5, 0.92, 0.6, 0.4]) — the legacy recompute, never the bad array.
+    // cumulative([0.5, 0.92, 0.6, 0.4]) = [0.5, 1.42, 2.02, 2.42], rescaled by
+    // 12 / 2.42 so the fallback reference genuinely ends at the configured
+    // daily budget (the `Budget` label stays honest) — never the bad array.
+    expect(series.planCumulative).toEqual([2.479, 7.041, 10.017, 12]);
+  });
+
+  it('passes the raw fallback cumulative through when no positive budget exists to scale to', () => {
+    const payload = buildDayPayload();
+    payload.budget = { ...payload.budget, dailyBudgetKWh: 0 };
+    const series = resolveProgressSeriesData(payload, 'today');
     expect(series.planCumulative).toEqual([0.5, 1.42, 2.02, 2.42]);
   });
 

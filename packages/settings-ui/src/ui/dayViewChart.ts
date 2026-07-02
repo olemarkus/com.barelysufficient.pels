@@ -54,6 +54,41 @@ export const readChartPalette = <T extends Record<string, string>>(
   return palette as T;
 };
 
+// Reserved right-hand grid margin (px) that hosts the budget-reference pill
+// chip on the Usage daily chart and the Budget progress chart. The pill is
+// pinned at the reference's right end, entirely off the data — sized for the
+// two-line `Budget` / `NN.N kWh` chip at its 10px font plus the marker
+// distance, and shared so the two charts reserve the same gutter at 320 and
+// 480 px.
+export const BUDGET_REFERENCE_MARGIN_PX = 72;
+
+// Label config for the budget-reference pill chip. One builder shared by the
+// Usage daily chart's markLine and the Budget progress chart's end-stop
+// markPoint so the pill grammar (two-line text, rounded chip, reference-toned
+// border) cannot drift between the two surfaces. `text` arrives pre-split
+// (`Budget\n12.0 kWh`) so the pill stays narrow enough for the reserved
+// margin at 320 px.
+export const buildBudgetReferencePillLabel = (params: {
+  text: string;
+  borderColor: string;
+  backgroundColor: string;
+  textColor: string;
+}) => ({
+  show: true,
+  formatter: params.text,
+  color: params.textColor,
+  fontSize: 10,
+  lineHeight: 13,
+  align: 'left' as const,
+  verticalAlign: 'middle' as const,
+  backgroundColor: params.backgroundColor,
+  borderColor: params.borderColor,
+  borderWidth: 1,
+  borderRadius: 6,
+  padding: [3, 6, 3, 6] as [number, number, number, number],
+  distance: 6,
+});
+
 // Allowed "nice" multipliers within a decade. Picked so the resulting top
 // tick at `step * splitNumber` always lands on a number a user can read at a
 // glance — multiples of 1/2/2.5/5 across all magnitudes (e.g. 0.1, 0.2, 0.25,
@@ -69,6 +104,14 @@ const niceStep = (rawStep: number): number => {
     ?? NICE_STEP_MULTIPLIERS[NICE_STEP_MULTIPLIERS.length - 1];
   return niceMultiplier * magnitude;
 };
+
+// Shared default split count for the Usage tab's hourly-pattern and
+// daily-history y-axes: four nice intervals (five gridlines including 0).
+// Lives here — the shared chart-axis helper module both usage charts already
+// import — so the daily-history option builder (`usageDailyHistoryOption.ts`)
+// and the hourly builder (`usageStatsChartsEcharts.ts`) share one value
+// without a runtime import edge between those two siblings.
+export const Y_AXIS_SPLIT_NUMBER = 4;
 
 /**
  * Round a Y-axis max up to a value that is evenly divisible into `splitNumber`

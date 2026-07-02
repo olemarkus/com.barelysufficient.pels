@@ -1,6 +1,6 @@
 // Producer for the smart-task live page's schedule timeline ("When will it
-// run, and at what price?"): per-hour bars + pinned-readout lines + planned
-// markArea ranges + now/deadline marker coordinates + the trust caption.
+// run, and at what price?"): per-hour bars + pinned-readout lines +
+// now/deadline marker coordinates + the trust caption.
 // Split out of `deadlinePlan.ts` (payload assembly) to keep that file under
 // the max-lines ceiling; this module owns every timeline-side resolution so
 // the view renders flat data only.
@@ -17,7 +17,6 @@ import {
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 import { formatDeadlineFull, formatHourLabel } from './deadlinePlanFormatters.ts';
 import { ONE_HOUR_MS, type HorizonHour } from './deadlinePlanData.ts';
-import { collectPlannedRanges } from './deadlinePlanTrajectory.ts';
 import type { CostDisplay } from './dailyBudgetCost.ts';
 import type { DeadlinePlanPayload } from './views/DeadlinePlan.tsx';
 
@@ -31,12 +30,6 @@ export const resolveActualDeviceKwh = (params: {
   const bucketKey = new Date(params.startsAtMs).toISOString();
   const value = params.bootstrap.power.tracker?.deviceBuckets?.[params.deviceId]?.[bucketKey];
   return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, value) : null;
-};
-
-const resolvePriceTone = (hour: HorizonHour): DeadlinePlanPayload['timeline']['hours'][number]['tone'] => {
-  if (hour.isCheap === true) return 'cheap';
-  if (hour.isExpensive === true) return 'expensive';
-  return 'normal';
 };
 
 // Resolve the index of the hour column containing `nowMs`. The window can
@@ -92,7 +85,6 @@ export const buildTimeline = (params: {
       nowAxisX: -0.5,
       deadlineAxisX: -0.5,
       deadlineMarkLabel: `${DEADLINE_MARKER_WORD} ${formatDeadlineFull(params.deadlineAtMs)}`,
-      plannedRanges: [],
       cheapestHoursCaption: null,
     };
   }
@@ -123,7 +115,6 @@ export const buildTimeline = (params: {
       time: formatHourLabel(hour.startsAtMs),
       price: formatPrice(displayPrice),
       priceValue: displayPrice,
-      tone: resolvePriceTone(hour),
       planned,
       changed: hourChanged,
       readout: {
@@ -149,10 +140,6 @@ export const buildTimeline = (params: {
     nowAxisX: toCategoryAxisX(params.hours, nowIndex, params.nowMs),
     deadlineAxisX: toCategoryAxisX(params.hours, lastIndex, params.deadlineAtMs),
     deadlineMarkLabel: `${DEADLINE_MARKER_WORD} ${formatDeadlineFull(params.deadlineAtMs)}`,
-    plannedRanges: collectPlannedRanges(
-      hours.map((hour) => hour.planned),
-      params.labels.deviceSeriesName,
-    ),
     // Trust caption read from the same already-scaled per-hour display prices
     // (øre→kr handled upstream by the CostDisplay divisor) the chart renders.
     // Every hour in the window is eligible (the window ends at the deadline),
