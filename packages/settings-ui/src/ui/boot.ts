@@ -40,6 +40,7 @@ import {
   refreshLimitsValidationHints,
   saveSettingsLimitsSettings,
   saveSimulationModeSettings,
+  syncDryRunBannerVisibility,
 } from './capacity.ts';
 import {
   DEBUG_LOGGING_TOPICS as DEBUG_LOGGING_TOPICS_SETTING,
@@ -166,6 +167,18 @@ const initTabHandlers = () => {
       return;
     }
     showTab(target);
+  });
+  // Track the shown panel so the global simulation banner can suppress itself on
+  // the Simulation-mode settings page (its own toggle is the single control
+  // there). `showTab` already emits `pels:tab-shown`, so this stays off the
+  // realtime module's line ceiling.
+  document.addEventListener('pels:tab-shown', (event) => {
+    const tabId = (event as CustomEvent<{ tabId?: string }>).detail?.tabId;
+    // Coerce at the boundary: always overwrite `activePanel` (empty string on a
+    // missing/non-string id) so a stale `'simulation'` can never stick and keep
+    // the banner hidden after navigating away.
+    state.activePanel = typeof tabId === 'string' ? tabId : '';
+    syncDryRunBannerVisibility();
   });
 };
 

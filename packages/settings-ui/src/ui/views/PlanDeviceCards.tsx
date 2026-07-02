@@ -28,6 +28,7 @@ import {
   resolveCooldownRemainingSec,
 } from '../../../../shared-domain/src/planCooldown.ts';
 import { resolveHeldStateActionLabel } from '../../../../shared-domain/src/deviceOverview.ts';
+import { toSimulationReasonLine } from '../../../../shared-domain/src/simulationReasonMood.ts';
 import {
   BUDGET_EXEMPT_CARD_ACTION_COPY,
   budgetExemptCardActionAriaLabel,
@@ -336,7 +337,14 @@ const isDeviceReason = (reason: unknown): reason is DeviceReason => (
   && typeof (reason as { code?: unknown }).code === 'string'
 );
 
-const resolveReasonText = (dev: PlanDeviceSnapshot): string => {
+// In simulation mode the held/limited reason line must read hypothetically to
+// agree with the card's "Would be … (simulation)" state — the factual result is
+// routed through `toSimulationReasonLine` (a no-op outside simulation and for
+// non-acted reasons).
+const resolveReasonText = (dev: PlanDeviceSnapshot, dryRun: boolean): string =>
+  toSimulationReasonLine(resolveReasonTextFactual(dev), dryRun);
+
+const resolveReasonTextFactual = (dev: PlanDeviceSnapshot): string => {
   // A held card's reason line must name the actual binding constraint. For ANY
   // starved device, the producer-resolved cause already determines the copy:
   // budget → "Limited to stay within today's budget"; capacity → "Waiting for
@@ -419,9 +427,10 @@ const isReportedLoadConflict = (dev: PlanDeviceSnapshot, kind: PlanStateKind): b
   && dev.measuredPowerKw > 0.05
 );
 
-const resolveReportedLoadReason = (dev: PlanDeviceSnapshot): string => resolveReportedLoadAfterPauseText({
+const resolveReportedLoadReason = (dev: PlanDeviceSnapshot, dryRun: boolean): string => resolveReportedLoadAfterPauseText({
   measuredPowerKw: dev.measuredPowerKw,
   detail: readDeviceReasonDetail(dev.reason),
+  dryRun,
 });
 
 // ─── Generic plan card ────────────────────────────────────────────────────────
@@ -429,11 +438,13 @@ const resolveReportedLoadReason = (dev: PlanDeviceSnapshot): string => resolveRe
 export const PlanGenericCard = ({
   dev,
   plan,
+  dryRun,
   renderedAtMs,
   nowMs,
 }: {
   dev: PlanDeviceSnapshot;
   plan: PlanSnapshot | null;
+  dryRun: boolean;
   renderedAtMs: number;
   nowMs: number;
 }) => {
@@ -449,7 +460,7 @@ export const PlanGenericCard = ({
   const baseSec = resolveCooldownBaseSec(displayDev);
   const hasTimer = baseSec !== null && remainingSec !== null && remainingSec > 0;
   const reportedLoadConflict = isReportedLoadConflict(displayDev, presentation.kind);
-  const reasonText = reportedLoadConflict ? resolveReportedLoadReason(displayDev) : resolveReasonText(displayDev);
+  const reasonText = reportedLoadConflict ? resolveReportedLoadReason(displayDev, dryRun) : resolveReasonText(displayDev, dryRun);
 
   let powerReadout: PowerReadout | null = null;
   if (reportedLoadConflict) {
@@ -512,7 +523,7 @@ export const PlanGenericCard = ({
 
       {reportedLoadConflict && powerReadout && (
         <div class="plan-card__state-row">
-          <span class="plan-card__state-label">{resolveHeldStateActionLabel(displayDev)}</span>
+          <span class="plan-card__state-label">{resolveHeldStateActionLabel(displayDev, dryRun)}</span>
           <span class="plan-card__state-power">{powerReadout.text}</span>
         </div>
       )}
@@ -534,11 +545,13 @@ export const PlanGenericCard = ({
 export const PlanTemperatureCard = ({
   dev,
   plan,
+  dryRun,
   renderedAtMs,
   nowMs,
 }: {
   dev: PlanDeviceSnapshot;
   plan: PlanSnapshot | null;
+  dryRun: boolean;
   renderedAtMs: number;
   nowMs: number;
 }) => {
@@ -551,7 +564,7 @@ export const PlanTemperatureCard = ({
   ].filter(Boolean).join(' ');
 
   const temperatureLine = resolveTemperatureLine(displayDev);
-  const reasonLine = resolveTemperatureReasonLine(displayDev);
+  const reasonLine = resolveTemperatureReasonLine(displayDev, dryRun);
   const starvationBadge = formatStarvationBadge(dev.starvation);
   const displayName = formatDisplayDeviceName(dev.name);
 

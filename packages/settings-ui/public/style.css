@@ -537,56 +537,41 @@ md-primary-tab.tab[active] {
   font-weight: var(--font-weight-semibold);
 }
 
+/* Simulation banner: one slim warning-tinted row — leading warning icon + a
+   concise line + an inline "Turn off simulation" text action. The amber tint
+   comes from `.banner--warning` on every screen (no per-viewport neutral
+   override), so it reads as STATE, not just another grey card. `.banner`
+   supplies the flex row + radius; this override tightens it to a single
+   ~48 px row and pins the trailing text action. */
 #dry-run-banner {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  background: var(--pels-surface-container-high);
-  border: 1px solid var(--pels-surface-outline);
-  color: var(--text);
+  flex-wrap: nowrap;
+  gap: var(--spacing-2);
+  /* The 48 px M3 text-button (a11y touch target) defines the row height; zero
+     vertical padding keeps the whole banner to that single ~48 px row instead
+     of stacking the old three-row card. `min-height` matches the button so the
+     value and the comment agree. */
+  min-height: 48px;
+  padding-block: 0;
+  padding-inline: var(--spacing-3);
 }
+
+/* NB: the `#dry-run-banner .banner__text` shrink override lives down in the
+   `.banner` section (after the base + `.banner--stacked` `.banner__text` rules)
+   so stylelint's no-descending-specificity ordering holds. */
 
 .dry-run-banner__action {
-  display: inline-flex;
-  grid-column: 2;
-  justify-self: start;
   flex: 0 0 auto;
-  padding: var(--spacing-2) var(--spacing-3) !important;
-  background: var(--pels-surface-container-highest) !important;
-  border: 1px solid var(--pels-surface-outline) !important;
-  color: var(--text) !important;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  /* Desktop-only: promote the simulation banner to a warning-themed card
-     so the colour semantics ("you're in simulation, nothing will switch")
-     read on the light canvas. Mobile keeps the original neutral container
-     above — today's dark palette stays byte-identical. */
-  #dry-run-banner {
-    background: var(--color-state-warning-bg);
-    border: 1px solid var(--color-state-warning-border);
-  }
-
-  .dry-run-banner__action {
-    /* Let Material Web draw the outlined button — host `border` and
-       `background` would double-stroke against the M3 outline / interaction
-       layer. The label colour reaches the shadow-DOM text via the
-       `--md-outlined-button-*` custom properties, not the host `color`. */
-    background: transparent !important;
-    border: 0 !important;
-    color: var(--color-state-warning-text) !important;
-    --md-outlined-button-label-text-color: var(--color-state-warning-text);
-    --md-outlined-button-hover-label-text-color: var(--color-state-warning-text);
-    --md-outlined-button-pressed-label-text-color: var(--color-state-warning-text);
-    --md-outlined-button-focus-label-text-color: var(--color-state-warning-text);
-    --md-outlined-button-outline-color: var(--color-state-warning-border);
-    /* State layer tints — without these the hover/press overlay falls back
-       to Material's default `--md-sys-color-primary` (teal-ish), which
-       reads as a primary-tinted ring inside an amber warning button. */
-    --md-outlined-button-hover-state-layer-color: var(--color-state-warning-text);
-    --md-outlined-button-pressed-state-layer-color: var(--color-state-warning-text);
-    --md-outlined-button-focus-state-layer-color: var(--color-state-warning-text);
-  }
+  /* Restore the M3 text-button lead/trail padding on the host box. Homey injects
+     a universal `* { padding: 0 }` reset that beats Material Web's :host padding
+     on the real device (invisible in CI), collapsing the label to the state-layer
+     edges. Host `padding-inline` is a layout property the shadow DOM does not
+     swallow, so it reaches the outer box (same idiom as the modes-panel buttons). */
+  padding-inline: var(--spacing-3);
+  /* M3 text-button action inside an amber banner: override the primary role on
+     the host so the label + ripple/state-layer read amber. This cascades
+     through every `--md-text-button-*` default that resolves to primary — the
+     same one-property idiom as `.md-text-button--destructive` above. */
+  --md-sys-color-primary: var(--color-state-warning-text);
 }
 
 .device-control-legend {
@@ -5371,8 +5356,8 @@ details[open] > summary .disclosure-chevron {
    destructive choice. Label colour reaches the shadow-DOM text via the
    `--md-outlined-button-*` custom properties, not the host `color`. The
    state-pair tokens (`--color-state-warning-text` / `-border`) match the
-   `.dry-run-banner__action` warning-outlined-button precedent and carry
-   the per-theme contrast the bare `--warning` amber lacks. */
+   warning-tinted `.dry-run-banner__action` banner action (a text button) and
+   carry the per-theme contrast the bare `--warning` amber lacks. */
 #budget-redesign-mode-toggle.confirming {
   --md-outlined-button-label-text-color: var(--color-state-warning-text);
   --md-outlined-button-hover-label-text-color: var(--color-state-warning-text);
@@ -5408,6 +5393,15 @@ details[open] > summary .disclosure-chevron {
 
 .banner--stacked .banner__text {
   flex: initial;
+}
+
+/* Slim simulation banner: let the message shrink and wrap inside the nowrap
+   flex row (min-width:0) so the fixed 48 px text action never overflows at
+   320 px. Placed here — after the base `.banner__text` + `.banner--stacked`
+   rules — to satisfy stylelint no-descending-specificity. */
+#dry-run-banner .banner__text {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .budget-redesign-card {

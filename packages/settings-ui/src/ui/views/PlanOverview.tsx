@@ -32,21 +32,23 @@ const isTemperatureCard = (dev: PlanDeviceSnapshot): boolean => (
 const PlanCard = ({
   dev,
   plan,
+  dryRun,
   renderedAtMs,
   nowMs,
 }: {
   dev: PlanDeviceSnapshot;
   plan: PlanSnapshot | null;
+  dryRun: boolean;
   renderedAtMs: number;
   nowMs: number;
 }) => {
   if (dev.controlModel === 'stepped_load') {
-    return <PlanSteppedCard dev={dev} plan={plan} renderedAtMs={renderedAtMs} nowMs={nowMs} />;
+    return <PlanSteppedCard dev={dev} plan={plan} dryRun={dryRun} renderedAtMs={renderedAtMs} nowMs={nowMs} />;
   }
   if (isTemperatureCard(dev)) {
-    return <PlanTemperatureCard dev={dev} plan={plan} renderedAtMs={renderedAtMs} nowMs={nowMs} />;
+    return <PlanTemperatureCard dev={dev} plan={plan} dryRun={dryRun} renderedAtMs={renderedAtMs} nowMs={nowMs} />;
   }
-  return <PlanGenericCard dev={dev} plan={plan} renderedAtMs={renderedAtMs} nowMs={nowMs} />;
+  return <PlanGenericCard dev={dev} plan={plan} dryRun={dryRun} renderedAtMs={renderedAtMs} nowMs={nowMs} />;
 };
 
 const PlanOverviewRoot = ({
@@ -80,6 +82,7 @@ const PlanOverviewRoot = ({
             key={dev.id}
             dev={dev}
             plan={plan}
+            dryRun={context.dryRun}
             renderedAtMs={renderedAtMs}
             nowMs={nowMs}
           />

@@ -7,6 +7,11 @@ import {
   resolvePlanStateKind,
 } from './planStateLabels';
 import { formatStarvationReason } from './planStarvation';
+import {
+  DEVICE_OVERVIEW_LOWERED_BY_PELS,
+  DEVICE_OVERVIEW_WOULD_LOWER,
+} from './deviceOverviewStrings';
+import { toSimulationReasonLine } from './simulationReasonMood';
 import type { SettingsUiPlanDeviceStarvation } from '../../contracts/src/settingsUiApi';
 import type { DeviceOverviewSnapshot } from './deviceOverview';
 
@@ -129,7 +134,18 @@ const resolveSurplusAbsorbReason = (device: TemperatureDevice, kind: string): st
     : null
 );
 
-export const resolveTemperatureReasonLine = (device: TemperatureDevice): string | null => {
+// `dryRun` (simulation mode) switches the held device's fact-stated action
+// ("Lowered by PELS") to its hypothetical variant so the card never claims PELS
+// acted when it did not (notes/overview-hero-spec.md § "Simulation mode is
+// hypothetical").
+const resolveHeldTemperatureActionLabel = (dryRun: boolean): string => (
+  dryRun ? DEVICE_OVERVIEW_WOULD_LOWER : DEVICE_OVERVIEW_LOWERED_BY_PELS
+);
+
+export const resolveTemperatureReasonLine = (
+  device: TemperatureDevice,
+  dryRun = false,
+): string | null => {
   const { currentTemperature, plannedTarget } = device;
   if (typeof currentTemperature !== 'number' || typeof plannedTarget !== 'number') return null;
 
@@ -143,9 +159,11 @@ export const resolveTemperatureReasonLine = (device: TemperatureDevice): string 
   if (kind === 'idle') return null;
   if (kind === 'resuming') return 'Resuming';
   const budgetReason = resolveBudgetStarvationReason(device);
-  if (budgetReason !== null) return budgetReason;
+  if (budgetReason !== null) return toSimulationReasonLine(budgetReason, dryRun);
   if (isWaitingReason(reasonCode)) return resolveWaitingText(device.reason);
   const limitedLabel = resolveLimitedReasonLabel(reasonCode);
-  if (limitedLabel !== null) return limitedLabel;
-  return kind === 'held' ? 'Lowered by PELS' : null;
+  if (limitedLabel !== null) return toSimulationReasonLine(limitedLabel, dryRun);
+  // `kind` is necessarily 'held' here (idle/resuming/other returned above), so
+  // the held device's action reads hypothetically in simulation mode.
+  return resolveHeldTemperatureActionLabel(dryRun);
 };

@@ -284,6 +284,15 @@ describe('resolveReportedLoadAfterPauseText', () => {
       .toBe('Still reporting 7.2 kW after pause — EV charger ignored pause');
   });
 
+  it('drops the phantom "after pause" framing in simulation mode (dryRun)', () => {
+    // Simulation never actually paused the device, so the real-mode "after
+    // pause" wording would assert an action that did not happen.
+    expect(resolveReportedLoadAfterPauseText({ measuredPowerKw: 2.1, detail: null, dryRun: true }))
+      .toBe('Would still draw 2.1 kW');
+    expect(resolveReportedLoadAfterPauseText({ measuredPowerKw: 2.1, detail: 'high household load', dryRun: true }))
+      .toBe('Would still draw 2.1 kW — high household load');
+  });
+
   it('falls back to "–" when measuredPowerKw is missing or non-finite', () => {
     expect(resolveReportedLoadAfterPauseText({ measuredPowerKw: undefined, detail: null }))
       .toBe('Still reporting – kW after pause');

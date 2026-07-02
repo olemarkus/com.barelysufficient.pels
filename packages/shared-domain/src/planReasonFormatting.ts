@@ -326,6 +326,11 @@ export function readDeviceReasonDetail(reason: unknown): unknown {
 export function resolveReportedLoadAfterPauseText(params: {
   measuredPowerKw: number | undefined;
   detail: unknown;
+  // Simulation mode: PELS never actually paused the device, so the real-mode
+  // "after pause" framing would assert an action that did not happen — the
+  // exact self-contradiction the simulation-honesty work exists to kill. State
+  // the (real) live draw hypothetically instead, with no phantom pause.
+  dryRun?: boolean;
 }): string {
   const measured = typeof params.measuredPowerKw === 'number' && Number.isFinite(params.measuredPowerKw)
     ? params.measuredPowerKw.toFixed(1)
@@ -333,9 +338,10 @@ export function resolveReportedLoadAfterPauseText(params: {
   const detail = typeof params.detail === 'string' && params.detail.trim().length > 0
     ? params.detail.trim()
     : null;
-  return detail
-    ? `Still reporting ${measured} kW after pause — ${detail}`
+  const stem = params.dryRun
+    ? `Would still draw ${measured} kW`
     : `Still reporting ${measured} kW after pause`;
+  return detail ? `${stem} — ${detail}` : stem;
 }
 
 function formatRestoreNeedUserFacing(

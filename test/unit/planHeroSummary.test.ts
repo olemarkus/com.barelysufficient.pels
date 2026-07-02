@@ -251,11 +251,17 @@ describe('buildDecisionSentence', () => {
     );
   });
 
-  it('uses hypothetical voice in simulation mode', () => {
-    expect(buildDecisionSentence(baseline({
+  it('uses hypothetical voice in simulation mode without re-naming simulation', () => {
+    // The banner + `Simulation mode` status chip already name simulation on the
+    // Overview; the decision sentence drops the "if simulation mode were off"
+    // tail so simulation is stated at most twice on the first viewport. It stays
+    // hypothetical (`would`) so it never implies PELS acted.
+    const text = buildDecisionSentence(baseline({
       dryRun: true,
       limitedCount: 2,
-    })).text).toBe('2 devices would be limited if simulation mode were off.');
+    })).text;
+    expect(text).toBe('2 devices would be limited right now.');
+    expect(text.toLowerCase()).not.toContain('simulation');
   });
 
   it('names the house and the safe-pace target when actively limiting', () => {

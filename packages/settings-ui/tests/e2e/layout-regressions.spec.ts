@@ -303,6 +303,66 @@ test.describe('settings shell layout regressions', () => {
     expect(gap).toBeLessThanOrEqual(24);
   });
 
+  test('renders the simulation banner as one slim warning-tinted row, content rising up', async ({ page }) => {
+    for (const width of [480, 320] as const) {
+      await openApp(page, width);
+      await openTopTab(page, 'Overview');
+      const banner = page.locator('#dry-run-banner');
+      await expect(banner).toBeVisible();
+      const metrics = await page.evaluate(() => {
+        const b = document.getElementById('dry-run-banner')!.getBoundingClientRect();
+        const hero = document.querySelector('#plan-redesign-surface .plan-hero')!.getBoundingClientRect();
+        return {
+          bannerHeight: Math.round(b.height),
+          heroFollowGap: Math.round(hero.top - b.bottom),
+        };
+      });
+      // A slim M3 banner: the 48 px text-button (a11y touch target) defines a
+      // single ~50 px row, not the old ~130 px three-row card. 320 px may wrap
+      // the message to two lines, still far under the old block.
+      const cap = width === 320 ? 78 : 54;
+      expect(metrics.bannerHeight, `banner height @ ${width}px`).toBeLessThanOrEqual(cap);
+      // Content rises right up under the slim banner — the hero follows within
+      // one `main.screen` grid gap, no dead band. (Robust to tab-height chrome
+      // changes: it measures the banner→hero relationship, not an absolute top.)
+      expect(metrics.heroFollowGap, `hero follow gap @ ${width}px`).toBeGreaterThanOrEqual(0);
+      expect(metrics.heroFollowGap, `hero follow gap @ ${width}px`).toBeLessThanOrEqual(24);
+    }
+  });
+
+  test('suppresses the global simulation banner on the Simulation-mode settings page', async ({ page }) => {
+    await openApp(page, 480);
+    await openTopTab(page, 'Overview');
+    await expect(page.locator('#dry-run-banner')).toBeVisible();
+    await openSettingsSection(page, 'simulation');
+    await expect(page.locator('#simulation-panel')).toBeVisible();
+    // The page's own toggle is the single control here — the global banner hides
+    // so simulation is not stated twice on one screen.
+    await expect(page.locator('#dry-run-banner')).toBeHidden();
+    // Leaving the page restores the global banner (simulation is still on).
+    await openTopTab(page, 'Budget');
+    await expect(page.locator('#dry-run-banner')).toBeVisible();
+  });
+
+  test('turning simulation off from the banner hides it everywhere and flips device-card copy at once', async ({ page }) => {
+    await openApp(page, 480);
+    await openTopTab(page, 'Overview');
+    await expect(page.locator('#plan-cards .plan-card').first()).toBeVisible();
+    const cards = page.locator('#plan-cards');
+    // Simulation ON: the flagship card + its reason line read hypothetically.
+    await expect(cards).toContainText('(simulation)');
+    await expect(page.locator('#dry-run-banner')).toBeVisible();
+    // Turn simulation off from the banner's inline action.
+    await page.locator('#simulation-disable-button').click();
+    await expect(page.locator('#toast')).toContainText('Simulation mode updated.');
+    // Banner + overview flip together — not on the next realtime push.
+    await expect(page.locator('#dry-run-banner')).toBeHidden();
+    await expect(cards).not.toContainText('(simulation)');
+    // Simulation-OFF: the global banner stays hidden across tabs.
+    await openTopTab(page, 'Settings');
+    await expect(page.locator('#dry-run-banner')).toBeHidden();
+  });
+
   test('keeps the device-detail app-bar header and sections content-sized on a tall viewport', async ({ page }) => {
     // Tall viewport so the slide panel's grid body has free space — the
     // regression was `align-content: stretch` distributing that free space

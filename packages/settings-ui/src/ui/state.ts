@@ -57,6 +57,11 @@ export type UiState = {
   devicesLoaded: boolean;
   devicesLoading: boolean;
   dryRun: boolean;
+  // The currently shown panel (top tab or settings sub-section `data-panel`).
+  // Updated from `showTab`'s `pels:tab-shown` event (wired in boot); the global
+  // simulation banner reads it so it can suppress itself on the Simulation-mode
+  // settings page, whose own toggle is the single control there.
+  activePanel: string;
   capacityPriorities: Record<string, Record<string, number>>;
   activeMode: string;
   editingMode: string;
@@ -106,6 +111,7 @@ export const state: UiState = {
   devicesLoaded: false,
   devicesLoading: false,
   dryRun: false,
+  activePanel: 'overview',
   capacityPriorities: {},
   activeMode: DEFAULT_MODE_NAME,
   editingMode: DEFAULT_MODE_NAME,

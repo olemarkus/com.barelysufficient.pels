@@ -365,10 +365,13 @@ export const buildDecisionSentence = (
   // 2. Above hard cap.
   if (input.overHardLimit) return resolveOverHardCapDecisionSentence(input);
 
-  // 3. Simulation mode would act.
+  // 3. Simulation mode would act. The banner + `Simulation mode` status chip
+  // already name simulation on the Overview; this conclusion drops the
+  // redundant "if simulation mode were off" tail so simulation is stated at
+  // most twice. It stays hypothetical (`would`) — never implying PELS acted.
   if (input.dryRun && input.limitedCount > 0) {
     return {
-      text: `${formatDevices(input.limitedCount)} would be limited if simulation mode were off.`,
+      text: `${formatDevices(input.limitedCount)} would be limited right now.`,
       positive: false,
     };
   }

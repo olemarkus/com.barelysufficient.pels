@@ -228,7 +228,7 @@ describe('held-card reason line names the real binding constraint', () => {
     const mount = document.createElement('div');
     act(() => {
       render(
-        h(PlanGenericCard, { dev, plan: null, renderedAtMs: 1_000, nowMs: 1_000 }),
+        h(PlanGenericCard, { dev, plan: null, dryRun: false, renderedAtMs: 1_000, nowMs: 1_000 }),
         mount,
       );
     });
@@ -281,7 +281,7 @@ describe('PlanTemperatureCard reason line names the real binding constraint', ()
     const mount = document.createElement('div');
     act(() => {
       render(
-        h(PlanTemperatureCard, { dev, plan: null, renderedAtMs: 1_000, nowMs: 1_000 }),
+        h(PlanTemperatureCard, { dev, plan: null, dryRun: false, renderedAtMs: 1_000, nowMs: 1_000 }),
         mount,
       );
     });
@@ -338,7 +338,7 @@ describe('PlanSteppedCard status line names the real binding constraint', () => 
     const mount = document.createElement('div');
     act(() => {
       render(
-        h(PlanSteppedCard, { dev, plan: null, renderedAtMs: 1_000, nowMs: 1_000 }),
+        h(PlanSteppedCard, { dev, plan: null, dryRun: false, renderedAtMs: 1_000, nowMs: 1_000 }),
         mount,
       );
     });
