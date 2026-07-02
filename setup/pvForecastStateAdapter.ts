@@ -13,6 +13,13 @@ const isRecord = (value: unknown): value is Record<string, unknown> => (
 );
 const isHourKey = (key: string): boolean => Number.isFinite(Number(key));
 
+// Physical ceiling for an hourly bucket's covered/evidence durations. In-memory
+// accrual clamps every segment to the hour boundary (`pvGenerationHistory`), so a
+// persisted `coveredMs` above this is a corrupt blob — bounding it here stops an
+// oversized value (and the net/import sub-durations it would otherwise admit)
+// from forging `unclamped` net-evidence that trains the PV gain.
+const ONE_HOUR_MS = 60 * 60 * 1000;
+
 // Net-evidence durations are valid only when finite, non-negative, and within
 // their accrual bound. A junk field is OMITTED (the hour then classifies
 // 'unknown') rather than dropping the whole hour — evidence degrades, energy stays.
@@ -24,9 +31,11 @@ const normalizeHourly = (raw: unknown): Record<string, PvHourBucket> => {
   if (!isRecord(raw)) return {};
   return Object.fromEntries(
     Object.entries(raw).flatMap(([key, value]): Array<readonly [string, PvHourBucket]> => {
-      if (!isHourKey(key) || !isRecord(value) || !isFiniteNumber(value.kwh) || !isFiniteNumber(value.coveredMs)) {
+      if (!isHourKey(key) || !isRecord(value) || !isFiniteNumber(value.kwh)
+        || !isEvidenceMs(value.coveredMs, ONE_HOUR_MS)) {
         return [];
       }
+      // coveredMs is now bounded to a physical hour (rejected above if oversized).
       // netMs is bounded by coveredMs; importMs/exportMs are SUB-durations of the
       // net-covered time — in-memory accrual can never produce more, so a blob
       // claiming otherwise (e.g. importMs == coveredMs with netMs below it, which
