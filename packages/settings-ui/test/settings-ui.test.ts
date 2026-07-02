@@ -338,7 +338,7 @@ describe('Settings UI', () => {
     });
 
     test('settings back button', async () => {
-      expectAllAtLeast(await measureHeights('#simulation-panel .settings-back-button'));
+      expectAllAtLeast(await measureHeights('#simulation-panel .pels-appbar__back'));
     });
 
     test('segmented options', async () => {
@@ -1194,18 +1194,22 @@ describe('Settings UI', () => {
       expect(panelBox.right).toBeLessThanOrEqual(480);
     });
 
-    test('device detail header has back button and content heading has title', async () => {
+    test('device detail header is the shared app-bar row: back button + device-name title', async () => {
       // Ensure panel is open
       const isHidden = await page.$eval('#device-detail-overlay', (el) => (el as HTMLElement).hidden);
       if (isHidden) await page.click('.device-row__name');
 
       const layout = await page.$eval('#device-detail-panel', (el) => ({
-        hasBackButton: Boolean(el.querySelector('.slide-panel__header #device-detail-close.settings-back-button')),
-        hasTitle: Boolean(el.querySelector('.slide-panel__content #device-detail-title')),
+        hasBackButton: Boolean(el.querySelector('.slide-panel__header.pels-appbar #device-detail-close.pels-appbar__back')),
+        // The device name is the app-bar title inside the sticky header —
+        // the old boxed "DEVICE / name" hero card in the scroll body is gone.
+        hasTitle: Boolean(el.querySelector('.slide-panel__header #device-detail-title.pels-appbar__title')),
+        hasLegacyHero: Boolean(el.querySelector('.device-detail-heading')),
       }));
 
       expect(layout.hasBackButton).toBe(true);
       expect(layout.hasTitle).toBe(true);
+      expect(layout.hasLegacyHero).toBe(false);
     });
   });
 

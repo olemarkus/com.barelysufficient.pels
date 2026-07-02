@@ -82,19 +82,29 @@ describe('index.html panel headers consume the shared hero primitive', () => {
     expect(headline?.classList.contains('plan-hero__headline')).toBe(true);
   });
 
-  it('Settings panel header rebinds to .plan-hero.pels-hero', () => {
+  // Navigation-chrome unification removed the Settings hub's self-referential
+  // hero card ("Settings / Configure PELS" + meta-copy about the page's own
+  // layout) — the tab bar already names the destination. The panel keeps a
+  // visually-hidden `h2` landmark so `aria-labelledby="settings-title"` and
+  // the document outline (h2 -> h3 "Current mode") survive the visual removal.
+  it('Settings hub renders no hero card — first visible content is the current-mode card', () => {
     const doc = mountIndexFragment();
-    const settingsHero = doc.querySelector('#settings-panel > header');
-    expectCanonicalHeroShape(settingsHero);
-    const headline = settingsHero?.querySelector('#settings-title');
-    expect(headline?.tagName.toLowerCase()).toBe('h2');
-    expect(headline?.classList.contains('plan-hero__headline')).toBe(true);
+    expect(doc.querySelector('#settings-panel > header')).toBeNull();
+    expect(doc.querySelector('#settings-panel .plan-hero')).toBeNull();
+    const landmark = doc.querySelector('#settings-panel > h2#settings-title');
+    expect(landmark).not.toBeNull();
+    expect(landmark?.classList.contains('visually-hidden')).toBe(true);
+    expect(landmark?.textContent?.trim()).toBe('Settings');
+    expect(doc.querySelector('#settings-panel')?.getAttribute('aria-labelledby')).toBe('settings-title');
+    // The landmark is followed directly by the current-mode card — no filler
+    // content stands between the tab bar and the first real control.
+    expect(landmark?.nextElementSibling?.classList.contains('settings-current-mode')).toBe(true);
   });
 
-  // The active-mode card sits between the `h2 "Configure PELS"` hero and the
-  // nav-card list; without an h3 rung the screen-reader heading nav jumps
-  // straight from h2 to navigation. The label is promoted to an h3 so the
-  // hierarchy stays h2 -> h3 within the Settings landing page.
+  // The active-mode card sits between the visually-hidden `h2 "Settings"`
+  // landmark and the nav-card list; without an h3 rung the screen-reader
+  // heading nav jumps straight from h2 to navigation. The label is promoted
+  // to an h3 so the hierarchy stays h2 -> h3 within the Settings landing page.
   it('Settings active-mode card carries an h3 heading rung under the Settings h2', () => {
     const doc = mountIndexFragment();
     const heading = doc.querySelector('#settings-active-mode-summary');
@@ -109,10 +119,18 @@ describe('index.html panel headers consume the shared hero primitive', () => {
     expect(select?.getAttribute('aria-labelledby')).toBe('settings-active-mode-summary');
   });
 
-  it('Advanced panel header rebinds to .plan-hero.pels-hero', () => {
+  // Advanced (like every settings sub-page) swapped its boxed hero card for
+  // the shared `.pels-appbar` back+title chrome row.
+  it('Advanced panel leads with the shared app-bar back+title row instead of a hero card', () => {
     const doc = mountIndexFragment();
-    const advancedHero = doc.querySelector('#advanced-panel > header');
-    expectCanonicalHeroShape(advancedHero);
+    expect(doc.querySelector('#advanced-panel > header')).toBeNull();
+    const appbar = doc.querySelector('#advanced-panel > .pels-appbar');
+    expect(appbar).not.toBeNull();
+    const back = appbar?.querySelector('.pels-appbar__back[data-settings-target="settings"]');
+    expect(back).not.toBeNull();
+    expect(back?.getAttribute('aria-label')).toBe('Back to Settings');
+    const title = appbar?.querySelector('h2.pels-appbar__title');
+    expect(title?.textContent?.trim()).toBe('Advanced');
   });
 });
 
@@ -245,7 +263,6 @@ const buildReadyPayload = (): DeadlinePlanPayload => ({
   hero: {
     chips: [{ text: 'Building plan…', tone: 'info' }],
     tone: 'good',
-    sectionLabel: 'Heating smart task',
     headline: 'On track — finishes by 06:30',
     headlineReason: null,
     subline: 'Connected 300 → 65 °C',
@@ -309,22 +326,22 @@ const buildPendingPayload = (): DeadlinePlanPendingPayload => ({
 });
 
 describe('DeadlinePlan hero consumes the shared hero primitive', () => {
-  it('ready-state hero walks the canonical eyebrow + headline contract', () => {
+  it('ready-state hero walks the canonical .plan-hero shell + headline, no eyebrow', () => {
     const mount = mountIntoBody();
     renderDeadlinePlan(mount, { status: 'ready', payload: buildReadyPayload() });
     const hero = mount.querySelector('section.plan-hero.pels-hero');
-    expectCanonicalHeroShape(hero);
+    expect(hero).not.toBeNull();
     // Tone binding flows from the producer through `data-tone` — same
     // attribute every other hero uses.
     expect(hero?.getAttribute('data-tone')).toBe('good');
     // The headline is an `<h2>` (matching the four sibling panels) so
-    // screen readers see the same heading structure across surfaces. The
-    // eyebrow is a `<p>` so the canonical typography cascade (`<p>` margins
-    // reset via `.eyebrow`) lands the same way every other hero renders.
+    // screen readers see the same heading structure across surfaces.
     const headline = hero?.querySelector('.plan-hero__headline');
     expect(headline?.tagName.toLowerCase()).toBe('h2');
-    const eyebrow = hero?.querySelector('.eyebrow.plan-hero__section-label');
-    expect(eyebrow?.tagName.toLowerCase()).toBe('p');
+    expect((headline?.textContent ?? '').trim().length).toBeGreaterThan(0);
+    // The live hero drops the section-label eyebrow (the app-bar title + kind
+    // chip already name the surface) — unlike the pending hero, which keeps it.
+    expect(hero?.querySelector('.eyebrow.plan-hero__section-label')).toBeNull();
   });
 
   it('pending-state hero walks the canonical eyebrow + headline contract', () => {

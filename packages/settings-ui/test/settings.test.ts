@@ -310,17 +310,15 @@ describe('settings script', () => {
     expect(budgetPanel?.classList.contains('hidden')).toBe(false);
     expect(settingsPanel?.classList.contains('hidden')).toBe(true);
 
-    // The Adjust view is open with a Done action.
+    // The Adjust view is open, and — because the session came from Settings —
+    // its exit is the shared `.pels-appbar` back arrow, not the boxed hero +
+    // trailing "Done" toggle. Matches the eight sibling settings sub-pages.
     expect(document.querySelector('#budget-redesign-adjust-view')).not.toBeNull();
-    const toggle = document.querySelector('#budget-redesign-mode-toggle');
-    expect(toggle?.textContent).toContain('Done');
-    // The session came from Settings, so Done stays enabled even though the
-    // daily budget is disabled (the pinned-adjust state). Preact clears a
-    // previously-set `disabled` property with '' rather than removing it,
-    // so assert on truthiness.
-    expect(Boolean((toggle as HTMLElement & { disabled?: boolean | string }).disabled)).toBe(false);
+    expect(document.querySelector('#budget-redesign-mode-toggle')).toBeNull();
+    const back = document.querySelector('.pels-appbar__back');
+    expect(back).not.toBeNull();
 
-    (toggle as HTMLElement).click();
+    (back as HTMLElement).click();
     await flushPromises();
     expect(settingsPanel?.classList.contains('hidden')).toBe(false);
     expect(budgetPanel?.classList.contains('hidden')).toBe(true);
@@ -334,6 +332,31 @@ describe('settings script', () => {
     expect(budgetPanel?.classList.contains('hidden')).toBe(false);
     const pinnedToggle = document.querySelector('#budget-redesign-mode-toggle');
     expect(Boolean((pinnedToggle as HTMLElement & { disabled?: boolean | string }).disabled)).toBe(true);
+  });
+
+  it('a direct Budget-tab tap dismisses a settings-referred Adjust editor to the normal Budget overview', async () => {
+    await loadSettingsScript();
+    const { showTab } = await import('../src/ui/realtime.ts');
+    showTab('settings');
+
+    // Open the Daily-budget editor from Settings: the budget panel shows the
+    // adjust editor with the shared app-bar back arrow, and the Settings tab
+    // indicator stays lit (the editor reads as a Settings sub-page).
+    (document.querySelector('[data-settings-target="budget-adjust"]') as HTMLButtonElement).click();
+    await flushPromises();
+    expect(document.querySelector('#budget-panel .pels-appbar__back')).not.toBeNull();
+    expect(document.querySelector('.tab[data-tab="settings"]')?.getAttribute('aria-selected')).toBe('true');
+
+    // Tapping the now-inactive Budget tab must land on the normal Budget
+    // overview: the settings-referred app-bar exit is gone and the Budget tab
+    // lights — not a Budget-lit tab still showing the adjust sub-view + a
+    // "back to Settings" affordance (the item-A interaction regression).
+    (document.querySelector('.tab[data-tab="budget"]') as HTMLButtonElement).click();
+    await flushPromises();
+    expect(document.querySelector('#budget-panel')?.classList.contains('hidden')).toBe(false);
+    expect(document.querySelector('#budget-panel .pels-appbar__back')).toBeNull();
+    expect(document.querySelector('.tab[data-tab="budget"]')?.getAttribute('aria-selected')).toBe('true');
+    expect(document.querySelector('.tab[data-tab="settings"]')?.getAttribute('aria-selected')).toBe('false');
   });
 
   it('toasts on an unconfirmed tab-bar exit with unsaved budget edits, but stays silent after a confirmed Done', async () => {
@@ -358,16 +381,18 @@ describe('settings script', () => {
     await flushPromises();
     expect(showToast).toHaveBeenCalledWith('Discarded unsaved budget changes.');
 
-    // The confirmed Done path stays silent — the user already confirmed the
-    // discard on the two-step button.
+    // The confirmed back-arrow path stays silent — the user already confirmed
+    // the discard on the two-step control. Settings-referred exit is the
+    // app-bar back arrow; a dirty draft arms the confirm (`.confirming` glyph)
+    // on the first tap and only returns on the second — the icon-only
+    // equivalent of "Click again to discard".
     showTab('settings');
     await openAdjustAndDirtyDraft();
     vi.mocked(showToast).mockClear();
-    const toggle = document.querySelector('#budget-redesign-mode-toggle') as HTMLElement;
-    toggle.click();
+    (document.querySelector('.pels-appbar__back') as HTMLElement).click();
     await flushPromises();
-    expect(toggle.textContent).toContain('Click again to discard');
-    toggle.click();
+    expect((document.querySelector('.pels-appbar__back') as HTMLElement).classList.contains('confirming')).toBe(true);
+    (document.querySelector('.pels-appbar__back') as HTMLElement).click();
     await flushPromises();
     expect(document.querySelector('#settings-panel')?.classList.contains('hidden')).toBe(false);
     expect(showToast).not.toHaveBeenCalledWith('Discarded unsaved budget changes.');

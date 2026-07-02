@@ -191,7 +191,6 @@ const buildReadyPayloadWithDeviceRecourse = (deviceId: string): DeadlinePlanPayl
       { text: 'At risk', tone: 'warn' },
     ],
     tone: 'warn',
-    sectionLabel: 'Heating smart task',
     headline: 'Heating from 16:00',
     headlineReason: null,
     subline: 'Connected 300 • Target 22.0 °C by 18:00',

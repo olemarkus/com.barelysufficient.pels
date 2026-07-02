@@ -1,7 +1,7 @@
 import { render } from 'preact';
 import type { PriceOptDevice } from '../priceConfigTypes.ts';
-import { MdIconButton, MdOutlinedButton, MdSwitch, MdTextButton } from './materialWebJSX.tsx';
-import { ArrowBackIcon } from './icons.tsx';
+import { MdIconButton, MdOutlinedButton, MdSwitch } from './materialWebJSX.tsx';
+import { AppBar } from './AppBar.tsx';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 
 export type PriceAwareDevicesViewProps = {
@@ -109,21 +109,11 @@ const ValueAdjuster = ({
 };
 
 const Header = () => (
-  <>
-    <MdTextButton
-      class="settings-back-button"
-      data-settings-target="settings"
-    >
-      <ArrowBackIcon slot="icon" />
-      Settings
-    </MdTextButton>
-    <header class="pels-hero">
-      <div>
-        <p class="eyebrow">Price-aware devices</p>
-        <h2>Cheap-hour boost and expensive-hour reduction</h2>
-      </div>
-    </header>
-  </>
+  <AppBar
+    back={{ target: 'settings', label: 'Back to Settings' }}
+    title="Price-aware devices"
+    lede="Cheap-hour boost and expensive-hour reduction for eligible temperature devices."
+  />
 );
 
 const RespondTogglesCard = ({

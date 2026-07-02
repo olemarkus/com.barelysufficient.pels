@@ -41,6 +41,7 @@ import {
   deadlineLabels,
   formatProgressValueForUnit,
   REVISION_REASON_FALLBACK_WITH_DETAIL,
+  SMART_TASK_HISTORY_EYEBROW,
   SMART_TASK_READOUT_SCRUB_HINT,
   SMART_TASK_USAGE_RETURN_LABEL,
 } from '../../../../shared-domain/src/deadlineLabels.ts';
@@ -908,7 +909,9 @@ const HistoryDetailHero = ({
     class="plan-hero pels-hero plan-history-detail__hero"
     data-tone={hero.tone}
   >
-    <p class="eyebrow plan-history-detail__eyebrow">{hero.eyebrow}</p>
+    {/* No eyebrow — the panel's app-bar title row ("Smart task") sits
+      * directly above this hero; repeating the same words inside the card
+      * stacked chrome three-deep. The outcome chip opens the hero. */}
     <p class="plan-history-detail__outcome">
       <span class={`plan-chip plan-chip--${hero.chip.tone} plan-history-detail__outcome-chip`}>{hero.chip.text}</span>
     </p>
@@ -1352,7 +1355,7 @@ export const DeadlinePlanHistoryDetail = ({ entry, timeZone }: Props) => {
   const chartCardTitle = chartLabels.cardTitle;
   const chartFallbackNote = chartLabels.fallbackNote;
   return (
-    <article class="plan-history-detail" aria-label={`${hero.eyebrow} ${ariaHeading}`}>
+    <article class="plan-history-detail" aria-label={`${SMART_TASK_HISTORY_EYEBROW} ${ariaHeading}`}>
       <HistoryDetailHero
         hero={hero}
         revisionUpdatesLine={revisionUpdatesLine}

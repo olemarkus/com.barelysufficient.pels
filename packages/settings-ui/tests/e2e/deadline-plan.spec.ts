@@ -59,8 +59,12 @@ test.describe('Deadline plan', () => {
     await page.setViewportSize({ width: 360, height: 780 });
     const panel = await openDeadlinePlan(page);
 
-    // Section eyebrow uses smart-task vocabulary, not planner-noun "plan".
-    await expect(panel.locator('.plan-hero__section-label')).toHaveText(/Heating smart task/);
+    // The live hero drops the section-label eyebrow — the app-bar title
+    // ("Smart task") and the kind chip already name the surface, so a
+    // "Heating smart task" eyebrow stacked the kind a third time. Assert the
+    // eyebrow is gone and the chrome title carries the smart-task vocabulary.
+    await expect(panel.locator('.plan-hero .plan-hero__section-label')).toHaveCount(0);
+    await expect(panel.locator('#deadline-plan-title')).toHaveText('Smart task');
     // The device + target subline lives on the un-modified `.plan-hero__subline`
     // node (no `--reason` / `--muted` modifier). The headline-reason node now
     // renders above it for queued plans, so a positional `.first()` query is

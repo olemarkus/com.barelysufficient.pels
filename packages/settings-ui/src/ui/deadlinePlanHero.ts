@@ -414,7 +414,6 @@ export const buildHero = (params: BuildHeroInput): DeadlinePlanPayload['hero'] =
       confidenceChipText,
     }),
     tone: params.tone,
-    sectionLabel: params.labels.sectionLabel,
     headline,
     headlineReason: resolveQueuedHeadlineReason(params),
     subline,

@@ -11,7 +11,7 @@
 | Active deadline-plan (`DeadlinePlan.tsx`) | always-on, not toggleable | The chart **is** the answer: "what is going to happen in the next hours?" |
 | Historic detail (`DeadlinePlanHistoryDetail.tsx`), outcome=Succeeded | collapsed by default; expand on "View details" | The receipt **is** the answer ("hit 65 °C at 14:32, 28 min before deadline"). The chart is supporting evidence. |
 | Historic detail, outcome=Missed | expanded by default; no toggle | The diagnosis needs the chart shape inline ("plan went flat in the last 2 h"). |
-| Historic detail, outcome=Abandoned / Replaced (v2.7.3) | **no chart card at all**; Material `<details>` body for on-demand evidence | The user-initiated swap is the answer, not a plan diagnosis. Eyebrow + one sentence + disclosure. |
+| Historic detail, outcome=Abandoned / Replaced (v2.7.3) | **no chart card at all**; Material `<details>` body for on-demand evidence | The user-initiated swap is the answer, not a plan diagnosis. Chip + one sentence + disclosure. |
 | Historic detail, outcome=Unknown, **plan was recorded** (v2.9.x) | collapsed by default; expand on "View details" — same shape as Succeeded | A plan WAS made; we just don't know if it ran. The chart is the only available evidence, so we offer it on demand without overriding the muted "we don't know what happened" semantics. |
 | Historic detail, outcome=Unknown, **no plan recorded** (v2.9.x) | **no chart card at all** — same shape as Abandoned | Nothing to draw. Backfill-synthesized entries always land here. |
 

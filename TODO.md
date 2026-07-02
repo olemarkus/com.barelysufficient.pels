@@ -333,6 +333,23 @@ CI failure, so future field-move slices can't silently grow the debt.*
       *Why:* an inert toggle silently breaks trust; found while gating the Solar card off flow
       homes. Files: `setup/settingsUiApi.ts` (`getSettingsUiDevicesPayload`),
       `packages/settings-ui/src/ui/deviceDetail/solarSurplus.ts`, `docs/solar.md`.
+
+- [ ] **Converge the three lone master-toggle rows on one switch-row pattern.** Weather insight,
+      Simulation, and Price-aware devices each present a lone switch on its own line — weaker than a
+      Material list-item row with a trailing switch (label + supporting text + trailing control).
+      Converge all three on the one switch-row pattern so the "turn this feature on/off" grammar
+      reads the same everywhere. Persona: Set-and-forget owner; hypothesis: a bare switch reads as a
+      stray control, a titled row reads as "this is the feature's on/off". Source: PR #1813 review
+      gates (2026-07-02). [PR-6 control grammar]
+
+- [ ] **"Safe pace now" names two different numbers across surfaces.** The Limits & safety helper
+      hardcodes the cap-derived value (`Safe pace now 7.6 kW — hard cap minus safety margin`), while
+      the Overview hero shows the actual daily-budget-constrained binding value under the same "Safe
+      pace now" label — so the two surfaces can disagree on what "safe pace now" is. Reword the
+      Limits helper to a bound, not a live figure: `With these settings, safe pace is at most
+      7.6 kW`. Keep the live "Safe pace now" label for the Overview hero, which shows the actual
+      binding value. Source: PR #1813 review gates (2026-07-02). [PR-7 legibility/copy]
+
 - [ ] **Solar export price — finish the remaining increments.** The export (feed-in) price model
       shipped off by default (`export_price_enabled`): a per-hour `exportPrice` computed as VAT-grossed
       spot × `export_spot_factor` + `export_fixed`, alongside a negative-safe price-level threshold fix.
@@ -657,15 +674,6 @@ CI failure, so future field-move slices can't silently grow the debt.*
       assumes their edits are already lost, and re-enters them from scratch. Source: pels-ux-fit on
       the budget-settings-access PR, 2026-06-10.
 
-- [ ] **Settings-referred Adjust session lacks the sibling "← Settings" back affordance.** Every
-      Settings sub-page (Limits & safety, Devices, …) opens with a leading back chip; the Daily
-      budget row instead lands on the Budget tab where the way back is a trailing "Done" whose
-      destination is only in a hover `title`. When `adjustReturnTarget === 'settings'`, render the
-      shared `.settings-back-button` affordance above the Budget header (it can coexist with Done).
-      Persona: Set-and-forget owner; hypothesis: without the visible back affordance the
-      tab-indicator jump (Settings → Budget) reads as "I got teleported", not "this is a sub-page of
-      what I was doing". Source: pels-ux-fit, 2026-06-10.
-
 - [ ] **Move the daily-budget breakdown chart toggle from Advanced to the Budget chart card.** After
       the tuning-selects retirement, Advanced ("Diagnostics, cleanup, logs, experiments") hosts a
       lone display preference — a scent mismatch on both ends. Put the toggle on the chart it
@@ -880,11 +888,22 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
       Homey's app chrome; after this ships, open `?page=deadline-plan` on a real phone once to
       confirm and close the loop. Source: PR #1807 review gates (2026-07-01).
 
-- [ ] **Device-detail hero: add a one-line live status under the device name.** The hero now hugs
-      its content (PR #1807) but carries only eyebrow + name — an identity card. Add one line of
-      live status (state + current draw, the same producer-resolved data the Overview card
-      renders) to turn it into a confidence card ("is PELS seeing this device right now?").
-      Source: PR #1807 review gates (2026-07-01).
+- [ ] **Release spot-check: shell tab labels at 320 px on a real phone.** The narrow-width tab-fit
+      guard (`layout-regressions.spec.ts` "keeps redesigned shell navigation compact at 320px") now
+      loads the real Space Grotesk (`loadSpaceGrotesk`) so it measures the intended font, not the CI
+      fallback — "Smart tasks" fit with ~38 px of slack in CI. On-device the Homey WebView could
+      still substitute a wider system font (Android WebView ships no Space Grotesk), so after this
+      ships, open the settings UI on a real 320-px-wide phone once and confirm no tab label wraps or
+      ellipsis-clips; if it does, switch the shell nav to M3 scrollable-tabs or a graceful wrap
+      rather than a hard clip. Source: PR #1813 review gates (2026-07-02).
+
+- [ ] **Device detail: add a one-line live status near the device name.** The identity hero card is
+      gone — the navigation-chrome unification moved the device name into the slide panel's
+      `.pels-appbar` header. The original intent stands: add one line of live status (state +
+      current draw, the same producer-resolved data the Overview card renders) as the first
+      content row under the app bar, so the page answers "is PELS seeing this device right now?".
+      Source: PR #1807 review gates (2026-07-01); re-anchored by the navigation-chrome PR
+      (2026-07-02).
 
 - [ ] **Playwright stub: seeded smart-task data is internally inconsistent.** The
       `dev_connected300` fixture claims "Needs 12.0 kWh" and an on-track verdict, but the seeded

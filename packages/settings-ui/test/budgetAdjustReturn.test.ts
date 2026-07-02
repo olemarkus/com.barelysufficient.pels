@@ -87,6 +87,17 @@ const getToggle = (): HTMLElement => {
   return toggle as HTMLElement;
 };
 
+// Settings-referred Adjust sessions render the shared `.pels-appbar` back arrow
+// as the exit affordance instead of the trailing "Done" toggle; it carries the
+// same two-step discard semantics (armed → `.confirming` glyph, second tap
+// discards + returns), just reflected as a class + aria-label rather than a
+// text label.
+const getSettingsBack = (): HTMLElement => {
+  const back = mount.querySelector<HTMLElement>('.pels-appbar__back');
+  expect(back).not.toBeNull();
+  return back as HTMLElement;
+};
+
 // Preact assigns `disabled` as a DOM property on the custom element (jsdom has
 // no material-web definition to reflect it into an attribute), so read both.
 const isDisabled = (el: HTMLElement): boolean => (
@@ -129,7 +140,7 @@ describe('Done with a clean draft', () => {
     expect(onLocalViewChange).toHaveBeenCalledWith('plan');
   });
 
-  it('returns to Settings via the navigator for settings-initiated sessions without flipping the local view', () => {
+  it('returns to Settings via the app-bar back arrow for settings-initiated sessions without flipping the local view', () => {
     const onLocalViewChange = vi.fn();
     const onReturnToSettings = vi.fn();
     renderBudgetOverview(mount, withStatus('clean', {
@@ -137,18 +148,23 @@ describe('Done with a clean draft', () => {
       onLocalViewChange,
       onReturnToSettings,
     }));
-    getToggle().click();
+    // The settings-referred editor swaps the trailing "Done" toggle for the
+    // sibling app-bar back arrow — the boxed hero + toggle no longer render.
+    expect(mount.querySelector('#budget-redesign-mode-toggle')).toBeNull();
+    getSettingsBack().click();
     expect(onReturnToSettings).toHaveBeenCalledTimes(1);
     // Flipping the view here would flash the plan view before the panel swap.
     expect(onLocalViewChange).not.toHaveBeenCalled();
   });
 
-  it('stays enabled when the daily budget is disabled but the session came from Settings', () => {
+  it('keeps the back arrow available even when the daily budget is disabled but the session came from Settings', () => {
     const props = withStatus('clean', { adjustReturnTarget: 'settings' });
     props.adjust.active.enabled = false;
     props.adjust.draft.enabled = false;
     renderBudgetOverview(mount, props);
-    expect(isDisabled(getToggle())).toBe(false);
+    // Returning to Settings is always meaningful — the back arrow is the
+    // always-active exit, never the disabled Done the plan view falls back to.
+    expect(isDisabled(getSettingsBack())).toBe(false);
   });
 
   it('is disabled when the daily budget is disabled and there is no Settings referrer', () => {
@@ -182,16 +198,17 @@ describe.each(['dirty', 'pending'] as const)('Done with unsaved changes (%s)', (
     expect(onLocalViewChange).toHaveBeenCalledWith('plan');
   });
 
-  it('navigates to Settings only on the confirming click', async () => {
+  it('navigates to Settings only on the confirming back-arrow click', async () => {
     const onReturnToSettings = vi.fn();
     renderBudgetOverview(mount, withStatus(status, { adjustReturnTarget: 'settings', onReturnToSettings }));
-    const toggle = getToggle();
-    // Unarmed: a click must not navigate away and silently discard.
-    toggle.click();
+    // Unarmed: a first tap on the back arrow must not navigate away and
+    // silently discard — it arms the confirm (warning-tinted `.confirming`
+    // glyph) instead, the icon-only equivalent of "Click again to discard".
+    getSettingsBack().click();
     await flushRender();
     expect(onReturnToSettings).not.toHaveBeenCalled();
-    expect(toggle.textContent).toContain('Click again to discard');
-    toggle.click();
+    expect(getSettingsBack().classList.contains('confirming')).toBe(true);
+    getSettingsBack().click();
     expect(onReturnToSettings).toHaveBeenCalledTimes(1);
   });
 

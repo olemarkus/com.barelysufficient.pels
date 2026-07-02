@@ -104,6 +104,28 @@ export const setBudgetAdjustSettingsNavigator = (navigate: () => void): void => 
 // stale 'settings' referrer doesn't survive into the next Adjust session.
 // A settings-initiated session also ends entirely: the next direct visit to
 // the Budget tab should land on the plan view, not a leftover Adjust view.
+// A genuine Budget-tab tap while a settings-referred Daily-budget editor is
+// showing (opened via the budget-adjust deep-link, which keeps the Settings
+// indicator lit and the budget panel borrowed for the editor) must land on the
+// normal Budget overview — not keep the adjust sub-view and its "back to
+// Settings" exit under a now-Budget-lit tab. `showTab('budget')` alone can't do
+// this: `discardBudgetAdjustOnLeave` early-returns for nextTabId 'budget'. So
+// the tab-bar click handler calls this first to discard any draft and snap the
+// local view back to plan. Returns whether a dirty draft was discarded so the
+// caller can surface the same notice a sibling tab-bar exit shows. No-op (and
+// returns false) when the current session isn't a settings-referred editor —
+// in particular the deep-link's own `openBudgetAdjustFromSettings()` +
+// `showTab('budget')` path never routes through here, so the editor still opens.
+export const dismissSettingsAdjustOnBudgetTab = (): boolean => {
+  if (currentBudgetLocalView !== 'adjust' || adjustReturnTarget !== 'settings') return false;
+  const wasDirty = getBudgetAdjustView().status !== 'clean';
+  discardBudgetAdjust();
+  currentBudgetLocalView = 'plan';
+  adjustReturnTarget = 'plan';
+  doRender();
+  return wasDirty;
+};
+
 export const resetBudgetAdjustReturnTarget = (): void => {
   if (adjustReturnTarget === 'settings') {
     currentBudgetLocalView = 'plan';

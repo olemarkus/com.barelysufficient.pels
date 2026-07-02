@@ -13,9 +13,8 @@ import {
   MdOutlinedButton,
   MdSelectOption,
   MdSwitch,
-  MdTextButton,
 } from './materialWebJSX.tsx';
-import { ArrowBackIcon } from './icons.tsx';
+import { AppBar } from './AppBar.tsx';
 import {
   EXPORT_FIXED_LIMIT,
   EXPORT_SPOT_FACTOR_MAX,
@@ -88,24 +87,11 @@ export type ElectricityPricesViewProps = {
 };
 
 const Header = () => (
-  <>
-    <MdTextButton
-      class="settings-back-button"
-      data-settings-target="settings"
-    >
-      <ArrowBackIcon slot="icon" />
-      Settings
-    </MdTextButton>
-    <header class="pels-hero">
-      <div>
-        <p class="eyebrow">Electricity prices</p>
-        <h2>Source and rules</h2>
-        <p class="muted electricity-prices-hero__lede">
-          Choose where prices come from and what counts as cheap or expensive. PELS uses these to shape the daily budget toward cheaper hours.
-        </p>
-      </div>
-    </header>
-  </>
+  <AppBar
+    back={{ target: 'settings', label: 'Back to Settings' }}
+    title="Electricity prices"
+    lede="Choose where prices come from and what counts as cheap or expensive. PELS uses these to shape the daily budget toward cheaper hours."
+  />
 );
 
 const StatusRow = ({ label, value, tone }: { label: string; value: string; tone?: 'ok' | 'warn' }) => (
