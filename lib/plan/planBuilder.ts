@@ -70,6 +70,9 @@ export type PlanBuilderDeps = {
   getPriceOptimizationSettings: () => Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
   isCurrentHourCheap: () => boolean;
   isCurrentHourExpensive: () => boolean;
+  // Producer-resolved inferred curtailed-surplus term for the surplus allocator
+  // (zero-export homes); forwarded untouched to the per-device prep pass.
+  getInferredSurplusKw?: () => number | null;
   getPowerTracker: () => PowerTrackerState;
   getDailyBudgetSnapshot?: () => DailyBudgetUiPayload | null;
   getPriorityForDevice: (deviceId: string) => number;
@@ -387,6 +390,7 @@ export class PlanBuilder {
         isCurrentHourExpensive: () => this.deps.isCurrentHourExpensive(),
         getPriceOptimizationEnabled: () => this.priceOptimizationEnabled,
         getPriceOptimizationSettings: () => this.priceOptimizationSettings,
+        getInferredSurplusKw: this.deps.getInferredSurplusKw,
         getOperatingMode: () => this.operatingMode,
         pendingBinaryCommandStore: this.deps.pendingBinaryCommandStore,
         debugStructured: this.deps.debugStructured,

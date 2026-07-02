@@ -304,6 +304,85 @@ describe('surplus-absorb setpoint raise (planner prep integration)', () => {
     expect(state.surplusEligibilityByDevice[DEVICE_ID]).toBeUndefined();
   });
 
+  describe('curtailment-inferred surplus (zero-export homes)', () => {
+    // One plan cycle with the producer-resolved inferred term injected through
+    // the same `PlanDevicesDeps` seam the app wires (`getInferredSurplusKw`).
+    const cycleInferred = (
+      state: PlanEngineState,
+      signedNetKw: number,
+      inferredSurplusKw: number | null,
+      options: { powerKnown?: boolean; debugStructured?: (payload: Record<string, unknown>) => void } = {},
+    ): number | undefined => {
+      const powerKnown = options.powerKnown ?? true;
+      const device = buildInitialPlanDevices({
+        context: {
+          ...buildContext(signedNetKw),
+          ...(powerKnown ? {} : {
+            total: null, powerKnown: false, hasLivePowerSample: false, powerFreshnessState: 'stale_hold' as const,
+          }),
+        },
+        state,
+        shedSet: new Set(),
+        shedReasons: new Map(),
+        guardInShortfall: false,
+        deps: {
+          ...deps(true),
+          getInferredSurplusKw: () => inferredSurplusKw,
+          debugStructured: options.debugStructured,
+        },
+      })[0];
+      return device && isTemperaturePlanDevice(device) ? device.plannedTarget : undefined;
+    };
+
+    it('engages a willing thermostat at net~0 purely on the inferred term (the zero-export case)', () => {
+      const state = createPlanEngineState();
+      // Net pins ~0 (the inverter throttles); the producer infers 1.5 kW curtailed.
+      expect(cycleInferred(state, 0, 1.5)).toBe(MODE_C); // settle window opens
+      vi.setSystemTime(SURPLUS_ABSORB_SETTLE_MS);
+      expect(cycleInferred(state, 0, 1.5)).toBe(MODE_C + SURPLUS_DELTA_C);
+    });
+
+    it('never lifts on the inferred term while whole-home power is unknown (powerOk gate unchanged)', () => {
+      const state = createPlanEngineState();
+      expect(cycleInferred(state, 0, 99, { powerKnown: false })).toBe(MODE_C);
+      vi.setSystemTime(SURPLUS_ABSORB_SETTLE_MS);
+      expect(cycleInferred(state, 0, 99, { powerKnown: false })).toBe(MODE_C);
+    });
+
+    it('sustained import releases the inferred lift without waiting out the dwell once the term zeroes', () => {
+      const state = createPlanEngineState();
+      cycleInferred(state, 0, 1.5);
+      vi.setSystemTime(SURPLUS_ABSORB_SETTLE_MS);
+      expect(cycleInferred(state, 0, 1.5)).toBe(MODE_C + SURPLUS_DELTA_C);
+      // The inference was wrong: the lift forces real grid import. The producer's
+      // import latch zeroes the term (this stub mirrors that — the producer gate
+      // fires at 0.30, before the plan gate's 0.35 hard-off), the pool collapses,
+      // and the sustained import hard-offs the release past the settle window,
+      // far inside the 5-min dwell.
+      const importAt = SURPLUS_ABSORB_SETTLE_MS + 10_000;
+      vi.setSystemTime(importAt);
+      expect(cycleInferred(state, IMPORTING_KW, null)).toBe(MODE_C + SURPLUS_DELTA_C); // settle applies
+      vi.setSystemTime(importAt + SURPLUS_ABSORB_SETTLE_MS);
+      expect(cycleInferred(state, IMPORTING_KW, null)).toBe(MODE_C);
+      expect(importAt + SURPLUS_ABSORB_SETTLE_MS)
+        .toBeLessThan(SURPLUS_ABSORB_SETTLE_MS + SURPLUS_ABSORB_MIN_DWELL_MS);
+    });
+
+    it('emits the surplus_pool composition record through the plan debug seam', () => {
+      const state = createPlanEngineState();
+      const records: Array<Record<string, unknown>> = [];
+      cycleInferred(state, -0.5, 1.2, { debugStructured: (payload) => { records.push(payload); } });
+      const pool = records.filter((r) => r.event === 'surplus_pool');
+      expect(pool).toHaveLength(1);
+      expect(pool[0]).toMatchObject({
+        measuredExportKw: 0.5,
+        addBackKw: 0,
+        inferredSurplusKw: 1.2,
+      });
+      expect(pool[0]!.poolKw as number).toBeCloseTo(1.7, 6);
+    });
+  });
+
   it('reserves the surplus across devices: only the higher-priority one lifts when export covers one', () => {
     // Two willing ~1 kW heaters, exporting 1.5 kW — enough for one (1.0 + 0.25 reserve),
     // not two. Without cross-device reservation both would engage and oscillate.

@@ -338,6 +338,8 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
     getStructuredDebugEmitter: (component, topic) => this.getStructuredDebugEmitter(component, topic),
     getOutdoorTemperatureC: () => this.weatherCollector?.getCurrentOutdoorTemperatureC(),
     recordPvGenerationSample: (genW, nowMs, netW) => this.pvForecast?.recordSample(genW, nowMs, netW),
+    // Optional AppContext member assigned by wireCurtailmentSurplus post-startup.
+    recordCurtailmentSample: (netW, genW, nowMs) => this.ctx.recordCurtailmentSample?.(netW, genW, nowMs),
   });
   private realtimeDeviceReconcileState = realtimeReconcile.createRealtimeDeviceReconcileState();
   private stopSettingsHandler?: () => void;

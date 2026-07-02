@@ -158,6 +158,43 @@ describe('BatteryStateProducer', () => {
       expect(producer.isBatteryDevice('b1')).toBe(true);
     });
 
+    it('rides out a providing-app blip: battery-free full refreshes only narrow after the grace', () => {
+      const producer = new BatteryStateProducer(noopEmit);
+      producer.observe([battery('b1', { measure_battery: 60, measure_power: 100 })], { fullRefresh: true });
+      // The battery's providing app restarts: full refreshes omit it entirely.
+      producer.observe([nonBattery('ev')], { fullRefresh: true }); // miss 1
+      expect(producer.hasBatteryDevices()).toBe(true);
+      producer.observe([nonBattery('ev')], { fullRefresh: true }); // miss 2
+      expect(producer.hasBatteryDevices()).toBe(true);
+      producer.observe([nonBattery('ev')], { fullRefresh: true }); // miss 3 — grace exhausted
+      expect(producer.hasBatteryDevices()).toBe(false);
+      expect(producer.isBatteryDevice('b1')).toBe(false);
+    });
+
+    it('a battery re-appearing on a full refresh resets the narrowing grace', () => {
+      const producer = new BatteryStateProducer(noopEmit);
+      producer.observe([battery('b1', { measure_battery: 60, measure_power: 100 })], { fullRefresh: true });
+      producer.observe([nonBattery('ev')], { fullRefresh: true }); // miss 1
+      producer.observe([nonBattery('ev')], { fullRefresh: true }); // miss 2
+      producer.observe([battery('b1', { measure_battery: 61, measure_power: 90 })], { fullRefresh: true });
+      producer.observe([nonBattery('ev')], { fullRefresh: true }); // miss 1 again
+      producer.observe([nonBattery('ev')], { fullRefresh: true }); // miss 2 again
+      expect(producer.hasBatteryDevices()).toBe(true);
+    });
+
+    it('a realtime battery event during the grace resets the miss counter', () => {
+      const producer = new BatteryStateProducer(noopEmit);
+      producer.observe([battery('b1', { measure_battery: 60, measure_power: 100 })], { fullRefresh: true });
+      producer.observe([nonBattery('ev')], { fullRefresh: true }); // miss 1
+      producer.observe([nonBattery('ev')], { fullRefresh: true }); // miss 2
+      producer.noteBatteryDevice(battery('b1', { measure_battery: 62, measure_power: 80 }));
+      producer.observe([nonBattery('ev')], { fullRefresh: true }); // miss 1 again
+      producer.observe([nonBattery('ev')], { fullRefresh: true }); // miss 2 again
+      expect(producer.hasBatteryDevices()).toBe(true);
+      producer.observe([nonBattery('ev')], { fullRefresh: true }); // miss 3 — narrows
+      expect(producer.hasBatteryDevices()).toBe(false);
+    });
+
     // An OFFLINE battery keeps its membership (so the managed battery keeps its
     // managed identity and recovers when back online) even though it emits no event.
     it('keeps an OFFLINE battery in the membership set so it stays managed', () => {

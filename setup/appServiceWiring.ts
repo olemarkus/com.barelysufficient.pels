@@ -56,6 +56,7 @@ import {
 } from './appInit';
 import { startBackgroundCollectors } from './appInit/startBackgroundCollectors';
 import { wireBudgetPrice } from './appInit/wireBudgetPrice';
+import { wireCurtailmentSurplus } from './appInit/wireCurtailmentSurplus';
 import type { PvForecastController } from './appInit/createPvForecastService';
 import { flushDailyBudgetStateOnUninit, runStartupStep, startAppServices } from './appLifecycleHelpers';
 import { initSettingsHandlerForApp } from './appSettingsHelpers';
@@ -249,6 +250,15 @@ export class AppServiceWiring {
         });
       }
     });
+    // Curtailment-inference surplus (zero-export homes): the estimator infers
+    // the PV production an export-blocking inverter is throttling away and
+    // feeds it to the surplus allocator as one flat kW term. Push-fed from the
+    // power-sample pipeline (no timers ⇒ no uninit handling). Wired here, after
+    // the PV forecast above exists; until these lines run the ctx seams are unset
+    // and read null / no-op — fail-closed, the budget-price post-boot precedent.
+    const curtailment = wireCurtailmentSurplus(ctx, () => this.deps.getPvForecast());
+    ctx.recordCurtailmentSample = (netW, generationW, nowMs) => curtailment.recordSample(netW, generationW, nowMs);
+    ctx.getCurtailedSurplusKw = () => curtailment.getCurtailedSurplusKw(Date.now());
     // Clock-driven smart-task lifecycle emission (status/hours-remaining/ended +
     // history). PlanService exists by now, so the emitter's getDevices reads the
     // live plan-device source. Runs off the power path — fixes the flow-mode lag.

@@ -235,6 +235,14 @@ export type AppContext = {
   readonly combinedPricesReader: CombinedPricesReader;
   deviceManager?: DeviceTransport;
   planEngine?: PlanEngine;
+  // Curtailment-surplus estimator seams, both ASSIGNED by `wireCurtailmentSurplus`
+  // post-startup (the wiring-assigns-ctx-members house pattern): the flat read of
+  // the inferred curtailed-surplus term (kW; null when absent or suppressed) the
+  // plan wiring consumes, and the co-sampled push feed from the power pipeline.
+  // Both no-op/read-null until the wiring runs — fail-closed, same precedent as
+  // the budget-price PV inputs.
+  getCurtailedSurplusKw?: () => number | null;
+  recordCurtailmentSample?: (netW: number, generationW: number | undefined, nowMs: number) => void;
   planService?: PlanService;
   // Released after the first device snapshot refresh succeeds, or after the
   // configured timeout — whichever comes first. Holds the first

@@ -47,6 +47,11 @@ export type PlanDevicesDeps = {
   isCurrentHourExpensive: () => boolean;
   getPriceOptimizationEnabled: () => boolean;
   getPriceOptimizationSettings: () => Record<string, PriceOptDeviceConfig>;
+  // Producer-resolved inferred curtailed-surplus term (kW) for the surplus
+  // allocator's pool; absent getter or null result = no inferred surplus. The
+  // producer (`lib/solar/curtailmentSurplus.ts`, injected flat via setup wiring)
+  // owns every safety decision about the term — this layer never re-validates it.
+  getInferredSurplusKw?: () => number | null;
   getOperatingMode?: () => string;
   // Observer-owned pending-binary-command store; plan-side raw reads go
   // through `peek(id)` rather than `state.pendingBinaryCommands[id]`.
@@ -99,8 +104,10 @@ export function buildInitialPlanDevices(params: {
     state,
     signedNetKw: context.total,
     powerKnown: context.powerKnown,
+    inferredSurplusKw: deps.getInferredSurplusKw?.() ?? null,
     getConfig: (deviceId) => deps.getPriceOptimizationSettings()[deviceId],
     getPriority: deps.getPriorityForDevice,
+    debugStructured: deps.debugStructured,
   });
   const result = context.devices.flatMap((dev) => {
     const t0 = Date.now();

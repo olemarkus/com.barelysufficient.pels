@@ -316,6 +316,11 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         return this.batteryStateProducer.isBatteryDevice(deviceId);
     }
 
+    /** Whether ANY home battery is currently detected (incl. offline). */
+    hasBatteryDevices(): boolean {
+        return this.batteryStateProducer.hasBatteryDevices();
+    }
+
     /** Whether `deviceId` is a currently-detected solar device (incl. offline). */
     isSolarDevice(deviceId: string): boolean {
         return this.solarProductionProducer.isSolarDevice(deviceId);

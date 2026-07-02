@@ -44,6 +44,10 @@ export type PowerSamplePipelineDeps = {
   /** Feed the per-sample gross generation (W) plus the co-sampled SIGNED net home
    *  power (W, import positive) to the learned PV forecast; no-op when absent. */
   recordPvGenerationSample?: (generationW: number | undefined, nowMs: number, netPowerW?: number) => void;
+  /** Feed the same co-sampled pair (SIGNED net W + gross generation W, generation
+   *  undefined for flow-source samples) to the curtailment-surplus estimator;
+   *  no-op when absent. */
+  recordCurtailmentSample?: (netW: number, generationW: number | undefined, nowMs: number) => void;
 };
 
 type PowerSampleOptions = {
@@ -151,6 +155,9 @@ export class PowerSamplePipeline {
     // (Homey-Energy mode); flow-driven samples carry no generationW, so this
     // stays a no-op for flow homes.
     this.deps.recordPvGenerationSample?.(options.generationW, nowMs, currentPowerW);
+    // Same co-sampled pair to the curtailment-surplus estimator (another pure
+    // data tap — the estimator only ever feeds the surplus pool, never sheds).
+    this.deps.recordCurtailmentSample?.(currentPowerW, options.generationW, nowMs);
     const powerTracker = this.deps.getPowerTracker();
     const previousSampleTs = powerTracker.lastTimestamp;
     try {

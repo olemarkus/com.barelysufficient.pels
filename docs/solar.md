@@ -49,6 +49,8 @@ This boost:
 
 PELS waits for the surplus to settle before engaging, and — to avoid flapping on passing clouds — it briefly holds the raised target for a few minutes after export stops before easing back. While the boost is engaged it takes precedence over any price-based lowering (your own solar is free); the rest of the time your normal price-based targets apply. It is a gentle "use a bit more of my own solar" nudge, not a precise export-to-zero controller.
 
+**If your inverter is set to zero export** (it throttles production so nothing is sent to the grid), the meter never shows a surplus — so PELS estimates one instead. It learns your panels' potential in the current weather from your own production history and verifies it against real production: when actual production sits clearly below that potential, the same boost can engage to soak up the hidden surplus, and your inverter naturally produces more to cover it. If production does not follow — your home starts drawing from the grid instead — PELS eases the boost back promptly and waits a while before trying again. This estimate needs some weeks of production history before it can engage, it stays cautious (it backs off whenever your home draws meaningfully from the grid — only the small standing draw of a couple hundred watts that zero-export setups normally show is tolerated — and your hard cap and daily budget still come first), and it is disabled when a home battery is present, since PELS cannot tell a throttled inverter from a charging battery.
+
 ### Big flexible loads use the freed-up power
 
 Devices that run as hard as they can — such as an EV charger with current control — take up the room solar frees, up to your hard cap. So if a car is charging while the sun is up, much of that draw comes from your own solar rather than the grid.
@@ -80,7 +82,7 @@ If you also have a battery: because PELS only sees net power and cannot command 
 
 ## What PELS does not do yet
 
-- It does not drive your grid export to exactly zero — it uses surplus opportunistically (the heating boost, plus whatever your flexible loads want), but it does not trim a device moment to moment to match your surplus, and it cannot tell your inverter to produce less.
+- It does not drive your grid export to exactly zero — it uses surplus opportunistically (the heating boost, plus whatever your flexible loads want), but it does not trim a device moment to moment to match your surplus, and it does not command your inverter. In a **zero-export home** the heating boost can now recover throttled production opportunistically (see above) — but that works by adding useful load so the inverter produces more on its own, not by controlling the inverter.
 - Solar money is shown for **today only** — a month-by-month "what my solar earned" history is a future direction.
 - It does not charge a home battery from surplus, or control a battery or inverter — and battery control is not on the near-term roadmap.
 

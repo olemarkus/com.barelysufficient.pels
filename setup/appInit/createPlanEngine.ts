@@ -72,6 +72,11 @@ export function createPlanEngine(ctx: AppContext) {
     getPriceOptimizationSettings: () => ctx.priceOptimizationSettings,
     isCurrentHourCheap: () => ctx.isCurrentHourCheap(),
     isCurrentHourExpensive: () => ctx.isCurrentHourExpensive(),
+    // Inferred curtailed-surplus term for the surplus allocator. Late-bound
+    // closure: the curtailment estimator is wired post-startup
+    // (`wireCurtailmentSurplus`), after this engine exists — until then the
+    // context getter reads null (fail-closed).
+    getInferredSurplusKw: () => ctx.getCurtailedSurplusKw?.() ?? null,
     getPowerTracker: () => ctx.powerTracker,
     getDailyBudgetSnapshot: () => ctx.dailyBudgetService?.getSnapshot() ?? null,
     decorateDeferredObjectives: (input) => deferredObjectiveController.decorate(input),

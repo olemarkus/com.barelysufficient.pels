@@ -422,17 +422,47 @@ CI failure, so future field-move slices can't silently grow the debt.*
       classify unclamped again. *Persona:* prosumer with PV + home battery. *Hypothesis:* battery homes sit
       in the clamp-aware quantile mode (forced-low confidence) longer than their data warrants.
 
-- [ ] **Decide confidence attenuation for the PV forecast at the surplus seam (curtailment-lane PR).** The
-      clamp-aware quantile fit deliberately forces `confidence: 'low'`, but that signal is erased before it
-      reaches consumers: `wireBudgetPrice`'s surplus provider reads `forecast()`, which emits kWh only
-      (`setup/appServiceWiring.ts` → `PvForecastService.forecast`). For the TRUE zero-export home the P90
-      potential IS the design intent (the forecast must claim the surplus the clamp hides, or the home never
-      shifts load to uncover it). Decide in the curtailment-lane PR whether low-confidence forecasts should
-      carry a discount before feeding surplus/budget-price consumers (the design's 0.9/0.8 dogfood-tunable
-      factors), rather than baking a discount into the fit. *Persona:* prosumer whose budgetPrice consumers
-      (live since #1808) plan against the forecast. *Hypothesis:* an undiscounted P90 forecast on a
-      low-confidence fit occasionally overstates surplus and schedules load into hours the sun doesn't
-      cover; the cost asymmetry (mild import vs staying curtailed) decides the factor.
+- [ ] **Curtailment surplus: replace battery full-suppression with a batteryPowerW discount.** The
+      curtailment-surplus estimator (`lib/solar/curtailmentSurplus.ts`) suppresses the inferred term
+      entirely when a home battery is tracked — v1 cannot tell a throttled inverter from a charging
+      battery. `battery_state_observed` already carries a typed `batteryPowerW`, but it is emit-only
+      (deliberately no retained value); discounting the term by concurrent battery charge power needs a
+      retained, freshness-gated aggregate at the transport boundary first. Tune against
+      `curtailment_verify_*` / `surplus_pool` dogfood telemetry. *Persona:* prosumer with PV + battery +
+      zero-export controller whose panels still curtail once the battery is full. *Hypothesis:* full
+      suppression forfeits real recoverable surplus in battery homes for most bright afternoons.
+
+- [ ] **Curtailment verify-window coverage gap: a lift whose support MIGRATES to the inferred term is
+      never verified.** The window opens only on a lift RISING edge with a positive term
+      (`trackLiftEdges`, `lib/solar/curtailmentSurplus.ts`); a lift that engaged on measured export and
+      later survives only because the inferred term backfills the pool (export faded, term grew) runs
+      unverified — no window, no refute-ladder learning. Bounded: a wrong term still hits the sticky
+      import latch within one tick and the gate's sustained-import hard-off releases the lift, so the
+      exposure is the ordinary bounded import burst, just without ladder escalation. Closing it means
+      opening a window on a term-becomes-load-bearing transition, which needs pool-composition feedback
+      from the allocator (seam width). *Persona:* real-export prosumer on a partly cloudy day whose
+      export fades under an engaged lift. *Hypothesis:* rare and latch-bounded; revisit only if
+      `surplus_pool` telemetry shows sustained inferred-dominant pools with an engaged lift and no
+      matching `curtailment_verify_started`.
+
+- [ ] **Curtailment verify aggregate-lift blind spot: an incremental second-device engage produces no
+      rising edge.** `isSurplusLiftEngaged` is a whole-home ANY over the eligibility map, so a second
+      device engaging while the first is already lifted never opens a verify window for the added draw.
+      Bounded by the same latch + hard-off backstop. A per-device edge signal (eligibility-map diffing in
+      the wiring, or an allocator callback) would close it at the cost of seam width. *Persona:*
+      zero-export home with two willing heaters whose inferred pool covers both. *Hypothesis:*
+      multi-willing-device zero-export homes are rare in dogfood; the single-window simplification is
+      the right trade until telemetry shows stacked engagements refuting late.
+
+- [ ] **Curtailment estimator: nightly steady-state re-fits with no consumer.** Dormancy is one-way —
+      once armed, night ticks (generation 0, term 0) keep resolving the potential; the 30 s wiring memo
+      (`POTENTIAL_MEMO_TTL_MS`, `setup/appInit/wireCurtailmentSurplus.ts`) still admits ~2 PV-gain
+      re-fits/minute all night (each pipeline tick invalidates the fit memo), each walking the 90-day
+      history for a value nothing consumes in the dark. Consider a zero-generation idle guard (skip
+      potential resolution while the last N generation samples are 0) or an hour-granular memo.
+      *Persona:* every armed solar home, all night, on a cpuwarn-sensitive Homey Pro. *Hypothesis:*
+      the per-fit cost is ~ms so the burn is small but pure waste; fix opportunistically with the next
+      estimator change rather than shipping a dedicated PR.
 
 - [ ] **Give the `pv_forecast_state` boot read an abandon-grace window.** `createPvForecastStore.read()`
       runs once in the PvForecastController constructor; a single transient-failed/empty settings read
