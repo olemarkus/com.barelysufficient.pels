@@ -74,6 +74,66 @@ export function normalizeEvBoostSettings(value: unknown): EvBoostSettings {
   return normalizeEvBoostSettingsRuntime(value);
 }
 
+const SOLAR_RECORD_FIELDS = [
+  'generationBuckets',
+  'exportBuckets',
+  'generationDailyTotals',
+  'exportDailyTotals',
+] as const;
+
+// A retained solar kWh entry must be a finite, non-negative number — anything
+// else would NaN-poison the prune fold (`foldAgedHourIntoDay` sums it into the
+// daily total) or smuggle negative energy past the write-side clamps.
+const isValidSolarKWh = (entry: unknown): entry is number => isFiniteNumber(entry) && entry >= 0;
+
+/** null = the whole field is junk; otherwise the record with junk KEYS dropped. */
+function sanitizeSolarRecord(field: unknown): Record<string, unknown> | null {
+  if (!isPlainObjectRecord(field)) return null;
+  const entries = Object.entries(field);
+  const validEntries = entries.filter(([, entry]) => isValidSolarKWh(entry));
+  if (validEntries.length === entries.length) return field;
+  return Object.fromEntries(validEntries);
+}
+
+/**
+ * Field- and key-level normalization for the optional solar families: a junk
+ * value never fails the whole `isPowerTrackerState` guard — an all-or-nothing
+ * reject there would discard the entire tracker (billed import history
+ * included) and let the next persist overwrite it. Granularity:
+ *
+ * - A field that is not a plain record (arrays, class instances, scalars) is
+ *   dropped whole.
+ * - Within a record, each retained VALUE must be a finite number ≥ 0 —
+ *   offending keys are dropped, the rest of the record survives (a junk hour
+ *   must not cost the healthy hours around it, and must never reach the prune
+ *   fold where it would NaN-poison the daily total).
+ * - `lastGenerationW` must be a finite number ≥ 0 or it is dropped.
+ *
+ * Non-object inputs and clean states pass through untouched (same reference).
+ */
+export function sanitizePowerTrackerSolarFields(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const blob = value as Record<string, unknown>;
+  const patches = SOLAR_RECORD_FIELDS.flatMap((field) => {
+    const current = blob[field];
+    if (current === undefined) return [];
+    const sanitizedField = sanitizeSolarRecord(current);
+    return sanitizedField === current ? [] : [[field, sanitizedField] as const];
+  });
+  const badLatch = blob.lastGenerationW !== undefined && !isValidSolarKWh(blob.lastGenerationW);
+  if (patches.length === 0 && !badLatch) return value;
+  const sanitized = { ...blob };
+  for (const [field, patch] of patches) {
+    if (patch === null) {
+      delete sanitized[field]; // eslint-disable-line functional/immutable-data
+    } else {
+      sanitized[field] = patch; // eslint-disable-line functional/immutable-data
+    }
+  }
+  if (badLatch) delete sanitized.lastGenerationW; // eslint-disable-line functional/immutable-data
+  return sanitized;
+}
+
 export function isPowerTrackerState(value: unknown): value is PowerTrackerState {
   if (!value || typeof value !== 'object') return false;
   const state = value as PowerTrackerState;
@@ -95,6 +155,11 @@ export function isPowerTrackerState(value: unknown): value is PowerTrackerState 
     isOptionalRecord(state.controlledHourlyAverages),
     isOptionalRecord(state.uncontrolledHourlyAverages),
     isOptionalRecord(state.exemptHourlyAverages),
+    isOptionalRecord(state.generationBuckets),
+    isOptionalRecord(state.exportBuckets),
+    isOptionalRecord(state.generationDailyTotals),
+    isOptionalRecord(state.exportDailyTotals),
+    isOptionalNumber(state.lastGenerationW),
     isOptionalNumber(state.lastPowerW),
     isOptionalNumber(state.lastControlledPowerW),
     isOptionalNumber(state.lastUncontrolledPowerW),

@@ -7642,6 +7642,14 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   }
 }
 
+/* Solar card mount chain must be able to shrink below its content's
+ * min-content width — see the Solar card section below. Declared before the
+ * higher-specificity data-loading rule targeting the same element. */
+.solar-usage-mount,
+#solar-usage-card {
+  min-width: 0;
+}
+
 /* Usage panel first-paint skeleton: while `#usage-panel[data-loading="true"]`
  * is set, hide the static `-- kWh` hero/cards/footer so the panel shows a
  * single shimmer placeholder instead of a half-populated wall. `power.ts`
@@ -7649,12 +7657,101 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 #usage-panel[data-loading="true"] > .usage-return-link,
 #usage-panel[data-loading="true"] > .usage-hero,
 #usage-panel[data-loading="true"] > .usage-card,
+#usage-panel[data-loading="true"] > .solar-usage-mount,
 #usage-panel[data-loading="true"] > .usage-footer {
   display: none;
 }
 
 #usage-panel[data-loading="false"] > .usage-loading-skeleton {
   display: none;
+}
+
+/* ---------------------------------------------------------------------------
+ * Usage tab — Solar card (display-only rows; see views/SolarUsageCard.tsx)
+ *
+ * Every column in the previous-days grid is minmax(0, …) and every cell may
+ * wrap: the earlier min-content grid (with per-row nowrap prose) could not
+ * shrink below ~316 px and blew the card out of the 320 px panel. The mount
+ * chain carries min-width: 0 (declared above the data-loading block for
+ * specificity ordering).
+ * --------------------------------------------------------------------------- */
+
+.solar-money {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  margin-top: var(--spacing-3);
+}
+
+.solar-money__line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--spacing-3);
+}
+
+.solar-money__label {
+  color: var(--pels-text-supporting-color);
+  font-size: var(--pels-text-supporting-font-size);
+  line-height: var(--pels-text-supporting-font-line-height);
+}
+
+.solar-money__value {
+  color: var(--pels-text-settings-trailing-color);
+  font-weight: var(--pels-text-settings-trailing-font-weight);
+  font-size: var(--pels-text-body-font-size);
+  line-height: var(--pels-text-body-font-line-height);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.solar-money__note {
+  margin: 0;
+}
+
+.solar-days {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  margin-top: var(--spacing-3);
+  min-width: 0;
+}
+
+.solar-days__title {
+  margin: 0 0 var(--spacing-1);
+}
+
+.solar-day-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--spacing-2);
+  align-items: baseline;
+  min-width: 0;
+}
+
+.solar-day-row--export-only {
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+}
+
+.solar-day-row__header-cell {
+  text-align: right;
+}
+
+.solar-day-row__day {
+  color: var(--pels-text-caption-color);
+  font-size: var(--pels-text-caption-font-size);
+  font-weight: var(--pels-text-caption-font-weight);
+  line-height: var(--pels-text-caption-font-line-height);
+  overflow-wrap: anywhere;
+}
+
+.solar-day-row__value {
+  color: var(--pels-text-secondary);
+  font-size: var(--pels-text-caption-font-size);
+  line-height: var(--pels-text-caption-font-line-height);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 
 /* ---------------------------------------------------------------------------

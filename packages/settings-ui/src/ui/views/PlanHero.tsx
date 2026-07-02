@@ -27,6 +27,11 @@ import type {
 } from '../../../../contracts/src/settingsUiApi.ts';
 import { resolveRawPriceUnitLabel } from '../priceUnit.ts';
 import { normalizeCombinedPrices } from '../combinedPrices.ts';
+import {
+  formatSolarNowSubline,
+  resolveSolarNow,
+  type SolarNowInput,
+} from '../../../../shared-domain/src/solar/solarNow.ts';
 import { MdIconButton } from './materialWebJSX.tsx';
 
 type FreshnessState = NonNullable<SettingsUiPowerStatus['powerFreshnessState']>;
@@ -494,10 +499,12 @@ const PowerSection = ({
   headline,
   meta,
   isLimiting,
+  solarNowText,
 }: {
   headline: NonNullable<ReturnType<typeof formatHeroHeadline>>;
   meta: PlanMetaSnapshot;
   isLimiting: boolean;
+  solarNowText: string | null;
 }) => {
   const scale = computePowerBarScale(headline, meta);
   // M3: one tonal story per surface. The hero rim + status chip already carry
@@ -511,6 +518,11 @@ const PowerSection = ({
         <span class="plan-hero__metric-qualifier">kW</span>
       </div>
       <div class="plan-hero__subline">{resolvePowerSubline(headline, meta)}</div>
+      {solarNowText !== null && (
+        <div class="plan-hero__subline plan-hero__subline--muted" id="plan-hero-solar-now">
+          {solarNowText}
+        </div>
+      )}
       {scale && (
         <div class="plan-hero__bar-group">
           <PowerMeter scale={scale} isLimiting={isLimiting} />
@@ -671,6 +683,7 @@ export const PlanHero = ({
   plan,
   power,
   prices,
+  solarNowInput,
   context,
   renderedAtMs,
   nowMs,
@@ -678,6 +691,7 @@ export const PlanHero = ({
   plan: PlanSnapshot | null;
   power: SettingsUiPowerStatus | null;
   prices?: SettingsUiPricesPayload | null;
+  solarNowInput?: SolarNowInput | null;
   context: HeroContext;
   renderedAtMs: number;
   nowMs: number;
@@ -721,6 +735,10 @@ export const PlanHero = ({
   const isLimiting = (heroStatus === 'above-safe-pace' || heroStatus === 'over-hard-cap')
     && devices.some(isLimitedDevice);
   const cheapestUpcomingText = resolveCheapestUpcomingText(prices, nowMs);
+  // "Solar now" subline: resolver owns every gate (finiteness, staleness,
+  // < 50 W production) — a stale or non-solar sample simply yields no line.
+  const solarNow = resolveSolarNow(solarNowInput ?? null, nowMs);
+  const solarNowText = solarNow !== null ? formatSolarNowSubline(solarNow) : null;
 
   return (
     <div class="plan-hero pels-hero" data-tone={HERO_STATUS_DATA_TONE[heroStatus]} aria-live="polite">
@@ -729,7 +747,7 @@ export const PlanHero = ({
         freshnessState={freshnessState}
         ageText={headline.ageText}
       />
-      <PowerSection headline={headline} meta={meta} isLimiting={isLimiting} />
+      <PowerSection headline={headline} meta={meta} isLimiting={isLimiting} solarNowText={solarNowText} />
       <EnergySection meta={meta} cheapestUpcomingText={cheapestUpcomingText} />
       <p class="plan-hero__decision" data-positive={decision.positive ? '' : undefined}>
         {decision.text}

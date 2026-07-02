@@ -48,6 +48,7 @@ import type {
 } from '../packages/contracts/src/settingsUiApi';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import { isObserveOnlyRoleClassKey } from '../lib/device/transport/managerHelpers';
+import { normalizePowerSource } from '../lib/power/powerSource';
 import type { WeatherAdvisorReadoutPayload } from '../packages/contracts/src/weatherAdvisorTypes';
 import {
   getLatestDevicesForUiFromApp,
@@ -162,6 +163,17 @@ const getSettingsUiPower = ({ homey }: ApiContext): SettingsUiPowerPayload => {
     tracker: tracker && typeof tracker === 'object' ? tracker : null,
     status: status && typeof status === 'object' ? status : null,
     heartbeat: null,
+    // Home-level "this home has solar surfaces" gate for the Usage tab's
+    // Solar card (the device list is lazy-loaded, so the card can't read the
+    // ui_devices flag). Requires BOTH a role-detected PV device (class-key
+    // 'solarpanel') AND the homey_energy power source: on the flow source the
+    // power boundary rejects negative watts and carries no generation field,
+    // so the solar buckets can never fill — flagging such a home would render
+    // an eternal "gathering" card that promises data that will never come
+    // (terminology rule: flow homes get NO solar surfaces).
+    hasManagedSolarDevice: normalizePowerSource(homey.settings.get('power_source')) === 'homey_energy'
+      && getRawSettingsUiDeviceCandidates({ homey })
+        .some((device) => device.deviceClass === 'solarpanel'),
   };
 };
 

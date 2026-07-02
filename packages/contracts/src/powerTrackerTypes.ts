@@ -5,6 +5,9 @@ export type PowerTrackerState = {
   lastControlledPowerW?: number;
   lastUncontrolledPowerW?: number;
   lastExemptPowerW?: number;
+  // Gross PV generation (W) carried by the last sample; absent when that
+  // sample had no generation signal (never stale-held).
+  lastGenerationW?: number;
   lastTimestamp?: number;
   buckets?: Record<string, number>;
   hourlySampleCounts?: Record<string, number>;
@@ -23,6 +26,13 @@ export type PowerTrackerState = {
   exemptHourlyAverages?: Record<string, { sum: number; count: number }>;
   deviceBuckets?: Record<string, Record<string, number>>;
   lastDevicePowerWById?: Record<string, number>;
+  // Sparse solar accounting families — present only in homes with a generation
+  // signal / observed export. Hourly buckets keyed by UTC-hour ISO strings;
+  // daily totals by the Homey-local calendar date. kWh only.
+  generationBuckets?: Record<string, number>;
+  exportBuckets?: Record<string, number>;
+  generationDailyTotals?: Record<string, number>;
+  exportDailyTotals?: Record<string, number>;
   unreliablePeriods?: Array<{ start: number; end: number }>;
   objectiveProfiles?: Record<string, DeviceObjectiveProfile>;
 };

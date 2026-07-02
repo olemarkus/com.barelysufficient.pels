@@ -8,7 +8,7 @@ import {
   type FlowReportedCapabilitiesByDevice,
 } from '../lib/device/transport/flowReportedCapabilities';
 import type { PowerTrackerState } from '../packages/contracts/src/powerTrackerTypes';
-import { isPowerTrackerState } from '../lib/utils/appTypeGuards';
+import { isPowerTrackerState, sanitizePowerTrackerSolarFields } from '../lib/utils/appTypeGuards';
 import { FLOW_REPORTED_DEVICE_CAPABILITIES } from '../lib/utils/settingsKeys';
 
 /**
@@ -28,9 +28,16 @@ export class SettingsRepository {
    * Returns the persisted power-tracker snapshot if it parses, otherwise
    * `undefined`. Caller decides whether to keep the existing in-memory
    * state (`undefined` return) or adopt the parsed state.
+   *
+   * The optional solar families are field-level sanitized FIRST: a junk value
+   * in one of them drops that field only, so corrupt solar data can never
+   * fail the whole guard and cost the billed import history on the next
+   * persist.
    */
   loadPowerTrackerState(): PowerTrackerState | undefined {
-    const stored = this.homey.settings.get('power_tracker_state') as unknown;
+    const stored = sanitizePowerTrackerSolarFields(
+      this.homey.settings.get('power_tracker_state') as unknown,
+    );
     return isPowerTrackerState(stored) ? stored : undefined;
   }
 

@@ -839,6 +839,16 @@
       tracker: settings.power_tracker_state ?? null,
       status: settings.pels_status ?? null,
       heartbeat: typeof settings.app_heartbeat === 'number' ? settings.app_heartbeat : null,
+      // Mirrors the real producer (setup/settingsUiApi.ts getSettingsUiPower):
+      // a solarpanel device in the snapshot AND the homey_energy power source
+      // (unset normalizes to flow, which has no solar signal — see
+      // lib/power/powerSource.ts). The default fixture has neither, so the
+      // Usage Solar card stays hidden across the suite — the /ui_devices
+      // handler's hardcoded `hasManagedSolarDevice: true` is a separate
+      // fixture lie kept alive solely for the device-detail surplus spec.
+      hasManagedSolarDevice: settings.power_source === 'homey_energy'
+        && settings.target_devices_snapshot
+          .some((device) => device.deviceClass === 'solarpanel'),
     };
   };
 
@@ -860,6 +870,14 @@
     const scenarioPatch = runtimeOverrides.scenarioPatch;
     if (scenarioPatch && Object.prototype.hasOwnProperty.call(scenarioPatch, 'plan')) {
       return scenarioPatch.plan;
+    }
+    // Test knob: `settings.plan_snapshot_meta_patch` merges into the sample
+    // plan's meta so a spec can make the hero numerically consistent with an
+    // overridden tracker (e.g. an exporting home needs a negative net
+    // `totalKw`) without replicating the whole plan fixture.
+    const metaPatch = settings.plan_snapshot_meta_patch;
+    if (metaPatch && typeof metaPatch === 'object' && settings.plan_snapshot?.meta) {
+      return { ...settings.plan_snapshot, meta: { ...settings.plan_snapshot.meta, ...metaPatch } };
     }
     return settings.plan_snapshot;
   };

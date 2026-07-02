@@ -56,3 +56,13 @@ export const formatUsageComparisonLine = (
 export const formatUsageCollectingLine = (todayText: string): string => (
   `Today · ${todayText}. Collecting history…`
 );
+
+// Solar reconciliation line under the hero headline. The headline counts NET
+// grid import, while the Solar card's "Used at home" counts self-consumed
+// production — on one screen the two read as a contradiction ("0.4 kWh today"
+// vs "Used at home 1.5 kWh") unless the hero names the part the grid never
+// saw. Shown only in homes where the Solar card shows measured production.
+// Registered in notes/ui-terminology.md § Solar.
+export const formatUsageHeroSolarSupplement = (selfUsedKWh: number): string => (
+  `+ ${selfUsedKWh.toFixed(1)} kWh of your own solar`
+);

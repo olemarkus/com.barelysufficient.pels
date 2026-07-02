@@ -4,6 +4,7 @@ import {
   usageHeroComparison,
   usageHeroDelta,
   usageHeroProjection,
+  usageHeroSolar,
 } from './dom.ts';
 import { getStartOfDayInTimeZone, getZonedParts } from './timezone.ts';
 import {
@@ -14,6 +15,7 @@ import {
   formatProjectionLine,
   formatUsageComparisonLine,
   formatUsageCollectingLine,
+  formatUsageHeroSolarSupplement,
 } from '../../../shared-domain/src/usageHeroStrings.ts';
 
 export type PowerStatsLike = {
@@ -239,8 +241,17 @@ export const renderUsageHero = (
   stats: PowerStatsLike,
   timeZone: string,
   todayText: string,
+  // Today's self-consumed solar kWh (producer-resolved by the Solar card
+  // section; null = no measured solar to reconcile). The headline counts NET
+  // grid import, so without this line the hero and the Solar card's "Used at
+  // home" read as contradicting numbers on the same screen.
+  solarSelfUsedKWh: number | null = null,
 ): void => {
   if (usageHeroHeadline) usageHeroHeadline.textContent = `${stats.today.toFixed(1)} kWh today`;
+  setElementText(
+    usageHeroSolar,
+    solarSelfUsedKWh !== null ? formatUsageHeroSolarSupplement(solarSelfUsedKWh) : null,
+  );
 
   const now = new Date();
   const weekdayIndex = zonedWeekdayIndex(now, timeZone);

@@ -113,6 +113,29 @@ Power now
 
 "Safe pace now" is intentionally dynamic phrasing — it changes as the hour progresses and energy accumulates. Do not say "OK up to X kW for the rest of this hour", which implies stability.
 
+### Solar now subline (solar homes only)
+
+Directly under the Power now subline, a muted one-liner shows where live
+production is going (`packages/shared-domain/src/solar/solarNow.ts`, gates:
+fresh sample within 60 s, production ≥ 50 W):
+
+```
+Solar now 3.2 kW — 1.1 kW at home, 2.1 kW exported
+```
+
+or, when export is under 50 W:
+
+```
+Solar now 3.2 kW — all used at home
+```
+
+One line, terse noun phrases (never verb-y clauses that wrap mid-thought).
+The line is structurally absent in non-solar homes, on stale samples, and
+while panels produce under 50 W — the hero never explains why it's missing.
+Note: while a home exports, "Power now" (net grid power) is legitimately
+negative — the subline is what makes that reading make sense.
+Vocabulary registered in `notes/ui-terminology.md` § Solar.
+
 ### Power bar
 
 Threshold gauge, not a progress bar. Scale anchored to hard cap or a rounded max above it — never to the dynamic safe pace.
