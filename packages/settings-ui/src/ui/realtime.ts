@@ -441,6 +441,14 @@ const handlePricesUpdated = () => {
 
 const handleDevicesUpdated = () => {
   refreshDevicesForUi();
+  // The power payload carries the home-level `hasManagedSolarDevice` gate for
+  // the Usage Solar card, so a device-list change (PV added/removed) must
+  // refetch it — otherwise the card's gathering state waits for the next
+  // manual Usage-tab open.
+  refreshPowerDataIfVisible('realtime devices_updated', {
+    force: true,
+    invalidateBeforeRefresh: true,
+  });
 };
 
 const handlePowerUpdated = (power: unknown) => {
@@ -449,13 +457,23 @@ const handlePowerUpdated = (power: unknown) => {
   if (hasFullTracker) {
     primeApiCache(SETTINGS_UI_POWER_PATH, payload);
   } else {
-    updateApiCache(SETTINGS_UI_POWER_PATH, {
-      tracker: null,
+    // Status-only push: patch status/heartbeat and PRESERVE the cached
+    // tracker (and hasManagedSolarDevice). Every runtime `power_updated` push
+    // is status-only (`emitSettingsUiPowerUpdatedForApp` sends tracker:null),
+    // so stomping the tracker here left the Overview's "Solar now" subline
+    // reading a null tracker on most opens (`refreshOverviewPlanWithRescueGate`
+    // reads this cache) until the 30 s periodic refetch healed it. Consumers
+    // that need a FRESH tracker already invalidate before refetching (see
+    // refreshPowerDataIfVisible below and the usage-tab activation hook).
+    updateApiCache<SettingsUiPowerPayload>(SETTINGS_UI_POWER_PATH, {
       status: payload?.status ?? null,
       heartbeat: payload?.heartbeat ?? null,
-    });
+    }, { tracker: null });
   }
-  updatePlanPower(payload?.status ?? null);
+  // Only a full-tracker push refreshes the hero's "Solar now" triple; a
+  // status-only push keeps the cached one (the resolver's staleness gate
+  // retires it on its own).
+  updatePlanPower(payload?.status ?? null, hasFullTracker ? payload.tracker : undefined);
   updateBudgetPower(payload?.status ?? null);
   updateStaleDataStatusFromPowerPayload(payload ?? null);
   refreshPowerDataIfVisible('realtime power_updated', {

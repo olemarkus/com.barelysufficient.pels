@@ -39,6 +39,7 @@ import {
   renderHourlyPatternChartEcharts,
 } from './usageStatsChartsEcharts.ts';
 import { getActiveDailyBudgetKWh, setActiveDailyBudgetChangeListener } from './activeDailyBudget.ts';
+import { renderSolarUsageSection } from './solarUsageSection.ts';
 import {
   formatDateInTimeZone,
   getDateKeyInTimeZone,
@@ -155,7 +156,11 @@ const getDailyHistoryPoints = (stats: PowerStatsSummary): DailyHistoryPoint[] =>
   stats.dailyHistory.slice(0, DAILY_HISTORY_DAYS)
 );
 
-const renderPowerSummary = (stats: PowerStatsSummary, timeZone: string) => {
+const renderPowerSummary = (
+  stats: PowerStatsSummary,
+  timeZone: string,
+  solarSelfUsedKWh: number | null,
+) => {
   const now = new Date();
   const todayText = formatDateInTimeZone(now, { weekday: 'short', month: 'short', day: 'numeric' }, timeZone);
 
@@ -163,7 +168,7 @@ const renderPowerSummary = (stats: PowerStatsSummary, timeZone: string) => {
   if (usageWeek) usageWeek.textContent = `${stats.week.toFixed(1)} kWh`;
   if (usageMonth) usageMonth.textContent = `${stats.month.toFixed(1)} kWh`;
 
-  renderUsageHero(stats, timeZone, todayText);
+  renderUsageHero(stats, timeZone, todayText, solarSelfUsedKWh);
 };
 
 
@@ -414,7 +419,17 @@ export const renderPowerStats = async () => {
     latestPowerStats = stats;
     latestPowerStatsTimeZone = timeZone;
     powerStatsRendered = true;
-    renderPowerSummary(stats, timeZone);
+    // Solar card rides the same stats render (cache hit — getPowerStats just
+    // fetched the payload). Rendered FIRST so the hero summary can carry the
+    // "+ … of your own solar" reconciliation line the section resolves; the
+    // gate + degradation tiers live in the section itself.
+    const powerPayload = await getPowerReadModel();
+    const { todaySelfUsedKWh } = await renderSolarUsageSection({
+      tracker: powerPayload.tracker,
+      timeZone,
+      hasManagedSolarDevice: powerPayload.hasManagedSolarDevice === true,
+    });
+    renderPowerSummary(stats, timeZone, todaySelfUsedKWh);
     renderPowerAverages(stats);
     renderUsageHistorySections();
   } finally {

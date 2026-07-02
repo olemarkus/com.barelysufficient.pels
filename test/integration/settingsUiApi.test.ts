@@ -252,6 +252,8 @@ describe('settingsUiApi', () => {
       tracker: { buckets: { '2026-03-03T00:00:00.000Z': 1.2 } },
       status: { lastPowerUpdate: 123, priceLevel: 'cheap' },
       heartbeat: null,
+      // No solarpanel-class device in the fixture candidates.
+      hasManagedSolarDevice: false,
     });
     expect(result.prices.combinedPrices).toEqual({ prices: [{ startsAt: '2026-03-03T00:00:00.000Z', total: 10 }] });
     expect(result.prices.homeyCurrency).toBe('NOK');
@@ -402,6 +404,8 @@ describe('settingsUiApi', () => {
       tracker: { buckets: { '2026-03-03T00:00:00.000Z': 1.2 } },
       status: { lastPowerUpdate: 123, priceLevel: 'cheap' },
       heartbeat: null,
+      // No solarpanel-class device in the fixture candidates.
+      hasManagedSolarDevice: false,
     });
     expect(getSettingsUiPricesPayload({ homey: homey as never })).toEqual({
       combinedPrices: { prices: [{ startsAt: '2026-03-03T00:00:00.000Z', total: 10 }] },
@@ -421,6 +425,56 @@ describe('settingsUiApi', () => {
         'dev-1': expect.objectContaining({ currentPenaltyLevel: 2 }),
       }),
     });
+  });
+
+  it('carries the solar tracker families through the ui_power payload verbatim', () => {
+    // PR-5 solar visibility: the Usage-tab Solar card and the Overview
+    // "Solar now" subline read these fields straight off the tracker payload —
+    // the producer serves the persisted state as-is, so a rebuild that strips
+    // or re-shapes the solar families must fail here.
+    const trackerWithSolar = {
+      buckets: { '2026-03-03T00:00:00.000Z': 1.2 },
+      generationBuckets: { '2026-03-03T10:00:00.000Z': 2.4 },
+      exportBuckets: { '2026-03-03T10:00:00.000Z': 0.8 },
+      generationDailyTotals: { '2026-02-01': 5.5 },
+      exportDailyTotals: { '2026-02-01': 1.5 },
+      lastGenerationW: 3200,
+      lastPowerW: -1500,
+      lastTimestamp: 123,
+    };
+    const homey = createHomey({
+      settings: { power_source: 'homey_energy' },
+      latestDevicesOverride: [
+        { id: 'heater-1', name: 'Heater', deviceType: 'temperature' },
+        { id: 'pv-1', name: 'Solar Roof', deviceClass: 'solarpanel' },
+      ],
+    });
+    // The producer prefers the LIVE app tracker over the persisted settings
+    // read — set it there, mirroring a running solar home.
+    (homey.app as { powerTracker: unknown }).powerTracker = trackerWithSolar;
+    const payload = getSettingsUiPowerPayload({ homey: homey as never });
+    expect(payload.tracker).toEqual(trackerWithSolar);
+    // The home-level solar flag rides the power payload (the device list is
+    // lazy-loaded, so the Usage Solar card gates on this copy of the signal).
+    expect(payload.hasManagedSolarDevice).toBe(true);
+  });
+
+  it('keeps the power payload solar flag false on the flow power source, even with a PV device', () => {
+    // Flow reporting rejects negative watts and carries no generation field,
+    // so a flow home's solar buckets can never fill — flagging it would render
+    // an eternal "gathering" Solar card promising data that never comes.
+    const solarDevices = [
+      { id: 'heater-1', name: 'Heater', deviceType: 'temperature' },
+      { id: 'pv-1', name: 'Solar Roof', deviceClass: 'solarpanel' },
+    ];
+    const flowHomey = createHomey({
+      settings: { power_source: 'flow' },
+      latestDevicesOverride: solarDevices,
+    });
+    expect(getSettingsUiPowerPayload({ homey: flowHomey as never }).hasManagedSolarDevice).toBe(false);
+    // Unset power_source normalizes to flow (the historical read semantics).
+    const unsetHomey = createHomey({ latestDevicesOverride: solarDevices });
+    expect(getSettingsUiPowerPayload({ homey: unsetHomey as never }).hasManagedSolarDevice).toBe(false);
   });
 
   it('hides auto-tracked observe-only battery/PV devices from the settings-UI device list', () => {

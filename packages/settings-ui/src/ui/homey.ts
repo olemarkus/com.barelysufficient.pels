@@ -87,10 +87,18 @@ export const primeApiCache = <T>(uri: string, value: T) => {
   apiCache.set(uri, value);
 };
 
-export const updateApiCache = <T extends Record<string, unknown>>(uri: string, patch: Partial<T>) => {
+// `defaults` fill the payload shape ONLY when no valid entry is cached yet, so
+// a partial patch can preserve cached fields it deliberately omits (e.g. a
+// status-only power push preserving the cached tracker) while a cold cache
+// still stores a fully-shaped payload for consumers that read every field.
+export const updateApiCache = <T extends Record<string, unknown>>(
+  uri: string,
+  patch: Partial<T>,
+  defaults?: Partial<T>,
+) => {
   const current = apiCache.get(uri);
   if (!current || typeof current !== 'object' || Array.isArray(current)) {
-    apiCache.set(uri, patch);
+    apiCache.set(uri, { ...defaults, ...patch });
     return;
   }
   apiCache.set(uri, { ...(current as T), ...patch });

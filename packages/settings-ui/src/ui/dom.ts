@@ -76,6 +76,7 @@ export const usageDayReadout = document.getElementById('usage-day-readout') as H
 export const usageHero = document.getElementById('usage-hero') as HTMLElement | null;
 export const usageHeroHeadline = document.getElementById('usage-hero-headline') as HTMLElement | null;
 export const usageHeroComparison = document.getElementById('usage-hero-comparison') as HTMLElement | null;
+export const usageHeroSolar = document.getElementById('usage-hero-solar') as HTMLElement | null;
 export const usageHeroDelta = document.getElementById('usage-hero-delta') as HTMLElement | null;
 export const usageHeroProjection = document.getElementById('usage-hero-projection') as HTMLElement | null;
 export const tabs = Array.from(document.querySelectorAll<HTMLElement>('.tab'));

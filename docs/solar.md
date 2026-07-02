@@ -7,7 +7,7 @@ description: Use more of your own rooftop solar with PELS — automatic capacity
 
 If you have rooftop solar (PV), this page explains what PELS does with it today.
 
-**Short version:** PELS uses your solar to protect your capacity for free, and it can nudge a heater to soak surplus instead of exporting it — while keeping your energy accounting honest. It does not yet drive your export to zero, show a self-consumption figure, or control a battery or inverter (see [What PELS does not do yet](#what-pels-does-not-do-yet)).
+**Short version:** PELS uses your solar to protect your capacity for free, it can nudge a heater to soak surplus instead of exporting it, and it shows what your solar did — production, self-consumption, export, and the grid cost it avoided. It does not yet drive your export to zero or control a battery or inverter (see [What PELS does not do yet](#what-pels-does-not-do-yet)).
 
 ::: warning Requires the Homey Energy power source
 The solar features below need the **Homey Energy** power source, with a solar device that reports production. On the Flow power source, PELS does not receive a solar signal.
@@ -59,6 +59,19 @@ PELS runs these loads to **available power up to your hard cap**, not matched to
 
 When you export, PELS still uses net grid import for the **hard cap**, the **daily budget**, and your usage totals. An export hour is treated as zero energy used, so it never subtracts below zero or distorts your budget. Where your device meters show usage your panels covered locally, the managed/background split is labelled **"Before solar:"**. See [Daily Energy Budget](./daily-budget.md).
 
+### See what your solar does
+
+The **Usage tab** shows a Solar card with today's numbers so far — **Produced**, **Used at home** (kWh and the share of production you consumed yourself), and **Exported** — plus a compact previous-days view. When electricity prices are configured, the card also shows **Grid cost avoided today** (what the self-consumed energy would have cost to import) and, once an export price is set under Settings → Electricity prices, **Earned from export today**. The two figures cover different energy — what you used yourself versus what you sent out — so they are shown side by side, never summed into one "savings" number. Money figures are estimates (`≈`), and a value where some hours have no price yet says so.
+
+The Usage hero's headline still counts what you drew **from the grid**, so on a sunny day it can look surprisingly small next to the Solar card. The hero adds a "+ 1.5 kWh of your own solar" line naming the energy your panels covered locally — the grid never saw it, so it is not in the headline number.
+
+While the sun is up, the **Overview** hero adds a live line under Power now — for example *"Solar now 3.2 kW — 1.1 kW at home, 2.1 kW exported"* — so you can see at a glance where your production is going right now. While you export, "Power now" (your net grid power) can legitimately read negative; this line is what makes that reading make sense.
+
+Two honest edges to know about:
+
+- **Battery homes:** Exported can be *higher* than Produced in some hours — a battery discharging to the grid exports stored energy on top of (or instead of) live production. The card notes this rather than hiding it.
+- **A meter without a production reading** (Homey Energy reports your export but no solar device reports production): the card falls back to an export-only view and never pretends to know your production. On the Flow power source PELS receives no solar signal at all — neither production nor export — so the Solar card does not appear there.
+
 ### Battery and inverter are read-only
 
 PELS reads your solar production through Homey Energy — that is what makes capacity protection and the "Before solar:" split work — and your whole-home net power already reflects a battery charging or discharging. But PELS does **not** show a battery or inverter as a device, does not display a battery level, and does not command either. Auto-detected battery and solar devices are deliberately kept out of the device list and pickers, so you watch them in their own app, not in PELS.
@@ -68,7 +81,7 @@ If you also have a battery: because PELS only sees net power and cannot command 
 ## What PELS does not do yet
 
 - It does not drive your grid export to exactly zero — it uses surplus opportunistically (the heating boost, plus whatever your flexible loads want), but it does not trim a device moment to moment to match your surplus, and it cannot tell your inverter to produce less.
-- It does not show a self-consumption rate, or split your usage into self-consumed versus exported kWh.
+- Solar money is shown for **today only** — a month-by-month "what my solar earned" history is a future direction.
 - It does not charge a home battery from surplus, or control a battery or inverter — and battery control is not on the near-term roadmap.
 
 ## Export pricing

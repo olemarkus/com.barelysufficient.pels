@@ -300,6 +300,39 @@ landed 2026-06-13, after a one-off cleanup of all ~1,555 masked errors (field-mo
 the discriminant regroupers + pre-existing mock-shape debt). Test-fixture type drift is now a hard
 CI failure, so future field-move slices can't silently grow the debt.*
 
+- [ ] **Solar money v2 — per-day money accrual for past days.** *Persona:* prosumer/skeptic wanting
+      a month view of what their solar earned/avoided.
+      *Hypothesis:* the Usage-tab Solar card's money is today-only by design — `combined_prices`
+      retains no past days, so avoided/earned for yesterday and older cannot be derived read-side.
+      The v2 shape (reserved by the PR-5 spec so v1 fields never need reshaping): Sparegris-style
+      per-local-day minor-unit counters (`solarAvoidedMinorByDay`, `solarExportEarnedMinorByDay`)
+      keyed by local date, accrued at sample time from the CURRENT hour's real prices
+      (`total`/`exportPrice`, never `budgetPrice`). v1 bucket families stay money-agnostic (kWh
+      only) — resist pulling money accrual into them.
+      *Why:* the skeptic's "what did my panels do this month" question needs history the read-side
+      join cannot reconstruct. Files: `lib/power/tracker.ts`, `lib/power/sampleIngest.ts`,
+      `packages/settings-ui/src/ui/solarUsageSection.ts`.
+- [ ] **Extend `unreliablePeriods` awareness to the solar bucket families.** *Persona:* prosumer
+      reading the Solar card after a Homey restart or sample gap.
+      *Hypothesis:* the total-usage chart flags hours overlapping `unreliablePeriods` as
+      "Unreliable — some readings missing this hour", but the solar generation/export buckets share
+      the same held-sample integration and get no such flag — a long gap under-accrues produced and
+      exported kWh silently (the numbers are honest floors, but the card can't say so).
+      *Why:* consistency of the unreliable-hours story across Usage surfaces; low urgency because
+      the shared gap-reset (48 h) bounds the error and the card's copy claims "so far today", not
+      exactness. Files: `packages/settings-ui/src/ui/solarStats.ts`,
+      `packages/settings-ui/src/ui/solarUsageSection.ts`.
+- [ ] **Hide (or explain) the "Use solar surplus" device toggle on the flow power source.**
+      *Persona:* flow-source owner with a Homey solar device who flips the surplus toggle.
+      *Hypothesis:* the surplus-absorb engine keys off whole-home export (negative net); the flow
+      power card (`report_power_usage`) rejects negative watts, so a flow home's net is never
+      negative and the boost can NEVER engage — yet `/ui_devices.hasManagedSolarDevice` (which
+      gates the device-detail toggle) ignores the power source, offering an inert control. The
+      `/ui_power` copy of the flag is already source-gated (PR #1814 review round); align the
+      devices-payload gate the same way, or surface an explanatory note on the toggle.
+      *Why:* an inert toggle silently breaks trust; found while gating the Solar card off flow
+      homes. Files: `setup/settingsUiApi.ts` (`getSettingsUiDevicesPayload`),
+      `packages/settings-ui/src/ui/deviceDetail/solarSurplus.ts`, `docs/solar.md`.
 - [ ] **Solar export price — finish the remaining increments.** The export (feed-in) price model
       shipped off by default (`export_price_enabled`): a per-hour `exportPrice` computed as VAT-grossed
       spot × `export_spot_factor` + `export_fixed`, alongside a negative-safe price-level threshold fix.

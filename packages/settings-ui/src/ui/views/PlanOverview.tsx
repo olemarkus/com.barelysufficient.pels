@@ -7,6 +7,7 @@ import type {
   SettingsUiPowerStatus,
   SettingsUiPricesPayload,
 } from '../../../../contracts/src/settingsUiApi.ts';
+import type { SolarNowInput } from '../../../../shared-domain/src/solar/solarNow.ts';
 
 type OverviewProps = {
   plan: PlanSnapshot | null;
@@ -17,6 +18,7 @@ type OverviewProps = {
   planResolved: boolean;
   power: SettingsUiPowerStatus | null;
   prices: SettingsUiPricesPayload | null;
+  solarNowInput: SolarNowInput | null;
   context: HeroContext;
   renderedAtMs: number;
   nowMs: number;
@@ -47,7 +49,9 @@ const PlanCard = ({
   return <PlanGenericCard dev={dev} plan={plan} renderedAtMs={renderedAtMs} nowMs={nowMs} />;
 };
 
-const PlanOverviewRoot = ({ plan, planResolved, power, prices, context, renderedAtMs, nowMs }: OverviewProps) => {
+const PlanOverviewRoot = ({
+  plan, planResolved, power, prices, solarNowInput, context, renderedAtMs, nowMs,
+}: OverviewProps) => {
   const devices = plan
     ? [...(plan.devices ?? [])].sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999))
     : [];
@@ -59,7 +63,15 @@ const PlanOverviewRoot = ({ plan, planResolved, power, prices, context, rendered
 
   return (
     <div>
-      <PlanHero plan={plan} power={power} prices={prices} context={context} renderedAtMs={renderedAtMs} nowMs={nowMs} />
+      <PlanHero
+        plan={plan}
+        power={power}
+        prices={prices}
+        solarNowInput={solarNowInput}
+        context={context}
+        renderedAtMs={renderedAtMs}
+        nowMs={nowMs}
+      />
       <div id="plan-hour-strip" class="plan-hour-strip" hidden />
       {emptyMessage && <p id="plan-empty" class="muted">{emptyMessage}</p>}
       <div id="plan-cards" class="plan-cards">

@@ -3,13 +3,14 @@ import type { PowerTrackerState, RecordPowerSampleParams } from './trackerTypes'
 import { truncateToUtcHour, getHourBucketKey, getZonedParts } from '../utils/dateUtils';
 import { addPerfDuration } from '../utils/perfCounters';
 import {
-  accumulateDevicePowerIfAvailable,
+  accrueTrackedSampleFamilies,
   calculateEnergyAcrossBoundaries,
   foldAgedHourIntoDay,
   normalizeDevicePowerWById,
   pruneHourlyBucketsOnly,
   serializeDeviceBuckets,
 } from './trackerEnergy';
+import { accrueSolarSample, buildSolarAggregatePatch, resolveSampleGenerationW } from './trackerSolar';
 export const HOURLY_RETENTION_DAYS = 30;
 export const DAILY_RETENTION_DAYS = 365;
 export type { PowerTrackerState, RecordPowerSampleParams } from './trackerTypes';
@@ -38,12 +39,15 @@ function buildNextPowerState(params: {
   nextControlledBuckets?: Map<string, number>;
   nextUncontrolledBuckets?: Map<string, number>;
   nextExemptBuckets?: Map<string, number>;
+  nextGenerationBuckets: Map<string, number>;
+  nextExportBuckets: Map<string, number>;
   nextDeviceBuckets: Map<string, Map<string, number>>;
   nowMs: number;
   currentPowerW: number;
   currentControlledPowerW?: number;
   currentUncontrolledPowerW?: number;
   currentExemptPowerW?: number;
+  currentGenerationW?: number;
   currentDevicePowerWById?: Record<string, number>;
   unreliablePeriods?: Array<{ start: number; end: number }>;
 }): PowerTrackerState {
@@ -55,17 +59,25 @@ function buildNextPowerState(params: {
     nextControlledBuckets,
     nextUncontrolledBuckets,
     nextExemptBuckets,
+    nextGenerationBuckets,
+    nextExportBuckets,
     nextDeviceBuckets,
     nowMs,
     currentPowerW,
     currentControlledPowerW,
     currentUncontrolledPowerW,
     currentExemptPowerW,
+    currentGenerationW,
     currentDevicePowerWById,
     unreliablePeriods,
   } = params;
+  // The generation latch is absence-as-absence: a sample without a generation
+  // reading must DROP any carried lastGenerationW rather than hold it stale, so
+  // the base spread deliberately excludes it and the conditional spread below
+  // re-adds it only when THIS sample carried one.
+  const { lastGenerationW: _droppedGenerationLatch, ...carriedState } = state;
   return {
-    ...state,
+    ...carriedState,
     buckets: Object.fromEntries(nextBuckets),
     hourlySampleCounts: Object.fromEntries(nextHourlySampleCounts),
     hourlyBudgets: Object.fromEntries(nextBudgets),
@@ -74,6 +86,11 @@ function buildNextPowerState(params: {
       ? Object.fromEntries(nextUncontrolledBuckets)
       : state.uncontrolledBuckets,
     exemptBuckets: nextExemptBuckets ? Object.fromEntries(nextExemptBuckets) : state.exemptBuckets,
+    // Sparse solar families: serialize only when non-empty so a non-solar home
+    // never gains the keys and its persisted state stays deep-equal (merge gate).
+    ...(nextGenerationBuckets.size > 0 ? { generationBuckets: Object.fromEntries(nextGenerationBuckets) } : {}),
+    ...(nextExportBuckets.size > 0 ? { exportBuckets: Object.fromEntries(nextExportBuckets) } : {}),
+    ...(currentGenerationW !== undefined ? { lastGenerationW: currentGenerationW } : {}),
     deviceBuckets: serializeDeviceBuckets(nextDeviceBuckets),
     lastDevicePowerWById: currentDevicePowerWById,
     lastTimestamp: nowMs,
@@ -145,6 +162,8 @@ function buildTrackedBucketMaps(state: PowerTrackerState): {
   nextControlledBuckets: Map<string, number>;
   nextUncontrolledBuckets: Map<string, number>;
   nextExemptBuckets: Map<string, number>;
+  nextGenerationBuckets: Map<string, number>;
+  nextExportBuckets: Map<string, number>;
   nextDeviceBuckets: Map<string, Map<string, number>>;
 } {
   return {
@@ -154,6 +173,8 @@ function buildTrackedBucketMaps(state: PowerTrackerState): {
     nextControlledBuckets: new Map<string, number>(Object.entries(state.controlledBuckets || {})),
     nextUncontrolledBuckets: new Map<string, number>(Object.entries(state.uncontrolledBuckets || {})),
     nextExemptBuckets: new Map<string, number>(Object.entries(state.exemptBuckets || {})),
+    nextGenerationBuckets: new Map<string, number>(Object.entries(state.generationBuckets || {})),
+    nextExportBuckets: new Map<string, number>(Object.entries(state.exportBuckets || {})),
     nextDeviceBuckets: new Map<string, Map<string, number>>(
       Object.entries(state.deviceBuckets || {}).map(([deviceId, buckets]) => [
         deviceId,
@@ -196,25 +217,6 @@ function resolveUnreliablePeriods(params: {
   return (gapDuration > 60 * 60 * 1000 || (oneMinGap && crossesHour))
     ? [...(state.unreliablePeriods || []), { start: previousTs, end: nowMs }]
     : state.unreliablePeriods;
-}
-
-function accumulatePowerIfAvailable(params: {
-  previousPowerW?: number;
-  nextPowerW?: number;
-  startTs: number;
-  endTs: number;
-  buckets: Map<string, number>;
-}): void {
-  const { previousPowerW, nextPowerW, startTs, endTs, buckets } = params;
-  if (typeof previousPowerW !== 'number' || typeof nextPowerW !== 'number') return;
-  calculateEnergyAcrossBoundaries({
-    startTs,
-    endTs,
-    powerW: previousPowerW,
-    buckets,
-    budgets: new Map(),
-    budgetKWh: null,
-  });
 }
 
 export function formatDateUtc(date: Date): string {
@@ -377,6 +379,8 @@ export function aggregateAndPruneHistory(
     state.exemptDailyTotals,
     state.exemptHourlyAverages,
   );
+  // Solar families: gate + averages-discard rules live in trackerSolar.ts.
+  const solarAggregatePatch = buildSolarAggregatePatch(state, aggregateForType);
   const deviceBucketEntries = (
     Object.entries(state.deviceBuckets || {}).flatMap(([deviceId, buckets]) => {
       const retained = Object.fromEntries(pruneHourlyBucketsOnly({ buckets, hourlyThreshold }) || []);
@@ -411,6 +415,7 @@ export function aggregateAndPruneHistory(
     controlledHourlyAverages: controlledAggregate.hourlyAverages,
     uncontrolledHourlyAverages: uncontrolledAggregate.hourlyAverages,
     exemptHourlyAverages: exemptAggregate.hourlyAverages,
+    ...solarAggregatePatch,
     deviceBuckets,
     unreliablePeriods: (state.unreliablePeriods || []).filter((p) => p.end >= hourlyThreshold),
   };
@@ -428,6 +433,9 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
   // value, so non-solar callers are unchanged. The total energy bucket and the
   // capacity guard deliberately keep `currentPowerW` (net import).
   const grossConsumptionW = Math.max(0, params.grossConsumptionW ?? currentPowerW);
+  // Producer-resolved gross generation for THIS sample; `undefined` = no
+  // generation signal (boundary/absence rules live in trackerSolar.ts).
+  const currentGenerationW = resolveSampleGenerationW(params.generationW);
 
   const {
     nextBuckets,
@@ -436,6 +444,8 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
     nextControlledBuckets,
     nextUncontrolledBuckets,
     nextExemptBuckets,
+    nextGenerationBuckets,
+    nextExportBuckets,
     nextDeviceBuckets,
   } = buildTrackedBucketMaps(state);
   const budgetKWh = applyCurrentHourSample({
@@ -462,23 +472,31 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
   const boundedExemptPowerW = resolveBoundedTrackedPowerW(grossConsumptionW, exemptPowerW);
   const normalizedDevicePowerWById = normalizeDevicePowerWById(currentDevicePowerWById);
 
+  // Shared next-state args for both the reset path (no accrual — the current
+  // readings, including the generation latch, are recorded as-is) and the
+  // normal accrual path below.
+  const nextStateArgs = {
+    state,
+    nextBuckets,
+    nextHourlySampleCounts,
+    nextBudgets,
+    nextControlledBuckets,
+    nextUncontrolledBuckets,
+    nextExemptBuckets,
+    nextGenerationBuckets,
+    nextExportBuckets,
+    nextDeviceBuckets,
+    nowMs,
+    currentPowerW,
+    currentControlledPowerW: boundedControlledPowerW,
+    currentUncontrolledPowerW: boundedUncontrolledPowerW,
+    currentExemptPowerW: boundedExemptPowerW,
+    currentGenerationW,
+    currentDevicePowerWById: normalizedDevicePowerWById,
+  };
+
   if (shouldResetSamplingState(state, nowMs)) {
-    const nextState = buildNextPowerState({
-      state,
-      nextBuckets,
-      nextHourlySampleCounts,
-      nextBudgets,
-      nextControlledBuckets,
-      nextUncontrolledBuckets,
-      nextExemptBuckets,
-      nextDeviceBuckets,
-      nowMs,
-      currentPowerW,
-      currentControlledPowerW: boundedControlledPowerW,
-      currentUncontrolledPowerW: boundedUncontrolledPowerW,
-      currentExemptPowerW: boundedExemptPowerW,
-      currentDevicePowerWById: normalizedDevicePowerWById,
-    });
+    const nextState = buildNextPowerState(nextStateArgs);
     addPerfDuration('power_sample_bookkeeping_ms', Date.now() - bookkeepingStart);
     await persistPowerSample({
       nextState, currentPowerW, capacityGuard, saveState, rebuildPlanFromCache,
@@ -503,52 +521,40 @@ export async function recordPowerSample(params: RecordPowerSampleParams): Promis
     budgetKWh,
   });
 
-  accumulatePowerIfAvailable({
-    previousPowerW: state.lastControlledPowerW,
-    nextPowerW: boundedControlledPowerW,
+  // Solar accounting (sparse export/generation families) — sparseness and
+  // absence-as-absence rules live in trackerSolar.ts.
+  accrueSolarSample({
+    previousPowerW: previousPower,
+    previousGenerationW: state.lastGenerationW,
+    currentGenerationW,
     startTs: previousTs,
     endTs: nowMs,
-    buckets: nextControlledBuckets,
-  });
-  accumulatePowerIfAvailable({
-    previousPowerW: state.lastUncontrolledPowerW,
-    nextPowerW: boundedUncontrolledPowerW,
-    startTs: previousTs,
-    endTs: nowMs,
-    buckets: nextUncontrolledBuckets,
-  });
-  accumulatePowerIfAvailable({
-    previousPowerW: state.lastExemptPowerW,
-    nextPowerW: boundedExemptPowerW,
-    startTs: previousTs,
-    endTs: nowMs,
-    buckets: nextExemptBuckets,
-  });
-  accumulateDevicePowerIfAvailable({
-    previousPowerWById: state.lastDevicePowerWById,
-    nextPowerWById: normalizedDevicePowerWById,
-    startTs: previousTs,
-    endTs: nowMs,
-    bucketsByDeviceId: nextDeviceBuckets,
+    exportBuckets: nextExportBuckets,
+    generationBuckets: nextGenerationBuckets,
   });
 
-  const nextState = buildNextPowerState({
-    state,
-    nextBuckets,
-    nextHourlySampleCounts,
-    nextBudgets,
-    nextControlledBuckets,
-    nextUncontrolledBuckets,
-    nextExemptBuckets,
-    nextDeviceBuckets,
-    nowMs,
-    currentPowerW,
-    currentControlledPowerW: boundedControlledPowerW,
-    currentUncontrolledPowerW: boundedUncontrolledPowerW,
-    currentExemptPowerW: boundedExemptPowerW,
-    currentDevicePowerWById: normalizedDevicePowerWById,
-    unreliablePeriods,
+  accrueTrackedSampleFamilies({
+    previous: {
+      controlledPowerW: state.lastControlledPowerW,
+      uncontrolledPowerW: state.lastUncontrolledPowerW,
+      exemptPowerW: state.lastExemptPowerW,
+      devicePowerWById: state.lastDevicePowerWById,
+    },
+    next: {
+      controlledPowerW: boundedControlledPowerW,
+      uncontrolledPowerW: boundedUncontrolledPowerW,
+      exemptPowerW: boundedExemptPowerW,
+      devicePowerWById: normalizedDevicePowerWById,
+    },
+    startTs: previousTs,
+    endTs: nowMs,
+    controlledBuckets: nextControlledBuckets,
+    uncontrolledBuckets: nextUncontrolledBuckets,
+    exemptBuckets: nextExemptBuckets,
+    deviceBuckets: nextDeviceBuckets,
   });
+
+  const nextState = buildNextPowerState({ ...nextStateArgs, unreliablePeriods });
   addPerfDuration('power_sample_bookkeeping_ms', Date.now() - bookkeepingStart);
   await persistPowerSample({
     nextState, currentPowerW, capacityGuard, saveState, rebuildPlanFromCache,

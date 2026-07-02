@@ -221,6 +221,11 @@
             <h2 class="plan-hero__headline" id="usage-hero-headline">-- kWh today</h2>
             <span class="plan-chip plan-chip--muted usage-hero__delta" id="usage-hero-delta" hidden>--</span>
           </div>
+          <!-- Solar reconciliation line: the headline counts NET grid import,
+               so in homes where the Solar card shows self-consumed production
+               this names the part the grid never saw ("+ 1.5 kWh of your own
+               solar"). Populated by usageHero.ts; hidden in non-solar homes. -->
+          <div class="plan-hero__subline plan-hero__subline--muted" id="usage-hero-solar" hidden></div>
           <div class="plan-hero__subline plan-hero__subline--muted" id="usage-hero-comparison">Gathering data…</div>
           <p class="plan-hero__decision" id="usage-hero-projection" hidden></p>
         </div>
@@ -236,6 +241,11 @@
         </ul>
         <span hidden id="usage-today">-- kWh</span>
       </div>
+
+      <!-- Solar card mount (PR-5 solar visibility). Populated by
+           `solarUsageSection.ts` on each stats render; stays structurally
+           empty in homes without a solar signal (visibility gate). -->
+      <div id="solar-usage-mount" class="solar-usage-mount"></div>
 
       <section class="pels-surface-card usage-card" aria-labelledby="usage-day-title">
         <md-elevation aria-hidden="true"></md-elevation>

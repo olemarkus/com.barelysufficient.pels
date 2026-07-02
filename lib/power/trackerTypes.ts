@@ -6,6 +6,13 @@ export type PowerTrackerState = {
   lastControlledPowerW?: number;
   lastUncontrolledPowerW?: number;
   lastExemptPowerW?: number;
+  /**
+   * Gross PV generation (W) carried by the LAST sample, present only when that
+   * sample carried a finite generation reading. A generation-less sample drops
+   * the field (absence as absence — never stale-held), so generation accrual
+   * only ever integrates between two generation-carrying samples.
+   */
+  lastGenerationW?: number;
   lastTimestamp?: number;
   buckets?: Record<string, number>;
   hourlySampleCounts?: Record<string, number>;
@@ -24,6 +31,15 @@ export type PowerTrackerState = {
   exemptHourlyAverages?: Record<string, { sum: number; count: number }>;
   deviceBuckets?: Record<string, Record<string, number>>;
   lastDevicePowerWById?: Record<string, number>;
+  // Solar accounting families (sparse — only ever written in homes with a
+  // generation signal / observed export, so a non-solar home's persisted state
+  // stays deep-equal with the pre-solar shape). Hourly buckets are keyed by
+  // UTC-hour ISO strings like `buckets`; daily totals by the Homey-local
+  // calendar date via the prune fold. kWh only — money is derived read-side.
+  generationBuckets?: Record<string, number>;
+  exportBuckets?: Record<string, number>;
+  generationDailyTotals?: Record<string, number>;
+  exportDailyTotals?: Record<string, number>;
   unreliablePeriods?: Array<{ start: number; end: number }>;
   objectiveProfiles?: Record<string, DeviceObjectiveProfile>;
 };
@@ -39,6 +55,14 @@ export type RecordPowerSampleParams = {
    * callers without a generation signal keep the prior net-only behaviour.
    */
   grossConsumptionW?: number;
+  /**
+   * Gross PV generation (W) co-sampled with `currentPowerW`. Producer-resolved:
+   * finite and >= 0, absence = no generation signal for this sample (flow
+   * source, transient SDK failure). Feeds ONLY the sparse solar accounting
+   * families (`generationBuckets` accrual + the `lastGenerationW` latch);
+   * capacity/budget/billed buckets never read it.
+   */
+  generationW?: number;
   controlledPowerW?: number;
   exemptPowerW?: number;
   currentDevicePowerWById?: Record<string, number>;

@@ -177,6 +177,9 @@ export async function recordPowerSampleForApp(params: {
     state: profilingState,
     currentPowerW,
     grossConsumptionW,
+    // Co-sampled gross generation: feeds the sparse solar accounting families
+    // (generationBuckets accrual + lastGenerationW latch) in the tracker.
+    generationW,
     controlledPowerW,
     exemptPowerW,
     currentDevicePowerWById,

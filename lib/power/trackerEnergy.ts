@@ -86,6 +86,83 @@ export function foldAgedHourIntoDay(
   nextDailyTotals.set(dateKey, Math.max(0, nextDailyTotals.get(dateKey) || 0) + agedKWh);
 }
 
+function accumulatePowerIfAvailable(params: {
+  previousPowerW?: number;
+  nextPowerW?: number;
+  startTs: number;
+  endTs: number;
+  buckets: Map<string, number>;
+}): void {
+  const { previousPowerW, nextPowerW, startTs, endTs, buckets } = params;
+  if (typeof previousPowerW !== 'number' || typeof nextPowerW !== 'number') return;
+  calculateEnergyAcrossBoundaries({
+    startTs,
+    endTs,
+    powerW: previousPowerW,
+    buckets,
+    budgets: new Map(),
+    budgetKWh: null,
+  });
+}
+
+/**
+ * Accrues the held sample's controlled / uncontrolled / exempt / per-device
+ * energy over [startTs, endTs]. Each family integrates only when both the
+ * previous and next reading exist (the same both-endpoints rule as the four
+ * historical `accumulatePowerIfAvailable` calls this replaces in
+ * `recordPowerSample`).
+ */
+export function accrueTrackedSampleFamilies(params: {
+  previous: {
+    controlledPowerW?: number;
+    uncontrolledPowerW?: number;
+    exemptPowerW?: number;
+    devicePowerWById?: Record<string, number>;
+  };
+  next: {
+    controlledPowerW?: number;
+    uncontrolledPowerW?: number;
+    exemptPowerW?: number;
+    devicePowerWById?: Record<string, number>;
+  };
+  startTs: number;
+  endTs: number;
+  controlledBuckets: Map<string, number>;
+  uncontrolledBuckets: Map<string, number>;
+  exemptBuckets: Map<string, number>;
+  deviceBuckets: Map<string, Map<string, number>>;
+}): void {
+  const { previous, next, startTs, endTs } = params;
+  accumulatePowerIfAvailable({
+    previousPowerW: previous.controlledPowerW,
+    nextPowerW: next.controlledPowerW,
+    startTs,
+    endTs,
+    buckets: params.controlledBuckets,
+  });
+  accumulatePowerIfAvailable({
+    previousPowerW: previous.uncontrolledPowerW,
+    nextPowerW: next.uncontrolledPowerW,
+    startTs,
+    endTs,
+    buckets: params.uncontrolledBuckets,
+  });
+  accumulatePowerIfAvailable({
+    previousPowerW: previous.exemptPowerW,
+    nextPowerW: next.exemptPowerW,
+    startTs,
+    endTs,
+    buckets: params.exemptBuckets,
+  });
+  accumulateDevicePowerIfAvailable({
+    previousPowerWById: previous.devicePowerWById,
+    nextPowerWById: next.devicePowerWById,
+    startTs,
+    endTs,
+    bucketsByDeviceId: params.deviceBuckets,
+  });
+}
+
 export function accumulateDevicePowerIfAvailable(params: {
   previousPowerWById?: Record<string, number>;
   nextPowerWById?: Record<string, number>;

@@ -14,8 +14,13 @@ import { planNeedsLiveUpdates } from './planLiveData.ts';
 import { registerPlanSurfaceRenderer } from './planSurfaceRefresh.ts';
 import { state } from './state.ts';
 import type { PlanDeviceSnapshot, PlanSnapshot } from './planTypes.ts';
+import type { SolarNowInput } from '../../../shared-domain/src/solar/solarNow.ts';
 
 let cachedPowerStatus: SettingsUiPowerStatus | null = null;
+// Raw triple for the hero's "Solar now" subline; resolution (finiteness +
+// staleness + materiality gates) happens in `resolveSolarNow` at render time
+// so the line disappears on its own once the sample goes stale.
+let cachedSolarNowInput: SolarNowInput | null = null;
 let cachedPrices: SettingsUiPricesPayload | null = null;
 let currentPlan: PlanSnapshot | null = null;
 let currentRenderedAtMs = 0;
@@ -57,16 +62,27 @@ const getPlanSnapshot = async (): Promise<PlanSnapshot | null> => (
   getPlanSnapshotFromPayload(await getApiReadModel<SettingsUiPlanPayload>(SETTINGS_UI_PLAN_PATH))
 );
 
-const readPowerStatus = async (): Promise<SettingsUiPowerStatus | null> => {
-  const payload = await getApiReadModel<SettingsUiPowerPayload>(SETTINGS_UI_POWER_PATH);
-  return payload?.status ?? null;
+const toSolarNowInput = (tracker: SettingsUiPowerPayload['tracker']): SolarNowInput | null => (
+  tracker && typeof tracker === 'object'
+    ? {
+      lastPowerW: tracker.lastPowerW,
+      lastGenerationW: tracker.lastGenerationW,
+      lastTimestamp: tracker.lastTimestamp,
+    }
+    : null
+);
+
+type PlanPowerRead = {
+  status: SettingsUiPowerStatus | null;
+  solarNowInput: SolarNowInput | null;
 };
 
-const readPowerStatusForPlanRefresh = async (): Promise<SettingsUiPowerStatus | null> => {
+const readPowerForPlanRefresh = async (): Promise<PlanPowerRead> => {
   try {
-    return await readPowerStatus();
+    const payload = await getApiReadModel<SettingsUiPowerPayload>(SETTINGS_UI_POWER_PATH);
+    return { status: payload?.status ?? null, solarNowInput: toSolarNowInput(payload?.tracker ?? null) };
   } catch {
-    return null;
+    return { status: null, solarNowInput: null };
   }
 };
 
@@ -103,6 +119,7 @@ const doRender = () => {
     planResolved: planPayloadReceived,
     power: cachedPowerStatus,
     prices: cachedPrices,
+    solarNowInput: cachedSolarNowInput,
     context: { dryRun: state.dryRun },
     renderedAtMs: currentRenderedAtMs,
     nowMs: now,
@@ -132,8 +149,17 @@ export const bumpPlanSurface = (): void => {
 // view → controller → orchestrator cycle). See planSurfaceRefresh.ts.
 registerPlanSurfaceRenderer(doRender);
 
-export const updatePlanPower = (power: SettingsUiPowerStatus | null): void => {
+// `tracker === undefined` means the realtime push carried no full tracker —
+// keep the cached solar triple (the resolver's staleness gate retires it on
+// its own); an explicit tracker (or null) replaces it.
+export const updatePlanPower = (
+  power: SettingsUiPowerStatus | null,
+  tracker?: SettingsUiPowerPayload['tracker'],
+): void => {
   cachedPowerStatus = power;
+  if (tracker !== undefined) {
+    cachedSolarNowInput = toSolarNowInput(tracker);
+  }
   doRender();
 };
 
@@ -157,10 +183,11 @@ export const updatePlanPrices = async (): Promise<void> => {
 export const refreshPlan = async () => {
   const [plan, power, prices] = await Promise.all([
     getPlanSnapshot(),
-    readPowerStatusForPlanRefresh(),
+    readPowerForPlanRefresh(),
     readPricesForPlanRefresh(),
   ]);
-  cachedPowerStatus = power;
+  cachedPowerStatus = power.status;
+  cachedSolarNowInput = power.solarNowInput;
   cachedPrices = prices;
   renderPlan(plan);
 };

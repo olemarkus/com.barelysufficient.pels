@@ -449,6 +449,79 @@ internal/market terms — user-facing copy says what happens (e.g. "use your own
 power instead of exporting it", "what you're paid for power you send to the
 grid").
 
+## Solar vocabulary
+
+Canonical labels for the solar surfaces (Usage-tab Solar card, Overview hero
+"Solar now" subline, per-device surplus controls, docs). The price triple
+(`Import price` / `Export price` / `Planning price`) is registered in the
+"Solar and export price vocabulary" section above; keep the two aligned.
+
+| Concept | Label |
+|---|---|
+| Live PV production headline | `Solar now` |
+| Today's generated energy | `Produced` |
+| Today's self-consumed energy (kWh + %) | `Used at home` |
+| Today's energy sent to the grid | `Exported` |
+| Money the self-consumed kWh would have cost to import | `Grid cost avoided` |
+| Money the exported kWh earned (signed) | `Earned from export` |
+
+Fixed line and heading forms:
+
+- Overview hero subline (inventoried in `notes/overview-hero-spec.md`), one
+  line, terse noun phrases so it never wraps mid-clause:
+  `Solar now 3.2 kW — 1.1 kW at home, 2.1 kW exported`, or
+  `Solar now 3.2 kW — all used at home` when export is under 50 W.
+- Usage hero reconciliation line, shown only when the Solar card shows
+  measured production: `+ 1.5 kWh of your own solar` — it names the energy
+  the NET-import headline never saw, so the hero and the card's `Used at
+  home` don't read as contradicting numbers on one screen.
+- Solar card today block heading: `Today so far` (deliberate reuse of the
+  sibling Usage day card's heading). The history block is `Previous days` —
+  never "Last 7 days" (the block excludes today, so a window claim reads
+  false against the visible rows).
+- Previous-days column headers (compact forms, labelled once in a header
+  row, never repeated per row as prose): `Day` / `Produced` / `At home` /
+  `Exported`.
+
+Rules:
+
+- `Grid cost avoided` and `Earned from export` value **disjoint kWh pools**
+  (self-consumed vs exported) — they may appear side by side, but neither may
+  ever be summed or relabelled as total "savings". Money figures are always
+  prefixed `≈`. The card's money block is today-scoped and says so on the
+  labels themselves: `Grid cost avoided today` / `Earned from export today`.
+- Partial price coverage appends `· some hours unpriced` INLINE to the money
+  value it qualifies (`≈ 12.40 kr · some hours unpriced`) — never as a
+  standalone line (a line must not open with a bare middot). Import-price
+  coverage qualifies the avoided line; export-price coverage qualifies the
+  earned line (independent axes).
+- "Used at home" carries the self-consumption percentage inline (`2.9 kWh ·
+  69%`) — never a separate jargon row like "self-consumption rate".
+- In battery homes `Exported` can honestly exceed `Produced` (stored energy
+  discharged to the grid); the card explains this in a supporting note rather
+  than clamping the numbers.
+- The export-only layout is for Homey-Energy homes whose meter reports export
+  without a production device; its note reads `Your meter reports export only
+  — production is not measured.` (name the meter, not a "power source" — a
+  settings term). Flow-source homes get NO solar surfaces at all: the flow
+  power card rejects negative watts, so PELS never observes export there —
+  copy and docs must not promise Flow homes an export view.
+- Internal terms that stay out of the UI: `generation buckets`, `export
+  buckets`, `self-consumption rate` (as a label), `PV`, `feed-in`. Docs
+  exceptions: "feed-in" may appear when explaining export pricing, and "PV"
+  may appear once as a first-use gloss — "rooftop solar (PV)" — before the
+  doc continues with plain "solar".
+
+Established solar labels already shipped elsewhere (do not rename;
+`Use solar surplus` / `Solar-surplus boost` are tabled in the export-price
+section above):
+
+- `Raised to use your solar power` — the device reason line while the
+  surplus boost is engaged.
+- `Before solar:` — the prefix on managed/background splits when gross
+  attribution exceeds measured net usage (see the Usage/Budget readout
+  sections above).
+
 ## Mode label
 
 The Settings page renders the current operating mode as a single selector

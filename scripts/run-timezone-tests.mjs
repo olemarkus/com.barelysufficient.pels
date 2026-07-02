@@ -17,6 +17,7 @@ const TEST_FILES = Object.freeze([
   'test/integration/prices.test.ts',
   'test/integration/norgesprisPriceService.test.ts',
   'test/tz/powerTrackerDst.test.ts',
+  'test/tz/powerTrackerSolarDst.test.ts',
   'test/tz/formatCheapestUpcomingHourDst.test.ts',
   'test/tz/dailyBudgetPlanningPriceDst.test.ts',
 ]);

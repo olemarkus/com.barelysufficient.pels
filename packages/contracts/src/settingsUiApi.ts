@@ -262,6 +262,15 @@ export type SettingsUiPowerPayload = {
   tracker: PowerTrackerState | null;
   status: SettingsUiPowerStatus | null;
   heartbeat: number | null;
+  // Home-level "this home has solar surfaces" gate for the Usage tab's Solar
+  // card (which cannot read the lazy-loaded devices payload). True only when
+  // a tracked solar/PV device exists AND the power source is homey_energy —
+  // on the flow source the power boundary rejects negative watts and carries
+  // no generation field, so solar buckets can never fill and the card must
+  // not promise data (see getSettingsUiPower). Optional: realtime status-only
+  // pushes don't carry it — consumers treat absence as false and fall back to
+  // the recorded solar buckets.
+  hasManagedSolarDevice?: boolean;
 };
 
 export type SettingsUiPricesPayload = {
