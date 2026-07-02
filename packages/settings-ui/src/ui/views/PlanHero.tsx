@@ -258,8 +258,12 @@ const computeEnergyBarScale = (meta: PlanMetaSnapshot): EnergyBarScale | null =>
   if (typeof usedKWh !== 'number' || typeof budgetKWh !== 'number' || budgetKWh <= 0) return null;
   const totalKw = typeof meta.totalKw === 'number' ? meta.totalKw : null;
   const minutesRemaining = typeof meta.minutesRemaining === 'number' ? meta.minutesRemaining : null;
+  // Floor at zero so a net-export hour (negative `totalKw`) cannot drive the
+  // projection negative — that collapses the bar marker to the far-left edge,
+  // mis-tones the projection, and prints "projected -1.42 kWh" beneath the
+  // Solar-now line. Keep `null` (no power/time signal) distinct from a clamped 0.
   const projectedKWh = totalKw !== null && minutesRemaining !== null
-    ? usedKWh + (totalKw * minutesRemaining / 60)
+    ? Math.max(0, usedKWh + (totalKw * minutesRemaining / 60))
     : null;
   return {
     usedKWh,
