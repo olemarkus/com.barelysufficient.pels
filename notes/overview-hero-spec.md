@@ -268,7 +268,12 @@ Priority order (first matching condition wins):
    on so PELS can ease it off.` The recourse pluralises when several
    control-off devices breach; the hard cap is never offered as a remedy (it is
    physical — see `notes/ui-terminology.md` § "Hard cap is physical").
-3. Simulation mode would act: `2 devices would be limited if simulation mode were off.`
+3. Simulation mode would act: `2 devices would be limited right now.`
+   The slim simulation banner and the `Simulation mode` status chip already
+   name simulation on the Overview, so this conclusion drops the redundant
+   "if simulation mode were off" tail — simulation is stated at most twice on
+   the first viewport. It stays hypothetical (`would`), never implying PELS
+   acted.
 4. Actively limiting: `Holding back 2 devices so the house stays under 12.0 kW.`
    The safe-pace clause is dropped when the value is unavailable
    (`Holding back 2 devices.`).
@@ -282,8 +287,11 @@ Priority order (first matching condition wins):
 
 Simulation mode wording must be hypothetical throughout. The subject is the
 device count, not PELS:
-- `2 devices would be limited if simulation mode were off.`
+- `2 devices would be limited right now.`
 - Not: `Limiting 2 devices` (implies PELS acted when it did not).
+- Not: `… if simulation mode were off.` — a third naming of simulation on a
+  viewport that already carries the banner + status chip (signal-diet: state
+  simulation at most twice).
 
 ---
 

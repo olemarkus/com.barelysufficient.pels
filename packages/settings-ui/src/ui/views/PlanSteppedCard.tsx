@@ -16,6 +16,7 @@ import {
   type PlanStateKind,
 } from '../../../../shared-domain/src/planStateLabels.ts';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
+import { toSimulationReasonLine } from '../../../../shared-domain/src/simulationReasonMood.ts';
 import { resolveDisplayPlanDeviceSnapshot } from '../planLiveData.ts';
 import { cardActivationProps } from '../cardActivation.ts';
 import { BudgetExemptChip, DeadlineChip } from './PlanDeviceCards.tsx';
@@ -95,11 +96,13 @@ const StepRail = ({ dev, profile }: { dev: PlanDeviceSnapshot; profile: SteppedL
 export const PlanSteppedCard = ({
   dev,
   plan,
+  dryRun,
   renderedAtMs,
   nowMs,
 }: {
   dev: PlanDeviceSnapshot;
   plan: PlanSnapshot | null;
+  dryRun: boolean;
   renderedAtMs: number;
   nowMs: number;
 }) => {
@@ -114,7 +117,10 @@ export const PlanSteppedCard = ({
   const tempText = resolveSteppedTemperatureText(displayDev);
   const secondaryText = evState ?? tempText ?? null;
   const resolvedStatusText = profile ? resolveSteppedStatusLine(displayDev, profile, nowMs) : null;
-  const statusText = resolvedStatusText ?? (stateKind === 'held' ? PLAN_STATE_HELD_FALLBACK_STATUS : null);
+  const factualStatusText = resolvedStatusText ?? (stateKind === 'held' ? PLAN_STATE_HELD_FALLBACK_STATUS : null);
+  // In simulation the held/limited status line reads hypothetically to agree with
+  // the card's would-be-acted state (no-op outside simulation / for non-acted lines).
+  const statusText = factualStatusText === null ? null : toSimulationReasonLine(factualStatusText, dryRun);
 
   const cardClasses = [
     'pels-surface-card device-row plan-card plan-card--stepped clickable',

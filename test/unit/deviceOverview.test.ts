@@ -518,5 +518,22 @@ describe('device overview transition signatures', () => {
         reason: r('capacity'),
       })).toBe('Lowered by PELS');
     });
+
+    it('states the action hypothetically in simulation mode (dryRun)', () => {
+      expect(resolveHeldStateActionLabel({
+        controlCapabilityId: 'onoff',
+        shedAction: 'turn_off',
+        reason: r('capacity'),
+      }, true)).toBe('Would be turned off (simulation)');
+      expect(resolveHeldStateActionLabel({
+        shedAction: 'set_temperature',
+        reason: r('capacity'),
+      }, true)).toBe('Would be lowered (simulation)');
+      expect(resolveHeldStateActionLabel({
+        controlCapabilityId: 'evcharger_charging',
+        shedAction: 'turn_off',
+        reason: r('capacity'),
+      }, true)).toBe('Charging would pause (simulation)');
+    });
   });
 });

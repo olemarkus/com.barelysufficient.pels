@@ -85,4 +85,44 @@ describe('resolveTemperatureReasonLine', () => {
       reason: { code: 'deferred_objective_avoid', detail: null },
     })).toBe(PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS);
   });
+
+  it('states "Lowered by PELS" as fact when not simulating', () => {
+    expect(resolveTemperatureReasonLine({
+      currentState: 'on',
+      plannedState: 'shed',
+      currentTemperature: 22.8,
+      plannedTarget: 20,
+      reason: { code: 'none' },
+    })).toBe('Lowered by PELS');
+  });
+
+  it('states the held action hypothetically in simulation mode (dryRun)', () => {
+    expect(resolveTemperatureReasonLine({
+      currentState: 'on',
+      plannedState: 'shed',
+      currentTemperature: 22.8,
+      plannedTarget: 20,
+      reason: { code: 'none' },
+    }, true)).toBe('Would be lowered (simulation)');
+  });
+
+  const heldThermostat = (code: 'capacity' | 'hourly_budget' | 'daily_budget') => ({
+    currentState: 'on',
+    plannedState: 'shed' as const,
+    currentTemperature: 22.8,
+    plannedTarget: 20,
+    reason: { code, detail: null },
+  });
+
+  it('states capacity / hourly / daily limiting as FACT when not simulating', () => {
+    expect(resolveTemperatureReasonLine(heldThermostat('capacity'))).toBe('Limited by the hard cap');
+    expect(resolveTemperatureReasonLine(heldThermostat('hourly_budget'))).toBe('Limited — this hour is near the hard cap');
+    expect(resolveTemperatureReasonLine(heldThermostat('daily_budget'))).toBe("Limited by today's daily budget");
+  });
+
+  it('states capacity / hourly / daily limiting HYPOTHETICALLY in simulation (dryRun)', () => {
+    expect(resolveTemperatureReasonLine(heldThermostat('capacity'), true)).toBe('Would be limited by the hard cap');
+    expect(resolveTemperatureReasonLine(heldThermostat('hourly_budget'), true)).toBe('Would be limited — this hour is near the hard cap');
+    expect(resolveTemperatureReasonLine(heldThermostat('daily_budget'), true)).toBe("Would be limited by today's daily budget");
+  });
 });

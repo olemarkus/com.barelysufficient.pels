@@ -57,6 +57,16 @@ export const DEVICE_OVERVIEW_UNKNOWN = 'Unknown';
 export const DEVICE_OVERVIEW_TURNED_OFF_BY_PELS = 'Turned off by PELS';
 export const DEVICE_OVERVIEW_LOWERED_BY_PELS = 'Lowered by PELS';
 
+// Simulation-mode variants: PELS shows what it WOULD do without switching the
+// device, so the secondary line must not state the action as fact (spec
+// principle "Simulation mode is hypothetical", notes/overview-hero-spec.md).
+// The `(simulation)` tag keeps each card honest in isolation — the banner + hero
+// chip carry the mode, but a card scrolled away from them must still read as
+// hypothetical.
+export const DEVICE_OVERVIEW_WOULD_TURN_OFF = 'Would be turned off (simulation)';
+export const DEVICE_OVERVIEW_WOULD_LOWER = 'Would be lowered (simulation)';
+export const DEVICE_OVERVIEW_WOULD_PAUSE_CHARGING = 'Charging would pause (simulation)';
+
 // --- Status line (`statusMsg`) ---
 // Sentinel: the planner emits this when the device is waiting on power becoming
 // available (no richer reason). `appendOverviewStatus` treats it as a blank

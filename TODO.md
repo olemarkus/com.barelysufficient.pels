@@ -48,12 +48,15 @@ stepped-restore-wrapper / stepped-swap-completion refactors, the settings.test.t
 plan_budget truncation, the starvation confirm-sheet sub-parts, and the shared widget runtime.
 What remains open is below.*
 
-- [ ] **Overview simulation-mode status copy states actuations as fact.** With simulation on,
-      device cards read "Turned off by PELS" while the hero says "1 device would be limited if
-      simulation mode were off" — the card copy claims an actuation that never happened. Status
-      copy should read "Would be turned off (simulation)" (or equivalent per
-      `notes/ui-terminology.md`) whenever simulation is on. Source: PR #1807 review gates
-      (2026-07-01).
+- [ ] **Simulation honesty on the device-detail activity log.** The Overview plan cards + hero
+      now read hypothetically with simulation on (PR #1819: card header "Would be turned off
+      (simulation)", reason line "Would still draw N kW", hero "N devices would be limited right
+      now"). But `formatDeviceOverview`'s `stateMsg` (`resolveShedStateMsg` / `resolveEvStateMsg`,
+      `packages/shared-domain/src/deviceOverview.ts` ~175-226) still emits factual "Charging
+      paused" / "Turned off" / "Lowered", feeding the device-detail activity log
+      (`DeviceLogView.tsx`) + runtime logs. If the device-detail log should also read
+      hypothetically under simulation, thread `dryRun` there too — out of scope for PR #1819
+      (Overview plan-card surface only). Source: PR #1819 review gates (2026-07-02).
 
 ### P1 — targeted refactors (deferred)
 

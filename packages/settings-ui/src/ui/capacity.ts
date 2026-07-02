@@ -33,6 +33,7 @@ import { POWER_SAMPLE_STALE_THRESHOLD_MS } from '../../../shared-domain/src/powe
 import type { SettingsUiPowerPayload } from '../../../contracts/src/settingsUiApi.ts';
 import { showToast } from './toast.ts';
 import { pushSettingWriteIfChanged } from './settingWrites.ts';
+import { refreshPlanSurface } from './planSurfaceRefresh.ts';
 
 type PowerSource = 'flow' | 'homey_energy';
 
@@ -69,9 +70,13 @@ const getStaleDataHint = (): string => {
   return 'Check your Flow that reports power usage.';
 };
 
-const updateDryRunBanner = (isDryRun: boolean) => {
+// The global simulation banner shows on every tab EXCEPT the Simulation-mode
+// settings page, whose own toggle is the single control there (a duplicate
+// control on one screen reads as confusing chrome). Reads live `state.dryRun`
+// + `state.activePanel`, so both the dry-run toggle and tab navigation call it.
+export const syncDryRunBannerVisibility = (): void => {
   if (dryRunBanner) {
-    dryRunBanner.hidden = !isDryRun;
+    dryRunBanner.hidden = !state.dryRun || state.activePanel === 'simulation';
   }
 };
 
@@ -214,8 +219,15 @@ export const loadCapacitySettings = async () => {
   const isDryRun = typeof dryRun === 'boolean' ? dryRun : true;
   const normalizedPowerSource = normalizePowerSource(powerSource);
   syncCapacityControls(normalizedLimit, normalizedMargin, isDryRun, normalizedPowerSource);
+  const dryRunChanged = state.dryRun !== isDryRun;
   state.dryRun = isDryRun;
-  updateDryRunBanner(isDryRun);
+  syncDryRunBannerVisibility();
+  // An external simulation-mode change (e.g. a second open WebView, or a Flow)
+  // reaches here via the realtime settings.set handler. Re-render the overview
+  // so the hero decision sentence and device-card "(simulation)" framing flip
+  // with the banner, not on the next plan/power push. (Safe no-op before the
+  // plan surface renderer is registered — e.g. the first boot load.)
+  if (dryRunChanged) refreshPlanSurface();
 };
 
 const saveCapacitySettingsPatch = async (
@@ -234,9 +246,15 @@ const saveCapacitySettingsPatch = async (
   if (writes.length > 0) {
     await Promise.all(writes);
   }
+  const dryRunChanged = current.dryRun !== dryRun;
   state.dryRun = dryRun;
   syncCapacityControls(limit, margin, dryRun, powerSource);
-  updateDryRunBanner(dryRun);
+  syncDryRunBannerVisibility();
+  // Toggling simulation flips the hero decision sentence and the device-card
+  // "(simulation)" hypothetical framing. Re-render the overview now so they flip
+  // together with the banner instead of staying stale until the next realtime
+  // push (~10s on homey_energy, longer on flow).
+  if (dryRunChanged) refreshPlanSurface();
   await showToast(successMessage, 'ok');
 };
 
