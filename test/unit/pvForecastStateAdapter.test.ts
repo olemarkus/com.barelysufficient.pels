@@ -85,6 +85,29 @@ describe('normalizePvForecastState net-evidence fields', () => {
     expect(classifyHourNetEvidence(bucket!)).toBe('suspect');
   });
 
+  it('drops an hour whose coveredMs exceeds a physical hour (corrupt oversized blob)', () => {
+    // A blob with an oversized coveredMs — and net/import durations sized to match
+    // it — would otherwise survive normalization and forge `unclamped` evidence to
+    // train the PV gain. The boundary rejects the physically-impossible hour.
+    const normalized = normalizePvForecastState({
+      history: {
+        hourly: {
+          [KEY]: { kwh: 5, coveredMs: 10 * HOUR_MS, netMs: 10 * HOUR_MS, importMs: 10 * HOUR_MS },
+        },
+      },
+    });
+    expect(normalized?.history.hourly[KEY]).toBeUndefined();
+  });
+
+  it('drops an hour whose coveredMs is negative', () => {
+    // A negative coveredMs is physically impossible and would give the sub-duration
+    // bound a nonsensical ceiling; the boundary rejects the whole hour.
+    const normalized = normalizePvForecastState({
+      history: { hourly: { [KEY]: { kwh: 1.2, coveredMs: -1, netMs: 0 } } },
+    });
+    expect(normalized?.history.hourly[KEY]).toBeUndefined();
+  });
+
   it('collapses the sub-duration bound to zero when netMs itself is invalid', () => {
     const normalized = normalizePvForecastState({
       history: {
