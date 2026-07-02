@@ -69,3 +69,6 @@ export const WEATHER_ADVISOR_SETTINGS = 'weather_advisor_settings';
 export const WEATHER_HISTORY_STATE = 'weather_history_state';
 // Learned PV-generation forecast: recorded generation history + concurrent irradiance.
 export const PV_FORECAST_STATE = 'pv_forecast_state';
+// Curtailment-surplus refute ladder: {holdLevel, holdUntilMs, importLatchUntilMs},
+// written on verification transitions only (crash-loop resilience).
+export const CURTAILMENT_HOLD_STATE = 'curtailment_hold_state';

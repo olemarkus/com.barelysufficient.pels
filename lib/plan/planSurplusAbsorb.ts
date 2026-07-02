@@ -1,5 +1,6 @@
 import type { PlanEngineState } from './planState';
 import type { PlanInputDevice } from './planTypes';
+import type { StructuredDebugEmitter } from '../logging/logger';
 import { getRestoreDrawKw } from '../observer/observedPower';
 import {
   clearSurplusEligibility,
@@ -49,6 +50,42 @@ const isHardOffCondition = (powerOk: boolean, signedNetKw: number | null): boole
   !powerOk || (isFiniteNumber(signedNetKw) && signedNetKw > SURPLUS_ABSORB_HARD_OFF_IMPORT_KW)
 );
 
+// Compose the whole-home surplus budget: measured export + the add-back of
+// already-absorbing willing devices + the producer-resolved inferred curtailed
+// surplus (max(0, term)). Emits the `surplus_pool` composition record once per
+// pass — the only place the inferred term is distinguishable from measured
+// export (downstream sees only the flat pool).
+function composeSurplusPool(params: {
+  willing: PlanInputDevice[];
+  state: PlanEngineState;
+  signedNetKw: number;
+  inferredSurplusKw: number | null | undefined;
+  debugStructured?: StructuredDebugEmitter;
+}): number {
+  let addBackKw = 0;
+  for (const dev of params.willing) {
+    if (params.state.surplusEligibilityByDevice[dev.id]?.eligible === true) {
+      addBackKw += positiveOrZero(dev.measuredPowerKw);
+    }
+  }
+  const measuredExportKw = -params.signedNetKw;
+  const inferredContributionKw = positiveOrZero(params.inferredSurplusKw);
+  const poolKw = measuredExportKw + addBackKw + inferredContributionKw;
+  // Log the CLAMPED contribution that actually entered the pool, so the three
+  // components sum to poolKw (a null/negative raw term would otherwise make the
+  // record fail to reconcile). The raw term never reaches here negative — the
+  // producer clamps at 0 or yields null — so this only differs from the raw on
+  // the absent/junk cases, which contribute nothing anyway.
+  params.debugStructured?.({
+    event: 'surplus_pool',
+    measuredExportKw,
+    addBackKw,
+    inferredSurplusKw: inferredContributionKw,
+    poolKw,
+  });
+  return poolKw;
+}
+
 /**
  * Priority-greedy surplus allocator — the *producer* of surplus-absorb
  * eligibility. Runs once per plan build, BEFORE per-device target resolution, and
@@ -59,20 +96,33 @@ const isHardOffCondition = (powerOk: boolean, signedNetKw: number | null): boole
  * bit.
  *
  * Budget baseline = the export that would exist if no willing device absorbed:
- * `-net + Σ measuredDraw(eligible willing devices)`. Adding back the draw of
- * already-absorbing devices keeps the pool from being double-charged for power
- * the measured net already reflects. Each admitted/settling device then reserves
- * its expected draw from the running pool, so lower-priority devices only see what
- * is left. Priority is top-first (PELS priority `1` is highest), so the most
- * important willing device claims scarce surplus before the rest.
+ * `-net + Σ measuredDraw(eligible willing devices) + inferred curtailed surplus`.
+ * Adding back the draw of already-absorbing devices keeps the pool from being
+ * double-charged for power the measured net already reflects. The inferred term
+ * (producer: `lib/solar/curtailmentSurplus.ts`, injected flat through the plan
+ * deps) is production a zero-export inverter is throttling away — it enlarges
+ * the pool exactly like measured export, and every safety decision about it
+ * (import guard, verification, battery suppression) is already resolved in the
+ * producer: this allocator never branches on where the pool's kW came from.
+ * Each admitted/settling device then reserves its expected draw from the running
+ * pool, so lower-priority devices only see what is left. Priority is top-first
+ * (PELS priority `1` is highest), so the most important willing device claims
+ * scarce surplus before the rest.
  */
 export function resolveSurplusEligibility(params: {
   devices: PlanInputDevice[];
   state: PlanEngineState;
   signedNetKw: number | null;
   powerKnown: boolean;
+  // Producer-resolved inferred curtailed-surplus term (kW); null/undefined when
+  // absent or currently suppressed. Folded into the pool as max(0, term) — it can
+  // only ever ENLARGE the pool, and the `powerOk` gate below is unaffected: a
+  // fresh measured meter is still required before any raise (never raise blind
+  // on inference alone).
+  inferredSurplusKw?: number | null;
   getConfig: (deviceId: string) => SurplusConfig | undefined;
   getPriority: (deviceId: string) => number;
+  debugStructured?: StructuredDebugEmitter;
   nowTs?: number;
 }): void {
   const { state, getConfig, getPriority } = params;
@@ -114,13 +164,13 @@ export function resolveSurplusEligibility(params: {
     return;
   }
 
-  let addBackKw = 0;
-  for (const dev of willing) {
-    if (state.surplusEligibilityByDevice[dev.id]?.eligible === true) {
-      addBackKw += positiveOrZero(dev.measuredPowerKw);
-    }
-  }
-  let poolKw = -(params.signedNetKw as number) + addBackKw;
+  let poolKw = composeSurplusPool({
+    willing,
+    state,
+    signedNetKw: params.signedNetKw as number,
+    inferredSurplusKw: params.inferredSurplusKw,
+    debugStructured: params.debugStructured,
+  });
 
   // Top priority first (PELS priority `1` is highest — ascending order).
   const ordered = [...willing].sort((a, b) => getPriority(a.id) - getPriority(b.id));

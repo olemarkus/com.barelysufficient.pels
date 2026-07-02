@@ -33,8 +33,27 @@ module.exports = {
       name: 'no-domain-to-app-layer',
       comment: 'Domain modules should not depend on app wiring.',
       severity: 'error',
-      from: { path: '^lib/(device|power|objectives|plan|price|dailyBudget|observer|executor|actuator|weather)/' },
+      from: { path: '^lib/(device|power|objectives|plan|price|dailyBudget|observer|executor|actuator|weather|solar)/' },
       to: { path: '^lib/app/' },
+    },
+    {
+      name: 'no-plan-solar-coupling',
+      comment: 'The curtailment-surplus term crosses from lib/solar into lib/plan only as a flat '
+        + 'injected getter (setup/appInit/wireCurtailmentSurplus.ts): the planner must never import '
+        + 'the estimator (or its constants — the {gate 0.30, hardOff 0.35} pairing is maintained by '
+        + 'comment, not a shared constant), and the estimator must never reach into planner state.',
+      severity: 'error',
+      from: { path: '^lib/plan/' },
+      to: { path: '^lib/solar/' },
+    },
+    {
+      name: 'no-solar-to-plan',
+      comment: 'Reverse direction of no-plan-solar-coupling: lib/solar producers stay SDK-free and '
+        + 'planner-free; the plan engine state they need (surplus-lift engaged) arrives as a flat '
+        + 'injected getter from setup wiring.',
+      severity: 'error',
+      from: { path: '^lib/solar/' },
+      to: { path: '^lib/plan/' },
     },
     {
       name: 'no-lib-to-setup',

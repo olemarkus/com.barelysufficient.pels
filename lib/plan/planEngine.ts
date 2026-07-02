@@ -91,6 +91,11 @@ export type PlanEngineDeps = {
   getPriceOptimizationSettings: () => Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
   isCurrentHourCheap: () => boolean;
   isCurrentHourExpensive: () => boolean;
+  // Producer-resolved inferred curtailed-surplus term (kW) for the surplus
+  // allocator's pool (zero-export homes). Wired at setup from the curtailment
+  // estimator (`lib/solar/curtailmentSurplus.ts`) as a flat late-bound getter;
+  // forwarded straight to the builder — lib/plan never imports lib/solar.
+  getInferredSurplusKw?: () => number | null;
   // Observer-resolved per-device staleness for the builder's diagnostics
   // freshness gate. Forwarded straight to the builder; the engine does not
   // consult it. Wired at setup from the observer projection.
@@ -186,6 +191,7 @@ export class PlanEngine {
       getPriceOptimizationSettings: deps.getPriceOptimizationSettings,
       isCurrentHourCheap: deps.isCurrentHourCheap,
       isCurrentHourExpensive: deps.isCurrentHourExpensive,
+      getInferredSurplusKw: deps.getInferredSurplusKw,
       getPowerTracker: deps.getPowerTracker,
       getDailyBudgetSnapshot: deps.getDailyBudgetSnapshot,
       getObservationStale: deps.getObservationStale,
