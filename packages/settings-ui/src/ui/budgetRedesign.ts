@@ -36,12 +36,14 @@ import {
   resolveComparisonDay,
   resolveConfidenceData,
   resolveEffectiveLocalView,
+  resolveExportPriceNowLine,
   resolveHeroData,
   resolvePlanPayload,
   resolveStatus,
   resolveViewPayload,
   type BudgetDayView,
 } from './budgetRedesignResolvers.ts';
+import type { CombinedPriceRow } from './combinedPrices.ts';
 
 export type { BudgetDayView } from './budgetRedesignResolvers.ts';
 
@@ -50,6 +52,10 @@ type RenderState = {
   view: BudgetDayView;
   costDisplay: CostDisplay;
   priceLevel: string | null;
+  // Normalized combined-price rows (dailyBudget.ts fetches them alongside the
+  // budget payload) — read at render time for the current hour's export price
+  // so the "Export price now" subline stays live across hour boundaries.
+  priceRows: CombinedPriceRow[];
 };
 
 let currentBudgetLocalView: BudgetLocalView = 'plan';
@@ -67,6 +73,7 @@ let latestRenderState: RenderState = {
   view: 'today',
   costDisplay: { unit: 'kr', divisor: 100 },
   priceLevel: null,
+  priceRows: [],
 };
 
 export const updateBudgetPriceLevel = (priceLevel: string | null): void => {
@@ -161,7 +168,14 @@ const buildProps = (): BudgetOverviewProps => {
   return {
     localView: effectiveLocalView,
     view,
-    hero: resolveHeroData(viewPayload, view, costDisplay, status, budgetEnabled),
+    hero: resolveHeroData({
+      viewPayload,
+      view,
+      costDisplay,
+      status,
+      budgetEnabled,
+      exportPriceNowLine: resolveExportPriceNowLine(latestRenderState.priceRows, Date.now(), costDisplay),
+    }),
     chart: resolveChartData({
       viewPayload: planPayload,
       view,
@@ -225,8 +239,9 @@ export const renderBudgetRedesign = (
   payload: DailyBudgetUiPayload | null,
   view: BudgetDayView,
   costDisplay: CostDisplay,
+  priceRows: CombinedPriceRow[] = [],
 ) => {
-  latestRenderState = { ...latestRenderState, payload, view, costDisplay };
+  latestRenderState = { ...latestRenderState, payload, view, costDisplay, priceRows };
   doRender();
 };
 

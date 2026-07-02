@@ -11,9 +11,10 @@
 // extracted here to avoid drift between two ad-hoc reimplementations.
 //
 // Output is a flat array of rows with `total` already resolved (preferring
-// `total` over the legacy `totalPrice`) and `isCheap` / `isExpensive` carried
-// through when present. Entries lacking a finite numeric total or a string
-// `startsAt` are dropped silently.
+// `total` over the legacy `totalPrice`) and `exportPrice` / `budgetPrice` /
+// `isCheap` / `isExpensive` carried through when present (numbers finite-gated).
+// Entries lacking a finite numeric total or a string `startsAt` are dropped
+// silently.
 
 const isRecord = (candidate: unknown): candidate is Record<string, unknown> => (
   Boolean(candidate) && typeof candidate === 'object' && !Array.isArray(candidate)
@@ -30,6 +31,12 @@ export const isFiniteNumber = (candidate: unknown): candidate is number => (
 export type CombinedPriceRow = {
   startsAt: string;
   total: number;
+  // Export (feed-in) price for the hour — signed (negative = the home pays to
+  // export) and in the same unit as `total`. Absent when export pricing is off.
+  exportPrice?: number;
+  // Planning price the schedulers use (derived blend of export + import over
+  // the forecast surplus). Absent ⇒ falls back to `total`.
+  budgetPrice?: number;
   isCheap?: boolean;
   isExpensive?: boolean;
 };
@@ -64,6 +71,10 @@ export const normalizeCombinedPrices = (combined: unknown): CombinedPriceRow[] =
     return [{
       startsAt: entry.startsAt,
       total,
+      // Finite-gated like `total`: a malformed export/planning price is dropped
+      // (field absent), never carried inward as NaN/Infinity.
+      ...(isFiniteNumber(entry.exportPrice) ? { exportPrice: entry.exportPrice } : {}),
+      ...(isFiniteNumber(entry.budgetPrice) ? { budgetPrice: entry.budgetPrice } : {}),
       ...(entry.isCheap === true ? { isCheap: true } : {}),
       ...(entry.isExpensive === true ? { isExpensive: true } : {}),
     }];

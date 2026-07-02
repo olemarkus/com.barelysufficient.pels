@@ -40,6 +40,11 @@ export const FLOW_PRICES_TOMORROW = 'flow_prices_tomorrow';
 export const HOMEY_PRICES_TODAY = 'homey_prices_today';
 export const HOMEY_PRICES_TOMORROW = 'homey_prices_tomorrow';
 export const HOMEY_PRICES_CURRENCY = 'homey_prices_currency';
+// Export (feed-in) price settings — mirror of the EXPORT_* keys in
+// lib/utils/settingsKeys.ts; keep both in sync (the settings UI can't import lib).
+export const EXPORT_PRICE_ENABLED = 'export_price_enabled';
+export const EXPORT_SPOT_FACTOR = 'export_spot_factor';
+export const EXPORT_FIXED = 'export_fixed';
 export const POWER_CALIBRATION = 'power_calibration';
 // Mirror of WEATHER_ADVISOR_SETTINGS in lib/utils/settingsKeys.ts — keep both
 // in sync (the settings UI can't import lib).

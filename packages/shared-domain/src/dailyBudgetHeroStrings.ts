@@ -98,6 +98,16 @@ export const composeBackgroundSplitLabel = (backgroundKWh: number): string => (
 // (self-consumed solar) — shared with the Usage readout's convention.
 export const BUDGET_SPLIT_BEFORE_SOLAR_PREFIX = 'Before solar:';
 
+// Prosumer subline: the current hour's export price — what the home is paid
+// (or, when negative, pays) for exported power right now. The caller formats
+// the price text through its `CostDisplay {unit, divisor}` (e.g. `0.34 kr/kWh`)
+// so a raw øre value is never rendered as kr. Rendered only when an export
+// price exists for the current hour; see `notes/ui-terminology.md`
+// § "Solar and export price vocabulary".
+export const composeExportPriceNow = (priceText: string): string => (
+  `Export price now: ${priceText}`
+);
+
 // Today-view budget-status templates. Caller passes the formatted kWh
 // quantity (e.g. `"1.2 kWh"`); shared-domain owns the surrounding language.
 export const composeBudgetUsedOver = (remainingFormatted: string): string => (

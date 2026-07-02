@@ -54,8 +54,9 @@ export const HOMEY_PRICES_TODAY = 'homey_prices_today';
 export const HOMEY_PRICES_TOMORROW = 'homey_prices_tomorrow';
 export const HOMEY_PRICES_CURRENCY = 'homey_prices_currency';
 // Export (feed-in) price model — pure-math markups on the same wholesale spot the
-// import price uses. Off by default; CLI-writable for dogfooding before the
-// settings UI lands.
+// import price uses. Off by default; written by the settings UI's "Export price"
+// section. Mirrored in packages/contracts/src/settingsKeys.ts — keep both in sync
+// (the settings UI can't import lib).
 export const EXPORT_PRICE_ENABLED = 'export_price_enabled';
 export const EXPORT_SPOT_FACTOR = 'export_spot_factor';
 export const EXPORT_FIXED = 'export_fixed';

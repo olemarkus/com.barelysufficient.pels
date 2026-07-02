@@ -11,11 +11,15 @@ import {
 } from './budgetRedesign.ts';
 import { setBudgetAdjustRefresh } from './budgetAdjustController.ts';
 import { resolveCostDisplayFromCombinedPrices } from './priceUnit.ts';
+import { normalizeCombinedPrices, type CombinedPriceRow } from './combinedPrices.ts';
 import { setActiveDailyBudgetFromPayload } from './activeDailyBudget.ts';
 
 let currentDailyBudgetView: BudgetDayView = 'today';
 let latestDailyBudgetPayload: DailyBudgetUiPayload | null = null;
 let costDisplay: CostDisplay = resolveCostDisplayFromCombinedPrices(null);
+// Normalized combined-price rows for the hero's "Export price now" subline —
+// refreshed alongside costDisplay from the same prices read-model fetch.
+let latestPriceRows: CombinedPriceRow[] = [];
 
 const renderDailyBudget = (payload: DailyBudgetUiPayload | null) => {
   latestDailyBudgetPayload = payload;
@@ -23,7 +27,7 @@ const renderDailyBudget = (payload: DailyBudgetUiPayload | null) => {
   // hero renders (see `activeDailyBudget.ts` for why the budget-adjust draft
   // is not a valid source).
   setActiveDailyBudgetFromPayload(payload);
-  renderBudgetRedesign(payload, currentDailyBudgetView, costDisplay);
+  renderBudgetRedesign(payload, currentDailyBudgetView, costDisplay, latestPriceRows);
 };
 
 export const rerenderDailyBudget = () => {
@@ -50,6 +54,7 @@ export const refreshDailyBudgetPlan = async (payloadOverride?: DailyBudgetUiPayl
       getPricesReadModel().then((prices) => prices.combinedPrices).catch(() => null),
     ]);
     costDisplay = resolveCostDisplayFromCombinedPrices(combinedPrices);
+    latestPriceRows = normalizeCombinedPrices(combinedPrices);
     renderDailyBudget(payload);
   } catch (error) {
     await logSettingsError('Failed to load daily budget plan', error, 'refreshDailyBudgetPlan');
