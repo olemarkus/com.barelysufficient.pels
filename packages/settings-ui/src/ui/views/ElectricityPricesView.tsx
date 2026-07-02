@@ -10,9 +10,9 @@ import { resolvePriceLevelChip } from '../../../../shared-domain/src/priceLevelC
 import {
   MdFilledSelect,
   MdFilledTextField,
+  MdIconButton,
   MdOutlinedButton,
   MdSelectOption,
-  MdTextButton,
 } from './materialWebJSX.tsx';
 import { ArrowBackIcon } from './icons.tsx';
 
@@ -70,22 +70,19 @@ export type ElectricityPricesViewProps = {
 
 const Header = () => (
   <>
-    <MdTextButton
-      class="settings-back-button"
-      data-settings-target="settings"
-    >
-      <ArrowBackIcon slot="icon" />
-      Settings
-    </MdTextButton>
-    <header class="pels-hero">
-      <div>
-        <p class="eyebrow">Electricity prices</p>
-        <h2>Source and rules</h2>
-        <p class="muted electricity-prices-hero__lede">
-          Choose where prices come from and what counts as cheap or expensive. PELS uses these to shape the daily budget toward cheaper hours.
-        </p>
-      </div>
-    </header>
+    <div class="pels-appbar">
+      <MdIconButton
+        class="pels-appbar__back"
+        data-settings-target="settings"
+        aria-label="Back to Settings"
+      >
+        <ArrowBackIcon />
+      </MdIconButton>
+      <h2 class="pels-appbar__title">Electricity prices</h2>
+    </div>
+    <p class="muted pels-appbar-lede">
+      Choose where prices come from and what counts as cheap or expensive. PELS uses these to shape the daily budget toward cheaper hours.
+    </p>
   </>
 );
 

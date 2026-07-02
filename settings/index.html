@@ -39,17 +39,13 @@
       <span id="stale-data-text" class="banner__text">No power data received recently. Check your Flow that reports power usage.</span>
     </div>
 
-    <section class="card panel hidden" id="devices-panel" data-panel="devices">
-      <md-text-button type="button" class="settings-back-button" data-settings-target="settings">
-        <svg slot="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
-        Settings
-      </md-text-button>
-      <header class="pels-hero">
-        <div>
-          <p class="eyebrow">Devices</p>
-          <h2>Device control</h2>
-        </div>
-      </header>
+    <section class="card panel hidden" id="devices-panel" data-panel="devices" aria-labelledby="devices-title">
+      <div class="pels-appbar">
+        <md-icon-button type="button" class="pels-appbar__back" data-settings-target="settings" aria-label="Back to Settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
+        </md-icon-button>
+        <h2 class="pels-appbar__title" id="devices-title">Devices</h2>
+      </div>
       <template id="pels-icon-managed">
         <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
           <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
@@ -133,17 +129,13 @@
       </div>
     </section>
 
-    <section class="card panel hidden" id="modes-panel" data-panel="modes">
-      <md-text-button type="button" class="settings-back-button" data-settings-target="settings">
-        <svg slot="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
-        Settings
-      </md-text-button>
-      <header class="pels-hero">
-        <div>
-          <p class="eyebrow">Modes</p>
-          <h2>Per-mode priorities &amp; temperatures</h2>
-        </div>
-      </header>
+    <section class="card panel hidden" id="modes-panel" data-panel="modes" aria-labelledby="modes-title">
+      <div class="pels-appbar">
+        <md-icon-button type="button" class="pels-appbar__back" data-settings-target="settings" aria-label="Back to Settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
+        </md-icon-button>
+        <h2 class="pels-appbar__title" id="modes-title">Modes</h2>
+      </div>
       <form id="priority-form" class="form-grid">
         <div class="field">
           <label class="field__label pels-text-settings-label" for="mode-select">Edit mode</label>
@@ -361,11 +353,13 @@
       <div id="deadlines-history-root"></div>
     </section>
 
-    <section class="panel hidden deadline-plan-panel" id="deadline-plan-panel" data-panel="deadline-plan" aria-label="Smart task">
-      <md-text-button class="settings-back-button deadline-plan-back-button" type="button" data-deadline-plan-close>
-        <svg slot="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
-        Smart tasks
-      </md-text-button>
+    <section class="panel hidden deadline-plan-panel" id="deadline-plan-panel" data-panel="deadline-plan" aria-labelledby="deadline-plan-title">
+      <div class="pels-appbar">
+        <md-icon-button type="button" class="pels-appbar__back" data-deadline-plan-close aria-label="Back to Smart tasks">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
+        </md-icon-button>
+        <h2 class="pels-appbar__title" id="deadline-plan-title">Smart task</h2>
+      </div>
       <div class="deadline-plan-panel__surface" id="deadline-plan-root" aria-live="polite">
         <section class="pels-surface-card budget-redesign-card" aria-busy="true">
           <div class="pels-skeleton-stack" aria-hidden="true">
@@ -380,13 +374,12 @@
     </section>
 
     <section class="panel hidden settings-home-panel" id="settings-panel" data-panel="settings" aria-labelledby="settings-title">
-      <header class="plan-hero pels-hero">
-        <div class="plan-hero__section">
-          <p class="eyebrow plan-hero__section-label">Settings</p>
-          <h2 class="plan-hero__headline" id="settings-title">Configure PELS</h2>
-          <p class="plan-hero__subline plan-hero__subline--muted">Choose what to adjust. Common settings on top; diagnostics and resets under Advanced.</p>
-        </div>
-      </header>
+      <!-- Visually-hidden panel landmark heading. The tab bar above already
+           says "Settings"; a visible boxed hero here only restated the page's
+           own name and layout, so the first visible content is the current-mode
+           selector + nav list. The hidden `<h2>` keeps the aria-labelledby
+           target and the document-outline rung (h2 -> h3 "Current mode"). -->
+      <h2 class="visually-hidden" id="settings-title">Settings</h2>
       <section class="settings-form-card settings-current-mode" aria-labelledby="settings-active-mode-summary">
         <h3 class="field__label pels-text-settings-label settings-current-mode__heading" id="settings-active-mode-summary">Current mode</h3>
         <div class="field settings-current-mode__field">
@@ -458,16 +451,12 @@
          Budget setup card's deep-link. The controller renders the Preact master
          switch (the feature gate) + pickers + validity lines into the mount. -->
     <section class="card panel hidden settings-detail-panel" id="weather-panel" data-panel="weather" aria-labelledby="weather-panel-title">
-      <md-text-button type="button" class="settings-back-button" data-settings-target="settings">
-        <svg slot="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
-        Settings
-      </md-text-button>
-      <header class="pels-hero">
-        <div>
-          <p class="eyebrow">Settings</p>
-          <h2 id="weather-panel-title">Weather insight</h2>
-        </div>
-      </header>
+      <div class="pels-appbar">
+        <md-icon-button type="button" class="pels-appbar__back" data-settings-target="settings" aria-label="Back to Settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
+        </md-icon-button>
+        <h2 class="pels-appbar__title" id="weather-panel-title">Weather insight</h2>
+      </div>
       <div id="weather-insight-settings-mount"></div>
       <!-- Hidden by default; the controller un-hides it only while the feature is
            on (off ⇒ there is no "tomorrow's outlook" to link to). -->
@@ -477,16 +466,12 @@
     </section>
 
     <section class="card panel hidden settings-detail-panel" id="limits-panel" data-panel="limits" aria-labelledby="limits-title">
-      <md-text-button type="button" class="settings-back-button" data-settings-target="settings">
-        <svg slot="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
-        Settings
-      </md-text-button>
-      <header class="pels-hero">
-        <div>
-          <p class="eyebrow">Limits &amp; safety</p>
-          <h2 id="limits-title">Hard cap and safety margin</h2>
-        </div>
-      </header>
+      <div class="pels-appbar">
+        <md-icon-button type="button" class="pels-appbar__back" data-settings-target="settings" aria-label="Back to Settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
+        </md-icon-button>
+        <h2 class="pels-appbar__title" id="limits-title">Limits &amp; safety</h2>
+      </div>
       <form id="settings-limits-form" class="form-grid settings-form-card">
         <label class="field">
           <span class="field__label pels-text-settings-label" id="settings-capacity-limit-label">Hard cap (kW)</span>
@@ -511,16 +496,12 @@
     </section>
 
     <section class="card panel hidden settings-detail-panel" id="simulation-panel" data-panel="simulation" aria-labelledby="simulation-title">
-      <md-text-button type="button" class="settings-back-button" data-settings-target="settings">
-        <svg slot="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
-        Settings
-      </md-text-button>
-      <header class="pels-hero">
-        <div>
-          <p class="eyebrow">Simulation mode</p>
-          <h2 id="simulation-title">Test without switching devices</h2>
-        </div>
-      </header>
+      <div class="pels-appbar">
+        <md-icon-button type="button" class="pels-appbar__back" data-settings-target="settings" aria-label="Back to Settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
+        </md-icon-button>
+        <h2 class="pels-appbar__title" id="simulation-title">Simulation mode</h2>
+      </div>
       <div class="md-switch-row settings-form-card">
         <md-switch id="settings-simulation-mode" name="settings_simulation_mode" aria-labelledby="settings-simulation-mode-label"></md-switch>
         <span class="md-switch-row__content">
@@ -551,17 +532,13 @@
       <p id="plan-empty" class="muted" hidden>No plan available yet. Send power data or refresh devices.</p>
     </section>
 
-    <section class="card panel hidden" id="advanced-panel" data-panel="advanced">
-      <md-text-button type="button" class="settings-back-button" data-settings-target="settings">
-        <svg slot="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
-        Settings
-      </md-text-button>
-      <header class="plan-hero pels-hero">
-        <div class="plan-hero__section">
-          <p class="eyebrow plan-hero__section-label">Advanced</p>
-          <h2 class="plan-hero__headline">Diagnostics &amp; maintenance</h2>
-        </div>
-      </header>
+    <section class="card panel hidden" id="advanced-panel" data-panel="advanced" aria-labelledby="advanced-title">
+      <div class="pels-appbar">
+        <md-icon-button type="button" class="pels-appbar__back" data-settings-target="settings" aria-label="Back to Settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
+        </md-icon-button>
+        <h2 class="pels-appbar__title" id="advanced-title">Advanced</h2>
+      </div>
       <details class="settings-collapse">
         <summary>
           <h3 class="section-title">Debug logging</h3>
@@ -667,21 +644,14 @@
   <!-- Device Detail Panel (slide-over side sheet) -->
   <div id="device-detail-overlay" class="overlay" hidden>
     <div id="device-detail-panel" class="slide-panel">
-      <div class="slide-panel__header">
-        <md-text-button id="device-detail-close" class="settings-back-button" aria-label="Back to devices">
-          <svg slot="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
-          Devices
-        </md-text-button>
+      <div class="slide-panel__header pels-appbar">
+        <md-icon-button id="device-detail-close" type="button" class="pels-appbar__back" aria-label="Back to Devices">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
+        </md-icon-button>
+        <h2 class="pels-appbar__title" id="device-detail-title">Device</h2>
       </div>
 
       <div class="slide-panel__content">
-        <header class="pels-hero device-detail-heading">
-          <div>
-            <p class="eyebrow">Device</p>
-            <h2 id="device-detail-title">Device</h2>
-          </div>
-        </header>
-
         <section class="detail-section" id="device-detail-modes-section">
           <details class="settings-collapse detail-collapse" open>
             <summary>

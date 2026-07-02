@@ -179,7 +179,7 @@
   --pels-shell-nav-tab-radius: var(--radius-md);
   --pels-shell-nav-tab-label-size: var(--font-size-sm);
   --pels-shell-nav-tab-label-size-compact: var(--font-size-xs);
-  --pels-shell-nav-tab-label-weight: var(--font-weight-semibold);
+  --pels-shell-nav-tab-label-weight: var(--font-weight-medium); /** Resting weight for inactive tabs; the `.tab.active` rule lifts the selected label to semibold so weight + underline (not a pill fill) distinguish the active destination. */
   --pels-shell-nav-tab-selected-hover-background: rgba(var(--color-base-accent-default-rgb), 0.38); /** Tonal accent-tint hover fill. No longer used by the nav tab (which is underline-only) but still consumed by `.plan-chip--link[aria-pressed=true]:hover`, so the token stays. */
   --pels-deadline-close-size: var(--pels-touch-target-min);
   --pels-chart-price-line: var(--color-base-price-default);
@@ -267,7 +267,7 @@
   --pels-text-settings-trailing-color: var(--pels-text-primary);
   --pels-segmented-label-color: var(--pels-text-secondary);
   --pels-segmented-selected-text: var(--pels-text-primary);
-  --pels-shell-nav-tab-label-color: var(--pels-text-secondary);
+  --pels-shell-nav-tab-label-color: var(--pels-text-primary); /** Inactive tab labels raised one step (secondary → primary) so unselected destinations stay clearly readable on the strip. Selection is carried by the M3 underline + semibold weight (the base label weight drops to medium), matching M3 secondary-tab colour semantics: one on-surface label colour, the indicator marks the active tab. */
   --pels-shell-nav-tab-label-hover-color: var(--pels-text-primary);
   --pels-shell-nav-tab-selected-text: var(--pels-text-primary);
   --pels-deadline-close-text: var(--pels-text-primary);

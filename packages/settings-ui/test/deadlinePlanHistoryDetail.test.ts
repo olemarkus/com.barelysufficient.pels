@@ -105,10 +105,13 @@ const stubPalette = {
 };
 
 describe('DeadlinePlanHistoryDetail', () => {
-  it('renders a "Smart task" eyebrow above the heading', async () => {
+  it('renders no eyebrow — the panel app-bar title already says "Smart task"', async () => {
+    // Navigation-chrome unification: the deadline-plan panel's `.pels-appbar`
+    // title row ("Smart task") sits directly above this hero, so an in-card
+    // kicker with the same words would be a literal duplicate.
     const root = await mount(buildEntry({ originalPlan: null, finalPlan: null }));
-    const eyebrow = root.querySelector('.plan-history-detail__eyebrow');
-    expect(eyebrow?.textContent).toBe('Smart task');
+    expect(root.querySelector('.plan-history-detail__eyebrow')).toBeNull();
+    expect(root.querySelector('.plan-history-detail__hero .eyebrow')).toBeNull();
   });
 
   it('promotes the outcome chip into its own row above the timestamp', async () => {
@@ -588,7 +591,7 @@ describe('DeadlinePlanHistoryDetail', () => {
       expect(root.querySelector('.plan-history-detail__recourse')).toBeNull();
       expect(root.querySelector('.plan-history-detail__missed-reason')).toBeNull();
       // v2.7.3: the chart card is suppressed entirely on Abandoned — the
-      // hero collapses to eyebrow + sentence + Material <details>.
+      // hero collapses to chip + sentence + Material <details>.
       expect(root.querySelector('.plan-history-detail__chart-toggle')).toBeNull();
       expect(root.querySelector('.deadline-horizon-chart')).toBeNull();
       // Evidence-on-demand lives inside the disclosure.

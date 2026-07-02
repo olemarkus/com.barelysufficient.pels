@@ -37,7 +37,6 @@ import {
 import {
   type DeadlineCannotMeetRecourse,
   resolveMissedHistoryRecourse,
-  SMART_TASK_HISTORY_EYEBROW,
 } from '../../../shared-domain/src/deadlineLabels.ts';
 
 // Tone slug for the history-detail hero shape. Mirrors the live hero's
@@ -58,10 +57,9 @@ export type DeadlinePlanHistoryHeroPayload = {
   // surface renders, so the user reads the same word twice ("Succeeded" →
   // "Succeeded" header, etc.) without us inventing alternative copy.
   chip: { text: string; tone: DeadlinePlanHistoryHeroTone };
-  // Eyebrow / scoping label above the heading. Always "Smart task" today;
-  // kept on the payload so future kind-aware variants don't need a view
-  // change.
-  eyebrow: string;
+  // No eyebrow: the panel's `.pels-appbar` title row already says
+  // "Smart task" directly above this hero, so a same-word kicker inside the
+  // card would be a literal duplicate (navigation-chrome unification).
   // Heading line (h1). Split into device name (primary subject) and
   // deadline timestamp (de-emphasized) so the view can render the timestamp
   // with the existing `.plan-history-detail__heading-when` muted-tone CSS.
@@ -93,7 +91,7 @@ export type DeadlinePlanHistoryHeroPayload = {
   // receipt-shape (collapsed by default with a "View plan" toggle); Missed
   // = diagnosis-shape (always expanded); Abandoned = muted log (collapsed).
   chartCollapsedByDefault: boolean;
-  // Whether the hero is the quiet abandoned-shape — eyebrow + one sentence
+  // Whether the hero is the quiet abandoned-shape — chip + one sentence
   // + Material `<details>` expansion, no chart card, no recourse. Resolved
   // here so the view layer never branches on outcome to drop the chart
   // card. True for `abandoned` / `replaced`, and for `unknown` entries with
@@ -177,7 +175,6 @@ export const buildHistoryDetailHero = (
     return {
       tone: 'good',
       chip: { text: chipLabel, tone: 'good' },
-      eyebrow: SMART_TASK_HISTORY_EYEBROW,
       heading,
       lead,
       // The 3-row receipt below the outcome headline is the new primary
@@ -232,7 +229,6 @@ export const buildHistoryDetailHero = (
     return {
       tone: 'warn',
       chip: { text: chipLabel, tone: 'warn' },
-      eyebrow: SMART_TASK_HISTORY_EYEBROW,
       heading,
       lead,
       secondary: missedSecondary,
@@ -284,7 +280,6 @@ export const buildHistoryDetailHero = (
   return {
     tone: 'muted',
     chip: { text: chipLabel, tone: 'muted' },
-    eyebrow: SMART_TASK_HISTORY_EYEBROW,
     heading,
     lead,
     // The abandoned shape uses the `<details>` body as its evidence

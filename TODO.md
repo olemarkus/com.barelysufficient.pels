@@ -559,13 +559,16 @@ CI failure, so future field-move slices can't silently grow the debt.*
       the budget-settings-access PR, 2026-06-10.
 
 - [ ] **Settings-referred Adjust session lacks the sibling "← Settings" back affordance.** Every
-      Settings sub-page (Limits & safety, Devices, …) opens with a leading back chip; the Daily
-      budget row instead lands on the Budget tab where the way back is a trailing "Done" whose
-      destination is only in a hover `title`. When `adjustReturnTarget === 'settings'`, render the
-      shared `.settings-back-button` affordance above the Budget header (it can coexist with Done).
+      Settings sub-page (Limits & safety, Devices, …) opens with the shared `.pels-appbar`
+      back+title row; the Daily budget row instead lands on the Budget tab where the way back is a
+      trailing "Done" whose destination is only in a hover `title`. When
+      `adjustReturnTarget === 'settings'`, render the shared `.pels-appbar` back row above the
+      Budget header (it can coexist with Done — but mind the unsaved-draft discard confirm the
+      Done button carries; a back arrow must not silently discard a dirty draft).
       Persona: Set-and-forget owner; hypothesis: without the visible back affordance the
       tab-indicator jump (Settings → Budget) reads as "I got teleported", not "this is a sub-page of
-      what I was doing". Source: pels-ux-fit, 2026-06-10.
+      what I was doing". Source: pels-ux-fit, 2026-06-10; deferred again by the navigation-chrome
+      unification PR (2026-07-02) because of the discard-confirm interplay.
 
 - [ ] **Move the daily-budget breakdown chart toggle from Advanced to the Budget chart card.** After
       the tuning-selects retirement, Advanced ("Diagnostics, cleanup, logs, experiments") hosts a
@@ -742,11 +745,13 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
       Homey's app chrome; after this ships, open `?page=deadline-plan` on a real phone once to
       confirm and close the loop. Source: PR #1807 review gates (2026-07-01).
 
-- [ ] **Device-detail hero: add a one-line live status under the device name.** The hero now hugs
-      its content (PR #1807) but carries only eyebrow + name — an identity card. Add one line of
-      live status (state + current draw, the same producer-resolved data the Overview card
-      renders) to turn it into a confidence card ("is PELS seeing this device right now?").
-      Source: PR #1807 review gates (2026-07-01).
+- [ ] **Device detail: add a one-line live status near the device name.** The identity hero card is
+      gone — the navigation-chrome unification moved the device name into the slide panel's
+      `.pels-appbar` header. The original intent stands: add one line of live status (state +
+      current draw, the same producer-resolved data the Overview card renders) as the first
+      content row under the app bar, so the page answers "is PELS seeing this device right now?".
+      Source: PR #1807 review gates (2026-07-01); re-anchored by the navigation-chrome PR
+      (2026-07-02).
 
 - [ ] **Playwright stub: seeded smart-task data is internally inconsistent.** The
       `dev_connected300` fixture claims "Needs 12.0 kWh" and an on-track verdict, but the seeded

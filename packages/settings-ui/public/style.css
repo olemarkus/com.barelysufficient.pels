@@ -492,9 +492,23 @@ md-text-button.md-text-button--destructive {
   outline-offset: 2px;
 }
 
-.tab:hover:not(.active) {
-  color: var(--text);
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
+/* Hover treatments are gated to genuinely hover-capable pointers. In the
+   touch WebView a tap leaves the element in a sticky `:hover` state, which
+   painted a phantom filled pill behind the last-tapped tab — making the strip
+   read as pill + underline, two competing active-tab treatments. The M3
+   underline is the single selection indicator. */
+@media (hover: hover) {
+  .tab:hover:not(.active) {
+    color: var(--text);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+  }
+}
+
+@media (hover: none) {
+  .tabs {
+    --md-primary-tab-hover-state-layer-opacity: 0;
+    --md-primary-tab-active-hover-state-layer-opacity: 0;
+  }
 }
 
 #shell-nav .tab {
@@ -887,9 +901,9 @@ md-primary-tab.tab[active] {
 /*
  * `.settings-current-mode__heading` promotes the field label to an <h3>
  * so the Settings page keeps a screen-reader nav rung between the
- * `h2 "Configure PELS"` hero and the nav cards below. Neutralise the
- * browser defaults so it reads visually identical to the surrounding
- * `.field__label` spans.
+ * visually-hidden `h2 "Settings"` landmark heading and the nav cards below.
+ * Neutralise the browser defaults so it reads visually identical to the
+ * surrounding `.field__label` spans.
  */
 .settings-current-mode__heading {
   margin: 0;
@@ -986,11 +1000,58 @@ md-primary-tab.tab[active] {
   gap: var(--spacing-3);
 }
 
-.settings-back-button {
-  justify-self: start;
-  padding: var(--spacing-2) var(--spacing-3) !important;
+/* ─── Navigation app bar (`.pels-appbar`) ────────────────────────────────────
+   The single back+title chrome row every sub-page uses: a 48 px icon-only
+   back button and the page title on one un-carded line. Replaces the three
+   historical back treatments (accent "← Settings" text button, carded
+   "← Smart tasks" button, dark "← Devices" pill) AND the boxed hero-title
+   card that used to follow them — the bar itself is transparent page chrome,
+   so content starts one row below the tab bar / banner. Neutral (non-accent)
+   colours only: navigation chrome must not compete with content accents. */
+.pels-appbar {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  min-width: 0;
   min-height: var(--pels-touch-target-min);
-  min-width: var(--pels-touch-target-min);
+}
+
+.pels-appbar__back {
+  flex: 0 0 auto;
+  width: var(--pels-touch-target-min);
+  height: var(--pels-touch-target-min);
+  /* Route the glyph colour through the MD icon-button token API — the svg
+     lives in the component's slot and does not inherit host `color`. */
+  --md-icon-button-icon-color: var(--pels-text-primary);
+  --md-icon-button-hover-icon-color: var(--pels-text-primary);
+  --md-icon-button-focus-icon-color: var(--pels-text-primary);
+  --md-icon-button-pressed-icon-color: var(--pels-text-primary);
+  --md-icon-button-state-layer-color: var(--pels-text-primary);
+  --md-icon-button-hover-state-layer-color: var(--pels-text-primary);
+  --md-icon-button-pressed-state-layer-color: var(--pels-text-primary);
+}
+
+/* Doubled selector (parent class + element class) so the title's card-title
+   type beats the generic `.card h2` / `.pels-hero h2` section-headline
+   cascade on panels that still carry the `.card` class. */
+.pels-appbar .pels-appbar__title {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--pels-text-card-title-color);
+  font-size: var(--pels-text-card-title-font-size);
+  font-weight: var(--pels-text-card-title-font-weight);
+  line-height: var(--pels-text-card-title-font-line-height);
+}
+
+/* Short lede paragraph directly under an app bar (Electricity prices). Plain
+   page-level text — not a card — so the chrome row stays the only container. */
+.pels-appbar-lede {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  line-height: var(--font-line-height-cozy);
 }
 
 .settings-form-card {
@@ -1826,14 +1887,6 @@ md-filled-button.is-busy {
   gap: var(--spacing-2);
 }
 
-/* Eyebrow above the heading scopes the surface so users who deep-link here
- * (e.g. via a notification) know which feature owns this page. Uses the
- * shared `.eyebrow` primitive's typography; the modifier only removes the
- * inherited bottom-margin so it sits flush with the outcome row below. */
-.plan-history-detail__eyebrow {
-  margin: 0;
-}
-
 /* Outcome chip lifted out of the heading row so the answer to "did it
  * succeed?" reads ahead of the timestamp instead of being tucked to the
  * right. The chip primitive carries its own tone (ok / warn / muted); this
@@ -2550,8 +2603,8 @@ md-filled-button.is-busy {
 }
 
 /* Scale the hero display type down on the narrowest viewports (≤360px, the
-   320px floor included) so long display headings ("Diagnostics & maintenance",
-   "Configure PELS") and metric values never overflow the hero card. */
+   320px floor included) so long display headings and metric values never
+   overflow the hero card. */
 @media (max-width: 360px) {
   .plan-hero__headline,
   .plan-hero__metric-value {
@@ -3862,37 +3915,29 @@ md-filled-button.is-busy {
   }
 }
 
-/* Narrow breakpoint: keep all five destinations on one row at ~320 px.
-   Tightens padding, shrinks label size, and allows "Smart tasks" to wrap to
-   two lines so the full label remains visible instead of ellipsis-truncating
-   to "Smart task…". The growing tab height is absorbed by the surrounding
-   header — touch target stays ≥ 48 px via the tab container token. */
+/* Narrow breakpoint: keep all five destinations on one row at ~320 px, each
+   label on a SINGLE line at one shared baseline. Instead of the equal-width
+   flex split (which starved "Smart tasks" into a two-line wrap), tabs size to
+   their label (`flex: 1 1 auto`) so the longer label takes the room it needs
+   and the shorter ones give it up — at 320 px all five labels fit with room
+   to spare (measured: rightmost edge ≈ 311 px). Touch target stays ≥ 48 px
+   via the tab container token. */
 @media (max-width: 360px) {
   #shell-nav[data-shell-nav-compact] {
     gap: 0;
     padding: 2px;
-    /* Allow the bar to stretch when the two-line "Smart tasks" label grows
-     * the row height — capping at the tab height would re-trigger clipping. */
-    --md-primary-tab-container-height: auto;
-    --pels-shell-nav-tab-height-compact: auto;
+  }
+
+  #shell-nav[data-shell-nav-compact] > md-primary-tab {
+    flex: 1 1 auto;
   }
 
   #shell-nav[data-shell-nav-compact] .tab {
     padding-inline: var(--spacing-1);
-    padding-block: var(--spacing-1);
     font-size: var(--font-size-xs);
     letter-spacing: -0.01em;
-    /* Two-line wrap fits "Smart tasks" without truncation; keeps the full
-     * label legible and the touch target ≥ 48 px (the row height grows to
-     * accommodate the wrapped label). */
-    white-space: normal;
-    word-break: keep-all;
-    overflow: visible;
-    overflow-wrap: normal;
-    text-overflow: clip;
-    line-height: var(--font-line-height-tight);
-    min-height: var(--pels-touch-target-min);
-    height: auto;
+    white-space: nowrap;
+    line-height: var(--font-line-height-flat);
   }
 
   #shell-nav[data-shell-nav-compact] > md-primary-tab:not(:last-child) {
@@ -4703,36 +4748,20 @@ details[open] > summary .disclosure-chevron {
   transform: translateX(0);
 }
 
+/* The slide panel's sticky chrome strip hosts the shared `.pels-appbar`
+   back+title row (the device name is the bar title — the old boxed
+   "DEVICE / name" hero card inside the scroll body is gone). Keeps its own
+   surface + hairline because content scrolls beneath it. */
 .slide-panel__header {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-3);
-  padding: var(--spacing-3) var(--spacing-4);
+  padding: var(--spacing-1) var(--spacing-3);
   border-bottom: 1px solid var(--panel-border);
   background: var(--panel);
-}
-
-.slide-panel__header .settings-back-button {
-  margin: 0;
 }
 
 .slide-panel__content {
   flex: 1;
   overflow-y: auto;
   padding: var(--spacing-4);
-}
-
-.device-detail-heading {
-  margin-bottom: var(--spacing-4);
-}
-
-.device-detail-heading h2 {
-  margin: var(--spacing-1) 0 0;
-  color: var(--pels-text-section-headline-color);
-  font-size: var(--pels-text-section-headline-font-size);
-  font-weight: var(--pels-text-section-headline-font-weight);
-  line-height: var(--pels-text-section-headline-font-line-height);
-  overflow-wrap: anywhere;
 }
 
 .slide-panel__footer {
@@ -5926,32 +5955,6 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-3);
-}
-
-/* Doubled-class + panel-scoped cascade so these rules beat both the host
- * `md-text-button` shadow defaults and Homey's button stylesheet without
- * `!important`. Mirrors the canonical `.pels-button` pattern documented
- * nearby, where the same doubled-class strategy replaces an earlier
- * `!important`-heavy block. The `align-self` and `box-shadow` declarations
- * stay on the single-class rule so they keep applying when this class is
- * used outside the deadline-plan panel scope. */
-.deadline-plan-back-button {
-  align-self: flex-start;
-  box-shadow: none;
-}
-
-#deadline-plan-panel md-text-button.deadline-plan-back-button.deadline-plan-back-button {
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-md);
-  background: var(--pels-surface-container-low);
-  /* Route the text/label color through the MD Web component's CSS-custom-
-   * property API (`--md-sys-color-primary`) rather than setting `color` on
-   * the host. Mirrors the device-detail back button at the
-   * `#device-detail-panel .slide-panel__header md-text-button.settings-back-button`
-   * cascade (~line 6615): MD Web buttons render their inner label inside a
-   * Shadow DOM that does not inherit host `color`, so setting `color` on the
-   * host is ignored. The custom-property override does land. */
-  --md-sys-color-primary: var(--text);
 }
 
 .deadline-horizon-card {
@@ -7362,15 +7365,15 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 
 /* ─── Usage panel redesign ─────────────────────────────────────────────────── */
 
+/* Cross-navigation return row (deep link back to the smart task that opened
+   the Usage view). Un-carded, matching the `.pels-appbar` chrome grammar:
+   arrow + label on a transparent row, context as quiet supporting text. */
 .usage-return-link {
   display: flex;
   align-items: center;
   gap: var(--spacing-2);
   flex-wrap: wrap;
-  padding: var(--spacing-2) var(--spacing-3);
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-md);
-  background: var(--pels-surface-container-low);
+  min-height: var(--pels-touch-target-min);
   color: var(--text);
 }
 
@@ -7750,12 +7753,6 @@ md-switch {
   flex: 1 1 auto;
 }
 
-/* Slide-panel back button blends with the header. */
-#device-detail-panel .slide-panel__header md-text-button.settings-back-button {
-  --md-sys-color-primary: var(--text);
-  font-size: var(--font-size-md);
-}
-
 /* Target-power-grid uses M3 fields directly inside the grid; ensure they
  * fill their cells. */
 #device-detail-panel .target-power-grid md-filled-text-field {
@@ -7777,6 +7774,7 @@ md-switch {
   #simulation-panel,
   #usage-panel,
   #advanced-panel,
+  #weather-panel,
   #electricity-prices-panel,
   #price-aware-devices-panel,
   #deadlines-panel
@@ -7797,35 +7795,12 @@ md-switch {
   #simulation-panel,
   #usage-panel,
   #advanced-panel,
+  #weather-panel,
   #electricity-prices-panel,
   #price-aware-devices-panel,
   #deadlines-panel
 ).hidden {
   display: none;
-}
-
-/* Device-detail heading now consumes the shared `.pels-hero` primitive; this
-   selector is retained only as a hook for the device-detail-specific identity
-   (no extra styling needed beyond the base hero rule). */
-
-:where(
-  #devices-panel,
-  #modes-panel,
-  #limits-panel,
-  #simulation-panel,
-  #advanced-panel,
-  #electricity-prices-panel,
-  #price-aware-devices-panel,
-  #device-detail-panel
-) .settings-back-button {
-  justify-self: start;
-  min-height: var(--pels-touch-target-min);
-  padding: var(--spacing-2) var(--spacing-3) !important;
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-md) !important;
-  background: var(--pels-surface-container-low) !important;
-  color: var(--text) !important;
-  box-shadow: none;
 }
 
 :where(
@@ -7840,6 +7815,7 @@ md-switch {
 :where(
   #limits-panel,
   #simulation-panel,
+  #weather-panel,
   #electricity-prices-panel,
   #price-aware-devices-panel
 ) .settings-form-card,
@@ -8114,7 +8090,9 @@ md-switch {
 }
 
 #device-detail-panel .slide-panel__header {
-  padding: var(--spacing-3);
+  /* Compact app-bar strip: the 48 px back control + hairline defines the row
+     height; only a whisper of vertical padding so the chrome stays chrome. */
+  padding: var(--spacing-1) var(--spacing-3);
   background: var(--pels-surface-container-low);
 }
 
@@ -8184,6 +8162,7 @@ md-switch {
     #simulation-panel,
     #usage-panel,
     #advanced-panel,
+    #weather-panel,
     #electricity-prices-panel,
     #price-aware-devices-panel,
     #deadlines-panel

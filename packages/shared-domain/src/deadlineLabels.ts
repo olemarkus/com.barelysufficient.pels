@@ -711,9 +711,13 @@ export const formatSmartTaskCurrentValueLine = (params: {
   return `currently ${Math.round(params.currentValue)} %`;
 };
 
-// Eyebrow + empty-state copy for the Smart-tasks history surfaces.
-// Kept in shared-domain so logging breadcrumbs and the UI render the same
-// strings (per `feedback_ui_text_shared_with_logs.md`).
+// Scoping noun for the Smart-tasks history surfaces (the history-detail
+// article's aria-label and, via `SMART_TASK_USAGE_RETURN_LABEL`, the Usage
+// return link). The visible in-card eyebrow it originally named was removed
+// when the deadline-plan panel gained the shared `.pels-appbar` title row —
+// the bar already says "Smart task" directly above the hero. Kept in
+// shared-domain so logging breadcrumbs and the UI render the same strings
+// (per `feedback_ui_text_shared_with_logs.md`).
 //
 // Note: `Smart task` not `Smart task plan` — `feedback_terminology_plan_vs_deadline`
 // reserves the "plan" noun for the planner layer; user copy uses "smart task"

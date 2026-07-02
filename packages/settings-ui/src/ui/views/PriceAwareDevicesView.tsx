@@ -1,6 +1,6 @@
 import { render } from 'preact';
 import type { PriceOptDevice } from '../priceConfigTypes.ts';
-import { MdIconButton, MdOutlinedButton, MdSwitch, MdTextButton } from './materialWebJSX.tsx';
+import { MdIconButton, MdOutlinedButton, MdSwitch } from './materialWebJSX.tsx';
 import { ArrowBackIcon } from './icons.tsx';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 
@@ -109,21 +109,16 @@ const ValueAdjuster = ({
 };
 
 const Header = () => (
-  <>
-    <MdTextButton
-      class="settings-back-button"
+  <div class="pels-appbar">
+    <MdIconButton
+      class="pels-appbar__back"
       data-settings-target="settings"
+      aria-label="Back to Settings"
     >
-      <ArrowBackIcon slot="icon" />
-      Settings
-    </MdTextButton>
-    <header class="pels-hero">
-      <div>
-        <p class="eyebrow">Price-aware devices</p>
-        <h2>Cheap-hour boost and expensive-hour reduction</h2>
-      </div>
-    </header>
-  </>
+      <ArrowBackIcon />
+    </MdIconButton>
+    <h2 class="pels-appbar__title">Price-aware devices</h2>
+  </div>
 );
 
 const RespondTogglesCard = ({
