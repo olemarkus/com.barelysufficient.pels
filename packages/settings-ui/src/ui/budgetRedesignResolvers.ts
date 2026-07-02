@@ -41,7 +41,7 @@ import {
   YESTERDAY_FINISHED_WITHIN_BUDGET,
   composeBudgetHeroOverBy,
   composeBudgetRemainingLineWithEstimate,
-  composeBudgetRemainingToday,
+  composeBudgetUsedSoFar,
   composeBudgetUsedOver,
   composeExportPriceNow,
   resolveChartSubtitle as resolveSharedChartSubtitle,
@@ -307,19 +307,22 @@ export const resolveBudgetRemainingLine = (
   payload: DailyBudgetDayPayload,
   costDisplay: CostDisplay,
 ): string => {
-  // `remainingKWh = dailyBudgetKWh - usedNowKWh` (see
-  // `lib/dailyBudget/dailyBudgetState.ts`). The hero headline shows
-  // projected-vs-budget; this subline names *used* as the baseline so the two
-  // numbers don't read as if they should add up.
+  // The hero's delta chip ("N kWh to spare") is the single "how much is left"
+  // answer, so this subline names USED so far (`dailyBudgetKWh − remainingKWh`)
+  // rather than restating the remainder. The over-budget branch keeps its own
+  // "already used" overdraw framing.
   const remaining = payload.state.remainingKWh;
+  // `formatKWh` renders a non-finite value as "-- kWh", so no explicit
+  // finiteness guard is needed here — a missing budget/remaining degrades
+  // gracefully rather than showing a fabricated number.
+  const usedSoFar = Math.max(0, payload.budget.dailyBudgetKWh - remaining);
   const status = Number.isFinite(remaining) && remaining < 0
     ? composeBudgetUsedOver(formatKWh(Math.abs(remaining), 1))
-    : composeBudgetRemainingToday(formatKWh(remaining, 1));
-  // Source the cost from the SAME producer projection the headline kWh uses
-  // (resolveComparisonValue) so projected energy and projected cost describe one
-  // end-of-day scenario — otherwise an over-pace day shows producer-projected
-  // kWh while understating cost with the plan-based estimate. Same minor units
-  // (øre); fall back to the local estimate only when the producer value is absent.
+    : composeBudgetUsedSoFar(formatKWh(usedSoFar, 1));
+  // Source the cost from the SAME producer projection the headline kWh uses so
+  // projected energy and projected cost describe one end-of-day scenario (an
+  // over-pace day otherwise understates cost with the plan-based estimate).
+  // Fall back to the local estimate only when the producer value is absent.
   const projectedCostMinor = payload.state.projection?.endOfDayCostMinor;
   const cost = Number.isFinite(projectedCostMinor)
     ? (projectedCostMinor as number)

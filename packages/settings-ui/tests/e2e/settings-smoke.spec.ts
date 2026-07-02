@@ -167,7 +167,7 @@ test.describe('Settings UI (smoke)', () => {
 
     await expect(page.locator('#budget-redesign-comparison')).toContainText('/');
     await expect(page.locator('#budget-redesign-comparison')).toContainText('kWh');
-    await expect(page.locator('#budget-plan-summary')).toContainText("left in today's budget");
+    await expect(page.locator('#budget-plan-summary')).toContainText('used so far today');
     await expect(page.locator('#budget-plan-summary')).toContainText('Managed');
     await expect(page.locator('#budget-plan-summary')).toContainText('Background');
     await expect(page.locator('#budget-redesign-chart')).toBeVisible();
@@ -181,11 +181,11 @@ test.describe('Settings UI (smoke)', () => {
     await page.getByRole('button', { name: 'Tomorrow' }).click();
     await expect(page.locator('#budget-redesign-comparison')).toContainText('kWh');
     await expect(page.locator('#budget-plan-summary .plan-hero__decision')).toContainText('Most planned use');
-    await expect(page.locator('#budget-plan-summary .plan-hero__subline')).not.toContainText("left in today's budget");
+    await expect(page.locator('#budget-plan-summary .plan-hero__subline')).not.toContainText('used so far today');
 
     await page.getByRole('button', { name: 'Yesterday' }).click();
     await expect(page.locator('#budget-redesign-comparison')).toContainText('kWh');
-    await expect(page.locator('#budget-plan-summary')).not.toContainText("left in today's budget");
+    await expect(page.locator('#budget-plan-summary')).not.toContainText('used so far today');
 
     await page.getByRole('button', { name: 'Adjust', exact: true }).click();
     await expect(page.locator('#budget-redesign-adjust-view')).toBeVisible();

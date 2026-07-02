@@ -199,7 +199,7 @@ tolerance; cares about øre/kWh and the capacity-tier penalty equally.
 | Budget | Projected end-of-day cost in **money**, not just kWh. | ○ **gap** |
 | Usage | Per-device **cost** column alongside kWh. | ○ **gap — strongest open ask** |
 | Smart-tasks list | Per-task cost recap on the card. | ✅ |
-| Smart-task detail (plan) | The schedule-trust caption (`Picked N of M hours · avg P kr/kWh`) + live `Cost ≈ X.XX kr`. | ✅ |
+| Smart-task detail (plan) | The schedule-trust caption (`Picked N of M hours · avg P kr/kWh`) + the live **Estimated cost** hero stat (`≈ X.XX kr`, planned total; no delivered/planned split). | ✅ |
 | Smart-task history detail | Receipt: `≈ 3.10 kr · 0.52 kr/kWh on average · 6.0 kWh delivered`. | ✅ |
 | Settings | Price source + currency in one obvious place. | ◐ |
 | *(counterfactual)* | "≈ X kr saved vs not using PELS" — the credibility holy grail. | ○ **gap** — no vs-baseline number exists anywhere (the ingredients do). |
@@ -280,7 +280,7 @@ must do.
 |---|---|---|
 | **Onboarding** | First contact; does not trust the app yet. The trust-establishment window — high-stakes, not P2/P3 polish. | "What is this number, and why is it good?" framing; proof-of-life ("Watching N devices, capacity X kW"); the `Building plan…` pending hero (currently the strongest copy in PELS). |
 | **Steady** | The monthly green-chip glance. | The persona's baseline table above. |
-| **Verifying** | "Did it pick the cheap hours? what did it cost?" | The Trust/receipt rubric: schedule-trust caption, `Cost ≈ X.XX kr`, the finished-run receipt. |
+| **Verifying** | "Did it pick the cheap hours? what did it cost?" | The Trust/receipt rubric: schedule-trust caption, the live **Estimated cost** stat, the finished-run receipt. |
 | **Failing** | Pushed mid-incident, or recovering and planning the next run. | See the rubric below — this is the load-bearing one. |
 
 ### The Failing scenario — where the asymmetry lives

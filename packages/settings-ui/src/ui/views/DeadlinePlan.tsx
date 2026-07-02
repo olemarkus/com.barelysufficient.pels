@@ -34,7 +34,7 @@ import type { ResolvedDeferredObjectivePlanHistoryEntry } from '../../../../cont
 import { DeadlinePlanHistoryDetail } from './DeadlinePlanHistoryDetail.tsx';
 import { DeadlinesHistoryListRoot } from './DeadlinesHistoryList.tsx';
 import { MdTextButton } from './materialWebJSX.tsx';
-import { ExpandMoreIcon } from './icons.tsx';
+import { CheckCircleIcon, ExpandMoreIcon } from './icons.tsx';
 import { logSettingsWarn } from '../logging.ts';
 
 // Matches the `.plan-chip--*` CSS variants in
@@ -117,6 +117,11 @@ export type DeadlineTrajectoryPayload = {
   shortfall: { fromValue: number; toValue: number; label: string } | null;
 };
 
+// A hero stat pair: a muted label above/beside a bold value (e.g.
+// `Needs` / `12.0 kWh`). Rendered as a compact row so the numbers that
+// matter are the loud element, not buried in a grey sentence wall.
+export type DeadlineHeroStat = { label: string; value: string };
+
 export type DeadlinePlanPayload = {
   kind: DeferredObjectiveSettingsKind;
   labels: DeadlineLabels;
@@ -149,13 +154,18 @@ export type DeadlinePlanPayload = {
     // rather than render fabricated copy.
     headlineReason: string | null;
     subline: string;
-    metaLine: string;
-    // `Cost ≈ X.XX kr` (planned) or `Cost ≈ X.XX kr so far · Y.YY kr planned`
-    // (when partial delivery is known). Resolved producer-side from
-    // `Σ priceValue × deviceKwh` so the view never re-derives sums or branches
-    // on unit. Null when planned cost is unknown (no allocation yet) or the
-    // cost unit is missing (Flow / Homey without `priceUnit`).
-    costMetaLine: string | null;
+    // At-a-glance stat pairs (Needs / Estimated cost) with bold values — the
+    // former grey `Needs … · Cost ≈ …` metadata wall, promoted so the payoff
+    // numbers read without hunting. Estimated cost is omitted when the scheme
+    // carries no cost unit. Labels come from `SMART_TASK_HERO_STAT_LABELS`;
+    // resolved producer-side.
+    stats: DeadlineHeroStat[];
+    // The cannot-finish REASON sentence only ("Not enough time for this
+    // target. …" / "Today's daily budget is fully booked. …"). Null on
+    // healthy / at-risk / queued heroes — the stats + delivered line carry
+    // those. Split out of the old combined meta line so a running task shows
+    // stat pairs, not a reason paragraph.
+    metaLine: string | null;
     // `Delivered X of Y kWh · …` subline. Two visible branches collapse the
     // planner status union: cannot-meet renders the `still {curr} of {target}`
     // stem (the alert chip + meta line already say "Cannot finish" / "Not
@@ -320,13 +330,38 @@ const DeadlineHero = ({ payload }: { payload: DeadlinePlanPayload }) => (
       {payload.hero.headlineReason !== null && (
         <div class="plan-hero__subline plan-hero__subline--reason">{payload.hero.headlineReason}</div>
       )}
+      {/* On-track status row: the trajectory's verdict, hoisted onto the hero
+          so "am I on track?" is answerable above the fold — the same answer
+          the list card gives via its status chip — without scrolling to the
+          stateline under the trajectory chart. Shown only on the healthy
+          (`good`) branch; the at-risk / cannot-finish chips already carry the
+          warning states, and the producer nulls the verdict on the danger
+          branch, so this never contradicts them. */}
+      {payload.hero.tone === 'good' && payload.trajectory.stateline.verdict !== null && (
+        <p class="deadline-hero-status">
+          <CheckCircleIcon class="deadline-hero-status__icon" />
+          <span class="deadline-hero-status__label">{payload.trajectory.stateline.verdict.label}</span>
+          <span class="deadline-hero-status__supporting">
+            {payload.trajectory.stateline.verdict.supporting}
+          </span>
+        </p>
+      )}
       <div class="plan-hero__subline">{payload.hero.subline}</div>
-      <div class="plan-hero__subline plan-hero__subline--muted">{payload.hero.metaLine}</div>
+      {payload.hero.metaLine !== null && (
+        <div class="plan-hero__subline plan-hero__subline--reason">{payload.hero.metaLine}</div>
+      )}
+      {payload.hero.stats.length > 0 && (
+        <dl class="deadline-hero-stats">
+          {payload.hero.stats.map((stat) => (
+            <div class="deadline-hero-stats__pair" key={stat.label}>
+              <dt class="deadline-hero-stats__label">{stat.label}</dt>
+              <dd class="deadline-hero-stats__value">{stat.value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
       {payload.hero.deliveredSoFarLine !== null && (
         <div class="plan-hero__subline plan-hero__subline--muted">{payload.hero.deliveredSoFarLine}</div>
-      )}
-      {payload.hero.costMetaLine !== null && (
-        <div class="plan-hero__subline plan-hero__subline--muted">{payload.hero.costMetaLine}</div>
       )}
       {payload.hero.recourse !== null && (
         <div class="plan-hero__recourse">

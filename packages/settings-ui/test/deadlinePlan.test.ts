@@ -288,7 +288,7 @@ describe('deadline plan page payload', () => {
       nowMs: now.getTime(),
     }));
 
-    expect(payload.hero.metaLine).toContain('Needs 4.0 kWh');
+    expect(payload.hero.stats.find((stat) => stat.label === 'Needs')?.value).toContain('4.0 kWh');
     expect(payload.timeline.hours.some((hour) => hour.planned)).toBe(true);
   });
 
@@ -892,7 +892,7 @@ describe('deadline plan page payload', () => {
       nowMs: now.getTime(),
     }));
 
-    expect(payload.hero.metaLine).toContain('Needs 4.5 kWh');
+    expect(payload.hero.stats.find((stat) => stat.label === 'Needs')?.value).toContain('4.5 kWh');
   });
 
   it('renders a cannot-meet plan with a warning chip and shortfall sub-line', () => {
@@ -974,7 +974,7 @@ describe('deadline plan page payload', () => {
     // target temperature") rather than rendering a raw °C delta; the meta
     // line still carries the Needs/duration magnitude after the sentence.
     expect(payload.hero.metaLine).toMatch(/not enough time for this target/i);
-    expect(payload.hero.metaLine).toMatch(/needs .* kwh/i);
+    expect(payload.hero.stats.find((stat) => stat.label === 'Needs')?.value).toMatch(/kwh/i);
     // The misleading "Short by about 41.9 °C" magnitude must not surface in
     // user copy (TODO 434 in TODO.md).
     expect(payload.hero.metaLine).not.toMatch(/short by about/i);
@@ -1082,7 +1082,7 @@ describe('deadline plan page payload', () => {
     expect(payload.hero.recourse?.deviceId).toBe('heater');
     // The reasoned sentence is followed by the rich `Needs N kWh · …` meta
     // (TODO 1276) so users see both "why it's failing" and "how bad".
-    expect(payload.hero.metaLine).toMatch(/needs .* kwh/i);
+    expect(payload.hero.stats.find((stat) => stat.label === 'Needs')?.value).toMatch(/kwh/i);
   });
 
   it('routes a budget-bound at_risk plan to the daily-budget hint and Open Budget recourse', () => {
@@ -2315,7 +2315,6 @@ describe('deadline plan page payload', () => {
 
     expect(payload.planInputs.perUnitRateLabel).toBe('0.22 kWh/%');
     expect(payload.planInputs.perUnitRateNote).toBeNull();
-    expect(payload.hero.metaLine).toContain('Auto');
   });
 
   it('uses the persisted learning speedMode + bootstrap rateMean with no live profile', () => {
@@ -2402,7 +2401,6 @@ describe('deadline plan page payload', () => {
 
     expect(payload.planInputs.perUnitRateLabel).toBe('0.15 kWh/%');
     expect(payload.planInputs.perUnitRateNote).toBe('Estimated — refining as PELS observes charging.');
-    expect(payload.hero.metaLine).toContain('Learning…');
   });
 
   it('surfaces the kWhPerUnit provenance rows when the active plan carries a learned profile', () => {
@@ -2745,7 +2743,7 @@ describe('deadline plan page payload', () => {
       nowMs: now.getTime(),
     }));
     // 3 hours × 1.5 kWh = 4.5 kWh total, not just the 1.5 kWh future hour.
-    expect(payload.hero.metaLine).toContain('Needs 4.5 kWh');
+    expect(payload.hero.stats.find((stat) => stat.label === 'Needs')?.value).toContain('4.5 kWh');
   });
 
   it('surfaces flow-scheme actionable copy when the missing horizon is on the user’s Flow', () => {
@@ -3139,9 +3137,10 @@ describe('deadline plan page payload', () => {
       homeyToday: null,
       homeyTomorrow: null,
     };
-    // Recorder-style revision with planningSpeedKw + estimatedDurationText
-    // surfaced. The hero meta line must show all three numeric facts plus
-    // the speed-mode badge.
+    // Recorder-style revision with a learned rate + energy need. The hero's
+    // "Needs" stat pair carries the energy figure as a bold payoff value (the
+    // former grey `Needs … · kW · duration · mode` metadata wall was retired
+    // in favour of the Needs / Est. cost stat pairs).
     const revision = {
       revision: 1,
       revisedAtMs: now.getTime(),
@@ -3190,183 +3189,7 @@ describe('deadline plan page payload', () => {
       nowMs: now.getTime(),
     }));
 
-    expect(payload.hero.metaLine).toContain('Needs 4.0 kWh');
-    expect(payload.hero.metaLine).toContain('2.0 kW');
-    expect(payload.hero.metaLine).toContain('2h');
-    expect(payload.hero.metaLine).toContain('Auto');
-  });
-
-  it('prefers the plan-level snapshot over the shrinking latest-revision duration', () => {
-    // Regression for TODO 597: the recorder formats `estimatedDurationText`
-    // from `energyNeededKWh / planningSpeedKw` every revision, and
-    // `energyNeededKWh` shrinks every cycle as the device consumes energy.
-    // The hero meta line must read from the plan-level snapshot frozen at
-    // first-revision time so the user sees the original plan-level duration,
-    // not the shrinking "remaining" amount.
-    const now = new Date(2026, 0, 1, 13, 0, 0, 0);
-    const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
-      id: 'heater',
-      name: 'Connected 300',
-      binaryControl: { on: false },
-      currentTemperature: 18,
-      planningPowerKw: 2,
-      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
-    }];
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 6 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 100 + offset,
-        })),
-      },
-      electricityPrices: null,
-      priceArea: null,
-      gridTariffData: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-    };
-    // Latest revision says 1h (shrunk after the device consumed half the
-    // original 4 kWh plan); the plan-level snapshot says 2h (the original
-    // commitment). The hero must show the snapshot.
-    const latestRevision = {
-      revision: 2,
-      revisedAtMs: now.getTime(),
-      computedFromPricesUpTo: deadline.getTime(),
-      reason: 'prices_revised' as const,
-      hours: [{ startsAtMs: atLocalHour(now, 0).getTime(), plannedKWh: 2 }],
-      energyNeededKWh: 2,
-      planStatus: 'on_track' as const,
-      kwhPerUnitSource: 'learned' as const,
-      planningSpeedKw: 2,
-      estimatedDurationText: '1h',
-    };
-    const activePlan: DeferredObjectiveActivePlanV1 = {
-      deviceId: 'heater',
-      deviceName: 'Connected 300',
-      objectiveKind: 'temperature',
-      targetTemperatureC: 22,
-      targetPercent: null,
-      deadlineAtMs: deadline.getTime(),
-      startedAtMs: now.getTime(),
-      pending: false,
-      objectiveSignature: 'sig',
-      initialPlanningSpeedKw: 2,
-      initialEstimatedDurationText: '2h',
-      original: latestRevision,
-      latest: latestRevision,
-    };
-
-    const payload = expectOk(testExports.buildObjectivePayload({
-      bootstrap: buildBootstrap({
-        capacity_limit_kw: 8,
-        deferred_objectives: {
-          version: 1,
-          objectivesByDeviceId: {
-            heater: {
-              enabled: true,
-              kind: 'temperature',
-              enforcement: 'soft',
-              targetTemperatureC: 22,
-              deadlineAtMs: deadline.getTime(),
-            },
-          },
-        },
-      }, activePlan),
-      deviceId: 'heater',
-      devices,
-      prices,
-      nowMs: now.getTime(),
-    }));
-
-    // Frozen plan-level "2h" wins over the latest-revision "1h". Match on
-    // the leading `·` separator so the assertion doesn't trip on substrings
-    // of other duration formats (e.g. "1h 23m").
-    expect(payload.hero.metaLine).toContain('· 2h ·');
-    expect(payload.hero.metaLine).not.toContain('· 1h');
-  });
-
-  it('uses the Learning… speed-mode badge when the latest revision sources from bootstrap', () => {
-    const now = new Date(2026, 0, 1, 13, 0, 0, 0);
-    const deadline = atLocalHour(now, 6);
-    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
-      id: 'ev',
-      name: 'Garage EV',
-      binaryControl: { on: false },
-      stateOfCharge: { percent: 40, status: 'fresh' },
-      planningPowerKw: 7,
-      targets: [{ id: 'target_state_of_charge', unit: '%', min: 0, max: 100, step: 1 }],
-    }];
-    const prices: SettingsUiPricesPayload = {
-      combinedPrices: {
-        prices: Array.from({ length: 6 }, (_, offset) => ({
-          startsAt: atLocalHour(now, offset).toISOString(),
-          total: 100 + offset,
-        })),
-      },
-      electricityPrices: null,
-      priceArea: null,
-      gridTariffData: null,
-      flowToday: null,
-      flowTomorrow: null,
-      homeyCurrency: null,
-      homeyToday: null,
-      homeyTomorrow: null,
-    };
-    const bootstrapRevision = {
-      revision: 1,
-      revisedAtMs: now.getTime(),
-      computedFromPricesUpTo: deadline.getTime(),
-      reason: 'flow_card' as const,
-      hours: [{ startsAtMs: atLocalHour(now, 0).getTime(), plannedKWh: 7 }],
-      energyNeededKWh: 20,
-      planStatus: 'on_track' as const,
-      kwhPerUnitSource: 'bootstrap' as const,
-      planningSpeedKw: 7,
-      estimatedDurationText: '2h 51m',
-    };
-    const activePlan: DeferredObjectiveActivePlanV1 = {
-      deviceId: 'ev',
-      deviceName: 'Garage EV',
-      objectiveKind: 'ev_soc',
-      targetTemperatureC: null,
-      targetPercent: 60,
-      deadlineAtMs: deadline.getTime(),
-      startedAtMs: now.getTime(),
-      pending: false,
-      objectiveSignature: 'sig',
-      original: bootstrapRevision,
-      latest: bootstrapRevision,
-    };
-    const bootstrap = buildBootstrap({
-      capacity_limit_kw: 8,
-      deferred_objectives: {
-        version: 1,
-        objectivesByDeviceId: {
-          ev: {
-            enabled: true,
-            kind: 'ev_soc',
-            enforcement: 'soft',
-            targetPercent: 60,
-            deadlineAtMs: deadline.getTime(),
-          },
-        },
-      },
-    }, activePlan);
-    bootstrap.power.tracker = { objectiveProfiles: {} };
-
-    const payload = expectOk(testExports.buildObjectivePayload({
-      bootstrap,
-      deviceId: 'ev',
-      devices,
-      prices,
-      nowMs: now.getTime(),
-    }));
-
-    expect(payload.hero.metaLine).toContain('Learning…');
+    expect(payload.hero.stats.find((stat) => stat.label === 'Needs')?.value).toContain('4.0 kWh');
   });
 
   it('renders the Paused — unplugged pending hero when the active plan reports invalid_session', () => {
@@ -3699,10 +3522,14 @@ describe('deadline plan page payload', () => {
     expect(trajectory.deadlineMarkLabel).toBe('deadline');
     expect(trajectory.stateline.tone).toBe('ok');
     expect(trajectory.stateline.emphasis).toBe('18.0 °C now');
+    // On-track stateline drops the projected-ready tail (the hero status row
+    // carries it above the fold) — the caption reads just "… now · on track".
+    expect(trajectory.stateline.rest).toBe('on track');
     // Target reached at the end of the 15:00 hour → 16:00, 3 h before the
-    // 19:00 deadline.
-    expect(trajectory.stateline.rest).toContain('on track — projected ready ≈');
-    expect(trajectory.stateline.rest).toContain('3 hours before the deadline');
+    // 19:00 deadline — the projection lives on the verdict the hero renders.
+    expect(trajectory.stateline.verdict?.label).toBe('On track');
+    expect(trajectory.stateline.verdict?.supporting).toContain('projected ready ≈');
+    expect(trajectory.stateline.verdict?.supporting).toContain('3 hours before the deadline');
   });
 
   it('flags the trajectory shortfall when booked energy cannot reach the target', () => {
@@ -3775,6 +3602,7 @@ describe('deadline plan page payload', () => {
       emphasis: 'Projected 20.0 °C at the deadline',
       rest: '2 °C short',
       tone: 'danger',
+      verdict: null,
     });
   });
 
@@ -4068,10 +3896,12 @@ describe('deadline plan page payload', () => {
       expect(trajectory.deadlineMarkLabel).toBe('deadline');
       expect(trajectory.stateline.tone).toBe('ok');
       expect(trajectory.stateline.emphasis).toBe('22.0 °C now');
-      // Ready time resolves to now — the sentence stays in the existing
-      // ready grammar rather than inventing a satisfied-only variant.
-      expect(trajectory.stateline.rest).toContain('on track — projected ready ≈');
-      expect(trajectory.stateline.rest).not.toContain('short');
+      // Ready time resolves to now — the verdict stays in the existing ready
+      // grammar rather than inventing a satisfied-only variant. The stateline
+      // caption is the trimmed "on track" (hero carries the projection).
+      expect(trajectory.stateline.rest).toBe('on track');
+      expect(trajectory.stateline.verdict?.supporting).toContain('projected ready ≈');
+      expect(trajectory.stateline.verdict?.supporting).not.toContain('short');
     });
 
     it('still books risers and a real ready time when the reading is within tolerance', async () => {
@@ -4092,7 +3922,7 @@ describe('deadline plan page payload', () => {
       ]);
       expect(trajectory.deadlineDanger).toBe(false);
       expect(trajectory.shortfall).toBeNull();
-      expect(trajectory.stateline.rest).toContain('3 hours before the deadline');
+      expect(trajectory.stateline.verdict?.supporting).toContain('3 hours before the deadline');
     });
 
     it('skips a fully elapsed hour and adds a fully ahead hour whole', async () => {
@@ -4610,18 +4440,21 @@ describe('energy estimate range (expected…planned, end-to-end through buildObj
     }));
   };
 
+  const needsStatValue = (payload: { hero: { stats: Array<{ label: string; value: string }> } }): string | undefined =>
+    payload.hero.stats.find((stat) => stat.label === 'Needs')?.value;
+
   it('renders the expected…planned range when a buffer is booked', () => {
     const payload = setup({ energyExpectedKWh: 8 }); // expected 8, planned (booked) 10
-    expect(payload.hero.metaLine).toContain('8.0–10.0 kWh');
+    expect(needsStatValue(payload)).toContain('8.0–10.0 kWh');
   });
 
   it('collapses to a single figure when expected equals planned (or is absent)', () => {
     const collapsed = setup({ energyExpectedKWh: 10 });
-    expect(collapsed.hero.metaLine).toContain('10.0 kWh');
-    expect(collapsed.hero.metaLine).not.toContain('–');
+    expect(needsStatValue(collapsed)).toContain('10.0 kWh');
+    expect(needsStatValue(collapsed)).not.toContain('–');
 
     const legacy = setup({}); // pre-buffer plan: no expected figure
-    expect(legacy.hero.metaLine).toContain('10.0 kWh');
+    expect(needsStatValue(legacy)).toContain('10.0 kWh');
   });
 });
 
@@ -4943,7 +4776,12 @@ describe('schedule + trajectory chart option builders', () => {
     yMin: 35,
     yMax: 85,
     yFloorLabel: '35%',
-    stateline: { emphasis: '45% now', rest: 'on track — projected ready ≈ Mon 03:00, 1 hour before the deadline', tone: 'ok' },
+    stateline: {
+      emphasis: '45% now',
+      rest: 'on track — projected ready ≈ Mon 03:00, 1 hour before the deadline',
+      tone: 'ok',
+      verdict: { label: 'On track', supporting: 'projected ready ≈ Mon 03:00, 1 hour before the deadline' },
+    },
     shortfall: null,
     ...overrides,
   });
@@ -4963,8 +4801,8 @@ describe('schedule + trajectory chart option builders', () => {
         headline: 'On track',
         headlineReason: null,
         subline: '',
-        metaLine: '',
-        costMetaLine: null,
+        stats: [],
+        metaLine: null,
         deliveredSoFarLine: null,
         recourse: null,
       },
@@ -5272,7 +5110,7 @@ describe('cost + delivered-so-far hero lines', () => {
       nowMs: now.getTime(),
     }));
     // 2 hours × 2 kWh × 1.50 kr/kWh = 6.00 kr planned, no delivery.
-    expect(payload.hero.costMetaLine).toBe('Cost ≈ 6.00 kr');
+    expect(payload.hero.stats.find((stat) => stat.label === 'Estimated cost')?.value).toBe('≈ 6.00 kr');
     expect(payload.hero.deliveredSoFarLine).toBe('Delivered 0.0 of 4.0 kWh · now 18.0 °C of 22.0 °C target');
   });
 
@@ -5304,8 +5142,10 @@ describe('cost + delivered-so-far hero lines', () => {
       prices,
       nowMs: now.getTime(),
     }));
-    // Delivered: 1 kWh × 2.00 kr/kWh = 2.00 kr so far · 4 kWh × 2.00 = 8.00 kr planned.
-    expect(payload.hero.costMetaLine).toBe('Cost ≈ 2.00 kr so far · 8.00 kr planned');
+    // Est. cost stat carries the planned total only: 4 kWh × 2.00 = 8.00 kr.
+    // (The delivered-so-far cost split moved off the hero with the metadata
+    // wall; the delivered-kWh line below still shows delivery progress.)
+    expect(payload.hero.stats.find((stat) => stat.label === 'Estimated cost')?.value).toBe('≈ 8.00 kr');
     // start = 19 − 1 × (3/4) = 18.25; current = 19; target = 22.
     expect(payload.hero.deliveredSoFarLine).toBe('Delivered 1.0 of 4.0 kWh · 18.3 °C → 19.0 °C of 22.0 °C target');
   });
@@ -5341,8 +5181,9 @@ describe('cost + delivered-so-far hero lines', () => {
       prices,
       nowMs: now.getTime(),
     }));
-    // Delivered: 0.5 kWh × 2.00 kr/kWh = 1.00 kr so far (not 2.00).
-    expect(payload.hero.costMetaLine).toBe('Cost ≈ 1.00 kr so far · 8.00 kr planned');
+    // Est. cost stat carries the planned total only (8.00 kr); the prorated
+    // delivered figure is still verified via the delivered-kWh line below.
+    expect(payload.hero.stats.find((stat) => stat.label === 'Estimated cost')?.value).toBe('≈ 8.00 kr');
     expect(payload.hero.deliveredSoFarLine).toMatch(/Delivered 0\.5 of 4\.0 kWh/);
   });
 
@@ -5369,7 +5210,7 @@ describe('cost + delivered-so-far hero lines', () => {
     expect(payload.hero.tone).toBe('warn');
     expect(payload.hero.chips.some((chip) => chip.text === 'At risk' && chip.tone === 'warn')).toBe(true);
     expect(payload.hero.chips.some((chip) => chip.text === 'Cannot finish')).toBe(false);
-    expect(payload.hero.costMetaLine).toBe('Cost ≈ 8.00 kr');
+    expect(payload.hero.stats.find((stat) => stat.label === 'Estimated cost')?.value).toBe('≈ 8.00 kr');
     // No "won't reach by" copy — at-risk still uses the hopeful shape.
     expect(payload.hero.deliveredSoFarLine).not.toMatch(/won.t reach/i);
     expect(payload.hero.deliveredSoFarLine).toMatch(/now 18.0 °C of 30.0 °C target/);
@@ -5471,7 +5312,7 @@ describe('cost + delivered-so-far hero lines', () => {
       nowMs: now.getTime(),
     }));
     expect(payload.hero.tone).toBe('alert');
-    expect(payload.hero.costMetaLine).toBe('Cost ≈ 4.00 kr'); // 2 hours × 2 kWh × 1.00 kr
+    expect(payload.hero.stats.find((stat) => stat.label === 'Estimated cost')?.value).toBe('≈ 4.00 kr'); // 2 hours × 2 kWh × 1.00 kr
     expect(payload.hero.deliveredSoFarLine).toMatch(/Delivered 0\.0 of 16\.0 kWh/);
     expect(payload.hero.deliveredSoFarLine).toMatch(/still 40\.0 °C of 65\.0 °C target/);
     // No "won't reach by" tail — the chip + meta line already say the verdict;
@@ -5520,62 +5361,64 @@ describe('cost + delivered-so-far hero lines', () => {
       prices,
       nowMs: now.getTime(),
     }));
-    expect(payload.hero.costMetaLine).toBeNull();
+    expect(payload.hero.stats.find((stat) => stat.label === 'Estimated cost')).toBeUndefined();
     // Delivered-so-far is independent of cost unit and still surfaces.
     expect(payload.hero.deliveredSoFarLine).toMatch(/Delivered 0\.0 of 4\.0 kWh/);
   });
 });
 
-// Pure-resolver tests for `formatDeadlineCostMetaLine` /
+// Pure-resolver tests for `formatEstimatedCostStatValue` /
 // `formatDeadlineDeliveredSoFarLine` in shared-domain. The integration tests
 // above cover the full producer-to-payload wiring; these guard the resolver
-// edges in isolation (empty unit, zero planned, missing progress).
+// edges in isolation (empty unit, non-finite planned, negative Nordpool cost).
 describe('shared-domain hero-line formatters', () => {
-  it('formatDeadlineCostMetaLine uses ≈ (U+2248), never ~ or "approx"', async () => {
-    const { formatDeadlineCostMetaLine } = await import('../../shared-domain/src/deadlineLabels.ts');
-    const out = formatDeadlineCostMetaLine({ plannedTotalCost: 6.5, deliveredCost: null, costUnit: 'kr' });
-    expect(out).toBe('Cost ≈ 6.50 kr');
+  it('formatEstimatedCostStatValue uses ≈ (U+2248), never ~ or "approx"', async () => {
+    const { formatEstimatedCostStatValue } = await import('../../shared-domain/src/deadlineLabels.ts');
+    const out = formatEstimatedCostStatValue({ plannedTotalCost: 6.5, costUnit: 'kr' });
+    expect(out).toBe('≈ 6.50 kr');
     expect(out).toContain('≈');
     expect(out).not.toContain('~');
     expect(out).not.toMatch(/approx/i);
   });
 
-  it('formatDeadlineCostMetaLine collapses to planned-only when delivered is null', async () => {
-    const { formatDeadlineCostMetaLine } = await import('../../shared-domain/src/deadlineLabels.ts');
-    const out = formatDeadlineCostMetaLine({ plannedTotalCost: 6.5, deliveredCost: null, costUnit: 'kr' });
-    expect(out).toBe('Cost ≈ 6.50 kr');
+  it('formatEstimatedCostStatValue returns null when the unit is empty', async () => {
+    const { formatEstimatedCostStatValue } = await import('../../shared-domain/src/deadlineLabels.ts');
+    expect(formatEstimatedCostStatValue({ plannedTotalCost: 6.5, costUnit: '' })).toBeNull();
+    expect(formatEstimatedCostStatValue({ plannedTotalCost: 6.5, costUnit: '   ' })).toBeNull();
   });
 
-  it('formatDeadlineCostMetaLine emits the composite form when delivered > 0', async () => {
-    const { formatDeadlineCostMetaLine } = await import('../../shared-domain/src/deadlineLabels.ts');
-    const out = formatDeadlineCostMetaLine({ plannedTotalCost: 6.5, deliveredCost: 0.3, costUnit: 'kr' });
-    expect(out).toBe('Cost ≈ 0.30 kr so far · 6.50 kr planned');
+  it('formatEstimatedCostStatValue returns null when planned cost is non-finite', async () => {
+    const { formatEstimatedCostStatValue } = await import('../../shared-domain/src/deadlineLabels.ts');
+    expect(formatEstimatedCostStatValue({ plannedTotalCost: Number.NaN, costUnit: 'kr' })).toBeNull();
+    expect(formatEstimatedCostStatValue({ plannedTotalCost: Number.POSITIVE_INFINITY, costUnit: 'kr' })).toBeNull();
   });
 
-  it('formatDeadlineCostMetaLine returns null when the unit is empty', async () => {
-    const { formatDeadlineCostMetaLine } = await import('../../shared-domain/src/deadlineLabels.ts');
-    expect(formatDeadlineCostMetaLine({ plannedTotalCost: 6.5, deliveredCost: null, costUnit: '' })).toBeNull();
-    expect(formatDeadlineCostMetaLine({ plannedTotalCost: 6.5, deliveredCost: null, costUnit: '   ' })).toBeNull();
+  it('formatEstimatedCostStatValue renders zero and negative planned cost (Nordpool can be negative)', async () => {
+    // A zero/negative total is a real outcome the owner should see during
+    // negative-price oversupply windows — the guard rejects only non-finite
+    // values, never a genuine "you got paid to charge" figure.
+    const { formatEstimatedCostStatValue } = await import('../../shared-domain/src/deadlineLabels.ts');
+    expect(formatEstimatedCostStatValue({ plannedTotalCost: 0, costUnit: 'kr' })).toBe('≈ 0.00 kr');
+    expect(formatEstimatedCostStatValue({ plannedTotalCost: -0.30, costUnit: 'kr' })).toBe('≈ -0.30 kr');
   });
 
-  it('formatDeadlineCostMetaLine returns null when planned cost is non-finite', async () => {
+  // `formatDeadlineCostMetaLine` is the full-sentence cost line still consumed
+  // by the create_smart_task / starvation_rescue widgets, so it keeps its own
+  // coverage alongside the hero's value-only stat helper above.
+  it('formatDeadlineCostMetaLine renders the planned-only and composite forms', async () => {
     const { formatDeadlineCostMetaLine } = await import('../../shared-domain/src/deadlineLabels.ts');
+    expect(formatDeadlineCostMetaLine({ plannedTotalCost: 6.5, deliveredCost: null, costUnit: 'kr' }))
+      .toBe('Cost ≈ 6.50 kr');
+    expect(formatDeadlineCostMetaLine({ plannedTotalCost: 6.5, deliveredCost: 0.3, costUnit: 'kr' }))
+      .toBe('Cost ≈ 0.30 kr so far · 6.50 kr planned');
+  });
+
+  it('formatDeadlineCostMetaLine suppresses on missing unit / non-finite total, renders negative cost', async () => {
+    const { formatDeadlineCostMetaLine } = await import('../../shared-domain/src/deadlineLabels.ts');
+    expect(formatDeadlineCostMetaLine({ plannedTotalCost: 6.5, deliveredCost: null, costUnit: '  ' })).toBeNull();
     expect(formatDeadlineCostMetaLine({ plannedTotalCost: Number.NaN, deliveredCost: null, costUnit: 'kr' })).toBeNull();
-    expect(formatDeadlineCostMetaLine({ plannedTotalCost: Number.POSITIVE_INFINITY, deliveredCost: null, costUnit: 'kr' })).toBeNull();
-  });
-
-  it('formatDeadlineCostMetaLine renders zero and negative planned cost (Nordpool can be negative)', async () => {
-    // Regression: previously the helper suppressed `<= 0` planned cost,
-    // dropping the line during negative-price oversupply windows — the
-    // exact pricing regime PELS targets in Norway. The guard now rejects
-    // only non-finite values.
-    const { formatDeadlineCostMetaLine } = await import('../../shared-domain/src/deadlineLabels.ts');
-    expect(formatDeadlineCostMetaLine({ plannedTotalCost: 0, deliveredCost: null, costUnit: 'kr' }))
-      .toBe('Cost ≈ 0.00 kr');
     expect(formatDeadlineCostMetaLine({ plannedTotalCost: -0.30, deliveredCost: null, costUnit: 'kr' }))
       .toBe('Cost ≈ -0.30 kr');
-    expect(formatDeadlineCostMetaLine({ plannedTotalCost: -0.30, deliveredCost: -0.05, costUnit: 'kr' }))
-      .toBe('Cost ≈ -0.05 kr so far · -0.30 kr planned');
   });
 
   it('formatDeadlineDeliveredSoFarLine surfaces the start → current arrow when start is known', async () => {

@@ -149,7 +149,10 @@ const Card = ({ card }: { card: DeadlinesListCard }) => {
             Within the group they wrap among themselves; the group never splits
             a single chip onto the title's row. */}
         <div class="deadline-list-card__chips">
-          <span class="plan-chip plan-chip--muted">{labels.kindChipLabel}</span>
+          {/* Type chip = quiet outline (structural category); status chip =
+              tonal fill (the state). Distinct grammars so "Temperature" and
+              "Scheduled" never read as one grey pair. */}
+          <span class="plan-chip plan-chip--outline">{labels.kindChipLabel}</span>
           <StatusChip statusId={card.statusId} />
           {confidenceLabel !== null && (
             <span class="plan-chip plan-chip--muted">{confidenceLabel}</span>

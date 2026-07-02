@@ -311,10 +311,20 @@ const BudgetHero = ({ hero }: { hero: BudgetHeroData }) => (
           </span>
         )}
       </div>
+      {/* Role tier 1 — the running-total fact ("52.3 kWh used so far today ·
+          estimated 6.50 kr today"). Rendered at primary tone so it reads as
+          the card's key "where am I now?" answer, above the split bar it
+          summarises. The delta chip is the single "how much is left" number;
+          this line names USED, not left. */}
       {hero.budgetRemainingLine !== null && (
-        <div class="plan-hero__subline plan-hero__subline--muted">{hero.budgetRemainingLine}</div>
+        <div class="plan-hero__subline budget-hero__usage-line">{hero.budgetRemainingLine}</div>
       )}
       {hero.split !== null && <BudgetHeroSplit split={hero.split} />}
+      {/* Role tier 2 — price-context notes (shaping strategy + export price).
+          They keep the `--muted` supporting tone so they recede beneath the
+          primary usage-line fact and the split bar; the two tones are the role
+          differentiation, so the metadata lines no longer read as one flat
+          grey block. */}
       {hero.priceTagline !== null && (
         <div class="plan-hero__subline plan-hero__subline--muted">{hero.priceTagline}</div>
       )}
@@ -698,9 +708,6 @@ const BudgetAdjustView = ({
   const usableCapacityKw = Number.isFinite(adjust.hardCapKw) && Number.isFinite(adjust.safetyMarginKw)
     ? Math.max(0, adjust.hardCapKw - adjust.safetyMarginKw)
     : null;
-  const reactionText = usableCapacityKw !== null
-    ? `Safe pace now ${formatKw(usableCapacityKw)} — hard cap minus safety margin.`
-    : 'Safe pace stays below the hard cap.';
   const recommendedMaxKWh = usableCapacityKw !== null && usableCapacityKw > 0
     ? Math.min(MAX_DAILY_BUDGET_KWH, usableCapacityKw * 24)
     : null;
@@ -939,7 +946,20 @@ const BudgetAdjustView = ({
         <div class="budget-card-header">
           <div>
             <h3 class="plan-card__title">Current limits</h3>
-            <p class="pels-card-supporting">{reactionText}</p>
+            {/* Same result-row treatment + phrasing as the Limits page's
+                safe-pace row (`index.html` #settings-capacity-reaction): a
+                ceiling ("at most") derived from the current inputs, never a
+                live "safe pace now" that would fight the Overview hero's
+                budget-constrained value. One phrasing on both pages. */}
+            {usableCapacityKw !== null ? (
+              <div class="settings-result" role="group">
+                <span class="settings-result__label">With these settings, safe pace is at most</span>
+                <strong class="settings-result__value">{formatKw(usableCapacityKw)}</strong>
+                <span class="settings-result__note">(hard cap minus safety margin)</span>
+              </div>
+            ) : (
+              <p class="pels-card-supporting">Safe pace stays below the hard cap.</p>
+            )}
           </div>
         </div>
         <MdOutlinedButton class="budget-context-action" data-settings-target="limits">

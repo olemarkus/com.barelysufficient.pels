@@ -54,6 +54,7 @@
   --color-base-white: #ffffff;
   --color-base-gray-50: #e6ecf5;
   --color-base-gray-100: #9ba6b7;
+  --color-base-gray-200: #838c9d; /** Muted secondary-text step, raised one notch above the old dimmest grey (gray.300 #6b7280). Clears ~4.5:1 on the dark card surfaces (5.20:1 on surface-1 #141923, 4.60:1 on surface-3 #1d2430) so helper/caption copy stays legible at arm's length, while staying visibly below the brighter secondary tier (gray.100). gray.300 is now reserved for genuinely disabled controls. */
   --color-base-gray-300: #6b7280;
   --color-base-gray-900: #0d1117;
   --color-base-accent-light: #4ade80;
@@ -103,7 +104,8 @@
   --color-semantic-bg: var(--color-base-black);
   --color-semantic-text-primary: var(--color-base-gray-50);
   --color-semantic-text-secondary: var(--color-base-gray-100);
-  --color-semantic-text-muted: var(--color-base-gray-300);
+  --color-semantic-text-muted: var(--color-base-gray-200); /** Helper/caption tier. Raised from gray.300 (#6b7280, ~3.6:1 on cards — dissolved) to gray.200 (#838c9d, ~5.2:1 on surface-1) so muted copy clears WCAG AA on the dark card surfaces. The old dimmest grey now lives on `text.disabled`; chart-muted tones were decoupled to `color.base.viz.slate` so this text raise does not recolour any chart. */
+  --color-semantic-text-disabled: var(--color-base-gray-300); /** Reserved for genuinely disabled controls/text — the former (dissolved) muted grey #6b7280. Kept dim on purpose: disabled content should recede. Do not use for helper/caption copy (use text.muted). */
   --color-semantic-text-inverse: var(--color-base-accent-on);
   --color-semantic-accent: var(--color-base-accent-default);
   --color-semantic-accent-strong: var(--color-base-accent-dark);
@@ -193,12 +195,14 @@
   --pels-chart-forecast: var(--color-base-viz-ice); /** Projection / forecast strokes (Budget progress projection, comparison forecasts). Dotted ice-blue per the semantic viz palette — quiet, provisional ink, distinct from the saturated info-blue status tone. */
   --pels-chart-price-line: var(--color-base-price-default);
   --pels-chart-price-fill: color-mix(in srgb, var(--color-base-price-default) 18%, transparent);
+  --pels-chart-hour-tone-skipped-outline: var(--color-base-viz-slate); /** Skipped-hour outline on the price strip: a neutral non-judgment tone. Pinned to the decoupled viz slate (#6b7280, the former rendered value) so the muted TEXT tier could be raised for legibility without recolouring this chart mark. */
   --pels-chart-heatmap-border: var(--color-surface-1);
   --pels-chart-disabled-bar: var(--color-surface-4);
   --pels-chart-unattributed: var(--color-surface-5); /** Usage-stack segment for measured energy the managed/background split does not attribute (gross tracking gap). One surface step above `disabled-bar` so the claim-free region is visible against the plot without claiming a meaning; deliberately off-legend — the tapped readout carries the exact numbers. */
   --pels-chart-unreliable-cell: var(--color-surface-5);
   --pels-chart-cell-radius: var(--radius-xs); /** Heatmap-cell corner radius shared by powerWeekChartEcharts.ts (ECharts `borderRadius`) and `.usage-legend__swatch--unreliable`. Promoted from a parallel `--radius-xs` literal so the legend/cell shape contract is enforced at the chart token layer. */
   --pels-chart-grid: var(--color-border-medium);
+  --pels-chart-muted: var(--color-base-viz-slate); /** Chart axis/muted tone. Pinned to the decoupled viz slate (#6b7280, the former rendered value) so raising the muted TEXT tier for card legibility does not silently recolour chart axes/labels. */
   --pels-chart-tooltip-border: var(--color-border-medium);
   --chip-padding-block: var(--spacing-1);
   --chip-radius: var(--radius-full);
@@ -229,6 +233,7 @@
   --pels-on-surface: var(--color-semantic-text-primary);
   --pels-on-surface-variant: var(--color-semantic-text-secondary);
   --pels-on-surface-muted: var(--color-semantic-text-muted);
+  --pels-on-surface-disabled: var(--color-semantic-text-disabled); /** The reserved dim grey (#6b7280) for genuinely disabled controls/text only — no longer used for helper/caption copy after the muted tier was raised. */
   --pels-segmented-container-background: var(--pels-surface-container-low);
   --pels-segmented-container-border: var(--pels-surface-outline);
   --pels-shell-nav-container-background: var(--pels-surface-container-low);
@@ -247,14 +252,13 @@
   --pels-chart-hour-tone-normal: var(--color-role-info);
   --pels-chart-hour-tone-expensive: var(--color-role-danger);
   --pels-chart-hour-tone-glow: color-mix(in srgb, var(--color-role-accent) 30%, transparent);
-  --pels-chart-hour-tone-skipped-outline: var(--color-semantic-text-muted);
   --pels-chart-current-border: var(--color-state-info-border);
-  --pels-chart-muted: var(--color-semantic-text-muted);
   --pels-chart-tooltip-bg: var(--color-overlay-toast);
   --pels-chart-tooltip-text: var(--color-semantic-text-primary);
   --pels-text-primary: var(--pels-on-surface);
   --pels-text-secondary: var(--pels-on-surface-variant);
   --pels-text-muted: var(--pels-on-surface-muted);
+  --pels-text-disabled: var(--pels-on-surface-disabled);
   --pels-text-status-line-positive-color: var(--pels-status-on-good);
   --pels-text-section-label-color: var(--pels-text-secondary);
   --pels-text-answer-color: var(--pels-text-primary);

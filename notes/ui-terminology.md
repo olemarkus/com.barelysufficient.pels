@@ -467,7 +467,7 @@ names exactly one of them:
 
 | Concept | Label | Per-hour field | Notes |
 |---|---|---|---|
-| The import price you're billed — the only price non-solar users ever see | **Import price** | `total` | Money and receipts stay on this; a receipt must reconcile to the bill. "Import price" is the disambiguator used ONLY on surfaces that also show the Export or Planning price; surfaces that show one price concept (all of today's non-solar UI) keep their established bare labels (`Price`, `Current price`). |
+| The import price you're billed — the only price non-solar users ever see | **Import price** | `total` | Money and receipts stay on this; a receipt must reconcile to the bill. "Import price" is the disambiguator used ONLY on surfaces that also show the Export or Planning price; surfaces that show one price concept (all of today's non-solar UI) keep their established bare labels (`Price`; the Electricity prices card's current-hour price sits under its `Right now` heading — the separate `Current price` row label was dropped as a redundant restatement). |
 | What you're paid — or charged — for exported power | **Export price** | `exportPrice` | Signed: negative means you pay to export. The Budget tab's prosumer-gated subline is the canonical rendering: `Export price now: 0.34 kr/kWh` (`composeExportPriceNow` in `packages/shared-domain/src/dailyBudgetHeroStrings.ts`), rendered only when an export price exists for the current hour. |
 | The derived price PELS plans against | **Planning price** | `budgetPrice` | Reason line: `using your solar`. Always labelled an estimate, never "the bill". |
 
@@ -483,7 +483,7 @@ nothing below renders differently from today):
   sourced from the persisted `budgetPrice` and falls back to `total` per hour.
   When a hour's planning price actually diverges from import, the surface adds
   the `using your solar` reason line (Budget hourly chart caption; Electricity
-  prices "Right now" card under "Current price").
+  prices "Right now" card, beneath the current-hour price row).
 - **Export price** shows on the Budget hero subline (`Export price now:`) and as
   the **Export price** row on the Electricity prices "Right now" card — both
   only when an export price covers the current hour.

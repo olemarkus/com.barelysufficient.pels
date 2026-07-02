@@ -1591,10 +1591,11 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     // misread as a wild temperature anomaly. The underlying shortfall is energy
     // / time against the plan, not a raw temperature gap; the chip + headline
     // already say the verdict ("Cannot finish"); body states the cause and the
-    // user-side levers. The hero meta line follows with the "Needs N kWh · Y
-    // hours left · …" line via `formatMetaLine`, which is the right surface for
-    // magnitude. Recourse copy names the two levers that aren't the daily
-    // budget; the budget remedy is handled by the dedicated
+    // user-side levers. The magnitude (needs N kWh, estimated cost) now lives
+    // in the hero stat pairs (Needs / Estimated cost), so this reason line
+    // carries only the diagnosis — no appended "Needs N kWh · hours left" tail.
+    // Recourse copy names the two levers that aren't the daily budget; the
+    // budget remedy is handled by the dedicated
     // `cannotMeetDailyBudgetExhausted` branch above.
     cannotMeetShortfall: () => (
       'Not enough time for this target. Lower the target or move the deadline.'
@@ -2077,11 +2078,39 @@ export const formatSmartTaskHourReadoutPrimary = (params: {
 // `emphasis` renders bold + toned; `rest` is the plain remainder (the view
 // joins them with ` · `). Composed here so the live UI and runtime logs share
 // the exact sentence.
+// Structured on-track verdict, hoisted out of the trajectory stateline so the
+// detail hero can broadcast "am I on track?" as a status row above the fold —
+// the same answer the smart-task list card gives via its status chip — without
+// the user scrolling down to read the stateline sentence under the trajectory
+// chart.
+export type SmartTaskTrajectoryVerdict = {
+  // Capitalized chip-vocabulary word ("On track" / "At risk") — the sentence
+  // position of the same word the stateline `rest` uses mid-sentence.
+  label: string;
+  // "projected ready ≈ 21:00, 1 hour before the deadline" — the stateline's
+  // own supporting phrase, minus the status-word prefix (which the label
+  // carries). One source so the hero row and the stateline can't drift.
+  supporting: string;
+};
+
 export type SmartTaskTrajectoryStateline = {
   emphasis: string;
   rest: string;
   tone: 'ok' | 'danger';
+  // Structured verdict for the hero status row. Populated for BOTH ready-branch
+  // statuses that carry a status word (on track / at risk, `statusWord !==
+  // null`); null on the danger/short branch and on `invalid` plans, which carry
+  // no honest verdict to broadcast. The hero only RENDERS this under the good
+  // (on-track/satisfied) tone — the at-risk verdict is resolved but suppressed
+  // there because the At-risk chip already carries that state.
+  verdict: SmartTaskTrajectoryVerdict | null;
 };
+
+// Mid-sentence status words for the ready stateline. Lowercase variants of the
+// canonical chip labels (`On track` / `At risk`) — same vocabulary, sentence
+// position.
+export const SMART_TASK_STATELINE_ON_TRACK_WORD = 'on track';
+export const SMART_TASK_STATELINE_AT_RISK_WORD = 'at risk';
 
 // Full word per the terminology rule "full words for time units" — the
 // stateline is a sentence, not a chip, so "7 hours" beats "7 h".
@@ -2098,18 +2127,34 @@ export const formatSmartTaskTrajectoryStatelineReady = (params: {
   statusWord: string | null;
   readyTimeLabel: string;
   hoursBeforeDeadline: number;
-}): SmartTaskTrajectoryStateline => ({
-  emphasis: `${params.nowValueLabel} now`,
-  rest: `${params.statusWord !== null ? `${params.statusWord} — ` : ''}projected ready `
-    + `${APPROX_GLYPH} ${params.readyTimeLabel}, ${formatHoursBeforeDeadline(params.hoursBeforeDeadline)}`,
-  tone: 'ok',
-});
-
-// Mid-sentence status words for the ready stateline. Lowercase variants of the
-// canonical chip labels (`On track` / `At risk`) — same vocabulary, sentence
-// position.
-export const SMART_TASK_STATELINE_ON_TRACK_WORD = 'on track';
-export const SMART_TASK_STATELINE_AT_RISK_WORD = 'at risk';
+}): SmartTaskTrajectoryStateline => {
+  // Compose the projected-ready phrase once so the stateline `rest` and the
+  // hero status row's `verdict.supporting` render the exact same words.
+  const projectedReady = `projected ready ${APPROX_GLYPH} ${params.readyTimeLabel}, `
+    + formatHoursBeforeDeadline(params.hoursBeforeDeadline);
+  // On the on-track branch the hero status row already broadcasts the
+  // projected-ready phrase above the fold, so the stateline drops it (keeping
+  // just "{value} now · on track") — the phrase must not render verbatim twice
+  // on one screen, and the trajectory chart itself shows the projection. The
+  // at-risk ready branch has no hero status row (it renders only under the
+  // good tone), so its stateline keeps the projected-ready phrase.
+  let rest = projectedReady;
+  if (params.statusWord !== null) {
+    const isOnTrack = params.statusWord === SMART_TASK_STATELINE_ON_TRACK_WORD;
+    rest = isOnTrack ? params.statusWord : `${params.statusWord} — ${projectedReady}`;
+  }
+  return {
+    emphasis: `${params.nowValueLabel} now`,
+    rest,
+    tone: 'ok',
+    verdict: params.statusWord !== null
+      ? {
+        label: `${params.statusWord.charAt(0).toUpperCase()}${params.statusWord.slice(1)}`,
+        supporting: projectedReady,
+      }
+      : null,
+  };
+};
 
 // Rounds to the unit's display precision (whole % / one-decimal °C). A
 // sub-half-step `shortBy` would round to a zero amount ("0% short"), but the
@@ -2135,6 +2180,10 @@ export const formatSmartTaskTrajectoryStatelineShort = (params: {
   emphasis: `Projected ${params.projectedValueLabel} at the deadline`,
   rest: params.shortAmountLabel,
   tone: 'danger',
+  // No hero status row on the danger branch: the hero already carries the
+  // "At risk" / "Cannot finish" chip + reason line, so a green-adjacent
+  // "verdict" row here would either duplicate or contradict them.
+  verdict: null,
 });
 
 // ─── Cost + delivered-so-far hero lines (v2.7.2 PR 2) ────────────────────────
@@ -2149,19 +2198,22 @@ export const formatSmartTaskTrajectoryStatelineShort = (params: {
 // same approximation marker whether the run is in-flight or finalized.
 export const APPROX_GLYPH = '≈';
 
-// Resolver for the `Cost ≈ X.XX kr` meta line on the smart-task live hero.
-// Both branches live in shared-domain so runtime log breadcrumbs and the UI
-// surface the same phrasing (per `feedback_ui_text_shared_with_logs.md`).
+// Resolver for the `Cost ≈ X.XX kr` meta line. The smart-task detail hero
+// retired this in favour of the value-only `formatEstimatedCostStatValue`
+// (below), but the `create_smart_task` and `starvation_rescue` widgets still
+// render this full-sentence form, so it stays a live shared-domain export —
+// UI and runtime log breadcrumbs surface the same phrasing
+// (`feedback_ui_text_shared_with_logs.md`).
 //
 // Branches resolve in this order:
-//   1. `deliveredCost !== null` AND > 0 → composite "so far · planned" form.
-//   2. Otherwise                         → planned-only form.
+//   1. `deliveredCost !== null` AND finite → composite "so far · planned" form.
+//   2. Otherwise                            → planned-only form.
 //
-// Returns `null` when the planned cost cannot be summarised honestly — either
-// the unit is missing (Flow / Homey scheme with no `priceUnit` provided) or the
-// planned total is non-finite / zero (no allocated kWh, e.g. cannot-meet on a
-// sub-second remaining bucket). The caller suppresses the line cleanly rather
-// than rendering "Cost ≈ 0.00 kr planned" which would mislead.
+// Returns `null` when the planned cost cannot be summarised honestly — the
+// unit is missing (Flow / Homey scheme with no `priceUnit`) or the planned
+// total is non-finite. Zero / negative planned cost still renders (Norwegian
+// Nordpool spot prices go negative during oversupply — "you got paid to
+// charge" is a real outcome the owner should see).
 export const formatDeadlineCostMetaLine = (params: {
   plannedTotalCost: number;
   deliveredCost: number | null;
@@ -2170,10 +2222,6 @@ export const formatDeadlineCostMetaLine = (params: {
   const unit = params.costUnit.trim();
   if (unit.length === 0) return null;
   if (!Number.isFinite(params.plannedTotalCost)) return null;
-  // Allow zero and negative planned cost: Norwegian Nordpool spot prices
-  // can go negative during oversupply windows, so a zero/negative total is
-  // a real outcome the user should see ("Cost ≈ -0.30 kr" = you got paid to
-  // charge). Only non-finite values still suppress the line.
   const plannedLabel = `${params.plannedTotalCost.toFixed(2)} ${unit}`;
   if (params.deliveredCost !== null && Number.isFinite(params.deliveredCost)) {
     const deliveredLabel = `${params.deliveredCost.toFixed(2)} ${unit}`;
@@ -2181,6 +2229,40 @@ export const formatDeadlineCostMetaLine = (params: {
   }
   return `Cost ${APPROX_GLYPH} ${plannedLabel}`;
 };
+
+// Value-only estimated-cost figure for the smart-task hero stat pair
+// ("Estimated cost" / "≈ 3.10 kr"). The label lives on the stat pair, so this
+// returns just the approximated planned amount (unlike the full-sentence
+// `formatDeadlineCostMetaLine` the widgets use). Returns null when the cost
+// can't be summarised honestly — a missing cost unit (Flow / Homey scheme
+// without `priceUnit`) or a non-finite planned total — so the caller drops the
+// stat cleanly instead of rendering "≈ 0.00 ". Zero / negative totals still
+// render (a negative Nord Pool hour means the run was paid to consume, which
+// the owner should see). Shares `APPROX_GLYPH` with the history-detail cost
+// helpers so the same marker reads across surfaces.
+export const formatEstimatedCostStatValue = (params: {
+  plannedTotalCost: number;
+  costUnit: string;
+}): string | null => {
+  const unit = params.costUnit.trim();
+  if (unit.length === 0) return null;
+  if (!Number.isFinite(params.plannedTotalCost)) return null;
+  return `${APPROX_GLYPH} ${params.plannedTotalCost.toFixed(2)} ${unit}`;
+};
+
+// Labels for the smart-task detail hero's stat pairs. Kept beside their value
+// formatters (`formatEnergyEstimateKWh` / `formatEstimatedCostStatValue`) in
+// shared-domain rather than the settings-UI producer so runtime log
+// breadcrumbs and the UI share one vocabulary (`feedback_ui_text_shared_with_logs`).
+// `energy` pairs with the energy estimate (single figure or `expected…planned`
+// range); `cost` pairs with the value-only estimated-cost figure. "Estimated
+// cost" is spelled out — Rule 3 (`notes/ui-terminology.md`) bans abbreviations
+// in visible labels; the two pairs sit on their own row under the subline, so
+// the longer label wraps rather than truncates at 320 px.
+export const SMART_TASK_HERO_STAT_LABELS = {
+  energy: 'Needs',
+  cost: 'Estimated cost',
+} as const;
 
 // Resolver for the "Delivered so far" hero subline. Branches by plan status:
 //   - `cannot_meet`            → `Delivered X of Y kWh · still {curr} of {target}`

@@ -12,6 +12,10 @@
     "on-surface": { "value": "{color.semantic.text.primary}" },
     "on-surface-variant": { "value": "{color.semantic.text.secondary}" },
     "on-surface-muted": { "value": "{color.semantic.text.muted}" },
+    "on-surface-disabled": {
+      "value": "{color.semantic.text.disabled}",
+      "comment": "The reserved dim grey (#6b7280) for genuinely disabled controls/text only — no longer used for helper/caption copy after the muted tier was raised."
+    },
     "surface-container-lowest": { "value": "{color.surface.1}" },
     "surface-container-low": { "value": "{color.surface.2}" },
     "surface-container": { "value": "{color.surface.3}" },
@@ -23,6 +27,7 @@
       "primary": { "value": "{pels.on-surface}" },
       "secondary": { "value": "{pels.on-surface-variant}" },
       "muted": { "value": "{pels.on-surface-muted}" },
+      "disabled": { "value": "{pels.on-surface-disabled}" },
       "section-label": {
         "color": { "value": "{pels.text.secondary}" },
         "font": {
@@ -258,7 +263,10 @@
       "hour-tone-normal": { "value": "{color.role.info}" },
       "hour-tone-expensive": { "value": "{color.role.danger}" },
       "hour-tone-glow": { "value": "color-mix(in srgb, {color.role.accent} 30%, transparent)" },
-      "hour-tone-skipped-outline": { "value": "{color.semantic.text.muted}" },
+      "hour-tone-skipped-outline": {
+        "value": "{color.base.viz.slate}",
+        "comment": "Skipped-hour outline on the price strip: a neutral non-judgment tone. Pinned to the decoupled viz slate (#6b7280, the former rendered value) so the muted TEXT tier could be raised for legibility without recolouring this chart mark."
+      },
       "heatmap-border": { "value": "{color.surface.1}" },
       "disabled-bar": { "value": "{color.surface.4}" },
       "unattributed": {
@@ -276,7 +284,10 @@
       },
       "current-border": { "value": "{color.state.info.border}" },
       "grid": { "value": "{color.border.medium}" },
-      "muted": { "value": "{color.semantic.text.muted}" },
+      "muted": {
+        "value": "{color.base.viz.slate}",
+        "comment": "Chart axis/muted tone. Pinned to the decoupled viz slate (#6b7280, the former rendered value) so raising the muted TEXT tier for card legibility does not silently recolour chart axes/labels."
+      },
       "tooltip-bg": { "value": "{color.overlay.toast}" },
       "tooltip-text": { "value": "{color.semantic.text.primary}" },
       "tooltip-border": { "value": "{color.border.medium}" }

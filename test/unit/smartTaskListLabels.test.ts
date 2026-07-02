@@ -219,6 +219,9 @@ describe('live-page two-chart split copy', () => {
   });
 
   it('stateline ready variant composes the on-track sentence with the approx glyph', () => {
+    // On the on-track branch the stateline caption drops the projected-ready
+    // tail (the hero status row carries it above the fold, so it must not read
+    // verbatim twice on one screen); the phrase moves to `verdict.supporting`.
     expect(formatSmartTaskTrajectoryStatelineReady({
       nowValueLabel: '51.1 °C',
       statusWord: 'on track',
@@ -226,9 +229,12 @@ describe('live-page two-chart split copy', () => {
       hoursBeforeDeadline: 7,
     })).toEqual({
       emphasis: '51.1 °C now',
-      rest: 'on track — projected ready ≈ Sun 02:00, 7 hours before the deadline',
+      rest: 'on track',
       tone: 'ok',
+      verdict: { label: 'On track', supporting: 'projected ready ≈ Sun 02:00, 7 hours before the deadline' },
     });
+    // No status word (invalid plan): the stateline keeps the projected-ready
+    // phrase in `rest` and carries no hero verdict.
     expect(formatSmartTaskTrajectoryStatelineReady({
       nowValueLabel: '45%',
       statusWord: null,
@@ -238,14 +244,16 @@ describe('live-page two-chart split copy', () => {
       emphasis: '45% now',
       rest: 'projected ready ≈ Mon 06:00, just before the deadline',
       tone: 'ok',
+      verdict: null,
     });
-    // Full time-unit words, singular-aware ("1 hour", never "1 h").
+    // Full time-unit words, singular-aware ("1 hour", never "1 h") — now on
+    // the verdict's supporting phrase.
     expect(formatSmartTaskTrajectoryStatelineReady({
       nowValueLabel: '45%',
       statusWord: 'on track',
       readyTimeLabel: 'Mon 05:00',
       hoursBeforeDeadline: 1.2,
-    }).rest).toBe('on track — projected ready ≈ Mon 05:00, 1 hour before the deadline');
+    }).verdict?.supporting).toBe('projected ready ≈ Mon 05:00, 1 hour before the deadline');
   });
 
   it('stateline short variant states the projected value and the gap', () => {
@@ -256,6 +264,7 @@ describe('live-page two-chart split copy', () => {
       emphasis: 'Projected 58.0 °C at the deadline',
       rest: '7 °C short',
       tone: 'danger',
+      verdict: null,
     });
   });
 

@@ -145,10 +145,12 @@ const LiveSummaryCard = ({
   const hasUsablePriceLevel = chip !== null || currentPriceLevel === 'normal';
   return (
     <section class="settings-form-card electricity-prices-live-summary">
-      <h3 class="section-title">Right now</h3>
       <div class="electricity-prices-current-price">
+        {/* "Right now" is the row's own heading — the former separate
+            "Current price" label doubled it, so it was dropped (legibility
+            item: every caption must add information its label doesn't). */}
         <div class="price-config-status-row">
-          <span class="price-config-status-label">Current price</span>
+          <h3 class="section-title">Right now</h3>
           {chip ? (
             <span class={`plan-chip ${chipToneCls}`} data-price-level={chip.priceLevel}>
               {chip.label}
@@ -157,7 +159,7 @@ const LiveSummaryCard = ({
             <span class="price-config-status-value">{calmValue}</span>
           )}
         </div>
-        {/* Sub-note under the Current price row it explains: the level tiers on
+        {/* Sub-note under the current-price row it explains: the level tiers on
             the planning price for a prosumer. Same grey (pels-card-supporting)
             as the Budget chart's note so the shared string reads as one voice. */}
         {planningPriceReasonLine !== null ? (
@@ -264,7 +266,6 @@ const NorwaySection = ({
         <MdSelectOption value="55"><div slot="headline">Troms</div></MdSelectOption>
         <MdSelectOption value="56"><div slot="headline">Finnmark</div></MdSelectOption>
       </MdFilledSelect>
-      <small class="field__hint">Your county for grid tariff lookup.</small>
     </div>
     <div class="field">
       <span class="field__label pels-text-settings-label" id="electricity-prices-grid-company-label">Grid company</span>
@@ -283,6 +284,8 @@ const NorwaySection = ({
           </MdSelectOption>
         ))}
       </MdFilledSelect>
+      {/* Dependency hint, not a label restatement: the list only shows the
+          companies in the county selected above. */}
       <small class="field__hint">Filtered by county.</small>
     </div>
     <div class="field">
@@ -319,6 +322,8 @@ const NorwaySection = ({
           <div slot="headline">Norway Price (Norgespris)</div>
         </MdSelectOption>
       </MdFilledSelect>
+      {/* Explains what the choice governs (which pricing regime shapes your
+          spot price), not just the option names. */}
       <small class="field__hint">
         Choose whether Norway prices use the Electricity Subsidy Scheme or Norway Price (Norgespris).
       </small>
