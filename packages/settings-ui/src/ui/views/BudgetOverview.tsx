@@ -9,6 +9,7 @@ import {
   MdTextButton,
 } from './materialWebJSX.tsx';
 import { ExpandMoreIcon, TuneIcon, WarningIcon } from './icons.tsx';
+import { AppBar } from './AppBar.tsx';
 import {
   renderBudgetRedesignChart,
   clearBudgetRedesignChart,
@@ -1076,6 +1077,26 @@ const BudgetPageHeader = ({
     ? (priceLevelChip.tone === 'warn' ? 'plan-chip--warn' : 'plan-chip--info')
     : '';
   const hasChipRow = priceLevelChip !== null;
+  // Settings-referred Adjust editor: render the shared `.pels-appbar` back+title
+  // row so the Daily budget editor reads as the same sub-page chrome its eight
+  // Settings-hub siblings use — no boxed eyebrow-hero, and the back arrow (not a
+  // trailing "Done") is the exit. The arrow still runs `onToggleClick`, so the
+  // two-step unsaved-draft discard confirm is preserved: a dirty draft arms the
+  // confirm (warning-tinted glyph + title) and only a second tap discards and
+  // returns to Settings.
+  if (localView === 'adjust' && toSettings) {
+    return (
+      <AppBar
+        back={{
+          label: confirming ? 'Discard unsaved changes and go back to Settings' : 'Back to Settings',
+          title: toggleTitle,
+          onClick: onToggleClick,
+          ...(confirming ? { class: 'confirming' } : {}),
+        }}
+        title="Daily budget"
+      />
+    );
+  }
   return (
     <header class="plan-hero pels-hero budget-page-header">
       {hasChipRow && (

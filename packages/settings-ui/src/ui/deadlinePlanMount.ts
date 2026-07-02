@@ -9,6 +9,7 @@ import {
 } from '../../../contracts/src/settingsUiApi.ts';
 import {
   SMART_TASK_BANNER_LOAD_ERROR_PREFIX,
+  SMART_TASK_HISTORY_EYEBROW,
   SMART_TASK_USAGE_RETURN_CONTEXT,
   SMART_TASK_USAGE_RETURN_LABEL,
 } from '../../../shared-domain/src/deadlineLabels.ts';
@@ -269,6 +270,13 @@ const renderActiveMount = (): void => {
 export const mountDeadlinePlan = async (): Promise<void> => {
   const surface = document.getElementById('deadline-plan-root');
   if (!surface) return;
+
+  // Pin the app-bar chrome title to the shared smart-task vocabulary constant so
+  // the visible title can't drift from the aria-label / usage-return / log
+  // strings that already compose from `SMART_TASK_HISTORY_EYEBROW`. The static
+  // `index.html` literal is only the first-paint value.
+  const titleEl = document.getElementById('deadline-plan-title');
+  if (titleEl) titleEl.textContent = SMART_TASK_HISTORY_EYEBROW;
 
   const params = new URLSearchParams(window.location.search);
   const deviceId = params.get('deviceId');

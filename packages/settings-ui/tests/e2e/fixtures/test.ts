@@ -78,6 +78,41 @@ export const injectHomeyHostCss = async (page: Page): Promise<void> => {
   }, HOMEY_HOST_CSS);
 };
 
+// --- Space Grotesk web font (faithful narrow-width text-fit measurement) ----
+//
+// The app declares `--font-family-sans: 'Space Grotesk', …` but ships no
+// @font-face, so a plain CI chromium falls back to a narrower system sans —
+// and the 320 px tab-fit guard then measures a font the design never intends.
+// "Smart tasks" is the tight label; on the real surface it renders in Space
+// Grotesk, which is wider than the CI fallback. Load the real font here so the
+// narrow-width fit guard measures the widest realistic case. OFL-licensed latin
+// subset, bundled (base64 data-URI) so the guard stays offline / non-flaky.
+const SPACE_GROTESK_WOFF2_BASE64 = fs.readFileSync(
+  path.join(path.dirname(fileURLToPath(import.meta.url)), 'fonts', 'space-grotesk-latin.woff2'),
+).toString('base64');
+
+export const loadSpaceGrotesk = async (page: Page): Promise<void> => {
+  await page.addStyleTag({
+    content: `@font-face {
+      font-family: 'Space Grotesk';
+      font-style: normal;
+      font-weight: 300 700;
+      font-display: block;
+      src: url(data:font/woff2;base64,${SPACE_GROTESK_WOFF2_BASE64}) format('woff2');
+    }`,
+  });
+  // Load the exact weights the shell nav uses (500 medium inactive, 600
+  // semibold active) and wait for the font set to settle so the subsequent
+  // getBoundingClientRect measurements reflect the real glyph metrics.
+  await page.evaluate(async () => {
+    await Promise.all([
+      document.fonts.load('500 16px "Space Grotesk"'),
+      document.fonts.load('600 16px "Space Grotesk"'),
+    ]);
+    await document.fonts.ready;
+  });
+};
+
 // Drop-in replacement for `test` whose `page` already carries the Homey host
 // stylesheet. Use this for every screenshot / visual-render spec.
 export const renderTest = test.extend({

@@ -132,7 +132,11 @@ export type DeadlinePlanPayload = {
     // chip text, rim colour, and meta line agreeing on a single "are we ok?"
     // signal.
     tone: DeadlinePlanHeroTone;
-    sectionLabel: string;
+    // No section-label eyebrow: the panel's `.pels-appbar` title row ("Smart
+    // task") and the kind chip ("Temperature" / "EV") already name this surface
+    // twice above the hero — a "Heating smart task" eyebrow stacked the kind a
+    // third time. Matches the history-detail hero, which dropped its same-word
+    // kicker in the navigation-chrome unification.
     // Null on the cannot-finish branch so the chip + body postmortem aren't
     // accompanied by a redundant "Cannot finish" headline echo (per TODO 1569
     // / lived-walk 2026-05-16). The view suppresses the headline render slot
@@ -304,7 +308,6 @@ const DeadlineHero = ({ payload }: { payload: DeadlinePlanPayload }) => (
       ))}
     </div>
     <div class="plan-hero__section">
-      <p class="eyebrow plan-hero__section-label" id="deadline-plan-title">{payload.hero.sectionLabel}</p>
       {payload.hero.headline !== null && (
         <h2 class="plan-hero__headline">{payload.hero.headline}</h2>
       )}

@@ -31,7 +31,6 @@ const buildPlanInputsPayloadWithFreshnessRow = (params: {
   hero: {
     chips: [],
     tone: 'good',
-    sectionLabel: 'Charging smart task',
     headline: 'On track',
     headlineReason: null,
     subline: 'Garage EV',

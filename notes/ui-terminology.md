@@ -135,7 +135,7 @@ Source of truth: `packages/shared-domain/src/deadlineLabels.ts`. Pull every labe
 | Concept | Temperature device | EV-SoC device |
 |---|---|---|
 | Kind chip | `Temperature` | `EV` |
-| Hero section label (eyebrow) | `Heating smart task` | `EV smart task` |
+| Hero section label (eyebrow — pending hero only) | `Heating smart task` | `EV smart task` |
 | Live state chip — active (pending hero only) | `Heating` | `Charging` |
 | Live state chip — building plan (pending hero / list) | `Building plan…` | `Building plan…` |
 | Live state chip — plan ready, first hour later (list only) | `Scheduled` | `Scheduled` |
@@ -159,6 +159,14 @@ state directly (`Heating from HH:MM`, `Charging now`, `On track — no action
 needed yet`), so a separate state chip duplicated information. The pending hero
 and the smart-task list still emit a state chip because there the state is the
 only available signal.
+
+The **live** hero also drops the section-label eyebrow (`Heating smart task` /
+`EV smart task`). The panel's `.pels-appbar` title row already says `Smart task`
+and the kind chip already says `Temperature` / `EV`, so the eyebrow stacked the
+kind a third time. This mirrors the history-detail hero, which dropped its
+same-word `Smart task` kicker in the navigation-chrome unification. The
+**pending** hero keeps the eyebrow — it carries no kind chip, so the eyebrow is
+that hero's only kind signal.
 
 Confidence chips use the same short vocabulary on the live hero and active
 smart-task list: low confidence is `Estimating`, medium confidence is

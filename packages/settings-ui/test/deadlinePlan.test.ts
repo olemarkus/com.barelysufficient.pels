@@ -214,8 +214,6 @@ describe('deadline plan page payload', () => {
     }));
 
     expect(payload.kind).toBe('temperature');
-    // Section label uses smart-task-noun vocabulary, not planner-noun "plan".
-    expect(payload.hero.sectionLabel).toBe('Heating smart task');
     expect(payload.hero.subline).toContain('Connected 300');
     expect(payload.hero.subline).toContain('22 °C');
     const chipTexts = payload.hero.chips.map((chip) => chip.text);
@@ -4900,7 +4898,6 @@ describe('schedule + trajectory chart option builders', () => {
       hero: {
         chips: [],
         tone: 'good',
-        sectionLabel: 'EV smart task',
         headline: 'On track',
         headlineReason: null,
         subline: '',

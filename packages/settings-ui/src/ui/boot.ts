@@ -68,6 +68,7 @@ import {
 } from './dailyBudget.ts';
 import { loadBudgetAdjust } from './budgetAdjustController.ts';
 import {
+  dismissSettingsAdjustOnBudgetTab,
   openBudgetAdjustFromSettings,
   openBudgetWeatherView,
   setBudgetAdjustSettingsNavigator,
@@ -106,6 +107,7 @@ import { handleResetStats } from './resetStats.ts';
 import { createSwitchField } from './components.ts';
 import {
   initRealtimeListeners,
+  setActiveTabIndicator,
   showTab,
   startStaleDataRefreshInterval,
 } from './realtime.ts';
@@ -122,7 +124,21 @@ const initTabHandlers = () => {
   // identical to a tab-bar exit.
   setBudgetAdjustSettingsNavigator(() => showTab('settings'));
   tabs.forEach((tab) => {
-    tab.addEventListener('click', () => showTab((tab as HTMLElement).dataset.tab || 'devices'));
+    tab.addEventListener('click', () => {
+      const tabId = (tab as HTMLElement).dataset.tab || 'devices';
+      // A real Budget-tab tap must leave any settings-referred Daily-budget
+      // editor (opened via the budget-adjust deep-link, which keeps the
+      // Settings indicator lit) and land on the normal Budget overview.
+      // showTab('budget') can't do this alone: discardBudgetAdjustOnLeave
+      // early-returns for nextTabId 'budget', so the adjust sub-view + its
+      // "back to Settings" exit would persist under a now-Budget-lit tab.
+      if (tabId === 'budget' && dismissSettingsAdjustOnBudgetTab()) {
+        // Mirror the notice a sibling tab-bar exit shows on an unconfirmed
+        // discard (discardBudgetAdjustOnLeave in realtime.ts).
+        void showToast('Discarded unsaved budget changes.');
+      }
+      showTab(tabId);
+    });
   });
   document.addEventListener('click', (event) => {
     if (!(event.target instanceof Element)) return;
@@ -132,9 +148,14 @@ const initTabHandlers = () => {
     // 'budget-adjust' is a virtual target: it matches no data-panel, and
     // letting it reach showTab would hide every panel. Open the Budget tab
     // with the Adjust view active and a Settings return target instead.
+    // Keep the "Settings" tab indicator lit (the Daily budget editor is a
+    // Settings sub-page, exactly like its eight `.pels-appbar` siblings), so
+    // opening it doesn't read as a teleport to a different tab — the same
+    // sibling-panel indicator trick the deadline-plan deep-link uses.
     if (target === 'budget-adjust') {
       openBudgetAdjustFromSettings();
       showTab('budget');
+      setActiveTabIndicator('settings');
       return;
     }
     // 'budget-weather' is the same kind of virtual target: open the Budget
