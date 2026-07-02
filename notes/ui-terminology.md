@@ -447,6 +447,28 @@ names exactly one of them:
 | What you're paid — or charged — for exported power | **Export price** | `exportPrice` | Signed: negative means you pay to export. The Budget tab's prosumer-gated subline is the canonical rendering: `Export price now: 0.34 kr/kWh` (`composeExportPriceNow` in `packages/shared-domain/src/dailyBudgetHeroStrings.ts`), rendered only when an export price exists for the current hour. |
 | The derived price PELS plans against | **Planning price** | `budgetPrice` | Reason line: `using your solar`. Always labelled an estimate, never "the bill". |
 
+Where each price surfaces (byte-identical for a non-prosumer — a hidden export
+config or a no-surplus hour means `budgetPrice` is absent/equal to `total`, so
+nothing below renders differently from today):
+
+- **Planning price** drives every planning-facing DISPLAY, matching the
+  schedulers (which consume `budgetPrice ?? total` since #1808): the smart-task
+  schedule chart + its readout + trust caption ("When will it run, and at what
+  price?"), the Budget tab's hourly-plan price curve + readout `Price` segment,
+  and the `plan_budget` widget's price curve + projected-cost estimate. Each is
+  sourced from the persisted `budgetPrice` and falls back to `total` per hour.
+  When a hour's planning price actually diverges from import, the surface adds
+  the `using your solar` reason line (Budget hourly chart caption; Electricity
+  prices "Right now" card under "Current price").
+- **Export price** shows on the Budget hero subline (`Export price now:`) and as
+  the **Export price** row on the Electricity prices "Right now" card — both
+  only when an export price covers the current hour.
+- **Import price** (`total`) stays under every money/receipt figure: smart-task
+  delivered/planned cost, the Budget chart's Actual / cost cumulative / money
+  view, the estimated-cost hero subline, and the price-info strings. The
+  `plan_budget` widget's projected cost is the sole planning-price money figure,
+  and its `Projected …` framing is the estimate label (never "the bill").
+
 "Grid price" was considered and rejected for the import concept: it collides
 with the established **Grid tariff** (nettleie) vocabulary on the same
 Electricity prices view — for Norwegian users "grid" reads as the nettleie

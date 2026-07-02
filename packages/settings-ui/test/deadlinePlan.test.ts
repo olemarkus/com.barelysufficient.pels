@@ -3875,6 +3875,65 @@ describe('deadline plan page payload', () => {
     expect(timeline.cheapestHoursCaption).toBeNull();
   });
 
+  it('buildTimeline shows the planning price for the schedule while cost stays on import', async () => {
+    const { buildTimeline } = await import('../src/ui/deadlinePlanTimeline.ts');
+    const hourStartMs = new Date(2026, 0, 1, 13, 0, 0, 0).getTime();
+    const HOUR = 60 * 60 * 1000;
+    // Import 100 øre, planning 20 øre (a surplus hour). The displayed price must
+    // follow planning; a non-diverging control hour keeps import === planning.
+    const hours = [
+      { startsAtMs: hourStartMs, endMs: hourStartMs + HOUR, price: 100, planningPrice: 20 },
+      { startsAtMs: hourStartMs + HOUR, endMs: hourStartMs + 2 * HOUR, price: 80, planningPrice: 80 },
+    ];
+    const timeline = buildTimeline({
+      device: { id: 'heater', name: 'Connected 300', targets: [], binaryControl: { on: false } },
+      bootstrap: buildBootstrap({ capacity_limit_kw: 8 }),
+      deviceId: 'heater',
+      hours,
+      originalChargeByStartMs: new Map(),
+      currentChargeByStartMs: new Map([[hourStartMs, 2]]),
+      latestRevisionReason: null,
+      labels: deadlineLabels('temperature'),
+      deadlineAtMs: hourStartMs + 2 * HOUR,
+      nowMs: hourStartMs,
+      costDisplay: { unit: 'kr', divisor: 100 },
+      priceUnitLabel: 'kr/kWh',
+    });
+    // Planning price scaled by the øre→kr divisor: 20/100 = 0.20, not 1.00.
+    expect(timeline.hours[0].priceValue).toBeCloseTo(0.2, 5);
+    expect(timeline.hours[0].price).toBe('0.20');
+    // The non-diverging hour is byte-identical (planning === import).
+    expect(timeline.hours[1].priceValue).toBeCloseTo(0.8, 5);
+    // A prosumer hour diverges visibly → the "using your solar" bridge appears.
+    expect(timeline.planningPriceNote).toBe('using your solar');
+  });
+
+  it('buildTimeline emits no planning note when every hour is on the import price', async () => {
+    const { buildTimeline } = await import('../src/ui/deadlinePlanTimeline.ts');
+    const hourStartMs = new Date(2026, 0, 1, 13, 0, 0, 0).getTime();
+    const HOUR = 60 * 60 * 1000;
+    // Non-prosumer: planning === import on every hour (byte-identical).
+    const hours = [
+      { startsAtMs: hourStartMs, endMs: hourStartMs + HOUR, price: 100, planningPrice: 100 },
+      { startsAtMs: hourStartMs + HOUR, endMs: hourStartMs + 2 * HOUR, price: 80, planningPrice: 80 },
+    ];
+    const timeline = buildTimeline({
+      device: { id: 'heater', name: 'Connected 300', targets: [], binaryControl: { on: false } },
+      bootstrap: buildBootstrap({ capacity_limit_kw: 8 }),
+      deviceId: 'heater',
+      hours,
+      originalChargeByStartMs: new Map(),
+      currentChargeByStartMs: new Map([[hourStartMs, 2]]),
+      latestRevisionReason: null,
+      labels: deadlineLabels('temperature'),
+      deadlineAtMs: hourStartMs + 2 * HOUR,
+      nowMs: hourStartMs,
+      costDisplay: { unit: 'kr', divisor: 100 },
+      priceUnitLabel: 'kr/kWh',
+    });
+    expect(timeline.planningPriceNote).toBeNull();
+  });
+
   // `currentValue` already includes the progress made so far in the
   // in-progress hour, so the staircase must credit only the still-ahead
   // fraction of that hour's booked energy (covered-span proration, mirroring
@@ -3889,6 +3948,7 @@ describe('deadline plan page payload', () => {
       startsAtMs: hourMs(offset),
       endMs: hourMs(offset + 1),
       price: 100 + offset,
+      planningPrice: 100 + offset,
     }));
     const buildParams = (overrides: {
       nowMs: number;
@@ -4622,6 +4682,7 @@ describe('resolveHeroHeadline', () => {
     startsAtMs: queuedHourStartsAtMs,
     endMs: queuedHourStartsAtMs + HOUR_MS,
     price: 0,
+    planningPrice: 0,
   };
 
   it('suppresses the headline only on alert (cannot-finish) heroes', async () => {
@@ -4692,6 +4753,7 @@ describe('resolveQueuedHeadlineReason', () => {
     startsAtMs: firstHourStart,
     endMs: firstHourStart + HOUR_MS,
     price: 0,
+    planningPrice: 0,
   };
   const deadlineAtMs = Date.UTC(2026, 0, 1, 16, 0);
 
@@ -4922,6 +4984,7 @@ describe('schedule + trajectory chart option builders', () => {
         deadlineAxisX: hours.length - 0.5,
         deadlineMarkLabel: 'deadline Mon 06:00',
         cheapestHoursCaption: null,
+        planningPriceNote: null,
       },
       trajectory: buildMinimalTrajectory(),
       planInputs: {

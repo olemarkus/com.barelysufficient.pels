@@ -15,6 +15,10 @@ import {
   type DeadlineLabels,
 } from '../../../shared-domain/src/deadlineLabels.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
+import {
+  PLANNING_PRICE_REASON_LINE,
+  planningPriceDivergesFromImport,
+} from '../../../shared-domain/src/price/planningPrice.ts';
 import { formatDeadlineFull, formatHourLabel } from './deadlinePlanFormatters.ts';
 import { ONE_HOUR_MS, type HorizonHour } from './deadlinePlanData.ts';
 import type { CostDisplay } from './dailyBudgetCost.ts';
@@ -86,6 +90,7 @@ export const buildTimeline = (params: {
       deadlineAxisX: -0.5,
       deadlineMarkLabel: `${DEADLINE_MARKER_WORD} ${formatDeadlineFull(params.deadlineAtMs)}`,
       cheapestHoursCaption: null,
+      planningPriceNote: null,
     };
   }
   const nowIndex = resolveNowIndex(params.hours, params.nowMs);
@@ -99,7 +104,12 @@ export const buildTimeline = (params: {
   const hours = params.hours.map((hour, index) => {
     const originalKwh = params.originalChargeByStartMs.get(hour.startsAtMs) ?? 0;
     const currentKwh = params.currentChargeByStartMs.get(hour.startsAtMs) ?? 0;
-    const displayPrice = hour.price / Math.max(1, params.costDisplay.divisor);
+    // The schedule "at what price" is a PLANNING surface — show the planning
+    // price (`budgetPrice ?? total`) the scheduler ranked hours on, not the
+    // import money price. Equals the import price for a non-prosumer, so this
+    // is byte-identical outside a solar home. The hero's cost lines stay on the
+    // import price (`hour.price`) via `resolveLiveCostAndDelivery`.
+    const displayPrice = hour.planningPrice / Math.max(1, params.costDisplay.divisor);
     const hourChanged = Math.abs(originalKwh - currentKwh) > 0.001;
     const planned = currentKwh > 0;
     const measuredKwh = resolveActualDeviceKwh({
@@ -141,16 +151,27 @@ export const buildTimeline = (params: {
     deadlineAxisX: toCategoryAxisX(params.hours, lastIndex, params.deadlineAtMs),
     deadlineMarkLabel: `${DEADLINE_MARKER_WORD} ${formatDeadlineFull(params.deadlineAtMs)}`,
     // Trust caption read from the same already-scaled per-hour display prices
-    // (øre→kr handled upstream by the CostDisplay divisor) the chart renders.
-    // Every hour in the window is eligible (the window ends at the deadline),
-    // so "Picked N of the M hours it can use" reconciles with the bars
-    // AND with the hero's planned-cost line — `resolveLiveCostAndDelivery`
-    // sums Σ(price × planned kWh) over this same hour set. Averaging +
+    // (the PLANNING price, øre→kr handled upstream by the CostDisplay divisor)
+    // the chart renders. Every hour in the window is eligible (the window ends
+    // at the deadline), so "Picked N of the M hours it can use · avg P"
+    // reconciles with the bars the user sees. It does NOT reuse the hero's
+    // planned-cost figure — that stays on the import price
+    // (`resolveLiveCostAndDelivery`), so for a prosumer the caption's planning
+    // average and the hero's money cost legitimately differ. Averaging +
     // phrasing live in shared-domain so this stays a thin projection.
     cheapestHoursCaption: formatCheapestHoursCaption({
       plannedPrices: hours.filter((hour) => hour.planned).map((hour) => hour.priceValue),
       allPrices: hours.map((hour) => hour.priceValue),
       unitLabel: params.priceUnitLabel,
     }),
+    // Bridge the planning-vs-import gap: the schedule readout shows the planning
+    // price while the hero's cost line stays on the import price, so when any
+    // hour's planning price VISIBLY diverges (gated on the display divisor) the
+    // `using your solar` reason line explains why the two figures differ. Null
+    // for a non-prosumer, where every hour's planning price equals its import
+    // price (byte-identical).
+    planningPriceNote: params.hours.some(
+      (hour) => planningPriceDivergesFromImport(hour.planningPrice, hour.price, params.costDisplay.divisor),
+    ) ? PLANNING_PRICE_REASON_LINE : null,
   };
 };

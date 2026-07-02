@@ -24,6 +24,22 @@ export const resolvePriceUnitLabel = (display: CostDisplay): string => {
   return normalizeUnitWithKwh(unit);
 };
 
+/**
+ * Format a RAW per-hour price (e.g. an øre value from the price store) as a
+ * display string scaled through the {@link CostDisplay} divisor (øre → kr ÷ 100),
+ * e.g. `0.34 kr/kWh`. Signed values pass through unclamped (a negative export
+ * price = the home pays to export). Sub-half-cent magnitudes snap to zero so a
+ * tiny negative never renders as `-0.00`. Flow/Homey payloads with a blank
+ * display unit render the bare number, mirroring the tooltip's unit-less
+ * fallback. Shared by the Budget hero "Export price now" subline and the
+ * Electricity-prices "Right now" export row so the two never drift.
+ */
+export const formatScaledPriceValue = (rawPrice: number, display: CostDisplay): string => {
+  const scaledValue = rawPrice / Math.max(1, display.divisor);
+  const scaled = (Math.abs(scaledValue) < 0.005 ? 0 : scaledValue).toFixed(2);
+  return display.unit.trim() ? `${scaled} ${resolvePriceUnitLabel(display)}` : scaled;
+};
+
 type CombinedPricesUnitFields = {
   priceScheme?: unknown;
   priceUnit?: unknown;

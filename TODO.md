@@ -358,12 +358,31 @@ CI failure, so future field-move slices can't silently grow the debt.*
 - [ ] **Solar export price — migrate the smart-task *preview* price reader onto the planning price.**
       The export-price model, the derived `budgetPrice`, its planning consumers (daily-budget
       shaping/allocation, smart-task horizons, price levels, cheapest-hours — all `budgetPrice ?? total`,
-      money/receipt surfaces deliberately staying on `total`), the export-price settings section, and
-      the Budget-tab "Export price now" subline all SHIPPED. The one consumer left on the import price is
-      the smart-task **preview** reader: it still sources `buckets.price` (total-based) from the
-      daily-budget snapshot, so the preview curve/cost can disagree with the planning-price allocation
-      for prosumers. Fold it onto the planning price (matching the horizon allocator).
+      money/receipt surfaces deliberately staying on `total`), the export-price settings section, the
+      Budget-tab "Export price now" subline, AND the planning-price DISPLAY surfaces (smart-task schedule
+      chart/readout/caption, Budget hourly-plan curve + `using your solar` note, `plan_budget` widget
+      curve + projected-cost estimate, Electricity "Right now" export row + reason line) all SHIPPED —
+      byte-identical to today for a non-prosumer, money/receipt figures kept on `total`. The one consumer
+      left on the import price is the smart-task **preview** reader
+      (`buildDeferredObjectivePolicyWindowPrices` / `...PolicyBucketPrices` in
+      `lib/objectives/deferredObjectives/policyHorizon.ts`): it still sources `buckets.price` (total-based)
+      from the daily-budget snapshot, so the create-task widget's preview curve/cost can disagree with the
+      planning-price allocation for prosumers. Fold it onto the planning price (matching the horizon allocator).
       *Persona:* prosumer (Norwegian plusskunde, or NL post-saldering) self-consuming solar. *P2.*
+
+- [ ] **"Projected cost" has two bases for a prosumer — decide a unified stance.** The `plan_budget`
+      widget's projected cost is now summed on the PLANNING price (`budgetPrice ?? total`, an estimate
+      of the plan's self-consumed-solar economics), while the smart-task detail hero's "N kr planned"
+      cost line (`resolveLiveCostAndDelivery` in `deadlinePlan.ts`) stays on the IMPORT price (money
+      that reconciles to the bill). Both are labelled "projected"/"planned" cost but sit on different
+      bases, so a prosumer comparing the two glances sees figures that don't tie out. The widget's
+      estimate framing is defensible (it's a planning glance, not a receipt), and the hero's import
+      basis is correct for a bill-reconciling figure — but the split is undocumented and a future
+      reviewer will re-flag it. Decide a unified stance (e.g. both on import with a separate planning
+      badge, or both on planning with an explicit estimate label) and record it in
+      `notes/ui-terminology.md`. *Persona:* prosumer reconciling the widget glance against the
+      smart-task receipt. *Hypothesis:* the two-basis split is invisible until a user does the
+      arithmetic; low-frequency but confidence-eroding when hit. *P3 (M3 review, planning-price PR).*
 
 - [ ] **Planning price — three deliberate exclusions to revisit.** (1) The `price_lowest_before` /
       `price_lowest_today` flow cards and their 30 s trigger checker
@@ -495,15 +514,6 @@ CI failure, so future field-move slices can't silently grow the debt.*
       key-value block) so the decision line keeps its prominence. *Persona:* Set-and-forget owner —
       the Budget glance must stay one-breath readable. *Hypothesis:* a fifth stacked subline turns
       the hero from a verdict into a list. *P2 (M3 review, export-price PR).*
-
-- [ ] **Electricity prices "Right now" card: show the export price beside "Current price", and attach
-      the "using your solar" reason line when the planning price ships to the UI.** The live summary
-      card answers "what is power worth right now?" for the import side only; a prosumer with export
-      pricing on has no equivalent glance on the page where they configured it (the value lives only
-      on the Budget tab). When the planning-price display increment (consumer-rewiring follow-up)
-      lands, add the export price row here and the canonical `using your solar` reason line where the
-      planning price surfaces. *Persona:* Prosumer verifying their export config does something.
-      *P2 (UX-fit review, export-price PR).*
 
 - [ ] **Export scheme round trips: pure-share configs lose the share on spot-less entry; fixed-amount
       configs come back with a re-enable — accepted trade-offs.** Crossing the Norway unit boundary

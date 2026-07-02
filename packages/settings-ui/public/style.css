@@ -6811,6 +6811,21 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   gap: var(--spacing-2);
 }
 
+/* Current price + its "using your solar" sub-note form one unit: a tight
+   inner gap keeps the note hugging the row it explains (not floating between
+   the Current price and Export price rows), and the indent reads it as a
+   sub-note of that row rather than a peer status row. */
+.electricity-prices-current-price {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+}
+
+.electricity-prices-planning-reason {
+  padding-inline-start: var(--spacing-2);
+  text-align: start;
+}
+
 .price-config-source-status {
   display: flex;
   flex-direction: column;

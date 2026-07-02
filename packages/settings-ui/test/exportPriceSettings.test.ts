@@ -386,4 +386,35 @@ describe('handleSchemeChange export transition (via priceConfig)', () => {
     const surface = await bootPricesView({ price_scheme: 'norway', export_price_enabled: false });
     expect(exportSection(surface)).toBeNull();
   });
+
+  // A current-hour combined-prices row still carrying an export price AND a
+  // divergent planning price (budgetPrice != total) — the exact state right after
+  // a user disables export pricing but before combined_prices rebuilds (up to an
+  // hour). The live "Right now" export row + `using your solar` reason line must
+  // read the current enabled setting, not the stale prices.
+  const bootWithLivePrices = async (exportEnabled: boolean) => {
+    const hourMs = 60 * 60 * 1000;
+    const startsAt = new Date(Math.floor(Date.now() / hourMs) * hourMs).toISOString();
+    const stored: Record<string, unknown> = { price_scheme: 'norway', export_price_enabled: exportEnabled };
+    const combinedPrices = { lastFetched: startsAt, prices: [{ startsAt, total: 1, exportPrice: -0.05, budgetPrice: 0.3 }] };
+    getSettingMock.mockImplementation(async (key: string) => stored[key]);
+    getApiReadModelMock.mockImplementation(async (path: string) => (path === '/ui_prices' ? { combinedPrices } : null));
+    const { initElectricityPricesView } = await import('../src/ui/priceConfig.ts');
+    const surface = document.createElement('div');
+    document.body.appendChild(surface);
+    await initElectricityPricesView(surface);
+    return surface;
+  };
+  const planningReason = (surface: HTMLElement) => surface.querySelector('.electricity-prices-planning-reason');
+
+  it('shows the live planning-price reason line when export pricing is enabled', async () => {
+    const surface = await bootWithLivePrices(true);
+    await vi.waitFor(() => expect(planningReason(surface)).not.toBeNull());
+  });
+
+  it('suppresses the live planning-price reason line when export pricing is off, despite stale divergent prices', async () => {
+    const surface = await bootWithLivePrices(false);
+    // Same stale divergent prices, but the toggle reads OFF → the gate suppresses it.
+    await vi.waitFor(() => expect(planningReason(surface)).toBeNull());
+  });
 });

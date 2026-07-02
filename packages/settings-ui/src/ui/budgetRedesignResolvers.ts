@@ -2,7 +2,8 @@ import type { DailyBudgetDayPayload, DailyBudgetUiPayload } from '../../../contr
 import { formatCost, type CostDisplay } from './dailyBudgetCost.ts';
 import { formatKWh } from './dailyBudgetFormat.ts';
 import type { CombinedPriceRow } from './combinedPrices.ts';
-import { resolvePriceUnitLabel } from './priceUnit.ts';
+import { resolveHourlyChartPricePayload } from './budgetPlanningPriceOverlay.ts';
+import { formatScaledPriceValue } from './priceUnit.ts';
 import type {
   BudgetChartData,
   BudgetConfidenceData,
@@ -369,15 +370,9 @@ export const resolveExportPriceNowLine = (
     return Number.isFinite(startsAtMs) && startsAtMs <= nowMs && nowMs < startsAtMs + ONE_HOUR_MS;
   });
   if (!current || typeof current.exportPrice !== 'number') return null;
-  const scaledValue = current.exportPrice / Math.max(1, costDisplay.divisor);
-  // Snap sub-half-cent magnitudes to zero so a tiny negative export price
-  // never renders as "-0.00".
-  const scaled = (Math.abs(scaledValue) < 0.005 ? 0 : scaledValue).toFixed(2);
-  // Rate grammar matches the Budget readout's price segment (`0.84 kr/kWh`);
-  // flow/homey payloads with a blank display unit render the bare number,
-  // mirroring chartTooltipFormat's unit-less price fallback.
-  const priceText = costDisplay.unit.trim() ? `${scaled} ${resolvePriceUnitLabel(costDisplay)}` : scaled;
-  return composeExportPriceNow(priceText);
+  // Value scaling (øre → kr ÷ divisor, signed, sub-half-cent snap, unit grammar
+  // `0.84 kr/kWh`) is shared with the Electricity-prices "Right now" export row.
+  return composeExportPriceNow(formatScaledPriceValue(current.exportPrice, costDisplay));
 };
 
 export const resolveHeroData = (params: {
@@ -471,25 +466,43 @@ export const resolveChartData = (params: {
   costDisplay: CostDisplay;
   // Requested progress-chart unit (kWh⇄kr toggle); defaults to energy.
   requestedUnit?: BudgetChartUnit;
+  // Combined-price rows (carry the per-hour `budgetPrice`) so the hourly price
+  // curve can follow the planning price for a prosumer. Empty for the adjust
+  // preview and non-prosumers — the chart then renders the import price
+  // unchanged.
+  priceRows?: CombinedPriceRow[];
 }): BudgetChartData => {
-  const { viewPayload, view, mode, status, costDisplay, requestedUnit = 'energy' } = params;
+  const { viewPayload, view, mode, status, costDisplay, requestedUnit = 'energy', priceRows = [] } = params;
   if (!viewPayload || viewPayload.budget.enabled !== true || status === 'noPlan') return null;
   const priceReliable = isPriceReliable(viewPayload);
   const priceShaping = Boolean(viewPayload.budget.priceShapingEnabled);
   const isHourly = mode === 'hourlyPlan';
   const { unit, costViewAvailable } = resolveChartUnit(viewPayload, mode, requestedUnit, costDisplay);
-  return {
+  // Reliability + the money view read the untouched import price; only the
+  // hourly price curve/readout follow the planning price. `resolveHourlyChart-
+  // PricePayload` overlays `buckets.price` (and produces the "using your solar"
+  // note) only when the curve shows AND a prosumer hour diverges — otherwise it
+  // returns the payload untouched, so non-prosumers are byte-identical.
+  const showPrice = isHourly && priceReliable && priceShaping;
+  const { payload: chartPayload, planningPriceNote } = resolveHourlyChartPricePayload({
     payload: viewPayload,
+    showPrice,
+    priceRows,
+    divisor: costDisplay.divisor,
+  });
+  return {
+    payload: chartPayload,
     view,
     mode,
     unit,
     costViewAvailable,
-    showPrice: isHourly && priceReliable && priceShaping,
+    showPrice,
     showProjection: mode === 'progress' && view === 'today',
     showSplit: isHourly && hasPlannedSplitBuckets(viewPayload),
     costDisplay,
     chartTitle: isHourly ? BUDGET_CHART_TITLE_HOURLY_PLAN : BUDGET_CHART_TITLE_PROGRESS,
     chartSubtitle: resolveChartSubtitle({ payload: viewPayload, view, mode, status, priceReliable }),
+    planningPriceNote,
     caveat: isHourly && priceShaping && !priceReliable
       ? 'Price alignment unavailable. Add or refresh prices to show cheaper-hour context.'
       : null,

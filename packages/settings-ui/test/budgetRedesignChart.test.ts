@@ -8,7 +8,11 @@ import {
   resolveProgressMoneySeriesData,
   resolveProgressSeriesData,
 } from '../src/ui/budgetRedesignChartData.ts';
-import { buildProgressOption, type BudgetChartPalette } from '../src/ui/budgetRedesignChartOptions.ts';
+import {
+  buildProgressOption,
+  resolvePriceYAxisScale,
+  type BudgetChartPalette,
+} from '../src/ui/budgetRedesignChartOptions.ts';
 import type { DailyBudgetDayPayload } from '../../contracts/src/dailyBudgetTypes.ts';
 
 // Measurement segments join their tokens with NBSP (wraps happen only at
@@ -427,6 +431,33 @@ describe('Budget redesign chart helpers', () => {
       actualUpToIndex: 0,
       view: 'today',
     })).toEqual([1.2, 2.2, 3.2]);
+  });
+});
+
+describe('resolvePriceYAxisScale — negative planning price', () => {
+  it('lets the axis go below 0 when a planning-price point is negative', () => {
+    // NL deep-surplus / negative-export hour: the curve must draw below the
+    // axis, not clip at a 0 floor and read as ~0.
+    const scale = resolvePriceYAxisScale([-0.3, 0.2, 0.9]);
+    expect(scale.min).toBeLessThan(0);
+    expect(scale.max).toBeGreaterThan(0.9);
+  });
+
+  it('keeps 0 as the floor when every point is non-negative', () => {
+    const scale = resolvePriceYAxisScale([0.1, 0.5, 0.9]);
+    expect(scale.min).toBe(0);
+  });
+
+  it('filters non-finite points so a stray NaN/Infinity cannot poison the axis', () => {
+    // Defensive boundary guard: the production caller pre-filters, but a public
+    // helper must not read NaN min/max off a bad input.
+    const scale = resolvePriceYAxisScale([Number.NaN, 0.2, Number.POSITIVE_INFINITY, 0.9]);
+    expect(Number.isFinite(scale.min)).toBe(true);
+    expect(Number.isFinite(scale.max)).toBe(true);
+    expect(scale.max).toBeGreaterThan(0.9);
+    // All-non-finite falls back to the same safe default as an empty array.
+    expect(resolvePriceYAxisScale([Number.NaN, Number.POSITIVE_INFINITY]))
+      .toEqual({ min: 0, max: 1, interval: 0.5 });
   });
 });
 

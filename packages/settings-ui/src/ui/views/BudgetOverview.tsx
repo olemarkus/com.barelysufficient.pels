@@ -103,6 +103,10 @@ export type BudgetChartData = {
   costDisplay: CostDisplay;
   chartTitle: string;
   chartSubtitle: string;
+  // "using your solar" reason line, present only when the hourly price curve is
+  // showing the planning price (a prosumer's diverging surplus hour); null
+  // otherwise so non-prosumers see nothing new.
+  planningPriceNote: string | null;
   caveat: string | null;
 } | null;
 
@@ -510,6 +514,9 @@ const BudgetChartCard = ({
         showSplit={chart.showSplit}
       />
       <EChartsCanvas chart={chart} />
+      {chart.planningPriceNote !== null && (
+        <p class="pels-card-supporting budget-chart-planning-note">{chart.planningPriceNote}</p>
+      )}
       {chart.caveat !== null && (
         <p class="pels-card-supporting budget-chart-caveat">{chart.caveat}</p>
       )}
