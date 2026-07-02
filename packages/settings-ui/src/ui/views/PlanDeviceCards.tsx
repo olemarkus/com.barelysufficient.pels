@@ -385,9 +385,6 @@ const resolveExpectedKw = (dev: PlanDeviceSnapshot): number | null => {
   return null;
 };
 
-const shouldShowStateChip = (kind: PlanStateKind, hasTimer: boolean): boolean => (
-  (kind !== 'held' && kind !== 'idle') || hasTimer
-);
 
 
 // ─── Cooldown progress ────────────────────────────────────────────────────────
@@ -516,7 +513,11 @@ export const PlanGenericCard = ({
           <h3 class="plan-card__title">{displayName}</h3>
         </div>
         <div class="plan-card__chips">
-          {shouldShowStateChip(presentation.kind, hasTimer) && (
+          {/* The state word now lives in the below-title state row, so the
+              header no longer repeats it as a chip. The chip returns only to
+              anchor the cooldown countdown ring, which the state row cannot
+              show. */}
+          {hasTimer && (
             <span class="plan-state-chip-wrap">
               <span
                 class={`plan-chip plan-chip--${presentation.chipModifier}`}
@@ -544,18 +545,19 @@ export const PlanGenericCard = ({
         </div>
       </div>
 
-      {reportedLoadConflict && powerReadout && (
-        <div class="plan-card__state-row">
-          <span class="plan-card__state-label">{resolveHeldStateActionLabel(displayDev, dryRun)}</span>
-          <span class="plan-card__state-power">{powerReadout.text}</span>
-        </div>
-      )}
-
-      {!reportedLoadConflict && powerReadout && (
-        <div class="plan-card__metric plan-card__metric--power" data-variant={powerReadout.variant}>
-          <span class="plan-card__metric-label metric-label">{powerReadout.text}</span>
-        </div>
-      )}
+      {/* One anatomy for every card: the bold status word sits below the title
+          with the kW right-aligned on the same row (matching the temperature and
+          stepped cards). The conflict case keeps the dryRun-aware action label
+          from `resolveHeldStateActionLabel` (e.g. "Would be turned off
+          (simulation)"); the normal case shows the plan state word. */}
+      <div class="plan-card__state-row">
+        <span class="plan-card__state-label">
+          {reportedLoadConflict ? resolveHeldStateActionLabel(displayDev, dryRun) : presentation.label}
+        </span>
+        {powerReadout && (
+          <span class="plan-card__state-power" data-variant={powerReadout.variant}>{powerReadout.text}</span>
+        )}
+      </div>
 
       {reasonText !== '' && <p class="plan-card__reason">{reasonText}</p>}
       <EvDeadlineStateLine deviceId={dev.id} nowMs={nowMs} />

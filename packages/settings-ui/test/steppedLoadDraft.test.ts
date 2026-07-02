@@ -154,4 +154,45 @@ describe('steppedLoadDraft per-device draft preservation', () => {
       { id: 'step_1', planningPowerW: 1234 },
     ]);
   });
+
+  it('keeps Save and Undo disabled until an edit exists (Add step stays available)', async () => {
+    const { renderSteppedLoadDraft } = await import('../src/ui/deviceDetail/steppedLoadDraft.ts');
+
+    renderSteppedLoadDraft(buildSteppedDevice('device-dirty', [
+      { id: 'step_1', planningPowerW: 1000 },
+    ]));
+
+    const save = document.querySelector('#device-detail-stepped-save') as HTMLElement & { disabled: boolean };
+    const undo = document.querySelector('#device-detail-stepped-reset') as HTMLElement & { disabled: boolean };
+    const add = document.querySelector('#device-detail-stepped-add-step') as HTMLElement & { disabled: boolean };
+
+    // At rest (draft matches the saved profile), Save/Undo are inert; Add is live.
+    expect(save.disabled).toBe(true);
+    expect(undo.disabled).toBe(true);
+    expect(add.disabled).toBe(false);
+
+    // A real edit makes both Save and Undo actionable.
+    mutateFirstRowPower(1500);
+    expect(save.disabled).toBe(false);
+    expect(undo.disabled).toBe(false);
+  });
+
+  it('renders a muted trash icon-button per row instead of a red Remove text link', async () => {
+    const { renderSteppedLoadDraft } = await import('../src/ui/deviceDetail/steppedLoadDraft.ts');
+
+    renderSteppedLoadDraft(buildSteppedDevice('device-remove', [
+      { id: 'step_1', planningPowerW: 1000 },
+      { id: 'step_2', planningPowerW: 2000 },
+    ]));
+
+    const removes = document.querySelectorAll('#device-detail-stepped-steps .detail-stepped-remove');
+    expect(removes).toHaveLength(2);
+    expect(removes[0].tagName.toLowerCase()).toBe('md-icon-button');
+    // No destructive "Remove" text link survives in the stepped editor.
+    expect(document.querySelector('#device-detail-stepped-steps .md-text-button--destructive')).toBeNull();
+
+    // Per-row field labels are dropped in favour of the shared column headers.
+    const idInput = document.querySelector('#device-detail-stepped-steps [data-step-field="id"]');
+    expect(idInput?.getAttribute('label')).toBeNull();
+  });
 });

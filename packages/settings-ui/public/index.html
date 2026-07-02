@@ -57,7 +57,12 @@
         </svg>
       </template>
       <template id="pels-icon-price">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.31-8.86c-1.77-.45-2.34-.94-2.34-1.67 0-.84.79-1.43 2.1-1.43 1.38 0 1.9.66 1.94 1.64h1.71c-.05-1.34-.87-2.57-2.49-2.97V5H10.9v1.69c-1.51.32-2.72 1.3-2.72 2.81 0 1.79 1.49 2.69 3.66 3.21 1.95.46 2.34 1.15 2.34 1.87 0 .53-.39 1.39-2.1 1.39-1.6 0-2.23-.72-2.32-1.64H8.04c.1 1.7 1.36 2.66 2.86 2.97V19h2.34v-1.67c1.52-.29 2.72-1.16 2.72-2.77 0-2.19-1.89-2.93-3.65-3.42z" fill="currentColor" stroke="none"/></svg>
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58s1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41s-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/>
+        </svg>
+      </template>
+      <template id="pels-icon-trash">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" fill="currentColor" stroke="none"/></svg>
       </template>
       <details id="device-control-legend" class="device-control-legend">
         <summary class="device-control-legend__summary">
@@ -79,7 +84,7 @@
           </span>
           <span class="device-control-legend__pill">
             <span class="device-control-legend__icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.31-8.86c-1.77-.45-2.34-.94-2.34-1.67 0-.84.79-1.43 2.1-1.43 1.38 0 1.9.66 1.94 1.64h1.71c-.05-1.34-.87-2.57-2.49-2.97V5H10.9v1.69c-1.51.32-2.72 1.3-2.72 2.81 0 1.79 1.49 2.69 3.66 3.21 1.95.46 2.34 1.15 2.34 1.87 0 .53-.39 1.39-2.1 1.39-1.6 0-2.23-.72-2.32-1.64H8.04c.1 1.7 1.36 2.66 2.86 2.97V19h2.34v-1.67c1.52-.29 2.72-1.16 2.72-2.77 0-2.19-1.89-2.93-3.65-3.42z" fill="currentColor" stroke="none"/></svg>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58s1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41s-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z" fill="currentColor" stroke="none"/></svg>
             </span>
             Price
           </span>
@@ -113,11 +118,11 @@
           </li>
           <li class="device-control-legend__item">
             <span class="device-control-legend__icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.31-8.86c-1.77-.45-2.34-.94-2.34-1.67 0-.84.79-1.43 2.1-1.43 1.38 0 1.9.66 1.94 1.64h1.71c-.05-1.34-.87-2.57-2.49-2.97V5H10.9v1.69c-1.51.32-2.72 1.3-2.72 2.81 0 1.79 1.49 2.69 3.66 3.21 1.95.46 2.34 1.15 2.34 1.87 0 .53-.39 1.39-2.1 1.39-1.6 0-2.23-.72-2.32-1.64H8.04c.1 1.7 1.36 2.66 2.86 2.97V19h2.34v-1.67c1.52-.29 2.72-1.16 2.72-2.77 0-2.19-1.89-2.93-3.65-3.42z" fill="currentColor" stroke="none"/></svg>
+              <svg viewBox="0 0 24 24"><path d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58s1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41s-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z" fill="currentColor" stroke="none"/></svg>
             </span>
             <div>
               <strong>Price</strong>
-              <p>PELS adjusts the temperature target around electricity prices: higher in cheap hours, lower in expensive hours.</p>
+              <p>PELS adjusts the temperature target around electricity prices: higher in cheap hours, lower in expensive hours. Works with temperature devices only.</p>
             </div>
           </li>
         </ul>
@@ -125,7 +130,10 @@
       <div id="device-card-list"></div>
       <p id="empty-state" class="muted" hidden>No compatible devices found. PELS requires devices with power measurement and either temperature control or on/off capability.</p>
       <div class="list__footer">
-        <md-outlined-button type="button" id="refresh-button">Fetch device list from Homey</md-outlined-button>
+        <md-text-button type="button" id="refresh-button">
+          <svg slot="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z" fill="currentColor"/></svg>
+          Refresh devices
+        </md-text-button>
       </div>
     </section>
 
@@ -140,11 +148,20 @@
         <div class="field">
           <label class="field__label pels-text-settings-label" for="mode-select">Edit mode</label>
           <md-filled-select id="mode-select" name="mode"></md-filled-select>
-          <div class="inline-actions">
-            <md-filled-text-field id="mode-new" type="text" placeholder="New mode name" aria-label="New mode name"></md-filled-text-field>
-            <md-outlined-button type="button" id="add-mode-button">Add</md-outlined-button>
-            <md-outlined-button type="button" id="delete-mode-button">Delete</md-outlined-button>
-            <md-outlined-button type="button" id="rename-mode-button">Rename</md-outlined-button>
+          <div class="mode-actions">
+            <md-filled-tonal-button type="button" id="add-mode-button">
+              <svg slot="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill="currentColor"/></svg>
+              New mode
+            </md-filled-tonal-button>
+            <md-text-button type="button" id="rename-mode-button">Rename</md-text-button>
+            <md-text-button type="button" id="delete-mode-button" class="md-text-button--destructive">Delete</md-text-button>
+          </div>
+          <div class="mode-name-editor" id="mode-name-editor" hidden>
+            <md-filled-text-field id="mode-new" type="text" placeholder="New mode name" aria-label="Mode name"></md-filled-text-field>
+            <div class="mode-name-editor__actions">
+              <md-text-button type="button" id="mode-name-cancel">Cancel</md-text-button>
+              <md-filled-tonal-button type="button" id="mode-name-confirm">Create</md-filled-tonal-button>
+            </div>
           </div>
           <small class="field__hint">Drag to reorder priorities (top = keep on longest). Set desired temps per mode.</small>
         </div>
@@ -152,6 +169,16 @@
         <p id="priority-empty" class="muted" hidden>No controllable devices found. Refresh devices first.</p>
       </form>
       <p class="muted">Tip: Drag to reorder priorities (auto-saves). Temperatures save automatically when changed.</p>
+      <md-dialog id="mode-delete-dialog">
+        <div slot="headline">Delete mode?</div>
+        <form slot="content" id="mode-delete-form" method="dialog">
+          <p class="muted" id="mode-delete-message">This removes the mode and its saved priorities and temperatures. This can’t be undone.</p>
+        </form>
+        <div slot="actions">
+          <md-text-button form="mode-delete-form" value="cancel">Cancel</md-text-button>
+          <md-text-button form="mode-delete-form" value="delete" class="md-text-button--destructive">Delete</md-text-button>
+        </div>
+      </md-dialog>
     </section>
 
     <section class="card panel hidden" id="budget-panel" data-panel="budget">
@@ -488,13 +515,13 @@
       </div>
       <form id="settings-limits-form" class="form-grid settings-form-card">
         <label class="field">
-          <span class="field__label pels-text-settings-label" id="settings-capacity-limit-label">Hard cap (kW)</span>
-          <md-filled-text-field id="settings-capacity-limit" name="settings_capacity_limit" type="number" step="0.1" min="0" inputmode="decimal" autocomplete="off" required aria-labelledby="settings-capacity-limit-label"></md-filled-text-field>
+          <span class="field__label pels-text-settings-label" id="settings-capacity-limit-label">Hard cap</span>
+          <md-filled-text-field id="settings-capacity-limit" name="settings_capacity_limit" type="number" step="0.1" min="0" inputmode="decimal" autocomplete="off" required suffix-text="kW" aria-labelledby="settings-capacity-limit-label"></md-filled-text-field>
           <small class="field__hint">The upper boundary PELS tries not to exceed.</small>
         </label>
         <label class="field">
-          <span class="field__label pels-text-settings-label" id="settings-capacity-margin-label">Safety margin (kW)</span>
-          <md-filled-text-field id="settings-capacity-margin" name="settings_capacity_margin" type="number" step="0.05" min="0" inputmode="decimal" autocomplete="off" required aria-labelledby="settings-capacity-margin-label"></md-filled-text-field>
+          <span class="field__label pels-text-settings-label" id="settings-capacity-margin-label">Safety margin</span>
+          <md-filled-text-field id="settings-capacity-margin" name="settings_capacity_margin" type="number" step="0.05" min="0" inputmode="decimal" autocomplete="off" required suffix-text="kW" aria-labelledby="settings-capacity-margin-label"></md-filled-text-field>
           <small class="field__hint field__hint--alert" id="settings-capacity-margin-alert" hidden></small>
         </label>
         <div class="settings-result" role="group" aria-labelledby="settings-capacity-reaction-label">
@@ -857,18 +884,24 @@
                 </div>
               </div>
 
-              <div class="detail-stepped-actions">
-                <md-text-button id="device-detail-stepped-add-step">Add step</md-text-button>
-                <md-text-button id="device-detail-stepped-reset">Reset draft</md-text-button>
-                <md-filled-button id="device-detail-stepped-save">Save profile</md-filled-button>
-              </div>
-
               <div class="detail-stepped-header" aria-hidden="true">
                 <span>Step</span>
-                <span>Planning (W)</span>
+                <span>Planning</span>
                 <span></span>
               </div>
               <div class="detail-stepped-list" id="device-detail-stepped-steps"></div>
+
+              <div class="detail-stepped-add">
+                <md-text-button id="device-detail-stepped-add-step">
+                  <svg slot="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill="currentColor"/></svg>
+                  Add step
+                </md-text-button>
+              </div>
+
+              <div class="detail-stepped-actions detail-stepped-actions--save">
+                <md-text-button id="device-detail-stepped-reset">Undo changes</md-text-button>
+                <md-filled-tonal-button id="device-detail-stepped-save">Save profile</md-filled-tonal-button>
+              </div>
 
               <div class="detail-stepped-boost" id="device-detail-temperature-boost" hidden>
                 <div class="md-switch-row">

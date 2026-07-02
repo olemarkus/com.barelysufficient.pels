@@ -218,7 +218,11 @@ describe('ElectricityPricesView', () => {
       expect(factor?.value).toBe('90');
       expect(Boolean(factor?.disabled)).toBe(false);
       expect(fixed?.value).toBe('-5');
-      expect(mount.textContent).toContain('Fixed amount (øre/kWh, incl. VAT)');
+      // Bare label + unit suffix + VAT basis in the hint (control-grammar unit sweep).
+      expect(mount.textContent).toContain('Fixed amount');
+      expect(mount.textContent).not.toContain('Fixed amount (øre/kWh, incl. VAT)');
+      expect(fixed?.getAttribute('suffix-text')).toBe('øre/kWh');
+      expect(mount.textContent).toContain('Added for every exported kWh, incl. VAT');
       expect(mount.textContent).not.toContain('Needs a spot price');
       // The hint states the VAT-inclusive basis and the raw-spot conversion
       // recipe (a raw-spot contract enters 80, not 100).

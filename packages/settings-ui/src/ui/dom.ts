@@ -117,6 +117,13 @@ export const modeNewInput = document.querySelector('#mode-new') as MdFilledTextF
 export const addModeButton = document.querySelector('#add-mode-button') as MdButtonElement;
 export const deleteModeButton = document.querySelector('#delete-mode-button') as MdButtonElement;
 export const renameModeButton = document.querySelector('#rename-mode-button') as MdButtonElement;
+export const modeNameEditor = document.querySelector('#mode-name-editor') as HTMLElement | null;
+export const modeNameConfirm = document.querySelector('#mode-name-confirm') as MdButtonElement | null;
+export const modeNameCancel = document.querySelector('#mode-name-cancel') as MdButtonElement | null;
+export const modeDeleteDialog = document.querySelector('#mode-delete-dialog') as (
+  HTMLElement & { open: boolean; returnValue: string; show: () => void; close: (value?: string) => void }
+) | null;
+export const modeDeleteMessage = document.querySelector('#mode-delete-message') as HTMLElement | null;
 export const activeModeSelect = document.querySelector('#active-mode-select') as MdFilledSelectElement;
 export const priorityForm = document.querySelector('#priority-form') as HTMLFormElement;
 export const priorityList = qs('#priority-list');

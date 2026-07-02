@@ -9,7 +9,7 @@ import {
 } from './deviceUtils.ts';
 import { resolveDeviceClassLabel } from './deviceClassLabels.ts';
 import { resolveManagedState, state } from './state.ts';
-import type { RowDisabledReasons } from './deviceControlAvailability.ts';
+import { PRICE_TEMPERATURE_ONLY_REASON, type RowDisabledReasons } from './deviceControlAvailability.ts';
 
 export type DeviceGroup = {
   key: string;
@@ -71,7 +71,10 @@ export const appendRedesignDisabledReasons = (
   reasons: RowDisabledReasons,
 ) => {
   const uniqueReasons = Array.from(new Set(Object.values(reasons).filter((reason): reason is string => (
-    Boolean(reason)
+    // The temperature-only price caveat is a static capability fact stated once
+    // in the "Explain" expander, so it is dropped from the per-row list to avoid
+    // repeating the same sentence under every on/off device.
+    Boolean(reason) && reason !== PRICE_TEMPERATURE_ONLY_REASON
   ))));
   if (!uniqueReasons.length) return;
 

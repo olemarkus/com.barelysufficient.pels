@@ -133,6 +133,24 @@ beforeAll(async () => {
   if (typeof (globalThis as unknown as { matchMedia?: unknown }).matchMedia !== 'function') {
     (globalThis as unknown as { matchMedia: typeof matchMediaStub }).matchMedia = matchMediaStub;
   }
+
+  // jsdom lacks IntersectionObserver, which Material Web's <md-dialog>
+  // (used by the Modes delete-confirmation) calls in firstUpdated. Real
+  // browsers provide it; stub a no-op so mounting md-dialog in a fixture does
+  // not throw an unhandled rejection. Remove when jsdom ships it.
+  class IntersectionObserverStub {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+    takeRecords() { return []; }
+  }
+  if (typeof (globalThis as unknown as { IntersectionObserver?: unknown }).IntersectionObserver !== 'function') {
+    (globalThis as unknown as { IntersectionObserver: unknown }).IntersectionObserver = IntersectionObserverStub;
+  }
+  if (typeof window !== 'undefined' && typeof (window as unknown as { IntersectionObserver?: unknown }).IntersectionObserver !== 'function') {
+    (window as unknown as { IntersectionObserver: unknown }).IntersectionObserver = IntersectionObserverStub;
+  }
+
   installCanvasContextStub();
 
   // jsdom's ElementInternals lacks setFormValue, which Material Web's

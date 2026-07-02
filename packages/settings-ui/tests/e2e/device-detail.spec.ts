@@ -73,12 +73,15 @@ test.describe('Device detail panel', () => {
     await expect(page.locator('#device-detail-title')).toHaveText('Living Room Heat Pump');
   });
 
-  test('shows plain disabled-control reasons in the device list', async ({ page }) => {
+  test('states the temperature-only price caveat once in Explain, not under every device row', async ({ page }) => {
     await openDevices(page);
     const waterHeaterRow = page.locator('#devices-panel [data-device-id="dev_waterheater"]').first();
-    await expect(waterHeaterRow.locator('.pels-device-card__reasons')).toContainText(
-      'Price works with temperature devices only.',
-    );
+    await expect(waterHeaterRow).toBeVisible();
+    // The static "temperature devices only" fact no longer repeats under every
+    // on/off device row (item: control grammar) — it is stated once in the
+    // Devices "Explain" expander.
+    await expect(waterHeaterRow).not.toContainText('temperature devices only');
+    await expect(page.locator('#device-control-legend')).toContainText('Works with temperature devices only');
   });
 
   test('opens and closes via back button, overlay backdrop, and Escape', async ({ page }) => {

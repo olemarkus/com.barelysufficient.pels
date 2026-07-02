@@ -113,7 +113,7 @@ const MasterSwitch = ({ enabled, onEnabledChange }: {
   enabled: boolean;
   onEnabledChange: (enabled: boolean) => void;
 }) => (
-  <div class="md-switch-row settings-form-card" id="weather-enable-row">
+  <label class="md-switch-row settings-form-card" id="weather-enable-row">
     <MdSwitch
       id="weather-enable-switch"
       aria-label={WEATHER_ENABLE_LABEL}
@@ -124,7 +124,7 @@ const MasterSwitch = ({ enabled, onEnabledChange }: {
       <span class="md-switch-row__label pels-text-settings-label">{WEATHER_ENABLE_LABEL}</span>
       <small class="field__hint">{WEATHER_ENABLE_SUPPORTING}</small>
     </span>
-  </div>
+  </label>
 );
 
 const DevicePickers = ({ pickers }: { pickers: WeatherPickersProps }) => (
@@ -152,7 +152,7 @@ const DevicePickers = ({ pickers }: { pickers: WeatherPickersProps }) => (
  * matters); the "Last applied" line confirms it's actually acting.
  */
 const AutoApplyRow = ({ pickers }: { pickers: WeatherPickersProps }) => (
-  <div class="md-switch-row settings-form-card" id="weather-auto-apply-row">
+  <label class="md-switch-row settings-form-card" id="weather-auto-apply-row">
     <MdSwitch
       id="weather-auto-apply-switch"
       aria-label={WEATHER_AUTO_APPLY_LABEL}
@@ -173,7 +173,7 @@ const AutoApplyRow = ({ pickers }: { pickers: WeatherPickersProps }) => (
         </small>
       )}
     </span>
-  </div>
+  </label>
 );
 
 /** Off-state body: a payoff-led pitch so the off page sells the feature. */

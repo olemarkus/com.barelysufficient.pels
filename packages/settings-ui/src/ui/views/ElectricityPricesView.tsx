@@ -354,13 +354,14 @@ const NorwaySection = ({
       </small>
     </div>
     <label class="field">
-      <span class="field__label pels-text-settings-label" id="electricity-prices-provider-surcharge-label">Provider surcharge (øre/kWh, incl. VAT)</span>
+      <span class="field__label pels-text-settings-label" id="electricity-prices-provider-surcharge-label">Provider surcharge</span>
       <MdFilledTextField
         type="number"
         value={String(providerSurcharge)}
         step="0.1"
         min="-100"
         max="100"
+        suffix-text="øre/kWh"
         aria-labelledby="electricity-prices-provider-surcharge-label"
         onChange={(e) => {
           const val = readFiniteNumber(e);
@@ -500,22 +501,22 @@ const ExportPriceForm = ({
         What you’re paid for power you send to the grid — check what your power company pays you.
         The Budget tab shows the current export price while this is on.
       </p>
-      <div class="field checkbox-field">
+      <label class="md-switch-row">
         <MdSwitch
           id="electricity-prices-export-enabled"
           aria-label="Use an export price"
           {...(exportPriceEnabled ? { selected: true } : {})}
           onChange={(e) => onExportEnabledChange((e.currentTarget as SwitchElement).selected)}
         />
-        <span class="checkbox-field__content">
-          <span class="field__label pels-text-settings-label">Use an export price</span>
+        <span class="md-switch-row__content">
+          <span class="md-switch-row__label pels-text-settings-label">Use an export price</span>
         </span>
-      </div>
+      </label>
       {exportPriceEnabled && (
         <>
           <label class="field">
             <span class="field__label pels-text-settings-label" id="electricity-prices-export-spot-factor-label">
-              Share of spot price (%)
+              Share of spot price
             </span>
             <MdFilledTextField
               id="electricity-prices-export-spot-factor"
@@ -524,6 +525,7 @@ const ExportPriceForm = ({
               min={String(EXPORT_SPOT_FACTOR_MIN)}
               max={String(EXPORT_SPOT_FACTOR_MAX)}
               step="1"
+              suffix-text="%"
               inputmode="decimal"
               {...(shareEditable ? {} : { disabled: true })}
               aria-labelledby="electricity-prices-export-spot-factor-label"
@@ -541,7 +543,7 @@ const ExportPriceForm = ({
           </label>
           <label class="field">
             <span class="field__label pels-text-settings-label" id="electricity-prices-export-fixed-label">
-              {hasSpotPrice ? 'Fixed amount (øre/kWh, incl. VAT)' : 'Fixed amount'}
+              Fixed amount
             </span>
             <MdFilledTextField
               id="electricity-prices-export-fixed"
@@ -550,6 +552,7 @@ const ExportPriceForm = ({
               min={String(-EXPORT_FIXED_LIMIT)}
               max={String(EXPORT_FIXED_LIMIT)}
               step="0.1"
+              {...(hasSpotPrice ? { 'suffix-text': 'øre/kWh' } : {})}
               inputmode="decimal"
               aria-labelledby="electricity-prices-export-fixed-label"
               onChange={(e) => {
@@ -560,7 +563,7 @@ const ExportPriceForm = ({
             />
             <small class="field__hint">
               {hasSpotPrice
-                ? 'Added for every exported kWh. Negative means you pay to export.'
+                ? 'Added for every exported kWh, incl. VAT. Negative means you pay to export.'
                 : 'Added for every exported kWh, in the same unit as your prices. Negative means you pay to export.'}
             </small>
           </label>
@@ -587,13 +590,14 @@ const ThresholdForm = ({
     <h3 class="section-title">Cheap and expensive hours</h3>
     <p class="muted">Defines what counts as cheap or expensive.</p>
     <label class="field">
-      <span class="field__label pels-text-settings-label" id="electricity-prices-threshold-label">Price threshold (%)</span>
+      <span class="field__label pels-text-settings-label" id="electricity-prices-threshold-label">Price threshold</span>
       <MdFilledTextField
         type="number"
         value={String(thresholdPercent)}
         min="5"
         max="50"
         step="1"
+        suffix-text="%"
         aria-labelledby="electricity-prices-threshold-label"
         onChange={(e) => {
           const val = readFiniteNumber(e);
@@ -604,7 +608,7 @@ const ThresholdForm = ({
     </label>
     <label class="field">
       <span class="field__label pels-text-settings-label" id="electricity-prices-min-diff-label">
-        {isExternal ? 'Minimum price difference' : 'Minimum price difference (øre/kWh)'}
+        Minimum price difference
       </span>
       <MdFilledTextField
         type="number"
@@ -612,6 +616,7 @@ const ThresholdForm = ({
         min="0"
         max="1000"
         step="any"
+        {...(isExternal ? {} : { 'suffix-text': 'øre/kWh' })}
         inputmode="decimal"
         aria-labelledby="electricity-prices-min-diff-label"
         onChange={(e) => {
