@@ -1993,6 +1993,30 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       expect(stepped.desiredStepId).toBe('medium');
     });
 
+    it('does NOT clamp when the surplus-only hold is release-pending (eligible latched, still off)', () => {
+      // The pump was eligible during surplus but its ON never materialized; surplus
+      // then vanished, latching `eligible` with `pendingSinceMs` set while it stays
+      // off. `resolveSurplusHold` still holds it for solar (not eligible-and-runnable),
+      // so it must not count as capacity pressure — the earlier `eligible !== true`
+      // proxy missed this release-pending window and clamped the unrelated heater.
+      // Off pump (binaryControl.on = false) — its ON never materialized.
+      const pump = inputDevice({ id: 'pool-pump', name: 'pool-pump', binaryControl: { on: false }, surplusOnly: true });
+      const state = createPlanEngineState();
+      state.surplusEligibilityByDevice['pool-pump'] = { eligible: true, pendingSinceMs: 1_000 };
+      const [stepped] = buildInitialPlanDevices({
+        context: buildContext([buildStepped(), pump]),
+        state,
+        shedSet: new Set(['pool-pump']),
+        shedReasons: new Map(),
+        guardInShortfall: false,
+        deps: defaultDeps,
+      });
+
+      expect(stepped.id).toBe('heater');
+      expect(stepped.plannedState).toBe('keep');
+      expect(stepped.desiredStepId).toBe('medium');
+    });
+
     it('DOES clamp when a surplusOnly device is genuinely capacity-shed (fresh shedReason)', () => {
       // Discriminator mirror of the executor: a surplusOnly device with a FRESH
       // capacity shedReason is real pressure and still bounds the stepped device.
