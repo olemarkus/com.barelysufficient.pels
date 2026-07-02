@@ -149,6 +149,22 @@ export class PlanEngineState {
    */
   shedDecidedMs: Record<string, number> = {};
 
+  /**
+   * Plan-less-safe "Run on solar surplus" posture stamp: `true` for a device
+   * whose CURRENT shed decision was taken while it carried the producer-resolved
+   * `surplusOnly` dump-load posture. Maintained by the planner alongside
+   * `shedDecidedMs` (refreshed for every planned-shed device each build, so a
+   * posture toggle while held updates it) and cleared with the decision clock
+   * (`clearShedDecision`). The executor's capacity-control-off/uncontrolled
+   * binary restore lanes consult THIS stamp — never the plan device — so
+   * turning capacity control off (or unmanaging) can never force-turn-ON a
+   * baseline-off dump load, even from a cold/absent plan. In-memory only: a
+   * restart drops both this stamp and `shedDecidedMs` together, and the
+   * uncontrolled-restore lane requires `shedDecidedMs`, so the restart race is
+   * fail-safe (no stamp ⇒ no decision ⇒ no forced ON).
+   */
+  surplusOnlyShedByDevice: Record<string, true> = {};
+
   lastDeviceRestoreMs: Record<string, number> = {};
 
   activationAttemptByDevice: Record<string, ActivationAttemptState> = {};
@@ -279,6 +295,34 @@ export class PlanEngineState {
     this.appStartedAtMs = nowTs;
   }
 
+  /**
+   * Record one plan build's planned-shed decisions (called at plan
+   * finalization). Edge-sets the decision-time shed clock (`shedDecidedMs`) on
+   * the transition into the shed set — a decided-but-already-off device is
+   * recorded even when the executor skips the write; not refreshed while held,
+   * so a re-shed after a restore re-stamps a fresh decision time. Also
+   * maintains the plan-less-safe surplus-posture stamp
+   * (`surplusOnlyShedByDevice`): REFRESHED (not edge-set) for every currently
+   * planned-shed device, so toggling the posture off while held clears it.
+   */
+  recordPlannedShedDecisions(params: {
+    shedIds: Set<string>;
+    surplusOnlyIds: ReadonlySet<string>;
+    nowTs: number;
+  }): void {
+    for (const id of params.shedIds) {
+      if (!this.lastPlannedShedIds.has(id)) {
+        this.shedDecidedMs[id] = params.nowTs;
+      }
+      if (params.surplusOnlyIds.has(id)) {
+        this.surplusOnlyShedByDevice[id] = true;
+      } else {
+        delete this.surplusOnlyShedByDevice[id];
+      }
+    }
+    this.lastPlannedShedIds = params.shedIds;
+  }
+
   /** Stamp the actuation-time shed clock for a device (executor turn-off). */
   markDeviceShed(deviceId: string, nowMs: number): void {
     this.lastDeviceShedMs[deviceId] = nowMs;
@@ -289,9 +333,14 @@ export class PlanEngineState {
     delete this.lastDeviceShedMs[deviceId];
   }
 
-  /** Clear the decision-time shed clock for a device. */
+  /**
+   * Clear the decision-time shed clock for a device, together with its
+   * surplus-posture stamp (the stamp qualifies the decision, so they live and
+   * die together).
+   */
   clearShedDecision(deviceId: string): void {
     delete this.shedDecidedMs[deviceId];
+    delete this.surplusOnlyShedByDevice[deviceId];
   }
 
   /** Record a stepped-load keep-invariant shed block for a device. */

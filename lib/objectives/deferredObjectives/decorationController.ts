@@ -13,6 +13,7 @@ import {
   applyDeferredObjectiveAdmission,
   buildDeferredReleaseIntents,
   buildDeferredTargetOverrides,
+  type DeferredAdmissionDecision,
 } from './admission';
 import { ConcurrentEligibleTaskTracker } from './concurrentEligibleTasks';
 import { buildDeferredObjectiveDiagnostics } from './diagnosticsBridge';
@@ -76,6 +77,7 @@ export class DeferredObjectiveDecorationController {
       forceShedSet: admission.forceShedSet,
       deferredAvoidDeviceIds: resolveDeferredAvoidDeviceIds(evaluations),
       deferredReleaseIntentByDeviceId: buildDeferredReleaseIntents(decisions),
+      admittedDeviceIds: resolveAdmittedDeviceIds(decisions),
     };
   }
 
@@ -111,6 +113,22 @@ export class DeferredObjectiveDecorationController {
     }
   }
 }
+
+// Devices whose deferred objective is currently GOVERNING them: a `planned` or
+// `idle` admission decision this cycle. `inactive` (task disabled, satisfied, or
+// otherwise not plannable) is deliberately excluded — a finished/disabled smart
+// task must not keep a device out of the planner's standing surplus dump-load
+// hold forever. Consumed by the planner as `admittedDeviceIds` (smart-task
+// precedence, plan-side): a governed device is never surplus-held.
+const resolveAdmittedDeviceIds = (
+  decisions: ReadonlyMap<string, DeferredAdmissionDecision>,
+): ReadonlySet<string> => {
+  const admitted = new Set<string>();
+  for (const [deviceId, decision] of decisions) {
+    if (decision.kind !== 'inactive') admitted.add(deviceId);
+  }
+  return admitted;
+};
 
 // Devices whose smart task is on track AND has no allocated energy this hour
 // (the current hour was relatively expensive so the allocator booked the load

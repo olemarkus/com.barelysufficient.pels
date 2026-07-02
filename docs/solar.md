@@ -7,7 +7,7 @@ description: Use more of your own rooftop solar with PELS — automatic capacity
 
 If you have rooftop solar (PV), this page explains what PELS does with it today.
 
-**Short version:** PELS uses your solar to protect your capacity for free, it can nudge a heater to soak surplus instead of exporting it, and it shows what your solar did — production, self-consumption, export, and the grid cost it avoided. It does not yet drive your export to zero or control a battery or inverter (see [What PELS does not do yet](#what-pels-does-not-do-yet)).
+**Short version:** PELS uses your solar to protect your capacity for free; it can nudge a heater to soak surplus — or run an on/off load such as a pool pump only while you export — instead of sending it to the grid; and it shows what your solar did — production, self-consumption, export, and the grid cost it avoided. It does not yet drive your export to zero or control a battery or inverter (see [What PELS does not do yet](#what-pels-does-not-do-yet)).
 
 ::: warning Requires the Homey Energy power source
 The solar features below need the **Homey Energy** power source, with a solar device that reports production. On the Flow power source, PELS does not receive a solar signal.
@@ -50,6 +50,21 @@ This boost:
 PELS waits for the surplus to settle before engaging, and — to avoid flapping on passing clouds — it briefly holds the raised target for a few minutes after export stops before easing back. While the boost is engaged it takes precedence over any price-based lowering (your own solar is free); the rest of the time your normal price-based targets apply. It is a gentle "use a bit more of my own solar" nudge, not a precise export-to-zero controller.
 
 **If your inverter is set to zero export** (it throttles production so nothing is sent to the grid), the meter never shows a surplus — so PELS estimates one instead. It learns your panels' potential in the current weather from your own production history and verifies it against real production: when actual production sits clearly below that potential, the same boost can engage to soak up the hidden surplus, and your inverter naturally produces more to cover it. If production does not follow — your home starts drawing from the grid instead — PELS eases the boost back promptly and waits a while before trying again. This estimate needs some weeks of production history before it can engage, it stays cautious (it backs off whenever your home draws meaningfully from the grid — only the small standing draw of a couple hundred watts that zero-export setups normally show is tolerated — and your hard cap and daily budget still come first), and it is disabled when a home battery is present, since PELS cannot tell a throttled inverter from a charging battery.
+
+### Run an on/off device only on solar surplus
+
+On a managed **on/off** device you can turn on **"Run on solar surplus"** (the toggle appears once a solar device is present). PELS then keeps the device **off** and turns it on only while your export comfortably covers its draw — the same settle-and-hold behaviour as the heating boost, so passing clouds don't flap it. When the surplus is gone, PELS turns it off again.
+
+Two things to know before you use it:
+
+- **If you switch the device on yourself while there is no surplus, PELS will switch it off again.** The toggle hands the on/off decision to PELS; turn the toggle off to take the device back.
+- **Use it for loads that can wait for the sun**: a pool pump, a towel dryer, a garage or cabin heater.
+
+::: warning Not for your only water heater
+Through a run of cloudy days a device set to run on solar surplus never turns on, and a tank that never heats is a comfort (and hygiene) problem. Turn the toggle off if the device must run regardless of weather.
+:::
+
+The device shows **"Waiting for solar surplus"** on its card while PELS keeps it off, and **"On to use your solar power"** while running on your export. Devices with an active [smart task](./smart-tasks.md) are not held — the smart task's schedule wins.
 
 ### Big flexible loads use the freed-up power
 

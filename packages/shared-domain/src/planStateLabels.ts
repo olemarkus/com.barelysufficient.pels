@@ -70,6 +70,12 @@ export const PLAN_STATE_HOURLY_BUDGET_STATUS = 'Limited — this hour is near th
 // `lib/plan/planReasons.ts` from the deferred-objective admission decisions.
 export const PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS = 'Waiting for cheaper hours';
 
+// Status line for a binary dump load held off by its opted-in "Run on solar
+// surplus" posture (reason code `awaitingSolarSurplus`). The device's baseline
+// is OFF; PELS turns it on only while the home exports enough solar to cover
+// its draw. Registered in `notes/ui-terminology.md` § "Solar surplus vocabulary".
+export const PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS = 'Waiting for solar surplus';
+
 const normalize = (value: string | undefined): string => (value ?? '').trim().toLowerCase();
 
 const isOffLike = (value: string | undefined): boolean => {

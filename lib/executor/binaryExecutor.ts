@@ -20,7 +20,11 @@ import type {
   ExecutorDeviceSnapshot,
 } from './executablePlan';
 import type { PlanActuationMode } from './executorTypes';
-import { runBinaryControl, type PlanExecutorBinaryContext } from './binaryControlShared';
+import {
+  runBinaryControl,
+  skipRestoreForSurplusPosture,
+  type PlanExecutorBinaryContext,
+} from './binaryControlShared';
 import {
   applyBinaryRestoreWithSnapshot,
   applyCapacityControlOffRestoreWithSnapshot,
@@ -75,6 +79,10 @@ export const applyUncontrolledBinaryRestore = async (
   if (!intent || intent.kind !== 'restore' || intent.source !== 'uncontrolled') return false;
   const shedDecided = ctx.state.shedDecidedMs[intent.deviceId];
   if (!shedDecided) return false;
+  // "Run on solar surplus" carve-out (shared home for the merge-blocking
+  // invariant): a baseline-off dump load must never be force-turned-ON on
+  // capacity-control-off. See `skipRestoreForSurplusPosture`.
+  if (skipRestoreForSurplusPosture(ctx, intent.deviceId, intent.name)) return false;
   const entry = ctx.observation.getSnapshotByDeviceId(intent.deviceId) ?? observed?.snapshot;
   if (!entry) {
     canApplyRestoreSnapshot(ctx, {

@@ -95,10 +95,22 @@ export function hasExecutableShedDevices(
     const planDevice = plan.devices[i];
     if (planDevice.plannedState !== 'shed') continue;
     if (isDroppedUnderspecifiedSetStepShed(planDevice, executablePlan.devices[i])) continue;
+    if (isSurplusOnlyHoldShed(planDevice)) continue;
     return true;
   }
   return false;
 }
+
+// A "Run on solar surplus" hold is an OPT-IN posture (the device's baseline is
+// off), NOT capacity pressure — so it must NOT count toward the keep-invariant
+// stepped-restore block (`applyKeepInvariantShedBlock`), which caps unrelated
+// stepped loads at their lowest non-zero step while any device is shed for
+// capacity. Discriminated on the `awaitingSolarSurplus` reason code (not the
+// `surplusOnly` flag): a dump load that is genuinely capacity-shed carries a
+// `capacity` reason and MUST still block. See `notes/state-management/`.
+const isSurplusOnlyHoldShed = (planDevice: PlanDevice): boolean => (
+  planDevice.reason?.code === PLAN_REASON_CODES.awaitingSolarSurplus
+);
 
 export type DroppedSteppedShedIntent = {
   deviceId: string;

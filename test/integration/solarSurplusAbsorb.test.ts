@@ -2,7 +2,8 @@
 // self-consume exported solar.
 //
 // WHAT THIS PROBES: the planner prep layer end to end — the real
-// `buildInitialPlanDevices` → `resolveSurplusEligibility` (priority allocator) →
+// `resolveSurplusEligibility` (priority allocator; hoisted to `planBuilder` in
+// PR-7 and mirrored here by `buildDevices`) → `buildInitialPlanDevices` →
 // `resolvePlannedTarget` → `applySurplusAbsorbDelta` → the real eligibility gate
 // (`admission/surplusAbsorb`) → the real expected-draw resolver (`getRestoreDrawKw`),
 // nothing internal mocked. The layer's outward seams are provided directly (the
@@ -19,6 +20,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildInitialPlanDevices } from '../../lib/plan/planDevices';
 import type { PlanDevicesDeps } from '../../lib/plan/planDevices';
+import { resolveSurplusEligibility } from '../../lib/plan/planSurplusAbsorb';
 import { createPlanEngineState, type PlanEngineState } from '../../lib/plan/planState';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { buildPlanInputDevice } from '../utils/planTestUtils';
@@ -88,6 +90,33 @@ const deps = (surplusWilling: boolean, surplusDelta = SURPLUS_DELTA_C): PlanDevi
   pendingBinaryCommandStore: createPendingBinaryCommandStore({}),
 });
 
+// Mirror the PR-7 hoist: `planBuilder.buildPlanSnapshotWithTimings` resolves
+// surplus eligibility (the producer pass) right after the plan context exists,
+// BEFORE materialization; `buildInitialPlanDevices` only READS the resulting
+// state. This helper reproduces that exact ordering for the prep layer.
+const buildDevices = (params: {
+  context: PlanContext;
+  state: PlanEngineState;
+  deps: PlanDevicesDeps;
+}) => {
+  resolveSurplusEligibility({
+    devices: params.context.devices,
+    state: params.state,
+    signedNetKw: params.context.total,
+    powerKnown: params.context.powerKnown,
+    getConfig: (deviceId) => params.deps.getPriceOptimizationSettings()[deviceId],
+    getPriority: params.deps.getPriorityForDevice,
+  });
+  return buildInitialPlanDevices({
+    context: params.context,
+    state: params.state,
+    shedSet: new Set(),
+    shedReasons: new Map(),
+    guardInShortfall: false,
+    deps: params.deps,
+  });
+};
+
 // One plan cycle at the current (faked) wall clock; returns the device's planned
 // setpoint the executor would actuate.
 const cycle = (
@@ -96,12 +125,9 @@ const cycle = (
   surplusWilling = true,
   measuredDrawKw = 0,
 ): number | undefined => {
-  const device = buildInitialPlanDevices({
+  const device = buildDevices({
     context: buildContext(signedNetKw, measuredDrawKw),
     state,
-    shedSet: new Set(),
-    shedReasons: new Map(),
-    guardInShortfall: false,
     deps: deps(surplusWilling),
   })[0];
   return device && isTemperaturePlanDevice(device) ? device.plannedTarget : undefined;
@@ -115,12 +141,9 @@ const cycleDevice = (
   surplusWilling = true,
   measuredDrawKw = 0,
   surplusDelta = SURPLUS_DELTA_C,
-) => buildInitialPlanDevices({
+) => buildDevices({
   context: buildContext(signedNetKw, measuredDrawKw),
   state,
-  shedSet: new Set(),
-  shedReasons: new Map(),
-  guardInShortfall: false,
   deps: deps(surplusWilling, surplusDelta),
 })[0];
 
@@ -132,7 +155,7 @@ const targetOf = (device: ReturnType<typeof cycleDevice>): number | undefined =>
 // One plan cycle with the whole-home power signal LOST (stale/unknown): the
 // allocator's `powerOk` gate fails, which is a hard-off release condition.
 const cyclePowerUnknown = (state: PlanEngineState): number | undefined => {
-  const device = buildInitialPlanDevices({
+  const device = buildDevices({
     context: {
       ...buildContext(0),
       total: null,
@@ -141,9 +164,6 @@ const cyclePowerUnknown = (state: PlanEngineState): number | undefined => {
       powerFreshnessState: 'stale_hold',
     },
     state,
-    shedSet: new Set(),
-    shedReasons: new Map(),
-    guardInShortfall: false,
     deps: deps(true),
   })[0];
   return device && isTemperaturePlanDevice(device) ? device.plannedTarget : undefined;
@@ -314,22 +334,32 @@ describe('surplus-absorb setpoint raise (planner prep integration)', () => {
       options: { powerKnown?: boolean; debugStructured?: (payload: Record<string, unknown>) => void } = {},
     ): number | undefined => {
       const powerKnown = options.powerKnown ?? true;
+      const context: PlanContext = {
+        ...buildContext(signedNetKw),
+        ...(powerKnown ? {} : {
+          total: null, powerKnown: false, hasLivePowerSample: false, powerFreshnessState: 'stale_hold' as const,
+        }),
+      };
+      // Mirror the PR-7 hoist: the builder resolves surplus eligibility (with the
+      // producer-injected inferred term + debug seam) BEFORE materialization;
+      // `buildInitialPlanDevices` only reads the resulting state.
+      resolveSurplusEligibility({
+        devices: context.devices,
+        state,
+        signedNetKw: context.total,
+        powerKnown: context.powerKnown,
+        inferredSurplusKw,
+        getConfig: (deviceId) => deps(true).getPriceOptimizationSettings()[deviceId],
+        getPriority: deps(true).getPriorityForDevice,
+        debugStructured: options.debugStructured,
+      });
       const device = buildInitialPlanDevices({
-        context: {
-          ...buildContext(signedNetKw),
-          ...(powerKnown ? {} : {
-            total: null, powerKnown: false, hasLivePowerSample: false, powerFreshnessState: 'stale_hold' as const,
-          }),
-        },
+        context,
         state,
         shedSet: new Set(),
         shedReasons: new Map(),
         guardInShortfall: false,
-        deps: {
-          ...deps(true),
-          getInferredSurplusKw: () => inferredSurplusKw,
-          debugStructured: options.debugStructured,
-        },
+        deps: deps(true),
       })[0];
       return device && isTemperaturePlanDevice(device) ? device.plannedTarget : undefined;
     };
@@ -412,12 +442,9 @@ describe('surplus-absorb setpoint raise (planner prep integration)', () => {
     });
     const state = createPlanEngineState();
     const run = () => {
-      const built = buildInitialPlanDevices({
+      const built = buildDevices({
         context: ctx(),
         state,
-        shedSet: new Set(),
-        shedReasons: new Map(),
-        guardInShortfall: false,
         deps: multiDeps,
       });
       const targetOf = (id: string) => {

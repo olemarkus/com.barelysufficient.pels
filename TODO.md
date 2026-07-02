@@ -293,6 +293,55 @@ program) remains deferred.*
           with a `target_power` load. Add a one-line note in `lib/observer/AGENTS.md` + an integration test pinning a
           stale step-only stepper's restore/shed classification.
 
+- [ ] **COMMITTED v1.1 (dump-load train, own small PR): manual-on grace for "Run on solar surplus" devices.**
+      Reconcile-after-drift corrects an externally-turned-ON surplus-held dump load (the v1 helper copy
+      states this contract explicitly). The committed follow-up: suppress the correction for
+      `SURPLUS_MANUAL_ON_GRACE_MS = 2 h` from the per-device drift-observed timestamp, so an owner who
+      flips their towel dryer on gets their two hours before the posture reclaims it. A restart drops
+      the grace (in-memory timestamp) ⇒ held ⇒ off — safe. From the PR-7 cold-tank / manual-override
+      ruling (judge 3), 2026-07-01. *Persona:* set-and-forget owner sharing the home with people who use
+      the wall switch.
+
+- [ ] **A released "Run on solar surplus" dump load returns to PELS's generic managed-restore, so it does
+      not stay off after the toggle is turned off.** When the posture is removed while the device is off,
+      `releaseAbandonedSurplusPosture` clears the stale `shedDecidedMs`/`surplusOnlyShedByDevice` stamps
+      (correct hygiene), but the device is then a plain managed binary device and PELS's generic restore
+      lane runs off managed binary devices under available power — so a former dump load can turn on
+      unprompted. This is PRE-EXISTING behaviour (PELS restores off managed binary devices under headroom,
+      confirmed independent of `shedDecidedMs` and of this feature; the PR-7 reviewer's shed-recovery
+      mechanism is not the actual driver). Honouring "turn the toggle off to take the device back" (keep a
+      former dump load's OFF baseline until the user turns it on) needs a managed-restore policy change:
+      recognise a device whose baseline is off (dump-load semantics) and exclude it from the generic
+      proactive restore — which also touches the engage path (a re-eligible dump load must still restore),
+      so it is a deliberate, tested change, not a one-liner. Candidate approach: repurpose
+      `surplusOnlyShedByDevice` as a persistent "off-baseline" marker the restore candidacy honours,
+      cleared on observed-on / re-engage. *Persona:* owner who opted a pool pump into surplus-only then
+      changed their mind. *Hypothesis:* the instant-on after toggle-off reads as PELS ignoring the toggle.
+      P2. Source: pels-runtime-reality on PR-7, 2026-07-02.
+
+- [ ] **`surplusOnlyShedByDevice` / `shedDecidedMs` stamps for a surplus-held device that leaves the
+      snapshot are not pruned.** `releaseAbandonedSurplusPosture` only clears a device still present in
+      `admittedDevices` (posture removed); a device that vanishes from the snapshot while held (removed
+      from Homey, or the transport drops it) keeps its stamps until it returns. This matches the
+      pre-existing `shedDecidedMs` cleanup profile (no lockstep prune on snapshot departure), and is
+      bounded (~a handful of bytes/device, re-cleared on return). Candidate fix: fold surplus-stamp
+      pruning into the existing lockstep per-device cleanup (`planHeadroomState.cleanupMissingHeadroomDevices`,
+      which already prunes `surplusEligibilityByDevice`). *Persona:* maintainer. *Hypothesis:* harmless
+      today; note-only so it is not silently assumed pruned. P3. Source: pels-runtime-reality on PR-7,
+      2026-07-02.
+
+- [ ] **A smart-task-governed `surplusOnly` device is excluded from the hold but stays in the allocator
+      willing set, so it can reserve export a lower-priority dump load never gets (allocation skew).**
+      `resolveSurplusHold` excludes a device with an admitted smart task (`admittedDeviceIds`), but
+      `resolveSurplusEligibility` still includes it in the willing set and reserves its `getRestoreDrawKw`
+      from the priority-ordered pool. So a high-priority dump load being run by its smart task consumes
+      surplus budget that a lower-priority surplus-held dump load would otherwise engage on — the lower
+      device stays held even though real export exists. Candidate fix: exclude the same `excludeIds` set
+      from the allocator willing set (or credit the smart-task device's own draw as add-back so it does
+      not double-reserve). *Persona:* prosumer with two dump loads, one on a smart task. *Hypothesis:*
+      rare (needs two surplus dump loads + an active task on the higher one) and only under-uses surplus
+      (never over-draws), so low-stakes. P3. Source: pels-runtime-reality on PR-7, 2026-07-02.
+
 ## P2 Product, Observability, and Maintainability
 
 *v2.11.0..HEAD release-review findings (2026-06-02). Non-blocking follow-ups. The solar gross/net
@@ -925,6 +974,49 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
 *Entry bar: each item states a **hypothesis**, **why it's needed**, and the **persona**
 (`notes/personas.md`) it serves. Items that can't name all three are maintainability/
 cosmetic chores — do them in passing or drop them; don't park them here.*
+
+- [ ] **Cheapest-hours minimum-run fallback for "Run on solar surplus" dump loads (candidate v1.2).**
+      *Hypothesis:* "if this device has not run on surplus for N hours, run it in the cheapest upcoming
+      hour instead" turns the posture's cold-tank failure mode (a cloudy stretch means the load never
+      runs) into a bounded worst case, widening the safe audience beyond truly-optional loads.
+      *Why it's needed:* v1 deliberately scopes the posture to loads that can skip days (pool pumps,
+      towel dryers, garage/cabin heaters) and warns against sole water heaters; this fallback is what
+      would make a water heater safe. Builds on the existing cheapest-hours machinery
+      (`lib/price` combined prices + hour ranking); needs a per-device last-ran timestamp and an
+      N-hours setting. From the PR-7 cold-tank ruling, 2026-07-01.
+      *Persona:* prosumer with PV and a flexible-but-not-optional load.
+
+- [ ] **EV/stepped "charge from solar only" surplus mode — own train (deferred from the surplus ladder).**
+      *Hypothesis:* the dump-load posture generalises to variable-draw devices only with per-step
+      allocation; a naive on/off treatment of an EV charger would chatter at the off↔6 A boundary (the
+      industry failure mode). *Why it's needed:* solar-only charging is the most-requested PV feature
+      class; the binary rung deliberately excludes EV/stepped. Sketch: per-step reservation in the
+      surplus allocator (`resolveSurplusEligibility` API change — reserve at a step's draw, not one
+      expected draw), per-step-level hysteresis, hold-at-lowest-step posture (step-only-stepper rule:
+      shed to lowest step, not off), EV-objective precedence (SoC deadline overrides solar-only), and
+      context-scoped step-calibration validity. Interim reality: stepped loads already soak export via
+      headroom, and budgetPrice moves smart-task charging into solar hours. From the PR-7 ladder
+      ruling, 2026-07-01. *Persona:* EV owner with PV.
+
+- [ ] **Battery surplus Flow trigger: "Solar surplus started/stopped" + kW token (deferred from the surplus ladder).**
+      *Hypothesis:* battery control stays permanently out (docs/solar.md commitment), but a Flow
+      trigger carrying the post-allocator pool remainder lets a battery app charge with exactly the
+      surplus PELS's loads declined — no PELS-side battery control needed (a charging battery already
+      shrinks the pool via net power). *Why it's needed:* closes the "PELS can't tell my battery to
+      charge from surplus" gap without breaking the read-only battery commitment. Needs a
+      `.homeycompose` flow trigger card (en/no titles) + the pool-remainder token from the allocator.
+      From the PR-7 ladder ruling, 2026-07-01. *Persona:* prosumer with PV + home battery.
+
+- [ ] **Inverter `target_power` read-side probe (deferred from the surplus ladder; write-control rejected).**
+      Verified against a real system: `target_power` is setable ±25000 W with `target_power_mode`
+      {device, homey}, minCompatibility 12.13.0. PELS (>=12.4.0) may read/write it on third-party
+      devices with graceful degradation and NO compat bump, but must NEVER declare the capability on
+      `drivers/pels_insights` (that would force >=12.13.0 app-wide). Write-control (a "negative-price
+      export brake") is deferred indefinitely — it is the opposite of absorb-first and has ~zero field
+      support. *Hypothesis:* a read-side probe of `target_power` on tracked solarpanel devices is an
+      inference enhancer for the PV gain/curtailment model. *Why it's needed:* only as an input to the
+      solar inference lane — record it there when that lane next evolves. From the PR-7 ladder ruling,
+      2026-07-01. *Persona:* prosumer with a Homey-integrated inverter.
 
 - [ ] **Give pause-held devices their own shed reason instead of defaulting to `capacity`.**
       *Hypothesis:* a lower-priority device held off for a smart task surfaces on Overview / in logs as

@@ -6,6 +6,7 @@ import { PLAN_REASON_CODES } from '../../../../shared-domain/src/planReasonSeman
 import {
   readDeviceReasonDetail,
   resolveReportedLoadAfterPauseText,
+  resolveSurplusHoldReportedLoadText,
 } from '../../../../shared-domain/src/planReasonFormatting.ts';
 import {
   PLAN_STATE_HELD_FALLBACK_STATUS,
@@ -19,6 +20,7 @@ import {
   formatStarvationReason,
 } from '../../../../shared-domain/src/planStarvation.ts';
 import {
+  resolveBinarySurplusReasonLine,
   resolveTemperatureOutputState,
   resolveTemperatureLine,
   resolveTemperatureReasonLine,
@@ -427,11 +429,23 @@ const isReportedLoadConflict = (dev: PlanDeviceSnapshot, kind: PlanStateKind): b
   && dev.measuredPowerKw > 0.05
 );
 
-const resolveReportedLoadReason = (dev: PlanDeviceSnapshot, dryRun: boolean): string => resolveReportedLoadAfterPauseText({
-  measuredPowerKw: dev.measuredPowerKw,
-  detail: readDeviceReasonDetail(dev.reason),
-  dryRun,
-});
+const resolveReportedLoadReason = (dev: PlanDeviceSnapshot, dryRun: boolean): string => {
+  // A surplus-held dump load the user manually switched on: name the surplus
+  // reconcile ("switching off to wait for solar surplus") instead of the
+  // generic "after pause" copy, which is wrong (a baseline-off device was never
+  // paused) and would hide the surplus explanation. Keyed on the reason code
+  // (already on the snapshot) — the awaitingSolarSurplus hold is exactly this
+  // state — so no new plan-device field is needed. `dryRun` keeps the copy
+  // hypothetical in simulation mode (PELS never actually switches it off).
+  if ((dev.reason as { code?: string } | undefined)?.code === PLAN_REASON_CODES.awaitingSolarSurplus) {
+    return resolveSurplusHoldReportedLoadText({ measuredPowerKw: dev.measuredPowerKw, dryRun });
+  }
+  return resolveReportedLoadAfterPauseText({
+    measuredPowerKw: dev.measuredPowerKw,
+    detail: readDeviceReasonDetail(dev.reason),
+    dryRun,
+  });
+};
 
 // ─── Generic plan card ────────────────────────────────────────────────────────
 
@@ -460,7 +474,16 @@ export const PlanGenericCard = ({
   const baseSec = resolveCooldownBaseSec(displayDev);
   const hasTimer = baseSec !== null && remainingSec !== null && remainingSec > 0;
   const reportedLoadConflict = isReportedLoadConflict(displayDev, presentation.kind);
-  const reasonText = reportedLoadConflict ? resolveReportedLoadReason(displayDev, dryRun) : resolveReasonText(displayDev, dryRun);
+  // "Run on solar surplus" dump load, actively running on export: the card's
+  // reason line explains WHY it is on ("On to use your solar power"). A held
+  // dump load needs no special-casing here — its `awaitingSolarSurplus` reason
+  // renders "Waiting for solar surplus" through the normal reason pipeline.
+  const surplusActiveLine = reportedLoadConflict
+    ? null
+    : resolveBinarySurplusReasonLine(displayDev, presentation.kind);
+  const reasonText = reportedLoadConflict
+    ? resolveReportedLoadReason(displayDev, dryRun)
+    : surplusActiveLine ?? resolveReasonText(displayDev, dryRun);
 
   let powerReadout: PowerReadout | null = null;
   if (reportedLoadConflict) {

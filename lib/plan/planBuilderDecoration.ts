@@ -20,6 +20,7 @@ export function buildIdentityDecorationBundle(devices: PlanInputDevice[]): Defer
     forceShedSet: new Set<string>(),
     deferredAvoidDeviceIds: new Set<string>(),
     deferredReleaseIntentByDeviceId: {},
+    admittedDeviceIds: new Set<string>(),
   };
 }
 

@@ -130,6 +130,28 @@ The **Available power** (headroom) dashboard widget shares vocabulary with the r
 - **Held-back count** reads **"N held back"** (e.g. `2 held back`), not "N paused" or "N limited", so the count word matches the dedicated **Held-back devices** widget above. Helper: `headroomHeldBackLabel`.
 - **Price chip** uses the canonical **"Price low"** / **"Price high"** pair from `priceLevelChips.ts` — never the bare "Cheap" / "Expensive". The widget only ever renders the chip for `cheap` / `expensive` (`SHOW_PRICE_CHIP_FOR` in the renderer); for both `normal` and `unknown` the chip is hidden. The placeholder dash is only the `headroomPriceChipLabel` return value for `unknown` (so logging has a stable token) — the widget never paints it. The screen-reader phrase is the grammatical **"Price: low"** / **"Price: high"** (`headroomPriceAriaLabel`), never the broken "Price Cheap" / "Price Normal" form.
 
+## Solar surplus vocabulary
+
+Two per-device surplus controls share the `surplusWilling` opt-in; the label names what happens for that device's modality:
+
+| Concept | Label |
+|---|---|
+| Temperature device setpoint lift (toggle) | `Use solar surplus` |
+| Binary dump-load posture (toggle) | `Run on solar surplus` |
+| Temperature card reason while lifted | `Raised to use your solar power` |
+| Dump-load card reason while running on surplus | `On to use your solar power` |
+| Dump-load card reason while held off | `Waiting for solar surplus` |
+
+Sources: `packages/shared-domain/src/planTemperatureCardText.ts` (both card reasons) and `PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS` in `planStateLabels.ts`.
+
+The dump-load toggle's helper copy states the reconcile contract explicitly — the user must learn from the toggle itself that a manual ON gets corrected: `PELS keeps this device off and turns it on when your home is exporting enough solar power to cover it. If you switch it on yourself while there is no surplus, PELS will switch it off again.` ("enough … to cover it" is load-bearing — the allocator reserves the device's own restore draw before engaging, so a trickle of export is not enough.)
+
+The toggle is disabled (with a hint stating why) in two substates. Power-limit-control-off takes precedence when both apply: `Turn on Power-limit control above first — PELS needs it to switch this device on and off.` Otherwise, an active smart task: `Unavailable while this device has an active smart task — the task's schedule decides when it runs.` (Both mirror the runtime gate: the posture only takes effect when PELS actually controls the device's on/off — managed AND power-limit-controllable — and a device an active smart task governs is excluded from the surplus hold.)
+
+Scope guidance (v1) names the intended devices and warns against the cold-tank trap: `Good for pool pumps, towel dryers, and garage or cabin heaters. Not for your only water heater — on a run of cloudy days it would stay cold.` Do not soften the water-heater warning; a multi-day cloudy stretch means the tank never heats (comfort and legionella risk).
+
+Internal terms that stay internal: `dump load`, `surplusOnly`, `surplus hold`, `eligibility`, `posture`. Say what happens ("PELS keeps this device off…"), never "hold"/"shed"/"eligible" in user copy.
+
 ## Smart task vocabulary
 
 Source of truth: `packages/shared-domain/src/deadlineLabels.ts`. Pull every label from `deadlineLabels(kind)` rather than hardcoding strings.

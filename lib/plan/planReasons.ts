@@ -23,6 +23,14 @@ import {
 export { applyShedTemperatureHold, type ShedHoldParams } from './planReasonsHoldDecisions';
 export { finalizePlanDevices, type PlanReasonPairValidationIssue } from './planReasonsValidation';
 
+// The two standing-hold framing inputs `normalizeShedReasons` consumes (the
+// smart-task avoid set + the surplus dump-load hold reasons), bundled so the
+// builder can thread them as one value.
+export type ShedReasonHoldInputs = {
+  deferredObjectiveAvoidDeviceIds: ReadonlySet<string>;
+  surplusHoldReasonById: ReadonlyMap<string, DeviceReason>;
+};
+
 function buildBaseReason(
   dev: DevicePlanDevice,
   shedReasons: Map<string, DeviceReason>,
@@ -119,6 +127,13 @@ export function normalizeShedReasons(params: {
   // `packages/shared-domain/src/planStateLabels.ts` §
   // PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS.
   deferredObjectiveAvoidDeviceIds?: ReadonlySet<string>;
+  // Devices held OFF by the standing "Run on solar surplus" dump-load posture
+  // this cycle (`resolveSurplusHold`), with the producer-built stable
+  // `awaitingSolarSurplus` reason. Adopted like the deferred-avoid framing:
+  // it wins over the capacity/dailyBudget default, but never over a fresh
+  // shed decision (`shedReasons`) or the richer shortfall/cooldown/swap/
+  // hourly-budget reasons.
+  surplusHoldReasonById?: ReadonlyMap<string, DeviceReason>;
   // Plan-level binding-constraint signal. When `'daily'`, carry-forward
   // `capacity` reasons re-attribute to `dailyBudget` so the device card label
   // matches the current binding constraint instead of the constraint that was
@@ -136,6 +151,7 @@ export function normalizeShedReasons(params: {
     shedCooldownStartedAtMs,
     shedCooldownTotalSec,
     deferredObjectiveAvoidDeviceIds,
+    surplusHoldReasonById,
     softLimitSource = null,
   } = params;
 
@@ -150,6 +166,7 @@ export function normalizeShedReasons(params: {
     shedCooldownStartedAtMs,
     shedCooldownTotalSec,
     deferredObjectiveAvoidDeviceIds,
+    surplusHoldReasonById,
     softLimitSource,
   }));
 }
@@ -165,6 +182,7 @@ function normalizeDeviceReason(params: {
   shedCooldownStartedAtMs?: number | null;
   shedCooldownTotalSec?: number | null;
   deferredObjectiveAvoidDeviceIds?: ReadonlySet<string>;
+  surplusHoldReasonById?: ReadonlyMap<string, DeviceReason>;
   softLimitSource?: 'capacity' | 'daily' | null;
 }): DevicePlanDevice {
   const {
@@ -178,6 +196,7 @@ function normalizeDeviceReason(params: {
     shedCooldownStartedAtMs,
     shedCooldownTotalSec,
     deferredObjectiveAvoidDeviceIds,
+    surplusHoldReasonById,
     softLimitSource = null,
   } = params;
 
@@ -193,6 +212,23 @@ function normalizeDeviceReason(params: {
     headroomRaw,
   });
   if (shortfallReason) return { ...dev, reason: renderPlanReasonDecision(shortfallReason) };
+
+  // Surplus-hold framing takes precedence over the plan-wide shed cooldown for a
+  // device whose shed IS the standing "Run on solar surplus" posture: the device
+  // is held for surplus, not for the cooldown (which is incidental — it fires
+  // whenever ANY device was recently shed). This must run BEFORE the cooldown
+  // return below, or a surplus-held dump load would show `cooldown_shedding`
+  // during the 60 s window — and, worse, the stepped-restore-block invariant
+  // (`isSurplusOnlyHoldShed`, keyed on `reason.code === awaitingSolarSurplus`)
+  // would then NOT exempt it, so it would wrongly count as capacity pressure and
+  // block unrelated stepped restores. `resolveSurplusHoldReasonAdoption` fires
+  // ONLY for a genuine surplus hold (device in `surplusHoldReasonById`, no fresh
+  // `shedReasons` entry), so a device genuinely in a capacity cooldown still
+  // falls through to `cooldown_shedding` below.
+  const surplusHoldReason = resolveSurplusHoldReasonAdoption({
+    dev, shedReasons, surplusHoldReasonById, currentReason,
+  });
+  if (surplusHoldReason) return { ...dev, reason: surplusHoldReason };
 
   const cooldownReason = maybeApplyCooldownReason({
     currentReason,
@@ -236,6 +272,34 @@ function normalizeDeviceReason(params: {
     return { ...dev, reason: baseReason };
   }
   return dev;
+}
+
+// Surplus dump-load framing: a device the standing "Run on solar surplus" hold
+// kept off this cycle reads "Waiting for solar surplus" instead of the misleading
+// capacity/dailyBudget default (its baseline is off by opt-in, not by pressure).
+// A device in `surplusHoldReasonById` is DEFINITIONALLY a surplus hold this cycle
+// (resolveSurplusHold selected it), so its shed IS the standing posture and the
+// surplus framing overrides the incidental transient framings — the plan-wide shed
+// cooldown (finding A on #1817), the capacity/dailyBudget carry-forward, and keep.
+// Two things still win:
+//   - a FRESH shed decision this cycle (`shedReasons` — a genuinely capacity/budget-
+//     shed dump load, e.g. one that was running then shed): real pressure the user
+//     should see, AND the discriminator the stepped-restore-block invariant relies
+//     on (`isSurplusOnlyHoldShed` keys on `reason.code === awaitingSolarSurplus`);
+//   - a swap reason (the device is being swapped for a higher-priority load): richer
+//     user-actionable info. (Shortfall already returned in the caller before this.)
+// The adopted reason is producer-built and stable across cycles (no numbers).
+function resolveSurplusHoldReasonAdoption(params: {
+  dev: DevicePlanDevice;
+  shedReasons: Map<string, DeviceReason>;
+  surplusHoldReasonById?: ReadonlyMap<string, DeviceReason>;
+  currentReason: ClassifiedPlanReason;
+}): DeviceReason | null {
+  const reason = params.surplusHoldReasonById?.get(params.dev.id);
+  if (!reason) return null;
+  if (params.shedReasons.has(params.dev.id)) return null;
+  if (isSwapReason(params.currentReason)) return null;
+  return reason;
 }
 
 // Only override capacity-shaped reasons with the smart-task framing. Swap,

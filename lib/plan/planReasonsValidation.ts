@@ -42,6 +42,7 @@ const SHED_REASON_RULES: readonly ReasonCodeRule[] = [
   { code: PLAN_REASON_CODES.hourlyBudget, label: 'hourly budget shed' },
   { code: PLAN_REASON_CODES.dailyBudget, label: 'daily budget shed' },
   { code: PLAN_REASON_CODES.deferredObjectiveAvoid, label: 'deferred objective avoid' },
+  { code: PLAN_REASON_CODES.awaitingSolarSurplus, label: 'awaiting solar surplus' },
   { code: PLAN_REASON_CODES.neutralStartupHold, label: 'neutral hold' },
   { code: PLAN_REASON_CODES.shortfall, label: 'shortfall shed' },
   { code: PLAN_REASON_CODES.cooldownShedding, label: 'shedding cooldown' },
@@ -97,17 +98,33 @@ function validatePlanReasonPair(dev: DevicePlanDevice): PlanReasonPairValidation
     };
   }
 
-  if (allowedReasonRules.some((rule) => rule.code === reasonCode)) {
-    return null;
+  if (!allowedReasonRules.some((rule) => rule.code === reasonCode)) {
+    return {
+      deviceId: dev.id,
+      deviceName: dev.name,
+      plannedState,
+      reason,
+      allowedReasonKinds,
+    };
   }
 
-  return {
-    deviceId: dev.id,
-    deviceName: dev.name,
-    plannedState,
-    reason,
-    allowedReasonKinds,
-  };
+  // Cross-field invariant: the `awaitingSolarSurplus` reason is meaningful ONLY
+  // on a producer-resolved dump-load device (`surplusOnly`). Attaching it to a
+  // non-surplus device would mis-attribute the starvation-pause classification
+  // (`resolveStarvationSuppressionSemantics` treats it as a deliberate posture,
+  // not starvation) and silently hide a real capacity/budget hold. Cheap to
+  // check here at finalization; a violation is a planner bug, not user input.
+  if (reasonCode === PLAN_REASON_CODES.awaitingSolarSurplus && dev.surplusOnly !== true) {
+    return {
+      deviceId: dev.id,
+      deviceName: dev.name,
+      plannedState,
+      reason,
+      allowedReasonKinds: ['awaiting solar surplus requires surplusOnly'],
+    };
+  }
+
+  return null;
 }
 
 function formatPlanReasonPairIssue(issue: PlanReasonPairValidationIssue): string {

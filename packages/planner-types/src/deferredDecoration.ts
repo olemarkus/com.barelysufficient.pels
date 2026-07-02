@@ -45,10 +45,16 @@ export type DeferredDecorationInput = {
  *   for cheaper hours" reason instead of a capacity/daily-budget fallback.
  * - `deferredReleaseIntentByDeviceId`: terminal/idle release intents for the
  *   executor.
+ * - `admittedDeviceIds`: flat set of devices whose deferred objective is
+ *   currently governing them (a `planned` or `idle` admission decision this
+ *   cycle — not `inactive`). The planner's surplus dump-load hold excludes
+ *   these ids so a standing "Run on solar surplus" hold can never fight an
+ *   active smart task (smart-task precedence, plan-side).
  */
 export type DeferredDecorationBundle = {
   admittedDevices: PlanInputDevice[];
   forceShedSet: Set<string>;
   deferredAvoidDeviceIds: Set<string>;
   deferredReleaseIntentByDeviceId: Record<string, DeferredReleaseIntent>;
+  admittedDeviceIds: ReadonlySet<string>;
 };

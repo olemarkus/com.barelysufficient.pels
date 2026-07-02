@@ -231,6 +231,21 @@
           shedAction: 'turn_off',
         },
         {
+          id: 'dev_poolpump',
+          name: 'Pool Pump',
+          // Surplus-held dump load ("Run on solar surplus" posture): baseline
+          // off, waiting for export — the card reads "Waiting for solar surplus".
+          currentState: 'off',
+          plannedState: 'shed',
+          priority: 2,
+          controllable: true,
+          surplusOnly: true,
+          expectedPowerKw: 1.0,
+          measuredPowerKw: 0,
+          reason: { code: 'awaiting_solar_surplus', detail: null },
+          shedAction: 'turn_off',
+        },
+        {
           id: 'dev_bedroom',
           name: 'Bedroom Thermostat',
           currentState: 'on',
@@ -572,6 +587,20 @@
         expectedPowerKw: 2.0,
       },
       {
+        id: 'dev_poolpump',
+        name: 'Pool Pump',
+        deviceClass: 'socket',
+        // Plain binary control handle: the fixture's "Run on solar surplus"
+        // dump-load candidate (binary, no temperature target, not stepped, not
+        // EV) — see the device-detail dump-load specs. A pool pump is a load
+        // that can safely wait for the sun (unlike the water heater the copy
+        // explicitly warns against).
+        controlCapabilityId: 'onoff',
+        capabilities: ['onoff'],
+        measuredPowerKw: 0,
+        expectedPowerKw: 1.0,
+      },
+      {
         id: 'dev_bedroom',
         name: 'Bedroom Thermostat',
         deviceClass: 'thermostat',
@@ -656,6 +685,7 @@
       dev_heatpump: true,
       dev_floorheat: true,
       dev_waterheater: true,
+      dev_poolpump: true,
       dev_evcharger: false,
       dev_bedroom: true,
       dev_hallway: true,
@@ -669,6 +699,7 @@
       dev_heatpump: true,
       dev_floorheat: false,
       dev_waterheater: true,
+      dev_poolpump: true,
       dev_evcharger: true,
       dev_bedroom: true,
       dev_hallway: true,
@@ -679,6 +710,7 @@
       Home: {
         dev_heatpump: 1,
         dev_waterheater: 2,
+        dev_poolpump: 2,
         dev_bedroom: 3,
         dev_hallway: 3,
         dev_zaptec: 4,

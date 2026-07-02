@@ -28,6 +28,28 @@ type TemperatureDevice = DeviceOverviewSnapshot & {
 // (no "self-consume"/"export" jargon); consistent with the "Use solar surplus" control.
 export const TEMPERATURE_SURPLUS_REASON = 'Raised to use your solar power';
 
+// Binary sibling of TEMPERATURE_SURPLUS_REASON: shown on a "Run on solar surplus"
+// dump load's card while PELS has turned it ON to soak exported solar. The held
+// counterpart ("Waiting for solar surplus") renders through the reason pipeline
+// (`awaitingSolarSurplus` → PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS); only the
+// active line needs a dedicated string because an active device carries no hold
+// reason. Kept in this module (the surplus card-text family) per the PR-7 ruling —
+// no separate binary card-text module.
+export const BINARY_SURPLUS_ACTIVE_REASON = 'On to use your solar power';
+
+// A dump-load surplus run is a benign, user-opted-in posture — surface it ONLY while
+// the device is actively running (`kind === 'active'`), mirroring
+// `resolveSurplusAbsorbReason` below: the claim "PELS turned this on to use your
+// solar" must never sit on an off/held/manual/unavailable card.
+export const resolveBinarySurplusReasonLine = (
+  device: Pick<DeviceOverviewSnapshot, 'surplusAbsorbActive'>,
+  kind: string,
+): string | null => (
+  device.surplusAbsorbActive === true && kind === 'active'
+    ? BINARY_SURPLUS_ACTIVE_REASON
+    : null
+);
+
 const isWaitingReason = (code: string): boolean => (
   code === PLAN_REASON_CODES.insufficientHeadroom
   || code === PLAN_REASON_CODES.shortfall

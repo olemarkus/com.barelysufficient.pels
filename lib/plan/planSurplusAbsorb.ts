@@ -1,6 +1,11 @@
 import type { PlanEngineState } from './planState';
 import type { PlanInputDevice } from './planTypes';
 import type { StructuredDebugEmitter } from '../logging/logger';
+import type {
+  BinaryControlCapabilityId,
+  TargetCapabilitySnapshot,
+} from '../../packages/contracts/src/types';
+import { isEvDevice } from '../../packages/shared-domain/src/commandableNow';
 import { getRestoreDrawKw } from '../observer/observedPower';
 import {
   clearSurplusEligibility,
@@ -40,6 +45,50 @@ const positiveOrZero = (value: unknown): number => (isFiniteNumber(value) && val
 const willingWithLift = (config: SurplusConfig | undefined): boolean => (
   config?.surplusWilling === true && isFiniteNumber(config.surplusDelta) && config.surplusDelta > 0
 );
+
+/**
+ * "Run on solar surplus" dump-load candidacy (PR-7) — the SINGLE resolution of
+ * the binary posture, evaluated once by the producer (`toPlanDevice`) onto the
+ * flat `PlanInputDevice.surplusOnly` bit. The same `surplusWilling` opt-in in
+ * the per-device price-opt blob disambiguates by modality: a temperature device
+ * gets the setpoint lift (above), a plain binary device gets this baseline-off
+ * dump-load posture (`surplusDelta` is ignored). Candidates are exactly the
+ * plain binary loads: not temperature (no `target_temperature`), not stepped,
+ * not continuous / target-power, not EV (class or `evcharger_charging`
+ * capability), and both managed and power-limit-controllable. The
+ * continuous/target-power/non-binary classification is pre-resolved AT THE
+ * PRODUCER into the flat `plainBinaryControlModel` bit, so this planner helper
+ * carries no control-model / target-power branch (control-model vocab rule).
+ * Structural params so the producer can
+ * call it on the raw snapshot; the runtime predicates match the plan guards AND
+ * the settings-UI gate (`resolveDeviceDetailControlMode !== 'default'`), so
+ * runtime candidacy never disagrees with what the toggle offers — a device the
+ * UI classifies continuous/preset/stepped is never stamped `surplusOnly`.
+ */
+export function resolveSurplusOnlyPosture(params: {
+  surplusWilling: boolean | undefined;
+  controlCapabilityId: BinaryControlCapabilityId | undefined;
+  deviceClass: string | undefined;
+  targets: readonly TargetCapabilitySnapshot[] | undefined;
+  steppedLoadProfile: { model?: string } | undefined;
+  // Producer-resolved: true only for a plain binary-power control device — i.e.
+  // NOT an enabled continuous / target-power (EV-preset) config and NOT a
+  // non-binary control model. Resolved at the producer so this planner helper
+  // carries no target-power / control-model branch.
+  plainBinaryControlModel: boolean;
+  controllable: boolean;
+  managed: boolean;
+}): boolean {
+  return params.surplusWilling === true
+    && params.controlCapabilityId !== undefined
+    && params.controlCapabilityId !== 'evcharger_charging'
+    && !isEvDevice({ deviceClass: params.deviceClass, controlCapabilityId: params.controlCapabilityId })
+    && params.steppedLoadProfile?.model !== 'stepped_load'
+    && params.plainBinaryControlModel
+    && params.targets?.some((target) => target.id === 'target_temperature') !== true
+    && params.controllable !== false
+    && params.managed !== false;
+}
 
 // Hard-off: the release condition is unambiguous — the whole-home signal is
 // lost, or the home is drawing sustained grid import beyond what a zero-export
@@ -108,6 +157,13 @@ function composeSurplusPool(params: {
  * pool, so lower-priority devices only see what is left. Priority is top-first
  * (PELS priority `1` is highest), so the most important willing device claims
  * scarce surplus before the rest.
+ *
+ * The willing set is the union of BOTH surplus modalities in ONE pool, ordered
+ * purely by user priority: temperature devices with a real lift
+ * (`willingWithLift`) and binary dump loads carrying the producer-resolved
+ * `surplusOnly` posture. Both reserve `getRestoreDrawKw` from the same pool and
+ * run the same settle/dwell/hard-off gate, so a thermostat and a pool pump can
+ * never both engage on the same export.
  */
 export function resolveSurplusEligibility(params: {
   devices: PlanInputDevice[];
@@ -122,15 +178,26 @@ export function resolveSurplusEligibility(params: {
   inferredSurplusKw?: number | null;
   getConfig: (deviceId: string) => SurplusConfig | undefined;
   getPriority: (deviceId: string) => number;
+  // Smart-task precedence at the ALLOCATION stage (mirrors the hold exclusion):
+  // a device an active deferred objective currently governs must never be
+  // eligible for surplus and must never RESERVE the shared pool ahead of a
+  // lower-priority willing device. Excluded devices are dropped from the willing
+  // set below, and the lockstep cleanup then clears any latched eligibility so a
+  // newly-governed device stops reserving immediately. Empty/absent in the common
+  // case (no smart tasks) — byte-identical there.
+  excludeIds?: ReadonlySet<string>;
   debugStructured?: StructuredDebugEmitter;
   nowTs?: number;
 }): void {
   const { state, getConfig, getPriority } = params;
+  const excludeIds = params.excludeIds;
   // One timestamp for the whole admission pass, so a single plan build cannot
   // flip devices on different milliseconds at the settle/dwell threshold.
   const nowTs = params.nowTs ?? Date.now();
   const willing = params.devices.filter(
-    (dev) => willingWithLift(getConfig(dev.id)) && supportsTemperatureBoostDevice(dev),
+    (dev) => (excludeIds === undefined || !excludeIds.has(dev.id))
+      && (dev.surplusOnly === true
+        || (willingWithLift(getConfig(dev.id)) && supportsTemperatureBoostDevice(dev))),
   );
 
   // Drop stale eligibility for any tracked device that is no longer a willing
