@@ -77,8 +77,13 @@ export type UiState = {
   priceOptimizationSettings: Record<string, PriceOptimizationConfig>;
   // Home-level: true when an auto-tracked solar/PV device is present (from the
   // `/ui_devices` payload). The per-device "Use solar surplus" control is hidden
-  // unless this is true — the feature is meaningless in a home that does not export.
+  // unless this OR `hasExhibitedExport` is true — the feature is meaningless in a
+  // home that does not export.
   hasManagedSolarDevice: boolean;
+  // Home-level: true when the home has exhibited material accumulated grid export
+  // (from the `/ui_devices` payload) even without a role-detected solar device —
+  // the meter-only PV case. Also unlocks the "Use solar surplus" control.
+  hasExhibitedExport: boolean;
   // Device IDs the overview "Let it run now" rescue chip may offer the action on,
   // resolved server-side (budget-caused + task-free + a known target). The card
   // view gates the chip on membership so a shown chip's create call cannot be
@@ -120,9 +125,22 @@ export const state: UiState = {
   deferredObjectiveActivePlans: null,
   priceOptimizationSettings: {},
   hasManagedSolarDevice: false,
+  hasExhibitedExport: false,
   starvationRescuableDeviceIds: new Set<string>(),
 };
 
 export const resolveManagedState = (deviceId: string): boolean => {
   return state.managedMap[deviceId] === true;
 };
+
+// The per-device "Use solar surplus" control is meaningful only in a home that
+// exports solar. Two independent signals unlock it: a role-detected solar/PV
+// device (`hasManagedSolarDevice`) OR a meter-only PV home that has exhibited
+// material grid export (`hasExhibitedExport`). Only the export signal is
+// source-gated: on a flow-source home `hasExhibitedExport` is always false (the
+// flow power boundary rejects negative watts), but `hasManagedSolarDevice` is
+// NOT source-gated, so a flow home with a role-detected solar device still
+// resolves true here.
+export const resolveHomeExhibitsSolar = (): boolean => (
+  state.hasManagedSolarDevice || state.hasExhibitedExport
+);

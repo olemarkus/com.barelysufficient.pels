@@ -1,7 +1,8 @@
 // The per-device "Use solar surplus" control is solar-only: it must be HIDDEN unless the
-// home has a tracked solar/PV device (state.hasManagedSolarDevice) AND the device is a
-// temperature device. This keeps it out of the no-solar majority's panels and off devices
-// (EV / on-off) that cannot self-consume by raising a setpoint.
+// home exhibits solar — a tracked solar/PV device (state.hasManagedSolarDevice) OR a
+// meter-only PV home that has exhibited material grid export (state.hasExhibitedExport) —
+// AND the device is a temperature device. This keeps it out of the no-solar majority's
+// panels and off devices (EV / on-off) that cannot self-consume by raising a setpoint.
 import type { TargetDeviceSnapshot } from '../../contracts/src/types';
 import { createHomeyMock } from './helpers/homeyApiMock';
 
@@ -86,6 +87,7 @@ const mockSiblings = () => {
 
 const openPanel = async (params: {
   hasManagedSolarDevice: boolean;
+  hasExhibitedExport?: boolean;
   device: TargetDeviceSnapshot;
   surplusWilling?: boolean;
 }) => {
@@ -102,6 +104,7 @@ const openPanel = async (params: {
     ? { 'heater-1': { ...defaultPriceOptimizationConfig, surplusWilling: true } }
     : {};
   state.hasManagedSolarDevice = params.hasManagedSolarDevice;
+  state.hasExhibitedExport = params.hasExhibitedExport ?? false;
   state.capacityPriorities = { Home: { 'heater-1': 1 } };
   state.modeTargets = { Home: { 'heater-1': 20 } };
   state.activeMode = 'Home';
@@ -133,6 +136,11 @@ describe('device detail "Use solar surplus" gating', () => {
 
   it('shows the surplus row on a managed temperature device when solar is present', async () => {
     await openPanel({ hasManagedSolarDevice: true, device: buildDevice() });
+    expect(surplusRow()?.hidden).toBe(false);
+  });
+
+  it('shows the surplus row for a meter-only PV home (exhibited export, no solar device)', async () => {
+    await openPanel({ hasManagedSolarDevice: false, hasExhibitedExport: true, device: buildDevice() });
     expect(surplusRow()?.hidden).toBe(false);
   });
 

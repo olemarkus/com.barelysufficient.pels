@@ -10,7 +10,7 @@ import { showToast, showToastError } from './toast.ts';
 import { logSettingsError } from './logging.ts';
 import { state, defaultPriceOptimizationConfig, type SettingsUiDeviceView } from './state.ts';
 import { supportsTemperatureDevice } from './deviceUtils.ts';
-import { resolveManagedState } from './state.ts';
+import { resolveManagedState, resolveHomeExhibitsSolar } from './state.ts';
 import { gridCompanies } from './gridCompanies.ts';
 import {
   readCurrentPriceSettings,
@@ -155,11 +155,13 @@ const renderElectricityPrices = () => {
     lastFetchedShort: configState.lastFetchedShort,
     gridCompanyOptions: getGridCompanyOptions(configState.countyCode),
     showPriceAwareDevicesLink: false,
-    // Prosumer gate: a managed solar device (home-level flag from the devices
-    // payload — populated by the device-dependent-tab lazy load this panel
-    // triggers) OR an already-enabled export config, so an enabled user is
-    // never stranded behind the gate.
-    showExportSection: state.hasManagedSolarDevice || configState.exportPriceEnabled,
+    // Prosumer gate: any home that exhibits solar — a managed solar device OR
+    // material exhibited grid export (a meter-only / string-inverter home; the
+    // export signal is source-gated to homey_energy in the producer, so a flow
+    // home reduces to the managed-device branch and is unchanged) — OR an
+    // already-enabled export config, so an enabled user is never stranded behind
+    // the gate. Moves in lockstep with the surplus-toggle gate.
+    showExportSection: resolveHomeExhibitsSolar() || configState.exportPriceEnabled,
     exportPriceEnabled: configState.exportPriceEnabled,
     exportSpotFactor: configState.exportSpotFactor,
     exportFixed: configState.exportFixed,
