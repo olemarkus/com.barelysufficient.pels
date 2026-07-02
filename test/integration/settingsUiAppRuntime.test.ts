@@ -96,12 +96,28 @@ describe('settings UI app runtime helpers', () => {
       },
       dailyTotals: { '2026-03-03': 2.4 },
       hourlyAverages: { '2_10': { sum: 8, count: 4 } },
+      generationBuckets: {
+        [previousHourKey]: 1.1,
+        [currentHourKey]: 0.7,
+      },
+      exportBuckets: {
+        [previousHourKey]: 0.8,
+        [currentHourKey]: 0.4,
+      },
+      generationDailyTotals: { '2026-03-03': 3.1 },
+      exportDailyTotals: { '2026-03-03': 1.9 },
       unreliablePeriods: [{ start: nowMs - 3_600_000, end: nowMs - 3_000_000 }],
     };
 
     const result = await resetSettingsUiPowerStatsForApp(app.homey);
 
     expect(result.buckets).toEqual({ [currentHourKey]: 0.5 });
+    // Solar history is cleared like every other family (current hour preserved,
+    // daily totals emptied) — no stale produced/exported history survives.
+    expect(result.generationBuckets).toEqual({ [currentHourKey]: 0.7 });
+    expect(result.exportBuckets).toEqual({ [currentHourKey]: 0.4 });
+    expect(result.generationDailyTotals).toEqual({});
+    expect(result.exportDailyTotals).toEqual({});
     expect(result.controlledBuckets).toEqual({ [currentHourKey]: 0.2 });
     expect(result.uncontrolledBuckets).toEqual({ [currentHourKey]: 0.3 });
     expect(result.exemptBuckets).toEqual({ [currentHourKey]: 0.1 });

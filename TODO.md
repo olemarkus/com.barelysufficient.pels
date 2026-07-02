@@ -407,6 +407,25 @@ CI failure, so future field-move slices can't silently grow the debt.*
       7.6 kW`. Keep the live "Safe pace now" label for the Overview hero, which shows the actual
       binding value. Source: PR #1813 review gates (2026-07-02). [PR-7 legibility/copy]
 
+- [ ] **Export scheme-change has no rollback when the export-disable write fails.** `applyExportSchemeChangePlan`
+      (`packages/settings-ui/src/ui/exportPriceSettings.ts`) is called by `handleSchemeChange` AFTER the new
+      `price_scheme` has already been persisted. When the plan is `disable_export` (a non-zero fixed export
+      amount crossing the Norway/non-Norway unit boundary) and the `export_price_enabled=false` write throws,
+      the catch path reverts the numeric field but does NOT roll back the scheme or re-disable export, so a
+      stale export config stays live and is now re-interpreted under the new scheme's unit. `onEnabledChange`
+      already has the compensating-write pattern to copy. *Persona:* prosumer switching price scheme while a
+      write fails. *Hypothesis:* rare (needs a mid-flight settings-write failure) but leaves a silently-wrong
+      export price. *P2 (Codex + CodeRabbit late review on #1810, 2026-07-02).*
+
+- [ ] **"Solar now" hero line does not refresh on status-only power pushes.** `realtime.ts` `updatePlanPower`
+      only refreshes the hero's Solar-now triple on a FULL-tracker push; runtime `power_updated` events send
+      `tracker: null` (status-only), so after the 60 s staleness gate hides Solar now, subsequent 10 s samples
+      do not bring it back until the next full `/ui_power` read (30 s periodic or tab activation). There is an
+      explicit design comment asserting the staleness gate "retires it on its own", so this may be intended —
+      verify against the desired UX before changing (the fix would thread the solar fields off the status
+      payload or force a solar-only refresh). *Persona:* prosumer watching the Overview live. *P2 (Codex late
+      review on #1814, 2026-07-02) — confirm intended-vs-bug first.*
+
 - [ ] **Solar export price — migrate the smart-task *preview* price reader onto the planning price.**
       The export-price model, the derived `budgetPrice`, its planning consumers (daily-budget
       shaping/allocation, smart-task horizons, price levels, cheapest-hours — all `budgetPrice ?? total`,
