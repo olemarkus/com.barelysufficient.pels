@@ -8,7 +8,10 @@ import type {
   SettingsUiDeviceDiagnosticsPayload,
 } from '../../../../contracts/src/deviceDiagnosticsTypes.ts';
 import { SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH } from '../../../../contracts/src/settingsUiApi.ts';
-import { PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS } from '../../../../shared-domain/src/planStateLabels.ts';
+import {
+  PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS,
+  PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
+} from '../../../../shared-domain/src/planStateLabels.ts';
 import { STARVATION_WAITING_FOR_POWER_COPY } from '../../../../shared-domain/src/planStarvation.ts';
 import {
   deviceDetailDiagnosticsCards,
@@ -127,6 +130,7 @@ const STARVATION_REASON_LABELS: Record<StarvationReason, string> = {
   invalid_observation: 'Observation invalid',
   sample_gap: 'Fresh observation missing',
   deferred_objective_avoid: PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
+  awaiting_solar_surplus: PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS,
   unknown_suppression_reason: 'Service reason unknown',
 };
 

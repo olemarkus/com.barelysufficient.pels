@@ -988,6 +988,17 @@
                   </span>
                 </div>
 
+                <div class="md-switch-row" id="device-detail-dump-load-row" hidden>
+                  <md-switch id="device-detail-dump-load-opt"></md-switch>
+                  <span class="md-switch-row__content">
+                    <span class="md-switch-row__label pels-text-settings-label">Run on solar surplus</span>
+                    <small class="field__hint">PELS keeps this device off and turns it on when your home is exporting enough solar power to cover it. If you switch it on yourself while there is no surplus, PELS will switch it off again.</small>
+                    <small class="field__hint">Good for pool pumps, towel dryers, and garage or cabin heaters. Not for your only water heater — on a run of cloudy days it would stay cold.</small>
+                    <small class="field__hint" id="device-detail-dump-load-disabled-hint" hidden>Unavailable while this device has an active smart task — the task's schedule decides when it runs.</small>
+                    <small class="field__hint" id="device-detail-dump-load-power-limit-hint" hidden>Turn on Power-limit control above first — PELS needs it to switch this device on and off.</small>
+                  </span>
+                </div>
+
                 <div class="md-switch-row">
                   <md-switch id="device-detail-budget-exempt"></md-switch>
                   <span class="md-switch-row__content">

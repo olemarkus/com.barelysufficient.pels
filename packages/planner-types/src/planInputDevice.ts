@@ -259,6 +259,16 @@ export type PlanInputDeviceBase = {
   deadlineFloorTargetC?: number;
   controllable?: boolean;
   managed?: boolean;
+  /**
+   * Producer-resolved "Run on solar surplus" dump-load posture (PR-7). `true`
+   * when the device opted in via `surplusWilling` in the per-device price-opt
+   * blob AND is a plain managed, controllable binary device (not temperature,
+   * not stepped, not EV). Resolved once at `toPlanDevice`
+   * (`resolveSurplusOnlyPosture`); the planner's surplus allocator/hold and the
+   * executor's force-ON carve-out stamp read this flat bit and never re-derive
+   * it from the blob (resolution-in-producer).
+   */
+  surplusOnly?: true;
   budgetExempt?: boolean;
   available?: boolean;
   zone?: string;

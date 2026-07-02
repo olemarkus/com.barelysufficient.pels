@@ -6,6 +6,7 @@ import {
   formatShortfallReason,
   readDeviceReasonDetail,
   resolveReportedLoadAfterPauseText,
+  resolveSurplusHoldReportedLoadText,
 } from './planReasonFormatting';
 import { buildComparablePlanReason } from './planReasonParsing';
 
@@ -18,6 +19,7 @@ export {
   formatShortfallReason,
   readDeviceReasonDetail,
   resolveReportedLoadAfterPauseText,
+  resolveSurplusHoldReportedLoadText,
   buildComparablePlanReason,
 };
 export type { CountdownReasonTiming, DeviceReason, PlanReasonCode } from './planReasonSemanticsCore';

@@ -237,11 +237,11 @@ export function buildBasePlanDevice(params: {
 function pickPropagatedPlanFields(
   dev: Pick<
     PlanInputDevice,
-    'stepPowerCalibration' | 'hasRecentObservedDrawAtSelectedStep' | 'residualKw'
+    'stepPowerCalibration' | 'hasRecentObservedDrawAtSelectedStep' | 'residualKw' | 'surplusOnly'
   >,
 ): Partial<Pick<
   DevicePlanDevice,
-  'stepPowerCalibration' | 'hasRecentObservedDrawAtSelectedStep' | 'residualKw'
+  'stepPowerCalibration' | 'hasRecentObservedDrawAtSelectedStep' | 'residualKw' | 'surplusOnly'
 >> {
   return {
     ...(dev.stepPowerCalibration ? { stepPowerCalibration: dev.stepPowerCalibration } : {}),
@@ -249,6 +249,7 @@ function pickPropagatedPlanFields(
       ? { hasRecentObservedDrawAtSelectedStep: dev.hasRecentObservedDrawAtSelectedStep }
       : {}),
     ...(dev.residualKw ? { residualKw: dev.residualKw } : {}),
+    ...(dev.surplusOnly === true ? { surplusOnly: true as const } : {}),
   };
 }
 

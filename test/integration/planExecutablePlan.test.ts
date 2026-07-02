@@ -246,6 +246,34 @@ describe('planExecutablePlan', () => {
       const plan = planWithDevices([buildPlanDevice()]);
       expect(hasExecutableShedDevices(plan, buildExecutablePlan(plan))).toBe(false);
     });
+
+    it('does NOT count a "Run on solar surplus" hold as capacity-shed posture', () => {
+      // A dump load merely waiting for export is an opt-in posture, not capacity
+      // pressure — it must not bound unrelated stepped restores at their lowest step.
+      const plan = planWithDevices([
+        buildPlanDevice({
+          id: 'pool-pump',
+          plannedState: 'shed',
+          surplusOnly: true,
+          reason: { code: PLAN_REASON_CODES.awaitingSolarSurplus, detail: null },
+        }),
+      ]);
+      expect(hasExecutableShedDevices(plan, buildExecutablePlan(plan))).toBe(false);
+    });
+
+    it('still counts a surplusOnly device that is GENUINELY capacity-shed as posture', () => {
+      // Discriminated on the reason code, not the surplusOnly flag: an engaged dump
+      // load shed for capacity carries a `capacity` reason and MUST still block.
+      const plan = planWithDevices([
+        buildPlanDevice({
+          id: 'pool-pump',
+          plannedState: 'shed',
+          surplusOnly: true,
+          reason: shedReason,
+        }),
+      ]);
+      expect(hasExecutableShedDevices(plan, buildExecutablePlan(plan))).toBe(true);
+    });
   });
 
   it('uses observed state when projecting target updates', () => {

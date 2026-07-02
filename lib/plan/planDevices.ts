@@ -1,5 +1,6 @@
 import type { DevicePlanDevice, PlanInputDevice, ShedAction } from './planTypes';
 import { isEvPlanDevice } from './planEvDevice';
+import { isBinaryPlanDevice } from './planBinaryDevice';
 import type { PlanEngineState } from './planState';
 import type { PlanContext } from './planContext';
 import { buildEffectiveShedPosture, isAnyOtherDeviceLimited } from './keepInvariantPosture';
@@ -8,7 +9,7 @@ import {
   resolveSteppedShedCurrentDesiredStepId,
 } from './planSteppedShedResolution';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
-import { applySurplusAbsorbDelta, resolveSurplusEligibility, type PriceOptDeviceConfig } from './planSurplusAbsorb';
+import { applySurplusAbsorbDelta, type PriceOptDeviceConfig } from './planSurplusAbsorb';
 import { RECENT_RESTORE_SHED_GRACE_MS } from './planConstants';
 import { isPendingBinaryCommandActive } from './planObservationPolicy';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
@@ -80,12 +81,16 @@ export function buildInitialPlanDevices(params: {
     guardInShortfall,
     deps,
   } = params;
-  // Filter the executor-side phantom set_step shed entries that hasExecutableShedDevices
-  // ignores, so the keep-invariant shed clamp (docs/technical.md:222) is symmetric.
+  // Drop entries that must NOT count as capacity-shed posture, so the keep-invariant
+  // stepped clamp (docs/technical.md:222) is symmetric with the executor's
+  // hasExecutableShedDevices: the phantom set_step shed entries it also ignores, PLUS
+  // "Run on solar surplus" holds (an opt-in posture, not capacity pressure — mirrors the
+  // executor's `awaitingSolarSurplus`-reason exclusion).
   const effectiveShedSet = buildEffectiveShedPosture({
     devices: context.devices,
     shedSet,
-    isPhantom: (dev) => isPhantomSetStepShed({ dev, devices: context.devices, state, deps }),
+    isExcluded: (dev) => isPhantomSetStepShed({ dev, devices: context.devices, state, deps })
+      || isSurplusOnlyHoldShed({ dev, state, shedReasons }),
   });
   // Per-stage accumulators (split inside the per-device loop). Emitted once
   // after the loop so the perf log shows where plan_devices_ms is going
@@ -95,20 +100,10 @@ export function buildInitialPlanDevices(params: {
   let setupMs = 0;
   let baseMs = 0;
   let offStateMs = 0;
-  // Producer pass: resolve surplus-absorb eligibility across all willing devices,
-  // reserving the export budget in priority order, before per-device target prep
-  // reads the resulting flat bit. Capacity-independent — it reads the signed net
-  // (context.total) + device draws, never headroom/shed state.
-  resolveSurplusEligibility({
-    devices: context.devices,
-    state,
-    signedNetKw: context.total,
-    powerKnown: context.powerKnown,
-    inferredSurplusKw: deps.getInferredSurplusKw?.() ?? null,
-    getConfig: (deviceId) => deps.getPriceOptimizationSettings()[deviceId],
-    getPriority: deps.getPriorityForDevice,
-    debugStructured: deps.debugStructured,
-  });
+  // Surplus-absorb eligibility is resolved BEFORE this materialization pass, in
+  // `planBuilder.buildPlanSnapshotWithTimings` (hoisted so the standing dump-load
+  // hold can read it when the shed set is assembled). This module only READS
+  // `state.surplusEligibilityByDevice` — it never advances the allocator.
   const result = context.devices.flatMap((dev) => {
     const t0 = Date.now();
     const supportsTemperature = supportsTemperatureDevice(dev);
@@ -123,6 +118,16 @@ export function buildInitialPlanDevices(params: {
     if (plannedTarget === SKIP_PLANNED_TARGET) {
       setupMs += Date.now() - t0;
       return [];
+    }
+    // Binary dump-load surplus flag: "PELS is running this device on solar
+    // surplus right now" — eligible per the allocator, not held this cycle, and
+    // actually observed on. `resolvePlannedTarget` above reset the per-cycle
+    // default to false, so a released/held/off device can never carry a stale
+    // true. Drives the card's "On to use your solar power" line.
+    if (dev.surplusOnly === true && isBinaryPlanDevice(dev)) {
+      state.surplusAbsorbActiveByDevice[dev.id] = state.surplusEligibilityByDevice[dev.id]?.eligible === true
+        && !shedSet.has(dev.id)
+        && dev.currentOn;
     }
     const currentTarget = getPrimaryTargetCapability(dev.targets)?.value ?? null;
     const currentState = resolveCurrentState(dev);
@@ -345,4 +350,23 @@ function isPhantomSetStepShed(params: {
     currentDesiredStepId: resolveSteppedShedCurrentDesiredStepId(dev),
   });
   return directStepId === undefined || directStepId === dev.selectedStepId;
+}
+// A "Run on solar surplus" hold is an opt-in posture (baseline off), not capacity
+// pressure, so it must NOT count toward the keep-invariant stepped clamp (it would
+// otherwise cap unrelated stepped loads at their lowest step while merely waiting
+// for export). Precise mirror of the executor's `awaitingSolarSurplus`-reason
+// exclusion: a surplusOnly device is a surplus HOLD only while it is not eligible
+// (surplus not yet allocated) AND no FRESH shed decision (`shedReasons`) claimed it
+// this cycle — exactly the condition under which `normalizeShedReasons` adopts the
+// `awaitingSolarSurplus` reason. A dump load genuinely capacity-shed (in
+// `shedReasons`) is excluded from this and still counts as posture.
+function isSurplusOnlyHoldShed(params: {
+  dev: PlanInputDevice;
+  state: PlanEngineState;
+  shedReasons: Map<string, DeviceReason>;
+}): boolean {
+  const { dev, state, shedReasons } = params;
+  return dev.surplusOnly === true
+    && !shedReasons.has(dev.id)
+    && state.surplusEligibilityByDevice[dev.id]?.eligible !== true;
 }

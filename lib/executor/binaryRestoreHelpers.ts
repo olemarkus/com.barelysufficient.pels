@@ -9,7 +9,11 @@ import {
 import { getLogger } from '../logging/logger';
 import type { ExecutorDeviceSnapshot } from './executablePlan';
 import type { PlanActuationMode } from './executorTypes';
-import { type PlanExecutorBinaryContext, runBinaryControl } from './binaryControlShared';
+import {
+  type PlanExecutorBinaryContext,
+  runBinaryControl,
+  skipRestoreForSurplusPosture,
+} from './binaryControlShared';
 
 const logger = getLogger('executor/binary');
 
@@ -151,6 +155,10 @@ export const applyCapacityControlOffRestoreWithSnapshot = async (
     name,
     snapshot,
   } = params;
+  // "Run on solar surplus" carve-out, last line of defense — whatever lane
+  // reaches this helper, the shared guard skips force-turning-ON a baseline-off
+  // dump load on capacity-control-off/unmanage. See `skipRestoreForSurplusPosture`.
+  if (skipRestoreForSurplusPosture(ctx, deviceId, name)) return false;
   try {
     const outcome = await runBinaryControl({
       ctx,

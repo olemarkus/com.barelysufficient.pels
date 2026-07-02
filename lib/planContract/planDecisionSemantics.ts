@@ -22,7 +22,8 @@ export type PlanStarvationPauseReason =
   | 'headroom_cooldown'
   | 'keep'
   | 'inactive'
-  | 'deferred_objective_avoid';
+  | 'deferred_objective_avoid'
+  | 'awaiting_solar_surplus';
 
 export type PlanStarvationSuppressionSemantics =
   | { state: 'none'; countingCause: null; pauseReason: null }
@@ -53,6 +54,10 @@ const DEFERRED_RESTORE_BLOCK_REASON_CODES = new Set<PlanReasonCode>([
   PLAN_REASON_CODES.shedInvariant,
   PLAN_REASON_CODES.startupStabilization,
   PLAN_REASON_CODES.waitingForOtherDevices,
+  // A "Run on solar surplus" hold is a standing baseline-off posture; a smart-task
+  // binary_restore must never lift it (plan-side admittedDeviceIds exclusion means
+  // the two should not co-occur — this is the defense-in-depth classifier).
+  PLAN_REASON_CODES.awaitingSolarSurplus,
 ]);
 
 const STEPPED_KEEP_INVARIANT_RESTORE_REASON_CODES = new Set<PlanReasonCode>([
@@ -156,6 +161,11 @@ export function resolveStarvationSuppressionSemantics(reason: DeviceReason): Pla
   // through to the `unknown_suppression_reason` catch-all in planDiagnostics.
   if (reason.code === PLAN_REASON_CODES.deferredObjectiveAvoid) {
     return { state: 'paused', countingCause: null, pauseReason: 'deferred_objective_avoid' };
+  }
+  // A device held by `awaitingSolarSurplus` is in its opted-in dump-load posture
+  // (baseline off, waiting for export) — a deliberate pause, never starvation.
+  if (reason.code === PLAN_REASON_CODES.awaitingSolarSurplus) {
+    return { state: 'paused', countingCause: null, pauseReason: 'awaiting_solar_surplus' };
   }
   const countingCause = COUNTING_SUPPRESSION_CAUSES[reason.code];
   if (countingCause) {

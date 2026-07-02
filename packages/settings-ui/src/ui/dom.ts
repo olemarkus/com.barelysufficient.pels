@@ -177,6 +177,10 @@ export const deviceDetailSurplusOpt = document.querySelector('#device-detail-sur
 export const deviceDetailSurplusDelta = document.querySelector(
   '#device-detail-surplus-delta',
 ) as MdFilledTextFieldElement;
+export const deviceDetailDumpLoadRow = qs('#device-detail-dump-load-row');
+export const deviceDetailDumpLoadOpt = document.querySelector('#device-detail-dump-load-opt') as MdSwitchElement;
+export const deviceDetailDumpLoadDisabledHint = qs('#device-detail-dump-load-disabled-hint');
+export const deviceDetailDumpLoadPowerLimitHint = qs('#device-detail-dump-load-power-limit-hint');
 export const deviceDetailShedAction = document.querySelector('#device-detail-overshoot') as MdFilledSelectElement;
 export const deviceDetailShedTempRow = qs('#device-detail-overshoot-temp-row');
 export const deviceDetailShedTemp = document.querySelector(

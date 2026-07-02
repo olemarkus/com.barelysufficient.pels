@@ -1,4 +1,5 @@
 import { applyShedTemperatureHold, finalizePlanDevices, normalizeShedReasons } from '../../lib/plan/planReasons';
+import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { NEUTRAL_STARTUP_HOLD_REASON } from '../../lib/plan/restore/devices';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { isTemperaturePlanDevice } from '../../lib/plan/planTemperatureDevice';
@@ -262,6 +263,75 @@ describe('normalizeShedReasons', () => {
 
     expect(reasonText(device?.reason)).toBe('swapped out for Water Heater');
   });
+
+  // ── Finding A on #1817: surplus hold survives the plan-wide shed cooldown ──
+  const AWAITING = { code: PLAN_REASON_CODES.awaitingSolarSurplus, detail: null };
+
+  it('keeps a surplus-held device on awaiting_solar_surplus during an active shed cooldown', () => {
+    // A dump load held for surplus, but the plan-wide shed cooldown is active and an
+    // earlier stage (markOffDevicesStayOff) already stamped cooldown_shedding on it.
+    // The surplus framing must win — the device is held for surplus, not the cooldown,
+    // and the stepped-restore-block invariant keys on `reason.code === awaitingSolarSurplus`.
+    const [device] = normalizeShedReasons({
+      planDevices: [buildPlanDevice({
+        id: 'pool-pump',
+        plannedState: 'shed',
+        surplusOnly: true,
+        reason: legacyDeviceReason('cooldown (shedding, 25s remaining)')!,
+      })],
+      shedReasons: new Map(),
+      guardInShortfall: false,
+      headroomRaw: 0,
+      inCooldown: true,
+      activeOvershoot: false,
+      shedCooldownRemainingSec: 25,
+      surplusHoldReasonById: new Map([['pool-pump', AWAITING]]),
+    });
+
+    expect(device?.reason).toEqual(AWAITING);
+  });
+
+  it('leaves a genuine capacity-cooldown device on cooldown_shedding (not a surplus hold)', () => {
+    // Control: a device NOT in the surplus-hold set keeps the cooldown framing.
+    const [device] = normalizeShedReasons({
+      planDevices: [buildPlanDevice({
+        id: 'dev-capacity',
+        plannedState: 'shed',
+        reason: legacyDeviceReason('shed due to capacity')!,
+      })],
+      shedReasons: new Map(),
+      guardInShortfall: false,
+      headroomRaw: 0,
+      inCooldown: true,
+      activeOvershoot: false,
+      shedCooldownRemainingSec: 25,
+      surplusHoldReasonById: new Map([['pool-pump', AWAITING]]),
+    });
+
+    expect(device?.reason.code).toBe(PLAN_REASON_CODES.cooldownShedding);
+  });
+
+  it('lets a FRESH capacity shed decision win over the surplus hold even during cooldown', () => {
+    // A dump load genuinely capacity-shed this cycle (fresh shedReason) is real pressure;
+    // it must NOT read awaiting_solar_surplus, so the stepped-restore-block still counts it.
+    const [device] = normalizeShedReasons({
+      planDevices: [buildPlanDevice({
+        id: 'pool-pump',
+        plannedState: 'shed',
+        surplusOnly: true,
+        reason: legacyDeviceReason('shed due to capacity')!,
+      })],
+      shedReasons: new Map([['pool-pump', legacyDeviceReason('shed due to capacity')!]]),
+      guardInShortfall: false,
+      headroomRaw: 0,
+      inCooldown: false,
+      activeOvershoot: false,
+      shedCooldownRemainingSec: null,
+      surplusHoldReasonById: new Map([['pool-pump', AWAITING]]),
+    });
+
+    expect(device?.reason.code).not.toBe(PLAN_REASON_CODES.awaitingSolarSurplus);
+  });
 });
 
 describe('finalizePlanDevices', () => {
@@ -318,6 +388,23 @@ describe('finalizePlanDevices', () => {
       plannedState: 'keep',
       reason: legacyDeviceReason('restore pending (30s remaining)')!,
     })])).not.toThrow();
+  });
+
+  it('allows an awaitingSolarSurplus shed reason on a surplusOnly dump-load device', () => {
+    expect(() => finalizePlanDevices([buildPlanDevice({
+      plannedState: 'shed',
+      surplusOnly: true,
+      reason: { code: PLAN_REASON_CODES.awaitingSolarSurplus, detail: null },
+    })])).not.toThrow();
+  });
+
+  it('throws when an awaitingSolarSurplus reason rides a device WITHOUT the surplusOnly posture', () => {
+    // Cross-field invariant: the reason mis-attributes the starvation-pause
+    // classification if it appears on a non-dump-load device.
+    expect(() => finalizePlanDevices([buildPlanDevice({
+      plannedState: 'shed',
+      reason: { code: PLAN_REASON_CODES.awaitingSolarSurplus, detail: null },
+    })])).toThrow(/Invalid plan reason pair|surplusOnly/);
   });
 });
 

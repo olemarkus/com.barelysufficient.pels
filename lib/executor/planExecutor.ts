@@ -259,8 +259,10 @@ export class PlanExecutor {
 
     if (pending.desired) {
       if (pending.logContext === 'capacity_control_off') {
-        delete this.state.lastDeviceShedMs[deviceId];
-        delete this.state.shedDecidedMs[deviceId];
+        // Route through the narrow mutators so the surplus-posture stamp
+        // (`surplusOnlyShedByDevice`) is cleared in lockstep with the decision clock.
+        this.state.clearDeviceShed(deviceId);
+        this.state.clearShedDecision(deviceId);
       } else if (pending.actuationMode !== 'reconcile') {
         this.recordRestoreActuation(deviceId, liveDevice.name, now);
         recordActivationAttemptStarted({

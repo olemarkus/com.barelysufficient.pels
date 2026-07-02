@@ -4,6 +4,7 @@ import {
   formatShortfallReason,
   readDeviceReasonDetail,
   resolveReportedLoadAfterPauseText,
+  resolveSurplusHoldReportedLoadText,
   type DeviceReason,
 } from '../../packages/shared-domain/src/planReasonSemantics';
 import {
@@ -321,6 +322,26 @@ describe('resolveReportedLoadAfterPauseText', () => {
     for (const c of cases) {
       expect(resolveReportedLoadAfterPauseText(c)).toBe(referenceFormat(c.measuredPowerKw, c.detail));
     }
+  });
+});
+
+describe('resolveSurplusHoldReportedLoadText', () => {
+  // Surplus-held dump load the user switched on by hand: names the reconcile,
+  // NOT "after pause" (a baseline-off device was never paused).
+  it('names the surplus reconcile with the measured draw', () => {
+    expect(resolveSurplusHoldReportedLoadText({ measuredPowerKw: 1.0 }))
+      .toBe('Still reporting 1.0 kW — switching off to wait for solar surplus');
+  });
+
+  it('never uses the "after pause" phrasing', () => {
+    expect(resolveSurplusHoldReportedLoadText({ measuredPowerKw: 2.4 })).not.toContain('after pause');
+  });
+
+  it('falls back to "–" when the measured draw is missing or non-finite', () => {
+    expect(resolveSurplusHoldReportedLoadText({ measuredPowerKw: undefined }))
+      .toBe('Still reporting – kW — switching off to wait for solar surplus');
+    expect(resolveSurplusHoldReportedLoadText({ measuredPowerKw: Number.NaN }))
+      .toBe('Still reporting – kW — switching off to wait for solar surplus');
   });
 });
 

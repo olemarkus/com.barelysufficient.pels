@@ -1975,6 +1975,40 @@ describe('stepped-load turn_on: desiredStepId normalization (Group 3 / planDevic
       expect(stepped.desiredStepId).toBe('medium');
     });
 
+    it('does NOT clamp a stepped keep device when the only shed is a surplus-only hold', () => {
+      // A pool pump WAITING for solar surplus (surplusOnly, not eligible) is an opt-in
+      // posture, not capacity pressure — it must not cap the unrelated stepped heater.
+      const pump = buildBinary('pool-pump');
+      const [stepped] = buildInitialPlanDevices({
+        context: buildContext([buildStepped(), { ...pump, surplusOnly: true } as typeof pump]),
+        state: createPlanEngineState(),
+        shedSet: new Set(['pool-pump']),
+        shedReasons: new Map(),
+        guardInShortfall: false,
+        deps: defaultDeps,
+      });
+
+      expect(stepped.id).toBe('heater');
+      expect(stepped.plannedState).toBe('keep');
+      expect(stepped.desiredStepId).toBe('medium');
+    });
+
+    it('DOES clamp when a surplusOnly device is genuinely capacity-shed (fresh shedReason)', () => {
+      // Discriminator mirror of the executor: a surplusOnly device with a FRESH
+      // capacity shedReason is real pressure and still bounds the stepped device.
+      const pump = buildBinary('pool-pump');
+      const [stepped] = buildInitialPlanDevices({
+        context: buildContext([buildStepped(), { ...pump, surplusOnly: true } as typeof pump]),
+        state: createPlanEngineState(),
+        shedSet: new Set(['pool-pump']),
+        shedReasons: shedReasonMap([['pool-pump', 'shed due to capacity']]),
+        guardInShortfall: false,
+        deps: defaultDeps,
+      });
+
+      expect(stepped.desiredStepId).toBe('low');
+    });
+
     it('ignores phantom underspecified set_step shed entries when deciding the invariant', () => {
       // Device B is in shedSet with set_step shed action, but it's already at the lowest active
       // step — resolveSteppedLoadDirectShedStepId returns the same step (no change). Mirrors the

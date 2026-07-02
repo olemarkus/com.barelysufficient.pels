@@ -52,6 +52,7 @@ type DetailComparableReason = Extract<
   | { code: typeof PLAN_REASON_CODES.sheddingActive }
   | { code: typeof PLAN_REASON_CODES.capacity }
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveAvoid }
+  | { code: typeof PLAN_REASON_CODES.awaitingSolarSurplus }
 >;
 
 const CODE_ONLY_REASONS = new Set<PlanReasonCode>([
@@ -112,7 +113,8 @@ function isDetailComparableReason(reason: DeviceReason): reason is DetailCompara
     || reason.code === PLAN_REASON_CODES.dailyBudget
     || reason.code === PLAN_REASON_CODES.sheddingActive
     || reason.code === PLAN_REASON_CODES.capacity
-    || reason.code === PLAN_REASON_CODES.deferredObjectiveAvoid;
+    || reason.code === PLAN_REASON_CODES.deferredObjectiveAvoid
+    || reason.code === PLAN_REASON_CODES.awaitingSolarSurplus;
 }
 
 export function buildComparableDeviceReason(reason: DeviceReason | undefined): ComparablePlanReason {

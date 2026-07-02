@@ -6,8 +6,10 @@ import {
 import { buildResidualKwForPlanDevice } from './residualKwForPlanDevice';
 import type {
   DecoratedDeviceSnapshot,
+  DeviceControlModel,
   EvObservedProbe,
   TargetDeviceSnapshot,
+  TargetPowerSteppedLoadConfig,
 } from '../../packages/contracts/src/types';
 import type { AppContext } from '../../lib/app/appContext';
 import {
@@ -15,7 +17,19 @@ import {
   resolveHasRecentObservedDrawAtSelectedStep,
 } from './calibrationViews';
 import { withSteppedDiscriminant } from '../../lib/plan/planTypes';
+import { resolveSurplusOnlyPosture } from '../../lib/plan/planSurplusAbsorb';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
+
+// Producer-side classification for the "Run on solar surplus" dump-load gate: a
+// plain binary-power control device — NOT an enabled continuous / target-power
+// (EV-preset) config and NOT a non-binary control model. Resolved here (setup
+// may read the control-model setting + target-power config) so the planner
+// helper carries no such branch (control-model vocab rule).
+const isPlainBinaryControlDevice = (
+  targetPowerConfig: TargetPowerSteppedLoadConfig | undefined,
+  controlModel: DeviceControlModel | undefined,
+): boolean => !(targetPowerConfig !== undefined && targetPowerConfig.enabled !== false)
+  && (controlModel === undefined || controlModel === 'binary_power');
 
 // The device param widens with `EvObservedProbe`: this producer is the one
 // sanctioned reader of the raw observed `evChargingState` on the plan path —
@@ -63,6 +77,29 @@ export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot & 
   // resolution is unchanged (the stamp equals the re-resolved value).
   const isObserveOnlyRole = device.deviceClass === 'battery' || device.deviceClass === 'solarpanel';
   const controllable = isObserveOnlyRole ? device.controllable === true : ctx.isCapacityControlEnabled(device.id);
+  const managed = isObserveOnlyRole ? device.managed !== false : ctx.resolveManagedState(device.id);
+  // "Run on solar surplus" dump-load posture, resolved ONCE here from the
+  // per-device price-opt blob + the raw snapshot's modality (binary, not
+  // temperature/stepped/EV) and the resolved managed/controllable bits. The
+  // planner's allocator/hold and the executor's carve-out stamp consume the
+  // flat `surplusOnly` bit; nothing downstream re-reads the blob for this.
+  // The continuous / target-power / non-binary classification is resolved HERE
+  // (the producer may read the `controlModel` setting + target-power config) so
+  // the planner helper carries no such branch (control-model vocab rule).
+  const plainBinaryControlModel = isPlainBinaryControlDevice(
+    device.targetPowerConfig,
+    device.controlModel,
+  );
+  const surplusOnly = resolveSurplusOnlyPosture({
+    surplusWilling: ctx.priceOptimizationSettings[device.id]?.surplusWilling,
+    controlCapabilityId: device.controlCapabilityId,
+    deviceClass: device.deviceClass,
+    targets: device.targets,
+    steppedLoadProfile: device.steppedLoadProfile,
+    plainBinaryControlModel,
+    controllable,
+    managed,
+  });
   const residualKw = buildResidualKwForPlanDevice({
     device,
     controlCapabilityId: device.controlCapabilityId,
@@ -112,8 +149,9 @@ export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot & 
     ...(device.controlCapabilityId !== undefined ? { currentOn: resolveCurrentOn(device) } : {}),
     // Observe-only role (battery/solar): structural stamp (always managed observe-only);
     // else re-resolve.
-    managed: isObserveOnlyRole ? device.managed !== false : ctx.resolveManagedState(device.id),
+    managed,
     controllable,
+    ...(surplusOnly ? { surplusOnly: true as const } : {}),
     budgetExempt: ctx.isBudgetExempt(device.id),
     temperatureBoost: ctx.getTemperatureBoostConfig?.(device.id),
     evBoost: ctx.getEvBoostConfig?.(device.id),

@@ -21,6 +21,11 @@ export const PLAN_REASON_CODES = {
   inactive: 'inactive',
   capacity: 'capacity',
   deferredObjectiveAvoid: 'deferred_objective_avoid',
+  // Standing "Run on solar surplus" hold for a binary dump load: the device's
+  // baseline is OFF and PELS lifts the hold only while the surplus allocator
+  // marks it eligible. Deliberately carries NO numbers/timestamps — the reason
+  // must be byte-stable across plan cycles (rebuild-storm class, f1550cea).
+  awaitingSolarSurplus: 'awaiting_solar_surplus',
   neutralStartupHold: 'neutral_startup_hold',
   startupStabilization: 'startup_stabilization',
   capacityControlOff: 'capacity_control_off',
@@ -80,6 +85,7 @@ export type DeviceReason =
   | { code: typeof PLAN_REASON_CODES.inactive; detail: string | null }
   | { code: typeof PLAN_REASON_CODES.capacity; detail: string | null }
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveAvoid; detail: string | null }
+  | { code: typeof PLAN_REASON_CODES.awaitingSolarSurplus; detail: string | null }
   | { code: typeof PLAN_REASON_CODES.neutralStartupHold }
   | { code: typeof PLAN_REASON_CODES.startupStabilization }
   | { code: typeof PLAN_REASON_CODES.capacityControlOff }
@@ -115,6 +121,7 @@ const REASON_LABELS = {
   [PLAN_REASON_CODES.inactive]: 'inactive',
   [PLAN_REASON_CODES.capacity]: 'capacity',
   [PLAN_REASON_CODES.deferredObjectiveAvoid]: 'waiting for cheaper hours',
+  [PLAN_REASON_CODES.awaitingSolarSurplus]: 'waiting for solar surplus',
   [PLAN_REASON_CODES.neutralStartupHold]: 'left off',
   [PLAN_REASON_CODES.startupStabilization]: 'startup stabilization',
   [PLAN_REASON_CODES.capacityControlOff]: 'capacity control off',

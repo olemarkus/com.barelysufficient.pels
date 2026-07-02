@@ -3,6 +3,7 @@ import {
   type DeviceReason,
 } from './planReasonSemanticsCore';
 import {
+  PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS,
   PLAN_STATE_DAILY_BUDGET_STATUS,
   PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
   PLAN_STATE_HELD_FALLBACK_STATUS,
@@ -18,6 +19,7 @@ type DetailReason = Extract<
   | { code: typeof PLAN_REASON_CODES.inactive }
   | { code: typeof PLAN_REASON_CODES.capacity }
   | { code: typeof PLAN_REASON_CODES.deferredObjectiveAvoid }
+  | { code: typeof PLAN_REASON_CODES.awaitingSolarSurplus }
 >;
 
 type TimedReason = Extract<
@@ -90,7 +92,8 @@ function isDetailReason(reason: DeviceReason): reason is DetailReason {
     || reason.code === PLAN_REASON_CODES.sheddingActive
     || reason.code === PLAN_REASON_CODES.inactive
     || reason.code === PLAN_REASON_CODES.capacity
-    || reason.code === PLAN_REASON_CODES.deferredObjectiveAvoid;
+    || reason.code === PLAN_REASON_CODES.deferredObjectiveAvoid
+    || reason.code === PLAN_REASON_CODES.awaitingSolarSurplus;
 }
 
 function formatDetailReason(reason: DetailReason): string {
@@ -109,6 +112,8 @@ function formatDetailReason(reason: DetailReason): string {
       return formatShedReason('shed due to capacity', reason.detail);
     case PLAN_REASON_CODES.deferredObjectiveAvoid:
       return formatShedReason('waiting for cheaper hours', reason.detail);
+    case PLAN_REASON_CODES.awaitingSolarSurplus:
+      return formatShedReason('waiting for solar surplus', reason.detail);
     default: {
       const exhaustive: never = reason;
       return exhaustive;
@@ -344,6 +349,27 @@ export function resolveReportedLoadAfterPauseText(params: {
   return detail ? `${stem} — ${detail}` : stem;
 }
 
+// Reported-load conflict line for a "Run on solar surplus" dump load the user
+// just switched on by hand while it is surplus-held: the generic
+// `resolveReportedLoadAfterPauseText` ("after pause") is wrong here — a
+// baseline-off dump load was never paused, and that copy would displace the
+// surplus explanation exactly when the user needs it. This names what PELS is
+// doing (switching it off to wait for export) so the reconcile contract reads
+// coherently on the card. Shared-domain so logs and UI match.
+export function resolveSurplusHoldReportedLoadText(params: {
+  measuredPowerKw: number | undefined;
+  // Simulation mode: PELS never actually switches the dump load off, so the
+  // real-mode "switching off" framing would assert an action that did not
+  // happen. State it hypothetically instead (simulation-honesty rule).
+  dryRun?: boolean;
+}): string {
+  const measured = typeof params.measuredPowerKw === 'number' && Number.isFinite(params.measuredPowerKw)
+    ? params.measuredPowerKw.toFixed(1)
+    : '–';
+  const action = params.dryRun ? 'would switch off' : 'switching off';
+  return `Still reporting ${measured} kW — ${action} to wait for solar surplus`;
+}
+
 function formatRestoreNeedUserFacing(
   reason: Extract<DeviceReason, { code: typeof PLAN_REASON_CODES.restoreNeed }>,
 ): string {
@@ -411,6 +437,8 @@ function formatDetailReasonUserFacing(reason: DetailReason): string {
       return appendUserDetail(PLAN_STATE_HELD_FALLBACK_STATUS, reason.detail);
     case PLAN_REASON_CODES.deferredObjectiveAvoid:
       return appendUserDetail(PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS, reason.detail);
+    case PLAN_REASON_CODES.awaitingSolarSurplus:
+      return appendUserDetail(PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS, reason.detail);
     default: {
       const exhaustive: never = reason;
       return exhaustive;

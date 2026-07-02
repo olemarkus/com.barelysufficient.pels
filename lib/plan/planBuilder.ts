@@ -10,13 +10,14 @@
  * belongs to the executor.
  *
  * Shed-selection invariant (`lib/plan/shedding/AGENTS.md`): the shed set is
- * fixed once `buildSheddingPlan` returns, plus two post-shedding merges here
- * before materialization — the decoration seam's `forceShedSet` and the
- * pause-lower-priority hold (`resolvePauseHold`, `lib/plan/shedding/pauseHold.ts`).
- * Every later stage — materialization, restore, hold, reason normalization —
- * only copies `shedSet` membership into per-device `plannedState`/shed actions,
- * or declines to lift an existing shed; none of them may add a device to the
- * shed set.
+ * fixed once `buildSheddingPlan` returns, plus three post-shedding merges here
+ * before materialization — the decoration seam's `forceShedSet`, the
+ * pause-lower-priority hold (`resolvePauseHold`, `lib/plan/shedding/pauseHold.ts`),
+ * and the solar dump-load hold (`resolveSurplusHold`,
+ * `lib/plan/shedding/surplusHold.ts`). Every later stage — materialization,
+ * restore, hold, reason normalization — only copies `shedSet` membership into
+ * per-device `plannedState`/shed actions, or declines to lift an existing shed;
+ * none of them may add a device to the shed set.
  *
  * Boundary (`lib/plan/AGENTS.md`): smart-task-agnostic — objectives reach
  * the builder only through the injected `decorateDeferredObjectives` seam.
@@ -29,7 +30,7 @@ import type { PlanEngineState } from './planState';
 import { computeDailyUsageSoftLimit, computeDynamicSoftLimit, computeShortfallThreshold } from './planBudget';
 import { buildPlanContext, type PlanContext, type SoftLimitSource } from './planContext';
 import { buildSheddingPlan, type SheddingPlan } from './shedding';
-import { resolvePauseHold } from './shedding/pauseHold';
+import { runSurplusPass, type PriceOptDeviceConfig } from './planBuilderSurplus';
 import { buildInitialPlanDevices } from './planDevices';
 import { applyRestorePlan, type RestorePlanResult } from './restore';
 import { sumBudgetExemptLiveUsageKw } from './planUsage';
@@ -38,6 +39,7 @@ import {
   applyShedTemperatureHold,
   finalizePlanDevices,
   normalizeShedReasons,
+  type ShedReasonHoldInputs,
 } from './planReasons';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
@@ -67,7 +69,7 @@ export type PlanBuilderDeps = {
   getOperatingMode: () => string;
   getModeDeviceTargets: () => Record<string, Record<string, number>>;
   getPriceOptimizationEnabled: () => boolean;
-  getPriceOptimizationSettings: () => Record<string, { enabled: boolean; cheapDelta: number; expensiveDelta: number }>;
+  getPriceOptimizationSettings: () => Record<string, PriceOptDeviceConfig>;
   isCurrentHourCheap: () => boolean;
   isCurrentHourExpensive: () => boolean;
   // Producer-resolved inferred curtailed-surplus term for the surplus allocator
@@ -116,10 +118,7 @@ export class PlanBuilder {
   private get modeDeviceTargets(): Record<string, Record<string, number>> { return this.deps.getModeDeviceTargets(); }
   private get priceOptimizationEnabled(): boolean { return this.deps.getPriceOptimizationEnabled(); }
 
-  private get priceOptimizationSettings(): Record<
-    string,
-    { enabled: boolean; cheapDelta: number; expensiveDelta: number }
-  > {
+  private get priceOptimizationSettings(): Record<string, PriceOptDeviceConfig> {
     return this.deps.getPriceOptimizationSettings();
   }
 
@@ -210,6 +209,7 @@ export class PlanBuilder {
       forceShedSet,
       deferredAvoidDeviceIds,
       deferredReleaseIntentByDeviceId,
+      admittedDeviceIds,
     } = this.trackDuration('plan_deferred_objective_observe_ms', () => (
       this.deps.decorateDeferredObjectives?.({ devices, dailyBudgetSnapshot, nowTs })
       ?? buildIdentityDecorationBundle(devices)
@@ -220,20 +220,25 @@ export class PlanBuilder {
       sheddingPlan,
       overshootDecision,
     } = await this.buildContextAndShedding(admittedDevices, nowTs, dailyBudgetSnapshot);
+    // Surplus pass: hoisted eligibility allocator + the "Run on solar surplus"
+    // hold, merged into the shed set below like pauseHold (`planBuilderSurplus.ts`).
+    // Surplus allocator + dump-load hold + the three post-shedding hold merges,
+    // all in `runSurplusPass` (hoisted so eligibility exists as the shed set is
+    // assembled); returns the dump-load reason map for reason normalization.
+    const surplusHoldReasonById = this.trackDuration('plan_surplus_eligibility_ms', () => runSurplusPass({
+      context,
+      state: this.state,
+      admittedDevices,
+      shedSet: sheddingPlan.shedSet,
+      decoration: { forceShedSet, deferredAvoidDeviceIds, deferredReleaseIntentByDeviceId, admittedDeviceIds },
+      getConfig: (deviceId) => this.priceOptimizationSettings[deviceId],
+      getPriority: (deviceId) => this.deps.getPriorityForDevice(deviceId),
+      capacitySettings: this.capacitySettings,
+      getInferredSurplusKw: this.deps.getInferredSurplusKw,
+      debugStructured: this.deps.debugStructured,
+      nowTs,
+    }));
     const deviceNameById = new Map(admittedDevices.map((d) => [d.id, d.name]));
-    for (const id of forceShedSet) sheddingPlan.shedSet.add(id);
-    // Proactive priority-hold: a smart task with the pause-lower-priority permission holds
-    // lower-priority managed devices off (up to — never above — the hard cap) so the reserved
-    // device can start. The helper owns release-on-active + the mathematical feasibility-lift.
-    const pauseHoldIds = resolvePauseHold({
-      devices: admittedDevices,
-      total: context.total,
-      powerKnown: context.powerKnown,
-      hardCapKw: this.capacitySettings.limitKw,
-      marginKw: this.capacitySettings.marginKw,
-      getPriorityForDevice: (deviceId) => this.deps.getPriorityForDevice(deviceId),
-    }).holdIds;
-    for (const id of pauseHoldIds) sheddingPlan.shedSet.add(id);
 
     let planDevices = this.buildPlanDevices(context, sheddingPlan);
     const restoreResult = this.applyRestorePlanWithTiming(planDevices, context, sheddingPlan, deviceNameById);
@@ -242,29 +247,20 @@ export class PlanBuilder {
     const holdResult = this.applyHoldPlanWithTiming(planDevices, restoreResult, sheddingPlan);
     planDevices = holdResult.planDevices;
 
-    planDevices = this.normalizeReasonsWithTiming(
-      planDevices,
-      context,
-      restoreResult,
-      sheddingPlan,
-      deferredAvoidDeviceIds,
-    );
+    planDevices = this.normalizeReasonsWithTiming(planDevices, context, restoreResult, sheddingPlan, {
+      deferredObjectiveAvoidDeviceIds: deferredAvoidDeviceIds,
+      surplusHoldReasonById,
+    });
     planDevices = attachDeferredReleaseIntents(planDevices, deferredReleaseIntentByDeviceId, context);
     this.syncHeadroomCardStateWithTiming(planDevices);
     const finalized = this.finalizePlanWithTiming(planDevices);
-    // Decision-time shed clock: stamp the moment the planner decides a device
-    // enters capacity-shed posture (edge-set on the transition into the shed
-    // set), independent of whether the executor actually issues a write this
-    // cycle. A device that is already off still gets stamped here, so the
-    // restore-eligibility readers no longer under-stamp it. Cleared on restore
-    // alongside `lastDeviceShedMs`. Edge-set (not refreshed while held) so a
-    // re-shed after a restore re-stamps a fresh decision time.
-    for (const id of finalized.lastPlannedShedIds) {
-      if (!this.state.lastPlannedShedIds.has(id)) {
-        this.state.shedDecidedMs[id] = nowTs;
-      }
-    }
-    this.state.lastPlannedShedIds = finalized.lastPlannedShedIds;
+    // Decision-time shed clock (edge-set) + the plan-less-safe surplus-posture
+    // stamp — semantics on `PlanEngineState.recordPlannedShedDecisions`.
+    this.state.recordPlannedShedDecisions({
+      shedIds: finalized.lastPlannedShedIds,
+      surplusOnlyIds: new Set(admittedDevices.filter((dev) => dev.surplusOnly === true).map((dev) => dev.id)),
+      nowTs,
+    });
     this.trackDuration('plan_overshoot_ms', () => this.overshootTracker.updateOvershootState({
       context,
       capacityGuard: this.capacityGuard,
@@ -445,7 +441,7 @@ export class PlanBuilder {
     context: PlanContext,
     restoreResult: RestorePlanResult,
     sheddingPlan: SheddingPlan,
-    deferredObjectiveAvoidDeviceIds: ReadonlySet<string>,
+    holds: ShedReasonHoldInputs,
   ): DevicePlanDevice[] {
     return this.trackDuration('plan_reasons_ms', () => normalizeShedReasons({
       planDevices,
@@ -457,7 +453,7 @@ export class PlanBuilder {
       shedCooldownRemainingSec: restoreResult.shedCooldownRemainingSec,
       shedCooldownStartedAtMs: restoreResult.shedCooldownStartedAtMs,
       shedCooldownTotalSec: restoreResult.shedCooldownTotalSec,
-      deferredObjectiveAvoidDeviceIds,
+      ...holds,
       softLimitSource: context.softLimitSource,
     }));
   }

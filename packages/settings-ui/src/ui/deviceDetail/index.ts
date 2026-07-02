@@ -50,6 +50,7 @@ import {
 } from './priceOpt.ts';
 import {
   initDeviceDetailSurplusOptHandlers,
+  setDeviceDetailDumpLoadControl,
   setDeviceDetailSurplusValues,
   updateSurplusSectionVisibility,
 } from './solarSurplus.ts';
@@ -97,7 +98,7 @@ import {
   resolveTargetPowerConfigForControlMode,
   syncDeviceDetailControlModeOptions,
 } from './controlMode.ts';
-import { resolveDeviceDetailControlState } from './controlState.ts';
+import { resolveDeviceDetailControlState, setTemperatureGatedSwitch } from './controlState.ts';
 import {
   createPendingDeviceDetailOpen,
   type OpenDeviceDetailDetail,
@@ -156,20 +157,6 @@ const showDeviceDetailOverlay = () => {
   }
 };
 
-// A price/surplus switch is on only for a managed temperature device, and is
-// disabled (greyed) otherwise — the shared gate for both detail toggles.
-const setTemperatureGatedSwitch = (
-  switchEl: { selected: boolean; disabled: boolean } | null,
-  active: boolean | undefined,
-  controlState: { supportsTemperature: boolean; isManaged: boolean },
-): void => {
-  if (!switchEl) return;
-  /* eslint-disable no-param-reassign -- intentional DOM element mutation via a shared helper */
-  switchEl.selected = controlState.supportsTemperature && controlState.isManaged && active === true;
-  switchEl.disabled = !controlState.supportsTemperature || !controlState.isManaged;
-  /* eslint-enable no-param-reassign */
-};
-
 const setDeviceDetailControlStates = (deviceId: string) => {
   const device = getDeviceById(deviceId);
   const controlState = resolveDeviceDetailControlState(device, deviceId);
@@ -195,6 +182,9 @@ const setDeviceDetailControlStates = (deviceId: string) => {
     // rather than shown disabled, so it never clutters a home that cannot export.
     deviceDetailSurplusOptRow.hidden = !(resolveHomeExhibitsSolar() && controlState.supportsTemperature);
   }
+  // Binary sibling: the "Run on solar surplus" dump-load posture row (solarSurplus.ts
+  // owns the gate — managed binary device, solar present, not temperature/stepped/EV).
+  setDeviceDetailDumpLoadControl({ deviceId, getDeviceById });
 
   setDeviceDetailBudgetExemptState(device);
   setDeviceDetailSocState(device);

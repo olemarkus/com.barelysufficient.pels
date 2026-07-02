@@ -464,6 +464,11 @@ type DevicePlanDeviceBase = {
   // cycle's planned target (raised the setpoint to self-consume solar, not overridden by a
   // deadline floor). Drives the device card's "Raised to use your solar power" reason line.
   surplusAbsorbActive?: boolean;
+  // Producer-resolved "Run on solar surplus" dump-load posture, forwarded flat from
+  // `PlanInputDevice.surplusOnly` (see its doc block). Rides the plan device so the
+  // builder can maintain the plan-less-safe `surplusOnlyShedByDevice` stamp from the
+  // finalized shed set.
+  surplusOnly?: true;
   stepCommandPending?: boolean;
   stepCommandStatus?: SteppedLoadCommandStatus;
   binaryCommandPending?: boolean;
