@@ -23,8 +23,8 @@ describe('formatIdleClassificationCopy', () => {
       targetTemperatureC: 65,
     });
     expect(copy.tone).toBe('neutral');
-    expect(copy.statusLine).toBe('Holding near setpoint (61.5° / 65°)');
-    expect(copy.detail).toContain('61.5° / 65°');
+    expect(copy.statusLine).toBe('Holding near setpoint (61.5 °C / 65 °C)');
+    expect(copy.detail).toContain('61.5 °C / 65 °C');
   });
 
   it('builds an understated status line for unresponsive with temperatures', () => {
@@ -34,7 +34,7 @@ describe('formatIdleClassificationCopy', () => {
       targetTemperatureC: 65,
     });
     expect(copy.tone).toBe('warning');
-    expect(copy.statusLine).toBe('Not drawing power (55° / 65°)');
+    expect(copy.statusLine).toBe('Not drawing power (55 °C / 65 °C)');
     // Chip label stays short and carries NO temperature pair (chips stay short,
     // white-space: nowrap); the pair lives in the status line + tooltip only.
     expect(copy.chipLabel).toBe('Not drawing power');
@@ -67,7 +67,7 @@ describe('formatIdleClassificationCopy', () => {
       targetTemperatureC: 65,
     });
     expect(copy.tone).toBe('neutral');
-    expect(copy.statusLine).toBe('Device reached its own setpoint cap (58° / 65°)');
+    expect(copy.statusLine).toBe('Device reached its own setpoint cap (58 °C / 65 °C)');
     // The detail must name the device's OWN setpoint cap as the recourse
     // surface — never PELS' canonical "hard cap" (per
     // `feedback_hard_cap_is_physical.md`).

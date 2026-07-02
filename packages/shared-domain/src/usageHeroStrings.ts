@@ -37,10 +37,10 @@ export const formatProjectionLine = (
   withinDeadBand: boolean,
 ): string => {
   if (withinDeadBand) {
-    return `On track for ~${projected.toFixed(1)} kWh by midnight.`;
+    return `On track for ≈ ${projected.toFixed(1)} kWh by midnight.`;
   }
   const direction = projectedDiff > 0 ? 'above' : 'below';
-  return `On track for ~${projected.toFixed(1)} kWh by midnight (${direction} typical).`;
+  return `On track for ≈ ${projected.toFixed(1)} kWh by midnight (${direction} typical).`;
 };
 
 // Day-aware comparison line: "Today · <date>." followed by the typical-day

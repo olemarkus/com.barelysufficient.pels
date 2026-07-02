@@ -321,9 +321,9 @@ export function readDeviceReasonDetail(reason: unknown): unknown {
   return (reason as DeviceReasonWithDetail).detail;
 }
 
-// "Still reporting load after pause" sentence used by the Overview device
-// card when a held device is still drawing power — e.g. an EV charger that
-// ignored the pause. Lives in shared-domain so logs and UI produce the same
+// "Still drawing … kW — this still counts toward your usage" sentence used by
+// the Overview device card when a held device is still drawing power — e.g. an
+// EV charger that ignored the pause. Lives in shared-domain so logs and UI produce the same
 // wording (`feedback_ui_text_shared_with_logs`). The `detail` slot accepts
 // `unknown` because the upstream `DeviceReason.detail` field is loosely typed
 // at the snapshot boundary; non-string values are dropped silently rather
@@ -345,8 +345,12 @@ export function resolveReportedLoadAfterPauseText(params: {
     : null;
   const stem = params.dryRun
     ? `Would still draw ${measured} kW`
-    : `Still reporting ${measured} kW after pause`;
-  return detail ? `${stem} — ${detail}` : stem;
+    : `Still drawing ${measured} kW`;
+  // Name the user consequence, not the planner internal: a device that ignores
+  // the pause still counts against the household's usage this hour. Canonical
+  // "counts toward your usage" vocabulary (notes/ui-terminology.md). A concrete
+  // runtime-supplied detail (rare) overrides the generic consequence line.
+  return `${stem} — ${detail ?? 'this still counts toward your usage'}`;
 }
 
 // Reported-load conflict line for a "Run on solar surplus" dump load the user

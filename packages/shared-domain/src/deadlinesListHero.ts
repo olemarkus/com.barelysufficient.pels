@@ -16,12 +16,14 @@
 //   at-risk   : `at_risk`, `cannot_meet`
 //   satisfied : `satisfied`
 //
-// Headline precedence (worst-wins, then split clause):
-//   1. Any at-risk card                  → `N deadlines at risk.` (worst-wins;
+// Headline precedence (worst-wins, then split clause). Headlines carry no
+// trailing period and use the "smart task(s)" count noun so they match the tab
+// / eyebrow and the baseline headlines:
+//   1. Any at-risk card                  → `N smart tasks at risk` (worst-wins;
 //                                          tone escalates to `alert` when any
 //                                          card is `cannot_meet`). Mixed
 //                                          cohorts use the `N of M` framing.
-//   2. Any paused card (no at-risk)      → `N deadlines paused.` with `warn`
+//   2. Any paused card (no at-risk)      → `N smart tasks paused` with `warn`
 //                                          tone. Mixed cohorts use the
 //                                          `N of M` framing. Paused outranks
 //                                          on-track / pending / satisfied
@@ -31,13 +33,13 @@
 //                                          "planning" understates that.
 //   3. Mixed on-track / pending / satisfied
 //                                        → split-clause headline:
-//                                          `X on track, Y planning, Z complete.`
+//                                          `X on track, Y planning, Z complete`
 //                                          (clauses present only for non-zero
 //                                          buckets, in the order on-track →
 //                                          pending → satisfied).
-//   4. All on-track                      → `N deadlines on track.`
-//   5. All pending                       → `Planning N deadlines.`
-//   6. All satisfied                     → `N deadlines complete.`
+//   4. All on-track                      → `N smart tasks on track`
+//   5. All pending                       → `Planning N smart tasks`
+//   6. All satisfied                     → `N smart tasks complete`
 //
 // Subline always names the soonest relevant card:
 //   - at-risk branch: soonest `cannot_meet` (under alert tone) or soonest
@@ -227,7 +229,10 @@ const pluralize = (count: number, singular: string, plural: string): string => (
   count === 1 ? singular : plural
 );
 
-const deadlinesNoun = (count: number): string => pluralize(count, 'deadline', 'deadlines');
+// User-facing count noun. Matches the tab / eyebrow vocabulary ("Smart tasks")
+// and the baseline headlines ("Add your first smart task"); the internal
+// identifier keeps its `deadlines` name so log schemas stay stable.
+const deadlinesNoun = (count: number): string => pluralize(count, 'smart task', 'smart tasks');
 
 // Mixed-cohort headline clauses, kept as data so the split-clause assembler
 // can iterate in a fixed order (on-track → pending → satisfied) without
@@ -292,11 +297,11 @@ const buildNonAtRiskHeadline = (counts: {
     if (counts.onTrack > 0) clauses.push(`${counts.onTrack} ${CLAUSE_LABEL.onTrack}`);
     if (counts.pending > 0) clauses.push(`${counts.pending} ${CLAUSE_LABEL.pending}`);
     if (counts.satisfied > 0) clauses.push(`${counts.satisfied} ${CLAUSE_LABEL.satisfied}`);
-    return `${clauses.join(', ')}.`;
+    return clauses.join(', ');
   }
-  if (counts.onTrack > 0) return `${counts.onTrack} ${deadlinesNoun(counts.onTrack)} on track.`;
-  if (counts.pending > 0) return `Planning ${counts.pending} ${deadlinesNoun(counts.pending)}.`;
-  return `${counts.satisfied} ${deadlinesNoun(counts.satisfied)} complete.`;
+  if (counts.onTrack > 0) return `${counts.onTrack} ${deadlinesNoun(counts.onTrack)} on track`;
+  if (counts.pending > 0) return `Planning ${counts.pending} ${deadlinesNoun(counts.pending)}`;
+  return `${counts.satisfied} ${deadlinesNoun(counts.satisfied)} complete`;
 };
 
 // Caller passes the sorted-by-deadline cards (the list already sorts ascending
@@ -330,8 +335,8 @@ export const resolveDeadlinesListHero = (params: {
     // at risk we keep the bare "N deadlines at risk." form so the headline
     // doesn't add noise ("3 of 3" feels mechanical).
     const headline = atRiskCards.length < cards.length
-      ? `${atRiskCards.length} of ${cards.length} ${deadlinesNoun(cards.length)} at risk.`
-      : `${atRiskCards.length} ${deadlinesNoun(atRiskCards.length)} at risk.`;
+      ? `${atRiskCards.length} of ${cards.length} ${deadlinesNoun(cards.length)} at risk`
+      : `${atRiskCards.length} ${deadlinesNoun(atRiskCards.length)} at risk`;
     const deviceName = subjectCard.deviceName.trim() || KIND_NAME_FALLBACK[subjectCard.kind];
     // `subjectCard.statusId` is narrowed to `AtRiskStatusId` via the
     // `isAtRiskCard` predicate, so `HERO_REASON_BY_STATUS` indexes exhaustively
@@ -360,8 +365,8 @@ export const resolveDeadlinesListHero = (params: {
   if (pausedCards.length > 0) {
     const subjectCard = pausedCards[0];
     const headline = pausedCards.length < cards.length
-      ? `${pausedCards.length} of ${cards.length} ${deadlinesNoun(cards.length)} paused.`
-      : `${pausedCards.length} ${deadlinesNoun(pausedCards.length)} paused.`;
+      ? `${pausedCards.length} of ${cards.length} ${deadlinesNoun(cards.length)} paused`
+      : `${pausedCards.length} ${deadlinesNoun(pausedCards.length)} paused`;
     return {
       eyebrow: 'Smart tasks',
       headline,

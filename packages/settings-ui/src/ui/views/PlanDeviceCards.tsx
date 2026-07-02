@@ -489,7 +489,7 @@ export const PlanGenericCard = ({
     powerReadout = { text: `${formatKw(displayDev.measuredPowerKw)} kW`, variant: 'live' };
   } else {
     const expected = resolveExpectedKw(displayDev);
-    if (expected !== null) powerReadout = { text: `~${expected.toFixed(1)} kW when active`, variant: 'expected' };
+    if (expected !== null) powerReadout = { text: `≈ ${expected.toFixed(1)} kW when active`, variant: 'expected' };
   }
 
   const starvationBadge = formatStarvationBadge(dev.starvation);

@@ -95,10 +95,10 @@ const stripKwhRateSuffix = priceRateLabelToAmountUnit;
 
 /**
  * Resolve the cost/axis units for the widget from the persisted price store
- * fields. Mirrors the settings-UI `resolveCostDisplayFromCombinedPrices` /
- * `resolveRawPriceUnitLabel` pair, but lives in shared-domain so the widget
- * (which must not import settings-ui) can reuse it. Kept in sync deliberately;
- * consolidation across the arch boundary is not allowed.
+ * fields. Mirrors the settings-UI `resolveCostDisplayFromCombinedPrices`, but
+ * lives in shared-domain so the widget (which must not import settings-ui) can
+ * reuse it. Kept in sync deliberately; consolidation across the arch boundary
+ * is not allowed.
  */
 export const resolvePlanPriceCostDisplay = (params: {
   priceScheme?: string;

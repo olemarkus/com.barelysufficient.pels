@@ -16,7 +16,7 @@ import {
   type ChartReadoutHandle,
 } from './chartReadout.ts';
 import {
-  formatDateInTimeZone,
+  formatDayFirstInTimeZone,
   getDateKeyInTimeZone,
   getDateKeyStartMs,
   shiftDateKey,
@@ -195,14 +195,15 @@ const buildDateKeysForRange = (startMs: number, endMs: number, timeZone: string)
   return keys;
 };
 
-// Format one local-day key (`2026-06-04`) as `Thu, Jun 4`. The instant MUST
-// come from `getDateKeyStartMs` (local-day midnight in the given zone) — a
-// UTC-midnight `Date` formatted in a negative-offset zone lands on the
-// previous calendar day (off-by-one fixed in the Phase 3 Usage-tab PR; do
-// not reintroduce it).
+// Format one local-day key (`2026-06-04`) as `Thu, 4 Jun` — the shared
+// day-first Usage-tab grammar (`formatDayFirstInTimeZone`), never month-first.
+// The instant MUST come from `getDateKeyStartMs` (local-day midnight in the
+// given zone) — a UTC-midnight `Date` formatted in a negative-offset zone lands
+// on the previous calendar day (off-by-one fixed in the Phase 3 Usage-tab PR;
+// do not reintroduce it).
 export const buildPowerWeekDayLabel = (dateKey: string, timeZone: string): string => {
   const day = new Date(getDateKeyStartMs(dateKey, timeZone));
-  return formatDateInTimeZone(day, { weekday: 'short', month: 'short', day: 'numeric' }, timeZone);
+  return formatDayFirstInTimeZone(day, { weekday: 'short', month: 'short', day: 'numeric' }, timeZone);
 };
 
 const buildDayLabels = (dateKeys: string[], timeZone: string): string[] => (

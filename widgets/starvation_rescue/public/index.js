@@ -91,7 +91,7 @@
   var formatTargetDegrees = (targetC) => {
     if (typeof targetC !== "number" || !Number.isFinite(targetC)) return null;
     const rounded = Math.round(targetC * 10) / 10;
-    return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)}\xB0`;
+    return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)} \xB0C`;
   };
   var resolveStarvationRowSubtext = (cause, intendedNormalTargetC) => {
     if (cause === "budget") {

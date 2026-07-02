@@ -25,7 +25,7 @@ import type {
   SettingsUiPowerStatus,
   SettingsUiPricesPayload,
 } from '../../../../contracts/src/settingsUiApi.ts';
-import { resolveRawPriceUnitLabel } from '../priceUnit.ts';
+import { resolveCostDisplayFromCombinedPrices, resolvePriceUnitLabel } from '../priceUnit.ts';
 import { normalizeCombinedPrices } from '../combinedPrices.ts';
 import {
   formatSolarNowSubline,
@@ -670,11 +670,15 @@ const resolveCheapestUpcomingText = (
   // payload predates the current window and we should not anticipate from it.
   const latest = hours.reduce((best, hour) => (hour.startsAtMs > best ? hour.startsAtMs : best), 0);
   if (latest + STALE_PRICE_AGE_MS < nowMs) return null;
-  const unitLabel = resolveRawPriceUnitLabel(combined);
+  // Scale to the same display unit the smart-task and Budget price surfaces use
+  // (øre → kr ÷ divisor) so adjacent tabs never show the same magnitude in two
+  // units — the Overview subline reads `0.32 kr/kWh`, not `32 øre/kWh`.
+  const costDisplay = resolveCostDisplayFromCombinedPrices(combined);
   return formatCheapestUpcomingHour({
     hours,
     nowMs,
-    unitLabel,
+    unitLabel: resolvePriceUnitLabel(costDisplay),
+    divisor: costDisplay.divisor,
     formatClockTime: formatClockTimeShort,
   });
 };

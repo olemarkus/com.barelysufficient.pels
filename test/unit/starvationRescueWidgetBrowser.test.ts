@@ -179,7 +179,7 @@ describe('starvation rescue widget browser', () => {
     // Budget row: 42 min ⇒ danger tone, offers a rescue button, no muted note.
     expect(budgetRow.dataset.tone).toBe('danger');
     expect((budgetRow.querySelector('[data-device-chip]') as HTMLElement).textContent).toBe('Held back · 42 min');
-    expect((budgetRow.querySelector('[data-device-subtext]') as HTMLElement).textContent).toBe('Held below 65° by today’s budget');
+    expect((budgetRow.querySelector('[data-device-subtext]') as HTMLElement).textContent).toBe('Held below 65 °C by today’s budget');
     const budgetBtn = budgetRow.querySelector('[data-rescue-button]') as HTMLButtonElement;
     expect(budgetBtn.hidden).toBe(false);
     expect(budgetBtn.dataset.deviceId).toBe('budget-1');

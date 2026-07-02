@@ -309,7 +309,7 @@ describe('DeadlinesList', () => {
     });
     const hero = mount.querySelector('.deadlines-list-hero');
     expect(hero).not.toBeNull();
-    expect(hero?.querySelector('.plan-hero__headline')?.textContent).toBe('1 deadline on track.');
+    expect(hero?.querySelector('.plan-hero__headline')?.textContent).toBe('1 smart task on track');
     expect(hero?.querySelector('.plan-hero__subline')?.textContent).toContain('Connected 300');
   });
 
@@ -324,7 +324,7 @@ describe('DeadlinesList', () => {
     });
     const hero = mount.querySelector('.deadlines-list-hero');
     expect(hero?.getAttribute('data-tone')).toBe('warn');
-    expect(hero?.querySelector('.plan-hero__headline')?.textContent).toBe('1 of 2 deadlines at risk.');
+    expect(hero?.querySelector('.plan-hero__headline')?.textContent).toBe('1 of 2 smart tasks at risk');
   });
 
   it('does not render the populated-state hero on the empty state', () => {
@@ -380,9 +380,11 @@ describe('DeadlinesList', () => {
     expect(button).not.toBeNull();
     // Press feedback is a Material ripple, not a standing background.
     expect(button?.querySelector('md-ripple')).not.toBeNull();
-    // Chevron stays as the only tappability cue.
+    // Chevron stays as the only tappability cue — a real Material chevron
+    // (inline SVG), matching the list cards, not a raw glyph.
     const chevron = button?.querySelector('.deadlines-list-hero__nav-target-chevron');
-    expect(chevron?.textContent).toBe('›');
+    expect(chevron).not.toBeNull();
+    expect(chevron?.tagName.toLowerCase()).toBe('svg');
     expect(chevron?.getAttribute('aria-hidden')).toBe('true');
     // Subline copy renders as plain text inside the button.
     expect(button?.textContent).toContain('Connected 300');

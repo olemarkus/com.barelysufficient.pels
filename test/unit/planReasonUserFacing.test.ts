@@ -271,43 +271,43 @@ describe('resolveReportedLoadAfterPauseText', () => {
       ? detailRaw.trim()
       : null;
     return detail
-      ? `Still reporting ${measured} kW after pause — ${detail}`
-      : `Still reporting ${measured} kW after pause`;
+      ? `Still drawing ${measured} kW — ${detail}`
+      : `Still drawing ${measured} kW — this still counts toward your usage`;
   };
 
-  it('renders the plain "Still reporting … kW after pause" sentence without a detail', () => {
+  it('renders the plain "Still drawing … kW" sentence with the usage-consequence tail', () => {
     expect(resolveReportedLoadAfterPauseText({ measuredPowerKw: 1.234, detail: null }))
-      .toBe('Still reporting 1.2 kW after pause');
+      .toBe('Still drawing 1.2 kW — this still counts toward your usage');
   });
 
   it('appends the trimmed detail with an em-dash separator when present', () => {
     expect(resolveReportedLoadAfterPauseText({ measuredPowerKw: 7.2, detail: '  EV charger ignored pause  ' }))
-      .toBe('Still reporting 7.2 kW after pause — EV charger ignored pause');
+      .toBe('Still drawing 7.2 kW — EV charger ignored pause');
   });
 
   it('drops the phantom "after pause" framing in simulation mode (dryRun)', () => {
     // Simulation never actually paused the device, so the real-mode "after
     // pause" wording would assert an action that did not happen.
     expect(resolveReportedLoadAfterPauseText({ measuredPowerKw: 2.1, detail: null, dryRun: true }))
-      .toBe('Would still draw 2.1 kW');
+      .toBe('Would still draw 2.1 kW — this still counts toward your usage');
     expect(resolveReportedLoadAfterPauseText({ measuredPowerKw: 2.1, detail: 'high household load', dryRun: true }))
       .toBe('Would still draw 2.1 kW — high household load');
   });
 
   it('falls back to "–" when measuredPowerKw is missing or non-finite', () => {
     expect(resolveReportedLoadAfterPauseText({ measuredPowerKw: undefined, detail: null }))
-      .toBe('Still reporting – kW after pause');
+      .toBe('Still drawing – kW — this still counts toward your usage');
     expect(resolveReportedLoadAfterPauseText({ measuredPowerKw: Number.NaN, detail: null }))
-      .toBe('Still reporting – kW after pause');
+      .toBe('Still drawing – kW — this still counts toward your usage');
   });
 
   it('drops non-string and empty detail values silently', () => {
     expect(resolveReportedLoadAfterPauseText({ measuredPowerKw: 2, detail: undefined }))
-      .toBe('Still reporting 2.0 kW after pause');
+      .toBe('Still drawing 2.0 kW — this still counts toward your usage');
     expect(resolveReportedLoadAfterPauseText({ measuredPowerKw: 2, detail: '   ' }))
-      .toBe('Still reporting 2.0 kW after pause');
+      .toBe('Still drawing 2.0 kW — this still counts toward your usage');
     expect(resolveReportedLoadAfterPauseText({ measuredPowerKw: 2, detail: 42 }))
-      .toBe('Still reporting 2.0 kW after pause');
+      .toBe('Still drawing 2.0 kW — this still counts toward your usage');
   });
 
   it('matches the pre-extraction inline formatter character-for-character', () => {

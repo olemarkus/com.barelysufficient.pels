@@ -1,4 +1,5 @@
 import {
+  formatDayFirstInTimeZone,
   getDateKeyInTimeZone,
   getDateKeyStartMs,
   getMonthStartInTimeZone,
@@ -140,9 +141,19 @@ export const getHourlyPatternMeta = (buckets: Record<string, number> | undefined
   const minTs = Math.min(...times);
   const maxTs = Math.max(...times);
   const days = Math.max(1, Math.round((maxTs - minTs) / (24 * 60 * 60 * 1000)) + 1);
-  const start = getDateKeyInTimeZone(new Date(minTs), timeZone);
-  const end = getDateKeyInTimeZone(new Date(maxTs), timeZone);
-  return `Average kWh per hour based on ${days} days (${start}–${end} ${timeZone}).`;
+  // Day-first, human range with no ISO date or raw IANA zone — "1–15 May" when
+  // the span is within one month, "28 Apr–15 May" across months. Uses the
+  // shared `formatDayFirstInTimeZone` grammar (English-pinned) so CI (en-US
+  // default) keeps day-before-month.
+  const startDate = new Date(minTs);
+  const endDate = new Date(maxTs);
+  const dayOnly = (date: Date) => formatDayFirstInTimeZone(date, { day: 'numeric' }, timeZone);
+  const dayMonth = (date: Date) => formatDayFirstInTimeZone(date, { day: 'numeric', month: 'short' }, timeZone);
+  const monthOnly = (date: Date) => formatDayFirstInTimeZone(date, { month: 'short' }, timeZone);
+  const range = monthOnly(startDate) === monthOnly(endDate)
+    ? `${dayOnly(startDate)}–${dayMonth(endDate)}`
+    : `${dayMonth(startDate)}–${dayMonth(endDate)}`;
+  return `Average kWh per hour based on the last ${days} days (${range}).`;
 };
 
 export const getPowerTimeContext = (now: Date, timeZone: string) => {

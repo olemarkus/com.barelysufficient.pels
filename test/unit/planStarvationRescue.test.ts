@@ -60,8 +60,8 @@ describe('starvation-rescue shared helpers', () => {
     });
 
     it('names the held-below target on budget rows when known (felt symptom)', () => {
-      expect(resolveStarvationRowSubtext('budget', 65)).toBe('Held below 65° by today’s budget');
-      expect(resolveStarvationRowSubtext('budget', 21.5)).toBe('Held below 21.5° by today’s budget');
+      expect(resolveStarvationRowSubtext('budget', 65)).toBe('Held below 65 °C by today’s budget');
+      expect(resolveStarvationRowSubtext('budget', 21.5)).toBe('Held below 21.5 °C by today’s budget');
       // Non-finite / null target drops the felt-symptom clause.
       expect(resolveStarvationRowSubtext('budget', null)).toBe('Held by today’s budget');
       expect(resolveStarvationRowSubtext('budget', Number.NaN)).toBe('Held by today’s budget');

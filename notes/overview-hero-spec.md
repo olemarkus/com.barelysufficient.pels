@@ -184,7 +184,7 @@ Energy used this hour
 1.0 of 5.0 kWh used
 projected 4.4 kWh
 [ bar ]
-Cheapest hour ahead: 02:00, 18 øre/kWh.
+Cheapest hour ahead: 02:00, 0.18 kr/kWh.
 ```
 
 Projected over budget:
@@ -212,7 +212,10 @@ Subtractions (v2.7.3 loveable batch):
 Additions (v2.7.3 loveable batch):
 - An *anticipation subline* renders beneath the energy bar surfacing the
   cheapest upcoming hour from the price horizon, e.g.
-  `Cheapest hour ahead: 02:00, 18 øre/kWh.`. It is suppressed when no
+  `Cheapest hour ahead: 02:00, 0.18 kr/kWh.`. The magnitude is rendered via the
+  shared `CostDisplay` divisor (øre → kr, ÷100), matching the smart-task and
+  Budget surfaces so the same price never reads as øre on one tab and kr on the
+  next. It is suppressed when no
   upcoming price data exists or when the payload is stale (latest entry
   more than 6h in the past). The helper
   (`formatCheapestUpcomingHour`) lives in shared-domain so the runtime

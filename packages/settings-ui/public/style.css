@@ -7002,6 +7002,11 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   color: var(--muted);
   font-size: var(--font-size-md);
   line-height: 1;
+  /* Real Material chevron (SVG at 1em) rather than a raw glyph, matching the
+     list cards. Center it against the (possibly multi-line) subline text and
+     keep it from shrinking so it always terminates the tappable row. */
+  align-self: center;
+  flex-shrink: 0;
 }
 
 .deadline-list {

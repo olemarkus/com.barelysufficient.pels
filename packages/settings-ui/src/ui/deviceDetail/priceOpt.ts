@@ -31,7 +31,10 @@ const parsePriceDeltaInput = (value: string | undefined, fallback: number): numb
 const readPriceOptInputs = (): { enabled: boolean; cheapDelta: number; expensiveDelta: number } => ({
   enabled: deviceDetailPriceOpt?.selected || false,
   cheapDelta: parsePriceDeltaInput(deviceDetailCheapDelta?.value, 5),
-  expensiveDelta: parsePriceDeltaInput(deviceDetailExpensiveDelta?.value, -5),
+  // The field shows the reduction as a positive magnitude ("lowers the target
+  // by this much"); the negative sign is applied on the way in, so a "reduction"
+  // field never displays a negative number.
+  expensiveDelta: -Math.abs(parsePriceDeltaInput(deviceDetailExpensiveDelta?.value, 5)),
 });
 
 export const setDeviceDetailDeltaValues = (deviceId: string) => {
@@ -40,7 +43,9 @@ export const setDeviceDetailDeltaValues = (deviceId: string) => {
     deviceDetailCheapDelta.value = (priceConfig?.cheapDelta ?? 5).toString();
   }
   if (deviceDetailExpensiveDelta) {
-    deviceDetailExpensiveDelta.value = (priceConfig?.expensiveDelta ?? -5).toString();
+    // Store keeps the signed value (negative = lowers the target); the field
+    // renders its magnitude.
+    deviceDetailExpensiveDelta.value = Math.abs(priceConfig?.expensiveDelta ?? -5).toString();
   }
 };
 

@@ -419,6 +419,12 @@ export type CheapestUpcomingHourInput = {
   // are both eligible without dragging in next-week noise.
   horizonMs?: number;
   unitLabel: string;
+  // Divisor to scale a raw per-hour price into the display unit (øre → kr ÷ 100),
+  // matching the CostDisplay the smart-task and Budget price surfaces use, so
+  // the Overview subline reads `0.32 kr/kWh` — the same unit as those adjacent
+  // tabs — instead of a lone `32 øre/kWh`. Defaults to 1 (Flow/Homey neutral
+  // units, which are already in display scale).
+  divisor?: number;
   // Locale-formatted clock time renderer (`02:00`). Pulled out for testability
   // — the production caller passes the settings-UI locale formatter.
   formatClockTime: (timestampMs: number) => string;
@@ -427,9 +433,10 @@ export type CheapestUpcomingHourInput = {
 const DEFAULT_HORIZON_MS = 18 * 60 * 60 * 1000;
 
 const formatPriceForSubline = (price: number, unitLabel: string): string => {
-  // Norwegian øre values are integer-friendly (whole-number øre); everything
-  // else (e.g. "kr/kWh") gets two decimals to match the standard pricing
-  // convention used across the rest of the UI — "1.20 kr/kWh".
+  // Whole-number øre stay integer-friendly; everything else (the scaled
+  // "kr/kWh" the caller now passes for Nordpool, or a Flow/Homey unit) gets two
+  // decimals to match the standard pricing convention used across the rest of
+  // the UI — "0.32 kr/kWh".
   if (unitLabel.toLowerCase().startsWith('øre')) {
     return `${Math.round(price)} ${unitLabel}`;
   }
@@ -449,6 +456,7 @@ export const formatCheapestUpcomingHour = (
     hour.price < best.price ? hour : best
   ));
   const clockText = input.formatClockTime(cheapest.startsAtMs);
-  const priceText = formatPriceForSubline(cheapest.price, input.unitLabel);
+  const scaledPrice = cheapest.price / Math.max(1, input.divisor ?? 1);
+  const priceText = formatPriceForSubline(scaledPrice, input.unitLabel);
   return `Cheapest hour ahead: ${clockText}, ${priceText}.`;
 };

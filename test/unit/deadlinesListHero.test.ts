@@ -40,13 +40,13 @@ describe('resolveDeadlinesListHero', () => {
       formatTime,
     });
     expect(hero).not.toBeNull();
-    expect(hero?.headline).toBe('3 deadlines on track.');
+    expect(hero?.headline).toBe('3 smart tasks on track');
     expect(hero?.tone).toBe('good');
   });
 
   it('uses the singular form when exactly one card is on track', () => {
     const hero = resolveDeadlinesListHero({ cards: [buildCard()], formatTime });
-    expect(hero?.headline).toBe('1 deadline on track.');
+    expect(hero?.headline).toBe('1 smart task on track');
   });
 
   it('names the soonest deadline with its kind verb and first-action time on the subline', () => {
@@ -81,7 +81,7 @@ describe('resolveDeadlinesListHero', () => {
       ],
       formatTime,
     });
-    expect(hero?.headline).toBe('1 of 2 deadlines at risk.');
+    expect(hero?.headline).toBe('1 of 2 smart tasks at risk');
     expect(hero?.tone).toBe('warn');
   });
 
@@ -90,7 +90,7 @@ describe('resolveDeadlinesListHero', () => {
       cards: [buildCard({ deviceName: 'Boiler', kind: 'temperature', statusId: 'at_risk' })],
       formatTime,
     });
-    expect(hero?.headline).toBe('1 deadline at risk.');
+    expect(hero?.headline).toBe('1 smart task at risk');
   });
 
   it('counts multiple at-risk cards (excluding healthy siblings) with mixed-cohort framing', () => {
@@ -104,11 +104,11 @@ describe('resolveDeadlinesListHero', () => {
       ],
       formatTime,
     });
-    expect(hero?.headline).toBe('2 of 3 deadlines at risk.');
+    expect(hero?.headline).toBe('2 of 3 smart tasks at risk');
   });
 
   it('drops the mixed-cohort framing when every card is at risk', () => {
-    // All cards at risk — "3 of 3 deadlines at risk." would read mechanical;
+    // All cards at risk — "3 of 3 smart tasks at risk" would read mechanical;
     // keep the bare "N deadlines at risk." form so the headline stays clean.
     const hero = resolveDeadlinesListHero({
       cards: [
@@ -118,7 +118,7 @@ describe('resolveDeadlinesListHero', () => {
       ],
       formatTime,
     });
-    expect(hero?.headline).toBe('3 deadlines at risk.');
+    expect(hero?.headline).toBe('3 smart tasks at risk');
   });
 
   it('escalates tone to alert when any at-risk card cannot finish', () => {
@@ -199,7 +199,7 @@ describe('resolveDeadlinesListHero', () => {
       cards: [buildCard({ deviceName: 'Tesla', statusId: 'paused_unplugged', deadlineAtMs: T0 })],
       formatTime,
     });
-    expect(hero?.headline).toBe('1 deadline paused.');
+    expect(hero?.headline).toBe('1 smart task paused');
     expect(hero?.tone).toBe('warn');
     expect(hero?.subline).toBe('Tesla due 06:30 — car unplugged.');
   });
@@ -212,7 +212,7 @@ describe('resolveDeadlinesListHero', () => {
       cards: [buildCard({ deviceName: 'Tesla', statusId: 'paused_not_resumable', deadlineAtMs: T0 })],
       formatTime,
     });
-    expect(hero?.headline).toBe('1 deadline paused.');
+    expect(hero?.headline).toBe('1 smart task paused');
     expect(hero?.tone).toBe('warn');
     expect(hero?.subline).toBe('Tesla due 06:30 — charging won’t resume.');
   });
@@ -240,7 +240,7 @@ describe('resolveDeadlinesListHero', () => {
       ],
       formatTime,
     });
-    expect(hero?.headline).toBe('1 of 2 deadlines paused.');
+    expect(hero?.headline).toBe('1 of 2 smart tasks paused');
     expect(hero?.tone).toBe('warn');
     expect(hero?.subline).toBe('Tesla due 06:30 — car unplugged.');
     expect(hero?.sublineTarget).toEqual({ deviceId: 'dev_paused' });
@@ -268,7 +268,7 @@ describe('resolveDeadlinesListHero', () => {
       ],
       formatTime,
     });
-    expect(hero?.headline).toBe('1 of 2 deadlines at risk.');
+    expect(hero?.headline).toBe('1 of 2 smart tasks at risk');
     expect(hero?.tone).toBe('warn');
     expect(hero?.sublineTarget).toEqual({ deviceId: 'dev_risk' });
   });
@@ -330,7 +330,7 @@ describe('resolveDeadlinesListHero', () => {
       ],
       formatTime,
     });
-    expect(hero?.headline).toBe('1 on track, 1 planning.');
+    expect(hero?.headline).toBe('1 on track, 1 planning');
     expect(hero?.tone).toBe('good');
     // Subline names the soonest deadline across the whole list (the on-track
     // Tesla here), not just the soonest of any one bucket — keeps one
@@ -355,7 +355,7 @@ describe('resolveDeadlinesListHero', () => {
       ],
       formatTime,
     });
-    expect(hero?.headline).toBe('1 of 2 deadlines at risk.');
+    expect(hero?.headline).toBe('1 of 2 smart tasks at risk');
     expect(hero?.tone).toBe('warn');
     expect(hero?.sublineTarget).toEqual({ deviceId: 'dev_risk' });
   });
@@ -376,7 +376,7 @@ describe('resolveDeadlinesListHero', () => {
       ],
       formatTime,
     });
-    expect(hero?.headline).toBe('1 of 2 deadlines at risk.');
+    expect(hero?.headline).toBe('1 of 2 smart tasks at risk');
     expect(hero?.tone).toBe('alert');
     expect(hero?.subline).toBe('Boiler due 07:30 — cannot finish in time.');
     expect(hero?.sublineTarget).toEqual({ deviceId: 'dev_cannot' });
@@ -398,7 +398,7 @@ describe('resolveDeadlinesListHero', () => {
     });
     // Clause order is fixed: on-track → pending → satisfied, regardless of
     // input order.
-    expect(hero?.headline).toBe('1 on track, 1 complete.');
+    expect(hero?.headline).toBe('1 on track, 1 complete');
     expect(hero?.tone).toBe('good');
   });
 
@@ -416,7 +416,7 @@ describe('resolveDeadlinesListHero', () => {
       ],
       formatTime,
     });
-    expect(hero?.headline).toBe('Planning 2 deadlines.');
+    expect(hero?.headline).toBe('Planning 2 smart tasks');
     expect(hero?.tone).toBe('good');
   });
 
@@ -434,7 +434,7 @@ describe('resolveDeadlinesListHero', () => {
       ],
       formatTime,
     });
-    expect(hero?.headline).toBe('2 deadlines complete.');
+    expect(hero?.headline).toBe('2 smart tasks complete');
     expect(hero?.tone).toBe('good');
   });
 
@@ -455,7 +455,7 @@ describe('resolveDeadlinesListHero', () => {
       ],
       formatTime,
     });
-    expect(hero?.headline).toBe('1 planning, 1 complete.');
+    expect(hero?.headline).toBe('1 planning, 1 complete');
     expect(hero?.tone).toBe('good');
   });
 
@@ -480,7 +480,7 @@ describe('resolveDeadlinesListHero', () => {
       ],
       formatTime,
     });
-    expect(hero?.headline).toBe('1 on track, 1 planning, 1 complete.');
+    expect(hero?.headline).toBe('1 on track, 1 planning, 1 complete');
     expect(hero?.tone).toBe('good');
   });
 });

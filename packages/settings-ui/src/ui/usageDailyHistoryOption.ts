@@ -22,7 +22,7 @@ import {
   type ChartReadoutContent,
 } from './chartTooltipFormat.ts';
 import { prefersCoarsePointer } from './chartReadout.ts';
-import { formatDateInTimeZone, getDateKeyStartMs } from './timezone.ts';
+import { formatDayFirstInTimeZone, getDateKeyStartMs } from './timezone.ts';
 import type { DailyHistoryPoint, UsageStatsPalette } from './usageStatsChartsEcharts.ts';
 
 const BAR_RADIUS: [number, number, number, number] = [4, 4, 0, 0];
@@ -36,7 +36,7 @@ export const formatDateKeyLabel = (
   dateKey: string,
   options: Intl.DateTimeFormatOptions,
   timeZone: string,
-): string => formatDateInTimeZone(new Date(getDateKeyStartMs(dateKey, timeZone)), options, timeZone);
+): string => formatDayFirstInTimeZone(new Date(getDateKeyStartMs(dateKey, timeZone)), options, timeZone);
 
 // Honest over-budget encoding: each day splits into a mint base capped at the
 // budget plus an amber remainder for ONLY the portion above the line — a

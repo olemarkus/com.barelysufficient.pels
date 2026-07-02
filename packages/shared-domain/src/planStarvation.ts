@@ -199,19 +199,20 @@ export const resolveStarvationRowTone = (accumulatedMs: number): StarvationRescu
 );
 
 // Format a temperature target for inline copy: a whole number where possible
-// ("65°"), one decimal otherwise ("21.5°"). Mirrors the degree glyph the rest of
-// the UI uses. Null/non-finite targets drop the felt-symptom clause.
+// ("65 °C"), one decimal otherwise ("21.5 °C"). Uses the same trailing-zero-
+// stripped `°C` unit as the rest of the UI. Null/non-finite targets drop the
+// felt-symptom clause.
 const formatTargetDegrees = (targetC: number | null | undefined): string | null => {
   if (typeof targetC !== 'number' || !Number.isFinite(targetC)) return null;
   const rounded = Math.round(targetC * 10) / 10;
-  return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)}°`;
+  return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)} °C`;
 };
 
 // Plain-language subtext for a rescue-widget row, derived from the
 // producer-resolved flat `cause` (never re-derived from internals —
 // feedback_layering_resolution_in_producer). Budget rows get the actionable
 // felt-symptom line naming the target the budget is holding the device below
-// ("Held below 65° by today's budget") when the intended normal target is known,
+// ("Held below 65 °C by today's budget") when the intended normal target is known,
 // falling back to the plain budget line otherwise. Capacity reuses the canonical
 // "Waiting for available power" overview wording so the two surfaces agree; the
 // rest get honest informational copy.

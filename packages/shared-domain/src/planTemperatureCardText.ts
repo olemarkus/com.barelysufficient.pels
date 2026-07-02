@@ -86,12 +86,12 @@ export const resolveTemperatureLine = (device: TemperatureDevice): string | null
   const { currentTemperature, currentTarget, plannedTarget } = device;
   if (typeof plannedTarget !== 'number') return null;
   const targetText = typeof currentTarget === 'number' && currentTarget !== plannedTarget
-    ? `${currentTarget.toFixed(0)}° → ${plannedTarget.toFixed(0)}°`
-    : `${plannedTarget.toFixed(0)}°`;
+    ? `${currentTarget.toFixed(0)} °C → ${plannedTarget.toFixed(0)} °C`
+    : `${plannedTarget.toFixed(0)} °C`;
   // Middle-dot separator for the data line — em-dash is reserved for status
   // copy (see notes/ui-terminology.md:9). Source: TODO #8.
   if (typeof currentTemperature !== 'number') return `target ${targetText} · sensor unavailable`;
-  return `${currentTemperature.toFixed(1)}° · target ${targetText}`;
+  return `${currentTemperature.toFixed(1)} °C · target ${targetText}`;
 };
 
 // ─── Reason line ─────────────────────────────────────────────────────────────
