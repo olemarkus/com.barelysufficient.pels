@@ -6,7 +6,7 @@ import {
 import { supportsTemperatureDevice, type SettingsUiDeviceDetailItem } from '../deviceUtils.ts';
 import { logSettingsError } from '../logging.ts';
 import { savePriceOptimizationSettings } from '../priceOptimization.ts';
-import { resolveManagedState, state, defaultPriceOptimizationConfig } from '../state.ts';
+import { resolveHomeExhibitsSolar, resolveManagedState, state, defaultPriceOptimizationConfig } from '../state.ts';
 import { showToastError } from '../toast.ts';
 
 const ensurePriceOptimizationConfig = (deviceId: string) => {
@@ -44,11 +44,12 @@ export const updateSurplusSectionVisibility = (params: {
   const isManaged = params.currentDetailDeviceId ? resolveManagedState(params.currentDetailDeviceId) : false;
   // Field-only section, shown only when the "Use solar surplus" toggle (in the
   // Control section) is on — mirrors how "Price response" gates on its switch.
-  // Solar-only: gated on the home having a tracked solar/PV device, so it never appears
-  // in a home that does not export; and only on a managed temperature device (the only
+  // Solar-only: gated on the home exhibiting solar (a tracked solar/PV device OR
+  // material grid export from a meter-only PV inverter), so it never appears in a
+  // home that does not export; and only on a managed temperature device (the only
   // kind that self-consumes by raising a setpoint).
   deviceDetailSurplusSection.style.display
-    = state.hasManagedSolarDevice && supportsTemperatureDevice(device) && isManaged && deviceDetailSurplusOpt.selected
+    = resolveHomeExhibitsSolar() && supportsTemperatureDevice(device) && isManaged && deviceDetailSurplusOpt.selected
       ? 'block' : 'none';
 };
 

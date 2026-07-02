@@ -394,6 +394,7 @@ describe('settingsUiApi', () => {
         },
       ],
       hasManagedSolarDevice: false,
+      hasExhibitedExport: false,
     });
     expect(getSettingsUiPlanPayload({ homey: homey as never })).toEqual({
       plan: {
@@ -527,6 +528,47 @@ describe('settingsUiApi', () => {
       ],
     });
     expect(getSettingsUiDevicesPayload({ homey: homey as never }).hasManagedSolarDevice).toBe(false);
+  });
+
+  it('unlocks the surplus toggle for a meter-only PV home via hasExhibitedExport', () => {
+    // Meter-only PV: a string inverter reports export through Homey Energy but no
+    // `solarpanel` device exists, so `hasManagedSolarDevice` is false. The stable
+    // accumulated export-kWh signal broadens the "Use solar surplus" toggle gate
+    // to it — the surplus-absorb engine already works off whole-home net export.
+    const homey = createHomey({
+      settings: { power_source: 'homey_energy' },
+      latestDevicesOverride: [{ id: 'heater-1', name: 'Heater', deviceType: 'temperature' }],
+    });
+    (homey.app as { powerTracker: unknown }).powerTracker = {
+      exportDailyTotals: { '2026-02-01': 4.5 },
+    };
+    const payload = getSettingsUiDevicesPayload({ homey: homey as never });
+    expect(payload.hasManagedSolarDevice).toBe(false);
+    expect(payload.hasExhibitedExport).toBe(true);
+  });
+
+  it('keeps hasExhibitedExport false below the material floor and on the flow source', () => {
+    // A sub-kWh export blip stays under the material floor (no toggle flicker),
+    // and the flow source never exports (negative watts are rejected at the power
+    // boundary), so even a material export history there reads false — flow homes
+    // get no solar surfaces.
+    const tinyHomey = createHomey({
+      settings: { power_source: 'homey_energy' },
+      latestDevicesOverride: [{ id: 'heater-1', name: 'Heater', deviceType: 'temperature' }],
+    });
+    (tinyHomey.app as { powerTracker: unknown }).powerTracker = {
+      exportBuckets: { '2026-03-03T10:00:00.000Z': 0.2 },
+    };
+    expect(getSettingsUiDevicesPayload({ homey: tinyHomey as never }).hasExhibitedExport).toBe(false);
+
+    const flowHomey = createHomey({
+      settings: { power_source: 'flow' },
+      latestDevicesOverride: [{ id: 'heater-1', name: 'Heater', deviceType: 'temperature' }],
+    });
+    (flowHomey.app as { powerTracker: unknown }).powerTracker = {
+      exportDailyTotals: { '2026-02-01': 9.9 },
+    };
+    expect(getSettingsUiDevicesPayload({ homey: flowHomey as never }).hasExhibitedExport).toBe(false);
   });
 
   it('returns an empty diagnostics payload when the app has no diagnostics API yet', () => {

@@ -209,10 +209,14 @@ because it is the dominant acquisition driver in the markets PELS is expanding t
   knowledge bases (Frank, Zonneplan, Vandebron). NO/SE/DE: prosumer/plusskunde
   threads, Photovoltaikforum (DE, the deepest Eigenverbrauch/Autarkie culture),
   Home Assistant "PV excess / Überschussladen" projects.
-- **How they arrive.** Today, rarely via the Norwegian capacity-tariff funnel — and
-  PELS is currently **surplus-blind** (clamps net grid draw to ≥0), so it does not
-  yet win this click. This persona is the acquisition case the solar work must
-  unlock; until then, treat it as a forward-looking placeholder, not a live funnel.
+- **How they arrive.** Today, rarely via the Norwegian capacity-tariff funnel. PELS
+  is **no longer surplus-blind** — the first solar surfaces have shipped (it
+  observes production/export, accounts for self-consumption, nudges a heater to
+  absorb surplus, and prices export), so it now has a story for this click. What is
+  still missing for the *maximiser* framing ("use every watt", battery/inverter
+  control) keeps this an **emerging, partially-served** funnel rather than a fully
+  live one — lead acquisition copy with the self-consumption accounting + surplus
+  boost that actually ship, not an export-to-zero promise.
 
 ## The failure-driven arrival (cross-cutting)
 

@@ -365,4 +365,25 @@ describe('handleSchemeChange export transition (via priceConfig)', () => {
     // Toggle renders off → the fields are structurally absent.
     await vi.waitFor(() => expect(surface.querySelector('#electricity-prices-export-fixed')).toBeNull());
   });
+
+  const exportSection = (surface: HTMLElement) => surface.querySelector('#electricity-prices-export-section');
+
+  it('shows the export-price config section for a meter-only PV home even with export off', async () => {
+    // No managed solar device, export pricing not yet enabled — but the home
+    // exhibits material grid export, so the solar gate (resolveHomeExhibitsSolar)
+    // must surface the export-price config so the prosumer can set what they earn.
+    const { state } = await import('../src/ui/state.ts');
+    state.hasManagedSolarDevice = false;
+    state.hasExhibitedExport = true;
+    const surface = await bootPricesView({ price_scheme: 'norway', export_price_enabled: false });
+    expect(exportSection(surface)).not.toBeNull();
+  });
+
+  it('hides the export-price config section for a home with neither solar signal (export off)', async () => {
+    const { state } = await import('../src/ui/state.ts');
+    state.hasManagedSolarDevice = false;
+    state.hasExhibitedExport = false;
+    const surface = await bootPricesView({ price_scheme: 'norway', export_price_enabled: false });
+    expect(exportSection(surface)).toBeNull();
+  });
 });

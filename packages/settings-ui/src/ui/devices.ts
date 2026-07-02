@@ -34,6 +34,7 @@ import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDevic
 export const getTargetDevices = async (): Promise<SettingsUiDeviceListItem[]> => {
   const payload = await getApiReadModel<SettingsUiDevicesPayload>(SETTINGS_UI_DEVICES_PATH);
   state.hasManagedSolarDevice = payload?.hasManagedSolarDevice === true;
+  state.hasExhibitedExport = payload?.hasExhibitedExport === true;
   return Array.isArray(payload?.devices) ? payload.devices : [];
 };
 
@@ -350,8 +351,10 @@ export const refreshDevices = async (options?: { render?: boolean }) => {
       primeApiCache(SETTINGS_UI_DEVICES_PATH, {
         devices: response.devices,
         hasManagedSolarDevice: response.hasManagedSolarDevice === true,
+        hasExhibitedExport: response.hasExhibitedExport === true,
       });
       state.hasManagedSolarDevice = response.hasManagedSolarDevice === true;
+      state.hasExhibitedExport = response.hasExhibitedExport === true;
     } else {
       invalidateApiCache(SETTINGS_UI_DEVICES_PATH);
     }

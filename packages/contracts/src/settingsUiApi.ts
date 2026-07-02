@@ -219,6 +219,12 @@ export type SettingsUiDevicesPayload = {
   // gates the per-device "Use solar surplus" control, which is otherwise meaningless
   // (and misleading) in a home that does not export.
   hasManagedSolarDevice: boolean;
+  // True when the home has exhibited material accumulated grid export (a stable
+  // export-kWh signal), even without a role-detected solar device — the meter-only PV
+  // case (string inverter, no Homey solarpanel device). Broadens the "Use solar surplus"
+  // toggle gate so such homes, whose surplus-absorb engine already works off whole-home
+  // net export, also get the control. Always false on the flow power source.
+  hasExhibitedExport: boolean;
 };
 
 export type SettingsUiDeferredObjectivePlanHistoryPayload = {

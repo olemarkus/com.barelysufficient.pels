@@ -322,14 +322,19 @@ CI failure, so future field-move slices can't silently grow the debt.*
       the shared gap-reset (48 h) bounds the error and the card's copy claims "so far today", not
       exactness. Files: `packages/settings-ui/src/ui/solarStats.ts`,
       `packages/settings-ui/src/ui/solarUsageSection.ts`.
-- [ ] **Hide (or explain) the "Use solar surplus" device toggle on the flow power source.**
+- [ ] **Source-gate `/ui_devices.hasManagedSolarDevice` so the "Use solar surplus" toggle is inert-free on the flow power source.**
       *Persona:* flow-source owner with a Homey solar device who flips the surplus toggle.
       *Hypothesis:* the surplus-absorb engine keys off whole-home export (negative net); the flow
       power card (`report_power_usage`) rejects negative watts, so a flow home's net is never
       negative and the boost can NEVER engage — yet `/ui_devices.hasManagedSolarDevice` (which
-      gates the device-detail toggle) ignores the power source, offering an inert control. The
-      `/ui_power` copy of the flag is already source-gated (PR #1814 review round); align the
-      devices-payload gate the same way, or surface an explanatory note on the toggle.
+      still gates the device-detail toggle) ignores the power source, offering an inert control.
+      The `/ui_power` copy of the flag is source-gated (PR #1814), and the toggle's new
+      `hasExhibitedExport` OR-branch is source-gated too — but the `hasManagedSolarDevice` branch
+      in the devices payload is not, so a flow+solar-device home still shows the toggle. Fix:
+      source-gate that branch as well (now a one-liner — `getSettingsUiDevicesPayload` already
+      reads `power_source` for `hasExhibitedExport`), or surface an explanatory note on the
+      toggle. Do NOT source-gate the export-price *settings* section the same way: the fixed
+      feed-in amount is meaningful on flow (`docs/solar.md`), so its gate is deliberately separate.
       *Why:* an inert toggle silently breaks trust; found while gating the Solar card off flow
       homes. Files: `setup/settingsUiApi.ts` (`getSettingsUiDevicesPayload`),
       `packages/settings-ui/src/ui/deviceDetail/solarSurplus.ts`, `docs/solar.md`.
@@ -350,25 +355,15 @@ CI failure, so future field-move slices can't silently grow the debt.*
       7.6 kW`. Keep the live "Safe pace now" label for the Overview hero, which shows the actual
       binding value. Source: PR #1813 review gates (2026-07-02). [PR-7 legibility/copy]
 
-- [ ] **Solar export price — finish the remaining increments.** The export (feed-in) price model
-      shipped off by default (`export_price_enabled`): a per-hour `exportPrice` computed as VAT-grossed
-      spot × `export_spot_factor` + `export_fixed`, alongside a negative-safe price-level threshold fix.
-      Export pricing is now applied scheme-independently (decoupled from the import scheme): the Norway
-      scheme links to its isolatable spot, while the flow/Homey schemes (e.g. NL) get the fixed feed-in
-      tariff (a spot-linked config yields no export price there, since no spot is isolatable). The derived
-      `budgetPrice` ships and the planning consumers read it (`budgetPrice ?? total`): daily-budget
-      shaping/allocation, smart-task horizons, price levels (live + persisted flags), and cheapest-hours —
-      while money/receipt surfaces (`buckets.price`, Budget-chart cost lines, postmortem `priceValue`,
-      price-info strings) stay on `total`. Snapshot freshness is handled by the PV-forecast-refresh
-      completion hook (`PvForecastController.setOnRefreshed` → `updateCombinedPrices`, registered after
-      `wireBudgetPrice`). The settings-UI increment shipped too: the prosumer-gated "Export price"
-      section in ElectricityPricesView, the contracts `settingsKeys` mirror (+ bootstrap keys), the
-      Import/Export/Planning price vocabulary in `notes/ui-terminology.md`, and the Budget-tab
-      "Export price now" subline. Remaining: fold in the smart-task *preview* price reader, which still
-      sources `buckets.price` (total-based) from the daily-budget snapshot pending the preview migration,
-      so the preview curve/cost can disagree with the planning-price allocation for prosumers.
-      *Persona:* prosumer (Norwegian plusskunde, or NL post-saldering) self-consuming solar.
-      *P2:* consumers + settings UI ship; the preview-reader fold-in is the remaining work.
+- [ ] **Solar export price — migrate the smart-task *preview* price reader onto the planning price.**
+      The export-price model, the derived `budgetPrice`, its planning consumers (daily-budget
+      shaping/allocation, smart-task horizons, price levels, cheapest-hours — all `budgetPrice ?? total`,
+      money/receipt surfaces deliberately staying on `total`), the export-price settings section, and
+      the Budget-tab "Export price now" subline all SHIPPED. The one consumer left on the import price is
+      the smart-task **preview** reader: it still sources `buckets.price` (total-based) from the
+      daily-budget snapshot, so the preview curve/cost can disagree with the planning-price allocation
+      for prosumers. Fold it onto the planning price (matching the horizon allocator).
+      *Persona:* prosumer (Norwegian plusskunde, or NL post-saldering) self-consuming solar. *P2.*
 
 - [ ] **Planning price — three deliberate exclusions to revisit.** (1) The `price_lowest_before` /
       `price_lowest_today` flow cards and their 30 s trigger checker

@@ -29,6 +29,7 @@ import {
 } from '../packages/shared-domain/src/starvationRescueShared';
 import { formatSmartTaskDeadlineLong } from '../packages/shared-domain/src/smartTaskDeadlineFormat';
 import { scheduledHoursIncludeCurrentHour } from '../packages/shared-domain/src/planStarvation';
+import { hasMaterialExhibitedExport } from '../packages/shared-domain/src/solar/exhibitedExport';
 import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../lib/utils/settingsUiBootstrapKeys';
 import { DEFERRED_OBJECTIVES_SETTINGS } from '../lib/utils/settingsKeys';
 import { readAllObjectives } from '../lib/objectives/deferredObjectives/objectiveStore';
@@ -228,6 +229,8 @@ export const buildSettingsUiBootstrap = async ({ homey }: ApiContext): Promise<S
 
 export const getSettingsUiDevicesPayload = ({ homey }: ApiContext): SettingsUiDevicesPayload => {
   const candidates = getRawSettingsUiDeviceCandidates({ homey });
+  const tracker = getPowerTrackerForUiFromApp(homey)
+    ?? (homey.settings.get('power_tracker_state') as PowerTrackerState | null);
   return {
     // Auto-tracked observe-only role devices are force-managed in the backend snapshot for
     // telemetry, but the user never opted into managing them and cannot control them — they
@@ -239,6 +242,16 @@ export const getSettingsUiDevicesPayload = ({ homey }: ApiContext): SettingsUiDe
     // is the only home-level signal the settings UI gets that the home has solar. The
     // normalized class-key for any role-detected PV is 'solarpanel' (`resolveDeviceClassKey`).
     hasManagedSolarDevice: candidates.some((device) => device.deviceClass === 'solarpanel'),
+    // Meter-only PV homes (a string inverter with no Homey solarpanel device) get no
+    // `hasManagedSolarDevice` signal, yet the surplus-absorb engine keys off whole-home net
+    // export, which they DO exhibit. Broaden the "Use solar surplus" toggle gate to them via a
+    // stable, accumulated export-kWh signal. Source-gated to homey_energy (belt-and-suspenders:
+    // the flow power boundary rejects negative watts, so a flow home's export families are
+    // always empty anyway — this branch is always false on flow). Only `hasExhibitedExport`
+    // is source-gated; `hasManagedSolarDevice` above is not, so a flow home WITH a role-detected
+    // solarpanel device still gets solar surfaces via that flag.
+    hasExhibitedExport: normalizePowerSource(homey.settings.get('power_source')) === 'homey_energy'
+      && hasMaterialExhibitedExport(tracker && typeof tracker === 'object' ? tracker : null),
   };
 };
 

@@ -33,7 +33,7 @@ In Norway, exported solar still earns roughly the spot price, so self-consumptio
 
 ### Use solar surplus to heat your home
 
-On a managed heating device you can turn on **"Use solar surplus"** (the toggle appears once a solar device is present). When you are exporting enough to cover that device's own draw, PELS raises its target by the **"Solar-surplus boost"** amount (in °C, default +2), so the surplus warms your home or water instead of going to the grid. A small or short-lived export may not be enough to engage it.
+On a managed heating device you can turn on **"Use solar surplus"** (the toggle appears once PELS can see your solar — either a solar device reports production, or your meter has shown solar export, which covers a string inverter with no separate solar device). When you are exporting enough to cover that device's own draw, PELS raises its target by the **"Solar-surplus boost"** amount (in °C, default +2), so the surplus warms your home or water instead of going to the grid. A small or short-lived export may not be enough to engage it.
 
 ![The "Use solar surplus" toggle in a managed device's detail page](/screenshots/device-detail/solar-surplus-toggle.png)
 *Figure 1. Turn on "Use solar surplus" on a managed heating device.*

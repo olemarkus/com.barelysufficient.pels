@@ -55,8 +55,9 @@ data. So: a **validated** need is an untrimmable spec; a **proto** need is an
 untrimmable *hypothesis* that still gates features but is itself flagged for
 validation. Until we run primary research, treat every need below as proto unless
 marked otherwise. **Validation trigger:** real user interviews / support-ticket
-coding / churn analysis — and refresh on each new-market launch (NL/DE/SE) and
-when solar ships.
+coding / churn analysis — and refresh on each new-market launch (NL/DE/SE) and as
+the solar features expand (the first solar surfaces have now shipped; the Prosumer
+persona in particular is due primary-research validation now that it has surfaces).
 
 ---
 
@@ -210,7 +211,7 @@ tolerance; cares about øre/kWh and the capacity-tier penalty equally.
 
 ---
 
-### 4. Prosumer — *Autonomy* *(emerging — gate on solar shipping)*
+### 4. Prosumer — *Autonomy* *(emerging — first solar surfaces shipped)*
 
 **Disposition:** varies; **differentiated by ASSET, not disposition.** Owns (or is
 adding) solar PV and wants to *self-consume* their own production rather than
@@ -218,24 +219,31 @@ export it for little money.
 **Dominant job:** maximize self-consumption — a genuinely *distinct* goal (PV
 flips the objective from "minimize grid draw under a cap" to "soak up my own
 surplus"), which is why it earns its own persona once solar lands rather than
-folding into Cost/Climate. Until then it is a **named placeholder**, not a
-shipped target.
-**Signature:** PV (no battery in v1), EV + heat pump + VVB as surplus sinks; cares
-about self-consumption rate as the headline KPI.
+folding into Cost/Climate. The first solar surfaces have now **shipped** (see the
+Today column below), so this is no longer a pure placeholder — but the headline
+*self-consumption maximiser* (export-to-zero, battery/inverter control) is still
+roadmap.
+**Signature:** PV (no battery control in v1 — a battery is observed read-only),
+EV + heat pump + VVB as surplus sinks; cares about self-consumption rate as the
+headline KPI.
 **Absorbs:** new — the market signal behind the solar direction. Strongest in
 NL (net-metering phase-out) and DE; nascent in NO.
 
 | Surface | Need (the spec) | Today |
 |---|---|---|
-| Overview | Self-consumption rate + "surplus going to the EV/tank now." | ○ **gap** — PELS is surplus-blind today (clamps net to ≥0). |
-| Budget | Solar-aware budget (own production isn't "spend"). | ○ **gap** |
-| Usage | kWh self-consumed vs exported. | ○ **gap** |
-| Smart tasks | "Charge from your own surplus by deadline." | ○ **gap** |
-| Settings | PV/inverter source + self-consume-vs-price honesty when they conflict. | ○ **gap** |
+| Overview | Self-consumption rate + "surplus going to the EV/tank now." | ◐ — the "Solar now" hero subline shows live production split (`3.2 kW — 1.1 kW at home, 2.1 kW exported`); no self-consumption-*rate* figure on the hero yet. |
+| Budget | Solar-aware budget (own production isn't "spend"). | ✅ — net-import budget, `Before solar:` split, `Export price now` subline, and planning-price scheduling that steers flexible load into sunny hours. |
+| Usage | kWh self-consumed vs exported. | ✅ — the Solar card shows Produced · Used at home (kWh + %) · Exported, plus `Grid cost avoided` / `Earned from export` (today-only). |
+| Smart tasks | "Charge from your own surplus by deadline." | ◐ — the planning price steers deadline EV/heat load into surplus hours; no dedicated "surplus-only" task, and the smart-task *preview* curve still reads the import price (migration pending). |
+| Settings | PV/inverter source + self-consume-vs-price honesty when they conflict. | ◐ — export-price config (share % / fixed) + the `using your solar` reason line + surplus-outranks-price honesty all ship; the inverter/battery stay read-only (auto-detected, not a source picker). |
 
-> Keep this persona in the doc as the **goal** the solar work serves, but do not
-> let `pels-ux-fit` grade surfaces against it until the feature ships. Its needs
-> are the spec for solar; its "Today" is uniformly a gap by design.
+> The first solar surfaces have shipped, so `pels-ux-fit` **may** now grade the
+> solar surfaces (Usage Solar card, Overview "Solar now" subline, per-device
+> "Use solar surplus" control, export-price settings) against this persona.
+> **Still roadmap** (keep as untrimmed needs, do not grade as served): the
+> export-to-zero self-consumption maximiser, a self-consumption-rate **KPI**
+> surfaced as a headline number, month-by-month solar-money history, and any
+> battery/inverter **control** (battery is observe-only by design).
 
 ---
 
@@ -321,7 +329,11 @@ persona ordering. P0/P1 weight goes to the highest-emotion, least-served cells
 3. **Overview avg-price / kWh-moved line** + **Budget money projection** (Optimiser). *P1.*
 4. **vs-no-PELS counterfactual** (Optimiser) — the credibility grail; ingredients exist. *P1/P2.*
 5. **Family modes / comfort-floor presets** (Set-and-forget). *P2.*
-6. **Solar self-consumption** (Prosumer) — the whole table; tracked by the solar direction. *roadmap.*
+6. **Solar self-consumption** (Prosumer) — the first surfaces shipped (Usage Solar
+   card, Overview "Solar now" subline, "Use solar surplus" boost, export-price
+   config + planning-price scheduling); the export-to-zero **maximiser**, a
+   self-consumption-rate KPI, month-money history, and battery/inverter control
+   remain. *roadmap (partially shipped).*
 
 ---
 
@@ -341,8 +353,11 @@ Failing *scenario* it must most withstand (a scenario, not a second persona):
 | Smart-task history detail | Optimiser | Failing (both) |
 | Settings | Orchestrator | Failing (recovering, via recourse deep-link) |
 
-*Prosumer is intentionally absent: it becomes a candidate primary for
-solar-specific surfaces once solar ships (see [§ persona 4](#4-prosumer--autonomy-emerging--gate-on-solar-shipping)).*
+*Prosumer is absent from the seven core surfaces above, but now that the first
+solar surfaces have shipped it is a candidate primary for the solar-specific
+surfaces (the Usage Solar card, the Overview "Solar now" subline, the per-device
+"Use solar surplus" control, and export-price settings) — see
+[§ persona 4](#4-prosumer--autonomy-emerging--first-solar-surfaces-shipped).*
 
 ---
 
@@ -355,8 +370,9 @@ layer that re-weights the same personas, never a parallel persona set.
 - **Norway / Sweden** — two-axis cost (spot price **+** effekttariff/effektabonnemang
   peak-shaving); Climate weak (clean grid); Orchestrator + Set-and-forget dominate.
 - **Netherlands** — the net-metering (salderingsregeling) phase-out flips
-  **self-consumption/autonomy** to the front and makes the surplus-blind framing a
-  poor fit; the Prosumer persona is most urgent here.
+  **self-consumption/autonomy** to the front; the Prosumer persona is most urgent
+  here, and the shipped solar surfaces (self-consumption accounting, the surplus
+  boost, configurable export pricing) speak directly to it.
 - **Germany** — §14a dimmable-loads mechanism; higher grid carbon means **Climate
   may re-weight up** enough to revisit its facet status (open question).
 

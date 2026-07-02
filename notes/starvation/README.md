@@ -64,6 +64,13 @@ objective-scoped: the smart-task `pause lower-priority devices` permission
 off, so a reserved task can start. It is opt-in per task, never an automatic planner
 decision from starvation detection, and stays within the hard cap.
 
+The **solar surplus-absorb** lift ("Use solar surplus") only ever *raises* a
+target, so it sits outside this note's below-target model entirely and is
+structurally starvation-safe (the fit-test keeps it net-neutral, so it neither
+starves the lifted device nor manufactures capacity/budget pressure on others).
+The full rationale lives in the sibling note
+[`surplus-absorb-safety.md`](surplus-absorb-safety.md).
+
 ## Scope
 
 Starvation applies only to devices that are formally eligible in the PELS device model.

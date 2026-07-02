@@ -1336,9 +1336,12 @@
     }),
     'GET /ui_devices': () => ({
       devices: settings.target_devices_snapshot,
-      // This fixture home has a tracked solar/PV device, so the per-device
+      // This fixture home has a tracked solar/PV device by default, so the per-device
       // "Use solar surplus" control is offered (see device-detail.spec surplus test).
-      hasManagedSolarDevice: true,
+      // Both solar signals are overridable via settings so a spec can seed the
+      // meter-only PV case (no tracked device, but exhibited grid export).
+      hasManagedSolarDevice: settings.ui_devices_has_managed_solar ?? true,
+      hasExhibitedExport: settings.ui_devices_has_exhibited_export ?? false,
     }),
     'GET /ui_plan': () => ({
       plan: buildPlanPayload(),
@@ -1364,7 +1367,8 @@
     'POST /log_homey_device': () => ({ ok: true }),
     'POST /ui_refresh_devices': () => ({
       devices: settings.target_devices_snapshot,
-      hasManagedSolarDevice: true,
+      hasManagedSolarDevice: settings.ui_devices_has_managed_solar ?? true,
+      hasExhibitedExport: settings.ui_devices_has_exhibited_export ?? false,
     }),
     'POST /ui_refresh_prices': () => buildPricesPayload(),
     'POST /ui_refresh_grid_tariff': () => buildPricesPayload(),

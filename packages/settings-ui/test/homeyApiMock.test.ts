@@ -96,7 +96,7 @@ describe('homeyApiMock', () => {
       const homey = createHomeyMock();
 
       await expect(callHomeyApi(homey, 'GET', SETTINGS_UI_DEVICES_PATH))
-        .resolves.toEqual({ devices: [], hasManagedSolarDevice: false });
+        .resolves.toEqual({ devices: [], hasManagedSolarDevice: false, hasExhibitedExport: false });
     });
 
     it('serves the explicit uiState.devices array from /ui_devices', async () => {
@@ -117,6 +117,7 @@ describe('homeyApiMock', () => {
           { id: 'dev-2', name: 'EV', targets: [], binaryControl: { on: false } },
         ],
         hasManagedSolarDevice: false,
+        hasExhibitedExport: false,
       });
     });
 
@@ -131,6 +132,7 @@ describe('homeyApiMock', () => {
         .resolves.toEqual({
           devices: [{ id: 'dev-1', name: 'Heater', targets: [], binaryControl: { on: true } }],
           hasManagedSolarDevice: false,
+          hasExhibitedExport: false,
         });
     });
 
@@ -149,6 +151,7 @@ describe('homeyApiMock', () => {
             { id: 'legacy-1', name: 'Legacy', targets: [], binaryControl: { on: true } },
           ],
           hasManagedSolarDevice: false,
+          hasExhibitedExport: false,
         });
     });
 
@@ -172,6 +175,7 @@ describe('homeyApiMock', () => {
             { id: 'served', name: 'Live', targets: [], binaryControl: { on: false } },
           ],
           hasManagedSolarDevice: false,
+          hasExhibitedExport: false,
         });
     });
   });
