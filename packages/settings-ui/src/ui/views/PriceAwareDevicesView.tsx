@@ -123,19 +123,19 @@ const RespondTogglesCard = ({
   enabled: boolean;
   onToggle: (val: boolean) => void;
 }) => (
-  <div class="field checkbox-field settings-form-card">
+  <label class="md-switch-row settings-form-card">
     <MdSwitch
       aria-label="Respond to prices"
       {...(enabled ? { selected: true } : {})}
       onChange={(e) => onToggle((e.currentTarget as SwitchElement).selected)}
     />
-    <span class="checkbox-field__content">
-      <span class="field__label pels-text-settings-label">Respond to prices</span>
+    <span class="md-switch-row__content">
+      <span class="md-switch-row__label pels-text-settings-label">Respond to prices</span>
       <small class="field__hint">
         When on, eligible devices boost during cheap hours and reduce during expensive hours.
       </small>
     </span>
-  </div>
+  </label>
 );
 
 const DeviceRow = ({

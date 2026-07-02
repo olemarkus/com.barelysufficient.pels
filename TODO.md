@@ -408,6 +408,36 @@ CI failure, so future field-move slices can't silently grow the debt.*
       Persona: Verifying owner glancing the list then opening the detail; hypothesis: two words for
       one state reads as a discrepancy. Source: PR #1821 review gates (2026-07-02). [legibility/copy]
 
+- [ ] **Segmented-selected uses full primary green instead of a tonal-selected container.** The
+      segmented control's selected segment fills with the full primary accent, louder than the new
+      tonal-selected identity the toggles/switches now share. Move it onto the same tonal-selected
+      container so the "selected" grammar reads the same across segmented, toggle, and switch.
+      Persona: Set-and-forget owner; pre-existing follow-up. Source: PR #1822 M3 review
+      (2026-07-02). [PR-6b control grammar]
+
+- [ ] **Devices disabled-pending vs off toggle-ring contrast is too subtle.** On the Devices
+      screen the outline ring of a disabled-pending toggle reads almost identically to a plain off
+      toggle, so a user can't tell "not available yet" from "available but off". Nudge the
+      disabled-pending treatment (opacity/tone) so the two states are distinguishable. Persona:
+      Set-and-forget owner; pre-existing. Source: PR #1822 M3 review (2026-07-02). [PR-6b control grammar]
+
+- [ ] **Modes screen states "Drag to reorder priorities" twice.** The priority-list field hint
+      ("Drag to reorder priorities (top = keep on longest)...") and the trailing "Tip: Drag to
+      reorder priorities (auto-saves)..." line duplicate the same instruction. Keep one, or split
+      the facts (how-to vs auto-save) without repeating the verb phrase. Copy only. Source: PR #1822
+      review (2026-07-02). [PR-6b copy]
+
+- [ ] **Terse "Planning" column header on the Devices screen.** The "Planning" column header is
+      jargon-adjacent and unclear about what it shows. Reword to something a Homey owner reads as
+      "what PELS will do" without planner-internal vocabulary. Copy only. Source: PR #1822 review
+      (2026-07-02). [PR-6b copy]
+
+- [ ] **User-added stepped step defaults to raw id "step_2", surfaced verbatim in copy.** A step
+      added in the device-detail stepped editor defaults to id `step_2`, which then shows literally
+      in user-facing copy like Set to step "step_2". De-jargon the default label (or format the id)
+      so users never see the internal `step_N` token. Copy / de-jargon. Source: PR #1822 review
+      (2026-07-02). [PR-8 de-jargon]
+
 - [ ] **Export scheme-change has no rollback when the export-disable write fails.** `applyExportSchemeChangePlan`
       (`packages/settings-ui/src/ui/exportPriceSettings.ts`) is called by `handleSchemeChange` AFTER the new
       `price_scheme` has already been persisted. When the plan is `disable_export` (a non-zero fixed export

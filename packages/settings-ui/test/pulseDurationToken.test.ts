@@ -20,17 +20,17 @@ import { describe, expect, it } from 'vitest';
  *      dictionary output from `tokens/component.json`).
  *   2. Every pulse-using `animation:` declaration in `public/style.css`
  *      consumes `var(--pels-motion-pulse-duration)` — one declaration per
- *      keyframe (`pulse`, `plan-stepped-direction-pulse`,
- *      `plan-stepped-pulse`, `plan-chip-building-pulse`).
+ *      keyframe (`pulse`, `plan-chip-building-pulse`).
  *   3. The previous bare-literal durations (1.4s / 1.5s / 1.6s) no longer
  *      appear on any pulse `animation:` line.
  *
- * The keyframe definitions themselves are intentionally NOT collapsed —
- * they encode meaningfully different visual effects (transform translateY
- * for the directional indicator vs. opacity-only for the loading notice,
- * stepped segment, and Building plan… chip, plus distinct opacity floors of
- * 0.6 vs. 0.45). The TODO ask was about the duration literals, not the
- * keyframe content.
+ * The `plan-stepped-direction-pulse` and `plan-stepped-pulse` keyframes were
+ * retired with the dead stepped/metric-anatomy CSS in the control-grammar card
+ * rework, so only the loading-notice `pulse` and the Building plan… chip
+ * `plan-chip-building-pulse` remain. The surviving keyframe definitions are
+ * intentionally NOT collapsed — they encode meaningfully different visual
+ * effects (opacity floors and offsets). The TODO ask was about the duration
+ * literals, not the keyframe content.
  * -------------------------------------------------------------------------- */
 
 const STYLE_CSS_PATH = path.join(__dirname, '..', 'public', 'style.css');
@@ -38,8 +38,6 @@ const TOKENS_CSS_PATH = path.join(__dirname, '..', 'dist', 'tokens.css');
 
 const EXPECTED_PULSE_KEYFRAMES: ReadonlyArray<string> = [
   'pulse',
-  'plan-stepped-direction-pulse',
-  'plan-stepped-pulse',
   'plan-chip-building-pulse',
 ];
 
@@ -68,7 +66,7 @@ describe('pulse duration token (--pels-motion-pulse-duration)', () => {
     const pulseAnimationLines = styleCss
       .split('\n')
       .filter((line) => /\banimation:\s*[a-z-]*pulse\b/iu.test(line));
-    // Exactly three call sites — one per keyframe — and all routed through
+    // Exactly one call site per surviving keyframe — and all routed through
     // the token. This guards against both new untracked pulse animations
     // and any regression that re-inlines a bare duration literal.
     expect(pulseAnimationLines).toHaveLength(EXPECTED_PULSE_KEYFRAMES.length);

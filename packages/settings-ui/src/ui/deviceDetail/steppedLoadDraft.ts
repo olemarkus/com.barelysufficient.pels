@@ -112,6 +112,40 @@ const collectSteppedLoadDraftFromDom = (): SteppedLoadProfile | null => {
   }) ?? null;
 };
 
+const steppedStepsSignature = (profile: SteppedLoadProfile): string => JSON.stringify(
+  sortSteppedLoadSteps(profile.steps).map((step) => [step.id.trim().toLowerCase(), step.planningPowerW]),
+);
+
+// The stepped editor is "dirty" when the on-screen rows differ from the saved
+// profile (or when the draft is incomplete — i.e. mid-edit). This gates the
+// Save/Undo actions so Save is inert until the user has actually changed something.
+const isSteppedDraftDirty = (device: SettingsUiDeviceDetailItem): boolean => {
+  const current = collectSteppedLoadDraftFromDom();
+  if (!current) return true;
+  const saved = resolveSavedSteppedLoadProfile(device) ?? createDefaultSteppedLoadProfile(device);
+  return steppedStepsSignature(current) !== steppedStepsSignature(saved);
+};
+
+// Muted trash icon at rest; the error tone only surfaces on hover/focus/press
+// (see `.detail-stepped-remove` in style.css) so a full profile is not a wall
+// of red "Remove" links.
+const buildSteppedRemoveButton = (params: {
+  stepId: string;
+  disabled: boolean;
+  onRemove: () => void;
+}): HTMLElement => {
+  const removeButton = document.createElement('md-icon-button') as HTMLElement & { disabled: boolean };
+  removeButton.classList.add('detail-stepped-remove');
+  removeButton.disabled = params.disabled;
+  removeButton.setAttribute('aria-label', `Remove step ${params.stepId}`);
+  const trashTemplate = document.getElementById('pels-icon-trash') as HTMLTemplateElement | null;
+  if (trashTemplate) {
+    removeButton.appendChild(trashTemplate.content.cloneNode(true));
+  }
+  removeButton.addEventListener('click', params.onRemove);
+  return removeButton;
+};
+
 const buildSteppedLoadStepRow = (params: {
   step: SteppedLoadProfile['steps'][number];
   onDraftChanged: () => void;
@@ -122,10 +156,15 @@ const buildSteppedLoadStepRow = (params: {
   row.dataset.stepRow = 'true';
   const disabled = params.disabled === true;
 
+  // Per-row field labels are dropped in favour of the shared column headers
+  // (`.detail-stepped-header`) so each row reads value-first. The step column
+  // uses a placeholder for the empty state; the planning column keeps its unit
+  // as a trailing in-field suffix (never doubled in a label).
   const idInput = document.createElement('md-filled-text-field') as HTMLElement & {
     value: string; disabled: boolean;
   };
-  idInput.setAttribute('label', 'Step');
+  idInput.setAttribute('placeholder', 'Step');
+  idInput.setAttribute('aria-label', 'Step');
   idInput.value = params.step.id;
   idInput.dataset.stepField = 'id';
   idInput.disabled = disabled;
@@ -133,7 +172,8 @@ const buildSteppedLoadStepRow = (params: {
   const planningInput = document.createElement('md-filled-text-field') as HTMLElement & {
     value: string; disabled: boolean;
   };
-  planningInput.setAttribute('label', 'Planning (W)');
+  planningInput.setAttribute('placeholder', 'Planning');
+  planningInput.setAttribute('aria-label', 'Planning power');
   planningInput.setAttribute('type', 'number');
   planningInput.setAttribute('step', '50');
   planningInput.setAttribute('min', '0');
@@ -145,14 +185,13 @@ const buildSteppedLoadStepRow = (params: {
 
   attachDraftSyncOnChange(params.onDraftChanged, idInput, planningInput);
 
-  const removeButton = document.createElement('md-text-button') as HTMLElement & { disabled: boolean };
-  removeButton.classList.add('md-text-button--destructive');
-  removeButton.textContent = 'Remove';
-  removeButton.disabled = disabled;
-  removeButton.setAttribute('aria-label', `Remove step ${params.step.id}`);
-  removeButton.addEventListener('click', () => {
-    row.remove();
-    params.onDraftChanged();
+  const removeButton = buildSteppedRemoveButton({
+    stepId: params.step.id,
+    disabled,
+    onRemove: () => {
+      row.remove();
+      params.onDraftChanged();
+    },
   });
 
   row.append(idInput, planningInput, removeButton);
@@ -222,7 +261,16 @@ export const renderSteppedLoadDraft = (device: SettingsUiDeviceDetailItem) => {
   }
 
   const nativeProfileLocked = isNativeSteppedLoadProfileActive(device);
-  setEditorDisabled(nativeProfileLocked);
+  // Add-step stays available while the profile is editable; Save/Undo gate on
+  // whether the draft actually differs from the saved profile so Save reads as
+  // tonal-and-inert until the user has made a real edit.
+  if (deviceDetailSteppedAddStep) deviceDetailSteppedAddStep.disabled = nativeProfileLocked;
+
+  const refreshEditorDirtyState = () => {
+    const dirty = !nativeProfileLocked && isSteppedDraftDirty(device);
+    if (deviceDetailSteppedReset) deviceDetailSteppedReset.disabled = !dirty;
+    if (deviceDetailSteppedSave) deviceDetailSteppedSave.disabled = !dirty;
+  };
 
   const syncSteppedLoadDraftState = () => {
     if (nativeProfileLocked) return;
@@ -231,6 +279,7 @@ export const renderSteppedLoadDraft = (device: SettingsUiDeviceDetailItem) => {
       ?? getDraftProfileFromCurrentDevice(device);
     setSteppedLoadDraft(device.id, profile);
     updateSetStepOptionLabel(device, profile);
+    refreshEditorDirtyState();
   };
 
   const profile = getDraftProfileFromCurrentDevice(device);
@@ -242,6 +291,7 @@ export const renderSteppedLoadDraft = (device: SettingsUiDeviceDetailItem) => {
     disabled: nativeProfileLocked,
   }));
   deviceDetailSteppedSteps.replaceChildren(...rows);
+  refreshEditorDirtyState();
 };
 
 // Drop the closing device's draft so its next open starts fresh from the persisted

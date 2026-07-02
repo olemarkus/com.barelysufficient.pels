@@ -11,10 +11,8 @@ import {
   priorityList,
   priorityEmpty,
   modeNewInput,
-  addModeButton,
-  deleteModeButton,
-  renameModeButton,
 } from './dom.ts';
+import { closeModeNameEditor, initModeEditor } from './modeEditor.ts';
 import { getSetting, setSetting } from './homey.ts';
 import {
   BUDGET_EXEMPT_DEVICES,
@@ -198,9 +196,10 @@ const buildModeTargetInput = (device: SettingsUiDeviceListItem, desired: number 
     tempInput.setAttribute('max', tempInput.max);
   }
   tempInput.inputMode = 'decimal';
-  tempInput.placeholder = 'Desired °C';
+  tempInput.placeholder = 'Desired';
   tempInput.setAttribute('inputmode', tempInput.inputMode);
   tempInput.setAttribute('placeholder', tempInput.placeholder);
+  tempInput.setAttribute('suffix-text', '°C');
   tempInput.value = desired === null ? '' : desired.toString();
   tempInput.dataset.deviceId = device.id;
   tempInput.className = 'mode-target-input';
@@ -498,7 +497,13 @@ const handleRenameMode = async () => {
 };
 
 export const initModeHandlers = () => {
+  initModeEditor({
+    addMode: handleAddMode,
+    renameMode: handleRenameMode,
+    deleteMode: handleDeleteMode,
+  });
   modeSelect?.addEventListener('change', () => {
+    closeModeNameEditor();
     setEditingMode(modeSelect.value || DEFAULT_MODE_NAME);
   });
   activeModeSelect?.addEventListener('change', async () => {
@@ -511,7 +516,4 @@ export const initModeHandlers = () => {
       // setActiveMode already logged and toasted
     }
   });
-  addModeButton?.addEventListener('click', handleAddMode);
-  deleteModeButton?.addEventListener('click', handleDeleteMode);
-  renameModeButton?.addEventListener('click', handleRenameMode);
 };

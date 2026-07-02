@@ -1,7 +1,6 @@
 import { MdElevation, MdRipple } from './materialWebJSX.tsx';
 import {
   formatStepDisplayLabel,
-  isSteppedTransit,
   resolveEvChargingStateLabel,
   resolveSteppedActiveStepId,
   resolveSteppedChip,
@@ -40,9 +39,7 @@ const resolveStateKind = (dev: PlanDeviceSnapshot): PlanStateKind => (
 // ─── Step rail ────────────────────────────────────────────────────────────────
 
 const StepRail = ({ dev, profile }: { dev: PlanDeviceSnapshot; profile: SteppedLoadProfile }) => {
-  const transit = isSteppedTransit(dev);
   const activeStepId = resolveSteppedActiveStepId(dev, profile);
-  const targetStepId = transit ? (dev.steppedLoad?.targetStepId ?? null) : null;
 
   const hasExplicitOff = profile.steps.some((s) => s.id.toLowerCase() === 'off');
   const hasBinaryOff = dev.currentState !== 'not_applicable';
@@ -51,41 +48,38 @@ const StepRail = ({ dev, profile }: { dev: PlanDeviceSnapshot; profile: SteppedL
     : [{ id: 'off', planningPowerW: 0 }, ...profile.steps];
   const n = steps.length;
   const normActive = activeStepId?.toLowerCase() ?? null;
-  const normTarget = targetStepId?.toLowerCase() ?? null;
   const activeIdx = normActive === null ? -1 : steps.findIndex((s) => s.id.toLowerCase() === normActive);
-  const filledPct = n <= 1 || activeIdx < 0 ? 0 : (activeIdx / (n - 1)) * 100;
+  const hasPosition = n > 1 && activeIdx >= 0;
+  const filledPct = hasPosition ? (activeIdx / (n - 1)) * 100 : 0;
 
+  // Non-interactive level indicator: a thin segmented track whose fill reaches
+  // the current step. No thumb or stop dots (those read as a draggable slider),
+  // and only the endpoint labels render at every width — the same calm
+  // treatment the 320px variant already used. The number of discrete steps is
+  // expressed by the track's segment ticks, driven by `--step-count`.
   return (
     <div class="plan-card__step-rail">
       <div class="plan-card__step-labels">
-        {steps.map((step, i) => {
-          const pct = n <= 1 ? 0 : (i / (n - 1)) * 100;
-          return (
-            <span key={step.id} class="plan-card__step-label metric-label" style={{ left: `${pct}%` }}>
-              {formatStepDisplayLabel(step.id)}
-            </span>
-          );
-        })}
+        <span class="plan-card__step-label metric-label plan-card__step-label--start">
+          {formatStepDisplayLabel(steps[0]?.id ?? '')}
+        </span>
+        {n > 1 && (
+          <span class="plan-card__step-label metric-label plan-card__step-label--end">
+            {formatStepDisplayLabel(steps[n - 1]?.id ?? '')}
+          </span>
+        )}
       </div>
-      <div class="plan-card__step-track">
-        <div class="plan-card__step-filled" style={{ width: `${filledPct}%` }} />
-        {steps.map((step, i) => {
-          const pct = n <= 1 ? 0 : (i / (n - 1)) * 100;
-          const normId = step.id.toLowerCase();
-          const isActive = normActive !== null && normId === normActive;
-          const isTarget = normTarget !== null && normId === normTarget && !isActive;
-          const isFilled = activeIdx >= 0 && i < activeIdx;
-          return (
-            <div
-              key={step.id}
-              class="plan-card__step-stop"
-              style={{ left: `${pct}%` }}
-              data-active={isActive ? 'true' : undefined}
-              data-target={isTarget ? 'true' : undefined}
-              data-filled={isFilled ? 'true' : undefined}
-            />
-          );
-        })}
+      <div
+        class="plan-card__step-track"
+        role="img"
+        aria-label={`Level ${activeIdx < 0 ? 'unknown' : activeIdx + 1} of ${n}`}
+        style={{ '--step-count': n }}
+      >
+        <div
+          class="plan-card__step-filled"
+          {...(hasPosition ? { 'data-position': 'true' } : {})}
+          style={{ width: `${filledPct}%` }}
+        />
       </div>
     </div>
   );

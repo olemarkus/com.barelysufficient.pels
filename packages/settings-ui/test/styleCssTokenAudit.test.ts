@@ -43,7 +43,6 @@ import { describe, expect, it } from 'vitest';
  * -------------------------------------------------------------------------- */
 
 const STYLE_CSS_PATH = path.join(__dirname, '..', 'public', 'style.css');
-const TOKENS_CSS_PATH = path.join(__dirname, '..', 'dist', 'tokens.css');
 
 function ruleFor(selector: string): string {
   const styleCss = fs.readFileSync(STYLE_CSS_PATH, 'utf8');
@@ -54,20 +53,10 @@ function ruleFor(selector: string): string {
 }
 
 describe('style.css token audit (TODO ~line 2437)', () => {
-  describe('new token: --font-size-xxs', () => {
-    it('is declared in the generated tokens.css at 10px', () => {
-      const tokensCss = fs.readFileSync(TOKENS_CSS_PATH, 'utf8');
-      expect(tokensCss).toMatch(/--font-size-xxs:\s*10px\s*[;/]/);
-    });
-
-    it('powers .plan-card__metric-scale font-size in public/style.css', () => {
-      const rule = ruleFor('.plan-card__metric-scale');
-      expect(rule).not.toBe('');
-      expect(rule).toMatch(/font-size:\s*var\(--font-size-xxs\)\s*;/);
-      // Defensive: ensure the prior bare `0.62rem` literal is gone.
-      expect(rule).not.toMatch(/font-size:\s*0\.62rem/);
-    });
-  });
+  // The `.plan-card__metric-scale` selector that bound `--font-size-xxs` was
+  // removed with the dead metric-anatomy CSS (control-grammar card rework). The
+  // token remains declared in tokens.css for any future sub-caption use; there
+  // is no longer a call-site to lock here.
 
   describe('.price-summary card family normalization', () => {
     it('binds padding + margin to --spacing-3 and radius to --radius-md', () => {

@@ -359,4 +359,17 @@ describe('PlanSteppedCard status line names the real binding constraint', () => 
     expect(mount.querySelector('.plan-card__status-line')?.textContent).toContain('Waiting to resume');
     expect(mount.querySelector('button')).toBeNull();
   });
+
+  it('renders the step rail as a non-interactive level indicator: track + fill, no draggable stop dots', () => {
+    const mount = renderSteppedCard(buildSteppedDevice());
+    // The track and current-step fill remain...
+    expect(mount.querySelector('.plan-card__step-track')).toBeTruthy();
+    expect(mount.querySelector('.plan-card__step-filled')).toBeTruthy();
+    // ...but the per-step thumb/stop dots (which read as a slider) are gone.
+    expect(mount.querySelectorAll('.plan-card__step-stop')).toHaveLength(0);
+    // Only the two endpoint labels render, at every width.
+    expect(mount.querySelector('.plan-card__step-label--start')?.textContent).toBe('Off');
+    expect(mount.querySelector('.plan-card__step-label--end')).toBeTruthy();
+    expect(mount.querySelectorAll('.plan-card__step-label')).toHaveLength(2);
+  });
 });

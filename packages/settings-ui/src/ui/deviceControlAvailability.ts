@@ -1,5 +1,10 @@
 export type RowSwitchTitles = { managed: string; limit: string; price: string };
 
+// This is a static capability fact (the device has no temperature target), not
+// an actionable per-device state the owner can toggle. It is stated once in the
+// Devices "Explain" expander rather than repeated under every on/off device row.
+export const PRICE_TEMPERATURE_ONLY_REASON = 'Price works with temperature devices only.';
+
 export type RowDisabledReasons = {
   managed: string | null;
   limit: string | null;
@@ -50,7 +55,7 @@ export const getPriceDisabledReason = (params: {
 }): string | null => {
   const { isLoadingComplete, supportsTemperature, isManaged } = params;
   if (!isLoadingComplete) return 'Controls are available after device settings load.';
-  if (!supportsTemperature) return 'Price works with temperature devices only.';
+  if (!supportsTemperature) return PRICE_TEMPERATURE_ONLY_REASON;
   if (!isManaged) return 'Price requires Managed to be on first.';
   return null;
 };

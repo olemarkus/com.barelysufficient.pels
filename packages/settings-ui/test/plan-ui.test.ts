@@ -54,7 +54,7 @@ describe('Redesign plan UI', () => {
   );
   
   const getMetricText = (deviceId: string): string | undefined => (
-    (document.querySelector(`[data-device-id="${deviceId}"] .plan-card__metric-label`) as HTMLElement | null)
+    (document.querySelector(`[data-device-id="${deviceId}"] .plan-card__state-power`) as HTMLElement | null)
       ?.textContent
       ?.trim()
   );
@@ -598,7 +598,7 @@ describe('Redesign plan UI', () => {
       expect(headlines).toEqual(['0.6 kW']);
     });
   
-    it('renders three-row cards with state chip, load bar, and real reason text', async () => {
+    it('renders three-row cards with the state word below the title, load, and real reason text', async () => {
       await renderPlanSnapshot({
         meta: { totalKw: 2.2, softLimitKw: 6, headroomKw: 3.8 },
         devices: [
@@ -626,10 +626,14 @@ describe('Redesign plan UI', () => {
       expect(
         card?.querySelectorAll(':scope > *:not(md-elevation):not(md-ripple)'),
       ).toHaveLength(3);
-      expect((card?.querySelector('.plan-state-chip-wrap .plan-chip') as HTMLElement | null)?.textContent?.trim()).toBe('Running');
+      // With no cooldown running, the header no longer repeats the state word
+      // as a chip — the state word lives in the below-title state row only.
+      expect(card?.querySelector('.plan-state-chip-wrap')).toBeNull();
       expect(getMetricText('dev-heat')).toBe('1.2 kW');
       expect(getReasonText('dev-heat')).toBe('Raising target 21° to 22°');
-      expect(card?.querySelector('.plan-card__metric--power')).toBeTruthy();
+      // One anatomy: the status word + kW share a single below-title row.
+      expect(card?.querySelector('.plan-card__state-row')).toBeTruthy();
+      expect((card?.querySelector('.plan-card__state-label') as HTMLElement | null)?.textContent?.trim()).toBe('Running');
     });
   
     it('prefers structured state presentation from the snapshot payload', async () => {

@@ -108,10 +108,15 @@ const buildDom = () => {
     </section>
     <section class="panel hidden" data-panel="modes">
       <md-filled-select id="mode-select"></md-filled-select>
-      <md-filled-text-field id="mode-new"></md-filled-text-field>
-      <md-outlined-button id="add-mode-button"></md-outlined-button>
-      <md-outlined-button id="delete-mode-button"></md-outlined-button>
-      <md-outlined-button id="rename-mode-button"></md-outlined-button>
+      <md-filled-tonal-button id="add-mode-button"></md-filled-tonal-button>
+      <md-text-button id="rename-mode-button"></md-text-button>
+      <md-text-button id="delete-mode-button"></md-text-button>
+      <div id="mode-name-editor" hidden>
+        <md-filled-text-field id="mode-new"></md-filled-text-field>
+        <md-text-button id="mode-name-cancel"></md-text-button>
+        <md-filled-tonal-button id="mode-name-confirm"></md-filled-tonal-button>
+      </div>
+      <md-dialog id="mode-delete-dialog"><p id="mode-delete-message"></p></md-dialog>
       <form id="priority-form"></form>
       <div id="priority-list"></div>
       <p id="priority-empty" hidden></p>
@@ -1196,10 +1201,13 @@ describe('settings script', () => {
 
     const renameBtn = document.querySelector('#rename-mode-button') as HTMLButtonElement;
     const modeInput = document.querySelector('#mode-new') as HTMLInputElement;
+    const confirmBtn = document.querySelector('#mode-name-confirm') as HTMLButtonElement;
     const modeSelect = document.querySelector('#mode-select') as HTMLSelectElement;
     modeSelect.value = 'Home';
-    modeInput.value = 'cozy';
+    // Rename reveals the editor (prefilled with the current name); edit + confirm.
     renameBtn.click();
+    modeInput.value = 'cozy';
+    confirmBtn.click();
     await waitFor(() => Array.from(modeSelect.options).some((o) => o.value === 'cozy'));
 
     const modeOptions = Array.from(modeSelect.options).map((o) => o.value);
@@ -1290,9 +1298,12 @@ describe('settings script', () => {
 
     const modeInput = document.querySelector('#mode-new') as HTMLInputElement;
     const addBtn = document.querySelector('#add-mode-button') as HTMLButtonElement;
+    const confirmBtn = document.querySelector('#mode-name-confirm') as HTMLButtonElement;
 
-    modeInput.value = 'Cozy';
+    // "+ New mode" reveals the shared name editor; the name is confirmed there.
     addBtn.click();
+    modeInput.value = 'Cozy';
+    confirmBtn.click();
     await waitFor(() => Boolean(store.capacity_priorities?.Cozy));
 
     expect(store.capacity_priorities).toEqual({
@@ -1303,6 +1314,36 @@ describe('settings script', () => {
       Home: { 'dev-1': 20 },
       Cozy: { 'dev-1': 20 },
     });
+  });
+
+  it('reveals the shared mode-name editor only on demand (hidden at rest)', async () => {
+    const store: Record<string, any> = {};
+    const setSpy = vi.fn((key, val, cb) => { store[key] = val; if (cb) cb(null); });
+    // @ts-ignore mutate mock
+    global.Homey.set = setSpy;
+    // @ts-ignore mutate mock
+    global.Homey.get = vi.fn((key, cb) => {
+      if (key === 'capacity_priorities') return cb(null, { Home: { 'dev-1': 1 } });
+      if (key === 'mode_device_targets') return cb(null, { Home: { 'dev-1': 20 } });
+      if (key === 'operating_mode') return cb(null, 'Home');
+      return cb(null, [
+        { id: 'dev-1', name: 'Heater', targets: [{ id: 'target_temperature', value: 21, unit: '°C' }] },
+      ]);
+    });
+
+    await loadSettingsScript();
+
+    const editor = document.querySelector('#mode-name-editor') as HTMLElement;
+    const addBtn = document.querySelector('#add-mode-button') as HTMLButtonElement;
+    const cancelBtn = document.querySelector('#mode-name-cancel') as HTMLButtonElement;
+
+    // No lone blank "New mode name" field on the page at rest.
+    expect(editor.hidden).toBe(true);
+    // "+ New mode" reveals it; Cancel puts it away again.
+    addBtn.click();
+    expect(editor.hidden).toBe(false);
+    cancelBtn.click();
+    expect(editor.hidden).toBe(true);
   });
 
   it('changes active mode when selection changes (auto-save)', async () => {
@@ -1398,13 +1439,15 @@ describe('settings script', () => {
 
     const renameBtn = document.querySelector('#rename-mode-button') as HTMLButtonElement;
     const modeInput = document.querySelector('#mode-new') as HTMLInputElement;
+    const confirmBtn = document.querySelector('#mode-name-confirm') as HTMLButtonElement;
     const modeSelect = document.querySelector('#mode-select') as HTMLSelectElement;
     const activeModeSelect = document.querySelector('#active-mode-select') as HTMLSelectElement;
 
-    // Rename 'Home' to 'Cozy'
+    // Rename 'Home' to 'Cozy' via the reveal-and-confirm editor.
     modeSelect.value = 'Home';
-    modeInput.value = 'Cozy';
     renameBtn.click();
+    modeInput.value = 'Cozy';
+    confirmBtn.click();
     await waitFor(() => Array.from(modeSelect.options).some((o) => o.value === 'Cozy'));
 
     // Both dropdowns should now show 'Cozy' (since we renamed the active mode)
@@ -1674,7 +1717,7 @@ describe('Plan sorting', () => {
     overviewTab?.click();
     await flushPromises();
 
-    const usageLine = document.querySelector('#plan-cards .plan-card__metric-label')?.textContent || '';
+    const usageLine = document.querySelector('#plan-cards .plan-card__state-power')?.textContent || '';
     expect(usageLine).toBe('1.2 kW');
   });
 
@@ -1705,7 +1748,7 @@ describe('Plan sorting', () => {
     overviewTab?.click();
     await flushPromises();
 
-    const metric = document.querySelector('#plan-cards .plan-card__metric') as HTMLElement | null;
+    const metric = document.querySelector('#plan-cards .plan-card__state-power') as HTMLElement | null;
     expect(metric?.dataset.variant).toBe('expected');
     expect(metric?.textContent).toContain('~1.5 kW when active');
   });
@@ -1741,7 +1784,7 @@ describe('Plan sorting', () => {
     overviewTab?.click();
     await flushPromises();
 
-    const metric = document.querySelector('#plan-cards .plan-card__metric') as HTMLElement | null;
+    const metric = document.querySelector('#plan-cards .plan-card__state-power') as HTMLElement | null;
     expect(metric?.dataset.variant).toBe('expected');
     expect(metric?.textContent).toContain('~0.1 kW when active');
   });
@@ -2186,5 +2229,83 @@ describe('Overview "Let it run now" rescue-gate freshness on tab activation', ()
     (document.querySelector('[data-tab="overview"]') as HTMLButtonElement | null)?.click();
     await waitFor(() => rescueChipButton() === null);
     expect(rescueChipButton()).toBeNull();
+  });
+});
+
+describe('mode delete confirmation guard', () => {
+  const buildModeEditorDom = () => {
+    document.body.innerHTML = `
+      <md-filled-select id="mode-select"></md-filled-select>
+      <md-filled-tonal-button id="add-mode-button"></md-filled-tonal-button>
+      <md-text-button id="rename-mode-button"></md-text-button>
+      <md-text-button id="delete-mode-button"></md-text-button>
+      <div id="mode-name-editor" hidden>
+        <md-filled-text-field id="mode-new"></md-filled-text-field>
+        <md-text-button id="mode-name-cancel"></md-text-button>
+        <md-filled-tonal-button id="mode-name-confirm"></md-filled-tonal-button>
+      </div>
+      <md-dialog id="mode-delete-dialog"><p id="mode-delete-message"></p></md-dialog>
+    `;
+  };
+
+  const wireModeEditor = async () => {
+    const { initModeEditor } = await import('../src/ui/modeEditor.ts');
+    const { state } = await import('../src/ui/state.ts');
+    const { deleteModeButton, modeDeleteDialog } = await import('../src/ui/dom.ts');
+    if (!modeDeleteDialog) throw new Error('mode delete dialog missing');
+    // `.show()` animates via the real md-dialog; a no-op keeps the logic test off
+    // jsdom's animation path. The guard sets `returnValue` *before* show(), so
+    // stubbing show does not hide the behavior under test.
+    modeDeleteDialog.show = () => {};
+    state.capacityPriorities = { Home: {} };
+    state.editingMode = 'Home';
+    const deleteMode = vi.fn().mockResolvedValue(undefined);
+    initModeEditor({ addMode: vi.fn(), renameMode: vi.fn(), deleteMode });
+    return { deleteMode, deleteButton: deleteModeButton, dialog: modeDeleteDialog };
+  };
+
+  beforeEach(() => {
+    vi.resetModules();
+    buildModeEditorDom();
+  });
+
+  it('does not delete until the dialog Delete button confirms, and Cancel/Escape never deletes', async () => {
+    const { deleteMode, deleteButton, dialog } = await wireModeEditor();
+
+    // (a) Opening the dialog must not delete on its own.
+    deleteButton.click();
+    expect(deleteMode).not.toHaveBeenCalled();
+    expect(dialog.returnValue).toBe('');
+
+    // (b) Dismissing via Cancel/Escape (any non-'delete' returnValue) never deletes.
+    dialog.returnValue = 'cancel';
+    dialog.dispatchEvent(new Event('close'));
+    expect(deleteMode).not.toHaveBeenCalled();
+
+    // The dialog's Delete button sets returnValue='delete'; only then do we delete.
+    deleteButton.click();
+    expect(dialog.returnValue).toBe('');
+    dialog.returnValue = 'delete';
+    dialog.dispatchEvent(new Event('close'));
+    expect(deleteMode).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears a stale delete result so a later Escape-dismiss cannot delete without confirmation', async () => {
+    const { deleteMode, deleteButton, dialog } = await wireModeEditor();
+
+    // First delete is confirmed via the dialog Delete button.
+    deleteButton.click();
+    dialog.returnValue = 'delete';
+    dialog.dispatchEvent(new Event('close'));
+    expect(deleteMode).toHaveBeenCalledTimes(1);
+
+    // Re-opening for a second mode must clear the stale 'delete' returnValue…
+    deleteButton.click();
+    expect(dialog.returnValue).toBe('');
+
+    // …so an Escape/scrim dismiss (which fires `close` without touching the
+    // Delete button) does NOT re-fire the stale delete.
+    dialog.dispatchEvent(new Event('close'));
+    expect(deleteMode).toHaveBeenCalledTimes(1);
   });
 });

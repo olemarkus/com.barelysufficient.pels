@@ -3467,233 +3467,6 @@ md-filled-button.is-busy {
   white-space: nowrap;
 }
 
-.plan-card__metric {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--spacing-3);
-}
-
-.plan-card__metric--power {
-  grid-template-columns: auto;
-  justify-content: start;
-}
-
-.plan-card__metric-track {
-  position: relative;
-  height: 10px;
-  overflow: hidden;
-  border-radius: var(--radius-full);
-  border: 1px solid color-mix(in srgb, var(--panel-border) 90%, transparent);
-  background: color-mix(in srgb, var(--pels-surface-container-highest) 84%, transparent);
-}
-
-.plan-card__metric-track-wrap {
-  min-width: 0;
-}
-
-.plan-card__metric-fill {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  border-radius: var(--radius-full);
-  background: var(--pels-status-good);
-  transition:
-    left var(--transition-default),
-    width var(--transition-default);
-}
-
-.plan-card__metric[data-tone="held"] .plan-card__metric-fill {
-  background: var(--pels-status-limited);
-}
-
-.plan-card__metric[data-tone="at_target"] .plan-card__metric-fill {
-  background: var(--pels-status-good);
-  opacity: 0.7;
-}
-
-.plan-card__metric[data-tone="above_target"] .plan-card__metric-fill {
-  background: var(--pels-status-warning);
-}
-
-.plan-card__metric-tick {
-  position: absolute;
-  top: -2px;
-  bottom: -2px;
-  width: 2px;
-  border-radius: var(--radius-full);
-  cursor: help;
-  transform: translateX(-1px);
-}
-
-.plan-card__metric-tick--target {
-  background: color-mix(in srgb, var(--text) 80%, var(--pels-status-good));
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--panel-bg) 90%, transparent);
-}
-
-.plan-card__metric-tick::before {
-  content: "";
-  position: absolute;
-  inset: -4px -6px;
-}
-
-.plan-card__metric-tick--setback {
-  background: var(--pels-status-warning-border);
-  height: 6px;
-  top: 50%;
-  transform: translate(-1px, -50%);
-  bottom: auto;
-}
-
-.plan-card__metric-marker {
-  position: absolute;
-  top: 50%;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--text);
-  box-shadow:
-    0 0 0 2px color-mix(in srgb, var(--panel-bg) 92%, transparent),
-    0 0 0 3px color-mix(in srgb, var(--panel-border) 80%, transparent);
-  cursor: help;
-  transform: translate(-50%, -50%);
-}
-
-.plan-card__metric-scale {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  gap: var(--spacing-2);
-  margin-top: 3px;
-  color: var(--muted);
-  font-size: var(--font-size-xxs);
-  font-weight: var(--font-weight-semibold);
-  line-height: var(--font-line-height-flat);
-  font-variant-numeric: tabular-nums;
-}
-
-.plan-card__metric-scale span:nth-child(2) {
-  color: var(--text-secondary);
-}
-
-.plan-card__metric-scale span:last-child {
-  text-align: right;
-}
-
-/* Typography from `.metric-label` (markup); structural props only. */
-.plan-card__metric-label {
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-
-.plan-card__metric-readout {
-  display: inline-flex;
-  align-items: baseline;
-  gap: var(--spacing-2);
-  flex-wrap: wrap;
-}
-
-.plan-card__metric-aside {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-normal);
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-  padding-left: var(--spacing-2);
-  border-left: 1px solid color-mix(in srgb, var(--panel-border) 70%, transparent);
-  white-space: nowrap;
-}
-
-/* The expected-load variant ("~1.0 kW when active") sits on the device-card
-   surface `--color-surface-1`. Bind it to `--text-secondary` (≈#9ba6b7) rather
-   than `--muted` (≈#6b7280) so the small-body text clears WCAG AA contrast on
-   the card surface — see TODO.md note "Low-contrast metric label". */
-.plan-card__metric--power[data-variant="expected"] .plan-card__metric-label {
-  color: var(--text-secondary);
-  font-weight: var(--font-weight-normal);
-}
-
-.plan-card__metric--stepped {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 6px;
-}
-
-.plan-card__stepped-track-wrap {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-2);
-}
-
-.plan-card__stepped-track {
-  display: flex;
-  flex: 1 1 auto;
-  gap: 3px;
-  height: 14px;
-}
-
-.plan-card__stepped-direction {
-  flex: 0 0 auto;
-  font-size: var(--font-size-sm);
-  line-height: var(--font-line-height-flat);
-  color: var(--accent);
-}
-
-.plan-card__stepped-direction[data-direction="down"] {
-  color: var(--text-secondary);
-  animation-name: plan-stepped-direction-pulse-down;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .plan-card__stepped-direction {
-    animation: plan-stepped-direction-pulse var(--pels-motion-pulse-duration) ease-in-out infinite;
-  }
-}
-
-@keyframes plan-stepped-direction-pulse {
-  0%, 100% { transform: translateY(0); opacity: 1; }
-  50% { transform: translateY(-2px); opacity: 0.6; }
-}
-
-@keyframes plan-stepped-direction-pulse-down {
-  0%, 100% { transform: translateY(0); opacity: 1; }
-  50% { transform: translateY(2px); opacity: 0.6; }
-}
-
-.plan-card__stepped-seg {
-  flex: 1 1 auto;
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--pels-surface-container-highest) 70%, transparent);
-  border: 1px solid color-mix(in srgb, var(--panel-border) 80%, transparent);
-}
-
-.plan-card__stepped-seg[data-filled="true"] {
-  background: linear-gradient(180deg, var(--accent), var(--accent-strong));
-  border-color: transparent;
-}
-
-.plan-card__metric--stepped[data-direction="down"] .plan-card__stepped-seg[data-active="true"],
-.plan-card__metric--stepped[data-direction="up"] .plan-card__stepped-seg[data-target="true"] {
-  background: color-mix(in srgb, var(--accent) 50%, transparent);
-  border-color: var(--accent);
-}
-
-.plan-card__stepped-seg[data-pulse="true"] {
-  animation: plan-stepped-pulse var(--pels-motion-pulse-duration) ease-in-out infinite;
-}
-
-@keyframes plan-stepped-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.45; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .plan-card__stepped-seg[data-pulse="true"] {
-    animation: none;
-    opacity: 0.7;
-  }
-}
-
 /* ── Loading skeleton primitives ───────────────────────────────────────────────
  * Used as first-paint placeholders for the Overview panel before the bootstrap
  * fetch resolves. Other four panels (Budget, Usage, Smart tasks, Settings) can
@@ -3874,6 +3647,19 @@ md-filled-button.is-busy {
   flex-shrink: 0;
 }
 
+/* Live measured draw is real, present-tense evidence — render it at full body
+ * emphasis. The expected ("~1.0 kW when active") reading is a projection, so it
+ * stays at the dimmer secondary tone (the base rule above). A reported draw on a
+ * paused device is an unexpected conflict, so it takes the warning tone. */
+.plan-card__state-power[data-variant="live"] {
+  color: var(--text);
+  font-weight: var(--font-weight-medium);
+}
+
+.plan-card__state-power[data-variant="reported"] {
+  color: var(--pels-status-warning);
+}
+
 .plan-card__secondary-line {
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
@@ -3899,35 +3685,44 @@ md-filled-button.is-busy {
   cursor: default;
 }
 
+/* Only the two endpoint labels render (at every width): an 11-step charger's
+ * intermediate ampere labels collided and read as slider tick-stops. */
 .plan-card__step-labels {
-  position: relative;
-  height: 1em;
+  display: flex;
+  justify-content: space-between;
   margin-inline: var(--spacing-2);
 }
 
-/* Typography from `.metric-label` (markup); structural + positioned-tick
-   overrides only. */
+/* Typography from `.metric-label` (markup); structural overrides only. */
 .plan-card__step-label {
-  position: absolute;
   white-space: nowrap;
   line-height: var(--font-line-height-flat);
-  transform: translateX(-50%);
 }
 
-.plan-card__step-label:first-child {
-  transform: none;
-}
-
-.plan-card__step-label:last-child {
-  transform: translateX(-100%);
-}
-
+/* Thin segmented track. Discrete steps are conveyed by faint tick separators
+ * (a repeating gradient keyed to `--step-count`) — not by stop dots or a thumb,
+ * which read as a draggable slider. The fill reaches the current step. */
 .plan-card__step-track {
   position: relative;
   height: 4px;
   background: color-mix(in srgb, var(--text) 12%, transparent);
   border-radius: var(--radius-xs);
   margin: var(--spacing-2) var(--spacing-3);
+}
+
+.plan-card__step-track::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background-image: repeating-linear-gradient(
+    to right,
+    var(--panel) 0,
+    var(--panel) 1px,
+    transparent 1px,
+    transparent calc(100% / max(calc(var(--step-count, 1) - 1), 1))
+  );
 }
 
 .plan-card__step-filled {
@@ -3939,46 +3734,12 @@ md-filled-button.is-busy {
   border-radius: var(--radius-xs);
 }
 
-.plan-card__step-stop {
-  position: absolute;
-  top: 50%;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--text) 15%, transparent);
-  border: 2px solid color-mix(in srgb, var(--text) 30%, transparent);
-  box-sizing: border-box;
-  transform: translate(-50%, -50%);
-}
-
-.plan-card__step-stop[data-filled="true"] {
-  background: var(--accent);
-  border-color: var(--accent);
-}
-
-.plan-card__step-stop[data-active="true"] {
-  width: 14px;
-  height: 14px;
-  background: var(--accent);
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
-}
-
-.plan-card__step-stop[data-target="true"] {
-  background: transparent;
-  border-color: var(--accent);
-}
-
-/* 320 px viewport: an 11-step Easee / Zaptec charger renders 11 ampere
- * labels ("Off · 6 A · 8 A · 10 A …"). Even with the SI-format spacing
- * ("6 A" instead of "6a") the labels collide and the right-most entries
- * push beyond the card. Hiding the intermediate labels keeps the endpoint
- * markers visible while the active-step dot stays prominently marked on
- * the rail. */
-@media (max-width: 360px) {
-  .plan-card__step-label:not(:first-child):not(:last-child) {
-    display: none;
-  }
+/* At the lowest step the fill is 0% wide and the track reads as uniform grey,
+ * hiding the current position. Guarantee a hairline stub whenever a real step
+ * is known so the leftmost level still reads as "here". An unknown level
+ * (no data-position) keeps a genuinely empty track. */
+.plan-card__step-filled[data-position="true"] {
+  min-width: 3px;
 }
 
 @media (max-width: 480px) {
@@ -4048,25 +3809,6 @@ md-filled-button.is-busy {
 
   .plan-card__load-label {
     white-space: normal;
-  }
-
-  .plan-card__metric {
-    grid-template-columns: 1fr;
-    gap: 6px;
-  }
-
-  .plan-card__metric-readout {
-    justify-content: space-between;
-    width: 100%;
-  }
-
-  .plan-card__metric-label {
-    white-space: normal;
-  }
-
-  .plan-card__metric-aside {
-    padding-left: 0;
-    border-left: 0;
   }
 }
 
@@ -5339,9 +5081,21 @@ details[open] > summary .disclosure-chevron {
   margin-bottom: var(--spacing-3);
 }
 
+/* "+ Add step" sits below the last row, leading-aligned, quiet. */
+.detail-stepped-add {
+  display: flex;
+  margin-bottom: var(--spacing-3);
+}
+
+/* Save/Undo bar: the profile's primary action pair. Save is tonal (secondary
+ * emphasis) and disabled until an edit exists, so it reads as inert at rest. */
+.detail-stepped-actions--save {
+  justify-content: flex-end;
+}
+
 .detail-stepped-header {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(110px, 140px) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(110px, 140px) var(--pels-touch-target-min);
   gap: var(--spacing-3);
   align-items: center;
   padding: 0 0 var(--spacing-2);
@@ -5356,7 +5110,7 @@ details[open] > summary .disclosure-chevron {
 
 .detail-stepped-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(110px, 140px) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(110px, 140px) var(--pels-touch-target-min);
   gap: var(--spacing-3);
   align-items: center;
   padding: var(--spacing-2) 0;
@@ -5367,10 +5121,27 @@ details[open] > summary .disclosure-chevron {
   max-width: none;
 }
 
-/* Push the per-step "Remove" md-text-button to the row's trailing edge.
- * The button doesn't carry a `.btn` class (it's an md-text-button created in
- * `steppedLoadDraft.ts`), so target it by tag selector. */
-.detail-stepped-row > md-text-button {
+/* Per-step remove: a muted trash `md-icon-button.detail-stepped-remove` created
+ * in `steppedLoadDraft.ts`. Neutral at rest so a full profile is not a wall of
+ * red "Remove" links; the error tone only surfaces on hover/focus/press. */
+.detail-stepped-remove {
+  --md-icon-button-icon-color: var(--text-secondary);
+  color: var(--text-secondary);
+}
+
+.detail-stepped-remove:hover,
+.detail-stepped-remove:focus-visible,
+.detail-stepped-remove:active {
+  --md-icon-button-icon-color: var(--danger);
+  color: var(--danger);
+}
+
+.detail-stepped-remove[disabled] {
+  opacity: 0.4;
+}
+
+/* Push the per-step remove control to the row's trailing edge. */
+.detail-stepped-row > .detail-stepped-remove {
   justify-self: end;
 }
 
@@ -5409,10 +5180,10 @@ details[open] > summary .disclosure-chevron {
     display: none;
   }
 
-  /* Narrow-viewport override: the stepped-row md-text-button (created by
+  /* Narrow-viewport override: the stepped-row trash button (created by
    * `steppedLoadDraft.ts`) shifts to leading-edge alignment because the row
    * collapses to a single column at 360 px. */
-  .detail-stepped-row md-text-button {
+  .detail-stepped-row .detail-stepped-remove {
     justify-self: start;
   }
 
@@ -8016,13 +7787,15 @@ md-switch {
   --md-switch-handle-color: var(--pels-md-on-surface-variant);
 }
 
-/* Switch row: switch on the left, label + hint stacked beside it.
- * Mirrors the M3 list-with-trailing-control pattern but with the switch on
- * the leading side, which fits the PELS dense settings list. The row's
+/* Switch row: label + supporting hint on the leading side, switch trailing
+ * right — the one canonical PELS switch grammar (matches the Daily-budget
+ * enable/cheaper-hours rows). The switch is authored first in the DOM for a
+ * stable label association, then flex `order` moves it to the trailing edge so
+ * every enable-toggle in the app sits in the same position. The row's
  * `min-height` keeps the whole tap surface at the M3 48 px minimum. */
 .md-switch-row {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: var(--spacing-3);
   padding: var(--spacing-2) 0;
   min-height: var(--pels-touch-target-min);
@@ -8030,11 +7803,13 @@ md-switch {
 }
 
 .md-switch-row md-switch {
+  order: 2;
   flex-shrink: 0;
-  margin-top: 2px;
+  margin-left: auto;
 }
 
 .md-switch-row__content {
+  order: 1;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -8066,7 +7841,7 @@ md-switch {
   min-width: 0;
 }
 
-#device-detail-panel .detail-stepped-row > md-text-button {
+#device-detail-panel .detail-stepped-row > .detail-stepped-remove {
   justify-self: end;
 }
 
@@ -8076,8 +7851,15 @@ md-switch {
 }
 
 #device-detail-panel .detail-stepped-actions md-filled-button,
+#device-detail-panel .detail-stepped-actions md-filled-tonal-button,
 #device-detail-panel .detail-stepped-actions md-text-button {
   flex: 1 1 auto;
+}
+
+/* The "+ Add step" button stays intrinsic-width and leading-aligned rather than
+ * stretching across the row like the save-bar pair. */
+#device-detail-panel .detail-stepped-add md-text-button {
+  flex: 0 0 auto;
 }
 
 /* Target-power-grid uses M3 fields directly inside the grid; ensure they
@@ -8322,41 +8104,49 @@ md-switch {
   background: var(--pels-surface-container-low);
 }
 
+/* Refresh devices is a quiet, un-carded action — a text button with a refresh
+ * icon sitting flush below the list, not another boxed card. */
 #devices-panel .list__footer {
   align-items: flex-start;
   margin-top: var(--spacing-1);
-  padding: var(--spacing-3);
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-md);
-  background: var(--pels-surface-container-low);
 }
 
-/* Modes panel inline-actions: text field on its own row, the Add / Delete /
- * Rename buttons share the row below. At 480 px the four-column variant
- * shrinks the input below its 13-char placeholder ("New mode name") and
- * clips the trailing characters; the stacked layout keeps the input wide
- * enough for the full placeholder to render. */
-#modes-panel .inline-actions {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+/* Modes panel action row: "+ New mode" (tonal) leads, with Rename and Delete
+ * as quiet text buttons. Delete carries the destructive tone. They wrap
+ * naturally at narrow widths rather than stretching to fill a grid. */
+#modes-panel .mode-actions {
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--spacing-2);
+  align-items: center;
   margin-top: var(--spacing-1);
 }
 
-#modes-panel .inline-actions md-filled-text-field {
-  min-width: 0;
-  grid-column: 1 / -1;
+/* "+ New mode" sits on the `--panel` (surface-container-low) modes card. The
+ * default tonal container (`--color-surface-3`) is only one tier up and washes
+ * into the card. Lift it to the highest surface tier so the button's edge reads
+ * clearly as a tappable control against the card surface. */
+#modes-panel .mode-actions md-filled-tonal-button {
+  --md-filled-tonal-button-container-color: var(--pels-surface-container-highest);
 }
 
-/* Force Add / Delete / Rename MD Web buttons to fill their grid column. The
- * host's width / min-width / padding-inline DO reach layout (they set the
- * host's outer box), unlike inner-paint properties the shadow DOM swallows.
- * Targeted by tag selector now that the legacy `.btn` decorations have been
- * retired. */
-#modes-panel .inline-actions md-outlined-button {
+/* On-demand name editor, revealed by "+ New mode" / "Rename". The field spans
+ * the width with its confirm/cancel pair trailing right. */
+#modes-panel .mode-name-editor {
+  display: grid;
+  gap: var(--spacing-2);
+  margin-top: var(--spacing-2);
+}
+
+#modes-panel .mode-name-editor md-filled-text-field {
   min-width: 0;
   width: 100%;
-  padding-inline: var(--spacing-2);
+}
+
+#modes-panel .mode-name-editor__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-2);
 }
 
 #modes-panel .mode-row {
@@ -8542,19 +8332,6 @@ md-switch {
     content: "Price";
   }
 
-  #modes-panel .inline-actions {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  #modes-panel .inline-actions md-filled-text-field {
-    grid-column: 1 / -1;
-  }
-
-  #modes-panel .inline-actions md-outlined-button {
-    width: 100%;
-    min-width: 0;
-    padding-inline: var(--spacing-2);
-  }
 
   #modes-panel .mode-row {
     grid-template-columns: auto minmax(0, 1fr) auto;
