@@ -119,6 +119,45 @@ describe('Redesign plan UI', () => {
       expect(deviceNames).toEqual(['First', 'Second']);
     });
 
+    it('floors the projected-energy subline at zero during a net-export hour', async () => {
+      // Net export: totalKw < 0 drives `used + totalKw*minutesRemaining/60`
+      // negative (0.3 + (-2.0 * 46/60) ≈ -1.23). It must render as
+      // "projected 0.00 kWh", never "projected -1.23 kWh".
+      await renderPlanSnapshot({
+        meta: {
+          totalKw: -2.0,
+          softLimitKw: 11,
+          headroomKw: 13,
+          hardCapLimitKw: 14,
+          hardCapHeadroomKw: 16,
+          controlledKw: 0.2,
+          uncontrolledKw: 0.1,
+          powerFreshnessState: 'fresh',
+          usedKWh: 0.3,
+          budgetKWh: 4.5,
+          capacityHourBudgetKWh: 4.5,
+          dailyBudgetHourKWh: 4.5,
+          hourBudgetKWh: 4.5,
+          softLimitSource: 'daily',
+          minutesRemaining: 46,
+        },
+        devices: [
+          { id: 'dev-1', name: 'First', priority: 1, currentState: 'on', plannedState: 'keep' },
+        ],
+      });
+
+      const sublines = Array.from(document.querySelectorAll('.plan-hero .plan-hero__subline'))
+        .map((el) => el.textContent?.trim() ?? '');
+      const projectedSubline = sublines.find((text) => text.startsWith('projected'));
+      expect(projectedSubline).toBe('projected 0.00 kWh');
+      // No projected surface may ever print a negative kWh — guard the subline AND
+      // the energy-bar projection marker's tooltip/aria ("Projected this hour …"),
+      // which read the same clamped value, so the test protects both paths.
+      const heroHtml = document.querySelector('.plan-hero')?.outerHTML ?? '';
+      expect(heroHtml).not.toContain('projected -');
+      expect(heroHtml).not.toContain('Projected this hour -');
+    });
+
     it('renders the budget-exempt "Always on" chip on device cards', async () => {
       await renderPlanSnapshot({
         meta: { totalKw: 0, softLimitKw: 5, headroomKw: 5 },

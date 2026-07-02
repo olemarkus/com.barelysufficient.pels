@@ -131,6 +131,11 @@ describe('formatProjectedEnergySubline', () => {
     expect(formatProjectedEnergySubline(5)).toBe('projected 5.00 kWh');
     expect(formatProjectedEnergySubline(0)).toBe('projected 0.00 kWh');
   });
+
+  it('floors a negative projection at zero (net-export hour) — never prints a minus', () => {
+    expect(formatProjectedEnergySubline(-1.42)).toBe('projected 0.00 kWh');
+    expect(formatProjectedEnergySubline(-0.01)).toBe('projected 0.00 kWh');
+  });
 });
 
 describe('formatFreshnessChip', () => {

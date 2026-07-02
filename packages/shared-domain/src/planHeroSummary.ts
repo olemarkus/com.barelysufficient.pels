@@ -149,10 +149,16 @@ export const formatEnergyUsedOfBudgetParts = (
  * when no projection is available so the caller can omit the row entirely
  * (see `feedback_ui_text_shared_with_logs.md` — the runtime logger uses the
  * same helper so logs and UI never drift).
+ *
+ * The projected value is floored at zero: in a net-export hour the projection
+ * (used + remaining net kW) can go negative, and "projected -1.42 kWh"
+ * contradicts its own "used" framing and reads as broken — right where the
+ * Solar-now line is celebrating export. Mirrors the plan_budget widget's clamp
+ * (`planPriceWidgetCopy.ts`) so the two projected surfaces never diverge.
  */
 export const formatProjectedEnergySubline = (projectedKWh: number | null): string | null => {
   if (projectedKWh === null) return null;
-  return `projected ${projectedKWh.toFixed(2)} kWh`;
+  return `projected ${Math.max(0, projectedKWh).toFixed(2)} kWh`;
 };
 
 // ─── Hero meter marker labels ────────────────────────────────────────────────
