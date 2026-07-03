@@ -522,13 +522,6 @@ CI failure, so future field-move slices can't silently grow the debt.*
       both consumers would make the reconciliation structural (resolution-in-producer).
       *From PR #1806 review.*
 
-- [ ] **Post-release docs updates for the managed/background split colours.** `docs/daily-budget.md`
-      (Figure 2 caption, ~line 40) still describes the hourly-plan stack as blue/orange; the stack now
-      renders slate/mint. Retake `docs/screenshots/daily-budget/hourly-plan.png` and
-      `docs/screenshots/daily-budget/plan-progress.png` (the Budget hero now shows the split bar), and
-      `docs/public/screenshots/landing-usage.png` (the Usage chart is now stacked), then fix the caption
-      wording. Deliberately deferred out of PR #1806, which commits no PNGs.
-
 - [ ] **Disambiguate PV clamp-suspect hours with the battery signal (battery-observe train).** The PV-gain
       net evidence (`classifyHourNetEvidence`, `packages/shared-domain/src/solar/pvGenerationHistory.ts`)
       deliberately conflates zero-export clamp / battery absorb / balanced load into one 'suspect' class —
@@ -859,13 +852,6 @@ CI failure, so future field-move slices can't silently grow the debt.*
       from `packages/shared-domain`. Migrate them so the Budget charts follow the
       `feedback_ui_text_shared_with_logs` pattern (runtime logs can mirror on-screen wording).
       Source: adversarial-review on the data-viz palette PR, 2026-07-02. [P3 copy]
-
-- [ ] **Regenerate the docs screenshots stale after the chart recolor.** The semantic-palette
-      recolor changed the Budget progress, hourly-plan, and landing chart surfaces, so the
-      committed docs images no longer match production: `docs/screenshots/daily-budget/plan-progress.png`,
-      `docs/screenshots/daily-budget/hourly-plan.png`, `docs/public/screenshots/landing-usage.png`,
-      `docs/public/screenshots/landing-overview.png`. Regenerate post-release. Source:
-      adversarial-review on the data-viz palette PR, 2026-07-02.
 
 - [ ] **Add the "pause lower-priority devices" toggle to the create-smart-task widget.** The
       `pauseLowerPriorityDevices` rescue permission ships with a Flow entry (`allow_smart_task_rescue`)
