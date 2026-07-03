@@ -14,6 +14,7 @@ import {
   EXPORT_FIXED,
   EXPORT_PRICE_ENABLED,
   EXPORT_SPOT_FACTOR,
+  PRICE_SCHEME,
 } from '../../../contracts/src/settingsKeys.ts';
 
 export type ExportPriceSettings = {
@@ -128,6 +129,48 @@ export const applyExportSchemeChangePlan = async (
     return { patch: { exportSpotFactor: 0 }, toast: EXPORT_SHARE_NORMALIZED_TOAST };
   }
   return { patch: {}, toast: 'Price settings saved.' };
+};
+
+// Compensating rollback of the scheme write (used by `recoverFromSchemeChangeFailure`).
+// The scheme save and the `applyExportSchemeChangePlan` follow-up cannot be atomic:
+// when the scheme lands but the export write fails, the store is left holding the
+// NEW scheme beside an export config still in the OLD unit — an incoherent pair
+// whose fixed amount a later read would scale by the wrong divisor. Re-persist
+// `previousScheme` (the value the untouched export config still agrees with), never
+// wiping the export config. A no-op scheme change needs no rollback. Best-effort —
+// a failed rollback is logged, never destructively retried.
+const rollBackSchemeOnExportFailure = async (
+  previousScheme: string,
+  nextScheme: string,
+): Promise<boolean> => {
+  if (previousScheme === nextScheme) return false;
+  try {
+    await setSetting(PRICE_SCHEME, previousScheme);
+    return true;
+  } catch (rollbackError) {
+    await logSettingsError('Failed to roll back price scheme', rollbackError, 'priceConfig');
+    return false;
+  }
+};
+
+// Reconcile the persisted store + optimistic UI after a FAILED `handleSchemeChange`,
+// applying any compensating write. Returns true iff the caller should restore
+// `configState.priceScheme` to `previousScheme`. Guards two edges the reviewers
+// surfaced:
+//  - a newer scheme change may have superseded this call while it awaited the
+//    export follow-up (`currentScheme !== scheme`) ⇒ never clobber the newer choice;
+//  - if the scheme write itself never landed (`!schemePersisted`), the store never
+//    changed — only the optimistic UI needs reverting, with no compensating write.
+export const recoverFromSchemeChangeFailure = async (params: {
+  scheme: string;
+  currentScheme: string;
+  previousScheme: string | undefined;
+  schemePersisted: boolean;
+}): Promise<boolean> => {
+  const { scheme, currentScheme, previousScheme, schemePersisted } = params;
+  if (currentScheme !== scheme || previousScheme === undefined) return false;
+  if (!schemePersisted) return true; // scheme save failed: revert optimistic UI only
+  return rollBackSchemeOnExportFailure(previousScheme, scheme);
 };
 
 export type ExportPriceHandlersContext = {

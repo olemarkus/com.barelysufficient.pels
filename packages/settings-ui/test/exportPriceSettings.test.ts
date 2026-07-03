@@ -31,6 +31,7 @@ import { getApiReadModel, getSetting, setSetting } from '../src/ui/homey.ts';
 import { showToast, showToastError } from '../src/ui/toast.ts';
 import {
   createExportPriceHandlers,
+  recoverFromSchemeChangeFailure,
   resolveExportSchemeChangePlan,
   EXPORT_DISABLED_ON_SCHEME_CHANGE_TOAST,
   EXPORT_SHARE_NORMALIZED_TOAST,
@@ -243,6 +244,34 @@ describe('resolveExportSchemeChangePlan', () => {
   });
 });
 
+describe('recoverFromSchemeChangeFailure', () => {
+  it('skips recovery when a newer selection superseded this call (no clobber)', async () => {
+    // A later handleSchemeChange already moved the store/UI to 'homey'; the earlier
+    // 'flow' call's failure must not roll anything back to its stale 'norway'.
+    const restore = await recoverFromSchemeChangeFailure({
+      scheme: 'flow', currentScheme: 'homey', previousScheme: 'norway', schemePersisted: true,
+    });
+    expect(restore).toBe(false);
+    expect(setSettingMock).not.toHaveBeenCalled();
+  });
+
+  it('reverts optimistic UI only when the scheme write never landed (no store write)', async () => {
+    const restore = await recoverFromSchemeChangeFailure({
+      scheme: 'flow', currentScheme: 'flow', previousScheme: 'norway', schemePersisted: false,
+    });
+    expect(restore).toBe(true); // caller reverts configState.priceScheme…
+    expect(setSettingMock).not.toHaveBeenCalled(); // …but the store never changed, so no write
+  });
+
+  it('re-persists the previous scheme when it landed but the export follow-up failed', async () => {
+    const restore = await recoverFromSchemeChangeFailure({
+      scheme: 'flow', currentScheme: 'flow', previousScheme: 'norway', schemePersisted: true,
+    });
+    expect(restore).toBe(true);
+    expect(setSettingMock).toHaveBeenCalledWith('price_scheme', 'norway');
+  });
+});
+
 describe('handleSchemeChange export transition (via priceConfig)', () => {
   beforeEach(() => {
     // Fresh priceConfig module per test: its config state, surface pointer,
@@ -301,6 +330,36 @@ describe('handleSchemeChange export transition (via priceConfig)', () => {
     setSettingMock.mockResolvedValue(undefined);
     switchScheme(surface, 'norway');
     await vi.waitFor(() => expect(factorValue(surface)).toBe('90'));
+  });
+
+  it('rolls the scheme back when the export-disable follow-up write fails, keeping the stored pair coherent', async () => {
+    // Norway + a non-zero fixed export ⇒ leaving Norway plans `disable_export`.
+    const surface = await bootPricesView({
+      price_scheme: 'norway',
+      export_price_enabled: true,
+      export_spot_factor: 0,
+      export_fixed: -5,
+    });
+
+    // The scheme save lands, but the export-disable follow-up write rejects: the
+    // store would be left holding the NEW scheme beside an export config still in
+    // the OLD (Norway) unit — an incoherent pair.
+    setSettingMock.mockImplementation(async (key: string) => {
+      if (key === 'export_price_enabled') throw new Error('export write failed');
+    });
+    switchScheme(surface, 'flow');
+    await vi.waitFor(() => expect(showToastError).toHaveBeenCalled());
+
+    const keys = setSettingMock.mock.calls.map((call) => call[0] as string);
+    // Forward scheme write landed, the export-disable write was attempted and failed…
+    expect(setSettingMock).toHaveBeenCalledWith('price_scheme', 'flow');
+    expect(setSettingMock).toHaveBeenCalledWith('export_price_enabled', false);
+    // …so the scheme is rolled back to Norway — the value the untouched export
+    // config still agrees with — AFTER the failed export write.
+    expect(setSettingMock).toHaveBeenCalledWith('price_scheme', 'norway');
+    expect(keys.lastIndexOf('price_scheme')).toBeGreaterThan(keys.indexOf('export_price_enabled'));
+    // The export config itself is never wiped by the rollback.
+    expect(setSettingMock).not.toHaveBeenCalledWith('export_fixed', 0);
   });
 
   it('leaving norway with a non-zero fixed amount turns export off and keeps the stored numbers', async () => {

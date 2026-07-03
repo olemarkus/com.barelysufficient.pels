@@ -421,16 +421,6 @@ CI failure, so future field-move slices can't silently grow the debt.*
       disabled-pending treatment (opacity/tone) so the two states are distinguishable. Persona:
       Set-and-forget owner; pre-existing. Source: PR #1822 M3 review (2026-07-02). [PR-6b control grammar]
 
-- [ ] **Export scheme-change has no rollback when the export-disable write fails.** `applyExportSchemeChangePlan`
-      (`packages/settings-ui/src/ui/exportPriceSettings.ts`) is called by `handleSchemeChange` AFTER the new
-      `price_scheme` has already been persisted. When the plan is `disable_export` (a non-zero fixed export
-      amount crossing the Norway/non-Norway unit boundary) and the `export_price_enabled=false` write throws,
-      the catch path reverts the numeric field but does NOT roll back the scheme or re-disable export, so a
-      stale export config stays live and is now re-interpreted under the new scheme's unit. `onEnabledChange`
-      already has the compensating-write pattern to copy. *Persona:* prosumer switching price scheme while a
-      write fails. *Hypothesis:* rare (needs a mid-flight settings-write failure) but leaves a silently-wrong
-      export price. *P2 (Codex + CodeRabbit late review on #1810, 2026-07-02).*
-
 - [ ] **"Solar now" hero line does not refresh on status-only power pushes.** `realtime.ts` `updatePlanPower`
       only refreshes the hero's Solar-now triple on a FULL-tracker push; runtime `power_updated` events send
       `tracker: null` (status-only), so after the 60 s staleness gate hides Solar now, subsequent 10 s samples
@@ -1047,6 +1037,19 @@ cosmetic chores — do them in passing or drop them; don't park them here.*
       build the shared PersistedSettingsState helper (`notes/persisted-settings-state.md` cuts that). Files:
       `setup/curtailmentHoldStateAdapter.ts`, `lib/solar/curtailmentSurplus.ts`. *P3 (release-review
       adversarial verify, 2026-07-03).*
+
+- [ ] **Electricity-prices "Right now" can read "Normal" when the current hour has no price.**
+      `resolvePriceLevel` (`lib/plan/pelsStatus.ts`) returns `NORMAL` whenever `hasPrices(combinedPrices)` is
+      true and the hour is neither cheap nor expensive — but `hasPrices` only checks that SOME day has hours,
+      not that the CURRENT hour is covered. So at a day boundary (yesterday's/tomorrow's hours cached but
+      today's not yet fetched) the summary can show the calm "Normal" all-clear instead of "Awaiting prices".
+      (The originally-reported inverse — "Awaiting prices" while current prices ARE present — does NOT
+      reproduce: the view renders the producer's own `powerPayload.status.priceLevel`, and UNKNOWN ⟺ no prices
+      at all.) *Persona:* price-watcher glancing the Electricity prices panel around midnight. *Hypothesis:*
+      narrow, cosmetic — a false calm rather than a wrong control decision. *Why:* the "Right now" tier should
+      never claim an all-clear it can't back with a current-hour price. Fix: tier `NORMAL` only when a price
+      actually covers the current hour. Files: `lib/plan/pelsStatus.ts`. *P3 (release-review adversarial
+      verify, 2026-07-03).*
 
 - [ ] **Cheapest-hours minimum-run fallback for "Run on solar surplus" dump loads (candidate v1.2).**
       *Hypothesis:* "if this device has not run on surplus for N hours, run it in the cheapest upcoming

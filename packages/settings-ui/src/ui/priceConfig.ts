@@ -24,6 +24,7 @@ import {
   applyExportSchemeChangePlan,
   createExportPriceHandlers,
   readExportPriceSettings,
+  recoverFromSchemeChangeFailure,
   resolveExportSchemeChangePlan,
 } from './exportPriceSettings.ts';
 import {
@@ -253,17 +254,21 @@ const handleSchemeChange = async (scheme: PriceScheme) => {
   // store does not hold.
   configState = { ...configState, priceScheme: scheme };
   renderAll();
+  // The scheme save and the export follow-up cannot be atomic. Track the scheme
+  // read before the save (`previousScheme`) and whether the scheme write landed
+  // (`schemePersisted`); on any failure `recoverFromSchemeChangeFailure` decides
+  // how to reconcile the store + optimistic UI (roll back a landed scheme, revert
+  // a never-persisted one, and never clobber a newer selection or the export config).
+  let previousScheme: PriceScheme | undefined;
+  let schemePersisted = false;
   try {
     // The plan resolves against the PERSISTED scheme, not the optimistic UI
     // one: the stored fixed amount's unit follows the scheme active when it
     // was entered, and after a failed save the two can diverge.
-    const { priceScheme: persistedScheme } = await readCurrentPriceSettings();
-    const exportPlan = resolveExportSchemeChangePlan({
-      ...configState,
-      previousScheme: persistedScheme,
-      nextScheme: scheme,
-    });
+    ({ priceScheme: previousScheme } = await readCurrentPriceSettings());
+    const exportPlan = resolveExportSchemeChangePlan({ ...configState, previousScheme, nextScheme: scheme });
     await validateAndSavePriceSettings();
+    schemePersisted = true;
     // Export follow-up write runs only after the scheme save itself landed —
     // if it failed, the store never changed scheme and disabling/zeroing
     // would silently degrade a live export config.
@@ -273,7 +278,13 @@ const handleSchemeChange = async (scheme: PriceScheme) => {
     renderAll();
     await showToast(toast, 'ok');
   } catch (error) {
-    // Repaint so the view reflects the unchanged stored export config.
+    // A failed change: reconcile the store + optimistic UI (the helper guards a
+    // newer selection and never wipes the export config).
+    const rolled = await recoverFromSchemeChangeFailure({
+      scheme, currentScheme: configState.priceScheme, previousScheme, schemePersisted,
+    });
+    if (rolled && previousScheme !== undefined) configState = { ...configState, priceScheme: previousScheme };
+    // Repaint so the view reflects the stored export config (and any rollback).
     renderAll();
     await logSettingsError('Failed to save price scheme', error, 'priceConfig');
     await showToastError(error, 'Failed to save price settings. If this keeps happening, send a diagnostics report.');
