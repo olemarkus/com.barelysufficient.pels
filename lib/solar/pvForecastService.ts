@@ -101,6 +101,19 @@ export class PvForecastService {
   }
 
   /**
+   * Replace the learned state with a blob recovered from persistence after a
+   * transient boot-read miss (see the load-grace path in `PvForecastController`).
+   * The recovered disk history is authoritative — any handful of samples folded
+   * since boot (at most the load-grace window) are dropped, which the controller
+   * accepts as the cost of never clobbering months of irreplaceable history.
+   */
+  adoptRecoveredState(recovered: PvForecastServiceState): void {
+    this.history = recovered.history;
+    this.irradianceByHour = { ...recovered.irradianceByHour };
+    this.cachedFit = undefined; // recovered data ⇒ re-fit on next read
+  }
+
+  /**
    * Fit the device gain from complete recorded hours that also carry an irradiance
    * reading, or `null` while still learning (too few usable hours).
    */

@@ -1033,6 +1033,21 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
 (`notes/personas.md`) it serves. Items that can't name all three are maintainability/
 cosmetic chores — do them in passing or drop them; don't park them here.*
 
+- [ ] **Curtailment hold-state read failure resets the refute ladder.** `createCurtailmentHoldStore.read`
+      (`setup/curtailmentHoldStateAdapter.ts`) normalizes a thrown/absent/junk settings read to `null`, which
+      the constructor treats identically to "no state", so a transient boot-read failure drops the in-memory
+      `holdLevel` to 0. If an import-latch onset then persists before the next clean restart, it overwrites a
+      real on-disk ladder (a 60-min hold resets to 15-min). *Persona:* zero-export prosumer whose curtailment
+      inference is climbing the refute ladder across a restart. *Hypothesis:* bounded — the import latch +
+      consumer `hardOff` still block real grid import, so it is re-try churn not unsafe control — and
+      low-probability (settings.get rarely throws post-startup, and it needs a coincident transition before
+      the next clean restart). *Why:* keeps the ladder honest across crash-loops. If hardened: distinguish a
+      thrown read from junk/absent and suppress the first level-0 persist for the process lifetime so a clean
+      restart rehydrates the untouched blob; keep the null-normalise for genuinely malformed data; do NOT
+      build the shared PersistedSettingsState helper (`notes/persisted-settings-state.md` cuts that). Files:
+      `setup/curtailmentHoldStateAdapter.ts`, `lib/solar/curtailmentSurplus.ts`. *P3 (release-review
+      adversarial verify, 2026-07-03).*
+
 - [ ] **Cheapest-hours minimum-run fallback for "Run on solar surplus" dump loads (candidate v1.2).**
       *Hypothesis:* "if this device has not run on surplus for N hours, run it in the cheapest upcoming
       hour instead" turns the posture's cold-tank failure mode (a cloudy stretch means the load never

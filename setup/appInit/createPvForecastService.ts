@@ -19,6 +19,12 @@ const PV_FORECAST_USER_AGENT = 'com.barelysufficient.pels (PELS PV forecast)';
 const REFRESH_INTERVAL_MS = 3 * 60 * 60 * 1000; // forecast is hourly; refresh every 3 h
 const PERSIST_INTERVAL_MS = 5 * 60 * 1000;
 const PRUNE_INTERVAL_MS = 24 * 60 * 60 * 1000;
+// Abandon-grace after an absent/implausible boot read: while it is open, every
+// persist RE-READS the store first, so a transient SDK miss that has since healed
+// is adopted rather than overwritten. Kept comfortably above PERSIST_INTERVAL_MS
+// so several persist ticks fall inside the window before emptiness is accepted as
+// a genuine fresh install. Mirrors WeatherCollector's LOAD_GRACE_MS.
+const LOAD_GRACE_MS = 15 * 60 * 1000;
 
 export type PvForecastControllerHomey = {
   settings: { get: (key: string) => unknown; set: (key: string, value: unknown) => void };
@@ -47,6 +53,12 @@ export class PvForecastController {
   private readonly logger: PvForecastLogger;
   private timers: Array<ReturnType<typeof setInterval>> = [];
   private dirty = false;
+  // Set at boot when the persisted read came back absent/implausible (a transient
+  // SDK miss OR a genuine fresh install — indistinguishable at that instant).
+  // While set and within LOAD_GRACE_MS, persists re-read before overwriting so a
+  // transient miss cannot clobber learned history. Cleared once a real state is
+  // recovered or the first post-grace write lands.
+  private loadedEmptyAtMs?: number;
   // Completion hook: fires after each SUCCESSFUL provider refresh (fresh
   // irradiance landed). Wiring registers it AFTER the budget-price inputs are
   // wired (`wireBudgetPrice`), so it can never trigger a combined-prices
@@ -69,8 +81,43 @@ export class PvForecastController {
       getCoordinates: () => readHubCoordinates(ctx.homey.geolocation),
       userAgent: ctx.userAgent,
     });
-    this.service = new PvForecastService({ irradiance: this.provider, initialState: this.store.read() });
+    // Capture the boot read once: an absent/implausible read (a transient SDK
+    // miss OR a genuine fresh install) both yield `undefined`. Arming the load
+    // grace makes the early persists re-read before overwriting — a transient
+    // miss then heals into a recovery instead of clobbering months of learned
+    // history; a real fresh install just waits out the grace, then persists.
+    const initialState = this.store.read();
+    this.service = new PvForecastService({ irradiance: this.provider, initialState });
     this.active = Object.keys(this.service.getState().history.hourly).length > 0;
+    if (initialState === undefined) this.loadedEmptyAtMs = this.getNowMs();
+  }
+
+  private isLoadGraceActive(): boolean {
+    return this.loadedEmptyAtMs !== undefined
+      && this.getNowMs() - this.loadedEmptyAtMs < LOAD_GRACE_MS;
+  }
+
+  /** Re-read the store after an absent/implausible boot read; adopt real history
+   *  and clear the grace on success. Returns false while the store is still
+   *  unreadable or genuinely empty (a fresh install). The re-read hits the Homey
+   *  SDK, and this runs inside a `setInterval` / `stop()` path, so a transient
+   *  `settings.get` throw must be swallowed here — otherwise it escapes the timer
+   *  and crashes the process during exactly the boot-read failure this guards. */
+  private tryRecoverPersistedState(): boolean {
+    try {
+      const recovered = this.store.read();
+      if (recovered === undefined || Object.keys(recovered.history.hourly).length === 0) return false;
+      this.service.adoptRecoveredState(recovered);
+      this.active = true;
+      this.loadedEmptyAtMs = undefined;
+      this.logger.info({ event: 'pv_forecast_state_recovered' });
+      return true;
+    } catch (error) {
+      // Treat a thrown re-read like a still-unreadable store: keep the grace armed
+      // so a later tick retries, and never overwrite possibly-good on-disk history.
+      this.logger.warn({ event: 'pv_forecast_recovery_failed', err: normalizeError(error) });
+      return false;
+    }
   }
 
   /** Fold a generation power sample from the power pipeline (no-op if unknown).
@@ -152,9 +199,23 @@ export class PvForecastController {
 
   private persistIfDirty(): void {
     if (!this.dirty) return;
+    // Booted from an absent/implausible read: re-read the store before writing so
+    // a transient SDK miss that has since healed is ADOPTED, never overwritten.
+    // Emptiness is accepted (a genuine fresh install) only once every re-read
+    // across the grace window still comes back unreadable.
+    if (this.loadedEmptyAtMs !== undefined && !this.tryRecoverPersistedState() && this.isLoadGraceActive()) {
+      // Diagnostic trace that a write was intentionally deferred to protect
+      // possibly-good on-disk history (mirrors WeatherCollector's skip log): if
+      // the app is killed inside the window, the log shows samples were dropped
+      // by design, not lost to a bug.
+      this.logger.info({ event: 'pv_forecast_persist_skipped_grace' });
+      return; // retried on the next persist tick
+    }
     try {
       this.store.write(this.service.getState());
       this.dirty = false;
+      // The store now reflects memory; a later re-read could only regress to it.
+      this.loadedEmptyAtMs = undefined;
     } catch (error) {
       this.logger.warn({ event: 'pv_forecast_persist_failed', err: normalizeError(error) });
     }

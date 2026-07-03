@@ -136,15 +136,20 @@ describe('PvForecastController', () => {
   it('finiteness-gates netPowerW at the boundary; a finite signed net persists as the anchor', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => radiationOk));
     const stored = new Map<string, unknown>();
+    let now = 0;
     const controller = new PvForecastController(makeCtx({
       homey: {
         settings: { get: (key) => stored.get(key), set: (key, value) => { stored.set(key, value); } },
         geolocation: {},
       },
+      getNowMs: () => now,
     }));
     type PersistedHistory = { history?: { lastNetW?: number } } | undefined;
 
     controller.recordSample(500, 1000, Number.NaN); // junk net must not anchor
+    // Advance past the load grace so the empty-boot-read persist proceeds instead
+    // of deferring (re-read-before-overwrite); the first write then clears it.
+    now = 16 * 60 * 1000;
     controller.stop(); // persists the dirty state
     expect((stored.get(PV_FORECAST_STATE) as PersistedHistory)?.history?.lastNetW).toBeUndefined();
 
@@ -181,15 +186,82 @@ describe('PvForecastController', () => {
 
   it('swallows a persistence failure — logs it, never throws', () => {
     const warn = vi.fn();
+    let now = 0;
     const controller = new PvForecastController(makeCtx({
       homey: {
         settings: { get: () => undefined, set: () => { throw new Error('quota exceeded'); } },
         geolocation: {},
       },
+      getNowMs: () => now,
       logger: { info: vi.fn(), warn },
     }));
     controller.recordSample(500, 1000); // marks the state dirty
+    // Advance past the load grace: within it, an absent boot read defers the
+    // write (re-read-before-overwrite), so the throw would never fire.
+    now = 16 * 60 * 1000;
     expect(() => controller.stop()).not.toThrow(); // stop ⇒ persist ⇒ set throws ⇒ caught
     expect(warn).toHaveBeenCalledWith(expect.objectContaining({ event: 'pv_forecast_persist_failed' }));
+  });
+
+  it('recovers learned history after a transient empty boot read instead of overwriting it', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => radiationOk));
+    // Months of learned history live on disk, but the FIRST read at boot
+    // transiently misses (returns undefined); every later read returns the blob.
+    const startMs = Date.UTC(2026, 5, 1, 8, 0, 0);
+    const hourly: Record<string, { kwh: number; coveredMs: number }> = {};
+    for (let h = 0; h < 30; h += 1) hourly[String(startMs + h * HOUR_MS)] = { kwh: 0.3, coveredMs: HOUR_MS };
+    const persisted = { history: { lastSampleMs: startMs + 30 * HOUR_MS, hourly }, irradianceByHour: {} };
+    let reads = 0;
+    let lastWritten: unknown;
+    const info = vi.fn();
+    const controller = new PvForecastController(makeCtx({
+      homey: {
+        settings: {
+          get: (key) => {
+            if (key !== PV_FORECAST_STATE) return undefined;
+            reads += 1;
+            return reads === 1 ? undefined : persisted; // boot read misses, then heals
+          },
+          set: (_key, value) => { lastWritten = value; },
+        },
+        geolocation: {},
+      },
+      logger: { info, warn: vi.fn() },
+    }));
+
+    controller.recordSample(600, startMs + 31 * HOUR_MS); // arms + marks dirty
+    await flushMicro(); // let the arming refresh settle
+    controller.stop(); // stop ⇒ persist ⇒ re-read heals ⇒ adopt, never clobber
+
+    // The write must carry the RECOVERED months of history, never the near-empty
+    // in-memory state the boot miss produced.
+    const written = lastWritten as { history: { hourly: Record<string, unknown> } };
+    expect(Object.keys(written.history.hourly).length).toBeGreaterThanOrEqual(30);
+    expect(info).toHaveBeenCalledWith(expect.objectContaining({ event: 'pv_forecast_state_recovered' }));
+  });
+
+  it('does not crash when the recovery re-read throws; keeps the grace armed', () => {
+    const warn = vi.fn();
+    let reads = 0;
+    const controller = new PvForecastController(makeCtx({
+      homey: {
+        settings: {
+          get: (key) => {
+            if (key !== PV_FORECAST_STATE) return undefined;
+            reads += 1;
+            if (reads === 1) return undefined; // boot read empty ⇒ arm grace
+            throw new Error('transient settings failure'); // recovery re-read throws
+          },
+          set: () => {},
+        },
+        geolocation: {},
+      },
+      logger: { info: vi.fn(), warn },
+    }));
+    controller.recordSample(600, 1000); // arms + marks dirty
+    // persist ⇒ recovery re-read throws inside the setInterval/stop path; it must
+    // be swallowed (not crash the process) and defer the write within grace.
+    expect(() => controller.stop()).not.toThrow();
+    expect(warn).toHaveBeenCalledWith(expect.objectContaining({ event: 'pv_forecast_recovery_failed' }));
   });
 });
