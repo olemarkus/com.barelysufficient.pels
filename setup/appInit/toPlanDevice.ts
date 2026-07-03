@@ -18,6 +18,8 @@ import {
 } from './calibrationViews';
 import { withSteppedDiscriminant } from '../../lib/plan/planTypes';
 import { resolveSurplusOnlyPosture } from '../../lib/plan/planSurplusAbsorb';
+import { normalizePowerSource } from '../../lib/power/powerSource';
+import { POWER_SOURCE } from '../../lib/utils/settingsKeys';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 
 // Producer-side classification for the "Run on solar surplus" dump-load gate: a
@@ -90,6 +92,16 @@ export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot & 
     device.targetPowerConfig,
     device.controlModel,
   );
+  // Producer-resolved metered-source gate: on the flow power source no surplus
+  // signal exists (the flow boundary rejects negative watts and carries no
+  // generation channel), so a dump load must never be stamped `surplusOnly`
+  // there — the surplus hold would otherwise keep it off forever. Read once here
+  // at the producer; the planner helper consumes the flat bit. A transient
+  // `settings.get` miss reads as flow (fail-toward-release): the device reverts
+  // to normal managed control for that cycle rather than being stranded held —
+  // the safe direction, and self-healing next cycle. `surplusOnly` is a per-cycle
+  // derived posture, not persisted state, so it needs no abandon-grace window.
+  const meteredPowerSource = normalizePowerSource(ctx.homey.settings.get(POWER_SOURCE)) === 'homey_energy';
   const surplusOnly = resolveSurplusOnlyPosture({
     surplusWilling: ctx.priceOptimizationSettings[device.id]?.surplusWilling,
     controlCapabilityId: device.controlCapabilityId,
@@ -99,6 +111,7 @@ export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot & 
     plainBinaryControlModel,
     controllable,
     managed,
+    meteredPowerSource,
   });
   const residualKw = buildResidualKwForPlanDevice({
     device,
