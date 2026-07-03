@@ -13,6 +13,19 @@ test.use({ hasTouch: true });
 // so the touch grammar is asserted on the two Chromium width projects only.
 test.skip(({ browserName }) => browserName !== 'chromium', 'pointer-coarse emulation is Chromium-only');
 
+// The budget/usage charts derive their columns, cumulative actuals, and axis
+// extents from `Date.now()`. Without a pinned clock, the plot geometry (line
+// height in progress mode, y-axis label width → left plot margin at 320 px)
+// drifts with the wall-clock time the run happens to start, so the fixed-fraction
+// taps below can land off the plot and leave the readout on its default — a
+// "dead tap" that made the narrow-width budget assertion flaky in CI. Pin the
+// clock the same way the sibling budget/usage capture specs do so every column
+// and margin is deterministic regardless of when the run starts.
+const FIXED_NOW = new Date('2026-01-15T11:13:00Z');
+test.beforeEach(async ({ page }) => {
+  await page.clock.setFixedTime(FIXED_NOW);
+});
+
 const openUsageTab = async (page: Page) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await expect(page.getByRole('tablist')).toBeVisible();
