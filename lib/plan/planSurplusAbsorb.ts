@@ -64,6 +64,14 @@ const willingWithLift = (config: SurplusConfig | undefined): boolean => (
  * the settings-UI gate (`resolveDeviceDetailControlMode !== 'default'`), so
  * runtime candidacy never disagrees with what the toggle offers — a device the
  * UI classifies continuous/preset/stepped is never stamped `surplusOnly`.
+ *
+ * Metered-source gate: surplus — measured export OR inferred curtailment —
+ * physically cannot exist on the flow power source (its boundary rejects
+ * negative watts and carries no generation channel), so a flow home must never
+ * stamp a dump load `surplusOnly` — the surplus hold would otherwise keep it off
+ * forever waiting for a signal that can never arrive. The producer resolves the
+ * flat `meteredPowerSource` bit (mirroring the settings-UI solar gates); this
+ * helper only reads it and never branches on `power_source` provenance.
  */
 export function resolveSurplusOnlyPosture(params: {
   surplusWilling: boolean | undefined;
@@ -78,8 +86,13 @@ export function resolveSurplusOnlyPosture(params: {
   plainBinaryControlModel: boolean;
   controllable: boolean;
   managed: boolean;
+  // Producer-resolved: the whole-home power source is metered (Homey Energy).
+  // False on the flow source, where no surplus signal exists — see the
+  // metered-source gate in the docblock above.
+  meteredPowerSource: boolean;
 }): boolean {
   return params.surplusWilling === true
+    && params.meteredPowerSource
     && params.controlCapabilityId !== undefined
     && params.controlCapabilityId !== 'evcharger_charging'
     && !isEvDevice({ deviceClass: params.deviceClass, controlCapabilityId: params.controlCapabilityId })

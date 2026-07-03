@@ -374,22 +374,22 @@ CI failure, so future field-move slices can't silently grow the debt.*
       the shared gap-reset (48 h) bounds the error and the card's copy claims "so far today", not
       exactness. Files: `packages/settings-ui/src/ui/solarStats.ts`,
       `packages/settings-ui/src/ui/solarUsageSection.ts`.
-- [ ] **Source-gate `/ui_devices.hasManagedSolarDevice` so the "Use solar surplus" toggle is inert-free on the flow power source.**
+- [ ] **Source-hide the "Run on solar surplus" / temperature-lift controls on the flow power source WITHOUT hiding the export-price section.**
       *Persona:* flow-source owner with a Homey solar device who flips the surplus toggle.
-      *Hypothesis:* the surplus-absorb engine keys off whole-home export (negative net); the flow
-      power card (`report_power_usage`) rejects negative watts, so a flow home's net is never
-      negative and the boost can NEVER engage — yet `/ui_devices.hasManagedSolarDevice` (which
-      still gates the device-detail toggle) ignores the power source, offering an inert control.
-      The `/ui_power` copy of the flag is source-gated (PR #1814), and the toggle's new
-      `hasExhibitedExport` OR-branch is source-gated too — but the `hasManagedSolarDevice` branch
-      in the devices payload is not, so a flow+solar-device home still shows the toggle. Fix:
-      source-gate that branch as well (now a one-liner — `getSettingsUiDevicesPayload` already
-      reads `power_source` for `hasExhibitedExport`), or surface an explanatory note on the
-      toggle. Do NOT source-gate the export-price *settings* section the same way: the fixed
-      feed-in amount is meaningful on flow (`docs/solar.md`), so its gate is deliberately separate.
-      *Why:* an inert toggle silently breaks trust; found while gating the Solar card off flow
-      homes. Files: `setup/settingsUiApi.ts` (`getSettingsUiDevicesPayload`),
-      `packages/settings-ui/src/ui/deviceDetail/solarSurplus.ts`, `docs/solar.md`.
+      *Status:* the destructive half is FIXED — `toPlanDevice` now gates the runtime `surplusOnly`
+      stamp to `homey_energy` (`resolveSurplusOnlyPosture.meteredPowerSource`), so a flow home can
+      no longer strand a dump load "Waiting for solar surplus" forever; the toggle is at worst
+      inert there. What remains is purely the misleading *offer*: `/ui_devices.hasManagedSolarDevice`
+      is not source-gated, so a flow+solar-device home still shows the surplus controls.
+      *Why not the one-liner:* gating `hasManagedSolarDevice` in `getSettingsUiDevicesPayload` also
+      hides the export-price *settings* section — it feeds `resolveHomeExhibitsSolar`, which gates
+      `showExportSection` "in lockstep" (`priceConfig.ts:162`). The fixed feed-in amount is
+      deliberately usable on flow (`docs/solar.md`), so that section must stay. Correct fix:
+      DECOUPLE — gate only the surplus controls (the dump-load toggle in
+      `deviceDetail/solarSurplus.ts` + the temperature-lift row in `deviceDetail/index.ts`) by
+      power source directly, leaving `resolveHomeExhibitsSolar`/the export section intact. *P3
+      (was P2 before the producer gate removed the harm).* Files: `packages/settings-ui/src/ui/deviceDetail/solarSurplus.ts`,
+      `packages/settings-ui/src/ui/deviceDetail/index.ts`.
 
 - [ ] **Converge the three lone master-toggle rows on one switch-row pattern.** Weather insight,
       Simulation, and Price-aware devices each present a lone switch on its own line — weaker than a
@@ -871,6 +871,23 @@ CI failure, so future field-move slices can't silently grow the debt.*
       on a just-restored lower-priority device (relay/compressor wear). Add a shed-side recent-restore
       guard so the hold honors the same grace the normal shed path applies. Source:
       pels-runtime-reality on the pause-lower-priority feature, 2026-07-01.
+
+- [ ] **"Pause lower-priority devices" holds surface a misleading reason (hard cap / daily budget).**
+      `resolvePauseHold` (`lib/plan/shedding/pauseHold.ts`) unions each held lower-priority device into
+      `shedSet` WITHOUT a reason, so `normalizeShedReasons` (`lib/plan/planReasons.ts`) falls through to the
+      `capacity` default (or `dailyBudget` when `softLimitSource==='daily'`) and the device card reads
+      "Limited by the hard cap" even though the real cause is a smart task pausing it — while the hero shows
+      available power under the cap, so the two disagree. Control is correct (the device is rightly held);
+      only the surfaced reason is wrong. Fix (mirror the surplus-hold pattern, resolution-in-producer): add
+      a `pausedForPriority` reason code + a canonical "Paused so a higher-priority device can start" label in
+      `planReasonSemanticsCore.ts`, return a `reasonById` map from `resolvePauseHold`, thread it through
+      `planBuilderSurplus` → `planBuilder` → `normalizeShedReasons`, and add a `resolvePauseHoldReasonAdoption`
+      that loses to a fresh `shedReasons`/swap/shortfall entry (mirror `resolveSurplusHoldReasonAdoption`);
+      add card-text mappings + an integration assertion on the held device's `reason.code`. *Persona:* owner
+      with a smart task pausing a lower-priority device. *Hypothesis:* narrow (reserved device idle + a
+      lower-priority managed device present + no genuine capacity pressure), cosmetic, and the feature is
+      Flow-only + merged-but-unpublished (zero prod users today) — hence P2 not P1. ~9 files. *P2
+      (release-review adversarial verify, 2026-07-03).*
 
 - [ ] **Hoist the active-plan shape guard into shared-domain so the UI and runtime can't drift.**
       The settings-UI `coerceDeferredObjectiveActivePlans`

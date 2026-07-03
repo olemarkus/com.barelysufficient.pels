@@ -10,7 +10,7 @@ If you have rooftop solar (PV), this page explains what PELS does with it today.
 **Short version:** PELS uses your solar to protect your capacity for free; it can nudge a heater to soak surplus — or run an on/off load such as a pool pump only while you export — instead of sending it to the grid; and it shows what your solar did — production, self-consumption, export, and the grid cost it avoided. It does not yet drive your export to zero or control a battery or inverter (see [What PELS does not do yet](#what-pels-does-not-do-yet)).
 
 ::: warning Requires the Homey Energy power source
-The solar features below need the **Homey Energy** power source, with a solar device that reports production. On the Flow power source, PELS does not receive a solar signal.
+The solar features below need the **Homey Energy** power source — either a solar device that reports production, or a meter that shows your solar export. On the Flow power source, PELS does not receive a solar signal.
 :::
 
 ## What to do today
@@ -53,7 +53,7 @@ PELS waits for the surplus to settle before engaging, and — to avoid flapping 
 
 ### Run an on/off device only on solar surplus
 
-On a managed **on/off** device you can turn on **"Run on solar surplus"** (the toggle appears once a solar device is present). PELS then keeps the device **off** and turns it on only while your export comfortably covers its draw — the same settle-and-hold behaviour as the heating boost, so passing clouds don't flap it. When the surplus is gone, PELS turns it off again.
+On a managed **on/off** device you can turn on **"Run on solar surplus"** (the toggle appears once PELS can see your solar — either a solar device reports production, or your meter has shown solar export). PELS then keeps the device **off** and turns it on only while your export comfortably covers its draw — the same settle-and-hold behaviour as the heating boost, so passing clouds don't flap it. When the surplus is gone, PELS turns it off again.
 
 Two things to know before you use it:
 
@@ -105,7 +105,7 @@ If you also have a battery: because PELS only sees net power and cannot command 
 
 In some markets, exported solar is worth far less than the power you would otherwise buy — and in some it can cost you. In the Netherlands, the end of net metering (*salderingsregeling*) from 2027 means suppliers increasingly charge for exported power (*terugleverkosten*): exporting can actively cost money, so using your own solar becomes a direct saving rather than a smaller return.
 
-PELS lets you tell it what exported power is worth to you. Under **Settings → Electricity prices**, turn on **"Use an export price"** (the section appears once a solar device is present) and enter what your power company pays you:
+PELS lets you tell it what exported power is worth to you. Under **Settings → Electricity prices**, turn on **"Use an export price"** (the section appears once PELS can see your solar — either a solar device reports production, or your meter has shown solar export) and enter what your power company pays you:
 
 - **Share of spot price (%)** — how much of the hourly spot price (incl. VAT) you are paid per exported kWh. Available on the Norway price source, which has an hourly spot price; if your contract pays the raw spot price, enter 80.
 - **Fixed amount** — added for every exported kWh, in the same unit as your other prices. It can be negative if you pay to export. On the Flow and Homey Energy price sources this fixed amount is the whole export price, since no hourly spot price is available there.

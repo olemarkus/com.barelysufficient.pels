@@ -241,15 +241,19 @@ export const getSettingsUiDevicesPayload = ({ homey }: ApiContext): SettingsUiDe
     // A solar/PV device is tracked observe-only and excluded from `devices`, so its presence
     // is the only home-level signal the settings UI gets that the home has solar. The
     // normalized class-key for any role-detected PV is 'solarpanel' (`resolveDeviceClassKey`).
+    // NOT source-gated: this flag also unlocks the export-price *settings* section (via
+    // `resolveHomeExhibitsSolar`), whose fixed feed-in amount is deliberately usable on the
+    // flow source (see TODO + `docs/solar.md`). The flow-only harm — a dump load stranded
+    // "Waiting for solar surplus" forever — is fixed at the producer instead (`toPlanDevice`
+    // gates the runtime `surplusOnly` stamp to homey_energy), so the toggle is at worst inert
+    // on flow, never destructive. Gating this flag to source-hide the surplus controls WITHOUT
+    // hiding the export section needs a decoupled per-control gate — tracked in TODO.
     hasManagedSolarDevice: candidates.some((device) => device.deviceClass === 'solarpanel'),
     // Meter-only PV homes (a string inverter with no Homey solarpanel device) get no
     // `hasManagedSolarDevice` signal, yet the surplus-absorb engine keys off whole-home net
     // export, which they DO exhibit. Broaden the "Use solar surplus" toggle gate to them via a
-    // stable, accumulated export-kWh signal. Source-gated to homey_energy (belt-and-suspenders:
-    // the flow power boundary rejects negative watts, so a flow home's export families are
-    // always empty anyway — this branch is always false on flow). Only `hasExhibitedExport`
-    // is source-gated; `hasManagedSolarDevice` above is not, so a flow home WITH a role-detected
-    // solarpanel device still gets solar surfaces via that flag.
+    // stable, accumulated export-kWh signal. Source-gated to homey_energy: the flow power
+    // boundary rejects negative watts, so a flow home's export families are always empty anyway.
     hasExhibitedExport: normalizePowerSource(homey.settings.get('power_source')) === 'homey_energy'
       && hasMaterialExhibitedExport(tracker && typeof tracker === 'object' ? tracker : null),
   };

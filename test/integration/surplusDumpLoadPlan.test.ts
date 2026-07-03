@@ -38,6 +38,8 @@ import { buildSwapCandidates } from '../../lib/plan/swap/candidates';
 import { buildPlanDevice } from '../utils/planTestUtils';
 import { toPlanDevice } from '../../setup/appInit';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
+import type { AppContext } from '../../lib/app/appContext';
+import { POWER_SOURCE } from '../../lib/utils/settingsKeys';
 import type { DeferredDecorationBundle } from '../../packages/planner-types/src/deferredDecoration';
 
 const PUMP = 'pool-pump';
@@ -524,15 +526,42 @@ describe('toPlanDevice surplusOnly producer stamp', () => {
     ...overrides,
   }) as TargetDeviceSnapshot;
 
+  // The producer gates `surplusOnly` to the metered power source; seed it so these
+  // candidacy specs isolate the modality/managed/controllable predicates (the
+  // source gate itself is covered by the dedicated flow-source spec below).
+  const withMeteredSource = (ctx: AppContext): AppContext => {
+    vi.mocked(ctx.homey.settings.get).mockImplementation(
+      (key: string) => (key === POWER_SOURCE ? 'homey_energy' : undefined),
+    );
+    return ctx;
+  };
+
   it('stamps surplusOnly for a willing managed binary device', () => {
+    const ctx = withMeteredSource(createAppContextMock({
+      priceOptimizationSettings: {
+        [PUMP]: { enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling: true },
+      },
+    }));
+    (ctx as unknown as { resolveManagedState: () => boolean }).resolveManagedState = () => true;
+    (ctx as unknown as { isCapacityControlEnabled: () => boolean }).isCapacityControlEnabled = () => true;
+    expect(toPlanDevice(ctx, buildSocketSnapshot()).surplusOnly).toBe(true);
+  });
+
+  it('does not stamp surplusOnly on the flow power source (no surplus signal can arrive)', () => {
+    // The flow power boundary rejects negative watts and carries no generation
+    // channel, so a dump load stamped surplusOnly there would be held OFF forever
+    // waiting for a surplus that never comes. The producer gates it to homey_energy.
     const ctx = createAppContextMock({
       priceOptimizationSettings: {
         [PUMP]: { enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling: true },
       },
     });
+    vi.mocked(ctx.homey.settings.get).mockImplementation(
+      (key: string) => (key === POWER_SOURCE ? 'flow' : undefined),
+    );
     (ctx as unknown as { resolveManagedState: () => boolean }).resolveManagedState = () => true;
     (ctx as unknown as { isCapacityControlEnabled: () => boolean }).isCapacityControlEnabled = () => true;
-    expect(toPlanDevice(ctx, buildSocketSnapshot()).surplusOnly).toBe(true);
+    expect(toPlanDevice(ctx, buildSocketSnapshot()).surplusOnly).toBeUndefined();
   });
 
   it('does not stamp a non-willing device, an unmanaged device, or a temperature device', () => {
@@ -540,7 +569,7 @@ describe('toPlanDevice surplusOnly producer stamp', () => {
       [PUMP]: { enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling: true },
     };
     const managedCtx = (settings: typeof willing | Record<string, never>, managed: boolean) => {
-      const ctx = createAppContextMock({ priceOptimizationSettings: settings });
+      const ctx = withMeteredSource(createAppContextMock({ priceOptimizationSettings: settings }));
       (ctx as unknown as { resolveManagedState: () => boolean }).resolveManagedState = () => managed;
       (ctx as unknown as { isCapacityControlEnabled: () => boolean }).isCapacityControlEnabled = () => true;
       return ctx;
@@ -557,11 +586,11 @@ describe('toPlanDevice surplusOnly producer stamp', () => {
     // classify continuous/preset/stepped (an enabled targetPowerConfig or a
     // non-binary controlModel) is NOT a dump-load candidate, even if willing.
     const willingCtx = () => {
-      const ctx = createAppContextMock({
+      const ctx = withMeteredSource(createAppContextMock({
         priceOptimizationSettings: {
           [PUMP]: { enabled: false, cheapDelta: 0, expensiveDelta: 0, surplusWilling: true },
         },
-      });
+      }));
       (ctx as unknown as { resolveManagedState: () => boolean }).resolveManagedState = () => true;
       (ctx as unknown as { isCapacityControlEnabled: () => boolean }).isCapacityControlEnabled = () => true;
       return ctx;
