@@ -88,8 +88,9 @@ buttons that tell you what to investigate:
   PELS.
 
 If a task is **At risk** before the deadline and the timing matters, grant it
-extra leeway with **Set what a smart task may do** — *go over today's budget* or
-*limit lower-priority devices*. Both stay inside the hard cap. See
+extra leeway with **Set what a smart task may do** — *go over today's budget*,
+*limit lower-priority devices*, or *pause lower-priority devices*. All three stay
+inside the hard cap. See
 [Letting a Task Push Harder](/smart-tasks#letting-a-task-push-harder).
 
 A run marked **Abandoned** usually needs no fix — it means the situation changed

@@ -57,7 +57,7 @@ Use this Flow shape:
 
 | Flow part | Card |
 | --- | --- |
-| **When** | PELS: **Desired stepped load changed for** your charger |
+| **When** | PELS: **Stepped device target changed** for your charger |
 | **Then** | Your charger app: set available charging current |
 
 In the charger app action card, use the PELS Flow tag **EV charger current (A)** for the current value.

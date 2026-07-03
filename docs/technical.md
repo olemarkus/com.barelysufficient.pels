@@ -293,7 +293,7 @@ PELS manages any Homey device that exposes the capabilities the planner needs:
 - **Price-only temperature devices**: `target_temperature` + `measure_temperature` is enough for mode and price-based control, even without a power estimate.
 - **On/off devices**: `onoff` plus a usable power-estimate path.
 
-Devices ship **disabled by default**, so you stay in control of what PELS touches — enable management and control device-by-device from the Devices tab. Devices without a usable estimate are listed for visibility and can still run mode/price control on temperature devices. Add an Energy value in Homey or a `settings.load` value, enable **Limit** on the device, and PELS picks it up on the next planning cycle.
+Devices ship **disabled by default**, so you stay in control of what PELS touches — enable management and control device-by-device from the Devices tab. Devices without a usable estimate are listed for visibility and can still run mode/price control on temperature devices. Add an Energy value in Homey or a `settings.load` value, enable **Power-limit control** on the device, and PELS picks it up on the next planning cycle.
 
 ### Available-Power Check For Devices With Power-Limit Control
 

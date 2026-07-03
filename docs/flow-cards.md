@@ -27,12 +27,12 @@ Whole-home power data is what unlocks every other planner feature — the meter 
 
 | Card | What it does |
 | --- | --- |
-| **Capacity guard: manual action needed** | Fires when PELS projects that your hourly hard-cap budget will be breached at the current run rate and no more devices can be limited. |
+| **Hard cap breach imminent — manual action needed** | Fires when PELS projects that your hourly hard-cap budget will be breached at the current run rate and no more devices can be limited. |
 | **Operating mode changed to...** | Fires when the current PELS operating mode changes to the selected mode. |
 | **Price level changed to...** | Fires when the price level changes between Cheap, Normal, Expensive, or Unknown. |
 | **Current price is one of today's lowest** | Fires when the current hour is among the selected number of cheapest hours today. |
 | **Current price is one of the lowest before a time** | Fires when the current hour is among the selected number of cheapest hours in a window before a chosen end hour. |
-| **Desired stepped load changed for** | Fires when PELS wants a stepped-load device, including EV charger control modes, to move to another configured step. |
+| **Stepped device target changed** | Fires when PELS wants a stepped-load device, including EV charger control modes, to move to another configured step. |
 | **Smart task status changed** | Fires when PELS saves a new Smart task status for a device, such as **On track** to **At risk**. Short mid-hour recalculations do not fire it. |
 | **Smart task plan changed** | Fires when the scheduled hours for a Smart task are revised, for example after new prices arrive. |
 | **Smart task ended** | Fires once when a task run concludes. The **Outcome** tag is `succeeded`, `missed`, or `abandoned`. Filter on the tag downstream — for example, send a notification only when `Outcome = missed`. |
@@ -40,7 +40,7 @@ Whole-home power data is what unlocks every other planner feature — the meter 
 | **PELS price list was updated** | Fires when today's or tomorrow's adjusted prices change in a way that matters (new day-ahead prices arrived, grid tariffs re-fetched, local midnight rollover). Exposes a `prices_json` token with the full hourly array. See [Price Tags in Flow & HomeyScript](/price-tags). |
 | **Daily budget adjusted for the weather forecast** | Fires once a day when PELS sets your daily budget from the weather forecast (requires the weather insight's automatic apply to be turned on). Exposes a `budget_kwh` token (the new daily budget) and a `forecast_temperature` token (the forecast °C that set it). Manual and Flow budget changes do not fire it. |
 
-Use **Capacity guard: manual action needed** for urgent notifications, not for normal daily pacing.
+Use **Hard cap breach imminent — manual action needed** for urgent notifications, not for normal daily pacing.
 
 ## Conditions
 
@@ -82,7 +82,7 @@ The device-aware available-power condition includes built-in hysteresis after re
 | **Add heating task** | Stores a target temperature and ready-by time for a temperature device. PELS picks useful cheaper hours before the ready-by time. |
 | **Add charging task** | Stores a target battery percentage and ready-by time for an EV charger. |
 | **Clear smart task** | Removes any active Smart task for a device. |
-| **Set what a smart task may do** | Grants a task extra leeway while it is scheduled to run: **go over today's budget** and/or **limit lower-priority devices**. Use it when a deadline matters enough to push past normal pacing. The hard cap is never raised. See [Smart Tasks](/smart-tasks). |
+| **Set what a smart task may do** | Grants a task extra leeway while it is scheduled to run: **go over today's budget**, **limit lower-priority devices**, and/or **pause lower-priority devices** (held off up front, including idle ones, to clear a block of power). Use it when a deadline matters enough to push past normal pacing. The hard cap is never raised. See [Smart Tasks](/smart-tasks). |
 
 ## Common Automation Patterns
 
@@ -111,7 +111,7 @@ Use the device-state conditions to avoid duplicate actions:
 For water heaters and similar non-EV devices using the built-in stepped-load model:
 
 1. Configure the step list in the PELS device settings.
-2. Use **Desired stepped load changed for [device]** to map PELS intent to vendor actions.
+2. Use **Stepped device target changed** for the device to map PELS intent to vendor actions.
 3. Report the resulting step back through one of the stepped-load feedback cards.
 
 The full worked example lives in [Wire a Flow-Based Load Device](/how-to-headroom-expected-power-flow-control).
@@ -134,7 +134,7 @@ Use Smart task cards when one device should reach a target by a ready-by time.
 
 Use **Smart task status changed** for notifications after the task status has settled, **Smart task plan changed** when you care that the scheduled hours moved, and **Has smart task** when another Flow should behave differently while a task is active.
 
-To give a task more room when a deadline matters, use **Set what a smart task may do** to let it go over today's budget or limit lower-priority devices while it is scheduled to run. Use **Smart task time is running low** to act a fixed lead-time before the ready-by — for example, to grant that leeway only when little time remains.
+To give a task more room when a deadline matters, use **Set what a smart task may do** to let it go over today's budget, limit lower-priority devices, or pause lower-priority devices while it is scheduled to run. Use **Smart task time is running low** to act a fixed lead-time before the ready-by — for example, to grant that leeway only when little time remains.
 
 See [Smart Tasks](/smart-tasks) for setup examples.
 

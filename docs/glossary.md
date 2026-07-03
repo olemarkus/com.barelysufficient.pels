@@ -99,14 +99,44 @@ for capacity — useful for an EV charger you only want running during booked ho
 ## Prices
 
 ### Spot price / price source
-The hourly electricity price PELS plans around. The **Norway** source combines
+The hourly electricity price. The **Norway** source combines
 spot price, grid tariff, surcharges and your chosen support scheme into one hourly
 price; **Homey Energy** and **Flow tag** sources work anywhere with hourly prices.
-See [Using Homey Energy](/homey-energy).
+For most homes this is the price PELS plans around; homes with an export price plan
+against the derived **planning price** (below). See [Using Homey Energy](/homey-energy).
+
+### Import price
+The price you are billed per kWh — every cost figure and receipt stays on this. On
+homes without solar it is simply "the price"; the **Import price** label only appears
+on surfaces that also show an export or planning price.
+
+### Export price
+What you are paid — or charged — per kWh for power you export to the grid. Turn it on
+under **Settings > Electricity prices** when you have solar; the Budget tab shows
+**Export price now** for the current hour. See [Solar and Self-Consumption](/solar).
+
+### Planning price
+The derived price PELS plans against when you have an export price: a blend of import
+and export that reflects what your energy is actually worth to you. It is always an
+estimate — your bills and receipts stay on the import price. Surfaces that act on it
+show a *using your solar* reason line.
 
 ### Cheap-hour boost / expensive-hour reduction
 Temperature nudges (in °C) PELS applies to a price-aware device when electricity
 is cheap or expensive — for example +2 °C overnight, −2 °C during the evening peak.
+
+## Solar
+
+### Solar surplus
+Solar power available beyond what your home is using right now — either exported to
+the grid or inferred when a zero-export inverter throttles production to match the
+house. PELS can steer flexible devices to soak it up instead of exporting it cheaply.
+See [Solar and Self-Consumption](/solar).
+
+### Use solar surplus / Run on solar surplus
+Per-device settings for prosumers. **Use solar surplus** lifts a device's target
+(for example a warmer water heater) while there is surplus; **Run on solar surplus**
+runs an on/off device (pool pump, towel dryer) only while surplus covers it.
 
 ## Smart tasks
 

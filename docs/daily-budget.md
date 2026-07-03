@@ -32,12 +32,12 @@ If you have solar production, Homey Energy may report the whole-home total as ne
 The figures below are the **Budget** page on a phone, a little after 11:00 on a day with a 20 kWh budget.
 
 ![PELS Budget page Plan view showing energy used versus today's budget, budget confidence, and a progress chart tracing actual usage against the planned curve.](screenshots/daily-budget/plan-progress.png)
-*Figure 1. The Plan view answers, "where will I land today?" The big number is the projected end-of-day usage against today's budget — 9.0 of 20.0 kWh, with 11.0 kWh to spare — alongside how much budget is left to spend right now and an estimated cost. The Progress chart traces actual usage (black) against the planned curve (green) and the budget ceiling (dashed).*
+*Figure 1. The Plan view answers, "where will I land today?" The big number is the projected end-of-day usage against today's budget — 9.0 of 20.0 kWh, with 11.0 kWh to spare — alongside how much budget is left to spend right now and an estimated cost. The Progress chart traces actual usage (green) up to now, continues it as a dotted projection (blue) for the rest of the day, and shows today's budget as a dashed line.*
 
 The Hourly plan view is where you can see how the day's energy lines up with prices:
 
 ![PELS Budget page Hourly plan view showing planned energy per hour split into background and managed-device usage, with the electricity price line on top.](screenshots/daily-budget/hourly-plan.png)
-*Figure 2. The Hourly plan view shows planned energy per hour, split into background usage (blue) and managed-device usage (orange), with the price line (purple) on top. This is the view where you check whether managed load is landing in the cheaper hours: with price optimization on, the budget steers it that way.*
+*Figure 2. The Hourly plan view shows planned energy per hour, split into background usage (grey) and managed-device usage (green), with the price line (purple) on top. This is the view where you check whether managed load is landing in the cheaper hours: with price optimization on, the budget steers it that way.*
 
 ## What a budget saves you (an example)
 
