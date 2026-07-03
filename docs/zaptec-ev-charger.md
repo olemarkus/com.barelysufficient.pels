@@ -20,7 +20,7 @@ Use this Flow shape:
 
 | Flow part | Card |
 | --- | --- |
-| **When** | PELS: **Desired stepped load changed for** your Zaptec charger |
+| **When** | PELS: **Stepped device target changed** for your Zaptec charger |
 | **Then** | Zaptec: **Set available current to** |
 
 In the Zaptec action card, use the PELS Flow tag **EV charger current (A)** for the available-current value.

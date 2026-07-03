@@ -47,6 +47,9 @@ The Usage page helps you understand what PELS has observed.
 - **Last 7 days** shows recent daily totals.
 - **Typical day** shows historical hourly patterns.
 - **Detailed hourly view** shows lower-level hourly buckets.
+- **Solar** (shown when PELS has a solar signal) shows today's **Produced**, **Used at home**, and **Exported**, with the grid cost you avoided and what you earned from export. See [Solar and Self-Consumption](/solar).
+
+The hourly bars split each hour into **managed** device usage and **background** usage, so you can see how much of your consumption PELS can influence.
 
 Hourly data is kept for 30 days. Daily totals are kept for one year. Resetting usage history lives under **Settings > Advanced > Data management**.
 
@@ -104,6 +107,7 @@ Device detail sections:
 | **Price response** | Cheap-hour boost and expensive-hour reduction. |
 | **Power limiting** | What PELS does when power needs to be lowered: turn off, set temperature, or set stepped-load level. |
 | **Stepped load profile** | Step names, planning power values, target-power range, temperature boost, and charge boost where supported. |
+| **Solar surplus** (prosumer) | For homes with solar: **Use solar surplus** lifts a device's target while your panels are exporting, and **Run on solar surplus** runs an on/off device only while there is surplus. Appears when PELS detects a solar signal, or when a device already has one of these settings enabled (so you can turn it off). See [Solar and Self-Consumption](/solar). |
 | **Setup** | Managed by PELS, power-limit control, price-based control, budget exemption, built-in device control, control model, and battery level. |
 | **Advanced diagnostics** | Read-only blocked time, activation instability, and penalty history. |
 
@@ -163,6 +167,10 @@ If you use external flow tags:
 1. Set **Price source** to **Flow tag**.
 2. Feed the full JSON payload for today's prices into **Set external prices (today)**.
 3. Feed tomorrow's payload into **Set external prices (tomorrow)** when available.
+
+### Export price (prosumer)
+
+If you sell surplus solar back to the grid, turn on **Use an export price** and set a **share of the spot price** and/or a **fixed amount**. PELS then schedules against the blended **planning price** (what your energy is actually worth once export is accounted for), while your bills, receipts, and the budget's money view stay on the **import price** you are billed. This section appears only when you have a managed solar device or an export price already configured. See [Solar and Self-Consumption](/solar).
 
 ## Settings > Price-Aware Devices
 

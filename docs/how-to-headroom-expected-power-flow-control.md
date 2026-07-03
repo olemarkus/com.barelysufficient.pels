@@ -55,7 +55,7 @@ That is why PELS needs explicit step feedback from your Flows.
 
 In the screenshot:
 
-- the top Flow reacts to **Desired stepped load changed for Connected 300**
+- the top Flow reacts to **Stepped device target changed** for Connected 300
 - each branch checks the **Planning power (W)** token and calls the matching Høiax action
 - the bottom Flow listens for the device's own power or parameter change and reports the matching stepped-load level back into PELS
 
@@ -67,7 +67,7 @@ If your device app exposes a direct level trigger, prefer reporting the step dir
 2. Define the device steps and planning power values.
 3. Choose the normal **When limiting** behavior:
    `Turn off` or `Set to step`
-4. Create the outbound Flow from **Desired stepped load changed for [device]** to the vendor action cards.
+4. Create the outbound Flow from **Stepped device target changed** for [device] to the vendor action cards.
 5. Create the inbound feedback Flow with either:
    **Report stepped load for [device] as [step]**
    or
@@ -82,6 +82,6 @@ If your device app exposes a direct level trigger, prefer reporting the step dir
 
 ## PELS Cards Used
 
-- **Desired stepped load changed for [device]**
+- **Stepped device target changed** for [device]
 - **Report stepped load for [device] as [step]**
 - **Report stepped load for [device] matching [power]**

@@ -37,12 +37,12 @@ The Insights device exposes these readings. The labels below match the capabilit
 ## When it is most useful
 
 - Pin it to Homey favorites if you want a quick read on whether the system is under pressure.
-- Use it as a visual companion to the **Capacity guard: manual action needed** trigger.
+- Use it as a visual companion to the **Hard cap breach imminent — manual action needed** trigger.
 - Check **Limit reason** and **Available power** before assuming something is wrong with a device.
 
-## What the capacity guard means
+## What the hard-cap breach alarm means
 
-The capacity guard alarm is intentionally strict.
+The hard-cap breach alarm is intentionally strict.
 
 - It only applies to projected **hourly hard-cap** breaches.
 - It does **not** fire for daily budget misses.

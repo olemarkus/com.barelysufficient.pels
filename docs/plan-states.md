@@ -25,6 +25,8 @@ The redesigned Overview uses a compact state chip on each device card:
 
 Some cards add a more specific readout below the chip. A limited device may say **Turned off by PELS** when it was turned off, **Charging paused** for an EV charger, or **Lowered by PELS** when PELS lowered a target or step. A stepped-load card may show **Off now**, **Level unknown**, or **Level: Max** to describe the reported step.
 
+When **Simulation mode** is on, those readouts read hypothetically instead — **Would be turned off (simulation)**, **Would be lowered (simulation)**, or **Charging would pause (simulation)** — because PELS is showing what it *would* do without actually changing the device.
+
 ## Common Status Lines
 
 Chips stay short. The status line below a chip explains why a device is waiting, limited, or resuming.

@@ -86,7 +86,8 @@ By default a Smart task stays polite: it keeps to the daily budget and never tak
 | Permission | What it allows |
 | --- | --- |
 | **go over today's budget** | The device may keep running during its planned hours even when the daily budget would normally pace it down. The daily budget is a soft, price-shaped target, so this lets the task run past it. |
-| **limit lower-priority devices** | The task may have lower-priority devices limited — paused or turned down — so it gets the power it needs. Devices at the same or higher priority are never touched. |
+| **limit lower-priority devices** | The task may limit lower-priority devices that are currently drawing power — pausing or turning them down — so it gets the power it needs. Devices at the same or higher priority are never touched. |
+| **pause lower-priority devices** | The task may have lower-priority managed devices held off up front — including ones sitting idle — so a device that needs a clear block of power to start (like an EV or water heater) can begin. Devices at the same or higher priority are never touched. |
 
 For each permission you choose when it applies:
 
@@ -97,15 +98,16 @@ For each permission you choose when it applies:
 
 Two things stay true no matter what you grant:
 
-- Both permissions stay inside the **hard cap**. PELS never exceeds your physical capacity limit to rescue a task. If a task still cannot finish within the hard cap, the fix is a lower daily budget or fewer competing devices — not a higher cap.
+- All three permissions stay inside the **hard cap**. PELS never exceeds your physical capacity limit to rescue a task. If a task still cannot finish within the hard cap, the fix is a lower daily budget or fewer competing devices — not a higher cap.
 - Permissions persist once you grant them, but they have no effect until the planned hours or the rescue gate apply — so a task already on track stays on its normal plan.
 
 ### Example: a water heater that must be ready
 
-A water heater is set to reach 65 °C by 07:00 with cheap overnight hours booked. Someone showers at 21:00 and the tank drops well below target, leaving the morning short. To keep mornings covered, grant the task either permission:
+A water heater is set to reach 65 °C by 07:00 with cheap overnight hours booked. Someone showers at 21:00 and the tank drops well below target, leaving the morning short. To keep mornings covered, grant the task any of its permissions:
 
 - **go over today's budget** so the heater can reheat during its planned hours even if the day's budget is tight.
 - **limit lower-priority devices** so it can claim power from loads you care about less.
+- **pause lower-priority devices** so lower-priority loads (including idle ones) are held off up front, clearing the block of power the heater needs to start.
 
 You can grant the leeway as a standing setting once the task exists, or only when time is short. Pair **Smart task time is running low** (for example, 2 hours left) with **Smart task status is At risk** so a Flow grants the permission late — only when a task actually needs the help.
 
