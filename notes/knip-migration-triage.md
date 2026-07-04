@@ -31,7 +31,7 @@ Each deletion is import-verified safe; re-run `npx knip` + `npm run build` after
   (`loggersMock.ts` IS dead → deleted.)
 - **The old script carries a curated "parked" list** (`check-dead-code.mjs`, 40+ entries) of
   exports the team intentionally keeps despite being unimported (e.g. `getCommandableNowReason`
-  "parked until chunk-6", the timezone/dateUtils helpers, `DAILY_BUDGET_BREAKDOWN_ENABLED`, many
+  "parked until chunk-6", the timezone/dateUtils helpers, many
   `format*`/smart-task helpers). The migration MUST preserve these (mark `@public` JSDoc, which
   knip honours) — NOT delete them.
 - So the 31 split: ~5 parked (→ `@public`), ~26 genuinely-dead orphaned builders (→ delete after

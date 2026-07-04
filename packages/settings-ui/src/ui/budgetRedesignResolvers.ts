@@ -3,12 +3,12 @@ import { formatCost, type CostDisplay } from './dailyBudgetCost.ts';
 import { formatKWh } from './dailyBudgetFormat.ts';
 import type { CombinedPriceRow } from './combinedPrices.ts';
 import { resolveHourlyChartPricePayload } from './budgetPlanningPriceOverlay.ts';
-import { formatScaledPriceValue } from './priceUnit.ts';
 import type {
   BudgetChartData,
   BudgetConfidenceData,
   BudgetDeltaTone,
   BudgetHeroData,
+  BudgetHeroRecourse,
   BudgetHeroSplitData,
   BudgetLocalView,
   BudgetStatus,
@@ -40,15 +40,17 @@ import {
   YESTERDAY_FINISHED_OVER_BUDGET,
   YESTERDAY_FINISHED_WITHIN_BUDGET,
   composeBudgetHeroOverBy,
-  composeBudgetRemainingLineWithEstimate,
+  composeEstimatedCostHeadline,
+  BUDGET_HERO_RECOURSE_ADJUST,
+  BUDGET_HERO_RECOURSE_OPEN_USAGE,
   composeBudgetUsedSoFar,
   composeBudgetUsedOver,
-  composeExportPriceNow,
   resolveChartSubtitle as resolveSharedChartSubtitle,
   resolveNoPlanLine as resolveSharedNoPlanLine,
   resolveTodayLine as resolveSharedTodayLine,
   resolveTomorrowLine as resolveSharedTomorrowLine,
 } from '../../../shared-domain/src/dailyBudgetHeroStrings.ts';
+import { sumElapsed, sumElapsedNullable } from './budgetElapsedSums.ts';
 
 export type BudgetDayView = BudgetRedesignDayView;
 
@@ -192,24 +194,6 @@ const BACKGROUND_SHARE_GAP = 0.1;
 // — a whole day accumulates more benign drift than a single bucket).
 const HERO_BEFORE_SOLAR_EPSILON_KWH = 0.05;
 
-const sumElapsed = (values: number[], buckets: number): number => {
-  let total = 0;
-  for (let index = 0; index < buckets && index < values.length; index += 1) {
-    const value = values[index];
-    if (Number.isFinite(value)) total += value;
-  }
-  return total;
-};
-
-const sumElapsedNullable = (values: Array<number | null>, buckets: number): number => {
-  let total = 0;
-  for (let index = 0; index < buckets && index < values.length; index += 1) {
-    const value = values[index];
-    if (Number.isFinite(value)) total += value as number;
-  }
-  return total;
-};
-
 const resolveTodayManagedKWh = (payload: DailyBudgetDayPayload): number => {
   const elapsed = Math.max(0, payload.currentBucketIndex + 1);
   const actualTotal = sumElapsed(payload.buckets.actualKWh, elapsed);
@@ -305,30 +289,56 @@ const resolvePriceTagline = (
 
 export const resolveBudgetRemainingLine = (
   payload: DailyBudgetDayPayload,
-  costDisplay: CostDisplay,
 ): string => {
   // The hero's delta chip ("N kWh to spare") is the single "how much is left"
   // answer, so this subline names USED so far (`dailyBudgetKWh − remainingKWh`)
   // rather than restating the remainder. The over-budget branch keeps its own
-  // "already used" overdraw framing.
+  // "already used" overdraw framing. The estimated-cost figure moved out of
+  // this subline into the headline row (`resolveEstimatedCostHeadline`).
   const remaining = payload.state.remainingKWh;
   // `formatKWh` renders a non-finite value as "-- kWh", so no explicit
   // finiteness guard is needed here — a missing budget/remaining degrades
   // gracefully rather than showing a fabricated number.
   const usedSoFar = Math.max(0, payload.budget.dailyBudgetKWh - remaining);
-  const status = Number.isFinite(remaining) && remaining < 0
+  return Number.isFinite(remaining) && remaining < 0
     ? composeBudgetUsedOver(formatKWh(Math.abs(remaining), 1))
     : composeBudgetUsedSoFar(formatKWh(usedSoFar, 1));
-  // Source the cost from the SAME producer projection the headline kWh uses so
-  // projected energy and projected cost describe one end-of-day scenario (an
-  // over-pace day otherwise understates cost with the plan-based estimate).
-  // Fall back to the local estimate only when the producer value is absent.
+};
+
+// Today's estimated end-of-day cost for the headline row (`≈ 6.50 kr`), or
+// null when no usable cost exists. Sourced from the SAME producer projection
+// the headline kWh uses so projected energy and projected cost describe one
+// end-of-day scenario (an over-pace day otherwise understates cost with the
+// plan-based estimate); falls back to the local estimate only when the
+// producer value is absent.
+export const resolveEstimatedCostHeadline = (
+  payload: DailyBudgetDayPayload,
+  costDisplay: CostDisplay,
+): string | null => {
+  // No usable money unit (Flow/Homey placeholder schemes) → no cost figure;
+  // a unitless "≈ 12.34" in the headline row would be a number with no
+  // meaning. Mirrors the plan_budget widget's suppress-the-cost-half rule.
+  if (costDisplay.unit.trim() === '') return null;
   const projectedCostMinor = payload.state.projection?.endOfDayCostMinor;
   const cost = Number.isFinite(projectedCostMinor)
     ? (projectedCostMinor as number)
     : computeEstimatedCost({ payload, view: 'today' });
-  if (cost === null) return status;
-  return composeBudgetRemainingLineWithEstimate(status, formatCost(cost, costDisplay));
+  if (cost === null) return null;
+  return composeEstimatedCostHeadline(formatCost(cost, costDisplay));
+};
+
+// Over-budget hero recourse: exactly one action per dominant cause, today
+// view only. Background-driven overshoot routes to Usage (see what used the
+// energy); managed-driven overshoot routes to the Adjust view (the levers).
+export const resolveHeroRecourse = (
+  payload: DailyBudgetDayPayload | null,
+  view: BudgetDayView,
+  status: BudgetStatus,
+): BudgetHeroRecourse | null => {
+  if (!payload || view !== 'today' || status !== 'over') return null;
+  return resolveDominantCause(payload) === 'background'
+    ? { label: BUDGET_HERO_RECOURSE_OPEN_USAGE, action: 'usage' }
+    : { label: BUDGET_HERO_RECOURSE_ADJUST, action: 'adjust' };
 };
 
 const resolveTomorrowLine = (payload: DailyBudgetDayPayload): string => (
@@ -354,30 +364,6 @@ export const resolveDecisionLine = (
   return resolveTodayLine(payload, status);
 };
 
-const ONE_HOUR_MS = 3_600_000;
-
-// "Export price now" hero subline — the current hour's export (feed-in)
-// price, or null when no export price covers the hour (absence renders
-// nothing; non-prosumers never see an empty placeholder). The value is scaled
-// through the SAME CostDisplay {unit, divisor} the hero's other money figures
-// use (øre → kr ÷ 100) so a raw øre value is never rendered as kr; signed
-// values pass through unclamped (negative = the home pays to export).
-export const resolveExportPriceNowLine = (
-  rows: CombinedPriceRow[],
-  nowMs: number,
-  costDisplay: CostDisplay,
-): string | null => {
-  const current = rows.find((row) => {
-    if (typeof row.exportPrice !== 'number') return false;
-    const startsAtMs = new Date(row.startsAt).getTime();
-    return Number.isFinite(startsAtMs) && startsAtMs <= nowMs && nowMs < startsAtMs + ONE_HOUR_MS;
-  });
-  if (!current || typeof current.exportPrice !== 'number') return null;
-  // Value scaling (øre → kr ÷ divisor, signed, sub-half-cent snap, unit grammar
-  // `0.84 kr/kWh`) is shared with the Electricity-prices "Right now" export row.
-  return composeExportPriceNow(formatScaledPriceValue(current.exportPrice, costDisplay));
-};
-
 export const resolveHeroData = (params: {
   viewPayload: DailyBudgetDayPayload | null;
   view: BudgetDayView;
@@ -396,10 +382,12 @@ export const resolveHeroData = (params: {
       comparison: budgetEnabled ? DAILY_BUDGET_DISABLED_WAITING : DAILY_BUDGET_DISABLED_OFF,
       delta: null,
       budgetRemainingLine: null,
+      estimatedCost: null,
       split: null,
       priceTagline: null,
       exportPriceLine,
       decision: resolveSharedNoPlanLine(view, budgetEnabled),
+      recourse: null,
       heroTone: 'ok',
     };
   }
@@ -407,11 +395,13 @@ export const resolveHeroData = (params: {
     headlineLabel: DAILY_BUDGET_HEADLINE_LABEL_BY_VIEW[view],
     comparison: formatComparisonLine(viewPayload, view),
     delta: resolveDeltaPill(viewPayload, view, status),
-    budgetRemainingLine: view === 'today' ? resolveBudgetRemainingLine(viewPayload, costDisplay) : null,
+    budgetRemainingLine: view === 'today' ? resolveBudgetRemainingLine(viewPayload) : null,
+    estimatedCost: view === 'today' ? resolveEstimatedCostHeadline(viewPayload, costDisplay) : null,
     split: view === 'today' ? resolveSplitData(viewPayload) : null,
     priceTagline: resolvePriceTagline(viewPayload, view),
     exportPriceLine,
     decision: resolveDecisionLine(viewPayload, view, status, budgetEnabled),
+    recourse: resolveHeroRecourse(viewPayload, view, status),
     heroTone: resolveTone(status),
   };
 };

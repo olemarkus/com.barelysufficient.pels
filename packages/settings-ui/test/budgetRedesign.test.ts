@@ -8,12 +8,14 @@ import {
   resolveDeltaPill,
   resolveDominantCause,
   resolveEffectiveLocalView,
-  resolveExportPriceNowLine,
   resolveBudgetRemainingLine,
+  resolveEstimatedCostHeadline,
+  resolveHeroRecourse,
   resolveHeroData,
   resolvePlanPayload,
   resolveSplitData,
 } from '../src/ui/budgetRedesignResolvers.ts';
+import { resolveExportPriceNowLine } from '../src/ui/budgetExportPriceLine.ts';
 import { resolveAllocationWarning } from '../src/ui/dailyBudgetAllocationWarning.ts';
 import {
   BUDGET_CHART_TITLE_HOURLY_PLAN,
@@ -166,7 +168,7 @@ describe('resolveDecisionLine', () => {
       plannedUncontrolledKWh: Array.from({ length: 24 }, () => 1.5),
     });
     expect(resolveDecisionLine(payload, 'today', 'over'))
-      .toBe('Managed devices used more than expected — check device priorities.');
+      .toBe('Managed devices used more than expected today.');
   });
 
   it('defaults to background-dominant copy when split arrays are missing', () => {
@@ -636,21 +638,32 @@ describe('resolveBudgetRemainingLine', () => {
     // Budget 60, remaining 7.7 → 52.3 kWh used so far. The delta chip is the
     // single "how much is left" answer; this line names USED instead.
     const payload = buildPayload({ remainingKWh: 7.7 });
-    expect(resolveBudgetRemainingLine(payload, costDisplay)).toMatch(/^52\.3 kWh used so far today/);
+    expect(resolveBudgetRemainingLine(payload)).toBe('52.3 kWh used so far today');
   });
 
   it('never restates the remainder as a second "left" number (the delta chip owns that)', () => {
-    const line = resolveBudgetRemainingLine(buildPayload({ remainingKWh: 7.7 }), costDisplay);
+    const line = resolveBudgetRemainingLine(buildPayload({ remainingKWh: 7.7 }));
     expect(line).not.toMatch(/left/i);
   });
 
   it('frames negative remaining as already-used overdraw', () => {
     const payload = buildPayload({ remainingKWh: -1.3 });
-    expect(resolveBudgetRemainingLine(payload, costDisplay))
-      .toMatch(/^1\.3 kWh over budget already used/);
+    expect(resolveBudgetRemainingLine(payload)).toBe('1.3 kWh over budget already used');
   });
 
-  it('sources estimated cost from the producer projection so kWh and cost share one forecast', () => {
+  it('carries no cost figure — the estimate moved to the headline row', () => {
+    const payload = buildPayload({
+      remainingKWh: 7.7,
+      priceShapingEnabled: true,
+      price: Array.from({ length: 24 }, () => 100),
+    });
+    payload.state.projection = { endOfDayKWh: 58, endOfDayCostMinor: 9000, status: 'within' };
+    expect(resolveBudgetRemainingLine(payload)).not.toMatch(/kr/);
+  });
+});
+
+describe('resolveEstimatedCostHeadline', () => {
+  it('sources the cost from the producer projection so kWh and cost share one forecast', () => {
     const payload = buildPayload({
       remainingKWh: 7.7,
       priceShapingEnabled: true,
@@ -659,9 +672,19 @@ describe('resolveBudgetRemainingLine', () => {
     // Producer projection cost in øre (9000 ÷ 100 = 90.00 kr), deliberately
     // distinct from the plan-based computeEstimatedCost (5520 øre = 55.20 kr).
     payload.state.projection = { endOfDayKWh: 58, endOfDayCostMinor: 9000, status: 'within' };
-    const line = resolveBudgetRemainingLine(payload, costDisplay);
-    expect(line).toContain('estimated 90.00 kr today');
-    expect(line).not.toContain('55.20');
+    expect(resolveEstimatedCostHeadline(payload, costDisplay)).toBe('≈ 90.00 kr');
+  });
+
+  it('renders no cost figure when the price scheme has no usable money unit', () => {
+    const payload = buildPayload({
+      remainingKWh: 7.7,
+      priceShapingEnabled: true,
+      price: Array.from({ length: 24 }, () => 100),
+    });
+    payload.state.projection = { endOfDayKWh: 58, endOfDayCostMinor: 9000, status: 'within' };
+    // Flow/Homey placeholder scheme: empty unit → a unitless "≈ 90.00" would
+    // be a number with no meaning, so the figure is suppressed entirely.
+    expect(resolveEstimatedCostHeadline(payload, { unit: '', divisor: 1 })).toBeNull();
   });
 
   it('falls back to the plan-based estimate when the projection carries no cost', () => {
@@ -672,7 +695,38 @@ describe('resolveBudgetRemainingLine', () => {
     });
     payload.state.projection = { endOfDayKWh: 58, endOfDayCostMinor: null, status: 'within' };
     // (12 past × 2.1 actual + 12 future × 2.5 planned) × 100 øre = 5520 → 55.20 kr.
-    expect(resolveBudgetRemainingLine(payload, costDisplay)).toContain('estimated 55.20 kr today');
+    expect(resolveEstimatedCostHeadline(payload, costDisplay)).toBe('≈ 55.20 kr');
+  });
+});
+
+describe('resolveHeroRecourse', () => {
+  it('routes a background-driven over-budget day to Usage', () => {
+    // Background dominates: actual background well above its planned share.
+    const payload = buildPayload({ remainingKWh: -2 });
+    payload.buckets.actualKWh = Array.from({ length: 24 }, () => 2.1);
+    payload.buckets.actualUncontrolledKWh = Array.from({ length: 24 }, () => 2);
+    payload.buckets.actualControlledKWh = Array.from({ length: 24 }, () => 0.1);
+    payload.buckets.plannedKWh = Array.from({ length: 24 }, () => 1);
+    payload.buckets.plannedUncontrolledKWh = Array.from({ length: 24 }, () => 0.4);
+    expect(resolveHeroRecourse(payload, 'today', 'over')).toEqual({ label: 'Open Usage', action: 'usage' });
+  });
+
+  it('routes a managed-driven over-budget day to Adjust', () => {
+    const payload = buildPayload({ remainingKWh: -2 });
+    payload.buckets.actualKWh = Array.from({ length: 24 }, () => 2.1);
+    payload.buckets.actualControlledKWh = Array.from({ length: 24 }, () => 2);
+    payload.buckets.actualUncontrolledKWh = Array.from({ length: 24 }, () => 0.1);
+    payload.buckets.plannedKWh = Array.from({ length: 24 }, () => 1);
+    payload.buckets.plannedUncontrolledKWh = Array.from({ length: 24 }, () => 0.4);
+    expect(resolveHeroRecourse(payload, 'today', 'over')).toEqual({ label: 'Adjust budget', action: 'adjust' });
+  });
+
+  it('renders no recourse unless the today view is actually over budget', () => {
+    const payload = buildPayload({ remainingKWh: 5 });
+    expect(resolveHeroRecourse(payload, 'today', 'within')).toBeNull();
+    expect(resolveHeroRecourse(payload, 'today', 'tight')).toBeNull();
+    expect(resolveHeroRecourse(payload, 'yesterday', 'over')).toBeNull();
+    expect(resolveHeroRecourse(null, 'today', 'over')).toBeNull();
   });
 });
 

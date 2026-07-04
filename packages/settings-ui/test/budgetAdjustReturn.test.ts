@@ -24,6 +24,8 @@ const buildProps = (overrides: Partial<BudgetOverviewProps> = {}): BudgetOvervie
     comparison: 'Daily budget off',
     delta: null,
     budgetRemainingLine: null,
+  estimatedCost: null,
+  recourse: null,
     split: null,
     priceTagline: null,
     exportPriceLine: null,
@@ -51,6 +53,7 @@ const buildProps = (overrides: Partial<BudgetOverviewProps> = {}): BudgetOvervie
   weatherInsight: null,
   adjustReturnTarget: 'plan',
   onReturnToSettings: () => {},
+  onShowUsage: () => {},
   onLocalViewChange: () => {},
   onDayChange: () => {},
   onChartModeChange: () => {},
@@ -188,6 +191,24 @@ describe.each(['dirty', 'pending'] as const)('Done with unsaved changes (%s)', (
     expect(toggle.classList.contains('confirming')).toBe(true);
   });
 
+  it('offers a visible "Keep editing" escape while armed, which disarms without discarding', async () => {
+    const onLocalViewChange = vi.fn();
+    renderBudgetOverview(mount, withStatus(status, { onLocalViewChange }));
+    const toggle = getToggle();
+    // Unarmed: no escape button rendered.
+    expect(mount.querySelector('#budget-redesign-keep-editing')).toBeNull();
+    toggle.click();
+    await flushRender();
+    const keep = mount.querySelector('#budget-redesign-keep-editing') as HTMLElement;
+    expect(keep?.textContent).toContain('Keep editing');
+    keep.click();
+    await flushRender();
+    // Disarmed: no navigation, no discard, escape gone, toggle back to Done.
+    expect(onLocalViewChange).not.toHaveBeenCalled();
+    expect(mount.querySelector('#budget-redesign-keep-editing')).toBeNull();
+    expect(getToggle().textContent).toContain('Done');
+  });
+
   it('discards and returns to plan on the confirming click', async () => {
     const onLocalViewChange = vi.fn();
     renderBudgetOverview(mount, withStatus(status, { onLocalViewChange }));
@@ -208,6 +229,10 @@ describe.each(['dirty', 'pending'] as const)('Done with unsaved changes (%s)', (
     await flushRender();
     expect(onReturnToSettings).not.toHaveBeenCalled();
     expect(getSettingsBack().classList.contains('confirming')).toBe(true);
+    // The armed back-arrow variant offers the same visible non-destructive
+    // escape as the trailing-Done variant.
+    const keep = mount.querySelector('#budget-redesign-keep-editing') as HTMLElement;
+    expect(keep?.textContent).toContain('Keep editing');
     getSettingsBack().click();
     expect(onReturnToSettings).toHaveBeenCalledTimes(1);
   });

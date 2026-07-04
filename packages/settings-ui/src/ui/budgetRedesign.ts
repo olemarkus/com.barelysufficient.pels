@@ -36,13 +36,13 @@ import {
   resolveComparisonDay,
   resolveConfidenceData,
   resolveEffectiveLocalView,
-  resolveExportPriceNowLine,
   resolveHeroData,
   resolvePlanPayload,
   resolveStatus,
   resolveViewPayload,
   type BudgetDayView,
 } from './budgetRedesignResolvers.ts';
+import { resolveExportPriceNowLine } from './budgetExportPriceLine.ts';
 import type { CombinedPriceRow } from './combinedPrices.ts';
 
 export type { BudgetDayView } from './budgetRedesignResolvers.ts';
@@ -98,6 +98,15 @@ let settingsNavigator: () => void = () => {};
 
 export const setBudgetAdjustSettingsNavigator = (navigate: () => void): void => {
   settingsNavigator = navigate;
+};
+
+// Usage-tab navigator for the over-budget hero recourse ("Open Usage") —
+// injected by boot for the same circular-import reason as the settings
+// navigator above.
+let usageNavigator: () => void = () => {};
+
+export const setBudgetUsageNavigator = (navigate: () => void): void => {
+  usageNavigator = navigate;
 };
 
 // Called when the budget panel is left (tab bar or Done-to-Settings) so a
@@ -215,6 +224,9 @@ const buildProps = (): BudgetOverviewProps => {
     priceLevelChip: resolvePriceLevelChip(latestRenderState.priceLevel),
     weatherInsight,
     adjustReturnTarget,
+    onShowUsage: () => {
+      usageNavigator();
+    },
     onReturnToSettings: () => {
       // The header has already confirmed any discard (two-step button), so
       // drop the draft before navigating — discardBudgetAdjustOnLeave then

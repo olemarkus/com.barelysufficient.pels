@@ -44,10 +44,6 @@ const renderDailyBudget = (payload: DailyBudgetUiPayload | null) => {
   renderBudgetRedesign(payload, currentDailyBudgetView, costDisplay, latestPriceRows);
 };
 
-export const rerenderDailyBudget = () => {
-  renderDailyBudget(latestDailyBudgetPayload);
-};
-
 // Side-channel for power-derived signals that aren't carried on the daily
 // budget payload itself. Price-level (cheap/expensive) is shared between the
 // Overview hero and the Budget page; piping it through realtime keeps both

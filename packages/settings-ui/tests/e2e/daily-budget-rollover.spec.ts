@@ -150,7 +150,6 @@ const installDailyBudgetStub = async (page: Page, payload: DailyBudgetUiPayload)
       daily_budget_price_shaping_enabled: today.budget.priceShapingEnabled,
       daily_budget_controlled_weight: 1,
       daily_budget_price_flex_share: 1,
-      daily_budget_breakdown_enabled: true,
     },
     payload,
   });

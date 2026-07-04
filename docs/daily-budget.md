@@ -144,7 +144,6 @@ The shaping controls live in the Adjust view's **Budget shaping** section:
 - **Background usage reserve**: `Balanced` uses the normal reserve. `Conservative` reserves more, which can reduce daily-budget misses but leaves less budget for managed devices.
 - **Managed device flexibility**: `Low` stays close to normal managed-device usage, `Medium` shifts some usage, and `High` shifts more aggressively toward cheaper feasible hours.
 
-A related display-only option, **Show daily budget breakdown in the chart** (stacks background usage and managed device usage), is under **Settings > Advanced > Daily budget chart**.
 
 **Warning:** the shaping controls can significantly change pacing behavior and when devices are limited or resumed. Keep defaults unless you are deliberately tuning behavior. If you change them, adjust one parameter at a time and observe at least a full day.
 

@@ -5492,6 +5492,53 @@ details[open] > summary .disclosure-chevron {
   color: var(--pels-text-primary);
 }
 
+/* Headline-row estimated cost (`≈ 6.50 kr`): same row as the kWh comparison,
+   secondary tone so the kWh figure keeps top billing while money reads at a
+   glance (parity with the Budget-and-Price widget's headline). */
+.plan-hero__headline-cost {
+  font-size: var(--font-size-md);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  align-self: baseline;
+}
+
+/* The grouped price-context readout (shaping tagline + export price): one
+   muted block whose items read as one unit and wrap between items at 320 px,
+   never mid-item. */
+.budget-hero__price-readout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-1) var(--spacing-3);
+}
+
+.budget-hero__price-readout > span {
+  white-space: nowrap;
+}
+
+/* Over-budget one-tap recourse under the decision sentence. */
+.budget-hero__recourse {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: var(--spacing-1);
+}
+
+/* Header action pair: the transient "Keep editing" escape sits beside the
+   armed Done toggle without re-flowing the chip rail. */
+.budget-page-header__action-group {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+/* Settings-launched Adjust editor: the armed confirm's escape renders as a
+   slim row under the app bar (the back arrow itself carries the destructive
+   half). */
+.budget-page-header__appbar-escape {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 var(--spacing-2);
+}
+
 .budget-hero-split__seg--managed {
   background: var(--pels-chart-managed);
 }

@@ -596,15 +596,6 @@ CI failure, so future field-move slices can't silently grow the debt.*
       that restarts under memory pressure. *Hypothesis:* transient settings-read failures are common enough
       on the Homey SDK that a 90-day history will eventually be lost to a boot race.
 
-- [ ] **Budget hero: group the passive readout sublines before a fifth one lands.** The hero now
-      stacks four muted sublines on a prosumer today-view (budget remaining + estimated cost,
-      managed/background split, "Using cheaper hours", "Export price now") — each earned its slot,
-      but the stack is at the edge of scan-friendly. Before any further subline is added, fold the
-      passive readouts into a grouped presentation (e.g. a two-column readout row or a compact
-      key-value block) so the decision line keeps its prominence. *Persona:* Set-and-forget owner —
-      the Budget glance must stay one-breath readable. *Hypothesis:* a fifth stacked subline turns
-      the hero from a verdict into a list. *P2 (M3 review, export-price PR).*
-
 - [ ] **Export scheme round trips: pure-share configs lose the share on spot-less entry; fixed-amount
       configs come back with a re-enable — accepted trade-offs.** Crossing the Norway unit boundary
       in EITHER direction with export pricing enabled takes one of two paths
@@ -759,23 +750,6 @@ CI failure, so future field-move slices can't silently grow the debt.*
       record set actually changed (diff the upsert, or hash the kWh-relevant fields), leaving the
       kWh markers latched when the re-stitch was a no-op. Source: self-review of the refit-once
       backfill change, 2026-06-13.
-
-- [ ] **Give the armed budget-discard state a visible "keep changes" path.** The Budget header's
-      two-step confirm shows only the destructive option ("Tap again to discard"); the save path
-      (Preview changes → Apply) is a sticky CTA further down, and the explanatory text lives in a
-      hover-only `title` that touch users never see. Surface a one-line inline hint near the armed
-      button (or render the armed moment as a Keep editing / Discard pair). Persona: returning
-      Optimiser; hypothesis: a user who tapped Done absent-mindedly reads only "discard",
-      assumes their edits are already lost, and re-enters them from scratch. Source: pels-ux-fit on
-      the budget-settings-access PR, 2026-06-10.
-
-- [ ] **Move the daily-budget breakdown chart toggle from Advanced to the Budget chart card.** After
-      the tuning-selects retirement, Advanced ("Diagnostics, cleanup, logs, experiments") hosts a
-      lone display preference — a scent mismatch on both ends. Put the toggle on the chart it
-      controls (overflow or inline on the Budget chart card) and let Advanced be purely diagnostics.
-      Persona: Optimiser; hypothesis: nobody looking at the budget chart
-      thinks to open Advanced to change how the chart renders. Source: pels-ux-fit + pels-m3-critic,
-      2026-06-10.
 
 - [ ] **Hysteresis on `resolveSoftLimitSource` so the starvation rescue affordance doesn't flicker at the
       daily≈capacity crossover.** `lib/plan/planBuilder.ts:resolveSoftLimitSource` picks `daily` vs `capacity`

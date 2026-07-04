@@ -487,7 +487,7 @@ Overview may show a compact `Simulation mode` chip when this setting affects cur
 Normal planning controls moved out of Advanced (shipped): background usage reserve and managed
 device flexibility are edited only in Budget → Adjust, reachable from the Budget page header and
 the `Settings > Daily budget` nav row (which deep-links into the Adjust view and routes Done back
-to Settings). Advanced keeps only the daily-budget breakdown chart toggle (a display-only option).
+to Settings). Advanced is purely diagnostics — the former daily-budget breakdown chart toggle was removed in the 2026-07 Budget-hero clarity pass (its setting had no consumer: the hourly chart's managed/background split is data-driven via `hasPlannedSplitBuckets`, so the switch was dead ink).
 
 Advanced should be collapsed and calm by default. Debug checklist-style controls should not be
 first-screen content.
