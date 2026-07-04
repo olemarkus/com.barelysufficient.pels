@@ -22,7 +22,6 @@ import {
   DEVICE_DRIVER_OVERRIDES,
   EV_BOOST_SETTINGS,
   NATIVE_EV_WIRING_DEVICES,
-  DAILY_BUDGET_BREAKDOWN_ENABLED,
   DAILY_BUDGET_CONTROLLED_WEIGHT,
   DAILY_BUDGET_PRICE_FLEX_SHARE,
   DEBUG_LOGGING_TOPICS,
@@ -58,7 +57,6 @@ import { refreshDailyBudgetPlan, updateBudgetPower } from './dailyBudget.ts';
 import { discardBudgetAdjust, getBudgetAdjustView, refreshBudgetAdjust } from './budgetAdjustController.ts';
 import { resetBudgetAdjustReturnTarget } from './budgetRedesign.ts';
 import { showToast } from './toast.ts';
-import { loadDailyBudgetBreakdownSetting } from './dailyBudgetTuning.ts';
 import {
   parsePlanSnapshot,
   refreshPlan,
@@ -98,7 +96,6 @@ const DAILY_BUDGET_REFRESH_KEYS = new Set([
   CAPACITY_MARGIN_KW,
   DAILY_BUDGET_CONTROLLED_WEIGHT,
   DAILY_BUDGET_PRICE_FLEX_SHARE,
-  DAILY_BUDGET_BREAKDOWN_ENABLED,
 ]);
 
 const POWER_USAGE_REALTIME_REFRESH_MIN_INTERVAL_MS = 30 * 1000;
@@ -262,9 +259,6 @@ const refreshDailyBudgetSettings = (key: string) => {
   if (!DAILY_BUDGET_REFRESH_KEYS.has(key)) return;
   if (DAILY_BUDGET_SETTINGS_KEYS.has(key)) {
     runLoggedTask(refreshBudgetAdjust(), 'Failed to refresh adjust draft', 'settings.set');
-  }
-  if (key === DAILY_BUDGET_BREAKDOWN_ENABLED) {
-    runLoggedTask(loadDailyBudgetBreakdownSetting(), 'Failed to load daily budget breakdown setting', 'settings.set');
   }
   runLoggedTask(refreshDailyBudgetPlan(), 'Failed to refresh daily budget', 'settings.set');
 };

@@ -130,14 +130,21 @@ export const composeBudgetUsedSoFar = (usedFormatted: string): string => (
   `${usedFormatted} used so far today`
 );
 
-// Appends today's estimated-cost suffix to one of the budget-status lines
-// above. Caller passes the formatted cost (e.g. `"6.50 kr"`). The word
-// "estimated" stays spelled out — Rule 3 (`notes/ui-terminology.md`) bans
-// abbreviations in visible labels, including the prior `est.` shorthand.
-export const composeBudgetRemainingLineWithEstimate = (
-  statusLine: string,
-  costFormatted: string,
-): string => `${statusLine} · estimated ${costFormatted} today`;
+// Headline-row estimated-cost figure for the today view (e.g. `≈ 6.50 kr`).
+// Promoted out of the usage subline (2026-07 Budget-hero clarity pass) so the
+// money projection gets the same billing the kWh comparison has — parity with
+// the Budget-and-Price widget's `Projected today … · … kr` headline. The `≈`
+// prefix is the canonical money-estimate marker (`notes/ui-terminology.md`
+// § Solar vocabulary: money figures are always prefixed `≈`); the time window
+// is carried by the row's `Projected today` eyebrow.
+export const composeEstimatedCostHeadline = (costFormatted: string): string => (
+  `≈ ${costFormatted}`
+);
+
+// Tooltip on the headline cost figure: it is the END-OF-DAY estimate, and on
+// days where the projected cost lands near the used-so-far kWh figure below
+// it, the scope needs naming.
+export const BUDGET_ESTIMATED_COST_TOOLTIP = 'Estimated cost for the whole day';
 
 // Today-tone decision line. Silent on `within`; otherwise names the dominant
 // cause so the user knows whether to look at background load or managed
@@ -152,9 +159,13 @@ export const resolveTodayLine = (
       ? 'Close to budget — driven by background usage.'
       : 'PELS is shaping flexible use to stay within budget.';
   }
+  // The over-budget states carry a one-tap recourse button (Open Usage /
+  // Adjust budget — `resolveHeroRecourse`), so the sentence states the cause
+  // and lets the button own the remedy. The old "— check device priorities"
+  // tail pointed at a lever the button doesn't land on.
   return cause === 'background'
     ? 'Background usage is higher than expected today.'
-    : 'Managed devices used more than expected — check device priorities.';
+    : 'Managed devices used more than expected today.';
 };
 
 // Chart titles for the progress / hourly-plan toggle. Both labels are used
@@ -190,6 +201,22 @@ export const BUDGET_COMPARISON_SHOWING_TODAY = 'Showing today’s plan — tomor
 // inside `AllocationWarningBanner` (`BudgetOverview.tsx`); lifted so the same
 // wording can be referenced from runtime logs without duplicating the literal.
 export const BUDGET_ADJUST_BUDGET_BUTTON = 'Adjust budget';
+
+// Over-budget hero recourse labels (2026-07 Budget-hero clarity pass): the
+// over-budget decision line gains exactly ONE action per dominant cause —
+// failure renders with a one-tap recourse, never just restated
+// (`notes/personas.md` § Failing). Background-driven overshoot routes to the
+// Usage tab (see WHAT used the energy); managed-driven overshoot routes to
+// the Adjust view (the budget/flexibility levers), reusing the
+// `Adjust budget` wording above.
+export const BUDGET_HERO_RECOURSE_OPEN_USAGE = 'Open Usage';
+export const BUDGET_HERO_RECOURSE_ADJUST = BUDGET_ADJUST_BUDGET_BUTTON;
+
+// Armed-discard escape hatch in the Budget page header (2026-07 clarity
+// pass): while the Done toggle is armed ("Tap again to discard") the header
+// also offers the non-destructive exit, so the two-step confirm never reads
+// as discard-or-nothing.
+export const BUDGET_ADJUST_KEEP_EDITING_BUTTON = 'Keep editing';
 
 // No-plan decision lines shown in place of the today/tomorrow/yesterday hero
 // decision sentence when the day payload is missing or the planner has not

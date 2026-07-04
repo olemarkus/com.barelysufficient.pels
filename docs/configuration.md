@@ -201,7 +201,6 @@ Advanced is for diagnostics, cleanup, and expert tuning.
 | Setting | What it does |
 | --- | --- |
 | **Debug logging topics** | Chooses which internal topics emit debug logs. |
-| **Show daily budget breakdown in chart** | Splits the plan chart into managed and background portions. |
 | **Reset usage history** | Clears hourly samples, daily totals, and weekday/weekend averages. |
 | **Clear device data** | Removes stored PELS metadata for one selected device. |
 | **Device log** | Writes a selected Homey device payload to the app logs for inspection. |

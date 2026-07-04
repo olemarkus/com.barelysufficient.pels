@@ -19,6 +19,8 @@ import {
 } from '../budgetRedesignChart.ts';
 import {
   BUDGET_ADJUST_BUDGET_BUTTON,
+  BUDGET_ADJUST_KEEP_EDITING_BUTTON,
+  BUDGET_ESTIMATED_COST_TOOLTIP,
   BUDGET_CHART_TITLE_HOURLY_PLAN,
   BUDGET_CHART_TITLE_PROGRESS,
   BUDGET_SPLIT_BEFORE_SOLAR_PREFIX,
@@ -71,11 +73,18 @@ export type BudgetHeroSplitData = {
   usedKWh: number;
 };
 
+// One-tap over-budget recourse (2026-07 clarity pass): `usage` opens the
+// Usage tab (background-driven overshoot); `adjust` opens the Adjust view
+// (managed-driven overshoot).
+export type BudgetHeroRecourse = { label: string; action: 'adjust' | 'usage' };
+
 export type BudgetHeroData = {
   headlineLabel: string | null;
   comparison: string;
   delta: { label: string; tone: BudgetDeltaTone } | null;
   budgetRemainingLine: string | null;
+  // Headline-row estimated end-of-day cost (`≈ 6.50 kr`), today view only.
+  estimatedCost: string | null;
   split: BudgetHeroSplitData | null;
   priceTagline: string | null;
   // Prosumer subline (`Export price now: …`) — null renders nothing, so
@@ -83,6 +92,7 @@ export type BudgetHeroData = {
   // (resolveExportPriceNowLine); the view only paints it.
   exportPriceLine: string | null;
   decision: string | null;
+  recourse: BudgetHeroRecourse | null;
   heroTone: 'ok' | 'warn' | 'alert';
 };
 
@@ -156,6 +166,8 @@ export type BudgetOverviewProps = {
   adjustReturnTarget: 'plan' | 'settings';
   // Navigates back to the Settings panel for settings-initiated sessions.
   onReturnToSettings: () => void;
+  // Navigates to the Usage tab (over-budget background-cause recourse).
+  onShowUsage: () => void;
   onLocalViewChange: (v: BudgetLocalView) => void;
   onDayChange: (v: BudgetRedesignDayView) => void;
   onChartModeChange: (v: BudgetRedesignChartMode) => void;
@@ -297,7 +309,11 @@ const BudgetHeroSplit = ({ split }: { split: BudgetHeroSplitData }) => {
   );
 };
 
-const BudgetHero = ({ hero }: { hero: BudgetHeroData }) => (
+const BudgetHero = ({ hero, onRecourse }: { hero: BudgetHeroData; onRecourse: (action: 'adjust' | 'usage') => void }) => {
+  // Local binding so the narrowing survives into the onClick closure (TS
+  // cannot narrow a property access through a callback boundary).
+  const recourse = hero.recourse;
+  return (
   <section class="plan-hero pels-hero" data-tone={hero.heroTone}>
     <div id="budget-plan-summary" class="plan-hero__section">
       {hero.headlineLabel !== null && (
@@ -305,40 +321,64 @@ const BudgetHero = ({ hero }: { hero: BudgetHeroData }) => (
       )}
       <div class="plan-hero__headline-row">
         <div id="budget-redesign-comparison" class="plan-hero__headline">{hero.comparison}</div>
+        {/* Estimated cost gets headline billing (parity with the widget's
+            "Projected today … · … kr"); the eyebrow's "Projected today"
+            anchors its time window. */}
+        {hero.estimatedCost !== null && (
+          <span
+            id="budget-redesign-estimated-cost"
+            class="plan-hero__headline-cost"
+            data-tooltip={BUDGET_ESTIMATED_COST_TOOLTIP}
+          >
+            {hero.estimatedCost}
+          </span>
+        )}
         {hero.delta && (
           <span id="budget-redesign-delta" class={deltaChipClass(hero.delta.tone)}>
             {hero.delta.label}
           </span>
         )}
       </div>
-      {/* Role tier 1 — the running-total fact ("52.3 kWh used so far today ·
-          estimated 6.50 kr today"). Rendered at primary tone so it reads as
-          the card's key "where am I now?" answer, above the split bar it
-          summarises. The delta chip is the single "how much is left" number;
-          this line names USED, not left. */}
+      {/* Role tier 1 — the running-total fact ("52.3 kWh used so far
+          today"; the estimated cost now rides the headline row). Rendered at
+          primary tone so it reads as the card's key "where am I now?" answer,
+          above the split bar it summarises. The delta chip is the single
+          "how much is left" number; this line names USED, not left. */}
       {hero.budgetRemainingLine !== null && (
         <div class="plan-hero__subline budget-hero__usage-line">{hero.budgetRemainingLine}</div>
       )}
       {hero.split !== null && <BudgetHeroSplit split={hero.split} />}
-      {/* Role tier 2 — price-context notes (shaping strategy + export price).
-          They keep the `--muted` supporting tone so they recede beneath the
-          primary usage-line fact and the split bar; the two tones are the role
-          differentiation, so the metadata lines no longer read as one flat
-          grey block. */}
-      {hero.priceTagline !== null && (
-        <div class="plan-hero__subline plan-hero__subline--muted">{hero.priceTagline}</div>
-      )}
-      {hero.exportPriceLine !== null && (
-        <div id="budget-export-price-now" class="plan-hero__subline plan-hero__subline--muted">
-          {hero.exportPriceLine}
+      {/* Role tier 2 — the price-context notes (shaping strategy + export
+          price) grouped into ONE muted readout block so a prosumer today-view
+          scans hero → usage fact → split → one price block → decision,
+          instead of a stack of loose sublines. */}
+      {(hero.priceTagline !== null || hero.exportPriceLine !== null) && (
+        <div class="plan-hero__subline plan-hero__subline--muted budget-hero__price-readout">
+          {hero.priceTagline !== null && <span>{hero.priceTagline}</span>}
+          {hero.exportPriceLine !== null && (
+            <span id="budget-export-price-now">{hero.exportPriceLine}</span>
+          )}
         </div>
       )}
       {hero.decision !== null && (
         <p class="plan-hero__decision">{hero.decision}</p>
       )}
+      {/* Failure gets a one-tap recourse (personas § Failing): exactly one
+          action, cause-routed, only on the over-budget today view. */}
+      {recourse !== null && (
+        <div class="budget-hero__recourse">
+          <MdTextButton
+            id="budget-redesign-hero-recourse"
+            onClick={() => onRecourse(recourse.action)}
+          >
+            {recourse.label}
+          </MdTextButton>
+        </div>
+      )}
     </div>
   </section>
-);
+  );
+};
 
 // ─── Allocation Warning ───────────────────────────────────────────────────────
 
@@ -1092,16 +1132,29 @@ const BudgetPageHeader = ({
     onLocalViewChange('plan');
   };
   const toggleNode = (
-    <MdOutlinedButton
-      id="budget-redesign-mode-toggle"
-      class={`budget-page-header__action${confirming ? ' confirming' : ''}`}
-      title={toggleTitle}
-      {...(toggleDisabled ? { disabled: true } : {})}
-      onClick={onToggleClick}
-    >
-      {inPlan && <TuneIcon slot="icon" />}
-      {toggleLabel}
-    </MdOutlinedButton>
+    <span class="budget-page-header__action-group">
+      {/* Non-destructive exit for the armed discard confirm: without it the
+          header offers only the destructive option ("Tap again to discard")
+          and the escape is hover-only tooltip knowledge. */}
+      {confirming && (
+        <MdTextButton
+          id="budget-redesign-keep-editing"
+          onClick={clearConfirm}
+        >
+          {BUDGET_ADJUST_KEEP_EDITING_BUTTON}
+        </MdTextButton>
+      )}
+      <MdOutlinedButton
+        id="budget-redesign-mode-toggle"
+        class={`budget-page-header__action${confirming ? ' confirming' : ''}`}
+        title={toggleTitle}
+        {...(toggleDisabled ? { disabled: true } : {})}
+        onClick={onToggleClick}
+      >
+        {inPlan && <TuneIcon slot="icon" />}
+        {toggleLabel}
+      </MdOutlinedButton>
+    </span>
   );
   const chipToneCls = priceLevelChip
     ? (priceLevelChip.tone === 'warn' ? 'plan-chip--warn' : 'plan-chip--info')
@@ -1116,15 +1169,30 @@ const BudgetPageHeader = ({
   // returns to Settings.
   if (localView === 'adjust' && toSettings) {
     return (
-      <AppBar
-        back={{
-          label: confirming ? 'Discard unsaved changes and go back to Settings' : 'Back to Settings',
-          title: toggleTitle,
-          onClick: onToggleClick,
-          ...(confirming ? { class: 'confirming' } : {}),
-        }}
-        title="Daily budget"
-      />
+      <>
+        <AppBar
+          back={{
+            label: confirming ? 'Discard unsaved changes and go back to Settings' : 'Back to Settings',
+            title: toggleTitle,
+            onClick: onToggleClick,
+            ...(confirming ? { class: 'confirming' } : {}),
+          }}
+          title="Daily budget"
+        />
+        {/* The armed back-arrow confirm needs the same visible non-destructive
+            exit the trailing-Done variant has — the warning-tinted glyph alone
+            offers only the destructive reading. */}
+        {confirming && (
+          <div class="budget-page-header__appbar-escape">
+            <MdTextButton
+              id="budget-redesign-keep-editing"
+              onClick={clearConfirm}
+            >
+              {BUDGET_ADJUST_KEEP_EDITING_BUTTON}
+            </MdTextButton>
+          </div>
+        )}
+      </>
     );
   }
   return (
@@ -1167,6 +1235,7 @@ const BudgetOverviewRoot = ({
   weatherInsight,
   adjustReturnTarget,
   onReturnToSettings,
+  onShowUsage,
   onLocalViewChange,
   onDayChange,
   onChartModeChange,
@@ -1201,7 +1270,10 @@ const BudgetOverviewRoot = ({
           ariaLabel="Budget day"
           onChange={onDayChange}
         />
-        <BudgetHero hero={hero} />
+        <BudgetHero
+          hero={hero}
+          onRecourse={(action) => (action === 'usage' ? onShowUsage() : onLocalViewChange('adjust'))}
+        />
         {allocationWarning && (
           <AllocationWarningBanner
             warning={allocationWarning}

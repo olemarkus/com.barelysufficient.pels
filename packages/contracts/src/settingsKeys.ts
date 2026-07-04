@@ -28,7 +28,6 @@ export const DAILY_BUDGET_KWH = 'daily_budget_kwh';
 export const DAILY_BUDGET_PRICE_SHAPING_ENABLED = 'daily_budget_price_shaping_enabled';
 export const DAILY_BUDGET_CONTROLLED_WEIGHT = 'daily_budget_controlled_weight';
 export const DAILY_BUDGET_PRICE_FLEX_SHARE = 'daily_budget_price_flex_share';
-export const DAILY_BUDGET_BREAKDOWN_ENABLED = 'daily_budget_breakdown_enabled';
 export const DAILY_BUDGET_STATE = 'daily_budget_state';
 export const DAILY_BUDGET_RESET = 'daily_budget_reset';
 export const COMBINED_PRICES = 'combined_prices';

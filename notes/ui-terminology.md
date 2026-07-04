@@ -599,7 +599,7 @@ nothing below renders differently from today):
   only when an export price covers the current hour.
 - **Import price** (`total`) stays under every money/receipt figure: smart-task
   delivered/planned cost, the Budget chart's Actual / cost cumulative / money
-  view, the estimated-cost hero subline, and the price-info strings. The
+  view, the headline-row estimated-cost figure, and the price-info strings. The
   `plan_budget` widget's projected cost is the sole planning-price money figure,
   and its `Projected …` framing is the estimate label (never "the bill").
 

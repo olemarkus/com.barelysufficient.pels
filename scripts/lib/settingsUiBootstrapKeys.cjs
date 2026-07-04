@@ -38,7 +38,6 @@ const SETTINGS_UI_BOOTSTRAP_KEYS = [
   'daily_budget_price_shaping_enabled',
   'daily_budget_controlled_weight',
   'daily_budget_price_flex_share',
-  'daily_budget_breakdown_enabled',
   'debug_logging_topics',
   'debug_logging_enabled',
   'deferred_objectives',

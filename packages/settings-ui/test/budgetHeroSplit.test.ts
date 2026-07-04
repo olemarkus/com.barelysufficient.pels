@@ -19,6 +19,8 @@ const buildProps = (overrides: Partial<BudgetOverviewProps> = {}): BudgetOvervie
     comparison: '9.0 / 12.0 kWh',
     delta: null,
     budgetRemainingLine: null,
+  estimatedCost: null,
+  recourse: null,
     split: {
       managedKWh: 1.8, backgroundKWh: 2.7, beforeSolar: false, budgetKWh: 12, usedKWh: 4.5,
     },
@@ -48,6 +50,7 @@ const buildProps = (overrides: Partial<BudgetOverviewProps> = {}): BudgetOvervie
   weatherInsight: null,
   adjustReturnTarget: 'plan',
   onReturnToSettings: () => {},
+  onShowUsage: () => {},
   onLocalViewChange: () => {},
   onDayChange: () => {},
   onChartModeChange: () => {},

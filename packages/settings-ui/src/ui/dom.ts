@@ -106,7 +106,6 @@ export const settingsPowerSourceSelect = document.querySelector(
 export const settingsSimulationModeInput = document.querySelector(
   '#settings-simulation-mode',
 ) as MdSwitchElement | null;
-export const dailyBudgetBreakdownInput = document.querySelector('#daily-budget-breakdown') as MdSwitchElement;
 export const dryRunBanner = qs('#dry-run-banner');
 export const simulationDisableButton = document.querySelector('#simulation-disable-button') as MdButtonElement | null;
 export const staleDataBanner = qs('#stale-data-banner');

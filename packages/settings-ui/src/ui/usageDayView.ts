@@ -324,6 +324,14 @@ const setUsageDayView = (view: UsageDayView) => {
   renderUsageDayView(latestEntries);
 };
 
+// Reset the day card to Today — the Budget hero's over-budget recourse lands
+// here to answer "what used the energy TODAY", so a previously-selected
+// Yesterday view must not survive the jump. No-op re-render when already on
+// Today (setUsageDayView early-returns).
+export const showUsageDayToday = (): void => {
+  setUsageDayView('today');
+};
+
 export const initUsageDayViewHandlers = () => {
   if (usageDayViewHandlersReady) return;
   usageDayViewHandlersReady = true;

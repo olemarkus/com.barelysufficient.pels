@@ -209,7 +209,6 @@ const buildFixture = () => {
     daily_budget_price_shaping_enabled: true,
     daily_budget_controlled_weight: 0.7,
     daily_budget_price_flex_share: 0.3,
-    daily_budget_breakdown_enabled: true,
     pels_status: {
       state: 'running',
       updatedAt: new Date().toISOString(),

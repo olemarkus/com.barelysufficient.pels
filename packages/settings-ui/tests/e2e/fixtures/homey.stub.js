@@ -786,7 +786,6 @@
     daily_budget_price_shaping_enabled: true,
     daily_budget_controlled_weight: 1,
     daily_budget_price_flex_share: 0.3,
-    daily_budget_breakdown_enabled: false,
 
     // In-memory plan snapshot
     plan_snapshot: buildSamplePlanSnapshot(),
@@ -1165,7 +1164,6 @@
     daily_budget_price_shaping_enabled: settings.daily_budget_price_shaping_enabled,
     daily_budget_controlled_weight: settings.daily_budget_controlled_weight,
     daily_budget_price_flex_share: settings.daily_budget_price_flex_share,
-    daily_budget_breakdown_enabled: settings.daily_budget_breakdown_enabled,
     debug_logging_topics: settings.debug_logging_topics,
     debug_logging_enabled: settings.debug_logging_enabled,
     overview_redesign_enabled: settings.overview_redesign_enabled,

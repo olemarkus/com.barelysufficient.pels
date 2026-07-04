@@ -188,7 +188,6 @@ const buildDom = () => {
     </section>
     <section class="panel hidden" data-panel="advanced">
       <div id="debug-logging-checkboxes"></div>
-      <md-switch id="daily-budget-breakdown"></md-switch>
     </section>
     <div id="device-detail-overlay" hidden>
       <div id="device-detail-panel">

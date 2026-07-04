@@ -1,3 +1,4 @@
+import { showUsageDayToday } from './usageDayView.ts';
 import './materialWeb.ts';
 import {
   emptyState,
@@ -73,12 +74,9 @@ import {
   openBudgetAdjustFromSettings,
   openBudgetWeatherView,
   setBudgetAdjustSettingsNavigator,
+  setBudgetUsageNavigator,
 } from './budgetRedesign.ts';
 import { initWeatherInsight } from './weatherInsight.ts';
-import {
-  initDailyBudgetBreakdownHandlers,
-  loadDailyBudgetBreakdownSetting,
-} from './dailyBudgetTuning.ts';
 import {
   initDeviceDetailHandlers,
   loadEvBoostSettings,
@@ -124,6 +122,12 @@ const initTabHandlers = () => {
   // showTab so the leave path (draft discard, referrer reset, toast) stays
   // identical to a tab-bar exit.
   setBudgetAdjustSettingsNavigator(() => showTab('settings'));
+  setBudgetUsageNavigator(() => {
+    // The recourse answers "what used the energy TODAY" — reset a lingering
+    // Yesterday selection before the jump.
+    showUsageDayToday();
+    showTab('usage');
+  });
   tabs.forEach((tab) => {
     tab.addEventListener('click', () => {
       const tabId = (tab as HTMLElement).dataset.tab || 'devices';
@@ -299,7 +303,6 @@ const initAdvancedHandlers = () => {
 
   initAdvancedDeviceCleanupHandlers();
   initAdvancedDeviceLoggerHandlers();
-  initDailyBudgetBreakdownHandlers();
 };
 
 const loadBootstrapData = async (): Promise<SettingsUiBootstrap | null> => {
@@ -342,7 +345,6 @@ const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
   const [usage] = await Promise.all([
     getPowerUsage(),
     loadCapacitySettings(),
-    loadDailyBudgetBreakdownSetting(),
     loadBudgetAdjust(),
     loadStaleDataStatus(),
     loadDeviceControlProfiles(),
