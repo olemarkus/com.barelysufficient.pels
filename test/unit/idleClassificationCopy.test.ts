@@ -43,6 +43,11 @@ describe('formatIdleClassificationCopy', () => {
     // that is almost always the device's own controller pausing.
     expect(copy.detail).not.toContain('breaker');
     expect(copy.detail).toContain('not drawing power');
+    // `unresponsive` only fires past the device's own hysteresis band, so the
+    // copy must not frame a sustained condition as momentary ("right now") and
+    // must name one concrete, non-alarming check rather than a vague "look later".
+    expect(copy.detail).not.toContain('right now');
+    expect(copy.detail).toContain('check the device still has power');
   });
 
   it('degrades gracefully when temperatures are missing', () => {
