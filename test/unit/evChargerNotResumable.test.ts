@@ -58,6 +58,37 @@ describe('resolveSmartTaskListStatus — connected-but-not-resumable charger', (
   });
 });
 
+// The queued (future first action) branch must not mask a plan verdict:
+// `queued` renders the same green `On track` chip as `on_track`, so letting
+// it win would paint an at-risk / cannot-finish / already-satisfied plan as
+// healthy just because its first hour hasn't started yet.
+describe('resolveSmartTaskListStatus — plan verdicts outrank a future first action', () => {
+  const base = {
+    pending: false,
+    pendingReason: undefined,
+    diagnosticReasonCode: undefined,
+    firstActionAtMs: 10_000,
+    nowMs: 0,
+  } as const;
+
+  it('keeps at_risk visible when the first hour is still ahead', () => {
+    expect(resolveSmartTaskListStatus({ ...base, planStatus: 'at_risk' })).toBe('at_risk');
+  });
+
+  it('keeps cannot_meet visible when the first hour is still ahead', () => {
+    expect(resolveSmartTaskListStatus({ ...base, planStatus: 'cannot_meet' })).toBe('cannot_meet');
+  });
+
+  it('keeps satisfied visible when the first hour is still ahead', () => {
+    expect(resolveSmartTaskListStatus({ ...base, planStatus: 'satisfied' })).toBe('satisfied');
+  });
+
+  it('returns queued only for a healthy plan with a future first action', () => {
+    expect(resolveSmartTaskListStatus({ ...base, planStatus: 'on_track' })).toBe('queued');
+    expect(resolveSmartTaskListStatus({ ...base, firstActionAtMs: null, planStatus: 'on_track' })).toBe('on_track');
+  });
+});
+
 describe('resolveEvCardStateLine — connected-but-not-resumable charger (C1)', () => {
   const formatTime = (ms: number): string => `T${ms}`;
 

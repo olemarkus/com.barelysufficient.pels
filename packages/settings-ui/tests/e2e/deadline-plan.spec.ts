@@ -138,7 +138,7 @@ test.describe('Deadline plan', () => {
     const deviceTargetSubline = panel.locator(
       '.plan-hero__subline:not(.plan-hero__subline--reason):not(.plan-hero__subline--muted)',
     ).first();
-    await expect(deviceTargetSubline).toContainText('Target 65 °C');
+    await expect(deviceTargetSubline).toContainText('Target 65.0 °C');
 
     const initialBootstrapCalls = await page.evaluate(() => (
       (window as unknown as DeadlinePlanStubWindow).Homey.__stub.getApiCallCount('GET /ui_bootstrap')
@@ -165,7 +165,7 @@ test.describe('Deadline plan', () => {
       homey.__stub.emitHomeyEvent('devices_updated');
     });
 
-    await expect(deviceTargetSubline).toContainText('Target 70 °C');
+    await expect(deviceTargetSubline).toContainText('Target 70.0 °C');
     const refreshedBootstrapCalls = await page.evaluate(() => (
       (window as unknown as DeadlinePlanStubWindow).Homey.__stub.getApiCallCount('GET /ui_bootstrap')
     ));

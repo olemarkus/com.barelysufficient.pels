@@ -138,9 +138,8 @@ The Smart tasks view shows current tasks and past tasks. Flow cards can also rea
 | Status | Meaning |
 | --- | --- |
 | **Building plan…** | A task is stored but PELS has not allocated hours yet — usually because prices through the ready-by time are not available. |
-| **Scheduled** | A plan is ready and the first scheduled hour is still in the future. |
 | **Paused — unplugged** | EV only: the charging task is paused because the car is unplugged or the session ended. The plan resumes when the car is plugged back in. |
-| **On track** | PELS currently expects the task to reach the target. |
+| **On track** | PELS currently expects the task to reach the target — including when the plan is ready but the first scheduled hour is still in the future. |
 | **At risk** | PELS has a plan, but there is limited time or room left. |
 | **Cannot finish** | PELS does not currently see enough usable time or energy delivery before the ready-by time. |
 | **Satisfied** | The observed target is already met. If a later reading drops below the target before the ready-by time, PELS returns to tracking it. |

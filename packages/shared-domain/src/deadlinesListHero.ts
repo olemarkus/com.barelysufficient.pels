@@ -10,8 +10,9 @@
 // silently counted `building_plan` and `satisfied` cards under "on track")
 // can't grow back:
 //
-//   on-track  : `on_track`
-//   pending   : `building_plan`, `queued`
+//   on-track  : `on_track`, `queued` (allocated plan, first hour ahead — its
+//               chip reads `On track`, so the hero must agree)
+//   pending   : `building_plan`
 //   paused    : `paused_unplugged`
 //   at-risk   : `at_risk`, `cannot_meet`
 //   satisfied : `satisfied`
@@ -175,7 +176,11 @@ type StatusBucket = 'on_track' | 'pending' | 'paused' | 'at_risk' | 'satisfied';
 const STATUS_BUCKET: Record<SmartTaskListStatusId, StatusBucket> = {
   on_track: 'on_track',
   building_plan: 'pending',
-  queued: 'pending',
+  // `queued` (allocated plan, first hour ahead) is the on-track bucket: its
+  // card chip says `On track` (2026-07 coherence sweep), so a hero that read
+  // "Planning 1 smart task" above an `On track` chip would contradict itself
+  // on one screen. `pending` is reserved for genuinely plan-less states.
+  queued: 'on_track',
   paused_unplugged: 'paused',
   // Same `paused` bucket as unplugged: connected but charging can't resume is a
   // "needs user attention" state, not a healthy/planning one.

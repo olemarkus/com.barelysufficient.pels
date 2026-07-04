@@ -403,10 +403,13 @@ const ChartLegend = ({
     // legend always names what the user actually sees. The progress mode's
     // Budget entry is the dashed reference stroke; the hourly mode's is the
     // ice-blue planned-allocation bar — the glyphs match what is plotted.
+    // Canonical split-pair order is Managed → Background app-wide (reading-
+    // priority order, matching the Budget hero split; legends do not mirror
+    // the bottom-to-top stack order) — notes/ui-terminology.md § Hero legend.
     ...(showSplit
       ? [
-        { label: SPLIT_BACKGROUND_LABEL, cls: 'budget-chart-legend__swatch--background' },
         { label: SPLIT_MANAGED_LABEL, cls: 'budget-chart-legend__swatch--managed' },
+        { label: SPLIT_BACKGROUND_LABEL, cls: 'budget-chart-legend__swatch--background' },
       ]
       : [{
         label: 'Budget',
@@ -1051,7 +1054,7 @@ const BudgetPageHeader = ({
   // "Done" silently discards a dirty Adjust draft and snaps right back to
   // Adjust — the user sees nothing change.
   const toggleDisabled = !budgetEnabled && !toSettings && !inWeather;
-  const toggleLabel = inPlan ? 'Adjust' : (confirming ? 'Click again to discard' : 'Done');
+  const toggleLabel = inPlan ? 'Adjust' : (confirming ? 'Tap again to discard' : 'Done');
   const toggleTitle = toggleDisabled
     ? 'Enable daily budget to see the plan.'
     : inPlan

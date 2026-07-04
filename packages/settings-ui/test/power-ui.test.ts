@@ -1232,7 +1232,7 @@ describe('usage day stacked managed/background split', () => {
     });
 
     const option = setOption.mock.calls[0][0] as CapturedOption;
-    expect(legendNamesOf(option)).toEqual(['Background', 'Managed']);
+    expect(legendNamesOf(option)).toEqual(['Managed', 'Background']);
   });
 
   it('adds the Measured legend entry when a measured hour lacks split data', async () => {
@@ -1255,7 +1255,7 @@ describe('usage day stacked managed/background split', () => {
     });
 
     const option = setOption.mock.calls[0][0] as CapturedOption;
-    expect(legendNamesOf(option)).toEqual(['Background', 'Managed', 'Measured']);
+    expect(legendNamesOf(option)).toEqual(['Managed', 'Background', 'Measured']);
     // The no-split hour renders as a single full-height Measured bar.
     expect(seriesValueAt(option, 'Measured', 1)).toBe(1.2);
     expect(seriesValueAt(option, 'Background', 1)).toBe(0);
@@ -1287,7 +1287,7 @@ describe('usage day stacked managed/background split', () => {
     });
 
     const option = setOption.mock.calls[0][0] as CapturedOption;
-    expect(legendNamesOf(option)).toEqual(['Background', 'Managed', 'Warning']);
+    expect(legendNamesOf(option)).toEqual(['Managed', 'Background', 'Warning']);
     expect(seriesValueAt(option, 'Measured', 1)).toBe(1.2);
     expect(seriesValueAt(option, 'Background', 1)).toBe(0);
     expect(seriesValueAt(option, 'Managed', 1)).toBe(0);

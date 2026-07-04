@@ -390,7 +390,7 @@ describe('settings script', () => {
     // the discard on the two-step control. Settings-referred exit is the
     // app-bar back arrow; a dirty draft arms the confirm (`.confirming` glyph)
     // on the first tap and only returns on the second — the icon-only
-    // equivalent of "Click again to discard".
+    // equivalent of "Tap again to discard".
     showTab('settings');
     await openAdjustAndDirtyDraft();
     vi.mocked(showToast).mockClear();

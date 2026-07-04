@@ -410,13 +410,34 @@ describe('resolveDeadlinesListHero', () => {
           deviceId: 'dev_b',
           deviceName: 'Boiler',
           kind: 'temperature',
-          statusId: 'queued',
+          statusId: 'building_plan',
           deadlineAtMs: T0 + HOUR_MS,
         }),
       ],
       formatTime,
     });
     expect(hero?.headline).toBe('Planning 2 smart tasks');
+    expect(hero?.tone).toBe('good');
+  });
+
+  // `queued` (allocated plan, first hour ahead) buckets as on-track: its card
+  // chip reads `On track`, so a "Planning…" hero above it would contradict the
+  // chip on one screen (2026-07 coherence sweep).
+  it('counts a queued card as on track, matching its On track chip', () => {
+    const hero = resolveDeadlinesListHero({
+      cards: [
+        buildCard({ deviceId: 'dev_a', statusId: 'building_plan', deadlineAtMs: T0 }),
+        buildCard({
+          deviceId: 'dev_b',
+          deviceName: 'Boiler',
+          kind: 'temperature',
+          statusId: 'queued',
+          deadlineAtMs: T0 + HOUR_MS,
+        }),
+      ],
+      formatTime,
+    });
+    expect(hero?.headline).toBe('1 on track, 1 planning');
     expect(hero?.tone).toBe('good');
   });
 

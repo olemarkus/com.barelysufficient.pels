@@ -69,8 +69,11 @@ describe('DeadlinesList', () => {
     // Type chip = quiet outline carrying the kind category.
     expect(typeChip?.textContent).toBe('Temperature');
     // Status chip = tonal fill carrying the canonical list-status vocabulary.
+    // A queued (allocated, first hour ahead) card carries the same `On track`
+    // status word as `on_track` — `Scheduled` is retired as a status chip
+    // (notes/ui-terminology.md § Smart task list status chips).
     const statusChip = Array.from(chipGroup?.querySelectorAll<HTMLElement>('.plan-chip') ?? [])
-      .find((el) => el.textContent === 'Scheduled');
+      .find((el) => el.textContent === 'On track');
     expect(statusChip).not.toBeUndefined();
     expect(statusChip?.classList.contains('plan-chip--outline')).toBe(false);
   });

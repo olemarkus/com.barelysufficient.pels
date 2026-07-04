@@ -10,7 +10,7 @@ import { renderBudgetOverview, type BudgetOverviewProps } from '../src/ui/views/
  *      "Daily budget" row (via the injected onReturnToSettings navigator);
  *   2. guard unsaved work — Adjust is the only surface that doesn't save
  *      instantly, so a dirty draft or pending preview arms a two-step
- *      "Click again to discard" confirm before any exit;
+ *      "Tap again to discard" confirm before any exit;
  *   3. stay reachable when the daily budget is disabled and the user arrived
  *      from Settings (returning to Settings is always meaningful even though
  *      the plan view isn't).
@@ -184,7 +184,7 @@ describe.each(['dirty', 'pending'] as const)('Done with unsaved changes (%s)', (
     toggle.click();
     await flushRender();
     expect(onLocalViewChange).not.toHaveBeenCalled();
-    expect(toggle.textContent).toContain('Click again to discard');
+    expect(toggle.textContent).toContain('Tap again to discard');
     expect(toggle.classList.contains('confirming')).toBe(true);
   });
 
@@ -203,7 +203,7 @@ describe.each(['dirty', 'pending'] as const)('Done with unsaved changes (%s)', (
     renderBudgetOverview(mount, withStatus(status, { adjustReturnTarget: 'settings', onReturnToSettings }));
     // Unarmed: a first tap on the back arrow must not navigate away and
     // silently discard — it arms the confirm (warning-tinted `.confirming`
-    // glyph) instead, the icon-only equivalent of "Click again to discard".
+    // glyph) instead, the icon-only equivalent of "Tap again to discard".
     getSettingsBack().click();
     await flushRender();
     expect(onReturnToSettings).not.toHaveBeenCalled();
@@ -219,7 +219,7 @@ describe.each(['dirty', 'pending'] as const)('Done with unsaved changes (%s)', (
     const toggle = getToggle();
     toggle.click();
     await flushRender();
-    expect(toggle.textContent).toContain('Click again to discard');
+    expect(toggle.textContent).toContain('Tap again to discard');
 
     // A field change swaps the draft object in the controller; the armed
     // confirm was given for the OLD draft and must not carry over.
@@ -235,7 +235,7 @@ describe.each(['dirty', 'pending'] as const)('Done with unsaved changes (%s)', (
     getToggle().click();
     await flushRender();
     expect(onLocalViewChange).not.toHaveBeenCalled();
-    expect(getToggle().textContent).toContain('Click again to discard');
+    expect(getToggle().textContent).toContain('Tap again to discard');
   });
 
   it('auto-reverts the armed confirm after the timeout', async () => {
@@ -245,7 +245,7 @@ describe.each(['dirty', 'pending'] as const)('Done with unsaved changes (%s)', (
       const toggle = getToggle();
       toggle.click();
       await flushRender();
-      expect(toggle.textContent).toContain('Click again to discard');
+      expect(toggle.textContent).toContain('Tap again to discard');
       vi.advanceTimersByTime(5000);
       await flushRender();
       expect(getToggle().textContent).toContain('Done');

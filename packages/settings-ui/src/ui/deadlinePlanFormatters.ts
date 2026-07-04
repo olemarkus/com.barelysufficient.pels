@@ -13,8 +13,11 @@ export const formatDeadlineFull = (deadlineAtMs: number): string => (
   })
 );
 
+// Always one decimal (65.0 °C), matching shared-domain's
+// `formatProgressValueForUnit`, so the hero's current/target lines and the
+// trajectory/target labels never show the same figure at two precisions.
 export const formatTemperature = (value: number): string => (
-  Number.isInteger(value) ? `${value} °C` : `${value.toFixed(1)} °C`
+  `${value.toFixed(1)} °C`
 );
 
 export const formatTarget = (objective: DeferredObjectiveSettingsEntry): string => (

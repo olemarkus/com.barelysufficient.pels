@@ -9,6 +9,7 @@
 import { encodeHtml } from './echartsRegistry.ts';
 import {
   BUDGET_SPLIT_BEFORE_SOLAR_PREFIX,
+  SPLIT_OTHER_LABEL,
   composeKWhOverBudget,
   composeWithinBudgetOf,
 } from '../../../shared-domain/src/dailyBudgetHeroStrings.ts';
@@ -247,6 +248,12 @@ export const buildBudgetHourlyReadout = (params: {
 // unreliable-hour warning when the hour is flagged. `inProgress` marks the
 // current hour on the Today view: its bucket is still accumulating, so the
 // measurement reads `Measured 0.45 kWh so far`.
+//
+// When the split leaves a real remainder (the chart's neutral third stack
+// segment), the split line names it — `Other 0.12 kWh` — so the visible ink
+// is never unexplained subtraction homework. Same `splitCoversMeasured`
+// epsilon as the chart's fully-attributed branch, so the readout and the ink
+// can never disagree about the same hour.
 export const buildUsageDayReadout = (params: {
   hourRange: string;
   measuredKWh: number;
@@ -260,15 +267,18 @@ export const buildUsageDayReadout = (params: {
     { text: nonBreaking(`Measured ${params.measuredKWh.toFixed(2)} kWh${suffix}`) },
   ];
   if (params.managedKWh !== null && params.backgroundKWh !== null) {
-    const exceedsMeasured = splitExceedsMeasured(
-      params.managedKWh + params.backgroundKWh,
-      params.measuredKWh,
-    );
+    const splitSum = params.managedKWh + params.backgroundKWh;
+    const exceedsMeasured = splitExceedsMeasured(splitSum, params.measuredKWh);
     const managed = exceedsMeasured
       ? `${nonBreaking(BUDGET_SPLIT_BEFORE_SOLAR_PREFIX)} ${nonBreaking(`Managed ${params.managedKWh.toFixed(2)} kWh`)}`
       : nonBreaking(`Managed ${params.managedKWh.toFixed(2)} kWh`);
     const background = nonBreaking(`Background ${params.backgroundKWh.toFixed(2)} kWh`);
-    values.push({ text: `${managed}${SEPARATOR}${background}` });
+    const segments = [managed, background];
+    if (!exceedsMeasured && !splitCoversMeasured(splitSum, params.measuredKWh)) {
+      const remainder = params.measuredKWh - splitSum;
+      segments.push(nonBreaking(`${SPLIT_OTHER_LABEL} ${remainder.toFixed(2)} kWh`));
+    }
+    values.push({ text: segments.join(SEPARATOR) });
   }
   if (params.unreliable) values.push({ text: UNRELIABLE_HOUR_WARNING, tone: 'warn' });
   return { when: params.hourRange, values };

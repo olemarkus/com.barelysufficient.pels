@@ -76,14 +76,26 @@ describe('plan price widget copy', () => {
       projectedCost: 9.8,
       costUnit: 'kr',
       tone: 'on_track',
-    })).toBe('Projected 12.4 kWh · 9.80 kr · On track');
+      target: 'today',
+    })).toBe('Projected today 12.4 kWh · 9.80 kr · On track');
 
     expect(formatPlanPriceSummary({
       projectedKwh: 20,
       projectedCost: 31.5,
       costUnit: 'kr',
       tone: 'over',
-    })).toBe('Projected 20.0 kWh · 31.50 kr · Over budget');
+      target: 'today',
+    })).toBe('Projected today 20.0 kWh · 31.50 kr · Over budget');
+  });
+
+  test('anchors the tomorrow headline as "Planned for tomorrow" (nothing measured to project from)', () => {
+    expect(formatPlanPriceSummary({
+      projectedKwh: 15.6,
+      projectedCost: 18.3,
+      costUnit: 'kr',
+      tone: null,
+      target: 'tomorrow',
+    })).toBe('Planned for tomorrow 15.6 kWh · 18.30 kr');
   });
 
   test('drops the cost half when no usable unit and the tone when null', () => {
@@ -92,14 +104,16 @@ describe('plan price widget copy', () => {
       projectedCost: 4,
       costUnit: '',
       tone: null,
-    })).toBe('Projected 5.0 kWh');
+      target: 'today',
+    })).toBe('Projected today 5.0 kWh');
 
     expect(formatPlanPriceSummary({
       projectedKwh: 5,
       projectedCost: null,
       costUnit: 'kr',
       tone: null,
-    })).toBe('Projected 5.0 kWh');
+      target: 'today',
+    })).toBe('Projected today 5.0 kWh');
   });
 
   test('splits the summary into headline + toned status parts (single source with the flat line)', () => {
@@ -108,19 +122,22 @@ describe('plan price widget copy', () => {
       projectedCost: 9.8,
       costUnit: 'kr',
       tone: 'on_track',
+      target: 'today',
     })).toEqual({
-      headline: 'Projected 12.4 kWh · 9.80 kr',
+      headline: 'Projected today 12.4 kWh · 9.80 kr',
       status: 'On track',
       tone: 'on_track',
     });
 
     // No tone → no status, and the flat line equals the headline alone.
-    const params = { projectedKwh: 5, projectedCost: 4, costUnit: '', tone: null } as const;
+    const params = {
+      projectedKwh: 5, projectedCost: 4, costUnit: '', tone: null, target: 'today',
+    } as const;
     expect(formatPlanPriceSummaryParts(params)).toEqual({
-      headline: 'Projected 5.0 kWh',
+      headline: 'Projected today 5.0 kWh',
       status: '',
       tone: null,
     });
-    expect(formatPlanPriceSummary(params)).toBe('Projected 5.0 kWh');
+    expect(formatPlanPriceSummary(params)).toBe('Projected today 5.0 kWh');
   });
 });

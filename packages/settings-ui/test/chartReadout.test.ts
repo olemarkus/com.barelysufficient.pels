@@ -114,6 +114,37 @@ describe('chart readout content resolvers', () => {
     ]);
   });
 
+  it('names the unattributed remainder as Other when the split leaves real ink', () => {
+    // 0.70 + 0.49 = 1.19 against 1.31 measured → 0.12 kWh remainder, well
+    // past SPLIT_KWH_EPSILON, so the neutral third stack segment gets named.
+    expect(buildUsageDayReadout({
+      hourRange: '13:00–14:00',
+      measuredKWh: 1.31,
+      managedKWh: 0.7,
+      backgroundKWh: 0.49,
+      unreliable: false,
+    }).values).toEqual([
+      { text: nb('Measured 1.31 kWh') },
+      { text: `${nb('Managed 0.70 kWh')}${sep}${nb('Background 0.49 kWh')}${sep}${nb('Other 0.12 kWh')}` },
+    ]);
+  });
+
+  it('omits Other when the split shortfall is inside the float-drift epsilon', () => {
+    // 0.60 + 0.398 = 0.998 against 1.0 measured → 0.002 shortfall, inside
+    // SPLIT_KWH_EPSILON (0.005): treated as fully attributed, so no Other
+    // segment (and never an "Other 0.00 kWh").
+    expect(buildUsageDayReadout({
+      hourRange: '13:00–14:00',
+      measuredKWh: 1,
+      managedKWh: 0.6,
+      backgroundKWh: 0.398,
+      unreliable: false,
+    }).values).toEqual([
+      { text: nb('Measured 1.00 kWh') },
+      { text: `${nb('Managed 0.60 kWh')}${sep}${nb('Background 0.40 kWh')}` },
+    ]);
+  });
+
   it('suffixes the in-progress hour measurement with "so far"', () => {
     expect(buildUsageDayReadout({
       hourRange: '12:00–13:00',

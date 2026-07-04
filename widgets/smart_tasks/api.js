@@ -404,7 +404,7 @@ var resolveActivePlanChartData = (plan, options = {}) => {
 var PENDING_REASON_MISSING_CAPACITY_COPY = "Learning energy use \u2014 needs power readings from this device.";
 var SMART_TASK_LIST_STATUS_LABELS = {
   building_plan: "Building plan\u2026",
-  queued: "Scheduled",
+  queued: "On track",
   paused_unplugged: "Paused \u2014 unplugged",
   paused_not_resumable: "Paused \u2014 can\u2019t resume",
   on_track: "On track",
@@ -508,10 +508,11 @@ var CREATE_SMART_TASK_WIDGET_COPY = {
   previewButton: "Preview",
   // Step 3 — preview + confirm.
   previewTitle: "Preview",
-  // Canonical "Scheduled" vocabulary (matches `SMART_TASK_LIST_STATUS_LABELS`
-  // / `SMART_TASK_LIST_ROW_LABELS` and the terminology guide) rather than the
-  // one-off noun "Runs": the preview's when-window is the same concept the list
-  // chip names.
+  // Plain schedule-window word ("these hours are scheduled to run") rather
+  // than the one-off noun "Runs". NOT the status-chip vocabulary — `Scheduled`
+  // was retired as a status chip (the list now says `On track`); it stays
+  // valid as a when-window label like this preview row and the widget
+  // trajectory's run-band key.
   scheduledLabel: "Scheduled",
   energyLabel: "Energy",
   costLabel: "Cost",
@@ -599,7 +600,9 @@ var resolveBuildingPlanChipTone = () => "info";
 var resolvePausedUnpluggedChipTone = () => "warn";
 var SMART_TASK_LIST_STATUS_CHIP_VARIANT = {
   building_plan: resolveBuildingPlanChipTone(),
-  queued: "muted",
+  // Same label AND tone as `on_track` — a queued plan that is allocated and
+  // healthy is the same user-facing state; only the internal id differs.
+  queued: "ok",
   paused_unplugged: resolvePausedUnpluggedChipTone(),
   paused_not_resumable: resolvePausedUnpluggedChipTone(),
   on_track: "ok",
@@ -663,10 +666,10 @@ var resolveSmartTaskListStatus = (params) => {
     if (pendingReason === "invalid_session") return "paused_unplugged";
     return "building_plan";
   }
-  if (firstActionAtMs !== null && firstActionAtMs > nowMs) return "queued";
   if (planStatus === "satisfied") return "satisfied";
   if (planStatus === "cannot_meet") return "cannot_meet";
   if (planStatus === "at_risk") return "at_risk";
+  if (firstActionAtMs !== null && firstActionAtMs > nowMs) return "queued";
   return "on_track";
 };
 var REVISION_REASON_TOOLTIP_LINE = {
@@ -747,13 +750,13 @@ var DEADLINE_LABELS = {
     liveStateChipLabel: {
       active: "Heating",
       building_plan: "Building plan\u2026",
-      queued: "Scheduled",
+      queued: "On track",
       // Thermal devices can't be unplugged; the variant is unreachable here
-      // and falls back to the generic scheduled copy if the resolver ever
+      // and falls back to the generic on-track copy if the resolver ever
       // hands a stale value through.
-      paused_unplugged: "Scheduled",
+      paused_unplugged: "On track",
       // Thermal devices aren't chargers; unreachable, same fallback as above.
-      paused_not_resumable: "Scheduled",
+      paused_not_resumable: "On track",
       ok: "On track"
     },
     atRiskChipLabel: SMART_TASK_LIST_STATUS_LABELS.at_risk,
@@ -843,7 +846,7 @@ var DEADLINE_LABELS = {
     liveStateChipLabel: {
       active: "Charging",
       building_plan: "Building plan\u2026",
-      queued: "Scheduled",
+      queued: "On track",
       paused_unplugged: "Paused \u2014 unplugged",
       paused_not_resumable: SMART_TASK_LIST_STATUS_LABELS.paused_not_resumable,
       ok: "On track"

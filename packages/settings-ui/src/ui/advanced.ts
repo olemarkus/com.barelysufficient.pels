@@ -382,7 +382,7 @@ const resetClearConfirmation = () => {
 const requestClearConfirmation = () => {
   if (!advancedDeviceClearButton) return;
   advancedDeviceClearButton.classList.add('confirming');
-  advancedDeviceClearButton.textContent = 'Click again to confirm';
+  advancedDeviceClearButton.textContent = 'Tap again to confirm';
   if (confirmTimeout) clearTimeout(confirmTimeout);
   confirmTimeout = setTimeout(() => {
     resetClearConfirmation();
@@ -403,8 +403,8 @@ const requestClearUnknownConfirmation = (count: number) => {
   if (!advancedDeviceClearUnknownButton) return;
   advancedDeviceClearUnknownButton.classList.add('confirming');
   advancedDeviceClearUnknownButton.textContent = count > 0
-    ? `Click again to clear ${count}`
-    : 'Click again to confirm';
+    ? `Tap again to clear ${count}`
+    : 'Tap again to confirm';
   if (unknownConfirmTimeout) clearTimeout(unknownConfirmTimeout);
   unknownConfirmTimeout = setTimeout(() => {
     resetClearUnknownConfirmation();

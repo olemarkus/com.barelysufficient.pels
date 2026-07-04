@@ -163,7 +163,7 @@ test('Done with a dirty draft requires a second confirming click', async ({ page
 
   // First click arms the confirm; the adjust view stays put.
   await page.getByRole('button', { name: 'Done', exact: true }).click();
-  const confirmButton = page.getByRole('button', { name: 'Click again to discard' });
+  const confirmButton = page.getByRole('button', { name: 'Tap again to discard' });
   await expect(confirmButton).toBeVisible();
   await expect(page.locator('#budget-redesign-adjust-view')).toBeVisible();
 

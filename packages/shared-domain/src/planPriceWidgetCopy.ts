@@ -8,6 +8,7 @@
 // shared-domain don't collide on an index edit.
 
 import { priceRateLabelToAmountUnit } from './price/priceUnitLabel';
+import { DAILY_BUDGET_HEADLINE_LABEL_BY_VIEW } from './dailyBudgetHeroStrings';
 
 // --- Static copy --------------------------------------------------------
 
@@ -149,12 +150,22 @@ export type PlanPriceSummaryParams = {
   projectedCost: number | null;
   costUnit: string;
   tone: PlanPriceSummaryTone | null;
+  // Which day the figure describes. Every projected/budget figure names its
+  // time window (notes/ui-terminology.md § time anchors): a bare "Projected"
+  // here reads as the same window as the Overview hero's "Projected this
+  // hour" when it is actually a day total.
+  target: 'today' | 'tomorrow';
 };
 
 // The projected headline (kWh, plus cost when a usable unit is known). The cost
 // half is dropped when no usable cost unit is known (Flow/Homey placeholder).
+// The lead label is byte-aligned with the Budget tab's hero headline labels
+// (`Projected today` / `Planned for tomorrow`) so the widget glance and the
+// Budget tab describe the same figure with the same words — "Planned" for
+// tomorrow because there is nothing measured to project from yet.
 const formatHeadline = (params: PlanPriceSummaryParams): string => {
-  const parts: string[] = [`Projected ${formatKwh(Math.max(0, params.projectedKwh))}`];
+  const lead = DAILY_BUDGET_HEADLINE_LABEL_BY_VIEW[params.target];
+  const parts: string[] = [`${lead} ${formatKwh(Math.max(0, params.projectedKwh))}`];
   const unit = params.costUnit.trim();
   if (unit && params.projectedCost !== null && Number.isFinite(params.projectedCost)) {
     parts.push(`${params.projectedCost.toFixed(2)} ${unit}`);
@@ -163,7 +174,7 @@ const formatHeadline = (params: PlanPriceSummaryParams): string => {
 };
 
 export type PlanPriceSummaryParts = {
-  // Prominent projected line, e.g. `Projected 16.8 kWh · 19.60 kr`.
+  // Prominent projected line, e.g. `Projected today 16.8 kWh · 19.60 kr`.
   headline: string;
   // Status word for the toned chip, e.g. `On track` / `Over budget`; empty when
   // there's no budget comparison (tomorrow).
@@ -190,9 +201,10 @@ export const formatPlanPriceSummaryParts = (params: PlanPriceSummaryParams): Pla
 
 /**
  * Build the projected-summary line shown above the chart, e.g.
- * `Projected 12.4 kWh · 9.80 kr · On track`. The cost half is dropped when no
- * usable cost unit is known (Flow/Homey placeholder). The tone word is dropped
- * when `tone` is null (e.g. tomorrow, where there's no budget comparison yet).
+ * `Projected today 12.4 kWh · 9.80 kr · On track`. The cost half is dropped
+ * when no usable cost unit is known (Flow/Homey placeholder). The tone word is
+ * dropped when `tone` is null (e.g. tomorrow, where there's no budget
+ * comparison yet).
  */
 export const formatPlanPriceSummary = (params: PlanPriceSummaryParams): string => {
   const { headline, status } = formatPlanPriceSummaryParts(params);

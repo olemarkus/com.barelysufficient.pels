@@ -7,7 +7,7 @@
  * teleport to the Budget tab) and the exit is the shared `.pels-appbar` back
  * arrow (not a trailing "Done"), matching the eight sibling settings
  * sub-pages. Unsaved edits arm a two-step discard confirm (a warning-tinted
- * `.confirming` glyph — the icon-only equivalent of "Click again to discard")
+ * `.confirming` glyph — the icon-only equivalent of "Tap again to discard")
  * before any exit.
  */
 import { expect, test, type Page } from './fixtures/test';

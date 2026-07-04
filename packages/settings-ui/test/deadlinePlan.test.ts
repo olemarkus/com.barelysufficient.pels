@@ -215,7 +215,7 @@ describe('deadline plan page payload', () => {
 
     expect(payload.kind).toBe('temperature');
     expect(payload.hero.subline).toContain('Connected 300');
-    expect(payload.hero.subline).toContain('22 °C');
+    expect(payload.hero.subline).toContain('22.0 °C');
     const chipTexts = payload.hero.chips.map((chip) => chip.text);
     expect(new Set(chipTexts).size).toBe(chipTexts.length);
     expect(chipTexts).not.toContain('Charging');

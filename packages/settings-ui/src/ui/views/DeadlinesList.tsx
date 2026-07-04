@@ -89,12 +89,13 @@ const formatHourMinute = (ms: number): string => {
 const formatTarget = (card: DeadlinesListCard): string => {
   const labels = deadlineLabels(card.kind);
   // Value already resolved at the producer; only the rounding + unit suffix
-  // stay kind-specific.
+  // stay kind-specific. Temperature always renders one decimal (65.0 °C) so
+  // the same figure never reads at two precisions across the list card and
+  // the detail hero's target/trajectory lines (`formatProgressValueForUnit`).
   const target = card.targetValue;
   if (target === null) return '—';
   if (card.kind === 'temperature') {
-    const value = Number.isInteger(target) ? String(target) : target.toFixed(1);
-    return `${value} ${labels.targetUnit}`;
+    return `${target.toFixed(1)} ${labels.targetUnit}`;
   }
   return `${Math.round(target)} ${labels.targetUnit}`;
 };
@@ -151,7 +152,7 @@ const Card = ({ card }: { card: DeadlinesListCard }) => {
         <div class="deadline-list-card__chips">
           {/* Type chip = quiet outline (structural category); status chip =
               tonal fill (the state). Distinct grammars so "Temperature" and
-              "Scheduled" never read as one grey pair. */}
+              "On track" never read as one grey pair. */}
           <span class="plan-chip plan-chip--outline">{labels.kindChipLabel}</span>
           <StatusChip statusId={card.statusId} />
           {confidenceLabel !== null && (

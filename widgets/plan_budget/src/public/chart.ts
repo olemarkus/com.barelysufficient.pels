@@ -572,6 +572,10 @@ export const resolveSummaryParts = (
     projectedCost: payload.projectedCost,
     costUnit: payload.costUnit,
     tone: payload.summaryTone,
+    // Day anchor for the headline lead (`Projected today` / `Planned for
+    // tomorrow`) so the widget's day total never reads as the hero's
+    // hour-window "Projected".
+    target: payload.target,
   });
 };
 

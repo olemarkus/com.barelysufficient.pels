@@ -78,11 +78,14 @@ export type SmartTaskListStatusId =
 // Stable chip label strings for list card status — kind-agnostic.
 // Sourced here (shared-domain) so runtime logging and UI use the same strings.
 // Note: the internal status id `queued` is kept stable for log schemas /
-// contracts; only the user-visible chip label changed from `Queued` →
-// `Scheduled` (TODO 691).
+// contracts; only the user-visible chip label changed (`Queued` → `Scheduled`
+// in TODO 691, then `Scheduled` → `On track` in the 2026-07 coherence sweep:
+// an allocated, healthy plan whose first hour is still ahead answers "am I on
+// track?" the same way the detail hero does — one state, one word across the
+// two surfaces; see notes/ui-terminology.md § Smart task list status chips).
 export const SMART_TASK_LIST_STATUS_LABELS: Record<SmartTaskListStatusId, string> = {
   building_plan: 'Building plan…',
-  queued: 'Scheduled',
+  queued: 'On track',
   paused_unplugged: 'Paused — unplugged',
   paused_not_resumable: 'Paused — can’t resume',
   on_track: 'On track',
@@ -276,8 +279,11 @@ export const SMART_TASK_WIDGET_CHART_TARGET_LABEL = 'Target';
 // Key for the shaded scheduled-run bands behind the widget trajectory. The
 // settings-page charts label their band with the kind verb ("Heating" /
 // "Charging" via `deviceSeriesName`), but the widget chart payload is
-// kind-agnostic, so the band key reuses the canonical status word `Scheduled`
-// (`notes/ui-terminology.md`) rather than inventing a new one.
+// kind-agnostic, so the band key uses the plain schedule-window word
+// `Scheduled` ("these hours are scheduled to run"). Note this is NOT the
+// status-chip vocabulary — `Scheduled` was retired as a status chip in the
+// 2026-07 coherence sweep (`notes/ui-terminology.md` § Smart task list status
+// chips); it stays valid as a schedule/when-window label like this one.
 export const SMART_TASK_WIDGET_CHART_RUN_BAND_LABEL = 'Scheduled';
 
 // Overflow line shown beneath the capped widget row list when more active
@@ -324,10 +330,11 @@ export const CREATE_SMART_TASK_WIDGET_COPY = {
   previewButton: 'Preview',
   // Step 3 — preview + confirm.
   previewTitle: 'Preview',
-  // Canonical "Scheduled" vocabulary (matches `SMART_TASK_LIST_STATUS_LABELS`
-  // / `SMART_TASK_LIST_ROW_LABELS` and the terminology guide) rather than the
-  // one-off noun "Runs": the preview's when-window is the same concept the list
-  // chip names.
+  // Plain schedule-window word ("these hours are scheduled to run") rather
+  // than the one-off noun "Runs". NOT the status-chip vocabulary — `Scheduled`
+  // was retired as a status chip (the list now says `On track`); it stays
+  // valid as a when-window label like this preview row and the widget
+  // trajectory's run-band key.
   scheduledLabel: 'Scheduled',
   energyLabel: 'Energy',
   costLabel: 'Cost',
@@ -511,7 +518,9 @@ export const resolvePausedUnpluggedChipTone = (): SmartTaskChipTone => 'warn';
 // helpers.
 export const SMART_TASK_LIST_STATUS_CHIP_VARIANT: Record<SmartTaskListStatusId, SmartTaskChipTone> = {
   building_plan: resolveBuildingPlanChipTone(),
-  queued: 'muted',
+  // Same label AND tone as `on_track` — a queued plan that is allocated and
+  // healthy is the same user-facing state; only the internal id differs.
+  queued: 'ok',
   paused_unplugged: resolvePausedUnpluggedChipTone(),
   paused_not_resumable: resolvePausedUnpluggedChipTone(),
   on_track: 'ok',
@@ -939,7 +948,8 @@ export const SMART_TASK_USAGE_RETURN_CONTEXT = 'Showing household usage.';
 
 // Resolve the list card status id from plan data.
 // `nowMs` is used to distinguish the `queued` id (plan ready, first action in
-// future — labelled "Scheduled" in the UI) from other non-pending states.
+// future — labelled "On track" in the UI, same as `on_track`) from other
+// non-pending states.
 //
 // `diagnosticReasonCode` carries the recorder's "current cause" signal — it
 // is set even on plans with a cached `latest` revision (e.g. EV unplugged
@@ -970,12 +980,21 @@ export const resolveSmartTaskListStatus = (params: {
     return 'building_plan';
   }
 
-  // Plan is ready — check if the first action is in the future (queued).
-  if (firstActionAtMs !== null && firstActionAtMs > nowMs) return 'queued';
-
+  // Plan verdicts outrank the future-first-action check: `queued` renders the
+  // same green `On track` chip as `on_track`, so letting it win here would
+  // paint an at-risk / cannot-finish / already-satisfied plan as healthy just
+  // because its first hour hasn't started yet. (Pre-sweep this ordering only
+  // mislabelled those as a muted "Scheduled"; with the shared `On track`
+  // label it would actively assert health.)
   if (planStatus === 'satisfied') return 'satisfied';
   if (planStatus === 'cannot_meet') return 'cannot_meet';
   if (planStatus === 'at_risk') return 'at_risk';
+
+  // Plan is ready and healthy — a future first action keeps the `queued` id
+  // (label and tone identical to `on_track`; the distinction stays internal
+  // for log schemas and the queued "starts at HH:MM" why-line).
+  if (firstActionAtMs !== null && firstActionAtMs > nowMs) return 'queued';
+
   // 'invalid' collapses to on_track at the list level; the detail page shows more.
   return 'on_track';
 };
@@ -1523,13 +1542,13 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     liveStateChipLabel: {
       active: 'Heating',
       building_plan: 'Building plan…',
-      queued: 'Scheduled',
+      queued: 'On track',
       // Thermal devices can't be unplugged; the variant is unreachable here
-      // and falls back to the generic scheduled copy if the resolver ever
+      // and falls back to the generic on-track copy if the resolver ever
       // hands a stale value through.
-      paused_unplugged: 'Scheduled',
+      paused_unplugged: 'On track',
       // Thermal devices aren't chargers; unreachable, same fallback as above.
-      paused_not_resumable: 'Scheduled',
+      paused_not_resumable: 'On track',
       ok: 'On track',
     },
     atRiskChipLabel: SMART_TASK_LIST_STATUS_LABELS.at_risk,
@@ -1623,7 +1642,7 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     liveStateChipLabel: {
       active: 'Charging',
       building_plan: 'Building plan…',
-      queued: 'Scheduled',
+      queued: 'On track',
       paused_unplugged: 'Paused — unplugged',
       paused_not_resumable: SMART_TASK_LIST_STATUS_LABELS.paused_not_resumable,
       ok: 'On track',
