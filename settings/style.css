@@ -3065,6 +3065,87 @@ md-filled-button.is-busy {
 }
 
 
+/* ── Overview smart-task row ──────────────────────────────────────────────────
+   One slim tappable pointer row between the hero and the device cards
+   (tap → Smart tasks). Exception-first: the ladder + copy live in
+   shared-domain/overviewSmartTaskRow.ts. The status dot reinforces the tone
+   but never carries it alone — the status word is in the text. */
+/* Double class beats the LATER `.pels-surface-card { display: grid }` base
+   rule (equal single-class specificity would lose the cascade). */
+.pels-surface-card.plan-smart-task-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  inline-size: 100%;
+  min-block-size: var(--pels-touch-target-min);
+  padding: var(--spacing-3) var(--spacing-4);
+  margin-block-end: var(--spacing-3);
+  text-align: start;
+  font-size: var(--font-size-sm);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.plan-smart-task-row__dot {
+  inline-size: var(--spacing-2);
+  block-size: var(--spacing-2);
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+  background: var(--pels-status-positive, var(--accent));
+}
+
+.plan-smart-task-row[data-tone="warn"] .plan-smart-task-row__dot {
+  background: var(--pels-status-warning);
+}
+
+.plan-smart-task-row[data-tone="alert"] .plan-smart-task-row__dot {
+  background: var(--danger);
+}
+
+/* The device name may ellipsize at 320 px; the status text never truncates. */
+.plan-smart-task-row__text {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  min-inline-size: 0;
+  white-space: nowrap;
+}
+
+.plan-smart-task-row__device {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: var(--font-weight-semibold);
+}
+
+/* Preact renders the leading " — " inside the status span; `pre` keeps that
+   significant leading space from collapsing, and the status text never
+   truncates (the device name is the ellipsis victim). */
+.plan-smart-task-row__status {
+  flex-shrink: 0;
+  white-space: pre;
+}
+
+.plan-smart-task-row[data-tone="warn"] .plan-smart-task-row__device,
+.plan-smart-task-row[data-tone="warn"] .plan-smart-task-row__status {
+  color: var(--pels-status-on-warning);
+}
+
+.plan-smart-task-row[data-tone="alert"] .plan-smart-task-row__device,
+.plan-smart-task-row[data-tone="alert"] .plan-smart-task-row__status {
+  color: var(--danger);
+}
+
+.plan-smart-task-row[data-tone="muted"] .plan-smart-task-row__text {
+  color: var(--text-secondary);
+}
+
+.plan-smart-task-row__chevron {
+  color: var(--text-secondary);
+  font-size: var(--font-size-lg);
+  line-height: 1;
+  flex-shrink: 0;
+}
+
 .plan-cards {
   display: grid;
   gap: var(--spacing-2);

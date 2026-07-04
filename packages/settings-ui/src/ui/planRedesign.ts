@@ -1,18 +1,27 @@
 import './materialWeb.ts';
 import {
+  SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH,
   SETTINGS_UI_PLAN_PATH,
   SETTINGS_UI_POWER_PATH,
+  type SettingsUiDeferredObjectivePlanHistoryPayload,
   type SettingsUiPlanPayload,
   type SettingsUiPowerPayload,
   type SettingsUiPowerStatus,
   type SettingsUiPricesPayload,
 } from '../../../contracts/src/settingsUiApi.ts';
-import { getApiReadModel } from './homey.ts';
+import { callApi, getApiReadModel } from './homey.ts';
 import { getPricesReadModel } from './prices.ts';
 import { renderPlanOverview } from './views/PlanOverview.tsx';
 import { planNeedsLiveUpdates } from './planLiveData.ts';
 import { registerPlanSurfaceRenderer } from './planSurfaceRefresh.ts';
 import { state } from './state.ts';
+import {
+  resolveOverviewSmartTaskRow,
+  type OverviewSmartTaskRow,
+  type OverviewSmartTaskStatusInput,
+} from '../../../shared-domain/src/overviewSmartTaskRow.ts';
+import { flattenPlanHistoryEntries, resolveMissStreakBadges } from '../../../shared-domain/src/deferredPlanHistory.ts';
+import { resolveSmartTaskListStatus } from '../../../shared-domain/src/deadlineLabels.ts';
 import type { PlanDeviceSnapshot, PlanSnapshot } from './planTypes.ts';
 import type { SolarNowInput } from '../../../shared-domain/src/solar/solarNow.ts';
 
@@ -22,6 +31,13 @@ let cachedPowerStatus: SettingsUiPowerStatus | null = null;
 // so the line disappears on its own once the sample goes stale.
 let cachedSolarNowInput: SolarNowInput | null = null;
 let cachedPrices: SettingsUiPricesPayload | null = null;
+// Miss-streak badges for the smart-task row, derived once per history fetch
+// (same `/ui_deferred_objective_history` payload the Smart-tasks list reads)
+// and kept null-tolerant: a failed read renders the row without the miss
+// variant rather than blocking the overview. Pre-resolved here — not in
+// `resolveSmartTaskRow` — because `doRender` can run on a 1 s live tick and
+// re-flattening/sorting the whole archive per tick is avoidable work.
+let cachedMissStreaks: ReturnType<typeof resolveMissStreakBadges> = [];
 let currentPlan: PlanSnapshot | null = null;
 let currentRenderedAtMs = 0;
 let liveTickInterval: ReturnType<typeof setInterval> | null = null;
@@ -120,6 +136,7 @@ const doRender = () => {
     power: cachedPowerStatus,
     prices: cachedPrices,
     solarNowInput: cachedSolarNowInput,
+    smartTaskRow: resolveSmartTaskRow(now),
     context: { dryRun: state.dryRun },
     renderedAtMs: currentRenderedAtMs,
     nowMs: now,
@@ -171,6 +188,84 @@ const readPricesForPlanRefresh = async (): Promise<SettingsUiPricesPayload | nul
   }
 };
 
+// Fire-and-forget history refresh: the row's miss-streak variant is optional
+// context, so a slow or retrying `/ui_deferred_objective_history` read must
+// never delay the main Overview refresh (plan/power/prices). Uncached read
+// (the same contract the Smart-tasks list uses): nothing invalidates a cached
+// history payload when a run finalizes. Last-wins guarded so an older slow
+// read can't overwrite a fresher one; repaints when the badges land.
+let historyRefreshSequence = 0;
+const refreshPlanHistoryInBackground = (): void => {
+  historyRefreshSequence += 1;
+  const sequence = historyRefreshSequence;
+  void (async () => {
+    let payload: SettingsUiDeferredObjectivePlanHistoryPayload | null;
+    try {
+      payload = await callApi<SettingsUiDeferredObjectivePlanHistoryPayload>(
+        'GET',
+        SETTINGS_UI_DEFERRED_OBJECTIVE_HISTORY_PATH,
+      );
+    } catch {
+      payload = null;
+    }
+    if (sequence !== historyRefreshSequence) return;
+    cachedMissStreaks = resolveMissStreakBadges(flattenPlanHistoryEntries(payload));
+    doRender();
+  })();
+};
+
+const formatRowTime = (ms: number): string => (
+  new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+);
+
+// Per-task status inputs for the Overview smart-task row, derived from the
+// SAME state the device cards read (`state.deferredObjectiveActivePlans` +
+// `state.deferredObjectiveSettings`) via the SAME `resolveSmartTaskListStatus`
+// the Smart-tasks list card uses — one status vocabulary, two surfaces.
+const toRowStatus = (params: {
+  deviceId: string;
+  plan: NonNullable<typeof state.deferredObjectiveActivePlans>['plansByDeviceId'][string];
+  deadlineAtMs: number;
+  nowMs: number;
+}): OverviewSmartTaskStatusInput => {
+  const { deviceId, plan, deadlineAtMs, nowMs } = params;
+  const planDevice = currentPlan?.devices?.find((dev) => dev.id === deviceId);
+  return {
+    deviceName: planDevice?.name ?? plan.deviceName ?? deviceId,
+    statusId: resolveSmartTaskListStatus({
+      pending: plan.pending || plan.latest === null,
+      pendingReason: plan.pendingReason,
+      diagnosticReasonCode: plan.diagnosticReasonCode,
+      planStatus: plan.latest?.planStatus,
+      firstActionAtMs: Array.isArray(plan.latest?.hours)
+        ? plan.latest.hours[0]?.startsAtMs ?? null
+        : null,
+      nowMs,
+    }),
+    deadlineAtMs,
+  };
+};
+
+const resolveRowStatuses = (nowMs: number): OverviewSmartTaskStatusInput[] => {
+  const plans = state.deferredObjectiveActivePlans?.plansByDeviceId ?? {};
+  const statuses: OverviewSmartTaskStatusInput[] = [];
+  for (const [deviceId, plan] of Object.entries(plans)) {
+    const objective = state.deferredObjectiveSettings?.objectivesByDeviceId?.[deviceId];
+    if (!objective?.enabled) continue;
+    if (!Number.isFinite(objective.deadlineAtMs) || objective.deadlineAtMs <= nowMs) continue;
+    statuses.push(toRowStatus({ deviceId, plan, deadlineAtMs: objective.deadlineAtMs, nowMs }));
+  }
+  return statuses;
+};
+
+const resolveSmartTaskRow = (nowMs: number): OverviewSmartTaskRow | null => (
+  resolveOverviewSmartTaskRow({
+    statuses: resolveRowStatuses(nowMs),
+    missStreaks: cachedMissStreaks,
+    formatTime: formatRowTime,
+  })
+);
+
 // Refreshes the overview hero's price-dependent state (e.g. the "Cheapest hour
 // ahead …" anticipation subline) when the runtime broadcasts `prices_updated`.
 // The plan snapshot itself is not re-fetched — only the cached prices are
@@ -181,6 +276,7 @@ export const updatePlanPrices = async (): Promise<void> => {
 };
 
 export const refreshPlan = async () => {
+  refreshPlanHistoryInBackground();
   const [plan, power, prices] = await Promise.all([
     getPlanSnapshot(),
     readPowerForPlanRefresh(),

@@ -24,6 +24,7 @@ import type {
 } from '../../../contracts/src/types.ts';
 import { hasObservedTemperature } from '../../../shared-domain/src/temperatureObservedState.ts';
 import { hasObservedStateOfCharge } from '../../../shared-domain/src/stateOfChargeObservedState.ts';
+import { flattenPlanHistoryEntries } from '../../../shared-domain/src/deferredPlanHistory.ts';
 import { buildDeadlineHref } from './deadlineUrls.ts';
 import { resolveBrowserTimeZone } from './deadlinePlanHistoryFetch.ts';
 import {
@@ -133,12 +134,7 @@ export const resolveDeadlinesListCards = (params: {
 
 export const resolveDeadlinesHistoryEntries = (
   payload: SettingsUiDeferredObjectivePlanHistoryPayload | null,
-): ResolvedDeferredObjectivePlanHistoryEntry[] => {
-  if (!payload) return [];
-  return Object.values(payload.entriesByDeviceId)
-    .flat()
-    .sort((a, b) => b.finalizedAtMs - a.finalizedAtMs);
-};
+): ResolvedDeferredObjectivePlanHistoryEntry[] => flattenPlanHistoryEntries(payload);
 
 const getSurface = (): HTMLElement | null => (
   document.getElementById('deadlines-list-root')
