@@ -298,6 +298,34 @@ device count, not PELS:
 
 ---
 
+## Smart-task row (between the hero and the device cards)
+
+One slim tappable pointer row (tap → the Smart tasks tab via the shell's
+`[data-settings-target]` delegate). The failing-recovering visitor lands on
+Overview, so the persona P0 (failure renders differently, first sentence,
+one-tap recourse) needs a smart-task signal here. Ladder + copy live in
+`packages/shared-domain/src/overviewSmartTaskRow.ts`; at most ONE row ever:
+
+1. live `Cannot finish` (`{Device} — Cannot finish · Due HH:MM`, alert) — a
+   failure the owner can still prevent outranks post-hoc diagnosis;
+2. recent-miss rollup (`{Device} — 3 of last 4 runs missed`, alert — the
+   Smart-tasks archive's `formatMissStreakAggregateLine` verbatim);
+3. live `At risk` (`{Device} — At risk · Ready by HH:MM`, warn);
+4. paused (compressed widget words `Unplugged` / `Can’t resume`, warn);
+5. steady: `N smart tasks · on track` (muted), counting only genuinely
+   on-track tasks (`on_track`/`queued`) — the row is a fixture, not an
+   apparition: rendering only in crisis would make the owner meet an
+   unfamiliar element for the first time under stress;
+6. nothing at all when no on-track tasks and no recent misses (a set that is
+   only building-plan or satisfied renders nothing — claiming "on track"
+   there would overclaim).
+
+The leading status dot reinforces the tone but never carries it alone; the
+device name ellipsizes at 320 px, the status text never truncates. Statuses
+derive from the SAME `resolveSmartTaskListStatus` the Smart-tasks list uses
+(the Overview active-plans pick was widened to carry `pending`/
+`pendingReason`), so the two surfaces can never disagree.
+
 ## Device cards (separate from hero)
 
 Cooldown details and per-device status belong in the per-device cards below the hero, not in the hero itself. The hero only shows aggregate counts in the decision sentence.

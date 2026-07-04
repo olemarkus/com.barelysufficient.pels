@@ -1,5 +1,9 @@
 import { render } from 'preact';
 import { PlanHero, type HeroContext } from './PlanHero.tsx';
+import {
+  formatOverviewSmartTaskRowLine,
+  type OverviewSmartTaskRow,
+} from '../../../../shared-domain/src/overviewSmartTaskRow.ts';
 import { PlanSteppedCard } from './PlanSteppedCard.tsx';
 import { PlanGenericCard, PlanTemperatureCard } from './PlanDeviceCards.tsx';
 import type { PlanDeviceSnapshot, PlanSnapshot } from '../planTypes.ts';
@@ -19,10 +23,42 @@ type OverviewProps = {
   power: SettingsUiPowerStatus | null;
   prices: SettingsUiPricesPayload | null;
   solarNowInput: SolarNowInput | null;
+  // The one smart-task failure/readiness row below the hero (null renders
+  // nothing — no active tasks and no recent misses). Resolved in the
+  // orchestrator (`planRedesign.ts`) so this view stays props-in.
+  smartTaskRow: OverviewSmartTaskRow | null;
   context: HeroContext;
   renderedAtMs: number;
   nowMs: number;
 };
+
+// One slim tappable pointer row: tap → the Smart tasks tab (the shell's
+// `[data-settings-target]` delegate in boot.ts routes it — same mechanism as
+// the Settings-hub cross-links). Exception-first ladder + copy live in
+// `shared-domain/overviewSmartTaskRow.ts`; the device name may ellipsize at
+// 320 px but the status text never truncates.
+const SmartTaskRow = ({ row }: { row: OverviewSmartTaskRow }) => (
+  <button
+    type="button"
+    id="plan-smart-task-row"
+    class="pels-surface-card plan-smart-task-row clickable hy-nostyle"
+    data-settings-target="deadlines"
+    data-variant={row.variant}
+    data-tone={row.tone}
+    aria-label={`${formatOverviewSmartTaskRowLine(row)} — open Smart tasks`}
+  >
+    <span class="plan-smart-task-row__dot" aria-hidden="true" />
+    <span class="plan-smart-task-row__text">
+      {row.deviceName !== null && (
+        <span class="plan-smart-task-row__device">{row.deviceName}</span>
+      )}
+      <span class="plan-smart-task-row__status">
+        {row.deviceName !== null ? ` — ${row.statusText}` : row.statusText}
+      </span>
+    </span>
+    <span class="plan-smart-task-row__chevron" aria-hidden="true">›</span>
+  </button>
+);
 
 const isTemperatureCard = (dev: PlanDeviceSnapshot): boolean => (
   dev.controlModel === 'temperature_target'
@@ -52,7 +88,7 @@ const PlanCard = ({
 };
 
 const PlanOverviewRoot = ({
-  plan, planResolved, power, prices, solarNowInput, context, renderedAtMs, nowMs,
+  plan, planResolved, power, prices, solarNowInput, smartTaskRow, context, renderedAtMs, nowMs,
 }: OverviewProps) => {
   const devices = plan
     ? [...(plan.devices ?? [])].sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999))
@@ -75,6 +111,7 @@ const PlanOverviewRoot = ({
         nowMs={nowMs}
       />
       <div id="plan-hour-strip" class="plan-hour-strip" hidden />
+      {smartTaskRow !== null && <SmartTaskRow row={smartTaskRow} />}
       {emptyMessage && <p id="plan-empty" class="muted">{emptyMessage}</p>}
       <div id="plan-cards" class="plan-cards">
         {devices.map((dev) => (

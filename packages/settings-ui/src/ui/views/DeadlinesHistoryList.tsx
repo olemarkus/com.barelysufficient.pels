@@ -5,7 +5,7 @@ import {
   SMART_TASK_PAST_HEADING,
   SMART_TASK_PAST_LOADING_LABEL,
 } from '../../../../shared-domain/src/deadlineLabels.ts';
-import { formatMissStreakAggregateLine } from '../../../../shared-domain/src/deferredPlanHistory.ts';
+import { resolveMissStreakBadges } from '../../../../shared-domain/src/deferredPlanHistory.ts';
 import {
   filterPlanHistoryByDevice,
   resolveSmartTaskHistoryFilterDevices,
@@ -49,34 +49,6 @@ export type DeadlinesHistoryListState =
       // `selectedDeviceId` and re-rendering. `null` means "All".
       onSelectDevice?: (deviceId: string | null) => void;
     };
-
-type MissStreakBadge = { deviceId: string; deviceName: string; line: string };
-
-// Resolves per-device miss-streak badges for the past-tasks subhead. Iterates
-// the entries in their existing newest-first order so the first instance of
-// each device is the one used to drive the streak window; subsequent entries
-// for the same device are skipped to avoid duplicate badges. Per
-// `notes/smart-task-ui/README.md`, the badge surfaces the recovering-from-
-// mistake user's "pattern at a glance" signal without forcing them to mentally
-// aggregate the chip column.
-const resolveMissStreakBadges = (
-  entries: ReadonlyArray<ResolvedDeferredObjectivePlanHistoryEntry>,
-): MissStreakBadge[] => {
-  const seenDevices = new Set<string>();
-  const badges: MissStreakBadge[] = [];
-  for (const entry of entries) {
-    if (seenDevices.has(entry.deviceId)) continue;
-    seenDevices.add(entry.deviceId);
-    const line = formatMissStreakAggregateLine(entries, entry.deviceId);
-    if (line === null) continue;
-    badges.push({
-      deviceId: entry.deviceId,
-      deviceName: entry.deviceName ?? entry.deviceId,
-      line,
-    });
-  }
-  return badges;
-};
 
 // Chip row above the weekly archive. Hidden when the unfiltered list contains
 // fewer than two devices — filtering by the only device that has history is a

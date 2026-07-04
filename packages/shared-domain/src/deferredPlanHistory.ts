@@ -287,6 +287,47 @@ export const formatMissStreakAggregateLine = (
   return `${missed} of last ${recent.length} runs missed`;
 };
 
+// Flatten a `/ui_deferred_objective_history` payload into one newest-first
+// entry list — the shape `formatMissStreakAggregateLine` /
+// `resolveMissStreakBadges` and the Smart-tasks archive consume. Pure and
+// payload-null-tolerant so both the list controller and the Overview row can
+// share it.
+export const flattenPlanHistoryEntries = <TEntry extends { finalizedAtMs: number }>(
+  payload: { entriesByDeviceId: Record<string, TEntry[]> } | null,
+): TEntry[] => {
+  if (!payload) return [];
+  return Object.values(payload.entriesByDeviceId)
+    .flat()
+    .sort((a, b) => b.finalizedAtMs - a.finalizedAtMs);
+};
+
+export type MissStreakBadge = { deviceId: string; deviceName: string; line: string };
+
+// Per-device miss-streak badges (device-deduped, newest-first input order).
+// Shared by the past-tasks subhead and the Overview smart-task row so the two
+// surfaces can never disagree about which devices are on a miss streak. Per
+// `notes/smart-task-ui/README.md`, the badge surfaces the recovering-from-
+// mistake user's "pattern at a glance" signal without forcing them to
+// mentally aggregate the chip column.
+export const resolveMissStreakBadges = (
+  entries: ReadonlyArray<Pick<DeferredObjectivePlanHistoryEntry, 'outcome' | 'deviceId' | 'deviceName'>>,
+): MissStreakBadge[] => {
+  const seenDevices = new Set<string>();
+  const badges: MissStreakBadge[] = [];
+  for (const entry of entries) {
+    if (seenDevices.has(entry.deviceId)) continue;
+    seenDevices.add(entry.deviceId);
+    const line = formatMissStreakAggregateLine(entries, entry.deviceId);
+    if (line === null) continue;
+    badges.push({
+      deviceId: entry.deviceId,
+      deviceName: entry.deviceName ?? entry.deviceId,
+      line,
+    });
+  }
+  return badges;
+};
+
 /**
  * Composes a short human-readable explanation for *why* a finalized run was marked missed.
  * Resolves to flat copy from the recorded snapshots so the missed-history surface mirrors the

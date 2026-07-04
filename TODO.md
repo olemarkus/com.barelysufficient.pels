@@ -1259,15 +1259,6 @@ Both are data-gated: act only when prod evidence shows the gap, else leave alone
 *Demoted from P2 (2026-06-03 scrutiny pass) — real product / future-capability work with a
 persona but no current support-cost pressure; reframed to the P3 bar.*
 
-- [ ] **Miss-streak rollup on Overview.**
-      *Persona:* Failing scenario (recovering) — reaches Overview from a notification, not via
-      Smart-tasks.
-      *Hypothesis:* `formatMissStreakAggregateLine` already renders on the Smart-tasks list but never
-      reaches the Failing-scenario (recovering) visitor on Overview; a per-device miss chip/rail on Overview answers "is this the same
-      task failing again?" on the surface they actually land on.
-      *Why:* the highest-intensity persona lands where the data isn't. Needs a new Overview API field
-      (history isn't fetched there today). Files: `packages/contracts/src/settingsUiApi.ts`,
-      `packages/settings-ui/src/ui/views/PlanOverview.tsx`.
 - [ ] **Per-device kWh + money column on Usage.**
       *Persona:* Optimiser.
       *Hypothesis:* Usage emits total kWh only while the smart-task hero and Budget already show kr, so

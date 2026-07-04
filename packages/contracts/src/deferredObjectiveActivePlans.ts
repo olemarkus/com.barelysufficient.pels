@@ -414,9 +414,13 @@ export type ResolvedDeferredObjectiveActivePlansV1 = {
   plansByDeviceId: Record<string, ResolvedDeferredObjectiveActivePlanV1>;
 };
 
-// Narrow read-only view for the Overview device-card EV-state line — the ONLY
-// fields `PlanDeviceCards` reads off the separately-loaded active-plans state
-// (`coerceDeferredObjectiveActivePlans` / `state.deferredObjectiveActivePlans`).
+// Narrow read-only view for the Overview surfaces — the ONLY fields the
+// Overview reads off the separately-loaded active-plans state
+// (`coerceDeferredObjectiveActivePlans` / `state.deferredObjectiveActivePlans`):
+// the device-card EV-state line (`latest.hours` + `diagnosticReasonCode`) and
+// the smart-task readiness row (`pending`/`pendingReason` +
+// `latest.planStatus` for `resolveSmartTaskListStatus`, plus
+// `deviceName`/`deadlineAtMs` for its copy).
 // That state is seeded once from the resolved bootstrap payload and then
 // re-read from the raw persisted setting on every realtime change, so the two
 // shapes differ on the kind-split value columns — but neither the Overview
@@ -427,7 +431,7 @@ export type ResolvedDeferredObjectiveActivePlansV1 = {
 // instead, never this state.
 export type OverviewDeferredObjectiveActivePlan = Pick<
   DeferredObjectiveActivePlanV1,
-  'latest' | 'diagnosticReasonCode'
+  'latest' | 'diagnosticReasonCode' | 'pending' | 'pendingReason' | 'deviceName' | 'deadlineAtMs'
 >;
 
 export type OverviewDeferredObjectiveActivePlans = {
