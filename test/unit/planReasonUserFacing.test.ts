@@ -289,9 +289,9 @@ describe('resolveReportedLoadAfterPauseText', () => {
     // Simulation never actually paused the device, so the real-mode "after
     // pause" wording would assert an action that did not happen.
     expect(resolveReportedLoadAfterPauseText({ measuredPowerKw: 2.1, detail: null, dryRun: true }))
-      .toBe('Would still draw 2.1 kW — this still counts toward your usage');
+      .toBe('Would still draw 2.1 kW — this still counts toward your usage (simulation)');
     expect(resolveReportedLoadAfterPauseText({ measuredPowerKw: 2.1, detail: 'high household load', dryRun: true }))
-      .toBe('Would still draw 2.1 kW — high household load');
+      .toBe('Would still draw 2.1 kW — high household load (simulation)');
   });
 
   it('falls back to "–" when measuredPowerKw is missing or non-finite', () => {

@@ -2,8 +2,8 @@ import {
   formatStepDisplayLabel,
   isSteppedTransit,
   resolveSteppedActiveStepId,
-  resolveSteppedChip,
-  resolveSteppedStateLabel,
+  resolveSteppedEvExceptionLabel,
+  resolveSteppedLevelFact,
   resolveSteppedStatusLine,
   resolveSteppedTemperatureText,
 } from '../../shared-domain/src/planSteppedCardText.ts';
@@ -48,46 +48,62 @@ const steppedLoad = (
   ...overrides,
 });
 
-describe('resolveSteppedStateLabel', () => {
-  it('returns "Off now" when currentState is off', () => {
-    expect(resolveSteppedStateLabel({ ...baseDevice, currentState: 'off' })).toBe('Off now');
+describe('resolveSteppedLevelFact', () => {
+  it('returns null when the device is off (the bold state word covers off)', () => {
+    expect(resolveSteppedLevelFact({ ...baseDevice, currentState: 'off' })).toBeNull();
+    expect(resolveSteppedLevelFact({ ...baseDevice, currentState: 'unknown' })).toBeNull();
+    expect(resolveSteppedLevelFact({})).toBeNull();
   });
 
-  it('returns "Off now" when currentState is unknown', () => {
-    expect(resolveSteppedStateLabel({ ...baseDevice, currentState: 'unknown' })).toBe('Off now');
-  });
-
-  it('returns "Off now" when currentState is absent', () => {
-    expect(resolveSteppedStateLabel({ ...baseDevice })).toBe('Off now');
-  });
-
-  it('returns "Level: Low" when at low step', () => {
-    expect(resolveSteppedStateLabel({
+  it('names the level when at a powered step', () => {
+    expect(resolveSteppedLevelFact({
       ...baseDevice, currentState: 'on', steppedLoad: steppedLoad({ reportedStepId: 'low' }),
-    })).toBe('Level: Low');
+    })).toBe('Level Low');
   });
 
   it('shows "Level unknown" without a reported step (no fallback/assumed leakage)', () => {
     // Only the typed `steppedLoad.reportedStepId` is observed UI truth; a device
     // with no reported step must not infer a level from any other field.
-    expect(resolveSteppedStateLabel({
+    expect(resolveSteppedLevelFact({
       ...baseDevice, currentState: 'on',
     })).toBe('Level unknown');
   });
 
-  it('capitalizes step id', () => {
-    expect(resolveSteppedStateLabel({
-      ...baseDevice, currentState: 'on', steppedLoad: steppedLoad({ reportedStepId: 'max' }),
-    })).toBe('Level: Max');
+  it('renders ampere step ids in SI form ("6 A", not "6a")', () => {
+    expect(resolveSteppedLevelFact({
+      ...baseDevice, currentState: 'on', steppedLoad: steppedLoad({ reportedStepId: '6a' }),
+    })).toBe('Level 6 A');
   });
 
-  it('renders ampere step ids in SI form ("6 A", not "6a")', () => {
-    expect(resolveSteppedStateLabel({
-      ...baseDevice, currentState: 'on', steppedLoad: steppedLoad({ reportedStepId: '6a' }),
-    })).toBe('Level: 6 A');
-    expect(resolveSteppedStateLabel({
-      ...baseDevice, currentState: 'on', steppedLoad: steppedLoad({ reportedStepId: '32a' }),
-    })).toBe('Level: 32 A');
+  it('folds a routinely-charging EV into "Charging · level N A"', () => {
+    expect(resolveSteppedLevelFact({
+      ...baseDevice,
+      currentState: 'on',
+      controlCapabilityId: 'evcharger_charging',
+      evChargingState: 'plugged_in_charging',
+      steppedLoad: steppedLoad({ reportedStepId: '16a' }),
+    })).toBe('Charging · level 16 A');
+  });
+});
+
+describe('resolveSteppedEvExceptionLabel', () => {
+  it('is null for non-EV devices and for routine charging', () => {
+    expect(resolveSteppedEvExceptionLabel({})).toBeNull();
+    expect(resolveSteppedEvExceptionLabel({
+      controlCapabilityId: 'evcharger_charging',
+      evChargingState: 'plugged_in_charging',
+    })).toBeNull();
+  });
+
+  it('surfaces the exceptional EV states for the reason slot', () => {
+    expect(resolveSteppedEvExceptionLabel({
+      controlCapabilityId: 'evcharger_charging',
+      evChargingState: 'plugged_out',
+    })).toBe('Unplugged');
+    expect(resolveSteppedEvExceptionLabel({
+      controlCapabilityId: 'evcharger_charging',
+      evChargingState: 'plugged_in_paused',
+    })).toBe('Paused');
   });
 });
 
@@ -134,73 +150,17 @@ describe('isSteppedTransit', () => {
   });
 });
 
-describe('resolveSteppedChip', () => {
-  it('returns Applying chip when in transit', () => {
-    expect(resolveSteppedChip({ ...baseDevice, steppedLoad: steppedLoad({ commandPending: true }) }))
-      .toEqual({ label: 'Applying', tone: 'ok' });
-  });
-
-  it('returns null for headroomCooldown reason (status line covers it)', () => {
-    expect(resolveSteppedChip({
-      ...baseDevice,
-      reason: { code: 'headroom_cooldown', kind: 'recent_pels_restore', remainingSec: 30, fromKw: null, toKw: null, countdownStartedAtMs: NOW_MS - 5000 },
-    })).toBeNull();
-  });
-
-  it('returns null for meterSettling reason (status line covers it)', () => {
-    expect(resolveSteppedChip({
-      ...baseDevice,
-      reason: { code: 'meter_settling', remainingSec: 10 },
-    })).toBeNull();
-  });
-
-  it('returns null for shedInvariant reason (bar colour covers it)', () => {
-    expect(resolveSteppedChip({
-      ...baseDevice,
-      reason: { code: 'shed_invariant', fromStep: 'low', toStep: 'medium', shedDeviceCount: 2, maxStep: 'low' },
-    })).toBeNull();
-  });
-
-  it('returns null for insufficientHeadroom reason (bar colour covers it)', () => {
-    expect(resolveSteppedChip({
-      ...baseDevice,
-      reason: {
-        code: 'insufficient_headroom',
-        needKw: 1.25,
-        availableKw: 0.5,
-        effectiveAvailableKw: 0.5,
-        postReserveMarginKw: null,
-        minimumRequiredPostReserveMarginKw: null,
-        penaltyExtraKw: null,
-        swapReserveKw: null,
-        swapTargetName: null,
-      },
-    })).toBeNull();
-  });
-
-  it('returns null for capacity reason (bar colour covers it)', () => {
-    expect(resolveSteppedChip({
-      ...baseDevice,
-      reason: { code: 'capacity', detail: null },
-    })).toBeNull();
-  });
-
-  it('returns null when stable with no constraints', () => {
-    expect(resolveSteppedChip({ ...baseDevice })).toBeNull();
-  });
-});
-
 describe('resolveSteppedStatusLine', () => {
   describe('stable — no status line', () => {
-    it('returns "Maintaining level" when on track with no target', () => {
+    it('returns null when on track with no target (quiet state, no filler line)', () => {
       expect(resolveSteppedStatusLine(
         { ...baseDevice, currentState: 'on', steppedLoad: steppedLoad({ reportedStepId: 'low' }) },
         profile,
         NOW_MS,
-      )).toBe('Maintaining level');
+      )).toBeNull();
     });
 
-    it('returns "Maintaining level" when target matches current step', () => {
+    it('returns null when target matches current step (quiet state, no filler line)', () => {
       expect(resolveSteppedStatusLine(
         {
           ...baseDevice,
@@ -209,7 +169,7 @@ describe('resolveSteppedStatusLine', () => {
         },
         profile,
         NOW_MS,
-      )).toBe('Maintaining level');
+      )).toBeNull();
     });
 
     it('returns null when off and no target', () => {
@@ -306,7 +266,7 @@ describe('resolveSteppedStatusLine', () => {
       expect(result).toBe('Waiting for power meter to stabilise — 8s');
     });
 
-    it('returns "Maintaining level" when reported step equals target step (boost-driven settling)', () => {
+    it('returns null (quiet) when reported step equals target step (boost-driven settling)', () => {
       const result = resolveSteppedStatusLine(
         {
           ...baseDevice,
@@ -317,10 +277,10 @@ describe('resolveSteppedStatusLine', () => {
         profile,
         NOW_MS,
       );
-      expect(result).toBe('Maintaining level');
+      expect(result).toBeNull();
     });
 
-    it('returns "Maintaining level" when reported step equals target step and reason is headroomCooldown', () => {
+    it('returns null (quiet) when reported step equals target step and reason is headroomCooldown', () => {
       const result = resolveSteppedStatusLine(
         {
           ...baseDevice,
@@ -338,7 +298,7 @@ describe('resolveSteppedStatusLine', () => {
         profile,
         NOW_MS,
       );
-      expect(result).toBe('Maintaining level');
+      expect(result).toBeNull();
     });
 
     it('still returns the cooldown countdown for cooldownShedding even when reported step equals target step', () => {
@@ -543,7 +503,7 @@ describe('resolveSteppedStatusLine', () => {
       )).toBe('Limited to Low — 3 devices still limited');
     });
 
-    it('returns null when desired step is lower (being shed down, chip covers it)', () => {
+    it('returns null when desired step is lower with no reason (quiet, no filler line)', () => {
       expect(resolveSteppedStatusLine(
         {
           ...baseDevice,
@@ -553,7 +513,7 @@ describe('resolveSteppedStatusLine', () => {
         },
         profile,
         NOW_MS,
-      )).toBe('Maintaining level');
+      )).toBeNull();
     });
   });
 
@@ -623,7 +583,7 @@ describe('resolveSteppedStatusLine', () => {
 describe('resolveSteppedTemperatureText', () => {
   it('returns formatted arrow text when both temperatures are present', () => {
     expect(resolveSteppedTemperatureText({ currentTemperature: 20.5, plannedTarget: 50 }))
-      .toBe('20.5 °C → 50 °C');
+      .toBe('20.5 °C · target 50 °C');
   });
 
   it('returns null when currentTemperature is absent', () => {
@@ -636,7 +596,7 @@ describe('resolveSteppedTemperatureText', () => {
 
   it('rounds target temperature to integer', () => {
     expect(resolveSteppedTemperatureText({ currentTemperature: 37.2, plannedTarget: 49.8 }))
-      .toBe('37.2 °C → 50 °C');
+      .toBe('37.2 °C · target 50 °C');
   });
 });
 
@@ -706,7 +666,7 @@ describe('resolveSteppedStatusLine — budget hold vs active recovery', () => {
 
   it('stays neutral for a suppressed at-target settling latch even while budget-starved', () => {
     // A headroom-check settling that is suppressed because the device is AT target
-    // is a recovery latch — it must read neutral ("Maintaining level"), not the
+    // is a recovery latch — it must read quiet (no status line), never the
     // latched budget hold.
     const result = resolveSteppedStatusLine(
       {
@@ -719,7 +679,6 @@ describe('resolveSteppedStatusLine — budget hold vs active recovery', () => {
       profile,
       NOW_MS,
     );
-    expect(result).toBe('Maintaining level');
-    expect(result).not.toBe("Limited to stay within today's budget");
+    expect(result).toBeNull();
   });
 });

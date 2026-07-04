@@ -13,15 +13,17 @@ import {
   PLAN_STATE_LABEL,
   PLAN_STATE_TONE,
   type PlanStateKind,
-  resolvePlanStateKind,
 } from '../../../../shared-domain/src/planStateLabels.ts';
+import { formatStarvationReason } from '../../../../shared-domain/src/planStarvation.ts';
 import {
-  formatStarvationBadge,
-  formatStarvationReason,
-} from '../../../../shared-domain/src/planStarvation.ts';
+  resolveDisplayStateKind,
+  resolveIntentStateKind,
+  resolvePlanCardStatusChip,
+  resolveRawPlanStateKind,
+  type PlanCardStatusChip,
+} from '../../../../shared-domain/src/planCardGrammar.ts';
 import {
   resolveBinarySurplusReasonLine,
-  resolveTemperatureOutputState,
   resolveTemperatureLine,
   resolveTemperatureReasonLine,
 } from '../../../../shared-domain/src/planTemperatureCardText.ts';
@@ -29,7 +31,6 @@ import {
   resolveCooldownBaseSec,
   resolveCooldownRemainingSec,
 } from '../../../../shared-domain/src/planCooldown.ts';
-import { resolveHeldStateActionLabel } from '../../../../shared-domain/src/deviceOverview.ts';
 import { toSimulationReasonLine } from '../../../../shared-domain/src/simulationReasonMood.ts';
 import {
   BUDGET_EXEMPT_CARD_ACTION_COPY,
@@ -129,12 +130,6 @@ export const DeadlineChip = (
       Smart task
     </a>
   );
-};
-
-export const EvDeadlineStateLine = ({ deviceId, nowMs }: { deviceId: string; nowMs: number }) => {
-  const text = resolveEvStateLineText(deviceId, nowMs);
-  if (text === null) return null;
-  return <p class="plan-card__ev-state">{text}</p>;
 };
 
 // Contextual rescue surfaced on a device card that PELS is holding back BY THE
@@ -273,53 +268,71 @@ const resolveIdleCopy = (dev: PlanDeviceSnapshot) => {
   });
 };
 
-export const IdleClassificationLine = ({ dev }: { dev: PlanDeviceSnapshot }) => {
-  const copy = resolveIdleCopy(dev);
-  if (!copy) return null;
-  return (
-    <p
-      class={`plan-card__idle-line plan-card__idle-line--${copy.tone}`}
-      data-tooltip={copy.detail}
-    >
-      {copy.statusLine}
-    </p>
-  );
-};
-
-export const IdleClassificationChip = ({ dev }: { dev: PlanDeviceSnapshot }) => {
-  if (dev.idleClassification !== 'unresponsive') return null;
-  const copy = resolveIdleCopy(dev);
-  if (!copy) return null;
-  return (
-    <span class="plan-chip plan-chip--warn" data-tooltip={copy.detail}>
-      {copy.chipLabel}
-    </span>
-  );
-};
-
 const formatKw = (value: number | undefined): string => (
   typeof value === 'number' && Number.isFinite(value) ? value.toFixed(1) : '–'
 );
 
-const isPlanStateKind = (value: string | undefined): value is PlanStateKind => (
-  value === 'active'
-  || value === 'idle'
-  || value === 'held'
-  || value === 'resuming'
-  || value === 'manual'
-  || value === 'unavailable'
-  || value === 'unknown'
-);
-
-const resolveStatePresentation = (dev: PlanDeviceSnapshot) => {
-  const kind = isPlanStateKind(dev.stateKind) ? dev.stateKind : resolvePlanStateKind(dev);
-  const tone = dev.stateTone ?? PLAN_STATE_TONE[kind];
+// Display presentation for the card's state word + `data-state-kind` styling
+// hook. `resolveDisplayStateKind` applies the two card-grammar rules on top of
+// the raw plan state: a hold/wait reason upgrades `idle` to `held`, and
+// simulation collapses PELS-acted kinds to the factual device state (the
+// hypothetical action lives in the reason line, never the bold state word).
+const resolveStatePresentation = (dev: PlanDeviceSnapshot, dryRun: boolean) => {
+  const rawKind = resolveRawPlanStateKind(dev);
+  const grammarParams = {
+    kind: rawKind,
+    reasonCode: (dev.reason as { code?: string } | undefined)?.code,
+    starved: dev.starvation?.isStarved === true,
+  };
+  const kind = resolveDisplayStateKind({
+    ...grammarParams,
+    dryRun,
+    currentState: dev.currentState,
+  });
+  const tone = kind === rawKind ? (dev.stateTone ?? PLAN_STATE_TONE[kind]) : PLAN_STATE_TONE[kind];
   return {
     kind,
+    // The plan-INTENT kind (raw + upgrades, no simulation collapse). Reason
+    // plumbing (e.g. the reported-load conflict, which is "plan says held,
+    // meter says drawing") keys off this — the conflict is a fact about the
+    // PLAN even when simulation renders the factual state word.
+    intentKind: resolveIntentStateKind(grammarParams),
     label: PLAN_STATE_LABEL[kind],
     tone,
     chipModifier: chipModifierForTone(tone),
   };
+};
+
+// Single status chip per card (ladder in `planCardGrammar.ts`) — `rescue`
+// renders the interactive two-step `BudgetExemptChip`; `status` renders a
+// plain toned chip. The Smart-task badge is an identity/route badge and may
+// coexist with this one chip.
+export const PlanCardStatusChipView = ({
+  dev,
+  displayKind,
+  dryRun,
+}: {
+  dev: PlanDeviceSnapshot;
+  displayKind: PlanStateKind;
+  dryRun: boolean;
+}) => {
+  const chip: PlanCardStatusChip | null = resolvePlanCardStatusChip({
+    displayKind,
+    dryRun,
+    starvation: dev.starvation,
+    rescueEligible: shouldOfferBudgetExemptCardAction(dev.starvation, dev.budgetExempt)
+      && isStarvationRescuable(dev.id),
+    temperatureBoostActive: dev.temperatureBoostActive === true,
+    evBoostActive: dev.evBoostActive === true,
+    budgetExempt: dev.budgetExempt === true,
+  });
+  if (chip === null) return null;
+  if (chip.type === 'rescue') return <BudgetExemptChip dev={dev} />;
+  return (
+    <span class={`plan-chip plan-chip--${chip.tone}`} data-tooltip={chip.tooltip}>
+      {chip.label}
+    </span>
+  );
 };
 
 const isTrivialReason = (reason: unknown): boolean => {
@@ -361,7 +374,14 @@ const resolveReasonTextFactual = (dev: PlanDeviceSnapshot): string => {
     const override = formatStarvationReason(dev.starvation);
     if (override) return override;
   }
-  const kind = isPlanStateKind(dev.stateKind) ? dev.stateKind : resolvePlanStateKind(dev);
+  // Plan-INTENT kind (raw + the idle→held upgrade) — the held fallback must
+  // fire for a hold-reason card the planner marked inactive, and must keep
+  // firing under simulation (only the state word goes factual there).
+  const kind = resolveIntentStateKind({
+    kind: resolveRawPlanStateKind(dev),
+    reasonCode: (dev.reason as { code?: string } | undefined)?.code,
+    starved: dev.starvation?.isStarved === true,
+  });
   if (isTrivialReason(dev.reason)) {
     return kind === 'held' ? PLAN_STATE_HELD_FALLBACK_STATUS : '';
   }
@@ -460,7 +480,7 @@ export const PlanGenericCard = ({
   nowMs: number;
 }) => {
   const displayDev = resolveDisplayPlanDeviceSnapshot(plan, dev, renderedAtMs, nowMs) as PlanDeviceSnapshot;
-  const presentation = resolveStatePresentation(displayDev);
+  const presentation = resolveStatePresentation(displayDev, dryRun);
 
   const cardClasses = [
     'pels-surface-card device-row plan-card clickable',
@@ -470,7 +490,7 @@ export const PlanGenericCard = ({
   const remainingSec = resolveCooldownRemainingSec(displayDev);
   const baseSec = resolveCooldownBaseSec(displayDev);
   const hasTimer = baseSec !== null && remainingSec !== null && remainingSec > 0;
-  const reportedLoadConflict = isReportedLoadConflict(displayDev, presentation.kind);
+  const reportedLoadConflict = isReportedLoadConflict(displayDev, presentation.intentKind);
   // "Run on solar surplus" dump load, actively running on export: the card's
   // reason line explains WHY it is on ("On to use your solar power"). A held
   // dump load needs no special-casing here — its `awaitingSolarSurplus` reason
@@ -492,8 +512,12 @@ export const PlanGenericCard = ({
     if (expected !== null) powerReadout = { text: `≈ ${expected.toFixed(1)} kW when active`, variant: 'expected' };
   }
 
-  const starvationBadge = formatStarvationBadge(dev.starvation);
   const displayName = formatDisplayDeviceName(dev.name);
+  // One reason line per card: the plan reason wins; an EV smart-task state
+  // line ("Charging · planned finish 06:30") fills the slot only when no
+  // reason renders. The dropped line is one tap away on the smart-task page.
+  const evStateText = resolveEvStateLineText(dev.id, nowMs);
+  const singleReason = reasonText !== '' ? reasonText : evStateText ?? '';
 
   return (
     <article
@@ -513,10 +537,9 @@ export const PlanGenericCard = ({
           <h3 class="plan-card__title">{displayName}</h3>
         </div>
         <div class="plan-card__chips">
-          {/* The state word now lives in the below-title state row, so the
-              header no longer repeats it as a chip. The chip returns only to
-              anchor the cooldown countdown ring, which the state row cannot
-              show. */}
+          {/* The state word lives in the below-title state row; the header
+              chip returns only to anchor the cooldown countdown ring, which
+              the state row cannot show. */}
           {hasTimer && (
             <span class="plan-state-chip-wrap">
               <span
@@ -532,35 +555,25 @@ export const PlanGenericCard = ({
               <CooldownProgress remainingSec={remainingSec} baseSec={baseSec} tone={presentation.tone} />
             </span>
           )}
-          {dev.budgetExempt === true && (
-            <span class="plan-chip plan-chip--muted">Always on</span>
-          )}
-          {starvationBadge && (
-            <span class={`plan-chip plan-chip--${starvationBadge.tone}`} data-tooltip={starvationBadge.tooltip}>
-              {starvationBadge.label}
-            </span>
-          )}
-          <BudgetExemptChip dev={displayDev} />
+          <PlanCardStatusChipView dev={displayDev} displayKind={presentation.kind} dryRun={dryRun} />
           <DeadlineChip deviceId={dev.id} deviceName={dev.name} nowMs={nowMs} />
         </div>
       </div>
 
-      {/* One anatomy for every card: the bold status word sits below the title
-          with the kW right-aligned on the same row (matching the temperature and
-          stepped cards). The conflict case keeps the dryRun-aware action label
-          from `resolveHeldStateActionLabel` (e.g. "Would be turned off
-          (simulation)"); the normal case shows the plan state word. */}
+      {/* One anatomy for every card: the bold canonical state word sits below
+          the title with the kW right-aligned on the same row. The state word
+          is always the state vocabulary (never an action sentence) — in the
+          reported-load conflict the "Reported N kW" fact plus the reason line
+          carry the conflict, and in simulation the word stays factual while
+          the reason line reads hypothetically. */}
       <div class="plan-card__state-row">
-        <span class="plan-card__state-label">
-          {reportedLoadConflict ? resolveHeldStateActionLabel(displayDev, dryRun) : presentation.label}
-        </span>
+        <span class="plan-card__state-label">{presentation.label}</span>
         {powerReadout && (
           <span class="plan-card__state-power" data-variant={powerReadout.variant}>{powerReadout.text}</span>
         )}
       </div>
 
-      {reasonText !== '' && <p class="plan-card__reason">{reasonText}</p>}
-      <EvDeadlineStateLine deviceId={dev.id} nowMs={nowMs} />
+      {singleReason !== '' && <p class="plan-card__reason">{singleReason}</p>}
     </article>
   );
 };
@@ -581,7 +594,8 @@ export const PlanTemperatureCard = ({
   nowMs: number;
 }) => {
   const displayDev = resolveDisplayPlanDeviceSnapshot(plan, dev, renderedAtMs, nowMs) as PlanDeviceSnapshot;
-  const { kind } = resolveStatePresentation(displayDev);
+  const presentation = resolveStatePresentation(displayDev, dryRun);
+  const { kind } = presentation;
 
   const cardClasses = [
     'pels-surface-card device-row plan-card plan-card--temperature clickable',
@@ -589,8 +603,18 @@ export const PlanTemperatureCard = ({
   ].filter(Boolean).join(' ');
 
   const temperatureLine = resolveTemperatureLine(displayDev);
-  const reasonLine = resolveTemperatureReasonLine(displayDev, dryRun);
-  const starvationBadge = formatStarvationBadge(dev.starvation);
+  // One reason line per card: the plan reason wins; the idle-classification
+  // status line ("Not drawing power (20.3 °C / 22 °C)") fills the slot only
+  // when no plan reason renders. The chip duplicate is gone — the same copy
+  // never renders twice on one card.
+  const idleCopy = resolveIdleCopy(displayDev);
+  const reasonLine = resolveTemperatureReasonLine(displayDev, dryRun) ?? idleCopy?.statusLine ?? null;
+  const reasonIsIdleCopy = reasonLine !== null && reasonLine === idleCopy?.statusLine;
+  const reasonTooltip = reasonIsIdleCopy ? idleCopy?.detail : undefined;
+  // The idle-classification copy carries its own tone (warning for
+  // unresponsive) — preserve it now that the copy rides the shared reason
+  // slot instead of the retired `__idle-line--warning` element.
+  const reasonTone = reasonIsIdleCopy ? idleCopy?.tone : undefined;
   const displayName = formatDisplayDeviceName(dev.name);
 
   return (
@@ -611,28 +635,23 @@ export const PlanTemperatureCard = ({
           <h3 class="plan-card__title">{displayName}</h3>
         </div>
         <div class="plan-card__chips">
-          {dev.temperatureBoostActive === true && (
-            <span class="plan-chip plan-chip--ok" data-tooltip="Temperature boost is active">Boost</span>
-          )}
-          {starvationBadge && (
-            <span class={`plan-chip plan-chip--${starvationBadge.tone}`} data-tooltip={starvationBadge.tooltip}>
-              {starvationBadge.label}
-            </span>
-          )}
-          <IdleClassificationChip dev={displayDev} />
-          <BudgetExemptChip dev={displayDev} />
+          <PlanCardStatusChipView dev={displayDev} displayKind={kind} dryRun={dryRun} />
           <DeadlineChip deviceId={dev.id} deviceName={dev.name} nowMs={nowMs} />
         </div>
       </div>
 
-      <div class="plan-card__output-row">
-        <span class="plan-card__output-state">{resolveTemperatureOutputState(displayDev)}</span>
-        <span class="plan-card__output-power">{formatKw(displayDev.measuredPowerKw)} kW</span>
+      {/* Same anatomy as the generic/stepped cards: the canonical state word
+          replaces the old bare "On"/"Off" output state, so a held thermostat
+          reads "Limited" here like every other held card. */}
+      <div class="plan-card__state-row">
+        <span class="plan-card__state-label">{presentation.label}</span>
+        <span class="plan-card__state-power">{formatKw(displayDev.measuredPowerKw)} kW</span>
       </div>
 
       {temperatureLine !== null && <p class="plan-card__temp-line">{temperatureLine}</p>}
-      {reasonLine !== null && <p class="plan-card__temp-reason">{reasonLine}</p>}
-      <IdleClassificationLine dev={displayDev} />
+      {reasonLine !== null && (
+        <p class="plan-card__temp-reason" data-tone={reasonTone} data-tooltip={reasonTooltip}>{reasonLine}</p>
+      )}
     </article>
   );
 };

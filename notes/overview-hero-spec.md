@@ -298,26 +298,30 @@ device count, not PELS:
 
 ---
 
-## Device summary card (separate from hero)
+## Device cards (separate from hero)
 
-Cooldown details and per-device status belong in a separate summary card below the hero, not in the hero itself. The hero only shows aggregate counts in the decision sentence.
+Cooldown details and per-device status belong in the per-device cards below the hero, not in the hero itself. The hero only shows aggregate counts in the decision sentence.
 
-Summary card shows counts: running · limited · resuming · starved · boosted.
+### Device card grammar (2026-07 legibility pass)
 
-Individual device cards show cooldown timers, reason text, and step details.
+One anatomy for all three card variants (`PlanTemperatureCard`, `PlanSteppedCard`, `PlanGenericCard`); the shared resolvers live in `packages/shared-domain/src/planCardGrammar.ts`:
 
-### Device card state styling (M3 tonal containers)
+1. **Title row + at most ONE status chip** (ladder: "Let it run now" rescue action → starvation badge `Budget limited` (info) / `Low power` (warn), only while the card reads held → `Boost` → `Always on`). The **Smart task** badge is an identity/route badge, not a status — it may coexist with the one status chip. The generic card's cooldown countdown ring still anchors on a transient state chip while a countdown runs.
+2. **State row**: the bold canonical state word (`Running` / `Idle` / `Limited` / `Resuming` / `Manual` / `Unavailable` / `Unknown` — the `notes/ui-terminology.md` device vocabulary) + the right-aligned power fact (`1.2 kW`, `≈ 1.0 kW when active`, `Reported 2.1 kW`). The temperature card's old bare `On`/`Off` slot and the stepped card's `Level: 6 A`/`Off now` bold slot are retired.
+   - A hold/wait reason **upgrades `idle` to `held` for display** — `Idle` beside a "waiting to resume" reason would contradict the canon (Idle = PELS is not holding it back).
+   - **Simulation renders the factual device state**: `held`/`resuming` are PELS-acted claims, so under simulation the bold word shows what the device is actually doing and the hypothetical action lives only in the reason line ("Would be limited …"). The rescue action chip is suppressed under simulation (nothing to release).
+3. **One modality fact line**: temperature `20.3 °C · target 22 °C` (arrow `→` reserved for a target *change*, e.g. a solar/boost lift); stepped `Charging · level 6 A` or `Level 6 A` plus the step rail; generic none.
+4. **At most ONE reason line**, exception-only: plan reason → EV smart-task state line (generic) / exceptional EV state (stepped) / idle-classification status (temperature). Quiet states (Running normally, Idle) render no reason — the old "Maintaining level" filler and the duplicated unresponsive chip+line are gone.
 
-Device cards encode state with a tonal-container background plus the leading state chip — no colored left-edge stripe (that pattern is M2 / iOS / Bootstrap-alert, not M3). State rules bind directly to flat `--color-state-*-bg` / `-border` tokens (the deprecated `--pels-status-*-surface` shims are kept only until the chart-token P0 in `TODO.md` migrates the chart consumers off them):
+### Device card state styling (plain neutral surface)
 
-- `held` → warning tone: `--color-state-warning-bg` / `-border`. (Held is an intentional power-shedding state, not a failure — warn, not danger.)
-- `resuming` → positive tone: `--color-state-positive-bg` / `-border`. (Recovering toward normal — distinct from `held` so it never reads as still-stuck.)
-- `unavailable` → danger tone: `--color-state-negative-bg` / `-border` plus 0.78 opacity.
-- `unknown` → no tint, but 0.6 opacity so missing-state cards visibly recede.
-- `active` → default outlined surface (`--color-surface-1`).
-- `idle`, `manual` → default outlined surface plus `.plan-card--dim` (0.74 opacity).
+Device cards are plain neutral surfaces — **no tonal-container background, no left state-rail, no per-state leading chip** (an earlier tonal-container model was tried and reverted; see the `.plan-card` comments in `packages/settings-ui/public/style.css`). State reads through:
 
-For most card types (`PlanGenericCard`, `PlanSteppedCard`) state is also conveyed by the leading `.plan-state-chip` so colour never carries meaning alone. `PlanTemperatureCard` is an exception: it does not render a state chip, so the dim opacity + the `On`/`Off` readout carry the signal. Idle/manual temperature cards mute the `Off` readout to `--text-secondary` with regular weight so the running siblings' bold `On` reads as the foreground state.
+- the bold state word (text carries the meaning),
+- role-toned status text — the state word and the reason line take `--color-state-warning-text` (held) / `--color-state-positive-text` (resuming) / `--color-state-negative-text` (unavailable),
+- opacity fades: `unavailable` 0.78, `unknown` 0.6, `idle`/`manual` `.plan-card--dim` 0.74.
+
+Colour never carries meaning alone: the toned text IS the meaning-bearing word.
 
 ---
 

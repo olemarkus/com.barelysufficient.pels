@@ -1605,6 +1605,10 @@ describe('Plan sorting', () => {
     installSettingsHomeyMock({
       planSnapshot: planSnapshot,
       target_devices_snapshot: [],
+      // Simulation OFF: under the card grammar a simulated plan renders the
+      // FACTUAL device state (nothing is actually held), so held/rescue
+      // assertions need real mode.
+      capacity_dry_run: false,
     });
   };
 
@@ -2177,7 +2181,10 @@ describe('Overview "Let it run now" rescue-gate freshness on tab activation', ()
     // Boot with the device budget-held but NOT yet in the rescuable set (it
     // became rescuable only later, while the user was on another tab).
     const homey = installHomeyMock({
-      settings: buildSettingsHomeyState({}),
+      // Simulation OFF — the "Let it run now" rescue chip is deliberately
+      // suppressed in simulation (nothing to release when PELS actuates
+      // nothing; see planCardGrammar.ts).
+      settings: buildSettingsHomeyState({ capacity_dry_run: false }),
       uiState: {
         devices: [],
         plan: budgetHeldPlan,
@@ -2207,9 +2214,10 @@ describe('Overview "Let it run now" rescue-gate freshness on tab activation', ()
   });
 
   it('clears a stale chip when the device leaves the rescuable set while off-tab', async () => {
-    // Boot rescuable → the chip renders on the boot Overview.
+    // Boot rescuable → the chip renders on the boot Overview. Simulation OFF
+    // (the rescue chip is suppressed in simulation by design).
     const homey = installHomeyMock({
-      settings: buildSettingsHomeyState({}),
+      settings: buildSettingsHomeyState({ capacity_dry_run: false }),
       uiState: {
         devices: [],
         plan: budgetHeldPlan,

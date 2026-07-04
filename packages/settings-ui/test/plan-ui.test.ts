@@ -782,6 +782,14 @@ describe('Redesign plan UI', () => {
         '[data-device-id="dev-restore-cooldown"] .plan-state-chip__timer',
       ) as (HTMLElement & { value?: number }) | null;
       expect(getReasonText('dev-restore-cooldown')).toBe('Waiting before resuming (1s)');
+      // The restore countdown reads as `Resuming` (card grammar) — an
+      // off+keep cooldown card must never regress to "Idle" beside a
+      // waiting-to-resume reason.
+      const cooldownCard = document.querySelector(
+        '[data-device-id="dev-restore-cooldown"]',
+      ) as HTMLElement | null;
+      expect(cooldownCard?.dataset.stateKind).toBe('resuming');
+      expect(cooldownCard?.querySelector('.plan-card__state-label')?.textContent).toBe('Resuming');
       expect(timer?.hidden).toBe(false);
       // Cooldown summary is shown on device card, not as a hero chip
 
