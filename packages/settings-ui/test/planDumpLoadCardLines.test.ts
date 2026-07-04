@@ -112,6 +112,6 @@ describe('dump-load Overview card lines', () => {
       reason: { code: PLAN_REASON_CODES.awaitingSolarSurplus, detail: null },
     }), true);
     const reason = card.querySelector('.plan-card__reason')?.textContent ?? '';
-    expect(reason).toBe('Still reporting 1.0 kW — would switch off to wait for solar surplus');
+    expect(reason).toBe('Still reporting 1.0 kW — would switch off to wait for solar surplus (simulation)');
   });
 });

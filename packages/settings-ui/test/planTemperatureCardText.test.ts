@@ -121,8 +121,8 @@ describe('resolveTemperatureReasonLine', () => {
   });
 
   it('states capacity / hourly / daily limiting HYPOTHETICALLY in simulation (dryRun)', () => {
-    expect(resolveTemperatureReasonLine(heldThermostat('capacity'), true)).toBe('Would be limited by the hard cap');
-    expect(resolveTemperatureReasonLine(heldThermostat('hourly_budget'), true)).toBe('Would be limited — this hour is near the hard cap');
-    expect(resolveTemperatureReasonLine(heldThermostat('daily_budget'), true)).toBe("Would be limited by today's daily budget");
+    expect(resolveTemperatureReasonLine(heldThermostat('capacity'), true)).toBe('Would be limited by the hard cap (simulation)');
+    expect(resolveTemperatureReasonLine(heldThermostat('hourly_budget'), true)).toBe('Would be limited — this hour is near the hard cap (simulation)');
+    expect(resolveTemperatureReasonLine(heldThermostat('daily_budget'), true)).toBe("Would be limited by today's daily budget (simulation)");
   });
 });

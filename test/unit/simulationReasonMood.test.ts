@@ -15,40 +15,40 @@ describe('toSimulationReasonLine — held/limited reasons read hypothetically in
   it('flips the generic + thermostat hard-cap / daily / hourly "Limited …" lines', () => {
     // Generic on/off held device and thermostat capacity reason share this line.
     expect(toSimulationReasonLine(PLAN_STATE_HELD_FALLBACK_STATUS, true))
-      .toBe('Would be limited by the hard cap');
+      .toBe('Would be limited by the hard cap (simulation)');
     expect(toSimulationReasonLine(PLAN_STATE_DAILY_BUDGET_STATUS, true))
-      .toBe("Would be limited by today's daily budget");
+      .toBe("Would be limited by today's daily budget (simulation)");
     expect(toSimulationReasonLine(PLAN_STATE_HOURLY_BUDGET_STATUS, true))
-      .toBe('Would be limited — this hour is near the hard cap');
+      .toBe('Would be limited — this hour is near the hard cap (simulation)');
   });
 
   it('flips budget-starvation and swap "Limited …" lines', () => {
     // Generic already-off / budget-starved device.
     expect(toSimulationReasonLine("Limited to stay within today's budget", true))
-      .toBe("Would be limited to stay within today's budget");
+      .toBe("Would be limited to stay within today's budget (simulation)");
     expect(toSimulationReasonLine('Limited so another device can run', true))
-      .toBe('Would be limited so another device can run');
+      .toBe('Would be limited so another device can run (simulation)');
     // Stepped card status line.
     expect(toSimulationReasonLine('Limited to 6 A — 2 devices still limited', true))
-      .toBe('Would be limited to 6 A — 2 devices still limited');
+      .toBe('Would be limited to 6 A — 2 devices still limited (simulation)');
   });
 
   it('flips the swap "Making room …" line for both bare and named-target variants', () => {
     expect(toSimulationReasonLine('Making room for higher-priority device', true))
-      .toBe('Would make room for a higher-priority device');
+      .toBe('Would make room for a higher-priority device (simulation)');
     // Named target: the "(Bedroom)" suffix is carried through the rewrite.
     expect(toSimulationReasonLine('Making room for higher-priority device (Bedroom)', true))
-      .toBe('Would make room for a higher-priority device (Bedroom)');
+      .toBe('Would make room for a higher-priority device (Bedroom) (simulation)');
   });
 
   it('flips the named "Limited so <device> can run" swap line', () => {
     expect(toSimulationReasonLine('Limited so Water Heater can run', true))
-      .toBe('Would be limited so Water Heater can run');
+      .toBe('Would be limited so Water Heater can run (simulation)');
   });
 
   it('flips the deferred-objective "Waiting for cheaper hours" line', () => {
     expect(toSimulationReasonLine('Waiting for cheaper hours', true))
-      .toBe('Would wait for cheaper hours');
+      .toBe('Would wait for cheaper hours (simulation)');
   });
 
   it('leaves non-acted reasons factual in simulation (physical / resuming / normal)', () => {

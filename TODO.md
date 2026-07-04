@@ -391,6 +391,33 @@ CI failure, so future field-move slices can't silently grow the debt.*
       (was P2 before the producer gate removed the harm).* Files: `packages/settings-ui/src/ui/deviceDetail/solarSurplus.ts`,
       `packages/settings-ui/src/ui/deviceDetail/index.ts`.
 
+- [ ] **Simulation wait-lines still read factually on device cards.** Under simulation a held
+      card's waiting copy ("Waiting to resume — 0.2 kW more needed", "Waiting for solar surplus",
+      "Waiting for available power") renders unchanged — `toSimulationReasonLine` deliberately
+      passes non-acted lines through, but "Waiting to resume" claims PELS will resume the device,
+      which under simulation it never will, and the card carries no `(simulation)` marker in that
+      state. Decide a hypothetical form (e.g. "Would resume when 0.2 kW frees up (simulation)")
+      with the copy lens across the three producers (`formatReasonSummary`, `resolveWaitingText`,
+      `resolveBlockedStatusLine`/`resolveOffStatusLine`). Persona: onboarding owner running
+      simulation; hypothesis: a factual promise PELS can't keep in sim erodes the mode's honesty
+      framing. Source: pels-ux-fit implementation gate on the card-grammar PR (2026-07-04). [P2]
+
+- [ ] **"Lowered by PELS" names the actor but not the constraint.** The held temperature card's
+      fallback reason is the only reason line stating a what with no why — siblings name the
+      binding constraint ("Limited to stay within today's budget"). When a cause is resolvable
+      (starvation.cause, reason.code) prefer a constraint-naming line; keep the actor form only
+      for the truly unattributed fallback. Persona: set-and-forget owner asking "why is my room
+      cooler?"; hypothesis: naming the constraint pre-empts the "PELS did something to me"
+      support thread. Source: pels-ux-fit implementation gate (2026-07-04). [P2 copy]
+
+- [ ] **Solar-surplus hold renders at warn tone though it is the expected daily state.** A "Run on
+      solar surplus" dump load waiting for export shows `Limited` + warn-toned "Waiting for solar
+      surplus" every non-sunny hour — an alert treatment for its normal posture. Consider an
+      info/ok tone (state word and reason) for the `awaiting_solar_surplus` hold so routine reads
+      routine. Persona: prosumer scanning Overview each morning; hypothesis: chronic warn tone on
+      an expected state trains the user to ignore warn. Source: pels-ux-fit implementation gate
+      (2026-07-04). [P3]
+
 - [ ] **Settings-UI structural consolidation train (deferred by the 2026-07 coherence review).**
       A designed, not-yet-executed train that unwinds the two-rendering-paradigms mess within the
       approved map `notes/settings-ui-semantic-map.md`. Order: shared Preact primitives in

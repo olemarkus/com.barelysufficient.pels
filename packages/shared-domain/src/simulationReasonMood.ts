@@ -20,18 +20,26 @@
 // trailing "(name)" through so both flip.
 const MAKING_ROOM_PREFIX = 'Making room for higher-priority device';
 
+// The `(simulation)` tag every converted (hypothetical) line carries. With the
+// 2026-07 card grammar the state word stays factual under simulation, so the
+// reason line is the ONLY per-card carrier of the hypothetical framing — the
+// tag keeps a card scrolled away from the banner honest on its own (the same
+// rule the `DEVICE_OVERVIEW_WOULD_*` action labels already follow).
+const SIMULATION_TAG = ' (simulation)';
+
 export const toSimulationReasonLine = (label: string, dryRun: boolean): string => {
   if (!dryRun || label.length === 0) return label;
-  // "Limited …" → "Would be limited …" (lowercase the leading L, prepend the
-  // hypothetical mood). Covers every "Limited …" reason — hard cap, daily/hourly
-  // budget, budget starvation, stepped "Limited to X", and the named/bare
-  // "Limited so <device> can run" swap — without enumerating the exact tails.
+  // "Limited …" → "Would be limited … (simulation)" (lowercase the leading L,
+  // prepend the hypothetical mood). Covers every "Limited …" reason — hard
+  // cap, daily/hourly budget, budget starvation, stepped "Limited to X", and
+  // the named/bare "Limited so <device> can run" swap — without enumerating
+  // the exact tails.
   if (label.startsWith('Limited')) {
-    return `Would be ${label.charAt(0).toLowerCase()}${label.slice(1)}`;
+    return `Would be ${label.charAt(0).toLowerCase()}${label.slice(1)}${SIMULATION_TAG}`;
   }
   if (label.startsWith(MAKING_ROOM_PREFIX)) {
-    return `Would make room for a higher-priority device${label.slice(MAKING_ROOM_PREFIX.length)}`;
+    return `Would make room for a higher-priority device${label.slice(MAKING_ROOM_PREFIX.length)}${SIMULATION_TAG}`;
   }
-  if (label === 'Waiting for cheaper hours') return 'Would wait for cheaper hours';
+  if (label === 'Waiting for cheaper hours') return `Would wait for cheaper hours${SIMULATION_TAG}`;
   return label;
 };

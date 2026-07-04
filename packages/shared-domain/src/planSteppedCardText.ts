@@ -93,14 +93,6 @@ const isPoweredStep = (profile: SteppedLoadProfile, stepId: string | null): bool
   return step !== undefined && step.planningPowerW > 0;
 };
 
-export const resolveSteppedStateLabel = (device: SteppedCardDevice): string => {
-  if (isSteppedCardOffLikeState(device.currentState)) return 'Off now';
-  const stepId = resolveCurrentStepId(device);
-  if (!stepId) return 'Level unknown';
-  if (isOffLikeId(stepId)) return 'Off now';
-  return `Level: ${formatStepDisplayLabelInternal(stepId)}`;
-};
-
 export const resolveSteppedActiveStepId = (
   device: SteppedCardDevice,
   profile: SteppedLoadProfile,
@@ -117,10 +109,6 @@ export const isSteppedTransit = (device: {
 }): boolean => (
   device.steppedLoad?.commandPending === true
 );
-
-// ─── Chip resolution ──────────────────────────────────────────────────────────
-
-export type SteppedChip = { label: string; tone: 'ok' | 'warn' };
 
 const isSettlingReason = (code: string): boolean => (
   code === PLAN_REASON_CODES.headroomCooldown
@@ -151,11 +139,6 @@ const isLimitedReason = (code: string): boolean => (
 );
 
 type SteppedDevice = SteppedCardDevice;
-
-export const resolveSteppedChip = (device: SteppedDevice): SteppedChip | null => {
-  if (isSteppedTransit(device)) return { label: 'Applying', tone: 'ok' };
-  return null;
-};
 
 const isAtTargetStep = (device: SteppedDevice): boolean => {
   const reportedId = normalizeStepId(resolveCurrentStepId(device));
@@ -326,8 +309,10 @@ export const resolveSteppedStatusLine = (
   const blocked = resolveBlockedStatusLine(device, profile);
   if (blocked !== null) return blocked;
   if (isSteppedCardOffLikeState(device.currentState)) return resolveOffStatusLine(device);
-  const stepId = resolveCurrentStepId(device);
-  return stepId && !isOffLikeId(stepId) ? 'Maintaining level' : null;
+  // Quiet steady state renders NO status line (2026-07 card grammar: the
+  // reason slot is exception-only). The former "Maintaining level" filler
+  // said nothing the state row + level fact don't already say.
+  return null;
 };
 
 export const resolveSteppedTemperatureText = (device: {
@@ -337,7 +322,10 @@ export const resolveSteppedTemperatureText = (device: {
   const { currentTemperature, plannedTarget } = device;
   if (typeof currentTemperature !== 'number') return null;
   if (typeof plannedTarget !== 'number') return null;
-  return `${currentTemperature.toFixed(1)} °C → ${plannedTarget.toFixed(0)} °C`;
+  // Same `· target` grammar as the temperature card's fact line — the arrow
+  // is reserved for a target CHANGE (e.g. a solar/boost lift), never the
+  // routine current-vs-target pair (notes/ui-terminology.md § device cards).
+  return `${currentTemperature.toFixed(1)} °C · target ${plannedTarget.toFixed(0)} °C`;
 };
 
 export const resolveSteppedPowerText = (device: {
@@ -356,12 +344,47 @@ const EV_CHARGING_STATE_LABELS: Record<string, string> = {
   plugged_out: 'Unplugged',
 };
 
-export const resolveEvChargingStateLabel = (device: {
+// ─── Fact line (2026-07 card grammar) ─────────────────────────────────────────
+
+// EV charging states that are the routine "it's doing its thing" case — they
+// fold into the fact line beside the level. Every other EV state (Paused /
+// Waiting for car / Discharging / Unplugged) is an exception and renders in
+// the reason slot instead (`resolveSteppedEvExceptionLabel`).
+const EV_ROUTINE_STATE = 'plugged_in_charging';
+
+// The stepped card's one modality fact line: `Charging · level 6 A` for a
+// routinely-charging EV, `Level 6 A` otherwise; `Level unknown` when the
+// device is on with no reported step (real-evidence-only — never inferred
+// from another field); null when the device is off (the bold state word
+// already covers "off").
+export const resolveSteppedLevelFact = (device: {
+  currentState?: string;
+  steppedLoad?: SteppedLoadCardState;
+  evChargingState?: EvChargingState;
+  controlCapabilityId?: string;
+}): string | null => {
+  if (isSteppedCardOffLikeState(device.currentState)) return null;
+  const stepId = device.steppedLoad?.reportedStepId ?? null;
+  if (!stepId) return 'Level unknown';
+  if (isOffLikeId(stepId)) return null;
+  const levelText = `level ${formatStepDisplayLabelInternal(stepId)}`;
+  const isRoutineEvCharge = device.controlCapabilityId === 'evcharger_charging'
+    && (device.evChargingState ?? '').trim().toLowerCase() === EV_ROUTINE_STATE;
+  if (isRoutineEvCharge) {
+    return `${EV_CHARGING_STATE_LABELS[EV_ROUTINE_STATE]} · ${levelText}`;
+  }
+  return `${capitalize(levelText)}`;
+};
+
+// Exceptional EV states for the reason slot — null for the routine charging
+// state (carried by the fact line) and for non-EV devices.
+export const resolveSteppedEvExceptionLabel = (device: {
   evChargingState?: EvChargingState;
   controlCapabilityId?: string;
 }): string | null => {
   if (device.controlCapabilityId !== 'evcharger_charging') return null;
   const state = (device.evChargingState ?? '').trim().toLowerCase();
+  if (state === EV_ROUTINE_STATE) return null;
   return EV_CHARGING_STATE_LABELS[state] ?? null;
 };
 

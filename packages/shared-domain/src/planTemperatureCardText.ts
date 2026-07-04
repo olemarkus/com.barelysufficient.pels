@@ -1,10 +1,10 @@
 import { PLAN_REASON_CODES } from './planReasonSemanticsCore';
+import { resolveIntentStateKind, resolveRawPlanStateKind } from './planCardGrammar';
 import {
   PLAN_STATE_DAILY_BUDGET_STATUS,
   PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
   PLAN_STATE_HELD_FALLBACK_STATUS,
   PLAN_STATE_HOURLY_BUDGET_STATUS,
-  resolvePlanStateKind,
 } from './planStateLabels';
 import { formatStarvationReason } from './planStarvation';
 import {
@@ -71,14 +71,6 @@ const isLimitedReason = (code: string): boolean => (
   || code === PLAN_REASON_CODES.swappedOut
   || code === PLAN_REASON_CODES.swapPending
 );
-
-// ─── Output state ─────────────────────────────────────────────────────────────
-
-export const resolveTemperatureOutputState = (device: TemperatureDevice): string => {
-  const state = (device.currentState ?? '').trim().toLowerCase();
-  if (!state || state === 'off' || state === 'unknown' || state === 'disappeared') return 'Off';
-  return 'On';
-};
 
 // ─── Temperature line ─────────────────────────────────────────────────────────
 
@@ -164,6 +156,22 @@ const resolveHeldTemperatureActionLabel = (dryRun: boolean): string => (
   dryRun ? DEVICE_OVERVIEW_WOULD_LOWER : DEVICE_OVERVIEW_LOWERED_BY_PELS
 );
 
+// Plan-INTENT kind (raw + the idle→held upgrade): a hold/wait reason means
+// the plan is holding the device back even when the planner marked it
+// inactive, so the reason line renders for those cards too. Simulation only
+// changes the state word, never whether the reason renders. Extracted so the
+// parent resolver stays under the complexity cap.
+const resolveTemperatureIntentKind = (device: TemperatureDevice, reasonCode: string) => (
+  resolveIntentStateKind({
+    // Same precomputed-kind check as the card views (resolveRawPlanStateKind)
+    // so the reason line can never desync from the displayed state word on a
+    // snapshot that already carries a producer-resolved `stateKind`.
+    kind: resolveRawPlanStateKind(device),
+    reasonCode,
+    starved: device.starvation?.isStarved === true,
+  })
+);
+
 export const resolveTemperatureReasonLine = (
   device: TemperatureDevice,
   dryRun = false,
@@ -172,14 +180,16 @@ export const resolveTemperatureReasonLine = (
   if (typeof currentTemperature !== 'number' || typeof plannedTarget !== 'number') return null;
 
   const reasonCode = (device.reason as { code?: string } | undefined)?.code ?? '';
-  const kind = resolvePlanStateKind(device);
+  const kind = resolveTemperatureIntentKind(device, reasonCode);
 
   const surplusReason = resolveSurplusAbsorbReason(device, kind);
   if (surplusReason !== null) return surplusReason;
 
   if (kind !== 'held' && kind !== 'idle' && kind !== 'resuming') return null;
   if (kind === 'idle') return null;
-  if (kind === 'resuming') return 'Resuming';
+  // The card's bold state word already says "Resuming" (2026-07 card
+  // grammar) — a reason line repeating it was pure duplication.
+  if (kind === 'resuming') return null;
   const budgetReason = resolveBudgetStarvationReason(device);
   if (budgetReason !== null) return toSimulationReasonLine(budgetReason, dryRun);
   if (isWaitingReason(reasonCode)) return resolveWaitingText(device.reason);

@@ -130,25 +130,51 @@ the hard-cap shed cascade in this decision sentence (it pairs with the default
 keep the chip/secondary-text language (`Limited`, `Turned off by PELS`) for the
 per-device surfaces below.
 
-## Device state chips (Overview)
+## Device state words (Overview cards)
 
-| Chip | Used when |
+Every Overview device card leads with one bold canonical state word in its
+state row (source: `PLAN_STATE_LABEL` in `planStateLabels.ts`; grammar in
+`planCardGrammar.ts` and `notes/overview-hero-spec.md` § Device cards):
+
+| State word | Used when |
 |---|---|
 | **Running** | The device is on, charging, heating, or otherwise active. |
 | **Idle** | The device is off or unavailable to run, and PELS is not holding it back. |
-| **Limited** | PELS is lowering, pausing, or turning off the device. |
+| **Limited** | PELS is lowering, pausing, turning off, or making the device wait for power — including a device the planner left inactive because there is no room ("waiting to resume"). Never pair `Idle` with a waiting/hold reason. |
 | **Resuming** | PELS is bringing the device back as power becomes available. |
 | **Manual** | The device is managed but PELS does not have power-limit control for it right now. |
 | **Unavailable** | PELS does not currently trust the device state enough to plan with it. |
-| **Unknown** | PELS does not have enough current state to choose a more specific chip. |
+| **Unknown** | PELS does not have enough current state to choose a more specific word. |
 
-Secondary text under a Limited chip names the action: **Turned off by PELS**, **Lowered by PELS**, or **Charging paused**. Stepped-load cards may add a step readout (`Off now`, `Level: Max`, `Level unknown`).
+**Card grammar (2026-07 legibility pass):** one anatomy for every card —
+title + at most ONE status chip (ladder: `Let it run now` → `Budget limited`/
+`Low power` → `Boost` → `Always on`; the `Smart task` badge is an
+identity/route badge and may coexist), the state row (state word + power
+fact), one modality fact line (`20.3 °C · target 22 °C`, `Charging · level
+6 A`; the arrow `→` is reserved for a target *change*), and at most ONE
+exception reason line. Quiet states render no chip and no reason. The old
+bare `On`/`Off` output state and the `Off now` / `Level: Max` bold slots are
+retired.
 
-In **simulation mode** these action lines must not state the action as fact — PELS shows what it *would* do without switching anything (spec principle "Simulation mode is hypothetical"). The hypothetical variants are **Would be turned off (simulation)**, **Would be lowered (simulation)**, and **Charging would pause (simulation)**. The `(simulation)` tag keeps a card scrolled away from the banner honest on its own. Source: `DEVICE_OVERVIEW_WOULD_*` in `packages/shared-domain/src/deviceOverviewStrings.ts`.
+The reason line under a Limited card names the action or the binding
+constraint: **Turned off by PELS**, **Lowered by PELS**, **Charging paused**,
+`Limited to stay within today's budget`, `Waiting to resume — 0.2 kW more
+needed`, and so on.
+
+In **simulation mode** the state word stays FACTUAL — `held`/`resuming` are
+PELS-acted claims and PELS acts on nothing in simulation, so the bold word
+shows what the device is actually doing (Running/Idle) and only the reason
+line is hypothetical: **Would be turned off (simulation)**, **Would be
+lowered (simulation)**, **Charging would pause (simulation)**, `Would be
+limited …`. The `(simulation)` tag keeps a card scrolled away from the banner
+honest on its own. The `Let it run now` action chip never renders under
+simulation (there is nothing to release). Source: `DEVICE_OVERVIEW_WOULD_*`
+in `packages/shared-domain/src/deviceOverviewStrings.ts` +
+`toSimulationReasonLine` in `simulationReasonMood.ts`.
 
 ### "Held back" — the Held-back-devices widget
 
-The standalone **Held-back devices** dashboard widget (formerly "Get power now") uses **Held back** for a device PELS is restraining because of the daily budget, with a per-device **Let it run now** action (a one-device budget exemption — never a hard-cap change). The duration chip word is cause-specific so it never overclaims: only **budget** rows (the releasable "Let it run now" state) read `Held back · N min`; **capacity** rows read `Waiting · N min` (physically held — the hard cap is not a tuning knob) and get an informational note instead of a rescue button. (There is no "manual"/"external" cause: a device PELS merely keeps below its target is not starved, so it never appears here.) This is a deliberate, widget-scoped synonym of the overview **Limited** chip: the widget's job is specifically the budget-restraint case the owner can release, so the conversational "held back" reads better there than "Limited". The **device-detail diagnostics** surface now also uses **Held back** (formerly "Starved") for the same condition, so the advanced surface no longer forks the user-facing vocabulary. Keep these two deliberate: **Limited** (overview chip) and **Held back** (the widget and device-detail diagnostics).
+The standalone **Held-back devices** dashboard widget (formerly "Get power now") uses **Held back** for a device PELS is restraining because of the daily budget, with a per-device **Let it run now** action (a one-device budget exemption — never a hard-cap change). The duration chip word is cause-specific so it never overclaims: only **budget** rows (the releasable "Let it run now" state) read `Held back · N min`; **capacity** rows read `Waiting · N min` (physically held — the hard cap is not a tuning knob) and get an informational note instead of a rescue button. (There is no "manual"/"external" cause: a device PELS merely keeps below its target is not starved, so it never appears here.) This is a deliberate, widget-scoped synonym of the overview **Limited** state word: the widget's job is specifically the budget-restraint case the owner can release, so the conversational "held back" reads better there than "Limited". The **device-detail diagnostics** surface now also uses **Held back** (formerly "Starved") for the same condition, so the advanced surface no longer forks the user-facing vocabulary. Keep these two deliberate: **Limited** (overview state word) and **Held back** (the widget and device-detail diagnostics).
 
 ### Headroom-widget chips — "Available power" widget
 

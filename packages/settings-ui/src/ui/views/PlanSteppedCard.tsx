@@ -1,40 +1,57 @@
 import { MdElevation, MdRipple } from './materialWebJSX.tsx';
 import {
   formatStepDisplayLabel,
-  resolveEvChargingStateLabel,
   resolveSteppedActiveStepId,
-  resolveSteppedChip,
+  resolveSteppedEvExceptionLabel,
+  resolveSteppedLevelFact,
   resolveSteppedPowerText,
-  resolveSteppedStateLabel,
   resolveSteppedStatusLine,
   resolveSteppedTemperatureText,
 } from '../../../../shared-domain/src/planSteppedCardText.ts';
 import {
   PLAN_STATE_HELD_FALLBACK_STATUS,
-  resolvePlanStateKind,
+  PLAN_STATE_LABEL,
   type PlanStateKind,
 } from '../../../../shared-domain/src/planStateLabels.ts';
+import {
+  resolveDisplayStateKind,
+  resolveIntentStateKind,
+  resolveRawPlanStateKind,
+} from '../../../../shared-domain/src/planCardGrammar.ts';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 import { toSimulationReasonLine } from '../../../../shared-domain/src/simulationReasonMood.ts';
 import { resolveDisplayPlanDeviceSnapshot } from '../planLiveData.ts';
 import { cardActivationProps } from '../cardActivation.ts';
-import { BudgetExemptChip, DeadlineChip } from './PlanDeviceCards.tsx';
+import { DeadlineChip, PlanCardStatusChipView } from './PlanDeviceCards.tsx';
 import type { PlanDeviceSnapshot, PlanSnapshot } from '../planTypes.ts';
 import type { SteppedLoadProfile } from '../../../../contracts/src/types.ts';
 
-const isPlanStateKind = (value: string | undefined): value is PlanStateKind => (
-  value === 'active'
-  || value === 'idle'
-  || value === 'held'
-  || value === 'resuming'
-  || value === 'manual'
-  || value === 'unavailable'
-  || value === 'unknown'
-);
-
-const resolveStateKind = (dev: PlanDeviceSnapshot): PlanStateKind => (
-  isPlanStateKind(dev.stateKind) ? dev.stateKind : resolvePlanStateKind(dev)
-);
+// Display state kind under the shared card grammar: hold/wait reasons upgrade
+// `idle` to `held`; simulation collapses PELS-acted kinds to the factual
+// device state (see `planCardGrammar.ts`).
+//
+// Target-only EV nuance: a `not_applicable` currentState resolves `active`
+// under a keep plan, but an EV that is paused / waiting for the car /
+// unplugged is not running — asserting `Running` beside a "Paused" reason
+// would contradict on one card. When an exceptional EV state exists, the
+// active word demotes to `Idle` (the reason slot names the specific state).
+const resolveStateKind = (dev: PlanDeviceSnapshot, dryRun: boolean): PlanStateKind => {
+  const kind = resolveDisplayStateKind({
+    kind: resolveRawPlanStateKind(dev),
+    dryRun,
+    currentState: dev.currentState,
+    reasonCode: (dev.reason as { code?: string } | undefined)?.code,
+    starved: dev.starvation?.isStarved === true,
+  });
+  if (
+    kind === 'active'
+    && dev.currentState === 'not_applicable'
+    && resolveSteppedEvExceptionLabel(dev) !== null
+  ) {
+    return 'idle';
+  }
+  return kind;
+};
 
 // ─── Step rail ────────────────────────────────────────────────────────────────
 
@@ -101,20 +118,30 @@ export const PlanSteppedCard = ({
   nowMs: number;
 }) => {
   const displayDev = resolveDisplayPlanDeviceSnapshot(plan, dev, renderedAtMs, nowMs) as PlanDeviceSnapshot;
-  const stateKind = resolveStateKind(displayDev);
+  const stateKind = resolveStateKind(displayDev, dryRun);
+  // Plan-INTENT kind for the held-fallback reason: it must keep firing under
+  // simulation, where only the state word goes factual.
+  const intentKind = resolveIntentStateKind({
+    kind: resolveRawPlanStateKind(displayDev),
+    reasonCode: (displayDev.reason as { code?: string } | undefined)?.code,
+    starved: displayDev.starvation?.isStarved === true,
+  });
   const profile = displayDev.steppedLoad?.profile;
 
-  const chip = resolveSteppedChip(displayDev);
-  const stateLabel = resolveSteppedStateLabel(displayDev);
   const powerText = resolveSteppedPowerText(displayDev);
-  const evState = resolveEvChargingStateLabel(displayDev);
-  const tempText = resolveSteppedTemperatureText(displayDev);
-  const secondaryText = evState ?? tempText ?? null;
+  // One modality fact line: temperature (for a temp-reporting stepped device
+  // like a water heater) wins over the level text — the rail below still
+  // carries the level position either way.
+  const factText = resolveSteppedTemperatureText(displayDev)
+    ?? resolveSteppedLevelFact(displayDev);
   const resolvedStatusText = profile ? resolveSteppedStatusLine(displayDev, profile, nowMs) : null;
-  const factualStatusText = resolvedStatusText ?? (stateKind === 'held' ? PLAN_STATE_HELD_FALLBACK_STATUS : null);
-  // In simulation the held/limited status line reads hypothetically to agree with
-  // the card's would-be-acted state (no-op outside simulation / for non-acted lines).
-  const statusText = factualStatusText === null ? null : toSimulationReasonLine(factualStatusText, dryRun);
+  const factualStatusText = resolvedStatusText ?? (intentKind === 'held' ? PLAN_STATE_HELD_FALLBACK_STATUS : null);
+  // One reason line: the status pipeline wins; an exceptional EV state
+  // (Paused / Waiting for car / Discharging / Unplugged) fills the slot only
+  // when no status renders. In simulation the held/limited status reads
+  // hypothetically (no-op outside simulation / for non-acted lines).
+  const singleReason = factualStatusText ?? resolveSteppedEvExceptionLabel(displayDev);
+  const statusText = singleReason === null ? null : toSimulationReasonLine(singleReason, dryRun);
 
   const cardClasses = [
     'pels-surface-card device-row plan-card plan-card--stepped clickable',
@@ -140,29 +167,23 @@ export const PlanSteppedCard = ({
           <h3 class="plan-card__title">{displayName}</h3>
         </div>
         <div class="plan-card__chips">
-          {chip && <span class={`plan-chip plan-chip--${chip.tone}`}>{chip.label}</span>}
-          {displayDev.budgetExempt === true && (
-            <span class="plan-chip plan-chip--muted">Always on</span>
-          )}
-          {displayDev.temperatureBoostActive === true && (
-            <span class="plan-chip plan-chip--ok" data-tooltip="Temperature boost is active">Boost</span>
-          )}
-          {displayDev.temperatureBoostActive !== true && displayDev.evBoostActive === true && (
-            <span class="plan-chip plan-chip--ok" data-tooltip="EV boost is active">Boost</span>
-          )}
-          <BudgetExemptChip dev={displayDev} />
+          <PlanCardStatusChipView dev={displayDev} displayKind={stateKind} dryRun={dryRun} />
           <DeadlineChip deviceId={dev.id} deviceName={dev.name} nowMs={nowMs} />
         </div>
       </div>
 
       <div class="plan-card__stepped-body">
+        {/* Same anatomy as the generic/temperature cards: bold canonical state
+            word + right-aligned power. The former "Level: 6 A" / "Off now"
+            bold slot moved to the fact line / state word respectively; the
+            former "Applying" chip is carried by the transit status line. */}
         <div class="plan-card__state-row">
-          <span class="plan-card__state-label">{stateLabel}</span>
+          <span class="plan-card__state-label">{PLAN_STATE_LABEL[stateKind]}</span>
           {powerText && <span class="plan-card__state-power">{powerText}</span>}
         </div>
 
-        {secondaryText !== null && (
-          <span class="plan-card__secondary-line">{secondaryText}</span>
+        {factText !== null && (
+          <span class="plan-card__secondary-line">{factText}</span>
         )}
         {statusText !== null && (
           <p class="plan-card__status-line pels-text-status-line">{statusText}</p>

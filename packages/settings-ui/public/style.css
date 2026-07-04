@@ -3541,37 +3541,6 @@ md-filled-button.is-busy {
 
 /* ── Temperature card (binary thermostats, heat pumps, water heaters) ────────── */
 
-.plan-card--temperature .plan-card__output-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: var(--spacing-2);
-  position: relative;
-  z-index: 1;
-}
-
-.plan-card--temperature .plan-card__output-state {
-  font-size: var(--font-size-md);
-  font-weight: var(--font-weight-semibold);
-  color: var(--text);
-}
-
-/* Off readout is the headline signal for an idle temperature card; mute it so
-   the running siblings' "On" reads as the foreground state. Scoped to idle
-   only — manual cards can read "On" or "Off" and muting "On" on a manually-
-   controlled running thermostat would hide an active state. */
-.plan-card--temperature[data-state-kind="idle"] .plan-card__output-state {
-  color: var(--text-secondary);
-  font-weight: var(--font-weight-normal);
-}
-
-.plan-card--temperature .plan-card__output-power {
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
 .plan-card--temperature .plan-card__temp-line {
   margin: 0;
   font-size: var(--font-size-sm);
@@ -3594,19 +3563,10 @@ md-filled-button.is-busy {
   z-index: 1;
 }
 
-.plan-card__idle-line {
-  margin: 0;
-  font-size: var(--font-size-sm);
-  line-height: var(--font-line-height-cozy);
-  position: relative;
-  z-index: 1;
-}
-
-.plan-card__idle-line--neutral {
-  color: var(--text-secondary);
-}
-
-.plan-card__idle-line--warning {
+/* Idle-classification copy carries its own tone through the shared reason
+   slot (the retired `__idle-line--warning` element's role): an unresponsive
+   device's "Not drawing power (…)" keeps its warning emphasis. */
+.plan-card--temperature .plan-card__temp-reason[data-tone="warning"] {
   color: var(--pels-status-on-warning);
 }
 
@@ -7466,32 +7426,37 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
 }
 
 /* Role-toned status text for the M3 device-card surfaces (TODO M3 alignment
-   items #3/#7 "reduce orange weight"). The tonal device cards carry their
-   semantic on a 4px left state-rail (see the `[data-state-kind=…]` surface
-   rules) plus this role-toned status text — the card header has no tone chip,
-   so the inline status line is what reads the state. Heroes deliberately do
-   NOT tone their headline: per the "one tonal story per surface" rule the hero
-   rim/rail + status chip carry the signal and the metric value stays neutral
+   items #3/#7 "reduce orange weight"). The device card is a plain neutral
+   surface (no tonal container, no left state-rail — see the `.plan-card`
+   comment above the `[data-state-kind=…]` opacity rules); its state reads
+   through the bold state WORD plus this role-toned status text, so colour
+   never carries the meaning alone. Heroes deliberately do NOT tone their
+   headline: per the "one tonal story per surface" rule the hero rim/rail +
+   status chip carry the signal and the metric value stays neutral
    (`--pels-text-display-color`) so the biggest number on the screen is also
    the most legible. Declared here — after the plain
-   `.plan-card__reason|__status-line|__output-state` rules — so the cascade
-   stays specificity-ascending (stylelint `no-descending-specificity`). Applies
-   to both the mobile dark and desktop light canvases. */
+   `.plan-card__reason|__status-line|__temp-reason|__state-label` rules — so
+   the cascade stays specificity-ascending (stylelint
+   `no-descending-specificity`). Applies to both the mobile dark and desktop
+   light canvases. */
 .plan-card[data-state-kind="held"] .plan-card__reason,
 .plan-card[data-state-kind="held"] .plan-card__status-line,
-.plan-card[data-state-kind="held"] .plan-card__output-state {
+.plan-card[data-state-kind="held"] .plan-card__temp-reason,
+.plan-card[data-state-kind="held"] .plan-card__state-label {
   color: var(--color-state-warning-text);
 }
 
 .plan-card[data-state-kind="resuming"] .plan-card__reason,
 .plan-card[data-state-kind="resuming"] .plan-card__status-line,
-.plan-card[data-state-kind="resuming"] .plan-card__output-state {
+.plan-card[data-state-kind="resuming"] .plan-card__temp-reason,
+.plan-card[data-state-kind="resuming"] .plan-card__state-label {
   color: var(--color-state-positive-text);
 }
 
 .plan-card[data-state-kind="unavailable"] .plan-card__reason,
 .plan-card[data-state-kind="unavailable"] .plan-card__status-line,
-.plan-card[data-state-kind="unavailable"] .plan-card__output-state {
+.plan-card[data-state-kind="unavailable"] .plan-card__temp-reason,
+.plan-card[data-state-kind="unavailable"] .plan-card__state-label {
   color: var(--color-state-negative-text);
 }
 

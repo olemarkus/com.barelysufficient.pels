@@ -349,8 +349,11 @@ export function resolveReportedLoadAfterPauseText(params: {
   // Name the user consequence, not the planner internal: a device that ignores
   // the pause still counts against the household's usage this hour. Canonical
   // "counts toward your usage" vocabulary (notes/ui-terminology.md). A concrete
-  // runtime-supplied detail (rare) overrides the generic consequence line.
-  return `${stem} — ${detail ?? 'this still counts toward your usage'}`;
+  // runtime-supplied detail (rare) overrides the generic consequence line. The
+  // hypothetical variant carries the trailing `(simulation)` tag — with the
+  // 2026-07 card grammar the reason line is the card's only hypothetical
+  // carrier, so the tag keeps a scrolled card honest on its own.
+  return `${stem} — ${detail ?? 'this still counts toward your usage'}${params.dryRun ? ' (simulation)' : ''}`;
 }
 
 // Reported-load conflict line for a "Run on solar surplus" dump load the user
@@ -371,7 +374,9 @@ export function resolveSurplusHoldReportedLoadText(params: {
     ? params.measuredPowerKw.toFixed(1)
     : '–';
   const action = params.dryRun ? 'would switch off' : 'switching off';
-  return `Still reporting ${measured} kW — ${action} to wait for solar surplus`;
+  // Trailing `(simulation)` tag on the hypothetical variant — same rule as
+  // `resolveReportedLoadAfterPauseText` above.
+  return `Still reporting ${measured} kW — ${action} to wait for solar surplus${params.dryRun ? ' (simulation)' : ''}`;
 }
 
 function formatRestoreNeedUserFacing(
