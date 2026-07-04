@@ -970,14 +970,6 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
       ellipsis-clips; if it does, switch the shell nav to M3 scrollable-tabs or a graceful wrap
       rather than a hard clip. Source: PR #1813 review gates (2026-07-02).
 
-- [ ] **Device detail: add a one-line live status near the device name.** The identity hero card is
-      gone — the navigation-chrome unification moved the device name into the slide panel's
-      `.pels-appbar` header. The original intent stands: add one line of live status (state +
-      current draw, the same producer-resolved data the Overview card renders) as the first
-      content row under the app bar, so the page answers "is PELS seeing this device right now?".
-      Source: PR #1807 review gates (2026-07-01); re-anchored by the navigation-chrome PR
-      (2026-07-02).
-
 - [ ] **Playwright stub: seeded smart-task data is internally inconsistent.** The
       `dev_connected300` fixture claims "Needs 12.0 kWh" and an on-track verdict, but the seeded
       learned rate (0.75 kW) × 6 picked hours cannot deliver 12 kWh. Fix the fixture so

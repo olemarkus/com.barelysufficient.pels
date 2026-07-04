@@ -985,6 +985,50 @@ md-primary-tab.tab[active] {
   height: 1.25rem;
 }
 
+/* Exception-only state chip on a hub nav card (Simulation `On`, Daily budget
+   `Off`, Electricity prices `Awaiting prices`). Sits in the `end` slot beside
+   the chevron; normal state keeps it `hidden`. */
+.settings-nav-card__chip {
+  align-self: center;
+  margin-inline-end: var(--spacing-2);
+  white-space: nowrap;
+}
+
+/* Device-detail live status: the first content row under the app bar — the
+   same state word + draw grammar the Overview card uses (state word toned by
+   `data-state-kind`, matching the card's role-toned text). */
+.device-detail-live-status {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--spacing-2);
+  padding: var(--spacing-2) var(--spacing-1);
+}
+
+.device-detail-live-status__state {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text);
+}
+
+.device-detail-live-status[data-state-kind="held"] .device-detail-live-status__state {
+  color: var(--color-state-warning-text);
+}
+
+.device-detail-live-status[data-state-kind="resuming"] .device-detail-live-status__state {
+  color: var(--color-state-positive-text);
+}
+
+.device-detail-live-status[data-state-kind="unavailable"] .device-detail-live-status__state {
+  color: var(--color-state-negative-text);
+}
+
+.device-detail-live-status__power {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
 .settings-detail-panel {
   display: grid;
   gap: var(--spacing-3);

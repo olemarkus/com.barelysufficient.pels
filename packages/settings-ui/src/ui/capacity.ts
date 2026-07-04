@@ -1,3 +1,4 @@
+import { syncSettingsHubChips } from './settingsHubChips.ts';
 import {
   settingsCapacityLimitInput,
   settingsCapacityMarginInput,
@@ -226,6 +227,7 @@ export const loadCapacitySettings = async () => {
   const dryRunChanged = state.dryRun !== isDryRun;
   state.dryRun = isDryRun;
   syncDryRunBannerVisibility();
+  syncSettingsHubChips();
   // An external simulation-mode change (e.g. a second open WebView, or a Flow)
   // reaches here via the realtime settings.set handler. Re-render the overview
   // so the hero decision sentence and device-card "(simulation)" framing flip
@@ -254,6 +256,7 @@ const saveCapacitySettingsPatch = async (
   state.dryRun = dryRun;
   syncCapacityControls(limit, margin, dryRun, powerSource);
   syncDryRunBannerVisibility();
+  syncSettingsHubChips();
   // Toggling simulation flips the hero decision sentence and the device-card
   // "(simulation)" hypothetical framing. Re-render the overview now so they flip
   // together with the banner instead of staying stale until the next realtime

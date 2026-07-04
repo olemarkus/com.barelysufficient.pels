@@ -1,3 +1,4 @@
+import { hideDeviceDetailLiveStatus, renderDeviceDetailLiveStatus } from './liveStatus.ts';
 import type {
   DeviceControlProfiles,
   SteppedLoadProfile,
@@ -256,6 +257,7 @@ const refreshOpenDeviceDetail = () => {
   }
 
   setDeviceDetailTitle(device.name);
+  void renderDeviceDetailLiveStatus(currentDetailDeviceId);
   setDeviceDetailControlStates(currentDetailDeviceId);
   setDeviceDetailShedBehavior({
     deviceId: currentDetailDeviceId,
@@ -298,6 +300,7 @@ export const openDeviceDetail = (deviceId: string) => {
   currentDetailDeviceId = deviceId;
 
   setDeviceDetailTitle(device.name);
+  void renderDeviceDetailLiveStatus(deviceId);
   setDeviceDetailControlStates(deviceId);
   setDeviceDetailShedBehavior({
     deviceId,
@@ -340,6 +343,7 @@ export const closeDeviceDetail = () => {
     closeSteppedLoadDraft(currentDetailDeviceId);
   }
   clearPendingNativeWiringEnable();
+  hideDeviceDetailLiveStatus();
   currentDetailDeviceId = null;
   if (deviceDetailOverlay) {
     deviceDetailOverlay.hidden = true;
@@ -482,6 +486,8 @@ const initDeviceDetailRefreshHandlers = () => {
     if (!currentDetailDeviceId) return;
 
     const deviceId = currentDetailDeviceId;
+    // The live-status row tracks every plan push while the overlay is open.
+    void renderDeviceDetailLiveStatus(deviceId);
     if (isDeviceDetailDiagnosticsExpanded()) {
       void refreshDeviceDetailDiagnostics({
         deviceId,
