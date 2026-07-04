@@ -26,6 +26,25 @@ The overview hero uses a specific vocabulary to keep the power/energy distinctio
 
 Projection formula: `projectedKWh = usedKWh + (currentKw × minutesRemaining / 60)`
 
+### Time anchors — every projected/budget figure names its window
+
+The same words (`Projected`, `Budget`) describe an **hour** figure on the
+Overview hero and a **day** figure on the Budget tab and the Budget-and-Price
+widget. A bare `Projected 16.8 kWh` on one surface next to `Projected this
+hour 4.4 kWh` on another reads as a contradiction, so every projected/budget
+figure carries its time window in the label:
+
+| Window | Anchor | Where |
+|---|---|---|
+| Current hour | `… this hour` | Overview hero (`Energy used this hour`, `Budget this hour`, `Projected this hour`) |
+| Current day | `Projected today` | Budget tab hero headline; Budget-and-Price widget headline (`Projected today 16.8 kWh · 19.60 kr`) |
+| Next day | `Planned for tomorrow` | Budget tab hero headline; Budget-and-Price widget headline — "Planned", not "Projected", because there is nothing measured to project from yet |
+
+The widget headline lead is byte-aligned with the Budget tab's
+`DAILY_BUDGET_HEADLINE_LABEL_BY_VIEW` (`dailyBudgetHeroStrings.ts`) — the
+widget copy imports those constants (`planPriceWidgetCopy.ts`) so the two
+surfaces cannot drift.
+
 ### "Safe pace now" — one label, two possible sources
 
 The dynamic tick on the power bar shows where PELS starts reacting. It can come from two constraints, but the user doesn't see the distinction in the primary label. The tooltip explains the source.
@@ -58,6 +77,14 @@ Managed 3.2 kW  ·  Background 2.9 kW  ·  Safe pace now 6.0 kW  ·  Hard cap 8.
 
 The value line should not repeat the time meaning already carried by the label:
 use `1.2 kW`, not `1.2 kW now`.
+
+**Split-pair order is Managed → Background everywhere** — the hero legend
+above, the Budget hero split bar, the Usage chart legend, and the Budget
+hourly-plan chart legend. Legends follow this reading-priority order (the
+pair the user scans for first is the part PELS controls), **not** the chart's
+bottom-to-top stack order — a legend that mirrors stack order on one surface
+and reading order on another flips the pair between adjacent tabs (decided
+2026-07, from PR #1806 review).
 
 Marker grammar for read-only meter tracks:
 
@@ -162,7 +189,7 @@ Source of truth: `packages/shared-domain/src/deadlineLabels.ts`. Pull every labe
 | Hero section label (eyebrow — pending hero only) | `Heating smart task` | `EV smart task` |
 | Live state chip — active (pending hero only) | `Heating` | `Charging` |
 | Live state chip — building plan (pending hero / list) | `Building plan…` | `Building plan…` |
-| Live state chip — plan ready, first hour later (list only) | `Scheduled` | `Scheduled` |
+| Live state chip — plan ready, first hour later (list only) | `On track` | `On track` |
 | Live state chip — session ended (pending hero / list) | (n/a) | `Paused — unplugged` |
 | Live state chip — on track, no active hour | `On track` | `On track` |
 | At-risk chip | `At risk` | `At risk` |
@@ -214,16 +241,34 @@ The smart-task list uses one chip per task. Source: `SMART_TASK_LIST_STATUS_LABE
 | Chip | Meaning |
 |---|---|
 | `Building plan…` | Pending; no plan allocation yet (often waiting for prices through the deadline). |
-| `Scheduled` | Plan ready, first scheduled hour is in the future. |
 | `Paused — unplugged` | EV: charging task is paused because the car is unplugged or the session ended. |
-| `On track` | PELS currently expects the task to reach the target. |
+| `On track` | PELS currently expects the task to reach the target — including when the plan is allocated and healthy but its first hour is still in the future. |
 | `At risk` | Plan exists but there is limited time or room left. |
 | `Cannot finish` | Not enough usable time or energy delivery before the deadline. |
 | `Satisfied` | The observed target is met. PELS resumes tracking if a later reading drops below it. |
 
+**`Scheduled` is retired as a status chip** (2026-07 coherence sweep, TODO
+402): a task whose plan is allocated and healthy answered "am I on track?"
+with `Scheduled` on the list card and `On track` on the detail hero — two
+words for one state read as a discrepancy. The list chip now says `On track`
+(same `ok` tone as the `on_track` id); the card's `Starts` row still carries
+the start time. `Scheduled` remains valid as a plain **schedule/when-window
+label** — the create-widget preview row, the Held-back-devices rescue
+preview's when-row, the smart-tasks widget trajectory's run-band key, and
+"N scheduled hours" prose — just never as a status chip.
+
 Internal note: the `DeadlineLiveState` enum value is still spelled `queued`
 (used in chip-tone resolvers and the list status id) so log schemas and JSON
-contracts remain stable — only the user-visible chip label changed.
+contracts remain stable — only the user-visible chip label changed. `queued`
+and `on_track` now share one label and tone; the distinction stays internal.
+
+The dashboard widget's compressed row variants are registered:
+`Unplugged` (for `Paused — unplugged`) and `Can’t resume` (for
+`Paused — can’t resume`) — the widget row at 320–480 px has roughly half the
+list card's width and the full em-dash forms truncate. Source:
+`SMART_TASK_WIDGET_STATUS_LABELS` in `deadlineLabels.ts`. The same compressed
+forms are the sanctioned inline status words on the list card's Ready-by line
+(where the full form's own em-dash would double the separator).
 
 #### Empty-state headlines
 
@@ -435,12 +480,43 @@ The four Usage-tab charts (Today-so-far hourly bars, Daily usage history, Typica
 
 Two-line grammar — primary line names the time bucket, secondary line carries the measurements joined with ` · ` (measurement segments use non-breaking spaces internally, so a unit never wraps away from its number; wraps happen only at the separators):
 
-- Today so far / Yesterday (hourly): `13:00–14:00` / `Measured 1.31 kWh`, plus `Managed 0.80 kWh · Background 0.51 kWh` when the split exists, plus `Unreliable — some readings missing this hour` (warn tone) when the hour is flagged — the readout names the consequence; the chart legend and stat strip keep their established one-word `Warning`/`Warnings` labels. When solar makes the gross managed/background split exceed measured net usage, prefix the split line with `Before solar:`. The range closes the day at `23:00–00:00`. The in-progress current hour reads `Measured 0.45 kWh so far`.
+- Today so far / Yesterday (hourly): `13:00–14:00` / `Measured 1.31 kWh`, plus `Managed 0.80 kWh · Background 0.51 kWh` when the split exists — and when the split leaves a real remainder (the chart's neutral third stack segment), the line appends it as **`Other 0.12 kWh`**. `Other` is the canonical word for measured energy the split can't attribute (decided 2026-07; "unattributed" was rejected as jargon). It is named only in the tapped readout — the segment stays off-legend by design. Also `Unreliable — some readings missing this hour` (warn tone) when the hour is flagged — the readout names the consequence; the chart legend and stat strip keep their established one-word `Warning`/`Warnings` labels. When solar makes the gross managed/background split exceed measured net usage, prefix the split line with `Before solar:`. The range closes the day at `23:00–00:00`. The in-progress current hour reads `Measured 0.45 kWh so far`.
 - Daily usage history: `Thu 4 Jun` / `12.6 kWh` (the rendered date format — locale-dependent, no comma in en-GB-style locales), plus budget context only when a daily budget is configured: `1.2 kWh over budget` (warn tone) or `Within budget of 14.0 kWh`. The budget number is the ACTIVE daily budget — the same one the Budget tab's hero shows — never the budget-adjust draft. The window-clipped oldest day of the 14-day history reads `9.1 kWh (partial day)`.
 - Typical day: `13:00–14:00` / `Average 1.24 kWh`.
 - Detailed hourly view (week heatmap): `Thu, Jun 4 · 13:00–14:00` / `1.24 kWh` — a cell that aggregates more than one physical hour (DST fall-back) keeps the established `2.40 kWh total` suffix, and flagged cells add the same `Unreliable — some readings missing this hour` consequence line. The default selection is the most recent cell with data; a tap on an empty cell or outside the grid restores it.
 
-Vocabulary stays canonical: `Measured` / `Managed` / `Background` / `budget` — never `controlled` / `uncontrolled` / `shed`.
+Vocabulary stays canonical: `Measured` / `Managed` / `Background` / `Other` / `budget` — never `controlled` / `uncontrolled` / `shed` / `unattributed`.
+
+### Usage hero dead-band chips — `On pace` vs `On track`
+
+The Usage hero's "nothing to report" chip has two deliberate forms (source:
+`usageHeroStrings.ts`), because the two windows make genuinely different
+claims:
+
+| Chip | Baseline | When |
+|---|---|---|
+| `On pace` | Elapsed-pace comparison (`… kWh vs pace`) | Early-morning window where the end-of-day projection is suppressed — the claim is only "so far, today matches a typical day's pace". |
+| `On track` | End-of-day projection (`… kWh vs typical`) | Rest of the day — the claim is "today is projected to end near typical". |
+
+Keep both: collapsing them to one word would either overclaim in the morning
+(`On track` before a projection exists) or underclaim later. Each chip pairs
+with the delta label of its own baseline, so the pair can't mix.
+
+## Price info — one role per surface
+
+Current/near-term price context renders on exactly three surfaces, each with
+its own role. Do **not** add a fourth price surface (or move one of these
+roles) without updating this table — three renderings of "the price now" is
+the ceiling, and each exists because its page mission needs it:
+
+| Surface | Role | Rendering |
+|---|---|---|
+| Overview hero | The one *actionable* price fact for the set-and-forget owner | `Cheapest hour ahead: 02:00, 0.18 kr/kWh.` subline (`formatCheapestUpcomingHour`) — nothing else |
+| Budget tab | Price as *planning context* for the Optimiser | Exception-only `Price low` / `Price high` header chip + the shaping tagline (`Using cheaper hours`) + prosumer `Export price now:` subline |
+| Settings → Electricity prices | Price as *configuration + verification* | The `Right now` card (current price, export row, planning-price reason line) + source settings |
+
+The widgets reuse the same exception-only `Price low` / `Price high` pair
+(`priceLevelChips.ts`) — a glance surface, not a fourth role.
 
 ### Budget tab chart readout (pinned, one interaction grammar)
 
@@ -451,6 +527,14 @@ The Budget chart (Progress + Hourly plan modes) reuses the same pinned-readout p
 - Default selection: Today follows the current hour in both modes; yesterday/tomorrow anchor on the end-of-day column in Progress mode (the cumulative chart's answer is how the day ends) and on the day's peak hour in Hourly plan mode.
 
 Deliberate distinction: the Budget readout says `Actual` — it pairs with `Budget` (budget vs. actual) — while the Usage readouts say `Measured` (a bare measurement with no budget to compare against). Both terms stay; do not unify them.
+
+The **Budget-and-Price widget** legend says `Used` for the same measured
+consumption — the third registered form (source:
+`PLAN_PRICE_WIDGET_LEGEND` in `planPriceWidgetCopy.ts`). A dashboard tile
+speaks the plainest register (`Used` beside `Budget` and `Price`), the Budget
+tab speaks budget-vs-actual, the Usage tab speaks bare measurement. All three
+are deliberate; a reviewer flagging the triple should land here, not rename
+one of them.
 
 ### Chart colour: neutral semantic palette vs the status-toned hero gauge
 

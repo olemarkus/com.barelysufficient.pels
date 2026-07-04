@@ -227,19 +227,19 @@ describe('plan budget widget browser', () => {
 
   test('splits the projected summary into headline + toned status parts', () => {
     expect(resolveSummaryParts(PREVIEW_TODAY_PAYLOAD)).toEqual({
-      headline: 'Projected 16.8 kWh · 19.60 kr',
+      headline: 'Projected today 16.8 kWh · 19.60 kr',
       status: 'On track',
       tone: 'on_track',
     });
     // Over budget → red tone status.
     expect(resolveSummaryParts({ ...PREVIEW_TODAY_PAYLOAD, summaryTone: 'over' })).toEqual({
-      headline: 'Projected 16.8 kWh · 19.60 kr',
+      headline: 'Projected today 16.8 kWh · 19.60 kr',
       status: 'Over budget',
       tone: 'over',
     });
     // Tomorrow (tone null) → headline only, no status.
     expect(resolveSummaryParts({ ...PREVIEW_TODAY_PAYLOAD, summaryTone: null })).toEqual({
-      headline: 'Projected 16.8 kWh · 19.60 kr',
+      headline: 'Projected today 16.8 kWh · 19.60 kr',
       status: '',
       tone: null,
     });
@@ -259,7 +259,7 @@ describe('plan budget widget browser', () => {
 
     controller.bootstrap(null);
 
-    expect(targets.summaryHeadlineEl.textContent).toBe('Projected 16.8 kWh · 19.60 kr');
+    expect(targets.summaryHeadlineEl.textContent).toBe('Projected today 16.8 kWh · 19.60 kr');
     expect(targets.summaryStatusEl.textContent).toBe('On track');
     expect(targets.summaryStatusEl.hidden).toBe(false);
     expect(targets.summaryEl.classList.contains('summary--on-track')).toBe(true);
@@ -354,7 +354,7 @@ describe('plan budget widget browser', () => {
     expect(targets.chartEl.getAttribute('aria-label')).toBe('Budget and price chart for tomorrow');
     expect(targets.tabsEl.hidden).toBe(false);
     // Tomorrow has no budget comparison → headline only, no status chip.
-    expect(targets.summaryHeadlineEl.textContent).toBe('Projected 15.6 kWh · 18.30 kr');
+    expect(targets.summaryHeadlineEl.textContent).toBe('Planned for tomorrow 15.6 kWh · 18.30 kr');
     expect(targets.summaryStatusEl.hidden).toBe(true);
 
     Object.defineProperty(document, 'visibilityState', {

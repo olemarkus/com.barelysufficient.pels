@@ -124,7 +124,7 @@ Create an EV charging dashboard and add these PELS widgets:
 | Widget | Use it for |
 | --- | --- |
 | **New smart task** | Create the charging task from the dashboard. |
-| **Smart tasks** | Watch whether the EV task is **Scheduled**, **On track**, **At risk**, or **Cannot finish**. |
+| **Smart tasks** | Watch whether the EV task is **On track**, **At risk**, or **Cannot finish**. |
 | **Available power** | See whether the home is close to the hard cap right now. |
 | **Budget and Price** | See today's budget, price shape, and whether the day is tracking to plan. |
 | **Held-back devices** | Optional: see devices currently waiting and release an eligible one when you deliberately want it sooner. |
@@ -151,8 +151,7 @@ Use the widgets in this order.
 
 | What you see | What it means |
 | --- | --- |
-| **Scheduled** | PELS has selected future charging hours. No action is needed. |
-| **On track** | The task is progressing and PELS expects it to reach the target. The task detail may also say **Charging now** during an active charging hour. |
+| **On track** | PELS expects the task to reach the target — either charging hours are selected for later, or charging is already progressing. The task detail may also say **Charging now** during an active charging hour. |
 | **Paused — unplugged** | The EV task is paused because the car is unplugged or the session ended. Plug the car back in if the deadline still matters. |
 | **At risk** | The target may still be possible, but time or available power is getting tight. |
 | **Cannot finish** | PELS does not currently see enough usable charging before the ready-by time. |

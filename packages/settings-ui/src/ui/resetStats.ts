@@ -16,7 +16,7 @@ export const handleResetStats = async (btn: MdButtonElement) => {
   if (!btn.classList.contains('confirming')) {
     await logSettingsInfo('Reset stats confirmation requested', 'handleResetStats');
     const b = btn;
-    b.textContent = '\u26A0\uFE0F Click again to confirm reset';
+    b.textContent = '\u26A0\uFE0F Tap again to confirm reset';
     b.classList.add('confirming');
 
     if (resetTimeout) clearTimeout(resetTimeout);

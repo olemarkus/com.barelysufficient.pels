@@ -34,7 +34,7 @@ The widget shows today's hourly plan as a chart — managed and background usage
 
 ## Smart tasks
 
-Answers **"are my deadlines on track?"**
+Answers **"are my smart tasks on track?"**
 
 ![Smart tasks widget listing three tasks ranked by attention needed, each with a status chip and ready-by time](/screenshots/widgets/smart-tasks.png)
 
@@ -42,7 +42,7 @@ The widget lists up to three active Smart tasks, ranked by how much attention th
 
 Each row shows:
 
-- Device name and the status chip (for example **Cannot finish**, **At risk**, **Scheduled**, **On track**, or **Unplugged**).
+- Device name and the status chip (for example **Cannot finish**, **At risk**, **On track**, or **Unplugged**).
 - The current value moving toward the target (for example `19 °C → 21 °C`), or just the target if the device has not reported yet.
 - The **Ready by** time the task is aiming for.
 
@@ -102,7 +102,7 @@ The widget lists devices PELS is currently holding back (paused or limited) and 
 
 - **Available power** — a constant read on capacity pressure when you run heavy loads (an EV charger, a sauna, a wallbox heater).
 - **Budget and Price** — to see where today's energy and cost will land, and which hours are cheapest.
-- **Smart tasks** — when you depend on deadlines; the widget turns red before you'd otherwise notice a miss.
+- **Smart tasks** — when you depend on smart-task deadlines; the widget turns red before you'd otherwise notice a miss.
 - **New smart task** — to set a one-off ready-by goal without opening the app or building a Flow.
 - **Held-back devices** — to understand why something is not running right now, and optionally let one budget-held device run now.
 

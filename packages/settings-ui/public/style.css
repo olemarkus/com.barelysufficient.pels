@@ -1619,7 +1619,7 @@ md-filled-button.is-busy {
 /* Quiet outline chip: transparent (no fill) with a subtle border, for a
    TYPE/category label that must read as structural metadata, not a state
    signal. Pairs with the tonal (filled) status chips so a list card can show
-   "Temperature" (outline) next to "Scheduled" (tonal) and the two never blur
+   "Temperature" (outline) next to "Building plan…" (tonal) and the two never blur
    into one grey pair. Text stays `--text` for the same small-text AA reason
    the `--muted` variant documents; the missing fill is what makes it quiet. */
 .plan-chip--outline,
@@ -5241,7 +5241,7 @@ details[open] > summary .disclosure-chevron {
 }
 
 /* Two-step discard confirm on the Budget header toggle: the armed state
-   ("Click again to discard") carries the warning tone so it reads as a
+   ("Tap again to discard") carries the warning tone so it reads as a
    destructive choice. Label colour reaches the shadow-DOM text via the
    `--md-outlined-button-*` custom properties, not the host `color`. The
    state-pair tokens (`--color-state-warning-text` / `-border`) match the
@@ -7082,7 +7082,7 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   min-width: 0;
 }
 
-/* The neutral "Scheduled" status chip (`--muted`) defaults to a
+/* A neutral muted status chip (e.g. "Building plan…", `--muted`) defaults to a
    container-high fill — the SAME surface the card itself uses — so it read as
    an invisible-fill pill barely distinguishable from the transparent outline
    type chip beside it. Lift the list-card status chip a surface step so the

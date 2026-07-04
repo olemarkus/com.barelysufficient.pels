@@ -80,6 +80,13 @@ export const BUDGET_HERO_USING_CHEAPER_HOURS_NO_PRICES = 'Using cheaper hours (p
 // pins the vocabulary: Managed / Background — never controlled/uncontrolled).
 export const SPLIT_MANAGED_LABEL = 'Managed';
 export const SPLIT_BACKGROUND_LABEL = 'Background';
+// The measured remainder the split can't attribute to either side (sampling
+// gaps, meter drift). It renders as a neutral third stack segment on the
+// Usage chart (off-legend by design) and is NAMED only in the tapped readout
+// so the visible ink is never unexplained. Decision recorded in
+// `notes/ui-terminology.md` § usage readouts — "Other", not "unattributed"
+// (jargon) and not a bare subtraction the user must do themselves.
+export const SPLIT_OTHER_LABEL = 'Other';
 
 // Today-view split labels that name managed vs background kWh totals,
 // rendered beside the swatches under the Budget hero's stacked split bar.

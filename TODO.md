@@ -391,6 +391,27 @@ CI failure, so future field-move slices can't silently grow the debt.*
       (was P2 before the producer gate removed the harm).* Files: `packages/settings-ui/src/ui/deviceDetail/solarSurplus.ts`,
       `packages/settings-ui/src/ui/deviceDetail/index.ts`.
 
+- [ ] **Settings-UI structural consolidation train (deferred by the 2026-07 coherence review).**
+      A designed, not-yet-executed train that unwinds the two-rendering-paradigms mess within the
+      approved map `notes/settings-ui-semantic-map.md`. Order: shared Preact primitives in
+      `src/ui/views/components/` — `Chip` (absorb `chipModifier.ts`, `usageHero.ts`
+      `CHIP_TONE_CLASSES`, `BudgetOverview.tsx` `deltaChipClass`; canonical tone set, migrate `ok`→
+      `good`, then drop the CSS alias) → `SegmentedControl` (extract `ToggleGroup` from
+      `BudgetOverview.tsx` + the roving-tabindex keyboard model from `segmentedControl.ts`) →
+      `Card` (fix `DeadlinePlan.tsx`'s `budget-redesign-card` misuse) → `Hero` (the four Preact
+      heroes; unblocks future hero-content work) → `DeviceRow` scaffold (from
+      `PriceAwareDevicesView.tsx`) — then imperative→Preact migrations: Usage hero (kills the last
+      static-HTML hero in `index.html`) → Usage day view (deletes `createToggleGroup`, segmented
+      impl 2/3) → Devices list (converges `buildRedesignDeviceRow`, rides the toggle-ring-contrast
+      P2) → device-detail overlay slice-by-slice (Power-limiting slice first: rehome the hidden
+      `md-filled-select` state store in `shedBehavior.ts` + `index.html`, deleting
+      `segmentedControl.ts`, segmented impl 3/3) → Modes (Sortable.js needs an imperative island) →
+      Advanced. Plus a boot.ts quick win: replace the `budget-adjust`/`budget-weather` virtual-
+      target if-chains with a declarative map. One surface/primitive per PR, screenshot-gated on
+      convergence. Persona: contributor velocity + Set-and-forget owner (visual coherence);
+      hypothesis: three segmented impls / two device rows / per-file chip vocab is where per-page
+      drift keeps re-entering. [P2, structural]
+
 - [ ] **Converge the three lone master-toggle rows on one switch-row pattern.** Weather insight,
       Simulation, and Price-aware devices each present a lone switch on its own line — weaker than a
       Material list-item row with a trailing switch (label + supporting text + trailing control).
@@ -398,15 +419,6 @@ CI failure, so future field-move slices can't silently grow the debt.*
       reads the same everywhere. Persona: Set-and-forget owner; hypothesis: a bare switch reads as a
       stray control, a titled row reads as "this is the feature's on/off". Source: PR #1813 review
       gates (2026-07-02). [PR-6 control grammar]
-
-- [ ] **Smart-task pre-start status reads differently across the two surfaces.** For a task whose
-      first hour is still in the future, the Smart-tasks list card shows the `Scheduled` status chip
-      while the detail hero's on-track status row shows `On track` — the same task answers "am I on
-      track?" with two different words depending on where you look. Consider affirming on-track on the
-      list card pre-start (e.g. an `On track` chip once the plan is allocated and healthy, reserving
-      `Scheduled` for the not-yet-allocated case), or otherwise reconciling the two vocabularies.
-      Persona: Verifying owner glancing the list then opening the detail; hypothesis: two words for
-      one state reads as a discrepancy. Source: PR #1821 review gates (2026-07-02). [legibility/copy]
 
 - [ ] **Segmented-selected uses full primary green instead of a tonal-selected container.** The
       segmented control's selected segment fills with the full primary accent, louder than the new
@@ -479,23 +491,6 @@ CI failure, so future field-move slices can't silently grow the debt.*
       *Persona:* prosumer with export pricing configured who tunes their main-fuse capacity limit.
       *Hypothesis:* the ≤3 h persisted-flag drift is invisible in practice; the flow-card token split is
       the one a user could notice (trigger fires on a "cheap" surplus hour whose money token looks high).
-
-- [ ] **Split-pair label order differs by surface — pick one convention app-wide.** The Budget hero
-      split bar labels Managed→Background (matching its left-to-right bar segment order), while the
-      Usage chart and Budget hourly-plan chart legends read Background→Managed (matching bottom-to-top
-      stack order). Both are internally consistent but the pair flips between adjacent surfaces.
-      Decide one canonical order (likely legend = stack order everywhere, or reading-priority order
-      everywhere) and align `BudgetHeroSplit`, `buildLegendData` (usageDayChartEcharts.ts), and
-      `ChartLegend` (BudgetOverview.tsx).
-      *From PR #1806 review (managed/background split visibility).*
-
-- [ ] **Unattributed usage remainder is visible ink but unnamed in the tapped readout.** The Usage
-      stack renders measured energy the split does not attribute as a neutral third segment
-      (`--pels-chart-unattributed`, off-legend by design). The tapped readout shows Measured +
-      Managed + Background, so the user can subtract — but the segment itself has no name anywhere.
-      Needs a `notes/ui-terminology.md` decision (candidate words: "unattributed", "other") before
-      naming it in the readout or legend; do not invent the word ad hoc in a view.
-      *From PR #1806 review.*
 
 - [ ] **Extract the duplicated ECharts select-style identity object.** The on-surface select border
       (`select: { itemStyle: { borderColor: palette.text, borderWidth: 2 } }`) is copy-pasted at ~5
@@ -739,7 +734,7 @@ CI failure, so future field-move slices can't silently grow the debt.*
       backfill change, 2026-06-13.
 
 - [ ] **Give the armed budget-discard state a visible "keep changes" path.** The Budget header's
-      two-step confirm shows only the destructive option ("Click again to discard"); the save path
+      two-step confirm shows only the destructive option ("Tap again to discard"); the save path
       (Preview changes → Apply) is a sticky CTA further down, and the explanatory text lives in a
       hover-only `title` that touch users never see. Surface a one-line inline hint near the armed
       button (or render the armed moment as a Keep editing / Discard pair). Persona: returning
@@ -776,12 +771,6 @@ CI failure, so future field-move slices can't silently grow the debt.*
       preview already does. Persona: impatient Optimiser; hypothesis: rapid preview→apply→Done
       sequences on slow Homey bridges leave the Adjust view claiming unsaved changes that were in
       fact applied. Source: adversarial correctness lens, 2026-06-10.
-
-- [ ] **Sweep the two-step confirm family from "Click again…" to "Tap again…".** All four armed
-      confirm labels (reset usage history, device cleanup ×2, budget discard) say "Click" inside a
-      touch-first WebView. Sweep them together so the idiom doesn't fork. Persona: phone-only owner;
-      hypothesis: "click" is desktop vocabulary that subtly signals the UI wasn't built for the
-      device in their hand. Source: pels-copy-and-terminology + pels-ux-fit, 2026-06-10.
 
 *Chart-overhaul train review follow-ups (2026-06-11, PRs #1677–#1681). Non-blocking.*
 
@@ -995,20 +984,6 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
       reconciling the numbers today would flag a phantom bug (or miss a real one). Source:
       PR #1807 review gates (2026-07-01).
 
-- [ ] **docs/widgets.md smart-tasks section still says "deadlines".** `docs/widgets.md:37`
-      ("Answers *are my deadlines on track?*") uses the pre-rename "deadlines" phrasing; the
-      user-facing surface (and the smart-tasks-surface spec) now says "smart tasks". Post-release
-      docs pass — VitePress human-facing site, decoupled from the app copy sweep. Source: PR #1826
-      copy-sweep review gates (2026-07-02).
-
-- [ ] **Smart-task live hero shows "65 °C" but the target line shows "65.0 °C" (double precision).**
-      Pre-existing: `formatProgressValueForUnit` (`packages/shared-domain/src/deadlineLabels.ts`)
-      renders one temperature with a trailing zero and another without on the same live smart-task
-      hero, so the same figure reads at two precisions. Reconcile the temperature precision across
-      the hero's current/target lines. Follow-up, out of scope for the copy sweep (which only
-      touched the temperature-card / idle / stepped / starvation surfaces). Source: PR #1826
-      copy-sweep review gates (2026-07-02).
-
 - [ ] **Canon note: en-GB date pinning forces English months beside a localized daily readout.**
       The Usage-tab date grammar is now English-pinned day-first (`formatDayFirstInTimeZone`, en-GB)
       so CI can't flip to month-first, but that means a non-English Homey renders English month
@@ -1050,6 +1025,16 @@ cosmetic chores — do them in passing or drop them; don't park them here.*
       never claim an all-clear it can't back with a current-hour price. Fix: tier `NORMAL` only when a price
       actually covers the current hour. Files: `lib/plan/pelsStatus.ts`. *P3 (release-review adversarial
       verify, 2026-07-03).*
+
+- [ ] **Headroom widget: decide how a negative "Power now" reads in an exporting solar home.** With
+      net export the Available-power widget's `Power now` figure goes negative with no explaining
+      subline (the Overview hero has the `Solar now …` line; the 100 px tile has no room for one).
+      Decide whether the tile renders the signed value as-is (honest but startling), clamps at 0
+      with the export carried elsewhere, or gains a minimal export cue — and record the decision in
+      `notes/ui-terminology.md`. *Persona:* prosumer glancing the dashboard mid-day. *Hypothesis:*
+      a bare negative kW without context reads as a bug, not as export. *Why:* the widget is many
+      prosumers' most-glanced PELS surface. Files: `widgets/headroom/src/public/render.ts`,
+      `packages/shared-domain/src/headroomWidgetCopy.ts`. *P3 (2026-07 coherence review).*
 
 - [ ] **Cheapest-hours minimum-run fallback for "Run on solar surplus" dump loads (candidate v1.2).**
       *Hypothesis:* "if this device has not run on surplus for N hours, run it in the cheapest upcoming

@@ -371,7 +371,11 @@ const buildLegendData = (params: {
     stack.fallbackKWh !== null && stack.fallbackKWh > 0 && !isWarnBar(bars[index])
   ));
   return [
-    ...(hasSplitBars ? [SPLIT_BACKGROUND_LABEL, SPLIT_MANAGED_LABEL] : []),
+    // Canonical split-pair order is Managed → Background app-wide (reading-
+    // priority order, matching the Budget hero split; legends do not mirror
+    // the bottom-to-top stack order). See notes/ui-terminology.md § Hero
+    // legend / split-pair order.
+    ...(hasSplitBars ? [SPLIT_MANAGED_LABEL, SPLIT_BACKGROUND_LABEL] : []),
     ...(!hasSplitBars || hasMeasuredFallbackBars ? ['Measured'] : []),
     ...(hasWarnBars ? ['Warning'] : []),
   ];

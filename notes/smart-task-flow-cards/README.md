@@ -125,9 +125,11 @@ One condition-card constraint still matters: `deadline_status_is`'s shipped
 dropdown is intentionally the canonical flow-status set only — `Waiting`,
 `On track`, `At risk`, `Cannot finish`, `Satisfied` (`waiting`, `on_track`,
 `at_risk`, `unachievable`, `satisfied`). Public docs must not describe
-Smart-task list-only display states (`Scheduled`, `Paused — unplugged`) or
-label variants (`Building plan…`) as selectable values unless the card JSON
-grows matching dropdown options.
+Smart-task list-only display states (`Paused — unplugged`) or label variants
+(`Building plan…`) as selectable values unless the card JSON grows matching
+dropdown options. (The former list-only `Scheduled` chip was retired in the
+2026-07 coherence sweep — a queued task's chip now reads `On track`, which IS
+a selectable dropdown value.)
 
 ## Stable token contract
 

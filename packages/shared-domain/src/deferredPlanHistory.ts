@@ -572,7 +572,8 @@ export const formatPlanHistoryObservedCoverage = (
   // Singularize the noun for the M === 1 case ("…of 1 scheduled hour") — matches the
   // `Schedule updated ${count} ${count === 1 ? 'time' : 'times'}` pattern elsewhere in this
   // file. M === 0 is short-circuited above so the helper never has to render "0 scheduled
-  // hours" as the denominator. "Scheduled" aligns with `SMART_TASK_LIST_STATUS_LABELS.queued`
+  // hours" as the denominator. "Scheduled" is the plain schedule-window word
+  // (not the status-chip vocabulary — the queued chip now reads "On track")
   // and keeps planner-layer vocabulary ("planned") out of user copy
   // (feedback_terminology_plan_vs_deadline).
   const noun = plannedBuckets.length === 1 ? 'hour' : 'hours';

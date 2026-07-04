@@ -224,7 +224,7 @@ describe('buildSmartTasksWidgetPayload', () => {
     expect(payload.state).toBe('ready');
     if (payload.state !== 'ready') return;
     expect(payload.rows.map((r) => r.deviceName)).toEqual(['Risky', 'Queued']);
-    expect(payload.rows[1].statusLabel).toBe('Scheduled');
+    expect(payload.rows[1].statusLabel).toBe('On track');
   });
 
   test('classifies paused_unplugged (EV unplugged mid-plan) into the pending tier', () => {
@@ -424,7 +424,7 @@ describe('buildSmartTasksWidgetPayload', () => {
     const payload = buildSmartTasksWidgetPayload(buildInput({ queued: queuedPlan }));
     expect(payload.state).toBe('ready');
     if (payload.state !== 'ready') return;
-    expect(payload.rows[0].statusLabel).toBe('Scheduled');
+    expect(payload.rows[0].statusLabel).toBe('On track');
     expect(payload.rows[0].whyLabel).toBe('Cheaper hours start at 12:00.');
     expect(payload.rows[0].recourseHint).toBeNull();
   });
