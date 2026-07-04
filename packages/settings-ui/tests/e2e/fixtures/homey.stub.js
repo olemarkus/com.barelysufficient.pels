@@ -745,7 +745,14 @@
     overview_redesign_enabled: false,
 
     // Status and heartbeat
-    pels_status: { lastPowerUpdate: Date.now() - 12 * 1000 },
+    pels_status: {
+      lastPowerUpdate: Date.now() - 12 * 1000,
+      // A current-hour price level exists whenever prices cover now (the
+      // fixture ships combined_prices) — without it the Electricity-prices
+      // "Right now" tier and the Settings-hub chip would honestly claim
+      // "Awaiting prices" against a fixture that HAS prices.
+      priceLevel: 'normal',
+    },
     app_heartbeat: Date.now() - 5 * 1000,
 
     // Prices

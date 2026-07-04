@@ -1,3 +1,4 @@
+import { syncSettingsHubChips } from './settingsHubChips.ts';
 import { panels, tabListEntries, tabs, type MdTabElement } from './dom.ts';
 import {
   SETTINGS_UI_DEVICES_PATH,
@@ -22,14 +23,11 @@ import {
   DEVICE_DRIVER_OVERRIDES,
   EV_BOOST_SETTINGS,
   NATIVE_EV_WIRING_DEVICES,
-  DAILY_BUDGET_CONTROLLED_WEIGHT,
-  DAILY_BUDGET_PRICE_FLEX_SHARE,
   DEBUG_LOGGING_TOPICS,
   NORWAY_PRICE_MODEL,
   OPERATING_MODE_SETTING,
   OVERSHOOT_BEHAVIORS,
   TEMPERATURE_BOOST_SETTINGS,
-  PRICE_OPTIMIZATION_ENABLED,
   PRICE_SCHEME,
   WEATHER_ADVISOR_SETTINGS,
 } from '../../../contracts/src/settingsKeys.ts';
@@ -84,19 +82,8 @@ import {
   refreshWeatherInsightOnBudgetTab,
   refreshWeatherInsightOnWeatherPanel,
 } from './weatherInsight.ts';
+import { DAILY_BUDGET_REFRESH_KEYS, DAILY_BUDGET_SETTINGS_KEYS } from './realtimeDailyBudgetKeys.ts';
 
-const DAILY_BUDGET_REFRESH_KEYS = new Set([
-  'daily_budget_enabled',
-  'daily_budget_kwh',
-  'daily_budget_price_shaping_enabled',
-  'daily_budget_reset',
-  COMBINED_PRICES,
-  PRICE_OPTIMIZATION_ENABLED,
-  CAPACITY_LIMIT_KW,
-  CAPACITY_MARGIN_KW,
-  DAILY_BUDGET_CONTROLLED_WEIGHT,
-  DAILY_BUDGET_PRICE_FLEX_SHARE,
-]);
 
 const POWER_USAGE_REALTIME_REFRESH_MIN_INTERVAL_MS = 30 * 1000;
 
@@ -111,13 +98,6 @@ const REDESIGN_SETTINGS_SECTIONS = new Set([
   'advanced',
 ]);
 
-const DAILY_BUDGET_SETTINGS_KEYS = new Set([
-  'daily_budget_enabled',
-  'daily_budget_kwh',
-  'daily_budget_price_shaping_enabled',
-  DAILY_BUDGET_CONTROLLED_WEIGHT,
-  DAILY_BUDGET_PRICE_FLEX_SHARE,
-]);
 
 const CAPACITY_SETTINGS_KEYS = new Set([CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW, CAPACITY_DRY_RUN]);
 const ADVANCED_SETTINGS_KEYS = new Set([
@@ -261,6 +241,9 @@ const refreshDailyBudgetSettings = (key: string) => {
     runLoggedTask(refreshBudgetAdjust(), 'Failed to refresh adjust draft', 'settings.set');
   }
   runLoggedTask(refreshDailyBudgetPlan(), 'Failed to refresh daily budget', 'settings.set');
+  // The hub's Daily-budget `Off` chip tracks `daily_budget_enabled` — cheap
+  // cached reads, so syncing on every budget-key change is fine.
+  syncSettingsHubChips();
 };
 
 const refreshPriceSettings = (key: string) => {
@@ -420,6 +403,8 @@ const handlePlanUpdated = (plan: unknown) => {
 const handlePricesUpdated = () => {
   invalidateApiCache(SETTINGS_UI_PRICES_PATH);
   refreshPricesIfVisible('realtime prices_updated');
+  // Fresh prices can clear (or raise) the hub's `Awaiting prices` chip.
+  syncSettingsHubChips();
   // The overview hero anticipation subline ("Cheapest hour ahead …") depends on
   // cached prices. Keep it in sync with realtime price updates without forcing a
   // plan re-fetch — the cached plan snapshot is still current. Skip the fetch
@@ -469,6 +454,9 @@ const handlePowerUpdated = (power: unknown) => {
   // retires it on its own).
   updatePlanPower(payload?.status ?? null, hasFullTracker ? payload.tracker : undefined);
   updateBudgetPower(payload?.status ?? null);
+  // The hub's `Awaiting prices` chip reads the price level this push just
+  // primed into the power cache — cheap idempotent DOM sync.
+  syncSettingsHubChips();
   updateStaleDataStatusFromPowerPayload(payload ?? null);
   refreshPowerDataIfVisible('realtime power_updated', {
     force: hasFullTracker,

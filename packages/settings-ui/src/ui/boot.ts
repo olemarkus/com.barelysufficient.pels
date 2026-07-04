@@ -1,4 +1,5 @@
 import { showUsageDayToday } from './usageDayView.ts';
+import { syncSettingsHubChips } from './settingsHubChips.ts';
 import './materialWeb.ts';
 import {
   emptyState,
@@ -356,6 +357,9 @@ const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
     loadAdvancedSettings(),
     initWeatherInsight(),
   ]);
+  // Hub exception chips need the loads above (dry-run state, budget setting,
+  // power/price payloads) — one sync after the parallel phase settles.
+  syncSettingsHubChips();
 
   // Phase 3: Render everything once with all state populated
   // Device-dependent renders (renderPriorities, renderDevices)
