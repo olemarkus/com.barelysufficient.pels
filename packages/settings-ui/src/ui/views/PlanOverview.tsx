@@ -1,4 +1,5 @@
 import { render } from 'preact';
+import { MdElevation, MdRipple } from './materialWebJSX.tsx';
 import { PlanHero, type HeroContext } from './PlanHero.tsx';
 import {
   formatOverviewSmartTaskRowLine,
@@ -45,8 +46,11 @@ const SmartTaskRow = ({ row }: { row: OverviewSmartTaskRow }) => (
     data-settings-target="deadlines"
     data-variant={row.variant}
     data-tone={row.tone}
+    data-interactive
     aria-label={`${formatOverviewSmartTaskRowLine(row)} — open Smart tasks`}
   >
+    <MdElevation aria-hidden="true" />
+    <MdRipple aria-hidden="true" />
     <span class="plan-smart-task-row__dot" aria-hidden="true" />
     <span class="plan-smart-task-row__text">
       {row.deviceName !== null && (
