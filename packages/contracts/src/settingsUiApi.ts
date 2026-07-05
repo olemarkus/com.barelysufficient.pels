@@ -37,6 +37,13 @@ export const SETTINGS_UI_APPLY_DAILY_BUDGET_MODEL_PATH = '/ui_apply_daily_budget
 export const SETTINGS_UI_STARVATION_RESCUE_DEVICES_PATH = '/ui_starvation_rescue_devices';
 export const SETTINGS_UI_STARVATION_RESCUE_PREVIEW_PATH = '/ui_starvation_rescue_preview';
 export const SETTINGS_UI_STARVATION_RESCUE_CREATE_PATH = '/ui_starvation_rescue_create';
+// Smart-task edit lane from the detail page (edit end time/target + clear).
+// Preview = the optional feasibility/cost readout for the edited candidate;
+// update = the committed edit (a validated re-create over the same device);
+// cancel = clear the task. Shapes live in `smartTaskEdit.ts`.
+export const SETTINGS_UI_SMART_TASK_PREVIEW_PATH = '/ui_smart_task_preview';
+export const SETTINGS_UI_SMART_TASK_UPDATE_PATH = '/ui_smart_task_update';
+export const SETTINGS_UI_SMART_TASK_CANCEL_PATH = '/ui_smart_task_cancel';
 
 // Sentinel prefix the runtime API layer uses when the Homey app shell exists
 // but the PELS runtime services have not finished initializing yet (e.g.

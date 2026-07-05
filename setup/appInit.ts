@@ -15,6 +15,10 @@ export {
   createDeferredObjectivePlanHistoryRecorder,
   persistDeferredObjectiveObservationWatermark,
 } from './appInit/deferredRecorders';
+export {
+  cancelDeferredObjectiveForContext,
+  type CancelDeferredObjectiveOutcome,
+} from './appInit/deferredObjectiveCancel';
 export { createDeferredObjectiveLifecycleEmitter } from './appInit/deferredObjectiveLifecycle';
 export { createDeviceDiagnosticsService } from './appInit/deviceDiagnosticsService';
 export { createDailyBudgetService } from './appInit/createDailyBudgetService';

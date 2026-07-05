@@ -6,9 +6,12 @@ import type {
   ActivePlanRevisionLogSummary,
 } from '../../../../shared-domain/src/activePlanRevisionLog.ts';
 import {
+  CREATE_SMART_TASK_WIDGET_COPY,
   deadlineLabels,
   formatLastSampleValue,
+  formatSmartTaskGoalRangeHint,
   REVISION_PANEL_TITLE,
+  SMART_TASK_EDIT_COPY,
   REVISION_REASON_FALLBACK_WITH_DETAIL,
   SMART_TASK_BANNER_RECORD_NOT_FOUND_BODY,
   SMART_TASK_BANNER_RECORD_NOT_FOUND_TITLE,
@@ -33,7 +36,8 @@ import type { DeadlinePlanHistoryView } from '../deadlinePlanHistoryFetch.ts';
 import type { ResolvedDeferredObjectivePlanHistoryEntry } from '../../../../contracts/src/deferredObjectivePlanHistory.ts';
 import { DeadlinePlanHistoryDetail } from './DeadlinePlanHistoryDetail.tsx';
 import { DeadlinesHistoryListRoot } from './DeadlinesHistoryList.tsx';
-import { MdTextButton } from './materialWebJSX.tsx';
+import { MdFilledButton, MdFilledTextField, MdTextButton } from './materialWebJSX.tsx';
+import type { SmartTaskEditSnapshot } from '../smartTaskEdit.ts';
 import { CheckCircleIcon, ExpandMoreIcon } from './icons.tsx';
 import { logSettingsWarn } from '../logging.ts';
 
@@ -264,6 +268,22 @@ export type DeadlinePlanPendingPayload = {
   };
 };
 
+// Edit/clear lane props for the detail page. The snapshot is the module-scope
+// controller state from `smartTaskEdit.ts` (`null` = editor closed) — the
+// draft deliberately does NOT live in this component tree because the mount
+// re-renders the whole root on every runtime refresh (see
+// `buildSmartTaskEditProps` in `deadlinePlanMount.ts`). The callbacks are the
+// controller's actions, threaded as props per views/AGENTS.md.
+export type SmartTaskEditProps = {
+  snapshot: SmartTaskEditSnapshot | null;
+  onOpen: () => void;
+  onClose: () => void;
+  onReadyByInput: (value: string) => void;
+  onTargetInput: (value: string) => void;
+  onSave: () => void;
+  onClear: () => void;
+};
+
 export type DeadlinePlanLoadState =
   | { status: 'error'; message: string; onRetry?: () => void; history?: DeadlinePlanHistoryView }
   | { status: 'loading'; history?: DeadlinePlanHistoryView }
@@ -271,6 +291,9 @@ export type DeadlinePlanLoadState =
     status: 'pending';
     pending: DeadlinePlanPendingPayload;
     history?: DeadlinePlanHistoryView;
+    // Present when the page has an editable task; undefined hides the lane
+    // (no boot yet, task absent/disabled).
+    edit?: SmartTaskEditProps;
   }
   | {
     status: 'unavailable';
@@ -290,6 +313,7 @@ export type DeadlinePlanLoadState =
     status: 'ready';
     payload: DeadlinePlanPayload;
     history?: DeadlinePlanHistoryView;
+    edit?: SmartTaskEditProps;
   }
   | {
     // Detail view for a finalized plan in history. The page lands on the
@@ -1208,6 +1232,124 @@ const PriorRunsHistory = ({ history }: {
   );
 };
 
+// Inline edit/clear card below the hero. Collapsed: one quiet row offering the
+// action. Open: goal + ready-by fields, the server-previewed landing line
+// ("If you save: runs … · Ready by Tomorrow 07:00" — the honest, explicitly
+// conditional display of where the typed HH:mm lands), the cost/feasibility
+// readout, and the action row with a two-step Clear (label-swap confirm, same
+// pattern as Budget's discard).
+// Everything renders from the controller snapshot so a runtime refresh that
+// repaints the whole root — or even flips ready → pending — redraws the open
+// editor unchanged.
+const SmartTaskEditSection = ({ edit }: { edit: SmartTaskEditProps }) => {
+  const s = edit.snapshot;
+  if (s === null) {
+    return (
+      <section class="pels-surface-card budget-redesign-card smart-task-edit">
+        <div class="smart-task-edit__offer">
+          <small class="section-hint">{SMART_TASK_EDIT_COPY.editHint}</small>
+          <MdTextButton onClick={edit.onOpen}>{SMART_TASK_EDIT_COPY.editButton}</MdTextButton>
+        </div>
+      </section>
+    );
+  }
+  const busySaving = s.busy === 'saving';
+  const busyClearing = s.busy === 'clearing';
+  const saveDisabled = !s.valid || !s.dirty || busySaving || busyClearing;
+  return (
+    <section class="pels-surface-card budget-redesign-card smart-task-edit">
+      <p class="plan-card__title">{SMART_TASK_EDIT_COPY.editButton}</p>
+      <label class="field">
+        <span class="field__label pels-text-settings-label">{CREATE_SMART_TASK_WIDGET_COPY.goalLabel}</span>
+        <MdFilledTextField
+          type="number"
+          inputMode="decimal"
+          value={s.draft.target === null ? '' : String(s.draft.target)}
+          min={String(s.context.min)}
+          max={String(s.context.max)}
+          step={String(s.context.step)}
+          suffixText={s.context.unit}
+          {...(busySaving || busyClearing ? { disabled: true } : {})}
+          onInput={(event: Event) => {
+            edit.onTargetInput((event.target as HTMLInputElement).value);
+          }}
+        />
+        <small class="field__hint">
+          {formatSmartTaskGoalRangeHint(s.context.min, s.context.max, s.context.unit)}
+        </small>
+      </label>
+      <label class="field">
+        <span class="field__label pels-text-settings-label">{CREATE_SMART_TASK_WIDGET_COPY.readyByLabel}</span>
+        <input
+          class="smart-task-edit__time-input"
+          type="time"
+          value={s.draft.readyBy}
+          disabled={busySaving || busyClearing}
+          onInput={(event: Event) => {
+            edit.onReadyByInput((event.target as HTMLInputElement).value);
+          }}
+        />
+      </label>
+      {s.preview !== null && (
+        <div class="smart-task-edit__preview">
+          <p class="smart-task-edit__preview-when">{s.preview.whenLine}</p>
+          {s.preview.verdictLine !== null && (
+            <p class="smart-task-edit__preview-verdict">{s.preview.verdictLine}</p>
+          )}
+          {s.preview.costLine !== null && (
+            <p class="smart-task-edit__preview-cost">{s.preview.costLine}</p>
+          )}
+          <small class="section-hint">{s.preview.caveat}</small>
+        </div>
+      )}
+      {/* Hold the preview slot with an honest in-flight line while the
+          debounced estimate round-trip runs, instead of letting the
+          landing/cost lines pop in and out of the layout on every edit. */}
+      {s.preview === null && s.busy === 'previewing' && (
+        <p class="smart-task-edit__previewing">{SMART_TASK_EDIT_COPY.previewing}</p>
+      )}
+      {s.errorLine !== null && (
+        <p class="smart-task-edit__error">{s.errorLine}</p>
+      )}
+      <div class="smart-task-edit__actions">
+        <MdFilledButton
+          {...(saveDisabled ? { disabled: true } : {})}
+          onClick={edit.onSave}
+        >
+          {busySaving ? SMART_TASK_EDIT_COPY.saving : SMART_TASK_EDIT_COPY.saveButton}
+        </MdFilledButton>
+        <MdTextButton
+          {...(busySaving || busyClearing ? { disabled: true } : {})}
+          onClick={edit.onClose}
+        >
+          {SMART_TASK_EDIT_COPY.discardButton}
+        </MdTextButton>
+        <MdTextButton
+          class="smart-task-edit__clear md-text-button--destructive"
+          {...(busySaving || busyClearing ? { disabled: true } : {})}
+          onClick={edit.onClear}
+        >
+          {/* Stack every possible label in one grid cell and toggle
+              visibility: the button is always as wide as its WIDEST label, so
+              arming the two-step confirm can never move the tap target out
+              from under the finger (the whole point of the pattern). */}
+          <span class="smart-task-edit__clear-labels">
+            <span aria-hidden={s.clearArmed || busyClearing ? 'true' : undefined} data-active={!s.clearArmed && !busyClearing ? 'true' : undefined}>
+              {SMART_TASK_EDIT_COPY.clearButton}
+            </span>
+            <span aria-hidden={!s.clearArmed || busyClearing ? 'true' : undefined} data-active={s.clearArmed && !busyClearing ? 'true' : undefined}>
+              {SMART_TASK_EDIT_COPY.clearConfirm}
+            </span>
+            <span aria-hidden={busyClearing ? undefined : 'true'} data-active={busyClearing ? 'true' : undefined}>
+              {SMART_TASK_EDIT_COPY.clearing}
+            </span>
+          </span>
+        </MdTextButton>
+      </div>
+    </section>
+  );
+};
+
 const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) => {
   if (loadState.status === 'history-detail') {
     // `key={entry.id}` forces Preact to remount the component when the user
@@ -1279,6 +1421,7 @@ const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) =
     return (
       <>
         <PendingHero pending={loadState.pending} />
+        {loadState.edit !== undefined && <SmartTaskEditSection edit={loadState.edit} />}
         <PriorRunsHistory history={loadState.history} />
       </>
     );
@@ -1304,6 +1447,7 @@ const DeadlinePlanRoot = ({ loadState }: { loadState: DeadlinePlanLoadState }) =
   return (
     <>
       <DeadlineHero payload={loadState.payload} />
+      {loadState.edit !== undefined && <SmartTaskEditSection edit={loadState.edit} />}
       <ScheduleQuestionCards payload={loadState.payload} />
       <PlanInputsCard payload={loadState.payload} />
       <RevisionHistoryPanel payload={loadState.payload} />

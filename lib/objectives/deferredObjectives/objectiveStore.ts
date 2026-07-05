@@ -59,6 +59,23 @@ export const readObjectiveForDevice = (
 );
 
 /**
+ * Whether the device currently has an OPEN deferred objective (a smart task).
+ * Enabled entries always count; disabled future entries also count because the
+ * user has paused a still-open task. Disabled past entries do not count — they
+ * are completed/abandoned history and must not suppress a fresh held-back
+ * rescue forever.
+ */
+export const hasOpenDeferredObjective = (
+  store: ObjectiveSettingsStore,
+  deviceId: string,
+  nowMs: number,
+): boolean => {
+  const entry = readObjectiveForDevice(store, deviceId);
+  if (!entry) return false;
+  return entry.enabled || entry.deadlineAtMs > nowMs;
+};
+
+/**
  * Whether we can TRUST that the device has no objective. True only when the key
  * list is readable (non-empty) AND does not contain the device's key. Both a
  * store-wide transient-empty `getKeys()` (the same flake `migrateBlobToPerKeyIfNeeded`

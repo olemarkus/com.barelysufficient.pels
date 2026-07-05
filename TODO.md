@@ -1451,3 +1451,33 @@ persona but no current support-cost pressure; reframed to the P3 bar.*
       the band widening already routes the real device to the correct benign `near_target_idle`. Source: idle
       log-review + hysteresis investigation, 2026-06-29. Files: `notes/idle-classification.md`,
       `lib/observer/idleDetector.ts`, `packages/shared-domain/src/idleClassificationCopy.ts`.
+- [ ] **Pin the contracts↔lib deferred-objective normalizer mirror as a tracked keep-in-sync pair.**
+      *Persona:* Contributor editing objective validation rules.
+      *Hypothesis:* three lanes (widget create, settings-UI edit, runtime persist) now validate through
+      `lib/objectives/deferredObjectives/settings.ts` while the settings UI pre-gates through the
+      `packages/contracts/src/deferredObjectiveSettings.ts` mirror; a one-sided edit would let the UI
+      offer an edit the server rejects. Both files carry keep-in-sync comments; consider a shared
+      fixture test that runs identical junk/edge candidates through both normalizers and diffs the
+      results. Source: pels-layering-guardian on the smart-task edit PR (2026-07-05).
+- [ ] **Smart-task edit lane: distinct copy for a paused (disabled future) task.**
+      *Persona:* Owner with a paused EV task opening the detail-page editor race-window.
+      *Hypothesis:* `gateEditableTask` rejects a stored-but-disabled entry as `task_not_found`, so the
+      UI says "This task has already ended." — false for a paused-but-open task (it still blocks
+      rescue and re-creation). A distinct `task_paused` reason + copy ("This task is paused …") would
+      be honest; needs the paused state to actually be user-reachable first. Source:
+      pels-runtime-reality on the smart-task edit PR (2026-07-05). Files:
+      `setup/settingsUiSmartTaskApi.ts`, `packages/shared-domain/src/deadlineLabels.ts`.
+- [ ] **Smart-task detail: one date vocabulary for the deadline.**
+      *Persona:* Owner reading the hero ("Target 65.0 °C by Mon 06:57") above the edit preview
+      ("Ready by Tomorrow 06:30").
+      *Hypothesis:* the hero uses weekday-time (`formatSmartTaskDeadline*` short form) while the edit
+      preview uses the Today/Tomorrow long form; same concept, two formats centimetres apart. Pick one
+      (likely the Today/Tomorrow form the create widget and preview already share). Source:
+      pels-m3-critic on the smart-task edit PR (2026-07-05). Files:
+      `packages/shared-domain/src/smartTaskDeadlineFormat.ts`, `packages/settings-ui/src/ui/deadlinePlanHero.ts`.
+- [ ] **Smart-task edit lane: don't reattach a stale draft to a NEW task on the same device.**
+      *Persona:* Owner whose task ended (or was cleared via Flow) while the editor sat open, then created a new task on the same device.
+      *Hypothesis:* `buildSmartTaskEditProps` reattaches the module-scope editor snapshot by deviceId alone; a later task on the same device inherits the old draft's stale baselines. Guard the reattach on the context still matching the live entry (e.g. `snapshot.context.baselineDeadlineAtMs === entry.deadlineAtMs`) so a replaced task renders the editor closed. Source: Codex review on PR #1843 (2026-07-06). Files: `packages/settings-ui/src/ui/deadlinePlanMount.ts`, `packages/settings-ui/src/ui/smartTaskEdit.ts`.
+- [ ] **Smart-task edit/clear gates: treat a still-pending legacy-blob migration as untrusted absence.**
+      *Persona:* Legacy install whose `deferred_objectives` blob migration deferred on a flaky read.
+      *Hypothesis:* `gateEditableTask` and `cancelDeferredObjectiveForContext` answer `task_not_found` when the per-device key is absent and `getKeys()` is non-empty — but if `migrateBlobToPerKeyIfNeeded` just deferred, the task may still live in the un-migrated blob. Trust absence only when the `DEFERRED_OBJECTIVES_PERKEY_MIGRATED` marker is set; otherwise map to the retryable `write_conflict`/`write_refused` lane. Nearly extinct in practice (all live installs are migrated). Source: Codex review on PR #1843 (2026-07-06). Files: `setup/settingsUiSmartTaskApi.ts`, `setup/appInit/deferredObjectiveCancel.ts`.

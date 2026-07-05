@@ -48,6 +48,9 @@ export type StarvationRescueDevicesPayload = {
 // runtime handlers (`api.ts` / `setup/settingsUiApi.ts`) and the settings UI
 // import them.
 
+// NOT composed from `SmartTaskWriteRejectReason` (smartTaskEdit.ts): the two
+// vocabularies overlap but differ — the rescue lane has no `invalid_ready_by`
+// (its deadline is a fixed now+3h horizon) and adds two rescue-only gates.
 export type StarvationRescueRejectReason =
   | 'invalid_request'
   // The device is not a currently-starved BUDGET-caused row (it cleared, its

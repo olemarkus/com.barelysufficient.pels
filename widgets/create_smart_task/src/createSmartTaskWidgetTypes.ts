@@ -5,6 +5,10 @@ import type {
   DeferredObjectiveSettingsKind,
 } from '../../../packages/contracts/src/deferredObjectiveSettings';
 import type {
+  SmartTaskCandidateRequest,
+  SmartTaskWriteRejectReason,
+} from '../../../packages/contracts/src/smartTaskEdit';
+import type {
   SmartTaskDeviceGroup,
 } from '../../../packages/shared-domain/src/smartTaskDevicePickerOrder';
 
@@ -52,33 +56,11 @@ export type CreateSmartTaskDevicesPayload = {
   state: 'error';
 };
 
-// The candidate the user is composing. `readyByLocalTime` is a 24-hour local
-// "HH:mm" string; the server converts it to an absolute `deadlineAtMs` against
-// the Homey timezone (DST-aware) so the browser never does timezone math.
-export type CreateSmartTaskCandidateRequest = {
-  deviceId: string;
-  kind: DeferredObjectiveSettingsKind;
-  target: number;
-  readyByLocalTime: string;
-  // The absolute deadline the PREVIEW resolved and showed the user, echoed back
-  // on create so the persisted task matches exactly what the preview promised.
-  // Optional: absent for direct API callers (no preview step), in which case
-  // `/create` re-resolves `readyByLocalTime` server-side as before. When present
-  // it is validated (strictly future, within a sane horizon) and rejected with
-  // `deadline_passed` if it has since slipped into the past — never silently
-  // rolled to the next day. The server never trusts it as the persisted value
-  // without that validation.
-  deadlineAtMs?: number;
-  // Optional "Extra permissions" the user opted into for this task (both default
-  // off). `exemptFromBudget` lets the task exceed the soft daily budget;
-  // `limitLowerPriorityDevices` lets it limit lower-priority devices. Both are
-  // re-gated SERVER-side (the widget's visibility is not trusted): the latter is
-  // dropped unless the device is stepped-load eligible, and persists only
-  // alongside `exemptFromBudget` (it is inert without it). Sent as plain booleans;
-  // the server maps an opted-in permission to the `'always'` rescue mode.
-  exemptFromBudget?: boolean;
-  limitLowerPriorityDevices?: boolean;
-};
+// The candidate the user is composing and the reject vocabulary are the shared
+// smart-task contract (`packages/contracts/src/smartTaskEdit.ts`) — the
+// settings-UI edit lane sends the same request to the same app methods.
+// Re-exported under the widget-local names so widget code keeps one import home.
+export type CreateSmartTaskCandidateRequest = SmartTaskCandidateRequest;
 
 // Preview response: the in-isolation plan estimate plus the resolved deadline
 // and a pre-formatted local deadline label so the browser doesn't re-derive it.
@@ -108,22 +90,4 @@ export type CreateSmartTaskCreateResponse = {
   reason: CreateSmartTaskRejectReason;
 };
 
-export type CreateSmartTaskRejectReason =
-  | 'invalid_request'
-  | 'invalid_ready_by'
-  // The previewed deadline the client echoed back on create has since slipped
-  // into the past (or is implausibly far in the future). Rejected so the
-  // created task can never disagree with the previewed window — the widget
-  // re-previews to resolve a fresh future deadline. Retryable.
-  | 'deadline_passed'
-  | 'device_not_found'
-  // The device exists but is not in the runtime-planned snapshot (e.g. a
-  // picker-only / unmanaged device while the managed-device filter is active),
-  // so a task on it would never be planned. Rejected rather than persisted.
-  | 'device_not_planned'
-  | 'device_not_eligible'
-  | 'invalid_candidate'
-  // The hardened write primitive refused to persist (suspected transient-empty
-  // settings read while other tasks are live). Transient — the user can retry.
-  | 'write_conflict'
-  | 'unavailable';
+export type CreateSmartTaskRejectReason = SmartTaskWriteRejectReason;
