@@ -48,6 +48,28 @@ stepped-restore-wrapper / stepped-swap-completion refactors, the settings.test.t
 plan_budget truncation, the starvation confirm-sheet sub-parts, and the shared widget runtime.
 What remains open is below.*
 
+- [ ] **Shed-invariant card copy claims a step the device is not at.** `resolveSteppedStatusLine`
+      renders the shed-invariant reason as `Limited to ${maxStep}`
+      (`packages/shared-domain/src/planSteppedCardText.ts` ~307), but `maxStep` is the invariant's
+      cap (lowest non-zero step), not the device's state — prod 2026-07-05 20:07 showed "Limited
+      to Low" while Connected 300 ran at Medium drawing 1.2 kW (the invariant only refuses
+      increases; it never pushes a device down). The reason struct already carries
+      `fromStep`/`toStep`; render from those instead, e.g. "Holding at Medium — can't increase
+      while 10 devices are limited". Source: overview correctness review (2026-07-05).
+- [ ] **"0.0 kW more needed" on a held card.** `resolveHeadroomGapKw` suppresses gaps ≤ 0.01 kW
+      but the formatters render with `toFixed(1)`, so gaps in (0.01, 0.05) print "Waiting to
+      resume — 0.0 kW more needed" (seen on a prod thermostat card 2026-07-05). Align the gate
+      with the display resolution (suppress < 0.05) or print "less than 0.1 kW" — same pattern in
+      `planTemperatureCardText.ts` ~99/112, `planSteppedCardText.ts` ~238/245/253, and
+      `planReasonFormatting.ts` ~389. Source: overview correctness review (2026-07-05).
+- [ ] **Hero limited-count disagrees with the stepped card's "N devices still limited".** The
+      hero counts `stateKind === 'held' || plannedState === 'shed'` (11 on the 2026-07-05 screen,
+      including a hold-reason EV that was never shed), while the stepped card's count comes from
+      the planner's `countShedDevices` (`lib/plan/restore/coordination.ts`), which counts only
+      `plannedState === 'shed'` and skips non-controllable devices (10). Both internally correct,
+      visibly off-by-one on one screen. Either feed the card the same held||shed count the hero
+      uses, or drop the count from the card copy. Source: overview correctness review
+      (2026-07-05).
 - [ ] **Simulation honesty on the device-detail activity log.** The Overview plan cards + hero
       now read hypothetically with simulation on (PR #1819: card header "Would be turned off
       (simulation)", reason line "Would still draw N kW", hero "N devices would be limited right

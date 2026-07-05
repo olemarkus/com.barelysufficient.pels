@@ -2,11 +2,14 @@
  * Coverage for `toPlanDevice`'s calibration-view enrichment.
  *
  * Verifies the boost-gate semantic contract:
- *   - When the device has no `reportedStepId`, `hasRecentObservedDrawAtSelectedStep`
+ *   - When the device has no `reportedStepId`, `hasRecentObservedDraw`
  *     is `undefined` even if `selectedStepId` matches a calibration entry —
  *     the gate treats `undefined` as "no opinion, keep the legacy bypass."
- *   - When the device has a `reportedStepId` that matches a calibration entry,
- *     the field reflects the calibration store's `hasRecentDrawAt` answer.
+ *   - A recent in-band draw at ANY step yields `true`, regardless of which
+ *     step is currently reported — a just-stepped-up device still ramping at
+ *     the previous step's level is accepting load, not idle.
+ *   - A concrete `false` requires the reported step to be calibration-
+ *     confident with every step quiet (the idle-at-setpoint signature).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { toPlanDevice } from '../../setup/appInit';
@@ -74,7 +77,7 @@ const ctxWithSnapshot = (snapshot: PowerCalibrationSnapshot): AppContext => {
   return ctx;
 };
 
-describe('toPlanDevice — hasRecentObservedDrawAtSelectedStep', () => {
+describe('toPlanDevice — hasRecentObservedDraw', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(FIXED_NOW));
@@ -93,7 +96,7 @@ describe('toPlanDevice — hasRecentObservedDrawAtSelectedStep', () => {
       // device is currently at. The resolver must NOT fall back to the
       // planner's intended step.
     }));
-    expect(result.hasRecentObservedDrawAtSelectedStep).toBeUndefined();
+    expect(result.hasRecentObservedDraw).toBeUndefined();
   });
 
   it('returns true when reportedStepId matches a confident calibration entry inside the recent-draw window', () => {
@@ -103,25 +106,29 @@ describe('toPlanDevice — hasRecentObservedDrawAtSelectedStep', () => {
       reportedStepId: 'medium',
       selectedStepId: 'medium',
     }));
-    expect(result.hasRecentObservedDrawAtSelectedStep).toBe(true);
+    expect(result.hasRecentObservedDraw).toBe(true);
   });
 
-  it('returns undefined when reportedStepId points at an unknown calibration step', () => {
+  it('returns true when another step has recent draw, even though the reported step has no entry', () => {
+    // The staircase case from prod (2026-07-05): right after a step change
+    // the newly reported step has no accepted samples yet (ramp readings are
+    // skipped as out-of-band) while the step it came from still holds fresh
+    // in-band samples. The device is demonstrably accepting load; the gate
+    // must not read this as idle.
     const snapshot = buildSnapshotWithMediumEntry();
     const ctx = ctxWithSnapshot(snapshot);
     const result = toPlanDevice(ctx, buildDeviceSnapshot({
       reportedStepId: 'low',
       selectedStepId: 'low',
     }));
-    // No calibration entry for 'low' → undefined (no opinion).
-    expect(result.hasRecentObservedDrawAtSelectedStep).toBeUndefined();
+    expect(result.hasRecentObservedDraw).toBe(true);
   });
 
-  it('returns undefined for an existing-but-non-confident step (warm-up)', () => {
-    // A single sample is below the 5-sample / 5-minute confidence threshold.
-    // The gate must report `undefined` rather than letting a warm-up entry
-    // produce a concrete `false` that suppresses boost escalation for newly
-    // paired devices.
+  it('returns true for a recent warm-up sample (below confidence, but real draw)', () => {
+    // A single accepted sample is below the confidence threshold, but it is
+    // still a recent in-band observation — evidence of draw, never a
+    // concrete `false` that would suppress boost swaps for newly paired
+    // devices.
     let snapshot = createEmptyPowerCalibrationSnapshot();
     const outcome = recordSample(snapshot, {
       deviceId: 'hoiax-1',
@@ -136,7 +143,31 @@ describe('toPlanDevice — hasRecentObservedDrawAtSelectedStep', () => {
       reportedStepId: 'medium',
       selectedStepId: 'medium',
     }));
-    expect(result.hasRecentObservedDrawAtSelectedStep).toBeUndefined();
+    expect(result.hasRecentObservedDraw).toBe(true);
+  });
+
+  it('returns false when the reported step is confident and every step is quiet', () => {
+    // Confident calibration at the reported step, but the freshest sample is
+    // older than the recent-draw window at every step: the idle-at-setpoint
+    // signature (e.g. a Hoiax holding at its element setpoint).
+    let snapshot = createEmptyPowerCalibrationSnapshot();
+    const staleBase = FIXED_NOW - 30 * 60_000;
+    for (let i = 0; i < 6; i += 1) {
+      const outcome = recordSample(snapshot, {
+        deviceId: 'hoiax-1',
+        stepId: 'medium',
+        measuredPowerKw: 1.6,
+        nameplateKw: 1.75,
+        nowMs: staleBase + i * 70_000,
+      });
+      if (outcome.accepted) snapshot = outcome.snapshot;
+    }
+    const ctx = ctxWithSnapshot(snapshot);
+    const result = toPlanDevice(ctx, buildDeviceSnapshot({
+      reportedStepId: 'medium',
+      selectedStepId: 'medium',
+    }));
+    expect(result.hasRecentObservedDraw).toBe(false);
   });
 
   it('exposes the recent-draw window constant for diagnostics', () => {

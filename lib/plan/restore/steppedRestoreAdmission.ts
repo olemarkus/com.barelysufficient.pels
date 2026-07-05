@@ -127,7 +127,16 @@ export function blockSteppedRestoreForShedInvariant(params: {
   restoreDebugKey: string;
 }): boolean {
   const { dev, deviceMap, state, nextStep, lowestNonZeroStep, phase, debugStructured, restoreDebugKey } = params;
-  if (isBoostEffectiveForEscalation(dev)) return false;
+  // Boost is the user's priority override: it bypasses the fairness invariant
+  // unconditionally, with no draw-evidence consult (gating on evidence
+  // re-blocked a boosted climb for minutes per rung — see the staircase
+  // regression in planRestoreBoostShedInvariantBypass.test.ts). An
+  // idle-at-setpoint device that escalates anyway is bounded by per-rung
+  // headroom admission, the stepped attempt-hold (each rung must settle
+  // before the next), and per-device restore timing. The evidence gate
+  // remains only on the swap path (`canUseSwapForSteppedRestore`), where
+  // phantom boost demand would pause a running lower-priority device.
+  if (isBoostActive(dev)) return false;
   if (!lowestNonZeroStep || nextStep.planningPowerW <= lowestNonZeroStep.planningPowerW) return false;
   const shedDeviceCount = countShedDevices(deviceMap, dev.id);
   if (shedDeviceCount === 0) return false;
@@ -203,17 +212,19 @@ function canUseSwapForSteppedRestore(params: {
 
 /**
  * True when a boost is active *and* there is no evidence that the device is
- * idle at its current step. Calibration-confident `false` for
- * `hasRecentObservedDrawAtSelectedStep` blocks the boost-driven bypass —
- * boost should not escalate a device past its current step when the device
- * has not been accepting load there (e.g. a Hoiax holding at its element
- * setpoint, or a thermostat in a room already at target). When the
+ * idle (e.g. a Hoiax holding at its element setpoint, or a thermostat in a
+ * room already at target). Calibration-confident `false` for
+ * `hasRecentObservedDraw` — no in-band draw at ANY step recently — blocks
+ * boost-driven swaps: pausing a running lower-priority device to feed a
+ * boosted device that is not accepting load would be pure loss. When the
  * calibration store has no opinion (undefined), the bypass behaves as
  * before so newly-paired devices are not penalized during warm-up.
+ * Deliberately NOT consulted by the shed-invariant bypass above — boost
+ * overrides fairness unconditionally.
  */
 function isBoostEffectiveForEscalation(dev: DevicePlanDevice): boolean {
   if (!isBoostActive(dev)) return false;
-  if (dev.hasRecentObservedDrawAtSelectedStep === false) return false;
+  if (dev.hasRecentObservedDraw === false) return false;
   return true;
 }
 

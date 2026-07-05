@@ -289,12 +289,16 @@ export type PlanInputDeviceBase = {
    */
   stepPowerCalibration?: Record<string, StepPowerCalibrationView>;
   /**
-   * True when the calibration store has a recent positive observation at the
-   * device's currently reported step. Used by boost-driven stepped escalation
-   * to avoid escalating a device that isn't accepting load at its current
-   * step.
+   * True when the calibration store has a recent in-band draw observation at
+   * ANY of the device's steps — evidence the device is accepting load (a
+   * just-stepped-up device still ramping at the previous step's level counts).
+   * `false` means no recent draw was observed at any step AND the reported
+   * step has confidence-qualified calibration: the idle-at-setpoint
+   * signature. `undefined` means the store has no opinion (no reported step,
+   * or warm-up). Consulted by boost-driven swap escalation to avoid pausing
+   * a running lower-priority device for a boosted device that isn't drawing.
    */
-  hasRecentObservedDrawAtSelectedStep?: boolean;
+  hasRecentObservedDraw?: boolean;
 };
 
 export type StepPowerCalibrationView = {

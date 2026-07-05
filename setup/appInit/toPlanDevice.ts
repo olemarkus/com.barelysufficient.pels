@@ -14,7 +14,7 @@ import type {
 import type { AppContext } from '../../lib/app/appContext';
 import {
   buildStepPowerCalibrationView,
-  resolveHasRecentObservedDrawAtSelectedStep,
+  resolveHasRecentObservedDraw,
 } from './calibrationViews';
 import { withSteppedDiscriminant } from '../../lib/plan/planTypes';
 import { resolveSurplusOnlyPosture } from '../../lib/plan/planSurplusAbsorb';
@@ -49,7 +49,7 @@ export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot & 
     device.communicationModel,
   );
   const calibration = buildStepPowerCalibrationView(ctx, device);
-  const hasRecentObservedDrawAtSelectedStep = resolveHasRecentObservedDrawAtSelectedStep(
+  const hasRecentObservedDraw = resolveHasRecentObservedDraw(
     ctx,
     device,
   );
@@ -178,8 +178,8 @@ export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot & 
     canSetControlResolved,
     residualKw,
     ...(calibration ? { stepPowerCalibration: calibration } : {}),
-    ...(hasRecentObservedDrawAtSelectedStep !== undefined
-      ? { hasRecentObservedDrawAtSelectedStep }
+    ...(hasRecentObservedDraw !== undefined
+      ? { hasRecentObservedDraw }
       : {}),
   });
 }

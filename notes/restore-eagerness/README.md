@@ -11,7 +11,8 @@ These earlier issues have already been addressed and should not be re-triaged as
 - target-based restores go through the same restore admission gate as normal restores
 - near-zero post-reserve restores are blocked by a hard admission floor
 - stepped keep-invariant restores are blocked above the lowest non-zero step while any device is
-  still shed
+  still shed — EXCEPT for a device with an active boost, which bypasses the invariant
+  unconditionally (boost is the user's priority override; 2026-07-05)
 - restore power estimation no longer treats zero/low configured values as authoritative when a
   higher measured or planning value is known
 
@@ -50,7 +51,9 @@ Batching is intentionally narrow:
   cooldown keep the previous one-at-a-time behavior
 - target-based and stepped restores remain conservative unless separately proven safe
 - stepped-load `off -> lowest active step` restores follow normal cross-device priority ordering;
-  the conservative stepped gate applies to later step-ups while other devices remain shed
+  the conservative stepped gate applies to later step-ups while other devices remain shed, unless
+  the device has an active boost (unconditional invariant bypass, 2026-07-05; headroom admission
+  and attempt-hold still gate each rung)
 
 After a batch, the normal meter-settling / restore-cooldown behavior still blocks the next cycle.
 

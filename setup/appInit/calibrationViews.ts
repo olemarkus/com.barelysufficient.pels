@@ -77,7 +77,7 @@ function buildEvChargerCalibrationView(
   };
 }
 
-export function resolveHasRecentObservedDrawAtSelectedStep(
+export function resolveHasRecentObservedDraw(
   ctx: AppContext,
   device: DecoratedDeviceSnapshot,
 ): boolean | undefined {
@@ -89,7 +89,43 @@ export function resolveHasRecentObservedDrawAtSelectedStep(
   const stepId = device.reportedStepId;
   if (typeof stepId !== 'string' || stepId.length === 0) return undefined;
   const snapshot = ctx.getPowerCalibrationSnapshot();
-  const planningPowerW = device.steppedLoadProfile?.steps.find((step) => step.id === stepId)?.planningPowerW;
+  // Use the AppContext clock so the planner can be tested deterministically
+  // and so this stays consistent with other plan-input enrichment helpers
+  // (per state-management/AGENTS.md "use a single clock per cycle").
+  const nowMs = ctx.getNow().getTime();
+  // Recent in-band draw at ANY step proves the device is accepting load.
+  // Checking only the reported step misreads "just stepped up" as "idle":
+  // right after a step change the new step has no accepted samples yet (ramp
+  // readings are skipped as out-of-band) while the previous step's fresh
+  // samples still show a live element. Only the all-steps-quiet case below
+  // may produce a concrete `false`.
+  //
+  // Accepted collateral: a device shed DOWN a step and now idle at its
+  // setpoint keeps reading `true` from the departed step's samples for the
+  // rest of the window, so a boosted swap can briefly pause a lower-priority
+  // device for demand that never comes. Bounded to the window + active
+  // boost, and strictly narrower than the pre-gate (pre-2026-05-13)
+  // unconditional swap. Scoping cross-step evidence to non-confident
+  // reported steps would re-break the ramp case this exists for — the stale
+  // step there IS calibration-confident.
+  const steps = device.steppedLoadProfile?.steps ?? [];
+  for (const step of steps) {
+    if (!step || typeof step.id !== 'string') continue;
+    const stepNameplateKw = isFiniteNumber(step.planningPowerW) && step.planningPowerW > 0
+      ? step.planningPowerW / 1000
+      : undefined;
+    if (hasRecentDrawAt({
+      snapshot,
+      deviceId: device.id,
+      stepId: step.id,
+      windowMs: BOOST_RECENT_DRAW_WINDOW_MS,
+      nowMs,
+      nameplateKw: stepNameplateKw,
+    })) {
+      return true;
+    }
+  }
+  const planningPowerW = steps.find((step) => step.id === stepId)?.planningPowerW;
   const nameplateKw = isFiniteNumber(planningPowerW) && planningPowerW > 0
     ? planningPowerW / 1000
     : undefined;
@@ -97,15 +133,5 @@ export function resolveHasRecentObservedDrawAtSelectedStep(
   // concrete `false` — the gate would treat that as authoritative and
   // suppress boost escalation for newly-paired devices.
   if (!isStepCalibrationConfident(snapshot, device.id, stepId, nameplateKw)) return undefined;
-  // Use the AppContext clock so the planner can be tested deterministically
-  // and so this stays consistent with other plan-input enrichment helpers
-  // (per state-management/AGENTS.md "use a single clock per cycle").
-  return hasRecentDrawAt({
-    snapshot,
-    deviceId: device.id,
-    stepId,
-    windowMs: BOOST_RECENT_DRAW_WINDOW_MS,
-    nowMs: ctx.getNow().getTime(),
-    nameplateKw,
-  });
+  return false;
 }
