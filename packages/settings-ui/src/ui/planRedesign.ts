@@ -242,7 +242,11 @@ const toRowStatus = (params: {
         : null,
       nowMs,
     }),
-    deadlineAtMs,
+    // The status derives from the recorded PLAN, so the ETA prefers the
+    // plan's own deadline: after a deadline edit the settings blob reloads
+    // before the recorder replans, and mixing the fresh settings deadline
+    // with the old plan's status would pair a wrong time with the verdict.
+    deadlineAtMs: Number.isFinite(plan.deadlineAtMs) ? plan.deadlineAtMs : deadlineAtMs,
   };
 };
 
