@@ -18,7 +18,21 @@ import {
   resolveBrowserTimeZone,
   type DeadlinePlanHistoryView,
 } from './deadlinePlanHistoryFetch.ts';
-import { renderDeadlinePlan } from './views/DeadlinePlan.tsx';
+import { normalizeDeferredObjectiveSettings } from '../../../contracts/src/deferredObjectiveSettings.ts';
+import { resolveSmartTaskGoalBounds } from '../../../shared-domain/src/smartTaskDeviceKind.ts';
+import { formatLocalHHMM } from '../../../shared-domain/src/smartTaskDeadlineFormat.ts';
+import { getHomeyTimezone } from './homey.ts';
+import {
+  closeSmartTaskEditor,
+  getSmartTaskEditSnapshot,
+  initSmartTaskEditController,
+  openSmartTaskEditor,
+  requestSmartTaskClear,
+  setSmartTaskEditReadyBy,
+  setSmartTaskEditTarget,
+  submitSmartTaskUpdate,
+} from './smartTaskEdit.ts';
+import { renderDeadlinePlan, type SmartTaskEditProps } from './views/DeadlinePlan.tsx';
 import { resolveDeadlinePlanLoadState, resolveRenderInput } from './deadlinePlan.ts';
 import { logSettingsError, logSettingsWarn } from './logging.ts';
 import type { MdButtonElement } from './dom.ts';
@@ -246,6 +260,57 @@ type ActiveMount = {
 let activeMount: ActiveMount | null = null;
 let runtimeRefreshBound = false;
 
+// Build the edit-lane props for the current mount, or undefined when the page
+// has no editable task (no deviceId, no boot yet, or the device's objective
+// entry is absent/disabled). The DRAFT never lives here — it sits in the
+// module-scope `smartTaskEdit.ts` controller so the full-root re-render this
+// mount runs on every runtime refresh (which can even flip the load state
+// `ready` → `pending` mid-edit) repaints the open editor from controller state
+// instead of unmounting a component-local draft. Baselines are captured at
+// open time inside `onOpen`, so later boot refreshes rebuild these props
+// without touching what the user is typing.
+const buildSmartTaskEditProps = (m: ActiveMount): SmartTaskEditProps | undefined => {
+  const { deviceId, lastBoot } = m;
+  if (deviceId === null || !lastBoot) return undefined;
+  const entry = normalizeDeferredObjectiveSettings(
+    lastBoot.bootstrap.settings.deferred_objectives,
+  ).objectivesByDeviceId[deviceId];
+  if (!entry || !entry.enabled) return undefined;
+  // No device in the payload (deleted, or a transient read gap) → no editor:
+  // the goal bounds would be generic fallbacks and a save would only bounce
+  // off the server's device_not_found gate anyway.
+  const device = lastBoot.devicesPayload.devices.find((candidate) => candidate.id === deviceId);
+  if (!device) return undefined;
+  const bounds = resolveSmartTaskGoalBounds(device, entry.kind);
+  const baselineTarget = entry.kind === 'ev_soc' ? entry.targetPercent : entry.targetTemperatureC;
+  // Prefill renders the task's absolute deadline back to the same Homey-local
+  // HH:mm the write path will resolve it from, so an untouched ready-by field
+  // round-trips to the same moment (browser-timezone math never enters).
+  const baselineReadyBy = formatLocalHHMM(entry.deadlineAtMs, getHomeyTimezone());
+  const snapshot = getSmartTaskEditSnapshot();
+  return {
+    // An open editor for a DIFFERENT device (SPA navigation between tasks)
+    // must not leak into this page — it renders as closed here.
+    snapshot: snapshot !== null && snapshot.context.deviceId === deviceId ? snapshot : null,
+    onOpen: () => openSmartTaskEditor({
+      deviceId,
+      kind: entry.kind,
+      unit: bounds.unit,
+      min: bounds.min,
+      max: bounds.max,
+      step: bounds.step,
+      baselineReadyBy,
+      baselineTarget,
+      baselineDeadlineAtMs: entry.deadlineAtMs,
+    }),
+    onClose: closeSmartTaskEditor,
+    onReadyByInput: setSmartTaskEditReadyBy,
+    onTargetInput: setSmartTaskEditTarget,
+    onSave: () => { void submitSmartTaskUpdate(); },
+    onClear: () => { void requestSmartTaskClear(); },
+  };
+};
+
 const renderActiveMount = (): void => {
   const m = activeMount;
   if (!m || !m.lastBoot) return;
@@ -261,10 +326,29 @@ const renderActiveMount = (): void => {
   // recording-era øre/kr default), so the archived figure survives a later
   // price-scheme/currency switch. The live hero still resolves its own display
   // inside `resolveRenderInput`.
-  renderDeadlinePlan(
-    m.surface,
-    resolveDeadlinePlanLoadState(renderInput, m.lastHistory),
-  );
+  const loadState = resolveDeadlinePlanLoadState(renderInput, m.lastHistory);
+  if (loadState.status === 'ready' || loadState.status === 'pending') {
+    loadState.edit = buildSmartTaskEditProps(m);
+  }
+  renderDeadlinePlan(m.surface, loadState);
+};
+
+// One-shot chrome bindings shared by every (re-)mount: close button, the
+// delegated recourse/usage-link dispatchers, and the smart-task edit
+// controller. The edit controller repaints through the same full-root render
+// the runtime refresh uses, and a committed clear closes the page (the route
+// now points at an absent task). Each callee guards its own idempotence.
+const initDeadlinePlanChrome = (): void => {
+  initDeadlinePlanClose();
+  initDeadlinePlanRecourseDispatcher();
+  initDeadlinePlanUsageLinkDispatcher();
+  initSmartTaskEditController({
+    render: renderActiveMount,
+    requestClose: () => onCloseDeadlinePlan(),
+    // Full re-boot (fresh generation + fetch) so the task-ended path repaints
+    // from live data instead of the cached boot that still holds the task.
+    refreshBoot: () => { void mountDeadlinePlan(); },
+  });
 };
 
 export const mountDeadlinePlan = async (): Promise<void> => {
@@ -288,9 +372,7 @@ export const mountDeadlinePlan = async (): Promise<void> => {
   };
   const isStale = (): boolean => activeMount?.generation !== generation;
 
-  initDeadlinePlanClose();
-  initDeadlinePlanRecourseDispatcher();
-  initDeadlinePlanUsageLinkDispatcher();
+  initDeadlinePlanChrome();
   // Bind runtime refresh once per SPA session, *before* any awaitable work,
   // so a failed first boot does not leave the rest of the session without
   // event-driven refresh. The handler reads `activeMount` at fire time so
@@ -334,6 +416,9 @@ export const mountDeadlinePlan = async (): Promise<void> => {
 
 export const unmountDeadlinePlan = (): void => {
   activeMount = null;
+  // Leaving the page discards any in-progress edit draft — returning later
+  // re-opens against fresh baselines instead of a stale capture.
+  closeSmartTaskEditor();
 };
 
 // Resubscribe to runtime change events so the panel reflects new plan

@@ -467,6 +467,88 @@ export const resolveCreateSmartTaskRejectCopy = (reason: string | undefined): st
   return CREATE_SMART_TASK_WIDGET_COPY.createError;
 };
 
+// ─── Smart-task detail-page edit/clear (settings UI) ─────────────────────────
+//
+// The detail page can change a running task's ready-by time and target, and
+// clear the task. "Clear" is the canonical removal verb (matches the "Clear
+// smart task" Flow card); never "Cancel/Stop/Abort" (`notes/ui-terminology.md`).
+// Field labels reuse the create widget's vocabulary (`goalLabel`,
+// `readyByLabel`) so composing and editing a task read as one language.
+export const SMART_TASK_EDIT_COPY = {
+  editButton: 'Edit task',
+  // Collapsed-row supporting line: says what editing covers so the row earns
+  // its place even before it is tapped.
+  editHint: 'Change the goal or ready-by time.',
+  saveButton: 'Save changes',
+  saving: 'Saving…',
+  discardButton: 'Discard',
+  clearButton: 'Clear task',
+  // Two-step confirm label (same auto-revert pattern as the Budget discard
+  // button) so a stray tap can't drop the task.
+  clearConfirm: 'Tap again to clear',
+  clearing: 'Clearing…',
+  // Honest about the mechanics: saving re-plans the task, and the run so far
+  // is filed under Past tasks (where it wears the Abandoned chip) — said here
+  // so the user who later scans history isn't surprised by a run they never
+  // knowingly abandoned.
+  updated: 'Smart task updated — the earlier run is now in Past tasks.',
+  cleared: 'Smart task cleared.',
+  // The task ended (completed/expired/cleared elsewhere) while the editor was
+  // open — the editor closes rather than offering a retry that would re-create
+  // it. Verb-neutral so the line reads correctly after a save AND after a
+  // clear tap.
+  taskEnded: 'This task has already ended.',
+  clearError: 'Could not clear the task just now. Try again.',
+  // Save failure umbrella for an edit (mirrors `createError` but names the
+  // save action — the task itself is unchanged and still running).
+  updateError: 'Could not save the changes. Check the goal and try again.',
+  // Edit-specific deadline-slip line. The create widget's variant says
+  // "Preview again" — a button this surface doesn't have (previews run
+  // automatically); the recourse must name an action that exists here.
+  deadlinePassed: 'That ready-by time just passed. Pick a later time and save again.',
+  // Shown in the preview slot while the debounced estimate round-trip is in
+  // flight, so the landing/cost lines don't pop in and out of the layout.
+  previewing: 'Updating estimate…',
+  // Draft landing-line prefixes (see `composeSmartTaskDraftLandingLine`).
+  ifYouSavePrefix: 'If you save:',
+  ifYouSaveRunsWord: 'runs',
+} as const;
+
+// The open editor's landing line for an UNSAVED draft: "If you save: runs
+// 02:00–04:00 · Ready by Tomorrow 06:30". Explicitly conditional — the hero
+// above still shows the CURRENT plan, so without the prefix the two schedules
+// would contradict each other on one screen; and never the word "Scheduled",
+// which claims a commitment that hasn't happened yet. Both halves arrive
+// pre-formatted from the server (Homey timezone) — string-stitching only.
+export const composeSmartTaskDraftLandingLine = (params: {
+  scheduledWindowLabel: string | null;
+  deadlineLabel: string;
+}): string => {
+  const readyByPart = `${CREATE_SMART_TASK_WIDGET_COPY.readyByLabel} ${params.deadlineLabel}`;
+  if (params.scheduledWindowLabel === null) {
+    return `${SMART_TASK_EDIT_COPY.ifYouSavePrefix} ${readyByPart}`;
+  }
+  return `${SMART_TASK_EDIT_COPY.ifYouSavePrefix} ${SMART_TASK_EDIT_COPY.ifYouSaveRunsWord} `
+    + `${params.scheduledWindowLabel} · ${readyByPart}`;
+};
+
+// Goal-field range hint ("Range 30–75 °C."), shared-domain-homed so the
+// wording can't drift per surface.
+export const formatSmartTaskGoalRangeHint = (min: number, max: number, unit: string): string => (
+  `Range ${min}–${max} ${unit}.`
+);
+
+// Map an edit/clear rejection to its user-facing line. Shares the create
+// widget's copy for `write_conflict`, carries edit-specific lines for
+// `task_not_found` and `deadline_passed`; everything else collapses to the
+// edit-flavoured generic line.
+export const resolveSmartTaskEditRejectCopy = (reason: string | undefined): string => {
+  if (reason === 'task_not_found') return SMART_TASK_EDIT_COPY.taskEnded;
+  if (reason === 'deadline_passed') return SMART_TASK_EDIT_COPY.deadlinePassed;
+  if (reason === 'write_conflict') return CREATE_SMART_TASK_WIDGET_COPY.writeConflict;
+  return SMART_TASK_EDIT_COPY.updateError;
+};
+
 // Ready-by presets for the light, preset-driven deadline input. Each preset is
 // a fixed local 24-hour "HH:mm" the server resolves to the next future
 // occurrence (rolling to tomorrow if already past today). Morning-commute and

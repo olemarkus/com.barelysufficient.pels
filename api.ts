@@ -27,6 +27,11 @@ import {
   recomputeSettingsUiDailyBudget,
   resetSettingsUiPowerStats,
 } from './setup/settingsUiApi';
+import {
+  cancelSettingsUiSmartTask,
+  previewSettingsUiSmartTask,
+  updateSettingsUiSmartTask,
+} from './setup/settingsUiSmartTaskApi';
 
 type ApiContext = {
   homey: Homey.App['homey'];
@@ -176,6 +181,24 @@ export = {
     'ui_starvation_rescue_create',
     ({ homey, body }: ApiContext & { body?: unknown }) => (
       createSettingsUiStarvationRescue({ homey, body })
+    ),
+  ),
+  ui_smart_task_preview: withApiLogging(
+    'ui_smart_task_preview',
+    ({ homey, body }: ApiContext & { body?: unknown }) => (
+      previewSettingsUiSmartTask({ homey, body })
+    ),
+  ),
+  ui_smart_task_update: withApiLogging(
+    'ui_smart_task_update',
+    ({ homey, body }: ApiContext & { body?: unknown }) => (
+      updateSettingsUiSmartTask({ homey, body })
+    ),
+  ),
+  ui_smart_task_cancel: withApiLogging(
+    'ui_smart_task_cancel',
+    ({ homey, body }: ApiContext & { body?: unknown }) => (
+      cancelSettingsUiSmartTask({ homey, body })
     ),
   ),
   log_homey_device: withApiLogging('log_homey_device', async (

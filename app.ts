@@ -88,6 +88,7 @@ import { PowerCalibrationStore } from './lib/device/devicePowerCalibrationStore'
 import { PlanRebuildScheduler, type RebuildIntent } from './lib/plan/rebuildScheduler/scheduler';
 import {
   buildDeferredObjectiveDeviceWriteDeps,
+  cancelDeferredObjectiveForContext, type CancelDeferredObjectiveOutcome,
   registerAppFlowCards,
   toObservedStateSeed,
   toPlanDevice,
@@ -100,9 +101,9 @@ import {
   createDeferredObjectivePlanRevisionBus,
   createDeferredObjectiveStatusBus,
   migrateBlobToPerKeyIfNeeded,
+  hasOpenDeferredObjective, type SmartTaskWriteOrigin,
   normalizeDeferredObjectiveSettingsEntry,
   previewDeferredObjectivePlan,
-  readObjectiveForDevice,
   upsertObjectiveForDevice,
   type DeferredObjectiveEndedBus,
   type DeferredObjectiveHoursRemainingBus,
@@ -1090,20 +1091,9 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
   public getWeatherAdvisorReadout(): Promise<WeatherAdvisorReadoutPayload | null> {
     return assembleWeatherAdvisorReadout({ ctx: this.ctx, collector: this.weatherCollector });
   }
-  // Read the device's currently-persisted deferred objective, or undefined when
-  // none is stored. Backs `hasDeferredObjectiveForDevice`.
-  private readDeferredObjectiveEntry(deviceId: string): DeferredObjectiveSettingsEntry | undefined {
-    return readObjectiveForDevice(this.homey.settings, deviceId);
-  }
-  // Whether the device currently has an open deferred objective (a smart task).
-  // Enabled entries always count; disabled future entries also count because the
-  // user has paused a still-open task. Disabled past entries do not count — they
-  // are completed/abandoned history and must not suppress a fresh held-back
-  // rescue forever.
+  // Open-task predicate; semantics documented on the store helper.
   public hasDeferredObjectiveForDevice(deviceId: string): boolean {
-    const entry = this.readDeferredObjectiveEntry(deviceId);
-    if (!entry) return false;
-    return entry.enabled || entry.deadlineAtMs > this.getNow().getTime();
+    return hasOpenDeferredObjective(this.homey.settings, deviceId, this.getNow().getTime());
   }
   // Only stepped-load devices (EV chargers + stepped thermal) can honour the
   // `limitLowerPriorityDevices` rescue permission — it engages the device's boost,
@@ -1306,6 +1296,8 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
   public createDeferredObjective(
     deviceId: string,
     candidate: DeferredObjectivePlanPreviewCandidate,
+    // Rebuild-reason tag for the requesting lane (widget default = its historical string).
+    origin: SmartTaskWriteOrigin = 'flow_card:create_smart_task_widget',
   ): { ok: true } | {
     ok: false;
     reason: 'device_not_found' | 'device_not_planned' | 'device_not_eligible' | 'invalid_candidate'
@@ -1331,12 +1323,15 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
     const outcome = upsertObjectiveForDevice(
       buildDeferredObjectiveDeviceWriteDeps(this.ctx, {
         nowMs: this.getNow().getTime(),
-        rebuildReason: 'flow_card:create_smart_task_widget',
+        rebuildReason: origin,
       }),
       { deviceId, deviceName: device.name ?? null, entry },
     );
     if (!outcome.persisted) return { ok: false, reason: 'write_refused' };
     return { ok: true };
+  }
+  public cancelDeferredObjective(deviceId: string): CancelDeferredObjectiveOutcome {
+    return cancelDeferredObjectiveForContext(this.ctx, deviceId);
   }
   // Grant a device the starvation-rescue widget's bounded budget-exempt rescue.
   // A rescue is always a FRESH task: `getStarvedRescueDevices` only offers a

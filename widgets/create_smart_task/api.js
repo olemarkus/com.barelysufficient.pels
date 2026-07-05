@@ -5226,21 +5226,7 @@ var logger3 = getLogger("plan/deferred-active");
 var ABANDON_GRACE_MS2 = 60 * 60 * 1e3;
 var ONE_HOUR_MS8 = 60 * 60 * 1e3;
 
-// lib/objectives/deferredObjectives/planPreview.ts
-var ONE_HOUR_MS9 = 60 * 60 * 1e3;
-var AT_CAP_SAMPLE_FRESHNESS_MS = 2 * 60 * 1e3;
-
-// lib/utils/perfCounters.ts
-var state = {
-  startedAt: Date.now(),
-  counts: {},
-  durations: {}
-};
-
-// lib/utils/opRssTracker.ts
-var MB = 1024 * 1024;
-
-// packages/contracts/src/deferredObjectiveSettings.ts
+// lib/objectives/deferredObjectives/settings.ts
 var normalizeEntryBase = (raw) => {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const entry = raw;
@@ -5270,7 +5256,7 @@ var normalizeEntryBase = (raw) => {
   }
   return null;
 };
-var normalizeDeferredObjectiveSettingsEntry2 = (raw) => {
+var normalizeDeferredObjectiveSettingsEntry = (raw) => {
   const base = normalizeEntryBase(raw);
   if (!base) return null;
   const rescue = normalizeRescuePermissions(raw.rescue);
@@ -5293,6 +5279,87 @@ var normalizeRescuePermissions = (raw) => {
 var isValidDeadlineAtMs = (value) => typeof value === "number" && Number.isFinite(value) && value > 0;
 var isValidTargetPercent = (value) => typeof value === "number" && Number.isFinite(value) && value > 0 && value <= 100;
 var isValidTargetTemperature = (value) => typeof value === "number" && Number.isFinite(value) && value >= -50 && value <= 100;
+
+// lib/objectives/deferredObjectives/smartTaskCandidateRequest.ts
+var LOCAL_TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
+var MAX_DEADLINE_HORIZON_MS = 36 * 60 * 60 * 1e3;
+var isObjectiveKind = (value) => value === "temperature" || value === "ev_soc";
+var parseSmartTaskCandidateRequest = (body) => {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return null;
+  const candidate = body;
+  const deviceId = typeof candidate.deviceId === "string" ? candidate.deviceId.trim() : "";
+  if (!deviceId) return null;
+  if (!isObjectiveKind(candidate.kind)) return null;
+  if (typeof candidate.target !== "number" || !Number.isFinite(candidate.target)) return null;
+  const readyByLocalTime = typeof candidate.readyByLocalTime === "string" ? candidate.readyByLocalTime.trim() : "";
+  if (!LOCAL_TIME_PATTERN.test(readyByLocalTime)) return null;
+  const deadlineAtMs = typeof candidate.deadlineAtMs === "number" && Number.isFinite(candidate.deadlineAtMs) ? candidate.deadlineAtMs : void 0;
+  const exemptFromBudget = candidate.exemptFromBudget === true ? true : void 0;
+  const limitLowerPriorityDevices = candidate.limitLowerPriorityDevices === true ? true : void 0;
+  return {
+    deviceId,
+    kind: candidate.kind,
+    target: candidate.target,
+    readyByLocalTime,
+    deadlineAtMs,
+    exemptFromBudget,
+    limitLowerPriorityDevices
+  };
+};
+var resolveSmartTaskRequestDeadline = (request, timeZone, nowMs) => {
+  const resolution = resolveDeferredObjectiveDeadline({
+    nowMs,
+    timeZone,
+    deadlineLocalTime: request.readyByLocalTime
+  });
+  if (resolution.deadlineAtMs === null || resolution.deadlineAtMs <= nowMs) return null;
+  return resolution.deadlineAtMs;
+};
+var resolveSmartTaskWriteDeadline = (request, timeZone, nowMs) => {
+  if (request.deadlineAtMs !== void 0) {
+    if (request.deadlineAtMs <= nowMs || request.deadlineAtMs > nowMs + MAX_DEADLINE_HORIZON_MS) {
+      return { ok: false, reason: "deadline_passed" };
+    }
+    return { ok: true, deadlineAtMs: request.deadlineAtMs };
+  }
+  const deadlineAtMs = resolveSmartTaskRequestDeadline(request, timeZone, nowMs);
+  if (deadlineAtMs === null) return { ok: false, reason: "invalid_ready_by" };
+  return { ok: true, deadlineAtMs };
+};
+var buildCandidateRescue = (request) => {
+  const rescue = {
+    ...request.exemptFromBudget ? { exemptFromBudget: "always" } : {},
+    ...request.limitLowerPriorityDevices ? { limitLowerPriorityDevices: "always" } : {}
+  };
+  return rescue.exemptFromBudget || rescue.limitLowerPriorityDevices ? rescue : void 0;
+};
+var buildValidSmartTaskCandidate = (request, deadlineAtMs) => {
+  const base = request.kind === "ev_soc" ? { kind: "ev_soc", enforcement: "soft", targetPercent: request.target, deadlineAtMs } : { kind: "temperature", enforcement: "soft", targetTemperatureC: request.target, deadlineAtMs };
+  const rescue = buildCandidateRescue(request);
+  const candidate = rescue ? { ...base, rescue } : base;
+  return normalizeDeferredObjectiveSettingsEntry({ ...candidate, enabled: true }) ? candidate : null;
+};
+var mapSmartTaskAppReason = (reason) => {
+  if (reason === "device_not_found") return "device_not_found";
+  if (reason === "device_not_planned") return "device_not_planned";
+  if (reason === "device_not_eligible") return "device_not_eligible";
+  if (reason === "write_conflict" || reason === "write_refused") return "write_conflict";
+  return "invalid_candidate";
+};
+
+// lib/objectives/deferredObjectives/planPreview.ts
+var ONE_HOUR_MS9 = 60 * 60 * 1e3;
+var AT_CAP_SAMPLE_FRESHNESS_MS = 2 * 60 * 1e3;
+
+// lib/utils/perfCounters.ts
+var state = {
+  startedAt: Date.now(),
+  counts: {},
+  durations: {}
+};
+
+// lib/utils/opRssTracker.ts
+var MB = 1024 * 1024;
 
 // packages/shared-domain/src/smartTaskDeadlineFormat.ts
 var HOUR_MS5 = 60 * 60 * 1e3;
@@ -5469,67 +5536,9 @@ var buildCreateSmartTaskDevicesPayload = (input) => {
 };
 
 // widgets/create_smart_task/src/api.ts
-var LOCAL_TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
-var MAX_DEADLINE_HORIZON_MS = 36 * 60 * 60 * 1e3;
 var readTimeZone = (homey) => {
   const tz = homey.clock?.getTimezone?.();
   return typeof tz === "string" && tz.length > 0 ? tz : "UTC";
-};
-var isObjectiveKind = (value) => value === "temperature" || value === "ev_soc";
-var parseCandidateRequest = (body) => {
-  if (!body || typeof body !== "object" || Array.isArray(body)) return null;
-  const candidate = body;
-  const deviceId = typeof candidate.deviceId === "string" ? candidate.deviceId.trim() : "";
-  if (!deviceId) return null;
-  if (!isObjectiveKind(candidate.kind)) return null;
-  if (typeof candidate.target !== "number" || !Number.isFinite(candidate.target)) return null;
-  const readyByLocalTime = typeof candidate.readyByLocalTime === "string" ? candidate.readyByLocalTime.trim() : "";
-  if (!LOCAL_TIME_PATTERN.test(readyByLocalTime)) return null;
-  const deadlineAtMs = typeof candidate.deadlineAtMs === "number" && Number.isFinite(candidate.deadlineAtMs) ? candidate.deadlineAtMs : void 0;
-  const exemptFromBudget = candidate.exemptFromBudget === true ? true : void 0;
-  const limitLowerPriorityDevices = candidate.limitLowerPriorityDevices === true ? true : void 0;
-  return {
-    deviceId,
-    kind: candidate.kind,
-    target: candidate.target,
-    readyByLocalTime,
-    deadlineAtMs,
-    exemptFromBudget,
-    limitLowerPriorityDevices
-  };
-};
-var resolveDeadline = (request, timeZone, nowMs) => {
-  const resolution = resolveDeferredObjectiveDeadline({
-    nowMs,
-    timeZone,
-    deadlineLocalTime: request.readyByLocalTime
-  });
-  if (resolution.deadlineAtMs === null || resolution.deadlineAtMs <= nowMs) return null;
-  return resolution.deadlineAtMs;
-};
-var resolveCreateDeadline = (request, timeZone, nowMs) => {
-  if (request.deadlineAtMs !== void 0) {
-    if (request.deadlineAtMs <= nowMs || request.deadlineAtMs > nowMs + MAX_DEADLINE_HORIZON_MS) {
-      return { ok: false, reason: "deadline_passed" };
-    }
-    return { ok: true, deadlineAtMs: request.deadlineAtMs };
-  }
-  const deadlineAtMs = resolveDeadline(request, timeZone, nowMs);
-  if (deadlineAtMs === null) return { ok: false, reason: "invalid_ready_by" };
-  return { ok: true, deadlineAtMs };
-};
-var buildCandidateRescue = (request) => {
-  const rescue = {
-    ...request.exemptFromBudget ? { exemptFromBudget: "always" } : {},
-    ...request.limitLowerPriorityDevices ? { limitLowerPriorityDevices: "always" } : {}
-  };
-  return rescue.exemptFromBudget || rescue.limitLowerPriorityDevices ? rescue : void 0;
-};
-var buildValidCandidate = (request, deadlineAtMs) => {
-  const base = request.kind === "ev_soc" ? { kind: "ev_soc", enforcement: "soft", targetPercent: request.target, deadlineAtMs } : { kind: "temperature", enforcement: "soft", targetTemperatureC: request.target, deadlineAtMs };
-  const rescue = buildCandidateRescue(request);
-  const candidate = rescue ? { ...base, rescue } : base;
-  return normalizeDeferredObjectiveSettingsEntry2({ ...candidate, enabled: true }) ? candidate : null;
 };
 var previewReject = (reason) => ({
   ok: false,
@@ -5539,26 +5548,19 @@ var createReject = (reason) => ({
   ok: false,
   reason
 });
-var mapAppReason = (reason) => {
-  if (reason === "device_not_found") return "device_not_found";
-  if (reason === "device_not_planned") return "device_not_planned";
-  if (reason === "device_not_eligible") return "device_not_eligible";
-  if (reason === "write_conflict" || reason === "write_refused") return "write_conflict";
-  return "invalid_candidate";
-};
 var getCreateSmartTaskDevices = async ({ homey }) => {
   const devices = typeof homey.app?.getCreateSmartTaskCandidateDevices === "function" ? homey.app.getCreateSmartTaskCandidateDevices() : [];
   return buildCreateSmartTaskDevicesPayload({ devices });
 };
 var previewCreateSmartTask = async ({ homey, body }) => {
-  const request = parseCandidateRequest(body);
+  const request = parseSmartTaskCandidateRequest(body);
   if (!request) return previewReject("invalid_request");
   if (typeof homey.app?.previewDeferredObjectivePlan !== "function") return previewReject("unavailable");
   const timeZone = readTimeZone(homey);
   const nowMs = Date.now();
-  const deadlineAtMs = resolveDeadline(request, timeZone, nowMs);
+  const deadlineAtMs = resolveSmartTaskRequestDeadline(request, timeZone, nowMs);
   if (deadlineAtMs === null) return previewReject("invalid_ready_by");
-  const candidate = buildValidCandidate(request, deadlineAtMs);
+  const candidate = buildValidSmartTaskCandidate(request, deadlineAtMs);
   if (!candidate) return previewReject("invalid_candidate");
   const estimate = homey.app.previewDeferredObjectivePlan(request.deviceId, candidate);
   return {
@@ -5572,18 +5574,18 @@ var previewCreateSmartTask = async ({ homey, body }) => {
   };
 };
 var createCreateSmartTask = async ({ homey, body }) => {
-  const request = parseCandidateRequest(body);
+  const request = parseSmartTaskCandidateRequest(body);
   if (!request) return createReject("invalid_request");
   if (typeof homey.app?.createDeferredObjective !== "function") return createReject("unavailable");
   const timeZone = readTimeZone(homey);
   const nowMs = Date.now();
-  const deadline = resolveCreateDeadline(request, timeZone, nowMs);
+  const deadline = resolveSmartTaskWriteDeadline(request, timeZone, nowMs);
   if (!deadline.ok) return createReject(deadline.reason);
-  const candidate = buildValidCandidate(request, deadline.deadlineAtMs);
+  const candidate = buildValidSmartTaskCandidate(request, deadline.deadlineAtMs);
   if (!candidate) return createReject("invalid_candidate");
   const result = homey.app.createDeferredObjective(request.deviceId, candidate);
   if (result.ok) return { ok: true };
-  return createReject(mapAppReason(result.reason));
+  return createReject(mapSmartTaskAppReason(result.reason));
 };
 var logClientError = (context) => handleWidgetClientLog("create_smart_task", context);
 // Annotate the CommonJS export names for ESM import in node:

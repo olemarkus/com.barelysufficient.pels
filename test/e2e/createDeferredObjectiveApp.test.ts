@@ -372,4 +372,52 @@ describe('createDeferredObjective (app)', () => {
       await app.onUninit?.();
     });
   });
+
+  // Settings-UI clear lane. The ordering contract mirrors the `clear_deadline`
+  // Flow card: the status-bus / hours-tracker memory is forgotten only AFTER a
+  // confirmed persist, so a refused clear never desyncs lifecycle surfaces
+  // from a task that is still stored.
+  describe('cancelDeferredObjective', () => {
+    it('clears the stored task, then forgets the status-bus and hours-tracker memory', async () => {
+      const app = await initApp();
+      expect(app.createDeferredObjective('heater-1', tempCandidate(60))).toEqual({ ok: true });
+      const forgetStatus = vi.spyOn(app.deferredObjectiveStatusBus, 'forgetDevice');
+      const forgetHours = vi.spyOn(app.deferredObjectiveHoursRemainingTracker, 'forgetDevice');
+
+      expect(app.cancelDeferredObjective('heater-1')).toEqual({ ok: true });
+      expect(readStored().objectivesByDeviceId['heater-1']).toBeUndefined();
+      expect(forgetStatus).toHaveBeenCalledWith('heater-1');
+      expect(forgetHours).toHaveBeenCalledWith('heater-1');
+      await app.onUninit?.();
+    });
+
+    it('answers task_not_found for a device without a task and forgets nothing', async () => {
+      const app = await initApp();
+      const forgetStatus = vi.spyOn(app.deferredObjectiveStatusBus, 'forgetDevice');
+      const forgetHours = vi.spyOn(app.deferredObjectiveHoursRemainingTracker, 'forgetDevice');
+
+      expect(app.cancelDeferredObjective('heater-1')).toEqual({ ok: false, reason: 'task_not_found' });
+      expect(forgetStatus).not.toHaveBeenCalled();
+      expect(forgetHours).not.toHaveBeenCalled();
+      await app.onUninit?.();
+    });
+
+    it('GUARDRAIL: a refused clear leaves the task stored and the bus memory intact', async () => {
+      const app = await initApp();
+      expect(app.createDeferredObjective('heater-1', tempCandidate(60))).toEqual({ ok: true });
+      const forgetStatus = vi.spyOn(app.deferredObjectiveStatusBus, 'forgetDevice');
+      const forgetHours = vi.spyOn(app.deferredObjectiveHoursRemainingTracker, 'forgetDevice');
+      // Simulate the boot-time transient-empty `getKeys()` flake with the
+      // migration marker unset: `ensureMigrated` then refuses the write.
+      mockHomeyInstance.settings.unset(DEFERRED_OBJECTIVES_PERKEY_MIGRATED);
+      const getKeysSpy = vi.spyOn(mockHomeyInstance.settings, 'getKeys').mockReturnValue([]);
+
+      expect(app.cancelDeferredObjective('heater-1')).toEqual({ ok: false, reason: 'write_refused' });
+      getKeysSpy.mockRestore();
+      expect(readStored().objectivesByDeviceId['heater-1']).toMatchObject({ targetTemperatureC: 60 });
+      expect(forgetStatus).not.toHaveBeenCalled();
+      expect(forgetHours).not.toHaveBeenCalled();
+      await app.onUninit?.();
+    });
+  });
 });

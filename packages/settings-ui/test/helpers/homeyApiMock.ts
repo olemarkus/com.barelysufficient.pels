@@ -31,6 +31,9 @@ import {
   SETTINGS_UI_STARVATION_RESCUE_DEVICES_PATH,
   SETTINGS_UI_STARVATION_RESCUE_PREVIEW_PATH,
   SETTINGS_UI_STARVATION_RESCUE_CREATE_PATH,
+  SETTINGS_UI_SMART_TASK_PREVIEW_PATH,
+  SETTINGS_UI_SMART_TASK_UPDATE_PATH,
+  SETTINGS_UI_SMART_TASK_CANCEL_PATH,
 } from '../../../contracts/src/settingsUiApi.ts';
 import type { DeferredObjectiveActivePlansV1 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import {
@@ -85,6 +88,9 @@ export type MockHomeyUiState = {
   starvationRescuableDeviceIds?: string[];
   starvationRescuePreview?: unknown;
   starvationRescueCreate?: unknown;
+  smartTaskPreview?: unknown;
+  smartTaskUpdate?: unknown;
+  smartTaskCancel?: unknown;
 };
 
 export type MockHomeyApiContext = {
@@ -363,6 +369,18 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
   ),
   [buildRouteKey('POST', SETTINGS_UI_STARVATION_RESCUE_CREATE_PATH)]: (homey) => async () => (
     getUiOverride(homey, 'starvationRescueCreate') ?? { ok: false, reason: 'unavailable' }
+  ),
+  // Smart-task detail edit/clear lane. Defaults are unavailable so tests that
+  // never wire the lane fail closed; tests seed `uiState.smartTask*` overrides
+  // to drive the preview/save/clear paths.
+  [buildRouteKey('POST', SETTINGS_UI_SMART_TASK_PREVIEW_PATH)]: (homey) => async () => (
+    getUiOverride(homey, 'smartTaskPreview') ?? { ok: false, reason: 'unavailable' }
+  ),
+  [buildRouteKey('POST', SETTINGS_UI_SMART_TASK_UPDATE_PATH)]: (homey) => async () => (
+    getUiOverride(homey, 'smartTaskUpdate') ?? { ok: false, reason: 'unavailable' }
+  ),
+  [buildRouteKey('POST', SETTINGS_UI_SMART_TASK_CANCEL_PATH)]: (homey) => async () => (
+    getUiOverride(homey, 'smartTaskCancel') ?? { ok: false, reason: 'unavailable' }
   ),
   [buildRouteKey('POST', LOG_HOMEY_DEVICE_PATH)]: () => async () => ({ ok: true }),
 };

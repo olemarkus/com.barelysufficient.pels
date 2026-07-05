@@ -44,6 +44,7 @@ export {
   type ObjectiveWriteOutcome,
 } from './objectiveWrite';
 export {
+  hasOpenDeferredObjective,
   migrateBlobToPerKeyIfNeeded,
   objectiveKeyListIsTrustworthy,
   readAllObjectives,
@@ -52,6 +53,14 @@ export {
 } from './objectiveStore';
 export { normalizeDeferredObjectiveActivePlans } from './activePlanSettings';
 export { formatDeadlineLocalTime, resolveDeferredObjectiveDeadline } from './deadline';
+export {
+  buildValidSmartTaskCandidate,
+  mapSmartTaskAppReason,
+  parseSmartTaskCandidateRequest,
+  resolveSmartTaskRequestDeadline,
+  resolveSmartTaskWriteDeadline,
+  type SmartTaskWriteOrigin,
+} from './smartTaskCandidateRequest';
 export { buildDeferredObjectivePolicyHorizon } from './policyHorizon';
 export { previewDeferredObjectivePlan } from './planPreview';
 export type {

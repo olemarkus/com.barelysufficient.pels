@@ -2902,6 +2902,124 @@ md-filled-button.is-busy {
   line-height: var(--font-line-height-tight);
 }
 
+/* Smart-task detail edit/clear card. Collapsed: one quiet hint + "Edit task"
+ * row. Open: `.field` goal/ready-by inputs, the server-previewed landing
+ * lines, and the action row. The native `<input type="time">` gets the same
+ * surface treatment as the MD filled field beside it (Material Web has no
+ * time type), with the shared 48 px touch-target floor. */
+.smart-task-edit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+}
+
+.smart-task-edit__offer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-2);
+}
+
+/* Native time input, bound to the SAME container tokens the MD filled text
+ * field beside it resolves to (`--color-surface-4` container, `--radius-md`
+ * corner — see the `--md-filled-text-field-*` bindings at :root) so the two
+ * fields in this one form speak one field language. `appearance: none` +
+ * explicit disabled state keep UA chrome out; `color-scheme` follows the
+ * app's dark scheme so the picker glyph / spinners stay visible on the dark
+ * production theme. */
+.smart-task-edit__time-input {
+  min-height: var(--pels-touch-target-min);
+  padding: var(--spacing-2) var(--spacing-3);
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--md-filled-text-field-container-color);
+  color: var(--text);
+  color-scheme: dark;
+  border: none;
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-md);
+}
+
+.smart-task-edit__time-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.smart-task-edit__time-input:disabled {
+  opacity: 0.38; /* mirrors MD's disabled-content opacity */
+}
+
+/* Desktop ships the light canvas (Homey's shell invert produces dark — see
+ * the theme header comment); the UA time-control internals must follow it. */
+@media (hover: hover) and (pointer: fine) {
+  .smart-task-edit__time-input {
+    color-scheme: light;
+  }
+}
+
+.smart-task-edit__preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+}
+
+.smart-task-edit__previewing {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--font-size-sm);
+}
+
+.smart-task-edit__preview-when,
+.smart-task-edit__preview-cost {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--font-size-sm);
+}
+
+.smart-task-edit__preview-verdict {
+  margin: 0;
+  color: var(--color-state-warning-text);
+  font-size: var(--font-size-sm);
+}
+
+.smart-task-edit__error {
+  margin: 0;
+  color: var(--color-state-negative-text);
+  font-size: var(--font-size-sm);
+}
+
+.smart-task-edit__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+/* Push the destructive Clear to the far edge so it can't be fat-fingered from
+ * Save/Discard; wraps below on 320 px where the row breaks. */
+.smart-task-edit__clear {
+  margin-left: auto;
+}
+
+/* Two-step confirm label stack: every possible label occupies the same grid
+ * cell, so the button is always as wide as its WIDEST label and arming the
+ * confirm can never move the tap target out from under the finger. Only the
+ * `data-active` label is visible; the rest keep the width reserved. */
+.smart-task-edit__clear-labels {
+  display: inline-grid;
+}
+
+.smart-task-edit__clear-labels > span {
+  grid-area: 1 / 1;
+  visibility: hidden;
+  white-space: nowrap;
+}
+
+.smart-task-edit__clear-labels > span[data-active='true'] {
+  visibility: visible;
+}
+
 /* Recourse action row beneath the cannot-finish meta line. The 48 px floor
  * matches the touch-target token used elsewhere on PELS — see
  * `feedback_design_tokens.md` plus the upstream "Lift `.pels-icon-toggle` and
