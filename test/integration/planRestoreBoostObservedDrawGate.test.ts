@@ -1,16 +1,17 @@
 /**
  * Regression coverage for the boost-driven stepped-escalation gate.
  *
- * `blockSteppedRestoreForShedInvariant` / `canUseSwapForSteppedRestore` in
- * `lib/plan/restore/helpers.ts` honor `hasRecentObservedDrawAtSelectedStep`
- * on the plan device: when calibration confirms the device is *not* currently
- * drawing at its selected step, boost cannot bypass the shed invariant or
- * trigger a swap to a higher step. When calibration has no opinion
- * (`undefined`), the legacy bypass remains in effect so newly-paired devices
- * are not penalised during warm-up.
+ * `canUseSwapForSteppedRestore` in `lib/plan/restore/steppedRestoreAdmission.ts`
+ * honors `hasRecentObservedDraw` on the plan device: when calibration
+ * confirms the device has not been drawing at any step recently, boost
+ * cannot trigger a swap to a higher step — pausing a running lower-priority
+ * device for a boosted device that isn't accepting load is pure loss. When
+ * calibration has no opinion (`undefined`), the legacy bypass remains in
+ * effect so newly-paired devices are not penalised during warm-up.
  *
- * Closes TODO §"Gate boost-driven stepped escalation on recent observed draw
- * at the current step."
+ * The shed-invariant bypass is deliberately NOT gated on draw evidence —
+ * boost overrides the fairness invariant unconditionally (see the staircase
+ * regression in `planRestoreBoostShedInvariantBypass.test.ts`).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
@@ -40,7 +41,7 @@ const buildContext = (overrides: Partial<PlanContext> = {}): PlanContext => ({
   ...overrides,
 } as PlanContext);
 
-describe('boost-driven escalation honours hasRecentObservedDrawAtSelectedStep', () => {
+describe('boost-driven escalation honours hasRecentObservedDraw', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-05-12T12:00:00Z'));
@@ -64,7 +65,7 @@ describe('boost-driven escalation honours hasRecentObservedDrawAtSelectedStep', 
           desiredStepId: 'medium',
           temperatureBoostActive: true,
           ...(hasRecentObservedDraw !== undefined
-            ? { hasRecentObservedDrawAtSelectedStep: hasRecentObservedDraw }
+            ? { hasRecentObservedDraw: hasRecentObservedDraw }
             : {}),
         }),
         buildPlanDevice({
@@ -100,11 +101,11 @@ describe('boost-driven escalation honours hasRecentObservedDrawAtSelectedStep', 
     expect(steppedDev?.reason?.code).toBe(PLAN_REASON_CODES.swapPending);
   });
 
-  it('blocks the bypass when calibration says the device is idle at its current step', () => {
+  it('blocks the swap when calibration says the device has not been drawing at any step', () => {
     const result = buildScenario(false);
     const steppedDev = result.planDevices.find((d) => d.id === 'dev-step');
-    // With the gate engaged, the stepped device falls back to the
-    // shed-invariant rejection rather than acquiring a pending swap.
+    // With the gate engaged, the stepped device falls back to a plain
+    // headroom rejection rather than acquiring a pending swap.
     expect(steppedDev?.reason?.code).not.toBe(PLAN_REASON_CODES.swapPending);
   });
 });

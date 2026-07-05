@@ -190,7 +190,7 @@ const buildSteppedDevice = (nowMs: number): PlanInputDevice => withSteppedDiscri
     measuredPowerKw: STEP_LOW_KW,
     expectedPowerKw: STEP_LOW_KW,
     planningPowerKw: STEP_LOW_KW,
-    hasRecentObservedDrawAtSelectedStep: true,
+    hasRecentObservedDraw: true,
     targets: [{ id: 'target_temperature', value: TARGET_C, unit: '°C', min: 30, max: 75, step: 1 }],
   })),
 ) as PlanInputDevice;

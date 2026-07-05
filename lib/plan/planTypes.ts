@@ -480,7 +480,7 @@ type DevicePlanDeviceBase = {
   lastLocalWriteMs?: number;
   pendingTargetCommand?: PendingTargetCommandSummary;
   stepPowerCalibration?: Record<string, StepPowerCalibrationView>;
-  hasRecentObservedDrawAtSelectedStep?: boolean;
+  hasRecentObservedDraw?: boolean;
   /**
    * Producer-resolved residual-kW projection propagated from
    * `PlanInputDevice.residualKw` at plan-build time (chunks 3-4 of the
