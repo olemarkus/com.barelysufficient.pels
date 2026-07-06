@@ -37,7 +37,7 @@ integration gaps should still follow this note.
 > devices that already have an open smart task, so the action is a fresh create
 > through the same engine as the New smart task widget, not a merge into an
 > existing deadline. This bypasses DAILY-BUDGET admission only — never capacity
-> (the hard cap is physical), and capacity rows get no rescue affordance. So the
+> (the hard cap holds the tariff step and is never a remedy), and capacity rows get no rescue affordance. So the
 > system is no longer "detection-only" for temperature devices — but the new
 > behaviour is gated behind explicit user action, not automatic mitigation.
 >

@@ -83,7 +83,7 @@ export const syncDryRunBannerVisibility = (): void => {
 
 const updateCapacityReactionHint = (limit: number, margin: number) => {
   if (!settingsCapacityReactionHint) return;
-  // The result row's static label ("With these settings, safe pace is at most")
+  // The result row's static label ("With these settings, safe pace starts each hour at")
   // frames this as a ceiling derived from the current inputs, not an absolute
   // "safe pace now" — that live value is the Overview hero's job and can differ
   // when today's daily budget is the tighter constraint. This element carries

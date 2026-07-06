@@ -990,18 +990,20 @@ const BudgetAdjustView = ({
           <div>
             <h3 class="plan-card__title">Current limits</h3>
             {/* Same result-row treatment + phrasing as the Limits page's
-                safe-pace row (`index.html` #settings-capacity-reaction): a
-                ceiling ("at most") derived from the current inputs, never a
+                safe-pace row (`index.html` #settings-capacity-reaction): the
+                hour-start baseline derived from the current inputs, never a
                 live "safe pace now" that would fight the Overview hero's
-                budget-constrained value. One phrasing on both pages. */}
+                budget-constrained value. Not phrased as a ceiling — the live
+                safe pace legitimately rises above it (even above the cap)
+                late in an under-used hour. One phrasing on both pages. */}
             {usableCapacityKw !== null ? (
               <div class="settings-result" role="group">
-                <span class="settings-result__label">With these settings, safe pace is at most</span>
+                <span class="settings-result__label">With these settings, safe pace starts each hour at</span>
                 <strong class="settings-result__value">{formatKw(usableCapacityKw)}</strong>
-                <span class="settings-result__note">(hard cap minus safety margin)</span>
+                <span class="settings-result__note">(hard cap minus safety margin; it adapts as the hour is used)</span>
               </div>
             ) : (
-              <p class="pels-card-supporting">Safe pace stays below the hard cap.</p>
+              <p class="pels-card-supporting">Safe pace adapts through each hour to keep it within the energy budget.</p>
             )}
           </div>
         </div>

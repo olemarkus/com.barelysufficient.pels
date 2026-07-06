@@ -5,11 +5,8 @@ export type PlanHeroMetaInput = {
   softLimitKw?: number;
   headroomKw?: number;
   hardCapLimitKw?: number | null;
-  hardCapHeadroomKw?: number | null;
   controlledKw?: number;
   uncontrolledKw?: number;
-  capacityShortfall?: boolean;
-  shortfallBudgetThresholdKw?: number;
   lastPowerUpdateMs?: number;
 };
 
@@ -17,6 +14,12 @@ export type PowerFreshnessState = 'fresh' | 'stale_hold' | 'stale_fail_closed';
 
 export type HeroTone = 'ok' | 'warn' | 'alert';
 
+// The headline deliberately carries NO instantaneous-vs-hard-cap judgement.
+// The hard cap is an hourly-average (tariff-step) ceiling — instantaneous kW
+// above it is not a breach and no runtime control path treats it as one
+// (`notes/ui-terminology.md` § "Hard cap is an hourly ceiling"). The alert-tier
+// hero state is derived from the projected this-hour energy vs the cap by the
+// caller, which owns the projection.
 export type HeroHeadline = {
   totalKw: number;
   softLimitKw: number;
@@ -25,11 +28,6 @@ export type HeroHeadline = {
   uncontrolledKw: number | null;
   headroomKw: number;
   overSoftLimit: boolean;
-  overHardLimit: boolean;
-  kwText: string;
-  limitText: string;
-  message: string;
-  tone: HeroTone;
   ageText: string | null;
 };
 
@@ -37,26 +35,6 @@ export type FreshnessChipView = {
   kind: PowerFreshnessState;
   label: string;
   tone: HeroTone;
-};
-
-const resolveTone = (overSoftLimit: boolean, overHardLimit: boolean): HeroTone => {
-  if (overHardLimit) return 'alert';
-  if (overSoftLimit) return 'warn';
-  return 'ok';
-};
-
-const resolveMessage = (params: {
-  headroomKw: number;
-  overSoftLimit: boolean;
-  overHardLimit: boolean;
-  capacityShortfall: boolean;
-}): string => {
-  const { headroomKw, overSoftLimit, overHardLimit, capacityShortfall } = params;
-  if (overHardLimit) return 'Above hard cap';
-  if (overSoftLimit) return 'Above safe pace';
-  if (capacityShortfall) return 'Keeping power under the hard cap';
-  const spare = Math.max(0, headroomKw);
-  return `${spare.toFixed(1)} kW to spare`;
 };
 
 export const formatHeroHeadline = (
@@ -69,18 +47,8 @@ export const formatHeroHeadline = (
     return null;
   }
 
-  const hardCapLimitKw = typeof meta.hardCapLimitKw === 'number' ? meta.hardCapLimitKw : null;
-  const hardCapHeadroomKw = typeof meta.hardCapHeadroomKw === 'number' ? meta.hardCapHeadroomKw : null;
-  const hardLimitKw = hardCapLimitKw;
+  const hardLimitKw = typeof meta.hardCapLimitKw === 'number' ? meta.hardCapLimitKw : null;
   const overSoftLimit = headroomKw < 0;
-  const overHardLimit = hardCapHeadroomKw !== null && hardCapHeadroomKw < 0;
-  const tone = resolveTone(overSoftLimit, overHardLimit);
-  const message = resolveMessage({
-    headroomKw,
-    overSoftLimit,
-    overHardLimit,
-    capacityShortfall: meta.capacityShortfall === true,
-  });
   const ageText = typeof meta.lastPowerUpdateMs === 'number'
     ? formatRelativeTime(meta.lastPowerUpdateMs, nowMs)
     : null;
@@ -93,11 +61,6 @@ export const formatHeroHeadline = (
     uncontrolledKw: typeof meta.uncontrolledKw === 'number' ? meta.uncontrolledKw : null,
     headroomKw,
     overSoftLimit,
-    overHardLimit,
-    kwText: `${totalKw.toFixed(1)} kW`,
-    limitText: `of ${softLimitKw.toFixed(1)} kW limit`,
-    message,
-    tone,
     ageText,
   };
 };
@@ -171,7 +134,11 @@ export const formatProjectedEnergySubline = (projectedKWh: number | null): strin
 // logs (see `feedback_ui_text_shared_with_logs.md`).
 
 export type HeroMeterMarkerLabels = {
-  // Concise legend label, no value — e.g. "Safe pace".
+  // Visible legend label. Power-bar markers include the numeric value
+  // ("Safe pace now 5.5 kW") because the legend is the only touch-reachable
+  // home for those numbers (tippy tooltips need hover); energy-bar markers
+  // stay value-free because their numbers already sit in the headline
+  // directly above the bar. See `notes/ui-terminology.md` § "Hero legend".
   short: string;
   // Screen-reader label with the numeric value — e.g. "Safe pace now 12.0 kW".
   aria: string;
@@ -185,13 +152,15 @@ export const formatPowerMeterMarkerLabels = (
   valueKw: number,
 ): HeroMeterMarkerLabels => {
   if (kind === 'cap') {
-    return { short: 'Hard cap', aria: `Hard cap ${formatKw(valueKw)}` };
+    const label = `Hard cap ${formatKw(valueKw)}`;
+    return { short: label, aria: label };
   }
-  return { short: 'Safe pace', aria: `Safe pace now ${formatKw(valueKw)}` };
+  const label = `Safe pace now ${formatKw(valueKw)}`;
+  return { short: label, aria: label };
 };
 
 export const formatEnergyMeterMarkerLabels = (
-  kind: 'target' | 'projected',
+  kind: 'target' | 'projected' | 'cap',
   valueKWh: number,
 ): HeroMeterMarkerLabels => {
   if (kind === 'projected') {
@@ -200,14 +169,23 @@ export const formatEnergyMeterMarkerLabels = (
       aria: `Projected this hour ${formatKWh(valueKWh)}`,
     };
   }
+  // The cap marker carries its value visibly (unlike budget/projected, whose
+  // numbers sit in the headline directly above the bar): the cap's hourly kWh
+  // is the threshold that turns the projection red, and it is printed nowhere
+  // else in kWh.
+  if (kind === 'cap') {
+    const label = `Hard cap this hour ${formatKWh(valueKWh)}`;
+    return { short: label, aria: label };
+  }
   return { short: 'Budget this hour', aria: `Budget this hour ${formatKWh(valueKWh)}` };
 };
 
-// ─── Above-safe-pace / above-hard-cap subline ────────────────────────────────
+// ─── Above-safe-pace subline ─────────────────────────────────────────────────
 // `headroomKw` is the spare room before safe pace (negative when above).
-// `hardCapHeadroomKw` is the spare room before hard cap (negative when above).
-// The subline copy matches `notes/overview-hero-spec.md` § "Power now" and is
-// rendered when the chip indicates the hero is above one of the thresholds.
+// The subline copy matches `notes/overview-hero-spec.md` § "Power now". There
+// is deliberately NO above-hard-cap subline: instantaneous kW above the cap is
+// not a breach (the cap is an hourly-average ceiling), so the power subline
+// only ever compares against the safe pace PELS actually reacts to.
 
 // Keep the safe-pace numeric reference visible in the above-safe-pace state so
 // the user can compare "how much over" against the actual target. Spec:
@@ -215,14 +193,6 @@ export const formatEnergyMeterMarkerLabels = (
 export const formatAboveSafePaceSubline = (headroomKw: number, safePaceKw: number): string => {
   const overshootKw = Math.max(0, -headroomKw);
   return `${formatKw(overshootKw)} above safe pace (${formatKw(safePaceKw)})`;
-};
-
-export const formatAboveHardCapSubline = (
-  hardCapHeadroomKw: number,
-  hardCapKw: number,
-): string => {
-  const overshootKw = Math.max(0, -hardCapHeadroomKw);
-  return `${formatKw(overshootKw)} above hard cap (${formatKw(hardCapKw)})`;
 };
 
 // Energy-bar scale used by the Overview hero. When projected is at-or-below
@@ -257,7 +227,11 @@ export type DecisionSentenceInput = {
   resumingCount: number;
   freshness: PowerFreshnessState | undefined;
   dryRun: boolean;
-  overHardLimit: boolean;
+  // Projected this-hour energy exceeds the hard cap's hourly kWh — the
+  // trajectory condition users read "Above hard cap" as. Never derived from
+  // instantaneous kW vs the cap (that is not a breach; see
+  // `notes/ui-terminology.md` § "Hard cap is an hourly ceiling").
+  projectedOverHardCap: boolean;
   projectedOverBudget: boolean;
   safePaceKw: number | null;
   // Subset of `limitedCount` whose hold is attributed to a smart task waiting
@@ -276,9 +250,9 @@ export type DecisionSentenceInput = {
   // the decision sentence names the user's recourse instead of promising action.
   capacityControlOffCount?: number;
   // Count of controllable managed devices still running (`stateKind ===
-  // 'active'`) that PELS could yet ease off. When this is zero while above the
-  // hard cap, the managed shed cascade is exhausted — the only remaining draw
-  // is whatever PELS cannot touch.
+  // 'active'`) that PELS could yet ease off. When this is zero while on pace
+  // over the hard cap, the managed shed cascade is exhausted — the only
+  // remaining draw is whatever PELS cannot touch.
   sheddableManagedRunningCount?: number;
 };
 
@@ -327,23 +301,41 @@ const resolveLimitingDecisionSentence = (input: DecisionSentenceInput): Decision
   return { text: `Holding back ${devicesText}${safePaceText}.`, positive: false };
 };
 
-// Resolve the above-hard-cap decision sentence (rule 2 of
-// `buildDecisionSentence`). When the managed shed cascade is exhausted (no
-// controllable managed device left running to ease off) and the remaining
-// breach is attributed to a device with Power-limit control turned off, PELS
-// has finished mitigating: claiming it is still "easing devices off"
-// overpromises action it cannot take. This is the producer-resolved flag — the
-// honest story names the real control and the user's recourse (the hard cap is
-// physical and is never offered as a remedy). Extracted so the rule ladder
-// stays under the SonarJS / ESLint cognitive-complexity cap.
+// Resolve the on-pace-over-hard-cap decision sentence (rule 2 of
+// `buildDecisionSentence`). The trigger is trajectory (projected this-hour
+// energy > the cap's hourly kWh), which mathematically implies draw is above
+// safe pace — so shedding is genuinely engaged and "easing devices off" is an
+// honest claim. When the managed shed cascade is exhausted (no controllable
+// managed device left running to ease off) and the remaining breach is
+// attributed to a device with Power-limit control turned off, PELS has
+// finished mitigating: claiming it is still "easing devices off" overpromises
+// action it cannot take. This is the producer-resolved flag — the honest story
+// names the real control and the user's recourse (raising the hard cap is
+// never offered as a remedy). Extracted so the rule ladder stays under the
+// SonarJS / ESLint cognitive-complexity cap.
 const resolveOverHardCapDecisionSentence = (
   input: DecisionSentenceInput,
 ): DecisionSentenceResult => {
+  // Simulation mode: PELS is not acting, so neither "Easing devices off" nor
+  // the recourse variant may render — state the trajectory alone (the banner
+  // and status chip already name simulation; hypothetical-voice rule in
+  // `notes/overview-hero-spec.md` § "Decision sentence").
+  if (input.dryRun) {
+    return { text: 'On pace to exceed the hard cap this hour.', positive: false };
+  }
   const capacityControlOffCount = input.capacityControlOffCount ?? 0;
   const sheddableManagedRunningCount = input.sheddableManagedRunningCount ?? 0;
-  const managedCascadeExhausted = capacityControlOffCount > 0 && sheddableManagedRunningCount === 0;
-  if (!managedCascadeExhausted) {
-    return { text: 'Over the hard cap right now. Easing devices off.', positive: false };
+  // "Easing devices off" only while a controllable managed device is actually
+  // still drawing — the trajectory trigger alone does not imply PELS has load
+  // left to act on (the hour may have banked the energy already, with every
+  // managed device settled off and draw near zero).
+  if (sheddableManagedRunningCount > 0) {
+    return { text: 'On pace to exceed the hard cap this hour. Easing devices off.', positive: false };
+  }
+  if (capacityControlOffCount === 0) {
+    // Nothing left to ease off and no control-off culprit: state the
+    // trajectory without claiming action PELS cannot take.
+    return { text: 'On pace to exceed the hard cap this hour.', positive: false };
   }
   const offDevices = capacityControlOffCount === 1
     ? 'a device that has Power-limit control turned off'
@@ -368,8 +360,9 @@ export const buildDecisionSentence = (
     };
   }
 
-  // 2. Above hard cap.
-  if (input.overHardLimit) return resolveOverHardCapDecisionSentence(input);
+  // 2. On pace to exceed the hard cap this hour (trajectory, never
+  // instantaneous kW vs the cap).
+  if (input.projectedOverHardCap) return resolveOverHardCapDecisionSentence(input);
 
   // 3. Simulation mode would act. The banner + `Simulation mode` status chip
   // already name simulation on the Overview; this conclusion drops the

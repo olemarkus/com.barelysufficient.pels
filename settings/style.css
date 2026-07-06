@@ -2411,26 +2411,22 @@ md-filled-button.is-busy {
    dimmer step of the same success tone — so an all-background household no
    longer sees a grey-on-grey gauge. The two segments stay distinguishable
    (bright vs dim), and the supporting "Managed X kW · Background Y kW" line
-   carries the split meaning (colour never carries meaning alone). Above safe
-   pace / hard cap the trailing segment flips to the warning / critical tone
-   below. */
+   carries the split meaning (colour never carries meaning alone). Above the
+   safe pace the trailing segment flips to the warning tone below. */
 .pels-meter-segments__seg--background {
   background: color-mix(in srgb, var(--pels-status-good) 42%, var(--pels-surface-container-high));
 }
 
-/* When current power crosses safe pace / hard cap, the trailing rendered
-   segment carries the warning / critical tone so the over-threshold portion
-   reads as an overflow stripe. The tone applies to the background segment when
-   it is present, otherwise to the managed segment so a managed-only overflow
-   still surfaces visually. */
+/* When current power crosses the safe pace, the trailing rendered segment
+   carries the warning tone so the over-threshold portion reads as an overflow
+   stripe. The tone applies to the background segment when it is present,
+   otherwise to the managed segment so a managed-only overflow still surfaces
+   visually. There is no instantaneous over-hard-cap tone — the cap is an
+   hourly-average ceiling; the critical story lives on the chip/rim and the
+   energy bar's projection marker. */
 .pels-meter-segments__seg--background[data-over-safe-pace],
 .pels-meter-segments__seg--managed[data-over-safe-pace] {
   background: var(--pels-status-warning);
-}
-
-.pels-meter-segments__seg--background[data-over-hard-cap],
-.pels-meter-segments__seg--managed[data-over-hard-cap] {
-  background: var(--pels-status-critical);
 }
 
 /* v2.7.3 managed-segment breathing: a single live moment on the Overview hero
@@ -2505,16 +2501,18 @@ md-filled-button.is-busy {
   box-shadow: 0 0 0 1px var(--pels-surface-container-highest);
 }
 
-/* Hard-cap end stop: warning-toned tick at the track's end (the cap marker
-   sits at the scale end on the real bar). */
+/* Hard-cap reference tick: warning-toned, centred on the mini-track like the
+   real marker (which renders wherever the cap value falls on the scale —
+   legitimately even left of the safe-pace tick late in an under-used hour). */
 .plan-hero__legend-swatch--cap::after {
   top: 50%;
-  right: 0;
+  left: 50%;
   width: 4px;
   height: 12px;
-  transform: translateY(-50%);
+  transform: translate(-50%, -50%);
   border-radius: var(--radius-full);
   background: var(--pels-status-warning);
+  box-shadow: 0 0 0 1px var(--pels-surface-container-highest);
 }
 
 /* Hollow projected dot, centred on the mini-track (mirrors
@@ -2613,7 +2611,12 @@ md-filled-button.is-busy {
   height: 14px;
   border-radius: var(--radius-full);
   background: var(--pels-status-warning);
-  box-shadow: 0 0 0 0.5px var(--pels-status-warning);
+  /* Surface-toned separation halo, same trick as the target marker above: the
+     over-safe-pace overflow fill is ALSO `--pels-status-warning`, so a bare
+     amber tick (or an amber-toned shadow) disappears into it exactly when the
+     user goes looking for the cap line. The halo carves a track-toned gap on
+     any fill; on the empty track it matches the surface and is invisible. */
+  box-shadow: 0 0 0 1px var(--pels-surface-container-highest);
   transform: translate(-100%, -50%);
 }
 
@@ -8707,9 +8710,7 @@ md-switch {
   .pels-meter-segments__seg--managed[data-over-safe-pace] {
     background: var(--color-state-warning-text);
   }
-  .pels-meter-track__fill[data-tone="critical"],
-  .pels-meter-segments__seg--background[data-over-hard-cap],
-  .pels-meter-segments__seg--managed[data-over-hard-cap] {
+  .pels-meter-track__fill[data-tone="critical"] {
     background: var(--color-state-negative-text);
   }
 

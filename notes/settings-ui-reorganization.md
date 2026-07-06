@@ -373,7 +373,7 @@ becoming a generic settings dump.
 Use the product mental model consistently:
 
 - `Safe pace` = dynamic planning pace to stay on track
-- `Hard cap` = configured upper boundary PELS tries not to exceed
+- `Hard cap` = configured hourly-average ceiling (grid tariff step) no hour's energy should exceed
 - `Safety margin` = buffer below the configured capacity/tariff limit
 
 Do not use `power limit` casually for threshold labels because it blurs the distinction between

@@ -24,7 +24,7 @@ describe('dailyBudgetWarningStrings', () => {
     const withCeiling = formatDailyBudgetAllocationWarningBody('60.0 kWh', '48.0 kWh');
     const withoutCeiling = formatDailyBudgetAllocationWarningBody('60.0 kWh', null);
     for (const text of [withCeiling, withoutCeiling]) {
-      // Hard cap is physical — copy must never suggest raising it as a remedy.
+      // Hard cap is an hourly ceiling — copy must never suggest raising it as a remedy.
       expect(text).not.toMatch(/raise.*hard cap|increase.*hard cap|raise.*cap|increase.*cap/i);
       expect(text.toLowerCase()).toContain('lower the daily budget');
     }

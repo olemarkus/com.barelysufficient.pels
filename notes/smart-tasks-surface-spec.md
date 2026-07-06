@@ -81,4 +81,4 @@ tokens (do not introduce new palettes).
   match it, don't redo it.
 - Week dividers (#1243), the active-card tier (#1265), and the chip row exist —
   build on them.
-- Don't suggest raising the capacity hard cap anywhere (physical limit).
+- Don't suggest raising the capacity hard cap anywhere (it holds the tariff step; never a remedy).

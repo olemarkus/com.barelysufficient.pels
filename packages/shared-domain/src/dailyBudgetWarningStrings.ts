@@ -4,10 +4,11 @@
 // `notes/ui-terminology.md`).
 //
 // Terminology: per `notes/ui-terminology.md` § "Safe pace, hard cap, and
-// safety margin", the configured upper boundary PELS tries not to exceed is
+// safety margin", the configured hourly-average ceiling (grid tariff step) is
 // **hard cap** — never "hourly limit" / "hourly power limit". And per
-// § "Hard cap is physical": the hard cap is a property of the user's grid
-// tariff or breaker, so copy must never suggest raising it as a remedy.
+// § "Hard cap is an hourly ceiling": the hard cap is the user's grid tariff
+// step (an hourly-average ceiling), so copy must never suggest raising it as
+// a remedy.
 // The recommended fix is to lower the daily budget so future days reserve
 // available power earlier (see `cannotMeetDailyBudgetExhausted` in
 // `deadlineLabels.ts`).

@@ -128,7 +128,7 @@ const resolveLimitedReasonLabel = (reasonCode: string): string | null => {
 // never the insufficient-headroom waiting copy or the hard-cap fallback —
 // mirrors `resolveReasonText` on the generic card. Capacity-cause starvation
 // returns null here so the reason.code paths produce the correct "Waiting for
-// available power" copy (the hard cap is physical — feedback_hard_cap_is_physical).
+// available power" copy (the hard cap is not a remedy — feedback_hard_cap_is_physical).
 // Extracted so the parent resolver stays under the complexity caps.
 const resolveBudgetStarvationReason = (device: TemperatureDevice): string | null => (
   device.starvation?.isStarved && device.starvation.cause === 'budget'

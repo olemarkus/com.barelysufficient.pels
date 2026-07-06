@@ -27,7 +27,7 @@ PELS passer best når noe av det store strømforbruket i boligen kan vente litt 
 - panelovn
 - ventilasjon eller andre enheter med høy effekt
 
-Appen er særlig nyttig når høyt samtidig forbruk kan gi et dyrere kapasitetstrinn, eller når du vil holde god avstand til en sikringsgrense. Den passer også når du vil bruke billigere timer uten å bygge mange egne Flows.
+Appen er særlig nyttig når høyt samtidig forbruk kan gi et dyrere kapasitetstrinn. Den passer også når du vil bruke billigere timer uten å bygge mange egne Flows.
 
 ## Hva du trenger
 
@@ -47,7 +47,7 @@ I PELS setter du grensen som **Hard cap (kW)**. Det er den øvre grensen PELS pr
 To innstillinger er sentrale:
 
 - **Hard cap (kW)**: den øvre grensen PELS prøver å holde boligen under.
-- **Safety margin (kW)**: sikkerhetsmarginen under grensen, slik at PELS rekker å reagere før timen kan telle mot et høyere kapasitetstrinn eller sikringen belastes for hardt.
+- **Safety margin (kW)**: sikkerhetsmarginen under grensen, slik at PELS rekker å reagere før timen kan telle mot et høyere kapasitetstrinn.
 
 ## Elbillading
 

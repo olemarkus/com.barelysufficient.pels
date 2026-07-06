@@ -24,10 +24,11 @@ One elevated Material 3 card with tonal background that shifts with state.
 │                                              │
 │ Power now                                    │
 │ 7.0 kW                                      │
-│ Safe pace now: 12.0 kW                      │
+│ Safe pace now 12.0 kW                       │
 │                                              │
 │ [managed][other][free.................]      │
-│                  ↑ 12.0            ↑ Hard   │
+│                  ↑ pace            ↑ cap    │
+│ ▮ Safe pace now 12.0 kW ▮ Hard cap 15.0 kW  │
 │ Managed 3.2 kW · Background 3.8 kW          │
 │                                              │
 │ Energy this hour                             │
@@ -58,10 +59,17 @@ freshness (because stale readings invalidate the answer).
 | Condition | Label | Tone |
 |---|---|---|
 | Power below safe pace, projected hour below budget | `On track` | success |
-| Power above safe pace, hard cap not breached | `Above safe pace` | warning |
-| Power above hard cap | `Above hard cap` | error |
+| Power above safe pace | `Above safe pace` | warning |
+| Projected hour above budget (but not past the cap) | `Above budget` | warning |
+| Projected hour above the hard cap's kWh | `Above hard cap` | error |
 | Simulation mode enabled and PELS would act | `Simulation mode` | warning |
 | Power data stale or fail-closed | `No data` | error |
+
+`Above hard cap` is a **trajectory** judgement (projection tone `critical`),
+never instantaneous kW vs the cap: the cap is an hourly-average tariff-step
+ceiling, a momentary excursion above it is not a breach, and the dynamic safe
+pace legitimately exceeds the cap late in an under-used hour (see
+`notes/ui-terminology.md` § "Hard cap is an hourly ceiling").
 
 ### Freshness chip
 
@@ -81,6 +89,7 @@ Small Material icon button (`info`) at top-right. Tooltip / dialog:
 Power now is measured in kW — how fast electricity is being used right now.
 Energy this hour is measured in kWh — how much has been used so far this hour.
 Safe pace is the highest power rate that keeps this hour on track for the energy budget.
+The hard cap is your grid tariff step — an hourly average, so short bursts above it are fine while the hour's energy stays under it.
 kW is speed. kWh is distance.
 ```
 
@@ -94,22 +103,20 @@ Normal / on track:
 ```
 Power now
 7.0 kW
-Safe pace now: 12.0 kW
+Safe pace now 12.0 kW
 ```
 
 Above safe pace:
 ```
 Power now
 13.5 kW
-1.5 kW above safe pace
+1.5 kW above safe pace (12.0 kW)
 ```
 
-Above hard cap:
-```
-Power now
-13.5 kW
-0.5 kW above hard cap (5.0 kW)
-```
+These are the only two sublines. There is deliberately NO above-hard-cap
+subline: instantaneous kW above the cap is not a breach, so the subline only
+ever compares against the safe pace PELS reacts to. The safe-pace numeric is
+therefore visible in every hero state.
 
 "Safe pace now" is intentionally dynamic phrasing — it changes as the hour progresses and energy accumulates. Do not say "OK up to X kW for the rest of this hour", which implies stability.
 
@@ -138,7 +145,10 @@ Vocabulary registered in `notes/ui-terminology.md` § Solar.
 
 ### Power bar
 
-Threshold gauge, not a progress bar. Scale anchored to hard cap or a rounded max above it — never to the dynamic safe pace.
+Threshold gauge, not a progress bar. Scale tracks
+`max(safe pace × 1.2, hard cap, draw × 1.05)` so both ticks stay on-scale —
+the safe pace legitimately rises above the cap late in an under-used hour,
+and the cap tick must remain visible in exactly that state.
 
 ```
 [ managed ][ background ][ free ........... ]
@@ -152,9 +162,15 @@ Segments:
 | Managed | Load PELS controls |
 | Background | Household load PELS cannot control |
 | Free | Remaining room before safe pace |
-| Overflow | Amount above safe pace or hard cap (error tone) |
+| Overflow | Amount above safe pace (warn tone) |
 
-Marker labels: show inline where space allows; collapse to info tooltip on narrow screens.
+There is no instantaneous over-hard-cap segment tone: the error story is the
+trajectory chip plus the energy bar's projection marker, never the power bar.
+
+Both ticks always render (the cap tick even when safe pace ≥ cap). Marker
+values live in the legend row below the bar — `Safe pace now 12.0 kW` /
+`Hard cap 15.0 kW` — because tippy tooltips are not discoverable on touch;
+the tooltip adds the source explanation on hover.
 
 Supporting text:
 ```
@@ -194,6 +210,23 @@ Energy used this hour
 projected 5.4 kWh         (warn tone on the subline)
 [ bar with projection marker in warn tone ]
 ```
+
+Projection tones: `warning` = projected past the hourly budget (usually cap −
+safety margin, but the tighter daily-pacing allocation when that binds — the
+budget exists to absorb exactly this); `critical` = projected past the hard
+cap's kWh via the shared `isProjectedOverHardCap` predicate (checked before
+the warn tolerance, same verdict as the `pels_status` producer flag; never
+fires when no cap is known). Critical is what drives the `Above hard cap`
+chip and decision-sentence rule 2. The subline keeps a single warn rung
+(critical falls through to neutral text) so the red story stays one voice:
+chip + projection marker + cap tick.
+
+When the projection pushes the bar's scale up to the cap, the energy bar
+renders a warning-toned cap tick at `hardCapKWh` with the value-carrying
+legend label `Hard cap this hour N kWh` — the threshold that turned the
+projection red, printed in kWh on the bar where the judgement lives. In calm
+hours the scale stops at the budget, so the tick stays off-screen and the bar
+stays quiet.
 
 No projection available:
 ```
@@ -261,7 +294,14 @@ lines mirror the on-screen wording verbatim (see
 Priority order (first matching condition wins):
 
 1. No data: `Power readings have dropped. Devices stay limited until data returns.`
-2. Above hard cap: `Over the hard cap right now. Easing devices off.`
+2. Above hard cap (trajectory — projected hour past the cap's kWh):
+   `On pace to exceed the hard cap this hour. Easing devices off.`
+   The action clause renders only while a controllable managed device is
+   still drawing — the trajectory alone does not imply PELS has load left to
+   act on (an hour that already banked the energy with everything settled off
+   drops to the bare `On pace to exceed the hard cap this hour.`). Under
+   Simulation mode the action clause is likewise dropped, because PELS is not
+   acting (rule 3's hypothetical-voice principle applies here too).
    When the managed shed cascade is exhausted (no controllable managed device
    is still running to ease off) and the remaining breach is attributed to a
    device with Power-limit control turned off, the copy stops promising
@@ -269,8 +309,8 @@ Priority order (first matching condition wins):
    `Managed devices are already eased off. The remaining draw is from a device
    that has Power-limit control turned off. Turn its Power-limit control back
    on so PELS can ease it off.` The recourse pluralises when several
-   control-off devices breach; the hard cap is never offered as a remedy (it is
-   physical — see `notes/ui-terminology.md` § "Hard cap is physical").
+   control-off devices breach; the hard cap is never offered as a remedy
+   (see `notes/ui-terminology.md` § "Hard cap is an hourly ceiling").
 3. Simulation mode would act: `2 devices would be limited right now.`
    The slim simulation banner and the `Simulation mode` status chip already
    name simulation on the Overview, so this conclusion drops the redundant
@@ -283,9 +323,9 @@ Priority order (first matching condition wins):
 5. Restoring: `Bringing 1 device back online. Power has stayed under the safe pace.`
 6. Projected over budget: `On pace to overshoot this hour’s energy budget.`
    Fires when no devices are being limited or resumed but the projected hour
-   energy already trips the `warning` / `critical` projection tone, so the
-   conclusion stays consistent with the `Above budget` status chip surfaced
-   by `resolveHeroStatus`.
+   energy trips the `warning` projection tone (the `critical` tone — past the
+   cap — is rule 2), so the conclusion stays consistent with the
+   `Above budget` status chip surfaced by `resolveHeroStatus`.
 7. On track: `Quiet hour. Nothing to do.`
 
 Simulation mode wording must be hypothetical throughout. The subject is the

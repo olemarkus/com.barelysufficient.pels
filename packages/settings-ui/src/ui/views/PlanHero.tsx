@@ -1,8 +1,8 @@
 import type { ComponentChild } from 'preact';
+import { computeProjectedHourEnergyKWh, isProjectedOverHardCap } from '../../../../shared-domain/src/hourEnergyProjection.ts';
 import {
   buildDecisionSentence as buildSharedDecisionSentence,
   computeEnergyBarScaleKWh,
-  formatAboveHardCapSubline,
   formatAboveSafePaceSubline,
   formatCheapestUpcomingHour,
   formatEnergyMeterMarkerLabels,
@@ -15,6 +15,7 @@ import {
 } from '../../../../shared-domain/src/planHeroSummary.ts';
 import {
   HERO_INFO_TOOLTIP_TEXT,
+  formatHardCapEnergyTooltip,
   formatHardCapTooltip,
   formatSafePaceTooltip,
 } from '../../../../shared-domain/src/planHeroTooltips.ts';
@@ -80,13 +81,19 @@ const resolveHeroStatus = (
   projectionTone: ProjectionTone | null,
 ): HeroStatus => {
   if (freshnessState === 'stale_fail_closed') return 'no-data';
-  if (headline.overHardLimit) return 'over-hard-cap';
+  // "Above hard cap" is a trajectory judgement: projected this-hour energy
+  // exceeds the cap's hourly kWh (`resolveProjectionTone` → 'critical').
+  // Instantaneous kW above the cap is NOT a breach — the cap is an
+  // hourly-average tariff-step ceiling, and safe pace legitimately exceeds it
+  // late in an under-used hour (see `notes/ui-terminology.md` § "Hard cap is
+  // an hourly ceiling").
+  if (projectionTone === 'critical') return 'over-hard-cap';
   // Surface the simulation-mode chip whenever there is anything the decision
   // sentence has to phrase hypothetically — that includes devices stuck `held`
   // from before simulation was enabled.
   if (dryRun && devices.some((d) => isWouldLimitDevice(d) || isLimitedDevice(d))) return 'dry-run';
   if (headline.overSoftLimit) return 'above-safe-pace';
-  if (projectionTone === 'warning' || projectionTone === 'critical') return 'projected-over-budget';
+  if (projectionTone === 'warning') return 'projected-over-budget';
   return 'on-track';
 };
 
@@ -154,14 +161,12 @@ const buildDecisionSentence = ({
   devices,
   freshnessState,
   dryRun,
-  overHardLimit,
   projectionTone,
   safePaceKw,
 }: {
   devices: PlanDeviceSnapshot[];
   freshnessState: FreshnessState | undefined;
   dryRun: boolean;
-  overHardLimit: boolean;
   projectionTone: ProjectionTone | null;
   safePaceKw: number | null;
 }): { text: string; positive: boolean } => {
@@ -171,7 +176,7 @@ const buildDecisionSentence = ({
     resumingCount: devices.filter(isResumingDevice).length,
     freshness: freshnessState,
     dryRun,
-    overHardLimit,
+    projectedOverHardCap: projectionTone === 'critical',
     projectedOverBudget: projectionTone === 'warning' || projectionTone === 'critical',
     safePaceKw,
     deferredObjectiveAvoidCount: limited.filter((d) => d.reason?.code === PLAN_REASON_CODES.deferredObjectiveAvoid).length,
@@ -247,6 +252,11 @@ const computePowerBarScale = (
 type EnergyBarScale = {
   usedKWh: number;
   budgetKWh: number;
+  // The hard cap expressed as this hour's kWh ceiling (cap kW × 1 h). The
+  // budget is `cap − safety margin`, so this sits above `budgetKWh`; crossing
+  // it is what "Above hard cap" means (an hourly-average tariff-step boundary,
+  // never an instantaneous kW comparison).
+  hardCapKWh: number | null;
   controlledKWh: number;
   uncontrolledKWh: number;
   projectedKWh: number | null;
@@ -258,29 +268,39 @@ const computeEnergyBarScale = (meta: PlanMetaSnapshot): EnergyBarScale | null =>
   if (typeof usedKWh !== 'number' || typeof budgetKWh !== 'number' || budgetKWh <= 0) return null;
   const totalKw = typeof meta.totalKw === 'number' ? meta.totalKw : null;
   const minutesRemaining = typeof meta.minutesRemaining === 'number' ? meta.minutesRemaining : null;
-  // Floor at zero so a net-export hour (negative `totalKw`) cannot drive the
-  // projection negative — that collapses the bar marker to the far-left edge,
-  // mis-tones the projection, and prints "projected -1.42 kWh" beneath the
-  // Solar-now line. Keep `null` (no power/time signal) distinct from a clamped 0.
+  // The zero floor for net-export hours lives in the shared helper (also used
+  // by the `pels_status` producer for the "Above hard cap" trajectory flag).
+  // Keep `null` (no power/time signal) distinct from a clamped 0.
   const projectedKWh = totalKw !== null && minutesRemaining !== null
-    ? Math.max(0, usedKWh + (totalKw * minutesRemaining / 60))
+    ? computeProjectedHourEnergyKWh({ usedKWh, totalKw, minutesRemainingInHour: minutesRemaining })
     : null;
   return {
     usedKWh,
     budgetKWh,
+    hardCapKWh: typeof meta.hardCapLimitKw === 'number' ? meta.hardCapLimitKw : null,
     controlledKWh: typeof hourControlledKWh === 'number' ? Math.max(0, hourControlledKWh) : 0,
     uncontrolledKWh: typeof hourUncontrolledKWh === 'number' ? Math.max(0, hourUncontrolledKWh) : 0,
     projectedKWh,
   };
 };
 
+// 'critical' = on pace past the hard cap itself — the hour is projected to
+// land on a higher tariff step, the one genuinely alarming trajectory. The
+// cap rung is checked FIRST via the shared predicate (same verdict as the
+// `pels_status` producer's `projectedOverHardCap`; the good-band tolerance
+// must never mask it) and never fires when no cap is known. 'warning' = on
+// pace past the hourly budget — usually cap − safety margin, but the tighter
+// daily-pacing allocation when that binds — which exists to absorb exactly
+// this, so it stays a warn.
 const resolveProjectionTone = (scale: EnergyBarScale): ProjectionTone => {
   if (scale.projectedKWh === null) return 'good';
+  if (isProjectedOverHardCap({ projectedKWh: scale.projectedKWh, hardCapKWh: scale.hardCapKWh })) {
+    return 'critical';
+  }
   const overage = scale.projectedKWh - scale.budgetKWh;
   const tolerance = Math.max(scale.budgetKWh * 0.02, 0.05);
   if (overage <= tolerance) return 'good';
-  if (scale.projectedKWh <= scale.budgetKWh * 1.1) return 'warning';
-  return 'critical';
+  return 'warning';
 };
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -354,12 +374,15 @@ const HeroChipRow = ({
 
 // Power bar segments: [managed][background][free], rendered as proportional
 // blocks against `scaleKw`. The trailing rendered segment carries the
-// over-threshold tone when the cumulative draw is past safe-pace / hard-cap,
-// so the tone follows what is actually drawn (`controlled + uncontrolled`)
-// rather than a separate `total` that may include unaccounted load. When the
+// over-threshold tone when the cumulative draw is past the safe pace, so the
+// tone follows what is actually drawn (`controlled + uncontrolled`) rather
+// than a separate `total` that may include unaccounted load. When the
 // background segment is absent (managed load alone exceeds the threshold) the
 // managed segment becomes the trailing block and carries the tone — otherwise
-// a green bar would silently under-report a threshold violation.
+// a green bar would silently under-report a threshold violation. There is
+// deliberately no instantaneous over-hard-cap tone: the cap is an
+// hourly-average ceiling, so the alert story lives on the chip/rim and the
+// energy bar's projection marker instead.
 const PowerMeterSegments = ({
   scale,
   isLimiting,
@@ -371,7 +394,6 @@ const PowerMeterSegments = ({
   const backgroundPct = pctOf(scale.uncontrolled, scale.scaleKw);
   const drawnKw = scale.controlled + scale.uncontrolled;
   const overSafePace = drawnKw > scale.safePaceKw;
-  const overHardCap = scale.hardCapKw !== null && drawnKw > scale.hardCapKw;
   // The overflow tone is applied to the trailing visible segment. Background
   // gets it whenever it is present; managed gets it only when background is
   // absent so the two segments never both carry the tone.
@@ -386,7 +408,6 @@ const PowerMeterSegments = ({
           class="pels-meter-segments__seg pels-meter-segments__seg--managed"
           style={{ width: `${managedPct}%` }}
           data-over-safe-pace={managedTrailing && overSafePace ? '' : undefined}
-          data-over-hard-cap={managedTrailing && overHardCap ? '' : undefined}
           data-limiting={isLimiting ? '' : undefined}
         />
       )}
@@ -395,7 +416,6 @@ const PowerMeterSegments = ({
           class="pels-meter-segments__seg pels-meter-segments__seg--background"
           style={{ width: `${backgroundPct}%` }}
           data-over-safe-pace={overSafePace ? '' : undefined}
-          data-over-hard-cap={overHardCap ? '' : undefined}
         />
       )}
     </span>
@@ -464,7 +484,11 @@ const PowerMeter = ({ scale, isLimiting }: { scale: BarScale; isLimiting: boolea
       labels: formatPowerMeterMarkerLabels('target', scale.safePaceKw),
     },
   ];
-  if (scale.hardCapKw !== null && scale.hardCapKw > scale.safePaceKw) {
+  // The cap tick renders whenever a cap is configured — including when the
+  // dynamic safe pace sits at or above it (legitimate late in an under-used
+  // hour). Hiding it in that state left the bar without its reference line
+  // exactly when users wondered where the cap was.
+  if (scale.hardCapKw !== null) {
     markers.push({
       kind: 'cap',
       positionPct: pctOf(scale.hardCapKw, scale.scaleKw),
@@ -480,19 +504,16 @@ const PowerMeter = ({ scale, isLimiting }: { scale: BarScale; isLimiting: boolea
   );
 };
 
-// Three mutually exclusive sublines under the Power-now headline, matching
+// Two mutually exclusive sublines under the Power-now headline, matching
 // `notes/overview-hero-spec.md` § "Power now":
 //   - on track:           "Safe pace now 12.0 kW"
-//   - above safe pace:    "1.5 kW above safe pace"
-//   - above hard cap:     "0.5 kW above hard cap (5.0 kW)"
-// `overHardLimit` takes precedence (hard cap implies above safe pace).
+//   - above safe pace:    "1.5 kW above safe pace (12.0 kW)"
+// The subline only ever compares against the safe pace PELS reacts to — never
+// against the hard cap, which is an hourly-average ceiling, not an
+// instantaneous threshold.
 const resolvePowerSubline = (
   headline: NonNullable<ReturnType<typeof formatHeroHeadline>>,
-  meta: PlanMetaSnapshot,
 ): string => {
-  if (headline.overHardLimit && typeof meta.hardCapHeadroomKw === 'number' && headline.hardLimitKw !== null) {
-    return formatAboveHardCapSubline(meta.hardCapHeadroomKw, headline.hardLimitKw);
-  }
   if (headline.overSoftLimit) {
     return formatAboveSafePaceSubline(headline.headroomKw, headline.softLimitKw);
   }
@@ -521,7 +542,7 @@ const PowerSection = ({
         {' '}
         <span class="plan-hero__metric-qualifier">kW</span>
       </div>
-      <div class="plan-hero__subline">{resolvePowerSubline(headline, meta)}</div>
+      <div class="plan-hero__subline">{resolvePowerSubline(headline)}</div>
       {solarNowText !== null && (
         <div class="plan-hero__subline plan-hero__subline--muted" id="plan-hero-solar-now">
           {solarNowText}
@@ -574,6 +595,19 @@ const EnergyMeter = ({ scale }: { scale: EnergyBarScale }) => {
       tone: projectionTone,
       tooltip: `Projected this hour ${scale.projectedKWh.toFixed(2)} kWh`,
       labels: formatEnergyMeterMarkerLabels('projected', scale.projectedKWh),
+    });
+  }
+  // The cap's hourly kWh — the line that turns the projection red — renders
+  // when it fits the scale. The scale only stretches past the budget when the
+  // projection overshoots, so the marker appears exactly when the hour is
+  // approaching or past the cap and stays out of the calm hour's way (where
+  // it would sit beyond the bar's edge).
+  if (scale.hardCapKWh !== null && scale.hardCapKWh <= scaleKWh) {
+    markers.push({
+      kind: 'cap',
+      positionPct: pctOf(scale.hardCapKWh, scaleKWh),
+      tooltip: formatHardCapEnergyTooltip(scale.hardCapKWh),
+      labels: formatEnergyMeterMarkerLabels('cap', scale.hardCapKWh),
     });
   }
   return (
@@ -732,7 +766,6 @@ export const PlanHero = ({
     devices,
     freshnessState,
     dryRun: context.dryRun,
-    overHardLimit: headline.overHardLimit,
     projectionTone,
     safePaceKw,
   });

@@ -103,53 +103,36 @@ describe('headroom widget browser', () => {
     expect(targets.metaEl.dataset.tone).toBe('ok');
   });
 
-  test('reserves the danger tone for over-the-hard-cap exceedance', () => {
+  test('reserves the danger tone for the on-pace-over-cap trajectory', () => {
     const targets = resolveTargets();
     renderWidget(targets, { ...READY, currentKw: 6.7, hourBudgetKw: 6.3, headroomKw: -0.4, limitState: 'over_cap' });
 
     expect(targets.root.dataset.tone).toBe('danger');
-    expect(targets.stateLabelEl.textContent).toBe('Over hard cap');
+    // Same canonical label as the Overview hero chip for the same signal.
+    expect(targets.stateLabelEl.textContent).toBe('Above hard cap');
     expect(targets.metaEl.dataset.tone).toBe('danger');
   });
 
-  test('over_cap meta leads with the overage and appends the held-back count', () => {
+  test('over_cap keeps the one meta pattern: available power plus held-back count', () => {
     const targets = resolveTargets();
     renderWidget(targets, {
       ...READY,
       currentKw: 6.7,
       hourBudgetKw: 6.3,
       headroomKw: -0.4,
-      overageKw: 0.4,
       limitState: 'over_cap',
       shedCount: 3,
     });
 
-    // The misleading clamped "0 kW available" never appears; the overage figure
-    // is the severity signal, with the held-back count appended.
-    expect(targets.metaEl.textContent).not.toContain('available');
-    expect(targets.metaEl.textContent).toBe('0.4 kW over hard cap · 3 held back');
-    // The aria-label must match the visible meta — assistive tech hears the
-    // same overage figure.
+    // On pace over the cap implies draw above the safe pace, so the clamped
+    // "0 kW available" is factually right; the state label + danger tone carry
+    // the severity. No instantaneous "X kW over hard cap" figure exists — the
+    // cap is an hourly-average ceiling, not an instantaneous threshold.
+    expect(targets.metaEl.textContent).toBe('0 kW available · 3 held back');
     const aria = targets.root.getAttribute('aria-label') ?? '';
-    expect(aria).not.toContain('available');
-    expect(aria).toContain('0.4 kW over hard cap');
+    expect(aria).toContain('Above hard cap');
     expect(aria).toContain('3 held back');
-  });
-
-  test('over_cap meta shows just the overage when nothing is held back', () => {
-    const targets = resolveTargets();
-    renderWidget(targets, {
-      ...READY,
-      currentKw: 6.7,
-      hourBudgetKw: 6.3,
-      headroomKw: -0.4,
-      overageKw: 0.4,
-      limitState: 'over_cap',
-      shedCount: 0,
-    });
-
-    expect(targets.metaEl.textContent).toBe('0.4 kW over hard cap');
-    expect(targets.metaEl.textContent).not.toContain('available');
+    expect(aria).not.toContain('over hard cap');
   });
 
   test('non-over_cap states still show the available-power meta fragment', () => {

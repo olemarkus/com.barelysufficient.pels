@@ -25,7 +25,7 @@ The Overview page shows the current plan: what PELS wants each managed device to
 | --- | --- |
 | **Power now** | Current whole-home power draw. |
 | **Safe pace now** | The current pace PELS reacts around. It can come from the hourly hard cap, the daily budget, or both. |
-| **Hard cap** | The configured upper boundary PELS tries not to exceed. |
+| **Hard cap** | The hourly average power you don't want any hour to exceed (your grid tariff step). |
 | **Device cards** | Running, Idle, Limited, Resuming, Manual, Unavailable, or Unknown. |
 | **Status line** | Short explanation of why PELS is waiting, limiting, or resuming. |
 
@@ -76,7 +76,7 @@ This is where the core capacity settings and whole-home power source live.
 
 | Setting | What it does |
 | --- | --- |
-| **Hard cap (kW)** | The upper boundary PELS tries not to exceed. Set this from your grid tariff step or breaker limit. |
+| **Hard cap (kW)** | The hourly average power you don't want any hour to exceed. Set this from your grid tariff step (effekttrinn). |
 | **Safety margin (kW)** | Buffer below the hard cap. PELS starts reacting before the hard cap is reached. |
 | **Power source** | Where whole-home power readings come from: **Flow card** or **Homey Energy**. |
 

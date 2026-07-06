@@ -14,11 +14,11 @@ If you arrived from a Homey notification, jump straight to the matching section:
 or [a budget overshoot](#i-went-over-my-daily-budget).
 
 ::: tip One rule worth knowing up front
-The **hard cap** is your grid tariff step (effekttrinn) or breaker limit — a
-physical fact about your home, not a tuning knob. When PELS runs short of room,
-the answer is to give it *less* to do (a lower daily budget, fewer competing
+The **hard cap** is your grid tariff step (effekttrinn) — the hourly average
+you've decided no hour should exceed, not a tuning knob. When PELS runs short of
+room, the answer is to give it *less* to do (a lower daily budget, fewer competing
 devices), **never** to raise the hard cap. Raising it just moves you into a more
-expensive tariff step or trips the breaker. See [hard cap](/glossary#hard-cap).
+expensive tariff step. See [hard cap](/glossary#hard-cap).
 :::
 
 ## PELS isn't limiting or turning down a device
@@ -52,7 +52,7 @@ What to do, in order:
 - **Reduce fixed load you're running by hand.** If the breach is from
   unmanaged usage (an oven, a kettle, a charger PELS doesn't control), the only
   immediate fix is to use less at once for the rest of the hour.
-- **Don't raise the hard cap.** It reflects your physical limit. If breaches are
+- **Don't raise the hard cap.** It reflects the tariff step you're holding. If breaches are
   routine, the real fixes are bringing more big loads under management or pacing
   the day with a [daily budget](/daily-budget).
 
@@ -79,8 +79,8 @@ buttons that tell you what to investigate:
 
 - **Lower daily budget** — the day's energy budget ran out before the ready-by
   time and closed down hours PELS had scheduled. Lower the daily budget so future
-  days reserve power earlier. (Raising the hard cap is *not* the fix — it's
-  physical.)
+  days reserve power earlier. (Raising the hard cap is *not* the fix — it just
+  costs you a higher tariff step.)
 - **Review device** — the device couldn't deliver enough, capacity pressure
   shortened the usable hours, or a replan reduced the window. The button deep-links
   to the device settings; check stepped-load planning power, target temperature,

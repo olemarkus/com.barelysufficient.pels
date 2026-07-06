@@ -84,7 +84,7 @@ Resolution pattern matches the Slice 2 sketch:
 
 Strict-top-priority gate (`device.priority === 1`) is the v1 safety floor. The reserved-headroom forecast (`hardCap − gross background`) implicitly assumes every controlled concurrent watt can be displaced — which only holds at the top. A non-top fully-reserved task is gated to the min step floor because a higher-priority controlled device (which `limit-lower-priority` cannot shed) could still deny the climb mid-bucket. Tracked as P2 below.
 
-Hard cap stays physical: this only changes which deterministic step the producer commits to. Capacity guard still enforces the wall; the per-cycle re-solve + deadline reserve still catch over-promise.
+The hard cap stays untouchable: this only changes which deterministic step the producer commits to. Capacity guard still enforces the wall; the per-cycle re-solve + deadline reserve still catch over-promise.
 
 ## Climbed-band probe is correctly conservative
 

@@ -9,19 +9,19 @@ The Daily Energy Budget is your daily kWh target. You set, for example, "I want 
 
 ## Why set a daily budget?
 
-The hourly hard cap is a limit you *have* to set: it stops the home exceeding your grid tariff step (effekttrinn) or tripping a breaker. The daily budget is a limit you *choose* to add on top, when you want one of these:
+The hourly hard cap is a limit you *have* to set: it keeps every hour's average under your grid tariff step (effekttrinn). The daily budget is a limit you *choose* to add on top, when you want one of these:
 
 - **Spend less by leaning on cheap hours.** With price optimization enabled, the budget gives cheaper hours more of the day's energy and expensive hours less, so flexible load — water heater, floor heating, EV charger — runs when power is cheapest. This is the main money lever.
 - **Use less, deliberately.** If you want the whole home to stay under a daily energy ceiling — to keep cost down, cut waste, or just stay disciplined — the budget paces every hour toward that total instead of letting the day run flat out.
 - **Smooth the day so peaks are rarer.** Pacing whole-home usage across the day makes it less likely you bump up against the hard cap during busy evening hours.
 
-**You may not need it.** If your only goal is to stay under the grid tariff step or breaker, the hard cap alone already does that. The daily budget is the extra layer you add for cheap-hour shifting or conscious whole-home reduction, and it is off by default.
+**You may not need it.** If your only goal is to stay under the grid tariff step, the hard cap alone already does that. The daily budget is the extra layer you add for cheap-hour shifting or conscious whole-home reduction, and it is off by default.
 
 **A budget caps energy, not money.** The target is in kWh, and the price of each kWh varies through the day. The savings come from *shifting* usage into cheap hours, not from the kWh number itself — a low budget on an expensive day can still result in high costs.
 
 ## How it relates to the hard cap
 
-The daily budget is a **soft pacing target**, separate from the hourly hard cap. PELS keeps running across it, devices keep heating, and the only thing that ever raises an urgent alarm is the **hourly hard cap** (your grid tariff step or breaker limit). Daily budget shapes the day; the hard cap protects the grid connection.
+The daily budget is a **soft pacing target**, separate from the hourly hard cap. PELS keeps running across it, devices keep heating, and the only thing that ever raises an urgent alarm is the **hourly hard cap** (your grid tariff step). Daily budget shapes the day; the hard cap holds your tariff step.
 
 PELS reads your existing whole-home power meter to track today's usage — the same data you already see in the Usage tab. You do not need to set up anything extra.
 
