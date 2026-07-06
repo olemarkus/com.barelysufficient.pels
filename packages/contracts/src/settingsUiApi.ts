@@ -267,7 +267,13 @@ export type SettingsUiPowerStatus = {
   capacityShortfall?: boolean;
   shortfallBudgetThresholdKw?: number;
   shortfallBudgetHeadroomKw?: number | null;
+  // Instantaneous cap headroom — log/diagnostic parity only. Never derive an
+  // over-cap alarm from this (the cap is an hourly-average ceiling); consume
+  // the producer-resolved trajectory flag below instead.
   hardCapHeadroomKw?: number | null;
+  // Producer-resolved "Above hard cap" trajectory verdict: projected this-hour
+  // energy past the cap's hourly kWh (`lib/plan/pelsStatus.ts`).
+  projectedOverHardCap?: boolean;
 };
 
 export type SettingsUiPowerPayload = {

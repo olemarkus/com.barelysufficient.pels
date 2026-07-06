@@ -319,6 +319,38 @@ describe('Redesign plan UI', () => {
         .toBe('Above hard cap');
     });
 
+    it('keeps the over-cap alarm when a zero-allocation budget hour hides the energy section', async () => {
+      // Codex post-merge review: the projection tone is gated on the energy
+      // bar existing (`hourBudgetKWh > 0`), but a zero-weighted daily-budget
+      // hour can still be on pace past the cap — the chip must key off the
+      // standalone trajectory verdict (same four meta fields as the
+      // `pels_status` producer), or the hero goes silent while the headroom
+      // widget shows red.
+      await renderPlanSnapshot({
+        meta: {
+          // projected = 4.9 + 2 × 10/60 ≈ 5.23 kWh > 5 kWh cap.
+          totalKw: 2,
+          softLimitKw: 0.5,
+          headroomKw: -1.5,
+          hardCapLimitKw: 5,
+          controlledKw: 1.5,
+          uncontrolledKw: 0.5,
+          powerFreshnessState: 'fresh',
+          usedKWh: 4.9,
+          hourBudgetKWh: 0,
+          minutesRemaining: 10,
+        },
+        devices: [],
+      });
+      // The energy section is structurally absent (no budget to render)…
+      expect(document.querySelectorAll('.plan-hero .plan-hero__section')).toHaveLength(1);
+      // …but the trajectory alarm still fires, matching the widget's verdict.
+      expect((document.querySelector('.plan-hero .plan-chip--alert') as HTMLElement | null)?.textContent?.trim())
+        .toBe('Above hard cap');
+      expect((document.querySelector('.plan-hero__decision') as HTMLElement | null)?.textContent?.trim())
+        .toBe('On pace to exceed the hard cap this hour.');
+    });
+
     it('tells the honest story over the cap when the managed cascade is exhausted and a control-off device breaches', async () => {
       await renderPlanSnapshot({
         meta: {
