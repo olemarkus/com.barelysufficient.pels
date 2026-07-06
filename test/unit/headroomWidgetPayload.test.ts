@@ -42,9 +42,9 @@ describe('buildHeadroomWidgetPayload', () => {
     });
   });
 
-  test('reports at_pace (not danger) when draw reaches safe pace under the hard cap', () => {
+  test('reports at_pace (not danger) when draw reaches safe pace with the hour on track', () => {
     const payload = buildHeadroomWidgetPayload({
-      status: { headroomKw: 0, hourlyLimitKw: 6.3, hardCapHeadroomKw: 1.7 },
+      status: { headroomKw: 0, hourlyLimitKw: 6.3, projectedOverHardCap: false },
       nowMs: NOW,
     });
     expect(payload).toMatchObject({ state: 'ready', currentKw: 6.3, limitState: 'at_pace' });
@@ -58,39 +58,17 @@ describe('buildHeadroomWidgetPayload', () => {
     expect(payload).toMatchObject({ state: 'ready', limitState: 'near' });
   });
 
-  test('reports over_cap only when hard-cap headroom is negative', () => {
+  test('reports over_cap only on the producer-resolved trajectory flag', () => {
+    // The flag means "this hour is projected past the cap's kWh" — it is never
+    // derived widget-side from instantaneous kW vs the cap.
     const payload = buildHeadroomWidgetPayload({
-      status: { headroomKw: 0, hourlyLimitKw: 6.3, hardCapHeadroomKw: -0.4 },
+      status: { headroomKw: 0, hourlyLimitKw: 6.3, projectedOverHardCap: true },
       nowMs: NOW,
     });
     expect(payload).toMatchObject({ state: 'ready', limitState: 'over_cap' });
   });
 
-  test('exposes the over-cap overage as the positive magnitude of negative hard-cap headroom', () => {
-    const payload = buildHeadroomWidgetPayload({
-      status: { headroomKw: 0, hourlyLimitKw: 6.3, hardCapHeadroomKw: -1.4 },
-      nowMs: NOW,
-    });
-    expect(payload).toMatchObject({ state: 'ready', limitState: 'over_cap', overageKw: 1.4 });
-  });
-
-  test('reports zero overage when under the hard cap', () => {
-    const payload = buildHeadroomWidgetPayload({
-      status: { headroomKw: 1, hourlyLimitKw: 6.3, hardCapHeadroomKw: 1.7 },
-      nowMs: NOW,
-    });
-    expect(payload).toMatchObject({ state: 'ready', overageKw: 0 });
-  });
-
-  test('reports zero overage when hard-cap headroom is absent', () => {
-    const payload = buildHeadroomWidgetPayload({
-      status: { headroomKw: 1, hourlyLimitKw: 6.3 },
-      nowMs: NOW,
-    });
-    expect(payload).toMatchObject({ state: 'ready', overageKw: 0 });
-  });
-
-  test('does not escalate to over_cap when hard-cap headroom is absent', () => {
+  test('does not escalate to over_cap when the trajectory flag is absent', () => {
     const payload = buildHeadroomWidgetPayload({
       status: { headroomKw: -0.5, hourlyLimitKw: 6 },
       nowMs: NOW,

@@ -99,7 +99,7 @@ You normally need:
 - a price source if you want cheap-hour charging
 - configured priorities in PELS
 
-With reliable whole-home power data in Homey, PELS keeps EV charging inside your limit hour after hour — no manual breaker resets, no surprise capacity steps on the next bill.
+With reliable whole-home power data in Homey, PELS keeps EV charging inside your limit hour after hour — no surprise capacity steps on the next bill.
 
 ## Charger apps and Flows
 

@@ -266,7 +266,7 @@ const resolveOffStatusLine = (device: SteppedDevice): string | null => {
 // within today's budget", never the insufficient-headroom waiting copy or the
 // hard-cap fallback — mirrors `resolveReasonText` on the generic card.
 // Capacity-cause starvation returns null so the reason.code paths produce the
-// correct "Waiting for available power" copy (the hard cap is physical —
+// correct "Waiting for available power" copy (the hard cap is not a remedy —
 // feedback_hard_cap_is_physical). Extracted so the parent resolver stays under
 // the cognitive-complexity cap.
 const resolveBudgetStarvationStatus = (device: SteppedDevice): string | null => (

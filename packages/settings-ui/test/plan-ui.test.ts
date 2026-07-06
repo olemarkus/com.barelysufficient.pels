@@ -239,42 +239,96 @@ describe('Redesign plan UI', () => {
         .toBe('Quiet hour. Nothing to do.');
     });
 
-    it('writes the hard-cap decision sentence when power is over the configured maximum', async () => {
+    it('writes the hard-cap decision sentence when the hour is on pace past the cap', async () => {
+      // projected = 0.8 + 12 × 38/60 = 8.4 kWh > 8 kWh cap → trajectory alarm.
       await renderPlanSnapshot({
         meta: {
-          totalKw: 9.5,
+          totalKw: 12,
           softLimitKw: 6,
-          headroomKw: -3.5,
+          headroomKw: -6,
           hardCapLimitKw: 8,
-          hardCapHeadroomKw: -1.5,
           controlledKw: 3.0,
-          uncontrolledKw: 6.5,
+          uncontrolledKw: 9.0,
           powerFreshnessState: 'fresh',
           usedKWh: 0.8,
           hourBudgetKWh: 5,
           minutesRemaining: 38,
         },
         devices: [
-          { id: 'dev-shed', name: 'Heater', currentState: 'off', plannedState: 'shed', stateKind: 'held' },
+          // Mid-shed and still drawing — PELS genuinely has load left to ease
+          // off, so the action clause is honest.
+          {
+            id: 'dev-shed',
+            name: 'Heater',
+            currentState: 'on',
+            plannedState: 'shed',
+            stateKind: 'held',
+            measuredPowerKw: 1.2,
+          },
         ],
       });
       expect((document.querySelector('.plan-hero__decision') as HTMLElement | null)?.textContent?.trim())
-        .toBe('Over the hard cap right now. Easing devices off.');
+        .toBe('On pace to exceed the hard cap this hour. Easing devices off.');
+      // The alert chip keys off the same trajectory judgement.
+      expect((document.querySelector('.plan-hero .plan-chip--alert') as HTMLElement | null)?.textContent?.trim())
+        .toBe('Above hard cap');
+      // The energy bar renders the cap's kWh tick — the threshold that turned
+      // the projection red, printed where the judgement lives (the projection
+      // overshoot stretches the scale past the cap, so it fits).
+      const energySection = document.querySelectorAll('.plan-hero .plan-hero__section')[1]!;
+      const energyMarkerLabels = Array.from(energySection.querySelectorAll('.pels-meter-track__marker'))
+        .map((m) => m.getAttribute('aria-label'));
+      expect(energyMarkerLabels).toContain('Hard cap this hour 8.0 kWh');
       // Breathing motion must run in the over-hard-cap case too — it's the
       // most-active limiting state and the gate should not freeze it.
       expect(document.querySelector('.pels-meter-segments__seg--managed[data-limiting]')).not.toBeNull();
     });
 
+    it('drops the action clause under simulation while the trajectory chip stays factual', async () => {
+      // Same on-pace-past-the-cap hour, but capacity_dry_run is on: the banner
+      // says devices stay as-is, so the sentence must not claim PELS is easing
+      // anything off. The chip stays "Above hard cap" — the trajectory is a
+      // fact regardless of whether PELS acts on it.
+      vi.resetModules();
+      setupPlanDom();
+      // The hero reads simulation mode from the shared UI state (set by the
+      // capacity settings loader in production), not from the plan snapshot.
+      const { state } = await import('../src/ui/state.ts');
+      state.dryRun = true;
+      const { renderPlan } = await import('../src/ui/plan.ts');
+      renderPlan(normalizePlanSnapshot({
+        meta: {
+          totalKw: 12,
+          softLimitKw: 6,
+          headroomKw: -6,
+          hardCapLimitKw: 8,
+          controlledKw: 3.0,
+          uncontrolledKw: 9.0,
+          powerFreshnessState: 'fresh',
+          usedKWh: 0.8,
+          hourBudgetKWh: 5,
+          minutesRemaining: 38,
+        },
+        devices: [
+          { id: 'dev-shed', name: 'Heater', currentState: 'on', plannedState: 'shed', reason: 'over capacity limit' },
+        ],
+      }) as Parameters<typeof renderPlan>[0]);
+      expect((document.querySelector('.plan-hero__decision') as HTMLElement | null)?.textContent?.trim())
+        .toBe('On pace to exceed the hard cap this hour.');
+      expect((document.querySelector('.plan-hero .plan-chip--alert') as HTMLElement | null)?.textContent?.trim())
+        .toBe('Above hard cap');
+    });
+
     it('tells the honest story over the cap when the managed cascade is exhausted and a control-off device breaches', async () => {
       await renderPlanSnapshot({
         meta: {
-          totalKw: 5.6,
+          // projected = 0.8 + 7 × 38/60 ≈ 5.23 kWh > 5 kWh cap → trajectory alarm.
+          totalKw: 7,
           softLimitKw: 4.5,
-          headroomKw: -1.1,
+          headroomKw: -2.5,
           hardCapLimitKw: 5,
-          hardCapHeadroomKw: -0.6,
           controlledKw: 2.4,
-          uncontrolledKw: 3.2,
+          uncontrolledKw: 4.6,
           powerFreshnessState: 'fresh',
           usedKWh: 0.8,
           hourBudgetKWh: 5,
@@ -304,18 +358,20 @@ describe('Redesign plan UI', () => {
         );
     });
 
-    it('keeps the default over-cap copy when the only control-off device is parked at 0 W', async () => {
+    it('drops the action clause when every managed device is settled and the control-off device is parked at 0 W', async () => {
       // A control-off device drawing nothing is not the source of the breach, so
-      // the honest "remaining draw is from it" copy must not fire on it.
+      // the "remaining draw is from it" recourse must not fire on it — and with
+      // every managed device already settled off there is nothing left to ease
+      // off either, so the action clause drops (Codex review, PR #1844).
       await renderPlanSnapshot({
         meta: {
-          totalKw: 5.6,
+          // projected = 0.8 + 7 × 38/60 ≈ 5.23 kWh > 5 kWh cap → trajectory alarm.
+          totalKw: 7,
           softLimitKw: 4.5,
-          headroomKw: -1.1,
+          headroomKw: -2.5,
           hardCapLimitKw: 5,
-          hardCapHeadroomKw: -0.6,
           controlledKw: 2.4,
-          uncontrolledKw: 3.2,
+          uncontrolledKw: 4.6,
           powerFreshnessState: 'fresh',
           usedKWh: 0.8,
           hourBudgetKWh: 5,
@@ -334,7 +390,7 @@ describe('Redesign plan UI', () => {
         ],
       });
       expect((document.querySelector('.plan-hero__decision') as HTMLElement | null)?.textContent?.trim())
-        .toBe('Over the hard cap right now. Easing devices off.');
+        .toBe('On pace to exceed the hard cap this hour.');
     });
 
     it('keeps the default over-cap copy while a managed device is mid-shed but still drawing', async () => {
@@ -343,13 +399,13 @@ describe('Redesign plan UI', () => {
       // PELS is mid-shed. The honest "already eased off" copy must not fire yet.
       await renderPlanSnapshot({
         meta: {
-          totalKw: 5.6,
+          // projected = 0.8 + 7 × 38/60 ≈ 5.23 kWh > 5 kWh cap → trajectory alarm.
+          totalKw: 7,
           softLimitKw: 4.5,
-          headroomKw: -1.1,
+          headroomKw: -2.5,
           hardCapLimitKw: 5,
-          hardCapHeadroomKw: -0.6,
           controlledKw: 2.4,
-          uncontrolledKw: 3.2,
+          uncontrolledKw: 4.6,
           powerFreshnessState: 'fresh',
           usedKWh: 0.8,
           hourBudgetKWh: 5,
@@ -376,7 +432,7 @@ describe('Redesign plan UI', () => {
         ],
       });
       expect((document.querySelector('.plan-hero__decision') as HTMLElement | null)?.textContent?.trim())
-        .toBe('Over the hard cap right now. Easing devices off.');
+        .toBe('On pace to exceed the hard cap this hour. Easing devices off.');
     });
 
     it('keeps the default over-cap copy for a pending shed that is on-like with no power measurement', async () => {
@@ -386,13 +442,13 @@ describe('Redesign plan UI', () => {
       // "already eased off" copy must not fire while the shed is in flight.
       await renderPlanSnapshot({
         meta: {
-          totalKw: 5.6,
+          // projected = 0.8 + 7 × 38/60 ≈ 5.23 kWh > 5 kWh cap → trajectory alarm.
+          totalKw: 7,
           softLimitKw: 4.5,
-          headroomKw: -1.1,
+          headroomKw: -2.5,
           hardCapLimitKw: 5,
-          hardCapHeadroomKw: -0.6,
           controlledKw: 2.4,
-          uncontrolledKw: 3.2,
+          uncontrolledKw: 4.6,
           powerFreshnessState: 'fresh',
           usedKWh: 0.8,
           hourBudgetKWh: 5,
@@ -412,7 +468,7 @@ describe('Redesign plan UI', () => {
         ],
       });
       expect((document.querySelector('.plan-hero__decision') as HTMLElement | null)?.textContent?.trim())
-        .toBe('Over the hard cap right now. Easing devices off.');
+        .toBe('On pace to exceed the hard cap this hour. Easing devices off.');
     });
 
     it('writes the actively-limiting decision sentence when one device is held below safe pace', async () => {
@@ -496,23 +552,47 @@ describe('Redesign plan UI', () => {
       expect(subline?.textContent?.trim()).toBe('1.5 kW above safe pace (5.0 kW)');
     });
 
-    it('surfaces the "X kW above hard cap (Y kW)" subline when current power is above hard cap', async () => {
+    it('stays calm when instantaneous power is above the cap but the hour is on track', async () => {
+      // Regression (owner report 2026-07-05): the hard cap is an hourly-average
+      // tariff-step ceiling, so instantaneous kW above it is NOT a breach. Late
+      // in an under-used hour the safe pace legitimately sits ABOVE the cap and
+      // the planner deliberately tolerates this state — the hero must not show
+      // an error chip, an over-cap subline, or an "easing off" claim.
       await renderPlanSnapshot({
         meta: {
-          totalKw: 8.5,
-          softLimitKw: 5,
-          headroomKw: -3.5,
-          hardCapLimitKw: 8,
-          hardCapHeadroomKw: -0.5,
+          // Draw 5.2 kW > cap 5.0 kW, but under safe pace 5.5 kW, and
+          // projected = 1.9 + 5.2 × 28/60 ≈ 4.33 kWh < 4.5 kWh budget.
+          totalKw: 5.2,
+          softLimitKw: 5.5,
+          headroomKw: 0.3,
+          hardCapLimitKw: 5,
+          controlledKw: 4.6,
+          uncontrolledKw: 0.6,
           powerFreshnessState: 'fresh',
-          usedKWh: 0.8,
-          hourBudgetKWh: 5,
-          minutesRemaining: 30,
+          usedKWh: 1.9,
+          hourBudgetKWh: 4.5,
+          minutesRemaining: 28,
         },
-        devices: [],
+        devices: [
+          { id: 'dev-held', name: 'Termostat', currentState: 'off', plannedState: 'shed', stateKind: 'held' },
+        ],
       });
+      // No alarm chip of any tone — this is normal operation.
+      expect(document.querySelectorAll('.plan-hero .plan-chip')).toHaveLength(0);
+      // The subline keeps the safe-pace value visible instead of an over-cap claim.
       const subline = document.querySelector('.plan-hero .plan-hero__subline') as HTMLElement | null;
-      expect(subline?.textContent?.trim()).toBe('0.5 kW above hard cap (8.0 kW)');
+      expect(subline?.textContent?.trim()).toBe('Safe pace now 5.5 kW');
+      // The cap tick still renders even though safe pace sits above the cap —
+      // previously it vanished in exactly this state.
+      const powerMarkers = Array.from(document.querySelectorAll('.plan-hero .plan-hero__section')[0]!
+        .querySelectorAll('.pels-meter-track__marker')) as HTMLElement[];
+      expect(powerMarkers.map((m) => m.getAttribute('aria-label'))).toEqual([
+        'Safe pace now 5.5 kW',
+        'Hard cap 5.0 kW',
+      ]);
+      // The decision sentence describes what PELS is actually doing.
+      expect((document.querySelector('.plan-hero__decision') as HTMLElement | null)?.textContent?.trim())
+        .toBe('Holding back 1 device so the house stays under 5.5 kW.');
     });
 
     it('labels every hero meter marker with aria-label and a legend when more than one marker is present', async () => {
@@ -558,12 +638,12 @@ describe('Redesign plan UI', () => {
       expect(legends).toHaveLength(2);
       const legendLabels = legends.map((l) => Array.from(l.querySelectorAll('.plan-hero__legend-label'))
         .map((el) => el.textContent?.trim()));
-      expect(legendLabels[0]).toEqual(['Safe pace', 'Hard cap']);
+      expect(legendLabels[0]).toEqual(['Safe pace now 11.0 kW', 'Hard cap 14.0 kW']);
       expect(legendLabels[1]).toEqual(['Budget this hour', 'Projected this hour']);
     });
 
     it('renders a legend for a single-marker meter so the lone marker is self-explanatory', async () => {
-      // No hard cap above safe pace -> the power bar carries ONLY the safe-pace
+      // No hard cap configured -> the power bar carries ONLY the safe-pace
       // marker. A marker's meaning otherwise lives only in a hover tooltip
       // (non-discoverable on touch) + aria-label, so a single-marker bar must
       // still render a visible legend (progress-markers follow-up).
@@ -588,7 +668,7 @@ describe('Redesign plan UI', () => {
       const powerLegend = sections[0]!.querySelector('.plan-hero__legend');
       expect(powerLegend, 'single-marker power bar still renders a legend').not.toBeNull();
       const labels = Array.from(powerLegend!.querySelectorAll('.plan-hero__legend-label')).map((el) => el.textContent?.trim());
-      expect(labels).toEqual(['Safe pace']);
+      expect(labels).toEqual(['Safe pace now 2.3 kW']);
     });
 
     it('uses only the explicit backend hour budget for the energy hero', async () => {

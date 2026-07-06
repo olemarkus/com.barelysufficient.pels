@@ -58,7 +58,7 @@ first.
 ## TAU (`EOH_DRAIN_TAU_MIN`), and the trade-off
 
 `TAU` is the only tuning knob (a hardcoded constant — deliberately not a user
-setting; consistent with “the hard cap is physical, don’t add capacity dials”).
+setting; consistent with “the hard cap is the tariff step, don’t add capacity dials”).
 It sets how late the drain bites. The ceiling multiplier over the sustainable
 rate is `e^(minutesRemaining / TAU)`:
 

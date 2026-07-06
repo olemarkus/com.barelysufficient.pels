@@ -346,7 +346,7 @@ full-flex allocation.
 - If plan movement by price is too aggressive, lower **Managed device flexibility**.
 - If the budget cannot be fully allocated under capacity and historical caps, the Budget UI shows
   an allocation warning; lower the daily budget or review which devices count as managed versus
-  background usage. The hard cap itself reflects a physical breaker or grid-tariff limit and is
+  background usage. The hard cap itself reflects your grid tariff step and is
   not a tuning knob.
 - If confidence stays low, verify regular power reporting and managed/background split data.
 

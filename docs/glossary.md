@@ -22,13 +22,16 @@ is about kW.
 
 > **Power vs energy, in one line:** power (kW) is how fast you're using
 > electricity right now; energy (kWh) is how much you've used over an hour or a
-> day. The hard cap watches your speed; the daily budget watches your distance.
+> day. The hard cap watches each hour's distance; the daily budget watches the
+> whole day's.
 
 ### Hard cap {#hard-cap}
 The maximum **average power** (in kW) you want the whole home to draw in any one
 hour. PELS treats this as the boundary it protects above all else. Set it to
-match your grid tariff step or breaker limit. It is a **physical** property of
-your connection — not a setting you raise to get more room. See
+match your grid tariff step (effekttrinn) — the hourly-average boundary that
+decides which capacity step you pay for. It is not a setting you raise to get
+more room. Your main fuse is a separate, much higher physical limit, and not
+something PELS manages. See
 [Getting Started → Set your capacity limit](/getting-started#step-2-set-your-capacity-limit).
 
 ### Capacity tariff (effekttrinn)

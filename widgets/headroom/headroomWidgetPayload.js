@@ -61,8 +61,8 @@ var resolvePriceLevel = (value) => {
   return "unknown";
 };
 var resolveLimitState = (params) => {
-  const { currentKw, hourBudgetKw, hardCapHeadroomKw } = params;
-  if (hardCapHeadroomKw !== null && hardCapHeadroomKw < 0) return "over_cap";
+  const { currentKw, hourBudgetKw, projectedOverHardCap } = params;
+  if (projectedOverHardCap) return "over_cap";
   if (hourBudgetKw <= 0) return "under";
   const ratio = currentKw / hourBudgetKw;
   if (ratio >= 1) return "at_pace";
@@ -80,11 +80,13 @@ var buildHeadroomWidgetPayload = (input) => {
   const headroomKw = isFiniteNumber(status.headroomKw) ? status.headroomKw : null;
   if (hourBudgetKw === null || headroomKw === null) return emptyPayload(EMPTY_SUBTITLE_DEFAULT);
   const currentKw = Math.max(0, hourBudgetKw - headroomKw);
-  const hardCapHeadroomKw = isFiniteNumber(status.hardCapHeadroomKw) ? status.hardCapHeadroomKw : null;
   const shedCount = isFiniteNumber(status.devicesOff) ? Math.max(0, Math.round(status.devicesOff)) : 0;
   const priceLevel = resolvePriceLevel(status.priceLevel);
-  const limitState = resolveLimitState({ currentKw, hourBudgetKw, hardCapHeadroomKw });
-  const overageKw = hardCapHeadroomKw !== null && hardCapHeadroomKw < 0 ? -hardCapHeadroomKw : 0;
+  const limitState = resolveLimitState({
+    currentKw,
+    hourBudgetKw,
+    projectedOverHardCap: status.projectedOverHardCap === true
+  });
   const lastUpdate = isFiniteNumber(status.lastPowerUpdate) ? status.lastPowerUpdate : null;
   const nowMs = isFiniteNumber(input.nowMs) ? input.nowMs : Date.now();
   const timeStale = lastUpdate === null ? true : nowMs - lastUpdate > STALE_AFTER_MS;
@@ -94,7 +96,6 @@ var buildHeadroomWidgetPayload = (input) => {
     currentKw,
     hourBudgetKw,
     headroomKw,
-    overageKw,
     shedCount,
     priceLevel,
     limitState,

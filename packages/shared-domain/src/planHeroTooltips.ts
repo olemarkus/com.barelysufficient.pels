@@ -13,19 +13,22 @@ export const HERO_INFO_TOOLTIP_TEXT = [
   'Power now is measured in kW — how fast electricity is being used right now.',
   'Energy this hour is measured in kWh — how much has been used so far this hour.',
   'Safe pace is the highest power rate that keeps this hour on track for the energy budget.',
+  'The hard cap is your grid tariff step — an hourly average, so short bursts above it are fine '
+  + 'while the hour\'s energy stays under it.',
   'kW is speed. kWh is distance.',
 ].join(' ');
 
 // Tooltips appended after "Safe pace now {N} kW — ", so each phrase starts in
-// lowercase. Source-specific copy mirrors `notes/ui-terminology.md`.
+// lowercase and uses a semicolon (not a second em-dash) as its internal
+// separator. Source-specific copy mirrors `notes/ui-terminology.md`.
 export const SAFE_PACE_TOOLTIP_BY_SOURCE: Record<HeroSoftLimitSource, string> = {
-  capacity: 'hard cap minus safety margin - PELS starts reacting here.',
-  daily: 'slowed to stay within today\'s budget - daily pacing is the tighter constraint right now.',
+  capacity: 'the pace that keeps this hour within its energy budget; PELS starts reacting here.',
+  daily: 'slowed to stay within today\'s budget; daily pacing is the tighter constraint right now.',
   both: 'both capacity and daily pacing are constraining PELS right now.',
 };
 
 export const HARD_CAP_TOOLTIP
-  = 'your configured maximum, staying under this avoids tariff steps or breaker trips.';
+  = 'your grid tariff step; PELS keeps each hour\'s average power under this.';
 
 const formatKw = (kw: number): string => `${kw.toFixed(1)} kW`;
 
@@ -58,3 +61,9 @@ export const formatSafePaceTooltip = (
 
 export const formatHardCapTooltip = (hardCapKw: number): string =>
   `Hard cap ${formatKw(hardCapKw)} — ${HARD_CAP_TOOLTIP}`;
+
+// Energy-bar variant: the cap expressed as this hour's kWh ceiling. Appears on
+// the bar that carries the "Above hard cap" judgement, so the tooltip names
+// the consequence of crossing it.
+export const formatHardCapEnergyTooltip = (hardCapKWh: number): string =>
+  `Hard cap this hour ${hardCapKWh.toFixed(1)} kWh — landing past this puts the hour on a higher tariff step.`;

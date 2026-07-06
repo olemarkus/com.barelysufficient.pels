@@ -17,7 +17,7 @@ Answers **"how much room do I have right now?"**
 
 The widget shows:
 
-- Current draw against the current effective hour budget, with a coloured bar that turns warning at 85 % and danger at 100 %.
+- Current draw against the current effective hour budget, with a coloured bar that turns warning as you approach the safe pace and red when the hour is on pace to exceed the hard cap.
 - Available power remaining in the current hour.
 - The number of devices PELS is holding back, when any are.
 - A price-level chip when prices are cheap or expensive (hidden when prices are normal).
@@ -90,7 +90,7 @@ This is the dashboard equivalent of the **Add charging task** / **Add heating ta
 
 Answers **"why isn't this running — and can I let it now?"**
 
-The widget lists devices PELS is currently holding back (paused or limited) and the reason. For a device held back by today's daily budget, you can tap **Let it run now** to create a short Smart task with budget leeway. Capacity, manual, and external-service rows stay informational because the hard cap is physical and cannot be bypassed from the widget.
+The widget lists devices PELS is currently holding back (paused or limited) and the reason. For a device held back by today's daily budget, you can tap **Let it run now** to create a short Smart task with budget leeway. Capacity, manual, and external-service rows stay informational because the hard cap holds your tariff step and cannot be bypassed from the widget.
 
 ![Held-back devices widget listing devices PELS is holding back, with a Let it run now button on the budget-held row](/screenshots/widgets/held-back-1-list.png)
 *Step 1 — the held-back list. Only a budget-held device offers **Let it run now**.*

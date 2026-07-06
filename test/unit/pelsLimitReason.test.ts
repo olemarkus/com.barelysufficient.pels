@@ -202,3 +202,72 @@ describe('pels status limit reason', () => {
     expect(status.priceLevel).toBe(PriceLevel.UNKNOWN);
   });
 });
+
+describe('pels status projected-over-hard-cap flag', () => {
+  const buildPlanWithMeta = (meta: DevicePlan['meta']): DevicePlan => ({
+    meta,
+    devices: [],
+  });
+
+  const statusFor = (meta: DevicePlan['meta']) => buildPelsStatus({
+    plan: buildPlanWithMeta(meta),
+    isCheap: false,
+    isExpensive: false,
+    combinedPrices: null,
+    lastPowerUpdate: Date.UTC(2026, 6, 5, 12, 0, 0),
+  }).status;
+
+  it('flags the trajectory when projected hour energy lands past the cap', () => {
+    // projected = 1.9 + 6.0 × 28/60 = 4.7 kWh > 4.5 kWh cap.
+    const status = statusFor({
+      totalKw: 6.0,
+      softLimitKw: 5.5,
+      headroomKw: -0.5,
+      usedKWh: 1.9,
+      minutesRemaining: 28,
+      hardCapLimitKw: 4.5,
+      powerKnown: true,
+    });
+    expect(status.projectedOverHardCap).toBe(true);
+  });
+
+  it('stays false when instantaneous power is above the cap but the hour is on track', () => {
+    // Regression (owner report 2026-07-05): draw 5.2 kW > cap 5.0 kW, but
+    // projected = 1.9 + 5.2 × 28/60 ≈ 4.33 kWh < 5.0 kWh — the cap is an
+    // hourly-average ceiling, so this is not a breach.
+    const status = statusFor({
+      totalKw: 5.2,
+      softLimitKw: 5.5,
+      headroomKw: 0.3,
+      usedKWh: 1.9,
+      minutesRemaining: 28,
+      hardCapLimitKw: 5.0,
+      powerKnown: true,
+    });
+    expect(status.projectedOverHardCap).toBe(false);
+  });
+
+  it('holds the step when the projection lands exactly at the cap (strict >)', () => {
+    // 1.9 + 5.2 × 30/60 = 4.5 kWh == cap → not over.
+    const status = statusFor({
+      totalKw: 5.2,
+      softLimitKw: 5.5,
+      headroomKw: 0.3,
+      usedKWh: 1.9,
+      minutesRemaining: 30,
+      hardCapLimitKw: 4.5,
+      powerKnown: true,
+    });
+    expect(status.projectedOverHardCap).toBe(false);
+  });
+
+  it('stays false when projection inputs are missing', () => {
+    const status = statusFor({
+      totalKw: 5.2,
+      softLimitKw: 5.5,
+      headroomKw: 0.3,
+      powerKnown: true,
+    });
+    expect(status.projectedOverHardCap).toBe(false);
+  });
+});

@@ -26,9 +26,13 @@ describe('planHeroTooltips', () => {
       }
     });
 
-    it('uses "hard cap" terminology, not "hourly power limit"', () => {
-      expect(SAFE_PACE_TOOLTIP_BY_SOURCE.capacity).not.toMatch(/hourly/i);
-      expect(SAFE_PACE_TOOLTIP_BY_SOURCE.capacity).toMatch(/hard cap/);
+    it('describes the dynamic budget pace, not "hourly power limit" jargon or a cap formula', () => {
+      expect(SAFE_PACE_TOOLTIP_BY_SOURCE.capacity).not.toMatch(/hourly power limit/i);
+      // The safe pace is the dynamic burst rate, not "hard cap minus safety
+      // margin" (only true at the top of the hour) — the copy must not claim
+      // the formula.
+      expect(SAFE_PACE_TOOLTIP_BY_SOURCE.capacity).not.toMatch(/minus/i);
+      expect(SAFE_PACE_TOOLTIP_BY_SOURCE.capacity).toMatch(/energy budget/);
     });
   });
 
@@ -47,6 +51,14 @@ describe('planHeroTooltips', () => {
   describe('formatHardCapTooltip', () => {
     it('renders the canonical "Hard cap {kW} kW — {HARD_CAP_TOOLTIP}" string', () => {
       expect(formatHardCapTooltip(8)).toBe(`Hard cap 8.0 kW — ${HARD_CAP_TOOLTIP}`);
+    });
+
+    it('frames the cap as the hourly tariff step, never as breaker protection', () => {
+      // An hourly-average ceiling cannot prevent breaker trips
+      // (notes/ui-terminology.md § "Hard cap is an hourly ceiling").
+      expect(HARD_CAP_TOOLTIP).not.toMatch(/breaker/i);
+      expect(HARD_CAP_TOOLTIP).toMatch(/tariff step/);
+      expect(HARD_CAP_TOOLTIP).toMatch(/hour/);
     });
   });
 });

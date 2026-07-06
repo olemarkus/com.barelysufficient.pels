@@ -1,7 +1,6 @@
 import {
   buildDecisionSentence,
   computeEnergyBarScaleKWh,
-  formatAboveHardCapSubline,
   formatAboveSafePaceSubline,
   formatCheapestUpcomingHour,
   formatEnergyMeterMarkerLabels,
@@ -22,7 +21,6 @@ const meta = (overrides: Partial<PlanHeroMetaInput> = {}): PlanHeroMetaInput => 
   softLimitKw: 11.0,
   headroomKw: 5.8,
   hardCapLimitKw: 14,
-  hardCapHeadroomKw: 3,
   controlledKw: 3.1,
   uncontrolledKw: 2.1,
   lastPowerUpdateMs: NOW - 120_000,
@@ -35,16 +33,13 @@ describe('formatHeroHeadline', () => {
     expect(formatHeroHeadline({ totalKw: 5 }, NOW)).toBeNull();
   });
 
-  it('formats an under-budget state with kW to spare', () => {
+  it('formats an under-budget state', () => {
     const headline = formatHeroHeadline(meta(), NOW);
     expect(headline).not.toBeNull();
     if (!headline) return;
-    expect(headline.kwText).toBe('5.2 kW');
-    expect(headline.limitText).toBe('of 11.0 kW limit');
-    expect(headline.message).toBe('5.8 kW to spare');
-    expect(headline.tone).toBe('ok');
+    expect(headline.totalKw).toBeCloseTo(5.2);
+    expect(headline.softLimitKw).toBeCloseTo(11.0);
     expect(headline.overSoftLimit).toBe(false);
-    expect(headline.overHardLimit).toBe(false);
     expect(headline.hardLimitKw).toBeCloseTo(14);
     expect(headline.ageText).toBe('2m ago');
   });
@@ -53,34 +48,22 @@ describe('formatHeroHeadline', () => {
     const headline = formatHeroHeadline(meta({
       totalKw: 12,
       headroomKw: -1,
-      hardCapHeadroomKw: 2,
     }), NOW);
-    expect(headline?.tone).toBe('warn');
-    expect(headline?.message).toBe('Above safe pace');
     expect(headline?.overSoftLimit).toBe(true);
-    expect(headline?.overHardLimit).toBe(false);
   });
 
-  it('flags over-hard-limit state', () => {
+  it('carries the hard cap as a display value only — no instantaneous over-cap judgement', () => {
+    // Regression: instantaneous kW above the cap is NOT a breach (the cap is
+    // an hourly-average tariff-step ceiling). The headline must not derive any
+    // over-cap state from power vs cap; the alert-tier hero state comes from
+    // the projected-energy trajectory in the caller.
     const headline = formatHeroHeadline(meta({
       totalKw: 15,
       headroomKw: -4,
       hardCapLimitKw: 14,
-      hardCapHeadroomKw: -1,
     }), NOW);
-    expect(headline?.tone).toBe('alert');
-    expect(headline?.message).toBe('Above hard cap');
-    expect(headline?.overHardLimit).toBe(true);
     expect(headline?.hardLimitKw).toBe(14);
-  });
-
-  it('surfaces a shortfall message when capacity is being throttled', () => {
-    const headline = formatHeroHeadline(meta({
-      capacityShortfall: true,
-      totalKw: 9,
-      headroomKw: 2,
-    }), NOW);
-    expect(headline?.message).toBe('Keeping power under the hard cap');
+    expect(headline && 'overHardLimit' in headline).toBe(false);
   });
 
   it('omits age text when lastPowerUpdateMs is missing', () => {
@@ -88,10 +71,9 @@ describe('formatHeroHeadline', () => {
     expect(headline?.ageText).toBeNull();
   });
 
-  it('leaves hardLimitKw null when no hard cap headroom is available', () => {
-    const headline = formatHeroHeadline(meta({ hardCapLimitKw: null, hardCapHeadroomKw: null }), NOW);
+  it('leaves hardLimitKw null when no hard cap is configured', () => {
+    const headline = formatHeroHeadline(meta({ hardCapLimitKw: null }), NOW);
     expect(headline?.hardLimitKw).toBeNull();
-    expect(headline?.overHardLimit).toBe(false);
   });
 });
 
@@ -155,13 +137,15 @@ describe('formatFreshnessChip', () => {
 });
 
 describe('hero meter marker labels', () => {
-  it('formats power markers with short legend + screen-reader labels', () => {
+  it('formats power markers with the numeric value in the visible legend label', () => {
+    // The legend is the only touch-reachable home for these numbers (tippy
+    // tooltips need hover), so the visible label carries the value.
     expect(formatPowerMeterMarkerLabels('target', 11)).toEqual({
-      short: 'Safe pace',
+      short: 'Safe pace now 11.0 kW',
       aria: 'Safe pace now 11.0 kW',
     });
     expect(formatPowerMeterMarkerLabels('cap', 14)).toEqual({
-      short: 'Hard cap',
+      short: 'Hard cap 14.0 kW',
       aria: 'Hard cap 14.0 kW',
     });
   });
@@ -176,6 +160,13 @@ describe('hero meter marker labels', () => {
       aria: 'Projected this hour 4.4 kWh',
     });
   });
+
+  it('carries the value in the energy cap label — the kWh threshold appears nowhere else', () => {
+    expect(formatEnergyMeterMarkerLabels('cap', 8)).toEqual({
+      short: 'Hard cap this hour 8.0 kWh',
+      aria: 'Hard cap this hour 8.0 kWh',
+    });
+  });
 });
 
 describe('buildDecisionSentence', () => {
@@ -184,7 +175,7 @@ describe('buildDecisionSentence', () => {
     resumingCount: 0,
     freshness: 'fresh',
     dryRun: false,
-    overHardLimit: false,
+    projectedOverHardCap: false,
     projectedOverBudget: false,
     safePaceKw: 12,
     ...overrides,
@@ -201,39 +192,66 @@ describe('buildDecisionSentence', () => {
     expect(buildDecisionSentence(baseline({
       freshness: 'stale_fail_closed',
       limitedCount: 3,
-      overHardLimit: true,
+      projectedOverHardCap: true,
     })).text).toBe('Power readings have dropped. Devices stay limited until data returns.');
   });
 
-  it('reports over-hard-cap before active limiting', () => {
+  it('reports the on-pace-over-cap trajectory before active limiting', () => {
     expect(buildDecisionSentence(baseline({
-      overHardLimit: true,
+      projectedOverHardCap: true,
       limitedCount: 2,
-    })).text).toBe('Over the hard cap right now. Easing devices off.');
+      sheddableManagedRunningCount: 1,
+    })).text).toBe('On pace to exceed the hard cap this hour. Easing devices off.');
   });
 
-  it('keeps the "easing off" copy over the cap while a managed device can still be shed', () => {
+  it('drops the action clause when nothing is left to ease off and no control-off device draws', () => {
+    // Codex review (PR #1844): the trajectory can stay over the cap after the
+    // hour has already banked the energy — every managed device settled off,
+    // draw near zero. Claiming "Easing devices off." then is false.
+    expect(buildDecisionSentence(baseline({
+      projectedOverHardCap: true,
+      capacityControlOffCount: 0,
+      sheddableManagedRunningCount: 0,
+    })).text).toBe('On pace to exceed the hard cap this hour.');
+  });
+
+  it('drops the action clause under simulation — PELS is not easing anything off', () => {
+    // Simulation homes routinely project past the cap (nothing is being shed),
+    // and the banner already says "devices stay as-is" — the sentence must not
+    // claim action (hypothetical-voice rule, notes/overview-hero-spec.md).
+    const result = buildDecisionSentence(baseline({
+      projectedOverHardCap: true,
+      dryRun: true,
+      limitedCount: 2,
+      capacityControlOffCount: 1,
+      sheddableManagedRunningCount: 0,
+    }));
+    expect(result.text).toBe('On pace to exceed the hard cap this hour.');
+    expect(result.text).not.toContain('Easing');
+  });
+
+  it('keeps the "easing off" copy on the over-cap trajectory while a managed device can still be shed', () => {
     // A controllable managed device is still running, so the cascade is not
     // exhausted even though a control-off device is also breaching.
     expect(buildDecisionSentence(baseline({
-      overHardLimit: true,
+      projectedOverHardCap: true,
       limitedCount: 1,
       capacityControlOffCount: 1,
       sheddableManagedRunningCount: 1,
-    })).text).toBe('Over the hard cap right now. Easing devices off.');
+    })).text).toBe('On pace to exceed the hard cap this hour. Easing devices off.');
   });
 
-  it('keeps the "easing off" copy over the cap when no control-off device is breaching', () => {
+  it('keeps the "easing off" copy on the over-cap trajectory while a managed device still draws', () => {
     expect(buildDecisionSentence(baseline({
-      overHardLimit: true,
+      projectedOverHardCap: true,
       capacityControlOffCount: 0,
-      sheddableManagedRunningCount: 0,
-    })).text).toBe('Over the hard cap right now. Easing devices off.');
+      sheddableManagedRunningCount: 2,
+    })).text).toBe('On pace to exceed the hard cap this hour. Easing devices off.');
   });
 
   it('tells the honest story when the managed cascade is exhausted and a control-off device breaches', () => {
     expect(buildDecisionSentence(baseline({
-      overHardLimit: true,
+      projectedOverHardCap: true,
       capacityControlOffCount: 1,
       sheddableManagedRunningCount: 0,
     }))).toEqual({
@@ -246,7 +264,7 @@ describe('buildDecisionSentence', () => {
 
   it('pluralises the control-off recourse when several devices are uncontrolled', () => {
     expect(buildDecisionSentence(baseline({
-      overHardLimit: true,
+      projectedOverHardCap: true,
       capacityControlOffCount: 2,
       sheddableManagedRunningCount: 0,
     })).text).toBe(
@@ -410,10 +428,6 @@ describe('above-threshold subline formatters', () => {
 
   it('clamps overshoot to zero when headroom is positive but still surfaces the reference', () => {
     expect(formatAboveSafePaceSubline(2.0, 5.0)).toBe('0.0 kW above safe pace (5.0 kW)');
-  });
-
-  it('renders overshoot kW + the hard cap value when above hard cap', () => {
-    expect(formatAboveHardCapSubline(-0.5, 5.0)).toBe('0.5 kW above hard cap (5.0 kW)');
   });
 });
 

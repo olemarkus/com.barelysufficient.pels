@@ -194,7 +194,7 @@ Use deadline charging when the car's final battery level matters.
 | The task stays at **Building plan…** | Check that price data is available through the ready-by time. Tomorrow's prices may not be published yet. |
 | The charger starts outside the task hours | Turn **Power-limit control** off by default if charging should only happen during Smart task hours. |
 | The task is **At risk** | Check that the car is plugged in, the charger current is correct, the hard cap leaves enough room, and the target is realistic for the time left. |
-| The task is **Cannot finish** | Lower the target, move the ready-by time later, plug in earlier, reduce competing load, or review the charger setup. Raising the hard cap is only correct if your physical limit or tariff step is actually higher. |
+| The task is **Cannot finish** | Lower the target, move the ready-by time later, plug in earlier, reduce competing load, or review the charger setup. Raising the hard cap is only correct if your grid tariff step is actually higher. |
 | Charging current does not change | Recheck the current-control Flow from [Configure an EV Charger](/ev-charger). For charger current fields, use **EV charger current (A)**. |
 
 For problems beyond charging — budget, capacity, or a missed task — see the full [Troubleshooting guide](/troubleshooting).

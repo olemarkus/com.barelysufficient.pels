@@ -37,7 +37,7 @@ The features stack. Each one works *inside* the one above it, so they never figh
 1. **The hard cap comes first.** PELS will always act to keep the home's hourly
    average under your [hard cap](/glossary#hard-cap). This is the only thing that
    triggers an urgent alert, because crossing it costs you — a higher capacity
-   tariff step or a tripped breaker.
+   tariff step.
 2. **The daily budget paces the day.** If you've set one, PELS spreads your kWh
    target across the day and slows the home down when it's running ahead — but
    only ever makes PELS *more* cautious, never less. It's a soft target, not an

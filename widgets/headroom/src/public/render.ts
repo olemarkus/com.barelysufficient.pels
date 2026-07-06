@@ -3,7 +3,6 @@ import {
   headroomAvailableLabel,
   headroomHeldBackLabel,
   headroomLimitStateLabel,
-  headroomOverCapLabel,
   headroomPriceAriaLabel,
   headroomPriceChipLabel,
   type HeadroomWidgetLimitState,
@@ -25,10 +24,11 @@ const formatKw = (value: number): string => {
   return rounded % 1 === 0 ? `${Math.round(rounded)}` : rounded.toFixed(1);
 };
 
-// `over_cap` is the only genuine exceedance (red). Pacing at the dynamic safe
-// pace under the physical ceiling is correct operation → `at-pace` renders
+// `over_cap` — the hour on pace to exceed the hard cap (producer-resolved
+// trajectory flag, never instantaneous kW vs the cap) — is the only red state.
+// Pacing at the dynamic safe pace is correct operation → `at-pace` renders
 // green (PELS is in control), distinct from the amber `near`/warn drift state
-// and the red exceedance.
+// and the red trajectory alarm.
 const TONE_BY_LIMIT_STATE: Record<HeadroomWidgetLimitState, BarTone> = {
   under: 'neutral',
   near: 'warn',
@@ -92,19 +92,12 @@ const renderReady = (targets: RenderTargets, payload: HeadroomWidgetReadyPayload
 
   const availableLabel = headroomAvailableLabel(formatKw(Math.max(0, payload.headroomKw)));
   const heldBackLabel = headroomHeldBackLabel(payload.shedCount);
-  // Over the hard cap there is no available power, so the clamped
-  // "0 kW available" would be misleading. Instead the meta line leads with the
-  // actual overage ("X kW over hard cap") as the severity signal, and still
-  // appends the held-back count when devices are paused. The aria-label reuses
-  // this same text so assistive tech hears the same figure.
-  const resolveMetaText = (): string => {
-    if (payload.limitState === 'over_cap') {
-      const overLabel = headroomOverCapLabel(formatKw(payload.overageKw));
-      return payload.shedCount > 0 ? `${overLabel} · ${heldBackLabel}` : overLabel;
-    }
-    return payload.shedCount > 0 ? `${availableLabel} · ${heldBackLabel}` : availableLabel;
-  };
-  const metaText = resolveMetaText();
+  // One meta pattern across all states: available power, plus the held-back
+  // count when devices are paused. In `over_cap` the state label above already
+  // carries the severity ("Above hard cap", red tone), and the clamped
+  // "0 kW available" is factually right — on pace over the cap implies draw
+  // above the safe pace, so there is no available power.
+  const metaText = payload.shedCount > 0 ? `${availableLabel} · ${heldBackLabel}` : availableLabel;
   metaEl.textContent = metaText;
   metaEl.dataset.tone = tone === 'danger' ? 'danger' : 'ok';
 

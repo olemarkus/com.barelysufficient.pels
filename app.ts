@@ -1342,8 +1342,8 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
   // `gateCandidateExtraPermissions` then keeps the budget exemption for any device
   // and the limit-lower-priority grant only where it has effect (stepped + top
   // priority). This lifts the DAILY BUDGET and (where effective) grants priority
-  // over lower-priority devices, but NEVER raises the physical capacity cap (the
-  // hard cap is physical): the priority permission only displaces lower-priority
+  // over lower-priority devices, but NEVER raises the capacity cap (the hard
+  // cap holds the tariff step; never a remedy): the priority permission only displaces lower-priority
   // load WITHIN the cap. The budget-exemption assertion is defence-in-depth so it
   // can't be smuggled through a generic create — it doesn't rest solely on the
   // widget API being the only caller.

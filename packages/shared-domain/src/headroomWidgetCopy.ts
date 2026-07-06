@@ -26,9 +26,16 @@ export type HeadroomWidgetLimitState =
   | 'under'
   /** Approaching the safe pace (warn band). */
   | 'near'
-  /** At/over the safe pace but still under the hard cap — managed pacing. */
+  /**
+   * At/over the safe pace — managed pacing. Instantaneous draw above the hard
+   * cap still reads as this state: the cap is an hourly-average ceiling, so a
+   * momentary excursion is not an exceedance.
+   */
   | 'at_pace'
-  /** Over the configured hard cap — genuine exceedance. */
+  /**
+   * On pace to exceed the hard cap this hour (producer-resolved trajectory
+   * flag — projected hourly energy past the cap, never instantaneous kW).
+   */
   | 'over_cap';
 
 export const HEADROOM_WIDGET_COPY = {
@@ -59,11 +66,14 @@ export const HEADROOM_WIDGET_COPY = {
 // log/aria callers — the widget never paints them.
 const PLACEHOLDER_LABEL = '—';
 
+// `over_cap` reuses the Overview hero's canonical chip label so the widget and
+// the hero speak the same words for the same trajectory signal
+// (notes/ui-terminology.md § "Hero bar vocabulary").
 const LIMIT_STATE_LABELS: Record<HeadroomWidgetLimitState, string> = {
   under: '',
   near: '',
   at_pace: 'At safe pace',
-  over_cap: 'Over hard cap',
+  over_cap: 'Above hard cap',
 };
 
 /**
@@ -112,15 +122,4 @@ export const headroomAvailableLabel = (availableKwText: string): string => (
  */
 export const headroomHeldBackLabel = (shedCount: number): string => (
   shedCount === 1 ? '1 held back' : `${shedCount} held back`
-);
-
-/**
- * "X kW over hard cap" — how far the current draw exceeds the physical hard
- * cap, the severity signal for the `over_cap` state. States the overage
- * factually; the hard cap is physical (notes/ui-terminology.md § "Hard cap is
- * physical"), so the copy never invites raising it. The caller passes the
- * already-formatted kW magnitude so the widget owns its kW number formatting.
- */
-export const headroomOverCapLabel = (overageKwText: string): string => (
-  `${overageKwText} kW over hard cap`
 );

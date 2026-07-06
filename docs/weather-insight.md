@@ -74,12 +74,12 @@ Below that, a chart plots every day of the last year so you can see the pattern 
 
 ## When tomorrow needs more than your hard cap
 
-If tomorrow's expected usage is more than your [hourly hard cap](getting-started.md#terminology-and-units) could physically deliver across a whole day, the Tomorrow card replaces the calm verdict with a warning.
+If tomorrow's expected usage is more than your [hourly hard cap](getting-started.md#terminology-and-units) could deliver across a whole day, the Tomorrow card replaces the calm verdict with a warning.
 
 ![PELS Tomorrow card with a warning banner: "Tomorrow may need more than your hard cap allows — Tomorrow's expected usage is higher than your hard cap can deliver in a day. PELS will hold the cap, so some managed usage may be limited on the coldest hours."](screenshots/weather-insight/over-cap-warning.png)
 *Figure 6. When the suggestion bumps against the hard cap, PELS warns you plainly and tells you what will happen: it holds the cap and limits some managed usage on the coldest hours.*
 
-The hard cap is a **physical limit** — your grid tariff step or breaker — not a budget you can nudge up to make the warning go away. Raising it to fit a cold day would defeat its purpose. The honest response to this warning is to expect that managed devices (water heater, floor heating, EV charging) will be paced harder on the coldest hours, and to plan flexible load accordingly.
+The hard cap is your **grid tariff step** (effekttrinn) — not a budget you can nudge up to make the warning go away. Raising it to fit a cold day would defeat its purpose. The honest response to this warning is to expect that managed devices (water heater, floor heating, EV charging) will be paced harder on the coldest hours, and to plan flexible load accordingly.
 
 ## When the forecast isn't available
 

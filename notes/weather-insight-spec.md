@@ -14,7 +14,7 @@ User-facing feature name: **Weather insight**. Never "model", "regression",
 "fit", "R²", "HDD", or "Theil–Sen" anywhere in copy. Confidence is words, not
 numbers, reusing the smart-task vocabulary (`Estimating` / `Refining` / no
 chip). Remedies name the daily budget, never the hard cap (the cap is
-physical). The suggested budget is display-only by default — `Adjust budget`
+never a remedy). The suggested budget is display-only by default — `Adjust budget`
 opens the normal Adjust flow with **nothing prefilled**. The user may opt in to
 auto-applying it daily (a switch on the Weather sub-page; off by default).
 
@@ -100,7 +100,7 @@ card → `Choose temperature device` → Settings, Weather insight section.
   capped by capacity. Display-only unless the user opted into auto-apply.
 - When the suggestion is clamped by the hard cap (`cappedByCapacity`), a warn-tone
   over-cap banner (`.banner banner--warning banner--stacked`) renders before the
-  verdict: `Tomorrow may need more than your hard cap allows`. The cap is physical —
+  verdict: `Tomorrow may need more than your hard cap allows`. The cap is the tariff step —
   copy never suggests raising it; it states PELS will hold the cap. In that state the
   ok-tone verdicts are suppressed (a capped day is never an "ok" landing).
 - Verdict line (exactly one, current budget vs prediction quantiles):

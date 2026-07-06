@@ -1,5 +1,9 @@
 import { PriceLevel } from '../price/priceLevels';
 import { PLAN_REASON_CODES, type DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
+import {
+  computeProjectedHourEnergyKWh,
+  isProjectedOverHardCap,
+} from '../../packages/shared-domain/src/hourEnergyProjection';
 import type { DevicePlan } from './planTypes';
 import type { DevicePlanDevice } from './planTypes';
 import { NEUTRAL_STARTUP_HOLD_REASON } from './restore/devices';
@@ -22,6 +26,7 @@ export function buildPelsStatus(params: {
     shortfallBudgetThresholdKw?: number;
     shortfallBudgetHeadroomKw?: number | null;
     hardCapHeadroomKw?: number | null;
+    projectedOverHardCap?: boolean;
     controlledKw?: number;
     uncontrolledKw?: number;
     powerKnown?: boolean;
@@ -49,7 +54,11 @@ export function buildPelsStatus(params: {
       capacityShortfall: plan.meta.capacityShortfall ?? false,
       shortfallBudgetThresholdKw: plan.meta.shortfallBudgetThresholdKw,
       shortfallBudgetHeadroomKw: plan.meta.shortfallBudgetHeadroomKw,
+      // No PELS surface consumes this any more (the headroom widget moved to
+      // `projectedOverHardCap`); kept because `pels_status` is a persisted
+      // payload external automations may read.
       hardCapHeadroomKw: plan.meta.hardCapHeadroomKw,
+      projectedOverHardCap: resolveProjectedOverHardCap(plan),
       controlledKw: plan.meta.controlledKw,
       uncontrolledKw: plan.meta.uncontrolledKw,
       powerKnown: plan.meta.powerKnown,
@@ -62,6 +71,30 @@ export function buildPelsStatus(params: {
     },
     priceLevel,
   };
+}
+
+// "Above hard cap" is a trajectory judgement: the hour is on pace to land past
+// the cap's hourly kWh. Never derived from instantaneous kW vs the cap — the
+// cap is an hourly-average tariff-step ceiling, and no control path treats a
+// momentary excursion as a breach to correct directly (instantaneous over-cap
+// only escalates plan-rebuild urgency and shortfall-detection timing — see
+// `lib/plan/rebuildScheduler`, `lib/power/capacityGuard.ts`;
+// `notes/ui-terminology.md` § "Hard cap is an hourly ceiling"). Consumed by
+// the headroom widget's danger state so it reconciles with the Overview
+// hero's chip, which computes the same projection and predicate live via the
+// shared helpers.
+function resolveProjectedOverHardCap(plan: DevicePlan): boolean {
+  const { totalKw, usedKWh, minutesRemaining, hardCapLimitKw } = plan.meta;
+  if (typeof totalKw !== 'number' || typeof usedKWh !== 'number'
+    || typeof minutesRemaining !== 'number' || typeof hardCapLimitKw !== 'number') {
+    return false;
+  }
+  const projectedKWh = computeProjectedHourEnergyKWh({
+    usedKWh,
+    totalKw,
+    minutesRemainingInHour: minutesRemaining,
+  });
+  return isProjectedOverHardCap({ projectedKWh, hardCapKWh: hardCapLimitKw });
 }
 
 function resolvePriceLevel(params: {

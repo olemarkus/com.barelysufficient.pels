@@ -412,6 +412,35 @@ program) remains deferred.*
       degraded mode is invisible today. Files: `packages/settings-ui/src/ui/views/**` (device settings),
       `packages/shared-domain/src/evTargetPowerConfig.ts`.
 
+*Hard-cap trajectory rekey follow-ups (2026-07-06 review findings; the rekey itself — "Above hard
+cap" keyed to projected hourly energy instead of instantaneous kW — shipped with its P0/P1s fixed).*
+
+- [ ] **Over-cap verdict: producer and hero share the predicate but not the inputs.** *Persona:*
+      skeptic with the headroom widget on their dashboard next to the open Overview.
+      *Hypothesis:* `pels_status.projectedOverHardCap` is computed from raw plan meta while the
+      hero computes from the rounded UI snapshot (0.1 kW / 0.01 kWh / whole minutes), plus the
+      widget lags the 60 s status write throttle — near the cap boundary the two surfaces can
+      briefly disagree or flicker (no hysteresis on the strict `>`). Fix direction: compute the
+      producer flag from the same normalized meta the snapshot ships (or move the resolved flag
+      onto plan meta and let the hero consume it), and consider a small hysteresis band in the
+      shared `isProjectedOverHardCap` helper.
+- [ ] **"Safe pace starts each hour at" result-row copy is hand-synced across two files.**
+      *Persona:* maintainer rewording the Limits page. *Hypothesis:* the identical label/note
+      strings live in `packages/settings-ui/public/index.html` (#settings-capacity-reaction) and
+      `BudgetOverview.tsx` with no shared constant or pinning test; the next reword splits them.
+      Hoist to a shared-domain constant consumed by both (the static HTML side needs a small
+      loader hook — same pattern as other shared strings).
+- [ ] **Power-bar amber does triple duty.** *Persona:* returning user scanning the hero under
+      pressure. *Hypothesis:* `--pels-status-warning` now means the static cap reference tick,
+      the live over-safe-pace overflow stripe, and the Simulation chip on one card — and the
+      overflow stripe over-reports (the whole trailing segment flips amber from the safe-pace
+      crossing, not just the overage). Needs mock-ups before any redesign (visual-system change,
+      not a bug fix); the cap tick's surface halo shipped as the immediate legibility fix.
+- [ ] **"Safe pace now X kW" prints twice in the on-track hero.** *Persona:* first-run user
+      reading the calm state. *Hypothesis:* the power subline and the tick legend now carry the
+      identical string three lines apart; one of them can likely go in the on-track state, but
+      which one depends on the amber-system rework above — decide together.
+
 *v2.11.0..HEAD release-review findings (2026-06-02). Non-blocking follow-ups. The solar gross/net
 split follow-ups from this batch are fixed by the solar-accounting follow-up; remaining open items continue below.*
 

@@ -1,6 +1,6 @@
 import {
   headroomHeldBackLabel,
-  headroomOverCapLabel,
+  headroomLimitStateLabel,
   headroomPriceAriaLabel,
   headroomPriceChipLabel,
 } from '../../packages/shared-domain/src/headroomWidgetCopy';
@@ -15,15 +15,17 @@ describe('headroomHeldBackLabel', () => {
   });
 });
 
-describe('headroomOverCapLabel', () => {
-  it('states the overage factually as "X kW over hard cap"', () => {
-    expect(headroomOverCapLabel('1.4')).toBe('1.4 kW over hard cap');
+describe('headroomLimitStateLabel', () => {
+  it('reuses the hero chip vocabulary for the trajectory danger state', () => {
+    // Same canonical label as the Overview hero's "Above hard cap" chip — one
+    // vocabulary for the same signal across surfaces.
+    expect(headroomLimitStateLabel('over_cap')).toBe('Above hard cap');
+    expect(headroomLimitStateLabel('at_pace')).toBe('At safe pace');
   });
 
-  it('never invites raising the physical hard cap', () => {
-    const label = headroomOverCapLabel('1.4').toLowerCase();
-    expect(label).not.toContain('raise');
-    expect(label).not.toContain('increase');
+  it('stays silent for the unexceptional states', () => {
+    expect(headroomLimitStateLabel('under')).toBe('');
+    expect(headroomLimitStateLabel('near')).toBe('');
   });
 });
 

@@ -73,7 +73,7 @@ coordinated together. Read every persona as starting *after* this gate.
 
 **Safety/Reliability is the universal job.** It is *why the product exists*, not a
 segment: nobody installs a capacity controller to feel a breach. The **hard cap
-is physical** — a breaker/tariff boundary, not a money knob — so copy must never
+is an hourly tariff-step ceiling** — not a money knob — so copy must never
 suggest raising it (recommend lowering the daily budget instead). Because every
 persona shares this job, it cannot differentiate them; it is the floor under all
 four.

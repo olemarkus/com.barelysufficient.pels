@@ -98,7 +98,7 @@ For each permission you choose when it applies:
 
 Two things stay true no matter what you grant:
 
-- All three permissions stay inside the **hard cap**. PELS never exceeds your physical capacity limit to rescue a task. If a task still cannot finish within the hard cap, the fix is a lower daily budget or fewer competing devices — not a higher cap.
+- All three permissions stay inside the **hard cap**. PELS never pushes an hour's average over your capacity limit to rescue a task. If a task still cannot finish within the hard cap, the fix is a lower daily budget or fewer competing devices — not a higher cap.
 - Permissions persist once you grant them, but they have no effect until the planned hours or the rescue gate apply — so a task already on track stays on its normal plan.
 
 ### Example: a water heater that must be ready
@@ -171,7 +171,7 @@ When the **History** view shows a missed entry, PELS surfaces one of two recours
 
 | Recourse button | What happened | What to do |
 | --- | --- | --- |
-| **Lower daily budget** | The daily energy budget ran out before the ready-by time. PELS had hours scheduled but the budget cap closed those hours down. | Lower the daily budget so future days reserve usable power earlier — in the **Budget** tab or via the **Set daily budget** Flow card. Raising the **hard cap** is not the right answer: the hard cap reflects your physical breaker or grid tariff step, not a tuning knob. |
+| **Lower daily budget** | The daily energy budget ran out before the ready-by time. PELS had hours scheduled but the budget cap closed those hours down. | Lower the daily budget so future days reserve usable power earlier — in the **Budget** tab or via the **Set daily budget** Flow card. Raising the **hard cap** is not the right answer: the hard cap reflects your grid tariff step, not a tuning knob. |
 | **Review device** | The task ran its planned hours but the device couldn't deliver enough, capacity pressure shortened the available hours, or a replan (e.g. new prices arriving, schedule revised) reduced the planned window. | The button deep-links you to the device-settings overlay. Check stepped-load planning power, target temperature, priority, **When limiting** behavior, and the Flow wiring that reports state back to PELS. |
 
 If the same device misses repeatedly, treat it as a tuning loop:

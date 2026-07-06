@@ -49,13 +49,13 @@ surfaces cannot drift.
 
 The dynamic tick on the power bar shows where PELS starts reacting. It can come from two constraints, but the user doesn't see the distinction in the primary label. The tooltip explains the source.
 
-| Source (`meta.softLimitSource`) | Tooltip |
+| Source (`meta.softLimitSource`) | Tooltip (appended after the `Safe pace now N kW —` stem plus a space, so the body separates with a semicolon, not a second em-dash) |
 |---|---|
-| `capacity` | Hourly power limit minus safety margin — PELS starts reacting here |
-| `daily` | Slowed to stay within today's budget — daily pacing is the tighter constraint right now |
-| `both` | Both capacity and daily pacing are constraining PELS right now |
+| `capacity` | the pace that keeps this hour within its energy budget; PELS starts reacting here |
+| `daily` | slowed to stay within today's budget; daily pacing is the tighter constraint right now |
+| `both` | both capacity and daily pacing are constraining PELS right now |
 
-The **hard cap** tick (user-configured ceiling, `hardLimitKw`) always reads **Hard cap** with tooltip: `Your configured maximum — staying under this avoids tariff steps or breaker trips`.
+The **hard cap** tick (user-configured ceiling, `hardLimitKw`) always renders — including when the dynamic safe pace sits at or above it — and reads **Hard cap** with tooltip body: `your grid tariff step; PELS keeps each hour's average power under this`. Never "breaker trips": an hourly-average ceiling cannot prevent them (see § "Hard cap is an hourly ceiling"). When the hour's projection pushes the energy bar's scale up to the cap, the energy bar also renders a cap tick labelled `Hard cap this hour N kWh` — the threshold that turns the projection critical, printed in kWh where the judgement is made.
 
 ### Safe pace, hard cap, and safety margin
 
@@ -63,16 +63,21 @@ Keep these three concepts distinct:
 
 | Term | Meaning |
 |---|---|
-| **Safe pace** | Dynamic planning pace to stay on track. |
-| **Hard cap** | Configured upper boundary PELS tries not to exceed. |
+| **Safe pace** | Dynamic planning pace to stay on track. Legitimately rises above the hard cap late in an under-used hour. |
+| **Hard cap** | Configured hourly-average ceiling (grid tariff step) no hour's energy should exceed. |
 | **Safety margin** | Buffer below the configured capacity/tariff limit. |
 
 Do not use `power limit` as a casual threshold label where it could blur Safe pace vs Hard cap.
 
 ### Hero legend
 
-```
-Managed 3.2 kW  ·  Background 2.9 kW  ·  Safe pace now 6.0 kW  ·  Hard cap 8.0 kW
+Two rows under the power bar — the tick legend (swatch + label with value, the
+only touch-reachable home for these numbers since tooltips need hover), then
+the segment split:
+
+```text
+▮ Safe pace now 6.0 kW   ▮ Hard cap 8.0 kW
+Managed 3.2 kW  ·  Background 2.9 kW
 ```
 
 The value line should not repeat the time meaning already carried by the label:
@@ -92,8 +97,8 @@ Marker grammar for read-only meter tracks:
 |---|---|
 | Solid dot | Actual/current value |
 | Hollow dot | Projected/forecast value |
-| Thin tick | Threshold/target |
-| End stop | Hard limit/cap |
+| Thin tick (neutral) | Threshold/target |
+| Thin tick (warning-toned) | Hard cap reference — renders wherever the cap falls on the scale |
 
 Overview status chips are hidden when everything is normal. Show short exception chips only:
 
@@ -101,30 +106,31 @@ Overview status chips are hidden when everything is normal. Show short exception
 |---|---|
 | Current power is above the dynamic threshold | `Above safe pace` |
 | Projected hourly energy is above budget | `Above budget` |
-| Current power is above the configured ceiling | `Above hard cap` |
+| Projected hourly energy is above the hard cap | `Above hard cap` |
 
-The hero has one dedicated status line combining aggregate device action and budget projection, for example:
-
-```
-Projected on target · 1.09 / 2.8 kWh · 34 min left
-Limiting 2 devices · projected on target · 2.23 / 2.8 kWh · 29 min left
-Above safe pace · limiting 2 devices · projected slightly over budget
-Above hard cap of 5.0 kW · limiting 2 devices now
-```
+`Above hard cap` is a **trajectory** chip: it fires when the hour is on pace to
+land past the cap's hourly kWh, never on instantaneous kW above the cap (see
+§ "Hard cap is an hourly ceiling").
 
 The hero's decision sentence (the named-subject conclusion at the bottom of the
 card — ladder in [`notes/overview-hero-spec.md`](overview-hero-spec.md)
 § "Decision sentence") differentiates the above-hard-cap case so it never
-overpromises mitigation. The default reads `Over the hard cap right now. Easing
-devices off.`, but when the managed shed cascade is exhausted (no controllable
-managed device left running to ease off) and the remaining breach comes from a
-device with **Power-limit control** turned off, the copy switches to the honest
-variant: `Managed devices are already eased off. The remaining draw is from a
-device that has Power-limit control turned off. Turn its Power-limit control
-back on so PELS can ease it off.` It names the actual control (never an invented
-feature name) and the user's real recourse — turning that device's Power-limit
-control back on, **not** raising the hard cap (which is physical; see § "Hard
-cap is physical"). **`eased off`** / **`ease off`** is the sanctioned verb for
+overpromises mitigation. The default reads `On pace to exceed the hard cap this
+hour. Easing devices off.` — but the action clause renders only while a
+controllable managed device is still drawing (the trajectory alone does not
+imply PELS has load left to act on: the hour may have banked the energy with
+everything already settled off, where the sentence is just `On pace to exceed
+the hard cap this hour.`). Under Simulation mode the action clause is likewise
+dropped, because PELS is not acting and must never claim it is. When the
+managed shed cascade is exhausted (no
+controllable managed device left running to ease off) and the remaining breach
+comes from a device with **Power-limit control** turned off, the copy switches
+to the honest variant: `Managed devices are already eased off. The remaining
+draw is from a device that has Power-limit control turned off. Turn its
+Power-limit control back on so PELS can ease it off.` It names the actual
+control (never an invented feature name) and the user's real recourse — turning
+that device's Power-limit control back on, **not** raising the hard cap (see
+§ "Hard cap is an hourly ceiling"). **`eased off`** / **`ease off`** is the sanctioned verb for
 the hard-cap shed cascade in this decision sentence (it pairs with the default
 `Easing devices off.`); reuse it here rather than reaching for a synonym, and
 keep the chip/secondary-text language (`Limited`, `Turned off by PELS`) for the
@@ -388,7 +394,7 @@ Reserve *plan* for the planning layer. Smart-task surfaces use *deadline*, *obje
 
 ### Smart-task Flow permissions
 
-The `allow_smart_task_rescue` Flow action grants permission. Copy says PELS can let a task go over today's budget, limit lower-priority devices, or pause lower-priority devices entirely until the task starts, so the smart task gets the power it needs. Stay forward: action verbs over hedge phrasing, no "does not guarantee" disclaimer (the hard cap is physical and is documented elsewhere — every smart-task surface doesn't need to repeat the disclaimer).
+The `allow_smart_task_rescue` Flow action grants permission. Copy says PELS can let a task go over today's budget, limit lower-priority devices, or pause lower-priority devices entirely until the task starts, so the smart task gets the power it needs. Stay forward: action verbs over hedge phrasing, no "does not guarantee" disclaimer (raising the hard cap is never a remedy — see § "Hard cap is an hourly ceiling"; every smart-task surface doesn't need to repeat the disclaimer).
 
 The smart-task detail and list surfaces render the granted permissions on a
 single row whose canonical label is **`Extra permissions (set via Flow)`**
@@ -717,6 +723,24 @@ The Overview hero does not chip the mode — see
 5. **No internal planner terms in normal live status.** `backoff`, `invariant`, `shortfall`, `swap`, `headroom cooldown` belong in advanced diagnostics only.
 6. **Don't rename established user-facing terms unless the change is clearly better.** Confusion from renaming has a cost too. `Budget`, `Managed`/`Unmanaged`, `Capacity`, `Priority`, `Mode` stay.
 
-## Hard cap is physical
+## Hard cap is an hourly ceiling
 
-The hard cap is a property of the user's grid tariff or breaker, not a tuning knob. UI copy must not suggest users raise the hard cap to relieve pressure. The recommended remedy when the daily budget runs out before a deadline is to **lower the daily budget** so future days reserve available power earlier — see `cannotMeetDailyBudgetExhausted` copy in `deadlineLabels.ts`.
+The hard cap is the user's grid tariff step (effekttrinn): an **hourly-average**
+energy ceiling (the Norwegian kapasitetsledd step is the mean of the top-3
+whole-clock-hour kWh on three different days). Two rules follow:
+
+1. **Instantaneous kW above the cap is never presented as a breach.** A
+   momentary draw above the cap has zero tariff consequence and no control
+   path treats it as a breach to correct directly (it only escalates
+   plan-rebuild urgency and shortfall-detection timing — see
+   `lib/plan/rebuildScheduler`); the dynamic safe pace legitimately exceeds
+   the cap late in an under-used hour. Every over-cap alarm (`Above hard cap` chip,
+   widget danger state, flow trigger) keys off the hour's **trajectory** —
+   projected hourly energy past the cap's kWh. Never pair the cap with
+   "breaker trips" in copy: an hourly-average ceiling cannot prevent them (the
+   main fuse is a separate, much higher physical limit PELS does not manage).
+2. **Not a tuning knob.** UI copy must not suggest users raise the hard cap to
+   relieve pressure. The recommended remedy when the daily budget runs out
+   before a deadline is to **lower the daily budget** so future days reserve
+   available power earlier — see `cannotMeetDailyBudgetExhausted` copy in
+   `deadlineLabels.ts`.

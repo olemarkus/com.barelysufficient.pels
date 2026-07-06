@@ -28,7 +28,7 @@ export type HeadroomWidgetInput = {
   status: {
     headroomKw?: number;
     hourlyLimitKw?: number;
-    hardCapHeadroomKw?: number | null;
+    projectedOverHardCap?: boolean;
     controlledKw?: number;
     uncontrolledKw?: number;
     devicesOff?: number;
@@ -41,20 +41,22 @@ export type HeadroomWidgetInput = {
 
 /**
  * Resolve the at-limit state so the renderer reads a flat enum instead of
- * re-deriving kW thresholds. "Over hard cap" (genuine exceedance) is the only
- * red/danger state; sitting at the dynamic safe pace under the physical
- * ceiling is correct operation and reads as the calmer `at_pace` state.
+ * re-deriving kW thresholds. `over_cap` — the only red/danger state — is the
+ * producer-resolved TRAJECTORY flag (projected this-hour energy past the hard
+ * cap's hourly kWh, `lib/plan/pelsStatus.ts`), never instantaneous kW vs the
+ * cap: the cap is an hourly-average tariff-step ceiling, so a momentary draw
+ * above it is not an exceedance. Sitting at the dynamic safe pace is correct
+ * operation and reads as the calmer `at_pace` state.
  */
 const resolveLimitState = (params: {
   currentKw: number;
   hourBudgetKw: number;
-  hardCapHeadroomKw: number | null;
+  projectedOverHardCap: boolean;
 }): HeadroomWidgetLimitState => {
-  const { currentKw, hourBudgetKw, hardCapHeadroomKw } = params;
-  // Over the physical hard cap is the only genuine exceedance. When the status
-  // doesn't carry a hard-cap headroom we cannot prove an exceedance, so we
-  // never escalate to `over_cap` on its absence.
-  if (hardCapHeadroomKw !== null && hardCapHeadroomKw < 0) return 'over_cap';
+  const { currentKw, hourBudgetKw, projectedOverHardCap } = params;
+  // When the status doesn't carry the flag we cannot prove the trajectory, so
+  // we never escalate to `over_cap` on its absence.
+  if (projectedOverHardCap) return 'over_cap';
   if (hourBudgetKw <= 0) return 'under';
   const ratio = currentKw / hourBudgetKw;
   if (ratio >= 1) return 'at_pace';
@@ -76,16 +78,13 @@ export const buildHeadroomWidgetPayload = (input: HeadroomWidgetInput): Headroom
   if (hourBudgetKw === null || headroomKw === null) return emptyPayload(EMPTY_SUBTITLE_DEFAULT);
 
   const currentKw = Math.max(0, hourBudgetKw - headroomKw);
-  const hardCapHeadroomKw = isFiniteNumber(status.hardCapHeadroomKw) ? status.hardCapHeadroomKw : null;
   const shedCount = isFiniteNumber(status.devicesOff) ? Math.max(0, Math.round(status.devicesOff)) : 0;
   const priceLevel = resolvePriceLevel(status.priceLevel);
-  const limitState = resolveLimitState({ currentKw, hourBudgetKw, hardCapHeadroomKw });
-  // Positive amount over the physical hard cap (0 when at/under it). Negative
-  // hard-cap headroom is the exceedance magnitude; resolve it to a flat kW here
-  // so the renderer reads one number, never the signed source value.
-  const overageKw = hardCapHeadroomKw !== null && hardCapHeadroomKw < 0
-    ? -hardCapHeadroomKw
-    : 0;
+  const limitState = resolveLimitState({
+    currentKw,
+    hourBudgetKw,
+    projectedOverHardCap: status.projectedOverHardCap === true,
+  });
 
   const lastUpdate = isFiniteNumber(status.lastPowerUpdate) ? status.lastPowerUpdate : null;
   const nowMs = isFiniteNumber(input.nowMs) ? input.nowMs : Date.now();
@@ -100,7 +99,6 @@ export const buildHeadroomWidgetPayload = (input: HeadroomWidgetInput): Headroom
     currentKw,
     hourBudgetKw,
     headroomKw,
-    overageKw,
     shedCount,
     priceLevel,
     limitState,
