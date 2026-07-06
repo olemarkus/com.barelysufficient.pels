@@ -54,6 +54,7 @@ import {
   buildExecutableTargetUpdate,
 } from './executableTargetProjection';
 import { isSteppedLoadRestoreFromOff } from './planExecutorPredicates';
+import { isRequestedStepMaterialized } from './steppedLoadActuation';
 
 const logger = getLogger('executor/plan');
 
@@ -289,7 +290,14 @@ const applySteppedRestoreFromOffIntent = async (
     return delta(deviceWriteCount, commandRequestCount);
   }
   const onoffViolated = isBinaryObservedOff(snapshot);
+  // Once the prepared step is materialized (device-confirmed while off), do NOT
+  // re-issue the preparation command on the go-cycle: it would re-fire the flow
+  // trigger and reset the freshly-consumed confirmation to pending in the same
+  // cycle the binary-on goes out — double-triggering user flows and, when a flow
+  // only reports on change, decaying to a phantom 'stale' that pollutes the
+  // step-flow health signal.
   const preRestoreStepIssued = onoffViolated
+    && !isRequestedStepMaterialized(steppedAction.commandStepActuation)
     ? await dispatchSteppedLoadCommand(core, steppedAction, mode, snapshot, { recordPlanActuation: false })
     : false;
   if (preRestoreStepIssued) commandRequestCount += 1;

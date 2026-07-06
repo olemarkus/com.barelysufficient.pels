@@ -366,6 +366,52 @@ program) remains deferred.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **Decay (or context-scope) the binary expected-power peak ratchet.** *Persona:* EV/large-load owner
+      whose charger is externally current-limited (Easee/Zaptec app, load balancing) below its historical peak.
+      *Hypothesis:* `updateLastKnownPower` (`lib/device/managerRuntime.ts`) is up-only — once a binary device
+      has drawn its all-time peak, every future restore admission prices the resume at that peak + buffer
+      (`restoreType:"binary"`, `powerSource:"expected"`). Prod 2026-07-05: the Elbillader gated on 7.56 kW
+      while its real 6 A resume cost ~1.4 kW; the manual-start window re-ratcheted the peak to ~4.9 kW.
+      A recent-observed-draw estimate or a decaying/context-scoped peak (cf. context-scoped step calibration)
+      would track the device's current configuration. Stepped devices are unaffected (step planning power wins).
+      *Why:* restore admission over-prices resumes for any externally-limited binary load → devices wait far
+      longer than physics requires. Files: `lib/device/managerRuntime.ts`, `lib/device/devicePowerEstimate.ts`,
+      `lib/plan/restore/accounting.ts`.
+- [ ] **Surface "your step flow is not answering" on the device detail.** *Persona:* flow-backed stepped-device
+      owner (EV charger) whose `desired_stepped_load_changed` flow is missing, mistargeted, or not reporting back.
+      *Hypothesis:* when a flow step command goes stale repeatedly (`stepCommandStatus:'stale'`,
+      `stepCommandRetryCount` climbing), the UI shows only generic "Waiting before resuming" cooldown copy —
+      the prod 2026-07-05 deadlock was only diagnosable from raw logs. A device-detail status row (and/or
+      settings hub chip) like "Step command not confirmed — check the flow that reports the step back" after
+      N consecutive stale commands names the real remedy.
+      *Why:* the failure mode is a *user wiring* gap with an actionable fix; today it presents as PELS
+      mysteriously never resuming. Note the sibling trust cost: a flow that *confirms but lies* (reports the
+      step without applying it) is bounded only by whole-home overshoot detection + the terminal direct
+      `evcharger_charging=false` write, and that window stretches under `power_source = flow`'s irregular
+      sampling. Files: `lib/plan/deviceOverviewLog.ts` / overview status writer,
+      `packages/shared-domain/src/deviceOverviewStrings.ts`, `notes/ui-terminology.md` (new status copy).
+- [ ] **A transient snapshot miss defeats the while-off flow-report suppression.** *Persona:* flow-stepper owner
+      whose Homey briefly fails a device read at the moment their flow reports a step.
+      *Hypothesis:* `SteppedLoadControlHelper.reportSteppedLoadActualStep` resolves the device via
+      `getDeviceSnapshots().find(...)`; on a miss `snapshotBinaryOn` is `undefined`, so
+      `shouldSuppressSteppedLoadFlowReport` (which requires `binaryOn === false`) admits a non-off report
+      while the device is actually off as **sticky observed evidence** — the exact fabricated observed step
+      the suppression exists to prevent (it can revive a dead shed-release path). One missing SDK read is
+      treated as authoritative for evidence admission, violating the abandon-grace convention.
+      *Why:* found adjacent to the 2026-07-05 restore-confirmation fix (predicate unchanged there); needs a
+      "recent trusted binary state" fallback or an explicit unknown-binary policy rather than admit-by-default.
+      Files: `setup/appDeviceControlHelpers.ts` (`reportSteppedLoadActualStep`),
+      `setup/appDeviceControlSteppedState.ts` (`shouldSuppressSteppedLoadFlowReport`).
+- [ ] **Nudge EV chargers missing the target-power phase preset.** *Persona:* EV-charger owner who managed the
+      charger but never set 1-/3-phase, silently getting binary on/off control with peak-priced resumes.
+      *Hypothesis:* a managed `evcharger`-class device with no stepped profile and no
+      `ev_charger_1_phase`/`ev_charger_3_phase` preset degrades to pause/resume-at-peak (the pre-2026-07-05
+      Elbillader state: "waiting for 7.56 kW"). The device settings sheet can detect the shape and suggest
+      enabling current stepping via the phase preset.
+      *Why:* the preset unlocks the charger's whole value (shed to 6 A instead of full pause) and the
+      degraded mode is invisible today. Files: `packages/settings-ui/src/ui/views/**` (device settings),
+      `packages/shared-domain/src/evTargetPowerConfig.ts`.
+
 *v2.11.0..HEAD release-review findings (2026-06-02). Non-blocking follow-ups. The solar gross/net
 split follow-ups from this batch are fixed by the solar-accounting follow-up; remaining open items continue below.*
 

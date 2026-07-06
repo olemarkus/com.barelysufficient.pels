@@ -12,13 +12,10 @@ import type {
   DeviceControlModel,
   DeviceControlProfiles,
   ReportedStepObservedProbe,
-  SteppedLoadCommandStatus,
   SteppedLoadDescriptorProbe,
   SteppedLoadProfile,
   TargetDeviceSnapshot,
 } from '../packages/contracts/src/types';
-import { STEPPED_LOAD_COMMAND_RETRY_DELAYS_MS } from '../lib/plan/planConstants';
-import { LOCAL_STEPPED_LOAD_COMMAND_PENDING_MS } from '../lib/plan/planObservationPolicy';
 import {
   PELS_MEASURE_STEP_CAPABILITY_ID,
   PELS_TARGET_STEP_CAPABILITY_ID,
@@ -29,44 +26,37 @@ import {
   resolveSteppedLoadCurrentOn,
   shouldSuppressSteppedLoadFlowReport,
 } from './appDeviceControlSteppedState';
+import {
+  confirmSteppedLoadDesiredStep,
+  expireConfirmedDesiredStepOnBinaryOff,
+  markSteppedLoadDesiredStepIssued,
+  preserveSteppedLoadDesiredStep,
+  pruneStaleSteppedLoadCommandStates,
+  reportSteppedLoadActualStep,
+  type DeviceControlRuntimeState,
+  type MarkSteppedLoadDesiredStepIssuedParams,
+  type ReportSteppedLoadActualStepResult,
+  type SteppedLoadDesiredRuntimeState,
+  createDeviceControlRuntimeState,
+} from './appDeviceControlSteppedCommandState';
 import { emitSteppedFeedbackLog } from './appDeviceControlFeedback';
 import { resolveBinaryOn } from '../lib/utils/binaryControl';
-export const STEPPED_LOAD_COMMAND_STALE_MS = LOCAL_STEPPED_LOAD_COMMAND_PENDING_MS;
-export type SteppedLoadDesiredRuntimeState = {
-  capabilityId: typeof PELS_TARGET_STEP_CAPABILITY_ID;
-  stepId: string;
-  previousStepId?: string;
-  changedAtMs: number;
-  lastIssuedAtMs?: number;
-  pendingWindowMs?: number;
-  retryCount: number;
-  nextRetryAtMs?: number;
-  pending: boolean;
-  status: SteppedLoadCommandStatus;
-};
-export type SteppedLoadReportedRuntimeState = {
-  capabilityId: typeof PELS_MEASURE_STEP_CAPABILITY_ID;
-  stepId: string;
-  updatedAtMs: number;
-  source: 'flow';
-};
 
-export type DeviceControlRuntimeState = {
-  steppedLoadDesiredByDeviceId: Map<string, SteppedLoadDesiredRuntimeState>;
-  steppedLoadReportedByDeviceId: Map<string, SteppedLoadReportedRuntimeState>;
-};
-export type ReportSteppedLoadActualStepResult = 'changed' | 'unchanged' | 'invalid';
-export type MarkSteppedLoadDesiredStepIssuedParams = {
-  deviceId: string;
-  desiredStepId: string;
-  previousStepId?: string;
-  issuedAtMs?: number;
-  pendingWindowMs?: number;
-};
-export const createDeviceControlRuntimeState = (): DeviceControlRuntimeState => ({
-  steppedLoadDesiredByDeviceId: new Map(),
-  steppedLoadReportedByDeviceId: new Map(),
-});
+// The stepped-load command runtime-state cluster lives in
+// `appDeviceControlSteppedCommandState.ts`; re-exported here because this
+// module is the wiring surface app code and tests import from.
+export {
+  STEPPED_LOAD_COMMAND_STALE_MS,
+  createDeviceControlRuntimeState,
+  markSteppedLoadDesiredStepIssued,
+  pruneStaleSteppedLoadCommandStates,
+  reportSteppedLoadActualStep,
+  type DeviceControlRuntimeState,
+  type MarkSteppedLoadDesiredStepIssuedParams,
+  type ReportSteppedLoadActualStepResult,
+  type SteppedLoadDesiredRuntimeState,
+  type SteppedLoadReportedRuntimeState,
+} from './appDeviceControlSteppedCommandState';
 export const normalizeStoredDeviceControlProfiles = normalizeDeviceControlProfiles;
 export const resolveDefaultControlModel = (device: TargetDeviceSnapshot): DeviceControlModel => {
   if (device.controlModel) return device.controlModel;
@@ -156,6 +146,11 @@ export const decorateSnapshotWithDeviceControl = (params: {
   }
 
   pruneStaleSteppedLoadCommandStates(runtimeState, nowMs);
+  expireConfirmedDesiredStepOnBinaryOff({
+    runtimeState,
+    deviceId: snapshot.id,
+    observedOn: snapshot.binaryControl?.on,
+  });
 
   const desired = runtimeState.steppedLoadDesiredByDeviceId.get(snapshot.id);
   const reported = runtimeState.steppedLoadReportedByDeviceId.get(snapshot.id);
@@ -167,13 +162,7 @@ export const decorateSnapshotWithDeviceControl = (params: {
   }
   const confirmedReportedStepId = nativeReportedStepId ?? snapshotReportedStepId;
   if (confirmedReportedStepId && desired?.stepId === confirmedReportedStepId) {
-    runtimeState.steppedLoadDesiredByDeviceId.set(snapshot.id, {
-      ...desired,
-      retryCount: 0,
-      nextRetryAtMs: undefined,
-      pending: false,
-      status: 'success',
-    });
+    confirmSteppedLoadDesiredStep({ runtimeState, deviceId: snapshot.id, desired });
   }
   const currentDesired = runtimeState.steppedLoadDesiredByDeviceId.get(snapshot.id);
   const fallbackStepId = getSteppedLoadLowestActiveStep(profile)?.id;
@@ -217,140 +206,6 @@ export const decorateSnapshotWithDeviceControl = (params: {
 };
 /* eslint-enable complexity */
 
-export const markSteppedLoadDesiredStepIssued = (params: {
-  runtimeState: DeviceControlRuntimeState;
-  deviceId: string;
-  desiredStepId: string;
-  previousStepId?: string;
-  issuedAtMs?: number;
-  pendingWindowMs?: number;
-}): void => {
-  const {
-    runtimeState,
-    deviceId,
-    desiredStepId,
-    previousStepId,
-    issuedAtMs = Date.now(),
-    pendingWindowMs,
-  } = params;
-  const previousDesired = runtimeState.steppedLoadDesiredByDeviceId.get(deviceId);
-  const shouldIncrementRetryCount = previousDesired?.stepId === desiredStepId
-    && previousDesired.status !== 'success';
-  const retryCount = shouldIncrementRetryCount
-    ? previousDesired.retryCount + 1
-    : 0;
-  runtimeState.steppedLoadDesiredByDeviceId.set(deviceId, {
-    capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
-    stepId: desiredStepId,
-    previousStepId,
-    changedAtMs: issuedAtMs,
-    lastIssuedAtMs: issuedAtMs,
-    pendingWindowMs,
-    retryCount,
-    nextRetryAtMs: undefined,
-    pending: true,
-    status: 'pending',
-  });
-};
-
-const preserveSteppedLoadDesiredStep = (params: {
-  runtimeState: DeviceControlRuntimeState;
-  deviceId: string;
-  desiredStepId: string;
-  previousStepId?: string;
-  changedAtMs?: number;
-  status?: SteppedLoadCommandStatus;
-}): void => {
-  const {
-    runtimeState,
-    deviceId,
-    desiredStepId,
-    previousStepId,
-    changedAtMs = Date.now(),
-    status = 'idle',
-  } = params;
-  runtimeState.steppedLoadDesiredByDeviceId.set(deviceId, {
-    capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
-    stepId: desiredStepId,
-    previousStepId,
-    changedAtMs,
-    retryCount: 0,
-    nextRetryAtMs: undefined,
-    pending: false,
-    status,
-  });
-};
-
-export const reportSteppedLoadActualStep = (params: {
-  runtimeState: DeviceControlRuntimeState;
-  profiles: DeviceControlProfiles;
-  deviceId: string;
-  stepId: string;
-  reportedAtMs?: number;
-}): ReportSteppedLoadActualStepResult => {
-  const {
-    runtimeState,
-    profiles,
-    deviceId,
-    stepId,
-    reportedAtMs = Date.now(),
-  } = params;
-  const profile = profiles[deviceId];
-  if (!profile || profile.model !== 'stepped_load' || !getSteppedLoadStep(profile, stepId)) {
-    return 'invalid';
-  }
-
-  const previousReport = runtimeState.steppedLoadReportedByDeviceId.get(deviceId);
-  runtimeState.steppedLoadReportedByDeviceId.set(deviceId, {
-    capabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
-    stepId,
-    updatedAtMs: reportedAtMs,
-    source: 'flow',
-  });
-
-  const desired = runtimeState.steppedLoadDesiredByDeviceId.get(deviceId);
-  if (desired?.stepId === stepId) {
-    runtimeState.steppedLoadDesiredByDeviceId.set(deviceId, {
-      ...desired,
-      retryCount: 0,
-      nextRetryAtMs: undefined,
-      pending: false,
-      status: 'success',
-    });
-  }
-
-  return previousReport?.stepId !== stepId ? 'changed' : 'unchanged';
-};
-
-export const pruneStaleSteppedLoadCommandStates = (
-  runtimeState: DeviceControlRuntimeState,
-  nowMs: number = Date.now(),
-): boolean => {
-  let changed = false;
-  for (const [deviceId, desired] of runtimeState.steppedLoadDesiredByDeviceId.entries()) {
-    if (!desired.pending || typeof desired.lastIssuedAtMs !== 'number') continue;
-    const pendingWindowMs = desired.pendingWindowMs ?? STEPPED_LOAD_COMMAND_STALE_MS;
-    if (nowMs - desired.lastIssuedAtMs < pendingWindowMs) continue;
-    runtimeState.steppedLoadDesiredByDeviceId.set(deviceId, {
-      ...desired,
-      nextRetryAtMs:
-        desired.lastIssuedAtMs
-        + pendingWindowMs
-        + resolveSteppedLoadCommandRetryDelayMs(desired.retryCount),
-      pending: false,
-      status: 'stale',
-    });
-    changed = true;
-  }
-  return changed;
-};
-
-function resolveSteppedLoadCommandRetryDelayMs(retryCount: number): number {
-  const normalizedRetryCount = Number.isFinite(retryCount) ? Math.max(0, Math.trunc(retryCount)) : 0;
-  return STEPPED_LOAD_COMMAND_RETRY_DELAYS_MS[
-    Math.min(normalizedRetryCount, STEPPED_LOAD_COMMAND_RETRY_DELAYS_MS.length - 1)
-  ];
-}
 
 export class AppDeviceControlHelpers {
   private readonly runtimeState: DeviceControlRuntimeState = createDeviceControlRuntimeState();
@@ -424,14 +279,7 @@ export class AppDeviceControlHelpers {
       binaryOn: snapshotBinaryOn,
       stepId,
     })) {
-      this.deps.debugStructured({
-        event: 'stepped_load_feedback_ignored',
-        reason: 'non_off_step_while_off',
-        deviceId,
-        deviceName: knownDeviceName,
-        stepId,
-      });
-      return 'unchanged';
+      return this.handleSuppressedNonOffStepReport(deviceId, stepId, knownDeviceName);
     }
     const previousReportedStepId = this.runtimeState.steppedLoadReportedByDeviceId.get(deviceId)?.stepId;
     const previousDesired = this.runtimeState.steppedLoadDesiredByDeviceId.get(deviceId);
@@ -485,6 +333,58 @@ export class AppDeviceControlHelpers {
 
   getRuntimeStateForTests(): DeviceControlRuntimeState {
     return this.runtimeState;
+  }
+
+  // A suppressed non-off report stays out of the OBSERVED axis (a fabricated
+  // observed step while off would revive a dead shed-release path), but when it
+  // matches the step PELS just commanded it IS the flow-transport confirmation
+  // of that command — the analogue of a native capability echo. Dropping it
+  // wholesale deadlocks flow-backed restore-from-off: the prepare-for-on step
+  // can never confirm and the restore loops waiting_confirmation → stale →
+  // retry_backoff forever (prod 2026-07-05 Elbillader).
+  private handleSuppressedNonOffStepReport(
+    deviceId: string,
+    stepId: string,
+    knownDeviceName: string | undefined,
+  ): ReportSteppedLoadActualStepResult {
+    const desired = this.runtimeState.steppedLoadDesiredByDeviceId.get(deviceId);
+    if (desired && desired.stepId === stepId && desired.status !== 'success') {
+      confirmSteppedLoadDesiredStep({
+        runtimeState: this.runtimeState,
+        deviceId,
+        desired,
+      });
+      this.deps.getStructuredLogger('devices')?.info({
+        event: 'stepped_load_command_confirmed_while_off',
+        deviceId,
+        deviceName: knownDeviceName,
+        stepId,
+        // Prior lifecycle state disambiguates prod logs: 'pending'/'stale' is a
+        // real command echo; 'idle' is a plan-preserved step the report attests.
+        previousStatus: desired.status,
+        wasPending: desired.pending,
+        measureCapabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
+        targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
+      });
+    } else if (desired && desired.stepId !== stepId && desired.status === 'success') {
+      // The device attests a DIFFERENT non-off step than the confirmed one
+      // (e.g. its current was raised externally while off). The stale
+      // confirmation must lose to the fresher telemetry — but the conflicting
+      // report confirms nothing itself and stays out of the observed axis.
+      this.runtimeState.steppedLoadDesiredByDeviceId.set(deviceId, {
+        ...desired,
+        pending: false,
+        status: 'idle',
+      });
+    }
+    this.deps.debugStructured({
+      event: 'stepped_load_feedback_ignored',
+      reason: 'non_off_step_while_off',
+      deviceId,
+      deviceName: knownDeviceName,
+      stepId,
+    });
+    return 'unchanged';
   }
 
   private resolveSteppedLoadFeedbackProfile(

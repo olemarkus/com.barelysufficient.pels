@@ -264,6 +264,13 @@ export const executeSteppedLoadRestoreBinary = async (
       mode,
       onoffViolated,
       stepViolated,
+      // Which evidence satisfied the prepared-step gate: 'observed' (a real
+      // step report) or 'confirmed_command' (flow-confirmed while off). The
+      // only consumer of materialization provenance — diagnosability, not
+      // control flow.
+      stepMaterializationSource: action.stepActuation.materialization.kind === 'materialized'
+        ? action.stepActuation.materialization.source
+        : null,
       reasonCode: 'keep_invariant',
     });
     if (mode === 'plan') {

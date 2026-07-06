@@ -100,6 +100,88 @@ describe('planExecutableSteppedLoad', () => {
     expect(action?.commandStepActuation).toEqual(action?.stepActuation);
   });
 
+  it('materializes a flow-confirmed prepared step while the device is off', () => {
+    // Restore-from-off for a flow-backed stepper: no observed report can exist
+    // while off, but the prepare command was confirmed by the flow
+    // (stepCommandStatus success for lastDesiredStepId). That confirmation is
+    // the materialization evidence that lets the binary turn-on proceed.
+    const action = buildAction(steppedPlanDevice({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'low',
+      desiredStepId: 'low',
+      lastDesiredStepId: 'low',
+      stepCommandStatus: 'success',
+    }));
+
+    expect(action?.stepActuation).toEqual({
+      kind: 'requested',
+      requestedStepId: 'low',
+      materialization: { kind: 'materialized', stepId: 'low', source: 'confirmed_command' },
+    });
+    expect(action?.stepNeedsAdjustment).toBe(false);
+  });
+
+  it('does NOT let a confirmed command materialize while the device is on', () => {
+    // While on, observed reports keep sole materialization authority — a stale
+    // 'success' must not suppress the step adjustment a clamped device needs.
+    const action = buildAction(steppedPlanDevice({
+      currentState: 'on',
+      plannedState: 'keep',
+      selectedStepId: 'low',
+      desiredStepId: 'low',
+      lastDesiredStepId: 'low',
+      stepCommandStatus: 'success',
+    }));
+
+    expect(action?.stepActuation.materialization).toEqual({
+      kind: 'not_materialized',
+      reason: 'fallback_only',
+    });
+    expect(action?.stepNeedsAdjustment).toBe(true);
+  });
+
+  it('does not trust a plan-derived off for confirmed-command evidence when the observation is absent', () => {
+    // With the device missing from this cycle's snapshot, current.on comes
+    // from the plan-derived fallback — not trusted-off evidence, so the
+    // confirmed command must not materialize.
+    const planDevice = steppedPlanDevice({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'low',
+      desiredStepId: 'low',
+      lastDesiredStepId: 'low',
+      stepCommandStatus: 'success',
+    });
+
+    const action = buildExecutableSteppedLoadDevice(
+      buildExecutableSteppedLoadIntent(planDevice),
+      undefined,
+      resolveSteppedLoadCurrentFallback(planDevice),
+    );
+
+    expect(action?.current.on).toBe(false);
+    expect(action?.stepActuation.materialization.kind).toBe('not_materialized');
+  });
+
+  it('confirms nothing when a success cannot be tied to its commanded step', () => {
+    // A 'success' whose tracked step id was filtered out (profile edit) has no
+    // lastDesiredStepId; it must not fall back to the planner's desired step.
+    const action = buildAction(steppedPlanDevice({
+      currentState: 'off',
+      plannedState: 'keep',
+      selectedStepId: 'low',
+      desiredStepId: 'low',
+      lastDesiredStepId: undefined,
+      stepCommandStatus: 'success',
+    }));
+
+    expect(action?.stepActuation.materialization).toEqual({
+      kind: 'not_materialized',
+      reason: 'fallback_only',
+    });
+  });
+
   it('uses measured power as shed baseline when current stepped position is unknown', () => {
     const action = buildAction(steppedPlanDevice({
       plannedState: 'shed',

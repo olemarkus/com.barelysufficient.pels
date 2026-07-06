@@ -47,6 +47,7 @@ For planner assumptions: use conservative still-on/still-high for shed decisions
 - "No confirmation yet" means pending/unknown — **never** treat it as success.
 - Do not infer the `on` state of a device from its power consumption — power is unreliable for binary state attribution.
 - An unobserved binary control resolves `currentOn` to **`false`** (non-optimistic), never a fabricated `true` — `currentOn` stays strictly `boolean` and the unknown signal lives on `binaryControlObservation`. A binary-less `device.update` must **not** synthesize an on-transition (it once did, via the optimistic default — a phantom off→on reconcile / Flow trigger). Do not re-introduce the optimism to "restore" a reconcile event.
+- A non-off flow step report while the device is off is suppressed as **observed** evidence (a fabricated observed step revives a dead shed-release path) — but when it matches the step PELS just commanded it still confirms the **commanded** axis (`stepped_load_command_confirmed_while_off`), the flow-transport analogue of a native capability echo. Dropping it wholesale deadlocks flow-backed restore-from-off (`prepare_for_on` can never confirm — prod 2026-07-05). Keep the two axes separate; never let the confirmation write `reportedStepId`.
 
 ### Rules when changing reconcile or merge logic
 

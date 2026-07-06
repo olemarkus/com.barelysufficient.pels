@@ -72,6 +72,12 @@ export function buildExecutableSteppedLoadIntent(dev: PlanDevice): ExecutableSte
     matchingCommandAttempt,
     stepCommandRetryCount: dev.stepCommandRetryCount ?? 0,
     nextStepCommandRetryAtMs: dev.nextStepCommandRetryAtMs,
+    // Strictly the COMMANDED step: a success that cannot be tied to its
+    // commanded step (e.g. the tracked step id was filtered out by a profile
+    // edit) confirms nothing — no fallback to the planner's desired step.
+    confirmedCommandStepId: dev.stepCommandStatus === 'success'
+      ? dev.lastDesiredStepId
+      : undefined,
   };
 }
 
@@ -98,12 +104,23 @@ export function buildExecutableSteppedLoadDevice(
 ): ExecutableSteppedLoadDevice | null {
   if (!intent) return null;
   const current = buildCurrentState(intent, observed, currentFallback);
+  // A confirmed step command counts as restore-preparation evidence ONLY while
+  // the device is observed off (trusted off) — the window where a flow-backed
+  // stepper cannot produce an observed step report (non-off flow reports are
+  // suppressed as observed evidence while off). While on, observed reports
+  // keep sole materialization authority so clamped devices still get adjusted.
+  // Requires a present observation: `current.on` falls back to the
+  // plan-derived value when the device is absent from this cycle's snapshot,
+  // and a plan-derived 'off' is not trusted-off evidence.
+  const confirmedCommandStepId = observed !== undefined && current.on === false
+    ? intent.confirmedCommandStepId
+    : undefined;
   const stepActuation = resolveSteppedStepActuationState({
-    step: toExecutableSteppedStepState(observed?.steppedLoad, intent.desired.stepId),
+    step: toExecutableSteppedStepState(observed?.steppedLoad, intent.desired.stepId, confirmedCommandStepId),
   });
-  const commandStepActuation = resolveSteppedStepActuationState({
-    step: toExecutableSteppedStepState(observed?.steppedLoad, intent.desired.stepId),
-  });
+  // Same inputs, same resolution — the two fields exist for their distinct
+  // consumers (restore gating vs command dispatch), not distinct semantics.
+  const commandStepActuation = stepActuation;
   const desiredIsNonOff = intent.desired.stepId
     && !isSteppedLoadOffStep(intent.steppedLoadProfile, intent.desired.stepId);
   return {
@@ -141,6 +158,7 @@ const buildCurrentState = (
 const toExecutableSteppedStepState = (
   observed: ExecutableObservedSteppedLoadState | null | undefined,
   requestedStepId?: string,
+  confirmedCommandStepId?: string,
 ): ExecutableSteppedStepState => {
   const observedStepId = observed?.reportedStepId;
   // The effective `stepId` is the planning fallback only when there is no
@@ -151,6 +169,7 @@ const toExecutableSteppedStepState = (
     requestedStepId,
     observedStep: observedStepId ? { kind: 'reported', stepId: observedStepId } : { kind: 'unknown' },
     fallbackStepId,
+    confirmedCommandStepId,
   };
 };
 
