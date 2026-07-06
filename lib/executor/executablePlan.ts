@@ -200,6 +200,11 @@ export type ExecutableSteppedLoadIntent = {
   matchingCommandAttempt: ExecutableSteppedLoadRestoreAttempt;
   stepCommandRetryCount: number;
   nextStepCommandRetryAtMs?: number;
+  // Step of the last issued step command when that command was confirmed by
+  // device-side feedback (`stepCommandStatus === 'success'`). Consumed as
+  // restore-preparation materialization evidence only while the device is
+  // observed off — see `ExecutableSteppedStepState.confirmedCommandStepId`.
+  confirmedCommandStepId?: string;
 };
 
 export type ExecutableSteppedLoadDevice = {
