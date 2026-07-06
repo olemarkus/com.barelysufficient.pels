@@ -33,6 +33,18 @@ type CapacityStateSummaryMetadata = {
   summarySourceAtMs?: number | null;
 };
 
+/**
+ * Unwinnable plan state: the last plan proved there is nothing left to shed AND
+ * nothing left to reduce, so a full rebuild cannot change any device action.
+ * `=== false` (not `!== true`) so a null/startup summary is not unactionable.
+ * Owns this resolution for every consumer (rebuild throttling, convergence) —
+ * do not re-derive it from summary fields at call sites.
+ */
+export function isPlanUnactionable(summary: PlanCapacityStateSummary): boolean {
+  return summary.remainingActionableControlledLoad === false
+    && summary.remainingReducibleControlledLoad === false;
+}
+
 export function buildPlanCapacityStateSummary(
   plan: DevicePlan | null | undefined,
   metadata: CapacityStateSummaryMetadata = {},

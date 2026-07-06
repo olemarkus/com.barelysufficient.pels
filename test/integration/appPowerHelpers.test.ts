@@ -20,6 +20,8 @@ import {
   schedulePlanRebuildFromPowerSample,
 } from '../../lib/plan/rebuildScheduler/powerDriven';
 import { schedulePlanRebuildFromSignal } from '../../lib/plan/rebuildScheduler/signalDriven';
+import { isPlanActivelyConverging } from '../../lib/plan/planStateHelpers';
+import { createPlanEngineState } from '../../lib/plan/planState';
 import {
   PowerCalibrationStore,
   createCalibrationSnapshotMutationHook,
@@ -1897,6 +1899,57 @@ describe('schedulePlanRebuildFromSignal', () => {
 
     expect(rebuildPlanFromCache).not.toHaveBeenCalled();
     expect(checkShortfallSpy).toHaveBeenLastCalledWith(false, expect.closeTo(0.306, 3));
+  });
+
+  // Regression: the 2026-07-06 cpuwarn crash. A persistent unwinnable overshoot
+  // (daily allowance clamped to 0, all managed devices shed, remaining draw
+  // unmanaged) kept `wasOvershoot` true, which made the pipeline pass
+  // `planConvergenceActive: true` and defeated the unrecoverable-shortfall skip —
+  // a ~1.6s rebuild fired on every jittering power sample until Homey killed the
+  // app. Composes the pipeline wiring: convergence derived from the plan state
+  // WITH the unactionable summary must let the skip engage.
+  it('suppresses the rebuild storm when overshoot persists but the plan is unactionable', async () => {
+    let state: PowerSampleRebuildState = { lastMs: Date.now() - 2500, lastRebuildPowerW: 5267, lastSoftLimitKw: 3.9 };
+    const capacityGuard = new CapacityGuard({
+      limitKw: 10,
+      softMarginKw: 0.5,
+      onShortfall: vi.fn(),
+    });
+    capacityGuard.setSoftLimitProvider(() => 3.9);
+    capacityGuard.setShortfallThresholdProvider(() => 4.961);
+    capacityGuard.reportTotalPower(5.267);
+    await capacityGuard.checkShortfall(false, 0.306);
+    const rebuildPlanFromCache = vi.fn().mockResolvedValue({
+      actionChanged: false,
+      appliedActions: false,
+      failed: false,
+    });
+    const planState = createPlanEngineState();
+    planState.wasOvershoot = true;
+    const planUnactionable = true; // summary: nothing actionable, nothing reducible
+
+    // ≥100 W jitter per sample — "meaningful" deltas that used to force a rebuild each time.
+    for (const powerW of [5450, 5300, 5480]) {
+      await schedulePlanRebuildFromSignal({
+        getState: () => state,
+        setState: (next) => {
+          state = next;
+        },
+        minIntervalMs: 2000,
+        stableMinIntervalMs: 15000,
+        maxIntervalMs: 30000,
+        rebuildPlanFromCache,
+        logError: vi.fn(),
+        currentPowerW: powerW,
+        capacitySettings: { limitKw: 10, marginKw: 0.5 },
+        capacityGuard,
+        planConvergenceActive: isPlanActivelyConverging(planState, { unactionable: planUnactionable }),
+        skipWhileShortfallUnrecoverable: true,
+        unactionable: planUnactionable,
+      });
+    }
+
+    expect(rebuildPlanFromCache).not.toHaveBeenCalled();
   });
 
   it('drives recovery checks during suppression then yields a rebuild at the max interval', async () => {

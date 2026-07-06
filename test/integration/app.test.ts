@@ -1065,9 +1065,27 @@ describe('MyApp initialization', () => {
 
     mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 10);
     mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0.5);
+    mockHomeyInstance.settings.set('managed_devices', { 'dev-1': true });
+    mockHomeyInstance.settings.set('controllable_devices', { 'dev-1': true });
 
     const app = createApp();
     await initApp(app);
+
+    // Overshoot convergence bypasses the anti-storm guards only while the plan
+    // still has something to act on — give the snapshot an on, drawing device.
+    (app as any).deviceManager.setSnapshotForTests([
+      {
+        id: 'dev-1',
+        name: 'Heater',
+        targets: [],
+        powerKw: 1.2,
+        controlCapabilityId: 'onoff',
+        binaryControl: { on: true },
+        controllable: true,
+      },
+    ]);
+    await (app as any).planService.rebuildPlanFromCache();
+
     const rebuildSpy = vi.spyOn((app as any).planService, 'rebuildPlanFromCache');
     rebuildSpy.mockClear();
 
@@ -1083,6 +1101,42 @@ describe('MyApp initialization', () => {
     await (app as any).powerSamplePipeline['runPowerSample'](5300, nowMs + 1);
 
     expect(rebuildSpy).toHaveBeenCalledWith('power_sample_convergence');
+    rebuildSpy.mockRestore();
+  });
+
+  // Regression: the 2026-07-06 cpuwarn crash. A persistent overshoot that shedding
+  // could not fix (nothing actionable left in the plan) kept convergence true and
+  // rebuilt ~1.6s of plan on every jittering power sample until Homey's CPU
+  // watchdog killed the app. An unactionable plan must fall back to the throttled
+  // max-interval cadence even while `wasOvershoot` is set.
+  it('does not schedule convergence rebuilds for an overshoot the plan cannot act on', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({
+      driverA: new MockDriver('driverA', [heater]),
+    });
+
+    mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, 10);
+    mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0.5);
+
+    const app = createApp();
+    await initApp(app);
+    const rebuildSpy = vi.spyOn((app as any).planService, 'rebuildPlanFromCache');
+    rebuildSpy.mockClear();
+
+    const nowMs = (app as any).getPlanRebuildNowMs();
+    (app as any).powerSampleRebuildState = {
+      ...(app as any).powerSampleRebuildState,
+      lastMs: nowMs,
+      lastRebuildPowerW: 5000,
+      lastSoftLimitKw: 9.5,
+    };
+    (app as any).planEngine.state.wasOvershoot = true;
+
+    // ≥100 W jitter per sample — meaningful deltas that used to force a rebuild each time.
+    await (app as any).powerSamplePipeline['runPowerSample'](5300, nowMs + 1);
+    await (app as any).powerSamplePipeline['runPowerSample'](5150, nowMs + 2);
+
+    expect(rebuildSpy).not.toHaveBeenCalled();
     rebuildSpy.mockRestore();
   });
 

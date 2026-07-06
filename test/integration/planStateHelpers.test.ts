@@ -12,27 +12,44 @@ describe('isPlanActivelyConverging', () => {
   });
 
   it('returns false for empty state', () => {
-    expect(isPlanActivelyConverging(null)).toBe(false);
-    expect(isPlanActivelyConverging(undefined)).toBe(false);
+    expect(isPlanActivelyConverging(null, { unactionable: false })).toBe(false);
+    expect(isPlanActivelyConverging(undefined, { unactionable: false })).toBe(false);
   });
 
   it('returns true for active overshoot', () => {
     const state = createPlanEngineState();
     state.wasOvershoot = true;
 
-    expect(isPlanActivelyConverging(state)).toBe(true);
+    expect(isPlanActivelyConverging(state, { unactionable: false })).toBe(true);
+  });
+
+  // Regression: an unwinnable overshoot (all managed devices shed, remaining draw
+  // unmanaged) kept convergence true, bypassed every rebuild anti-storm guard, and
+  // rebuilt the plan on every power sample until the cpuwarn watchdog killed the app.
+  it('returns false for active overshoot when the last plan proved nothing is actionable', () => {
+    const state = createPlanEngineState();
+    state.wasOvershoot = true;
+
+    expect(isPlanActivelyConverging(state, { unactionable: true })).toBe(false);
+  });
+
+  it('returns true for pending work even when the last plan proved nothing is actionable', () => {
+    const state = createPlanEngineState();
+    state.pendingSheds.add('shed-dev');
+
+    expect(isPlanActivelyConverging(state, { unactionable: true })).toBe(true);
   });
 
   it('returns true for pending shed and restore work', () => {
     const state = createPlanEngineState();
     state.pendingSheds.add('shed-dev');
 
-    expect(isPlanActivelyConverging(state)).toBe(true);
+    expect(isPlanActivelyConverging(state, { unactionable: false })).toBe(true);
 
     state.pendingSheds.clear();
     state.pendingRestores.add('restore-dev');
 
-    expect(isPlanActivelyConverging(state)).toBe(true);
+    expect(isPlanActivelyConverging(state, { unactionable: false })).toBe(true);
   });
 
   it('returns true for pending target and binary commands', () => {
@@ -49,7 +66,7 @@ describe('isPlanActivelyConverging', () => {
       },
     };
 
-    expect(isPlanActivelyConverging(state)).toBe(true);
+    expect(isPlanActivelyConverging(state, { unactionable: false })).toBe(true);
 
     state.pendingTargetCommands = {};
     state.pendingBinaryCommands = {
@@ -60,7 +77,7 @@ describe('isPlanActivelyConverging', () => {
       },
     };
 
-    expect(isPlanActivelyConverging(state)).toBe(true);
+    expect(isPlanActivelyConverging(state, { unactionable: false })).toBe(true);
   });
 
   it('returns false for recent device shed and restore timestamps alone', () => {
@@ -68,7 +85,7 @@ describe('isPlanActivelyConverging', () => {
     state.lastDeviceShedMs = { shedDev: Date.now() - 1_000 };
     state.lastDeviceRestoreMs = { restoreDev: Date.now() - 1_000 };
 
-    expect(isPlanActivelyConverging(state)).toBe(false);
+    expect(isPlanActivelyConverging(state, { unactionable: false })).toBe(false);
   });
 
   it('returns false for recent instability, recovery, and restore timestamps alone', () => {
@@ -77,6 +94,6 @@ describe('isPlanActivelyConverging', () => {
     state.lastRecoveryMs = Date.now() - 1_000;
     state.lastRestoreMs = Date.now() - 1_000;
 
-    expect(isPlanActivelyConverging(state)).toBe(false);
+    expect(isPlanActivelyConverging(state, { unactionable: false })).toBe(false);
   });
 });
