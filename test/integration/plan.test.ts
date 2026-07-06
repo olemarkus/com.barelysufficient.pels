@@ -286,11 +286,22 @@ describe('Device plan snapshot', () => {
     expect((app as any).planEngine.state.wasOvershoot).toBe(true);
     expect((app as any).planEngine.state.overshootLogged).toBe(true);
 
+    // The shed-everything plan is unactionable, so subsequent rebuilds ride the
+    // max-interval escape — simulate that interval having elapsed before each cycle.
+    const openMaxIntervalEscape = () => {
+      (app as any).powerSampleRebuildState = {
+        ...(app as any).powerSampleRebuildState,
+        lastMs: Date.now() - 31_000,
+      };
+    };
+
     // Second cycle: still in overshoot, state remains stable (no double-log)
+    openMaxIntervalEscape();
     await (app as any).powerSamplePipeline.recordPowerSample(5000);
     expect((app as any).planEngine.state.wasOvershoot).toBe(true);
 
     // Third cycle: power drops — overshoot clears
+    openMaxIntervalEscape();
     await (app as any).powerSamplePipeline.recordPowerSample(0);
     expect((app as any).planEngine.state.wasOvershoot).toBe(false);
     expect((app as any).planEngine.state.overshootLogged).toBe(false);
@@ -998,6 +1009,12 @@ describe('Device plan snapshot', () => {
       (app as any).capacityGuard.setSoftLimitProvider(() => 5);
     }
 
+    // The shed-everything plan is unactionable, so the next rebuild rides the
+    // max-interval escape — simulate that interval having elapsed.
+    (app as any).powerSampleRebuildState = {
+      ...(app as any).powerSampleRebuildState,
+      lastMs: Date.now() - 31_000,
+    };
     await (app as any).powerSamplePipeline.recordPowerSample(500);
 
     const plan = getLatestPlanSnapshotForTests();
@@ -1203,6 +1220,12 @@ describe('Device plan snapshot', () => {
     // Deactivate the guard after restoring headroom so shedding hysteresis allows it.
     await (app as any).capacityGuard?.setSheddingActive(false);
 
+    // The shed-everything plan is unactionable, so the next rebuild rides the
+    // max-interval escape — simulate that interval having elapsed.
+    (app as any).powerSampleRebuildState = {
+      ...(app as any).powerSampleRebuildState,
+      lastMs: Date.now() - 31_000,
+    };
     await (app as any).powerSamplePipeline.recordPowerSample(500);
 
     const plan = getLatestPlanSnapshotForTests();
@@ -2166,11 +2189,25 @@ describe('Device plan snapshot', () => {
     expect(triggerSpy).toHaveBeenCalledTimes(1);
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(true);
 
+    // The shed-everything plan is unactionable, so recovery rebuilds (which drive
+    // `checkShortfall`) ride the max-interval escape and its execution floor —
+    // simulate that interval having elapsed before each recovery sample.
+    const openMaxIntervalEscape = () => {
+      (app as any).powerSampleRebuildState = {
+        ...(app as any).powerSampleRebuildState,
+        lastMs: Date.now() - 31_000,
+      };
+    };
+
+    openMaxIntervalEscape();
     await advanceTimeAndRecordPower(app, 1000, 1000);
+    openMaxIntervalEscape();
     await advanceTimeAndRecordPower(app, 30000, 1000);
+    openMaxIntervalEscape();
     await advanceTimeAndRecordPower(app, 31000, 1000);
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(false);
 
+    openMaxIntervalEscape();
     await (app as any).powerSamplePipeline.recordPowerSample(500000);
     expect(triggerSpy).toHaveBeenCalledTimes(2);
     expect(mockHomeyInstance.settings.get('capacity_in_shortfall')).toBe(true);

@@ -10,7 +10,7 @@ import { splitControlledUsageKw, sumBudgetExemptLiveUsageKw } from '../lib/plan/
 import { withHeadroomCurrentOn } from '../lib/plan/planHeadroomSupport';
 import { updateObjectiveProfilesFromSnapshot } from '../lib/objectives/profiles';
 import { isPlanActivelyConverging } from '../lib/plan/planStateHelpers';
-import { buildPlanCapacityStateSummary } from '../lib/plan/planLogging';
+import { buildPlanCapacityStateSummary, isPlanUnactionable } from '../lib/plan/planLogging';
 import { shouldSkipShortfallRebuildFromPlanSummary } from '../lib/plan/rebuildScheduler/shortfallSuppression';
 import { addPerfDuration, incPerfCounter } from '../lib/utils/perfCounters';
 import type { StructuredDebugEmitter } from '../lib/logging/logger';
@@ -164,7 +164,6 @@ export class PowerSamplePipeline {
       const planEngine = this.deps.getPlanEngine();
       const planService = this.deps.getPlanService();
       const planState = planEngine?.state;
-      const planConvergenceActive = isPlanActivelyConverging(planState);
       const latestPlanSummary = buildPlanCapacityStateSummary(
         planService?.getLatestPlanSnapshot(),
         {
@@ -176,13 +175,15 @@ export class PowerSamplePipeline {
         summary: latestPlanSummary,
         state: this.deps.getPowerSampleRebuildState(),
       });
-      // Unwinnable state: the last plan proved there is nothing left to shed AND
-      // nothing left to reduce. A full rebuild cannot change any action, so the
+      // Unwinnable state: a full rebuild cannot change any action, so the
       // scheduler throttles it to the max-interval cadence rather than burning
       // ~1.4s of CPU on every power sample (which trips Homey's cpuwarn watchdog).
-      // `=== false` (not `!== true`) so a null/startup summary is not unactionable.
-      const planUnactionable = latestPlanSummary.remainingActionableControlledLoad === false
-        && latestPlanSummary.remainingReducibleControlledLoad === false;
+      const planUnactionable = isPlanUnactionable(latestPlanSummary);
+      // An unwinnable overshoot must not count as "converging": convergence bypasses
+      // the scheduler's anti-storm guards, and that bypass is what let a persistent
+      // 0-allowance shortfall rebuild ~1.6s of plan on every power sample until the
+      // cpuwarn watchdog killed the app. In-flight commands still win inside the helper.
+      const planConvergenceActive = isPlanActivelyConverging(planState, { unactionable: planUnactionable });
       const capacitySettings = this.deps.getCapacitySettings();
       const capacityGuard = this.deps.getCapacityGuard();
       await recordPowerSampleForApp({

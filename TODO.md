@@ -366,6 +366,22 @@ program) remains deferred.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **Marginally-actionable shortfall can still rebuild-storm past the tight-noop backoff.** *Persona:*
+      capacity-tight household in a clamped daily-budget hour with one tiny reducible load left.
+      *Hypothesis:* the unwinnable-overshoot fix (convergence no longer bypasses the anti-storm guards when
+      the plan is unactionable) closes the observed 2026-07-06 cpuwarn crash, but when a small reducible
+      load keeps `remainingReducibleControlledLoad` true, the unactionable throttle stays off while the
+      tight-noop backoff is still defeated by every ≥100 W power jitter
+      (`isTightNoopBackoffActive` — `lib/plan/rebuildScheduler/policy.ts`: `if (deltaMeaningful) return false`).
+      A jittering supply can then still drive near-per-sample ~1.6 s rebuilds that repeatedly re-shed nothing.
+      *Why:* same CPU-watchdog exposure as the fixed crash, just gated on a marginal plan state; consider
+      letting the tight-noop backoff survive meaningful deltas once N consecutive rebuilds were no-ops.
+      Adjacent residual windows from the same review: `hasPendingPlanWork` counts expired-but-unswept
+      `pendingBinaryCommands` raw (up to ~75 s for cloud devices), so convergence re-arms per-sample rebuilds
+      for that burst window after each shed wave; and a transient hard-cap breach that subsides between
+      max-interval rebuilds is aliased away (no shortfall incident/flow trigger) while the state is
+      unactionable — physically acceptable (hard cap is the hourly step), but it changes incident telemetry.
+      Files: `lib/plan/rebuildScheduler/policy.ts`, `lib/plan/planStateHelpers.ts`.
 - [ ] **Decay (or context-scope) the binary expected-power peak ratchet.** *Persona:* EV/large-load owner
       whose charger is externally current-limited (Easee/Zaptec app, load balancing) below its historical peak.
       *Hypothesis:* `updateLastKnownPower` (`lib/device/managerRuntime.ts`) is up-only — once a binary device
