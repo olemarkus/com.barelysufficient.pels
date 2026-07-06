@@ -79,15 +79,18 @@ const resolveHeroStatus = (
   freshnessState: FreshnessState | undefined,
   dryRun: boolean,
   projectionTone: ProjectionTone | null,
+  projectedOverHardCap: boolean,
 ): HeroStatus => {
   if (freshnessState === 'stale_fail_closed') return 'no-data';
   // "Above hard cap" is a trajectory judgement: projected this-hour energy
-  // exceeds the cap's hourly kWh (`resolveProjectionTone` → 'critical').
-  // Instantaneous kW above the cap is NOT a breach — the cap is an
-  // hourly-average tariff-step ceiling, and safe pace legitimately exceeds it
-  // late in an under-used hour (see `notes/ui-terminology.md` § "Hard cap is
-  // an hourly ceiling").
-  if (projectionTone === 'critical') return 'over-hard-cap';
+  // exceeds the cap's hourly kWh. Instantaneous kW above the cap is NOT a
+  // breach — the cap is an hourly-average tariff-step ceiling, and safe pace
+  // legitimately exceeds it late in an under-used hour (see
+  // `notes/ui-terminology.md` § "Hard cap is an hourly ceiling"). Keyed on the
+  // standalone flag, not `projectionTone === 'critical'`: the tone only exists
+  // when the energy bar does (`hourBudgetKWh > 0`), and a zero-allocation
+  // daily-budget hour must not silence the app's only red alarm.
+  if (projectedOverHardCap) return 'over-hard-cap';
   // Surface the simulation-mode chip whenever there is anything the decision
   // sentence has to phrase hypothetically — that includes devices stuck `held`
   // from before simulation was enabled.
@@ -161,12 +164,14 @@ const buildDecisionSentence = ({
   devices,
   freshnessState,
   dryRun,
+  projectedOverHardCap,
   projectionTone,
   safePaceKw,
 }: {
   devices: PlanDeviceSnapshot[];
   freshnessState: FreshnessState | undefined;
   dryRun: boolean;
+  projectedOverHardCap: boolean;
   projectionTone: ProjectionTone | null;
   safePaceKw: number | null;
 }): { text: string; positive: boolean } => {
@@ -176,8 +181,9 @@ const buildDecisionSentence = ({
     resumingCount: devices.filter(isResumingDevice).length,
     freshness: freshnessState,
     dryRun,
-    projectedOverHardCap: projectionTone === 'critical',
-    projectedOverBudget: projectionTone === 'warning' || projectionTone === 'critical',
+    projectedOverHardCap,
+    projectedOverBudget: projectedOverHardCap
+      || projectionTone === 'warning' || projectionTone === 'critical',
     safePaceKw,
     deferredObjectiveAvoidCount: limited.filter((d) => d.reason?.code === PLAN_REASON_CODES.deferredObjectiveAvoid).length,
     dailyBudgetLimitedCount: limited.filter((d) => d.reason?.code === PLAN_REASON_CODES.dailyBudget).length,
@@ -760,12 +766,36 @@ export const PlanHero = ({
   const freshnessState = resolveFreshnessState(power, meta);
   const energyScale = computeEnergyBarScale(meta);
   const projectionTone = energyScale ? resolveProjectionTone(energyScale) : null;
-  const heroStatus = resolveHeroStatus(headline, devices, freshnessState, context.dryRun, projectionTone);
+  // The over-cap trajectory verdict is computed from the same four meta fields
+  // the `pels_status` producer uses — NOT via `projectionTone`, which is gated
+  // on the energy bar existing (`hourBudgetKWh > 0`). A zero-allocation
+  // daily-budget hour hides the energy section but can still be on pace past
+  // the cap; the chip and the widget must agree on that verdict.
+  const projectedOverHardCap = typeof meta.usedKWh === 'number'
+    && typeof meta.totalKw === 'number'
+    && typeof meta.minutesRemaining === 'number'
+    && isProjectedOverHardCap({
+      projectedKWh: computeProjectedHourEnergyKWh({
+        usedKWh: meta.usedKWh,
+        totalKw: meta.totalKw,
+        minutesRemainingInHour: meta.minutesRemaining,
+      }),
+      hardCapKWh: headline.hardLimitKw,
+    });
+  const heroStatus = resolveHeroStatus(
+    headline,
+    devices,
+    freshnessState,
+    context.dryRun,
+    projectionTone,
+    projectedOverHardCap,
+  );
   const safePaceKw = meta.softLimitKw ?? meta.capacitySoftLimitKw ?? null;
   const decision = buildDecisionSentence({
     devices,
     freshnessState,
     dryRun: context.dryRun,
+    projectedOverHardCap,
     projectionTone,
     safePaceKw,
   });
