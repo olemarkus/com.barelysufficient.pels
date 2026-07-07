@@ -366,6 +366,32 @@ program) remains deferred.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **Overview hero repeats "Safe pace now X kW" twice within ~40 px.** *Persona:* any owner glancing at
+      the Overview hero — it's the first block on the app's front page, and identical adjacent strings read
+      as a copy-paste bug even when every number is right. *Hypothesis:* the caption above the power bar and
+      the value-carrying tick legend below it render the identical string because two notes jointly specify
+      the duplication: `packages/shared-domain/src/planHeroSummary.ts:158` deliberately makes the legend the
+      "only touch-reachable home for the number" while `notes/overview-hero-spec.md:27` keeps the value
+      caption above the bar (`notes/ui-terminology.md` § Hero legend sides with the legend). Reconcile the
+      two notes and slim one home — per the legend note's own rationale the caption is the one to lose the
+      value. Render-gate capture 2026-07-07 (m3-critic + ux-fit P2).
+      Files: `packages/shared-domain/src/planHeroSummary.ts`, `packages/settings-ui/src/ui/views/PlanHero.tsx`,
+      `notes/overview-hero-spec.md`.
+- [ ] **Simulation-mode overview: "2 devices would be limited" has no visible correspondence, and card
+      copy slips into indicative tense.** *Persona:* owner trying simulation mode to preview what PELS
+      would do before trusting it. *Hypothesis:* the hero counts devices that would be limited, but no
+      chip marks which cards are members — a user counting finds four limited-looking candidates — and
+      hold/wait cards say "Waiting to resume …" (indicative) while the hero/banner speak subjunctively
+      ("would be limited", "stay as-is"); only "Would still draw …" gets the mood right. Add a per-card
+      "Would be limited" marker (or enumerate in the hero line) and route hold/wait card copy through the
+      same simulation-mood rewrite (`packages/shared-domain/src/simulationReasonMood.ts`). Render-gate
+      walk 2026-07-07 (ux-fit P2).
+- [ ] **Simulation banner at ≤360 px: stack action below text (MD3 banner idiom).** *Persona:* narrow-device
+      owner (320–360 px) with simulation on. *Hypothesis:* the fixed-width "Turn off simulation" action
+      squeezes the message into three 2-word lines with a dangling em-dash; the Android-idiomatic fix is
+      the MD3 banner stack at narrow widths — text full-width on top, action right-aligned below (the
+      `.banner--stacked` shape already exists). Render-gate walk 2026-07-07 (ux-fit P2).
+      Files: `packages/settings-ui/public/style.css`, `packages/settings-ui/public/index.html`.
 - [ ] **Marginally-actionable shortfall can still rebuild-storm past the tight-noop backoff.** *Persona:*
       capacity-tight household in a clamped daily-budget hour with one tiny reducible load left.
       *Hypothesis:* the unwinnable-overshoot fix (convergence no longer bypasses the anti-storm guards when
