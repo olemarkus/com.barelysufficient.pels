@@ -2647,6 +2647,12 @@ md-filled-button.is-busy {
 .plan-hero__info-button {
   flex: 0 0 auto;
   align-self: flex-start;
+  /* The 48 px touch target must not inflate the chip row (chips are ~24 px):
+     pull the state layer's vertical overflow out of layout — the standard M3
+     icon-button overlap — so the header row hugs the chips instead of adding
+     ~25 px of dead space above "Power now", and the glyph centers on the chip
+     axis instead of sitting ~10 px below it. Hit area is unchanged. */
+  margin-block: calc((var(--pels-touch-target-min) - var(--spacing-6)) / -2);
   --md-icon-button-state-layer-height: var(--pels-touch-target-min);
   --md-icon-button-state-layer-width: var(--pels-touch-target-min);
   --md-icon-button-icon-size: 20px;
@@ -3244,7 +3250,12 @@ md-filled-button.is-busy {
   inline-size: 100%;
   min-block-size: var(--pels-touch-target-min);
   padding: var(--spacing-3) var(--spacing-4);
-  margin-block-end: var(--spacing-3);
+  /* Match the 8 px stack rhythm of `.plan-cards` on both sides: without the
+     block-start margin the row sits flush against the hero's bottom edge
+     (0 px) while every other card pair on the page gets 8 px. Both margins
+     collapse against their neighbours' (hero: none, `.plan-cards`:
+     margin-top --spacing-2), so the rendered gap is 8 px above and below. */
+  margin-block: var(--spacing-2);
   text-align: start;
   font-size: var(--font-size-sm);
   color: var(--text);
@@ -5497,6 +5508,12 @@ details[open] > summary .disclosure-chevron {
 #dry-run-banner .banner__text {
   flex: 1 1 auto;
   min-width: 0;
+}
+
+/* "as-is" must never split at its hyphen — at 360 px the wrap otherwise lands
+   as "…stay as-" / "is", orphaning "is" on its own line. */
+.banner__no-break {
+  white-space: nowrap;
 }
 
 .budget-redesign-card {
