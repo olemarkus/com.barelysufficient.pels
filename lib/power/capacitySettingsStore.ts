@@ -17,11 +17,11 @@
  */
 
 /**
- * Identifier of a home. The full home domain lands with the multi-home train;
- * until then this stays a plain string alias (the main home is
- * `MAIN_HOME_ID` in `lib/utils/settingsKeys.ts`).
+ * Identifier of a home, re-exported for capacity consumers. Single source of
+ * truth in `lib/utils/settingsKeys.ts` (shared with the `lib/home` domain —
+ * one identity type, no peer import; the main home is `MAIN_HOME_ID` there).
  */
-export type HomeId = string;
+export type { HomeId } from '../utils/settingsKeys';
 
 /** The capacity scalar block: hard cap, safety margin, and dry-run flag. */
 export type CapacityScalarSettings = {
