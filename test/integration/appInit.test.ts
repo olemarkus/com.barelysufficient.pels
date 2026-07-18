@@ -70,6 +70,7 @@ import {
   DEFERRED_OBJECTIVES_PERKEY_MIGRATED,
 } from '../../lib/utils/settingsKeys';
 import type { AppContext } from '../../lib/app/appContext';
+import { buildMainHomeScope } from '../../setup/homeRuntime/homeScope';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 
 describe('app init plan service wiring', () => {
@@ -78,7 +79,7 @@ describe('app init plan service wiring', () => {
       deviceManager: undefined,
     });
 
-    expect(() => createPlanEngine(ctx)).toThrow(
+    expect(() => createPlanEngine(ctx, buildMainHomeScope(ctx))).toThrow(
       'DeviceTransport must be initialized before plan engine setup.',
     );
   });
@@ -86,10 +87,11 @@ describe('app init plan service wiring', () => {
   it('routes plan engine debug logging through the fixed plan topic', () => {
     const logDebug = vi.fn();
     capturedPlanEngineDeps.current = null;
-    const engine = createPlanEngine(createAppContextMock({
+    const engineCtx = createAppContextMock({
       deviceManager: {} as AppContext['deviceManager'],
       logDebug,
-    }));
+    });
+    const engine = createPlanEngine(engineCtx, buildMainHomeScope(engineCtx));
 
     expect(engine).toBeDefined();
     (capturedPlanEngineDeps.current as unknown as { logDebug: (...args: unknown[]) => void }).logDebug('debug payload', 123);
@@ -98,7 +100,7 @@ describe('app init plan service wiring', () => {
   });
 
   it('passes the transport-resolved controlCapabilityId through to plan devices', () => {
-    const service = createPlanService(createAppContextMock({
+    const serviceCtx = createAppContextMock({
       planEngine: {} as AppContext['planEngine'],
       latestTargetSnapshot: [
         {
@@ -128,7 +130,8 @@ describe('app init plan service wiring', () => {
       isBudgetExempt: () => false,
       debugLoggingTopics: new Set(),
       getStructuredDebugEmitter: () => vi.fn(),
-    }));
+    });
+    const service = createPlanService(serviceCtx, buildMainHomeScope(serviceCtx));
 
     const planDevices = (service as unknown as {
       deps: { getPlanDevices: () => Array<{ id: string; controlCapabilityId?: 'onoff' | 'evcharger_charging' }> };
@@ -152,7 +155,7 @@ describe('app init plan service wiring', () => {
       getStructuredDebugEmitter: () => vi.fn(),
     });
 
-    expect(() => createPlanService(ctx)).toThrow(
+    expect(() => createPlanService(ctx, buildMainHomeScope(ctx))).toThrow(
       'PlanEngine must be initialized before plan service setup.',
     );
   });

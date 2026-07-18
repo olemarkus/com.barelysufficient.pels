@@ -72,7 +72,7 @@ import {
 import { TIGHT_UNACTIONABLE_MIN_REBUILD_INTERVAL_MS } from './lib/plan/rebuildScheduler/policy';
 import { assembleActivePlansWithTrajectory } from './setup/deferredObjectiveActivePlansUiAssembler';
 import { BackgroundTasksController } from './setup/backgroundTasksController';
-import { PowerSamplePipeline } from './setup/powerSamplePipeline';
+import { createHomePowerPipeline } from './setup/homeRuntime/createHomePowerPipeline';
 import type { PvForecastController } from './setup/appInit/createPvForecastService';
 import { assembleWeatherAdvisorReadout } from './setup/appInit/weatherAdvisorReadoutAssembler';
 import type { WeatherAdvisorReadoutPayload } from './packages/contracts/src/weatherAdvisorTypes';
@@ -323,24 +323,16 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
     onIntentCancelled: this.schedulerTelemetry.onIntentCancelled,
     onIntentError: this.schedulerTelemetry.onIntentError,
   });
-  private readonly powerSamplePipeline = new PowerSamplePipeline({
-    getPowerTracker: () => this.powerTracker,
-    getCapacitySettings: () => this.capacitySettings,
-    getCapacityGuard: () => this.capacityGuard,
+  private readonly powerSamplePipeline = createHomePowerPipeline({
+    ctx: this,
+    planRebuildScheduler: this.planRebuildScheduler,
     getPlanEngine: () => this.planEngine,
     getPlanService: () => this.planService,
-    getDeviceManager: () => this.deviceManager,
-    planRebuildScheduler: this.planRebuildScheduler,
-    getPowerSampleRebuildState: () => this.powerSampleRebuildState,
-    setPowerSampleRebuildState: (state) => { this.powerSampleRebuildState = state; },
-    getLatestTargetSnapshot: () => this.latestTargetSnapshot,
     getPlanRebuildNowMs: () => this.getPlanRebuildNowMs(),
     savePowerTracker: (state) => this.savePowerTracker(state),
-    getStructuredDebugEmitter: (component, topic) => this.getStructuredDebugEmitter(component, topic),
+    setPowerSampleRebuildState: (state) => { this.powerSampleRebuildState = state; },
     getOutdoorTemperatureC: () => this.weatherCollector?.getCurrentOutdoorTemperatureC(),
     recordPvGenerationSample: (genW, nowMs, netW) => this.pvForecast?.recordSample(genW, nowMs, netW),
-    // Optional AppContext member assigned by wireCurtailmentSurplus post-startup.
-    recordCurtailmentSample: (netW, genW, nowMs) => this.ctx.recordCurtailmentSample?.(netW, genW, nowMs),
   });
   private realtimeDeviceReconcileState = realtimeReconcile.createRealtimeDeviceReconcileState();
   private stopSettingsHandler?: () => void;

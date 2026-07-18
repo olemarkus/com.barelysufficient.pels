@@ -1,38 +1,21 @@
 import { requirePlanEngine } from './contextGuards';
-import { evictMissingDeviceCacheEntries, toPlanDevice } from './toPlanDevice';
 import { PlanService } from '../../lib/plan/planService';
 import { DeviceOverviewLogRecorder } from '../../lib/plan/deviceOverviewLog';
 import type { AppContext } from '../../lib/app/appContext';
+import type { HomeScope } from '../homeRuntime/homeScope';
 import { buildControlModelMap } from '../appDeviceControlHelpers';
-import { PELS_STATUS } from '../../lib/utils/settingsKeys';
-import { isRuntimePlannedDevice } from '../appDeviceSupport';
 import { readObservedEvChargingState } from '../../lib/observer/observedDeviceStateProjection';
 import { isDeviceObservationStale } from '../../lib/observer/observationFreshness';
 
-export function createPlanService(ctx: AppContext): PlanService {
+export function createPlanService(ctx: AppContext, scope: HomeScope): PlanService {
   return new PlanService({
     homey: ctx.homey,
-    writePelsStatus: (status) => ctx.homey.settings.set(PELS_STATUS, status),
+    writePelsStatus: scope.writePelsStatus,
     planEngine: requirePlanEngine(ctx),
-    getPlanDevices: () => {
-      // Boot/hot-plug seed of the observed-state projection from the RAW cached
-      // snapshot BEFORE the per-device `toPlanDevice` reads run. The projection
-      // is event-driven (empty until the first delta/refresh for a device), so
-      // on the first cold-start cycle — and for a device hot-plugged before its
-      // first observation — `getObservedState` would otherwise be empty here and
-      // `toPlanDevice` would fall back to the snapshot. Seeding fills only empty
-      // slots (never clobbers a recorded observation) and uses the raw cached
-      // array, so it adds no re-decoration and no device-manager re-entry.
-      ctx.seedObservedStateFromSnapshot();
-      const snapshot = ctx.latestTargetSnapshot;
-      evictMissingDeviceCacheEntries(ctx, snapshot);
-      return snapshot
-        .map((device) => toPlanDevice(ctx, device))
-        // Shared planned-set predicate — the create-smart-task candidate list
-        // and create-time validation use the SAME `isRuntimePlannedDevice` so a
-        // `managed: false` device can never be offered/persisted but unplanned.
-        .filter(isRuntimePlannedDevice);
-    },
+    // Home-scoped plan-device source (boot/hot-plug projection seed + eviction +
+    // `toPlanDevice` + shared planned-set predicate); the invariants are
+    // documented at the closure in `setup/homeRuntime/homeScope.ts`.
+    getPlanDevices: scope.getPlanDevices,
     // The binary settle reads the observer-internal `binaryControlObservation`
     // straight off the device snapshot — it is not (and must not be) on the
     // plan-facing `PlanInputDevice`. Pending commands only exist for commanded
@@ -89,7 +72,7 @@ export function createPlanService(ctx: AppContext): PlanService {
     // out of the map and a `temperature_target ↔ binary_power` flip would never
     // reach the signature.
     getControlModelById: () => buildControlModelMap(ctx.deviceManager?.getSnapshot() ?? []),
-    getCapacityDryRun: () => ctx.capacityDryRun,
+    getCapacityDryRun: scope.getCapacityDryRun,
     loggers: {
       structuredLog: ctx.getStructuredLogger('plan'),
       debugStructured: ctx.getStructuredDebugEmitter('plan', 'plan'),
@@ -101,7 +84,7 @@ export function createPlanService(ctx: AppContext): PlanService {
     // know V2) would return false during the post-upgrade window and price_level
     // would resolve to UNKNOWN.
     getCombinedPrices: () => ctx.combinedPricesReader.readStore(ctx.getNow(), ctx.getTimeZone()),
-    getLastPowerUpdate: () => ctx.powerTracker.lastTimestamp ?? null,
+    getLastPowerUpdate: () => scope.getPowerTracker().lastTimestamp ?? null,
     schedulePostActuationRefresh: () => ctx.snapshotHelpers.schedulePostActuationRefresh(),
     overviewDebugStructured: ctx.getStructuredDebugEmitter('overview', 'overview'),
     isOverviewDebugEnabled: () => ctx.debugLoggingTopics.has('overview'),

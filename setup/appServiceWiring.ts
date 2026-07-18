@@ -55,6 +55,7 @@ import {
   toPlanDevice,
 } from './appInit';
 import { startBackgroundCollectors } from './appInit/startBackgroundCollectors';
+import { buildMainHomeScope, type HomeScope } from './homeRuntime/homeScope';
 import { wireBudgetPrice } from './appInit/wireBudgetPrice';
 import { wireCurtailmentSurplus } from './appInit/wireCurtailmentSurplus';
 import type { PvForecastController } from './appInit/createPvForecastService';
@@ -155,7 +156,14 @@ export type AppServiceWiringDeps = {
  * integration-test boot helper); the bodies live here.
  */
 export class AppServiceWiring {
-  constructor(private readonly deps: AppServiceWiringDeps) {}
+  // The main home's closure bundle for the plan factories. Built once (the
+  // capacity-settings store port inside it is constructed a single time at
+  // this wiring site) and shared by `initPlanEngine`/`initPlanService`.
+  private readonly mainHomeScope: HomeScope;
+
+  constructor(private readonly deps: AppServiceWiringDeps) {
+    this.mainHomeScope = buildMainHomeScope(deps.ctx);
+  }
 
   async runInit(): Promise<void> {
     const { ctx } = this.deps;
@@ -477,7 +485,7 @@ export class AppServiceWiring {
     if (!ctx.deferredObjectiveActivePlanRecorder) {
       ctx.deferredObjectiveActivePlanRecorder = createDeferredObjectiveActivePlanRecorder(ctx);
     }
-    const planEngine = createPlanEngine(ctx);
+    const planEngine = createPlanEngine(ctx, this.mainHomeScope);
     ctx.planEngine = planEngine;
     this.hydratePlanEngineControlState();
     planEngine.beginStartupRestoreStabilization(STARTUP_RESTORE_STABILIZATION_MS);
@@ -530,7 +538,7 @@ export class AppServiceWiring {
 
   initPlanService(): void {
     const { ctx } = this.deps;
-    ctx.planService = createPlanService(ctx);
+    ctx.planService = createPlanService(ctx, this.mainHomeScope);
   }
 
   initCapacityGuardProviders(): void {
