@@ -8,6 +8,13 @@ export const POWER_TRACKER_STATE = 'power_tracker_state';
 // PR — its main-home id is this same value by design.
 export const MAIN_HOME_ID = 'main';
 /**
+ * Identifier of a home: `'main'` or a generated sub-home id (see `lib/home`).
+ * Lives here — the shared-utils layer — so the capacity store (`lib/power`)
+ * and the home domain (`lib/home`) share ONE identity type without a peer
+ * import between them; both re-export it for their consumers.
+ */
+export type HomeId = string;
+/**
  * Scope a base settings key to a home: the main home reads the historical
  * unsuffixed key unchanged; any other home reads `<baseKey>:<homeId>`.
  */
@@ -113,6 +120,16 @@ export const HOMEY_PRICES_CURRENCY = 'homey_prices_currency';
 export const EXPORT_PRICE_ENABLED = 'export_price_enabled';
 export const EXPORT_SPOT_FACTOR = 'export_spot_factor';
 export const EXPORT_FIXED = 'export_fixed';
+// Multi-home support (dormant until the R4 wiring PR): the sub-home
+// configuration blob and the explicit device→home pin overrides. Read/written
+// only through setup/homeRegistryAdapter.ts (ports in lib/home/homeConfig.ts).
+// Each blob has its own written-before marker (the power_calibration_initialized
+// precedent) so a transient SDK read miss is distinguishable from a fresh
+// install; per-store because the two blobs have independent write lifecycles.
+export const HOMES_CONFIG = 'homes_config';
+export const HOMES_CONFIG_INITIALIZED = 'homes_config_initialized';
+export const DEVICE_HOME_ASSIGNMENTS = 'device_home_assignments';
+export const DEVICE_HOME_ASSIGNMENTS_INITIALIZED = 'device_home_assignments_initialized';
 export const POWER_CALIBRATION = 'power_calibration';
 export const POWER_CALIBRATION_INITIALIZED = 'power_calibration_initialized';
 // Weather-insight feature: config blob (enable flag + device ids, written by the
