@@ -97,6 +97,8 @@ import {
   setCapability as runSetCapability,
 } from './transport/deviceWrites';
 import type { DeviceFetchResult } from './transport/managerFetch';
+import type { ZoneTree } from './transport/managerZones';
+import { ZoneTreeCache } from './transport/zoneTreeCache';
 import {
   computePeriodicStatusMetrics,
   fetchDevicesByKnownIds as runFetchDevicesByKnownIds,
@@ -158,6 +160,8 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         latestRawDevices: HomeyDeviceLike[];
         lastSnapshotRefreshMetricsKey: string | null;
     } = { emptySnapshotGrace: null, latestRawDevices: [], lastSnapshotRefreshMetricsKey: null };
+    // Zone-tree cache + fetch-generation guard (see `zoneTreeCache.ts`).
+    private readonly zoneTreeCache = new ZoneTreeCache();
     private powerState: Required<PowerEstimateState>;
     private measuredPowerResolver: DeviceMeasuredPowerResolver;
     private recentLocalCapabilityWrites: RecentLocalCapabilityWrites = new Map();
@@ -302,6 +306,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             setLastSnapshotRefreshMetricsKey: (value) => { refreshScalars.lastSnapshotRefreshMetricsKey = value; },
             getLatestRawDevices: () => refreshScalars.latestRawDevices,
             setLatestRawDevices: (devices) => { refreshScalars.latestRawDevices = devices; },
+            zoneTreeCache: t.zoneTreeCache,
             getTrackedDevicesById: () => t.latestTrackedDevicesById,
             fetchDevicesForSnapshot: () => t.fetchDevicesForSnapshot(),
             fetchDevicesByKnownIds: () => t.fetchDevicesByKnownIds(),
@@ -471,6 +476,17 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
 
     getPeriodicStatusMetrics(): ({ devicesTotal: number } & SnapshotRefreshMetrics) | null {
         return computePeriodicStatusMetrics(this.ctx);
+    }
+
+    /**
+     * Latest successfully fetched zone tree (`manager/zones/zone`), refreshed
+     * co-temporally with the snapshot; `null` until the first successful fetch.
+     * A failed fetch retains the previous tree (abandon-grace). Additive/
+     * dormant: no runtime consumer yet — multi-home membership will join
+     * device `zoneId`s against it.
+     */
+    getZoneTree(): ZoneTree | null {
+        return this.zoneTreeCache.get();
     }
 
     async setCapability(deviceId: string, capabilityId: string, value: unknown): Promise<unknown> {

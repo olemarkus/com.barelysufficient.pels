@@ -468,6 +468,12 @@ export const mockHomeyInstance = {
   cloud: {
     getHomeyId: async () => 'mock-homey-id',
   },
+  zones: {
+    // Raw payload served for `manager/zones/zone`. Configurable via
+    // `setMockZones`; `null` makes the route throw (drives the transport's
+    // failed-fetch / cached-tree-retained path).
+    _zones: {} as Record<string, unknown> | null,
+  },
   notifications: {
     _notifications: [] as Array<{ excerpt: string }>,
     createNotification: async ({ excerpt }: { excerpt: string }) => {
@@ -518,6 +524,13 @@ export const mockHomeyInstance = {
       }
       if (path === 'manager/energy/live') {
         return { items: [] };
+      }
+      if (path === 'manager/zones/zone') {
+        const zones = mockHomeyInstance.zones._zones;
+        if (zones === null) {
+          throw new Error('Mock API GET zones unavailable');
+        }
+        return zones;
       }
       throw new Error(`Mock API GET not implemented for: ${path}`);
     },
@@ -638,6 +651,18 @@ export const setMockGeolocation = (
 ): void => {
   mockHomeyInstance.geolocation._latitude = latitude ?? Number.NaN;
   mockHomeyInstance.geolocation._longitude = longitude ?? Number.NaN;
+};
+
+/**
+ * Configure the raw payload the mock `manager/zones/zone` route serves. Pass a
+ * zone map (record keyed by zone id, values as raw zone-ish entries) to drive
+ * the transport's zone-tree fetch; pass `null` to make the route throw
+ * (failed-fetch path). Defaults to `{}` — an empty record, which the transport
+ * treats as a failed fetch (a zone-less Homey cannot exist), so unrelated
+ * refreshes never commit a tree.
+ */
+export const setMockZones = (zones: Record<string, unknown> | null): void => {
+  mockHomeyInstance.zones._zones = zones;
 };
 
 export const setMockDrivers = (drivers: Record<string, MockDriver>) => {

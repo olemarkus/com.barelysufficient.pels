@@ -140,6 +140,11 @@ export type DeviceDescriptor = {
     deviceType?: 'temperature' | 'onoff';
     communicationModel?: 'local' | 'cloud';
     zone?: string;
+    // Zone IDENTITY (uuid) retained from the raw payload (string or `{id}`
+    // shape), distinct from the `zone` display label. Additive/dormant: no
+    // consumer reads it yet — multi-home membership will join it against the
+    // transport's zone tree (`DeviceTransport.getZoneTree`).
+    zoneId?: string;
     controlModel?: DeviceControlModel;
     controlCapabilityId?: BinaryControlCapabilityId;
     controlAdapter?: DeviceControlAdapterSnapshot;
