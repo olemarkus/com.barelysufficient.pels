@@ -44,6 +44,7 @@ import {
   saveSimulationModeSettings,
   syncDryRunBannerVisibility,
 } from './capacity.ts';
+import { initHomeyEnergyMeterHandlers } from './homeyEnergyMeter.ts';
 import {
   DEBUG_LOGGING_TOPICS as DEBUG_LOGGING_TOPICS_SETTING,
 } from '../../../contracts/src/settingsKeys.ts';
@@ -201,6 +202,9 @@ const initLimitsAndSimulationHandlers = () => {
   settingsCapacityLimitInput?.addEventListener('change', autoSaveSettingsLimits);
   settingsCapacityMarginInput?.addEventListener('change', autoSaveSettingsLimits);
   settingsPowerSourceSelect?.addEventListener('change', autoSaveSettingsLimits);
+  // The meter select persists itself (its options load lazily, so routing it
+  // through the bulk limits save could write an empty value before they load).
+  initHomeyEnergyMeterHandlers();
   settingsLimitsForm?.addEventListener('submit', (event) => event.preventDefault());
   settingsSimulationModeInput?.addEventListener('change', async () => {
     try {

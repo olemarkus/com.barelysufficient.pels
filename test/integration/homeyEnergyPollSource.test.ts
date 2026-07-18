@@ -73,6 +73,44 @@ describe('HomeyEnergyPollSource', () => {
     expect(pollHomePower).toHaveBeenCalledTimes(3);
   });
 
+  it('drops an in-flight reading from before a restart (stale meter selection)', async () => {
+    // A poll awaiting the SDK resolved its meter selection before the read; a
+    // restart (e.g. the whole-home meter changed) must fence it out so the old
+    // meter's watts are never recorded over the new selection's sample.
+    mockHomeyInstance.settings.set('power_source', 'homey_energy');
+    const pollResolvers: Array<(value: { powerW: number }) => void> = [];
+    const pollHomePower = vi.fn(() => new Promise<{ powerW: number }>((resolve) => {
+      pollResolvers.push(resolve);
+    }));
+    const recordPowerSample = vi.fn().mockResolvedValue(undefined);
+    const debugStructured = vi.fn();
+    const source = new HomeyEnergyPollSource({
+      getPowerSource: mockPowerSource,
+      timers: new TimerRegistry(),
+      pollHomePower,
+      recordPowerSample,
+      debugStructured,
+      error: vi.fn(),
+    });
+
+    source.start();
+    expect(pollHomePower).toHaveBeenCalledTimes(1);
+
+    source.restart();
+    expect(pollHomePower).toHaveBeenCalledTimes(2);
+
+    // The pre-restart poll resolves late with the OLD meter's watts.
+    pollResolvers[0]({ powerW: 9999 });
+    await Promise.resolve();
+    expect(recordPowerSample).not.toHaveBeenCalled();
+    expect(debugStructured).toHaveBeenCalledWith({ event: 'homey_energy_poll_discarded_stale' });
+
+    // The post-restart poll still records normally.
+    pollResolvers[1]({ powerW: 2100 });
+    await Promise.resolve();
+    expect(recordPowerSample).toHaveBeenCalledWith({ powerW: 2100 });
+  });
+
   it('drops an in-flight reading when the source switches away from Homey Energy', async () => {
     mockHomeyInstance.settings.set('power_source', 'homey_energy');
     let resolvePoll: (value: { powerW: number }) => void = () => undefined;

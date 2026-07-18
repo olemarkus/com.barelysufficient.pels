@@ -157,7 +157,9 @@ function resolveTargetCapabilityValue(params: {
   return undefined;
 }
 
-function hasPowerCapability(capabilities: string[]): boolean {
+// Exported so the settings API's whole-home meter picker offers exactly the
+// devices the runtime considers power-capable (measure_power or meter_power).
+export function hasPowerCapability(capabilities: string[]): boolean {
   return capabilities.some((cap) => POWER_CAPABILITY_SET.has(cap as PowerCapabilityId));
 }
 

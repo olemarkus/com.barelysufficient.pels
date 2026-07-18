@@ -20,8 +20,14 @@ import {
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   DEBUG_LOGGING_TOPICS,
+  HOMEY_ENERGY_METER_DEVICE_ID,
   POWER_SOURCE,
 } from '../../../contracts/src/settingsKeys.ts';
+import {
+  isHomeyEnergyMeterExplicit,
+  syncHomeyEnergyMeterField,
+  syncHomeyEnergyMeterVisibility,
+} from './homeyEnergyMeter.ts';
 import {
   ALL_DEBUG_LOGGING_TOPICS,
   type DebugLoggingScenarioId,
@@ -63,13 +69,20 @@ const normalizePowerSource = (raw: unknown): PowerSource => (
   raw === 'homey_energy' ? 'homey_energy' : 'flow'
 );
 
-const getStaleDataHint = (): string => {
-  const source = settingsPowerSourceSelect?.value;
+// Exported pure for tests; the meterSelected branch points at the explicitly
+// selected meter instead of Homey Energy's whole-home marking.
+export const resolveStaleDataHint = (source: string | undefined, meterSelected: boolean): string => {
   if (source === 'homey_energy') {
-    return 'Check that a device with "Tracks total home energy consumption" is enabled in Homey Energy.';
+    return meterSelected
+      ? 'Check that the selected whole-home meter is available and reporting power in Homey Energy.'
+      : 'Check that a device with "Tracks total home energy consumption" is enabled in Homey Energy.';
   }
   return 'Check your Flow that reports power usage.';
 };
+
+const getStaleDataHint = (): string => (
+  resolveStaleDataHint(settingsPowerSourceSelect?.value, isHomeyEnergyMeterExplicit())
+);
 
 // The global simulation banner shows on every tab EXCEPT the Simulation-mode
 // settings page, whose own toggle is the single control there (a duplicate
@@ -134,6 +147,7 @@ const syncCapacityControls = (
   if (settingsSimulationModeInput) {
     settingsSimulationModeInput.selected = isDryRun;
   }
+  syncHomeyEnergyMeterVisibility(powerSource);
   updateCapacityReactionHint(limit, margin);
   renderMarginAlert(getMarginVsLimitError(limit, margin));
 };
@@ -217,12 +231,19 @@ export const loadCapacitySettings = async () => {
   const margin = await getSetting(CAPACITY_MARGIN_KW);
   const dryRun = await getSetting(CAPACITY_DRY_RUN);
   const powerSource = await getSetting(POWER_SOURCE);
+  const meterDeviceId = await getSetting(HOMEY_ENERGY_METER_DEVICE_ID);
   const fallbackLimit = 10;
   const fallbackMargin = 0.2;
   const normalizedLimit = typeof limit === 'number' ? limit : fallbackLimit;
   const normalizedMargin = typeof margin === 'number' ? margin : fallbackMargin;
   const isDryRun = typeof dryRun === 'boolean' ? dryRun : true;
   const normalizedPowerSource = normalizePowerSource(powerSource);
+  // Adopt the persisted meter selection BEFORE syncCapacityControls runs its
+  // visibility-only sync, so the select renders the saved choice. Trimmed the
+  // same way as the runtime seam (resolveHomeyEnergyMeterDeviceId) so the UI
+  // and the poll never disagree about a padded id meaning Automatic.
+  const trimmedMeterId = typeof meterDeviceId === 'string' ? meterDeviceId.trim() : '';
+  syncHomeyEnergyMeterField(normalizedPowerSource, trimmedMeterId === '' ? null : trimmedMeterId);
   syncCapacityControls(normalizedLimit, normalizedMargin, isDryRun, normalizedPowerSource);
   const dryRunChanged = state.dryRun !== isDryRun;
   state.dryRun = isDryRun;

@@ -27,6 +27,8 @@ import {
 } from './managerParseDeviceFields';
 
 export type DeviceTransportParseProviders = {
+    /** Resolved explicit whole-home meter id; null/undefined = automatic (first cumulative item). */
+    getHomeyEnergyMeterDeviceId?: () => string | null;
     getPriority?: (deviceId: string) => number;
     getControllable?: (deviceId: string) => boolean;
     getManaged?: (deviceId: string) => boolean;

@@ -366,6 +366,29 @@ program) remains deferred.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **Hoist `createSelectOption` (and the render-signature guard pattern) out of `advanced.ts` into a
+      shared settings-ui primitive module.** *Persona:* maintainer adding the next dynamic device picker.
+      *Hypothesis:* three near-copies now exist — `createModeOption` (`modes.ts`), `createSelectOption`
+      (`advanced.ts`, exported sideways to `homeyEnergyMeter.ts` for the whole-home meter picker) — each
+      carrying the md-select first-paint `displayText`/`typeaheadText` workaround; a view module acting as
+      shared-primitive host grows view→view coupling with every picker (layering-guardian P2, 2026-07-18).
+      Files: `packages/settings-ui/src/ui/advanced.ts`, `packages/settings-ui/src/ui/modes.ts`,
+      `packages/settings-ui/src/ui/homeyEnergyMeter.ts`.
+- [ ] **Whole-home meter picker: close the confidence loop after picking a meter.** *Persona:* Homey Energy
+      owner who just selected a specific meter and wants to know it worked without waiting for the stale
+      banner. *Hypothesis:* the save toast confirms persistence, not readings — the runtime already restarts
+      the poll for an immediate sample (`handleHomeyEnergyMeterChange`), so the panel could surface the
+      first fresh reading (or point at Overview's Power now). Also from the same review: a hint line when
+      the device-list fetch fails ("Couldn't load your devices — reopen this page to retry"; retry-on-reopen
+      already works), and the panel now speaks two save-toast dialects ("Limits & safety saved." vs
+      "Whole-home meter saved.") (ux-fit + m3-critic P2s, render-gate capture 2026-07-18). Related
+      runtime nicety from the same review round (Codex P2): after a meter change the immediate
+      settings-handler rebuild still plans on the previous meter's cached power state for the ~1s
+      until the restarted poll's first sample lands and triggers its own rebuild — gating that first
+      rebuild on the new selection's sample would close the window, at the cost of coupling rebuild
+      timing to sample arrival.
+      Files: `packages/settings-ui/src/ui/homeyEnergyMeter.ts`, `packages/settings-ui/src/ui/capacity.ts`,
+      `lib/utils/settingsHandlers.ts`.
 - [ ] **Overview hero repeats "Safe pace now X kW" twice within ~40 px.** *Persona:* any owner glancing at
       the Overview hero — it's the first block on the app's front page, and identical adjacent strings read
       as a copy-paste bug even when every number is right. *Hypothesis:* the caption above the power bar and

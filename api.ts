@@ -3,6 +3,7 @@ import type { DailyBudgetModelPreviewResponse, DailyBudgetUiPayload } from './li
 import type { Logger as PinoLogger } from 'pino';
 import type { HomeyDeviceLike } from './lib/utils/types';
 import { normalizeError } from './lib/utils/errorUtils';
+import { hasPowerCapability } from './lib/device/transport/managerParse';
 import { getHomeyDevicesForDebugFromApp, logHomeyDeviceForDebugFromApp } from './setup/appDebugHelpers';
 import {
   buildSettingsUiBootstrap,
@@ -132,7 +133,7 @@ export = {
   ),
   homey_devices: withApiLogging('homey_devices', async (
     { homey }: ApiContext,
-  ): Promise<Array<{ id: string; name: string; class?: string; hasTemperature: boolean }>> => {
+  ): Promise<Array<{ id: string; name: string; class?: string; hasTemperature: boolean; hasPower: boolean }>> => {
     const app = getApp(homey);
     if (!app) return [];
     const devices = await getHomeyDevicesForDebugFromApp(app);
@@ -150,6 +151,11 @@ export = {
           // since `device` crosses the SDK boundary and types aren't guaranteed.
           hasTemperature: Array.isArray(device.capabilities)
             && device.capabilities.includes('measure_temperature'),
+          // Whether the runtime considers the device power-capable
+          // (measure_power or meter_power — same predicate as managerParse) —
+          // lets the whole-home meter picker filter to power-reporting devices.
+          hasPower: Array.isArray(device.capabilities)
+            && hasPowerCapability(device.capabilities.filter((cap): cap is string => typeof cap === 'string')),
         };
       });
   }),

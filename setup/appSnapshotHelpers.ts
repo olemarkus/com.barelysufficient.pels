@@ -66,6 +66,18 @@ export class AppSnapshotHelpers {
   // re-emits the next time it stalls. Per-device map (not global) so 10 stale
   // devices still produce 10 distinct log streams.
   private staleRefreshLogLastEmitMsById = new Map<string, number>();
+  // Resolver for the explicit whole-home meter selection, bound by
+  // appServiceWiring (a constructor dep would grow the app.ts wiring literal).
+  // Used to fence the implicit homey_energy sample: a refresh cycle fetches its
+  // live report near the start and records the sample at the end, so a meter
+  // change mid-cycle would otherwise record the OLD meter's watts seconds
+  // after the user switched (the poll path has the same fence via its
+  // pollGeneration counter).
+  private meterDeviceIdResolver: (() => string | null) | null = null;
+
+  bindHomeyEnergyMeterResolver(resolver: () => string | null): void {
+    this.meterDeviceIdResolver = resolver;
+  }
 
   constructor(private readonly deps: {
     getPowerSource: () => PowerSource;
@@ -369,6 +381,7 @@ export class AppSnapshotHelpers {
     this.deps.getStructuredDebugEmitter('snapshot', 'devices')({
       event: 'target_snapshot_refresh_started',
     });
+    const meterDeviceIdAtStart = this.meterDeviceIdResolver?.() ?? null;
     const homePowerSample = await deviceManager.refreshSnapshot({
       includeLivePower: options.fast !== true,
       targetedRefresh: options.targeted,
@@ -401,17 +414,27 @@ export class AppSnapshotHelpers {
       targetedRefresh: options.targeted === true,
     });
     this.deps.emitSettingsUiDevicesUpdated();
-    await this.recordImplicitHomeyEnergySample(options, homePowerSample);
+    await this.recordImplicitHomeyEnergySample(options, homePowerSample, meterDeviceIdAtStart);
   }
 
   private async recordImplicitHomeyEnergySample(
     options: RefreshTargetDevicesSnapshotOptions,
     sample: HomePowerSample | null,
+    meterDeviceIdAtStart: string | null,
   ): Promise<void> {
     if (
       options.recordHomeyEnergySample === false
       || this.deps.getPowerSource() !== 'homey_energy'
     ) {
+      return;
+    }
+    if ((this.meterDeviceIdResolver?.() ?? null) !== meterDeviceIdAtStart) {
+      // The whole-home meter selection changed while this refresh cycle was in
+      // flight — the sample was read for the previous selection, so recording
+      // it now would overwrite the new meter's fresh samples with stale watts.
+      this.deps.getStructuredDebugEmitter('snapshot', 'devices')({
+        event: 'implicit_homey_energy_sample_discarded_stale_meter',
+      });
       return;
     }
 

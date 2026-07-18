@@ -7,6 +7,7 @@ const moduleLogger = getLogger('device/manager-fetch');
 import {
   extractLiveHomePowerWatts,
   extractLiveGenerationWatts,
+  extractLiveMeterPowerWatts,
   extractLivePowerWattsByDeviceId,
   type LiveDevicePowerWatts,
 } from '../managerEnergy';
@@ -146,8 +147,10 @@ export type LivePowerReport = {
 export async function fetchLivePowerReport(params: {
   logger: Logger;
   debugStructured?: StructuredDebugEmitter;
+  /** Resolved explicit whole-home meter id; null/undefined = automatic (first cumulative item). */
+  meterDeviceId?: string | null;
 }): Promise<LivePowerReport> {
-  const { logger, debugStructured } = params;
+  const { logger, debugStructured, meterDeviceId } = params;
   try {
     const report = await getEnergyLiveReport();
     if (report === null) {
@@ -158,7 +161,9 @@ export async function fetchLivePowerReport(params: {
       return { byDeviceId: {}, homePowerW: null, generationW: null, deviceCount: 0 };
     }
     const byDeviceId = extractLivePowerWattsByDeviceId(report);
-    const homePowerW = extractLiveHomePowerWatts(report);
+    const homePowerW = meterDeviceId != null
+      ? extractLiveMeterPowerWatts(report, meterDeviceId)
+      : extractLiveHomePowerWatts(report);
     const generationW = extractLiveGenerationWatts(report);
     const deviceCount = Object.keys(byDeviceId).length;
     (debugStructured ?? ((p: Record<string, unknown>) => moduleLogger.debug(p)))({
@@ -167,6 +172,7 @@ export async function fetchLivePowerReport(params: {
       homePowerW,
       generationW,
       deviceCount,
+      ...(meterDeviceId != null ? { meterDeviceId } : {}),
     });
     return { byDeviceId, homePowerW, generationW, deviceCount };
   } catch (error) {

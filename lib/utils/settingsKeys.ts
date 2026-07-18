@@ -14,6 +14,12 @@ export const homeScopedSettingsKey = (baseKey: string, homeId: string): string =
   homeId === MAIN_HOME_ID ? baseKey : `${baseKey}:${homeId}`
 );
 export const POWER_SOURCE = 'power_source';
+// Explicit whole-home meter for the homey_energy power source. Device id
+// string; absent/empty = automatic (Homey's marked whole-home cumulative
+// item). Mirror of HOMEY_ENERGY_METER_DEVICE_ID in
+// packages/contracts/src/settingsKeys.ts — keep both in sync (the settings UI
+// can't import lib).
+export const HOMEY_ENERGY_METER_DEVICE_ID = 'homey_energy_meter_device_id';
 export const OPERATING_MODE_SETTING = 'operating_mode';
 export const MANAGED_DEVICES = 'managed_devices';
 export const CONTROLLABLE_DEVICES = 'controllable_devices';
