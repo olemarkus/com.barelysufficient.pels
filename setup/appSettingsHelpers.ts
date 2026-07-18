@@ -269,11 +269,24 @@ function requireDailyBudgetService(ctx: AppContext) {
   return ctx.dailyBudgetService;
 }
 
-export function initSettingsHandlerForApp(ctx: AppContext): { handle: SettingsHandler; stop: () => void } {
+export function initSettingsHandlerForApp(
+  ctx: AppContext,
+  options?: {
+    /**
+     * Receives writes to home-suffixed settings keys (`<base>:<homeId>`,
+     * non-main home) instead of the main-home handlers. Dormant: no caller
+     * passes it yet — the multi-home wiring will. Consumer contract
+     * (unserialized, un-deduped, idempotent dirty-marks) documented on
+     * `SettingsHandlerDeps.onHomeScopedSettingChanged`.
+     */
+    onHomeScopedSettingChanged?: (baseKey: string, homeId: string) => void | Promise<void>;
+  },
+): { handle: SettingsHandler; stop: () => void } {
   const planService = requirePlanService(ctx);
   const dailyBudgetService = requireDailyBudgetService(ctx);
   const settingsHandler = createSettingsHandler({
     homey: ctx.homey,
+    onHomeScopedSettingChanged: options?.onHomeScopedSettingChanged,
     loadCapacitySettings: ctx.loadCapacitySettings,
     rebuildPlanFromCache: async (reason) => {
       await planService.rebuildPlanFromCache(reason);

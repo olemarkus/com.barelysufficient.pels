@@ -3,6 +3,7 @@ import {
   getZonedParts,
 } from '../utils/dateUtils';
 import { DEFAULT_NORGESPRIS_HOURLY_USAGE_ESTIMATE_KWH } from './norwayPriceDefaults';
+import { POWER_TRACKER_STATE } from '../utils/settingsKeys';
 
 type SettingsReader = { settings: { get: (key: string) => unknown } };
 type HomeyApi = SettingsReader;
@@ -10,7 +11,7 @@ type HomeyApi = SettingsReader;
 const getSettingValue = (homey: HomeyApi, key: string): unknown => homey.settings.get(key);
 
 export const getCurrentMonthUsageKwh = (homey: HomeyApi, timeZone: string): number => {
-  const raw = getSettingValue(homey, 'power_tracker_state');
+  const raw = getSettingValue(homey, POWER_TRACKER_STATE);
   if (!raw || typeof raw !== 'object') return 0;
   const tracker = raw as { dailyTotals?: unknown; buckets?: unknown };
   const now = new Date();
@@ -57,7 +58,7 @@ export const getCurrentMonthUsageKwh = (homey: HomeyApi, timeZone: string): numb
 };
 
 export const getHourlyUsageEstimateKwh = (homey: HomeyApi): number => {
-  const raw = getSettingValue(homey, 'power_tracker_state');
+  const raw = getSettingValue(homey, POWER_TRACKER_STATE);
   if (!raw || typeof raw !== 'object') return DEFAULT_NORGESPRIS_HOURLY_USAGE_ESTIMATE_KWH;
   const tracker = raw as { lastPowerW?: unknown };
   const lastPowerW = tracker.lastPowerW;

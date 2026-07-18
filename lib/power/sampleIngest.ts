@@ -6,6 +6,7 @@ import { aggregateAndPruneHistory, recordPowerSample as recordPowerSampleCore } 
 import type { MeasuredPowerObservedProbe, TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
 import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
+import { POWER_TRACKER_STATE } from '../utils/settingsKeys';
 import { POWER_SAMPLE_STALE_THRESHOLD_MS } from '../../packages/shared-domain/src/powerFreshness';
 
 /**
@@ -200,7 +201,7 @@ export function persistPowerTrackerStateForApp(params: {
   const { homey, powerTracker, reason, error } = params;
   const writeStart = Date.now();
   try {
-    homey.settings.set('power_tracker_state', powerTracker);
+    homey.settings.set(POWER_TRACKER_STATE, powerTracker);
     addPerfDuration('settings_write_ms', Date.now() - writeStart);
     incPerfCounter('settings_set.power_tracker_state');
     if (reason) incPerfCounter(`settings_set.power_tracker_state_reason.${reason}_total`);

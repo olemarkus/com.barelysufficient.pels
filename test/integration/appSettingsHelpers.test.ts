@@ -13,6 +13,7 @@ import {
   CAPACITY_MARGIN_KW,
   DEVICE_DRIVER_OVERRIDES,
   DEVICE_TARGET_POWER_CONFIGS,
+  POWER_TRACKER_STATE,
 } from '../../lib/utils/settingsKeys';
 
 const buildCapacitySnapshot = (
@@ -189,6 +190,39 @@ describe('initSettingsHandlerForApp', () => {
       persistReason: 'manual',
     });
     expect(ctx.dailyBudgetService?.updateState).not.toHaveBeenCalled();
+  });
+
+  it('routes home-suffixed writes to the hook instead of the main handlers', async () => {
+    const ctx = buildContext();
+    const onHomeScopedSettingChanged = vi.fn();
+
+    const { handle } = initSettingsHandlerForApp(ctx, { onHomeScopedSettingChanged });
+    await handle(`${POWER_TRACKER_STATE}:cabin`);
+    await handle(`${CAPACITY_LIMIT_KW}:cabin`);
+
+    expect(onHomeScopedSettingChanged).toHaveBeenCalledTimes(2);
+    expect(onHomeScopedSettingChanged).toHaveBeenNthCalledWith(1, POWER_TRACKER_STATE, 'cabin');
+    expect(onHomeScopedSettingChanged).toHaveBeenNthCalledWith(2, CAPACITY_LIMIT_KW, 'cabin');
+    // The critical invariant: a suffixed write must not run the main home's
+    // handler for the base key (reload main's tracker / capacity settings).
+    expect(ctx.loadPowerTracker).not.toHaveBeenCalled();
+    expect(ctx.loadCapacitySettings).not.toHaveBeenCalled();
+    expect(ctx.updateDailyBudgetState).not.toHaveBeenCalled();
+  });
+
+  it('dispatches unsuffixed keys to the main handlers without touching the hook', async () => {
+    const ctx = buildContext();
+    const onHomeScopedSettingChanged = vi.fn();
+
+    const { handle } = initSettingsHandlerForApp(ctx, { onHomeScopedSettingChanged });
+    await handle(CAPACITY_LIMIT_KW);
+
+    expect(onHomeScopedSettingChanged).not.toHaveBeenCalled();
+    expect(ctx.loadCapacitySettings).toHaveBeenCalled();
+    expect(ctx.updateDailyBudgetState).toHaveBeenCalledWith({
+      forcePlanRebuild: true,
+      persistReason: 'manual',
+    });
   });
 
   it('fails fast when price coordinator wiring is missing', () => {
