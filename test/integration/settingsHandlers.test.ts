@@ -2,6 +2,7 @@ import type { Mock } from 'vitest';
 import { createSettingsHandler, type SettingsHandlerDeps } from '../../lib/utils/settingsHandlers';
 import {
   BUDGET_EXEMPT_DEVICES,
+  CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   COMBINED_PRICES,
   DAILY_BUDGET_ENABLED,
@@ -12,10 +13,14 @@ import {
   DEVICE_DRIVER_OVERRIDES,
   DEVICE_TARGET_POWER_CONFIGS,
   MANAGED_DEVICES,
+  POWER_TRACKER_STATE,
   WEATHER_ADVISOR_SETTINGS,
 } from '../../lib/utils/settingsKeys';
 
-const { settingsLoggerInfo, settingsLoggerWarn, settingsLoggerError } = vi.hoisted(() => ({
+const {
+  settingsLoggerDebug, settingsLoggerInfo, settingsLoggerWarn, settingsLoggerError,
+} = vi.hoisted(() => ({
+  settingsLoggerDebug: vi.fn(),
   settingsLoggerInfo: vi.fn(),
   settingsLoggerWarn: vi.fn(),
   settingsLoggerError: vi.fn(),
@@ -27,7 +32,12 @@ vi.mock('../../lib/logging/logger', async (importOriginal) => {
     ...actual,
     getLogger: (component: string) => (
       component === 'settings'
-        ? { info: settingsLoggerInfo, warn: settingsLoggerWarn, error: settingsLoggerError }
+        ? {
+          debug: settingsLoggerDebug,
+          info: settingsLoggerInfo,
+          warn: settingsLoggerWarn,
+          error: settingsLoggerError,
+        }
         : actual.getLogger(component)
     ),
   };
@@ -78,6 +88,7 @@ const buildDeps = (overrides: Partial<SettingsHandlerDeps> = {}): SettingsHandle
 
 describe('createSettingsHandler', () => {
   beforeEach(() => {
+    settingsLoggerDebug.mockClear();
     settingsLoggerInfo.mockClear();
     settingsLoggerWarn.mockClear();
     settingsLoggerError.mockClear();
@@ -623,5 +634,137 @@ describe('createSettingsHandler', () => {
     expect(deps.updateDailyBudgetState).toHaveBeenCalledWith(expectedForcedDailyBudgetPersist);
     expect(deps.homey.settings.set).toHaveBeenCalledWith(DAILY_BUDGET_RESET, null);
     expect(deps.rebuildPlanFromCache).toHaveBeenCalled();
+  });
+
+  it('routes a home-suffixed capacity write to the hook, not the main handlers', async () => {
+    const onHomeScopedSettingChanged = vi.fn();
+    const deps = buildDeps({ onHomeScopedSettingChanged });
+    const handler = createSettingsHandler(deps);
+
+    await handler(`${CAPACITY_LIMIT_KW}:cabin`);
+
+    expect(onHomeScopedSettingChanged).toHaveBeenCalledTimes(1);
+    expect(onHomeScopedSettingChanged).toHaveBeenCalledWith(CAPACITY_LIMIT_KW, 'cabin');
+    expect(deps.loadCapacitySettings).not.toHaveBeenCalled();
+    expect(deps.updateOverheadToken).not.toHaveBeenCalled();
+    expect(deps.updateDailyBudgetState).not.toHaveBeenCalled();
+    expect(deps.rebuildPlanFromCache).not.toHaveBeenCalled();
+  });
+
+  it('routes a home-suffixed tracker write to the hook and never reloads the main tracker', async () => {
+    const onHomeScopedSettingChanged = vi.fn();
+    const deps = buildDeps({ onHomeScopedSettingChanged });
+    const handler = createSettingsHandler(deps);
+
+    await handler(`${POWER_TRACKER_STATE}:cabin`);
+
+    expect(onHomeScopedSettingChanged).toHaveBeenCalledWith(POWER_TRACKER_STATE, 'cabin');
+    expect(deps.loadPowerTracker).not.toHaveBeenCalled();
+  });
+
+  it('ignores home-suffixed writes when no hook is wired', async () => {
+    const deps = buildDeps();
+    const handler = createSettingsHandler(deps);
+
+    await handler(`${POWER_TRACKER_STATE}:cabin`);
+
+    expect(deps.loadPowerTracker).not.toHaveBeenCalled();
+    expect(deps.rebuildPlanFromCache).not.toHaveBeenCalled();
+    expect(settingsLoggerError).not.toHaveBeenCalled();
+  });
+
+  it('dispatches a colon key with a non-scopable base as an ordinary exact key', async () => {
+    const onHomeScopedSettingChanged = vi.fn();
+    const deps = buildDeps({ onHomeScopedSettingChanged });
+    const handler = createSettingsHandler(deps);
+
+    // No handler is registered for `foo:bar`, so an exact-key dispatch ignores
+    // it — the hook must not fire for a base outside the home-scopable set.
+    await handler('foo:bar');
+
+    expect(onHomeScopedSettingChanged).not.toHaveBeenCalled();
+    expect(deps.loadCapacitySettings).not.toHaveBeenCalled();
+    expect(deps.rebuildPlanFromCache).not.toHaveBeenCalled();
+  });
+
+  it('keeps unsuffixed dispatch and dedupe unchanged when the hook is wired', async () => {
+    const onHomeScopedSettingChanged = vi.fn();
+    const deps = buildDeps({ onHomeScopedSettingChanged });
+    deps.homey.settings.get = vi.fn().mockReturnValue(25);
+    const handler = createSettingsHandler(deps);
+
+    await handler('price_threshold_percent');
+    await handler('price_threshold_percent');
+
+    expect(deps.priceService.updateCombinedPrices).toHaveBeenCalledTimes(1);
+    expect(onHomeScopedSettingChanged).not.toHaveBeenCalled();
+  });
+
+  it('logs and keeps dispatching when the home-scoped hook throws', async () => {
+    const onHomeScopedSettingChanged = vi.fn(() => {
+      throw new Error('hook fail');
+    });
+    const deps = buildDeps({ onHomeScopedSettingChanged });
+    const handler = createSettingsHandler(deps);
+
+    await handler(`${CAPACITY_DRY_RUN}:cabin`);
+    await handler(MANAGED_DEVICES);
+
+    expect(settingsLoggerError).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'home_scoped_settings_hook_failed',
+      settingKey: `${CAPACITY_DRY_RUN}:cabin`,
+    }));
+    expect(deps.loadCapacitySettings).toHaveBeenCalledTimes(1);
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+  });
+
+  it('contains a rejecting async hook: logged, dispatch continues, no unhandled rejection', async () => {
+    const onHomeScopedSettingChanged = vi.fn(async () => {
+      throw new Error('async hook fail');
+    });
+    const deps = buildDeps({ onHomeScopedSettingChanged });
+    const handler = createSettingsHandler(deps);
+
+    // Mirrors the settings `set` listener seam: the awaited handle must
+    // resolve (not reject) even though the hook's promise rejects.
+    await expect(handler(`${POWER_TRACKER_STATE}:cabin`)).resolves.toBeUndefined();
+    await handler(MANAGED_DEVICES);
+
+    expect(settingsLoggerError).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'home_scoped_settings_hook_failed',
+      settingKey: `${POWER_TRACKER_STATE}:cabin`,
+    }));
+    expect(deps.loadPowerTracker).not.toHaveBeenCalled();
+    expect(deps.loadCapacitySettings).toHaveBeenCalledTimes(1);
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalledTimes(1);
+  });
+
+  it('debug-logs a scopable base with a malformed home suffix before exact dispatch', async () => {
+    const onHomeScopedSettingChanged = vi.fn();
+    const deps = buildDeps({ onHomeScopedSettingChanged });
+    const handler = createSettingsHandler(deps);
+
+    // Empty suffix and explicit `:main` both parse back to ordinary exact
+    // keys (no registered handler → ignored) but leave a diagnosable trace.
+    await handler(`${CAPACITY_LIMIT_KW}:`);
+    await handler(`${CAPACITY_LIMIT_KW}:main`);
+
+    expect(settingsLoggerDebug).toHaveBeenCalledTimes(2);
+    expect(settingsLoggerDebug).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      event: 'home_scoped_settings_key_malformed',
+      settingKey: `${CAPACITY_LIMIT_KW}:`,
+    }));
+    expect(settingsLoggerDebug).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      event: 'home_scoped_settings_key_malformed',
+      settingKey: `${CAPACITY_LIMIT_KW}:main`,
+    }));
+    expect(onHomeScopedSettingChanged).not.toHaveBeenCalled();
+    expect(deps.loadCapacitySettings).not.toHaveBeenCalled();
+
+    // Non-scopable colon keys and plain unsuffixed keys stay silent.
+    settingsLoggerDebug.mockClear();
+    await handler('foo:bar');
+    await handler(MANAGED_DEVICES);
+    expect(settingsLoggerDebug).not.toHaveBeenCalled();
   });
 });

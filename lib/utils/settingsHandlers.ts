@@ -30,13 +30,17 @@ import {
   NORWAY_PRICE_MODEL,
   HOMEY_PRICES_TODAY,
   HOMEY_PRICES_TOMORROW,
+  isHomeScopableBaseKey,
+  MAIN_HOME_ID,
   MANAGED_DEVICES,
   NATIVE_EV_WIRING_DEVICES,
   OVERSHOOT_BEHAVIORS,
   TEMPERATURE_BOOST_SETTINGS,
   OPERATING_MODE_SETTING,
   HOMEY_ENERGY_METER_DEVICE_ID,
+  parseHomeScopedSettingsKey,
   POWER_SOURCE,
+  POWER_TRACKER_STATE,
   PRICE_OPTIMIZATION_ENABLED,
   PRICE_OPTIMIZATION_SETTINGS,
   PRICE_SCHEME,
@@ -49,7 +53,7 @@ import {
   createDebouncedSyncScheduler,
   type DebouncedSyncScheduler,
 } from './settingsHandlerDebounce';
-import { toStableFingerprint } from './stableFingerprint';
+import { createNoopWriteSkipper } from './settingsWriteDedupe';
 
 const settingsLogger = getLogger('settings');
 export type PriceServiceLike = {
@@ -79,61 +83,26 @@ export type SettingsHandlerDeps = {
   stopFlowPowerSampleFreshnessClock?: () => void;
   syncFlowPowerSampleFreshnessClock?: () => void;
   reloadWeatherAdvisor?: () => void;
+  /**
+   * Writes to home-suffixed keys (`<base>:<homeId>`, non-main home, see
+   * `parseHomeScopedSettingsKey`) route here instead of the exact-key
+   * handlers — a `power_tracker_state:<homeId>` write must never reload the
+   * main home's power tracker. Optional and dormant: no runtime consumer yet
+   * (the multi-home wiring provides one); when absent the write is ignored.
+   * Rejections and throws are contained and logged; they never propagate to
+   * the settings `set` listener.
+   *
+   * Consumer contract: invocations are NOT serialized against the settings
+   * handler queue or against homes-config processing, and are NOT deduped —
+   * expect high-frequency echoes such as `power_tracker_state:<homeId>`
+   * self-persist writes at sample cadence. Treat every call as an idempotent
+   * dirty-mark to reconcile against the homes registry, never as an ordered,
+   * deduplicated command. An unknown homeId is transient: dirty-mark and
+   * reconcile — never a destructive reset, never a dropped write.
+   */
+  onHomeScopedSettingChanged?: (baseKey: string, homeId: string) => void | Promise<void>;
 };
 
-const DEDUPED_CAPACITY_KEYS = [
-  'mode_device_targets',
-  OPERATING_MODE_SETTING,
-  'mode_aliases',
-  'capacity_priorities',
-  CONTROLLABLE_DEVICES,
-  MANAGED_DEVICES,
-  NATIVE_EV_WIRING_DEVICES,
-  DEVICE_DRIVER_OVERRIDES,
-  BUDGET_EXEMPT_DEVICES,
-  DEVICE_CONTROL_PROFILES,
-  DEVICE_TARGET_POWER_CONFIGS,
-  DEVICE_COMMUNICATION_MODELS,
-  CAPACITY_LIMIT_KW,
-  CAPACITY_MARGIN_KW,
-  CAPACITY_DRY_RUN,
-  OVERSHOOT_BEHAVIORS,
-];
-
-const DEDUPED_PRICE_KEYS = [
-  PRICE_SCHEME,
-  FLOW_PRICES_TODAY,
-  FLOW_PRICES_TOMORROW,
-  HOMEY_PRICES_TODAY,
-  HOMEY_PRICES_TOMORROW,
-  HOMEY_PRICES_CURRENCY,
-  NORWAY_PRICE_MODEL,
-  'provider_surcharge',
-  'price_threshold_percent',
-  'price_min_diff_ore',
-  EXPORT_PRICE_ENABLED,
-  EXPORT_SPOT_FACTOR,
-  EXPORT_FIXED,
-  PRICE_OPTIMIZATION_SETTINGS,
-  PRICE_OPTIMIZATION_ENABLED,
-];
-
-const DEDUPED_DAILY_BUDGET_KEYS = [
-  DAILY_BUDGET_ENABLED,
-  DAILY_BUDGET_KWH,
-  DAILY_BUDGET_PRICE_SHAPING_ENABLED,
-  DAILY_BUDGET_CONTROLLED_WEIGHT,
-  DAILY_BUDGET_PRICE_FLEX_SHARE,
-];
-
-const DEDUPED_LOGGING_KEYS = ['debug_logging_enabled', DEBUG_LOGGING_TOPICS];
-
-const DEDUPED_WRITE_KEYS = new Set<string>([
-  ...DEDUPED_CAPACITY_KEYS,
-  ...DEDUPED_PRICE_KEYS,
-  ...DEDUPED_DAILY_BUDGET_KEYS,
-  ...DEDUPED_LOGGING_KEYS,
-]);
 const DAILY_BUDGET_PRICE_REBUILD_DEBOUNCE_MS = 1000;
 const DAILY_BUDGET_SETTINGS_REBUILD_DEBOUNCE_MS = 500;
 const FORCE_DAILY_BUDGET_STATE_PERSIST: DailyBudgetUpdateStateOptions = {
@@ -180,11 +149,6 @@ const refreshPriceDerivedState = async (deps: SettingsHandlerDeps): Promise<void
   await handleDailyBudgetPriceChange(deps);
 };
 
-type NoopWriteSkipper = {
-  shouldSkipNoopWrite: (key: string) => boolean;
-  markProcessedWrite: (key: string) => void;
-};
-
 type SettingsHandlerMap = Record<string, () => Promise<void>>;
 const DAILY_BUDGET_SETTING_KEYS = [
   DAILY_BUDGET_ENABLED,
@@ -205,28 +169,13 @@ const buildDailyBudgetSettingsHandlers = (
   },
 ])) as Pick<SettingsHandlerMap, typeof DAILY_BUDGET_SETTING_KEYS[number]>;
 
-const createNoopWriteSkipper = (deps: SettingsHandlerDeps): NoopWriteSkipper => {
-  const lastProcessedFingerprints = new Map<string, string>();
-
-  const readFingerprint = (key: string): string | null => {
-    if (!DEDUPED_WRITE_KEYS.has(key)) return null;
-    return toStableFingerprint(deps.homey.settings.get(key) as unknown);
-  };
-
-  const shouldSkipNoopWrite = (key: string): boolean => {
-    const fingerprint = readFingerprint(key);
-    if (fingerprint === null) return false;
-    return lastProcessedFingerprints.get(key) === fingerprint;
-  };
-
-  const markProcessedWrite = (key: string): void => {
-    const fingerprint = readFingerprint(key);
-    if (fingerprint !== null) {
-      lastProcessedFingerprints.set(key, fingerprint);
-    }
-  };
-
-  return { shouldSkipNoopWrite, markProcessedWrite };
+// A colon key whose base IS home-scopable but whose suffix the parser rejected
+// (`capacity_limit_kw:`, `capacity_limit_kw:main`) dispatches as an ordinary
+// exact key — almost certainly an emitter bug, so leave a debug trace first.
+const logMalformedHomeSuffix = (key: string): void => {
+  const separatorIndex = key.indexOf(':');
+  if (separatorIndex === -1 || !isHomeScopableBaseKey(key.slice(0, separatorIndex))) return;
+  settingsLogger.debug({ event: 'home_scoped_settings_key_malformed', settingKey: key });
 };
 
 export function createSettingsHandler(deps: SettingsHandlerDeps): SettingsHandler {
@@ -238,10 +187,33 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): SettingsHandle
     () => dailyBudgetSettingsSyncScheduler.schedule(),
   );
 
-  const { shouldSkipNoopWrite, markProcessedWrite } = createNoopWriteSkipper(deps);
+  const { shouldSkipNoopWrite, markProcessedWrite } = createNoopWriteSkipper(
+    (key) => deps.homey.settings.get(key) as unknown,
+  );
 
   let queue = Promise.resolve();
   const handler = (async (key: string) => {
+    const scoped = parseHomeScopedSettingsKey(key);
+    if (scoped.homeId !== MAIN_HOME_ID) {
+      // Non-main-home write: route to the hook only. Falling through would run
+      // the main home's handler for the base key (e.g. reload main's power
+      // tracker for `power_tracker_state:<homeId>`), which must never happen.
+      // Awaiting inside the try contains async-hook rejections too — the
+      // settings `set` listener at the SDK seam must never see one.
+      try {
+        await deps.onHomeScopedSettingChanged?.(scoped.baseKey, scoped.homeId);
+      } catch (error) {
+        settingsLogger.error({
+          event: 'home_scoped_settings_hook_failed',
+          settingKey: key,
+          err: normalizeError(error),
+        });
+      }
+      return;
+    }
+    logMalformedHomeSuffix(key);
+    // `scoped.homeId === MAIN_HOME_ID` implies `scoped.baseKey === key`, so
+    // main-home dispatch below stays exact-key and byte-identical to before.
     const keyHandler = handlers[key];
     if (!keyHandler) return;
     queue = queue.then(async () => {
@@ -338,7 +310,7 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
       deps.loadCapacitySettings();
       await rebuildPlanFromSettings(deps, EV_BOOST_SETTINGS);
     },
-    power_tracker_state: async () => deps.loadPowerTracker(),
+    [POWER_TRACKER_STATE]: async () => deps.loadPowerTracker(),
     [CAPACITY_LIMIT_KW]: async () => handleCapacityLimitChange(deps),
     [CAPACITY_MARGIN_KW]: async () => handleCapacityLimitChange(deps),
     [CAPACITY_DRY_RUN]: async () => {

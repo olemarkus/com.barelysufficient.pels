@@ -1,6 +1,7 @@
 export const CAPACITY_LIMIT_KW = 'capacity_limit_kw';
 export const CAPACITY_MARGIN_KW = 'capacity_margin_kw';
 export const CAPACITY_DRY_RUN = 'capacity_dry_run';
+export const POWER_TRACKER_STATE = 'power_tracker_state';
 // Canonical id of the primary home. The main home keeps the historical
 // unsuffixed settings keys; additional homes (multi-home train) scope their
 // keys via `homeScopedSettingsKey`. The home domain proper lands in a sibling
@@ -13,6 +14,41 @@ export const MAIN_HOME_ID = 'main';
 export const homeScopedSettingsKey = (baseKey: string, homeId: string): string => (
   homeId === MAIN_HOME_ID ? baseKey : `${baseKey}:${homeId}`
 );
+// Base keys whose values may be scoped per home via `homeScopedSettingsKey`
+// (multi-home train). Kept private: the parse helper below is the boundary,
+// and consumers route on its output (or the predicate) rather than probing
+// this set directly.
+const HOME_SCOPABLE_BASE_KEYS: ReadonlySet<string> = new Set([
+  CAPACITY_LIMIT_KW,
+  CAPACITY_MARGIN_KW,
+  CAPACITY_DRY_RUN,
+  POWER_TRACKER_STATE,
+]);
+/** Whether `baseKey` is one of the home-scopable base settings keys. */
+export const isHomeScopableBaseKey = (baseKey: string): boolean => (
+  HOME_SCOPABLE_BASE_KEYS.has(baseKey)
+);
+/**
+ * Inverse of `homeScopedSettingsKey`, total and boundary-validated: a key of
+ * the form `<scopableBase>:<homeId>` (non-empty home id, not the main id)
+ * parses to that base + home. Every other string — unsuffixed keys, unknown
+ * bases (a future `foo:bar` key), an empty suffix (`capacity_limit_kw:`), or
+ * an explicit `:main` suffix the forward helper never produces — parses to
+ * `{ baseKey: key, homeId: MAIN_HOME_ID }`, i.e. an ordinary exact settings
+ * key. Never throws. Splits on the first `:` — base keys never contain a
+ * colon, so home ids containing `:` still round-trip.
+ */
+export const parseHomeScopedSettingsKey = (key: string): { baseKey: string; homeId: string } => {
+  const separatorIndex = key.indexOf(':');
+  if (separatorIndex !== -1) {
+    const baseKey = key.slice(0, separatorIndex);
+    const homeId = key.slice(separatorIndex + 1);
+    if (homeId !== '' && homeId !== MAIN_HOME_ID && HOME_SCOPABLE_BASE_KEYS.has(baseKey)) {
+      return { baseKey, homeId };
+    }
+  }
+  return { baseKey: key, homeId: MAIN_HOME_ID };
+};
 export const POWER_SOURCE = 'power_source';
 // Explicit whole-home meter for the homey_energy power source. Device id
 // string; absent/empty = automatic (Homey's marked whole-home cumulative

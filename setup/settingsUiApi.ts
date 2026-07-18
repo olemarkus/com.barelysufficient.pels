@@ -31,7 +31,7 @@ import { formatSmartTaskDeadlineLong } from '../packages/shared-domain/src/smart
 import { scheduledHoursIncludeCurrentHour } from '../packages/shared-domain/src/planStarvation';
 import { hasMaterialExhibitedExport } from '../packages/shared-domain/src/solar/exhibitedExport';
 import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../lib/utils/settingsUiBootstrapKeys';
-import { DEFERRED_OBJECTIVES_SETTINGS } from '../lib/utils/settingsKeys';
+import { DEFERRED_OBJECTIVES_SETTINGS, POWER_TRACKER_STATE } from '../lib/utils/settingsKeys';
 import { readAllObjectives } from '../lib/objectives/deferredObjectives/objectiveStore';
 import type { DeferredObjectiveSettingsV1 } from '../lib/objectives/deferredObjectives/settings';
 import type {
@@ -151,7 +151,7 @@ const getSettingsUiPlan = ({ homey }: ApiContext): SettingsUiPlanSnapshot | null
 
 const getSettingsUiPower = ({ homey }: ApiContext): SettingsUiPowerPayload => {
   const tracker = getPowerTrackerForUiFromApp(homey)
-    ?? (homey.settings.get('power_tracker_state') as PowerTrackerState | null);
+    ?? (homey.settings.get(POWER_TRACKER_STATE) as PowerTrackerState | null);
   const status = homey.settings.get('pels_status') as {
     headroomKw?: number;
     lastPowerUpdate?: number | null;
@@ -230,7 +230,7 @@ export const buildSettingsUiBootstrap = async ({ homey }: ApiContext): Promise<S
 export const getSettingsUiDevicesPayload = ({ homey }: ApiContext): SettingsUiDevicesPayload => {
   const candidates = getRawSettingsUiDeviceCandidates({ homey });
   const tracker = getPowerTrackerForUiFromApp(homey)
-    ?? (homey.settings.get('power_tracker_state') as PowerTrackerState | null);
+    ?? (homey.settings.get(POWER_TRACKER_STATE) as PowerTrackerState | null);
   return {
     // Auto-tracked observe-only role devices are force-managed in the backend snapshot for
     // telemetry, but the user never opted into managing them and cannot control them — they

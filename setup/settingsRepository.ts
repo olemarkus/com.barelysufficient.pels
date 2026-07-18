@@ -9,7 +9,7 @@ import {
 } from '../lib/device/transport/flowReportedCapabilities';
 import type { PowerTrackerState } from '../packages/contracts/src/powerTrackerTypes';
 import { isPowerTrackerState, sanitizePowerTrackerSolarFields } from '../lib/utils/appTypeGuards';
-import { FLOW_REPORTED_DEVICE_CAPABILITIES } from '../lib/utils/settingsKeys';
+import { FLOW_REPORTED_DEVICE_CAPABILITIES, POWER_TRACKER_STATE } from '../lib/utils/settingsKeys';
 
 /**
  * Typed settings reads + writes that touch persisted Homey state owned by
@@ -36,7 +36,7 @@ export class SettingsRepository {
    */
   loadPowerTrackerState(): PowerTrackerState | undefined {
     const stored = sanitizePowerTrackerSolarFields(
-      this.homey.settings.get('power_tracker_state') as unknown,
+      this.homey.settings.get(POWER_TRACKER_STATE) as unknown,
     );
     return isPowerTrackerState(stored) ? stored : undefined;
   }
