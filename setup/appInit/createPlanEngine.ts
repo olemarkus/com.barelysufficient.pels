@@ -2,9 +2,9 @@ import { buildDeviceActuator } from './buildDeviceActuator';
 import { requireDeviceManager } from './contextGuards';
 import { PlanEngine as PlanEngineClass } from '../../lib/plan/planEngine';
 import { isDeviceObservationStale } from '../../lib/observer/observationFreshness';
-import { CAPACITY_IN_SHORTFALL, DEVICE_LAST_CONTROLLED_MS } from '../../lib/utils/settingsKeys';
 import type { DeviceDiagnosticsRecorder } from '../../lib/diagnostics/deviceDiagnosticsService';
 import type { AppContext } from '../../lib/app/appContext';
+import type { HomeScope } from '../homeRuntime/homeScope';
 import {
   DeferredObjectiveDecorationController,
   migrateBlobToPerKeyIfNeeded,
@@ -12,7 +12,7 @@ import {
 } from '../../lib/objectives/deferredObjectives';
 import { createObjectivePriceHorizonBuilder } from './objectivePriceHorizon';
 
-export function createPlanEngine(ctx: AppContext) {
+export function createPlanEngine(ctx: AppContext, scope: HomeScope) {
   // Smart-task controller: lives in the app-wiring layer so the planner engine
   // (lib/plan) imports nothing from lib/objectives. The engine receives only the
   // opaque `decorateDeferredObjectives` function below, keeping the planner — and
@@ -30,9 +30,9 @@ export function createPlanEngine(ctx: AppContext) {
       ctx.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot() ?? null
     ),
     getTimeZone: () => ctx.getTimeZone(),
-    getPowerTracker: () => ctx.powerTracker,
+    getPowerTracker: scope.getPowerTracker,
     getPriceOptimizationEnabled: () => ctx.priceOptimizationEnabled,
-    getHardCapKw: () => ctx.capacitySettings.limitKw,
+    getHardCapKw: () => scope.getCapacitySettings().limitKw,
     // Allocation-horizon price source, resolved from the price layer; shared
     // single source of truth so the objectives subsystem stays free of `lib/price`.
     buildPriceHorizon: createObjectivePriceHorizonBuilder(ctx),
@@ -50,8 +50,8 @@ export function createPlanEngine(ctx: AppContext) {
 
   return new PlanEngineClass({
     homey: ctx.homey,
-    setCapacityInShortfall: (inShortfall) => ctx.homey.settings.set(CAPACITY_IN_SHORTFALL, inShortfall),
-    persistLastControlledMs: (lastControlledMs) => ctx.homey.settings.set(DEVICE_LAST_CONTROLLED_MS, lastControlledMs),
+    setCapacityInShortfall: scope.setCapacityInShortfall,
+    persistLastControlledMs: scope.persistLastControlledMs,
     deviceManager,
     getObservedState: (deviceId) => ctx.getObservedState(deviceId),
     // Observer-resolved per-device staleness for the diagnostics freshness gate
@@ -63,9 +63,9 @@ export function createPlanEngine(ctx: AppContext) {
       return observed !== undefined && isDeviceObservationStale(observed);
     },
     actuator,
-    getCapacityGuard: () => ctx.capacityGuard,
-    getCapacitySettings: () => ctx.capacitySettings,
-    getCapacityDryRun: () => ctx.capacityDryRun,
+    getCapacityGuard: scope.getCapacityGuard,
+    getCapacitySettings: scope.getCapacitySettings,
+    getCapacityDryRun: scope.getCapacityDryRun,
     getOperatingMode: () => ctx.operatingMode,
     getModeDeviceTargets: () => ctx.modeDeviceTargets,
     getPriceOptimizationEnabled: () => ctx.priceOptimizationEnabled,
@@ -77,8 +77,8 @@ export function createPlanEngine(ctx: AppContext) {
     // (`wireCurtailmentSurplus`), after this engine exists — until then the
     // context getter reads null (fail-closed).
     getInferredSurplusKw: () => ctx.getCurtailedSurplusKw?.() ?? null,
-    getPowerTracker: () => ctx.powerTracker,
-    getDailyBudgetSnapshot: () => ctx.dailyBudgetService?.getSnapshot() ?? null,
+    getPowerTracker: scope.getPowerTracker,
+    getDailyBudgetSnapshot: scope.getDailyBudgetSnapshot,
     decorateDeferredObjectives: (input) => deferredObjectiveController.decorate(input),
     getPriorityForDevice: (deviceId) => ctx.getPriorityForDevice(deviceId),
     getShedBehavior: (deviceId) => ctx.getShedBehavior(deviceId),
