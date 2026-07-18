@@ -18,6 +18,7 @@ import type { StructuredDebugEmitter } from '../../logging/logger';
 import type { BinarySettleState } from '../../observer/binarySettle';
 import type { LiveDevicePowerWatts } from '../managerEnergy';
 import type { DeviceFetchResult } from './managerFetch';
+import type { ZoneTreeCache } from './zoneTreeCache';
 import type { PowerEstimateState } from '../devicePowerEstimate';
 import type { DeviceMeasuredPowerResolver } from '../measuredPowerResolver';
 import type { DeviceTransportObservationState } from './managerObservation';
@@ -122,6 +123,11 @@ export type TransportContext = {
   setLastSnapshotRefreshMetricsKey(value: string | null): void;
   getLatestRawDevices(): HomeyDeviceLike[];
   setLatestRawDevices(devices: HomeyDeviceLike[]): void;
+  // Zone-tree cache + fetch-generation guard, owned by the leaf. Only a
+  // SUCCESSFUL fetch that is still the latest generation commits — a failed
+  // fetch resolves `null` in the pipeline and leaves the cached tree untouched
+  // (abandon-grace); a superseded fetch drops its result (`zoneTreeCache.ts`).
+  readonly zoneTreeCache: ZoneTreeCache;
   getTrackedDevicesById(): Map<string, HomeyDeviceLike>;
   // Fetch seams routed through the leaf's instance methods so a test spy on
   // `DeviceTransport.fetchDevicesForSnapshot` is honored.

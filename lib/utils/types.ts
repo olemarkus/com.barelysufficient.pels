@@ -113,7 +113,10 @@ export type HomeyDeviceLike = {
     available?: boolean;
     ready?: boolean;
     unavailableMessage?: string | null;
-    zone?: { name?: string } | string;
+    // The local Web API REST payload carries `zone` as the zone-id STRING;
+    // homey-api-shaped objects carry `{ id, name }`. Both shapes are sourced
+    // at the parse boundary (`resolveZoneLabel` / `resolveZoneId`).
+    zone?: { id?: string; name?: string } | string;
     zoneName?: string;
 };
 

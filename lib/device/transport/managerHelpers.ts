@@ -60,6 +60,27 @@ export const resolveDeviceLabel = (device: HomeyDeviceLike, deviceId: string): s
   `${device.name} (${deviceId})`
 );
 
+/**
+ * Zone IDENTITY (uuid), distinct from the display label above. On the local
+ * Web API REST payload `device.zone` is the zone-id STRING; homey-api-shaped
+ * objects carry `{ id, name }`. Boundary validation: only a non-empty string
+ * id crosses inward; anything else resolves to flat `undefined` (no consumer
+ * reads this yet — multi-home membership will join it against the zone tree).
+ */
+export const resolveZoneId = (device: HomeyDeviceLike): string | undefined => {
+  const zone = device.zone;
+  if (typeof zone === 'string' && zone) {
+    return zone;
+  }
+  if (zone && typeof zone === 'object') {
+    const id = (zone as { id?: unknown }).id;
+    if (typeof id === 'string' && id) {
+      return id;
+    }
+  }
+  return undefined;
+};
+
 export const resolveZoneLabel = (device: HomeyDeviceLike): string => {
   const zone = device.zone;
   if (zone && typeof zone === 'object' && 'name' in zone) {

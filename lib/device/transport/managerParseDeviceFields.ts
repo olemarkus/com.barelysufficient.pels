@@ -9,6 +9,7 @@ import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike, Logger } from '../../utils/types';
 import {
     getCapabilities,
+    resolveZoneId,
     resolveZoneLabel,
 } from './managerHelpers';
 import { estimatePower, type PowerEstimateState } from '../devicePowerEstimate';
@@ -391,6 +392,7 @@ function buildParsedDeviceSnapshot(params: {
         measuredPowerKw: powerEstimate.measuredPowerKw,
         measuredPowerObservedAtMs,
         zone: resolveZoneLabel(device),
+        zoneId: resolveZoneId(device),
         capabilities,
         controlAdapter,
         controlWriteCapabilityId,

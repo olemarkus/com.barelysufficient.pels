@@ -39,6 +39,7 @@ import {
   type DeviceFetchSource,
   type LivePowerReport,
 } from './managerFetch';
+import { fetchZoneTree } from './managerZones';
 import { getLogger } from '../../logging/logger';
 import { normalizeError } from '../../utils/errorUtils';
 import {
@@ -447,6 +448,48 @@ export function computePeriodicStatusMetrics(
     };
 }
 
+// Zone tree rides the same refresh cycle (no timer of its own), fired
+// DETACHED after the snapshot commit so it can never stall the device
+// pipeline or its callers. `fetchZoneTree` never throws or rejects — the
+// fire-and-forget can't surface an unhandled rejection; a failed/junk/empty
+// read resolves `null` and the cached tree — like the snapshot on that path —
+// stays untouched (abandon-grace).
+async function refreshZoneTreeCache(ctx: TransportContext): Promise<void> {
+    const generation = ctx.zoneTreeCache.bumpGeneration();
+    const zoneTree = await fetchZoneTree({ logger: ctx.logger });
+    if (zoneTree === null) return;
+    // Generation guard: detached fetches can resolve out of order — commit
+    // only if newer than the last COMMITTED generation. A stale fetch
+    // resolving after a newer commit drops, but a superseded-yet-fresher
+    // result still lands when the newer fetch failed and committed nothing.
+    if (generation <= ctx.zoneTreeCache.getLastCommittedGeneration()) {
+        ctx.logger.debug({
+            event: 'zone_tree_fetch_superseded',
+            generation,
+            lastCommittedGeneration: ctx.zoneTreeCache.getLastCommittedGeneration(),
+        });
+        return;
+    }
+    ctx.zoneTreeCache.set(zoneTree, generation);
+}
+
+// Live-power half of the refresh inputs: the report feeds per-device parse
+// attribution; the sample (null when live power is skipped) is the caller's
+// home-power return value.
+async function resolveLivePowerForRefresh(
+    ctx: TransportContext,
+    includeLivePower: boolean,
+): Promise<{
+    livePowerReport: LivePowerReport;
+    homePowerSample: { powerW: number; generationW?: number } | null;
+}> {
+    const livePowerReport = includeLivePower
+        ? await fetchLivePowerReport(ctx)
+        : buildEmptyLivePowerReport();
+    const homePowerSample = includeLivePower ? updateHomePowerFromReport(ctx, livePowerReport) : null;
+    return { livePowerReport, homePowerSample };
+}
+
 export async function refreshSnapshot(
     ctx: TransportContext,
     options: { includeLivePower?: boolean; targetedRefresh?: boolean } = {},
@@ -459,11 +502,10 @@ export async function refreshSnapshot(
         const fetchResult = await fetchDevicesForSnapshotRefresh(ctx, isTargetedRefresh);
         if (!fetchResult) return null;
         const { devices: list, fetchSource, failedIds } = fetchResult;
-        const shouldReadLivePower = options.includeLivePower !== false;
-        const livePowerReport = shouldReadLivePower
-            ? await fetchLivePowerReport(ctx)
-            : buildEmptyLivePowerReport();
-        const homePowerSample = shouldReadLivePower ? updateHomePowerFromReport(ctx, livePowerReport) : null;
+        const { livePowerReport, homePowerSample } = await resolveLivePowerForRefresh(
+            ctx,
+            options.includeLivePower !== false,
+        );
         const effectiveList = observeBatteryStateFromList(
             ctx,
             list.map((device) => ctx.applyDeviceDriverOverride(device)),
@@ -532,6 +574,19 @@ export async function refreshSnapshot(
             previousSnapshot,
             nextSnapshot: snapshot,
         });
+        // DETACHED on purpose (fire-and-forget): the zone tree rides the
+        // refresh cycle but must never gate it — even a tail-position await
+        // would hold the refreshSnapshot PROMISE (post-write/post-actuation
+        // callers, the coalesced refresh queue) for up to the REST timeout
+        // when a degraded zones read hangs after a healthy device fetch.
+        // The detach is safe: `fetchZoneTree` never throws or rejects,
+        // `setZoneTree` is a whole-tree last-writer-wins replacement, and
+        // refresh cycles are serialized by the coalescing guard, so a dangling
+        // fetch racing the next cycle's commit is benign for this dormant,
+        // eventually-consistent cache. Still fired only after a successful
+        // device fetch + committed snapshot; the grace-deferred empty-read
+        // path above skips it for the cycle (a degraded blip already).
+        void refreshZoneTreeCache(ctx);
         return homePowerSample;
     } finally {
         stopSpan();

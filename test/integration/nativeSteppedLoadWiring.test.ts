@@ -1082,7 +1082,12 @@ describe('native stepped-load wiring', () => {
       );
 
       await deviceManager.refreshSnapshot({ includeLivePower: false });
-      expect(get).toHaveBeenCalledTimes(1);
+      // The refresh cycle owns its GETs (device list + the piggybacked zone
+      // tree); the invariant under test is that the COMMAND path below adds
+      // none, so anchor on the post-refresh count. The exact-budget pin makes
+      // a future third piggybacked per-refresh GET a conscious decision.
+      const refreshGetCalls = get.mock.calls.length;
+      expect(refreshGetCalls).toBe(2);
       get.mockRejectedValue(new Error('command path must not fetch devices'));
 
       await expect(deviceManager.requestSteppedLoadStep({
@@ -1094,7 +1099,7 @@ describe('native stepped-load wiring', () => {
       }))
         .resolves.toEqual({ requested: true, transport: 'native_capability' });
 
-      expect(get).toHaveBeenCalledTimes(1);
+      expect(get).toHaveBeenCalledTimes(refreshGetCalls);
       expect(put).toHaveBeenCalledWith(
         'manager/devices/device/hoiax-1/capability/max_power_3000',
         { value: '2' },
