@@ -15,11 +15,11 @@ import {
   stopFlowPowerSampleFreshnessClock,
   syncFlowPowerSampleFreshnessClock,
 } from './flowPowerSampleFreshnessClock';
+import { createCapacitySettingsStore } from './capacitySettingsStoreAdapter';
 import {
   isDeviceControlProfiles,
   isBooleanMap,
   isCommunicationModelMap,
-  isFiniteNumber,
   isModeDeviceTargets,
   isPrioritySettings,
   isStringMap,
@@ -30,9 +30,6 @@ import { normalizeDeviceTargetPowerConfigs } from '../lib/utils/targetPowerConfi
 import { normalizeModePriorities } from '../packages/shared-domain/src/modePriorities';
 import {
   BUDGET_EXEMPT_DEVICES,
-  CAPACITY_DRY_RUN,
-  CAPACITY_LIMIT_KW,
-  CAPACITY_MARGIN_KW,
   DEVICE_CONTROL_PROFILES,
   DEVICE_COMMUNICATION_MODELS,
   DEVICE_DRIVER_OVERRIDES,
@@ -40,6 +37,7 @@ import {
   EV_BOOST_SETTINGS,
   NATIVE_EV_WIRING_DEVICES,
   CONTROLLABLE_DEVICES,
+  MAIN_HOME_ID,
   MANAGED_DEVICES,
   OPERATING_MODE_SETTING,
   OVERSHOOT_BEHAVIORS,
@@ -74,13 +72,15 @@ export function buildCapacitySettingsSnapshot(params: {
   current: CapacitySettingsSnapshot;
 }): CapacitySettingsSnapshot {
   const { settings, current } = params;
-  const limit = settings.get(CAPACITY_LIMIT_KW) as unknown;
-  const margin = settings.get(CAPACITY_MARGIN_KW) as unknown;
+  const capacityScalars = createCapacitySettingsStore(settings, MAIN_HOME_ID, () => ({
+    limitKw: current.capacitySettings.limitKw,
+    marginKw: current.capacitySettings.marginKw,
+    dryRun: current.capacityDryRun,
+  })).read();
   const modeRaw = settings.get(OPERATING_MODE_SETTING) as unknown;
   const modeAliases = settings.get('mode_aliases') as unknown;
   const priorities = settings.get('capacity_priorities') as unknown;
   const modeTargets = settings.get('mode_device_targets') as unknown;
-  const dryRun = settings.get(CAPACITY_DRY_RUN) as unknown;
   const deviceFlags = readDeviceFlagSettings({ settings, current });
   const deviceSettings = readDeviceControlSettings({ settings, current });
   const deviceOverrides = readDeviceOverrideSettings({ settings, current });
@@ -90,8 +90,8 @@ export function buildCapacitySettingsSnapshot(params: {
   const rawEvBoostSettings = settings.get(EV_BOOST_SETTINGS) as unknown;
 
   const nextCapacity = {
-    limitKw: isFiniteNumber(limit) ? limit : current.capacitySettings.limitKw,
-    marginKw: isFiniteNumber(margin) ? margin : current.capacitySettings.marginKw,
+    limitKw: capacityScalars.limitKw,
+    marginKw: capacityScalars.marginKw,
   };
 
   const nextAliases = isStringMap(modeAliases)
@@ -112,7 +112,7 @@ export function buildCapacitySettingsSnapshot(params: {
     isPrioritySettings(priorities) ? priorities : current.capacityPriorities,
   );
   const nextTargets = isModeDeviceTargets(modeTargets) ? modeTargets : current.modeDeviceTargets;
-  const nextDryRun = typeof dryRun === 'boolean' ? dryRun : current.capacityDryRun;
+  const nextDryRun = capacityScalars.dryRun;
   const nextBehaviors = normalizeShedBehaviorsHelper(rawShedBehaviors as Record<string, ShedBehavior> | undefined);
 
   return {

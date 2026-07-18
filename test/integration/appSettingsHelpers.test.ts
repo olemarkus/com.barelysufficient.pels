@@ -8,7 +8,9 @@ import type { ShedAction } from '../../lib/plan/planTypes';
 import type { DebugLoggingTopic } from '../../packages/shared-domain/src/utils/debugLogging';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import {
+  CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
+  CAPACITY_MARGIN_KW,
   DEVICE_DRIVER_OVERRIDES,
   DEVICE_TARGET_POWER_CONFIGS,
 } from '../../lib/utils/settingsKeys';
@@ -218,6 +220,26 @@ describe('initSettingsHandlerForApp', () => {
 });
 
 describe('buildCapacitySettingsSnapshot', () => {
+  it('resolves capacity scalars per field through the home-scoped store', () => {
+    const settings = {
+      get: vi.fn((key: string) => {
+        if (key === CAPACITY_LIMIT_KW) return 8; // valid → wins
+        if (key === CAPACITY_MARGIN_KW) return 'oops'; // junk → last-good
+        if (key === CAPACITY_DRY_RUN) return 'yes'; // junk → last-good
+        if (key === `${CAPACITY_LIMIT_KW}:cabin`) return 99; // suffixed decoy → invisible
+        return undefined;
+      }),
+    };
+
+    const next = buildCapacitySettingsSnapshot({
+      settings: settings as never,
+      current: buildCapacitySnapshot(),
+    });
+
+    expect(next.capacitySettings).toEqual({ limitKw: 8, marginKw: 0.5 });
+    expect(next.capacityDryRun).toBe(false);
+  });
+
   it('resolves a loaded set of devices to unique, deterministic priority per mode', () => {
     // Persisted payload is intentionally corrupt: duplicate priorities (a/b
     // both 5), a gap (jumps to 9), and an unordered key sequence.

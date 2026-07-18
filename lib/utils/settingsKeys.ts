@@ -1,6 +1,18 @@
 export const CAPACITY_LIMIT_KW = 'capacity_limit_kw';
 export const CAPACITY_MARGIN_KW = 'capacity_margin_kw';
 export const CAPACITY_DRY_RUN = 'capacity_dry_run';
+// Canonical id of the primary home. The main home keeps the historical
+// unsuffixed settings keys; additional homes (multi-home train) scope their
+// keys via `homeScopedSettingsKey`. The home domain proper lands in a sibling
+// PR — its main-home id is this same value by design.
+export const MAIN_HOME_ID = 'main';
+/**
+ * Scope a base settings key to a home: the main home reads the historical
+ * unsuffixed key unchanged; any other home reads `<baseKey>:<homeId>`.
+ */
+export const homeScopedSettingsKey = (baseKey: string, homeId: string): string => (
+  homeId === MAIN_HOME_ID ? baseKey : `${baseKey}:${homeId}`
+);
 export const POWER_SOURCE = 'power_source';
 export const OPERATING_MODE_SETTING = 'operating_mode';
 export const MANAGED_DEVICES = 'managed_devices';
