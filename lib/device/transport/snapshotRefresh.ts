@@ -336,7 +336,13 @@ export async function fetchDevicesForDebug(ctx: TransportContext): Promise<Homey
 }
 
 export async function fetchLivePowerReport(ctx: TransportContext): Promise<LivePowerReport> {
-    return fetchLivePowerReportFromSdk({ logger: ctx.logger, debugStructured: ctx.debugStructured });
+    // Resolved here (the producer seam) so both callers — the 10s homey_energy
+    // poll and the snapshot-refresh implicit sample — honour the selection.
+    return fetchLivePowerReportFromSdk({
+        logger: ctx.logger,
+        debugStructured: ctx.debugStructured,
+        meterDeviceId: ctx.providers.getHomeyEnergyMeterDeviceId?.() ?? null,
+    });
 }
 
 export function updateHomePowerFromReport(

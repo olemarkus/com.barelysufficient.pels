@@ -35,6 +35,7 @@ import {
   OVERSHOOT_BEHAVIORS,
   TEMPERATURE_BOOST_SETTINGS,
   OPERATING_MODE_SETTING,
+  HOMEY_ENERGY_METER_DEVICE_ID,
   POWER_SOURCE,
   PRICE_OPTIMIZATION_ENABLED,
   PRICE_OPTIMIZATION_SETTINGS,
@@ -415,6 +416,7 @@ function buildPriceSettingsHandlers(
       void scheduleDailyBudgetPriceSync();
     },
     [POWER_SOURCE]: async () => handlePowerSourceChange(deps),
+    [HOMEY_ENERGY_METER_DEVICE_ID]: async () => handleHomeyEnergyMeterChange(deps),
     [PRICE_OPTIMIZATION_ENABLED]: async () => {
       deps.updatePriceOptimizationEnabled(true);
       deps.updateDailyBudgetState(FORCE_DAILY_BUDGET_STATE_PERSIST);
@@ -488,6 +490,15 @@ async function handleCapacityLimitChange(deps: SettingsHandlerDeps): Promise<voi
 async function handleDailyBudgetPriceChange(deps: SettingsHandlerDeps): Promise<void> {
   deps.updateDailyBudgetState(FORCE_DAILY_BUDGET_STATE_PERSIST);
   await rebuildPlanFromSettings(deps, 'daily_budget_price');
+}
+
+async function handleHomeyEnergyMeterChange(deps: SettingsHandlerDeps): Promise<void> {
+  settingsLogger.info({ event: 'homey_energy_meter_changed' });
+  // The meter id is read fresh per poll, so no restart is strictly required —
+  // but restart's immediate pollNow() surfaces the new meter's reading within
+  // seconds instead of up to 10s. No-ops unless the source is homey_energy.
+  deps.restartHomeyEnergyPoll?.();
+  await rebuildPlanFromSettings(deps, 'homey_energy_meter');
 }
 
 async function handlePowerSourceChange(deps: SettingsHandlerDeps): Promise<void> {

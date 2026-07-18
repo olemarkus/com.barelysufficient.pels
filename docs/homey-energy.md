@@ -59,6 +59,11 @@ Homey Energy already knows your total home consumption. Instead of creating a Fl
 
 PELS starts polling every 10 seconds. The Overview tab should show live power data within moments.
 
+By default PELS reads the meter marked **Tracks total home energy consumption**
+in Homey Energy. If you'd rather point PELS at a specific meter — or no meter
+carries that marking — pick one in the **Whole-home meter** selector that
+appears below **Power source**. **Automatic** restores the default behaviour.
+
 ### Per-device energy reporting
 
 Homey Energy is also the source of per-device energy reporting. Some devices report their own power directly; others rely on Homey's estimated usage and the values configured in the device's **Energy** settings. PELS reads from the same place Homey does — fix a wrong Energy value in Homey once and both surfaces update.
@@ -67,7 +72,11 @@ If a device's energy data looks off, the canonical fix is in Homey's **Energy** 
 
 ### Requirements
 
-Your power meter must be paired with Homey and have **Tracks total home energy consumption** enabled in its device settings. This is the same cumulative reading Homey shows as "Total home consumption" in the Energy dashboard.
+Your power meter must be paired with Homey. With **Whole-home meter** on
+**Automatic**, it must also have **Tracks total home energy consumption**
+enabled in its device settings — the same cumulative reading Homey shows as
+"Total home consumption" in the Energy dashboard. If you select the meter
+directly instead, the marking is not required.
 
 Common meters that work: Tibber Pulse, P1/HAN readers, Shelly EM, or any device Homey recognizes as a whole-home energy tracker.
 

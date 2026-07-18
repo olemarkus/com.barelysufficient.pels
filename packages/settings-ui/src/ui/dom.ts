@@ -19,6 +19,8 @@ export type MdFilledTextFieldElement = HTMLElement & {
 export type MdFilledSelectElement = HTMLElement & {
   value: string;
   disabled: boolean;
+  /** Whether the select's menu is currently open (md-select property). */
+  open: boolean;
 };
 
 
@@ -102,6 +104,12 @@ export const settingsCapacityMarginAlert = document.querySelector(
 ) as HTMLElement | null;
 export const settingsPowerSourceSelect = document.querySelector(
   '#settings-power-source',
+) as MdFilledSelectElement | null;
+export const settingsHomeyEnergyMeterField = document.querySelector(
+  '#settings-homey-energy-meter-field',
+) as HTMLElement | null;
+export const settingsHomeyEnergyMeterSelect = document.querySelector(
+  '#settings-homey-energy-meter',
 ) as MdFilledSelectElement | null;
 export const settingsSimulationModeInput = document.querySelector(
   '#settings-simulation-mode',

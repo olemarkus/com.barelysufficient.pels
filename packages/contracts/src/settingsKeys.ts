@@ -2,6 +2,11 @@ export const CAPACITY_LIMIT_KW = 'capacity_limit_kw';
 export const CAPACITY_MARGIN_KW = 'capacity_margin_kw';
 export const CAPACITY_DRY_RUN = 'capacity_dry_run';
 export const POWER_SOURCE = 'power_source';
+// Explicit whole-home meter for the homey_energy power source. Device id
+// string; absent/empty = automatic (Homey's marked whole-home cumulative
+// item). Mirror of HOMEY_ENERGY_METER_DEVICE_ID in lib/utils/settingsKeys.ts —
+// keep both in sync (the settings UI can't import lib).
+export const HOMEY_ENERGY_METER_DEVICE_ID = 'homey_energy_meter_device_id';
 export const OPERATING_MODE_SETTING = 'operating_mode';
 export const MANAGED_DEVICES = 'managed_devices';
 export const CONTROLLABLE_DEVICES = 'controllable_devices';

@@ -598,6 +598,21 @@ describe('createSettingsHandler', () => {
     expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith('settings:power_source');
   });
 
+  it('restarts the poll and rebuilds the plan when the whole-home meter changes', async () => {
+    const deps = buildDeps();
+    const handler = createSettingsHandler(deps);
+
+    await handler('homey_energy_meter_device_id');
+
+    expect(settingsLoggerInfo).toHaveBeenCalledWith(expect.objectContaining({ event: 'homey_energy_meter_changed' }));
+    expect(deps.restartHomeyEnergyPoll).toHaveBeenCalled();
+    // Unlike a power-source change, the flow freshness clock and snapshot are
+    // untouched — the source itself did not change.
+    expect(deps.stopFlowPowerSampleFreshnessClock).not.toHaveBeenCalled();
+    expect(deps.refreshTargetDevicesSnapshot).not.toHaveBeenCalled();
+    expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith('settings:homey_energy_meter');
+  });
+
   it('resets daily budget learning and clears the reset flag', async () => {
     const deps = buildDeps();
     const handler = createSettingsHandler(deps);

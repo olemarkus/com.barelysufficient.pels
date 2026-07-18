@@ -115,9 +115,13 @@ Idle, Manual, and more) means.
 
 PELS plans on a live whole-home power reading. If the Overview shows nothing:
 
-- **Using Homey Energy?** Confirm your meter has *Tracks total home energy
-  consumption* enabled and that **Power source** is set to **Homey Energy**
-  (Settings → Limits & safety). See [Using Homey Energy](/homey-energy).
+- **Using Homey Energy?** Confirm **Power source** is set to **Homey Energy**
+  (Settings → Limits & safety), and that your meter either has **Tracks total
+  home energy consumption** enabled or is selected directly under
+  **Whole-home meter**. See [Using Homey Energy](/homey-energy).
+- **Selected a specific meter?** Check that it is available and still reporting
+  power in Homey Energy — a selected meter that stops reporting is never
+  silently replaced by another one.
 - **Using a Flow?** Make sure a Flow calls **Report power usage** (in watts)
   every time your meter updates.
 

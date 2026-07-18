@@ -23,6 +23,12 @@ export type HomeyEnergyPowerSample = {
  */
 export class HomeyEnergyPollSource {
   private pollInterval?: ReturnType<typeof setInterval>;
+  // Bumped on every (re)start. A poll that was already awaiting the SDK when
+  // the configuration changed (e.g. a new whole-home meter selection triggers
+  // a restart) resolved its inputs before the read — recording it afterwards
+  // would write the previous meter's watts over the fresh sample, so stale
+  // generations are discarded instead.
+  private pollGeneration = 0;
 
   constructor(private readonly deps: {
     getPowerSource: () => PowerSource;
@@ -34,6 +40,7 @@ export class HomeyEnergyPollSource {
   }) {}
 
   start(): void {
+    this.pollGeneration += 1;
     if (this.pollInterval) {
       this.deps.timers.clear('homeyEnergyPoll');
       this.pollInterval = undefined;
@@ -60,7 +67,12 @@ export class HomeyEnergyPollSource {
   }
 
   async pollNow(): Promise<void> {
+    const generation = this.pollGeneration;
     const sample = await this.deps.pollHomePower();
+    if (generation !== this.pollGeneration) {
+      this.deps.debugStructured({ event: 'homey_energy_poll_discarded_stale' });
+      return;
+    }
     if (this.deps.getPowerSource() !== 'homey_energy') return;
 
     if (sample) {

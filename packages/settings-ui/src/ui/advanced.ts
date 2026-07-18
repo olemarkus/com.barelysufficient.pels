@@ -40,7 +40,8 @@ type MaterialSelectOptionElement = HTMLElement & {
   typeaheadText: string;
 };
 
-const createSelectOption = (value: string, label: string, selected = false): MaterialSelectOptionElement => {
+// Exported for other dynamic-list pickers (e.g. the whole-home meter select).
+export const createSelectOption = (value: string, label: string, selected = false): MaterialSelectOptionElement => {
   const option = document.createElement('md-select-option') as MaterialSelectOptionElement;
   option.value = value;
   option.setAttribute('value', value);

@@ -25,7 +25,7 @@ import {
   createCalibrationSnapshotMutationHook,
 } from '../lib/device/devicePowerCalibrationStore';
 import { isNumberMap } from '../lib/utils/appTypeGuards';
-import { DEVICE_LAST_CONTROLLED_MS } from '../lib/utils/settingsKeys';
+import { DEVICE_LAST_CONTROLLED_MS, HOMEY_ENERGY_METER_DEVICE_ID } from '../lib/utils/settingsKeys';
 import { isStateOfChargeCapabilityId } from '../lib/device/transport/stateOfCharge';
 import { incPerfCounters } from '../lib/utils/perfCounters';
 import {
@@ -77,6 +77,16 @@ const SNAPSHOT_WARMUP_TIMEOUT_MS = process.env.NODE_ENV === 'test' ? 0 : 5_000;
 // after startup (or a degraded-startup empty snapshot) are picked up without a
 // restart. No-op unless the verdict changed.
 const NATIVE_WIRING_REQUERY_INTERVAL_MS = 30 * 60 * 1000;
+
+// Resolved explicit whole-home meter id for the homey_energy power source;
+// null = automatic (Homey's marked whole-home cumulative item). Read fresh per
+// call so the 10s poll picks up a changed selection without a transport
+// restart; trimmed so a padded id can't silently match no report item.
+const resolveHomeyEnergyMeterDeviceId = (homey: Homey.App['homey']): string | null => {
+  const raw: unknown = homey.settings.get(HOMEY_ENERGY_METER_DEVICE_ID);
+  const trimmed = typeof raw === 'string' ? raw.trim() : '';
+  return trimmed === '' ? null : trimmed;
+};
 
 /**
  * Dependencies for {@link AppServiceWiring}. Service handles the wider app also
@@ -343,12 +353,16 @@ export class AppServiceWiring {
     // emitter subscription reads the projection getter at event time, so
     // reassigning the field is sufficient.
     this.deps.setObservedDeviceStateProjection(new ObservedDeviceStateProjection());
+    // Bound here instead of via a constructor dep so the app.ts wiring literal
+    // stays untouched; same resolver instance the transport providers use.
+    ctx.snapshotHelpers.bindHomeyEnergyMeterResolver(() => resolveHomeyEnergyMeterDeviceId(ctx.homey));
     const deviceManager = new DeviceTransport(this.deps.homeyApp, {
       log: ctx.log.bind(ctx),
       debug: (...args: unknown[]) => ctx.logDebug('devices', ...args),
       error: ctx.error.bind(ctx),
       structuredLog,
     }, {
+      getHomeyEnergyMeterDeviceId: () => resolveHomeyEnergyMeterDeviceId(ctx.homey),
       getPriority: (id) => ctx.getPriorityForDevice(id),
       getControllable: (id) => ctx.isCapacityControlEnabled(id),
       getManaged: (id) => ctx.resolveManagedState(id),

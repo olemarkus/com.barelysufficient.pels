@@ -1352,14 +1352,15 @@
   const apiHandlers = {
     'GET /daily_budget': () => resolveDailyBudgetPayload(),
     'GET /homey_devices': () => {
-      // Used by advanced device logger/cleanup and the Weather insight pickers
-      // (which filter on hasTemperature). Mirrors the api.ts homey_devices shape.
+      // Used by advanced device logger/cleanup, the Weather insight pickers
+      // (which filter on hasTemperature), and the whole-home meter picker
+      // (which filters on hasPower). Mirrors the api.ts homey_devices shape.
       return [
-        { id: 'dev_outdoor', name: 'Outdoor sensor', hasTemperature: true },
-        { id: 'dev_heatpump', name: 'Living Room Heat Pump', hasTemperature: true },
-        { id: 'dev_floorheat', name: 'Bathroom Floor Heat', hasTemperature: true },
-        { id: 'dev_waterheater', name: 'Water Heater', hasTemperature: false },
-        { id: 'dev_evcharger', name: 'Generic EV Charger', hasTemperature: false },
+        { id: 'dev_outdoor', name: 'Outdoor sensor', hasTemperature: true, hasPower: false },
+        { id: 'dev_heatpump', name: 'Living Room Heat Pump', hasTemperature: true, hasPower: true },
+        { id: 'dev_floorheat', name: 'Bathroom Floor Heat', hasTemperature: true, hasPower: true },
+        { id: 'dev_waterheater', name: 'Water Heater', hasTemperature: false, hasPower: true },
+        { id: 'dev_evcharger', name: 'Generic EV Charger', hasTemperature: false, hasPower: true },
       ];
     },
     'GET /ui_bootstrap': () => ({

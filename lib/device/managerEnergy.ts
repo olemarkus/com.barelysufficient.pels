@@ -27,6 +27,32 @@ export const extractLiveHomePowerWatts = (liveReport: unknown): number | null =>
 };
 
 /**
+ * Net grid power (W) for an explicitly selected whole-home meter, resolved
+ * from the same `manager/energy/live` payload. A device marked "Tracks total
+ * home energy consumption" in Homey Energy appears as a `cumulative` item
+ * carrying its real device id (and NOT as a `device` item); every other
+ * power-reporting device appears as a `device` item. So the selection matches
+ * `deviceId` across BOTH item types. Negative watts pass through (export —
+ * same net semantics as `extractLiveHomePowerWatts`). Returns `null` when the
+ * id is absent or its reading is non-finite — it NEVER falls back to the first
+ * cumulative item, because a silent fallback would mask a wrong or missing
+ * selection with another meter's data.
+ */
+export const extractLiveMeterPowerWatts = (liveReport: unknown, deviceId: string): number | null => {
+  const report = asRecord(liveReport);
+  if (!report || !Array.isArray(report.items)) return null;
+  for (const rawItem of report.items) {
+    const item = asRecord(rawItem);
+    if (!item || (item.type !== 'cumulative' && item.type !== 'device')) continue;
+    if (item.id !== deviceId) continue;
+    const values = asRecord(item.values);
+    const watts = toFiniteNumber(values?.W);
+    if (watts !== null) return watts;
+  }
+  return null;
+};
+
+/**
  * Gross PV generation in watts from the same `manager/energy/live` payload, or
  * `null` when no generation signal is present. PELS's whole-home `cumulative.W`
  * is NET grid power (consumption minus generation); to recover the authoritative

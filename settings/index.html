@@ -539,6 +539,13 @@
           </md-filled-select>
           <small class="field__hint">Where whole-home power readings come from.</small>
         </div>
+        <div class="field" id="settings-homey-energy-meter-field" hidden>
+          <span class="field__label pels-text-settings-label" id="settings-homey-energy-meter-label">Whole-home meter</span>
+          <md-filled-select id="settings-homey-energy-meter" name="settings_homey_energy_meter" aria-labelledby="settings-homey-energy-meter-label">
+            <md-select-option value="" selected><div slot="headline">Automatic</div></md-select-option>
+          </md-filled-select>
+          <small class="field__hint">Automatic uses the meter marked &ldquo;Tracks total home energy consumption&rdquo; in Homey Energy; pick a meter to read it directly.</small>
+        </div>
       </form>
     </section>
 
