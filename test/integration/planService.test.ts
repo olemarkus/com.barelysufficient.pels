@@ -1114,6 +1114,61 @@ describe('PlanService', () => {
     expect(realtime).not.toHaveBeenCalled();
   });
 
+  it('aborts the reconcile (no reapply) when the abort predicate reports a stale revision', async () => {
+    // The committed plan HAS execution drift (the live onoff state diverged from
+    // the planned intent), so a bare reconcile WOULD reapply. But `reconcileLatestPlanState`
+    // only enqueues; by the time this queued body runs, the caller's precondition
+    // (a sub-home ready-edge's meter-sample revision) may have moved. The abort
+    // predicate — checked inside the reconcile, at the point of use — must prevent
+    // the now-stale reapply (R7b P1 TOCTOU).
+    const applyPlanActions = vi.fn().mockResolvedValue(undefined);
+    const service = new PlanService({
+      writePelsStatus: vi.fn(),
+      homey: {
+        settings: { set: vi.fn() },
+        api: { realtime: vi.fn().mockResolvedValue(undefined) },
+        flow: {},
+      } as any,
+      planEngine: {
+        ...createMockPlanEngine(),
+        buildDevicePlanSnapshot: vi.fn(),
+        computeDynamicSoftLimit: vi.fn(() => 0),
+        computeShortfallThreshold: vi.fn(() => 0),
+        handleShortfall: vi.fn().mockResolvedValue(undefined),
+        handleShortfallCleared: vi.fn().mockResolvedValue(undefined),
+        applyPlanActions,
+        applySheddingToDevice: vi.fn().mockResolvedValue(undefined),
+      } as any,
+      getPlanDevices: () => [{
+        id: 'dev-1',
+        name: 'Heater',
+        targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
+        deviceType: 'temperature',
+        controlCapabilityId: 'onoff',
+        binaryControl: { on: false },
+        currentOn: false,
+        binaryControlObservation: buildBinaryObservation('onoff', false),
+        currentTemperature: 21,
+      }],
+      getCapacityDryRun: () => false,
+      isCurrentHourCheap: () => false,
+      isCurrentHourExpensive: () => false,
+      getCombinedPrices: () => null,
+      getLastPowerUpdate: () => null,
+    });
+
+    (service as any).latestPlanSnapshot = buildPlan(20, 'stable', {}, {
+      currentState: 'on',
+      currentTarget: 20,
+      plannedState: 'keep',
+      plannedTarget: 20,
+    });
+
+    // Predicate reports the revision moved → the reconcile aborts before touching devices.
+    await expect(service.reconcileLatestPlanState(() => true)).resolves.toBe(false);
+    expect(applyPlanActions).not.toHaveBeenCalled();
+  });
+
   it('blocks stale EV deadline resume intents during realtime reconcile', async () => {
     const applyPlanActions = vi.fn().mockImplementation(async (plan: DevicePlan) => {
       expect(plan.meta.powerFreshnessState).toBe('stale_hold');

@@ -382,18 +382,70 @@ program) remains deferred.*
       rare (needs two surplus dump loads + an active task on the higher one) and only under-uses surplus
       (never over-draws), so low-stakes. P3. Source: pels-runtime-reality on PR-7, 2026-07-02.
 
-- [ ] **Multi-home: device shed by main that then joins a sub-home stays off for the no-bundle
-      interval.** Main's plan input drops the device the moment its membership changes, so nothing
-      plans it — including its release — until the per-home bundles (R7b) give the sub-home a
-      planner. Bounded, not permanent: generic restore already treats an eligible observed-off
-      binary or stepped device as a restore candidate regardless of shed provenance
-      (`lib/plan/restore/devices.ts` `isBinaryRestoreCandidate`/`isSteppedRestoreCandidate`), so
-      the sub-home's planner picks it up once it exists. At R7b, verify every shed modality has
-      such a provenance-free restore lane (add an explicit adoption/release rule for any that
-      lacks one) — before the homes-creation UI ships. See `notes/multi-home-complement.md`.
-      Source: codex review on the R5 complement PR (2026-07-19).
-
 ## P2 Product, Observability, and Maintainability
+
+- [ ] **Homes UI: warn when a sub-home's selected meter is also a managed+controllable device (U-track).**
+      *Persona:* multi-home owner who picks a metering smart-plug as a sub-home meter and also leaves it
+      managed. *Hypothesis:* the runtime now carves the home's own `meterDeviceId` out of that home's plan
+      input + pipeline snapshot (`createHomeCapacityBundle.getPlanDevices` + `createHomePowerPipeline`), so it
+      can never be shed/oscillated — but nothing tells the user their meter won't be controlled. Add a
+      homes-settings validation warning ("this device is this home's meter; it won't be managed") mirroring
+      the observe-only carve-out messaging. Runtime guard shipped with the per-home bundles PR (R7b); this is
+      the settings-UI half only. Source: R7b own-meter-shed audit, 2026-07-19.
+
+- [ ] **(OM-1) Main can shed a device that is a SUB-HOME's meter, freezing that sub-home's sampling.**
+      *Persona:* multi-home owner whose sub-home meter is a managed+controllable plug that lives OUTSIDE the
+      sub-home's zone (so it is a MAIN-home member). *Hypothesis:* the own-meter carve-out only drops the
+      meter from its OWN home's plan input; a sub-home meter that resolves to MAIN's membership is a normal
+      main-plan load, so a main overshoot can shed it → the plug reads ~0 W → the sub-home stops sampling and
+      ages into `stale_fail_closed` (a SAFE direction — the sub-home sheds, never over-draws — hence P2 not
+      P0). Fix direction: exclude every home's `meterDeviceId` from MAIN's plan input too (not just its own
+      home's), or warn in the homes UI. P2. Source: R7b fix-round-2 regression gauntlet, 2026-07-19.
+
+- [ ] **(PIN-1) Gate only zone-rule members on the committed zone tree, not pinned members.**
+      *Persona:* multi-home owner who PINS a device into a sub-home. *Hypothesis:* a pinned member resolves
+      without any zone tree, yet the bundle blanket-gates ALL execution on `hasSeenZoneTreeCommit()`, so a
+      degraded zones API leaves a pinned device controlled by nobody. The current durable warn
+      (`home_bundle_gated_no_zone_tree_commit`) is the interim signal; the clean fix gates only zone-RULE
+      members (pins actuate immediately) but touches the boot-window e2e invariant, so it is a deliberate
+      follow-up. Keep the warn until then. P3. Source: R7b fix-round-2 regression gauntlet, 2026-07-19.
+
+- [ ] **(surplus-posture) `resolveSurplusPostureForDevice` reads `POWER_SOURCE` on the plan path (caller
+      discipline).** *Persona:* maintainer. *Hypothesis:* `toPlanDevice`'s surplus-posture helper reads the
+      power-source setting directly rather than receiving a producer-resolved bit; harmless today (sub-homes
+      pass `surplusPostureEnabled: false` so the read is short-circuited), but it is a consumer reading a
+      settings source on the hot plan path — a layering smell to resolve at the boundary and pass inward. P3.
+      Source: R7b fix-round-2 layering read, 2026-07-19.
+
+- [ ] **(flow-mode dry-run) A sub-home can still actuate on a stale sample under `power_source: flow`.**
+      *Persona:* multi-home owner who configured a sub-home, flipped its dry-run off, then switched the
+      whole-home power source to `flow`. *Hypothesis:* fix-round-5 gated the freshness HEARTBEAT on
+      `homey_energy`, but the bundle's actuation posture still keys off the persisted `capacity_dry_run:<id>`
+      alone — so under flow (where sub-home meters stop sampling) a bundle with dry-run false can act on a
+      persisted/stale sample. Reachable only in the flow-mode + sub-home config, which already emits the
+      `sub_homes_configured_under_flow_power_source` warn (unsupported), hence P2 not a blocker. Clean fix:
+      force dry-run (suppress actuation) for a bundle whenever `power_source !== 'homey_energy'`, not just the
+      heartbeat. Source: R7b fix-round-5 bot re-review, 2026-07-20.
+
+- [ ] **(persist meter-swap reset) The same-home meter-change freshness reset is in-memory only.**
+      *Persona:* multi-home owner who edits a sub-home's meter, then the Homey restarts before a debounce
+      write. *Hypothesis:* fix-round-5 resets the in-memory guard/tracker on an in-place `meterDeviceId`
+      change, but does not flush `power_tracker_state:<id>`, so if no debounce write is pending the persisted
+      blob keeps the OLD meter's `lastTimestamp`; a restart rehydrates it and the bundle can act on the old
+      meter's stale freshness for one cycle. Narrow (edit-then-restart race), safe-ish direction, P2. Clean
+      fix: force-persist the tracker after the meter-swap reset. Source: R7b fix-round-5 bot re-review,
+      2026-07-20.
+
+- [ ] **Sub-home per-poll CPU scaling: decorate once per poll instead of per-bundle.**
+      *Persona:* multi-home owner on a busy Homey with several sub-homes. *Hypothesis:* `latestTargetSnapshot`
+      re-runs `getSnapshot()` + full `decorateTargetSnapshotList` on every access, and every bundle's
+      `getPlanDevices` (+ `createHomePowerPipeline.getLatestTargetSnapshot`) reads it and only then
+      `filterDevicesForHome` — so an N-device home with M sub-homes does ~M+1 full-set re-decorations plus M
+      independent plan builds bunched on the same 10 s poll tick (`routeMeterReadings`), risking
+      cpuwarn-watchdog pressure. Decorate once per poll and hand each bundle its pre-filtered partition (or
+      filter the RAW snapshot to the home's ids before decorating), and consider staggering bundle rebuild
+      phases. Correctness is unaffected; this is a perf/maintainability follow-up deferred out of the R7b
+      correctness PR. Source: R7b per-poll CPU-scaling audit, 2026-07-19.
 
 - [ ] **Relocated-task UI aftermath: surface `objective_device_in_sub_home` on the task list/hero, and
       gate the edit preview.** *Persona:* multi-home owner whose device (with a live smart task) moved to a
@@ -1255,6 +1307,18 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
 *Entry bar: each item states a **hypothesis**, **why it's needed**, and the **persona**
 (`notes/personas.md`) it serves. Items that can't name all three are maintainability/
 cosmetic chores — do them in passing or drop them; don't park them here.*
+
+- [ ] **Pinned sub-home device stays uncontrolled if the zones API never commits a tree.**
+      *Persona:* multi-home owner who PINNED a device into a sub-home on a Homey whose zones API is degraded.
+      *Hypothesis:* a pinned device resolves to its sub-home WITHOUT a zone tree (pins are tree-independent),
+      so main excludes it while the sub-home bundle blanket-gates execution on `hasSeenZoneTreeCommit()`
+      (`createHomeCapacityBundle` dry-run gate) — if the tree never commits, the pin is controlled by nobody.
+      R7b ships a durable WARN (`home_bundle_gated_no_zone_tree_commit`) after a boot grace, but does NOT open
+      the actuation gate: opening it for pins is a real safety-posture change that conflicts with the existing
+      boot-window guard e2e (`homeCapacityBundlesSdkE2E` asserts a pinned member is NOT actuated before a tree
+      commit). Fix (per-device gating of only zone-rule members, or a bounded trust-fallback) needs its own PR
+      that updates that invariant + test together. Deferred from R7b to keep "existing suites pass unmodified".
+      Source: R7b boot-gate audit, 2026-07-19.
 
 - [ ] **Curtailment hold-state read failure resets the refute ladder.** `createCurtailmentHoldStore.read`
       (`setup/curtailmentHoldStateAdapter.ts`) normalizes a thrown/absent/junk settings read to `null`, which

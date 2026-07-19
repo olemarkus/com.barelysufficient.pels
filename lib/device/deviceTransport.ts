@@ -104,13 +104,12 @@ import {
   fetchDevicesByKnownIds as runFetchDevicesByKnownIds,
   fetchDevicesForDebug,
   fetchDevicesForSnapshot as runFetchDevicesForSnapshot,
-  fetchLivePowerReport as runFetchLivePowerReport,
   getSnapshotUiPickerDevices,
   parseSnapshotDevice,
   parseSnapshotDeviceList,
+  pollHomePowerWithMeterFanOut as runPollHomePowerWithMeterFanOut,
   refreshSnapshot as runRefreshSnapshot,
   syncTrackedDevices as runSyncTrackedDevices,
-  updateHomePowerFromReport as runUpdateHomePowerFromReport,
 } from './transport/snapshotRefresh';
 import type { SteppedLoadStepRequestResult } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 
@@ -370,8 +369,16 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     getUiPickerDevices(): TargetDeviceSnapshot[] {
         return getSnapshotUiPickerDevices(this.ctx);
     }
-    async pollHomePowerW(): Promise<{ powerW: number; generationW?: number } | null> {
-        return runUpdateHomePowerFromReport(this.ctx, await runFetchLivePowerReport(this.ctx));
+    // Poll-path home power read; also fans the additional (sub-home) meter
+    // readings out to the `onAdditionalMeterReadings` provider (multi-home
+    // R7b) — see `pollHomePowerWithMeterFanOut` in `snapshotRefresh.ts`.
+    // `authorizeFanOut` (from the poll source) gates that fan-out on the poll's
+    // generation + source liveness so a stale-generation poll cannot deliver an
+    // out-of-order sub-meter sample.
+    async pollHomePowerW(
+        authorizeFanOut?: () => boolean,
+    ): Promise<{ powerW: number; generationW?: number } | null> {
+        return runPollHomePowerWithMeterFanOut(this.ctx, authorizeFanOut);
     }
     setSnapshotForTests(snapshot: TargetDeviceSnapshot[]): void {
         // Mirror the production refresh funnel (`commitRefreshedSnapshot`): commit

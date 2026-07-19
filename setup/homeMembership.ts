@@ -47,6 +47,15 @@ export type HomeMembershipServiceDeps = {
    * path).
    */
   onMembershipChanged?: () => void;
+  /**
+   * Fired ONCE, on the false→true `hasSeenZoneTreeCommit` edge (a committed zone
+   * tree first lands). The per-home capacity bundles (R7b) gate EXECUTION on
+   * that signal; this lets the registry fire each bundle's membership-ready
+   * apply-edge the moment execution becomes trustworthy — decoupled from
+   * meter-sample arrival (so it works in flow mode too). Contained by the
+   * caller; must never throw into `recompute`.
+   */
+  onZoneTreeCommitReady?: () => void;
 };
 
 /**
@@ -106,7 +115,9 @@ export class HomeMembershipService implements HomeMembershipPort {
     // Never cache null over a previously seen tree: the transport retains
     // last-good, but a recreated transport (or a pre-first-fetch read) reports
     // null — keeping the last seen tree avoids a membership flap to main.
+    const hadCommittedTree = this.zoneTree !== null;
     if (tree !== null) this.zoneTree = tree;
+    const zoneTreeJustCommitted = !hadCommittedTree && this.zoneTree !== null;
     const nextRetentionLogged = new Set<string>();
     const devices = this.deps.getDevices().map((device) => ({
       deviceId: device.deviceId,
@@ -136,6 +147,9 @@ export class HomeMembershipService implements HomeMembershipPort {
     this.retentionLoggedDeviceIds = nextRetentionLogged;
     this.logIfChanged();
     this.notifyIfPlanRelevantMembershipChanged();
+    // Fire the execution-readiness edge LAST — after the membership map is
+    // committed — so the registry's bundles see fresh membership when they apply.
+    if (zoneTreeJustCommitted) this.deps.onZoneTreeCommitReady?.();
   }
 
   // Retention read for a snapshot entry that omitted its zone. Edge-triggered
@@ -174,6 +188,20 @@ export class HomeMembershipService implements HomeMembershipPort {
 
   hasSubHomes(): boolean {
     return this.subHomes.length > 0;
+  }
+
+  /**
+   * Whether a recompute has adopted a COMMITTED zone tree. `zoneTree` is only
+   * ever assigned from a non-null `getZoneTree()` read inside `recompute()`,
+   * so this is exactly "membership has resolved against real zone data at
+   * least once". The per-home capacity bundles (R7b) gate EXECUTION on this
+   * signal: until the tree lands, zone-rule devices resolve to main via the
+   * fail-safe path, and a sub-home bundle actuating on that provisional
+   * membership could double-control a device main still plans. Fail-closed:
+   * false until proven ready.
+   */
+  hasSeenZoneTreeCommit(): boolean {
+    return this.zoneTree !== null;
   }
 
   getDiagnostics(): HomeMembershipDiagnostics {
@@ -276,15 +304,20 @@ type HomeMembershipControlView = Pick<HomeMembershipPort, 'hasSubHomes' | 'getHo
  * paths must not branch on how a membership was decided).
  *
  * Identity guard: with no sub-homes configured (or before the service is
- * wired, e.g. the boot window), this returns the SAME array reference — the
- * single-home behavior stays bit-identical.
+ * wired, e.g. the boot window), the MAIN home gets the SAME array reference —
+ * the single-home behavior stays bit-identical.
+ *
+ * Fail-closed dual (R7b): under those same conditions a SUB-home scope gets an
+ * EMPTY list. A sub-home bundle outliving its registry entry (teardown
+ * pending) or racing an unwired membership must plan NOTHING — falling through
+ * to the full device list would double-control every main device.
  */
 export function filterDevicesForHome<T extends { id: string }>(
   membership: HomeMembershipControlView | undefined,
   devices: T[],
   homeId: HomeId,
 ): T[] {
-  if (!membership?.hasSubHomes()) return devices;
+  if (!membership?.hasSubHomes()) return homeId === MAIN_HOME_ID ? devices : [];
   return devices.filter((device) => membership.getHomeIdForDevice(device.id) === homeId);
 }
 
@@ -324,6 +357,8 @@ export const createHomeMembershipService = (params: {
   getLogger: () => PinoLogger | undefined;
   /** See {@link HomeMembershipServiceDeps.onMembershipChanged}. */
   onMembershipChanged?: () => void;
+  /** See {@link HomeMembershipServiceDeps.onZoneTreeCommitReady}. */
+  onZoneTreeCommitReady?: () => void;
 }): HomeMembershipWiring => {
   const service = new HomeMembershipService({
     homesStore: createHomesStore(params.homey),
@@ -332,6 +367,7 @@ export const createHomeMembershipService = (params: {
     getDevices: params.getDevices,
     getLogger: params.getLogger,
     onMembershipChanged: params.onMembershipChanged,
+    onZoneTreeCommitReady: params.onZoneTreeCommitReady,
   });
   const recomputeContained = (
     trigger: 'startup' | 'snapshot_refresh' | 'zone_tree_commit' | 'realtime_zone_move',

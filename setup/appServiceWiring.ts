@@ -50,12 +50,17 @@ import {
   createPlanService,
   createPriceCoordinator,
   createPriceFlowTagPublisher,
-  evictMissingDeviceCacheEntries,
   persistDeferredObjectiveObservationWatermark,
-  toPlanDevice,
 } from './appInit';
 import { startBackgroundCollectors } from './appInit/startBackgroundCollectors';
 import { buildMainHomeScope, type HomeScope } from './homeRuntime/homeScope';
+import type { HomeRuntimeRegistry } from './homeRuntime/homeRuntimeRegistry';
+import {
+  buildHomeRuntimeMeterProviders,
+  buildHomeRuntimeSettingsHooks,
+  createHomeRuntimeRegistryForApp,
+} from './appInit/wireHomeRuntimeRegistry';
+import type { HomeMembershipService } from './homeMembership';
 import { wireBudgetPrice } from './appInit/wireBudgetPrice';
 import { wireCurtailmentSurplus } from './appInit/wireCurtailmentSurplus';
 import type { PvForecastController } from './appInit/createPvForecastService';
@@ -65,7 +70,7 @@ import { initSettingsHandlerForApp } from './appSettingsHelpers';
 import { BackgroundTasksController } from './backgroundTasksController';
 import type { AppNativeWiring } from './appNativeWiring';
 import * as realtimeReconcile from './appRealtimeDeviceReconcile';
-import { scheduleAppRealtimeDeviceReconcile } from './appRealtimeDeviceReconcileRuntime';
+import { scheduleAppRealtimeDeviceReconcileForApp } from './appRealtimeDeviceReconcileRuntime';
 
 const STARTUP_RESTORE_STABILIZATION_MS = 60 * 1000;
 // Bound the warmup wait so a failed/slow Homey Manager fetch can never deadlock
@@ -167,6 +172,15 @@ export class AppServiceWiring {
   // cleared in `runUninit`.
   private homeMembershipTeardown?: () => void;
 
+  // Concrete membership service (the ctx carries only the provenance-free
+  // port); the per-home bundles' execution gate reads its tree-commit signal.
+  private homeMembershipService?: HomeMembershipService;
+
+  // Per-home capacity bundles (multi-home R7b). Built by
+  // `initHomeRuntimeRegistry` after membership wiring; empty (and inert) with
+  // zero sub-homes configured. Torn down in `runUninit`.
+  private homeRuntimeRegistry?: HomeRuntimeRegistry;
+
   constructor(private readonly deps: AppServiceWiringDeps) {
     this.mainHomeScope = buildMainHomeScope(deps.ctx);
   }
@@ -235,6 +249,7 @@ export class AppServiceWiring {
       logStartupStepFailure,
     );
     await runStartupStep('initSettingsHandler', () => this.deps.initSettingsHandler(), logStartupStepFailure);
+    await runStartupStep('initHomeRuntimeRegistry', () => this.initHomeRuntimeRegistry(), logStartupStepFailure);
     ctx.lastNotifiedOperatingMode = ctx.operatingMode;
     await runStartupStep('startAppServices', () => startAppServices(ctx), logStartupStepFailure);
     await runStartupStep(
@@ -378,6 +393,12 @@ export class AppServiceWiring {
       structuredLog,
     }, {
       getHomeyEnergyMeterDeviceId: () => resolveHomeyEnergyMeterDeviceId(ctx.homey),
+      // Sub-home meter ids for the per-meter live-report extraction, and the
+      // fan-out of the readings they resolve (R7b). Both lazy over the
+      // registry field: the registry is built after the transport, and cleared
+      // at uninit — empty/no-op outside that window, so the single-home path
+      // is untouched.
+      ...buildHomeRuntimeMeterProviders(() => this.homeRuntimeRegistry),
       getPriority: (id) => ctx.getPriorityForDevice(id),
       getControllable: (id) => ctx.isCapacityControlEnabled(id),
       getManaged: (id) => ctx.resolveManagedState(id),
@@ -469,9 +490,34 @@ export class AppServiceWiring {
   // Body in `setup/appInit/wireHomeMembership.ts`; the trigger-teardown handle
   // is invoked in `runUninit`.
   initHomeMembership(): void {
-    const wiring = wireHomeMembership(this.deps.ctx, this.deps.getObservedStateEmitter());
+    // The zone-tree-commit readiness edge fires each capacity bundle's
+    // membership-ready apply (decoupled from meter-sample arrival). Lazy over
+    // `this.homeRuntimeRegistry`, which is wired later by
+    // `initHomeRuntimeRegistry` — inert (registry undefined) until then.
+    const wiring = wireHomeMembership(
+      this.deps.ctx,
+      this.deps.getObservedStateEmitter(),
+      () => this.homeRuntimeRegistry?.onMembershipReady(),
+    );
     this.deps.ctx.homeMembership = wiring.service;
+    this.homeMembershipService = wiring.service;
     this.homeMembershipTeardown = wiring.teardown;
+  }
+
+  /**
+   * Build the per-home capacity-bundle registry (R7b). Its runtime seams are
+   * already wired lazily over `this.homeRuntimeRegistry` (the transport's
+   * per-meter provider pair and the suffixed settings-change hooks). Runs
+   * AFTER membership wiring so a bundle's first plan input and its
+   * execution-readiness gate (fail-closed: false until a committed zone tree
+   * has been joined, and false again after teardown) read real membership
+   * state. With zero sub-homes the reconcile is a no-op and nothing else runs.
+   */
+  initHomeRuntimeRegistry(): void {
+    this.homeRuntimeRegistry = createHomeRuntimeRegistryForApp(
+      this.deps.ctx,
+      () => this.homeMembershipService?.hasSeenZoneTreeCommit() === true,
+    );
   }
 
   initCapacityGuard(): void {
@@ -565,41 +611,29 @@ export class AppServiceWiring {
   }
 
   initSettingsHandler(): void {
-    const settingsHandler = initSettingsHandlerForApp(this.deps.ctx);
+    // Home-runtime hooks are lazy over the registry field:
+    // `initHomeRuntimeRegistry` runs after this step; until then a suffixed
+    // write is dropped here and absorbed by the registry's boot-time reconcile.
+    const settingsHandler = initSettingsHandlerForApp(
+      this.deps.ctx,
+      buildHomeRuntimeSettingsHooks(() => this.homeRuntimeRegistry),
+    );
     this.deps.setStopSettingsHandler(settingsHandler.stop);
   }
 
+  // Body in `setup/appRealtimeDeviceReconcileRuntime.ts`; kept as a method so
+  // the emitter subscription and test seams keep their call site.
   scheduleRealtimeDeviceReconcile(event: realtimeReconcile.RealtimeDeviceReconcileEvent): void {
-    const { ctx } = this.deps;
-    const structuredLog = ctx.getStructuredLogger('reconcile');
-    const debugStructured = ctx.getStructuredDebugEmitter('reconcile', 'devices');
-    const timer = scheduleAppRealtimeDeviceReconcile({
+    scheduleAppRealtimeDeviceReconcileForApp({
+      ctx: this.deps.ctx,
       event,
       state: this.deps.getRealtimeDeviceReconcileState(),
-      hasPendingTimer: this.deps.timers.has('realtimeDeviceReconcile'),
-      getLatestPlanSnapshot: () => ctx.planService?.getLatestReconcilePlanSnapshot() ?? null,
-      getLiveDevices: () => {
-        const snapshot = ctx.latestTargetSnapshot;
-        evictMissingDeviceCacheEntries(ctx, snapshot);
-        return snapshot.map((device) => toPlanDevice(ctx, device));
-      },
-      structuredLog,
-      debugStructured,
-      reconcile: () => ctx.planService?.reconcileLatestPlanState() ?? Promise.resolve(false),
-      onTimerFired: () => {
-        this.deps.timers.clear('realtimeDeviceReconcile');
-      },
-      onError: (error) => {
-        const normalizedError = normalizeError(error);
-        structuredLog?.error({
-          event: 'realtime_reconcile_failed',
-          err: normalizedError,
-        });
-      },
+      timers: this.deps.timers,
+      // Route a sub-home device's reconcile through its own bundle (R7b P1#1);
+      // lazy over the registry field so it stays byte-identical (undefined →
+      // main closures) before `initHomeRuntimeRegistry` and with no sub-homes.
+      getHomeRuntimeRegistry: () => this.homeRuntimeRegistry,
     });
-    if (timer) {
-      this.deps.timers.registerTimeout('realtimeDeviceReconcile', timer);
-    }
   }
 
   async runUninit(): Promise<void> {
@@ -609,6 +643,12 @@ export class AppServiceWiring {
     // be parked on a slow flow read, and blocking teardown on that read would
     // stall shutdown. Suppressing its continuation is enough.
     this.deps.setNativeWiringUninitializing(true);
+    // Tear down the per-home bundles BEFORE the global timer sweep so each
+    // bundle can flush a pending suffixed tracker persist while its debounce
+    // timer is still observable. Clearing the field also disconnects the lazy
+    // per-meter fan-out: an in-flight poll resolving after this routes nowhere.
+    this.homeRuntimeRegistry?.teardownAll();
+    this.homeRuntimeRegistry = undefined;
     this.clearUninitTimers();
     realtimeReconcile.clearRealtimeDeviceReconcileState(this.deps.getRealtimeDeviceReconcileState());
     this.stopUninitServices();
@@ -618,6 +658,7 @@ export class AppServiceWiring {
     // settings-change trigger.
     this.homeMembershipTeardown?.();
     this.homeMembershipTeardown = undefined;
+    this.homeMembershipService = undefined;
     ctx.homeMembership = undefined;
     this.deps.getPvForecast()?.stop();
     // Release the warmup gate so any rebuild awaiting it during a partial

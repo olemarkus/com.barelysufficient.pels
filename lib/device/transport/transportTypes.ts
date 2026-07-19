@@ -190,7 +190,7 @@ export type DeviceTransportOptions = {
 export const createEstimateDecisionLogState = (): Map<string, { signature: string; emittedAt: number }> => new Map();
 export const createPeakPowerLogState = (): Map<string, { signature: string; emittedAt: number }> => new Map();
 export const buildEmptyLivePowerReport = (): LivePowerReport => ({
-  byDeviceId: {}, homePowerW: null, generationW: null, deviceCount: 0,
+  byDeviceId: {}, homePowerW: null, generationW: null, deviceCount: 0, additionalMeterPowerW: {},
 });
 
 export function isRawBinarySettlementEvidenceAllowed(

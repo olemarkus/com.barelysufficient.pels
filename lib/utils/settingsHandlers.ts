@@ -111,6 +111,14 @@ export type SettingsHandlerDeps = {
    * recomputes on the next snapshot refresh.
    */
   recomputeHomeMembership?: () => void;
+  /**
+   * Reconcile the per-home capacity bundles after a `homes_config` write
+   * (create new sub-home runtimes, tear down removed ones). Runs AFTER
+   * `recomputeHomeMembership` so a freshly created bundle's first plan input
+   * reads the recomputed membership. Optional: when absent the registry
+   * still self-reconciles on the next suffixed-write dirty-mark.
+   */
+  reconcileHomeRuntimes?: () => void;
 };
 
 const DAILY_BUDGET_PRICE_REBUILD_DEBOUNCE_MS = 1000;
@@ -409,11 +417,14 @@ function buildPriceSettingsHandlers(
 
 function buildMiscSettingsHandlers(deps: SettingsHandlerDeps): SettingsHandlerMap {
   return {
-    // Multi-home registry/pin writes: recompute the membership cache only —
-    // deliberately NO snapshot refresh and NO plan rebuild (behavior identity:
-    // nothing on the control path consumes membership yet).
+    // Multi-home registry/pin writes: recompute the membership cache, then
+    // reconcile the per-home capacity bundles (R7b) — membership first so a
+    // freshly created bundle's plan input reads the new device partition.
+    // Still deliberately NO snapshot refresh here; membership's own
+    // change-gated invalidation covers the main plan.
     [HOMES_CONFIG]: async () => {
       deps.recomputeHomeMembership?.();
+      deps.reconcileHomeRuntimes?.();
     },
     [DEVICE_HOME_ASSIGNMENTS]: async () => {
       deps.recomputeHomeMembership?.();

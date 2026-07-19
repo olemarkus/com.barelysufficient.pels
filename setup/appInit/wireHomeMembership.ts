@@ -19,9 +19,14 @@ import { createHomeMembershipService, type HomeMembershipWiring } from '../homeM
 export const wireHomeMembership = (
   ctx: AppContext,
   emitter: ObservedStateEmitter,
+  // Fired on the zone-tree-commit readiness edge; the caller routes it to the
+  // per-home capacity-bundle registry (R7b). Lazy over the registry field so
+  // it is inert until `initHomeRuntimeRegistry` has run.
+  onZoneTreeCommitReady?: () => void,
 ): HomeMembershipWiring => createHomeMembershipService({
   homey: ctx.homey,
   emitter,
+  onZoneTreeCommitReady,
   setOnZoneTreeCommitted: (callback) => ctx.deviceManager?.setOnZoneTreeCommitted(callback),
   setOnDeviceZoneChanged: (callback) => ctx.deviceManager?.setOnDeviceZoneChanged(callback),
   getZoneTree: () => ctx.deviceManager?.getZoneTree() ?? null,

@@ -108,6 +108,17 @@ export default class CapacityGuard {
     return this.mainPowerKw;
   }
 
+  /**
+   * Clear the last observed total power back to "no sample yet". A per-home
+   * capacity bundle (multi-home R7b) calls this on an in-place meter swap so a
+   * rebuild before the NEW meter's first reading cannot shed/restore on the
+   * PREVIOUS meter's stale load (`headroom()` reports null until the new meter
+   * reports). The main home never invokes it.
+   */
+  resetLastTotalPower(): void {
+    this.mainPowerKw = null;
+  }
+
   // --- Limit calculations ---
 
   getSoftLimit(): number {

@@ -339,11 +339,59 @@ export async function fetchDevicesForDebug(ctx: TransportContext): Promise<Homey
 export async function fetchLivePowerReport(ctx: TransportContext): Promise<LivePowerReport> {
     // Resolved here (the producer seam) so both callers — the 10s homey_energy
     // poll and the snapshot-refresh implicit sample — honour the selection.
+    // The additional (sub-home) meter ids are read fresh per call for the same
+    // reason; only the POLL caller dispatches the per-meter readings onward
+    // (`DeviceTransport.pollHomePowerW`), so sub-home sampling stays on the
+    // predictable 10s poll cadence.
     return fetchLivePowerReportFromSdk({
         logger: ctx.logger,
         debugStructured: ctx.debugStructured,
         meterDeviceId: ctx.providers.getHomeyEnergyMeterDeviceId?.() ?? null,
+        additionalMeterDeviceIds: ctx.providers.getAdditionalMeterDeviceIds?.() ?? [],
     });
+}
+
+/**
+ * Poll-path home power read (`DeviceTransport.pollHomePowerW` body): one live
+ * report serves every home. The additional (sub-home) meter readings resolved
+ * from the SAME payload are fanned out to the `onAdditionalMeterReadings`
+ * provider BEFORE the main-home null handling — a poll where main's reading is
+ * missing must still deliver the sub-home readings that DID resolve. Poll path
+ * only: the snapshot-refresh implicit sample does not dispatch, and in flow
+ * mode (`power_source=flow`) the poll never runs, so sub-home pipelines simply
+ * receive no samples there (freshness machinery reports the gap). The dispatch
+ * is contained — a consumer throw can never break the main sample path.
+ *
+ * `authorizeFanOut` gates that dispatch on the poll source's own liveness (its
+ * generation + power-source checks — `HomeyEnergyPollSource.pollNow`). The fan-out
+ * fires from INSIDE this `await`, BEFORE the poll source applies its discard, so
+ * without the gate a stale-generation poll (a whole-home-meter / power-source
+ * restart superseded it) could deliver an out-of-order sub-meter sample that
+ * resolves AFTER its replacement. Sub-meter delivery stays decoupled from a
+ * non-null main reading (dispatched before the null return). Omitted = authorized
+ * (no other caller drives this path; the snapshot-refresh sample bypasses it).
+ */
+export async function pollHomePowerWithMeterFanOut(
+    ctx: TransportContext,
+    authorizeFanOut?: () => boolean,
+): Promise<{ powerW: number; generationW?: number } | null> {
+    const report = await fetchLivePowerReport(ctx);
+    const onAdditionalMeterReadings = ctx.providers.onAdditionalMeterReadings;
+    if (
+        onAdditionalMeterReadings
+        && (authorizeFanOut === undefined || authorizeFanOut())
+        && Object.keys(report.additionalMeterPowerW).length > 0
+    ) {
+        try {
+            onAdditionalMeterReadings(report.additionalMeterPowerW, Date.now());
+        } catch (error) {
+            ctx.logger.debug({
+                event: 'additional_meter_readings_dispatch_failed',
+                error: normalizeError(error).message,
+            });
+        }
+    }
+    return updateHomePowerFromReport(ctx, report);
 }
 
 export function updateHomePowerFromReport(
