@@ -42,7 +42,7 @@ import {
   setMockDrivers,
   setMockZones,
 } from '../mocks/homey';
-import type { Logger } from '../../lib/utils/types';
+import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 
 const homeyApp = mockHomeyInstance as unknown as Homey.App;
 const homeyLike = mockHomeyInstance as unknown as Homey.App['homey'];
@@ -67,11 +67,12 @@ const makeLoggerSpy = () => {
   const warn = vi.fn();
   const info = vi.fn();
   const error = vi.fn();
+  const debug = vi.fn();
   const logger = {
-    warn, info, error, debug: vi.fn(),
+    warn, info, error, debug,
   } as unknown as PinoLogger;
   return {
-    warn, info, error, logger,
+    warn, info, error, debug, logger,
   };
 };
 
@@ -122,6 +123,7 @@ describe('post-refresh recompute through the transport seam', () => {
       homey: homeyLike,
       emitter,
       setOnZoneTreeCommitted: (callback) => transport.setOnZoneTreeCommitted(callback),
+      setOnDeviceZoneChanged: (callback) => transport.setOnDeviceZoneChanged(callback),
       getZoneTree: () => transport.getZoneTree(),
       getDevices: () => transport.getSnapshot().map((snapshotDevice) => ({
         deviceId: snapshotDevice.id,
@@ -196,7 +198,64 @@ describe('post-refresh recompute through the transport seam', () => {
     expect(wiring.service.getMembershipMap()).toEqual({ dev1: 'h_a' });
   });
 
-  it('teardown detaches both triggers: a late refresh dispatch or tree commit no longer recomputes', async () => {
+  it('a membership change firing before the plan service is wired warns and skips the rebuild, without throwing', async () => {
+    addZonedHeater('z2');
+    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME_A] });
+    const { warn, error, logger } = makeLoggerSpy();
+    const emitter = new ObservedStateEmitter();
+    const transport = new DeviceTransport(homeyApp, loggerMock, {}, undefined, {
+      observedStateDispatcher: emitter.asDispatcher(new ObservedHomePower()),
+    });
+    // Wiring-order regression stub: membership seams present, planService
+    // absent at fire time.
+    const ctxStub = {
+      homey: homeyLike,
+      deviceManager: transport,
+      getStructuredLogger: () => logger,
+    } as unknown as AppContext;
+    const wiring = wireHomeMembership(ctxStub, emitter);
+
+    // Refresh + detached tree commit resolve dev1 into h_a — a plan-relevant
+    // change, so the invalidation fires with no plan service wired: the skip
+    // must be logged, never silent, and nothing may throw (a contained throw
+    // would surface as home_membership_recompute_failed on the error spy).
+    await transport.refreshSnapshot();
+    await settleDetachedZoneFetch();
+    expect(wiring.service.getHomeIdForDevice('dev1')).toBe('h_a');
+    expect(warn).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'home_membership_rebuild_skipped_unwired',
+    }));
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it('a realtime device.update that moves the device across zones recomputes membership immediately', async () => {
+    const device = addZonedHeater('z2');
+    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME_A] });
+    const { transport, service } = buildTransportChain();
+
+    await transport.refreshSnapshot();
+    await settleDetachedZoneFetch();
+    expect(service.getHomeIdForDevice('dev1')).toBe('h_a');
+
+    // Realtime move to the garage: NO snapshot refresh — the transport's
+    // zone-move seam triggers the recompute the instant the replacement
+    // entry commits. Without it the device would stay h_a (and, in the R5
+    // consumer, wrongly outside main's plan or vice versa) until the next
+    // full refresh.
+    device.setZone('z3');
+    transport.injectDeviceUpdateForTest(device.toHomeyApiDevice() as HomeyDeviceLike);
+    expect(service.getHomeIdForDevice('dev1')).toBe('main');
+    expect(service.getDiagnostics().membershipByDeviceId.dev1.source).toBe('zone');
+
+    // A realtime update with an UNCHANGED zone does not recompute (no delta,
+    // no trigger): move the persisted pin so a recompute WOULD change the
+    // map, then inject an update with the same zone — the map must not move.
+    createDeviceHomeAssignmentsStore(homeyLike).write({ dev1: 'h_a' });
+    transport.injectDeviceUpdateForTest(device.toHomeyApiDevice() as HomeyDeviceLike);
+    expect(service.getHomeIdForDevice('dev1')).toBe('main');
+  });
+
+  it('teardown detaches all three triggers: refresh dispatch, tree commit, and realtime zone move', async () => {
     const device = addZonedHeater('z2');
     createHomesStore(homeyLike).write({ subHomes: [SUB_HOME_A] });
     const { transport, service, teardown } = buildTransportChain();
@@ -212,6 +271,12 @@ describe('post-refresh recompute through the transport seam', () => {
     device.setZone('z3');
     await transport.refreshSnapshot();
     await settleDetachedZoneFetch();
+    expect(service.getMembershipMap()).toEqual({ dev1: 'h_a' });
+
+    // A realtime zone move after teardown is equally inert (z3 → z1 would
+    // recompute dev1 to main on a live subscription).
+    device.setZone('z1');
+    transport.injectDeviceUpdateForTest(device.toHomeyApiDevice() as HomeyDeviceLike);
     expect(service.getMembershipMap()).toEqual({ dev1: 'h_a' });
   });
 
@@ -332,6 +397,58 @@ describe('settings-change recompute triggers', () => {
     expect(service.getHomeIdForDevice('dev1')).toBe('main');
     expect(service.getDiagnostics().membershipByDeviceId.dev1.source).toBe('pin');
   });
+
+  it('a recompute that CHANGES the plan-relevant membership requests a plan rebuild; identical and single-home recomputes stay free', async () => {
+    const onMembershipChanged = vi.fn();
+    let devices: readonly HomeMembershipDeviceInput[] = [{ deviceId: 'dev1', zoneId: 'z2' }];
+    const service = new HomeMembershipService({
+      homesStore: createHomesStore(homeyLike),
+      assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
+      getZoneTree: () => ZONES,
+      getDevices: () => devices,
+      getLogger: () => undefined,
+      onMembershipChanged,
+    });
+    const handler = createSettingsHandler(buildHandlerDeps(() => service.recompute()));
+    mockHomeyInstance.settings.on('set', (key: string) => { void handler(key); });
+
+    // Boot baseline: the FIRST recompute must NOT request a rebuild — the
+    // bootstrap builds the initial plan through its own path.
+    service.recompute();
+    expect(service.getHomeIdForDevice('dev1')).toBe('main');
+    expect(onMembershipChanged).not.toHaveBeenCalled();
+
+    // Single-home device churn: the membership MAP changes (new key) but
+    // every device is main — the plan filter is identity, so this must stay
+    // free (device-set rebuilds ride the snapshot-refresh paths; firing here
+    // broke real single-home plan scenarios).
+    devices = [{ deviceId: 'dev1', zoneId: 'z2' }, { deviceId: 'dev2', zoneId: 'z3' }];
+    service.recompute();
+    expect(onMembershipChanged).not.toHaveBeenCalled();
+
+    // Settings-driven membership change (dev1: main → h_a): the committed
+    // plan now governs the wrong device set — exactly one rebuild request.
+    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME_A] });
+    await flushHandlerQueue();
+    expect(service.getHomeIdForDevice('dev1')).toBe('h_a');
+    expect(onMembershipChanged).toHaveBeenCalledTimes(1);
+
+    // Re-writing the SAME config recomputes but resolves identically — the
+    // change gate keeps it free (no rebuild storm from redundant writes).
+    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME_A] });
+    await flushHandlerQueue();
+    expect(onMembershipChanged).toHaveBeenCalledTimes(1);
+
+    // And a bare no-change recompute (any trigger) requests nothing either.
+    service.recompute();
+    expect(onMembershipChanged).toHaveBeenCalledTimes(1);
+
+    // Leaving the sub-home (pin back to main) is a plan-relevant change too.
+    createDeviceHomeAssignmentsStore(homeyLike).write({ dev1: 'main' });
+    await flushHandlerQueue();
+    expect(service.getHomeIdForDevice('dev1')).toBe('main');
+    expect(onMembershipChanged).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('zone-tree fail-safe and pins', () => {
@@ -384,6 +501,111 @@ describe('zone-tree fail-safe and pins', () => {
     expect(membershipByDeviceId.dev1.source).toBe('pin');
     expect(membershipByDeviceId.dev2.source).toBe('pin');
     expect(membershipByDeviceId.dev3.source).toBe('fallback');
+  });
+});
+
+describe('last-known zone retention', () => {
+  // Live-devices variant of `makeStaticService`: the device list is swapped
+  // between recomputes, mirroring successive committed snapshots.
+  const makeLiveService = (params: {
+    getDevices: () => readonly HomeMembershipDeviceInput[];
+    logger?: PinoLogger;
+  }): HomeMembershipService => new HomeMembershipService({
+    homesStore: createHomesStore(homeyLike),
+    assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
+    getZoneTree: () => ZONES,
+    getDevices: params.getDevices,
+    getLogger: () => params.logger,
+  });
+
+  it('keeps membership through a one-cycle zone omission, with a structured debug log on retention use', () => {
+    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME_A] });
+    const { debug, logger } = makeLoggerSpy();
+    let devices: readonly HomeMembershipDeviceInput[] = [{ deviceId: 'dev1', zoneId: 'z2' }];
+    const service = makeLiveService({ getDevices: () => devices, logger });
+
+    service.recompute();
+    expect(service.getHomeIdForDevice('dev1')).toBe('h_a');
+    expect(debug).not.toHaveBeenCalled();
+
+    // Fulfilled snapshot whose entry transiently omits zone: the previous
+    // resolution holds — no one-cycle flap to main/'fallback'.
+    devices = [{ deviceId: 'dev1', zoneId: null }];
+    service.recompute();
+    expect(service.getHomeIdForDevice('dev1')).toBe('h_a');
+    expect(service.getDiagnostics().membershipByDeviceId.dev1.source).toBe('zone');
+    expect(debug).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'home_membership_zone_retained',
+      deviceId: 'dev1',
+      zoneId: 'z2',
+    }));
+    expect(debug).toHaveBeenCalledTimes(1);
+
+    // Edge-triggered, not per-use: a persistently zone-omitting device must
+    // NOT re-log on the next recompute (which can fire twice per refresh
+    // cycle — snapshot refresh + zone-tree commit).
+    service.recompute();
+    expect(service.getHomeIdForDevice('dev1')).toBe('h_a');
+    expect(debug).toHaveBeenCalledTimes(1);
+
+    // Zone back in the snapshot: no retention read, membership unchanged —
+    // and the log edge re-arms...
+    debug.mockClear();
+    devices = [{ deviceId: 'dev1', zoneId: 'z2' }];
+    service.recompute();
+    expect(service.getHomeIdForDevice('dev1')).toBe('h_a');
+    expect(debug).not.toHaveBeenCalled();
+
+    // ...so a NEW omission episode logs exactly once more.
+    devices = [{ deviceId: 'dev1', zoneId: null }];
+    service.recompute();
+    expect(service.getHomeIdForDevice('dev1')).toBe('h_a');
+    expect(debug).toHaveBeenCalledTimes(1);
+  });
+
+  it('prunes retention when a device genuinely leaves the snapshot', () => {
+    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME_A] });
+    let devices: readonly HomeMembershipDeviceInput[] = [
+      { deviceId: 'dev1', zoneId: 'z2' },
+      { deviceId: 'dev2', zoneId: 'z3' },
+    ];
+    const service = makeLiveService({ getDevices: () => devices });
+
+    service.recompute();
+    expect(service.getHomeIdForDevice('dev1')).toBe('h_a');
+
+    // dev1 genuinely removed: membership and retention both drop it.
+    devices = [{ deviceId: 'dev2', zoneId: 'z3' }];
+    service.recompute();
+    expect(service.getMembershipMap()).toEqual({ dev2: 'main' });
+
+    // Re-added with zone omitted: retention was pruned, so this is a real
+    // unknown-zone device — fail-safe to main, visibly.
+    devices = [
+      { deviceId: 'dev1', zoneId: null },
+      { deviceId: 'dev2', zoneId: 'z3' },
+    ];
+    service.recompute();
+    expect(service.getHomeIdForDevice('dev1')).toBe('main');
+    expect(service.getDiagnostics().membershipByDeviceId.dev1.source).toBe('fallback');
+  });
+
+  it('follows a zone move — a later omission retains the moved-to zone, not the original', () => {
+    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME_A] });
+    let devices: readonly HomeMembershipDeviceInput[] = [{ deviceId: 'dev1', zoneId: 'z2' }];
+    const service = makeLiveService({ getDevices: () => devices });
+
+    service.recompute();
+    expect(service.getHomeIdForDevice('dev1')).toBe('h_a');
+
+    devices = [{ deviceId: 'dev1', zoneId: 'z3' }];
+    service.recompute();
+    expect(service.getHomeIdForDevice('dev1')).toBe('main');
+
+    devices = [{ deviceId: 'dev1', zoneId: null }];
+    service.recompute();
+    expect(service.getHomeIdForDevice('dev1')).toBe('main');
+    expect(service.getDiagnostics().membershipByDeviceId.dev1.source).toBe('zone');
   });
 });
 

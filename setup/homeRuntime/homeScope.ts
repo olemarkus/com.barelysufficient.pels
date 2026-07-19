@@ -22,6 +22,7 @@ import type { AppContext } from '../../lib/app/appContext';
 // barrel would create a module cycle.
 import { evictMissingDeviceCacheEntries, toPlanDevice } from '../appInit/toPlanDevice';
 import { isRuntimePlannedDevice } from '../appDeviceSupport';
+import { filterDevicesForHome } from '../homeMembership';
 import {
   CAPACITY_IN_SHORTFALL,
   DEVICE_LAST_CONTROLLED_MS,
@@ -80,8 +81,15 @@ export function buildMainHomeScope(ctx: AppContext): HomeScope {
       // array, so it adds no re-decoration and no device-manager re-entry.
       ctx.seedObservedStateFromSnapshot();
       const snapshot = ctx.latestTargetSnapshot;
+      // Eviction sees the FULL snapshot: a sub-home member is excluded from
+      // this home's plan input below, but it is still present on Homey — its
+      // cached per-device state must survive for the per-home bundles.
       evictMissingDeviceCacheEntries(ctx, snapshot);
-      return snapshot
+      // Membership complement: with sub-homes configured, this home plans only
+      // its own members; a sub-home device is simply not in the plan input
+      // (uncontrolled — never double-controlled). Identity (same array) when
+      // `hasSubHomes()` is false, so single-home behavior is bit-identical.
+      return filterDevicesForHome(ctx.homeMembership, snapshot, homeId)
         .map((device) => toPlanDevice(ctx, device))
         // Shared planned-set predicate — the create-smart-task candidate list
         // and create-time validation use the SAME `isRuntimePlannedDevice` so a

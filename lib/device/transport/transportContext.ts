@@ -133,6 +133,13 @@ export type TransportContext = {
   // consumer is subscribed). The refresh pipeline invokes it CONTAINED — a
   // subscriber throw must never reject the detached zone-fetch chain.
   notifyZoneTreeCommitted(): void;
+  // Fires after a realtime device.update commits a snapshot entry whose
+  // `zoneId` differs from the previous entry (device moved zones, or first
+  // appeared, via the realtime path). Same set-after-construction seam shape
+  // as `notifyZoneTreeCommitted`; consumer: multi-home membership recompute —
+  // without it a realtime zone move would stay unjoined until the next full
+  // refresh (up to the periodic-refresh interval).
+  notifyDeviceZoneChanged(): void;
   getTrackedDevicesById(): Map<string, HomeyDeviceLike>;
   // Fetch seams routed through the leaf's instance methods so a test spy on
   // `DeviceTransport.fetchDevicesForSnapshot` is honored.

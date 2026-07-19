@@ -61,6 +61,7 @@ import {
 } from './lib/utils/capacityHelpers';
 import {
   DEFERRED_OBJECTIVE_HOURS_REMAINING_LATCH,
+  MAIN_HOME_ID,
   OPERATING_MODE_SETTING,
   POWER_SOURCE,
 } from './lib/utils/settingsKeys';
@@ -325,6 +326,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
   });
   private readonly powerSamplePipeline = createHomePowerPipeline({
     ctx: this,
+    homeId: MAIN_HOME_ID,
     planRebuildScheduler: this.planRebuildScheduler,
     getPlanEngine: () => this.planEngine,
     getPlanService: () => this.planService,
