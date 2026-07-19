@@ -34,6 +34,19 @@ export type HomeMembershipServiceDeps = {
   /** Devices from the latest target snapshot with their zone ids. */
   getDevices: () => readonly HomeMembershipDeviceInput[];
   getLogger: () => PinoLogger | undefined;
+  /**
+   * Change-gated plan invalidation: fired when a recompute changes the
+   * PLAN-RELEVANT membership — the set of non-main assignments (exactly what
+   * `filterDevicesForHome` consumes) — so the committed plan never keeps
+   * governing the old device set until the next incidental rebuild.
+   * Deliberately NARROWER than the log fingerprint: in single-home operation
+   * every device is main, so device add/remove churn must stay free here
+   * (those rebuilds ride the existing snapshot-refresh paths) — firing on the
+   * full map fingerprint would break the no-sub-homes identity. The FIRST
+   * resolution never fires (boot builds the initial plan through its own
+   * path).
+   */
+  onMembershipChanged?: () => void;
 };
 
 /**
@@ -68,11 +81,22 @@ export class HomeMembershipService implements HomeMembershipPort {
   private pins: DeviceHomeAssignments = {};
   private zoneTree: ZoneTree | null = null;
   private membershipByDeviceId: Record<string, HomeMembership> = {};
+  // Last-known zoneId per device, from previous COMMITTED snapshots. A
+  // fulfilled snapshot whose device entry transiently omits zone must not flap
+  // that device to main/'fallback' for one cycle — the previous resolution
+  // holds. Bounded by device count: rebuilt from the current snapshot on every
+  // recompute, so a device that genuinely left the snapshot is pruned.
+  private lastKnownZoneIdByDeviceId: Record<string, string> = {};
+  // Devices whose latest resolution used a retained zone — the edge state for
+  // the retention debug log (log on ENTRY into retention, re-arm when the zone
+  // reappears or the device leaves the snapshot; parity with noteSuspectEdge).
+  private retentionLoggedDeviceIds = new Set<string>();
   private suspectByStoreKey: Record<HomeStoreKey, boolean> = {
     [HOMES_CONFIG]: false,
     [DEVICE_HOME_ASSIGNMENTS]: false,
   };
   private lastRecomputeFingerprint: string | null = null;
+  private lastPlanRelevantFingerprint: string | null = null;
 
   constructor(private readonly deps: HomeMembershipServiceDeps) {}
 
@@ -83,9 +107,22 @@ export class HomeMembershipService implements HomeMembershipPort {
     // last-good, but a recreated transport (or a pre-first-fetch read) reports
     // null — keeping the last seen tree avoids a membership flap to main.
     if (tree !== null) this.zoneTree = tree;
+    const nextRetentionLogged = new Set<string>();
+    const devices = this.deps.getDevices().map((device) => ({
+      deviceId: device.deviceId,
+      zoneId: device.zoneId ?? this.retainedZoneIdFor(device.deviceId, nextRetentionLogged),
+    }));
+    const nextLastKnownZoneIds = Object.fromEntries(devices.flatMap((device) => (
+      device.zoneId === null ? [] : [[device.deviceId, device.zoneId] as const]
+    )));
+    // ALL fallible work (store reads, snapshot read, resolver walks) happens
+    // above this line; the membership map is assigned last among it, so a
+    // mid-read throw retains the previous membership (the containment
+    // invariant in `createHomeMembershipService`). The retention commits after
+    // it are pure assignments — they cannot throw and never commit alone.
     // `Object.fromEntries` defines own data properties, so an untrusted device
     // id can never reach Object.prototype machinery here.
-    this.membershipByDeviceId = Object.fromEntries(this.deps.getDevices().map((device) => [
+    this.membershipByDeviceId = Object.fromEntries(devices.map((device) => [
       device.deviceId,
       resolveDeviceHome({
         zones: this.zoneTree ?? {},
@@ -95,7 +132,30 @@ export class HomeMembershipService implements HomeMembershipPort {
         deviceZoneId: device.zoneId,
       }),
     ]));
+    this.lastKnownZoneIdByDeviceId = nextLastKnownZoneIds;
+    this.retentionLoggedDeviceIds = nextRetentionLogged;
     this.logIfChanged();
+    this.notifyIfPlanRelevantMembershipChanged();
+  }
+
+  // Retention read for a snapshot entry that omitted its zone. Edge-triggered
+  // debug log — on ENTRY into retention only (a persistently zone-omitting
+  // device would otherwise log up to twice per refresh cycle, once per
+  // recompute trigger); the edge re-arms when the zone reappears or the device
+  // leaves the snapshot, because only retention users land in `nextLogged`.
+  private retainedZoneIdFor(deviceId: string, nextLogged: Set<string>): string | null {
+    if (!Object.hasOwn(this.lastKnownZoneIdByDeviceId, deviceId)) return null;
+    const zoneId = this.lastKnownZoneIdByDeviceId[deviceId];
+    if (!this.retentionLoggedDeviceIds.has(deviceId)) {
+      this.deps.getLogger()?.debug({
+        event: 'home_membership_zone_retained',
+        deviceId,
+        zoneId,
+        detail: 'snapshot omitted zone; keeping last-known zone',
+      });
+    }
+    nextLogged.add(deviceId);
+    return zoneId;
   }
 
   /** Resolved home for a device; an unknown device belongs to the main home. */
@@ -171,6 +231,24 @@ export class HomeMembershipService implements HomeMembershipPort {
       zoneTreeSeen: this.zoneTree !== null,
     });
   }
+
+  // Plan invalidation gate — see the `onMembershipChanged` dep doc. The
+  // fingerprint covers ONLY non-main assignments (the complement the plan
+  // filter consumes), so single-home device churn resolves to the same empty
+  // fingerprint and stays free. The boot baseline (null → first fingerprint)
+  // never fires: the bootstrap builds the initial plan itself, and the plan
+  // service may not even exist yet.
+  private notifyIfPlanRelevantMembershipChanged(): void {
+    const fingerprint = Object.entries(this.membershipByDeviceId)
+      .filter(([, entry]) => entry.homeId !== MAIN_HOME_ID)
+      .map(([deviceId, entry]) => `${deviceId}=${entry.homeId}`)
+      .sort((a, b) => a.localeCompare(b))
+      .join(',');
+    if (fingerprint === this.lastPlanRelevantFingerprint) return;
+    const isFirstResolution = this.lastPlanRelevantFingerprint === null;
+    this.lastPlanRelevantFingerprint = fingerprint;
+    if (!isFirstResolution) this.deps.onMembershipChanged?.();
+  }
 }
 
 /** The wired membership service plus the handle that detaches its triggers. */
@@ -178,12 +256,37 @@ export type HomeMembershipWiring = {
   service: HomeMembershipService;
   /**
    * Detach every recompute trigger wired by `createHomeMembershipService`
-   * (refresh subscription + zone-tree-commit callback): late dispatches after
-   * teardown become no-ops. The settings-change trigger is not wired here —
-   * it reads `ctx.homeMembership` lazily and dies when the wiring clears it.
+   * (refresh subscription + zone-tree-commit and realtime zone-move
+   * callbacks): late dispatches after teardown become no-ops. The
+   * settings-change trigger is not wired here — it reads `ctx.homeMembership`
+   * lazily and dies when the wiring clears it.
    */
   teardown: () => void;
 };
+
+/** The narrow control-path slice of {@link HomeMembershipPort} the complement filter consumes. */
+type HomeMembershipControlView = Pick<HomeMembershipPort, 'hasSubHomes' | 'getHomeIdForDevice'>;
+
+/**
+ * Membership complement filter for one home's device views — the SINGLE seam
+ * shared by the plan input (`buildMainHomeScope.getPlanDevices`) and the
+ * sample-pipeline snapshot view (`createHomePowerPipeline`). Consumes ONLY the
+ * control-path surface (`hasSubHomes`/`getHomeIdForDevice`) — never the
+ * diagnostics view or membership `source` (resolution-in-producer: control
+ * paths must not branch on how a membership was decided).
+ *
+ * Identity guard: with no sub-homes configured (or before the service is
+ * wired, e.g. the boot window), this returns the SAME array reference — the
+ * single-home behavior stays bit-identical.
+ */
+export function filterDevicesForHome<T extends { id: string }>(
+  membership: HomeMembershipControlView | undefined,
+  devices: T[],
+  homeId: HomeId,
+): T[] {
+  if (!membership?.hasSubHomes()) return devices;
+  return devices.filter((device) => membership.getHomeIdForDevice(device.id) === homeId);
+}
 
 /**
  * Build the membership service over the real stores and subscribe its
@@ -209,9 +312,18 @@ export const createHomeMembershipService = (params: {
   emitter: ObservedStateEmitter;
   /** The transport's zone-tree-commit seam; called with `undefined` to detach. */
   setOnZoneTreeCommitted: (callback: (() => void) | undefined) => void;
+  /**
+   * The transport's realtime zone-move seam (a realtime device.update
+   * committed a snapshot entry with a changed `zoneId`); called with
+   * `undefined` to detach. Without this trigger a realtime zone move would
+   * stay unjoined — main-plannable — until the next full refresh.
+   */
+  setOnDeviceZoneChanged: (callback: (() => void) | undefined) => void;
   getZoneTree: () => ZoneTree | null;
   getDevices: () => readonly HomeMembershipDeviceInput[];
   getLogger: () => PinoLogger | undefined;
+  /** See {@link HomeMembershipServiceDeps.onMembershipChanged}. */
+  onMembershipChanged?: () => void;
 }): HomeMembershipWiring => {
   const service = new HomeMembershipService({
     homesStore: createHomesStore(params.homey),
@@ -219,8 +331,11 @@ export const createHomeMembershipService = (params: {
     getZoneTree: params.getZoneTree,
     getDevices: params.getDevices,
     getLogger: params.getLogger,
+    onMembershipChanged: params.onMembershipChanged,
   });
-  const recomputeContained = (trigger: 'startup' | 'snapshot_refresh' | 'zone_tree_commit'): void => {
+  const recomputeContained = (
+    trigger: 'startup' | 'snapshot_refresh' | 'zone_tree_commit' | 'realtime_zone_move',
+  ): void => {
     try {
       service.recompute();
     } catch (error) {
@@ -233,12 +348,14 @@ export const createHomeMembershipService = (params: {
   };
   const unsubscribeRefresh = params.emitter.onObservedStateRefresh(() => recomputeContained('snapshot_refresh'));
   params.setOnZoneTreeCommitted(() => recomputeContained('zone_tree_commit'));
+  params.setOnDeviceZoneChanged(() => recomputeContained('realtime_zone_move'));
   recomputeContained('startup');
   return {
     service,
     teardown: () => {
       unsubscribeRefresh();
       params.setOnZoneTreeCommitted(undefined);
+      params.setOnDeviceZoneChanged(undefined);
     },
   };
 };

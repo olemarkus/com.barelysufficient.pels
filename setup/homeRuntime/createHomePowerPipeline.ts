@@ -14,10 +14,14 @@ import type { PlanService } from '../../lib/plan/planService';
 import type { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
 import type { PowerSampleRebuildState } from '../../lib/plan/rebuildScheduler/powerDriven';
 import type { PowerTrackerState } from '../../packages/contracts/src/powerTrackerTypes';
+import type { HomeId } from '../../lib/utils/settingsKeys';
+import { filterDevicesForHome } from '../homeMembership';
 import { PowerSamplePipeline } from '../powerSamplePipeline';
 
 export type HomePowerPipelineDeps = {
   ctx: AppContext;
+  /** The home this pipeline samples for; scopes the snapshot view below. */
+  homeId: HomeId;
   planRebuildScheduler: PlanRebuildScheduler;
   // `AppContext` types `planEngine`/`planService` as optional (they are wired
   // during startup); the pipeline contract requires the definite getters the
@@ -48,7 +52,12 @@ export function createHomePowerPipeline(deps: HomePowerPipelineDeps): PowerSampl
     planRebuildScheduler: deps.planRebuildScheduler,
     getPowerSampleRebuildState: () => ctx.powerSampleRebuildState,
     setPowerSampleRebuildState: deps.setPowerSampleRebuildState,
-    getLatestTargetSnapshot: () => ctx.latestTargetSnapshot,
+    // Membership complement (same single seam as the plan input in
+    // `homeScope.ts`): with sub-homes configured, this home's controlled/
+    // background usage split and per-device sample accounting stop counting
+    // sub-home members — their draw lands in background usage. Identity (same
+    // array) when `hasSubHomes()` is false.
+    getLatestTargetSnapshot: () => filterDevicesForHome(ctx.homeMembership, ctx.latestTargetSnapshot, deps.homeId),
     getPlanRebuildNowMs: deps.getPlanRebuildNowMs,
     savePowerTracker: deps.savePowerTracker,
     getStructuredDebugEmitter: (component, topic) => ctx.getStructuredDebugEmitter(component, topic),

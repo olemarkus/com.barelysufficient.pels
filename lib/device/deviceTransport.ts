@@ -169,6 +169,10 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     // a SUCCESSFUL generation-guarded commit (`snapshotRefresh.ts`), contained
     // there so a subscriber throw can never surface on the detached chain.
     private onZoneTreeCommitted?: () => void;
+    // Realtime zone-move seam (same shape/lifecycle as `onZoneTreeCommitted`):
+    // fires when a realtime device.update commits an entry with a changed
+    // `zoneId`; invoked contained in `deviceUpdateHandling.ts`.
+    private onDeviceZoneChanged?: () => void;
     private powerState: Required<PowerEstimateState>;
     private measuredPowerResolver: DeviceMeasuredPowerResolver;
     private recentLocalCapabilityWrites: RecentLocalCapabilityWrites = new Map();
@@ -315,6 +319,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             setLatestRawDevices: (devices) => { refreshScalars.latestRawDevices = devices; },
             zoneTreeCache: t.zoneTreeCache,
             notifyZoneTreeCommitted: () => { t.onZoneTreeCommitted?.(); },
+            notifyDeviceZoneChanged: () => { t.onDeviceZoneChanged?.(); },
             getTrackedDevicesById: () => t.latestTrackedDevicesById,
             fetchDevicesForSnapshot: () => t.fetchDevicesForSnapshot(),
             fetchDevicesByKnownIds: () => t.fetchDevicesByKnownIds(),
@@ -493,9 +498,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
      * dormant: no runtime consumer yet — multi-home membership will join
      * device `zoneId`s against it.
      */
-    getZoneTree(): ZoneTree | null {
-        return this.zoneTreeCache.get();
-    }
+    getZoneTree(): ZoneTree | null { return this.zoneTreeCache.get(); }
 
     /**
      * Subscribe/detach the zone-tree commit notification (see the field doc on
@@ -503,9 +506,10 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
      * wiring subscribes after construction and detaches with `undefined` at
      * uninit so a late detached commit cannot recompute a torn-down consumer.
      */
-    setOnZoneTreeCommitted(callback: (() => void) | undefined): void {
-        this.onZoneTreeCommitted = callback;
-    }
+    setOnZoneTreeCommitted(callback: (() => void) | undefined): void { this.onZoneTreeCommitted = callback; }
+
+    /** Realtime zone-move subscription; same single-consumer lifecycle as `setOnZoneTreeCommitted`. */
+    setOnDeviceZoneChanged(callback: (() => void) | undefined): void { this.onDeviceZoneChanged = callback; }
 
     async setCapability(deviceId: string, capabilityId: string, value: unknown): Promise<unknown> {
         return runSetCapability(this.ctx, deviceId, capabilityId, value);

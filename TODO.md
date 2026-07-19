@@ -364,6 +364,17 @@ program) remains deferred.*
       rare (needs two surplus dump loads + an active task on the higher one) and only under-uses surplus
       (never over-draws), so low-stakes. P3. Source: pels-runtime-reality on PR-7, 2026-07-02.
 
+- [ ] **Multi-home: device shed by main that then joins a sub-home stays off for the no-bundle
+      interval.** Main's plan input drops the device the moment its membership changes, so nothing
+      plans it — including its release — until the per-home bundles (R7b) give the sub-home a
+      planner. Bounded, not permanent: generic restore already treats an eligible observed-off
+      binary or stepped device as a restore candidate regardless of shed provenance
+      (`lib/plan/restore/devices.ts` `isBinaryRestoreCandidate`/`isSteppedRestoreCandidate`), so
+      the sub-home's planner picks it up once it exists. At R7b, verify every shed modality has
+      such a provenance-free restore lane (add an explicit adoption/release rule for any that
+      lacks one) — before the homes-creation UI ships. See `notes/multi-home-complement.md`.
+      Source: codex review on the R5 complement PR (2026-07-19).
+
 ## P2 Product, Observability, and Maintainability
 
 - [ ] **Hoist `createSelectOption` (and the render-signature guard pattern) out of `advanced.ts` into a
