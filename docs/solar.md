@@ -9,15 +9,15 @@ If you have rooftop solar (PV), this page explains what PELS does with it today.
 
 **Short version:** PELS uses your solar to protect your capacity for free; it can nudge a heater to soak surplus — or run an on/off load such as a pool pump only while you export — instead of sending it to the grid; and it shows what your solar did — production, self-consumption, export, and the grid cost it avoided. It does not yet drive your export to zero or control a battery or inverter (see [What PELS does not do yet](#what-pels-does-not-do-yet)).
 
-::: warning Requires the Homey Energy power source
-The solar features below need the **Homey Energy** power source — either a solar device that reports production, or a meter that shows your solar export. On the Flow power source, PELS does not receive a solar signal.
+::: warning Requires the Power meter power source
+The solar features below need the **Power meter** power source (read through Homey Energy) — either a solar device that reports production, or a meter that shows your solar export. On the Flow power source, PELS does not receive a solar signal.
 :::
 
 ## What to do today
 
 To use more of your own solar with PELS:
 
-1. **Confirm your power source is Homey Energy** and your solar device's production shows up there. Capacity protection then works automatically — there is nothing else to turn on.
+1. **Confirm your power source is Power meter** and your solar device's production shows up in Homey Energy. Capacity protection then works automatically — there is nothing else to turn on.
 2. **Optionally turn on "Use solar surplus"** on a managed heating device (a water tank, floor heating, or a room heater) so surplus warms your home instead of going to the grid.
 3. **Keep an EV charger managed with current control.** While the sun is up, a charging car naturally uses the freed-up power, so much of that charge comes from your own solar.
 
