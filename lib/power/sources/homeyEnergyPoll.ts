@@ -33,7 +33,10 @@ export class HomeyEnergyPollSource {
   constructor(private readonly deps: {
     getPowerSource: () => PowerSource;
     timers: TimerRegistry;
-    pollHomePower: () => Promise<HomeyEnergyPowerSample | null | undefined>;
+    // `authorizeFanOut` lets the read gate its sub-home meter fan-out on THIS
+    // poll's liveness — the fan-out fires inside the read, before the discard
+    // checks below, so a stale-generation poll must not deliver it.
+    pollHomePower: (authorizeFanOut: () => boolean) => Promise<HomeyEnergyPowerSample | null | undefined>;
     recordPowerSample: (sample: HomeyEnergyPowerSample) => Promise<void>;
     debugStructured: StructuredDebugEmitter;
     error: (...args: unknown[]) => void;
@@ -68,7 +71,14 @@ export class HomeyEnergyPollSource {
 
   async pollNow(): Promise<void> {
     const generation = this.pollGeneration;
-    const sample = await this.deps.pollHomePower();
+    // Authorize the sub-home meter fan-out (dispatched inside the read, before the
+    // discard checks below) only while THIS poll is still current: same generation
+    // AND source unchanged. Without it a stale-generation poll's fan-out could
+    // deliver an out-of-order sub-meter sample that resolves after its replacement.
+    const authorizeFanOut = (): boolean => (
+      generation === this.pollGeneration && this.deps.getPowerSource() === 'homey_energy'
+    );
+    const sample = await this.deps.pollHomePower(authorizeFanOut);
     if (generation !== this.pollGeneration) {
       this.deps.debugStructured({ event: 'homey_energy_poll_discarded_stale' });
       return;

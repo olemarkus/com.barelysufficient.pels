@@ -61,14 +61,14 @@ accounting; the whole-home default keeps the conservative behavior above.
   snapshot; follows zone moves; edge-triggered debug log
   `home_membership_zone_retained`).
 
-## Open gap: shed-then-moved devices during the no-bundle interval
+## Shed-then-moved devices: adopted by the sub-home bundle (closed at R7b)
 
 A device shed by main that THEN joins a sub-home drops out of main's plan
-input, so nothing plans it — including its release — until the per-home
-bundles (R7b) give the sub-home a planner. The gap is the INTERVAL, not the
-mechanism: generic restore already treats an eligible observed-off binary or
-stepped device as a restore candidate regardless of who shed it
-(`lib/plan/restore/devices.ts`), so the sub-home's planner picks the device
-up once it exists. At R7b, verify every shed modality has such a
-provenance-free restore lane (explicit adoption/release rule otherwise) —
-before the homes-creation UI ships. Tracked in `TODO.md`.
+input; from R7b the sub-home's own capacity bundle
+(`setup/homeRuntime/createHomeCapacityBundle.ts`) plans it, and the generic
+provenance-free restore lanes (`lib/plan/restore/devices.ts` — candidacy is
+observed-state-only, no shed-provenance fields) resume it when headroom
+allows. Verified per modality: the binary adoption path runs end-to-end in
+`test/e2e/homeCapacityBundlesSdkE2E.test.ts` (main sheds → sub-home bundle
+resumes); binary + stepped candidate lanes are pinned in
+`test/integration/homeCapacityBundles.test.ts`.

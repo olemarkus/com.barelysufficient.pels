@@ -111,6 +111,48 @@ describe('HomeyEnergyPollSource', () => {
     expect(recordPowerSample).toHaveBeenCalledWith({ powerW: 2100 });
   });
 
+  it('does NOT authorize the sub-meter fan-out for a poll superseded by a restart (stale generation not routed)', async () => {
+    // The transport fans the sub-home meter readings out from INSIDE the read,
+    // BEFORE the stale-generation discard below. The read gates that fan-out on the
+    // `authorizeFanOut` predicate the source hands it; a poll superseded by a
+    // restart (a whole-home-meter / power-source change) must be denied so its
+    // out-of-order sub-meter readings are never routed to bundles.
+    mockHomeyInstance.settings.set('power_source', 'homey_energy');
+    const routeMeterReadings = vi.fn();
+    const pollResolvers: Array<() => void> = [];
+    // The stub plays the transport's role: it dispatches the sub-meter fan-out ONLY
+    // when the source authorizes it (mirrors `pollHomePowerWithMeterFanOut`).
+    const pollHomePower = vi.fn((authorizeFanOut: () => boolean) => (
+      new Promise<{ powerW: number }>((resolve) => {
+        pollResolvers.push(() => {
+          if (authorizeFanOut()) routeMeterReadings({ 'm-a': 1000 });
+          resolve({ powerW: 2100 });
+        });
+      })
+    ));
+    const source = new HomeyEnergyPollSource({
+      getPowerSource: mockPowerSource,
+      timers: new TimerRegistry(),
+      pollHomePower,
+      recordPowerSample: vi.fn().mockResolvedValue(undefined),
+      debugStructured: vi.fn(),
+      error: vi.fn(),
+    });
+
+    source.start();     // generation 1 (poll 0)
+    source.restart();   // generation 2 (poll 1) supersedes poll 0
+
+    // Poll 0 (stale generation) resolves late: its fan-out must NOT route.
+    pollResolvers[0]();
+    await Promise.resolve();
+    expect(routeMeterReadings).not.toHaveBeenCalled();
+
+    // Poll 1 (current generation) resolves: its fan-out routes normally.
+    pollResolvers[1]();
+    await Promise.resolve();
+    expect(routeMeterReadings).toHaveBeenCalledWith({ 'm-a': 1000 });
+  });
+
   it('drops an in-flight reading when the source switches away from Homey Energy', async () => {
     mockHomeyInstance.settings.set('power_source', 'homey_energy');
     let resolvePoll: (value: { powerW: number }) => void = () => undefined;

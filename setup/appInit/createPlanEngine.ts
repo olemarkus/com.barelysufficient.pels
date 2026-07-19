@@ -3,57 +3,48 @@ import { requireDeviceManager } from './contextGuards';
 import { PlanEngine as PlanEngineClass } from '../../lib/plan/planEngine';
 import { isDeviceObservationStale } from '../../lib/observer/observationFreshness';
 import type { DeviceDiagnosticsRecorder } from '../../lib/diagnostics/deviceDiagnosticsService';
+import type { Actuator } from '../../lib/actuator/deviceActuator';
 import type { AppContext } from '../../lib/app/appContext';
 import type { HomeScope } from '../homeRuntime/homeScope';
-import {
-  DeferredObjectiveDecorationController,
-  migrateBlobToPerKeyIfNeeded,
-  readAllObjectives,
-} from '../../lib/objectives/deferredObjectives';
-import { isSmartTaskDeviceInMainHome } from './smartTaskHomeScope';
-import { createObjectivePriceHorizonBuilder } from './objectivePriceHorizon';
 
-export function createPlanEngine(ctx: AppContext, scope: HomeScope) {
-  // Smart-task controller: lives in the app-wiring layer so the planner engine
-  // (lib/plan) imports nothing from lib/objectives. The engine receives only the
-  // opaque `decorateDeferredObjectives` function below, keeping the planner — and
-  // the executor downstream — entirely smart-task-agnostic.
-  const deferredObjectiveController = new DeferredObjectiveDecorationController({
-    getDeferredObjectiveSettings: () => {
-      // Self-heal a boot-time empty-`getKeys()` flake that skipped the one-shot
-      // migration: idempotent + marker-gated (a cheap single `get` once done), so
-      // retrying on the plan cycle makes legacy objectives visible within seconds
-      // instead of staying invisible (planner + UI) until the next app restart.
-      migrateBlobToPerKeyIfNeeded(ctx.homey.settings);
-      return readAllObjectives(ctx.homey.settings);
-    },
-    getDeferredObjectiveActivePlans: () => (
-      ctx.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot() ?? null
-    ),
-    getTimeZone: () => ctx.getTimeZone(),
-    getPowerTracker: scope.getPowerTracker,
-    getPriceOptimizationEnabled: () => ctx.priceOptimizationEnabled,
-    getHardCapKw: () => scope.getCapacitySettings().limitKw,
-    // Allocation-horizon price source, resolved from the price layer; shared
-    // single source of truth so the objectives subsystem stays free of `lib/price`.
-    buildPriceHorizon: createObjectivePriceHorizonBuilder(ctx),
-    // Multi-home v1: a sub-home device's task resolves to the dedicated
-    // `objective_device_in_sub_home` unknown diagnostic (never planned) instead
-    // of masquerading as a missing device. Membership absent (boot window /
-    // bare test contexts) or no sub-homes configured → false for every device,
-    // preserving exact single-home behavior.
-    isDeviceInSubHome: (deviceId) => !isSmartTaskDeviceInMainHome(ctx, deviceId),
-  });
+export type CreatePlanEngineOptions = {
+  /**
+   * Teardown fence for a sub-home bundle's actuation (multi-home R7b). When it
+   * returns true EVERY device write this engine issues no-ops at the single
+   * actuator seam — so any in-flight rebuild/reconcile/heartbeat/sample
+   * continuation that resolves AFTER the bundle is torn down cannot actuate into
+   * main's just-adopted complement (double-control). Absent for the main home →
+   * the actuator is the bare `buildDeviceActuator` result, byte-identical.
+   */
+  isActuationFenced?: () => boolean;
+};
 
+/**
+ * Wrap an actuator so every `apply` no-ops (requested:false, `base` untouched)
+ * while `isFenced()` is true. The single-method actuator seam makes this the
+ * simplest robust teardown fence: a removed sub-home bundle's in-flight
+ * continuation cannot issue a device write once torn down.
+ */
+export const createFencedActuator = (base: Actuator, isFenced: () => boolean): Actuator => ({
+  apply: (command) => (isFenced() ? Promise.resolve({ requested: false }) : base.apply(command)),
+});
+
+export function createPlanEngine(ctx: AppContext, scope: HomeScope, options?: CreatePlanEngineOptions) {
   // Resolve the device manager first so its absence surfaces the canonical
   // "DeviceTransport must be initialized" error. buildDeviceActuator only returns
   // null when the device manager is absent, so past this guard the actuator is
   // non-null; the assertion just satisfies the required dep type.
   const deviceManager = requireDeviceManager(ctx);
-  const actuator = buildDeviceActuator(ctx);
-  if (!actuator) {
+  const baseActuator = buildDeviceActuator(ctx);
+  if (!baseActuator) {
     throw new Error('Device actuator must be initialized before plan engine setup.');
   }
+  // Byte-identical for the main home (no options): the bare actuator. A fenced
+  // sub-home actuator short-circuits to a requested:false no-op post-teardown.
+  const isActuationFenced = options?.isActuationFenced;
+  const actuator: Actuator = isActuationFenced === undefined
+    ? baseActuator
+    : createFencedActuator(baseActuator, isActuationFenced);
 
   return new PlanEngineClass({
     homey: ctx.homey,
@@ -73,27 +64,34 @@ export function createPlanEngine(ctx: AppContext, scope: HomeScope) {
     getCapacityGuard: scope.getCapacityGuard,
     getCapacitySettings: scope.getCapacitySettings,
     getCapacityDryRun: scope.getCapacityDryRun,
-    getOperatingMode: () => ctx.operatingMode,
-    getModeDeviceTargets: () => ctx.modeDeviceTargets,
-    getPriceOptimizationEnabled: () => ctx.priceOptimizationEnabled,
-    getPriceOptimizationSettings: () => ctx.priceOptimizationSettings,
-    isCurrentHourCheap: () => ctx.isCurrentHourCheap(),
-    isCurrentHourExpensive: () => ctx.isCurrentHourExpensive(),
-    // Inferred curtailed-surplus term for the surplus allocator. Late-bound
-    // closure: the curtailment estimator is wired post-startup
-    // (`wireCurtailmentSurplus`), after this engine exists — until then the
-    // context getter reads null (fail-closed).
-    getInferredSurplusKw: () => ctx.getCurtailedSurplusKw?.() ?? null,
+    // Policy closures from the scope: the main home binds the live ctx reads
+    // (byte-identical to the pre-R7b hardwiring); a sub-home capacity bundle
+    // binds disabled constants, so its engine is capacity-only without this
+    // factory branching on which home it serves.
+    getOperatingMode: scope.getOperatingMode,
+    getModeDeviceTargets: scope.getModeDeviceTargets,
+    getPriceOptimizationEnabled: scope.getPriceOptimizationEnabled,
+    getPriceOptimizationSettings: scope.getPriceOptimizationSettings,
+    isCurrentHourCheap: scope.isCurrentHourCheap,
+    isCurrentHourExpensive: scope.isCurrentHourExpensive,
+    getInferredSurplusKw: scope.getInferredSurplusKw,
     getPowerTracker: scope.getPowerTracker,
     getDailyBudgetSnapshot: scope.getDailyBudgetSnapshot,
-    decorateDeferredObjectives: (input) => deferredObjectiveController.decorate(input),
+    // Smart-task decoration seam, owned by the scope (`buildMainHomeScope`
+    // constructs the DeferredObjectiveDecorationController; sub-home scopes
+    // omit the member, so the builder falls back to identity decoration).
+    decorateDeferredObjectives: scope.decorateDeferredObjectives,
     getPriorityForDevice: (deviceId) => ctx.getPriorityForDevice(deviceId),
     getShedBehavior: (deviceId) => ctx.getShedBehavior(deviceId),
-    getDynamicSoftLimitOverride: () => ctx.getDynamicSoftLimitOverride(),
+    getDynamicSoftLimitOverride: scope.getDynamicSoftLimitOverride,
     markSteppedLoadDesiredStepIssued: (params) => ctx.deviceControlHelpers.markSteppedLoadDesiredStepIssued(params),
     logTargetRetryComparison: (params) => ctx.logTargetRetryComparison?.(params),
-    syncLivePlanStateAfterTargetActuation: (source) => ctx.syncLivePlanStateAfterTargetActuation?.(source),
-    deviceDiagnostics: ctx.deviceDiagnosticsService as DeviceDiagnosticsRecorder | undefined,
+    // Scope-owned so the sync targets THIS home's plan service (see HomeScope).
+    syncLivePlanStateAfterTargetActuation: scope.syncLivePlanStateAfterTargetActuation,
+    // Scope-owned diagnostics recorder, resolved LIVE at engine construction
+    // (after `initDeviceDiagnosticsService`): main binds the shared app recorder;
+    // a sub-home resolves undefined so its plans never pollute main's per-boot epoch.
+    deviceDiagnostics: scope.getDeviceDiagnostics() as DeviceDiagnosticsRecorder | undefined,
     structuredLog: ctx.getStructuredLogger('plan'),
     debugStructured: ctx.getStructuredDebugEmitter('plan', 'plan'),
     log: (...args: unknown[]) => ctx.log(...args),

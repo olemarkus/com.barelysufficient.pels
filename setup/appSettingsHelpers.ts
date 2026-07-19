@@ -274,12 +274,14 @@ export function initSettingsHandlerForApp(
   options?: {
     /**
      * Receives writes to home-suffixed settings keys (`<base>:<homeId>`,
-     * non-main home) instead of the main-home handlers. Dormant: no caller
-     * passes it yet — the multi-home wiring will. Consumer contract
-     * (unserialized, un-deduped, idempotent dirty-marks) documented on
-     * `SettingsHandlerDeps.onHomeScopedSettingChanged`.
+     * non-main home) instead of the main-home handlers. Wired to the
+     * home-runtime registry by `AppServiceWiring.initSettingsHandler`.
+     * Consumer contract (unserialized, un-deduped, idempotent dirty-marks)
+     * documented on `SettingsHandlerDeps.onHomeScopedSettingChanged`.
      */
     onHomeScopedSettingChanged?: (baseKey: string, homeId: string) => void | Promise<void>;
+    /** Reconcile the per-home capacity bundles after a `homes_config` write. */
+    reconcileHomeRuntimes?: () => void;
   },
 ): { handle: SettingsHandler; stop: () => void } {
   const planService = requirePlanService(ctx);
@@ -287,6 +289,7 @@ export function initSettingsHandlerForApp(
   const settingsHandler = createSettingsHandler({
     homey: ctx.homey,
     onHomeScopedSettingChanged: options?.onHomeScopedSettingChanged,
+    reconcileHomeRuntimes: options?.reconcileHomeRuntimes,
     // Lazy read on purpose: the membership service is assigned by a separate
     // wiring step, and the handler must tolerate a context without it.
     recomputeHomeMembership: () => ctx.homeMembership?.recompute(),

@@ -19,6 +19,7 @@
   - `settingsRepository.ts` — `SettingsRepository`: typed reads of persisted Homey settings at boot.
   - `settingsUiApi.ts` — the handlers `api.ts` delegates to for every settings-UI endpoint.
   - `appSettingsHelpers.ts` — loads/normalizes capacity settings and reacts to settings changes.
+  - `homeRuntime/` — per-home wiring (multi-home): the `HomeScope` closure bundle the plan factories consume, the pipeline factory, and the R7b capacity-only sub-home bundles (`homeRuntimeRegistry.ts` + `createHomeCapacityBundle.ts`, reconciled against `homes_config`; the main home never routes through the bundle factory).
 
 ## Adapter naming
 

@@ -647,3 +647,46 @@ describe('ui_homes payload', () => {
     });
   });
 });
+
+// R7b: the per-home capacity bundles gate EXECUTION on a committed zone tree.
+// The registry fires each bundle's membership-ready apply-edge from this
+// transition (decoupled from meter-sample arrival, so it works in flow mode).
+describe('HomeMembershipService — zone-tree-commit readiness edge', () => {
+  const unwrittenStore = { read: () => ({ state: 'unwritten' as const }) } as never;
+  const buildService = (params: {
+    getZoneTree: () => ZoneTree | null;
+    onZoneTreeCommitReady: () => void;
+  }): HomeMembershipService => new HomeMembershipService({
+    homesStore: unwrittenStore,
+    assignmentsStore: unwrittenStore,
+    getZoneTree: params.getZoneTree,
+    getDevices: () => [],
+    getLogger: () => undefined,
+    onZoneTreeCommitReady: params.onZoneTreeCommitReady,
+  });
+
+  it('fires onZoneTreeCommitReady exactly ONCE on the null→committed edge, decoupled from any sample', () => {
+    let tree: ZoneTree | null = null;
+    const onReady = vi.fn();
+    const service = buildService({ getZoneTree: () => tree, onZoneTreeCommitReady: onReady });
+
+    // No tree yet → not ready, edge not fired.
+    service.recompute();
+    expect(service.hasSeenZoneTreeCommit()).toBe(false);
+    expect(onReady).not.toHaveBeenCalled();
+
+    // Tree commits → readiness edge fires once (no meter sample involved).
+    tree = ZONES as unknown as ZoneTree;
+    service.recompute();
+    expect(service.hasSeenZoneTreeCommit()).toBe(true);
+    expect(onReady).toHaveBeenCalledTimes(1);
+
+    // Later recomputes — even a transient null read (last-good tree retained) —
+    // never re-fire the once-only edge.
+    tree = null;
+    service.recompute();
+    tree = ZONES as unknown as ZoneTree;
+    service.recompute();
+    expect(onReady).toHaveBeenCalledTimes(1);
+  });
+});

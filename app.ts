@@ -304,6 +304,11 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
   // settings change, realtime device event, flow card) waits for either
   // outcome instead of running the planner against an empty snapshot.
   public snapshotWarmupGate?: SnapshotWarmupGate;
+  // Curtailment-surplus estimator seams (optional AppContext members) —
+  // ASSIGNED by `wireCurtailmentSurplus` post-startup; declared here so the
+  // main pipeline's field-initializer tap below can reference them on `this`.
+  public getCurtailedSurplusKw?: () => number | null;
+  public recordCurtailmentSample?: (netW: number, generationW: number | undefined, nowMs: number) => void;
   public defaultComputeDynamicSoftLimit: (() => number) | undefined = undefined;
   public lastKnownPowerKw: Record<string, number> = {};
   public expectedPowerKwOverrides: Record<string, { kw: number; ts: number }> = {};
@@ -340,6 +345,9 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
     setPowerSampleRebuildState: (state) => { this.powerSampleRebuildState = state; },
     getOutdoorTemperatureC: () => this.weatherCollector?.getCurrentOutdoorTemperatureC(),
     recordPvGenerationSample: (genW, nowMs, netW) => this.pvForecast?.recordSample(genW, nowMs, netW),
+    // Optional AppContext member assigned by wireCurtailmentSurplus post-startup;
+    // main-home tap only (sub-home pipelines omit it — see the pipeline factory).
+    recordCurtailmentSample: (netW, genW, nowMs) => this.recordCurtailmentSample?.(netW, genW, nowMs),
   });
   private realtimeDeviceReconcileState = realtimeReconcile.createRealtimeDeviceReconcileState();
   private stopSettingsHandler?: () => void;
@@ -393,7 +401,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
   public readonly homeyEnergyHelpers = new HomeyEnergyPollSource({
     getPowerSource: () => this.getPowerSource(),
     timers: this.timers,
-    pollHomePower: async () => (await this.deviceManager?.pollHomePowerW()) ?? null,
+    pollHomePower: async (authorizeFanOut) => (await this.deviceManager?.pollHomePowerW(authorizeFanOut)) ?? null,
     recordPowerSample: async (sample) => this.powerSamplePipeline.recordPowerSample(sample.powerW, undefined, sample),
     debugStructured: this.getStructuredDebugEmitter('devices', 'devices'),
     error: (...args) => this.error(...args),
