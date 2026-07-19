@@ -188,6 +188,7 @@ var mapAppRescueReason = (reason) => {
   if (reason === "device_not_found") return "device_not_found";
   if (reason === "device_not_planned") return "device_not_planned";
   if (reason === "device_not_eligible") return "device_not_eligible";
+  if (reason === "device_in_sub_home") return "device_in_sub_home";
   if (reason === "write_conflict" || reason === "write_refused") return "write_conflict";
   return "invalid_candidate";
 };

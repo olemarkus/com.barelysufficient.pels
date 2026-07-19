@@ -31,6 +31,12 @@ export type DeferredObjectiveDecorationControllerDeps = {
   // daily-budget snapshot (threaded via `decorate(input)`) is now only the
   // budget overlay.
   buildPriceHorizon: BuildPriceHorizon;
+  // Multi-home v1 scope predicate (wiring-injected from the membership
+  // service): `true` = the task's device is in a separate-meter sub-home, so
+  // its diagnostic resolves to the dedicated `objective_device_in_sub_home`
+  // unknown code and the task never governs the device. Optional — absent
+  // (tests) or with no sub-homes configured, behavior is identical.
+  isDeviceInSubHome?: (deviceId: string) => boolean;
 };
 
 /**
@@ -106,6 +112,7 @@ export class DeferredObjectiveDecorationController {
         activePlans: this.deps.getDeferredObjectiveActivePlans?.() ?? null,
         hardCapKw: this.deps.getHardCapKw(),
         concurrentEligibleTracker: this.concurrentEligibleTracker,
+        isDeviceInSubHome: this.deps.isDeviceInSubHome,
       });
     } finally {
       addPerfDuration('evaluate_deferred_objectives_ms', Date.now() - start);

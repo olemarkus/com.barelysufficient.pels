@@ -80,9 +80,21 @@ export class ConcurrentEligibleTaskTracker {
     settings: DeferredObjectiveSettingsV1;
     deviceById: Map<string, ObjectiveDeviceInput>;
     nowMs: number;
+    // Multi-home v1: `true` marks a task's device as belonging to a
+    // separate-meter sub-home — such a task must not shrink main tasks'
+    // reserved shares, so it is excluded from the denominator.
+    isDeviceInSubHome?: (deviceId: string) => boolean;
   }): void {
     const { settings, deviceById, nowMs } = params;
     for (const [deviceId, objective] of Object.entries(settings.objectivesByDeviceId)) {
+      // Authoritative multi-home exclusion: membership is user-configured
+      // state (a pin / zone assignment), not a flaky SDK read, so the
+      // abandon-grace window does NOT apply — a pre-relocation entry is pruned
+      // immediately instead of diluting siblings for up to the grace window.
+      if (params.isDeviceInSubHome?.(deviceId) === true) {
+        this.lastSeenByDeviceId.delete(deviceId);
+        continue;
+      }
       if (!isEligibleNow(deviceId, objective, deviceById)) continue;
       this.lastSeenByDeviceId.set(deviceId, {
         lastSeenAtMs: nowMs,
@@ -126,6 +138,7 @@ export class ConcurrentEligibleTaskTracker {
 export const countConcurrentEligibleTasks = (params: {
   settings: DeferredObjectiveSettingsV1;
   deviceById: Map<string, ObjectiveDeviceInput>;
+  isDeviceInSubHome?: (deviceId: string) => boolean;
 }): number => {
   const tracker = new ConcurrentEligibleTaskTracker();
   tracker.observe({ ...params, nowMs: 0 });
@@ -142,11 +155,13 @@ export const resolveConcurrentEligibleCount = (params: {
   deviceById: Map<string, ObjectiveDeviceInput>;
   nowMs: number;
   tracker?: ConcurrentEligibleTaskTracker;
+  // Multi-home v1 exclusion, threaded to `observe` (see the tracker's doc).
+  isDeviceInSubHome?: (deviceId: string) => boolean;
 }): number | ((bucketStartMs: number) => number) => {
-  const { settings, deviceById, nowMs, tracker } = params;
+  const { settings, deviceById, nowMs, tracker, isDeviceInSubHome } = params;
   if (!tracker) {
-    return countConcurrentEligibleTasks({ settings, deviceById });
+    return countConcurrentEligibleTasks({ settings, deviceById, isDeviceInSubHome });
   }
-  tracker.observe({ settings, deviceById, nowMs });
+  tracker.observe({ settings, deviceById, nowMs, isDeviceInSubHome });
   return (bucketStartMs: number) => tracker.count({ nowMs, bucketStartMs });
 };

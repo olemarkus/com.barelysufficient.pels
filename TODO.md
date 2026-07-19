@@ -377,6 +377,22 @@ program) remains deferred.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **Relocated-task UI aftermath: surface `objective_device_in_sub_home` on the task list/hero, and
+      gate the edit preview.** *Persona:* multi-home owner whose device (with a live smart task) moved to a
+      sub-home — the task quietly stops governing but the Smart-tasks list/hero never says why.
+      *Hypothesis:* the dedicated diagnostic (R8 sub-home gate) reaches structured logs and admission but no
+      user surface: `resolveDiagnosticReasonCode` returns undefined for it, and a pending (never-revised)
+      record falls through `resolvePendingReason` to `awaiting_horizon_plan` — "Waiting for tomorrow's
+      prices" forever. Map the code into the list-chip / pending-reason path (contracts
+      `DeferredObjectiveActivePlanPendingReason` + `SMART_TASK_WIDGET_WHY_BY_PENDING_REASON`), reusing
+      `SMART_TASK_SUB_HOME_UNAVAILABLE` framing. Same block: the settings-UI edit preview stays read-only
+      ungated (`device_not_planned` precedent), so a relocated device's editor shows a landing estimate
+      whose save then rejects — gate the preview lane (or annotate the estimate) so the editor never
+      promises a schedule the save refuses (runtime-reality + pre-noted R8 follow-ups, 2026-07-19).
+      Files: `lib/objectives/deferredObjectives/activePlanDiagnosticReason.ts`,
+      `lib/objectives/deferredObjectives/activePlanRevisionBuild.ts`,
+      `packages/contracts/src/deferredObjectiveActivePlans.ts`,
+      `packages/shared-domain/src/deadlineLabels.ts`, `setup/settingsUiSmartTaskApi.ts`.
 - [ ] **Hoist `createSelectOption` (and the render-signature guard pattern) out of `advanced.ts` into a
       shared settings-ui primitive module.** *Persona:* maintainer adding the next dynamic device picker.
       *Hypothesis:* three near-copies now exist — `createModeOption` (`modes.ts`), `createSelectOption`

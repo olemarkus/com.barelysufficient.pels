@@ -3,6 +3,7 @@ import { registerFlowCards } from '../../flowCards/registerFlowCards';
 import type { AppContext } from '../../lib/app/appContext';
 import { normalizePowerSource } from '../../lib/power/powerSource';
 import { POWER_SOURCE } from '../../lib/utils/settingsKeys';
+import { isSmartTaskDeviceInMainHome } from './smartTaskHomeScope';
 import {
   FlowPowerSampleFreshnessClock,
   registerFlowPowerSampleFreshnessClock,
@@ -83,6 +84,11 @@ export function registerAppFlowCards(ctx: AppContext): void {
       }),
       params,
     ),
+    // Multi-home v1: the set-deadline card autocompletes offer main-home
+    // devices only (the write deps above carry the enforcing gate). Absent
+    // membership service (boot window) or no sub-homes configured resolves
+    // main for everything — every device stays offered.
+    isDeviceInMainHome: (deviceId) => isSmartTaskDeviceInMainHome(ctx, deviceId),
     getDeferredObjectiveActivePlans: () => (
       ctx.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot() ?? null
     ),

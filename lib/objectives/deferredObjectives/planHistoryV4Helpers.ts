@@ -272,6 +272,10 @@ export const captureRevisionSnapshot = (
 // `finalProgress*` does.
 export const PROGRESS_UNTRUSTWORTHY_REASON_CODES: ReadonlySet<DeferredObjectiveDiagnostic['reasonCode']> = new Set([
   'objective_charger_not_resumable',
+  // Sub-home scope short-circuit (multi-home v1): built without reading the
+  // device, so like `objective_missing_device` it carries no trustworthy
+  // progress values.
+  'objective_device_in_sub_home',
   'objective_invalid_deadline',
   'objective_invalid_session',
   'objective_missing_device',

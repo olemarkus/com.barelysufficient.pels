@@ -11,7 +11,10 @@ import type {
   DeferredObjectiveActivePlanV1,
 } from '../packages/contracts/src/deferredObjectiveActivePlans';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
-import { OBJECTIVE_WRITE_REFUSED_RETRY } from '../packages/shared-domain/src/objectiveWriteStrings';
+import {
+  OBJECTIVE_WRITE_REFUSED_RETRY,
+  SMART_TASK_SUB_HOME_UNAVAILABLE,
+} from '../packages/shared-domain/src/objectiveWriteStrings';
 import { normalizeError } from '../lib/utils/errorUtils';
 import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
 import { isEvCharger, supportsTemperatureObjective } from './smartTaskDeviceCapability';
@@ -55,9 +58,27 @@ export const requireSettingsRead = (deps: FlowCardDeps): () => DeferredObjective
 // migration / untrustworthy settings read. The Flow-card run listeners are
 // async, so throwing here lets Homey surface a retryable failure to the user
 // instead of the card reporting a (false) success while nothing was written.
+// The `device_in_sub_home` refusal is a hard multi-home scope rejection, not a
+// transient — it throws its own honest line (shared with the widget /
+// settings-UI surfaces) instead of the misleading "try again" framing.
 const throwIfWriteRefused = (outcome: ObjectiveWriteOutcome): void => {
-  if (!outcome.persisted) throw new Error(OBJECTIVE_WRITE_REFUSED_RETRY);
+  if (outcome.persisted) return;
+  throw new Error(
+    outcome.reason === 'device_in_sub_home' ? SMART_TASK_SUB_HOME_UNAVAILABLE : OBJECTIVE_WRITE_REFUSED_RETRY,
+  );
 };
+
+// Autocomplete filter for the two set-deadline (task-creating) cards: offer
+// main-home devices only (multi-home v1 — smart tasks plan against the main
+// home's meter budget), mirroring the write gate so the picker never offers a
+// device whose card run would then reject with the scope error. An absent dep
+// (bare test wiring) — like a device the membership resolves to main — keeps
+// the device offered. The clear card and the read-only status/trigger cards
+// stay unfiltered: an existing task on a relocated device must remain
+// clearable and observable.
+const isOfferedDevice = (deps: FlowCardDeps) => (device: TargetDeviceSnapshot): boolean => (
+  deps.isDeviceInMainHome?.(device.id) !== false
+);
 
 const validateReadyBy = (raw: unknown): string => {
   const value = typeof raw === 'string' ? raw.trim() : '';
@@ -240,7 +261,10 @@ function registerSetTemperatureDeadlineCard(deps: FlowCardDeps): void {
   });
   card.registerArgumentAutocompleteListener('device', async (query: string) => {
     const snapshot = await deps.getSnapshot();
-    return buildDeviceAutocompleteOptions(snapshot.filter(supportsTemperatureObjective), query);
+    return buildDeviceAutocompleteOptions(
+      snapshot.filter(supportsTemperatureObjective).filter(isOfferedDevice(deps)),
+      query,
+    );
   });
 }
 
@@ -288,7 +312,10 @@ function registerSetEvChargeDeadlineCard(deps: FlowCardDeps): void {
   });
   card.registerArgumentAutocompleteListener('device', async (query: string) => {
     const snapshot = await deps.getSnapshot();
-    return buildDeviceAutocompleteOptions(snapshot.filter(isEvCharger), query);
+    return buildDeviceAutocompleteOptions(
+      snapshot.filter(isEvCharger).filter(isOfferedDevice(deps)),
+      query,
+    );
   });
 }
 

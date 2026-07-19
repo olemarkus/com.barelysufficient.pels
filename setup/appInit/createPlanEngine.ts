@@ -10,6 +10,7 @@ import {
   migrateBlobToPerKeyIfNeeded,
   readAllObjectives,
 } from '../../lib/objectives/deferredObjectives';
+import { isSmartTaskDeviceInMainHome } from './smartTaskHomeScope';
 import { createObjectivePriceHorizonBuilder } from './objectivePriceHorizon';
 
 export function createPlanEngine(ctx: AppContext, scope: HomeScope) {
@@ -36,6 +37,12 @@ export function createPlanEngine(ctx: AppContext, scope: HomeScope) {
     // Allocation-horizon price source, resolved from the price layer; shared
     // single source of truth so the objectives subsystem stays free of `lib/price`.
     buildPriceHorizon: createObjectivePriceHorizonBuilder(ctx),
+    // Multi-home v1: a sub-home device's task resolves to the dedicated
+    // `objective_device_in_sub_home` unknown diagnostic (never planned) instead
+    // of masquerading as a missing device. Membership absent (boot window /
+    // bare test contexts) or no sub-homes configured → false for every device,
+    // preserving exact single-home behavior.
+    isDeviceInSubHome: (deviceId) => !isSmartTaskDeviceInMainHome(ctx, deviceId),
   });
 
   // Resolve the device manager first so its absence surfaces the canonical
