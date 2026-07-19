@@ -47,9 +47,21 @@ import type {
   SettingsUiPricesPayload,
   SettingsUiResetPowerStatsResponse,
 } from '../packages/contracts/src/settingsUiApi';
-import type { SettingsUiHomesPayload } from '../packages/contracts/src/settingsUiHomes';
+import type {
+  SettingsUiHomesPayload,
+  SettingsUiHomesSaveRequest,
+  SettingsUiHomesSaveResponse,
+} from '../packages/contracts/src/settingsUiHomes';
+import {
+  findNestedSubHomeRoots,
+  generateHomeId,
+  HomeStoreWriteRefusedError,
+  isValidSubHomeId,
+  type SubHomeConfig,
+} from '../lib/home/homeConfig';
+import { createHomesStore } from './homeRegistryAdapter';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
-import type { HomeMembershipService } from './homeMembership';
+import type { HomeMembershipDiagnostics, HomeMembershipService } from './homeMembership';
 import { isObserveOnlyRoleClassKey } from '../lib/device/transport/managerHelpers';
 import { normalizePowerSource } from '../lib/power/powerSource';
 import type { WeatherAdvisorReadoutPayload } from '../packages/contracts/src/weatherAdvisorTypes';
@@ -272,6 +284,17 @@ export const getSettingsUiPlanPayload = ({ homey }: ApiContext): SettingsUiPlanP
   plan: getSettingsUiPlan({ homey }),
 });
 
+// The full "config degraded" condition, as ONE predicate shared by the
+// read payload (its `configDegraded` field → the UI's degraded copy) and the
+// write seam (its refusal), so the two can never diverge. Degraded ⇔ no wired
+// membership service (boot window) OR the last recompute classified EITHER
+// persisted store (`homes_config` / `device_home_assignments`) `'suspect'`. A
+// whole-value write composed while any of these holds could erase persisted
+// areas — hence the write refuses on exactly the same condition the read reports.
+const isHomesConfigDegraded = (diagnostics: HomeMembershipDiagnostics | undefined): boolean => (
+  diagnostics === undefined || diagnostics.configDegraded
+);
+
 // Read-only multi-home view: the membership cache's diagnostics composed into
 // the contracts mirror (`SettingsUiHomesPayload`). Before `initHomeMembership`
 // runs (boot window) the payload is the honest empty single-home shape. Writes
@@ -281,7 +304,10 @@ export const getSettingsUiHomesPayload = ({ homey }: ApiContext): SettingsUiHome
   const diagnostics = getApp(homey)?.homeMembership?.getDiagnostics();
   if (!diagnostics) {
     return {
-      homes: [], membershipByDeviceId: {}, zoneTree: null, hasSubHomes: false,
+      // Boot window: nothing can vouch for the persisted config, so the
+      // payload is the empty single-home shape AND degraded — the UI must not
+      // compose a whole-value homes_config write from this view.
+      homes: [], membershipByDeviceId: {}, zoneTree: null, hasSubHomes: false, configDegraded: true,
     };
   }
   // Uniform copy discipline: shallow-copy ALL collection members so the
@@ -292,7 +318,149 @@ export const getSettingsUiHomesPayload = ({ homey }: ApiContext): SettingsUiHome
     membershipByDeviceId: { ...diagnostics.membershipByDeviceId },
     zoneTree: diagnostics.zoneTree === null ? null : { ...diagnostics.zoneTree },
     hasSubHomes: diagnostics.hasSubHomes,
+    configDegraded: isHomesConfigDegraded(diagnostics),
   };
+};
+
+// ── ui_homes_save: the Multiple meters UI's ONLY write seam ────────────────
+// Intent operations (upsert/delete of ONE area), never a client-composed
+// whole list: the runtime re-reads the persisted config through the
+// CLASSIFIED store reader, refuses when it classifies suspect (closing the
+// UI's degraded-check TOCTOU server-side), applies the single op to the
+// fresh list, and persists through the marker-first classified writer (which
+// refuses implausible payloads). The app's single-threaded event loop
+// serializes saves, and an op naming one area means a stale panel can never
+// wipe the others.
+
+const asSaveRecord = (value: unknown): Record<string, unknown> | null => (
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
+);
+
+const toSaveNonEmptyString = (value: unknown): string | null => (
+  typeof value === 'string' && value.length > 0 ? value : null
+);
+
+type ParsedUpsertArea = Extract<SettingsUiHomesSaveRequest, { op: 'upsert' }>['area'];
+
+/** Boundary parse of an upsert `area` payload; `null` = malformed. */
+const parseUpsertArea = (value: unknown): ParsedUpsertArea | null => {
+  const area = asSaveRecord(value);
+  if (!area) return null;
+  // A present-but-malformed homeId must refuse, never silently become a create.
+  let homeId: string | undefined;
+  if (area.homeId !== undefined) {
+    if (typeof area.homeId !== 'string' || !isValidSubHomeId(area.homeId)) return null;
+    homeId = area.homeId;
+  }
+  if (typeof area.name !== 'string') return null;
+  const rootZoneId = toSaveNonEmptyString(area.rootZoneId);
+  if (rootZoneId === null) return null;
+  // Explicit null = no meter (the domain allows it); anything else must be a
+  // non-empty string — absent/malformed refuses rather than coercing.
+  const meterRaw = area.meterDeviceId;
+  const meterDeviceId = meterRaw === null ? null : toSaveNonEmptyString(meterRaw);
+  if (meterRaw !== null && meterDeviceId === null) return null;
+  return {
+    ...(homeId === undefined ? {} : { homeId }), name: area.name, rootZoneId, meterDeviceId,
+  };
+};
+
+/** Boundary parse of the untrusted request body; `null` = malformed. */
+const parseHomesSaveRequest = (body: unknown): SettingsUiHomesSaveRequest | null => {
+  const record = asSaveRecord(body);
+  if (!record) return null;
+  if (record.op === 'delete') {
+    const homeId = toSaveNonEmptyString(record.homeId);
+    return homeId !== null && isValidSubHomeId(homeId) ? { op: 'delete', homeId } : null;
+  }
+  if (record.op !== 'upsert') return null;
+  const area = parseUpsertArea(record.area);
+  return area === null ? null : { op: 'upsert', area };
+};
+
+const applyHomesUpsert = (
+  current: readonly SubHomeConfig[],
+  area: Extract<SettingsUiHomesSaveRequest, { op: 'upsert' }>['area'],
+): SubHomeConfig[] => {
+  // Id allocation is the runtime's (create = absent id); an upsert with a
+  // vanished id honestly re-adds the area — the UI's "Add again" semantics.
+  const homeId = area.homeId ?? generateHomeId(current.map((entry) => entry.homeId));
+  const entry: SubHomeConfig = {
+    homeId, name: area.name, rootZoneId: area.rootZoneId, meterDeviceId: area.meterDeviceId,
+  };
+  return current.some((existing) => existing.homeId === homeId)
+    ? current.map((existing) => (existing.homeId === homeId ? entry : existing))
+    : [...current, entry];
+};
+
+// A meter area rooted at a zone-forest root would swallow the whole home and
+// empty the Main home (the strict-subpart invariant). Checked only against a
+// KNOWN tree — zone-data absence never blocks a save; a delete never roots.
+const upsertRootsAtForestRoot = (
+  homey: Homey.App['homey'],
+  request: SettingsUiHomesSaveRequest,
+): boolean => {
+  if (request.op !== 'upsert') return false;
+  const zoneTree = getApp(homey)?.homeMembership?.getDiagnostics().zoneTree ?? null;
+  return zoneTree !== null && zoneTree[request.area.rootZoneId]?.parent === null;
+};
+
+// The COMPOSED upsert must keep sub-home root subtrees disjoint — the v1
+// invariant `findNestedSubHomeRoots` enforces. Without this, two independently
+// stale panels could persist nested or identical root zones, silently re-homing
+// a third area's devices via deepest-root precedence (`lib/home/membership.ts`).
+// The store's plausibility check only guards shape + unique ids, so the overlap
+// gate lives here. Checked only against a KNOWN tree — zone-data absence never
+// blocks a save (parity with `upsertRootsAtForestRoot`); a delete never
+// introduces an overlap, so callers run this for upserts only.
+const upsertNestsSubHomeRoots = (
+  homey: Homey.App['homey'],
+  next: readonly SubHomeConfig[],
+): boolean => {
+  const zoneTree = getApp(homey)?.homeMembership?.getDiagnostics().zoneTree ?? null;
+  return zoneTree !== null && findNestedSubHomeRoots({ subHomes: [...next] }, zoneTree).length > 0;
+};
+
+export const saveSettingsUiHomesConfig = (
+  { homey, body }: ApiContext & { body?: unknown },
+): SettingsUiHomesSaveResponse => {
+  const request = parseHomesSaveRequest(body);
+  if (request === null) return { ok: false, reason: 'invalid' };
+  if (upsertRootsAtForestRoot(homey, request)) return { ok: false, reason: 'invalid' };
+  // Refuse whenever the ui_homes read would report degraded — an unwired
+  // membership service (boot window) OR EITHER persisted store `'suspect'` as
+  // of the last recompute — not merely a suspect homes-store read: composing a
+  // whole-value write over an unknown/stale config could erase areas. Shares
+  // the read payload's predicate so the two gates can never diverge; the UI
+  // maps this refusal to its degraded copy.
+  if (isHomesConfigDegraded(getApp(homey)?.homeMembership?.getDiagnostics())) {
+    return { ok: false, reason: 'degraded' };
+  }
+  const store = createHomesStore(homey);
+  const read = store.read();
+  // TOCTOU close: a FRESH classified read (the homes store can go suspect
+  // between the last recompute and now). The persisted truth is unknown, and
+  // applying an op over a guess could erase areas.
+  if (read.state === 'suspect') return { ok: false, reason: 'degraded' };
+  const current: readonly SubHomeConfig[] = read.state === 'present' ? read.value.subHomes : [];
+  const next = request.op === 'delete'
+    ? current.filter((area) => area.homeId !== request.homeId)
+    : applyHomesUpsert(current, request.area);
+  // An upsert must not nest or duplicate an existing area's root zone (a delete
+  // never can) — validate the composed list against the known zone tree before
+  // persisting.
+  if (request.op === 'upsert' && upsertNestsSubHomeRoots(homey, next)) {
+    return { ok: false, reason: 'invalid' };
+  }
+  try {
+    store.write({ subHomes: next });
+  } catch (error) {
+    if (error instanceof HomeStoreWriteRefusedError) return { ok: false, reason: 'invalid' };
+    throw error;
+  }
+  return { ok: true };
 };
 
 export const getSettingsUiPowerPayload = ({ homey }: ApiContext): SettingsUiPowerPayload => (

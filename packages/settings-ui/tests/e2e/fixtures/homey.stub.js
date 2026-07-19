@@ -561,6 +561,8 @@
     target_devices_snapshot: [
       {
         id: 'dev_heatpump',
+        zone: 'Living room',
+        zoneId: 'z_living',
         name: 'Living Room Heat Pump',
         deviceClass: 'heater',
         deviceType: 'temperature',
@@ -571,6 +573,8 @@
       },
       {
         id: 'dev_floorheat',
+        zone: 'Bathroom',
+        zoneId: 'z_bath',
         name: 'Bathroom Floor Heat',
         deviceClass: 'heater',
         deviceType: 'temperature',
@@ -581,6 +585,8 @@
       },
       {
         id: 'dev_waterheater',
+        zone: 'Utility room',
+        zoneId: 'z_utility',
         name: 'Water Heater',
         deviceClass: 'waterheater',
         measuredPowerKw: 2.1,
@@ -588,6 +594,8 @@
       },
       {
         id: 'dev_poolpump',
+        zone: 'Garage',
+        zoneId: 'z_garage',
         name: 'Pool Pump',
         deviceClass: 'socket',
         // Plain binary control handle: the fixture's "Run on solar surplus"
@@ -602,6 +610,8 @@
       },
       {
         id: 'dev_bedroom',
+        zone: 'Bedroom',
+        zoneId: 'z_bedroom',
         name: 'Bedroom Thermostat',
         deviceClass: 'thermostat',
         deviceType: 'temperature',
@@ -613,6 +623,8 @@
       },
       {
         id: 'dev_hallway',
+        zone: 'Hallway',
+        zoneId: 'z_hallway',
         name: 'Hallway Thermostat',
         deviceClass: 'thermostat',
         deviceType: 'temperature',
@@ -624,6 +636,8 @@
       },
       {
         id: 'dev_zaptec',
+        zone: 'Garage',
+        zoneId: 'z_garage',
         name: 'Zaptec Go',
         deviceClass: 'evcharger',
         deviceType: 'onoff',
@@ -1349,8 +1363,95 @@
     };
   };
 
+  // Multi-home fixtures (the R4 read-only `ui_homes` endpoint). The zone
+  // forest matches the `zone`/`zoneId` fields on `target_devices_snapshot`;
+  // the rental subtree exists so the "Multiple meters" specs can seed an area
+  // there. Membership mirrors the producer's zone rule only (no pins — the
+  // stub keeps the resolver minimal): a device belongs to the first configured
+  // area whose root zone sits on its zone's ancestor path, else the main home.
+  // Composed from live `settings.homes_config` so a settings write from the
+  // create/edit/delete flows round-trips into the next `ui_homes` fetch like
+  // the real endpoint.
+  const HOMES_ZONE_TREE = {
+    z_home: { id: 'z_home', name: 'Home', parent: null },
+    z_living: { id: 'z_living', name: 'Living room', parent: 'z_home' },
+    z_bath: { id: 'z_bath', name: 'Bathroom', parent: 'z_home' },
+    z_bedroom: { id: 'z_bedroom', name: 'Bedroom', parent: 'z_home' },
+    z_hallway: { id: 'z_hallway', name: 'Hallway', parent: 'z_home' },
+    z_utility: { id: 'z_utility', name: 'Utility room', parent: 'z_home' },
+    z_garage: { id: 'z_garage', name: 'Garage', parent: 'z_home' },
+    z_rental: { id: 'z_rental', name: 'Rental unit', parent: 'z_home' },
+    z_rental_living: { id: 'z_rental_living', name: 'Rental living room', parent: 'z_rental' },
+    z_rental_utility: { id: 'z_rental_utility', name: 'Rental utility', parent: 'z_rental' },
+  };
+
+  const buildHomesPayload = () => {
+    const raw = settings.homes_config;
+    const subHomes = raw && Array.isArray(raw.subHomes) ? raw.subHomes : [];
+    const zonePath = (zoneId) => {
+      const path = [];
+      let current = zoneId;
+      while (current && HOMES_ZONE_TREE[current] && !path.includes(current)) {
+        path.push(current);
+        current = HOMES_ZONE_TREE[current].parent;
+      }
+      return path;
+    };
+    const membershipByDeviceId = {};
+    (settings.target_devices_snapshot || []).forEach((device) => {
+      if (!device.zoneId) return;
+      const path = zonePath(device.zoneId);
+      const owner = subHomes.find((home) => path.includes(home.rootZoneId));
+      membershipByDeviceId[device.id] = owner
+        ? { homeId: owner.homeId, source: 'zone' }
+        : { homeId: 'main', source: 'zone' };
+    });
+    return {
+      homes: subHomes,
+      membershipByDeviceId,
+      zoneTree: HOMES_ZONE_TREE,
+      hasSubHomes: subHomes.length > 0,
+      // Healthy stub default; degraded specs override the whole handler.
+      configDegraded: false,
+    };
+  };
+
+  // Producer mirror of the runtime's intent-op save endpoint: apply the one
+  // op to the persisted settings blob (create allocates an `h_` + 8-hex id),
+  // so the UI's save → refetch round-trip behaves like production.
+  const applyHomesSaveOp = (body) => {
+    const raw = settings.homes_config;
+    const current = raw && Array.isArray(raw.subHomes) ? raw.subHomes : [];
+    if (!body || typeof body !== 'object') return { ok: false, reason: 'invalid' };
+    if (body.op === 'delete') {
+      settings.homes_config = { subHomes: current.filter((area) => area.homeId !== body.homeId) };
+      return { ok: true };
+    }
+    if (body.op !== 'upsert' || !body.area || typeof body.area !== 'object') {
+      return { ok: false, reason: 'invalid' };
+    }
+    const requested = body.area;
+    if (HOMES_ZONE_TREE[requested.rootZoneId] && HOMES_ZONE_TREE[requested.rootZoneId].parent === null) {
+      return { ok: false, reason: 'invalid' };
+    }
+    const homeId = requested.homeId
+      ?? `h_${Math.random().toString(16).slice(2, 10).padEnd(8, '0')}`;
+    const entry = {
+      homeId, name: requested.name, rootZoneId: requested.rootZoneId, meterDeviceId: requested.meterDeviceId,
+    };
+    const exists = current.some((area) => area.homeId === homeId);
+    settings.homes_config = {
+      subHomes: exists
+        ? current.map((area) => (area.homeId === homeId ? entry : area))
+        : [...current, entry],
+    };
+    return { ok: true };
+  };
+
   const apiHandlers = {
     'GET /daily_budget': () => resolveDailyBudgetPayload(),
+    'GET /ui_homes': () => buildHomesPayload(),
+    'POST /ui_homes_save': (body) => applyHomesSaveOp(body),
     'GET /homey_devices': () => {
       // Used by advanced device logger/cleanup, the Weather insight pickers
       // (which filter on hasTemperature), and the whole-home meter picker

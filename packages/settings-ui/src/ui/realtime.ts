@@ -78,6 +78,7 @@ import {
   repaintOverviewWithRescueGate,
 } from './overviewRescueGate.ts';
 import { reloadDeferredObjectiveActivePlans } from './deferredObjectiveActivePlans.ts';
+import { refreshHomesOnHomesPanel } from './homesSettings.ts';
 import { clearUsageReturnLink } from './usageReturnLink.ts';
 import {
   handleWeatherAdvisorSettingsChanged,
@@ -507,6 +508,11 @@ const runTabActivationSideEffects = (tabId: string) => {
   }
   if (tabId === 'limits' || tabId === 'simulation') {
     runLoggedTask(loadCapacitySettings(), 'Failed to load limits and simulation settings', 'showTab');
+    return;
+  }
+  if (tabId === 'homes') {
+    // Refetch ui_homes on every open so edits never start from a stale list.
+    runLoggedTask(refreshHomesOnHomesPanel(), 'Failed to load meter areas', 'showTab');
     return;
   }
   if (tabId === 'weather') {

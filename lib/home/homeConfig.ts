@@ -330,6 +330,9 @@ export const generateHomeId = (existingIds: readonly HomeId[]): HomeId => {
     if (!taken.has(candidate)) return candidate;
   }
   // Practically unreachable (32 collisions on an 8-hex space): fall back to a
-  // full UUID, still ':'-free and valid.
-  return `h_${randomUUID()}`;
+  // full UUID, still ':'-free and valid — collision-checked too, so even this
+  // path can never return a taken id (one iteration in practice).
+  let fallback = `h_${randomUUID()}`;
+  while (taken.has(fallback)) fallback = `h_${randomUUID()}`;
+  return fallback;
 };

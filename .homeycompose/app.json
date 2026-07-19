@@ -102,6 +102,10 @@
       "method": "GET",
       "path": "/ui_homes"
     },
+    "ui_homes_save": {
+      "method": "POST",
+      "path": "/ui_homes_save"
+    },
     "ui_power": {
       "method": "GET",
       "path": "/ui_power"

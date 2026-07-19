@@ -22,7 +22,7 @@ import { ObservedStateEmitter } from '../../lib/observer/observedStateEvents';
 import type { Logger as PinoLogger } from '../../lib/logging/logger';
 import type { ZoneTree } from '../../lib/home/homeConfig';
 import { createSettingsHandler, type SettingsHandlerDeps } from '../../lib/utils/settingsHandlers';
-import { HOMES_CONFIG } from '../../lib/utils/settingsKeys';
+import { DEVICE_HOME_ASSIGNMENTS, HOMES_CONFIG } from '../../lib/utils/settingsKeys';
 import {
   createDeviceHomeAssignmentsStore,
   createHomesStore,
@@ -34,7 +34,7 @@ import {
 } from '../../setup/homeMembership';
 import { wireHomeMembership } from '../../setup/appInit/wireHomeMembership';
 import type { AppContext } from '../../lib/app/appContext';
-import { getSettingsUiHomesPayload } from '../../setup/settingsUiApi';
+import { getSettingsUiHomesPayload, saveSettingsUiHomesConfig } from '../../setup/settingsUiApi';
 import {
   MockDevice,
   MockDriver,
@@ -46,6 +46,12 @@ import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
 
 const homeyApp = mockHomeyInstance as unknown as Homey.App;
 const homeyLike = mockHomeyInstance as unknown as Homey.App['homey'];
+// A homey with the real (mock) settings store but NO wired homeMembership
+// service: exercises the save endpoint's classified store path without the
+// forest-root diagnostics (`getApp(...)?.homeMembership` is undefined).
+const homeyNoService = {
+  app: {}, settings: mockHomeyInstance.settings,
+} as unknown as Homey.App['homey'];
 const noop = (): void => undefined;
 const loggerMock: Logger = {
   log: noop,
@@ -89,6 +95,19 @@ const makeStaticService = (params: {
   getDevices: () => params.devices,
   getLogger: () => params.logger,
 });
+
+// A homey whose app carries a WIRED, non-degraded membership service (real
+// stores over the mock settings seam, ZONES committed) AND the mock settings
+// store — the save endpoint's HEALTHY path: the forest-root + nested-root
+// checks have a known tree, and the shared degraded predicate reads a clean
+// config. The service caches whatever the stores hold at construction time.
+const makeWiredHealthyHomey = (): Homey.App['homey'] => {
+  const service = makeStaticService({ getZoneTree: () => ZONES, devices: [] });
+  service.recompute();
+  return {
+    app: { homeMembership: service }, settings: mockHomeyInstance.settings,
+  } as unknown as Homey.App['homey'];
+};
 
 const flushHandlerQueue = async (): Promise<void> => {
   await Promise.resolve();
@@ -631,20 +650,181 @@ describe('ui_homes payload', () => {
       },
       zoneTree: ZONES,
       hasSubHomes: true,
+      configDegraded: false,
     };
     expect(getSettingsUiHomesPayload({ homey: homeyWithApp })).toEqual(expectedPayload);
     // And the api.ts endpoint serves the same composition.
     await expect(api.ui_homes({ homey: homeyWithApp })).resolves.toEqual(expectedPayload);
   });
 
-  it('serves the honest empty single-home shape while the service is unassigned (boot window)', () => {
+  it('serves the honest empty single-home shape — degraded — while the service is unassigned (boot window)', () => {
     const homeyWithoutService = { app: {} } as unknown as Homey.App['homey'];
     expect(getSettingsUiHomesPayload({ homey: homeyWithoutService })).toEqual({
       homes: [],
       membershipByDeviceId: {},
       zoneTree: null,
       hasSubHomes: false,
+      // Nothing can vouch for the persisted config in the boot window: the
+      // settings UI must refuse whole-value homes_config writes.
+      configDegraded: true,
     });
+  });
+
+  it('applies intent ops through the classified store: create allocates the id, edit and delete round-trip', async () => {
+    // A healthy wired homey (not the boot-window degraded case, which now
+    // refuses): create allocates `h_` + 8 hex, edit names the id, delete
+    // round-trips.
+    const homeyWired = makeWiredHealthyHomey();
+    expect(saveSettingsUiHomesConfig({
+      homey: homeyWired,
+      body: { op: 'upsert', area: { name: 'Upstairs', rootZoneId: 'z2', meterDeviceId: 'meter1' } },
+    })).toEqual({ ok: true });
+    const afterCreate = createHomesStore(homeyLike).read();
+    expect(afterCreate.state).toBe('present');
+    if (afterCreate.state !== 'present') return;
+    const created = afterCreate.value.subHomes[0];
+    expect(created.homeId).toMatch(/^h_[0-9a-f]{8}$/);
+    expect(created).toMatchObject({ name: 'Upstairs', rootZoneId: 'z2', meterDeviceId: 'meter1' });
+    // Edit names the id; delete is idempotent. The api.ts route serves the
+    // same handler.
+    expect(saveSettingsUiHomesConfig({
+      homey: homeyWired,
+      body: { op: 'upsert', area: { homeId: created.homeId, name: 'Renamed', rootZoneId: 'z2', meterDeviceId: 'meter1' } },
+    })).toEqual({ ok: true });
+    const afterEdit = createHomesStore(homeyLike).read();
+    expect(afterEdit.state === 'present' && afterEdit.value.subHomes).toEqual([
+      { homeId: created.homeId, name: 'Renamed', rootZoneId: 'z2', meterDeviceId: 'meter1' },
+    ]);
+    await expect(api.ui_homes_save({
+      homey: homeyWired, body: { op: 'delete', homeId: created.homeId },
+    })).resolves.toEqual({ ok: true });
+    const afterDelete = createHomesStore(homeyLike).read();
+    expect(afterDelete.state === 'present' && afterDelete.value.subHomes).toEqual([]);
+    expect(saveSettingsUiHomesConfig({
+      homey: homeyWired, body: { op: 'delete', homeId: created.homeId },
+    })).toEqual({ ok: true });
+  });
+
+  it('two upserts from independently stale panels both survive (intent ops cannot wipe siblings)', () => {
+    const homeyWired = makeWiredHealthyHomey();
+    // Both panels fetched the same empty list, then each saved its own area.
+    expect(saveSettingsUiHomesConfig({
+      homey: homeyWired,
+      body: { op: 'upsert', area: { name: 'Upstairs', rootZoneId: 'z2', meterDeviceId: 'm1' } },
+    })).toEqual({ ok: true });
+    expect(saveSettingsUiHomesConfig({
+      homey: homeyWired,
+      body: { op: 'upsert', area: { name: 'Garage flat', rootZoneId: 'z3', meterDeviceId: 'm2' } },
+    })).toEqual({ ok: true });
+    const read = createHomesStore(homeyLike).read();
+    expect(read.state === 'present' && read.value.subHomes.map((area) => area.name))
+      .toEqual(['Upstairs', 'Garage flat']);
+  });
+
+  it('refuses on a suspect FRESH homes read without touching the persisted blob', () => {
+    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME_A] });
+    // Wired healthy first (the recompute classifies the homes store 'present',
+    // so the degraded predicate is clean): the FRESH-read TOCTOU gate is what
+    // must catch the junk written afterwards.
+    const homeyWired = makeWiredHealthyHomey();
+    // Junk over the written-before marker classifies the fresh read 'suspect'.
+    mockHomeyInstance.settings.set(HOMES_CONFIG, 'junk-blob');
+    expect(saveSettingsUiHomesConfig({
+      homey: homeyWired, body: { op: 'delete', homeId: SUB_HOME_A.homeId },
+    })).toEqual({ ok: false, reason: 'degraded' });
+    // Nothing was written: the store still classifies suspect over the junk.
+    expect(createHomesStore(homeyLike).read()).toEqual({ state: 'suspect' });
+  });
+
+  it('refuses an upsert whose root nests or duplicates an existing area; a disjoint upsert persists', () => {
+    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME_A] }); // area rooted at z2
+    const homeyWired = makeWiredHealthyHomey();
+    // Identical root: a second area rooted at z2 would, by deepest-root
+    // precedence, silently re-home z2's devices — refuse, persist nothing.
+    expect(saveSettingsUiHomesConfig({
+      homey: homeyWired,
+      body: { op: 'upsert', area: { name: 'Also upstairs', rootZoneId: 'z2', meterDeviceId: 'm2' } },
+    })).toEqual({ ok: false, reason: 'invalid' });
+    const afterRefusal = createHomesStore(homeyLike).read();
+    expect(afterRefusal.state === 'present' && afterRefusal.value.subHomes).toEqual([SUB_HOME_A]);
+    // A disjoint root (z3, a sibling subtree) is accepted.
+    expect(saveSettingsUiHomesConfig({
+      homey: homeyWired,
+      body: { op: 'upsert', area: { name: 'Garage flat', rootZoneId: 'z3', meterDeviceId: 'm3' } },
+    })).toEqual({ ok: true });
+    const afterAccept = createHomesStore(homeyLike).read();
+    expect(afterAccept.state === 'present' && afterAccept.value.subHomes.map((area) => area.rootZoneId))
+      .toEqual(['z2', 'z3']);
+  });
+
+  it('refuses an upsert while the membership service is unwired (boot-window degraded)', () => {
+    expect(saveSettingsUiHomesConfig({
+      homey: homeyNoService,
+      body: { op: 'upsert', area: { name: 'Upstairs', rootZoneId: 'z2', meterDeviceId: 'm1' } },
+    })).toEqual({ ok: false, reason: 'degraded' });
+    // Nothing persisted — the homes store is untouched.
+    expect(createHomesStore(homeyLike).read()).toEqual({ state: 'unwritten' });
+  });
+
+  it('refuses an upsert while the device_home_assignments store classifies suspect', () => {
+    // The homes store is clean, but a written-before pins store reading back
+    // junk classifies 'suspect' — only the FULL degraded condition (either
+    // store suspect) catches this, not a homes-store read alone.
+    createDeviceHomeAssignmentsStore(homeyLike).write({ dev1: 'h_a' });
+    mockHomeyInstance.settings.set(DEVICE_HOME_ASSIGNMENTS, 'not-a-pins-blob');
+    const service = makeStaticService({ getZoneTree: () => ZONES, devices: [] });
+    service.recompute();
+    expect(service.getDiagnostics().configDegraded).toBe(true);
+    const homeyWired = {
+      app: { homeMembership: service }, settings: mockHomeyInstance.settings,
+    } as unknown as Homey.App['homey'];
+    expect(saveSettingsUiHomesConfig({
+      homey: homeyWired,
+      body: { op: 'upsert', area: { name: 'Upstairs', rootZoneId: 'z2', meterDeviceId: 'm1' } },
+    })).toEqual({ ok: false, reason: 'degraded' });
+    // The clean homes store stays untouched.
+    expect(createHomesStore(homeyLike).read()).toEqual({ state: 'unwritten' });
+  });
+
+  it('refuses malformed ops and a zone-forest root as an area root', () => {
+    expect(saveSettingsUiHomesConfig({ homey: homeyNoService, body: { op: 'upsert' } }))
+      .toEqual({ ok: false, reason: 'invalid' });
+    expect(saveSettingsUiHomesConfig({ homey: homeyNoService, body: undefined }))
+      .toEqual({ ok: false, reason: 'invalid' });
+    // Forest-root rejection needs a known tree (via the wired service):
+    // an area rooted at z1 would swallow the whole home.
+    const service = makeStaticService({ getZoneTree: () => ZONES, devices: [] });
+    service.recompute();
+    const homeyWithApp = { app: { homeMembership: service } } as unknown as Homey.App['homey'];
+    expect(saveSettingsUiHomesConfig({
+      homey: homeyWithApp,
+      body: { op: 'upsert', area: { name: 'Everything', rootZoneId: 'z1', meterDeviceId: null } },
+    })).toEqual({ ok: false, reason: 'invalid' });
+  });
+
+  it('surfaces configDegraded while a store read classifies suspect, and clears it on recovery', () => {
+    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME_A] });
+    const service = makeStaticService({
+      getZoneTree: () => ZONES,
+      devices: [{ deviceId: 'dev1', zoneId: 'z2' }],
+    });
+    service.recompute();
+    const homeyWithApp = { app: { homeMembership: service } } as unknown as Homey.App['homey'];
+    expect(getSettingsUiHomesPayload({ homey: homeyWithApp }).configDegraded).toBe(false);
+
+    // Junk blob with the written-before marker present classifies 'suspect':
+    // the payload keeps serving the cached homes but flags them degraded so
+    // the UI refuses read-modify-write mutations over the stale view.
+    mockHomeyInstance.settings.set(HOMES_CONFIG, 'not-a-homes-config');
+    service.recompute();
+    const degraded = getSettingsUiHomesPayload({ homey: homeyWithApp });
+    expect(degraded.configDegraded).toBe(true);
+    expect(degraded.homes).toEqual([SUB_HOME_A]);
+
+    // Recovery: a plausible read clears the flag on the next recompute.
+    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME_A] });
+    service.recompute();
+    expect(getSettingsUiHomesPayload({ homey: homeyWithApp }).configDegraded).toBe(false);
   });
 });
 
