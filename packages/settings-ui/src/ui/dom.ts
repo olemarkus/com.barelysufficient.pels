@@ -118,6 +118,7 @@ export const dryRunBanner = qs('#dry-run-banner');
 export const simulationDisableButton = document.querySelector('#simulation-disable-button') as MdButtonElement | null;
 export const staleDataBanner = qs('#stale-data-banner');
 export const staleDataBannerText = qs('#stale-data-text');
+export const staleDataBannerAction = document.querySelector('#stale-data-action') as MdButtonElement | null;
 export const resetStatsButton = document.querySelector('#reset-stats-button') as MdButtonElement;
 export const modeSelect = document.querySelector('#mode-select') as MdFilledSelectElement;
 export const modeNewInput = document.querySelector('#mode-new') as MdFilledTextFieldElement;

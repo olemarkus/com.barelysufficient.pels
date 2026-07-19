@@ -1,5 +1,5 @@
 import { buildMeterSelectEntries, toMeterDeviceOptions } from '../src/ui/homeyEnergyMeter.ts';
-import { resolveStaleDataHint } from '../src/ui/capacity.ts';
+import { resolveStaleDataBannerContent, resolveStaleDataHint } from '../src/ui/capacity.ts';
 
 describe('toMeterDeviceOptions', () => {
   it('keeps only power-capable devices and sorts them by name', () => {
@@ -77,5 +77,43 @@ describe('resolveStaleDataHint', () => {
   it('points at the reporting Flow for the flow source', () => {
     expect(resolveStaleDataHint('flow', false)).toBe('Check your Flow that reports power usage.');
     expect(resolveStaleDataHint(undefined, false)).toBe('Check your Flow that reports power usage.');
+  });
+});
+
+describe('resolveStaleDataBannerContent', () => {
+  const hint = 'Check your Flow that reports power usage.';
+
+  it('shows onboarding copy on a fresh install (no source persisted, no sample ever)', () => {
+    expect(resolveStaleDataBannerContent({
+      lastPowerUpdate: null, nowMs: 1000, powerSourceConfigured: false, hint,
+    })).toEqual({
+      text: 'No power data yet. PELS needs to know where to read your home’s power usage.',
+      actionLabel: 'Choose power source',
+    });
+  });
+
+  it('shows the source-specific hint when a source is persisted but no sample arrived', () => {
+    expect(resolveStaleDataBannerContent({
+      lastPowerUpdate: null, nowMs: 1000, powerSourceConfigured: true, hint,
+    })).toEqual({
+      text: `No power data received yet. ${hint}`,
+      actionLabel: 'Check power source',
+    });
+  });
+
+  it('shows the stale copy once the last sample ages past the threshold, regardless of configuration', () => {
+    const nowMs = 10 * 60 * 1000;
+    expect(resolveStaleDataBannerContent({
+      lastPowerUpdate: 1000, nowMs, powerSourceConfigured: false, hint,
+    })).toEqual({
+      text: `No power data received in the last minute. ${hint}`,
+      actionLabel: 'Check power source',
+    });
+  });
+
+  it('hides the banner while the last sample is fresh', () => {
+    expect(resolveStaleDataBannerContent({
+      lastPowerUpdate: 1000, nowMs: 2000, powerSourceConfigured: true, hint,
+    })).toBeNull();
   });
 });

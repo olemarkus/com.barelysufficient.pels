@@ -2,7 +2,7 @@ import { expect, test, type Page } from './fixtures/test';
 
 const openLimitsAndSafety = async (page: Page) => {
   await page.getByRole('tab', { name: 'Settings' }).click();
-  await page.locator('[data-settings-target="limits"]').click();
+  await page.locator('.settings-nav-card[data-settings-target="limits"]').click();
   await expect(page.locator('#limits-panel')).toBeVisible();
 };
 

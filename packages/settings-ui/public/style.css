@@ -560,8 +560,8 @@ md-primary-tab.tab[active] {
    `.banner` section (after the base + `.banner--stacked` `.banner__text` rules)
    so stylelint's no-descending-specificity ordering holds. */
 
-.dry-run-banner__action {
-  flex: 0 0 auto;
+/* Shared text action inside a warning banner (simulation + stale-data). */
+.banner__action {
   /* Restore the M3 text-button lead/trail padding on the host box. Homey injects
      a universal `* { padding: 0 }` reset that beats Material Web's :host padding
      on the real device (invisible in CI), collapsing the label to the state-layer
@@ -573,6 +573,13 @@ md-primary-tab.tab[active] {
      through every `--md-text-button-*` default that resolves to primary — the
      same one-property idiom as `.md-text-button--destructive` above. */
   --md-sys-color-primary: var(--color-state-warning-text);
+}
+
+/* The slim single-row simulation banner pins its action to the row end; the
+   stale-data banner keeps the base `.banner` wrap so its longer message can
+   break and the action drops to its own line at narrow widths. */
+.dry-run-banner__action {
+  flex: 0 0 auto;
 }
 
 .device-control-legend {
@@ -4659,6 +4666,13 @@ md-filled-button.is-busy {
 
 .banner__text {
   flex: 1;
+  /* A flex:1 item shrinks to its longest word before the wrapping row ever
+     overflows, so a banner with an inline action would collapse the message
+     into a word-per-line tower at 320 px instead of wrapping the button. The
+     ch floor makes the row overflow first: the action drops to its own line
+     and the message keeps a readable measure. (The nowrap simulation banner
+     overrides this back to min-width: 0 below.) */
+  min-width: 18ch;
 }
 
 .price-last-fetched {

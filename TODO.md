@@ -580,6 +580,64 @@ CI failure, so future field-move slices can't silently grow the debt.*
       (was P2 before the producer gate removed the harm).* Files: `packages/settings-ui/src/ui/deviceDetail/solarSurplus.ts`,
       `packages/settings-ui/src/ui/deviceDetail/index.ts`.
 
+- [ ] **Hoist onboarding-link copy into shared-domain.** The stale-data banner strings
+      (`resolveStaleDataBannerContent` in `capacity.ts`) and the Overview empty-state strings
+      (`PlanOverview.tsx`) are inlined in settings-ui, and the no-plan sentence is a duplicated
+      literal between the Preact view and the static first-paint placeholder in `index.html`.
+      One shared-domain copy module referenced from all three would restore the rule-4 origin
+      and kill the drift risk. Source: pels-copy-and-terminology lens on the onboarding-links
+      PR (2026-07-19). [P2]
+
+- [ ] **Hero idle line contradicts the zero-managed empty state.** "Quiet hour. Nothing to do."
+      renders 100 px above "No managed devices." — PELS claims an assessed-calm home while
+      managing nothing. Suppress or reword the idle line when the plan carries zero devices.
+      Also verify the Overview smart-task row is genuinely unreachable alongside an empty
+      device list (`PlanOverview.tsx` renders both without cross-gating; a task on a
+      just-unmanaged device may compose a live contradiction). Persona: brand-new owner on
+      first open; hypothesis: a reassuring verdict over an unconfigured state teaches the user
+      to distrust the hero. Source: pels-m3-critic on the onboarding-links PR (2026-07-19). [P2]
+
+- [ ] **Simulation banner leads the fresh-install stack.** On a fresh install the first
+      viewport is two stacked warning banners, and the top one offers "Turn off simulation" —
+      the one action a user with zero configuration should not take first. Demote or suppress
+      the simulation banner while the fresh-install condition holds (no persisted power source
+      and no managed devices) so the setup call-to-action leads. Persona: brand-new owner on
+      first open; hypothesis: the most prominent CTA should match the most urgent task.
+      Source: pels-ux-fit on the onboarding-links PR (2026-07-19). [P2]
+
+- [ ] **No-plan hero renders a permanent loading skeleton.** With `plan === null` the Overview
+      hero shows the same shimmer blocks as the boot skeleton, forever, above "No plan
+      available yet…" — it reads as stuck loading, not a deliberate empty state. Give the
+      no-plan hero an explicit empty render ("— kW · waiting for the first power reading").
+      Persona: brand-new owner on first open; hypothesis: an intentional empty hero reads as
+      guidance, a shimmer as breakage. Source: pels-ux-fit (2026-07-19). [P2]
+
+- [ ] **Power source select shows "Flow card" while unset and never explains the Flow.** On the
+      Limits & safety page the unset select is indistinguishable from a made choice, and no
+      copy on the journey says a Flow with the report-power action card must exist. Worse: the
+      preselected "Flow card" cannot be *confirmed* — picking the already-displayed option
+      fires no change event, so `power_source` stays unset and the banner keeps asking (Codex
+      P2 on PR #1856). Add a "Not set" placeholder while `power_source` is unset (md-select
+      `displayText` sentinel idiom) — which also makes choosing Flow a real value change that
+      persists — and a one-line per-source hint under the select. Persona: brand-new owner
+      following "Choose power source"; hypothesis: naming the unset state and the Flow
+      requirement closes the last gap between the link and a working setup. Source:
+      pels-ux-fit + Codex review (2026-07-19). [P2]
+
+- [ ] **Duplicate `#plan-empty` ids (static first-paint + Preact render).** Both nodes coexist
+      in the document; the onboarding e2e works around it with a visibility filter. Rename the
+      static placeholder's id or drop it once the redesign surface owns first paint. Source:
+      pels-ux-fit (2026-07-19). [P2]
+
+- [ ] **First-run setup checklist on Overview.** A truly fresh install now gets two recovery
+      links (no-data banner → power source, empty overview → Devices page), but the user still
+      assembles the setup order themselves. A dismissable Overview checklist card (1. choose
+      power source → 2. pick managed devices → 3. optionally prices) that ticks itself off and
+      disappears once configured would make the path explicit. Needs mock-ups before build.
+      Persona: brand-new owner on first open; hypothesis: the two links fix recovery but not
+      orientation — a visible sequence prevents the "really tricky to know what to do" first
+      session. Source: user onboarding feedback (2026-07-19). [P3]
+
 - [ ] **Simulation wait-lines still read factually on device cards.** Under simulation a held
       card's waiting copy ("Waiting to resume — 0.2 kW more needed", "Waiting for solar surplus",
       "Waiting for available power") renders unchanged — `toSimulationReasonLine` deliberately
