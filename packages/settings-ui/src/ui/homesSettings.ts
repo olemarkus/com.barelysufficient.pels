@@ -1,0 +1,525 @@
+import { HOMEY_ENERGY_METER_DEVICE_ID, POWER_SOURCE } from '../../../contracts/src/settingsKeys.ts';
+import { SETTINGS_UI_DEVICES_PATH, type SettingsUiDevicesPayload } from '../../../contracts/src/settingsUiApi.ts';
+import {
+  SETTINGS_UI_HOMES_PATH,
+  SETTINGS_UI_HOMES_SAVE_PATH,
+  type SettingsUiHomesPayload,
+  type SettingsUiHomesSaveRequest,
+  type SettingsUiHomesSaveResponse,
+} from '../../../contracts/src/settingsUiHomes.ts';
+import {
+  countDevicesInZoneSubtree,
+  flattenZoneTreeForPicker,
+  previewAreaDeviceCount,
+  shouldPromptMainHomeMeter,
+  suggestSubHomeRootZone,
+  validateSubHomeDraft,
+  type HomesZoneTree,
+  type SubHomeDraftError,
+  type SubHomeListEntry,
+} from '../../../shared-domain/src/homesManagement.ts';
+import {
+  composeDraftErrorLine,
+  composeDraftWarningLine,
+  composeMeterOptionLabel,
+  composeSubHomeSupportingLine,
+  composeZonePickerOptionLabel,
+  formatZoneDeviceCount,
+  HOMES_CONFIG_DEGRADED,
+  HOMES_REMOVED_TOAST,
+  HOMES_SAVE_FAILED_TOAST,
+  HOMES_SAVED_TOAST,
+} from '../../../shared-domain/src/homesManagementCopy.ts';
+import { callApi, getSettingFresh } from './homey.ts';
+import { logSettingsError } from './logging.ts';
+import { showToast, showToastError } from './toast.ts';
+import {
+  renderHomesSettingsSection,
+  type HomesEditorView,
+  type HomesPickerOption,
+} from './views/HomesSettingsSection.tsx';
+
+// Module-state controller for the "Multiple meters" sub-page (mirrors the
+// weatherInsight.ts pattern): owns the latest `ui_homes` payload, the picker
+// device lists, and the editor/delete state; renders the Preact section into
+// `#homes-settings-mount` on the panel's activation hook.
+//
+// Write path: INTENT operations (upsert/delete of one area) POSTed to the
+// typed `ui_homes_save` endpoint — the runtime re-reads the persisted config
+// through its classified store reader, refuses on suspect, applies the op,
+// and writes through the marker-first classified writer. The UI never
+// composes a whole list, so a stale panel can never wipe other areas;
+// `ui_homes` is refetched after every save so the list re-renders from the
+// runtime's normalized truth.
+
+type MeterDeviceEntry = { id: string; name: string; hasPower?: boolean };
+
+type DeviceZoneInfo = { name: string; zoneId: string | null; zoneName: string | null };
+
+type HomesEditorState = {
+  mode: 'create' | 'edit';
+  homeId: string | null;
+  name: string;
+  nameTouched: boolean;
+  meterDeviceId: string | null;
+  rootZoneId: string | null;
+  zoneTouched: boolean;
+  submitAttempted: boolean;
+};
+
+let latestPayload: SettingsUiHomesPayload | null = null;
+let loadFailed = false;
+let loading = false;
+// Mutation lock, distinct from `configDegraded`: true from panel (re)activation
+// until that activation's fresh `ui_homes` read resolves. A cached `latestPayload`
+// renders as ready IMMEDIATELY on re-entry (before the refetch lands), so without
+// this gate a quick Edit could capture stale same-area fields and its full upsert
+// overwrite newer same-area edits made elsewhere. It disables the mutation
+// controls (Add / Edit / Remove / Save) — no degraded copy; it is a transient
+// load lock, not the runtime-can't-vouch lockout.
+let mutationsLocked = true;
+let meterDevices: MeterDeviceEntry[] | null = null;
+let meterDevicesLoading = false;
+let deviceZoneById: Map<string, DeviceZoneInfo> | null = null;
+let deviceZonesLoading = false;
+let editor: HomesEditorState | null = null;
+let confirmingDeleteHomeId: string | null = null;
+let writeBusy = false;
+// Main-meter-notice inputs, refreshed on every panel activation. Boundary
+// rule: raw settings resolve to a trimmed string or flat null.
+let powerSource: string | null = null;
+let mainMeterDeviceId: string | null = null;
+
+const asNonEmptyString = (value: unknown): string | null => (
+  typeof value === 'string' && value.trim().length > 0 ? value : null
+);
+
+const isConfigDegraded = (): boolean => latestPayload?.configDegraded === true;
+
+const resolveZoneName = (zoneId: string | null): string | null => {
+  if (zoneId === null || latestPayload?.zoneTree === null || latestPayload === null) return null;
+  return latestPayload.zoneTree[zoneId]?.name ?? null;
+};
+
+const resolveMeterName = (meterDeviceId: string | null): string | null => {
+  if (meterDeviceId === null) return null;
+  const fromMeters = meterDevices?.find((device) => device.id === meterDeviceId)?.name;
+  return fromMeters ?? deviceZoneById?.get(meterDeviceId)?.name ?? null;
+};
+
+/** The picked meter's zone id, when the snapshot knows the device; else null. */
+const resolveMeterZoneId = (meterDeviceId: string | null): string | null => (
+  meterDeviceId === null ? null : deviceZoneById?.get(meterDeviceId)?.zoneId ?? null
+);
+
+const currentHomes = (): SubHomeListEntry[] => latestPayload?.homes ?? [];
+
+const countDevicesInHome = (homeId: string): number => {
+  const membership = latestPayload?.membershipByDeviceId ?? {};
+  return Object.values(membership).filter((entry) => entry.homeId === homeId).length;
+};
+
+// "Missing" errors stay quiet until a save attempt so a fresh form doesn't
+// open covered in alerts; clash errors (duplicate name, meter in use, zone
+// overlap) show live — the user can only fix them by changing the value.
+const LIVE_ERROR_KINDS = new Set<SubHomeDraftError['kind']>([
+  'name_duplicate', 'meter_in_use', 'zone_overlap', 'zone_is_root',
+]);
+
+const buildEditorView = (state: HomesEditorState): HomesEditorView => {
+  const zones = latestPayload?.zoneTree ?? {};
+  const validation = validateSubHomeDraft({
+    draft: {
+      homeId: state.homeId,
+      name: state.name,
+      meterDeviceId: state.meterDeviceId,
+      rootZoneId: state.rootZoneId,
+    },
+    existing: currentHomes(),
+    zones,
+    meterZoneId: resolveMeterZoneId(state.meterDeviceId),
+  });
+  const visibleErrors = validation.errors.filter(
+    (error) => state.submitAttempted || LIVE_ERROR_KINDS.has(error.kind),
+  );
+  const errorLinesFor = (kinds: SubHomeDraftError['kind'][]): string[] => visibleErrors
+    .filter((error) => kinds.includes(error.kind))
+    .map((error) => composeDraftErrorLine(error));
+  const meterOptions: HomesPickerOption[] = (meterDevices ?? [])
+    .filter((device) => device.hasPower === true)
+    .map((device) => ({
+      id: device.id,
+      label: composeMeterOptionLabel(device.name, deviceZoneById?.get(device.id)?.zoneName ?? null),
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+  const zoneOptions: HomesPickerOption[] = flattenZoneTreeForPicker(zones)
+    .map((option) => ({ id: option.id, label: composeZonePickerOptionLabel(option.name, option.depth) }));
+  return {
+    mode: state.mode,
+    meterId: state.meterDeviceId,
+    meterOptions,
+    metersLoaded: meterDevices !== null,
+    zoneId: state.rootZoneId,
+    zoneOptions,
+    zoneDeviceCountLine: buildZoneDeviceCountLine(state, zones),
+    // Refetch reconciliation: the edited area vanished from the fresh list
+    // (removed elsewhere) — the editor says so and Save reads "Add again".
+    areaGone: state.mode === 'edit' && state.homeId !== null
+      && !currentHomes().some((home) => home.homeId === state.homeId),
+    name: state.name,
+    meterErrors: errorLinesFor(['meter_missing', 'meter_in_use']),
+    zoneErrors: errorLinesFor(['zone_missing', 'zone_overlap', 'zone_is_root']),
+    zoneWarnings: validation.warnings.map((warning) => composeDraftWarningLine(warning)),
+    nameErrors: errorLinesFor(['name_missing', 'name_duplicate']),
+    busy: writeBusy,
+    onMeterChange: handleMeterChange,
+    onZoneChange: handleZoneChange,
+    onNameInput: handleNameInput,
+    onSave: () => { void handleSave(); },
+    onCancel: handleCancel,
+  };
+};
+
+/**
+ * Live sweep preview under the Zone field. Primary path mirrors the real
+ * resolver: the `ui_homes` membership (pins first, zone rule otherwise)
+ * joined with the device-zone map. Fresh-boot fallback (no resolved
+ * membership yet): a zone-containment estimate over the picker set, honestly
+ * phrased "About N…". Null until a zone is chosen and zones have loaded.
+ */
+const buildZoneDeviceCountLine = (
+  state: HomesEditorState,
+  zones: HomesZoneTree,
+): string | null => {
+  if (state.rootZoneId === null || deviceZoneById === null) return null;
+  const membership = latestPayload?.membershipByDeviceId ?? {};
+  if (Object.keys(membership).length > 0) {
+    return formatZoneDeviceCount(previewAreaDeviceCount({
+      zones,
+      rootZoneId: state.rootZoneId,
+      membershipByDeviceId: membership,
+      zoneIdByDeviceId: new Map(
+        [...deviceZoneById.entries()].map(([deviceId, info]) => [deviceId, info.zoneId]),
+      ),
+      areaHomeId: state.homeId,
+    }));
+  }
+  return formatZoneDeviceCount(countDevicesInZoneSubtree(
+    zones,
+    state.rootZoneId,
+    [...deviceZoneById.values()].map((info) => info.zoneId),
+  ), true);
+};
+
+const resolveSectionStatus = (): 'loading' | 'error' | 'ready' => {
+  if (latestPayload !== null) return 'ready';
+  return loadFailed ? 'error' : 'loading';
+};
+
+const renderSection = (): void => {
+  const mount = document.getElementById('homes-settings-mount');
+  if (!mount) return;
+  const status = resolveSectionStatus();
+  renderHomesSettingsSection(mount, {
+    status,
+    homes: currentHomes().map((home) => ({
+      homeId: home.homeId,
+      name: home.name,
+      supportingLine: composeSubHomeSupportingLine({
+        // While the device list is still loading an unresolved meter name gets
+        // a neutral dash, never a premature "Meter not found".
+        meterName: resolveMeterName(home.meterDeviceId)
+          ?? (meterDevices === null && home.meterDeviceId !== null ? '—' : null),
+        zoneName: resolveZoneName(home.rootZoneId),
+        deviceCount: countDevicesInHome(home.homeId),
+      }),
+    })),
+    zonesAvailable: latestPayload !== null && latestPayload.zoneTree !== null,
+    configDegraded: isConfigDegraded(),
+    mutationsLocked,
+    // The degraded lockout owns the moment — the nudge waits for a healthy read.
+    showMainMeterNotice: !isConfigDegraded() && shouldPromptMainHomeMeter({
+      subHomeCount: currentHomes().length,
+      powerSource,
+      mainMeterDeviceId,
+    }),
+    editor: editor === null ? null : buildEditorView(editor),
+    confirmingDeleteHomeId,
+    deleteBusy: writeBusy,
+    onAddClick: handleAddClick,
+    onEditClick: handleEditClick,
+    onDeleteClick: handleDeleteClick,
+    onDeleteConfirm: (homeId) => { void handleDeleteConfirm(homeId); },
+    onDeleteCancel: handleDeleteCancel,
+  });
+};
+
+const fetchHomes = async (): Promise<void> => {
+  loading = true;
+  try {
+    latestPayload = await callApi<SettingsUiHomesPayload>('GET', SETTINGS_UI_HOMES_PATH);
+    loadFailed = false;
+  } catch (error) {
+    loadFailed = true;
+    await logSettingsError('Failed to load meter areas', error, 'homesSettings');
+  } finally {
+    loading = false;
+  }
+  renderSection();
+};
+
+// Both picker lists refetch on EVERY panel activation (no permanent
+// first-load cache — a device renamed/added/deleted in Homey must show on the
+// next open), keeping last-good on a failed fetch and deduping in-flight.
+const refreshMeterDevices = async (): Promise<void> => {
+  if (meterDevicesLoading) return;
+  meterDevicesLoading = true;
+  try {
+    const devices = await callApi<MeterDeviceEntry[] | null>('GET', '/homey_devices');
+    // An empty result never overwrites last-good (it can be transient) —
+    // mirrors the whole-home meter picker in homeyEnergyMeter.ts.
+    if (devices !== null && devices.length > 0) meterDevices = devices;
+    renderSection();
+  } catch (error) {
+    await logSettingsError('Failed to load devices for the meter picker', error, 'homesSettings');
+  } finally {
+    meterDevicesLoading = false;
+  }
+};
+
+const refreshDeviceZones = async (): Promise<void> => {
+  if (deviceZonesLoading) return;
+  deviceZonesLoading = true;
+  try {
+    const payload = await callApi<SettingsUiDevicesPayload>('GET', SETTINGS_UI_DEVICES_PATH);
+    deviceZoneById = new Map(payload.devices.map((device) => [device.id, {
+      name: device.name,
+      zoneId: device.zoneId ?? null,
+      zoneName: device.zone ?? null,
+    }]));
+    renderSection();
+  } catch (error) {
+    // Zone enrichment is best-effort: without it the meter options lose their
+    // zone suffix and the zone prefill, but the flow still works.
+    await logSettingsError('Failed to load device zones for the meter picker', error, 'homesSettings');
+  } finally {
+    deviceZonesLoading = false;
+  }
+};
+
+const handleAddClick = (): void => {
+  if (isConfigDegraded() || mutationsLocked) return;
+  editor = {
+    mode: 'create',
+    homeId: null,
+    name: '',
+    nameTouched: false,
+    meterDeviceId: null,
+    rootZoneId: null,
+    zoneTouched: false,
+    submitAttempted: false,
+  };
+  confirmingDeleteHomeId = null;
+  renderSection();
+};
+
+const handleEditClick = (homeId: string): void => {
+  if (isConfigDegraded() || mutationsLocked) return;
+  const home = currentHomes().find((entry) => entry.homeId === homeId);
+  if (home === undefined) return;
+  editor = {
+    mode: 'edit',
+    homeId: home.homeId,
+    name: home.name,
+    nameTouched: true,
+    meterDeviceId: home.meterDeviceId,
+    rootZoneId: home.rootZoneId,
+    zoneTouched: true,
+    submitAttempted: false,
+  };
+  confirmingDeleteHomeId = null;
+  renderSection();
+};
+
+const applyZoneDefaults = (zoneId: string | null): void => {
+  if (editor === null) return;
+  editor.rootZoneId = zoneId;
+  if (!editor.nameTouched) {
+    editor.name = (zoneId !== null ? resolveZoneName(zoneId) : null) ?? editor.name;
+  }
+};
+
+const handleMeterChange = (deviceId: string | null): void => {
+  if (editor === null) return;
+  editor.meterDeviceId = deviceId;
+  // Ancestor-walk prefill: from the meter's zone up to the highest ancestor
+  // disjoint from every OTHER area's meter zone + root zone. Skipped once the
+  // user has picked a zone by hand, or when the meter's zone is unknown.
+  if (!editor.zoneTouched && deviceId !== null) {
+    const meterZoneId = resolveMeterZoneId(deviceId);
+    if (meterZoneId !== null && latestPayload !== null && latestPayload.zoneTree !== null) {
+      const others = currentHomes().filter((entry) => entry.homeId !== editor?.homeId);
+      const reserved = [
+        ...others.flatMap((entry) => {
+          const zoneId = resolveMeterZoneId(entry.meterDeviceId);
+          return zoneId === null ? [] : [zoneId];
+        }),
+        ...others.map((entry) => entry.rootZoneId),
+      ];
+      const suggestion = suggestSubHomeRootZone(latestPayload.zoneTree, meterZoneId, reserved);
+      // No fallback on a null suggestion (e.g. a meter in the zone-forest
+      // root): the zone stays unselected and the user must choose explicitly —
+      // a silent fallback could sweep far more than intended.
+      if (suggestion !== null) applyZoneDefaults(suggestion);
+    }
+  }
+  renderSection();
+};
+
+const handleZoneChange = (zoneId: string | null): void => {
+  if (editor === null) return;
+  editor.zoneTouched = true;
+  applyZoneDefaults(zoneId);
+  renderSection();
+};
+
+const handleNameInput = (name: string): void => {
+  if (editor === null) return;
+  editor.name = name;
+  editor.nameTouched = true;
+  renderSection();
+};
+
+const handleCancel = (): void => {
+  editor = null;
+  renderSection();
+};
+
+/**
+ * POST one intent op to the typed save endpoint. The runtime owns the real
+ * protections (fresh classified read, refuse-on-suspect, marker-first
+ * write); a typed refusal maps to the degraded copy or the save-failed
+ * toast. Returns true when the op was applied.
+ */
+const postHomesSaveOp = async (op: SettingsUiHomesSaveRequest): Promise<boolean> => {
+  writeBusy = true;
+  renderSection();
+  try {
+    const response = await callApi<SettingsUiHomesSaveResponse>('POST', SETTINGS_UI_HOMES_SAVE_PATH, op);
+    if (response.ok) return true;
+    // The settings-UI tsconfig runs `strict: false`, which erases the boolean
+    // discriminant, so `if (response.ok) return` does NOT narrow `response` to
+    // the failure variant here — extract the reason through the typed variant
+    // the early return has already proven.
+    const { reason } = response as Extract<SettingsUiHomesSaveResponse, { ok: false }>;
+    await showToast(
+      reason === 'degraded' ? HOMES_CONFIG_DEGRADED : HOMES_SAVE_FAILED_TOAST,
+      'warn',
+    );
+    return false;
+  } catch (error) {
+    await logSettingsError('Failed to save meter areas', error, 'homesSettings');
+    await showToastError(error, HOMES_SAVE_FAILED_TOAST);
+    return false;
+  } finally {
+    writeBusy = false;
+  }
+};
+
+const handleSave = async (): Promise<void> => {
+  // UX guard only — the endpoint re-checks against a FRESH classified read,
+  // so a degraded flip between this check and the write cannot slip through.
+  // `mutationsLocked` bars a save composed from a not-yet-refreshed payload.
+  if (editor === null || latestPayload === null || writeBusy || isConfigDegraded() || mutationsLocked) return;
+  const state = editor;
+  const validation = validateSubHomeDraft({
+    draft: {
+      homeId: state.homeId,
+      name: state.name,
+      meterDeviceId: state.meterDeviceId,
+      rootZoneId: state.rootZoneId,
+    },
+    existing: currentHomes(),
+    zones: latestPayload.zoneTree ?? {},
+    meterZoneId: resolveMeterZoneId(state.meterDeviceId),
+  });
+  if (validation.errors.length > 0) {
+    state.submitAttempted = true;
+    renderSection();
+    return;
+  }
+  // The errors gate above guarantees meter + zone are set.
+  if (state.meterDeviceId === null || state.rootZoneId === null) return;
+  // Intent op, not a list: create sends no id (the runtime allocates it);
+  // edit names the area's id — an upsert of a since-vanished id honestly
+  // re-adds it ("Add again").
+  const saved = await postHomesSaveOp({
+    op: 'upsert',
+    area: {
+      ...(state.homeId === null ? {} : { homeId: state.homeId }),
+      name: state.name.trim(),
+      rootZoneId: state.rootZoneId,
+      meterDeviceId: state.meterDeviceId,
+    },
+  });
+  if (!saved) {
+    await fetchHomes();
+    return;
+  }
+  editor = null;
+  await fetchHomes();
+  await showToast(HOMES_SAVED_TOAST, 'ok');
+};
+
+const handleDeleteClick = (homeId: string): void => {
+  if (isConfigDegraded() || mutationsLocked) return;
+  confirmingDeleteHomeId = homeId;
+  renderSection();
+};
+
+const handleDeleteCancel = (): void => {
+  confirmingDeleteHomeId = null;
+  renderSection();
+};
+
+const handleDeleteConfirm = async (homeId: string): Promise<void> => {
+  // UX guard only — the endpoint re-checks against a fresh classified read.
+  if (latestPayload === null || writeBusy || isConfigDegraded() || mutationsLocked) return;
+  const saved = await postHomesSaveOp({ op: 'delete', homeId });
+  confirmingDeleteHomeId = null;
+  await fetchHomes();
+  if (saved) await showToast(HOMES_REMOVED_TOAST, 'ok');
+};
+
+/**
+ * Panel-activation hook (realtime.ts `showTab('homes')`): render immediately
+ * (skeleton on first open), refetch `ui_homes` so the view never sits on a
+ * stale snapshot, and refresh BOTH picker lists (no permanent cache).
+ */
+// Re-read (cache-bypassing) on every activation so configuring the
+// whole-home meter (or switching power source) under Limits & safety retires
+// the nudge on return.
+const refreshMainMeterNoticeInputs = async (): Promise<void> => {
+  try {
+    powerSource = asNonEmptyString(await getSettingFresh(POWER_SOURCE));
+    mainMeterDeviceId = asNonEmptyString(await getSettingFresh(HOMEY_ENERGY_METER_DEVICE_ID));
+  } catch (error) {
+    // Notice inputs are a nudge, not a gate: unknown reads to null (no notice).
+    powerSource = null;
+    mainMeterDeviceId = null;
+    await logSettingsError('Failed to read main-meter notice settings', error, 'homesSettings');
+  }
+};
+
+export const refreshHomesOnHomesPanel = async (): Promise<void> => {
+  // Lock mutations until this activation's fresh `ui_homes` read lands, so a
+  // cached (possibly stale) payload rendering as ready cannot be mutated over.
+  mutationsLocked = true;
+  renderSection();
+  void refreshMeterDevices();
+  void refreshDeviceZones();
+  await refreshMainMeterNoticeInputs();
+  if (!loading) await fetchHomes();
+  mutationsLocked = false;
+  renderSection();
+};

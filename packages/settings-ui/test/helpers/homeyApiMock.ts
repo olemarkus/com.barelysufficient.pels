@@ -35,7 +35,7 @@ import {
   SETTINGS_UI_SMART_TASK_UPDATE_PATH,
   SETTINGS_UI_SMART_TASK_CANCEL_PATH,
 } from '../../../contracts/src/settingsUiApi.ts';
-import { SETTINGS_UI_HOMES_PATH } from '../../../contracts/src/settingsUiHomes.ts';
+import { SETTINGS_UI_HOMES_PATH, SETTINGS_UI_HOMES_SAVE_PATH } from '../../../contracts/src/settingsUiHomes.ts';
 import type { DeferredObjectiveActivePlansV1 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import {
   DAILY_BUDGET_CONTROLLED_WEIGHT,
@@ -82,6 +82,10 @@ export type MockHomeyUiState = {
   // single-home empty shape (`SettingsUiHomesPayload`); tests seed this to
   // exercise multi-home UI states.
   homes?: unknown;
+  // `/ui_homes_save` response (`SettingsUiHomesSaveResponse`). Defaults to an
+  // applied op (`{ok: true}`); tests seed a typed refusal to exercise the
+  // degraded/invalid paths.
+  homesSave?: unknown;
   plan?: unknown;
   power?: unknown;
   prices?: unknown;
@@ -344,8 +348,11 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
   // single-home empty shape (`SettingsUiHomesPayload`).
   [buildRouteKey('GET', SETTINGS_UI_HOMES_PATH)]: (homey) => async () => (
     getUiOverride(homey, 'homes') ?? {
-      homes: [], membershipByDeviceId: {}, zoneTree: null, hasSubHomes: false,
+      homes: [], membershipByDeviceId: {}, zoneTree: null, hasSubHomes: false, configDegraded: false,
     }
+  ),
+  [buildRouteKey('POST', SETTINGS_UI_HOMES_SAVE_PATH)]: (homey) => async () => (
+    getUiOverride(homey, 'homesSave') ?? { ok: true }
   ),
   [buildRouteKey('POST', SETTINGS_UI_REFRESH_DEVICES_PATH)]: (homey) => async () => ({
     devices: await resolveUiDevices(homey),

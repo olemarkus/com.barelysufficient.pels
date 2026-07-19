@@ -68,6 +68,15 @@ export type HomeMembershipDiagnostics = {
   membershipByDeviceId: Readonly<Record<string, HomeMembership>>;
   zoneTree: ZoneTree | null;
   hasSubHomes: boolean;
+  /**
+   * True while the latest recompute classified either persisted store read
+   * (`homes_config` / `device_home_assignments`) as `'suspect'` — the served
+   * `subHomes` may then be a stale cache of an unknown persisted truth.
+   * DIAGNOSTICS LANE: the settings UI uses it to refuse read-modify-write
+   * mutations (a whole-value write composed from a stale cache could erase
+   * persisted areas); control paths must not branch on it.
+   */
+  configDegraded: boolean;
 };
 
 /**
@@ -210,6 +219,8 @@ export class HomeMembershipService implements HomeMembershipPort {
       membershipByDeviceId: this.membershipByDeviceId,
       zoneTree: this.zoneTree,
       hasSubHomes: this.hasSubHomes(),
+      configDegraded: this.suspectByStoreKey[HOMES_CONFIG]
+        || this.suspectByStoreKey[DEVICE_HOME_ASSIGNMENTS],
     };
   }
 

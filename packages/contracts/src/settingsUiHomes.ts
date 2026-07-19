@@ -10,6 +10,37 @@
  */
 
 export const SETTINGS_UI_HOMES_PATH = '/ui_homes';
+export const SETTINGS_UI_HOMES_SAVE_PATH = '/ui_homes_save';
+
+/**
+ * Intent operation for the `ui_homes_save` endpoint. INTENT, not state: the
+ * client names the one area it touches and the runtime applies it to the
+ * FRESHLY read persisted config (classified reader, refuse-on-suspect,
+ * marker-first classified write) — a stale panel can therefore never wipe
+ * other areas, and every runtime write protection stays in the path.
+ */
+export type SettingsUiHomesSaveRequest =
+  | {
+    op: 'upsert';
+    area: {
+      /** Absent on create — the runtime allocates the id. */
+      homeId?: string;
+      name: string;
+      rootZoneId: string;
+      meterDeviceId: string | null;
+    };
+  }
+  | { op: 'delete'; homeId: string };
+
+/**
+ * Typed refusal contract: `degraded` = the persisted config could not be
+ * read safely (suspect store read — the UI shows its degraded copy);
+ * `invalid` = malformed op / implausible resulting config / a root zone that
+ * would swallow the whole home.
+ */
+export type SettingsUiHomesSaveResponse =
+  | { ok: true }
+  | { ok: false; reason: 'degraded' | 'invalid' };
 
 /**
  * How a device's membership was decided. DIAGNOSTICS AND DISPLAY ONLY — the
@@ -46,4 +77,13 @@ export type SettingsUiHomesPayload = {
   /** The transport's cached zone tree; `null` until the first successful fetch. */
   zoneTree: Record<string, SettingsUiZoneNode> | null;
   hasSubHomes: boolean;
+  /**
+   * True while the runtime cannot vouch for the served config: either homes
+   * store read classified suspect (persisted truth unknown; `homes` may be a
+   * stale cache) or the membership service is not wired yet (boot window).
+   * The settings UI must refuse config mutations while set — a whole-value
+   * `homes_config` write composed from a stale/empty view could erase
+   * persisted areas.
+   */
+  configDegraded: boolean;
 };

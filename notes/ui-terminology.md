@@ -699,6 +699,25 @@ section above):
   attribution exceeds measured net usage (see the Usage/Budget readout
   sections above).
 
+## Multiple meters vocabulary
+
+The Settings → Multiple meters surface manages parts of the home with their
+own electricity meter. Canonical labels (source:
+`packages/shared-domain/src/homesManagementCopy.ts`; the nav-card/panel
+chrome lives in the static settings markup):
+
+| Concept | Label |
+|---|---|
+| One configured part of the home with its own meter (generic noun) | **meter area** |
+| The implicit complement — everything not in a meter area | **Main home** |
+| The Settings section / panel title | **Multiple meters** |
+| The Main home's own meter picker (existing Limits & safety control) | **Whole-home meter** |
+
+Internal terms that stay internal: `sub-home`, `homeId`, `membership`,
+`zone rule`, `pin`, `suspect`/`degraded` (store classifications). Copy says
+what happens ("Its devices move back to the Main home", "your settings
+couldn't be read"), never the resolver or store vocabulary.
+
 ## Mode label
 
 The Settings page renders the current operating mode as a single selector

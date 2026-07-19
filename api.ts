@@ -14,6 +14,7 @@ import {
   getSettingsUiDeviceLogPayload,
   getSettingsUiDevicesPayload,
   getSettingsUiHomesPayload,
+  saveSettingsUiHomesConfig,
   getSettingsUiPlanPayload,
   getSettingsUiPowerPayload,
   getSettingsUiPricesPayload,
@@ -93,6 +94,9 @@ export = {
   )),
   ui_homes: withApiLogging('ui_homes', ({ homey }: ApiContext) => (
     getSettingsUiHomesPayload({ homey })
+  )),
+  ui_homes_save: withApiLogging('ui_homes_save', ({ homey, body }: ApiContext & { body?: unknown }) => (
+    saveSettingsUiHomesConfig({ homey, body })
   )),
   ui_power: withApiLogging('ui_power', ({ homey }: ApiContext) => (
     getSettingsUiPowerPayload({ homey })
