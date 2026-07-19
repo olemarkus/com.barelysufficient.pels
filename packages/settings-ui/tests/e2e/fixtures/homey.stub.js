@@ -1354,13 +1354,15 @@
     'GET /homey_devices': () => {
       // Used by advanced device logger/cleanup, the Weather insight pickers
       // (which filter on hasTemperature), and the whole-home meter picker
-      // (which filters on hasPower). Mirrors the api.ts homey_devices shape.
+      // (which filters on hasPower + class 'sensor'). Mirrors the api.ts
+      // homey_devices shape.
       return [
-        { id: 'dev_outdoor', name: 'Outdoor sensor', hasTemperature: true, hasPower: false },
-        { id: 'dev_heatpump', name: 'Living Room Heat Pump', hasTemperature: true, hasPower: true },
-        { id: 'dev_floorheat', name: 'Bathroom Floor Heat', hasTemperature: true, hasPower: true },
-        { id: 'dev_waterheater', name: 'Water Heater', hasTemperature: false, hasPower: true },
-        { id: 'dev_evcharger', name: 'Generic EV Charger', hasTemperature: false, hasPower: true },
+        { id: 'dev_outdoor', name: 'Outdoor sensor', class: 'sensor', hasTemperature: true, hasPower: false },
+        { id: 'dev_han', name: 'HAN power meter', class: 'sensor', hasTemperature: false, hasPower: true },
+        { id: 'dev_heatpump', name: 'Living Room Heat Pump', class: 'thermostat', hasTemperature: true, hasPower: true },
+        { id: 'dev_floorheat', name: 'Bathroom Floor Heat', class: 'thermostat', hasTemperature: true, hasPower: true },
+        { id: 'dev_waterheater', name: 'Water Heater', class: 'heater', hasTemperature: false, hasPower: true },
+        { id: 'dev_evcharger', name: 'Generic EV Charger', class: 'evcharger', hasTemperature: false, hasPower: true },
       ];
     },
     'GET /ui_bootstrap': () => ({

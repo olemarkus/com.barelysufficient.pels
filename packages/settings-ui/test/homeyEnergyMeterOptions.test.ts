@@ -2,21 +2,28 @@ import { buildMeterSelectEntries, toMeterDeviceOptions } from '../src/ui/homeyEn
 import { resolveStaleDataBannerContent, resolveStaleDataHint } from '../src/ui/capacity.ts';
 
 describe('toMeterDeviceOptions', () => {
-  it('keeps only power-capable devices and sorts them by name', () => {
+  it('keeps only power-capable sensor-class devices and sorts them by name', () => {
     const options = toMeterDeviceOptions([
-      { id: 'sensor', name: 'Outdoor sensor', hasPower: false },
-      { id: 'han', name: 'HAN meter', hasPower: true },
-      { id: 'charger', name: 'EV Charger', hasPower: true },
+      { id: 'outdoor', name: 'Outdoor sensor', class: 'sensor', hasPower: false },
+      { id: 'han', name: 'HAN meter', class: 'sensor', hasPower: true },
+      { id: 'pulse', name: 'Tibber Pulse', class: 'sensor', hasPower: true },
+      // Power-reporting but not a sensor: the whole point of the class filter.
+      { id: 'charger', name: 'EV Charger', class: 'evcharger', hasPower: true },
+      { id: 'plug', name: 'Smart Plug', class: 'socket', hasPower: true },
     ]);
     expect(options).toEqual([
-      { value: 'charger', label: 'EV Charger' },
       { value: 'han', label: 'HAN meter' },
+      { value: 'pulse', label: 'Tibber Pulse' },
     ]);
   });
 
-  it('treats a missing hasPower flag as not power-capable', () => {
-    // Defensive: a stale API without the field must not surface every device.
-    expect(toMeterDeviceOptions([{ id: 'x', name: 'Legacy' }])).toEqual([]);
+  it('treats a missing hasPower flag or missing class as not pickable', () => {
+    // Defensive: a stale API without the fields must not surface every device.
+    expect(toMeterDeviceOptions([
+      { id: 'x', name: 'Legacy' },
+      { id: 'y', name: 'No class', hasPower: true },
+      { id: 'z', name: 'No power', class: 'sensor' },
+    ])).toEqual([]);
   });
 });
 
@@ -57,6 +64,16 @@ describe('buildMeterSelectEntries', () => {
     expect(buildMeterSelectEntries([], 'han', false)).toEqual([
       { value: '', label: 'Automatic' },
       { value: 'han', label: 'Selected meter (loading…)' },
+    ]);
+  });
+
+  it('labels a saved-but-filtered device with its real name, not "not found"', () => {
+    // The sensor filter narrows NEW picks; a working non-sensor selection made
+    // earlier must stay visible under its own name instead of being disowned.
+    expect(buildMeterSelectEntries(options, 'charger-id', true, 'EV Charger')).toEqual([
+      { value: '', label: 'Automatic' },
+      ...options,
+      { value: 'charger-id', label: 'EV Charger' },
     ]);
   });
 });

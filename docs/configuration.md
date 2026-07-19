@@ -78,8 +78,8 @@ This is where the core capacity settings and whole-home power source live.
 | --- | --- |
 | **Hard cap (kW)** | The hourly average power you don't want any hour to exceed. Set this from your grid tariff step (effekttrinn). |
 | **Safety margin (kW)** | Buffer below the hard cap. PELS starts reacting before the hard cap is reached. |
-| **Power source** | Where whole-home power readings come from: **Flow card** or **Homey Energy**. |
-| **Whole-home meter** | Shown with the Homey Energy source. Which meter whole-home power readings come from. **Automatic** uses the meter marked **Tracks total home energy consumption** in Homey Energy; picking a meter directly works even without that marking. |
+| **Power source** | Where whole-home power readings come from: **Flow card** or **Power meter** (read through Homey Energy). |
+| **Whole-home meter** | Shown with the Power meter source. Which meter whole-home power readings come from. **Automatic** uses the meter marked **Tracks total home energy consumption** in Homey Energy; you can instead pick a listed meter directly, even one without that marking. The list shows whole-home meters rather than every power-using device, so an EV charger or smart plug won't appear; a meter you chose earlier stays selectable even if it no longer appears. |
 
 Important:
 

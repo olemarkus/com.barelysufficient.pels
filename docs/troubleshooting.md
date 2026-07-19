@@ -115,7 +115,7 @@ Idle, Manual, and more) means.
 
 PELS plans on a live whole-home power reading. If the Overview shows nothing:
 
-- **Using Homey Energy?** Confirm **Power source** is set to **Homey Energy**
+- **Using Homey Energy?** Confirm **Power source** is set to **Power meter**
   (Settings → Limits & safety), and that your meter either has **Tracks total
   home energy consumption** enabled or is selected directly under
   **Whole-home meter**. See [Using Homey Energy](/homey-energy).
