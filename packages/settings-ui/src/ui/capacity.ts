@@ -11,6 +11,7 @@ import {
   type MdFilledTextFieldElement,
   staleDataBanner,
   staleDataBannerText,
+  staleDataBannerAction,
 } from './dom.ts';
 import { getSetting } from './homey.ts';
 import { state } from './state.ts';
@@ -83,6 +84,38 @@ export const resolveStaleDataHint = (source: string | undefined, meterSelected: 
 const getStaleDataHint = (): string => (
   resolveStaleDataHint(settingsPowerSourceSelect?.value, isHomeyEnergyMeterExplicit())
 );
+
+export type StaleDataBannerContent = { text: string; actionLabel: string };
+
+// Exported pure for tests. The runtime never writes a default `power_source`,
+// so an absent setting plus no sample ever received means a fresh install where
+// the user hasn't chosen where PELS reads power from — that state gets
+// onboarding copy instead of a "check your Flow" hint about a Flow that was
+// never set up. Returns null when the banner should hide (fresh data).
+export const resolveStaleDataBannerContent = (input: {
+  lastPowerUpdate: number | null;
+  nowMs: number;
+  powerSourceConfigured: boolean;
+  hint: string;
+}): StaleDataBannerContent | null => {
+  if (input.lastPowerUpdate === null) {
+    if (!input.powerSourceConfigured) {
+      return {
+        text: 'No power data yet. PELS needs to know where to read your home’s power usage.',
+        actionLabel: 'Choose power source',
+      };
+    }
+    return {
+      text: `No power data received yet. ${input.hint}`,
+      actionLabel: 'Check power source',
+    };
+  }
+  if ((input.nowMs - input.lastPowerUpdate) <= POWER_SAMPLE_STALE_THRESHOLD_MS) return null;
+  return {
+    text: `No power data received in the last minute. ${input.hint}`,
+    actionLabel: 'Check power source',
+  };
+};
 
 // The global simulation banner shows on every tab EXCEPT the Simulation-mode
 // settings page, whose own toggle is the single control there (a duplicate
@@ -191,21 +224,33 @@ const validateCapacitySettings = ({ limit, margin }: ResolvedCapacitySettings) =
   }
 };
 
+// null = not yet loaded. Treated as configured so a returning user with stale
+// data never flashes the fresh-install copy while settings are still loading.
+let powerSourceConfigured: boolean | null = null;
+// Last value handed to the banner, so a settings load that resolves AFTER the
+// first power read can re-render the copy without refetching power. undefined
+// = the banner has never rendered.
+let lastBannerPowerUpdate: number | null | undefined;
+
 const updateStaleDataBanner = (lastPowerUpdate: number | null) => {
+  lastBannerPowerUpdate = lastPowerUpdate;
   if (!staleDataBanner) return;
-  const now = Date.now();
-  if (lastPowerUpdate === null) {
-    staleDataBanner.hidden = false;
-    if (staleDataBannerText) {
-      staleDataBannerText.textContent = `No power data received yet. ${getStaleDataHint()}`;
-    }
-    return;
-  }
-  const isStale = (now - lastPowerUpdate) > POWER_SAMPLE_STALE_THRESHOLD_MS;
-  staleDataBanner.hidden = !isStale;
-  if (staleDataBannerText && isStale) {
-    staleDataBannerText.textContent = `No power data received in the last minute. ${getStaleDataHint()}`;
-  }
+  const content = resolveStaleDataBannerContent({
+    lastPowerUpdate,
+    nowMs: Date.now(),
+    powerSourceConfigured: powerSourceConfigured !== false,
+    hint: getStaleDataHint(),
+  });
+  staleDataBanner.hidden = content === null;
+  if (content === null) return;
+  if (staleDataBannerText) staleDataBannerText.textContent = content.text;
+  if (staleDataBannerAction) staleDataBannerAction.textContent = content.actionLabel;
+};
+
+const setPowerSourceConfigured = (configured: boolean) => {
+  if (powerSourceConfigured === configured) return;
+  powerSourceConfigured = configured;
+  if (lastBannerPowerUpdate !== undefined) updateStaleDataBanner(lastBannerPowerUpdate);
 };
 
 const resolveLastPowerUpdate = (power: SettingsUiPowerPayload): number | null => {
@@ -238,6 +283,7 @@ export const loadCapacitySettings = async () => {
   const normalizedMargin = typeof margin === 'number' ? margin : fallbackMargin;
   const isDryRun = typeof dryRun === 'boolean' ? dryRun : true;
   const normalizedPowerSource = normalizePowerSource(powerSource);
+  setPowerSourceConfigured(powerSource === 'flow' || powerSource === 'homey_energy');
   // Adopt the persisted meter selection BEFORE syncCapacityControls runs its
   // visibility-only sync, so the select renders the saved choice. Trimmed the
   // same way as the runtime seam (resolveHomeyEnergyMeterDeviceId) so the UI
@@ -269,12 +315,19 @@ const saveCapacitySettingsPatch = async (
   pushSettingWriteIfChanged(writes, CAPACITY_LIMIT_KW, current.limit, limit);
   pushSettingWriteIfChanged(writes, CAPACITY_MARGIN_KW, current.margin, margin);
   pushSettingWriteIfChanged(writes, CAPACITY_DRY_RUN, current.dryRun, dryRun);
-  pushSettingWriteIfChanged(writes, POWER_SOURCE, current.powerSource, powerSource);
+  // Persist power_source ONLY when the patch explicitly carries it (the user
+  // changed the select). An unrelated hard-cap/margin/simulation save must not
+  // materialize the 'flow' default — that would silently flip the banner's
+  // fresh-install copy to "check your Flow" for a user who never chose a source.
+  if (patch.powerSource !== undefined) {
+    pushSettingWriteIfChanged(writes, POWER_SOURCE, current.powerSource, powerSource);
+  }
   if (writes.length > 0) {
     await Promise.all(writes);
   }
   const dryRunChanged = current.dryRun !== dryRun;
   state.dryRun = dryRun;
+  if (patch.powerSource !== undefined) setPowerSourceConfigured(true);
   syncCapacityControls(limit, margin, dryRun, powerSource);
   syncDryRunBannerVisibility();
   syncSettingsHubChips();
@@ -286,11 +339,15 @@ const saveCapacitySettingsPatch = async (
   await showToast(successMessage, 'ok');
 };
 
-export const saveSettingsLimitsSettings = async () => {
+export const saveSettingsLimitsSettings = async (
+  options?: { includePowerSource?: boolean },
+) => {
   await saveCapacitySettingsPatch({
     limit: readNumberInput(settingsCapacityLimitInput, 'Hard cap'),
     margin: readNumberInput(settingsCapacityMarginInput, 'Safety margin'),
-    powerSource: normalizePowerSource(settingsPowerSourceSelect?.value),
+    ...(options?.includePowerSource === true
+      ? { powerSource: normalizePowerSource(settingsPowerSourceSelect?.value) }
+      : {}),
   }, 'Limits & safety saved.');
 };
 

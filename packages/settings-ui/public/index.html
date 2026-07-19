@@ -29,14 +29,15 @@
         <svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" focusable="false"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
       </span>
       <span class="banner__text">Simulation on — devices stay <span class="banner__no-break">as-is</span></span>
-      <md-text-button type="button" class="dry-run-banner__action" id="simulation-disable-button">Turn off simulation</md-text-button>
+      <md-text-button type="button" class="banner__action dry-run-banner__action" id="simulation-disable-button">Turn off simulation</md-text-button>
     </div>
 
     <div id="stale-data-banner" class="banner banner--warning" hidden>
       <span class="banner__icon" aria-hidden="true">
         <svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" focusable="false"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
       </span>
-      <span id="stale-data-text" class="banner__text">No power data received recently. Check your Flow that reports power usage.</span>
+      <span id="stale-data-text" class="banner__text">No power data yet. PELS needs to know where to read your home&rsquo;s power usage.</span>
+      <md-text-button type="button" class="banner__action" id="stale-data-action" data-settings-target="limits" data-settings-anchor="#settings-power-source">Check power source</md-text-button>
     </div>
 
     <section class="card panel hidden" id="devices-panel" data-panel="devices" aria-labelledby="devices-title">
@@ -583,7 +584,7 @@
           </div>
         </div>
       </div>
-      <p id="plan-empty" class="muted" hidden>No plan available yet. Send power data or refresh devices.</p>
+      <p id="plan-empty" class="muted" hidden>No plan available yet. PELS builds one after the first power reading.</p>
     </section>
 
     <section class="card panel hidden" id="advanced-panel" data-panel="advanced" aria-labelledby="advanced-title">
