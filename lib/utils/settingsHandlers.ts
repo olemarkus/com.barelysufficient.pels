@@ -20,6 +20,7 @@ import {
   DAILY_BUDGET_PRICE_FLEX_SHARE,
   DAILY_BUDGET_RESET,
   DEBUG_LOGGING_TOPICS,
+  DEVICE_HOME_ASSIGNMENTS,
   EV_BOOST_SETTINGS,
   EXPORT_FIXED,
   EXPORT_PRICE_ENABLED,
@@ -30,6 +31,7 @@ import {
   NORWAY_PRICE_MODEL,
   HOMEY_PRICES_TODAY,
   HOMEY_PRICES_TOMORROW,
+  HOMES_CONFIG,
   isHomeScopableBaseKey,
   MAIN_HOME_ID,
   MANAGED_DEVICES,
@@ -101,6 +103,14 @@ export type SettingsHandlerDeps = {
    * reconcile — never a destructive reset, never a dropped write.
    */
   onHomeScopedSettingChanged?: (baseKey: string, homeId: string) => void | Promise<void>;
+  /**
+   * Recompute the cached device→home membership after a `homes_config` /
+   * `device_home_assignments` write (both UNSUFFIXED global keys — ordinary
+   * exact-key serialized dispatch, unlike the suffixed hook above). Optional
+   * and read-only: when absent the write still persists — membership simply
+   * recomputes on the next snapshot refresh.
+   */
+  recomputeHomeMembership?: () => void;
 };
 
 const DAILY_BUDGET_PRICE_REBUILD_DEBOUNCE_MS = 1000;
@@ -399,6 +409,15 @@ function buildPriceSettingsHandlers(
 
 function buildMiscSettingsHandlers(deps: SettingsHandlerDeps): SettingsHandlerMap {
   return {
+    // Multi-home registry/pin writes: recompute the membership cache only —
+    // deliberately NO snapshot refresh and NO plan rebuild (behavior identity:
+    // nothing on the control path consumes membership yet).
+    [HOMES_CONFIG]: async () => {
+      deps.recomputeHomeMembership?.();
+    },
+    [DEVICE_HOME_ASSIGNMENTS]: async () => {
+      deps.recomputeHomeMembership?.();
+    },
     [DAILY_BUDGET_RESET]: async () => {
       deps.resetDailyBudgetLearning();
       deps.updateDailyBudgetState(FORCE_DAILY_BUDGET_STATE_PERSIST);

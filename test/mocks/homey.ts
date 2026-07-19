@@ -81,6 +81,9 @@ export class MockDevice {
   private capabilityListeners = new Map<string, Set<(value: unknown) => void>>();
   // Mirrors the real SDK's `device.available` (offline = false). Defaults online.
   private available = true;
+  // Raw `device.zone` payload (either SDK shape: zone-id string, or
+  // `{ id, name }` object). Undefined = omitted from the API payload.
+  private zone: string | { id: string; name: string } | undefined;
 
   constructor(
     private id: string,
@@ -271,6 +274,11 @@ export class MockDevice {
     emitMockHomeyApiDeviceUpdate(this.toHomeyApiDevice());
   }
 
+  /** Configure the raw `zone` value the device API payload carries (either SDK shape). */
+  setZone(zone: string | { id: string; name: string } | undefined): void {
+    this.zone = zone;
+  }
+
   toHomeyApiDevice(): Record<string, any> {
     const caps = this.getCapabilities();
     const capabilitiesObj: Record<string, any> = {};
@@ -298,6 +306,7 @@ export class MockDevice {
       makeCapabilityInstance: this.makeCapabilityInstance.bind(this),
       available: this.available,
       ready: true,
+      ...(this.zone !== undefined ? { zone: this.zone } : {}),
     };
   }
 

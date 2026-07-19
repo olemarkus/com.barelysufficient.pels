@@ -162,6 +162,13 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     } = { emptySnapshotGrace: null, latestRawDevices: [], lastSnapshotRefreshMetricsKey: null };
     // Zone-tree cache + fetch-generation guard (see `zoneTreeCache.ts`).
     private readonly zoneTreeCache = new ZoneTreeCache();
+    // Zone-tree COMMIT notification seam (multi-home membership recompute).
+    // Transport-owned like the observed-state dispatcher, but set-after-
+    // construction: wiring subscribes via `setOnZoneTreeCommitted` once the
+    // consumer exists and detaches with `undefined` at uninit. Invoked only on
+    // a SUCCESSFUL generation-guarded commit (`snapshotRefresh.ts`), contained
+    // there so a subscriber throw can never surface on the detached chain.
+    private onZoneTreeCommitted?: () => void;
     private powerState: Required<PowerEstimateState>;
     private measuredPowerResolver: DeviceMeasuredPowerResolver;
     private recentLocalCapabilityWrites: RecentLocalCapabilityWrites = new Map();
@@ -307,6 +314,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             getLatestRawDevices: () => refreshScalars.latestRawDevices,
             setLatestRawDevices: (devices) => { refreshScalars.latestRawDevices = devices; },
             zoneTreeCache: t.zoneTreeCache,
+            notifyZoneTreeCommitted: () => { t.onZoneTreeCommitted?.(); },
             getTrackedDevicesById: () => t.latestTrackedDevicesById,
             fetchDevicesForSnapshot: () => t.fetchDevicesForSnapshot(),
             fetchDevicesByKnownIds: () => t.fetchDevicesByKnownIds(),
@@ -487,6 +495,16 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
      */
     getZoneTree(): ZoneTree | null {
         return this.zoneTreeCache.get();
+    }
+
+    /**
+     * Subscribe/detach the zone-tree commit notification (see the field doc on
+     * `onZoneTreeCommitted`). Single-consumer seam: the multi-home membership
+     * wiring subscribes after construction and detaches with `undefined` at
+     * uninit so a late detached commit cannot recompute a torn-down consumer.
+     */
+    setOnZoneTreeCommitted(callback: (() => void) | undefined): void {
+        this.onZoneTreeCommitted = callback;
     }
 
     async setCapability(deviceId: string, capabilityId: string, value: unknown): Promise<unknown> {

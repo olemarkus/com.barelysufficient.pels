@@ -106,6 +106,33 @@ describe('zone tree fetch riding the snapshot refresh', () => {
     expect(transport.getZoneTree()).toBeNull();
   });
 
+  it('a throwing failure-path logger cannot reject the detached refresh (whole-body containment)', async () => {
+    // `refreshZoneTreeCache` runs fire-and-forget; anything that throws on a
+    // failure path — here `fetchZoneTree`'s own `zone_tree_fetch_failed`
+    // debug call — would become an unhandled rejection without the
+    // whole-body guard (vitest fails the run on one, so this test completing
+    // IS the assertion).
+    const explodingLogger: Logger = {
+      ...loggerMock,
+      debug: (...args: unknown[]) => {
+        const payload = args[0] as { event?: string } | undefined;
+        if (payload?.event === 'zone_tree_fetch_failed') {
+          throw new Error('failure-path logger exploded');
+        }
+      },
+    };
+    setMockZones({ z1: { id: 'z1', name: 'Home', parent: null } });
+    const transport = new DeviceTransport(homeyMock, explodingLogger);
+    await refreshAndSettleZones(transport);
+    expect(transport.getZoneTree()).toEqual({ z1: { id: 'z1', name: 'Home', parent: null } });
+
+    // Route now throws → fetch-failure path → the logger throws → the outer
+    // containment swallows it. Cached tree retained (abandon-grace).
+    setMockZones(null);
+    await refreshAndSettleZones(transport);
+    expect(transport.getZoneTree()).toEqual({ z1: { id: 'z1', name: 'Home', parent: null } });
+  });
+
   it('normalizes a good payload into the typed tree', async () => {
     setMockZones({
       z1: { id: 'z1', name: 'Home', parent: null },
