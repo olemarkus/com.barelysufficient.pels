@@ -1,5 +1,6 @@
 import type { AppContext } from '../../lib/app/appContext';
 import { createObjectivePriceHorizonBuilder } from './objectivePriceHorizon';
+import { isSmartTaskDeviceInMainHome } from './smartTaskHomeScope';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 import { isBinaryPlanDevice } from '../../lib/plan/planBinaryDevice';
@@ -242,6 +243,14 @@ export const handleDeferredDeadlineReached = (
 ): void => {
   const disarm = () => disableDeferredObjectiveInSettings(ctx, deviceId);
   const graceElapsed = nowMs - deadlineAtMs >= TERMINAL_RELEASE_DISARM_GRACE_MS;
+  // Multi-home v1: a device relocated to a separate-meter sub-home is outside
+  // PELS's main-home control scope — never issue the terminal release against
+  // another meter's device. Ends via the same immediate-disarm path as the
+  // cap-on gate below ("someone else owns this device"): nothing to actuate,
+  // the task just ends and the recorders file the run from its last honest
+  // (`objective_device_in_sub_home`) diagnostics. Not a transient, so no
+  // retry-until-grace.
+  if (!isSmartTaskDeviceInMainHome(ctx, deviceId)) { disarm(); return; }
   // Cap-on → the planner owns the device on its normal lane; just disarm (no
   // terminal release, no actuation needed, device presence irrelevant).
   if (ctx.isCapacityControlEnabled(deviceId)) { disarm(); return; }
@@ -346,6 +355,10 @@ export function createDeferredObjectiveLifecycleEmitter(
       ctx.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot() ?? null
     ),
     getHardCapKw: () => ctx.capacitySettings.limitKw,
+    // Multi-home v1: a relocated task's lifecycle diagnostics carry the
+    // dedicated `objective_device_in_sub_home` code, and the eligible-count
+    // denominator excludes it (see the dep's doc on the emitter).
+    isDeviceInSubHome: (deviceId) => !isSmartTaskDeviceInMainHome(ctx, deviceId),
     getDeferredObjectiveDebugStructured: () => (
       ctx.getStructuredDebugEmitter('deferred_objectives', 'deferred_objectives')
     ),

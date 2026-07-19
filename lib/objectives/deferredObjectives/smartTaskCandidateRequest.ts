@@ -165,6 +165,9 @@ export const mapSmartTaskAppReason = (reason: string): SmartTaskWriteRejectReaso
   if (reason === 'device_not_found') return 'device_not_found';
   if (reason === 'device_not_planned') return 'device_not_planned';
   if (reason === 'device_not_eligible') return 'device_not_eligible';
+  // Multi-home v1 scope rejection — passed through typed so the surfaces show
+  // the dedicated "separate meter" copy, never the retry framing.
+  if (reason === 'device_in_sub_home') return 'device_in_sub_home';
   if (reason === 'write_conflict' || reason === 'write_refused') return 'write_conflict';
   return 'invalid_candidate';
 };

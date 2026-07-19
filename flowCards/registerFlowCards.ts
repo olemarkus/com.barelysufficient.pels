@@ -107,6 +107,12 @@ export type FlowCardDeps = {
   // Production always wires these via appInit.
   upsertDeferredObjectiveForDevice: UpsertDeferredObjectiveForDevice;
   clearDeferredObjectiveForDevice: ClearDeferredObjectiveForDevice;
+  // Multi-home v1 scope predicate for the set-deadline card autocompletes:
+  // `false` = the device is in a separate-meter sub-home and must not be
+  // offered for a new smart task (the write op itself also gates, so this is
+  // list UX, not the enforcement point). Optional — absent wiring (tests)
+  // offers every device, matching the no-sub-homes single-home behavior.
+  isDeviceInMainHome?: (deviceId: string) => boolean;
   getDeferredObjectiveActivePlans?: () => DeferredObjectiveActivePlansV1 | null;
   getDeferredObjectiveStatusBus?: () => DeferredObjectiveStatusBus | undefined;
   getDeferredObjectivePlanRevisionBus?: () => DeferredObjectivePlanRevisionBus | undefined;

@@ -2,6 +2,9 @@ import type {
   SettingsUiPlanDeviceSnapshot,
   SettingsUiPlanDeviceStarvation,
 } from '../../contracts/src/settingsUiApi';
+// From the lean write-strings module (NOT deadlineLabels.ts) so the rescue
+// widget bundles don't drag the full smart-task copy module in.
+import { SMART_TASK_SUB_HOME_UNAVAILABLE } from './objectiveWriteStrings';
 
 // Canonical capacity-starvation copy: a device held below target because the
 // house lacks available power (the hard cap holds the tariff step, not a tuning knob —
@@ -342,13 +345,19 @@ export const scheduledHoursIncludeCurrentHour = (
 };
 
 // Map a rescue-create rejection reason to the user-facing widget error line.
-// Mirrors the create widget's resolver: only the retryable deadline-passed case
-// gets bespoke copy; everything else collapses to the generic failure line.
-export const resolveStarvationRescueRejectCopy = (reason: string | undefined): string => (
-  reason === 'deadline_passed'
-    ? STARVATION_RESCUE_WIDGET_COPY.deadlinePassed
-    : STARVATION_RESCUE_WIDGET_COPY.rescueError
-);
+// Mirrors the create widget's resolver: the retryable deadline-passed case and
+// the multi-home scope rejection get bespoke copy; everything else collapses to
+// the generic failure line.
+export const resolveStarvationRescueRejectCopy = (reason: string | undefined): string => {
+  if (reason === 'deadline_passed') return STARVATION_RESCUE_WIDGET_COPY.deadlinePassed;
+  // The device is on a separate meter (sub-home) — the rescue is a smart-task
+  // create and smart tasks are main-home-only in v1. The live starved list
+  // already excludes such devices, so this covers the stale-row race (the
+  // device relocated between listing and tap); the generic "try again" line
+  // would be dishonest for a rejection no retry can clear.
+  if (reason === 'device_in_sub_home') return SMART_TASK_SUB_HOME_UNAVAILABLE;
+  return STARVATION_RESCUE_WIDGET_COPY.rescueError;
+};
 
 export const summarizeStarvation = (
   devices: Array<Pick<SettingsUiPlanDeviceSnapshot, 'starvation'>> | null | undefined,

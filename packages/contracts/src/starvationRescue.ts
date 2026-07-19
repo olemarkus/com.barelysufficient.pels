@@ -64,6 +64,13 @@ export type StarvationRescueRejectReason =
   | 'device_not_found'
   | 'device_not_planned'
   | 'device_not_eligible'
+  // The device belongs to a separate-meter sub-home; smart tasks (and so the
+  // rescue, which is a smart-task create) are main-home-only in v1. The live
+  // starved list (`getStarvedRescueDevices`) excludes sub-home devices, so this
+  // surfaces only on the stale-row race — the device relocated between listing
+  // and tap — or a tampered request; either way the surfaces show the dedicated
+  // separate-meter copy instead of collapsing into `invalid_candidate`.
+  | 'device_in_sub_home'
   | 'invalid_candidate'
   // The hardened write primitive refused (suspected transient-empty settings
   // read while other tasks are live). Transient — the user can retry.

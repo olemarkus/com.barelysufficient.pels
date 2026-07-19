@@ -1,0 +1,446 @@
+// Integration coverage for the multi-home v1 smart-task scope gate
+// (`device_in_sub_home` / `objective_device_in_sub_home`):
+// - the device-scoped write op refuses an UPSERT for a sub-home device with the
+//   typed reason (no write, no notify/rebuild) while clear stays ungated, and
+//   behaves identically when the membership dep is absent or resolves main;
+// - the diagnostics bridge resolves an EXISTING task whose device is in a
+//   sub-home to the dedicated `objective_device_in_sub_home` unknown code —
+//   never the misleading `objective_missing_device` — and admission then treats
+//   the task as inactive (it never governs the device);
+// - the decoration controller threads its `isDeviceInSubHome` dep into the
+//   per-cycle evaluation.
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { MockSettings } from '../mocks/homey';
+import { updateSettingsUiSmartTask } from '../../setup/settingsUiSmartTaskApi';
+import { handleDeferredDeadlineReached } from '../../setup/appInit/deferredObjectiveLifecycle';
+import { isSmartTaskDeviceInMainHome } from '../../setup/appInit/smartTaskHomeScope';
+import { createAppContextMock } from '../helpers/appContextTestHelpers';
+import type { AppContext } from '../../lib/app/appContext';
+import {
+  ConcurrentEligibleTaskTracker,
+  resolveConcurrentEligibleCount,
+} from '../../lib/objectives/deferredObjectives/concurrentEligibleTasks';
+import type { ObjectiveDeviceInput } from '../../lib/objectives/types';
+import {
+  buildDeferredObjectiveDiagnostics,
+  DeferredObjectiveDecorationController,
+  normalizeDeferredObjectiveSettings,
+} from '../../lib/objectives/deferredObjectives';
+import { applyDeferredObjectiveAdmission } from '../../lib/objectives/deferredObjectives/admission';
+import {
+  clearObjectiveForDevice,
+  upsertObjectiveForDevice,
+  type DeferredObjectiveDeviceWriteDeps,
+} from '../../lib/objectives/deferredObjectives/objectiveWrite';
+import {
+  PER_DEVICE_OBJECTIVE_KEY_PREFIX,
+  readObjectiveForDevice,
+  type ObjectiveSettingsStore,
+} from '../../lib/objectives/deferredObjectives/objectiveStore';
+import type { DeferredObjectiveActivePlanRecorder } from '../../lib/objectives/deferredObjectives/activePlanRecorder';
+import type { DeferredObjectivePlanHistoryRecorder } from '../../lib/objectives/deferredObjectives/planHistory';
+import type { DeferredObjectiveSettingsEntry } from '../../lib/objectives/deferredObjectives/settings';
+import {
+  withBinaryDiscriminant,
+  withTemperatureDiscriminant,
+  type PlanInputDevice,
+} from '../../lib/plan/planTypes';
+
+const NOW_MS = Date.UTC(2026, 0, 1, 12, 0, 0);
+const DEADLINE_MS = NOW_MS + 6 * 60 * 60 * 1000;
+
+const heaterEntry: DeferredObjectiveSettingsEntry = {
+  enabled: true,
+  kind: 'temperature',
+  enforcement: 'soft',
+  targetTemperatureC: 60,
+  deadlineAtMs: DEADLINE_MS,
+};
+
+const keyFor = (deviceId: string): string => `${PER_DEVICE_OBJECTIVE_KEY_PREFIX}${deviceId}`;
+
+// In-memory store standing in for `homey.settings` (structurally an
+// ObjectiveSettingsStore); a non-objective key keeps getKeys() non-empty as a
+// real PELS store always is (the trustworthy-absence guard relies on this).
+const buildStore = (
+  seed: Record<string, DeferredObjectiveSettingsEntry> = {},
+): ObjectiveSettingsStore & { raw: Map<string, unknown> } => {
+  const raw = new Map<string, unknown>();
+  raw.set('capacity_limit_kw', 5);
+  for (const [deviceId, entry] of Object.entries(seed)) raw.set(keyFor(deviceId), entry);
+  return {
+    raw,
+    get: (key) => raw.get(key),
+    set: (key, value) => { raw.set(key, value); },
+    unset: (key) => { raw.delete(key); },
+    getKeys: () => [...raw.keys()],
+  };
+};
+
+const buildDeviceDeps = (
+  store: ObjectiveSettingsStore,
+  isDeviceInMainHome?: (deviceId: string) => boolean,
+) => {
+  const activePlanRecorder = {
+    markPending: vi.fn(),
+    clearForDevice: vi.fn(),
+    flushIfDirty: vi.fn(),
+  } as unknown as DeferredObjectiveActivePlanRecorder;
+  const planHistoryRecorder = {
+    finalizeForUserChange: vi.fn(),
+    finalizeElapsedDeadline: vi.fn(),
+    flushIfDirty: vi.fn(),
+  } as unknown as DeferredObjectivePlanHistoryRecorder;
+  const rebuildPlan = vi.fn();
+  const debugStructured = vi.fn();
+  const deps: DeferredObjectiveDeviceWriteDeps = {
+    store,
+    activePlanRecorder,
+    planHistoryRecorder,
+    rebuildPlan,
+    nowMs: NOW_MS,
+    ...(isDeviceInMainHome ? { isDeviceInMainHome } : {}),
+    debugStructured,
+  };
+  return { deps, activePlanRecorder, planHistoryRecorder, rebuildPlan, debugStructured };
+};
+
+describe('device-scoped write op: sub-home gate', () => {
+  it('upsert refuses a sub-home device with the typed reason — no write, no notify/rebuild', () => {
+    const store = buildStore();
+    const h = buildDeviceDeps(store, (deviceId) => deviceId !== 'heater-sub');
+    const outcome = upsertObjectiveForDevice(h.deps, {
+      deviceId: 'heater-sub',
+      deviceName: 'Cabin heater',
+      entry: heaterEntry,
+    });
+    expect(outcome).toEqual({ persisted: false, reason: 'device_in_sub_home' });
+    expect(readObjectiveForDevice(store, 'heater-sub')).toBeUndefined();
+    expect(h.activePlanRecorder.markPending).not.toHaveBeenCalled();
+    expect(h.rebuildPlan).not.toHaveBeenCalled();
+    // The refusal leaves a topic-gated debug breadcrumb like the transient ones.
+    expect(h.debugStructured).toHaveBeenCalledWith({
+      event: 'objective_write_refused',
+      op: 'upsert',
+      deviceId: 'heater-sub',
+      reason: 'device_in_sub_home',
+    });
+  });
+
+  it('upsert persists unchanged for a main-home device and when the dep is absent (single-home identity)', () => {
+    const gatedStore = buildStore();
+    const gated = buildDeviceDeps(gatedStore, () => true);
+    expect(upsertObjectiveForDevice(gated.deps, {
+      deviceId: 'heater-main', deviceName: 'Hall heater', entry: heaterEntry,
+    })).toEqual({ persisted: true });
+    expect(readObjectiveForDevice(gatedStore, 'heater-main')).toEqual(heaterEntry);
+
+    const bareStore = buildStore();
+    const bare = buildDeviceDeps(bareStore);
+    expect(upsertObjectiveForDevice(bare.deps, {
+      deviceId: 'heater-main', deviceName: 'Hall heater', entry: heaterEntry,
+    })).toEqual({ persisted: true });
+    expect(readObjectiveForDevice(bareStore, 'heater-main')).toEqual(heaterEntry);
+  });
+
+  it('clear stays UNGATED: a task on a device relocated to a sub-home can still be removed', () => {
+    const store = buildStore({ 'heater-sub': heaterEntry });
+    const h = buildDeviceDeps(store, () => false);
+    const outcome = clearObjectiveForDevice(h.deps, { deviceId: 'heater-sub', deviceName: 'Cabin heater' });
+    expect(outcome).toEqual({ persisted: true });
+    expect(readObjectiveForDevice(store, 'heater-sub')).toBeUndefined();
+  });
+});
+
+// ─── Diagnostics honesty for an existing task on a relocated device ──────────
+
+const buildHeaterDevice = (): PlanInputDevice => withTemperatureDiscriminant(withBinaryDiscriminant({
+  id: 'heater-sub',
+  name: 'Cabin heater',
+  targets: [{ id: 'target_temperature', value: 55, unit: 'C', min: 0, max: 95, step: 0.5 }],
+  binaryControl: { on: false },
+  deviceType: 'temperature' as const,
+  controlCapabilityId: 'onoff' as const,
+  currentTemperature: 40,
+  lastFreshDataMs: NOW_MS,
+})) as PlanInputDevice;
+
+const buildDiagnosticsParams = (overrides: {
+  devices: PlanInputDevice[];
+  isDeviceInSubHome?: (deviceId: string) => boolean;
+}) => ({
+  nowMs: NOW_MS,
+  timeZone: 'UTC',
+  devices: overrides.devices,
+  settings: normalizeDeferredObjectiveSettings({
+    version: 1,
+    objectivesByDeviceId: { 'heater-sub': heaterEntry },
+  }),
+  powerTracker: { lastTimestamp: NOW_MS },
+  dailyBudgetSnapshot: null,
+  buildPriceHorizon: () => [],
+  priceOptimizationEnabled: true,
+  ...(overrides.isDeviceInSubHome ? { isDeviceInSubHome: overrides.isDeviceInSubHome } : {}),
+});
+
+describe('diagnostics: existing task whose device is in a sub-home', () => {
+  it('resolves the dedicated objective_device_in_sub_home unknown code when the device is present', () => {
+    const diagnostics = buildDeferredObjectiveDiagnostics(buildDiagnosticsParams({
+      devices: [buildHeaterDevice()],
+      isDeviceInSubHome: (deviceId) => deviceId === 'heater-sub',
+    }));
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0].status).toBe('unknown');
+    expect(diagnostics[0].reasonCode).toBe('objective_device_in_sub_home');
+  });
+
+  it('beats the misleading objective_missing_device even when main-only planner scoping dropped the device', () => {
+    const diagnostics = buildDeferredObjectiveDiagnostics(buildDiagnosticsParams({
+      devices: [],
+      isDeviceInSubHome: () => true,
+    }));
+    expect(diagnostics[0].reasonCode).toBe('objective_device_in_sub_home');
+  });
+
+  it('without the predicate (no sub-homes) the diagnostic never carries the sub-home code', () => {
+    const diagnostics = buildDeferredObjectiveDiagnostics(buildDiagnosticsParams({
+      devices: [buildHeaterDevice()],
+    }));
+    expect(diagnostics[0].reasonCode).not.toBe('objective_device_in_sub_home');
+  });
+
+  it('admission treats the sub-home diagnostic as inactive — the task never governs the device', () => {
+    const devices = [buildHeaterDevice()];
+    const diagnostics = buildDeferredObjectiveDiagnostics(buildDiagnosticsParams({
+      devices,
+      isDeviceInSubHome: () => true,
+    }));
+    const decisions = applyDeferredObjectiveAdmission(diagnostics, devices);
+    expect(decisions.get('heater-sub')?.kind).toBe('inactive');
+  });
+});
+
+// ─── Settings-UI smart-task edit lane (its own validation path) ─────────────
+//
+// The settings-UI surface is edit-only (`gateEditableTask` requires an
+// existing task) and validates through the SAME `createDeferredObjective`
+// engine, but it is a separate lane with its own reason mapper
+// (`mapSmartTaskAppReason`) — cover it end-to-lane so a sub-home rejection
+// reaches the editor typed, never collapsed into `invalid_candidate`.
+describe('settings-UI smart-task edit lane: sub-home rejection', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW_MS);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('update forwards the typed device_in_sub_home reason to the editor', () => {
+    const settings = new MockSettings();
+    settings.set('capacity_limit_kw', 10);
+    // Existing, enabled, future-deadline task — the device moved to a sub-home
+    // AFTER creation, so the edit gate passes and the create engine rejects.
+    settings.set('deferred_objective.heater-sub', heaterEntry);
+    const createDeferredObjective = vi.fn(() => ({ ok: false as const, reason: 'device_in_sub_home' as const }));
+    const homey = {
+      app: { createDeferredObjective },
+      clock: { getTimezone: () => 'UTC' },
+      settings,
+    } as never;
+    const result = updateSettingsUiSmartTask({
+      homey,
+      body: { deviceId: 'heater-sub', kind: 'temperature', target: 65, readyByLocalTime: '17:00' },
+    });
+    expect(createDeferredObjective).toHaveBeenCalledOnce();
+    expect(result).toEqual({ ok: false, reason: 'device_in_sub_home' });
+  });
+});
+
+// ─── Membership predicate fail-safes ─────────────────────────────────────────
+describe('isSmartTaskDeviceInMainHome: unknown membership resolves MAIN', () => {
+  const ctxWithHomeId = (homeId: unknown) => createAppContextMock({
+    homeMembership: {
+      getHomeIdForDevice: () => homeId,
+    } as unknown as AppContext['homeMembership'],
+  });
+
+  it('a contract-slipping null resolves main (single-home identity), never sub-home rejection', () => {
+    expect(isSmartTaskDeviceInMainHome(ctxWithHomeId(null), 'd1')).toBe(true);
+    // Absent service (boot window / bare contexts) → main.
+    expect(isSmartTaskDeviceInMainHome(createAppContextMock({}), 'd1')).toBe(true);
+    // A real sub-home id still gates.
+    expect(isSmartTaskDeviceInMainHome(ctxWithHomeId('h_cabin'), 'd1')).toBe(false);
+  });
+});
+
+// ─── Terminal-release (lifecycle) lane: no wrong-meter actuation ─────────────
+//
+// The clock-driven deadline ending returns a cap-off device to its fallback
+// posture via the transport. A device relocated to a sub-home is outside
+// PELS's main-home control scope, so the terminal command must be suppressed
+// and the task must end via the same immediate-disarm path as cap-on.
+describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuation', () => {
+  const DEADLINE = 1_000_000;
+
+  const buildLifecycleCtx = (homeIdForDevice: string) => {
+    const settingsStore = new Map<string, unknown>([
+      ['deferred_objective.d1', {
+        enabled: true,
+        kind: 'temperature',
+        enforcement: 'soft',
+        targetTemperatureC: 21,
+        deadlineAtMs: DEADLINE,
+      }],
+    ]);
+    const forgetDevice = vi.fn();
+    const setCapability = vi.fn().mockResolvedValue(undefined);
+    const applyDeviceTargets = vi.fn().mockResolvedValue(undefined);
+    const homey = {
+      settings: {
+        get: vi.fn((key: string) => settingsStore.get(key)),
+        set: vi.fn((key: string, value: unknown) => { settingsStore.set(key, value); }),
+        unset: vi.fn((key: string) => { settingsStore.delete(key); }),
+        getKeys: vi.fn(() => [...settingsStore.keys()]),
+        on: vi.fn(),
+        off: vi.fn(),
+      },
+    } as unknown as AppContext['homey'];
+    const ctx = createAppContextMock({
+      homey,
+      isCapacityControlEnabled: () => false, // cap-off → terminal release lane
+      homeMembership: {
+        getHomeIdForDevice: () => homeIdForDevice,
+      } as unknown as AppContext['homeMembership'],
+      deviceManager: { setCapability, applyDeviceTargets } as unknown as AppContext['deviceManager'],
+      // Present, available, ON binary device — the exact fixture that WOULD
+      // actuate a binary-off terminal release without the sub-home gate (the
+      // control test below proves it).
+      planService: {
+        getPlanDevices: () => [withBinaryDiscriminant({
+          id: 'd1',
+          name: 'Cabin heater',
+          available: true,
+          controllable: true,
+          controlCapabilityId: 'onoff',
+          binaryControl: { on: true },
+          targets: [],
+        }) as PlanInputDevice],
+      } as unknown as AppContext['planService'],
+      deferredObjectiveStatusBus: { forgetDevice } as unknown as AppContext['deferredObjectiveStatusBus'],
+      deferredObjectiveActivePlanRecorder: {
+        clearForDevice: vi.fn(),
+        getActivePlansSnapshot: () => ({ version: 1, plansByDeviceId: {} }),
+      } as unknown as AppContext['deferredObjectiveActivePlanRecorder'],
+    });
+    return { ctx, settingsStore, forgetDevice, setCapability, applyDeviceTargets };
+  };
+
+  // The terminal release is fire-and-forget (`void applyShedBehavior`), so
+  // actuation assertions flush the microtask queue first.
+  const settleActuation = async (): Promise<void> => {
+    await Promise.resolve();
+    await Promise.resolve();
+  };
+
+  it('control: a main-home device DOES receive the terminal release command', async () => {
+    const h = buildLifecycleCtx('main');
+    handleDeferredDeadlineReached(h.ctx, 'd1', 'temperature', DEADLINE, DEADLINE + 60_000);
+    await settleActuation();
+    expect(h.setCapability).toHaveBeenCalled();
+    expect(h.setCapability.mock.calls[0].slice(0, 3)).toEqual(['d1', 'onoff', false]);
+  });
+
+  it('a sub-home device gets NO device command and the task ends via the immediate disarm', async () => {
+    const h = buildLifecycleCtx('h_cabin');
+    handleDeferredDeadlineReached(h.ctx, 'd1', 'temperature', DEADLINE, DEADLINE + 60_000);
+    await settleActuation();
+    // No wrong-meter actuation of any kind.
+    expect(h.setCapability).not.toHaveBeenCalled();
+    expect(h.applyDeviceTargets).not.toHaveBeenCalled();
+    // Honest existing ending: disarmed immediately (cap-on-style), status forgotten.
+    expect((h.settingsStore.get('deferred_objective.d1') as { enabled: boolean }).enabled).toBe(false);
+    expect(h.forgetDevice).toHaveBeenCalledWith('d1');
+  });
+});
+
+// ─── Concurrent-eligible denominator: relocated tasks stop diluting ──────────
+describe('concurrent-eligible count: sub-home tasks leave the denominator immediately', () => {
+  const reservedEntry = (deadlineAtMs: number): DeferredObjectiveSettingsEntry => ({
+    enabled: true,
+    kind: 'temperature',
+    enforcement: 'soft',
+    targetTemperatureC: 60,
+    deadlineAtMs,
+    rescue: { exemptFromBudget: 'always', limitLowerPriorityDevices: 'always' },
+  });
+  const priorityOneDevice = (id: string): ObjectiveDeviceInput => (
+    { id, name: id, priority: 1, targets: [] } as unknown as ObjectiveDeviceInput
+  );
+  const settings = normalizeDeferredObjectiveSettings({
+    version: 1,
+    objectivesByDeviceId: {
+      'heater-sub': reservedEntry(NOW_MS + 6 * 60 * 60 * 1000),
+      'heater-main': reservedEntry(NOW_MS + 6 * 60 * 60 * 1000),
+    },
+  });
+  const deviceById = new Map<string, ObjectiveDeviceInput>([
+    ['heater-sub', priorityOneDevice('heater-sub')],
+    ['heater-main', priorityOneDevice('heater-main')],
+  ]);
+
+  it('excludes a sub-home reserved task from the tracker denominator', () => {
+    const tracker = new ConcurrentEligibleTaskTracker();
+    const count = resolveConcurrentEligibleCount({
+      settings,
+      deviceById,
+      nowMs: NOW_MS,
+      tracker,
+      isDeviceInSubHome: (deviceId) => deviceId === 'heater-sub',
+    });
+    expect(typeof count).toBe('function');
+    expect((count as (bucketStartMs: number) => number)(NOW_MS)).toBe(1);
+  });
+
+  it('prunes a pre-relocation entry IMMEDIATELY — membership is authoritative, no abandon grace', () => {
+    const tracker = new ConcurrentEligibleTaskTracker();
+    // Cycle 1: both tasks eligible (no sub-homes yet).
+    tracker.observe({ settings, deviceById, nowMs: NOW_MS });
+    expect(tracker.count({ nowMs: NOW_MS })).toBe(2);
+    // Cycle 2, seconds later: the device was pinned into a sub-home. The old
+    // entry must not linger for the SDK-flicker grace window.
+    tracker.observe({
+      settings,
+      deviceById,
+      nowMs: NOW_MS + 30_000,
+      isDeviceInSubHome: (deviceId) => deviceId === 'heater-sub',
+    });
+    expect(tracker.count({ nowMs: NOW_MS + 30_000 })).toBe(1);
+  });
+});
+
+describe('decoration controller: isDeviceInSubHome dep threading', () => {
+  it('consults the predicate per task during decorate and leaves the task un-admitted', () => {
+    const isDeviceInSubHome = vi.fn((deviceId: string) => deviceId === 'heater-sub');
+    const controller = new DeferredObjectiveDecorationController({
+      getDeferredObjectiveSettings: () => normalizeDeferredObjectiveSettings({
+        version: 1,
+        objectivesByDeviceId: { 'heater-sub': heaterEntry },
+      }),
+      getTimeZone: () => 'UTC',
+      getPowerTracker: () => ({ lastTimestamp: NOW_MS }),
+      getPriceOptimizationEnabled: () => true,
+      buildPriceHorizon: () => [],
+      getHardCapKw: () => 10,
+      isDeviceInSubHome,
+    });
+    const bundle = controller.decorate({
+      devices: [buildHeaterDevice()],
+      dailyBudgetSnapshot: null,
+      nowTs: NOW_MS,
+    });
+    expect(isDeviceInSubHome).toHaveBeenCalledWith('heater-sub');
+    expect(bundle.admittedDeviceIds.has('heater-sub')).toBe(false);
+    expect(bundle.forceShedSet.size).toBe(0);
+  });
+});

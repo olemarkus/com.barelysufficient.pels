@@ -19,7 +19,7 @@ export type WidgetObjectiveWriteResult =
   | {
     ok: false;
     reason: 'device_not_found' | 'device_not_planned' | 'device_not_eligible'
-      | 'invalid_candidate' | 'write_refused';
+      | 'device_in_sub_home' | 'invalid_candidate' | 'write_refused';
   };
 
 /** create_smart_task widget host surface. */

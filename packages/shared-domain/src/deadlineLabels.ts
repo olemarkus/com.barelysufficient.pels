@@ -20,6 +20,7 @@ import type {
   DeferredObjectiveKwhPerUnitProvenanceV1,
 } from '../../contracts/src/deferredObjectiveActivePlans';
 import type { ObjectiveProfileConfidence } from '../../contracts/src/objectiveProfileTypes';
+import { SMART_TASK_SUB_HOME_UNAVAILABLE } from './objectiveWriteStrings';
 
 export type DeadlinePlanUnavailableReason =
   | 'no_current_reading'
@@ -464,6 +465,7 @@ export const formatSmartTaskUnknownNowValueLine = (
 export const resolveCreateSmartTaskRejectCopy = (reason: string | undefined): string => {
   if (reason === 'deadline_passed') return CREATE_SMART_TASK_WIDGET_COPY.deadlinePassed;
   if (reason === 'write_conflict') return CREATE_SMART_TASK_WIDGET_COPY.writeConflict;
+  if (reason === 'device_in_sub_home') return SMART_TASK_SUB_HOME_UNAVAILABLE;
   return CREATE_SMART_TASK_WIDGET_COPY.createError;
 };
 
@@ -546,6 +548,10 @@ export const resolveSmartTaskEditRejectCopy = (reason: string | undefined): stri
   if (reason === 'task_not_found') return SMART_TASK_EDIT_COPY.taskEnded;
   if (reason === 'deadline_passed') return SMART_TASK_EDIT_COPY.deadlinePassed;
   if (reason === 'write_conflict') return CREATE_SMART_TASK_WIDGET_COPY.writeConflict;
+  // The device moved to a separate-meter sub-home while the task existed — the
+  // save is refused with the shared scope line ("check the goal" would be
+  // dishonest; the goal is fine, the device is out of scope).
+  if (reason === 'device_in_sub_home') return SMART_TASK_SUB_HOME_UNAVAILABLE;
   return SMART_TASK_EDIT_COPY.updateError;
 };
 

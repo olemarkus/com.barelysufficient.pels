@@ -51,6 +51,11 @@ export type SmartTaskWriteRejectReason =
   // so a task on it would never be planned. Rejected rather than persisted.
   | 'device_not_planned'
   | 'device_not_eligible'
+  // The device belongs to a separate-meter sub-home; smart tasks are planned
+  // against the main home's meter budget only (v1 scope), so the write is
+  // rejected outright. NOT retryable — the surfaces show dedicated copy, never
+  // the "try again" framing.
+  | 'device_in_sub_home'
   | 'invalid_candidate'
   // The hardened write primitive refused to persist (suspected transient-empty
   // settings read while other tasks are live). Transient — the user can retry.
