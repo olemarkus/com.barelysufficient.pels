@@ -60,6 +60,7 @@ import { wireBudgetPrice } from './appInit/wireBudgetPrice';
 import { wireCurtailmentSurplus } from './appInit/wireCurtailmentSurplus';
 import type { PvForecastController } from './appInit/createPvForecastService';
 import { flushDailyBudgetStateOnUninit, runStartupStep, startAppServices } from './appLifecycleHelpers';
+import { wireHomeMembership } from './appInit/wireHomeMembership';
 import { initSettingsHandlerForApp } from './appSettingsHelpers';
 import { BackgroundTasksController } from './backgroundTasksController';
 import type { AppNativeWiring } from './appNativeWiring';
@@ -161,6 +162,11 @@ export class AppServiceWiring {
   // this wiring site) and shared by `initPlanEngine`/`initPlanService`.
   private readonly mainHomeScope: HomeScope;
 
+  // Detaches the membership recompute triggers (refresh subscription +
+  // zone-tree-commit callback); set by `initHomeMembership`, invoked and
+  // cleared in `runUninit`.
+  private homeMembershipTeardown?: () => void;
+
   constructor(private readonly deps: AppServiceWiringDeps) {
     this.mainHomeScope = buildMainHomeScope(deps.ctx);
   }
@@ -212,6 +218,7 @@ export class AppServiceWiring {
       logStartupStepFailure,
     );
     await runStartupStep('initDeviceManager', () => this.deps.initDeviceManager(), logStartupStepFailure);
+    await runStartupStep('initHomeMembership', () => this.initHomeMembership(), logStartupStepFailure);
     const startupBootstrap: StartupBootstrapConfig = {
       snapshotPlanBootstrapDelayMs: deferStartupBootstrap ? 1200 : 0,
       runSnapshotPlanBootstrapInBackground: deferStartupBootstrap,
@@ -459,6 +466,14 @@ export class AppServiceWiring {
     return this.deps.hasEnabledEvBoostForSnapshot(this.deps.getSnapshotDevice(event.deviceId));
   }
 
+  // Body in `setup/appInit/wireHomeMembership.ts`; the trigger-teardown handle
+  // is invoked in `runUninit`.
+  initHomeMembership(): void {
+    const wiring = wireHomeMembership(this.deps.ctx, this.deps.getObservedStateEmitter());
+    this.deps.ctx.homeMembership = wiring.service;
+    this.homeMembershipTeardown = wiring.teardown;
+  }
+
   initCapacityGuard(): void {
     const { ctx } = this.deps;
     ctx.capacityGuard = new CapacityGuard({
@@ -597,6 +612,13 @@ export class AppServiceWiring {
     this.clearUninitTimers();
     realtimeReconcile.clearRealtimeDeviceReconcileState(this.deps.getRealtimeDeviceReconcileState());
     this.stopUninitServices();
+    // Detach the membership recompute triggers BEFORE the transport teardown
+    // so a still-in-flight refresh dispatch or detached zone-tree commit can
+    // no longer recompute; clearing `ctx.homeMembership` also kills the lazy
+    // settings-change trigger.
+    this.homeMembershipTeardown?.();
+    this.homeMembershipTeardown = undefined;
+    ctx.homeMembership = undefined;
     this.deps.getPvForecast()?.stop();
     // Release the warmup gate so any rebuild awaiting it during a partial
     // startup unblocks (cancelAll below then drops the intent), instead of

@@ -13,6 +13,7 @@ import {
   getSettingsUiWeatherAdvisorReadout,
   getSettingsUiDeviceLogPayload,
   getSettingsUiDevicesPayload,
+  getSettingsUiHomesPayload,
   getSettingsUiPlanPayload,
   getSettingsUiPowerPayload,
   getSettingsUiPricesPayload,
@@ -89,6 +90,9 @@ export = {
   )),
   ui_plan: withApiLogging('ui_plan', ({ homey }: ApiContext) => (
     getSettingsUiPlanPayload({ homey })
+  )),
+  ui_homes: withApiLogging('ui_homes', ({ homey }: ApiContext) => (
+    getSettingsUiHomesPayload({ homey })
   )),
   ui_power: withApiLogging('ui_power', ({ homey }: ApiContext) => (
     getSettingsUiPowerPayload({ homey })

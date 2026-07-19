@@ -47,7 +47,9 @@ import type {
   SettingsUiPricesPayload,
   SettingsUiResetPowerStatsResponse,
 } from '../packages/contracts/src/settingsUiApi';
+import type { SettingsUiHomesPayload } from '../packages/contracts/src/settingsUiHomes';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import type { HomeMembershipService } from './homeMembership';
 import { isObserveOnlyRoleClassKey } from '../lib/device/transport/managerHelpers';
 import { normalizePowerSource } from '../lib/power/powerSource';
 import type { WeatherAdvisorReadoutPayload } from '../packages/contracts/src/weatherAdvisorTypes';
@@ -87,6 +89,13 @@ type SettingsUiApiApp = Homey.App & {
     deviceId: string,
     candidate: DeferredObjectivePlanPreviewCandidate,
   ) => WidgetObjectiveWriteResult;
+  // The multi-home membership cache. `AppContext` deliberately types this
+  // member as the lib/home PORT (control surface only); this setup-internal
+  // cast re-narrows to the concrete service the wiring assigned, because the
+  // read-only `ui_homes` endpoint is the ONE sanctioned consumer of the
+  // diagnostics view (per-device `source`). Optional like the rest:
+  // unassigned during the boot window before `initHomeMembership` runs.
+  homeMembership?: HomeMembershipService;
 };
 
 type ApiContext = {
@@ -262,6 +271,29 @@ export const getSettingsUiDevicesPayload = ({ homey }: ApiContext): SettingsUiDe
 export const getSettingsUiPlanPayload = ({ homey }: ApiContext): SettingsUiPlanPayload => ({
   plan: getSettingsUiPlan({ homey }),
 });
+
+// Read-only multi-home view: the membership cache's diagnostics composed into
+// the contracts mirror (`SettingsUiHomesPayload`). Before `initHomeMembership`
+// runs (boot window) the payload is the honest empty single-home shape. Writes
+// go through the `homes_config`/`device_home_assignments` settings keys, never
+// through this endpoint.
+export const getSettingsUiHomesPayload = ({ homey }: ApiContext): SettingsUiHomesPayload => {
+  const diagnostics = getApp(homey)?.homeMembership?.getDiagnostics();
+  if (!diagnostics) {
+    return {
+      homes: [], membershipByDeviceId: {}, zoneTree: null, hasSubHomes: false,
+    };
+  }
+  // Uniform copy discipline: shallow-copy ALL collection members so the
+  // composed payload never aliases the service's live caches (a future
+  // in-process consumer mutating the payload must not corrupt membership).
+  return {
+    homes: [...diagnostics.subHomes],
+    membershipByDeviceId: { ...diagnostics.membershipByDeviceId },
+    zoneTree: diagnostics.zoneTree === null ? null : { ...diagnostics.zoneTree },
+    hasSubHomes: diagnostics.hasSubHomes,
+  };
+};
 
 export const getSettingsUiPowerPayload = ({ homey }: ApiContext): SettingsUiPowerPayload => (
   getSettingsUiPower({ homey })

@@ -450,27 +450,54 @@ export function computePeriodicStatusMetrics(
 
 // Zone tree rides the same refresh cycle (no timer of its own), fired
 // DETACHED after the snapshot commit so it can never stall the device
-// pipeline or its callers. `fetchZoneTree` never throws or rejects — the
-// fire-and-forget can't surface an unhandled rejection; a failed/junk/empty
-// read resolves `null` and the cached tree — like the snapshot on that path —
+// pipeline or its callers. The WHOLE body is contained: this function runs
+// fire-and-forget (`void refreshZoneTreeCache(ctx)`), so nothing here may
+// reject — `fetchZoneTree` resolves `null` on its own failure paths, but a
+// throwing logger call on one of those paths (or any future edit before the
+// commit) would otherwise become an unhandled rejection. A failed/junk/empty
+// read commits nothing and the cached tree — like the snapshot on that path —
 // stays untouched (abandon-grace).
 async function refreshZoneTreeCache(ctx: TransportContext): Promise<void> {
-    const generation = ctx.zoneTreeCache.bumpGeneration();
-    const zoneTree = await fetchZoneTree({ logger: ctx.logger });
-    if (zoneTree === null) return;
-    // Generation guard: detached fetches can resolve out of order — commit
-    // only if newer than the last COMMITTED generation. A stale fetch
-    // resolving after a newer commit drops, but a superseded-yet-fresher
-    // result still lands when the newer fetch failed and committed nothing.
-    if (generation <= ctx.zoneTreeCache.getLastCommittedGeneration()) {
-        ctx.logger.debug({
-            event: 'zone_tree_fetch_superseded',
-            generation,
-            lastCommittedGeneration: ctx.zoneTreeCache.getLastCommittedGeneration(),
-        });
-        return;
+    try {
+        const generation = ctx.zoneTreeCache.bumpGeneration();
+        const zoneTree = await fetchZoneTree({ logger: ctx.logger });
+        if (zoneTree === null) return;
+        // Generation guard: detached fetches can resolve out of order — commit
+        // only if newer than the last COMMITTED generation. A stale fetch
+        // resolving after a newer commit drops, but a superseded-yet-fresher
+        // result still lands when the newer fetch failed and committed nothing.
+        if (generation <= ctx.zoneTreeCache.getLastCommittedGeneration()) {
+            ctx.logger.debug({
+                event: 'zone_tree_fetch_superseded',
+                generation,
+                lastCommittedGeneration: ctx.zoneTreeCache.getLastCommittedGeneration(),
+            });
+            return;
+        }
+        ctx.zoneTreeCache.set(zoneTree, generation);
+        // Commit notification (multi-home membership recompute). Guarded
+        // separately from the outer catch so a subscriber throw is attributed
+        // to the subscriber, not misread as a zone refresh failure.
+        try {
+            ctx.notifyZoneTreeCommitted();
+        } catch (error) {
+            ctx.logger.debug({
+                event: 'zone_tree_commit_notify_failed',
+                error: normalizeError(error).message,
+            });
+        }
+    } catch (error) {
+        // Last-resort containment; the guard itself must never throw, so the
+        // logging attempt is swallowed on failure.
+        try {
+            ctx.logger.debug({
+                event: 'zone_tree_refresh_failed',
+                error: normalizeError(error).message,
+            });
+        } catch {
+            // Swallowed — see above.
+        }
     }
-    ctx.zoneTreeCache.set(zoneTree, generation);
 }
 
 // Live-power half of the refresh inputs: the report feeds per-device parse
@@ -579,7 +606,8 @@ export async function refreshSnapshot(
         // would hold the refreshSnapshot PROMISE (post-write/post-actuation
         // callers, the coalesced refresh queue) for up to the REST timeout
         // when a degraded zones read hangs after a healthy device fetch.
-        // The detach is safe: `fetchZoneTree` never throws or rejects,
+        // The detach is safe: `fetchZoneTree` never throws or rejects, the
+        // post-commit notification is contained in `refreshZoneTreeCache`,
         // `setZoneTree` is a whole-tree last-writer-wins replacement, and
         // refresh cycles are serialized by the coalescing guard, so a dangling
         // fetch racing the next cycle's commit is benign for this dormant,

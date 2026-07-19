@@ -35,6 +35,7 @@ import {
   SETTINGS_UI_SMART_TASK_UPDATE_PATH,
   SETTINGS_UI_SMART_TASK_CANCEL_PATH,
 } from '../../../contracts/src/settingsUiApi.ts';
+import { SETTINGS_UI_HOMES_PATH } from '../../../contracts/src/settingsUiHomes.ts';
 import type { DeferredObjectiveActivePlansV1 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import {
   DAILY_BUDGET_CONTROLLED_WEIGHT,
@@ -77,6 +78,10 @@ export type MockHomeyUiState = {
   // compat fallback in the handlers, but new tests should prefer this field.
   devices?: TargetDeviceSnapshot[];
   homeyDevices?: unknown;
+  // `/ui_homes` payload (multi-home membership view). Defaults to production's
+  // single-home empty shape (`SettingsUiHomesPayload`); tests seed this to
+  // exercise multi-home UI states.
+  homes?: unknown;
   plan?: unknown;
   power?: unknown;
   prices?: unknown;
@@ -335,6 +340,13 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
     getUiOverride(homey, 'weatherAdvisorReadout') ?? null
   ),
   [buildRouteKey('GET', HOMEY_DEVICES_PATH)]: (homey) => async () => getUiOverride(homey, 'homeyDevices') ?? [],
+  // Multi-home membership view. Default mirrors production's boot-window /
+  // single-home empty shape (`SettingsUiHomesPayload`).
+  [buildRouteKey('GET', SETTINGS_UI_HOMES_PATH)]: (homey) => async () => (
+    getUiOverride(homey, 'homes') ?? {
+      homes: [], membershipByDeviceId: {}, zoneTree: null, hasSubHomes: false,
+    }
+  ),
   [buildRouteKey('POST', SETTINGS_UI_REFRESH_DEVICES_PATH)]: (homey) => async () => ({
     devices: await resolveUiDevices(homey),
     hasManagedSolarDevice: false,

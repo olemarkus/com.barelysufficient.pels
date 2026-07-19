@@ -287,6 +287,9 @@ export function initSettingsHandlerForApp(
   const settingsHandler = createSettingsHandler({
     homey: ctx.homey,
     onHomeScopedSettingChanged: options?.onHomeScopedSettingChanged,
+    // Lazy read on purpose: the membership service is assigned by a separate
+    // wiring step, and the handler must tolerate a context without it.
+    recomputeHomeMembership: () => ctx.homeMembership?.recompute(),
     loadCapacitySettings: ctx.loadCapacitySettings,
     rebuildPlanFromCache: async (reason) => {
       await planService.rebuildPlanFromCache(reason);

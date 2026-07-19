@@ -128,6 +128,11 @@ export type TransportContext = {
   // fetch resolves `null` in the pipeline and leaves the cached tree untouched
   // (abandon-grace); a superseded fetch drops its result (`zoneTreeCache.ts`).
   readonly zoneTreeCache: ZoneTreeCache;
+  // Fires after a SUCCESSFUL generation-guarded zone-tree commit (the leaf's
+  // set-after-construction `onZoneTreeCommitted` callback; no-op while no
+  // consumer is subscribed). The refresh pipeline invokes it CONTAINED — a
+  // subscriber throw must never reject the detached zone-fetch chain.
+  notifyZoneTreeCommitted(): void;
   getTrackedDevicesById(): Map<string, HomeyDeviceLike>;
   // Fetch seams routed through the leaf's instance methods so a test spy on
   // `DeviceTransport.fetchDevicesForSnapshot` is honored.

@@ -142,8 +142,15 @@ export class ObservedStateEmitter {
         this.emitter.on(OBSERVED_STATE_CHANGED_EVENT, listener);
     }
 
-    onObservedStateRefresh(listener: (event: ObservedStateRefreshEvent) => void): void {
+    /**
+     * Returns a disposer that detaches THIS listener. Long-lived boot
+     * subscriptions may ignore it; subscribers torn down before the emitter
+     * (the multi-home membership wiring at app uninit) must invoke it so a
+     * late refresh dispatch cannot reach a disposed consumer.
+     */
+    onObservedStateRefresh(listener: (event: ObservedStateRefreshEvent) => void): () => void {
         this.emitter.on(OBSERVED_STATE_REFRESH_EVENT, listener);
+        return () => { this.emitter.off(OBSERVED_STATE_REFRESH_EVENT, listener); };
     }
 
     onPlanReconcile(listener: (event: PlanReconcileObservedEvent) => void): void {

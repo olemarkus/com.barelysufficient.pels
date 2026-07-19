@@ -44,6 +44,25 @@ export type HomeMembership = {
   source: HomeMembershipSource;
 };
 
+/**
+ * Control surface of the cached membership service (implemented by
+ * `setup/homeMembership.ts`, published on `AppContext.homeMembership`).
+ * Deliberately EXCLUDES the diagnostics view: `source` is diagnostics/display
+ * only, so every ctx consumer sees exactly the provenance-free surface a
+ * control path may use. The settings-UI `ui_homes` endpoint reaches the
+ * concrete service (with diagnostics) through its own setup-internal seam,
+ * never through this port.
+ */
+export type HomeMembershipPort = {
+  /** Resolved home for a device; an unknown device belongs to the main home. */
+  getHomeIdForDevice(deviceId: string): HomeId;
+  /** `homeId` per snapshot device — no `source`, by design. */
+  getMembershipMap(): Readonly<Record<string, HomeId>>;
+  hasSubHomes(): boolean;
+  /** Re-resolve from the cached inputs; cheap, never throws destructively. */
+  recompute(): void;
+};
+
 type ResolveDeviceHomeInput = {
   zones: ZoneTree;
   subHomes: readonly SubHomeConfig[];

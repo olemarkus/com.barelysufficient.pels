@@ -99,6 +99,10 @@
       "method": "GET",
       "path": "/ui_plan"
     },
+    "ui_homes": {
+      "method": "GET",
+      "path": "/ui_homes"
+    },
     "ui_power": {
       "method": "GET",
       "path": "/ui_power"

@@ -1,0 +1,34 @@
+import type { AppContext } from '../../lib/app/appContext';
+import type { ObservedStateEmitter } from '../../lib/observer/observedStateEvents';
+import { createHomeMembershipService, type HomeMembershipWiring } from '../homeMembership';
+
+/**
+ * Boot-wire the multi-home membership cache over the ctx seams: real stores,
+ * the transport's zone tree + zone-tree-commit callback, and the latest
+ * target snapshot. Runs after `initDeviceManager` so the recompute triggers
+ * ride the transport-owned notification seams; the reads are lazy closures,
+ * so a not-yet-populated transport resolves fail-safe. Read-only: nothing on
+ * the control path consumes it yet.
+ *
+ * The caller (`AppServiceWiring.initHomeMembership`) assigns the returned
+ * `service` to `ctx.homeMembership` and invokes `teardown` in `runUninit`.
+ */
+export const wireHomeMembership = (
+  ctx: AppContext,
+  emitter: ObservedStateEmitter,
+): HomeMembershipWiring => createHomeMembershipService({
+  homey: ctx.homey,
+  emitter,
+  setOnZoneTreeCommitted: (callback) => ctx.deviceManager?.setOnZoneTreeCommitted(callback),
+  getZoneTree: () => ctx.deviceManager?.getZoneTree() ?? null,
+  // The RAW transport snapshot on purpose, NOT `ctx.latestTargetSnapshot`:
+  // the decorated path (`decorateTargetSnapshotList`) mutates stepped-load
+  // runtime state (prune/expire/confirm) as a side effect, and a membership
+  // recompute must be a pure read. The join needs only `id` + `zoneId`, both
+  // stamped on the raw snapshot at parse (R3).
+  getDevices: () => (ctx.deviceManager?.getSnapshot() ?? []).map((device) => ({
+    deviceId: device.id,
+    zoneId: device.zoneId ?? null,
+  })),
+  getLogger: () => ctx.getStructuredLogger('homes'),
+});

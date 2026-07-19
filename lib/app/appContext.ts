@@ -40,6 +40,7 @@ import type {
 } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike } from '../utils/types';
 import type { AppDeviceControlHelpers } from '../../setup/appDeviceControlHelpers';
+import type { HomeMembershipPort } from '../home/membership';
 import type { HomeyEnergyPollSource } from '../power/sources/homeyEnergyPoll';
 import type { PowerSampleRebuildState } from '../plan/rebuildScheduler/powerDriven';
 import type { RefreshTargetDevicesSnapshotOptions, AppSnapshotHelpers } from '../../setup/appSnapshotHelpers';
@@ -234,6 +235,18 @@ export type AppContext = {
   // settings read + V1→V2 migration; consumers receive only typed results.
   readonly combinedPricesReader: CombinedPricesReader;
   deviceManager?: DeviceTransport;
+  // Cached device→home membership for the multi-home feature: the read-only
+  // join of the homes registry + pins + the transport's zone tree + snapshot
+  // zone ids. Recomputed after each committed snapshot refresh, on zone-tree
+  // commits, and on `homes_config`/`device_home_assignments` writes. NO
+  // control-path consumer yet (the planner wiring lands in a sibling PR).
+  // Typed as the lib/home PORT on purpose: ctx consumers get only the
+  // provenance-free control surface — the diagnostics view (per-device
+  // `source`) is reachable solely through the setup-internal seam the
+  // `ui_homes` endpoint uses. Assigned by `AppServiceWiring.initHomeMembership`
+  // and cleared at uninit; optional so tests building a bare context are
+  // unaffected.
+  homeMembership?: HomeMembershipPort;
   planEngine?: PlanEngine;
   // Curtailment-surplus estimator seams, both ASSIGNED by `wireCurtailmentSurplus`
   // post-startup (the wiring-assigns-ctx-members house pattern): the flat read of
