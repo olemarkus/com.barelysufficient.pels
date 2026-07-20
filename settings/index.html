@@ -536,6 +536,12 @@
         </md-icon-button>
         <h2 class="pels-appbar__title" id="limits-title">Limits &amp; safety</h2>
       </div>
+      <!-- Per-home switcher + meter-area editor (multi-home U3). Ships `hidden`
+           so an empty node never occupies a grid track in the panel — with 0
+           meter areas the panel is byte/layout-identical to origin/main. The
+           homeLimits controller un-hides it only when ≥1 meter area exists, and
+           renders the Preact surface here + toggles the static form below. -->
+      <div id="home-limits-mount" hidden></div>
       <form id="settings-limits-form" class="form-grid settings-form-card">
         <label class="field">
           <span class="field__label pels-text-settings-label" id="settings-capacity-limit-label">Hard cap</span>

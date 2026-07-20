@@ -14,6 +14,15 @@ export function buildPelsStatus(params: {
   isExpensive: boolean;
   combinedPrices: unknown;
   lastPowerUpdate: number | null;
+  /**
+   * The EFFECTIVE (membership-gated) dry-run this home actuates on —
+   * `getCapacityDryRun()`, which folds in the R7b boot-window zone-tree gate.
+   * Written so the per-home Limits card shows honest posture (persisted-live but
+   * no committed zone tree still reads Simulating). Sub-homes only: the main
+   * home passes `undefined`, so the field is JSON-omitted and its persisted
+   * `pels_status` blob stays byte-identical.
+   */
+  dryRunEffective?: boolean;
 }): {
   status: {
     headroomKw: number;
@@ -27,6 +36,7 @@ export function buildPelsStatus(params: {
     shortfallBudgetHeadroomKw?: number | null;
     hardCapHeadroomKw?: number | null;
     projectedOverHardCap?: boolean;
+    totalKw?: number;
     controlledKw?: number;
     uncontrolledKw?: number;
     powerKnown?: boolean;
@@ -36,12 +46,22 @@ export function buildPelsStatus(params: {
     devicesOn: number;
     devicesOff: number;
     lastPowerUpdate: number | null;
+    dryRunEffective?: boolean;
   }; priceLevel: PriceLevel
 } {
-  const { plan, isCheap, isExpensive, combinedPrices, lastPowerUpdate } = params;
+  const { plan, isCheap, isExpensive, combinedPrices, lastPowerUpdate, dryRunEffective } = params;
   const priceLevel = resolvePriceLevel({ isCheap, isExpensive, combinedPrices });
   const summary = summarizePlanForStatus(plan);
   const limitReason = resolveLimitReason(plan, summary);
+  // Sub-home status blobs (the only ones with a defined `dryRunEffective`) also
+  // carry the whole-area meter total so the per-home Limits card can render
+  // "Power now" from the live total even when per-device attribution
+  // (controlledKw/uncontrolledKw) is absent. The main home passes
+  // `dryRunEffective: undefined`, so the field is JSON-omitted and its persisted
+  // blob stays byte-identical.
+  const areaTotalKw = dryRunEffective !== undefined && typeof plan.meta.totalKw === 'number'
+    ? plan.meta.totalKw
+    : undefined;
 
   return {
     status: {
@@ -59,6 +79,7 @@ export function buildPelsStatus(params: {
       // payload external automations may read.
       hardCapHeadroomKw: plan.meta.hardCapHeadroomKw,
       projectedOverHardCap: resolveProjectedOverHardCap(plan),
+      totalKw: areaTotalKw,
       controlledKw: plan.meta.controlledKw,
       uncontrolledKw: plan.meta.uncontrolledKw,
       powerKnown: plan.meta.powerKnown,
@@ -68,6 +89,8 @@ export function buildPelsStatus(params: {
       devicesOn: summary.devicesOn,
       devicesOff: summary.devicesOff,
       lastPowerUpdate,
+      // Undefined for the main home ⇒ JSON-omitted ⇒ its blob is byte-identical.
+      dryRunEffective,
     },
     priceLevel,
   };

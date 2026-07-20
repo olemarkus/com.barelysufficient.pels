@@ -41,6 +41,10 @@ import {
   updateStaleDataStatusFromPowerPayload,
 } from './capacity.ts';
 import {
+  notifyHomeLimitsSettingChanged,
+  refreshHomeLimitsOnLimitsPanel,
+} from './homeLimits.ts';
+import {
   getHomeyClient,
   invalidateApiCache,
   invalidateSettingCache,
@@ -342,6 +346,9 @@ const createSettingsSetHandler = () => (key: string) => {
   if (CAPACITY_SETTINGS_KEYS.has(key)) {
     runLoggedTask(loadCapacitySettings(), 'Failed to load capacity settings', 'settings.set');
   }
+  // Keep an open meter-area Limits card live on external status/scalar changes
+  // (suffixed keys the CAPACITY_SETTINGS_KEYS set intentionally excludes).
+  notifyHomeLimitsSettingChanged(key);
   if (ADVANCED_SETTINGS_KEYS.has(key)) {
     runLoggedTask(loadAdvancedSettings(), 'Failed to load advanced settings', 'settings.set');
   }
@@ -508,6 +515,10 @@ const runTabActivationSideEffects = (tabId: string) => {
   }
   if (tabId === 'limits' || tabId === 'simulation') {
     runLoggedTask(loadCapacitySettings(), 'Failed to load limits and simulation settings', 'showTab');
+    // The per-home switcher + meter-area editor live on the Limits panel only.
+    if (tabId === 'limits') {
+      runLoggedTask(refreshHomeLimitsOnLimitsPanel(), 'Failed to load per-home limits', 'showTab');
+    }
     return;
   }
   if (tabId === 'homes') {

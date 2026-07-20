@@ -53,3 +53,36 @@ export const POWER_CALIBRATION = 'power_calibration';
 // Mirror of WEATHER_ADVISOR_SETTINGS in lib/utils/settingsKeys.ts — keep both
 // in sync (the settings UI can't import lib).
 export const WEATHER_ADVISOR_SETTINGS = 'weather_advisor_settings';
+// Per-home live status blob (`pels_status` for the main home, `pels_status:<id>`
+// for a meter area). Mirror of PELS_STATUS in lib/utils/settingsKeys.ts — keep
+// both in sync (the settings UI can't import lib).
+export const PELS_STATUS = 'pels_status';
+
+// Multi-home roster blob. Mirror of HOMES_CONFIG in lib/utils/settingsKeys.ts —
+// keep both in sync (the settings UI can't import lib). The per-home Limits
+// switcher watches this so an area added/removed elsewhere (the Multiple-meters
+// panel, a second WebView) refreshes the roster instead of sitting on a stale
+// list. (`device_home_assignments` is intentionally not mirrored — device→home
+// membership changes don't alter the area roster.)
+export const HOMES_CONFIG = 'homes_config';
+
+// ── Multi-home settings-key scoping ─────────────────────────────────────────
+// Mirror of MAIN_HOME_ID + homeScopedSettingsKey in lib/utils/settingsKeys.ts —
+// keep both in sync (the settings UI can't import lib; the runtime owns the
+// source of truth). The main home keeps the historical unsuffixed keys, so
+// `homeScopedSettingsKey(key, MAIN_HOME_ID)` returns the bare key byte-for-byte;
+// any other home reads/writes `<baseKey>:<homeId>`.
+
+/** Identifier of a home: `'main'` or a generated meter-area id. */
+export type HomeId = string;
+
+/** Canonical id of the primary (implicit) home — the unsuffixed-key complement. */
+export const MAIN_HOME_ID = 'main';
+
+/**
+ * Scope a base settings key to a home: the main home reads the historical
+ * unsuffixed key unchanged; any other home reads `<baseKey>:<homeId>`.
+ */
+export const homeScopedSettingsKey = (baseKey: string, homeId: HomeId): string => (
+  homeId === MAIN_HOME_ID ? baseKey : `${baseKey}:${homeId}`
+);

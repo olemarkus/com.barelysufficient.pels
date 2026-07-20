@@ -384,6 +384,16 @@ program) remains deferred.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **Limits & safety: converge the Main-home form onto the native `.pels-input` field language (U-track).**
+      *Persona:* multi-home owner who switches the per-home Limits switcher between the Main home and a meter
+      area. *Hypothesis:* U3 added the per-home editor using native `.pels-input` + unit-in-label ("Hard cap
+      (kW)"), which follows the canonical form-styling + ui-terminology rules and matches the U1 homes editor;
+      the legacy Main-home static form (`#settings-limits-form`) still uses `md-filled-text-field` with an
+      in-field `suffix-text="kW"`, so flipping the switcher morphs the identical two inputs (filled↔outlined,
+      unit relocates). Kept out of U3 to preserve byte-identical Main behavior. Migrate the Main form to the
+      native primitive (the design-system-unification direction) so both scopes read as one control. Source:
+      pels-m3-critic review of the U3 per-home Limits surface, 2026-07-20.
+
 - [ ] **Homes UI: warn when a sub-home's selected meter is also a managed+controllable device (U-track).**
       *Persona:* multi-home owner who picks a metering smart-plug as a sub-home meter and also leaves it
       managed. *Hypothesis:* the runtime now carves the home's own `meterDeviceId` out of that home's plan

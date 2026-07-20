@@ -282,6 +282,23 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     expect(diagnosticsFor(rig.registry, 'h_a').dryRunEffective).toBe(false);
   });
 
+  it('publishes the EFFECTIVE (membership-gated) dry-run into the per-home status blob', async () => {
+    // Persisted-live, but no committed zone tree yet ⇒ effective dry-run true.
+    // The per-home Limits card must read Simulating, so the blob carries it.
+    mockHomeyInstance.settings.set('capacity_dry_run:h_a', false);
+    rig.setMembershipReady(false);
+    rig.ctx.snapshotWarmupGate = new SnapshotWarmupGate({ timeoutMs: 0 });
+    createHomesStore(homeyLike).write({ subHomes: [HOME_A] });
+    rig.registry.reconcile();
+    await drainPending();
+
+    const blob = mockHomeyInstance.settings.get('pels_status:h_a') as { dryRunEffective?: boolean } | undefined;
+    expect(blob).toBeTruthy();
+    expect(blob?.dryRunEffective).toBe(true);
+    // The main home's blob is byte-identical to origin/main: it never gains the field.
+    expect(mockHomeyInstance.settings.get('pels_status')).toBeUndefined();
+  });
+
   it('a sub-home plan rebuild drives NONE of the shared UI/side-effect singletons', async () => {
     // The settings UI reads a SINGLE `plan_updated` stream and ONE diagnostics
     // recorder (the main home's). A sub-home capacity bundle must not clobber
