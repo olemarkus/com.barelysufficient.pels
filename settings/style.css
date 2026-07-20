@@ -9113,6 +9113,46 @@ md-switch {
   justify-self: start;
 }
 
+/* Per-home Limits & safety surface (multi-home U3): the switcher + meter-area
+   editor stacked above the static Main-home form. Mirrors the .homes-settings
+   grid-stack rhythm so the two multi-home surfaces read as one system. */
+.home-limits {
+  display: grid;
+  gap: var(--spacing-3);
+  margin-bottom: var(--spacing-4);
+}
+
+.home-limits__fields {
+  display: grid;
+  gap: var(--spacing-4);
+}
+
+.home-limits__simulation,
+.home-limits__status {
+  display: grid;
+  gap: var(--spacing-2);
+}
+
+.home-limits__sim-notice {
+  margin: 0;
+}
+
+/* Title + posture chip on one baseline-shared row. */
+.home-limits__status-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-2);
+}
+
+.home-limits__status-head h3 {
+  margin: 0;
+}
+
+.home-limits__status-line {
+  margin: 0;
+}
+
 .weather-settings-section__hint {
   margin: 0;
 }

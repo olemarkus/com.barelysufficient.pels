@@ -115,6 +115,7 @@ export class PlanService {
       isCurrentHourCheap: deps.isCurrentHourCheap,
       isCurrentHourExpensive: deps.isCurrentHourExpensive,
       getLastPowerUpdate: deps.getLastPowerUpdate,
+      getEffectiveDryRun: deps.getStatusEffectiveDryRun,
       structuredLog: deps.loggers?.structuredLog,
     });
     this.changeTracker = new PlanChangeTracker({

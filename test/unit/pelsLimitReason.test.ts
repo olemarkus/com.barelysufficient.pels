@@ -83,7 +83,12 @@ describe('pels status limit reason', () => {
       lastPowerUpdate: Date.UTC(2026, 1, 7, 12, 0, 0),
     });
 
+    // The held device still counts in devicesOff even though the reason is a
+    // transient restore/settling hold, not the cap — this is exactly the pair
+    // (devicesOff>0 + limitReason 'none') the per-home status copy must not
+    // attribute to the cap (see homeLimitsStatus composeHomeLimitsStateLine).
     expect(status.limitReason).toBe('none');
+    expect(status.devicesOff).toBe(1);
   });
 
   it('reports none for synthetic fail-closed headroom without known power', () => {
@@ -269,5 +274,58 @@ describe('pels status projected-over-hard-cap flag', () => {
       powerKnown: true,
     });
     expect(status.projectedOverHardCap).toBe(false);
+  });
+});
+
+describe('pels status effective dry-run posture (R7b, per-home Limits card)', () => {
+  const emptyPlan: DevicePlan = {
+    meta: { totalKw: 0, softLimitKw: 6, headroomKw: 1, powerKnown: true },
+    devices: [],
+  };
+  const statusWith = (dryRunEffective?: boolean) => buildPelsStatus({
+    plan: emptyPlan,
+    isCheap: false,
+    isExpensive: false,
+    combinedPrices: null,
+    lastPowerUpdate: null,
+    dryRunEffective,
+  }).status;
+
+  it('emits the effective dry-run when a sub-home bundle supplies it', () => {
+    expect(statusWith(true).dryRunEffective).toBe(true);
+    expect(statusWith(false).dryRunEffective).toBe(false);
+  });
+
+  it('omits the field for the main home (undefined ⇒ JSON-dropped ⇒ byte-identical blob)', () => {
+    const status = statusWith(undefined);
+    expect(status.dryRunEffective).toBeUndefined();
+    // The persisted blob must not gain a key for the main home.
+    expect(Object.prototype.hasOwnProperty.call(JSON.parse(JSON.stringify(status)), 'dryRunEffective')).toBe(false);
+  });
+});
+
+describe('pels status whole-area total (per-home Limits "Power now")', () => {
+  const drawPlan: DevicePlan = {
+    meta: { totalKw: 5.2, softLimitKw: 6, headroomKw: 0.8, powerKnown: true },
+    devices: [],
+  };
+  const statusWith = (dryRunEffective?: boolean) => buildPelsStatus({
+    plan: drawPlan,
+    isCheap: false,
+    isExpensive: false,
+    combinedPrices: null,
+    lastPowerUpdate: null,
+    dryRunEffective,
+  }).status;
+
+  it('emits the meter total for a sub-home so the card renders Power now without per-device attribution', () => {
+    expect(statusWith(true).totalKw).toBe(5.2);
+    expect(statusWith(false).totalKw).toBe(5.2);
+  });
+
+  it('omits the total for the main home (undefined dry-run ⇒ JSON-dropped ⇒ byte-identical blob)', () => {
+    const status = statusWith(undefined);
+    expect(status.totalKw).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(JSON.parse(JSON.stringify(status)), 'totalKw')).toBe(false);
   });
 });

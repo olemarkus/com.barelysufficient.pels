@@ -22,6 +22,8 @@ import type {
 type PelsStatusComputation = {
   result: ReturnType<typeof buildPelsStatus>;
   statusJson: string;
+  /** The effective (membership-gated) dry-run this write reflects; undefined for the main home. */
+  dryRunEffective: boolean | undefined;
 };
 
 type PlanStatusWriterDeps = {
@@ -31,6 +33,13 @@ type PlanStatusWriterDeps = {
   isCurrentHourCheap: () => boolean;
   isCurrentHourExpensive: () => boolean;
   getLastPowerUpdate: () => number | null;
+  /**
+   * When set, the effective (membership-gated) dry-run this bundle actuates on,
+   * written into `pels_status` as `dryRunEffective` for the per-home Limits
+   * card's honest posture. Sub-homes only — the main home omits it so its
+   * persisted blob stays byte-identical.
+   */
+  getEffectiveDryRun?: () => boolean;
   structuredLog?: PinoLogger;
 };
 
@@ -39,6 +48,15 @@ export class PlanStatusWriter {
   private lastPelsStatusInputKey = '';
   private lastPelsStatusResult: ReturnType<typeof buildPelsStatus> | null = null;
   private lastPelsStatusWriteMs = 0;
+  /**
+   * The effective dry-run captured at the last persist. A change vs the current
+   * value is a material posture flip (control activated from an already-planned
+   * dry-run shed, or the membership gate opening) that must force a status write
+   * even inside the volatile throttle window — otherwise the per-home Limits card
+   * lags (still "Simulating" after control is live, or vice versa). Undefined for
+   * the main home, so its cadence is untouched (undefined never differs).
+   */
+  private lastPelsStatusWrittenDryRunEffective: boolean | undefined = undefined;
   private lastNotifiedPriceLevel: PriceLevel = PriceLevel.UNKNOWN;
 
   constructor(private deps: PlanStatusWriterDeps) {}
@@ -55,6 +73,7 @@ export class PlanStatusWriter {
       computation.result.status,
       computation.statusJson,
       changes?.actionChanged === true,
+      computation.dryRunEffective,
       now,
     );
 
@@ -68,6 +87,7 @@ export class PlanStatusWriter {
     const isCheap = this.deps.isCurrentHourCheap();
     const isExpensive = this.deps.isCurrentHourExpensive();
     const lastPowerUpdate = normalizeLastPowerUpdate(this.deps.getLastPowerUpdate(), STATUS_POWER_BUCKET_MS);
+    const dryRunEffective = this.deps.getEffectiveDryRun?.();
     const inputKey = buildPelsStatusInputKey({
       changes: changes as PlanStatusInputChanges | undefined,
       isCheap,
@@ -76,6 +96,7 @@ export class PlanStatusWriter {
       lastPowerUpdate,
       powerFreshnessState: plan.meta.powerFreshnessState,
       powerKnown: plan.meta.powerKnown,
+      dryRunEffective,
     });
     const result = this.resolveStatusResult({
       inputKey,
@@ -84,11 +105,13 @@ export class PlanStatusWriter {
       isExpensive,
       combinedPrices,
       lastPowerUpdate,
+      dryRunEffective,
     });
 
     return {
       result,
       statusJson: JSON.stringify(normalizePelsStatus(result.status, STATUS_POWER_BUCKET_MS)),
+      dryRunEffective,
     };
   }
 
@@ -99,8 +122,9 @@ export class PlanStatusWriter {
     isExpensive: boolean;
     combinedPrices: unknown;
     lastPowerUpdate: number | null;
+    dryRunEffective?: boolean;
   }): ReturnType<typeof buildPelsStatus> {
-    const { inputKey, plan, isCheap, isExpensive, combinedPrices, lastPowerUpdate } = params;
+    const { inputKey, plan, isCheap, isExpensive, combinedPrices, lastPowerUpdate, dryRunEffective } = params;
     if (this.lastPelsStatusInputKey === inputKey && this.lastPelsStatusResult) {
       return this.lastPelsStatusResult;
     }
@@ -111,6 +135,7 @@ export class PlanStatusWriter {
       isExpensive,
       combinedPrices,
       lastPowerUpdate,
+      dryRunEffective,
     });
     this.lastPelsStatusInputKey = inputKey;
     this.lastPelsStatusResult = result;
@@ -121,21 +146,28 @@ export class PlanStatusWriter {
     status: ReturnType<typeof buildPelsStatus>['status'],
     statusJson: string,
     actionChanged: boolean,
+    dryRunEffective: boolean | undefined,
     now: number,
   ): number {
-    const reason = this.resolveWriteReason(statusJson, actionChanged, now);
+    const reason = this.resolveWriteReason(statusJson, actionChanged, dryRunEffective, now);
     if (!reason) return 0;
-    return this.writeStatus(status, statusJson, reason, now);
+    return this.writeStatus(status, statusJson, dryRunEffective, reason, now);
   }
 
   private resolveWriteReason(
     statusJson: string,
     actionChanged: boolean,
+    dryRunEffective: boolean | undefined,
     now: number,
   ): PelsStatusWriteReason | null {
     if (statusJson === this.lastPelsStatusWrittenJson) return null;
     if (this.lastPelsStatusWriteMs === 0) return 'initial';
     if (actionChanged) return 'action_changed';
+    // A posture flip (effective dry-run changed since the last persist) is
+    // material even without an action-signature change — force the write so the
+    // per-home Limits card reflects live/simulating promptly, busting the
+    // volatile throttle. No-op for the main home (undefined === undefined).
+    if (dryRunEffective !== this.lastPelsStatusWrittenDryRunEffective) return 'posture_flip';
     if (now - this.lastPelsStatusWriteMs > VOLATILE_WRITE_THROTTLE_MS) return 'throttle';
 
     incPerfCounter('settings_set.pels_status_skipped_throttle_total');
@@ -145,12 +177,14 @@ export class PlanStatusWriter {
   private writeStatus(
     status: ReturnType<typeof buildPelsStatus>['status'],
     statusJson: string,
+    dryRunEffective: boolean | undefined,
     reason: PelsStatusWriteReason,
     now: number,
   ): number {
     const writeStart = Date.now();
     this.deps.writePelsStatus(status);
     this.lastPelsStatusWrittenJson = statusJson;
+    this.lastPelsStatusWrittenDryRunEffective = dryRunEffective;
     this.lastPelsStatusWriteMs = now;
     const writeMs = Date.now() - writeStart;
     addPerfDuration('settings_write_ms', writeMs);

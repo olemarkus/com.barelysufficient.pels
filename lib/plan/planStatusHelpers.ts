@@ -80,6 +80,7 @@ export const normalizePelsStatus = (
     shortfallBudgetThresholdKw: roundOptional(status.shortfallBudgetThresholdKw, PLAN_META_KW_STEP),
     shortfallBudgetHeadroomKw: roundOptionalNullable(status.shortfallBudgetHeadroomKw, PLAN_META_KW_STEP),
     hardCapHeadroomKw: roundOptionalNullable(status.hardCapHeadroomKw, PLAN_META_KW_STEP),
+    totalKw: roundOptional(status.totalKw, PLAN_META_KW_STEP),
     controlledKw: roundOptional(status.controlledKw, PLAN_META_KW_STEP),
     uncontrolledKw: roundOptional(status.uncontrolledKw, PLAN_META_KW_STEP),
     lastPowerUpdate,
@@ -119,6 +120,11 @@ const resolveStatusPriceKey = (params: {
   return PriceLevel.NORMAL;
 };
 
+const resolveDryRunKey = (dryRunEffective: boolean | undefined): string => {
+  if (dryRunEffective === undefined) return 'na';
+  return dryRunEffective ? 'sim' : 'live';
+};
+
 export const buildPelsStatusInputKey = (params: {
   changes?: PlanStatusInputChanges;
   isCheap: boolean;
@@ -127,8 +133,11 @@ export const buildPelsStatusInputKey = (params: {
   lastPowerUpdate: number | null;
   powerFreshnessState?: DevicePlan['meta']['powerFreshnessState'];
   powerKnown?: boolean;
+  dryRunEffective?: boolean;
 }): string => {
-  const { changes, isCheap, isExpensive, combinedPrices, lastPowerUpdate, powerFreshnessState, powerKnown } = params;
+  const {
+    changes, isCheap, isExpensive, combinedPrices, lastPowerUpdate, powerFreshnessState, powerKnown, dryRunEffective,
+  } = params;
   const actionSignature = changes?.actionSignature ?? '';
   const detailSignature = changes?.detailSignature ?? '';
   const metaSignature = changes?.metaSignature ?? '';
@@ -136,6 +145,9 @@ export const buildPelsStatusInputKey = (params: {
   const lastPowerUpdateKey = lastPowerUpdate === null ? 'null' : String(lastPowerUpdate);
   const freshnessKey = powerFreshnessState ?? 'none';
   const powerKnownKey = powerKnown === true ? 'known' : 'unknown';
+  // Fold the effective dry-run in so a posture flip (membership becoming ready,
+  // or the persisted flag toggled) busts the cache and forces a status write.
+  const dryRunKey = resolveDryRunKey(dryRunEffective);
   return [
     actionSignature,
     detailSignature,
@@ -144,5 +156,6 @@ export const buildPelsStatusInputKey = (params: {
     lastPowerUpdateKey,
     freshnessKey,
     powerKnownKey,
+    dryRunKey,
   ].join('|');
 };

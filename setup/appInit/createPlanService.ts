@@ -7,6 +7,7 @@ import type { HomeScope } from '../homeRuntime/homeScope';
 import { buildControlModelMap } from '../appDeviceControlHelpers';
 import { readObservedEvChargingState } from '../../lib/observer/observedDeviceStateProjection';
 import { isDeviceObservationStale } from '../../lib/observer/observationFreshness';
+import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 
 // `planEngine` is the engine this service drives: the main home omits it (the
 // wiring assigns `ctx.planEngine` before `initPlanService`, the historical
@@ -78,6 +79,11 @@ export function createPlanService(ctx: AppContext, scope: HomeScope, planEngine?
     // reach the signature.
     getControlModelById: () => buildControlModelMap(ctx.deviceManager?.getSnapshot() ?? []),
     getCapacityDryRun: scope.getCapacityDryRun,
+    // Sub-homes publish their EFFECTIVE (membership-gated) dry-run into
+    // `pels_status:<id>` so the per-home Limits card shows honest posture. The
+    // main home omits it (undefined ⇒ JSON-dropped) — its `pels_status` blob
+    // stays byte-identical to origin/main.
+    getStatusEffectiveDryRun: scope.homeId === MAIN_HOME_ID ? undefined : scope.getCapacityDryRun,
     loggers: {
       structuredLog: ctx.getStructuredLogger('plan'),
       debugStructured: ctx.getStructuredDebugEmitter('plan', 'plan'),
