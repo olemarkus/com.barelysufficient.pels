@@ -433,5 +433,8 @@
   },
   "2.17.0": {
     "en": "When you use Homey Energy as your power source, you can now choose which device PELS reads as your whole-home power meter instead of relying only on Homey's automatic pick. This helps in homes where the automatic choice isn't the meter you want PELS to measure. Also includes a few other minor UX tweaks."
+  },
+  "2.17.1": {
+    "en": "Fix missing devices in power meter dropdown."
   }
 }
