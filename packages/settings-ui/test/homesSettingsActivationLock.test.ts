@@ -37,6 +37,7 @@ vi.mock('../src/ui/logging.ts', () => ({
 }));
 
 const readyPayload = (): SettingsUiHomesPayload => ({
+  multiHomeEnabled: true,
   homes: [{ homeId: 'h_1', name: 'Rental', rootZoneId: 'z2', meterDeviceId: null }],
   membershipByDeviceId: {},
   zoneTree: {
@@ -101,5 +102,49 @@ describe('homes panel activation lock', () => {
     await second;
     expect(addButtonDisabled(mount)).toBe(false);
     expect(rowButtonsAllDisabled(mount)).toBe(false);
+  });
+});
+
+describe('pre-load render fails safe to the boot-primed flag', () => {
+  const inertOffPayload = (): SettingsUiHomesPayload => ({
+    multiHomeEnabled: false,
+    homes: [], membershipByDeviceId: {}, zoneTree: null, hasSubHomes: false, configDegraded: false,
+  });
+
+  it('renders nothing before the first ui_homes read resolves when the boot flag is OFF', async () => {
+    vi.resetModules();
+    const { refreshHomesOnHomesPanel, applyMultiHomeNavVisibility } =
+      await import('../src/ui/homesSettings.ts');
+    const mount = document.getElementById('homes-settings-mount') as HTMLElement;
+
+    // A release build: boot primes the hidden flag OFF. The activation refetch
+    // is in flight (payload still null), so the render default decides — and it
+    // must be the boot flag, NOT a hardcoded "enabled". Nothing may render.
+    applyMultiHomeNavVisibility(false);
+    const activation = refreshHomesOnHomesPanel();
+    expect(mount.textContent).toBe('');
+    expect(mount.querySelector('#homes-list')).toBeNull();
+    expect(mount.querySelector('#homes-add-button')).toBeNull();
+
+    // Even once the (inert, off) read lands, still nothing.
+    homesFetch.resolve(inertOffPayload());
+    await activation;
+    expect(mount.textContent).toBe('');
+  });
+
+  it('shows the section pre-load when the boot flag is ON', async () => {
+    vi.resetModules();
+    const { refreshHomesOnHomesPanel, applyMultiHomeNavVisibility } =
+      await import('../src/ui/homesSettings.ts');
+    const mount = document.getElementById('homes-settings-mount') as HTMLElement;
+
+    // Enabled boot: the pre-load window still renders the section (skeleton),
+    // so activation is not visually delayed for a user who has the feature on.
+    applyMultiHomeNavVisibility(true);
+    const activation = refreshHomesOnHomesPanel();
+    expect(mount.querySelector('.pels-skeleton-stack')).not.toBeNull();
+
+    homesFetch.resolve(readyPayload());
+    await activation;
   });
 });

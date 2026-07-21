@@ -93,6 +93,9 @@ export const SETTINGS_UI_BOOTSTRAP_KEYS = [
   'debug_logging_enabled',
   'deferred_objectives',
   'weather_advisor_settings',
+  // Hidden multi-home feature flag (default false). Carried in the bootstrap so
+  // boot can un-hide the "Multiple meters" nav card only when it is on.
+  'multi_home_enabled',
 ] as const;
 
 export type SettingsUiBootstrapKey = (typeof SETTINGS_UI_BOOTSTRAP_KEYS)[number];

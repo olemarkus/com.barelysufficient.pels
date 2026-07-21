@@ -34,6 +34,7 @@ import {
   HOMES_CONFIG,
   isHomeScopableBaseKey,
   MAIN_HOME_ID,
+  MULTI_HOME_ENABLED,
   MANAGED_DEVICES,
   NATIVE_EV_WIRING_DEVICES,
   OVERSHOOT_BEHAVIORS,
@@ -422,6 +423,17 @@ function buildMiscSettingsHandlers(deps: SettingsHandlerDeps): SettingsHandlerMa
     // freshly created bundle's plan input reads the new device partition.
     // Still deliberately NO snapshot refresh here; membership's own
     // change-gated invalidation covers the main plan.
+    // Hidden multi-home feature flag flip (default off). Off→on activates the
+    // feature against any existing homes_config; on→off deactivates it. Both
+    // directions run the SAME work as a homes_config write — recompute
+    // membership (inert all-main when off, the real join when on), then
+    // reconcile the per-home bundles (torn down when off, built when on). The
+    // membership recompute's own change-gated invalidation rebuilds main's plan
+    // so the sub-home devices move between main and their bundles.
+    [MULTI_HOME_ENABLED]: async () => {
+      deps.recomputeHomeMembership?.();
+      deps.reconcileHomeRuntimes?.();
+    },
     [HOMES_CONFIG]: async () => {
       deps.recomputeHomeMembership?.();
       deps.reconcileHomeRuntimes?.();

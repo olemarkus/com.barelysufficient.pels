@@ -473,6 +473,31 @@ program) remains deferred.*
       `lib/objectives/deferredObjectives/activePlanRevisionBuild.ts`,
       `packages/contracts/src/deferredObjectiveActivePlans.ts`,
       `packages/shared-domain/src/deadlineLabels.ts`, `setup/settingsUiSmartTaskApi.ts`.
+- [ ] **Multi-home OFF still runs the transport zone-tree fetch (last OFF-purity gap).** *Persona:* single-
+      home owner on a patch release with the hidden `multi_home_enabled` flag off. *Hypothesis:* every
+      successful snapshot refresh fire-and-forgets `refreshZoneTreeCache` (`snapshotRefresh.ts`), so an OFF
+      install does a small extra REST read the pre-multi-home runtime never did. It is genuinely harmless —
+      read-only, detached, fails safe to a null tree, and nothing consumes the tree while off (membership's
+      inert recompute ignores it; the `ui_homes` endpoint now short-circuits to `zoneTree: null` when off) —
+      so OFF is *behaviourally* safe but not byte-identical I/O-wise. Gate the fetch on the flag once a clean
+      seam exists (the reader lives in `setup/`, which `lib/device/transport` may not import — a trivial
+      `settings.get(MULTI_HOME_ENABLED) === true` at the transport boundary, or a producer-resolved bit,
+      would do). Moot when the feature ships and the flag is removed. Source: codex OFF-airtightness review of
+      PR #1865, 2026-07-21. File: `lib/device/transport/snapshotRefresh.ts`.
+- [ ] **Multi-home flag-flip transition robustness (test-Homey only; not release-reachable).** *Persona:*
+      the maintainer flipping `multi_home_enabled` on/off on a test Homey (a release build ships off and
+      never flips, so none of this reaches users). *Hypothesis:* the flag handler subscribes to `settings.on
+      ('set')` only, so *unsetting* the key (vs. writing `false`) never fires teardown; the on→off recompute
+      is queued, so cached membership/bundles stay live for the interval before it runs; if a sub-home was
+      actively controlling a device (dry-run off) while main is in dry-run, on→off can leave that device
+      paused with no owner to resume it; off→on can race an in-flight main rebuild and briefly double-control
+      a transferred device; and an already-open Settings UI is not re-gated on flip (nav visibility is
+      applied only at boot). Each is bounded to deliberate flips on a Homey we control and fails in the safe
+      direction (a device stays paused, never over-draws). Fold the unset path into the flag handler, quiesce
+      the main rebuild across the transfer, and re-run `applyMultiHomeNavVisibility` on a realtime flag
+      change when hardening the flip path for GA. Source: codex OFF-airtightness review of PR #1865,
+      2026-07-21. Files: `lib/utils/settingsHandlers.ts`, `setup/homeRuntime/homeRuntimeRegistry.ts`,
+      `lib/plan/planServiceRebuild.ts`, `packages/settings-ui/src/ui/realtime.ts`.
 - [ ] **Hoist `createSelectOption` (and the render-signature guard pattern) out of `advanced.ts` into a
       shared settings-ui primitive module.** *Persona:* maintainer adding the next dynamic device picker.
       *Hypothesis:* three near-copies now exist — `createModeOption` (`modes.ts`), `createSelectOption`
