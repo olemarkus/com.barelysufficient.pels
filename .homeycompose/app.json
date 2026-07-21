@@ -198,6 +198,10 @@
       "method": "GET",
       "path": "/homey_devices"
     },
+    "homey_energy_meters": {
+      "method": "GET",
+      "path": "/homey_energy_meters"
+    },
     "log_homey_device": {
       "method": "POST",
       "path": "/log_homey_device"

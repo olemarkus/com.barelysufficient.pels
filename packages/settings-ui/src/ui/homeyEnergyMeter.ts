@@ -7,62 +7,52 @@ import { callApi, setSetting } from './homey.ts';
 import { logSettingsError } from './logging.ts';
 import { showToast, showToastError } from './toast.ts';
 import { HOMEY_ENERGY_METER_DEVICE_ID } from '../../../contracts/src/settingsKeys.ts';
+import { HOMEY_ENERGY_METERS_PATH, type HomeyEnergyMeterEntry } from '../../../contracts/src/settingsUiApi.ts';
 
-export type MeterDeviceEntry = { id: string; name: string; class?: string; hasPower?: boolean };
 export type MeterSelectEntry = { value: string; label: string };
 
 /**
- * Hard-filter the device list to power-reporting `sensor`-class devices: a
- * whole-home meter (HAN/P1 reader, Tibber Pulse and the like) registers as a
- * sensor, while the rest of the power-reporting fleet — smart plugs, EV
- * chargers, thermostats — would drown the one real meter in guaranteed-broken
- * picks. Sorted by name. (Mirrors toTemperatureDeviceOptions in
- * weatherInsight.ts.) A previously saved non-sensor selection is preserved via
+ * The meters come straight from the Homey Energy live report (via
+ * `/homey_energy_meters`) — the same seam a selection is read against — so
+ * every option is a meter PELS can actually read. No capability/class filter:
+ * that was a proxy over the full device list that could drop a readable meter
+ * (the "only Automatic" bug) or offer an unreadable one. Sorted by name. A
+ * previously saved selection absent from the current report is preserved via
  * the buildMeterSelectEntries passthrough, not this list.
  */
-export const toMeterDeviceOptions = (devices: MeterDeviceEntry[]): MeterSelectEntry[] => (
-  devices
-    .filter((device) => device.hasPower === true && device.class === 'sensor')
-    .map((device) => ({ value: device.id, label: device.name }))
+export const toMeterDeviceOptions = (meters: HomeyEnergyMeterEntry[]): MeterSelectEntry[] => (
+  meters
+    .map((meter) => ({ value: meter.id, label: meter.name }))
     .sort((a, b) => a.label.localeCompare(b.label))
 );
 
 /**
- * "Automatic" (Homey's marked whole-home meter) first, then the device
- * options. A saved id that is not in the device list gets an explicit entry so
- * the selection stays visibly configured instead of silently snapping back to
- * Automatic:
- * - `savedDeviceName` set — the device exists in Homey but is filtered out of
- *   the pick list (not a sensor); it keeps its real name, because the filter
- *   narrows new picks and must never disown a working selection.
- * - Otherwise "not found" is only claimed once the list has actually loaded —
- *   before that the entry reads as loading, so a saved meter never flashes as
- *   broken on panel open. The label carries the consequence, not the raw
- *   device id — only one such entry can exist, so the id disambiguates
- *   nothing (it stays available on the option value and in the persisted
- *   setting).
+ * "Automatic" (Homey's marked whole-home meter) first, then the report meters.
+ * A saved id absent from the current report gets an explicit entry so the
+ * selection stays visibly configured instead of silently snapping back to
+ * Automatic. "Not found" is only claimed once the list has actually loaded —
+ * before that the entry reads as loading, so a saved meter never flashes as
+ * broken on panel open. The label carries the consequence, not the raw device
+ * id — only one such entry can exist, so the id disambiguates nothing (it stays
+ * available on the option value and in the persisted setting). A meter merely
+ * silent this poll re-appears by name on a later fetch once the report lists it.
  */
 export const buildMeterSelectEntries = (
   options: MeterSelectEntry[],
   selectedId: string | null,
   devicesLoaded: boolean,
-  savedDeviceName: string | null = null,
 ): MeterSelectEntry[] => {
   const entries = [{ value: '', label: 'Automatic' }, ...options];
   if (selectedId != null && !options.some((option) => option.value === selectedId)) {
     entries.push({
       value: selectedId,
-      label: savedDeviceName
-        ?? (devicesLoaded ? 'Previously selected meter (not found in Homey)' : 'Selected meter (loading…)'),
+      label: devicesLoaded ? 'Previously selected meter (not found in Homey)' : 'Selected meter (loading…)',
     });
   }
   return entries;
 };
 
 let pickerDevices: MeterSelectEntry[] | null = null;
-// id → name for EVERY fetched device (unfiltered) — labels a saved meter that
-// exists in Homey but is filtered out of the pick list (not a sensor).
-let pickerDeviceNames: Map<string, string> | null = null;
 let pickerDevicesLoading = false;
 let selectedMeterId: string | null = null;
 let lastRenderSignature: string | null = null;
@@ -74,15 +64,7 @@ export const isHomeyEnergyMeterExplicit = (): boolean => selectedMeterId !== nul
 const renderMeterOptions = (): void => {
   const select = settingsHomeyEnergyMeterSelect;
   if (!select) return;
-  const savedDeviceName = selectedMeterId === null
-    ? null
-    : (pickerDeviceNames?.get(selectedMeterId) ?? null);
-  const entries = buildMeterSelectEntries(
-    pickerDevices ?? [],
-    selectedMeterId,
-    pickerDevices !== null,
-    savedDeviceName,
-  );
+  const entries = buildMeterSelectEntries(pickerDevices ?? [], selectedMeterId, pickerDevices !== null);
   const selectedValue = selectedMeterId ?? '';
   // Rebuilding options closes an open menu mid-selection, so skip when nothing
   // changed (same guard as renderAdvancedDeviceOptions in advanced.ts).
@@ -112,21 +94,16 @@ const ensureMeterDevicesLoaded = async (): Promise<void> => {
   if (pickerDevices !== null || pickerDevicesLoading) return;
   pickerDevicesLoading = true;
   try {
-    const devices = await callApi<MeterDeviceEntry[] | null>('GET', '/homey_devices');
-    const payload = devices ?? [];
+    const meters = await callApi<HomeyEnergyMeterEntry[] | null>('GET', HOMEY_ENERGY_METERS_PATH);
+    const payload = meters ?? [];
     // An empty PAYLOAD is not cached: it can be transient (backend still
-    // wiring, meter just paired), and caching it would leave the picker empty
-    // for the whole WebView session — it simply re-fetches on the next panel
-    // open. A non-empty payload caches even when the sensor filter leaves no
-    // options: the fetch genuinely answered, and refetching wouldn't change a
-    // sensor-less home.
-    if (payload.length > 0) {
-      pickerDevices = toMeterDeviceOptions(payload);
-      pickerDeviceNames = new Map(payload.map((device) => [device.id, device.name]));
-    }
+    // wiring, meter just paired, one poll where the report was empty), and
+    // caching it would leave the picker empty for the whole WebView session —
+    // it simply re-fetches on the next panel open.
+    if (payload.length > 0) pickerDevices = toMeterDeviceOptions(payload);
     renderMeterOptions();
   } catch (error) {
-    await logSettingsError('Failed to load devices for the whole-home meter picker', error, 'homeyEnergyMeter');
+    await logSettingsError('Failed to load meters for the whole-home meter picker', error, 'homeyEnergyMeter');
   } finally {
     pickerDevicesLoading = false;
   }

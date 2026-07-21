@@ -64,7 +64,7 @@ beforeEach(() => {
   callApiMock.mockImplementation((_method: string, path: string) => {
     if (path === SETTINGS_UI_HOMES_PATH) return homesFetch.promise;
     if (path === SETTINGS_UI_DEVICES_PATH) return Promise.resolve({ devices: [] });
-    return Promise.resolve([]); // /homey_devices picker list
+    return Promise.resolve([]); // /homey_energy_meters picker list
   });
   const mount = document.createElement('div');
   mount.id = 'homes-settings-mount';

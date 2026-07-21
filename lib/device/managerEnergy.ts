@@ -52,6 +52,38 @@ export const extractLiveMeterPowerWatts = (liveReport: unknown, deviceId: string
   return null;
 };
 
+export type LiveMeterItemType = 'cumulative' | 'device';
+export type LiveMeterItem = { id: string; type: LiveMeterItemType };
+
+/**
+ * The pickable whole-home meters, resolved from the SAME `manager/energy/live`
+ * payload the reader consumes — the authoritative "what can PELS actually read"
+ * set, not a capability/class guess over the full device list. Every
+ * `cumulative` or `device` item that carries an id is a meter a selection can
+ * resolve via `extractLiveMeterPowerWatts` (which matches BOTH types), so this
+ * lists exactly those. Order and duplicates from the report are preserved-then-
+ * deduped by id (first wins). An id-less cumulative item (some Homey setups
+ * emit the whole-home aggregate without an id) is intentionally omitted: it
+ * can't be pinned to a selection and is already covered by "Automatic" (the
+ * first cumulative item). Names are NOT carried here — the report has none;
+ * the adapter joins id→name from the device list.
+ */
+export const extractLiveMeterItems = (liveReport: unknown): LiveMeterItem[] => {
+  const report = asRecord(liveReport);
+  if (!report || !Array.isArray(report.items)) return [];
+  const seen = new Set<string>();
+  const items: LiveMeterItem[] = [];
+  for (const rawItem of report.items) {
+    const item = asRecord(rawItem);
+    if (!item || (item.type !== 'cumulative' && item.type !== 'device')) continue;
+    const id = typeof item.id === 'string' && item.id.length > 0 ? item.id : null;
+    if (id === null || seen.has(id)) continue;
+    seen.add(id);
+    items.push({ id, type: item.type });
+  }
+  return items;
+};
+
 /**
  * Gross PV generation in watts from the same `manager/energy/live` payload, or
  * `null` when no generation signal is present. PELS's whole-home `cumulative.W`

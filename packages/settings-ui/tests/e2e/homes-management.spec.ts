@@ -7,6 +7,7 @@ import {
   seedRentalArea,
   seedRentalMeterSnapshot,
   seedStubSetting,
+  seedUtilityMeterSnapshot,
 } from './fixtures/homes';
 
 /* -------------------------------------------------------------------------- *
@@ -57,10 +58,11 @@ test('overlap with an existing area blocks save; outside-zone meter only warns',
   await installRentalMeterDeviceList(page);
   await gotoApp(page);
   await seedRentalMeterSnapshot(page);
+  await seedUtilityMeterSnapshot(page);
   await seedRentalArea(page);
   await openHomesPanel(page);
   await page.locator('#homes-add-button').click();
-  await page.selectOption('#homes-meter-select', 'dev_waterheater');
+  await page.selectOption('#homes-meter-select', 'dev_utility_meter');
   await expect(page.locator('#homes-zone-select')).toHaveValue('z_utility');
   // Overlap (live error): the rental area's own root zone.
   await page.selectOption('#homes-zone-select', 'z_rental');

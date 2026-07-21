@@ -20,7 +20,7 @@ type StubWindow = Window & {
   };
 };
 
-/** Install the power-device list override (default five + the rental meter). */
+/** Install the meter-list override (the two sensor meters the specs assign to areas). */
 export const installRentalMeterDeviceList = async (page: Page): Promise<void> => {
   await page.addInitScript(() => {
     const stubWindow = window as StubWindow;
@@ -28,14 +28,13 @@ export const installRentalMeterDeviceList = async (page: Page): Promise<void> =>
       ...(stubWindow.__PELS_HOMEY_STUB__ ?? {}),
       apiHandlers: {
         ...(stubWindow.__PELS_HOMEY_STUB__?.apiHandlers ?? {}),
-        // Mirrors the stub's default homey_devices list + the rental meter.
-        'GET /homey_devices': () => [
-          { id: 'dev_outdoor', name: 'Outdoor sensor', hasTemperature: true, hasPower: false },
-          { id: 'dev_heatpump', name: 'Living Room Heat Pump', hasTemperature: true, hasPower: true },
-          { id: 'dev_floorheat', name: 'Bathroom Floor Heat', hasTemperature: true, hasPower: true },
-          { id: 'dev_waterheater', name: 'Water Heater', hasTemperature: false, hasPower: true },
-          { id: 'dev_evcharger', name: 'Generic EV Charger', hasTemperature: false, hasPower: true },
-          { id: 'dev_rental_meter', name: 'Rental meter', hasTemperature: false, hasPower: true },
+        // Both meter pickers read the endpoint's resolved meter list (whole-home
+        // cumulative + sensor-class device meters), already narrowed to real
+        // meters — appliances never appear here. The fixture home has two
+        // sensor sub-meters the specs assign to areas.
+        'GET /homey_energy_meters': () => [
+          { id: 'dev_rental_meter', name: 'Rental meter' },
+          { id: 'dev_utility_meter', name: 'Utility meter' },
         ],
       },
     };
@@ -56,6 +55,28 @@ export const seedRentalMeterSnapshot = async (page: Page): Promise<void> => {
       zone: 'Rental utility',
       zoneId: 'z_rental_utility',
       measuredPowerKw: 0.3,
+    }]);
+  });
+};
+
+/**
+ * Append a sensor sub-meter in the utility room (a zone OUTSIDE the rental
+ * subtree) to the snapshot, so a spec can pick a real meter whose zone prefills
+ * z_utility and then exercise the overlap/outside-zone warnings.
+ */
+export const seedUtilityMeterSnapshot = async (page: Page): Promise<void> => {
+  await page.evaluate(() => {
+    const stub = (window as StubWindow).Homey?.__stub;
+    if (!stub) throw new Error('Homey stub missing');
+    const snapshot = stub.getSetting('target_devices_snapshot') as Array<Record<string, unknown>>;
+    if (snapshot.some((device) => device.id === 'dev_utility_meter')) return;
+    stub.setSetting('target_devices_snapshot', [...snapshot, {
+      id: 'dev_utility_meter',
+      name: 'Utility meter',
+      deviceClass: 'sensor',
+      zone: 'Utility room',
+      zoneId: 'z_utility',
+      measuredPowerKw: 0.2,
     }]);
   });
 };

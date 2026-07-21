@@ -13,6 +13,7 @@ import {
   seedRentalArea,
   seedRentalMeterSnapshot,
   seedStubSetting,
+  seedUtilityMeterSnapshot,
 } from './fixtures/homes';
 
 const OUT = '../../screenshots';
@@ -39,6 +40,7 @@ const prepareState = async (page: Page, state: StateName): Promise<void> => {
   await installRentalMeterDeviceList(page);
   await gotoApp(page);
   await seedRentalMeterSnapshot(page);
+  if (state === 'warning') await seedUtilityMeterSnapshot(page);
   if (state === 'list' || state === 'warning' || state === 'notice' || state === 'confirm') {
     await seedRentalArea(page);
   }
@@ -63,7 +65,7 @@ const prepareState = async (page: Page, state: StateName): Promise<void> => {
   }
   if (state === 'warning') {
     await page.locator('#homes-add-button').click();
-    await page.selectOption('#homes-meter-select', 'dev_waterheater');
+    await page.selectOption('#homes-meter-select', 'dev_utility_meter');
     await page.selectOption('#homes-zone-select', 'z_living');
     await expect(page.locator('#homes-editor')).toContainText('You can still save');
   }
