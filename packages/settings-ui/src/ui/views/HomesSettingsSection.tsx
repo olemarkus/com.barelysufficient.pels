@@ -83,6 +83,14 @@ export type HomesEditorView = {
 };
 
 export type HomesSettingsSectionProps = {
+  /**
+   * The hidden multi-home feature flag (`ui_homes` `multiHomeEnabled`). When
+   * false the section renders nothing — the whole "Multiple meters" surface is
+   * gated off (the nav card is also hidden at boot). Defaults to shown while
+   * the payload is still loading, but with the flag off the panel is never
+   * reachable to reach that state.
+   */
+  multiHomeEnabled: boolean;
   status: 'loading' | 'error' | 'ready';
   homes: HomesListEntryView[];
   /** False until the zone tree has arrived — adding needs zones to pick from. */
@@ -343,6 +351,9 @@ const MainMeterNotice = () => (
 );
 
 const HomesSettingsSectionView = (props: HomesSettingsSectionProps) => {
+  // Feature flag off (default): render nothing — the "Multiple meters" section
+  // is hidden entirely, matching the hidden nav card.
+  if (!props.multiHomeEnabled) return null;
   if (props.status === 'loading') {
     return (
       <div class="pels-skeleton-stack" aria-hidden="true">

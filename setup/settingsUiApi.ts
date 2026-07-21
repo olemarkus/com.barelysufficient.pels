@@ -60,6 +60,7 @@ import {
   type SubHomeConfig,
 } from '../lib/home/homeConfig';
 import { createHomesStore } from './homeRegistryAdapter';
+import { isMultiHomeEnabled } from './multiHomeFlag';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import type { HomeMembershipDiagnostics, HomeMembershipService } from './homeMembership';
 import { isObserveOnlyRoleClassKey } from '../lib/device/transport/managerHelpers';
@@ -301,12 +302,27 @@ const isHomesConfigDegraded = (diagnostics: HomeMembershipDiagnostics | undefine
 // go through the `homes_config`/`device_home_assignments` settings keys, never
 // through this endpoint.
 export const getSettingsUiHomesPayload = ({ homey }: ApiContext): SettingsUiHomesPayload => {
+  const multiHomeEnabled = isMultiHomeEnabled(homey.settings);
+  if (!multiHomeEnabled) {
+    // Flag off (the default in a release): the endpoint is trivially inert —
+    // no homes, no membership, and crucially NO zone tree. The membership
+    // service's inert recompute already empties homes/membership, but it keeps
+    // the zone-tree cache warm for a flip-back; short-circuiting here means an
+    // OFF install's read endpoint never emits that cached zone structure, so it
+    // is byte-identical to the pre-multi-home world. Not degraded: with the
+    // feature off there is no persisted config to vouch for.
+    return {
+      multiHomeEnabled: false,
+      homes: [], membershipByDeviceId: {}, zoneTree: null, hasSubHomes: false, configDegraded: false,
+    };
+  }
   const diagnostics = getApp(homey)?.homeMembership?.getDiagnostics();
   if (!diagnostics) {
     return {
       // Boot window: nothing can vouch for the persisted config, so the
       // payload is the empty single-home shape AND degraded — the UI must not
       // compose a whole-value homes_config write from this view.
+      multiHomeEnabled,
       homes: [], membershipByDeviceId: {}, zoneTree: null, hasSubHomes: false, configDegraded: true,
     };
   }
@@ -314,6 +330,7 @@ export const getSettingsUiHomesPayload = ({ homey }: ApiContext): SettingsUiHome
   // composed payload never aliases the service's live caches (a future
   // in-process consumer mutating the payload must not corrupt membership).
   return {
+    multiHomeEnabled,
     homes: [...diagnostics.subHomes],
     membershipByDeviceId: { ...diagnostics.membershipByDeviceId },
     zoneTree: diagnostics.zoneTree === null ? null : { ...diagnostics.zoneTree },
@@ -426,6 +443,11 @@ const upsertNestsSubHomeRoots = (
 export const saveSettingsUiHomesConfig = (
   { homey, body }: ApiContext & { body?: unknown },
 ): SettingsUiHomesSaveResponse => {
+  // Feature flag OFF: the "Multiple meters" UI is hidden, so no legitimate
+  // client reaches here — but a direct API call must NOT be able to create or
+  // edit a meter area while the feature is disabled. Refuse before any parse
+  // or store read, so homes_config is never mutated while off.
+  if (!isMultiHomeEnabled(homey.settings)) return { ok: false, reason: 'disabled' };
   const request = parseHomesSaveRequest(body);
   if (request === null) return { ok: false, reason: 'invalid' };
   if (upsertRootsAtForestRoot(homey, request)) return { ok: false, reason: 'invalid' };

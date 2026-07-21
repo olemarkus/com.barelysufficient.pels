@@ -8,7 +8,10 @@ import { expect } from './test';
 // so it builds on the stub's default fixture.
 
 type StubWindow = Window & {
-  __PELS_HOMEY_STUB__?: { apiHandlers?: Record<string, () => unknown> };
+  __PELS_HOMEY_STUB__?: {
+    apiHandlers?: Record<string, () => unknown>;
+    settings?: Record<string, unknown>;
+  };
   Homey?: {
     __stub: {
       getSetting: (key: string) => unknown;
@@ -74,6 +77,20 @@ export const seedRentalArea = async (page: Page): Promise<void> => {
 };
 
 export const gotoApp = async (page: Page): Promise<void> => {
+  // Enable the hidden multi-home feature flag (default off) BEFORE boot, so the
+  // bootstrap un-hides the "Multiple meters" nav card and the ui_homes payload
+  // reports multiHomeEnabled. Merges into any earlier __PELS_HOMEY_STUB__
+  // override (device list / degraded payload) so their apiHandlers survive.
+  await page.addInitScript(() => {
+    const stubWindow = window as StubWindow;
+    stubWindow.__PELS_HOMEY_STUB__ = {
+      ...(stubWindow.__PELS_HOMEY_STUB__ ?? {}),
+      settings: {
+        ...(stubWindow.__PELS_HOMEY_STUB__?.settings ?? {}),
+        multi_home_enabled: true,
+      },
+    };
+  });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => typeof (window as { Homey?: unknown }).Homey === 'object');
 };
@@ -96,6 +113,7 @@ export const installDegradedHomesPayload = async (page: Page): Promise<void> => 
       apiHandlers: {
         ...(stubWindow.__PELS_HOMEY_STUB__?.apiHandlers ?? {}),
         'GET /ui_homes': () => ({
+          multiHomeEnabled: true,
           homes: [{
             homeId: 'h_11111111', name: 'Rental unit', rootZoneId: 'z_rental', meterDeviceId: 'dev_rental_meter',
           }],

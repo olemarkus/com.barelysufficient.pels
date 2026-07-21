@@ -216,11 +216,39 @@ const resolveSectionStatus = (): 'loading' | 'error' | 'ready' => {
   return loadFailed ? 'error' : 'loading';
 };
 
+const HOMES_NAV_CARD_ID = 'homes-nav-card';
+
+/**
+ * Un-hide the "Multiple meters" nav card only when the hidden multi_home_enabled
+ * flag is on (default off). Called at boot from the bootstrap-primed flag, so
+ * the whole U1 entry point stays unreachable on a patch release from main. The
+ * card ships `hidden` in index.html, so a boot failure fails safe (stays hidden).
+ */
+// The boot-primed flag value, captured when the nav card visibility is applied.
+// It seeds the pre-payload render default below so the section fails SAFE (off)
+// while the first ui_homes read is still in flight, rather than assuming enabled.
+let bootMultiHomeEnabled = false;
+
+export const applyMultiHomeNavVisibility = (multiHomeEnabled: boolean): void => {
+  bootMultiHomeEnabled = multiHomeEnabled;
+  const card = document.getElementById(HOMES_NAV_CARD_ID);
+  if (card) card.hidden = !multiHomeEnabled;
+};
+
 const renderSection = (): void => {
   const mount = document.getElementById('homes-settings-mount');
   if (!mount) return;
   const status = resolveSectionStatus();
   renderHomesSettingsSection(mount, {
+    // Belt-and-suspenders render gate: when the flag is off the runtime reports
+    // multiHomeEnabled=false and the section renders nothing, even if the panel
+    // is somehow reached with the nav card hidden. Before the first payload
+    // lands we fall back to the boot-primed flag (default off) rather than
+    // assuming enabled — so a hidden-flag install renders nothing in the
+    // pre-load window too, and an enabled install still shows the skeleton.
+    multiHomeEnabled: latestPayload === null
+      ? bootMultiHomeEnabled
+      : latestPayload.multiHomeEnabled,
     status,
     homes: currentHomes().map((home) => ({
       homeId: home.homeId,

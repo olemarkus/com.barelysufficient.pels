@@ -28,6 +28,7 @@ import {
 const noop = (): void => {};
 
 const baseProps = (): HomesSettingsSectionProps => ({
+  multiHomeEnabled: true,
   status: 'ready',
   homes: [],
   zonesAvailable: true,
@@ -91,6 +92,22 @@ const mountWith = (props: HomesSettingsSectionProps): HTMLElement => {
 // resolves against the FIRST document-wide match — scrub between tests.
 afterEach(() => {
   document.body.innerHTML = '';
+});
+
+describe('feature flag gate', () => {
+  it('renders nothing when the multi-home feature flag is off', () => {
+    const surface = mountWith({ ...baseProps(), multiHomeEnabled: false, homes: [rentalRow] });
+    expect(surface.textContent).toBe('');
+    expect(surface.querySelector('#homes-list')).toBeNull();
+    expect(surface.querySelector('#homes-add-button')).toBeNull();
+    expect(surface.textContent).not.toContain(HOMES_EMPTY_EXPLAINER);
+  });
+
+  it('renders the section when the flag is on', () => {
+    const surface = mountWith({ ...baseProps(), multiHomeEnabled: true });
+    expect(surface.textContent).toContain(HOMES_EMPTY_EXPLAINER);
+    expect(surface.textContent).toContain(HOMES_ADD_BUTTON);
+  });
 });
 
 describe('progressive disclosure', () => {

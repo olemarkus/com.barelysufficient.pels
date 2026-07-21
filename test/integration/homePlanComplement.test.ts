@@ -17,7 +17,7 @@ import type { PlanService } from '../../lib/plan/planService';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler';
 import { executePendingPowerRebuild } from '../../lib/plan/rebuildScheduler/powerDriven';
-import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
+import { MAIN_HOME_ID, MULTI_HOME_ENABLED } from '../../lib/utils/settingsKeys';
 import { buildMainHomeScope } from '../../setup/homeRuntime/homeScope';
 import { createHomePowerPipeline } from '../../setup/homeRuntime/createHomePowerPipeline';
 import {
@@ -29,6 +29,7 @@ import {
   createDeviceHomeAssignmentsStore,
   createHomesStore,
 } from '../../setup/homeRegistryAdapter';
+import { isMultiHomeEnabled } from '../../setup/multiHomeFlag';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import { mockHomeyInstance } from '../mocks/homey';
 
@@ -70,6 +71,7 @@ const makeMembershipService = (
     getZoneTree: () => ZONES,
     getDevices: () => devices,
     getLogger: () => undefined,
+    isMultiHomeEnabled: () => isMultiHomeEnabled(homeyLike.settings),
   });
   service.recompute();
   return service;
@@ -88,6 +90,9 @@ const makeCtx = (service: HomeMembershipService | undefined) => createAppContext
 
 beforeEach(() => {
   mockHomeyInstance.settings.clear();
+  // Enable the hidden multi-home feature flag (default off) so the complement
+  // filter keeps exercising sub-home partitioning.
+  mockHomeyInstance.settings.set(MULTI_HOME_ENABLED, true);
 });
 
 describe('filterDevicesForHome identity guard', () => {
