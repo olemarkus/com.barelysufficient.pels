@@ -48,23 +48,14 @@ stepped-restore-wrapper / stepped-swap-completion refactors, the settings.test.t
 plan_budget truncation, the starvation confirm-sheet sub-parts, and the shared widget runtime.
 What remains open is below.*
 
-- [ ] **Meter picker hint invites an impossible pick when no meters are listed.** With the
-      sensor-only filter, a home whose only meter is Homey's marked (Automatic) one — or a
-      home with no sensor-class power device — shows just "Automatic" in the Whole-home meter
-      select, while the always-visible hint still says "pick a meter to read it directly." Soften
-      the hint to the Automatic-only case when the loaded option list is empty (needs a small
-      conditional in homeyEnergyMeter.ts, since the hint is static markup today). Persona:
-      Power-meter user with a single tracked meter; hypothesis: an instruction to pick from an
-      empty list reads as something being broken. Source: pels-ux-fit review of the meter-picker
-      PR (2026-07-19). [P2]
-
-- [ ] **Meter-picker device-list cache rule is untested.** `ensureMeterDevicesLoaded` now caches
-      a non-empty API payload even when the sensor filter leaves zero options (an empty payload
-      still re-fetches). No test at any tier pins this — a regression that reverted to
-      "cache empty options as null" would silently re-fetch every panel open. Add a module test
-      (import `ensureMeterDevicesLoaded` with `callApi` mocked) or an e2e with a sensor-less
-      fixture asserting the second panel open does not re-hit `/homey_devices`. Source: review of
-      the meter-picker PR (2026-07-19). [P3]
+- [ ] **Meter picker hint invites an impossible pick when no meters are listed.** When the Homey
+      Energy report exposes no id-carrying whole-home (cumulative) meter and no sensor-class device
+      meter, the Whole-home meter select shows just "Automatic" while the always-visible hint still
+      says "pick a meter to read it directly." Soften the hint to the Automatic-only case when the
+      loaded option list is empty (needs a small conditional in homeyEnergyMeter.ts, since the hint
+      is static markup today). Persona: Power-meter user with a single tracked meter; hypothesis:
+      an instruction to pick from an empty list reads as something being broken. Source: pels-ux-fit
+      review of the meter-picker PR (2026-07-19). [P2]
 
 - [ ] **Shed-invariant card copy claims a step the device is not at.** `resolveSteppedStatusLine`
       renders the shed-invariant reason as `Limited to ${maxStep}`

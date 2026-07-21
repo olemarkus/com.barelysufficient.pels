@@ -2,14 +2,17 @@ import type { HomeyDeviceLike, Logger } from '../../utils/types';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import { getLogger } from '../../logging/logger';
 import { isHomeyDeviceLike } from '../../utils/types';
+import { normalizeError } from '../../utils/errorUtils';
 
 const moduleLogger = getLogger('device/manager-fetch');
 import {
   extractLiveHomePowerWatts,
   extractLiveGenerationWatts,
+  extractLiveMeterItems,
   extractLiveMeterPowerWatts,
   extractLivePowerWattsByDeviceId,
   type LiveDevicePowerWatts,
+  type LiveMeterItem,
 } from '../managerEnergy';
 import {
   DEVICES_API_PATH,
@@ -208,5 +211,21 @@ export async function fetchLivePowerReport(params: {
   } catch (error) {
     logDeviceTransportRuntimeError(logger, { event: 'energy_live_report_fetch_failed' }, error);
     return { byDeviceId: {}, homePowerW: null, generationW: null, deviceCount: 0, additionalMeterPowerW: {} };
+  }
+}
+
+/**
+ * The pickable whole-home meters from the live energy report — the same seam
+ * the meter-selection reader resolves against, so the picker offers exactly
+ * what a selection can read (no capability/class proxy over the device list).
+ * A read failure or uninitialised client resolves to an empty list, never a
+ * throw: the picker then shows only Automatic and re-fetches on the next open.
+ */
+export async function fetchLiveMeterItems(): Promise<LiveMeterItem[]> {
+  try {
+    return extractLiveMeterItems(await getEnergyLiveReport());
+  } catch (error) {
+    moduleLogger.error({ event: 'energy_live_meter_items_fetch_failed', err: normalizeError(error) });
+    return [];
   }
 }

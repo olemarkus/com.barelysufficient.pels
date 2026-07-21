@@ -1,5 +1,5 @@
-import { extractLiveHomePowerWatts, extractLiveMeterPowerWatts } from '../../lib/device/managerEnergy';
-import { fetchLivePowerReport } from '../../lib/device/transport/managerFetch';
+import { extractLiveHomePowerWatts, extractLiveMeterItems, extractLiveMeterPowerWatts } from '../../lib/device/managerEnergy';
+import { fetchLiveMeterItems, fetchLivePowerReport } from '../../lib/device/transport/managerFetch';
 import * as homeyApi from '../../lib/device/transport/managerHomeyApi';
 import type { Logger } from '../../lib/utils/types';
 
@@ -143,6 +143,65 @@ describe('extractLiveMeterPowerWatts', () => {
   });
 });
 
+describe('extractLiveMeterItems', () => {
+  it('lists cumulative and device items with an id, preserving report order', () => {
+    const report = {
+      items: [
+        { type: 'cumulative', id: 'han', values: { W: 443 } },
+        { type: 'device', id: 'subpanel', values: { W: 120 } },
+        { type: 'device', id: 'plug', values: { W: 0 } },
+      ],
+    };
+    expect(extractLiveMeterItems(report)).toEqual([
+      { id: 'han', type: 'cumulative' },
+      { id: 'subpanel', type: 'device' },
+      { id: 'plug', type: 'device' },
+    ]);
+  });
+
+  it('lists a meter regardless of its reading — a momentarily non-finite/absent W stays pickable', () => {
+    // The reader resolves W per poll; listing must not gate on this poll's value.
+    const report = {
+      items: [
+        { type: 'cumulative', id: 'han', values: { W: NaN } },
+        { type: 'device', id: 'subpanel' },
+      ],
+    };
+    expect(extractLiveMeterItems(report)).toEqual([
+      { id: 'han', type: 'cumulative' },
+      { id: 'subpanel', type: 'device' },
+    ]);
+  });
+
+  it('omits an id-less cumulative item (covered by Automatic) and other item types', () => {
+    const report = {
+      items: [
+        { type: 'cumulative', values: { W: 443 } },
+        { type: 'generator', id: 'pv', values: { W: 900 } },
+        { type: 'zone', id: 'z1', values: { W: 500 } },
+        { type: 'device', id: 'han', values: { W: 100 } },
+      ],
+    };
+    expect(extractLiveMeterItems(report)).toEqual([{ id: 'han', type: 'device' }]);
+  });
+
+  it('dedupes by id, first occurrence winning', () => {
+    const report = {
+      items: [
+        { type: 'cumulative', id: 'han', values: { W: 443 } },
+        { type: 'device', id: 'han', values: { W: 443 } },
+      ],
+    };
+    expect(extractLiveMeterItems(report)).toEqual([{ id: 'han', type: 'cumulative' }]);
+  });
+
+  it('returns an empty list for malformed reports', () => {
+    expect(extractLiveMeterItems(null)).toEqual([]);
+    expect(extractLiveMeterItems({})).toEqual([]);
+    expect(extractLiveMeterItems({ items: [null, 42, 'junk', { type: 'device', id: 42 }] })).toEqual([]);
+  });
+});
+
 describe('fetchLivePowerReport', () => {
   const logger = { log: vi.fn(), debug: vi.fn(), error: vi.fn() } as unknown as Logger;
 
@@ -215,5 +274,35 @@ describe('fetchLivePowerReport', () => {
     expect(result.homePowerW).toBeNull();
     expect(result.deviceCount).toBe(0);
     expect(stderrSpy).toHaveBeenCalled();
+  });
+});
+
+describe('fetchLiveMeterItems', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('returns the report meter items', async () => {
+    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
+      items: [
+        { type: 'cumulative', id: 'han', values: { W: 3200 } },
+        { type: 'device', id: 'sub', values: { W: 800 } },
+      ],
+    });
+
+    await expect(fetchLiveMeterItems()).resolves.toEqual([
+      { id: 'han', type: 'cumulative' },
+      { id: 'sub', type: 'device' },
+    ]);
+  });
+
+  it('returns an empty list when the REST client is not initialized', async () => {
+    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue(null);
+    await expect(fetchLiveMeterItems()).resolves.toEqual([]);
+  });
+
+  it('returns an empty list on API error, never throwing', async () => {
+    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockRejectedValue(new Error('API down'));
+    await expect(fetchLiveMeterItems()).resolves.toEqual([]);
   });
 });

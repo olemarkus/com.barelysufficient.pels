@@ -15,6 +15,7 @@ import {
   SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH,
   SETTINGS_UI_DEVICE_LOG_PATH,
   SETTINGS_UI_DEVICES_PATH,
+  HOMEY_ENERGY_METERS_PATH,
   SETTINGS_UI_LOG_PATH,
   SETTINGS_UI_PLAN_PATH,
   SETTINGS_UI_POWER_PATH,
@@ -78,6 +79,9 @@ export type MockHomeyUiState = {
   // compat fallback in the handlers, but new tests should prefer this field.
   devices?: TargetDeviceSnapshot[];
   homeyDevices?: unknown;
+  // `/homey_energy_meters` payload (`HomeyEnergyMeterEntry[]`) backing both
+  // whole-home meter pickers. Defaults to an empty list.
+  homeyEnergyMeters?: unknown;
   // `/ui_homes` payload (multi-home membership view). Defaults to production's
   // single-home empty shape (`SettingsUiHomesPayload`); tests seed this to
   // exercise multi-home UI states.
@@ -344,6 +348,9 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
     getUiOverride(homey, 'weatherAdvisorReadout') ?? null
   ),
   [buildRouteKey('GET', HOMEY_DEVICES_PATH)]: (homey) => async () => getUiOverride(homey, 'homeyDevices') ?? [],
+  [buildRouteKey('GET', HOMEY_ENERGY_METERS_PATH)]: (homey) => async () => (
+    getUiOverride(homey, 'homeyEnergyMeters') ?? []
+  ),
   // Multi-home membership view. Default mirrors production's boot-window /
   // single-home empty shape (`SettingsUiHomesPayload`).
   [buildRouteKey('GET', SETTINGS_UI_HOMES_PATH)]: (homey) => async () => (

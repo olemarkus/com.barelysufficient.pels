@@ -2,6 +2,8 @@
 import type Homey from 'homey';
 import type { PowerCalibrationSnapshot } from '../packages/contracts/src/powerCalibration';
 import type { DeviceTransport } from '../lib/device/deviceTransport';
+import { fetchLiveMeterItems } from '../lib/device/transport/managerFetch';
+import type { HomeyEnergyMeterEntry } from '../packages/contracts/src/settingsUiApi';
 import { DEVICES_API_PATH, getRawDevices } from '../lib/device/transport/managerHomeyApi';
 import type { DevicePlan } from '../lib/plan/planTypes';
 import type { HomeyDeviceLike } from '../lib/utils/types';
@@ -66,6 +68,29 @@ export async function getHomeyDevicesForDebugFromApp(app: Homey.App): Promise<Ho
     runtimeApp.error?.('Failed to get Homey devices for debug', normalizeError(err));
     return [];
   });
+}
+
+/**
+ * The whole-home meter picker options, resolved from the live energy report
+ * (the meters a selection can actually read) and narrowed to real meters. Every
+ * `cumulative` item is the whole-home meter and always qualifies; a `device`
+ * item qualifies only when its device class is `sensor` — the rest of the
+ * report's `device` items are appliances (EV chargers, heat pumps, plugs), and
+ * offering one as the whole-home meter would make PELS read that single load as
+ * total home power. Names (and the class used for the guard) are joined from the
+ * device list, which the report lacks; an id the device list can't name falls
+ * back to itself. Backs the `homey_energy_meters` endpoint for both pickers.
+ */
+export async function getHomeyEnergyMetersFromApp(app: Homey.App): Promise<HomeyEnergyMeterEntry[]> {
+  const items = await fetchLiveMeterItems();
+  if (items.length === 0) return [];
+  const devices = (await getHomeyDevicesForDebugFromApp(app))
+    .filter((device): device is HomeyDeviceLike & { id: string } => typeof device.id === 'string');
+  const nameById = new Map(devices.map((device) => [device.id, device.name] as const));
+  const classById = new Map(devices.map((device) => [device.id, device.class] as const));
+  return items
+    .filter((item) => item.type === 'cumulative' || classById.get(item.id) === 'sensor')
+    .map((item) => ({ id: item.id, name: nameById.get(item.id) ?? item.id }));
 }
 
 export async function logHomeyDeviceForDebug(params: {

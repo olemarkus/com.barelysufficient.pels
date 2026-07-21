@@ -90,13 +90,19 @@ test.describe('Power source setting', () => {
     expect(stored).toBe('flow');
   });
 
-  test('a saved non-sensor meter (chosen before the filter) stays selectable under its real name', async ({ page }) => {
-    // Backward compat: before the sensor filter the picker listed every
-    // power-reporting device, so a user could have saved e.g. an EV charger.
-    // That selection must survive with its real device name, not "not found".
+  test('offers a resolved sub-meter (unmarked sensor meter), not just the whole-home-marked one', async ({ page }) => {
+    // The "only Automatic" fix: an unmarked but real (sensor-class) sub-meter is
+    // resolved by the endpoint alongside the whole-home cumulative meter. Both
+    // must be offered and selectable — the old picker dropped the sub-meter.
     await page.addInitScript(() => {
       (window as any).__PELS_HOMEY_STUB__ = {
-        settings: { power_source: 'homey_energy', homey_energy_meter_device_id: 'dev_evcharger' },
+        settings: { power_source: 'homey_energy' },
+        apiHandlers: {
+          'GET /homey_energy_meters': () => [
+            { id: 'dev_han', name: 'HAN power meter' },
+            { id: 'dev_subpanel', name: 'Garage submeter' },
+          ],
+        },
       };
     });
     await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -104,15 +110,23 @@ test.describe('Power source setting', () => {
 
     const meterSelect = page.locator('#settings-homey-energy-meter');
     await expect(meterSelect).toBeVisible();
-    await expect(meterSelect).toHaveJSProperty('value', 'dev_evcharger');
-    // Automatic + the HAN sensor + the passthrough entry for the saved charger.
-    const savedOption = meterSelect.locator('md-select-option[value="dev_evcharger"]');
-    await expect(savedOption).toHaveCount(1);
-    await expect(savedOption).toContainText('Generic EV Charger');
-    await expect(savedOption).not.toContainText('not found');
+    // Automatic + both resolved meters (the sub-meter included).
+    await expect(meterSelect.locator('md-select-option')).toHaveCount(3);
+    const subpanel = meterSelect.locator('md-select-option[value="dev_subpanel"]');
+    await expect(subpanel).toContainText('Garage submeter');
+
+    await setMaterialSelectValue(page, '#settings-homey-energy-meter', 'dev_subpanel');
+    await expect(page.locator('#toast')).toContainText('Whole-home meter saved');
+    const stored = await page.evaluate(() => new Promise<unknown>((resolve, reject) => {
+      (window as any).Homey.get(
+        'homey_energy_meter_device_id',
+        (error: Error | null, value?: unknown) => (error ? reject(error) : resolve(value)),
+      );
+    }));
+    expect(stored).toBe('dev_subpanel');
   });
 
-  test('meter-backed source is labelled "Power meter" and lists only sensor-class meters', async ({ page }) => {
+  test('meter-backed source is labelled "Power meter" and lists the energy report meters', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await openLimitsAndSafety(page);
 
@@ -123,8 +137,8 @@ test.describe('Power source setting', () => {
     await setMaterialSelectValue(page, '#settings-power-source', 'homey_energy');
     const meterSelect = page.locator('#settings-homey-energy-meter');
     await expect(meterSelect).toBeVisible();
-    // Automatic + the HAN sensor; the power-reporting thermostats, water
-    // heater, and EV charger in the fixture must not be offered.
+    // Automatic + exactly the meters the Homey Energy report exposes (here the
+    // single whole-home HAN) — not a capability/class-filtered device list.
     await expect(meterSelect.locator('md-select-option')).toHaveCount(2);
     await expect(meterSelect.locator('md-select-option').nth(0)).toContainText('Automatic');
     await expect(meterSelect.locator('md-select-option').nth(1)).toContainText('HAN power meter');

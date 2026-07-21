@@ -1468,6 +1468,16 @@
         { id: 'dev_evcharger', name: 'Generic EV Charger', class: 'evcharger', hasTemperature: false, hasPower: true },
       ];
     },
+    'GET /homey_energy_meters': () => {
+      // Backs both whole-home meter pickers: the meters the endpoint resolved
+      // from the Homey Energy report (whole-home cumulative + sensor-class
+      // device meters), already narrowed to real meters — NOT appliances.
+      // Mirrors the api.ts homey_energy_meters {id,name} shape. The fixture home
+      // reports a single whole-home HAN meter.
+      return [
+        { id: 'dev_han', name: 'HAN power meter' },
+      ];
+    },
     'GET /ui_bootstrap': () => ({
       settings: buildBootstrapSettings(),
       dailyBudget: resolveDailyBudgetPayload(),

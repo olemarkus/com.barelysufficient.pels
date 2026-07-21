@@ -1,5 +1,10 @@
 import { HOMEY_ENERGY_METER_DEVICE_ID, POWER_SOURCE } from '../../../contracts/src/settingsKeys.ts';
-import { SETTINGS_UI_DEVICES_PATH, type SettingsUiDevicesPayload } from '../../../contracts/src/settingsUiApi.ts';
+import {
+  HOMEY_ENERGY_METERS_PATH,
+  SETTINGS_UI_DEVICES_PATH,
+  type HomeyEnergyMeterEntry,
+  type SettingsUiDevicesPayload,
+} from '../../../contracts/src/settingsUiApi.ts';
 import {
   SETTINGS_UI_HOMES_PATH,
   SETTINGS_UI_HOMES_SAVE_PATH,
@@ -52,8 +57,6 @@ import {
 // `ui_homes` is refetched after every save so the list re-renders from the
 // runtime's normalized truth.
 
-type MeterDeviceEntry = { id: string; name: string; hasPower?: boolean };
-
 type DeviceZoneInfo = { name: string; zoneId: string | null; zoneName: string | null };
 
 type HomesEditorState = {
@@ -78,7 +81,7 @@ let loading = false;
 // controls (Add / Edit / Remove / Save) — no degraded copy; it is a transient
 // load lock, not the runtime-can't-vouch lockout.
 let mutationsLocked = true;
-let meterDevices: MeterDeviceEntry[] | null = null;
+let meterDevices: HomeyEnergyMeterEntry[] | null = null;
 let meterDevicesLoading = false;
 let deviceZoneById: Map<string, DeviceZoneInfo> | null = null;
 let deviceZonesLoading = false;
@@ -146,7 +149,6 @@ const buildEditorView = (state: HomesEditorState): HomesEditorView => {
     .filter((error) => kinds.includes(error.kind))
     .map((error) => composeDraftErrorLine(error));
   const meterOptions: HomesPickerOption[] = (meterDevices ?? [])
-    .filter((device) => device.hasPower === true)
     .map((device) => ({
       id: device.id,
       label: composeMeterOptionLabel(device.name, deviceZoneById?.get(device.id)?.zoneName ?? null),
@@ -303,13 +305,13 @@ const refreshMeterDevices = async (): Promise<void> => {
   if (meterDevicesLoading) return;
   meterDevicesLoading = true;
   try {
-    const devices = await callApi<MeterDeviceEntry[] | null>('GET', '/homey_devices');
+    const meters = await callApi<HomeyEnergyMeterEntry[] | null>('GET', HOMEY_ENERGY_METERS_PATH);
     // An empty result never overwrites last-good (it can be transient) —
     // mirrors the whole-home meter picker in homeyEnergyMeter.ts.
-    if (devices !== null && devices.length > 0) meterDevices = devices;
+    if (meters !== null && meters.length > 0) meterDevices = meters;
     renderSection();
   } catch (error) {
-    await logSettingsError('Failed to load devices for the meter picker', error, 'homesSettings');
+    await logSettingsError('Failed to load meters for the meter picker', error, 'homesSettings');
   } finally {
     meterDevicesLoading = false;
   }
