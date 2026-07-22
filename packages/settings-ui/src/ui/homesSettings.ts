@@ -92,6 +92,11 @@ let writeBusy = false;
 // rule: raw settings resolve to a trimmed string or flat null.
 let powerSource: string | null = null;
 let mainMeterDeviceId: string | null = null;
+// True once `power_source` has been READ SUCCESSFULLY at least once this
+// activation. Distinguishes a genuinely-absent value (unset install → the
+// runtime treats it as Flow, so warn) from the pre-read boot window and a
+// transient read error (unknown → stay silent, no flash / no false alarm).
+let powerSourceResolved = false;
 
 const asNonEmptyString = (value: unknown): string | null => (
   typeof value === 'string' && value.trim().length > 0 ? value : null
@@ -218,39 +223,11 @@ const resolveSectionStatus = (): 'loading' | 'error' | 'ready' => {
   return loadFailed ? 'error' : 'loading';
 };
 
-const HOMES_NAV_CARD_ID = 'homes-nav-card';
-
-/**
- * Un-hide the "Multiple meters" nav card only when the hidden multi_home_enabled
- * flag is on (default off). Called at boot from the bootstrap-primed flag, so
- * the whole U1 entry point stays unreachable on a patch release from main. The
- * card ships `hidden` in index.html, so a boot failure fails safe (stays hidden).
- */
-// The boot-primed flag value, captured when the nav card visibility is applied.
-// It seeds the pre-payload render default below so the section fails SAFE (off)
-// while the first ui_homes read is still in flight, rather than assuming enabled.
-let bootMultiHomeEnabled = false;
-
-export const applyMultiHomeNavVisibility = (multiHomeEnabled: boolean): void => {
-  bootMultiHomeEnabled = multiHomeEnabled;
-  const card = document.getElementById(HOMES_NAV_CARD_ID);
-  if (card) card.hidden = !multiHomeEnabled;
-};
-
 const renderSection = (): void => {
   const mount = document.getElementById('homes-settings-mount');
   if (!mount) return;
   const status = resolveSectionStatus();
   renderHomesSettingsSection(mount, {
-    // Belt-and-suspenders render gate: when the flag is off the runtime reports
-    // multiHomeEnabled=false and the section renders nothing, even if the panel
-    // is somehow reached with the nav card hidden. Before the first payload
-    // lands we fall back to the boot-primed flag (default off) rather than
-    // assuming enabled — so a hidden-flag install renders nothing in the
-    // pre-load window too, and an enabled install still shows the skeleton.
-    multiHomeEnabled: latestPayload === null
-      ? bootMultiHomeEnabled
-      : latestPayload.multiHomeEnabled,
     status,
     homes: currentHomes().map((home) => ({
       homeId: home.homeId,
@@ -273,6 +250,13 @@ const renderSection = (): void => {
       powerSource,
       mainMeterDeviceId,
     }),
+    // Flow power source: meter areas can't be measured (a Flow reading has no
+    // meter identity). Mirror the runtime's `normalizePowerSource`, which treats
+    // anything but 'homey_energy' — INCLUDING an absent setting — as Flow. Gate
+    // on a successful read so the pre-read boot window and a transient read error
+    // stay silent (no flash, no false alarm) while a genuinely-unset install
+    // (which the runtime runs as Flow) still gets warned.
+    showFlowSourceNotice: powerSourceResolved && powerSource !== 'homey_energy',
     editor: editor === null ? null : buildEditorView(editor),
     confirmingDeleteHomeId,
     deleteBusy: writeBusy,
@@ -533,10 +517,12 @@ const refreshMainMeterNoticeInputs = async (): Promise<void> => {
   try {
     powerSource = asNonEmptyString(await getSettingFresh(POWER_SOURCE));
     mainMeterDeviceId = asNonEmptyString(await getSettingFresh(HOMEY_ENERGY_METER_DEVICE_ID));
+    powerSourceResolved = true;
   } catch (error) {
     // Notice inputs are a nudge, not a gate: unknown reads to null (no notice).
     powerSource = null;
     mainMeterDeviceId = null;
+    powerSourceResolved = false;
     await logSettingsError('Failed to read main-meter notice settings', error, 'homesSettings');
   }
 };

@@ -4,8 +4,10 @@ The home model that underpins the user-facing **Multiple meters** feature: one
 Homey Pro, several whole-home meters, each metering a distinct part of the home
 (a rental unit, an annex, a cabin). This note is the contributor-facing
 invariants record for the whole v1 train (R1–R8 + R7b per-home bundles + U1/U3
-UI + the release feature flag). For the first behavior-affecting slice — main
-becoming the membership complement — see [multi-home-complement](multi-home-complement.md);
+UI). The feature is now generally available; the hidden `multi_home_enabled`
+release flag that formerly gated it has been removed. For the first
+behavior-affecting slice — main becoming the membership complement — see
+[multi-home-complement](multi-home-complement.md);
 for the user-facing vocabulary, see the "Multiple meters vocabulary" section of
 [ui-terminology](ui-terminology.md).
 
@@ -87,41 +89,28 @@ meter area — do not conflate the two codes. Flow cards + widgets remain
 whole-home. The home device driver + device-scoped flow cards are a deferred
 follow-up train.
 
-## The release feature flag
+## Availability (generally available)
 
-`multi_home_enabled` (a hidden boolean setting, **default false**) gates the
-whole feature so patch releases cut from `main` never expose it. One reader,
-`setup/multiHomeFlag.ts` `isMultiHomeEnabled` (`=== true`), so every gate
-decides identically:
-
-- **Membership recompute** short-circuits to single-home identity
-  (`hasSubHomes()` false, every device → main, empty map, not degraded).
-- **Runtime registry reconcile** reconciles to **zero** bundles regardless of
-  `homes_config`, tearing down any that survive a flip-off.
-- **`ui_homes_save`** refuses with a typed `disabled` reason before any store
-  read; **`ui_homes` (read)** short-circuits to a trivially-inert payload
-  (`zoneTree: null`) so an off install never even emits the cached zone tree.
-- **UI**: the "Multiple meters" nav card ships `hidden` and is un-hidden only
-  from the boot-primed flag; the per-home Limits switcher and the homes section
-  gate on it, failing safe to hidden.
-
-Flipping the flag re-triggers membership recompute + registry reconcile via the
-settings handler, so off→on activates against an existing `homes_config` and
-on→off returns to all-main. The known off-purity gap (the transport zone-tree
-fetch still runs when off — harmless, read-only, unconsumed) and the
-test-Homey-only flip-transition edges are tracked in `TODO.md`; neither is
-reachable on a release that ships off and never flips.
+Multi-home is always on. It ships dormant by data, not by a flag: with no
+`homes_config` set, membership resolves every device to main, the registry
+reconciles to zero bundles, and the "Multiple meters" panel shows only its
+empty-state explainer — so a single-meter home is behaviourally unchanged. The
+feature "activates" the moment the owner creates a meter area. Historically, a
+hidden `multi_home_enabled` flag gated all of this for staged releases; it and
+its reader (`setup/multiHomeFlag.ts`) have been removed, so membership always
+recomputes, the registry always reconciles from `homes_config`, `ui_homes`
+always serves the full payload, and the nav card + per-home Limits switcher are
+always present (the switcher appears once at least one meter area exists).
 
 ## Reference implementations
 
 | Concern | File |
 |---|---|
 | Membership resolver (pure) | `lib/home/membership.ts` |
-| Membership service (cache, recompute triggers, inert off-path) | `setup/homeMembership.ts` |
+| Membership service (cache, recompute triggers) | `setup/homeMembership.ts` |
 | Complement filter (one seam, provenance-free) | `filterDevicesForHome` in `setup/homeMembership.ts` |
 | Per-home bundle registry + lifecycle | `setup/homeRuntime/homeRuntimeRegistry.ts` |
 | HomeScope (main vs sub) | `setup/homeRuntime/homeScope.ts` |
 | Per-meter live read | `extractLiveMeterPowerWatts` (power source) |
 | Suffixed key helper (`homeScopedSettingsKey`) | `lib/utils/settingsKeys.ts` |
-| Feature-flag reader | `setup/multiHomeFlag.ts` |
 | Read/write UI seam | `setup/settingsUiApi.ts` |

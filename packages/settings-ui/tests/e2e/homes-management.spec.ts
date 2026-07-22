@@ -30,7 +30,17 @@ test('empty state shows only the explainer and the Add affordance', async ({ pag
   await expect(page.locator('#homes-empty-explainer')).toBeVisible();
   await expect(page.locator('#homes-empty-explainer')).toContainText('instead of the Main home');
   await expect(page.locator('#homes-list')).toHaveCount(0);
+  await expect(page.locator('#homes-flow-source-notice')).toHaveCount(0);
   await expect(page.locator('#homes-add-button')).toBeVisible();
+});
+
+test('flow power source warns that meter areas need Homey Energy', async ({ page }) => {
+  await gotoApp(page);
+  // The runtime treats a non-Homey-Energy source (including unset) as Flow.
+  await seedStubSetting(page, 'power_source', 'flow');
+  await openHomesPanel(page);
+  await expect(page.locator('#homes-flow-source-notice')).toBeVisible();
+  await expect(page.locator('#homes-flow-source-notice')).toContainText('Homey Energy power source');
 });
 
 test('create flow prefills zone by the ancestor walk, names it after the zone, and persists', async ({ page }) => {

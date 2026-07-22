@@ -33,7 +33,6 @@ import {
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   HOMEY_ENERGY_METER_DEVICE_ID,
-  MULTI_HOME_ENABLED,
 } from '../../lib/utils/settingsKeys';
 import { drainPending } from '../utils/asyncDrain';
 
@@ -88,9 +87,6 @@ const installApiRoutes = () => {
 };
 
 const configureMainCapacity = (limitKw: number) => {
-  // Enable the hidden multi-home feature flag (default off) so the app builds
-  // per-home bundles from homes_config in these e2e scenarios.
-  mockHomeyInstance.settings.set(MULTI_HOME_ENABLED, true);
   mockHomeyInstance.settings.set('power_source', 'homey_energy');
   mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'm-main');
   mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, limitKw);

@@ -1191,7 +1191,6 @@
     device_control_profiles: settings.device_control_profiles,
     deferred_objectives: settings.deferred_objectives,
     weather_advisor_settings: settings.weather_advisor_settings,
-    multi_home_enabled: settings.multi_home_enabled,
   });
 
   // Sample weather-insight readout, mirroring the real producer
@@ -1408,7 +1407,6 @@
         : { homeId: 'main', source: 'zone' };
     });
     return {
-      multiHomeEnabled: settings.multi_home_enabled === true,
       homes: subHomes,
       membershipByDeviceId,
       zoneTree: HOMES_ZONE_TREE,

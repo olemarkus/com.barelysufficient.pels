@@ -80,11 +80,6 @@ type AreaEditorState = {
 let meterAreas: MeterArea[] = [];
 let selectedHomeId: string = MAIN_HOME_ID;
 let areaEditor: AreaEditorState | null = null;
-// The hidden multi-home feature flag (`ui_homes` `multiHomeEnabled`). Default
-// off; the per-home switcher stays hidden until it reads true. With the flag off
-// the runtime already reports zero meter areas, but gating on the flag too keeps
-// the surface airtight and reactive to a flag flip.
-let multiHomeEnabled = false;
 
 // Fire-and-forget guard for a discarded async settings load (an area switch, a
 // realtime reload). A rejected fetch must never surface as an unhandled
@@ -154,9 +149,9 @@ const buildAreaEditorView = (editor: AreaEditorState): HomeLimitsEditorView => {
 const renderSection = (): void => {
   const mount = document.getElementById(HOME_LIMITS_MOUNT_ID);
   if (!mount) return;
-  // Flag off (default) → hidden regardless of roster: the per-home switcher and
-  // Main's static form stay pixel-identical to the pre-multi-home UX.
-  const visible = multiHomeEnabled && meterAreas.length > 0;
+  // The switcher appears once at least one meter area exists; with none, the
+  // panel stays pixel-identical to a single-meter home (just Main's form).
+  const visible = meterAreas.length > 0;
   // The mount ships `hidden` (display:none) so an empty node never occupies a
   // grid track in the panel — with 0 meter areas the panel stays pixel-identical
   // to origin/main (no stray gap between the app bar and the Main form). Only a
@@ -333,7 +328,6 @@ const fetchMeterAreas = async (): Promise<void> => {
     const payload = await callApi<SettingsUiHomesPayload>('GET', SETTINGS_UI_HOMES_PATH);
     // Only an authoritative (successful) response reshapes the roster — an empty
     // `homes` here is a real "no meter areas" state and correctly clears it.
-    multiHomeEnabled = payload.multiHomeEnabled === true;
     meterAreas = payload.homes.map((home) => ({ homeId: home.homeId, name: home.name }));
   } catch (caught) {
     // Abandon-grace (mirrors homesSettings' pickers): a transient read failure

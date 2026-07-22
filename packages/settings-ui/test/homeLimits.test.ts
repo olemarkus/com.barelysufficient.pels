@@ -35,7 +35,6 @@ const flushAsync = async () => {
 };
 
 const homesPayload = () => ({
-  multiHomeEnabled: true,
   homes: [{ homeId: AREA_ID, name: 'Utleie', rootZoneId: 'z1', meterDeviceId: 'dev_a' }],
   membershipByDeviceId: {},
   zoneTree: null,
@@ -127,24 +126,6 @@ describe('switcher + static-form visibility', () => {
     expect(document.querySelector<HTMLElement>('#home-limits-mount')!.hidden).toBe(false);
   });
 
-  it('keeps the switcher hidden when the multi-home feature flag is off, even with meter areas present', async () => {
-    // Airtight gate: the runtime reports zero areas when off, but even a stray
-    // area list must not surface the switcher while multiHomeEnabled is false.
-    const flagOff = installHomeyMock({
-      uiState: {
-        homes: {
-          multiHomeEnabled: false,
-          homes: [{ homeId: AREA_ID, name: 'Utleie', rootZoneId: 'z1', meterDeviceId: 'dev_a' }],
-          membershipByDeviceId: {}, zoneTree: null, hasSubHomes: true, configDegraded: false,
-        },
-      },
-    });
-    setHomeyClient(flagOff as never);
-    await refreshHomeLimitsOnLimitsPanel();
-    await flushAsync();
-    expect(document.querySelector<HTMLElement>('#home-limits-mount')!.hidden).toBe(true);
-    expect(staticForm()!.hidden).toBe(false);
-  });
 });
 
 describe('control toggle — optimistic rollback + serialization', () => {
@@ -362,7 +343,6 @@ describe('transient refresh error keeps the last-good roster (abandon-grace)', (
 describe('homes_config change refreshes the switcher roster', () => {
   const AREA_TWO = 'h_two';
   const twoAreaHomes = () => ({
-    multiHomeEnabled: true,
     homes: [
       { homeId: AREA_ID, name: 'Utleie', rootZoneId: 'z1', meterDeviceId: 'dev_a' },
       { homeId: AREA_TWO, name: 'Hytta', rootZoneId: 'z2', meterDeviceId: 'dev_b' },

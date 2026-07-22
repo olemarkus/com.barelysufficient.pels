@@ -64,6 +64,11 @@ const prepareShot = async (page: Page, shot: Shot): Promise<void> => {
   if (shot !== 'editor') await seedRentalArea(page);
 
   if (shot === 'list' || shot === 'editor') {
+    if (shot === 'list') {
+      // Give Main its own meter so the (separate) whole-home-meter nudge stays
+      // out of this "here is a configured area" shot; it has its own doc section.
+      await seedStubSetting(page, 'homey_energy_meter_device_id', 'dev_main_meter');
+    }
     await openHomesPanel(page);
     if (shot === 'list') {
       await expect(page.locator('.homes-settings__row')).toHaveCount(1);
@@ -82,9 +87,11 @@ const prepareShot = async (page: Page, shot: Shot): Promise<void> => {
   if (shot === 'limits-active') {
     await seedStubSetting(page, `capacity_dry_run:${AREA_ID}`, false);
   }
+  // Same device count in both limits shots so the simulating→active pair reads
+  // as one area before/after turning control on, not a phantom count change.
   await seedStubSetting(page, `pels_status:${AREA_ID}`, {
     controlledKw: 2.5, uncontrolledKw: 1.5, powerKnown: true, hasLivePowerSample: true,
-    devicesOff: shot === 'limits-active' ? 1 : 2, limitReason: 'hourly',
+    devicesOff: 1, limitReason: 'hourly',
   });
   await openLimitsPanel(page);
   await switchToArea(page);

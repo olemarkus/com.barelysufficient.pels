@@ -39,7 +39,6 @@ import {
   CAPACITY_LIMIT_KW,
   DEVICE_LAST_CONTROLLED_MS,
   MAIN_HOME_ID,
-  MULTI_HOME_ENABLED,
   POWER_SOURCE,
   POWER_TRACKER_STATE,
 } from '../../lib/utils/settingsKeys';
@@ -96,9 +95,6 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     // now mirrors the poll source's power-source discard guard, so the harness
     // reflects the sole production routing condition.
     mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
-    // Enable the hidden multi-home feature flag (default off) so the registry
-    // reconciles per-home bundles from homes_config.
-    mockHomeyInstance.settings.set(MULTI_HOME_ENABLED, true);
     rig = buildRig();
   });
 
@@ -708,42 +704,6 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     // Gated on homey_energy: the heartbeat suspends escalation, so no fail-closed
     // rebuild fires on the now-orphaned stale sample (pre-fix it would shed).
     expect(rebuildSpy.mock.calls.filter(([reason]) => reason === 'freshness_heartbeat')).toEqual([]);
-  });
-
-  it('feature flag OFF: reconciles to ZERO bundles regardless of homes_config; a flip on↔off builds then tears down', async () => {
-    createHomesStore(homeyLike).write({ subHomes: [HOME_A, HOME_B] });
-
-    // Flag off (default): homes_config is ignored — no per-home bundles run.
-    mockHomeyInstance.settings.set(MULTI_HOME_ENABLED, false);
-    rig.registry.reconcile();
-    await drainPending();
-    expect(rig.registry.getBundleHomeIds()).toEqual([]);
-
-    // Flip on: the SAME homes_config now builds both bundles.
-    mockHomeyInstance.settings.set(MULTI_HOME_ENABLED, true);
-    rig.registry.reconcile();
-    await drainPending();
-    expect(rig.registry.getBundleHomeIds().sort()).toEqual(['h_a', 'h_b']);
-
-    // Flip off: bundles are torn down even though homes_config still lists them,
-    // and their home-scoped timers go with them.
-    mockHomeyInstance.settings.set(MULTI_HOME_ENABLED, false);
-    rig.registry.reconcile();
-    await drainPending();
-    expect(rig.registry.getBundleHomeIds()).toEqual([]);
-    expect(rig.ctx.timers.has('home:h_a:trackerPruneInterval')).toBe(false);
-    expect(rig.ctx.timers.has('home:h_b:trackerPruneInterval')).toBe(false);
-  });
-
-  it('feature flag OFF: a SUSPECT homes-config read still yields ZERO bundles (the off gate precedes the suspect keep)', async () => {
-    createHomesStore(homeyLike).write({ subHomes: [HOME_A] });
-    mockHomeyInstance.settings.set(MULTI_HOME_ENABLED, false);
-    // Junk blob with the written-before marker → classifies 'suspect'. With the
-    // feature enabled this KEEPS bundles; with it disabled there are none to keep.
-    mockHomeyInstance.settings.set('homes_config', 'garbage');
-    rig.registry.reconcile();
-    await drainPending();
-    expect(rig.registry.getBundleHomeIds()).toEqual([]);
   });
 });
 

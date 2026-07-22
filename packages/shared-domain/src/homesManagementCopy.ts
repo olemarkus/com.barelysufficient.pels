@@ -168,6 +168,18 @@ export const HOMES_MAIN_METER_NOTICE = 'Right now PELS reads the combined total 
   + 'home’s own meter — “Whole-home meter”, under Limits & safety.';
 export const HOMES_MAIN_METER_NOTICE_LINK = 'Open Limits & safety';
 
+// ── Flow power-source notice ───────────────────────────────────────────────
+
+/**
+ * Shown while the power source is Flow (not Homey Energy). Meter areas read each
+ * meter's own live power from the Homey Energy report; a Flow power reading
+ * carries no meter identity, so an area configured under Flow receives no
+ * samples and is never limited. Consequence-first, names the requirement.
+ */
+export const HOMES_FLOW_SOURCE_NOTICE = 'Meter areas need the Homey Energy power source. On the '
+  + 'Flow power source PELS can’t tell which meter a reading belongs to, so an area you add here '
+  + 'won’t be limited.';
+
 // ── Load / save states ─────────────────────────────────────────────────────
 
 export const HOMES_LOAD_FAILED = 'Couldn’t load your meter areas. '

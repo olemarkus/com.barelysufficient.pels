@@ -9,6 +9,7 @@ import {
   HOMES_ADD_BUTTON,
   HOMES_CONFIG_DEGRADED,
   HOMES_EMPTY_EXPLAINER,
+  HOMES_FLOW_SOURCE_NOTICE,
   HOMES_LOAD_FAILED,
   HOMES_MAIN_HOME_NOTE,
   HOMES_MAIN_METER_NOTICE,
@@ -28,13 +29,13 @@ import {
 const noop = (): void => {};
 
 const baseProps = (): HomesSettingsSectionProps => ({
-  multiHomeEnabled: true,
   status: 'ready',
   homes: [],
   zonesAvailable: true,
   configDegraded: false,
   mutationsLocked: false,
   showMainMeterNotice: false,
+  showFlowSourceNotice: false,
   editor: null,
   confirmingDeleteHomeId: null,
   deleteBusy: false,
@@ -95,18 +96,29 @@ afterEach(() => {
 });
 
 describe('feature flag gate', () => {
-  it('renders nothing when the multi-home feature flag is off', () => {
-    const surface = mountWith({ ...baseProps(), multiHomeEnabled: false, homes: [rentalRow] });
-    expect(surface.textContent).toBe('');
-    expect(surface.querySelector('#homes-list')).toBeNull();
-    expect(surface.querySelector('#homes-add-button')).toBeNull();
-    expect(surface.textContent).not.toContain(HOMES_EMPTY_EXPLAINER);
-  });
-
-  it('renders the section when the flag is on', () => {
-    const surface = mountWith({ ...baseProps(), multiHomeEnabled: true });
+  it('renders the section', () => {
+    const surface = mountWith(baseProps());
     expect(surface.textContent).toContain(HOMES_EMPTY_EXPLAINER);
     expect(surface.textContent).toContain(HOMES_ADD_BUTTON);
+  });
+});
+
+describe('flow power-source notice', () => {
+  it('warns in the empty state when the power source is Flow', () => {
+    const surface = mountWith({ ...baseProps(), showFlowSourceNotice: true });
+    expect(surface.querySelector('#homes-flow-source-notice')).not.toBeNull();
+    expect(surface.textContent).toContain(HOMES_FLOW_SOURCE_NOTICE);
+  });
+
+  it('warns in the list state too, so an existing area on Flow is not silent', () => {
+    const surface = mountWith({ ...baseProps(), homes: [rentalRow], showFlowSourceNotice: true });
+    expect(surface.querySelector('#homes-flow-source-notice')).not.toBeNull();
+  });
+
+  it('shows nothing on Homey Energy (or an unknown power source)', () => {
+    const surface = mountWith({ ...baseProps(), showFlowSourceNotice: false });
+    expect(surface.querySelector('#homes-flow-source-notice')).toBeNull();
+    expect(surface.textContent).not.toContain(HOMES_FLOW_SOURCE_NOTICE);
   });
 });
 

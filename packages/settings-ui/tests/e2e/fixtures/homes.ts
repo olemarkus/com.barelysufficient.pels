@@ -98,22 +98,16 @@ export const seedRentalArea = async (page: Page): Promise<void> => {
 };
 
 export const gotoApp = async (page: Page): Promise<void> => {
-  // Enable the hidden multi-home feature flag (default off) BEFORE boot, so the
-  // bootstrap un-hides the "Multiple meters" nav card and the ui_homes payload
-  // reports multiHomeEnabled. Merges into any earlier __PELS_HOMEY_STUB__
-  // override (device list / degraded payload) so their apiHandlers survive.
-  await page.addInitScript(() => {
-    const stubWindow = window as StubWindow;
-    stubWindow.__PELS_HOMEY_STUB__ = {
-      ...(stubWindow.__PELS_HOMEY_STUB__ ?? {}),
-      settings: {
-        ...(stubWindow.__PELS_HOMEY_STUB__?.settings ?? {}),
-        multi_home_enabled: true,
-      },
-    };
-  });
+  // Multiple meters is always on: the bootstrap un-hides the nav card and serves
+  // the ui_homes payload unconditionally — no pre-boot seeding required. Any
+  // earlier __PELS_HOMEY_STUB__ override (device list / degraded payload)
+  // installed by a sibling fixture stays intact.
   await page.goto('/', { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => typeof (window as { Homey?: unknown }).Homey === 'object');
+  // Meter areas require the Homey Energy power source; the runtime never writes a
+  // default, so these fixtures model the Homey Energy owner explicitly. A spec
+  // that exercises the Flow warning overrides this afterwards.
+  await seedStubSetting(page, 'power_source', 'homey_energy');
 };
 
 /** Seed an arbitrary stub setting (e.g. power_source) before panel activation. */
@@ -134,7 +128,6 @@ export const installDegradedHomesPayload = async (page: Page): Promise<void> => 
       apiHandlers: {
         ...(stubWindow.__PELS_HOMEY_STUB__?.apiHandlers ?? {}),
         'GET /ui_homes': () => ({
-          multiHomeEnabled: true,
           homes: [{
             homeId: 'h_11111111', name: 'Rental unit', rootZoneId: 'z_rental', meterDeviceId: 'dev_rental_meter',
           }],

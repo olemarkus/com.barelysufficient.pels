@@ -23,13 +23,12 @@ import type { Logger as PinoLogger } from '../../lib/logging/logger';
 import type { ZoneTree } from '../../lib/home/homeConfig';
 import { createSettingsHandler, type SettingsHandlerDeps } from '../../lib/utils/settingsHandlers';
 import {
-  DEVICE_HOME_ASSIGNMENTS, HOMES_CONFIG, MAIN_HOME_ID, MULTI_HOME_ENABLED,
+  DEVICE_HOME_ASSIGNMENTS, HOMES_CONFIG,
 } from '../../lib/utils/settingsKeys';
 import {
   createDeviceHomeAssignmentsStore,
   createHomesStore,
 } from '../../setup/homeRegistryAdapter';
-import { isMultiHomeEnabled } from '../../setup/multiHomeFlag';
 import {
   createHomeMembershipService,
   HomeMembershipService,
@@ -97,7 +96,6 @@ const makeStaticService = (params: {
   getZoneTree: params.getZoneTree,
   getDevices: () => params.devices,
   getLogger: () => params.logger,
-  isMultiHomeEnabled: () => isMultiHomeEnabled(homeyLike.settings),
 });
 
 // A homey whose app carries a WIRED, non-degraded membership service (real
@@ -125,9 +123,6 @@ const settleDetachedZoneFetch = async (): Promise<void> => (
 
 beforeEach(() => {
   mockHomeyInstance.settings.clear();
-  // Enable the hidden multi-home feature flag (default off) so these suites
-  // keep exercising the feature after the flag gate landed.
-  mockHomeyInstance.settings.set(MULTI_HOME_ENABLED, true);
   setMockZones({ ...ZONES });
   setMockDrivers({});
 });
@@ -433,7 +428,6 @@ describe('settings-change recompute triggers', () => {
       getZoneTree: () => ZONES,
       getDevices: () => devices,
       getLogger: () => undefined,
-      isMultiHomeEnabled: () => isMultiHomeEnabled(homeyLike.settings),
       onMembershipChanged,
     });
     const handler = createSettingsHandler(buildHandlerDeps(() => service.recompute()));
@@ -543,7 +537,6 @@ describe('last-known zone retention', () => {
     getZoneTree: () => ZONES,
     getDevices: params.getDevices,
     getLogger: () => params.logger,
-    isMultiHomeEnabled: () => isMultiHomeEnabled(homeyLike.settings),
   });
 
   it('keeps membership through a one-cycle zone omission, with a structured debug log on retention use', () => {
@@ -654,7 +647,6 @@ describe('ui_homes payload', () => {
       app: { homeMembership: service }, settings: mockHomeyInstance.settings,
     } as unknown as Homey.App['homey'];
     const expectedPayload = {
-      multiHomeEnabled: true,
       homes: [SUB_HOME_A],
       membershipByDeviceId: {
         dev1: { homeId: 'h_a', source: 'zone' },
@@ -674,7 +666,6 @@ describe('ui_homes payload', () => {
       app: {}, settings: mockHomeyInstance.settings,
     } as unknown as Homey.App['homey'];
     expect(getSettingsUiHomesPayload({ homey: homeyWithoutService })).toEqual({
-      multiHomeEnabled: true,
       homes: [],
       membershipByDeviceId: {},
       zoneTree: null,
@@ -682,35 +673,6 @@ describe('ui_homes payload', () => {
       // Nothing can vouch for the persisted config in the boot window: the
       // settings UI must refuse whole-value homes_config writes.
       configDegraded: true,
-    });
-  });
-
-  it('OFF short-circuits BEFORE diagnostics: a warm cached zone tree is never emitted', () => {
-    // The membership service's inert recompute keeps the zone-tree cache warm
-    // for a flip-back, so a service that was ON can still hold sub-homes + a
-    // zone tree in its diagnostics. With the flag OFF the read endpoint must
-    // short-circuit and emit NONE of it — proving OFF is byte-identical to the
-    // pre-multi-home world, not merely "reports enabled:false while leaking".
-    mockHomeyInstance.settings.set(MULTI_HOME_ENABLED, false);
-    const leakyService = {
-      getDiagnostics: () => ({
-        subHomes: [SUB_HOME_A],
-        membershipByDeviceId: { dev1: { homeId: 'h_a', source: 'zone' } },
-        zoneTree: ZONES,
-        hasSubHomes: true,
-        configDegraded: false,
-      }),
-    };
-    const homeyWithApp = {
-      app: { homeMembership: leakyService }, settings: mockHomeyInstance.settings,
-    } as unknown as Homey.App['homey'];
-    expect(getSettingsUiHomesPayload({ homey: homeyWithApp })).toEqual({
-      multiHomeEnabled: false,
-      homes: [],
-      membershipByDeviceId: {},
-      zoneTree: null,
-      hasSubHomes: false,
-      configDegraded: false,
     });
   });
 
@@ -890,7 +852,6 @@ describe('HomeMembershipService — zone-tree-commit readiness edge', () => {
     getZoneTree: params.getZoneTree,
     getDevices: () => [],
     getLogger: () => undefined,
-    isMultiHomeEnabled: () => isMultiHomeEnabled(homeyLike.settings),
     onZoneTreeCommitReady: params.onZoneTreeCommitReady,
   });
 
@@ -917,67 +878,5 @@ describe('HomeMembershipService — zone-tree-commit readiness edge', () => {
     tree = ZONES as unknown as ZoneTree;
     service.recompute();
     expect(onReady).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe('multi_home_enabled feature flag (default off)', () => {
-  it('OFF: ignores a populated homes_config + pins — no sub-homes, every device main, empty membership map', () => {
-    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME_A] });
-    createDeviceHomeAssignmentsStore(homeyLike).write({ dev1: 'h_a' });
-    mockHomeyInstance.settings.set(MULTI_HOME_ENABLED, false);
-    const service = makeStaticService({
-      getZoneTree: () => ZONES,
-      devices: [{ deviceId: 'dev1', zoneId: 'z2' }, { deviceId: 'dev2', zoneId: 'z3' }],
-    });
-    service.recompute();
-    expect(service.hasSubHomes()).toBe(false);
-    expect(service.getHomeIdForDevice('dev1')).toBe(MAIN_HOME_ID);
-    expect(service.getHomeIdForDevice('dev2')).toBe(MAIN_HOME_ID);
-    expect(service.getMembershipMap()).toEqual({});
-    // ui_homes reports the feature off, no homes, not degraded (the config is
-    // simply unused — nothing to vouch for).
-    const homeyWithApp = {
-      app: { homeMembership: service }, settings: mockHomeyInstance.settings,
-    } as unknown as Homey.App['homey'];
-    const payload = getSettingsUiHomesPayload({ homey: homeyWithApp });
-    expect(payload.multiHomeEnabled).toBe(false);
-    expect(payload.homes).toEqual([]);
-    expect(payload.hasSubHomes).toBe(false);
-    expect(payload.configDegraded).toBe(false);
-  });
-
-  it('OFF: ui_homes_save refuses (disabled) and never mutates homes_config, even with a wired healthy service', () => {
-    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME_A] });
-    mockHomeyInstance.settings.set(MULTI_HOME_ENABLED, false);
-    const homey = makeWiredHealthyHomey();
-    expect(saveSettingsUiHomesConfig({
-      homey,
-      body: { op: 'upsert', area: { name: 'Garage flat', rootZoneId: 'z3', meterDeviceId: null } },
-    })).toEqual({ ok: false, reason: 'disabled' });
-    const read = createHomesStore(homeyLike).read();
-    expect(read.state === 'present' && read.value.subHomes).toEqual([SUB_HOME_A]);
-  });
-
-  it('flip off→on activates the sub-home; on→off returns to all-main (deactivation)', () => {
-    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME_A] });
-    const service = makeStaticService({
-      getZoneTree: () => ZONES,
-      devices: [{ deviceId: 'dev1', zoneId: 'z2' }],
-    });
-
-    mockHomeyInstance.settings.set(MULTI_HOME_ENABLED, false);
-    service.recompute();
-    expect(service.hasSubHomes()).toBe(false);
-    expect(service.getHomeIdForDevice('dev1')).toBe(MAIN_HOME_ID);
-
-    mockHomeyInstance.settings.set(MULTI_HOME_ENABLED, true);
-    service.recompute();
-    expect(service.hasSubHomes()).toBe(true);
-    expect(service.getHomeIdForDevice('dev1')).toBe('h_a');
-
-    mockHomeyInstance.settings.set(MULTI_HOME_ENABLED, false);
-    service.recompute();
-    expect(service.hasSubHomes()).toBe(false);
-    expect(service.getHomeIdForDevice('dev1')).toBe(MAIN_HOME_ID);
   });
 });
