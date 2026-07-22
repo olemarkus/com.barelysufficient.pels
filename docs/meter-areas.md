@@ -6,8 +6,8 @@ description: Give a rental unit, annex, or cabin its own capacity limit by measu
 # Meter Areas
 
 Some homes have more than one electricity meter. A rental unit, an annex, or a
-cabin on the same property often has its own meter and its own grid tariff step
-(effekttrinn). **Meter areas** let PELS treat each of those parts of your home
+cabin often has its own meter and its own grid tariff step (effekttrinn).
+**Meter areas** let PELS treat each of those parts of your home
 as a separate capacity budget: it counts a part's devices against *that part's*
 meter and keeps each one under its own limit — instead of lumping everything
 together under one whole-home cap.
@@ -23,13 +23,22 @@ Set up a meter area when a part of your home:
 - Has its **own capacity limit** you want to hold — most often its own grid
   tariff step, billed separately from the main house.
 
-The classic case is a rental unit ("hybel") with a separate meter and a
-separate bill. Without meter areas, a busy evening in the rental would eat into
-the main house's available power (and the other way around). With a meter area,
-each part stays under its own cap on its own terms.
+The classic case is a rental unit with a separate meter and a separate bill.
+Without meter areas, a busy evening in the rental would eat into the main
+house's available power (and the other way around). With a meter area, each
+part stays under its own cap on its own terms.
 
 **If your whole home is on a single meter, you don't need this.** One meter is
 the Main home, and the [hourly hard cap](configuration.md) already covers it.
+
+::: tip A meter area can be somewhere else entirely
+The parts don't have to share a building. A cabin at another address works too,
+as long as its devices are **cloud-connected** — Wi-Fi or cloud integrations,
+controlled over the internet — so your Homey Pro can manage them from afar. Only
+devices on a **local** radio (Zigbee, Z-Wave, Bluetooth, 433 MHz) need the Homey
+physically nearby; a remote place with just those can't be reached. A cabin
+whose devices are all cloud-connected can be run entirely remotely.
+:::
 
 ## What you'll need
 
@@ -67,11 +76,15 @@ It also pre-suggests a zone based on where the meter sits, and warns you if the
 meter you picked sits *outside* the zone you chose — usually a sign the zone is
 too narrow.
 
+![The New meter area form in PELS: Meter set to the rental's meter, Zone set to the rental unit with a live "1 device in this zone and its sub-zones" count, and a Name field](/screenshots/meter-areas/editor.png)
+
 When you save, the area appears in the list with its meter, zone, and device
 count. Its devices are now **assigned to the area and measured against its
 meter** right away. Actually *limiting* them is a separate, deliberate step —
 a new area only simulates until you turn on control (see below), so nothing in
 it is turned down the moment you save.
+
+![The Multiple meters panel showing one meter area, "Rental unit", with its meter, zone and device count, a note that devices outside these areas belong to the Main home, and an Add meter area button](/screenshots/meter-areas/list.png)
 
 ::: tip The Main home is automatic
 You never configure the Main home. It's simply everything that *isn't* in a
@@ -96,6 +109,8 @@ Below those, a readout shows where the safe pace starts each hour (the hard cap
 minus the safety margin), so you can see the effect of your numbers before you
 leave the page.
 
+![PELS Limits & safety with "Rental unit" chosen in the "Set limits for" switcher: Hard cap 8 kW, Safety margin 0.3 kW, a readout that safe pace starts each hour at 7.7 kW, and the "Control devices in this area" switch off with a notice that PELS is only simulating this area](/screenshots/meter-areas/limits-simulation.png)
+
 ### Turn on control when you're ready
 
 A new meter area starts in **simulation** — PELS watches and plans for it, but
@@ -111,6 +126,8 @@ area"**, is what makes it live:
 While an area is simulating, the page says so plainly and points you at the
 switch. Flip it on once the cap looks right, and PELS begins holding that area
 to its limit.
+
+![The same Limits & safety panel with "Control devices in this area" turned on (green), and a "Status now" card reading Active — Power now 4.0 kW, Hard cap 8.0 kW, and "Limiting 1 device to stay under the cap"](/screenshots/meter-areas/limits-active.png)
 
 ::: tip Simulate first
 Simulation is the safe way to trial a new area. Leave control off for a while
