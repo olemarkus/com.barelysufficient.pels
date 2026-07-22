@@ -39,7 +39,6 @@ import {
 } from '../../lib/utils/settingsKeys';
 import { normalizePowerSource } from '../../lib/power/powerSource';
 import { createHomesStore } from '../homeRegistryAdapter';
-import { isMultiHomeEnabled } from '../multiHomeFlag';
 import {
   createHomeCapacityBundle,
   type HomeCapacityBundle,
@@ -112,19 +111,6 @@ export class HomeRuntimeRegistry {
 
   /** Reconcile bundles against the persisted homes registry (see module doc). */
   reconcile(): void {
-    // Feature flag OFF: the multi-home feature is inert — no per-home bundles
-    // exist regardless of homes_config. Tear down any that survive a flag
-    // flip-off and skip the store read entirely. Unlike a cleared homes_config,
-    // this is unconditional: a 'suspect' read must NOT keep bundles alive while
-    // the feature is disabled.
-    if (!isMultiHomeEnabled(this.deps.ctx.homey.settings)) {
-      for (const [homeId, bundle] of [...this.bundles]) {
-        bundle.teardown();
-        this.bundles.delete(homeId);
-      }
-      this.warnIfSubHomesUnderFlowSource(0);
-      return;
-    }
     const read = this.homesStore.read();
     // 'suspect' = persisted truth unknown → keep the current bundles running.
     if (read.state === 'suspect') return;

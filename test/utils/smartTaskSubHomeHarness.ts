@@ -7,7 +7,7 @@
 import { expect } from 'vitest';
 import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
 import { createApp } from './appTestUtils';
-import { DEVICE_HOME_ASSIGNMENTS, HOMES_CONFIG, MULTI_HOME_ENABLED } from '../../lib/utils/settingsKeys';
+import { DEVICE_HOME_ASSIGNMENTS, HOMES_CONFIG } from '../../lib/utils/settingsKeys';
 import type { DeferredObjectivePlanPreviewCandidate } from '../../lib/objectives/deferredObjectives';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 
@@ -68,9 +68,6 @@ export const initAppWithSubHome = async (
     buildPlannedHeater('heater-sub', 'Cabin heater', 'z2'),
     buildPlannedHeater('heater-main', 'Hall heater', 'z1'),
   ]);
-  // Enable the hidden multi-home feature flag (default off) before configuring
-  // the area, so the app's membership recompute treats the sub-home as active.
-  mockHomeyInstance.settings.set(MULTI_HOME_ENABLED, true);
   mockHomeyInstance.settings.set(HOMES_CONFIG, { subHomes: [SUB_HOME] });
   mockHomeyInstance.settings.set(DEVICE_HOME_ASSIGNMENTS, { 'heater-sub': 'h_cabin' });
   await settleAsyncSeams();

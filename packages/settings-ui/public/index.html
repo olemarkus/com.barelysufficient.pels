@@ -475,10 +475,8 @@
           <span slot="supporting-text" class="settings-nav-card__description">Outdoor temperature, tomorrow&rsquo;s forecast</span>
           <svg slot="end" class="settings-nav-card__chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m8.59 16.59 4.58-4.59-4.58-4.59L10 6l6 6-6 6-1.41-1.41z" fill="currentColor"/></svg>
         </md-list-item>
-        <!-- Multiple meters (multi-home U1). Hidden by default: boot.ts un-hides
-             it only when the multi_home_enabled flag is on (applyMultiHomeNavVisibility).
-             Ships `hidden` so a patch release from main never exposes the entry. -->
-        <md-list-item type="button" class="settings-nav-card" data-settings-target="homes" id="homes-nav-card" hidden>
+        <!-- Multiple meters (multi-home): entry point to the meter-areas panel. -->
+        <md-list-item type="button" class="settings-nav-card" data-settings-target="homes" id="homes-nav-card">
           <svg slot="start" class="settings-nav-card__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="13" r="8" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 13 15.5 9.5M7.5 17.5h9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
           <span slot="headline" class="settings-nav-card__title pels-text-card-title">Multiple meters</span>
           <span slot="supporting-text" class="settings-nav-card__description">Parts of your home with their own meter</span>

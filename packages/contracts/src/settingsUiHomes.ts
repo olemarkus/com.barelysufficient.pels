@@ -36,14 +36,11 @@ export type SettingsUiHomesSaveRequest =
  * Typed refusal contract: `degraded` = the persisted config could not be
  * read safely (suspect store read — the UI shows its degraded copy);
  * `invalid` = malformed op / implausible resulting config / a root zone that
- * would swallow the whole home; `disabled` = the hidden multi-home feature
- * flag (`multi_home_enabled`) is off, so no meter area may be created or
- * edited — the "Multiple meters" UI is hidden and this write seam refuses even
- * a direct API call.
+ * would swallow the whole home.
  */
 export type SettingsUiHomesSaveResponse =
   | { ok: true }
-  | { ok: false; reason: 'degraded' | 'invalid' | 'disabled' };
+  | { ok: false; reason: 'degraded' | 'invalid' };
 
 /**
  * How a device's membership was decided. DIAGNOSTICS AND DISPLAY ONLY — the
@@ -73,15 +70,6 @@ type SettingsUiZoneNode = {
 };
 
 export type SettingsUiHomesPayload = {
-  /**
-   * The hidden multi-home feature flag (`multi_home_enabled`, default false).
-   * When false the whole feature is inert — `homes` is empty and the runtime
-   * ignores any persisted `homes_config` — and the settings UI hides both the
-   * "Multiple meters" section and the per-home Limits switcher. The UI reads
-   * this to gate those surfaces rather than inferring the flag from an empty
-   * `homes` list (which is also the legitimate zero-areas state when on).
-   */
-  multiHomeEnabled: boolean;
   /** Normalized sub-home configs from the homes registry. */
   homes: SettingsUiSubHome[];
   /** Resolved membership per snapshot device, with the resolver's source. */

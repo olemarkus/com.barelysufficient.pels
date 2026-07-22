@@ -19,7 +19,7 @@ import { mockHomeyInstance, setMockDrivers, setMockZones, MockDevice, MockDriver
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { createHomesStore } from '../../setup/homeRegistryAdapter';
 import {
-  CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW, MULTI_HOME_ENABLED,
+  CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW,
 } from '../../lib/utils/settingsKeys';
 import { drainPending, drainUntilCalledWith } from '../utils/asyncDrain';
 
@@ -58,9 +58,6 @@ const reportHomePower = (totalW: number) => {
 };
 
 const configureCapacity = (limitKw: number) => {
-  // Enable the hidden multi-home feature flag (default off) so the app resolves
-  // the sub-home partition in these e2e scenarios.
-  mockHomeyInstance.settings.set(MULTI_HOME_ENABLED, true);
   mockHomeyInstance.settings.set('power_source', 'homey_energy');
   mockHomeyInstance.settings.set(CAPACITY_LIMIT_KW, limitKw);
   mockHomeyInstance.settings.set(CAPACITY_MARGIN_KW, 0);

@@ -14,7 +14,6 @@ import { resolveDeviceHome, type HomeMembership, type HomeMembershipPort } from 
 import { normalizeError } from '../lib/utils/errorUtils';
 import { DEVICE_HOME_ASSIGNMENTS, HOMES_CONFIG } from '../lib/utils/settingsKeys';
 import { createDeviceHomeAssignmentsStore, createHomesStore } from './homeRegistryAdapter';
-import { isMultiHomeEnabled } from './multiHomeFlag';
 
 // Store-key labels for the suspect-warn logs — the canonical settings-key
 // constants, so log audits grep the same strings the stores persist under.
@@ -35,15 +34,6 @@ export type HomeMembershipServiceDeps = {
   /** Devices from the latest target snapshot with their zone ids. */
   getDevices: () => readonly HomeMembershipDeviceInput[];
   getLogger: () => PinoLogger | undefined;
-  /**
-   * The hidden multi-home feature flag, read fresh on every recompute. When it
-   * reads false the whole feature is inert: `recompute` short-circuits to the
-   * single-home identity (no sub-homes, empty membership → every device main)
-   * regardless of any persisted `homes_config` / `device_home_assignments`, so
-   * a flag flip re-gates the feature on the next recompute (which the
-   * `multi_home_enabled` settings handler triggers).
-   */
-  isMultiHomeEnabled: () => boolean;
   /**
    * Change-gated plan invalidation: fired when a recompute changes the
    * PLAN-RELEVANT membership — the set of non-main assignments (exactly what
@@ -129,14 +119,6 @@ export class HomeMembershipService implements HomeMembershipPort {
   constructor(private readonly deps: HomeMembershipServiceDeps) {}
 
   recompute(): void {
-    // Feature flag OFF: the multi-home feature is fully inert. Behave as a pure
-    // single-home install regardless of any persisted homes_config /
-    // device_home_assignments — no sub-homes, empty membership (every device
-    // resolves to main via getHomeIdForDevice's fallback), not degraded.
-    if (!this.deps.isMultiHomeEnabled()) {
-      this.recomputeInertSingleHome();
-      return;
-    }
     this.refreshStoreCaches();
     const tree = this.deps.getZoneTree();
     // Never cache null over a previously seen tree: the transport retains
@@ -177,25 +159,6 @@ export class HomeMembershipService implements HomeMembershipPort {
     // Fire the execution-readiness edge LAST — after the membership map is
     // committed — so the registry's bundles see fresh membership when they apply.
     if (zoneTreeJustCommitted) this.deps.onZoneTreeCommitReady?.();
-  }
-
-  // Flag-off inert path: clear every cached sub-home/pin and the membership map
-  // so `hasSubHomes()` is false, `getMembershipMap()` is empty, and
-  // `getHomeIdForDevice` fail-safes every device to main. The store reads are
-  // skipped entirely (homes_config is ignored while off), so `configDegraded`
-  // is reset to false — the config we cannot vouch for is simply unused. Still
-  // runs the change-gated plan invalidation, so an on→off flip rebuilds main's
-  // plan to reclaim the devices the sub-homes had held. The zone-tree cache is
-  // left intact: harmless with no bundles, and a flip back on then rejoins it
-  // without waiting for a fresh fetch.
-  private recomputeInertSingleHome(): void {
-    this.subHomes = [];
-    this.pins = {};
-    this.membershipByDeviceId = {};
-    this.suspectByStoreKey[HOMES_CONFIG] = false;
-    this.suspectByStoreKey[DEVICE_HOME_ASSIGNMENTS] = false;
-    this.logIfChanged();
-    this.notifyIfPlanRelevantMembershipChanged();
   }
 
   // Retention read for a snapshot entry that omitted its zone. Edge-triggered
@@ -414,7 +377,6 @@ export const createHomeMembershipService = (params: {
     getZoneTree: params.getZoneTree,
     getDevices: params.getDevices,
     getLogger: params.getLogger,
-    isMultiHomeEnabled: () => isMultiHomeEnabled(params.homey.settings),
     onMembershipChanged: params.onMembershipChanged,
     onZoneTreeCommitReady: params.onZoneTreeCommitReady,
   });

@@ -111,17 +111,7 @@ function jsonLdScript(data: Record<string, unknown>): HeadConfig {
 }
 
 export default defineConfig({
-  // `meter-areas.md` documents the multi-home / "Multiple meters" feature, which
-  // ships gated behind the default-off `multi_home_enabled` flag. Keep it out of
-  // the LIVE build entirely — omitting it from the sidebar is not enough, because
-  // a built page still lands in the deployed sitemap and is indexable. Excluding
-  // it on the live channel removes it from the public site and sitemap while the
-  // test/dev channels still render it for preview. To publish: drop it from this
-  // list and add it to the sidebar.
-  srcExclude: [
-    'images/README.md',
-    ...(docsChannel === 'live' ? ['meter-areas.md'] : []),
-  ],
+  srcExclude: ['images/README.md'],
   ...(outDir ? { outDir } : {}),
   base,
   lang: 'en-US',

@@ -58,12 +58,6 @@ export const WEATHER_ADVISOR_SETTINGS = 'weather_advisor_settings';
 // both in sync (the settings UI can't import lib).
 export const PELS_STATUS = 'pels_status';
 
-// Hidden multi-home feature flag. Mirror of MULTI_HOME_ENABLED in
-// lib/utils/settingsKeys.ts — keep both in sync (the settings UI can't import
-// lib). DEFAULT FALSE (absent = off): read as `=== true`. While off the
-// "Multiple meters" section and the per-home Limits switcher are hidden.
-export const MULTI_HOME_ENABLED = 'multi_home_enabled';
-
 // Multi-home roster blob. Mirror of HOMES_CONFIG in lib/utils/settingsKeys.ts —
 // keep both in sync (the settings UI can't import lib). The per-home Limits
 // switcher watches this so an area added/removed elsewhere (the Multiple-meters

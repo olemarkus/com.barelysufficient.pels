@@ -426,7 +426,9 @@ program) remains deferred.*
       persisted/stale sample. Reachable only in the flow-mode + sub-home config, which already emits the
       `sub_homes_configured_under_flow_power_source` warn (unsupported), hence P2 not a blocker. Clean fix:
       force dry-run (suppress actuation) for a bundle whenever `power_source !== 'homey_energy'`, not just the
-      heartbeat. Source: R7b fix-round-5 bot re-review, 2026-07-20.
+      heartbeat. Source: R7b fix-round-5 bot re-review, 2026-07-20. Update (multi-home GA, 2026-07-22): the GA
+      cut added a user-facing Flow notice in the Multiple meters panel (partial mitigation — warns before a
+      new area is created), and re-flagged by codex; the runtime actuation gate above is still the real fix.
 
 - [ ] **(persist meter-swap reset) The same-home meter-change freshness reset is in-memory only.**
       *Persona:* multi-home owner who edits a sub-home's meter, then the Homey restarts before a debounce
@@ -447,7 +449,16 @@ program) remains deferred.*
       filter the RAW snapshot to the home's ids before decorating), and consider staggering bundle rebuild
       phases. Correctness is unaffected; this is a perf/maintainability follow-up deferred out of the R7b
       correctness PR. Source: R7b per-poll CPU-scaling audit, 2026-07-19.
-
+- [ ] **`home_membership_store_read_suspect` WARN can fire on installs that never used multi-home.**
+      *Persona:* single-meter owner with no `homes_config` who hits a transient Homey SDK settings-read
+      failure. *Hypothesis:* now that multi-home is GA (the `multi_home_enabled` flag is gone), membership
+      recompute reads `homes_config` / `device_home_assignments` on every observed-state refresh, so a
+      genuinely `suspect` (thrown) read emits an edge-triggered WARN `home_membership_store_read_suspect`
+      mentioning multi-home even though the owner never configured a meter area. Benign (keeps the empty
+      all-main cache; edge-triggered, not a storm) and only on a real SDK throw, but it is a false-signal log
+      for a feature the install isn't using. Topic-gate it, or only warn once the store has ever been
+      `present` (an initialized marker exists). Source: pels-runtime-reality review of the multi-home GA cut,
+      2026-07-22. File: `setup/homeMembership.ts` (`noteSuspectEdge` / `refreshStoreCaches`).
 - [ ] **Relocated-task UI aftermath: surface `objective_device_in_sub_home` on the task list/hero, and
       gate the edit preview.** *Persona:* multi-home owner whose device (with a live smart task) moved to a
       sub-home — the task quietly stops governing but the Smart-tasks list/hero never says why.
@@ -464,31 +475,6 @@ program) remains deferred.*
       `lib/objectives/deferredObjectives/activePlanRevisionBuild.ts`,
       `packages/contracts/src/deferredObjectiveActivePlans.ts`,
       `packages/shared-domain/src/deadlineLabels.ts`, `setup/settingsUiSmartTaskApi.ts`.
-- [ ] **Multi-home OFF still runs the transport zone-tree fetch (last OFF-purity gap).** *Persona:* single-
-      home owner on a patch release with the hidden `multi_home_enabled` flag off. *Hypothesis:* every
-      successful snapshot refresh fire-and-forgets `refreshZoneTreeCache` (`snapshotRefresh.ts`), so an OFF
-      install does a small extra REST read the pre-multi-home runtime never did. It is genuinely harmless —
-      read-only, detached, fails safe to a null tree, and nothing consumes the tree while off (membership's
-      inert recompute ignores it; the `ui_homes` endpoint now short-circuits to `zoneTree: null` when off) —
-      so OFF is *behaviourally* safe but not byte-identical I/O-wise. Gate the fetch on the flag once a clean
-      seam exists (the reader lives in `setup/`, which `lib/device/transport` may not import — a trivial
-      `settings.get(MULTI_HOME_ENABLED) === true` at the transport boundary, or a producer-resolved bit,
-      would do). Moot when the feature ships and the flag is removed. Source: codex OFF-airtightness review of
-      PR #1865, 2026-07-21. File: `lib/device/transport/snapshotRefresh.ts`.
-- [ ] **Multi-home flag-flip transition robustness (test-Homey only; not release-reachable).** *Persona:*
-      the maintainer flipping `multi_home_enabled` on/off on a test Homey (a release build ships off and
-      never flips, so none of this reaches users). *Hypothesis:* the flag handler subscribes to `settings.on
-      ('set')` only, so *unsetting* the key (vs. writing `false`) never fires teardown; the on→off recompute
-      is queued, so cached membership/bundles stay live for the interval before it runs; if a sub-home was
-      actively controlling a device (dry-run off) while main is in dry-run, on→off can leave that device
-      paused with no owner to resume it; off→on can race an in-flight main rebuild and briefly double-control
-      a transferred device; and an already-open Settings UI is not re-gated on flip (nav visibility is
-      applied only at boot). Each is bounded to deliberate flips on a Homey we control and fails in the safe
-      direction (a device stays paused, never over-draws). Fold the unset path into the flag handler, quiesce
-      the main rebuild across the transfer, and re-run `applyMultiHomeNavVisibility` on a realtime flag
-      change when hardening the flip path for GA. Source: codex OFF-airtightness review of PR #1865,
-      2026-07-21. Files: `lib/utils/settingsHandlers.ts`, `setup/homeRuntime/homeRuntimeRegistry.ts`,
-      `lib/plan/planServiceRebuild.ts`, `packages/settings-ui/src/ui/realtime.ts`.
 - [ ] **Hoist `createSelectOption` (and the render-signature guard pattern) out of `advanced.ts` into a
       shared settings-ui primitive module.** *Persona:* maintainer adding the next dynamic device picker.
       *Hypothesis:* three near-copies now exist — `createModeOption` (`modes.ts`), `createSelectOption`

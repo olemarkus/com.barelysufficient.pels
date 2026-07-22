@@ -120,17 +120,6 @@ export const HOMEY_PRICES_CURRENCY = 'homey_prices_currency';
 export const EXPORT_PRICE_ENABLED = 'export_price_enabled';
 export const EXPORT_SPOT_FACTOR = 'export_spot_factor';
 export const EXPORT_FIXED = 'export_fixed';
-// Hidden feature flag for the multi-home / "Multiple meters" feature. DEFAULT
-// FALSE (absent = off): read as `=== true`, mirroring the *_enabled flag
-// pattern (PRICE_OPTIMIZATION_ENABLED / DAILY_BUDGET_ENABLED). While off the
-// feature is fully inert — membership stays all-main, no per-home capacity
-// bundles run, `homes_config` is ignored, the `ui_homes_save` endpoint refuses,
-// and the "Multiple meters" / per-home Limits UI is hidden — regardless of any
-// persisted `homes_config`. There is no UI control: it is toggled via the
-// settings API (for testing) or shipped by flipping the default. Mirrored in
-// packages/contracts/src/settingsKeys.ts — keep both in sync (the settings UI
-// can't import lib).
-export const MULTI_HOME_ENABLED = 'multi_home_enabled';
 // Multi-home support (dormant until the R4 wiring PR): the sub-home
 // configuration blob and the explicit device→home pin overrides. Read/written
 // only through setup/homeRegistryAdapter.ts (ports in lib/home/homeConfig.ts).

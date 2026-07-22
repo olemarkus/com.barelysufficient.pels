@@ -45,10 +45,8 @@ import {
   syncDryRunBannerVisibility,
 } from './capacity.ts';
 import { initHomeyEnergyMeterHandlers } from './homeyEnergyMeter.ts';
-import { applyMultiHomeNavVisibility } from './homesSettings.ts';
 import {
   DEBUG_LOGGING_TOPICS as DEBUG_LOGGING_TOPICS_SETTING,
-  MULTI_HOME_ENABLED,
 } from '../../../contracts/src/settingsKeys.ts';
 import {
   DEBUG_LOGGING_SCENARIOS,
@@ -405,10 +403,7 @@ const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
   }
 };
 
-const initializeBootHandlers = (bootstrap: SettingsUiBootstrap | null) => {
-  // Un-hide the "Multiple meters" nav card only when the hidden multi_home_enabled
-  // flag is on (default off). The card ships `hidden`, so this fails safe.
-  applyMultiHomeNavVisibility(bootstrap?.settings?.[MULTI_HOME_ENABLED] === true);
+const initializeBootHandlers = () => {
   initTooltips();
   initDebouncedSaveFlush();
   initRealtimeListeners();
@@ -473,7 +468,7 @@ export const boot = async () => {
     }
     const bootstrap = await loadBootstrapData();
     markSettingsUi('boot:bootstrap-loaded');
-    initializeBootHandlers(bootstrap);
+    initializeBootHandlers();
     await loadInitialData(bootstrap);
     initDeadlinePlanRouter({
       mount: mountDeadlinePlan,

@@ -12,6 +12,7 @@ import {
   HOMES_EDITOR_TITLE_EDIT,
   HOMES_EDITOR_TITLE_NEW,
   HOMES_EMPTY_EXPLAINER,
+  HOMES_FLOW_SOURCE_NOTICE,
   HOMES_LOAD_FAILED,
   HOMES_MAIN_HOME_NOTE,
   HOMES_MAIN_METER_NOTICE,
@@ -83,14 +84,6 @@ export type HomesEditorView = {
 };
 
 export type HomesSettingsSectionProps = {
-  /**
-   * The hidden multi-home feature flag (`ui_homes` `multiHomeEnabled`). When
-   * false the section renders nothing — the whole "Multiple meters" surface is
-   * gated off (the nav card is also hidden at boot). Defaults to shown while
-   * the payload is still loading, but with the flag off the panel is never
-   * reachable to reach that state.
-   */
-  multiHomeEnabled: boolean;
   status: 'loading' | 'error' | 'ready';
   homes: HomesListEntryView[];
   /** False until the zone tree has arrived — adding needs zones to pick from. */
@@ -111,6 +104,8 @@ export type HomesSettingsSectionProps = {
   mutationsLocked: boolean;
   /** Main-home meter nudge (areas exist ∧ Homey Energy ∧ no explicit whole-home meter). */
   showMainMeterNotice: boolean;
+  /** Power source is Flow: meter areas can't be measured, so warn before setup. */
+  showFlowSourceNotice: boolean;
   editor: HomesEditorView | null;
   confirmingDeleteHomeId: string | null;
   deleteBusy: boolean;
@@ -350,10 +345,16 @@ const MainMeterNotice = () => (
   </section>
 );
 
+// Leads every state (empty / editor / list) when the power source is Flow: a
+// Flow reading has no meter identity, so an area added here would never be
+// limited. Shown before the owner invests in configuring one.
+const FlowSourceNotice = () => (
+  <section class="pels-notice-warning homes-settings__notice" id="homes-flow-source-notice">
+    <p class="homes-settings__notice-body">{HOMES_FLOW_SOURCE_NOTICE}</p>
+  </section>
+);
+
 const HomesSettingsSectionView = (props: HomesSettingsSectionProps) => {
-  // Feature flag off (default): render nothing — the "Multiple meters" section
-  // is hidden entirely, matching the hidden nav card.
-  if (!props.multiHomeEnabled) return null;
   if (props.status === 'loading') {
     return (
       <div class="pels-skeleton-stack" aria-hidden="true">
@@ -367,6 +368,7 @@ const HomesSettingsSectionView = (props: HomesSettingsSectionProps) => {
   if (props.editor !== null) {
     return (
       <div class="homes-settings">
+        {props.showFlowSourceNotice && <FlowSourceNotice />}
         <EditorForm
           editor={props.editor}
           configDegraded={props.configDegraded}
@@ -381,6 +383,7 @@ const HomesSettingsSectionView = (props: HomesSettingsSectionProps) => {
   if (props.homes.length === 0) {
     return (
       <div class="homes-settings">
+        {props.showFlowSourceNotice && <FlowSourceNotice />}
         {props.configDegraded && <DegradedNotice />}
         <section class="settings-form-card">
           <p class="pels-card-supporting" id="homes-empty-explainer">{HOMES_EMPTY_EXPLAINER}</p>
@@ -396,6 +399,7 @@ const HomesSettingsSectionView = (props: HomesSettingsSectionProps) => {
   }
   return (
     <div class="homes-settings">
+      {props.showFlowSourceNotice && <FlowSourceNotice />}
       {props.configDegraded && <DegradedNotice />}
       <HomesList {...props} />
       {/* Deliberately a bare footnote BELOW the card: it describes the

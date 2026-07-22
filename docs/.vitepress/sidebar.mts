@@ -17,6 +17,7 @@ export const sidebar: DefaultTheme.SidebarItem[] = [
       { text: 'Getting Started', link: '/getting-started' },
       { text: 'Configuration', link: '/configuration' },
       { text: 'Using Homey Energy', link: '/homey-energy' },
+      { text: 'Meter Areas', link: '/meter-areas' },
     ],
   },
   {
