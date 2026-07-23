@@ -4,8 +4,7 @@
  * per-function/per-file size ceilings. Every handler closes over the passed
  * service handles; the bundle's mutable state (`home`, capacity scalars, sample
  * revision, teardown fence) is reached through getter/setter closures so it
- * stays owned by the factory. The type imports from `createHomeCapacityBundle`
- * are erased at compile time (no runtime cycle).
+ * stays owned by the factory. Type imports are erased at compile time.
  */
 import { normalizeError } from '../../lib/utils/errorUtils';
 import type { AppContext } from '../../lib/app/appContext';
@@ -21,8 +20,151 @@ import type { createHomePowerPipeline } from './createHomePowerPipeline';
 import type { HomeScope } from './homeScope';
 import type {
   HomeCapacityBundle,
-  SuffixedTrackerPersistence,
 } from './createHomeCapacityBundle';
+import type { SuffixedTrackerPersistence } from './suffixedTrackerPersistence';
+import type { StableSampleRevision } from '../powerSamplePipeline';
+
+export type PreparedBundleSampleFence = {
+  bindReader: (reader: () => StableSampleRevision) => void;
+  begin: (sampleRevision: number) => () => void;
+  isActive: () => boolean;
+  isSuperseded: () => boolean;
+};
+
+/**
+ * Reference-counted final-actuator fence for prepared sub-home plan work.
+ * Handles are identity-keyed so ending one overlapping reconcile cannot remove
+ * another reconcile's protection, even when both use the same sample revision.
+ */
+export const createPreparedBundleSampleFence = (): PreparedBundleSampleFence => {
+  const activeRevisions = new Map<symbol, number>();
+  let readStableRevision = (): StableSampleRevision => ({ state: 'stable', revision: 0 });
+  return {
+    bindReader: (reader) => { readStableRevision = reader; },
+    begin: (sampleRevision) => {
+      const handle = Symbol('preparedBundleReconcile');
+      activeRevisions.set(handle, sampleRevision);
+      return () => { activeRevisions.delete(handle); };
+    },
+    isActive: () => activeRevisions.size > 0,
+    isSuperseded: () => {
+      if (activeRevisions.size === 0) return false;
+      const current = readStableRevision();
+      return current.state !== 'stable'
+        || [...activeRevisions.values()].some((revision) => revision !== current.revision);
+    },
+  };
+};
+
+export const startHomeCapacityBundle = (
+  planService: PlanService,
+  logger: () => ReturnType<AppContext['getStructuredLogger']>,
+  home: SubHomeConfig,
+  capacityScalars: CapacityScalarSettings,
+): void => {
+  void planService.rebuildPlanFromCache('home_bundle_created').catch((error: unknown) => {
+    logger()?.error({
+      event: 'home_bundle_initial_rebuild_failed',
+      homeId: home.homeId,
+      err: normalizeError(error),
+    });
+  });
+  logger()?.info({
+    event: 'home_capacity_bundle_created',
+    homeId: home.homeId,
+    meterDeviceId: home.meterDeviceId,
+    limitKw: capacityScalars.limitKw,
+    dryRun: capacityScalars.dryRun,
+  });
+};
+
+const isStableRevision = (sample: StableSampleRevision, revision: number): boolean => (
+  sample.state === 'stable' && sample.revision === revision
+);
+
+const buildOwnershipGenerationOperations = (params: {
+  homeId: HomeId;
+  logger: () => ReturnType<AppContext['getStructuredLogger']>;
+  planService: PlanService;
+  isTornDown: () => boolean;
+  getStableSampleRevision: () => StableSampleRevision;
+  beginPreparedOwnershipReconcile: (sampleRevision: number) => () => void;
+  markPreparedOwnershipGenerationReconciled: () => void;
+  flushDeferredShortfallSideEffect: () => Promise<boolean>;
+}): Pick<
+  HomeCapacityBundle,
+  'rebuildForMembershipChange'
+  | 'prepareOwnershipGeneration'
+  | 'isPreparedOwnershipGenerationCurrent'
+  | 'reconcilePreparedOwnershipGeneration'
+> => {
+  const {
+    homeId,
+    logger,
+    planService,
+    isTornDown,
+    getStableSampleRevision,
+    beginPreparedOwnershipReconcile,
+    markPreparedOwnershipGenerationReconciled,
+    flushDeferredShortfallSideEffect,
+  } = params;
+  const rebuildMembershipPlan = async (): Promise<boolean> => {
+    if (isTornDown()) return false;
+    try {
+      const outcome = await planService.rebuildPlanFromCache('home_membership_changed');
+      return !outcome.failed && !isTornDown();
+    } catch (error: unknown) {
+      logger()?.error({
+        event: 'home_membership_bundle_rebuild_failed',
+        homeId,
+        err: normalizeError(error),
+      });
+      return false;
+    }
+  };
+  return {
+    rebuildForMembershipChange: rebuildMembershipPlan,
+    prepareOwnershipGeneration: async () => {
+      const sample = getStableSampleRevision();
+      if (sample.state === 'pending') return sample;
+      const rebuilt = await rebuildMembershipPlan();
+      const current = getStableSampleRevision();
+      return rebuilt
+        && current.state === 'stable'
+        && current.revision === sample.revision
+        ? sample
+        : { state: 'pending' };
+    },
+    isPreparedOwnershipGenerationCurrent: (sampleRevision) => (
+      !isTornDown() && isStableRevision(getStableSampleRevision(), sampleRevision)
+    ),
+    reconcilePreparedOwnershipGeneration: async (sampleRevision) => {
+      let aborted = false;
+      const endPreparedReconcile = beginPreparedOwnershipReconcile(sampleRevision);
+      try {
+        await planService.reconcileLatestPlanState(
+          () => {
+            const current = getStableSampleRevision();
+            return isTornDown()
+              || current.state !== 'stable'
+              || current.revision !== sampleRevision;
+          },
+          () => { aborted = true; },
+        );
+      } finally {
+        endPreparedReconcile();
+      }
+      const stable = getStableSampleRevision();
+      const current = !aborted
+        && !isTornDown()
+        && stable.state === 'stable'
+        && stable.revision === sampleRevision;
+      const sideEffectFlushed = current && await flushDeferredShortfallSideEffect();
+      if (sideEffectFlushed) markPreparedOwnershipGenerationReconciled();
+      return sideEffectFlushed;
+    },
+  };
+};
 
 export function buildHomeCapacityBundleApi(params: {
   ctx: AppContext;
@@ -38,21 +180,39 @@ export function buildHomeCapacityBundleApi(params: {
   planRebuildScheduler: PlanRebuildScheduler;
   capacityStore: ReturnType<typeof createCapacitySettingsStore>;
   applyMembershipReadyEdge: () => void;
+  markPreparedOwnershipGenerationReconciled: () => void;
   getHome: () => SubHomeConfig;
   setHome: (home: SubHomeConfig) => void;
   getScalars: () => CapacityScalarSettings;
   setScalars: (scalars: CapacityScalarSettings) => void;
-  bumpSampleRevision: () => void;
+  getStableSampleRevision: () => StableSampleRevision;
+  beginPreparedOwnershipReconcile: (sampleRevision: number) => () => void;
+  flushDeferredShortfallSideEffect: () => Promise<boolean>;
   isTornDown: () => boolean;
   markTornDown: () => void;
 }): HomeCapacityBundle {
   const {
     ctx, homeId, logger, timerKey, guard, planEngine, planService, scope, tracker,
     pipeline, planRebuildScheduler, capacityStore, applyMembershipReadyEdge,
-    getHome, setHome, getScalars, setScalars, bumpSampleRevision, isTornDown, markTornDown,
+    markPreparedOwnershipGenerationReconciled,
+    getHome, setHome, getScalars, setScalars,
+    getStableSampleRevision, beginPreparedOwnershipReconcile,
+    flushDeferredShortfallSideEffect, isTornDown, markTornDown,
   } = params;
+  const ownershipGenerationOperations = buildOwnershipGenerationOperations({
+    homeId,
+    logger,
+    planService,
+    isTornDown,
+    getStableSampleRevision,
+    beginPreparedOwnershipReconcile,
+    markPreparedOwnershipGenerationReconciled,
+    flushDeferredShortfallSideEffect,
+  });
   return {
     homeId,
+    isTornDown,
+    getHomeConfig: () => ({ ...getHome() }),
     getMeterDeviceId: () => getHome().meterDeviceId,
     getDiagnostics: () => ({
       homeId,
@@ -72,24 +232,13 @@ export function buildHomeCapacityBundleApi(params: {
       reconcile: () => planService.reconcileLatestPlanState(),
     }),
     updateHomeConfig: (next) => {
-      const meterChanged = getHome().meterDeviceId !== next.meterDeviceId;
       setHome(next);
-      // In-place meter swap (same homeId — P2#3): the guard + tracker still hold
-      // the OLD meter's last total and freshness stamp. Clear both so a rebuild
-      // before the new meter's first reading cannot shed/restore on the stale
-      // load, and the freshness heartbeat cannot age that stale stamp into a
-      // fail-closed shed. The new meter's first sample re-primes both.
-      if (meterChanged) {
-        guard.resetLastTotalPower();
-        tracker.resetFreshness();
-      }
     },
     applyMembershipReadyEdge,
+    ...ownershipGenerationOperations,
+    flushDeferredShortfallSideEffect,
     recordMeterSample: (powerW, sampleNowMs) => {
       if (isTornDown()) return;
-      // Stamp the sample BEFORE the async ingest so a ready-edge rebuild already
-      // in flight sees the revision move and aborts its now-stale decision (P1-5).
-      bumpSampleRevision();
       // The ready-edge is DECOUPLED from sample arrival (also fired by the
       // registry from the tree-commit transition, so it works in flow mode). We
       // ALSO retry it after each ingest: a ready-edge that failed or was
@@ -133,7 +282,14 @@ export function buildHomeCapacityBundleApi(params: {
       if (isTornDown()) return;
       tracker.reloadFromSettings();
     },
-    teardown: () => {
+    teardown: (options) => {
+      // A failed durable reset leaves this runtime fenced but retained by the
+      // registry as a tombstone. Repeated teardown(reset) calls are therefore
+      // the retry seam: the in-memory tracker is already cleared, and only its
+      // safety write is attempted again.
+      if (isTornDown()) {
+        return options?.resetMeterFreshness !== true || tracker.resetFreshness();
+      }
       // Setting the fence FIRST nulls the actuator seam and gates the suffixed
       // writers/tracker-save, so any in-flight rebuild/reconcile/heartbeat/sample
       // continuation dispatched before this point can neither actuate nor persist.
@@ -142,8 +298,15 @@ export function buildHomeCapacityBundleApi(params: {
       ctx.timers.clear(timerKey('planRebuild'));
       ctx.timers.clear(timerKey('noTreeWarn'));
       ctx.timers.clear(timerKey('freshnessHeartbeat'));
+      ctx.timers.clear(timerKey('membershipReadyApplyRetry'));
+      ctx.timers.clear(timerKey('shortfallSideEffectRetry'));
+      ctx.timers.clear(timerKey('sourceActuationRetry'));
       tracker.stopAndFlush();
+      // Flush the final accepted old-identity sample first, then overwrite only
+      // its freshness latch. A late old pipeline save is fenced by `markTornDown`.
+      const resetSucceeded = options?.resetMeterFreshness !== true || tracker.resetFreshness();
       logger()?.info({ event: 'home_capacity_bundle_torn_down', homeId });
+      return resetSucceeded;
     },
   };
 }

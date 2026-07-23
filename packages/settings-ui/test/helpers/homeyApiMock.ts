@@ -44,6 +44,7 @@ import {
   DAILY_BUDGET_KWH,
   DAILY_BUDGET_PRICE_FLEX_SHARE,
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
+  HOMEY_ENERGY_METER_DEVICE_ID,
 } from '../../../contracts/src/settingsKeys.ts';
 import type { HomeySettingsClient } from '../../src/ui/homey.ts';
 
@@ -88,7 +89,7 @@ export type MockHomeyUiState = {
   homes?: unknown;
   // `/ui_homes_save` response (`SettingsUiHomesSaveResponse`). Defaults to an
   // applied op (`{ok: true}`); tests seed a typed refusal to exercise the
-  // degraded/invalid paths.
+  // degraded/invalid/meter-ownership paths.
   homesSave?: unknown;
   plan?: unknown;
   power?: unknown;
@@ -355,12 +356,23 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
   // single-home empty shape (`SettingsUiHomesPayload`).
   [buildRouteKey('GET', SETTINGS_UI_HOMES_PATH)]: (homey) => async () => (
     getUiOverride(homey, 'homes') ?? {
-      homes: [], membershipByDeviceId: {}, zoneTree: null, hasSubHomes: false, configDegraded: false,
+      homes: [],
+      membershipByDeviceId: {},
+      zoneTree: null,
+      hasSubHomes: false,
+      runtimeActive: true,
+      configDegraded: false,
     }
   ),
-  [buildRouteKey('POST', SETTINGS_UI_HOMES_SAVE_PATH)]: (homey) => async () => (
-    getUiOverride(homey, 'homesSave') ?? { ok: true }
-  ),
+  [buildRouteKey('POST', SETTINGS_UI_HOMES_SAVE_PATH)]: (homey) => async ({ body }) => {
+    const override = getUiOverride(homey, 'homesSave');
+    if (override !== undefined) return override;
+    const request = body as { op?: unknown; meterDeviceId?: unknown } | undefined;
+    if (request?.op === 'set_main_meter') {
+      homey.__settingsStore[HOMEY_ENERGY_METER_DEVICE_ID] = request.meterDeviceId;
+    }
+    return { ok: true };
+  },
   [buildRouteKey('POST', SETTINGS_UI_REFRESH_DEVICES_PATH)]: (homey) => async () => ({
     devices: await resolveUiDevices(homey),
     hasManagedSolarDevice: false,

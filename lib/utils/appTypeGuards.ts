@@ -134,12 +134,219 @@ export function sanitizePowerTrackerSolarFields(value: unknown): unknown {
   return sanitized;
 }
 
+type UnknownPredicate = (value: unknown) => boolean;
+
+const isOptional = (value: unknown, predicate: UnknownPredicate): boolean => (
+  value === undefined || predicate(value)
+);
+
+const isOptionalArrayOf = (value: unknown, predicate: UnknownPredicate): boolean => (
+  value === undefined || (Array.isArray(value) && value.every(predicate))
+);
+
+const isOptionalFiniteNumber = (value: unknown): boolean => (
+  isOptional(value, isFiniteNumber)
+);
+
+const isOptionalNumberMap = (value: unknown): boolean => (
+  isOptional(value, isNumberMap)
+);
+
+const isPowerTrackerMeterIdentity = (value: unknown): boolean => {
+  if (!isPlainObjectRecord(value)) return false;
+  const source = value.powerSource;
+  const meterDeviceId = value.meterDeviceId;
+  return (source === 'homey_energy' || source === 'flow')
+    && (meterDeviceId === null || (typeof meterDeviceId === 'string' && meterDeviceId.length > 0));
+};
+
+const isHourlyAverage = (value: unknown): boolean => (
+  isPlainObjectRecord(value)
+  && isFiniteNumber(value.sum)
+  && isFiniteNumber(value.count)
+);
+
+const isHourlyAverageMap = (value: unknown): boolean => (
+  isPlainObjectRecord(value) && Object.values(value).every(isHourlyAverage)
+);
+
+const isOptionalHourlyAverageMap = (value: unknown): boolean => (
+  isOptional(value, isHourlyAverageMap)
+);
+
+const isDeviceBucketMap = (value: unknown): boolean => (
+  isPlainObjectRecord(value) && Object.values(value).every(isNumberMap)
+);
+
+const isUnreliablePeriod = (value: unknown): boolean => (
+  isPlainObjectRecord(value)
+  && isFiniteNumber(value.start)
+  && isFiniteNumber(value.end)
+);
+
+const isObjectiveProfileConfidence = (value: unknown): boolean => (
+  value === 'low' || value === 'medium' || value === 'high'
+);
+
+const isObjectiveProfileStat = (value: unknown): boolean => (
+  isPlainObjectRecord(value)
+  && isFiniteNumber(value.sampleCount)
+  && isFiniteNumber(value.mean)
+  && isFiniteNumber(value.m2)
+  && isFiniteNumber(value.min)
+  && isFiniteNumber(value.max)
+  && isObjectiveProfileConfidence(value.confidence)
+  && isFiniteNumber(value.lastUpdatedMs)
+);
+
+const isObjectiveProfileSample = (value: unknown): boolean => (
+  isPlainObjectRecord(value)
+  && isFiniteNumber(value.observedAtMs)
+  && isFiniteNumber(value.value)
+  && (value.unit === 'degree_c' || value.unit === 'percent')
+  && isOptionalFiniteNumber(value.crediblePowerW)
+  && (
+    value.powerSource === undefined
+    || value.powerSource === 'measured'
+    || value.powerSource === 'reported_step_planning'
+  )
+);
+
+const isObjectiveProfileObservation = (value: unknown): boolean => (
+  isPlainObjectRecord(value)
+  && isFiniteNumber(value.observedAtMs)
+  && isFiniteNumber(value.inputValue)
+  && isFiniteNumber(value.kwhPerUnit)
+  && isOptionalFiniteNumber(value.outdoorTemperatureC)
+);
+
+const isObjectiveProfileBand = (value: unknown): boolean => (
+  isPlainObjectRecord(value)
+  && isFiniteNumber(value.lowerInclusive)
+  && isFiniteNumber(value.upperExclusive)
+  && isFiniteNumber(value.sampleCount)
+  && isFiniteNumber(value.mean)
+  && isFiniteNumber(value.m2)
+  && isObjectiveProfileConfidence(value.confidence)
+);
+
+const isObjectiveProfileKind = (value: unknown): boolean => (
+  value === 'temperature' || value === 'ev_soc'
+);
+
+const OBJECTIVE_PROFILE_REQUIRED_FINITE_FIELDS = [
+  'updatedAtMs',
+  'acceptedSamples',
+  'rejectedSamples',
+] as const;
+
+const OBJECTIVE_PROFILE_OPTIONAL_FINITE_FIELDS = [
+  'recoveryTargetValue',
+  'recoveryArmedAtMs',
+  'recoveryNoProgressSamples',
+  'pendingEnergyKWh',
+  'subIntervalStartMs',
+  'subIntervalPowerW',
+] as const;
+
+const isDeviceObjectiveProfile = (value: unknown): boolean => {
+  if (!isPlainObjectRecord(value)) return false;
+  return isObjectiveProfileKind(value.kind)
+    && OBJECTIVE_PROFILE_REQUIRED_FINITE_FIELDS.every(
+      (field) => isFiniteNumber(value[field]),
+    )
+    && isObjectiveProfileSample(value.lastSample)
+    && isOptional(value.kwhPerUnit, isObjectiveProfileStat)
+    && isOptional(value.unitPerHour, isObjectiveProfileStat)
+    && OBJECTIVE_PROFILE_OPTIONAL_FINITE_FIELDS.every(
+      (field) => isOptionalFiniteNumber(value[field]),
+    )
+    && isOptionalArrayOf(value.samples, isObjectiveProfileObservation)
+    && isOptionalArrayOf(value.bands, isObjectiveProfileBand);
+};
+
+const isObjectiveProfileMap = (value: unknown): boolean => (
+  isPlainObjectRecord(value) && Object.values(value).every(isDeviceObjectiveProfile)
+);
+
+const NUMBER_MAP_FIELDS = [
+  'buckets',
+  'hourlySampleCounts',
+  'hourlyBudgets',
+  'dailyBudgetCaps',
+  'dailyTotals',
+  'controlledBuckets',
+  'uncontrolledBuckets',
+  'exemptBuckets',
+  'controlledDailyTotals',
+  'uncontrolledDailyTotals',
+  'exemptDailyTotals',
+  'lastDevicePowerWById',
+  'generationBuckets',
+  'exportBuckets',
+  'generationDailyTotals',
+  'exportDailyTotals',
+] as const;
+
+const HOURLY_AVERAGE_MAP_FIELDS = [
+  'hourlyAverages',
+  'controlledHourlyAverages',
+  'uncontrolledHourlyAverages',
+  'exemptHourlyAverages',
+] as const;
+
+const FINITE_NUMBER_FIELDS = [
+  'lastGenerationW',
+  'lastPowerW',
+  'lastControlledPowerW',
+  'lastUncontrolledPowerW',
+  'lastExemptPowerW',
+  'lastTimestamp',
+] as const;
+
+/**
+ * Strict whole-shape plausibility for sub-home tracker safety boundaries.
+ * Those paths classify a rejected persisted blob as suspect and leave it
+ * untouched, so rejecting one malformed nested field cannot erase otherwise
+ * recoverable accounting.
+ */
+export function isPlausiblePowerTrackerState(value: unknown): value is PowerTrackerState {
+  if (!isPlainObjectRecord(value)) return false;
+  return (value.meterIdentity === undefined || isPowerTrackerMeterIdentity(value.meterIdentity))
+    && NUMBER_MAP_FIELDS.every((field) => isOptionalNumberMap(value[field]))
+    && HOURLY_AVERAGE_MAP_FIELDS.every((field) => isOptionalHourlyAverageMap(value[field]))
+    && FINITE_NUMBER_FIELDS.every((field) => isOptionalFiniteNumber(value[field]))
+    && (value.deviceBuckets === undefined || isDeviceBucketMap(value.deviceBuckets))
+    && (
+      value.unreliablePeriods === undefined
+      || (
+        Array.isArray(value.unreliablePeriods)
+        && value.unreliablePeriods.every(isUnreliablePeriod)
+      )
+    )
+    && (
+      value.objectiveProfiles === undefined
+      || isObjectiveProfileMap(value.objectiveProfiles)
+    );
+}
+
+/**
+ * Backward-compatible main-tracker loader guard. The main tracker has no
+ * classified, refuse-to-overwrite persistence state yet: tightening this
+ * guard would make one newly rejected nested field leave boot state at `{}`,
+ * which the scheduled prune would then persist over all accounting history.
+ * Sub-home safety boundaries must use {@link isPlausiblePowerTrackerState}.
+ */
 export function isPowerTrackerState(value: unknown): value is PowerTrackerState {
   if (!value || typeof value !== 'object') return false;
   const state = value as PowerTrackerState;
   const isOptionalRecord = (entry: unknown) => entry === undefined || typeof entry === 'object';
   const isOptionalNumber = (entry: unknown) => entry === undefined || typeof entry === 'number';
+  const isOptionalMeterIdentity = (entry: unknown): boolean => (
+    entry === undefined || isPowerTrackerMeterIdentity(entry)
+  );
   const checks = [
+    isOptionalMeterIdentity(state.meterIdentity),
     isOptionalRecord(state.buckets),
     isOptionalRecord(state.hourlyBudgets),
     isOptionalRecord(state.dailyBudgetCaps),

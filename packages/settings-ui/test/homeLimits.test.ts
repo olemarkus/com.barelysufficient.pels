@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { installHomeyMock, type MockHomeyClient } from './helpers/homeyApiMock.ts';
 import { setHomeyClient } from '../src/ui/homey.ts';
-import { HOMES_CONFIG } from '../../contracts/src/settingsKeys.ts';
+import { HOMES_CONFIG, MAIN_HOME_ID } from '../../contracts/src/settingsKeys.ts';
 import { SETTINGS_UI_HOMES_PATH } from '../../contracts/src/settingsUiHomes.ts';
 import {
   notifyHomeLimitsSettingChanged,
@@ -34,11 +34,12 @@ const flushAsync = async () => {
   await new Promise((resolve) => { setTimeout(resolve, 0); });
 };
 
-const homesPayload = () => ({
+const homesPayload = (runtimeActive = true) => ({
   homes: [{ homeId: AREA_ID, name: 'Utleie', rootZoneId: 'z1', meterDeviceId: 'dev_a' }],
   membershipByDeviceId: {},
   zoneTree: null,
   hasSubHomes: true,
+  runtimeActive,
   configDegraded: false,
 });
 
@@ -59,8 +60,8 @@ const selectArea = async (homeId: string) => {
 
 let homey: MockHomeyClient;
 
-const install = (settings: Record<string, unknown> = {}) => {
-  homey = installHomeyMock({ settings, uiState: { homes: homesPayload() } });
+const install = (settings: Record<string, unknown> = {}, runtimeActive = true) => {
+  homey = installHomeyMock({ settings, uiState: { homes: homesPayload(runtimeActive) } });
   setHomeyClient(homey as never);
 };
 
@@ -102,7 +103,18 @@ describe('switcher + static-form visibility', () => {
   });
 
   it('falls back to Main-only when there are no meter areas', async () => {
-    homey = installHomeyMock({ uiState: { homes: { homes: [], membershipByDeviceId: {}, zoneTree: null, hasSubHomes: false, configDegraded: false } } });
+    homey = installHomeyMock({
+      uiState: {
+        homes: {
+          homes: [],
+          membershipByDeviceId: {},
+          zoneTree: null,
+          hasSubHomes: false,
+          runtimeActive: true,
+          configDegraded: false,
+        },
+      },
+    });
     setHomeyClient(homey as never);
     await refreshHomeLimitsOnLimitsPanel();
     await flushAsync();
@@ -113,7 +125,18 @@ describe('switcher + static-form visibility', () => {
   it('keeps the mount hidden with 0 meter areas, un-hides it when one exists', async () => {
     // Layout byte-identity: an empty mount that stays a grid child adds a stray
     // gap before Main's form. It must be display:none until a meter area exists.
-    const noAreas = installHomeyMock({ uiState: { homes: { homes: [], membershipByDeviceId: {}, zoneTree: null, hasSubHomes: false, configDegraded: false } } });
+    const noAreas = installHomeyMock({
+      uiState: {
+        homes: {
+          homes: [],
+          membershipByDeviceId: {},
+          zoneTree: null,
+          hasSubHomes: false,
+          runtimeActive: true,
+          configDegraded: false,
+        },
+      },
+    });
     setHomeyClient(noAreas as never);
     await refreshHomeLimitsOnLimitsPanel();
     await flushAsync();
@@ -137,6 +160,39 @@ describe('control toggle — optimistic rollback + serialization', () => {
   };
 
   const controlSwitch = () => document.querySelector('#home-limits-simulation-switch') as HTMLElement & { selected: boolean };
+
+  it('does not claim or persist control for a legacy-held meter area', async () => {
+    const dryRunKey = `capacity_dry_run:${AREA_ID}`;
+    install({
+      [`capacity_limit_kw:${AREA_ID}`]: 7,
+      [`capacity_margin_kw:${AREA_ID}`]: 0.3,
+      [dryRunKey]: false,
+      [`pels_status:${AREA_ID}`]: {
+        controlledKw: 2.5,
+        uncontrolledKw: 1.5,
+        powerKnown: true,
+        hasLivePowerSample: true,
+        devicesOff: 0,
+        limitReason: 'none',
+      },
+    }, false);
+    await refreshHomeLimitsOnLimitsPanel();
+    await flushAsync();
+    await selectArea(AREA_ID);
+
+    const sw = controlSwitch();
+    expect(sw.selected).toBe(false);
+    expect(sw.hasAttribute('disabled')).toBe(true);
+    expect(document.querySelector('#home-limits-status-chip')?.textContent).toBe('Not active');
+    expect(document.querySelector('#home-limits-status-power')?.textContent).toBe('—');
+    expect(document.querySelector('#home-limits-inactive-notice')?.textContent)
+      .toContain('open Multiple meters and save this area');
+
+    sw.selected = true;
+    sw.dispatchEvent(new Event('change'));
+    await flushAsync();
+    expect(homey.set.mock.calls.some(([key]: unknown[]) => key === dryRunKey)).toBe(false);
+  });
 
   it('rolls the toggle + posture back to the persisted value when the write is rejected', async () => {
     await seedSimulatingArea();
@@ -215,6 +271,244 @@ describe('per-home writes hit the suffixed keys', () => {
     expect(setCalls).toContainEqual([`capacity_limit_kw:${AREA_ID}`, 9]);
     // The Main-home bare key is never written by this controller.
     expect(setCalls.some(([key]) => key === 'capacity_limit_kw')).toBe(false);
+  });
+
+  it('serialises overlapping cap edits and persists the latest intent', async () => {
+    const capKey = `capacity_limit_kw:${AREA_ID}`;
+    install({ [capKey]: 7, [`capacity_margin_kw:${AREA_ID}`]: 0.3, [`capacity_dry_run:${AREA_ID}`]: true });
+    await refreshHomeLimitsOnLimitsPanel();
+    await flushAsync();
+    await selectArea(AREA_ID);
+    const pendingCapWrites: Array<{
+      value: unknown;
+      complete: () => void;
+    }> = [];
+    homey.set.mockImplementation((key: string, value: unknown, cb?: (err: Error | null) => void) => {
+      if (key === capKey) {
+        pendingCapWrites.push({
+          value,
+          complete: () => {
+            homey.__settingsStore[key] = value;
+            cb?.(null);
+          },
+        });
+        return;
+      }
+      homey.__settingsStore[key] = value;
+      cb?.(null);
+    });
+
+    const firstInput = document.querySelector<HTMLInputElement>('#home-limits-hard-cap')!;
+    firstInput.value = '9';
+    firstInput.dispatchEvent(new Event('input'));
+    document.querySelector<HTMLInputElement>('#home-limits-hard-cap')!.dispatchEvent(new Event('change'));
+    await flushAsync();
+    expect(pendingCapWrites.map((write) => write.value)).toEqual([9]);
+
+    const latestInput = document.querySelector<HTMLInputElement>('#home-limits-hard-cap')!;
+    latestInput.value = '6';
+    latestInput.dispatchEvent(new Event('input'));
+    document.querySelector<HTMLInputElement>('#home-limits-hard-cap')!.dispatchEvent(new Event('change'));
+    await flushAsync();
+    // The newer write stays queued until the older callback settles.
+    expect(pendingCapWrites.map((write) => write.value)).toEqual([9]);
+
+    pendingCapWrites[0]!.complete();
+    await flushAsync();
+    expect(pendingCapWrites.map((write) => write.value)).toEqual([9, 6]);
+
+    pendingCapWrites[1]!.complete();
+    await flushAsync();
+    expect(homey.__settingsStore[capKey]).toBe(6);
+    expect(document.querySelector<HTMLInputElement>('#home-limits-hard-cap')?.value).toBe('6');
+
+    // The latest successful completion updated the persisted fingerprint, so a
+    // same-value change does not enqueue a third write.
+    document.querySelector<HTMLInputElement>('#home-limits-hard-cap')!.dispatchEvent(new Event('change'));
+    await flushAsync();
+    expect(pendingCapWrites).toHaveLength(2);
+  });
+
+  it('tracks per-field success before applying a queued revert', async () => {
+    const capKey = `capacity_limit_kw:${AREA_ID}`;
+    const marginKey = `capacity_margin_kw:${AREA_ID}`;
+    install({ [capKey]: 7, [marginKey]: 0.3, [`capacity_dry_run:${AREA_ID}`]: true });
+    await refreshHomeLimitsOnLimitsPanel();
+    await flushAsync();
+    await selectArea(AREA_ID);
+    const pendingWrites: Array<{
+      key: string;
+      value: unknown;
+      succeed: () => void;
+      fail: () => void;
+    }> = [];
+    homey.set.mockImplementation((key: string, value: unknown, cb?: (err: Error | null) => void) => {
+      pendingWrites.push({
+        key,
+        value,
+        succeed: () => {
+          homey.__settingsStore[key] = value;
+          cb?.(null);
+        },
+        fail: () => { cb?.(new Error('write failed')); },
+      });
+    });
+
+    const capInput = document.querySelector<HTMLInputElement>('#home-limits-hard-cap')!;
+    capInput.value = '9';
+    capInput.dispatchEvent(new Event('input'));
+    const marginInput = document.querySelector<HTMLInputElement>('#home-limits-margin')!;
+    marginInput.value = '0.5';
+    marginInput.dispatchEvent(new Event('input'));
+    document.querySelector<HTMLInputElement>('#home-limits-margin')!.dispatchEvent(new Event('change'));
+    await flushAsync();
+    expect(pendingWrites.map(({ key, value }) => [key, value])).toEqual([
+      [capKey, 9],
+      [marginKey, 0.5],
+    ]);
+
+    const revertedCap = document.querySelector<HTMLInputElement>('#home-limits-hard-cap')!;
+    revertedCap.value = '7';
+    revertedCap.dispatchEvent(new Event('input'));
+    const revertedMargin = document.querySelector<HTMLInputElement>('#home-limits-margin')!;
+    revertedMargin.value = '0.3';
+    revertedMargin.dispatchEvent(new Event('input'));
+    document.querySelector<HTMLInputElement>('#home-limits-margin')!.dispatchEvent(new Event('change'));
+    await flushAsync();
+
+    pendingWrites[0]!.succeed();
+    await flushAsync();
+    // The chain waits for the older intent's margin callback too.
+    expect(pendingWrites).toHaveLength(2);
+
+    pendingWrites[1]!.fail();
+    await flushAsync();
+    // Cap 9 succeeded, so the queued revert must write 7. Margin 0.5 failed,
+    // so its persisted fingerprint remains the original 0.3 and needs no write.
+    expect(pendingWrites.map(({ key, value }) => [key, value])).toEqual([
+      [capKey, 9],
+      [marginKey, 0.5],
+      [capKey, 7],
+    ]);
+
+    pendingWrites[2]!.succeed();
+    await flushAsync();
+    expect(homey.__settingsStore[capKey]).toBe(7);
+    expect(homey.__settingsStore[marginKey]).toBe(0.3);
+  });
+
+  it('drains a queued cap edit after the user switches away from the area', async () => {
+    const capKey = `capacity_limit_kw:${AREA_ID}`;
+    install({ [capKey]: 7, [`capacity_margin_kw:${AREA_ID}`]: 0.3, [`capacity_dry_run:${AREA_ID}`]: true });
+    await refreshHomeLimitsOnLimitsPanel();
+    await flushAsync();
+    await selectArea(AREA_ID);
+    const pendingCapWrites: Array<{
+      value: unknown;
+      complete: () => void;
+    }> = [];
+    homey.set.mockImplementation((key: string, value: unknown, cb?: (err: Error | null) => void) => {
+      if (key === capKey) {
+        pendingCapWrites.push({
+          value,
+          complete: () => {
+            homey.__settingsStore[key] = value;
+            cb?.(null);
+          },
+        });
+        return;
+      }
+      homey.__settingsStore[key] = value;
+      cb?.(null);
+    });
+
+    const firstInput = document.querySelector<HTMLInputElement>('#home-limits-hard-cap')!;
+    firstInput.value = '9';
+    firstInput.dispatchEvent(new Event('input'));
+    document.querySelector<HTMLInputElement>('#home-limits-hard-cap')!.dispatchEvent(new Event('change'));
+    await flushAsync();
+
+    const latestInput = document.querySelector<HTMLInputElement>('#home-limits-hard-cap')!;
+    latestInput.value = '6';
+    latestInput.dispatchEvent(new Event('input'));
+    document.querySelector<HTMLInputElement>('#home-limits-hard-cap')!.dispatchEvent(new Event('change'));
+    await flushAsync();
+    expect(pendingCapWrites.map((write) => write.value)).toEqual([9]);
+
+    await selectArea(MAIN_HOME_ID);
+    expect(document.querySelector('#home-limits-hard-cap')).toBeNull();
+
+    pendingCapWrites[0]!.complete();
+    await flushAsync();
+    expect(pendingCapWrites.map((write) => write.value)).toEqual([9, 6]);
+
+    pendingCapWrites[1]!.complete();
+    await flushAsync();
+    expect(homey.__settingsStore[capKey]).toBe(6);
+  });
+
+  it('preserves per-home intent order across a realtime editor replacement', async () => {
+    const capKey = `capacity_limit_kw:${AREA_ID}`;
+    install({ [capKey]: 7, [`capacity_margin_kw:${AREA_ID}`]: 0.3, [`capacity_dry_run:${AREA_ID}`]: true });
+    await refreshHomeLimitsOnLimitsPanel();
+    await flushAsync();
+    await selectArea(AREA_ID);
+    const pendingCapWrites: Array<{
+      value: unknown;
+      complete: () => void;
+    }> = [];
+    homey.set.mockImplementation((key: string, value: unknown, cb?: (err: Error | null) => void) => {
+      if (key === capKey) {
+        pendingCapWrites.push({
+          value,
+          complete: () => {
+            homey.__settingsStore[key] = value;
+            cb?.(null);
+          },
+        });
+        return;
+      }
+      homey.__settingsStore[key] = value;
+      cb?.(null);
+    });
+
+    const firstInput = document.querySelector<HTMLInputElement>('#home-limits-hard-cap')!;
+    firstInput.value = '9';
+    firstInput.dispatchEvent(new Event('input'));
+    document.querySelector<HTMLInputElement>('#home-limits-hard-cap')!.dispatchEvent(new Event('change'));
+    await flushAsync();
+
+    const queuedInput = document.querySelector<HTMLInputElement>('#home-limits-hard-cap')!;
+    queuedInput.value = '6';
+    queuedInput.dispatchEvent(new Event('input'));
+    document.querySelector<HTMLInputElement>('#home-limits-hard-cap')!.dispatchEvent(new Event('change'));
+    await flushAsync();
+
+    // A same-home realtime read replaces the editor with the still-persisted
+    // value while 9 → 6 remains queued on this area's write chain.
+    notifyHomeLimitsSettingChanged(capKey);
+    await flushAsync();
+    expect(document.querySelector<HTMLInputElement>('#home-limits-hard-cap')?.value).toBe('7');
+
+    const newestInput = document.querySelector<HTMLInputElement>('#home-limits-hard-cap')!;
+    newestInput.value = '5';
+    newestInput.dispatchEvent(new Event('input'));
+    document.querySelector<HTMLInputElement>('#home-limits-hard-cap')!.dispatchEvent(new Event('change'));
+    await flushAsync();
+    expect(pendingCapWrites.map((write) => write.value)).toEqual([9]);
+
+    pendingCapWrites[0]!.complete();
+    await flushAsync();
+    expect(pendingCapWrites.map((write) => write.value)).toEqual([9, 6]);
+
+    pendingCapWrites[1]!.complete();
+    await flushAsync();
+    expect(pendingCapWrites.map((write) => write.value)).toEqual([9, 6, 5]);
+
+    pendingCapWrites[2]!.complete();
+    await flushAsync();
+    expect(homey.__settingsStore[capKey]).toBe(5);
+    expect(document.querySelector<HTMLInputElement>('#home-limits-hard-cap')?.value).toBe('5');
   });
 
   it('writes capacity_dry_run:<homeId> = false when control is turned ON (activation)', async () => {
@@ -350,10 +644,16 @@ describe('homes_config change refreshes the switcher roster', () => {
     membershipByDeviceId: {},
     zoneTree: null,
     hasSubHomes: true,
+    runtimeActive: true,
     configDegraded: false,
   });
   const emptyHomes = () => ({
-    homes: [], membershipByDeviceId: {}, zoneTree: null, hasSubHomes: false, configDegraded: false,
+    homes: [],
+    membershipByDeviceId: {},
+    zoneTree: null,
+    hasSubHomes: false,
+    runtimeActive: true,
+    configDegraded: false,
   });
 
   it('adds a newly-created area to the switcher on a homes_config change', async () => {

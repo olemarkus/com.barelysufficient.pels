@@ -1,5 +1,7 @@
 import { extractLiveHomePowerWatts, extractLiveMeterItems, extractLiveMeterPowerWatts } from '../../lib/device/managerEnergy';
 import { fetchLiveMeterItems, fetchLivePowerReport } from '../../lib/device/transport/managerFetch';
+import { fetchLivePowerReport as fetchTransportLivePowerReport } from '../../lib/device/transport/snapshotRefresh';
+import type { TransportContext } from '../../lib/device/transport/transportContext';
 import * as homeyApi from '../../lib/device/transport/managerHomeyApi';
 import type { Logger } from '../../lib/utils/types';
 
@@ -274,6 +276,38 @@ describe('fetchLivePowerReport', () => {
     expect(result.homePowerW).toBeNull();
     expect(result.deviceCount).toBe(0);
     expect(stderrSpy).toHaveBeenCalled();
+  });
+});
+
+describe('transport Main-meter authority', () => {
+  const logger = { log: vi.fn(), debug: vi.fn(), error: vi.fn() } as unknown as Logger;
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('uses a captured unavailable authority and preserves other report lanes', async () => {
+    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
+      items: [
+        { type: 'cumulative', id: 'automatic-main', values: { W: 9_999 } },
+        { type: 'device', id: 'sub-meter', values: { W: 1_200 } },
+      ],
+    });
+    const ctx = {
+      logger,
+      providers: {
+        // The live provider has recovered by the time the SDK call starts, but
+        // the refresh cycle must remain bound to its captured start selection.
+        getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: null }),
+        getAdditionalMeterDeviceIds: () => ['sub-meter'],
+      },
+    } as unknown as TransportContext;
+
+    const report = await fetchTransportLivePowerReport(ctx, { state: 'unavailable' });
+
+    expect(report.homePowerW).toBeNull();
+    expect(report.byDeviceId).toEqual({ 'sub-meter': 1_200 });
+    expect(report.additionalMeterPowerW).toEqual({ 'sub-meter': 1_200 });
   });
 });
 

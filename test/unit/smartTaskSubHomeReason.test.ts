@@ -12,7 +12,9 @@ import { resolveStarvationRescueRejectCopy } from '../../packages/shared-domain/
 import { SMART_TASK_SUB_HOME_UNAVAILABLE } from '../../packages/shared-domain/src/objectiveWriteStrings';
 import {
   resolveCreateSmartTaskRejectCopy,
+  resolveSmartTaskListStatus,
   resolveSmartTaskEditRejectCopy,
+  resolveSmartTaskWidgetDetailCopy,
 } from '../../packages/shared-domain/src/deadlineLabels';
 
 describe('device_in_sub_home reason mapping', () => {
@@ -36,5 +38,39 @@ describe('device_in_sub_home reject copy', () => {
 
   it('starvation-rescue resolver returns the same shared line (stale-row race cover)', () => {
     expect(resolveStarvationRescueRejectCopy('device_in_sub_home')).toBe(SMART_TASK_SUB_HOME_UNAVAILABLE);
+  });
+});
+
+describe('device_in_sub_home active-task presentation', () => {
+  it('overrides a cached on-track revision with the unavailable list status', () => {
+    expect(resolveSmartTaskListStatus({
+      pending: false,
+      pendingReason: undefined,
+      diagnosticReasonCode: 'objective_device_in_sub_home',
+      planStatus: 'on_track',
+      firstActionAtMs: 1,
+      nowMs: 0,
+    })).toBe('unavailable');
+  });
+
+  it('maps a never-revised separate-meter task to unavailable instead of building-plan', () => {
+    expect(resolveSmartTaskListStatus({
+      pending: true,
+      pendingReason: 'device_in_sub_home',
+      diagnosticReasonCode: 'objective_device_in_sub_home',
+      planStatus: undefined,
+      firstActionAtMs: null,
+      nowMs: 0,
+    })).toBe('unavailable');
+  });
+
+  it('reuses the canonical separate-meter sentence in widget detail copy', () => {
+    expect(resolveSmartTaskWidgetDetailCopy({
+      statusId: 'unavailable',
+      pendingReason: 'device_in_sub_home',
+    })).toEqual({
+      whyLabel: SMART_TASK_SUB_HOME_UNAVAILABLE,
+      recourseHint: null,
+    });
   });
 });

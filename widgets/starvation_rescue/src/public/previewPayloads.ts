@@ -16,6 +16,7 @@ export const PREVIEW_STARVATION_RESCUE_DEVICES: StarvationRescueDevicesPayload =
       cause: 'budget',
       accumulatedMs: 42 * 60 * 1000,
       intendedNormalTargetC: 65,
+      smartTaskHomeScope: 'main',
       hasSmartTask: false,
     },
     {
@@ -24,6 +25,7 @@ export const PREVIEW_STARVATION_RESCUE_DEVICES: StarvationRescueDevicesPayload =
       cause: 'capacity',
       accumulatedMs: 11 * 60 * 1000,
       intendedNormalTargetC: 21,
+      smartTaskHomeScope: 'main',
       hasSmartTask: false,
     },
     {
@@ -32,6 +34,7 @@ export const PREVIEW_STARVATION_RESCUE_DEVICES: StarvationRescueDevicesPayload =
       cause: 'budget',
       accumulatedMs: 18 * 60 * 1000,
       intendedNormalTargetC: 24,
+      smartTaskHomeScope: 'main',
       hasSmartTask: true,
     },
   ],

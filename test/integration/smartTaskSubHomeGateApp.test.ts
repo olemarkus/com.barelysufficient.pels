@@ -45,6 +45,11 @@ describe('smart-task sub-home gate (app lanes)', () => {
 
   it('rejects every app write lane for the sub-home device and keeps the main-home device fully working', async () => {
     const app = await initAppWithSubHome({ assertMembership: true });
+    // The serialized settings recompute immediately starts its fenced
+    // rebuild/reconcile; callers must not sit in the backoff-only generation
+    // gap after the semantic homes/pins state is already authoritative.
+    expect(app.homeMembership.hasPendingOwnershipGeneration()).toBe(false);
+    expect(app.timers.has('mainOwnershipRecovery')).toBe(false);
 
     // Widget create lane.
     expect(app.createDeferredObjective('heater-sub', tempCandidate(60)))
@@ -57,8 +62,11 @@ describe('smart-task sub-home gate (app lanes)', () => {
       .toBeUndefined();
 
     // Candidate list excludes the sub-home device but keeps the main one.
-    expect(app.getCreateSmartTaskCandidateDevices().map((device: TargetDeviceSnapshot) => device.id))
-      .toEqual(['heater-main']);
+    const candidates = app.getCreateSmartTaskCandidateDevices();
+    expect(candidates.state).toBe('ready');
+    expect(candidates.state === 'ready'
+      ? candidates.devices.map((device: TargetDeviceSnapshot) => device.id)
+      : []).toEqual(['heater-main']);
 
     // Main-home device: unaffected — the create persists.
     expect(app.createDeferredObjective('heater-main', tempCandidate(60))).toEqual({ ok: true });

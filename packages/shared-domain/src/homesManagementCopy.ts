@@ -167,6 +167,8 @@ export const HOMES_MAIN_METER_NOTICE = 'Right now PELS reads the combined total 
   + 'so Main home devices get limited to make room for the meter areas’ usage. Pick the Main '
   + 'home’s own meter — “Whole-home meter”, under Limits & safety.';
 export const HOMES_MAIN_METER_NOTICE_LINK = 'Open Limits & safety';
+export const HOMES_MAIN_METER_SAVE_DEGRADED = 'PELS can’t safely change the Whole-home meter '
+  + 'right now — your meter-area settings couldn’t be read. Try again in a few minutes.';
 
 // ── Flow power-source notice ───────────────────────────────────────────────
 

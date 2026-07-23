@@ -10,8 +10,11 @@ import {
   DAILY_BUDGET_RESET,
   DEBUG_LOGGING_TOPICS,
   DEVICE_COMMUNICATION_MODELS,
+  DEVICE_HOME_ASSIGNMENTS,
   DEVICE_DRIVER_OVERRIDES,
   DEVICE_TARGET_POWER_CONFIGS,
+  HOMEY_ENERGY_METER_DEVICE_ID,
+  HOMES_CONFIG,
   MANAGED_DEVICES,
   POWER_TRACKER_STATE,
   WEATHER_ADVISOR_SETTINGS,
@@ -596,13 +599,19 @@ describe('createSettingsHandler', () => {
   });
 
   it('refreshes snapshot, restarts poll, and rebuilds plan when power source changes', async () => {
-    const deps = buildDeps();
+    const order: string[] = [];
+    const deps = buildDeps({
+      onHomeRuntimePowerSourceChanged: vi.fn(() => { order.push('home-runtime'); }),
+      restartHomeyEnergyPoll: vi.fn(() => { order.push('poll'); }),
+    });
     const handler = createSettingsHandler(deps);
 
     await handler('power_source');
 
     expect(settingsLoggerInfo).toHaveBeenCalledWith(expect.objectContaining({ event: 'power_source_changed' }));
+    expect(deps.onHomeRuntimePowerSourceChanged).toHaveBeenCalled();
     expect(deps.restartHomeyEnergyPoll).toHaveBeenCalled();
+    expect(order).toEqual(['home-runtime', 'poll']);
     expect(deps.stopFlowPowerSampleFreshnessClock).toHaveBeenCalled();
     expect(deps.syncFlowPowerSampleFreshnessClock).toHaveBeenCalled();
     expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalled();
@@ -622,6 +631,42 @@ describe('createSettingsHandler', () => {
     expect(deps.stopFlowPowerSampleFreshnessClock).not.toHaveBeenCalled();
     expect(deps.refreshTargetDevicesSnapshot).not.toHaveBeenCalled();
     expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith('settings:homey_energy_meter');
+  });
+
+  it('invalidates an old-meter poll before a queued settings handler can restart it', async () => {
+    let releaseRefresh: (() => void) | undefined;
+    const refreshBlocked = new Promise<void>((resolve) => {
+      releaseRefresh = resolve;
+    });
+    const onHomeyEnergyMeterObserved = vi.fn();
+    const onMainMeterSelectionObserved = vi.fn();
+    const onHomeOwnershipConfigurationObserved = vi.fn();
+    const deps = buildDeps({
+      refreshTargetDevicesSnapshot: vi.fn(() => refreshBlocked),
+      onHomeyEnergyMeterObserved,
+      onMainMeterSelectionObserved,
+      onHomeOwnershipConfigurationObserved,
+    });
+    const handler = createSettingsHandler(deps);
+
+    const prior = handler(MANAGED_DEVICES);
+    await flushMicrotasks();
+    expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalled();
+
+    const meterChange = handler(HOMEY_ENERGY_METER_DEVICE_ID);
+    // Both safety edges run synchronously, before the serialized handler can
+    // reach restart/rebuild behind the blocked managed-devices refresh.
+    expect(onHomeyEnergyMeterObserved).toHaveBeenCalledOnce();
+    expect(onMainMeterSelectionObserved).toHaveBeenCalledOnce();
+    expect(deps.restartHomeyEnergyPoll).not.toHaveBeenCalled();
+    const areaChange = handler(HOMES_CONFIG);
+    const assignmentsChange = handler(DEVICE_HOME_ASSIGNMENTS);
+    expect(onMainMeterSelectionObserved).toHaveBeenCalledOnce();
+    expect(onHomeOwnershipConfigurationObserved).toHaveBeenCalledTimes(2);
+
+    releaseRefresh?.();
+    await Promise.all([prior, meterChange, areaChange, assignmentsChange]);
+    expect(deps.restartHomeyEnergyPoll).toHaveBeenCalledOnce();
   });
 
   it('resets daily budget learning and clears the reset flag', async () => {

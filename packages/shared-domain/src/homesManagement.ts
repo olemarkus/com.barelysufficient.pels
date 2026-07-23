@@ -208,8 +208,12 @@ const validateDraftName = (
 const validateDraftMeter = (
   meterDeviceId: string | null,
   others: readonly SubHomeListEntry[],
+  mainMeterDeviceId: string | null,
 ): SubHomeDraftError[] => {
   if (meterDeviceId === null) return [{ kind: 'meter_missing' }];
+  if (meterDeviceId === mainMeterDeviceId) {
+    return [{ kind: 'meter_in_use', otherName: 'Main home' }];
+  }
   const meterClash = others.find((entry) => entry.meterDeviceId === meterDeviceId);
   return meterClash === undefined ? [] : [{ kind: 'meter_in_use', otherName: meterClash.name }];
 };
@@ -251,12 +255,16 @@ export const validateSubHomeDraft = (params: {
   zones: HomesZoneTree;
   /** The picked meter's zone when known; `null` disables the subtree warning. */
   meterZoneId: string | null;
+  /** Main home's explicit meter; `null` means Automatic and cannot identity-clash. */
+  mainMeterDeviceId?: string | null;
 }): SubHomeDraftValidation => {
-  const { draft, zones, meterZoneId } = params;
+  const {
+    draft, zones, meterZoneId, mainMeterDeviceId = null,
+  } = params;
   const others = params.existing.filter((entry) => entry.homeId !== draft.homeId);
   const errors: SubHomeDraftError[] = [
     ...validateDraftName(draft.name, others),
-    ...validateDraftMeter(draft.meterDeviceId, others),
+    ...validateDraftMeter(draft.meterDeviceId, others, mainMeterDeviceId),
     ...(draft.rootZoneId === null
       ? [{ kind: 'zone_missing' as const }]
       : validateDraftZone(draft.homeId ?? DRAFT_PLACEHOLDER_ID, draft.rootZoneId, others, zones)),

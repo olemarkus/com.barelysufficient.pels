@@ -1,7 +1,21 @@
 import type CapacityGuard from './capacityGuard';
 import type { DeviceObjectiveProfile } from '../objectives/types';
+import type { PowerSource } from './powerSource';
+
+/**
+ * Durable identity of the meter signal whose freshness latch is carried by a
+ * sub-home tracker. Accounting history may span identity changes, but
+ * `lastTimestamp` / `lastPowerW` may only be reused when this identity matches
+ * the runtime being constructed.
+ */
+export type PowerTrackerMeterIdentity = {
+  powerSource: PowerSource;
+  meterDeviceId: string | null;
+};
 
 export type PowerTrackerState = {
+  /** Sub-home-only provenance for the freshness latch; absent on legacy/main trackers. */
+  meterIdentity?: PowerTrackerMeterIdentity;
   lastPowerW?: number;
   lastControlledPowerW?: number;
   lastUncontrolledPowerW?: number;

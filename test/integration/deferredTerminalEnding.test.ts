@@ -389,6 +389,12 @@ describe('applyShedBehavior — stepped terminal release', () => {
       deviceControlHelpers: {
         markSteppedLoadDesiredStepIssued: vi.fn(),
       },
+      homeMembership: {
+        getHomeIdForDevice: () => 'main',
+        isOwnershipReady: () => true,
+        hasPendingOwnershipGeneration: () => false,
+        isMainHomeActuationFenced: () => false,
+      },
       homey: {
         flow: { getTriggerCard: vi.fn() },
       },
@@ -409,6 +415,85 @@ describe('applyShedBehavior — stepped terminal release', () => {
     })).resolves.toBe(false);
   });
 
+  it('declines a terminal command when the device leaves the main home before apply', async () => {
+    const setCapability = vi.fn(async () => undefined);
+    let currentHomeId = 'main';
+    const ctx = {
+      deviceManager: {
+        setCapability,
+        applyDeviceTargets: vi.fn(async () => undefined),
+      },
+      deviceControlHelpers: {
+        markSteppedLoadDesiredStepIssued: vi.fn(),
+      },
+      homeMembership: {
+        getHomeIdForDevice: () => currentHomeId,
+        isOwnershipReady: () => true,
+        hasPendingOwnershipGeneration: () => false,
+        isMainHomeActuationFenced: () => false,
+      },
+      homey: {
+        flow: { getTriggerCard: vi.fn() },
+      },
+    } as unknown as AppContext;
+    const actuator = buildShedActuator(ctx) as Actuator;
+    currentHomeId = 'h_a';
+
+    const wrote = await applyShedBehavior({
+      deviceId: 'heater-1',
+      name: 'Heater',
+      command: {
+        kind: 'set_temperature',
+        targetValue: 16,
+      },
+      observed: observed({ targetValue: 21 }),
+      actuator,
+    });
+
+    expect(wrote).toBe(false);
+    expect(setCapability).not.toHaveBeenCalled();
+  });
+
+  it('declines a terminal command while Main ownership awaits the first zone-tree commit', async () => {
+    const setCapability = vi.fn(async () => undefined);
+    const ctx = {
+      deviceManager: {
+        setCapability,
+        applyDeviceTargets: vi.fn(async () => undefined),
+      },
+      deviceControlHelpers: {
+        markSteppedLoadDesiredStepIssued: vi.fn(),
+      },
+      homeMembership: {
+        // Before the zone tree arrives, an unpinned sub-home device resolves
+        // provisionally to Main. The producer-owned readiness fence must still
+        // prevent this separate terminal actuator from authorizing a write.
+        getHomeIdForDevice: () => 'main',
+        isOwnershipReady: () => false,
+        hasPendingOwnershipGeneration: () => false,
+        isMainHomeActuationFenced: () => true,
+      },
+      homey: {
+        flow: { getTriggerCard: vi.fn() },
+      },
+    } as unknown as AppContext;
+    const actuator = buildShedActuator(ctx) as Actuator;
+
+    const wrote = await applyShedBehavior({
+      deviceId: 'heater-1',
+      name: 'Heater',
+      command: {
+        kind: 'set_temperature',
+        targetValue: 16,
+      },
+      observed: observed({ targetValue: 21 }),
+      actuator,
+    });
+
+    expect(wrote).toBe(false);
+    expect(setCapability).not.toHaveBeenCalled();
+  });
+
   it('binds the optional stepped request wrapper to the device manager receiver', async () => {
     type StepRequestParams = Parameters<NonNullable<ActuatorTransport['requestSteppedLoadStep']>>[0];
     const deviceManager = {
@@ -421,6 +506,12 @@ describe('applyShedBehavior — stepped terminal release', () => {
     };
     const ctx = {
       deviceManager,
+      homeMembership: {
+        getHomeIdForDevice: () => 'main',
+        isOwnershipReady: () => true,
+        hasPendingOwnershipGeneration: () => false,
+        isMainHomeActuationFenced: () => false,
+      },
       deviceControlHelpers: {
         markSteppedLoadDesiredStepIssued: vi.fn(),
       },

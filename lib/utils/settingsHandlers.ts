@@ -82,15 +82,35 @@ export type SettingsHandlerDeps = {
   updateOverheadToken: (value?: number) => Promise<void>;
   updateDebugLoggingEnabled: (logChange?: boolean) => void;
   restartHomeyEnergyPoll?: () => void;
+  /** Synchronous meter-event edge: invalidate any old-selection poll now. */
+  onHomeyEnergyMeterObserved?: () => void;
+  /** Schedule bounded Main authority repair after an explicit-meter event. */
+  onMainMeterSelectionObserved?: () => void;
+  /**
+   * Synchronously close the shared ownership generation before a homes/pins
+   * event waits behind the serialized settings queue.
+   */
+  onHomeOwnershipConfigurationObserved?: () => void;
   stopFlowPowerSampleFreshnessClock?: () => void;
   syncFlowPowerSampleFreshnessClock?: () => void;
   reloadWeatherAdvisor?: () => void;
   /**
+   * Synchronously observe a source settings event before it enters the async
+   * settings queue. This closes per-home authorization for the new generation.
+   */
+  onHomeRuntimePowerSourceObserved?: () => void;
+  /**
+   * Durably reset and replace per-home meter runtimes for the latest observed
+   * source generation. Runs before the Homey Energy poll is restarted.
+   */
+  onHomeRuntimePowerSourceChanged?: () => void;
+  /**
    * Writes to home-suffixed keys (`<base>:<homeId>`, non-main home, see
    * `parseHomeScopedSettingsKey`) route here instead of the exact-key
    * handlers — a `power_tracker_state:<homeId>` write must never reload the
-   * main home's power tracker. Optional and dormant: no runtime consumer yet
-   * (the multi-home wiring provides one); when absent the write is ignored.
+   * main home's power tracker. The multi-home runtime registry provides the
+   * consumer; the optional seam remains absent in single-home/test contexts,
+   * where the write is ignored.
    * Rejections and throws are contained and logged; they never propagate to
    * the settings `set` listener.
    *
@@ -211,6 +231,17 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): SettingsHandle
 
   let queue = Promise.resolve();
   const handler = (async (key: string) => {
+    // Load-bearing synchronous edge: an async function executes through its
+    // first await immediately, so rapid un-awaited POWER_SOURCE events cannot
+    // collapse back to the original value before the registry observes them.
+    if (key === POWER_SOURCE) deps.onHomeRuntimePowerSourceObserved?.();
+    if (key === HOMEY_ENERGY_METER_DEVICE_ID) {
+      deps.onHomeyEnergyMeterObserved?.();
+      deps.onMainMeterSelectionObserved?.();
+    }
+    if (key === HOMES_CONFIG || key === DEVICE_HOME_ASSIGNMENTS) {
+      deps.onHomeOwnershipConfigurationObserved?.();
+    }
     const scoped = parseHomeScopedSettingsKey(key);
     if (scoped.homeId !== MAIN_HOME_ID) {
       // Non-main-home write: route to the hook only. Falling through would run
@@ -505,6 +536,7 @@ async function handleHomeyEnergyMeterChange(deps: SettingsHandlerDeps): Promise<
 
 async function handlePowerSourceChange(deps: SettingsHandlerDeps): Promise<void> {
   settingsLogger.info({ event: 'power_source_changed' });
+  deps.onHomeRuntimePowerSourceChanged?.();
   deps.restartHomeyEnergyPoll?.();
   deps.stopFlowPowerSampleFreshnessClock?.();
   deps.syncFlowPowerSampleFreshnessClock?.();

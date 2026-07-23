@@ -126,6 +126,47 @@ test.describe('Power source setting', () => {
     expect(stored).toBe('dev_subpanel');
   });
 
+  test('rejects a Whole-home meter already owned by a meter area and rolls the picker back', async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as any).__PELS_HOMEY_STUB__ = {
+        settings: {
+          power_source: 'homey_energy',
+          homes_config: {
+            activationVersion: 1,
+            subHomes: [{
+              homeId: 'h_rental',
+              name: 'Rental unit',
+              rootZoneId: 'z_rental',
+              meterDeviceId: 'dev_subpanel',
+            }],
+          },
+        },
+        apiHandlers: {
+          'GET /homey_energy_meters': () => [
+            { id: 'dev_han', name: 'HAN power meter' },
+            { id: 'dev_subpanel', name: 'Rental meter' },
+          ],
+        },
+      };
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await openLimitsAndSafety(page);
+
+    const meterSelect = page.locator('#settings-homey-energy-meter');
+    await expect(meterSelect).toHaveJSProperty('value', '');
+    await setMaterialSelectValue(page, '#settings-homey-energy-meter', 'dev_subpanel');
+
+    await expect(page.locator('#toast')).toContainText('“Rental unit” already uses this meter.');
+    await expect(meterSelect).toHaveJSProperty('value', '');
+    const stored = await page.evaluate(() => new Promise<unknown>((resolve, reject) => {
+      (window as any).Homey.get(
+        'homey_energy_meter_device_id',
+        (error: Error | null, value?: unknown) => (error ? reject(error) : resolve(value)),
+      );
+    }));
+    expect(stored).toBeUndefined();
+  });
+
   test('meter-backed source is labelled "Power meter" and lists the energy report meters', async ({ page }) => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await openLimitsAndSafety(page);

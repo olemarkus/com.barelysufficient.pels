@@ -18,9 +18,8 @@ import {
 } from './calibrationViews';
 import { withSteppedDiscriminant } from '../../lib/plan/planTypes';
 import { resolveSurplusOnlyPosture } from '../../lib/plan/planSurplusAbsorb';
-import { normalizePowerSource } from '../../lib/power/powerSource';
-import { POWER_SOURCE } from '../../lib/utils/settingsKeys';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
+import { requireConfiguredPowerSource } from '../powerSourceSettings';
 
 // Producer-side classification for the "Run on solar surplus" dump-load gate: a
 // plain binary-power control device — NOT an enabled continuous / target-power
@@ -75,10 +74,10 @@ function resolvePendingBinaryCommand(
 // Producer-resolved metered-source gate: on the flow power source no surplus
 // signal exists (the flow boundary rejects negative watts and carries no
 // generation channel), so a dump load must never be stamped `surplusOnly` there
-// — the surplus hold would otherwise keep it off forever. A transient
-// `settings.get` miss reads as flow (fail-toward-release): the device reverts to
-// normal managed control for that cycle rather than being stranded held.
-// `surplusOnly` is a per-cycle derived posture, not persisted state.
+// — the surplus hold would otherwise keep it off forever. A suspect persisted
+// source read aborts this producer cycle so the plan service retains its
+// last-good plan instead of transiently stamping an authoritative Flow posture.
+// `surplusOnly` remains a per-cycle derived posture, not persisted state.
 //
 // A sub-home capacity bundle (`surplusPostureEnabled === false`) is strictly
 // capacity-only — no price/surplus signal — so it must NEVER stamp the posture
@@ -97,7 +96,10 @@ function resolveSurplusPostureForDevice(params: {
     ctx, device, opts, plainBinaryControlModel, controllable, managed,
   } = params;
   if (opts?.surplusPostureEnabled === false) return false;
-  return resolveSurplusOnlyPosture({
+  // Resolve source-independent candidacy first. Most plan devices cannot use
+  // this posture and must not acquire an unrelated dependency on settings-store
+  // health merely by being projected into a plan.
+  const candidate = resolveSurplusOnlyPosture({
     surplusWilling: ctx.priceOptimizationSettings[device.id]?.surplusWilling,
     controlCapabilityId: device.controlCapabilityId,
     deviceClass: device.deviceClass,
@@ -106,8 +108,10 @@ function resolveSurplusPostureForDevice(params: {
     plainBinaryControlModel,
     controllable,
     managed,
-    meteredPowerSource: normalizePowerSource(ctx.homey.settings.get(POWER_SOURCE)) === 'homey_energy',
+    meteredPowerSource: true,
   });
+  if (!candidate) return false;
+  return requireConfiguredPowerSource(ctx.homey.settings) === 'homey_energy';
 }
 
 // The device param widens with `EvObservedProbe`: this producer is the one

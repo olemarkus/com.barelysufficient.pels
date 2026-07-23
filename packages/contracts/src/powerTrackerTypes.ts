@@ -1,6 +1,13 @@
 import type { DeviceObjectiveProfile } from './objectiveProfileTypes.js';
 
+export type PowerTrackerMeterIdentity = {
+  powerSource: 'homey_energy' | 'flow';
+  meterDeviceId: string | null;
+};
+
 export type PowerTrackerState = {
+  // Sub-home-only provenance for the freshness latch; absent on legacy/main trackers.
+  meterIdentity?: PowerTrackerMeterIdentity;
   lastPowerW?: number;
   lastControlledPowerW?: number;
   lastUncontrolledPowerW?: number;

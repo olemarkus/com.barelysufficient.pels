@@ -70,6 +70,7 @@ import {
   DEFERRED_OBJECTIVES_PERKEY_MIGRATED,
 } from '../../lib/utils/settingsKeys';
 import type { AppContext } from '../../lib/app/appContext';
+import type { Actuator } from '../../lib/actuator/deviceActuator';
 import { buildMainHomeScope } from '../../setup/homeRuntime/homeScope';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 
@@ -97,6 +98,41 @@ describe('app init plan service wiring', () => {
     (capturedPlanEngineDeps.current as unknown as { logDebug: (...args: unknown[]) => void }).logDebug('debug payload', 123);
 
     expect(logDebug).toHaveBeenCalledWith('plan', 'debug payload', 123);
+  });
+
+  it('rechecks main-home ownership at the final actuator seam', async () => {
+    const setCapability = vi.fn(async () => undefined);
+    let currentHomeId = 'main';
+    capturedPlanEngineDeps.current = null;
+    const engineCtx = createAppContextMock({
+      deviceManager: {
+        setCapability,
+        applyDeviceTargets: vi.fn(async () => undefined),
+      } as unknown as AppContext['deviceManager'],
+      homeMembership: {
+        getHomeIdForDevice: () => currentHomeId,
+      } as unknown as NonNullable<AppContext['homeMembership']>,
+    });
+    createPlanEngine(engineCtx, buildMainHomeScope(engineCtx));
+    const actuator = (
+      capturedPlanEngineDeps.current as unknown as { actuator: Actuator }
+    ).actuator;
+    const command = {
+      kind: 'target' as const,
+      deviceId: 'heater-1',
+      capabilityId: 'target_temperature',
+      value: 21,
+    };
+
+    await expect(actuator.apply(command)).resolves.toEqual({ requested: true });
+    currentHomeId = 'h_a';
+    await expect(actuator.apply(command)).resolves.toEqual({ requested: false });
+
+    expect(setCapability).toHaveBeenCalledExactlyOnceWith(
+      'heater-1',
+      'target_temperature',
+      21,
+    );
   });
 
   it('passes the transport-resolved controlCapabilityId through to plan devices', () => {

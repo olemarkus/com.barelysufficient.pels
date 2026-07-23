@@ -70,10 +70,18 @@ export const resolveRescuableDeviceFromList = (
 ): ResolvedRescuableDevice => {
   if (devices === null) return { ok: false, reason: 'unavailable' };
   const device = devices.find((entry) => entry.deviceId === deviceId);
+  if (device?.smartTaskHomeScope === 'unavailable') {
+    return { ok: false, reason: 'unavailable' };
+  }
   // `starvationRowIsRescuable` is the full actionable predicate the surfaces' UI
   // gates also use (budget cause AND task-free AND a known finite target), so a
   // shown affordance and this enforcement agree by construction.
-  if (!device || !starvationRowIsRescuable(device.cause, device.intendedNormalTargetC, device.hasSmartTask)) {
+  if (!device || !starvationRowIsRescuable(
+    device.cause,
+    device.intendedNormalTargetC,
+    device.hasSmartTask,
+    device.smartTaskHomeScope,
+  )) {
     if (device && device.cause === 'budget' && !device.hasSmartTask
       && (device.intendedNormalTargetC === null || !Number.isFinite(device.intendedNormalTargetC))) {
       return { ok: false, reason: 'no_target' };

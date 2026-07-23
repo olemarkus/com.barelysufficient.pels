@@ -109,6 +109,11 @@ export type PlanExecutorDeps = {
 export class PlanExecutor {
   private lastControlledPersistenceDirty = false;
   private controlPersistenceBatchDepth = 0;
+  // Distinct from `state.inShortfall`: the builder synchronizes that shared
+  // planner/persistence latch from CapacityGuard even while the global Flow
+  // callback is temporarily authority-fenced. This latch records only whether
+  // the retained enter side effect has actually reached its Flow seam.
+  private shortfallSideEffectActive = false;
 
   constructor(private deps: PlanExecutorDeps, private state: PlanEngineState) {
   }
@@ -413,7 +418,7 @@ export class PlanExecutor {
   }
 
   public async handleShortfall(deficitKw: number): Promise<void> {
-    if (this.state.inShortfall) return; // Already in shortfall state
+    if (this.shortfallSideEffectActive) return;
 
     const shortfallThreshold = this.capacityGuard
       ? this.capacityGuard.getShortfallThreshold()
@@ -431,28 +436,43 @@ export class PlanExecutor {
         + `soft ${softLimit.toFixed(2)}kW)`,
     });
 
-    this.state.inShortfall = true;
-    this.deps.setCapacityInShortfall(true);
-    incPerfCounter('settings_set.capacity_in_shortfall');
+    if (!this.state.inShortfall) {
+      // Persist first, then commit the in-memory latch. The shortfall side-effect
+      // gate retains this transition when the settings writer throws; flipping
+      // the latch before that write would make the retry return early and lose
+      // both the durable state and the one-shot Flow trigger.
+      this.deps.setCapacityInShortfall(true);
+      this.state.inShortfall = true;
+      incPerfCounter('settings_set.capacity_in_shortfall');
+    }
 
     // Trigger flow card
     const card = this.deps.homey.flow?.getTriggerCard?.('capacity_shortfall');
     if (card && typeof card.trigger === 'function') {
-      card.trigger({}).catch((err: Error) => logger.error({
+      const trigger = card.trigger({});
+      this.shortfallSideEffectActive = true;
+      trigger.catch((err: Error) => logger.error({
         event: 'executor_plan_error',
         msg: 'Failed to trigger capacity_shortfall',
         err,
       }));
+      return;
     }
+    this.shortfallSideEffectActive = true;
   }
 
   public async handleShortfallCleared(): Promise<void> {
-    if (!this.state.inShortfall) return; // Not in shortfall state
+    if (!this.state.inShortfall && !this.shortfallSideEffectActive) return;
 
     logger.info({ event: 'executor_plan_log', msg: 'Capacity shortfall resolved' });
-    this.state.inShortfall = false;
-    this.deps.setCapacityInShortfall(false);
-    incPerfCounter('settings_set.capacity_in_shortfall');
+    if (this.state.inShortfall) {
+      // Same commit ordering as enter: a failed durable write must leave the
+      // in-memory latch retryable so a deferred clear is not silently consumed.
+      this.deps.setCapacityInShortfall(false);
+      this.state.inShortfall = false;
+      incPerfCounter('settings_set.capacity_in_shortfall');
+    }
+    this.shortfallSideEffectActive = false;
   }
 
   public async applyPlanActions(plan: DevicePlan, mode: PlanActuationMode = 'plan'): Promise<PlanActuationResult> {

@@ -5,6 +5,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   MAIN_HOME_ID,
+  findMainMeterCollision,
   findNestedSubHomeRoots,
   generateHomeId,
   isPlausibleDeviceHomeAssignmentsBlob,
@@ -12,6 +13,7 @@ import {
   isValidSubHomeId,
   normalizeDeviceHomeAssignments,
   normalizeHomesConfig,
+  resolveExplicitMainMeterDeviceId,
   zoneAncestryPath,
   type SubHomeConfig,
   type ZoneTree,
@@ -94,6 +96,27 @@ describe('normalizeHomesConfig', () => {
   });
 });
 
+describe('explicit Main meter ownership', () => {
+  const meteredHome: SubHomeConfig = {
+    homeId: 'h_aaaa1111',
+    name: 'Annex',
+    rootZoneId: 'annex',
+    meterDeviceId: 'meter-annex',
+  };
+
+  it('normalizes the external setting before identity checks', () => {
+    expect(resolveExplicitMainMeterDeviceId('  meter-annex  ')).toBe('meter-annex');
+    expect(resolveExplicitMainMeterDeviceId('   ')).toBeNull();
+    expect(resolveExplicitMainMeterDeviceId(42)).toBeNull();
+  });
+
+  it('finds only an explicit meter that a sub-home already owns', () => {
+    expect(findMainMeterCollision('meter-annex', [meteredHome])).toBe(meteredHome);
+    expect(findMainMeterCollision('meter-main', [meteredHome])).toBeNull();
+    expect(findMainMeterCollision(null, [meteredHome])).toBeNull();
+  });
+});
+
 describe('normalizeDeviceHomeAssignments', () => {
   it.each([
     ['a string blob', 'garbage'],
@@ -151,6 +174,23 @@ describe('isPlausibleHomesConfigBlob (store-boundary, stricter than the normaliz
     ['the reserved main homeId', { subHomes: [{ ...goodEntry, homeId: MAIN_HOME_ID }] }, false],
     ['a lossily-coercible meterDeviceId', { subHomes: [{ ...goodEntry, meterDeviceId: 42 }] }, false],
     ['duplicate homeIds', { subHomes: [goodEntry, { ...goodEntry, rootZoneId: 'garage' }] }, false],
+    ['duplicate assigned meters', {
+      subHomes: [
+        { ...goodEntry, meterDeviceId: 'meter-1' },
+        {
+          ...goodEntry,
+          homeId: 'h_bbbb2222',
+          rootZoneId: 'garage',
+          meterDeviceId: 'meter-1',
+        },
+      ],
+    }, false],
+    ['multiple unassigned meters', {
+      subHomes: [
+        goodEntry,
+        { ...goodEntry, homeId: 'h_bbbb2222', rootZoneId: 'garage' },
+      ],
+    }, true],
   ])('judges %s as %s', (_label, blob, plausible) => {
     expect(isPlausibleHomesConfigBlob(blob)).toBe(plausible);
   });

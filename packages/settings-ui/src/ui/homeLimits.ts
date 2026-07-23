@@ -30,7 +30,6 @@ import {
 } from '../../../shared-domain/src/homeLimitsStatus.ts';
 import { callApi, getSettingFresh, setSetting } from './homey.ts';
 import { logSettingsError } from './logging.ts';
-import { pushSettingWriteIfChanged } from './settingWrites.ts';
 import { showToast, showToastError } from './toast.ts';
 import { state } from './state.ts';
 import {
@@ -62,14 +61,21 @@ const HOME_LIMITS_MOUNT_ID = 'home-limits-mount';
 
 type MeterArea = { homeId: string; name: string };
 
+type AreaCapsWriteQueue = {
+  persistedLimitKw: number;
+  persistedMarginKw: number;
+  pendingCount: number;
+  latestSequence: number;
+  tail: Promise<void>;
+};
+
 type AreaEditorState = {
   homeId: string;
   areaName: string;
   hardCapValue: string;
   marginValue: string;
   dryRun: boolean;
-  persistedLimitKw: number;
-  persistedMarginKw: number;
+  capsWriteQueue: AreaCapsWriteQueue;
   persistedDryRun: boolean;
   /** True while a control-toggle write is in flight — serialises toggles + gates rollback. */
   dryRunWriteInFlight: boolean;
@@ -78,8 +84,41 @@ type AreaEditorState = {
 };
 
 let meterAreas: MeterArea[] = [];
+// Producer-resolved for the whole saved homes config. False is not simulation:
+// it is a held legacy config whose devices still belong to Main home.
+let homesRuntimeActive = false;
 let selectedHomeId: string = MAIN_HOME_ID;
 let areaEditor: AreaEditorState | null = null;
+// Write ordering belongs to the meter area, not a rendered editor object. A
+// realtime reload or quick area switch can replace the editor while callbacks
+// are pending; later captured intents must still run after earlier ones.
+const areaCapsWriteQueueByHomeId = new Map<string, AreaCapsWriteQueue>();
+
+const resolveAreaCapsWriteQueue = (params: {
+  homeId: string;
+  limitKw: number;
+  marginKw: number;
+}): AreaCapsWriteQueue => {
+  const existing = areaCapsWriteQueueByHomeId.get(params.homeId);
+  if (existing !== undefined) {
+    // A fresh load may reflect an intermediate write. Only reconcile the
+    // persisted fingerprint once this home's ordered chain is fully settled.
+    if (existing.pendingCount === 0) {
+      existing.persistedLimitKw = params.limitKw;
+      existing.persistedMarginKw = params.marginKw;
+    }
+    return existing;
+  }
+  const created: AreaCapsWriteQueue = {
+    persistedLimitKw: params.limitKw,
+    persistedMarginKw: params.marginKw,
+    pendingCount: 0,
+    latestSequence: 0,
+    tail: Promise.resolve(),
+  };
+  areaCapsWriteQueueByHomeId.set(params.homeId, created);
+  return created;
+};
 
 // Fire-and-forget guard for a discarded async settings load (an area switch, a
 // realtime reload). A rejected fetch must never surface as an unhandled
@@ -130,13 +169,18 @@ const buildAreaEditorView = (editor: AreaEditorState): HomeLimitsEditorView => {
     hardCapValue: editor.hardCapValue,
     marginValue: editor.marginValue,
     dryRun: editor.dryRun,
+    runtimeActive: homesRuntimeActive,
     controlBusy: editor.dryRunWriteInFlight,
     marginError: marginVsCapError(hardCapKw, marginKw),
     reactionKw: reactionKwLabel(hardCapKw, marginKw),
     // Resolve the status against the LIVE edited cap + simulation state so the
-    // card's Hard cap and posture track the inputs without a re-read.
+    // card's Hard cap and posture track the inputs without a re-read. A held
+    // config is forced non-active even if its pre-GA dry-run value was false.
     status: editor.statusLoaded
-      ? resolveHomeLimitsStatus(editor.statusRaw, { dryRun: editor.dryRun, hardCapKw })
+      ? resolveHomeLimitsStatus(editor.statusRaw, {
+        dryRun: !homesRuntimeActive || editor.dryRun,
+        hardCapKw,
+      })
       : null,
     onHardCapInput: handleHardCapInput,
     onHardCapChange: () => { void saveAreaCaps(); },
@@ -184,14 +228,14 @@ const loadAreaIntoEditor = async (homeId: string, areaName: string): Promise<voi
   const limitKw = typeof limitRaw === 'number' ? limitRaw : DEFAULT_LIMIT_KW;
   const marginKw = typeof marginRaw === 'number' ? marginRaw : DEFAULT_MARGIN_KW;
   const dryRun = typeof dryRunRaw === 'boolean' ? dryRunRaw : DEFAULT_DRY_RUN;
+  const capsWriteQueue = resolveAreaCapsWriteQueue({ homeId, limitKw, marginKw });
   areaEditor = {
     homeId,
     areaName,
     hardCapValue: limitKw.toString(),
     marginValue: marginKw.toString(),
     dryRun,
-    persistedLimitKw: limitKw,
-    persistedMarginKw: marginKw,
+    capsWriteQueue,
     persistedDryRun: dryRun,
     dryRunWriteInFlight: false,
     statusRaw,
@@ -251,6 +295,57 @@ const validateAreaCaps = (hardCapKw: number, marginKw: number): string | null =>
   return null;
 };
 
+const persistAreaCaps = async (params: {
+  editor: AreaEditorState;
+  hardCapKw: number;
+  marginKw: number;
+  queue: AreaCapsWriteQueue;
+  sequence: number;
+}): Promise<void> => {
+  const {
+    editor, hardCapKw, marginKw, queue, sequence,
+  } = params;
+  const writes: Array<{
+    field: 'limit' | 'margin';
+    task: Promise<void>;
+  }> = [];
+  if (queue.persistedLimitKw !== hardCapKw) {
+    writes.push({
+      field: 'limit',
+      task: setSetting(homeScopedSettingsKey(CAPACITY_LIMIT_KW, editor.homeId), hardCapKw),
+    });
+  }
+  if (queue.persistedMarginKw !== marginKw) {
+    writes.push({
+      field: 'margin',
+      task: setSetting(homeScopedSettingsKey(CAPACITY_MARGIN_KW, editor.homeId), marginKw),
+    });
+  }
+  if (writes.length === 0) return;
+  // Wait for every callback even when one write fails. Advancing this home's
+  // chain after the first rejection would let a slower sibling write from the
+  // older intent land after a newer cap/margin pair.
+  const results = await Promise.allSettled(writes.map(({ task }) => task));
+  results.forEach((result, index) => {
+    if (result.status !== 'fulfilled') return;
+    if (writes[index]?.field === 'limit') queue.persistedLimitKw = hardCapKw;
+    if (writes[index]?.field === 'margin') queue.persistedMarginKw = marginKw;
+  });
+  const failed = results.find((result) => result.status === 'rejected');
+  if (failed?.status === 'rejected') {
+    await logSettingsError('Failed to save meter-area limits', failed.reason, 'homeLimits');
+    if (areaEditor === editor && sequence === queue.latestSequence) {
+      await showToastError(failed.reason, HOME_LIMITS_SAVE_FAILED_TOAST);
+    }
+    return;
+  }
+  // A newer intent is already waiting; let the tail own the success
+  // acknowledgement so the UI never celebrates an intermediate value.
+  if (sequence === queue.latestSequence && areaEditor === editor) {
+    await showToast(HOME_LIMITS_SAVED_TOAST, 'ok');
+  }
+};
+
 const saveAreaCaps = async (): Promise<void> => {
   if (areaEditor === null) return;
   const editor = areaEditor;
@@ -262,30 +357,28 @@ const saveAreaCaps = async (): Promise<void> => {
     await showToast(error, 'warn');
     return;
   }
-  const writes: Array<Promise<void>> = [];
-  pushSettingWriteIfChanged(
-    writes,
-    homeScopedSettingsKey(CAPACITY_LIMIT_KW, editor.homeId),
-    editor.persistedLimitKw,
-    hardCapKw,
-  );
-  pushSettingWriteIfChanged(
-    writes,
-    homeScopedSettingsKey(CAPACITY_MARGIN_KW, editor.homeId),
-    editor.persistedMarginKw,
-    marginKw,
-  );
-  if (writes.length === 0) return;
-  try {
-    await Promise.all(writes);
-  } catch (caught) {
-    await logSettingsError('Failed to save meter-area limits', caught, 'homeLimits');
-    await showToastError(caught, HOME_LIMITS_SAVE_FAILED_TOAST);
-    return;
-  }
-  editor.persistedLimitKw = hardCapKw;
-  editor.persistedMarginKw = marginKw;
-  await showToast(HOME_LIMITS_SAVED_TOAST, 'ok');
+  const { capsWriteQueue: queue } = editor;
+  // Preserve the no-op fast path once this area's chain is settled. While it
+  // is pending, every change intent is captured so a failed earlier callback
+  // cannot swallow a later same-value commitment.
+  if (
+    queue.pendingCount === 0
+    && queue.persistedLimitKw === hardCapKw
+    && queue.persistedMarginKw === marginKw
+  ) return;
+  queue.latestSequence += 1;
+  const sequence = queue.latestSequence;
+  queue.pendingCount += 1;
+  const task = queue.tail
+    .catch(() => {})
+    .then(() => persistAreaCaps({
+      editor, hardCapKw, marginKw, queue, sequence,
+    }))
+    .finally(() => {
+      queue.pendingCount -= 1;
+    });
+  queue.tail = task;
+  await task;
 };
 
 // Positive activation toggle. `controlEnabled` true = PELS controls this area,
@@ -296,6 +389,10 @@ const saveAreaCaps = async (): Promise<void> => {
 // or be lost. On failure the optimistic UI rolls back to the persisted value.
 const saveAreaControl = async (controlEnabled: boolean): Promise<void> => {
   if (areaEditor === null) return;
+  // A legacy-held homes config is activated only by the deliberate
+  // Multiple-meters save path. Never let this scalar toggle claim success
+  // while runtime still assigns every device to Main home.
+  if (!homesRuntimeActive) return;
   const editor = areaEditor;
   if (editor.dryRunWriteInFlight) return;
   const nextDryRun = !controlEnabled;
@@ -329,6 +426,7 @@ const fetchMeterAreas = async (): Promise<void> => {
     // Only an authoritative (successful) response reshapes the roster — an empty
     // `homes` here is a real "no meter areas" state and correctly clears it.
     meterAreas = payload.homes.map((home) => ({ homeId: home.homeId, name: home.name }));
+    homesRuntimeActive = payload.runtimeActive;
   } catch (caught) {
     // Abandon-grace (mirrors homesSettings' pickers): a transient read failure
     // KEEPS the last-good roster + selection rather than blanking the whole

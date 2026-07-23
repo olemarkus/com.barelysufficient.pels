@@ -13,6 +13,7 @@ import {
 import type { DeferredObjectiveSettingsEntry } from './settings';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import { DEFERRED_OBJECTIVES_PERKEY_MIGRATED } from '../../utils/settingsKeys';
+import type { SmartTaskHomeScope } from '../../../packages/contracts/src/smartTaskHomeScope';
 
 // Device-scoped writes only proceed once the per-key migration is COMPLETE. Until
 // then a device's objective may still live only in the un-migrated legacy blob, so
@@ -52,7 +53,10 @@ const ensureMigrated = (deps: DeferredObjectiveDeviceWriteDeps): boolean => {
 // was written.
 export type ObjectiveWriteOutcome =
   | { persisted: true }
-  | { persisted: false; reason: 'migration_deferred' | 'untrusted_absence' | 'device_in_sub_home' };
+  | {
+    persisted: false;
+    reason: 'migration_deferred' | 'untrusted_absence' | 'device_in_sub_home' | 'ownership_unavailable';
+  };
 
 export type DeferredObjectiveDeviceWriteDeps = {
   store: ObjectiveSettingsStore;
@@ -69,7 +73,7 @@ export type DeferredObjectiveDeviceWriteDeps = {
   // membership resolves main for everything, so every gate passes unchanged.
   // Clearing is deliberately NOT gated — a user must always be able to clear a
   // task whose device was later moved to a sub-home.
-  isDeviceInMainHome?: (deviceId: string) => boolean;
+  resolveDeviceHomeScope?: (deviceId: string) => SmartTaskHomeScope;
   // Topic-gated structured debug sink (gated on the `deferred_objectives` debug
   // topic), wired by `buildDeferredObjectiveDeviceWriteDeps`. Optional so test
   // harnesses can omit it. Used only to surface refusals (see `refuse`).
@@ -92,7 +96,7 @@ const refuse = (
   deps: DeferredObjectiveDeviceWriteDeps,
   op: ObjectiveWriteOp,
   deviceId: string,
-  reason: 'migration_deferred' | 'untrusted_absence' | 'device_in_sub_home',
+  reason: 'migration_deferred' | 'untrusted_absence' | 'device_in_sub_home' | 'ownership_unavailable',
 ): ObjectiveWriteOutcome => {
   deps.debugStructured?.({ event: 'objective_write_refused', op, deviceId, reason });
   return { persisted: false, reason };
@@ -143,8 +147,12 @@ export const upsertObjectiveForDevice = (
   // available here", never the transient retry framing the guards below map to.
   // See the dep's doc — clear (`clearObjectiveForDevice`) is intentionally
   // ungated so a task on a relocated device can always be removed.
-  if (deps.isDeviceInMainHome?.(params.deviceId) === false) {
+  const homeScope = deps.resolveDeviceHomeScope?.(params.deviceId) ?? 'main';
+  if (homeScope === 'sub_home') {
     return refuse(deps, 'upsert', params.deviceId, 'device_in_sub_home');
+  }
+  if (homeScope === 'unavailable') {
+    return refuse(deps, 'upsert', params.deviceId, 'ownership_unavailable');
   }
   if (!ensureMigrated(deps)) return refuse(deps, 'upsert', params.deviceId, 'migration_deferred');
   const { deviceId, deviceName } = params;

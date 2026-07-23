@@ -18,6 +18,7 @@ import type Homey from 'homey';
 import { mockHomeyInstance, setMockDrivers, setMockZones, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
 import { createHomesStore } from '../../setup/homeRegistryAdapter';
+import { HOME_CONFIG_ACTIVATION_VERSION } from '../../lib/home/homeConfig';
 import {
   CAPACITY_DRY_RUN, CAPACITY_LIMIT_KW, CAPACITY_MARGIN_KW,
 } from '../../lib/utils/settingsKeys';
@@ -122,6 +123,7 @@ describe('Main plan is the membership complement (SDK-boundary e2e)', () => {
 
     const putSpy = await bootAndOvershoot(() => {
       createHomesStore(homeyLike).write({
+        activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
         subHomes: [{ homeId: 'h_sub', name: 'Annex', rootZoneId: 'z2', meterDeviceId: null }],
       });
     });

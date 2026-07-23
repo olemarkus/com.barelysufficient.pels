@@ -43,6 +43,28 @@ test('flow power source warns that meter areas need Homey Energy', async ({ page
   await expect(page.locator('#homes-flow-source-notice')).toContainText('Homey Energy power source');
 });
 
+test('flow power source warning survives an unrelated whole-home meter read failure', async ({ page }) => {
+  await gotoApp(page);
+  await seedStubSetting(page, 'power_source', 'flow');
+  await page.evaluate(() => {
+    const homey = (window as unknown as {
+      Homey: {
+        get: (key: string, callback: (error: Error | null, value?: unknown) => void) => void;
+      };
+    }).Homey;
+    const originalGet = homey.get.bind(homey);
+    homey.get = (key, callback) => {
+      if (key === 'homey_energy_meter_device_id') {
+        setTimeout(() => callback(new Error('meter setting unavailable')), 0);
+        return;
+      }
+      originalGet(key, callback);
+    };
+  });
+  await openHomesPanel(page);
+  await expect(page.locator('#homes-flow-source-notice')).toBeVisible();
+});
+
 test('create flow prefills zone by the ancestor walk, names it after the zone, and persists', async ({ page }) => {
   await openWithRentalMeter(page);
   await page.locator('#homes-add-button').click();

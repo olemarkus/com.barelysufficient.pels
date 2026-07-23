@@ -12,6 +12,7 @@
  * structural mirror, so it is allowed here.
  */
 import type { BinaryControlObservation, TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
+import type { MainMeterSelection } from '../../../packages/contracts/src/mainMeterSelection';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike, Logger } from '../../utils/types';
 import type { StructuredDebugEmitter } from '../../logging/logger';
@@ -50,6 +51,12 @@ export type TransportRoleProducer = {
 export type TransportSolarRoleProducer = {
   observe: (devices: readonly HomeyDeviceLike[], options: { fullRefresh: boolean }) => void;
   noteSolarDevice: (device: HomeyDeviceLike) => void;
+};
+
+export type SnapshotRefreshOptions = {
+  includeLivePower?: boolean;
+  targetedRefresh?: boolean;
+  mainMeterSelection?: MainMeterSelection;
 };
 
 /**
@@ -103,9 +110,7 @@ export type TransportContext = {
   isSdkReady(): boolean;
   updateLocalSnapshot(deviceId: string, updates: { on: boolean }): void;
   dispatchObservedStateForDevice(deviceId: string, capabilityId?: string): void;
-  refreshSnapshot(
-    options?: { includeLivePower?: boolean; targetedRefresh?: boolean },
-  ): Promise<{ powerW: number; generationW?: number } | null>;
+  refreshSnapshot(options?: SnapshotRefreshOptions): Promise<{ powerW: number; generationW?: number } | null>;
 
   // --- Snapshot-refresh pipeline collaborators (snapshotRefresh.ts) ---
   // Parse-binding inputs (stable references built once in the constructor).

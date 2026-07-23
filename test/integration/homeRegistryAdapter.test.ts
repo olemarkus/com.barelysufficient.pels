@@ -17,7 +17,11 @@ import {
   HOMES_CONFIG,
   HOMES_CONFIG_INITIALIZED,
 } from '../../lib/utils/settingsKeys';
-import { HomeStoreWriteRefusedError, type HomeConfig } from '../../lib/home/homeConfig';
+import {
+  HOME_CONFIG_ACTIVATION_VERSION,
+  HomeStoreWriteRefusedError,
+  type HomeConfig,
+} from '../../lib/home/homeConfig';
 
 const homey = mockHomeyInstance as unknown as Homey.App['homey'];
 
@@ -57,6 +61,19 @@ describe('createHomesStore', () => {
     expect(store.read()).toEqual({ state: 'present', value: config });
   });
 
+  it('round-trips the atomic runtime activation marker', () => {
+    const store = createHomesStore(homey);
+    const activeConfig: HomeConfig = {
+      activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
+      subHomes: config.subHomes,
+    };
+
+    store.write(activeConfig);
+
+    expect(mockHomeyInstance.settings.get(HOMES_CONFIG)).toEqual(activeConfig);
+    expect(store.read()).toEqual({ state: 'present', value: activeConfig });
+  });
+
   it('a deliberately emptied config reads present, not suspect', () => {
     const store = createHomesStore(homey);
     store.write({ subHomes: [] });
@@ -82,6 +99,16 @@ describe('createHomesStore', () => {
     mockHomeyInstance.settings.set(HOMES_CONFIG, {
       subHomes: [config.subHomes[0], { homeId: 'bad:id', name: 'colon', rootZoneId: 'annex' }],
     });
+    expect(createHomesStore(homey).read()).toEqual({ state: 'suspect' });
+  });
+
+  it('classifies an unknown activation marker as suspect instead of silently activating it', () => {
+    mockHomeyInstance.settings.set(HOMES_CONFIG_INITIALIZED, true);
+    mockHomeyInstance.settings.set(HOMES_CONFIG, {
+      activationVersion: 2,
+      subHomes: config.subHomes,
+    });
+
     expect(createHomesStore(homey).read()).toEqual({ state: 'suspect' });
   });
 

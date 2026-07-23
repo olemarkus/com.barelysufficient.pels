@@ -2,6 +2,7 @@ import type {
   SettingsUiPlanDeviceSnapshot,
   SettingsUiPlanDeviceStarvation,
 } from '../../contracts/src/settingsUiApi';
+import type { SmartTaskHomeScope } from '../../contracts/src/smartTaskHomeScope';
 // From the lean write-strings module (NOT deadlineLabels.ts) so the rescue
 // widget bundles don't drag the full smart-task copy module in.
 import { SMART_TASK_SUB_HOME_UNAVAILABLE } from './objectiveWriteStrings';
@@ -106,6 +107,7 @@ export const STARVATION_RESCUE_WIDGET_COPY = {
   // user sees it is held back) but with no rescue button — its own task is what
   // brings it to target, so a one-shot rescue would only get in the way.
   smartTaskNote: 'Its smart task will bring it back.',
+  temporaryUnavailableNote: 'Temporarily unavailable. Try again shortly.',
   // Rescue confirm sheet.
   // Names the consequence honestly per the money-action guardrail: the rescue
   // lets this device go over today's budget so it reaches its normal target.
@@ -321,8 +323,10 @@ export const starvationRowIsRescuable = (
   cause: SettingsUiPlanDeviceStarvation['cause'],
   intendedNormalTargetC: number | null,
   hasSmartTask = false,
+  smartTaskHomeScope: SmartTaskHomeScope = 'main',
 ): boolean => (
   starvationRowOffersRescue(cause)
+  && smartTaskHomeScope === 'main'
   && !hasSmartTask // a device with its own task is shown but not rescuable
   && intendedNormalTargetC !== null
   && Number.isFinite(intendedNormalTargetC)

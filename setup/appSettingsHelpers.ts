@@ -282,6 +282,18 @@ export function initSettingsHandlerForApp(
     onHomeScopedSettingChanged?: (baseKey: string, homeId: string) => void | Promise<void>;
     /** Reconcile the per-home capacity bundles after a `homes_config` write. */
     reconcileHomeRuntimes?: () => void;
+    /** Synchronously fence per-home runtimes for a newly observed source epoch. */
+    onHomeRuntimePowerSourceObserved?: () => void;
+    /** Replace per-home meter runtimes for the latest observed source epoch. */
+    onHomeRuntimePowerSourceChanged?: () => void;
+    /** Invalidate an in-flight poll at the synchronous meter-event edge. */
+    onHomeyEnergyMeterObserved?: () => void;
+    /** Schedule bounded Main authority repair for the observed selection. */
+    onMainMeterSelectionObserved?: () => void;
+    /** Close the shared homes/pins ownership generation synchronously. */
+    onHomeOwnershipConfigurationObserved?: () => void;
+    /** Apply the current generation after the serialized semantic recompute. */
+    onHomeOwnershipConfigurationRecomputed?: () => void;
   },
 ): { handle: SettingsHandler; stop: () => void } {
   const planService = requirePlanService(ctx);
@@ -290,9 +302,17 @@ export function initSettingsHandlerForApp(
     homey: ctx.homey,
     onHomeScopedSettingChanged: options?.onHomeScopedSettingChanged,
     reconcileHomeRuntimes: options?.reconcileHomeRuntimes,
+    onHomeRuntimePowerSourceObserved: options?.onHomeRuntimePowerSourceObserved,
+    onHomeRuntimePowerSourceChanged: options?.onHomeRuntimePowerSourceChanged,
+    onHomeyEnergyMeterObserved: options?.onHomeyEnergyMeterObserved,
+    onMainMeterSelectionObserved: options?.onMainMeterSelectionObserved,
+    onHomeOwnershipConfigurationObserved: options?.onHomeOwnershipConfigurationObserved,
     // Lazy read on purpose: the membership service is assigned by a separate
     // wiring step, and the handler must tolerate a context without it.
-    recomputeHomeMembership: () => ctx.homeMembership?.recompute(),
+    recomputeHomeMembership: () => {
+      ctx.homeMembership?.recompute();
+      options?.onHomeOwnershipConfigurationRecomputed?.();
+    },
     loadCapacitySettings: ctx.loadCapacitySettings,
     rebuildPlanFromCache: async (reason) => {
       await planService.rebuildPlanFromCache(reason);

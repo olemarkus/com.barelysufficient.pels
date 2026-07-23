@@ -26,7 +26,7 @@ type PlanActionHandleResult = {
 };
 
 type TargetCommandDispatchResult =
-  | { applied: false; reason: 'skipped' | 'failed' }
+  | { applied: false; reason: 'skipped' | 'failed' | 'not_requested' }
   | { applied: true; attemptType: 'send' | 'retry' };
 
 const resolveTargetCommandReasonCode = (params: {
@@ -359,7 +359,13 @@ const executeTargetCommandDispatch = async (
   } = params;
   const nowMs = Date.now();
   try {
-    await ctx.actuator.apply({ kind: 'target', deviceId, capabilityId: targetCap, value: desired });
+    const outcome = await ctx.actuator.apply({
+      kind: 'target',
+      deviceId,
+      capabilityId: targetCap,
+      value: desired,
+    });
+    if (!outcome.requested) return { applied: false, reason: 'not_requested' };
   } catch (error) {
     const failedPending = recordFailedPendingTargetCommandAttempt({
       state: ctx.state,
@@ -434,4 +440,3 @@ const executeTargetCommandDispatch = async (
     attemptType: decisionType,
   };
 };
-

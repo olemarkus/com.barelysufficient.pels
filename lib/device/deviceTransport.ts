@@ -65,7 +65,7 @@ import type {
 import { applyDeviceDriverOverride } from './transport/managerParseIdentity';
 import { syncNativeSteppedLoadCommandAdapters } from './managerNativeSteppedCommand';
 import type { DeviceObservation } from './deviceObservation';
-import type { TransportContext } from './transport/transportContext';
+import type { SnapshotRefreshOptions, TransportContext } from './transport/transportContext';
 import type { BinarySettleState } from '../observer/binarySettle';
 import {
   cloneBinaryControlObservation,
@@ -478,7 +478,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     }
 
     async refreshSnapshot(
-        options: { includeLivePower?: boolean; targetedRefresh?: boolean } = {},
+        options: SnapshotRefreshOptions = {},
     ): Promise<{ powerW: number; generationW?: number } | null> {
         return runRefreshSnapshot(this.ctx, options);
     }

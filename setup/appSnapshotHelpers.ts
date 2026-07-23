@@ -11,6 +11,7 @@ import {
 import type { PlanService } from '../lib/plan/planService';
 import { withHeadroomCurrentOn } from '../lib/plan/planHeadroomSupport';
 import type { MeasuredPowerObservedProbe, TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import type { MainMeterSelection } from '../packages/contracts/src/mainMeterSelection';
 import { hasObservedMeasuredPower } from '../packages/shared-domain/src/measuredPowerObservedState';
 import { normalizeError } from '../lib/utils/errorUtils';
 import type { TimerRegistry } from '../lib/utils/timerRegistry';
@@ -27,6 +28,17 @@ const POST_ACTUATION_REFRESH_DELAY_MS = 5_000;
 // planner. In-memory only per `feedback_homey_sdk_unreliable`: on restart the
 // first cycle re-emits as expected.
 const STALE_OBSERVATION_REFRESH_LOG_BACKOFF_MS = 15 * 60 * 1000;
+
+const sameMainMeterSelection = (
+  left: MainMeterSelection,
+  right: MainMeterSelection,
+): boolean => (
+  left.state === right.state
+  && (
+    left.state === 'unavailable'
+    || (right.state === 'resolved' && left.meterDeviceId === right.meterDeviceId)
+  )
+);
 
 export type RefreshTargetDevicesSnapshotOptions = {
   fast?: boolean;
@@ -73,10 +85,10 @@ export class AppSnapshotHelpers {
   // change mid-cycle would otherwise record the OLD meter's watts seconds
   // after the user switched (the poll path has the same fence via its
   // pollGeneration counter).
-  private meterDeviceIdResolver: (() => string | null) | null = null;
+  private mainMeterSelectionResolver: (() => MainMeterSelection) | null = null;
 
-  bindHomeyEnergyMeterResolver(resolver: () => string | null): void {
-    this.meterDeviceIdResolver = resolver;
+  bindHomeyEnergyMeterResolver(resolver: () => MainMeterSelection): void {
+    this.mainMeterSelectionResolver = resolver;
   }
 
   constructor(private readonly deps: {
@@ -381,10 +393,15 @@ export class AppSnapshotHelpers {
     this.deps.getStructuredDebugEmitter('snapshot', 'devices')({
       event: 'target_snapshot_refresh_started',
     });
-    const meterDeviceIdAtStart = this.meterDeviceIdResolver?.() ?? null;
+    const meterSelectionAtStart = this.resolveMainMeterSelection();
     const homePowerSample = await deviceManager.refreshSnapshot({
       includeLivePower: options.fast !== true,
       targetedRefresh: options.targeted,
+      // Bind the same semantic selection used by the end-of-cycle staleness
+      // fence into the actual fetch. The adapter may recover or fail again
+      // while this async refresh is in flight; an independent second read
+      // would otherwise let a sample for another authority slip through.
+      mainMeterSelection: meterSelectionAtStart,
     });
 
     const snapshot = this.deps.getLatestTargetSnapshot();
@@ -414,13 +431,13 @@ export class AppSnapshotHelpers {
       targetedRefresh: options.targeted === true,
     });
     this.deps.emitSettingsUiDevicesUpdated();
-    await this.recordImplicitHomeyEnergySample(options, homePowerSample, meterDeviceIdAtStart);
+    await this.recordImplicitHomeyEnergySample(options, homePowerSample, meterSelectionAtStart);
   }
 
   private async recordImplicitHomeyEnergySample(
     options: RefreshTargetDevicesSnapshotOptions,
     sample: HomePowerSample | null,
-    meterDeviceIdAtStart: string | null,
+    meterSelectionAtStart: MainMeterSelection,
   ): Promise<void> {
     if (
       options.recordHomeyEnergySample === false
@@ -428,7 +445,7 @@ export class AppSnapshotHelpers {
     ) {
       return;
     }
-    if ((this.meterDeviceIdResolver?.() ?? null) !== meterDeviceIdAtStart) {
+    if (!sameMainMeterSelection(this.resolveMainMeterSelection(), meterSelectionAtStart)) {
       // The whole-home meter selection changed while this refresh cycle was in
       // flight — the sample was read for the previous selection, so recording
       // it now would overwrite the new meter's fresh samples with stale watts.
@@ -441,6 +458,10 @@ export class AppSnapshotHelpers {
     if (sample) {
       await this.deps.recordPowerSample(sample);
     }
+  }
+
+  private resolveMainMeterSelection(): MainMeterSelection {
+    return this.mainMeterSelectionResolver?.() ?? { state: 'resolved', meterDeviceId: null };
   }
 
   private startStaleObservationRefreshFallback(): void {

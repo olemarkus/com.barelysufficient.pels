@@ -425,6 +425,29 @@ describe('resolveDeadlinesListCards', () => {
     expect(cards[0].statusId).toBe('paused_unplugged');
   });
 
+  it('suppresses a committed cached schedule after the device moves to a separate meter', () => {
+    const cards = resolveDeadlinesListCards({
+      activePlans: buildActivePlans([
+        buildPlan({
+          pending: false,
+          diagnosticReasonCode: 'objective_device_in_sub_home',
+          // `buildPlan` keeps its committed `latest` revision and two cached
+          // planned hours. Those hours must not leak into the unavailable card.
+        }),
+      ]),
+      objectiveSettings: buildObjectiveSettings({ dev_a: enabledTemperatureEntry }),
+      devices,
+      nowMs: T0,
+    });
+
+    expect(cards).toHaveLength(1);
+    expect(cards[0]).toMatchObject({
+      statusId: 'unavailable',
+      firstActionAtMs: null,
+      deadlineAtMs: T0 + 12 * HOUR_MS,
+    });
+  });
+
   it('resolves the device name by the map key, not by plan.deviceId, so a corrupted record cannot mis-name the card', () => {
     // Persisted plan has `deviceId: 'dev_other'` inside the value, but is stored
     // under key `dev_a`. The card must be named after `dev_a` (the key drives

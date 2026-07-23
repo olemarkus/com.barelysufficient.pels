@@ -23,6 +23,7 @@ const budgetDevice: StarvationRescueDevice = {
   cause: 'budget',
   accumulatedMs: 42 * 60 * 1000,
   intendedNormalTargetC: 65,
+  smartTaskHomeScope: 'main',
   hasSmartTask: false,
 };
 
@@ -32,6 +33,7 @@ const capacityDevice: StarvationRescueDevice = {
   cause: 'capacity',
   accumulatedMs: 11 * 60 * 1000,
   intendedNormalTargetC: 21,
+  smartTaskHomeScope: 'main',
   hasSmartTask: false,
 };
 
@@ -54,6 +56,7 @@ const buildEstimate = (overrides: Partial<DeferredObjectivePlanPreviewEstimate> 
 
 type AppMock = {
   getStarvedRescueDevices: ReturnType<typeof vi.fn>;
+  resolveSmartTaskHomeScope: ReturnType<typeof vi.fn>;
   previewStarvationRescuePlan: ReturnType<typeof vi.fn>;
   rescueDeviceWithBudgetExemption: ReturnType<typeof vi.fn>;
   hasDeferredObjectiveForDevice: ReturnType<typeof vi.fn>;
@@ -72,7 +75,10 @@ const freshPreviewPlan = (estimate = buildEstimate()) => vi.fn(
 
 const buildContext = (app: Partial<AppMock>) => ({
   homey: {
-    app: app as unknown as StarvationRescueHostApi,
+    app: {
+      resolveSmartTaskHomeScope: vi.fn(() => 'main'),
+      ...app,
+    } as unknown as StarvationRescueHostApi,
     clock: { getTimezone: () => TIME_ZONE },
   },
 });
@@ -194,6 +200,23 @@ describe('previewStarvationRescue', () => {
       body: { deviceId: 'heater-1' },
     });
     expect(result).toEqual({ ok: false, reason: 'unavailable' });
+  });
+
+  it.each([
+    ['sub_home', 'device_in_sub_home'],
+    ['unavailable', 'unavailable'],
+  ] as const)('preserves %s scope when a stale preview row has disappeared', async (scope, reason) => {
+    const previewStarvationRescuePlan = freshPreviewPlan();
+    const result = await previewStarvationRescue({
+      ...buildContext({
+        resolveSmartTaskHomeScope: vi.fn(() => scope),
+        getStarvedRescueDevices: vi.fn(() => []),
+        previewStarvationRescuePlan,
+      }),
+      body: { deviceId: 'heater-1' },
+    });
+    expect(result).toEqual({ ok: false, reason });
+    expect(previewStarvationRescuePlan).not.toHaveBeenCalled();
   });
 });
 
@@ -337,6 +360,23 @@ describe('createStarvationRescue', () => {
       body: { deviceId: 'heater-1', deadlineAtMs: NOW_MS + RESCUE_HORIZON_MS },
     });
     expect(result).toEqual({ ok: false, reason: 'unavailable' });
+  });
+
+  it.each([
+    ['sub_home', 'device_in_sub_home'],
+    ['unavailable', 'unavailable'],
+  ] as const)('preserves %s scope when a stale create row has disappeared', async (scope, reason) => {
+    const rescueDeviceWithBudgetExemption = vi.fn();
+    const result = await createStarvationRescue({
+      ...buildContext({
+        resolveSmartTaskHomeScope: vi.fn(() => scope),
+        getStarvedRescueDevices: vi.fn(() => []),
+        rescueDeviceWithBudgetExemption,
+      }),
+      body: { deviceId: 'heater-1', deadlineAtMs: NOW_MS + RESCUE_HORIZON_MS },
+    });
+    expect(result).toEqual({ ok: false, reason });
+    expect(rescueDeviceWithBudgetExemption).not.toHaveBeenCalled();
   });
 
   it('flashes runsCurrentHour=true when the just-persisted plan runs the current hour', async () => {

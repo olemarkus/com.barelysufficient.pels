@@ -4,6 +4,7 @@ import { ChevronRightIcon } from './icons.tsx';
 import {
   deadlineLabels,
   formatSmartTaskListConfidenceChipLabel,
+  resolveSmartTaskListDeadlineVerb,
   resolveSmartTaskListReadyByTone,
   resolveSmartTaskListReadyByStatusWord,
   SMART_TASK_EXTRA_PERMISSIONS_ROW_LABEL,
@@ -134,6 +135,7 @@ const Card = ({ card }: { card: DeadlinesListCard }) => {
     learning: card.learning,
   });
   const readyByTone = resolveSmartTaskListReadyByTone(card.statusId);
+  const deadlineVerb = resolveSmartTaskListDeadlineVerb(card.statusId);
   // Inline status word for non-healthy states so the at-risk / cannot-finish /
   // paused signal on the Ready-by line isn't carried by colour alone. null for
   // healthy / pending / queued / satisfied (resolved producer-side; the view
@@ -175,7 +177,7 @@ const Card = ({ card }: { card: DeadlinesListCard }) => {
           </div>
         )}
         <div class={`deadline-list-card__when-row deadline-list-card__when-row--${readyByTone}`}>
-          <dt>{SMART_TASK_LIST_ROW_LABELS.readyBy}</dt>
+          <dt>{deadlineVerb}</dt>
           <dd>
             {formatWhen(card.deadlineAtMs)}
             {readyByStatusWord !== null && ` — ${readyByStatusWord}`}

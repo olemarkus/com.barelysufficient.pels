@@ -27,6 +27,7 @@ import type { CombinedPricesReader } from '../price/combinedPricesReader';
 import type { PriceOptimizationSettings } from '../price/priceOptimizer';
 import type { CombinedHourlyPrice } from '../price/priceTypes';
 import type { DebugLoggingTopic } from '../../packages/shared-domain/src/utils/debugLogging';
+import type { CreateSmartTaskCandidateDevicesRead } from '../../packages/contracts/src/widgetHostApi';
 import type {
   DecoratedDeviceSnapshot,
   DeviceControlProfiles,
@@ -210,7 +211,7 @@ export type AppContext = {
   set powerSampleRebuildState(value: PowerSampleRebuildState);
   get latestTargetSnapshot(): DecoratedDeviceSnapshot[];
   getUiPickerDevices(): DecoratedDeviceSnapshot[];
-  getCreateSmartTaskCandidateDevices(): DecoratedDeviceSnapshot[];
+  getCreateSmartTaskCandidateDevices(): CreateSmartTaskCandidateDevicesRead;
   get priceOptimizationEnabled(): boolean;
   get priceOptimizationSettings(): Record<string, PriceOptimizationSettings>;
   capacityGuard?: CapacityGuard;

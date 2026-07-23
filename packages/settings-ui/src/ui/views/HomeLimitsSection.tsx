@@ -1,5 +1,6 @@
 import { render } from 'preact';
 import {
+  composeHomeLimitsInactiveNotice,
   composeHomeLimitsSimulationNotice,
   HOME_LIMITS_CONTROL_HINT,
   HOME_LIMITS_CONTROL_LABEL,
@@ -8,6 +9,8 @@ import {
   HOME_LIMITS_MARGIN_LABEL,
   HOME_LIMITS_REACTION_LABEL,
   HOME_LIMITS_REACTION_NOTE,
+  HOME_LIMITS_INACTIVE_CHIP,
+  HOME_LIMITS_INACTIVE_STATUS,
   HOME_LIMITS_SWITCHER_LABEL,
 } from '../../../../shared-domain/src/homeLimitsCopy.ts';
 import {
@@ -44,6 +47,8 @@ export type HomeLimitsEditorView = {
   marginValue: string;
   /** True = the area is only simulating (control OFF); the positive toggle is ON when false. */
   dryRun: boolean;
+  /** False while a saved pre-GA config is deliberately held in Main home. */
+  runtimeActive: boolean;
   /** True while a control-toggle write is in flight — disables the toggle (serialize). */
   controlBusy: boolean;
   /** Live margin-vs-cap alert (margin ≥ cap); null keeps the row quiet. */
@@ -137,17 +142,18 @@ const CapFields = ({ editor }: { editor: HomeLimitsEditorView }) => (
 
 // Positive activation toggle: ON (green md-switch) = PELS controls/limits this
 // meter area (dry-run off), matching the "Active" status chip; OFF = simulating.
+// A held pre-GA config renders OFF + disabled regardless of its old dry-run
+// value, because only an explicit save in Multiple meters activates that config.
 // The switch is disabled while a write is in flight so a rapid second toggle
-// can't race the first or be lost (the controller serialises the write). The
-// honest activation notice shows only while OFF (simulating).
+// can't race the first or be lost (the controller serialises the write).
 const SimulationCard = ({ editor }: { editor: HomeLimitsEditorView }) => (
   <section class="settings-form-card home-limits__simulation">
     <label class="md-switch-row" id="home-limits-simulation-row">
       <MdSwitch
         id="home-limits-simulation-switch"
         aria-label={HOME_LIMITS_CONTROL_LABEL}
-        {...(editor.dryRun ? {} : { selected: true })}
-        {...(editor.controlBusy ? { disabled: true } : {})}
+        {...(editor.runtimeActive && !editor.dryRun ? { selected: true } : {})}
+        {...(editor.controlBusy || !editor.runtimeActive ? { disabled: true } : {})}
         onChange={(event: Event) => editor.onControlToggle((event.currentTarget as SwitchElement).selected)}
       />
       <span class="md-switch-row__content">
@@ -155,7 +161,12 @@ const SimulationCard = ({ editor }: { editor: HomeLimitsEditorView }) => (
         <small class="field__hint">{HOME_LIMITS_CONTROL_HINT}</small>
       </span>
     </label>
-    {editor.dryRun && (
+    {!editor.runtimeActive && (
+      <div class="pels-notice-warning home-limits__sim-notice" id="home-limits-inactive-notice">
+        {composeHomeLimitsInactiveNotice(editor.areaName)}
+      </div>
+    )}
+    {editor.runtimeActive && editor.dryRun && (
       <div class="pels-notice-warning home-limits__sim-notice" id="home-limits-sim-notice">
         {composeHomeLimitsSimulationNotice(editor.areaName)}
       </div>
@@ -163,11 +174,20 @@ const SimulationCard = ({ editor }: { editor: HomeLimitsEditorView }) => (
   </section>
 );
 
-const StatusCard = ({ status }: { status: HomeLimitsStatus }) => {
-  const chip = resolveHomeLimitsPostureChip(status);
-  const stateLineToneClass = status.hasStatus && status.posture === 'active' && status.shortfall
+const StatusCard = ({ status, runtimeActive }: {
+  status: HomeLimitsStatus;
+  runtimeActive: boolean;
+}) => {
+  const chip = runtimeActive
+    ? resolveHomeLimitsPostureChip(status)
+    : { label: HOME_LIMITS_INACTIVE_CHIP, tone: 'warn' as const };
+  const stateLineToneClass = runtimeActive
+    && status.hasStatus && status.posture === 'active' && status.shortfall
     ? 'home-limits__status-line field__hint--alert'
     : 'home-limits__status-line muted';
+  const stateLine = runtimeActive
+    ? composeHomeLimitsStateLine(status)
+    : HOME_LIMITS_INACTIVE_STATUS;
   return (
     <section class="settings-form-card home-limits__status" id="home-limits-status">
       <div class="home-limits__status-head">
@@ -178,7 +198,7 @@ const StatusCard = ({ status }: { status: HomeLimitsStatus }) => {
         <div class="deadline-hero-stats__pair">
           <span class="deadline-hero-stats__label">{HOME_LIMITS_STATUS_POWER_NOW_LABEL}</span>
           <p class="deadline-hero-stats__value" id="home-limits-status-power">
-            {formatHomeLimitsKw(status.powerNowKw)}
+            {formatHomeLimitsKw(runtimeActive ? status.powerNowKw : null)}
           </p>
         </div>
         <div class="deadline-hero-stats__pair">
@@ -188,7 +208,7 @@ const StatusCard = ({ status }: { status: HomeLimitsStatus }) => {
           </p>
         </div>
       </div>
-      <small class={stateLineToneClass} id="home-limits-status-line">{composeHomeLimitsStateLine(status)}</small>
+      <small class={stateLineToneClass} id="home-limits-status-line">{stateLine}</small>
     </section>
   );
 };
@@ -206,7 +226,9 @@ const HomeLimitsSectionView = (props: HomeLimitsSectionProps) => {
         <>
           <CapFields editor={props.editor} />
           <SimulationCard editor={props.editor} />
-          {props.editor.status !== null && <StatusCard status={props.editor.status} />}
+          {props.editor.status !== null && (
+            <StatusCard status={props.editor.status} runtimeActive={props.editor.runtimeActive} />
+          )}
         </>
       )}
     </div>

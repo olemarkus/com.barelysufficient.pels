@@ -3,6 +3,10 @@ import type { TimerRegistry } from '../../utils/timerRegistry';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 
 const HOMEY_ENERGY_POLL_INTERVAL_MS = 10_000;
+const HOMEY_ENERGY_RESTART_RETRY_TIMER = 'homeyEnergyPollRestartRetry';
+const HOMEY_ENERGY_RESTART_RETRY_INITIAL_MS = 1_000;
+const HOMEY_ENERGY_RESTART_RETRY_MAX_MS = 60_000;
+const HOMEY_ENERGY_RESTART_RETRY_MAX_EXPONENT = 6;
 
 export type HomeyEnergyPowerSample = {
   powerW: number;
@@ -29,6 +33,7 @@ export class HomeyEnergyPollSource {
   // would write the previous meter's watts over the fresh sample, so stale
   // generations are discarded instead.
   private pollGeneration = 0;
+  private restartRetryAttempt = 0;
 
   constructor(private readonly deps: {
     getPowerSource: () => PowerSource;
@@ -48,7 +53,17 @@ export class HomeyEnergyPollSource {
       this.deps.timers.clear('homeyEnergyPoll');
       this.pollInterval = undefined;
     }
-    if (this.deps.getPowerSource() !== 'homey_energy') return;
+    this.deps.timers.clear(HOMEY_ENERGY_RESTART_RETRY_TIMER);
+    let powerSource: PowerSource;
+    try {
+      powerSource = this.deps.getPowerSource();
+    } catch (error) {
+      this.deps.error('Homey Energy poll source read failed; retrying', error);
+      this.scheduleRestartRetry();
+      return;
+    }
+    this.restartRetryAttempt = 0;
+    if (powerSource !== 'homey_energy') return;
 
     this.pollNow()
       .catch((error) => this.deps.error('Homey Energy initial poll failed', error));
@@ -63,10 +78,41 @@ export class HomeyEnergyPollSource {
     this.start();
   }
 
+  /** Invalidate an old-selection poll before queued settings work restarts it. */
+  invalidate(): void {
+    this.pollGeneration += 1;
+  }
+
   stop(): void {
-    if (!this.pollInterval) return;
-    this.deps.timers.clear('homeyEnergyPoll');
-    this.pollInterval = undefined;
+    this.pollGeneration += 1;
+    this.deps.timers.clear(HOMEY_ENERGY_RESTART_RETRY_TIMER);
+    this.restartRetryAttempt = 0;
+    if (this.pollInterval) {
+      this.deps.timers.clear('homeyEnergyPoll');
+      this.pollInterval = undefined;
+    }
+  }
+
+  private scheduleRestartRetry(): void {
+    const exponent = Math.min(
+      this.restartRetryAttempt,
+      HOMEY_ENERGY_RESTART_RETRY_MAX_EXPONENT,
+    );
+    const delayMs = Math.min(
+      HOMEY_ENERGY_RESTART_RETRY_INITIAL_MS * (2 ** exponent),
+      HOMEY_ENERGY_RESTART_RETRY_MAX_MS,
+    );
+    this.restartRetryAttempt = Math.min(
+      this.restartRetryAttempt + 1,
+      HOMEY_ENERGY_RESTART_RETRY_MAX_EXPONENT,
+    );
+    this.deps.timers.registerTimeout(
+      HOMEY_ENERGY_RESTART_RETRY_TIMER,
+      setTimeout(() => {
+        this.deps.timers.clear(HOMEY_ENERGY_RESTART_RETRY_TIMER);
+        this.start();
+      }, delayMs),
+    );
   }
 
   async pollNow(): Promise<void> {

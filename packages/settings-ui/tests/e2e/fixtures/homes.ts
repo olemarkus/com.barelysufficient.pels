@@ -87,6 +87,23 @@ export const seedRentalArea = async (page: Page): Promise<void> => {
     const stub = (window as StubWindow).Homey?.__stub;
     if (!stub) throw new Error('Homey stub missing');
     stub.setSetting('homes_config', {
+      activationVersion: 1,
+      subHomes: [{
+        homeId: 'h_11111111',
+        name: 'Rental unit',
+        rootZoneId: 'z_rental',
+        meterDeviceId: 'dev_rental_meter',
+      }],
+    });
+  });
+};
+
+/** Seed the same area in the pre-GA held posture: populated, but not activated. */
+export const seedHeldRentalArea = async (page: Page): Promise<void> => {
+  await page.evaluate(() => {
+    const stub = (window as StubWindow).Homey?.__stub;
+    if (!stub) throw new Error('Homey stub missing');
+    stub.setSetting('homes_config', {
       subHomes: [{
         homeId: 'h_11111111',
         name: 'Rental unit',
@@ -137,6 +154,7 @@ export const installDegradedHomesPayload = async (page: Page): Promise<void> => 
             z_rental: { id: 'z_rental', name: 'Rental unit', parent: 'z_home' },
           },
           hasSubHomes: true,
+          runtimeActive: true,
           configDegraded: true,
         }),
       },

@@ -119,7 +119,7 @@ const writeClassified = (params: {
  * (unwritten / present / suspect — see {@link HomeStoreReadResult}); writes
  * refuse implausible payloads ({@link HomeStoreWriteRefusedError}), then
  * replace the whole value and establish the marker before reporting success.
- * DORMANT until the R4 wiring PR — nothing constructs this at runtime yet.
+ * Used by membership, settings, migration, and the per-home runtime registry.
  */
 export const createHomesStore = (homey: Homey.App['homey']): HomesStore => ({
   read(): HomeStoreReadResult<HomeConfig> {
@@ -149,8 +149,8 @@ export const createHomesStore = (homey: Homey.App['homey']): HomesStore => ({
  * classify at the boundary (unwritten / present / suspect — see
  * {@link HomeStoreReadResult}); writes refuse implausible payloads
  * ({@link HomeStoreWriteRefusedError}), then replace the whole value and
- * establish the marker before reporting success. DORMANT until the R4 wiring
- * PR — nothing constructs this at runtime yet.
+ * establish the marker before reporting success. Used by membership to load
+ * explicit device pins for runtime ownership.
  */
 export const createDeviceHomeAssignmentsStore = (
   homey: Homey.App['homey'],

@@ -192,6 +192,10 @@ export const resolvePendingReason = (
   // (pending from the start) gets the same honest hero as the list chip,
   // instead of falling through to the generic "Waiting for tomorrow's prices".
   if (diag.reasonCode === 'objective_charger_not_resumable') return 'charger_not_resumable';
+  // A task whose device moved to a separately-metered home is out of scope,
+  // not waiting for prices. Keep this distinct so every user surface can name
+  // the membership block instead of falling through to the horizon fallback.
+  if (diag.reasonCode === 'objective_device_in_sub_home') return 'device_in_sub_home';
   // Thermal devices have no shipped bootstrap kWh/°C; tell the user that
   // power readings are what unblock the plan instead of leaving them with an
   // indefinite "Waiting" state. For thermal objectives this also covers

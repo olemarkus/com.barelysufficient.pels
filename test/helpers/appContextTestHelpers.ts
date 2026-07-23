@@ -258,7 +258,7 @@ export function createAppContextMock(options: AppContextMockOptions = {}): AppCo
     set powerSampleRebuildState(value) { powerSampleRebuildState = value; },
     get latestTargetSnapshot() { return latestTargetSnapshot; },
     getUiPickerDevices: () => latestTargetSnapshot,
-    getCreateSmartTaskCandidateDevices: () => latestTargetSnapshot,
+    getCreateSmartTaskCandidateDevices: () => ({ state: 'ready', devices: latestTargetSnapshot }),
     get priceOptimizationEnabled() { return priceOptimizationEnabled; },
     get priceOptimizationSettings() { return priceOptimizationSettings; },
     // Mirror the real `DeferredObjectiveStatusBus` surface. The lifecycle emitter

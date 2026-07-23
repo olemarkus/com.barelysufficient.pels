@@ -5,28 +5,32 @@ import { isDeviceObservationStale } from '../../lib/observer/observationFreshnes
 import type { DeviceDiagnosticsRecorder } from '../../lib/diagnostics/deviceDiagnosticsService';
 import type { Actuator } from '../../lib/actuator/deviceActuator';
 import type { AppContext } from '../../lib/app/appContext';
+import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
 import type { HomeScope } from '../homeRuntime/homeScope';
 
 export type CreatePlanEngineOptions = {
   /**
-   * Teardown fence for a sub-home bundle's actuation (multi-home R7b). When it
-   * returns true EVERY device write this engine issues no-ops at the single
-   * actuator seam — so any in-flight rebuild/reconcile/heartbeat/sample
-   * continuation that resolves AFTER the bundle is torn down cannot actuate into
-   * main's just-adopted complement (double-control). Absent for the main home →
-   * the actuator is the bare `buildDeviceActuator` result, byte-identical.
+   * Additional point-of-use fence for a home runtime's actuation. When true,
+   * every device write no-ops at the single actuator seam. Sub-home bundles
+   * use this for teardown and source-epoch changes; ownership is always
+   * checked separately for every home.
    */
-  isActuationFenced?: () => boolean;
+  isActuationFenced?: (deviceId: string) => boolean;
 };
 
 /**
  * Wrap an actuator so every `apply` no-ops (requested:false, `base` untouched)
  * while `isFenced()` is true. The single-method actuator seam makes this the
- * simplest robust teardown fence: a removed sub-home bundle's in-flight
- * continuation cannot issue a device write once torn down.
+ * simplest robust point-of-use fence: an in-flight continuation cannot issue a
+ * device write after its execution posture changes.
  */
-export const createFencedActuator = (base: Actuator, isFenced: () => boolean): Actuator => ({
-  apply: (command) => (isFenced() ? Promise.resolve({ requested: false }) : base.apply(command)),
+export const createFencedActuator = (
+  base: Actuator,
+  isFenced: (deviceId: string) => boolean,
+): Actuator => ({
+  apply: (command) => (
+    isFenced(command.deviceId) ? Promise.resolve({ requested: false }) : base.apply(command)
+  ),
 });
 
 export function createPlanEngine(ctx: AppContext, scope: HomeScope, options?: CreatePlanEngineOptions) {
@@ -39,12 +43,15 @@ export function createPlanEngine(ctx: AppContext, scope: HomeScope, options?: Cr
   if (!baseActuator) {
     throw new Error('Device actuator must be initialized before plan engine setup.');
   }
-  // Byte-identical for the main home (no options): the bare actuator. A fenced
-  // sub-home actuator short-circuits to a requested:false no-op post-teardown.
-  const isActuationFenced = options?.isActuationFenced;
-  const actuator: Actuator = isActuationFenced === undefined
-    ? baseActuator
-    : createFencedActuator(baseActuator, isActuationFenced);
+  // Ownership is re-checked at the final write seam for EVERY home. Plan
+  // membership is resolved when a build starts, but a pin/zone/config change
+  // can race an already-queued continuation; returning requested:false lets
+  // the executor abandon that stale command without claiming success.
+  const actuator: Actuator = createFencedActuator(baseActuator, (deviceId) => {
+    const currentHomeId = ctx.homeMembership?.getHomeIdForDevice(deviceId) ?? MAIN_HOME_ID;
+    return currentHomeId !== scope.homeId
+      || options?.isActuationFenced?.(deviceId) === true;
+  });
 
   return new PlanEngineClass({
     homey: ctx.homey,

@@ -7,8 +7,8 @@
  *
  * - the transport's per-meter provider pair (`buildHomeRuntimeMeterProviders`)
  *   — one `manager/energy/live` poll serves every home;
- * - the settings-handler hooks (`buildHomeRuntimeSettingsHooks`) — the
- *   suffixed-key dirty-mark hook plus the `homes_config` reconcile trigger.
+ * - the settings-handler hooks (`buildHomeRuntimeSettingsHooks`) — suffixed
+ *   dirty marks, `homes_config` reconcile, and global source-epoch replacement.
  */
 import type { AppContext } from '../../lib/app/appContext';
 import type { DeviceTransportParseProviders } from '../../lib/device/transport/managerParseDevice';
@@ -18,8 +18,9 @@ import { HomeRuntimeRegistry } from '../homeRuntime/homeRuntimeRegistry';
 export const createHomeRuntimeRegistryForApp = (
   ctx: AppContext,
   isMembershipReady: () => boolean,
+  isRuntimeActive: () => boolean,
 ): HomeRuntimeRegistry => {
-  const registry = new HomeRuntimeRegistry({ ctx, isMembershipReady });
+  const registry = new HomeRuntimeRegistry({ ctx, isMembershipReady, isRuntimeActive });
   registry.reconcile();
   return registry;
 };
@@ -40,7 +41,11 @@ export const buildHomeRuntimeSettingsHooks = (
 ): {
   onHomeScopedSettingChanged: (baseKey: string, homeId: string) => void;
   reconcileHomeRuntimes: () => void;
+  onHomeRuntimePowerSourceObserved: () => void;
+  onHomeRuntimePowerSourceChanged: () => void;
 } => ({
   onHomeScopedSettingChanged: (baseKey, homeId) => getRegistry()?.onHomeScopedSettingChanged(baseKey, homeId),
   reconcileHomeRuntimes: () => getRegistry()?.reconcile(),
+  onHomeRuntimePowerSourceObserved: () => getRegistry()?.observePowerSourceChange(),
+  onHomeRuntimePowerSourceChanged: () => getRegistry()?.onPowerSourceChanged(),
 });

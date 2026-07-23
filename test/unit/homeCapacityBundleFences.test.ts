@@ -1,18 +1,20 @@
-// Unit coverage for the two pure R7b fix-round-2 primitives:
-// - `createFencedActuator` (P0#2): the single-method teardown actuation fence
-//   — while fenced, EVERY device write no-ops without touching the base actuator,
-//   so a torn-down sub-home bundle's in-flight continuation cannot double-control.
-// - `freshnessHeartbeatIntervalMs` (P1#4): a deterministic per-home jitter so N
-//   bundles' freshness heartbeats do not fire on the same phase-aligned tick.
+// Unit coverage for home-runtime fencing and heartbeat cadence:
+// - createFencedActuator: final point-of-use actuator gate. It passes the
+//   command device id to the caller so ownership, source-epoch, and teardown
+//   changes can decline stale writes without touching the base actuator.
+// - freshnessHeartbeatIntervalMs: deterministic per-home jitter so bundles'
+//   freshness heartbeats do not fire on one phase-aligned tick.
 import { describe, expect, it, vi } from 'vitest';
 import { createFencedActuator } from '../../setup/appInit/createPlanEngine';
+import { createPreparedBundleSampleFence } from '../../setup/homeRuntime/homeCapacityBundleApi';
 import { freshnessHeartbeatIntervalMs } from '../../setup/homeRuntime/homeCapacityBundleReadiness';
 import type { Actuator } from '../../lib/actuator/deviceActuator';
 import type { ActuatorOutcome, DeviceCommand } from '../../lib/actuator/deviceCommand';
+import type { StableSampleRevision } from '../../setup/powerSamplePipeline';
 
 const command: DeviceCommand = { kind: 'target', deviceId: 'd1', value: 21 };
 
-describe('createFencedActuator (teardown actuation fence — R7b P0#2)', () => {
+describe('createFencedActuator (point-of-use actuation fence)', () => {
   it('delegates to the base actuator while not fenced', async () => {
     const apply = vi.fn(async (): Promise<ActuatorOutcome> => ({ requested: true }));
     const base: Actuator = { apply };
@@ -33,6 +35,47 @@ describe('createFencedActuator (teardown actuation fence — R7b P0#2)', () => {
     const outcome = await actuator.apply(command);
     expect(apply).not.toHaveBeenCalled();
     expect(outcome).toEqual({ requested: false });
+  });
+
+  it('passes the command device id to the point-of-use fence', async () => {
+    const apply = vi.fn(async (): Promise<ActuatorOutcome> => ({ requested: true }));
+    const base: Actuator = { apply };
+    const seenDeviceIds: string[] = [];
+    const actuator = createFencedActuator(base, (deviceId) => {
+      seenDeviceIds.push(deviceId);
+      return deviceId === 'moved-device';
+    });
+
+    await actuator.apply(command);
+    const movedCommand: DeviceCommand = { ...command, deviceId: 'moved-device' };
+    const outcome = await actuator.apply(movedCommand);
+
+    expect(seenDeviceIds).toEqual(['d1', 'moved-device']);
+    expect(apply).toHaveBeenCalledExactlyOnceWith(command);
+    expect(outcome).toEqual({ requested: false });
+  });
+});
+
+describe('prepared bundle sample fence', () => {
+  it('keeps overlapping same-revision handles independent until each owner ends', async () => {
+    let sample: StableSampleRevision = { state: 'stable', revision: 7 };
+    const fence = createPreparedBundleSampleFence();
+    fence.bindReader(() => sample);
+    const endFirst = fence.begin(7);
+    const endSecond = fence.begin(7);
+    const apply = vi.fn(async (): Promise<ActuatorOutcome> => ({ requested: true }));
+    const actuator = createFencedActuator({ apply }, () => fence.isSuperseded());
+
+    sample = { state: 'pending' };
+    await expect(actuator.apply(command)).resolves.toEqual({ requested: false });
+    endFirst();
+    expect(fence.isActive()).toBe(true);
+    await expect(actuator.apply(command)).resolves.toEqual({ requested: false });
+
+    endSecond();
+    expect(fence.isActive()).toBe(false);
+    await expect(actuator.apply(command)).resolves.toEqual({ requested: true });
+    expect(apply).toHaveBeenCalledExactlyOnceWith(command);
   });
 });
 

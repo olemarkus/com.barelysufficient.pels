@@ -247,6 +247,7 @@ export type { DeadlinePlanHistoryView } from '../deadlinePlanHistoryFetch.ts';
 
 export type DeadlinePlanPendingPayload = {
   kind: DeferredObjectiveSettingsKind;
+  actionMode: 'clear_only' | 'edit_and_clear';
   labels: DeadlineLabels;
   hero: {
     chips: DeadlinePlanChip[];
@@ -275,6 +276,7 @@ export type DeadlinePlanPendingPayload = {
 // `buildSmartTaskEditProps` in `deadlinePlanMount.ts`). The callbacks are the
 // controller's actions, threaded as props per views/AGENTS.md.
 export type SmartTaskEditProps = {
+  mode: DeadlinePlanPendingPayload['actionMode'];
   snapshot: SmartTaskEditSnapshot | null;
   onOpen: () => void;
   onClose: () => void;
@@ -1241,8 +1243,58 @@ const PriorRunsHistory = ({ history }: {
 // Everything renders from the controller snapshot so a runtime refresh that
 // repaints the whole root — or even flips ready → pending — redraws the open
 // editor unchanged.
+const SmartTaskClearControl = ({
+  snapshot,
+  disabled,
+  onClear,
+}: {
+  snapshot: SmartTaskEditSnapshot | null;
+  disabled: boolean;
+  onClear: () => void;
+}) => {
+  const busyClearing = snapshot?.busy === 'clearing';
+  const clearArmed = snapshot?.clearArmed === true;
+  return (
+    <MdTextButton
+      class="smart-task-edit__clear md-text-button--destructive"
+      {...(disabled ? { disabled: true } : {})}
+      onClick={onClear}
+    >
+      {/* Stack every possible label in one grid cell and toggle visibility:
+          the button is always as wide as its widest label, so arming the
+          two-step confirm cannot move the tap target. */}
+      <span class="smart-task-edit__clear-labels">
+        <span aria-hidden={clearArmed || busyClearing ? 'true' : undefined} data-active={!clearArmed && !busyClearing ? 'true' : undefined}>
+          {SMART_TASK_EDIT_COPY.clearButton}
+        </span>
+        <span aria-hidden={!clearArmed || busyClearing ? 'true' : undefined} data-active={clearArmed && !busyClearing ? 'true' : undefined}>
+          {SMART_TASK_EDIT_COPY.clearConfirm}
+        </span>
+        <span aria-hidden={busyClearing ? undefined : 'true'} data-active={busyClearing ? 'true' : undefined}>
+          {SMART_TASK_EDIT_COPY.clearing}
+        </span>
+      </span>
+    </MdTextButton>
+  );
+};
+
 const SmartTaskEditSection = ({ edit }: { edit: SmartTaskEditProps }) => {
   const s = edit.snapshot;
+  if (edit.mode === 'clear_only') {
+    const busyClearing = s?.busy === 'clearing';
+    return (
+      <section class="pels-surface-card budget-redesign-card smart-task-edit">
+        {s?.errorLine !== null && s?.errorLine !== undefined && (
+          <p class="smart-task-edit__error">{s.errorLine}</p>
+        )}
+        <SmartTaskClearControl
+          snapshot={s}
+          disabled={busyClearing}
+          onClear={edit.onClear}
+        />
+      </section>
+    );
+  }
   if (s === null) {
     return (
       <section class="pels-surface-card budget-redesign-card smart-task-edit">
@@ -1324,27 +1376,11 @@ const SmartTaskEditSection = ({ edit }: { edit: SmartTaskEditProps }) => {
         >
           {SMART_TASK_EDIT_COPY.discardButton}
         </MdTextButton>
-        <MdTextButton
-          class="smart-task-edit__clear md-text-button--destructive"
-          {...(busySaving || busyClearing ? { disabled: true } : {})}
-          onClick={edit.onClear}
-        >
-          {/* Stack every possible label in one grid cell and toggle
-              visibility: the button is always as wide as its WIDEST label, so
-              arming the two-step confirm can never move the tap target out
-              from under the finger (the whole point of the pattern). */}
-          <span class="smart-task-edit__clear-labels">
-            <span aria-hidden={s.clearArmed || busyClearing ? 'true' : undefined} data-active={!s.clearArmed && !busyClearing ? 'true' : undefined}>
-              {SMART_TASK_EDIT_COPY.clearButton}
-            </span>
-            <span aria-hidden={!s.clearArmed || busyClearing ? 'true' : undefined} data-active={s.clearArmed && !busyClearing ? 'true' : undefined}>
-              {SMART_TASK_EDIT_COPY.clearConfirm}
-            </span>
-            <span aria-hidden={busyClearing ? undefined : 'true'} data-active={busyClearing ? 'true' : undefined}>
-              {SMART_TASK_EDIT_COPY.clearing}
-            </span>
-          </span>
-        </MdTextButton>
+        <SmartTaskClearControl
+          snapshot={s}
+          disabled={busySaving || busyClearing}
+          onClear={edit.onClear}
+        />
       </div>
     </section>
   );

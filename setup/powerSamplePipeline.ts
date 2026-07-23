@@ -54,9 +54,14 @@ type PowerSampleOptions = {
   generationW?: number;
 };
 
+export type StableSampleRevision =
+  | { state: 'stable'; revision: number }
+  | { state: 'pending' };
+
 type PowerSampleRequest = {
   currentPowerW: number;
   nowMs: number;
+  revision: number;
   generationW?: number;
 };
 
@@ -64,10 +69,13 @@ const buildPowerSampleRequest = (
   currentPowerW: number,
   nowMs: number,
   options: PowerSampleOptions,
+  revision: number,
 ): PowerSampleRequest => (
   typeof options.generationW === 'number' && Number.isFinite(options.generationW)
-    ? { currentPowerW, nowMs, generationW: Math.max(0, options.generationW) }
-    : { currentPowerW, nowMs }
+    ? {
+      currentPowerW, nowMs, revision, generationW: Math.max(0, options.generationW),
+    }
+    : { currentPowerW, nowMs, revision }
 );
 
 /**
@@ -92,6 +100,11 @@ export class PowerSamplePipeline {
   private powerSampleLoop?: Promise<void>;
   private powerSampleRerunRequested = false;
   private pendingPowerSampleRequest?: PowerSampleRequest;
+  // Bumped at the synchronous request edge, before a coalesced sample can wait
+  // on plan work. Ownership-generation recovery uses it to abort a prepared
+  // reconcile when a fresher capacity decision arrives mid-build.
+  private sampleRevision = 0;
+  private completedSampleRevision = 0;
 
   constructor(private readonly deps: PowerSamplePipelineDeps) {}
 
@@ -100,8 +113,9 @@ export class PowerSamplePipeline {
     nowMs: number = Date.now(),
     options: PowerSampleOptions = {},
   ): Promise<void> {
+    this.sampleRevision += 1;
     incPerfCounter('power_sample_requested_total');
-    const request = buildPowerSampleRequest(currentPowerW, nowMs, options);
+    const request = buildPowerSampleRequest(currentPowerW, nowMs, options, this.sampleRevision);
 
     if (this.powerSampleLoop) {
       if (this.powerSampleRerunRequested) {
@@ -119,6 +133,12 @@ export class PowerSamplePipeline {
     return loopPromise;
   }
 
+  getStableSampleRevision(): StableSampleRevision {
+    return this.completedSampleRevision === this.sampleRevision
+      ? { state: 'stable', revision: this.sampleRevision }
+      : { state: 'pending' };
+  }
+
   private async runCoalescedPowerSamples(initialRequest: PowerSampleRequest): Promise<void> {
     let request = initialRequest;
     try {
@@ -130,6 +150,7 @@ export class PowerSamplePipeline {
         } else {
           await this.runPowerSample(request.currentPowerW, request.nowMs);
         }
+        this.completedSampleRevision = request.revision;
         if (!this.powerSampleRerunRequested) return;
         incPerfCounter('power_sample_rerun_executed_total');
         request = this.pendingPowerSampleRequest ?? request;

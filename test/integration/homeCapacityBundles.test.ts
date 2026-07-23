@@ -20,42 +20,61 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type Homey from 'homey';
 import type { AppContext } from '../../lib/app/appContext';
+import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import {
+  HOME_CONFIG_ACTIVATION_VERSION,
+  type HomeConfig,
+} from '../../lib/home/homeConfig';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import { HomeRuntimeRegistry } from '../../setup/homeRuntime/homeRuntimeRegistry';
 import { filterDevicesForHome } from '../../setup/homeMembership';
-import { createHomesStore } from '../../setup/homeRegistryAdapter';
+import { createHomesStore as createRawHomesStore } from '../../setup/homeRegistryAdapter';
+import { initSettingsHandlerForApp } from '../../setup/appSettingsHelpers';
+import { buildHomeRuntimeSettingsHooks } from '../../setup/appInit/wireHomeRuntimeRegistry';
 import {
   isBinaryRestoreCandidate,
   isOffSteppedRestoreCandidate,
   isSteppedRestoreCandidate,
 } from '../../lib/plan/restore/devices';
 import { PlanService } from '../../lib/plan/planService';
+import CapacityGuard from '../../lib/power/capacityGuard';
 import { createPlanRebuildOutcome } from '../../lib/plan/planRebuildMetrics';
 import { SnapshotWarmupGate } from '../../lib/plan/snapshotWarmupGate';
 import { POWER_SAMPLE_STALE_SHED_TIMEOUT_MS } from '../../lib/plan/planPowerFreshness';
 import type { PlanRebuildOutcome } from '../../lib/plan/planTypes';
 import { buildPlanDevice, steppedPlanDevice } from '../utils/planTestUtils';
 import {
+  CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   DEVICE_LAST_CONTROLLED_MS,
+  HOMES_CONFIG,
   MAIN_HOME_ID,
   POWER_SOURCE,
   POWER_TRACKER_STATE,
 } from '../../lib/utils/settingsKeys';
 import { VOLATILE_WRITE_THROTTLE_MS } from '../../lib/utils/timingConstants';
+import { getHourBucketKey } from '../../lib/utils/dateUtils';
 import { drainPending, drainUntil } from '../utils/asyncDrain';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import { mockHomeyInstance } from '../mocks/homey';
+import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 
 const homeyLike = mockHomeyInstance as unknown as Homey.App['homey'];
 
 const HOME_A = { homeId: 'h_a', name: 'Annex', rootZoneId: 'z2', meterDeviceId: 'm-a' };
 const HOME_B = { homeId: 'h_b', name: 'Cabin', rootZoneId: 'z3', meterDeviceId: 'm-b' };
+const writeActiveHomesConfig = (config: HomeConfig): void => {
+  createRawHomesStore(homeyLike).write({
+    ...config,
+    activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
+  });
+};
 
 type Rig = {
   ctx: AppContext;
   registry: HomeRuntimeRegistry;
   setMembershipReady: (ready: boolean) => void;
+  setRuntimeActive: (active: boolean) => void;
 };
 
 const buildRig = (): Rig => {
@@ -68,11 +87,18 @@ const buildRig = (): Rig => {
     latestTargetSnapshot: [],
   });
   let membershipReady = true;
+  let runtimeActive = true;
   const registry = new HomeRuntimeRegistry({
     ctx,
     isMembershipReady: () => membershipReady,
+    isRuntimeActive: () => runtimeActive,
   });
-  return { ctx, registry, setMembershipReady: (ready) => { membershipReady = ready; } };
+  return {
+    ctx,
+    registry,
+    setMembershipReady: (ready) => { membershipReady = ready; },
+    setRuntimeActive: (active) => { runtimeActive = active; },
+  };
 };
 
 const diagnosticsFor = (registry: HomeRuntimeRegistry, homeId: string) => {
@@ -106,15 +132,15 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     vi.restoreAllMocks();
   });
 
-  it('reconciles bundles from the homes registry: create, update-in-place, teardown removed', async () => {
-    createHomesStore(homeyLike).write({ subHomes: [HOME_A, HOME_B] });
+  it('reconciles bundles from the homes registry: create, replace meter identity, teardown removed', async () => {
+    writeActiveHomesConfig({ subHomes: [HOME_A, HOME_B] });
     rig.registry.reconcile();
     await drainPending();
     expect(rig.registry.getBundleHomeIds().sort()).toEqual(['h_a', 'h_b']);
     expect(rig.registry.getMeterDeviceIds().sort()).toEqual(['m-a', 'm-b']);
 
-    // Meter change reconciles in place (same bundle identity, new routing).
-    createHomesStore(homeyLike).write({
+    // Meter identity change replaces the runtime under the same homeId.
+    writeActiveHomesConfig({
       subHomes: [{ ...HOME_A, meterDeviceId: 'm-a2' }, HOME_B],
     });
     rig.registry.reconcile();
@@ -122,7 +148,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     expect(rig.registry.getMeterDeviceIds().sort()).toEqual(['m-a2', 'm-b']);
 
     // Removal tears the bundle down and its home-scoped timers with it.
-    createHomesStore(homeyLike).write({ subHomes: [HOME_B] });
+    writeActiveHomesConfig({ subHomes: [HOME_B] });
     rig.registry.reconcile();
     await drainPending();
     expect(rig.registry.getBundleHomeIds()).toEqual(['h_b']);
@@ -131,7 +157,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
   });
 
   it('keeps running bundles on a SUSPECT homes-config read (never a destructive teardown)', async () => {
-    createHomesStore(homeyLike).write({ subHomes: [HOME_A] });
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
     expect(rig.registry.getBundleHomeIds()).toEqual(['h_a']);
@@ -143,8 +169,43 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     expect(rig.registry.getBundleHomeIds()).toEqual(['h_a']);
   });
 
+  it('retries a transient homes-config read until the desired runtime is reconciled', async () => {
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    rig.registry.reconcile();
+    await drainPending();
+    writeActiveHomesConfig({
+      subHomes: [{ ...HOME_A, meterDeviceId: 'm-a2' }],
+    });
+
+    const originalGet = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
+    let failHomesRead = true;
+    vi.spyOn(mockHomeyInstance.settings, 'get').mockImplementation((key) => {
+      if (failHomesRead && key === HOMES_CONFIG) throw new Error('settings unavailable');
+      return originalGet(key);
+    });
+    rig.registry.reconcile();
+    expect(rig.registry.getMeterDeviceIds()).toEqual(['m-a']);
+
+    failHomesRead = false;
+    await vi.advanceTimersByTimeAsync(1_000);
+    await drainPending();
+    expect(rig.registry.getMeterDeviceIds()).toEqual(['m-a2']);
+  });
+
+  it('reconciles zero bundles while the membership producer holds runtime activation', async () => {
+    rig.setRuntimeActive(false);
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    rig.registry.reconcile();
+    expect(rig.registry.getBundleHomeIds()).toEqual([]);
+
+    rig.setRuntimeActive(true);
+    rig.registry.reconcile();
+    await drainPending();
+    expect(rig.registry.getBundleHomeIds()).toEqual(['h_a']);
+  });
+
   it('routes each meter reading to its own bundle; a missing reading yields NO sample', async () => {
-    createHomesStore(homeyLike).write({ subHomes: [HOME_A, HOME_B] });
+    writeActiveHomesConfig({ subHomes: [HOME_A, HOME_B] });
     rig.registry.reconcile();
     await drainPending();
 
@@ -162,7 +223,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
   });
 
   it('suffix hook reloads ONE bundle\'s capacity scalars; main\'s snapshot stays untouched', async () => {
-    createHomesStore(homeyLike).write({ subHomes: [HOME_A, HOME_B] });
+    writeActiveHomesConfig({ subHomes: [HOME_A, HOME_B] });
     rig.registry.reconcile();
     await drainPending();
     const mainCapacityBefore = { ...rig.ctx.capacitySettings };
@@ -179,7 +240,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
   });
 
   it('treats an unknown homeId as transient: one reconcile, no teardown, no throw', async () => {
-    createHomesStore(homeyLike).write({ subHomes: [HOME_A] });
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
 
@@ -188,7 +249,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
 
     // A suffixed write racing ahead of the homes_config handler: the
     // dirty-mark reconcile picks the new home up from the registry.
-    createHomesStore(homeyLike).write({ subHomes: [HOME_A, HOME_B] });
+    writeActiveHomesConfig({ subHomes: [HOME_A, HOME_B] });
     mockHomeyInstance.settings.set(`${CAPACITY_LIMIT_KW}:h_b`, 4);
     rig.registry.onHomeScopedSettingChanged(CAPACITY_LIMIT_KW, 'h_b');
     await drainPending();
@@ -197,7 +258,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
   });
 
   it('suppresses own-write tracker echoes but adopts a genuinely external tracker write', async () => {
-    createHomesStore(homeyLike).write({ subHomes: [HOME_A] });
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
     const trackerKey = `${POWER_TRACKER_STATE}:h_a`;
@@ -223,6 +284,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
 
     // A genuinely external write (different payload) IS adopted.
     const externalState: PowerTrackerState = {
+      meterIdentity: { powerSource: 'homey_energy', meterDeviceId: 'm-a' },
       lastTimestamp: s2Ts,
       dailyTotals: { '2020-01-01': 42 },
     };
@@ -237,15 +299,84 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     expect(persistedAfterAdopt.dailyTotals?.['2020-01-01']).toBe(42);
   });
 
+  it('latches tracker persistence closed after a suspect live reload until a valid repair', async () => {
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    rig.registry.reconcile();
+    await drainPending();
+    const trackerKey = `${POWER_TRACKER_STATE}:h_a`;
+
+    // Establish one successful own write/fingerprint, then accrue a newer
+    // in-memory sample whose debounce would overwrite the settings value.
+    rig.registry.routeMeterReadings({ 'm-a': 1_500 }, Date.now());
+    await drainPending();
+    await vi.advanceTimersByTimeAsync(VOLATILE_WRITE_THROTTLE_MS + 1_000);
+    await drainPending();
+    const lastGood = structuredClone(
+      mockHomeyInstance.settings.get(trackerKey) as PowerTrackerState,
+    );
+    const sampleHourKey = getHourBucketKey(lastGood.lastTimestamp as number);
+    rig.registry.routeMeterReadings({ 'm-a': 2_500 }, Date.now() + 5_000);
+    await drainPending();
+
+    const malformed = {
+      ...lastGood,
+      buckets: { '2026-01-15T12': 'recoverable-junk' },
+    };
+    mockHomeyInstance.settings.set(trackerKey, malformed);
+    rig.registry.onHomeScopedSettingChanged(POWER_TRACKER_STATE, 'h_a');
+    const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
+
+    // Both the already scheduled debounce and the pruning path get a chance to
+    // run. Neither may replace the suspect persisted blob.
+    await vi.advanceTimersByTimeAsync(VOLATILE_WRITE_THROTTLE_MS + 1_000);
+    await drainPending();
+    expect(mockHomeyInstance.settings.get(trackerKey)).toEqual(malformed);
+    expect(setSpy).not.toHaveBeenCalledWith(trackerKey, expect.anything());
+
+    // A subsequent missing read is not positive repair evidence. Keep the
+    // latch closed so an SDK omission cannot turn the next sample into a
+    // defaults overwrite of the recoverable tracker.
+    mockHomeyInstance.settings.unset(trackerKey);
+    rig.registry.onHomeScopedSettingChanged(POWER_TRACKER_STATE, 'h_a');
+    rig.registry.routeMeterReadings({ 'm-a': 1_100 }, Date.now() + 4_000);
+    await drainPending();
+    await vi.advanceTimersByTimeAsync(VOLATILE_WRITE_THROTTLE_MS + 1_000);
+    await drainPending();
+    expect(mockHomeyInstance.settings.get(trackerKey)).toBeUndefined();
+    expect(setSpy).not.toHaveBeenCalledWith(trackerKey, expect.anything());
+
+    // Repair with the exact last-good payload (the old own-write fingerprint)
+    // WITHOUT sending another settings hook. The bundle's bounded semantic
+    // re-probe must discover it, validate/adopt it, and reopen persistence
+    // rather than leaving the latch closed until an unrelated external write.
+    mockHomeyInstance.settings.set(trackerKey, lastGood);
+    await vi.advanceTimersByTimeAsync(60_001);
+    await drainPending();
+    setSpy.mockClear();
+    const recoveredSampleAt = Date.now() + 5_000;
+    rig.registry.routeMeterReadings({ 'm-a': 900 }, recoveredSampleAt);
+    await drainPending();
+    await vi.advanceTimersByTimeAsync(VOLATILE_WRITE_THROTTLE_MS + 1_000);
+    await drainPending();
+
+    const recovered = mockHomeyInstance.settings.get(trackerKey) as PowerTrackerState;
+    expect(recovered.lastTimestamp).toBe(recoveredSampleAt);
+    expect(recovered.hourlySampleCounts?.[sampleHourKey]).toBe(
+      (lastGood.hourlySampleCounts?.[sampleHourKey] ?? 0) + 3,
+    );
+    expect(setSpy).toHaveBeenCalledWith(trackerKey, expect.anything());
+  });
+
   it('rehydrates suffixed tracker + last-controlled state on (re)creation; junk resolves empty', async () => {
     // Pre-seed both suffixed keys, then create the bundle — simulated restart.
     const seededTracker: PowerTrackerState = {
+      meterIdentity: { powerSource: 'homey_energy', meterDeviceId: 'm-a' },
       lastTimestamp: Date.now() - 60_000,
       dailyTotals: { '2026-01-14': 7.5 },
     };
     mockHomeyInstance.settings.set(`${POWER_TRACKER_STATE}:h_a`, seededTracker);
     mockHomeyInstance.settings.set(`${DEVICE_LAST_CONTROLLED_MS}:h_a`, { 'dev-1': 123_456 });
-    createHomesStore(homeyLike).write({ subHomes: [HOME_A] });
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
 
@@ -258,19 +389,167 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     const persisted = mockHomeyInstance.settings.get(`${POWER_TRACKER_STATE}:h_a`) as PowerTrackerState;
     expect(persisted.dailyTotals?.['2026-01-14']).toBe(7.5);
 
-    // Junk in either key never crashes creation and never fabricates state.
+    // A junk tracker is suspect: creation stays fenced rather than replacing
+    // possibly recoverable accounting with an empty state. Once the boundary
+    // recovers, the owned retry constructs the bundle. The non-safety
+    // last-controlled blob remains junk-tolerant and resolves empty.
     mockHomeyInstance.settings.set(`${POWER_TRACKER_STATE}:h_b`, 'junk');
     mockHomeyInstance.settings.set(`${DEVICE_LAST_CONTROLLED_MS}:h_b`, ['not', 'a', 'map']);
-    createHomesStore(homeyLike).write({ subHomes: [HOME_A, HOME_B] });
+    writeActiveHomesConfig({ subHomes: [HOME_A, HOME_B] });
     rig.registry.reconcile();
     await drainPending();
+    expect(rig.registry.getBundleHomeIds()).toEqual(['h_a']);
+
+    mockHomeyInstance.settings.set(`${POWER_TRACKER_STATE}:h_b`, {
+      meterIdentity: { powerSource: 'homey_energy', meterDeviceId: 'm-b' },
+    });
+    await vi.advanceTimersByTimeAsync(1_000);
+    await drainPending();
     expect(diagnosticsFor(rig.registry, 'h_b').lastDeviceControlledMs).toEqual({});
+  });
+
+  it('fences malformed nested tracker accounting without rewriting the persisted blob', async () => {
+    const trackerKey = `${POWER_TRACKER_STATE}:h_a`;
+    const malformed = {
+      meterIdentity: { powerSource: 'homey_energy', meterDeviceId: 'old-meter' },
+      lastTimestamp: Date.now() - 15_000,
+      lastPowerW: 1_700,
+      buckets: { '2026-01-15T12': 'junk' },
+    };
+    mockHomeyInstance.settings.set(trackerKey, malformed);
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
+
+    rig.registry.reconcile();
+
+    expect(rig.registry.getBundleHomeIds()).toEqual([]);
+    expect(mockHomeyInstance.settings.get(trackerKey)).toEqual(malformed);
+    expect(setSpy).not.toHaveBeenCalledWith(trackerKey, expect.anything());
+
+    mockHomeyInstance.settings.set(trackerKey, {
+      meterIdentity: { powerSource: 'homey_energy', meterDeviceId: 'm-a' },
+      buckets: { '2026-01-15T12': 2.75 },
+    });
+    await vi.advanceTimersByTimeAsync(1_000);
+    await drainPending();
+
+    expect(rig.registry.getBundleHomeIds()).toEqual(['h_a']);
+  });
+
+  it.each([
+    ['a transient undefined value for an existing key', false],
+    ['a transient store-wide empty key list', true],
+  ])('fences bundle creation on %s without erasing tracker accounting', async (_label, emptyKeys) => {
+    const trackerKey = `${POWER_TRACKER_STATE}:h_a`;
+    const trackerState: PowerTrackerState = {
+      meterIdentity: { powerSource: 'homey_energy', meterDeviceId: 'm-a' },
+      lastTimestamp: Date.now() - 15_000,
+      lastPowerW: 1_700,
+      buckets: { '2026-01-15T12': 2.75 },
+      dailyTotals: { '2026-01-14': 8.5 },
+    };
+    mockHomeyInstance.settings.set(trackerKey, trackerState);
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
+
+    const originalGet = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
+    const originalGetKeys = mockHomeyInstance.settings.getKeys.bind(mockHomeyInstance.settings);
+    let readsFail = true;
+    vi.spyOn(mockHomeyInstance.settings, 'get').mockImplementation((key) => (
+      readsFail && key === trackerKey ? undefined : originalGet(key)
+    ));
+    if (emptyKeys) {
+      vi.spyOn(mockHomeyInstance.settings, 'getKeys').mockImplementation(() => (
+        readsFail ? [] : originalGetKeys()
+      ));
+    }
+    const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
+
+    rig.registry.reconcile();
+
+    expect(rig.registry.getBundleHomeIds()).toEqual([]);
+    expect(setSpy).not.toHaveBeenCalledWith(trackerKey, expect.anything());
+
+    readsFail = false;
+    await vi.advanceTimersByTimeAsync(1_000);
+    await drainPending();
+
+    expect(rig.registry.getBundleHomeIds()).toEqual(['h_a']);
+    const recovered = originalGet(trackerKey) as PowerTrackerState;
+    expect(recovered.lastTimestamp).toBe(trackerState.lastTimestamp);
+    expect(recovered.lastPowerW).toBe(trackerState.lastPowerW);
+    expect(recovered.buckets).toEqual(trackerState.buckets);
+    expect(recovered.dailyTotals).toEqual(trackerState.dailyTotals);
+  });
+
+  it('repairs a persisted meter-identity mismatch before a rebooted bundle can hydrate freshness', async () => {
+    const trackerKey = `${POWER_TRACKER_STATE}:h_a`;
+    const oldState: PowerTrackerState = {
+      meterIdentity: { powerSource: 'homey_energy', meterDeviceId: 'old-meter' },
+      lastTimestamp: Date.now() - 5_000,
+      lastPowerW: 9_000,
+      buckets: { '2026-01-15T12': 3.25 },
+      hourlySampleCounts: { '2026-01-15T12': 7 },
+    };
+    // Simulates a process death after homes_config committed the new meter but
+    // before the previous process ran its in-memory reset.
+    mockHomeyInstance.settings.set(trackerKey, oldState);
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
+
+    rig.registry.reconcile();
+    await drainPending();
+
+    expect(rig.registry.getBundleHomeIds()).toEqual(['h_a']);
+    expect(diagnosticsFor(rig.registry, 'h_a').lastMeterPowerKw).toBeNull();
+    const repaired = mockHomeyInstance.settings.get(trackerKey) as PowerTrackerState;
+    expect(repaired.meterIdentity).toEqual({
+      powerSource: 'homey_energy',
+      meterDeviceId: 'm-a',
+    });
+    expect(repaired.lastTimestamp).toBeUndefined();
+    expect(repaired.lastPowerW).toBeUndefined();
+    expect(repaired.buckets).toEqual(oldState.buckets);
+    expect(repaired.hourlySampleCounts).toEqual(oldState.hourlySampleCounts);
+  });
+
+  it('retries bundle creation when the atomic meter-identity write fails', async () => {
+    const trackerKey = `${POWER_TRACKER_STATE}:h_a`;
+    const oldState: PowerTrackerState = {
+      meterIdentity: { powerSource: 'flow', meterDeviceId: 'm-a' },
+      lastTimestamp: Date.now() - 5_000,
+      lastPowerW: 4_000,
+      dailyTotals: { '2026-01-14': 6.5 },
+    };
+    mockHomeyInstance.settings.set(trackerKey, oldState);
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
+
+    const originalSet = mockHomeyInstance.settings.set.bind(mockHomeyInstance.settings);
+    let writeFails = true;
+    vi.spyOn(mockHomeyInstance.settings, 'set').mockImplementation((key, value) => {
+      if (writeFails && key === trackerKey) throw new Error('settings unavailable');
+      originalSet(key, value);
+    });
+
+    rig.registry.reconcile();
+
+    expect(rig.registry.getBundleHomeIds()).toEqual([]);
+    expect(mockHomeyInstance.settings.get(trackerKey)).toEqual(oldState);
+
+    writeFails = false;
+    await vi.advanceTimersByTimeAsync(1_000);
+    await drainPending();
+
+    expect(rig.registry.getBundleHomeIds()).toEqual(['h_a']);
+    const repaired = mockHomeyInstance.settings.get(trackerKey) as PowerTrackerState;
+    expect(repaired.meterIdentity?.powerSource).toBe('homey_energy');
+    expect(repaired.lastTimestamp).toBeUndefined();
+    expect(repaired.lastPowerW).toBeUndefined();
+    expect(repaired.dailyTotals).toEqual(oldState.dailyTotals);
   });
 
   it('gates execution (dry-run) until membership has resolved from a committed zone tree', async () => {
     mockHomeyInstance.settings.set('capacity_dry_run:h_a', false);
     rig.setMembershipReady(false);
-    createHomesStore(homeyLike).write({ subHomes: [HOME_A] });
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
 
@@ -282,13 +561,26 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     expect(diagnosticsFor(rig.registry, 'h_a').dryRunEffective).toBe(false);
   });
 
+  it('rebuilds each live sub-home plan when committed device ownership changes', async () => {
+    writeActiveHomesConfig({ subHomes: [HOME_A, HOME_B] });
+    rig.registry.reconcile();
+    await drainPending();
+    const rebuild = vi.spyOn(PlanService.prototype, 'rebuildPlanFromCache');
+
+    rig.registry.onMembershipChanged();
+    await drainPending();
+
+    expect(rebuild.mock.calls.filter(([reason]) => reason === 'home_membership_changed'))
+      .toHaveLength(2);
+  });
+
   it('publishes the EFFECTIVE (membership-gated) dry-run into the per-home status blob', async () => {
     // Persisted-live, but no committed zone tree yet ⇒ effective dry-run true.
     // The per-home Limits card must read Simulating, so the blob carries it.
     mockHomeyInstance.settings.set('capacity_dry_run:h_a', false);
     rig.setMembershipReady(false);
     rig.ctx.snapshotWarmupGate = new SnapshotWarmupGate({ timeoutMs: 0 });
-    createHomesStore(homeyLike).write({ subHomes: [HOME_A] });
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
 
@@ -311,7 +603,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
       getUiPayload: vi.fn(),
       getOverviewStarvation: vi.fn(() => null),
     } as unknown as AppContext['deviceDiagnosticsService'];
-    createHomesStore(homeyLike).write({ subHomes: [HOME_A] });
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
 
@@ -329,7 +621,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
   });
 
   it('teardownAll leaves suffixed persisted state in place and flushes a pending persist', async () => {
-    createHomesStore(homeyLike).write({ subHomes: [HOME_A] });
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
     const sampleTs = Date.now();
@@ -364,7 +656,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
 
   const armBundleGatedThenReady = async (): Promise<void> => {
     rig.setMembershipReady(false);
-    createHomesStore(homeyLike).write({ subHomes: [HOME_A] });
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
     rig.setMembershipReady(true);
@@ -405,7 +697,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     rig.registry.onMembershipReady();
     await drainPending();
     // Tear the bundle down WHILE its ready-edge rebuild is in flight.
-    createHomesStore(homeyLike).write({ subHomes: [] });
+    writeActiveHomesConfig({ subHomes: [] });
     rig.registry.reconcile();
     await drainPending();
     // The in-flight rebuild resolves (healthy) AFTER teardown — must be fenced.
@@ -418,14 +710,14 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     // A real warmup gate holds the initial rebuild in flight until released.
     const heldGate = new SnapshotWarmupGate({ timeoutMs: 10 * 60 * 1000 });
     rig.ctx.snapshotWarmupGate = heldGate;
-    createHomesStore(homeyLike).write({ subHomes: [HOME_A] });
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
     // Held by the gate → no status written yet.
     expect(mockHomeyInstance.settings.get('pels_status:h_a')).toBeUndefined();
 
     // Tear down while the rebuild is held, THEN let it resolve post-teardown.
-    createHomesStore(homeyLike).write({ subHomes: [] });
+    writeActiveHomesConfig({ subHomes: [] });
     rig.registry.reconcile();
     await drainPending();
     heldGate.release('snapshot_ready');
@@ -435,7 +727,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
 
     // A same-homeId recreate is a FRESH bundle with its own (open) fence: it persists.
     rig.ctx.snapshotWarmupGate = new SnapshotWarmupGate({ timeoutMs: 0 });
-    createHomesStore(homeyLike).write({ subHomes: [HOME_A] });
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
     expect(mockHomeyInstance.settings.get('pels_status:h_a')).toBeTruthy();
@@ -465,7 +757,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     // actuating case — both homes configured to actuate.
     mockHomeyInstance.settings.set('capacity_dry_run:h_a', false);
     mockHomeyInstance.settings.set('capacity_dry_run:h_b', false);
-    createHomesStore(homeyLike).write({ subHomes: [HOME_A, HOME_B] });
+    writeActiveHomesConfig({ subHomes: [HOME_A, HOME_B] });
     rig.registry.reconcile();
     await drainPending();
     // Prime both meters so each has a live `lastTimestamp` (proving it was sampling).
@@ -494,7 +786,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
 
   it('R3#1a freshness heartbeat: a FAILED rebuild is NOT latched — the next tick retries', async () => {
     mockHomeyInstance.settings.set('capacity_dry_run:h_a', false);
-    createHomesStore(homeyLike).write({ subHomes: [HOME_A] });
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
     // Live `lastTimestamp` so the bundle can go stale (it was sampling).
@@ -528,7 +820,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     // not burn the one-shot the ready-edge escalation later relies on.
     mockHomeyInstance.settings.set('capacity_dry_run:h_a', false);
     rig.setMembershipReady(false);
-    createHomesStore(homeyLike).write({ subHomes: [HOME_A] });
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
     rig.registry.routeMeterReadings({ 'm-a': 1000 }, Date.now());
@@ -568,7 +860,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     const heldGate = new SnapshotWarmupGate({ timeoutMs: 10 * 60 * 1000 });
     rig.ctx.snapshotWarmupGate = heldGate;
     mockHomeyInstance.settings.set('capacity_dry_run:h_a', false);
-    createHomesStore(homeyLike).write({ subHomes: [HOME_A] });
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
 
@@ -577,7 +869,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     await drainPending();
 
     // Tear the bundle down, THEN release the held rebuild (resolves post-teardown).
-    createHomesStore(homeyLike).write({ subHomes: [] });
+    writeActiveHomesConfig({ subHomes: [] });
     rig.registry.reconcile();
     await drainPending();
     heldGate.release('snapshot_ready');
@@ -585,6 +877,167 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
 
     // The global card was never fired — the fenced guard callback short-circuited.
     expect(mockHomeyInstance.flow._triggerCardTriggers.capacity_shortfall).toBeUndefined();
+  });
+
+  it('source observation fences a global shortfall event before queued teardown runs', async () => {
+    // Hold a real over-cap rebuild in flight, then observe the source switch
+    // synchronously without running the serialized source handler. This pins
+    // the queue window: the bundle is still alive, but its meter epoch is no
+    // longer authorized and therefore cannot emit a stale global Flow event.
+    mockHomeyInstance.flow._triggerCardTriggers = {};
+    const heldGate = new SnapshotWarmupGate({ timeoutMs: 10 * 60 * 1000 });
+    rig.ctx.snapshotWarmupGate = heldGate;
+    mockHomeyInstance.settings.set('capacity_dry_run:h_a', false);
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    rig.registry.reconcile();
+    await drainPending();
+
+    rig.registry.routeMeterReadings({ 'm-a': 50_000 }, Date.now());
+    await drainPending();
+
+    mockHomeyInstance.settings.set(POWER_SOURCE, 'flow');
+    rig.registry.observePowerSourceChange();
+    heldGate.release('snapshot_ready');
+    await drainPending();
+
+    expect(rig.registry.getBundleHomeIds()).toEqual(['h_a']);
+    expect(mockHomeyInstance.flow._triggerCardTriggers.capacity_shortfall).toBeUndefined();
+  });
+
+  it('replays one shortfall event after a transient source read without replacing the bundle', async () => {
+    mockHomeyInstance.flow._triggerCardTriggers = {};
+    const capacityShortfallTrigger = vi.fn().mockResolvedValue(true);
+    const originalGetTriggerCard = mockHomeyInstance.flow.getTriggerCard;
+    const getTriggerCard = vi.spyOn(mockHomeyInstance.flow, 'getTriggerCard').mockImplementation((cardId) => (
+      cardId === 'capacity_shortfall'
+        ? {
+          registerRunListener: vi.fn(),
+          registerArgumentAutocompleteListener: vi.fn(),
+          trigger: capacityShortfallTrigger,
+        }
+        : originalGetTriggerCard(cardId)
+    ));
+    mockHomeyInstance.settings.set('capacity_dry_run:h_a', false);
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    rig.registry.reconcile();
+    await drainPending();
+
+    const originalGet = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
+    let sourceReadUnavailable = false;
+    vi.spyOn(mockHomeyInstance.settings, 'get').mockImplementation((key) => {
+      if (sourceReadUnavailable && key === POWER_SOURCE) throw new Error('settings unavailable');
+      return originalGet(key);
+    });
+    const realCheckShortfall = CapacityGuard.prototype.checkShortfall;
+    let injectFailure = true;
+    vi.spyOn(CapacityGuard.prototype, 'checkShortfall')
+      .mockImplementation(function checked(
+        this: CapacityGuard,
+        ...args: Parameters<CapacityGuard['checkShortfall']>
+      ) {
+        if (injectFailure && args[1] > 0) {
+          injectFailure = false;
+          sourceReadUnavailable = true;
+        }
+        return realCheckShortfall.call(this, ...args);
+      });
+
+    rig.registry.routeMeterReadings({ 'm-a': 50_000 }, Date.now());
+    await drainPending();
+
+    // CapacityGuard has latched the enter, but one unavailable adapter read
+    // temporarily fenced the global side effect. The live runtime is still the
+    // same authoritative Homey Energy epoch, so this is retained, not dropped.
+    expect(rig.registry.getBundleHomeIds()).toEqual(['h_a']);
+    expect(getTriggerCard).not.toHaveBeenCalledWith('capacity_shortfall');
+    expect(capacityShortfallTrigger).not.toHaveBeenCalled();
+    expect(rig.ctx.timers.has('home:h_a:shortfallSideEffectRetry')).toBe(true);
+
+    sourceReadUnavailable = false;
+    await vi.advanceTimersByTimeAsync(1_000);
+    await drainPending();
+
+    expect({
+      triggerCount: capacityShortfallTrigger.mock.calls.length,
+      persisted: mockHomeyInstance.settings.get('capacity_in_shortfall:h_a'),
+      retryScheduled: rig.ctx.timers.has('home:h_a:shortfallSideEffectRetry'),
+    }).toEqual({
+      triggerCount: 1,
+      persisted: true,
+      retryScheduled: false,
+    });
+  });
+
+  it('owns a fresh reconcile when the execution dry-run source read is transiently unavailable', async () => {
+    const load: TargetDeviceSnapshot = {
+      id: 'load-a',
+      name: 'Annex load',
+      targets: [],
+      deviceType: 'onoff',
+      controlCapabilityId: 'onoff',
+      capabilities: ['onoff'],
+      canSetControl: true,
+      controllable: true,
+      managed: true,
+      binaryControl: { on: true },
+      available: true,
+      expectedPowerKw: 4,
+    };
+    const setCapability = vi.fn(async () => undefined);
+    const deviceManager = withGetSnapshotByDeviceId({
+      getSnapshot: () => [load],
+      setCapability,
+      applyDeviceTargets: vi.fn(async () => undefined),
+    });
+    rig.ctx.deviceManager = deviceManager as unknown as AppContext['deviceManager'];
+    rig.ctx.latestTargetSnapshot.push(load);
+    rig.ctx.resolveManagedState = vi.fn(() => true);
+    rig.ctx.isCapacityControlEnabled = vi.fn(() => true);
+    rig.ctx.getObservedState = vi.fn(() => load);
+    rig.ctx.homeMembership = {
+      hasSubHomes: () => true,
+      getHomeIdForDevice: () => 'h_a',
+    } as unknown as NonNullable<AppContext['homeMembership']>;
+    mockHomeyInstance.settings.set('capacity_dry_run:h_a', false);
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    rig.registry.reconcile();
+    await drainPending();
+
+    const originalGet = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
+    let sourceReadUnavailable = false;
+    let powerSourceReads = 0;
+    vi.spyOn(mockHomeyInstance.settings, 'get').mockImplementation((key) => {
+      if (sourceReadUnavailable && key === POWER_SOURCE && ++powerSourceReads > 1) {
+        throw new Error('settings unavailable');
+      }
+      return originalGet(key);
+    });
+    const rebuild = vi.spyOn(PlanService.prototype, 'rebuildPlanFromCache');
+
+    // Permit the registry's routing-authorization read, then fail every source
+    // read at the execution/dry-run boundary. Sustained samples let the real
+    // guard/planner converge on a committed shed while every attempt remains
+    // non-actuating.
+    sourceReadUnavailable = true;
+    for (let sampleIndex = 0; sampleIndex < 5; sampleIndex += 1) {
+      powerSourceReads = 0;
+      rig.registry.routeMeterReadings(
+        { 'm-a': 12_000 },
+        Date.now() + sampleIndex * 1_000,
+      );
+      await drainPending();
+    }
+
+    expect(rig.ctx.timers.has('home:h_a:sourceActuationRetry')).toBe(true);
+    expect(rebuild).not.toHaveBeenCalledWith('home_source_authority_recovered');
+
+    sourceReadUnavailable = false;
+    await vi.advanceTimersByTimeAsync(1_000);
+    await drainPending();
+
+    expect(rebuild).toHaveBeenCalledWith('home_source_authority_recovered');
+    expect(setCapability).toHaveBeenCalledWith('load-a', 'onoff', false);
+    expect(rig.ctx.timers.has('home:h_a:sourceActuationRetry')).toBe(false);
   });
 
   it('R3#5 ready-edge: a sample landing AFTER the pre-enqueue check but BEFORE the queued reconcile aborts, re-arms and re-applies (not permanently latched)', async () => {
@@ -634,7 +1087,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
   });
 
   it('P2#6 poll-discard parity: routeMeterReadings drops readings when the source is not homey_energy', async () => {
-    createHomesStore(homeyLike).write({ subHomes: [HOME_A] });
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
 
@@ -651,10 +1104,418 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     expect(diagnosticsFor(rig.registry, 'h_a').lastMeterPowerKw).toBeCloseTo(3);
   });
 
-  // ---- fix-round-5 failure-path coverage (P2#3 meter swap; P2#4 flow-mode heartbeat) ----
+  // ---- multi-home GA release-blocker coverage (meter swap; flow-mode execution) ----
+
+  it('flow source forces effective dry-run even when this home has control enabled', async () => {
+    mockHomeyInstance.settings.set(`${CAPACITY_DRY_RUN}:h_a`, false);
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    rig.registry.reconcile();
+    await drainPending();
+    expect(diagnosticsFor(rig.registry, 'h_a').dryRunEffective).toBe(false);
+
+    // A Flow sample has no meter identity, so a sub-home cannot safely execute.
+    // The source transition must close the bundle's effective execution gate
+    // independently of its persisted per-home control toggle.
+    mockHomeyInstance.settings.set(POWER_SOURCE, 'flow');
+    expect(diagnosticsFor(rig.registry, 'h_a').dryRunEffective).toBe(true);
+  });
+
+  it('Flow to Homey Energy opens a fresh runtime only, before the restarted poll reports', async () => {
+    mockHomeyInstance.settings.set(`${CAPACITY_DRY_RUN}:h_a`, false);
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    rig.registry.reconcile();
+    await drainPending();
+    rig.registry.routeMeterReadings({ 'm-a': 15_000 }, Date.now());
+    await drainPending();
+    expect(diagnosticsFor(rig.registry, 'h_a').lastMeterPowerKw).toBe(15);
+
+    mockHomeyInstance.settings.set(POWER_SOURCE, 'flow');
+    rig.registry.onPowerSourceChanged();
+    await drainPending();
+    expect(diagnosticsFor(rig.registry, 'h_a').dryRunEffective).toBe(true);
+    expect((mockHomeyInstance.settings.get(
+      `${POWER_TRACKER_STATE}:h_a`,
+    ) as PowerTrackerState).meterIdentity).toEqual({
+      powerSource: 'flow',
+      meterDeviceId: 'm-a',
+    });
+
+    // `onPowerSourceChanged` constructs the replacement before committing the
+    // handled epoch. Its detached initial-rebuild microtask may run immediately
+    // after return; neither that timing nor the now-authorized source may expose
+    // the old meter's guard/tracker state.
+    mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
+    rig.registry.onPowerSourceChanged();
+    expect(diagnosticsFor(rig.registry, 'h_a').lastMeterPowerKw).toBeNull();
+    await drainPending();
+    expect(diagnosticsFor(rig.registry, 'h_a').lastMeterPowerKw).toBeNull();
+    const reset = mockHomeyInstance.settings.get(
+      `${POWER_TRACKER_STATE}:h_a`,
+    ) as PowerTrackerState;
+    expect(reset.lastTimestamp).toBeUndefined();
+    expect(reset.lastPowerW).toBeUndefined();
+    expect(reset.meterIdentity).toEqual({
+      powerSource: 'homey_energy',
+      meterDeviceId: 'm-a',
+    });
+
+    rig.registry.routeMeterReadings({ 'm-a': 3000 }, Date.now() + 10_000);
+    await drainPending();
+    expect(diagnosticsFor(rig.registry, 'h_a').lastMeterPowerKw).toBe(3);
+  });
+
+  it('synchronously fences and replaces the runtime across a rapid un-awaited source ABA', async () => {
+    mockHomeyInstance.settings.set(`${CAPACITY_DRY_RUN}:h_a`, false);
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    rig.registry.reconcile();
+    await drainPending();
+    rig.registry.routeMeterReadings({ 'm-a': 15_000 }, Date.now());
+    await drainPending();
+    expect(diagnosticsFor(rig.registry, 'h_a').lastMeterPowerKw).toBe(15);
+
+    const settingsHandler = initSettingsHandlerForApp(
+      rig.ctx,
+      buildHomeRuntimeSettingsHooks(() => rig.registry),
+    );
+    try {
+      // MockSettings emits synchronously and does not await async listeners:
+      // both events reach the observer edge before either queued handler runs.
+      mockHomeyInstance.settings.set(POWER_SOURCE, 'flow');
+      mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
+
+      // Raw source already equals the original value, but the generation latch
+      // remains closed until the latest epoch replaces the old runtime.
+      expect(diagnosticsFor(rig.registry, 'h_a').dryRunEffective).toBe(true);
+      await drainUntil(() => (
+        diagnosticsFor(rig.registry, 'h_a').lastMeterPowerKw === null
+      ));
+      expect(diagnosticsFor(rig.registry, 'h_a').dryRunEffective).toBe(false);
+    } finally {
+      settingsHandler.stop();
+    }
+  });
+
+  it('keeps a failed source-epoch reset fenced until its owned retry recovers it', async () => {
+    mockHomeyInstance.settings.set(`${CAPACITY_DRY_RUN}:h_a`, false);
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    rig.registry.reconcile();
+    await drainPending();
+    rig.registry.routeMeterReadings({ 'm-a': 1500 }, Date.now());
+    await drainPending();
+    await vi.advanceTimersByTimeAsync(VOLATILE_WRITE_THROTTLE_MS + 1000);
+    await drainPending();
+
+    const trackerKey = `${POWER_TRACKER_STATE}:h_a`;
+    const originalSet = mockHomeyInstance.settings.set.bind(mockHomeyInstance.settings);
+    let failTrackerReset = true;
+    vi.spyOn(mockHomeyInstance.settings, 'set').mockImplementation((key, value) => {
+      if (failTrackerReset && key === trackerKey) throw new Error('settings unavailable');
+      originalSet(key, value);
+    });
+    const settingsHandler = initSettingsHandlerForApp(
+      rig.ctx,
+      buildHomeRuntimeSettingsHooks(() => rig.registry),
+    );
+    try {
+      mockHomeyInstance.settings.set(POWER_SOURCE, 'flow');
+      mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
+      await drainPending();
+
+      // Raw source is Homey Energy again, but failed safety persistence keeps
+      // every old runtime torn down and the latest generation unauthorized.
+      expect(rig.registry.getBundleHomeIds()).toEqual([]);
+      expect(rig.registry.getMeterDeviceIds()).toEqual([]);
+
+      failTrackerReset = false;
+      await vi.advanceTimersByTimeAsync(1_000);
+      await drainPending();
+
+      expect(rig.registry.getBundleHomeIds()).toEqual(['h_a']);
+      expect(rig.registry.getMeterDeviceIds()).toEqual(['m-a']);
+      expect(diagnosticsFor(rig.registry, 'h_a').lastMeterPowerKw).toBeNull();
+      expect(diagnosticsFor(rig.registry, 'h_a').dryRunEffective).toBe(false);
+    } finally {
+      settingsHandler.stop();
+    }
+  });
+
+  it('rereads the authoritative source after a transient settings-read failure', async () => {
+    mockHomeyInstance.settings.set(`${CAPACITY_DRY_RUN}:h_a`, false);
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    rig.registry.reconcile();
+    await drainPending();
+
+    const originalGet = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
+    let failSourceRead = true;
+    vi.spyOn(mockHomeyInstance.settings, 'get').mockImplementation((key) => {
+      if (failSourceRead && key === POWER_SOURCE) throw new Error('settings unavailable');
+      return originalGet(key);
+    });
+
+    // The settings event was observed, but its authoritative value cannot yet
+    // be resolved. Authorization closes without committing a guessed Flow
+    // source or requiring another settings event.
+    rig.registry.observePowerSourceChange();
+    rig.registry.onPowerSourceChanged();
+    expect(diagnosticsFor(rig.registry, 'h_a').dryRunEffective).toBe(true);
+
+    failSourceRead = false;
+    await vi.advanceTimersByTimeAsync(1_000);
+    await drainPending();
+
+    expect(rig.registry.getBundleHomeIds()).toEqual(['h_a']);
+    expect(diagnosticsFor(rig.registry, 'h_a').dryRunEffective).toBe(false);
+    rig.registry.routeMeterReadings({ 'm-a': 2_500 }, Date.now());
+    await drainPending();
+    expect(diagnosticsFor(rig.registry, 'h_a').lastMeterPowerKw).toBe(2.5);
+  });
+
+  it('keeps an exact-key undefined source transition fenced until the owned retry recovers', async () => {
+    mockHomeyInstance.settings.set(`${CAPACITY_DRY_RUN}:h_a`, false);
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    rig.registry.reconcile();
+    await drainPending();
+    const trackerKey = `${POWER_TRACKER_STATE}:h_a`;
+    rig.registry.routeMeterReadings({ 'm-a': 1_500 }, Date.now());
+    await drainPending();
+    await vi.advanceTimersByTimeAsync(VOLATILE_WRITE_THROTTLE_MS + 1_000);
+    await drainPending();
+
+    const originalGet = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
+    let sourceReadMissing = true;
+    let missingSourceReads = 0;
+    vi.spyOn(mockHomeyInstance.settings, 'get').mockImplementation((key) => {
+      if (sourceReadMissing && key === POWER_SOURCE) {
+        missingSourceReads += 1;
+        return undefined;
+      }
+      return originalGet(key);
+    });
+    const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
+
+    rig.registry.observePowerSourceChange();
+    rig.registry.onPowerSourceChanged();
+
+    expect(missingSourceReads).toBeGreaterThanOrEqual(2);
+    expect(rig.registry.getBundleHomeIds()).toEqual(['h_a']);
+    expect(diagnosticsFor(rig.registry, 'h_a').dryRunEffective).toBe(true);
+    rig.registry.routeMeterReadings({ 'm-a': 2_500 }, Date.now() + 10_000);
+    await drainPending();
+    expect(diagnosticsFor(rig.registry, 'h_a').lastMeterPowerKw).toBe(1.5);
+    expect(setSpy.mock.calls.filter(([key]) => key === trackerKey)).toEqual([]);
+    expect((originalGet(trackerKey) as PowerTrackerState).meterIdentity?.powerSource)
+      .toBe('homey_energy');
+
+    sourceReadMissing = false;
+    await vi.advanceTimersByTimeAsync(1_000);
+    await drainPending();
+
+    expect(rig.registry.getBundleHomeIds()).toEqual(['h_a']);
+    expect(diagnosticsFor(rig.registry, 'h_a').dryRunEffective).toBe(false);
+    expect(diagnosticsFor(rig.registry, 'h_a').lastMeterPowerKw).toBeNull();
+    const recovered = originalGet(trackerKey) as PowerTrackerState;
+    expect(recovered.meterIdentity?.powerSource).toBe('homey_energy');
+    expect(recovered.lastTimestamp).toBeUndefined();
+    expect(recovered.lastPowerW).toBeUndefined();
+  });
+
+  it('keeps a failed removal reset fenced before the same homeId can use a new meter', async () => {
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    rig.registry.reconcile();
+    await drainPending();
+
+    const trackerKey = `${POWER_TRACKER_STATE}:h_a`;
+    const oldSampleTs = Date.now();
+    rig.registry.routeMeterReadings({ 'm-a': 1500 }, oldSampleTs);
+    await drainPending();
+    await vi.advanceTimersByTimeAsync(VOLATILE_WRITE_THROTTLE_MS + 1000);
+    await drainPending();
+    expect((mockHomeyInstance.settings.get(trackerKey) as PowerTrackerState).lastTimestamp)
+      .toBe(oldSampleTs);
+
+    const originalSet = mockHomeyInstance.settings.set.bind(mockHomeyInstance.settings);
+    let failTrackerReset = true;
+    vi.spyOn(mockHomeyInstance.settings, 'set').mockImplementation((key, value) => {
+      if (failTrackerReset && key === trackerKey) throw new Error('settings unavailable');
+      originalSet(key, value);
+    });
+
+    writeActiveHomesConfig({ subHomes: [] });
+    rig.registry.reconcile();
+
+    // Removal closes every live surface immediately, but keeps the failed
+    // reset as a hidden tombstone rather than losing the retry seam.
+    expect(rig.registry.getBundleHomeIds()).toEqual([]);
+    expect(rig.registry.getMeterDeviceIds()).toEqual([]);
+    expect((mockHomeyInstance.settings.get(trackerKey) as PowerTrackerState).lastTimestamp)
+      .toBe(oldSampleTs);
+
+    writeActiveHomesConfig({
+      subHomes: [{ ...HOME_A, meterDeviceId: 'm-a2' }],
+    });
+    rig.registry.reconcile();
+
+    // Reusing the homeId cannot construct a new-meter runtime from the old
+    // meter's timestamp while the safety write is still failing.
+    expect(rig.registry.getBundleHomeIds()).toEqual([]);
+    expect(rig.registry.getMeterDeviceIds()).toEqual([]);
+
+    failTrackerReset = false;
+    rig.registry.reconcile();
+
+    expect(rig.registry.getBundleHomeIds()).toEqual(['h_a']);
+    expect(rig.registry.getMeterDeviceIds()).toEqual(['m-a2']);
+    const persisted = mockHomeyInstance.settings.get(trackerKey) as PowerTrackerState;
+    expect(persisted.lastTimestamp).toBeUndefined();
+    expect(persisted.lastPowerW).toBeUndefined();
+    expect(diagnosticsFor(rig.registry, 'h_a').lastMeterPowerKw).toBeNull();
+  });
+
+  it('meter change force-persists the cleared freshness before a restart can rehydrate it', async () => {
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    rig.registry.reconcile();
+    await drainPending();
+
+    const oldSampleTs = Date.now();
+    rig.registry.routeMeterReadings({ 'm-a': 1500 }, oldSampleTs);
+    await drainPending();
+    await vi.advanceTimersByTimeAsync(VOLATILE_WRITE_THROTTLE_MS + 1000);
+    await drainPending();
+    expect((mockHomeyInstance.settings.get(
+      `${POWER_TRACKER_STATE}:h_a`,
+    ) as PowerTrackerState).lastTimestamp).toBe(oldSampleTs);
+
+    writeActiveHomesConfig({
+      subHomes: [{ ...HOME_A, meterDeviceId: 'm-a2' }],
+    });
+    rig.registry.reconcile();
+
+    // This assertion is intentionally immediate: the reset is a safety write,
+    // not another volatile sample that may wait for the debounce.
+    const persisted = mockHomeyInstance.settings.get(
+      `${POWER_TRACKER_STATE}:h_a`,
+    ) as PowerTrackerState;
+    expect(persisted.lastTimestamp).toBeUndefined();
+    expect(persisted.lastPowerW).toBeUndefined();
+  });
+
+  it('keeps a failed meter-reset replacement fenced until its owned retry recovers it', async () => {
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    rig.registry.reconcile();
+    await drainPending();
+
+    const trackerKey = `${POWER_TRACKER_STATE}:h_a`;
+    const oldSampleTs = Date.now();
+    rig.registry.routeMeterReadings({ 'm-a': 1500 }, oldSampleTs);
+    await drainPending();
+    await vi.advanceTimersByTimeAsync(VOLATILE_WRITE_THROTTLE_MS + 1000);
+    await drainPending();
+
+    writeActiveHomesConfig({
+      subHomes: [{ ...HOME_A, meterDeviceId: 'm-a2' }],
+    });
+    const originalSet = mockHomeyInstance.settings.set.bind(mockHomeyInstance.settings);
+    let failTrackerReset = true;
+    vi.spyOn(mockHomeyInstance.settings, 'set').mockImplementation((key, value) => {
+      if (failTrackerReset && key === trackerKey) throw new Error('settings unavailable');
+      originalSet(key, value);
+    });
+
+    rig.registry.reconcile();
+
+    // No replacement may hydrate the prior meter's timestamp. The old bundle
+    // is torn down and hidden from every live routing/actuation surface.
+    expect(rig.registry.getBundleHomeIds()).toEqual([]);
+    expect(rig.registry.getMeterDeviceIds()).toEqual([]);
+    expect((mockHomeyInstance.settings.get(trackerKey) as PowerTrackerState).lastTimestamp)
+      .toBe(oldSampleTs);
+
+    failTrackerReset = false;
+    await vi.advanceTimersByTimeAsync(1_000);
+    await drainPending();
+
+    expect(rig.registry.getBundleHomeIds()).toEqual(['h_a']);
+    expect(rig.registry.getMeterDeviceIds()).toEqual(['m-a2']);
+    const persisted = mockHomeyInstance.settings.get(trackerKey) as PowerTrackerState;
+    expect(persisted.lastTimestamp).toBeUndefined();
+    expect(persisted.lastPowerW).toBeUndefined();
+    expect(diagnosticsFor(rig.registry, 'h_a').lastMeterPowerKw).toBeNull();
+  });
+
+  it('clears dormant freshness before held configuration activates and retries the safety write', async () => {
+    const trackerKey = `${POWER_TRACKER_STATE}:h_a`;
+    const accountingState: PowerTrackerState = {
+      lastTimestamp: Date.now() - 30_000,
+      lastPowerW: 4_200,
+      buckets: { '2026-01-15T12': 1.25 },
+      hourlySampleCounts: { '2026-01-15T12': 4 },
+    };
+    mockHomeyInstance.settings.set(trackerKey, accountingState);
+    rig.setRuntimeActive(false);
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    rig.registry.reconcile();
+    expect(rig.registry.getBundleHomeIds()).toEqual([]);
+
+    const originalSet = mockHomeyInstance.settings.set.bind(mockHomeyInstance.settings);
+    let failDormantReset = true;
+    vi.spyOn(mockHomeyInstance.settings, 'set').mockImplementation((key, value) => {
+      if (failDormantReset && key === trackerKey) throw new Error('settings unavailable');
+      originalSet(key, value);
+    });
+
+    rig.setRuntimeActive(true);
+    rig.registry.reconcile();
+    expect(rig.registry.getBundleHomeIds()).toEqual([]);
+    expect(mockHomeyInstance.settings.get(trackerKey)).toEqual(accountingState);
+
+    failDormantReset = false;
+    await vi.advanceTimersByTimeAsync(1_000);
+    await drainPending();
+
+    expect(rig.registry.getBundleHomeIds()).toEqual(['h_a']);
+    const reset = mockHomeyInstance.settings.get(trackerKey) as PowerTrackerState;
+    expect(reset.lastTimestamp).toBeUndefined();
+    expect(reset.lastPowerW).toBeUndefined();
+    expect(reset.buckets).toEqual(accountingState.buckets);
+    expect(reset.hourlySampleCounts).toEqual(accountingState.hourlySampleCounts);
+    expect(diagnosticsFor(rig.registry, 'h_a').lastMeterPowerKw).toBeNull();
+  });
+
+  it('meter change discards an old-meter coalesced rerun already in flight', async () => {
+    const heldGate = new SnapshotWarmupGate({ timeoutMs: 10 * 60 * 1000 });
+    rig.ctx.snapshotWarmupGate = heldGate;
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    rig.registry.reconcile();
+
+    // The first sample adopts its tracker/guard state, then waits behind the
+    // held rebuild. A second old-meter sample is accepted as the pipeline's
+    // pending coalesced rerun.
+    rig.registry.routeMeterReadings({ 'm-a': 2000 }, Date.now());
+    rig.registry.routeMeterReadings({ 'm-a': 9000 }, Date.now() + 10_000);
+    await drainPending();
+
+    writeActiveHomesConfig({
+      subHomes: [{ ...HOME_A, meterDeviceId: 'm-a2' }],
+    });
+    rig.registry.reconcile();
+    expect(diagnosticsFor(rig.registry, 'h_a').lastMeterPowerKw).toBeNull();
+
+    // Releasing the old work must not let its queued rerun re-prime the new
+    // meter's runtime or durable freshness state.
+    heldGate.release('snapshot_ready');
+    await drainPending();
+    await vi.advanceTimersByTimeAsync(VOLATILE_WRITE_THROTTLE_MS + 1000);
+    await drainPending();
+    expect(diagnosticsFor(rig.registry, 'h_a').lastMeterPowerKw).toBeNull();
+    const persisted = mockHomeyInstance.settings.get(
+      `${POWER_TRACKER_STATE}:h_a`,
+    ) as PowerTrackerState;
+    expect(persisted.lastTimestamp).toBeUndefined();
+    expect(persisted.lastPowerW).toBeUndefined();
+  });
 
   it('P2#3 meter change resets the bundle sample/freshness: no action on the OLD meter, waits for the NEW meter', async () => {
-    createHomesStore(homeyLike).write({ subHomes: [HOME_A] });
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
 
@@ -663,8 +1524,9 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     await drainPending();
     expect(diagnosticsFor(rig.registry, 'h_a').lastMeterPowerKw).toBeCloseTo(15);
 
-    // The meter device is changed IN PLACE (same homeId, new meterDeviceId).
-    createHomesStore(homeyLike).write({ subHomes: [{ ...HOME_A, meterDeviceId: 'm-a2' }] });
+    // The meter device changes under the same homeId; the registry replaces
+    // the runtime so accepted old-meter work remains behind teardown fences.
+    writeActiveHomesConfig({ subHomes: [{ ...HOME_A, meterDeviceId: 'm-a2' }] });
     rig.registry.reconcile();
     // Guard last-total cleared: the bundle no longer holds the old meter's 15 kW,
     // so a rebuild before the new meter reports cannot shed/restore on stale load.
@@ -684,7 +1546,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
   });
 
   it('P2#4 flow-mode: an aged prior sample does NOT escalate to a fail-closed shed (heartbeat gated on homey_energy)', async () => {
-    createHomesStore(homeyLike).write({ subHomes: [HOME_A] });
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
     rig.registry.reconcile();
     await drainPending();
 

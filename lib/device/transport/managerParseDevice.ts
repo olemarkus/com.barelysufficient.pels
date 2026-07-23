@@ -3,6 +3,7 @@ import type {
   TargetDeviceSnapshot,
   TargetPowerSteppedLoadConfig,
 } from '../../../packages/contracts/src/types';
+import type { MainMeterSelection } from '../../../packages/contracts/src/mainMeterSelection';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike, Logger } from '../../utils/types';
 import { getDeviceId } from './managerHelpers';
@@ -27,8 +28,8 @@ import {
 } from './managerParseDeviceFields';
 
 export type DeviceTransportParseProviders = {
-    /** Resolved explicit whole-home meter id; null/undefined = automatic (first cumulative item). */
-    getHomeyEnergyMeterDeviceId?: () => string | null;
+    /** Producer-resolved Main selection; `unavailable` must never fall back to Automatic. */
+    getHomeyEnergyMeterSelection?: () => MainMeterSelection;
     /**
      * Additional per-meter reading requests for the SAME `manager/energy/live`
      * payload (multi-home R7b: each sub-home's own meter device). Read fresh

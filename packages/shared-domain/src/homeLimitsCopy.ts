@@ -6,9 +6,11 @@
  * buffer below it the **Safety margin**. The dry-run setting is surfaced as a
  * POSITIVE **"Control devices in this area"** toggle (ON = PELS limits this
  * area, OFF = it only simulates) — never the internal "dry-run" jargon, and
- * never the old OFF-to-activate double-negative. The OFF state and the status
- * chip still read **"simulating"/"Active"**. Copy says what happens ("let PELS
- * limit devices", "only simulating"), never the planner's shed/restore words.
+ * never the old OFF-to-activate double-negative. A current config reads
+ * **"Simulating"/"Active"**; a held pre-GA config reads **"Not active"** and
+ * points the owner to the deliberate save that activates it. Copy says what
+ * happens ("let PELS limit devices", "only simulating"), never the planner's
+ * shed/restore words.
  *
  * Lives in shared-domain so the settings UI and any future runtime logging
  * speak the same words for the same state (`feedback_ui_text_shared_with_logs`).
@@ -54,6 +56,9 @@ export const HOME_LIMITS_REACTION_NOTE = '(hard cap minus safety margin; it adap
 export const HOME_LIMITS_CONTROL_LABEL = 'Control devices in this area';
 export const HOME_LIMITS_CONTROL_HINT
   = 'When on, PELS limits devices in this meter area to keep each hour under its cap.';
+export const HOME_LIMITS_INACTIVE_CHIP = 'Not active';
+export const HOME_LIMITS_INACTIVE_STATUS
+  = 'Open Multiple meters and save this area to start using these settings.';
 
 /**
  * The unmissable activation notice, shown only while the selected meter area is
@@ -62,6 +67,11 @@ export const HOME_LIMITS_CONTROL_HINT
  */
 export const composeHomeLimitsSimulationNotice = (name: string): string => (
   `PELS is only simulating “${name}” — turn on control to let it limit devices in this meter area.`
+);
+
+/** A held pre-GA area needs an explicit owner save before any per-area control can start. */
+export const composeHomeLimitsInactiveNotice = (name: string): string => (
+  `PELS isn’t using “${name}” yet — open Multiple meters and save this area before turning on control.`
 );
 
 // ── Save toasts ─────────────────────────────────────────────────────────────

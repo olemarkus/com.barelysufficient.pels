@@ -6,8 +6,8 @@
  *
  * - Writes happen at dispatch time (`lib/executor/binaryControlDispatch.ts`)
  *   after the plan layer produces a `BinaryControlDecision`.
- * - Deletes happen in two places: the dispatcher's catch arm clears on
- *   `dispatch_failed`, and the per-cycle sync sweep (this module's
+ * - Deletes happen in two places: the dispatcher clears when the actuator
+ *   declines or dispatch fails, and the per-cycle sync sweep (this module's
  *   `syncPendingBinaryCommands`) clears on confirmation or timeout.
  * - Reads happen in plan/executor predicates that need to know "is a
  *   command in flight for this device?".

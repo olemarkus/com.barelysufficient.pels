@@ -454,3 +454,18 @@ export const requestSmartTaskClear = async (): Promise<void> => {
     await logSettingsError('Failed to clear smart task', error, 'smartTaskEdit.clear');
   }
 };
+
+// The separate-meter detail state has no editor to open, but it must retain
+// the existing two-step Clear action. Seed the controller on the first tap,
+// then route through the same confirmation and cancel write as the editable
+// lane. A matching snapshot may already exist if the device moved meters
+// while its editor was open; keep it because the cancel write only needs the
+// device identity.
+export const beginSmartTaskClear = async (
+  context: SmartTaskEditContext,
+): Promise<void> => {
+  if (state?.context.deviceId !== context.deviceId) {
+    openSmartTaskEditor(context);
+  }
+  await requestSmartTaskClear();
+};

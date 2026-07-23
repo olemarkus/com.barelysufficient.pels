@@ -1,5 +1,5 @@
 /**
- * Pure device→home membership resolver. DORMANT until the R4 wiring PR.
+ * Pure device→home membership resolver used for runtime ownership and diagnostics.
  *
  * Rule of record (settled):
  * - A device follows its Homey zone: it belongs to the DEEPEST sub-home whose
@@ -11,8 +11,8 @@
  *   an unknown/missing zone, broken parent chain, or parent cycle resolves to
  *   main — both visibly, as `source: 'fallback'`.
  *
- * Pure over typed inputs: the caller's boundary (R4 wiring) validates the zone
- * tree and config before handing them here — this module never re-validates.
+ * Pure over typed inputs: the setup-layer caller validates the zone tree and
+ * persisted config before handing them here — this module never re-validates.
  */
 
 import {
@@ -59,6 +59,23 @@ export type HomeMembershipPort = {
   /** `homeId` per snapshot device — no `source`, by design. */
   getMembershipMap(): Readonly<Record<string, HomeId>>;
   hasSubHomes(): boolean;
+  /**
+   * Positive producer-owned proof that persisted ownership has a trustworthy
+   * baseline and, when active sub-homes exist, a committed zone tree.
+   */
+  isOwnershipReady(): boolean;
+  /**
+   * True after an ownership settings event has been observed but before its
+   * freshly planned generation commits. Consumers must treat cached membership
+   * as provisional while this is true.
+   */
+  hasPendingOwnershipGeneration(): boolean;
+  /**
+   * True while Main-home ownership is provisional and must not authorize a
+   * device write. Producer-resolved so actuator consumers never branch on
+   * membership provenance or reconstruct zone-tree readiness themselves.
+   */
+  isMainHomeActuationFenced(): boolean;
   /** Re-resolve from the cached inputs; cheap, never throws destructively. */
   recompute(): void;
 };

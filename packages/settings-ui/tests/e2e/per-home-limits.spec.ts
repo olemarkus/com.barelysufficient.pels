@@ -2,17 +2,20 @@ import { expect, test, type Page } from './fixtures/test';
 import {
   gotoApp,
   installRentalMeterDeviceList,
+  seedHeldRentalArea,
   seedRentalArea,
   seedRentalMeterSnapshot,
+  seedStubSetting,
 } from './fixtures/homes';
 
 /* -------------------------------------------------------------------------- *
  * Per-home Limits & safety flow (multi-home U3): the switcher appears once a
  * meter area exists, picking the area shows its editor + the activation notice
  * (areas default to simulation), turning ON the positive "Control devices in
- * this area" toggle persists `capacity_dry_run:<homeId>` = false (THE activation
- * step), and a cap edit persists `capacity_limit_kw:<homeId>`. The Main home
- * keeps its static form and its bare keys.
+ * this area" toggle starts device control by persisting
+ * `capacity_dry_run:<homeId>` = false, and a cap edit persists
+ * `capacity_limit_kw:<homeId>`. The Main home keeps its static form and bare
+ * keys.
  * -------------------------------------------------------------------------- */
 
 const AREA_ID = 'h_11111111';
@@ -72,4 +75,32 @@ test('a meter area activates control: switch, turn control on, set a cap', async
   await page.locator('#home-limits-hard-cap').blur();
   await expect.poll(() => readStubSetting(page, `capacity_limit_kw:${AREA_ID}`)).toBe(9);
   await expect(readStubSetting(page, 'capacity_dry_run')).resolves.not.toBe(false);
+});
+
+test('a held pre-GA meter area cannot claim active control or stale live power', async ({ page }) => {
+  await installRentalMeterDeviceList(page);
+  await gotoApp(page);
+  await seedRentalMeterSnapshot(page);
+  await seedHeldRentalArea(page);
+  await seedStubSetting(page, `capacity_dry_run:${AREA_ID}`, false);
+  await seedStubSetting(page, `pels_status:${AREA_ID}`, {
+    controlledKw: 2.5,
+    uncontrolledKw: 1.5,
+    powerKnown: true,
+    hasLivePowerSample: true,
+    devicesOff: 0,
+    limitReason: 'none',
+  });
+  await openLimitsPanel(page);
+  await page.locator('#home-limits-home-select').selectOption(AREA_ID);
+
+  const control = page.locator('#home-limits-simulation-switch');
+  // Material's custom element owns disabled semantics inside its shadow root;
+  // pin the reflected property/attribute instead of native-form detection.
+  await expect(control).toHaveAttribute('disabled', '');
+  await expect(control).toHaveJSProperty('selected', false);
+  await expect(page.locator('#home-limits-status-chip')).toHaveText('Not active');
+  await expect(page.locator('#home-limits-status-power')).toHaveText('—');
+  await expect(page.locator('#home-limits-inactive-notice'))
+    .toContainText('open Multiple meters and save this area');
 });
