@@ -76,6 +76,9 @@ const resolveRescuableDevice = (app: StarvationRescueHostApi | undefined, device
   if (scope === 'sub_home') {
     return { ok: false as const, reason: 'device_in_sub_home' as const };
   }
+  if (scope === 'source_device') {
+    return { ok: false as const, reason: 'device_not_planned' as const };
+  }
   if (scope === 'unavailable') {
     return { ok: false as const, reason: 'unavailable' as const };
   }

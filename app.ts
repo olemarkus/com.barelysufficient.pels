@@ -1260,6 +1260,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
     // never disagree.
     const homeScope = this.resolveSmartTaskHomeScope(deviceId);
     if (homeScope === 'sub_home') return { ok: false, reason: 'device_in_sub_home' };
+    if (homeScope === 'source_device') return { ok: false, reason: 'device_not_planned' };
     if (homeScope === 'unavailable') return { ok: false, reason: 'write_refused' };
     // The device must support the goal kind the candidate claims — an EV-SoC
     // goal on a thermostat (or vice versa) is rejected before it can persist.
@@ -1326,7 +1327,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
       }),
       { deviceId, deviceName: device.name ?? null, entry },
     );
-    // Refusal → reject union mapping (sub-home keeps its typed reason; the
+    // Refusal → reject union mapping (durable scope reasons stay typed; the
     // transient refusals collapse to the retryable `write_refused` lane).
     if (!outcome.persisted) return { ok: false, reason: mapObjectiveWriteRefusalReason(outcome.reason) };
     return { ok: true };

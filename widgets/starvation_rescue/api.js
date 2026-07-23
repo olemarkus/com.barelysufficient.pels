@@ -305,6 +305,9 @@ var resolveRescuableDevice = (app, deviceId) => {
   if (scope === "sub_home") {
     return { ok: false, reason: "device_in_sub_home" };
   }
+  if (scope === "source_device") {
+    return { ok: false, reason: "device_not_planned" };
+  }
   if (scope === "unavailable") {
     return { ok: false, reason: "unavailable" };
   }

@@ -263,12 +263,10 @@ function buildSubHomeScope(params: {
   getServiceForSync: () => PlanService | undefined;
   /** Late-bound: the bundle's OWN engine, for the sub-home pending-binary read. */
   getPlanEngineForPending: () => ReturnType<typeof createPlanEngine> | undefined;
-  /** This home's configured meter device id (fresh per read); excluded from the plan input. */
-  getMeterDeviceId: () => string | null;
 }): HomeScope {
   const {
     ctx, homeId, isMembershipReady, isMeterSourceAuthorized, isTornDown, getScalars, getGuard, getTracker,
-    getServiceForSync, getPlanEngineForPending, getMeterDeviceId,
+    getServiceForSync, getPlanEngineForPending,
   } = params;
   // Suffixed persisted-signal write, fenced on teardown: an in-flight
   // rebuild/reconcile continuation that resolves AFTER teardown must not
@@ -297,16 +295,7 @@ function buildSubHomeScope(params: {
       ctx.seedObservedStateFromSnapshot();
       const snapshot = ctx.latestTargetSnapshot;
       evictMissingDeviceCacheEntries(ctx, snapshot);
-      const meterDeviceId = getMeterDeviceId();
       return filterDevicesForHome(ctx.homeMembership, snapshot, homeId)
-        // Own-meter carve-out: a home's configured meter device is its power
-        // SOURCE, not a managed load. If that metering plug were also
-        // managed+controllable it would be shed on overshoot — either an
-        // oscillation (off plug reads ~0 W → "under cap" → restore → spike) or a
-        // freeze-off (plug goes unavailable → the bundle stops sampling). Drop it
-        // from the plan input entirely (RUNTIME guard; the homes UI should also
-        // warn — see TODO.md).
-        .filter((device) => meterDeviceId === null || device.id !== meterDeviceId)
         // Capacity-only overrides: NO surplus posture (a sub-home has no
         // price/surplus signal, so a surplusWilling device would be held OFF
         // forever), and the pending-binary read routed to THIS bundle's engine
@@ -437,7 +426,6 @@ function createBundleSamplePipeline(params: {
   getPlanService: () => PlanService;
   getCapacityGuard: () => CapacityGuard;
   getCapacitySettings: () => { limitKw: number; marginKw: number };
-  getMeterDeviceId: () => string | null;
   savePowerTracker: (state: PowerTrackerState) => void;
   getPowerTracker: () => PowerTrackerState;
 }): { pipeline: ReturnType<typeof createHomePowerPipeline>; scheduler: PlanRebuildScheduler } {
@@ -454,7 +442,6 @@ function createBundleSamplePipeline(params: {
     planRebuildScheduler: scheduler,
     getPlanEngine: params.getPlanEngine,
     getPlanService: params.getPlanService,
-    getMeterDeviceId: params.getMeterDeviceId,
     getPlanRebuildNowMs: () => Date.now(),
     savePowerTracker: params.savePowerTracker,
     setPowerSampleRebuildState: params.setRebuildState,
@@ -495,7 +482,6 @@ function createBundlePlanningRuntime(params: {
     getTracker: params.tracker.getState,
     getServiceForSync: () => planService,
     getPlanEngineForPending: () => planEngine,
-    getMeterDeviceId: () => params.getHome().meterDeviceId,
   });
   const isActuationFenced = (): boolean => {
     if (
@@ -539,7 +525,6 @@ function createBundlePlanningRuntime(params: {
     getPlanService: () => planService,
     getCapacityGuard: () => guard,
     getCapacitySettings: scope.getCapacitySettings,
-    getMeterDeviceId: () => params.getHome().meterDeviceId,
     savePowerTracker: params.tracker.save,
     getPowerTracker: params.tracker.getState,
   });

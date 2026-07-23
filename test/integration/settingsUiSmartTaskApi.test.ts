@@ -199,6 +199,15 @@ describe('previewSettingsUiSmartTask', () => {
     expect(result).toEqual({ ok: false, reason: 'unavailable' });
     expect(previewDeferredObjectivePlan).not.toHaveBeenCalled();
   });
+
+  it('rejects an active meter source as not planned without estimating', () => {
+    const previewDeferredObjectivePlan = vi.fn(() => buildEstimate());
+    const resolveSmartTaskHomeScope = vi.fn(() => 'source_device');
+    const { homey } = buildContext({ previewDeferredObjectivePlan, resolveSmartTaskHomeScope });
+    const result = previewSettingsUiSmartTask({ homey, body: updateBody() });
+    expect(result).toEqual({ ok: false, reason: 'device_not_planned' });
+    expect(previewDeferredObjectivePlan).not.toHaveBeenCalled();
+  });
 });
 
 describe('updateSettingsUiSmartTask', () => {

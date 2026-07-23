@@ -25,3 +25,16 @@ export const OBJECTIVE_WRITE_REFUSED_RETRY = 'Couldn’t save just now — pleas
 // the full smart-task copy module in.
 export const SMART_TASK_SUB_HOME_UNAVAILABLE
   = 'Smart tasks aren’t available yet for devices on a separate meter.';
+
+// Durable rejection for a device selected as an active electricity meter.
+// A meter is an input to PELS, never a managed load, so retry framing would be
+// misleading. Shared by Flow-card write lanes; app/UI admissions use the
+// existing `device_not_planned` reason.
+export const SMART_TASK_METER_DEVICE_UNAVAILABLE
+  = 'Smart tasks aren’t available for devices used as electricity meters.';
+
+export const resolveObjectiveWriteRefusalMessage = (reason: string): string => {
+  if (reason === 'device_in_sub_home') return SMART_TASK_SUB_HOME_UNAVAILABLE;
+  if (reason === 'device_not_planned') return SMART_TASK_METER_DEVICE_UNAVAILABLE;
+  return OBJECTIVE_WRITE_REFUSED_RETRY;
+};

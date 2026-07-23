@@ -141,6 +141,7 @@ describe('previewSettingsUiStarvationRescue', () => {
 
   it.each([
     ['sub_home', 'device_in_sub_home'],
+    ['source_device', 'device_not_planned'],
     ['unavailable', 'unavailable'],
   ] as const)('preserves %s scope when a stale preview row has disappeared', (scope, reason) => {
     const previewStarvationRescuePlan = freshPreviewPlan();
@@ -220,6 +221,7 @@ describe('createSettingsUiStarvationRescue', () => {
 
   it.each([
     ['sub_home', 'device_in_sub_home'],
+    ['source_device', 'device_not_planned'],
     ['unavailable', 'unavailable'],
   ] as const)('preserves %s scope when a stale create row has disappeared', (scope, reason) => {
     const rescueDeviceWithBudgetExemption = vi.fn();

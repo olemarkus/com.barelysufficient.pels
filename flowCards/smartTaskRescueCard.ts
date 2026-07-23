@@ -9,8 +9,7 @@ import {
   type DropdownArg,
 } from './deadlineObjectiveCards';
 import {
-  OBJECTIVE_WRITE_REFUSED_RETRY,
-  SMART_TASK_SUB_HOME_UNAVAILABLE,
+  resolveObjectiveWriteRefusalMessage,
 } from '../packages/shared-domain/src/objectiveWriteStrings';
 import { supportsSmartTaskObjective } from './smartTaskDeviceCapability';
 import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
@@ -102,12 +101,10 @@ export function registerAllowSmartTaskRescueCard(deps: FlowCardDeps): void {
     // A refused write must surface as a failure, not a silent success that
     // leaves the rescue permission unchanged. Transient refusals (un-confirmable
     // migration / untrustworthy settings read) get the retry framing; the
-    // multi-home scope refusal is a hard rejection no retry can clear, so it
-    // throws its own honest line (shared with the other smart-task surfaces).
+    // Durable scope refusals cannot be cleared by retrying, so they throw their
+    // own honest lines (shared with the other smart-task surfaces).
     if (!outcome.persisted) {
-      throw new Error(
-        outcome.reason === 'device_in_sub_home' ? SMART_TASK_SUB_HOME_UNAVAILABLE : OBJECTIVE_WRITE_REFUSED_RETRY,
-      );
+      throw new Error(resolveObjectiveWriteRefusalMessage(outcome.reason));
     }
     return true;
   });

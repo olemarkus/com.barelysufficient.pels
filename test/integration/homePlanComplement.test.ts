@@ -12,6 +12,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type Homey from 'homey';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { MainMeterSelection } from '../../packages/contracts/src/mainMeterSelection';
 import type { PlanEngine } from '../../lib/plan/planEngine';
 import type { PlanService } from '../../lib/plan/planService';
 import type { PowerTrackerState } from '../../lib/power/tracker';
@@ -63,6 +64,8 @@ const subDevice = {
 
 const makeMembershipService = (
   devices: readonly HomeMembershipDeviceInput[],
+  mainMeterDeviceId: string | null = null,
+  powerSource: 'homey_energy' | 'flow' = 'homey_energy',
 ): HomeMembershipService => {
   const service = new HomeMembershipService({
     homesStore: createHomesStore(homeyLike),
@@ -70,7 +73,8 @@ const makeMembershipService = (
     getZoneTree: () => ZONES,
     getDevices: () => devices,
     getLogger: () => undefined,
-    getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: null }),
+    getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: mainMeterDeviceId }),
+    getConfiguredPowerSource: () => ({ state: 'resolved', value: powerSource }),
     legacyMultiHomeEnabled: true,
   });
   service.recompute();
@@ -99,6 +103,114 @@ describe('filterDevicesForHome identity guard', () => {
     expect(service.hasSubHomes()).toBe(false);
     expect(filterDevicesForHome(service, devices, MAIN_HOME_ID)).toBe(devices);
     expect(filterDevicesForHome(undefined, devices, MAIN_HOME_ID)).toBe(devices);
+  });
+
+  it('removes an explicit Main meter even when no sub-homes are configured', () => {
+    const service = makeMembershipService(membershipInputs, 'device-main');
+    const devices = [mainDevice, subDevice];
+
+    expect(filterDevicesForHome(service, devices, MAIN_HOME_ID)).toEqual([subDevice]);
+  });
+
+  it('keeps persisted meter selections dormant while Flow supplies whole-home power', () => {
+    const service = makeMembershipService(membershipInputs, 'device-main', 'flow');
+    const devices = [mainDevice, subDevice];
+
+    expect(service.getConfiguredMeterSources()).toEqual({
+      state: 'resolved',
+      deviceIds: new Set(),
+    });
+    expect(filterDevicesForHome(service, devices, MAIN_HOME_ID)).toBe(devices);
+    expect(service.isMainHomeActuationFenced()).toBe(false);
+  });
+
+  it('does not read or fence on a malformed dormant meter selection in Flow mode', () => {
+    const getMainMeterSelection = vi.fn((): MainMeterSelection => ({ state: 'unavailable' }));
+    const service = new HomeMembershipService({
+      homesStore: createHomesStore(homeyLike),
+      assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
+      getZoneTree: () => ZONES,
+      getDevices: () => membershipInputs,
+      getLogger: () => undefined,
+      getMainMeterSelection,
+      getConfiguredPowerSource: () => ({ state: 'resolved', value: 'flow' }),
+      legacyMultiHomeEnabled: true,
+    });
+    service.recompute();
+    const devices = [mainDevice, subDevice];
+
+    expect(filterDevicesForHome(service, devices, MAIN_HOME_ID)).toBe(devices);
+    expect(service.isMainHomeActuationFenced()).toBe(false);
+    expect(getMainMeterSelection).not.toHaveBeenCalled();
+  });
+
+  it('fails every home closed and schedules recovery while power-source authority is suspect', () => {
+    const getMainMeterSelection = vi.fn((): MainMeterSelection => ({
+      state: 'resolved',
+      meterDeviceId: 'device-main',
+    }));
+    const onMainAuthorityUnresolved = vi.fn();
+    const service = new HomeMembershipService({
+      homesStore: createHomesStore(homeyLike),
+      assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
+      getZoneTree: () => ZONES,
+      getDevices: () => membershipInputs,
+      getLogger: () => undefined,
+      getMainMeterSelection,
+      getConfiguredPowerSource: () => ({
+        state: 'suspect',
+        reason: 'read_failed',
+        error: new Error('transient settings read failure'),
+      }),
+      legacyMultiHomeEnabled: true,
+      onMainAuthorityUnresolved,
+    });
+    service.recompute();
+    const devices = [mainDevice, subDevice];
+
+    expect(service.getConfiguredMeterSources()).toEqual({
+      state: 'unavailable',
+      deviceIds: new Set(),
+    });
+    expect(onMainAuthorityUnresolved).toHaveBeenCalledOnce();
+    expect(getMainMeterSelection).not.toHaveBeenCalled();
+    expect(filterDevicesForHome(service, devices, MAIN_HOME_ID)).toEqual([]);
+    expect(filterDevicesForHome(service, devices, 'h_sub')).toEqual([]);
+    expect(service.isMainHomeActuationFenced()).toBe(true);
+  });
+
+  it('fails every home closed when Main meter authority becomes unavailable', () => {
+    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME] });
+    let selection: MainMeterSelection = {
+      state: 'resolved',
+      meterDeviceId: 'device-sub',
+    };
+    const service = new HomeMembershipService({
+      homesStore: createHomesStore(homeyLike),
+      assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
+      getZoneTree: () => ZONES,
+      getDevices: () => membershipInputs,
+      getLogger: () => undefined,
+      getMainMeterSelection: () => selection,
+      legacyMultiHomeEnabled: true,
+    });
+    service.recompute();
+    const devices = [mainDevice, subDevice];
+
+    expect(filterDevicesForHome(service, devices, MAIN_HOME_ID)).toEqual([mainDevice]);
+    expect(filterDevicesForHome(service, devices, 'h_sub')).toEqual([]);
+
+    selection = { state: 'unavailable' };
+    expect(service.getConfiguredMeterSources()).toEqual({
+      state: 'unavailable',
+      deviceIds: new Set(['device-sub']),
+    });
+    expect(filterDevicesForHome(service, devices, MAIN_HOME_ID)).toEqual([]);
+    expect(filterDevicesForHome(service, devices, 'h_sub')).toEqual([]);
+
+    selection = { state: 'resolved', meterDeviceId: 'device-sub' };
+    expect(filterDevicesForHome(service, devices, MAIN_HOME_ID)).toEqual([mainDevice]);
+    expect(filterDevicesForHome(service, devices, 'h_sub')).toEqual([]);
   });
 });
 

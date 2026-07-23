@@ -71,6 +71,7 @@ import {
 } from '../../lib/utils/settingsKeys';
 import type { AppContext } from '../../lib/app/appContext';
 import type { Actuator } from '../../lib/actuator/deviceActuator';
+import type { ConfiguredMeterSources } from '../../lib/home/membership';
 import { buildMainHomeScope } from '../../setup/homeRuntime/homeScope';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 
@@ -103,6 +104,10 @@ describe('app init plan service wiring', () => {
   it('rechecks main-home ownership at the final actuator seam', async () => {
     const setCapability = vi.fn(async () => undefined);
     let currentHomeId = 'main';
+    let configuredMeterSources: ConfiguredMeterSources = {
+      state: 'resolved' as const,
+      deviceIds: new Set<string>(),
+    };
     capturedPlanEngineDeps.current = null;
     const engineCtx = createAppContextMock({
       deviceManager: {
@@ -111,6 +116,7 @@ describe('app init plan service wiring', () => {
       } as unknown as AppContext['deviceManager'],
       homeMembership: {
         getHomeIdForDevice: () => currentHomeId,
+        getConfiguredMeterSources: () => configuredMeterSources,
       } as unknown as NonNullable<AppContext['homeMembership']>,
     });
     createPlanEngine(engineCtx, buildMainHomeScope(engineCtx));
@@ -125,6 +131,20 @@ describe('app init plan service wiring', () => {
     };
 
     await expect(actuator.apply(command)).resolves.toEqual({ requested: true });
+    configuredMeterSources = {
+      state: 'resolved',
+      deviceIds: new Set(['heater-1']),
+    };
+    await expect(actuator.apply(command)).resolves.toEqual({ requested: false });
+    configuredMeterSources = {
+      state: 'unavailable',
+      deviceIds: new Set(['previous-main-meter']),
+    };
+    await expect(actuator.apply(command)).resolves.toEqual({ requested: false });
+    configuredMeterSources = {
+      state: 'resolved',
+      deviceIds: new Set(),
+    };
     currentHomeId = 'h_a';
     await expect(actuator.apply(command)).resolves.toEqual({ requested: false });
 

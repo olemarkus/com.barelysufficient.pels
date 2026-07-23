@@ -16,8 +16,9 @@
 // 2. Boot-window double-control guards — neither a PINNED member nor ordinary
 //    zone-rule membership can be actuated by the wrong home while the zone-tree
 //    fetch fails; control resumes under the correct owners after commit.
-// 3. Meter ownership — a stale/external persisted collision fences Main while
-//    the sub-home's legitimate controller continues to act.
+// 3. Meter safety — stale/external persisted ownership collisions fence Main,
+//    and every configured meter stays source-only even when its zone membership
+//    resolves to Main.
 // 4. Restart rehydration — `device_last_controlled_ms:<id>` survives a
 //    restart: the resume of a shed sub-home device stays backoff-blocked
 //    right after reboot and lands once the cooldown elapses.
@@ -455,6 +456,44 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
     await advancePollsUntil(() => wasCalledWith(putSpy, ONOFF_CAP('device-sub2'), false));
     // The meter plug's EXACT onoff path was never driven off (substring match
     // would false-positive on `device-sub2`, so compare the exact capability path).
+    expect(wasCalledWith(putSpy, ONOFF_CAP('device-sub'), false)).toBe(false);
+  }, 30_000);
+
+  it('never lets Main shed a sub-home meter that resolves to Main membership', async () => {
+    const mainLoad = await buildOnOffDevice('device-main', 'z1');
+    const subMeterPlug = await buildOnOffDevice('device-sub-meter', 'z1');
+    const subLoad = await buildOnOffDevice('device-sub', 'z2');
+    setMockDrivers({ driverA: new MockDriver('driverA', [mainLoad, subMeterPlug, subLoad]) });
+    configureMainCapacity(1);
+    configureSubHomeCapacity(6);
+    mockHomeyInstance.settings.set('controllable_devices', {
+      'device-main': true, 'device-sub-meter': true, 'device-sub': true,
+    });
+    mockHomeyInstance.settings.set('managed_devices', {
+      'device-main': true, 'device-sub-meter': true, 'device-sub': true,
+    });
+    // Make the metering plug Main's lowest-priority load so the pre-fix plan
+    // deterministically selects it first during the Main overshoot.
+    mockHomeyInstance.settings.set('capacity_priorities', {
+      Home: { 'device-main': 1, 'device-sub': 1, 'device-sub-meter': 10 },
+    });
+    meterState.subMeterId = 'device-sub-meter';
+    writeActiveHomesConfig({
+      subHomes: [{ ...SUB_HOME, meterDeviceId: 'device-sub-meter' }],
+    });
+    meterState.mainW = 5000;
+    installApiRoutes();
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+
+    const app = createApp();
+    await app.onInit();
+    await advancePollsUntil(() => (
+      wasCalledWith(putSpy, ONOFF_CAP('device-main'), false)
+      || wasCalledWith(putSpy, ONOFF_CAP('device-sub-meter'), false)
+    ));
+
+    expect(wasCalledWith(putSpy, ONOFF_CAP('device-sub-meter'), false)).toBe(false);
+    expect(wasCalledWith(putSpy, ONOFF_CAP('device-main'), false)).toBe(true);
     expect(wasCalledWith(putSpy, ONOFF_CAP('device-sub'), false)).toBe(false);
   }, 30_000);
 

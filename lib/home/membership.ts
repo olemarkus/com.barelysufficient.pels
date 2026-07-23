@@ -45,6 +45,22 @@ export type HomeMembership = {
 };
 
 /**
+ * Home-membership producer contract for meter-source fencing.
+ *
+ * Owned by `HomeMembershipService`; consumers must fail closed when authority
+ * is unavailable. Governing invariant: `notes/multi-home-model.md`.
+ */
+export type ConfiguredMeterSources = Readonly<{
+  /**
+   * `unavailable` means Main's persisted meter selection could not be read
+   * authoritatively. Consumers must fail closed even though `deviceIds`
+   * retains every last-good source identity the producer still knows.
+   */
+  state: 'resolved' | 'unavailable';
+  deviceIds: ReadonlySet<string>;
+}>;
+
+/**
  * Control surface of the cached membership service (implemented by
  * `setup/homeMembership.ts`, published on `AppContext.homeMembership`).
  * Deliberately EXCLUDES the diagnostics view: `source` is diagnostics/display
@@ -58,6 +74,12 @@ export type HomeMembershipPort = {
   getHomeIdForDevice(deviceId: string): HomeId;
   /** `homeId` per snapshot device — no `source`, by design. */
   getMembershipMap(): Readonly<Record<string, HomeId>>;
+  /**
+   * Producer-resolved source devices that no home may plan or actuate, plus
+   * the authority state of Main's persisted selection. Includes the last-good
+   * explicit Main meter plus every active sub-home meter.
+   */
+  getConfiguredMeterSources(): ConfiguredMeterSources;
   hasSubHomes(): boolean;
   /**
    * Positive producer-owned proof that persisted ownership has a trustworthy

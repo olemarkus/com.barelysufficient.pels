@@ -187,8 +187,9 @@ export function buildMainHomeScope(ctx: AppContext): HomeScope {
       evictMissingDeviceCacheEntries(ctx, snapshot);
       // Membership complement: with sub-homes configured, this home plans only
       // its own members; a sub-home device is simply not in the plan input
-      // (uncontrolled — never double-controlled). Identity (same array) when
-      // `hasSubHomes()` is false, so single-home behavior is bit-identical.
+      // (uncontrolled — never double-controlled). Every configured meter is
+      // then removed because it is a source, never a controllable load. With no
+      // sub-homes or explicit Main meter, the same array is returned.
       return filterDevicesForHome(ctx.homeMembership, snapshot, homeId)
         .map((device) => toPlanDevice(ctx, device))
         // Shared planned-set predicate — the create-smart-task candidate list

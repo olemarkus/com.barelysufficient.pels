@@ -50,14 +50,6 @@ export type HomePowerPipelineDeps = {
   getCapacitySettings?: () => { limitKw: number; marginKw: number };
   getCapacityGuard?: () => CapacityGuard | undefined;
   getPowerSampleRebuildState?: () => PowerSampleRebuildState;
-  /**
-   * This home's configured meter device id (R7b). Excluded from the home's
-   * snapshot view below so the home's own metering plug never counts as a
-   * managed load in the controlled/background usage split. Omitted for the main
-   * home (whole-home Homey Energy power, no per-device meter) → no exclusion,
-   * byte-identical to the pre-R7b snapshot view.
-   */
-  getMeterDeviceId?: () => string | null;
   /** Latest outdoor temperature (hidden weather feature); undefined when unavailable or stale. */
   getOutdoorTemperatureC?: () => number | undefined;
   /** Feed the per-sample gross generation (W) plus the co-sampled SIGNED net home
@@ -85,16 +77,12 @@ export function createHomePowerPipeline(deps: HomePowerPipelineDeps): PowerSampl
     // background usage split and per-device sample accounting stop counting
     // sub-home members — their draw lands in background usage. Identity (same
     // array) for the main home when `hasSubHomes()` is false; EMPTY for a
-    // sub-home under those conditions (fail-closed dual). The home's own meter
-    // device (sub-home only) is then dropped so it never counts as a managed
-    // load; the main home passes no meter id, so its view stays byte-identical.
-    getLatestTargetSnapshot: () => {
-      const homeDevices = filterDevicesForHome(ctx.homeMembership, ctx.latestTargetSnapshot, deps.homeId);
-      const meterDeviceId = deps.getMeterDeviceId?.() ?? null;
-      return meterDeviceId === null
-        ? homeDevices
-        : homeDevices.filter((device) => device.id !== meterDeviceId);
-    },
+    // sub-home under those conditions (fail-closed dual). The shared filter
+    // also removes every configured meter from every home's controlled/
+    // background split, regardless of where that source device is zoned.
+    getLatestTargetSnapshot: () => (
+      filterDevicesForHome(ctx.homeMembership, ctx.latestTargetSnapshot, deps.homeId)
+    ),
     getPlanRebuildNowMs: deps.getPlanRebuildNowMs,
     savePowerTracker: deps.savePowerTracker,
     getStructuredDebugEmitter: (component, topic) => ctx.getStructuredDebugEmitter(component, topic),
