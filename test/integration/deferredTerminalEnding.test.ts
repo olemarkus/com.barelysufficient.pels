@@ -394,6 +394,7 @@ describe('applyShedBehavior — stepped terminal release', () => {
         isOwnershipReady: () => true,
         hasPendingOwnershipGeneration: () => false,
         isMainHomeActuationFenced: () => false,
+        getConfiguredMeterSources: () => ({ state: 'resolved', deviceIds: new Set() }),
       },
       homey: {
         flow: { getTriggerCard: vi.fn() },
@@ -431,6 +432,7 @@ describe('applyShedBehavior — stepped terminal release', () => {
         isOwnershipReady: () => true,
         hasPendingOwnershipGeneration: () => false,
         isMainHomeActuationFenced: () => false,
+        getConfiguredMeterSources: () => ({ state: 'resolved', deviceIds: new Set() }),
       },
       homey: {
         flow: { getTriggerCard: vi.fn() },
@@ -472,6 +474,7 @@ describe('applyShedBehavior — stepped terminal release', () => {
         isOwnershipReady: () => false,
         hasPendingOwnershipGeneration: () => false,
         isMainHomeActuationFenced: () => true,
+        getConfiguredMeterSources: () => ({ state: 'resolved', deviceIds: new Set() }),
       },
       homey: {
         flow: { getTriggerCard: vi.fn() },
@@ -511,6 +514,7 @@ describe('applyShedBehavior — stepped terminal release', () => {
         isOwnershipReady: () => true,
         hasPendingOwnershipGeneration: () => false,
         isMainHomeActuationFenced: () => false,
+        getConfiguredMeterSources: () => ({ state: 'resolved', deviceIds: new Set() }),
       },
       deviceControlHelpers: {
         markSteppedLoadDesiredStepIssued: vi.fn(),

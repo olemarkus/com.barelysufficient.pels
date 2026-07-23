@@ -17,6 +17,7 @@ import {
   buildStarvedRescueDevices,
   hasMainHomeSmartTaskAuthority,
   isSmartTaskDeviceInMainHome,
+  readCreateSmartTaskCandidateDevices,
   resolveSmartTaskHomeScope,
 } from '../../setup/appInit/smartTaskHomeScope';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
@@ -177,6 +178,25 @@ describe('device-scoped write op: sub-home gate', () => {
       reason: 'ownership_unavailable',
     });
   });
+
+  it('upsert durably refuses an active meter source as device_not_planned', () => {
+    const store = buildStore();
+    const h = buildDeviceDeps(store, () => 'source_device');
+    const outcome = upsertObjectiveForDevice(h.deps, {
+      deviceId: 'meter-main',
+      deviceName: 'Whole-home meter',
+      entry: heaterEntry,
+    });
+    expect(outcome).toEqual({ persisted: false, reason: 'device_not_planned' });
+    expect(readObjectiveForDevice(store, 'meter-main')).toBeUndefined();
+    expect(h.rebuildPlan).not.toHaveBeenCalled();
+    expect(h.debugStructured).toHaveBeenCalledWith({
+      event: 'objective_write_refused',
+      op: 'upsert',
+      deviceId: 'meter-main',
+      reason: 'device_not_planned',
+    });
+  });
 });
 
 // ─── Diagnostics honesty for an existing task on a relocated device ──────────
@@ -299,6 +319,7 @@ describe('settings-UI smart-task edit lane: sub-home rejection', () => {
         isOwnershipReady: () => true,
         hasPendingOwnershipGeneration: () => false,
         isMainHomeActuationFenced: () => true,
+        getConfiguredMeterSources: () => ({ state: 'resolved', deviceIds: new Set() }),
       } as unknown as AppContext['homeMembership'],
     });
     const homey = {
@@ -320,12 +341,20 @@ describe('settings-UI smart-task edit lane: sub-home rejection', () => {
 
 // ─── Membership predicate fail-safes ─────────────────────────────────────────
 describe('smart-task membership and authority predicates', () => {
-  const ctxWithHomeId = (homeId: unknown, fenced = false) => createAppContextMock({
+  const ctxWithHomeId = (
+    homeId: unknown,
+    fenced = false,
+    meterDeviceIds = new Set<string>(),
+  ) => createAppContextMock({
     homeMembership: {
       getHomeIdForDevice: () => homeId,
       isOwnershipReady: () => homeId !== null && homeId !== undefined,
       hasPendingOwnershipGeneration: () => false,
       isMainHomeActuationFenced: () => fenced,
+      getConfiguredMeterSources: () => ({
+        state: 'resolved',
+        deviceIds: meterDeviceIds,
+      }),
     } as unknown as AppContext['homeMembership'],
   });
 
@@ -343,6 +372,38 @@ describe('smart-task membership and authority predicates', () => {
     expect(resolveSmartTaskHomeScope(ctxWithHomeId('h_cabin'), 'd1')).toBe('sub_home');
   });
 
+  it('excludes a configured meter from smart-task authority and candidates', () => {
+    const ctx = ctxWithHomeId('main', false, new Set(['meter-1']));
+    ctx.latestTargetSnapshot.push({
+      id: 'meter-1',
+      name: 'Main meter',
+      managed: true,
+    } as AppContext['latestTargetSnapshot'][number]);
+    ctx.latestTargetSnapshot.push({
+      id: 'heater-1',
+      name: 'Hall heater',
+      managed: true,
+    } as AppContext['latestTargetSnapshot'][number]);
+
+    expect(resolveSmartTaskHomeScope(ctx, 'meter-1')).toBe('source_device');
+    expect(hasMainHomeSmartTaskAuthority(ctx, 'meter-1')).toBe(false);
+    expect(readCreateSmartTaskCandidateDevices(ctx)).toEqual({
+      state: 'ready',
+      devices: [expect.objectContaining({ id: 'heater-1' })],
+    });
+  });
+
+  it('keeps authoritative source identity durable across sub-home membership and a Main collision fence', () => {
+    expect(resolveSmartTaskHomeScope(
+      ctxWithHomeId('h_cabin', false, new Set(['meter-1'])),
+      'meter-1',
+    )).toBe('source_device');
+    expect(resolveSmartTaskHomeScope(
+      ctxWithHomeId('main', true, new Set(['meter-1'])),
+      'meter-1',
+    )).toBe('source_device');
+  });
+
   it('keeps a Main held-back row visible while transient authority disables rescue', () => {
     const ctx = createAppContextMock({
       homeMembership: {
@@ -350,6 +411,7 @@ describe('smart-task membership and authority predicates', () => {
         isOwnershipReady: () => true,
         hasPendingOwnershipGeneration: () => false,
         isMainHomeActuationFenced: () => true,
+        getConfiguredMeterSources: () => ({ state: 'resolved', deviceIds: new Set() }),
       } as unknown as AppContext['homeMembership'],
       latestTargetSnapshot: [{
         id: 'd1',
@@ -373,6 +435,26 @@ describe('smart-task membership and authority predicates', () => {
       }),
     ]);
   });
+
+  it('omits an active meter source from held-back rescue rows', () => {
+    const ctx = ctxWithHomeId('main', false, new Set(['meter-1']));
+    ctx.latestTargetSnapshot.push({
+      id: 'meter-1',
+      name: 'Whole-home meter',
+      managed: true,
+      targets: [],
+      binaryControl: { on: false },
+    } as AppContext['latestTargetSnapshot'][number]);
+    ctx.deviceDiagnosticsService = {
+      getStarvedRescueEntries: () => [{
+        deviceId: 'meter-1',
+        starvation: { isStarved: true, cause: 'budget', accumulatedMs: 20 * 60_000 },
+        intendedNormalTargetC: 60,
+      }],
+    } as unknown as AppContext['deviceDiagnosticsService'];
+
+    expect(buildStarvedRescueDevices(ctx)).toEqual([]);
+  });
 });
 
 // ─── Terminal-release (lifecycle) lane: no wrong-meter actuation ─────────────
@@ -384,7 +466,11 @@ describe('smart-task membership and authority predicates', () => {
 describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuation', () => {
   const DEADLINE = 1_000_000;
 
-  const buildLifecycleCtx = (homeIdForDevice: string, initiallyFenced = false) => {
+  const buildLifecycleCtx = (
+    homeIdForDevice: string,
+    initiallyFenced = false,
+    meterDeviceIds = new Set<string>(),
+  ) => {
     const settingsStore = new Map<string, unknown>([
       ['deferred_objective.d1', {
         enabled: true,
@@ -417,6 +503,10 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
         isOwnershipReady: () => true,
         hasPendingOwnershipGeneration: () => false,
         isMainHomeActuationFenced: () => fenced,
+        getConfiguredMeterSources: () => ({
+          state: 'resolved',
+          deviceIds: meterDeviceIds,
+        }),
       } as unknown as AppContext['homeMembership'],
       deviceManager: { setCapability, applyDeviceTargets } as unknown as AppContext['deviceManager'],
       // Present, available, ON binary device — the exact fixture that WOULD
@@ -473,6 +563,30 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
     expect(h.setCapability).not.toHaveBeenCalled();
     expect(h.applyDeviceTargets).not.toHaveBeenCalled();
     // Honest existing ending: disarmed immediately (cap-on-style), status forgotten.
+    expect((h.settingsStore.get('deferred_objective.d1') as { enabled: boolean }).enabled).toBe(false);
+    expect(h.forgetDevice).toHaveBeenCalledWith('d1');
+  });
+
+  it('a configured meter gets no terminal command and its stale task disarms immediately', async () => {
+    const h = buildLifecycleCtx('main', false, new Set(['d1']));
+
+    handleDeferredDeadlineReached(h.ctx, 'd1', 'temperature', DEADLINE, DEADLINE + 60_000);
+    await settleActuation();
+
+    expect(h.setCapability).not.toHaveBeenCalled();
+    expect(h.applyDeviceTargets).not.toHaveBeenCalled();
+    expect((h.settingsStore.get('deferred_objective.d1') as { enabled: boolean }).enabled).toBe(false);
+    expect(h.forgetDevice).toHaveBeenCalledWith('d1');
+  });
+
+  it('a configured meter still disarms without a command during a Main collision fence', async () => {
+    const h = buildLifecycleCtx('main', true, new Set(['d1']));
+
+    handleDeferredDeadlineReached(h.ctx, 'd1', 'temperature', DEADLINE, DEADLINE + 60_000);
+    await settleActuation();
+
+    expect(h.setCapability).not.toHaveBeenCalled();
+    expect(h.applyDeviceTargets).not.toHaveBeenCalled();
     expect((h.settingsStore.get('deferred_objective.d1') as { enabled: boolean }).enabled).toBe(false);
     expect(h.forgetDevice).toHaveBeenCalledWith('d1');
   });

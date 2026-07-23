@@ -49,7 +49,10 @@ export function createPlanEngine(ctx: AppContext, scope: HomeScope, options?: Cr
   // the executor abandon that stale command without claiming success.
   const actuator: Actuator = createFencedActuator(baseActuator, (deviceId) => {
     const currentHomeId = ctx.homeMembership?.getHomeIdForDevice(deviceId) ?? MAIN_HOME_ID;
+    const meterSources = ctx.homeMembership?.getConfiguredMeterSources();
     return currentHomeId !== scope.homeId
+      || meterSources?.state === 'unavailable'
+      || meterSources?.deviceIds.has(deviceId) === true
       || options?.isActuationFenced?.(deviceId) === true;
   });
 

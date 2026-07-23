@@ -997,6 +997,7 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     rig.ctx.homeMembership = {
       hasSubHomes: () => true,
       getHomeIdForDevice: () => 'h_a',
+      getConfiguredMeterSources: () => ({ state: 'resolved', deviceIds: new Set() }),
     } as unknown as NonNullable<AppContext['homeMembership']>;
     mockHomeyInstance.settings.set('capacity_dry_run:h_a', false);
     writeActiveHomesConfig({ subHomes: [HOME_A] });
@@ -1580,6 +1581,10 @@ describe('fail-closed sub-home device path (filterDevicesForHome)', () => {
     const membership = {
       hasSubHomes: () => false,
       getHomeIdForDevice: () => MAIN_HOME_ID,
+      getConfiguredMeterSources: () => ({
+        state: 'resolved' as const,
+        deviceIds: new Set<string>(),
+      }),
     };
     expect(filterDevicesForHome(membership, devices, 'h_a')).toEqual([]);
     // The main path's identity guard is byte-identical: SAME array reference.

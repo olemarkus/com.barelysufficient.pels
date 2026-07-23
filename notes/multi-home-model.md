@@ -102,6 +102,21 @@ for the user-facing vocabulary, see the "Multiple meters vocabulary" section of
   pipeline. Realtime events route by `homeMembership.getHomeIdForDevice`. This
   is why sub-home power **requires `power_source = homey_energy`**: a Flow sample
   carries no meter identity.
+- **Meter devices are sources, never controllable loads.** The membership
+  producer resolves the explicit Main meter plus every active sub-home meter as
+  one source-device set while `power_source = homey_energy`; persisted meter
+  selections are dormant while Flow supplies the whole-home sample. The shared
+  home-device filter removes the active set from
+  every plan and sample-accounting view regardless of zone or pin membership,
+  and the final actuator fence rechecks it before every command. The producer
+  retains the last-good Main source identity across a transient settings read
+  failure, marks source authority unavailable, and every home's filter and
+  actuator fail closed until the selection is authoritative again. Smart-task
+  candidates, admission, and terminal actuation consume the same source set.
+  Smart-task scope distinguishes an active source as a durable exclusion (not
+  transiently unavailable): new writes reject it as not planned, while an
+  existing task is immediately disarmed at its deadline without issuing a
+  terminal device command.
 - Lifecycle: bundles are (re)built on boot and on a `homes_config` change, and
   torn down in the uninit path; teardown fences in-flight work and nulls the
   actuator seam so a late callback cannot actuate after ownership moved.

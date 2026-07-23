@@ -3,6 +3,7 @@ import { createObjectivePriceHorizonBuilder } from './objectivePriceHorizon';
 import {
   hasMainHomeSmartTaskAuthority,
   isSmartTaskDeviceInMainHome,
+  resolveSmartTaskHomeScope,
 } from './smartTaskHomeScope';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
@@ -252,18 +253,17 @@ export const handleDeferredDeadlineReached = (
 ): void => {
   const disarm = () => disableDeferredObjectiveInSettings(ctx, deviceId);
   const graceElapsed = nowMs - deadlineAtMs >= TERMINAL_RELEASE_DISARM_GRACE_MS;
-  // Multi-home v1: a device relocated to a separate-meter sub-home is outside
-  // PELS's main-home control scope — never issue the terminal release against
-  // another meter's device. Ends via the same immediate-disarm path as the
-  // cap-on gate below ("someone else owns this device"): nothing to actuate,
-  // the task just ends and the recorders file the run from its last honest
-  // (`objective_device_in_sub_home`) diagnostics. Not a transient, so no
-  // retry-until-grace.
-  if (!isSmartTaskDeviceInMainHome(ctx, deviceId)) { disarm(); return; }
-  // A global/provisional Main fence is transient, unlike relocation. Keep the
-  // objective enabled and retry on the next lifecycle tick: no command, no
-  // grace-driven disarm, and no false sub-home diagnostic.
-  if (!hasMainHomeSmartTaskAuthority(ctx, deviceId)) return;
+  // Durable scope exclusions (a device relocated to a separate-meter sub-home,
+  // or one newly selected as an active meter source) have no terminal command:
+  // immediately disarm the stale task so it cannot retry forever against a
+  // device PELS must not control. A global/provisional Main fence is transient,
+  // so keep the objective enabled and retry on the next lifecycle tick.
+  const homeScope = resolveSmartTaskHomeScope(ctx, deviceId);
+  if (homeScope === 'sub_home' || homeScope === 'source_device') {
+    disarm();
+    return;
+  }
+  if (homeScope === 'unavailable') return;
   // Cap-on → the planner owns the device on its normal lane; just disarm (no
   // terminal release, no actuation needed, device presence irrelevant).
   if (ctx.isCapacityControlEnabled(deviceId)) { disarm(); return; }

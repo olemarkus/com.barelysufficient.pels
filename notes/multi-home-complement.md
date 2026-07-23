@@ -17,10 +17,18 @@ scheme, per-home bundles, upgrade activation containment) see
   configured, sub-home members are excluded from main's plan input
   (`setup/homeRuntime/homeScope.ts`) and from the sample-pipeline snapshot view
   (`setup/homeRuntime/createHomePowerPipeline.ts`) through one shared seam,
-  `filterDevicesForHome` (`setup/homeMembership.ts`). The filter consumes only
-  the provenance-free `HomeMembershipPort` slice — never membership `source`.
-- Identity guard: with no sub-homes (or the service unwired), the filter
-  returns the same array reference — single-home behavior is bit-identical.
+  `filterDevicesForHome` (`setup/homeMembership.ts`). The same seam removes
+  every configured Main/sub-home meter because meter identity is source
+  ownership, independent of zone or pin membership. Those persisted selections
+  are dormant when Flow is the active whole-home power source. The filter
+  consumes only the provenance-free `HomeMembershipPort` slice — never
+  membership `source`.
+  If Main-meter authority is transiently unavailable, the producer retains its
+  last-good source identity and every home's filter/actuator fails closed.
+- Identity guard: with no sub-homes and no explicit Main meter (or the service
+  unwired), the filter returns the same array reference. A resolved explicit
+  Main meter is deliberately removed because source devices are never
+  controllable loads.
 
 ## Historical fail-safe intermediate state (closed at R7b)
 

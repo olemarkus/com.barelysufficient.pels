@@ -5569,6 +5569,7 @@ var createReject = (reason) => ({
 });
 var rejectForHomeScope = (scope) => {
   if (scope === "sub_home") return "device_in_sub_home";
+  if (scope === "source_device") return "device_not_planned";
   if (scope === "unavailable") return "unavailable";
   return null;
 };

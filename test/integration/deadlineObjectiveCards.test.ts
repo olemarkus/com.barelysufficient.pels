@@ -28,6 +28,7 @@ import type {
   DeferredObjectiveActivePlanRevisionV1,
 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { SmartTaskHomeScope } from '../../packages/contracts/src/smartTaskHomeScope';
 import type { FlowCardDeps } from '../../flowCards/registerFlowCards';
 
 // Fixed clock for deterministic deadlineAtMs assertions. 2026-01-01 05:00 UTC.
@@ -262,6 +263,7 @@ const buildDeps = (overrides: {
   activePlans?: DeferredObjectiveActivePlansV1 | null;
   isDeviceInMainHome?: (deviceId: string) => boolean;
   hasMainHomeSmartTaskAuthority?: (deviceId: string) => boolean;
+  resolveDeviceHomeScope?: (deviceId: string) => SmartTaskHomeScope;
   rebuildPlan?: Mock<(reason: string) => unknown>;
   recorders?: MockRecorders;
   structuredError?: ReturnType<typeof vi.fn>;
@@ -278,6 +280,9 @@ const buildDeps = (overrides: {
     planHistoryRecorder: recorders.planHistoryRecorder,
     rebuildPlan: () => rebuildPlan(rebuildReason),
     nowMs: MOCK_NOW_MS,
+    ...(overrides.resolveDeviceHomeScope
+      ? { resolveDeviceHomeScope: overrides.resolveDeviceHomeScope }
+      : {}),
   });
   const deps = {
     homey: mock.homey,
@@ -408,6 +413,18 @@ describe('deadline objective flow cards', () => {
       .rejects.toThrow(/try again/i);
     expect(readObjective(mock.settings, 'heater-1')).toBeUndefined(); // nothing persisted
     expect(deps.rebuildPlan).not.toHaveBeenCalled();
+  });
+
+  it('set_temperature_deadline durably rejects a device used as an electricity meter', async () => {
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'meter-1', name: 'Whole-home meter', deviceType: 'temperature' })],
+      resolveDeviceHomeScope: () => 'source_device',
+    });
+    registerDeadlineObjectiveCards(deps);
+    const card = mock.actions.get('set_temperature_deadline')!;
+    await expect(card.run!({ device: 'meter-1', target_c: 55, ready_by: '07:00' }))
+      .rejects.toThrow(/electricity meters/i);
+    expect(readObjective(mock.settings, 'meter-1')).toBeUndefined();
   });
 
   it('clear_deadline THROWS (retryable) when the clear refuses on an empty-getKeys flake', async () => {

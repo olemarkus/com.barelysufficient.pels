@@ -415,21 +415,20 @@ program) remains deferred.*
 
 - [ ] **Homes UI: warn when a sub-home's selected meter is also a managed+controllable device (U-track).**
       *Persona:* multi-home owner who picks a metering smart-plug as a sub-home meter and also leaves it
-      managed. *Hypothesis:* the runtime now carves the home's own `meterDeviceId` out of that home's plan
-      input + pipeline snapshot (`createHomeCapacityBundle.getPlanDevices` + `createHomePowerPipeline`), so it
-      can never be shed/oscillated — but nothing tells the user their meter won't be controlled. Add a
+      managed. *Hypothesis:* while Homey Energy is the active power source, the runtime now carves every
+      configured meter out of every home's plan input + pipeline snapshot and rechecks the source-device set
+      at the final actuator seam, so it can never be shed/oscillated — but nothing tells the user their meter
+      won't be controlled. Add a
       homes-settings validation warning ("this device is this home's meter; it won't be managed") mirroring
-      the observe-only carve-out messaging. Runtime guard shipped with the per-home bundles PR (R7b); this is
-      the settings-UI half only. Source: R7b own-meter-shed audit, 2026-07-19.
+      the observe-only carve-out messaging. Source: R7b own-meter-shed audit, 2026-07-19.
 
-- [ ] **(OM-1) Main can shed a device that is a SUB-HOME's meter, freezing that sub-home's sampling.**
-      *Persona:* multi-home owner whose sub-home meter is a managed+controllable plug that lives OUTSIDE the
-      sub-home's zone (so it is a MAIN-home member). *Hypothesis:* the own-meter carve-out only drops the
-      meter from its OWN home's plan input; a sub-home meter that resolves to MAIN's membership is a normal
-      main-plan load, so a main overshoot can shed it → the plug reads ~0 W → the sub-home stops sampling and
-      ages into `stale_fail_closed` (a SAFE direction — the sub-home sheds, never over-draws — hence P2 not
-      P0). Fix direction: exclude every home's `meterDeviceId` from MAIN's plan input too (not just its own
-      home's), or warn in the homes UI. P2. Source: R7b fix-round-2 regression gauntlet, 2026-07-19.
+- [ ] **Smart-task diagnostics: distinguish an active meter source from a missing device before its deadline.**
+      *Persona:* owner who selects a device with an existing smart task as an electricity meter.
+      *Hypothesis:* the source-filtered lifecycle device set omits the meter, but the diagnostic emitter only
+      receives the durable sub-home predicate, so the still-enabled task reports `objective_missing_device`
+      until deadline handling safely disarms it without a command. Add a reason-bearing durable-exclusion
+      seam and dedicated source diagnostic so status/history explain the task's real scope before it ends.
+      P2. Source: runtime-reality review of PR #1873, 2026-07-23.
 
 - [ ] **(surplus-posture) `resolveSurplusPostureForDevice` reads `POWER_SOURCE` on the plan path (caller
       discipline).** *Persona:* maintainer. *Hypothesis:* `toPlanDevice`'s surplus-posture helper reads the

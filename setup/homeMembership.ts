@@ -24,6 +24,10 @@ import {
   readLegacyMultiHomeEnabled,
 } from './multiHomeActivation';
 import { readMainMeterSelection } from './mainMeterSettings';
+import {
+  readConfiguredPowerSource,
+  type ConfiguredPowerSourceRead,
+} from './powerSourceSettings';
 
 // Store-key labels for the suspect-warn logs — the canonical settings-key
 // constants, so log audits grep the same strings the stores persist under.
@@ -51,6 +55,11 @@ export type HomeMembershipServiceDeps = {
    * cross this seam.
    */
   getMainMeterSelection: () => MainMeterSelection;
+  /**
+   * Semantic active power source. Omitted only by direct service tests, which
+   * model the historical Homey Energy path by default.
+   */
+  getConfiguredPowerSource?: () => ConfiguredPowerSourceRead;
   /**
    * Boot-latched positive evidence from the retired pre-GA flag. Never read
    * fresh per recompute: a transient settings miss must not deactivate a
@@ -178,7 +187,12 @@ export class HomeMembershipService implements HomeMembershipPort {
   private lastNotifiedRuntimeActive = false;
   private lastRecomputeFingerprint: string | null = null;
   private lastPlanRelevantFingerprint: string | null = null;
+  // `undefined` means no authoritative Main-meter selection has been observed;
+  // `null` is the authoritative Automatic selection. A transient unavailable
+  // read retains the last-good identity but closes every control consumer.
+  private lastResolvedMainMeterDeviceId: string | null | undefined;
   private mainMeterUnavailableLogged = false;
+  private powerSourceUnavailableLogged = false;
   private mainMeterCollisionLogged = false;
   // Settings events close the controller authority synchronously, before the
   // serialized settings handler can run. The observed generation is committed
@@ -279,6 +293,88 @@ export class HomeMembershipService implements HomeMembershipPort {
     return Object.fromEntries(
       Object.entries(this.membershipByDeviceId).map(([deviceId, entry]) => [deviceId, entry.homeId]),
     );
+  }
+
+  /**
+   * Meter identity is source ownership, independent of device membership. A
+   * meter outside its area's zone may resolve to Main, but it remains a source
+   * device and must never enter any home's controllable set.
+   */
+  getConfiguredMeterSources(): ReturnType<HomeMembershipPort['getConfiguredMeterSources']> {
+    const powerSource = this.readActiveMeterPowerSource();
+    if (powerSource === 'unavailable') {
+      return {
+        state: 'unavailable',
+        deviceIds: this.getKnownConfiguredMeterDeviceIds(),
+      };
+    }
+    if (powerSource === 'flow') {
+      return { state: 'resolved', deviceIds: new Set() };
+    }
+    const mainSelection = this.readMainMeterSelection();
+    return {
+      state: mainSelection.state,
+      deviceIds: this.getKnownConfiguredMeterDeviceIds(),
+    };
+  }
+
+  private getKnownConfiguredMeterDeviceIds(): ReadonlySet<string> {
+    return new Set([
+      ...(this.lastResolvedMainMeterDeviceId === undefined
+        || this.lastResolvedMainMeterDeviceId === null
+        ? []
+        : [this.lastResolvedMainMeterDeviceId]),
+      ...(this.runtimeActive
+        ? this.subHomes.flatMap(
+          (home) => (home.meterDeviceId === null ? [] : [home.meterDeviceId]),
+        )
+        : []),
+    ]);
+  }
+
+  private readActiveMeterPowerSource(): 'homey_energy' | 'flow' | 'unavailable' {
+    const read: ConfiguredPowerSourceRead = this.deps.getConfiguredPowerSource?.()
+      ?? { state: 'resolved', value: 'homey_energy' };
+    if (read.state === 'suspect') {
+      if (!this.powerSourceUnavailableLogged) {
+        this.deps.getLogger()?.warn({
+          event: 'meter_source_power_source_unavailable',
+          detail: 'fencing control until the active power source is authoritative',
+        });
+      }
+      this.powerSourceUnavailableLogged = true;
+      this.mainMeterCollisionLogged = false;
+      this.deps.onMainAuthorityUnresolved?.();
+      return 'unavailable';
+    }
+    this.powerSourceUnavailableLogged = false;
+    if (read.value === 'flow') {
+      // The persisted meter selections are dormant while Flow supplies the
+      // whole-home sample; do not let stale/malformed meter settings fence or
+      // remove otherwise valid managed loads.
+      this.mainMeterUnavailableLogged = false;
+      this.mainMeterCollisionLogged = false;
+    }
+    return read.value;
+  }
+
+  private readMainMeterSelection(): MainMeterSelection {
+    const selection = this.deps.getMainMeterSelection();
+    if (selection.state === 'unavailable') {
+      if (!this.mainMeterUnavailableLogged) {
+        this.deps.getLogger()?.warn({
+          event: 'main_home_meter_authority_unavailable',
+          detail: 'fencing control until the Main meter selection is authoritative',
+        });
+      }
+      this.mainMeterUnavailableLogged = true;
+      this.mainMeterCollisionLogged = false;
+      this.deps.onMainAuthorityUnresolved?.();
+      return selection;
+    }
+    this.mainMeterUnavailableLogged = false;
+    this.lastResolvedMainMeterDeviceId = selection.meterDeviceId;
+    return selection;
   }
 
   hasSubHomes(): boolean {
@@ -406,12 +502,8 @@ export class HomeMembershipService implements HomeMembershipPort {
   isMainHomeActuationFenced(): boolean {
     if (this.hasPendingOwnershipGeneration()) return true;
     if (!this.isOwnershipReady()) return true;
-    if (!this.runtimeActive || this.subHomes.length === 0) {
-      this.mainMeterUnavailableLogged = false;
-      this.mainMeterCollisionLogged = false;
-      return false;
-    }
-    return this.zoneTree === null || this.resolveMainMeterAuthority() !== 'ready';
+    if (this.resolveMainMeterAuthority() !== 'ready') return true;
+    return this.runtimeActive && this.subHomes.length > 0 && this.zoneTree === null;
   }
 
   /**
@@ -421,20 +513,15 @@ export class HomeMembershipService implements HomeMembershipPort {
    * ownership can never authorize a device command.
    */
   private resolveMainMeterAuthority(): OwnershipGenerationPreparationState {
-    const selection = this.deps.getMainMeterSelection();
-    if (selection.state === 'unavailable') {
-      if (!this.mainMeterUnavailableLogged) {
-        this.deps.getLogger()?.warn({
-          event: 'main_home_meter_authority_unavailable',
-          detail: 'fencing Main actuation until the Main meter selection is authoritative',
-        });
-      }
-      this.mainMeterUnavailableLogged = true;
+    const powerSource = this.readActiveMeterPowerSource();
+    if (powerSource === 'unavailable') return 'retry';
+    if (powerSource === 'flow') return 'ready';
+    const selection = this.readMainMeterSelection();
+    if (selection.state === 'unavailable') return 'retry';
+    if (!this.runtimeActive || this.subHomes.length === 0) {
       this.mainMeterCollisionLogged = false;
-      this.deps.onMainAuthorityUnresolved?.();
-      return 'retry';
+      return 'ready';
     }
-    this.mainMeterUnavailableLogged = false;
     const { meterDeviceId: mainMeterDeviceId } = selection;
     const collision = findMainMeterCollision(mainMeterDeviceId, this.subHomes);
     if (collision !== null && !this.mainMeterCollisionLogged) {
@@ -579,20 +666,25 @@ export type HomeMembershipWiring = {
   teardown: () => void;
 };
 
-/** The narrow control-path slice of {@link HomeMembershipPort} the complement filter consumes. */
-type HomeMembershipControlView = Pick<HomeMembershipPort, 'hasSubHomes' | 'getHomeIdForDevice'>;
+/** The narrow control-path slice of {@link HomeMembershipPort} the home-device filter consumes. */
+type HomeMembershipControlView = Pick<
+  HomeMembershipPort,
+  'hasSubHomes' | 'getHomeIdForDevice' | 'getConfiguredMeterSources'
+>;
 
 /**
- * Membership complement filter for one home's device views — the SINGLE seam
+ * Controllable-device filter for one home's device views — the SINGLE seam
  * shared by the plan input (`buildMainHomeScope.getPlanDevices`) and the
- * sample-pipeline snapshot view (`createHomePowerPipeline`). Consumes ONLY the
- * control-path surface (`hasSubHomes`/`getHomeIdForDevice`) — never the
- * diagnostics view or membership `source` (resolution-in-producer: control
- * paths must not branch on how a membership was decided).
+ * sample-pipeline snapshot view (`createHomePowerPipeline`). It first applies
+ * the membership complement, then removes every configured meter device:
+ * meters are power sources regardless of which home's zone/pin membership they
+ * resolve to. Consumes ONLY the producer-resolved control surface — never the
+ * diagnostics view or membership `source`.
  *
- * Identity guard: with no sub-homes configured (or before the service is
- * wired, e.g. the boot window), the MAIN home gets the SAME array reference —
- * the single-home behavior stays bit-identical.
+ * Identity guard: before the service is wired, or with no sub-homes and no
+ * explicit Main meter, the MAIN home gets the SAME array reference. A resolved
+ * Main meter is deliberately removed even in single-home operation because a
+ * power source is never a controllable load.
  *
  * Fail-closed dual (R7b): under those same conditions a SUB-home scope gets an
  * EMPTY list. A sub-home bundle outliving its registry entry (teardown
@@ -604,8 +696,21 @@ export function filterDevicesForHome<T extends { id: string }>(
   devices: T[],
   homeId: HomeId,
 ): T[] {
-  if (!membership?.hasSubHomes()) return homeId === MAIN_HOME_ID ? devices : [];
-  return devices.filter((device) => membership.getHomeIdForDevice(device.id) === homeId);
+  if (!membership) return homeId === MAIN_HOME_ID ? devices : [];
+  let homeDevices: T[];
+  if (membership.hasSubHomes()) {
+    homeDevices = devices.filter(
+      (device) => membership.getHomeIdForDevice(device.id) === homeId,
+    );
+  } else {
+    homeDevices = homeId === MAIN_HOME_ID ? devices : [];
+  }
+  const meterSources = membership.getConfiguredMeterSources();
+  if (meterSources.state === 'unavailable') return [];
+  const { deviceIds: meterDeviceIds } = meterSources;
+  return meterDeviceIds.size === 0
+    ? homeDevices
+    : homeDevices.filter((device) => !meterDeviceIds.has(device.id));
 }
 
 /**
@@ -659,6 +764,7 @@ export const createHomeMembershipService = (params: {
     getZoneTree: params.getZoneTree,
     getDevices: params.getDevices,
     getLogger: params.getLogger,
+    getConfiguredPowerSource: () => readConfiguredPowerSource(params.homey.settings),
     getMainMeterSelection: () => readMainMeterSelection(params.homey.settings),
     legacyMultiHomeEnabled: readLegacyMultiHomeEnabled(params.homey.settings),
     onMembershipChanged: params.onMembershipChanged,

@@ -35,8 +35,10 @@ export const isSmartTaskDeviceInMainHome = (ctx: AppContext, deviceId: string): 
 /**
  * Full authority for a NEW Main-home smart-task promise or terminal command.
  * Unlike the membership-only predicate above, this closes on every producer
- * fence: first-read suspect stores, no-tree active sub-homes, unresolved/colliding
- * Main meter ownership, or a real sub-home membership.
+ * fence: first-read suspect stores, no-tree active sub-homes,
+ * unresolved/colliding Main meter ownership, a configured meter source, or a
+ * real sub-home membership. The reason-bearing scope keeps a configured source
+ * durable so lifecycle consumers disarm it instead of retrying forever.
  */
 export const hasMainHomeSmartTaskAuthority = (
   ctx: AppContext,
@@ -56,6 +58,13 @@ export const resolveSmartTaskHomeScope = (
     membership?.isOwnershipReady() !== true
     || membership.hasPendingOwnershipGeneration?.() !== false
   ) return 'unavailable';
+  // Resolve source authority before membership/global fencing: once the active
+  // source set itself is authoritative, source identity is durable even when
+  // that meter belongs to a sub-home or creates a Main-meter ownership
+  // collision. An unavailable source read still wins and remains retryable.
+  const meterSources = membership.getConfiguredMeterSources();
+  if (meterSources.state === 'unavailable') return 'unavailable';
+  if (meterSources.deviceIds.has(deviceId)) return 'source_device';
   if (membership.getHomeIdForDevice(deviceId) !== MAIN_HOME_ID) return 'sub_home';
   if (membership.isMainHomeActuationFenced()) return 'unavailable';
   return 'main';
@@ -68,22 +77,28 @@ export const readCreateSmartTaskCandidateDevices = (
   if (!membership || membership.isMainHomeActuationFenced()) {
     return { state: 'unavailable' };
   }
+  const meterSources = membership.getConfiguredMeterSources();
+  if (meterSources.state === 'unavailable') return { state: 'unavailable' };
   return {
     state: 'ready',
     devices: ctx.latestTargetSnapshot.filter(isRuntimePlannedDevice)
-      .filter((device) => isSmartTaskDeviceInMainHome(ctx, device.id)),
+      .filter((device) => isSmartTaskDeviceInMainHome(ctx, device.id))
+      .filter((device) => !meterSources.deviceIds.has(device.id)),
   };
 };
 
 // Map a refused device-scoped write outcome onto the app create-lane reject
-// union: the write op's own sub-home gate (defence-in-depth — normally caught
-// earlier by `resolveValidatedObjectiveEntry`) keeps its honest typed reason,
-// while the transient refusals (un-confirmable migration / untrustworthy
-// absence read) collapse to the retryable `write_refused` lane.
+// union: the write op's durable sub-home/source-device gates (defence-in-depth
+// — normally caught earlier by `resolveValidatedObjectiveEntry`) keep their
+// honest typed reasons, while transient refusals (un-confirmable migration /
+// untrustworthy absence read) collapse to the retryable `write_refused` lane.
 export const mapObjectiveWriteRefusalReason = (
-  reason: 'device_in_sub_home' | 'migration_deferred' | 'untrusted_absence' | 'ownership_unavailable',
-): 'device_in_sub_home' | 'write_refused' => (
-  reason === 'device_in_sub_home' ? 'device_in_sub_home' : 'write_refused'
+  reason: 'device_in_sub_home' | 'device_not_planned'
+    | 'migration_deferred' | 'untrusted_absence' | 'ownership_unavailable',
+): 'device_in_sub_home' | 'device_not_planned' | 'write_refused' => (
+  reason === 'device_in_sub_home' || reason === 'device_not_planned'
+    ? reason
+    : 'write_refused'
 );
 
 // Currently-starved devices for the starvation-rescue widget (the app's
@@ -95,8 +110,8 @@ export const mapObjectiveWriteRefusalReason = (
 // The `cause` is the producer-resolved flat value; the widget never re-derives
 // it. Entries are dropped when the device is no longer in the snapshot (e.g.
 // removed mid-cycle — never shown with a stale name) and when it is durably in
-// a sub-home. A transient Main authority fence keeps the diagnostic row visible
-// but marks its rescue unavailable.
+// a sub-home or is an active source device. A transient Main authority fence
+// keeps the diagnostic row visible but marks its rescue unavailable.
 export const buildStarvedRescueDevices = (ctx: AppContext): StarvationRescueDevice[] => {
   const entries = ctx.deviceDiagnosticsService?.getStarvedRescueEntries?.() ?? [];
   // Index the snapshot by id once (O(N+M)) instead of an O(N×M) `find` per
@@ -106,7 +121,11 @@ export const buildStarvedRescueDevices = (ctx: AppContext): StarvationRescueDevi
   return entries.flatMap((entry): StarvationRescueDevice[] => {
     const device = snapshotById.get(entry.deviceId);
     const smartTaskHomeScope = resolveSmartTaskHomeScope(ctx, entry.deviceId);
-    if (!device || smartTaskHomeScope === 'sub_home') return [];
+    if (
+      !device
+      || smartTaskHomeScope === 'sub_home'
+      || smartTaskHomeScope === 'source_device'
+    ) return [];
     return [{
       deviceId: entry.deviceId,
       deviceName: device.name,

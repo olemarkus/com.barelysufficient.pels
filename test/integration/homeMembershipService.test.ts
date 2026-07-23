@@ -834,6 +834,7 @@ describe('ui_homes payload', () => {
   });
 
   it('refuses an area upsert that reuses Main’s explicit meter before any config side effect', () => {
+    mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
     mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'm-main');
     const homeyWired = makeWiredHealthyHomey();
     const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
@@ -854,6 +855,7 @@ describe('ui_homes payload', () => {
     ['an existing Main meter key returns undefined', false],
     ['the settings key list is transiently empty', true],
   ])('refuses an area upsert before side effects when %s', (_label, emptyKeyList) => {
+    mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
     mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'm-main');
     const homeyWired = makeWiredHealthyHomey();
     const originalGet = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
@@ -885,6 +887,7 @@ describe('ui_homes payload', () => {
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
       subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-shared' }],
     });
+    mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
     mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'm-original');
     const homeyWired = makeWiredHealthyHomey();
 
@@ -1572,6 +1575,40 @@ describe('legacy multi-home activation compatibility', () => {
 });
 
 describe('HomeMembershipService — Main actuation ownership fence', () => {
+  it('ignores dormant held-home collisions until activation but still fences unavailable authority', () => {
+    createHomesStore(homeyLike).write({
+      subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-shared' }],
+    });
+    let selection: MainMeterSelection = {
+      state: 'resolved',
+      meterDeviceId: 'm-shared',
+    };
+    const service = new HomeMembershipService({
+      homesStore: createHomesStore(homeyLike),
+      assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
+      getZoneTree: () => ZONES,
+      getDevices: () => [],
+      getLogger: () => undefined,
+      getMainMeterSelection: () => selection,
+      legacyMultiHomeEnabled: false,
+    });
+    service.recompute();
+
+    expect(service.isRuntimeActive()).toBe(false);
+    expect(service.isMainHomeActuationFenced()).toBe(false);
+    selection = { state: 'unavailable' };
+    expect(service.isMainHomeActuationFenced()).toBe(true);
+
+    selection = { state: 'resolved', meterDeviceId: 'm-shared' };
+    createHomesStore(homeyLike).write({
+      activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
+      subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-shared' }],
+    });
+    service.recompute();
+    expect(service.isRuntimeActive()).toBe(true);
+    expect(service.isMainHomeActuationFenced()).toBe(true);
+  });
+
   it('fences a persisted explicit-meter collision and adopts a repair without recompute', () => {
     createHomesStore(homeyLike).write({
       activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
@@ -1598,23 +1635,34 @@ describe('HomeMembershipService — Main actuation ownership fence', () => {
     expect(service.isMainHomeActuationFenced()).toBe(false);
   });
 
-  it('fails closed when the boundary reports Main-meter authority unavailable', () => {
-    createHomesStore(homeyLike).write({
-      activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
-      subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-sub' }],
-    });
+  it('retains the last-good Main meter but fences single-home control while authority is unavailable', () => {
+    const onMainAuthorityUnresolved = vi.fn();
+    let selection: MainMeterSelection = {
+      state: 'resolved',
+      meterDeviceId: 'm-main',
+    };
     const service = new HomeMembershipService({
       homesStore: createHomesStore(homeyLike),
       assignmentsStore: createDeviceHomeAssignmentsStore(homeyLike),
       getZoneTree: () => ZONES,
       getDevices: () => [],
       getLogger: () => undefined,
-      getMainMeterSelection: () => ({ state: 'unavailable' }),
+      getMainMeterSelection: () => selection,
       legacyMultiHomeEnabled: true,
+      onMainAuthorityUnresolved,
     });
     service.recompute();
 
+    expect(service.isMainHomeActuationFenced()).toBe(false);
+    selection = { state: 'unavailable' };
+    expect(service.getConfiguredMeterSources()).toEqual({
+      state: 'unavailable',
+      deviceIds: new Set(['m-main']),
+    });
+    expect(onMainAuthorityUnresolved).toHaveBeenCalledOnce();
     expect(service.isMainHomeActuationFenced()).toBe(true);
+    selection = { state: 'resolved', meterDeviceId: 'm-main' };
+    expect(service.isMainHomeActuationFenced()).toBe(false);
   });
 
   it('fences Main and smart-task eligibility while boundary authority is unavailable', () => {
@@ -1908,6 +1956,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
       subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-shared' }],
     });
     createDeviceHomeAssignmentsStore(homeyLike).write({});
+    mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
     mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'm-shared');
     const rebuildPlanFromCache = vi.fn().mockResolvedValue({ failed: false });
     const reconcileLatestPlanState = vi.fn().mockResolvedValue(true);
@@ -1953,6 +2002,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     vi.useFakeTimers();
     createHomesStore(homeyLike).write(ACTIVE_HOME_CONFIG);
     createDeviceHomeAssignmentsStore(homeyLike).write({});
+    mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
     mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'meter-main');
 
     const rebuildPlanFromCache = vi.fn()
@@ -2013,6 +2063,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     vi.useFakeTimers();
     createHomesStore(homeyLike).write(ACTIVE_HOME_CONFIG);
     createDeviceHomeAssignmentsStore(homeyLike).write({});
+    mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
     mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'meter-main');
 
     const rebuildPlanFromCache = vi.fn().mockResolvedValue({ failed: false });
@@ -2077,6 +2128,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     vi.useFakeTimers();
     createHomesStore(homeyLike).write(ACTIVE_HOME_CONFIG);
     createDeviceHomeAssignmentsStore(homeyLike).write({});
+    mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
     mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'meter-main');
 
     const rebuildPlanFromCache = vi.fn().mockResolvedValue({ failed: false });
@@ -2152,6 +2204,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     vi.useFakeTimers();
     createHomesStore(homeyLike).write(ACTIVE_HOME_CONFIG);
     createDeviceHomeAssignmentsStore(homeyLike).write({});
+    mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
     mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'meter-main');
 
     let releaseFirstPrepare: (value: boolean) => void = () => undefined;
@@ -2231,6 +2284,7 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     vi.useFakeTimers();
     createHomesStore(homeyLike).write(ACTIVE_HOME_CONFIG);
     createDeviceHomeAssignmentsStore(homeyLike).write({});
+    mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
     mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'meter-main');
 
     let mainSample: StableSampleRevision = { state: 'stable', revision: 1 };

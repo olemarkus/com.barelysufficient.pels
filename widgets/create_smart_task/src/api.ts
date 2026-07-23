@@ -54,8 +54,9 @@ const createReject = (reason: CreateSmartTaskRejectReason): CreateSmartTaskCreat
 
 const rejectForHomeScope = (
   scope: ReturnType<CreateSmartTaskHostApi['resolveSmartTaskHomeScope']>,
-): 'device_in_sub_home' | 'unavailable' | null => {
+): 'device_in_sub_home' | 'device_not_planned' | 'unavailable' | null => {
   if (scope === 'sub_home') return 'device_in_sub_home';
+  if (scope === 'source_device') return 'device_not_planned';
   if (scope === 'unavailable') return 'unavailable';
   return null;
 };

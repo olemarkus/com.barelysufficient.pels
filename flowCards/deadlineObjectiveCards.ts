@@ -12,8 +12,7 @@ import type {
 } from '../packages/contracts/src/deferredObjectiveActivePlans';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import {
-  OBJECTIVE_WRITE_REFUSED_RETRY,
-  SMART_TASK_SUB_HOME_UNAVAILABLE,
+  resolveObjectiveWriteRefusalMessage,
 } from '../packages/shared-domain/src/objectiveWriteStrings';
 import { normalizeError } from '../lib/utils/errorUtils';
 import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
@@ -58,14 +57,11 @@ export const requireSettingsRead = (deps: FlowCardDeps): () => DeferredObjective
 // migration / untrustworthy settings read / provisional ownership fence. The Flow-card run listeners are
 // async, so throwing here lets Homey surface a retryable failure to the user
 // instead of the card reporting a (false) success while nothing was written.
-// The `device_in_sub_home` refusal is a hard multi-home scope rejection, not a
-// transient — it throws its own honest line (shared with the widget /
-// settings-UI surfaces) instead of the misleading "try again" framing.
+// Durable scope refusals (`device_in_sub_home` / `device_not_planned`) throw
+// their own honest lines instead of the misleading "try again" framing.
 const throwIfWriteRefused = (outcome: ObjectiveWriteOutcome): void => {
   if (outcome.persisted) return;
-  throw new Error(
-    outcome.reason === 'device_in_sub_home' ? SMART_TASK_SUB_HOME_UNAVAILABLE : OBJECTIVE_WRITE_REFUSED_RETRY,
-  );
+  throw new Error(resolveObjectiveWriteRefusalMessage(outcome.reason));
 };
 
 // Autocomplete filter for the two set-deadline (task-creating) cards: offer

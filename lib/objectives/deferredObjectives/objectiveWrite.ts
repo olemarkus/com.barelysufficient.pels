@@ -43,19 +43,19 @@ const ensureMigrated = (deps: DeferredObjectiveDeviceWriteDeps): boolean => {
 // The outcome of a device-scoped write. A write either PERSISTED, or REFUSED.
 // Two refusal reasons are retryable transients (an un-confirmable per-key
 // migration, or an untrustworthy absence read — see the guards below); both map
-// to the same user-facing "couldn't save just now, retry" framing. The third —
-// `device_in_sub_home` — is a hard v1-scope rejection, NOT retryable: smart
-// tasks are planned against the MAIN home's meter budget (hard cap, daily
-// budget overlay, concurrent-eligible sharing), so a task on a device that
-// belongs to a separate-meter sub-home would be planned against the wrong
-// meter. Callers surface it with its own copy, never the retry framing. The
-// old `void` return hid refusals, so callers reported success while nothing
-// was written.
+// to the same user-facing "couldn't save just now, retry" framing.
+// `device_in_sub_home` and `device_not_planned` are hard scope rejections, NOT
+// retryable: smart tasks are planned against the MAIN home's meter budget, and
+// an active meter source is never a planned load. Callers surface these as
+// durable device-scope outcomes, never transient write failures. The old
+// `void` return hid refusals, so callers reported success while nothing was
+// written.
 export type ObjectiveWriteOutcome =
   | { persisted: true }
   | {
     persisted: false;
-    reason: 'migration_deferred' | 'untrusted_absence' | 'device_in_sub_home' | 'ownership_unavailable';
+    reason: 'migration_deferred' | 'untrusted_absence' | 'device_in_sub_home'
+      | 'device_not_planned' | 'ownership_unavailable';
   };
 
 export type DeferredObjectiveDeviceWriteDeps = {
@@ -64,13 +64,14 @@ export type DeferredObjectiveDeviceWriteDeps = {
   activePlanRecorder: DeferredObjectiveActivePlanRecorder;
   rebuildPlan: () => void;
   nowMs: number;
-  // Multi-home v1 scope gate, wired by `buildDeferredObjectiveDeviceWriteDeps`
-  // from the membership service: `false` means the device belongs to a
-  // separate-meter sub-home and an UPSERT must refuse (`device_in_sub_home`) —
-  // every write lane (widget create, settings-UI edit, Flow cards, rescue)
-  // funnels through these deps, so this is the defence-in-depth chokepoint.
-  // Optional: absent (bare test harnesses) or with no sub-homes configured the
-  // membership resolves main for everything, so every gate passes unchanged.
+  // Main-home scope gate, wired by `buildDeferredObjectiveDeviceWriteDeps`
+  // from the membership service. A separate-meter sub-home refuses as
+  // `device_in_sub_home`; an active meter source refuses as
+  // `device_not_planned`. Every write lane (widget create, settings-UI edit,
+  // Flow cards, rescue) funnels through these deps, so this is the
+  // defence-in-depth chokepoint.
+  // Optional: an absent resolver in bare test harnesses preserves the legacy
+  // pass-through behavior.
   // Clearing is deliberately NOT gated — a user must always be able to clear a
   // task whose device was later moved to a sub-home.
   resolveDeviceHomeScope?: (deviceId: string) => SmartTaskHomeScope;
@@ -96,7 +97,8 @@ const refuse = (
   deps: DeferredObjectiveDeviceWriteDeps,
   op: ObjectiveWriteOp,
   deviceId: string,
-  reason: 'migration_deferred' | 'untrusted_absence' | 'device_in_sub_home' | 'ownership_unavailable',
+  reason: 'migration_deferred' | 'untrusted_absence' | 'device_in_sub_home'
+    | 'device_not_planned' | 'ownership_unavailable',
 ): ObjectiveWriteOutcome => {
   deps.debugStructured?.({ event: 'objective_write_refused', op, deviceId, reason });
   return { persisted: false, reason };
@@ -150,6 +152,9 @@ export const upsertObjectiveForDevice = (
   const homeScope = deps.resolveDeviceHomeScope?.(params.deviceId) ?? 'main';
   if (homeScope === 'sub_home') {
     return refuse(deps, 'upsert', params.deviceId, 'device_in_sub_home');
+  }
+  if (homeScope === 'source_device') {
+    return refuse(deps, 'upsert', params.deviceId, 'device_not_planned');
   }
   if (homeScope === 'unavailable') {
     return refuse(deps, 'upsert', params.deviceId, 'ownership_unavailable');
