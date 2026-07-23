@@ -2,6 +2,9 @@ import type { AppContext } from '../../lib/app/appContext';
 import type { StarvationRescueDevice } from '../../packages/contracts/src/starvationRescue';
 import { hasOpenDeferredObjective } from '../../lib/objectives/deferredObjectives';
 import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
+import type { SmartTaskHomeScope } from '../../packages/contracts/src/smartTaskHomeScope';
+import type { CreateSmartTaskCandidateDevicesRead } from '../../packages/contracts/src/widgetHostApi';
+import { isRuntimePlannedDevice } from '../appDeviceSupport';
 
 /**
  * Multi-home v1 scope predicate shared by EVERY smart-task surface: the app's
@@ -12,23 +15,64 @@ import { MAIN_HOME_ID } from '../../lib/utils/settingsKeys';
  *
  * Smart tasks are planned against the MAIN home's meter budget (hard cap,
  * daily-budget overlay, concurrent-eligible sharing), so a device in a
- * separate-meter sub-home is out of scope. Before the membership service is
- * wired (boot window / bare test contexts) — and whenever no sub-homes are
- * configured, since membership then resolves main for everything — every
- * device counts as main-home, preserving exact single-home behavior. One
- * definition so the surfaces can never disagree.
+ * separate-meter sub-home is out of scope. This predicate deliberately answers
+ * durable MEMBERSHIP only: provisional/global authority fences must not look
+ * like relocation, because lifecycle consumers negate this result to diagnose
+ * and disarm tasks that genuinely moved behind another meter.
  */
 export const isSmartTaskDeviceInMainHome = (ctx: AppContext, deviceId: string): boolean => {
-  const homeId = ctx.homeMembership?.getHomeIdForDevice(deviceId);
-  // `undefined` = membership service not wired (boot window / bare test
-  // contexts). `null` is OUTSIDE the HomeMembershipPort contract
-  // (`getHomeIdForDevice` fail-safes unknown devices to main, never null) —
-  // but if an upstream contract ever slips, an unknown membership must resolve
-  // MAIN, loudly by this comment rather than silently by `!==` fallthrough:
-  // treating it as sub-home would flip every smart-task gate to rejection on a
-  // plain single-home install, breaking the identity-when-no-sub-homes
-  // invariant. Mirrors the membership resolver's own fail-safe direction.
-  return homeId === undefined || homeId === null || homeId === MAIN_HOME_ID;
+  const membership = ctx.homeMembership;
+  // Unknown/provisional membership is NOT evidence of durable relocation.
+  // Treat it as Main here so existing tasks remain intact; every new promise
+  // and device write additionally requires `hasMainHomeSmartTaskAuthority`.
+  if (
+    membership?.isOwnershipReady() !== true
+    || membership.hasPendingOwnershipGeneration?.() !== false
+  ) return true;
+  return membership.getHomeIdForDevice(deviceId) === MAIN_HOME_ID;
+};
+
+/**
+ * Full authority for a NEW Main-home smart-task promise or terminal command.
+ * Unlike the membership-only predicate above, this closes on every producer
+ * fence: first-read suspect stores, no-tree active sub-homes, unresolved/colliding
+ * Main meter ownership, or a real sub-home membership.
+ */
+export const hasMainHomeSmartTaskAuthority = (
+  ctx: AppContext,
+  deviceId: string,
+): boolean => resolveSmartTaskHomeScope(ctx, deviceId) === 'main';
+
+/** Reason-bearing authority gate for candidate/preview/create/write surfaces. */
+export const resolveSmartTaskHomeScope = (
+  ctx: AppContext,
+  deviceId: string,
+): SmartTaskHomeScope => {
+  const membership = ctx.homeMembership;
+  // Readiness FIRST: the cached map may contain a fail-safe Main/sub-home
+  // resolution built from constructor defaults after a first suspect store
+  // read. It is not durable relocation evidence until both stores are proven.
+  if (
+    membership?.isOwnershipReady() !== true
+    || membership.hasPendingOwnershipGeneration?.() !== false
+  ) return 'unavailable';
+  if (membership.getHomeIdForDevice(deviceId) !== MAIN_HOME_ID) return 'sub_home';
+  if (membership.isMainHomeActuationFenced()) return 'unavailable';
+  return 'main';
+};
+
+export const readCreateSmartTaskCandidateDevices = (
+  ctx: AppContext,
+): CreateSmartTaskCandidateDevicesRead => {
+  const membership = ctx.homeMembership;
+  if (!membership || membership.isMainHomeActuationFenced()) {
+    return { state: 'unavailable' };
+  }
+  return {
+    state: 'ready',
+    devices: ctx.latestTargetSnapshot.filter(isRuntimePlannedDevice)
+      .filter((device) => isSmartTaskDeviceInMainHome(ctx, device.id)),
+  };
 };
 
 // Map a refused device-scoped write outcome onto the app create-lane reject
@@ -37,7 +81,7 @@ export const isSmartTaskDeviceInMainHome = (ctx: AppContext, deviceId: string): 
 // while the transient refusals (un-confirmable migration / untrustworthy
 // absence read) collapse to the retryable `write_refused` lane.
 export const mapObjectiveWriteRefusalReason = (
-  reason: 'device_in_sub_home' | 'migration_deferred' | 'untrusted_absence',
+  reason: 'device_in_sub_home' | 'migration_deferred' | 'untrusted_absence' | 'ownership_unavailable',
 ): 'device_in_sub_home' | 'write_refused' => (
   reason === 'device_in_sub_home' ? 'device_in_sub_home' : 'write_refused'
 );
@@ -50,11 +94,9 @@ export const mapObjectiveWriteRefusalReason = (
 // definition managed + capacity-controlled, so it is in `latestTargetSnapshot`.
 // The `cause` is the producer-resolved flat value; the widget never re-derives
 // it. Entries are dropped when the device is no longer in the snapshot (e.g.
-// removed mid-cycle — never shown with a stale name) and (multi-home v1) when
-// it is in a sub-home: the rescue IS a smart-task create (main-home-only), so
-// a listed row would dead-end on the create gate's `device_in_sub_home`
-// rejection — same predicate as the create-candidate list so the two surfaces
-// can't disagree.
+// removed mid-cycle — never shown with a stale name) and when it is durably in
+// a sub-home. A transient Main authority fence keeps the diagnostic row visible
+// but marks its rescue unavailable.
 export const buildStarvedRescueDevices = (ctx: AppContext): StarvationRescueDevice[] => {
   const entries = ctx.deviceDiagnosticsService?.getStarvedRescueEntries?.() ?? [];
   // Index the snapshot by id once (O(N+M)) instead of an O(N×M) `find` per
@@ -63,13 +105,15 @@ export const buildStarvedRescueDevices = (ctx: AppContext): StarvationRescueDevi
   const nowMs = ctx.getNow().getTime();
   return entries.flatMap((entry): StarvationRescueDevice[] => {
     const device = snapshotById.get(entry.deviceId);
-    if (!device || !isSmartTaskDeviceInMainHome(ctx, entry.deviceId)) return [];
+    const smartTaskHomeScope = resolveSmartTaskHomeScope(ctx, entry.deviceId);
+    if (!device || smartTaskHomeScope === 'sub_home') return [];
     return [{
       deviceId: entry.deviceId,
       deviceName: device.name,
       cause: entry.starvation.cause,
       accumulatedMs: entry.starvation.accumulatedMs,
       intendedNormalTargetC: entry.intendedNormalTargetC,
+      smartTaskHomeScope,
       // A device with an open smart task stays VISIBLE in the held-back list
       // but is not rescuable (the widget suppresses its button): the rescue is
       // a fresh one-shot task and must never replace the device's own active

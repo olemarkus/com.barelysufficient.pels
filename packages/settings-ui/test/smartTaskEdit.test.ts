@@ -356,4 +356,29 @@ describe('smartTaskEdit controller', () => {
     expect(controller.getSmartTaskEditSnapshot()).toBeNull();
     expect(requestClose).toHaveBeenCalledTimes(1);
   });
+
+  it('starts the same two-step clear flow without opening the editor UI first', async () => {
+    const calls: ApiCall[] = [];
+    const requestClose = vi.fn();
+    await installHomey((call) => {
+      calls.push(call);
+      return { ok: true };
+    });
+    const controller = await loadController();
+    controller.initSmartTaskEditController({ render: vi.fn(), requestClose, refreshBoot: vi.fn() });
+
+    await controller.beginSmartTaskClear(CONTEXT);
+    expect(controller.getSmartTaskEditSnapshot()).toMatchObject({
+      context: { deviceId: 'heater-1' },
+      clearArmed: true,
+    });
+    expect(calls.filter((call) => call.uri === SETTINGS_UI_SMART_TASK_CANCEL_PATH)).toHaveLength(0);
+
+    const cleared = controller.beginSmartTaskClear(CONTEXT);
+    await vi.runAllTimersAsync();
+    await cleared;
+    expect(calls.filter((call) => call.uri === SETTINGS_UI_SMART_TASK_CANCEL_PATH)).toHaveLength(1);
+    expect(controller.getSmartTaskEditSnapshot()).toBeNull();
+    expect(requestClose).toHaveBeenCalledOnce();
+  });
 });

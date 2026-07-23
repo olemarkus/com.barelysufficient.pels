@@ -1094,6 +1094,10 @@
   // baseline plan always books exactly what it needs, which keeps that branch
   // dead in every other spec.
   const deadlinePlanUnderBooked = initialOverrides.deadlinePlanUnderBooked === true;
+  // Scope-state knob: stamp the sample smart task with the runtime diagnostic
+  // emitted when its device moves to a separate meter. The detail surface must
+  // then suppress editing while retaining the clear action.
+  const deadlinePlanSeparateMeter = initialOverrides.deadlinePlanSeparateMeter === true;
 
   const buildSampleActivePlans = () => {
     const objective = settings.deferred_objectives?.objectivesByDeviceId?.dev_connected300;
@@ -1149,6 +1153,9 @@
           objectiveSignature: 'stub',
           original: revision,
           latest: latestRevision,
+          ...(deadlinePlanSeparateMeter
+            ? { diagnosticReasonCode: 'objective_device_in_sub_home' }
+            : {}),
         },
       },
     };
@@ -1411,6 +1418,9 @@
       membershipByDeviceId,
       zoneTree: HOMES_ZONE_TREE,
       hasSubHomes: subHomes.length > 0,
+      runtimeActive: subHomes.length === 0
+        || raw?.activationVersion === 1
+        || settings.multi_home_enabled === true,
       // Healthy stub default; degraded specs override the whole handler.
       configDegraded: false,
     };
@@ -1423,8 +1433,28 @@
     const raw = settings.homes_config;
     const current = raw && Array.isArray(raw.subHomes) ? raw.subHomes : [];
     if (!body || typeof body !== 'object') return { ok: false, reason: 'invalid' };
+    if (body.op === 'set_main_meter') {
+      if (body.meterDeviceId !== null && typeof body.meterDeviceId !== 'string') {
+        return { ok: false, reason: 'invalid' };
+      }
+      const meterDeviceId = body.meterDeviceId === null ? null : body.meterDeviceId.trim();
+      if (body.meterDeviceId !== null && meterDeviceId.length === 0) {
+        return { ok: false, reason: 'invalid' };
+      }
+      const collision = meterDeviceId === null
+        ? null
+        : current.find((area) => area.meterDeviceId === meterDeviceId);
+      if (collision) {
+        return { ok: false, reason: 'meter_in_use', otherName: collision.name };
+      }
+      settings.homey_energy_meter_device_id = meterDeviceId;
+      return { ok: true };
+    }
     if (body.op === 'delete') {
-      settings.homes_config = { subHomes: current.filter((area) => area.homeId !== body.homeId) };
+      settings.homes_config = {
+        ...(raw?.activationVersion === 1 ? { activationVersion: 1 } : {}),
+        subHomes: current.filter((area) => area.homeId !== body.homeId),
+      };
       return { ok: true };
     }
     if (body.op !== 'upsert' || !body.area || typeof body.area !== 'object') {
@@ -1441,6 +1471,7 @@
     };
     const exists = current.some((area) => area.homeId === homeId);
     settings.homes_config = {
+      activationVersion: 1,
       subHomes: exists
         ? current.map((area) => (area.homeId === homeId ? entry : area))
         : [...current, entry],

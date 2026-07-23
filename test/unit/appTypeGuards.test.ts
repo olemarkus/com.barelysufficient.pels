@@ -3,6 +3,7 @@ import {
   isCommunicationModelMap,
   isFiniteNumber,
   isNumberMap,
+  isPlausiblePowerTrackerState,
   isPowerTrackerState,
   isPrioritySettings,
   isStringMap,
@@ -78,6 +79,22 @@ describe('appTypeGuards plain-object handling', () => {
   });
 
   describe('isPowerTrackerState — solar family shapes', () => {
+    it('accepts a typed meter identity and rejects malformed provenance', () => {
+      expect(isPowerTrackerState({
+        meterIdentity: { powerSource: 'homey_energy', meterDeviceId: 'meter-a' },
+      })).toBe(true);
+      expect(isPowerTrackerState({
+        meterIdentity: { powerSource: 'flow', meterDeviceId: null },
+      })).toBe(true);
+      expect(isPowerTrackerState({
+        meterIdentity: { powerSource: 'other', meterDeviceId: 'meter-a' },
+      })).toBe(false);
+      expect(isPowerTrackerState({
+        meterIdentity: { powerSource: 'homey_energy', meterDeviceId: '' },
+      })).toBe(false);
+      expect(isPowerTrackerState({ meterIdentity: ['homey_energy', 'meter-a'] })).toBe(false);
+    });
+
     it('accepts a state carrying the solar bucket families and generation latch', () => {
       expect(isPowerTrackerState({
         buckets: { '2026-06-01T10:00:00.000Z': 0.5 },
@@ -99,6 +116,85 @@ describe('appTypeGuards plain-object handling', () => {
       expect(isPowerTrackerState({ generationDailyTotals: true })).toBe(false);
       expect(isPowerTrackerState({ exportDailyTotals: 'x' })).toBe(false);
       expect(isPowerTrackerState({ lastGenerationW: 'high' })).toBe(false);
+    });
+  });
+
+  describe('isPlausiblePowerTrackerState — persisted core shape', () => {
+    it('accepts omitted optional fields and fully shaped nested accounting/profile data', () => {
+      expect(isPlausiblePowerTrackerState({})).toBe(true);
+      expect(isPlausiblePowerTrackerState({
+        lastPowerW: 1200,
+        lastTimestamp: 1_750_000_000_000,
+        buckets: { '2026-07-23T09:00:00.000Z': 1.25 },
+        hourlySampleCounts: { '2026-07-23T09:00:00.000Z': 6 },
+        hourlyAverages: { '2026-07-23T09:00:00.000Z': { sum: 7.5, count: 6 } },
+        deviceBuckets: {
+          heater: { '2026-07-23T09:00:00.000Z': 0.75 },
+        },
+        lastDevicePowerWById: { heater: 900 },
+        unreliablePeriods: [{ start: 1_750_000_000_000, end: 1_750_000_030_000 }],
+        objectiveProfiles: {
+          heater: {
+            kind: 'temperature',
+            updatedAtMs: 1_750_000_030_000,
+            lastSample: {
+              observedAtMs: 1_750_000_030_000,
+              value: 55,
+              unit: 'degree_c',
+              crediblePowerW: 900,
+              powerSource: 'measured',
+            },
+            kwhPerUnit: {
+              sampleCount: 4,
+              mean: 0.8,
+              m2: 0.1,
+              min: 0.7,
+              max: 0.9,
+              confidence: 'medium',
+              lastUpdatedMs: 1_750_000_030_000,
+            },
+            acceptedSamples: 4,
+            rejectedSamples: 1,
+            samples: [{
+              observedAtMs: 1_750_000_030_000,
+              inputValue: 55,
+              kwhPerUnit: 0.8,
+              outdoorTemperatureC: 12,
+            }],
+            bands: [{
+              lowerInclusive: 50,
+              upperExclusive: 60,
+              sampleCount: 4,
+              mean: 0.8,
+              m2: 0.1,
+              confidence: 'medium',
+            }],
+          },
+        },
+      })).toBe(true);
+    });
+
+    it.each([
+      ['a top-level array', []],
+      ['an array where a number map belongs', { buckets: [] }],
+      ['a string-valued energy bucket', { buckets: { hour: 'junk' } }],
+      ['a non-finite nested device bucket', { deviceBuckets: { heater: { hour: Number.NaN } } }],
+      ['a non-finite hourly average', { hourlyAverages: { hour: { sum: 1, count: Number.POSITIVE_INFINITY } } }],
+      ['a malformed unreliable period', { unreliablePeriods: [{ start: 1, end: 'later' }] }],
+      ['a malformed objective profile', {
+        objectiveProfiles: {
+          heater: {
+            kind: 'temperature',
+            updatedAtMs: 1,
+            lastSample: { observedAtMs: 1, value: Number.NaN, unit: 'degree_c' },
+            acceptedSamples: 0,
+            rejectedSamples: 0,
+          },
+        },
+      }],
+      ['a non-finite freshness latch', { lastTimestamp: Number.NEGATIVE_INFINITY }],
+    ])('rejects %s', (_label, state) => {
+      expect(isPlausiblePowerTrackerState(state)).toBe(false);
     });
   });
 

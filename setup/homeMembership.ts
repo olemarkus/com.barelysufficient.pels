@@ -1,7 +1,9 @@
 import type Homey from 'homey';
 import type { Logger as PinoLogger } from '../lib/logging/logger';
 import type { ObservedStateEmitter } from '../lib/observer/observedStateEvents';
+import type { MainMeterSelection } from '../packages/contracts/src/mainMeterSelection';
 import {
+  findMainMeterCollision,
   MAIN_HOME_ID,
   type DeviceHomeAssignments,
   type DeviceHomeAssignmentsStore,
@@ -12,12 +14,21 @@ import {
 } from '../lib/home/homeConfig';
 import { resolveDeviceHome, type HomeMembership, type HomeMembershipPort } from '../lib/home/membership';
 import { normalizeError } from '../lib/utils/errorUtils';
-import { DEVICE_HOME_ASSIGNMENTS, HOMES_CONFIG } from '../lib/utils/settingsKeys';
+import {
+  DEVICE_HOME_ASSIGNMENTS,
+  HOMES_CONFIG,
+} from '../lib/utils/settingsKeys';
 import { createDeviceHomeAssignmentsStore, createHomesStore } from './homeRegistryAdapter';
+import {
+  isHomeConfigRuntimeActive,
+  readLegacyMultiHomeEnabled,
+} from './multiHomeActivation';
+import { readMainMeterSelection } from './mainMeterSettings';
 
 // Store-key labels for the suspect-warn logs — the canonical settings-key
 // constants, so log audits grep the same strings the stores persist under.
 type HomeStoreKey = typeof HOMES_CONFIG | typeof DEVICE_HOME_ASSIGNMENTS;
+export type OwnershipGenerationPreparationState = 'ready' | 'retry' | 'blocked';
 
 /** One snapshot device as the membership join consumes it. */
 export type HomeMembershipDeviceInput = {
@@ -35,6 +46,18 @@ export type HomeMembershipServiceDeps = {
   getDevices: () => readonly HomeMembershipDeviceInput[];
   getLogger: () => PinoLogger | undefined;
   /**
+   * Semantic Main-meter selection, normalized at the settings boundary.
+   * `unavailable` is a domain authority state; raw SDK values/errors never
+   * cross this seam.
+   */
+  getMainMeterSelection: () => MainMeterSelection;
+  /**
+   * Boot-latched positive evidence from the retired pre-GA flag. Never read
+   * fresh per recompute: a transient settings miss must not deactivate a
+   * running set of homes.
+   */
+  legacyMultiHomeEnabled: boolean;
+  /**
    * Change-gated plan invalidation: fired when a recompute changes the
    * PLAN-RELEVANT membership — the set of non-main assignments (exactly what
    * `filterDevicesForHome` consumes) — so the committed plan never keeps
@@ -47,6 +70,27 @@ export type HomeMembershipServiceDeps = {
    * path).
    */
   onMembershipChanged?: () => void;
+  /**
+   * Fired whenever the producer-resolved runtime activation posture changes.
+   * This is deliberately independent of the plan-membership fingerprint: a
+   * held→active config with zero currently assigned devices still needs its
+   * per-home meter runtimes reconciled.
+   */
+  onRuntimeActiveChanged?: (runtimeActive: boolean) => void;
+  /**
+   * Fired on each false→true Main ownership-readiness edge. Separate from the
+   * membership fingerprint: a suspect baseline can recover without changing
+   * the resolved map, but Main still needs to rebuild + reconcile the plan it
+   * previously committed behind the actuation fence.
+   */
+  onMainOwnershipReady?: () => void;
+  /**
+   * Fired when a point-of-use Main meter read cannot prove ownership. The
+   * wiring uses this to schedule a bounded re-probe/rebuild/reconcile path, so
+   * flow mode does not depend on a future sample or settings event to reopen
+   * the transient fence.
+   */
+  onMainAuthorityUnresolved?: () => void;
   /**
    * Fired ONCE, on the false→true `hasSeenZoneTreeCommit` edge (a committed zone
    * tree first lands). The per-home capacity bundles (R7b) gate EXECUTION on
@@ -69,6 +113,12 @@ export type HomeMembershipDiagnostics = {
   zoneTree: ZoneTree | null;
   hasSubHomes: boolean;
   /**
+   * Producer-resolved activation posture for the saved meter-area config.
+   * The settings UI uses this to avoid presenting held legacy configuration
+   * as live control; consumers must not re-resolve the legacy flag.
+   */
+  runtimeActive: boolean;
+  /**
    * True while the latest recompute classified either persisted store read
    * (`homes_config` / `device_home_assignments`) as `'suspect'` — the served
    * `subHomes` may then be a stale cache of an unknown persisted truth.
@@ -83,10 +133,11 @@ export type HomeMembershipDiagnostics = {
  * Cached device→home membership: the stateful join of the homes registry
  * (`HomesStore`), the explicit pins (`DeviceHomeAssignmentsStore`), the
  * transport's zone tree, and each device's snapshot `zoneId`, resolved through
- * the pure `resolveDeviceHome` rule. READ-ONLY over the stores (never writes)
- * and consumer-less on the control path in this PR — `getHomeIdForDevice` /
- * `getMembershipMap` exist for the planner wiring (R5); today only the
- * read-only `ui_homes` endpoint reads the diagnostics view.
+ * the pure `resolveDeviceHome` rule. This produces both control routing
+ * (`getHomeIdForDevice` / `getMembershipMap`) and the read-only `ui_homes`
+ * diagnostics. While a legacy config is held, control resolves every device
+ * to Main home while diagnostics keep the saved config visible for deliberate
+ * activation.
  *
  * Recompute is cheap (pure resolver over cached inputs) and never flaps on
  * transient nulls: a `'suspect'` store read keeps the previously cached
@@ -113,20 +164,44 @@ export class HomeMembershipService implements HomeMembershipPort {
     [HOMES_CONFIG]: false,
     [DEVICE_HOME_ASSIGNMENTS]: false,
   };
+  // Positive boot baseline. Constructor defaults (`[]` / `{}`) are safe
+  // storage, not evidence: a FIRST suspect read must never authorize either
+  // Main or a sub-home controller against fabricated empty ownership.
+  private hasSeenNonSuspectReadByStoreKey: Record<HomeStoreKey, boolean> = {
+    [HOMES_CONFIG]: false,
+    [DEVICE_HOME_ASSIGNMENTS]: false,
+  };
+  // Control-path gate, resolved at the same producer that adopts homes_config.
+  // Diagnostics retain the configured homes/membership while false so the
+  // existing Edit → Save action can explicitly activate a held legacy config.
+  private runtimeActive = false;
+  private lastNotifiedRuntimeActive = false;
   private lastRecomputeFingerprint: string | null = null;
   private lastPlanRelevantFingerprint: string | null = null;
+  private mainMeterUnavailableLogged = false;
+  private mainMeterCollisionLogged = false;
+  // Settings events close the controller authority synchronously, before the
+  // serialized settings handler can run. The observed generation is committed
+  // only by the owned recovery after semantic recompute + fresh plan builds;
+  // rapid events therefore cannot let an intermediate continuation reopen.
+  private observedOwnershipGeneration = 0;
+  private committedOwnershipGeneration = 0;
+  private applyingOwnershipGeneration: {
+    generation: number;
+    previousCommittedGeneration: number;
+  } | null = null;
 
   constructor(private readonly deps: HomeMembershipServiceDeps) {}
 
   recompute(): void {
+    const mainOwnershipWasReady = this.isOwnershipReady();
+    const subHomeExecutionWasReady = this.isSubHomeExecutionReady();
     this.refreshStoreCaches();
     const tree = this.deps.getZoneTree();
     // Never cache null over a previously seen tree: the transport retains
     // last-good, but a recreated transport (or a pre-first-fetch read) reports
     // null — keeping the last seen tree avoids a membership flap to main.
-    const hadCommittedTree = this.zoneTree !== null;
     if (tree !== null) this.zoneTree = tree;
-    const zoneTreeJustCommitted = !hadCommittedTree && this.zoneTree !== null;
     const nextRetentionLogged = new Set<string>();
     const devices = this.deps.getDevices().map((device) => ({
       deviceId: device.deviceId,
@@ -156,9 +231,18 @@ export class HomeMembershipService implements HomeMembershipPort {
     this.retentionLoggedDeviceIds = nextRetentionLogged;
     this.logIfChanged();
     this.notifyIfPlanRelevantMembershipChanged();
+    if (this.runtimeActive !== this.lastNotifiedRuntimeActive) {
+      this.lastNotifiedRuntimeActive = this.runtimeActive;
+      this.deps.onRuntimeActiveChanged?.(this.runtimeActive);
+    }
+    if (!mainOwnershipWasReady && this.isOwnershipReady()) {
+      this.deps.onMainOwnershipReady?.();
+    }
     // Fire the execution-readiness edge LAST — after the membership map is
     // committed — so the registry's bundles see fresh membership when they apply.
-    if (zoneTreeJustCommitted) this.deps.onZoneTreeCommitReady?.();
+    if (!subHomeExecutionWasReady && this.isSubHomeExecutionReady()) {
+      this.deps.onZoneTreeCommitReady?.();
+    }
   }
 
   // Retention read for a snapshot entry that omitted its zone. Edge-triggered
@@ -183,6 +267,7 @@ export class HomeMembershipService implements HomeMembershipPort {
 
   /** Resolved home for a device; an unknown device belongs to the main home. */
   getHomeIdForDevice(deviceId: string): HomeId {
+    if (!this.runtimeActive) return MAIN_HOME_ID;
     return (Object.hasOwn(this.membershipByDeviceId, deviceId)
       ? this.membershipByDeviceId[deviceId].homeId
       : MAIN_HOME_ID);
@@ -190,13 +275,178 @@ export class HomeMembershipService implements HomeMembershipPort {
 
   /** Control-path view: `homeId` per device, deliberately without `source`. */
   getMembershipMap(): Readonly<Record<string, HomeId>> {
+    if (!this.runtimeActive) return {};
     return Object.fromEntries(
       Object.entries(this.membershipByDeviceId).map(([deviceId, entry]) => [deviceId, entry.homeId]),
     );
   }
 
   hasSubHomes(): boolean {
-    return this.subHomes.length > 0;
+    return this.runtimeActive && this.subHomes.length > 0;
+  }
+
+  /**
+   * Ownership is usable only after BOTH persisted stores have produced a
+   * non-suspect baseline. Active sub-homes additionally require a committed
+   * zone tree; a resolved single-home/held config needs no tree because every
+   * device honestly belongs to Main.
+   */
+  isOwnershipReady(): boolean {
+    const storesReady = this.hasSeenNonSuspectReadByStoreKey[HOMES_CONFIG]
+      && this.hasSeenNonSuspectReadByStoreKey[DEVICE_HOME_ASSIGNMENTS];
+    if (!storesReady) return false;
+    return !this.runtimeActive || this.subHomes.length === 0 || this.zoneTree !== null;
+  }
+
+  /**
+   * Synchronous ownership-settings edge. This does not alter durable
+   * membership/readiness (smart-task lifecycle may keep trusting the last
+   * committed map), but it immediately fences every controller generation.
+   */
+  observeOwnershipConfigurationChanged(): void {
+    this.observedOwnershipGeneration += 1;
+    this.deps.onMainAuthorityUnresolved?.();
+  }
+
+  getObservedOwnershipGeneration(): number {
+    return this.observedOwnershipGeneration;
+  }
+
+  hasPendingOwnershipGeneration(): boolean {
+    return this.committedOwnershipGeneration !== this.observedOwnershipGeneration;
+  }
+
+  /**
+   * Semantic preparation result for the owned recovery. `retry` covers
+   * transient/unproven authority; `blocked` is a durable explicit-meter
+   * collision that waits for a newer settings event rather than polling.
+   */
+  classifyOwnershipGenerationForPreparation(
+    generation: number,
+  ): OwnershipGenerationPreparationState {
+    if (generation !== this.observedOwnershipGeneration) return 'retry';
+    if (
+      this.suspectByStoreKey[HOMES_CONFIG]
+      || this.suspectByStoreKey[DEVICE_HOME_ASSIGNMENTS]
+      || !this.isOwnershipReady()
+    ) return 'retry';
+    if (!this.runtimeActive || this.subHomes.length === 0) return 'ready';
+    return this.resolveMainMeterAuthority();
+  }
+
+  /**
+   * Commit only the still-current, fully prepared generation. The caller has
+   * already committed fresh Main/sub-home plans while the final actuator seams
+   * were closed; opening here authorizes their reconcile and nothing older.
+   */
+  commitPreparedOwnershipGeneration(generation: number): boolean {
+    if (!this.beginPreparedOwnershipGenerationApplication(generation)) return false;
+    return this.completePreparedOwnershipGenerationApplication(generation);
+  }
+
+  /**
+   * Temporarily open the freshly prepared generation so its reconcile can
+   * actuate. The owner must complete or abort this transaction; abort restores
+   * the previous committed generation and closes every controller again.
+   */
+  beginPreparedOwnershipGenerationApplication(generation: number): boolean {
+    if (this.classifyOwnershipGenerationForPreparation(generation) !== 'ready') return false;
+    if (this.applyingOwnershipGeneration !== null) return false;
+    this.applyingOwnershipGeneration = {
+      generation,
+      previousCommittedGeneration: this.committedOwnershipGeneration,
+    };
+    this.committedOwnershipGeneration = generation;
+    return true;
+  }
+
+  completePreparedOwnershipGenerationApplication(generation: number): boolean {
+    const applying = this.applyingOwnershipGeneration;
+    if (
+      applying?.generation !== generation
+      || this.committedOwnershipGeneration !== generation
+      || this.observedOwnershipGeneration !== generation
+    ) return false;
+    this.applyingOwnershipGeneration = null;
+    return true;
+  }
+
+  abortPreparedOwnershipGenerationApplication(generation: number): void {
+    const applying = this.applyingOwnershipGeneration;
+    if (applying?.generation !== generation) return;
+    if (this.committedOwnershipGeneration === generation) {
+      this.committedOwnershipGeneration = applying.previousCommittedGeneration;
+    }
+    this.applyingOwnershipGeneration = null;
+  }
+
+  /**
+   * Apply-edge readiness for sub-home runtimes. Unlike general ownership
+   * readiness, this always requires a committed tree; the callback historically
+   * represents that edge even when the registry currently has zero bundles.
+   */
+  isSubHomeExecutionReady(): boolean {
+    const storesReady = this.hasSeenNonSuspectReadByStoreKey[HOMES_CONFIG]
+      && this.hasSeenNonSuspectReadByStoreKey[DEVICE_HOME_ASSIGNMENTS];
+    return storesReady && this.zoneTree !== null && !this.hasPendingOwnershipGeneration();
+  }
+
+  /** Setup-internal activation gate for the per-home runtime registry. */
+  isRuntimeActive(): boolean {
+    return this.runtimeActive;
+  }
+
+  /**
+   * Producer-resolved Main-home actuation fence. With active sub-homes,
+   * zone-rule membership is provisional until a real zone tree has committed.
+   * Independently, an explicit Main meter may never also own a sub-home: the
+   * same sample would then drive two controllers over disjoint device sets.
+   * Both reasons close the same final write seam (plan + terminal smart task).
+   */
+  isMainHomeActuationFenced(): boolean {
+    if (this.hasPendingOwnershipGeneration()) return true;
+    if (!this.isOwnershipReady()) return true;
+    if (!this.runtimeActive || this.subHomes.length === 0) {
+      this.mainMeterUnavailableLogged = false;
+      this.mainMeterCollisionLogged = false;
+      return false;
+    }
+    return this.zoneTree === null || this.resolveMainMeterAuthority() !== 'ready';
+  }
+
+  /**
+   * Point-of-use ownership resolution. Reading the Main setting live makes a
+   * direct/external write close authority before its async settings handler
+   * rebuild runs. Semantic unavailability also fences: inability to prove
+   * ownership can never authorize a device command.
+   */
+  private resolveMainMeterAuthority(): OwnershipGenerationPreparationState {
+    const selection = this.deps.getMainMeterSelection();
+    if (selection.state === 'unavailable') {
+      if (!this.mainMeterUnavailableLogged) {
+        this.deps.getLogger()?.warn({
+          event: 'main_home_meter_authority_unavailable',
+          detail: 'fencing Main actuation until the Main meter selection is authoritative',
+        });
+      }
+      this.mainMeterUnavailableLogged = true;
+      this.mainMeterCollisionLogged = false;
+      this.deps.onMainAuthorityUnresolved?.();
+      return 'retry';
+    }
+    this.mainMeterUnavailableLogged = false;
+    const { meterDeviceId: mainMeterDeviceId } = selection;
+    const collision = findMainMeterCollision(mainMeterDeviceId, this.subHomes);
+    if (collision !== null && !this.mainMeterCollisionLogged) {
+      this.deps.getLogger()?.warn({
+        event: 'main_home_meter_ownership_conflict',
+        meterDeviceId: mainMeterDeviceId,
+        subHomeId: collision.homeId,
+        detail: 'fencing Main actuation because one explicit meter has two owners',
+      });
+    }
+    this.mainMeterCollisionLogged = collision !== null;
+    return collision === null ? 'ready' : 'blocked';
   }
 
   /**
@@ -218,7 +468,10 @@ export class HomeMembershipService implements HomeMembershipPort {
       subHomes: this.subHomes,
       membershipByDeviceId: this.membershipByDeviceId,
       zoneTree: this.zoneTree,
-      hasSubHomes: this.hasSubHomes(),
+      // Diagnostics describe SAVED configuration even while the control port is
+      // held all-main for legacy compatibility.
+      hasSubHomes: this.subHomes.length > 0,
+      runtimeActive: this.runtimeActive,
       configDegraded: this.suspectByStoreKey[HOMES_CONFIG]
         || this.suspectByStoreKey[DEVICE_HOME_ASSIGNMENTS],
     };
@@ -230,12 +483,27 @@ export class HomeMembershipService implements HomeMembershipPort {
   // as empty would flap every device to main on one flaky read.
   private refreshStoreCaches(): void {
     const homesRead = this.deps.homesStore.read();
-    if (homesRead.state === 'present') this.subHomes = homesRead.value.subHomes;
-    if (homesRead.state === 'unwritten') this.subHomes = [];
+    if (homesRead.state === 'present') {
+      this.subHomes = homesRead.value.subHomes;
+      this.runtimeActive = isHomeConfigRuntimeActive(
+        homesRead.value,
+        this.deps.legacyMultiHomeEnabled,
+      );
+    }
+    if (homesRead.state === 'unwritten') {
+      this.subHomes = [];
+      this.runtimeActive = true;
+    }
+    if (homesRead.state !== 'suspect') {
+      this.hasSeenNonSuspectReadByStoreKey[HOMES_CONFIG] = true;
+    }
     this.noteSuspectEdge(HOMES_CONFIG, homesRead.state === 'suspect');
     const pinsRead = this.deps.assignmentsStore.read();
     if (pinsRead.state === 'present') this.pins = pinsRead.value;
     if (pinsRead.state === 'unwritten') this.pins = {};
+    if (pinsRead.state !== 'suspect') {
+      this.hasSeenNonSuspectReadByStoreKey[DEVICE_HOME_ASSIGNMENTS] = true;
+    }
     this.noteSuspectEdge(DEVICE_HOME_ASSIGNMENTS, pinsRead.state === 'suspect');
   }
 
@@ -260,10 +528,12 @@ export class HomeMembershipService implements HomeMembershipPort {
       .map(([deviceId, entry]) => `${deviceId}=${entry.homeId}:${entry.source}`)
       .sort((a, b) => a.localeCompare(b))
       .join(',');
-    if (fingerprint === this.lastRecomputeFingerprint) return;
-    this.lastRecomputeFingerprint = fingerprint;
+    const diagnosticFingerprint = `${this.runtimeActive ? 'active' : 'held'}|${fingerprint}`;
+    if (diagnosticFingerprint === this.lastRecomputeFingerprint) return;
+    this.lastRecomputeFingerprint = diagnosticFingerprint;
     this.deps.getLogger()?.info({
       event: 'home_membership_recomputed',
+      runtimeActive: this.runtimeActive,
       devicesTotal: Object.keys(this.membershipByDeviceId).length,
       subHomesTotal: this.subHomes.length,
       pinsTotal: Object.keys(this.pins).length,
@@ -278,7 +548,7 @@ export class HomeMembershipService implements HomeMembershipPort {
   // never fires: the bootstrap builds the initial plan itself, and the plan
   // service may not even exist yet.
   private notifyIfPlanRelevantMembershipChanged(): void {
-    const fingerprint = Object.entries(this.membershipByDeviceId)
+    const fingerprint = (this.runtimeActive ? Object.entries(this.membershipByDeviceId) : [])
       .filter(([, entry]) => entry.homeId !== MAIN_HOME_ID)
       .map(([deviceId, entry]) => `${deviceId}=${entry.homeId}`)
       .sort((a, b) => a.localeCompare(b))
@@ -293,6 +563,12 @@ export class HomeMembershipService implements HomeMembershipPort {
 /** The wired membership service plus the handle that detaches its triggers. */
 export type HomeMembershipWiring = {
   service: HomeMembershipService;
+  /**
+   * Re-probe Main authority after an ownership input changes. Explicit-meter
+   * reads use bounded scheduling; a completed semantic homes/pins recompute
+   * may request immediate application. Both rebuild and reconcile while fenced.
+   */
+  requestMainAuthorityRecovery?: (timing?: 'scheduled' | 'immediate') => void;
   /**
    * Detach every recompute trigger wired by `createHomeMembershipService`
    * (refresh subscription + zone-tree-commit and realtime zone-move
@@ -368,6 +644,12 @@ export const createHomeMembershipService = (params: {
   getLogger: () => PinoLogger | undefined;
   /** See {@link HomeMembershipServiceDeps.onMembershipChanged}. */
   onMembershipChanged?: () => void;
+  /** See {@link HomeMembershipServiceDeps.onRuntimeActiveChanged}. */
+  onRuntimeActiveChanged?: (runtimeActive: boolean) => void;
+  /** See {@link HomeMembershipServiceDeps.onMainOwnershipReady}. */
+  onMainOwnershipReady?: () => void;
+  /** See {@link HomeMembershipServiceDeps.onMainAuthorityUnresolved}. */
+  onMainAuthorityUnresolved?: () => void;
   /** See {@link HomeMembershipServiceDeps.onZoneTreeCommitReady}. */
   onZoneTreeCommitReady?: () => void;
 }): HomeMembershipWiring => {
@@ -377,7 +659,12 @@ export const createHomeMembershipService = (params: {
     getZoneTree: params.getZoneTree,
     getDevices: params.getDevices,
     getLogger: params.getLogger,
+    getMainMeterSelection: () => readMainMeterSelection(params.homey.settings),
+    legacyMultiHomeEnabled: readLegacyMultiHomeEnabled(params.homey.settings),
     onMembershipChanged: params.onMembershipChanged,
+    onRuntimeActiveChanged: params.onRuntimeActiveChanged,
+    onMainOwnershipReady: params.onMainOwnershipReady,
+    onMainAuthorityUnresolved: params.onMainAuthorityUnresolved,
     onZoneTreeCommitReady: params.onZoneTreeCommitReady,
   });
   const recomputeContained = (

@@ -3,11 +3,19 @@ import {
   settingsHomeyEnergyMeterField,
   settingsHomeyEnergyMeterSelect,
 } from './dom.ts';
-import { callApi, setSetting } from './homey.ts';
+import { applySettingsPatch, callApi } from './homey.ts';
 import { logSettingsError } from './logging.ts';
 import { showToast, showToastError } from './toast.ts';
 import { HOMEY_ENERGY_METER_DEVICE_ID } from '../../../contracts/src/settingsKeys.ts';
 import { HOMEY_ENERGY_METERS_PATH, type HomeyEnergyMeterEntry } from '../../../contracts/src/settingsUiApi.ts';
+import {
+  SETTINGS_UI_HOMES_SAVE_PATH,
+  type SettingsUiHomesSaveResponse,
+} from '../../../contracts/src/settingsUiHomes.ts';
+import {
+  composeDraftErrorLine,
+  HOMES_MAIN_METER_SAVE_DEGRADED,
+} from '../../../shared-domain/src/homesManagementCopy.ts';
 
 export type MeterSelectEntry = { value: string; label: string };
 
@@ -57,6 +65,16 @@ let pickerDevicesLoading = false;
 let selectedMeterId: string | null = null;
 let lastRenderSignature: string | null = null;
 let deferredRenderPending = false;
+// One selection write at a time. The Material picker is disabled while the
+// request owns the persisted selection, and the handler also rejects a
+// programmatic overlapping change. That keeps rollback anchored to the last
+// confirmed selection instead of a stale pre-request snapshot.
+let meterSelectionWriteInFlight = false;
+
+const setMeterSelectionWriteBusy = (busy: boolean): void => {
+  meterSelectionWriteInFlight = busy;
+  if (settingsHomeyEnergyMeterSelect) settingsHomeyEnergyMeterSelect.disabled = busy;
+};
 
 /** Whether an explicit meter is configured (vs Automatic) — feeds the stale-data hint. */
 export const isHomeyEnergyMeterExplicit = (): boolean => selectedMeterId !== null;
@@ -128,15 +146,45 @@ export const syncHomeyEnergyMeterVisibility = (powerSource: string): void => {
   void ensureMeterDevicesLoaded();
 };
 
+const composeMainMeterSaveRefusal = (
+  refusal: Extract<SettingsUiHomesSaveResponse, { ok: false }>,
+): string => {
+  if (refusal.reason === 'meter_in_use') {
+    return composeDraftErrorLine({ kind: 'meter_in_use', otherName: refusal.otherName });
+  }
+  if (refusal.reason === 'degraded') return HOMES_MAIN_METER_SAVE_DEGRADED;
+  return 'Failed to save whole-home meter.';
+};
+
 const handleMeterSelectionChange = async (): Promise<void> => {
   const select = settingsHomeyEnergyMeterSelect;
   if (!select) return;
+  if (meterSelectionWriteInFlight) {
+    lastRenderSignature = null;
+    renderMeterOptions();
+    return;
+  }
   const next = select.value === '' ? null : select.value;
   if (next === selectedMeterId) return;
   const previous = selectedMeterId;
-  selectedMeterId = next;
+  setMeterSelectionWriteBusy(true);
   try {
-    await setSetting(HOMEY_ENERGY_METER_DEVICE_ID, next);
+    const response = await callApi<SettingsUiHomesSaveResponse>(
+      'POST',
+      SETTINGS_UI_HOMES_SAVE_PATH,
+      { op: 'set_main_meter', meterDeviceId: next },
+    );
+    if (!response.ok) {
+      const refusal = response as Extract<SettingsUiHomesSaveResponse, { ok: false }>;
+      lastRenderSignature = null;
+      renderMeterOptions();
+      await showToast(composeMainMeterSaveRefusal(refusal), 'warn');
+      return;
+    }
+    selectedMeterId = next;
+    applySettingsPatch({ [HOMEY_ENERGY_METER_DEVICE_ID]: next });
+    lastRenderSignature = null;
+    renderMeterOptions();
     await showToast('Whole-home meter saved.', 'ok');
   } catch (error) {
     // Roll the select back so the screen never shows an unsaved choice as
@@ -146,6 +194,8 @@ const handleMeterSelectionChange = async (): Promise<void> => {
     renderMeterOptions();
     await logSettingsError('Failed to save whole-home meter', error, 'homeyEnergyMeter');
     await showToastError(error, 'Failed to save whole-home meter.');
+  } finally {
+    setMeterSelectionWriteBusy(false);
   }
 };
 

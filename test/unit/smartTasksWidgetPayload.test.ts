@@ -13,6 +13,7 @@ import type { SettingsUiDeferredObjectivePlanHistoryPayload } from '../../packag
 import { toResolvedPlanHistoryEntry } from '../../packages/shared-domain/src/deferredPlanHistoryResolvedView';
 import type { TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
 import { SMART_TASK_WIDGET_EMPTY_HINT } from '../../packages/shared-domain/src/deadlineLabels';
+import { SMART_TASK_SUB_HOME_UNAVAILABLE } from '../../packages/shared-domain/src/objectiveWriteStrings';
 import {
   buildSmartTasksWidgetPayload,
   EMPTY_SUBTITLE_DEFAULT,
@@ -243,6 +244,45 @@ describe('buildSmartTasksWidgetPayload', () => {
     expect(payload.rows.map((r) => r.deviceName)).toEqual(['EV', 'Heating']);
     expect(payload.rows[0].statusLabel).toBe('Unplugged');
     expect(payload.rows[0].tone).toBe('muted');
+  });
+
+  test('replaces a committed cached schedule with honest separate-meter copy and no stale plan evidence', () => {
+    const relocated = buildPlan({
+      deviceId: 'relocated',
+      deviceName: 'Garage heater',
+      diagnosticReasonCode: 'objective_device_in_sub_home',
+      startProgressC: 50,
+      progressSamples: [
+        { atMs: NOW - HOUR, valueC: 50, valuePercent: null },
+        { atMs: NOW, valueC: 52, valuePercent: null },
+      ],
+      kwhPerUnitProvenance: {
+        source: 'bootstrap',
+        kWhPerUnit: 0.5,
+        acceptedSamples: 0,
+        confidence: 'low',
+        lastAcceptedAtMs: null,
+      },
+      latest: {
+        ...buildPlan({}).latest!,
+        planningSpeedKw: 2,
+        estimatedDurationText: '2h 0m',
+        rateMean: 0.5,
+      },
+    });
+    const payload = buildSmartTasksWidgetPayload(buildInput({ relocated }));
+    expect(payload.state).toBe('ready');
+    if (payload.state !== 'ready') return;
+    expect(payload.rows[0]).toMatchObject({
+      statusLabel: 'Unavailable',
+      tone: 'warn',
+      etaVerb: 'Due',
+      whyLabel: SMART_TASK_SUB_HOME_UNAVAILABLE,
+      recourseHint: null,
+      planMetaLabel: null,
+      confidenceLabel: null,
+      chart: null,
+    });
   });
 
   test('uses canonical chip labels from shared-domain', () => {

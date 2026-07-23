@@ -8,6 +8,7 @@ import { expect } from 'vitest';
 import { MockDevice, MockDriver, mockHomeyInstance, setMockDrivers } from '../mocks/homey';
 import { createApp } from './appTestUtils';
 import { DEVICE_HOME_ASSIGNMENTS, HOMES_CONFIG } from '../../lib/utils/settingsKeys';
+import { HOME_CONFIG_ACTIVATION_VERSION } from '../../lib/home/homeConfig';
 import type { DeferredObjectivePlanPreviewCandidate } from '../../lib/objectives/deferredObjectives';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
 
@@ -68,7 +69,10 @@ export const initAppWithSubHome = async (
     buildPlannedHeater('heater-sub', 'Cabin heater', 'z2'),
     buildPlannedHeater('heater-main', 'Hall heater', 'z1'),
   ]);
-  mockHomeyInstance.settings.set(HOMES_CONFIG, { subHomes: [SUB_HOME] });
+  mockHomeyInstance.settings.set(HOMES_CONFIG, {
+    activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
+    subHomes: [SUB_HOME],
+  });
   mockHomeyInstance.settings.set(DEVICE_HOME_ASSIGNMENTS, { 'heater-sub': 'h_cabin' });
   await settleAsyncSeams();
   if (options.assertMembership) {

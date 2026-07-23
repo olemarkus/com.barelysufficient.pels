@@ -1,9 +1,11 @@
 import { requireDailyBudgetService, requireFlowHomey } from './contextGuards';
 import { registerFlowCards } from '../../flowCards/registerFlowCards';
 import type { AppContext } from '../../lib/app/appContext';
-import { normalizePowerSource } from '../../lib/power/powerSource';
-import { POWER_SOURCE } from '../../lib/utils/settingsKeys';
-import { isSmartTaskDeviceInMainHome } from './smartTaskHomeScope';
+import { normalizeError } from '../../lib/utils/errorUtils';
+import {
+  hasMainHomeSmartTaskAuthority,
+  isSmartTaskDeviceInMainHome,
+} from './smartTaskHomeScope';
 import {
   FlowPowerSampleFreshnessClock,
   registerFlowPowerSampleFreshnessClock,
@@ -15,13 +17,21 @@ import {
   upsertObjectiveForDevice,
 } from '../../lib/objectives/deferredObjectives';
 import { buildDeferredObjectiveDeviceWriteDeps } from './deferredRecorders';
+import {
+  readConfiguredPowerSource,
+  requireConfiguredPowerSource,
+} from '../powerSourceSettings';
 
 export function registerAppFlowCards(ctx: AppContext): void {
   const flowPowerSampleFreshnessClock = new FlowPowerSampleFreshnessClock({
     timers: ctx.timers,
     getNowMs: () => ctx.getNow().getTime(),
-    getPowerSource: () => normalizePowerSource(ctx.homey.settings.get(POWER_SOURCE)),
+    getPowerSource: () => requireConfiguredPowerSource(ctx.homey.settings),
     requestPlanRebuild: (reason) => ctx.requestFlowPlanRebuild(reason),
+    onPowerSourceReadError: (error) => ctx.getStructuredLogger('power')?.error({
+      event: 'flow_freshness_power_source_read_failed',
+      err: normalizeError(error),
+    }),
   });
   registerFlowPowerSampleFreshnessClock(ctx.timers, flowPowerSampleFreshnessClock);
   const syncLatestSample = () => {
@@ -37,9 +47,16 @@ export function registerAppFlowCards(ctx: AppContext): void {
     getCurrentPriceLevel: () => ctx.getCurrentPriceLevel(),
     areFlowBackedCardsAvailable: () => ctx.areFlowBackedCardsAvailable(),
     recordPowerSample: async (powerW) => {
-      if (normalizePowerSource(ctx.homey.settings.get(POWER_SOURCE)) === 'homey_energy') {
-        return;
+      const source = readConfiguredPowerSource(ctx.homey.settings);
+      if (source.state === 'suspect') {
+        ctx.getStructuredLogger('power')?.error({
+          event: 'flow_power_sample_source_read_failed',
+          reason: source.reason,
+          err: normalizeError(source.error),
+        });
+        throw source.error;
       }
+      if (source.value === 'homey_energy') return;
       const nowMs = ctx.getNow().getTime();
       await ctx.recordPowerSample(powerW, nowMs);
       flowPowerSampleFreshnessClock.noteSample(nowMs);
@@ -84,11 +101,11 @@ export function registerAppFlowCards(ctx: AppContext): void {
       }),
       params,
     ),
-    // Multi-home v1: the set-deadline card autocompletes offer main-home
-    // devices only (the write deps above carry the enforcing gate). Absent
-    // membership service (boot window) or no sub-homes configured resolves
-    // main for everything — every device stays offered.
+    // Existing status follows durable membership, while new-task discovery
+    // follows stricter current authority. A transient Main fence therefore
+    // hides task creation without falsely erasing an existing task's status.
     isDeviceInMainHome: (deviceId) => isSmartTaskDeviceInMainHome(ctx, deviceId),
+    hasMainHomeSmartTaskAuthority: (deviceId) => hasMainHomeSmartTaskAuthority(ctx, deviceId),
     getDeferredObjectiveActivePlans: () => (
       ctx.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot() ?? null
     ),

@@ -17,6 +17,7 @@ const budget: StarvationRescueDevice = {
   cause: 'budget',
   accumulatedMs: 60_000,
   intendedNormalTargetC: 65,
+  smartTaskHomeScope: 'main',
   hasSmartTask: false,
 };
 
@@ -49,6 +50,12 @@ describe('resolveRescuableDeviceFromList', () => {
 
   it('resolves a budget, task-free, known-target device', () => {
     expect(resolveRescuableDeviceFromList([budget], 'heater-1')).toEqual({ ok: true, targetTemperatureC: 65 });
+  });
+
+  it('preserves transient Main authority as unavailable while the row remains visible', () => {
+    const unavailable = { ...budget, smartTaskHomeScope: 'unavailable' as const };
+    expect(resolveRescuableDeviceFromList([unavailable], 'heater-1'))
+      .toEqual({ ok: false, reason: 'unavailable' });
   });
 
   it('rejects a capacity row as not_rescuable (the hard cap is physical)', () => {

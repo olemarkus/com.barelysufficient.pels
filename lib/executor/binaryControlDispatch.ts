@@ -21,7 +21,7 @@ import { getLogger } from '../logging/logger';
  */
 export type DispatchBinaryControlResult =
   | { ok: true }
-  | { ok: false; reason: 'dispatch_failed' };
+  | { ok: false; reason: 'dispatch_failed' | 'not_requested' };
 
 /**
  * Outcome of a decide-and-dispatch call, surfaced to executor callers.
@@ -48,10 +48,10 @@ export type BinaryControlOutcome =
  *
  * Carries the observer-owned `pendingBinaryCommandStore` so the
  * dispatcher can record pending entries on every issued command and
- * clear them when dispatch throws. Per PR #4 of the split, the plan
+ * clear them when the actuator declines or dispatch throws. Per PR #4 of the split, the plan
  * layer no longer touches pending state directly; writes and deletes
  * are both observer-owned (recorded around the dispatch site here,
- * cleared from the caught failure here as well).
+ * cleared from the declined/failure arms here as well).
  */
 export type BinaryControlTransport = {
   observation: DeviceObservation;
@@ -124,13 +124,13 @@ export async function decideAndDispatchBinaryControl(params: {
  *   previous write inside `decideBinaryControl` (plan layer).
  * - On success, leaves the entry intact for
  *   `syncPendingBinaryCommands` to clear once telemetry confirms.
- * - On caught failure, clears the entry via
+ * - When the actuator declines the request or dispatch throws, clears the entry via
  *   `transport.pendingBinaryCommandStore.clear` so the next cycle can
  *   retry without seeing a stale "already pending" guard.
  *
  * The return shape is discriminated so callers can distinguish
  * skipped-by-plan (handled by `decideAndDispatchBinaryControl`'s null
- * branch) from dispatch_failed.
+ * branch) from a declined request or dispatch failure.
  */
 export async function dispatchBinaryControlDecision(params: {
   decision: BinaryControlDecision;
@@ -141,10 +141,14 @@ export async function dispatchBinaryControlDecision(params: {
   const { decision, transport, snapshot } = params;
   recordPendingForDispatch({ store: transport.pendingBinaryCommandStore, decision, snapshot });
   try {
-    await dispatchBinaryCommand({
+    const requested = await dispatchBinaryCommand({
       decision,
       transport,
     });
+    if (!requested) {
+      transport.pendingBinaryCommandStore.clear(decision.deviceId);
+      return { ok: false, reason: 'not_requested' };
+    }
     emitBinaryCommandSuccess({
       decision,
     });
@@ -182,15 +186,16 @@ function recordPendingForDispatch(params: {
 async function dispatchBinaryCommand(params: {
   decision: BinaryControlDecision;
   transport: BinaryControlTransport;
-}): Promise<void> {
+}): Promise<boolean> {
   const { decision, transport } = params;
-  await transport.actuator.apply({
+  const outcome = await transport.actuator.apply({
     kind: 'binary',
     deviceId: decision.deviceId,
     control: decision.capabilityId,
     desired: decision.desired,
     flowBacked: decision.flowBackedControl,
   });
+  if (!outcome.requested) return false;
   if (decision.flowBackedControl) {
     logger.info({
       event: 'flow_backed_binary_command_requested',
@@ -202,6 +207,7 @@ async function dispatchBinaryCommand(params: {
       actuationMode: decision.actuationMode,
     });
   }
+  return true;
 }
 
 function emitBinaryCommandSuccess(params: {

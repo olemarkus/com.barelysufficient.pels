@@ -4,9 +4,10 @@
  * Structural mirror of the runtime's `lib/home` domain shapes (`SubHomeConfig`,
  * `HomeMembership`, `ZoneTree`): contracts cannot import runtime modules, so
  * the composing handler (`setup/settingsUiApi.ts`) type-checks the mirror
- * against the domain values it serves. READ-ONLY seam: the settings-UI track
- * writes homes/pins via the `homes_config` / `device_home_assignments`
- * settings keys directly, never through this endpoint.
+ * against the domain values it serves. `ui_homes` itself is read-only. The
+ * settings UI sends area and Main-meter mutations through the guarded
+ * `ui_homes_save` intent endpoint below; it never writes either ownership
+ * store directly.
  */
 
 export const SETTINGS_UI_HOMES_PATH = '/ui_homes';
@@ -14,10 +15,11 @@ export const SETTINGS_UI_HOMES_SAVE_PATH = '/ui_homes_save';
 
 /**
  * Intent operation for the `ui_homes_save` endpoint. INTENT, not state: the
- * client names the one area it touches and the runtime applies it to the
- * FRESHLY read persisted config (classified reader, refuse-on-suspect,
- * marker-first classified write) — a stale panel can therefore never wipe
- * other areas, and every runtime write protection stays in the path.
+ * client names the one area or Main-meter selection it touches and the runtime
+ * applies it against the FRESHLY read persisted config (classified reader,
+ * refuse-on-suspect, marker-first classified area write). Keeping both meter
+ * ownership mutations behind one serialized server seam prevents Main and a
+ * meter area from claiming the same explicit meter in either write order.
  */
 export type SettingsUiHomesSaveRequest =
   | {
@@ -30,17 +32,24 @@ export type SettingsUiHomesSaveRequest =
       meterDeviceId: string | null;
     };
   }
-  | { op: 'delete'; homeId: string };
+  | { op: 'delete'; homeId: string }
+  | {
+    op: 'set_main_meter';
+    /** `null` selects Automatic; a string selects Main's explicit meter. */
+    meterDeviceId: string | null;
+  };
 
 /**
  * Typed refusal contract: `degraded` = the persisted config could not be
  * read safely (suspect store read — the UI shows its degraded copy);
  * `invalid` = malformed op / implausible resulting config / a root zone that
- * would swallow the whole home.
+ * would swallow the whole home; `meter_in_use` identifies the meter area that
+ * already owns a requested Main-home meter so the UI can explain the refusal.
  */
 export type SettingsUiHomesSaveResponse =
   | { ok: true }
-  | { ok: false; reason: 'degraded' | 'invalid' };
+  | { ok: false; reason: 'degraded' | 'invalid' }
+  | { ok: false; reason: 'meter_in_use'; otherName: string };
 
 /**
  * How a device's membership was decided. DIAGNOSTICS AND DISPLAY ONLY — the
@@ -77,6 +86,11 @@ export type SettingsUiHomesPayload = {
   /** The transport's cached zone tree; `null` until the first successful fetch. */
   zoneTree: Record<string, SettingsUiZoneNode> | null;
   hasSubHomes: boolean;
+  /**
+   * Producer-resolved activation posture. False means a saved pre-GA config is
+   * intentionally held in Main home until the owner saves a meter area.
+   */
+  runtimeActive: boolean;
   /**
    * True while the runtime cannot vouch for the served config: either homes
    * store read classified suspect (persisted truth unknown; `homes` may be a

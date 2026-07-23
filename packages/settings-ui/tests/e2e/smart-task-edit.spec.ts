@@ -121,6 +121,31 @@ test.describe('Smart task edit', () => {
     await expect(page.getByRole('tab', { name: 'Smart tasks' })).toHaveAttribute('aria-selected', 'true');
   });
 
+  test('a separate-meter task is clear-only and still uses two-step confirmation', async ({ page }) => {
+    await page.addInitScript(() => {
+      const stubWindow = window as typeof window & {
+        __PELS_HOMEY_STUB__?: Record<string, unknown>;
+      };
+      stubWindow.__PELS_HOMEY_STUB__ = {
+        ...(stubWindow.__PELS_HOMEY_STUB__ ?? {}),
+        deadlinePlanSeparateMeter: true,
+      };
+    });
+    const panel = await openDeadlinePlan(page);
+    const editCard = panel.locator('.smart-task-edit');
+
+    await expect(panel.locator('.plan-hero__headline')).toHaveText('Smart task unavailable');
+    await expect(editCard.getByRole('button', { name: 'Edit task' })).toHaveCount(0);
+    await expect(editCard.getByRole('button', { name: 'Save changes' })).toHaveCount(0);
+    await expect(editCard.locator('.smart-task-edit__time-input')).toHaveCount(0);
+
+    await editCard.getByRole('button', { name: 'Clear task' }).click();
+    const confirm = editCard.getByRole('button', { name: 'Tap again to clear' });
+    await expect(confirm).toBeVisible();
+    await confirm.click();
+    await expect(panel).toBeHidden();
+  });
+
   test('discard closes the editor without saving', async ({ page }) => {
     const panel = await openEditor(page);
     const editCard = panel.locator('.smart-task-edit');

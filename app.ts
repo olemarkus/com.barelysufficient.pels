@@ -44,7 +44,11 @@ import type {
   DailyBudgetUpdateStateOptions,
 } from './lib/dailyBudget/dailyBudgetTypes';
 import type { SettingsUiPlanSnapshot } from './packages/contracts/src/settingsUiApi';
-import type { PelsWidgetHostApi } from './packages/contracts/src/widgetHostApi';
+import type {
+  CreateSmartTaskCandidateDevicesRead,
+  PelsWidgetHostApi,
+} from './packages/contracts/src/widgetHostApi';
+import type { SmartTaskHomeScope } from './packages/contracts/src/smartTaskHomeScope';
 import type { DebugLoggingTopic } from './packages/shared-domain/src/utils/debugLogging';
 import {
   resolveSmartTaskDeviceKind,
@@ -63,14 +67,14 @@ import {
   DEFERRED_OBJECTIVE_HOURS_REMAINING_LATCH,
   MAIN_HOME_ID,
   OPERATING_MODE_SETTING,
-  POWER_SOURCE,
 } from './lib/utils/settingsKeys';
 import {
   buildStarvedRescueDevices,
-  isSmartTaskDeviceInMainHome,
   mapObjectiveWriteRefusalReason,
+  readCreateSmartTaskCandidateDevices,
+  resolveSmartTaskHomeScope,
 } from './setup/appInit/smartTaskHomeScope';
-import { normalizePowerSource, type PowerSource } from './lib/power/powerSource';
+import type { PowerSource } from './lib/power/powerSource';
 import {
   executePendingPowerRebuild,
   PowerSampleRebuildState,
@@ -84,6 +88,7 @@ import { assembleWeatherAdvisorReadout } from './setup/appInit/weatherAdvisorRea
 import type { WeatherAdvisorReadoutPayload } from './packages/contracts/src/weatherAdvisorTypes';
 import type { WeatherCollector } from './lib/weather/weatherCollector';
 import { SchedulerTelemetryObserver } from './setup/schedulerTelemetryObserver';
+import { requireConfiguredPowerSource } from './setup/powerSourceSettings';
 import { SettingsRepository } from './setup/settingsRepository';
 import { createCombinedPricesReaderForApp } from './setup/priceCombinedPricesAdapter';
 import {
@@ -477,6 +482,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
     getStructuredLogger: () => this.structuredLogger,
     setStructuredLogger: (logger) => { this.structuredLogger = logger; },
     getPlanService: () => this.planService,
+    getStablePowerSampleRevision: () => this.powerSamplePipeline.getStableSampleRevision(),
     getPowerCalibrationStore: () => this.powerCalibrationStore,
     getObserverBinarySettleState: () => this.observerBinarySettleState,
     getObservedStateEmitter: () => this.observedStateEmitter,
@@ -959,12 +965,14 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
   // the planner, so offering one would let the widget create a task that never
   // plans or controls anything. `createDeferredObjective` re-applies the same
   // predicate at write time, so listing and validation share one definition.
-  getCreateSmartTaskCandidateDevices(): DecoratedDeviceSnapshot[] {
-    // Sub-home devices are additionally excluded: smart tasks are main-home-only
-    // in v1 (`isSmartTaskDeviceInMainHome`), so offering one would let the
-    // widget compose a task the create lane then rejects (`device_in_sub_home`).
-    return this.latestTargetSnapshot.filter(isRuntimePlannedDevice)
-      .filter((device) => isSmartTaskDeviceInMainHome(this.ctx, device.id));
+  getCreateSmartTaskCandidateDevices(): CreateSmartTaskCandidateDevicesRead {
+    return readCreateSmartTaskCandidateDevices(this.ctx);
+  }
+  // Reason-bearing public scope resolver for outer UI adapters. A provisional
+  // ownership fence is retryable `unavailable`; only durable relocation is the
+  // hard `device_in_sub_home` lane.
+  public resolveSmartTaskHomeScope(deviceId: string): SmartTaskHomeScope {
+    return resolveSmartTaskHomeScope(this.ctx, deviceId);
   }
   // Currently-starved devices for the starvation-rescue widget; assembly lives
   // with the other smart-task home-scope surfaces (`buildStarvedRescueDevices`
@@ -985,7 +993,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
   }
   public getCombinedHourlyPrices = (): CombinedHourlyPrice[] => this.priceCoordinator.getCombinedHourlyPrices();
   public getTimeZone = (): string => this.homey.clock.getTimezone();
-  private getPowerSource = (): PowerSource => normalizePowerSource(this.homey.settings.get(POWER_SOURCE));
+  private getPowerSource = (): PowerSource => requireConfiguredPowerSource(this.homey.settings);
   public getNow = (): Date => new Date();
   public findCheapestHours = (count: number): string[] => this.priceCoordinator.findCheapestHours(count);
   public isCurrentHourCheap = (): boolean => this.priceCoordinator.isCurrentHourCheap();
@@ -1230,7 +1238,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
   ): { ok: true; device: TargetDeviceSnapshot; entry: DeferredObjectiveSettingsEntry } | {
     ok: false;
     reason: 'device_not_found' | 'device_not_planned' | 'device_not_eligible'
-      | 'device_in_sub_home' | 'invalid_candidate';
+      | 'device_in_sub_home' | 'invalid_candidate' | 'write_refused';
   } {
     // Persist ONLY against the runtime-planned snapshot — see PLANNED-SET
     // HONESTY above. A device that exists in the picker but not here, OR that is
@@ -1250,7 +1258,9 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
     // so the task would be planned against the wrong meter's budget. Mirrors
     // the candidate-list exclusion and the write-op gate so the three can
     // never disagree.
-    if (!isSmartTaskDeviceInMainHome(this.ctx, deviceId)) return { ok: false, reason: 'device_in_sub_home' };
+    const homeScope = this.resolveSmartTaskHomeScope(deviceId);
+    if (homeScope === 'sub_home') return { ok: false, reason: 'device_in_sub_home' };
+    if (homeScope === 'unavailable') return { ok: false, reason: 'write_refused' };
     // The device must support the goal kind the candidate claims — an EV-SoC
     // goal on a thermostat (or vice versa) is rejected before it can persist.
     const kind = resolveSmartTaskDeviceKind(device);

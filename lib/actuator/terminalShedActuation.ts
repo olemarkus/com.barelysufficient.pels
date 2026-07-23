@@ -128,13 +128,13 @@ const applySetTemperatureShed = async (
   // setpoint. A missing observed target means no trusted evidence — skip.
   if (typeof observed.targetValue !== 'number') return false;
   if (observed.targetValue === command.targetValue) return false;
-  await actuator.apply({
+  const outcome = await actuator.apply({
     kind: 'target',
     deviceId,
     value: command.targetValue,
     contextInfo: 'smart-task-terminal-release',
   });
-  return true;
+  return outcome.requested;
 };
 
 const applySetStepShed = async (
@@ -188,12 +188,12 @@ const applyBinaryOffShed = async (
   // Trusted-evidence gate: only fire when the device is observed `on`. Treat
   // `off` as already-shed and a missing observation as "wait for real evidence".
   if (observed.binaryState !== 'on') return false;
-  await actuator.apply({
+  const outcome = await actuator.apply({
     kind: 'binary',
     deviceId,
     control: command.capabilityId,
     desired: false,
     flowBacked: command.flowBacked,
   });
-  return true;
+  return outcome.requested;
 };

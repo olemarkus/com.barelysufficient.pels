@@ -12,6 +12,7 @@ import {
   SMART_TASK_LIST_STATUS_CHIP_VARIANT,
 } from '../../shared-domain/src/deadlineLabels.ts';
 import { toResolvedActivePlans } from '../../shared-domain/src/deferredActivePlanResolvedView.ts';
+import { SMART_TASK_SUB_HOME_UNAVAILABLE } from '../../shared-domain/src/objectiveWriteStrings.ts';
 
 const atLocalHour = (base: Date, hourOffset: number): Date => {
   const date = new Date(base);
@@ -402,6 +403,7 @@ describe('deadline plan page payload', () => {
 
     expect(renderInput?.status).toBe('pending');
     if (renderInput?.status !== 'pending') return;
+    expect(renderInput.pending.actionMode).toBe('edit_and_clear');
     expect(renderInput.pending.kind).toBe('temperature');
     expect(renderInput.pending.hero.headline).toContain('Waiting');
     expect(renderInput.pending.hero.subline).toContain('Connected 300');
@@ -5689,6 +5691,73 @@ describe('shared-domain pending-hero copy', () => {
 // shared-domain resolver and that the view-facing payload carries the new
 // fields.
 describe('pending hero producer wiring', () => {
+  it('lets a separate-meter diagnostic override a committed cached revision', () => {
+    const now = new Date(2026, 0, 1, 13, 0, 0, 0);
+    const deadline = atLocalHour(now, 6);
+    const devices: (DecoratedDeviceSnapshot & TemperatureObservedProbe & StateOfChargeObservedProbe)[] = [{
+      id: 'heater',
+      name: 'Connected 300',
+      binaryControl: { on: false },
+      currentTemperature: 18,
+      planningPowerKw: 2,
+      targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5 }],
+    }];
+    const prices: SettingsUiPricesPayload = {
+      combinedPrices: {
+        prices: Array.from({ length: 6 }, (_, offset) => ({
+          startsAt: atLocalHour(now, offset).toISOString(),
+          total: 100 + offset,
+        })),
+      },
+      electricityPrices: null,
+      priceArea: null,
+      gridTariffData: null,
+      flowToday: null,
+      flowTomorrow: null,
+      homeyCurrency: null,
+      homeyToday: null,
+      homeyTomorrow: null,
+    };
+    const relocatedPlan: DeferredObjectiveActivePlanV1 = {
+      ...buildHeaterActivePlan({
+        now,
+        deadline,
+        plannedHourOffsets: [1, 2],
+        plannedKWhPerHour: 2,
+      }),
+      diagnosticReasonCode: 'objective_device_in_sub_home',
+    };
+    const renderInput = testExports.resolveRenderInput({
+      bootstrap: buildBootstrap({
+        capacity_limit_kw: 8,
+        deferred_objectives: {
+          version: 1,
+          objectivesByDeviceId: {
+            heater: {
+              enabled: true,
+              kind: 'temperature',
+              enforcement: 'soft',
+              targetTemperatureC: 22,
+              deadlineAtMs: deadline.getTime(),
+            },
+          },
+        },
+      }, relocatedPlan),
+      deviceId: 'heater',
+      devices,
+      prices,
+      nowMs: now.getTime(),
+    });
+
+    expect(renderInput.status).toBe('pending');
+    if (renderInput.status !== 'pending') return;
+    expect(renderInput.pending.actionMode).toBe('clear_only');
+    expect(renderInput.pending.hero.chips.map((chip) => chip.text))
+      .toEqual(['Temperature', 'Unavailable']);
+    expect(renderInput.pending.hero.headline).toBe('Smart task unavailable');
+    expect(renderInput.pending.hero.metaLine).toBe(SMART_TASK_SUB_HOME_UNAVAILABLE);
+  });
+
   it('threads deviceName + deadlineTime into the pending hero so headlineReason resolves', () => {
     const now = new Date(2026, 0, 1, 13, 0, 0, 0);
     const deadline = atLocalHour(now, 6);

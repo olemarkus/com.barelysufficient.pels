@@ -4,7 +4,7 @@ Design-of-record for the R5 slice of the multi-home train — the first
 behavior-affecting membership consumer. Documents what ships in
 `feat(plan): main plan input becomes the membership complement`, not the
 per-home bundles that follow. For the full v1 model (home identity, suffix
-scheme, per-home bundles, release feature flag) see
+scheme, per-home bundles, upgrade activation containment) see
 [multi-home-model](multi-home-model.md).
 
 ## Rule of record
@@ -22,13 +22,15 @@ scheme, per-home bundles, release feature flag) see
 - Identity guard: with no sub-homes (or the service unwired), the filter
   returns the same array reference — single-home behavior is bit-identical.
 
-## Fail-safe intermediate state
+## Historical fail-safe intermediate state (closed at R7b)
 
-Until the per-home bundles land, a sub-home member is simply UNCONTROLLED —
-never double-controlled. Nothing plans it, sheds it, or counts it as managed
-load; its draw lands in main's background usage.
+Before the per-home bundles landed, a sub-home member was simply UNCONTROLLED
+— never double-controlled. Nothing planned it, shed it, or counted it as
+managed load; its draw landed in main's background usage. R7b closed this
+intermediate state by giving each configured meter area its own capacity
+bundle.
 
-## Intermediate-state accounting (single whole-home meter)
+## Combined-meter fallback accounting
 
 With one whole-home meter, main's capacity/daily budgets are enforced against
 a total that INCLUDES sub-home draw main cannot control. The failure direction
@@ -46,7 +48,7 @@ queues re-filters independently — a membership recompute landing between those
 two reads can skew ONE interval's controlled/background attribution, and the
 next sample self-heals it.
 
-The phase-0 remedy for a genuinely two-meter home is the explicit meter picker:
+The remedy for a genuinely two-meter home is the explicit meter picker:
 `homey_energy_meter_device_id` points main's `homey_energy` sampling at main's
 own meter device (absent = Homey's marked whole-home cumulative item). Once a
 sub-home exists, selecting main's own meter is REQUIRED for correct main-side
@@ -56,7 +58,11 @@ accounting; the whole-home default keeps the conservative behavior above.
 
 - The zone tree rides a detached fetch; before ANY tree is seen, zone-rule
   devices resolve to main (`source: 'fallback'`) — the acceptable boot state.
-  The tree-commit trigger recomputes membership as soon as the fetch lands.
+  With active sub-homes that resolution is diagnostic/provisional, not write
+  authority: the producer-owned Main fence blocks both plan-executor and
+  terminal smart-task actuation, while each sub-home bundle stays gated too.
+  The tree-commit trigger recomputes membership and opens the correctly owned
+  write seams as soon as the fetch lands.
 - A fulfilled snapshot whose device entry transiently omits its zone does NOT
   flap the device to main for one cycle: `HomeMembershipService` retains the
   last-known zoneId per device (pruned when the device genuinely leaves the

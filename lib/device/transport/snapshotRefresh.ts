@@ -16,9 +16,10 @@
 import type {
   TargetDeviceSnapshot,
 } from '../../../packages/contracts/src/types';
+import type { MainMeterSelection } from '../../../packages/contracts/src/mainMeterSelection';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../../utils/types';
-import type { TransportContext } from './transportContext';
+import type { SnapshotRefreshOptions, TransportContext } from './transportContext';
 import { getDeviceId } from './managerHelpers';
 import {
   SNAPSHOT_ABANDON_GRACE_MS,
@@ -336,19 +337,29 @@ export async function fetchDevicesForDebug(ctx: TransportContext): Promise<Homey
     return (await ctx.fetchDevicesForSnapshot()).devices;
 }
 
-export async function fetchLivePowerReport(ctx: TransportContext): Promise<LivePowerReport> {
+export async function fetchLivePowerReport(
+    ctx: TransportContext,
+    mainMeterSelection?: MainMeterSelection,
+): Promise<LivePowerReport> {
     // Resolved here (the producer seam) so both callers — the 10s homey_energy
     // poll and the snapshot-refresh implicit sample — honour the selection.
     // The additional (sub-home) meter ids are read fresh per call for the same
     // reason; only the POLL caller dispatches the per-meter readings onward
     // (`DeviceTransport.pollHomePowerW`), so sub-home sampling stays on the
     // predictable 10s poll cadence.
-    return fetchLivePowerReportFromSdk({
+    const selection: MainMeterSelection = mainMeterSelection
+        ?? ctx.providers.getHomeyEnergyMeterSelection?.()
+        ?? { state: 'resolved', meterDeviceId: null };
+    const report = await fetchLivePowerReportFromSdk({
         logger: ctx.logger,
         debugStructured: ctx.debugStructured,
-        meterDeviceId: ctx.providers.getHomeyEnergyMeterDeviceId?.() ?? null,
+        // The SDK adapter still needs a concrete extraction choice. On
+        // unavailable authority we may fetch Automatic for the per-device and
+        // additional-meter lanes, but discard its Main value below.
+        meterDeviceId: selection.state === 'resolved' ? selection.meterDeviceId : null,
         additionalMeterDeviceIds: ctx.providers.getAdditionalMeterDeviceIds?.() ?? [],
     });
+    return selection.state === 'resolved' ? report : { ...report, homePowerW: null };
 }
 
 /**
@@ -554,12 +565,13 @@ async function refreshZoneTreeCache(ctx: TransportContext): Promise<void> {
 async function resolveLivePowerForRefresh(
     ctx: TransportContext,
     includeLivePower: boolean,
+    mainMeterSelection?: MainMeterSelection,
 ): Promise<{
     livePowerReport: LivePowerReport;
     homePowerSample: { powerW: number; generationW?: number } | null;
 }> {
     const livePowerReport = includeLivePower
-        ? await fetchLivePowerReport(ctx)
+        ? await fetchLivePowerReport(ctx, mainMeterSelection)
         : buildEmptyLivePowerReport();
     const homePowerSample = includeLivePower ? updateHomePowerFromReport(ctx, livePowerReport) : null;
     return { livePowerReport, homePowerSample };
@@ -567,7 +579,7 @@ async function resolveLivePowerForRefresh(
 
 export async function refreshSnapshot(
     ctx: TransportContext,
-    options: { includeLivePower?: boolean; targetedRefresh?: boolean } = {},
+    options: SnapshotRefreshOptions = {},
 ): Promise<{ powerW: number; generationW?: number } | null> {
     const stopSpan = startRuntimeSpan('device_snapshot_refresh');
     const start = Date.now();
@@ -580,6 +592,7 @@ export async function refreshSnapshot(
         const { livePowerReport, homePowerSample } = await resolveLivePowerForRefresh(
             ctx,
             options.includeLivePower !== false,
+            options.mainMeterSelection,
         );
         const effectiveList = observeBatteryStateFromList(
             ctx,

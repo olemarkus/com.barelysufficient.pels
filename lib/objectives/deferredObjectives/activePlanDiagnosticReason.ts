@@ -13,6 +13,7 @@ export const resolveDiagnosticReasonCode = (
 ): DeferredObjectiveActivePlanDiagnosticReason | undefined => {
   if (diag.reasonCode === 'objective_invalid_session') return 'objective_invalid_session';
   if (diag.reasonCode === 'objective_charger_not_resumable') return 'objective_charger_not_resumable';
+  if (diag.reasonCode === 'objective_device_in_sub_home') return 'objective_device_in_sub_home';
   return undefined;
 };
 

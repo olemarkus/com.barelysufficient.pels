@@ -72,7 +72,15 @@ type HomesEditorState = {
 
 let latestPayload: SettingsUiHomesPayload | null = null;
 let loadFailed = false;
-let loading = false;
+// Every activation that overlaps the same homes read awaits this promise before
+// it can release the stale-payload mutation lock.
+let homesFetchInFlight: Promise<void> | null = null;
+// Only the newest panel activation may publish advisory inputs or release the
+// mutation lock after its full refresh settles.
+let homesActivationGeneration = 0;
+// Every freshness read (activation or post-mutation reconciliation) owns one
+// lock generation. Only the newest owner may release mutations on settlement.
+let homesMutationLockGeneration = 0;
 // Mutation lock, distinct from `configDegraded`: true from panel (re)activation
 // until that activation's fresh `ui_homes` read resolves. A cached `latestPayload`
 // renders as ready IMMEDIATELY on re-entry (before the refetch lands), so without
@@ -146,6 +154,7 @@ const buildEditorView = (state: HomesEditorState): HomesEditorView => {
     existing: currentHomes(),
     zones,
     meterZoneId: resolveMeterZoneId(state.meterDeviceId),
+    mainMeterDeviceId,
   });
   const visibleErrors = validation.errors.filter(
     (error) => state.submitAttempted || LIVE_ERROR_KINDS.has(error.kind),
@@ -268,17 +277,37 @@ const renderSection = (): void => {
   });
 };
 
-const fetchHomes = async (): Promise<void> => {
-  loading = true;
-  try {
-    latestPayload = await callApi<SettingsUiHomesPayload>('GET', SETTINGS_UI_HOMES_PATH);
-    loadFailed = false;
-  } catch (error) {
-    loadFailed = true;
-    await logSettingsError('Failed to load meter areas', error, 'homesSettings');
-  } finally {
-    loading = false;
+const beginHomesMutationLock = (): number => {
+  homesMutationLockGeneration += 1;
+  mutationsLocked = true;
+  renderSection();
+  return homesMutationLockGeneration;
+};
+
+const fetchHomes = async (ownedLockGeneration?: number): Promise<void> => {
+  const lockGeneration = ownedLockGeneration ?? beginHomesMutationLock();
+  if (homesFetchInFlight !== null) {
+    await homesFetchInFlight;
+  } else {
+    const request = (async (): Promise<void> => {
+      try {
+        latestPayload = await callApi<SettingsUiHomesPayload>('GET', SETTINGS_UI_HOMES_PATH);
+        loadFailed = false;
+      } catch (error) {
+        loadFailed = true;
+        await logSettingsError('Failed to load meter areas', error, 'homesSettings');
+      }
+      renderSection();
+    })();
+    homesFetchInFlight = request;
+    try {
+      await request;
+    } finally {
+      if (homesFetchInFlight === request) homesFetchInFlight = null;
+    }
   }
+  if (lockGeneration !== homesMutationLockGeneration) return;
+  mutationsLocked = loadFailed;
   renderSection();
 };
 
@@ -456,6 +485,7 @@ const handleSave = async (): Promise<void> => {
     existing: currentHomes(),
     zones: latestPayload.zoneTree ?? {},
     meterZoneId: resolveMeterZoneId(state.meterDeviceId),
+    mainMeterDeviceId,
   });
   if (validation.errors.length > 0) {
     state.submitAttempted = true;
@@ -513,29 +543,53 @@ const handleDeleteConfirm = async (homeId: string): Promise<void> => {
 // Re-read (cache-bypassing) on every activation so configuring the
 // whole-home meter (or switching power source) under Limits & safety retires
 // the nudge on return.
-const refreshMainMeterNoticeInputs = async (): Promise<void> => {
-  try {
-    powerSource = asNonEmptyString(await getSettingFresh(POWER_SOURCE));
-    mainMeterDeviceId = asNonEmptyString(await getSettingFresh(HOMEY_ENERGY_METER_DEVICE_ID));
-    powerSourceResolved = true;
-  } catch (error) {
-    // Notice inputs are a nudge, not a gate: unknown reads to null (no notice).
-    powerSource = null;
-    mainMeterDeviceId = null;
-    powerSourceResolved = false;
-    await logSettingsError('Failed to read main-meter notice settings', error, 'homesSettings');
+const refreshMainMeterNoticeInputs = async (activationGeneration: number): Promise<void> => {
+  const [powerSourceRead, mainMeterRead] = await Promise.allSettled([
+    getSettingFresh(POWER_SOURCE),
+    getSettingFresh(HOMEY_ENERGY_METER_DEVICE_ID),
+  ]);
+  let nextPowerSource: string | null = null;
+  let nextPowerSourceResolved = false;
+  let nextMainMeterDeviceId: string | null = null;
+  if (powerSourceRead.status === 'fulfilled') {
+    nextPowerSource = asNonEmptyString(powerSourceRead.value);
+    nextPowerSourceResolved = true;
+  } else {
+    // The Flow-source warning depends only on this read. An unrelated whole-
+    // home-meter failure must not suppress it.
+    await logSettingsError(
+      'Failed to read power-source notice setting',
+      powerSourceRead.reason,
+      'homesSettings',
+    );
   }
+  if (mainMeterRead.status === 'fulfilled') {
+    nextMainMeterDeviceId = asNonEmptyString(mainMeterRead.value);
+  } else {
+    // Main-meter notice input is advisory: unknown resolves to no prompt while
+    // preserving any independently resolved Flow-source warning.
+    await logSettingsError(
+      'Failed to read whole-home-meter notice setting',
+      mainMeterRead.reason,
+      'homesSettings',
+    );
+  }
+  if (activationGeneration !== homesActivationGeneration) return;
+  powerSource = nextPowerSource;
+  powerSourceResolved = nextPowerSourceResolved;
+  mainMeterDeviceId = nextMainMeterDeviceId;
 };
 
 export const refreshHomesOnHomesPanel = async (): Promise<void> => {
+  const activationGeneration = homesActivationGeneration + 1;
+  homesActivationGeneration = activationGeneration;
   // Lock mutations until this activation's fresh `ui_homes` read lands, so a
   // cached (possibly stale) payload rendering as ready cannot be mutated over.
-  mutationsLocked = true;
-  renderSection();
+  const lockGeneration = beginHomesMutationLock();
   void refreshMeterDevices();
   void refreshDeviceZones();
-  await refreshMainMeterNoticeInputs();
-  if (!loading) await fetchHomes();
-  mutationsLocked = false;
-  renderSection();
+  await refreshMainMeterNoticeInputs(activationGeneration);
+  if (activationGeneration !== homesActivationGeneration) return;
+  await fetchHomes(lockGeneration);
+  if (activationGeneration !== homesActivationGeneration) return;
 };

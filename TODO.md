@@ -375,6 +375,34 @@ program) remains deferred.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **Extract sub-home source recovery from `HomeRuntimeRegistry`.** The multi-meter GA work grew
+      `setup/homeRuntime/homeRuntimeRegistry.ts` into a roughly 600-line coordinator that now owns
+      ordinary bundle reconciliation, source-event observation, authorization epochs, freshness
+      resets, bundle replacement, settings routing, and retry scheduling. Extract the
+      source-generation/recovery state machine behind focused observe/authorize/recover operations,
+      leaving bundle-map reconciliation and routing in the registry. Behavior is covered and no
+      current bug is proven; this restores the one-purpose setup-layer boundary before the next
+      source lifecycle change. Source: adversarial simplification review of PR #1872, 2026-07-23.
+
+- [ ] **Make the strict sub-home tracker validator compile-time exhaustive.**
+      `isPlausiblePowerTrackerState` validates every current `PowerTrackerState` field and nested
+      objective-profile value, but its independent key arrays do not make TypeScript reject a future
+      tracker field that is omitted from validation. Replace them with an exhaustive validator table
+      using `satisfies Record<keyof PowerTrackerState, ...>` (while preserving the main tracker's
+      compatibility-read policy). Source: tracker-contract review of PR #1872, 2026-07-23.
+
+- [ ] **Homes UI: explain cached rows that stay locked after a refresh failure.**
+      A failed `/ui_homes` refresh preserves the last-good rows and correctly disables mutations, but
+      the ready/list view gives no visible reason its Add/Edit/Remove controls remain unavailable.
+      Show a compact stale-refresh warning beside the preserved rows. Source: pels-ux-fit final review
+      of PR #1872, 2026-07-23.
+
+- [ ] **Home Limits: finiteness-gate persisted per-area cap and margin reads.**
+      `loadAreaIntoEditor` accepts any `typeof number`, so a persisted `NaN`/`Infinity` can surface as
+      an empty or invalid control. Require `Number.isFinite` at the settings boundary and fall back to
+      the safe per-area defaults on malformed values. Source: pels-ux-fit final review of PR #1872,
+      2026-07-23.
+
 - [ ] **Limits & safety: converge the Main-home form onto the native `.pels-input` field language (U-track).**
       *Persona:* multi-home owner who switches the per-home Limits switcher between the Main home and a meter
       area. *Hypothesis:* U3 added the per-home editor using native `.pels-input` + unit-in-label ("Hard cap
@@ -403,41 +431,12 @@ program) remains deferred.*
       P0). Fix direction: exclude every home's `meterDeviceId` from MAIN's plan input too (not just its own
       home's), or warn in the homes UI. P2. Source: R7b fix-round-2 regression gauntlet, 2026-07-19.
 
-- [ ] **(PIN-1) Gate only zone-rule members on the committed zone tree, not pinned members.**
-      *Persona:* multi-home owner who PINS a device into a sub-home. *Hypothesis:* a pinned member resolves
-      without any zone tree, yet the bundle blanket-gates ALL execution on `hasSeenZoneTreeCommit()`, so a
-      degraded zones API leaves a pinned device controlled by nobody. The current durable warn
-      (`home_bundle_gated_no_zone_tree_commit`) is the interim signal; the clean fix gates only zone-RULE
-      members (pins actuate immediately) but touches the boot-window e2e invariant, so it is a deliberate
-      follow-up. Keep the warn until then. P3. Source: R7b fix-round-2 regression gauntlet, 2026-07-19.
-
 - [ ] **(surplus-posture) `resolveSurplusPostureForDevice` reads `POWER_SOURCE` on the plan path (caller
       discipline).** *Persona:* maintainer. *Hypothesis:* `toPlanDevice`'s surplus-posture helper reads the
       power-source setting directly rather than receiving a producer-resolved bit; harmless today (sub-homes
       pass `surplusPostureEnabled: false` so the read is short-circuited), but it is a consumer reading a
       settings source on the hot plan path — a layering smell to resolve at the boundary and pass inward. P3.
       Source: R7b fix-round-2 layering read, 2026-07-19.
-
-- [ ] **(flow-mode dry-run) A sub-home can still actuate on a stale sample under `power_source: flow`.**
-      *Persona:* multi-home owner who configured a sub-home, flipped its dry-run off, then switched the
-      whole-home power source to `flow`. *Hypothesis:* fix-round-5 gated the freshness HEARTBEAT on
-      `homey_energy`, but the bundle's actuation posture still keys off the persisted `capacity_dry_run:<id>`
-      alone — so under flow (where sub-home meters stop sampling) a bundle with dry-run false can act on a
-      persisted/stale sample. Reachable only in the flow-mode + sub-home config, which already emits the
-      `sub_homes_configured_under_flow_power_source` warn (unsupported), hence P2 not a blocker. Clean fix:
-      force dry-run (suppress actuation) for a bundle whenever `power_source !== 'homey_energy'`, not just the
-      heartbeat. Source: R7b fix-round-5 bot re-review, 2026-07-20. Update (multi-home GA, 2026-07-22): the GA
-      cut added a user-facing Flow notice in the Multiple meters panel (partial mitigation — warns before a
-      new area is created), and re-flagged by codex; the runtime actuation gate above is still the real fix.
-
-- [ ] **(persist meter-swap reset) The same-home meter-change freshness reset is in-memory only.**
-      *Persona:* multi-home owner who edits a sub-home's meter, then the Homey restarts before a debounce
-      write. *Hypothesis:* fix-round-5 resets the in-memory guard/tracker on an in-place `meterDeviceId`
-      change, but does not flush `power_tracker_state:<id>`, so if no debounce write is pending the persisted
-      blob keeps the OLD meter's `lastTimestamp`; a restart rehydrates it and the bundle can act on the old
-      meter's stale freshness for one cycle. Narrow (edit-then-restart race), safe-ish direction, P2. Clean
-      fix: force-persist the tracker after the meter-swap reset. Source: R7b fix-round-5 bot re-review,
-      2026-07-20.
 
 - [ ] **Sub-home per-poll CPU scaling: decorate once per poll instead of per-bundle.**
       *Persona:* multi-home owner on a busy Homey with several sub-homes. *Hypothesis:* `latestTargetSnapshot`
@@ -459,22 +458,6 @@ program) remains deferred.*
       for a feature the install isn't using. Topic-gate it, or only warn once the store has ever been
       `present` (an initialized marker exists). Source: pels-runtime-reality review of the multi-home GA cut,
       2026-07-22. File: `setup/homeMembership.ts` (`noteSuspectEdge` / `refreshStoreCaches`).
-- [ ] **Relocated-task UI aftermath: surface `objective_device_in_sub_home` on the task list/hero, and
-      gate the edit preview.** *Persona:* multi-home owner whose device (with a live smart task) moved to a
-      sub-home — the task quietly stops governing but the Smart-tasks list/hero never says why.
-      *Hypothesis:* the dedicated diagnostic (R8 sub-home gate) reaches structured logs and admission but no
-      user surface: `resolveDiagnosticReasonCode` returns undefined for it, and a pending (never-revised)
-      record falls through `resolvePendingReason` to `awaiting_horizon_plan` — "Waiting for tomorrow's
-      prices" forever. Map the code into the list-chip / pending-reason path (contracts
-      `DeferredObjectiveActivePlanPendingReason` + `SMART_TASK_WIDGET_WHY_BY_PENDING_REASON`), reusing
-      `SMART_TASK_SUB_HOME_UNAVAILABLE` framing. Same block: the settings-UI edit preview stays read-only
-      ungated (`device_not_planned` precedent), so a relocated device's editor shows a landing estimate
-      whose save then rejects — gate the preview lane (or annotate the estimate) so the editor never
-      promises a schedule the save refuses (runtime-reality + pre-noted R8 follow-ups, 2026-07-19).
-      Files: `lib/objectives/deferredObjectives/activePlanDiagnosticReason.ts`,
-      `lib/objectives/deferredObjectives/activePlanRevisionBuild.ts`,
-      `packages/contracts/src/deferredObjectiveActivePlans.ts`,
-      `packages/shared-domain/src/deadlineLabels.ts`, `setup/settingsUiSmartTaskApi.ts`.
 - [ ] **Hoist `createSelectOption` (and the render-signature guard pattern) out of `advanced.ts` into a
       shared settings-ui primitive module.** *Persona:* maintainer adding the next dynamic device picker.
       *Hypothesis:* three near-copies now exist — `createModeOption` (`modes.ts`), `createSelectOption`
@@ -1319,6 +1302,14 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
 *Entry bar: each item states a **hypothesis**, **why it's needed**, and the **persona**
 (`notes/personas.md`) it serves. Items that can't name all three are maintainability/
 cosmetic chores — do them in passing or drop them; don't park them here.*
+
+- [ ] **Share the bounded exponential-retry delay calculation.** `homeyEnergyPoll.ts`,
+      `flowPowerSampleFreshnessClock.ts`, and `homeRuntimeRegistry.ts` each implement the same
+      1-second-to-60-second capped exponential delay. *Persona:* maintainer tuning transient-failure
+      recovery. *Hypothesis:* the three copies can drift when retry policy changes, producing
+      inconsistent recovery cadence without an intentional product decision. *Why:* one pure helper
+      keeps the timing contract aligned while each consumer retains ownership of its timer lifecycle.
+      Source: adversarial simplification review of PR #1872, 2026-07-23.
 
 - [ ] **Pinned sub-home device stays uncontrolled if the zones API never commits a tree.**
       *Persona:* multi-home owner who PINNED a device into a sub-home on a Homey whose zones API is degraded.

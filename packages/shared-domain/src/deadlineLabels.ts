@@ -40,7 +40,9 @@ export type DeadlinePlanPendingReason =
   | 'charger_not_resumable'
   // Thermal devices have no shipped bootstrap kWh/°C, so a new device sits
   // pending until the energy profile is learned from power readings.
-  | 'missing_capacity';
+  | 'missing_capacity'
+  // The device belongs to a separately-metered home, outside smart-task scope.
+  | 'device_in_sub_home';
 
 // One-line user-facing copy for the cold-start `missing_capacity` pending
 // reason. Thermal smart tasks have no shipped bootstrap kWh/°C, so a new
@@ -61,6 +63,7 @@ export type DeadlineLiveState =
   | 'active'
   | 'building_plan'
   | 'queued'
+  | 'unavailable'
   | 'paused_unplugged'
   | 'paused_not_resumable'
   | 'ok';
@@ -69,6 +72,7 @@ export type DeadlineLiveState =
 export type SmartTaskListStatusId =
   | 'building_plan'   // pending, no allocation yet
   | 'queued'          // plan ready, first hour in the future
+  | 'unavailable'     // device moved to a separately-metered home
   | 'paused_unplugged' // EV: car unplugged / session ended
   | 'paused_not_resumable' // EV: connected but charging can't be resumed (plugged_in)
   | 'on_track'
@@ -87,6 +91,7 @@ export type SmartTaskListStatusId =
 export const SMART_TASK_LIST_STATUS_LABELS: Record<SmartTaskListStatusId, string> = {
   building_plan: 'Building plan…',
   queued: 'On track',
+  unavailable: 'Unavailable',
   paused_unplugged: 'Paused — unplugged',
   paused_not_resumable: 'Paused — can’t resume',
   on_track: 'On track',
@@ -122,6 +127,7 @@ export const SMART_TASK_WIDGET_STATUS_LABELS: Record<SmartTaskListStatusId, stri
 const SMART_TASK_WIDGET_WHY_BY_STATUS: Record<SmartTaskListStatusId, string | null> = {
   building_plan: null, // resolved by pendingReason
   queued: null, // composed from firstPlannedTimeLabel when present
+  unavailable: SMART_TASK_SUB_HOME_UNAVAILABLE,
   paused_unplugged: 'EV is unplugged — plug in to resume.',
   paused_not_resumable: 'Car charging won’t resume — check the charger.',
   on_track: null, // affirmative line resolved from firstPlannedTimeLabel
@@ -151,6 +157,7 @@ Partial<Record<DeferredObjectiveActivePlanPendingReason, string>> = {
   invalid_session: 'EV is unplugged — plug in to start.',
   missing_capacity: 'Learning energy use from this device.',
   price_feature_disabled: 'Price-aware planning is off.',
+  device_in_sub_home: SMART_TASK_SUB_HOME_UNAVAILABLE,
 };
 
 const WHY_CANNOT_MEET_BUDGET = 'Today’s daily budget runs out before the deadline.';
@@ -202,6 +209,13 @@ const isBudgetDriven = (input: SmartTaskWidgetDetailInput): boolean => {
 export const resolveSmartTaskWidgetDetailCopy = (
   input: SmartTaskWidgetDetailInput,
 ): SmartTaskWidgetDetailCopy => {
+  if (input.pendingReason === 'device_in_sub_home') {
+    return {
+      whyLabel: SMART_TASK_WIDGET_WHY_BY_PENDING_REASON.device_in_sub_home
+        ?? SMART_TASK_SUB_HOME_UNAVAILABLE,
+      recourseHint: null,
+    };
+  }
   if (input.statusId === 'cannot_meet') {
     return isBudgetDriven(input)
       ? { whyLabel: WHY_CANNOT_MEET_BUDGET, recourseHint: RECOURSE_CANNOT_MEET_BUDGET }
@@ -609,6 +623,7 @@ export const SMART_TASK_LIST_STATUS_CHIP_VARIANT: Record<SmartTaskListStatusId, 
   // Same label AND tone as `on_track` — a queued plan that is allocated and
   // healthy is the same user-facing state; only the internal id differs.
   queued: 'ok',
+  unavailable: 'warn',
   paused_unplugged: resolvePausedUnpluggedChipTone(),
   paused_not_resumable: resolvePausedUnpluggedChipTone(),
   on_track: 'ok',
@@ -647,6 +662,7 @@ export type SmartTaskListReadyByTone = 'neutral' | 'warn' | 'alert';
 const SMART_TASK_LIST_READY_BY_TONE: Record<SmartTaskListStatusId, SmartTaskListReadyByTone> = {
   building_plan: 'neutral',
   queued: 'neutral',
+  unavailable: 'warn',
   paused_unplugged: 'warn',
   paused_not_resumable: 'warn',
   on_track: 'neutral',
@@ -677,6 +693,7 @@ export const resolveSmartTaskListReadyByTone = (
 const SMART_TASK_LIST_READY_BY_STATUS_WORD: Record<SmartTaskListStatusId, string | null> = {
   building_plan: null,
   queued: null,
+  unavailable: SMART_TASK_LIST_STATUS_LABELS.unavailable,
   // The inline word is joined to the timestamp with an em-dash separator
   // ("Ready by … — <word>"). For paused we use the compressed widget label
   // ('Unplugged') rather than the full chip label ('Paused — unplugged'): the
@@ -737,7 +754,11 @@ export const formatSmartTaskListConfidenceChipLabel = (params: {
   statusId: SmartTaskListStatusId;
   learning: boolean;
 }): string | null => {
-  if (params.statusId === 'cannot_meet' || params.statusId === 'on_track') return null;
+  if (
+    params.statusId === 'cannot_meet'
+      || params.statusId === 'on_track'
+      || params.statusId === 'unavailable'
+  ) return null;
   if (!params.learning) return null;
   return formatConfidenceChipLabel(params.confidence);
 };
@@ -903,6 +924,14 @@ export const resolveSmartTaskWidgetEtaVerb = (isFailing: boolean): string => (
   isFailing ? SMART_TASK_WIDGET_DUE_VERB : SMART_TASK_LIST_ROW_LABELS.readyBy
 );
 
+// List-card deadline verb. An unavailable task still has a user-set deadline,
+// but its cached plan no longer governs after the device moves to a separate
+// meter. `Due` states that deadline without promising PELS will make it ready.
+// All other list statuses retain the established `Ready by` wording.
+export const resolveSmartTaskListDeadlineVerb = (
+  status: SmartTaskListStatusId,
+): string => resolveSmartTaskWidgetEtaVerb(status === 'unavailable');
+
 // Kind-aware target action verb ("Heat to 65 °C" / "Charge to 80 %"). Kept
 // beside the other kind-aware smart-task vocabulary so the heat/charge split
 // can't drift; the "temperature never says charge" rule
@@ -1053,6 +1082,9 @@ export const resolveSmartTaskListStatus = (params: {
 }): SmartTaskListStatusId => {
   const { pending, pendingReason, diagnosticReasonCode, planStatus, firstActionAtMs, nowMs } = params;
 
+  // Home-scope truth outranks a cached revision: once the device belongs to a
+  // separate meter, that committed schedule no longer governs anything.
+  if (diagnosticReasonCode === 'objective_device_in_sub_home') return 'unavailable';
   // Unplugged-mid-plan: the recorder refreshes `diagnosticReasonCode` even on
   // non-pending plans so this branch fires regardless of whether `latest` is
   // still cached. Without this, the list chip would say "On track" while the
@@ -1064,6 +1096,7 @@ export const resolveSmartTaskListStatus = (params: {
   if (diagnosticReasonCode === 'objective_charger_not_resumable') return 'paused_not_resumable';
 
   if (pending || planStatus === undefined) {
+    if (pendingReason === 'device_in_sub_home') return 'unavailable';
     if (pendingReason === 'invalid_session') return 'paused_unplugged';
     return 'building_plan';
   }
@@ -1551,6 +1584,13 @@ const overviewDeviceRecourse = (deviceId: string): DeadlineCannotMeetRecourse =>
   { ...OVERVIEW_DEVICE_RECOURSE_BASE, deviceId }
 );
 
+const separateMeterUnavailableResolver: DeadlinePendingCopyResolver = () => ({
+  headline: SMART_TASK_BANNER_UNAVAILABLE_TITLE,
+  body: SMART_TASK_SUB_HOME_UNAVAILABLE,
+  headlineReason: null,
+  recourse: null,
+});
+
 // `awaiting_horizon_plan` is the most common pending reason — the planner
 // runs every ~5 min and needs prices through the deadline. `headlineReason`
 // repeats the salient horizon time at headline height so the user knows what
@@ -1631,6 +1671,7 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
       active: 'Heating',
       building_plan: 'Building plan…',
       queued: 'On track',
+      unavailable: SMART_TASK_LIST_STATUS_LABELS.unavailable,
       // Thermal devices can't be unplugged; the variant is unreachable here
       // and falls back to the generic on-track copy if the resolver ever
       // hands a stale value through.
@@ -1666,6 +1707,7 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
       // Thermal devices aren't chargers; unreachable here, kept as a safety net
       // so a future diagnostic can't leak EV-specific copy onto a heater.
       charger_not_resumable: HEATER_DEVICE_DATA_MISSING,
+      device_in_sub_home: separateMeterUnavailableResolver,
       // Cold-start `missing_capacity` collapses to a single user-facing line —
       // headline + metaLine combined parse as `PENDING_REASON_MISSING_CAPACITY_COPY`
       // ("Learning energy use — needs power readings from this device."). Earlier
@@ -1731,6 +1773,7 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
       active: 'Charging',
       building_plan: 'Building plan…',
       queued: 'On track',
+      unavailable: SMART_TASK_LIST_STATUS_LABELS.unavailable,
       paused_unplugged: 'Paused — unplugged',
       paused_not_resumable: SMART_TASK_LIST_STATUS_LABELS.paused_not_resumable,
       ok: 'On track',
@@ -1779,6 +1822,7 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
         recourse: null,
       }),
       missing_capacity: EV_DEVICE_DATA_MISSING,
+      device_in_sub_home: separateMeterUnavailableResolver,
     },
     unavailableByReason: {
       no_current_reading: {

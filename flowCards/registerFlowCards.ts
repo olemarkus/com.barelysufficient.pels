@@ -107,12 +107,16 @@ export type FlowCardDeps = {
   // Production always wires these via appInit.
   upsertDeferredObjectiveForDevice: UpsertDeferredObjectiveForDevice;
   clearDeferredObjectiveForDevice: ClearDeferredObjectiveForDevice;
-  // Multi-home v1 scope predicate for the set-deadline card autocompletes:
-  // `false` = the device is in a separate-meter sub-home and must not be
-  // offered for a new smart task (the write op itself also gates, so this is
-  // list UX, not the enforcement point). Optional — absent wiring (tests)
-  // offers every device, matching the no-sub-homes single-home behavior.
+  // Durable multi-home membership used by the live `deadline_status_is`
+  // guard. A transient Main-authority fence must not erase the status of an
+  // existing task; only confirmed separate-meter membership returns false.
   isDeviceInMainHome?: (deviceId: string) => boolean;
+  // Current Main-home smart-task authority used by the task-creating card
+  // autocompletes. This is stricter than durable membership: a transient
+  // unresolved authority read returns false so a new task is not offered
+  // while its enforcing write would be refused. Optional bare test wiring
+  // falls back to `isDeviceInMainHome`.
+  hasMainHomeSmartTaskAuthority?: (deviceId: string) => boolean;
   getDeferredObjectiveActivePlans?: () => DeferredObjectiveActivePlansV1 | null;
   getDeferredObjectiveStatusBus?: () => DeferredObjectiveStatusBus | undefined;
   getDeferredObjectivePlanRevisionBus?: () => DeferredObjectivePlanRevisionBus | undefined;

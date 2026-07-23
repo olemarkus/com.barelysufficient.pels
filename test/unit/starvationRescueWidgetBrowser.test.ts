@@ -72,10 +72,10 @@ const click = (selector: string): void => {
 const READY_PAYLOAD: StarvationRescueDevicesPayload = {
   state: 'ready',
   devices: [
-    { deviceId: 'budget-1', deviceName: 'Hot water', cause: 'budget', accumulatedMs: 42 * 60_000, intendedNormalTargetC: 65, hasSmartTask: false },
-    { deviceId: 'cap-1', deviceName: 'Living room', cause: 'capacity', accumulatedMs: 11 * 60_000, intendedNormalTargetC: 21, hasSmartTask: false },
+    { deviceId: 'budget-1', deviceName: 'Hot water', cause: 'budget', accumulatedMs: 42 * 60_000, intendedNormalTargetC: 65, smartTaskHomeScope: 'main', hasSmartTask: false },
+    { deviceId: 'cap-1', deviceName: 'Living room', cause: 'capacity', accumulatedMs: 11 * 60_000, intendedNormalTargetC: 21, smartTaskHomeScope: 'main', hasSmartTask: false },
     // Budget-held, but it already has its own smart task → shown, no rescue button.
-    { deviceId: 'task-1', deviceName: 'Cabin water', cause: 'budget', accumulatedMs: 30 * 60_000, intendedNormalTargetC: 60, hasSmartTask: true },
+    { deviceId: 'task-1', deviceName: 'Cabin water', cause: 'budget', accumulatedMs: 30 * 60_000, intendedNormalTargetC: 60, smartTaskHomeScope: 'main', hasSmartTask: true },
   ],
 };
 
@@ -216,7 +216,7 @@ describe('starvation rescue widget browser', () => {
           return {
             state: 'ready',
             devices: [
-              { deviceId: 'budget-no-target', deviceName: 'Hot water', cause: 'budget', accumulatedMs: 20 * 60_000, intendedNormalTargetC: null, hasSmartTask: false },
+              { deviceId: 'budget-no-target', deviceName: 'Hot water', cause: 'budget', accumulatedMs: 20 * 60_000, intendedNormalTargetC: null, smartTaskHomeScope: 'main', hasSmartTask: false },
             ],
           } satisfies StarvationRescueDevicesPayload;
         }
@@ -231,6 +231,36 @@ describe('starvation rescue widget browser', () => {
     expect((row.querySelector('[data-rescue-button]') as HTMLButtonElement).hidden).toBe(true);
     // No cause-specific note either (budget has none) — the row is just informational.
     expect((row.querySelector('[data-device-note]') as HTMLElement).hidden).toBe(true);
+  });
+
+  test('transient Main authority keeps the held-back row visible but disables rescue', async () => {
+    const controller = installWidget(window as WidgetWindow, document);
+    controller!.bootstrap(buildHomey({
+      api: vi.fn(async (_method: string, path: string) => {
+        if (path === '/devices') {
+          return {
+            state: 'ready',
+            devices: [{
+              deviceId: 'budget-unavailable',
+              deviceName: 'Hot water',
+              cause: 'budget',
+              accumulatedMs: 20 * 60_000,
+              intendedNormalTargetC: 65,
+              smartTaskHomeScope: 'unavailable',
+              hasSmartTask: false,
+            }],
+          } satisfies StarvationRescueDevicesPayload;
+        }
+        throw new Error(`unexpected ${path}`);
+      }),
+    }));
+    await flushPromises();
+
+    const row = document.querySelector('[data-device-list] .row') as HTMLElement;
+    expect((row.querySelector('[data-device-name]') as HTMLElement).textContent).toBe('Hot water');
+    expect((row.querySelector('[data-rescue-button]') as HTMLButtonElement).hidden).toBe(true);
+    expect((row.querySelector('[data-device-note]') as HTMLElement).textContent)
+      .toBe(STARVATION_RESCUE_WIDGET_COPY.temporaryUnavailableNote);
   });
 
   test('tapping a budget rescue previews then confirms to a success flash', async () => {

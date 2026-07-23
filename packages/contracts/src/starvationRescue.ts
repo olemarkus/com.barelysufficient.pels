@@ -5,6 +5,7 @@
 
 import type { SettingsUiPlanStarvationCause } from './settingsUiApi.js';
 import type { DeferredObjectivePlanPreviewEstimate } from './deferredObjectivePlanPreview.js';
+import type { SmartTaskHomeScope } from './smartTaskHomeScope.js';
 
 // One currently-starved device the rescue widget lists. `accumulatedMs` is the
 // counted starvation duration (the widget floors it to whole minutes for
@@ -21,6 +22,10 @@ export type StarvationRescueDevice = {
   cause: SettingsUiPlanStarvationCause;
   accumulatedMs: number;
   intendedNormalTargetC: number | null;
+  // Current semantic authority for the rescue action. A transient unavailable
+  // Main authority keeps the diagnostic row visible while disabling rescue;
+  // durable sub-home rows are omitted by the producer.
+  smartTaskHomeScope: Exclude<SmartTaskHomeScope, 'sub_home'>;
   // Whether the device already has a smart task (deferred objective). Such a
   // device is STILL shown in the held-back list (so the user sees it is
   // struggling), but its rescue button is suppressed — the rescue is a fresh

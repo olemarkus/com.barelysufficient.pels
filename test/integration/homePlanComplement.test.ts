@@ -70,6 +70,8 @@ const makeMembershipService = (
     getZoneTree: () => ZONES,
     getDevices: () => devices,
     getLogger: () => undefined,
+    getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: null }),
+    legacyMultiHomeEnabled: true,
   });
   service.recompute();
   return service;

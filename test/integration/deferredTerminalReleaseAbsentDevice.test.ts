@@ -31,6 +31,12 @@ const buildCtx = () => {
   const ctx = createAppContextMock({
     homey,
     isCapacityControlEnabled: () => false, // cap-off
+    homeMembership: {
+      getHomeIdForDevice: () => 'main',
+      isOwnershipReady: () => true,
+      hasPendingOwnershipGeneration: () => false,
+      isMainHomeActuationFenced: () => false,
+    } as unknown as AppContext['homeMembership'],
     deviceManager: { setCapability: vi.fn(), applyDeviceTargets: vi.fn() } as unknown as AppContext['deviceManager'],
     // Device temporarily absent from the live plan list (startup / snapshot flicker).
     planService: { getPlanDevices: () => [] } as unknown as AppContext['planService'],

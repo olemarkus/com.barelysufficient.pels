@@ -3,7 +3,7 @@
  * persisted config blobs, v1 config validation, and the typed store ports the
  * settings adapter (`setup/homeRegistryAdapter.ts`) implements.
  *
- * DORMANT until the R4 wiring PR: nothing consumes this module at runtime yet.
+ * Consumed at runtime by membership, settings, migration, and per-home wiring.
  *
  * Model (settled):
  * - A sub-home is `{homeId, name, rootZoneId, meterDeviceId}`. The main home is
@@ -53,10 +53,58 @@ export type SubHomeConfig = {
   meterDeviceId: string | null;
 };
 
+/**
+ * Positive acknowledgement that a persisted homes config may drive the GA
+ * multi-home runtime. Pre-GA configs do not carry this field: when the retired
+ * `multi_home_enabled` flag was false/absent they must remain inert across the
+ * upgrade until an owner deliberately saves an area.
+ */
+export const HOME_CONFIG_ACTIVATION_VERSION = 1 as const;
+
 /** The persisted multi-home configuration: sub-homes only (main is implicit). */
 export type HomeConfig = {
+  /** Present after an owner-authored GA upsert or the legacy-true boot migration. */
+  activationVersion?: typeof HOME_CONFIG_ACTIVATION_VERSION;
   subHomes: SubHomeConfig[];
 };
+
+/**
+ * Every configured sub-home meter must have one owner. Routing the same live
+ * meter sample into two capacity bundles would make both controllers act on
+ * the same measured load while managing different device sets.
+ */
+export const hasUniqueSubHomeMeters = (
+  subHomes: readonly SubHomeConfig[],
+): boolean => {
+  const assignedMeterIds = subHomes.flatMap(
+    ({ meterDeviceId }) => (meterDeviceId === null ? [] : [meterDeviceId]),
+  );
+  return new Set(assignedMeterIds).size === assignedMeterIds.length;
+};
+
+/**
+ * Normalize the explicit Main-home meter setting at its settings boundary.
+ * `null` means Automatic; padded/empty/non-string values never become a meter
+ * identity that can silently miss (or spuriously collide with) a live report.
+ */
+export const resolveExplicitMainMeterDeviceId = (raw: unknown): string | null => {
+  const trimmed = typeof raw === 'string' ? raw.trim() : '';
+  return trimmed === '' ? null : trimmed;
+};
+
+/**
+ * Find the sub-home that owns Main's explicitly selected meter, if any. Main's
+ * Automatic/combined fallback (`null`) is intentionally outside this identity
+ * check; only an explicit device id can be compared across the two stores.
+ */
+export const findMainMeterCollision = (
+  mainMeterDeviceId: string | null,
+  subHomes: readonly SubHomeConfig[],
+): SubHomeConfig | null => (
+  mainMeterDeviceId === null
+    ? null
+    : subHomes.find(({ meterDeviceId }) => meterDeviceId === mainMeterDeviceId) ?? null
+);
 
 /**
  * Explicit device→home pins overriding the zone rule. Absent device = follow
@@ -185,9 +233,12 @@ const normalizeSubHome = (raw: unknown): SubHomeConfig | null => {
  * Normalize the untrusted persisted `homes_config` blob: drop malformed
  * sub-home entries (bad shape, empty/`'main'`/`':'`-containing ids, missing
  * rootZoneId), keep the good ones, and de-duplicate homeIds first-wins.
+ * Duplicate meter ownership is not repaired here: the stricter store boundary
+ * rejects that whole blob instead of silently choosing an owner.
  */
 export const normalizeHomesConfig = (raw: unknown): HomeConfig => {
-  const rawList = asRecord(raw)?.subHomes;
+  const record = asRecord(raw);
+  const rawList = record?.subHomes;
   const entries = Array.isArray(rawList) ? rawList : [];
   const subHomes = entries.flatMap((entry) => {
     const subHome = normalizeSubHome(entry);
@@ -196,7 +247,12 @@ export const normalizeHomesConfig = (raw: unknown): HomeConfig => {
   const deduped = subHomes.filter(
     (subHome, index) => subHomes.findIndex((other) => other.homeId === subHome.homeId) === index,
   );
-  return { subHomes: deduped };
+  return {
+    ...(record?.activationVersion === HOME_CONFIG_ACTIVATION_VERSION
+      ? { activationVersion: HOME_CONFIG_ACTIVATION_VERSION }
+      : {}),
+    subHomes: deduped,
+  };
 };
 
 /**
@@ -242,13 +298,18 @@ const isPlausibleSubHomeEntry = (raw: unknown): boolean => {
 export const isPlausibleHomesConfigBlob = (raw: unknown): boolean => {
   const record = asRecord(raw);
   if (!record) return false;
+  if (
+    record.activationVersion !== undefined
+    && record.activationVersion !== HOME_CONFIG_ACTIVATION_VERSION
+  ) return false;
   const { subHomes } = record;
   if (!Array.isArray(subHomes) || !subHomes.every(isPlausibleSubHomeEntry)) return false;
   const homeIds = subHomes.flatMap((entry) => {
     const homeId = asRecord(entry)?.homeId;
     return typeof homeId === 'string' ? [homeId] : [];
   });
-  return new Set(homeIds).size === subHomes.length;
+  return new Set(homeIds).size === subHomes.length
+    && hasUniqueSubHomeMeters(normalizeHomesConfig(raw).subHomes);
 };
 
 /**

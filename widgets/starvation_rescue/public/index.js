@@ -37,6 +37,7 @@
     // user sees it is held back) but with no rescue button — its own task is what
     // brings it to target, so a one-shot rescue would only get in the way.
     smartTaskNote: "Its smart task will bring it back.",
+    temporaryUnavailableNote: "Temporarily unavailable. Try again shortly.",
     // Rescue confirm sheet.
     // Names the consequence honestly per the money-action guardrail: the rescue
     // lets this device go over today's budget so it reaches its normal target.
@@ -124,7 +125,7 @@
     // verb so the action word is shared across surfaces.
     confirmLabel: STARVATION_RESCUE_WIDGET_COPY.rescueConfirmButton
   };
-  var starvationRowIsRescuable = (cause, intendedNormalTargetC, hasSmartTask = false) => starvationRowOffersRescue(cause) && !hasSmartTask && intendedNormalTargetC !== null && Number.isFinite(intendedNormalTargetC);
+  var starvationRowIsRescuable = (cause, intendedNormalTargetC, hasSmartTask = false, smartTaskHomeScope = "main") => starvationRowOffersRescue(cause) && smartTaskHomeScope === "main" && !hasSmartTask && intendedNormalTargetC !== null && Number.isFinite(intendedNormalTargetC);
   var ONE_HOUR_MS = 60 * 60 * 1e3;
   var resolveStarvationRescueRejectCopy = (reason) => {
     if (reason === "deadline_passed") return STARVATION_RESCUE_WIDGET_COPY.deadlinePassed;
@@ -271,6 +272,7 @@
         cause: "budget",
         accumulatedMs: 42 * 60 * 1e3,
         intendedNormalTargetC: 65,
+        smartTaskHomeScope: "main",
         hasSmartTask: false
       },
       {
@@ -279,6 +281,7 @@
         cause: "capacity",
         accumulatedMs: 11 * 60 * 1e3,
         intendedNormalTargetC: 21,
+        smartTaskHomeScope: "main",
         hasSmartTask: false
       },
       {
@@ -287,6 +290,7 @@
         cause: "budget",
         accumulatedMs: 18 * 60 * 1e3,
         intendedNormalTargetC: 24,
+        smartTaskHomeScope: "main",
         hasSmartTask: true
       }
     ]
@@ -297,6 +301,7 @@
   var SMART_TASK_LIST_STATUS_LABELS = {
     building_plan: "Building plan\u2026",
     queued: "On track",
+    unavailable: "Unavailable",
     paused_unplugged: "Paused \u2014 unplugged",
     paused_not_resumable: "Paused \u2014 can\u2019t resume",
     on_track: "On track",
@@ -314,6 +319,7 @@
     // resolved by pendingReason
     queued: null,
     // composed from firstPlannedTimeLabel when present
+    unavailable: SMART_TASK_SUB_HOME_UNAVAILABLE,
     paused_unplugged: "EV is unplugged \u2014 plug in to resume.",
     paused_not_resumable: "Car charging won\u2019t resume \u2014 check the charger.",
     on_track: null,
@@ -468,6 +474,7 @@
     // Same label AND tone as `on_track` — a queued plan that is allocated and
     // healthy is the same user-facing state; only the internal id differs.
     queued: "ok",
+    unavailable: "warn",
     paused_unplugged: resolvePausedUnpluggedChipTone(),
     paused_not_resumable: resolvePausedUnpluggedChipTone(),
     on_track: "ok",
@@ -478,6 +485,7 @@
   var SMART_TASK_LIST_READY_BY_STATUS_WORD = {
     building_plan: null,
     queued: null,
+    unavailable: SMART_TASK_LIST_STATUS_LABELS.unavailable,
     // The inline word is joined to the timestamp with an em-dash separator
     // ("Ready by … — <word>"). For paused we use the compressed widget label
     // ('Unplugged') rather than the full chip label ('Paused — unplugged'): the
@@ -505,6 +513,7 @@
     readyBy: "Ready by"
   };
   var SMART_TASK_WIDGET_TARGET_NOUN = SMART_TASK_LIST_ROW_LABELS.target;
+  var SMART_TASK_BANNER_UNAVAILABLE_TITLE = "Smart task unavailable";
   var REVISION_REASON_TOOLTIP_LINE = {
     flow_card: "Updated after a flow card fired",
     prices_arrived: "Updated as prices became available",
@@ -542,6 +551,12 @@
   };
   var OVERVIEW_DEVICE_RECOURSE_BASE = { label: "Open device in Overview", targetTab: "overview" };
   var overviewDeviceRecourse = (deviceId) => ({ ...OVERVIEW_DEVICE_RECOURSE_BASE, deviceId });
+  var separateMeterUnavailableResolver = () => ({
+    headline: SMART_TASK_BANNER_UNAVAILABLE_TITLE,
+    body: SMART_TASK_SUB_HOME_UNAVAILABLE,
+    headlineReason: null,
+    recourse: null
+  });
   var awaitingHorizonCopy = (kindNoun) => ((ctx) => {
     const isFlow = ctx.priceSource === "external_flow";
     const body = isFlow ? `PELS needs prices through the deadline before it can build a ${kindNoun}. In flow price mode, prices arrive only when a Flow calls the \u201CSet external prices (tomorrow)\u201D action. Check the Flow that publishes prices if this message stays up after tomorrow\u2019s prices should have arrived.` : `PELS will build a ${kindNoun} as soon as prices through the deadline are available.`;
@@ -584,6 +599,7 @@
         active: "Heating",
         building_plan: "Building plan\u2026",
         queued: "On track",
+        unavailable: SMART_TASK_LIST_STATUS_LABELS.unavailable,
         // Thermal devices can't be unplugged; the variant is unreachable here
         // and falls back to the generic on-track copy if the resolver ever
         // hands a stale value through.
@@ -619,6 +635,7 @@
         // Thermal devices aren't chargers; unreachable here, kept as a safety net
         // so a future diagnostic can't leak EV-specific copy onto a heater.
         charger_not_resumable: HEATER_DEVICE_DATA_MISSING,
+        device_in_sub_home: separateMeterUnavailableResolver,
         // Cold-start `missing_capacity` collapses to a single user-facing line —
         // headline + metaLine combined parse as `PENDING_REASON_MISSING_CAPACITY_COPY`
         // ("Learning energy use — needs power readings from this device."). Earlier
@@ -680,6 +697,7 @@
         active: "Charging",
         building_plan: "Building plan\u2026",
         queued: "On track",
+        unavailable: SMART_TASK_LIST_STATUS_LABELS.unavailable,
         paused_unplugged: "Paused \u2014 unplugged",
         paused_not_resumable: SMART_TASK_LIST_STATUS_LABELS.paused_not_resumable,
         ok: "On track"
@@ -725,7 +743,8 @@
           headlineReason: SMART_TASK_WIDGET_WHY_BY_STATUS.paused_not_resumable,
           recourse: null
         }),
-        missing_capacity: EV_DEVICE_DATA_MISSING
+        missing_capacity: EV_DEVICE_DATA_MISSING,
+        device_in_sub_home: separateMeterUnavailableResolver
       },
       unavailableByReason: {
         no_current_reading: {
@@ -915,6 +934,18 @@
   var setVisible = (el, visible) => {
     el.hidden = !visible;
   };
+  var configureRescueButton = (button, device, offersRescue) => {
+    button.hidden = !offersRescue;
+    if (!offersRescue) return;
+    button.dataset.deviceId = device.deviceId;
+    button.textContent = C.rescueButton;
+    button.setAttribute("aria-label", `${C.rescueButton}: ${device.deviceName}`);
+  };
+  var resolveDeviceRowNote = (device, offersRescue) => {
+    if (device.smartTaskHomeScope === "unavailable") return C.temporaryUnavailableNote;
+    if (offersRescue) return null;
+    return resolveStarvationRowNote(device.cause, device.hasSmartTask);
+  };
   var renderDeviceRow = (template, device) => {
     const fragment = template.content.cloneNode(true);
     const li = fragment.querySelector(".row");
@@ -922,7 +953,8 @@
     const offersRescue = starvationRowIsRescuable(
       device.cause,
       device.intendedNormalTargetC,
-      device.hasSmartTask
+      device.hasSmartTask,
+      device.smartTaskHomeScope
     );
     li.dataset.tone = resolveStarvationRowTone(device.accumulatedMs);
     const nameEl = li.querySelector("[data-device-name]");
@@ -937,17 +969,10 @@
       subtextEl.textContent = subtext;
     }
     if (rescueBtn instanceof HTMLButtonElement) {
-      if (offersRescue) {
-        rescueBtn.hidden = false;
-        rescueBtn.dataset.deviceId = device.deviceId;
-        rescueBtn.textContent = C.rescueButton;
-        rescueBtn.setAttribute("aria-label", `${C.rescueButton}: ${device.deviceName}`);
-      } else {
-        rescueBtn.hidden = true;
-      }
+      configureRescueButton(rescueBtn, device, offersRescue);
     }
     if (noteEl instanceof HTMLElement) {
-      const note = offersRescue ? null : resolveStarvationRowNote(device.cause, device.hasSmartTask);
+      const note = resolveDeviceRowNote(device, offersRescue);
       setLine(noteEl, note !== null && !linesMatch(note, subtext) ? note : null);
     }
     return li;

@@ -94,12 +94,16 @@ const buildCard = (params: {
   });
   const learning = resolveSmartTaskLearning(plan.kwhPerUnitProvenance);
   const currentValue = resolveCurrentValue(device, plan.objectiveKind);
+  const unavailable = statusId === 'unavailable';
   return {
     deviceId,
     deviceName: device?.name ?? plan.deviceName ?? deviceId,
     kind: plan.objectiveKind,
     targetValue: plan.targetValue,
-    firstActionAtMs: firstHour,
+    // A committed revision can outlive a meter reassignment. Its cached first
+    // hour no longer governs the device, so unavailable cards expose only the
+    // user-set deadline and never advertise the stale schedule.
+    firstActionAtMs: unavailable ? null : firstHour,
     deadlineAtMs: plan.deadlineAtMs,
     href: buildDeadlineHref(deviceId),
     statusId,

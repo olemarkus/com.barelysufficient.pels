@@ -16,7 +16,6 @@ import type {
   SettingsUiStarvationRescueCreateResponse,
   SettingsUiStarvationRescueDevicesPayload,
   SettingsUiStarvationRescuePreviewResponse,
-  StarvationRescueDevice,
   StarvationRescueRejectReason,
 } from '../packages/contracts/src/starvationRescue';
 import type { WidgetObjectiveWriteResult } from '../packages/contracts/src/widgetHostApi';
@@ -53,10 +52,10 @@ import type {
   SettingsUiHomesSaveResponse,
 } from '../packages/contracts/src/settingsUiHomes';
 import {
-  findNestedSubHomeRoots,
   generateHomeId,
-  HomeStoreWriteRefusedError,
   isValidSubHomeId,
+  resolveExplicitMainMeterDeviceId,
+  type HomeConfig,
   type SubHomeConfig,
 } from '../lib/home/homeConfig';
 import { createHomesStore } from './homeRegistryAdapter';
@@ -75,8 +74,20 @@ import {
   refreshSettingsUiPricesForApp,
   resetSettingsUiPowerStatsForApp,
 } from './settingsUiAppRuntime';
+import {
+  commitHomesConfigWriteWithTrackerFreshnessReset,
+} from './homeRuntime/homeTrackerConfigSafety';
+import {
+  areaRootsAtForestRoot,
+  saveMainMeterSelection,
+  violatesComposedHomeInvariants,
+} from './homeMeterOwnership';
+import {
+  resolveRescuableSettingsDevice,
+  type SettingsUiStarvationRescueScope,
+} from './settingsUiStarvationRescueScope';
 
-type SettingsUiApiApp = Homey.App & {
+type SettingsUiApiApp = Homey.App & SettingsUiStarvationRescueScope & {
   getDailyBudgetUiPayload?: () => DailyBudgetUiPayload | null;
   recomputeDailyBudgetToday?: () => DailyBudgetUiPayload | null;
   previewDailyBudgetModel?: (settings: Partial<DailyBudgetModelSettings>) => DailyBudgetModelPreviewResponse;
@@ -92,7 +103,6 @@ type SettingsUiApiApp = Homey.App & {
   getWeatherAdvisorReadout?: () => Promise<WeatherAdvisorReadoutPayload | null>;
   // Budget-exempt rescue surface — the same app methods the starvation_rescue
   // widget calls. Optional like the rest (the app may be unwired during restart).
-  getStarvedRescueDevices?: () => StarvationRescueDevice[];
   previewStarvationRescuePlan?: (
     deviceId: string,
     candidate: DeferredObjectivePlanPreviewCandidate,
@@ -307,7 +317,8 @@ export const getSettingsUiHomesPayload = ({ homey }: ApiContext): SettingsUiHome
       // Boot window: nothing can vouch for the persisted config, so the
       // payload is the empty single-home shape AND degraded — the UI must not
       // compose a whole-value homes_config write from this view.
-      homes: [], membershipByDeviceId: {}, zoneTree: null, hasSubHomes: false, configDegraded: true,
+      homes: [], membershipByDeviceId: {}, zoneTree: null, hasSubHomes: false, runtimeActive: false,
+      configDegraded: true,
     };
   }
   // Uniform copy discipline: shallow-copy ALL collection members so the
@@ -318,19 +329,19 @@ export const getSettingsUiHomesPayload = ({ homey }: ApiContext): SettingsUiHome
     membershipByDeviceId: { ...diagnostics.membershipByDeviceId },
     zoneTree: diagnostics.zoneTree === null ? null : { ...diagnostics.zoneTree },
     hasSubHomes: diagnostics.hasSubHomes,
+    runtimeActive: diagnostics.runtimeActive,
     configDegraded: isHomesConfigDegraded(diagnostics),
   };
 };
 
-// ── ui_homes_save: the Multiple meters UI's ONLY write seam ────────────────
-// Intent operations (upsert/delete of ONE area), never a client-composed
-// whole list: the runtime re-reads the persisted config through the
-// CLASSIFIED store reader, refuses when it classifies suspect (closing the
-// UI's degraded-check TOCTOU server-side), applies the single op to the
-// fresh list, and persists through the marker-first classified writer (which
-// refuses implausible payloads). The app's single-threaded event loop
-// serializes saves, and an op naming one area means a stale panel can never
-// wipe the others.
+// ── ui_homes_save: the Multiple meters UI's ONLY ownership-write seam ───────
+// Intent operations (upsert/delete ONE area or select Main's explicit meter),
+// never client-composed state: the runtime re-reads the persisted config
+// through the CLASSIFIED store reader, refuses when it classifies suspect,
+// then applies one operation. Area writes use the marker-first classified
+// writer; Main-meter writes validate and persist synchronously in this same
+// server turn. The app's single-threaded event loop therefore serializes both
+// sides of meter ownership, and stale panels cannot wipe or double-own areas.
 
 const asSaveRecord = (value: unknown): Record<string, unknown> | null => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -371,6 +382,12 @@ const parseUpsertArea = (value: unknown): ParsedUpsertArea | null => {
 const parseHomesSaveRequest = (body: unknown): SettingsUiHomesSaveRequest | null => {
   const record = asSaveRecord(body);
   if (!record) return null;
+  if (record.op === 'set_main_meter') {
+    const meterRaw = record.meterDeviceId;
+    if (meterRaw === null) return { op: 'set_main_meter', meterDeviceId: null };
+    const meterDeviceId = resolveExplicitMainMeterDeviceId(meterRaw);
+    return meterDeviceId === null ? null : { op: 'set_main_meter', meterDeviceId };
+  }
   if (record.op === 'delete') {
     const homeId = toSaveNonEmptyString(record.homeId);
     return homeId !== null && isValidSubHomeId(homeId) ? { op: 'delete', homeId } : null;
@@ -395,40 +412,14 @@ const applyHomesUpsert = (
     : [...current, entry];
 };
 
-// A meter area rooted at a zone-forest root would swallow the whole home and
-// empty the Main home (the strict-subpart invariant). Checked only against a
-// KNOWN tree — zone-data absence never blocks a save; a delete never roots.
-const upsertRootsAtForestRoot = (
-  homey: Homey.App['homey'],
-  request: SettingsUiHomesSaveRequest,
-): boolean => {
-  if (request.op !== 'upsert') return false;
-  const zoneTree = getApp(homey)?.homeMembership?.getDiagnostics().zoneTree ?? null;
-  return zoneTree !== null && zoneTree[request.area.rootZoneId]?.parent === null;
-};
+type AreaMutationRequest = Exclude<SettingsUiHomesSaveRequest, { op: 'set_main_meter' }>;
 
-// The COMPOSED upsert must keep sub-home root subtrees disjoint — the v1
-// invariant `findNestedSubHomeRoots` enforces. Without this, two independently
-// stale panels could persist nested or identical root zones, silently re-homing
-// a third area's devices via deepest-root precedence (`lib/home/membership.ts`).
-// The store's plausibility check only guards shape + unique ids, so the overlap
-// gate lives here. Checked only against a KNOWN tree — zone-data absence never
-// blocks a save (parity with `upsertRootsAtForestRoot`); a delete never
-// introduces an overlap, so callers run this for upserts only.
-const upsertNestsSubHomeRoots = (
+const saveAreaMutation = (
   homey: Homey.App['homey'],
-  next: readonly SubHomeConfig[],
-): boolean => {
-  const zoneTree = getApp(homey)?.homeMembership?.getDiagnostics().zoneTree ?? null;
-  return zoneTree !== null && findNestedSubHomeRoots({ subHomes: [...next] }, zoneTree).length > 0;
-};
-
-export const saveSettingsUiHomesConfig = (
-  { homey, body }: ApiContext & { body?: unknown },
+  request: AreaMutationRequest,
 ): SettingsUiHomesSaveResponse => {
-  const request = parseHomesSaveRequest(body);
-  if (request === null) return { ok: false, reason: 'invalid' };
-  if (upsertRootsAtForestRoot(homey, request)) return { ok: false, reason: 'invalid' };
+  const zoneTree = getApp(homey)?.homeMembership?.getDiagnostics().zoneTree ?? null;
+  if (areaRootsAtForestRoot(request, zoneTree)) return { ok: false, reason: 'invalid' };
   // Refuse whenever the ui_homes read would report degraded — an unwired
   // membership service (boot window) OR EITHER persisted store `'suspect'` as
   // of the last recompute — not merely a suspect homes-store read: composing a
@@ -444,23 +435,38 @@ export const saveSettingsUiHomesConfig = (
   // between the last recompute and now). The persisted truth is unknown, and
   // applying an op over a guess could erase areas.
   if (read.state === 'suspect') return { ok: false, reason: 'degraded' };
-  const current: readonly SubHomeConfig[] = read.state === 'present' ? read.value.subHomes : [];
+  const currentConfig: HomeConfig = read.state === 'present' ? read.value : { subHomes: [] };
   const next = request.op === 'delete'
-    ? current.filter((area) => area.homeId !== request.homeId)
-    : applyHomesUpsert(current, request.area);
-  // An upsert must not nest or duplicate an existing area's root zone (a delete
-  // never can) — validate the composed list against the known zone tree before
-  // persisting.
-  if (request.op === 'upsert' && upsertNestsSubHomeRoots(homey, next)) {
+    ? currentConfig.subHomes.filter((area) => area.homeId !== request.homeId)
+    : applyHomesUpsert(currentConfig.subHomes, request.area);
+  // An upsert must not reuse a meter or nest/duplicate an existing root zone
+  // (a delete never can). Validate the freshly composed list before any
+  // tracker-reset side effect or persisted write.
+  if (request.op === 'upsert' && violatesComposedHomeInvariants(homey, next, zoneTree)) {
     return { ok: false, reason: 'invalid' };
   }
-  try {
-    store.write({ subHomes: next });
-  } catch (error) {
-    if (error instanceof HomeStoreWriteRefusedError) return { ok: false, reason: 'invalid' };
-    throw error;
-  }
-  return { ok: true };
+  // Reset before config commit, but restore the old tracker if the boundary
+  // proves the old config survived a refused/thrown write.
+  const commit = commitHomesConfigWriteWithTrackerFreshnessReset({
+    apiApp: homey.app,
+    settings: homey.settings,
+    store,
+    request,
+    currentConfig,
+    next,
+  });
+  if (commit.state === 'committed') return { ok: true };
+  return { ok: false, reason: commit.state === 'invalid' ? 'invalid' : 'degraded' };
+};
+
+export const saveSettingsUiHomesConfig = (
+  { homey, body }: ApiContext & { body?: unknown },
+): SettingsUiHomesSaveResponse => {
+  const request = parseHomesSaveRequest(body);
+  if (request === null) return { ok: false, reason: 'invalid' };
+  return request.op === 'set_main_meter'
+    ? saveMainMeterSelection(homey, request)
+    : saveAreaMutation(homey, request);
 };
 
 export const getSettingsUiPowerPayload = ({ homey }: ApiContext): SettingsUiPowerPayload => (
@@ -590,14 +596,6 @@ const previewRescueReject = (
 const createRescueReject = (
   reason: StarvationRescueRejectReason,
 ): SettingsUiStarvationRescueCreateResponse => ({ ok: false, reason });
-
-// Resolve the requested device against the LIVE starved list. `homey.app` is
-// optional during restart; a `null` list maps to `unavailable` in the shared
-// resolver.
-const resolveRescuableSettingsDevice = (app: SettingsUiApiApp | null, deviceId: string) => {
-  const devices = typeof app?.getStarvedRescueDevices === 'function' ? app.getStarvedRescueDevices() : null;
-  return resolveRescuableDeviceFromList(devices, deviceId);
-};
 
 // The device IDs the overview chip may offer the rescue on — the same gate the
 // widget uses (budget-caused + task-free + a known target). Resolved from

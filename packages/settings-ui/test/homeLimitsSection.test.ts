@@ -23,6 +23,7 @@ const baseEditor = (overrides: Partial<HomeLimitsEditorView> = {}): HomeLimitsEd
   hardCapValue: '7',
   marginValue: '0.3',
   dryRun: true,
+  runtimeActive: true,
   controlBusy: false,
   marginError: null,
   reactionKw: '6.7 kW',
@@ -116,6 +117,24 @@ describe('meter-area editor', () => {
     // Control ON ⇒ the switch is selected (green matches the "Active" chip).
     const onSwitch = active.querySelector('#home-limits-simulation-switch') as HTMLElement & { selected: boolean };
     expect(onSwitch.selected).toBe(true);
+  });
+
+  it('renders a held legacy area as not active and disables its control toggle', () => {
+    const surface = mountWith(baseProps({
+      selectedHomeId: 'h_abc',
+      editor: baseEditor({ dryRun: false, runtimeActive: false }),
+    }));
+    const sw = surface.querySelector('#home-limits-simulation-switch') as HTMLElement & {
+      selected: boolean;
+    };
+    expect(sw.selected).toBe(false);
+    expect(sw.hasAttribute('disabled')).toBe(true);
+    expect(surface.querySelector('#home-limits-inactive-notice')?.textContent)
+      .toContain('open Multiple meters and save this area');
+    expect(surface.querySelector('#home-limits-status-chip')?.textContent).toBe('Not active');
+    expect(surface.querySelector('#home-limits-status-power')?.textContent).toBe('—');
+    expect(surface.querySelector('#home-limits-status-line')?.textContent)
+      .toBe('Open Multiple meters and save this area to start using these settings.');
   });
 
   it('shows the margin-vs-cap alert when present', () => {

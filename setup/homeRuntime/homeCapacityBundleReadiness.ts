@@ -7,12 +7,11 @@
  */
 import type { AppContext } from '../../lib/app/appContext';
 import type { HomeId } from '../../lib/utils/settingsKeys';
-import { POWER_SOURCE } from '../../lib/utils/settingsKeys';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { PlanService } from '../../lib/plan/planService';
-import { normalizePowerSource } from '../../lib/power/powerSource';
 import { POWER_SAMPLE_STALE_SHED_TIMEOUT_MS } from '../../lib/plan/planPowerFreshness';
 import { normalizeError } from '../../lib/utils/errorUtils';
+import type { StableSampleRevision } from '../powerSamplePipeline';
 
 // Base freshness-heartbeat cadence (mirrors `POWER_SAMPLE_REBUILD_MAX_INTERVAL_MS`
 // in `setup/powerSamplePipeline.ts`). The test value is coarser than the poll
@@ -23,6 +22,7 @@ const FRESHNESS_HEARTBEAT_BASE_INTERVAL_MS = process.env.NODE_ENV === 'test' ? 5
 // durable, operator-visible signal that the zones API is degraded). See the
 // no-tree warn timer below.
 const MEMBERSHIP_TREE_COMMIT_WARN_MS = process.env.NODE_ENV === 'test' ? 500 : 5 * 60 * 1000;
+const MEMBERSHIP_READY_APPLY_RETRY_MS = 1_000;
 
 /**
  * Per-home deterministic heartbeat interval: the base cadence plus a stable
@@ -46,19 +46,79 @@ export type InstallBundleReadinessParams = {
   getTrackerState: () => PowerTrackerState;
   /** Teardown fence: true once `teardown()` ran (all continuations must bail). */
   isTornDown: () => boolean;
-  /** Monotonic meter-sample counter; a change between capture and commit aborts a ready-edge. */
-  getSampleRevision: () => number;
+  getStableSampleRevision: () => StableSampleRevision;
+  beginPreparedOwnershipReconcile: (sampleRevision: number) => () => void;
+  flushDeferredShortfallSideEffect: () => Promise<boolean>;
   isMembershipReady: () => boolean;
+  isMeterSourceAuthorized: () => boolean;
+};
+
+type MembershipReadyApplyResult = 'complete' | 'retry' | 'stopped';
+
+const isCurrentSampleRevision = (
+  reader: () => StableSampleRevision,
+  revision: number,
+): boolean => {
+  const current = reader();
+  return current.state === 'stable' && current.revision === revision;
+};
+
+/**
+ * Keep the sample fence active for the fresh rebuild itself as well as the
+ * reconcile. A newer sample can arrive after planning starts but before the
+ * first SDK write; fencing only the reconcile would let that stale rebuild
+ * actuate before its later revision check noticed the race.
+ */
+const applyMembershipReadyPlan = async (params: {
+  homeId: HomeId;
+  revision: number;
+  logger: () => ReturnType<AppContext['getStructuredLogger']>;
+  planService: PlanService;
+  isTornDown: () => boolean;
+  getStableSampleRevision: () => StableSampleRevision;
+  beginPreparedOwnershipReconcile: (sampleRevision: number) => () => void;
+  flushDeferredShortfallSideEffect: () => Promise<boolean>;
+}): Promise<MembershipReadyApplyResult> => {
+  const endPreparedReconcile = params.beginPreparedOwnershipReconcile(params.revision);
+  let reconciledCurrent: boolean;
+  try {
+    const outcome = await params.planService.rebuildPlanFromCache('home_membership_ready');
+    if (params.isTornDown()) return 'stopped';
+    if (outcome.failed) {
+      params.logger()?.warn({
+        event: 'home_membership_ready_rebuild_failed',
+        homeId: params.homeId,
+      });
+      return 'retry';
+    }
+    if (!isCurrentSampleRevision(params.getStableSampleRevision, params.revision)) return 'retry';
+    let reconcileAborted = false;
+    await params.planService.reconcileLatestPlanState(
+      () => !isCurrentSampleRevision(params.getStableSampleRevision, params.revision),
+      () => { reconcileAborted = true; },
+    );
+    reconciledCurrent = !reconcileAborted
+      && isCurrentSampleRevision(params.getStableSampleRevision, params.revision);
+  } finally {
+    endPreparedReconcile();
+  }
+  if (!reconciledCurrent) return 'retry';
+  return await params.flushDeferredShortfallSideEffect() ? 'complete' : 'retry';
 };
 
 // Installs the bundle's readiness apply-edge + the no-tree warn and freshness
 // heartbeat timers, returning the (latched, idempotent) `applyMembershipReadyEdge`.
 export function installBundleReadinessAndFreshness(
   params: InstallBundleReadinessParams,
-): { applyMembershipReadyEdge: () => void } {
+): {
+  applyMembershipReadyEdge: () => void;
+  markPreparedOwnershipGenerationReconciled: () => void;
+} {
   const {
     ctx, homeId, timerKey, logger, planService, getTrackerState,
-    isTornDown, getSampleRevision, isMembershipReady,
+    isTornDown, getStableSampleRevision, beginPreparedOwnershipReconcile,
+    flushDeferredShortfallSideEffect,
+    isMembershipReady, isMeterSourceAuthorized,
   } = params;
   // Latch for the readiness apply-edge (rebuild → reconcile). The rebuild
   // recomputes against the guard's freshest total power (each ingested sample
@@ -71,54 +131,48 @@ export function installBundleReadinessAndFreshness(
   // sample landing mid-rebuild re-arms the latch so a later attempt retries
   // (driven by the registry edge and by each sample's post-ingest re-trigger).
   let membershipReadySeen = isMembershipReady();
+  const applyRetryTimerKey = timerKey('membershipReadyApplyRetry');
+  const scheduleMembershipReadyApplyRetry = (): void => {
+    if (
+      isTornDown()
+      || membershipReadySeen
+      || !isMembershipReady()
+      || ctx.timers.has(applyRetryTimerKey)
+    ) return;
+    ctx.timers.registerTimeout(applyRetryTimerKey, setTimeout(() => {
+      ctx.timers.clear(applyRetryTimerKey);
+      applyMembershipReadyEdge();
+    }, MEMBERSHIP_READY_APPLY_RETRY_MS));
+  };
+  const rearmMembershipReadyApply = (): void => {
+    membershipReadySeen = false;
+    scheduleMembershipReadyApplyRetry();
+  };
   const applyMembershipReadyEdge = (): void => {
     if (isTornDown() || membershipReadySeen || !isMembershipReady()) return;
+    const sample = getStableSampleRevision();
+    if (sample.state === 'pending') {
+      scheduleMembershipReadyApplyRetry();
+      return;
+    }
+    ctx.timers.clear(applyRetryTimerKey);
     membershipReadySeen = true;
-    const revisionAtStart = getSampleRevision();
-    void planService.rebuildPlanFromCache('home_membership_ready')
-      .then((outcome) => {
-        if (isTornDown()) return undefined;
-        // `PlanService` catches rebuild exceptions internally and RESOLVES
-        // `{ failed: true }` — so a rejected `.catch` never fires. Inspect the
-        // outcome: a failed FRESH rebuild left the STALE pre-gate dry-run plan in
-        // place; reconciling it could restore over cap. Skip the reconcile and
-        // re-arm so a later attempt retries.
-        if (outcome.failed) {
-          membershipReadySeen = false;
-          logger()?.warn({ event: 'home_membership_ready_rebuild_failed', homeId });
-          return undefined;
-        }
-        // Sample-revision race: a newer meter sample landed while this rebuild was
-        // in flight, so the plan just built may be stale (e.g. an over-cap sample
-        // arrived during a rebuild of an under-cap plan). Abort the reconcile — the
-        // newer sample's own rebuild drives actuation — and re-arm so the next
-        // (settled) attempt applies the fresh decision rather than a stale restore.
-        if (getSampleRevision() !== revisionAtStart) {
-          membershipReadySeen = false;
-          return undefined;
-        }
-        // The pre-check above only closes the race up to the enqueue boundary:
-        // `reconcileLatestPlanState` merely ENQUEUES, so a sample can still land
-        // AFTER this check but BEFORE the queued reconcile reads the committed
-        // plan (TOCTOU). Pass the revision predicate so the reconcile re-checks at
-        // the point of use and aborts if it moved, rather than resuming load after
-        // a newer over-cap sample (R7b P1). A queue-side abort resolves a bare
-        // `false` — indistinguishable from a no-op — so it re-arms the latch and
-        // reschedules via `onAbort`. Re-arming alone is NOT enough: the sample that
-        // moved the revision already ran its own post-ingest edge retry, which
-        // no-opped against the still-latched flag; in flow mode the meter may then
-        // fall silent, so without an explicit reschedule the pre-gate stable shed
-        // could stay unapplied indefinitely.
-        return planService.reconcileLatestPlanState(
-          () => getSampleRevision() !== revisionAtStart,
-          () => {
-            membershipReadySeen = false;
-            applyMembershipReadyEdge();
-          },
-        );
+    const revisionAtStart = sample.revision;
+    void applyMembershipReadyPlan({
+      homeId,
+      revision: revisionAtStart,
+      logger,
+      planService,
+      isTornDown,
+      getStableSampleRevision,
+      beginPreparedOwnershipReconcile,
+      flushDeferredShortfallSideEffect,
+    })
+      .then((result) => {
+        if (result === 'retry') rearmMembershipReadyApply();
       })
       .catch((error: unknown) => {
-        membershipReadySeen = false;
+        rearmMembershipReadyApply();
         logger()?.error({ event: 'home_membership_ready_apply_failed', homeId, err: normalizeError(error) });
       });
   };
@@ -161,7 +215,7 @@ export function installBundleReadinessAndFreshness(
     // aging that now-orphaned timestamp into a fail-closed shed on a dead
     // reading. Suspend escalation entirely under flow; switching back to
     // homey_energy resumes normal sampling (and normal staleness escalation).
-    if (normalizePowerSource(ctx.homey.settings.get(POWER_SOURCE)) !== 'homey_energy') return;
+    if (!isMeterSourceAuthorized()) return;
     const lastTs = getTrackerState().lastTimestamp;
     if (typeof lastTs !== 'number' || !Number.isFinite(lastTs)) return;
     if (Date.now() - lastTs < POWER_SAMPLE_STALE_SHED_TIMEOUT_MS) return;
@@ -201,5 +255,10 @@ export function installBundleReadinessAndFreshness(
     setInterval(maybeFreshnessHeartbeatRebuild, freshnessHeartbeatIntervalMs(homeId)),
   );
 
-  return { applyMembershipReadyEdge };
+  return {
+    applyMembershipReadyEdge,
+    markPreparedOwnershipGenerationReconciled: () => {
+      if (!isTornDown() && isMembershipReady()) membershipReadySeen = true;
+    },
+  };
 }

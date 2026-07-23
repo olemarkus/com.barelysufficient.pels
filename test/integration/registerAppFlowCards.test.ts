@@ -10,6 +10,7 @@ import { registerAppFlowCards } from '../../setup/appInit';
 import type { AppContext } from '../../lib/app/appContext';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import type { PowerTrackerState } from '../../lib/power/tracker';
+import type { Mock } from 'vitest';
 
 describe('registerAppFlowCards', () => {
   beforeEach(() => {
@@ -22,6 +23,7 @@ describe('registerAppFlowCards', () => {
 
   const buildContext = (params: {
     powerSource?: string;
+    powerSourceKeyPresent?: boolean;
     now?: Date;
     recordPowerSample?: AppContext['recordPowerSample'];
     requestFlowPlanRebuild?: AppContext['requestFlowPlanRebuild'];
@@ -29,6 +31,9 @@ describe('registerAppFlowCards', () => {
     powerTracker?: PowerTrackerState;
   } = {}): AppContext => {
     const now = params.now ?? new Date('2026-04-16T00:00:00.000Z');
+    const powerSourceKeyPresent = (
+      params.powerSourceKeyPresent ?? params.powerSource !== undefined
+    );
     return {
       homey: {
         flow: {
@@ -38,6 +43,7 @@ describe('registerAppFlowCards', () => {
         },
         settings: {
           get: vi.fn((key: string) => (key === 'power_source' ? params.powerSource : undefined)),
+          getKeys: vi.fn(() => (powerSourceKeyPresent ? ['power_source'] : ['another_setting'])),
           set: vi.fn(),
         },
       },
@@ -114,6 +120,67 @@ describe('registerAppFlowCards', () => {
     expect(registerFlowCards).toHaveBeenCalledWith(expect.objectContaining({
       homey,
     }));
+  });
+
+  it('threads a provisional Main fence into the device-scoped Flow write as retryable unavailable', () => {
+    const ctx = buildContext({ powerSource: 'homey_energy' });
+    ctx.homeMembership = {
+      getHomeIdForDevice: () => 'main',
+      isOwnershipReady: () => false,
+      hasPendingOwnershipGeneration: () => false,
+      isMainHomeActuationFenced: () => true,
+    } as unknown as AppContext['homeMembership'];
+    ctx.deferredObjectiveActivePlanRecorder = {} as AppContext['deferredObjectiveActivePlanRecorder'];
+    ctx.deferredObjectivePlanHistoryRecorder = {} as AppContext['deferredObjectivePlanHistoryRecorder'];
+
+    registerAppFlowCards(ctx);
+    const deps = registerFlowCards.mock.calls[0]?.[0] as {
+      upsertDeferredObjectiveForDevice: (params: {
+        deviceId: string;
+        deviceName: string | null;
+        entry: {
+          enabled: true;
+          kind: 'temperature';
+          enforcement: 'soft';
+          targetTemperatureC: number;
+          deadlineAtMs: number;
+        };
+      }) => unknown;
+    };
+    const outcome = deps.upsertDeferredObjectiveForDevice({
+      deviceId: 'heater-main',
+      deviceName: 'Hall heater',
+      entry: {
+        enabled: true,
+        kind: 'temperature',
+        enforcement: 'soft',
+        targetTemperatureC: 60,
+        deadlineAtMs: Date.now() + 60 * 60 * 1000,
+      },
+    });
+
+    expect(outcome).toEqual({ persisted: false, reason: 'ownership_unavailable' });
+    expect(ctx.homey.settings.set).not.toHaveBeenCalled();
+    expect(ctx.requestFlowPlanRebuild).not.toHaveBeenCalled();
+  });
+
+  it('separates durable smart-task membership from transient Main authority', () => {
+    const ctx = buildContext({ powerSource: 'homey_energy' });
+    ctx.homeMembership = {
+      getHomeIdForDevice: () => 'main',
+      isOwnershipReady: () => true,
+      hasPendingOwnershipGeneration: () => false,
+      isMainHomeActuationFenced: () => true,
+    } as unknown as AppContext['homeMembership'];
+
+    registerAppFlowCards(ctx);
+    const deps = registerFlowCards.mock.calls[0]?.[0] as {
+      isDeviceInMainHome: (deviceId: string) => boolean;
+      hasMainHomeSmartTaskAuthority: (deviceId: string) => boolean;
+    };
+
+    expect(deps.isDeviceInMainHome('heater-main')).toBe(true);
+    expect(deps.hasMainHomeSmartTaskAuthority('heater-main')).toBe(false);
   });
 
   it('routes daily budget updates through the app context callback', async () => {
@@ -214,6 +281,34 @@ describe('registerAppFlowCards', () => {
     expect(recordPowerSample).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(10_000);
     expect(requestFlowPlanRebuild).toHaveBeenCalledWith('flow_power_sample_hold');
+  });
+
+  it('abandons a Flow sample when an existing source key transiently reads undefined', async () => {
+    const recordPowerSample = vi.fn(async () => undefined);
+    const structuredError = vi.fn();
+    const ctx = buildContext({
+      powerSource: undefined,
+      powerSourceKeyPresent: true,
+      recordPowerSample,
+    });
+    (ctx.getStructuredLogger as Mock).mockReturnValue({
+      error: structuredError,
+    });
+
+    registerAppFlowCards(ctx);
+    const deps = registerFlowCards.mock.calls[0]?.[0] as {
+      recordPowerSample: (powerW: number) => Promise<void>;
+    };
+
+    await expect(deps.recordPowerSample(1234)).rejects.toThrow(
+      'power source settings read is suspect',
+    );
+    expect(recordPowerSample).not.toHaveBeenCalled();
+    expect(ctx.homey.settings.set).not.toHaveBeenCalled();
+    expect(structuredError).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'flow_power_sample_source_read_failed',
+      reason: 'missing_existing_key',
+    }));
   });
 
   it('ignores Flow-reported power when Homey Energy is the active power source', async () => {

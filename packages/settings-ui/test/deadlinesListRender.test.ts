@@ -206,6 +206,23 @@ describe('DeadlinesList', () => {
     expect(whenLabels).toEqual(expect.arrayContaining(['Starts', 'Ready by']));
   });
 
+  it('renders only the deadline as Due when a task is unavailable', () => {
+    const mount = mountIntoBody();
+    renderDeadlinesList(mount, {
+      status: 'ready',
+      cards: [buildCard({
+        statusId: 'unavailable',
+        firstActionAtMs: null,
+      })],
+    });
+
+    const whenLabels = Array.from(
+      mount.querySelectorAll<HTMLElement>('.deadline-list-card__when dt'),
+    ).map((el) => (el.textContent ?? '').trim());
+    expect(whenLabels).toEqual(['Due']);
+    expect(mount.querySelector('.deadline-list-card__when dd')?.textContent).toContain('— Unavailable');
+  });
+
   it('renders extra permissions when the producer supplies them', () => {
     const mount = mountIntoBody();
     renderDeadlinesList(mount, {

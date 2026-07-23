@@ -13,13 +13,15 @@
 // 1. Independence — a sub-home meter overshoot sheds ONLY sub-home devices;
 //    a main overshoot sheds ONLY main devices; suffixed `pels_status:<id>` +
 //    `capacity_in_shortfall:<id>` are written.
-// 2. Boot-window double-control guard — a device PINNED into the sub-home
-//    (resolvable before any zone tree) is NOT actuated while the zone-tree
-//    fetch fails; the shed lands once a committed tree arrives.
-// 3. Restart rehydration — `device_last_controlled_ms:<id>` survives a
+// 2. Boot-window double-control guards — neither a PINNED member nor ordinary
+//    zone-rule membership can be actuated by the wrong home while the zone-tree
+//    fetch fails; control resumes under the correct owners after commit.
+// 3. Meter ownership — a stale/external persisted collision fences Main while
+//    the sub-home's legitimate controller continues to act.
+// 4. Restart rehydration — `device_last_controlled_ms:<id>` survives a
 //    restart: the resume of a shed sub-home device stays backoff-blocked
 //    right after reboot and lands once the cooldown elapses.
-// 4. Orphaned-shed adoption (binary) — a device shed by MAIN and then moved
+// 5. Orphaned-shed adoption (binary) — a device shed by MAIN and then moved
 //    into a new sub-home is resumed by the sub-home's own planner via the
 //    provenance-free restore lane (stepped-modality candidates are covered in
 //    test/integration/homeCapacityBundles.test.ts).
@@ -27,7 +29,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type Homey from 'homey';
 import { mockHomeyInstance, setMockDrivers, setMockZones, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps } from '../utils/appTestUtils';
-import { createHomesStore, createDeviceHomeAssignmentsStore } from '../../setup/homeRegistryAdapter';
+import {
+  createHomesStore as createRawHomesStore,
+  createDeviceHomeAssignmentsStore,
+} from '../../setup/homeRegistryAdapter';
+import {
+  HOME_CONFIG_ACTIVATION_VERSION,
+  type HomeConfig,
+} from '../../lib/home/homeConfig';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
@@ -37,6 +46,12 @@ import {
 import { drainPending } from '../utils/asyncDrain';
 
 const homeyLike = mockHomeyInstance as unknown as Homey.App['homey'];
+const writeActiveHomesConfig = (config: HomeConfig): void => {
+  createRawHomesStore(homeyLike).write({
+    ...config,
+    activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
+  });
+};
 
 const ONOFF_CAP = (deviceId: string) => `manager/devices/device/${deviceId}/capability/onoff`;
 
@@ -180,7 +195,7 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
     await vi.advanceTimersByTimeAsync(1000);
     // The user creates the sub-home on a running app; the settings event
     // drives membership recompute + bundle reconcile.
-    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME] });
+    writeActiveHomesConfig({ subHomes: [SUB_HOME] });
     await vi.advanceTimersByTimeAsync(1000);
 
     // Sub-home meter overshoots; main's meter is comfortably under its cap.
@@ -207,6 +222,29 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
     expect(subWritesInMainPhase).toEqual([]);
   }, 30_000);
 
+  it('a persisted explicit-meter collision fences Main while the sub-home owner still controls', async () => {
+    await setupTwoZoneDevices();
+    configureMainCapacity(1);
+    configureSubHomeCapacity(1);
+    // This models a legacy/external write that bypassed the current save
+    // endpoint: Main and the area both explicitly name m-main. The live report
+    // therefore resolves the SAME 5 kW item as primary and additional input.
+    writeActiveHomesConfig({
+      subHomes: [{ ...SUB_HOME, meterDeviceId: 'm-main' }],
+    });
+    meterState.mainW = 5000;
+    installApiRoutes();
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+
+    const app = createApp();
+    await app.onInit();
+    await advancePollsUntil(() => wasCalledWith(putSpy, ONOFF_CAP('device-sub'), false));
+
+    // The rightful area controller remains live. Main sees the same overshoot
+    // but its producer-owned collision fence closes the final write seam.
+    expect(wasCalledWith(putSpy, ONOFF_CAP('device-main'), false)).toBe(false);
+  }, 30_000);
+
   it('dry-run activation: flipping capacity_dry_run true→false issues the already-planned sub-home shed', async () => {
     await setupTwoZoneDevices();
     configureMainCapacity(6); // main comfortably under its cap; only the sub overshoots
@@ -220,7 +258,7 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
     const app = createApp();
     await app.onInit();
     await vi.advanceTimersByTimeAsync(1000);
-    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME] });
+    writeActiveHomesConfig({ subHomes: [SUB_HOME] });
     await vi.advanceTimersByTimeAsync(1000);
 
     // Sustained sub-meter overshoot: the bundle PLANS a shed every poll but, while
@@ -248,13 +286,57 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
     expect(callsFor(putSpy, 'device-main')).toEqual([]);
   }, 30_000);
 
+  it('Flow source fences a committed sub-home shed when control is activated', async () => {
+    await setupTwoZoneDevices();
+    configureMainCapacity(6);
+    mockHomeyInstance.settings.set(`${CAPACITY_LIMIT_KW}:h_sub`, 1);
+    mockHomeyInstance.settings.set(`${CAPACITY_MARGIN_KW}:h_sub`, 0);
+    mockHomeyInstance.settings.set(`${CAPACITY_DRY_RUN}:h_sub`, true);
+    installApiRoutes();
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+
+    const app = createApp();
+    await app.onInit();
+    await vi.advanceTimersByTimeAsync(1000);
+    writeActiveHomesConfig({ subHomes: [SUB_HOME] });
+    await vi.advanceTimersByTimeAsync(1000);
+
+    // Commit an over-cap shed plan while the home's own control toggle is off.
+    meterState.subW = 5000;
+    for (let poll = 0; poll < 5; poll += 1) {
+      await vi.advanceTimersByTimeAsync(10_000);
+      await drainPending();
+    }
+    expect(callsFor(putSpy, 'device-sub')).toEqual([]);
+
+    // Flow samples carry no meter identity. Switching the global source must
+    // therefore fence this bundle before its ordinary activation path performs
+    // rebuild -> reconcile against the already-committed shed.
+    mockHomeyInstance.settings.set('power_source', 'flow');
+    await drainPending();
+    const flowPhaseStart = putSpy.mock.calls.length;
+    mockHomeyInstance.settings.set(`${CAPACITY_DRY_RUN}:h_sub`, false);
+    await vi.advanceTimersByTimeAsync(1000);
+    await drainPending();
+
+    expect(wasCalledWith(
+      putSpy,
+      ONOFF_CAP('device-sub'),
+      false,
+      flowPhaseStart,
+    )).toBe(false);
+    expect((mockHomeyInstance.settings.get('pels_status:h_sub') as
+      | { dryRunEffective?: unknown }
+      | undefined)?.dryRunEffective).toBe(true);
+  }, 30_000);
+
   it('boot-window guard: a PINNED sub-home member is not actuated before a zone-tree commit; the shed lands after the tree arrives', async () => {
     await setupTwoZoneDevices();
     configureMainCapacity(1);
     configureSubHomeCapacity(1);
     // Sub-home + pin exist BEFORE boot; the zone-tree fetch fails, so
     // membership resolves the pin (no tree needed) but is NOT tree-committed.
-    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME] });
+    writeActiveHomesConfig({ subHomes: [SUB_HOME] });
     createDeviceHomeAssignmentsStore(homeyLike).write({ 'device-sub': 'h_sub' });
     meterState.failZones = true;
     meterState.subW = 5000;
@@ -279,11 +361,44 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
     await advancePollsUntil(() => wasCalledWith(putSpy, ONOFF_CAP('device-sub'), false));
   }, 30_000);
 
+  it('boot-window guard: unpinned zone-rule devices are not actuated by Main before the zone tree commits', async () => {
+    await setupTwoZoneDevices();
+    configureMainCapacity(1);
+    configureSubHomeCapacity(1);
+    // Normal zone-rule configuration exists BEFORE boot, with no pin to make
+    // the sub-home membership resolvable while the zones endpoint is down.
+    writeActiveHomesConfig({ subHomes: [SUB_HOME] });
+    meterState.failZones = true;
+    meterState.mainW = 5000;
+    meterState.subW = 5000;
+    installApiRoutes();
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+
+    const app = createApp();
+    await app.onInit();
+    // The empty-tree resolver provisionally classifies both devices as Main.
+    // Neither that fallback nor the sub-home's readiness-gated plan may write.
+    await vi.advanceTimersByTimeAsync(35_000);
+    await drainPending();
+    expect(callsFor(putSpy, 'device-main')).toEqual([]);
+    expect(callsFor(putSpy, 'device-sub')).toEqual([]);
+
+    // Once a real tree commits, the membership-change rebuilds restore both
+    // control loops under their actual owners: Main sheds only device-main and
+    // the Annex bundle sheds device-sub.
+    meterState.failZones = false;
+    mockHomeyInstance.settings.set('refresh_target_devices_snapshot', Date.now());
+    await advancePollsUntil(() => (
+      wasCalledWith(putSpy, ONOFF_CAP('device-main'), false)
+      && wasCalledWith(putSpy, ONOFF_CAP('device-sub'), false)
+    ));
+  }, 30_000);
+
   it('freshness heartbeat: a silent sub-meter dropout escalates to a fail-closed shed', async () => {
     await setupTwoZoneDevices();
     configureMainCapacity(1);
     configureSubHomeCapacity(1);
-    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME] });
+    writeActiveHomesConfig({ subHomes: [SUB_HOME] });
     installApiRoutes();
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
@@ -325,7 +440,7 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
     // The sub-home's meter IS the plug `device-sub`; its reading rides an item
     // stamped with that same device id.
     meterState.subMeterId = 'device-sub';
-    createHomesStore(homeyLike).write({
+    writeActiveHomesConfig({
       subHomes: [{ ...SUB_HOME, meterDeviceId: 'device-sub' }],
     });
     installApiRoutes();
@@ -347,7 +462,7 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
     const { subDevice } = await setupTwoZoneDevices();
     configureMainCapacity(1);
     configureSubHomeCapacity(1);
-    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME] });
+    writeActiveHomesConfig({ subHomes: [SUB_HOME] });
     installApiRoutes();
     const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
 
@@ -386,6 +501,53 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
     expect(rebooted).toBeTruthy();
   }, 30_000);
 
+  it('meter change survives an immediate restart without acting on the old meter freshness', async () => {
+    await setupTwoZoneDevices();
+    configureMainCapacity(6);
+    configureSubHomeCapacity(1);
+    writeActiveHomesConfig({ subHomes: [SUB_HOME] });
+    installApiRoutes();
+    const putSpy = vi.spyOn(mockHomeyInstance.api, 'put');
+
+    const app = createApp();
+    await app.onInit();
+    for (let poll = 0; poll < 3; poll += 1) {
+      await vi.advanceTimersByTimeAsync(10_000);
+      await drainPending();
+    }
+    expect(callsFor(putSpy, 'device-sub')).toEqual([]);
+
+    // Stop receiving meter items, then let the volatile tracker debounce flush
+    // the OLD meter's freshness. With no later sample, there is no pending
+    // tracker write for teardown to flush after the meter edit.
+    meterState.subOffline = true;
+    await vi.advanceTimersByTimeAsync(61_000);
+    await drainPending();
+    expect((mockHomeyInstance.settings.get('power_tracker_state:h_sub') as
+      | { lastTimestamp?: unknown }
+      | undefined)?.lastTimestamp).toEqual(expect.any(Number));
+
+    writeActiveHomesConfig({
+      subHomes: [{ ...SUB_HOME, meterDeviceId: 'm-sub-2' }],
+    });
+    await drainPending();
+    await app.onUninit();
+    await drainPending();
+    putSpy.mockClear();
+
+    const rebooted = createApp();
+    await rebooted.onInit();
+    // More than the ten-minute stale-shed threshold, while the NEW meter is
+    // still absent. Rehydrating the OLD timestamp would trigger a fail-closed
+    // sub-home shed; a durable meter-identity reset stays never-sampled.
+    for (let poll = 0; poll < 75; poll += 1) {
+      await vi.advanceTimersByTimeAsync(10_000);
+      await drainPending();
+    }
+    expect(wasCalledWith(putSpy, ONOFF_CAP('device-sub'), false)).toBe(false);
+    expect(rebooted).toBeTruthy();
+  }, 30_000);
+
   it('orphaned-shed adoption: a device shed by MAIN and then moved into a new sub-home is resumed by the sub-home bundle', async () => {
     const { subDevice } = await setupTwoZoneDevices();
     configureMainCapacity(1);
@@ -411,7 +573,7 @@ describe('Per-home capacity bundles (SDK-boundary e2e)', () => {
     // device as an ordinary resume candidate (no shed provenance required).
     const adoptionPhaseStart = putSpy.mock.calls.length;
     configureSubHomeCapacity(6);
-    createHomesStore(homeyLike).write({ subHomes: [SUB_HOME] });
+    writeActiveHomesConfig({ subHomes: [SUB_HOME] });
     meterState.mainW = 5000; // main stays in overshoot — it must NOT resume anything
     meterState.subW = 200;
     // Past the sub-home bundle's 60 s restore stabilization + resume machinery.

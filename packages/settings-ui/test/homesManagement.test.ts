@@ -221,6 +221,17 @@ describe('validateSubHomeDraft', () => {
     expect(result.errors).toContainEqual({ kind: 'meter_in_use', otherName: 'Utleie' });
   });
 
+  it('flags the Main home explicit meter as already owned', () => {
+    const result = validateSubHomeDraft({
+      draft: validDraft,
+      existing: [],
+      zones,
+      meterZoneId: null,
+      mainMeterDeviceId: 'meter-annex',
+    });
+    expect(result.errors).toContainEqual({ kind: 'meter_in_use', otherName: 'Main home' });
+  });
+
   it('flags a root zone overlapping another area (either direction)', () => {
     const nested = validateSubHomeDraft({
       draft: { ...validDraft, rootZoneId: 'stue' }, existing: [rentalHome], zones, meterZoneId: null,

@@ -25,6 +25,7 @@ const budgetDevice: StarvationRescueDevice = {
   cause: 'budget',
   accumulatedMs: 42 * 60 * 1000,
   intendedNormalTargetC: 65,
+  smartTaskHomeScope: 'main',
   hasSmartTask: false,
 };
 
@@ -34,6 +35,7 @@ const capacityDevice: StarvationRescueDevice = {
   cause: 'capacity',
   accumulatedMs: 11 * 60 * 1000,
   intendedNormalTargetC: 21,
+  smartTaskHomeScope: 'main',
   hasSmartTask: false,
 };
 
@@ -68,7 +70,10 @@ const freshPreviewPlan = (estimate = buildEstimate()) => vi.fn(
 
 const buildContext = (app: Record<string, unknown>) => ({
   homey: {
-    app,
+    app: {
+      resolveSmartTaskHomeScope: vi.fn(() => 'main'),
+      ...app,
+    },
     clock: { getTimezone: () => TIME_ZONE },
   } as never,
 });
@@ -133,6 +138,23 @@ describe('previewSettingsUiStarvationRescue', () => {
     expect((candidate as { targetTemperatureC?: number }).targetTemperatureC).toBe(65);
     expect(candidate.rescue?.exemptFromBudget).toBe('always');
   });
+
+  it.each([
+    ['sub_home', 'device_in_sub_home'],
+    ['unavailable', 'unavailable'],
+  ] as const)('preserves %s scope when a stale preview row has disappeared', (scope, reason) => {
+    const previewStarvationRescuePlan = freshPreviewPlan();
+    const result = previewSettingsUiStarvationRescue({
+      ...buildContext({
+        resolveSmartTaskHomeScope: vi.fn(() => scope),
+        getStarvedRescueDevices: vi.fn(() => []),
+        previewStarvationRescuePlan,
+      }),
+      body: { deviceId: 'heater-1' },
+    });
+    expect(result).toEqual({ ok: false, reason });
+    expect(previewStarvationRescuePlan).not.toHaveBeenCalled();
+  });
 });
 
 describe('createSettingsUiStarvationRescue', () => {
@@ -194,5 +216,22 @@ describe('createSettingsUiStarvationRescue', () => {
       body: { deviceId: 'heater-1' },
     });
     expect(result).toEqual({ ok: false, reason: 'write_conflict' });
+  });
+
+  it.each([
+    ['sub_home', 'device_in_sub_home'],
+    ['unavailable', 'unavailable'],
+  ] as const)('preserves %s scope when a stale create row has disappeared', (scope, reason) => {
+    const rescueDeviceWithBudgetExemption = vi.fn();
+    const result = createSettingsUiStarvationRescue({
+      ...buildContext({
+        resolveSmartTaskHomeScope: vi.fn(() => scope),
+        getStarvedRescueDevices: vi.fn(() => []),
+        rescueDeviceWithBudgetExemption,
+      }),
+      body: { deviceId: 'heater-1' },
+    });
+    expect(result).toEqual({ ok: false, reason });
+    expect(rescueDeviceWithBudgetExemption).not.toHaveBeenCalled();
   });
 });

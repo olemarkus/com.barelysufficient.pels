@@ -234,7 +234,11 @@ export type DeferredObjectiveActivePlanPendingReason =
   // Thermal device with no learned `kWhPerUnit` profile yet — the planner has
   // no shipped bootstrap rate for thermal kinds, so it sits pending until
   // accepted samples produce a profile.
-  | 'missing_capacity';
+  | 'missing_capacity'
+  // The task's device now belongs to a separately-metered home. Smart tasks
+  // are main-home-only in the current scope, so no revision can be produced
+  // until the device returns to the main home.
+  | 'device_in_sub_home';
 
 // Snapshot of the learned kWh-per-unit profile that produced the latest
 // revision. Lets the UI render provenance (learned value, accepted samples,
@@ -272,7 +276,10 @@ export type DeferredObjectiveKwhPerUnitProvenanceV1 = {
 // persisted plans (without the field) continue to load.
 export type DeferredObjectiveActivePlanDiagnosticReason =
   | 'objective_charger_not_resumable'
-  | 'objective_invalid_session';
+  | 'objective_invalid_session'
+  // Live home-scope truth. Kept on committed plans with a cached revision so
+  // consumers can override that stale schedule while the task is out of scope.
+  | 'objective_device_in_sub_home';
 
 export type DeferredObjectiveActivePlanV1 = {
   deviceId: string;
@@ -292,10 +299,10 @@ export type DeferredObjectiveActivePlanV1 = {
   // not yet covering the horizon). Optional so older persisted plans without
   // this field continue to load.
   pendingReason?: DeferredObjectiveActivePlanPendingReason;
-  // Narrow diagnostic reason code set on the pending record when the cause is
-  // a known specific device state (e.g. car unplugged). Undefined when the
-  // pending cause is generic or when the plan has an active revision. Optional
-  // for backward compatibility.
+  // Narrow diagnostic reason code set when a known live blocker must override
+  // plan state (e.g. car unplugged or device on a separate meter). It can remain
+  // present on a committed record with a cached revision so consumers do not
+  // advertise that stale schedule. Optional for backward compatibility.
   diagnosticReasonCode?: DeferredObjectiveActivePlanDiagnosticReason;
   // The signature of the objective settings that produced `latest`. Used to
   // detect `objective_changed` replans without re-deriving the hash on every

@@ -22,17 +22,20 @@
  * it through the fail-safe complement.
  *
  * Persistence: `power_tracker_state:<homeId>` and
- * `device_last_controlled_ms:<homeId>` are rehydrated on (re)creation,
- * junk-tolerant (same guards as the main-home load paths), and persisted
- * through the same debounce/hour-rollover policy as main's tracker — minus
- * main's daily-budget/UI/calibration piggybacks, which are main-only concerns.
- * Teardown stops timers and detaches nothing global; persisted state stays in
- * place for re-creation.
+ * `device_last_controlled_ms:<homeId>` are rehydrated on (re)creation. Tracker
+ * hydration is classified and identity-bound before this factory runs: suspect
+ * reads fence construction, while an identity mismatch clears freshness but
+ * keeps accounting. Last-controlled state uses its typed map guard. Persistence
+ * follows main's debounce/hour-rollover policy, minus main-only daily-budget,
+ * UI, and calibration piggybacks. Teardown stops timers; persisted state stays.
  */
 import type { AppContext } from '../../lib/app/appContext';
 import type { SubHomeConfig } from '../../lib/home/homeConfig';
 import type { HomeId } from '../../lib/utils/settingsKeys';
-import type { PowerTrackerState } from '../../lib/power/tracker';
+import type {
+  PowerTrackerMeterIdentity,
+  PowerTrackerState,
+} from '../../lib/power/trackerTypes';
 import type { CapacityScalarSettings } from '../../lib/power/capacitySettingsStore';
 import type { PlanService } from '../../lib/plan/planService';
 import type { DevicePlan, PlanInputDevice } from '../../lib/plan/planTypes';
@@ -43,16 +46,14 @@ import { PlanRebuildScheduler } from '../../lib/plan/rebuildScheduler/scheduler'
 import { executePendingPowerRebuild } from '../../lib/plan/rebuildScheduler/powerDriven';
 import { TIGHT_UNACTIONABLE_MIN_REBUILD_INTERVAL_MS } from '../../lib/plan/rebuildScheduler/policy';
 import { buildPlanCapacityStateSummary } from '../../lib/plan/planLogging';
-import { prunePowerTrackerHistoryForApp, type PowerTrackerPersistReason } from '../../lib/power/sampleIngest';
-import { isNumberMap, isPowerTrackerState, sanitizePowerTrackerSolarFields } from '../../lib/utils/appTypeGuards';
-import { getHourBucketKey } from '../../lib/utils/dateUtils';
-import { VOLATILE_WRITE_THROTTLE_MS } from '../../lib/utils/timingConstants';
+import {
+  isNumberMap,
+} from '../../lib/utils/appTypeGuards';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import {
   CAPACITY_IN_SHORTFALL,
   DEVICE_LAST_CONTROLLED_MS,
   PELS_STATUS,
-  POWER_TRACKER_STATE,
   homeScopedSettingsKey,
 } from '../../lib/utils/settingsKeys';
 import { createCapacitySettingsStore } from '../capacitySettingsStoreAdapter';
@@ -64,9 +65,19 @@ import { evictMissingDeviceCacheEntries, toPlanDevice } from '../appInit/toPlanD
 import { isRuntimePlannedDevice } from '../appDeviceSupport';
 import { filterDevicesForHome } from '../homeMembership';
 import { createHomePowerPipeline } from './createHomePowerPipeline';
-import { buildHomeCapacityBundleApi } from './homeCapacityBundleApi';
+import {
+  buildHomeCapacityBundleApi,
+  createPreparedBundleSampleFence,
+  startHomeCapacityBundle,
+} from './homeCapacityBundleApi';
 import { installBundleReadinessAndFreshness } from './homeCapacityBundleReadiness';
+import { installHomeCapacityBundleSourceRecovery } from './homeCapacityBundleSourceRecovery';
 import type { HomeScope } from './homeScope';
+import {
+  createSuffixedTrackerPersistence,
+} from './suffixedTrackerPersistence';
+import type { StableSampleRevision } from '../powerSamplePipeline';
+import { createCapacityShortfallSideEffectGate } from '../capacityShortfallSideEffectGate';
 
 // A sub-home's OWN fallback seed for its capacity store. Mirrors the app-boot
 // defaults (`PelsApp.capacitySettings` / `capacityDryRun`) but is deliberately
@@ -74,11 +85,7 @@ import type { HomeScope } from './homeScope';
 // main's configured hard cap would silently run a second controller against
 // main's contract limit. Dry-run defaults TRUE (the safe boot default): an
 // unconfigured sub-home plans but never actuates.
-const SUB_HOME_CAPACITY_DEFAULTS: CapacityScalarSettings = {
-  limitKw: 10,
-  marginKw: 0.2,
-  dryRun: true,
-};
+const SUB_HOME_CAPACITY_DEFAULTS: CapacityScalarSettings = { limitKw: 10, marginKw: 0.2, dryRun: true };
 
 // A neutral operating mode for the capacity-only sub-home scope. The mode value
 // is only ever used to index `getModeDeviceTargets()`, which a sub-home binds to
@@ -90,14 +97,28 @@ const SUB_HOME_NEUTRAL_OPERATING_MODE = '';
 // a freshly (re)created bundle holds restores until its meter proves live
 // (the first fresh sample clears the window via the pipeline).
 const BUNDLE_RESTORE_STABILIZATION_MS = 60 * 1000;
-const TRACKER_PRUNE_INITIAL_DELAY_MS = 10 * 1000;
-const TRACKER_PRUNE_INTERVAL_MS = 60 * 60 * 1000;
+const SHORTFALL_SIDE_EFFECT_RETRY_MS = 1_000;
 
 export type HomeCapacityBundleDeps = {
   ctx: AppContext;
   home: SubHomeConfig;
+  /** Already safety-resolved against persisted state by the owning registry. */
+  initialPowerTrackerState: PowerTrackerState;
+  /** Identity every tracker persist from this runtime must carry. */
+  powerTrackerMeterIdentity: PowerTrackerMeterIdentity;
   /** Membership-readiness signal (a committed zone tree has been joined). */
   isMembershipReady: () => boolean;
+  /**
+   * Source-epoch gate resolved by the registry. True only while the current
+   * global source and the last fully handled source epoch are Homey Energy.
+   */
+  isMeterSourceAuthorized: () => boolean;
+  /**
+   * Permanent source-epoch invalidation for this runtime. Unlike a transient
+   * settings-read failure, this means a deferred global Flow transition belongs
+   * to a superseded meter epoch and must be discarded.
+   */
+  isMeterSourceEpochDiscarded: () => boolean;
 };
 
 /** Read-only per-bundle diagnostics (test observability + future `ui_homes`). */
@@ -105,7 +126,7 @@ export type HomeCapacityBundleDiagnostics = {
   homeId: HomeId;
   meterDeviceId: string | null;
   capacityScalars: CapacityScalarSettings;
-  /** The engine's effective no-actuation switch (persisted flag OR the boot-window membership gate). */
+  /** Effective no-actuation switch (persisted flag, membership gate, or source-epoch gate). */
   dryRunEffective: boolean;
   /** Last meter reading this bundle's guard saw (kW), or null before the first sample. */
   lastMeterPowerKw: number | null;
@@ -128,6 +149,10 @@ export type RealtimeReconcileHooks = {
 
 export type HomeCapacityBundle = {
   homeId: HomeId;
+  /** True after teardown has closed every writer/actuator seam. */
+  isTornDown: () => boolean;
+  /** Current reconciled config, used when a source transition replaces the runtime. */
+  getHomeConfig: () => SubHomeConfig;
   /** This home's meter device id (fresh from the last reconciled config). */
   getMeterDeviceId: () => string | null;
   getDiagnostics: () => HomeCapacityBundleDiagnostics;
@@ -137,7 +162,7 @@ export type HomeCapacityBundle = {
    * reconciled through THIS bundle's plan, not main's.
    */
   getReconcileHooks: () => RealtimeReconcileHooks;
-  /** Adopt a changed sub-home config (meter/root-zone/name) without teardown. */
+  /** Adopt a same-meter config change (root-zone/name) without teardown. */
   updateHomeConfig: (home: SubHomeConfig) => void;
   /**
    * Apply the once-only membership-ready edge (rebuild → reconcile). Idempotent
@@ -145,146 +170,34 @@ export type HomeCapacityBundle = {
    * from the membership tree-commit transition (decoupled from sample arrival).
    */
   applyMembershipReadyEdge: () => void;
+  /**
+   * Rebuild this home's committed plan after a pin/zone/config ownership
+   * change so the new complement is adopted promptly. Point-of-use ownership
+   * fencing remains the immediate safety boundary for any older continuation.
+   */
+  rebuildForMembershipChange: () => Promise<boolean>;
+  /** Commit a fresh plan behind the ownership fence; token is its sample revision. */
+  prepareOwnershipGeneration: () => Promise<StableSampleRevision>;
+  isPreparedOwnershipGenerationCurrent: (sampleRevision: number) => boolean;
+  /** Reconcile with the same point-of-use sample-revision abort as the ready edge. */
+  reconcilePreparedOwnershipGeneration: (sampleRevision: number) => Promise<boolean>;
+  flushDeferredShortfallSideEffect: () => Promise<boolean>;
   /** Feed one meter reading (W) into this home's sample pipeline. */
   recordMeterSample: (powerW: number, nowMs: number) => void;
   /** Suffix-hook: reload the capacity scalars into the guard + request a rebuild. */
   reloadCapacityScalars: () => void;
   /** Suffix-hook: adopt an externally written tracker state (own-write echoes suppressed). */
   reloadPowerTracker: () => void;
-  /** Stop timers/scheduler; leaves all suffixed persisted state in place. */
-  teardown: () => void;
+  /**
+   * Stop timers/scheduler. Identity changes additionally clear and durably
+   * persist meter freshness after the final pending-state flush.
+   *
+   * Returns false only when the requested durable freshness reset failed. The
+   * runtime is already fenced in that case; callers must retain it as a
+   * tombstone and retry the reset before constructing a replacement.
+   */
+  teardown: (options?: { resetMeterFreshness?: boolean }) => boolean;
 };
-
-// Mirrors `shouldForcePersistPowerTracker` in `setup/appPowerTracker.ts`
-// (module-private there): an hour-bucket rollover bypasses the persist
-// debounce so a restart never loses the closed hour's totals.
-const crossesHourBoundary = (previous: PowerTrackerState, next: PowerTrackerState): boolean => {
-  const previousTs = previous.lastTimestamp;
-  const nextTs = next.lastTimestamp;
-  if (
-    typeof previousTs !== 'number' || typeof nextTs !== 'number'
-    || !Number.isFinite(previousTs) || !Number.isFinite(nextTs)
-  ) return false;
-  return getHourBucketKey(previousTs) !== getHourBucketKey(nextTs);
-};
-
-export type SuffixedTrackerPersistence = {
-  getState: () => PowerTrackerState;
-  /** Pipeline save path: adopt + debounce-persist (hour rollovers force). */
-  save: (next: PowerTrackerState) => void;
-  /** Suffix-hook reload with own-write echo suppression (see the hook contract). */
-  reloadFromSettings: () => void;
-  /** Meter swap: drop the freshness stamp so the next new-meter sample re-primes it. */
-  resetFreshness: () => void;
-  startPruning: () => void;
-  /** Flush a pending debounced persist, then stop the tracker timers. */
-  stopAndFlush: () => void;
-};
-
-// Per-home tracker state + suffixed persistence. Hydration is junk-tolerant:
-// the same field-level solar sanitize + whole-shape guard as the main home's
-// `SettingsRepository.loadPowerTrackerState`; junk resolves to a fresh empty
-// state, never a crash and never a destructive overwrite of the persisted blob.
-function createSuffixedTrackerPersistence(params: {
-  ctx: AppContext;
-  homeId: HomeId;
-  timerKey: (suffix: string) => string;
-  /** Teardown fence: drop a post-teardown sample-pipeline save so it can't re-arm a persist. */
-  isTornDown: () => boolean;
-}): SuffixedTrackerPersistence {
-  const { ctx, homeId, timerKey, isTornDown } = params;
-  const trackerKey = homeScopedSettingsKey(POWER_TRACKER_STATE, homeId);
-  const hydrated = sanitizePowerTrackerSolarFields(ctx.homey.settings.get(trackerKey) as unknown);
-  let state: PowerTrackerState = isPowerTrackerState(hydrated) ? hydrated : {};
-  // Own-write echo fingerprint: the suffixed persist below re-enters the
-  // settings handler as an (un-deduped) suffix-hook call at sample cadence;
-  // `reloadFromSettings` compares against this to skip self-echoes.
-  let lastPersistedJson: string | null = null;
-  const persist = (reason: PowerTrackerPersistReason): void => {
-    ctx.timers.clear(timerKey('powerTrackerSave'));
-    try {
-      const serialized = JSON.stringify(state);
-      ctx.homey.settings.set(trackerKey, state);
-      // Fingerprint recorded only after a successful write, so a failed set
-      // can never suppress the adoption of a later external write.
-      lastPersistedJson = serialized;
-    } catch (error) {
-      ctx.getStructuredLogger('homes')?.error({
-        event: 'home_power_tracker_persist_failed', homeId, reason, err: normalizeError(error),
-      });
-    }
-  };
-  const prune = (): void => {
-    state = prunePowerTrackerHistoryForApp({
-      powerTracker: state,
-      debugStructured: ctx.getStructuredDebugEmitter('perf', 'perf'),
-      error: (msg, err) => ctx.error(msg, err),
-      timeZone: ctx.getTimeZone(),
-    });
-    persist('prune');
-  };
-  return {
-    getState: () => state,
-    save: (next) => {
-      // Fenced on teardown: a sample-pipeline continuation resolving after
-      // `stopAndFlush` must NOT re-schedule a persist (it would fire post-teardown
-      // and clobber a same-`homeId` bundle re-created after this one). The final
-      // pre-teardown state is flushed by `stopAndFlush` via `persist` directly.
-      if (isTornDown()) return;
-      const previous = state;
-      state = next;
-      if (crossesHourBoundary(previous, next)) {
-        persist('hour_rollover');
-        return;
-      }
-      if (!ctx.timers.has(timerKey('powerTrackerSave'))) {
-        ctx.timers.registerTimeout(
-          timerKey('powerTrackerSave'),
-          setTimeout(() => persist('scheduled'), VOLATILE_WRITE_THROTTLE_MS),
-        );
-      }
-    },
-    reloadFromSettings: () => {
-      const raw = ctx.homey.settings.get(trackerKey) as unknown;
-      // Own-write echo suppression: adopting our own echo would discard
-      // in-memory samples accrued since the last persist.
-      try {
-        if (JSON.stringify(raw) === lastPersistedJson) return;
-      } catch {
-        // Unserializable junk cannot be our own write; fall through to the guard.
-      }
-      const sanitized = sanitizePowerTrackerSolarFields(raw);
-      if (isPowerTrackerState(sanitized)) state = sanitized;
-    },
-    resetFreshness: () => {
-      // Meter swap (R7b P2#3): drop the PREVIOUS meter's freshness stamp so
-      // `resolvePowerSampleFreshness` resolves to "never sampled" (stale_hold)
-      // rather than aging the old timestamp into a fail-closed shed before the
-      // new meter reports. Accumulated totals are a separate accounting concern
-      // and are intentionally left intact; the next new-meter sample re-primes
-      // `lastTimestamp`/`lastPowerW`.
-      state = { ...state, lastTimestamp: undefined, lastPowerW: undefined };
-    },
-    startPruning: () => {
-      ctx.timers.registerTimeout(timerKey('trackerPruneInitial'), setTimeout(() => {
-        ctx.timers.clear(timerKey('trackerPruneInitial'));
-        prune();
-      }, TRACKER_PRUNE_INITIAL_DELAY_MS));
-      ctx.timers.registerInterval(timerKey('trackerPruneInterval'), setInterval(
-        prune,
-        TRACKER_PRUNE_INTERVAL_MS,
-      ));
-    },
-    stopAndFlush: () => {
-      // Flush BEFORE clearing timers so the last accepted samples survive for
-      // re-creation; suffixed persisted state is deliberately left in place.
-      if (ctx.timers.has(timerKey('powerTrackerSave'))) persist('uninit');
-      for (const suffix of ['powerTrackerSave', 'trackerPruneInitial', 'trackerPruneInterval']) {
-        ctx.timers.clear(timerKey(suffix));
-      }
-    },
-  };
-}
 
 // Per-bundle rebuild scheduler over the bundle's own rebuild state; every
 // timer rides the shared TimerRegistry under this home's key. Bundle clock:
@@ -340,6 +253,7 @@ function buildSubHomeScope(params: {
   ctx: AppContext;
   homeId: HomeId;
   isMembershipReady: () => boolean;
+  isMeterSourceAuthorized: () => boolean;
   /** Teardown fence: gate the suffixed-key writers so a post-teardown continuation cannot persist. */
   isTornDown: () => boolean;
   getScalars: () => CapacityScalarSettings;
@@ -353,7 +267,7 @@ function buildSubHomeScope(params: {
   getMeterDeviceId: () => string | null;
 }): HomeScope {
   const {
-    ctx, homeId, isMembershipReady, isTornDown, getScalars, getGuard, getTracker,
+    ctx, homeId, isMembershipReady, isMeterSourceAuthorized, isTornDown, getScalars, getGuard, getTracker,
     getServiceForSync, getPlanEngineForPending, getMeterDeviceId,
   } = params;
   // Suffixed persisted-signal write, fenced on teardown: an in-flight
@@ -368,10 +282,12 @@ function buildSubHomeScope(params: {
   return {
     homeId,
     getCapacitySettings: () => ({ limitKw: getScalars().limitKw, marginKw: getScalars().marginKw }),
-    // Boot-window double-control guard folded into the engine's canonical
-    // no-actuation switch: forced dry-run until membership has resolved from a
-    // committed zone tree, then the persisted per-home flag governs.
-    getCapacityDryRun: () => !isMembershipReady() || getScalars().dryRun,
+    // Both external trust boundaries fold into the canonical no-actuation
+    // switch: membership must be committed and this meter-bearing source epoch
+    // must be authorized before the persisted per-home toggle can enable writes.
+    getCapacityDryRun: () => (
+      isTornDown() || !isMembershipReady() || !isMeterSourceAuthorized() || getScalars().dryRun
+    ),
     getCapacityGuard: getGuard,
     getPowerTracker: getTracker,
     getDailyBudgetSnapshot: () => null,
@@ -440,19 +356,55 @@ function createBundleGuard(params: {
   scalars: CapacityScalarSettings;
   planEngine: ReturnType<typeof createPlanEngine>;
   planService: PlanService;
-  /** Teardown fence: the shortfall/clear callbacks fire the GLOBAL capacity_shortfall Flow. */
+  /** Lifecycle/ownership/source fences: callbacks fire the GLOBAL capacity_shortfall Flow. */
   isTornDown: () => boolean;
-}): CapacityGuard {
-  const { ctx, scalars, planEngine, planService, isTornDown } = params;
+  isMembershipReady: () => boolean;
+  isMeterSourceAuthorized: () => boolean;
+  isMeterSourceEpochDiscarded: () => boolean;
+  isPreparedReconcileActive: () => boolean;
+  shortfallRetryTimerKey: string;
+}): {
+  guard: CapacityGuard;
+  flushDeferredShortfallSideEffect: () => Promise<boolean>;
+  holdDeferredShortfallSideEffect: () => void;
+} {
+  const {
+    ctx, scalars, planEngine, planService, isTornDown, isMembershipReady,
+    isMeterSourceAuthorized, isMeterSourceEpochDiscarded,
+    isPreparedReconcileActive, shortfallRetryTimerKey,
+  } = params;
+  const scheduleShortfallRetry = (): void => {
+    if (isTornDown() || ctx.timers.has(shortfallRetryTimerKey)) return;
+    ctx.timers.registerTimeout(shortfallRetryTimerKey, setTimeout(() => {
+      ctx.timers.clear(shortfallRetryTimerKey);
+      void shortfallSideEffectGate.flush().catch((error: unknown) => {
+        ctx.getStructuredLogger('homes')?.warn({
+          event: 'home_shortfall_side_effect_retry_failed',
+          err: normalizeError(error),
+        });
+      });
+    }, SHORTFALL_SIDE_EFFECT_RETRY_MS));
+  };
+  const shortfallSideEffectGate = createCapacityShortfallSideEffectGate({
+    isDiscarded: () => isTornDown() || isMeterSourceEpochDiscarded(),
+    isTemporarilyFenced: () => (
+      isPreparedReconcileActive() || !isMembershipReady() || !isMeterSourceAuthorized()
+    ),
+    shouldHoldDeferredForPreparedApply: isPreparedReconcileActive,
+    scheduleRetry: scheduleShortfallRetry,
+    applyShortfall: (deficitKw) => planService.handleShortfall(deficitKw),
+    applyClear: () => planService.handleShortfallCleared(),
+  });
   const guard = new CapacityGuard({
     limitKw: scalars.limitKw,
     softMarginKw: scalars.marginKw,
-    // Fenced on teardown: `handleShortfall`/`handleShortfallCleared` fire the app's
-    // SINGLE global `capacity_shortfall` Flow card (not a per-home signal). An
-    // in-flight rebuild resolving AFTER teardown must not raise/clear that card —
-    // it would be a stale external control event for a home no longer managed (R7b P1).
-    onShortfall: async (deficitKw) => { if (isTornDown()) return; await planService.handleShortfall(deficitKw); },
-    onShortfallCleared: async () => { if (isTornDown()) return; await planService.handleShortfallCleared(); },
+    // `handleShortfall`/`handleShortfallCleared` fire the app's SINGLE global
+    // `capacity_shortfall` Flow card (not a per-home signal). Re-check both
+    // lifecycle and source authorization at this final side-effect seam: an
+    // in-flight rebuild can otherwise raise/clear that card after synchronous
+    // source observation has fenced the meter but before queued teardown runs.
+    onShortfall: shortfallSideEffectGate.onShortfall,
+    onShortfallCleared: shortfallSideEffectGate.onShortfallCleared,
     structuredLog: ctx.getStructuredLogger('capacity'),
     capacityStateSummaryProvider: () => buildPlanCapacityStateSummary(
       planService.getLatestPlanSnapshot(),
@@ -464,7 +416,11 @@ function createBundleGuard(params: {
   });
   guard.setSoftLimitProvider(() => planEngine.computeDynamicSoftLimit());
   guard.setShortfallThresholdProvider(() => planService.computeShortfallThreshold());
-  return guard;
+  return {
+    guard,
+    flushDeferredShortfallSideEffect: shortfallSideEffectGate.flushAfterPreparedApply,
+    holdDeferredShortfallSideEffect: shortfallSideEffectGate.holdDeferredUntilPreparedApply,
+  };
 }
 
 // Assembles the bundle's sample-ingest runtime: the per-bundle rebuild
@@ -512,6 +468,93 @@ function createBundleSamplePipeline(params: {
   return { pipeline, scheduler };
 }
 
+function createBundlePlanningRuntime(params: {
+  ctx: AppContext;
+  homeId: HomeId;
+  timerKey: (suffix: string) => string;
+  isTornDown: () => boolean;
+  isMembershipReady: () => boolean;
+  isMeterSourceAuthorized: () => boolean;
+  isMeterSourceEpochDiscarded: () => boolean;
+  isMeterSourceAuthorizedForExecution: () => boolean;
+  preparedSampleFence: ReturnType<typeof createPreparedBundleSampleFence>;
+  tracker: ReturnType<typeof createSuffixedTrackerPersistence>;
+  getHome: () => SubHomeConfig;
+  getCapacityScalars: () => CapacityScalarSettings;
+  getRebuildState: () => PowerSampleRebuildState;
+  setRebuildState: (state: PowerSampleRebuildState) => void;
+}) {
+  const scope = buildSubHomeScope({
+    ctx: params.ctx,
+    homeId: params.homeId,
+    isMembershipReady: params.isMembershipReady,
+    isMeterSourceAuthorized: params.isMeterSourceAuthorizedForExecution,
+    isTornDown: params.isTornDown,
+    getScalars: params.getCapacityScalars,
+    getGuard: () => guard,
+    getTracker: params.tracker.getState,
+    getServiceForSync: () => planService,
+    getPlanEngineForPending: () => planEngine,
+    getMeterDeviceId: () => params.getHome().meterDeviceId,
+  });
+  const isActuationFenced = (): boolean => {
+    if (
+      params.isTornDown()
+      || !params.isMembershipReady()
+      || params.preparedSampleFence.isSuperseded()
+    ) return true;
+    return !params.isMeterSourceAuthorizedForExecution();
+  };
+  const planEngine = createPlanEngine(params.ctx, scope, { isActuationFenced });
+  const storedLastControlled = params.ctx.homey.settings.get(
+    homeScopedSettingsKey(DEVICE_LAST_CONTROLLED_MS, params.homeId),
+  ) as unknown;
+  // eslint-disable-next-line functional/immutable-data -- same engine-state hydration write as the main-home wiring
+  planEngine.state.lastDeviceControlledMs = isNumberMap(storedLastControlled) ? { ...storedLastControlled } : {};
+  planEngine.beginStartupRestoreStabilization(BUNDLE_RESTORE_STABILIZATION_MS);
+  const planService = createPlanService(params.ctx, scope, planEngine);
+  const {
+    guard,
+    flushDeferredShortfallSideEffect,
+    holdDeferredShortfallSideEffect,
+  } = createBundleGuard({
+    ctx: params.ctx,
+    scalars: params.getCapacityScalars(),
+    planEngine,
+    planService,
+    isTornDown: params.isTornDown,
+    isMembershipReady: params.isMembershipReady,
+    isMeterSourceAuthorized: params.isMeterSourceAuthorized,
+    isMeterSourceEpochDiscarded: params.isMeterSourceEpochDiscarded,
+    isPreparedReconcileActive: params.preparedSampleFence.isActive,
+    shortfallRetryTimerKey: params.timerKey('shortfallSideEffectRetry'),
+  });
+  const { pipeline, scheduler: planRebuildScheduler } = createBundleSamplePipeline({
+    ctx: params.ctx,
+    homeId: params.homeId,
+    timerKey: params.timerKey,
+    getRebuildState: params.getRebuildState,
+    setRebuildState: params.setRebuildState,
+    getPlanEngine: () => planEngine,
+    getPlanService: () => planService,
+    getCapacityGuard: () => guard,
+    getCapacitySettings: scope.getCapacitySettings,
+    getMeterDeviceId: () => params.getHome().meterDeviceId,
+    savePowerTracker: params.tracker.save,
+    getPowerTracker: params.tracker.getState,
+  });
+  return {
+    scope,
+    planEngine,
+    planService,
+    guard,
+    flushDeferredShortfallSideEffect,
+    holdDeferredShortfallSideEffect,
+    pipeline,
+    planRebuildScheduler,
+  };
+}
+
 export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapacityBundle {
   const { ctx } = deps;
   const { homeId } = deps.home;
@@ -520,14 +563,8 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
 
   let home = deps.home;
   let tornDown = false;
+  const preparedSampleFence = createPreparedBundleSampleFence();
   const isTornDown = (): boolean => tornDown;
-  // Monotonic meter-sample counter: bumped synchronously on each arriving sample
-  // so the readiness apply-edge can detect a NEWER sample landing between its
-  // rebuild capture and its reconcile boundary (and abort a now-stale decision —
-  // R7b P1-5). Actuation and suffixed writes past teardown are fenced separately
-  // (the actuator seam + the suffixed-write / tracker-save `isTornDown` gates), so
-  // a same-`homeId` bundle re-created after this one is never clobbered.
-  let sampleRevision = 0;
   // Last-good capacity scalars, seeded from the home's OWN defaults (never
   // main's live snapshot — see SUB_HOME_CAPACITY_DEFAULTS). The store is
   // constructed ONCE per bundle and is the ONLY capacity source for this scope.
@@ -536,60 +573,72 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
   capacityScalars = capacityStore.read();
   let rebuildState: PowerSampleRebuildState = { lastMs: 0 };
 
-  const tracker = createSuffixedTrackerPersistence({ ctx, homeId, timerKey, isTornDown });
-  const scope = buildSubHomeScope({
+  const tracker = createSuffixedTrackerPersistence({
+    ctx,
+    homeId,
+    initialState: deps.initialPowerTrackerState,
+    meterIdentity: deps.powerTrackerMeterIdentity,
+    timerKey,
+    isTornDown,
+  });
+  let scheduleSourceActuationRetry = (): void => undefined;
+  const isMeterSourceAuthorizedForExecution = (): boolean => {
+    const authorized = deps.isMeterSourceAuthorized();
+    if (!authorized && !deps.isMeterSourceEpochDiscarded()) scheduleSourceActuationRetry();
+    return authorized;
+  };
+  const {
+    scope,
+    planEngine,
+    planService,
+    guard,
+    flushDeferredShortfallSideEffect,
+    holdDeferredShortfallSideEffect,
+    pipeline,
+    planRebuildScheduler,
+  } = createBundlePlanningRuntime({
     ctx,
     homeId,
     isMembershipReady: deps.isMembershipReady,
+    isMeterSourceAuthorized: deps.isMeterSourceAuthorized,
+    isMeterSourceEpochDiscarded: deps.isMeterSourceEpochDiscarded,
+    isMeterSourceAuthorizedForExecution,
     isTornDown,
-    getScalars: () => capacityScalars,
-    // Lazy closures over consts assigned after the engine/service exist (the
-    // guard's shortfall callbacks need the service; nothing invokes either
-    // closure during factory construction).
-    getGuard: () => guard,
-    getTracker: tracker.getState,
-    getServiceForSync: () => planService,
-    getPlanEngineForPending: () => planEngine,
-    getMeterDeviceId: () => home.meterDeviceId,
-  });
-  // `isActuationFenced` nulls this bundle's actuator seam once torn down: ANY
-  // in-flight rebuild/reconcile/heartbeat/sample continuation resolving after
-  // teardown no-ops at the write boundary, so a removed home can never actuate
-  // into main's just-adopted complement (double-control — R7b P0-2).
-  const planEngine = createPlanEngine(ctx, scope, { isActuationFenced: isTornDown });
-  // Suffixed mirror of `AppServiceWiring.hydratePlanEngineControlState`: the
-  // per-home restore backoff survives an app restart / bundle re-creation.
-  const storedLastControlled = ctx.homey.settings.get(
-    homeScopedSettingsKey(DEVICE_LAST_CONTROLLED_MS, homeId),
-  ) as unknown;
-  // eslint-disable-next-line functional/immutable-data -- same engine-state hydration write as the main-home wiring
-  planEngine.state.lastDeviceControlledMs = isNumberMap(storedLastControlled) ? { ...storedLastControlled } : {};
-  planEngine.beginStartupRestoreStabilization(BUNDLE_RESTORE_STABILIZATION_MS);
-  // The bundle's OWN engine is passed explicitly — omitting it would fall
-  // through to `ctx.planEngine` (the MAIN home's engine).
-  const planService = createPlanService(ctx, scope, planEngine);
-  const guard = createBundleGuard({ ctx, scalars: capacityScalars, planEngine, planService, isTornDown });
-
-  const { pipeline, scheduler: planRebuildScheduler } = createBundleSamplePipeline({
-    ctx,
-    homeId,
     timerKey,
+    preparedSampleFence,
+    tracker,
+    getHome: () => home,
+    getCapacityScalars: () => capacityScalars,
     getRebuildState: () => rebuildState,
     setRebuildState: (state) => { rebuildState = state; },
-    getPlanEngine: () => planEngine,
-    getPlanService: () => planService,
-    getCapacityGuard: () => guard,
-    getCapacitySettings: scope.getCapacitySettings,
-    getMeterDeviceId: () => home.meterDeviceId,
-    savePowerTracker: tracker.save,
-    getPowerTracker: tracker.getState,
   });
+  preparedSampleFence.bindReader(() => pipeline.getStableSampleRevision());
+  const beginPreparedOwnershipReconcile = (sampleRevision: number): (() => void) => {
+    holdDeferredShortfallSideEffect();
+    return preparedSampleFence.begin(sampleRevision);
+  };
+  scheduleSourceActuationRetry = installHomeCapacityBundleSourceRecovery({
+    ctx,
+    homeId,
+    timerKey: timerKey('sourceActuationRetry'),
+    planService,
+    isTornDown,
+    isMembershipReady: deps.isMembershipReady,
+    isMeterSourceAuthorized: deps.isMeterSourceAuthorized,
+    isMeterSourceEpochDiscarded: deps.isMeterSourceEpochDiscarded,
+    getStableSampleRevision: () => pipeline.getStableSampleRevision(),
+    beginPreparedReconcile: beginPreparedOwnershipReconcile,
+    flushDeferredShortfallSideEffect,
+  }).schedule;
   tracker.startPruning();
 
   // Readiness apply-edge (decoupled from sample arrival; fired by the registry
   // from the membership tree-commit transition or the trust-fallback timer) plus
   // the trust-fallback and freshness-heartbeat timers.
-  const { applyMembershipReadyEdge } = installBundleReadinessAndFreshness({
+  const {
+    applyMembershipReadyEdge,
+    markPreparedOwnershipGenerationReconciled,
+  } = installBundleReadinessAndFreshness({
     ctx,
     homeId,
     timerKey,
@@ -597,23 +646,15 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
     planService,
     getTrackerState: tracker.getState,
     isTornDown,
-    getSampleRevision: () => sampleRevision,
+    getStableSampleRevision: () => pipeline.getStableSampleRevision(),
+    beginPreparedOwnershipReconcile,
     isMembershipReady: deps.isMembershipReady,
+    isMeterSourceAuthorized: deps.isMeterSourceAuthorized,
+    flushDeferredShortfallSideEffect,
   });
 
-  // Initial plan build so the suffixed status signals exist without waiting
-  // for the first meter sample. Awaits the shared snapshot warmup gate inside
-  // `rebuildPlanFromCache` during boot; contained (never fails construction).
-  void planService.rebuildPlanFromCache('home_bundle_created').catch((error: unknown) => {
-    logger()?.error({ event: 'home_bundle_initial_rebuild_failed', homeId, err: normalizeError(error) });
-  });
-  logger()?.info({
-    event: 'home_capacity_bundle_created',
-    homeId,
-    meterDeviceId: home.meterDeviceId,
-    limitKw: capacityScalars.limitKw,
-    dryRun: capacityScalars.dryRun,
-  });
+  // Initial signals build awaits the shared snapshot warmup gate; contained.
+  startHomeCapacityBundle(planService, logger, home, capacityScalars);
 
   return buildHomeCapacityBundleApi({
     ctx,
@@ -629,11 +670,14 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
     planRebuildScheduler,
     capacityStore,
     applyMembershipReadyEdge,
+    markPreparedOwnershipGenerationReconciled,
     getHome: () => home,
     setHome: (next) => { home = next; },
     getScalars: () => capacityScalars,
     setScalars: (next) => { capacityScalars = next; },
-    bumpSampleRevision: () => { sampleRevision += 1; },
+    getStableSampleRevision: () => pipeline.getStableSampleRevision(),
+    beginPreparedOwnershipReconcile,
+    flushDeferredShortfallSideEffect,
     isTornDown,
     markTornDown: () => { tornDown = true; },
   });

@@ -1,6 +1,7 @@
 import {
   resolveBuildingPlanChipTone,
   resolvePausedUnpluggedChipTone,
+  SMART_TASK_LIST_STATUS_CHIP_VARIANT,
   type DeadlineLabels,
   type DeadlineLiveState,
   type DeadlinePendingContext,
@@ -20,6 +21,7 @@ import { formatDeadlineFull, formatTarget } from './deadlinePlanFormatters.ts';
 // chip uses the same shared label map as the live hero so the three Smart-
 // task surfaces (list / hero / device card) never disagree on chip copy.
 export const resolvePendingLiveState = (reason: DeadlinePlanPendingReason): DeadlineLiveState => {
+  if (reason === 'device_in_sub_home') return 'unavailable';
   if (reason === 'invalid_session') return 'paused_unplugged';
   if (reason === 'charger_not_resumable') return 'paused_not_resumable';
   return 'building_plan';
@@ -36,6 +38,7 @@ export const resolvePendingLiveState = (reason: DeadlinePlanPendingReason): Dead
 // `feedback_layering_resolution_in_producer.md` this consumer just calls the
 // flat shared-domain helpers — it never branches on the underlying state.
 export const pendingChipTone = (liveState: DeadlineLiveState): SmartTaskChipTone => {
+  if (liveState === 'unavailable') return SMART_TASK_LIST_STATUS_CHIP_VARIANT.unavailable;
   if (liveState === 'paused_unplugged' || liveState === 'paused_not_resumable') {
     return resolvePausedUnpluggedChipTone();
   }
@@ -44,7 +47,11 @@ export const pendingChipTone = (liveState: DeadlineLiveState): SmartTaskChipTone
 
 export const resolvePendingReason = (
   activePlan: ResolvedDeferredObjectiveActivePlanV1 | null,
-): DeadlinePlanPendingReason => activePlan?.pendingReason ?? 'awaiting_horizon_plan';
+): DeadlinePlanPendingReason => (
+  activePlan?.diagnosticReasonCode === 'objective_device_in_sub_home'
+    ? 'device_in_sub_home'
+    : activePlan?.pendingReason ?? 'awaiting_horizon_plan'
+);
 
 const resolvePriceSource = (scheme: unknown): DeadlinePendingPriceSource => {
   if (scheme === 'flow') return 'external_flow';

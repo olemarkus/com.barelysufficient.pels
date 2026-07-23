@@ -62,6 +62,17 @@ describe('toPlanDevice — R7b per-home options', () => {
     expect(result.surplusOnly).toBeUndefined();
   });
 
+  it('abandons the main-home projection when the persisted source key read is suspect', () => {
+    const ctx = buildSurplusCtx();
+    (ctx.homey.settings.get as Mock).mockReturnValue(undefined);
+    vi.spyOn(ctx.homey.settings, 'getKeys').mockReturnValue([POWER_SOURCE]);
+
+    expect(() => toPlanDevice(ctx, buildSurplusWillingSnapshot())).toThrow(
+      'power source settings read is suspect',
+    );
+    expect(ctx.homey.settings.set).not.toHaveBeenCalled();
+  });
+
   it('DEFAULT reads MAIN in-flight pending binary command via ctx.planEngine', () => {
     const ctx = buildSurplusCtx();
     ctx.planEngine = {

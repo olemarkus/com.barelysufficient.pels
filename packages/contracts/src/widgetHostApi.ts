@@ -7,6 +7,7 @@ import type { StarvationRescueDevice } from './starvationRescue.js';
 import type { DailyBudgetUiPayload } from './dailyBudgetTypes.js';
 import type { ResolvedDeferredObjectiveActivePlansV1 } from './deferredObjectiveActivePlans.js';
 import type { SettingsUiDeferredObjectivePlanHistoryPayload } from './settingsUiApi.js';
+import type { SmartTaskHomeScope } from './smartTaskHomeScope.js';
 
 /**
  * Result of a widget-initiated deferred-objective write (create / rescue). The
@@ -22,9 +23,14 @@ export type WidgetObjectiveWriteResult =
       | 'device_in_sub_home' | 'invalid_candidate' | 'write_refused';
   };
 
+export type CreateSmartTaskCandidateDevicesRead =
+  | { state: 'ready'; devices: DecoratedDeviceSnapshot[] }
+  | { state: 'unavailable' };
+
 /** create_smart_task widget host surface. */
 export type CreateSmartTaskHostApi = {
-  getCreateSmartTaskCandidateDevices(): DecoratedDeviceSnapshot[];
+  getCreateSmartTaskCandidateDevices(): CreateSmartTaskCandidateDevicesRead;
+  resolveSmartTaskHomeScope(deviceId: string): SmartTaskHomeScope;
   previewDeferredObjectivePlan(
     deviceId: string,
     candidate: DeferredObjectivePlanPreviewCandidate,
@@ -38,6 +44,7 @@ export type CreateSmartTaskHostApi = {
 /** starvation_rescue widget host surface. */
 export type StarvationRescueHostApi = {
   getStarvedRescueDevices(): StarvationRescueDevice[];
+  resolveSmartTaskHomeScope(deviceId: string): SmartTaskHomeScope;
   previewStarvationRescuePlan(
     deviceId: string,
     candidate: DeferredObjectivePlanPreviewCandidate,

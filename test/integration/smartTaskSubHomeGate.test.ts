@@ -13,7 +13,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MockSettings } from '../mocks/homey';
 import { updateSettingsUiSmartTask } from '../../setup/settingsUiSmartTaskApi';
 import { handleDeferredDeadlineReached } from '../../setup/appInit/deferredObjectiveLifecycle';
-import { isSmartTaskDeviceInMainHome } from '../../setup/appInit/smartTaskHomeScope';
+import {
+  buildStarvedRescueDevices,
+  hasMainHomeSmartTaskAuthority,
+  isSmartTaskDeviceInMainHome,
+  resolveSmartTaskHomeScope,
+} from '../../setup/appInit/smartTaskHomeScope';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 import type { AppContext } from '../../lib/app/appContext';
 import {
@@ -40,6 +45,7 @@ import {
 import type { DeferredObjectiveActivePlanRecorder } from '../../lib/objectives/deferredObjectives/activePlanRecorder';
 import type { DeferredObjectivePlanHistoryRecorder } from '../../lib/objectives/deferredObjectives/planHistory';
 import type { DeferredObjectiveSettingsEntry } from '../../lib/objectives/deferredObjectives/settings';
+import type { SmartTaskHomeScope } from '../../packages/contracts/src/smartTaskHomeScope';
 import {
   withBinaryDiscriminant,
   withTemperatureDiscriminant,
@@ -79,7 +85,7 @@ const buildStore = (
 
 const buildDeviceDeps = (
   store: ObjectiveSettingsStore,
-  isDeviceInMainHome?: (deviceId: string) => boolean,
+  resolveDeviceHomeScope?: (deviceId: string) => SmartTaskHomeScope,
 ) => {
   const activePlanRecorder = {
     markPending: vi.fn(),
@@ -99,7 +105,7 @@ const buildDeviceDeps = (
     planHistoryRecorder,
     rebuildPlan,
     nowMs: NOW_MS,
-    ...(isDeviceInMainHome ? { isDeviceInMainHome } : {}),
+    ...(resolveDeviceHomeScope ? { resolveDeviceHomeScope } : {}),
     debugStructured,
   };
   return { deps, activePlanRecorder, planHistoryRecorder, rebuildPlan, debugStructured };
@@ -108,7 +114,9 @@ const buildDeviceDeps = (
 describe('device-scoped write op: sub-home gate', () => {
   it('upsert refuses a sub-home device with the typed reason — no write, no notify/rebuild', () => {
     const store = buildStore();
-    const h = buildDeviceDeps(store, (deviceId) => deviceId !== 'heater-sub');
+    const h = buildDeviceDeps(store, (deviceId) => (
+      deviceId === 'heater-sub' ? 'sub_home' : 'main'
+    ));
     const outcome = upsertObjectiveForDevice(h.deps, {
       deviceId: 'heater-sub',
       deviceName: 'Cabin heater',
@@ -129,7 +137,7 @@ describe('device-scoped write op: sub-home gate', () => {
 
   it('upsert persists unchanged for a main-home device and when the dep is absent (single-home identity)', () => {
     const gatedStore = buildStore();
-    const gated = buildDeviceDeps(gatedStore, () => true);
+    const gated = buildDeviceDeps(gatedStore, () => 'main');
     expect(upsertObjectiveForDevice(gated.deps, {
       deviceId: 'heater-main', deviceName: 'Hall heater', entry: heaterEntry,
     })).toEqual({ persisted: true });
@@ -145,10 +153,29 @@ describe('device-scoped write op: sub-home gate', () => {
 
   it('clear stays UNGATED: a task on a device relocated to a sub-home can still be removed', () => {
     const store = buildStore({ 'heater-sub': heaterEntry });
-    const h = buildDeviceDeps(store, () => false);
+    const h = buildDeviceDeps(store, () => 'sub_home');
     const outcome = clearObjectiveForDevice(h.deps, { deviceId: 'heater-sub', deviceName: 'Cabin heater' });
     expect(outcome).toEqual({ persisted: true });
     expect(readObjectiveForDevice(store, 'heater-sub')).toBeUndefined();
+  });
+
+  it('upsert refuses provisional authority as retryable ownership_unavailable', () => {
+    const store = buildStore();
+    const h = buildDeviceDeps(store, () => 'unavailable');
+    const outcome = upsertObjectiveForDevice(h.deps, {
+      deviceId: 'heater-main',
+      deviceName: 'Hall heater',
+      entry: heaterEntry,
+    });
+    expect(outcome).toEqual({ persisted: false, reason: 'ownership_unavailable' });
+    expect(readObjectiveForDevice(store, 'heater-main')).toBeUndefined();
+    expect(h.rebuildPlan).not.toHaveBeenCalled();
+    expect(h.debugStructured).toHaveBeenCalledWith({
+      event: 'objective_write_refused',
+      op: 'upsert',
+      deviceId: 'heater-main',
+      reason: 'ownership_unavailable',
+    });
   });
 });
 
@@ -223,10 +250,10 @@ describe('diagnostics: existing task whose device is in a sub-home', () => {
 // ─── Settings-UI smart-task edit lane (its own validation path) ─────────────
 //
 // The settings-UI surface is edit-only (`gateEditableTask` requires an
-// existing task) and validates through the SAME `createDeferredObjective`
-// engine, but it is a separate lane with its own reason mapper
-// (`mapSmartTaskAppReason`) — cover it end-to-lane so a sub-home rejection
-// reaches the editor typed, never collapsed into `invalid_candidate`.
+// existing task) and applies the same public main-home membership predicate
+// before calling the create engine. Cover it end-to-lane so a sub-home
+// rejection reaches the editor typed, never collapsed into
+// `invalid_candidate`, and no stale task update is attempted.
 describe('settings-UI smart-task edit lane: sub-home rejection', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -236,15 +263,20 @@ describe('settings-UI smart-task edit lane: sub-home rejection', () => {
     vi.useRealTimers();
   });
 
-  it('update forwards the typed device_in_sub_home reason to the editor', () => {
+  it('update rejects through the shared membership gate before calling the create engine', () => {
     const settings = new MockSettings();
     settings.set('capacity_limit_kw', 10);
     // Existing, enabled, future-deadline task — the device moved to a sub-home
-    // AFTER creation, so the edit gate passes and the create engine rejects.
+    // AFTER creation, so the edit gate passes and the membership gate rejects.
     settings.set('deferred_objective.heater-sub', heaterEntry);
-    const createDeferredObjective = vi.fn(() => ({ ok: false as const, reason: 'device_in_sub_home' as const }));
+    const createDeferredObjective = vi.fn(() => ({ ok: true as const }));
     const homey = {
-      app: { createDeferredObjective },
+      app: {
+        createDeferredObjective,
+        resolveSmartTaskHomeScope: (deviceId: string) => (
+          deviceId === 'heater-sub' ? 'sub_home' : 'main'
+        ),
+      },
       clock: { getTimezone: () => 'UTC' },
       settings,
     } as never;
@@ -252,25 +284,94 @@ describe('settings-UI smart-task edit lane: sub-home rejection', () => {
       homey,
       body: { deviceId: 'heater-sub', kind: 'temperature', target: 65, readyByLocalTime: '17:00' },
     });
-    expect(createDeferredObjective).toHaveBeenCalledOnce();
+    expect(createDeferredObjective).not.toHaveBeenCalled();
     expect(result).toEqual({ ok: false, reason: 'device_in_sub_home' });
+  });
+
+  it('update rejects through the producer gate while Main ownership is unresolved', () => {
+    const settings = new MockSettings();
+    settings.set('capacity_limit_kw', 10);
+    settings.set('deferred_objective.heater-sub', heaterEntry);
+    const createDeferredObjective = vi.fn(() => ({ ok: true as const }));
+    const ctx = createAppContextMock({
+      homeMembership: {
+        getHomeIdForDevice: () => 'main',
+        isOwnershipReady: () => true,
+        hasPendingOwnershipGeneration: () => false,
+        isMainHomeActuationFenced: () => true,
+      } as unknown as AppContext['homeMembership'],
+    });
+    const homey = {
+      app: {
+        createDeferredObjective,
+        resolveSmartTaskHomeScope: (deviceId: string) => resolveSmartTaskHomeScope(ctx, deviceId),
+      },
+      clock: { getTimezone: () => 'UTC' },
+      settings,
+    } as never;
+
+    expect(updateSettingsUiSmartTask({
+      homey,
+      body: { deviceId: 'heater-sub', kind: 'temperature', target: 65, readyByLocalTime: '17:00' },
+    })).toEqual({ ok: false, reason: 'unavailable' });
+    expect(createDeferredObjective).not.toHaveBeenCalled();
   });
 });
 
 // ─── Membership predicate fail-safes ─────────────────────────────────────────
-describe('isSmartTaskDeviceInMainHome: unknown membership resolves MAIN', () => {
-  const ctxWithHomeId = (homeId: unknown) => createAppContextMock({
+describe('smart-task membership and authority predicates', () => {
+  const ctxWithHomeId = (homeId: unknown, fenced = false) => createAppContextMock({
     homeMembership: {
       getHomeIdForDevice: () => homeId,
+      isOwnershipReady: () => homeId !== null && homeId !== undefined,
+      hasPendingOwnershipGeneration: () => false,
+      isMainHomeActuationFenced: () => fenced,
     } as unknown as AppContext['homeMembership'],
   });
 
-  it('a contract-slipping null resolves main (single-home identity), never sub-home rejection', () => {
+  it('keeps provisional membership distinct from authority', () => {
+    expect(isSmartTaskDeviceInMainHome(ctxWithHomeId('main'), 'd1')).toBe(true);
+    expect(isSmartTaskDeviceInMainHome(ctxWithHomeId('main', true), 'd1')).toBe(true);
+    expect(hasMainHomeSmartTaskAuthority(ctxWithHomeId('main', true), 'd1')).toBe(false);
+    expect(resolveSmartTaskHomeScope(ctxWithHomeId('main', true), 'd1')).toBe('unavailable');
     expect(isSmartTaskDeviceInMainHome(ctxWithHomeId(null), 'd1')).toBe(true);
-    // Absent service (boot window / bare contexts) → main.
     expect(isSmartTaskDeviceInMainHome(createAppContextMock({}), 'd1')).toBe(true);
-    // A real sub-home id still gates.
+    expect(hasMainHomeSmartTaskAuthority(createAppContextMock({}), 'd1')).toBe(false);
+    expect(resolveSmartTaskHomeScope(createAppContextMock({}), 'd1')).toBe('unavailable');
     expect(isSmartTaskDeviceInMainHome(ctxWithHomeId('h_cabin'), 'd1')).toBe(false);
+    expect(hasMainHomeSmartTaskAuthority(ctxWithHomeId('h_cabin'), 'd1')).toBe(false);
+    expect(resolveSmartTaskHomeScope(ctxWithHomeId('h_cabin'), 'd1')).toBe('sub_home');
+  });
+
+  it('keeps a Main held-back row visible while transient authority disables rescue', () => {
+    const ctx = createAppContextMock({
+      homeMembership: {
+        getHomeIdForDevice: () => 'main',
+        isOwnershipReady: () => true,
+        hasPendingOwnershipGeneration: () => false,
+        isMainHomeActuationFenced: () => true,
+      } as unknown as AppContext['homeMembership'],
+      latestTargetSnapshot: [{
+        id: 'd1',
+        name: 'Hall heater',
+        targets: [],
+        binaryControl: { on: false },
+      }],
+      deviceDiagnosticsService: {
+        getStarvedRescueEntries: () => [{
+          deviceId: 'd1',
+          starvation: { isStarved: true, cause: 'budget', accumulatedMs: 20 * 60_000 },
+          intendedNormalTargetC: 60,
+        }],
+      } as unknown as AppContext['deviceDiagnosticsService'],
+    });
+
+    expect(buildStarvedRescueDevices(ctx)).toEqual([
+      expect.objectContaining({
+        deviceId: 'd1',
+        smartTaskHomeScope: 'unavailable',
+      }),
+    ]);
   });
 });
 
@@ -283,7 +384,7 @@ describe('isSmartTaskDeviceInMainHome: unknown membership resolves MAIN', () => 
 describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuation', () => {
   const DEADLINE = 1_000_000;
 
-  const buildLifecycleCtx = (homeIdForDevice: string) => {
+  const buildLifecycleCtx = (homeIdForDevice: string, initiallyFenced = false) => {
     const settingsStore = new Map<string, unknown>([
       ['deferred_objective.d1', {
         enabled: true,
@@ -296,6 +397,8 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
     const forgetDevice = vi.fn();
     const setCapability = vi.fn().mockResolvedValue(undefined);
     const applyDeviceTargets = vi.fn().mockResolvedValue(undefined);
+    let fenced = initiallyFenced;
+    let deviceOn = true;
     const homey = {
       settings: {
         get: vi.fn((key: string) => settingsStore.get(key)),
@@ -311,6 +414,9 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
       isCapacityControlEnabled: () => false, // cap-off → terminal release lane
       homeMembership: {
         getHomeIdForDevice: () => homeIdForDevice,
+        isOwnershipReady: () => true,
+        hasPendingOwnershipGeneration: () => false,
+        isMainHomeActuationFenced: () => fenced,
       } as unknown as AppContext['homeMembership'],
       deviceManager: { setCapability, applyDeviceTargets } as unknown as AppContext['deviceManager'],
       // Present, available, ON binary device — the exact fixture that WOULD
@@ -323,7 +429,7 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
           available: true,
           controllable: true,
           controlCapabilityId: 'onoff',
-          binaryControl: { on: true },
+          binaryControl: { on: deviceOn },
           targets: [],
         }) as PlanInputDevice],
       } as unknown as AppContext['planService'],
@@ -333,7 +439,15 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
         getActivePlansSnapshot: () => ({ version: 1, plansByDeviceId: {} }),
       } as unknown as AppContext['deferredObjectiveActivePlanRecorder'],
     });
-    return { ctx, settingsStore, forgetDevice, setCapability, applyDeviceTargets };
+    return {
+      ctx,
+      settingsStore,
+      forgetDevice,
+      setCapability,
+      applyDeviceTargets,
+      setFenced: (next: boolean) => { fenced = next; },
+      setDeviceOn: (next: boolean) => { deviceOn = next; },
+    };
   };
 
   // The terminal release is fire-and-forget (`void applyShedBehavior`), so
@@ -359,6 +473,47 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
     expect(h.setCapability).not.toHaveBeenCalled();
     expect(h.applyDeviceTargets).not.toHaveBeenCalled();
     // Honest existing ending: disarmed immediately (cap-on-style), status forgotten.
+    expect((h.settingsStore.get('deferred_objective.d1') as { enabled: boolean }).enabled).toBe(false);
+    expect(h.forgetDevice).toHaveBeenCalledWith('d1');
+  });
+
+  it('retains a Main task without writes during a transient fence and retries after recovery', async () => {
+    const h = buildLifecycleCtx('main', true);
+
+    handleDeferredDeadlineReached(h.ctx, 'd1', 'temperature', DEADLINE, DEADLINE + 60_000);
+    await settleActuation();
+    expect(h.setCapability).not.toHaveBeenCalled();
+    expect((h.settingsStore.get('deferred_objective.d1') as { enabled: boolean }).enabled).toBe(true);
+    expect(h.forgetDevice).not.toHaveBeenCalled();
+    // A global fence is not durable relocation and must not produce the
+    // sub-home diagnostic predicate.
+    expect(isSmartTaskDeviceInMainHome(h.ctx, 'd1')).toBe(true);
+    expect(hasMainHomeSmartTaskAuthority(h.ctx, 'd1')).toBe(false);
+
+    h.setFenced(false);
+    handleDeferredDeadlineReached(
+      h.ctx,
+      'd1',
+      'temperature',
+      DEADLINE,
+      DEADLINE + 2 * 60_000,
+    );
+    await settleActuation();
+    expect(h.setCapability).toHaveBeenCalled();
+    expect((h.settingsStore.get('deferred_objective.d1') as { enabled: boolean }).enabled).toBe(true);
+    expect(h.forgetDevice).not.toHaveBeenCalled();
+
+    // Once the next observation confirms the requested off posture, the next
+    // pre-grace tick settles and disarms normally.
+    h.setDeviceOn(false);
+    handleDeferredDeadlineReached(
+      h.ctx,
+      'd1',
+      'temperature',
+      DEADLINE,
+      DEADLINE + 2.5 * 60_000,
+    );
+    await settleActuation();
     expect((h.settingsStore.get('deferred_objective.d1') as { enabled: boolean }).enabled).toBe(false);
     expect(h.forgetDevice).toHaveBeenCalledWith('d1');
   });

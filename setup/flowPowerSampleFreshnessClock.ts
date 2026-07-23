@@ -7,6 +7,9 @@ import {
 
 const FLOW_POWER_SAMPLE_HOLD_REBUILD_INTERVAL_MS = 10 * 1000;
 const FLOW_POWER_SAMPLE_FRESHNESS_TIMER = 'flowPowerSampleFreshness';
+const FLOW_POWER_SOURCE_RETRY_INITIAL_MS = 1_000;
+const FLOW_POWER_SOURCE_RETRY_MAX_MS = 60_000;
+const FLOW_POWER_SOURCE_RETRY_MAX_EXPONENT = 6;
 const registeredClocks = new WeakMap<TimerRegistry, FlowPowerSampleFreshnessClock>();
 
 export type FlowPowerSampleFreshnessClockDeps = {
@@ -14,6 +17,7 @@ export type FlowPowerSampleFreshnessClockDeps = {
   getNowMs: () => number;
   getPowerSource: () => PowerSource;
   requestPlanRebuild: (reason: string) => void;
+  onPowerSourceReadError: (error: unknown) => void;
 };
 
 export function clearFlowPowerSampleFreshnessTimer(timers: TimerRegistry): void {
@@ -59,6 +63,8 @@ export class FlowPowerSampleFreshnessClock {
 
   private failClosedRebuildRequested = false;
 
+  private sourceReadRetryAttempt = 0;
+
   constructor(private readonly deps: FlowPowerSampleFreshnessClockDeps) {}
 
   noteSample(sampleAtMs: number): void {
@@ -66,10 +72,6 @@ export class FlowPowerSampleFreshnessClock {
   }
 
   syncLatestSample(sampleAtMs: number | null | undefined): void {
-    if (this.deps.getPowerSource() !== 'flow') {
-      this.stop();
-      return;
-    }
     if (typeof sampleAtMs !== 'number' || !Number.isFinite(sampleAtMs)) {
       this.stop();
       return;
@@ -82,16 +84,19 @@ export class FlowPowerSampleFreshnessClock {
     sampleAtMs: number,
     options: { requestElapsedTransitions: boolean },
   ): void {
-    if (this.deps.getPowerSource() !== 'flow') {
+    if (!Number.isFinite(sampleAtMs)) return;
+    const powerSource = this.tryReadPowerSource();
+    if (powerSource === null) {
+      if (!this.adoptSample(sampleAtMs)) return;
+      this.scheduleSourceReadRetry();
+      return;
+    }
+    this.sourceReadRetryAttempt = 0;
+    if (powerSource !== 'flow') {
       this.stop();
       return;
     }
-    if (!Number.isFinite(sampleAtMs)) return;
-    if (this.lastSampleAtMs !== null && sampleAtMs < this.lastSampleAtMs) return;
-
-    this.lastSampleAtMs = sampleAtMs;
-    this.staleHoldRebuildRequested = false;
-    this.failClosedRebuildRequested = false;
+    if (!this.adoptSample(sampleAtMs)) return;
 
     if (options.requestElapsedTransitions && this.requestElapsedTransitions()) return;
 
@@ -103,11 +108,18 @@ export class FlowPowerSampleFreshnessClock {
     this.lastSampleAtMs = null;
     this.staleHoldRebuildRequested = false;
     this.failClosedRebuildRequested = false;
+    this.sourceReadRetryAttempt = 0;
   }
 
   private runTick(): void {
     this.deps.timers.clear(FLOW_POWER_SAMPLE_FRESHNESS_TIMER);
-    if (this.deps.getPowerSource() !== 'flow') {
+    const powerSource = this.tryReadPowerSource();
+    if (powerSource === null) {
+      this.scheduleSourceReadRetry();
+      return;
+    }
+    this.sourceReadRetryAttempt = 0;
+    if (powerSource !== 'flow') {
       this.stop();
       return;
     }
@@ -154,12 +166,48 @@ export class FlowPowerSampleFreshnessClock {
   }
 
   private scheduleNext(): void {
-    if (this.lastSampleAtMs === null || this.deps.getPowerSource() !== 'flow') return;
+    if (this.lastSampleAtMs === null) return;
 
     const ageMs = Math.max(0, this.deps.getNowMs() - this.lastSampleAtMs);
     const delayMs = this.resolveNextDelayMs(ageMs);
     if (delayMs === null) return;
 
+    const timer = setTimeout(() => this.runTick(), delayMs);
+    (timer as { unref?: () => void }).unref?.();
+    this.deps.timers.registerTimeout(FLOW_POWER_SAMPLE_FRESHNESS_TIMER, timer);
+  }
+
+  private adoptSample(sampleAtMs: number): boolean {
+    if (this.lastSampleAtMs !== null && sampleAtMs < this.lastSampleAtMs) return false;
+    this.lastSampleAtMs = sampleAtMs;
+    this.staleHoldRebuildRequested = false;
+    this.failClosedRebuildRequested = false;
+    return true;
+  }
+
+  private tryReadPowerSource(): PowerSource | null {
+    try {
+      return this.deps.getPowerSource();
+    } catch (error) {
+      this.deps.onPowerSourceReadError(error);
+      return null;
+    }
+  }
+
+  private scheduleSourceReadRetry(): void {
+    if (this.lastSampleAtMs === null) return;
+    const exponent = Math.min(
+      this.sourceReadRetryAttempt,
+      FLOW_POWER_SOURCE_RETRY_MAX_EXPONENT,
+    );
+    const delayMs = Math.min(
+      FLOW_POWER_SOURCE_RETRY_INITIAL_MS * (2 ** exponent),
+      FLOW_POWER_SOURCE_RETRY_MAX_MS,
+    );
+    this.sourceReadRetryAttempt = Math.min(
+      this.sourceReadRetryAttempt + 1,
+      FLOW_POWER_SOURCE_RETRY_MAX_EXPONENT,
+    );
     const timer = setTimeout(() => this.runTick(), delayMs);
     (timer as { unref?: () => void }).unref?.();
     this.deps.timers.registerTimeout(FLOW_POWER_SAMPLE_FRESHNESS_TIMER, timer);

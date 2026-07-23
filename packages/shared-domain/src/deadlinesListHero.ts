@@ -61,6 +61,7 @@
 
 import type { DeferredObjectiveSettingsKind } from '../../contracts/src/deferredObjectiveSettings';
 import type { SmartTaskListStatusId } from './deadlineLabels';
+import { SMART_TASK_SUB_HOME_UNAVAILABLE } from './objectiveWriteStrings';
 
 // Minimal card payload the hero consumes. Mirrors the relevant subset of
 // `DeadlinesListCard` so the renderer (settings-ui) can pass cards through
@@ -155,7 +156,7 @@ export const DEADLINES_LIST_BASELINE_HEADLINE_BY_STATE: Record<
 export const DEADLINES_LIST_BETWEEN_RUNS_BODY
   = 'Nothing is scheduled right now. Your finished tasks are in Past tasks below.';
 
-// Five-bucket classification of list card status. Each `SmartTaskListStatusId`
+// Six-bucket classification of list card status. Each `SmartTaskListStatusId`
 // is assigned to exactly one bucket; the `Record` constraint forces the keys
 // to cover the union, so adding a new status id (e.g. a future `cancelled`)
 // is a type error here until the classification is updated — no silent
@@ -171,7 +172,7 @@ export const DEADLINES_LIST_BETWEEN_RUNS_BODY
 // with the per-card chip (`SMART_TASK_LIST_STATUS_CHIP_VARIANT` paints
 // `paused_unplugged` warn) and the ready-by line tone
 // (`resolveSmartTaskListReadyByTone` returns `warn` for the same state).
-type StatusBucket = 'on_track' | 'pending' | 'paused' | 'at_risk' | 'satisfied';
+type StatusBucket = 'on_track' | 'pending' | 'unavailable' | 'paused' | 'at_risk' | 'satisfied';
 
 const STATUS_BUCKET: Record<SmartTaskListStatusId, StatusBucket> = {
   on_track: 'on_track',
@@ -181,6 +182,7 @@ const STATUS_BUCKET: Record<SmartTaskListStatusId, StatusBucket> = {
   // "Planning 1 smart task" above an `On track` chip would contradict itself
   // on one screen. `pending` is reserved for genuinely plan-less states.
   queued: 'on_track',
+  unavailable: 'unavailable',
   paused_unplugged: 'paused',
   // Same `paused` bucket as unplugged: connected but charging can't resume is a
   // "needs user attention" state, not a healthy/planning one.
@@ -320,6 +322,7 @@ export const resolveDeadlinesListHero = (params: {
   if (cards.length === 0) return null;
 
   const atRiskCards = cards.filter(isAtRiskCard);
+  const unavailableCards = cards.filter(isBucket('unavailable'));
   const pausedCards = cards.filter(isBucket('paused'));
   const onTrackCards = cards.filter(isBucket('on_track'));
   const pendingCards = cards.filter(isBucket('pending'));
@@ -354,6 +357,24 @@ export const resolveDeadlinesListHero = (params: {
       headline,
       subline,
       tone,
+      sublineTarget: { deviceId: subjectCard.deviceId },
+      subjectStatusId: subjectCard.statusId,
+    };
+  }
+
+  // No at-risk task, but at least one device is outside the main-home scope.
+  // This must outrank planning/healthy/paused rollups: the task is not merely
+  // waiting and its cached schedule no longer governs the device.
+  if (unavailableCards.length > 0) {
+    const subjectCard = unavailableCards[0];
+    const headline = unavailableCards.length < cards.length
+      ? `${unavailableCards.length} of ${cards.length} ${deadlinesNoun(cards.length)} unavailable`
+      : `${unavailableCards.length} ${deadlinesNoun(unavailableCards.length)} unavailable`;
+    return {
+      eyebrow: 'Smart tasks',
+      headline,
+      subline: SMART_TASK_SUB_HOME_UNAVAILABLE,
+      tone: 'warn',
       sublineTarget: { deviceId: subjectCard.deviceId },
       subjectStatusId: subjectCard.statusId,
     };
