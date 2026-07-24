@@ -7,6 +7,7 @@ import {
   formatDeviceReason,
 } from '../../../packages/shared-domain/src/planReasonSemantics';
 import {
+  getInactiveReason,
   getSteppedRestoreCandidates,
   isActiveSteppedRestoreCandidate,
   isOffSteppedRestoreCandidate,
@@ -188,6 +189,14 @@ export function planRestoreForSteppedDevice(params: {
     dev, deviceMap, state, timing, availableHeadroom, restoredOneThisCycle, debugStructured, swapExecutor,
   } = params;
   const restoreDebugKey = `stepped:${dev.id}`;
+  if (keepInactiveSteppedDeviceInactive({
+    dev,
+    deviceMap,
+    state,
+    restoreDebugKey,
+  })) {
+    return { availableHeadroom, restoredOneThisCycle };
+  }
 
   if (countShedDevices(deviceMap, dev.id) === 0) {
     delete state.steppedRestoreRejectedByDevice[dev.id];
@@ -277,4 +286,20 @@ export function planRestoreForSteppedDevice(params: {
     restoreDebugKey,
     swapExecutor,
   });
+}
+
+function keepInactiveSteppedDeviceInactive(params: {
+  dev: DevicePlanDevice;
+  deviceMap: Map<string, DevicePlanDevice>;
+  state: PlanEngineState;
+  restoreDebugKey: string;
+}): boolean {
+  const inactiveReason = getInactiveReason(params.dev);
+  if (!inactiveReason) return false;
+  clearRestoreDebugEvent(params.state, params.restoreDebugKey);
+  setRestorePlanDevice(params.deviceMap, params.dev.id, {
+    plannedState: 'inactive',
+    reason: inactiveReason,
+  });
+  return true;
 }

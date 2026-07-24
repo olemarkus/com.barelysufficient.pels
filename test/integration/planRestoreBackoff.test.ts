@@ -44,7 +44,9 @@ const buildBinaryPlanDevice = (
   return withBinaryDiscriminant({ ...buildPlanDevice(rest), binaryControl }) as DevicePlanDevice;
 };
 const buildBinarySteppedPlanDevice = (
-  overrides: Parameters<typeof steppedPlanDevice>[0] & BinaryControlDiscriminantProbe,
+  overrides: Parameters<typeof steppedPlanDevice>[0]
+    & BinaryControlDiscriminantProbe
+    & { evChargingState?: string },
 ): DevicePlanDevice => {
   const { binaryControl, ...rest } = overrides;
   return withBinaryDiscriminant({ ...steppedPlanDevice(rest), binaryControl }) as DevicePlanDevice;
@@ -2343,6 +2345,53 @@ describe('restore admission — headroom and penalty gates', () => {
     currentState: 'off',
     expectedPowerKw,
     measuredPowerKw: 0,
+  });
+
+  it('keeps an unplugged stepped EV inactive when called through the stepped restore helper', () => {
+    const state = createPlanEngineState();
+    const inactiveEv = buildBinarySteppedPlanDevice({
+      id: 'inactive-ev',
+      name: 'BilLader',
+      deviceClass: 'evcharger',
+      controlCapabilityId: 'evcharger_charging',
+      evChargingState: 'plugged_out',
+      currentState: 'off',
+      binaryControl: { on: false },
+      plannedState: 'keep',
+      selectedStepId: 'low',
+      desiredStepId: 'low',
+    });
+    const deviceMap = new Map([[inactiveEv.id, inactiveEv]]);
+
+    const result = planRestoreForSteppedDevice({
+      dev: inactiveEv,
+      deviceMap,
+      state,
+      timing: {
+        activeOvershoot: false,
+        inCooldown: false,
+        inRestoreCooldown: false,
+        inStartupStabilization: false,
+        measurementTs: null,
+        nowTs: 0,
+        restoreCooldownSeconds: 60,
+        restoreCooldownMs: 60_000,
+        shedCooldownRemainingSec: null,
+        restoreCooldownRemainingSec: null,
+        startupStabilizationRemainingSec: null,
+      },
+      availableHeadroom: 10,
+      restoredOneThisCycle: false,
+    });
+
+    expect(deviceMap.get(inactiveEv.id)).toMatchObject({
+      plannedState: 'inactive',
+      reason: legacyDeviceReason('inactive (charger is unplugged)'),
+    });
+    expect(result).toEqual({
+      availableHeadroom: 10,
+      restoredOneThisCycle: false,
+    });
   });
 
   it('admits up to three binary restores when headroom is abundant and power is fresh', () => {
