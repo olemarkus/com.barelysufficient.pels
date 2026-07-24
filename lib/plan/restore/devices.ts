@@ -20,7 +20,8 @@ export type RestoreCandidate = {
 
 export function isRestoreLiveEligibleDevice(device: DevicePlanDevice): boolean {
   return device.controllable !== false
-    && device.plannedState !== 'shed';
+    && device.plannedState !== 'shed'
+    && device.plannedState !== 'inactive';
 }
 
 type RestoreObservedState = 'off' | 'on' | 'target_only' | 'unknown';

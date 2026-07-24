@@ -356,12 +356,31 @@ describe('plan restore device helpers', () => {
     const eligible = makeDevice({ id: 'eligible', currentState: 'off' });
     const stale = makeDevice({ id: 'stale', currentState: 'off' });
     const shed = makeDevice({ id: 'shed', currentState: 'off', plannedState: 'shed' });
+    const inactiveSteppedEv = makeDevice({
+      id: 'inactive-stepped-ev',
+      deviceClass: 'evcharger',
+      controlCapabilityId: 'evcharger_charging',
+      currentState: 'off',
+      plannedState: 'inactive',
+      evChargingState: 'plugged_out',
+      steppedLoadProfile: {
+        model: 'stepped_load',
+        steps: [
+          { id: 'off', planningPowerW: 0 },
+          { id: '6a', planningPowerW: 4140 },
+        ],
+      },
+      selectedStepId: '6a',
+    });
 
     expect(isRestoreLiveEligibleDevice(eligible)).toBe(true);
     expect(isBinaryRestoreCandidate(eligible)).toBe(true);
     // Stale-off is now trusted-off (no staleness gate) -> a valid restore candidate.
     expect(isBinaryRestoreCandidate(stale)).toBe(true);
     expect(isBinaryRestoreCandidate(shed)).toBe(false);
+    expect(isRestoreLiveEligibleDevice(inactiveSteppedEv)).toBe(false);
+    expect(isSteppedRestoreCandidate(inactiveSteppedEv)).toBe(false);
+    expect(getRestoreCandidates([inactiveSteppedEv])).toEqual([]);
   });
 
   it('does not treat target-only (not_applicable) devices as binary restore candidates', () => {
