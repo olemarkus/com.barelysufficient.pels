@@ -77,6 +77,127 @@ test('a meter area activates control: switch, turn control on, set a cap', async
   await expect(readStubSetting(page, 'capacity_dry_run')).resolves.not.toBe(false);
 });
 
+test('Main simulation banner stays truthful while a meter area actively controls devices', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 900 });
+  await page.addInitScript(() => {
+    const stubWindow = window as Window & {
+      __PELS_HOMEY_STUB__?: { settings?: Record<string, unknown> };
+    };
+    const existing = stubWindow.__PELS_HOMEY_STUB__ ?? {};
+    stubWindow.__PELS_HOMEY_STUB__ = {
+      ...existing,
+      settings: {
+        ...(existing.settings ?? {}),
+        capacity_dry_run: true,
+        'capacity_dry_run:h_11111111': false,
+        homes_config: {
+          activationVersion: 1,
+          subHomes: [{
+            homeId: 'h_11111111',
+            name: 'Rental unit',
+            rootZoneId: 'z_rental',
+            meterDeviceId: 'dev_rental_meter',
+          }],
+        },
+        'pels_status:h_11111111': {
+          controlledKw: 2.5,
+          uncontrolledKw: 1.5,
+          powerKnown: true,
+          hasLivePowerSample: true,
+          devicesOff: 1,
+          limitReason: 'hourly',
+        },
+      },
+    };
+  });
+  await installRentalMeterDeviceList(page);
+  await gotoApp(page);
+  await seedRentalMeterSnapshot(page);
+  await openLimitsPanel(page);
+  await page.locator('#home-limits-home-select').selectOption(AREA_ID);
+
+  await expect(page.locator('#home-limits-status-chip')).toHaveText('Active');
+  await expect(page.locator('#home-limits-status-line')).toContainText('Limiting 1 device');
+  await expect(page.locator('#dry-run-banner')).toContainText(
+    'Main home simulation on — Main home devices stay as-is',
+  );
+  await expect(page.locator('#simulation-disable-button')).toHaveText('Turn off Main simulation');
+  const bannerLayout = await page.evaluate(() => {
+    const banner = document.querySelector('#dry-run-banner')!.getBoundingClientRect();
+    const text = document.querySelector('#dry-run-banner-text')!.getBoundingClientRect();
+    const action = document.querySelector('#simulation-disable-button')!.getBoundingClientRect();
+    return {
+      height: Math.round(banner.height),
+      textWidth: Math.round(text.width),
+      textBottom: Math.round(text.bottom),
+      actionTop: Math.round(action.top),
+    };
+  });
+  expect(bannerLayout.textWidth).toBeGreaterThanOrEqual(180);
+  expect(bannerLayout.actionTop).toBeGreaterThanOrEqual(bannerLayout.textBottom - 1);
+  expect(bannerLayout.height).toBeLessThanOrEqual(150);
+});
+
+test('simulation banner keeps a conservative scope across transient and realtime roster changes', async ({ page }) => {
+  await gotoApp(page);
+  const banner = page.locator('#dry-run-banner');
+  const action = page.locator('#simulation-disable-button');
+  await expect(banner).toContainText('Simulation on — devices stay as-is');
+
+  await page.evaluate(() => {
+    const stub = (window as unknown as {
+      Homey: {
+        __stub: {
+          emitSettingsSet: (key: string) => void;
+          setSetting: (key: string, value: unknown) => void;
+        };
+      };
+    }).Homey.__stub;
+    stub.setSetting('homes_config_initialized', true);
+    stub.setSetting('homes_config', undefined);
+    stub.emitSettingsSet('homes_config_initialized');
+  });
+  await expect(banner).toContainText('Main home simulation on — Main home devices stay as-is');
+  await expect(action).toHaveText('Turn off Main simulation');
+
+  await page.evaluate(() => {
+    const stub = (window as unknown as {
+      Homey: {
+        __stub: {
+          emitSettingsSet: (key: string) => void;
+          setSetting: (key: string, value: unknown) => void;
+        };
+      };
+    }).Homey.__stub;
+    stub.setSetting('homes_config', {
+      activationVersion: 1,
+      subHomes: [{
+        homeId: 'h_11111111',
+        name: 'Rental unit',
+        rootZoneId: 'z_rental',
+        meterDeviceId: 'dev_rental_meter',
+      }],
+    });
+    stub.emitSettingsSet('homes_config');
+  });
+  await expect(banner).toContainText('Main home simulation on — Main home devices stay as-is');
+
+  await page.evaluate(() => {
+    const stub = (window as unknown as {
+      Homey: {
+        __stub: {
+          emitSettingsSet: (key: string) => void;
+          setSetting: (key: string, value: unknown) => void;
+        };
+      };
+    }).Homey.__stub;
+    stub.setSetting('homes_config', { activationVersion: 1, subHomes: [] });
+    stub.emitSettingsSet('homes_config');
+  });
+  await expect(banner).toContainText('Simulation on — devices stay as-is');
+  await expect(action).toHaveText('Turn off simulation');
+});
+
 test('a held pre-GA meter area cannot claim active control or stale live power', async ({ page }) => {
   await installRentalMeterDeviceList(page);
   await gotoApp(page);

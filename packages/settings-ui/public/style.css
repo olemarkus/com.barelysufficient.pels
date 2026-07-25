@@ -554,7 +554,9 @@ md-primary-tab.tab[active] {
 }
 
 /* Simulation banner: one slim warning-tinted row — leading warning icon + a
-   concise line + an inline "Turn off simulation" text action. The amber tint
+   concise line + an inline "Turn off simulation" text action. The scoped
+   multi-meter copy stacks at the narrowest viewport in the media rule below.
+   The amber tint
    comes from `.banner--warning` on every screen (no per-viewport neutral
    override), so it reads as STATE, not just another grey card. `.banner`
    supplies the flex row + radius; this override tightens it to a single
@@ -5556,6 +5558,41 @@ details[open] > summary .disclosure-chevron {
    as "…stay as-" / "is", orphaning "is" on its own line. */
 .banner__no-break {
   white-space: nowrap;
+}
+
+/* The Main-scoped multi-meter wording is deliberately more explicit than the
+   single-home banner. At 320 px its fixed-width action would otherwise squeeze
+   the message into a word-per-line tower. Keep the single-home banner slim,
+   but give the scoped variant a readable text column with its action below. */
+@media (max-width: 360px) {
+  #dry-run-banner[data-home-scope="main"]:not([hidden]) {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    gap: 0 var(--spacing-2);
+    min-height: 0;
+    padding-block: var(--spacing-2);
+  }
+
+  #dry-run-banner[data-home-scope="main"] .banner__icon {
+    grid-column: 1;
+    grid-row: 1;
+    margin-block-start: var(--spacing-1);
+  }
+
+  #dry-run-banner[data-home-scope="main"] .banner__text {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: center;
+    min-width: 0;
+  }
+
+  #dry-run-banner[data-home-scope="main"] .dry-run-banner__action {
+    grid-column: 2;
+    grid-row: 2;
+    justify-self: start;
+    margin-inline-start: calc(-1 * var(--spacing-3));
+  }
 }
 
 .budget-redesign-card {

@@ -65,6 +65,10 @@ export const PELS_STATUS = 'pels_status';
 // list. (`device_home_assignments` is intentionally not mirrored — device→home
 // membership changes don't alter the area roster.)
 export const HOMES_CONFIG = 'homes_config';
+// Written-before marker for HOMES_CONFIG. The UI reads it with the roster so a
+// transient missing value after an established multi-meter config remains
+// "unknown" instead of being mistaken for a fresh single-home install.
+export const HOMES_CONFIG_INITIALIZED = 'homes_config_initialized';
 
 // ── Multi-home settings-key scoping ─────────────────────────────────────────
 // Mirror of MAIN_HOME_ID + homeScopedSettingsKey in lib/utils/settingsKeys.ts —

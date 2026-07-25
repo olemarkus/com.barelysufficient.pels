@@ -30,10 +30,10 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 *(prior closures shipped on the v2.9 train via PRs #975, #977, #978, #980,
 #982, #983; surviving follow-ups demoted to P1/P2.)*
 
-No open P0 release blockers after the 2026-05-31 release-review cleanup. The
-remaining dashboard-widget desirability work is tracked as P1/P3 follow-up below;
-the concrete release-readiness bugs from the `v2.10.0..HEAD` pass were fixed in
-the release-review cleanup PR.
+No open P0 release blockers after the 2026-07-25 release-review cleanup. That
+pass partitioned realtime reconcile work by home, finite-gated saved meter-area
+limits, and corrected the Main-meter setup guide. Remaining multi-meter work is
+tracked as P1/P2/P3 follow-up below.
 
 ## P1 Correctness, Data Integrity, and Supported UX
 
@@ -48,14 +48,11 @@ stepped-restore-wrapper / stepped-swap-completion refactors, the settings.test.t
 plan_budget truncation, the starvation confirm-sheet sub-parts, and the shared widget runtime.
 What remains open is below.*
 
-- [ ] **Meter picker hint invites an impossible pick when no meters are listed.** When the Homey
-      Energy report exposes no id-carrying whole-home (cumulative) meter and no sensor-class device
-      meter, the Whole-home meter select shows just "Automatic" while the always-visible hint still
-      says "pick a meter to read it directly." Soften the hint to the Automatic-only case when the
-      loaded option list is empty (needs a small conditional in homeyEnergyMeter.ts, since the hint
-      is static markup today). Persona: Power-meter user with a single tracked meter; hypothesis:
-      an instruction to pick from an empty list reads as something being broken. Source: pels-ux-fit
-      review of the meter-picker PR (2026-07-19). [P2]
+- [ ] **Homes UI: explain cached rows that stay locked after a refresh failure.**
+      A failed `/ui_homes` refresh preserves the last-good rows and correctly disables mutations, but
+      the ready/list view gives no visible reason its Add/Edit/Remove controls remain unavailable.
+      Show a compact stale-refresh warning beside the preserved rows. Source: release review of the
+      multi-meter GA train, 2026-07-24.
 
 - [ ] **Shed-invariant card copy claims a step the device is not at.** `resolveSteppedStatusLine`
       renders the shed-invariant reason as `Limited to ${maxStep}`
@@ -375,6 +372,15 @@ program) remains deferred.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **Meter picker hint invites an impossible pick when no meters are listed.** When the Homey
+      Energy report exposes no id-carrying whole-home (cumulative) meter and no sensor-class device
+      meter, the Whole-home meter select shows just "Automatic" while the always-visible hint still
+      says "pick a meter to read it directly." Soften the hint to the Automatic-only case when the
+      loaded option list is empty (needs a small conditional in homeyEnergyMeter.ts, since the hint
+      is static markup today). Persona: Power-meter user with a single tracked meter; hypothesis:
+      an instruction to pick from an empty list reads as something being broken. Source: pels-ux-fit
+      review of the meter-picker PR (2026-07-19).
+
 - [ ] **Extract sub-home source recovery from `HomeRuntimeRegistry`.** The multi-meter GA work grew
       `setup/homeRuntime/homeRuntimeRegistry.ts` into a roughly 600-line coordinator that now owns
       ordinary bundle reconciliation, source-event observation, authorization epochs, freshness
@@ -390,18 +396,6 @@ program) remains deferred.*
       tracker field that is omitted from validation. Replace them with an exhaustive validator table
       using `satisfies Record<keyof PowerTrackerState, ...>` (while preserving the main tracker's
       compatibility-read policy). Source: tracker-contract review of PR #1872, 2026-07-23.
-
-- [ ] **Homes UI: explain cached rows that stay locked after a refresh failure.**
-      A failed `/ui_homes` refresh preserves the last-good rows and correctly disables mutations, but
-      the ready/list view gives no visible reason its Add/Edit/Remove controls remain unavailable.
-      Show a compact stale-refresh warning beside the preserved rows. Source: pels-ux-fit final review
-      of PR #1872, 2026-07-23.
-
-- [ ] **Home Limits: finiteness-gate persisted per-area cap and margin reads.**
-      `loadAreaIntoEditor` accepts any `typeof number`, so a persisted `NaN`/`Infinity` can surface as
-      an empty or invalid control. Require `Number.isFinite` at the settings boundary and fall back to
-      the safe per-area defaults on malformed values. Source: pels-ux-fit final review of PR #1872,
-      2026-07-23.
 
 - [ ] **Limits & safety: converge the Main-home form onto the native `.pels-input` field language (U-track).**
       *Persona:* multi-home owner who switches the per-home Limits switcher between the Main home and a meter

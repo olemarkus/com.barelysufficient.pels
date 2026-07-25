@@ -10,6 +10,7 @@ import { hasPlanExecutionDriftForDevice } from '../lib/executor/planExecutionDri
 import { isTemperaturePlanDevice } from '../lib/plan/planTemperatureDevice';
 import type { AppContext } from '../lib/app/appContext';
 import type { DevicePlan, PlanInputDevice } from '../lib/plan/planTypes';
+import { MAIN_HOME_ID, type HomeId } from '../lib/utils/settingsKeys';
 import type { RealtimeReconcileHooks } from './homeRuntime/createHomeCapacityBundle';
 import type { TimerRegistry } from '../lib/utils/timerRegistry';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../lib/logging/logger';
@@ -25,7 +26,10 @@ const moduleLogger = getLogger('app/realtime-reconcile-runtime');
  * `initHomeRuntimeRegistry`, and for the no-sub-homes case).
  */
 type RealtimeReconcileRouter = {
-  getReconcileHooksForDevice: (deviceId: string) => RealtimeReconcileHooks | undefined;
+  getReconcileRouteForDevice: (deviceId: string) => {
+    homeId: HomeId;
+    hooks: RealtimeReconcileHooks;
+  } | undefined;
 };
 
 /**
@@ -54,7 +58,13 @@ export function scheduleAppRealtimeDeviceReconcileForApp(params: {
   const debugStructured = ctx.getStructuredDebugEmitter('reconcile', 'devices');
   // Route to the OWNING sub-home bundle when the device belongs to one; the
   // fallback closures are the exact main-home closures used before R7b.
-  const subHomeHooks = params.getHomeRuntimeRegistry?.()?.getReconcileHooksForDevice(event.deviceId);
+  const subHomeRoute = params.getHomeRuntimeRegistry?.()?.getReconcileRouteForDevice(event.deviceId);
+  const subHomeHooks = subHomeRoute?.hooks;
+  const queueKey = subHomeRoute?.homeId ?? MAIN_HOME_ID;
+  // Preserve the historical main timer name; only sub-homes need scoped slots.
+  const timerKey = subHomeRoute === undefined
+    ? 'realtimeDeviceReconcile'
+    : `realtimeDeviceReconcile:${subHomeRoute.homeId}`;
   const getLatestPlanSnapshot = subHomeHooks?.getLatestPlanSnapshot
     ?? ((): DevicePlan | null => ctx.planService?.getLatestReconcilePlanSnapshot() ?? null);
   const getLiveDevices = subHomeHooks?.getLiveDevices ?? ((): PlanInputDevice[] => {
@@ -67,14 +77,15 @@ export function scheduleAppRealtimeDeviceReconcileForApp(params: {
   const timer = scheduleAppRealtimeDeviceReconcile({
     event,
     state,
-    hasPendingTimer: timers.has('realtimeDeviceReconcile'),
+    queueKey,
+    hasPendingTimer: timers.has(timerKey),
     getLatestPlanSnapshot,
     getLiveDevices,
     structuredLog,
     debugStructured,
     reconcile,
     onTimerFired: () => {
-      timers.clear('realtimeDeviceReconcile');
+      timers.clear(timerKey);
     },
     onError: (error) => {
       structuredLog?.error({
@@ -84,7 +95,7 @@ export function scheduleAppRealtimeDeviceReconcileForApp(params: {
     },
   });
   if (timer) {
-    timers.registerTimeout('realtimeDeviceReconcile', timer);
+    timers.registerTimeout(timerKey, timer);
   }
 }
 
@@ -136,6 +147,7 @@ export function shouldQueueRealtimeDeviceReconcile(params: {
 export function scheduleAppRealtimeDeviceReconcile(params: {
   event: RealtimeDeviceReconcileEvent;
   state: RealtimeDeviceReconcileState;
+  queueKey: string;
   hasPendingTimer: boolean;
   getLatestPlanSnapshot: () => DevicePlan | null;
   getLiveDevices: () => PlanInputDevice[];
@@ -148,6 +160,7 @@ export function scheduleAppRealtimeDeviceReconcile(params: {
   const {
     event,
     state,
+    queueKey,
     hasPendingTimer,
     getLatestPlanSnapshot,
     getLiveDevices,
@@ -169,6 +182,7 @@ export function scheduleAppRealtimeDeviceReconcile(params: {
 
   return scheduleRealtimeDeviceReconcile({
     state,
+    queueKey,
     hasPendingTimer,
     event: eventWithPlanExpectation,
     debugStructured,
@@ -176,6 +190,7 @@ export function scheduleAppRealtimeDeviceReconcile(params: {
     onFlush: async () => {
       await flushRealtimeDeviceReconcileQueue({
         state,
+        queueKey,
         reconcile,
         shouldRecordAttempt: (nextEvent) => hasRealtimeDeviceReconcileDrift({
           event: nextEvent,

@@ -2,6 +2,7 @@ import {
   createRealtimeDeviceReconcileState,
   flushRealtimeDeviceReconcileQueue,
   scheduleRealtimeDeviceReconcile,
+  type RealtimeDeviceReconcileEvent,
 } from '../../setup/appRealtimeDeviceReconcile';
 import { shouldQueueRealtimeDeviceReconcile } from '../../setup/appRealtimeDeviceReconcileRuntime';
 import type { Logger, StructuredDebugEmitter } from '../../lib/logging/logger';
@@ -40,10 +41,19 @@ const liveDevice = (
 ): PlanInputDevice => withTemperatureDiscriminant(withBinaryDiscriminant(loose)) as PlanInputDevice;
 
 describe('appRealtimeDeviceReconcile', () => {
+  const QUEUE_KEY = 'main';
   const createDebugStructuredMock = (): StructuredDebugEmitter => vi.fn() as unknown as StructuredDebugEmitter;
   const createInfoLoggerMock = (): Logger & { info: ReturnType<typeof vi.fn> } => (
     { info: vi.fn() } as unknown as Logger & { info: ReturnType<typeof vi.fn> }
   );
+  const queueEvent = (
+    state: ReturnType<typeof createRealtimeDeviceReconcileState>,
+    event: RealtimeDeviceReconcileEvent,
+  ): void => {
+    const queue = state.pendingEventsByQueue.get(QUEUE_KEY) ?? new Map();
+    queue.set(event.deviceId, event);
+    state.pendingEventsByQueue.set(QUEUE_KEY, queue);
+  };
 
   it('logs drift details when queueing realtime reconcile', () => {
     vi.useFakeTimers();
@@ -51,6 +61,7 @@ describe('appRealtimeDeviceReconcile', () => {
 
     const timer = scheduleRealtimeDeviceReconcile({
       state: createRealtimeDeviceReconcileState(),
+      queueKey: QUEUE_KEY,
       hasPendingTimer: false,
       event: {
         deviceId: 'dev-1',
@@ -84,6 +95,7 @@ describe('appRealtimeDeviceReconcile', () => {
 
     const timer = scheduleRealtimeDeviceReconcile({
       state: createRealtimeDeviceReconcileState(),
+      queueKey: QUEUE_KEY,
       hasPendingTimer: false,
       event: {
         deviceId: 'dev-1',
@@ -361,11 +373,12 @@ describe('appRealtimeDeviceReconcile', () => {
   it('records breaker attempts only for devices that still drift after reconcile', async () => {
     const state = createRealtimeDeviceReconcileState();
     const structuredLog = createInfoLoggerMock();
-    state.pendingEvents.set('dev-1', { deviceId: 'dev-1', name: 'Heater 1', capabilityId: 'onoff' });
-    state.pendingEvents.set('dev-2', { deviceId: 'dev-2', name: 'Heater 2', capabilityId: 'onoff' });
+    queueEvent(state, { deviceId: 'dev-1', name: 'Heater 1', capabilityId: 'onoff' });
+    queueEvent(state, { deviceId: 'dev-2', name: 'Heater 2', capabilityId: 'onoff' });
 
     await flushRealtimeDeviceReconcileQueue({
       state,
+      queueKey: QUEUE_KEY,
       reconcile: vi.fn().mockResolvedValue(true),
       shouldRecordAttempt: (event) => event.deviceId === 'dev-2',
       structuredLog,
@@ -389,10 +402,11 @@ describe('appRealtimeDeviceReconcile', () => {
   it('does not log or record attempts when shouldRecordAttempt filters out every reconciled event', async () => {
     const state = createRealtimeDeviceReconcileState();
     const structuredLog = createInfoLoggerMock();
-    state.pendingEvents.set('dev-1', { deviceId: 'dev-1', name: 'Heater 1', capabilityId: 'onoff' });
+    queueEvent(state, { deviceId: 'dev-1', name: 'Heater 1', capabilityId: 'onoff' });
 
     await flushRealtimeDeviceReconcileQueue({
       state,
+      queueKey: QUEUE_KEY,
       reconcile: vi.fn().mockResolvedValue(true),
       shouldRecordAttempt: () => false,
       structuredLog,
@@ -407,9 +421,10 @@ describe('appRealtimeDeviceReconcile', () => {
     const structuredLog = createInfoLoggerMock();
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      state.pendingEvents.set('dev-1', { deviceId: 'dev-1', name: 'Heater 1', capabilityId: 'onoff' });
+      queueEvent(state, { deviceId: 'dev-1', name: 'Heater 1', capabilityId: 'onoff' });
       await flushRealtimeDeviceReconcileQueue({
         state,
+        queueKey: QUEUE_KEY,
         reconcile: vi.fn().mockResolvedValue(true),
         shouldRecordAttempt: () => true,
         structuredLog,
@@ -432,7 +447,7 @@ describe('appRealtimeDeviceReconcile', () => {
     const structuredLog = createInfoLoggerMock();
 
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      state.pendingEvents.set('dev-1', {
+      queueEvent(state, {
         deviceId: 'dev-1',
         name: 'Heater 1',
         capabilityId: 'target_temperature',
@@ -441,6 +456,7 @@ describe('appRealtimeDeviceReconcile', () => {
       });
       await flushRealtimeDeviceReconcileQueue({
         state,
+        queueKey: QUEUE_KEY,
         reconcile: vi.fn().mockResolvedValue(true),
         shouldRecordAttempt: () => true,
         structuredLog,
