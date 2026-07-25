@@ -84,6 +84,38 @@ function resolvePendingBinaryCommand(
 // (a `surplusWilling` device there could never satisfy a surplus that never
 // arrives, and would be held OFF forever). Default (undefined) resolves exactly
 // as the main home did before this lift.
+/**
+ * "Leave off until turned on again" (flat `externalOffHoldActive` bit).
+ *
+ * The stored hold only has planning effect while the device is STILL observed
+ * off: pairing the two here means a hold whose release event was missed cannot
+ * make the planner treat a running device as inactive. Binary-capability
+ * devices only — without a binary control handle there is no `currentOn` truth
+ * to contradict, and a step-only device's off step is weaker evidence than the
+ * explicit binary state v1 requires.
+ */
+export function resolveExternalOffHoldActive(
+  ctx: AppContext,
+  device: DecoratedDeviceSnapshot & EvObservedProbe,
+): boolean {
+  if (device.controlCapabilityId === undefined) return false;
+  if (ctx.externalOffHold?.isHeld(device.id) !== true) return false;
+  return !resolveCurrentOn(device);
+}
+
+/**
+ * Device-id form of {@link resolveExternalOffHoldActive}, for the executor's
+ * plan-less-safe guard. Same resolution as the producer, so the planner and the
+ * executor can never disagree about whether a device is held. A device with no
+ * snapshot falls back to the raw hold (conservative: do not resume something we
+ * cannot see).
+ */
+export function isExternalOffHeldForDevice(ctx: AppContext, deviceId: string): boolean {
+  const snapshot = ctx.deviceManager?.getSnapshotByDeviceId(deviceId);
+  if (!snapshot) return ctx.externalOffHold?.isHeld(deviceId) === true;
+  return resolveExternalOffHoldActive(ctx, snapshot);
+}
+
 function resolveSurplusPostureForDevice(params: {
   ctx: AppContext;
   device: DecoratedDeviceSnapshot & EvObservedProbe;
@@ -174,6 +206,7 @@ export function toPlanDevice(
     device.targetPowerConfig,
     device.controlModel,
   );
+  const externalOffHoldActive = resolveExternalOffHoldActive(ctx, device);
   // "Run on solar surplus" dump-load posture (flat `surplusOnly` bit). Resolved
   // in a helper (main-home default vs sub-home capacity-only) — see
   // `resolveSurplusPostureForDevice`.
@@ -237,6 +270,7 @@ export function toPlanDevice(
     managed,
     controllable,
     ...(surplusOnly ? { surplusOnly: true as const } : {}),
+    ...(externalOffHoldActive ? { externalOffHoldActive: true as const } : {}),
     budgetExempt: ctx.isBudgetExempt(device.id),
     temperatureBoost: ctx.getTemperatureBoostConfig?.(device.id),
     evBoost: ctx.getEvBoostConfig?.(device.id),

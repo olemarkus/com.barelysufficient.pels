@@ -29,11 +29,9 @@ import type { AppContext } from '../../lib/app/appContext';
 // Direct file imports (not the `setup/appInit.ts` barrel): the barrel also
 // exports the plan factories, which import this module — going through the
 // barrel would create a module cycle.
-import { evictMissingDeviceCacheEntries, toPlanDevice } from '../appInit/toPlanDevice';
+import { buildHomePlanDevices } from './planDevicePrePass';
 import { createObjectivePriceHorizonBuilder } from '../appInit/objectivePriceHorizon';
 import { isSmartTaskDeviceInMainHome } from '../appInit/smartTaskHomeScope';
-import { isRuntimePlannedDevice } from '../appDeviceSupport';
-import { filterDevicesForHome } from '../homeMembership';
 import {
   DeferredObjectiveDecorationController,
   migrateBlobToPerKeyIfNeeded,
@@ -179,23 +177,10 @@ export function buildMainHomeScope(ctx: AppContext): HomeScope {
       // `toPlanDevice` would fall back to the snapshot. Seeding fills only empty
       // slots (never clobbers a recorded observation) and uses the raw cached
       // array, so it adds no re-decoration and no device-manager re-entry.
-      ctx.seedObservedStateFromSnapshot();
-      const snapshot = ctx.latestTargetSnapshot;
-      // Eviction sees the FULL snapshot: a sub-home member is excluded from
-      // this home's plan input below, but it is still present on Homey — its
-      // cached per-device state must survive for the per-home bundles.
-      evictMissingDeviceCacheEntries(ctx, snapshot);
-      // Membership complement: with sub-homes configured, this home plans only
-      // its own members; a sub-home device is simply not in the plan input
-      // (uncontrolled — never double-controlled). Every configured meter is
-      // then removed because it is a source, never a controllable load. With no
-      // sub-homes or explicit Main meter, the same array is returned.
-      return filterDevicesForHome(ctx.homeMembership, snapshot, homeId)
-        .map((device) => toPlanDevice(ctx, device))
-        // Shared planned-set predicate — the create-smart-task candidate list
-        // and create-time validation use the SAME `isRuntimePlannedDevice` so a
-        // `managed: false` device can never be offered/persisted but unplanned.
-        .filter(isRuntimePlannedDevice);
+      // ...plus the external-off release sweep, cache eviction, the membership
+      // complement and the planned-set filter — all shared with every sub-home
+      // bundle, see `buildHomePlanDevices`.
+      return buildHomePlanDevices(ctx, homeId);
     },
     setCapacityInShortfall: (inShortfall) => (
       ctx.homey.settings.set(homeScopedSettingsKey(CAPACITY_IN_SHORTFALL, homeId), inShortfall)

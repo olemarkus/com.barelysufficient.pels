@@ -61,9 +61,7 @@ import { createCapacitySettingsStore } from '../capacitySettingsStoreAdapter';
 // `homeScope.ts` and avoid the factory↔scope module cycle via the barrel.
 import { createPlanEngine } from '../appInit/createPlanEngine';
 import { createPlanService } from '../appInit/createPlanService';
-import { evictMissingDeviceCacheEntries, toPlanDevice } from '../appInit/toPlanDevice';
-import { isRuntimePlannedDevice } from '../appDeviceSupport';
-import { filterDevicesForHome } from '../homeMembership';
+import { buildHomePlanDevices } from './planDevicePrePass';
 import { createHomePowerPipeline } from './createHomePowerPipeline';
 import {
   buildHomeCapacityBundleApi,
@@ -145,6 +143,22 @@ export type RealtimeReconcileHooks = {
   getLatestPlanSnapshot: () => DevicePlan | null;
   getLiveDevices: () => PlanInputDevice[];
   reconcile: () => Promise<boolean>;
+  /**
+   * "Leave off until turned on again" seams, routed to THIS home. Its pending
+   * commands live in this bundle's engine and its plan in this bundle's service,
+   * so answering either from MAIN would fabricate holds (PELS's own write looks
+   * external) and rebuild a plan that does not contain the device.
+   */
+  hasPendingBinaryCommand: (deviceId: string, capabilityId: string) => boolean;
+  rebuild: (reason: string) => Promise<unknown>;
+  /**
+   * THIS home's effective dry-run posture — which is not main's. A sub-home in
+   * simulation, not membership-ready, or not source-authorized has no actuation
+   * authority, so its devices sit off for reasons that are not user actions and
+   * must never create a hold; conversely main being in simulation must not
+   * suppress holds for a sub-home that is actively controlling.
+   */
+  isDryRun: () => boolean;
 };
 
 export type HomeCapacityBundle = {
@@ -290,23 +304,16 @@ function buildSubHomeScope(params: {
     getPowerTracker: getTracker,
     getDailyBudgetSnapshot: () => null,
     getPlanDevices: () => {
-      // Same seed + evict pre-passes as the main scope (both idempotent and
-      // full-snapshot-based); see `buildMainHomeScope.getPlanDevices`.
-      ctx.seedObservedStateFromSnapshot();
-      const snapshot = ctx.latestTargetSnapshot;
-      evictMissingDeviceCacheEntries(ctx, snapshot);
-      return filterDevicesForHome(ctx.homeMembership, snapshot, homeId)
-        // Capacity-only overrides: NO surplus posture (a sub-home has no
-        // price/surplus signal, so a surplusWilling device would be held OFF
-        // forever), and the pending-binary read routed to THIS bundle's engine
-        // (not MAIN's via `ctx.planEngine`).
-        .map((device) => toPlanDevice(ctx, device, {
-          surplusPostureEnabled: false,
-          getPendingBinaryCommand: (id, model) => (
-            getPlanEngineForPending()?.getPendingBinaryCommandForDevice(id, model) ?? null
-          ),
-        }))
-        .filter(isRuntimePlannedDevice);
+      // Capacity-only overrides: NO surplus posture (a sub-home has no
+      // price/surplus signal, so a surplusWilling device would be held OFF
+      // forever), and the pending-binary read routed to THIS bundle's engine
+      // (not MAIN's via `ctx.planEngine`).
+      return buildHomePlanDevices(ctx, homeId, {
+        surplusPostureEnabled: false,
+        getPendingBinaryCommand: (id, model) => (
+          getPlanEngineForPending()?.getPendingBinaryCommandForDevice(id, model) ?? null
+        ),
+      });
     },
     setCapacityInShortfall: (inShortfall) => writeSuffixed(CAPACITY_IN_SHORTFALL, inShortfall),
     persistLastControlledMs: (lastControlledMs) => writeSuffixed(DEVICE_LAST_CONTROLLED_MS, lastControlledMs),
