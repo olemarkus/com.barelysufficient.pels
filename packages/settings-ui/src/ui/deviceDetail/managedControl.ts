@@ -33,6 +33,13 @@ export function initDeviceDetailManagedControlHandlers(params: {
       commit: (nextMap) => {
         state.controllableMap = nextMap;
         renderDevices(state.latestDevices);
+        // Other controls in this panel gate on Power-limit control — the
+        // "Leave off until turned on again" switch is disabled with a hint
+        // naming it as the prerequisite. `renderDevices` only redraws the LIST,
+        // so without this the user follows the hint, turns Power-limit control
+        // on, and the switch they were sent to stays disabled until they
+        // reopen the panel.
+        params.refreshCurrentDeviceControlStates();
       },
       rollback: params.refreshCurrentDeviceControlStates,
     });

@@ -31,6 +31,7 @@ import {
   OVERSHOOT_BEHAVIORS,
   TEMPERATURE_BOOST_SETTINGS,
   PRICE_SCHEME,
+  RESPECT_EXTERNAL_OFF_DEVICES,
   WEATHER_ADVISOR_SETTINGS,
 } from '../../../contracts/src/settingsKeys.ts';
 import { getTargetDevices, renderDevices } from './devices.ts';
@@ -134,6 +135,7 @@ const DEVICE_CONTROL_KEYS = new Set([
   'controllable_devices',
   BUDGET_EXEMPT_DEVICES,
   NATIVE_EV_WIRING_DEVICES,
+  RESPECT_EXTERNAL_OFF_DEVICES,
   DEVICE_DRIVER_OVERRIDES,
   DEVICE_CONTROL_PROFILES,
   DEVICE_TARGET_POWER_CONFIGS,
@@ -239,9 +241,13 @@ const refreshModeAndDeviceControls = () => {
   loadModeAndPriorities()
     .then(() => {
       if (!state.devicesLoaded) return;
-      renderPriorities(state.latestDevices);
-      renderDevices(state.latestDevices);
-      updatePriceConfigDevices(state.latestDevices);
+      // The canonical "devices changed, refresh every surface" pass, rather than
+      // the subset this used to hand-roll. It also emits `devices-updated`, which
+      // is what refreshes an OPEN detail panel — re-rendering the list does not
+      // touch it, so a change made in another WebView (or via the Homey API)
+      // otherwise left the panel's switches asserting the old configuration for
+      // the rest of the session.
+      renderLatestDevices(state.latestDevices);
     })
     .catch((error) => {
       void logSettingsError('Failed to load device control settings', error, 'settings.set');
@@ -334,6 +340,11 @@ const createSettingsUnsetHandler = () => (key: string) => {
   reloadObjectivesIfObjectiveKey(key, 'settings.unset');
   reloadActivePlansIfActivePlansKey(key, 'settings.unset');
   reloadWeatherInsightIfWeatherKey(key, 'settings.unset');
+  // An unset device-control map is a real configuration change — the runtime
+  // reads an absent map as "nobody opted in" — so it has to reload here too.
+  // Only `settings.set` consulted this set before, leaving switches asserting a
+  // configuration the runtime had already dropped.
+  if (DEVICE_CONTROL_KEYS.has(key)) refreshModeAndDeviceControls();
 };
 
 const createSettingsSetHandler = () => (key: string) => {
@@ -355,9 +366,7 @@ const createSettingsSetHandler = () => (key: string) => {
   if (key === OPERATING_MODE_SETTING) {
     runLoggedTask(refreshActiveMode(), 'Failed to refresh active mode', 'settings.set');
   }
-  if (PLAN_REFRESH_KEYS.has(key) || DEVICE_CONTROL_KEYS.has(key)) {
-    refreshPlanForUi('settings.set');
-  }
+  if (PLAN_REFRESH_KEYS.has(key) || DEVICE_CONTROL_KEYS.has(key)) refreshPlanForUi('settings.set');
   if (key === OVERSHOOT_BEHAVIORS) {
     runLoggedTask(loadShedBehaviors(), 'Failed to load shed behaviors', 'settings.set');
   }
