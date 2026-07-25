@@ -58,6 +58,11 @@ const DEFERRED_RESTORE_BLOCK_REASON_CODES = new Set<PlanReasonCode>([
   // binary_restore must never lift it (plan-side admittedDeviceIds exclusion means
   // the two should not co-occur — this is the defense-in-depth classifier).
   PLAN_REASON_CODES.awaitingSolarSurplus,
+  // "Leave off until turned on again" is an explicit user action, and the spec
+  // is that it wins over a smart task: the task reports the deadline risk
+  // instead of quietly overriding the off. Without this a deferred binary_restore
+  // would lift a hold the user set by hand.
+  PLAN_REASON_CODES.externalOffHold,
 ]);
 
 const STEPPED_KEEP_INVARIANT_RESTORE_REASON_CODES = new Set<PlanReasonCode>([

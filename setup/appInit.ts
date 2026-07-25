@@ -26,5 +26,9 @@ export { createPlanEngine } from './appInit/createPlanEngine';
 export { createPlanService } from './appInit/createPlanService';
 export { createPriceCoordinator, createPriceFlowTagPublisher } from './appInit/priceServices';
 export { registerAppFlowCards } from './appInit/registerAppFlowCards';
-export { evictMissingDeviceCacheEntries, toPlanDevice } from './appInit/toPlanDevice';
+export {
+  evictMissingDeviceCacheEntries,
+  isExternalOffHeldForDevice,
+  toPlanDevice,
+} from './appInit/toPlanDevice';
 export { toObservedStateSeed } from './appInit/seedObservedStateFromSnapshot';

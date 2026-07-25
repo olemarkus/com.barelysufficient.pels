@@ -100,6 +100,13 @@ export type PlanEngineDeps = {
   // freshness gate. Forwarded straight to the builder; the engine does not
   // consult it. Wired at setup from the observer projection.
   getObservationStale?: (deviceId: string) => boolean;
+  /**
+   * "Leave off until turned on again" — the producer-resolved, plan-less-safe
+   * read the executor's restore carve-out consults. Injected as a flat getter
+   * (never the policy port) so plan/executor code cannot reach a surface that
+   * mutates persisted settings. Absent ⇒ never held.
+   */
+  isExternalOffHeld?: (deviceId: string) => boolean;
   getPowerTracker: () => PowerTrackerState;
   getDailyBudgetSnapshot?: () => DailyBudgetUiPayload | null;
   // Pre-built smart-task decoration function (the app wiring constructs the
@@ -176,6 +183,7 @@ export class PlanEngine {
 
   constructor(deps: PlanEngineDeps) {
     this.state = createPlanEngineState();
+    this.state.isExternalOffHeld = deps.isExternalOffHeld;
     this.pendingBinaryCommandStore = createPendingBinaryCommandStore(this.state.pendingBinaryCommands);
     this.deviceDiagnostics = deps.deviceDiagnostics;
     this.debugStructuredFn = deps.debugStructured;
@@ -323,6 +331,24 @@ export class PlanEngine {
     const pending = this.pendingBinaryCommandStore.peek(deviceId);
     if (!pending || !isPendingBinaryCommandActive({ pending, communicationModel })) return null;
     return { desired: pending.desired };
+  }
+
+  /**
+   * Whether PELS has an outstanding binary command on this capability, in EITHER
+   * direction. Deliberately `peek` (raw) rather than the freshness-gated
+   * `getPendingBinaryCommandForDevice`: the external-off detector uses this to
+   * answer "is PELS mid-command on this device?", where a late or unconfirmed
+   * command still means the observed state is PELS's doing. Missing a real
+   * outside-off is far cheaper than fabricating one.
+   */
+  public hasPendingBinaryCommandForCapability(deviceId: string, capabilityId: string): boolean {
+    // `get`, not `peek`: the store's own freshness window is what bounds "could
+    // this off still be ours?". A raw read never evicts, so a completed command
+    // can linger past its timeout — on a flow-powered install with irregular plan
+    // cycles, or when a matching local-write echo dropped the event that would
+    // have cleared it — and a genuine ON->OFF minutes later would be attributed
+    // to PELS, starting no hold and letting reconcile turn the device back on.
+    return this.pendingBinaryCommandStore.get(deviceId)?.capabilityId === capabilityId;
   }
 
   public evaluateHeadroomForDevice(params: {

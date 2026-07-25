@@ -9,6 +9,7 @@ import {
   recordActivationSetbackForDevice,
 } from '../plan/planExecutorSupport';
 import { decideAndDispatchBinaryControl } from './binaryControlDispatch';
+import { skipRestoreForExternalOffHold } from './binaryControlShared';
 import {
   isRequestedStepMaterialized,
   type SteppedStepActuationState,
@@ -212,6 +213,11 @@ const dispatchSteppedLoadRestoreBinaryCommand = async (
   },
 ): Promise<boolean> => {
   const { action, snapshot, mode, name } = params;
+  // Dual-control devices (a stepper that also carries a binary handle) are
+  // eligible for "Leave off until turned on again", and this lane dispatches a
+  // binary ON outside `applyBinaryRestoreWithSnapshot` — so it needs the same
+  // carve-out, for the same stale-plan window.
+  if (skipRestoreForExternalOffHold(ctx, action.id, name)) return false;
   const outcome = await decideAndDispatchBinaryControl({
     transport: ctx.buildBinaryControlTransport(),
     deviceId: action.id,

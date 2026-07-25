@@ -165,6 +165,23 @@ export class PlanEngineState {
    */
   surplusOnlyShedByDevice: Record<string, true> = {};
 
+  /**
+   * "Leave off until turned on again" — the plan-less-safe read for the
+   * executor's restore carve-out. A FLAT getter, not the policy port: plan and
+   * executor code must not be handed a surface that can mutate persisted
+   * settings, and the getter is the same resolution the producer applies (hold
+   * AND still observed off), so there is exactly one definition of "held" and
+   * the two layers cannot disagree.
+   *
+   * Read here rather than off the plan device on purpose, exactly like
+   * `surplusOnlyShedByDevice`: a cold, stale, or absent plan must not resume a
+   * device the user turned off. Unlike that stamp this one is backed by
+   * persistence, so the guard also holds across a restart. Assigned by the
+   * wiring for main and by each sub-home bundle; absent ⇒ never held ⇒ today's
+   * behaviour.
+   */
+  isExternalOffHeld?: (deviceId: string) => boolean;
+
   lastDeviceRestoreMs: Record<string, number> = {};
 
   activationAttemptByDevice: Record<string, ActivationAttemptState> = {};

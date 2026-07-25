@@ -337,6 +337,7 @@ export function initSettingsHandlerForApp(
       ctx.powerTracker.lastTimestamp,
     ),
     reloadWeatherAdvisor: () => ctx.reloadWeatherCollector?.(),
+    releaseDeOptedExternalOffHolds: () => ctx.externalOffHold?.releaseDeOptedHolds() ?? [],
   });
   const onSettingsSet = async (key: string) => {
     await settingsHandler?.(key);
