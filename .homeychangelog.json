@@ -440,7 +440,10 @@
   "2.17.2": {
     "en": "Fixed an issue where an inactive or unplugged EV charger could prevent devices such as water heaters from resuming even when enough power was available."
   },
-  "2.18.0": {
-    "en": "PELS can now manage parts of your property that have separate electricity meters. Create meter areas for a rental unit, annex or cabin, give each its own hard cap and safety margin, and trial control in simulation before turning it on. PELS measures and limits each area independently from the Main home.\n\nAlso includes minor reliability fixes for homes with several meters."
+  "2.17.3": {
+    "en": "Fixed so that a device that change step during off state is reconciled when turned back on."
+  },
+  "2.17.4": {
+    "en": "Fixed some parts of the overview page where PELS was not entirely honest about what was limting the home."
   }
 }
