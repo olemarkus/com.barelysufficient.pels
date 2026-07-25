@@ -9,6 +9,13 @@ type DeferredObjectivePlanRevisionEventBase = {
   deviceName: string | null;
   objectiveKind: 'temperature' | 'ev_soc';
   previousPlanStatus: DeferredObjectiveActivePlanStatusV1 | null;
+  /**
+   * The status consumers should REPORT, when it differs from the revision's own
+   * `planStatus` because a live per-cycle overlay applies (today: the device is
+   * being left off outside PELS). Absent on ordinary revisions. Consumers must
+   * prefer this over `revision.planStatus`, or a Flow disagrees with every screen.
+   */
+  effectivePlanStatus?: DeferredObjectiveActivePlanStatusV1;
   previousWasPending: boolean;
   allocationChanged: boolean;
   projectedFinishAtMs: number | null;

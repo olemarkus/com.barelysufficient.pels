@@ -37,6 +37,9 @@ export type DeferredObjectiveDiagnosticReasonCode =
   // classification (see `resolveStallReportedStatus`). `near_target` = inside
   // the hysteresis band; `device_capped` = at the device's own internal cap.
   | 'objective_stalled_near_target'
+  // The device is being left off because it was turned off outside PELS. An
+  // explicit off action beats the task, but the deadline consequence must still
+  // be visible — the task reports risk rather than claiming it is on track.
   | 'objective_stalled_device_capped';
 
 export type { DeferredObjectiveKwhPerUnitSource } from './profileEnergyResolution';
@@ -48,6 +51,17 @@ type BaseDeferredObjectiveDiagnostic = {
   enforcement: DeferredObjectiveSettingsEntry['enforcement'];
   status: 'unknown' | DeferredObjectiveHorizonPlan['status'];
   reasonCode: DeferredObjectiveDiagnosticReasonCode | DeferredObjectiveHorizonPlan['statusDetail'];
+  /**
+   * "Leave off until turned on again" is live on this device.
+   *
+   * Its OWN field rather than a `reasonCode` value, deliberately: `reasonCode`
+   * is the planner's verdict and is frozen into the committed revision (it
+   * resolves `floorShortfallCause`). Overwriting it would erase the real cause —
+   * a budget-bound task whose device is switched off across a settle would lose
+   * its budget signal, and the detail UI would explain the risk with the clock
+   * instead. The hold is transient; the planner's verdict is not.
+   */
+  externalOffHoldActive?: true;
   targetPercent: number | null;
   currentPercent: number | null;
   // Unit-AGNOSTIC current/target reading, identical to the kind-split
