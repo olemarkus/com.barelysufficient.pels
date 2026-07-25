@@ -60,6 +60,7 @@ import type {
 } from '../../packages/planner-types/src/deferredDecoration';
 import { OvershootTracker } from './planBuilderOvershoot';
 import { buildPlanMeta, emitPowerFreshnessTransitionLogs } from './planBuilderMeta';
+import { isCapacityBreached } from './planRemainingSheddableLoad';
 import { attachDeferredReleaseIntents, buildIdentityDecorationBundle } from './planBuilderDecoration';
 
 export type PlanBuilderDeps = {
@@ -455,6 +456,7 @@ export class PlanBuilder {
       shedCooldownTotalSec: restoreResult.shedCooldownTotalSec,
       ...holds,
       softLimitSource: context.softLimitSource,
+      capacityBreached: isCapacityBreached(context.total, context.capacitySoftLimit),
     }));
   }
 

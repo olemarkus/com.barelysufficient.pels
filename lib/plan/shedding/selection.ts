@@ -72,7 +72,20 @@ function shouldStopAfterCandidate(params: { candidate: ShedCandidate; shedAllCan
     && !candidate.unconfirmedRelief;
 }
 
-export function resolveShedReason(limitSource: PlanContext['softLimitSource']): DeviceReason {
-  if (limitSource === 'daily') return { code: PLAN_REASON_CODES.dailyBudget, detail: null };
+export function resolveShedReason(
+  limitSource: PlanContext['softLimitSource'],
+  capacityBreached: boolean,
+): DeviceReason {
+  // `daily` is only the BINDING soft limit — when capacity is breached too, total
+  // is over both and capacity is the constraint actually doing the work. Naming
+  // the daily budget there is wrong for every device in the cycle, and doubly so
+  // for a budget-exempt one, which reaches this point ONLY because the breach
+  // overrode its exemption (`shedding/candidates.ts`). It also mis-buckets the
+  // overview into the releasable side and offers a "Let it run now" rescue that
+  // cannot help: releasing a budget exemption does not create capacity headroom
+  // (the same reasoning `planDiagnostics.ts` applies to capacity-bound holds).
+  if (limitSource === 'daily' && !capacityBreached) {
+    return { code: PLAN_REASON_CODES.dailyBudget, detail: null };
+  }
   return { code: PLAN_REASON_CODES.capacity, detail: null };
 }

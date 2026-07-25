@@ -355,7 +355,11 @@ describe('buildSheddingPlan', () => {
       },
     );
 
-    expect(reasonText(result.shedReasons.get('dev-nonrecent'))).toBe('shed due to daily budget');
+    // `softLimitSource` is 'daily' here, but the fixture draws 4.4 kW against a
+    // 4 kW capacity soft limit — capacity is breached too, so capacity is the
+    // constraint doing the work and owns the reason (see `resolveShedReason`).
+    // Incidental to this test, whose subject is the deprioritization below.
+    expect(reasonText(result.shedReasons.get('dev-nonrecent'))).toBe('shed due to capacity');
     expect(result.shedSet.has('dev-recent')).toBe(false);
     expect(result.shedSet.has('dev-at-temp')).toBe(false);
     expect(capacityGuard.checkShortfall).toHaveBeenCalledTimes(1);

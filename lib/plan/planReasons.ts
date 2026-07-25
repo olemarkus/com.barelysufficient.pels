@@ -35,6 +35,7 @@ function buildBaseReason(
   dev: DevicePlanDevice,
   shedReasons: Map<string, DeviceReason>,
   softLimitSource: 'capacity' | 'daily' | null,
+  capacityBreached: boolean,
 ): DeviceReason {
   const classifiedReason = classifyPlanReason(dev.reason);
   const keepReason = shouldNormalizeReason(classifiedReason) ? null : classifiedReason.reason;
@@ -49,10 +50,27 @@ function buildBaseReason(
   // constraint actually doing work. The shedReasons map is the fresh-this-
   // cycle decision and is left alone (it was set by the selector with the
   // already-correct source).
+  //
+  // Only while capacity is not ALSO breached. `softLimitSource` names the
+  // BINDING (lower) soft limit, not the one the draw has actually crossed; when
+  // total is over the capacity limit too, capacity is the constraint doing the
+  // work and the daily budget is not a lever that can help. Prod 2026-07-25: a
+  // budget-exempt EV charger — shed only because a real breach (6.60 kW over a
+  // 5.12 kW capacity soft limit) overrode its exemption — read "Limited by today's
+  // daily budget" next to its own "Always on" chip, and was offered a
+  // "Let it run now" release that could not create capacity headroom.
+  //
+  // The condition is deliberately NOT `budgetExempt`: an exempt device is only
+  // immune to daily-budget SHEDDING (`shedding/candidates.ts`). Restore admission
+  // gates on `min(capacitySoftLimit, dailySoftLimit)` with no exemption carve-out,
+  // and the daily limit adds back only an exempt device's LIVE draw — zero while
+  // it is off — so an off exempt device genuinely can be held by the daily budget,
+  // and saying so is correct.
   if (
     !shedReasons.has(dev.id)
     && resolved.code === PLAN_REASON_CODES.capacity
     && softLimitSource === 'daily'
+    && !capacityBreached
   ) {
     return { code: PLAN_REASON_CODES.dailyBudget, detail: null };
   }
@@ -139,6 +157,10 @@ export function normalizeShedReasons(params: {
   // matches the current binding constraint instead of the constraint that was
   // binding when the device was first shed.
   softLimitSource?: 'capacity' | 'daily' | null;
+  // True when the draw is over the CAPACITY soft limit, regardless of which limit
+  // is binding. Resolved by the producer (`isCapacityBreached`) so consumers never
+  // re-derive it; see the re-attribution guards in `buildBaseReason`.
+  capacityBreached?: boolean;
 }): DevicePlanDevice[] {
   const {
     planDevices,
@@ -153,6 +175,7 @@ export function normalizeShedReasons(params: {
     deferredObjectiveAvoidDeviceIds,
     surplusHoldReasonById,
     softLimitSource = null,
+    capacityBreached = false,
   } = params;
 
   return planDevices.map((dev) => normalizeDeviceReason({
@@ -168,6 +191,7 @@ export function normalizeShedReasons(params: {
     deferredObjectiveAvoidDeviceIds,
     surplusHoldReasonById,
     softLimitSource,
+    capacityBreached,
   }));
 }
 
@@ -184,6 +208,10 @@ function normalizeDeviceReason(params: {
   deferredObjectiveAvoidDeviceIds?: ReadonlySet<string>;
   surplusHoldReasonById?: ReadonlyMap<string, DeviceReason>;
   softLimitSource?: 'capacity' | 'daily' | null;
+  // True when the draw is over the CAPACITY soft limit, regardless of which limit
+  // is binding. Resolved by the producer (`isCapacityBreached`) so consumers never
+  // re-derive it; see the re-attribution guards in `buildBaseReason`.
+  capacityBreached?: boolean;
 }): DevicePlanDevice {
   const {
     dev,
@@ -198,12 +226,13 @@ function normalizeDeviceReason(params: {
     deferredObjectiveAvoidDeviceIds,
     surplusHoldReasonById,
     softLimitSource = null,
+    capacityBreached = false,
   } = params;
 
   if (dev.plannedState !== 'shed') return dev;
 
   const currentReason = classifyPlanReason(dev.reason);
-  const baseReason = buildBaseReason(dev, shedReasons, softLimitSource);
+  const baseReason = buildBaseReason(dev, shedReasons, softLimitSource, capacityBreached);
 
   const shortfallReason = maybeApplyShortfallReason({
     dev,
@@ -264,6 +293,10 @@ function normalizeDeviceReason(params: {
     softLimitSource === 'daily'
     && currentReason.code === PLAN_REASON_CODES.capacity
     && !shedReasons.has(dev.id)
+    // Same breach carve-out as `buildBaseReason` — without it this sibling path
+    // undoes that guard on the very next cycle, once the device drops out of
+    // `shedReasons` and is re-labelled while capacity is still breached.
+    && !capacityBreached
   ) {
     return { ...dev, reason: { code: PLAN_REASON_CODES.dailyBudget, detail: null } };
   }
