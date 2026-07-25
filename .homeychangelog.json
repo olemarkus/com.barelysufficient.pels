@@ -442,5 +442,8 @@
   },
   "2.17.3": {
     "en": "Fixed so that a device that change step during off state is reconciled when turned back on."
+  },
+  "2.17.4": {
+    "en": "Fixed some parts of the overview page where PELS was not entirely honest about what was limting the home."
   }
 }
