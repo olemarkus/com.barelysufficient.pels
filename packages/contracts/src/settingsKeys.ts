@@ -11,6 +11,10 @@ export const OPERATING_MODE_SETTING = 'operating_mode';
 export const MANAGED_DEVICES = 'managed_devices';
 export const CONTROLLABLE_DEVICES = 'controllable_devices';
 export const BUDGET_EXEMPT_DEVICES = 'budget_exempt_devices';
+// Opt-in for "Leave off until turned on again": `Record<deviceId, true>` (absent
+// = off). Mirror of RESPECT_EXTERNAL_OFF_DEVICES in lib/utils/settingsKeys.ts —
+// keep both in sync (the settings UI can't import lib).
+export const RESPECT_EXTERNAL_OFF_DEVICES = 'respect_external_off_devices';
 export const TEMPERATURE_BOOST_SETTINGS = 'temperature_boost_settings';
 export const EV_BOOST_SETTINGS = 'ev_boost_settings';
 export const NATIVE_EV_WIRING_DEVICES = 'native_ev_wiring_devices';

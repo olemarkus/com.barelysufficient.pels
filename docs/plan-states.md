@@ -54,6 +54,7 @@ The raw plan still uses older internal identifiers. These are implementation ter
 | `plannedState: "inactive"` | Usually shown as **Idle**. The device is not currently available, and PELS is not limiting it. |
 | `shedAction: "turn_off"` | Turn off while limiting. |
 | `shedAction: "set_temperature"` | Lower target temperature while limiting. |
+| `reason: "staying off until turned on again"` | Idle — you turned the device off outside PELS and asked PELS to leave it off. |
 | `reason: "shed due to capacity"` | Limited by the hard cap. |
 | `reason: "shed due to daily budget"` | Limited by today's daily budget. |
 | `reason: "restore (...)"` | Waiting to resume, with the required and available power shown internally. |

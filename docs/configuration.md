@@ -109,7 +109,7 @@ Device detail sections:
 | **Power limiting** | What PELS does when power needs to be lowered: turn off, set temperature, or set stepped-load level. |
 | **Stepped load profile** | Step names, planning power values, target-power range, temperature boost, and charge boost where supported. |
 | **Solar surplus** (prosumer) | For homes with solar: **Use solar surplus** lifts a device's target while your panels are exporting, and **Run on solar surplus** runs an on/off device only while there is surplus. Appears when PELS detects a solar signal, or when a device already has one of these settings enabled (so you can turn it off). See [Solar and Self-Consumption](/solar). |
-| **Setup** | Managed by PELS, power-limit control, price-based control, budget exemption, built-in device control, control model, and battery level. |
+| **Setup** | Managed by PELS, power-limit control, leave off until turned on again, price-based control, budget exemption, built-in device control, control model, and battery level. |
 | **Advanced diagnostics** | Read-only blocked time, activation instability, and penalty history. |
 
 ![PELS device detail page for a heat pump showing Temperature per mode, Price response, Power limiting, and the Setup toggles including Managed by PELS and Power-limit control](/screenshots/device-detail/mw-thermostat-heatpump-full.png)
@@ -122,6 +122,36 @@ Notes:
 - Only managed devices appear in **Settings > Modes**. Only managed temperature devices with **Price** enabled appear in **Settings > Price-aware devices**.
 - If expected usage looks wrong, check **Device -> Advanced Settings -> Energy** in Homey and verify the configured power usage values.
 - For EV current-control setup, see [Configure an EV Charger](/ev-charger).
+
+### Leave off until turned on again
+
+Off by default, and available for devices PELS can switch on and off.
+
+When it is on and you turn the device off — in Homey, on the device itself, or
+from another Flow — while PELS expects it to be running, PELS leaves it off and
+uses the freed power elsewhere. Turning the device on again hands it straight
+back to normal PELS control. Devices PELS turned off itself still resume on
+their own; this only applies to an off action that did not come from PELS.
+
+On the Overview the device reads **Idle** with *Staying off until turned on
+again*.
+
+It is worth being clear about how this differs from turning **Power-limit
+control** off, since both stop PELS resuming a device:
+
+| | Power-limit control off | Leave off until turned on again |
+| --- | --- | --- |
+| May PELS limit the device? | No | Yes |
+| May PELS resume it? | No, until you switch control back on | Yes, except while it has been switched off outside PELS |
+| How does it go back to normal? | Re-enable Power-limit control | Turn the device on |
+| What it is for | Handing the device to another automation entirely | A temporary override, by you or another automation |
+
+Turning the device on gives control back to PELS; it does not promise the device
+keeps running. If power is tight, PELS may limit it again right away.
+
+One limitation worth knowing: PELS can only notice an off action that your
+device's Homey integration reports back. A physical switch that does not tell
+Homey it was pressed is invisible to PELS.
 
 ## Settings > Modes
 
