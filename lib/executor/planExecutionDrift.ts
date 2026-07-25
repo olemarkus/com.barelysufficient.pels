@@ -48,6 +48,14 @@ export function hasPlanDeviceExecutionDrift(params: {
   liveDevice: PlanInputDevice;
 }): boolean {
   const { planDevice, liveDevice } = params;
+  // "Leave off until turned on again": the device is off because the user turned
+  // it off, and the producer only sets this bit while it is STILL observed off.
+  // A plan built before the hold still says `keep`, so without this every
+  // observation would report drift, re-fire the reconcile, and trip the
+  // per-device circuit breaker (3 in 30 s → 60 s suppression) — which would then
+  // mask GENUINE drift on that device too. The rebuild scheduled alongside the
+  // hold marks it inactive; until then there is nothing to reconcile.
+  if (liveDevice.externalOffHoldActive === true) return false;
   return hasExecutableDeviceExecutionDrift({
     intent: buildExecutableDeviceIntent(planDevice),
     observed: buildExecutableObservedDeviceState(liveDevice),

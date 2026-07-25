@@ -17,6 +17,7 @@ import {
 } from '../lib/observer/observedStateEvents';
 import { ObservedHomePower } from '../lib/observer/observedHomePower';
 import { ObservedDeviceStateProjection } from '../lib/observer/observedDeviceStateProjection';
+import { createExternalOffHoldPolicy } from './externalOffHoldAdapter';
 import { SnapshotWarmupGate } from '../lib/plan/snapshotWarmupGate';
 import { buildPlanCapacityStateSummary } from '../lib/plan/planLogging';
 import type { PlanService } from '../lib/plan/planService';
@@ -384,6 +385,11 @@ export class AppServiceWiring {
     // emitter subscription reads the projection getter at event time, so
     // reassigning the field is sufficient.
     this.deps.setObservedDeviceStateProjection(new ObservedDeviceStateProjection());
+    // "Leave off until turned on again". Constructed here so the persisted holds
+    // are loaded before the first plan cycle can resume anything — a hold that
+    // survived a restart must win over the first rebuild, not lose a race with
+    // it. Assigned onto ctx (the wiring-assigns-ctx-members house pattern).
+    ctx.externalOffHold = createExternalOffHoldPolicy(ctx.homey.settings);
     // Bound here instead of via a constructor dep so the app.ts wiring literal
     // stays untouched; same resolver instance the transport providers use.
     ctx.snapshotHelpers.bindHomeyEnergyMeterResolver(() => resolveHomeyEnergyMeterDeviceId(ctx.homey));

@@ -4,6 +4,7 @@ import {
 } from './planReasonSemanticsCore';
 import {
   PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS,
+  PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS,
   PLAN_STATE_DAILY_BUDGET_STATUS,
   PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
   PLAN_STATE_CAPACITY_STATUS,
@@ -36,6 +37,7 @@ type StaticReason = Extract<
   | { code: typeof PLAN_REASON_CODES.none }
   | { code: typeof PLAN_REASON_CODES.restoreThrottled }
   | { code: typeof PLAN_REASON_CODES.waitingForOtherDevices }
+  | { code: typeof PLAN_REASON_CODES.externalOffHold }
   | { code: typeof PLAN_REASON_CODES.neutralStartupHold }
   | { code: typeof PLAN_REASON_CODES.startupStabilization }
   | { code: typeof PLAN_REASON_CODES.capacityControlOff }
@@ -59,6 +61,7 @@ function isStaticReason(reason: DeviceReason): reason is StaticReason {
   return reason.code === PLAN_REASON_CODES.none
     || reason.code === PLAN_REASON_CODES.restoreThrottled
     || reason.code === PLAN_REASON_CODES.waitingForOtherDevices
+    || reason.code === PLAN_REASON_CODES.externalOffHold
     || reason.code === PLAN_REASON_CODES.neutralStartupHold
     || reason.code === PLAN_REASON_CODES.startupStabilization
     || reason.code === PLAN_REASON_CODES.capacityControlOff;
@@ -72,6 +75,8 @@ function formatStaticReason(reason: StaticReason): string {
       return 'restore throttled';
     case PLAN_REASON_CODES.waitingForOtherDevices:
       return 'waiting for other devices to recover';
+    case PLAN_REASON_CODES.externalOffHold:
+      return 'staying off until turned on again';
     case PLAN_REASON_CODES.neutralStartupHold:
       return 'left off';
     case PLAN_REASON_CODES.startupStabilization:
@@ -417,6 +422,8 @@ function formatStaticReasonUserFacing(reason: StaticReason): string {
       return 'Delaying restart to avoid rapid cycling';
     case PLAN_REASON_CODES.waitingForOtherDevices:
       return 'Waiting for other devices to settle';
+    case PLAN_REASON_CODES.externalOffHold:
+      return PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS;
     case PLAN_REASON_CODES.neutralStartupHold:
       return 'Left off after startup';
     case PLAN_REASON_CODES.startupStabilization:

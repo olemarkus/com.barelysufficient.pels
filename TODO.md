@@ -548,6 +548,29 @@ program) remains deferred.*
       import `lib/objectives`. Persona: EV owner with a car-side charge limit; hypothesis: an
       unexplained missed deadline is the single worst smart-task outcome. [P2]
 
+- [ ] **"Leave off until turned on again" only STARTS a hold from a push-delivered off.**
+      Detection runs at the realtime-reconcile gate (`setup/externalOffHoldDetection.ts`), so it
+      fires on `realtime_capability` / `device_update` observations. A full snapshot refresh does
+      not dispatch `plan_reconcile`, so an outside-off discovered only by a pull (live feed down
+      for the whole window) starts no hold and the device is managed as usual. Deliberate for v1 —
+      a pull cannot distinguish "the user just turned it off" from "PELS turned it off before the
+      last restart", which is the cold-start ambiguity the spec refuses to guess at. Revisit only
+      with a way to date the observation against the last PELS command. NOTE the RELEASE side is
+      deliberately not symmetric: it sweeps the pull path every plan cycle
+      (`releaseExternalOffHoldsForObservedOn`), because a missed release strands a device off
+      whereas a missed detection merely means normal management. Persona: cabin owner on a flaky
+      connection; hypothesis: they toggle the heater at the panel, the live feed is down, and PELS
+      keeps managing it. Source: PR-1 implementation of the external-off hold (2026-07-25).
+
+- [ ] **Meter picker hint invites an impossible pick when no meters are listed.** When the Homey
+      Energy report exposes no id-carrying whole-home (cumulative) meter and no sensor-class device
+      meter, the Whole-home meter select shows just "Automatic" while the always-visible hint still
+      says "pick a meter to read it directly." Soften the hint to the Automatic-only case when the
+      loaded option list is empty (needs a small conditional in homeyEnergyMeter.ts, since the hint
+      is static markup today). Persona: Power-meter user with a single tracked meter; hypothesis:
+      an instruction to pick from an empty list reads as something being broken. Source: pels-ux-fit
+      review of the meter-picker PR (2026-07-19). [P2]
+
 - [ ] **`runtimePackaging` contract-import detector false-positives on prose.** The regex in
       `test/integration/runtimePackaging.test.ts` is not line-anchored, so the bare word "import"
       inside a docblock matches and `[\s\S]*?` runs on into the next real declaration — flagging a

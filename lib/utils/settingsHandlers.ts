@@ -4,6 +4,7 @@ import type { DailyBudgetUpdateStateOptions } from '../dailyBudget/dailyBudgetTy
 import type { SettingsUiLogEntry } from '../../packages/contracts/src/types';
 import {
   BUDGET_EXEMPT_DEVICES,
+  RESPECT_EXTERNAL_OFF_DEVICES,
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
@@ -86,6 +87,11 @@ export type SettingsHandlerDeps = {
   stopFlowPowerSampleFreshnessClock?: () => void;
   syncFlowPowerSampleFreshnessClock?: () => void;
   reloadWeatherAdvisor?: () => void;
+  /**
+   * Re-read the "Leave off until turned on again" opt-in and release any hold
+   * whose device is no longer opted in. Returns the released device ids.
+   */
+  releaseDeOptedExternalOffHolds?: () => string[];
   /**
    * Writes to home-suffixed keys (`<base>:<homeId>`, non-main home, see
    * `parseHomeScopedSettingsKey`) route here instead of the exact-key
@@ -320,6 +326,16 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
       await refreshSnapshotWithLog(deps, 'budget_exemption_change');
       deps.updateDailyBudgetState(FORCE_DAILY_BUDGET_STATE_PERSIST);
       await rebuildPlanFromSettings(deps, BUDGET_EXEMPT_DEVICES);
+    },
+    [RESPECT_EXTERNAL_OFF_DEVICES]: async () => {
+      // Clear holds for de-opted devices BEFORE the rebuild, so the same rebuild
+      // that observes the new config also sees those devices manageable again.
+      deps.releaseDeOptedExternalOffHolds?.();
+      // No snapshot refresh: the opt-in changes neither which devices are
+      // fetched nor how they parse. It is read live at detection time, and
+      // `externalOffHoldActive` is re-resolved from the cached snapshot by the
+      // rebuild below.
+      await rebuildPlanFromSettings(deps, RESPECT_EXTERNAL_OFF_DEVICES);
     },
     [TEMPERATURE_BOOST_SETTINGS]: async () => {
       deps.loadCapacitySettings();

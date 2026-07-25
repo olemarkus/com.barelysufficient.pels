@@ -39,6 +39,9 @@ const subHooks = (reconcile: ReconcileMock): RealtimeReconcileHooks => ({
   getLatestPlanSnapshot: () => null,
   getLiveDevices: () => [],
   reconcile,
+  hasPendingBinaryCommand: () => false,
+  rebuild: () => Promise.resolve(),
+  isDryRun: () => false,
 });
 
 const routerFor = (

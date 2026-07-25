@@ -480,6 +480,10 @@ type DevicePlanDeviceBase = {
   // builder can maintain the plan-less-safe `surplusOnlyShedByDevice` stamp from the
   // finalized shed set.
   surplusOnly?: true;
+  // Producer-resolved "Leave off until turned on again" posture, forwarded flat
+  // from `PlanInputDevice.externalOffHoldActive` (see its doc block). The planner
+  // makes the device inactive and never asks why it is off.
+  externalOffHoldActive?: true;
   stepCommandPending?: boolean;
   stepCommandStatus?: SteppedLoadCommandStatus;
   binaryCommandPending?: boolean;

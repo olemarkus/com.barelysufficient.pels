@@ -67,6 +67,21 @@ export const OPERATING_MODE_SETTING = 'operating_mode';
 export const MANAGED_DEVICES = 'managed_devices';
 export const CONTROLLABLE_DEVICES = 'controllable_devices';
 export const BUDGET_EXEMPT_DEVICES = 'budget_exempt_devices';
+// Opt-in config for "Leave off until turned on again": `Record<deviceId, true>`
+// (absent = off). No contracts mirror yet — the settings UI that writes this key
+// lands in a follow-up PR, and the key is unreachable by users until it does.
+export const RESPECT_EXTERNAL_OFF_DEVICES = 'respect_external_off_devices';
+// Runtime state for the above — which devices PELS is currently leaving off
+// because they were turned off outside PELS. Deliberately a separate key from
+// the config: clearing the opt-in must not lose the config, and vice versa.
+// Shape validated by `lib/observer/externalOffHold.ts`.
+export const EXTERNAL_OFF_HOLDS = 'external_off_holds';
+// Written-before marker for the above. Lets the store tell a fresh install
+// (no marker, absent state => persist immediately) from a transient read miss
+// (marker set, absent state => engage the abandon-grace window instead of
+// full-replacing the state with an empty map). Same trick as
+// `power_calibration_initialized`.
+export const EXTERNAL_OFF_HOLDS_INITIALIZED = 'external_off_holds_initialized';
 export const TEMPERATURE_BOOST_SETTINGS = 'temperature_boost_settings';
 export const EV_BOOST_SETTINGS = 'ev_boost_settings';
 export const DEFERRED_OBJECTIVES_SETTINGS = 'deferred_objectives';

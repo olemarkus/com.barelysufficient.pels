@@ -147,6 +147,15 @@ state row (source: `PLAN_STATE_LABEL` in `planStateLabels.ts`; grammar in
 | **Running** | The device is on, charging, heating, or otherwise active. |
 | **Idle** | The device is off or unavailable to run, and PELS is not holding it back. |
 | **Limited** | PELS is lowering, pausing, turning off, or making the device wait for power — including a device the planner left inactive because there is no room ("waiting to resume"). Never pair `Idle` with a waiting/hold reason. |
+
+**One carve-out to "never pair `Idle` with a hold reason":** a device kept off by
+**Leave off until turned on again** renders `Idle` + `Staying off until turned on
+again`. The rule above is about *waiting-for-power* holds, where `Idle` would hide
+that PELS is restraining the device. Here PELS is restraining nothing — it is
+respecting an off action the user took outside PELS — so `Limited` would be a lie,
+and the reason line carries the explanation. This is why the `externalOffHold`
+reason code is deliberately absent from `HOLD_REASON_CODES` in
+`planCardGrammar.ts`.
 | **Resuming** | PELS is bringing the device back as power becomes available. |
 | **Manual** | The device is managed but PELS does not have power-limit control for it right now. |
 | **Unavailable** | PELS does not currently trust the device state enough to plan with it. |
@@ -202,6 +211,19 @@ Two per-device surplus controls share the `surplusWilling` opt-in; the label nam
 | Dump-load card reason while held off | `Waiting for solar surplus` |
 
 Sources: `packages/shared-domain/src/planTemperatureCardText.ts` (both card reasons) and `PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS` in `planStateLabels.ts`.
+
+### Leave off until turned on again
+
+| Concept | Label |
+|---|---|
+| Setting name (device Setup) | `Leave off until turned on again` |
+| Overview state word while held | `Idle` |
+| Overview reason line while held | `Staying off until turned on again` |
+
+Internal name for the state is **external-off hold** — "external" means outside
+PELS, and it does not claim a human necessarily performed the action. Keep that
+name out of user-facing text. Source: `PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS` in
+`planStateLabels.ts`.
 
 The dump-load toggle's helper copy states the reconcile contract explicitly — the user must learn from the toggle itself that a manual ON gets corrected: `PELS keeps this device off and turns it on when your home is exporting enough solar power to cover it. If you switch it on yourself while there is no surplus, PELS will switch it off again.` ("enough … to cover it" is load-bearing — the allocator reserves the device's own restore draw before engaging, so a trickle of export is not enough.)
 

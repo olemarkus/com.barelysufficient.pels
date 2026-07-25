@@ -29,11 +29,12 @@ import type { AppContext } from '../../lib/app/appContext';
 // Direct file imports (not the `setup/appInit.ts` barrel): the barrel also
 // exports the plan factories, which import this module — going through the
 // barrel would create a module cycle.
-import { evictMissingDeviceCacheEntries, toPlanDevice } from '../appInit/toPlanDevice';
+import { runPlanDeviceSnapshotPrePass } from './planDevicePrePass';
+import { toPlanDevice } from '../appInit/toPlanDevice';
+import { filterDevicesForHome } from '../homeMembership';
+import { isRuntimePlannedDevice } from '../appDeviceSupport';
 import { createObjectivePriceHorizonBuilder } from '../appInit/objectivePriceHorizon';
 import { isSmartTaskDeviceInMainHome } from '../appInit/smartTaskHomeScope';
-import { isRuntimePlannedDevice } from '../appDeviceSupport';
-import { filterDevicesForHome } from '../homeMembership';
 import {
   DeferredObjectiveDecorationController,
   migrateBlobToPerKeyIfNeeded,
@@ -179,12 +180,9 @@ export function buildMainHomeScope(ctx: AppContext): HomeScope {
       // `toPlanDevice` would fall back to the snapshot. Seeding fills only empty
       // slots (never clobbers a recorded observation) and uses the raw cached
       // array, so it adds no re-decoration and no device-manager re-entry.
-      ctx.seedObservedStateFromSnapshot();
-      const snapshot = ctx.latestTargetSnapshot;
-      // Eviction sees the FULL snapshot: a sub-home member is excluded from
-      // this home's plan input below, but it is still present on Homey — its
-      // cached per-device state must survive for the per-home bundles.
-      evictMissingDeviceCacheEntries(ctx, snapshot);
+      // ...plus the external-off release sweep and cache eviction, all shared
+      // with every sub-home bundle — see `runPlanDeviceSnapshotPrePass`.
+      const snapshot = runPlanDeviceSnapshotPrePass(ctx);
       // Membership complement: with sub-homes configured, this home plans only
       // its own members; a sub-home device is simply not in the plan input
       // (uncontrolled — never double-controlled). Identity (same array) when

@@ -60,9 +60,10 @@ import { createCapacitySettingsStore } from '../capacitySettingsStoreAdapter';
 // `homeScope.ts` and avoid the factory↔scope module cycle via the barrel.
 import { createPlanEngine } from '../appInit/createPlanEngine';
 import { createPlanService } from '../appInit/createPlanService';
-import { evictMissingDeviceCacheEntries, toPlanDevice } from '../appInit/toPlanDevice';
-import { isRuntimePlannedDevice } from '../appDeviceSupport';
+import { runPlanDeviceSnapshotPrePass } from './planDevicePrePass';
+import { toPlanDevice } from '../appInit/toPlanDevice';
 import { filterDevicesForHome } from '../homeMembership';
+import { isRuntimePlannedDevice } from '../appDeviceSupport';
 import { createHomePowerPipeline } from './createHomePowerPipeline';
 import { buildHomeCapacityBundleApi } from './homeCapacityBundleApi';
 import { installBundleReadinessAndFreshness } from './homeCapacityBundleReadiness';
@@ -124,6 +125,22 @@ export type RealtimeReconcileHooks = {
   getLatestPlanSnapshot: () => DevicePlan | null;
   getLiveDevices: () => PlanInputDevice[];
   reconcile: () => Promise<boolean>;
+  /**
+   * "Leave off until turned on again" seams, routed to THIS home. Its pending
+   * commands live in this bundle's engine and its plan in this bundle's service,
+   * so answering either from MAIN would fabricate holds (PELS's own write looks
+   * external) and rebuild a plan that does not contain the device.
+   */
+  hasPendingBinaryCommand: (deviceId: string, capabilityId: string) => boolean;
+  rebuild: (reason: string) => Promise<unknown>;
+  /**
+   * THIS home's effective dry-run posture — which is not main's. A sub-home in
+   * simulation, not membership-ready, or not source-authorized has no actuation
+   * authority, so its devices sit off for reasons that are not user actions and
+   * must never create a hold; conversely main being in simulation must not
+   * suppress holds for a sub-home that is actively controlling.
+   */
+  isDryRun: () => boolean;
 };
 
 export type HomeCapacityBundle = {
@@ -376,11 +393,9 @@ function buildSubHomeScope(params: {
     getPowerTracker: getTracker,
     getDailyBudgetSnapshot: () => null,
     getPlanDevices: () => {
-      // Same seed + evict pre-passes as the main scope (both idempotent and
-      // full-snapshot-based); see `buildMainHomeScope.getPlanDevices`.
-      ctx.seedObservedStateFromSnapshot();
-      const snapshot = ctx.latestTargetSnapshot;
-      evictMissingDeviceCacheEntries(ctx, snapshot);
+      // Shared snapshot pre-pass — seed, external-off release sweep, evict.
+      // Identical for main and every sub-home; see `runPlanDeviceSnapshotPrePass`.
+      const snapshot = runPlanDeviceSnapshotPrePass(ctx);
       const meterDeviceId = getMeterDeviceId();
       return filterDevicesForHome(ctx.homeMembership, snapshot, homeId)
         // Own-meter carve-out: a home's configured meter device is its power

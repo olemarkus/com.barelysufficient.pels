@@ -70,6 +70,17 @@ export function buildHomeCapacityBundleApi(params: {
       getLatestPlanSnapshot: () => planService.getLatestReconcilePlanSnapshot(),
       getLiveDevices: () => scope.getPlanDevices(),
       reconcile: () => planService.reconcileLatestPlanState(),
+      // External-off hold: both must come from THIS bundle. Main's pending store
+      // never saw this device's commands, so it would report PELS's own write as
+      // an outside action; main's plan does not contain the device at all.
+      hasPendingBinaryCommand: (deviceId, capabilityId) => (
+        planEngine.hasPendingBinaryCommandForCapability(deviceId, capabilityId)
+      ),
+      rebuild: (reason) => planService.rebuildPlanFromCache(reason),
+      // The scope's EFFECTIVE posture, which also covers not-membership-ready
+      // and not-source-authorized — both states where this home is observing
+      // without controlling, so an off device is not evidence of a user action.
+      isDryRun: () => scope.getCapacityDryRun(),
     }),
     updateHomeConfig: (next) => {
       const meterChanged = getHome().meterDeviceId !== next.meterDeviceId;
