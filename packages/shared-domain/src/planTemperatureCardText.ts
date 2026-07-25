@@ -3,7 +3,7 @@ import { resolveIntentStateKind, resolveRawPlanStateKind } from './planCardGramm
 import {
   PLAN_STATE_DAILY_BUDGET_STATUS,
   PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
-  PLAN_STATE_HELD_FALLBACK_STATUS,
+  PLAN_STATE_CAPACITY_STATUS,
   PLAN_STATE_HOURLY_BUDGET_STATUS,
 } from './planStateLabels';
 import { formatStarvationReason } from './planStarvation';
@@ -119,7 +119,7 @@ const resolveLimitedReasonLabel = (reasonCode: string): string | null => {
   if (reasonCode === PLAN_REASON_CODES.deferredObjectiveAvoid) return PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS;
   if (reasonCode === PLAN_REASON_CODES.dailyBudget) return PLAN_STATE_DAILY_BUDGET_STATUS;
   if (reasonCode === PLAN_REASON_CODES.hourlyBudget) return PLAN_STATE_HOURLY_BUDGET_STATUS;
-  if (isLimitedReason(reasonCode)) return PLAN_STATE_HELD_FALLBACK_STATUS;
+  if (isLimitedReason(reasonCode)) return PLAN_STATE_CAPACITY_STATUS;
   return null;
 };
 

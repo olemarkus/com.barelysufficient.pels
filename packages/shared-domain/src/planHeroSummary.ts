@@ -204,10 +204,23 @@ export const computeEnergyBarScaleKWh = (
   budgetKWh: number,
   projectedKWh: number | null,
   usedKWh: number,
+  // The hour's hard-cap ceiling in kWh. Included in the scale for the same
+  // reason the power bar's scale includes the cap in kW ("the cap tick must
+  // remain visible"): the energy bar's cap marker only renders while the cap is
+  // on-scale, and the cap normally sits ABOVE the budget (budget = cap − safety
+  // margin, or a tighter daily allocation). Without this the tick was dropped in
+  // exactly the healthy case, so the cap was never shown in the unit it actually
+  // governs — an hourly kWh ceiling — and only ever appeared as a kW tick on the
+  // instantaneous power bar, where "6.7 kW now vs 5.0 kW cap" reads as a breach
+  // it is not (prod 2026-07-25).
+  hardCapKWh?: number | null,
 ): number => {
   const overshoot = Math.max(projectedKWh ?? 0, usedKWh);
-  if (overshoot <= budgetKWh) return budgetKWh;
-  return overshoot * 1.05;
+  const base = overshoot <= budgetKWh ? budgetKWh : overshoot * 1.05;
+  const cap = typeof hardCapKWh === 'number' && Number.isFinite(hardCapKWh) && hardCapKWh > 0
+    ? hardCapKWh
+    : 0;
+  return Math.max(base, cap);
 };
 
 // ─── Decision sentence (named-subject declarative voice) ─────────────────────

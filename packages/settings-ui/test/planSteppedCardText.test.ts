@@ -9,7 +9,7 @@ import {
 } from '../../shared-domain/src/planSteppedCardText.ts';
 import {
   PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
-  PLAN_STATE_HELD_FALLBACK_STATUS,
+  PLAN_STATE_CAPACITY_STATUS,
 } from '../../shared-domain/src/planStateLabels.ts';
 import type { SteppedLoadProfile } from '../../contracts/src/types.ts';
 import type { SettingsUiPlanDeviceStarvation } from '../../contracts/src/settingsUiApi.ts';
@@ -461,7 +461,9 @@ describe('resolveSteppedStatusLine', () => {
         },
         profile,
         NOW_MS,
-      )).toBe(PLAN_STATE_HELD_FALLBACK_STATUS);
+        // A real `capacity` reason: naming the hard cap is accurate here. The
+        // separate held FALLBACK (unknown constraint) no longer shares this text.
+      )).toBe(PLAN_STATE_CAPACITY_STATUS);
     });
 
     it('returns the deferred-objective avoid status when the smart task is waiting for cheaper hours', () => {

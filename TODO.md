@@ -145,6 +145,23 @@ What remains open is below.*
       hypothesis: two numbers that contradict the verdict destroy trust in the whole card. Source:
       prod log review 2026-07-25. [P1]
 
+- [ ] **A shed device waiting out a restore gate can carry no gate reason, so it defaults to
+      `capacity`.** `buildBaseReason` (`lib/plan/planReasons.ts` ~42) ends with
+      `?? { code: capacity }` for a device that is planned `shed`, was not shed THIS cycle, and
+      whose own reason normalized away. That default is required — `SHED_REASON_RULES`
+      (`lib/plan/planReasonsValidation.ts`) is an allow-list of limit-shaped codes and a shed
+      device must carry one — but it fires in windows where no limit is binding at all. Prod
+      2026-07-25: a charger shed during a 10 s overshoot read `capacity` on 5 cycles while the
+      house sat at 1.4 kW against a 5.4 kW pace; it was really waiting out `cooldown_shedding` →
+      `meter_settling` → `restore_need`, all of which DO set their own reasons on the cycles they
+      cover. So the real defect is the gap: the restore path does not always attach a gate reason,
+      and the default then speaks for it. Fix is to close that gap (audit which restore-gate paths
+      leave the reason unset), NOT to loosen the default — an attempt to return `none` when nothing
+      binds broke 6 integration tests precisely because it violated the allow-list. The card no
+      longer *says* "Limited by the hard cap" for the unknown case (the held fallback was split off
+      from `PLAN_STATE_CAPACITY_STATUS` in the same PR), but a genuine `capacity` reason on a device
+      no limit is holding is still wrong. Source: prod investigation + test suite, 2026-07-25. [P2]
+
 - [ ] **Stepped devices never say how much power a resume is waiting for.**
       `steppedRestoreAdmission.ts` hardcodes `headroomKw: null` on both `restoreNeed` reasons, so
       `formatRestoreNeedUserFacing` (`packages/shared-domain/src/planReasonFormatting.ts` ~388-389)
@@ -164,6 +181,18 @@ What remains open is below.*
       exist. Best fixed together with the entry above: guard on inequality and let the suffix carry
       it. Source: prod investigation 2026-07-25. [P2]
 
+- [ ] **A shed-invariant hold renders as "Limited by the hard cap" on the stepped card.**
+      `isLimitedReason` in `packages/shared-domain/src/planSteppedCardText.ts` (~133-135) includes
+      `PLAN_REASON_CODES.shedInvariant`, and the `PLAN_STATE_CAPACITY_STATUS` return at ~260 fires
+      before the dedicated `shedInvariant` branch at ~302 ever runs — so a safety-rule hold is
+      reported as the hard cap, which is neither what is happening nor a lever the owner has
+      (feedback_hard_cap_is_physical). Pre-dates the 2026-07-25 capacity/held-fallback constant
+      split, which renamed the constant without changing which reasons reach it. Fix: a
+      capacity-only predicate for that branch, so `shedInvariant` falls through to its own wording,
+      plus regression coverage. `planTemperatureCardText.ts` is NOT affected — its `isLimitedReason`
+      excludes `shedInvariant`. Closely related to the entry below (same card, same overstatement).
+      Source: CodeRabbit review of #1876, 2026-07-25. [P2]
+
 - [ ] **"Blocked by safety rule" on a device running normally at its target step.** Seen on 2.17.3
       with the EV charger `Active` at 1.36 kW on step `6a` and `reasonCode: shed_invariant`. The
       invariant only refuses step *increases* while other devices are limited; it never pushes a
@@ -171,14 +200,6 @@ What remains open is below.*
       as the existing `resolveSteppedStatusLine` entry above (rendering the invariant's cap rather
       than the device's state). Source: prod observation 2026-07-25. [P2]
 
-- [ ] **Meter picker hint invites an impossible pick when no meters are listed.** When the Homey
-      Energy report exposes no id-carrying whole-home (cumulative) meter and no sensor-class device
-      meter, the Whole-home meter select shows just "Automatic" while the always-visible hint still
-      says "pick a meter to read it directly." Soften the hint to the Automatic-only case when the
-      loaded option list is empty (needs a small conditional in homeyEnergyMeter.ts, since the hint
-      is static markup today). Persona: Power-meter user with a single tracked meter; hypothesis:
-      an instruction to pick from an empty list reads as something being broken. Source: pels-ux-fit
-      review of the meter-picker PR (2026-07-19). [P2]
 
 - [ ] **Shed-invariant card copy claims a step the device is not at.** `resolveSteppedStatusLine`
       renders the shed-invariant reason as `Limited to ${maxStep}`
@@ -505,7 +526,7 @@ program) remains deferred.*
       loaded option list is empty (needs a small conditional in homeyEnergyMeter.ts, since the hint
       is static markup today). Persona: Power-meter user with a single tracked meter; hypothesis:
       an instruction to pick from an empty list reads as something being broken. Source: pels-ux-fit
-      review of the meter-picker PR (2026-07-19).
+      review of the meter-picker PR (2026-07-19). [P2]
 
 - [ ] **Extract sub-home source recovery from `HomeRuntimeRegistry`.** The multi-meter GA work grew
       `setup/homeRuntime/homeRuntimeRegistry.ts` into a roughly 600-line coordinator that now owns

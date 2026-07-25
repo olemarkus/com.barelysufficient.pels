@@ -6,7 +6,7 @@ import {
   PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS,
   PLAN_STATE_DAILY_BUDGET_STATUS,
   PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
-  PLAN_STATE_HELD_FALLBACK_STATUS,
+  PLAN_STATE_CAPACITY_STATUS,
   PLAN_STATE_HOURLY_BUDGET_STATUS,
 } from './planStateLabels';
 
@@ -443,7 +443,7 @@ function formatDetailReasonUserFacing(reason: DetailReason): string {
     case PLAN_REASON_CODES.inactive:
       return reason.detail ? `Off for now (${reason.detail})` : 'Off for now';
     case PLAN_REASON_CODES.capacity:
-      return appendUserDetail(PLAN_STATE_HELD_FALLBACK_STATUS, reason.detail);
+      return appendUserDetail(PLAN_STATE_CAPACITY_STATUS, reason.detail);
     case PLAN_REASON_CODES.deferredObjectiveAvoid:
       return appendUserDetail(PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS, reason.detail);
     case PLAN_REASON_CODES.awaitingSolarSurplus:
