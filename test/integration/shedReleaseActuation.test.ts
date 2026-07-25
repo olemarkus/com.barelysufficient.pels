@@ -280,6 +280,40 @@ describe('applyShedReleaseIntent', () => {
     expect(mockedApplySteppedLoadCommand).not.toHaveBeenCalled();
   });
 
+  // Pins the disjointness that lets flow reports be admitted as observed evidence
+  // while the binary axis reads off (2026-07-25). The admission only ever produces
+  // a non-off observed step on a device that HAS a binary control — and this
+  // dispatch is unreachable for those, so admitting the report cannot make PELS
+  // command a step at a device it has deliberately turned off. If the
+  // `!snapshot.controlCapabilityId` routing above ever changes, that guarantee is
+  // gone and the admission needs its own "does PELS want this device on?" gate.
+  it('never dispatches a stepped release for a binary-capable device observed off at a non-off step', async () => {
+    const deps = buildDeps({ action: 'set_step', temperature: null, stepId: 'low' });
+    const result = await applyShedReleaseIntent({
+      intent: buildIntent({ releaseShedStepId: 'low' }),
+      steppedLoadIntent: buildSteppedLoadIntent(),
+      // The prod shape: PELS turned the charger off, and the flow then reported a
+      // higher step (Easee reverting to 32 A) which is now observed truth.
+      observed: buildObserved({
+        binaryControl: { on: false },
+        observedBinaryState: 'off',
+        steppedLoad: { on: false, stepId: 'high' },
+      }),
+      snapshot: {
+        id: 'dev-1',
+        binaryControl: { on: false },
+        controlCapabilityId: 'evcharger_charging',
+      } as never,
+      mode: 'plan',
+      deps,
+    });
+    // Routed to the binary path (device has a control capability), which is
+    // idempotent against an already-off device: nothing is written at all.
+    expect(result).toBe(false);
+    expect(mockedApplySteppedLoadCommand).not.toHaveBeenCalled();
+    expect(mockedApplyBinarySheddingToDevice).not.toHaveBeenCalled();
+  });
+
   it('fires a stepped-load command for set_step on a stepped-only device with no binary control', async () => {
     const recordReleaseShedActuation = vi.fn();
     const deps = buildDeps(

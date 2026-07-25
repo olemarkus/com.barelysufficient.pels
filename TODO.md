@@ -48,6 +48,97 @@ stepped-restore-wrapper / stepped-swap-completion refactors, the settings.test.t
 plan_budget truncation, the starvation confirm-sheet sub-parts, and the shared widget runtime.
 What remains open is below.*
 
+- [ ] **False hard-cap shortfall when a stepped device's shed relief is credited from the step
+      model.** With the charger drawing a measured 3.645 kW (house at 7.36 kW), `plan_shed_step_down`
+      credited `reliefKw: 1.38` from the commanded step, so the excess never closed and PELS raised
+      `hard_cap_shortfall_detected` (`excessW: 1840`, `plannedShedDevices: 1`) while it was in the act
+      of turning off a load that covered it several times over. Every device got
+      "Manual action needed. Needs X kW, 0.0 kW available."
+      (`packages/shared-domain/src/planReasonFormatting.ts` ~304) for ~70 s. Admitting the flow step
+      report (2026-07-25) fixes the modelling input for this charger, but the relief credit itself
+      still ignores a fresh measured draw on a device that is on and measured. Consider crediting
+      shed relief from measured power when the observation is fresh. Source: prod log review
+      2026-07-25 06:16:46Z. [P1]
+
+- [ ] **`isCommandableNow` is always false for an EV charger on the plan-device path.**
+      `resolveCommandableNow` reads `evChargingState`, but `withEvDiscriminant`
+      (`lib/plan/planTypes.ts` ~270-284) deliberately strips that field on the way to a
+      `DevicePlanDevice`, and `lib/plan/planDevicesBase.ts` never copies the producer's
+      `commandableNow` either. So for `deviceClass: 'evcharger'` the switch lands on
+      `state_unknown` → "charger state unknown" → blocked, every time. Live consequence:
+      `hasStableBinaryReleaseActuation` (`lib/executor/planExecutorPredicates.ts` ~70) is dead in
+      production for its EV-only `deferredReleaseIntent: 'binary_restore'` case. The other two call
+      sites (`binaryExecutor.ts` ~204, `planExecutionDrift.ts` ~173) correctly pass the *snapshot*,
+      which does carry `evChargingState`, so they are fine. Tests hide it: `pd()` in
+      `test/integration/planExecutor.test.ts` applies the temperature/stepped/binary discriminants
+      but not `withEvDiscriminant`, so fixtures keep a field production strips — any fix needs a
+      fixture that regroups the way the producer does. Either carry `commandableNow` onto the plan
+      device as a producer-resolved bit, or give plan-device callers an EV-aware variant. Source:
+      adversarial review, 2026-07-25. [P1]
+
+- [ ] **A `keep`-planned stepped device observed off can stall its own turn-on.**
+      `hasStableSteppedLoadStepActuation` (`lib/executor/planExecutorPredicates.ts` ~91) returns
+      false whenever the desired step equals the selected step. Since 2026-07-25 a paused device
+      that last reported a non-off step reaches exactly that state with the binary turn-on still
+      outstanding, and once the plan signature settles `maybeApplyPlanChanges`
+      (`lib/plan/planServiceRebuild.ts` ~239) stops calling the executor. Observed live: eight
+      consecutive `restore_stepped_admitted` for the Easee over ~4 min, `deltaKw` 1.38,
+      `availableKw` 6.6, and zero `evcharger_charging` writes; the charger only came on because it
+      turned itself on externally, so whether it would have stalled indefinitely is unproven.
+      A first attempt at this (adding an observed-off branch to the predicate) was reverted: it
+      relied on `isCommandableNow(dev)`, which is always false for an EV charger on that path (see
+      the item above), so it was a no-op for the motivating device — and where it *did* fire
+      (non-EV steppers) each retry re-stamps the GLOBAL `state.lastRestoreMs`
+      (`lib/executor/planExecutor.ts` ~210), which would keep `inRestoreCooldown` from ever
+      clearing and starve every other device's restore. Needs the commandability defect fixed
+      first, a per-device rather than global rate limit, and live validation. Source: prod log
+      review + adversarial review, 2026-07-25. [P1]
+
+- [ ] **An observed-off device attributes usage from whatever step it is parked at.**
+      `resolveObservedOffUsageKw` (`lib/plan/planUsage.ts` ~36-41) falls to
+      `getHighestKnownPowerKw`, which takes the max of measured/expected/planning/configured —
+      so a device measuring 0 W is still attributed non-zero usage, and since 2026-07-25 that
+      `planningPowerKw` can be a drifted step rather than the restore step (1.38 kW → 7.36 kW for
+      a charger that reverted to 32 A). That flows into the managed/background split
+      (`lib/power/sampleIngest.ts`), the budget-exempt bucket, the daily budget, the learned
+      background profile, and the smart-task headroom reserve. The mis-attribution pre-dates the
+      2026-07-25 change (it attributed the lowest step before), and the exposure is bounded: a
+      `plannedState: 'shed'` device attributes 0, so only the `keep`-and-observed-off restore-pending
+      window is affected, which is normally seconds. Fix is a semantics call — either attribute the
+      restore step for an observed-off device, or attribute 0 and let the restore reservation carry
+      it — so it does not belong in a patch release. Source: adversarial review of the flow-report
+      admission, 2026-07-25. [P2]
+
+- [ ] **Retire the `suppressed_flow` step-state machinery.** `lib/plan/planSteppedLoadState.ts`
+      still carries the `source: 'suppressed_flow'` arm, `SuppressedFlowStepInput`,
+      `SuppressedFlowRestorePreparationPolicy`, and the suppressed branch of
+      `resolveRestorePreparation`; `restorePreparedStepId` is declared in
+      `setup/appDeviceControlSteppedState.ts` and never read. The only production entry point
+      (`serializeLegacyStepFieldsFromEvidence`) never passes those params, so the branch is
+      unreachable and only `test/unit/planSteppedLoadState.test.ts` constructs it — which is why
+      knip stays green. Its reserved purpose ("suppressed flow feedback may be considered later
+      only as explicit restore-preparation evidence") was retired when flow reports became
+      admissible on 2026-07-25. Source: adversarial review, 2026-07-25. [P2]
+
+- [ ] **Redundant off-writes to a charger already observed off.** `Elbillader` took 8
+      `evcharger_charging=false` writes in 17 min, 7 of them with `currentOn=false` and the observed
+      binary already agreeing (`binary_observation_consolidated` → `values_match`). Each recorded a
+      `diagnostics_shed_recorded`, so diagnostics logged 7 sheds for the charger vs 1 for the water
+      heater; two writes were 19 s and 31 s apart, so the 60 s shed cooldown does not gate
+      re-assertions of an existing shed. Likely trigger: `binary_write_timeout` fires on 8 of 8
+      writes to this device and on no other (the Easee never echoes `evcharger_charging` inside the
+      5 s settle window, `lib/observer/binarySettle.ts` ~28), so the executor never sees the command
+      materialize. Source: prod log review 2026-07-25. [P1]
+
+- [ ] **"Not enough available power to resume" prints two numbers that say it should have resumed.**
+      The card read "needs 1.6 kW, 2.0 kW available" while the gate that actually failed was
+      `postReserveMarginKw 0.115 < minimumRequiredPostReserveMarginKw 0.250`.
+      `formatInsufficientHeadroomUserFacing` (`packages/shared-domain/src/planReasonFormatting.ts`
+      ~392-402) renders `effectiveAvailableKw` against `needKw` and never mentions the reserve that
+      decided it, so the copy reads as a PELS bug. Persona: Homey owner watching a paused EV charger;
+      hypothesis: two numbers that contradict the verdict destroy trust in the whole card. Source:
+      prod log review 2026-07-25. [P1]
+
 - [ ] **Meter picker hint invites an impossible pick when no meters are listed.** When the Homey
       Energy report exposes no id-carrying whole-home (cumulative) meter and no sensor-class device
       meter, the Whole-home meter select shows just "Automatic" while the always-visible hint still
@@ -578,18 +669,6 @@ program) remains deferred.*
       `evcharger_charging=false` write, and that window stretches under `power_source = flow`'s irregular
       sampling. Files: `lib/plan/deviceOverviewLog.ts` / overview status writer,
       `packages/shared-domain/src/deviceOverviewStrings.ts`, `notes/ui-terminology.md` (new status copy).
-- [ ] **A transient snapshot miss defeats the while-off flow-report suppression.** *Persona:* flow-stepper owner
-      whose Homey briefly fails a device read at the moment their flow reports a step.
-      *Hypothesis:* `SteppedLoadControlHelper.reportSteppedLoadActualStep` resolves the device via
-      `getDeviceSnapshots().find(...)`; on a miss `snapshotBinaryOn` is `undefined`, so
-      `shouldSuppressSteppedLoadFlowReport` (which requires `binaryOn === false`) admits a non-off report
-      while the device is actually off as **sticky observed evidence** — the exact fabricated observed step
-      the suppression exists to prevent (it can revive a dead shed-release path). One missing SDK read is
-      treated as authoritative for evidence admission, violating the abandon-grace convention.
-      *Why:* found adjacent to the 2026-07-05 restore-confirmation fix (predicate unchanged there); needs a
-      "recent trusted binary state" fallback or an explicit unknown-binary policy rather than admit-by-default.
-      Files: `setup/appDeviceControlHelpers.ts` (`reportSteppedLoadActualStep`),
-      `setup/appDeviceControlSteppedState.ts` (`shouldSuppressSteppedLoadFlowReport`).
 - [ ] **Nudge EV chargers missing the target-power phase preset.** *Persona:* EV-charger owner who managed the
       charger but never set 1-/3-phase, silently getting binary on/off control with peak-priced resumes.
       *Hypothesis:* a managed `evcharger`-class device with no stepped profile and no

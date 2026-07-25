@@ -7,6 +7,7 @@ import { isTemperatureControlDevice } from '../../packages/shared-domain/src/tem
 import { hasObservedTemperature } from '../../packages/shared-domain/src/temperatureObservedState';
 import { hasObservedStateOfCharge } from '../../packages/shared-domain/src/stateOfChargeObservedState';
 import { hasObservedMeasuredPower } from '../../packages/shared-domain/src/measuredPowerObservedState';
+import { isBinaryObservedOff } from '../../packages/shared-domain/src/binaryControlState';
 import {
   hasObservedReportedStep,
   isSteppedLoadSnapshot,
@@ -106,6 +107,13 @@ function resolveCredibleDevicePower(
   }
 
   if (!isSteppedLoadSnapshot(device)) return {};
+  // A device whose binary axis reads off draws nothing, whatever step it is parked
+  // at. Since 2026-07-25 a non-off step report IS admitted while off (devices can
+  // change their own step while paused), so the step axis alone no longer implies
+  // draw — without this gate a paused stepper would bill its coast window at the
+  // step's nameplate and poison the learned rate, defeating the `powerW <= 0`
+  // coast-window protection in `energyAccumulator`/`profiles`.
+  if (isBinaryObservedOff(device)) return {};
   const profile = device.steppedLoadProfile;
   const reportedStepId = hasObservedReportedStep(device) ? device.reportedStepId : undefined;
   const reportedStep = getSteppedLoadStep(profile, reportedStepId);

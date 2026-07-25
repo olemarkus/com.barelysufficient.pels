@@ -128,11 +128,16 @@ Post-release executor boundary rollout:
 - Behavioral cleanups, including the stepped-load non-executable hold model, should stay separate
   from move-only or projection-only PRs.
 
-Flow-reported step feedback is admitted as observed truth only when it agrees with the binary
-snapshot. A flow report for a non-off step while `currentOn=false` is suppressed at the
-app/snapshot boundary; native step telemetry remains reported truth because it comes from the
-device's modeled step capability. Suppressed flow feedback may be considered later only as explicit
-restore-preparation evidence under the planner/executor freshness rules.
+Flow-reported step feedback is admitted as observed truth on the same terms as native step
+telemetry, including a non-off step reported while `currentOn=false`. **Superseded 2026-07-25:**
+that report used to be suppressed at the app/snapshot boundary, on the theory that a non-off step
+could not be real while the device was off. It can: devices change their own step while paused (an
+Easee charger reverts its temporary charging limit on every charging-session start), and the report
+also lands during the 17-37 s window between PELS writing the binary on and the on-echo arriving, so
+suppression left the planner modelling a 6 A charger that was drawing 32 A. The binary axis still
+owns the on/off fold (`resolveCurrentOn` is `!(binaryOff || steppedOff)`), so a non-off observed
+step never resurrects an off device. See `snapshot-decomposition.md` for the disjointness argument
+that keeps this clear of the stepped shed-release dispatch path.
 
 The pending-binary-command admission rule (suppressing the snapshot echo of an in-flight binary
 write) lives in transport's parse pipeline. As of PR #4 of the observer/transport split

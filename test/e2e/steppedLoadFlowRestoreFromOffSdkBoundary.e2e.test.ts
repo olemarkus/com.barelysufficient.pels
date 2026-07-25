@@ -15,6 +15,12 @@
  *      `waiting_confirmation -> stale -> retry_backoff` forever, and the binary
  *      `evcharger_charging=true` write NEVER reached the SDK boundary.
  *
+ * That suppression is gone as of 2026-07-25: a non-off flow report while the
+ * binary axis reads off is admitted as observed evidence, so the confirmation
+ * now rides the ordinary report path rather than a while-off special case. The
+ * deliverable assertion below is unchanged — this spec still guards the
+ * restore-from-off deadlock.
+ *
  * This spec drives the REAL pipeline around that loop: the real
  * `AppDeviceControlHelpers` (pending desired-step runtime state + snapshot
  * decoration — where the bug lives), the real snapshot parser
@@ -28,9 +34,12 @@
  * `evcharger_charging=true` write reaches the SDK boundary. On the buggy base
  * it never does — that failure IS the reproduction.
  *
- * Invariant guard: the suppressed report must NOT become observed evidence —
- * `reportedStepId` stays unset while the charger is off (a fabricated observed
- * step would revive a dead shed-release path).
+ * Invariant guard: the report becomes observed evidence, but the binary axis
+ * still owns the on/off fold — `binaryControl.on` stays false, so a non-off
+ * observed step never resurrects a charger PELS has turned off. The stepped
+ * shed-release dispatch path is unaffected: it runs only for devices with NO
+ * binary control capability (`!snapshot.controlCapabilityId` in
+ * `shedReleaseActuation`), and this charger has `evcharger_charging`.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type Homey from 'homey';
@@ -305,10 +314,12 @@ describe('flow-backed stepped restore-from-off — step confirmation via flow re
     vi.setSystemTime(cycle1Ms + 26_000);
     helpers.reportSteppedLoadActualStep(DEVICE_ID, '6a');
 
-    // Invariant: the report is NOT observed running-state evidence while the
-    // charger is off — reportedStepId stays unset (real-evidence-only).
+    // The report is real telemetry and becomes observed evidence even though the
+    // charger is off (prod 2026-07-25: blanking it hid an Easee that had reverted
+    // to 32 A). The binary axis still owns the on/off fold, so the charger stays off.
     const afterReport = decorate();
-    expect(afterReport.reportedStepId).toBeUndefined();
+    expect(afterReport.reportedStepId).toBe('6a');
+    expect(afterReport.binaryControl?.on).toBe(false);
     // The report IS the flow-transport confirmation of the pending command.
     // On the buggy base the report was dropped wholesale: the command stayed
     // pending until it expired stale and the restore looped forever.
@@ -365,13 +376,14 @@ describe('flow-backed stepped restore-from-off — step confirmation via flow re
 
     await executor.applyPlanActions(buildRestoreTo6aPlan(decorate()), 'plan');
 
-    // A contradictory non-off report (wrong step) while off stays fully
-    // suppressed: no observed evidence, no confirmation.
+    // A contradictory non-off report (wrong step) while off becomes observed
+    // truth — the charger really is at 8a — but confirms nothing, so the
+    // prepare-for-on command stays unconfirmed and the binary turn-on is held.
     vi.setSystemTime(cycle1Ms + 26_000);
     helpers.reportSteppedLoadActualStep(DEVICE_ID, '8a');
 
     const afterReport = decorate();
-    expect(afterReport.reportedStepId).toBeUndefined();
+    expect(afterReport.reportedStepId).toBe('8a');
     expect(afterReport.stepCommandStatus).not.toBe('success');
 
     vi.setSystemTime(cycle1Ms + 35_000);
