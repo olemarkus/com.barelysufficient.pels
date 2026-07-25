@@ -115,6 +115,7 @@ export const settingsSimulationModeInput = document.querySelector(
   '#settings-simulation-mode',
 ) as MdSwitchElement | null;
 export const dryRunBanner = qs('#dry-run-banner');
+export const dryRunBannerText = document.querySelector('#dry-run-banner-text') as HTMLElement | null;
 export const simulationDisableButton = document.querySelector('#simulation-disable-button') as MdButtonElement | null;
 export const staleDataBanner = qs('#stale-data-banner');
 export const staleDataBannerText = qs('#stale-data-text');

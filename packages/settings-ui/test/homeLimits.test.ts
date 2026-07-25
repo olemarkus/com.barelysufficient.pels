@@ -102,6 +102,20 @@ describe('switcher + static-form visibility', () => {
     expect(document.querySelector('#home-limits-hard-cap')).toBeNull();
   });
 
+  it('falls back to safe defaults when persisted area limits are non-finite', async () => {
+    install({
+      [`capacity_limit_kw:${AREA_ID}`]: Number.NaN,
+      [`capacity_margin_kw:${AREA_ID}`]: Number.POSITIVE_INFINITY,
+      [`capacity_dry_run:${AREA_ID}`]: true,
+    });
+    await refreshHomeLimitsOnLimitsPanel();
+    await flushAsync();
+    await selectArea(AREA_ID);
+
+    expect(document.querySelector<HTMLInputElement>('#home-limits-hard-cap')?.value).toBe('10');
+    expect(document.querySelector<HTMLInputElement>('#home-limits-margin')?.value).toBe('0.2');
+  });
+
   it('falls back to Main-only when there are no meter areas', async () => {
     homey = installHomeyMock({
       uiState: {

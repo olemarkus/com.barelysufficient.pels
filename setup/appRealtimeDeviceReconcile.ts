@@ -24,24 +24,25 @@ type RealtimeDeviceReconcileCircuitState = {
 };
 
 export type RealtimeDeviceReconcileState = {
-  pendingEvents: Map<string, RealtimeDeviceReconcileEvent>;
+  pendingEventsByQueue: Map<string, Map<string, RealtimeDeviceReconcileEvent>>;
   circuitState: Map<string, RealtimeDeviceReconcileCircuitState>;
 };
 
 export function createRealtimeDeviceReconcileState(): RealtimeDeviceReconcileState {
   return {
-    pendingEvents: new Map<string, RealtimeDeviceReconcileEvent>(),
+    pendingEventsByQueue: new Map<string, Map<string, RealtimeDeviceReconcileEvent>>(),
     circuitState: new Map<string, RealtimeDeviceReconcileCircuitState>(),
   };
 }
 
 export function clearRealtimeDeviceReconcileState(state: RealtimeDeviceReconcileState): void {
-  state.pendingEvents.clear();
+  state.pendingEventsByQueue.clear();
   state.circuitState.clear();
 }
 
 export function scheduleRealtimeDeviceReconcile(params: {
   state: RealtimeDeviceReconcileState;
+  queueKey: string;
   hasPendingTimer: boolean;
   event: RealtimeDeviceReconcileEvent;
   debugStructured?: StructuredDebugEmitter;
@@ -51,6 +52,7 @@ export function scheduleRealtimeDeviceReconcile(params: {
 }): ReturnType<typeof setTimeout> | undefined {
   const {
     state,
+    queueKey,
     hasPendingTimer,
     event,
     debugStructured,
@@ -62,7 +64,10 @@ export function scheduleRealtimeDeviceReconcile(params: {
     event: 'realtime_reconcile_queued',
     ...toRealtimeReconcileEventPayload(event),
   });
-  state.pendingEvents.set(event.deviceId, event);
+  const pendingEvents = state.pendingEventsByQueue.get(queueKey)
+    ?? new Map<string, RealtimeDeviceReconcileEvent>();
+  pendingEvents.set(event.deviceId, event);
+  state.pendingEventsByQueue.set(queueKey, pendingEvents);
   if (hasPendingTimer) return undefined;
   return setTimeout(() => {
     onTimerFired();
@@ -72,6 +77,7 @@ export function scheduleRealtimeDeviceReconcile(params: {
 
 export async function flushRealtimeDeviceReconcileQueue(params: {
   state: RealtimeDeviceReconcileState;
+  queueKey: string;
   reconcile: () => Promise<boolean>;
   shouldRecordAttempt?: (event: RealtimeDeviceReconcileEvent) => boolean;
   structuredLog?: PinoLogger;
@@ -79,13 +85,14 @@ export async function flushRealtimeDeviceReconcileQueue(params: {
 }): Promise<void> {
   const {
     state,
+    queueKey,
     reconcile,
     shouldRecordAttempt,
     structuredLog,
     debugStructured,
   } = params;
-  const pendingEvents = Array.from(state.pendingEvents.values());
-  state.pendingEvents.clear();
+  const pendingEvents = Array.from(state.pendingEventsByQueue.get(queueKey)?.values() ?? []);
+  state.pendingEventsByQueue.delete(queueKey);
   if (pendingEvents.length === 0) return;
 
   const now = Date.now();

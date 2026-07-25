@@ -7,6 +7,8 @@ import {
   settingsPowerSourceSelect,
   settingsSimulationModeInput,
   dryRunBanner,
+  dryRunBannerText,
+  simulationDisableButton,
   type MdSwitchElement,
   type MdFilledTextFieldElement,
   staleDataBanner,
@@ -22,6 +24,8 @@ import {
   CAPACITY_MARGIN_KW,
   DEBUG_LOGGING_TOPICS,
   HOMEY_ENERGY_METER_DEVICE_ID,
+  HOMES_CONFIG,
+  HOMES_CONFIG_INITIALIZED,
   POWER_SOURCE,
 } from '../../../contracts/src/settingsKeys.ts';
 import {
@@ -86,6 +90,7 @@ const getStaleDataHint = (): string => (
 );
 
 export type StaleDataBannerContent = { text: string; actionLabel: string };
+export type DryRunBannerContent = { text: string; actionLabel: string };
 
 // Exported pure for tests. The runtime never writes a default `power_source`,
 // so an absent setting plus no sample ever received means a fresh install where
@@ -117,14 +122,91 @@ export const resolveStaleDataBannerContent = (input: {
   };
 };
 
+// null means the outer settings boundary could not classify the saved homes
+// roster. In that case the banner uses the narrower Main-home claim: it remains
+// truthful even when malformed state hides a meter area from this WebView.
+let hasMeterAreas: boolean | null = null;
+
+export type HomesConfigScopeRead = {
+  status: 'resolved';
+  config: unknown;
+  initializedMarker: unknown;
+} | {
+  status: 'unavailable';
+};
+
+export const resolveHasMeterAreas = (read: HomesConfigScopeRead): boolean | null => {
+  if (read.status === 'unavailable') return null;
+  const { config, initializedMarker } = read;
+  if (config === null || config === undefined) {
+    const markerAbsent = initializedMarker === null || initializedMarker === undefined;
+    return markerAbsent ? false : null;
+  }
+  if (typeof config !== 'object' || Array.isArray(config)) return null;
+  const subHomes = (config as { subHomes?: unknown }).subHomes;
+  return Array.isArray(subHomes) ? subHomes.length > 0 : null;
+};
+
+export const readDryRunBannerHomeScope = async (
+  readSetting: (key: string) => Promise<unknown> = getSetting,
+): Promise<boolean | null> => {
+  const [configRead, markerRead] = await Promise.allSettled([
+    readSetting(HOMES_CONFIG),
+    readSetting(HOMES_CONFIG_INITIALIZED),
+  ]);
+  if (configRead.status === 'rejected' || markerRead.status === 'rejected') {
+    return resolveHasMeterAreas({ status: 'unavailable' });
+  }
+  return resolveHasMeterAreas({
+    status: 'resolved',
+    config: configRead.value,
+    initializedMarker: markerRead.value,
+  });
+};
+
+export const resolveDryRunBannerContent = (
+  hasAreas: boolean | null,
+): DryRunBannerContent => (
+  hasAreas === false
+    ? {
+      text: 'Simulation on — devices stay as-is',
+      actionLabel: 'Turn off simulation',
+    }
+    : {
+      text: 'Main home simulation on — Main home devices stay as-is',
+      actionLabel: 'Turn off Main simulation',
+    }
+);
+
+const renderDryRunBannerText = (text: string): void => {
+  if (!dryRunBannerText) return;
+  const noBreakSuffix = 'as-is';
+  const prefix = text.endsWith(noBreakSuffix)
+    ? text.slice(0, -noBreakSuffix.length)
+    : text;
+  const noBreak = document.createElement('span');
+  noBreak.className = 'banner__no-break';
+  noBreak.textContent = text.endsWith(noBreakSuffix) ? noBreakSuffix : '';
+  dryRunBannerText.replaceChildren(prefix, noBreak);
+};
+
 // The global simulation banner shows on every tab EXCEPT the Simulation-mode
 // settings page, whose own toggle is the single control there (a duplicate
 // control on one screen reads as confusing chrome). Reads live `state.dryRun`
 // + `state.activePanel`, so both the dry-run toggle and tab navigation call it.
 export const syncDryRunBannerVisibility = (): void => {
+  const content = resolveDryRunBannerContent(hasMeterAreas);
+  renderDryRunBannerText(content.text);
+  if (simulationDisableButton) simulationDisableButton.textContent = content.actionLabel;
   if (dryRunBanner) {
+    dryRunBanner.dataset.homeScope = hasMeterAreas === false ? 'all' : 'main';
     dryRunBanner.hidden = !state.dryRun || state.activePanel === 'simulation';
   }
+};
+
+const refreshDryRunBannerHomeScope = async (): Promise<void> => {
+  hasMeterAreas = await readDryRunBannerHomeScope();
+  syncDryRunBannerVisibility();
 };
 
 const updateCapacityReactionHint = (limit: number, margin: number) => {
@@ -272,6 +354,10 @@ export const updateStaleDataStatusFromPowerPayload = (power: SettingsUiPowerPayl
 };
 
 export const loadCapacitySettings = async () => {
+  // Publish the home scope first and independently. A transient roster/marker
+  // read failure must narrow the banner to Main even if another settings read
+  // later rejects and aborts the rest of the capacity refresh.
+  await refreshDryRunBannerHomeScope();
   const limit = await getSetting(CAPACITY_LIMIT_KW);
   const margin = await getSetting(CAPACITY_MARGIN_KW);
   const dryRun = await getSetting(CAPACITY_DRY_RUN);

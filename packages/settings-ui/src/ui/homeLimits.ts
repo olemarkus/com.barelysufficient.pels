@@ -225,8 +225,12 @@ const loadAreaIntoEditor = async (homeId: string, areaName: string): Promise<voi
   // A meter area that vanished mid-load (removed elsewhere) must not resurrect
   // its editor over a now-different selection.
   if (selectedHomeId !== homeId) return;
-  const limitKw = typeof limitRaw === 'number' ? limitRaw : DEFAULT_LIMIT_KW;
-  const marginKw = typeof marginRaw === 'number' ? marginRaw : DEFAULT_MARGIN_KW;
+  const limitKw = typeof limitRaw === 'number' && Number.isFinite(limitRaw)
+    ? limitRaw
+    : DEFAULT_LIMIT_KW;
+  const marginKw = typeof marginRaw === 'number' && Number.isFinite(marginRaw)
+    ? marginRaw
+    : DEFAULT_MARGIN_KW;
   const dryRun = typeof dryRunRaw === 'boolean' ? dryRunRaw : DEFAULT_DRY_RUN;
   const capsWriteQueue = resolveAreaCapsWriteQueue({ homeId, limitKw, marginKw });
   areaEditor = {

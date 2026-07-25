@@ -146,11 +146,16 @@ export class HomeRuntimeRegistry {
    * with no live bundle; the caller then reconciles through main's plan service
    * exactly as before (the no-sub-homes path stays byte-identical).
    */
-  getReconcileHooksForDevice(deviceId: string): RealtimeReconcileHooks | undefined {
+  getReconcileRouteForDevice(deviceId: string): {
+    homeId: HomeId;
+    hooks: RealtimeReconcileHooks;
+  } | undefined {
     const homeId = this.deps.ctx.homeMembership?.getHomeIdForDevice(deviceId) ?? MAIN_HOME_ID;
     if (homeId === MAIN_HOME_ID) return undefined;
     const bundle = this.bundles.get(homeId);
-    return bundle?.isTornDown() === false ? bundle.getReconcileHooks() : undefined;
+    return bundle?.isTornDown() === false
+      ? { homeId, hooks: bundle.getReconcileHooks() }
+      : undefined;
   }
 
   /** Reconcile bundles against the persisted homes registry (see module doc). */

@@ -86,10 +86,14 @@ is turned down the moment you save.
 ![The Multiple meters panel showing one meter area, "Rental unit", with its meter, zone and device count, a note that devices outside these areas belong to the Main home, and an Add meter area button](/screenshots/meter-areas/list.png)
 
 ::: tip The Main home is automatic
-You never configure the Main home. It's simply everything that *isn't* in a
-meter area. Add a rental as a meter area and the rest of the house stays the
-Main home with no extra steps. Remove a meter area later and its devices move
-straight back to the Main home.
+You never configure which devices belong to the Main home. It's simply
+everything that *isn't* in a meter area. Add a rental as a meter area and the
+rest of the house stays in the Main home automatically; remove the area later
+and its devices move straight back.
+
+Once you have a meter area, there is one Main-home measurement step: select the
+Main home's own **Whole-home meter** under **Settings → Limits & safety**. The
+section below explains why.
 :::
 
 ## Setting each area's limit

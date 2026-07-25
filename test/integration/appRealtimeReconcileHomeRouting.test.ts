@@ -1,6 +1,6 @@
 // Integration coverage for the R7b realtime-reconcile owning-home routing
 // (`setup/appRealtimeDeviceReconcileRuntime.ts` +
-// `HomeRuntimeRegistry.getReconcileHooksForDevice`): an external on/off change
+// `HomeRuntimeRegistry.getReconcileRouteForDevice`): an external on/off change
 // to a SUB-home load must be drift-checked and reconciled through THAT home's
 // bundle, not main's (main's plan filters sub-home members out, so main would
 // silently drop the drift). A MAIN-home device still reconciles through
@@ -42,9 +42,21 @@ const subHooks = (reconcile: ReconcileMock): RealtimeReconcileHooks => ({
 });
 
 const routerFor = (
-  hooksByDeviceId: Record<string, RealtimeReconcileHooks>,
-): { getReconcileHooksForDevice: (deviceId: string) => RealtimeReconcileHooks | undefined } => ({
-  getReconcileHooksForDevice: (deviceId) => hooksByDeviceId[deviceId],
+  routesByDeviceId: Record<string, { homeId: string; hooks: RealtimeReconcileHooks }>,
+): {
+    getReconcileRouteForDevice: (
+      deviceId: string,
+    ) => { homeId: string; hooks: RealtimeReconcileHooks } | undefined;
+  } => ({
+  getReconcileRouteForDevice: (deviceId) => routesByDeviceId[deviceId],
+});
+
+const subRoute = (
+  homeId: string,
+  reconcile: ReconcileMock,
+): { homeId: string; hooks: RealtimeReconcileHooks } => ({
+  homeId,
+  hooks: subHooks(reconcile),
 });
 
 describe('realtime-device-reconcile owning-home routing (R7b P1#1)', () => {
@@ -61,7 +73,7 @@ describe('realtime-device-reconcile owning-home routing (R7b P1#1)', () => {
     const subReconcile = makeReconcile();
     const mainReconcile = makeReconcile();
     const ctx = buildCtx(mainReconcile);
-    const router = routerFor({ 'sub-dev': subHooks(subReconcile) });
+    const router = routerFor({ 'sub-dev': subRoute('h_sub', subReconcile) });
 
     scheduleAppRealtimeDeviceReconcileForApp({
       ctx,
@@ -83,7 +95,7 @@ describe('realtime-device-reconcile owning-home routing (R7b P1#1)', () => {
     const mainReconcile = makeReconcile();
     const ctx = buildCtx(mainReconcile);
     // Router owns 'sub-dev' only; 'main-dev' resolves to undefined → main path.
-    const router = routerFor({ 'sub-dev': subHooks(subReconcile) });
+    const router = routerFor({ 'sub-dev': subRoute('h_sub', subReconcile) });
 
     scheduleAppRealtimeDeviceReconcileForApp({
       ctx,
@@ -97,5 +109,66 @@ describe('realtime-device-reconcile owning-home routing (R7b P1#1)', () => {
 
     expect(mainReconcile).toHaveBeenCalledTimes(1);
     expect(subReconcile).not.toHaveBeenCalled();
+  });
+
+  it('reconciles MAIN and sub-home drift independently inside one debounce window', async () => {
+    const subReconcile = makeReconcile();
+    const mainReconcile = makeReconcile();
+    const ctx = buildCtx(mainReconcile);
+    const router = routerFor({ 'sub-dev': subRoute('h_sub', subReconcile) });
+    const state = createRealtimeDeviceReconcileState();
+
+    scheduleAppRealtimeDeviceReconcileForApp({
+      ctx,
+      event: { deviceId: 'main-dev', capabilityId: 'onoff' },
+      state,
+      timers: ctx.timers,
+      getHomeRuntimeRegistry: () => router,
+    });
+    scheduleAppRealtimeDeviceReconcileForApp({
+      ctx,
+      event: { deviceId: 'sub-dev', capabilityId: 'onoff' },
+      state,
+      timers: ctx.timers,
+      getHomeRuntimeRegistry: () => router,
+    });
+    await vi.advanceTimersByTimeAsync(RECONCILE_ADVANCE_MS);
+    await drainPending();
+
+    expect(mainReconcile).toHaveBeenCalledTimes(1);
+    expect(subReconcile).toHaveBeenCalledTimes(1);
+  });
+
+  it('reconciles two sub-homes independently inside one debounce window', async () => {
+    const firstSubReconcile = makeReconcile();
+    const secondSubReconcile = makeReconcile();
+    const mainReconcile = makeReconcile();
+    const ctx = buildCtx(mainReconcile);
+    const router = routerFor({
+      'first-sub-dev': subRoute('h_first', firstSubReconcile),
+      'second-sub-dev': subRoute('h_second', secondSubReconcile),
+    });
+    const state = createRealtimeDeviceReconcileState();
+
+    scheduleAppRealtimeDeviceReconcileForApp({
+      ctx,
+      event: { deviceId: 'first-sub-dev', capabilityId: 'onoff' },
+      state,
+      timers: ctx.timers,
+      getHomeRuntimeRegistry: () => router,
+    });
+    scheduleAppRealtimeDeviceReconcileForApp({
+      ctx,
+      event: { deviceId: 'second-sub-dev', capabilityId: 'onoff' },
+      state,
+      timers: ctx.timers,
+      getHomeRuntimeRegistry: () => router,
+    });
+    await vi.advanceTimersByTimeAsync(RECONCILE_ADVANCE_MS);
+    await drainPending();
+
+    expect(firstSubReconcile).toHaveBeenCalledTimes(1);
+    expect(secondSubReconcile).toHaveBeenCalledTimes(1);
+    expect(mainReconcile).not.toHaveBeenCalled();
   });
 });
