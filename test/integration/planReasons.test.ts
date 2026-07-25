@@ -164,6 +164,62 @@ describe('normalizeShedReasons', () => {
     expect(reasonText(device?.reason)).toBe('shed due to daily budget');
   });
 
+  // Regression: prod 2026-07-25. `softLimitSource` names the BINDING (lower) soft
+  // limit, not the one the draw has crossed. With daily binding AND capacity
+  // breached, capacity is the constraint doing the work — re-attributing to the
+  // daily budget put "Limited by today's daily budget" on a budget-exempt
+  // charger's card next to its own "Always on" chip (it could only have been shed
+  // because the breach overrode the exemption), and offered a "Let it run now"
+  // release that cannot create capacity headroom.
+  it('does not re-attribute carry-forward capacity to dailyBudget while capacity is breached', () => {
+    const [device] = normalizeShedReasons({
+      planDevices: [buildPlanDevice({
+        id: 'dev-breached-capacity',
+        plannedState: 'shed',
+        reason: legacyDeviceReason('shed due to capacity')!,
+      })],
+      shedReasons: new Map(),
+      guardInShortfall: false,
+      headroomRaw: 0,
+      inCooldown: false,
+      activeOvershoot: false,
+      shedCooldownRemainingSec: null,
+      softLimitSource: 'daily',
+      capacityBreached: true,
+    });
+
+    expect(reasonText(device?.reason)).toBe('shed due to capacity');
+  });
+
+  // Covers the OTHER re-attribution site. `buildBaseReason` is the one that fires
+  // on the real carry-forward path: a device shed in an earlier cycle drops out of
+  // `shedReasons` and arrives with its per-cycle `keep` reason, so the explicit
+  // capacity fixture above never reaches it (`normalizeDeviceReason` returns from
+  // the sibling guard first). Without this the production hot path is untested.
+  it('applies the capacity-breach carve-out on the keep-reason carry-forward path too', () => {
+    const build = (capacityBreached: boolean) => normalizeShedReasons({
+      planDevices: [buildPlanDevice({
+        id: 'dev-carry-forward',
+        plannedState: 'shed',
+        reason: legacyDeviceReason('keep')!,
+      })],
+      shedReasons: new Map(),
+      guardInShortfall: false,
+      headroomRaw: 0,
+      inCooldown: false,
+      activeOvershoot: false,
+      shedCooldownRemainingSec: null,
+      softLimitSource: 'daily',
+      capacityBreached,
+    })[0];
+
+    expect(reasonText(build(true)?.reason)).toBe('shed due to capacity');
+    // Daily genuinely binding and not breached: naming the daily budget is right,
+    // including for a device that happens to be budget exempt — exemption only
+    // blocks daily-budget SHEDDING, not a daily-budget restore hold.
+    expect(reasonText(build(false)?.reason)).toBe('shed due to daily budget');
+  });
+
   it('leaves capacity reasons alone when softLimitSource is capacity', () => {
     const [device] = normalizeShedReasons({
       planDevices: [buildPlanDevice({

@@ -58,6 +58,7 @@ export function buildSheddingCandidates(params: ShedCandidateParams): {
   reducibleControlledKw: number;
   blockedCandidateCount: number;
   blockedReducibleControlledKw: number;
+  capacityBreached: boolean;
 } {
   const result = collectSheddingCandidates(params, { includeCandidates: true });
   result.candidates.sort(sortCandidates);
@@ -73,6 +74,7 @@ function collectSheddingCandidates(
   reducibleControlledKw: number;
   blockedCandidateCount: number;
   blockedReducibleControlledKw: number;
+  capacityBreached: boolean;
 } {
   const {
     devices,
@@ -123,6 +125,10 @@ function collectSheddingCandidates(
     reducibleControlledKw,
     blockedCandidateCount,
     blockedReducibleControlledKw,
+    // Surfaced so the shed reason is attributed from the SAME breach decision that
+    // gated budget-exempt candidates above, rather than a recomputation that could
+    // drift from it.
+    capacityBreached,
   };
 }
 

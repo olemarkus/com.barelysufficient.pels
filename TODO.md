@@ -145,6 +145,41 @@ What remains open is below.*
       hypothesis: two numbers that contradict the verdict destroy trust in the whole card. Source:
       prod log review 2026-07-25. [P1]
 
+- [ ] **Stepped devices never say how much power a resume is waiting for.**
+      `steppedRestoreAdmission.ts` hardcodes `headroomKw: null` on both `restoreNeed` reasons, so
+      `formatRestoreNeedUserFacing` (`packages/shared-domain/src/planReasonFormatting.ts` ~388-389)
+      falls through to the bare "Waiting for available power", while binary/temperature devices —
+      which go through `planReasonStrings.ts` with a real headroom — get
+      "Waiting to resume — needs X kW, Y kW available". `availableHeadroom` is already in scope at
+      both sites, so this is a two-line fix. Persona: owner watching a paused EV charger and unable
+      to tell how far off a resume is. Source: prod investigation 2026-07-25. [P2]
+
+- [ ] **"Raising target 6a to 6a".** `formatRestoreNeedUserFacing`
+      (`packages/shared-domain/src/planReasonFormatting.ts` ~385-387) renders
+      `Raising target ${fromTarget} to ${toTarget}` with no equality guard, and
+      `steppedRestoreAdmission.ts` ~69/~88 sets `fromTarget` to the observed step and `toTarget` to
+      the restore step — equal whenever the device already sits at the restore target, which became
+      the common case once flow step reports were admitted while off (2.17.3). The from/to branch
+      also takes precedence over the need/available suffix, so it hides the numbers even when they
+      exist. Best fixed together with the entry above: guard on inequality and let the suffix carry
+      it. Source: prod investigation 2026-07-25. [P2]
+
+- [ ] **"Blocked by safety rule" on a device running normally at its target step.** Seen on 2.17.3
+      with the EV charger `Active` at 1.36 kW on step `6a` and `reasonCode: shed_invariant`. The
+      invariant only refuses step *increases* while other devices are limited; it never pushes a
+      device down, so "blocked" overstates what is happening to a device that is running. Same root
+      as the existing `resolveSteppedStatusLine` entry above (rendering the invariant's cap rather
+      than the device's state). Source: prod observation 2026-07-25. [P2]
+
+- [ ] **Meter picker hint invites an impossible pick when no meters are listed.** When the Homey
+      Energy report exposes no id-carrying whole-home (cumulative) meter and no sensor-class device
+      meter, the Whole-home meter select shows just "Automatic" while the always-visible hint still
+      says "pick a meter to read it directly." Soften the hint to the Automatic-only case when the
+      loaded option list is empty (needs a small conditional in homeyEnergyMeter.ts, since the hint
+      is static markup today). Persona: Power-meter user with a single tracked meter; hypothesis:
+      an instruction to pick from an empty list reads as something being broken. Source: pels-ux-fit
+      review of the meter-picker PR (2026-07-19). [P2]
+
 - [ ] **Shed-invariant card copy claims a step the device is not at.** `resolveSteppedStatusLine`
       renders the shed-invariant reason as `Limited to ${maxStep}`
       (`packages/shared-domain/src/planSteppedCardText.ts` ~307), but `maxStep` is the invariant's

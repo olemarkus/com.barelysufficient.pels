@@ -143,7 +143,10 @@ function planShedding(
   const result = selectShedDevices({
     candidates,
     needed,
-    reason: resolveShedReason(hourlyBudgetExhausted ? 'daily' : context.softLimitSource),
+    reason: resolveShedReason(
+      hourlyBudgetExhausted ? 'daily' : context.softLimitSource,
+      candidateSummary.capacityBreached,
+    ),
     debugStructured: deps.debugStructured,
     shedAllCandidates: hourlyBudgetExhausted,
   });
