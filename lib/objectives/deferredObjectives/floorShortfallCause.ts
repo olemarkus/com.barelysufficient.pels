@@ -16,6 +16,12 @@ import type {
 //   `estimate`      = within the producer's variance buffer; the mean rate
 //                     would fit and only the `k·SE` padding causes the gap.
 //   `time_capacity` = physical/time even uncapped.
+//
+// "Leave off until turned on again" deliberately has NO entry here. This value is
+// frozen into a committed revision at the settle, and the hold is transient: the
+// user can turn the device back on at any moment, and a frozen `device_left_off`
+// would keep explaining the risk with a device that is now running. It travels as
+// a live `diagnosticReasonCode` overlay instead — see `resolveExternalOffReportedStatus`.
 //   `none`          = no shortfall (target met or `unplannedUsefulEnergyKWh
 //                     <= epsilonKWh`), or the reasonCode is one of the
 //                     non-shortfall variants (`planned_with_margin`,

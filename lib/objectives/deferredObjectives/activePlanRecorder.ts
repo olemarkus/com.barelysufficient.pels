@@ -32,6 +32,11 @@ import {
 } from './activePlanDuration';
 import { DEFERRED_OBJECTIVE_ACTIVE_PLANS_VERSION } from './activePlanSettings';
 import { resolveDiagnosticReasonCode, withDiagnosticReasonCode } from './activePlanDiagnosticReason';
+import { resolveEffectivePlanStatus } from '../../../packages/shared-domain/src/deadlineLabels';
+import { effectivePlanStatusOf, publishOverlayOnlyStatusChange } from './effectivePlanStatusEvents';
+import type {
+  DeferredObjectiveActivePlanStatusV1,
+} from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import {
   hasPriceHorizonAdvanced,
   resolveReplanReason,
@@ -262,6 +267,10 @@ export class DeferredObjectiveActivePlanRecorder {
       this.writeFirstRevision(diag, signature, candidateHours, reason, nowMs);
       return;
     }
+    // Captured BEFORE the live cause is refreshed: this is the status the task
+    // publicly had entering the cycle, and every event published below reports
+    // its transition from exactly this value.
+    const previousEffective = effectivePlanStatusOf(current);
     const backfilled = this.refreshDiagnosticReasonCode(
       this.backfillCommitmentIfMissing(current, signature, nowMs),
       diag,
@@ -274,10 +283,17 @@ export class DeferredObjectiveActivePlanRecorder {
     // written (`markReplanSettled` after a truthy write), so a no-op `:58` cycle
     // doesn't starve a real change later in the same `:58` window.
     const objectiveChanged = compareObjectiveSignatures(backfilled.objectiveSignature, signature).changed;
-    if (!this.isReplanDueThisCycle(diag.deviceId, objectiveChanged, nowMs)) return;
-    if (this.maybeWriteReplanRevision(diag, signature, candidateHours, backfilled, nowMs)) {
-      this.markReplanSettled(diag.deviceId, nowMs);
+    if (!this.isReplanDueThisCycle(diag.deviceId, objectiveChanged, nowMs)) {
+      publishOverlayOnlyStatusChange(this.deps, this.plans[diag.deviceId] ?? backfilled, previousEffective);
+      return;
     }
+    if (this.maybeWriteReplanRevision({
+      diag, signature, hours: candidateHours, current: backfilled, nowMs, previousEffective,
+    })) {
+      this.markReplanSettled(diag.deviceId, nowMs);
+      return;
+    }
+    publishOverlayOnlyStatusChange(this.deps, this.plans[diag.deviceId] ?? backfilled, previousEffective);
   }
 
   // Plans persisted before the stable-schedule commitment shipped (v2.7.3 and
@@ -396,6 +412,7 @@ export class DeferredObjectiveActivePlanRecorder {
     // carry it from the start.
     const hours = stampCheaperHourAhead(stampUnitMilestones(rawHours, diag, nowMs), diag);
     const revision = buildRevision({ diag, hours, revision: 1, reason, nowMs });
+    const firstDiagnosticReasonCode = resolveDiagnosticReasonCode(diag);
     const previous = this.plans[diag.deviceId];
     const previousWasPending = previous !== undefined && (previous.pending || previous.latest === null);
     const startedAtMs = previous?.startedAtMs ?? nowMs;
@@ -439,6 +456,15 @@ export class DeferredObjectiveActivePlanRecorder {
       original: revision,
       latest: revision,
     };
+    // The live cause survives the reconstruction. Dropping it would publish an
+    // ordinary `on_track` first revision for a task whose device is already being
+    // left off — the Flow would report Waiting -> On track, the UI would show
+    // that false status until the next cycle, and that cycle would then fire a
+    // second transition to At risk.
+    this.plans[diag.deviceId] = withDiagnosticReasonCode(
+      this.plans[diag.deviceId]!,
+      firstDiagnosticReasonCode,
+    );
     this.dirty = true;
     this.emit({
       event: 'active_plan_revision_written',
@@ -458,6 +484,7 @@ export class DeferredObjectiveActivePlanRecorder {
         reason,
         previousPlanStatus: null,
         previousWasPending: true,
+        effectivePlanStatus: resolveEffectivePlanStatus(revision.planStatus, firstDiagnosticReasonCode),
         allocationChanged: false,
         projectedFinishAtMs: resolveProjectedFinishAtMs(diag),
       });
@@ -495,13 +522,17 @@ export class DeferredObjectiveActivePlanRecorder {
     }
   }
 
-  private maybeWriteReplanRevision(
-    diag: DeferredObjectiveDiagnostic,
-    signature: string,
-    hours: DeferredObjectiveActivePlanHourV1[],
-    current: DeferredObjectiveActivePlanV1,
-    nowMs: number,
-  ): boolean {
+  private maybeWriteReplanRevision(params: {
+    diag: DeferredObjectiveDiagnostic;
+    signature: string;
+    hours: DeferredObjectiveActivePlanHourV1[];
+    current: DeferredObjectiveActivePlanV1;
+    nowMs: number;
+    previousEffective: DeferredObjectiveActivePlanStatusV1 | null;
+  }): boolean {
+    const {
+      diag, signature, hours, current, nowMs, previousEffective,
+    } = params;
     // Caller (`observeDiagnostic`) already returns early when `current.latest`
     // is null, so we can dereference it directly here.
     const latest = current.latest as DeferredObjectiveActivePlanRevisionV1;
@@ -681,6 +712,13 @@ export class DeferredObjectiveActivePlanRecorder {
       revision,
       reason,
       allocationChanged,
+      previousEffectivePlanStatus: previousEffective ?? latest.planStatus,
+      // The overlay is refreshed before the settle, so the plan on record already
+      // carries this cycle's live cause.
+      effectivePlanStatus: resolveEffectivePlanStatus(
+        revision.planStatus,
+        this.plans[diag.deviceId]?.diagnosticReasonCode,
+      ),
     });
     return true;
   }

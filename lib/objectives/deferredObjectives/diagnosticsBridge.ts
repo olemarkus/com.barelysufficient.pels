@@ -9,6 +9,7 @@ import type { StructuredDebugEmitter } from '../../logging/logger';
 import type {
   DeferredObjectiveActivePlansV1,
 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
+import { isEvSessionInactiveForDevice } from '../../../packages/shared-domain/src/commandableNow';
 import type { ObjectiveDeviceInput } from '../../objectives/types';
 import { resolveObjectiveSteps } from './objectiveSteps';
 import { resolveActiveCommittedPlan } from './resolveCommittedHours';
@@ -136,11 +137,12 @@ export const buildDeferredObjectiveDiagnostics = (params: {
         concurrentEligibleCount,
         deviceInSubHome: params.isDeviceInSubHome?.(deviceId) === true,
       });
-      return [resolveStallReportedStatus(
+      const device = deviceById.get(deviceId);
+      return [resolveExternalOffReportedStatus(resolveStallReportedStatus(
         diagnostic,
         params.getStallClassification?.(deviceId),
         hasEstablishedActivePlan(params.activePlans, deviceId, diagnostic.deadlineAtMs),
-      )];
+      ), device)];
     });
 };
 
@@ -197,6 +199,58 @@ const resolveStallReportedStatus = (
       ? 'objective_stalled_device_capped'
       : 'objective_stalled_near_target',
   };
+};
+
+/**
+ * Mark the diagnostic when the user has turned the device off outside PELS and
+ * asked PELS to leave it off. An explicit off action is meant to win over a smart
+ * task, but the task must not keep claiming `on_track` just because future hours
+ * are still scheduled — those hours cannot run while the device stays off.
+ *
+ * A LIVE OVERLAY, NOT A VERDICT. This deliberately does NOT rewrite `status`,
+ * because `status` is what the recorder freezes into a committed revision at the
+ * `:58` settle. A frozen `at_risk` would outlive the hold: turning the device
+ * back on clears the live signal, but the settled status keeps every surface
+ * reporting risk until the next settle, up to an hour later. Instead the cause
+ * travels as its own `externalOffHoldActive` flag → `diagnosticReasonCode`, which
+ * the recorder refreshes
+ * every cycle, so both directions are immediate. This is exactly the mechanism
+ * `objective_invalid_session` (EV unplugged) already uses; consumers resolve the
+ * reported status from it via `resolveEffectivePlanStatus`.
+ *
+ * Only a healthy trajectory is overlaid: `cannot_meet` is already the honest
+ * answer once the latest feasible start has passed and must not be softened, and
+ * `satisfied` / `invalid` / `unknown` are not trajectory claims at all.
+ *
+ * An EV that is also unplugged keeps its own reason: `Paused — unplugged` is the
+ * more immediate thing for the user to act on, and the hold is still stored, so
+ * it reappears once the car is reconnected.
+ */
+/**
+ * The flag records a fact about the DEVICE, so it is carried whatever the live
+ * trajectory says — including `unknown`.
+ *
+ * Gating it on the live status was wrong: when device data goes stale (missing
+ * temperature/SoC, capacity, or charge step) the diagnostic degrades to
+ * `unknown`, and dropping the flag there cleared `diagnosticReasonCode` on the
+ * committed plan. Every surface then reverted to the cached `on_track` while the
+ * device was still held off, and no status-change event fired — potentially for
+ * the whole outage. Nothing about a data gap means the user turned the device
+ * back on.
+ *
+ * Deciding what to REPORT stays in one place downstream
+ * (`resolveEffectivePlanStatus`), which overlays only a healthy verdict, so
+ * `satisfied` and `cannot_meet` are still never softened by carrying the flag here.
+ */
+const resolveExternalOffReportedStatus = (
+  diagnostic: DeferredObjectiveDiagnostic,
+  device: ObjectiveDeviceInput | undefined,
+): DeferredObjectiveDiagnostic => {
+  if (device?.externalOffHoldActive !== true) return diagnostic;
+  // An EV that is also unplugged keeps its own, more immediate reason; the hold
+  // is still stored and reappears once the car is reconnected.
+  if (isEvSessionInactiveForDevice(device)) return diagnostic;
+  return { ...diagnostic, externalOffHoldActive: true };
 };
 
 export const emitDeferredObjectiveDiagnostics = (params: {
