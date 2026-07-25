@@ -2,7 +2,6 @@ import { getSteppedLoadStep, isSteppedLoadOffStep } from '../lib/utils/deviceCon
 import { serializeLegacyStepFieldsFromEvidence } from '../lib/plan/planSteppedLoadState';
 import { isNativeSteppedLoadControlEnabled } from '../lib/device/nativeSteppedLoadWiring';
 import type {
-  DeviceControlProfile,
   SteppedLoadCommandStatus,
   SteppedLoadProfile,
   TargetDeviceSnapshot,
@@ -61,7 +60,6 @@ export function buildSteppedLoadSnapshotStepFields(params: {
 }): SteppedLoadStepFields {
   const reportedStep = resolveReportedStepEvidence({
     profile: params.profile,
-    binaryOn: params.binaryOn,
     nativeSteppedControlEnabled: params.nativeSteppedControlEnabled,
     nativeReportedStep: params.nativeReportedStep,
     flowReportedStep: params.flowReportedStep,
@@ -82,7 +80,6 @@ export function buildSteppedLoadSnapshotStepFields(params: {
 
 function resolveReportedStepEvidence(params: {
   profile: SteppedLoadProfile;
-  binaryOn?: boolean;
   nativeSteppedControlEnabled: boolean;
   nativeReportedStep?: StepEvidence;
   flowReportedStep?: StepEvidence;
@@ -94,35 +91,18 @@ function resolveReportedStepEvidence(params: {
       observedAtMs: params.nativeReportedStep?.observedAtMs,
     };
   }
-  const flowStepId = getSteppedLoadStep(params.profile, params.flowReportedStep?.stepId)?.id;
+  // A non-off flow report while the binary axis reads off is REAL telemetry, not a
+  // contradiction to discard: a flow-backed charger announces the current it actually
+  // came up at, and that announcement lands in the window between PELS writing the
+  // binary on and the on-echo arriving (prod 2026-07-25, Easee "Elbillader" — 17-37 s
+  // wide on that device, so every session-start report fell inside it). Dropping it
+  // left the planner modelling a 6 A charger that was drawing 32 A. Flow reports are
+  // now admitted on the same terms as native ones above; the binary axis still wins
+  // the on/off fold (`resolveCurrentOn` is `!(binaryOff || steppedOff)`), so a non-off
+  // observed step on an off device does not resurrect it.
   return {
-    stepId: shouldSuppressFlowReport({
-      profile: params.profile,
-      binaryOn: params.binaryOn,
-      stepId: flowStepId,
-    })
-      ? undefined
-      : flowStepId,
+    stepId: getSteppedLoadStep(params.profile, params.flowReportedStep?.stepId)?.id,
     source: 'flow',
     observedAtMs: params.flowReportedStep?.observedAtMs,
   };
-}
-
-function shouldSuppressFlowReport(params: {
-  profile: SteppedLoadProfile;
-  binaryOn?: boolean;
-  stepId?: string;
-}): boolean {
-  return shouldSuppressSteppedLoadFlowReport(params);
-}
-
-export function shouldSuppressSteppedLoadFlowReport(params: {
-  profile?: DeviceControlProfile;
-  binaryOn?: boolean;
-  stepId?: string;
-}): boolean {
-  if (params.profile?.model !== 'stepped_load') return false;
-  if (!params.stepId) return false;
-  if (params.binaryOn !== false) return false;
-  return !isSteppedLoadOffStep(params.profile, params.stepId);
 }

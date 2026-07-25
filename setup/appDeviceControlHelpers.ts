@@ -17,14 +17,9 @@ import type {
   TargetDeviceSnapshot,
 } from '../packages/contracts/src/types';
 import {
-  PELS_MEASURE_STEP_CAPABILITY_ID,
-  PELS_TARGET_STEP_CAPABILITY_ID,
-} from '../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
-import {
   buildSteppedLoadSnapshotStepFields,
   resolveNativeSteppedLoadProfile,
   resolveSteppedLoadCurrentOn,
-  shouldSuppressSteppedLoadFlowReport,
 } from './appDeviceControlSteppedState';
 import {
   confirmSteppedLoadDesiredStep,
@@ -40,7 +35,6 @@ import {
   createDeviceControlRuntimeState,
 } from './appDeviceControlSteppedCommandState';
 import { emitSteppedFeedbackLog } from './appDeviceControlFeedback';
-import { resolveBinaryOn } from '../lib/utils/binaryControl';
 
 // The stepped-load command runtime-state cluster lives in
 // `appDeviceControlSteppedCommandState.ts`; re-exported here because this
@@ -273,14 +267,6 @@ export class AppDeviceControlHelpers {
       });
       return 'invalid';
     }
-    const snapshotBinaryOn = snapshot ? resolveBinaryOn(snapshot) : undefined;
-    if (shouldSuppressSteppedLoadFlowReport({
-      profile,
-      binaryOn: snapshotBinaryOn,
-      stepId,
-    })) {
-      return this.handleSuppressedNonOffStepReport(deviceId, stepId, knownDeviceName);
-    }
     const previousReportedStepId = this.runtimeState.steppedLoadReportedByDeviceId.get(deviceId)?.stepId;
     const previousDesired = this.runtimeState.steppedLoadDesiredByDeviceId.get(deviceId);
     const previousDesiredStepId = this.resolvePreviousDesiredStepId(profile, previousDesired);
@@ -333,58 +319,6 @@ export class AppDeviceControlHelpers {
 
   getRuntimeStateForTests(): DeviceControlRuntimeState {
     return this.runtimeState;
-  }
-
-  // A suppressed non-off report stays out of the OBSERVED axis (a fabricated
-  // observed step while off would revive a dead shed-release path), but when it
-  // matches the step PELS just commanded it IS the flow-transport confirmation
-  // of that command — the analogue of a native capability echo. Dropping it
-  // wholesale deadlocks flow-backed restore-from-off: the prepare-for-on step
-  // can never confirm and the restore loops waiting_confirmation → stale →
-  // retry_backoff forever (prod 2026-07-05 Elbillader).
-  private handleSuppressedNonOffStepReport(
-    deviceId: string,
-    stepId: string,
-    knownDeviceName: string | undefined,
-  ): ReportSteppedLoadActualStepResult {
-    const desired = this.runtimeState.steppedLoadDesiredByDeviceId.get(deviceId);
-    if (desired && desired.stepId === stepId && desired.status !== 'success') {
-      confirmSteppedLoadDesiredStep({
-        runtimeState: this.runtimeState,
-        deviceId,
-        desired,
-      });
-      this.deps.getStructuredLogger('devices')?.info({
-        event: 'stepped_load_command_confirmed_while_off',
-        deviceId,
-        deviceName: knownDeviceName,
-        stepId,
-        // Prior lifecycle state disambiguates prod logs: 'pending'/'stale' is a
-        // real command echo; 'idle' is a plan-preserved step the report attests.
-        previousStatus: desired.status,
-        wasPending: desired.pending,
-        measureCapabilityId: PELS_MEASURE_STEP_CAPABILITY_ID,
-        targetCapabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
-      });
-    } else if (desired && desired.stepId !== stepId && desired.status === 'success') {
-      // The device attests a DIFFERENT non-off step than the confirmed one
-      // (e.g. its current was raised externally while off). The stale
-      // confirmation must lose to the fresher telemetry — but the conflicting
-      // report confirms nothing itself and stays out of the observed axis.
-      this.runtimeState.steppedLoadDesiredByDeviceId.set(deviceId, {
-        ...desired,
-        pending: false,
-        status: 'idle',
-      });
-    }
-    this.deps.debugStructured({
-      event: 'stepped_load_feedback_ignored',
-      reason: 'non_off_step_while_off',
-      deviceId,
-      deviceName: knownDeviceName,
-      stepId,
-    });
-    return 'unchanged';
   }
 
   private resolveSteppedLoadFeedbackProfile(
