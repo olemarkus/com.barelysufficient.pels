@@ -7,7 +7,7 @@ import { formatStarvationReason } from './planStarvation';
 import {
   PLAN_STATE_DAILY_BUDGET_STATUS,
   PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
-  PLAN_STATE_HELD_FALLBACK_STATUS,
+  PLAN_STATE_CAPACITY_STATUS,
   PLAN_STATE_HOURLY_BUDGET_STATUS,
 } from './planStateLabels';
 
@@ -257,7 +257,7 @@ const resolveOffStatusLine = (device: SteppedDevice): string | null => {
   }
   if (device.reason.code === PLAN_REASON_CODES.dailyBudget) return PLAN_STATE_DAILY_BUDGET_STATUS;
   if (device.reason.code === PLAN_REASON_CODES.hourlyBudget) return PLAN_STATE_HOURLY_BUDGET_STATUS;
-  if (isLimitedReason(device.reason.code)) return PLAN_STATE_HELD_FALLBACK_STATUS;
+  if (isLimitedReason(device.reason.code)) return PLAN_STATE_CAPACITY_STATUS;
   return null;
 };
 

@@ -6,7 +6,7 @@ import {
   resolveHeldStateActionLabel,
 } from '../../packages/shared-domain/src/deviceOverview';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
-import { PLAN_STATE_HELD_FALLBACK_STATUS } from '../../packages/shared-domain/src/planStateLabels';
+import { PLAN_STATE_CAPACITY_STATUS } from '../../packages/shared-domain/src/planStateLabels';
 import { legacyDeviceReason } from '../utils/deviceReasonTestUtils';
 import type { DeviceReason } from '../../packages/shared-domain/src/planReasonSemantics';
 
@@ -146,7 +146,7 @@ describe('device overview formatter', () => {
       powerMsg: null,
       stateMsg: 'Limited to max',
       usageMsg: 'Measured: 0.00 kW / Expected: 3.00 kW (target: max)',
-      statusMsg: PLAN_STATE_HELD_FALLBACK_STATUS,
+      statusMsg: PLAN_STATE_CAPACITY_STATUS,
     });
   });
 

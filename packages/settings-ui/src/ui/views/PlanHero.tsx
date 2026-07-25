@@ -584,7 +584,12 @@ const EnergyMeter = ({ scale }: { scale: EnergyBarScale }) => {
   // Shared with the energy section's projected-text computation so the marker's
   // visual position matches the printed `projected / budget` ratio when under
   // budget. See `computeEnergyBarScaleKWh`.
-  const scaleKWh = computeEnergyBarScaleKWh(scale.budgetKWh, scale.projectedKWh, scale.usedKWh);
+  const scaleKWh = computeEnergyBarScaleKWh(
+    scale.budgetKWh,
+    scale.projectedKWh,
+    scale.usedKWh,
+    scale.hardCapKWh,
+  );
   const projectionTone = resolveProjectionTone(scale);
   const markers: MeterMarker[] = [
     {

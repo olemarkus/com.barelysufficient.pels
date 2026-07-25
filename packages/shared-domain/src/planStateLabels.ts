@@ -46,7 +46,22 @@ export const PLAN_STATE_TONE: Record<PlanStateKind, PlanStateTone> = {
 // richer `resolveReportedLoadAfterPauseText` helper is tracked in `TODO.md`
 // under the P2 "Overview device-card status copy" item. Rule 4 (UI text
 // shared with logs) holds because the values match across all five sites.
-export const PLAN_STATE_HELD_FALLBACK_STATUS = 'Limited by the hard cap';
+// The copy for a device genuinely limited by capacity — a real `capacity` /
+// limited reason code, where naming the hard cap is accurate. Kept separate from
+// the held FALLBACK below: until 2026-07-25 both were one constant, so a held
+// card with no known constraint borrowed this wording and asserted the hard cap
+// on a house drawing 1.4 kW against a 5.4 kW pace.
+export const PLAN_STATE_CAPACITY_STATUS = 'Limited by the hard cap';
+
+// Held card with no known constraint to name. It must NOT claim the hard cap:
+// that is the most alarming limit PELS has and a physical one the owner cannot
+// trade against (feedback_hard_cap_is_physical), and this line fires precisely
+// when PELS does not know which gate is holding the device — so naming any
+// specific cause is a guess. Prod 2026-07-25: a charger read "Limited by the
+// hard cap" while the house drew 1.4 kW against a 5.4 kW pace. `PlanDeviceCards`
+// already routes every STARVED device to `formatStarvationReason` to avoid this
+// line for the two causes it does know; this is the honest text for the rest.
+export const PLAN_STATE_HELD_FALLBACK_STATUS = 'Waiting to resume';
 
 // Mirror status line for `dailyBudget` reason-code holds. Daily-budget pacing
 // is the binding constraint instead of the hard cap. Direct attribution

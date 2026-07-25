@@ -139,6 +139,23 @@ What remains open is below.*
       hypothesis: two numbers that contradict the verdict destroy trust in the whole card. Source:
       prod log review 2026-07-25. [P1]
 
+- [ ] **A shed device waiting out a restore gate can carry no gate reason, so it defaults to
+      `capacity`.** `buildBaseReason` (`lib/plan/planReasons.ts` ~42) ends with
+      `?? { code: capacity }` for a device that is planned `shed`, was not shed THIS cycle, and
+      whose own reason normalized away. That default is required — `SHED_REASON_RULES`
+      (`lib/plan/planReasonsValidation.ts`) is an allow-list of limit-shaped codes and a shed
+      device must carry one — but it fires in windows where no limit is binding at all. Prod
+      2026-07-25: a charger shed during a 10 s overshoot read `capacity` on 5 cycles while the
+      house sat at 1.4 kW against a 5.4 kW pace; it was really waiting out `cooldown_shedding` →
+      `meter_settling` → `restore_need`, all of which DO set their own reasons on the cycles they
+      cover. So the real defect is the gap: the restore path does not always attach a gate reason,
+      and the default then speaks for it. Fix is to close that gap (audit which restore-gate paths
+      leave the reason unset), NOT to loosen the default — an attempt to return `none` when nothing
+      binds broke 6 integration tests precisely because it violated the allow-list. The card no
+      longer *says* "Limited by the hard cap" for the unknown case (the held fallback was split off
+      from `PLAN_STATE_CAPACITY_STATUS` in the same PR), but a genuine `capacity` reason on a device
+      no limit is holding is still wrong. Source: prod investigation + test suite, 2026-07-25. [P2]
+
 - [ ] **Stepped devices never say how much power a resume is waiting for.**
       `steppedRestoreAdmission.ts` hardcodes `headroomKw: null` on both `restoreNeed` reasons, so
       `formatRestoreNeedUserFacing` (`packages/shared-domain/src/planReasonFormatting.ts` ~388-389)

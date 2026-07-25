@@ -261,13 +261,26 @@ Projection formula: `projectedKWh = usedKWh + (currentKw × minutesRemaining / 6
 Standard Material linear progress bar with a projected-end marker.
 
 ```
-                ↓ projected end
+                ↓ projected end        ↓ hard cap
 [ used ====== ][ remaining budget ........ ]
 ```
 
 - Filled = kWh used
 - Empty = remaining budget
 - Projected marker: warning tone if beyond budget
+- Hard-cap marker: the hour's kWh ceiling. **This is the bar that owns the
+  cap's value.** The cap is an hourly-average tariff step, so kWh is the unit it
+  actually governs — the power bar's kW cap tick exists to bound that bar's scale
+  and to show the safe pace decaying toward the cap, not to be compared against
+  the instantaneous reading. Scale is
+  `max(budget or overshoot × 1.05, hard cap)`; the cap term is required for the
+  same reason the power bar's is (§ "Power bar"), because the cap normally sits
+  ABOVE the budget (budget = cap − safety margin, or a tighter daily allocation)
+  and would otherwise fall off-scale and be dropped in the healthy case. Losing
+  it there left the cap visible only in kW, where `6.7 kW now` beside
+  `Hard cap 5.0 kW` reads as a breach it is not (prod 2026-07-25).
+- The `used of N kWh` denominator names the BINDING allocation (the hourly
+  budget), not the cap; the cap is the marker, not the denominator.
 - The projected-end label sits *above* the bar so the eye reads "projection
   → bar" top-down, matching the Normal/Projected-over-budget text sketches
   in § "Section 2: Energy this hour" (`projected 4.4 kWh` above `[ bar ]`).

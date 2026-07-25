@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { toSimulationReasonLine } from '../../packages/shared-domain/src/simulationReasonMood';
 import {
+  PLAN_STATE_CAPACITY_STATUS,
   PLAN_STATE_DAILY_BUDGET_STATUS,
   PLAN_STATE_HELD_FALLBACK_STATUS,
   PLAN_STATE_HOURLY_BUDGET_STATUS,
@@ -13,8 +14,9 @@ import {
 
 describe('toSimulationReasonLine — held/limited reasons read hypothetically in simulation', () => {
   it('flips the generic + thermostat hard-cap / daily / hourly "Limited …" lines', () => {
-    // Generic on/off held device and thermostat capacity reason share this line.
-    expect(toSimulationReasonLine(PLAN_STATE_HELD_FALLBACK_STATUS, true))
+    // Genuine capacity limiting still names the hard cap — that reading is
+    // accurate. Only the unknown-constraint fallback stopped borrowing it.
+    expect(toSimulationReasonLine(PLAN_STATE_CAPACITY_STATUS, true))
       .toBe('Would be limited by the hard cap (simulation)');
     expect(toSimulationReasonLine(PLAN_STATE_DAILY_BUDGET_STATUS, true))
       .toBe("Would be limited by today's daily budget (simulation)");
@@ -68,7 +70,12 @@ describe('toSimulationReasonLine — held/limited reasons read hypothetically in
 
   it('is a no-op outside simulation (every reason stays factual)', () => {
     expect(toSimulationReasonLine(PLAN_STATE_HELD_FALLBACK_STATUS, false))
-      .toBe('Limited by the hard cap');
+      .toBe('Waiting to resume');
+    // The held fallback is not a "Limited …" line, so it has no hypothetical
+    // rewrite — and needs none: it fires when PELS cannot name the constraint,
+    // which is equally true in simulation. Passes through in BOTH modes.
+    expect(toSimulationReasonLine(PLAN_STATE_HELD_FALLBACK_STATUS, true))
+      .toBe('Waiting to resume');
     expect(toSimulationReasonLine('Making room for higher-priority device', false))
       .toBe('Making room for higher-priority device');
     expect(toSimulationReasonLine('Waiting for cheaper hours', false))
