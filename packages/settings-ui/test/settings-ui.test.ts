@@ -528,7 +528,7 @@ describe('Settings UI', () => {
     test('hard cap input accepts numeric values', async () => {
       await page.click('[data-tab="settings"]');
       await sleep(50);
-      await page.click('[data-settings-target="limits"]');
+      await page.click('.settings-nav-card[data-settings-target="limits"]');
       await sleep(50);
 
       const input = await page.$('#settings-capacity-limit');

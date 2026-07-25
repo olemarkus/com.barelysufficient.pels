@@ -81,7 +81,10 @@ const buildContext = (app: Record<string, unknown>, withTask = true): HandlerCon
   if (withTask) settings.set(OBJECTIVE_KEY, storedEntry());
   return {
     homey: {
-      app,
+      app: {
+        resolveSmartTaskHomeScope: () => 'main',
+        ...app,
+      },
       clock: { getTimezone: () => TIME_ZONE },
       settings,
     } as never,
@@ -177,6 +180,34 @@ describe('previewSettingsUiSmartTask', () => {
       .calls[0]![1] as DeferredObjectivePlanPreviewCandidate;
     expect(candidate.rescue).toEqual({ exemptFromBudget: 'always' });
   });
+
+  it('rejects a relocated task before producing an estimate the save lane cannot honor', () => {
+    const previewDeferredObjectivePlan = vi.fn(() => buildEstimate());
+    const resolveSmartTaskHomeScope = vi.fn(() => 'sub_home');
+    const { homey } = buildContext({ previewDeferredObjectivePlan, resolveSmartTaskHomeScope });
+    const result = previewSettingsUiSmartTask({ homey, body: updateBody() });
+    expect(result).toEqual({ ok: false, reason: 'device_in_sub_home' });
+    expect(resolveSmartTaskHomeScope).toHaveBeenCalledWith(DEVICE_ID);
+    expect(previewDeferredObjectivePlan).not.toHaveBeenCalled();
+  });
+
+  it('reports a provisional ownership fence as unavailable without estimating', () => {
+    const previewDeferredObjectivePlan = vi.fn(() => buildEstimate());
+    const resolveSmartTaskHomeScope = vi.fn(() => 'unavailable');
+    const { homey } = buildContext({ previewDeferredObjectivePlan, resolveSmartTaskHomeScope });
+    const result = previewSettingsUiSmartTask({ homey, body: updateBody() });
+    expect(result).toEqual({ ok: false, reason: 'unavailable' });
+    expect(previewDeferredObjectivePlan).not.toHaveBeenCalled();
+  });
+
+  it('rejects an active meter source as not planned without estimating', () => {
+    const previewDeferredObjectivePlan = vi.fn(() => buildEstimate());
+    const resolveSmartTaskHomeScope = vi.fn(() => 'source_device');
+    const { homey } = buildContext({ previewDeferredObjectivePlan, resolveSmartTaskHomeScope });
+    const result = previewSettingsUiSmartTask({ homey, body: updateBody() });
+    expect(result).toEqual({ ok: false, reason: 'device_not_planned' });
+    expect(previewDeferredObjectivePlan).not.toHaveBeenCalled();
+  });
 });
 
 describe('updateSettingsUiSmartTask', () => {
@@ -250,6 +281,25 @@ describe('updateSettingsUiSmartTask', () => {
     const { homey } = buildContext({});
     const result = updateSettingsUiSmartTask({ homey, body: updateBody() });
     expect(result).toEqual({ ok: false, reason: 'unavailable' });
+  });
+
+  it('rejects a relocated task before calling the create lane', () => {
+    const createDeferredObjective = vi.fn(() => ({ ok: true }));
+    const resolveSmartTaskHomeScope = vi.fn(() => 'sub_home');
+    const { homey } = buildContext({ createDeferredObjective, resolveSmartTaskHomeScope });
+    const result = updateSettingsUiSmartTask({ homey, body: updateBody() });
+    expect(result).toEqual({ ok: false, reason: 'device_in_sub_home' });
+    expect(resolveSmartTaskHomeScope).toHaveBeenCalledWith(DEVICE_ID);
+    expect(createDeferredObjective).not.toHaveBeenCalled();
+  });
+
+  it('reports a provisional ownership fence as unavailable before saving', () => {
+    const createDeferredObjective = vi.fn(() => ({ ok: true }));
+    const resolveSmartTaskHomeScope = vi.fn(() => 'unavailable');
+    const { homey } = buildContext({ createDeferredObjective, resolveSmartTaskHomeScope });
+    const result = updateSettingsUiSmartTask({ homey, body: updateBody() });
+    expect(result).toEqual({ ok: false, reason: 'unavailable' });
+    expect(createDeferredObjective).not.toHaveBeenCalled();
   });
 });
 

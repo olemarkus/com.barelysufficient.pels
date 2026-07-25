@@ -13,6 +13,7 @@ import {
 import type { DeferredObjectiveSettingsEntry } from './settings';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import { DEFERRED_OBJECTIVES_PERKEY_MIGRATED } from '../../utils/settingsKeys';
+import type { SmartTaskHomeScope } from '../../../packages/contracts/src/smartTaskHomeScope';
 
 // Device-scoped writes only proceed once the per-key migration is COMPLETE. Until
 // then a device's objective may still live only in the un-migrated legacy blob, so
@@ -39,15 +40,23 @@ const ensureMigrated = (deps: DeferredObjectiveDeviceWriteDeps): boolean => {
 // objective for that one device for a single cycle with NO persisted damage,
 // and self-heals on the next clean read.
 
-// The outcome of a device-scoped write. A write either PERSISTED, or REFUSED a
-// retryable transient condition (an un-confirmable per-key migration, or an
-// untrustworthy absence read — see the guards below). The two refusal reasons
-// are kept distinct so callers can log/diagnose, but both map to the same
-// user-facing "couldn't save just now, retry" framing. The old `void` return
-// hid these refusals, so callers reported success while nothing was written.
+// The outcome of a device-scoped write. A write either PERSISTED, or REFUSED.
+// Two refusal reasons are retryable transients (an un-confirmable per-key
+// migration, or an untrustworthy absence read — see the guards below); both map
+// to the same user-facing "couldn't save just now, retry" framing.
+// `device_in_sub_home` and `device_not_planned` are hard scope rejections, NOT
+// retryable: smart tasks are planned against the MAIN home's meter budget, and
+// an active meter source is never a planned load. Callers surface these as
+// durable device-scope outcomes, never transient write failures. The old
+// `void` return hid refusals, so callers reported success while nothing was
+// written.
 export type ObjectiveWriteOutcome =
   | { persisted: true }
-  | { persisted: false; reason: 'migration_deferred' | 'untrusted_absence' };
+  | {
+    persisted: false;
+    reason: 'migration_deferred' | 'untrusted_absence' | 'device_in_sub_home'
+      | 'device_not_planned' | 'ownership_unavailable';
+  };
 
 export type DeferredObjectiveDeviceWriteDeps = {
   store: ObjectiveSettingsStore;
@@ -55,6 +64,17 @@ export type DeferredObjectiveDeviceWriteDeps = {
   activePlanRecorder: DeferredObjectiveActivePlanRecorder;
   rebuildPlan: () => void;
   nowMs: number;
+  // Main-home scope gate, wired by `buildDeferredObjectiveDeviceWriteDeps`
+  // from the membership service. A separate-meter sub-home refuses as
+  // `device_in_sub_home`; an active meter source refuses as
+  // `device_not_planned`. Every write lane (widget create, settings-UI edit,
+  // Flow cards, rescue) funnels through these deps, so this is the
+  // defence-in-depth chokepoint.
+  // Optional: an absent resolver in bare test harnesses preserves the legacy
+  // pass-through behavior.
+  // Clearing is deliberately NOT gated — a user must always be able to clear a
+  // task whose device was later moved to a sub-home.
+  resolveDeviceHomeScope?: (deviceId: string) => SmartTaskHomeScope;
   // Topic-gated structured debug sink (gated on the `deferred_objectives` debug
   // topic), wired by `buildDeferredObjectiveDeviceWriteDeps`. Optional so test
   // harnesses can omit it. Used only to surface refusals (see `refuse`).
@@ -77,7 +97,8 @@ const refuse = (
   deps: DeferredObjectiveDeviceWriteDeps,
   op: ObjectiveWriteOp,
   deviceId: string,
-  reason: 'migration_deferred' | 'untrusted_absence',
+  reason: 'migration_deferred' | 'untrusted_absence' | 'device_in_sub_home'
+    | 'device_not_planned' | 'ownership_unavailable',
 ): ObjectiveWriteOutcome => {
   deps.debugStructured?.({ event: 'objective_write_refused', op, deviceId, reason });
   return { persisted: false, reason };
@@ -124,6 +145,20 @@ export const upsertObjectiveForDevice = (
     rescue?: 'preserve' | 'replace';
   },
 ): ObjectiveWriteOutcome => {
+  // v1 scope gate FIRST: a sub-home device's rejection is a hard, honest "not
+  // available here", never the transient retry framing the guards below map to.
+  // See the dep's doc — clear (`clearObjectiveForDevice`) is intentionally
+  // ungated so a task on a relocated device can always be removed.
+  const homeScope = deps.resolveDeviceHomeScope?.(params.deviceId) ?? 'main';
+  if (homeScope === 'sub_home') {
+    return refuse(deps, 'upsert', params.deviceId, 'device_in_sub_home');
+  }
+  if (homeScope === 'source_device') {
+    return refuse(deps, 'upsert', params.deviceId, 'device_not_planned');
+  }
+  if (homeScope === 'unavailable') {
+    return refuse(deps, 'upsert', params.deviceId, 'ownership_unavailable');
+  }
   if (!ensureMigrated(deps)) return refuse(deps, 'upsert', params.deviceId, 'migration_deferred');
   const { deviceId, deviceName } = params;
   const rescuePolicy = params.rescue ?? 'preserve';

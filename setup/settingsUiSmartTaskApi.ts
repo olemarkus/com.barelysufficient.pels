@@ -10,6 +10,7 @@ import type {
   SettingsUiSmartTaskUpdateResponse,
 } from '../packages/contracts/src/smartTaskEdit';
 import type { WidgetObjectiveWriteResult } from '../packages/contracts/src/widgetHostApi';
+import type { SmartTaskHomeScope } from '../packages/contracts/src/smartTaskHomeScope';
 import {
   formatScheduledHoursWindow,
   formatSmartTaskDeadlineLong,
@@ -38,6 +39,7 @@ import type { CancelDeferredObjectiveOutcome } from './appInit/deferredObjective
 // answers `task_not_found` instead of silently creating a fresh task.
 
 type SmartTaskEditApp = Homey.App & {
+  resolveSmartTaskHomeScope?: (deviceId: string) => SmartTaskHomeScope;
   previewDeferredObjectivePlan?: (
     deviceId: string,
     candidate: DeferredObjectivePlanPreviewCandidate,
@@ -68,6 +70,15 @@ const updateReject = (reason: SettingsUiSmartTaskRejectReason): SettingsUiSmartT
   ok: false,
   reason,
 });
+
+const rejectForHomeScope = (
+  scope: SmartTaskHomeScope,
+): 'device_in_sub_home' | 'device_not_planned' | 'unavailable' | null => {
+  if (scope === 'sub_home') return 'device_in_sub_home';
+  if (scope === 'source_device') return 'device_not_planned';
+  if (scope === 'unavailable') return 'unavailable';
+  return null;
+};
 
 // The edit lane only ever REVISES an existing task, and the two reject lanes
 // are deliberately distinct:
@@ -117,6 +128,9 @@ export const previewSettingsUiSmartTask = (
   if (typeof app?.previewDeferredObjectivePlan !== 'function') return previewReject('unavailable');
   const gate = gateEditableTask(homey, request.deviceId);
   if (!gate.editable) return previewReject(gate.reason);
+  if (typeof app.resolveSmartTaskHomeScope !== 'function') return previewReject('unavailable');
+  const scopeReject = rejectForHomeScope(app.resolveSmartTaskHomeScope(request.deviceId));
+  if (scopeReject !== null) return previewReject(scopeReject);
 
   const timeZone = homey.clock.getTimezone();
   const nowMs = Date.now();
@@ -157,6 +171,9 @@ export const updateSettingsUiSmartTask = (
   if (typeof app?.createDeferredObjective !== 'function') return updateReject('unavailable');
   const gate = gateEditableTask(homey, request.deviceId);
   if (!gate.editable) return updateReject(gate.reason);
+  if (typeof app.resolveSmartTaskHomeScope !== 'function') return updateReject('unavailable');
+  const scopeReject = rejectForHomeScope(app.resolveSmartTaskHomeScope(request.deviceId));
+  if (scopeReject !== null) return updateReject(scopeReject);
 
   const timeZone = homey.clock.getTimezone();
   const nowMs = Date.now();

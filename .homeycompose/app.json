@@ -1,6 +1,6 @@
 {
   "id": "com.barelysufficient.pels",
-  "version": "2.16.0",
+  "version": "2.17.4",
   "compatibility": ">=12.4.0",
   "sdk": 3,
   "platforms": [
@@ -98,6 +98,14 @@
       "method": "GET",
       "path": "/ui_plan"
     },
+    "ui_homes": {
+      "method": "GET",
+      "path": "/ui_homes"
+    },
+    "ui_homes_save": {
+      "method": "POST",
+      "path": "/ui_homes_save"
+    },
     "ui_power": {
       "method": "GET",
       "path": "/ui_power"
@@ -189,6 +197,10 @@
     "homey_devices": {
       "method": "GET",
       "path": "/homey_devices"
+    },
+    "homey_energy_meters": {
+      "method": "GET",
+      "path": "/homey_energy_meters"
     },
     "log_homey_device": {
       "method": "POST",

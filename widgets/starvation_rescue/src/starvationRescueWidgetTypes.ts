@@ -67,6 +67,9 @@ export type StarvationRescueRejectReason =
   | 'device_not_found'
   | 'device_not_planned'
   | 'device_not_eligible'
+  // Multi-home v1: the device is on a separate meter (sub-home) — smart tasks,
+  // and so the rescue, are main-home-only. Mirrors the contract union.
+  | 'device_in_sub_home'
   | 'invalid_candidate'
   // The hardened write primitive refused (suspected transient-empty settings
   // read while other tasks are live). Transient — the user can retry.

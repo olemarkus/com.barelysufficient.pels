@@ -8,7 +8,10 @@ import type {
   SettingsUiStarvationRescueDevicesPayload,
   SettingsUiStarvationRescuePreviewResponse,
 } from '../../../contracts/src/starvationRescue.ts';
-import { STARVATION_RESCUE_WIDGET_COPY } from '../../../shared-domain/src/planStarvation.ts';
+import {
+  resolveStarvationRescueRejectCopy,
+  STARVATION_RESCUE_WIDGET_COPY,
+} from '../../../shared-domain/src/planStarvation.ts';
 import { callApi, invalidateApiCache } from './homey.ts';
 import { logSettingsError } from './logging.ts';
 import { showToast } from './toast.ts';
@@ -78,13 +81,11 @@ export const createStarvationRescue = async (
       // Read the reason via `in` rather than discriminant narrowing — the
       // settings-UI tsconfig runs non-strict, where literal-discriminant union
       // narrowing on `!response.ok` does not reliably split the union.
+      // Copy comes from the SHARED rescue resolver (deadline-passed retry line,
+      // the non-retryable separate-meter line for `device_in_sub_home`, generic
+      // otherwise) so this surface can never drift from the rescue widget.
       const reason = 'reason' in response ? response.reason : undefined;
-      await showToast(
-        reason === 'deadline_passed'
-          ? STARVATION_RESCUE_WIDGET_COPY.deadlinePassed
-          : STARVATION_RESCUE_WIDGET_COPY.rescueError,
-        'warn',
-      );
+      await showToast(resolveStarvationRescueRejectCopy(reason), 'warn');
       return { ok: false };
     }
     // The device is now task-having → no longer rescuable. Drop it locally and

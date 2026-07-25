@@ -20,6 +20,7 @@ import {
   DAILY_BUDGET_PRICE_FLEX_SHARE,
   DAILY_BUDGET_RESET,
   DEBUG_LOGGING_TOPICS,
+  DEVICE_HOME_ASSIGNMENTS,
   EV_BOOST_SETTINGS,
   EXPORT_FIXED,
   EXPORT_PRICE_ENABLED,
@@ -30,6 +31,7 @@ import {
   NORWAY_PRICE_MODEL,
   HOMEY_PRICES_TODAY,
   HOMEY_PRICES_TOMORROW,
+  HOMES_CONFIG,
   isHomeScopableBaseKey,
   MAIN_HOME_ID,
   MANAGED_DEVICES,
@@ -80,15 +82,35 @@ export type SettingsHandlerDeps = {
   updateOverheadToken: (value?: number) => Promise<void>;
   updateDebugLoggingEnabled: (logChange?: boolean) => void;
   restartHomeyEnergyPoll?: () => void;
+  /** Synchronous meter-event edge: invalidate any old-selection poll now. */
+  onHomeyEnergyMeterObserved?: () => void;
+  /** Schedule bounded Main authority repair after an explicit-meter event. */
+  onMainMeterSelectionObserved?: () => void;
+  /**
+   * Synchronously close the shared ownership generation before a homes/pins
+   * event waits behind the serialized settings queue.
+   */
+  onHomeOwnershipConfigurationObserved?: () => void;
   stopFlowPowerSampleFreshnessClock?: () => void;
   syncFlowPowerSampleFreshnessClock?: () => void;
   reloadWeatherAdvisor?: () => void;
   /**
+   * Synchronously observe a source settings event before it enters the async
+   * settings queue. This closes per-home authorization for the new generation.
+   */
+  onHomeRuntimePowerSourceObserved?: () => void;
+  /**
+   * Durably reset and replace per-home meter runtimes for the latest observed
+   * source generation. Runs before the Homey Energy poll is restarted.
+   */
+  onHomeRuntimePowerSourceChanged?: () => void;
+  /**
    * Writes to home-suffixed keys (`<base>:<homeId>`, non-main home, see
    * `parseHomeScopedSettingsKey`) route here instead of the exact-key
    * handlers — a `power_tracker_state:<homeId>` write must never reload the
-   * main home's power tracker. Optional and dormant: no runtime consumer yet
-   * (the multi-home wiring provides one); when absent the write is ignored.
+   * main home's power tracker. The multi-home runtime registry provides the
+   * consumer; the optional seam remains absent in single-home/test contexts,
+   * where the write is ignored.
    * Rejections and throws are contained and logged; they never propagate to
    * the settings `set` listener.
    *
@@ -101,6 +123,22 @@ export type SettingsHandlerDeps = {
    * reconcile — never a destructive reset, never a dropped write.
    */
   onHomeScopedSettingChanged?: (baseKey: string, homeId: string) => void | Promise<void>;
+  /**
+   * Recompute the cached device→home membership after a `homes_config` /
+   * `device_home_assignments` write (both UNSUFFIXED global keys — ordinary
+   * exact-key serialized dispatch, unlike the suffixed hook above). Optional
+   * and read-only: when absent the write still persists — membership simply
+   * recomputes on the next snapshot refresh.
+   */
+  recomputeHomeMembership?: () => void;
+  /**
+   * Reconcile the per-home capacity bundles after a `homes_config` write
+   * (create new sub-home runtimes, tear down removed ones). Runs AFTER
+   * `recomputeHomeMembership` so a freshly created bundle's first plan input
+   * reads the recomputed membership. Optional: when absent the registry
+   * still self-reconciles on the next suffixed-write dirty-mark.
+   */
+  reconcileHomeRuntimes?: () => void;
 };
 
 const DAILY_BUDGET_PRICE_REBUILD_DEBOUNCE_MS = 1000;
@@ -193,6 +231,17 @@ export function createSettingsHandler(deps: SettingsHandlerDeps): SettingsHandle
 
   let queue = Promise.resolve();
   const handler = (async (key: string) => {
+    // Load-bearing synchronous edge: an async function executes through its
+    // first await immediately, so rapid un-awaited POWER_SOURCE events cannot
+    // collapse back to the original value before the registry observes them.
+    if (key === POWER_SOURCE) deps.onHomeRuntimePowerSourceObserved?.();
+    if (key === HOMEY_ENERGY_METER_DEVICE_ID) {
+      deps.onHomeyEnergyMeterObserved?.();
+      deps.onMainMeterSelectionObserved?.();
+    }
+    if (key === HOMES_CONFIG || key === DEVICE_HOME_ASSIGNMENTS) {
+      deps.onHomeOwnershipConfigurationObserved?.();
+    }
     const scoped = parseHomeScopedSettingsKey(key);
     if (scoped.homeId !== MAIN_HOME_ID) {
       // Non-main-home write: route to the hook only. Falling through would run
@@ -399,6 +448,18 @@ function buildPriceSettingsHandlers(
 
 function buildMiscSettingsHandlers(deps: SettingsHandlerDeps): SettingsHandlerMap {
   return {
+    // Multi-home registry/pin writes: recompute the membership cache, then
+    // reconcile the per-home capacity bundles (R7b) — membership first so a
+    // freshly created bundle's plan input reads the new device partition.
+    // Still deliberately NO snapshot refresh here; membership's own
+    // change-gated invalidation covers the main plan.
+    [HOMES_CONFIG]: async () => {
+      deps.recomputeHomeMembership?.();
+      deps.reconcileHomeRuntimes?.();
+    },
+    [DEVICE_HOME_ASSIGNMENTS]: async () => {
+      deps.recomputeHomeMembership?.();
+    },
     [DAILY_BUDGET_RESET]: async () => {
       deps.resetDailyBudgetLearning();
       deps.updateDailyBudgetState(FORCE_DAILY_BUDGET_STATE_PERSIST);
@@ -475,6 +536,7 @@ async function handleHomeyEnergyMeterChange(deps: SettingsHandlerDeps): Promise<
 
 async function handlePowerSourceChange(deps: SettingsHandlerDeps): Promise<void> {
   settingsLogger.info({ event: 'power_source_changed' });
+  deps.onHomeRuntimePowerSourceChanged?.();
   deps.restartHomeyEnergyPoll?.();
   deps.stopFlowPowerSampleFreshnessClock?.();
   deps.syncFlowPowerSampleFreshnessClock?.();

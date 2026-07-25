@@ -115,6 +115,7 @@ export class PlanService {
       isCurrentHourCheap: deps.isCurrentHourCheap,
       isCurrentHourExpensive: deps.isCurrentHourExpensive,
       getLastPowerUpdate: deps.getLastPowerUpdate,
+      getEffectiveDryRun: deps.getStatusEffectiveDryRun,
       structuredLog: deps.loggers?.structuredLog,
     });
     this.changeTracker = new PlanChangeTracker({
@@ -304,9 +305,16 @@ export class PlanService {
     return true;
   }
 
-  async reconcileLatestPlanState(): Promise<boolean> {
+  // `onAbort` fires (once, before returning `false`) only when `shouldAbort`
+  // trips inside the queued body — a DISTINCT signal so a caller can tell a
+  // point-of-use abort from an ordinary no-op (both resolve `false`). Single-home
+  // callers pass neither argument and observe the unchanged boolean contract.
+  async reconcileLatestPlanState(
+    shouldAbort?: () => boolean,
+    onAbort?: () => void,
+  ): Promise<boolean> {
     return this.enqueuePlanOperation(
-      () => this.performPlanReconcile(),
+      () => this.performPlanReconcile(shouldAbort, onAbort),
       'Failed to reconcile latest plan state',
       false,
     );
@@ -426,7 +434,24 @@ export class PlanService {
     return result;
   }
 
-  private async performPlanReconcile(): Promise<boolean> {
+  private async performPlanReconcile(
+    shouldAbort?: () => boolean,
+    onAbort?: () => void,
+  ): Promise<boolean> {
+    // Serialized-queue TOCTOU guard: `reconcileLatestPlanState` only ENQUEUES; a
+    // caller may have validated a precondition (e.g. a sub-home ready-edge's meter
+    // -sample revision) BEFORE enqueuing, but this body runs LATER, when the queue
+    // drains — a newer sample can land in between. Re-check at the point of use,
+    // before reading/applying the committed plan, so a now-stale reconcile aborts
+    // instead of restoring load after an over-cap sample (R7b P1). A bare `false`
+    // return here is indistinguishable from an ordinary no-op, so invoke `onAbort`
+    // to signal the point-of-use abort DISTINCTLY — the ready-edge re-arms its latch
+    // and reschedules on it (a plain no-op must NOT re-arm). Single-home callers
+    // pass no predicate, so their behavior is unchanged.
+    if (shouldAbort?.()) {
+      onAbort?.();
+      return false;
+    }
     if (this.deps.getCapacityDryRun()) return false;
     const plannedSnapshot = this.getLatestReconcilePlanSnapshot();
     if (!plannedSnapshot) return false;
@@ -493,6 +518,10 @@ export class PlanService {
   }
 
   private emitPlanUpdatedRealtime(plan: DevicePlan): void {
+    // A sub-home capacity bundle (R7b) shares the single settings-UI
+    // `plan_updated` channel with the main home; only the main plan drives it.
+    // Undefined (the pre-R7b default) emits — single-home behavior is unchanged.
+    if (this.deps.emitsUiRealtime === false) return;
     const api = this.deps.homey.api;
     const realtime = api?.realtime;
     if (typeof realtime === 'function') {

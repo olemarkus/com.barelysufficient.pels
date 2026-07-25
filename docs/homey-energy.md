@@ -53,9 +53,9 @@ Homey Energy already knows your total home consumption. Instead of creating a Fl
 
 1. Open **Apps > PELS > Settings**.
 2. Go to **Settings > Limits & safety**.
-3. Change **Power source** to **Homey Energy**.
+3. Change **Power source** to **Power meter**.
 
-![Power source set to Homey Energy](images/power-source-homey-energy.png)
+![Power source set to Power meter](images/power-source-homey-energy.png)
 
 PELS starts polling every 10 seconds. The Overview tab should show live power data within moments.
 

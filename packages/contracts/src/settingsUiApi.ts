@@ -14,6 +14,17 @@ import type { DeviceOverviewSnapshot, DeviceOverviewStrings } from '../../shared
 
 export const SETTINGS_UI_BOOTSTRAP_PATH = '/ui_bootstrap';
 export const SETTINGS_UI_DEVICES_PATH = '/ui_devices';
+/**
+ * Endpoint backing both whole-home meter pickers. It returns the meters the
+ * Homey Energy live report actually exposes (so every listed pick is a reading
+ * a selection can resolve) narrowed to actual meters: the whole-home
+ * `cumulative` item plus `sensor`-class devices, never appliances. Selecting an
+ * appliance would make PELS read one device's draw as whole-home power, so the
+ * class narrowing is a safety guard resolved in the producer.
+ */
+export const HOMEY_ENERGY_METERS_PATH = '/homey_energy_meters';
+/** One pickable whole-home meter (id + display name); the producer already narrowed to meters. */
+export type HomeyEnergyMeterEntry = { id: string; name: string };
 export const SETTINGS_UI_PLAN_PATH = '/ui_plan';
 export const SETTINGS_UI_POWER_PATH = '/ui_power';
 export const SETTINGS_UI_PRICES_PATH = '/ui_prices';

@@ -83,6 +83,7 @@ var STARVATION_RESCUE_WIDGET_COPY = {
   // user sees it is held back) but with no rescue button — its own task is what
   // brings it to target, so a one-shot rescue would only get in the way.
   smartTaskNote: "Its smart task will bring it back.",
+  temporaryUnavailableNote: "Temporarily unavailable. Try again shortly.",
   // Rescue confirm sheet.
   // Names the consequence honestly per the money-action guardrail: the rescue
   // lets this device go over today's budget so it reaches its normal target.
@@ -145,7 +146,7 @@ var BUDGET_EXEMPT_CARD_ACTION_COPY = {
   // verb so the action word is shared across surfaces.
   confirmLabel: STARVATION_RESCUE_WIDGET_COPY.rescueConfirmButton
 };
-var starvationRowIsRescuable = (cause, intendedNormalTargetC, hasSmartTask = false) => starvationRowOffersRescue(cause) && !hasSmartTask && intendedNormalTargetC !== null && Number.isFinite(intendedNormalTargetC);
+var starvationRowIsRescuable = (cause, intendedNormalTargetC, hasSmartTask = false, smartTaskHomeScope = "main") => starvationRowOffersRescue(cause) && smartTaskHomeScope === "main" && !hasSmartTask && intendedNormalTargetC !== null && Number.isFinite(intendedNormalTargetC);
 var ONE_HOUR_MS = 60 * 60 * 1e3;
 var scheduledHoursIncludeCurrentHour = (scheduledHours, nowMs) => {
   const currentHourStartMs = Math.floor(nowMs / ONE_HOUR_MS) * ONE_HOUR_MS;
@@ -165,7 +166,15 @@ var parseRescueRequest = (body) => {
 var resolveRescuableDeviceFromList = (devices, deviceId) => {
   if (devices === null) return { ok: false, reason: "unavailable" };
   const device = devices.find((entry) => entry.deviceId === deviceId);
-  if (!device || !starvationRowIsRescuable(device.cause, device.intendedNormalTargetC, device.hasSmartTask)) {
+  if (device?.smartTaskHomeScope === "unavailable") {
+    return { ok: false, reason: "unavailable" };
+  }
+  if (!device || !starvationRowIsRescuable(
+    device.cause,
+    device.intendedNormalTargetC,
+    device.hasSmartTask,
+    device.smartTaskHomeScope
+  )) {
     if (device && device.cause === "budget" && !device.hasSmartTask && (device.intendedNormalTargetC === null || !Number.isFinite(device.intendedNormalTargetC))) {
       return { ok: false, reason: "no_target" };
     }
@@ -188,6 +197,7 @@ var mapAppRescueReason = (reason) => {
   if (reason === "device_not_found") return "device_not_found";
   if (reason === "device_not_planned") return "device_not_planned";
   if (reason === "device_not_eligible") return "device_not_eligible";
+  if (reason === "device_in_sub_home") return "device_in_sub_home";
   if (reason === "write_conflict" || reason === "write_refused") return "write_conflict";
   return "invalid_candidate";
 };
@@ -288,6 +298,19 @@ var readTimeZone = (homey) => {
   return typeof tz === "string" && tz.length > 0 ? tz : "UTC";
 };
 var resolveRescuableDevice = (app, deviceId) => {
+  if (typeof app?.resolveSmartTaskHomeScope !== "function") {
+    return { ok: false, reason: "unavailable" };
+  }
+  const scope = app.resolveSmartTaskHomeScope(deviceId);
+  if (scope === "sub_home") {
+    return { ok: false, reason: "device_in_sub_home" };
+  }
+  if (scope === "source_device") {
+    return { ok: false, reason: "device_not_planned" };
+  }
+  if (scope === "unavailable") {
+    return { ok: false, reason: "unavailable" };
+  }
   const devices = typeof app?.getStarvedRescueDevices === "function" ? app.getStarvedRescueDevices() : null;
   return resolveRescuableDeviceFromList(devices, deviceId);
 };

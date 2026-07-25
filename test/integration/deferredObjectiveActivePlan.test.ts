@@ -497,6 +497,23 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(plan.pendingReason).toBe('awaiting_horizon_plan');
   });
 
+  it('captures the separate-meter reason on a pending record instead of claiming it is waiting for prices', () => {
+    const { deps, saved } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    const diag = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
+    delete (diag as { horizonPlan?: unknown }).horizonPlan;
+    diag.reasonCode = 'objective_device_in_sub_home';
+
+    recorder.observe([diag], HOUR_MS);
+    recorder.flushIfDirty();
+
+    const plan = saved()!.plansByDeviceId.dev;
+    expect(plan.pending).toBe(true);
+    expect(plan.pendingReason).toBe('device_in_sub_home');
+    expect(plan.diagnosticReasonCode).toBe('objective_device_in_sub_home');
+  });
+
   it('captures device_data_missing on a pending record for progress/profile-side diagnostic failures', () => {
     const { deps, saved } = buildPersistDeps();
     const recorder = new DeferredObjectiveActivePlanRecorder(deps);
@@ -786,6 +803,35 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     const recovered = saved()!.plansByDeviceId.dev;
     expect(recovered.pending).toBe(false);
     expect(recovered.diagnosticReasonCode).toBeUndefined();
+  });
+
+  it('overrides a committed cached revision while its device is on a separate meter, then clears on recovery', () => {
+    const { deps, saved } = buildPersistDeps();
+    const recorder = new DeferredObjectiveActivePlanRecorder(deps);
+
+    recorder.observe([makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })], 2 * HOUR_MS);
+    recorder.flushIfDirty();
+    const committedRevision = saved()!.plansByDeviceId.dev.latest;
+    expect(committedRevision).not.toBeNull();
+
+    const relocated = makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS });
+    delete (relocated as { horizonPlan?: unknown }).horizonPlan;
+    relocated.reasonCode = 'objective_device_in_sub_home';
+    recorder.observe([relocated], 2 * HOUR_MS + 10 * 60 * 1000);
+    recorder.flushIfDirty();
+
+    const unavailable = saved()!.plansByDeviceId.dev;
+    expect(unavailable.pending).toBe(false);
+    expect(unavailable.latest).toEqual(committedRevision);
+    expect(unavailable.pendingReason).toBeUndefined();
+    expect(unavailable.diagnosticReasonCode).toBe('objective_device_in_sub_home');
+
+    recorder.observe(
+      [makeDiag({ deviceId: 'dev', deadlineAtMs: 6 * HOUR_MS })],
+      2 * HOUR_MS + 20 * 60 * 1000,
+    );
+    recorder.flushIfDirty();
+    expect(saved()!.plansByDeviceId.dev.diagnosticReasonCode).toBeUndefined();
   });
 
   it('transitions pending -> first revision with prices_arrived when prices show up', () => {

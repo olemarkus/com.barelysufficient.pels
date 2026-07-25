@@ -84,7 +84,7 @@ const buildDom = () => {
         <span id="settings-capacity-reaction"></span>
         <md-filled-select id="settings-power-source">
           <md-select-option value="flow"><div slot="headline">Flow card</div></md-select-option>
-          <md-select-option value="homey_energy"><div slot="headline">Homey Energy</div></md-select-option>
+          <md-select-option value="homey_energy"><div slot="headline">Power meter</div></md-select-option>
         </md-filled-select>
       </form>
     </section>

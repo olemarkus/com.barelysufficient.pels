@@ -12,12 +12,14 @@
  * structural mirror, so it is allowed here.
  */
 import type { BinaryControlObservation, TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
+import type { MainMeterSelection } from '../../../packages/contracts/src/mainMeterSelection';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike, Logger } from '../../utils/types';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import type { BinarySettleState } from '../../observer/binarySettle';
 import type { LiveDevicePowerWatts } from '../managerEnergy';
 import type { DeviceFetchResult } from './managerFetch';
+import type { ZoneTreeCache } from './zoneTreeCache';
 import type { PowerEstimateState } from '../devicePowerEstimate';
 import type { DeviceMeasuredPowerResolver } from '../measuredPowerResolver';
 import type { DeviceTransportObservationState } from './managerObservation';
@@ -49,6 +51,12 @@ export type TransportRoleProducer = {
 export type TransportSolarRoleProducer = {
   observe: (devices: readonly HomeyDeviceLike[], options: { fullRefresh: boolean }) => void;
   noteSolarDevice: (device: HomeyDeviceLike) => void;
+};
+
+export type SnapshotRefreshOptions = {
+  includeLivePower?: boolean;
+  targetedRefresh?: boolean;
+  mainMeterSelection?: MainMeterSelection;
 };
 
 /**
@@ -102,9 +110,7 @@ export type TransportContext = {
   isSdkReady(): boolean;
   updateLocalSnapshot(deviceId: string, updates: { on: boolean }): void;
   dispatchObservedStateForDevice(deviceId: string, capabilityId?: string): void;
-  refreshSnapshot(
-    options?: { includeLivePower?: boolean; targetedRefresh?: boolean },
-  ): Promise<{ powerW: number; generationW?: number } | null>;
+  refreshSnapshot(options?: SnapshotRefreshOptions): Promise<{ powerW: number; generationW?: number } | null>;
 
   // --- Snapshot-refresh pipeline collaborators (snapshotRefresh.ts) ---
   // Parse-binding inputs (stable references built once in the constructor).
@@ -122,6 +128,23 @@ export type TransportContext = {
   setLastSnapshotRefreshMetricsKey(value: string | null): void;
   getLatestRawDevices(): HomeyDeviceLike[];
   setLatestRawDevices(devices: HomeyDeviceLike[]): void;
+  // Zone-tree cache + fetch-generation guard, owned by the leaf. Only a
+  // SUCCESSFUL fetch that is still the latest generation commits — a failed
+  // fetch resolves `null` in the pipeline and leaves the cached tree untouched
+  // (abandon-grace); a superseded fetch drops its result (`zoneTreeCache.ts`).
+  readonly zoneTreeCache: ZoneTreeCache;
+  // Fires after a SUCCESSFUL generation-guarded zone-tree commit (the leaf's
+  // set-after-construction `onZoneTreeCommitted` callback; no-op while no
+  // consumer is subscribed). The refresh pipeline invokes it CONTAINED — a
+  // subscriber throw must never reject the detached zone-fetch chain.
+  notifyZoneTreeCommitted(): void;
+  // Fires after a realtime device.update commits a snapshot entry whose
+  // `zoneId` differs from the previous entry (device moved zones, or first
+  // appeared, via the realtime path). Same set-after-construction seam shape
+  // as `notifyZoneTreeCommitted`; consumer: multi-home membership recompute —
+  // without it a realtime zone move would stay unjoined until the next full
+  // refresh (up to the periodic-refresh interval).
+  notifyDeviceZoneChanged(): void;
   getTrackedDevicesById(): Map<string, HomeyDeviceLike>;
   // Fetch seams routed through the leaf's instance methods so a test spy on
   // `DeviceTransport.fetchDevicesForSnapshot` is honored.

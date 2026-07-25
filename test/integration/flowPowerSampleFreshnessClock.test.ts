@@ -5,6 +5,7 @@ import {
   POWER_SAMPLE_STALE_THRESHOLD_MS,
 } from '../../packages/shared-domain/src/powerFreshness';
 import type { PowerSource } from '../../lib/power/powerSource';
+import { requireConfiguredPowerSource } from '../../setup/powerSourceSettings';
 
 describe('FlowPowerSampleFreshnessClock', () => {
   beforeEach(() => {
@@ -27,6 +28,7 @@ describe('FlowPowerSampleFreshnessClock', () => {
       requestPlanRebuild: (reason) => {
         requests.push(reason);
       },
+      onPowerSourceReadError: vi.fn(),
     });
     return {
       clock,
@@ -149,5 +151,91 @@ describe('FlowPowerSampleFreshnessClock', () => {
 
     expect(requests).toEqual([]);
     expect(timers.has('flowPowerSampleFreshness')).toBe(false);
+  });
+
+  it('retries a failed source read from the timer without losing the silence ladder', async () => {
+    const timers = new TimerRegistry();
+    const requests: string[] = [];
+    const onPowerSourceReadError = vi.fn();
+    let sourceReads = 0;
+    const clock = new FlowPowerSampleFreshnessClock({
+      timers,
+      getNowMs: () => Date.now(),
+      getPowerSource: () => {
+        sourceReads += 1;
+        if (sourceReads === 2) throw new Error('transient settings read');
+        return 'flow';
+      },
+      requestPlanRebuild: (reason) => { requests.push(reason); },
+      onPowerSourceReadError,
+    });
+
+    clock.noteSample(Date.now());
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(requests).toEqual([]);
+    expect(timers.has('flowPowerSampleFreshness')).toBe(true);
+    expect(onPowerSourceReadError).toHaveBeenCalledOnce();
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(requests).toEqual(['flow_power_sample_hold']);
+
+    await vi.advanceTimersByTimeAsync(POWER_SAMPLE_STALE_SHED_TIMEOUT_MS);
+    expect(requests.at(-1)).toBe('flow_power_sample_fail_closed');
+  });
+
+  it('retries when the classified source callback sees an existing key read as undefined', async () => {
+    const timers = new TimerRegistry();
+    const requests: string[] = [];
+    const onPowerSourceReadError = vi.fn();
+    let rawSource: unknown = 'flow';
+    const settings = {
+      get: () => rawSource,
+      getKeys: () => ['power_source'],
+    };
+    const clock = new FlowPowerSampleFreshnessClock({
+      timers,
+      getNowMs: () => Date.now(),
+      getPowerSource: () => requireConfiguredPowerSource(settings),
+      requestPlanRebuild: (reason) => { requests.push(reason); },
+      onPowerSourceReadError,
+    });
+
+    clock.noteSample(Date.now());
+    rawSource = undefined;
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(requests).toEqual([]);
+    expect(timers.has('flowPowerSampleFreshness')).toBe(true);
+    expect(onPowerSourceReadError).toHaveBeenCalledOnce();
+
+    rawSource = 'flow';
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    expect(requests).toEqual(['flow_power_sample_hold']);
+    expect(timers.has('flowPowerSampleFreshness')).toBe(true);
+  });
+
+  it('retains a persisted sample when the source-change sync read fails', async () => {
+    const timers = new TimerRegistry();
+    const requests: string[] = [];
+    let sourceReadFails = true;
+    const clock = new FlowPowerSampleFreshnessClock({
+      timers,
+      getNowMs: () => Date.now(),
+      getPowerSource: () => {
+        if (sourceReadFails) throw new Error('settings unavailable');
+        return 'flow';
+      },
+      requestPlanRebuild: (reason) => { requests.push(reason); },
+      onPowerSourceReadError: vi.fn(),
+    });
+
+    clock.syncLatestSample(Date.now() - POWER_SAMPLE_STALE_THRESHOLD_MS);
+    expect(timers.has('flowPowerSampleFreshness')).toBe(true);
+
+    sourceReadFails = false;
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(requests).toEqual(['flow_power_sample_stale_hold']);
+    expect(timers.has('flowPowerSampleFreshness')).toBe(true);
   });
 });

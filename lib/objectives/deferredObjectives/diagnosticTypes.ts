@@ -18,6 +18,14 @@ export type BuildPriceHorizon = (nowMs: number, deadlineAtMs: number) => PriceHo
 export type DeferredObjectiveDiagnosticReasonCode =
   | DeferredObjectivePolicyHorizonUnavailableReason
   | 'objective_charger_not_resumable'
+  // The task's device belongs to a separate-meter sub-home (multi-home v1
+  // scopes smart tasks to the main home). Dedicated code so an EXISTING task
+  // whose device is later moved to a sub-home reads honestly, instead of the
+  // misleading `objective_missing_device` (the device is present — it is out
+  // of scope). Like `objective_missing_device`, the diagnostic is `unknown`
+  // and never plans: admission treats it as inactive, releasing the device to
+  // normal control.
+  | 'objective_device_in_sub_home'
   | 'objective_invalid_deadline'
   | 'objective_invalid_session'
   | 'objective_missing_capacity'

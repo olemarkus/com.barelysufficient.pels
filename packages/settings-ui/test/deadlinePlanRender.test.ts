@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   renderDeadlinePlan,
   type DeadlinePlanPayload,
@@ -14,6 +14,7 @@ import { toResolvedPlanHistoryEntry } from '../../shared-domain/src/deferredPlan
 
 const buildPendingPayload = (): DeadlinePlanPendingPayload => ({
   kind: 'temperature',
+  actionMode: 'edit_and_clear',
   // Minimal shape — the producer normally fills this with rich kind-aware
   // copy, but `PendingHero` only reads the hero block, so this is enough to
   // exercise the render branch.
@@ -133,6 +134,40 @@ describe('DeadlinePlan pending branch', () => {
     expect(metaLine).not.toBeUndefined();
     expect(metaLine?.classList.contains('plan-hero__subline--action')).toBe(true);
     expect(metaLine?.classList.contains('plan-hero__subline--muted')).toBe(false);
+  });
+
+  it('offers only Clear task when a separate-meter task cannot be edited', () => {
+    const mount = mountIntoBody();
+    const onOpen = vi.fn();
+    const onClear = vi.fn();
+    renderDeadlinePlan(mount, {
+      status: 'pending',
+      pending: {
+        ...buildPendingPayload(),
+        actionMode: 'clear_only',
+      },
+      edit: {
+        mode: 'clear_only',
+        snapshot: null,
+        onOpen,
+        onClose: vi.fn(),
+        onReadyByInput: vi.fn(),
+        onTargetInput: vi.fn(),
+        onSave: vi.fn(),
+        onClear,
+      },
+    });
+
+    expect(mount.textContent).not.toContain('Change the goal or ready-by time.');
+    expect(mount.textContent).not.toContain('Edit task');
+    expect(mount.textContent).not.toContain('Save changes');
+    expect(mount.querySelector('.smart-task-edit__time-input')).toBeNull();
+
+    const clearButton = mount.querySelector<HTMLButtonElement>('.smart-task-edit__clear');
+    expect(clearButton?.textContent).toContain('Clear task');
+    clearButton?.click();
+    expect(onOpen).not.toHaveBeenCalled();
+    expect(onClear).toHaveBeenCalledOnce();
   });
 
   // Liveness pulse on the pending hero's "Building plan…" chip. The pending

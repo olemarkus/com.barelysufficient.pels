@@ -1,5 +1,5 @@
 import { render } from 'preact';
-import { MdElevation, MdRipple } from './materialWebJSX.tsx';
+import { MdElevation, MdOutlinedButton, MdRipple } from './materialWebJSX.tsx';
 import { PlanHero, type HeroContext } from './PlanHero.tsx';
 import {
   formatOverviewSmartTaskRowLine,
@@ -99,9 +99,17 @@ const PlanOverviewRoot = ({
     : [];
 
   let emptyMessage: string | null = null;
+  let showManageDevicesLink = false;
   if (plan === null) {
-    if (planResolved) emptyMessage = 'No plan available yet. Send power data or refresh devices.';
-  } else if (devices.length === 0) emptyMessage = 'No managed devices.';
+    // The global no-power-data banner (with its power-source link) explains
+    // how to get data flowing; this line only states what the blank means.
+    if (planResolved) emptyMessage = 'No plan available yet. PELS builds one after the first power reading.';
+  } else if (devices.length === 0) {
+    // No "yet" — a returning user who unmanages their last device reaches
+    // this state too (notes/ui-terminology.md, empty-state headline rule).
+    emptyMessage = 'No managed devices. Pick the devices PELS may manage.';
+    showManageDevicesLink = true;
+  }
 
   return (
     <div>
@@ -116,7 +124,20 @@ const PlanOverviewRoot = ({
       />
       <div id="plan-hour-strip" class="plan-hour-strip" hidden />
       {smartTaskRow !== null && <SmartTaskRow row={smartTaskRow} />}
-      {emptyMessage && <p id="plan-empty" class="muted">{emptyMessage}</p>}
+      {emptyMessage && !showManageDevicesLink && <p id="plan-empty" class="muted">{emptyMessage}</p>}
+      {emptyMessage && showManageDevicesLink && (
+        // Same carded "empty → go configure" treatment as the Price-aware
+        // devices zero state; on-surface text, not .muted — this line is the
+        // page's primary instruction when nothing is managed.
+        <div class="settings-form-card">
+          <p id="plan-empty">{emptyMessage}</p>
+          <div class="form__actions">
+            <MdOutlinedButton type="button" id="plan-empty-manage-devices" data-settings-target="devices">
+              Choose devices
+            </MdOutlinedButton>
+          </div>
+        </div>
+      )}
       <div id="plan-cards" class="plan-cards">
         {devices.map((dev) => (
           <PlanCard

@@ -26,6 +26,7 @@ import {
   DEFERRED_OBJECTIVE_PLAN_HISTORY_SETTING,
   DEFERRED_OBJECTIVES_PERKEY_MIGRATED,
 } from '../../lib/utils/settingsKeys';
+import { resolveSmartTaskHomeScope } from './smartTaskHomeScope';
 import { isFiniteNumber } from '../../lib/utils/appTypeGuards';
 import { normalizeError } from '../../lib/utils/errorUtils';
 import type { AppContext } from '../../lib/app/appContext';
@@ -390,6 +391,11 @@ export const buildDeferredObjectiveDeviceWriteDeps = (
     planHistoryRecorder,
     rebuildPlan: () => ctx.requestFlowPlanRebuild(params.rebuildReason),
     nowMs: params.nowMs,
+    // Multi-home v1 scope gate: durable relocation is a hard
+    // `device_in_sub_home` refusal, while a provisional/global ownership fence
+    // is the retryable `ownership_unavailable` lane. Every write surface builds
+    // its deps here, so no caller can accidentally collapse the two states.
+    resolveDeviceHomeScope: (deviceId) => resolveSmartTaskHomeScope(ctx, deviceId),
     debugStructured: ctx.getStructuredDebugEmitter('deferred_objectives', 'deferred_objectives'),
   };
 };

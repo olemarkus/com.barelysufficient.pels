@@ -15,6 +15,7 @@ import {
   SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH,
   SETTINGS_UI_DEVICE_LOG_PATH,
   SETTINGS_UI_DEVICES_PATH,
+  HOMEY_ENERGY_METERS_PATH,
   SETTINGS_UI_LOG_PATH,
   SETTINGS_UI_PLAN_PATH,
   SETTINGS_UI_POWER_PATH,
@@ -35,6 +36,7 @@ import {
   SETTINGS_UI_SMART_TASK_UPDATE_PATH,
   SETTINGS_UI_SMART_TASK_CANCEL_PATH,
 } from '../../../contracts/src/settingsUiApi.ts';
+import { SETTINGS_UI_HOMES_PATH, SETTINGS_UI_HOMES_SAVE_PATH } from '../../../contracts/src/settingsUiHomes.ts';
 import type { DeferredObjectiveActivePlansV1 } from '../../../contracts/src/deferredObjectiveActivePlans.ts';
 import {
   DAILY_BUDGET_CONTROLLED_WEIGHT,
@@ -42,6 +44,7 @@ import {
   DAILY_BUDGET_KWH,
   DAILY_BUDGET_PRICE_FLEX_SHARE,
   DAILY_BUDGET_PRICE_SHAPING_ENABLED,
+  HOMEY_ENERGY_METER_DEVICE_ID,
 } from '../../../contracts/src/settingsKeys.ts';
 import type { HomeySettingsClient } from '../../src/ui/homey.ts';
 
@@ -77,6 +80,17 @@ export type MockHomeyUiState = {
   // compat fallback in the handlers, but new tests should prefer this field.
   devices?: TargetDeviceSnapshot[];
   homeyDevices?: unknown;
+  // `/homey_energy_meters` payload (`HomeyEnergyMeterEntry[]`) backing both
+  // whole-home meter pickers. Defaults to an empty list.
+  homeyEnergyMeters?: unknown;
+  // `/ui_homes` payload (multi-home membership view). Defaults to production's
+  // single-home empty shape (`SettingsUiHomesPayload`); tests seed this to
+  // exercise multi-home UI states.
+  homes?: unknown;
+  // `/ui_homes_save` response (`SettingsUiHomesSaveResponse`). Defaults to an
+  // applied op (`{ok: true}`); tests seed a typed refusal to exercise the
+  // degraded/invalid/meter-ownership paths.
+  homesSave?: unknown;
   plan?: unknown;
   power?: unknown;
   prices?: unknown;
@@ -335,6 +349,30 @@ const DEFAULT_HOMEY_API_HANDLER_FACTORIES: Record<string, MockHomeyApiHandlerFac
     getUiOverride(homey, 'weatherAdvisorReadout') ?? null
   ),
   [buildRouteKey('GET', HOMEY_DEVICES_PATH)]: (homey) => async () => getUiOverride(homey, 'homeyDevices') ?? [],
+  [buildRouteKey('GET', HOMEY_ENERGY_METERS_PATH)]: (homey) => async () => (
+    getUiOverride(homey, 'homeyEnergyMeters') ?? []
+  ),
+  // Multi-home membership view. Default mirrors production's boot-window /
+  // single-home empty shape (`SettingsUiHomesPayload`).
+  [buildRouteKey('GET', SETTINGS_UI_HOMES_PATH)]: (homey) => async () => (
+    getUiOverride(homey, 'homes') ?? {
+      homes: [],
+      membershipByDeviceId: {},
+      zoneTree: null,
+      hasSubHomes: false,
+      runtimeActive: true,
+      configDegraded: false,
+    }
+  ),
+  [buildRouteKey('POST', SETTINGS_UI_HOMES_SAVE_PATH)]: (homey) => async ({ body }) => {
+    const override = getUiOverride(homey, 'homesSave');
+    if (override !== undefined) return override;
+    const request = body as { op?: unknown; meterDeviceId?: unknown } | undefined;
+    if (request?.op === 'set_main_meter') {
+      homey.__settingsStore[HOMEY_ENERGY_METER_DEVICE_ID] = request.meterDeviceId;
+    }
+    return { ok: true };
+  },
   [buildRouteKey('POST', SETTINGS_UI_REFRESH_DEVICES_PATH)]: (homey) => async () => ({
     devices: await resolveUiDevices(homey),
     hasManagedSolarDevice: false,

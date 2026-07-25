@@ -64,6 +64,7 @@ export { EMPTY_SUBTITLE_DEFAULT };
 const STATUS_TIER: Record<SmartTaskListStatusId, number> = {
   cannot_meet: 0,
   at_risk: 1,
+  unavailable: 2,
   paused_unplugged: 2,
   paused_not_resumable: 2,
   building_plan: 2,
@@ -75,6 +76,7 @@ const STATUS_TIER: Record<SmartTaskListStatusId, number> = {
 const STATUS_TONE: Record<SmartTaskListStatusId, SmartTasksWidgetTone> = {
   cannot_meet: 'danger',
   at_risk: 'warn',
+  unavailable: 'warn',
   paused_unplugged: 'muted',
   paused_not_resumable: 'muted',
   building_plan: 'muted',
@@ -338,11 +340,11 @@ const resolveRowCopy = (
   // diagnosis ("why" + recourse) is what the distressed visitor came for, and
   // dropping the meta keeps the 220 px detail panel from pushing the recourse
   // below the fold (asymmetric-treatment thesis, notes/smart-task-ui).
-  const suppressPlanMeta = statusId === 'cannot_meet' || !plan.latest;
+  const suppressPlanMeta = statusId === 'cannot_meet' || statusId === 'unavailable' || !plan.latest;
   // "Estimating" alongside "Waiting for tomorrow's prices" reads as two
   // conflicting blocked states; the price-wait reason owns the row here.
-  const suppressConfidence = statusId === 'building_plan'
-    && plan.pendingReason === 'awaiting_horizon_plan';
+  const suppressConfidence = statusId === 'unavailable'
+    || (statusId === 'building_plan' && plan.pendingReason === 'awaiting_horizon_plan');
   return {
     planMetaLabel: suppressPlanMeta || plan.latest === null ? null : formatPlanMetaLabel(plan.latest),
     confidenceLabel: suppressConfidence
@@ -381,7 +383,7 @@ const buildRow = (params: {
     finishLabel: finiteFinish !== null ? formatLocalHHMM(finiteFinish, timeZone) : null,
     statusLabel: SMART_TASK_WIDGET_STATUS_LABELS[statusId],
     tone: STATUS_TONE[statusId],
-    etaVerb: resolveSmartTaskWidgetEtaVerb(statusId === 'cannot_meet'),
+    etaVerb: resolveSmartTaskWidgetEtaVerb(statusId === 'cannot_meet' || statusId === 'unavailable'),
     targetActionVerb: resolveSmartTaskWidgetTargetActionVerb(plan.objectiveKind),
     targetNoun: SMART_TASK_WIDGET_TARGET_NOUN,
     deadlineLongLabel: finiteFinish !== null ? formatDeadlineLong(finiteFinish, nowMs, timeZone) : null,
@@ -389,7 +391,11 @@ const buildRow = (params: {
     confidenceLabel: copy.confidenceLabel,
     whyLabel: copy.whyLabel,
     recourseHint: copy.recourseHint,
-    chart: toWidgetChart(resolveActivePlanChartData(plan, { nowMs, currentValue })),
+    // A committed plan may still carry a cached trajectory after the device
+    // moved to another meter. Suppress it: those hours no longer govern.
+    chart: statusId === 'unavailable'
+      ? null
+      : toWidgetChart(resolveActivePlanChartData(plan, { nowMs, currentValue })),
   };
 };
 

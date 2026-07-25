@@ -107,6 +107,16 @@ export type FlowCardDeps = {
   // Production always wires these via appInit.
   upsertDeferredObjectiveForDevice: UpsertDeferredObjectiveForDevice;
   clearDeferredObjectiveForDevice: ClearDeferredObjectiveForDevice;
+  // Durable multi-home membership used by the live `deadline_status_is`
+  // guard. A transient Main-authority fence must not erase the status of an
+  // existing task; only confirmed separate-meter membership returns false.
+  isDeviceInMainHome?: (deviceId: string) => boolean;
+  // Current Main-home smart-task authority used by the task-creating card
+  // autocompletes. This is stricter than durable membership: a transient
+  // unresolved authority read returns false so a new task is not offered
+  // while its enforcing write would be refused. Optional bare test wiring
+  // falls back to `isDeviceInMainHome`.
+  hasMainHomeSmartTaskAuthority?: (deviceId: string) => boolean;
   getDeferredObjectiveActivePlans?: () => DeferredObjectiveActivePlansV1 | null;
   getDeferredObjectiveStatusBus?: () => DeferredObjectiveStatusBus | undefined;
   getDeferredObjectivePlanRevisionBus?: () => DeferredObjectivePlanRevisionBus | undefined;

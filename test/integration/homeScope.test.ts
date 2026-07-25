@@ -11,6 +11,7 @@ import {
 } from '../../lib/utils/settingsKeys';
 import { PriceLevel } from '../../lib/price/priceLevels';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
+import type { AppContext } from '../../lib/app/appContext';
 
 // Identity proof for the main-home scope: the persisted writers must hit the
 // EXACT unsuffixed keys the factories hardwired before the HomeScope refactor
@@ -58,5 +59,56 @@ describe('buildMainHomeScope', () => {
     expect(getSpy).not.toHaveBeenCalledWith(CAPACITY_LIMIT_KW);
     expect(getSpy).not.toHaveBeenCalledWith(CAPACITY_MARGIN_KW);
     expect(getSpy).not.toHaveBeenCalledWith(CAPACITY_DRY_RUN);
+  });
+
+  // R7b Cluster A+B: the policy stragglers and UI/side-effect singletons the
+  // factories used to read straight off `ctx` are now scope members — the main
+  // home binds them to the IDENTICAL live ctx reads (byte-identical), while a
+  // sub-home scope binds neutral constants (proven in the bundle e2e/integration).
+  it('binds the R7b policy stragglers to live ctx reads (byte-identical main)', () => {
+    const priceOpt = { 'device-1': { enabled: true, cheapDelta: 1, expensiveDelta: 2 } as never };
+    const ctx = createAppContextMock({ priceOptimizationSettings: priceOpt });
+    ctx.getDynamicSoftLimitOverride = (() => 3.5) as AppContext['getDynamicSoftLimitOverride'];
+    const scope = buildMainHomeScope(ctx);
+
+    ctx.operatingMode = 'away';
+    ctx.modeDeviceTargets = { away: { 'device-1': 21 } };
+
+    expect(scope.getPriceOptimizationSettings()).toBe(priceOpt);
+    expect(scope.getDynamicSoftLimitOverride()).toBe(3.5);
+    expect(scope.getOperatingMode()).toBe('away');
+    expect(scope.getModeDeviceTargets()).toEqual({ away: { 'device-1': 21 } });
+  });
+
+  it('binds the R7b UI/side-effect singletons live for main; sub-home neutralizes them', () => {
+    const ctx = createAppContextMock();
+    const diagnostics = { getOverviewStarvation: () => null } as unknown as AppContext['deviceDiagnosticsService'];
+    ctx.deviceDiagnosticsService = diagnostics;
+    const scope = buildMainHomeScope(ctx);
+
+    // Main emits realtime, carries the shared recorder, and reads combined prices.
+    expect(scope.emitsUiRealtime).toBe(true);
+    expect(scope.getDeviceDiagnostics()).toBe(diagnostics);
+    expect(scope.getCombinedPrices())
+      .toEqual(ctx.combinedPricesReader.readStore(ctx.getNow(), ctx.getTimeZone()));
+  });
+
+  // R7b P1-3 (regression fix): `buildMainHomeScope` runs in the `AppServiceWiring`
+  // CONSTRUCTOR, before `initDeviceDiagnosticsService` sets
+  // `ctx.deviceDiagnosticsService`. A FROZEN value would strand the main engine
+  // and service on `undefined` (no starvation, no plan-diagnostics observation).
+  // The scope member is a LIVE getter, so the recorder resolves at engine/service
+  // construction (which runs AFTER diagnostics init) — proving main is unchanged
+  // vs origin/main.
+  it('resolves deviceDiagnostics LIVE (scope built before diagnostics init still sees the recorder)', () => {
+    const ctx = createAppContextMock();
+    ctx.deviceDiagnosticsService = undefined;
+    const scope = buildMainHomeScope(ctx);
+    // At scope-construction time the recorder is not wired yet.
+    expect(scope.getDeviceDiagnostics()).toBeUndefined();
+    // ...it is wired later; a live getter (not a captured value) now resolves it.
+    const diagnostics = { getOverviewStarvation: () => null } as unknown as AppContext['deviceDiagnosticsService'];
+    ctx.deviceDiagnosticsService = diagnostics;
+    expect(scope.getDeviceDiagnostics()).toBe(diagnostics);
   });
 });

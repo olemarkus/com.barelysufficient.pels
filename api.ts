@@ -4,7 +4,12 @@ import type { Logger as PinoLogger } from 'pino';
 import type { HomeyDeviceLike } from './lib/utils/types';
 import { normalizeError } from './lib/utils/errorUtils';
 import { hasPowerCapability } from './lib/device/transport/managerParse';
-import { getHomeyDevicesForDebugFromApp, logHomeyDeviceForDebugFromApp } from './setup/appDebugHelpers';
+import {
+  getHomeyDevicesForDebugFromApp,
+  getHomeyEnergyMetersFromApp,
+  logHomeyDeviceForDebugFromApp,
+} from './setup/appDebugHelpers';
+import type { HomeyEnergyMeterEntry } from './packages/contracts/src/settingsUiApi';
 import {
   buildSettingsUiBootstrap,
   getSettingsUiDeferredObjectivePlanHistoryPayload,
@@ -13,6 +18,8 @@ import {
   getSettingsUiWeatherAdvisorReadout,
   getSettingsUiDeviceLogPayload,
   getSettingsUiDevicesPayload,
+  getSettingsUiHomesPayload,
+  saveSettingsUiHomesConfig,
   getSettingsUiPlanPayload,
   getSettingsUiPowerPayload,
   getSettingsUiPricesPayload,
@@ -90,6 +97,12 @@ export = {
   ui_plan: withApiLogging('ui_plan', ({ homey }: ApiContext) => (
     getSettingsUiPlanPayload({ homey })
   )),
+  ui_homes: withApiLogging('ui_homes', ({ homey }: ApiContext) => (
+    getSettingsUiHomesPayload({ homey })
+  )),
+  ui_homes_save: withApiLogging('ui_homes_save', ({ homey, body }: ApiContext & { body?: unknown }) => (
+    saveSettingsUiHomesConfig({ homey, body })
+  )),
   ui_power: withApiLogging('ui_power', ({ homey }: ApiContext) => (
     getSettingsUiPowerPayload({ homey })
   )),
@@ -158,6 +171,15 @@ export = {
             && hasPowerCapability(device.capabilities.filter((cap): cap is string => typeof cap === 'string')),
         };
       });
+  }),
+  // Backs both whole-home meter pickers: the meters the Homey Energy live report
+  // actually exposes (the same seam a selection is read against), so every pick
+  // is guaranteed readable — unlike a capability/class filter over the device list.
+  homey_energy_meters: withApiLogging('homey_energy_meters', async (
+    { homey }: ApiContext,
+  ): Promise<HomeyEnergyMeterEntry[]> => {
+    const app = getApp(homey);
+    return app ? getHomeyEnergyMetersFromApp(app) : [];
   }),
   ui_refresh_devices: withApiLogging('ui_refresh_devices', ({ homey }: ApiContext) => (
     refreshSettingsUiDevices({ homey })

@@ -13,6 +13,7 @@ import {
   CAPACITY_MARGIN_KW,
   DEVICE_DRIVER_OVERRIDES,
   DEVICE_TARGET_POWER_CONFIGS,
+  POWER_SOURCE,
   POWER_TRACKER_STATE,
 } from '../../lib/utils/settingsKeys';
 
@@ -208,6 +209,18 @@ describe('initSettingsHandlerForApp', () => {
     expect(ctx.loadPowerTracker).not.toHaveBeenCalled();
     expect(ctx.loadCapacitySettings).not.toHaveBeenCalled();
     expect(ctx.updateDailyBudgetState).not.toHaveBeenCalled();
+  });
+
+  it('routes a global source change through the home-runtime epoch hook', async () => {
+    const ctx = buildContext();
+    const onHomeRuntimePowerSourceChanged = vi.fn();
+    const { handle } = initSettingsHandlerForApp(ctx, {
+      onHomeRuntimePowerSourceChanged,
+    });
+
+    await handle(POWER_SOURCE);
+
+    expect(onHomeRuntimePowerSourceChanged).toHaveBeenCalledTimes(1);
   });
 
   it('dispatches unsuffixed keys to the main handlers without touching the hook', async () => {

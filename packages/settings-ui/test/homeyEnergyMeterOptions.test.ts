@@ -1,22 +1,23 @@
 import { buildMeterSelectEntries, toMeterDeviceOptions } from '../src/ui/homeyEnergyMeter.ts';
-import { resolveStaleDataHint } from '../src/ui/capacity.ts';
+import { resolveStaleDataBannerContent, resolveStaleDataHint } from '../src/ui/capacity.ts';
 
 describe('toMeterDeviceOptions', () => {
-  it('keeps only power-capable devices and sorts them by name', () => {
+  it('maps the resolved meters to options and sorts them by name', () => {
+    // The producer already narrowed to real meters; the UI just maps + sorts.
     const options = toMeterDeviceOptions([
-      { id: 'sensor', name: 'Outdoor sensor', hasPower: false },
-      { id: 'han', name: 'HAN meter', hasPower: true },
-      { id: 'charger', name: 'EV Charger', hasPower: true },
+      { id: 'pulse', name: 'Tibber Pulse' },
+      { id: 'han', name: 'HAN meter' },
+      { id: 'subpanel', name: 'Garage submeter' },
     ]);
     expect(options).toEqual([
-      { value: 'charger', label: 'EV Charger' },
+      { value: 'subpanel', label: 'Garage submeter' },
       { value: 'han', label: 'HAN meter' },
+      { value: 'pulse', label: 'Tibber Pulse' },
     ]);
   });
 
-  it('treats a missing hasPower flag as not power-capable', () => {
-    // Defensive: a stale API without the field must not surface every device.
-    expect(toMeterDeviceOptions([{ id: 'x', name: 'Legacy' }])).toEqual([]);
+  it('returns nothing for an empty meter list', () => {
+    expect(toMeterDeviceOptions([])).toEqual([]);
   });
 });
 
@@ -51,9 +52,9 @@ describe('buildMeterSelectEntries', () => {
     ]);
   });
 
-  it('reads as loading, not not-found, before the device list has loaded', () => {
+  it('reads as loading, not not-found, before the meter list has loaded', () => {
     // A valid saved meter must never flash as broken on panel open while the
-    // lazy device fetch is still in flight (or has failed and will retry).
+    // lazy report fetch is still in flight (or has failed and will retry).
     expect(buildMeterSelectEntries([], 'han', false)).toEqual([
       { value: '', label: 'Automatic' },
       { value: 'han', label: 'Selected meter (loading…)' },
@@ -77,5 +78,43 @@ describe('resolveStaleDataHint', () => {
   it('points at the reporting Flow for the flow source', () => {
     expect(resolveStaleDataHint('flow', false)).toBe('Check your Flow that reports power usage.');
     expect(resolveStaleDataHint(undefined, false)).toBe('Check your Flow that reports power usage.');
+  });
+});
+
+describe('resolveStaleDataBannerContent', () => {
+  const hint = 'Check your Flow that reports power usage.';
+
+  it('shows onboarding copy on a fresh install (no source persisted, no sample ever)', () => {
+    expect(resolveStaleDataBannerContent({
+      lastPowerUpdate: null, nowMs: 1000, powerSourceConfigured: false, hint,
+    })).toEqual({
+      text: 'No power data yet. PELS needs to know where to read your home’s power usage.',
+      actionLabel: 'Choose power source',
+    });
+  });
+
+  it('shows the source-specific hint when a source is persisted but no sample arrived', () => {
+    expect(resolveStaleDataBannerContent({
+      lastPowerUpdate: null, nowMs: 1000, powerSourceConfigured: true, hint,
+    })).toEqual({
+      text: `No power data received yet. ${hint}`,
+      actionLabel: 'Check power source',
+    });
+  });
+
+  it('shows the stale copy once the last sample ages past the threshold, regardless of configuration', () => {
+    const nowMs = 10 * 60 * 1000;
+    expect(resolveStaleDataBannerContent({
+      lastPowerUpdate: 1000, nowMs, powerSourceConfigured: false, hint,
+    })).toEqual({
+      text: `No power data received in the last minute. ${hint}`,
+      actionLabel: 'Check power source',
+    });
+  });
+
+  it('hides the banner while the last sample is fresh', () => {
+    expect(resolveStaleDataBannerContent({
+      lastPowerUpdate: 1000, nowMs: 2000, powerSourceConfigured: true, hint,
+    })).toBeNull();
   });
 });

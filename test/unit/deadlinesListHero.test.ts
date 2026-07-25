@@ -4,6 +4,7 @@ import {
   resolveDeadlinesListHero,
   type DeadlinesListHeroCard,
 } from '../../packages/shared-domain/src/deadlinesListHero';
+import { SMART_TASK_SUB_HOME_UNAVAILABLE } from '../../packages/shared-domain/src/objectiveWriteStrings';
 
 // Pre-resolved HH:MM formatter — shared-domain stays free of locale helpers,
 // so the test supplies a deterministic UTC stub. Mirrors what the settings UI
@@ -32,6 +33,19 @@ const buildCard = (overrides: Partial<DeadlinesListHeroCard> = {}): DeadlinesLis
 describe('resolveDeadlinesListHero', () => {
   it('returns null when no cards are present (empty-state owns its own copy)', () => {
     expect(resolveDeadlinesListHero({ cards: [], formatTime })).toBeNull();
+  });
+
+  it('surfaces a separate-meter task as unavailable instead of counting it as healthy or planning', () => {
+    const hero = resolveDeadlinesListHero({
+      cards: [buildCard({ statusId: 'unavailable' })],
+      formatTime,
+    });
+    expect(hero).toMatchObject({
+      headline: '1 smart task unavailable',
+      subline: SMART_TASK_SUB_HOME_UNAVAILABLE,
+      tone: 'warn',
+      subjectStatusId: 'unavailable',
+    });
   });
 
   it('renders "N deadlines on track." when nothing is at risk', () => {

@@ -41,6 +41,7 @@ const evDevice: TargetDeviceSnapshot = {
 
 type AppMock = {
   getCreateSmartTaskCandidateDevices: ReturnType<typeof vi.fn>;
+  resolveSmartTaskHomeScope: ReturnType<typeof vi.fn>;
   previewDeferredObjectivePlan: ReturnType<typeof vi.fn>;
   createDeferredObjective: ReturnType<typeof vi.fn>;
 };
@@ -49,7 +50,10 @@ const buildContext = (app: Partial<AppMock>) => ({
   homey: {
     // `AppMock` is a deliberate partial of the host API; cast at the seam so the
     // widget entry points receive the `CreateSmartTaskHostApi`-shaped context.
-    app: app as unknown as CreateSmartTaskHostApi,
+    app: {
+      resolveSmartTaskHomeScope: vi.fn(() => 'main'),
+      ...app,
+    } as unknown as CreateSmartTaskHostApi,
     clock: { getTimezone: () => TIME_ZONE },
   },
 });
@@ -72,16 +76,25 @@ afterEach(() => {
 
 describe('getCreateSmartTaskDevices', () => {
   it('builds the device payload from the runtime-planned candidate snapshot', async () => {
-    const getCreateSmartTaskCandidateDevices = vi.fn(() => [evDevice]);
+    const getCreateSmartTaskCandidateDevices = vi.fn(() => ({
+      state: 'ready' as const,
+      devices: [evDevice],
+    }));
     const payload = await getCreateSmartTaskDevices(buildContext({ getCreateSmartTaskCandidateDevices }));
     expect(getCreateSmartTaskCandidateDevices).toHaveBeenCalledOnce();
     if (payload.state !== 'ready') throw new Error('expected ready');
     expect(payload.devices[0]).toMatchObject({ deviceId: 'ev-1', kind: 'ev_soc', unitSymbol: '%' });
   });
 
-  it('returns empty when the app method is missing', async () => {
+  it('returns an error when the app method is missing', async () => {
     const payload = await getCreateSmartTaskDevices(buildContext({}));
-    expect(payload.state).toBe('empty');
+    expect(payload.state).toBe('error');
+  });
+
+  it('returns a retryable load error for transient Main authority, not a calm empty state', async () => {
+    const getCreateSmartTaskCandidateDevices = vi.fn(() => ({ state: 'unavailable' as const }));
+    const payload = await getCreateSmartTaskDevices(buildContext({ getCreateSmartTaskCandidateDevices }));
+    expect(payload.state).toBe('error');
   });
 });
 
@@ -123,6 +136,40 @@ describe('previewCreateSmartTask', () => {
       body: { deviceId: 'ev-1', kind: 'ev_soc', target: 80, readyByLocalTime: '07:00' },
     });
     expect(result).toEqual({ ok: false, reason: 'unavailable' });
+  });
+
+  it('rejects a sub-home device before producing an optimistic preview', async () => {
+    const resolveSmartTaskHomeScope = vi.fn(() => 'sub_home');
+    const previewDeferredObjectivePlan = vi.fn(() => buildEstimate());
+    const result = await previewCreateSmartTask({
+      ...buildContext({ resolveSmartTaskHomeScope, previewDeferredObjectivePlan }),
+      body: { deviceId: 'ev-1', kind: 'ev_soc', target: 80, readyByLocalTime: '07:00' },
+    });
+    expect(result).toEqual({ ok: false, reason: 'device_in_sub_home' });
+    expect(resolveSmartTaskHomeScope).toHaveBeenCalledWith('ev-1');
+    expect(previewDeferredObjectivePlan).not.toHaveBeenCalled();
+  });
+
+  it('reports transient ownership fences as unavailable, not relocation', async () => {
+    const resolveSmartTaskHomeScope = vi.fn(() => 'unavailable');
+    const previewDeferredObjectivePlan = vi.fn(() => buildEstimate());
+    const result = await previewCreateSmartTask({
+      ...buildContext({ resolveSmartTaskHomeScope, previewDeferredObjectivePlan }),
+      body: { deviceId: 'ev-1', kind: 'ev_soc', target: 80, readyByLocalTime: '07:00' },
+    });
+    expect(result).toEqual({ ok: false, reason: 'unavailable' });
+    expect(previewDeferredObjectivePlan).not.toHaveBeenCalled();
+  });
+
+  it('rejects an active meter source as not planned before previewing', async () => {
+    const resolveSmartTaskHomeScope = vi.fn(() => 'source_device');
+    const previewDeferredObjectivePlan = vi.fn(() => buildEstimate());
+    const result = await previewCreateSmartTask({
+      ...buildContext({ resolveSmartTaskHomeScope, previewDeferredObjectivePlan }),
+      body: { deviceId: 'meter-1', kind: 'temperature', target: 65, readyByLocalTime: '07:00' },
+    });
+    expect(result).toEqual({ ok: false, reason: 'device_not_planned' });
+    expect(previewDeferredObjectivePlan).not.toHaveBeenCalled();
   });
 
   it('resolves the ready-by to a deadline and forwards the candidate', async () => {
@@ -230,6 +277,40 @@ describe('createCreateSmartTask', () => {
       body: { deviceId: 'heater-1', kind: 'temperature', target: 5000, readyByLocalTime: '07:00' },
     });
     expect(result).toEqual({ ok: false, reason: 'invalid_candidate' });
+    expect(createDeferredObjective).not.toHaveBeenCalled();
+  });
+
+  it('re-checks a stale create request and refuses when ownership became provisional', async () => {
+    const resolveSmartTaskHomeScope = vi.fn(() => 'unavailable');
+    const createDeferredObjective = vi.fn(() => ({ ok: true as const }));
+    const result = await createCreateSmartTask({
+      ...buildContext({ resolveSmartTaskHomeScope, createDeferredObjective }),
+      body: { deviceId: 'heater-1', kind: 'temperature', target: 65, readyByLocalTime: '07:00' },
+    });
+    expect(result).toEqual({ ok: false, reason: 'unavailable' });
+    expect(resolveSmartTaskHomeScope).toHaveBeenCalledWith('heater-1');
+    expect(createDeferredObjective).not.toHaveBeenCalled();
+  });
+
+  it('re-checks a stale create request and preserves the hard sub-home reason', async () => {
+    const resolveSmartTaskHomeScope = vi.fn(() => 'sub_home');
+    const createDeferredObjective = vi.fn(() => ({ ok: true as const }));
+    const result = await createCreateSmartTask({
+      ...buildContext({ resolveSmartTaskHomeScope, createDeferredObjective }),
+      body: { deviceId: 'heater-1', kind: 'temperature', target: 65, readyByLocalTime: '07:00' },
+    });
+    expect(result).toEqual({ ok: false, reason: 'device_in_sub_home' });
+    expect(createDeferredObjective).not.toHaveBeenCalled();
+  });
+
+  it('re-checks a stale create request and rejects an active meter source as not planned', async () => {
+    const resolveSmartTaskHomeScope = vi.fn(() => 'source_device');
+    const createDeferredObjective = vi.fn(() => ({ ok: true as const }));
+    const result = await createCreateSmartTask({
+      ...buildContext({ resolveSmartTaskHomeScope, createDeferredObjective }),
+      body: { deviceId: 'meter-1', kind: 'temperature', target: 65, readyByLocalTime: '07:00' },
+    });
+    expect(result).toEqual({ ok: false, reason: 'device_not_planned' });
     expect(createDeferredObjective).not.toHaveBeenCalled();
   });
 

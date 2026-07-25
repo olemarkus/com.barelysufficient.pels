@@ -16,9 +16,10 @@
 import type {
   TargetDeviceSnapshot,
 } from '../../../packages/contracts/src/types';
+import type { MainMeterSelection } from '../../../packages/contracts/src/mainMeterSelection';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../../utils/types';
-import type { TransportContext } from './transportContext';
+import type { SnapshotRefreshOptions, TransportContext } from './transportContext';
 import { getDeviceId } from './managerHelpers';
 import {
   SNAPSHOT_ABANDON_GRACE_MS,
@@ -39,6 +40,7 @@ import {
   type DeviceFetchSource,
   type LivePowerReport,
 } from './managerFetch';
+import { fetchZoneTree } from './managerZones';
 import { getLogger } from '../../logging/logger';
 import { normalizeError } from '../../utils/errorUtils';
 import {
@@ -335,14 +337,72 @@ export async function fetchDevicesForDebug(ctx: TransportContext): Promise<Homey
     return (await ctx.fetchDevicesForSnapshot()).devices;
 }
 
-export async function fetchLivePowerReport(ctx: TransportContext): Promise<LivePowerReport> {
+export async function fetchLivePowerReport(
+    ctx: TransportContext,
+    mainMeterSelection?: MainMeterSelection,
+): Promise<LivePowerReport> {
     // Resolved here (the producer seam) so both callers — the 10s homey_energy
     // poll and the snapshot-refresh implicit sample — honour the selection.
-    return fetchLivePowerReportFromSdk({
+    // The additional (sub-home) meter ids are read fresh per call for the same
+    // reason; only the POLL caller dispatches the per-meter readings onward
+    // (`DeviceTransport.pollHomePowerW`), so sub-home sampling stays on the
+    // predictable 10s poll cadence.
+    const selection: MainMeterSelection = mainMeterSelection
+        ?? ctx.providers.getHomeyEnergyMeterSelection?.()
+        ?? { state: 'resolved', meterDeviceId: null };
+    const report = await fetchLivePowerReportFromSdk({
         logger: ctx.logger,
         debugStructured: ctx.debugStructured,
-        meterDeviceId: ctx.providers.getHomeyEnergyMeterDeviceId?.() ?? null,
+        // The SDK adapter still needs a concrete extraction choice. On
+        // unavailable authority we may fetch Automatic for the per-device and
+        // additional-meter lanes, but discard its Main value below.
+        meterDeviceId: selection.state === 'resolved' ? selection.meterDeviceId : null,
+        additionalMeterDeviceIds: ctx.providers.getAdditionalMeterDeviceIds?.() ?? [],
     });
+    return selection.state === 'resolved' ? report : { ...report, homePowerW: null };
+}
+
+/**
+ * Poll-path home power read (`DeviceTransport.pollHomePowerW` body): one live
+ * report serves every home. The additional (sub-home) meter readings resolved
+ * from the SAME payload are fanned out to the `onAdditionalMeterReadings`
+ * provider BEFORE the main-home null handling — a poll where main's reading is
+ * missing must still deliver the sub-home readings that DID resolve. Poll path
+ * only: the snapshot-refresh implicit sample does not dispatch, and in flow
+ * mode (`power_source=flow`) the poll never runs, so sub-home pipelines simply
+ * receive no samples there (freshness machinery reports the gap). The dispatch
+ * is contained — a consumer throw can never break the main sample path.
+ *
+ * `authorizeFanOut` gates that dispatch on the poll source's own liveness (its
+ * generation + power-source checks — `HomeyEnergyPollSource.pollNow`). The fan-out
+ * fires from INSIDE this `await`, BEFORE the poll source applies its discard, so
+ * without the gate a stale-generation poll (a whole-home-meter / power-source
+ * restart superseded it) could deliver an out-of-order sub-meter sample that
+ * resolves AFTER its replacement. Sub-meter delivery stays decoupled from a
+ * non-null main reading (dispatched before the null return). Omitted = authorized
+ * (no other caller drives this path; the snapshot-refresh sample bypasses it).
+ */
+export async function pollHomePowerWithMeterFanOut(
+    ctx: TransportContext,
+    authorizeFanOut?: () => boolean,
+): Promise<{ powerW: number; generationW?: number } | null> {
+    const report = await fetchLivePowerReport(ctx);
+    const onAdditionalMeterReadings = ctx.providers.onAdditionalMeterReadings;
+    if (
+        onAdditionalMeterReadings
+        && (authorizeFanOut === undefined || authorizeFanOut())
+        && Object.keys(report.additionalMeterPowerW).length > 0
+    ) {
+        try {
+            onAdditionalMeterReadings(report.additionalMeterPowerW, Date.now());
+        } catch (error) {
+            ctx.logger.debug({
+                event: 'additional_meter_readings_dispatch_failed',
+                error: normalizeError(error).message,
+            });
+        }
+    }
+    return updateHomePowerFromReport(ctx, report);
 }
 
 export function updateHomePowerFromReport(
@@ -447,9 +507,79 @@ export function computePeriodicStatusMetrics(
     };
 }
 
+// Zone tree rides the same refresh cycle (no timer of its own), fired
+// DETACHED after the snapshot commit so it can never stall the device
+// pipeline or its callers. The WHOLE body is contained: this function runs
+// fire-and-forget (`void refreshZoneTreeCache(ctx)`), so nothing here may
+// reject — `fetchZoneTree` resolves `null` on its own failure paths, but a
+// throwing logger call on one of those paths (or any future edit before the
+// commit) would otherwise become an unhandled rejection. A failed/junk/empty
+// read commits nothing and the cached tree — like the snapshot on that path —
+// stays untouched (abandon-grace).
+async function refreshZoneTreeCache(ctx: TransportContext): Promise<void> {
+    try {
+        const generation = ctx.zoneTreeCache.bumpGeneration();
+        const zoneTree = await fetchZoneTree({ logger: ctx.logger });
+        if (zoneTree === null) return;
+        // Generation guard: detached fetches can resolve out of order — commit
+        // only if newer than the last COMMITTED generation. A stale fetch
+        // resolving after a newer commit drops, but a superseded-yet-fresher
+        // result still lands when the newer fetch failed and committed nothing.
+        if (generation <= ctx.zoneTreeCache.getLastCommittedGeneration()) {
+            ctx.logger.debug({
+                event: 'zone_tree_fetch_superseded',
+                generation,
+                lastCommittedGeneration: ctx.zoneTreeCache.getLastCommittedGeneration(),
+            });
+            return;
+        }
+        ctx.zoneTreeCache.set(zoneTree, generation);
+        // Commit notification (multi-home membership recompute). Guarded
+        // separately from the outer catch so a subscriber throw is attributed
+        // to the subscriber, not misread as a zone refresh failure.
+        try {
+            ctx.notifyZoneTreeCommitted();
+        } catch (error) {
+            ctx.logger.debug({
+                event: 'zone_tree_commit_notify_failed',
+                error: normalizeError(error).message,
+            });
+        }
+    } catch (error) {
+        // Last-resort containment; the guard itself must never throw, so the
+        // logging attempt is swallowed on failure.
+        try {
+            ctx.logger.debug({
+                event: 'zone_tree_refresh_failed',
+                error: normalizeError(error).message,
+            });
+        } catch {
+            // Swallowed — see above.
+        }
+    }
+}
+
+// Live-power half of the refresh inputs: the report feeds per-device parse
+// attribution; the sample (null when live power is skipped) is the caller's
+// home-power return value.
+async function resolveLivePowerForRefresh(
+    ctx: TransportContext,
+    includeLivePower: boolean,
+    mainMeterSelection?: MainMeterSelection,
+): Promise<{
+    livePowerReport: LivePowerReport;
+    homePowerSample: { powerW: number; generationW?: number } | null;
+}> {
+    const livePowerReport = includeLivePower
+        ? await fetchLivePowerReport(ctx, mainMeterSelection)
+        : buildEmptyLivePowerReport();
+    const homePowerSample = includeLivePower ? updateHomePowerFromReport(ctx, livePowerReport) : null;
+    return { livePowerReport, homePowerSample };
+}
+
 export async function refreshSnapshot(
     ctx: TransportContext,
-    options: { includeLivePower?: boolean; targetedRefresh?: boolean } = {},
+    options: SnapshotRefreshOptions = {},
 ): Promise<{ powerW: number; generationW?: number } | null> {
     const stopSpan = startRuntimeSpan('device_snapshot_refresh');
     const start = Date.now();
@@ -459,11 +589,11 @@ export async function refreshSnapshot(
         const fetchResult = await fetchDevicesForSnapshotRefresh(ctx, isTargetedRefresh);
         if (!fetchResult) return null;
         const { devices: list, fetchSource, failedIds } = fetchResult;
-        const shouldReadLivePower = options.includeLivePower !== false;
-        const livePowerReport = shouldReadLivePower
-            ? await fetchLivePowerReport(ctx)
-            : buildEmptyLivePowerReport();
-        const homePowerSample = shouldReadLivePower ? updateHomePowerFromReport(ctx, livePowerReport) : null;
+        const { livePowerReport, homePowerSample } = await resolveLivePowerForRefresh(
+            ctx,
+            options.includeLivePower !== false,
+            options.mainMeterSelection,
+        );
         const effectiveList = observeBatteryStateFromList(
             ctx,
             list.map((device) => ctx.applyDeviceDriverOverride(device)),
@@ -532,6 +662,20 @@ export async function refreshSnapshot(
             previousSnapshot,
             nextSnapshot: snapshot,
         });
+        // DETACHED on purpose (fire-and-forget): the zone tree rides the
+        // refresh cycle but must never gate it — even a tail-position await
+        // would hold the refreshSnapshot PROMISE (post-write/post-actuation
+        // callers, the coalesced refresh queue) for up to the REST timeout
+        // when a degraded zones read hangs after a healthy device fetch.
+        // The detach is safe: `fetchZoneTree` never throws or rejects, the
+        // post-commit notification is contained in `refreshZoneTreeCache`,
+        // `setZoneTree` is a whole-tree last-writer-wins replacement, and
+        // refresh cycles are serialized by the coalescing guard, so a dangling
+        // fetch racing the next cycle's commit is benign for this dormant,
+        // eventually-consistent cache. Still fired only after a successful
+        // device fetch + committed snapshot; the grace-deferred empty-read
+        // path above skips it for the cycle (a degraded blip already).
+        void refreshZoneTreeCache(ctx);
         return homePowerSample;
     } finally {
         stopSpan();

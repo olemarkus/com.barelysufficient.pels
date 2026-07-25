@@ -100,6 +100,13 @@ export const buildDeferredObjectiveDiagnostics = (params: {
   // actuation path deliberately OMITS this so admission keeps reading the raw
   // trajectory status — only `horizonPlan.status` (untouched) drives commitment.
   getStallClassification?: (deviceId: string) => IdleClassification | undefined;
+  // Multi-home v1 scope predicate, injected by the wiring layer (this leafward
+  // subsystem never reads membership itself). `true` marks the task's device as
+  // belonging to a separate-meter sub-home → the diagnostic short-circuits to
+  // `unknown` with the dedicated `objective_device_in_sub_home` code (see
+  // `diagnosticTypes.ts`). Optional: absent (tests, preview callers) or with no
+  // sub-homes configured, nothing changes.
+  isDeviceInSubHome?: (deviceId: string) => boolean;
 }): DeferredObjectiveDiagnostic[] => {
   const deviceById = new Map(params.devices.map((device) => [device.id, device]));
   // Resolve the priority-1 fully-reserved smart-task count once per cycle so
@@ -114,6 +121,9 @@ export const buildDeferredObjectiveDiagnostics = (params: {
     deviceById,
     nowMs: params.nowMs,
     tracker: params.concurrentEligibleTracker,
+    // Multi-home v1: a relocated (sub-home) task never plans, so it must not
+    // stay in the denominator shrinking main tasks' reserved shares.
+    isDeviceInSubHome: params.isDeviceInSubHome,
   });
   return Object.entries(params.settings.objectivesByDeviceId)
     .flatMap(([deviceId, objective]) => {
@@ -124,6 +134,7 @@ export const buildDeferredObjectiveDiagnostics = (params: {
         objective,
         device: deviceById.get(deviceId),
         concurrentEligibleCount,
+        deviceInSubHome: params.isDeviceInSubHome?.(deviceId) === true,
       });
       return [resolveStallReportedStatus(
         diagnostic,
@@ -222,6 +233,13 @@ export const buildDeferredObjectiveDiagnostic = (params: {
   activePlans?: DeferredObjectiveActivePlansV1 | null;
   hardCapKw?: number | null;
   concurrentEligibleCount?: number | ((bucketStartMs: number) => number);
+  // Producer-resolved multi-home flag (see `buildDeferredObjectiveDiagnostics`):
+  // `true` short-circuits to the dedicated `objective_device_in_sub_home`
+  // unknown diagnostic BEFORE the missing-device check — with the planner
+  // scoped main-only a sub-home device may be absent from `devices`, and
+  // falling through would mislabel the relocation as a missing device. Preview
+  // callers omit it (candidates are main-home-gated at the write lanes).
+  deviceInSubHome?: boolean;
 }): DeferredObjectiveDiagnostic => {
   const {
     nowMs,
@@ -249,6 +267,10 @@ export const buildDeferredObjectiveDiagnostic = (params: {
     displayConfidence: null,
     kwhPerUnitSource: null,
   });
+  // Sub-home scope check FIRST: the device may well be present (or main-only
+  // planner scoping may have dropped it) — either way the honest story is "out
+  // of the main home's meter scope", never "missing device".
+  if (params.deviceInSubHome) return withUnknown(base, 'objective_device_in_sub_home');
   if (!device) return withUnknown(base, 'objective_missing_device');
 
   if (!Number.isFinite(objective.deadlineAtMs) || objective.deadlineAtMs <= 0) {

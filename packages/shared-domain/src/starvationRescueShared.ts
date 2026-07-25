@@ -70,10 +70,18 @@ export const resolveRescuableDeviceFromList = (
 ): ResolvedRescuableDevice => {
   if (devices === null) return { ok: false, reason: 'unavailable' };
   const device = devices.find((entry) => entry.deviceId === deviceId);
+  if (device?.smartTaskHomeScope === 'unavailable') {
+    return { ok: false, reason: 'unavailable' };
+  }
   // `starvationRowIsRescuable` is the full actionable predicate the surfaces' UI
   // gates also use (budget cause AND task-free AND a known finite target), so a
   // shown affordance and this enforcement agree by construction.
-  if (!device || !starvationRowIsRescuable(device.cause, device.intendedNormalTargetC, device.hasSmartTask)) {
+  if (!device || !starvationRowIsRescuable(
+    device.cause,
+    device.intendedNormalTargetC,
+    device.hasSmartTask,
+    device.smartTaskHomeScope,
+  )) {
     if (device && device.cause === 'budget' && !device.hasSmartTask
       && (device.intendedNormalTargetC === null || !Number.isFinite(device.intendedNormalTargetC))) {
       return { ok: false, reason: 'no_target' };
@@ -115,6 +123,9 @@ export const mapAppRescueReason = (reason: string): StarvationRescueRejectReason
   if (reason === 'device_not_found') return 'device_not_found';
   if (reason === 'device_not_planned') return 'device_not_planned';
   if (reason === 'device_not_eligible') return 'device_not_eligible';
+  // Multi-home v1 scope rejection (main-home-only smart tasks) — passed through
+  // typed rather than collapsed to `invalid_candidate`.
+  if (reason === 'device_in_sub_home') return 'device_in_sub_home';
   if (reason === 'write_conflict' || reason === 'write_refused') return 'write_conflict';
   return 'invalid_candidate';
 };

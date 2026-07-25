@@ -98,6 +98,7 @@ const buildPendingPayload = (
   priceContext: Pick<DeadlinePendingContext, 'priceSource' | 'lastFetchedShort'>,
 ): DeadlinePlanPendingPayload => {
   const labels = deadlineLabels(ctx.objective.kind);
+  const reason = resolvePendingReason(ctx.activePlan);
   // Resolve device + deadline strings on this side of the layer so shared-
   // domain copy helpers stay free of locale and Date helpers (same rule as
   // the queued-hero headlineReason resolver).
@@ -109,13 +110,14 @@ const buildPendingPayload = (
   };
   return {
     kind: ctx.objective.kind,
+    actionMode: reason === 'device_in_sub_home' ? 'clear_only' : 'edit_and_clear',
     labels,
     hero: buildPendingHero({
       device: ctx.device,
       objective: ctx.objective,
       labels,
       deadlineAtMs: ctx.deadlineAtMs,
-      pendingReason: resolvePendingReason(ctx.activePlan),
+      pendingReason: reason,
       pendingContext,
     }),
   };
@@ -527,8 +529,16 @@ export const resolveRenderInput = (params: ObjectivePlanInput): DeadlineRenderIn
   if (ctxResult.kind === 'completed') return { status: 'completed', kind: ctxResult.objectiveKind };
   const ctx = ctxResult.context;
   const priceContext = resolvePendingPriceContext(params.prices);
-  // No persisted record yet OR record is explicitly pending → pending hero.
-  if (!ctx.activePlan || ctx.activePlan.pending || !ctx.activePlan.latest) {
+  // No persisted record yet, an explicitly pending record, OR a live
+  // separate-meter blocker → pending/unavailable hero. The diagnostic branch
+  // deliberately outranks a committed cached `latest` revision because that
+  // schedule stopped governing when the device left the main home.
+  if (
+    !ctx.activePlan
+      || ctx.activePlan.pending
+      || !ctx.activePlan.latest
+      || ctx.activePlan.diagnosticReasonCode === 'objective_device_in_sub_home'
+  ) {
     return { status: 'pending', pending: buildPendingPayload(ctx, priceContext) };
   }
   const result = buildObjectivePayload(params);

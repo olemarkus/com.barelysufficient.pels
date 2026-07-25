@@ -1,5 +1,5 @@
 /**
- * Pure device→home membership resolver. DORMANT until the R4 wiring PR.
+ * Pure device→home membership resolver used for runtime ownership and diagnostics.
  *
  * Rule of record (settled):
  * - A device follows its Homey zone: it belongs to the DEEPEST sub-home whose
@@ -11,8 +11,8 @@
  *   an unknown/missing zone, broken parent chain, or parent cycle resolves to
  *   main — both visibly, as `source: 'fallback'`.
  *
- * Pure over typed inputs: the caller's boundary (R4 wiring) validates the zone
- * tree and config before handing them here — this module never re-validates.
+ * Pure over typed inputs: the setup-layer caller validates the zone tree and
+ * persisted config before handing them here — this module never re-validates.
  */
 
 import {
@@ -42,6 +42,64 @@ export type HomeMembershipSource = 'zone' | 'pin' | 'fallback';
 export type HomeMembership = {
   homeId: HomeId;
   source: HomeMembershipSource;
+};
+
+/**
+ * Home-membership producer contract for meter-source fencing.
+ *
+ * Owned by `HomeMembershipService`; consumers must fail closed when authority
+ * is unavailable. Governing invariant: `notes/multi-home-model.md`.
+ */
+export type ConfiguredMeterSources = Readonly<{
+  /**
+   * `unavailable` means Main's persisted meter selection could not be read
+   * authoritatively. Consumers must fail closed even though `deviceIds`
+   * retains every last-good source identity the producer still knows.
+   */
+  state: 'resolved' | 'unavailable';
+  deviceIds: ReadonlySet<string>;
+}>;
+
+/**
+ * Control surface of the cached membership service (implemented by
+ * `setup/homeMembership.ts`, published on `AppContext.homeMembership`).
+ * Deliberately EXCLUDES the diagnostics view: `source` is diagnostics/display
+ * only, so every ctx consumer sees exactly the provenance-free surface a
+ * control path may use. The settings-UI `ui_homes` endpoint reaches the
+ * concrete service (with diagnostics) through its own setup-internal seam,
+ * never through this port.
+ */
+export type HomeMembershipPort = {
+  /** Resolved home for a device; an unknown device belongs to the main home. */
+  getHomeIdForDevice(deviceId: string): HomeId;
+  /** `homeId` per snapshot device — no `source`, by design. */
+  getMembershipMap(): Readonly<Record<string, HomeId>>;
+  /**
+   * Producer-resolved source devices that no home may plan or actuate, plus
+   * the authority state of Main's persisted selection. Includes the last-good
+   * explicit Main meter plus every active sub-home meter.
+   */
+  getConfiguredMeterSources(): ConfiguredMeterSources;
+  hasSubHomes(): boolean;
+  /**
+   * Positive producer-owned proof that persisted ownership has a trustworthy
+   * baseline and, when active sub-homes exist, a committed zone tree.
+   */
+  isOwnershipReady(): boolean;
+  /**
+   * True after an ownership settings event has been observed but before its
+   * freshly planned generation commits. Consumers must treat cached membership
+   * as provisional while this is true.
+   */
+  hasPendingOwnershipGeneration(): boolean;
+  /**
+   * True while Main-home ownership is provisional and must not authorize a
+   * device write. Producer-resolved so actuator consumers never branch on
+   * membership provenance or reconstruct zone-tree readiness themselves.
+   */
+  isMainHomeActuationFenced(): boolean;
+  /** Re-resolve from the cached inputs; cheap, never throws destructively. */
+  recompute(): void;
 };
 
 type ResolveDeviceHomeInput = {

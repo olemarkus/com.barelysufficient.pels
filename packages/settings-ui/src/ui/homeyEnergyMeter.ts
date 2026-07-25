@@ -3,36 +3,47 @@ import {
   settingsHomeyEnergyMeterField,
   settingsHomeyEnergyMeterSelect,
 } from './dom.ts';
-import { callApi, setSetting } from './homey.ts';
+import { applySettingsPatch, callApi } from './homey.ts';
 import { logSettingsError } from './logging.ts';
 import { showToast, showToastError } from './toast.ts';
 import { HOMEY_ENERGY_METER_DEVICE_ID } from '../../../contracts/src/settingsKeys.ts';
+import { HOMEY_ENERGY_METERS_PATH, type HomeyEnergyMeterEntry } from '../../../contracts/src/settingsUiApi.ts';
+import {
+  SETTINGS_UI_HOMES_SAVE_PATH,
+  type SettingsUiHomesSaveResponse,
+} from '../../../contracts/src/settingsUiHomes.ts';
+import {
+  composeDraftErrorLine,
+  HOMES_MAIN_METER_SAVE_DEGRADED,
+} from '../../../shared-domain/src/homesManagementCopy.ts';
 
-export type MeterDeviceEntry = { id: string; name: string; hasPower?: boolean };
 export type MeterSelectEntry = { value: string; label: string };
 
 /**
- * Hard-filter the device list to power-reporting devices: only a device
- * exposing a bare measure_power can serve as the whole-home meter, so listing
- * the rest just invites guaranteed-broken picks. Sorted by name. (Mirrors
- * toTemperatureDeviceOptions in weatherInsight.ts.)
+ * The meters come straight from the Homey Energy live report (via
+ * `/homey_energy_meters`) — the same seam a selection is read against — so
+ * every option is a meter PELS can actually read. No capability/class filter:
+ * that was a proxy over the full device list that could drop a readable meter
+ * (the "only Automatic" bug) or offer an unreadable one. Sorted by name. A
+ * previously saved selection absent from the current report is preserved via
+ * the buildMeterSelectEntries passthrough, not this list.
  */
-export const toMeterDeviceOptions = (devices: MeterDeviceEntry[]): MeterSelectEntry[] => (
-  devices
-    .filter((device) => device.hasPower === true)
-    .map((device) => ({ value: device.id, label: device.name }))
+export const toMeterDeviceOptions = (meters: HomeyEnergyMeterEntry[]): MeterSelectEntry[] => (
+  meters
+    .map((meter) => ({ value: meter.id, label: meter.name }))
     .sort((a, b) => a.label.localeCompare(b.label))
 );
 
 /**
- * "Automatic" (Homey's marked whole-home meter) first, then the device
- * options. A saved id that is not in the device list gets an explicit entry so
- * the selection stays visibly configured instead of silently snapping back to
+ * "Automatic" (Homey's marked whole-home meter) first, then the report meters.
+ * A saved id absent from the current report gets an explicit entry so the
+ * selection stays visibly configured instead of silently snapping back to
  * Automatic. "Not found" is only claimed once the list has actually loaded —
  * before that the entry reads as loading, so a saved meter never flashes as
  * broken on panel open. The label carries the consequence, not the raw device
- * id — only one such entry can exist, so the id disambiguates nothing (it
- * stays available on the option value and in the persisted setting).
+ * id — only one such entry can exist, so the id disambiguates nothing (it stays
+ * available on the option value and in the persisted setting). A meter merely
+ * silent this poll re-appears by name on a later fetch once the report lists it.
  */
 export const buildMeterSelectEntries = (
   options: MeterSelectEntry[],
@@ -54,6 +65,16 @@ let pickerDevicesLoading = false;
 let selectedMeterId: string | null = null;
 let lastRenderSignature: string | null = null;
 let deferredRenderPending = false;
+// One selection write at a time. The Material picker is disabled while the
+// request owns the persisted selection, and the handler also rejects a
+// programmatic overlapping change. That keeps rollback anchored to the last
+// confirmed selection instead of a stale pre-request snapshot.
+let meterSelectionWriteInFlight = false;
+
+const setMeterSelectionWriteBusy = (busy: boolean): void => {
+  meterSelectionWriteInFlight = busy;
+  if (settingsHomeyEnergyMeterSelect) settingsHomeyEnergyMeterSelect.disabled = busy;
+};
 
 /** Whether an explicit meter is configured (vs Automatic) — feeds the stale-data hint. */
 export const isHomeyEnergyMeterExplicit = (): boolean => selectedMeterId !== null;
@@ -91,16 +112,16 @@ const ensureMeterDevicesLoaded = async (): Promise<void> => {
   if (pickerDevices !== null || pickerDevicesLoading) return;
   pickerDevicesLoading = true;
   try {
-    const devices = await callApi<MeterDeviceEntry[] | null>('GET', '/homey_devices');
-    const options = toMeterDeviceOptions(devices ?? []);
-    // An empty result is not cached: it can be transient (backend still
-    // wiring, meter just paired), and caching it would leave the picker empty
-    // for the whole WebView session. A truly meter-less home simply re-fetches
-    // on the next panel open.
-    pickerDevices = options.length > 0 ? options : null;
+    const meters = await callApi<HomeyEnergyMeterEntry[] | null>('GET', HOMEY_ENERGY_METERS_PATH);
+    const payload = meters ?? [];
+    // An empty PAYLOAD is not cached: it can be transient (backend still
+    // wiring, meter just paired, one poll where the report was empty), and
+    // caching it would leave the picker empty for the whole WebView session —
+    // it simply re-fetches on the next panel open.
+    if (payload.length > 0) pickerDevices = toMeterDeviceOptions(payload);
     renderMeterOptions();
   } catch (error) {
-    await logSettingsError('Failed to load devices for the whole-home meter picker', error, 'homeyEnergyMeter');
+    await logSettingsError('Failed to load meters for the whole-home meter picker', error, 'homeyEnergyMeter');
   } finally {
     pickerDevicesLoading = false;
   }
@@ -125,15 +146,45 @@ export const syncHomeyEnergyMeterVisibility = (powerSource: string): void => {
   void ensureMeterDevicesLoaded();
 };
 
+const composeMainMeterSaveRefusal = (
+  refusal: Extract<SettingsUiHomesSaveResponse, { ok: false }>,
+): string => {
+  if (refusal.reason === 'meter_in_use') {
+    return composeDraftErrorLine({ kind: 'meter_in_use', otherName: refusal.otherName });
+  }
+  if (refusal.reason === 'degraded') return HOMES_MAIN_METER_SAVE_DEGRADED;
+  return 'Failed to save whole-home meter.';
+};
+
 const handleMeterSelectionChange = async (): Promise<void> => {
   const select = settingsHomeyEnergyMeterSelect;
   if (!select) return;
+  if (meterSelectionWriteInFlight) {
+    lastRenderSignature = null;
+    renderMeterOptions();
+    return;
+  }
   const next = select.value === '' ? null : select.value;
   if (next === selectedMeterId) return;
   const previous = selectedMeterId;
-  selectedMeterId = next;
+  setMeterSelectionWriteBusy(true);
   try {
-    await setSetting(HOMEY_ENERGY_METER_DEVICE_ID, next);
+    const response = await callApi<SettingsUiHomesSaveResponse>(
+      'POST',
+      SETTINGS_UI_HOMES_SAVE_PATH,
+      { op: 'set_main_meter', meterDeviceId: next },
+    );
+    if (!response.ok) {
+      const refusal = response as Extract<SettingsUiHomesSaveResponse, { ok: false }>;
+      lastRenderSignature = null;
+      renderMeterOptions();
+      await showToast(composeMainMeterSaveRefusal(refusal), 'warn');
+      return;
+    }
+    selectedMeterId = next;
+    applySettingsPatch({ [HOMEY_ENERGY_METER_DEVICE_ID]: next });
+    lastRenderSignature = null;
+    renderMeterOptions();
     await showToast('Whole-home meter saved.', 'ok');
   } catch (error) {
     // Roll the select back so the screen never shows an unsaved choice as
@@ -143,6 +194,8 @@ const handleMeterSelectionChange = async (): Promise<void> => {
     renderMeterOptions();
     await logSettingsError('Failed to save whole-home meter', error, 'homeyEnergyMeter');
     await showToastError(error, 'Failed to save whole-home meter.');
+  } finally {
+    setMeterSelectionWriteBusy(false);
   }
 };
 

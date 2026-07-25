@@ -173,6 +173,19 @@ const initTabHandlers = () => {
       return;
     }
     showTab(target);
+    // Optional deep-link anchor: land on the field the trigger promised, not
+    // the top of the target panel (e.g. the no-data banner's "Choose power
+    // source" scrolls the Power source select into view on Limits & safety).
+    // The selector is repo-authored markup; guard anyway so a typo degrades to
+    // landing at the panel top instead of an uncaught DOMException.
+    const anchor = trigger.dataset.settingsAnchor;
+    if (anchor) {
+      try {
+        document.querySelector(anchor)?.scrollIntoView({ block: 'center' });
+      } catch (error) {
+        void logSettingsError('Invalid settings anchor selector', error, 'settingsAnchor');
+      }
+    }
   });
   // Track the shown panel so the global simulation banner can suppress itself on
   // the Simulation-mode settings page (its own toggle is the single control
@@ -189,9 +202,9 @@ const initTabHandlers = () => {
 };
 
 const initLimitsAndSimulationHandlers = () => {
-  const autoSaveSettingsLimits = async () => {
+  const autoSaveSettingsLimits = async (options?: { includePowerSource?: boolean }) => {
     try {
-      await saveSettingsLimitsSettings();
+      await saveSettingsLimitsSettings(options);
     } catch (error) {
       await logSettingsError('Failed to save limits and safety settings', error, 'autoSaveSettingsLimits');
       await showToastError(error, 'Failed to save limits and safety settings.');
@@ -199,9 +212,11 @@ const initLimitsAndSimulationHandlers = () => {
   };
   settingsCapacityLimitInput?.addEventListener('input', refreshLimitsValidationHints);
   settingsCapacityMarginInput?.addEventListener('input', refreshLimitsValidationHints);
-  settingsCapacityLimitInput?.addEventListener('change', autoSaveSettingsLimits);
-  settingsCapacityMarginInput?.addEventListener('change', autoSaveSettingsLimits);
-  settingsPowerSourceSelect?.addEventListener('change', autoSaveSettingsLimits);
+  settingsCapacityLimitInput?.addEventListener('change', () => autoSaveSettingsLimits());
+  settingsCapacityMarginInput?.addEventListener('change', () => autoSaveSettingsLimits());
+  // Only the select's own change may carry power_source into the save — see
+  // the persist guard in saveCapacitySettingsPatch.
+  settingsPowerSourceSelect?.addEventListener('change', () => autoSaveSettingsLimits({ includePowerSource: true }));
   // The meter select persists itself (its options load lazily, so routing it
   // through the bulk limits save could write an empty value before they load).
   initHomeyEnergyMeterHandlers();
@@ -388,7 +403,7 @@ const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
   }
 };
 
-const initializeBootHandlers = (_bootstrap: SettingsUiBootstrap | null) => {
+const initializeBootHandlers = () => {
   initTooltips();
   initDebouncedSaveFlush();
   initRealtimeListeners();
@@ -453,7 +468,7 @@ export const boot = async () => {
     }
     const bootstrap = await loadBootstrapData();
     markSettingsUi('boot:bootstrap-loaded');
-    initializeBootHandlers(bootstrap);
+    initializeBootHandlers();
     await loadInitialData(bootstrap);
     initDeadlinePlanRouter({
       mount: mountDeadlinePlan,

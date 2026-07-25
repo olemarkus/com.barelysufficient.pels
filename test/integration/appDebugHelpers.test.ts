@@ -2,6 +2,7 @@ import type { DeviceTransport } from '../../lib/device/deviceTransport';
 import type { HomeyDeviceLike } from '../../lib/utils/types';
 import {
   getHomeyDevicesForDebugFromApp,
+  getHomeyEnergyMetersFromApp,
   logHomeyDeviceComparisonForDebugFromApp,
   logHomeyDeviceForDebug,
   logHomeyDeviceForDebugFromApp,
@@ -59,6 +60,66 @@ describe('appDebugHelpers', () => {
     expect(app.error).toHaveBeenCalledWith('Failed to get Homey devices for debug', expect.any(Error));
     expect((app.error.mock.calls[0]?.[1] as Error).message).toBe('{"reason":"boom"}');
     expect(app.log).not.toHaveBeenCalled();
+  });
+
+  it('keeps the cumulative meter and sensor-class device meters, dropping appliances', async () => {
+    setRestClient({
+      get: vi.fn().mockResolvedValue({
+        items: [
+          { type: 'cumulative', id: 'han', values: { W: 400 } },
+          { type: 'device', id: 'sub', values: { W: 100 } },
+          { type: 'device', id: 'charger', values: { W: 3000 } },
+        ],
+      }),
+      put: vi.fn(),
+    });
+    const app = {
+      deviceManager: buildDeviceManager({
+        devices: [
+          { id: 'han', name: 'HAN meter', class: 'sensor' } as HomeyDeviceLike,
+          { id: 'sub', name: 'Garage submeter', class: 'sensor' } as HomeyDeviceLike,
+          { id: 'charger', name: 'EV Charger', class: 'evcharger' } as HomeyDeviceLike,
+        ],
+      }),
+      error: vi.fn(),
+    };
+    await expect(getHomeyEnergyMetersFromApp(app as never)).resolves.toEqual([
+      { id: 'han', name: 'HAN meter' },
+      { id: 'sub', name: 'Garage submeter' },
+    ]);
+  });
+
+  it('keeps a cumulative meter regardless of class (even when the device list cannot name it)', async () => {
+    // The whole-home meter is authoritative by being the cumulative item; it
+    // must survive even a device list that lacks it or its class.
+    setRestClient({
+      get: vi.fn().mockResolvedValue({ items: [{ type: 'cumulative', id: 'ghost', values: { W: 400 } }] }),
+      put: vi.fn(),
+    });
+    const app = { deviceManager: buildDeviceManager({ devices: [] }), error: vi.fn() };
+    await expect(getHomeyEnergyMetersFromApp(app as never)).resolves.toEqual([
+      { id: 'ghost', name: 'ghost' },
+    ]);
+  });
+
+  it('drops a device-type meter whose class is unknown (not confirmed a sensor)', async () => {
+    setRestClient({
+      get: vi.fn().mockResolvedValue({ items: [{ type: 'device', id: 'mystery', values: { W: 100 } }] }),
+      put: vi.fn(),
+    });
+    const app = {
+      deviceManager: buildDeviceManager({ devices: [{ id: 'mystery', name: 'Mystery' } as HomeyDeviceLike] }),
+      error: vi.fn(),
+    };
+    await expect(getHomeyEnergyMetersFromApp(app as never)).resolves.toEqual([]);
+  });
+
+  it('returns an empty list without reading the device list when the report has no meters', async () => {
+    const getDevicesForDebug = vi.fn().mockResolvedValue([]);
+    setRestClient({ get: vi.fn().mockResolvedValue({ items: [] }), put: vi.fn() });
+    const app = { deviceManager: { getDevicesForDebug }, error: vi.fn() };
+    await expect(getHomeyEnergyMetersFromApp(app as never)).resolves.toEqual([]);
+    expect(getDevicesForDebug).not.toHaveBeenCalled();
   });
 
   it('logs a single nested device dump when APIs are available', async () => {

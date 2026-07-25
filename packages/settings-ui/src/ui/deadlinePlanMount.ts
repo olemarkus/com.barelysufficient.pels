@@ -24,6 +24,7 @@ import { formatLocalHHMM } from '../../../shared-domain/src/smartTaskDeadlineFor
 import { getHomeyTimezone } from './homey.ts';
 import {
   closeSmartTaskEditor,
+  beginSmartTaskClear,
   getSmartTaskEditSnapshot,
   initSmartTaskEditController,
   openSmartTaskEditor,
@@ -269,7 +270,10 @@ let runtimeRefreshBound = false;
 // instead of unmounting a component-local draft. Baselines are captured at
 // open time inside `onOpen`, so later boot refreshes rebuild these props
 // without touching what the user is typing.
-const buildSmartTaskEditProps = (m: ActiveMount): SmartTaskEditProps | undefined => {
+const buildSmartTaskEditProps = (
+  m: ActiveMount,
+  mode: SmartTaskEditProps['mode'],
+): SmartTaskEditProps | undefined => {
   const { deviceId, lastBoot } = m;
   if (deviceId === null || !lastBoot) return undefined;
   const entry = normalizeDeferredObjectiveSettings(
@@ -288,26 +292,30 @@ const buildSmartTaskEditProps = (m: ActiveMount): SmartTaskEditProps | undefined
   // round-trips to the same moment (browser-timezone math never enters).
   const baselineReadyBy = formatLocalHHMM(entry.deadlineAtMs, getHomeyTimezone());
   const snapshot = getSmartTaskEditSnapshot();
+  const context = {
+    deviceId,
+    kind: entry.kind,
+    unit: bounds.unit,
+    min: bounds.min,
+    max: bounds.max,
+    step: bounds.step,
+    baselineReadyBy,
+    baselineTarget,
+    baselineDeadlineAtMs: entry.deadlineAtMs,
+  };
   return {
+    mode,
     // An open editor for a DIFFERENT device (SPA navigation between tasks)
     // must not leak into this page — it renders as closed here.
     snapshot: snapshot !== null && snapshot.context.deviceId === deviceId ? snapshot : null,
-    onOpen: () => openSmartTaskEditor({
-      deviceId,
-      kind: entry.kind,
-      unit: bounds.unit,
-      min: bounds.min,
-      max: bounds.max,
-      step: bounds.step,
-      baselineReadyBy,
-      baselineTarget,
-      baselineDeadlineAtMs: entry.deadlineAtMs,
-    }),
+    onOpen: () => openSmartTaskEditor(context),
     onClose: closeSmartTaskEditor,
     onReadyByInput: setSmartTaskEditReadyBy,
     onTargetInput: setSmartTaskEditTarget,
     onSave: () => { void submitSmartTaskUpdate(); },
-    onClear: () => { void requestSmartTaskClear(); },
+    onClear: mode === 'clear_only'
+      ? () => { void beginSmartTaskClear(context); }
+      : () => { void requestSmartTaskClear(); },
   };
 };
 
@@ -328,7 +336,10 @@ const renderActiveMount = (): void => {
   // inside `resolveRenderInput`.
   const loadState = resolveDeadlinePlanLoadState(renderInput, m.lastHistory);
   if (loadState.status === 'ready' || loadState.status === 'pending') {
-    loadState.edit = buildSmartTaskEditProps(m);
+    const mode = loadState.status === 'pending'
+      ? loadState.pending.actionMode
+      : 'edit_and_clear';
+    loadState.edit = buildSmartTaskEditProps(m, mode);
   }
   renderDeadlinePlan(m.surface, loadState);
 };

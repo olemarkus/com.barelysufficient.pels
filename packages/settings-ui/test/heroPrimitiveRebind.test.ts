@@ -322,6 +322,7 @@ const buildReadyPayload = (): DeadlinePlanPayload => ({
 
 const buildPendingPayload = (): DeadlinePlanPendingPayload => ({
   kind: 'temperature',
+  actionMode: 'edit_and_clear',
   labels: deadlineLabels('temperature'),
   hero: {
     chips: [{ text: 'Building plan…', tone: 'info' }],

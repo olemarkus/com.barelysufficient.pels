@@ -12,6 +12,7 @@ import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike } from '../../utils/types';
 import { getDeviceId } from './managerHelpers';
 import { getLogger } from '../../logging/logger';
+import { normalizeError } from '../../utils/errorUtils';
 import {
   recordDeviceUpdateObservation,
   recordSnapshotCapabilityObservations,
@@ -92,6 +93,29 @@ function syncRealtimeDeviceUpdateSnapshot(ctx: TransportContext, params: {
     }
     ctx.latestSnapshotById.delete(deviceId);
     return null;
+}
+
+// Realtime zone move: the replacement entry carries a different `zoneId` than
+// the one it replaced (or the device first appeared with a zone via the
+// realtime path). Called AFTER the snapshot commit so the membership recompute
+// this triggers reads the NEW zone; contained, so a subscriber throw never
+// surfaces on the realtime event path (parity with the zone-tree-commit
+// notify in `snapshotRefresh.ts`).
+function notifyDeviceZoneChangeContained(
+    ctx: TransportContext,
+    previousSnapshot: { zoneId?: string | null } | undefined,
+    currentSnapshot: { zoneId?: string | null } | null,
+): void {
+    if (!currentSnapshot) return;
+    if ((previousSnapshot?.zoneId ?? null) === (currentSnapshot.zoneId ?? null)) return;
+    try {
+        ctx.notifyDeviceZoneChanged();
+    } catch (error) {
+        ctx.logger.debug({
+            event: 'device_zone_changed_notify_failed',
+            error: normalizeError(error).message,
+        });
+    }
 }
 
 export function handleRealtimeDeviceUpdateEvent(ctx: TransportContext, device: HomeyDeviceLike): void {
@@ -201,6 +225,7 @@ export function handleRealtimeDeviceUpdateEvent(ctx: TransportContext, device: H
     })) {
         ctx.onSnapshotMutated?.(currentSnapshot, Date.now());
     }
+    notifyDeviceZoneChangeContained(ctx, previousSnapshot, currentSnapshot);
     // Snapshot (and binary-settle evidence) is now committed to
     // `latestSnapshotById`, so each enriched observed value projects the
     // post-update state rather than the previous one.

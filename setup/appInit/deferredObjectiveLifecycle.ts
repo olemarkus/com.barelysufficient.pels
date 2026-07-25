@@ -1,5 +1,10 @@
 import type { AppContext } from '../../lib/app/appContext';
 import { createObjectivePriceHorizonBuilder } from './objectivePriceHorizon';
+import {
+  hasMainHomeSmartTaskAuthority,
+  isSmartTaskDeviceInMainHome,
+  resolveSmartTaskHomeScope,
+} from './smartTaskHomeScope';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
 import { isSteppedLoadDevice } from '../../lib/plan/planSteppedLoad';
 import { isBinaryPlanDevice } from '../../lib/plan/planBinaryDevice';
@@ -28,6 +33,7 @@ import {
 } from '../../lib/utils/deviceControlProfiles';
 import type { Actuator } from '../../lib/actuator/deviceActuator';
 import { buildDeviceActuator } from './buildDeviceActuator';
+import { createFencedActuator } from './createPlanEngine';
 import {
   disableDeferredObjectiveInSettings,
   requireDeferredObjectiveActivePlanRecorder,
@@ -131,7 +137,12 @@ const resolvePlanningCurrentA = (device: PlanInputDevice, planningPowerW: number
 // The terminal-shed primitive routes its writes through the shared device
 // actuator (`buildDeviceActuator`), same as the plan executor. Kept as a named
 // re-export so the lifecycle + its tests have a single import site.
-export const buildShedActuator = (ctx: AppContext): Actuator | null => buildDeviceActuator(ctx);
+export const buildShedActuator = (ctx: AppContext): Actuator | null => {
+  const base = buildDeviceActuator(ctx);
+  return base === null
+    ? null
+    : createFencedActuator(base, (deviceId) => !hasMainHomeSmartTaskAuthority(ctx, deviceId));
+};
 
 // Disarm grace: keep re-attempting the terminal release for this long after the
 // deadline (the diagnostic survives because the task stays enabled) before giving
@@ -242,6 +253,17 @@ export const handleDeferredDeadlineReached = (
 ): void => {
   const disarm = () => disableDeferredObjectiveInSettings(ctx, deviceId);
   const graceElapsed = nowMs - deadlineAtMs >= TERMINAL_RELEASE_DISARM_GRACE_MS;
+  // Durable scope exclusions (a device relocated to a separate-meter sub-home,
+  // or one newly selected as an active meter source) have no terminal command:
+  // immediately disarm the stale task so it cannot retry forever against a
+  // device PELS must not control. A global/provisional Main fence is transient,
+  // so keep the objective enabled and retry on the next lifecycle tick.
+  const homeScope = resolveSmartTaskHomeScope(ctx, deviceId);
+  if (homeScope === 'sub_home' || homeScope === 'source_device') {
+    disarm();
+    return;
+  }
+  if (homeScope === 'unavailable') return;
   // Cap-on → the planner owns the device on its normal lane; just disarm (no
   // terminal release, no actuation needed, device presence irrelevant).
   if (ctx.isCapacityControlEnabled(deviceId)) { disarm(); return; }
@@ -346,6 +368,10 @@ export function createDeferredObjectiveLifecycleEmitter(
       ctx.deferredObjectiveActivePlanRecorder?.getActivePlansSnapshot() ?? null
     ),
     getHardCapKw: () => ctx.capacitySettings.limitKw,
+    // Multi-home v1: a relocated task's lifecycle diagnostics carry the
+    // dedicated `objective_device_in_sub_home` code, and the eligible-count
+    // denominator excludes it (see the dep's doc on the emitter).
+    isDeviceInSubHome: (deviceId) => !isSmartTaskDeviceInMainHome(ctx, deviceId),
     getDeferredObjectiveDebugStructured: () => (
       ctx.getStructuredDebugEmitter('deferred_objectives', 'deferred_objectives')
     ),

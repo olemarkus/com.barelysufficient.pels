@@ -102,6 +102,27 @@ const hide = (el: HTMLElement): void => { el.hidden = true; };
 
 const setVisible = (el: HTMLElement, visible: boolean): void => { el.hidden = !visible; };
 
+const configureRescueButton = (
+  button: HTMLButtonElement,
+  device: StarvationRescueDevice,
+  offersRescue: boolean,
+): void => {
+  button.hidden = !offersRescue;
+  if (!offersRescue) return;
+  button.dataset.deviceId = device.deviceId;
+  button.textContent = C.rescueButton;
+  button.setAttribute('aria-label', `${C.rescueButton}: ${device.deviceName}`);
+};
+
+const resolveDeviceRowNote = (
+  device: StarvationRescueDevice,
+  offersRescue: boolean,
+): string | null => {
+  if (device.smartTaskHomeScope === 'unavailable') return C.temporaryUnavailableNote;
+  if (offersRescue) return null;
+  return resolveStarvationRowNote(device.cause, device.hasSmartTask);
+};
+
 /* eslint-enable no-param-reassign */
 
 // ─── List ────────────────────────────────────────────────────────────────────
@@ -120,7 +141,10 @@ const renderDeviceRow = (
   // Mirrors the API guardrail (`resolveRescuableDevice`), so the button is never
   // shown for a request the API would then reject.
   const offersRescue = starvationRowIsRescuable(
-    device.cause, device.intendedNormalTargetC, device.hasSmartTask,
+    device.cause,
+    device.intendedNormalTargetC,
+    device.hasSmartTask,
+    device.smartTaskHomeScope,
   );
   // Tone escalates with duration (warn → danger); both render as a coloured
   // chip. Stamped on the row so CSS can tint the chip/border.
@@ -144,14 +168,7 @@ const renderDeviceRow = (
   // rows: a muted informational note, no button (the guardrail — capacity is
   // physical, the hard cap is not a tuning knob).
   if (rescueBtn instanceof HTMLButtonElement) {
-    if (offersRescue) {
-      rescueBtn.hidden = false;
-      rescueBtn.dataset.deviceId = device.deviceId;
-      rescueBtn.textContent = C.rescueButton;
-      rescueBtn.setAttribute('aria-label', `${C.rescueButton}: ${device.deviceName}`);
-    } else {
-      rescueBtn.hidden = true;
-    }
+    configureRescueButton(rescueBtn, device, offersRescue);
   }
   if (noteEl instanceof HTMLElement) {
     // The note is suppressed for rescuable (budget) rows, and otherwise only
@@ -160,7 +177,7 @@ const renderDeviceRow = (
     // "Waiting for available power.") — printing both reads as a doubled line, so
     // drop the note when it duplicates the subtext (compared case-insensitively,
     // ignoring a trailing period).
-    const note = offersRescue ? null : resolveStarvationRowNote(device.cause, device.hasSmartTask);
+    const note = resolveDeviceRowNote(device, offersRescue);
     setLine(noteEl, note !== null && !linesMatch(note, subtext) ? note : null);
   }
   return li;

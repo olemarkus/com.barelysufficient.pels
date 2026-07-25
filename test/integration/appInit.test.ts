@@ -70,6 +70,8 @@ import {
   DEFERRED_OBJECTIVES_PERKEY_MIGRATED,
 } from '../../lib/utils/settingsKeys';
 import type { AppContext } from '../../lib/app/appContext';
+import type { Actuator } from '../../lib/actuator/deviceActuator';
+import type { ConfiguredMeterSources } from '../../lib/home/membership';
 import { buildMainHomeScope } from '../../setup/homeRuntime/homeScope';
 import { createAppContextMock } from '../helpers/appContextTestHelpers';
 
@@ -97,6 +99,60 @@ describe('app init plan service wiring', () => {
     (capturedPlanEngineDeps.current as unknown as { logDebug: (...args: unknown[]) => void }).logDebug('debug payload', 123);
 
     expect(logDebug).toHaveBeenCalledWith('plan', 'debug payload', 123);
+  });
+
+  it('rechecks main-home ownership at the final actuator seam', async () => {
+    const setCapability = vi.fn(async () => undefined);
+    let currentHomeId = 'main';
+    let configuredMeterSources: ConfiguredMeterSources = {
+      state: 'resolved' as const,
+      deviceIds: new Set<string>(),
+    };
+    capturedPlanEngineDeps.current = null;
+    const engineCtx = createAppContextMock({
+      deviceManager: {
+        setCapability,
+        applyDeviceTargets: vi.fn(async () => undefined),
+      } as unknown as AppContext['deviceManager'],
+      homeMembership: {
+        getHomeIdForDevice: () => currentHomeId,
+        getConfiguredMeterSources: () => configuredMeterSources,
+      } as unknown as NonNullable<AppContext['homeMembership']>,
+    });
+    createPlanEngine(engineCtx, buildMainHomeScope(engineCtx));
+    const actuator = (
+      capturedPlanEngineDeps.current as unknown as { actuator: Actuator }
+    ).actuator;
+    const command = {
+      kind: 'target' as const,
+      deviceId: 'heater-1',
+      capabilityId: 'target_temperature',
+      value: 21,
+    };
+
+    await expect(actuator.apply(command)).resolves.toEqual({ requested: true });
+    configuredMeterSources = {
+      state: 'resolved',
+      deviceIds: new Set(['heater-1']),
+    };
+    await expect(actuator.apply(command)).resolves.toEqual({ requested: false });
+    configuredMeterSources = {
+      state: 'unavailable',
+      deviceIds: new Set(['previous-main-meter']),
+    };
+    await expect(actuator.apply(command)).resolves.toEqual({ requested: false });
+    configuredMeterSources = {
+      state: 'resolved',
+      deviceIds: new Set(),
+    };
+    currentHomeId = 'h_a';
+    await expect(actuator.apply(command)).resolves.toEqual({ requested: false });
+
+    expect(setCapability).toHaveBeenCalledExactlyOnceWith(
+      'heater-1',
+      'target_temperature',
+      21,
+    );
   });
 
   it('passes the transport-resolved controlCapabilityId through to plan devices', () => {

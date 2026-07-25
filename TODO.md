@@ -30,10 +30,10 @@ users trust the redesign immediately, while still keeping non-P0 polish out of t
 *(prior closures shipped on the v2.9 train via PRs #975, #977, #978, #980,
 #982, #983; surviving follow-ups demoted to P1/P2.)*
 
-No open P0 release blockers after the 2026-05-31 release-review cleanup. The
-remaining dashboard-widget desirability work is tracked as P1/P3 follow-up below;
-the concrete release-readiness bugs from the `v2.10.0..HEAD` pass were fixed in
-the release-review cleanup PR.
+No open P0 release blockers after the 2026-07-25 release-review cleanup. That
+pass partitioned realtime reconcile work by home, finite-gated saved meter-area
+limits, and corrected the Main-meter setup guide. Remaining multi-meter work is
+tracked as P1/P2/P3 follow-up below.
 
 ## P1 Correctness, Data Integrity, and Supported UX
 
@@ -47,6 +47,12 @@ deviceOverview canonical-string routing, the flow-reported / pendingBinaryComman
 stepped-restore-wrapper / stepped-swap-completion refactors, the settings.test.ts flake, the
 plan_budget truncation, the starvation confirm-sheet sub-parts, and the shared widget runtime.
 What remains open is below.*
+
+- [ ] **Homes UI: explain cached rows that stay locked after a refresh failure.**
+      A failed `/ui_homes` refresh preserves the last-good rows and correctly disables mutations, but
+      the ready/list view gives no visible reason its Add/Edit/Remove controls remain unavailable.
+      Show a compact stale-refresh warning beside the preserved rows. Source: release review of the
+      multi-meter GA train, 2026-07-24.
 
 - [ ] **Shed-invariant card copy claims a step the device is not at.** `resolveSteppedStatusLine`
       renders the shed-invariant reason as `Limited to ${maxStep}`
@@ -366,6 +372,85 @@ program) remains deferred.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **Meter picker hint invites an impossible pick when no meters are listed.** When the Homey
+      Energy report exposes no id-carrying whole-home (cumulative) meter and no sensor-class device
+      meter, the Whole-home meter select shows just "Automatic" while the always-visible hint still
+      says "pick a meter to read it directly." Soften the hint to the Automatic-only case when the
+      loaded option list is empty (needs a small conditional in homeyEnergyMeter.ts, since the hint
+      is static markup today). Persona: Power-meter user with a single tracked meter; hypothesis:
+      an instruction to pick from an empty list reads as something being broken. Source: pels-ux-fit
+      review of the meter-picker PR (2026-07-19).
+
+- [ ] **Extract sub-home source recovery from `HomeRuntimeRegistry`.** The multi-meter GA work grew
+      `setup/homeRuntime/homeRuntimeRegistry.ts` into a roughly 600-line coordinator that now owns
+      ordinary bundle reconciliation, source-event observation, authorization epochs, freshness
+      resets, bundle replacement, settings routing, and retry scheduling. Extract the
+      source-generation/recovery state machine behind focused observe/authorize/recover operations,
+      leaving bundle-map reconciliation and routing in the registry. Behavior is covered and no
+      current bug is proven; this restores the one-purpose setup-layer boundary before the next
+      source lifecycle change. Source: adversarial simplification review of PR #1872, 2026-07-23.
+
+- [ ] **Make the strict sub-home tracker validator compile-time exhaustive.**
+      `isPlausiblePowerTrackerState` validates every current `PowerTrackerState` field and nested
+      objective-profile value, but its independent key arrays do not make TypeScript reject a future
+      tracker field that is omitted from validation. Replace them with an exhaustive validator table
+      using `satisfies Record<keyof PowerTrackerState, ...>` (while preserving the main tracker's
+      compatibility-read policy). Source: tracker-contract review of PR #1872, 2026-07-23.
+
+- [ ] **Limits & safety: converge the Main-home form onto the native `.pels-input` field language (U-track).**
+      *Persona:* multi-home owner who switches the per-home Limits switcher between the Main home and a meter
+      area. *Hypothesis:* U3 added the per-home editor using native `.pels-input` + unit-in-label ("Hard cap
+      (kW)"), which follows the canonical form-styling + ui-terminology rules and matches the U1 homes editor;
+      the legacy Main-home static form (`#settings-limits-form`) still uses `md-filled-text-field` with an
+      in-field `suffix-text="kW"`, so flipping the switcher morphs the identical two inputs (filled↔outlined,
+      unit relocates). Kept out of U3 to preserve byte-identical Main behavior. Migrate the Main form to the
+      native primitive (the design-system-unification direction) so both scopes read as one control. Source:
+      pels-m3-critic review of the U3 per-home Limits surface, 2026-07-20.
+
+- [ ] **Homes UI: warn when a sub-home's selected meter is also a managed+controllable device (U-track).**
+      *Persona:* multi-home owner who picks a metering smart-plug as a sub-home meter and also leaves it
+      managed. *Hypothesis:* while Homey Energy is the active power source, the runtime now carves every
+      configured meter out of every home's plan input + pipeline snapshot and rechecks the source-device set
+      at the final actuator seam, so it can never be shed/oscillated — but nothing tells the user their meter
+      won't be controlled. Add a
+      homes-settings validation warning ("this device is this home's meter; it won't be managed") mirroring
+      the observe-only carve-out messaging. Source: R7b own-meter-shed audit, 2026-07-19.
+
+- [ ] **Smart-task diagnostics: distinguish an active meter source from a missing device before its deadline.**
+      *Persona:* owner who selects a device with an existing smart task as an electricity meter.
+      *Hypothesis:* the source-filtered lifecycle device set omits the meter, but the diagnostic emitter only
+      receives the durable sub-home predicate, so the still-enabled task reports `objective_missing_device`
+      until deadline handling safely disarms it without a command. Add a reason-bearing durable-exclusion
+      seam and dedicated source diagnostic so status/history explain the task's real scope before it ends.
+      P2. Source: runtime-reality review of PR #1873, 2026-07-23.
+
+- [ ] **(surplus-posture) `resolveSurplusPostureForDevice` reads `POWER_SOURCE` on the plan path (caller
+      discipline).** *Persona:* maintainer. *Hypothesis:* `toPlanDevice`'s surplus-posture helper reads the
+      power-source setting directly rather than receiving a producer-resolved bit; harmless today (sub-homes
+      pass `surplusPostureEnabled: false` so the read is short-circuited), but it is a consumer reading a
+      settings source on the hot plan path — a layering smell to resolve at the boundary and pass inward. P3.
+      Source: R7b fix-round-2 layering read, 2026-07-19.
+
+- [ ] **Sub-home per-poll CPU scaling: decorate once per poll instead of per-bundle.**
+      *Persona:* multi-home owner on a busy Homey with several sub-homes. *Hypothesis:* `latestTargetSnapshot`
+      re-runs `getSnapshot()` + full `decorateTargetSnapshotList` on every access, and every bundle's
+      `getPlanDevices` (+ `createHomePowerPipeline.getLatestTargetSnapshot`) reads it and only then
+      `filterDevicesForHome` — so an N-device home with M sub-homes does ~M+1 full-set re-decorations plus M
+      independent plan builds bunched on the same 10 s poll tick (`routeMeterReadings`), risking
+      cpuwarn-watchdog pressure. Decorate once per poll and hand each bundle its pre-filtered partition (or
+      filter the RAW snapshot to the home's ids before decorating), and consider staggering bundle rebuild
+      phases. Correctness is unaffected; this is a perf/maintainability follow-up deferred out of the R7b
+      correctness PR. Source: R7b per-poll CPU-scaling audit, 2026-07-19.
+- [ ] **`home_membership_store_read_suspect` WARN can fire on installs that never used multi-home.**
+      *Persona:* single-meter owner with no `homes_config` who hits a transient Homey SDK settings-read
+      failure. *Hypothesis:* now that multi-home is GA (the `multi_home_enabled` flag is gone), membership
+      recompute reads `homes_config` / `device_home_assignments` on every observed-state refresh, so a
+      genuinely `suspect` (thrown) read emits an edge-triggered WARN `home_membership_store_read_suspect`
+      mentioning multi-home even though the owner never configured a meter area. Benign (keeps the empty
+      all-main cache; edge-triggered, not a storm) and only on a real SDK throw, but it is a false-signal log
+      for a feature the install isn't using. Topic-gate it, or only warn once the store has ever been
+      `present` (an initialized marker exists). Source: pels-runtime-reality review of the multi-home GA cut,
+      2026-07-22. File: `setup/homeMembership.ts` (`noteSuspectEdge` / `refreshStoreCaches`).
 - [ ] **Hoist `createSelectOption` (and the render-signature guard pattern) out of `advanced.ts` into a
       shared settings-ui primitive module.** *Persona:* maintainer adding the next dynamic device picker.
       *Hypothesis:* three near-copies now exist — `createModeOption` (`modes.ts`), `createSelectOption`
@@ -552,6 +637,64 @@ CI failure, so future field-move slices can't silently grow the debt.*
       power source directly, leaving `resolveHomeExhibitsSolar`/the export section intact. *P3
       (was P2 before the producer gate removed the harm).* Files: `packages/settings-ui/src/ui/deviceDetail/solarSurplus.ts`,
       `packages/settings-ui/src/ui/deviceDetail/index.ts`.
+
+- [ ] **Hoist onboarding-link copy into shared-domain.** The stale-data banner strings
+      (`resolveStaleDataBannerContent` in `capacity.ts`) and the Overview empty-state strings
+      (`PlanOverview.tsx`) are inlined in settings-ui, and the no-plan sentence is a duplicated
+      literal between the Preact view and the static first-paint placeholder in `index.html`.
+      One shared-domain copy module referenced from all three would restore the rule-4 origin
+      and kill the drift risk. Source: pels-copy-and-terminology lens on the onboarding-links
+      PR (2026-07-19). [P2]
+
+- [ ] **Hero idle line contradicts the zero-managed empty state.** "Quiet hour. Nothing to do."
+      renders 100 px above "No managed devices." — PELS claims an assessed-calm home while
+      managing nothing. Suppress or reword the idle line when the plan carries zero devices.
+      Also verify the Overview smart-task row is genuinely unreachable alongside an empty
+      device list (`PlanOverview.tsx` renders both without cross-gating; a task on a
+      just-unmanaged device may compose a live contradiction). Persona: brand-new owner on
+      first open; hypothesis: a reassuring verdict over an unconfigured state teaches the user
+      to distrust the hero. Source: pels-m3-critic on the onboarding-links PR (2026-07-19). [P2]
+
+- [ ] **Simulation banner leads the fresh-install stack.** On a fresh install the first
+      viewport is two stacked warning banners, and the top one offers "Turn off simulation" —
+      the one action a user with zero configuration should not take first. Demote or suppress
+      the simulation banner while the fresh-install condition holds (no persisted power source
+      and no managed devices) so the setup call-to-action leads. Persona: brand-new owner on
+      first open; hypothesis: the most prominent CTA should match the most urgent task.
+      Source: pels-ux-fit on the onboarding-links PR (2026-07-19). [P2]
+
+- [ ] **No-plan hero renders a permanent loading skeleton.** With `plan === null` the Overview
+      hero shows the same shimmer blocks as the boot skeleton, forever, above "No plan
+      available yet…" — it reads as stuck loading, not a deliberate empty state. Give the
+      no-plan hero an explicit empty render ("— kW · waiting for the first power reading").
+      Persona: brand-new owner on first open; hypothesis: an intentional empty hero reads as
+      guidance, a shimmer as breakage. Source: pels-ux-fit (2026-07-19). [P2]
+
+- [ ] **Power source select shows "Flow card" while unset and never explains the Flow.** On the
+      Limits & safety page the unset select is indistinguishable from a made choice, and no
+      copy on the journey says a Flow with the report-power action card must exist. Worse: the
+      preselected "Flow card" cannot be *confirmed* — picking the already-displayed option
+      fires no change event, so `power_source` stays unset and the banner keeps asking (Codex
+      P2 on PR #1856). Add a "Not set" placeholder while `power_source` is unset (md-select
+      `displayText` sentinel idiom) — which also makes choosing Flow a real value change that
+      persists — and a one-line per-source hint under the select. Persona: brand-new owner
+      following "Choose power source"; hypothesis: naming the unset state and the Flow
+      requirement closes the last gap between the link and a working setup. Source:
+      pels-ux-fit + Codex review (2026-07-19). [P2]
+
+- [ ] **Duplicate `#plan-empty` ids (static first-paint + Preact render).** Both nodes coexist
+      in the document; the onboarding e2e works around it with a visibility filter. Rename the
+      static placeholder's id or drop it once the redesign surface owns first paint. Source:
+      pels-ux-fit (2026-07-19). [P2]
+
+- [ ] **First-run setup checklist on Overview.** A truly fresh install now gets two recovery
+      links (no-data banner → power source, empty overview → Devices page), but the user still
+      assembles the setup order themselves. A dismissable Overview checklist card (1. choose
+      power source → 2. pick managed devices → 3. optionally prices) that ticks itself off and
+      disappears once configured would make the path explicit. Needs mock-ups before build.
+      Persona: brand-new owner on first open; hypothesis: the two links fix recovery but not
+      orientation — a visible sequence prevents the "really tricky to know what to do" first
+      session. Source: user onboarding feedback (2026-07-19). [P3]
 
 - [ ] **Simulation wait-lines still read factually on device cards.** Under simulation a held
       card's waiting copy ("Waiting to resume — 0.2 kW more needed", "Waiting for solar surplus",
@@ -1152,6 +1295,26 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
 *Entry bar: each item states a **hypothesis**, **why it's needed**, and the **persona**
 (`notes/personas.md`) it serves. Items that can't name all three are maintainability/
 cosmetic chores — do them in passing or drop them; don't park them here.*
+
+- [ ] **Share the bounded exponential-retry delay calculation.** `homeyEnergyPoll.ts`,
+      `flowPowerSampleFreshnessClock.ts`, and `homeRuntimeRegistry.ts` each implement the same
+      1-second-to-60-second capped exponential delay. *Persona:* maintainer tuning transient-failure
+      recovery. *Hypothesis:* the three copies can drift when retry policy changes, producing
+      inconsistent recovery cadence without an intentional product decision. *Why:* one pure helper
+      keeps the timing contract aligned while each consumer retains ownership of its timer lifecycle.
+      Source: adversarial simplification review of PR #1872, 2026-07-23.
+
+- [ ] **Pinned sub-home device stays uncontrolled if the zones API never commits a tree.**
+      *Persona:* multi-home owner who PINNED a device into a sub-home on a Homey whose zones API is degraded.
+      *Hypothesis:* a pinned device resolves to its sub-home WITHOUT a zone tree (pins are tree-independent),
+      so main excludes it while the sub-home bundle blanket-gates execution on `hasSeenZoneTreeCommit()`
+      (`createHomeCapacityBundle` dry-run gate) — if the tree never commits, the pin is controlled by nobody.
+      R7b ships a durable WARN (`home_bundle_gated_no_zone_tree_commit`) after a boot grace, but does NOT open
+      the actuation gate: opening it for pins is a real safety-posture change that conflicts with the existing
+      boot-window guard e2e (`homeCapacityBundlesSdkE2E` asserts a pinned member is NOT actuated before a tree
+      commit). Fix (per-device gating of only zone-rule members, or a bounded trust-fallback) needs its own PR
+      that updates that invariant + test together. Deferred from R7b to keep "existing suites pass unmodified".
+      Source: R7b boot-gate audit, 2026-07-19.
 
 - [ ] **Curtailment hold-state read failure resets the refute ladder.** `createCurtailmentHoldStore.read`
       (`setup/curtailmentHoldStateAdapter.ts`) normalizes a thrown/absent/junk settings read to `null`, which

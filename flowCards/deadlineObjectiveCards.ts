@@ -11,7 +11,9 @@ import type {
   DeferredObjectiveActivePlanV1,
 } from '../packages/contracts/src/deferredObjectiveActivePlans';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
-import { OBJECTIVE_WRITE_REFUSED_RETRY } from '../packages/shared-domain/src/objectiveWriteStrings';
+import {
+  resolveObjectiveWriteRefusalMessage,
+} from '../packages/shared-domain/src/objectiveWriteStrings';
 import { normalizeError } from '../lib/utils/errorUtils';
 import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
 import { isEvCharger, supportsTemperatureObjective } from './smartTaskDeviceCapability';
@@ -52,11 +54,40 @@ export const requireSettingsRead = (deps: FlowCardDeps): () => DeferredObjective
 );
 
 // A device-scoped write can refuse to persist on a transient un-confirmable
-// migration / untrustworthy settings read. The Flow-card run listeners are
+// migration / untrustworthy settings read / provisional ownership fence. The Flow-card run listeners are
 // async, so throwing here lets Homey surface a retryable failure to the user
 // instead of the card reporting a (false) success while nothing was written.
+// Durable scope refusals (`device_in_sub_home` / `device_not_planned`) throw
+// their own honest lines instead of the misleading "try again" framing.
 const throwIfWriteRefused = (outcome: ObjectiveWriteOutcome): void => {
-  if (!outcome.persisted) throw new Error(OBJECTIVE_WRITE_REFUSED_RETRY);
+  if (outcome.persisted) return;
+  throw new Error(resolveObjectiveWriteRefusalMessage(outcome.reason));
+};
+
+// Autocomplete filter for the two set-deadline (task-creating) cards: offer
+// main-home devices only (multi-home v1 — smart tasks plan against the main
+// home's meter budget), mirroring the write gate so the picker never offers a
+// device whose card run would then reject with the scope error. An absent dep
+// (bare test wiring) — like a device the membership resolves to main — keeps
+// the device offered. The clear and trigger cards stay unfiltered: an existing
+// task on a relocated device must remain clearable and observable.
+const isOfferedDevice = (deps: FlowCardDeps) => (device: TargetDeviceSnapshot): boolean => (
+  deps.hasMainHomeSmartTaskAuthority?.(device.id)
+    ?? deps.isDeviceInMainHome?.(device.id)
+    ?? true
+);
+
+// Resolve the condition's device against current membership before it can
+// inspect clock-refreshed active-plan state. Kept outside the listener so the
+// listener's already-dense status compatibility path stays within the
+// complexity budget.
+const resolveStatusConditionDeviceId = (
+  deps: FlowCardDeps,
+  rawDevice: RawFlowDeviceArg | undefined,
+): string | null => {
+  const deviceId = getDeviceIdFromFlowArg(rawDevice);
+  if (!deviceId || deps.isDeviceInMainHome?.(deviceId) === false) return null;
+  return deviceId;
 };
 
 const validateReadyBy = (raw: unknown): string => {
@@ -240,7 +271,10 @@ function registerSetTemperatureDeadlineCard(deps: FlowCardDeps): void {
   });
   card.registerArgumentAutocompleteListener('device', async (query: string) => {
     const snapshot = await deps.getSnapshot();
-    return buildDeviceAutocompleteOptions(snapshot.filter(supportsTemperatureObjective), query);
+    return buildDeviceAutocompleteOptions(
+      snapshot.filter(supportsTemperatureObjective).filter(isOfferedDevice(deps)),
+      query,
+    );
   });
 }
 
@@ -288,7 +322,10 @@ function registerSetEvChargeDeadlineCard(deps: FlowCardDeps): void {
   });
   card.registerArgumentAutocompleteListener('device', async (query: string) => {
     const snapshot = await deps.getSnapshot();
-    return buildDeviceAutocompleteOptions(snapshot.filter(isEvCharger), query);
+    return buildDeviceAutocompleteOptions(
+      snapshot.filter(isEvCharger).filter(isOfferedDevice(deps)),
+      query,
+    );
   });
 }
 
@@ -536,7 +573,10 @@ function registerDeadlineStatusIsCondition(deps: FlowCardDeps): void {
   const card = deps.homey.flow.getConditionCard('deadline_status_is');
   card.registerRunListener(async (args: unknown) => {
     const payload = args as { device?: RawFlowDeviceArg; status?: DropdownArg } | null;
-    const deviceId = getDeviceIdFromFlowArg(payload?.device);
+    // Membership is live while the active-plan diagnostic is clock-refreshed.
+    // A device can therefore move to a separate meter while the recorder still
+    // carries an on-track revision. Resolve scope before consulting that cache.
+    const deviceId = resolveStatusConditionDeviceId(deps, payload?.device);
     if (!deviceId) return false;
     const rawStatus = getDropdownId(payload?.status);
     const settings = requireSettingsRead(deps)();
@@ -568,8 +608,11 @@ function registerDeadlineStatusIsCondition(deps: FlowCardDeps): void {
 //   1. No enabled objective entry → no task; nothing matches.
 //   2. Persisted plan is past deadline → no active status matches; the ended
 //      trigger owns that event.
-//   3. No settled revision yet → waiting.
-//   4. Settled revision exists → use `latest.planStatus`.
+//   3. Device moved to a separate meter → no public status matches. The task
+//      still exists (`has_active_deadline` remains true), but none of the frozen
+//      five status ids honestly describes an out-of-scope task.
+//   4. No settled revision yet → waiting.
+//   5. Settled revision exists → use `latest.planStatus`.
 const resolveEffectiveStatus = (
   plan: DeferredObjectiveActivePlanV1 | null,
   hasEntry: boolean,
@@ -579,6 +622,10 @@ const resolveEffectiveStatus = (
   if (!hasEntry) return null;
   if (objectiveDeadlineAtMs !== null && objectiveDeadlineAtMs <= nowMs) return null;
   if (plan !== null && plan.deadlineAtMs <= nowMs) return null;
+  if (
+    plan?.diagnosticReasonCode === 'objective_device_in_sub_home'
+      || plan?.pendingReason === 'device_in_sub_home'
+  ) return null;
   if (plan === null || plan.pending || plan.latest === null) return PENDING_FLOW_STATUS;
   return mapPlanStatusToFlowStatus(plan.latest.planStatus);
 };

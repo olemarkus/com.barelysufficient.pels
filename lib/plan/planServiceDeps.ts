@@ -53,6 +53,14 @@ export type PlanServiceDeps = {
   // `null` and a deviceType-only change leaves an open overview card stale.
   getControlModelById?: () => Map<string, DeviceControlModel>;
   getCapacityDryRun: () => boolean;
+  /**
+   * When set, the effective (membership-gated) dry-run this bundle actuates on,
+   * written into `pels_status` as `dryRunEffective` so the per-home Limits card
+   * shows honest posture (R7b: persisted-live but no committed zone tree still
+   * reads Simulating). Sub-homes only — the main home omits it so its persisted
+   * `pels_status` blob stays byte-identical.
+   */
+  getStatusEffectiveDryRun?: () => boolean;
   isCurrentHourCheap: () => boolean;
   isCurrentHourExpensive: () => boolean;
   getCombinedPrices: () => unknown;
@@ -70,6 +78,12 @@ export type PlanServiceDeps = {
   deviceDiagnostics?: {
     getOverviewStarvation?: (deviceId: string) => SettingsUiPlanDeviceSnapshot['starvation'] | null;
   };
+  // Whether this service drives the shared settings-UI realtime `plan_updated`
+  // channel. The settings UI reads ONE `plan_updated` stream (the main home's
+  // plan); a sub-home capacity bundle (R7b) must NOT clobber it with its own
+  // partitioned plan payload, so it binds `false`. Omitted/undefined = the
+  // pre-R7b behavior (main always emits), preserving single-home byte-identity.
+  emitsUiRealtime?: boolean;
   // Hold the first plan rebuild until the first device snapshot resolves (or
   // a bounded timeout expires). Without the gate, a price/settings/realtime
   // trigger that arrives between `initDeviceManager` and the first snapshot

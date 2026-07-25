@@ -1,5 +1,4 @@
 import type Homey from 'homey';
-import CapacityGuard from '../lib/power/capacityGuard';
 import { DeviceTransport, type DeviceTransportBinarySettleOps } from '../lib/device/deviceTransport';
 import {
   clearAllPendingBinarySettleWindows,
@@ -17,7 +16,6 @@ import {
 import { ObservedHomePower } from '../lib/observer/observedHomePower';
 import { ObservedDeviceStateProjection } from '../lib/observer/observedDeviceStateProjection';
 import { SnapshotWarmupGate } from '../lib/plan/snapshotWarmupGate';
-import { buildPlanCapacityStateSummary } from '../lib/plan/planLogging';
 import type { PlanService } from '../lib/plan/planService';
 import { PlanRebuildScheduler } from '../lib/plan/rebuildScheduler/scheduler';
 import {
@@ -25,7 +23,7 @@ import {
   createCalibrationSnapshotMutationHook,
 } from '../lib/device/devicePowerCalibrationStore';
 import { isNumberMap } from '../lib/utils/appTypeGuards';
-import { DEVICE_LAST_CONTROLLED_MS, HOMEY_ENERGY_METER_DEVICE_ID } from '../lib/utils/settingsKeys';
+import { DEVICE_LAST_CONTROLLED_MS } from '../lib/utils/settingsKeys';
 import { isStateOfChargeCapabilityId } from '../lib/device/transport/stateOfCharge';
 import { incPerfCounters } from '../lib/utils/perfCounters';
 import {
@@ -42,7 +40,6 @@ import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
 import type { AppContext, StartupBootstrapConfig } from '../lib/app/appContext';
 import {
   createDeferredObjectiveActivePlanRecorder,
-  createDeferredObjectiveLifecycleEmitter,
   createDeferredObjectivePlanHistoryRecorder,
   createDailyBudgetService,
   createDeviceDiagnosticsService,
@@ -50,21 +47,32 @@ import {
   createPlanService,
   createPriceCoordinator,
   createPriceFlowTagPublisher,
-  evictMissingDeviceCacheEntries,
   persistDeferredObjectiveObservationWatermark,
-  toPlanDevice,
 } from './appInit';
-import { startBackgroundCollectors } from './appInit/startBackgroundCollectors';
 import { buildMainHomeScope, type HomeScope } from './homeRuntime/homeScope';
-import { wireBudgetPrice } from './appInit/wireBudgetPrice';
-import { wireCurtailmentSurplus } from './appInit/wireCurtailmentSurplus';
+import type { HomeRuntimeRegistry } from './homeRuntime/homeRuntimeRegistry';
+import {
+  buildHomeRuntimeMeterProviders,
+  createHomeRuntimeRegistryForApp,
+} from './appInit/wireHomeRuntimeRegistry';
+import type { HomeMembershipService } from './homeMembership';
 import type { PvForecastController } from './appInit/createPvForecastService';
 import { flushDailyBudgetStateOnUninit, runStartupStep, startAppServices } from './appLifecycleHelpers';
-import { initSettingsHandlerForApp } from './appSettingsHelpers';
+import { wireHomeMembership } from './appInit/wireHomeMembership';
+import {
+  buildAppHomeMembershipOptions,
+  createPreparedMainReconcileFence,
+  type StableSampleRevisionReader,
+} from './appInit/appHomeMembershipOptions';
+import { registerSettingsHandler } from './appInit/registerSettingsHandler';
+import { createMainCapacityGuard } from './appInit/createMainCapacityGuard';
+import { startPostStartupBackgroundTasks } from './appInit/startPostStartupBackgroundTasks';
 import { BackgroundTasksController } from './backgroundTasksController';
 import type { AppNativeWiring } from './appNativeWiring';
 import * as realtimeReconcile from './appRealtimeDeviceReconcile';
-import { scheduleAppRealtimeDeviceReconcile } from './appRealtimeDeviceReconcileRuntime';
+import { scheduleAppRealtimeDeviceReconcileForApp } from './appRealtimeDeviceReconcileRuntime';
+import { readMainMeterSelection } from './mainMeterSettings';
+import type { MainMeterSelection } from '../packages/contracts/src/mainMeterSelection';
 
 const STARTUP_RESTORE_STABILIZATION_MS = 60 * 1000;
 // Bound the warmup wait so a failed/slow Homey Manager fetch can never deadlock
@@ -74,19 +82,13 @@ const STARTUP_RESTORE_STABILIZATION_MS = 60 * 1000;
 // to skip the wait entirely. Per `feedback_homey_sdk_unreliable`, a slow SDK
 // fetch is treated as a transient gap, not a persisted-state corruption.
 const SNAPSHOT_WARMUP_TIMEOUT_MS = process.env.NODE_ENV === 'test' ? 0 : 5_000;
-// Cadence for re-running native-wiring flow-conflict detection so Flows added
-// after startup (or a degraded-startup empty snapshot) are picked up without a
-// restart. No-op unless the verdict changed.
-const NATIVE_WIRING_REQUERY_INTERVAL_MS = 30 * 60 * 1000;
 
-// Resolved explicit whole-home meter id for the homey_energy power source;
-// null = automatic (Homey's marked whole-home cumulative item). Read fresh per
-// call so the 10s poll picks up a changed selection without a transport
-// restart; trimmed so a padded id can't silently match no report item.
-const resolveHomeyEnergyMeterDeviceId = (homey: Homey.App['homey']): string | null => {
-  const raw: unknown = homey.settings.get(HOMEY_ENERGY_METER_DEVICE_ID);
-  const trimmed = typeof raw === 'string' ? raw.trim() : '';
-  return trimmed === '' ? null : trimmed;
+// Boundary-resolved whole-home meter authority for the homey_energy source.
+// `resolved/null` = Automatic; `unavailable` suppresses Main sampling instead
+// of silently promoting an SDK miss to Automatic. Read fresh per call so the
+// 10s poll picks up a changed selection without a transport restart.
+const resolveHomeyEnergyMeterSelection = (homey: Homey.App['homey']): MainMeterSelection => {
+  return readMainMeterSelection(homey.settings);
 };
 
 /**
@@ -108,6 +110,7 @@ export type AppServiceWiringDeps = {
   getStructuredLogger: () => PinoLogger | undefined;
   setStructuredLogger: (logger: PinoLogger) => void;
   getPlanService: () => PlanService;
+  getStablePowerSampleRevision: StableSampleRevisionReader;
   getPowerCalibrationStore: () => PowerCalibrationStore;
   getObserverBinarySettleState: () => BinarySettleState;
   getObservedStateEmitter: () => ObservedStateEmitter;
@@ -161,8 +164,34 @@ export class AppServiceWiring {
   // this wiring site) and shared by `initPlanEngine`/`initPlanService`.
   private readonly mainHomeScope: HomeScope;
 
+  // Detaches the membership recompute triggers (refresh subscription +
+  // zone-tree-commit callback); set by `initHomeMembership`, invoked and
+  // cleared in `runUninit`.
+  private homeMembershipTeardown?: () => void;
+  private requestMainAuthorityRecovery?: (timing?: 'scheduled' | 'immediate') => void;
+
+  // Concrete membership service (the ctx carries only the provenance-free
+  // port); the per-home bundles' execution gate reads its tree-commit signal.
+  private homeMembershipService?: HomeMembershipService;
+
+  // Per-home capacity bundles (multi-home R7b). Built by
+  // `initHomeRuntimeRegistry` after membership wiring; empty (and inert) with
+  // zero sub-homes configured. Torn down in `runUninit`.
+  private homeRuntimeRegistry?: HomeRuntimeRegistry;
+  // Set before teardown starts and read at the final Main actuator seam. An
+  // already-running recovery reconcile can otherwise resume after membership
+  // is detached and issue a late SDK command.
+  private mainActuationStopped = false;
+  private readonly mainPreparedReconcileFence;
+  private mainShortfallSideEffectGate?: ReturnType<
+    typeof createMainCapacityGuard
+  >['shortfallSideEffectGate'];
+
   constructor(private readonly deps: AppServiceWiringDeps) {
     this.mainHomeScope = buildMainHomeScope(deps.ctx);
+    this.mainPreparedReconcileFence = createPreparedMainReconcileFence(
+      deps.getStablePowerSampleRevision,
+    );
   }
 
   async runInit(): Promise<void> {
@@ -212,6 +241,7 @@ export class AppServiceWiring {
       logStartupStepFailure,
     );
     await runStartupStep('initDeviceManager', () => this.deps.initDeviceManager(), logStartupStepFailure);
+    await runStartupStep('initHomeMembership', () => this.initHomeMembership(), logStartupStepFailure);
     const startupBootstrap: StartupBootstrapConfig = {
       snapshotPlanBootstrapDelayMs: deferStartupBootstrap ? 1200 : 0,
       runSnapshotPlanBootstrapInBackground: deferStartupBootstrap,
@@ -228,6 +258,7 @@ export class AppServiceWiring {
       logStartupStepFailure,
     );
     await runStartupStep('initSettingsHandler', () => this.deps.initSettingsHandler(), logStartupStepFailure);
+    await runStartupStep('initHomeRuntimeRegistry', () => this.initHomeRuntimeRegistry(), logStartupStepFailure);
     ctx.lastNotifiedOperatingMode = ctx.operatingMode;
     await runStartupStep('startAppServices', () => startAppServices(ctx), logStartupStepFailure);
     await runStartupStep(
@@ -243,59 +274,7 @@ export class AppServiceWiring {
   }
 
   startPostStartupBackgroundTasks(): void {
-    const { ctx } = this.deps;
-    this.deps.startPowerTrackerPruning();
-    const collectors = startBackgroundCollectors(ctx, (c) => this.deps.backgroundTasks.startWeatherCollector(c));
-    this.deps.setWeatherCollector(collectors.weatherCollector);
-    this.deps.setPvForecast(collectors.pvForecast);
-    // Join the PV forecast + daily-budget background into the planning price, now
-    // that the forecast exists (the boot price bootstrap ran before it).
-    wireBudgetPrice(ctx, (ms) => this.deps.getPvForecast()?.service.forecast([ms])?.[0]?.generationKwh);
-    // Recompute the persisted combined prices when a PV-forecast refresh lands, so
-    // the snapshot picks up the planning price (budgetPrice) without waiting for
-    // the next natural 3-hourly price refresh (the async Open-Meteo fetch lands
-    // after boot). Registered AFTER wireBudgetPrice so the hook can never fire
-    // before the budget-price inputs are wired; deliberately NOT a boot-time
-    // forced recompute (that would re-fire onCombinedPricesUpdated mid-startup).
-    // The recompute is fingerprint-deduped, so a no-change pass is a cheap no-op.
-    this.deps.getPvForecast()?.setOnRefreshed(() => {
-      try {
-        ctx.priceCoordinator?.updateCombinedPrices();
-      } catch (error) {
-        ctx.getStructuredLogger('solar')?.warn({
-          event: 'pv_forecast_price_recompute_failed',
-          err: normalizeError(error),
-        });
-      }
-    });
-    // Curtailment-inference surplus (zero-export homes): the estimator infers
-    // the PV production an export-blocking inverter is throttling away and
-    // feeds it to the surplus allocator as one flat kW term. Push-fed from the
-    // power-sample pipeline (no timers ⇒ no uninit handling). Wired here, after
-    // the PV forecast above exists; until these lines run the ctx seams are unset
-    // and read null / no-op — fail-closed, the budget-price post-boot precedent.
-    const curtailment = wireCurtailmentSurplus(ctx, () => this.deps.getPvForecast());
-    ctx.recordCurtailmentSample = (netW, generationW, nowMs) => curtailment.recordSample(netW, generationW, nowMs);
-    ctx.getCurtailedSurplusKw = () => curtailment.getCurtailedSurplusKw(Date.now());
-    // Clock-driven smart-task lifecycle emission (status/hours-remaining/ended +
-    // history). PlanService exists by now, so the emitter's getDevices reads the
-    // live plan-device source. Runs off the power path — fixes the flow-mode lag.
-    this.deps.backgroundTasks.startDeferredObjectiveLifecycleClock(
-      createDeferredObjectiveLifecycleEmitter(ctx),
-    );
-    // Fire-and-forget native-wiring flow-conflict detection. Best-effort: must
-    // never block or fail startup, and reads fail closed. See
-    // setup/flowConflictProbe.ts.
-    this.deps.runNativeWiringDetectionBestEffort();
-    // Re-run periodically so a conflicting Flow added after startup is
-    // reflected without a restart, and a degraded startup (empty snapshot at
-    // warm-up) recovers once the snapshot populates. The no-change guard makes
-    // each run a no-op unless the verdict actually changed; the in-flight guard
-    // and a dedicated timer (not the refresh path) keep it from looping.
-    this.deps.timers.registerInterval('nativeWiringRequery', setInterval(
-      () => this.deps.runNativeWiringDetectionBestEffort(),
-      NATIVE_WIRING_REQUERY_INTERVAL_MS,
-    ));
+    startPostStartupBackgroundTasks(this.deps);
   }
 
   async initPriceCoordinator(): Promise<void> {
@@ -363,14 +342,20 @@ export class AppServiceWiring {
     this.deps.setObservedDeviceStateProjection(new ObservedDeviceStateProjection());
     // Bound here instead of via a constructor dep so the app.ts wiring literal
     // stays untouched; same resolver instance the transport providers use.
-    ctx.snapshotHelpers.bindHomeyEnergyMeterResolver(() => resolveHomeyEnergyMeterDeviceId(ctx.homey));
+    ctx.snapshotHelpers.bindHomeyEnergyMeterResolver(() => resolveHomeyEnergyMeterSelection(ctx.homey));
     const deviceManager = new DeviceTransport(this.deps.homeyApp, {
       log: ctx.log.bind(ctx),
       debug: (...args: unknown[]) => ctx.logDebug('devices', ...args),
       error: ctx.error.bind(ctx),
       structuredLog,
     }, {
-      getHomeyEnergyMeterDeviceId: () => resolveHomeyEnergyMeterDeviceId(ctx.homey),
+      getHomeyEnergyMeterSelection: () => resolveHomeyEnergyMeterSelection(ctx.homey),
+      // Sub-home meter ids for the per-meter live-report extraction, and the
+      // fan-out of the readings they resolve (R7b). Both lazy over the
+      // registry field: the registry is built after the transport, and cleared
+      // at uninit — empty/no-op outside that window, so the single-home path
+      // is untouched.
+      ...buildHomeRuntimeMeterProviders(() => this.homeRuntimeRegistry),
       getPriority: (id) => ctx.getPriorityForDevice(id),
       getControllable: (id) => ctx.isCapacityControlEnabled(id),
       getManaged: (id) => ctx.resolveManagedState(id),
@@ -459,22 +444,65 @@ export class AppServiceWiring {
     return this.deps.hasEnabledEvBoostForSnapshot(this.deps.getSnapshotDevice(event.deviceId));
   }
 
+  // Body in `setup/appInit/wireHomeMembership.ts`; the trigger-teardown handle
+  // is invoked in `runUninit`.
+  initHomeMembership(): void {
+    // The zone-tree-commit readiness edge fires each capacity bundle's
+    // membership-ready apply (decoupled from meter-sample arrival). Lazy over
+    // `this.homeRuntimeRegistry`, which is wired later by
+    // `initHomeRuntimeRegistry` — inert (registry undefined) until then.
+    const wiring = wireHomeMembership(
+      this.deps.ctx,
+      this.deps.getObservedStateEmitter(),
+      buildAppHomeMembershipOptions({
+        getRegistry: () => this.homeRuntimeRegistry,
+        getMembership: () => this.homeMembershipService,
+        getMainStableSampleRevision: this.deps.getStablePowerSampleRevision,
+        beginMainPreparedReconcile: (sampleRevision) => {
+          this.mainShortfallSideEffectGate?.holdDeferredUntilPreparedApply();
+          return this.mainPreparedReconcileFence.begin(sampleRevision);
+        },
+        flushMainShortfallSideEffect: async () => (
+          this.mainShortfallSideEffectGate?.flushAfterPreparedApply() ?? true
+        ),
+      }),
+    );
+    this.deps.ctx.homeMembership = wiring.service;
+    this.homeMembershipService = wiring.service;
+    this.homeMembershipTeardown = wiring.teardown;
+    this.requestMainAuthorityRecovery = wiring.requestMainAuthorityRecovery;
+  }
+
+  /**
+   * Build the per-home capacity-bundle registry (R7b). Its runtime seams are
+   * already wired lazily over `this.homeRuntimeRegistry` (the transport's
+   * per-meter provider pair and the suffixed settings-change hooks). Runs
+   * AFTER membership wiring so a bundle's first plan input and its
+   * execution-readiness gate (fail-closed: false until a committed zone tree
+   * has been joined, and false again after teardown) read real membership
+   * state. With zero sub-homes the reconcile is a no-op and nothing else runs.
+   */
+  initHomeRuntimeRegistry(): void {
+    this.homeRuntimeRegistry = createHomeRuntimeRegistryForApp(
+      this.deps.ctx,
+      () => this.homeMembershipService?.isSubHomeExecutionReady() === true,
+      () => this.homeMembershipService?.isRuntimeActive() === true,
+    );
+  }
+
   initCapacityGuard(): void {
     const { ctx } = this.deps;
-    ctx.capacityGuard = new CapacityGuard({
-      limitKw: ctx.capacitySettings.limitKw,
-      softMarginKw: ctx.capacitySettings.marginKw,
-      onShortfall: async (deficitKw) => this.deps.getPlanService().handleShortfall(deficitKw),
-      onShortfallCleared: async () => this.deps.getPlanService().handleShortfallCleared(),
-      structuredLog: ctx.getStructuredLogger('capacity'),
-      capacityStateSummaryProvider: () => buildPlanCapacityStateSummary(
-        ctx.planService?.getLatestPlanSnapshot(),
-        {
-          summarySource: 'plan_snapshot',
-          summarySourceAtMs: ctx.planService?.getLatestPlanSnapshotUpdatedAtMs() ?? null,
-        },
+    const runtime = createMainCapacityGuard({
+      ctx,
+      isDiscarded: () => this.mainActuationStopped,
+      isTemporarilyFenced: () => (
+        this.mainPreparedReconcileFence.isActive()
+        || this.homeMembershipService?.isMainHomeActuationFenced() === true
       ),
+      isPreparedReconcileActive: this.mainPreparedReconcileFence.isActive,
     });
+    ctx.capacityGuard = runtime.guard;
+    this.mainShortfallSideEffectGate = runtime.shortfallSideEffectGate;
   }
 
   initPlanEngine(): void {
@@ -485,7 +513,14 @@ export class AppServiceWiring {
     if (!ctx.deferredObjectiveActivePlanRecorder) {
       ctx.deferredObjectiveActivePlanRecorder = createDeferredObjectiveActivePlanRecorder(ctx);
     }
-    const planEngine = createPlanEngine(ctx, this.mainHomeScope);
+    const planEngine = createPlanEngine(ctx, this.mainHomeScope, {
+      // Active sub-home zone membership is provisional until the first real
+      // zone tree commits. Main's plan may still contain those fallback-Main
+      // devices, so close the final write seam until ownership is trustworthy.
+      isActuationFenced: () => this.mainActuationStopped
+        || this.mainPreparedReconcileFence.isSuperseded()
+        || ctx.homeMembership?.isMainHomeActuationFenced() === true,
+    });
     ctx.planEngine = planEngine;
     this.hydratePlanEngineControlState();
     planEngine.beginStartupRestoreStabilization(STARTUP_RESTORE_STABILIZATION_MS);
@@ -550,53 +585,62 @@ export class AppServiceWiring {
   }
 
   initSettingsHandler(): void {
-    const settingsHandler = initSettingsHandlerForApp(this.deps.ctx);
-    this.deps.setStopSettingsHandler(settingsHandler.stop);
+    // Home-runtime hooks are lazy over the registry field:
+    // `initHomeRuntimeRegistry` runs after this step; until then a suffixed
+    // write is dropped here and absorbed by the registry's boot-time reconcile.
+    this.deps.setStopSettingsHandler(registerSettingsHandler({
+      ctx: this.deps.ctx,
+      getHomeRuntimeRegistry: () => this.homeRuntimeRegistry,
+      requestMainAuthorityRecovery: (timing) => this.requestMainAuthorityRecovery?.(timing),
+      observeOwnershipConfigurationChanged: () => {
+        this.homeMembershipService?.observeOwnershipConfigurationChanged();
+      },
+    }));
   }
 
+  // Body in `setup/appRealtimeDeviceReconcileRuntime.ts`; kept as a method so
+  // the emitter subscription and test seams keep their call site.
   scheduleRealtimeDeviceReconcile(event: realtimeReconcile.RealtimeDeviceReconcileEvent): void {
-    const { ctx } = this.deps;
-    const structuredLog = ctx.getStructuredLogger('reconcile');
-    const debugStructured = ctx.getStructuredDebugEmitter('reconcile', 'devices');
-    const timer = scheduleAppRealtimeDeviceReconcile({
+    scheduleAppRealtimeDeviceReconcileForApp({
+      ctx: this.deps.ctx,
       event,
       state: this.deps.getRealtimeDeviceReconcileState(),
-      hasPendingTimer: this.deps.timers.has('realtimeDeviceReconcile'),
-      getLatestPlanSnapshot: () => ctx.planService?.getLatestReconcilePlanSnapshot() ?? null,
-      getLiveDevices: () => {
-        const snapshot = ctx.latestTargetSnapshot;
-        evictMissingDeviceCacheEntries(ctx, snapshot);
-        return snapshot.map((device) => toPlanDevice(ctx, device));
-      },
-      structuredLog,
-      debugStructured,
-      reconcile: () => ctx.planService?.reconcileLatestPlanState() ?? Promise.resolve(false),
-      onTimerFired: () => {
-        this.deps.timers.clear('realtimeDeviceReconcile');
-      },
-      onError: (error) => {
-        const normalizedError = normalizeError(error);
-        structuredLog?.error({
-          event: 'realtime_reconcile_failed',
-          err: normalizedError,
-        });
-      },
+      timers: this.deps.timers,
+      // Route a sub-home device's reconcile through its own bundle (R7b P1#1);
+      // lazy over the registry field so it stays byte-identical (undefined →
+      // main closures) before `initHomeRuntimeRegistry` and with no sub-homes.
+      getHomeRuntimeRegistry: () => this.homeRuntimeRegistry,
     });
-    if (timer) {
-      this.deps.timers.registerTimeout('realtimeDeviceReconcile', timer);
-    }
   }
 
   async runUninit(): Promise<void> {
     const { ctx } = this.deps;
+    // First teardown edge: close the final Main write seam before any awaited
+    // or synchronous cleanup can detach the membership authority it also reads.
+    this.mainActuationStopped = true;
     // Signal the fire-and-forget native-wiring probe to drop its side effects
     // before anything else tears down. We deliberately do NOT await it: it can
     // be parked on a slow flow read, and blocking teardown on that read would
     // stall shutdown. Suppressing its continuation is enough.
     this.deps.setNativeWiringUninitializing(true);
+    // Tear down the per-home bundles BEFORE the global timer sweep so each
+    // bundle can flush a pending suffixed tracker persist while its debounce
+    // timer is still observable. Clearing the field also disconnects the lazy
+    // per-meter fan-out: an in-flight poll resolving after this routes nowhere.
+    this.homeRuntimeRegistry?.teardownAll();
+    this.homeRuntimeRegistry = undefined;
     this.clearUninitTimers();
     realtimeReconcile.clearRealtimeDeviceReconcileState(this.deps.getRealtimeDeviceReconcileState());
     this.stopUninitServices();
+    // Detach the membership recompute triggers BEFORE the transport teardown
+    // so a still-in-flight refresh dispatch or detached zone-tree commit can
+    // no longer recompute; clearing `ctx.homeMembership` also kills the lazy
+    // settings-change trigger.
+    this.homeMembershipTeardown?.();
+    this.homeMembershipTeardown = undefined;
+    this.requestMainAuthorityRecovery = undefined;
+    this.homeMembershipService = undefined;
+    ctx.homeMembership = undefined;
     this.deps.getPvForecast()?.stop();
     // Release the warmup gate so any rebuild awaiting it during a partial
     // startup unblocks (cancelAll below then drops the intent), instead of

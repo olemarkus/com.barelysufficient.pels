@@ -13,3 +13,34 @@ export type PowerSource = 'homey_energy' | 'flow';
 export const normalizePowerSource = (value: unknown): PowerSource => (
   value === 'homey_energy' ? 'homey_energy' : 'flow'
 );
+
+export type PowerSourceSettingSuspectReason =
+  | 'missing_existing_key'
+  | 'empty_key_list';
+
+export type PowerSourceSettingClassification =
+  | { state: 'resolved'; value: PowerSource }
+  | {
+    state: 'suspect';
+    reason: PowerSourceSettingSuspectReason;
+  };
+
+/**
+ * Pure classification of one persisted `power_source` read plus key-list
+ * evidence. Explicit values resolve directly; malformed non-null values keep
+ * the historical Flow fallback. An absent value is only the genuine default
+ * when a healthy, non-empty key list confirms the source key was never written.
+ */
+export const classifyPowerSourceSetting = (evidence: {
+  raw: unknown;
+  keyPresent: boolean;
+  keyListEmpty: boolean;
+}): PowerSourceSettingClassification => {
+  const { raw, keyPresent, keyListEmpty } = evidence;
+  if (raw !== undefined && raw !== null) {
+    return { state: 'resolved', value: normalizePowerSource(raw) };
+  }
+  if (keyListEmpty) return { state: 'suspect', reason: 'empty_key_list' };
+  if (keyPresent) return { state: 'suspect', reason: 'missing_existing_key' };
+  return { state: 'resolved', value: 'flow' };
+};

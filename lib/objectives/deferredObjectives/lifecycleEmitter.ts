@@ -96,6 +96,15 @@ export type DeferredObjectiveLifecycleEmitterDeps = {
     nowMs: number,
   ) => void;
   getStallClassification?: (deviceId: string) => StallClassification;
+  // Multi-home v1 scope predicate (wiring-injected): `true` marks a task's
+  // device as belonging to a separate-meter sub-home, so THIS lane's
+  // diagnostics — the sole writers of plan-history/active-plan records and the
+  // drivers of the status buses — resolve to the dedicated
+  // `objective_device_in_sub_home` unknown code, and the concurrent-eligible
+  // denominator excludes the task (a relocated reserved task must not shrink
+  // main tasks' shares). Optional: absent (tests) or with no sub-homes
+  // configured, behavior is identical.
+  isDeviceInSubHome?: (deviceId: string) => boolean;
 };
 
 export class DeferredObjectiveLifecycleEmitter {
@@ -128,6 +137,7 @@ export class DeferredObjectiveLifecycleEmitter {
       activePlans,
       hardCapKw: this.deps.getHardCapKw(),
       concurrentEligibleTracker: this.concurrentEligibleTracker,
+      isDeviceInSubHome: this.deps.isDeviceInSubHome,
       // Resolve the user-facing status to `satisfied` for parked/stalled devices
       // so the status chip, notifications, Flows (active-plan recorder) and the
       // postmortem all agree. The decoration/actuation path builds its own

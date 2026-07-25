@@ -982,13 +982,18 @@ describe('Redesign plan UI', () => {
       await renderPlanSnapshot(null);
       expect((document.querySelector('#plan-empty') as HTMLElement | null)?.textContent)
         .toContain('No plan available yet');
-  
+      expect(document.querySelector('#plan-empty-manage-devices')).toBeNull();
+
       await renderPlanSnapshot({
         meta: { totalKw: 0, softLimitKw: 5, headroomKw: 5 },
         devices: [],
       });
       expect((document.querySelector('#plan-empty') as HTMLElement | null)?.textContent)
         .toContain('No managed devices');
+      // The empty state links straight to the Devices settings page; the
+      // delegated [data-settings-target] click handler does the navigation.
+      const manageLink = document.querySelector('#plan-empty-manage-devices') as HTMLElement | null;
+      expect(manageLink?.getAttribute('data-settings-target')).toBe('devices');
     });
 
     it('clears previously rendered cards when the plan later becomes unavailable', async () => {

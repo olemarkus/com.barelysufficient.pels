@@ -555,8 +555,11 @@ export class PlanBuilder {
       this.state.lastOvershootMitigationMs = sheddingPlan.updates.lastOvershootMitigationMs;
     }
     if (sheddingPlan.guardInShortfall !== this.state.inShortfall) {
-      this.state.inShortfall = sheddingPlan.guardInShortfall;
+      // Commit the durable signal before advancing the shared planner state.
+      // If settings throws, the next build must still observe the transition
+      // and retry instead of treating an unpersisted latch as complete.
       this.deps.setCapacityInShortfall(sheddingPlan.guardInShortfall);
+      this.state.inShortfall = sheddingPlan.guardInShortfall;
       incPerfCounter('settings_set.capacity_in_shortfall');
     }
   }

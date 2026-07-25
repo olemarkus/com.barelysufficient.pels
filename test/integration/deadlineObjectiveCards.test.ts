@@ -28,6 +28,7 @@ import type {
   DeferredObjectiveActivePlanRevisionV1,
 } from '../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { TargetDeviceSnapshot } from '../../packages/contracts/src/types';
+import type { SmartTaskHomeScope } from '../../packages/contracts/src/smartTaskHomeScope';
 import type { FlowCardDeps } from '../../flowCards/registerFlowCards';
 
 // Fixed clock for deterministic deadlineAtMs assertions. 2026-01-01 05:00 UTC.
@@ -132,6 +133,8 @@ const buildActivePlan = (overrides: {
   pending?: boolean;
   latest?: DeferredObjectiveActivePlanRevisionV1 | null;
   deadlineAtMs?: number;
+  pendingReason?: DeferredObjectiveActivePlanV1['pendingReason'];
+  diagnosticReasonCode?: DeferredObjectiveActivePlanV1['diagnosticReasonCode'];
 } = {}): DeferredObjectiveActivePlanV1 => {
   const deviceId = overrides.deviceId ?? 'heater-1';
   const pending = overrides.pending ?? false;
@@ -145,6 +148,10 @@ const buildActivePlan = (overrides: {
     deadlineAtMs: overrides.deadlineAtMs ?? HH_MM_TO_UTC_MS(7, 0),
     startedAtMs: MOCK_NOW_MS,
     pending,
+    ...(overrides.pendingReason !== undefined ? { pendingReason: overrides.pendingReason } : {}),
+    ...(overrides.diagnosticReasonCode !== undefined
+      ? { diagnosticReasonCode: overrides.diagnosticReasonCode }
+      : {}),
     objectiveSignature: `${deviceId}:sig`,
     original: latest,
     latest,
@@ -254,6 +261,9 @@ const buildDeps = (overrides: {
   hoursRemainingBus?: DeferredObjectiveHoursRemainingBus;
   hoursRemainingTracker?: DeferredObjectiveHoursRemainingTracker;
   activePlans?: DeferredObjectiveActivePlansV1 | null;
+  isDeviceInMainHome?: (deviceId: string) => boolean;
+  hasMainHomeSmartTaskAuthority?: (deviceId: string) => boolean;
+  resolveDeviceHomeScope?: (deviceId: string) => SmartTaskHomeScope;
   rebuildPlan?: Mock<(reason: string) => unknown>;
   recorders?: MockRecorders;
   structuredError?: ReturnType<typeof vi.fn>;
@@ -270,6 +280,9 @@ const buildDeps = (overrides: {
     planHistoryRecorder: recorders.planHistoryRecorder,
     rebuildPlan: () => rebuildPlan(rebuildReason),
     nowMs: MOCK_NOW_MS,
+    ...(overrides.resolveDeviceHomeScope
+      ? { resolveDeviceHomeScope: overrides.resolveDeviceHomeScope }
+      : {}),
   });
   const deps = {
     homey: mock.homey,
@@ -308,6 +321,12 @@ const buildDeps = (overrides: {
       overrides.structuredError ? { error: overrides.structuredError } : undefined
     ),
     debugStructured: () => {},
+    ...(overrides.isDeviceInMainHome === undefined
+      ? {}
+      : { isDeviceInMainHome: overrides.isDeviceInMainHome }),
+    ...(overrides.hasMainHomeSmartTaskAuthority === undefined
+      ? {}
+      : { hasMainHomeSmartTaskAuthority: overrides.hasMainHomeSmartTaskAuthority }),
     getDeferredObjectiveActivePlans: () => (
       Object.prototype.hasOwnProperty.call(overrides, 'activePlans')
         ? overrides.activePlans
@@ -394,6 +413,18 @@ describe('deadline objective flow cards', () => {
       .rejects.toThrow(/try again/i);
     expect(readObjective(mock.settings, 'heater-1')).toBeUndefined(); // nothing persisted
     expect(deps.rebuildPlan).not.toHaveBeenCalled();
+  });
+
+  it('set_temperature_deadline durably rejects a device used as an electricity meter', async () => {
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'meter-1', name: 'Whole-home meter', deviceType: 'temperature' })],
+      resolveDeviceHomeScope: () => 'source_device',
+    });
+    registerDeadlineObjectiveCards(deps);
+    const card = mock.actions.get('set_temperature_deadline')!;
+    await expect(card.run!({ device: 'meter-1', target_c: 55, ready_by: '07:00' }))
+      .rejects.toThrow(/electricity meters/i);
+    expect(readObjective(mock.settings, 'meter-1')).toBeUndefined();
   });
 
   it('clear_deadline THROWS (retryable) when the clear refuses on an empty-getKeys flake', async () => {
@@ -690,6 +721,104 @@ describe('deadline objective flow cards', () => {
     expect(await condition.run!({ device: 'heater-1', status: 'at_risk' })).toBe(true);
     expect(await condition.run!({ device: 'heater-1', status: 'on_track' })).toBe(false);
     expect(await condition.run!({ device: 'heater-1', status: 'unachievable' })).toBe(false);
+  });
+
+  it('deadline_status_is matches no public status for a committed task whose device moved to a separate meter', async () => {
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+      activePlans: buildActivePlans([buildActivePlan({
+        planStatus: 'on_track',
+        diagnosticReasonCode: 'objective_device_in_sub_home',
+      })]),
+    });
+    seedObjectives(mock.settings, {
+      'heater-1': {
+        enabled: true,
+        kind: 'temperature',
+        enforcement: 'soft',
+        targetTemperatureC: 55,
+        deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
+      },
+    });
+    registerDeadlineObjectiveCards(deps);
+    const condition = mock.conditions.get('deadline_status_is')!;
+    for (const status of ['waiting', 'on_track', 'at_risk', 'unachievable', 'satisfied']) {
+      expect(await condition.run!({ device: 'heater-1', status })).toBe(false);
+    }
+  });
+
+  it('deadline_status_is rejects a stale on-track plan immediately when live membership is outside main', async () => {
+    const isDeviceInMainHome = vi.fn(() => false);
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+      // Deliberately stale: the recorder has not yet copied the separate-meter
+      // diagnostic onto this otherwise settled on-track revision.
+      activePlans: buildActivePlans([buildActivePlan({ planStatus: 'on_track' })]),
+      isDeviceInMainHome,
+    });
+    seedObjectives(mock.settings, {
+      'heater-1': {
+        enabled: true,
+        kind: 'temperature',
+        enforcement: 'soft',
+        targetTemperatureC: 55,
+        deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
+      },
+    });
+    registerDeadlineObjectiveCards(deps);
+    const condition = mock.conditions.get('deadline_status_is')!;
+
+    expect(await condition.run!({ device: 'heater-1', status: 'on_track' })).toBe(false);
+    expect(isDeviceInMainHome).toHaveBeenCalledWith('heater-1');
+  });
+
+  it('deadline_status_is preserves an existing status during a transient Main authority fence', async () => {
+    const isDeviceInMainHome = vi.fn(() => true);
+    const hasMainHomeSmartTaskAuthority = vi.fn(() => false);
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+      activePlans: buildActivePlans([buildActivePlan({ planStatus: 'on_track' })]),
+      isDeviceInMainHome,
+      hasMainHomeSmartTaskAuthority,
+    });
+    seedObjectives(mock.settings, {
+      'heater-1': {
+        enabled: true,
+        kind: 'temperature',
+        enforcement: 'soft',
+        targetTemperatureC: 55,
+        deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
+      },
+    });
+    registerDeadlineObjectiveCards(deps);
+    const condition = mock.conditions.get('deadline_status_is')!;
+
+    expect(await condition.run!({ device: 'heater-1', status: 'on_track' })).toBe(true);
+    expect(isDeviceInMainHome).toHaveBeenCalledWith('heater-1');
+    expect(hasMainHomeSmartTaskAuthority).not.toHaveBeenCalled();
+  });
+
+  it('deadline_status_is does not call a never-revised separate-meter task waiting', async () => {
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+      activePlans: buildActivePlans([buildActivePlan({
+        pending: true,
+        pendingReason: 'device_in_sub_home',
+        diagnosticReasonCode: 'objective_device_in_sub_home',
+      })]),
+    });
+    seedObjectives(mock.settings, {
+      'heater-1': {
+        enabled: true,
+        kind: 'temperature',
+        enforcement: 'soft',
+        targetTemperatureC: 55,
+        deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
+      },
+    });
+    registerDeadlineObjectiveCards(deps);
+    const condition = mock.conditions.get('deadline_status_is')!;
+    expect(await condition.run!({ device: 'heater-1', status: 'waiting' })).toBe(false);
   });
 
   it('deadline_status_is returns true for waiting when a task has no status yet', async () => {

@@ -69,6 +69,19 @@ const readTimeZone = (homey: WidgetApiContext['homey']): string => {
 // undefined app rejects cleanly (the shared resolver maps a `null` list to
 // `unavailable`).
 const resolveRescuableDevice = (app: StarvationRescueHostApi | undefined, deviceId: string) => {
+  if (typeof app?.resolveSmartTaskHomeScope !== 'function') {
+    return { ok: false as const, reason: 'unavailable' as const };
+  }
+  const scope = app.resolveSmartTaskHomeScope(deviceId);
+  if (scope === 'sub_home') {
+    return { ok: false as const, reason: 'device_in_sub_home' as const };
+  }
+  if (scope === 'source_device') {
+    return { ok: false as const, reason: 'device_not_planned' as const };
+  }
+  if (scope === 'unavailable') {
+    return { ok: false as const, reason: 'unavailable' as const };
+  }
   const devices = typeof app?.getStarvedRescueDevices === 'function' ? app.getStarvedRescueDevices() : null;
   return resolveRescuableDeviceFromList(devices, deviceId);
 };

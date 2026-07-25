@@ -2,14 +2,17 @@ import type { HomeyDeviceLike, Logger } from '../../utils/types';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import { getLogger } from '../../logging/logger';
 import { isHomeyDeviceLike } from '../../utils/types';
+import { normalizeError } from '../../utils/errorUtils';
 
 const moduleLogger = getLogger('device/manager-fetch');
 import {
   extractLiveHomePowerWatts,
   extractLiveGenerationWatts,
+  extractLiveMeterItems,
   extractLiveMeterPowerWatts,
   extractLivePowerWattsByDeviceId,
   type LiveDevicePowerWatts,
+  type LiveMeterItem,
 } from '../managerEnergy';
 import {
   DEVICES_API_PATH,
@@ -142,15 +145,38 @@ export type LivePowerReport = {
   /** Gross PV generation (W) from the same payload; null when absent. `+`-only. */
   generationW: number | null;
   deviceCount: number;
+  /**
+   * Per-meter readings for the caller-requested additional meter ids
+   * (multi-home R7b: one entry per sub-home meter that produced a FINITE
+   * reading this poll). A requested id whose reading is absent/non-finite is
+   * simply NOT a key — never a fabricated zero; the consumer's freshness
+   * machinery handles the gap.
+   */
+  additionalMeterPowerW: Record<string, number>;
 };
+
+// Resolve each requested additional meter id against the SAME live payload the
+// whole-home reading came from (one fetch serves all homes). Only finite
+// readings land in the map (see the field doc above).
+const extractAdditionalMeterPowerW = (
+  report: unknown,
+  meterDeviceIds: readonly string[],
+): Record<string, number> => Object.fromEntries(
+  meterDeviceIds.flatMap((meterDeviceId) => {
+    const watts = extractLiveMeterPowerWatts(report, meterDeviceId);
+    return watts === null ? [] : [[meterDeviceId, watts] as const];
+  }),
+);
 
 export async function fetchLivePowerReport(params: {
   logger: Logger;
   debugStructured?: StructuredDebugEmitter;
   /** Resolved explicit whole-home meter id; null/undefined = automatic (first cumulative item). */
   meterDeviceId?: string | null;
+  /** Additional per-meter reading requests (sub-home meters); empty/absent = none. */
+  additionalMeterDeviceIds?: readonly string[];
 }): Promise<LivePowerReport> {
-  const { logger, debugStructured, meterDeviceId } = params;
+  const { logger, debugStructured, meterDeviceId, additionalMeterDeviceIds = [] } = params;
   try {
     const report = await getEnergyLiveReport();
     if (report === null) {
@@ -158,13 +184,14 @@ export async function fetchLivePowerReport(params: {
         event: 'energy_live_report_unavailable',
         reasonCode: 'rest_client_not_initialized',
       });
-      return { byDeviceId: {}, homePowerW: null, generationW: null, deviceCount: 0 };
+      return { byDeviceId: {}, homePowerW: null, generationW: null, deviceCount: 0, additionalMeterPowerW: {} };
     }
     const byDeviceId = extractLivePowerWattsByDeviceId(report);
     const homePowerW = meterDeviceId != null
       ? extractLiveMeterPowerWatts(report, meterDeviceId)
       : extractLiveHomePowerWatts(report);
     const generationW = extractLiveGenerationWatts(report);
+    const additionalMeterPowerW = extractAdditionalMeterPowerW(report, additionalMeterDeviceIds);
     const deviceCount = Object.keys(byDeviceId).length;
     (debugStructured ?? ((p: Record<string, unknown>) => moduleLogger.debug(p)))({
       event: 'energy_live_report_received',
@@ -173,10 +200,32 @@ export async function fetchLivePowerReport(params: {
       generationW,
       deviceCount,
       ...(meterDeviceId != null ? { meterDeviceId } : {}),
+      ...(additionalMeterDeviceIds.length > 0
+        ? {
+          additionalMetersRequested: additionalMeterDeviceIds.length,
+          additionalMetersRead: Object.keys(additionalMeterPowerW).length,
+        }
+        : {}),
     });
-    return { byDeviceId, homePowerW, generationW, deviceCount };
+    return { byDeviceId, homePowerW, generationW, deviceCount, additionalMeterPowerW };
   } catch (error) {
     logDeviceTransportRuntimeError(logger, { event: 'energy_live_report_fetch_failed' }, error);
-    return { byDeviceId: {}, homePowerW: null, generationW: null, deviceCount: 0 };
+    return { byDeviceId: {}, homePowerW: null, generationW: null, deviceCount: 0, additionalMeterPowerW: {} };
+  }
+}
+
+/**
+ * The pickable whole-home meters from the live energy report — the same seam
+ * the meter-selection reader resolves against, so the picker offers exactly
+ * what a selection can read (no capability/class proxy over the device list).
+ * A read failure or uninitialised client resolves to an empty list, never a
+ * throw: the picker then shows only Automatic and re-fetches on the next open.
+ */
+export async function fetchLiveMeterItems(): Promise<LiveMeterItem[]> {
+  try {
+    return extractLiveMeterItems(await getEnergyLiveReport());
+  } catch (error) {
+    moduleLogger.error({ event: 'energy_live_meter_items_fetch_failed', err: normalizeError(error) });
+    return [];
   }
 }

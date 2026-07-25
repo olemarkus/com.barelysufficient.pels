@@ -65,7 +65,7 @@ import type {
 import { applyDeviceDriverOverride } from './transport/managerParseIdentity';
 import { syncNativeSteppedLoadCommandAdapters } from './managerNativeSteppedCommand';
 import type { DeviceObservation } from './deviceObservation';
-import type { TransportContext } from './transport/transportContext';
+import type { SnapshotRefreshOptions, TransportContext } from './transport/transportContext';
 import type { BinarySettleState } from '../observer/binarySettle';
 import {
   cloneBinaryControlObservation,
@@ -97,18 +97,19 @@ import {
   setCapability as runSetCapability,
 } from './transport/deviceWrites';
 import type { DeviceFetchResult } from './transport/managerFetch';
+import type { ZoneTree } from './transport/managerZones';
+import { ZoneTreeCache } from './transport/zoneTreeCache';
 import {
   computePeriodicStatusMetrics,
   fetchDevicesByKnownIds as runFetchDevicesByKnownIds,
   fetchDevicesForDebug,
   fetchDevicesForSnapshot as runFetchDevicesForSnapshot,
-  fetchLivePowerReport as runFetchLivePowerReport,
   getSnapshotUiPickerDevices,
   parseSnapshotDevice,
   parseSnapshotDeviceList,
+  pollHomePowerWithMeterFanOut as runPollHomePowerWithMeterFanOut,
   refreshSnapshot as runRefreshSnapshot,
   syncTrackedDevices as runSyncTrackedDevices,
-  updateHomePowerFromReport as runUpdateHomePowerFromReport,
 } from './transport/snapshotRefresh';
 import type { SteppedLoadStepRequestResult } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
 
@@ -158,6 +159,19 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         latestRawDevices: HomeyDeviceLike[];
         lastSnapshotRefreshMetricsKey: string | null;
     } = { emptySnapshotGrace: null, latestRawDevices: [], lastSnapshotRefreshMetricsKey: null };
+    // Zone-tree cache + fetch-generation guard (see `zoneTreeCache.ts`).
+    private readonly zoneTreeCache = new ZoneTreeCache();
+    // Zone-tree COMMIT notification seam (multi-home membership recompute).
+    // Transport-owned like the observed-state dispatcher, but set-after-
+    // construction: wiring subscribes via `setOnZoneTreeCommitted` once the
+    // consumer exists and detaches with `undefined` at uninit. Invoked only on
+    // a SUCCESSFUL generation-guarded commit (`snapshotRefresh.ts`), contained
+    // there so a subscriber throw can never surface on the detached chain.
+    private onZoneTreeCommitted?: () => void;
+    // Realtime zone-move seam (same shape/lifecycle as `onZoneTreeCommitted`):
+    // fires when a realtime device.update commits an entry with a changed
+    // `zoneId`; invoked contained in `deviceUpdateHandling.ts`.
+    private onDeviceZoneChanged?: () => void;
     private powerState: Required<PowerEstimateState>;
     private measuredPowerResolver: DeviceMeasuredPowerResolver;
     private recentLocalCapabilityWrites: RecentLocalCapabilityWrites = new Map();
@@ -302,6 +316,9 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             setLastSnapshotRefreshMetricsKey: (value) => { refreshScalars.lastSnapshotRefreshMetricsKey = value; },
             getLatestRawDevices: () => refreshScalars.latestRawDevices,
             setLatestRawDevices: (devices) => { refreshScalars.latestRawDevices = devices; },
+            zoneTreeCache: t.zoneTreeCache,
+            notifyZoneTreeCommitted: () => { t.onZoneTreeCommitted?.(); },
+            notifyDeviceZoneChanged: () => { t.onDeviceZoneChanged?.(); },
             getTrackedDevicesById: () => t.latestTrackedDevicesById,
             fetchDevicesForSnapshot: () => t.fetchDevicesForSnapshot(),
             fetchDevicesByKnownIds: () => t.fetchDevicesByKnownIds(),
@@ -352,8 +369,16 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     getUiPickerDevices(): TargetDeviceSnapshot[] {
         return getSnapshotUiPickerDevices(this.ctx);
     }
-    async pollHomePowerW(): Promise<{ powerW: number; generationW?: number } | null> {
-        return runUpdateHomePowerFromReport(this.ctx, await runFetchLivePowerReport(this.ctx));
+    // Poll-path home power read; also fans the additional (sub-home) meter
+    // readings out to the `onAdditionalMeterReadings` provider (multi-home
+    // R7b) — see `pollHomePowerWithMeterFanOut` in `snapshotRefresh.ts`.
+    // `authorizeFanOut` (from the poll source) gates that fan-out on the poll's
+    // generation + source liveness so a stale-generation poll cannot deliver an
+    // out-of-order sub-meter sample.
+    async pollHomePowerW(
+        authorizeFanOut?: () => boolean,
+    ): Promise<{ powerW: number; generationW?: number } | null> {
+        return runPollHomePowerWithMeterFanOut(this.ctx, authorizeFanOut);
     }
     setSnapshotForTests(snapshot: TargetDeviceSnapshot[]): void {
         // Mirror the production refresh funnel (`commitRefreshedSnapshot`): commit
@@ -453,7 +478,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     }
 
     async refreshSnapshot(
-        options: { includeLivePower?: boolean; targetedRefresh?: boolean } = {},
+        options: SnapshotRefreshOptions = {},
     ): Promise<{ powerW: number; generationW?: number } | null> {
         return runRefreshSnapshot(this.ctx, options);
     }
@@ -472,6 +497,26 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     getPeriodicStatusMetrics(): ({ devicesTotal: number } & SnapshotRefreshMetrics) | null {
         return computePeriodicStatusMetrics(this.ctx);
     }
+
+    /**
+     * Latest successfully fetched zone tree (`manager/zones/zone`), refreshed
+     * co-temporally with the snapshot; `null` until the first successful fetch.
+     * A failed fetch retains the previous tree (abandon-grace). Additive/
+     * dormant: no runtime consumer yet — multi-home membership will join
+     * device `zoneId`s against it.
+     */
+    getZoneTree(): ZoneTree | null { return this.zoneTreeCache.get(); }
+
+    /**
+     * Subscribe/detach the zone-tree commit notification (see the field doc on
+     * `onZoneTreeCommitted`). Single-consumer seam: the multi-home membership
+     * wiring subscribes after construction and detaches with `undefined` at
+     * uninit so a late detached commit cannot recompute a torn-down consumer.
+     */
+    setOnZoneTreeCommitted(callback: (() => void) | undefined): void { this.onZoneTreeCommitted = callback; }
+
+    /** Realtime zone-move subscription; same single-consumer lifecycle as `setOnZoneTreeCommitted`. */
+    setOnDeviceZoneChanged(callback: (() => void) | undefined): void { this.onDeviceZoneChanged = callback; }
 
     async setCapability(deviceId: string, capabilityId: string, value: unknown): Promise<unknown> {
         return runSetCapability(this.ctx, deviceId, capabilityId, value);

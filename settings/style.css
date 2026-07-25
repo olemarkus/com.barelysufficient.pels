@@ -367,6 +367,21 @@ md-text-button {
   font-weight: var(--font-weight-bold);
 }
 
+/* Multiple meters buttons: restore the M3 lead/trail padding on the host
+   boxes — Homey's host stylesheet opens with a universal `* { padding: 0 }`
+   reset that beats the components' own :host padding, collapsing labels to
+   the container edges (same idiom as .dry-run-banner__action /
+   .budget-page-header__action). Placed up here with the base button rules so
+   stylelint's no-descending-specificity ordering holds against the
+   id-scoped button rules further down. */
+.homes-settings md-filled-button {
+  padding-inline: var(--spacing-6);
+}
+
+.homes-settings md-text-button {
+  padding-inline: var(--spacing-3);
+}
+
 /* M3 destructive text button: foreground (label, ripple, focus, icon) uses
    the error role. Used for irreversible actions such as removing a
    stepped-load row. Scoping --md-sys-color-primary to this selector
@@ -539,7 +554,9 @@ md-primary-tab.tab[active] {
 }
 
 /* Simulation banner: one slim warning-tinted row — leading warning icon + a
-   concise line + an inline "Turn off simulation" text action. The amber tint
+   concise line + an inline "Turn off simulation" text action. The scoped
+   multi-meter copy stacks at the narrowest viewport in the media rule below.
+   The amber tint
    comes from `.banner--warning` on every screen (no per-viewport neutral
    override), so it reads as STATE, not just another grey card. `.banner`
    supplies the flex row + radius; this override tightens it to a single
@@ -560,8 +577,8 @@ md-primary-tab.tab[active] {
    `.banner` section (after the base + `.banner--stacked` `.banner__text` rules)
    so stylelint's no-descending-specificity ordering holds. */
 
-.dry-run-banner__action {
-  flex: 0 0 auto;
+/* Shared text action inside a warning banner (simulation + stale-data). */
+.banner__action {
   /* Restore the M3 text-button lead/trail padding on the host box. Homey injects
      a universal `* { padding: 0 }` reset that beats Material Web's :host padding
      on the real device (invisible in CI), collapsing the label to the state-layer
@@ -573,6 +590,13 @@ md-primary-tab.tab[active] {
      through every `--md-text-button-*` default that resolves to primary — the
      same one-property idiom as `.md-text-button--destructive` above. */
   --md-sys-color-primary: var(--color-state-warning-text);
+}
+
+/* The slim single-row simulation banner pins its action to the row end; the
+   stale-data banner keeps the base `.banner` wrap so its longer message can
+   break and the action drops to its own line at narrow widths. */
+.dry-run-banner__action {
+  flex: 0 0 auto;
 }
 
 .device-control-legend {
@@ -4585,18 +4609,31 @@ md-filled-button.is-busy {
   border-radius: var(--radius-md);
 }
 
+/* Railed warning-notice primitive: the left warning rail + contained surface
+   carry the signal. The generalized `.pels-notice-warning` keeps body text in
+   the normal tone (no wall-of-yellow prose); the original `.price-notice-warning`
+   alias below retains its warn-toned text + top margin for the existing price
+   surfaces. */
+.pels-notice-warning,
 .price-notice-warning {
-  color: var(--color-state-warning-text);
   font-style: normal;
   font-size: var(--font-size-sm);
   padding: var(--spacing-3);
-  margin-top: var(--spacing-3);
   background: var(--pels-surface-container-low);
   border-width: 1px 1px 1px var(--spacing-1);
   border-style: solid;
   border-color: var(--color-border-default) var(--color-border-default)
     var(--color-border-default) var(--color-state-warning-border);
   border-radius: var(--radius-md);
+}
+
+.pels-notice-warning {
+  color: var(--text);
+}
+
+.price-notice-warning {
+  color: var(--color-state-warning-text);
+  margin-top: var(--spacing-3);
 }
 
 .flow-status-row {
@@ -4659,6 +4696,13 @@ md-filled-button.is-busy {
 
 .banner__text {
   flex: 1;
+  /* A flex:1 item shrinks to its longest word before the wrapping row ever
+     overflows, so a banner with an inline action would collapse the message
+     into a word-per-line tower at 320 px instead of wrapping the button. The
+     ch floor makes the row overflow first: the action drops to its own line
+     and the message keeps a readable measure. (The nowrap simulation banner
+     overrides this back to min-width: 0 below.) */
+  min-width: 18ch;
 }
 
 .price-last-fetched {
@@ -5514,6 +5558,41 @@ details[open] > summary .disclosure-chevron {
    as "…stay as-" / "is", orphaning "is" on its own line. */
 .banner__no-break {
   white-space: nowrap;
+}
+
+/* The Main-scoped multi-meter wording is deliberately more explicit than the
+   single-home banner. At 320 px its fixed-width action would otherwise squeeze
+   the message into a word-per-line tower. Keep the single-home banner slim,
+   but give the scoped variant a readable text column with its action below. */
+@media (max-width: 360px) {
+  #dry-run-banner[data-home-scope="main"]:not([hidden]) {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    gap: 0 var(--spacing-2);
+    min-height: 0;
+    padding-block: var(--spacing-2);
+  }
+
+  #dry-run-banner[data-home-scope="main"] .banner__icon {
+    grid-column: 1;
+    grid-row: 1;
+    margin-block-start: var(--spacing-1);
+  }
+
+  #dry-run-banner[data-home-scope="main"] .banner__text {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: center;
+    min-width: 0;
+  }
+
+  #dry-run-banner[data-home-scope="main"] .dry-run-banner__action {
+    grid-column: 2;
+    grid-row: 2;
+    justify-self: start;
+    margin-inline-start: calc(-1 * var(--spacing-3));
+  }
 }
 
 .budget-redesign-card {
@@ -8955,11 +9034,14 @@ md-switch {
   gap: var(--spacing-2);
 }
 
-/* Native select primitive for the weather device pickers (form-styling rule:
-   native input/select + .field, never md-outlined-*). Padding is restated
-   because Homey's host stylesheet opens with a universal `* { padding: 0 }`
-   reset. Native dropdown arrow is kept (no `appearance: none`). */
-.pels-select {
+/* Native select/input primitive for device pickers and text fields
+   (form-styling rule: native input/select + .field, never md-outlined-*).
+   Padding is restated because Homey's host stylesheet opens with a universal
+   `* { padding: 0 }` reset. Native dropdown arrow is kept (no
+   `appearance: none`). `.pels-input` is the text-input twin (Multiple meters
+   name field) so both share one primitive. */
+.pels-select,
+.pels-input {
   width: 100%;
   min-height: 48px;
   padding: var(--spacing-2) var(--spacing-3);
@@ -8975,6 +9057,139 @@ md-switch {
   gap: var(--spacing-3);
 }
 
+/* ── Multiple meters (homes management) ────────────────────────────────────
+   Layout-only styling on top of the shared card/field/button/notice
+   primitives: the section stack, the per-area list rows, and the inline
+   delete-confirm strip. Warn moments ride `.pels-notice-warning`. Tokens
+   only. */
+.homes-settings {
+  display: grid;
+  gap: var(--spacing-3);
+}
+
+.homes-settings__list,
+.homes-settings__editor {
+  display: grid;
+  gap: var(--spacing-3);
+}
+
+/* Row rhythm: actions sit inline with the name/meta block (vertically
+   centered, pushed trailing) instead of on their own band below it; the
+   delete-confirm strip breaks to a full-width row beneath. */
+.homes-settings__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding-block: var(--spacing-2);
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.homes-settings__row:last-of-type {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.homes-settings__row-main {
+  display: grid;
+  flex: 1 1 12rem;
+  min-width: 0;
+  gap: var(--spacing-1);
+}
+
+.homes-settings__row-supporting {
+  margin: 0;
+}
+
+.homes-settings__actions {
+  justify-content: flex-end;
+}
+
+.homes-settings__row .homes-settings__actions {
+  margin-top: 0;
+  margin-left: auto;
+}
+
+.homes-settings__confirm {
+  display: grid;
+  flex: 1 1 100%;
+  gap: var(--spacing-2);
+}
+
+.homes-settings__confirm-body {
+  margin: 0;
+}
+
+.homes-settings__editor-title {
+  margin: 0;
+}
+
+.homes-settings__main-note {
+  margin: 0;
+}
+
+.homes-settings__add {
+  display: grid;
+  gap: var(--spacing-2);
+  justify-items: start;
+}
+
+/* Main-home meter nudge: railed notice between the list and the Add
+   affordance; normal-tone body (the rail carries the warning), trailing
+   cross-link (weather cross-link idiom). */
+.homes-settings__notice {
+  display: grid;
+  gap: var(--spacing-2);
+}
+
+.homes-settings__notice-body {
+  margin: 0;
+}
+
+.homes-settings__notice-link {
+  justify-self: start;
+}
+
+/* Per-home Limits & safety surface (multi-home U3): the switcher + meter-area
+   editor stacked above the static Main-home form. Mirrors the .homes-settings
+   grid-stack rhythm so the two multi-home surfaces read as one system. */
+.home-limits {
+  display: grid;
+  gap: var(--spacing-3);
+  margin-bottom: var(--spacing-4);
+}
+
+.home-limits__fields {
+  display: grid;
+  gap: var(--spacing-4);
+}
+
+.home-limits__simulation,
+.home-limits__status {
+  display: grid;
+  gap: var(--spacing-2);
+}
+
+.home-limits__sim-notice {
+  margin: 0;
+}
+
+/* Title + posture chip on one baseline-shared row. */
+.home-limits__status-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-2);
+}
+
+.home-limits__status-head h3 {
+  margin: 0;
+}
+
+.home-limits__status-line {
+  margin: 0;
+}
+
 .weather-settings-section__hint {
   margin: 0;
 }
@@ -8985,8 +9200,12 @@ md-switch {
   justify-self: start;
 }
 
-/* Live picker validity line, success tone (accent). The warning tone reuses the
-   canonical .field__hint--alert primitive, so it has no rule here. */
+/* Live picker status line, positive/confirming tone (accent) — generalized
+   from the weather pickers (`.weather-picker-status--ok` stays as the
+   original alias); the Multiple meters zone preview reuses it. The warning
+   tone reuses the canonical .field__hint--alert primitive, so it has no rule
+   here. */
+.pels-hint-ok,
 .weather-picker-status--ok {
   color: var(--accent);
   font-weight: var(--font-weight-medium);

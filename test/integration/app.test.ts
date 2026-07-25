@@ -1198,10 +1198,14 @@ describe('MyApp initialization', () => {
     try {
       const first = (app as any).powerSamplePipeline.recordPowerSample(1000, 1);
       await flushPromises();
+      expect((app as any).powerSamplePipeline.getStableSampleRevision())
+        .toEqual({ state: 'pending' });
       const second = (app as any).powerSamplePipeline.recordPowerSample(2000, 2);
       const third = (app as any).powerSamplePipeline.recordPowerSample(3000, 3);
 
       await flushPromises();
+      expect((app as any).powerSamplePipeline.getStableSampleRevision())
+        .toEqual({ state: 'pending' });
       expect(runSpy).toHaveBeenCalledTimes(1);
       expect(calls).toEqual([{ currentPowerW: 1000, nowMs: 1 }]);
 
@@ -1210,9 +1214,13 @@ describe('MyApp initialization', () => {
 
       expect(runSpy).toHaveBeenCalledTimes(2);
       expect(calls[1]).toEqual({ currentPowerW: 3000, nowMs: 3 });
+      expect((app as any).powerSamplePipeline.getStableSampleRevision())
+        .toEqual({ state: 'pending' });
 
       passes[1].resolve();
       await Promise.all([first, second, third]);
+      expect((app as any).powerSamplePipeline.getStableSampleRevision())
+        .toEqual({ state: 'stable', revision: 3 });
 
       const afterPerf = getPerfSnapshot();
       expect(runSpy).toHaveBeenCalledTimes(2);
@@ -3872,6 +3880,29 @@ describe('periodic snapshot refresh scheduling', () => {
 
     expect(persistSpy).toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('keeps the final Main actuator fenced after membership teardown', async () => {
+    const heater = new MockDevice('dev-1', 'Heater', ['target_temperature', 'onoff']);
+    setMockDrivers({ driverA: new MockDriver('driverA', [heater]) });
+    const app = createApp();
+    await initApp(app);
+    const setCapability = vi.spyOn((app as any).deviceManager, 'setCapability');
+    // Capture the exact actuator a recovery reconcile already in flight would
+    // resume through after runUninit has detached membership.
+    const actuator = (app as any).planEngine.executor.deps.actuator;
+
+    await app.onUninit?.();
+    const outcome = await actuator.apply({
+      kind: 'binary',
+      deviceId: 'dev-1',
+      control: 'onoff',
+      desired: false,
+      flowBacked: false,
+    });
+
+    expect(outcome).toEqual({ requested: false });
+    expect(setCapability).not.toHaveBeenCalled();
   });
 
   it('clears the one-shot prune timer registry entry after the initial prune fires', async () => {

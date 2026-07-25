@@ -1,6 +1,7 @@
 import type Homey from 'homey';
 import { migrateBlobToPerKeyIfNeeded } from '../lib/objectives/deferredObjectives';
 import { getLogger } from '../lib/logging/logger';
+import { migrateLegacyMultiHomeActivation } from './multiHomeActivation';
 
 const migrationLogger = getLogger('startup/boot-migrations');
 
@@ -42,6 +43,18 @@ export const runBootMigrations = (params: BootMigrationsParams): void => {
     migration.run(homey);
     homey.settings.set(migration.marker, true);
     migrationLogger.info({ event: 'boot_migration_applied', migration: migration.describe });
+  }
+  // The pre-GA multi-home flag used absent/false as OFF even when a populated
+  // homes_config remained from testing. Only a literal legacy true is migrated
+  // to the atomic config marker; false/absent configs stay held. The config
+  // marker is the idempotence key, so suspect reads and failed writes retry on
+  // the next boot instead of being hidden behind a separate done marker.
+  const multiHomeOutcome = migrateLegacyMultiHomeActivation(homey);
+  if (multiHomeOutcome === 'applied') {
+    migrationLogger.info({
+      event: 'boot_migration_applied',
+      migration: 'mark legacy-enabled homes_config active for multi-home GA',
+    });
   }
   // Deferred-objective blob → per-device-key migration. Runs separately from
   // BOOT_MIGRATIONS because it owns its own marker + abandon-grace logic (an

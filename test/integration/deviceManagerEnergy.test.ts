@@ -1,5 +1,7 @@
-import { extractLiveHomePowerWatts, extractLiveMeterPowerWatts } from '../../lib/device/managerEnergy';
-import { fetchLivePowerReport } from '../../lib/device/transport/managerFetch';
+import { extractLiveHomePowerWatts, extractLiveMeterItems, extractLiveMeterPowerWatts } from '../../lib/device/managerEnergy';
+import { fetchLiveMeterItems, fetchLivePowerReport } from '../../lib/device/transport/managerFetch';
+import { fetchLivePowerReport as fetchTransportLivePowerReport } from '../../lib/device/transport/snapshotRefresh';
+import type { TransportContext } from '../../lib/device/transport/transportContext';
 import * as homeyApi from '../../lib/device/transport/managerHomeyApi';
 import type { Logger } from '../../lib/utils/types';
 
@@ -143,6 +145,65 @@ describe('extractLiveMeterPowerWatts', () => {
   });
 });
 
+describe('extractLiveMeterItems', () => {
+  it('lists cumulative and device items with an id, preserving report order', () => {
+    const report = {
+      items: [
+        { type: 'cumulative', id: 'han', values: { W: 443 } },
+        { type: 'device', id: 'subpanel', values: { W: 120 } },
+        { type: 'device', id: 'plug', values: { W: 0 } },
+      ],
+    };
+    expect(extractLiveMeterItems(report)).toEqual([
+      { id: 'han', type: 'cumulative' },
+      { id: 'subpanel', type: 'device' },
+      { id: 'plug', type: 'device' },
+    ]);
+  });
+
+  it('lists a meter regardless of its reading — a momentarily non-finite/absent W stays pickable', () => {
+    // The reader resolves W per poll; listing must not gate on this poll's value.
+    const report = {
+      items: [
+        { type: 'cumulative', id: 'han', values: { W: NaN } },
+        { type: 'device', id: 'subpanel' },
+      ],
+    };
+    expect(extractLiveMeterItems(report)).toEqual([
+      { id: 'han', type: 'cumulative' },
+      { id: 'subpanel', type: 'device' },
+    ]);
+  });
+
+  it('omits an id-less cumulative item (covered by Automatic) and other item types', () => {
+    const report = {
+      items: [
+        { type: 'cumulative', values: { W: 443 } },
+        { type: 'generator', id: 'pv', values: { W: 900 } },
+        { type: 'zone', id: 'z1', values: { W: 500 } },
+        { type: 'device', id: 'han', values: { W: 100 } },
+      ],
+    };
+    expect(extractLiveMeterItems(report)).toEqual([{ id: 'han', type: 'device' }]);
+  });
+
+  it('dedupes by id, first occurrence winning', () => {
+    const report = {
+      items: [
+        { type: 'cumulative', id: 'han', values: { W: 443 } },
+        { type: 'device', id: 'han', values: { W: 443 } },
+      ],
+    };
+    expect(extractLiveMeterItems(report)).toEqual([{ id: 'han', type: 'cumulative' }]);
+  });
+
+  it('returns an empty list for malformed reports', () => {
+    expect(extractLiveMeterItems(null)).toEqual([]);
+    expect(extractLiveMeterItems({})).toEqual([]);
+    expect(extractLiveMeterItems({ items: [null, 42, 'junk', { type: 'device', id: 42 }] })).toEqual([]);
+  });
+});
+
 describe('fetchLivePowerReport', () => {
   const logger = { log: vi.fn(), debug: vi.fn(), error: vi.fn() } as unknown as Logger;
 
@@ -215,5 +276,67 @@ describe('fetchLivePowerReport', () => {
     expect(result.homePowerW).toBeNull();
     expect(result.deviceCount).toBe(0);
     expect(stderrSpy).toHaveBeenCalled();
+  });
+});
+
+describe('transport Main-meter authority', () => {
+  const logger = { log: vi.fn(), debug: vi.fn(), error: vi.fn() } as unknown as Logger;
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('uses a captured unavailable authority and preserves other report lanes', async () => {
+    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
+      items: [
+        { type: 'cumulative', id: 'automatic-main', values: { W: 9_999 } },
+        { type: 'device', id: 'sub-meter', values: { W: 1_200 } },
+      ],
+    });
+    const ctx = {
+      logger,
+      providers: {
+        // The live provider has recovered by the time the SDK call starts, but
+        // the refresh cycle must remain bound to its captured start selection.
+        getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: null }),
+        getAdditionalMeterDeviceIds: () => ['sub-meter'],
+      },
+    } as unknown as TransportContext;
+
+    const report = await fetchTransportLivePowerReport(ctx, { state: 'unavailable' });
+
+    expect(report.homePowerW).toBeNull();
+    expect(report.byDeviceId).toEqual({ 'sub-meter': 1_200 });
+    expect(report.additionalMeterPowerW).toEqual({ 'sub-meter': 1_200 });
+  });
+});
+
+describe('fetchLiveMeterItems', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('returns the report meter items', async () => {
+    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
+      items: [
+        { type: 'cumulative', id: 'han', values: { W: 3200 } },
+        { type: 'device', id: 'sub', values: { W: 800 } },
+      ],
+    });
+
+    await expect(fetchLiveMeterItems()).resolves.toEqual([
+      { id: 'han', type: 'cumulative' },
+      { id: 'sub', type: 'device' },
+    ]);
+  });
+
+  it('returns an empty list when the REST client is not initialized', async () => {
+    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue(null);
+    await expect(fetchLiveMeterItems()).resolves.toEqual([]);
+  });
+
+  it('returns an empty list on API error, never throwing', async () => {
+    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockRejectedValue(new Error('API down'));
+    await expect(fetchLiveMeterItems()).resolves.toEqual([]);
   });
 });

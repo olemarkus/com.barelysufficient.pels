@@ -30,11 +30,15 @@ module.exports = __toCommonJS(createSmartTaskWidgetPayload_exports);
 // packages/shared-domain/src/steppedLoadObservedState.ts
 var isSteppedLoadSnapshot = (snapshot) => snapshot.steppedLoadProfile?.model === "stepped_load";
 
+// packages/shared-domain/src/objectiveWriteStrings.ts
+var SMART_TASK_SUB_HOME_UNAVAILABLE = "Smart tasks aren\u2019t available yet for devices on a separate meter.";
+
 // packages/shared-domain/src/deadlineLabels.ts
 var PENDING_REASON_MISSING_CAPACITY_COPY = "Learning energy use \u2014 needs power readings from this device.";
 var SMART_TASK_LIST_STATUS_LABELS = {
   building_plan: "Building plan\u2026",
   queued: "On track",
+  unavailable: "Unavailable",
   paused_unplugged: "Paused \u2014 unplugged",
   paused_not_resumable: "Paused \u2014 can\u2019t resume",
   on_track: "On track",
@@ -52,6 +56,7 @@ var SMART_TASK_WIDGET_WHY_BY_STATUS = {
   // resolved by pendingReason
   queued: null,
   // composed from firstPlannedTimeLabel when present
+  unavailable: SMART_TASK_SUB_HOME_UNAVAILABLE,
   paused_unplugged: "EV is unplugged \u2014 plug in to resume.",
   paused_not_resumable: "Car charging won\u2019t resume \u2014 check the charger.",
   on_track: null,
@@ -186,6 +191,7 @@ var SMART_TASK_LIST_STATUS_CHIP_VARIANT = {
   // Same label AND tone as `on_track` — a queued plan that is allocated and
   // healthy is the same user-facing state; only the internal id differs.
   queued: "ok",
+  unavailable: "warn",
   paused_unplugged: resolvePausedUnpluggedChipTone(),
   paused_not_resumable: resolvePausedUnpluggedChipTone(),
   on_track: "ok",
@@ -196,6 +202,7 @@ var SMART_TASK_LIST_STATUS_CHIP_VARIANT = {
 var SMART_TASK_LIST_READY_BY_STATUS_WORD = {
   building_plan: null,
   queued: null,
+  unavailable: SMART_TASK_LIST_STATUS_LABELS.unavailable,
   // The inline word is joined to the timestamp with an em-dash separator
   // ("Ready by … — <word>"). For paused we use the compressed widget label
   // ('Unplugged') rather than the full chip label ('Paused — unplugged'): the
@@ -218,6 +225,7 @@ var SMART_TASK_LIST_ROW_LABELS = {
   readyBy: "Ready by"
 };
 var SMART_TASK_WIDGET_TARGET_NOUN = SMART_TASK_LIST_ROW_LABELS.target;
+var SMART_TASK_BANNER_UNAVAILABLE_TITLE = "Smart task unavailable";
 var REVISION_REASON_TOOLTIP_LINE = {
   flow_card: "Updated after a flow card fired",
   prices_arrived: "Updated as prices became available",
@@ -255,6 +263,12 @@ var CANNOT_MEET_RECOURSE = {
 };
 var OVERVIEW_DEVICE_RECOURSE_BASE = { label: "Open device in Overview", targetTab: "overview" };
 var overviewDeviceRecourse = (deviceId) => ({ ...OVERVIEW_DEVICE_RECOURSE_BASE, deviceId });
+var separateMeterUnavailableResolver = () => ({
+  headline: SMART_TASK_BANNER_UNAVAILABLE_TITLE,
+  body: SMART_TASK_SUB_HOME_UNAVAILABLE,
+  headlineReason: null,
+  recourse: null
+});
 var awaitingHorizonCopy = (kindNoun) => ((ctx) => {
   const isFlow = ctx.priceSource === "external_flow";
   const body = isFlow ? `PELS needs prices through the deadline before it can build a ${kindNoun}. In flow price mode, prices arrive only when a Flow calls the \u201CSet external prices (tomorrow)\u201D action. Check the Flow that publishes prices if this message stays up after tomorrow\u2019s prices should have arrived.` : `PELS will build a ${kindNoun} as soon as prices through the deadline are available.`;
@@ -297,6 +311,7 @@ var DEADLINE_LABELS = {
       active: "Heating",
       building_plan: "Building plan\u2026",
       queued: "On track",
+      unavailable: SMART_TASK_LIST_STATUS_LABELS.unavailable,
       // Thermal devices can't be unplugged; the variant is unreachable here
       // and falls back to the generic on-track copy if the resolver ever
       // hands a stale value through.
@@ -332,6 +347,7 @@ var DEADLINE_LABELS = {
       // Thermal devices aren't chargers; unreachable here, kept as a safety net
       // so a future diagnostic can't leak EV-specific copy onto a heater.
       charger_not_resumable: HEATER_DEVICE_DATA_MISSING,
+      device_in_sub_home: separateMeterUnavailableResolver,
       // Cold-start `missing_capacity` collapses to a single user-facing line —
       // headline + metaLine combined parse as `PENDING_REASON_MISSING_CAPACITY_COPY`
       // ("Learning energy use — needs power readings from this device."). Earlier
@@ -393,6 +409,7 @@ var DEADLINE_LABELS = {
       active: "Charging",
       building_plan: "Building plan\u2026",
       queued: "On track",
+      unavailable: SMART_TASK_LIST_STATUS_LABELS.unavailable,
       paused_unplugged: "Paused \u2014 unplugged",
       paused_not_resumable: SMART_TASK_LIST_STATUS_LABELS.paused_not_resumable,
       ok: "On track"
@@ -438,7 +455,8 @@ var DEADLINE_LABELS = {
         headlineReason: SMART_TASK_WIDGET_WHY_BY_STATUS.paused_not_resumable,
         recourse: null
       }),
-      missing_capacity: EV_DEVICE_DATA_MISSING
+      missing_capacity: EV_DEVICE_DATA_MISSING,
+      device_in_sub_home: separateMeterUnavailableResolver
     },
     unavailableByReason: {
       no_current_reading: {

@@ -7,7 +7,7 @@ description: What each PELS Homey Flow card does and which ones matter most for 
 
 Flow cards are how PELS connects to the rest of your Homey setup.
 
-If you only build one Flow, make it **Report power usage**. Everything else depends on having current load data unless you use **Homey Energy** as the power source.
+If you only build one Flow, make it **Report power usage**. Everything else depends on having current load data unless you use the **Power meter** power source (read through Homey Energy).
 
 Internal planner reasons may still mention older terms like "headroom" or "shed" in diagnostics and logs. In these docs and the visible UI, **headroom** is **available power** (how much more load PELS can fit before the current safe pace) and **shed** appears as **limited**. Legacy flow-card filenames such as `has_headroom_for_device` keep their stable internal ids; their visible titles use the current vocabulary.
 
@@ -19,7 +19,7 @@ Use the **Report power usage** action whenever your power meter updates.
 
 - Input is current power in **watts**.
 - This is the data PELS uses to track hourly usage, calculate available power, and decide whether devices should be limited or resumed.
-- You do not need this Flow when **Settings > Limits & safety > Power source** is set to **Homey Energy**.
+- You do not need this Flow when **Settings > Limits & safety > Power source** is set to **Power meter**.
 
 Whole-home power data is what unlocks every other planner feature — the meter Flow is the one card to wire first.
 
@@ -64,7 +64,7 @@ The device-aware available-power condition includes built-in hysteresis after re
 
 | Card | What it does |
 | --- | --- |
-| **Report power usage** | Feeds live meter data into PELS. Required unless the power source is Homey Energy. |
+| **Report power usage** | Feeds live meter data into PELS. Required unless the power source is Power meter. |
 | **Set capacity limit** | Changes the configured hard cap dynamically. |
 | **Set operating mode** | Switches between stored modes such as Home or Night. |
 | **Set daily budget** | Sets the daily budget from a Flow. Use `0` to disable daily budget. |

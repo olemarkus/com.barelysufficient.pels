@@ -4,7 +4,7 @@ import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
 import { TARGET_COMMAND_RETRY_DELAYS_MS } from '../../lib/plan/planConstants';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
-import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
+import { createDeviceActuator, type Actuator } from '../../lib/actuator/deviceActuator';
 import { makeFlowBackedBinaryTrigger } from '../../setup/appInit/buildDeviceActuator';
 import {
   observeNativeSteppedLoadCommandAdapter,
@@ -36,6 +36,7 @@ import { legacyDeviceReason } from '../utils/deviceReasonTestUtils';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
 import { resolveFixtureCurrentOn } from '../utils/planTestUtils';
+import { createCapacityShortfallSideEffectGate } from '../../setup/capacityShortfallSideEffectGate';
 
 const KEEP_REASON = legacyDeviceReason('keep')!;
 const CAPACITY_REASON = legacyDeviceReason('shed due to capacity')!;
@@ -234,6 +235,217 @@ const buildExecutor = (
 let logCapture: LoggerCapture;
 beforeEach(() => { logCapture = captureLogger(); });
 afterEach(() => { logCapture.restore(); });
+
+describe('PlanExecutor shortfall side-effect retry', () => {
+  it('keeps enter and clear retryable when the durable writer fails once', async () => {
+    const state = createPlanEngineState();
+    const trigger = vi.fn().mockResolvedValue(true);
+    let failNextWrite = true;
+    const setCapacityInShortfall = vi.fn((_value: boolean) => {
+      if (!failNextWrite) return;
+      failNextWrite = false;
+      throw new Error('settings unavailable');
+    });
+    const homey = {
+      flow: {
+        getTriggerCard: vi.fn((id: string) => (
+          id === 'capacity_shortfall' ? { trigger } : undefined
+        )),
+      },
+      settings: { set: vi.fn() },
+    } as unknown as Homey.App['homey'];
+    const { executor } = buildExecutor(state, undefined, {
+      homey,
+      setCapacityInShortfall,
+    });
+    const gate = createCapacityShortfallSideEffectGate({
+      isDiscarded: () => false,
+      isTemporarilyFenced: () => false,
+      applyShortfall: (deficitKw) => executor.handleShortfall(deficitKw),
+      applyClear: () => executor.handleShortfallCleared(),
+    });
+
+    await expect(gate.onShortfall(2)).rejects.toThrow('settings unavailable');
+    expect(state.inShortfall).toBe(false);
+    expect(trigger).not.toHaveBeenCalled();
+
+    await expect(gate.flush()).resolves.toBe(true);
+    expect(state.inShortfall).toBe(true);
+    expect(trigger).toHaveBeenCalledTimes(1);
+
+    failNextWrite = true;
+    await expect(gate.onShortfallCleared()).rejects.toThrow('settings unavailable');
+    expect(state.inShortfall).toBe(true);
+    await expect(gate.flush()).resolves.toBe(true);
+    expect(state.inShortfall).toBe(false);
+    expect(trigger).toHaveBeenCalledTimes(1);
+    expect(setCapacityInShortfall.mock.calls.map(([value]) => value))
+      .toEqual([true, true, false, false]);
+  });
+
+  it('emits a deferred enter after Builder pre-sync and rearms after a pre-synced clear', async () => {
+    const state = createPlanEngineState();
+    state.inShortfall = true;
+    const trigger = vi.fn().mockResolvedValue(true);
+    const setCapacityInShortfall = vi.fn();
+    const homey = {
+      flow: {
+        getTriggerCard: vi.fn((id: string) => (
+          id === 'capacity_shortfall' ? { trigger } : undefined
+        )),
+      },
+      settings: { set: vi.fn() },
+    } as unknown as Homey.App['homey'];
+    const { executor } = buildExecutor(state, undefined, {
+      homey,
+      setCapacityInShortfall,
+    });
+    const gate = createCapacityShortfallSideEffectGate({
+      isDiscarded: () => false,
+      isTemporarilyFenced: () => false,
+      applyShortfall: (deficitKw) => executor.handleShortfall(deficitKw),
+      applyClear: () => executor.handleShortfallCleared(),
+    });
+
+    // Builder already persisted/synchronized the guard state while the Flow
+    // callback was fenced. Executor must still deliver the retained enter.
+    await gate.onShortfall(1);
+    expect(trigger).toHaveBeenCalledTimes(1);
+    expect(setCapacityInShortfall).not.toHaveBeenCalled();
+
+    // Model Builder pre-syncing the clear before the retained callback lands.
+    // The callback still has to reset the Flow-side latch for the next incident.
+    state.inShortfall = false;
+    await gate.onShortfallCleared();
+    state.inShortfall = true;
+    await gate.onShortfall(2);
+
+    expect(trigger).toHaveBeenCalledTimes(2);
+    expect(setCapacityInShortfall).not.toHaveBeenCalled();
+  });
+
+  it('holds a pre-existing deferred transition until a superseding sample settles', async () => {
+    let authorityFenced = true;
+    const applyShortfall = vi.fn().mockResolvedValue(undefined);
+    const scheduleRetry = vi.fn();
+    const gate = createCapacityShortfallSideEffectGate({
+      isDiscarded: () => false,
+      isTemporarilyFenced: () => authorityFenced,
+      scheduleRetry,
+      applyShortfall,
+      applyClear: vi.fn().mockResolvedValue(undefined),
+    });
+
+    // The transition predates recovery, so it was initially deferred by
+    // authority rather than by an active prepared sample fence.
+    await gate.onShortfall(2);
+    gate.holdDeferredUntilPreparedApply();
+    authorityFenced = false;
+
+    await expect(gate.flush()).resolves.toBe(false);
+    expect(applyShortfall).not.toHaveBeenCalled();
+
+    // A later sample becoming stable is not enough: its rebuild may have
+    // failed before CapacityGuard adopted that measurement.
+    await expect(gate.flush()).resolves.toBe(false);
+    expect(applyShortfall).not.toHaveBeenCalled();
+
+    await expect(gate.flushAfterPreparedApply()).resolves.toBe(true);
+    expect(applyShortfall).toHaveBeenCalledExactlyOnceWith(2);
+    expect(scheduleRetry).toHaveBeenCalled();
+  });
+});
+
+describe('PlanExecutor declined actuator requests', () => {
+  it('does not record a fenced binary request as a write or leave pending state', async () => {
+    const state = createPlanEngineState();
+    const apply = vi.fn(async () => ({ requested: false }));
+    const actuator: Actuator = { apply };
+    const persistLastControlledMs = vi.fn();
+    const { executor } = buildExecutor(state, [{
+      id: 'dev-1',
+      name: 'Heater',
+      controlCapabilityId: 'onoff',
+      canSetControl: true,
+      available: true,
+      binaryControl: { on: true },
+    }], {
+      actuator,
+      persistLastControlledMs,
+    });
+
+    const result = await executor.applyPlanActions({
+      meta: {
+        totalKw: 6,
+        softLimitKw: 5,
+        headroomKw: -1,
+      },
+      devices: [pd({
+        id: 'dev-1',
+        name: 'Heater',
+        currentState: 'on',
+        plannedState: 'shed',
+        currentTarget: 21,
+        plannedTarget: 21,
+        controllable: true,
+        controlCapabilityId: 'onoff',
+        reason: CAPACITY_REASON,
+      })],
+    });
+
+    expect(apply).toHaveBeenCalledWith({
+      kind: 'binary',
+      deviceId: 'dev-1',
+      control: 'onoff',
+      desired: false,
+      flowBacked: false,
+    });
+    expect(result).toEqual({ deviceWriteCount: 0, commandRequestCount: 0 });
+    expect(state.pendingBinaryCommands['dev-1']).toBeUndefined();
+    expect(state.lastDeviceShedMs['dev-1']).toBeUndefined();
+    expect(state.lastDeviceControlledMs['dev-1']).toBeUndefined();
+    expect(state.lastInstabilityMs).toBeNull();
+    expect(persistLastControlledMs).not.toHaveBeenCalled();
+    expect(logCapture.findEvent('binary_command_succeeded')).toBeUndefined();
+    expect(logCapture.findEvent('binary_command_applied')).toBeUndefined();
+  });
+
+  it('does not record a fenced target request as a write or pending retry', async () => {
+    const state = createPlanEngineState();
+    const apply = vi.fn(async () => ({ requested: false }));
+    const actuator: Actuator = { apply };
+    const persistLastControlledMs = vi.fn();
+    const { executor } = buildExecutor(state, [{
+      id: 'dev-1',
+      name: 'Heater',
+      controlCapabilityId: 'onoff',
+      canSetControl: true,
+      available: true,
+      binaryControl: { on: true },
+      targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
+    }], {
+      actuator,
+      persistLastControlledMs,
+    });
+
+    const result = await executor.applyPlanActions(buildTargetPlan());
+
+    expect(apply).toHaveBeenCalledWith({
+      kind: 'target',
+      deviceId: 'dev-1',
+      capabilityId: 'target_temperature',
+      value: 23,
+    });
+    expect(result).toEqual({ deviceWriteCount: 0, commandRequestCount: 0 });
+    expect(state.pendingTargetCommands['dev-1']).toBeUndefined();
+    expect(state.lastDeviceRestoreMs['dev-1']).toBeUndefined();
+    expect(state.lastDeviceControlledMs['dev-1']).toBeUndefined();
+    expect(state.lastRestoreMs).toBeNull();
+    expect(state.activationAttemptByDevice['dev-1']).toBeUndefined();
+    expect(persistLastControlledMs).not.toHaveBeenCalled();
+    expect(logCapture.findEvent('target_command_applied')).toBeUndefined();
+  });
+});
 
 describe('PlanExecutor restore logging', () => {
   it('continues applying later devices when stepped-load projection fails for one device', async () => {

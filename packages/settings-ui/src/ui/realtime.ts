@@ -26,6 +26,7 @@ import {
   EV_BOOST_SETTINGS,
   NATIVE_EV_WIRING_DEVICES,
   DEBUG_LOGGING_TOPICS,
+  HOMES_CONFIG, HOMES_CONFIG_INITIALIZED,
   NORWAY_PRICE_MODEL,
   OPERATING_MODE_SETTING,
   OVERSHOOT_BEHAVIORS,
@@ -40,6 +41,10 @@ import {
   loadStaleDataStatus,
   updateStaleDataStatusFromPowerPayload,
 } from './capacity.ts';
+import {
+  notifyHomeLimitsSettingChanged,
+  refreshHomeLimitsOnLimitsPanel,
+} from './homeLimits.ts';
 import {
   getHomeyClient,
   invalidateApiCache,
@@ -78,6 +83,7 @@ import {
   repaintOverviewWithRescueGate,
 } from './overviewRescueGate.ts';
 import { reloadDeferredObjectiveActivePlans } from './deferredObjectiveActivePlans.ts';
+import { refreshHomesOnHomesPanel } from './homesSettings.ts';
 import { clearUsageReturnLink } from './usageReturnLink.ts';
 import {
   handleWeatherAdvisorSettingsChanged,
@@ -85,7 +91,6 @@ import {
   refreshWeatherInsightOnWeatherPanel,
 } from './weatherInsight.ts';
 import { DAILY_BUDGET_REFRESH_KEYS, DAILY_BUDGET_SETTINGS_KEYS } from './realtimeDailyBudgetKeys.ts';
-
 
 const POWER_USAGE_REALTIME_REFRESH_MIN_INTERVAL_MS = 30 * 1000;
 
@@ -100,13 +105,13 @@ const REDESIGN_SETTINGS_SECTIONS = new Set([
   'advanced',
 ]);
 
-
 const CAPACITY_SETTINGS_KEYS = new Set([
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   CAPACITY_DRY_RUN,
   POWER_SOURCE,
   HOMEY_ENERGY_METER_DEVICE_ID,
+  HOMES_CONFIG, HOMES_CONFIG_INITIALIZED,
 ]);
 const ADVANCED_SETTINGS_KEYS = new Set([
   DEBUG_LOGGING_TOPICS,
@@ -341,6 +346,9 @@ const createSettingsSetHandler = () => (key: string) => {
   if (CAPACITY_SETTINGS_KEYS.has(key)) {
     runLoggedTask(loadCapacitySettings(), 'Failed to load capacity settings', 'settings.set');
   }
+  // Keep an open meter-area Limits card live on external status/scalar changes
+  // (suffixed keys the CAPACITY_SETTINGS_KEYS set intentionally excludes).
+  notifyHomeLimitsSettingChanged(key);
   if (ADVANCED_SETTINGS_KEYS.has(key)) {
     runLoggedTask(loadAdvancedSettings(), 'Failed to load advanced settings', 'settings.set');
   }
@@ -507,6 +515,15 @@ const runTabActivationSideEffects = (tabId: string) => {
   }
   if (tabId === 'limits' || tabId === 'simulation') {
     runLoggedTask(loadCapacitySettings(), 'Failed to load limits and simulation settings', 'showTab');
+    // The per-home switcher + meter-area editor live on the Limits panel only.
+    if (tabId === 'limits') {
+      runLoggedTask(refreshHomeLimitsOnLimitsPanel(), 'Failed to load per-home limits', 'showTab');
+    }
+    return;
+  }
+  if (tabId === 'homes') {
+    // Refetch ui_homes on every open so edits never start from a stale list.
+    runLoggedTask(refreshHomesOnHomesPanel(), 'Failed to load meter areas', 'showTab');
     return;
   }
   if (tabId === 'weather') {

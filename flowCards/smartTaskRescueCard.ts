@@ -8,7 +8,9 @@ import {
   requireSettingsRead,
   type DropdownArg,
 } from './deadlineObjectiveCards';
-import { OBJECTIVE_WRITE_REFUSED_RETRY } from '../packages/shared-domain/src/objectiveWriteStrings';
+import {
+  resolveObjectiveWriteRefusalMessage,
+} from '../packages/shared-domain/src/objectiveWriteStrings';
 import { supportsSmartTaskObjective } from './smartTaskDeviceCapability';
 import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
 import {
@@ -96,10 +98,14 @@ export function registerAllowSmartTaskRescueCard(deps: FlowCardDeps): void {
       entry: withRescuePermission(prevEntry, key, mode),
       rescue: 'replace',
     });
-    // A refused write (transient un-confirmable migration / untrustworthy
-    // settings read) must surface as a retryable failure, not a silent success
-    // that leaves the rescue permission unchanged.
-    if (!outcome.persisted) throw new Error(OBJECTIVE_WRITE_REFUSED_RETRY);
+    // A refused write must surface as a failure, not a silent success that
+    // leaves the rescue permission unchanged. Transient refusals (un-confirmable
+    // migration / untrustworthy settings read) get the retry framing; the
+    // Durable scope refusals cannot be cleared by retrying, so they throw their
+    // own honest lines (shared with the other smart-task surfaces).
+    if (!outcome.persisted) {
+      throw new Error(resolveObjectiveWriteRefusalMessage(outcome.reason));
+    }
     return true;
   });
   card.registerArgumentAutocompleteListener('device', async (query: string) => {

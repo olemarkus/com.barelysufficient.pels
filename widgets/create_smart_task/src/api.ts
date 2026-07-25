@@ -52,13 +52,24 @@ const createReject = (reason: CreateSmartTaskRejectReason): CreateSmartTaskCreat
   reason,
 });
 
+const rejectForHomeScope = (
+  scope: ReturnType<CreateSmartTaskHostApi['resolveSmartTaskHomeScope']>,
+): 'device_in_sub_home' | 'device_not_planned' | 'unavailable' | null => {
+  if (scope === 'sub_home') return 'device_in_sub_home';
+  if (scope === 'source_device') return 'device_not_planned';
+  if (scope === 'unavailable') return 'unavailable';
+  return null;
+};
+
 export const getCreateSmartTaskDevices = async (
   { homey }: WidgetApiContext,
 ): Promise<CreateSmartTaskDevicesPayload> => {
-  const devices = typeof homey.app?.getCreateSmartTaskCandidateDevices === 'function'
-    ? homey.app.getCreateSmartTaskCandidateDevices()
-    : [];
-  return buildCreateSmartTaskDevicesPayload({ devices });
+  if (typeof homey.app?.getCreateSmartTaskCandidateDevices !== 'function') {
+    return { state: 'error' };
+  }
+  const read = homey.app.getCreateSmartTaskCandidateDevices();
+  if (read.state === 'unavailable') return { state: 'error' };
+  return buildCreateSmartTaskDevicesPayload({ devices: read.devices });
 };
 
 export const previewCreateSmartTask = async (
@@ -70,6 +81,9 @@ export const previewCreateSmartTask = async (
   // relies on its `this` (`this.latestTargetSnapshot`, `this.getUiPickerDevices()`,
   // …), so a detached reference would throw a runtime TypeError.
   if (typeof homey.app?.previewDeferredObjectivePlan !== 'function') return previewReject('unavailable');
+  if (typeof homey.app.resolveSmartTaskHomeScope !== 'function') return previewReject('unavailable');
+  const scopeReject = rejectForHomeScope(homey.app.resolveSmartTaskHomeScope(request.deviceId));
+  if (scopeReject !== null) return previewReject(scopeReject);
 
   const timeZone = readTimeZone(homey);
   const nowMs = Date.now();
@@ -99,6 +113,12 @@ export const createCreateSmartTask = async (
   // reads `this.latestTargetSnapshot` / `this.homey.settings`, so a detached
   // reference would throw a runtime TypeError.
   if (typeof homey.app?.createDeferredObjective !== 'function') return createReject('unavailable');
+  if (typeof homey.app.resolveSmartTaskHomeScope !== 'function') return createReject('unavailable');
+  // Re-check scope on the create request, not only during preview: the device
+  // may have moved or global ownership may have become provisional while the
+  // user was composing the task.
+  const scopeReject = rejectForHomeScope(homey.app.resolveSmartTaskHomeScope(request.deviceId));
+  if (scopeReject !== null) return createReject(scopeReject);
 
   const timeZone = readTimeZone(homey);
   const nowMs = Date.now();

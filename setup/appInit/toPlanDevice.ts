@@ -18,9 +18,8 @@ import {
 } from './calibrationViews';
 import { withSteppedDiscriminant } from '../../lib/plan/planTypes';
 import { resolveSurplusOnlyPosture } from '../../lib/plan/planSurplusAbsorb';
-import { normalizePowerSource } from '../../lib/power/powerSource';
-import { POWER_SOURCE } from '../../lib/utils/settingsKeys';
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
+import { requireConfiguredPowerSource } from '../powerSourceSettings';
 
 // Producer-side classification for the "Run on solar surplus" dump-load gate: a
 // plain binary-power control device — NOT an enabled continuous / target-power
@@ -33,21 +32,109 @@ const isPlainBinaryControlDevice = (
 ): boolean => !(targetPowerConfig !== undefined && targetPowerConfig.enabled !== false)
   && (controlModel === undefined || controlModel === 'binary_power');
 
+/**
+ * Per-home overrides for the two `toPlanDevice` reads that are otherwise
+ * hardwired to the MAIN home's runtime (R7b Cluster A). Absent (the default) =
+ * byte-identical to the pre-lift behavior; a sub-home capacity bundle passes
+ * neutral overrides so it neither adopts a surplus posture (capacity-only, no
+ * price/surplus signal) nor leaks MAIN's in-flight binary command into its own
+ * drift gate.
+ */
+export type ToPlanDeviceOptions = {
+  /** When false, skip the surplus-absorb posture entirely — never stamp `surplusOnly`. Default true. */
+  surplusPostureEnabled?: boolean;
+  /** In-flight binary command resolver. Default reads MAIN's engine via `ctx.planEngine`. */
+  getPendingBinaryCommand?: (
+    deviceId: string,
+    communicationModel?: 'local' | 'cloud',
+  ) => { desired: boolean } | null;
+};
+
+// Resolve the device's in-flight binary command. Default (no override) reads
+// MAIN's engine via `ctx.planEngine` — byte-identical to the pre-R7b read
+// (undefined when the engine/method is absent); a sub-home bundle overrides it
+// to read its OWN engine (see `buildSubHomeScope.getPlanDevices`).
+function resolvePendingBinaryCommand(
+  ctx: AppContext,
+  device: DecoratedDeviceSnapshot & EvObservedProbe,
+  opts: ToPlanDeviceOptions | undefined,
+): { desired: boolean } | null | undefined {
+  if (opts?.getPendingBinaryCommand) {
+    return opts.getPendingBinaryCommand(device.id, device.communicationModel);
+  }
+  return ctx.planEngine?.getPendingBinaryCommandForDevice?.(device.id, device.communicationModel);
+}
+
+// "Run on solar surplus" dump-load posture (the flat `surplusOnly` bit),
+// resolved ONCE from the per-device price-opt blob + the raw snapshot's modality
+// (binary, not temperature/stepped/EV) and the resolved managed/controllable
+// bits. The planner's allocator/hold and the executor's carve-out stamp consume
+// it; nothing downstream re-reads the blob.
+//
+// Producer-resolved metered-source gate: on the flow power source no surplus
+// signal exists (the flow boundary rejects negative watts and carries no
+// generation channel), so a dump load must never be stamped `surplusOnly` there
+// — the surplus hold would otherwise keep it off forever. A suspect persisted
+// source read aborts this producer cycle so the plan service retains its
+// last-good plan instead of transiently stamping an authoritative Flow posture.
+// `surplusOnly` remains a per-cycle derived posture, not persisted state.
+//
+// A sub-home capacity bundle (`surplusPostureEnabled === false`) is strictly
+// capacity-only — no price/surplus signal — so it must NEVER stamp the posture
+// (a `surplusWilling` device there could never satisfy a surplus that never
+// arrives, and would be held OFF forever). Default (undefined) resolves exactly
+// as the main home did before this lift.
+function resolveSurplusPostureForDevice(params: {
+  ctx: AppContext;
+  device: DecoratedDeviceSnapshot & EvObservedProbe;
+  opts: ToPlanDeviceOptions | undefined;
+  plainBinaryControlModel: boolean;
+  controllable: boolean;
+  managed: boolean;
+}): boolean {
+  const {
+    ctx, device, opts, plainBinaryControlModel, controllable, managed,
+  } = params;
+  if (opts?.surplusPostureEnabled === false) return false;
+  // Resolve source-independent candidacy first. Most plan devices cannot use
+  // this posture and must not acquire an unrelated dependency on settings-store
+  // health merely by being projected into a plan.
+  const candidate = resolveSurplusOnlyPosture({
+    surplusWilling: ctx.priceOptimizationSettings[device.id]?.surplusWilling,
+    controlCapabilityId: device.controlCapabilityId,
+    deviceClass: device.deviceClass,
+    targets: device.targets,
+    steppedLoadProfile: device.steppedLoadProfile,
+    plainBinaryControlModel,
+    controllable,
+    managed,
+    meteredPowerSource: true,
+  });
+  if (!candidate) return false;
+  return requireConfiguredPowerSource(ctx.homey.settings) === 'homey_energy';
+}
+
 // The device param widens with `EvObservedProbe`: this producer is the one
 // sanctioned reader of the raw observed `evChargingState` on the plan path —
 // it resolves the flat EV sub-fields below and strips the raw field off the
 // spread. The decorated snapshots the caller holds physically carry the field
 // (transport writes it); the base type omits it for consumers.
-export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot & EvObservedProbe): PlanInputDevice {
+export function toPlanDevice(
+  ctx: AppContext,
+  device: DecoratedDeviceSnapshot & EvObservedProbe,
+  opts?: ToPlanDeviceOptions,
+): PlanInputDevice {
+  // Both reads reproduce the pre-R7b wiring EXACTLY when `opts` is absent (the
+  // main home): surplus posture enabled, pending-binary read via `ctx.planEngine`
+  // (MAIN's engine). A sub-home bundle overrides both — see
+  // `buildSubHomeScope.getPlanDevices`.
+  //
   // Staleness is no longer resolved here: the producer emits the CONCRETE latched
   // observed state (`currentState`/`currentOn`), never an 'unknown' driven by
   // staleness, and the plan device carries no staleness flag. Freshness reporting
   // (overview gray-state, idle classifier, diagnostics) is sourced from the
   // observer projection at its own wiring seams (`getObservationStale`).
-  const pendingBinaryCommand = ctx.planEngine?.getPendingBinaryCommandForDevice?.(
-    device.id,
-    device.communicationModel,
-  );
+  const pendingBinaryCommand = resolvePendingBinaryCommand(ctx, device, opts);
   const calibration = buildStepPowerCalibrationView(ctx, device);
   const hasRecentObservedDraw = resolveHasRecentObservedDraw(
     ctx,
@@ -80,11 +167,6 @@ export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot & 
   const isObserveOnlyRole = device.deviceClass === 'battery' || device.deviceClass === 'solarpanel';
   const controllable = isObserveOnlyRole ? device.controllable === true : ctx.isCapacityControlEnabled(device.id);
   const managed = isObserveOnlyRole ? device.managed !== false : ctx.resolveManagedState(device.id);
-  // "Run on solar surplus" dump-load posture, resolved ONCE here from the
-  // per-device price-opt blob + the raw snapshot's modality (binary, not
-  // temperature/stepped/EV) and the resolved managed/controllable bits. The
-  // planner's allocator/hold and the executor's carve-out stamp consume the
-  // flat `surplusOnly` bit; nothing downstream re-reads the blob for this.
   // The continuous / target-power / non-binary classification is resolved HERE
   // (the producer may read the `controlModel` setting + target-power config) so
   // the planner helper carries no such branch (control-model vocab rule).
@@ -92,26 +174,16 @@ export function toPlanDevice(ctx: AppContext, device: DecoratedDeviceSnapshot & 
     device.targetPowerConfig,
     device.controlModel,
   );
-  // Producer-resolved metered-source gate: on the flow power source no surplus
-  // signal exists (the flow boundary rejects negative watts and carries no
-  // generation channel), so a dump load must never be stamped `surplusOnly`
-  // there — the surplus hold would otherwise keep it off forever. Read once here
-  // at the producer; the planner helper consumes the flat bit. A transient
-  // `settings.get` miss reads as flow (fail-toward-release): the device reverts
-  // to normal managed control for that cycle rather than being stranded held —
-  // the safe direction, and self-healing next cycle. `surplusOnly` is a per-cycle
-  // derived posture, not persisted state, so it needs no abandon-grace window.
-  const meteredPowerSource = normalizePowerSource(ctx.homey.settings.get(POWER_SOURCE)) === 'homey_energy';
-  const surplusOnly = resolveSurplusOnlyPosture({
-    surplusWilling: ctx.priceOptimizationSettings[device.id]?.surplusWilling,
-    controlCapabilityId: device.controlCapabilityId,
-    deviceClass: device.deviceClass,
-    targets: device.targets,
-    steppedLoadProfile: device.steppedLoadProfile,
+  // "Run on solar surplus" dump-load posture (flat `surplusOnly` bit). Resolved
+  // in a helper (main-home default vs sub-home capacity-only) — see
+  // `resolveSurplusPostureForDevice`.
+  const surplusOnly = resolveSurplusPostureForDevice({
+    ctx,
+    device,
+    opts,
     plainBinaryControlModel,
     controllable,
     managed,
-    meteredPowerSource,
   });
   const residualKw = buildResidualKwForPlanDevice({
     device,

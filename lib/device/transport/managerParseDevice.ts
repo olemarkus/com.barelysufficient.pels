@@ -3,6 +3,7 @@ import type {
   TargetDeviceSnapshot,
   TargetPowerSteppedLoadConfig,
 } from '../../../packages/contracts/src/types';
+import type { MainMeterSelection } from '../../../packages/contracts/src/mainMeterSelection';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
 import type { HomeyDeviceLike, Logger } from '../../utils/types';
 import { getDeviceId } from './managerHelpers';
@@ -27,8 +28,24 @@ import {
 } from './managerParseDeviceFields';
 
 export type DeviceTransportParseProviders = {
-    /** Resolved explicit whole-home meter id; null/undefined = automatic (first cumulative item). */
-    getHomeyEnergyMeterDeviceId?: () => string | null;
+    /** Producer-resolved Main selection; `unavailable` must never fall back to Automatic. */
+    getHomeyEnergyMeterSelection?: () => MainMeterSelection;
+    /**
+     * Additional per-meter reading requests for the SAME `manager/energy/live`
+     * payload (multi-home R7b: each sub-home's own meter device). Read fresh
+     * per poll so a homes-config change needs no transport restart. Empty /
+     * absent = no extra extraction — the single-home path is untouched.
+     */
+    getAdditionalMeterDeviceIds?: () => readonly string[];
+    /**
+     * Push seam for the readings the request above resolved (multi-home R7b):
+     * `pollHomePowerWithMeterFanOut` hands each poll's finite per-meter map to
+     * this consumer (the home-runtime registry routes them to per-home
+     * pipelines). A provider closure rather than a transport setter so the
+     * wiring stays lazy — reads through it no-op until (and after) the
+     * registry exists.
+     */
+    onAdditionalMeterReadings?: (readings: Record<string, number>, nowMs: number) => void;
     getPriority?: (deviceId: string) => number;
     getControllable?: (deviceId: string) => boolean;
     getManaged?: (deviceId: string) => boolean;

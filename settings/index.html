@@ -28,15 +28,16 @@
       <span class="banner__icon" aria-hidden="true">
         <svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" focusable="false"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
       </span>
-      <span class="banner__text">Simulation on — devices stay <span class="banner__no-break">as-is</span></span>
-      <md-text-button type="button" class="dry-run-banner__action" id="simulation-disable-button">Turn off simulation</md-text-button>
+      <span class="banner__text" id="dry-run-banner-text">Simulation on — devices stay <span class="banner__no-break">as-is</span></span>
+      <md-text-button type="button" class="banner__action dry-run-banner__action" id="simulation-disable-button">Turn off simulation</md-text-button>
     </div>
 
     <div id="stale-data-banner" class="banner banner--warning" hidden>
       <span class="banner__icon" aria-hidden="true">
         <svg viewBox="0 0 24 24" width="1em" height="1em" fill="currentColor" focusable="false"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
       </span>
-      <span id="stale-data-text" class="banner__text">No power data received recently. Check your Flow that reports power usage.</span>
+      <span id="stale-data-text" class="banner__text">No power data yet. PELS needs to know where to read your home&rsquo;s power usage.</span>
+      <md-text-button type="button" class="banner__action" id="stale-data-action" data-settings-target="limits" data-settings-anchor="#settings-power-source">Check power source</md-text-button>
     </div>
 
     <section class="card panel hidden" id="devices-panel" data-panel="devices" aria-labelledby="devices-title">
@@ -474,6 +475,13 @@
           <span slot="supporting-text" class="settings-nav-card__description">Outdoor temperature, tomorrow&rsquo;s forecast</span>
           <svg slot="end" class="settings-nav-card__chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m8.59 16.59 4.58-4.59-4.58-4.59L10 6l6 6-6 6-1.41-1.41z" fill="currentColor"/></svg>
         </md-list-item>
+        <!-- Multiple meters (multi-home): entry point to the meter-areas panel. -->
+        <md-list-item type="button" class="settings-nav-card" data-settings-target="homes" id="homes-nav-card">
+          <svg slot="start" class="settings-nav-card__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="13" r="8" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 13 15.5 9.5M7.5 17.5h9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          <span slot="headline" class="settings-nav-card__title pels-text-card-title">Multiple meters</span>
+          <span slot="supporting-text" class="settings-nav-card__description">Parts of your home with their own meter</span>
+          <svg slot="end" class="settings-nav-card__chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m8.59 16.59 4.58-4.59-4.58-4.59L10 6l6 6-6 6-1.41-1.41z" fill="currentColor"/></svg>
+        </md-list-item>
         <md-list-item type="button" class="settings-nav-card" data-settings-target="simulation">
           <svg slot="start" class="settings-nav-card__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 3h6M10 3v6.5L5.5 17a2 2 0 0 0 1.8 3h9.4a2 2 0 0 0 1.8-3L14 9.5V3M7.5 14h9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
           <span slot="headline" class="settings-nav-card__title pels-text-card-title">Simulation mode</span>
@@ -508,6 +516,20 @@
       </md-text-button>
     </section>
 
+    <!-- Multiple meters sub-page: management UI for parts of the home with
+         their own meter. The homesSettings controller renders the Preact
+         section (progressive disclosure, list, create/edit form) into the
+         mount on panel activation. -->
+    <section class="card panel hidden settings-detail-panel" id="homes-panel" data-panel="homes" aria-labelledby="homes-title">
+      <div class="pels-appbar">
+        <md-icon-button type="button" class="pels-appbar__back" data-settings-target="settings" aria-label="Back to Settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" fill="currentColor"/></svg>
+        </md-icon-button>
+        <h2 class="pels-appbar__title" id="homes-title">Multiple meters</h2>
+      </div>
+      <div id="homes-settings-mount"></div>
+    </section>
+
     <section class="card panel hidden settings-detail-panel" id="limits-panel" data-panel="limits" aria-labelledby="limits-title">
       <div class="pels-appbar">
         <md-icon-button type="button" class="pels-appbar__back" data-settings-target="settings" aria-label="Back to Settings">
@@ -515,6 +537,12 @@
         </md-icon-button>
         <h2 class="pels-appbar__title" id="limits-title">Limits &amp; safety</h2>
       </div>
+      <!-- Per-home switcher + meter-area editor (multi-home U3). Ships `hidden`
+           so an empty node never occupies a grid track in the panel — with 0
+           meter areas the panel is byte/layout-identical to origin/main. The
+           homeLimits controller un-hides it only when ≥1 meter area exists, and
+           renders the Preact surface here + toggles the static form below. -->
+      <div id="home-limits-mount" hidden></div>
       <form id="settings-limits-form" class="form-grid settings-form-card">
         <label class="field">
           <span class="field__label pels-text-settings-label" id="settings-capacity-limit-label">Hard cap</span>
@@ -535,7 +563,7 @@
           <span class="field__label pels-text-settings-label" id="settings-power-source-label">Power source</span>
           <md-filled-select id="settings-power-source" name="settings_power_source" aria-labelledby="settings-power-source-label">
             <md-select-option value="flow" selected><div slot="headline">Flow card</div></md-select-option>
-            <md-select-option value="homey_energy"><div slot="headline">Homey Energy</div></md-select-option>
+            <md-select-option value="homey_energy"><div slot="headline">Power meter</div></md-select-option>
           </md-filled-select>
           <small class="field__hint">Where whole-home power readings come from.</small>
         </div>
@@ -583,7 +611,7 @@
           </div>
         </div>
       </div>
-      <p id="plan-empty" class="muted" hidden>No plan available yet. Send power data or refresh devices.</p>
+      <p id="plan-empty" class="muted" hidden>No plan available yet. PELS builds one after the first power reading.</p>
     </section>
 
     <section class="card panel hidden" id="advanced-panel" data-panel="advanced" aria-labelledby="advanced-title">
