@@ -541,6 +541,15 @@ program) remains deferred.*
       connection; hypothesis: they toggle the heater at the panel, the live feed is down, and PELS
       keeps managing it. Source: PR-1 implementation of the external-off hold (2026-07-25).
 
+- [ ] **Thin `deviceDetail/index.ts` with a table-driven Setup-control registry.** The file is the
+      device-detail orchestrator and sits at a documented 505-line ceiling (raised from the 500
+      default by the "Leave off until turned on again" row). Every new per-device setting costs it
+      an import, a handler registration, and a reflect call, so the next one breaches it again. The
+      registrations are uniform enough to become a table of `{ sync, init }` entries iterated once.
+      Persona: contributor; hypothesis: the next settings feature stalls on an unrelated lint
+      ceiling and gets a second ad-hoc raise. Source: PR-2 of the external-off hold train
+      (2026-07-25).
+
 - [ ] **Meter picker hint invites an impossible pick when no meters are listed.** When the Homey
       Energy report exposes no id-carrying whole-home (cumulative) meter and no sensor-class device
       meter, the Whole-home meter select shows just "Automatic" while the always-visible hint still

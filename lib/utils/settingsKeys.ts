@@ -68,8 +68,9 @@ export const MANAGED_DEVICES = 'managed_devices';
 export const CONTROLLABLE_DEVICES = 'controllable_devices';
 export const BUDGET_EXEMPT_DEVICES = 'budget_exempt_devices';
 // Opt-in config for "Leave off until turned on again": `Record<deviceId, true>`
-// (absent = off). No contracts mirror yet — the settings UI that writes this key
-// lands in a follow-up PR, and the key is unreachable by users until it does.
+// (absent = off). Mirror of RESPECT_EXTERNAL_OFF_DEVICES in
+// packages/contracts/src/settingsKeys.ts — keep both in sync (the settings UI
+// can't import lib).
 export const RESPECT_EXTERNAL_OFF_DEVICES = 'respect_external_off_devices';
 // Runtime state for the above — which devices PELS is currently leaving off
 // because they were turned off outside PELS. Deliberately a separate key from
