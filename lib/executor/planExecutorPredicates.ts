@@ -9,8 +9,10 @@ import {
   isPlanDeviceObservedOff,
   isSteppedLoadDevice,
   resolveSteppedKeepDesiredStepId,
+  resolveSteppedLoadTransition,
 } from '../plan/planSteppedLoad';
 import { isBinaryPlanDevice } from '../plan/planBinaryDevice';
+import { RESTORE_COOLDOWN_MS } from '../plan/planConstants';
 import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
 import {
   allowsSteppedLoadKeepInvariantRestore,
@@ -104,6 +106,72 @@ export function hasStableSteppedLoadStepActuation(dev: DevicePlan['devices'][num
   return desiredStep.planningPowerW > selectedStep.planningPowerW
     && allowsSteppedLoadKeepInvariantRestore(dev.reason);
 }
+
+/**
+ * Phase 2 of a stepped load's restore-from-off: the step axis is already
+ * prepared at the keep-desired step, so the only command left to issue is the
+ * binary on.
+ *
+ * `hasStableSteppedLoadStepActuation` deliberately returns false once desired
+ * == selected (nothing left to do on the STEP axis) — which is exactly this
+ * state. Without a companion predicate on the BINARY axis the plan-apply gate
+ * (`maybeApplyPlanChanges`) sees an unchanged action signature — `buildPlanSignature`
+ * carries desired state only, never the observation that just materialized the
+ * step — and never invokes the executor at all, wedging the device at "step
+ * prepared, still off" until some unrelated device happens to change the plan.
+ * That is prod incident 2026-07-25 (Elbillader off for 6+ minutes with its
+ * target already at 6 A).
+ *
+ * The transition phase is read off `resolveSteppedLoadTransition` rather than
+ * re-derived here, so this gate and the executor's own dispatch decision agree
+ * by construction. The reason allow-set ({keep, restore_need}) keeps every
+ * cooldown / backoff / capacity hold blocking as before.
+ *
+ * Two traps this deliberately avoids — they reverted the first attempt at this
+ * fix, and both underlying defects are still open in TODO.md
+ * ("`isCommandableNow` is always false for an EV charger on the plan-device
+ * path" and "Restore actuation re-stamps the GLOBAL `state.lastRestoreMs`"):
+ *   - It does NOT gate on `isCommandableNow(dev)`. On a plan device that is
+ *     always false for an EV charger: `withEvDiscriminant` (`lib/plan/planTypes.ts`)
+ *     strips `evChargingState`, and `commandableNow` is never copied across, so
+ *     the resolver lands on "charger state unknown". Gating on it would make this
+ *     predicate dead for exactly the devices that hit the bug. Commandability is
+ *     still enforced downstream, on the SNAPSHOT, by `canTurnOnDevice`.
+ *   - It IS rate-limited per device. `recordRestoreActuation` stamps the GLOBAL
+ *     `state.lastRestoreMs`, so an unbounded per-cycle retry by one stuck device
+ *     would hold every other device's restore gate open indefinitely.
+ */
+export function hasStableSteppedLoadBinaryRestoreActuation(
+  dev: DevicePlan['devices'][number],
+  state: PlanEngineState,
+): boolean {
+  if (!isSteppedLoadDevice(dev) || dev.plannedState !== 'keep') return false;
+  // A binary handle is required: this is the binary-axis phase, and a step-only
+  // stepper has no on/off to write (its restore rides the step axis instead).
+  if (!isBinaryPlanDevice(dev)) return false;
+  // The binary axis must read a trusted off: `currentOn` is the producer-resolved
+  // on/off truth, and `=== false` is the same gate the transition resolver uses
+  // for its restore-from-off branch (unknown is not off).
+  if (dev.currentOn !== false) return false;
+  if (dev.binaryCommandPending === true) return false;
+  if (!allowsSteppedLoadKeepInvariantRestore(dev.reason)) return false;
+  if (!hasSteppedLoadBinaryRestoreSlot(state, dev.id)) return false;
+  const transition = resolveSteppedLoadTransition(dev, resolveSteppedKeepDesiredStepId(dev));
+  return transition?.binaryTarget === true && transition.transitionPhase === 'binary_transition';
+}
+
+/**
+ * Per-device restore slot: one on-attempt per `RESTORE_COOLDOWN_MS`, measured
+ * off this device's own last restore actuation (`lastDeviceRestoreMs`, which the
+ * step-preparation command also stamps). Bounds a device that accepts the write
+ * but never actually comes on to the same cadence as any ordinary restore,
+ * instead of one attempt per rebuild cycle.
+ */
+const hasSteppedLoadBinaryRestoreSlot = (state: PlanEngineState, deviceId: string): boolean => {
+  const lastRestoreMs = state.lastDeviceRestoreMs[deviceId];
+  if (typeof lastRestoreMs !== 'number' || !Number.isFinite(lastRestoreMs)) return true;
+  return Date.now() - lastRestoreMs >= RESTORE_COOLDOWN_MS;
+};
 
 export function hasEquivalentSteppedLoadCommandHold(
   dev: DevicePlan['devices'][number],
