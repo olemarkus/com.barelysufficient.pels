@@ -453,4 +453,29 @@ describe('computeEnergyBarScaleKWh — projected marker alignment', () => {
   it('opens headroom past budget when used alone overshoots without a projection', () => {
     expect(computeEnergyBarScaleKWh(2.3, null, 2.5)).toBeCloseTo(2.5 * 1.05, 5);
   });
+
+  // Regression: prod 2026-07-25. The energy bar's hard-cap marker only renders
+  // while the cap is on-scale, and the cap normally sits ABOVE the budget
+  // (budget = cap − safety margin). Omitting it from the scale dropped the tick
+  // in exactly the healthy case, so the cap was never shown in the unit it
+  // governs and appeared only as a kW tick on the instantaneous power bar —
+  // where "6.7 kW now" beside "Hard cap 5.0 kW" reads as a breach it is not.
+  it('keeps the hard cap on-scale when it sits above the budget', () => {
+    // The reported case: budget 3.2, used 1.1, projected 1.97, cap 5.0.
+    expect(computeEnergyBarScaleKWh(3.2, 1.97, 1.1, 5.0)).toBe(5.0);
+  });
+
+  it('does not shrink the scale when the cap is below the overshoot', () => {
+    expect(computeEnergyBarScaleKWh(2.3, 2.6, 1.0, 2.4)).toBeCloseTo(2.6 * 1.05, 5);
+  });
+
+  it('ignores a missing or non-finite cap', () => {
+    expect(computeEnergyBarScaleKWh(2.3, 1.95, 1.0, null)).toBe(2.3);
+    expect(computeEnergyBarScaleKWh(2.3, 1.95, 1.0, Number.NaN)).toBe(2.3);
+    // An infinite cap would otherwise become the scale and collapse the bar to
+    // a sliver — the finiteness gate is what keeps the budget tick readable.
+    expect(computeEnergyBarScaleKWh(2.3, 1.95, 1.0, Number.POSITIVE_INFINITY)).toBe(2.3);
+    expect(computeEnergyBarScaleKWh(2.3, 1.95, 1.0, Number.NEGATIVE_INFINITY)).toBe(2.3);
+    expect(computeEnergyBarScaleKWh(2.3, 1.95, 1.0)).toBe(2.3);
+  });
 });

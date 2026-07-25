@@ -657,12 +657,17 @@ describe('Redesign plan UI', () => {
       ]);
       expect(powerMarkers.every((m) => m.getAttribute('role') === 'img')).toBe(true);
 
-      // Energy bar has two markers: budget + projected end. Both labeled.
+      // Energy bar has three markers: budget + projected end + the hard cap in
+      // kWh. The cap sits ABOVE the budget (budget = cap − safety margin), so it
+      // only stays on-scale because `computeEnergyBarScaleKWh` includes it —
+      // without that it was dropped in exactly this healthy case and the cap was
+      // never shown in the unit it governs (prod 2026-07-25).
       const energyMarkers = Array.from(sections[1]!.querySelectorAll('.pels-meter-track__marker')) as HTMLElement[];
-      expect(energyMarkers).toHaveLength(2);
+      expect(energyMarkers).toHaveLength(3);
       expect(energyMarkers.map((m) => m.getAttribute('aria-label'))).toEqual([
         'Budget this hour 11.0 kWh',
         expect.stringMatching(/^Projected this hour [\d.]+ kWh$/),
+        'Hard cap this hour 14.0 kWh',
       ]);
 
       // Each bar with more than one marker renders a sublegend row.
@@ -671,7 +676,9 @@ describe('Redesign plan UI', () => {
       const legendLabels = legends.map((l) => Array.from(l.querySelectorAll('.plan-hero__legend-label'))
         .map((el) => el.textContent?.trim()));
       expect(legendLabels[0]).toEqual(['Safe pace now 11.0 kW', 'Hard cap 14.0 kW']);
-      expect(legendLabels[1]).toEqual(['Budget this hour', 'Projected this hour']);
+      // The kWh cap legend carries its value (the kW legend's number is a
+      // different quantity — an instantaneous tick, not this hour's ceiling).
+      expect(legendLabels[1]).toEqual(['Budget this hour', 'Projected this hour', 'Hard cap this hour 14.0 kWh']);
     });
 
     it('renders a legend for a single-marker meter so the lone marker is self-explanatory', async () => {

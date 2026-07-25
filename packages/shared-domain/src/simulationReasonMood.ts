@@ -25,6 +25,8 @@ const MAKING_ROOM_PREFIX = 'Making room for higher-priority device';
 // reason line is the ONLY per-card carrier of the hypothetical framing — the
 // tag keeps a card scrolled away from the banner honest on its own (the same
 // rule the `DEVICE_OVERVIEW_WOULD_*` action labels already follow).
+import { PLAN_STATE_HELD_FALLBACK_STATUS } from './planStateLabels';
+
 const SIMULATION_TAG = ' (simulation)';
 
 export const toSimulationReasonLine = (label: string, dryRun: boolean): string => {
@@ -41,5 +43,11 @@ export const toSimulationReasonLine = (label: string, dryRun: boolean): string =
     return `Would make room for a higher-priority device${label.slice(MAKING_ROOM_PREFIX.length)}${SIMULATION_TAG}`;
   }
   if (label === 'Waiting for cheaper hours') return `Would wait for cheaper hours${SIMULATION_TAG}`;
+  // The held fallback (`PLAN_STATE_HELD_FALLBACK_STATUS`). It is not a "Limited …"
+  // line, but it IS a PELS-acted hold — the device is only waiting because PELS is
+  // holding it — so in simulation it must read hypothetically and carry the tag,
+  // or a card scrolled away from the banner reads as a factual hold PELS is not
+  // performing.
+  if (label === PLAN_STATE_HELD_FALLBACK_STATUS) return `Would be held back${SIMULATION_TAG}`;
   return label;
 };

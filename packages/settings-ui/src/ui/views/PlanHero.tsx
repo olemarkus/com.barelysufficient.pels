@@ -584,7 +584,12 @@ const EnergyMeter = ({ scale }: { scale: EnergyBarScale }) => {
   // Shared with the energy section's projected-text computation so the marker's
   // visual position matches the printed `projected / budget` ratio when under
   // budget. See `computeEnergyBarScaleKWh`.
-  const scaleKWh = computeEnergyBarScaleKWh(scale.budgetKWh, scale.projectedKWh, scale.usedKWh);
+  const scaleKWh = computeEnergyBarScaleKWh(
+    scale.budgetKWh,
+    scale.projectedKWh,
+    scale.usedKWh,
+    scale.hardCapKWh,
+  );
   const projectionTone = resolveProjectionTone(scale);
   const markers: MeterMarker[] = [
     {
@@ -603,11 +608,11 @@ const EnergyMeter = ({ scale }: { scale: EnergyBarScale }) => {
       labels: formatEnergyMeterMarkerLabels('projected', scale.projectedKWh),
     });
   }
-  // The cap's hourly kWh — the line that turns the projection red — renders
-  // when it fits the scale. The scale only stretches past the budget when the
-  // projection overshoots, so the marker appears exactly when the hour is
-  // approaching or past the cap and stays out of the calm hour's way (where
-  // it would sit beyond the bar's edge).
+  // The cap's hourly kWh — the line that turns the projection red — renders in
+  // every hour. `computeEnergyBarScaleKWh` includes the cap in the scale, so the
+  // `<= scaleKWh` guard below can no longer drop it: the cap normally sits ABOVE
+  // the budget (`cap − safety margin`), which used to push it off-scale in
+  // exactly the calm hours where seeing it is reassuring.
   if (scale.hardCapKWh !== null && scale.hardCapKWh <= scaleKWh) {
     markers.push({
       kind: 'cap',
