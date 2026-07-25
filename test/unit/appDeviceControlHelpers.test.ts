@@ -15,6 +15,7 @@ import {
   PELS_MEASURE_STEP_CAPABILITY_ID,
   PELS_TARGET_STEP_CAPABILITY_ID,
 } from '../../packages/shared-domain/src/steppedLoadSyntheticCapabilities';
+import { resolveCurrentOn } from '../../lib/observer/observedState';
 import type {
   DeviceControlProfiles,
   MeasuredPowerObservedProbe,
@@ -281,7 +282,14 @@ describe('appDeviceControlHelpers', () => {
     expect(decorated.binaryControl?.on).toBe(false);
   });
 
-  it('does not turn flow non-off feedback into reported truth while currentOn=false', () => {
+  // Regression: prod 2026-07-25, Easee "Elbillader". The charger reverts its
+  // dynamic current to 32 A at charging-session start and announces it over the
+  // flow card, but that announcement lands while PELS's binary axis still reads
+  // off (the on-echo trailed the write by 17-37 s on that device). Blanking the
+  // report left the planner crediting a 6 A / 1.38 kW shed for a charger drawing
+  // 7.36 kW, which produced a false hard-cap shortfall and a resume that breached
+  // the cap. Flow reports are now admitted on the same terms as native ones.
+  it('turns flow non-off feedback into reported truth while currentOn=false', () => {
     const runtimeState = createDeviceControlRuntimeState();
 
     expect(reportSteppedLoadActualStep({
@@ -299,9 +307,12 @@ describe('appDeviceControlHelpers', () => {
       nowMs: 2_000,
     });
 
-    expect(decorated.reportedStepId).toBeUndefined();
-    expect(decorated.selectedStepId).toBe('low');
+    expect(decorated.reportedStepId).toBe('max');
+    expect(decorated.selectedStepId).toBe('max');
+    // The binary axis still owns the on/off fold: a non-off observed step must
+    // not resurrect a device PELS has turned off.
     expect(decorated.binaryControl?.on).toBe(false);
+    expect(resolveCurrentOn(decorated)).toBe(false);
   });
 
   it('uses parsed target-power step observations as reported stepped-load truth', () => {
@@ -804,12 +815,12 @@ describe('appDeviceControlHelpers', () => {
     });
   });
 
-  // A suppressed non-off flow report matching the PENDING desired step is the
-  // flow-transport confirmation of that command (prod 2026-07-05 Elbillader
+  // A non-off flow report matching the PENDING desired step while the device is
+  // off is real telemetry: it lands on the OBSERVED axis and confirms the
+  // commanded one through the ordinary report path (prod 2026-07-05 Elbillader
   // deadlock: dropping it wholesale left restore-from-off looping
-  // waiting_confirmation -> stale -> retry_backoff forever). It confirms the
-  // COMMANDED axis only — observed reportedStepId stays untouched.
-  it('lets a suppressed matching flow report confirm the pending desired step without observed evidence', () => {
+  // waiting_confirmation -> stale -> retry_backoff forever).
+  it('admits a matching non-off flow report while off as observed evidence and confirms the command', () => {
     const structuredLogger = { info: vi.fn() };
     const helpers = new AppDeviceControlHelpers({
       getProfiles: () => steppedProfiles,
@@ -825,11 +836,12 @@ describe('appDeviceControlHelpers', () => {
       issuedAtMs: 1_000,
     });
 
-    expect(helpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('unchanged');
+    expect(helpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
 
-    // Observed axis: still no evidence (a fabricated observed step would
-    // revive a dead shed-release path).
-    expect(helpers.getRuntimeStateForTests().steppedLoadReportedByDeviceId.get('dev-1')).toBeUndefined();
+    // Observed axis: real flow evidence, recorded even though the binary axis reads off.
+    expect(helpers.getRuntimeStateForTests().steppedLoadReportedByDeviceId.get('dev-1')).toMatchObject({
+      stepId: 'max',
+    });
     // Commanded axis: confirmed.
     expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
       capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
@@ -839,19 +851,18 @@ describe('appDeviceControlHelpers', () => {
       retryCount: 0,
       nextRetryAtMs: undefined,
     });
-    expect(structuredLogger.info).toHaveBeenCalledWith(expect.objectContaining({
-      event: 'stepped_load_command_confirmed_while_off',
-      deviceId: 'dev-1',
-      stepId: 'max',
-    }));
 
     const [decorated] = helpers.decorateTargetSnapshotList([baseSnapshot({ binaryControl: { on: false } })]);
-    expect(decorated.reportedStepId).toBeUndefined();
+    expect(decorated.reportedStepId).toBe('max');
+    expect(decorated.selectedStepId).toBe('max');
+    // The binary axis still owns the on/off fold — a non-off observed step does
+    // not resurrect a device PELS has turned off.
+    expect(resolveCurrentOn(decorated)).toBe(false);
     expect(decorated.stepCommandStatus).toBe('success');
     expect(decorated.stepCommandPending).toBe(false);
 
-    // The while-off confirmation survives subsequent off-cycle decorations —
-    // only an on→off TRANSITION expires it, not steady off state.
+    // The confirmation survives subsequent off-cycle decorations — only an on→off
+    // TRANSITION expires it, not steady off state.
     const [redecorated] = helpers.decorateTargetSnapshotList([baseSnapshot({ binaryControl: { on: false } })]);
     expect(redecorated.stepCommandStatus).toBe('success');
   });
@@ -888,7 +899,7 @@ describe('appDeviceControlHelpers', () => {
     expect(offDecorated.stepCommandPending).toBe(false);
   });
 
-  it('confirms a preserved (never-commanded) desired step from a matching suppressed report', () => {
+  it('confirms a preserved (never-commanded) desired step from a matching non-off report', () => {
     // Pinning intended behavior: an 'idle' entry created by plan-target
     // preservation can be confirmed by a matching non-off report while off —
     // the report attests the device's actual configured step, which is
@@ -911,26 +922,25 @@ describe('appDeviceControlHelpers', () => {
       status: 'idle',
     });
 
-    // The matching non-off report is suppressed as observed evidence but
-    // confirms the tracked step.
-    expect(helpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('unchanged');
+    // The matching non-off report is admitted as observed evidence and confirms
+    // the tracked step.
+    expect(helpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
     expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
       stepId: 'max',
       status: 'success',
     });
   });
 
-  it('lets a newer conflicting SUPPRESSED report invalidate a while-off confirmation', () => {
-    // The suppressed-path sibling of the admitted-report invalidation: the
-    // device attests a different non-off step than the confirmed one (current
-    // raised externally while off). The stale success must drop so the next
-    // restore re-handshakes at the real configuration — but the conflicting
-    // report itself confirms nothing and stays out of the observed axis.
-    const structuredLogger = { info: vi.fn() };
+  it('lets a newer conflicting NON-OFF report invalidate a while-off confirmation', () => {
+    // The device attests a different non-off step than the confirmed one — the
+    // Easee case: the charger re-raised its dynamic current while paused. The
+    // stale success must drop so the next restore re-handshakes at the real
+    // configuration, and the conflicting step becomes the observed truth so the
+    // planner stops modelling the commanded step it is no longer at.
     const helpers = new AppDeviceControlHelpers({
       getProfiles: () => steppedProfiles,
       getDeviceSnapshots: () => [baseSnapshot({ binaryControl: { on: false } })],
-      getStructuredLogger: () => structuredLogger as never,
+      getStructuredLogger: () => ({ info: vi.fn() }) as never,
       debugStructured: vi.fn(),
     });
 
@@ -940,20 +950,21 @@ describe('appDeviceControlHelpers', () => {
       previousStepId: 'off',
       issuedAtMs: 1_000,
     });
-    expect(helpers.reportSteppedLoadActualStep('dev-1', 'low')).toBe('unchanged');
+    expect(helpers.reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
     expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
       status: 'success',
     });
 
-    expect(helpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('unchanged');
+    expect(helpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
 
-    expect(helpers.getRuntimeStateForTests().steppedLoadReportedByDeviceId.get('dev-1')).toBeUndefined();
+    expect(helpers.getRuntimeStateForTests().steppedLoadReportedByDeviceId.get('dev-1')).toMatchObject({
+      stepId: 'max',
+    });
     expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
       stepId: 'low',
       pending: false,
       status: 'idle',
     });
-    expect(structuredLogger.info).toHaveBeenCalledTimes(1); // only the original confirmation
   });
 
   it('lets a newer conflicting admitted report invalidate a while-off confirmation', () => {
@@ -977,13 +988,12 @@ describe('appDeviceControlHelpers', () => {
       previousStepId: 'low',
       issuedAtMs: 1_000,
     });
-    expect(helpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('unchanged');
+    expect(helpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
     expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
       status: 'success',
     });
 
-    // The off-step report while off is admitted (never suppressed) and is
-    // newer than the confirmation.
+    // The off-step report while off is admitted and is newer than the confirmation.
     expect(helpers.reportSteppedLoadActualStep('dev-1', 'off')).toBe('changed');
     expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
       stepId: 'max',
@@ -992,7 +1002,7 @@ describe('appDeviceControlHelpers', () => {
     });
   });
 
-  it('lets a suppressed matching flow report confirm a STALE desired step (slow charger answered late)', () => {
+  it('lets a matching non-off flow report confirm a STALE desired step (slow charger answered late)', () => {
     const helpers = new AppDeviceControlHelpers({
       getProfiles: () => steppedProfiles,
       getDeviceSnapshots: () => [baseSnapshot({ binaryControl: { on: false } })],
@@ -1013,9 +1023,11 @@ describe('appDeviceControlHelpers', () => {
       status: 'stale',
     });
 
-    expect(helpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('unchanged');
+    expect(helpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
 
-    expect(helpers.getRuntimeStateForTests().steppedLoadReportedByDeviceId.get('dev-1')).toBeUndefined();
+    expect(helpers.getRuntimeStateForTests().steppedLoadReportedByDeviceId.get('dev-1')).toMatchObject({
+      stepId: 'max',
+    });
     expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
       stepId: 'max',
       pending: false,
@@ -1024,12 +1036,52 @@ describe('appDeviceControlHelpers', () => {
     });
   });
 
-  it('does not let a suppressed NON-matching flow report confirm the pending desired step', () => {
-    const structuredLogger = { info: vi.fn() };
+  // Newly reachable once non-off reports are admitted while off: the report falls
+  // through to plan-target preservation, which it could not do before. Pinned as
+  // intended — when the plan has moved the target from 'max' to 'low', the in-flight
+  // 'max' command IS obsolete, so dropping it and resetting the retry budget for the
+  // new target is correct, not a lost command.
+  it('lets a non-off report while off hand an in-flight command over to a newer plan target', () => {
     const helpers = new AppDeviceControlHelpers({
       getProfiles: () => steppedProfiles,
       getDeviceSnapshots: () => [baseSnapshot({ binaryControl: { on: false } })],
-      getStructuredLogger: () => structuredLogger as never,
+      getLatestPlanSnapshot: () => ({
+        devices: [{ id: 'dev-1', targetStepId: 'low', desiredStepId: 'low' }],
+      } as never),
+      getStructuredLogger: () => ({ info: vi.fn() }) as never,
+      debugStructured: vi.fn(),
+    });
+
+    helpers.markSteppedLoadDesiredStepIssued({
+      deviceId: 'dev-1',
+      desiredStepId: 'max',
+      previousStepId: 'off',
+      issuedAtMs: 1_000,
+    });
+    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
+      stepId: 'max',
+      status: 'pending',
+    });
+
+    expect(helpers.reportSteppedLoadActualStep('dev-1', 'max')).toBe('changed');
+
+    expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
+      stepId: 'low',
+      pending: false,
+      status: 'idle',
+      retryCount: 0,
+    });
+    // The report still lands on the observed axis regardless of the handover.
+    expect(helpers.getRuntimeStateForTests().steppedLoadReportedByDeviceId.get('dev-1')).toMatchObject({
+      stepId: 'max',
+    });
+  });
+
+  it('does not let a NON-matching non-off flow report confirm the pending desired step', () => {
+    const helpers = new AppDeviceControlHelpers({
+      getProfiles: () => steppedProfiles,
+      getDeviceSnapshots: () => [baseSnapshot({ binaryControl: { on: false } })],
+      getStructuredLogger: () => ({ info: vi.fn() }) as never,
       debugStructured: vi.fn(),
     });
 
@@ -1040,10 +1092,13 @@ describe('appDeviceControlHelpers', () => {
       issuedAtMs: 1_000,
     });
 
-    // 'low' is non-off and contradicts the commanded 'max': fully suppressed.
-    expect(helpers.reportSteppedLoadActualStep('dev-1', 'low')).toBe('unchanged');
+    // 'low' is non-off and contradicts the commanded 'max': admitted as observed
+    // truth, but it confirms nothing — the command stays pending.
+    expect(helpers.reportSteppedLoadActualStep('dev-1', 'low')).toBe('changed');
 
-    expect(helpers.getRuntimeStateForTests().steppedLoadReportedByDeviceId.get('dev-1')).toBeUndefined();
+    expect(helpers.getRuntimeStateForTests().steppedLoadReportedByDeviceId.get('dev-1')).toMatchObject({
+      stepId: 'low',
+    });
     expect(helpers.getRuntimeStateForTests().steppedLoadDesiredByDeviceId.get('dev-1')).toMatchObject({
       capabilityId: PELS_TARGET_STEP_CAPABILITY_ID,
       stepId: 'max',
@@ -1051,9 +1106,6 @@ describe('appDeviceControlHelpers', () => {
       status: 'pending',
       retryCount: 0,
     });
-    expect(structuredLogger.info).not.toHaveBeenCalledWith(expect.objectContaining({
-      event: 'stepped_load_command_confirmed_while_off',
-    }));
   });
 
   it('returns invalid for unknown flow step reports even when currentOn=false', () => {

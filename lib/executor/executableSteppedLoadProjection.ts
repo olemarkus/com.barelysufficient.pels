@@ -105,13 +105,11 @@ export function buildExecutableSteppedLoadDevice(
   if (!intent) return null;
   const current = buildCurrentState(intent, observed, currentFallback);
   // A confirmed step command counts as restore-preparation evidence ONLY while
-  // the device is observed off (trusted off) — the window where a flow-backed
-  // stepper cannot produce an observed step report (non-off flow reports are
-  // suppressed as observed evidence while off). While on, observed reports
-  // keep sole materialization authority so clamped devices still get adjusted.
-  // Requires a present observation: `current.on` falls back to the
-  // plan-derived value when the device is absent from this cycle's snapshot,
-  // and a plan-derived 'off' is not trusted-off evidence.
+  // the device is observed off (trusted off) — the restore-preparation window.
+  // While on, observed reports keep sole materialization authority so clamped
+  // devices still get adjusted. Requires a present observation: `current.on`
+  // falls back to the plan-derived value when the device is absent from this
+  // cycle's snapshot, and a plan-derived 'off' is not trusted-off evidence.
   const confirmedCommandStepId = observed !== undefined && current.on === false
     ? intent.confirmedCommandStepId
     : undefined;

@@ -14,11 +14,11 @@ import type {
  * Stepped-load command runtime state: the tracked desired-step command per
  * device (pending / stale / success lifecycle) plus the raw last flow-reported
  * step it is reconciled against. The commanded axis is OWNED here; the
- * flow-reported map is raw input that only becomes observed evidence once
- * snapshot decoration admits it (`appDeviceControlSteppedState.ts` decides
- * suppression). Keeping admission out of this module is the invariant that
- * lets a suppressed flow report confirm a command without fabricating
- * observed running-state (`lib/device/AGENTS.md`).
+ * flow-reported map is raw input that becomes observed evidence when snapshot
+ * decoration resolves it (`appDeviceControlSteppedState.ts`). Since 2026-07-25
+ * that resolution admits non-off flow reports unconditionally — the two axes stay
+ * separate because they answer different questions (what PELS commanded vs what
+ * the device attests), not because admission is withheld (`lib/device/AGENTS.md`).
  */
 
 export const STEPPED_LOAD_COMMAND_STALE_MS = LOCAL_STEPPED_LOAD_COMMAND_PENDING_MS;
@@ -70,11 +70,15 @@ export const createDeviceControlRuntimeState = (): DeviceControlRuntimeState => 
 
 // A command confirmation is evidence about the device's configuration AT THE
 // TIME it was given. Once the device transitions on→off, that configuration can
-// drift invisibly (non-off flow reports are suppressed while off), so a stale
-// `'success'` must not fast-track a later restore-from-off past its fresh
-// prepare-and-confirm handshake. Downgrade to 'idle' on the observed on→off
-// transition; a confirmation given WHILE off (the restore handshake itself)
-// sees no such transition and survives untouched.
+// drift, so a stale `'success'` must not fast-track a later restore-from-off
+// past its fresh prepare-and-confirm handshake. Downgrade to 'idle' on the
+// observed on→off transition; a confirmation given WHILE off (the restore
+// handshake itself) sees no such transition and survives untouched.
+//
+// Still wanted after flow reports became admissible while off (2026-07-25): the
+// observed axis now usually shows the drift directly, but only for devices whose
+// flow actually reports while paused. This expiry is the guard for the ones that
+// go quiet, and it costs nothing when the report does arrive.
 export const expireConfirmedDesiredStepOnBinaryOff = (params: {
   runtimeState: DeviceControlRuntimeState;
   deviceId: string;
@@ -94,10 +98,9 @@ export const expireConfirmedDesiredStepOnBinaryOff = (params: {
   });
 };
 
-// Mark the tracked desired step command confirmed. Shared by the decorate-time
-// reported-step match and the suppressed-flow-report confirmation (a non-off
-// report matching the commanded step while the device is off confirms the
-// COMMANDED axis without becoming observed evidence).
+// Mark the tracked desired step command confirmed. Called from the decorate-time
+// reported-step match; a report matching the commanded step confirms the COMMANDED
+// axis, independently of it also landing on the observed one.
 export const confirmSteppedLoadDesiredStep = (params: {
   runtimeState: DeviceControlRuntimeState;
   deviceId: string;

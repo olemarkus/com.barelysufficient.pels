@@ -19,9 +19,7 @@ export type ExecutableSteppedStepState = {
   // Step of the last issued step command when device-side feedback confirmed
   // it (a flow report matching the commanded step). The projection populates
   // this only while the device is observed OFF — the restore-preparation
-  // window where no observed step report can exist for a flow-backed stepper
-  // (non-off flow reports are suppressed as observed evidence while off). It
-  // is commanded-axis confirmation, never observed running-state.
+  // window. It is commanded-axis confirmation, never observed running-state.
   confirmedCommandStepId?: string;
 };
 

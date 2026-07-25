@@ -121,6 +121,31 @@ no-op until a real SDK report arrives, instead of letting a planning-assumed ste
 does NOT move `selectedStepId` off `TargetDeviceSnapshot` — the broader decoration rework below is
 still the path-origin fix.
 
+**Update (2026-07-25, flow reports admitted while off):** the *separate* suppression that dropped
+non-off **flow** step reports while the binary axis read off is gone. It lived in two places —
+`AppDeviceControlHelpers.reportSteppedLoadActualStep` (ingest) and `resolveReportedStepEvidence`
+(decoration) — and it cost a prod incident: an Easee charger reverts its dynamic current to 32 A at
+charging-session start and announces it over the flow card, but that announcement lands while PELS
+still reads the binary axis as off (the on-echo trailed the write by 17-37 s on that device, so every
+session-start report fell inside the window). The planner kept crediting a 6 A / 1.38 kW shed for a
+charger drawing 7.36 kW, which produced a false hard-cap shortfall and a resume that breached the cap.
+Flow reports are now admitted on the same terms as native ones, which were never suppressed.
+
+This does **not** contradict the real-evidence-only paragraph above: a flow `report_stepped_load_power`
+card IS a real report, and the thing that paragraph protects against is a *planning-assumed* step
+satisfying the gate. The two also cannot collide, because they apply to disjoint device sets — the
+suppression only ever fired for a device whose `binaryControl.on === false`, and `binaryControl` exists
+iff `controlCapabilityId` is defined (`resolveBinaryControl`, `managerParsedControlState.ts`), while the
+stepped shed-release dispatch runs only when `!snapshot.controlCapabilityId` (`shedReleaseActuation.ts`).
+Pinned by `test/integration/shedReleaseActuation.test.ts` ("never dispatches a stepped release for a
+binary-capable device observed off at a non-off step"). **If that routing condition ever changes, the
+admission needs its own "does PELS want this device on?" gate before the shed-release dispatch.**
+
+The binary axis still owns the on/off fold (`resolveCurrentOn` is `!(binaryOff || steppedOff)`), so a
+non-off observed step on an off device does not resurrect it, and restore sizing still reads the step
+being restored *to* (`restore/accounting.ts`), never the observed step — an observed 32 A must not
+inflate `neededKw` and deadlock the restore.
+
 **This is the actual mess** (sharper than "god-struct"): `TargetDeviceSnapshot` is
 doing double duty — transport's observed snapshot **and** the app-layer's
 **decoration carrier** that launders step-command/planning state into the planner via
