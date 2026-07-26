@@ -606,6 +606,45 @@ program) remains deferred.*
       for a feature the install isn't using. Topic-gate it, or only warn once the store has ever been
       `present` (an initialized marker exists). Source: pels-runtime-reality review of the multi-home GA cut,
       2026-07-22. File: `setup/homeMembership.ts` (`noteSuspectEdge` / `refreshStoreCaches`).
+- [ ] **`dryRunEffective` doubles as a sub-home discriminator in the `pels_status` producer.**
+      *Persona:* maintainer extending per-home status, plus any owner whose Flow automations read the
+      persisted `pels_status` blob. *Hypothesis:* `buildPelsStatus` takes `dryRunEffective?: boolean` where
+      `undefined` means "main home" and `true`/`false` is a sub-home's membership-gated posture, then gates a
+      SECOND, unrelated field on it: `const areaTotalKw = dryRunEffective !== undefined && …` decides whether
+      the blob carries `totalKw`. One optional boolean therefore carries two orthogonal meanings, actuation
+      posture and home kind. The tri-state itself is sound (the consumer, `resolveHomeLimitsStatus`, reads
+      `undefined` as "fall back to the persisted dry-run intent"), but the overload means that the first time
+      the main home writes its own posture — a perfectly reasonable change, since main has a posture too —
+      `totalKw` silently starts appearing in main's persisted blob, altering a payload external automations
+      read. Pass the area-total decision explicitly (an `includeAreaTotalKw` flag or a `homeKind`
+      discriminator) instead of inferring it from `dryRunEffective !== undefined`. No current bug: main is the
+      only caller that omits the field today. Source: multi-home boundary-hygiene audit of the GA train
+      (`ee09127c4..origin/main`), 2026-07-25. Files: `lib/plan/pelsStatus.ts` (`areaTotalKw`),
+      `lib/plan/planStatusWriter.ts`, `packages/shared-domain/src/homeLimitsStatus.ts`.
+- [ ] **Two `MainMeterSelection`/power-source seams fabricate `state: 'resolved'` when their resolver is
+      absent.** *Persona:* maintainer wiring a new call path into membership or snapshot refresh.
+      *Hypothesis:* three seams fabricate an authoritative selection when their optional resolver is missing.
+      `HomeMembershipService.readActiveMeterPowerSource` falls back to
+      `?? { state: 'resolved', value: 'homey_energy' }` when the optional `getConfiguredPowerSource` dep is
+      omitted; `AppSnapshotHelpers.resolveMainMeterSelection` falls back to
+      `?? { state: 'resolved', meterDeviceId: null }` when its resolver is unbound; and
+      `fetchLivePowerReport` ends its `mainMeterSelection ?? getHomeyEnergyMeterSelection?.() ??` chain on the
+      same fabricated `resolved`/Automatic literal. All three claim the STRONGEST authority at seams whose
+      entire purpose is to fence control when authority is unknown; every other path in those modules fails
+      closed on `unavailable`. No live bug is proven (the power-source dep is always passed by
+      `createHomeMembershipService`, and the snapshot resolver is bound at `appServiceWiring.ts`
+      `bindHomeyEnergyMeterResolver`), but the optional-with-fabricated-default shape means a wiring path that
+      omits one silently claims authority instead of fencing, and it is now repeated three times. Note that
+      `mainMeterSelection` is optional at EVERY level of the `refreshSnapshot` →
+      `resolveLivePowerForRefresh` → `fetchLivePowerReport` chain, so the fabricated literal is reachable by
+      simply not threading it. Make the deps required and let tests pass explicit stubs. Verified NOT a defect
+      while auditing: an `unavailable` selection forces `homePowerW: null`
+      (`snapshotRefresh.ts` `fetchLivePowerReport`), so `updateHomePowerFromReport` returns null and
+      `recordImplicitHomeyEnergySample` writes nothing — `sameMainMeterSelection` treating
+      `unavailable === unavailable` as equal only suppresses a debug log, and needs no change.
+      Source: multi-home boundary-hygiene audit of the GA train, 2026-07-25. Files:
+      `setup/homeMembership.ts`, `setup/appSnapshotHelpers.ts`,
+      `lib/device/transport/snapshotRefresh.ts` (`fetchLivePowerReport`).
 - [ ] **Hoist `createSelectOption` (and the render-signature guard pattern) out of `advanced.ts` into a
       shared settings-ui primitive module.** *Persona:* maintainer adding the next dynamic device picker.
       *Hypothesis:* three near-copies now exist — `createModeOption` (`modes.ts`), `createSelectOption`
@@ -1881,3 +1920,24 @@ persona but no current support-cost pressure; reframed to the P3 bar.*
 - [ ] **Smart-task edit/clear gates: treat a still-pending legacy-blob migration as untrusted absence.**
       *Persona:* Legacy install whose `deferred_objectives` blob migration deferred on a flaky read.
       *Hypothesis:* `gateEditableTask` and `cancelDeferredObjectiveForContext` answer `task_not_found` when the per-device key is absent and `getKeys()` is non-empty — but if `migrateBlobToPerKeyIfNeeded` just deferred, the task may still live in the un-migrated blob. Trust absence only when the `DEFERRED_OBJECTIVES_PERKEY_MIGRATED` marker is set; otherwise map to the retryable `write_conflict`/`write_refused` lane. Nearly extinct in practice (all live installs are migrated). Source: Codex review on PR #1843 (2026-07-06). Files: `setup/settingsUiSmartTaskApi.ts`, `setup/appInit/deferredObjectiveCancel.ts`.
+- [ ] **Smart-task home-scope gates optional-chain a REQUIRED `HomeMembershipPort` method.**
+      *Persona:* maintainer reading the smart-task authority gates to decide whether a new caller is safe.
+      *Hypothesis:* `isSmartTaskDeviceInMainHome` and `resolveSmartTaskHomeScope` both write
+      `membership.hasPendingOwnershipGeneration?.() !== false`, but `hasPendingOwnershipGeneration(): boolean`
+      is NON-optional on `HomeMembershipPort` — the `?.` is unreachable and the `!== false` exists only to
+      absorb an `undefined` it can never produce. *Why:* the port was deliberately designed so control paths
+      see one total, provenance-free surface; a dead optional-chain re-introduces exactly the "might this be
+      missing?" ambiguity the port removed, and the double negative reads as if absence were a third state.
+      Collapse both to a plain call (`membership.hasPendingOwnershipGeneration()`), keeping the genuine
+      `membership?.` guard for the optional `ctx.homeMembership` itself. Behaviour-neutral. Source: multi-home
+      boundary-hygiene audit of the GA train, 2026-07-25. File: `setup/appInit/smartTaskHomeScope.ts`.
+- [ ] **`lastResolvedMainMeterDeviceId` is a three-state field whose third state is never distinguished.**
+      *Persona:* maintainer extending Main-meter source fencing. *Hypothesis:* the field is typed
+      `string | null | undefined` and documented as "`undefined` means no authoritative Main-meter selection
+      has been observed; `null` is the authoritative Automatic selection", but at its ONLY read
+      (`getKnownConfiguredMeterDeviceIds`) the two collapse into one branch
+      (`=== undefined || === null ? [] : [id]`), so the extra state carries no information today. *Why:* an
+      unused third state on a nullable field is the shape that made `currentOn` hard to reason about; either
+      narrow it to `string | null`, or give the "never observed" case a real consumer and say what that
+      consumer does differently. Behaviour-neutral either way. Source: multi-home boundary-hygiene audit of
+      the GA train, 2026-07-25. File: `setup/homeMembership.ts`.
