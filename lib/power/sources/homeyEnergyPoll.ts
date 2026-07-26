@@ -19,6 +19,8 @@ export type HomeyEnergyPowerSample = {
    * poll drops the identity claim together with the watts.
    */
   resolvedHomeMeterDeviceId?: string | null;
+  /** Rides with the identity; same admitted-ingest contract. */
+  homeMeterArrangement?: 'identified' | 'idless_aggregate_only' | 'unproven';
 };
 
 /**

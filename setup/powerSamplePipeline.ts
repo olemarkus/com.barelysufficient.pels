@@ -1,3 +1,4 @@
+import type { HomeMeterArrangementObservation } from '../lib/device/transport/managerFetch';
 import type CapacityGuard from '../lib/power/capacityGuard';
 import type { DeviceTransport } from '../lib/device/deviceTransport';
 import type { PlanEngine } from '../lib/plan/planEngine';
@@ -60,6 +61,13 @@ export type PowerSamplePipelineDeps = {
    * absent (sub-home pipelines).
    */
   noteResolvedHomeMeter?: (deviceId: string | null, sampleAtMs: number) => void;
+  /**
+   * The same admitted-ingest contract for the meter-ARRANGEMENT observation
+   * (id-bearing vs id-less-aggregate-only vs unproven): published only after
+   * the sample records, with the same stamp, dropped with a superseded
+   * request's watts. No-op when absent (sub-home pipelines).
+   */
+  noteHomeMeterArrangement?: (observation: HomeMeterArrangementObservation, sampleAtMs: number) => void;
 };
 
 type PowerSampleOptions = {
@@ -72,6 +80,8 @@ type PowerSampleOptions = {
    * non-collision.
    */
   resolvedHomeMeterDeviceId?: string | null;
+  /** Rides with the identity above; present only when it is. */
+  homeMeterArrangement?: HomeMeterArrangementObservation;
 };
 
 export type StableSampleRevision =
@@ -84,6 +94,7 @@ type PowerSampleRequest = {
   revision: number;
   generationW?: number;
   resolvedHomeMeterDeviceId?: string | null;
+  homeMeterArrangement?: HomeMeterArrangementObservation;
 };
 
 const buildPowerSampleRequest = (
@@ -100,6 +111,9 @@ const buildPowerSampleRequest = (
     : {}),
   ...(options.resolvedHomeMeterDeviceId !== undefined
     ? { resolvedHomeMeterDeviceId: options.resolvedHomeMeterDeviceId }
+    : {}),
+  ...(options.homeMeterArrangement !== undefined
+    ? { homeMeterArrangement: options.homeMeterArrangement }
     : {}),
 });
 
@@ -211,6 +225,9 @@ export class PowerSamplePipeline {
     if (request.resolvedHomeMeterDeviceId === undefined) return;
     try {
       this.deps.noteResolvedHomeMeter?.(request.resolvedHomeMeterDeviceId, request.nowMs);
+      if (request.homeMeterArrangement !== undefined) {
+        this.deps.noteHomeMeterArrangement?.(request.homeMeterArrangement, request.nowMs);
+      }
     } catch {
       incPerfCounter('power_sample_identity_publish_failed_total');
     }

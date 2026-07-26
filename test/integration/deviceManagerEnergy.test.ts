@@ -359,7 +359,7 @@ describe('resolved home meter identity on the sample', () => {
 
     const sample = await transport.refreshSnapshot();
 
-    expect(sample).toEqual({ powerW: 4_200, resolvedHomeMeterDeviceId: 'm-area' });
+    expect(sample).toEqual({ powerW: 4_200, resolvedHomeMeterDeviceId: 'm-area', homeMeterArrangement: 'identified' });
   });
 
   it('carries a NULL identity when the reading has no attributable id', async () => {
@@ -377,7 +377,7 @@ describe('resolved home meter identity on the sample', () => {
     // The watts are real; only their ownership is unprovable. `null` must ride
     // along so the ingest can evaluate the fence episode without claiming
     // proof of non-collision.
-    expect(sample).toEqual({ powerW: 4_200, resolvedHomeMeterDeviceId: null });
+    expect(sample).toEqual({ powerW: 4_200, resolvedHomeMeterDeviceId: null, homeMeterArrangement: 'idless_aggregate_only' });
   });
 
   it('carries the identity on the poll path sample too', async () => {
@@ -396,7 +396,7 @@ describe('resolved home meter identity on the sample', () => {
     // The poll source's own discard checks run BEFORE it records this sample,
     // so a stale-generation or wrong-source poll drops the identity claim
     // together with the watts — no separate gate exists to drift.
-    expect(sample).toEqual({ powerW: 4_200, resolvedHomeMeterDeviceId: 'm-area' });
+    expect(sample).toEqual({ powerW: 4_200, resolvedHomeMeterDeviceId: 'm-area', homeMeterArrangement: 'identified' });
   });
 
   it('does NOT read live power on a fast refresh, so no sample and no identity exist', async () => {
@@ -432,6 +432,72 @@ describe('resolved home meter identity on the sample', () => {
 
     expect(refreshSnapshot).toHaveBeenCalledTimes(1);
   });
+
+  // The arrangement observation RIDES THE SAMPLE (same admitted ingest as the
+  // identity): what one read proves about whether the whole-home meter can be
+  // NAMED at all. An empty report yields no sample, so it can publish nothing
+  // — structurally the `unproven`-never-overwrites semantics.
+  it.each([
+    [
+      'a sole id-less cumulative item proves the aggregate is unnameable',
+      [{ type: 'cumulative', values: { W: 3_100 } }],
+      'idless_aggregate_only',
+    ],
+    [
+      'an id-bearing whole-home item proves it can be named',
+      [{ type: 'cumulative', id: 'han', values: { W: 3_100 } }],
+      'identified',
+    ],
+    [
+      'an id-less pick among SEVERAL cumulative items proves neither',
+      [
+        { type: 'cumulative', values: { W: 3_100 } },
+        { type: 'cumulative', id: 'other', values: { W: 900 } },
+      ],
+      'unproven',
+    ],
+    [
+      // Latching `idless_aggregate_only` here would make the area save refuse
+      // with "not supported" while the Whole-home meter picker offers this very
+      // device meter — naming it is the remedy, so the read proves neither.
+      'an id-less aggregate beside a selectable id-bearing meter proves neither',
+      [
+        { type: 'cumulative', values: { W: 3_100 } },
+        { type: 'device', id: 'garage-meter', values: { W: 900 } },
+      ],
+      'unproven',
+    ],
+  ])('the sample carries the arrangement: %s', async (_label, items, expected) => {
+    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({ items });
+    const transport = new DeviceTransport(
+      mockHomeyInstance as unknown as Homey.App,
+      logger,
+      {},
+    );
+
+    const sample = await transport.refreshSnapshot();
+
+    expect(sample?.homeMeterArrangement).toBe(expected);
+  });
+
+  it('an empty report yields NO sample, so no arrangement can publish at all', async () => {
+    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({ items: [] });
+    const transport = new DeviceTransport(
+      mockHomeyInstance as unknown as Homey.App,
+      logger,
+      {},
+    );
+
+    const sample = await transport.refreshSnapshot();
+
+    expect(sample).toBeNull();
+  });
+
+  // Discard semantics (a rejected/coalesced sample drops identity AND
+  // arrangement together) are pinned at the pipeline seam in
+  // `powerSamplePipelineIdentity.test.ts` and at the poll source's own
+  // generation/source gate — there is no separate arrangement channel left to
+  // test here: the field cannot outlive the sample that carries it.
 });
 
 describe('fetchLiveMeterItems', () => {

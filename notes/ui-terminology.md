@@ -725,7 +725,8 @@ section above):
 
 The Settings → Multiple meters surface manages parts of the home with their
 own electricity meter. Canonical labels (source:
-`packages/shared-domain/src/homesManagementCopy.ts`; the nav-card/panel
+`packages/shared-domain/src/homesManagementCopy.ts`, plus
+`homeAreaConfigRulesCopy.ts` for the save-refusal lines; the nav-card/panel
 chrome lives in the static settings markup):
 
 | Concept | Label |
@@ -762,6 +763,32 @@ values are `Main home` and area names. `Part of home` was considered and
 rejected: it is wordier everywhere to defuse a collision that does not happen,
 because `Home` as a stock operating-mode name appears as a dropdown *value* on
 other cards, never as a tag title.
+### Save refusals (`homeAreaConfigRulesCopy.ts`)
+
+Saving a meter area can be refused, and each refusal names one next step
+rather than a generic failure. Three of them pin vocabulary:
+
+- **`Main home` is a RESERVED area name.** An area may not be called it, in any
+  case. The name is the home selector's label and the `capacity_shortfall` Flow
+  token's value, so an area wearing the complement's name would stop both from
+  telling the two apart. The rule reads the label from
+  `HOME_LIMITS_MAIN_HOME_OPTION`, so **renaming the Main home renames what is
+  reserved** — deliberate, but check the refusal copy still reads correctly.
+- **Two caps are user-visible:** at most **8 meter areas** and at most **40
+  characters** in an area name. Both refusals state the number and the way out.
+- **The whole-home-meter requirement runs both directions** (saving an area,
+  and choosing Automatic while areas run) and always names the same control:
+  **Whole-home meter**, under **Limits & safety**. Name it as a setting to
+  change, never as an option to pick — the picker's options are device names
+  plus `Automatic`.
+- **An id-less whole-home aggregate gets the honest-state refusal, not the
+  remedy.** Some Homey setups read the whole home through an aggregate that
+  carries no device id, so the Whole-home meter picker has nothing to offer
+  and the requirement above can never be satisfied there. The copy
+  (`HOMES_METER_UNNAMEABLE`) names the situation — "Your whole-home meter
+  doesn't report a device id" — and says "Not supported for meter areas yet";
+  it never points at the picker. Internal terms (`cumulative item`,
+  `aggregate`, `arrangement`) stay internal.
 
 ## Mode label
 

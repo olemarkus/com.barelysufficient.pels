@@ -57,6 +57,8 @@ type HomePowerSample = {
    * the ingest, so an unadmitted sample discards its identity claim with it.
    */
   resolvedHomeMeterDeviceId?: string | null;
+  /** Rides with the identity; same admitted-ingest contract. */
+  homeMeterArrangement?: 'identified' | 'idless_aggregate_only' | 'unproven';
 };
 
 export class AppSnapshotHelpers {

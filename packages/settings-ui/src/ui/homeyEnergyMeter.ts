@@ -5,17 +5,19 @@ import {
 } from './dom.ts';
 import { applySettingsPatch, callApi } from './homey.ts';
 import { logSettingsError } from './logging.ts';
-import { showToast, showToastError } from './toast.ts';
+import { ERROR_DURATION_MS, showToast, showToastError } from './toast.ts';
 import { HOMEY_ENERGY_METER_DEVICE_ID } from '../../../contracts/src/settingsKeys.ts';
 import { HOMEY_ENERGY_METERS_PATH, type HomeyEnergyMeterEntry } from '../../../contracts/src/settingsUiApi.ts';
 import {
   SETTINGS_UI_HOMES_SAVE_PATH,
+  type SettingsUiHomesSaveRefusal,
   type SettingsUiHomesSaveResponse,
 } from '../../../contracts/src/settingsUiHomes.ts';
 import {
   composeDraftErrorLine,
   HOMES_MAIN_METER_SAVE_DEGRADED,
 } from '../../../shared-domain/src/homesManagementCopy.ts';
+import { HOMES_MAIN_METER_NEEDED_BY_AREAS } from '../../../shared-domain/src/homeAreaConfigRulesCopy.ts';
 
 export type MeterSelectEntry = { value: string; label: string };
 
@@ -108,6 +110,12 @@ const renderMeterOptions = (): void => {
   select.value = selectedValue;
 };
 
+/** Re-render unconditionally: drop the signature cache, then render. */
+const forceRenderMeterOptions = (): void => {
+  lastRenderSignature = null;
+  renderMeterOptions();
+};
+
 const ensureMeterDevicesLoaded = async (): Promise<void> => {
   if (pickerDevices !== null || pickerDevicesLoading) return;
   pickerDevicesLoading = true;
@@ -147,12 +155,15 @@ export const syncHomeyEnergyMeterVisibility = (powerSource: string): void => {
 };
 
 const composeMainMeterSaveRefusal = (
-  refusal: Extract<SettingsUiHomesSaveResponse, { ok: false }>,
+  refusal: SettingsUiHomesSaveRefusal,
 ): string => {
   if (refusal.reason === 'meter_in_use') {
     return composeDraftErrorLine({ kind: 'meter_in_use', otherName: refusal.otherName });
   }
   if (refusal.reason === 'degraded') return HOMES_MAIN_METER_SAVE_DEGRADED;
+  // Automatic while meter areas exist: the same requirement the area save path
+  // enforces, said from the picker's side.
+  if (refusal.reason === 'main_meter_required') return HOMES_MAIN_METER_NEEDED_BY_AREAS;
   return 'Failed to save whole-home meter.';
 };
 
@@ -160,14 +171,23 @@ const handleMeterSelectionChange = async (): Promise<void> => {
   const select = settingsHomeyEnergyMeterSelect;
   if (!select) return;
   if (meterSelectionWriteInFlight) {
-    lastRenderSignature = null;
-    renderMeterOptions();
+    forceRenderMeterOptions();
     return;
   }
   const next = select.value === '' ? null : select.value;
   if (next === selectedMeterId) return;
   const previous = selectedMeterId;
   setMeterSelectionWriteBusy(true);
+  // Every branch below releases the lock as soon as ITS write is over, before
+  // awaiting a toast dwell. `released` keeps the finally backstop from
+  // clobbering the busy flag a newer write may have taken during that dwell:
+  // the flag guards whichever write is in flight, not this handler's lifetime.
+  let released = false;
+  const releaseWriteLock = (): void => {
+    if (released) return;
+    released = true;
+    setMeterSelectionWriteBusy(false);
+  };
   try {
     const response = await callApi<SettingsUiHomesSaveResponse>(
       'POST',
@@ -175,27 +195,39 @@ const handleMeterSelectionChange = async (): Promise<void> => {
       { op: 'set_main_meter', meterDeviceId: next },
     );
     if (!response.ok) {
-      const refusal = response as Extract<SettingsUiHomesSaveResponse, { ok: false }>;
-      lastRenderSignature = null;
-      renderMeterOptions();
-      await showToast(composeMainMeterSaveRefusal(refusal), 'warn');
+      const refusal = response as SettingsUiHomesSaveRefusal;
+      // The write is over, so release the picker BEFORE the dwell: the refusal
+      // tells the owner to pick another meter, but the select disables while
+      // busy, so holding the lock through the five-second toast would bar the
+      // user from acting on the very instruction on screen (same
+      // release-before-dwell as `postHomesSaveOp` in homesSettings.ts).
+      releaseWriteLock();
+      forceRenderMeterOptions();
+      // Error dwell: a refusal is an instruction to read, not an acknowledgement.
+      await showToast(
+        composeMainMeterSaveRefusal(refusal),
+        'warn',
+        { durationMs: ERROR_DURATION_MS },
+      );
       return;
     }
     selectedMeterId = next;
     applySettingsPatch({ [HOMEY_ENERGY_METER_DEVICE_ID]: next });
-    lastRenderSignature = null;
-    renderMeterOptions();
+    releaseWriteLock();
+    forceRenderMeterOptions();
     await showToast('Whole-home meter saved.', 'ok');
   } catch (error) {
     // Roll the select back so the screen never shows an unsaved choice as
     // current alongside the failure toast.
     selectedMeterId = previous;
-    lastRenderSignature = null;
-    renderMeterOptions();
+    // Same release-before-dwell as the refusal branch: the failed write is
+    // over, so the failure toast must not keep the picker locked either.
+    releaseWriteLock();
+    forceRenderMeterOptions();
     await logSettingsError('Failed to save whole-home meter', error, 'homeyEnergyMeter');
     await showToastError(error, 'Failed to save whole-home meter.');
   } finally {
-    setMeterSelectionWriteBusy(false);
+    releaseWriteLock();
   }
 };
 

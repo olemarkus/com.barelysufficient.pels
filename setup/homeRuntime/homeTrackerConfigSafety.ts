@@ -39,7 +39,8 @@ type ApiLoggerProvider = {
   getApiStructuredLogger(): PinoLogger | undefined;
 };
 
-const resolveApiLoggerProvider = (value: unknown): ApiLoggerProvider | null => {
+/** Shape-guarded access to the app's structured API logger; `null` when unwired. */
+export const resolveApiLoggerProvider = (value: unknown): ApiLoggerProvider | null => {
   if (typeof value !== 'object' || value === null) return null;
   const candidate = value as Partial<ApiLoggerProvider>;
   return typeof candidate.getApiStructuredLogger === 'function'

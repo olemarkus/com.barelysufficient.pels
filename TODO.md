@@ -1213,31 +1213,70 @@ program) remain deferred.*
       optimiser during a boost. Hypothesis: a bar that shows the carve-out is trusted where a
       jumping number is not. Source: safe-pace model review (2026-07-26); design in
       `notes/safe-pace-two-constraints.md` and `notes/overview-hero-spec.md`.
-- [ ] **Nothing reserves "Main home" as an area name, so the shortfall Flow tag can stop
-      discriminating.** The `capacity_shortfall` trigger's `home` token is the home's display NAME,
-      and that name is only checked for clashes against *other areas*: `validateDraftName`
-      (`packages/shared-domain/src/homesManagement.ts:196-206`) compares against `others` and never
-      against the Main-home label, while the save path does no name validation at all
-      (`parseUpsertArea`, `setup/settingsUiApi.ts:368`, accepts any string, and
-      `violatesComposedHomeInvariants` checks only meter ownership and zone nesting). *Persona:*
-      owner who names their annex "Main home", or any client posting `ui_homes_save` directly.
-      *Hypothesis:* the Flow tag and the new `home` log field then name two different homes
-      identically, which is exactly the ambiguity the token exists to remove, and
-      `docs/meter-areas.md` promises the tag tells you where to go. Reserve `HOMES_MAIN_HOME_NAME`
-      in the draft validator AND fold non-emptiness plus case-insensitive uniqueness (including the
-      reserved label) into `violatesComposedHomeInvariants` — PR 4 of the multi-home train already
-      owns that server-side move, so land both together rather than shipping a client-only guard.
-      Related, same card: the name is also not STABLE. The trigger has `args: []`, so a Flow that
-      wants only one home's alerts has to string-compare the tag, and a rename propagates to the
-      token immediately (the bundle is adopted in place, not replaced). A second `home_id` token
+- [ ] **The `capacity_shortfall` `home` tag is a display name, not a stable id, so Flows string-compare
+      a renameable label.** The trigger has `args: []`, so a Flow that wants only one home's alerts
+      has to string-compare the tag, and a rename propagates to the token immediately (the bundle is
+      adopted in place, not replaced). *Persona:* owner with a Flow filtering on the annex's alerts
+      who renames the area. *Hypothesis:* the Flow silently stops matching. A second `home_id` token
       carrying `MAIN_HOME_ID` / the sub-home's `homeId` would let a Flow branch on something durable
       while `home` stays the human label. Additive, so it can land later; decide it with the
-      per-area Flow work rather than widening the card twice.
-      Same owner, same PR: area names have no LENGTH bound either (`parseUpsertArea`,
-      `setup/settingsUiApi.ts:368`), and a name now reaches a Flow token and a per-shortfall log
-      field, so an absurd name degrades both. Clamp it with the reservation and the uniqueness
-      check in one pass.
+      per-area Flow work rather than widening the card twice. (The reservation, uniqueness and
+      length halves of the original entry landed in PR #1893.)
       Source: adversarial review of the multi-home finishing train PR 8a, 2026-07-26.
+- [ ] **The power source can move in either direction behind the meter-area invariants.** Three
+      unguarded transitions, all reachable because the invariants are a WRITE-SEAM convention that
+      only `ui_homes_save` passes through:
+      (a) an owner on the Flow source can still save a meter area;
+      (b) an owner with meter areas can still switch the power source to Flow, where a reading
+      carries no meter identity so the area receives no samples and is never limited (the Multiple
+      meters page warns via `HOMES_FLOW_SOURCE_NOTICE`, but nothing refuses);
+      (c) an owner can save an area under Flow and then switch **to** Homey Energy with the Main home
+      still on Automatic, re-entering exactly the silent misconfiguration the whole-home-meter
+      requirement exists to prevent, degrading back to the `shouldPromptMainHomeMeter` nudge.
+      (c) is the direct cost of gating that requirement on the Homey Energy source, which is itself
+      right: the Whole-home meter picker does not render on Flow, so demanding it there would be an
+      unactionable refusal. Refuse (a) and (b) symmetrically with copy that names the remedy, and
+      make the power-source write path re-check the invariant for (c). Persona: owner who set up
+      areas, then moved between power sources and quietly lost area limiting or Main-home protection.
+      Source: multi-home finishing train, area-config invariants PR. [P2]
+
+- [ ] **The area name rules are implemented twice in one package.**
+      `packages/shared-domain/src/homeAreaConfigRules.ts` (`findHomeAreaNameRejection`, the
+      enforcement) and `homesManagement.ts` (`validateDraftName`, the editor's inline check) each
+      implement trim, non-emptiness and case-insensitive uniqueness, with different result kinds
+      (`name_required` vs `name_missing`). Two answers to one question, and the editor-guidance item
+      below would add a third. `validateDraftName` should delegate to `findHomeAreaNameRejection` and
+      map the rejection into `SubHomeDraftError`. Held out of the enforcing PR: the mapping needs new
+      `SubHomeDraftError` kinds and `composeDraftErrorLine` branches in files a concurrent branch owns.
+      Same edge: `validateDraftMeter` (`homesManagement.ts`) still hand-spells `'Main home'` for its
+      `meter_in_use` payload, while the reserved-name rule now reads it from
+      `HOME_LIMITS_MAIN_HOME_OPTION` — point that one at the constant too, so a rename cannot leave
+      the two disagreeing. Persona: contributor changing a name rule (or the Main home's label) in one
+      place only. Source: multi-home finishing train, area-config invariants PR. [P2]
+
+- [ ] **Area rules refuse on save instead of guiding in the editor.** The name-length cap, the
+      reserved "Main home" name, the eight-area cap, and the whole-home-meter requirement are
+      enforced at the `ui_homes_save` seam and surface as a toast after a round trip; only
+      non-emptiness and uniqueness are pre-checked inline by `validateSubHomeDraft`. The editor
+      should carry a `maxlength` on the name input, an inline error for the reserved name, a
+      disabled "Add meter area" button at the cap, and an inline main-meter refusal from the
+      `shouldPromptMainHomeMeter` predicate `homesSettings.ts` already evaluates for the notice.
+      Held out of the enforcing PR because `SubHomeDraftError` and `HomesSettingsSection.tsx` were
+      owned by a concurrent branch; the server rules were deliberately scoped to the entry being
+      written so `validateDraftName` can absorb them unchanged (see the duplication item above, which
+      this shares a fix with). Persona: owner who types a long or reserved name and only learns on
+      save. Source: multi-home finishing train, area-config invariants PR. [P2]
+
+- [ ] **A one-meter home can cycle between two meter-area refusals with no diagnosis.** An area needs
+      its own meter and the Main home needs its own, so a home whose Homey Energy report lists a
+      single meter cannot use meter areas at all. Today it discovers that by bouncing: saving an area
+      refuses with `main_meter_required`, assigning that one meter to the Main home makes the area
+      editor refuse inline with "'Main home' already uses this meter", and going back to Automatic is
+      allowed again because nothing was persisted. The rules are each correct; what is missing is the
+      one line that says the home has no second meter to split. Detect "no report meter is assignable
+      to the Main home" on the Multiple meters page and say so. Overlaps the empty-meter-list hint
+      item above. Persona: owner with a single HAN meter who tries to add a rental. Source: multi-home
+      finishing train, area-config invariants PR. [P2]
 
 - [ ] **Persisted-store load grace only postpones a destructive reset.** `loadPowerCalibrationStore`
       (and the EV car-link store that mirrors it) run exactly once at init. When that read is
@@ -2276,6 +2315,45 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
       still guarantees day-first. Source: PR #1826 copy-sweep review gates (2026-07-02).
 
 ## P3 Future and Exploratory Work
+
+- [ ] **The eight-area cap is not enforced where the memory is consumed.**
+      `HOME_AREA_MAX_COUNT` is checked only at the `ui_homes_save` seam; neither `HomeRuntimeRegistry`
+      nor `normalizeHomesConfig` bounds anything, so a `homes_config` written outside the UI still
+      spawns one capacity bundle per area against the app's ~30 MB RSS headroom. Cap or clamp at the
+      registry so the runtime bound is enforced by the runtime. Persona: owner restoring a
+      hand-edited or migrated settings blob. *Hypothesis:* an over-large area list is admitted at boot
+      and the app trends toward the 160 MB ceiling with no signal, because the only enforcement point
+      was never on that path. Source: multi-home finishing train, area-config invariants PR. [P3]
+
+- [ ] **Extend the growth-only principle from the area cap to root disjointness.** The area cap now
+      bounds GROWTH, so a config already over it can still be renamed or re-metered
+      (`homeMeterOwnership.ts`). The root-overlap rule one line below it still evaluates
+      `findNestedSubHomeRoots` over the WHOLE composed list, so a persisted config containing one
+      overlapping pair refuses every upsert, including a rename of a third, unrelated area. Reachable
+      the same way the over-cap config is: `isPlausibleHomesConfigBlob` validates shapes, unique
+      homeIds and unique meters but NOT zone overlap, so such a blob classifies `'present'` and flows
+      straight into the check. Strictly worse for the user than the cap case was, because it returns
+      bare `invalid`, which renders "Couldn't save changes — try again" and names no remedy. The right
+      axis is not "did the list grow" but "does the UPSERTED entry participate in an overlap", which
+      is why it was left out of the growth-only fix. Persona: owner whose config predates the seam's
+      rules, or was written outside the UI. *Hypothesis:* every save is refused with copy that names
+      nothing, and the only escape (delete an area) is not something the message suggests. Source:
+      multi-home finishing train, area-config invariants PR review. [P3]
+
+- [ ] **A permanently implausible pins blob makes Automatic refuse with a "try again" that never
+      comes true.** `readMultiHomeActivation` resolves activation only from a diagnostics snapshot the
+      membership service can vouch for, sharing `isHomesConfigDegraded` with the read payload and the
+      area write so there is one degraded condition. That predicate is true when EITHER
+      `homes_config` or `device_home_assignments` classified suspect, and activation does not depend
+      on the pins store, so a `device_home_assignments` blob that
+      `isPlausibleDeviceHomeAssignmentsBlob` permanently rejects leaves Whole-home meter → Automatic
+      refused with "your settings couldn't be read. Try again in a few minutes." Keeping the shared
+      predicate is deliberate (an activation-only variant would put a second, subtly different
+      "degraded" in one file), and the blast radius is bounded: single-home owners never reach the
+      branch, and picking an explicit meter stays available. Either repair/reset the pins store on a
+      durable implausible read, or say what is actually wrong. Persona: owner whose pin blob was
+      corrupted or hand-edited. *Hypothesis:* the copy promises recovery that no elapsed time
+      delivers. Source: multi-home finishing train, area-config invariants PR review. [P3]
 
 *Entry bar: each item states a **hypothesis**, **why it's needed**, and the **persona**
 (`notes/personas.md`) it serves. Items that can't name all three are maintainability/

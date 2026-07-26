@@ -19,7 +19,13 @@ export type ToastOptions = {
 
 const DEFAULT_DURATION_MS = 1800;
 const ACTION_DURATION_MS = 6000;
-const ERROR_DURATION_MS = 5000;
+/**
+ * Dwell for a toast the user has to act on. `showToastError` applies it
+ * automatically; exported so a refusal raised through `showToast` (a typed
+ * server refusal is not an Error) gets the same reading time instead of the
+ * 1.8 s acknowledgement default.
+ */
+export const ERROR_DURATION_MS = 5000;
 const GENERIC_ERROR_FALLBACK = 'Save failed — try again.';
 // Generic message shown when the PELS app shell is reachable but the runtime
 // services have not finished initializing. Avoids surfacing the internal

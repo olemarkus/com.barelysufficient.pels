@@ -18,6 +18,7 @@ import type { PowerTrackerState } from '../../packages/contracts/src/powerTracke
 const buildPipeline = (
   noteResolvedHomeMeter?: (deviceId: string | null, sampleAtMs: number) => void,
   savedStates: PowerTrackerState[] = [],
+  noteHomeMeterArrangement?: (observation: string, sampleAtMs: number) => void,
   onRebuildRequest?: () => void,
 ) => {
   const powerTracker: PowerTrackerState = {};
@@ -62,6 +63,7 @@ const buildPipeline = (
     savePowerTracker: (state) => { savedStates.push(state); },
     getStructuredDebugEmitter: () => vi.fn(),
     ...(noteResolvedHomeMeter === undefined ? {} : { noteResolvedHomeMeter }),
+    ...(noteHomeMeterArrangement === undefined ? {} : { noteHomeMeterArrangement }),
   });
 };
 
@@ -93,6 +95,7 @@ describe('PowerSamplePipeline resolved-meter identity publication', () => {
     const pipeline = buildPipeline(
       () => { order.push('note'); },
       [],
+      undefined,
       () => { order.push('rebuild'); },
     );
 
@@ -141,6 +144,29 @@ describe('PowerSamplePipeline resolved-meter identity publication', () => {
       { state: 'superseded', revision: 2, latestRevision: 3 },
       { state: 'admitted', revision: 3 },
     ]);
+  });
+
+  it('publishes the arrangement with the identity, same stamp, same admitted ingest', async () => {
+    const calls: Array<[string, number]> = [];
+    const pipeline = buildPipeline(vi.fn(), [], (observation, sampleAtMs) => {
+      calls.push([observation, sampleAtMs]);
+    });
+
+    await pipeline.recordPowerSample(4_200, T0, {
+      resolvedHomeMeterDeviceId: null,
+      homeMeterArrangement: 'idless_aggregate_only',
+    });
+
+    expect(calls).toEqual([['idless_aggregate_only', T0]]);
+  });
+
+  it('never publishes an arrangement for samples that carry none', async () => {
+    const note = vi.fn();
+    const pipeline = buildPipeline(vi.fn(), [], note);
+
+    await pipeline.recordPowerSample(4_200, T0, { resolvedHomeMeterDeviceId: 'm-1' });
+
+    expect(note).not.toHaveBeenCalled();
   });
 
   it('contains a publisher throw so it can never break the sample loop', async () => {

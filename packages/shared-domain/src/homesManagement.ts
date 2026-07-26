@@ -14,6 +14,7 @@
  */
 
 import { HOMES_MAIN_HOME_NAME } from './homesManagementCopy';
+import { foldHomeAreaName } from './homeAreaConfigRules';
 
 /** One Homey zone as the `ui_homes` payload serves it. */
 export type HomesZoneNode = {
@@ -201,8 +202,10 @@ const validateDraftName = (
 ): SubHomeDraftError[] => {
   const trimmedName = name.trim();
   if (trimmedName.length === 0) return [{ kind: 'name_missing' }];
+  // Same normalized fold as the save seam (NFC + lowercase): an NFC/NFD pair
+  // renders identically, so the inline check must refuse what the save would.
   const nameClash = others.find(
-    (entry) => entry.name.trim().toLowerCase() === trimmedName.toLowerCase(),
+    (entry) => foldHomeAreaName(entry.name) === foldHomeAreaName(trimmedName),
   );
   return nameClash === undefined ? [] : [{ kind: 'name_duplicate', otherName: nameClash.name }];
 };

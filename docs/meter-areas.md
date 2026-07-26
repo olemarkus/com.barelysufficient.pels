@@ -52,6 +52,15 @@ entirely remotely.
   plug or appliance won't appear in the picker, because PELS only offers real
   whole-area meters, so it never mistakes one device's draw for the area's
   total. Add the meter to Homey first, then pick it here.
+- **The Main home's own meter picked.** Before you can save your first meter
+  area, select the Main home's **Whole-home meter** under **Settings → Limits &
+  safety**. Without it PELS reads the combined total of every meter as the Main
+  home's, and Main-home devices get limited by the area's usage. The
+  [Giving the Main home its own meter](#giving-the-main-home-its-own-meter)
+  section explains why. A few Homey setups read the whole home through an
+  aggregate that doesn't report a device id — there the picker has nothing to
+  offer, and meter areas aren't supported yet; PELS says so when you try to
+  save one.
 - **Your zones set up to match.** PELS assigns devices to a meter area by
   Homey **zone**: you point the area at the zone that part of your home lives
   in, and every device in that zone and its sub-zones counts toward that area.
@@ -91,9 +100,9 @@ everything that *isn't* in a meter area. Add a rental as a meter area and the
 rest of the house stays in the Main home automatically; remove the area later
 and its devices move straight back.
 
-Once you have a meter area, there is one Main-home measurement step: select the
-Main home's own **Whole-home meter** under **Settings → Limits & safety**. The
-section below explains why.
+There is one Main-home measurement step, and PELS asks for it before your first
+area is saved: select the Main home's own **Whole-home meter** under **Settings
+→ Limits & safety**. The section below explains why.
 :::
 
 ## Setting each area's limit
@@ -159,9 +168,11 @@ the more serious of the two for you: nothing is keeping the Main home under its
 hard cap until you pick its meter.
 
 The fix is a one-time pick: set the Main home's own meter under **Settings →
-Limits & safety → Whole-home meter**. PELS nudges you toward this whenever meter
-areas exist without it. Once the Main home reads its own meter, each part (the
-Main home and every meter area) is measured and limited on its own.
+Limits & safety → Whole-home meter**. Because the problem is silent, PELS treats
+it as a requirement rather than a suggestion: saving a meter area asks for the
+Whole-home meter first, and switching it back to *Automatic* while meter areas
+are running is refused. Once the Main home reads its own meter, each part (the Main home and
+every meter area) is measured and limited on its own.
 
 ## What a meter area governs
 
@@ -214,6 +225,12 @@ limit, so a single Flow can tell you *where* to go and switch something off.
   turn control on. Also confirm your power source is **Homey Energy**.
 - **PELS says it can't tell which meter it's reading for the Main home.** Set the
   Main home's **Whole-home meter** (see above) so each part is measured on its own.
+- **Saving an area is refused over its name.** Each area needs a name of its own:
+  not blank, not another area's name (spelling it differently in upper or lower
+  case still counts), not "Main home" (that is what PELS calls everything outside
+  your areas), and at most 40 characters. PELS says which of these applies.
+- **"PELS handles up to 8 meter areas."** Eight is the limit. Remove an area you
+  no longer meter separately to make room.
 - **A device is in the wrong area.** Devices follow their Homey zone. Move the
   device to the right zone in Homey, or adjust the area's zone, and the device
   re-homes accordingly.
