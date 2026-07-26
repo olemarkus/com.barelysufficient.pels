@@ -966,6 +966,41 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
       persisted: true,
       retryScheduled: false,
     });
+    // The global card is shared with the Main home, so the area has to name
+    // itself in the payload or the alert is unattributable.
+    expect(capacityShortfallTrigger).toHaveBeenCalledWith({ home: HOME_A.name });
+  });
+
+  it('a renamed meter area fires the shortfall Flow under its NEW name', async () => {
+    // A rename keeps the same meter, so the bundle is adopted in place rather
+    // than replaced. A display name captured at construction would therefore
+    // keep naming the area by its old name for the rest of the app's life.
+    mockHomeyInstance.flow._triggerCardTriggers = {};
+    const capacityShortfallTrigger = vi.fn().mockResolvedValue(true);
+    const originalGetTriggerCard = mockHomeyInstance.flow.getTriggerCard;
+    vi.spyOn(mockHomeyInstance.flow, 'getTriggerCard').mockImplementation((cardId) => (
+      cardId === 'capacity_shortfall'
+        ? {
+          registerRunListener: vi.fn(),
+          registerArgumentAutocompleteListener: vi.fn(),
+          trigger: capacityShortfallTrigger,
+        }
+        : originalGetTriggerCard(cardId)
+    ));
+    mockHomeyInstance.settings.set('capacity_dry_run:h_a', false);
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    rig.registry.reconcile();
+    await drainPending();
+
+    writeActiveHomesConfig({ subHomes: [{ ...HOME_A, name: 'Loft' }] });
+    rig.registry.reconcile();
+    await drainPending();
+    expect(rig.registry.getBundleHomeIds()).toEqual(['h_a']);
+
+    rig.registry.routeMeterReadings({ 'm-a': 50_000 }, Date.now());
+    await drainPending();
+
+    expect(capacityShortfallTrigger).toHaveBeenCalledWith({ home: 'Loft' });
   });
 
   it('owns a fresh reconcile when the execution dry-run source read is transiently unavailable', async () => {

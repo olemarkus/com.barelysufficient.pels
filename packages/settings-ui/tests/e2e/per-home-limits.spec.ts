@@ -121,7 +121,7 @@ test('Main simulation banner stays truthful while a meter area actively controls
   await expect(page.locator('#dry-run-banner')).toContainText(
     'Main home simulation on — Main home devices stay as-is',
   );
-  await expect(page.locator('#simulation-disable-button')).toHaveText('Turn off Main simulation');
+  await expect(page.locator('#simulation-disable-button')).toHaveText('Turn off Main home simulation');
   const bannerLayout = await page.evaluate(() => {
     const banner = document.querySelector('#dry-run-banner')!.getBoundingClientRect();
     const text = document.querySelector('#dry-run-banner-text')!.getBoundingClientRect();
@@ -158,7 +158,7 @@ test('simulation banner keeps a conservative scope across transient and realtime
     stub.emitSettingsSet('homes_config_initialized');
   });
   await expect(banner).toContainText('Main home simulation on — Main home devices stay as-is');
-  await expect(action).toHaveText('Turn off Main simulation');
+  await expect(action).toHaveText('Turn off Main home simulation');
 
   await page.evaluate(() => {
     const stub = (window as unknown as {

@@ -25,6 +25,35 @@ export const HOMES_EMPTY_EXPLAINER = 'If a part of your home has its own electri
   + 'of the Main home.';
 export const HOMES_ADD_BUTTON = 'Add meter area';
 
+// ── Home names ─────────────────────────────────────────────────────────────
+
+/**
+ * The implicit complement's display name (notes/ui-terminology.md). Canonical
+ * for every surface that names a home, including runtime Flow tokens, so a
+ * Flow tag reads exactly like the settings label.
+ */
+export const HOMES_MAIN_HOME_NAME = 'Main home';
+
+/**
+ * Stand-in when a saved meter area carries an empty name. Persisted names are
+ * untrusted (any string), and a blank Flow tag or status line would tell the
+ * owner nothing about which part of the home it came from.
+ */
+export const HOMES_UNNAMED_AREA_NAME = 'Meter area';
+
+/**
+ * The name to SHOW for a meter area. Persisted names are untrusted: the config
+ * store accepts any string and the save path does not check the name either, so
+ * a blank one is reachable. One rule for every surface that renders an area
+ * name (the Multiple meters list, the shortfall Flow tag, the runtime logs) so
+ * a blank area is not an empty row on one screen and `Meter area` on the next.
+ * Takes the raw name rather than a config object so both the settings UI and
+ * the runtime can call it.
+ */
+export const resolveHomeAreaDisplayName = (name: string): string => (
+  name.trim() || HOMES_UNNAMED_AREA_NAME
+);
+
 // ── List ───────────────────────────────────────────────────────────────────
 
 /** Muted footnote below the list card — names the complement without jargon. */
@@ -55,8 +84,11 @@ export const composeSubHomeSupportingLine = (params: {
 // ── Delete confirm ─────────────────────────────────────────────────────────
 
 /** The confirm step names the consequence: devices re-home to the Main home. */
+// Self-resolving (as are the other composers that quote an area name below):
+// callers pass the raw persisted name, and the blank-name rule is applied here
+// so no display consumer can forget it. `Remove “”?` names nothing.
 export const composeDeleteConfirmBody = (name: string): string => (
-  `Remove “${name}”? Its devices move back to the Main home.`
+  `Remove “${resolveHomeAreaDisplayName(name)}”? Its devices move back to the Main home.`
 );
 export const HOMES_DELETE_CONFIRM_BUTTON = 'Remove';
 export const HOMES_DELETE_CANCEL_BUTTON = 'Cancel';
@@ -126,14 +158,24 @@ export const composeZonePickerOptionLabel = (name: string, depth: number): strin
 
 export const composeDraftErrorLine = (error: SubHomeDraftError): string => {
   if (error.kind === 'name_missing') return 'Give this meter area a name.';
-  if (error.kind === 'name_duplicate') return `Another meter area is already named “${error.otherName}”.`;
+  if (error.kind === 'name_duplicate') {
+    // `otherName` is another area's raw persisted name, so the blank case is
+    // resolved here like every other quoted area name. (A duplicate of a blank
+    // name cannot actually fire — `name_missing` wins first — but the rule is
+    // applied uniformly rather than reasoned away per branch.)
+    return `Another meter area is already named “${resolveHomeAreaDisplayName(error.otherName)}”.`;
+  }
   if (error.kind === 'meter_missing') return 'Pick the meter for this area.';
-  if (error.kind === 'meter_in_use') return `“${error.otherName}” already uses this meter.`;
+  if (error.kind === 'meter_in_use') {
+    // `otherName` here can also be the Main home's literal label, which the
+    // resolver passes through unchanged.
+    return `“${resolveHomeAreaDisplayName(error.otherName)}” already uses this meter.`;
+  }
   if (error.kind === 'zone_missing') return 'Pick the zone this meter covers.';
   if (error.kind === 'zone_is_root') {
     return 'This zone covers the whole home. Pick just the part this meter measures.';
   }
-  return `This zone overlaps “${error.otherName}”. Pick a zone outside it.`;
+  return `This zone overlaps “${resolveHomeAreaDisplayName(error.otherName)}”. Pick a zone outside it.`;
 };
 
 const DRAFT_WARNING_LINES: Record<SubHomeDraftWarning['kind'], string> = {

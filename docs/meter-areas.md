@@ -189,7 +189,20 @@ Your whole-home features stay whole-home. The daily energy budget, price-based
 load shifting, and smart tasks plan your Main-home devices, while each meter
 area runs on its own cap, safety margin, and priorities. Smart tasks currently
 run on Main-home devices, and PELS tells you if you set one on a device that
-lives in a meter area. Flow cards apply to PELS as a whole.
+lives in a meter area.
+
+Flow cards split three ways. Cards that act on a **device** work wherever that
+device lives, including inside a meter area: turning power-limit control on or
+off for it, budget exemptions, **Is device managed by PELS?**, expected power
+usage, and the stepped-device reports. Cards about **modes, prices and the daily
+budget** are settings for the whole app, so they behave exactly as they always
+did. The cards that read or write a **capacity number** work from the Main home:
+**Is there enough available power?**, **Is there available power for device?**
+and **Set capacity limit**, even if the device you pick lives in a meter area.
+
+One trigger is area-aware. **Hard cap breach imminent — manual action needed**
+carries a `Home` tag naming the part of the home with no managed devices left to
+limit, so a single Flow can tell you *where* to go and switch something off.
 
 ## Tips and troubleshooting
 

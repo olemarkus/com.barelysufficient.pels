@@ -59,6 +59,12 @@ export function createPlanEngine(ctx: AppContext, scope: HomeScope, options?: Cr
 
   return new PlanEngineClass({
     homey: ctx.homey,
+    // Scope-owned: the global `capacity_shortfall` card names the home that
+    // fired it, and only the scope knows which one that is.
+    getHomeDisplayName: scope.getHomeDisplayName,
+    // The id is already a plain scope field (a home id cannot change without a
+    // new scope), so log correlation needs no extra getter.
+    homeId: scope.homeId,
     setCapacityInShortfall: scope.setCapacityInShortfall,
     persistLastControlledMs: scope.persistLastControlledMs,
     deviceManager,

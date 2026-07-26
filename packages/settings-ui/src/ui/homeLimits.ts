@@ -28,6 +28,7 @@ import {
   formatHomeLimitsKw,
   resolveHomeLimitsStatus,
 } from '../../../shared-domain/src/homeLimitsStatus.ts';
+import { resolveHomeAreaDisplayName } from '../../../shared-domain/src/homesManagementCopy.ts';
 import { callApi, getSettingFresh, setSetting } from './homey.ts';
 import { logSettingsError } from './logging.ts';
 import { showToast, showToastError } from './toast.ts';
@@ -156,9 +157,15 @@ const setStaticFormHidden = (hidden: boolean): void => {
   if (form) form.hidden = hidden;
 };
 
+// Persisted area names are untrusted (a blank one is reachable), so the label
+// goes through the same one-rule resolver every other area-name surface uses —
+// an unnamed area is `Meter area` in this switcher, not an empty option.
 const buildHomeOptions = (): HomeLimitsHomeOption[] => [
   { homeId: MAIN_HOME_ID, label: HOME_LIMITS_MAIN_HOME_OPTION },
-  ...meterAreas.map((area) => ({ homeId: area.homeId, label: area.name })),
+  ...meterAreas.map((area) => ({
+    homeId: area.homeId,
+    label: resolveHomeAreaDisplayName(area.name),
+  })),
 ];
 
 const buildAreaEditorView = (editor: AreaEditorState): HomeLimitsEditorView => {

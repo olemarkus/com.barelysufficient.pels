@@ -54,6 +54,8 @@ const buildExecutor = (snapshot: Array<Record<string, unknown>>) => {
       ...mockHomeyInstance,
       flow: { getTriggerCard: vi.fn(() => desiredSteppedTrigger) },
     } as never,
+    getHomeDisplayName: () => 'Main home',
+    homeId: 'main',
     setCapacityInShortfall: vi.fn(),
     persistLastControlledMs: vi.fn(),
     deviceManager: deviceManager as never,

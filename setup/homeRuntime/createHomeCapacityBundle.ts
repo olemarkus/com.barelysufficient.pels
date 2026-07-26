@@ -72,6 +72,7 @@ import { createHomePowerPipeline } from './createHomePowerPipeline';
 import {
   buildHomeCapacityBundleApi,
   createPreparedBundleSampleFence,
+  resolveHomeAreaDisplayName,
   startHomeCapacityBundle,
 } from './homeCapacityBundleApi';
 import { installBundleReadinessAndFreshness } from './homeCapacityBundleReadiness';
@@ -268,6 +269,8 @@ function createBundleRebuildScheduler(params: {
 function buildSubHomeScope(params: {
   ctx: AppContext;
   homeId: HomeId;
+  /** Live read: a rename lands via `updateHomeConfig` without a teardown. */
+  getHome: () => SubHomeConfig;
   isMembershipReady: () => boolean;
   isMeterSourceAuthorized: () => boolean;
   /** Teardown fence: gate the suffixed-key writers so a post-teardown continuation cannot persist. */
@@ -281,8 +284,8 @@ function buildSubHomeScope(params: {
   getPlanEngineForPending: () => ReturnType<typeof createPlanEngine> | undefined;
 }): HomeScope {
   const {
-    ctx, homeId, isMembershipReady, isMeterSourceAuthorized, isTornDown, getScalars, getGuard, getTracker,
-    getServiceForSync, getPlanEngineForPending,
+    ctx, homeId, getHome, isMembershipReady, isMeterSourceAuthorized, isTornDown, getScalars, getGuard,
+    getTracker, getServiceForSync, getPlanEngineForPending,
   } = params;
   // Suffixed persisted-signal write, fenced on teardown: an in-flight
   // rebuild/reconcile continuation that resolves AFTER teardown must not
@@ -295,6 +298,9 @@ function buildSubHomeScope(params: {
   };
   return {
     homeId,
+    // Names THIS area on the global `capacity_shortfall` Flow trigger, which
+    // every home shares — without it an area's alert reads as the Main home's.
+    getHomeDisplayName: () => resolveHomeAreaDisplayName(getHome().name),
     getCapacitySettings: () => ({ limitKw: getScalars().limitKw, marginKw: getScalars().marginKw }),
     // Both external trust boundaries fold into the canonical no-actuation
     // switch: membership must be committed and this meter-bearing source epoch
@@ -500,6 +506,7 @@ function createBundlePlanningRuntime(params: {
   const scope = buildSubHomeScope({
     ctx: params.ctx,
     homeId: params.homeId,
+    getHome: params.getHome,
     isMembershipReady: params.isMembershipReady,
     isMeterSourceAuthorized: params.isMeterSourceAuthorizedForExecution,
     isTornDown: params.isTornDown,

@@ -13,6 +13,8 @@
  * the two sides behaviourally aligned when either changes.
  */
 
+import { HOMES_MAIN_HOME_NAME } from './homesManagementCopy';
+
 /** One Homey zone as the `ui_homes` payload serves it. */
 export type HomesZoneNode = {
   id: string;
@@ -212,7 +214,7 @@ const validateDraftMeter = (
 ): SubHomeDraftError[] => {
   if (meterDeviceId === null) return [{ kind: 'meter_missing' }];
   if (meterDeviceId === mainMeterDeviceId) {
-    return [{ kind: 'meter_in_use', otherName: 'Main home' }];
+    return [{ kind: 'meter_in_use', otherName: HOMES_MAIN_HOME_NAME }];
   }
   const meterClash = others.find((entry) => entry.meterDeviceId === meterDeviceId);
   return meterClash === undefined ? [] : [{ kind: 'meter_in_use', otherName: meterClash.name }];
