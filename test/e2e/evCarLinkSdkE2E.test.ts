@@ -12,11 +12,11 @@
 // fetch, and the real clock. No PELS internal is mocked; the probe is observed
 // through its structured log output and through `api.put` capability writes.
 //
-// State changes are delivered through `injectDeviceUpdateForTest`, which is the
-// live feed's own callback seam — the same `device.update` payload socket.io
-// hands the transport in production, and the ONLY path that carries a class
-// `car` device at realtime cadence (the periodic snapshot refresh runs at :25
-// and :55, far coarser than the 90 s coincidence window).
+// State changes are delivered ONLY by mutating the mock devices and letting the
+// app's own periodic snapshot refresh (:25 and :55) read them back through
+// `manager/devices/device`. No internal hook is called: the probe has to pick a
+// class `car` device out of the raw fetch itself, which is the path that keeps
+// working when the live feed is down.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mockHomeyInstance, setMockDrivers, MockDevice, MockDriver } from '../mocks/homey';
 import { createApp, cleanupApps, getLatestTargetSnapshotForTests } from '../utils/appTestUtils';
@@ -28,7 +28,6 @@ import {
 } from '../../lib/utils/settingsKeys';
 import { drainUntil } from '../utils/asyncDrain';
 
-const POLL_MS = 10_000;
 const CAR_ID = 'polestar';
 const CHARGER_ID = 'elbillader';
 
@@ -115,24 +114,11 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
 
   const of = (event: string): LinkEvent[] => events.filter((entry) => entry.event === event);
 
-  /**
-   * Deliver the devices' current payloads through the live feed's callback seam,
-   * exactly as socket.io does in production.
-   */
-  const push = async (
-    app: { deviceManager?: { injectDeviceUpdateForTest: (device: unknown) => void } },
-    ...devices: MockDevice[]
-  ): Promise<void> => {
-    for (const device of devices) {
-      app.deviceManager?.injectDeviceUpdateForTest(device.toHomeyApiDevice());
-    }
-    await flushDetached();
-  };
-
-  const pump = async (polls: number): Promise<void> => {
-    for (let i = 0; i < polls; i += 1) {
-      await vi.advanceTimersByTimeAsync(POLL_MS);
-      await flushDetached();
+  /** Advance `minutes` of app time, flushing detached work as timers fire. */
+  const pumpMinutes = async (minutes: number): Promise<void> => {
+    for (let i = 0; i < minutes; i += 1) {
+      await vi.advanceTimersByTimeAsync(60_000);
+      await flushDetached(4);
     }
   };
 
@@ -157,7 +143,7 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
   });
 
   it('links the car to the charger from a coincident plug-in, then reports the car stopping on its own', async () => {
-    vi.setSystemTime(Date.UTC(2026, 0, 15, 22, 0, 0));
+    vi.setSystemTime(Date.UTC(2026, 0, 15, 22, 15, 0));
     const car = await buildCar();
     const charger = await buildCharger();
     setMockDrivers({ driverA: new MockDriver('driverA', [car, charger]) });
@@ -171,19 +157,17 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
 
     // Both sides observed at least once, so later changes read as plug edges
     // rather than first observations.
-    await pump(3);
-    await push(app, car, charger);
+    await pumpMinutes(2);
 
-    // Plug in: both devices transition within the coincidence window.
+    // Plug in. Both devices change together; the :25 refresh reads both.
     await car.setCapabilityValue('ev_charging_state', 'plugged_in_charging');
     await charger.setCapabilityValue('evcharger_charging_state', 'plugged_in_charging');
     await charger.setCapabilityValue('evcharger_charging', true);
     await charger.setCapabilityValue('measure_power', 7_000);
-    await push(app, car, charger);
+    await pumpMinutes(8);
 
-    // Past the settle window (90 s) so the pairing can be decided.
-    await pump(12);
-    await push(app, car, charger);
+    // The :55 refresh is past the settle window, so the pairing can be decided.
+    await pumpMinutes(32);
     await drainUntil(() => of('ev_car_link_resolved').length > 0);
 
     const resolved = of('ev_car_link_resolved');
@@ -198,11 +182,9 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
     await car.setCapabilityValue('measure_battery', 80);
     await car.setCapabilityValue('ev_charging_state', 'plugged_in');
     await charger.setCapabilityValue('measure_power', 0);
-    await push(app, car, charger);
 
-    // Past the self-stop dwell (120 s).
-    await pump(18);
-    await push(app, car, charger);
+    // Two more refreshes: the first sees the stop, the second is past the dwell.
+    await pumpMinutes(62);
     await drainUntil(() => of('ev_car_self_stopped').length > 0);
 
     expect(of('ev_car_self_stopped')[0]).toMatchObject({
@@ -229,7 +211,7 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
   });
 
   it('reports a session elsewhere when the car plugs in with no charger transition', async () => {
-    vi.setSystemTime(Date.UTC(2026, 0, 15, 22, 0, 0));
+    vi.setSystemTime(Date.UTC(2026, 0, 15, 22, 15, 0));
     const car = await buildCar();
     const charger = await buildCharger();
     setMockDrivers({ driverA: new MockDriver('driverA', [car, charger]) });
@@ -239,14 +221,11 @@ describe('EV car-to-charger link probe (SDK-boundary e2e)', () => {
     const app = createApp();
     spyLogs(app);
     await app.onInit();
-    await pump(3);
-    await push(app, car, charger);
+    await pumpMinutes(2);
 
     // Car charges at work: the home charger never moves.
     await car.setCapabilityValue('ev_charging_state', 'plugged_in_charging');
-    await push(app, car, charger);
-    await pump(12);
-    await push(app, car, charger);
+    await pumpMinutes(40);
     await drainUntil(() => of('ev_car_session_elsewhere').length > 0);
 
     expect(of('ev_car_session_elsewhere')[0]).toMatchObject({ carId: CAR_ID });

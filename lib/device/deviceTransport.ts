@@ -84,7 +84,7 @@ import {
   reconcileBinarySettleEvidenceWithSnapshot,
 } from './transport/binarySettleEvidence';
 import {
-  handleRealtimeCapabilityUpdate as runHandleRealtimeCapabilityUpdate,
+  handleRealtimeCapabilityUpdateWithProbe as runHandleRealtimeCapabilityUpdate,
 } from './transport/realtimeCapabilityHandling';
 import {
   handleRealtimeDeviceUpdateEvent,
@@ -211,6 +211,9 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         capabilityId: string,
         value: unknown,
     ): void => runHandleRealtimeCapabilityUpdate(this.ctx, deviceId, capabilityId, value);
+
+    /** Heartbeat for the EV car-link probe's elapsed-time decisions. */
+    tickEvCarLink(nowMs: number): void { this.observationProducers.evCarLink.tick(nowMs); }
 
     private readonly handleRealtimeDeviceUpdate = (device: HomeyDeviceLike): void => (
         handleRealtimeDeviceUpdateEvent(this.ctx, device)

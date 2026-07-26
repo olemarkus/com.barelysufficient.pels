@@ -188,3 +188,27 @@ describe('pruneEvCarLinkSnapshot', () => {
     expect(pruneEvCarLinkSnapshot({ snapshot, nowMs: 10_000 })).toBe(snapshot);
   });
 });
+
+describe('future timestamps', () => {
+  it('clamps a future vote timestamp to the load clock', () => {
+    // A clock jump or corrupt persisted value would otherwise give the record a
+    // negative age, which always passes the retention check — so it could stay a
+    // qualified affinity prior forever.
+    const normalized = normalizeEvCarLinkSnapshot({
+      version: EV_CAR_LINK_VERSION,
+      pairs: { 'car|charger': { votes: 2, lastVotedAtMs: 9_000 } },
+      cars: { car: { stopSocPct: [80], lastObservedAtMs: 9_000 } },
+    }, 5_000);
+    expect(normalized.pairs['car|charger'].lastVotedAtMs).toBe(5_000);
+    expect(normalized.cars.car.lastObservedAtMs).toBe(5_000);
+  });
+
+  it('leaves past timestamps alone', () => {
+    const normalized = normalizeEvCarLinkSnapshot({
+      version: EV_CAR_LINK_VERSION,
+      pairs: { 'car|charger': { votes: 2, lastVotedAtMs: 1_000 } },
+      cars: {},
+    }, 5_000);
+    expect(normalized.pairs['car|charger'].lastVotedAtMs).toBe(1_000);
+  });
+});

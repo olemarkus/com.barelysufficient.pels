@@ -64,6 +64,8 @@ export type TransportEvCarLinkProducer = {
     options: { fullRefresh: boolean; nowMs: number },
   ) => void;
   noteDeviceUpdate: (device: HomeyDeviceLike, nowMs: number) => void;
+  noteCapabilityUpdate: (deviceId: string, capabilityId: string, value: unknown, nowMs: number) => void;
+  tick: (nowMs: number) => void;
   getObservedCarDeviceIds: () => string[];
 };
 

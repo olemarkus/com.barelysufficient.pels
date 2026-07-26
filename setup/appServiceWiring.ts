@@ -1,7 +1,6 @@
 import type Homey from 'homey';
 import CapacityGuard from '../lib/power/capacityGuard';
 import { DeviceTransport, type DeviceTransportBinarySettleOps } from '../lib/device/deviceTransport';
-import { EvCarLinkStoreWiring } from './evCarLinkStoreWiring';
 import {
   clearAllPendingBinarySettleWindows,
   clearPendingBinarySettleWindow,
@@ -53,12 +52,13 @@ import {
   createPriceCoordinator,
   createPriceFlowTagPublisher,
   persistDeferredObjectiveObservationWatermark,
+  createPersistedEvCarLinkAccess,
+  buildDeviceParseProviders,
 } from './appInit';
 import { startBackgroundCollectors } from './appInit/startBackgroundCollectors';
 import { buildMainHomeScope, type HomeScope } from './homeRuntime/homeScope';
 import type { HomeRuntimeRegistry } from './homeRuntime/homeRuntimeRegistry';
 import {
-  buildHomeRuntimeMeterProviders,
   buildHomeRuntimeSettingsHooks,
   createHomeRuntimeRegistryForApp,
 } from './appInit/wireHomeRuntimeRegistry';
@@ -75,6 +75,9 @@ import * as realtimeReconcile from './appRealtimeDeviceReconcile';
 import { scheduleAppRealtimeDeviceReconcileForApp } from './appRealtimeDeviceReconcileRuntime';
 
 const STARTUP_RESTORE_STABILIZATION_MS = 60 * 1000;
+// Comfortably under the probe's shortest elapsed-time threshold (the 90 s edge
+// settle), so no decision window is stepped over.
+const EV_CAR_LINK_TICK_INTERVAL_MS = 30 * 1000;
 // Bound the warmup wait so a failed/slow Homey Manager fetch can never deadlock
 // startup: if `refreshSnapshot()` does not resolve in this window the gate
 // releases with reason `timeout` and the planner proceeds (next snapshot will
@@ -398,27 +401,12 @@ export class AppServiceWiring {
       debug: (...args: unknown[]) => ctx.logDebug('devices', ...args),
       error: ctx.error.bind(ctx),
       structuredLog,
-    }, {
-      getHomeyEnergyMeterDeviceId: () => resolveHomeyEnergyMeterDeviceId(ctx.homey),
-      // Sub-home meter ids for the per-meter live-report extraction, and the
-      // fan-out of the readings they resolve (R7b). Both lazy over the
-      // registry field: the registry is built after the transport, and cleared
-      // at uninit — empty/no-op outside that window, so the single-home path
-      // is untouched.
-      ...buildHomeRuntimeMeterProviders(() => this.homeRuntimeRegistry),
-      getPriority: (id) => ctx.getPriorityForDevice(id),
-      getControllable: (id) => ctx.isCapacityControlEnabled(id),
-      getManaged: (id) => ctx.resolveManagedState(id),
-      isManagedFilterActive: () => this.deps.isManagedFilterActive(),
-      getBudgetExempt: (id) => ctx.isBudgetExempt(id),
-      getCommunicationModel: (id) => ctx.getCommunicationModel(id),
-      getNativeEvWiringEnabled: (id) => this.deps.resolveNativeWiringEnabled(id),
-      getFlowConflict: (id) => this.deps.getFlowConflict(id),
-      getDeviceDriverIdOverride: (id) => this.deps.getDeviceDriverIdOverride(id),
-      getDeviceControlProfile: (id) => ctx.deviceControlProfiles[id],
-      getDeviceTargetPowerConfig: (id) => ctx.deviceTargetPowerConfigs[id],
-      getFlowReportedCapabilities: (deviceId) => ctx.getFlowReportedCapabilitiesForDevice(deviceId),
-    }, {
+    }, buildDeviceParseProviders({
+      ctx,
+      deps: this.deps,
+      getHomeRuntimeRegistry: () => this.homeRuntimeRegistry,
+      resolveMeterDeviceId: () => resolveHomeyEnergyMeterDeviceId(ctx.homey),
+    }), {
       expectedPowerKwOverrides: ctx.expectedPowerKwOverrides,
       lastKnownPowerKw: ctx.lastKnownPowerKw,
       lastPositiveMeasuredPowerKw: ctx.lastPositiveMeasuredPowerKw,
@@ -435,10 +423,19 @@ export class AppServiceWiring {
         hasPendingBinarySettleWindow(this.deps.getObserverBinarySettleState(), deviceId, capabilityId)
       ),
       observedStateDispatcher: this.deps.getObservedStateEmitter().asDispatcher(this.deps.getObservedHomePower()),
-      evCarLinkSnapshotAccess: new EvCarLinkStoreWiring(() => ctx.homey).snapshotAccess(),
+      evCarLinkSnapshotAccess: createPersistedEvCarLinkAccess(ctx.homey),
     });
     ctx.deviceManager = deviceManager;
     await deviceManager.init();
+    // The probe's decisions are time-based — edge settlement, away verdicts, and
+    // the self-stop dwell all need 90-180 s to elapse. Without a heartbeat they
+    // are only evaluated when unrelated telemetry happens to arrive, so a car
+    // sitting quietly at its charge limit (the single most valuable thing the
+    // probe records) is never noticed. Well inside the shortest deadline.
+    this.deps.timers.registerInterval('evCarLinkTick', setInterval(
+      () => ctx.deviceManager?.tickEvCarLink(Date.now()),
+      EV_CAR_LINK_TICK_INTERVAL_MS,
+    ));
     const emitter = this.deps.getObservedStateEmitter();
     // Wiring subscribes to the observer-owned emitter rather than the
     // transport-side EventEmitter. Transport's dispatcher (above) routes

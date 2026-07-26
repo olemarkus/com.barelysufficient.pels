@@ -166,7 +166,16 @@ export const loadEvCarLinkStore = (params: {
     options?: EvCarLinkStoreOptions;
 }): EvCarLinkStore => {
     const rawRead = readPersistedSnapshot(params.homey);
-    const initialSnapshot = normalizeEvCarLinkSnapshot(rawRead.value);
+    // Prune on load rather than on a timer: the only way pair records accumulate
+    // is device churn across restarts, so boot is exactly when stale ones appear
+    // and the cheapest moment to drop them. Without this the advertised 90-day
+    // retention never applies and the settings blob grows with every replaced
+    // car or charger.
+    const loadedAtMs = params.options?.nowMs ?? Date.now();
+    const initialSnapshot = pruneEvCarLinkSnapshot({
+        snapshot: normalizeEvCarLinkSnapshot(rawRead.value, loadedAtMs),
+        nowMs: loadedAtMs,
+    });
     const rawIsPlausible = !rawRead.threw && isStrictlyValidPersistedEvCarLink(rawRead.value);
     const rawIsAbsent = !rawRead.threw && (rawRead.value === undefined || rawRead.value === null);
     const markerRead = readInitMarker(params.homey);

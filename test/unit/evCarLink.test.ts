@@ -36,11 +36,12 @@ describe('resolveEvLinkEdge', () => {
     expect(resolveEvLinkEdge('plugged_in', 'plugged_in_charging')).toBeNull();
   });
 
-  it('never treats a first observation as a plug event', () => {
-    // A cold boot would otherwise manufacture a connect edge for every device
-    // and hand out a link vote on every restart.
-    expect(resolveEvLinkEdge(undefined, 'plugged_in_charging')).toBeNull();
-    expect(resolveEvLinkEdge('plugged_in_charging', undefined)).toBeNull();
+  it('yields no edge when the state is unchanged', () => {
+    // "No previous observation" is not representable here at all: both states are
+    // required, and the caller simply does not call this without a prior record.
+    // That is what stops a cold boot manufacturing a connect edge per device.
+    expect(resolveEvLinkEdge('plugged_in_charging', 'plugged_in_charging')).toBeNull();
+    expect(resolveEvLinkEdge('plugged_out', 'plugged_out')).toBeNull();
   });
 });
 
@@ -64,6 +65,7 @@ describe('edge ring', () => {
 describe('matchCoincidentEdges', () => {
   it('pairs one car with one charger inside the window', () => {
     const result = matchCoincidentEdges({
+      nowMs: 10_000_000,
       carEdges: [edge('car', 'connect', 10_000)],
       chargerEdges: [edge('charger', 'connect', 0)],
     });
@@ -76,6 +78,7 @@ describe('matchCoincidentEdges', () => {
 
   it('does not pair across the window boundary', () => {
     const result = matchCoincidentEdges({
+      nowMs: 10_000_000,
       carEdges: [edge('car', 'connect', EV_CAR_LINK_COINCIDENCE_WINDOW_MS + 1)],
       chargerEdges: [edge('charger', 'connect', 0)],
     });
@@ -85,6 +88,7 @@ describe('matchCoincidentEdges', () => {
 
   it('pairs exactly at the window boundary', () => {
     const result = matchCoincidentEdges({
+      nowMs: 10_000_000,
       carEdges: [edge('car', 'connect', EV_CAR_LINK_COINCIDENCE_WINDOW_MS)],
       chargerEdges: [edge('charger', 'connect', 0)],
     });
@@ -93,6 +97,7 @@ describe('matchCoincidentEdges', () => {
 
   it('does not pair edges of opposite kinds', () => {
     const result = matchCoincidentEdges({
+      nowMs: 10_000_000,
       carEdges: [edge('car', 'disconnect', 0)],
       chargerEdges: [edge('charger', 'connect', 0)],
     });
@@ -101,6 +106,7 @@ describe('matchCoincidentEdges', () => {
 
   it('reports ambiguity instead of voting when two cars plug in together', () => {
     const result = matchCoincidentEdges({
+      nowMs: 10_000_000,
       carEdges: [edge('carA', 'connect', 0), edge('carB', 'connect', 1_000)],
       chargerEdges: [edge('charger', 'connect', 500)],
     });
@@ -112,8 +118,62 @@ describe('matchCoincidentEdges', () => {
     expect(result.unmatchedCarEdges).toHaveLength(0);
   });
 
+  it('counts contention from charger edges that have not settled yet', () => {
+    // Charger A settles first, but B is still within the car edge's window.
+    // Finalising A here would hand out a persisted vote and an active link that
+    // B's later ambiguity could never retract.
+    const result = matchCoincidentEdges({
+      nowMs: EV_CAR_LINK_COINCIDENCE_WINDOW_MS,
+      carEdges: [edge('car', 'connect', EV_CAR_LINK_COINCIDENCE_WINDOW_MS - 1_000)],
+      chargerEdges: [
+        edge('chargerA', 'connect', 0),
+        edge('chargerB', 'connect', EV_CAR_LINK_COINCIDENCE_WINDOW_MS - 500),
+      ],
+    });
+    expect(result.coincidences).toHaveLength(0);
+    expect(result.ambiguities.map((a) => a.chargerId)).toEqual(['chargerA']);
+  });
+
+  it('does not decide a charger edge before it settles', () => {
+    const result = matchCoincidentEdges({
+      nowMs: 1_000,
+      carEdges: [edge('car', 'connect', 1_000)],
+      chargerEdges: [edge('charger', 'connect', 1_000)],
+    });
+    expect(result.coincidences).toHaveLength(0);
+    expect(result.ambiguities).toHaveLength(0);
+  });
+
+  it('refuses to attribute one car edge that fits two chargers', () => {
+    // A car is on exactly one charger. An edge that fits both identifies
+    // neither, so both chargers go ambiguous rather than each taking a vote.
+    const result = matchCoincidentEdges({
+      nowMs: 10_000_000,
+      carEdges: [edge('car', 'connect', 500)],
+      chargerEdges: [edge('chargerA', 'connect', 0), edge('chargerB', 'connect', 1_000)],
+    });
+    expect(result.coincidences).toHaveLength(0);
+    expect(result.ambiguities.map((a) => a.chargerId)).toEqual(['chargerA', 'chargerB']);
+    // Still explained, so it is not an away session either.
+    expect(result.unmatchedCarEdges).toHaveLength(0);
+  });
+
+  it('still pairs when two chargers edge but only one is in range', () => {
+    const result = matchCoincidentEdges({
+      nowMs: 10_000_000,
+      carEdges: [edge('car', 'connect', 0)],
+      chargerEdges: [
+        edge('chargerA', 'connect', 0),
+        edge('chargerB', 'connect', EV_CAR_LINK_COINCIDENCE_WINDOW_MS + 1),
+      ],
+    });
+    expect(result.coincidences).toHaveLength(1);
+    expect(result.coincidences[0].chargerId).toBe('chargerA');
+  });
+
   it('reports a car edge with no charger edge as unmatched', () => {
     const result = matchCoincidentEdges({
+      nowMs: 10_000_000,
       carEdges: [edge('car', 'connect', 0)],
       chargerEdges: [],
     });
@@ -160,7 +220,7 @@ describe('classifyEvCarSelfStop', () => {
   const base = {
     carState: 'plugged_in' as const,
     chargerState: 'plugged_in_charging' as const,
-    chargerCommandedOn: false,
+    chargerControlOn: false,
     chargerPowerW: 0,
   };
 
@@ -174,7 +234,7 @@ describe('classifyEvCarSelfStop', () => {
 
   it('accepts an observed-on charger that has not reported charging yet', () => {
     expect(classifyEvCarSelfStop({
-      ...base, chargerState: 'plugged_in_paused', chargerCommandedOn: true,
+      ...base, chargerState: 'plugged_in_paused', chargerControlOn: true,
     })).toBe('car_not_charging');
   });
 
@@ -186,38 +246,37 @@ describe('classifyEvCarSelfStop', () => {
     expect(classifyEvCarSelfStop({ ...base, chargerState: 'plugged_in' })).toBeNull();
   });
 
-  it('treats an unreadable power measurement as no evidence', () => {
-    expect(classifyEvCarSelfStop({ ...base, chargerPowerW: null })).toBeNull();
-    expect(classifyEvCarSelfStop({ ...base, chargerPowerW: Number.NaN })).toBeNull();
-  });
-
   it('returns null while the car reports charging', () => {
     expect(classifyEvCarSelfStop({ ...base, carState: 'plugged_in_charging' })).toBeNull();
   });
 });
 
 describe('isChargingElsewhere', () => {
-  it('detects charge climbing while the linked charger is idle', () => {
-    expect(isChargingElsewhere({
-      previousSocPct: 40, currentSocPct: 41, chargerPowerW: 0,
-    })).toBe(true);
+  const base = {
+    previousSocPct: 40,
+    currentSocPct: 41,
+    currentSocAtMs: 2_000,
+    chargerPowerW: 0,
+    chargerIdleSinceMs: 1_000,
+  };
+
+  it('detects charge climbing across an interval the charger sat idle', () => {
+    expect(isChargingElsewhere(base)).toBe(true);
   });
 
   it('is false when the charger is delivering', () => {
-    expect(isChargingElsewhere({
-      previousSocPct: 40, currentSocPct: 41, chargerPowerW: 7_000,
-    })).toBe(false);
+    expect(isChargingElsewhere({ ...base, chargerPowerW: 7_000 })).toBe(false);
   });
 
-  it('is false without two readings to compare', () => {
-    expect(isChargingElsewhere({
-      previousSocPct: null, currentSocPct: 41, chargerPowerW: 0,
-    })).toBe(false);
+  it('is false when the charge reading predates the idle period', () => {
+    // PELS pausing a charger just after the charge rose must not read as an
+    // away session: the current idle reading does not prove the rise happened
+    // while idle.
+    expect(isChargingElsewhere({ ...base, currentSocAtMs: 500 })).toBe(false);
   });
 
   it('is false when charge is flat or falling', () => {
-    expect(isChargingElsewhere({
-      previousSocPct: 41, currentSocPct: 41, chargerPowerW: 0,
-    })).toBe(false);
+    expect(isChargingElsewhere({ ...base, previousSocPct: 41 })).toBe(false);
+    expect(isChargingElsewhere({ ...base, previousSocPct: 42 })).toBe(false);
   });
 });

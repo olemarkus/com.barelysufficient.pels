@@ -48,6 +48,7 @@ is both layering-correct and what keeps vendor knowledge in the one adapter that
 | File | Role |
 |---|---|
 | `lib/device/evCarLink.ts` | Pure correlation: edges, matching, link resolution, self-stop classification |
+| `lib/device/evCarLinkObservation.ts` | Device-payload boundary: resolves a car reading, drops unknowns |
 | `lib/device/evCarLinkSnapshot.ts` | Persisted shape: normalise, vote, sample, prune, summarise |
 | `lib/device/evCarLinkProducer.ts` | The producer: ingests cars, diffs chargers, emits events |
 | `lib/device/evCarLinkWiring.ts` | Charger-view narrowing + producer construction |
@@ -71,16 +72,65 @@ time-critical.
 
 **Three outcomes, and the distinction is the point:**
 
-- exactly one car matches a charger edge → a coincidence, worth one vote;
-- two or more cars match → `ev_car_link_ambiguous`, **no vote** for anyone;
+- exactly one car matches a charger edge, *and* that car matches no other charger edge → a
+  coincidence, worth one vote;
+- two or more cars match a charger, **or** the one matching car would equally fit another
+  charger → `ev_car_link_ambiguous`, **no vote** for anyone. A car is on exactly one
+  charger, so an edge that fits two identifies neither;
 - a car edge matches no charger edge → `ev_car_session_elsewhere`. It carries **no vote in
   either direction** — an away session is silent evidence, not counter-evidence, so it
   must never decrement the affinity prior.
 
+**An away verdict waits two windows, not one.** A charger edge that could still explain a
+car edge at time T lies within [T−W, T+W], and the latest of those does not itself settle
+until (T+W)+W. Reporting at one window would call an away session on a pair that links
+moments later, purely from ordinary event-ordering jitter.
+
 **The affinity prior only breaks ties.** A live coincidence always wins. The persisted map
-is consulted only when exactly one candidate has cleared the vote threshold *and* every
-other candidate has zero — a prior that merely leads is not enough, so a second household
-car can never inherit the first car's history.
+is consulted only when a charger's connect edge matched no car edge **at all** — never for an
+*ambiguous* edge, whose live candidates the matcher deliberately refused to choose between;
+letting history pick one there would emit a confident link contradicting the ambiguity — its update was
+missed, or its first observation after a restart was already connected — and then only when
+exactly one candidate has cleared the vote threshold *and* every other candidate has zero.
+A prior that merely leads is not enough, so a second household car can never inherit the
+first car's history.
+
+**An older observation never rolls a car's state backward, and an unreadable one never
+overwrites.** A device fetch can start before a realtime update and land after it, so a
+fetched payload may be staler than what is already held. Applying it would manufacture a
+disconnect edge and then a reconnect edge from the next fresh update — two phantom plug
+events and a corrupted vote (`lib/device/AGENTS.md`). Two rules follow:
+
+- Plug state and charge are timestamped **independently**, from their own capability
+  `lastUpdated`. Gating both on the plug timestamp would let an older fetched charge value
+  through for the whole of a session, since the plug state does not change while charging.
+- An absent or malformed capability is an **absent observation**, not a new value: the read is
+  skipped and the previous value kept. Storing `undefined` would erase the last trusted plug
+  state, and the next genuine transition would then be compared against it and yield no edge —
+  the session could neither link nor clear.
+- **No unknown crosses the boundary at all.** A car with no readable plug state is not tracked;
+  resolved observations carry a required `EvChargingState`, and absent charge/power are omitted
+  rather than nulled. The correlation domain takes only resolved values, so there is no
+  "unknown" arm anywhere downstream to get wrong — and no fabricated `0 W`, which would read as
+  idle and manufacture a self-stop.
+
+Where a device supplies no capability timestamp, arrival time stands in and cannot separate
+those cases. That is the honest limit of the data, not a guarantee.
+
+**A full refresh is authoritative on membership.** A car removed from Homey is dropped, so the
+affinity fallback cannot resolve a live session to a device that no longer exists and its id
+stops being re-requested. Narrowing is gated on a non-empty list, and a targeted read (which
+re-reads only known ids) never narrows.
+
+**A car is linked to at most one charger.** A missed disconnect would otherwise leave the
+old charger's link in place while the car links to a new one — charge readings credited
+twice and self-stop reported against a charger the car has left. Committing a link clears
+any other link held for the same car.
+
+**A session is never created for a currently-unplugged charger.** Edges are matched only
+after they settle, so a short session's connect edge can be processed *after* its
+disconnect already cleared the session. Without that guard the link would be resurrected
+for an unplugged car and later charge readings attributed to it.
 
 **Self-stop** requires all of: the car reports connected-but-not-charging, the charger
 still believes it is delivering, measured draw is at or below the idle threshold, and the
@@ -96,10 +146,16 @@ measurement is not evidence of idleness.
   vaguely and why `stopSocPct` carries the real signal.
 - **Resolution depends on the live feed.** Car updates arrive at realtime cadence only via
   the `homey:manager:devices` subscription. The targeted snapshot refresh also re-reads
-  known car ids (so a feed outage is not a total blackout), but it runs at :25 and :55 —
-  far coarser than the 90 s window. On that path both sides' edges get stamped in the same
-  refresh tick, so "coincidence" degrades to "same refresh", which is much weaker evidence.
-  Treat links formed during a feed outage with suspicion.
+  known car ids, so a feed outage is not a blackout — the SDK-boundary e2e drives that path
+  exclusively — but it runs at :25 and :55. On that path both sides' edges get stamped in
+  the same refresh tick, so "coincidence" degrades to "same refresh", which is much weaker
+  evidence. Treat links formed during a feed outage with suspicion.
+
+  This is also why the probe observes **after** the snapshot commit rather than alongside
+  the battery/solar producers: it resolves charger state from the committed snapshot, and
+  observing pre-parse would pair a car transition read in one refresh against charger state
+  from the previous one — putting the two halves of a genuine session in different
+  refreshes and, at that cadence, outside the window entirely.
 - **The first session after a restart contributes no connect edge.** A first observation is
   not a plug event; treating it as one would hand out a vote on every boot. Its disconnect
   edge still counts.
@@ -114,10 +170,54 @@ grow with time or traffic is capped: ≤20 edges per side, ≤20 stop samples pe
 dedupe keys, and pairs pruned at 90 days. The persisted stop-sample table additionally caps
 at 8 cars (`EV_CAR_LINK_MAX_TRACKED_CARS`).
 
+Pruning runs **on load**, not on a timer: pair records only accumulate through device churn
+across restarts, so boot is exactly when stale ones appear and the cheapest moment to drop
+them.
+
 The producer's in-memory observation map is deliberately **not** capped: it holds one small
 entry per class `car` device present in the home, which is a fixed, user-controlled number
 rather than something that grows over time. Capping it would silently make a legitimate car
 invisible, which is worse than the handful of bytes it costs.
+
+## Validating on SHS
+
+Unit and integration tiers model the producer's inputs; they cannot tell you whether those
+inputs ever arrive. They did not: the probe was originally wired only to `device.update`,
+which carries device-level changes, while capability VALUE changes arrive on the
+per-capability seam — so on hardware the probe saw nothing between fetches and could never
+link. Two things were needed: the probe's cars must be in the live feed's per-device
+subscription set (they are never in the managed snapshot, so nothing else adds them), and
+the probe must be called from the capability path.
+
+`tmp/shs-recipes/ev-car-link.sh` (local-only, gitignored) drives the mock `tesla_car` and
+mock chargers on SHS through the transitions that matter:
+`baseline | link | two-cars | two-chargers | move | selfstop`. Both chargers must be
+**managed** in PELS or the probe has no charger views to correlate against.
+
+Verified there (2026-07-27), reading `ev_car_*` out of the app log:
+
+| Scenario | Result |
+|---|---|
+| clean 1:1 | `ev_car_link_resolved` with `source: 'coincidence'`, edges 3.5 s apart |
+| one car, two chargers | both chargers `ev_car_link_ambiguous`, **no vote**, and the affinity prior did not overturn it |
+| two cars, one charger | `ev_car_link_ambiguous` carrying both car ids, **no vote** |
+
+## Known evidence limits
+
+The probe is log-only, so every gap below costs EVIDENCE QUALITY, never correct PELS
+behaviour — nothing reads these events. Read the logs with these in mind:
+
+- **A car can be invisible rather than mis-read.** A car whose plug state is unreadable on the
+  first fetch, one whose by-id reads flake three times, and one whose app is installed after
+  startup are all untracked until a full refresh or restart. "No events for that car" therefore
+  does not mean "detection failed" — check the car was tracked at all. Tracked in `TODO.md`.
+- **Coincidence quality depends on the live feed.** With it, edges are timestamped when they
+  happened. Without it, both sides land in the same :25/:55 refresh tick and "coincidence"
+  degrades to "same refresh" — much weaker. Links formed during a feed outage deserve suspicion.
+- **`plugged_in` is lossy on the car side**, so `car_not_charging` cannot distinguish "finished at
+  the car's limit" from "idle" from "charging fault". The `stopSocPct` cluster is the real signal.
+- **Absent is never zero.** Unknown power, charge, and plug state are omitted rather than
+  defaulted, so a missing field means "not observed", not "observed as nothing".
 
 ## Reviewing a production log
 

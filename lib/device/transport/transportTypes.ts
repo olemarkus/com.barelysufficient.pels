@@ -6,8 +6,8 @@
  * NOT in the Homey-SDK-leaf allowlist — must stay homey-free.
  */
 import type { BinaryControlObservation, TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
-import type { EvCarLinkSnapshot } from '../../../packages/contracts/src/evCarLink';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
+import type { EvCarLinkSnapshotAccess } from '../evCarLinkWiring';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import type { BinarySettleState } from '../../observer/binarySettle';
 import type { PowerEstimateState } from '../devicePowerEstimate';
@@ -136,18 +136,13 @@ export type TransportObservedStateDispatcher = {
 
 export type DeviceTransportOptions = {
     debugStructured?: StructuredDebugEmitter;
-    getFlowTriggerCard?: (cardId: string) => SteppedLoadFlowTriggerCard | undefined;
     /**
-     * Owner of the EV car-to-charger link snapshot. Supplied by the wiring layer
-     * so the probe's affinity votes and observed-stop samples persist through
-     * `EvCarLinkStore`. When omitted, transport keeps the snapshot in memory —
-     * the probe still runs, it just forgets across restarts.
+     * Persistence port for the EV car-link probe, supplied by the wiring layer.
+     * Omitted in tests and any construction path that does not persist: the probe
+     * still runs, it just forgets across restarts.
      */
-    evCarLinkSnapshotAccess?: {
-        get: () => EvCarLinkSnapshot;
-        set: (snapshot: EvCarLinkSnapshot) => void;
-        flush?: () => void;
-    };
+    evCarLinkSnapshotAccess?: EvCarLinkSnapshotAccess;
+    getFlowTriggerCard?: (cardId: string) => SteppedLoadFlowTriggerCard | undefined;
     /**
      * Fired after a snapshot mutation that may yield a new calibration sample
      * for a stepped-load device (measure_power value changed, or reportedStepId

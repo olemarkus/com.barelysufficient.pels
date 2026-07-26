@@ -93,22 +93,35 @@ const normalizeObservedStops = (value: unknown): EvCarObservedStops | null => {
  * snapshot rather than throwing; partial pair/car records are dropped silently.
  * Use this whenever a snapshot crosses the persistence boundary.
  */
-export const normalizeEvCarLinkSnapshot = (value: unknown): EvCarLinkSnapshot => {
+export const normalizeEvCarLinkSnapshot = (value: unknown, nowMs?: number): EvCarLinkSnapshot => {
     if (!isRecord(value)) return createEmptyEvCarLinkSnapshot();
     if (value.version !== EV_CAR_LINK_VERSION) return createEmptyEvCarLinkSnapshot();
     const pairsRaw = value.pairs;
     const carsRaw = value.cars;
     if (!isRecord(pairsRaw) || !isRecord(carsRaw)) return createEmptyEvCarLinkSnapshot();
 
+    // Clamp any timestamp that sits in the future to the load-time clock. A
+    // Homey clock jump mid-vote, or a corrupt persisted value, otherwise makes
+    // `pruneEvCarLinkSnapshot` compute a NEGATIVE age that always satisfies the
+    // retention check — so the record never expires and can keep qualifying as an
+    // affinity prior forever. Clamping is conservative: the record simply starts
+    // ageing from now instead of being trusted indefinitely.
+    const clamp = (timestampMs: number): number => (
+        nowMs !== undefined && timestampMs > nowMs ? nowMs : timestampMs
+    );
     const pairs = Object.entries(pairsRaw).flatMap(([key, raw]) => {
         if (parseEvCarLinkPairKey(key) === null) return [];
         const normalized = normalizeAffinity(raw);
-        return normalized ? [[key, normalized] as const] : [];
+        return normalized
+            ? [[key, { ...normalized, lastVotedAtMs: clamp(normalized.lastVotedAtMs) }] as const]
+            : [];
     });
     const cars = Object.entries(carsRaw).flatMap(([carId, raw]) => {
         if (carId.length === 0) return [];
         const normalized = normalizeObservedStops(raw);
-        return normalized ? [[carId, normalized] as const] : [];
+        return normalized
+            ? [[carId, { ...normalized, lastObservedAtMs: clamp(normalized.lastObservedAtMs) }] as const]
+            : [];
     });
 
     return {
@@ -133,7 +146,22 @@ export const isStrictlyValidPersistedEvCarLink = (value: unknown): boolean => {
     const carEntries = Object.entries(cars);
     if (pairEntries.length === 0 && carEntries.length === 0) return false;
     return pairEntries.every(([key, raw]) => parseEvCarLinkPairKey(key) !== null && normalizeAffinity(raw) !== null)
-        && carEntries.every(([carId, raw]) => carId.length > 0 && normalizeObservedStops(raw) !== null);
+        && carEntries.every(([carId, raw]) => carId.length > 0 && isFullyValidObservedStops(raw));
+};
+
+/**
+ * Stricter than `normalizeObservedStops`, which FILTERS invalid samples and
+ * still succeeds on a partially-corrupt array. A mixed payload like
+ * `[80, null]` would otherwise pass the plausibility gate, the store would skip
+ * its load grace, and the next accepted vote would persist the lossy normalized
+ * value straight over history that was still recoverable. Partial corruption is
+ * corruption: require every raw sample to survive on its own.
+ */
+const isFullyValidObservedStops = (value: unknown): boolean => {
+    if (!isRecord(value)) return false;
+    const { stopSocPct } = value;
+    if (!Array.isArray(stopSocPct) || !stopSocPct.every(isValidSocPct)) return false;
+    return normalizeObservedStops(value) !== null;
 };
 
 /**

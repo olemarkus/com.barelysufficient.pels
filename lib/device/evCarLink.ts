@@ -53,6 +53,15 @@ export const EV_CAR_LINK_SELF_STOP_MIN_MS = 120_000;
 /** Votes a pair needs before the affinity prior may break a tie on its own. */
 export const EV_CAR_LINK_MIN_PRIOR_VOTES = 2;
 
+/**
+ * Age at which an unmatched car edge becomes a settled "charged elsewhere"
+ * verdict. Two windows, not one: a charger edge that could still explain a car
+ * edge at time T lies within [T-W, T+W], and the latest of those does not itself
+ * settle until (T+W)+W. Reporting at one window would call an away session on a
+ * pair that links moments later purely from event-ordering jitter.
+ */
+export const EV_CAR_LINK_AWAY_VERDICT_MS = EV_CAR_LINK_COINCIDENCE_WINDOW_MS * 2;
+
 /** Bound on retained edges per side — see the RSS note in `notes/ev-car-link/README.md`. */
 export const EV_CAR_LINK_MAX_EDGES_PER_SIDE = 20;
 
@@ -63,27 +72,30 @@ const CONNECTED_STATES: ReadonlySet<EvChargingState> = new Set<EvChargingState>(
     'plugged_in_discharging',
 ]);
 
-const isConnectedState = (state: EvChargingState | undefined): boolean => (
-    state !== undefined && CONNECTED_STATES.has(state)
-);
+/**
+ * Whether the plug state means a car is physically attached. Exported because
+ * the producer needs it to refuse (re)creating a session for a charger that is
+ * currently unplugged.
+ */
+export const isEvConnectedState = (state: EvChargingState): boolean => CONNECTED_STATES.has(state);
 
 /**
  * Resolve a plug edge from a state transition.
  *
- * An absent `previous` yields `null` on purpose: the first observation after a
- * boot or a cold device read is not a physical plug event, and treating it as
- * one would manufacture a link vote at every restart. The cost is that the first
- * session after boot contributes no connect edge; its disconnect edge still
- * counts.
+ * Both states are REQUIRED. A device with no readable plug state is never
+ * tracked, so "unknown" cannot reach this function; and the caller does not call
+ * it at all when there is no previous observation, because a first reading after
+ * a boot is not a physical plug event and treating it as one would manufacture a
+ * link vote at every restart. The cost is that the first session after boot
+ * contributes no connect edge; its disconnect edge still counts.
  */
 export const resolveEvLinkEdge = (
-    previous: EvChargingState | undefined,
-    next: EvChargingState | undefined,
+    previous: EvChargingState,
+    next: EvChargingState,
 ): EvLinkEdgeKind | null => {
-    if (previous === undefined || next === undefined) return null;
     if (previous === next) return null;
-    const wasConnected = isConnectedState(previous);
-    const isConnected = isConnectedState(next);
+    const wasConnected = isEvConnectedState(previous);
+    const isConnected = isEvConnectedState(next);
     if (!wasConnected && isConnected) return 'connect';
     if (wasConnected && !isConnected) return 'disconnect';
     return null;
@@ -131,6 +143,13 @@ export type EvLinkMatchResult = {
     ambiguities: EvLinkAmbiguity[];
     /** Car edges that no charger edge explains — a session somewhere else. */
     unmatchedCarEdges: EvLinkEdge[];
+    /**
+     * Charger edges no car edge could explain at all. Distinct from an AMBIGUOUS
+     * edge, which has live candidates the matcher refused to choose between:
+     * only a genuinely candidate-free edge may fall back to the persisted prior,
+     * or the fallback would quietly overturn the ambiguity rule.
+     */
+    unmatchedChargerEdges: EvLinkEdge[];
 };
 
 /**
@@ -138,33 +157,71 @@ export type EvLinkMatchResult = {
  * window.
  *
  * Three outcomes, and the distinction between them is the whole point:
- *   - exactly one car matches a charger edge → a coincidence worth voting on;
- *   - two or more cars match → ambiguous, no vote. A home with two cars must not
- *     accumulate a confident-but-wrong link from simultaneous plug-ins;
+ *   - exactly one car matches a charger edge, and that car matches no OTHER
+ *     charger edge → a coincidence worth voting on;
+ *   - two or more cars match a charger, OR the single matching car could equally
+ *     be explained by another charger → ambiguous, no vote. One physical car
+ *     cannot be on two chargers, so a car edge that fits two of them is evidence
+ *     for neither; voting for both would corrupt the affinity map in exactly the
+ *     multi-charger home the probe has to survive;
  *   - a car edge matches no charger edge → the car connected somewhere else.
  *     Reported so the caller can log it, but it carries NO vote in either
  *     direction: an away session is silent evidence, not counter-evidence.
  */
 export const matchCoincidentEdges = (params: {
     carEdges: readonly EvLinkEdge[];
+    /** ALL retained charger edges — settled or not. See the contention note. */
     chargerEdges: readonly EvLinkEdge[];
+    nowMs: number;
     windowMs?: number;
+    settleMs?: number;
 }): EvLinkMatchResult => {
-    const { carEdges, chargerEdges, windowMs = EV_CAR_LINK_COINCIDENCE_WINDOW_MS } = params;
+    const {
+        carEdges,
+        chargerEdges,
+        nowMs,
+        windowMs = EV_CAR_LINK_COINCIDENCE_WINDOW_MS,
+        settleMs = EV_CAR_LINK_COINCIDENCE_WINDOW_MS,
+    } = params;
+    const isSettled = (edge: EvLinkEdge): boolean => nowMs - edge.atMs >= settleMs;
+    const scored = chargerEdges
+        .map((chargerEdge) => ({
+            chargerEdge,
+            candidates: carEdges.filter((carEdge) => (
+                carEdge.kind === chargerEdge.kind
+                && Math.abs(carEdge.atMs - chargerEdge.atMs) <= windowMs
+            )),
+        }));
+    const withCandidates = scored.filter((entry) => entry.candidates.length > 0);
+
+    // How many charger edges each car edge could serve, counted over ALL retained
+    // edges rather than only the settled ones. A charger that connects slightly
+    // later is still competition: finalising a vote the moment the FIRST charger
+    // settles would hand out a persisted vote and an active link that the later
+    // edge's ambiguity can no longer retract.
+    const chargersPerCarEdge = new Map<string, number>();
+    for (const { candidates } of withCandidates) {
+        for (const candidate of candidates) {
+            const key = buildEdgeKey(candidate);
+            chargersPerCarEdge.set(key, (chargersPerCarEdge.get(key) ?? 0) + 1);
+        }
+    }
+
     const coincidences: EvLinkCoincidence[] = [];
     const ambiguities: EvLinkAmbiguity[] = [];
     const matchedCarKeys = new Set<string>();
 
-    for (const chargerEdge of chargerEdges) {
-        const candidates = carEdges.filter((carEdge) => (
-            carEdge.kind === chargerEdge.kind
-            && Math.abs(carEdge.atMs - chargerEdge.atMs) <= windowMs
-        ));
-        if (candidates.length === 0) continue;
+    for (const { chargerEdge, candidates } of withCandidates) {
         for (const candidate of candidates) {
             matchedCarKeys.add(buildEdgeKey(candidate));
         }
-        if (candidates.length > 1) {
+        // Decide only once this edge has settled; contention above already
+        // accounted for edges that have not.
+        if (!isSettled(chargerEdge)) continue;
+        const contested = candidates.some((candidate) => (
+            (chargersPerCarEdge.get(buildEdgeKey(candidate)) ?? 0) > 1
+        ));
+        if (candidates.length > 1 || contested) {
             ambiguities.push({
                 chargerId: chargerEdge.deviceId,
                 carIds: candidates.map((candidate) => candidate.deviceId),
@@ -186,7 +243,12 @@ export const matchCoincidentEdges = (params: {
     return {
         coincidences,
         ambiguities,
+        // Matched-but-ambiguous edges count as explained: they are not away
+        // sessions, they are simply not attributable to one charger.
         unmatchedCarEdges: carEdges.filter((edge) => !matchedCarKeys.has(buildEdgeKey(edge))),
+        unmatchedChargerEdges: scored
+            .filter((entry) => entry.candidates.length === 0 && isSettled(entry.chargerEdge))
+            .map((entry) => entry.chargerEdge),
     };
 };
 
@@ -241,8 +303,12 @@ export type EvCarSelfStopReason = 'car_not_charging' | 'car_schedule_hold';
  *
  * Requires all of: the car reports connected-but-not-charging, the charger still
  * believes it is delivering, and measured draw is at or below the idle
- * threshold. Returns `null` whenever any condition fails, including a non-finite
- * power reading — an unreadable measurement is not evidence of idleness.
+ * threshold.
+ *
+ * Every input is REQUIRED and already resolved. An unreadable power measurement
+ * is not evidence of idleness, so the caller must not call this at all when it
+ * has none — there is no "unknown" arm here to get that decision wrong, and no
+ * re-validation of a finiteness invariant the producer seam already guarantees.
  *
  * This is the instantaneous verdict. The caller owns the dwell requirement
  * (`EV_CAR_LINK_SELF_STOP_MIN_MS`), because only the caller knows how long the
@@ -250,13 +316,12 @@ export type EvCarSelfStopReason = 'car_not_charging' | 'car_schedule_hold';
  * satisfies this predicate but must not count as a self-stop.
  */
 export const classifyEvCarSelfStop = (params: {
-    carState: EvChargingState | undefined;
-    chargerState: EvChargingState | undefined;
-    chargerCommandedOn: boolean;
-    chargerPowerW: number | null;
+    carState: EvChargingState;
+    chargerState: EvChargingState;
+    chargerControlOn: boolean;
+    chargerPowerW: number;
 }): EvCarSelfStopReason | null => {
-    const { carState, chargerState, chargerCommandedOn, chargerPowerW } = params;
-    if (chargerPowerW === null || !Number.isFinite(chargerPowerW)) return null;
+    const { carState, chargerState, chargerControlOn: chargerCommandedOn, chargerPowerW } = params;
     if (chargerPowerW > EV_CAR_LINK_IDLE_POWER_W) return null;
     const chargerBelievesLive = chargerState === 'plugged_in_charging' || chargerCommandedOn;
     if (!chargerBelievesLive) return null;
@@ -266,18 +331,30 @@ export const classifyEvCarSelfStop = (params: {
 };
 
 /**
- * Whether a car's state-of-charge is climbing while the charger it is linked to
- * delivers nothing — proof the car is charging somewhere else, independent of
- * any plug-edge evidence.
+ * Whether a car's charge climbed across an interval during which the linked
+ * charger delivered nothing — evidence the car is plugged in somewhere else,
+ * independent of any plug-edge evidence.
+ *
+ * `idleSinceMs` is what makes this sound: a single current idle reading does NOT
+ * prove the rise happened while idle. PELS pausing a charger just after the
+ * charge went up would otherwise be misread as an away session. The caller
+ * supplies when the charger last started reading idle, and the rise only counts
+ * when the newer charge reading was observed after that point.
+ *
+ * All inputs are required and resolved; the caller skips the check when it lacks
+ * any of them.
  */
 export const isChargingElsewhere = (params: {
-    previousSocPct: number | null;
-    currentSocPct: number | null;
-    chargerPowerW: number | null;
+    previousSocPct: number;
+    currentSocPct: number;
+    currentSocAtMs: number;
+    chargerPowerW: number;
+    chargerIdleSinceMs: number;
 }): boolean => {
-    const { previousSocPct, currentSocPct, chargerPowerW } = params;
-    if (previousSocPct === null || currentSocPct === null) return false;
-    if (chargerPowerW === null || !Number.isFinite(chargerPowerW)) return false;
+    const {
+        previousSocPct, currentSocPct, currentSocAtMs, chargerPowerW, chargerIdleSinceMs,
+    } = params;
     if (chargerPowerW > EV_CAR_LINK_IDLE_POWER_W) return false;
+    if (currentSocAtMs < chargerIdleSinceMs) return false;
     return currentSocPct > previousSocPct;
 };

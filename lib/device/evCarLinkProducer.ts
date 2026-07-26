@@ -25,12 +25,19 @@
  * record is `notes/ev-car-link/README.md`.
  */
 import type { EvChargingState } from '../../packages/contracts/src/types';
+import type { EvCarLinkEvent } from './evCarLinkEvents';
 import type { EvCarLinkSnapshot } from '../../packages/contracts/src/evCarLink';
 import type { HomeyDeviceLike } from '../utils/types';
-import { isEvChargingState } from './managerControl';
-import { normalizeStateOfChargePercent } from './transport/stateOfCharge';
 import {
+    applyCarCapability,
+    mergeCarObservation,
+    readCarDevice,
+    type CarObservation,
+} from './evCarLinkObservation';
+import {
+    EV_CAR_LINK_AWAY_VERDICT_MS,
     EV_CAR_LINK_COINCIDENCE_WINDOW_MS,
+    EV_CAR_LINK_IDLE_POWER_W,
     EV_CAR_LINK_SELF_STOP_MIN_MS,
     type EvCarSelfStopReason,
     type EvLinkAmbiguity,
@@ -39,6 +46,7 @@ import {
     appendEvLinkEdge,
     classifyEvCarSelfStop,
     isChargingElsewhere,
+    isEvConnectedState,
     matchCoincidentEdges,
     pruneExpiredEvLinkEdges,
     resolveEvLinkEdge,
@@ -51,8 +59,21 @@ import {
     summarizeEvCarObservedLimit,
 } from './evCarLinkSnapshot';
 
-/** Unmatched edges are retained twice the window so "no match" is a settled verdict. */
-const EDGE_RETENTION_MS = EV_CAR_LINK_COINCIDENCE_WINDOW_MS * 2;
+/**
+ * Edges outlive the away verdict by one more window so an edge is still present
+ * on the pass that reports it. Retention must exceed
+ * `EV_CAR_LINK_AWAY_VERDICT_MS`, or an edge would be pruned before it could be
+ * called an away session.
+ */
+const EDGE_RETENTION_MS = EV_CAR_LINK_COINCIDENCE_WINDOW_MS * 3;
+
+/**
+ * Consecutive targeted reads that must miss a car before it is dropped. One miss
+ * cannot distinguish a deleted device from a transient read failure, and Homey
+ * SDK reads do fail transiently — so give it a few rounds, the same shape as the
+ * battery producer's narrowing grace.
+ */
+const EV_CAR_LINK_TARGETED_MISS_GRACE = 3;
 
 /** Bound on the one-shot report-dedupe ring (see `claimReportKey`). */
 const MAX_REPORTED_KEYS = 200;
@@ -66,9 +87,13 @@ const MAX_REPORTED_KEYS = 200;
 export type EvCarLinkChargerView = {
     id: string;
     name: string;
-    evChargingState: EvChargingState | undefined;
-    /** Measured draw in watts; `null` when there is no trusted reading. */
-    measuredPowerW: number | null;
+    /** Always resolved: the builder skips a charger whose plug state is unknown. */
+    evChargingState: EvChargingState;
+    /** Measured draw in watts. ABSENT when there is no trusted reading — never a
+     *  fabricated zero, which would read as "idle" and fake a self-stop. */
+    measuredPowerW?: number;
+    /** When that draw was observed; absent when the producer could not resolve it. */
+    measuredPowerObservedAtMs?: number;
     /**
      * The charger's OBSERVED binary control state — not what PELS commanded.
      * Kept observed-only on purpose: `lib/device/AGENTS.md` treats collapsing
@@ -77,53 +102,27 @@ export type EvCarLinkChargerView = {
      * literal `plugged_in_charging`, never to assert PELS asked for anything.
      */
     controlOn: boolean;
-    /** State-of-charge already on the charger snapshot (the existing flow card). */
-    reportedSocPct: number | null;
+    /** Charge already on the charger snapshot (the existing flow card); absent
+     *  when that card has never reported. */
+    reportedSocPct?: number;
 };
 
-export type EvCarLinkEvent =
-    | {
-        component: 'devices'; event: 'ev_car_link_candidate';
-        carId: string; carName: string; chargerId: string; chargerName: string;
-        kind: string; deltaMs: number; votes: number;
-    }
-    | {
-        component: 'devices'; event: 'ev_car_link_resolved';
-        carId: string; carName: string; chargerId: string; chargerName: string;
-        votes: number; source: string;
-    }
-    | {
-        component: 'devices'; event: 'ev_car_link_ambiguous';
-        chargerId: string; chargerName: string; carIds: string[]; kind: string;
-    }
-    | {
-        component: 'devices'; event: 'ev_car_session_elsewhere';
-        carId: string; carName: string; reason: string;
-    }
-    | {
-        component: 'devices'; event: 'ev_car_self_stopped';
-        carId: string; carName: string; chargerId: string; chargerName: string;
-        subReason: EvCarSelfStopReason; stoppedAtSocPct: number | null;
-        chargerPowerW: number | null; heldForMs: number;
-        observedLimitPct: number | null; observedLimitSpreadPct: number | null;
-        observedLimitSamples: number;
-    }
-    | {
-        component: 'devices'; event: 'ev_car_link_soc_shadow';
-        carId: string; carName: string; chargerId: string; chargerName: string;
-        carSocPct: number; reportedSocPct: number | null; deltaPct: number | null;
-        wouldAdopt: boolean;
-    };
-
+export type { EvCarLinkEvent } from './evCarLinkEvents';
 export type EvCarLinkEventEmitter = (payload: EvCarLinkEvent) => void;
 
-type CarObservation = {
-    name: string;
-    state: EvChargingState | undefined;
-    socPct: number | null;
+/**
+ * What we hold for one car. Plug state and charge are timestamped INDEPENDENTLY:
+ * they are separate capabilities that change at different times, and gating both
+ * on one timestamp lets a stale fetch roll charge backward whenever the plug
+ * state happened not to change (which is most of a charging session).
+ */
+type ActiveLink = {
+    carId: string;
+    source: string;
+    /** When this session was committed. Charge readings older than this belong to
+     *  a previous session and must not be banked as THIS stop's evidence. */
+    sinceMs: number;
 };
-
-type ActiveLink = { carId: string; source: string };
 
 export type EvCarLinkProducerDeps = {
     emit: EvCarLinkEventEmitter;
@@ -138,34 +137,52 @@ export type EvCarLinkProducerDeps = {
  * only; anything malformed resolves to `undefined` rather than a fabricated
  * value, so junk never becomes a plug edge or a charge sample.
  */
-const readCarDevice = (device: HomeyDeviceLike): {
-    deviceId: string;
-    name: string;
-    state: EvChargingState | undefined;
-    socPct: number | null;
-} | null => {
-    if (typeof device.class !== 'string' || device.class.trim().toLowerCase() !== 'car') return null;
-    const deviceId = device.id;
-    if (typeof deviceId !== 'string' || deviceId.length === 0) return null;
-    const rawState = device.capabilitiesObj?.ev_charging_state?.value;
-    return {
-        deviceId,
-        name: typeof device.name === 'string' ? device.name : deviceId,
-        state: isEvChargingState(rawState) ? rawState : undefined,
-        socPct: normalizeStateOfChargePercent(device.capabilitiesObj?.measure_battery?.value) ?? null,
-    };
+/**
+ * Whether the charger's measured draw is usable evidence about THIS session.
+ *
+ * Absent means unresolved, and a reading taken before the session began says
+ * nothing about it — a retained idle value from a previous session would
+ * otherwise read as live proof the charger is delivering nothing. Callers treat
+ * `false` as "hold the dwell", never as "the condition broke": an unresolved
+ * reading is not evidence the car resumed.
+ */
+const hasSessionPowerEvidence = (
+    charger: EvCarLinkChargerView,
+    sessionStartedAtMs: number,
+): charger is EvCarLinkChargerView & { measuredPowerW: number } => {
+    if (charger.measuredPowerW === undefined) return false;
+    return charger.measuredPowerObservedAtMs === undefined
+        || charger.measuredPowerObservedAtMs >= sessionStartedAtMs;
 };
 
 export class EvCarLinkProducer {
     private carEdges: readonly EvLinkEdge[] = [];
     private chargerEdges: readonly EvLinkEdge[] = [];
     private readonly cars = new Map<string, CarObservation>();
-    private readonly lastChargerState = new Map<string, EvChargingState | undefined>();
+    private readonly lastChargerState = new Map<string, EvChargingState>();
     private readonly activeLinks = new Map<string, ActiveLink>();
-    private readonly selfStopSinceMs = new Map<string, number>();
+    /** Per charger: when the CURRENT self-stop episode began, and which reason
+     *  it is. The reason is part of the episode identity — see `watchSelfStop`. */
+    private readonly selfStopSince = new Map<
+        string,
+        { sinceMs: number; reason: EvCarSelfStopReason }
+    >();
+    /**
+     * When each charger last STARTED reading idle. A single current idle sample
+     * does not prove a charge rise happened while idle — PELS pausing a charger
+     * right after the charge went up would otherwise read as an away session.
+     */
+    private readonly chargerIdleSinceMs = new Map<string, number>();
+    /** Chargers first seen mid-session; resolved from the prior, never voted on. */
+    private readonly coldStartChargerIds = new Set<string>();
+    /** Consecutive targeted reads that requested a car and did not return it. */
+    private readonly targetedMissesByCarId = new Map<string, number>();
     private readonly selfStopReported = new Set<string>();
     /** Charge readings awaiting link resolution; see `flushPendingSocShadows`. */
-    private readonly pendingSocShadows = new Map<string, { previousSocPct: number | null; socPct: number }>();
+    private readonly pendingSocShadows = new Map<
+        string,
+        { previousSocPct?: number; socPct: number; socAtMs: number }
+    >();
     /**
      * One-shot dedupe for events derived from retained edges, which are re-matched
      * on every correlation pass. Bounded by `MAX_REPORTED_KEYS`: edges expire long
@@ -226,38 +243,146 @@ export class EvCarLinkProducer {
     }
 
     /**
-     * Consult a SUCCESSFULLY fetched device list. `fullRefresh` is accepted for
-     * symmetry with the sibling producers; car membership is additive either way
-     * because a car that stops appearing simply stops producing edges — there is
-     * no downstream consumer whose behaviour a stale entry could change.
+     * Re-run correlation without asserting anything about device membership.
+     * Distinct from {@link observe}, which carries a device READ: an empty list
+     * there means "the fetch returned no devices", which is evidence a car is
+     * gone. Advancing the clock is not that evidence.
+     */
+    tick(nowMs: number): void {
+        if (this.cars.size === 0) return;
+        this.correlate(nowMs);
+    }
+
+    /**
+     * Realtime per-capability seam. This is the ONLY path that carries capability
+     * VALUE changes: `device.update` reports device-level changes, so without this
+     * a car's plug state and charge never reach the probe between fetches, and
+     * plug-edge correlation could never fire at realtime cadence.
+     *
+     * Must be called AFTER the inner capability handler has updated the snapshot,
+     * so a charger event correlates against its own new state rather than the
+     * previous one.
+     */
+    noteCapabilityUpdate(deviceId: string, capabilityId: string, value: unknown, nowMs: number): void {
+        const previous = this.cars.get(deviceId);
+        if (previous) {
+            const next = applyCarCapability(previous, { capabilityId, value, atMs: nowMs });
+            if (next) this.applyCarObservation(deviceId, previous, next, nowMs);
+        }
+        if (this.cars.size === 0) return;
+        this.correlate(nowMs);
+    }
+
+    /**
+     * Commit a merged car observation and derive everything keyed off it: the
+     * plug edge, the immediate session clear on a car-side unplug, and the queued
+     * charge shadow. Shared by the full-payload and per-capability paths so both
+     * produce identical downstream behaviour.
+     */
+    private applyCarObservation(
+        deviceId: string,
+        previous: CarObservation | undefined,
+        merged: CarObservation,
+        nowMs: number,
+    ): void {
+        this.cars.set(deviceId, merged);
+        const edgeKind = previous ? resolveEvLinkEdge(previous.state, merged.state) : null;
+        if (edgeKind !== null) {
+            this.carEdges = appendEvLinkEdge(this.carEdges, { deviceId, kind: edgeKind, atMs: nowMs });
+        }
+        // A trusted car-side unplug ends the session immediately. Waiting for the
+        // charger to agree would strand the link whenever the charger's own update
+        // is missed or stale, and later charge readings would then be shadowed
+        // against a charger the car has left.
+        if (edgeKind === 'disconnect') this.clearSessionsForCar(deviceId);
+        if (merged.socPct !== undefined && previous?.socPct !== merged.socPct) {
+            this.pendingSocShadows.set(deviceId, {
+                ...(previous?.socPct === undefined ? {} : { previousSocPct: previous.socPct }),
+                socPct: merged.socPct,
+                socAtMs: merged.socAtMs,
+            });
+        }
+    }
+
+    /**
+     * Consult a SUCCESSFULLY fetched device list.
+     *
+     * A FULL read is authoritative on membership: a car removed from Homey is
+     * dropped. That matters because the affinity fallback treats every tracked
+     * car as a candidate, so a deleted car with persisted votes could otherwise
+     * be resolved as the owner of a live session forever — and its id would be
+     * re-requested on every targeted refresh.
+     *
+     * There is deliberately NO extra "non-empty list" guard here. This runs only
+     * after the snapshot commit, and the refresh pipeline's own abandon-grace
+     * (`shouldDeferEmptySnapshotCommit`) has already decided that an empty full
+     * read is genuine rather than a transient miss. Re-gating on emptiness would
+     * stack a second grace on top of that one and mean the LAST car could never
+     * be pruned at all. A targeted read re-reads only known ids and never
+     * narrows, because `fullRefresh` is false for it.
      */
     observe(devices: readonly HomeyDeviceLike[], options: { fullRefresh: boolean; nowMs: number }): void {
-        void options.fullRefresh;
+        const seen = new Set<string>();
         for (const device of devices) {
-            this.ingestCar(device, options.nowMs);
+            if (this.ingestCar(device, options.nowMs)) seen.add(device.id);
         }
+        // Collect first, then delete: mutating the map mid-iteration needs a
+        // snapshot, and the house rule bans spread allocations inside loops.
+        const removed: string[] = [];
+        for (const carId of this.cars.keys()) {
+            if (seen.has(carId)) {
+                this.targetedMissesByCarId.delete(carId);
+                continue;
+            }
+            if (options.fullRefresh) {
+                removed.push(carId);
+                continue;
+            }
+            // A targeted read requests every tracked car by id, so an absent car
+            // was either deleted or transiently unreadable. Those are
+            // indistinguishable in one read, and the periodic refresh is ALWAYS
+            // targeted — so without a miss count a deleted car is never dropped,
+            // keeps being requested, and stays an affinity candidate forever.
+            const misses = (this.targetedMissesByCarId.get(carId) ?? 0) + 1;
+            this.targetedMissesByCarId.set(carId, misses);
+            if (misses >= EV_CAR_LINK_TARGETED_MISS_GRACE) removed.push(carId);
+        }
+        for (const carId of removed) this.forgetCar(carId);
         this.correlate(options.nowMs);
+    }
+
+    /** Drop a car Homey no longer reports, plus anything keyed on it. */
+    private forgetCar(carId: string): void {
+        this.cars.delete(carId);
+        this.targetedMissesByCarId.delete(carId);
+        this.pendingSocShadows.delete(carId);
+        this.carEdges = this.carEdges.filter((edge) => edge.deviceId !== carId);
+        this.clearSessionsForCar(carId);
+    }
+
+    /**
+     * End every session currently attributed to this car. Collect first, then
+     * clear: `clearSession` mutates the map being iterated.
+     */
+    private clearSessionsForCar(carId: string): void {
+        const chargerIds: string[] = [];
+        for (const [chargerId, link] of this.activeLinks) {
+            if (link.carId === carId) chargerIds.push(chargerId);
+        }
+        for (const chargerId of chargerIds) this.clearSession(chargerId);
     }
 
     /** Read a car device's official capabilities; returns whether it is a car at all. */
     private ingestCar(device: HomeyDeviceLike, nowMs: number): boolean {
-        const reading = readCarDevice(device);
+        const reading = readCarDevice(device, nowMs);
         if (!reading) return false;
-        const { deviceId, name, state, socPct } = reading;
+        const { deviceId } = reading;
 
         const previous = this.cars.get(deviceId);
-        this.cars.set(deviceId, { name, state, socPct });
-
-        const edgeKind = resolveEvLinkEdge(previous?.state, state);
-        if (edgeKind !== null) {
-            this.carEdges = appendEvLinkEdge(this.carEdges, { deviceId, kind: edgeKind, atMs: nowMs });
-        }
-        // Queue rather than emit: the link for this car may be resolved later in
-        // the very same pass (`correlate` runs after ingest), and a shadow emitted
-        // here would be silently dropped for want of an active link.
-        if (socPct !== null && previous?.socPct !== socPct) {
-            this.pendingSocShadows.set(deviceId, { previousSocPct: previous?.socPct ?? null, socPct });
-        }
+        const merged = mergeCarObservation(previous, reading);
+        // No readable plug state ever: stay untracked rather than hold an unknown.
+        if (!merged) return true;
+        this.applyCarObservation(deviceId, previous, merged, nowMs);
         return true;
     }
 
@@ -276,12 +401,17 @@ export class EvCarLinkProducer {
         const chargers = this.deps.getChargers();
         this.ingestChargerEdges(chargers, nowMs);
 
-        const settledChargerEdges = this.chargerEdges.filter((edge) => (
-            nowMs - edge.atMs >= EV_CAR_LINK_COINCIDENCE_WINDOW_MS
-        ));
-        const match = matchCoincidentEdges({ carEdges: this.carEdges, chargerEdges: settledChargerEdges });
+        // Hand the matcher EVERY retained charger edge: it needs the unsettled
+        // ones to judge contention, and settles the decision itself.
+        const match = matchCoincidentEdges({
+            carEdges: this.carEdges,
+            chargerEdges: this.chargerEdges,
+            nowMs,
+        });
         this.applyCoincidences(match.coincidences, chargers, nowMs);
         this.reportAmbiguities(match.ambiguities, chargers);
+        this.resolveUnexplainedSessions(match.unmatchedChargerEdges, chargers);
+        this.resolveColdStartSessions(chargers, nowMs);
         // Only edges the matcher could not explain, and only after their window
         // has closed. Matching runs BEFORE the prune below, so an edge always gets
         // at least one matched pass at every age up to retention — there is no
@@ -297,10 +427,24 @@ export class EvCarLinkProducer {
 
     private ingestChargerEdges(chargers: readonly EvCarLinkChargerView[], nowMs: number): void {
         for (const charger of chargers) {
+            const isIdle = charger.measuredPowerW !== undefined
+                && charger.measuredPowerW <= EV_CAR_LINK_IDLE_POWER_W;
+            if (!isIdle) this.chargerIdleSinceMs.delete(charger.id);
+            else if (!this.chargerIdleSinceMs.has(charger.id)) {
+                this.chargerIdleSinceMs.set(charger.id, nowMs);
+            }
             const previous = this.lastChargerState.get(charger.id);
-            const hadEntry = this.lastChargerState.has(charger.id);
             this.lastChargerState.set(charger.id, charger.evChargingState);
-            if (!hadEntry) continue;
+            // No prior record: a first reading is not a plug event. But a charger
+            // that is ALREADY connected here is mid-session — after a restart, say
+            // — and will produce no connect edge at all, so without a prior pass
+            // the whole session goes unlinked and its charge-shadow and self-stop
+            // observations are lost. Remember it; `correlate` resolves it from the
+            // persisted affinity WITHOUT manufacturing an edge or a vote.
+            if (previous === undefined) {
+                if (isEvConnectedState(charger.evChargingState)) this.coldStartChargerIds.add(charger.id);
+                continue;
+            }
             const kind = resolveEvLinkEdge(previous, charger.evChargingState);
             if (kind === null) continue;
             this.chargerEdges = appendEvLinkEdge(this.chargerEdges, { deviceId: charger.id, kind, atMs: nowMs });
@@ -314,6 +458,17 @@ export class EvCarLinkProducer {
         nowMs: number,
     ): void {
         for (const coincidence of coincidences) {
+            // Settling the CHARGER edge is not enough. Contention is decided per
+            // CAR edge, and a competing charger can still connect up to one full
+            // window after that car edge — by which time this pair would already
+            // be finalized, holding a persisted vote and an active link that no
+            // later pass can retract. Waiting one window past the car edge means
+            // every charger that could contest it has been ingested before the
+            // matcher's contest check runs, so the pair surfaces as an ambiguity
+            // instead. Skipping leaves the key unclaimed, so a later pass
+            // re-decides this same coincidence.
+            const carEdgeAtMs = coincidence.atMs + coincidence.deltaMs;
+            if (nowMs - carEdgeAtMs < EV_CAR_LINK_COINCIDENCE_WINDOW_MS) continue;
             // Keyed on the charger-edge time as well as the pair: without it a
             // second session's plug-in reuses the first session's key and is
             // skipped, so votes could never accumulate past one per direction.
@@ -341,8 +496,68 @@ export class EvCarLinkProducer {
                 votes,
             });
             if (coincidence.kind === 'connect') {
-                this.resolveSession(coincidence.chargerId, charger, coincidence.carId);
+                this.resolveSession(coincidence.chargerId, charger, coincidence.atMs, coincidence.carId);
             }
+        }
+    }
+
+    /**
+     * A charger that plugged in but whose connect edge matched NO car edge at all
+     * — the car's own update was missed, or its first observation after a restart
+     * was already connected — still has a session. This is the ONLY path on which
+     * the persisted affinity prior can decide, and without it the documented
+     * `affinity_prior` source is unreachable: every other call site supplies a
+     * live coincidence, which always wins.
+     *
+     * Takes only candidate-free edges, never merely unresolved ones. An AMBIGUOUS
+     * edge has live candidates the matcher deliberately refused to choose between;
+     * letting the prior pick one there would overturn that refusal and emit a
+     * confident link alongside the ambiguity that contradicts it.
+     */
+    private resolveUnexplainedSessions(
+        unmatchedChargerEdges: readonly EvLinkEdge[],
+        chargers: readonly EvCarLinkChargerView[],
+    ): void {
+        for (const edge of unmatchedChargerEdges) {
+            if (edge.kind !== 'connect') continue;
+            if (this.activeLinks.has(edge.deviceId)) continue;
+            this.resolveSession(edge.deviceId, chargers.find((entry) => entry.id === edge.deviceId), edge.atMs);
+        }
+    }
+
+    /**
+     * Whether a session may be opened at all: the charger must be connected NOW,
+     * and so must the coincident car if one was supplied.
+     *
+     * The car check matters because a coincidence settles 90 s after the physical
+     * connect, and the car may have unplugged in between — its own clear already
+     * ran. Committing the delayed edge would resurrect the link and shadow later
+     * charge readings against a car that has left. The prior path filters
+     * candidates on connectedness; a live coincidence clears the same bar.
+     */
+    private canOpenSession(charger: EvCarLinkChargerView | undefined, coincidentCarId?: string): boolean {
+        if (!charger || !isEvConnectedState(charger.evChargingState)) return false;
+        if (coincidentCarId === undefined) return true;
+        const coincidentCar = this.cars.get(coincidentCarId);
+        return coincidentCar !== undefined && isEvConnectedState(coincidentCar.state);
+    }
+
+    /**
+     * A charger first observed mid-session produces no connect edge, so the
+     * edge-driven paths never see it. Resolve it from the persisted affinity
+     * instead — no edge, no vote, so this can only ever recover a session that
+     * history already explains.
+     */
+    private resolveColdStartSessions(chargers: readonly EvCarLinkChargerView[], nowMs: number): void {
+        if (this.coldStartChargerIds.size === 0) return;
+        // Drain into a plain array first: the house rule bans spread allocations
+        // inside loops, and `resolveSession` mutates the set via `clearSession`.
+        const pending: string[] = [];
+        for (const chargerId of this.coldStartChargerIds) pending.push(chargerId);
+        this.coldStartChargerIds.clear();
+        for (const chargerId of pending) {
+            if (this.activeLinks.has(chargerId)) continue;
+            this.resolveSession(chargerId, chargers.find((entry) => entry.id === chargerId), nowMs);
         }
     }
 
@@ -350,22 +565,59 @@ export class EvCarLinkProducer {
      * Commit the car a charger is serving for this session. A live coincidence
      * wins outright; otherwise the persisted affinity prior may break the tie
      * only under the strict conditions in `resolveLinkForCharger`.
+     *
+     * Refuses outright for a charger that is not currently connected. Edges are
+     * matched only after they settle, so a short session's connect edge can be
+     * processed AFTER its disconnect has already cleared the session — without
+     * this guard that would resurrect a link for an unplugged car and attribute
+     * later charge readings and self-stops to it.
      */
     private resolveSession(
         chargerId: string,
         charger: EvCarLinkChargerView | undefined,
+        /**
+         * When the session physically began — the matched connect edge's own
+         * time, NOT resolution time. Resolution lags the plug by a full settle
+         * window, so stamping `now` here would date the session ~90 s late and
+         * make a car that reported its final charge WITH the connect event look
+         * stale to the self-stop currency gate. That is the "arrived already
+         * full" case, which is exactly the stop the charge-limit statistic wants.
+         */
+        sessionStartedAtMs: number,
         coincidentCarId?: string,
     ): void {
+        if (!this.canOpenSession(charger, coincidentCarId)) return;
         const snapshot = this.deps.getSnapshot();
         const resolution = resolveLinkForCharger({
             coincidentCarId,
-            candidateCarIds: [...this.cars.keys()],
+            // Only cars currently reporting connected. A disconnected household
+            // car with history would otherwise be the "unique qualified prior"
+            // for a charger a guest car is actually on, and its later charge
+            // updates would be attributed to a charger it is not attached to.
+            candidateCarIds: [...this.cars.entries()]
+                .filter(([, car]) => isEvConnectedState(car.state))
+                .map(([carId]) => carId),
             votesFor: (carId) => getEvCarLinkVotes(snapshot, carId, chargerId),
         });
         if (resolution === null) return;
         const existing = this.activeLinks.get(chargerId);
         if (existing?.carId === resolution.carId && existing.source === resolution.source) return;
-        this.activeLinks.set(chargerId, { carId: resolution.carId, source: resolution.source });
+        // One car occupies one charger. A missed disconnect leaves the previous
+        // charger's entry behind, and without this the same car would be linked
+        // to both — charge readings attributed twice and self-stop reported
+        // against a charger the car left. Collect first, then clear.
+        const supersededChargerIds: string[] = [];
+        for (const [otherChargerId, link] of this.activeLinks) {
+            if (otherChargerId !== chargerId && link.carId === resolution.carId) {
+                supersededChargerIds.push(otherChargerId);
+            }
+        }
+        for (const otherChargerId of supersededChargerIds) this.clearSession(otherChargerId);
+        this.activeLinks.set(chargerId, {
+            carId: resolution.carId,
+            source: resolution.source,
+            sinceMs: sessionStartedAtMs,
+        });
         this.deps.emit({
             component: 'devices',
             event: 'ev_car_link_resolved',
@@ -404,7 +656,7 @@ export class EvCarLinkProducer {
     private reportSessionsElsewhere(unmatched: readonly EvLinkEdge[], nowMs: number): void {
         for (const edge of unmatched) {
             if (edge.kind !== 'connect') continue;
-            if (nowMs - edge.atMs <= EV_CAR_LINK_COINCIDENCE_WINDOW_MS) continue;
+            if (nowMs - edge.atMs <= EV_CAR_LINK_AWAY_VERDICT_MS) continue;
             const key = `elsewhere|${edge.deviceId}|${edge.atMs}`;
             if (!this.claimReportKey(key)) continue;
             this.deps.emit({
@@ -428,29 +680,53 @@ export class EvCarLinkProducer {
             const car = link ? this.cars.get(link.carId) : undefined;
             if (!link || !car) continue;
 
+            // An unavailable power reading is not evidence of idleness — but it is
+            // not evidence the episode ENDED either. Treating it as "condition
+            // broke" re-armed reporting, so once the same idle telemetry returned
+            // and completed another dwell, one uninterrupted physical stop was
+            // reported and banked again: enough telemetry gaps manufacture the two
+            // samples needed to publish a false observed charge limit from a single
+            // session. Hold the dwell and the reported flag; only a RESOLVED
+            // reading that fails the classifier ends the episode.
+            if (!hasSessionPowerEvidence(charger, link.sinceMs)) continue;
             const reason = classifyEvCarSelfStop({
                 carState: car.state,
                 chargerState: charger.evChargingState,
-                chargerCommandedOn: charger.controlOn,
+                chargerControlOn: charger.controlOn,
                 chargerPowerW: charger.measuredPowerW,
             });
             // The condition broke: the car resumed, the charger stopped believing
             // it was delivering, or real draw returned. Reset the dwell clock so
             // the next episode is timed from its own start, and re-arm reporting.
             if (reason === null) {
-                this.selfStopSinceMs.delete(charger.id);
+                this.selfStopSince.delete(charger.id);
                 this.selfStopReported.delete(charger.id);
                 continue;
             }
-            const since = this.selfStopSinceMs.get(charger.id) ?? nowMs;
-            if (!this.selfStopSinceMs.has(charger.id)) this.selfStopSinceMs.set(charger.id, nowMs);
-            const heldForMs = nowMs - since;
+            const heldForMs = nowMs - this.episodeStartMs(charger.id, reason, nowMs);
             if (heldForMs < EV_CAR_LINK_SELF_STOP_MIN_MS) continue;
             if (this.selfStopReported.has(charger.id)) continue;
 
             this.selfStopReported.add(charger.id);
-            this.emitSelfStop({ charger, link, car, reason, heldForMs, nowMs });
+            this.emitSelfStop({
+                charger, link, car, reason, heldForMs, nowMs, chargerPowerW: charger.measuredPowerW,
+            });
         }
+    }
+
+    /**
+     * When the CURRENT self-stop episode began. A change of reason starts a new
+     * episode and re-arms reporting: both reasons are non-null, so reusing the
+     * previous start time would let a two-minute `car_schedule_hold` that flips
+     * to `plugged_in` report `car_not_charging` immediately — and bank the charge
+     * as observed-limit evidence for a condition that held for seconds.
+     */
+    private episodeStartMs(chargerId: string, reason: EvCarSelfStopReason, nowMs: number): number {
+        const episode = this.selfStopSince.get(chargerId);
+        if (episode?.reason === reason) return episode.sinceMs;
+        this.selfStopSince.set(chargerId, { sinceMs: nowMs, reason });
+        this.selfStopReported.delete(chargerId);
+        return nowMs;
     }
 
     private emitSelfStop(params: {
@@ -460,9 +736,21 @@ export class EvCarLinkProducer {
         reason: EvCarSelfStopReason;
         heldForMs: number;
         nowMs: number;
+        chargerPowerW: number;
     }): void {
-        const { charger, link, car, reason, heldForMs, nowMs } = params;
-        if (car.socPct !== null) {
+        const { charger, link, car, reason, heldForMs, nowMs, chargerPowerW } = params;
+        // Only limit-LIKE stops feed the charge-limit statistic. A smart-charging
+        // schedule pauses at whatever percentage the schedule says, so two such
+        // holds would clear the two-sample threshold and publish a confident
+        // `observedLimitPct` that is not a limit at all.
+        //
+        // The charge must also belong to THIS session. `mergeCarObservation`
+        // deliberately carries a last-known percentage forward when later updates
+        // omit or malform `measure_battery`, so without the currency check a
+        // reading from an earlier session is banked as where the car stopped in
+        // this one — and two such episodes publish a confidently wrong limit.
+        const socIsCurrent = car.socAtMs >= link.sinceMs;
+        if (car.socPct !== undefined && socIsCurrent && reason === 'car_not_charging') {
             this.deps.setSnapshot(recordEvCarSelfStopSoc({
                 snapshot: this.deps.getSnapshot(),
                 carId: link.carId,
@@ -479,11 +767,16 @@ export class EvCarLinkProducer {
             chargerId: charger.id,
             chargerName: charger.name,
             subReason: reason,
-            stoppedAtSocPct: car.socPct,
-            chargerPowerW: charger.measuredPowerW,
+            // Same currency gate as the sample above: a percentage carried over
+            // from an earlier session would otherwise be reported as where the
+            // car stopped in THIS one — a number it never observed here.
+            ...(car.socPct === undefined || !socIsCurrent ? {} : { stoppedAtSocPct: car.socPct }),
+            chargerPowerW,
             heldForMs,
-            observedLimitPct: limit?.medianPct ?? null,
-            observedLimitSpreadPct: limit?.spreadPct ?? null,
+            ...(limit === null ? {} : {
+                observedLimitPct: limit.medianPct,
+                observedLimitSpreadPct: limit.spreadPct,
+            }),
             observedLimitSamples: limit?.sampleCount ?? 0,
         });
     }
@@ -507,7 +800,7 @@ export class EvCarLinkProducer {
             for (const [chargerId, link] of this.activeLinks) {
                 if (link.carId !== deviceId) continue;
                 const charger = chargers.find((entry) => entry.id === chargerId);
-                if (charger) this.emitSocShadow(deviceId, charger, reading);
+                if (charger) this.emitSocShadow(deviceId, charger, reading, link.sinceMs);
             }
         }
     }
@@ -515,15 +808,28 @@ export class EvCarLinkProducer {
     private emitSocShadow(
         carId: string,
         charger: EvCarLinkChargerView,
-        reading: { previousSocPct: number | null; socPct: number },
+        reading: { previousSocPct?: number; socPct: number; socAtMs: number },
+        sessionStartedAtMs: number,
     ): void {
-        const { previousSocPct, socPct } = reading;
+        const { previousSocPct, socPct, socAtMs } = reading;
         const carName = this.carName(carId);
-        if (isChargingElsewhere({
-            previousSocPct,
-            currentSocPct: socPct,
-            chargerPowerW: charger.measuredPowerW,
-        })) {
+        const idleSinceMs = this.chargerIdleSinceMs.get(charger.id);
+        if (
+            previousSocPct !== undefined
+            // The idle reading must belong to THIS session. A charger that
+            // reconnects carrying a retained idle value from the previous one is
+            // not evidence it is delivering nothing now, and a charge rise while
+            // it genuinely charges at home would be logged as an away session.
+            && hasSessionPowerEvidence(charger, sessionStartedAtMs)
+            && idleSinceMs !== undefined
+            && isChargingElsewhere({
+                previousSocPct,
+                currentSocPct: socPct,
+                currentSocAtMs: socAtMs,
+                chargerPowerW: charger.measuredPowerW,
+                chargerIdleSinceMs: idleSinceMs,
+            })
+        ) {
             this.deps.emit({
                 component: 'devices',
                 event: 'ev_car_session_elsewhere',
@@ -540,10 +846,10 @@ export class EvCarLinkProducer {
             chargerId: charger.id,
             chargerName: charger.name,
             carSocPct: socPct,
-            reportedSocPct: charger.reportedSocPct,
-            deltaPct: charger.reportedSocPct === null
-                ? null
-                : Math.round((socPct - charger.reportedSocPct) * 10) / 10,
+            ...(charger.reportedSocPct === undefined ? {} : {
+                reportedSocPct: charger.reportedSocPct,
+                deltaPct: Math.round((socPct - charger.reportedSocPct) * 10) / 10,
+            }),
             wouldAdopt: true,
         });
     }
@@ -551,8 +857,10 @@ export class EvCarLinkProducer {
     /** Forget per-session state when the car unplugs; affinity votes survive. */
     private clearSession(chargerId: string): void {
         this.activeLinks.delete(chargerId);
-        this.selfStopSinceMs.delete(chargerId);
+        this.coldStartChargerIds.delete(chargerId);
+        this.selfStopSince.delete(chargerId);
         this.selfStopReported.delete(chargerId);
+        this.chargerIdleSinceMs.delete(chargerId);
     }
 
     private carName(carId: string): string {

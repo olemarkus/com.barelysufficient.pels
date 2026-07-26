@@ -42,37 +42,52 @@ export const buildEvCarLinkChargerViews = (
     snapshots: readonly ChargerViewInput[],
 ): EvCarLinkChargerView[] => snapshots.flatMap((snapshot) => {
     if (!isEvObserved(snapshot)) return [];
+    // Unknowns are OMITTED, never defaulted: a fabricated 0 W would read as
+    // "idle" and manufacture a self-stop, and a fabricated charge would be
+    // compared against the car's as if the flow card had reported.
     return [{
         id: snapshot.id,
         name: snapshot.name,
         evChargingState: snapshot.evChargingState,
-        measuredPowerW: hasObservedMeasuredPower(snapshot)
-            ? Math.round(snapshot.measuredPowerKw * 1000)
-            : null,
+        // Carries its observation time, not just its value: a retained idle
+        // reading from before the session would otherwise look like live proof
+        // the charger is delivering nothing. The consumer decides currency —
+        // a genuinely idle charger legitimately stops emitting, so "recent" is
+        // the wrong test; "observed during this session" is the right one.
+        ...(hasObservedMeasuredPower(snapshot)
+            ? {
+                measuredPowerW: Math.round(snapshot.measuredPowerKw * 1000),
+                ...(snapshot.measuredPowerObservedAtMs === undefined
+                    ? {}
+                    : { measuredPowerObservedAtMs: snapshot.measuredPowerObservedAtMs }),
+            }
+            : {}),
         controlOn: snapshot.binaryControl?.on === true,
-        reportedSocPct: hasObservedStateOfCharge(snapshot)
-            ? snapshot.stateOfCharge.percent
-            : null,
+        // `hasObservedStateOfCharge` is presence-only, so it also passes a
+        // percentage the observation layer has already marked stale or
+        // invalidated (an unplug/reconnect). Comparing the car against that would
+        // corrupt the very flow-card accuracy signal the shadow exists to report.
+        ...(hasObservedStateOfCharge(snapshot) && snapshot.stateOfCharge.status === 'fresh'
+            ? { reportedSocPct: snapshot.stateOfCharge.percent }
+            : {}),
     }];
 });
 
-/** Owner of the link snapshot, supplied by the wiring layer when it persists. */
+/**
+ * Owner of the link snapshot. Backed by `EvCarLinkStore` when a Homey runtime is
+ * available; otherwise in-memory for the process lifetime.
+ */
 export type EvCarLinkSnapshotAccess = {
     get: () => EvCarLinkSnapshot;
     set: (snapshot: EvCarLinkSnapshot) => void;
     /**
-     * Durable-write hook invoked when the transport is destroyed. The owner
-     * debounces normal writes, so without this the votes and observed-stop
-     * samples accepted since the last persist tick are lost on restart.
+     * Durable-write hook invoked when the transport is destroyed. Normal writes
+     * are debounced, so without this the votes and observed-stop samples accepted
+     * since the last persist tick are lost on restart.
      */
-    flush?: () => void;
+    flush: () => void;
 };
 
-/**
- * Build the probe. Without an injected `snapshotAccess` the snapshot is held in
- * memory for the process lifetime: the probe still runs and still logs, it just
- * forgets its affinity votes and observed-stop samples across a restart.
- */
 export const createEvCarLinkProducer = (params: {
     emit: EvCarLinkEventEmitter;
     getSnapshots: () => readonly ChargerViewInput[];
@@ -82,6 +97,7 @@ export const createEvCarLinkProducer = (params: {
     const access: EvCarLinkSnapshotAccess = params.snapshotAccess ?? {
         get: () => inMemory,
         set: (snapshot) => { inMemory = snapshot; },
+        flush: () => {},
     };
     return new EvCarLinkProducer({
         emit: params.emit,

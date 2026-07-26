@@ -38,14 +38,18 @@ export const createObservationProducers = (params: {
     emit: (payload: Record<string, unknown>) => void;
     /** Committed snapshots, read lazily by the EV car-link charger view. */
     getSnapshots: () => readonly ChargerViewInput[];
+    /** Persistence port for the probe, injected by the wiring layer; omit to stay in-memory. */
     evCarLinkSnapshotAccess?: EvCarLinkSnapshotAccess;
-}): ObservationProducers => ({
+}): ObservationProducers => {
+    const evCarLinkAccess = params.evCarLinkSnapshotAccess;
+    return ({
     battery: new BatteryStateProducer((payload) => params.emit({ ...payload })),
     solar: new SolarProductionProducer((payload) => params.emit({ ...payload })),
     evCarLink: createEvCarLinkProducer({
         emit: (payload) => params.emit({ ...payload }),
         getSnapshots: params.getSnapshots,
-        snapshotAccess: params.evCarLinkSnapshotAccess,
+        snapshotAccess: evCarLinkAccess,
     }),
-    destroy: () => params.evCarLinkSnapshotAccess?.flush?.(),
-});
+    destroy: () => evCarLinkAccess?.flush(),
+    });
+};
