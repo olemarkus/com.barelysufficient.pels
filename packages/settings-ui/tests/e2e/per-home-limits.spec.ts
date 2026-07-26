@@ -4,15 +4,16 @@ import {
   installRentalMeterDeviceList,
   seedHeldRentalArea,
   seedRentalArea,
+  pickHomeScope,
   seedRentalMeterSnapshot,
   seedStubSetting,
 } from './fixtures/homes';
 
 /* -------------------------------------------------------------------------- *
- * Per-home Limits & safety flow (multi-home U3): the switcher appears once a
- * meter area exists, picking the area shows its editor + the activation notice
- * (areas default to simulation), turning ON the positive "Control devices in
- * this area" toggle starts device control by persisting
+ * Per-home Limits & safety flow (multi-home U3): the shell's global scope bar
+ * appears once a meter area exists, picking the area shows its editor plus the
+ * activation notice (areas default to simulation), turning ON the positive
+ * "Control devices in this area" toggle starts device control by persisting
  * `capacity_dry_run:<homeId>` = false, and a cap edit persists
  * `capacity_limit_kw:<homeId>`. The Main home keeps its static form and bare
  * keys.
@@ -36,12 +37,29 @@ const readStubSetting = (page: Page, key: string): Promise<unknown> => page.eval
   key,
 );
 
-test('single-home user sees the unchanged static form, no switcher', async ({ page }) => {
+test('single-home user sees the unchanged static form, no scope bar', async ({ page }) => {
   await gotoApp(page);
   await openLimitsPanel(page);
-  await expect(page.locator('#home-limits-home-select')).toHaveCount(0);
+  await expect(page.locator('#home-scope-chip')).toHaveCount(0);
   await expect(page.locator('#settings-limits-form')).toBeVisible();
   await expect(page.locator('#settings-capacity-limit')).toBeVisible();
+  // With no meter areas the Main-home copy is untouched: "your" still means the
+  // whole house, and the app-global settings card is just part of the page.
+  await expect(page.locator('#settings-capacity-limit-hint')).toHaveText(
+    'Your grid tariff step (effekttrinn) — PELS keeps each hour’s average power under this.',
+  );
+  await expect(page.locator('#settings-limits-global')).toBeVisible();
+  // Layout identity: the scope bar's mount stays display:none, so it claims no
+  // `main.screen` grid row and the shell is unchanged for a single-meter home.
+  const scopeBarBox = await page.evaluate(() => {
+    const mount = document.getElementById('home-scope-bar')!;
+    return {
+      hidden: mount.hidden,
+      display: window.getComputedStyle(mount).display,
+      height: mount.getBoundingClientRect().height,
+    };
+  });
+  expect(scopeBarBox).toEqual({ hidden: true, display: 'none', height: 0 });
 });
 
 test('a meter area activates control: switch, turn control on, set a cap', async ({ page }) => {
@@ -51,18 +69,40 @@ test('a meter area activates control: switch, turn control on, set a cap', async
   await seedRentalArea(page);
   await openLimitsPanel(page);
 
-  // The switcher now offers Main home + the meter area; Main keeps the static form.
-  const switcher = page.locator('#home-limits-home-select');
-  await expect(switcher).toBeVisible();
+  // The scope bar now offers Main home + the meter area; Main keeps the static form.
+  const scopeChip = page.locator('#home-scope-chip');
+  await expect(scopeChip).toBeVisible();
   await expect(page.locator('#settings-limits-form')).toBeVisible();
+
+  // Seeding an area must reach the app the way a real `homes_config` write does,
+  // so the global banner shows its production scoped copy. A silent store poke
+  // left every capture from these fixtures on the single-home banner.
+  await expect(page.locator('#dry-run-banner')).toContainText(
+    'Main home simulation on — Main home devices stay as-is',
+  );
+  // App-global settings sit outside the scope bar's claim, and the Main-home
+  // hard-cap hint names its home once the house is split.
+  await expect(page.locator('#settings-limits-global')).toBeVisible();
+  await expect(page.locator('#settings-capacity-limit-hint'))
+    .toContainText('The Main home’s grid tariff step');
+  await expect(page.locator('#limits-title')).toHaveText('Limits & safety');
 
   // Pick the meter area: the static form hides, the per-home editor appears, and
   // — because a fresh area defaults to simulation — the activation notice shows.
-  await switcher.selectOption(AREA_ID);
+  await pickHomeScope(page, AREA_ID);
   await expect(page.locator('#home-limits-hard-cap')).toBeVisible();
   await expect(page.locator('#settings-limits-form')).toBeHidden();
   await expect(page.locator('#home-limits-sim-notice')).toBeVisible();
   await expect(page.locator('#home-limits-sim-notice')).toContainText('turn on control');
+  // With the bar on screen the home is named once, by the chip. Restating it in
+  // the title 40 px below — in the one place that truncates — would read as a
+  // defect, so the suffix stays off until the bar scrolls away (below).
+  await expect(page.locator('#limits-title')).toHaveText('Limits & safety');
+  await expect(page.locator('#home-limits-status')).toContainText('Status now · Rental unit');
+  // App-global settings step out of the area's scope claim, leaving an account.
+  await expect(page.locator('#settings-limits-global')).toBeHidden();
+  await expect(page.locator('#home-limits-global-note'))
+    .toContainText('the whole-home meter is the Main home’s own meter');
 
   // Turn control ON — the activation step. The suffixed key persists false
   // (dry-run off) and the notice clears.
@@ -75,6 +115,147 @@ test('a meter area activates control: switch, turn control on, set a cap', async
   await page.locator('#home-limits-hard-cap').blur();
   await expect.poll(() => readStubSetting(page, `capacity_limit_kw:${AREA_ID}`)).toBe(9);
   await expect(readStubSetting(page, 'capacity_dry_run')).resolves.not.toBe(false);
+});
+
+test('the scope bar holds its home at every scroll position', async ({ page }) => {
+  // A short viewport so the panel definitely scrolls in every project. The bar
+  // is sticky: the whole point is that the scope survives scrolling, which the
+  // panel's own app bar cannot do (it is not sticky and leaves the viewport).
+  await page.setViewportSize({ width: 320, height: 420 });
+  await installRentalMeterDeviceList(page);
+  await gotoApp(page);
+  await seedRentalMeterSnapshot(page);
+  await seedRentalArea(page);
+  await openLimitsPanel(page);
+  await pickHomeScope(page, AREA_ID);
+  await expect(page.locator('#home-limits-hard-cap')).toBeVisible();
+
+  // The home is named once, by the chip — the title never restates it.
+  await expect(page.locator('#limits-title')).toHaveText('Limits & safety');
+  await expect(page.locator('#home-scope-chip')).toContainText('Rental unit');
+
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await expect.poll(async () => page.evaluate(() => {
+    const appbar = document.querySelector('#limits-panel .pels-appbar')!.getBoundingClientRect();
+    return appbar.bottom <= 0;
+  })).toBe(true);
+
+  // The app bar has scrolled away; the scope has not.
+  await expect(page.locator('#home-scope-chip')).toBeVisible();
+  await expect(page.locator('#home-scope-chip')).toContainText('Rental unit');
+  const stuck = await page.evaluate(() => (
+    document.getElementById('home-scope-bar')!.getBoundingClientRect().top
+  ));
+  expect(stuck).toBeGreaterThanOrEqual(0);
+  expect(stuck).toBeLessThanOrEqual(2);
+  await expect(page.locator('#limits-title')).toHaveText('Limits & safety');
+});
+
+test('a long unbroken area name cannot overflow the 320 px panel', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 900 });
+  await installRentalMeterDeviceList(page);
+  await gotoApp(page);
+  await seedRentalMeterSnapshot(page);
+  // No spaces to break on: the pathological case for both the picker and the
+  // scoped status heading, whose sibling chip cannot wrap.
+  await seedRentalArea(page, 'Leilighetiunderetasjenmedekstralangtnavn');
+  await openLimitsPanel(page);
+  await pickHomeScope(page, AREA_ID);
+  await expect(page.locator('#home-limits-status')).toBeVisible();
+
+  const overflow = await page.evaluate(() => ({
+    doc: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    status: (() => {
+      const card = document.querySelector('#home-limits-status')!;
+      return card.scrollWidth - card.clientWidth;
+    })(),
+  }));
+  expect(overflow.doc).toBeLessThanOrEqual(0);
+  expect(overflow.status).toBeLessThanOrEqual(0);
+});
+
+test('a Main-home-only deep link selects the Main home before landing', async ({ page }) => {
+  await installRentalMeterDeviceList(page);
+  await gotoApp(page);
+  await seedRentalMeterSnapshot(page);
+  await seedRentalArea(page);
+  await openLimitsPanel(page);
+  await pickHomeScope(page, AREA_ID);
+  await expect(page.locator('#settings-limits-global')).toBeHidden();
+
+  // The stale-data banner promises the Power source control. Following it while
+  // an area is selected must not land on a page where that control is hidden.
+  await page.getByRole('tab', { name: 'Overview' }).click();
+  await page.evaluate(() => { document.getElementById('stale-data-banner')!.hidden = false; });
+  await page.locator('#stale-data-action').click();
+  await expect(page.locator('#limits-panel')).toBeVisible();
+  await expect(page.locator('#settings-limits-global')).toBeVisible();
+  await expect(page.locator('#settings-power-source')).toBeVisible();
+  await expect(page.locator('#home-scope-chip')).toContainText('Main home');
+});
+
+test('the scope picker reopens after a pick, and switches back to the Main home', async ({ page }) => {
+  // Regression: Material closes its own menu without going through Preact, so a
+  // menu kept mounted across re-renders reported itself open while its surface
+  // stayed collapsed — the picker worked exactly once per page load, stranding
+  // the user in whichever scope they first chose.
+  await installRentalMeterDeviceList(page);
+  await gotoApp(page);
+  await seedRentalMeterSnapshot(page);
+  await seedRentalArea(page);
+  await openLimitsPanel(page);
+
+  await pickHomeScope(page, AREA_ID);
+  await expect(page.locator('#home-limits-hard-cap')).toBeVisible();
+
+  // Second open: the picker must still work, and take the user back to Main.
+  await pickHomeScope(page, 'main');
+  await expect(page.locator('#limits-title')).toHaveText('Limits & safety');
+  await expect(page.locator('#settings-limits-form')).toBeVisible();
+  await expect(page.locator('#settings-limits-global')).toBeVisible();
+
+  // And a third time, back into the area.
+  await pickHomeScope(page, AREA_ID);
+  await expect(page.locator('#home-limits-hard-cap')).toBeVisible();
+});
+
+test('the scope picker reopens after outside-click and Escape dismissals', async ({ page }) => {
+  // Regression: Material announces every self-dismissal with its lowercase
+  // `closed` event, but a Preact `onClosed` prop binds the case-sensitive type
+  // `Closed`, which never fires. Selection dismissal was covered by the item's
+  // own click handler, so only these two paths left the open flag stale — the
+  // next chip tap then unmounted an already-closed menu and appeared dead.
+  await installRentalMeterDeviceList(page);
+  await gotoApp(page);
+  await seedRentalMeterSnapshot(page);
+  await seedRentalArea(page);
+  await openLimitsPanel(page);
+
+  const chip = page.locator('#home-scope-chip');
+  const mainOption = page.locator('#home-scope-option-main');
+
+  // Outside click: the bar's own label sits beside the chip, outside the menu
+  // surface, and is sticky, so the tap target cannot be covered by the menu.
+  await chip.click();
+  await expect(mainOption).toBeVisible();
+  await page.locator('.scope-bar__label').click();
+  await expect(mainOption).toHaveCount(0);
+  // One tap must reopen — a dismissal must not cost the next open a dead tap.
+  await chip.click();
+  await expect(mainOption).toBeVisible();
+
+  // Escape, same contract. Escape is a menu-keydown, and Material only moves
+  // focus onto the first item once the opening animation settles — pressing
+  // before that lands the key on the chip, where nothing listens.
+  await expect(mainOption).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(mainOption).toHaveCount(0);
+  await chip.click();
+  await expect(mainOption).toBeVisible();
+
+  // And the reopened menu still actually picks.
+  await page.locator(`#home-scope-option-${AREA_ID}`).click();
+  await expect(page.locator('#home-limits-hard-cap')).toBeVisible();
 });
 
 test('Main simulation banner stays truthful while a meter area actively controls devices', async ({ page }) => {
@@ -114,7 +295,7 @@ test('Main simulation banner stays truthful while a meter area actively controls
   await gotoApp(page);
   await seedRentalMeterSnapshot(page);
   await openLimitsPanel(page);
-  await page.locator('#home-limits-home-select').selectOption(AREA_ID);
+  await pickHomeScope(page, AREA_ID);
 
   await expect(page.locator('#home-limits-status-chip')).toHaveText('Active');
   await expect(page.locator('#home-limits-status-line')).toContainText('Limiting 1 device');
@@ -213,7 +394,7 @@ test('a held pre-GA meter area cannot claim active control or stale live power',
     limitReason: 'none',
   });
   await openLimitsPanel(page);
-  await page.locator('#home-limits-home-select').selectOption(AREA_ID);
+  await pickHomeScope(page, AREA_ID);
 
   const control = page.locator('#home-limits-simulation-switch');
   // Material's custom element owns disabled semantics inside its shadow root;

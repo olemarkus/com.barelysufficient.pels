@@ -50,3 +50,15 @@ export const MdIconButton = (props: MdBaseProps) => (
 export const MdCircularProgress = (props: MdBaseProps) => (
   h('md-circular-progress', props as Record<string, unknown>)
 );
+
+export const MdFilledTonalButton = (props: MdBaseProps) => (
+  h('md-filled-tonal-button', props as Record<string, unknown>)
+);
+
+export const MdMenu = (props: MdBaseProps) => (
+  h('md-menu', props as Record<string, unknown>)
+);
+
+export const MdMenuItem = (props: MdBaseProps) => (
+  h('md-menu-item', props as Record<string, unknown>)
+);

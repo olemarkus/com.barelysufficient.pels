@@ -248,8 +248,8 @@ atomic activation marker at boot, while an unmarked populated pre-GA config
 without that evidence stays runtime-dormant until a successful current UI
 upsert marks it. This prevents an old experimental configuration from silently
 starting device control on upgrade. Membership still recomputes for
-diagnostics, `ui_homes` serves the full payload, and the nav card plus per-home
-Limits switcher remain visible (the switcher appears once at least one meter
+diagnostics, `ui_homes` serves the full payload, and the nav card plus the
+shell's home scope bar remain visible (the bar appears once at least one meter
 area exists).
 
 ## Reference implementations

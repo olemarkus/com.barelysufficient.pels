@@ -15,7 +15,7 @@ import {
   HOMES_AREA_NEEDS_MAIN_METER,
   HOMES_MAIN_METER_NEEDED_BY_AREAS,
 } from '../../packages/shared-domain/src/homeAreaConfigRulesCopy';
-import { HOME_LIMITS_MAIN_HOME_OPTION } from '../../packages/shared-domain/src/homeLimitsCopy';
+import { HOMES_MAIN_HOME_NAME } from '../../packages/shared-domain/src/homesManagementCopy';
 
 describe('normalizeHomeAreaName', () => {
   it('strips surrounding whitespace and leaves the inside of the name alone', () => {
@@ -77,7 +77,7 @@ describe('findHomeAreaNameRejection', () => {
   it('reserves whatever the switcher calls the Main home, not a second spelling', () => {
     // Renaming the option must rename what is reserved; a literal here would
     // silently keep reserving the old spelling.
-    expect(RESERVED_HOME_AREA_NAMES).toEqual([HOME_LIMITS_MAIN_HOME_OPTION]);
+    expect(RESERVED_HOME_AREA_NAMES).toEqual([HOMES_MAIN_HOME_NAME]);
   });
 
   it('rejects a duplicate name case-insensitively and names the area it clashes with', () => {

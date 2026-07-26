@@ -107,10 +107,11 @@ area is saved: select the Main home's own **Whole-home meter** under **Settings
 
 ## Setting each area's limit
 
-Each meter area gets its own limit under **Settings → Limits & safety**. At the
-top of that page, the **"Set limits for"** switcher lets you pick the **Main
-home** or any meter area, and the controls below apply to whichever you've
-selected:
+Each meter area gets its own limit under **Settings → Limits & safety**. Once
+you have at least one meter area, a **"Showing"** bar appears above that page.
+Pick the **Main home** or any meter area there, and the cap and margin below
+apply to whichever you've selected. The bar stays put as you scroll, so the
+home you're editing is always named on screen:
 
 - **Hard cap (kW):** that area's grid tariff step. PELS keeps each hour's
   average power under this, the same way it does for the whole home.
@@ -121,7 +122,7 @@ Below those, a readout shows where the safe pace starts each hour (the hard cap
 minus the safety margin), so you can see the effect of your numbers before you
 leave the page.
 
-![PELS Limits & safety with "Rental unit" chosen in the "Set limits for" switcher: Hard cap 8 kW, Safety margin 0.3 kW, a readout that safe pace starts each hour at 7.7 kW, and the "Control devices in this area" switch off with a notice that PELS is only simulating this area](/screenshots/meter-areas/limits-simulation.png)
+![PELS Limits & safety with "Rental unit" as the shown home: Hard cap 8 kW, Safety margin 0.3 kW, a readout that safe pace starts each hour at 7.7 kW, and the "Control devices in this area" switch off with a notice that PELS is only simulating this area](/screenshots/meter-areas/limits-simulation.png)
 
 ### Turn on control when you're ready
 

@@ -15,7 +15,9 @@
  * rules are the persisted-config invariant behind it.
  */
 
-import { HOME_LIMITS_MAIN_HOME_OPTION } from './homeLimitsCopy';
+// The Limits switcher (and its `HOME_LIMITS_MAIN_HOME_OPTION` alias) was retired
+// by the global scope bar; reserve the canonical spelling directly.
+import { HOMES_MAIN_HOME_NAME } from './homesManagementCopy';
 
 /**
  * How many meter areas one Homey may configure through the save seam. Each
@@ -52,10 +54,11 @@ export const HOME_AREA_NAME_MAX_LENGTH = 40;
  * would make the home selector and the `capacity_shortfall` Flow token stop
  * discriminating the two, which is exactly what the token was added for.
  *
- * Sourced from the switcher's option label rather than respelled, so renaming
- * the Main home in one place cannot leave a stale reservation behind.
+ * Sourced from the canonical Multiple-meters constant rather than respelled,
+ * so renaming the Main home in one place cannot leave a stale reservation
+ * behind.
  */
-export const RESERVED_HOME_AREA_NAMES: readonly string[] = [HOME_LIMITS_MAIN_HOME_OPTION];
+export const RESERVED_HOME_AREA_NAMES: readonly string[] = [HOMES_MAIN_HOME_NAME];
 
 /** Why the area name being written cannot be saved. */
 export type HomeAreaNameRejection =
