@@ -3,6 +3,7 @@ import { installHomeyMock, type MockHomeyClient } from './helpers/homeyApiMock.t
 import { setHomeyClient } from '../src/ui/homey.ts';
 import { HOMES_CONFIG, MAIN_HOME_ID } from '../../contracts/src/settingsKeys.ts';
 import { SETTINGS_UI_HOMES_PATH } from '../../contracts/src/settingsUiHomes.ts';
+import { HOMES_UNNAMED_AREA_NAME } from '../../shared-domain/src/homesManagementCopy.ts';
 import {
   notifyHomeLimitsSettingChanged,
   refreshHomeLimitsOnLimitsPanel,
@@ -85,6 +86,32 @@ describe('switcher + static-form visibility', () => {
     expect([...select()!.options].map((option) => option.value)).toEqual(['main', AREA_ID]);
     // Main selected by default ⇒ the static Main-home form stays visible.
     expect(staticForm()!.hidden).toBe(false);
+  });
+
+  it('labels a blank-named meter area with the shared fallback, not an empty option', async () => {
+    // Persisted names are untrusted, so a whitespace-only one is reachable. The
+    // switcher must show the same `Meter area` fallback as every other surface
+    // rather than an unpickable blank row.
+    homey = installHomeyMock({
+      uiState: {
+        homes: {
+          homes: [{
+            homeId: AREA_ID, name: '   ', rootZoneId: 'z1', meterDeviceId: 'dev_a',
+          }],
+          membershipByDeviceId: {},
+          zoneTree: null,
+          hasSubHomes: true,
+          runtimeActive: true,
+          configDegraded: false,
+        },
+      },
+    });
+    setHomeyClient(homey as never);
+    await refreshHomeLimitsOnLimitsPanel();
+    await flushAsync();
+
+    const areaOption = [...select()!.options].find((option) => option.value === AREA_ID);
+    expect(areaOption?.textContent).toBe(HOMES_UNNAMED_AREA_NAME);
   });
 
   it('hides the static form and shows the per-home editor for a meter area', async () => {

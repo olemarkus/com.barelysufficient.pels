@@ -231,6 +231,8 @@ const buildHarness = (initialSnapshot: TransportDeviceSnapshot) => {
   });
 
   const deps: PlanExecutorDeps = {
+    getHomeDisplayName: () => 'Main home',
+    homeId: 'main',
     setCapacityInShortfall: vi.fn(),
     persistLastControlledMs: vi.fn(),
     homey: {

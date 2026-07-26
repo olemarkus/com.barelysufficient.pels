@@ -740,6 +740,29 @@ Internal terms that stay internal: `sub-home`, `homeId`, `membership`,
 what happens ("Its devices move back to the Main home", "your settings
 couldn't be read"), never the resolver or store vocabulary.
 
+The same two names reach Flow. The `Hard cap breach imminent — manual action
+needed` trigger carries a `Home` tag naming the part of the home that fired it:
+
+| Concept | Label |
+|---|---|
+| Flow tag naming the part of the home an alert came from | **Home** |
+| Its value for the implicit complement | **Main home** |
+| Its value for a configured area | the area's own name |
+| Its value when a saved area's name is blank | **Meter area** |
+
+The tag is the home's *name*, not its id, so a Flow names a home the way the
+owner does. A saved name is untrusted, so the blank case has ONE answer for
+every surface: `resolveHomeAreaDisplayName` in `homesManagementCopy.ts`, called
+by both the Multiple meters list and the runtime that fills the tag. Constants:
+`HOMES_MAIN_HOME_NAME` and `HOMES_UNNAMED_AREA_NAME`, same module.
+
+The tag title stays the bare `Home`. It reads as a sentence in a notification
+(`Hard cap breach in [Home]`) and matches the settings vocabulary, since its
+values are `Main home` and area names. `Part of home` was considered and
+rejected: it is wordier everywhere to defuse a collision that does not happen,
+because `Home` as a stock operating-mode name appears as a dropdown *value* on
+other cards, never as a tag title.
+
 ## Mode label
 
 The Settings page renders the current operating mode as a single selector

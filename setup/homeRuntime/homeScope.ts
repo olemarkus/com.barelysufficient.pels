@@ -43,6 +43,7 @@ import {
   migrateBlobToPerKeyIfNeeded,
   readAllObjectives,
 } from '../../lib/objectives/deferredObjectives';
+import { HOMES_MAIN_HOME_NAME } from '../../packages/shared-domain/src/homesManagementCopy';
 import {
   CAPACITY_IN_SHORTFALL,
   DEVICE_LAST_CONTROLLED_MS,
@@ -58,6 +59,14 @@ import {
  */
 export type HomeScope = {
   homeId: HomeId;
+  /**
+   * This home's user-facing name, resolved by the producer. The executor uses
+   * it as the `home` token on the single global `capacity_shortfall` Flow
+   * trigger, so a Flow can tell which part of the home ran out of managed load
+   * instead of every home firing an indistinguishable empty payload. Main binds
+   * the canonical "Main home" label; a sub-home binds its meter-area name.
+   */
+  getHomeDisplayName: () => string;
   // Capacity scalars: for the MAIN home these are live reads of the in-memory
   // snapshot (settings-handler maintained); sub-home scopes (R7b) back them
   // with a per-home `CapacitySettingsStore` as their ONLY capacity source.
@@ -194,6 +203,7 @@ export function buildMainHomeScope(ctx: AppContext): HomeScope {
   });
   return {
     homeId,
+    getHomeDisplayName: () => HOMES_MAIN_HOME_NAME,
     // Live snapshot reads — NOT re-reads through the settings store. The
     // snapshot is the in-memory truth kept current by the settings handler.
     getCapacitySettings: () => ctx.capacitySettings,

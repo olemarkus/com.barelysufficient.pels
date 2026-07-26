@@ -63,6 +63,12 @@ export type PlanEngineDeps = {
   // executor uses it solely for the `capacity_shortfall` flow trigger card.
   // Settings persistence goes through the typed writers below, never here.
   homey: HomeyRuntime & { flow: FlowPort };
+  // Producer-resolved name of the home this engine serves, forwarded untouched
+  // to the executor as the `capacity_shortfall` trigger's `home` token (the
+  // card is global; every home fires the same one).
+  getHomeDisplayName: PlanExecutorDeps['getHomeDisplayName'];
+  // Stable id of the same home, forwarded for structured-log correlation.
+  homeId: PlanExecutorDeps['homeId'];
   // --- Persisted-signal writers (setup wires both to `homey.settings.set`).
   // `setCapacityInShortfall` publishes the shortfall ("panic") flag to the
   // `capacity_in_shortfall` setting; its consumer is the `pels_insights`
@@ -221,6 +227,8 @@ export class PlanEngine {
 
     const executorDeps: PlanExecutorDeps = {
       homey: deps.homey,
+      getHomeDisplayName: deps.getHomeDisplayName,
+      homeId: deps.homeId,
       setCapacityInShortfall: deps.setCapacityInShortfall,
       persistLastControlledMs: deps.persistLastControlledMs,
       deviceManager: deps.deviceManager,

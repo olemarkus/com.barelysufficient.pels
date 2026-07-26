@@ -42,6 +42,7 @@ import {
 } from '../../../shared-domain/src/utils/debugLogging.ts';
 import { renderLegacyTopicsHint } from './debugLoggingHint.ts';
 import { POWER_SAMPLE_STALE_THRESHOLD_MS } from '../../../shared-domain/src/powerFreshness.ts';
+import { HOMES_MAIN_HOME_NAME } from '../../../shared-domain/src/homesManagementCopy.ts';
 import type { SettingsUiPowerPayload } from '../../../contracts/src/settingsUiApi.ts';
 import { showToast } from './toast.ts';
 import { pushSettingWriteIfChanged } from './settingWrites.ts';
@@ -173,8 +174,10 @@ export const resolveDryRunBannerContent = (
       actionLabel: 'Turn off simulation',
     }
     : {
-      text: 'Main home simulation on — Main home devices stay as-is',
-      actionLabel: 'Turn off Main simulation',
+      // The complement is named from the one registered constant, and named
+      // the SAME way in both strings: the button used to say bare "Main".
+      text: `${HOMES_MAIN_HOME_NAME} simulation on — ${HOMES_MAIN_HOME_NAME} devices stay as-is`,
+      actionLabel: `Turn off ${HOMES_MAIN_HOME_NAME} simulation`,
     }
 );
 

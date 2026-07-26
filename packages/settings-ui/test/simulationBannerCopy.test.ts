@@ -31,7 +31,7 @@ describe('simulation banner scope', () => {
     })).toBe(true);
     expect(resolveDryRunBannerContent(true)).toEqual({
       text: 'Main home simulation on — Main home devices stay as-is',
-      actionLabel: 'Turn off Main simulation',
+      actionLabel: 'Turn off Main home simulation',
     });
   });
 
@@ -51,7 +51,7 @@ describe('simulation banner scope', () => {
     expect(resolveHasMeterAreas({ status: 'unavailable' })).toBeNull();
     expect(resolveDryRunBannerContent(null)).toEqual({
       text: 'Main home simulation on — Main home devices stay as-is',
-      actionLabel: 'Turn off Main simulation',
+      actionLabel: 'Turn off Main home simulation',
     });
   });
 

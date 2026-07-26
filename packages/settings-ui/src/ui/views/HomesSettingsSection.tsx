@@ -30,6 +30,7 @@ import {
   HOMES_ZONE_LABEL,
   HOMES_ZONE_PLACEHOLDER,
   HOMES_ZONES_UNAVAILABLE,
+  resolveHomeAreaDisplayName,
 } from '../../../../shared-domain/src/homesManagementCopy.ts';
 import { MdFilledButton, MdTextButton } from './materialWebJSX.tsx';
 
@@ -275,7 +276,11 @@ const HomesList = (props: HomesSettingsSectionProps) => (
     {props.homes.map((entry) => (
       <div key={entry.homeId} class="homes-settings__row" data-home-id={entry.homeId}>
         <div class="homes-settings__row-main">
-          <span class="homes-settings__row-name pels-text-card-title">{entry.name}</span>
+          <span class="homes-settings__row-name pels-text-card-title">
+            {/* Shared rule: a saved blank name must not render as an empty
+                row title here while the shortfall Flow tag says "Meter area". */}
+            {resolveHomeAreaDisplayName(entry.name)}
+          </span>
           <small class="homes-settings__row-supporting muted">{entry.supportingLine}</small>
         </div>
         {props.confirmingDeleteHomeId === entry.homeId

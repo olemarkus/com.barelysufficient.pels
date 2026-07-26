@@ -27,7 +27,7 @@ Whole-home power data is what unlocks every other planner feature — the meter 
 
 | Card | What it does |
 | --- | --- |
-| **Hard cap breach imminent — manual action needed** | Fires when PELS projects that your hourly hard-cap budget will be breached at the current run rate and no more devices can be limited. |
+| **Hard cap breach imminent — manual action needed** | Fires when PELS projects that your hourly hard-cap budget will be breached at the current run rate and no more devices can be limited. Exposes a `Home` tag naming which part of the home it came from: `Main home`, or the name of the [meter area](/meter-areas). Put it in the notification so you know where to go. |
 | **Operating mode changed to...** | Fires when the current PELS operating mode changes to the selected mode. |
 | **Price level changed to...** | Fires when the price level changes between Cheap, Normal, Expensive, or Unknown. |
 | **Current price is one of today's lowest** | Fires when the current hour is among the selected number of cheapest hours today. |

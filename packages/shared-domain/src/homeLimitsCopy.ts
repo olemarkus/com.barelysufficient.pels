@@ -17,12 +17,14 @@
  * Import this module directly — there is no shared-domain barrel.
  */
 
+import { HOMES_MAIN_HOME_NAME, resolveHomeAreaDisplayName } from './homesManagementCopy';
+
 // ── Home switcher ────────────────────────────────────────────────────────────
 
 /** Native-select label above the switcher: "Set limits for [Main home ▾]". */
 export const HOME_LIMITS_SWITCHER_LABEL = 'Set limits for';
-/** The implicit-complement option — matches the Multiple-meters vocabulary. */
-export const HOME_LIMITS_MAIN_HOME_OPTION = 'Main home';
+/** The implicit-complement option, taken from the canonical Multiple-meters name. */
+export const HOME_LIMITS_MAIN_HOME_OPTION = HOMES_MAIN_HOME_NAME;
 
 // ── Cap + margin fields (units in the label per the style rules) ─────────────
 
@@ -65,13 +67,18 @@ export const HOME_LIMITS_INACTIVE_STATUS
  * OFF (simulating). Consequence-first ("only simulating"), then the remedy that
  * names the real toggle right above it ("turn on control").
  */
+// Self-resolving like the homesManagementCopy composers: callers pass the raw
+// persisted area name and the shared blank-name rule is applied here, so a
+// blank-named area reads “Meter area”, never an empty quotation.
 export const composeHomeLimitsSimulationNotice = (name: string): string => (
-  `PELS is only simulating “${name}” — turn on control to let it limit devices in this meter area.`
+  `PELS is only simulating “${resolveHomeAreaDisplayName(name)}” — `
+  + 'turn on control to let it limit devices in this meter area.'
 );
 
 /** A held pre-GA area needs an explicit owner save before any per-area control can start. */
 export const composeHomeLimitsInactiveNotice = (name: string): string => (
-  `PELS isn’t using “${name}” yet — open Multiple meters and save this area before turning on control.`
+  `PELS isn’t using “${resolveHomeAreaDisplayName(name)}” yet — `
+  + 'open Multiple meters and save this area before turning on control.'
 );
 
 // ── Save toasts ─────────────────────────────────────────────────────────────

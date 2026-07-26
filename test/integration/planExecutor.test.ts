@@ -200,6 +200,8 @@ const buildExecutor = (
   } as unknown as Homey.App['homey']['flow'];
   const settingsSet = vi.fn();
   const deps: PlanExecutorDeps = {
+    getHomeDisplayName: () => 'Main home',
+    homeId: 'main',
     setCapacityInShortfall: vi.fn(),
     // Forward the injected persist writer to the same homey.settings.set spy the
     // production wiring targets (DEVICE_LAST_CONTROLLED_MS), so the existing
@@ -292,6 +294,31 @@ describe('PlanExecutor shortfall side-effect retry', () => {
     expect(trigger).toHaveBeenCalledTimes(1);
     expect(setCapacityInShortfall.mock.calls.map(([value]) => value))
       .toEqual([true, true, false, false]);
+  });
+
+  it('names the home it serves on the shortfall Flow payload', async () => {
+    const state = createPlanEngineState();
+    const trigger = vi.fn().mockResolvedValue(true);
+    const homey = {
+      flow: {
+        getTriggerCard: vi.fn((id: string) => (
+          id === 'capacity_shortfall' ? { trigger } : undefined
+        )),
+      },
+      settings: { set: vi.fn() },
+    } as unknown as Homey.App['homey'];
+    // Every home fires this SINGLE global card, so the token is the only thing
+    // that tells a Flow whether the Main home or a meter area ran out of load
+    // to limit — and the alert asks someone to go and switch something off.
+    const { executor } = buildExecutor(state, undefined, {
+      homey,
+      getHomeDisplayName: () => 'Annex',
+      setCapacityInShortfall: vi.fn(),
+    });
+
+    await executor.handleShortfall(2);
+
+    expect(trigger).toHaveBeenCalledExactlyOnceWith({ home: 'Annex' });
   });
 
   it('emits a deferred enter after Builder pre-sync and rearms after a pre-synced clear', async () => {

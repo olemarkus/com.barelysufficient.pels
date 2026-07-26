@@ -303,6 +303,28 @@ What remains open is below.*
       fencing equally unattributable readings. Pick one framing and make code and docs agree.
       Source: pels-runtime-reality review of the multi-home finishing train PR 2.
 
+- [ ] **`has_headroom_for_device` answers about a meter-area device with the Main home's guard, and
+      mutates Main's cooldown state doing it.**
+      *Persona:* multi-meter owner whose annex EV charger asks "is there available power for device?"
+      in a Flow before it starts a session. *Hypothesis:* every input the card reads is bound to Main.
+      `getHeadroom`/`getCapacityGuard` resolve `ctx.capacityGuard`
+      (`setup/appInit/registerAppFlowCards.ts:64-65`) and `evaluateHeadroomForDevice` resolves Main's
+      plan service (`:117`), so an area device is measured against Main's available power instead of
+      its own meter's. The run listener is also not a read: `evaluateHeadroomForDevice(...
+      cleanupMissingDevices: true)` writes Main's `PlanEngineState` (headroom-card cooldowns,
+      activation penalties, activation-attempt diagnostics, `lib/plan/planHeadroomDevice.ts:82-120`)
+      over the FULL unfiltered snapshot, and a `stateChanged` result then requests a Main plan
+      rebuild. So asking about an area device perturbs Main's control state. Fix direction: resolve
+      the device's owning home and answer from THAT home's guard, routing any rebuild to that home.
+      Deliberately NOT refused or filtered out of the picker: the card takes a device and a device
+      already names its home, so it stays in scope and must keep working (owner ruling, 2026-07-26).
+      Blocked on the per-home runtime read seam: `HomeRuntimeRegistry` is a private field of
+      `AppServiceWiring` and `HomeCapacityBundle` exposes no guard/available-power handle, so fix
+      this together with that seam. Files: `flowCards/headroomAndEvSocCards.ts:37-77`,
+      `setup/appInit/registerAppFlowCards.ts:64-65,117`,
+      `setup/homeRuntime/createHomeCapacityBundle.ts`.
+      Source: multi-home finishing train PR 8a, 2026-07-26.
+
 - [ ] **A setpoint-shed temperature device with no mode target stays stranded at its shed setpoint.**
       *Persona:* any owner who never opened the Modes screen and has a managed radiator or panel heater
       (Main home or a meter area). *Hypothesis:* PELS auto-assigns the `set_temperature` shed behaviour
@@ -1191,6 +1213,31 @@ program) remain deferred.*
       optimiser during a boost. Hypothesis: a bar that shows the carve-out is trusted where a
       jumping number is not. Source: safe-pace model review (2026-07-26); design in
       `notes/safe-pace-two-constraints.md` and `notes/overview-hero-spec.md`.
+- [ ] **Nothing reserves "Main home" as an area name, so the shortfall Flow tag can stop
+      discriminating.** The `capacity_shortfall` trigger's `home` token is the home's display NAME,
+      and that name is only checked for clashes against *other areas*: `validateDraftName`
+      (`packages/shared-domain/src/homesManagement.ts:196-206`) compares against `others` and never
+      against the Main-home label, while the save path does no name validation at all
+      (`parseUpsertArea`, `setup/settingsUiApi.ts:368`, accepts any string, and
+      `violatesComposedHomeInvariants` checks only meter ownership and zone nesting). *Persona:*
+      owner who names their annex "Main home", or any client posting `ui_homes_save` directly.
+      *Hypothesis:* the Flow tag and the new `home` log field then name two different homes
+      identically, which is exactly the ambiguity the token exists to remove, and
+      `docs/meter-areas.md` promises the tag tells you where to go. Reserve `HOMES_MAIN_HOME_NAME`
+      in the draft validator AND fold non-emptiness plus case-insensitive uniqueness (including the
+      reserved label) into `violatesComposedHomeInvariants` — PR 4 of the multi-home train already
+      owns that server-side move, so land both together rather than shipping a client-only guard.
+      Related, same card: the name is also not STABLE. The trigger has `args: []`, so a Flow that
+      wants only one home's alerts has to string-compare the tag, and a rename propagates to the
+      token immediately (the bundle is adopted in place, not replaced). A second `home_id` token
+      carrying `MAIN_HOME_ID` / the sub-home's `homeId` would let a Flow branch on something durable
+      while `home` stays the human label. Additive, so it can land later; decide it with the
+      per-area Flow work rather than widening the card twice.
+      Same owner, same PR: area names have no LENGTH bound either (`parseUpsertArea`,
+      `setup/settingsUiApi.ts:368`), and a name now reaches a Flow token and a per-shortfall log
+      field, so an absurd name degrades both. Clamp it with the reservation and the uniqueness
+      check in one pass.
+      Source: adversarial review of the multi-home finishing train PR 8a, 2026-07-26.
 
 - [ ] **Persisted-store load grace only postpones a destructive reset.** `loadPowerCalibrationStore`
       (and the EV car-link store that mirrors it) run exactly once at init. When that read is
