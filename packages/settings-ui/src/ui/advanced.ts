@@ -6,31 +6,25 @@ import {
   advancedApiDeviceRefreshButton,
   advancedApiDeviceLogButton,
 } from './dom.ts';
-import { callApi, setSetting } from './homey.ts';
+import { callApi } from './homey.ts';
 import { renderDevices } from './devices.ts';
 import { renderPriorities } from './modes.ts';
 import { renderPriceOptimization } from './priceOptimization.ts';
 import { showToast, showToastError } from './toast.ts';
 import { logSettingsError } from './logging.ts';
 import { state } from './state.ts';
-import {
-  DEVICE_CONTROL_PROFILES,
-  DEVICE_TARGET_POWER_CONFIGS,
-  EV_BOOST_SETTINGS,
-  OVERSHOOT_BEHAVIORS,
-  TEMPERATURE_BOOST_SETTINGS,
-} from '../../../contracts/src/settingsKeys.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
+import {
+  clearDeviceSettings,
+  clearMultipleDeviceSettings,
+  resolveDeviceOptionsFromSettings,
+  resolveUnknownDeviceIdsFromSettings,
+} from './advancedDeviceDataPurge.ts';
 
 type HomeyApiDevice = {
   id: string;
   name: string;
   class?: string;
-};
-
-type DeviceOption = {
-  id: string;
-  name: string;
 };
 
 type MaterialSelectOptionElement = HTMLElement & {
@@ -60,45 +54,6 @@ export const createSelectOption = (value: string, label: string, selected = fals
   headline.textContent = label;
   option.appendChild(headline);
   return option;
-};
-
-const collectDeviceIdsFromSettings = (): Set<string> => {
-  const simpleSettingIds = [
-    ...Object.keys(state.controllableMap),
-    ...Object.keys(state.managedMap),
-    ...Object.keys(state.deviceControlProfiles),
-    ...Object.keys(state.deviceTargetPowerConfigs),
-    ...Object.keys(state.shedBehaviors),
-    ...Object.keys(state.temperatureBoostSettings),
-    ...Object.keys(state.evBoostSettings),
-    ...Object.keys(state.priceOptimizationSettings),
-  ];
-
-  const modeMapIds = (modeMap: Record<string, Record<string, number>>) => (
-    Object.values(modeMap || {}).flatMap((devices) => Object.keys(devices || {}))
-  );
-
-  return new Set([
-    ...simpleSettingIds,
-    ...modeMapIds(state.capacityPriorities),
-    ...modeMapIds(state.modeTargets),
-  ]);
-};
-
-const resolveDeviceOptionsFromSettings = (): DeviceOption[] => {
-  const nameById = new Map<string, string>();
-  state.latestDevices.forEach((device) => {
-    nameById.set(device.id, device.name);
-  });
-  return Array.from(collectDeviceIdsFromSettings()).map((id) => ({
-    id,
-    name: nameById.get(id) ?? `Unknown device (${id})`,
-  }));
-};
-
-const resolveUnknownDeviceIdsFromSettings = (): string[] => {
-  const knownIds = new Set(state.latestDevices.map((device) => device.id));
-  return Array.from(collectDeviceIdsFromSettings()).filter((id) => !knownIds.has(id));
 };
 
 let lastAdvancedDeviceOptionsSignature: string | null = null;
@@ -141,133 +96,6 @@ const renderAdvancedDeviceOptions = () => {
     .forEach((device) => {
       advancedDeviceSelect.appendChild(createSelectOption(device.id, formatDisplayDeviceName(device.name)));
     });
-};
-
-const removeDeviceFromModeMap = (
-  map: Record<string, Record<string, number>>,
-  deviceId: string,
-): Record<string, Record<string, number>> => {
-  const updated: Record<string, Record<string, number>> = {};
-  Object.entries(map).forEach(([mode, devices]) => {
-    if (!devices || devices[deviceId] === undefined) {
-      updated[mode] = devices;
-      return;
-    }
-    const { [deviceId]: _removed, ...rest } = devices;
-    updated[mode] = rest;
-  });
-  return updated;
-};
-
-const removeDeviceIdsFromModeMap = (
-  map: Record<string, Record<string, number>>,
-  deviceIds: Set<string>,
-): Record<string, Record<string, number>> => {
-  const updated: Record<string, Record<string, number>> = {};
-  Object.entries(map).forEach(([mode, devices]) => {
-    if (!devices) {
-      updated[mode] = devices;
-      return;
-    }
-    const filtered = Object.fromEntries(
-      Object.entries(devices).filter(([deviceId]) => !deviceIds.has(deviceId)),
-    );
-    updated[mode] = filtered;
-  });
-  return updated;
-};
-
-const clearDeviceSettings = async (deviceId: string) => {
-  const nextControllableMap = { ...state.controllableMap };
-  const nextManagedMap = { ...state.managedMap };
-  const nextDeviceControlProfiles = { ...state.deviceControlProfiles };
-  const nextDeviceTargetPowerConfigs = { ...state.deviceTargetPowerConfigs };
-  const nextShedBehaviors = { ...state.shedBehaviors };
-  const nextTemperatureBoost = { ...state.temperatureBoostSettings };
-  const nextEvBoost = { ...state.evBoostSettings };
-  const nextPriceOptimization = { ...state.priceOptimizationSettings };
-  delete nextControllableMap[deviceId];
-  delete nextManagedMap[deviceId];
-  delete nextDeviceControlProfiles[deviceId];
-  delete nextDeviceTargetPowerConfigs[deviceId];
-  delete nextShedBehaviors[deviceId];
-  delete nextTemperatureBoost[deviceId];
-  delete nextEvBoost[deviceId];
-  delete nextPriceOptimization[deviceId];
-  const nextCapacityPriorities = removeDeviceFromModeMap(state.capacityPriorities, deviceId);
-  const nextModeTargets = removeDeviceFromModeMap(state.modeTargets, deviceId);
-
-  await Promise.all([
-    setSetting('controllable_devices', nextControllableMap),
-    setSetting('managed_devices', nextManagedMap),
-    setSetting(DEVICE_CONTROL_PROFILES, nextDeviceControlProfiles),
-    setSetting(DEVICE_TARGET_POWER_CONFIGS, nextDeviceTargetPowerConfigs),
-    setSetting(OVERSHOOT_BEHAVIORS, nextShedBehaviors),
-    setSetting(TEMPERATURE_BOOST_SETTINGS, nextTemperatureBoost),
-    setSetting(EV_BOOST_SETTINGS, nextEvBoost),
-    setSetting('price_optimization_settings', nextPriceOptimization),
-    setSetting('capacity_priorities', nextCapacityPriorities),
-    setSetting('mode_device_targets', nextModeTargets),
-  ]);
-
-  state.controllableMap = nextControllableMap;
-  state.managedMap = nextManagedMap;
-  state.deviceControlProfiles = nextDeviceControlProfiles;
-  state.deviceTargetPowerConfigs = nextDeviceTargetPowerConfigs;
-  state.shedBehaviors = nextShedBehaviors;
-  state.temperatureBoostSettings = nextTemperatureBoost;
-  state.evBoostSettings = nextEvBoost;
-  state.priceOptimizationSettings = nextPriceOptimization;
-  state.capacityPriorities = nextCapacityPriorities;
-  state.modeTargets = nextModeTargets;
-};
-
-const clearMultipleDeviceSettings = async (deviceIds: string[]) => {
-  const ids = new Set(deviceIds);
-  const nextControllableMap = { ...state.controllableMap };
-  const nextManagedMap = { ...state.managedMap };
-  const nextDeviceControlProfiles = { ...state.deviceControlProfiles };
-  const nextDeviceTargetPowerConfigs = { ...state.deviceTargetPowerConfigs };
-  const nextShedBehaviors = { ...state.shedBehaviors };
-  const nextTemperatureBoost = { ...state.temperatureBoostSettings };
-  const nextEvBoost = { ...state.evBoostSettings };
-  const nextPriceOptimization = { ...state.priceOptimizationSettings };
-  deviceIds.forEach((deviceId) => {
-    delete nextControllableMap[deviceId];
-    delete nextManagedMap[deviceId];
-    delete nextDeviceControlProfiles[deviceId];
-    delete nextDeviceTargetPowerConfigs[deviceId];
-    delete nextShedBehaviors[deviceId];
-    delete nextTemperatureBoost[deviceId];
-    delete nextEvBoost[deviceId];
-    delete nextPriceOptimization[deviceId];
-  });
-  const nextCapacityPriorities = removeDeviceIdsFromModeMap(state.capacityPriorities, ids);
-  const nextModeTargets = removeDeviceIdsFromModeMap(state.modeTargets, ids);
-
-  await Promise.all([
-    setSetting('controllable_devices', nextControllableMap),
-    setSetting('managed_devices', nextManagedMap),
-    setSetting(DEVICE_CONTROL_PROFILES, nextDeviceControlProfiles),
-    setSetting(DEVICE_TARGET_POWER_CONFIGS, nextDeviceTargetPowerConfigs),
-    setSetting(OVERSHOOT_BEHAVIORS, nextShedBehaviors),
-    setSetting(TEMPERATURE_BOOST_SETTINGS, nextTemperatureBoost),
-    setSetting(EV_BOOST_SETTINGS, nextEvBoost),
-    setSetting('price_optimization_settings', nextPriceOptimization),
-    setSetting('capacity_priorities', nextCapacityPriorities),
-    setSetting('mode_device_targets', nextModeTargets),
-  ]);
-
-  state.controllableMap = nextControllableMap;
-  state.managedMap = nextManagedMap;
-  state.deviceControlProfiles = nextDeviceControlProfiles;
-  state.deviceTargetPowerConfigs = nextDeviceTargetPowerConfigs;
-  state.shedBehaviors = nextShedBehaviors;
-  state.temperatureBoostSettings = nextTemperatureBoost;
-  state.evBoostSettings = nextEvBoost;
-  state.priceOptimizationSettings = nextPriceOptimization;
-  state.capacityPriorities = nextCapacityPriorities;
-  state.modeTargets = nextModeTargets;
 };
 
 const refreshUiAfterDeviceCleanup = () => {

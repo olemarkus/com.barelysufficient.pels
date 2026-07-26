@@ -702,16 +702,4 @@ export default tseslint.config(
       'import-x/max-dependencies': ['error', { max: 50, ignoreTypeImports: true }],
     },
   },
-  // setup/appServiceWiring.ts is the service-construction half of the composition
-  // root (PR8 moved the `new Service(...)`/`createService(...)` calls here out of
-  // app.ts). Its value-import fan-in is the set of service constructors it wires,
-  // inherently high and not type-only-reducible. The second principled override;
-  // splitting it further would only fragment the boot graph and launder the count.
-  {
-    files: ['setup/appServiceWiring.ts'],
-    plugins: { 'import-x': importX },
-    rules: {
-      'import-x/max-dependencies': ['error', { max: 30, ignoreTypeImports: true }],
-    },
-  },
 );
