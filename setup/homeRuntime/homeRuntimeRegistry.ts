@@ -108,18 +108,18 @@ export class HomeRuntimeRegistry {
     this.handledRuntimeActive = deps.isRuntimeActive();
   }
 
+  private getLiveBundles(): HomeCapacityBundle[] {
+    return [...this.bundles.values()].filter((bundle) => !bundle.isTornDown());
+  }
+
   /** Live sub-home ids, for tests and diagnostics. */
   getBundleHomeIds(): HomeId[] {
-    return [...this.bundles.values()]
-      .filter((bundle) => !bundle.isTornDown())
-      .map((bundle) => bundle.homeId);
+    return this.getLiveBundles().map((bundle) => bundle.homeId);
   }
 
   /** Read-only per-bundle diagnostics (test observability + future `ui_homes`). */
   getDiagnostics(): HomeCapacityBundleDiagnostics[] {
-    return [...this.bundles.values()]
-      .filter((bundle) => !bundle.isTornDown())
-      .map((bundle) => bundle.getDiagnostics());
+    return this.getLiveBundles().map((bundle) => bundle.getDiagnostics());
   }
 
   /**
@@ -380,9 +380,12 @@ export class HomeRuntimeRegistry {
 
   /** Rebuild every live sub-home plan after the producer commits new ownership. */
   onMembershipChanged(): void {
-    for (const bundle of this.bundles.values()) {
-      if (!bundle.isTornDown()) void bundle.rebuildForMembershipChange();
-    }
+    for (const bundle of this.getLiveBundles()) void bundle.rebuildForMembershipChange();
+  }
+
+  /** Fan a global `operating_mode`/`mode_device_targets` write to every live plan. */
+  onModeSettingsChanged(): void {
+    for (const bundle of this.getLiveBundles()) bundle.rebuildForModeSettingsChange();
   }
 
   /** Route one poll's per-meter readings to the owning bundles' pipelines. */

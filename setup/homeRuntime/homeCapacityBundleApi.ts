@@ -166,6 +166,43 @@ const buildOwnershipGenerationOperations = (params: {
   };
 };
 
+/**
+ * Global `operating_mode` / `mode_device_targets` fan-out target: the bundle's
+ * mode closures read live `ctx` state, but nothing re-RUNS the planner on a
+ * mode write — the settings handler rebuilds only Main. Without this, an area
+ * whose meter is silent (no power-driven rebuilds; the freshness heartbeat
+ * skips never-sampled bundles and fires once per stale period) would never
+ * re-read the closures, leaving e.g. a cooler-mode lowering unapplied
+ * indefinitely. Mirrors `reloadCapacityScalars`' direct rebuild.
+ */
+const buildModeSettingsRebuild = (params: {
+  homeId: HomeId;
+  logger: () => ReturnType<AppContext['getStructuredLogger']>;
+  planService: PlanService;
+  isTornDown: () => boolean;
+}): (() => void) => () => {
+  if (params.isTornDown()) return;
+  // `rebuildPlanFromCache` CONTAINS planner errors and resolves `failed: true`
+  // (the catch below only sees non-contained throws), so the resolved outcome
+  // must be inspected too — the `home_membership_bundle_rebuild_failed` site
+  // above is the precedent. No retry here: the next mode/settings write or
+  // power-sample rebuild re-runs the closures, and the log makes the miss
+  // visible instead of silent.
+  void params.planService.rebuildPlanFromCache('settings:mode_targets').then((outcome) => {
+    if (!outcome.failed || params.isTornDown()) return;
+    params.logger()?.error({
+      event: 'home_mode_targets_rebuild_failed',
+      homeId: params.homeId,
+    });
+  }).catch((error: unknown) => {
+    params.logger()?.error({
+      event: 'home_mode_targets_rebuild_failed',
+      homeId: params.homeId,
+      err: normalizeError(error),
+    });
+  });
+};
+
 export function buildHomeCapacityBundleApi(params: {
   ctx: AppContext;
   homeId: HomeId;
@@ -245,6 +282,7 @@ export function buildHomeCapacityBundleApi(params: {
     updateHomeConfig: (next) => {
       setHome(next);
     },
+    rebuildForModeSettingsChange: buildModeSettingsRebuild({ homeId, logger, planService, isTornDown }),
     applyMembershipReadyEdge,
     ...ownershipGenerationOperations,
     flushDeferredShortfallSideEffect,

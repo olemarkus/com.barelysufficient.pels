@@ -124,6 +124,9 @@ export type PlanEngineDeps = {
   // and clears `hourlyBudgetExhausted` instead of deriving the soft limit
   // from the capacity budget.
   getDynamicSoftLimitOverride?: () => number | null;
+  // Producer-resolved per-home posture: hold a mode-target RAISE while this
+  // home's own power reading is unknown. Absent = no hold (the main home).
+  holdsModeTargetRaisesWhilePowerUnknown?: () => boolean;
   // --- Actuation feedback callbacks: routes from the executor back up into
   // the app/service layer after a write, so the published plan snapshot and
   // retry logging reflect actuation without waiting for a full rebuild.
@@ -206,6 +209,7 @@ export class PlanEngine {
       getPriorityForDevice: deps.getPriorityForDevice,
       getShedBehavior: deps.getShedBehavior,
       getDynamicSoftLimitOverride: deps.getDynamicSoftLimitOverride,
+      holdsModeTargetRaisesWhilePowerUnknown: deps.holdsModeTargetRaisesWhilePowerUnknown,
       deviceDiagnostics: deps.deviceDiagnostics,
       structuredLog: deps.structuredLog,
       debugStructured: deps.debugStructured,
