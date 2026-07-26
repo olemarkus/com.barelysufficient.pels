@@ -25,27 +25,18 @@
  */
 import CapacityGuard from '../power/capacityGuard';
 import type { PowerTrackerState } from '../power/tracker';
-import type { DevicePlan, DevicePlanDevice, PlanInputDevice, ShedAction } from './planTypes';
+import type { DevicePlan, PlanInputDevice, ShedAction } from './planTypes';
 import type { PlanEngineState } from './planState';
 import { computeDailyUsageSoftLimit, computeDynamicSoftLimit, computeShortfallThreshold } from './planBudget';
 import { buildPlanContext, type PlanContext, type SoftLimitSource } from './planContext';
 import { buildSheddingPlan, type SheddingPlan } from './shedding';
 import { runSurplusPass, type PriceOptDeviceConfig } from './planBuilderSurplus';
-import { buildInitialPlanDevices } from './planDevices';
-import { applyRestorePlan, type RestorePlanResult } from './restore';
 import { sumBudgetExemptLiveUsageKw } from './planUsage';
-import { syncHeadroomCardState } from './planHeadroomDevice';
-import {
-  applyShedTemperatureHold,
-  finalizePlanDevices,
-  normalizeShedReasons,
-  type ShedReasonHoldInputs,
-} from './planReasons';
+import { PlanMaterializationStages } from './planBuilderMaterialization';
+import { trackPlanStage, trackPlanStageAsync } from './planStageTiming';
 import type { DailyBudgetUiPayload } from '../dailyBudget/dailyBudgetTypes';
-import { addPerfDuration, incPerfCounter } from '../utils/perfCounters';
-import { recordOpRssDelta, safeRss } from '../utils/opRssTracker';
+import { incPerfCounter } from '../utils/perfCounters';
 import type { DeviceDiagnosticsRecorder } from '../diagnostics/deviceDiagnosticsService';
-import { buildDeviceDiagnosticsObservations } from './planDiagnostics';
 import type { Logger as PinoLogger, StructuredDebugEmitter } from '../logging/logger';
 import {
   buildDailyBudgetContext as buildPlanDailyBudgetContext,
@@ -60,7 +51,6 @@ import type {
 } from '../../packages/planner-types/src/deferredDecoration';
 import { OvershootTracker } from './planBuilderOvershoot';
 import { buildPlanMeta, emitPowerFreshnessTransitionLogs } from './planBuilderMeta';
-import { isCapacityBreached } from './planRemainingSheddableLoad';
 import { attachDeferredReleaseIntents, buildIdentityDecorationBundle } from './planBuilderDecoration';
 
 export type PlanBuilderDeps = {
@@ -76,15 +66,15 @@ export type PlanBuilderDeps = {
   // Producer-resolved inferred curtailed-surplus term for the surplus allocator
   // (zero-export homes); forwarded untouched to the per-device prep pass.
   getInferredSurplusKw?: () => number | null;
+  // Producer-resolved per-home posture: hold a mode-target RAISE while this
+  // home's own power reading is unknown (see `applyModeSeedModulation` in
+  // `planDevices.ts`). Absent = no hold, which is the main home's binding.
+  holdsModeTargetRaisesWhilePowerUnknown?: () => boolean;
   getPowerTracker: () => PowerTrackerState;
   getDailyBudgetSnapshot?: () => DailyBudgetUiPayload | null;
   getPriorityForDevice: (deviceId: string) => number;
   getShedBehavior: (deviceId: string) => { action: ShedAction; temperature: number | null; stepId: string | null };
   getDynamicSoftLimitOverride?: () => number | null;
-  // Producer-resolved per-home posture: hold a mode-target RAISE while this
-  // home's own power reading is unknown (see `applyModeSeedModulation` in
-  // `planDevices.ts`). Absent = no hold, which is the main home's binding.
-  holdsModeTargetRaisesWhilePowerUnknown?: () => boolean;
   // Observer-owned pending-binary-command store. Plan-side reads consult
   // `peek(id)` (raw read) through this facade rather than touching
   // `state.pendingBinaryCommands[id]` directly, so the store stays the
@@ -113,15 +103,20 @@ const SOFT_LIMIT_EPSILON = 1e-3;
 export class PlanBuilder {
   private readonly overshootTracker: OvershootTracker;
 
+  // Post-shedding pipeline stages (`planBuilderMaterialization.ts`): initial
+  // materialization → restore → hold → reason normalization → finalization,
+  // plus the headroom-card sync and the diagnostics observation.
+  private readonly stages: PlanMaterializationStages;
+
   constructor(private deps: PlanBuilderDeps, private state: PlanEngineState) {
     this.overshootTracker = new OvershootTracker(state, deps);
+    this.stages = new PlanMaterializationStages(deps, state);
   }
 
   private get capacityGuard(): CapacityGuard | undefined { return this.deps.getCapacityGuard(); }
   private get capacitySettings(): { limitKw: number; marginKw: number } { return this.deps.getCapacitySettings(); }
   private get operatingMode(): string { return this.deps.getOperatingMode(); }
   private get modeDeviceTargets(): Record<string, Record<string, number>> { return this.deps.getModeDeviceTargets(); }
-  private get priceOptimizationEnabled(): boolean { return this.deps.getPriceOptimizationEnabled(); }
 
   private get priceOptimizationSettings(): Record<string, PriceOptDeviceConfig> {
     return this.deps.getPriceOptimizationSettings();
@@ -133,28 +128,6 @@ export class PlanBuilder {
 
   private get dailyBudgetSnapshot(): DailyBudgetUiPayload | null {
     return this.deps.getDailyBudgetSnapshot?.() ?? null;
-  }
-
-  private trackDuration<T>(key: string, fn: () => T): T {
-    const start = Date.now();
-    const rssBefore = safeRss();
-    try {
-      return fn();
-    } finally {
-      addPerfDuration(key, Date.now() - start);
-      recordOpRssDelta(key, rssBefore, safeRss());
-    }
-  }
-
-  private async trackDurationAsync<T>(key: string, fn: () => Promise<T>): Promise<T> {
-    const start = Date.now();
-    const rssBefore = safeRss();
-    try {
-      return await fn();
-    } finally {
-      addPerfDuration(key, Date.now() - start);
-      recordOpRssDelta(key, rssBefore, safeRss());
-    }
   }
 
   public computeDynamicSoftLimit(): number {
@@ -184,14 +157,7 @@ export class PlanBuilder {
   }
 
   public async buildDevicePlanSnapshot(devices: PlanInputDevice[]): Promise<DevicePlan> {
-    const planStart = Date.now();
-    const rssBefore = safeRss();
-    try {
-      return await this.buildPlanSnapshotWithTimings(devices);
-    } finally {
-      addPerfDuration('plan_build_ms', Date.now() - planStart);
-      recordOpRssDelta('plan_build_ms', rssBefore, safeRss());
-    }
+    return trackPlanStageAsync('plan_build_ms', () => this.buildPlanSnapshotWithTimings(devices));
   }
 
   private async buildPlanSnapshotWithTimings(devices: PlanInputDevice[]): Promise<DevicePlan> {
@@ -215,7 +181,7 @@ export class PlanBuilder {
       deferredAvoidDeviceIds,
       deferredReleaseIntentByDeviceId,
       admittedDeviceIds,
-    } = this.trackDuration('plan_deferred_objective_observe_ms', () => (
+    } = trackPlanStage('plan_deferred_objective_observe_ms', () => (
       this.deps.decorateDeferredObjectives?.({ devices, dailyBudgetSnapshot, nowTs })
       ?? buildIdentityDecorationBundle(devices)
     ));
@@ -230,7 +196,7 @@ export class PlanBuilder {
     // Surplus allocator + dump-load hold + the three post-shedding hold merges,
     // all in `runSurplusPass` (hoisted so eligibility exists as the shed set is
     // assembled); returns the dump-load reason map for reason normalization.
-    const surplusHoldReasonById = this.trackDuration('plan_surplus_eligibility_ms', () => runSurplusPass({
+    const surplusHoldReasonById = trackPlanStage('plan_surplus_eligibility_ms', () => runSurplusPass({
       context,
       state: this.state,
       admittedDevices,
@@ -245,20 +211,20 @@ export class PlanBuilder {
     }));
     const deviceNameById = new Map(admittedDevices.map((d) => [d.id, d.name]));
 
-    let planDevices = this.buildPlanDevices(context, sheddingPlan);
-    const restoreResult = this.applyRestorePlanWithTiming(planDevices, context, sheddingPlan, deviceNameById);
+    let planDevices = this.stages.buildPlanDevices(context, sheddingPlan);
+    const restoreResult = this.stages.applyRestorePlan(planDevices, context, sheddingPlan, deviceNameById);
     planDevices = restoreResult.planDevices;
 
-    const holdResult = this.applyHoldPlanWithTiming(planDevices, restoreResult, sheddingPlan);
+    const holdResult = this.stages.applyHoldPlan(planDevices, restoreResult, sheddingPlan);
     planDevices = holdResult.planDevices;
 
-    planDevices = this.normalizeReasonsWithTiming(planDevices, context, restoreResult, sheddingPlan, {
+    planDevices = this.stages.normalizeReasons(planDevices, context, restoreResult, sheddingPlan, {
       deferredObjectiveAvoidDeviceIds: deferredAvoidDeviceIds,
       surplusHoldReasonById,
     });
     planDevices = attachDeferredReleaseIntents(planDevices, deferredReleaseIntentByDeviceId, context);
-    this.syncHeadroomCardStateWithTiming(planDevices);
-    const finalized = this.finalizePlanWithTiming(planDevices);
+    this.stages.syncHeadroomCardState(planDevices);
+    const finalized = this.stages.finalizePlan(planDevices);
     // Decision-time shed clock (edge-set) + the plan-less-safe surplus-posture
     // stamp — semantics on `PlanEngineState.recordPlannedShedDecisions`.
     this.state.recordPlannedShedDecisions({
@@ -266,7 +232,7 @@ export class PlanBuilder {
       surplusOnlyIds: new Set(admittedDevices.filter((dev) => dev.surplusOnly === true).map((dev) => dev.id)),
       nowTs,
     });
-    this.trackDuration('plan_overshoot_ms', () => this.overshootTracker.updateOvershootState({
+    trackPlanStage('plan_overshoot_ms', () => this.overshootTracker.updateOvershootState({
       context,
       capacityGuard: this.capacityGuard,
       capacityLimitKw: this.capacitySettings.limitKw,
@@ -277,7 +243,7 @@ export class PlanBuilder {
       nowTs,
     }));
 
-    const meta = this.trackDuration('plan_meta_ms', () => buildPlanMeta({
+    const meta = trackPlanStage('plan_meta_ms', () => buildPlanMeta({
       context,
       planDevices: finalized.planDevices,
       dailyBudgetSnapshot,
@@ -286,13 +252,11 @@ export class PlanBuilder {
       capacityLimitKw: this.capacitySettings.limitKw,
       hourlyBudgetExhausted: this.state.hourlyBudgetExhausted,
     }));
-    this.trackDuration('plan_observe_diag_ms', () => {
-      this.observeDiagnostics({
-        context,
-        planDevices: finalized.planDevices,
-        restoreResult,
-        nowTs,
-      });
+    this.stages.observeDiagnostics({
+      context,
+      planDevices: finalized.planDevices,
+      restoreResult,
+      nowTs,
     });
     return {
       meta,
@@ -315,7 +279,7 @@ export class PlanBuilder {
     const softLimit = dailySoftLimit !== null ? Math.min(capacitySoftLimit, dailySoftLimit) : capacitySoftLimit;
     const softLimitSource = this.resolveSoftLimitSource(capacitySoftLimit, dailySoftLimit);
 
-    const context = this.trackDuration('plan_context_ms', () => buildPlanContext({
+    const context = trackPlanStage('plan_context_ms', () => buildPlanContext({
       devices,
       capacityGuard: this.capacityGuard,
       capacitySettings: this.capacitySettings,
@@ -341,7 +305,7 @@ export class PlanBuilder {
       context.powerKnown && context.headroom >= 0,
     );
 
-    const sheddingPlan = await this.trackDurationAsync(
+    const sheddingPlan = await trackPlanStageAsync(
       'plan_shedding_ms',
       () => buildSheddingPlan(context, this.state, {
         capacityGuard: this.capacityGuard,
@@ -372,156 +336,6 @@ export class PlanBuilder {
         cleanWholeHomeSample,
       });
     }
-  }
-
-  private buildPlanDevices(
-    context: PlanContext,
-    sheddingPlan: SheddingPlan,
-  ): DevicePlanDevice[] {
-    return this.trackDuration('plan_devices_ms', () => buildInitialPlanDevices({
-      context,
-      state: this.state,
-      shedSet: sheddingPlan.shedSet,
-      shedReasons: sheddingPlan.shedReasons,
-      guardInShortfall: sheddingPlan.guardInShortfall,
-      deps: {
-        getPriorityForDevice: (deviceId) => this.deps.getPriorityForDevice(deviceId),
-        getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
-        isCurrentHourCheap: () => this.deps.isCurrentHourCheap(),
-        isCurrentHourExpensive: () => this.deps.isCurrentHourExpensive(),
-        getPriceOptimizationEnabled: () => this.priceOptimizationEnabled,
-        getPriceOptimizationSettings: () => this.priceOptimizationSettings,
-        getInferredSurplusKw: this.deps.getInferredSurplusKw,
-        getOperatingMode: () => this.operatingMode,
-        holdsModeTargetRaisesWhilePowerUnknown: this.deps.holdsModeTargetRaisesWhilePowerUnknown,
-        pendingBinaryCommandStore: this.deps.pendingBinaryCommandStore,
-        debugStructured: this.deps.debugStructured,
-      },
-    }));
-  }
-
-  private applyRestorePlanWithTiming(
-    planDevices: DevicePlanDevice[],
-    context: PlanContext,
-    sheddingPlan: SheddingPlan,
-    deviceNameById: ReadonlyMap<string, string>,
-  ): RestorePlanResult {
-    return this.trackDuration('plan_restore_ms', () => this.applyRestorePlanAndUpdateState({
-      planDevices,
-      context,
-      sheddingActive: sheddingPlan.sheddingActive,
-      guardInShortfall: sheddingPlan.guardInShortfall,
-      deviceNameById,
-    }));
-  }
-
-  private applyHoldPlanWithTiming(
-    planDevices: DevicePlanDevice[],
-    restoreResult: RestorePlanResult,
-    sheddingPlan: SheddingPlan,
-  ): { planDevices: DevicePlanDevice[]; availableHeadroom: number; restoredOneThisCycle: boolean } {
-    return this.trackDuration('plan_hold_ms', () => applyShedTemperatureHold({
-      planDevices,
-      state: this.state,
-      shedReasons: sheddingPlan.shedReasons,
-      inShedWindow: restoreResult.inShedWindow,
-      inCooldown: restoreResult.inCooldown,
-      activeOvershoot: restoreResult.activeOvershoot,
-      availableHeadroom: restoreResult.availableHeadroom,
-      restoredOneThisCycle: restoreResult.restoredOneThisCycle,
-      restoredThisCycle: restoreResult.restoredThisCycle,
-      shedCooldownRemainingSec: restoreResult.shedCooldownRemainingSec,
-      shedCooldownStartedAtMs: restoreResult.shedCooldownStartedAtMs,
-      shedCooldownTotalSec: restoreResult.shedCooldownTotalSec,
-      holdDuringRestoreCooldown: restoreResult.inRestoreCooldown,
-      restoreCooldownSeconds: restoreResult.restoreCooldownSeconds,
-      restoreCooldownRemainingSec: restoreResult.restoreCooldownRemainingSec,
-      guardInShortfall: sheddingPlan.guardInShortfall,
-      debugStructured: this.deps.debugStructured,
-      getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
-    }));
-  }
-
-  private normalizeReasonsWithTiming(
-    planDevices: DevicePlanDevice[],
-    context: PlanContext,
-    restoreResult: RestorePlanResult,
-    sheddingPlan: SheddingPlan,
-    holds: ShedReasonHoldInputs,
-  ): DevicePlanDevice[] {
-    return this.trackDuration('plan_reasons_ms', () => normalizeShedReasons({
-      planDevices,
-      shedReasons: sheddingPlan.shedReasons,
-      guardInShortfall: sheddingPlan.guardInShortfall,
-      headroomRaw: context.headroomRaw,
-      inCooldown: restoreResult.inCooldown,
-      activeOvershoot: restoreResult.activeOvershoot,
-      shedCooldownRemainingSec: restoreResult.shedCooldownRemainingSec,
-      shedCooldownStartedAtMs: restoreResult.shedCooldownStartedAtMs,
-      shedCooldownTotalSec: restoreResult.shedCooldownTotalSec,
-      ...holds,
-      softLimitSource: context.softLimitSource,
-      capacityBreached: isCapacityBreached(context.total, context.capacitySoftLimit),
-    }));
-  }
-
-  private finalizePlanWithTiming(planDevices: DevicePlanDevice[]): {
-    planDevices: DevicePlanDevice[];
-    lastPlannedShedIds: Set<string>;
-  } {
-    return this.trackDuration('plan_finalize_ms', () => finalizePlanDevices(planDevices, {
-      onInvalidReasonPair: (issue) => {
-        this.deps.structuredLog?.warn({
-          event: 'plan_reason_pair_invalid',
-          deviceId: issue.deviceId,
-          deviceName: issue.deviceName,
-          plannedState: issue.plannedState,
-          reason: issue.reason,
-          allowedReasonKinds: issue.allowedReasonKinds,
-        });
-      },
-    }));
-  }
-
-  private syncHeadroomCardStateWithTiming(planDevices: DevicePlanDevice[]): void {
-    return this.trackDuration('plan_headroom_cooldown_ms', () => {
-      syncHeadroomCardState({
-        state: this.state,
-        devices: planDevices,
-        nowTs: Date.now(),
-        cleanupMissingDevices: false,
-        diagnostics: this.deps.deviceDiagnostics,
-      });
-    });
-  }
-
-  // Diagnostics observation runs synchronously on the plan-build path so the
-  // immediately-following `plan_updated` emit reads fresh starvation state
-  // from `DeviceDiagnosticsService.getOverviewStarvation`. Earlier attempts to
-  // defer this via `setImmediate` caused the UI snapshot to serialize the
-  // previous batch's starvation, since the deferred callback hadn't run yet
-  // when `serializePlanForUi` queried `live.starvation`.
-  private observeDiagnostics(params: {
-    context: PlanContext;
-    planDevices: DevicePlanDevice[];
-    restoreResult: RestorePlanResult;
-    nowTs: number;
-  }): void {
-    if (!this.deps.deviceDiagnostics) return;
-    const { nowTs } = params;
-    const observations = buildDeviceDiagnosticsObservations({
-      context: params.context,
-      planDevices: params.planDevices,
-      restoreResult: params.restoreResult,
-      priceOptimizationEnabled: this.priceOptimizationEnabled,
-      priceOptimizationSettings: this.priceOptimizationSettings,
-      isCurrentHourCheap: () => this.deps.isCurrentHourCheap(),
-      isCurrentHourExpensive: () => this.deps.isCurrentHourExpensive(),
-      // No staleness dep wired (e.g. tests) ⇒ treat every device as fresh, so the
-      // freshness gate is a no-op and starvation counts as before.
-      getObservationStale: this.deps.getObservationStale ?? (() => false),
-    });
-    this.deps.deviceDiagnostics.observePlanSample({ observations, nowTs });
   }
 
   private resolveSoftLimitSource(capacitySoftLimit: number, dailySoftLimit: number | null): SoftLimitSource {
@@ -569,36 +383,6 @@ export class PlanBuilder {
       this.state.inShortfall = sheddingPlan.guardInShortfall;
       incPerfCounter('settings_set.capacity_in_shortfall');
     }
-  }
-
-  private applyRestorePlanAndUpdateState(params: {
-    planDevices: DevicePlanDevice[];
-    context: PlanContext;
-    sheddingActive: boolean;
-    guardInShortfall: boolean;
-    deviceNameById: ReadonlyMap<string, string>;
-  }): RestorePlanResult {
-    const { planDevices, context, sheddingActive, guardInShortfall, deviceNameById } = params;
-    const restoreResult = applyRestorePlan({
-      planDevices,
-      context,
-      state: this.state,
-      sheddingActive,
-      guardInShortfall,
-      deps: {
-        powerTracker: this.powerTracker,
-        getShedBehavior: (deviceId) => this.deps.getShedBehavior(deviceId),
-        deviceDiagnostics: this.deps.deviceDiagnostics,
-        structuredLog: this.deps.structuredLog,
-        debugStructured: this.deps.debugStructured,
-        deviceNameById,
-        logDebug: (...args: unknown[]) => this.deps.logDebug(...args),
-      },
-    });
-    this.state.swapByDevice = restoreResult.stateUpdates.swapByDevice;
-    this.state.restoreCooldownMs = restoreResult.restoreCooldownMs;
-    this.state.lastRestoreCooldownBumpMs = restoreResult.lastRestoreCooldownBumpMs;
-    return restoreResult;
   }
 
   private logPowerFreshness(context: PlanContext): void {

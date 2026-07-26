@@ -5,11 +5,8 @@ import type {
 } from '../../../../contracts/src/types.ts';
 import { normalizeDeviceControlProfiles } from '../../../../contracts/src/deviceControlProfiles.ts';
 import {
-  deviceDetailDiagnosticsDisclosure,
   deviceDetailOverlay,
-  deviceDetailPanel,
   deviceDetailTitle,
-  deviceDetailClose,
   deviceDetailManaged,
   deviceDetailControllable,
   deviceDetailPriceOpt,
@@ -17,9 +14,7 @@ import {
   deviceDetailSurplusOptRow,
   deviceDetailControlModelRow,
   deviceDetailControlModel,
-  deviceDetailShedAction,
 } from '../dom.ts';
-import { bindSegmentedToSelect } from '../components.ts';
 import { renderDevices } from '../devices.ts';
 import {
   applyLocalDeviceControlProfile,
@@ -32,15 +27,11 @@ import { resolveHomeExhibitsSolar, state } from '../state.ts';
 import { renderDeviceDetailModes } from './modes.ts';
 import { DEVICE_CONTROL_PROFILES } from '../../../../contracts/src/settingsKeys.ts';
 import {
-  isDeviceDetailDiagnosticsExpanded,
-  refreshDeviceDetailDiagnostics,
   resetDeviceDetailDiagnosticsRequests,
   resetDeviceDetailDiagnosticsView,
-  showDeviceDetailDiagnosticsLoading,
 } from './diagnostics.ts';
 import {
   initDeviceDetailActivityLogToggleHandler,
-  refreshDeviceDetailActivityLogIfExpanded,
   resetDeviceDetailActivityLogRequests,
   resetDeviceDetailActivityLogView,
 } from './activityLog.ts';
@@ -100,16 +91,17 @@ import {
   syncDeviceDetailControlModeOptions,
 } from './controlMode.ts';
 import { resolveDeviceDetailControlState, setTemperatureGatedSwitch } from './controlState.ts';
-import {
-  createPendingDeviceDetailOpen,
-  type OpenDeviceDetailDetail,
-} from './focus.ts';
+import { createPendingDeviceDetailOpen } from './focus.ts';
 import {
   initDeviceDetailBudgetExemptHandler,
   setDeviceDetailBudgetExemptState,
 } from './budgetExempt.ts';
 import { initRespectExternalOffHandler, syncRespectExternalOffRow } from './respectExternalOff.ts';
 import { initDeviceDetailManagedControlHandlers } from './managedControl.ts';
+import {
+  initDeviceDetailOverlayChrome,
+  initDeviceDetailOverlaySubscriptions,
+} from './overlayHandlers.ts';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 
 let currentDetailDeviceId: string | null = null;
@@ -352,37 +344,6 @@ export const closeDeviceDetail = () => {
   }
 };
 
-const initDeviceDetailCloseHandlers = () => {
-  deviceDetailClose?.addEventListener('click', closeDeviceDetail);
-  deviceDetailOverlay?.addEventListener('click', (event) => {
-    if (event.target === deviceDetailOverlay) {
-      closeDeviceDetail();
-    }
-  });
-};
-
-// md-switch only flips when the user hits the small thumb. Restore the
-// legacy whole-row tap behavior by toggling the switch when its label
-// area is clicked.
-const initDeviceDetailSwitchRowClick = () => {
-  if (!deviceDetailPanel) return;
-  deviceDetailPanel.addEventListener('click', (event) => {
-    const target = event.target as HTMLElement | null;
-    if (!target) return;
-    const row = target.closest<HTMLElement>('.md-switch-row');
-    if (!row) return;
-    // The user already interacted with the switch itself or an inner
-    // focusable element — let the native behavior handle it.
-    if (target.closest('md-switch, a, button, input, select, textarea')) return;
-    const swEl = row.querySelector('md-switch') as
-      | (HTMLElement & { selected: boolean; disabled: boolean })
-      | null;
-    if (!swEl || swEl.disabled) return;
-    swEl.selected = !swEl.selected;
-    swEl.dispatchEvent(new Event('change', { bubbles: true }));
-  });
-};
-
 const initDeviceDetailControlModelHandler = () => {
   deviceDetailControlModel?.addEventListener('change', async () => {
     const deviceId = currentDetailDeviceId;
@@ -417,101 +378,18 @@ const initDeviceDetailControlModelHandler = () => {
   });
 };
 
-const initDeviceDetailEscapeHandler = () => {
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && deviceDetailOverlay && !deviceDetailOverlay.hidden) {
-      closeDeviceDetail();
-    }
-  });
-};
-
-const initDeviceDetailOpenHandler = () => {
-  document.addEventListener('open-device-detail', (event) => {
-    const custom = event as CustomEvent<OpenDeviceDetailDetail>;
-    const deviceId = custom.detail?.deviceId;
-    if (!deviceId) return;
-
-    if (getDeviceById(deviceId)) {
-      openDeviceDetail(deviceId);
-    } else {
-      pendingDeviceDetailOpen.set(deviceId);
-      document.dispatchEvent(new CustomEvent('request-load-devices'));
-    }
-  });
-};
-
-const initDeviceDetailDiagnosticsHandler = () => {
-  deviceDetailDiagnosticsDisclosure?.addEventListener('toggle', () => {
-    if (!currentDetailDeviceId) return;
-    if (!isDeviceDetailDiagnosticsExpanded()) {
-      resetDeviceDetailDiagnosticsRequests();
-      return;
-    }
-
-    const deviceId = currentDetailDeviceId;
-    showDeviceDetailDiagnosticsLoading();
-    void refreshDeviceDetailDiagnostics({
-      deviceId,
-      isCurrentDevice: () => currentDetailDeviceId === deviceId && isDeviceDetailDiagnosticsExpanded(),
-    });
-  });
-};
-
-const initDeviceDetailRefreshHandlers = () => {
-  document.addEventListener('devices-updated', () => {
-    // Only consume the queued open request once its device is actually present:
-    // a `devices-updated` can fire while the requested device is still absent
-    // (partial list / unrelated change), and taking it unconditionally would
-    // drop the request before the device ever loads. Leave it queued for a later
-    // `devices-updated` instead.
-    const pending = pendingDeviceDetailOpen.peek();
-    if (pending && getDeviceById(pending.deviceId)) {
-      pendingDeviceDetailOpen.take();
-      openDeviceDetail(pending.deviceId);
-      return;
-    }
-    // A pending open whose device hasn't loaded yet stays queued for a later
-    // `devices-updated` — but must NOT block refreshing a currently-open detail
-    // below (an absent pending request would otherwise freeze the open pane).
-    if (!currentDetailDeviceId) return;
-
-    const deviceId = currentDetailDeviceId;
-    refreshOpenDeviceDetail();
-    if (!isDeviceDetailDiagnosticsExpanded()) return;
-    void refreshDeviceDetailDiagnostics({
-      deviceId,
-      isCurrentDevice: () => currentDetailDeviceId === deviceId && isDeviceDetailDiagnosticsExpanded(),
-    });
-  });
-
-  document.addEventListener('plan-updated', () => {
-    if (!currentDetailDeviceId) return;
-
-    const deviceId = currentDetailDeviceId;
-    // The live-status row tracks every plan push while the overlay is open.
-    void renderDeviceDetailLiveStatus(deviceId);
-    if (isDeviceDetailDiagnosticsExpanded()) {
-      void refreshDeviceDetailDiagnostics({
-        deviceId,
-        isCurrentDevice: () => currentDetailDeviceId === deviceId && isDeviceDetailDiagnosticsExpanded(),
-      });
-    }
-    refreshDeviceDetailActivityLogIfExpanded(deviceId, () => currentDetailDeviceId);
-  });
-};
-
 export { loadEvBoostSettings, loadShedBehaviors, loadTemperatureBoostSettings };
 
-const initOvershootSegmented = () => {
-  const container = document.getElementById('device-detail-overshoot-segmented');
-  if (!container || !deviceDetailShedAction) return;
-  bindSegmentedToSelect({ container, select: deviceDetailShedAction });
-};
-
 export const initDeviceDetailHandlers = () => {
-  initDeviceDetailCloseHandlers();
-  initDeviceDetailSwitchRowClick();
-  initOvershootSegmented();
+  const overlayContext = {
+    getCurrentDetailDeviceId,
+    getDeviceById,
+    openDeviceDetail,
+    closeDeviceDetail,
+    refreshOpenDeviceDetail,
+    pendingDeviceDetailOpen,
+  };
+  initDeviceDetailOverlayChrome(overlayContext);
   initDeviceDetailNativeWiringHandler({
     getCurrentDetailDeviceId,
     getDeviceById,
@@ -565,9 +443,13 @@ export const initDeviceDetailHandlers = () => {
     getDeviceById,
     refreshOpenDeviceDetail,
   });
-  initDeviceDetailDiagnosticsHandler();
   initDeviceDetailActivityLogToggleHandler(() => currentDetailDeviceId);
-  initDeviceDetailEscapeHandler();
-  initDeviceDetailOpenHandler();
-  initDeviceDetailRefreshHandlers();
+  // Registration order note: the diagnostics `toggle` listener used to bind
+  // just BEFORE this activity-log one; grouping the overlay subscriptions moved
+  // it after. Unobservable — the two bind `toggle` on different elements
+  // (`deviceDetailDiagnosticsDisclosure` vs `deviceDetailActivityLogDisclosure`),
+  // so neither can preempt the other. Every `document`-level listener
+  // (`keydown`, `open-device-detail`, `devices-updated`, `plan-updated`) keeps
+  // its original position, which is where order would have mattered.
+  initDeviceDetailOverlaySubscriptions(overlayContext);
 };

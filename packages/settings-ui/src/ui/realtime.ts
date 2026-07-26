@@ -1,7 +1,5 @@
 import { syncSettingsHubChips } from './settingsHubChips.ts';
-import { panels, tabListEntries, tabs, type MdTabElement } from './dom.ts';
 import {
-  SETTINGS_UI_DEVICES_PATH,
   SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH,
   SETTINGS_UI_DEVICE_LOG_PATH,
   SETTINGS_UI_PLAN_PATH,
@@ -9,384 +7,46 @@ import {
   SETTINGS_UI_PRICES_PATH,
   type SettingsUiPowerPayload,
 } from '../../../contracts/src/settingsUiApi.ts';
-import {
-  CAPACITY_DRY_RUN,
-  CAPACITY_LIMIT_KW,
-  CAPACITY_MARGIN_KW,
-  COMBINED_PRICES,
-  HOMEY_ENERGY_METER_DEVICE_ID,
-  POWER_SOURCE,
-  BUDGET_EXEMPT_DEVICES,
-  DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING,
-  DEFERRED_OBJECTIVES_SETTINGS,
-  PER_DEVICE_OBJECTIVE_KEY_PREFIX,
-  DEVICE_CONTROL_PROFILES,
-  DEVICE_TARGET_POWER_CONFIGS,
-  DEVICE_DRIVER_OVERRIDES,
-  EV_BOOST_SETTINGS,
-  NATIVE_EV_WIRING_DEVICES,
-  DEBUG_LOGGING_TOPICS,
-  HOMES_CONFIG, HOMES_CONFIG_INITIALIZED,
-  NORWAY_PRICE_MODEL,
-  OPERATING_MODE_SETTING,
-  OVERSHOOT_BEHAVIORS,
-  TEMPERATURE_BOOST_SETTINGS,
-  PRICE_SCHEME,
-  RESPECT_EXTERNAL_OFF_DEVICES,
-  WEATHER_ADVISOR_SETTINGS,
-} from '../../../contracts/src/settingsKeys.ts';
-import { getTargetDevices, renderDevices } from './devices.ts';
-import {
-  loadAdvancedSettings,
-  loadCapacitySettings,
-  loadStaleDataStatus,
-  updateStaleDataStatusFromPowerPayload,
-} from './capacity.ts';
-import {
-  notifyHomeLimitsSettingChanged,
-  refreshHomeLimitsOnLimitsPanel,
-} from './homeLimits.ts';
+import { updateStaleDataStatusFromPowerPayload } from './capacity.ts';
 import {
   getHomeyClient,
   invalidateApiCache,
-  invalidateSettingCache,
   primeApiCache,
   updateApiCache,
 } from './homey.ts';
-import {
-  loadModeAndPriorities,
-  refreshActiveMode,
-  renderPriorities,
-} from './modes.ts';
-import { refreshPriceConfigView, reloadPriceConfigSettings, updatePriceConfigDevices } from './priceConfig.ts';
-import { refreshDailyBudgetPlan, updateBudgetPower } from './dailyBudget.ts';
-import { discardBudgetAdjust, getBudgetAdjustView, refreshBudgetAdjust } from './budgetAdjustController.ts';
-import { resetBudgetAdjustReturnTarget } from './budgetRedesign.ts';
-import { showToast } from './toast.ts';
+import { updateBudgetPower } from './dailyBudget.ts';
 import {
   parsePlanSnapshot,
-  refreshPlan,
   renderPlan,
   updatePlanPower,
   updatePlanPrices,
   type PlanSnapshot,
 } from './plan.ts';
-import { refreshAdvancedDeviceCleanup } from './advanced.ts';
-import { loadEvBoostSettings, loadShedBehaviors, loadTemperatureBoostSettings } from './deviceDetail/index.ts';
-import { loadDeviceControlProfiles } from './deviceControlProfiles.ts';
-import { getPowerUsage, renderPowerStats, renderPowerUsage } from './power.ts';
 import { state } from './state.ts';
-import { logSettingsError, logSettingsWarn } from './logging.ts';
-import { refreshDeadlinesList } from './deadlinesList.ts';
-import { loadDeferredObjectiveSettings } from './deferredObjectiveSettings.ts';
+import { logSettingsWarn } from './logging.ts';
+import { repaintOverviewWithRescueGate } from './overviewRescueGate.ts';
+import { createSettingsSetHandler, createSettingsUnsetHandler } from './settingsChangeRouter.ts';
 import {
-  refreshOverviewPlanWithRescueGate,
-  repaintOverviewWithRescueGate,
-} from './overviewRescueGate.ts';
-import { reloadDeferredObjectiveActivePlans } from './deferredObjectiveActivePlans.ts';
-import { refreshHomesOnHomesPanel } from './homesSettings.ts';
-import { clearUsageReturnLink } from './usageReturnLink.ts';
-import {
-  handleWeatherAdvisorSettingsChanged,
-  refreshWeatherInsightOnBudgetTab,
-  refreshWeatherInsightOnWeatherPanel,
-} from './weatherInsight.ts';
-import { DAILY_BUDGET_REFRESH_KEYS, DAILY_BUDGET_SETTINGS_KEYS } from './realtimeDailyBudgetKeys.ts';
+  isPanelVisible,
+  loadDevicesOnce,
+  refreshDevicesForUi,
+  refreshPlanForUi,
+  refreshPowerDataIfVisible,
+  refreshPricesIfVisible,
+  refreshStaleDataStatus,
+  runLoggedTask,
+} from './uiRefreshTasks.ts';
 
-const POWER_USAGE_REALTIME_REFRESH_MIN_INTERVAL_MS = 30 * 1000;
+/**
+ * The WebView's realtime subscriptions: the four `homey.on(...)` pushes the app
+ * emits (plan / prices / devices / power) plus the periodic stale-data poll.
+ * The `settings.set` key routing lives in `settingsChangeRouter.ts` and the
+ * shell's tab navigation in `tabNavigation.ts`; both are re-exported here so
+ * existing importers (`boot.ts`, `deadlinePlanRouter.ts`) keep one entry point.
+ */
 
-const REDESIGN_SETTINGS_SECTIONS = new Set([
-  'limits',
-  'devices',
-  'modes',
-  'electricity-prices',
-  'price-aware-devices',
-  'weather',
-  'simulation',
-  'advanced',
-]);
-
-const CAPACITY_SETTINGS_KEYS = new Set([
-  CAPACITY_LIMIT_KW,
-  CAPACITY_MARGIN_KW,
-  CAPACITY_DRY_RUN,
-  POWER_SOURCE,
-  HOMEY_ENERGY_METER_DEVICE_ID,
-  HOMES_CONFIG, HOMES_CONFIG_INITIALIZED,
-]);
-const ADVANCED_SETTINGS_KEYS = new Set([
-  DEBUG_LOGGING_TOPICS,
-  'debug_logging_enabled',
-]);
-
-const PRICE_REFRESH_KEYS = new Set([
-  COMBINED_PRICES,
-  'electricity_prices',
-  'flow_prices_today',
-  'flow_prices_tomorrow',
-  'homey_prices_today',
-  'homey_prices_tomorrow',
-  'homey_prices_currency',
-  'nettleie_data',
-]);
-
-const DEVICE_CONTROL_KEYS = new Set([
-  'managed_devices',
-  'controllable_devices',
-  BUDGET_EXEMPT_DEVICES,
-  NATIVE_EV_WIRING_DEVICES,
-  RESPECT_EXTERNAL_OFF_DEVICES,
-  DEVICE_DRIVER_OVERRIDES,
-  DEVICE_CONTROL_PROFILES,
-  DEVICE_TARGET_POWER_CONFIGS,
-  TEMPERATURE_BOOST_SETTINGS,
-]);
-const PLAN_REFRESH_KEYS = new Set([
-  'capacity_priorities',
-  'mode_device_targets',
-  BUDGET_EXEMPT_DEVICES,
-  OPERATING_MODE_SETTING,
-]);
-
-const runLoggedTask = (task: Promise<unknown>, message: string, context: string) => {
-  task.catch((error) => {
-    void logSettingsError(message, error, context);
-  });
-};
-
-let lastPowerUsageRefreshStartedAt = 0;
-
-const isPanelVisible = (selector: string): boolean => {
-  const panel = document.querySelector(selector);
-  return Boolean(panel && !panel.classList.contains('hidden'));
-};
-
-export const refreshPlanForUi = (context: string) => {
-  invalidateApiCache(SETTINGS_UI_PLAN_PATH);
-  runLoggedTask(refreshPlan(), 'Failed to refresh plan', context);
-};
-
-const refreshPricesIfVisible = (context: string) => {
-  if (!isPanelVisible('#electricity-prices-panel') && !isPanelVisible('#price-aware-devices-panel')) return;
-  runLoggedTask(refreshPriceConfigView(), 'Failed to refresh prices', context);
-};
-
-const refreshDailyBudgetIfVisible = (context: string) => {
-  if (!isPanelVisible('#budget-panel')) return;
-  runLoggedTask(refreshDailyBudgetPlan(), 'Failed to refresh daily budget', context);
-};
-
-const refreshStaleDataStatus = (context: string) => {
-  runLoggedTask(loadStaleDataStatus(), 'Failed to refresh stale data status', context);
-};
-
-export const refreshPowerData = async () => {
-  lastPowerUsageRefreshStartedAt = Date.now();
-  const usage = await getPowerUsage();
-  renderPowerUsage(usage);
-  await renderPowerStats();
-};
-
-const refreshPowerDataIfVisible = (
-  context: string,
-  options: { force?: boolean; invalidateBeforeRefresh?: boolean } = {},
-) => {
-  if (!isPanelVisible('#usage-panel')) return;
-  const now = Date.now();
-  if (!options.force && now - lastPowerUsageRefreshStartedAt < POWER_USAGE_REALTIME_REFRESH_MIN_INTERVAL_MS) {
-    return;
-  }
-  if (options.invalidateBeforeRefresh) {
-    invalidateApiCache(SETTINGS_UI_POWER_PATH);
-  }
-  runLoggedTask(refreshPowerData(), 'Failed to refresh power data', context);
-};
-
-const renderLatestDevices = (devices: Awaited<ReturnType<typeof getTargetDevices>>) => {
-  state.latestDevices = devices;
-  renderPriorities(devices);
-  renderDevices(devices);
-  updatePriceConfigDevices(devices);
-  refreshAdvancedDeviceCleanup();
-  document.dispatchEvent(new CustomEvent('devices-updated', { detail: { devices } }));
-};
-
-const loadDevicesOnce = () => {
-  state.devicesLoading = true;
-  getTargetDevices()
-    .then((devices) => {
-      state.devicesLoaded = true;
-      renderLatestDevices(devices);
-    })
-    .catch((error) => {
-      void logSettingsError('Failed to load devices', error, 'loadDevicesOnce');
-    })
-    .finally(() => {
-      state.devicesLoading = false;
-    });
-};
-
-const refreshDevicesForUi = () => {
-  invalidateApiCache(SETTINGS_UI_DEVICES_PATH);
-  invalidateApiCache(SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH);
-  if (!state.devicesLoaded || state.devicesLoading) return;
-  getTargetDevices()
-    .then((devices) => renderLatestDevices(devices))
-    .catch((error) => {
-      void logSettingsError('Failed to refresh devices', error, 'settings.set');
-    });
-};
-
-const refreshModeAndDeviceControls = () => {
-  loadModeAndPriorities()
-    .then(() => {
-      if (!state.devicesLoaded) return;
-      // The canonical "devices changed, refresh every surface" pass, rather than
-      // the subset this used to hand-roll. It also emits `devices-updated`, which
-      // is what refreshes an OPEN detail panel — re-rendering the list does not
-      // touch it, so a change made in another WebView (or via the Homey API)
-      // otherwise left the panel's switches asserting the old configuration for
-      // the rest of the session.
-      renderLatestDevices(state.latestDevices);
-    })
-    .catch((error) => {
-      void logSettingsError('Failed to load device control settings', error, 'settings.set');
-    });
-};
-
-const refreshDailyBudgetSettings = (key: string) => {
-  if (!DAILY_BUDGET_REFRESH_KEYS.has(key)) return;
-  if (DAILY_BUDGET_SETTINGS_KEYS.has(key)) {
-    runLoggedTask(refreshBudgetAdjust(), 'Failed to refresh adjust draft', 'settings.set');
-  }
-  runLoggedTask(refreshDailyBudgetPlan(), 'Failed to refresh daily budget', 'settings.set');
-  // The hub's Daily-budget `Off` chip tracks `daily_budget_enabled` — cheap
-  // cached reads, so syncing on every budget-key change is fine.
-  syncSettingsHubChips();
-};
-
-const refreshPriceSettings = (key: string) => {
-  if (PRICE_REFRESH_KEYS.has(key)) {
-    invalidateApiCache(SETTINGS_UI_PRICES_PATH);
-    refreshPricesIfVisible('settings.set');
-  }
-  if (key !== PRICE_SCHEME && key !== NORWAY_PRICE_MODEL) return;
-  runLoggedTask(reloadPriceConfigSettings(), 'Failed to reload price settings', 'settings.set');
-  refreshPricesIfVisible('settings.set');
-};
-
-const refreshPowerSettings = (key: string) => {
-  if (key === 'power_tracker_state') {
-    invalidateApiCache(SETTINGS_UI_POWER_PATH);
-    runLoggedTask(refreshPowerData(), 'Failed to refresh power data', 'settings.set');
-    refreshStaleDataStatus('settings.set');
-    refreshDailyBudgetIfVisible('settings.set');
-    return;
-  }
-  if (key !== 'pels_status') return;
-  invalidateApiCache(SETTINGS_UI_POWER_PATH);
-  refreshStaleDataStatus('settings.set');
-};
-
-// A per-device objective change (`deferred_objective.<id>`) — or a legacy-alias
-// change — feeds the assembled `deferred_objectives` alias the UI reads (primed by
-// the bootstrap). The exact changed key is invalidated by the caller, but the alias
-// must be dropped + reloaded too, or the deadline list + PlanDeviceCards chips keep
-// showing the pre-change state for the rest of the WebView session. Fires for BOTH
-// `settings.set` (create/change) and `settings.unset` (clear).
-const reloadObjectivesIfObjectiveKey = (key: string, context: string): void => {
-  if (key !== DEFERRED_OBJECTIVES_SETTINGS && !key.startsWith(PER_DEVICE_OBJECTIVE_KEY_PREFIX)) return;
-  invalidateSettingCache(DEFERRED_OBJECTIVES_SETTINGS);
-  runLoggedTask(loadDeferredObjectiveSettings(), 'Failed to reload deferred objectives', context);
-  runLoggedTask(refreshDeadlinesList(), 'Failed to refresh deadlines list', context);
-};
-
-// The active-plans recorder persists every replan / session change / updated
-// start-finish hour via `settings.set(DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING)`.
-// Without draining that key here, `state.deferredObjectiveActivePlans` stays
-// frozen at its bootstrap value and the Overview device cards' EV state line
-// (`EvDeadlineStateLine`) shows the pre-revision schedule until the user reloads
-// the WebView. Re-read the fresh setting into state and repaint the overview.
-// Fires for BOTH `settings.set` (revision) and `settings.unset` (task ended →
-// recorder drops the plan).
-const reloadActivePlansIfActivePlansKey = (key: string, context: string): void => {
-  if (key !== DEFERRED_OBJECTIVE_ACTIVE_PLANS_SETTING) return;
-  runLoggedTask(
-    reloadDeferredObjectiveActivePlans(),
-    'Failed to reload deferred objective active plans',
-    context,
-  );
-};
-
-// A flag flip / device change must reach an already-open WebView: reload the
-// weather settings snapshot and (when enabled) refetch the readout so the
-// Budget card and Settings pickers track the new state without a reload.
-// Fires for BOTH settings.set and settings.unset (clearing the blob disables).
-// The sub-page stays open when the feature is toggled off — its master switch
-// lives there, so the user must remain on the page to turn it back on.
-const reloadWeatherInsightIfWeatherKey = (key: string, context: string): void => {
-  if (key !== WEATHER_ADVISOR_SETTINGS) return;
-  runLoggedTask(
-    handleWeatherAdvisorSettingsChanged(),
-    'Failed to reload weather insight',
-    context,
-  );
-};
-
-const createSettingsUnsetHandler = () => (key: string) => {
-  // Clears `unset` the per-device key; reload objectives so a cleared task drops out
-  // of an already-open WebView (Homey may deliver clears as an unset event).
-  invalidateSettingCache(key);
-  reloadObjectivesIfObjectiveKey(key, 'settings.unset');
-  reloadActivePlansIfActivePlansKey(key, 'settings.unset');
-  reloadWeatherInsightIfWeatherKey(key, 'settings.unset');
-  // An unset device-control map is a real configuration change — the runtime
-  // reads an absent map as "nobody opted in" — so it has to reload here too.
-  // Only `settings.set` consulted this set before, leaving switches asserting a
-  // configuration the runtime had already dropped.
-  if (DEVICE_CONTROL_KEYS.has(key)) refreshModeAndDeviceControls();
-};
-
-const createSettingsSetHandler = () => (key: string) => {
-  invalidateSettingCache(key);
-
-  reloadObjectivesIfObjectiveKey(key, 'settings.set');
-  reloadActivePlansIfActivePlansKey(key, 'settings.set');
-  reloadWeatherInsightIfWeatherKey(key, 'settings.set');
-
-  if (CAPACITY_SETTINGS_KEYS.has(key)) {
-    runLoggedTask(loadCapacitySettings(), 'Failed to load capacity settings', 'settings.set');
-  }
-  // Keep an open meter-area Limits card live on external status/scalar changes
-  // (suffixed keys the CAPACITY_SETTINGS_KEYS set intentionally excludes).
-  notifyHomeLimitsSettingChanged(key);
-  if (ADVANCED_SETTINGS_KEYS.has(key)) {
-    runLoggedTask(loadAdvancedSettings(), 'Failed to load advanced settings', 'settings.set');
-  }
-  if (key === OPERATING_MODE_SETTING) {
-    runLoggedTask(refreshActiveMode(), 'Failed to refresh active mode', 'settings.set');
-  }
-  if (PLAN_REFRESH_KEYS.has(key) || DEVICE_CONTROL_KEYS.has(key)) refreshPlanForUi('settings.set');
-  if (key === OVERSHOOT_BEHAVIORS) {
-    runLoggedTask(loadShedBehaviors(), 'Failed to load shed behaviors', 'settings.set');
-  }
-  if (key === TEMPERATURE_BOOST_SETTINGS) {
-    runLoggedTask(loadTemperatureBoostSettings(), 'Failed to load temperature boost settings', 'settings.set');
-  }
-  if (key === EV_BOOST_SETTINGS) {
-    runLoggedTask(loadEvBoostSettings(), 'Failed to load EV boost settings', 'settings.set');
-  }
-  if (key === DEVICE_CONTROL_PROFILES || key === DEVICE_TARGET_POWER_CONFIGS) {
-    runLoggedTask(loadDeviceControlProfiles(), 'Failed to load device control profiles', 'settings.set');
-  }
-  if (DEVICE_CONTROL_KEYS.has(key)) {
-    refreshModeAndDeviceControls();
-  }
-
-  refreshPriceSettings(key);
-  refreshPowerSettings(key);
-  refreshDailyBudgetSettings(key);
-};
+export { refreshPlanForUi, refreshPowerData } from './uiRefreshTasks.ts';
+export { setActiveTabIndicator, showTab } from './tabNavigation.ts';
 
 const handlePlanUpdated = (plan: unknown) => {
   const parsedPlan = parsePlanSnapshot(plan);
@@ -468,7 +128,7 @@ const handlePowerUpdated = (power: unknown) => {
     // reading a null tracker on most opens (`refreshOverviewPlanWithRescueGate`
     // reads this cache) until the 30 s periodic refetch healed it. Consumers
     // that need a FRESH tracker already invalidate before refetching (see
-    // refreshPowerDataIfVisible below and the usage-tab activation hook).
+    // refreshPowerDataIfVisible and the usage-tab activation hook).
     updateApiCache<SettingsUiPowerPayload>(SETTINGS_UI_POWER_PATH, {
       status: payload?.status ?? null,
       heartbeat: payload?.heartbeat ?? null,
@@ -487,117 +147,6 @@ const handlePowerUpdated = (power: unknown) => {
     force: hasFullTracker,
     invalidateBeforeRefresh: !hasFullTracker,
   });
-};
-
-const DEVICE_DEPENDENT_TABS = new Set([
-  'devices',
-  'modes',
-  'electricity-prices',
-  'price-aware-devices',
-  'advanced',
-]);
-
-const runTabActivationSideEffects = (tabId: string) => {
-  if (tabId === 'overview') {
-    document.dispatchEvent(new Event('overview-tab-activated'));
-    runLoggedTask(refreshOverviewPlanWithRescueGate(), 'Failed to refresh plan', 'showTab');
-    return;
-  }
-  if (tabId === 'electricity-prices' || tabId === 'price-aware-devices') {
-    runLoggedTask(refreshPriceConfigView(), 'Failed to refresh prices', 'showTab');
-    return;
-  }
-  if (tabId === 'usage') {
-    invalidateApiCache(SETTINGS_UI_POWER_PATH);
-    runLoggedTask(refreshPowerData(), 'Failed to refresh power data', 'showTab');
-    return;
-  }
-  if (tabId === 'budget') {
-    runLoggedTask(refreshDailyBudgetPlan(), 'Failed to refresh daily budget', 'showTab');
-    // Lazy weather-readout fetch: no-op while the flag is off.
-    runLoggedTask(refreshWeatherInsightOnBudgetTab(), 'Failed to refresh weather insight', 'showTab');
-    return;
-  }
-  if (tabId === 'deadlines') {
-    runLoggedTask(refreshDeadlinesList(), 'Failed to load deadlines list', 'showTab');
-    return;
-  }
-  if (tabId === 'limits' || tabId === 'simulation') {
-    runLoggedTask(loadCapacitySettings(), 'Failed to load limits and simulation settings', 'showTab');
-    // The per-home switcher + meter-area editor live on the Limits panel only.
-    if (tabId === 'limits') {
-      runLoggedTask(refreshHomeLimitsOnLimitsPanel(), 'Failed to load per-home limits', 'showTab');
-    }
-    return;
-  }
-  if (tabId === 'homes') {
-    // Refetch ui_homes on every open so edits never start from a stale list.
-    runLoggedTask(refreshHomesOnHomesPanel(), 'Failed to load meter areas', 'showTab');
-    return;
-  }
-  if (tabId === 'weather') {
-    // Refresh the Weather insight picker validity lines when its sub-page opens;
-    // no-op while the flag is off.
-    runLoggedTask(refreshWeatherInsightOnWeatherPanel(), 'Failed to refresh weather insight', 'showTab');
-  }
-};
-
-const discardBudgetAdjustOnLeave = (nextTabId: string) => {
-  if (nextTabId === 'budget') return;
-  const onBudget = panels.some(
-    (panel) => panel.dataset.panel === 'budget' && !panel.classList.contains('hidden'),
-  );
-  if (!onBudget) return;
-  const { status } = getBudgetAdjustView();
-  if (status !== 'clean') {
-    // Neutral tone: an expected, recoverable notice — not an error. The
-    // explicitly-confirmed Done path discards before navigating and stays
-    // silent; this fires only for unconfirmed tab-bar exits.
-    void showToast('Discarded unsaved budget changes.');
-  }
-  discardBudgetAdjust();
-  resetBudgetAdjustReturnTarget();
-};
-
-// Updates only the shell-nav indicator state (active class, aria-selected,
-// md-tabs `activeTabIndex`) without touching panel visibility or running
-// `runTabActivationSideEffects`. Used by `deadlinePlanRouter` so a deep-link
-// into the plan-detail surface keeps the "Smart tasks" breadcrumb lit on the
-// shell-nav even though the visible panel is `#deadline-plan-panel` (a sibling
-// of `#deadlines-panel`). Calling the full `showTab('deadlines')` here would
-// hide the deadline-plan panel.
-export const setActiveTabIndicator = (tabId: string): void => {
-  const activeTopLevelTab = REDESIGN_SETTINGS_SECTIONS.has(tabId) ? 'settings' : tabId;
-  for (const tab of tabs) {
-    const isActive = tab.dataset.tab === activeTopLevelTab;
-    tab.classList.toggle('active', isActive);
-    tab.toggleAttribute('active', isActive);
-    (tab as MdTabElement).active = isActive;
-    (tab as MdTabElement).selected = isActive;
-    tab.setAttribute('aria-selected', String(isActive));
-  }
-  for (const { tabList, tabs: tabListTabs } of tabListEntries) {
-    const tabIndex = tabListTabs
-      .findIndex((tab) => tab.dataset.tab === activeTopLevelTab);
-    if (tabIndex >= 0) tabList.activeTabIndex = tabIndex;
-  }
-};
-
-export const showTab = (tabId: string) => {
-  if (tabId !== 'usage') clearUsageReturnLink();
-  discardBudgetAdjustOnLeave(tabId);
-  setActiveTabIndicator(tabId);
-  panels.forEach((panel) => {
-    panel.classList.toggle('hidden', panel.dataset.panel !== tabId);
-  });
-  // Notify charts so they can resize against the now-visible panel width.
-  // ResizeObserver alone does not reliably fire when a parent flips from
-  // `display:none` → visible, leaving SVG widths stuck at the 480 px fallback.
-  document.dispatchEvent(new CustomEvent('pels:tab-shown', { detail: { tabId } }));
-  runTabActivationSideEffects(tabId);
-  if (DEVICE_DEPENDENT_TABS.has(tabId) && !state.devicesLoaded && !state.devicesLoading) {
-    loadDevicesOnce();
-  }
 };
 
 export const initRealtimeListeners = () => {

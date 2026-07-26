@@ -1341,14 +1341,16 @@ program) remain deferred.*
       an instruction to pick from an empty list reads as something being broken. Source: pels-ux-fit
       review of the meter-picker PR (2026-07-19). [P2]
 
-- [ ] **Extract sub-home source recovery from `HomeRuntimeRegistry`.** The multi-meter GA work grew
-      `setup/homeRuntime/homeRuntimeRegistry.ts` into a roughly 600-line coordinator that now owns
-      ordinary bundle reconciliation, source-event observation, authorization epochs, freshness
-      resets, bundle replacement, settings routing, and retry scheduling. Extract the
-      source-generation/recovery state machine behind focused observe/authorize/recover operations,
-      leaving bundle-map reconciliation and routing in the registry. Behavior is covered and no
-      current bug is proven; this restores the one-purpose setup-layer boundary before the next
-      source lifecycle change. Source: adversarial simplification review of PR #1872, 2026-07-23.
+- [ ] **Extract the bounded source-recovery retry scheduler from `HomeRuntimeRegistry`.** The
+      observe/authorize half of this landed in PR 3b as `setup/homeRuntime/powerSourceEpochFence.ts`
+      (the generation/latch state machine behind `observeChange` / `reconcileObservedFromSettings` /
+      `isMeterSourceAuthorized` / `isEpochDiscarded` / `commitTransition`), taking
+      `setup/homeRuntime/homeRuntimeRegistry.ts` to 420 effective lines. What is still mixed in with
+      bundle-map reconciliation and settings routing is the recovery side: `scheduleRecoveryRetry` /
+      `clearRecoveryRetry` / `recoveryRetryAttempt` and their four backoff constants. Behavior is
+      covered and no current bug is proven; this finishes the one-purpose setup-layer boundary before
+      the next source lifecycle change. Source: adversarial simplification review of PR #1872,
+      2026-07-23; half delivered 2026-07-26.
 
 - [ ] **Make the strict sub-home tracker validator compile-time exhaustive.**
       `isPlausiblePowerTrackerState` validates every current `PowerTrackerState` field and nested
@@ -1437,8 +1439,8 @@ program) remain deferred.*
       same fabricated `resolved`/Automatic literal. All three claim the STRONGEST authority at seams whose
       entire purpose is to fence control when authority is unknown; every other path in those modules fails
       closed on `unavailable`. No live bug is proven (the power-source dep is always passed by
-      `createHomeMembershipService`, and the snapshot resolver is bound at `appServiceWiring.ts`
-      `bindHomeyEnergyMeterResolver`), but the optional-with-fabricated-default shape means a wiring path that
+      `createHomeMembershipService`, and the snapshot resolver is bound at
+      `setup/appInit/wireDeviceTransport.ts` `bindHomeyEnergyMeterResolver`), but the optional-with-fabricated-default shape means a wiring path that
       omits one silently claims authority instead of fencing, and it is now repeated three times. Note that
       `mainMeterSelection` is optional at EVERY level of the `refreshSnapshot` →
       `resolveLivePowerForRefresh` → `fetchLivePowerReport` chain, so the fabricated literal is reachable by
@@ -2061,9 +2063,9 @@ CI failure, so future field-move slices can't silently grow the debt.*
       low-R² investigation, 2026-06-13.
 
 - [ ] **Temperature backfill cascade re-runs the whole kWh chain even when the records are
-      unchanged.** On a completed temperature pass, `maybeStartBackfill` unconditionally strips
-      `meterKwhBackfillDone` + `controlledBackfillVersion` (the `markDone` marker-strip destructure
-      in `weatherCollector.ts`) so the meter and controlled-split backfills re-run — correct when a
+      unchanged.** On a completed temperature pass, `WeatherBackfillChain.startTemperatureBackfill`
+      unconditionally strips `meterKwhBackfillDone` + `controlledBackfillVersion` (the `markDone`
+      marker-strip destructure in `weatherBackfillChain.ts`) so the meter and controlled-split backfills re-run — correct when a
       new device or a widened stitch
       actually changed the record set, but a temperature `TEMP_BACKFILL_VERSION` bump that produces
       byte-identical records still forces a full REST sweep of every managed device's meter Insights.
@@ -2265,7 +2267,13 @@ live-walk screenshots.*
       intent policy came out in the multi-home headroom PR (override lowered 1110→950), so reaching
       <500 now needs the per-domain delegator surface split into sub-controllers — a large entrypoint
       restructure, out of scope for the behavior-neutral exemption sweep. The `import-x/max-dependencies` overrides on `app.ts` (50) and
-      `setup/appServiceWiring.ts` (30) — the two composition roots — are accountable here too.
+      `setup/appServiceWiring.ts` — the two composition roots — are accountable here too. Update: the
+      `appServiceWiring.ts` override was DELETED by the PR-3b headroom pass (the `wireDeviceTransport`
+      extraction took its fan-in to 19, under the shared cap of 20), so only `app.ts` (50) remains.
+      **`setup/appServiceWiring.ts` is at 19/20 — ONE value-import slot left.** A PR that needs a 21st
+      must extract, not re-add an override. Note the breach surfaces late: `test.yml` fires only on
+      `pull_request: branches: [main]`, so a stacked train branch first sees it at the merge into
+      `main`, not on the PR that caused it. `import-x/max-dependencies` is severity ERROR.
       Persona: contributor.
 *Smart-task controller extraction (2026-05-30, `feat/smarttask-lifecycle-producer`).
 Program to make the planner know nothing about smart tasks (deferred objectives):
@@ -2845,3 +2853,62 @@ persona but no current support-cost pressure; reframed to the P3 bar.*
       the daily budget instead of failing loudly. Ship the rule with no live counter-example: assert, or
       state in the closure why absence is a genuine domain value at this seam. Behaviour-neutral today.
       Source: adversarial review of PR #1889, 2026-07-26. File: `setup/homeRuntime/homeScope.ts`.
+- [ ] **Three `.ts` files sit at 499–500 against the shared 500-line ceiling.**
+      *Persona:* Contributor (`notes/personas.md`) whose one-line change to a hot file is rejected at
+      commit time by a `max-lines` warning that has nothing to do with their change.
+      *Hypothesis:* after the PR-3b headroom pass, `lib/device/deviceTransport.ts` (500/500),
+      `lib/device/transport/binarySettleEvidence.ts` (499) and `lib/dailyBudget/dailyBudgetPlanCore.ts`
+      (499) cannot absorb a single line; `lib/dailyBudget/dailyBudgetManager.ts` and
+      `flowCards/deadlineObjectiveCards.ts` sit at 497. None carries a `max-lines` override — they all
+      ride the shared 500. (`lint-staged` does pass `eslint --max-warnings=0`, so this fails at commit
+      rather than in CI; the cost is an unplanned extraction mid-change, not a wasted CI round.)
+      PR 3b deliberately relieved only the eight files the multi-home train edits, to keep a
+      behaviour-free pass from touching unrelated subsystems — `deviceTransport.ts` in particular wants
+      a real subsystem boundary (`notes/complexity-cleanup/god-file-policy.md`), not a line shave.
+      *Why it's needed:* the next contributor to touch any of these has to do someone else's refactor
+      first. Relieve them when next touched.
+      Source: PR-3b census, 2026-07-26.
+- [ ] **`clearMultipleDeviceSettings` subsumes `clearDeviceSettings` — collapse the near-duplicate purge pair.**
+      *Persona:* Contributor (`notes/personas.md`) adding an eleventh per-device settings map and having to
+      remember to edit both copies.
+      *Hypothesis:* `packages/settings-ui/src/ui/advancedDeviceDataPurge.ts` holds two functions that write the
+      same ten `setSetting` keys and mirror the same ten `state` assignments; the only real difference is
+      `removeDeviceFromModeMap` vs `removeDeviceIdsFromModeMap`, and the plural version subsumes the singular
+      one (same falsy guard, same resulting JSON — it only differs by returning a fresh object where the
+      singular could return the same reference, which no consumer observes). Deleting `clearDeviceSettings` +
+      `removeDeviceFromModeMap` and calling `clearMultipleDeviceSettings([deviceId])` from `advanced.ts` drops
+      ~50 lines. *Why it's needed:* a per-device settings map that gets added to one copy and not the other
+      leaves stale config behind on exactly the path whose job is to remove it. Pre-existing duplication that
+      PR 3b relocated verbatim (behaviour-free pass, so it was not collapsed there).
+      Source: PR-3b adversarial review, 2026-07-26.
+- [ ] **`realtime.ts` is now a re-export facade for tab navigation it no longer owns.**
+      *Persona:* Contributor (`notes/personas.md`) looking for `showTab` and finding it re-exported from a file
+      named "realtime".
+      *Hypothesis:* PR 3b split `realtime.ts` into `uiRefreshTasks.ts` / `settingsChangeRouter.ts` /
+      `tabNavigation.ts` but kept `export { setActiveTabIndicator, showTab } from './tabNavigation.ts'` (and the
+      two refresh helpers) so existing importers did not have to move — six call sites across `boot.ts`,
+      `deadlinePlanRouter.ts` and `packages/settings-ui/test/settings.test.ts`. *Why it's needed:* the facade
+      spends half the readability win of the split. Repointing those six imports at the owning modules and
+      deleting the two `export … from` lines finishes it. Deliberately deferred: `realtime.ts` is edited by
+      several in-flight multi-home PRs, so the churn was not worth the conflict surface during the train.
+      Source: PR-3b adversarial review, 2026-07-26.
+- [ ] **Two extracted dep types duplicate their parent's members verbatim.**
+      *Persona:* Contributor (`notes/personas.md`) adding a dependency to the plan builder or the app
+      service wiring and having to edit two type declarations that must stay compatible.
+      *Hypothesis:* `PlanMaterializationDeps` (`lib/plan/planBuilderMaterialization.ts`) restates 15
+      members of `PlanBuilderDeps`, and `DeviceTransportWiringDeps`
+      (`setup/appInit/wireDeviceTransport.ts`) restates 15 members of `AppServiceWiringDeps`,
+      including two verbatim copies of the inline `getShedBehavior` / `getFlowConflict` shapes. Both
+      are drift-SAFE today — each call site passes a variable, not a fresh literal, so a rename or
+      narrowing on the parent fails the build — so this is duplication cost, not a correctness hole.
+      The plan one is free to collapse (`PlanBuilderDeps = PlanMaterializationDeps & { … }`; the two
+      sets partition cleanly). The setup one must use a **shared slice type** that both
+      `appServiceWiring.ts` and `wireDeviceTransport.ts` import — NOT a type-only import back into the
+      leaf. `appServiceWiring.ts → appInit/wireDeviceTransport.ts` is a value edge, so importing
+      `AppServiceWiringDeps` back would form a genuine cycle; `arch:check` would stay green only
+      because `tsPreCompilationDeps` is unset, which makes type-only edges invisible, NOT absent
+      (the cruiser config says so at `.dependency-cruiser.cjs:327`). A type-aware cruise reports it.
+      Do not cite checker blindness as permission. *Why it's needed:* the structural declaration was
+      chosen to avoid importing the parent back; that is worth keeping, but the copies should be
+      derived rather than retyped.
+      Source: PR-3b adversarial review, 2026-07-26.
