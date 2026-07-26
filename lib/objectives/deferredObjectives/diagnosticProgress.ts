@@ -34,7 +34,6 @@ import { OBJECTIVE_PROFILE_MAX_FUTURE_SKEW_MS } from '../../objectives/profiles'
 import type { ObjectiveDeviceInput } from '../../objectives/types';
 import type { DeferredObjectiveSettingsEntry } from './settings';
 import {
-  isEvChargerNotResumableForDevice,
   isEvSessionInactiveForDevice,
 } from '../../../packages/shared-domain/src/commandableNow';
 
@@ -119,22 +118,24 @@ export const resolveObjectiveProgress = (params: {
       };
     }
     const remainingUnits = Math.max(0, objective.targetPercent - progress.currentPercent);
-    // Connected but NOT resumable (`plugged_in`): PELS cannot drive the charger
-    // toward the target, so block the objective — BUT only when there is still
-    // charge to deliver. A fresh SoC already at/above the target falls through to
-    // the satisfied path (remainingUnits === 0); resuming is moot, so a completed
-    // task must not read "Paused — can't resume". The check lives here (with the
-    // target in hand) precisely so an already-met SoC is never masked by the
-    // not-resumable signal — the rest of the not-resumable wiring keys off this
-    // reason code unchanged.
-    if (remainingUnits > 0 && isEvChargerNotResumableForDevice(device)) {
-      return {
-        remainingUnits: 0,
-        currentPercent: progress.currentPercent,
-        currentTemperatureC: null,
-        reasonCode: 'objective_charger_not_resumable',
-      };
-    }
+    // A bare-connected charger (`plugged_in`) no longer blocks the objective. The
+    // block rested on "PELS cannot drive the charger toward the target", and that
+    // is false: `plugged_in` is commandable, and on prod 2026-07-26 PELS started a
+    // session on a charger sitting in exactly this state (Easee reports op mode 7
+    // "Awaiting Authentication" as `plugged_in`, and the `evcharger_charging` write
+    // IS the authorization).
+    //
+    // Blocking here did real damage, because it did not merely annotate — it
+    // returned `remainingUnits: 0` with a reason code, so `diagnosticsBridge` could
+    // not reach the satisfied path AND `profileEnergyResolution` computed zero
+    // energy needed. The task therefore planned no hours and never admitted the
+    // charger, which is precisely the deadline PELS was supposed to be driving.
+    //
+    // The charger not actually starting is still possible (a go-e reports a
+    // finished session as `plugged_in` too). That is caught downstream where the
+    // evidence lives — `activationBackoff` penalises a device commanded on that
+    // never draws, and the at-risk lane sees the missing delivery — rather than by
+    // pre-emptively refusing to plan.
     return {
       remainingUnits,
       currentPercent: progress.currentPercent,
