@@ -931,6 +931,28 @@ program) remain deferred.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **Three EV car-link membership gaps that keep the probe blind to a car.** All three leave a
+      car unobserved rather than mis-observed, so they cap what the probe can measure without
+      corrupting anything. (a) *Initially-unavailable cars are never retained.* A class `car` device
+      whose `ev_charging_state` is absent/malformed on the first authoritative fetch is not tracked
+      at all, so it gets no realtime subscription and no place in targeted reads, and
+      `noteCapabilityUpdate` only accepts already-tracked cars — a later valid value cannot recover
+      it until a full refresh or restart. (b) *Targeted misses ignore `failedIds`.* A by-id read
+      failure is classified separately by the fetch layer but that never reaches the probe's miss
+      counter, so three flaky reads (post-actuation and stuck-command refreshes come in bursts)
+      permanently forget a still-present car; it should use the same count-plus-wall-clock grace as
+      `mergeTargetedRefreshSnapshot`. (c) *Cars created after startup are undiscoverable.* Periodic
+      refreshes are targeted and the live-feed handler ignores `device.create`, so a car app
+      installed later is invisible until a full refresh or restart. Persona: anyone installing a car
+      app after PELS; hypothesis: "the probe logged nothing" reads as "detection failed" rather than
+      "it never saw the device". Source: Codex round 9 on PR #1895. [P2]
+
+- [ ] **`lib/device/evCarLinkProducer.ts` is over the 500 LOC cap.** It accumulated nine rounds of
+      correlation rules (edges, settle, contention, sessions, self-stop, shadow, membership). The
+      natural seam is session lifecycle (`resolveSession` / `resolveColdStartSessions` /
+      `resolveUnexplainedSessions` / `clearSession*`) versus observation ingest, which barely share
+      state beyond `activeLinks`. Source: CodeRabbit on PR #1895. [P2]
+
 - [ ] **Smart-task `status: 'unknown'` conflates "no verdict" with a verdict, one layer above the adapter.**
       `withUnknown()` (`diagnosticFields.ts`) stamps `status: 'unknown'` for transient DATA problems —
       `objective_progress_stale`, `objective_missing_temperature`, `objective_missing_charge_rate`,
@@ -1098,6 +1120,60 @@ program) remain deferred.*
       optimiser during a boost. Hypothesis: a bar that shows the carve-out is trusted where a
       jumping number is not. Source: safe-pace model review (2026-07-26); design in
       `notes/safe-pace-two-constraints.md` and `notes/overview-hero-spec.md`.
+
+- [ ] **Persisted-store load grace only postpones a destructive reset.** `loadPowerCalibrationStore`
+      (and the EV car-link store that mirrors it) run exactly once at init. When that read is
+      transiently absent/malformed/throwing for an existing install, the store starts empty and the
+      grace merely blocks writes for five minutes — nothing ever re-reads the recoverable value, so
+      the first accepted mutation after the grace overwrites the real history with the empty-derived
+      state. Related: the store stays dirty when a write lands inside the debounce or fails, and only
+      another mutation or shutdown retries it, so accepted state can sit memory-only indefinitely and
+      be lost on an unclean restart. Re-read and merge persisted history before enabling the first
+      post-grace write, and schedule a retry when the gate expires or a write fails. Found by Codex on
+      PR #1895 against the EV car-link store; deliberately NOT fixed there because it describes the
+      shipped calibration-store pattern that store was modelled on, so the fix belongs where the
+      pattern lives. Persona: any user whose Homey has a slow/flaky settings read at boot; hypothesis:
+      silent loss of learned calibration is far worse than a delayed first write. See
+      `notes/persisted-settings-state.md`. [P2]
+
+- [ ] **Act on the EV car-link probe once detection accuracy is proven.** The probe
+      (`notes/ev-car-link/README.md`) currently only logs: it links a class `car` device to a
+      charger from coincident plug edges, records where the car stops charging on its own, and
+      shadow-compares the car's `measure_battery` against whatever the flow card reports. Nothing
+      reaches planning. Once a few weeks of `/tmp/pels` logs show `ev_car_link_resolved` picking
+      the right pair and `stoppedAtSocPct` clustering, the two payoffs are: (a) clamp a smart
+      task's target to the car's observed limit so a 90% task on an 80%-limited car reads
+      "your car stops at 80%" instead of silently landing `missed`; (b) stop crediting smart-task
+      progress while `ev_car_self_stopped` holds, so the allocator stops booking hours the car
+      will not take. (b) needs a seam: the producer lives in `lib/device`, a peer that may not
+      import `lib/objectives`. Persona: EV owner with a car-side charge limit; hypothesis: an
+      unexplained missed deadline is the single worst smart-task outcome. [P2]
+
+- [ ] **Two EV car-link edge-lifecycle holes, both deferred from PR #1895 as design decisions.**
+      (a) *Ambiguity is not durable.* Car and charger edge rings are pruned independently, so an
+      ambiguous group can later become a unique match: with charger edges at t=0 and t=160 s and a
+      car edge at t=80 s both chargers are reported ambiguous, but once the t=0 edge expires while
+      the other two survive, the next pass awards the remaining pair a vote — contradicting the
+      no-vote verdict already emitted. Either consume ambiguous groups or retain the verdict until
+      every related edge has expired. (b) *Charger membership is never pruned.* When a charger
+      leaves the committed view neither `lastChargerState` nor its `activeLinks` entry is cleared,
+      so a charger returning under the same Homey id is diffed against its pre-removal baseline
+      (manufacturing a plug edge), or keeps attributing the new session to the car that left. The
+      reason this is not a one-line prune: the view builder already drops a charger whose plug
+      state is momentarily unreadable, so this seam cannot tell "removed from Homey" from
+      "temporarily unreadable", and pruning naively would churn sessions on every transient gap.
+      Wants a membership signal that survives an unreadable capability. Both corrupt probe
+      EVIDENCE only — nothing reads these events. Persona: two-car household whose affinity map
+      the probe is meant to learn; hypothesis: a vote that contradicts an ambiguity already
+      reported makes the whole log untrustworthy. [P2]
+
+- [ ] **`runtimePackaging` contract-import detector false-positives on prose.** The regex in
+      `test/integration/runtimePackaging.test.ts` is not line-anchored, so the bare word "import"
+      inside a docblock matches and `[\s\S]*?` runs on into the next real declaration — flagging a
+      pure `import type` as a value import. Hit while adding `lib/device/evCarLinkWiring.ts`
+      (2026-07-26); worked around by rewording the comment. Anchor the pattern to a line start so
+      the guard stops depending on comment wording. Left out of that PR to avoid loosening a
+      packaging guard in the same change that needed it to pass. [P2]
 
 - [ ] **Meter picker hint invites an impossible pick when no meters are listed.** When the Homey
       Energy report exposes no id-carrying whole-home (cumulative) meter and no sensor-class device

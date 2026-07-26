@@ -187,6 +187,7 @@ Key timing:
 | Safe pace (cap vs daily budget), budget exemption | `notes/safe-pace-two-constraints.md` |
 | Daily budget logic | `docs/daily-budget.md` |
 | Flow card design | `docs/flow-cards.md` |
+| EV car ↔ charger link probe | `notes/ev-car-link/README.md` |
 | Architecture boundaries | `docs/architecture.md` |
 | Open work and known issues | `TODO.md` |
 | **UI labels, status strings, tab names** | `notes/ui-terminology.md` |

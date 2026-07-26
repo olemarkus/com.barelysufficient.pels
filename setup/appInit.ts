@@ -32,3 +32,5 @@ export {
   toPlanDevice,
 } from './appInit/toPlanDevice';
 export { toObservedStateSeed } from './appInit/seedObservedStateFromSnapshot';
+export { buildDeviceParseProviders } from './appInit/buildDeviceParseProviders';
+export { createPersistedEvCarLinkAccess } from './appInit/evCarLinkAccess';
