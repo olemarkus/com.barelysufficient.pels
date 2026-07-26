@@ -922,7 +922,7 @@ describe('DeviceTransport', () => {
             expect(setHomePowerW).toHaveBeenCalledWith(4500);
             // Gross generation from the same payload is pushed alongside net power.
             expect(setGenerationW).toHaveBeenCalledWith(1200);
-            expect(sample).toEqual({ powerW: 4500, generationW: 1200 });
+            expect(sample).toEqual({ powerW: 4500, generationW: 1200, resolvedHomeMeterDeviceId: null });
         });
 
         it('pushes null home power when no cumulative item exists', async () => {

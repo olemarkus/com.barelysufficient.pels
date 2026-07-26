@@ -98,6 +98,21 @@ export type HomeMembershipPort = {
    * membership provenance or reconstruct zone-tree readiness themselves.
    */
   isMainHomeActuationFenced(): boolean;
+  /**
+   * Which meter the whole-home sample the power tracker just ADMITTED came
+   * from, stamped with that sample's own ingest timestamp. Called by the
+   * power-sample pipeline atomically with ingest — never from a raw read — so
+   * the sampled-meter ownership fence can only ever move together with the
+   * watts it governs. `null` identity = the admitted sample's provenance is
+   * unknown; never proof of non-collision.
+   */
+  noteResolvedHomeMeter(deviceId: string | null, sampleAtMs: number): void;
+  /**
+   * Admit a Flow-card sample after it has replaced the tracker watts. This is
+   * the only safe point for a pending Homey-Energy sampled-meter fence to hand
+   * control to fresh-plan recovery after a source switch.
+   */
+  noteAdmittedFlowHomeSample(): void;
   /** Re-resolve from the cached inputs; cheap, never throws destructively. */
   recompute(): void;
 };

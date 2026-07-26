@@ -3,7 +3,6 @@ import type { Logger as PinoLogger } from '../lib/logging/logger';
 import type { ObservedStateEmitter } from '../lib/observer/observedStateEvents';
 import type { MainMeterSelection } from '../packages/contracts/src/mainMeterSelection';
 import {
-  findMainMeterCollision,
   MAIN_HOME_ID,
   type DeviceHomeAssignments,
   type DeviceHomeAssignmentsStore,
@@ -24,6 +23,10 @@ import {
   readLegacyMultiHomeEnabled,
 } from './multiHomeActivation';
 import { readMainMeterSelection } from './mainMeterSettings';
+import {
+  MainMeterAuthority,
+  type MainMeterAuthorityContext,
+} from './homeMainMeterAuthority';
 import {
   readConfiguredPowerSource,
   type ConfiguredPowerSourceRead,
@@ -60,6 +63,16 @@ export type HomeMembershipServiceDeps = {
    * model the historical Homey Energy path by default.
    */
   getConfiguredPowerSource?: () => ConfiguredPowerSourceRead;
+  /**
+   * Ingest stamp of the whole-home sample the MAIN power tracker currently
+   * serves. Consulted only until this process admits its first sample, so it
+   * answers exactly "what did the restart hand us?": the tracker reloads
+   * durable watts across a restart, but nothing reloads the meter identity that
+   * governed them, and the sampled clause must fence rather than read that gap
+   * as proof of a clean sample. Omitted by direct service tests, which model a
+   * process that has never persisted a sample.
+   */
+  getRestoredSampleAtMs?: () => number | undefined;
   /**
    * Boot-latched positive evidence from the retired pre-GA flag. Never read
    * fresh per recompute: a transient settings miss must not deactivate a
@@ -100,6 +113,17 @@ export type HomeMembershipServiceDeps = {
    * the transient fence.
    */
   onMainAuthorityUnresolved?: () => void;
+  /**
+   * Fired when the SAMPLED-meter clause stops fencing Main (blocked→ready) —
+   * usually the poll simply resolved a different `cumulative` item, with no
+   * settings event; the first admitted Flow sample after a source switch
+   * settles the same debt once it has replaced the old Homey-Energy watts.
+   * Without this the committed plan keeps whatever sheds it planned behind
+   * the closed write seam and never actuates them (stable-plan actuation does
+   * not cover sheds). See
+   * {@link MainMeterAuthorityDeps.onSampledAuthorityReopened}.
+   */
+  onMainAuthorityReopened?: () => void;
   /**
    * Fired ONCE, on the false→true `hasSeenZoneTreeCommit` edge (a committed zone
    * tree first lands). The per-home capacity bundles (R7b) gate EXECUTION on
@@ -187,13 +211,15 @@ export class HomeMembershipService implements HomeMembershipPort {
   private lastNotifiedRuntimeActive = false;
   private lastRecomputeFingerprint: string | null = null;
   private lastPlanRelevantFingerprint: string | null = null;
-  // `undefined` means no authoritative Main-meter selection has been observed;
-  // `null` is the authoritative Automatic selection. A transient unavailable
-  // read retains the last-good identity but closes every control consumer.
-  private lastResolvedMainMeterDeviceId: string | null | undefined;
-  private mainMeterUnavailableLogged = false;
-  private powerSourceUnavailableLogged = false;
-  private mainMeterCollisionLogged = false;
+
+  /**
+   * Single owner of the power-source / configured-meter / sampled-meter authority
+   * question, including its edge-trigger latches. Kept in one place because all
+   * three answers share the same two settings reads and the same collision
+   * predicate; split apart, the sampled check had to re-read what its caller had
+   * just resolved, and `readMainMeterSelection` is side-effecting.
+   */
+  private readonly meterAuthority: MainMeterAuthority;
   // Settings events close the controller authority synchronously, before the
   // serialized settings handler can run. The observed generation is committed
   // only by the owned recovery after semantic recompute + fresh plan builds;
@@ -205,7 +231,26 @@ export class HomeMembershipService implements HomeMembershipPort {
     previousCommittedGeneration: number;
   } | null = null;
 
-  constructor(private readonly deps: HomeMembershipServiceDeps) {}
+  constructor(private readonly deps: HomeMembershipServiceDeps) {
+    // Assigned here, not as a field initializer: `deps` is a constructor
+    // parameter property and is not initialized when field initializers run.
+    this.meterAuthority = new MainMeterAuthority({
+      getLogger: () => this.deps.getLogger(),
+      getMainMeterSelection: () => this.deps.getMainMeterSelection(),
+      ...(this.deps.getConfiguredPowerSource === undefined
+        ? {}
+        : { getConfiguredPowerSource: this.deps.getConfiguredPowerSource }),
+      ...(this.deps.getRestoredSampleAtMs === undefined
+        ? {}
+        : { getRestoredSampleAtMs: this.deps.getRestoredSampleAtMs }),
+      ...(this.deps.onMainAuthorityUnresolved === undefined
+        ? {}
+        : { onMainAuthorityUnresolved: this.deps.onMainAuthorityUnresolved }),
+      ...(this.deps.onMainAuthorityReopened === undefined
+        ? {}
+        : { onSampledAuthorityReopened: this.deps.onMainAuthorityReopened }),
+    });
+  }
 
   recompute(): void {
     const mainOwnershipWasReady = this.isOwnershipReady();
@@ -301,80 +346,21 @@ export class HomeMembershipService implements HomeMembershipPort {
    * device and must never enter any home's controllable set.
    */
   getConfiguredMeterSources(): ReturnType<HomeMembershipPort['getConfiguredMeterSources']> {
-    const powerSource = this.readActiveMeterPowerSource();
-    if (powerSource === 'unavailable') {
-      return {
-        state: 'unavailable',
-        deviceIds: this.getKnownConfiguredMeterDeviceIds(),
-      };
-    }
-    if (powerSource === 'flow') {
-      return { state: 'resolved', deviceIds: new Set() };
-    }
-    const mainSelection = this.readMainMeterSelection();
-    return {
-      state: mainSelection.state,
-      deviceIds: this.getKnownConfiguredMeterDeviceIds(),
-    };
+    return this.meterAuthority.getConfiguredMeterSources(this.authorityContext());
   }
 
-  private getKnownConfiguredMeterDeviceIds(): ReadonlySet<string> {
-    return new Set([
-      ...(this.lastResolvedMainMeterDeviceId === undefined
-        || this.lastResolvedMainMeterDeviceId === null
-        ? []
-        : [this.lastResolvedMainMeterDeviceId]),
-      ...(this.runtimeActive
-        ? this.subHomes.flatMap(
-          (home) => (home.meterDeviceId === null ? [] : [home.meterDeviceId]),
-        )
-        : []),
-    ]);
+  private authorityContext(): MainMeterAuthorityContext {
+    return { runtimeActive: this.runtimeActive, subHomes: this.subHomes };
   }
 
-  private readActiveMeterPowerSource(): 'homey_energy' | 'flow' | 'unavailable' {
-    const read: ConfiguredPowerSourceRead = this.deps.getConfiguredPowerSource?.()
-      ?? { state: 'resolved', value: 'homey_energy' };
-    if (read.state === 'suspect') {
-      if (!this.powerSourceUnavailableLogged) {
-        this.deps.getLogger()?.warn({
-          event: 'meter_source_power_source_unavailable',
-          detail: 'fencing control until the active power source is authoritative',
-        });
-      }
-      this.powerSourceUnavailableLogged = true;
-      this.mainMeterCollisionLogged = false;
-      this.deps.onMainAuthorityUnresolved?.();
-      return 'unavailable';
-    }
-    this.powerSourceUnavailableLogged = false;
-    if (read.value === 'flow') {
-      // The persisted meter selections are dormant while Flow supplies the
-      // whole-home sample; do not let stale/malformed meter settings fence or
-      // remove otherwise valid managed loads.
-      this.mainMeterUnavailableLogged = false;
-      this.mainMeterCollisionLogged = false;
-    }
-    return read.value;
+  /** Admitted-ingest push seam: which meter the tracker's sample came from. */
+  noteResolvedHomeMeter(deviceId: string | null, sampleAtMs: number): void {
+    this.meterAuthority.noteResolvedHomeMeter(deviceId, sampleAtMs, this.authorityContext());
   }
 
-  private readMainMeterSelection(): MainMeterSelection {
-    const selection = this.deps.getMainMeterSelection();
-    if (selection.state === 'unavailable') {
-      if (!this.mainMeterUnavailableLogged) {
-        this.deps.getLogger()?.warn({
-          event: 'main_home_meter_authority_unavailable',
-          detail: 'fencing control until the Main meter selection is authoritative',
-        });
-      }
-      this.mainMeterUnavailableLogged = true;
-      this.mainMeterCollisionLogged = false;
-      this.deps.onMainAuthorityUnresolved?.();
-      return selection;
-    }
-    this.mainMeterUnavailableLogged = false;
-    this.lastResolvedMainMeterDeviceId = selection.meterDeviceId;
-    return selection;
+  /** Admitted Flow sample: the tracker no longer serves retained meter watts. */
+  noteAdmittedFlowHomeSample(): void {
+    this.meterAuthority.noteAdmittedFlowHomeSample();
   }
 
   hasSubHomes(): boolean {
@@ -427,7 +413,7 @@ export class HomeMembershipService implements HomeMembershipPort {
       || !this.isOwnershipReady()
     ) return 'retry';
     if (!this.runtimeActive || this.subHomes.length === 0) return 'ready';
-    return this.resolveMainMeterAuthority();
+    return this.meterAuthority.resolveForCommit(this.authorityContext());
   }
 
   /**
@@ -502,38 +488,11 @@ export class HomeMembershipService implements HomeMembershipPort {
   isMainHomeActuationFenced(): boolean {
     if (this.hasPendingOwnershipGeneration()) return true;
     if (!this.isOwnershipReady()) return true;
-    if (this.resolveMainMeterAuthority() !== 'ready') return true;
+    // ONE resolution: power source, configured meter, and the sampled meter are
+    // all answered inside the authority owner, so nothing here re-reads a
+    // side-effecting settings value the line above already resolved.
+    if (this.meterAuthority.resolveForActuation(this.authorityContext()) !== 'ready') return true;
     return this.runtimeActive && this.subHomes.length > 0 && this.zoneTree === null;
-  }
-
-  /**
-   * Point-of-use ownership resolution. Reading the Main setting live makes a
-   * direct/external write close authority before its async settings handler
-   * rebuild runs. Semantic unavailability also fences: inability to prove
-   * ownership can never authorize a device command.
-   */
-  private resolveMainMeterAuthority(): OwnershipGenerationPreparationState {
-    const powerSource = this.readActiveMeterPowerSource();
-    if (powerSource === 'unavailable') return 'retry';
-    if (powerSource === 'flow') return 'ready';
-    const selection = this.readMainMeterSelection();
-    if (selection.state === 'unavailable') return 'retry';
-    if (!this.runtimeActive || this.subHomes.length === 0) {
-      this.mainMeterCollisionLogged = false;
-      return 'ready';
-    }
-    const { meterDeviceId: mainMeterDeviceId } = selection;
-    const collision = findMainMeterCollision(mainMeterDeviceId, this.subHomes);
-    if (collision !== null && !this.mainMeterCollisionLogged) {
-      this.deps.getLogger()?.warn({
-        event: 'main_home_meter_ownership_conflict',
-        meterDeviceId: mainMeterDeviceId,
-        subHomeId: collision.homeId,
-        detail: 'fencing Main actuation because one explicit meter has two owners',
-      });
-    }
-    this.mainMeterCollisionLogged = collision !== null;
-    return collision === null ? 'ready' : 'blocked';
   }
 
   /**
@@ -747,6 +706,8 @@ export const createHomeMembershipService = (params: {
   getZoneTree: () => ZoneTree | null;
   getDevices: () => readonly HomeMembershipDeviceInput[];
   getLogger: () => PinoLogger | undefined;
+  /** See {@link HomeMembershipServiceDeps.getRestoredSampleAtMs}. */
+  getRestoredSampleAtMs?: () => number | undefined;
   /** See {@link HomeMembershipServiceDeps.onMembershipChanged}. */
   onMembershipChanged?: () => void;
   /** See {@link HomeMembershipServiceDeps.onRuntimeActiveChanged}. */
@@ -755,6 +716,8 @@ export const createHomeMembershipService = (params: {
   onMainOwnershipReady?: () => void;
   /** See {@link HomeMembershipServiceDeps.onMainAuthorityUnresolved}. */
   onMainAuthorityUnresolved?: () => void;
+  /** See {@link HomeMembershipServiceDeps.onMainAuthorityReopened}. */
+  onMainAuthorityReopened?: () => void;
   /** See {@link HomeMembershipServiceDeps.onZoneTreeCommitReady}. */
   onZoneTreeCommitReady?: () => void;
 }): HomeMembershipWiring => {
@@ -766,11 +729,13 @@ export const createHomeMembershipService = (params: {
     getLogger: params.getLogger,
     getConfiguredPowerSource: () => readConfiguredPowerSource(params.homey.settings),
     getMainMeterSelection: () => readMainMeterSelection(params.homey.settings),
+    getRestoredSampleAtMs: params.getRestoredSampleAtMs,
     legacyMultiHomeEnabled: readLegacyMultiHomeEnabled(params.homey.settings),
     onMembershipChanged: params.onMembershipChanged,
     onRuntimeActiveChanged: params.onRuntimeActiveChanged,
     onMainOwnershipReady: params.onMainOwnershipReady,
     onMainAuthorityUnresolved: params.onMainAuthorityUnresolved,
+    onMainAuthorityReopened: params.onMainAuthorityReopened,
     onZoneTreeCommitReady: params.onZoneTreeCommitReady,
   });
   const recomputeContained = (

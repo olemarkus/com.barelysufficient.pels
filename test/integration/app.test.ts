@@ -1051,7 +1051,7 @@ describe('MyApp initialization', () => {
     (app as any).planEngine.state.lastRestoreMs = nowMs - 1_000;
     (app as any).planEngine.state.lastDeviceRestoreMs = { 'dev-1': nowMs - 1_000 };
 
-    await (app as any).powerSamplePipeline['runPowerSample'](5300, nowMs + 1);
+    await (app as any).powerSamplePipeline['runPowerSample']({ currentPowerW: 5300, nowMs: nowMs + 1, revision: 0 });
 
     expect(rebuildSpy).not.toHaveBeenCalled();
     rebuildSpy.mockRestore();
@@ -1098,7 +1098,7 @@ describe('MyApp initialization', () => {
     };
     (app as any).planEngine.state.wasOvershoot = true;
 
-    await (app as any).powerSamplePipeline['runPowerSample'](5300, nowMs + 1);
+    await (app as any).powerSamplePipeline['runPowerSample']({ currentPowerW: 5300, nowMs: nowMs + 1, revision: 0 });
 
     expect(rebuildSpy).toHaveBeenCalledWith('power_sample_convergence');
     rebuildSpy.mockRestore();
@@ -1133,8 +1133,8 @@ describe('MyApp initialization', () => {
     (app as any).planEngine.state.wasOvershoot = true;
 
     // ≥100 W jitter per sample — meaningful deltas that used to force a rebuild each time.
-    await (app as any).powerSamplePipeline['runPowerSample'](5300, nowMs + 1);
-    await (app as any).powerSamplePipeline['runPowerSample'](5150, nowMs + 2);
+    await (app as any).powerSamplePipeline['runPowerSample']({ currentPowerW: 5300, nowMs: nowMs + 1, revision: 0 });
+    await (app as any).powerSamplePipeline['runPowerSample']({ currentPowerW: 5150, nowMs: nowMs + 2, revision: 0 });
 
     expect(rebuildSpy).not.toHaveBeenCalled();
     rebuildSpy.mockRestore();
@@ -1188,8 +1188,8 @@ describe('MyApp initialization', () => {
     const calls: Array<{ currentPowerW: number; nowMs: number }> = [];
     const beforePerf = getPerfSnapshot();
     const runSpy = vi.spyOn((app as any).powerSamplePipeline as any, 'runPowerSample').mockImplementation(async (...args: unknown[]) => {
-      const [currentPowerW, nowMs] = args as [number, number];
-      calls.push({ currentPowerW, nowMs });
+      const [request] = args as [{ currentPowerW: number; nowMs: number }];
+      calls.push({ currentPowerW: request.currentPowerW, nowMs: request.nowMs });
       const pass = passes[calls.length - 1];
       if (!pass) throw new Error(`Unexpected power sample pass ${calls.length}`);
       await pass.promise;
@@ -1280,8 +1280,8 @@ describe('MyApp initialization', () => {
     const passes = [createDeferred(), createDeferred()];
     const calls: Array<{ currentPowerW: number; nowMs: number }> = [];
     const runSpy = vi.spyOn((app as any).powerSamplePipeline as any, 'runPowerSample').mockImplementation(async (...args: unknown[]) => {
-      const [currentPowerW, nowMs] = args as [number, number];
-      calls.push({ currentPowerW, nowMs });
+      const [request] = args as [{ currentPowerW: number; nowMs: number }];
+      calls.push({ currentPowerW: request.currentPowerW, nowMs: request.nowMs });
       const pass = passes[calls.length - 1];
       if (!pass) throw new Error(`Unexpected power sample pass ${calls.length}`);
       await pass.promise;
@@ -1317,7 +1317,7 @@ describe('MyApp initialization', () => {
 
       const afterPerf = getPerfSnapshot();
       expect(runSpy).toHaveBeenCalledTimes(1);
-      expect(runSpy).toHaveBeenCalledWith(1500, 50);
+      expect(runSpy).toHaveBeenCalledWith(expect.objectContaining({ currentPowerW: 1500, nowMs: 50 }));
       expect((afterPerf.counts.power_sample_requested_total || 0) - (beforePerf.counts.power_sample_requested_total || 0)).toBe(1);
       expect((afterPerf.counts.power_sample_rerun_requested_total || 0) - (beforePerf.counts.power_sample_rerun_requested_total || 0)).toBe(0);
       expect((afterPerf.counts.power_sample_rerun_coalesced_total || 0) - (beforePerf.counts.power_sample_rerun_coalesced_total || 0)).toBe(0);
@@ -1339,8 +1339,8 @@ describe('MyApp initialization', () => {
         });
     };
     const runSpy = vi.spyOn((app as any).powerSamplePipeline as any, 'runPowerSample').mockImplementation(async (...args: unknown[]) => {
-      const [currentPowerW, nowMs] = args as [number, number];
-      calls.push({ currentPowerW, nowMs });
+      const [request] = args as [{ currentPowerW: number; nowMs: number }];
+      calls.push({ currentPowerW: request.currentPowerW, nowMs: request.nowMs });
       if (calls.length === 1) {
         scheduleTrailingRequest();
       }

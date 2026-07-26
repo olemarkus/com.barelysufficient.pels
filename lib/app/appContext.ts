@@ -62,6 +62,17 @@ export type FlowBackedCapabilityReportOutcome = {
   rebuildPlan: boolean;
 };
 
+/**
+ * Per-request result from the coalesced whole-home sample loop.
+ *
+ * `admitted` means this request is still the latest sample recorded when the
+ * shared loop settles. `superseded` means a newer request won; callers must
+ * not publish source-specific authority or freshness for the older request.
+ */
+export type PowerSampleAdmission =
+  | { state: 'admitted'; revision: number }
+  | { state: 'superseded'; revision: number; latestRevision: number };
+
 export type StartupBootstrapConfig = {
   snapshotPlanBootstrapDelayMs?: number;
   overheadTokenDelayMs?: number;
@@ -91,7 +102,7 @@ export type AppContext = {
   updateOverheadToken: (value?: number) => Promise<void>;
   registerFlowCards: () => void;
   refreshTargetDevicesSnapshot: (options?: RefreshTargetDevicesSnapshotOptions) => Promise<void>;
-  recordPowerSample: (powerW: number, nowMs?: number) => Promise<void>;
+  recordPowerSample: (powerW: number, nowMs?: number) => Promise<PowerSampleAdmission>;
   startHeartbeat: () => void;
   handleOperatingModeChange: (rawMode: string) => Promise<void>;
   getFlowSnapshot: () => Promise<TargetDeviceSnapshot[]>;

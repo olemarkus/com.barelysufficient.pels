@@ -271,6 +271,38 @@ What remains open is below.*
       countdown the native-charger fix removed; hypothesis: the freeze class is configuration-shaped,
       not device-shaped, and the flow-backed arm is untested in prod. Source: pels-runtime-reality
       review of the deadlock fix, 2026-07-27. [P2]
+- [ ] **A fenced Main home stops protecting its physical hard cap, and the UI can only warn that it
+      MIGHT be happening, not that it IS.**
+      *Persona:* multi-meter owner on the DEFAULT Automatic whole-home meter whose area meter happens
+      to sort first among the Homey Energy `cumulative` items. *Hypothesis:* the Main actuation fence
+      refuses ALL commands including sheds (`setup/appInit/createPlanEngine.ts:30-33`), so a proven
+      sampled-meter collision suspends hard-cap protection. The hard cap is the hourly grid tariff
+      step (effekttrinn), and not a tuning knob. It is not breaker protection and cannot be: an
+      hourly average says nothing about the peak inside the hour, so the copy this entry directs
+      must never promise it (`notes/ui-terminology.md`, "Hard cap is an hourly ceiling").
+      That trade-off is deliberate (the reading really is unattributable). `HOMES_MAIN_METER_NOTICE`
+      now names BOTH consequences, including that PELS may have stopped limiting Main entirely, so
+      the notice is no longer wrong — but `HomeMembershipService.getDiagnostics()` still does not
+      expose the fence, so `ui_homes` cannot tell the user WHICH of the two states they are in, and
+      an owner who is currently unprotected reads the same sentence as one who is merely
+      over-limited. Expose the fence state in diagnostics and render state-specific copy. Note PR 4
+      (require an explicit Main meter) removes the reachable configuration, so this may reduce to a
+      transitional state.
+      Source: pels-runtime-reality review of the multi-home finishing train PR 2.
+
+- [ ] **An id-less whole-home aggregate can be an area's meter, and the signal that detects it is discarded.**
+      *Persona:* owner whose ONLY device marked "tracks total home energy consumption" is the annex
+      meter. *Hypothesis:* Homey then emits an aggregate `cumulative` item with no id whose value is
+      that meter alone (`lib/device/managerEnergy.ts` already documents id-less aggregates), so Main
+      plans against the annex's physical sample while the annex bundle plans the same sample over a
+      disjoint device set — the `notes/multi-home-model.md` violation — with `sampledDeviceId === null`
+      and therefore no fence. `cumulativeItemCount` is already computed and logged but never consumed;
+      `cumulativeItemCount >= 1 && sampledDeviceId === null && areas have meters` is a usable detector
+      and should at least warn. Related: the fence's stated harm is "one sample driving two
+      controllers" but its trigger is an id match, so it fences areas that are not actuating while not
+      fencing equally unattributable readings. Pick one framing and make code and docs agree.
+      Source: pels-runtime-reality review of the multi-home finishing train PR 2.
+
 - [ ] **A setpoint-shed temperature device with no mode target stays stranded at its shed setpoint.**
       *Persona:* any owner who never opened the Modes screen and has a managed radiator or panel heater
       (Main home or a meter area). *Hypothesis:* PELS auto-assigns the `set_temperature` shed behaviour

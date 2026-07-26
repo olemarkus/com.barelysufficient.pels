@@ -401,13 +401,15 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
       this.homey,
       (message, error) => this.error(message, error),
     ),
-    recordPowerSample: async (sample) => this.powerSamplePipeline.recordPowerSample(sample.powerW, undefined, sample),
+    // eslint-disable-next-line max-len -- preserve this near-limit entrypoint while explicitly discarding admission
+    recordPowerSample: (sample) => this.powerSamplePipeline.recordPowerSample(sample.powerW, undefined, sample).then(() => undefined),
   });
   public readonly homeyEnergyHelpers = new HomeyEnergyPollSource({
     getPowerSource: () => this.getPowerSource(),
     timers: this.timers,
     pollHomePower: async (authorizeFanOut) => (await this.deviceManager?.pollHomePowerW(authorizeFanOut)) ?? null,
-    recordPowerSample: async (sample) => this.powerSamplePipeline.recordPowerSample(sample.powerW, undefined, sample),
+    // eslint-disable-next-line max-len -- preserve this near-limit entrypoint while explicitly discarding admission
+    recordPowerSample: (sample) => this.powerSamplePipeline.recordPowerSample(sample.powerW, undefined, sample).then(() => undefined),
     debugStructured: this.getStructuredDebugEmitter('devices', 'devices'),
     error: (...args) => this.error(...args),
   });
@@ -557,7 +559,7 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
     this.backgroundTasks.startWeatherCollector(this.weatherCollector);
   }
 
-  public recordPowerSample(powerW: number, nowMs?: number): Promise<void> {
+  public recordPowerSample(powerW: number, nowMs?: number): ReturnType<AppContext['recordPowerSample']> {
     return this.powerSamplePipeline.recordPowerSample(powerW, nowMs);
   }
 
