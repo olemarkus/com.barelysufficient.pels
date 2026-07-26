@@ -1398,11 +1398,11 @@ program) remain deferred.*
       compatibility-read policy). Source: tracker-contract review of PR #1872, 2026-07-23.
 
 - [ ] **Limits & safety: converge the Main-home form onto the native `.pels-input` field language (U-track).**
-      *Persona:* multi-home owner who switches the per-home Limits switcher between the Main home and a meter
+      *Persona:* multi-home owner who switches the shell's home scope bar between the Main home and a meter
       area. *Hypothesis:* U3 added the per-home editor using native `.pels-input` + unit-in-label ("Hard cap
       (kW)"), which follows the canonical form-styling + ui-terminology rules and matches the U1 homes editor;
       the legacy Main-home static form (`#settings-limits-form`) still uses `md-filled-text-field` with an
-      in-field `suffix-text="kW"`, so flipping the switcher morphs the identical two inputs (filled↔outlined,
+      in-field `suffix-text="kW"`, so flipping the scope morphs the identical two inputs (filled↔outlined,
       unit relocates). Kept out of U3 to preserve byte-identical Main behavior. Migrate the Main form to the
       native primitive (the design-system-unification direction) so both scopes read as one control. Source:
       pels-m3-critic review of the U3 per-home Limits surface, 2026-07-20.
@@ -2404,6 +2404,89 @@ dropped (ExecutablePlan has no objectives consumer — see carve-out note step 5
 *Entry bar: each item states a **hypothesis**, **why it's needed**, and the **persona**
 (`notes/personas.md`) it serves. Items that can't name all three are maintainability/
 cosmetic chores — do them in passing or drop them; don't park them here.*
+
+- [ ] **`--pels-md-secondary-container` maps to an untinted grey, so every Material component that
+      signals selection through it signals nothing.** *Persona:* anyone reading a Material selection
+      state anywhere in the settings UI. *Hypothesis:* `packages/settings-ui/public/style.css` maps
+      `--pels-md-secondary-container: var(--color-surface-3)`, a plain grey one tier BELOW the
+      surface-4 containers these components sit in, so a selected row renders as a dent rather than a
+      highlight — measured at 1.10:1 against its own menu container, and inverted. The home scope menu
+      works around it locally with `--md-menu-item-selected-container-color`, but every other
+      `secondary-container` consumer (chips, segmented buttons, any future menu) still resolves to the
+      dead grey. *Why it's needed:* selection state is the entire information content of a picker;
+      one token fix repairs all of them at once, and the local override should then be removed.
+      Source: pels-m3-critic review of the multi-home selector-shell PR, 2026-07-27.
+
+- [ ] **"Main home" appears three times in the top 150 px once areas exist.** *Persona:* multi-home
+      owner opening Limits & safety in Main scope with simulation on. *Hypothesis:* the simulation
+      banner ("Main home simulation on — Main home devices stay as-is"), its action ("Turn off Main
+      simulation") and the scope bar ("Showing Main home") stack, so the most repeated words on screen
+      carry the least information. *Why it's needed:* with the scope bar now naming the home
+      structurally, the banner could drop its own scoping prefix and read as the global alert it is.
+      Touching `resolveDryRunBannerContent` is 8b's banner contract, so it belongs there, not here.
+      Source: pels-copy-and-terminology review, 2026-07-26.
+
+- [ ] **The home scope control and the Limits pickers below it are three different Material
+      species on one screen.** *Persona:* multi-home owner on Limits & safety with an area selected.
+      *Hypothesis:* the scope bar is an `md-filled-tonal-button` opening an `md-menu`, `Power source`
+      is an `md-filled-select`, and the per-area editor uses native `.pels-input`. Each is defensible
+      alone (chrome / form field / native-primitive rule), but they stack within one scroll. *Why
+      it's needed:* the app should be able to state which picker species means what, or converge
+      them; the existing entry on migrating the Main form to the native primitive is one half of
+      that answer. Source: pels-m3-critic review, 2026-07-27.
+
+- [ ] **`.pels-select` hardcodes `min-height: 48px` where `--pels-touch-target-min` exists.**
+      *Persona:* maintainer changing the app's touch-target floor. *Hypothesis:* the shared select
+      primitive states the 48 px literal while every sibling primitive (`.tab`, `.pels-icon-toggle`,
+      `.smart-task-edit__time-input`) resolves the token, so a future change to the floor would miss
+      every native select. *Why it's needed:* one edit should move every touch target. Pre-existing,
+      surfaced by the scope bar adopting the primitive. Source: pels-m3-critic review, 2026-07-26.
+
+- [ ] **Main and meter-area limits speak two field languages on one page.** *Persona:* multi-home
+      owner switching the scope bar between Main home and an area. *Hypothesis:* Main renders
+      `md-filled-text-field` with label `Hard cap` and an in-field `suffix-text="kW"`; the area editor
+      renders native `.pels-input` with `Hard cap (kW)`. Flipping the scope morphs the identical two
+      inputs. *Why it's needed:* now that one bar switches between them in place, the mismatch is a
+      visible transition rather than two separate screens. Duplicate of the existing P2 entry on
+      converging the Main form onto the native primitive — do them together.
+      Source: pels-m3-critic review, 2026-07-26.
+
+- [ ] **`Status now` reflects the unsaved cap.** *Persona:* multi-home owner typing a new hard cap for
+      an area. *Hypothesis:* `buildAreaEditorView` resolves the status against the LIVE edited
+      `hardCapKw` so the card tracks the input without a re-read, which means the `Hard cap` figure on
+      a card titled "now" can show a value that is not persisted and may never be. *Why it's needed:*
+      either the card should label the pending value as pending, or the status figure should track the
+      persisted cap while the reaction readout keeps tracking the input.
+      Source: pels-m3-critic review, 2026-07-26.
+
+- [ ] **The smart-task plan-detail deep link bypasses the shell's panel-shown event, so the home
+      scope bar cannot hide behind it.** *Persona:* multi-home owner who taps a smart-task chip on the
+      Overview device cards once Overview honours the home scope. *Hypothesis:* `showDeadlinePlanPanel`
+      (`packages/settings-ui/src/ui/deadlinePlanRouter.ts`) deliberately uses `setActiveTabIndicator`
+      instead of `showTab`, so it hides every `[data-panel]` and shows `#deadline-plan-panel` WITHOUT
+      dispatching `pels:tab-shown`. Neither `state.activePanel` nor `renderScopeBar()` runs, so the scope
+      bar keeps whatever visibility the previous panel gave it. Inert today (`SCOPE_AWARE_PANELS` in
+      `homeScope.ts` holds only `limits`, which has no deadline-plan anchor), but the moment `overview`
+      joins that set, a plan-detail deep link will leave a `Showing …` bar above a surface that does not
+      honour it — the exact honesty rule the module documents. *Why it's needed:* the fix belongs to the PR
+      that adds `overview` to `SCOPE_AWARE_PANELS`, which must either set `state.activePanel` and dispatch
+      `pels:tab-shown` from `showDeadlinePlanPanel`, or expose a scope-bar hide hook the router can call.
+      Source: adversarial review of the multi-home selector-shell PR, 2026-07-26.
+
+- [ ] **The Multiple-meters panel takes the whole `ui_homes` payload on trust, so the write lockout it
+      derives can fail open.** *Persona:* multi-home owner editing meter areas while the runtime cannot
+      vouch for the persisted config. *Hypothesis:* `homesSettings.ts:294` casts the untrusted response
+      straight to `SettingsUiHomesPayload` (`await callApi<SettingsUiHomesPayload>(...)`) with no shape
+      guard, and `isConfigDegraded()` at `:113` then reads it as `latestPayload?.configDegraded === true`.
+      An absent or non-boolean flag therefore resolves to "not degraded" and unlocks the save paths at
+      `:476` and `:531` — the whole-value `homes_config` write that `packages/contracts/src/settingsUiHomes.ts`
+      warns "could erase persisted areas". The server-side seam refuses independently on the same predicate
+      (`setup/settingsUiHomesApi.ts:174`), so this is a UI-honesty and defence-in-depth gap rather than a
+      live data-loss path, and no in-repo producer can currently emit a non-boolean flag. *Why it's needed:*
+      `homeScope.ts` now resolves the same endpoint into a typed `RosterRead` (`resolved | unavailable`) and
+      never touches a raw payload; this consumer should share that resolver instead of keeping a second,
+      weaker reading of the same bytes. Source: adversarial review of the multi-home selector-shell PR,
+      2026-07-27.
 
 - [ ] **Share the bounded exponential-retry delay calculation.** `homeyEnergyPoll.ts`,
       `flowPowerSampleFreshnessClock.ts`, and `homeRuntimeRegistry.ts` each implement the same

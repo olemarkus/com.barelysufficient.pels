@@ -1,9 +1,11 @@
 /**
  * User-facing copy for the per-home "Limits & safety" surface (multi-home U3).
  *
- * Vocabulary (notes/ui-terminology.md): the home switcher picks the **Main
- * home** or a configured **meter area**; the ceiling is the **Hard cap**, the
- * buffer below it the **Safety margin**. The dry-run setting is surfaced as a
+ * Vocabulary (notes/ui-terminology.md): the shell's global scope bar picks the
+ * **Main home** or a configured **meter area** (its copy lives in
+ * `homeScopeCopy.ts`); this surface edits whichever is selected. The ceiling is
+ * the **Hard cap**, the buffer below it the **Safety margin**. The dry-run
+ * setting is surfaced as a
  * POSITIVE **"Control devices in this area"** toggle (ON = PELS limits this
  * area, OFF = it only simulates) — never the internal "dry-run" jargon, and
  * never the old OFF-to-activate double-negative. A current config reads
@@ -17,20 +19,39 @@
  * Import this module directly — there is no shared-domain barrel.
  */
 
-import { HOMES_MAIN_HOME_NAME, resolveHomeAreaDisplayName } from './homesManagementCopy';
-
-// ── Home switcher ────────────────────────────────────────────────────────────
-
-/** Native-select label above the switcher: "Set limits for [Main home ▾]". */
-export const HOME_LIMITS_SWITCHER_LABEL = 'Set limits for';
-/** The implicit-complement option, taken from the canonical Multiple-meters name. */
-export const HOME_LIMITS_MAIN_HOME_OPTION = HOMES_MAIN_HOME_NAME;
+import { resolveHomeAreaDisplayName } from './homesManagementCopy';
 
 // ── Cap + margin fields (units in the label per the style rules) ─────────────
 
 export const HOME_LIMITS_HARD_CAP_LABEL = 'Hard cap (kW)';
 export const HOME_LIMITS_HARD_CAP_HINT = 'This meter area’s grid tariff step (effekttrinn) — '
   + 'PELS keeps each hour’s average power under this.';
+
+// The Main-home form's own hard-cap hint, which the static markup ships and
+// this module re-owns once meter areas exist. "Your grid tariff step" is true
+// for a single-meter home and misleading the moment the house is split: the
+// Main home is then one home among several, and a whole-house number typed into
+// a subpart's cap is exactly the mistake the scope bar exists to prevent. The
+// area branch names its scope three times; the Main branch must name it once.
+export const HOME_LIMITS_MAIN_HARD_CAP_HINT = 'Your grid tariff step (effekttrinn) — '
+  + 'PELS keeps each hour’s average power under this.';
+export const HOME_LIMITS_MAIN_HARD_CAP_HINT_WITH_AREAS = 'The Main home’s grid tariff step '
+  + '(effekttrinn) — PELS keeps each hour’s average power under this.';
+
+/**
+ * Shown in place of the Power source / Whole-home meter card while a meter area
+ * is the selected scope. Neither belongs under an area's scope claim, and
+ * neither may simply vanish with no account of where it went.
+ *
+ * The two are deliberately described SEPARATELY. Power source really is
+ * app-wide. The whole-home meter is not: it is the Main home's own meter, and
+ * calling it "for the whole home" invites picking an aggregate that also counts
+ * the meter areas — which would make Main-home devices react to usage that
+ * isn't theirs.
+ */
+export const HOME_LIMITS_GLOBAL_SETTINGS_ELSEWHERE = 'Power source is set once for all of PELS, '
+  + 'and the whole-home meter is the Main home’s own meter. '
+  + 'Switch to Main home to change either.';
 export const HOME_LIMITS_MARGIN_LABEL = 'Safety margin (kW)';
 // Save-time validation copy. Byte-aligned with the Main-home form's messages
 // (`capacity.ts`); duplicated deliberately — importing shared-domain into the

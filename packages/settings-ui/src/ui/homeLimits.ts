@@ -3,21 +3,17 @@ import {
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   homeScopedSettingsKey,
-  HOMES_CONFIG,
   MAIN_HOME_ID,
   PELS_STATUS,
 } from '../../../contracts/src/settingsKeys.ts';
-import {
-  SETTINGS_UI_HOMES_PATH,
-  type SettingsUiHomesPayload,
-} from '../../../contracts/src/settingsUiHomes.ts';
 import {
   HOME_LIMITS_CONTROL_FAILED_TOAST,
   HOME_LIMITS_CONTROL_SAVED_TOAST,
   HOME_LIMITS_HARD_CAP_MAX,
   HOME_LIMITS_HARD_CAP_POSITIVE,
   HOME_LIMITS_LOAD_FAILED_TOAST,
-  HOME_LIMITS_MAIN_HOME_OPTION,
+  HOME_LIMITS_MAIN_HARD_CAP_HINT,
+  HOME_LIMITS_MAIN_HARD_CAP_HINT_WITH_AREAS,
   HOME_LIMITS_MARGIN_NEGATIVE,
   HOME_LIMITS_MARGIN_TOO_HIGH,
   HOME_LIMITS_SAVE_FAILED_TOAST,
@@ -28,20 +24,21 @@ import {
   formatHomeLimitsKw,
   resolveHomeLimitsStatus,
 } from '../../../shared-domain/src/homeLimitsStatus.ts';
-import { resolveHomeAreaDisplayName } from '../../../shared-domain/src/homesManagementCopy.ts';
-import { callApi, getSettingFresh, setSetting } from './homey.ts';
+import { getHomeScope, refreshHomeScope, subscribeToHomeScope } from './homeScope.ts';
+import { getSettingFresh, setSetting } from './homey.ts';
 import { logSettingsError } from './logging.ts';
 import { showToast, showToastError } from './toast.ts';
 import { state } from './state.ts';
 import {
   renderHomeLimitsSection,
   type HomeLimitsEditorView,
-  type HomeLimitsHomeOption,
 } from './views/HomeLimitsSection.tsx';
 
 // Module-state controller for the per-home slice of the Limits & safety panel
-// (multi-home U3). Owns the home switcher, the selected meter area's scalar
-// editor (hard cap / safety margin / simulation), and its live status card.
+// (multi-home U3). Owns the selected meter area's scalar editor (hard cap /
+// safety margin / simulation) and its live status card. It does NOT own the
+// home selection: the shell's global scope bar (`homeScope.ts`) does, and this
+// controller subscribes to it.
 //
 // Write path: per-home capacity scalars are NOT the wipe-sensitive whole-value
 // class, so the UI writes the suffixed keys directly (plain `setSetting` of
@@ -59,8 +56,8 @@ const DEFAULT_DRY_RUN = true;
 
 const STATIC_LIMITS_FORM_ID = 'settings-limits-form';
 const HOME_LIMITS_MOUNT_ID = 'home-limits-mount';
-
-type MeterArea = { homeId: string; name: string };
+const GLOBAL_LIMITS_SETTINGS_ID = 'settings-limits-global';
+const MAIN_HARD_CAP_HINT_ID = 'settings-capacity-limit-hint';
 
 type AreaCapsWriteQueue = {
   persistedLimitKw: number;
@@ -84,11 +81,6 @@ type AreaEditorState = {
   statusLoaded: boolean;
 };
 
-let meterAreas: MeterArea[] = [];
-// Producer-resolved for the whole saved homes config. False is not simulation:
-// it is a held legacy config whose devices still belong to Main home.
-let homesRuntimeActive = false;
-let selectedHomeId: string = MAIN_HOME_ID;
 let areaEditor: AreaEditorState | null = null;
 // Write ordering belongs to the meter area, not a rendered editor object. A
 // realtime reload or quick area switch can replace the editor while callbacks
@@ -157,26 +149,42 @@ const setStaticFormHidden = (hidden: boolean): void => {
   if (form) form.hidden = hidden;
 };
 
-// Persisted area names are untrusted (a blank one is reachable), so the label
-// goes through the same one-rule resolver every other area-name surface uses —
-// an unnamed area is `Meter area` in this switcher, not an empty option.
-const buildHomeOptions = (): HomeLimitsHomeOption[] => [
-  { homeId: MAIN_HOME_ID, label: HOME_LIMITS_MAIN_HOME_OPTION },
-  ...meterAreas.map((area) => ({
-    homeId: area.homeId,
-    label: resolveHomeAreaDisplayName(area.name),
-  })),
-];
+/**
+ * Power source and the whole-home meter are app-global settings — neither is
+ * home-scoped — so they must not sit under a bar claiming a meter area. They
+ * live in their own card outside the Main-home cap form: visible in Main scope,
+ * and in area scope replaced by a line saying where they live, rather than
+ * silently vanishing.
+ */
+const setGlobalSettingsScope = (onMeterArea: boolean): void => {
+  const card = document.getElementById(GLOBAL_LIMITS_SETTINGS_ID);
+  if (card) card.hidden = onMeterArea;
+};
+
+/**
+ * Once a meter area exists, "Your grid tariff step" no longer means the whole
+ * house — the Main-home form is one home among several. Name it, so the Main
+ * branch is as explicit about its scope as the area branch already is.
+ */
+const setMainHardCapHint = (areasExist: boolean): void => {
+  const hint = document.getElementById(MAIN_HARD_CAP_HINT_ID);
+  if (hint) {
+    hint.textContent = areasExist
+      ? HOME_LIMITS_MAIN_HARD_CAP_HINT_WITH_AREAS
+      : HOME_LIMITS_MAIN_HARD_CAP_HINT;
+  }
+};
 
 const buildAreaEditorView = (editor: AreaEditorState): HomeLimitsEditorView => {
   const hardCapKw = parseFiniteOrNull(editor.hardCapValue);
   const marginKw = parseFiniteOrNull(editor.marginValue);
+  const { runtimeActive } = getHomeScope();
   return {
     areaName: editor.areaName,
     hardCapValue: editor.hardCapValue,
     marginValue: editor.marginValue,
     dryRun: editor.dryRun,
-    runtimeActive: homesRuntimeActive,
+    runtimeActive,
     controlBusy: editor.dryRunWriteInFlight,
     marginError: marginVsCapError(hardCapKw, marginKw),
     reactionKw: reactionKwLabel(hardCapKw, marginKw),
@@ -185,7 +193,7 @@ const buildAreaEditorView = (editor: AreaEditorState): HomeLimitsEditorView => {
     // config is forced non-active even if its pre-GA dry-run value was false.
     status: editor.statusLoaded
       ? resolveHomeLimitsStatus(editor.statusRaw, {
-        dryRun: !homesRuntimeActive || editor.dryRun,
+        dryRun: !runtimeActive || editor.dryRun,
         hardCapKw,
       })
       : null,
@@ -200,26 +208,21 @@ const buildAreaEditorView = (editor: AreaEditorState): HomeLimitsEditorView => {
 const renderSection = (): void => {
   const mount = document.getElementById(HOME_LIMITS_MOUNT_ID);
   if (!mount) return;
-  // The switcher appears once at least one meter area exists; with none, the
-  // panel stays pixel-identical to a single-meter home (just Main's form).
-  const visible = meterAreas.length > 0;
-  // The mount ships `hidden` (display:none) so an empty node never occupies a
-  // grid track in the panel — with 0 meter areas the panel stays pixel-identical
-  // to origin/main (no stray gap between the app bar and the Main form). Only a
-  // real meter area un-hides it.
-  mount.hidden = !visible;
-  const onMeterArea = visible && selectedHomeId !== MAIN_HOME_ID;
+  const { selectedHomeId, areas } = getHomeScope();
+  const onMeterArea = selectedHomeId !== MAIN_HOME_ID;
+  setGlobalSettingsScope(onMeterArea);
+  setMainHardCapHint(areas.length > 0);
   // The static Main-home form shows for a single-home user, or when Main is the
-  // selected home. A meter area hides it as soon as it is selected (before its
+  // selected scope. A meter area hides it as soon as it is selected (before its
   // scalars finish loading) so the Main form never flashes mid-switch.
   setStaticFormHidden(onMeterArea);
-  renderHomeLimitsSection(mount, {
-    visible,
-    homeOptions: buildHomeOptions(),
-    selectedHomeId,
-    onSelectHome: handleSelectHome,
-    editor: onMeterArea && areaEditor !== null ? buildAreaEditorView(areaEditor) : null,
-  });
+  const editor = onMeterArea && areaEditor !== null ? buildAreaEditorView(areaEditor) : null;
+  // The mount ships `hidden` (display:none) so an empty node never occupies a
+  // grid track in the panel — with 0 meter areas the panel stays pixel-identical
+  // to a single-meter install (no stray gap between the app bar and the Main
+  // form). Only a rendered meter-area editor un-hides it.
+  mount.hidden = editor === null;
+  renderHomeLimitsSection(mount, { editor });
 };
 
 const loadAreaIntoEditor = async (homeId: string, areaName: string): Promise<void> => {
@@ -231,7 +234,7 @@ const loadAreaIntoEditor = async (homeId: string, areaName: string): Promise<voi
   ]);
   // A meter area that vanished mid-load (removed elsewhere) must not resurrect
   // its editor over a now-different selection.
-  if (selectedHomeId !== homeId) return;
+  if (getHomeScope().selectedHomeId !== homeId) return;
   const limitKw = typeof limitRaw === 'number' && Number.isFinite(limitRaw)
     ? limitRaw
     : DEFAULT_LIMIT_KW;
@@ -265,25 +268,36 @@ const reloadAreaStatus = async (): Promise<void> => {
   renderSection();
 };
 
-const handleSelectHome = (homeId: string): void => {
-  selectedHomeId = homeId;
-  if (homeId === MAIN_HOME_ID) {
-    areaEditor = null;
-    renderSection();
-    return;
-  }
-  const area = meterAreas.find((entry) => entry.homeId === homeId);
+/**
+ * Bring the editor in line with the shell's selected home scope. The Main home
+ * (or a scope whose area is gone) clears the editor and restores the static
+ * form; a meter area loads its suffixed scalars. Idempotent by default so a
+ * repeat notification for an already-open area does not re-read it — `force`
+ * is for a panel activation, where a fresh read is the point.
+ */
+const syncEditorToScope = async (options: { force?: boolean } = {}): Promise<void> => {
+  const { selectedHomeId, areas } = getHomeScope();
+  const area = areas.find((entry) => entry.homeId === selectedHomeId);
   if (area === undefined) {
-    selectedHomeId = MAIN_HOME_ID;
     areaEditor = null;
     renderSection();
     return;
   }
-  // Editor null during the fresh read (switcher-only) so stale values never
-  // flash; the load resolves it in place.
+  if (options.force !== true && areaEditor?.homeId === area.homeId) {
+    // The area is already open, so its suffixed scalars need no re-read — but
+    // the name is the one editor field sourced from the roster, and this branch
+    // is reached precisely when the roster changed. A rename must reach the
+    // simulation notice, or it would keep naming the old area while the scope
+    // bar above already shows the new one.
+    areaEditor.areaName = area.name;
+    renderSection();
+    return;
+  }
+  // Editor null during the fresh read so stale values never flash; the load
+  // resolves it in place.
   areaEditor = null;
   renderSection();
-  surfaceHomeLimitsLoadError(loadAreaIntoEditor(homeId, area.name), 'Failed to load meter-area limits');
+  await loadAreaIntoEditor(area.homeId, area.name);
 };
 
 const handleHardCapInput = (value: string): void => {
@@ -403,7 +417,7 @@ const saveAreaControl = async (controlEnabled: boolean): Promise<void> => {
   // A legacy-held homes config is activated only by the deliberate
   // Multiple-meters save path. Never let this scalar toggle claim success
   // while runtime still assigns every device to Main home.
-  if (!homesRuntimeActive) return;
+  if (!getHomeScope().runtimeActive) return;
   const editor = areaEditor;
   if (editor.dryRunWriteInFlight) return;
   const nextDryRun = !controlEnabled;
@@ -431,60 +445,32 @@ const saveAreaControl = async (controlEnabled: boolean): Promise<void> => {
   await showToast(HOME_LIMITS_CONTROL_SAVED_TOAST, 'ok');
 };
 
-const fetchMeterAreas = async (): Promise<void> => {
-  try {
-    const payload = await callApi<SettingsUiHomesPayload>('GET', SETTINGS_UI_HOMES_PATH);
-    // Only an authoritative (successful) response reshapes the roster — an empty
-    // `homes` here is a real "no meter areas" state and correctly clears it.
-    meterAreas = payload.homes.map((home) => ({ homeId: home.homeId, name: home.name }));
-    homesRuntimeActive = payload.runtimeActive;
-  } catch (caught) {
-    // Abandon-grace (mirrors homesSettings' pickers): a transient read failure
-    // KEEPS the last-good roster + selection rather than blanking the whole
-    // per-home surface. Blanking on a momentary SDK/network miss would collapse
-    // the switcher to Main-only and drop the user's selected area mid-session.
-    await logSettingsError('Failed to load meter areas for the limits switcher', caught, 'homeLimits');
-  }
-};
-
 /**
  * Limits-panel activation hook (realtime `showTab('limits')`, alongside the
- * Main-home `loadCapacitySettings`). Refetches the meter-area list so the
- * switcher never sits on a stale roster, reconciles the selection, and re-reads
- * the selected area's scalars + status.
+ * Main-home `loadCapacitySettings`). Refreshes the shell's meter-area roster so
+ * the scope bar never sits on a stale list, then re-reads the selected area's
+ * scalars + status.
  */
 export const refreshHomeLimitsOnLimitsPanel = async (): Promise<void> => {
-  await fetchMeterAreas();
-  // Reconcile a selection whose area was removed since the last visit.
-  if (selectedHomeId !== MAIN_HOME_ID && !meterAreas.some((area) => area.homeId === selectedHomeId)) {
-    selectedHomeId = MAIN_HOME_ID;
-    areaEditor = null;
-  }
+  // The scope may have changed while this panel was hidden, when its
+  // subscriber deliberately does no work. Clear the writable editor before
+  // the roster await so stale suffixed controls never sit under a new chip.
+  areaEditor = null;
   renderSection();
-  if (selectedHomeId !== MAIN_HOME_ID) {
-    const area = meterAreas.find((entry) => entry.homeId === selectedHomeId);
-    if (area !== undefined) await loadAreaIntoEditor(area.homeId, area.name);
-  }
+  await refreshHomeScope();
+  await syncEditorToScope({ force: true });
 };
 
 /**
  * Realtime `settings.set` hook: keep the open card live when the selected meter
  * area's status or scalars change externally (a second WebView, or the runtime
  * writing a fresh `pels_status:<id>`). No-op unless the limits panel is showing
- * a meter area.
+ * a meter area. The roster blob (`homes_config`) is the scope owner's business,
+ * not this controller's — `homeScope` refetches it and notifies subscribers.
  */
 export const notifyHomeLimitsSettingChanged = (key: string): void => {
   if (state.activePanel !== 'limits') return;
-  // A roster change (an area added/removed via the Multiple-meters panel or a
-  // second WebView) rewrites `homes_config`. Re-fetch the full switcher roster
-  // and reconcile the selection — even from the Main home, where the local guard
-  // below would otherwise ignore it. `device_home_assignments` (device→home
-  // membership) does NOT alter the area roster, so it is intentionally excluded;
-  // its effect on a selected area surfaces through `pels_status:<id>` instead.
-  if (key === HOMES_CONFIG) {
-    surfaceHomeLimitsLoadError(refreshHomeLimitsOnLimitsPanel(), 'Failed to refresh the limits switcher roster');
-    return;
-  }
+  const { selectedHomeId } = getHomeScope();
   if (selectedHomeId === MAIN_HOME_ID || areaEditor === null) return;
   if (key === homeScopedSettingsKey(PELS_STATUS, selectedHomeId)) {
     void reloadAreaStatus();
@@ -499,3 +485,13 @@ export const notifyHomeLimitsSettingChanged = (key: string): void => {
     );
   }
 };
+
+// Follow the shell's scope. Registered at import time (this module is imported
+// by the settings-change router and the tab navigator, both boot-time) so a
+// scope pick made from the global bar reaches the open panel with no extra
+// wiring. Off-panel notifications are ignored — the panel's own activation hook
+// resyncs on the next open.
+subscribeToHomeScope(() => {
+  if (state.activePanel !== 'limits') return;
+  surfaceHomeLimitsLoadError(syncEditorToScope(), 'Failed to load meter-area limits');
+});

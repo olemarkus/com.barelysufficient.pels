@@ -28,6 +28,7 @@ import {
 } from '../../../contracts/src/settingsKeys.ts';
 import { loadAdvancedSettings, loadCapacitySettings } from './capacity.ts';
 import { notifyHomeLimitsSettingChanged } from './homeLimits.ts';
+import { notifyHomeScopeSettingChanged } from './homeScope.ts';
 import { invalidateApiCache, invalidateSettingCache } from './homey.ts';
 import { refreshActiveMode } from './modes.ts';
 import { reloadPriceConfigSettings } from './priceConfig.ts';
@@ -207,8 +208,11 @@ export const createSettingsSetHandler = () => (key: string) => {
   if (CAPACITY_SETTINGS_KEYS.has(key)) {
     runLoggedTask(loadCapacitySettings(), 'Failed to load capacity settings', 'settings.set');
   }
-  // Keep an open meter-area Limits card live on external status/scalar changes
-  // (suffixed keys the CAPACITY_SETTINGS_KEYS set intentionally excludes).
+  // An area added/removed elsewhere rewrites `homes_config`: refresh the shell's
+  // scope roster first (it owns the selection), then let the open meter-area
+  // Limits card react to external status/scalar changes on the suffixed keys the
+  // CAPACITY_SETTINGS_KEYS set intentionally excludes.
+  notifyHomeScopeSettingChanged(key);
   notifyHomeLimitsSettingChanged(key);
   if (ADVANCED_SETTINGS_KEYS.has(key)) {
     runLoggedTask(loadAdvancedSettings(), 'Failed to load advanced settings', 'settings.set');

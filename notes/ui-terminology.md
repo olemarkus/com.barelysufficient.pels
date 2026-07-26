@@ -735,11 +735,69 @@ chrome lives in the static settings markup):
 | The implicit complement — everything not in a meter area | **Main home** |
 | The Settings section / panel title | **Multiple meters** |
 | The Main home's own meter picker (existing Limits & safety control) | **Whole-home meter** |
+| The shell's global home picker, below the global banners | **Showing** |
+
+### The scope bar's `Showing` label
+
+Once a meter area exists, the shell renders one 48 px row naming which part of
+the home the page is about: `Showing` followed by the selected home's name
+(`Showing Main home`, `Showing Rental unit`). Source: `HOME_SCOPE_BAR_LABEL` in
+`packages/shared-domain/src/homeScopeCopy.ts`; the complement's name is the
+single `MAIN_HOME_NAME` export in the same module, which every surface naming
+the Main home reads.
+
+It sits **below** the global banners, not directly under the tab strip. Those
+banners are whole-home alerts — the simulation banner says "Main home" outright
+once areas exist — so a scope naming a meter area immediately above one would
+group with it and make a global alert read as scoped. Order: global alerts,
+then scope, then page.
+
+The bar is not the only anchor, but the second one is narrow on purpose: a card
+that reuses a label the app also shows UNSCOPED elsewhere carries the home too
+(`Status now · Rental unit`, via `composeHomeScopedTitle`, so its `Power now`
+never reads as the Overview's whole-home `Power now`). Everything else on a
+scoped page leaves the naming to the sticky bar.
+
+Settings that are **not** home-scoped must not sit under the bar's claim. On
+Limits & safety, `Power source` and `Whole-home meter` are app-global, so they
+live in their own card that steps aside in area scope, replaced by
+`HOME_LIMITS_GLOBAL_SETTINGS_ELSEWHERE` naming where they went. Conversely the
+Main home's own hard-cap hint stops saying "**Your** grid tariff step" once areas
+exist and names the Main home instead: with the house split, the Main branch has
+to be as explicit about its scope as the area branch already is.
+
+`Showing` is deliberately a plain statement of what is on screen rather than a
+settings-field label, so the bar reads the same on a page you are only looking
+at and on one you are editing. It replaced the Limits panel's local `Set limits
+for` switcher, which could only ever name one page's job. A home with no meter
+areas never sees the bar.
+
+The control is a Material **menu button** (a tonal button opening a menu), not
+a form field, and `Showing` renders in the supporting type role beside it. The
+bar is chrome: a filled-field costume made it the brightest, largest object
+above the fold and out-ranked the tab strip, and its full-width stretch both
+wasted ~140 px at 480 px and truncated a real Norwegian area name at 320 px. A
+content-sized button shows `Leilighet i underetasjen` in full at 320 px, and its
+trailing icon is the same Material `arrow_drop_down` glyph the selects on the
+same screen render — one caret language, not two.
+
+The bar is **sticky**, so the home stays named at every scroll position. That
+is why the panel's own title does NOT repeat it: a scoped page states its home
+once, in the chip, untruncated. (Appending `· <area>` to the app bar was tried
+and dropped — the app bar is not sticky either, so the suffix bought ~51 px of
+scroll at 320 px and nothing at all at 480 px, while at rest it put an
+untruncated name directly above a truncated copy of itself.)
+
+The bar renders **only on pages whose content is already resolved against the
+selected home**. A bar naming a home above whole-home figures would be a claim
+the page cannot pay, so a surface earns the bar in the same change that teaches
+it the scope, never before.
 
 Internal terms that stay internal: `sub-home`, `homeId`, `membership`,
-`zone rule`, `pin`, `suspect`/`degraded` (store classifications). Copy says
-what happens ("Its devices move back to the Main home", "your settings
-couldn't be read"), never the resolver or store vocabulary.
+`scope` (as a word in copy), `zone rule`, `pin`, `suspect`/`degraded` (store
+classifications). Copy says what happens ("Its devices move back to the Main
+home", "your settings couldn't be read"), never the resolver or store
+vocabulary.
 
 The same two names reach Flow. The `Hard cap breach imminent — manual action
 needed` trigger carries a `Home` tag naming the part of the home that fired it:

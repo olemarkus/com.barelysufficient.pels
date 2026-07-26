@@ -44,9 +44,11 @@ import {
   saveSimulationModeSettings,
   syncDryRunBannerVisibility,
 } from './capacity.ts';
+import { initHomeScope, selectHomeScope } from './homeScope.ts';
 import { initHomeyEnergyMeterHandlers } from './homeyEnergyMeter.ts';
 import {
   DEBUG_LOGGING_TOPICS as DEBUG_LOGGING_TOPICS_SETTING,
+  MAIN_HOME_ID,
 } from '../../../contracts/src/settingsKeys.ts';
 import {
   DEBUG_LOGGING_SCENARIOS,
@@ -119,6 +121,30 @@ import {
 } from './deadlinePlanMount.ts';
 import { initDeadlinePlanRouter } from './deadlinePlanRouter.ts';
 
+// `showTab` only STARTS the target panel's async scope work (a Main-only deep
+// link switches scope first, and the panel's activation hook re-reads the
+// roster and re-renders), so the promised control can stay hidden for several
+// frames after the click handler returns. Scrolling immediately would anchor
+// against a hidden element and leave the user at the panel top, so poll
+// visibility across frames, bounded so a typo'd selector or a removed control
+// degrades to landing at the panel top instead of polling forever.
+const SETTINGS_ANCHOR_SCROLL_FRAMES = 60;
+const scrollSettingsAnchorWhenVisible = (selector: string, attempt = 0): void => {
+  let element: Element | null;
+  try {
+    element = document.querySelector(selector);
+  } catch (error) {
+    void logSettingsError('Invalid settings anchor selector', error, 'settingsAnchor');
+    return;
+  }
+  if (element instanceof HTMLElement && element.offsetParent !== null) {
+    element.scrollIntoView({ block: 'center' });
+    return;
+  }
+  if (attempt >= SETTINGS_ANCHOR_SCROLL_FRAMES) return;
+  requestAnimationFrame(() => scrollSettingsAnchorWhenVisible(selector, attempt + 1));
+};
+
 const initTabHandlers = () => {
   // The Budget header's Done button navigates back to Settings through
   // showTab so the leave path (draft discard, referrer reset, toast) stays
@@ -172,6 +198,11 @@ const initTabHandlers = () => {
       showTab('budget');
       return;
     }
+    // Some deep links promise a control that only exists in the Main home's
+    // scope (Power source, the whole-home meter). Following one while a meter
+    // area is selected would land the user on a page whose promised target is
+    // hidden, so the link names the scope it needs and we switch first.
+    if (trigger.dataset.settingsHomeScope === MAIN_HOME_ID) selectHomeScope(MAIN_HOME_ID);
     showTab(target);
     // Optional deep-link anchor: land on the field the trigger promised, not
     // the top of the target panel (e.g. the no-data banner's "Choose power
@@ -179,13 +210,7 @@ const initTabHandlers = () => {
     // The selector is repo-authored markup; guard anyway so a typo degrades to
     // landing at the panel top instead of an uncaught DOMException.
     const anchor = trigger.dataset.settingsAnchor;
-    if (anchor) {
-      try {
-        document.querySelector(anchor)?.scrollIntoView({ block: 'center' });
-      } catch (error) {
-        void logSettingsError('Invalid settings anchor selector', error, 'settingsAnchor');
-      }
-    }
+    if (anchor) scrollSettingsAnchorWhenVisible(anchor);
   });
   // Track the shown panel so the global simulation banner can suppress itself on
   // the Simulation-mode settings page (its own toggle is the single control
@@ -409,6 +434,10 @@ const initializeBootHandlers = () => {
   initRealtimeListeners();
   showTab('overview');
   initTabHandlers();
+  // After initTabHandlers: the scope bar's visibility depends on the shown
+  // panel, and that handler is what updates `state.activePanel` for the
+  // `pels:tab-shown` event both listeners receive.
+  initHomeScope();
   initDeviceDetailHandlers();
   initModeHandlers();
   initLimitsAndSimulationHandlers();
