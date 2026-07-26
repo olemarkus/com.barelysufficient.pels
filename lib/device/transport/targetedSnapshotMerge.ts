@@ -69,10 +69,11 @@ export function mergeTargetedRefreshSnapshot(params: {
     const { presentSnapshot, previousSnapshot, failedIds, missByDeviceId, nowMs } = params;
     const presentById = new Map(presentSnapshot.map((device) => [device.id, device]));
     const networkFailedIds = new Set(failedIds);
-    // The targeted request covered exactly the prior known ids
-    // (`fetchDevicesByKnownIds` derives them from `latestSnapshot`). Reset the
-    // counter for any id no longer requested so the map can't leak. Collect stale
-    // keys first (no spread allocation), then delete.
+    // The targeted request covered every prior known id (`fetchDevicesByKnownIds`
+    // derives them from `latestSnapshot`, plus EV-link car ids that parse always
+    // drops and so never appear here). Reset the counter for any id no longer
+    // requested so the map can't leak. Collect stale keys first (no spread
+    // allocation), then delete.
     const requestedIds = new Set(previousSnapshot.map((device) => device.id));
     const staleMissIds: string[] = [];
     for (const deviceId of missByDeviceId.keys()) {

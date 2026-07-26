@@ -129,12 +129,12 @@ export function handleRealtimeDeviceUpdateEvent(ctx: TransportContext, device: H
     // the first full refresh — the realtime path parses the battery (stamped
     // managed observe-only structurally), so the deviceId-only resolve* consumers
     // must agree. Additive: a full refresh re-derives the set; this never narrows it.
-    ctx.batteryStateProducer.noteBatteryDevice(effectiveDevice);
+    ctx.observationProducers.battery.noteBatteryDevice(effectiveDevice);
     // Same machinery for a present solar device: keep the solar membership set
     // non-empty before the first full refresh so the deviceId-only resolve* consumers
     // agree with the structural managed observe-only stamp. Additive; full refresh
     // re-derives the set.
-    ctx.solarProductionProducer.noteSolarDevice(effectiveDevice);
+    ctx.observationProducers.solar.noteSolarDevice(effectiveDevice);
     const previousSnapshot = ctx.latestSnapshotById.get(deviceId);
     const binarySafeUpdate = deviceId
         ? clearInvalidBinarySettleEvidenceFromDeviceUpdate(ctx, deviceId, effectiveDevice, previousSnapshot)
@@ -232,4 +232,14 @@ export function handleRealtimeDeviceUpdateEvent(ctx: TransportContext, device: H
     for (const event of deferredObservedStateEvents) {
         ctx.dispatchObservedStateChanged(event);
     }
+    // Class `car` devices reach us only here and on the device fetch: the live
+    // feed pushes `device.update` for EVERY device, while parse drops unsupported
+    // classes. Passed every update, not just cars — a charger's own update is what
+    // timestamps its plug edge correctly. Inert while no car is tracked.
+    //
+    // Deliberately AFTER the snapshot commit, for the same reason as the
+    // observed-state dispatch above: the probe resolves charger state by reading
+    // the committed snapshot, so running it earlier would diff against the
+    // PRE-update state and lag every charger edge by one device update.
+    ctx.observationProducers.evCarLink.noteDeviceUpdate(effectiveDevice, Date.now());
 }

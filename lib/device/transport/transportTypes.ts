@@ -7,6 +7,7 @@
  */
 import type { BinaryControlObservation, TargetDeviceSnapshot } from '../../../packages/contracts/src/types';
 import type { TransportDeviceSnapshot } from '../transportDeviceSnapshot';
+import type { EvCarLinkSnapshotAccess } from '../evCarLinkWiring';
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import type { BinarySettleState } from '../../observer/binarySettle';
 import type { PowerEstimateState } from '../devicePowerEstimate';
@@ -135,6 +136,12 @@ export type TransportObservedStateDispatcher = {
 
 export type DeviceTransportOptions = {
     debugStructured?: StructuredDebugEmitter;
+    /**
+     * Persistence port for the EV car-link probe, supplied by the wiring layer.
+     * Omitted in tests and any construction path that does not persist: the probe
+     * still runs, it just forgets across restarts.
+     */
+    evCarLinkSnapshotAccess?: EvCarLinkSnapshotAccess;
     getFlowTriggerCard?: (cardId: string) => SteppedLoadFlowTriggerCard | undefined;
     /**
      * Fired after a snapshot mutation that may yield a new calibration sample
