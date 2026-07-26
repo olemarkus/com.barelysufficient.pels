@@ -1,80 +1,99 @@
-import { extractLiveHomePowerWatts, extractLiveMeterItems, extractLiveMeterPowerWatts } from '../../lib/device/managerEnergy';
+import type Homey from 'homey';
+import {
+  extractAutomaticHomePowerReading,
+  extractLiveMeterItems,
+  extractLiveMeterPowerWatts,
+} from '../../lib/device/managerEnergy';
+import { DeviceTransport } from '../../lib/device/deviceTransport';
+import { applyDeviceTargets } from '../../lib/device/transport/deviceWrites';
+import { mockHomeyInstance } from '../mocks/homey';
 import { fetchLiveMeterItems, fetchLivePowerReport } from '../../lib/device/transport/managerFetch';
-import { fetchLivePowerReport as fetchTransportLivePowerReport } from '../../lib/device/transport/snapshotRefresh';
+import {
+  fetchLivePowerReport as fetchTransportLivePowerReport,
+  pollHomePowerWithMeterFanOut,
+} from '../../lib/device/transport/snapshotRefresh';
 import type { TransportContext } from '../../lib/device/transport/transportContext';
 import * as homeyApi from '../../lib/device/transport/managerHomeyApi';
 import type { Logger } from '../../lib/utils/types';
 
-describe('extractLiveHomePowerWatts', () => {
-  it('returns watts from first cumulative item', () => {
+describe('extractAutomaticHomePowerReading', () => {
+  it('returns watts AND the identity of the item they came from', () => {
     const report = {
       items: [
         { type: 'device', id: 'd1', values: { W: 100 } },
-        { type: 'cumulative', values: { W: 4500 } },
+        { type: 'cumulative', id: 'han-meter', values: { W: 4500 } },
       ],
     };
-    expect(extractLiveHomePowerWatts(report)).toBe(4500);
+    expect(extractAutomaticHomePowerReading(report))
+      .toEqual({ watts: 4500, deviceId: 'han-meter', cumulativeItemCount: 1 });
   });
 
-  it('returns null for missing report', () => {
-    expect(extractLiveHomePowerWatts(null)).toBeNull();
-    expect(extractLiveHomePowerWatts(undefined)).toBeNull();
+  it('resolves deviceId null when the cumulative item carries no usable id', () => {
+    // Homey's aggregate whole-home item can arrive without an id. The READING is
+    // still valid; only its ownership is unprovable, which is what null means —
+    // callers must never read it as proof of non-collision.
+    expect(extractAutomaticHomePowerReading({ items: [{ type: 'cumulative', values: { W: 4500 } }] }))
+      .toEqual({ watts: 4500, deviceId: null, cumulativeItemCount: 1 });
+    expect(extractAutomaticHomePowerReading({ items: [{ type: 'cumulative', id: '   ', values: { W: 10 } }] }))
+      .toEqual({ watts: 10, deviceId: null, cumulativeItemCount: 1 });
   });
 
-  it('returns null for empty report', () => {
-    expect(extractLiveHomePowerWatts({})).toBeNull();
-    expect(extractLiveHomePowerWatts({ items: [] })).toBeNull();
+  it('counts EVERY cumulative item, so an arbitrary Automatic pick is visible', () => {
+    const report = {
+      items: [
+        { type: 'sum', values: { W: 9999 } },
+        { type: 'cumulative', id: 'meter-main', values: { W: 3000 } },
+        { type: 'cumulative', id: 'meter-rental', values: { W: 5000 } },
+      ],
+    };
+    // First cumulative item still wins; the count is what exposes that the
+    // choice was arbitrary among several meters.
+    expect(extractAutomaticHomePowerReading(report))
+      .toEqual({ watts: 3000, deviceId: 'meter-main', cumulativeItemCount: 2 });
   });
 
-  it('returns null for non-cumulative items only', () => {
+  it('skips a non-finite cumulative item but still counts it', () => {
+    const report = {
+      items: [
+        { type: 'cumulative', id: 'broken', values: { W: NaN } },
+        { type: 'cumulative', id: 'good', values: { W: 700 } },
+      ],
+    };
+    expect(extractAutomaticHomePowerReading(report))
+      .toEqual({ watts: 700, deviceId: 'good', cumulativeItemCount: 2 });
+  });
+
+  it('returns null for a missing or empty report', () => {
+    expect(extractAutomaticHomePowerReading(null)).toBeNull();
+    expect(extractAutomaticHomePowerReading(undefined)).toBeNull();
+    expect(extractAutomaticHomePowerReading({})).toBeNull();
+    expect(extractAutomaticHomePowerReading({ items: [] })).toBeNull();
+  });
+
+  it('returns null when there are no cumulative items', () => {
     const report = {
       items: [
         { type: 'device', id: 'd1', values: { W: 100 } },
         { type: 'sum', values: { W: 500 } },
       ],
     };
-    expect(extractLiveHomePowerWatts(report)).toBeNull();
+    expect(extractAutomaticHomePowerReading(report)).toBeNull();
   });
 
-  it('takes first cumulative item, not sum', () => {
-    const report = {
-      items: [
-        { type: 'sum', values: { W: 9999 } },
-        { type: 'cumulative', values: { W: 3000 } },
-        { type: 'cumulative', values: { W: 5000 } },
-      ],
-    };
-    expect(extractLiveHomePowerWatts(report)).toBe(3000);
+  it('passes negative (export) and zero watts through', () => {
+    expect(extractAutomaticHomePowerReading({ items: [{ type: 'cumulative', id: 'm', values: { W: -1200 } }] }))
+      .toEqual({ watts: -1200, deviceId: 'm', cumulativeItemCount: 1 });
+    expect(extractAutomaticHomePowerReading({ items: [{ type: 'cumulative', id: 'm', values: { W: 0 } }] }))
+      .toEqual({ watts: 0, deviceId: 'm', cumulativeItemCount: 1 });
   });
 
-  it('handles negative watts (solar export)', () => {
-    const report = {
-      items: [{ type: 'cumulative', values: { W: -1200 } }],
-    };
-    expect(extractLiveHomePowerWatts(report)).toBe(-1200);
-  });
-
-  it('handles zero watts', () => {
-    const report = {
-      items: [{ type: 'cumulative', values: { W: 0 } }],
-    };
-    expect(extractLiveHomePowerWatts(report)).toBe(0);
-  });
-
-  it('returns null for non-finite values', () => {
-    expect(extractLiveHomePowerWatts({
-      items: [{ type: 'cumulative', values: { W: NaN } }],
-    })).toBeNull();
-    expect(extractLiveHomePowerWatts({
+  it('returns null for non-finite or missing W', () => {
+    expect(extractAutomaticHomePowerReading({
       items: [{ type: 'cumulative', values: { W: Infinity } }],
     })).toBeNull();
-  });
-
-  it('returns null for missing W property', () => {
-    const report = {
+    expect(extractAutomaticHomePowerReading({
       items: [{ type: 'cumulative', values: {} }],
-    };
-    expect(extractLiveHomePowerWatts(report)).toBeNull();
+    })).toBeNull();
   });
 });
 
@@ -308,6 +327,110 @@ describe('transport Main-meter authority', () => {
     expect(report.homePowerW).toBeNull();
     expect(report.byDeviceId).toEqual({ 'sub-meter': 1_200 });
     expect(report.additionalMeterPowerW).toEqual({ 'sub-meter': 1_200 });
+  });
+});
+
+// The resolved whole-home meter IDENTITY leaves the transport ON the sample,
+// never as a read-time dispatch: publication to membership happens only at the
+// admitted sample ingest (`PowerSamplePipeline`), so the identity, the watts,
+// and their timestamp move as one operation and a read whose sample is
+// discarded (post-actuation refresh, post-write re-read, superseded poll)
+// claims nothing — by construction, not by a gate.
+describe('resolved home meter identity on the sample', () => {
+  const logger = { log: vi.fn(), debug: vi.fn(), error: vi.fn() } as unknown as Logger;
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // Drives the REAL `DeviceTransport.refreshSnapshot()` pipeline, not the
+  // wrapper in isolation: this return value is what `AppSnapshotHelpers` hands
+  // to `recordPowerSample`, so the identity riding it is what the pipeline
+  // publishes iff the sample is admitted.
+  it('carries the sampled identity on a real snapshot refresh return', async () => {
+    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
+      items: [{ type: 'cumulative', id: 'm-area', values: { W: 4_200 } }],
+    });
+    const transport = new DeviceTransport(
+      mockHomeyInstance as unknown as Homey.App,
+      logger,
+      {},
+    );
+
+    const sample = await transport.refreshSnapshot();
+
+    expect(sample).toEqual({ powerW: 4_200, resolvedHomeMeterDeviceId: 'm-area' });
+  });
+
+  it('carries a NULL identity when the reading has no attributable id', async () => {
+    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
+      items: [{ type: 'cumulative', values: { W: 4_200 } }],
+    });
+    const transport = new DeviceTransport(
+      mockHomeyInstance as unknown as Homey.App,
+      logger,
+      {},
+    );
+
+    const sample = await transport.refreshSnapshot();
+
+    // The watts are real; only their ownership is unprovable. `null` must ride
+    // along so the ingest can evaluate the fence episode without claiming
+    // proof of non-collision.
+    expect(sample).toEqual({ powerW: 4_200, resolvedHomeMeterDeviceId: null });
+  });
+
+  it('carries the identity on the poll path sample too', async () => {
+    vi.spyOn(homeyApi, 'getEnergyLiveReport').mockResolvedValue({
+      items: [{ type: 'cumulative', id: 'm-area', values: { W: 4_200 } }],
+    });
+    const ctx = {
+      logger,
+      providers: {
+        getHomeyEnergyMeterSelection: () => ({ state: 'resolved' as const, meterDeviceId: null }),
+      },
+    } as unknown as TransportContext;
+
+    const sample = await pollHomePowerWithMeterFanOut(ctx, () => true);
+
+    // The poll source's own discard checks run BEFORE it records this sample,
+    // so a stale-generation or wrong-source poll drops the identity claim
+    // together with the watts — no separate gate exists to drift.
+    expect(sample).toEqual({ powerW: 4_200, resolvedHomeMeterDeviceId: 'm-area' });
+  });
+
+  it('does NOT read live power on a fast refresh, so no sample and no identity exist', async () => {
+    const getEnergyLiveReport = vi.spyOn(homeyApi, 'getEnergyLiveReport');
+    const transport = new DeviceTransport(
+      mockHomeyInstance as unknown as Homey.App,
+      logger,
+      {},
+    );
+
+    const sample = await transport.refreshSnapshot({ includeLivePower: false });
+
+    expect(getEnergyLiveReport).not.toHaveBeenCalled();
+    expect(sample).toBeNull();
+  });
+
+  // `applyDeviceTargets` ends with its own `ctx.refreshSnapshot()` whose return
+  // value is DROPPED — nothing records that read's whole-home sample, so its
+  // identity claim is dropped with it. Structural: the test pins that the tail
+  // call ignores the returned sample rather than forwarding it anywhere.
+  it('drops the post-write re-read sample (and its identity) on the floor', async () => {
+    const refreshSnapshot = vi.fn().mockResolvedValue(
+      { powerW: 4_200, resolvedHomeMeterDeviceId: 'm-area' },
+    );
+    const ctx = {
+      logger,
+      isSdkReady: () => true,
+      latestSnapshot: [],
+      refreshSnapshot,
+    } as unknown as TransportContext;
+
+    await expect(applyDeviceTargets(ctx, { 'dev-1': 21 }, 'test')).resolves.toBeUndefined();
+
+    expect(refreshSnapshot).toHaveBeenCalledTimes(1);
   });
 });
 

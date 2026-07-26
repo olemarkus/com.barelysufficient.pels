@@ -473,6 +473,14 @@ export const wireHomeMembership = (
     onRuntimeActiveChanged,
     onMainOwnershipReady: recovery.applyNow,
     onMainAuthorityUnresolved: recovery.schedule,
+    // A repaired sampled-meter fence still leaves a committed plan derived
+    // under the old provenance. Advance the ownership generation synchronously
+    // before the authority latch opens; that generation is the takeover fence
+    // while the normal bounded recovery rebuilds and reconciles a fresh plan.
+    // `observeOwnershipConfigurationChanged` schedules through the existing
+    // unresolved-authority callback, so recovery remains deferred off the
+    // sample-dispatch stack.
+    onMainAuthorityReopened: () => service?.observeOwnershipConfigurationChanged(),
     setOnZoneTreeCommitted: (callback) => ctx.deviceManager?.setOnZoneTreeCommitted(callback),
     setOnDeviceZoneChanged: (callback) => ctx.deviceManager?.setOnDeviceZoneChanged(callback),
     getZoneTree: () => ctx.deviceManager?.getZoneTree() ?? null,
@@ -486,6 +494,14 @@ export const wireHomeMembership = (
       zoneId: device.zoneId ?? null,
     })),
     getLogger: () => ctx.getStructuredLogger('homes'),
+    // Restart fence anchor: the stamp of the sample Main's tracker currently
+    // serves. `loadPowerTracker` reloads the durable `lastPowerW`/
+    // `lastTimestamp`, so after a restart inside the freshness window the
+    // planner treats pre-restart watts as live while the sampled-identity owner
+    // starts empty — the authority reads this to fence Main until its own first
+    // ingest re-proves provenance. Lazy: the tracker may load after this wiring,
+    // and an unloaded `{}` honestly reports no restored sample.
+    getRestoredSampleAtMs: () => ctx.powerTracker?.lastTimestamp,
     // Change-gated plan invalidation, mirroring the settings-change rebuild
     // path (`rebuildPlanFromSettings` → `planService.rebuildPlanFromCache`): a
     // changed membership map means the committed plan governs the wrong device

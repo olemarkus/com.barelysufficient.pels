@@ -23,8 +23,20 @@ for the user-facing vocabulary, see the "Multiple meters vocabulary" section of
   re-pairing, and it later doubles as a home-device `data.id`. **No `:` is
   allowed in an id** because `:` is the settings-key suffix separator (below).
 - An explicit meter device id has **exactly one owner across the Main home and
-  every meter area**. Main's `null`/Automatic combined-total fallback is not an
-  explicit identity and remains allowed. Both ownership mutations share the
+  every meter area**. Main's `null`/Automatic fallback is not an explicit identity
+  and remains allowed. That fallback is NOT a combined total: the reader takes the
+  first `cumulative` item in the Homey Energy payload
+  (`lib/device/managerEnergy.ts`), so it is one unidentified meter which may be a
+  superset of Main or an area's own meter. The sampled identity is resolved with
+  the reading, rides the sample into the admitted power ingest
+  (`setup/powerSamplePipeline.ts` publishes it atomically with the watts), and
+  on a proven collision with an area meter fences Main actuation for exactly the
+  colliding sample's usable lifetime (`setup/homeMainMeterAuthority.ts`). The
+  identity is in-memory only, so a RESTART inside that lifetime is fenced too:
+  the tracker reloads durable watts the planner still treats as fresh while no
+  ingest of the new process has attested them, and the sampled clause holds Main
+  closed until its first admitted sample re-proves provenance (or those restored
+  watts age out). Both ownership mutations share the
   typed save endpoint: the UI validates while editing, and the endpoint checks
   a fresh classified homes read before either area or Main-meter persistence,
   so either concurrent write order refuses the second owner. The homes-store

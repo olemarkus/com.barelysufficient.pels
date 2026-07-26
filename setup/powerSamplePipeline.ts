@@ -16,6 +16,7 @@ import { addPerfDuration, incPerfCounter } from '../lib/utils/perfCounters';
 import type { StructuredDebugEmitter } from '../lib/logging/logger';
 import type { PowerTrackerState } from '../packages/contracts/src/powerTrackerTypes';
 import type { TargetDeviceSnapshot } from '../packages/contracts/src/types';
+import type { PowerSampleAdmission } from '../lib/app/appContext';
 
 // Tightened to zero in tests so coalesced rebuild requests don't block on
 // the throttle while a test is awaiting the resulting plan revision; prod
@@ -48,10 +49,29 @@ export type PowerSamplePipelineDeps = {
    *  undefined for flow-source samples) to the curtailment-surplus estimator;
    *  no-op when absent. */
   recordCurtailmentSample?: (netW: number, generationW: number | undefined, nowMs: number) => void;
+  /**
+   * Publish the identity of the meter an INGESTED whole-home sample came from
+   * (multi-home: membership's sampled-meter ownership fence). Called only after
+   * `recordPowerSampleForApp` completes for a request that carried an identity,
+   * with the ingest's own `nowMs` — so the identity, the watts, and their
+   * timestamp move as ONE admitted operation. A request superseded by
+   * coalescing drops its identity claim together with its watts; flow and
+   * sub-home samples never carry the field and never publish. No-op when
+   * absent (sub-home pipelines).
+   */
+  noteResolvedHomeMeter?: (deviceId: string | null, sampleAtMs: number) => void;
 };
 
 type PowerSampleOptions = {
   generationW?: number;
+  /**
+   * Identity of the meter this sample was read from. Present (string or null)
+   * only on Homey-Energy whole-home samples; ABSENT on flow-driven and
+   * sub-home-meter samples, which carry no identity semantics. `null` = the
+   * read produced watts but could not attribute them; never proof of
+   * non-collision.
+   */
+  resolvedHomeMeterDeviceId?: string | null;
 };
 
 export type StableSampleRevision =
@@ -63,6 +83,7 @@ type PowerSampleRequest = {
   nowMs: number;
   revision: number;
   generationW?: number;
+  resolvedHomeMeterDeviceId?: string | null;
 };
 
 const buildPowerSampleRequest = (
@@ -70,13 +91,17 @@ const buildPowerSampleRequest = (
   nowMs: number,
   options: PowerSampleOptions,
   revision: number,
-): PowerSampleRequest => (
-  typeof options.generationW === 'number' && Number.isFinite(options.generationW)
-    ? {
-      currentPowerW, nowMs, revision, generationW: Math.max(0, options.generationW),
-    }
-    : { currentPowerW, nowMs, revision }
-);
+): PowerSampleRequest => ({
+  currentPowerW,
+  nowMs,
+  revision,
+  ...(typeof options.generationW === 'number' && Number.isFinite(options.generationW)
+    ? { generationW: Math.max(0, options.generationW) }
+    : {}),
+  ...(options.resolvedHomeMeterDeviceId !== undefined
+    ? { resolvedHomeMeterDeviceId: options.resolvedHomeMeterDeviceId }
+    : {}),
+});
 
 /**
  * Lives in `setup/` because the only state it owns is the coalescing
@@ -112,7 +137,7 @@ export class PowerSamplePipeline {
     currentPowerW: number,
     nowMs: number = Date.now(),
     options: PowerSampleOptions = {},
-  ): Promise<void> {
+  ): Promise<PowerSampleAdmission> {
     this.sampleRevision += 1;
     incPerfCounter('power_sample_requested_total');
     const request = buildPowerSampleRequest(currentPowerW, nowMs, options, this.sampleRevision);
@@ -125,12 +150,25 @@ export class PowerSamplePipeline {
       }
       this.powerSampleRerunRequested = true;
       this.pendingPowerSampleRequest = request;
-      return this.powerSampleLoop;
+      await this.powerSampleLoop;
+      return this.resolveAdmission(request.revision);
     }
 
     const loopPromise = this.runCoalescedPowerSamples(request);
     this.powerSampleLoop = loopPromise;
-    return loopPromise;
+    await loopPromise;
+    return this.resolveAdmission(request.revision);
+  }
+
+  private resolveAdmission(revision: number): PowerSampleAdmission {
+    const stable = this.getStableSampleRevision();
+    return stable.state === 'stable' && stable.revision === revision
+      ? { state: 'admitted', revision }
+      : {
+        state: 'superseded',
+        revision,
+        latestRevision: this.sampleRevision,
+      };
   }
 
   getStableSampleRevision(): StableSampleRevision {
@@ -145,11 +183,7 @@ export class PowerSamplePipeline {
       while (true) {
         this.powerSampleRerunRequested = false;
         this.pendingPowerSampleRequest = undefined;
-        if (typeof request.generationW === 'number') {
-          await this.runPowerSample(request.currentPowerW, request.nowMs, { generationW: request.generationW });
-        } else {
-          await this.runPowerSample(request.currentPowerW, request.nowMs);
-        }
+        await this.runPowerSample(request);
         this.completedSampleRevision = request.revision;
         if (!this.powerSampleRerunRequested) return;
         incPerfCounter('power_sample_rerun_executed_total');
@@ -164,21 +198,36 @@ export class PowerSamplePipeline {
     }
   }
 
-  private async runPowerSample(
-    currentPowerW: number,
-    nowMs: number = Date.now(),
-    options: PowerSampleOptions = {},
-  ): Promise<void> {
+  /**
+   * The ingest-side half of the sampled-meter ownership fence: fires at the
+   * persisted-watts point of the request's ingest - after `saveState` has made
+   * the admitted watts what the tracker serves (so the identity's expiry
+   * anchor equals the tracker's stamp for those watts), and BEFORE the plan
+   * rebuild the ingest awaits (so no control consumer can plan from these
+   * watts under the previous meter's membership). Contained: membership
+   * recompute work must never break the sample loop.
+   */
+  private publishResolvedHomeMeter(request: PowerSampleRequest): void {
+    if (request.resolvedHomeMeterDeviceId === undefined) return;
+    try {
+      this.deps.noteResolvedHomeMeter?.(request.resolvedHomeMeterDeviceId, request.nowMs);
+    } catch {
+      incPerfCounter('power_sample_identity_publish_failed_total');
+    }
+  }
+
+  private async runPowerSample(request: PowerSampleRequest): Promise<void> {
+    const { currentPowerW, nowMs, generationW } = request;
     const sampleStart = Date.now();
     // Record gross generation for the learned PV forecast, independent of the
     // capacity/plan path below (a pure data tap — never affects shed decisions).
     // `currentPowerW` is the SIGNED net home power co-sampled with generation
     // (Homey-Energy mode); flow-driven samples carry no generationW, so this
     // stays a no-op for flow homes.
-    this.deps.recordPvGenerationSample?.(options.generationW, nowMs, currentPowerW);
+    this.deps.recordPvGenerationSample?.(generationW, nowMs, currentPowerW);
     // Same co-sampled pair to the curtailment-surplus estimator (another pure
     // data tap — the estimator only ever feeds the surplus pool, never sheds).
-    this.deps.recordCurtailmentSample?.(currentPowerW, options.generationW, nowMs);
+    this.deps.recordCurtailmentSample?.(currentPowerW, generationW, nowMs);
     const powerTracker = this.deps.getPowerTracker();
     const previousSampleTs = powerTracker.lastTimestamp;
     try {
@@ -209,7 +258,7 @@ export class PowerSamplePipeline {
       const capacityGuard = this.deps.getCapacityGuard();
       await recordPowerSampleForApp({
         currentPowerW,
-        generationW: options.generationW,
+        generationW,
         nowMs,
         capacitySettings,
         getLatestTargetSnapshot: () => this.deps.getLatestTargetSnapshot(),
@@ -230,6 +279,15 @@ export class PowerSamplePipeline {
           outdoorTemperatureC: this.deps.getOutdoorTemperatureC?.(),
         }),
         schedulePlanRebuild: async () => {
+          // Fence ordering: the tracker core invokes this callback after
+          // `saveState` persisted the admitted watts and BEFORE the plan
+          // rebuild it awaits. Publishing here means the first rebuild this
+          // sample triggers already plans under the membership its identity
+          // implies; the previous post-ingest publication let that rebuild
+          // reach the actuator while membership still held the prior meter's
+          // identity - Main commanding from an area's watts. Publication is
+          // contained, so a membership failure can never break the rebuild.
+          this.publishResolvedHomeMeter(request);
           await schedulePlanRebuildFromSignal({
             scheduler: this.deps.planRebuildScheduler,
             getState: () => this.deps.getPowerSampleRebuildState(),

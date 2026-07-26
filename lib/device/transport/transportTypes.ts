@@ -16,7 +16,6 @@ import type {
   ObservedDeviceStateRefreshEvent,
   PlanRealtimeUpdateEvent,
 } from './managerRealtimeHandlers';
-import type { LivePowerReport } from './managerFetch';
 
 export const MIN_SIGNIFICANT_POWER_W = 5;
 export const REALTIME_CAPABILITY_EVENT_WINDOW_MS = 2 * 1000;
@@ -196,9 +195,9 @@ export type DeviceTransportOptions = {
 
 export const createEstimateDecisionLogState = (): Map<string, { signature: string; emittedAt: number }> => new Map();
 export const createPeakPowerLogState = (): Map<string, { signature: string; emittedAt: number }> => new Map();
-export const buildEmptyLivePowerReport = (): LivePowerReport => ({
-  byDeviceId: {}, homePowerW: null, generationW: null, deviceCount: 0, additionalMeterPowerW: {},
-});
+// Re-exported from its owner beside the `LivePowerReport` type, so adding a
+// field cannot leave a second construction site behind.
+export { buildEmptyLivePowerReport } from './managerFetch';
 
 export function isRawBinarySettlementEvidenceAllowed(
     snapshot: TransportDeviceSnapshot,

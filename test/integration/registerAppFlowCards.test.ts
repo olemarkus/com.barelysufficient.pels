@@ -7,12 +7,14 @@ vi.mock('../../flowCards/registerFlowCards', () => ({
 }));
 
 import { registerAppFlowCards } from '../../setup/appInit';
-import type { AppContext } from '../../lib/app/appContext';
+import type { AppContext, PowerSampleAdmission } from '../../lib/app/appContext';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import type { PowerTrackerState } from '../../lib/power/tracker';
 import type { Mock } from 'vitest';
 
 describe('registerAppFlowCards', () => {
+  const admitted = (revision = 1): PowerSampleAdmission => ({ state: 'admitted', revision });
+
   beforeEach(() => {
     registerFlowCards.mockReset();
   });
@@ -52,7 +54,7 @@ describe('registerAppFlowCards', () => {
       operatingMode: 'Home',
       handleOperatingModeChange: vi.fn(async () => undefined),
       getCurrentPriceLevel: vi.fn(),
-      recordPowerSample: params.recordPowerSample ?? vi.fn(async () => undefined),
+      recordPowerSample: params.recordPowerSample ?? vi.fn(async () => admitted()),
       getFlowSnapshot: vi.fn(async () => []),
       refreshTargetDevicesSnapshot: vi.fn(async () => undefined),
       deviceControlHelpers: { reportSteppedLoadActualStep: vi.fn() },
@@ -94,7 +96,7 @@ describe('registerAppFlowCards', () => {
       operatingMode: 'Home',
       handleOperatingModeChange: vi.fn(async () => undefined),
       getCurrentPriceLevel: vi.fn(),
-      recordPowerSample: vi.fn(async () => undefined),
+      recordPowerSample: vi.fn(async () => admitted()),
       getFlowSnapshot: vi.fn(async () => []),
       refreshTargetDevicesSnapshot: vi.fn(async () => undefined),
       deviceControlHelpers: { reportSteppedLoadActualStep: vi.fn() },
@@ -205,7 +207,7 @@ describe('registerAppFlowCards', () => {
       operatingMode: 'Home',
       handleOperatingModeChange: vi.fn(async () => undefined),
       getCurrentPriceLevel: vi.fn(),
-      recordPowerSample: vi.fn(async () => undefined),
+      recordPowerSample: vi.fn(async () => admitted()),
       capacityGuard: { getHeadroom: vi.fn(() => null), setLimit: vi.fn() },
       getFlowSnapshot: vi.fn(async () => []),
       refreshTargetDevicesSnapshot: vi.fn(async () => undefined),
@@ -244,14 +246,18 @@ describe('registerAppFlowCards', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-04-16T10:05:30.000Z'));
     const now = new Date('2026-04-16T10:05:30.000Z');
-    const recordPowerSample = vi.fn(async () => undefined);
+    const recordPowerSample = vi.fn(async () => admitted());
     const requestFlowPlanRebuild = vi.fn();
+    const noteAdmittedFlowHomeSample = vi.fn();
     const ctx = buildContext({
       powerSource: 'flow',
       now,
       recordPowerSample,
       requestFlowPlanRebuild,
     });
+    ctx.homeMembership = {
+      noteAdmittedFlowHomeSample,
+    } as unknown as AppContext['homeMembership'];
 
     registerAppFlowCards(ctx);
     const deps = registerFlowCards.mock.calls[0]?.[0] as {
@@ -260,15 +266,65 @@ describe('registerAppFlowCards', () => {
     await deps.recordPowerSample(1234);
 
     expect(recordPowerSample).toHaveBeenCalledWith(1234, now.getTime());
+    expect(noteAdmittedFlowHomeSample).toHaveBeenCalledOnce();
     await vi.advanceTimersByTimeAsync(10_000);
     expect(requestFlowPlanRebuild).toHaveBeenCalledWith('flow_power_sample_hold');
+  });
+
+  it('does not admit a late Flow sample after the source switches back to Homey Energy', async () => {
+    const noteAdmittedFlowHomeSample = vi.fn();
+    const ctx = buildContext({
+      powerSource: 'flow',
+      recordPowerSample: vi.fn(async () => {
+        (ctx.homey.settings.get as Mock).mockImplementation(
+          (key: string) => (key === 'power_source' ? 'homey_energy' : undefined),
+        );
+        return admitted();
+      }),
+    });
+    ctx.homeMembership = {
+      noteAdmittedFlowHomeSample,
+    } as unknown as AppContext['homeMembership'];
+
+    registerAppFlowCards(ctx);
+    const deps = registerFlowCards.mock.calls[0]?.[0] as {
+      recordPowerSample: (powerW: number) => Promise<void>;
+    };
+    await deps.recordPowerSample(1234);
+
+    expect(noteAdmittedFlowHomeSample).not.toHaveBeenCalled();
+  });
+
+  it('does not settle an older Flow request after a newer sample wins the shared loop', async () => {
+    const noteAdmittedFlowHomeSample = vi.fn();
+    const ctx = buildContext({
+      powerSource: 'flow',
+      recordPowerSample: vi.fn(async (): Promise<PowerSampleAdmission> => ({
+        state: 'superseded',
+        revision: 1,
+        latestRevision: 2,
+      })),
+    });
+    ctx.homeMembership = {
+      noteAdmittedFlowHomeSample,
+    } as unknown as AppContext['homeMembership'];
+
+    registerAppFlowCards(ctx);
+    const deps = registerFlowCards.mock.calls[0]?.[0] as {
+      recordPowerSample: (powerW: number) => Promise<void>;
+    };
+    await deps.recordPowerSample(1234);
+
+    // The setting is Flow again, but request 2 owns the tracker. Request 1
+    // cannot clear request 2's meter identity or advance Flow freshness.
+    expect(noteAdmittedFlowHomeSample).not.toHaveBeenCalled();
   });
 
   it('starts the freshness clock from the persisted Flow sample timestamp during registration', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-04-16T10:05:30.000Z'));
     const now = new Date('2026-04-16T10:05:30.000Z');
-    const recordPowerSample = vi.fn(async () => undefined);
+    const recordPowerSample = vi.fn(async () => admitted());
     const requestFlowPlanRebuild = vi.fn();
     const ctx = buildContext({
       powerSource: 'flow',
@@ -286,7 +342,7 @@ describe('registerAppFlowCards', () => {
   });
 
   it('abandons a Flow sample when an existing source key transiently reads undefined', async () => {
-    const recordPowerSample = vi.fn(async () => undefined);
+    const recordPowerSample = vi.fn(async () => admitted());
     const structuredError = vi.fn();
     const ctx = buildContext({
       powerSource: undefined,
@@ -314,7 +370,7 @@ describe('registerAppFlowCards', () => {
   });
 
   it('ignores Flow-reported power when Homey Energy is the active power source', async () => {
-    const recordPowerSample = vi.fn(async () => undefined);
+    const recordPowerSample = vi.fn(async () => admitted());
     const requestFlowPlanRebuild = vi.fn();
     const ctx = buildContext({
       powerSource: 'homey_energy',

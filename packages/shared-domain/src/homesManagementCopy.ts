@@ -162,10 +162,21 @@ export const HOMES_CONFIG_DEGRADED = 'PELS can’t safely change meter areas rig
  * explicit whole-home meter. Consequence-first: what is happening right now,
  * then the remedy naming the real control ("Whole-home meter", Limits &
  * safety).
+ *
+ * BOTH consequences are named because PELS genuinely cannot tell which one it
+ * is in. If the reading merely INCLUDES an area, Main home devices get limited
+ * for usage that is not theirs. If the reading IS an area's own meter, that is
+ * a proven ownership collision and PELS stops changing Main home devices
+ * altogether (`HomeMembershipService.isMainHomeActuationFenced`) — the more
+ * serious case, because nothing is then holding the Main home under its hard
+ * cap. The remedy is identical either way, and the hard cap is a physical
+ * tariff step, so it is never offered as something to change.
  */
-export const HOMES_MAIN_METER_NOTICE = 'Right now PELS reads the combined total of all meters, '
-  + 'so Main home devices get limited to make room for the meter areas’ usage. Pick the Main '
-  + 'home’s own meter — “Whole-home meter”, under Limits & safety.';
+export const HOMES_MAIN_METER_NOTICE = 'Right now PELS can’t tell which meter it’s reading for '
+  + 'the Main home. Main home devices can get limited by usage that belongs to a meter area, and '
+  + 'if the meter PELS reads turns out to be a meter area’s own, PELS stops limiting Main home '
+  + 'devices at all, so nothing keeps the Main home under its hard cap. '
+  + 'Pick the Main home’s own meter — “Whole-home meter”, under Limits & safety.';
 export const HOMES_MAIN_METER_NOTICE_LINK = 'Open Limits & safety';
 export const HOMES_MAIN_METER_SAVE_DEGRADED = 'PELS can’t safely change the Whole-home meter '
   + 'right now — your meter-area settings couldn’t be read. Try again in a few minutes.';

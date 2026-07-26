@@ -11,6 +11,14 @@ const HOMEY_ENERGY_RESTART_RETRY_MAX_EXPONENT = 6;
 export type HomeyEnergyPowerSample = {
   powerW: number;
   generationW?: number;
+  /**
+   * Opaque passthrough: identity of the meter `powerW` was read from (`null` =
+   * unknown), produced by the transport read and consumed by the sample-ingest
+   * seam. This source neither reads nor branches on it — it only guarantees the
+   * field survives the discard checks, so a stale-generation or wrong-source
+   * poll drops the identity claim together with the watts.
+   */
+  resolvedHomeMeterDeviceId?: string | null;
 };
 
 /**

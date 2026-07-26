@@ -65,6 +65,7 @@ import { applyDeviceDriverOverride } from './transport/managerParseIdentity';
 import { syncNativeSteppedLoadCommandAdapters } from './managerNativeSteppedCommand';
 import type { DeviceObservation } from './deviceObservation';
 import type { SnapshotRefreshOptions, TransportContext } from './transport/transportContext';
+import type { HomePowerSampleWithIdentity } from './transport/resolvedHomeMeterDispatch';
 import type { BinarySettleState } from '../observer/binarySettle';
 import {
   cloneBinaryControlObservation,
@@ -380,7 +381,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     // out-of-order sub-meter sample.
     async pollHomePowerW(
         authorizeFanOut?: () => boolean,
-    ): Promise<{ powerW: number; generationW?: number } | null> {
+    ): Promise<HomePowerSampleWithIdentity | null> {
         return runPollHomePowerWithMeterFanOut(this.ctx, authorizeFanOut);
     }
     setSnapshotForTests(snapshot: TargetDeviceSnapshot[]): void {
@@ -482,7 +483,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
 
     async refreshSnapshot(
         options: SnapshotRefreshOptions = {},
-    ): Promise<{ powerW: number; generationW?: number } | null> {
+    ): Promise<HomePowerSampleWithIdentity | null> {
         return runRefreshSnapshot(this.ctx, options);
     }
 

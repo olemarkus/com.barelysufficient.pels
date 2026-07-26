@@ -8,6 +8,7 @@ import {
 } from '../../lib/utils/settingsKeys';
 import { normalizePowerSource } from '../../lib/power/powerSource';
 import { mockHomeyInstance } from '../mocks/homey';
+import type { MainMeterSelection } from '../../packages/contracts/src/mainMeterSelection';
 
 const mockPowerSource = () => normalizePowerSource(mockHomeyInstance.settings.get('power_source'));
 
@@ -727,6 +728,115 @@ describe('appSnapshotHelpers', () => {
       snapshotRefByTime.current = [makeStaleDevice('dev-1', currentMs.value)];
       await helper.refreshStaleDeviceObservations();
       expect(staleRefreshEmits(infoSpy).length).toBe(2);
+    });
+  });
+  // The identity of the sampled whole-home meter says where the tracker's watts
+  // came from. It therefore rides the SAME admission as the sample: a refresh
+  // that reads live power but discards the sample must not publish one.
+  //
+  // The post-actuation refresh is the reachable case. `schedulePostActuationRefresh`
+  // is wired from `createPlanService`, which BOTH the main home and every
+  // sub-home capacity bundle use, all pointing at these shared helpers — so a
+  // meter AREA's actuation schedules a refresh that reads Main's meters. It
+  // passes `recordHomeyEnergySample: false` (and no `fast`), so it reads live
+  // power and throws the sample away. Publishing identity there would republish
+  // Main's meter while the tracker still holds the area's watts, reopening the
+  // ownership fence over a sample that never changed.
+  // The meter identity RIDES the sample: `recordPowerSample` receives one
+  // object carrying both, and the pipeline publishes the identity atomically
+  // with the ingest. So the admission proof at this seam is simply whether the
+  // identity-carrying sample reaches `recordPowerSample` at all — there is no
+  // second decision that could diverge from it. The post-actuation refresh
+  // (scheduled through these shared helpers by ANY home's actuation, including
+  // a meter area's) is the canonical discarded-sample caller.
+  describe('implicit sample admission carries the meter identity', () => {
+    const buildHelper = (
+      refreshSnapshot: ReturnType<typeof vi.fn>,
+      recordPowerSample: ReturnType<typeof vi.fn>,
+    ) => new AppSnapshotHelpers({
+      getPowerSource: mockPowerSource,
+      timers: new TimerRegistry(),
+      getDeviceManager: () => ({ refreshSnapshot } as any),
+      getPlanEngine: () => undefined,
+      getPlanService: () => ({
+        syncLivePlanState: vi.fn().mockResolvedValue(undefined),
+        syncHeadroomCardState: vi.fn(),
+        getLatestPlanSnapshot: vi.fn(),
+      } as any),
+      getLatestTargetSnapshot: () => [],
+      resolveManagedState: () => false,
+      isCapacityControlEnabled: () => false,
+      getStructuredLogger: () => undefined,
+      getStructuredDebugEmitter: () => vi.fn(),
+      getNow: () => new Date(),
+      logPeriodicStatus: vi.fn(),
+      disableUnsupportedDevices: vi.fn(),
+      seedMissingModeTargets: vi.fn(),
+      getFlowReportedDeviceIds: vi.fn(() => []),
+      emitFlowBackedRefreshRequests: vi.fn().mockResolvedValue(undefined),
+      emitSettingsUiDevicesUpdated: vi.fn(),
+      recordPowerSample: recordPowerSample as (sample: { powerW: number }) => Promise<void>,
+    });
+
+    const AREA_SAMPLE = { powerW: 4_200, resolvedHomeMeterDeviceId: 'm-area' };
+
+    const runRefresh = async (
+      options: Parameters<AppSnapshotHelpers['refreshTargetDevicesSnapshot']>[0],
+      bindSelection?: () => MainMeterSelection,
+    ) => {
+      const refreshSnapshot = vi.fn().mockResolvedValue(AREA_SAMPLE);
+      const recordPowerSample = vi.fn().mockResolvedValue(undefined);
+      const helper = buildHelper(refreshSnapshot, recordPowerSample);
+      if (bindSelection) helper.bindHomeyEnergyMeterResolver(bindSelection);
+      await helper.refreshTargetDevicesSnapshot(options);
+      expect(refreshSnapshot).toHaveBeenCalled();
+      return recordPowerSample;
+    };
+
+    it('an ordinary refresh records the sample WITH its identity', async () => {
+      mockHomeyInstance.settings.set('power_source', 'homey_energy');
+      const recordPowerSample = await runRefresh({});
+      expect(recordPowerSample).toHaveBeenCalledTimes(1);
+      // The identity arrives ON the recorded sample — the pipeline publishes it
+      // from exactly this object, so sample and identity cannot diverge.
+      expect(recordPowerSample).toHaveBeenCalledWith(AREA_SAMPLE);
+    });
+
+    it('the post-actuation refresh records nothing, so its identity claim dies with the sample', async () => {
+      mockHomeyInstance.settings.set('power_source', 'homey_energy');
+      const recordPowerSample = await runRefresh({ targeted: true, recordHomeyEnergySample: false });
+      expect(recordPowerSample).not.toHaveBeenCalled();
+    });
+
+    it('flow mode records nothing', async () => {
+      mockHomeyInstance.settings.set('power_source', 'flow');
+      const recordPowerSample = await runRefresh({});
+      expect(recordPowerSample).not.toHaveBeenCalled();
+    });
+
+    it('a mid-flight meter selection change records nothing', async () => {
+      mockHomeyInstance.settings.set('power_source', 'homey_energy');
+      let call = 0;
+      const recordPowerSample = await runRefresh({}, () => {
+        call += 1;
+        return { state: 'resolved', meterDeviceId: call === 1 ? 'm-old' : 'm-new' };
+      });
+      expect(recordPowerSample).not.toHaveBeenCalled();
+    });
+
+    it('an unreadable power source surfaces as a failed refresh, recording nothing', async () => {
+      // `getPowerSource()` throws on a suspect settings read. There is only ONE
+      // admission evaluation now, so the throw has exactly one behaviour: the
+      // refresh fails visibly, and neither the sample nor its identity land.
+      const refreshSnapshot = vi.fn().mockResolvedValue(AREA_SAMPLE);
+      const recordPowerSample = vi.fn().mockResolvedValue(undefined);
+      const helper = buildHelper(refreshSnapshot, recordPowerSample);
+      (helper as any).deps.getPowerSource = () => {
+        throw new Error('settings unavailable');
+      };
+
+      await expect(helper.refreshTargetDevicesSnapshot({})).rejects.toThrow('settings unavailable');
+      expect(recordPowerSample).not.toHaveBeenCalled();
     });
   });
 });

@@ -142,9 +142,21 @@ In this version the Usage tab shows whole-home figures.
 ## Giving the Main home its own meter
 
 If you've added meter areas but haven't told PELS which meter belongs to the
-**Main home**, it falls back to reading the *combined* total of every meter, and
-then the Main home's devices get limited to make room for the meter areas'
-usage, which isn't what you want.
+**Main home**, it has no way to know which of your meters to read for it. It
+falls back to whichever whole-home reading your Homey offers first. That can
+happen to be the Main home's own meter, in which case everything is measured
+correctly. But nothing guarantees it, and the first reading can just as easily
+land in one of two problem spots.
+
+**A combined total that already includes a meter area.** PELS cannot detect
+this one, so it keeps limiting the Main home against a figure that includes your
+areas: Main-home devices get limited for usage that isn't theirs.
+
+**A meter area's own meter.** When PELS can see that the reading belongs to one
+of your meter areas, it stops limiting Main-home devices rather than act on a
+meter that already has an owner. That is the safe choice for the area, but it is
+the more serious of the two for you: nothing is keeping the Main home under its
+hard cap until you pick its meter.
 
 The fix is a one-time pick: set the Main home's own meter under **Settings →
 Limits & safety → Whole-home meter**. PELS nudges you toward this whenever meter
@@ -187,8 +199,8 @@ lives in a meter area. Flow cards apply to PELS as a whole.
 - **The apartment's devices aren't being limited.** Check that **"Control
   devices in this area"** is on for that area; a new area simulates until you
   turn control on. Also confirm your power source is **Homey Energy**.
-- **PELS says it's reading the combined total.** Set the Main home's
-  **Whole-home meter** (see above) so each part is measured on its own.
+- **PELS says it can't tell which meter it's reading for the Main home.** Set the
+  Main home's **Whole-home meter** (see above) so each part is measured on its own.
 - **A device is in the wrong area.** Devices follow their Homey zone. Move the
   device to the right zone in Homey, or adjust the area's zone, and the device
   re-homes accordingly.
