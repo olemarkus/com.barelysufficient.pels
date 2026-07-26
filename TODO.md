@@ -240,13 +240,196 @@ What remains open is below.*
       (`DeviceLogView.tsx`) + runtime logs. If the device-detail log should also read
       hypothetically under simulation, thread `dryRun` there too — out of scope for PR #1819
       (Overview plan-card surface only). Source: PR #1819 review gates (2026-07-02).
+- [ ] **An unresolved budget-exempt draw is treated as zero exempt draw.**
+      `computeDailySoftLimit` (`lib/plan/planBuilder.ts:534`) does
+      `sumBudgetExemptLiveUsageKw(devices) ?? 0`, but that producer
+      (`lib/plan/planUsage.ts:75`) returns `null` when exempt devices exist and none report
+      power, and returns a silent *partial* sum when only some report. `budgetPaceImportKw` then
+      collapses to `budgetPaceKw` while `P_import` still includes the exempt device's draw, so
+      the threshold is short by that draw and non-exempt devices get shed for a missing reading
+      rather than for real budget pressure. Given that Homey reads transiently fail, this is
+      reachable in normal operation. Fix at the producer: return an explicit "exempt draw
+      unresolved" state (and distinguish partial from complete) and have the planner handle it
+      rather than defaulting to zero. Same `?? null` path feeds `lib/power/sampleIngest.ts:167`,
+      so the energy bucket silently stops excluding that device for the interval too. Note the
+      rebased threshold needs no floor: `P_import > budgetPaceKw + exemptKw` already equals
+      `P_nonExempt > budgetPaceKw`. No clamp is missing anywhere on the kW axis;
+      `P_nonExempt` stays signed, per the naming/ownership refactor below. Also correct the
+      stale comment at `lib/plan/planReasons.ts:63-68` while here: it says the daily limit "adds back
+      only an exempt device's LIVE draw, zero while it is off", but `computeDailySoftLimit` sums
+      `PlanInputDevice[]`, which carries no `plannedState`
+      (`packages/planner-types/src/planInputDevice.ts:112-114`), so `resolveUsageKw` cannot take
+      its shed-zero branch and an observed-off exempt device falls to `getHighestKnownPowerKw`
+      instead. The add-back already projects an off device's expected draw, which matters
+      because a future "project the candidate draw so exempt devices are capacity-bound for
+      restore" change would double-count. Same fallback as the open P1 observed-off attribution
+      item. Source: safe-pace model review (2026-07-26); see `notes/safe-pace-two-constraints.md`.
+- [ ] **The hero's budget reason line contradicts the number it explains.** When a device is
+      budget-exempt, `computeDailySoftLimit` rebases the daily pace into total-power space by
+      adding the exempt live draw (`lib/plan/planBuilder.ts:528-539`), so a 7 kW "Get power now"
+      load makes "Safe pace now" jump by 7 kW while the tooltip still reads "slowed to stay
+      within today's budget; daily pacing is the tighter constraint right now"
+      (`packages/shared-domain/src/planHeroTooltips.ts:24-28`). The budget did not get looser.
+      Needs a third copy case naming the carve-out (in "Get power now" vocabulary, not the word
+      *exempt*; clear wording via `notes/ui-terminology.md`), which in turn needs `plan.meta` to
+      carry the un-rebased budget pace and the exempt kW, neither of which it exposes today.
+      Do not reach for `meta.dailySoftLimitKw`: that field is the *rebased* value (the
+      `+ exemptKw` add-back happens inside `computeDailySoftLimit` before it reaches the
+      context), and the raw budget pace is an unnamed intermediate that no contract carries.
+      Persona: skeptical optimiser watching the hero during a boost. Source: safe-pace model
+      review (2026-07-26); see `notes/safe-pace-two-constraints.md`.
+- [ ] **A tight-capacity hour hands `softLimitSource` over to `'capacity'` near `:00`.**
+      `capacityPaceKw` decays toward `sustainableRateKw` as the hour ends
+      (`lib/plan/planBudget.ts:44-46`) while `budgetPaceImportKw` holds level, so a hand-over
+      fires exactly when the rebased daily pace sits above the decaying capacity pace near the
+      boundary. It does not fire when the daily pace is well below the sustainable rate (a 2 kW
+      daily pace against an 8 kW sustainable rate stays daily-bound through `:00`), so this is a
+      conditional transition on tight-capacity hours, not a guaranteed hourly one. When it does
+      fire it moves every `softLimitSource` consumer at once: the reason copy flips from budget
+      to capacity, `resolveLimitReason` follows, starvation cause attribution re-buckets, and the
+      startup stabilization gate (`lib/plan/restore/index.ts:55`) changes state. Decide whether
+      the reason line should change under the user at the hour boundary, and whether the runtime
+      gates should read a `capacityActive` predicate rather than the display source. Distinct
+      from the open `resolveSoftLimitSource` hysteresis item (that one is epsilon-band jitter,
+      this is a real transition) but they share consumers and should be designed together.
+      Source: safe-pace EOH review (2026-07-26).
+
+- [ ] **The docs define safe pace as "hard cap minus safety margin", which is wrong.**
+      `docs/glossary.md` ("Safe pace") and `docs/how-pels-decides.md` (~line 55) both state the
+      safe pace *is* the cap minus the margin. It is not: the capacity pace is a burst rate,
+      `remainingKWh / remainingHours` capped by the end-of-hour drain ceiling
+      (`lib/plan/planBudget.ts:20`), which legitimately sits *above* cap-minus-margin for most of
+      an under-used hour. `notes/ui-terminology.md` § "Safe pace, hard cap, and safety margin"
+      and `docs/technical.md` already say this correctly, and the glossary entry contradicts its
+      own next sentence ("a moving target, not a fixed limit"). Cap-minus-margin is the
+      *sustainable* rate and is the right frame only for the Advanced page's "safe pace starts
+      each hour at" preview. Persona: first-time user reading the glossary link from the hero
+      tooltip. Source: safe-pace definition audit (2026-07-26).
 
 ### P1 — targeted refactors (deferred)
 
 *Concrete, bounded changes to specific named surfaces (not structural re-splits — those stay P2).
 The flow-reported / pendingBinaryCommands / stepped-restore-wrapper / stepped-swap-completion /
-deviceOverview entries shipped in the 2026-06-03 train; the one item below (a multi-slice
-program) remains deferred.*
+deviceOverview entries shipped in the 2026-06-03 train; the items below (the first a multi-slice
+program) remain deferred.*
+
+- [ ] **One concept, one name, one owner for the pace/limit family.** `softLimit` currently names
+      four different quantities depending on call site and wiring, and the unwired fallbacks
+      disagree with each other: `lib/power/capacityGuard.ts:124-129` falls back to the hourly
+      allowance, `lib/executor/planExecutor.ts:428` falls back to the **hard cap**,
+      `lib/diagnostics/periodicStatus.ts:83` and `lib/plan/rebuildScheduler/signalDriven.ts:86-87`
+      to the allowance. A caller cannot tell which quantity it got, so a wiring regression
+      degrades to a quieter limit instead of failing loudly, which is the root `AGENTS.md`
+      "unavailable must not become a default" rule applied to a control threshold. Adopt the
+      canonical names in `notes/safe-pace-two-constraints.md` § "Canonical names"
+      (`hardCapKw`, `safetyMarginKw`, `hourlyAllowanceKWh`, `sustainableRateKw`, `capacityPaceKw`,
+      `budgetPaceKw`, `budgetPaceImportKw`, `bindingPaceKw`) and give each exactly one producer.
+      `hourlyAllowanceKWh` and `sustainableRateKw` are one owner with two named readings, since
+      `planBudget.ts:25` subtracts it as energy and line 44 multiplies it as a rate. "One owner"
+      means one per scope: the capacity rows are per home (each bundle wires its own provider,
+      `setup/homeRuntime/createHomeCapacityBundle.ts:406`), the budget rows are main-only
+      (sub-homes get `getDailyBudgetSnapshot: () => null`, `createHomeCapacityBundle.ts:291`), so
+      a sub-home has no `budgetPaceKw` and its `softLimitSource` can never be `'daily'`. Concrete work:
+      (a) collapse the five independent `hardCapKw - safetyMarginKw` computations
+      (`lib/power/capacityModel.ts:7`, `lib/power/capacityGuard.ts:129`,
+      `lib/plan/rebuildScheduler/signalDriven.ts:87`, `lib/power/sampleIngest.ts:159`,
+      `packages/settings-ui/src/ui/capacity.ts:219`) onto one owner. It is a pure function of two
+      settings values with no runtime state, so the owner is the capacity-settings owner, and it
+      should be handed out already resolved next to the existing `getHardCapKw` accessor
+      (`setup/homeRuntime/homeScope.ts:153`). The settings UI then receives it through the
+      contract as data rather than recomputing it, which also sidesteps that it cannot import
+      `lib/**`;
+      (b) delete `resolveCapacitySoftLimitKw` (`lib/power/capacityModel.ts:10`), an alias of
+      `resolveUsableCapacityKw` whose name promises the capacity pace but returns the allowance;
+      (c) make `capacityGuard.getSoftLimit()` return one quantity, surfacing an unwired provider
+      as an explicit unresolved state rather than a substituted threshold, and decide the caller
+      contract at the same time: `lib/executor/planExecutor.ts:428` needs a number, so specify
+      fail-closed (matching the stale-meter posture) rather than today's fall back to
+      `hardCapKw`, which is the loosest candidate. Without that the ambiguity just moves from the
+      producer to every call site;
+      (d) give `budgetPaceKw` a real name and producer instead of leaving it an unnamed
+      intermediate inside `computeDailySoftLimit`, so downstream can obtain the pace that applies
+      to the non-exempt house;
+      (e) materialise `P_nonExempt = P_import - exemptKw` on `PlanContext` and `plan.meta`,
+      **unclamped**. The power side only ever has it as an implicit term inside the rebased
+      threshold, so nothing downstream can show the user what is actually measured against their
+      budget. It equals `nonExemptGross - solar` and goes negative when solar more than covers
+      the non-exempt load, which is the exact analogue of `P_import` going negative on export
+      (`capacityGuard.reportTotalPower` does not floor). Do not add a floor: it would break the
+      deficit identity in the item below (`capacityPaceKw` 20, `budgetPaceKw` 5, `exemptKw` 7,
+      `P_import` 2 gives 10 kW headroom today and 5 kW clamped, delaying restores). The kWh axis
+      keeps its floor for the separate reason at `lib/plan/planHourContext.ts:21-22`. Ship it as
+      **two distinctly named quantities with distinct contract fields**, not one field computed
+      two ways: `P_nonExemptControl = P_import - projectedExemptKw` and
+      `P_nonExemptMeasured = P_import - measuredExemptKw`. `sumBudgetExemptLiveUsageKw` returns
+      the projected value (`getHighestKnownPowerKw` for observed-off devices), which is right for
+      control and wrong for the hero, whose segments are defined as current load
+      (`notes/overview-hero-spec.md:158-164`); the two can differ by several kW, so a single name
+      would leave a `plan.meta` consumer unable to tell whether hypothetical off-device load is
+      included. Do this before the
+      two-predicate item below, which is unwriteable while one identifier means four things.
+      Touches log event fields and test fixtures, so
+      expect churn in `pels-log-review` expectations. Source: safe-pace naming audit (2026-07-26).
+
+- [ ] **Express the soft limit as two predicates instead of one rebased `min()`.** Names below
+      are the canonical ones from the naming item above; land that first. `capacityPaceKw` and
+      `budgetPaceKw` measure different loads: capacity counts all of `P_import`, the budget
+      excludes budget-exempt devices. `planBuilder.ts:309-312` collapses them by rebasing the
+      budget pace onto the import axis (`+ exemptKw`) and taking `min()`. Replace with
+      `overCapacityPace = P_import > capacityPaceKw`,
+      `overBudgetPace = P_nonExempt > budgetPaceKw`, and
+      `deficitKw = max(P_import - capacityPaceKw, P_nonExempt - budgetPaceKw)`, with
+      `P_nonExempt` unclamped. That deficit is algebraically identical to today's, so shedding
+      sizing and shed/restore timing do not change. **What it buys is provenance, not
+      decoupling:** `P_nonExempt` contains `exemptKw` and the forms are identical, so control
+      does not become exempt-independent; the planner just gains the ability to say which
+      constraint bound and by how much, instead of deriving it from a source string computed off
+      a collapsed scalar. Three things it must preserve, each a review counterexample:
+      (i) the two forced-headroom branches at `lib/plan/planContext.ts:82-91` need *opposite*
+      handling. Stale fail-closed sheds while `overCapacityPace` is false and must keep admitting
+      exempt candidates, so candidacy needs `overCapacityPace || staleFailClosed`. The
+      exhausted-hour branch must NOT join it: `lib/plan/shedding/buildSheddingPlan.ts:103` already
+      overrides the source to `'daily'` there specifically to protect exempt devices, pinned by
+      `test/integration/planShedding.test.ts:3424-3488`, so folding it into a single
+      `forcedBreach` term would let `shedAllCandidates` shed "Get power now" devices; (ii) `softLimitSource` is a control input at
+      `lib/plan/restore/index.ts:55`, which gates startup stabilization on `=== 'capacity'`, so
+      introducing `'both'` changes restore behaviour unless every consumer is updated or a
+      separate `capacityActive` predicate is kept for the runtime gates; (iii) no floor inside
+      the deficit, per the naming item above. **Scope
+      limit:** it does not make the displayed pace exempt-independent. Any single tick on a
+      `P_import` axis is `min(capacityPaceKw, budgetPaceKw + exemptKw)` by construction, so
+      `softLimitSource` must stay a common-axis argmin (what `resolveSoftLimitSource` computes
+      today) and stays coupled to exempt draw; a raw argmin over the two paces is meaningless
+      because they are on different
+      axes. Showing that coupling is the P2 hero carve-out's job, not this refactor's. Two
+      follow-ons: `'both'` becomes producible (already defined in
+      `packages/contracts/src/settingsUiApi.ts:156`, in `SAFE_PACE_TOOLTIP_BY_SOURCE`, and in
+      `notes/ui-terminology.md`, but `resolveSoftLimitSource` at `lib/plan/planBuilder.ts:522-526`
+      can only return `'capacity'` or `'daily'`, so that copy is unreachable today), meaning the
+      two common-axis thresholds agree within `SOFT_LIMIT_EPSILON`, which needs the existing
+      `'both'` tooltip reworded out of its current breach reading. Consumers that want "is the
+      non-exempt house over budget" must read `overBudgetPace` rather than infer it from the source
+      string, as the reason copy and starvation attribution do today. Second follow-on: exempt
+      shed candidacy
+      (`lib/plan/shedding/candidates.ts:110`, `lib/plan/planRemainingSheddableLoad.ts:243`) keys
+      off `overCapacityPace || forcedBreach` instead of
+      `limitSource !== 'daily' || capacityBreached`. Behaviour-preserving only with the
+      `forcedBreach` term per (i) above; the two clauses coincide in the ordinary case (source
+      `'capacity'` plus `headroom < 0` implies `capacityBreached`) but not in the forced
+      branches. The value is that candidacy stops depending on a source string an exempt
+      device's live draw can move.
+      Converge with
+      `resolveLimitReason` (`lib/plan/pelsStatus.ts:265-291`) rather than adding a second fold:
+      it already returns `'none'|'hourly'|'daily'|'both'` for the `limitReason` field, derived
+      from `softLimitSource` plus shed state and headroom sign. Preserve the two `headroom = -1`
+      overrides at `lib/plan/planContext.ts:79-92` (stale fail-closed, exhausted-hour), which the
+      deficit identity does not cover. Does **not** subsume the P3 hysteresis item on
+      `resolveSoftLimitSource` further down: adding a `'both'` band keeps the resolver stateless,
+      so a pace difference oscillating across the epsilon boundary still alternates
+      `capacity`/`both`/`daily` between rebuilds and every source-dependent surface still
+      flickers. That item stays open and needs retained state or enter/exit thresholds. Fix the
+      `?? 0` P1 above first. Source: safe-pace model review (2026-07-26); design in
+      `notes/safe-pace-two-constraints.md`.
 
 - [ ] **Tighten the device-state snapshots to discriminated types.** `TargetDeviceSnapshot`,
       `DevicePlanDevice`, and `PlanInputDevice` carry binary/temperature/stepped/EV/freshness/power
@@ -634,6 +817,31 @@ program) remains deferred.*
       Persona: contributor; hypothesis: the next settings feature stalls on an unrelated lint
       ceiling and gets a second ad-hoc raise. Source: PR-2 of the external-off hold train
       (2026-07-25).
+
+- [ ] **Show the budget-exempt carve-out on the Overview hero instead of hiding it in the number.**
+      The hero power bar's x-axis is total metered power, which is the natural axis for the cap
+      pace and the wrong axis for the budget pace (whose subject is the house minus the exempt
+      slab). Today the mismatch is papered over by rebasing the budget pace (`+ exemptKw`), which
+      is why the number moves for a non-budget reason. Direction: pull exempt devices out as a
+      leading sub-segment of managed, so the bar reads `[exempt][managed][background][free]`, and
+      draw the budget tick at `exempt + budgetNet`. "Over budget" then reads as "everything right
+      of the exempt slab exceeds the tick", which is literally the predicate, and the tick
+      position explains itself. Gate on `exemptKw > 0` so the default hero is unchanged.
+      Prerequisite: settle the axis. The bar total is net grid import
+      (`lib/power/sampleIngest.ts:113-123` keeps the cap path and the kWh bucket on net) while
+      per-device `exemptKw` is gross appliance draw, so on a solar home the slab can exceed the
+      bar; decide whether the hero axis is net (slab needs a clamp with a visible treatment) or
+      gross (cap tick no longer sits on the axis the cap meters). Do NOT present "available
+      power" as cap-only for an exempt device: `lib/plan/planReasons.ts:63-68` documents that
+      the exemption covers daily-budget shedding only, restore admission still gates on
+      `min(capacitySoftLimit, dailySoftLimit)`, and an off exempt device can genuinely be held
+      by the daily budget, though not for the reason that comment gives (see below). Depends on
+      the P1 reason-line copy fix and on `plan.meta` carrying the un-rebased pace + exempt kW.
+      Rejected alternative: two permanently visible pace ticks (three ticks at 320 px, with the
+      cap tick already mandatory, for a state most homes never enter). Persona: skeptical
+      optimiser during a boost. Hypothesis: a bar that shows the carve-out is trusted where a
+      jumping number is not. Source: safe-pace model review (2026-07-26); design in
+      `notes/safe-pace-two-constraints.md` and `notes/overview-hero-spec.md`.
 
 - [ ] **Meter picker hint invites an impossible pick when no meters are listed.** When the Homey
       Energy report exposes no id-carrying whole-home (cumulative) meter and no sensor-class device
@@ -1356,7 +1564,11 @@ CI failure, so future field-move slices can't silently grow the debt.*
       rescue button that appears and vanishes every few seconds reads as a bug and erodes trust. Candidate fix:
       add hysteresis (or a `both`-leaning-to-budget tiebreak) to `resolveSoftLimitSource`. Out of scope for the
       cause-classification fix (#1735) because it also moves the hero "Safe pace now" source label. Source:
-      pels-runtime-reality on #1735, 2026-06-16.
+      pels-runtime-reality on #1735, 2026-06-16. **Not** solved by the P1 targeted refactor
+      "Express the soft limit as two predicates instead of one rebased `min()`": that gives
+      `softLimitSource` a real `both` band, but the resolver stays stateless, so values
+      oscillating across the epsilon boundary still alternate `capacity`/`both`/`daily`. This
+      item needs retained state or separate enter/exit thresholds either way.
 
 - [ ] **Busy-gate the Budget header toggle (inherited apply race).** `onToggleClick` ignores
       `adjust.busy`: confirming a discard while an apply is in flight yields a post-navigation
