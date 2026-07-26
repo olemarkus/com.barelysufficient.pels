@@ -184,6 +184,7 @@ Key timing:
 | Snapshot/realtime merge logic, device state trust | `lib/device/AGENTS.md` (invariants digest), `notes/state-management/` (design-of-record) |
 | Starvation detection | `lib/diagnostics/AGENTS.md` (invariants digest), `notes/starvation/` |
 | Capacity model internals | `docs/technical.md` |
+| Safe pace (cap vs daily budget), budget exemption | `notes/safe-pace-two-constraints.md` |
 | Daily budget logic | `docs/daily-budget.md` |
 | Flow card design | `docs/flow-cards.md` |
 | Architecture boundaries | `docs/architecture.md` |
