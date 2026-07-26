@@ -93,7 +93,7 @@ export const previewDeferredObjectivePlan = (
     powerTracker: params.powerTracker,
     hardCapKw: params.hardCapKw,
     // The candidate handed to this producer is ALREADY gated by the caller
-    // (`App.gateCandidateExtraPermissions` runs before this), so its `rescue`
+    // (`AppSmartTaskApi.gateCandidateExtraPermissions` runs before this), so its `rescue`
     // is the surviving permission set — reflect it onto the estimate verbatim.
     rescue: params.candidate.rescue,
   });

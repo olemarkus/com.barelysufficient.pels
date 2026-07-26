@@ -46,9 +46,10 @@ const buildDevice = (device: TargetDeviceSnapshot & SteppedLoadDescriptorProbe):
     currentValue,
     // Gate-on-effect: the limit-lower-priority permission only changes the plan
     // for a stepped-load device at top priority (the planner's `fullyReserved`
-    // floor is `priority === 1`). The stepped predicate mirrors app.ts
-    // `deviceSupportsLimitLowerPriority`; the extra `priority === 1` keeps the
-    // compose toggle from ever being offered where it would be a no-op.
+    // floor is `priority === 1`). The stepped predicate mirrors
+    // `AppSmartTaskApi.deviceSupportsLimitLowerPriority`; the extra
+    // `priority === 1` keeps the compose toggle from ever being offered where
+    // it would be a no-op.
     supportsLimitLowerPriority:
       device.controlModel === 'stepped_load'
       && isSteppedLoadSnapshot(device)

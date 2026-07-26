@@ -83,7 +83,7 @@ const tempWrites = (putSpy: ReturnType<typeof vi.spyOn>) =>
 describe('Airtreatment capacity shedding (SDK-boundary e2e)', () => {
   beforeEach(() => {
     // 'Date' MUST be faked here: under NODE_ENV=test the plan-rebuild scheduler reads
-    // its clock via Date.now() (app.ts getAppPlanRebuildNowMs). Without a faked Date it
+    // its clock via Date.now() (setup/planRebuildIntentPolicy.ts getAppPlanRebuildNowMs). Without a faked Date it
     // runs on real wall-clock while the test drives fake timers — a real-vs-fake split
     // that intermittently strands the rebuild under CI load (the drainUntil flake).
     vi.useFakeTimers({

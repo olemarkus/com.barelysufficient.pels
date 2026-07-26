@@ -21,7 +21,7 @@ Answer two questions: **what is real**, and **how is the subject driven/observed
   (UI e2e is Playwright and lives in `packages/settings-ui`, not here.)
   - **createApp e2e using fake timers MUST fake `'Date'`** (`vi.useFakeTimers({ toFake: ['Date', …] })`
     and `vi.setSystemTime(...)`). Under `NODE_ENV=test` the plan-rebuild scheduler reads its clock via
-    `Date.now()` (`app.ts` `getAppPlanRebuildNowMs`); without a faked `Date` it runs on real wall-clock
+    `Date.now()` (`setup/planRebuildIntentPolicy.ts` `getAppPlanRebuildNowMs`); without a faked `Date` it runs on real wall-clock
     while the test advances fake time, and the rebuild intermittently strands under CI load (the
     historical `*ShedControl` "drainUntil … 50 rounds" flake).
 

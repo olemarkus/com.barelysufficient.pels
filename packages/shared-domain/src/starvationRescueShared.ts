@@ -96,7 +96,7 @@ export const resolveRescuableDeviceFromList = (
 // intended normal target, carrying `exemptFromBudget: 'always'` to bypass
 // daily-budget admission while it's scheduled. The OTHER rescue permission —
 // `limitLowerPriorityDevices` (the boost) — is added SERVER-SIDE only for
-// stepped-eligible devices (see `App.deviceSupportsLimitLowerPriority`); the
+// stepped-eligible devices (see `AppSmartTaskApi.deviceSupportsLimitLowerPriority`); the
 // surfaces can't see the device profile, so they never grant it here. 'always'
 // (not 'at_risk') because the user is explicitly asking for power NOW on an
 // already-starved device — there is no "wait until at risk" to defer to.

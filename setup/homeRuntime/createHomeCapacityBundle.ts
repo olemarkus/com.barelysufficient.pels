@@ -230,7 +230,7 @@ function createBundleRebuildScheduler(params: {
 }): PlanRebuildScheduler {
   const { ctx, timerKey, getRebuildState, setRebuildState, getPlanService } = params;
   const nowMs = () => Date.now();
-  // Mirrors `PelsApp.resolvePlanRebuildDueAtMs` for the two intent kinds a
+  // Mirrors `PlanRebuildIntentPolicy.resolveDueAtMs` for the two intent kinds a
   // bundle emits; `flow` intents do not exist for sub-homes.
   const resolveDueAtMs = (intent: RebuildIntent, state: SchedulerState): number => {
     const rebuildState = getRebuildState();

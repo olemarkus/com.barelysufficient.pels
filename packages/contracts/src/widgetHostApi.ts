@@ -10,10 +10,11 @@ import type { SettingsUiDeferredObjectivePlanHistoryPayload } from './settingsUi
 import type { SmartTaskHomeScope } from './smartTaskHomeScope.js';
 
 /**
- * Result of a widget-initiated deferred-objective write (create / rescue). The
- * reason union mirrors `PelsApp.createDeferredObjective` /
- * `rescueDeviceWithBudgetExemption` exactly so the contract and the app stay in
- * lock-step.
+ * Result of a widget-initiated deferred-objective write (create / rescue).
+ * SINGLE declaration of this union: the runtime aliases it as
+ * `SmartTaskWriteResult` (`setup/appSmartTaskApi.ts`) rather than mirroring it,
+ * so `PelsApp.createDeferredObjective` / `rescueDeviceWithBudgetExemption` and
+ * the widgets cannot drift apart.
  */
 export type WidgetObjectiveWriteResult =
   | { ok: true }

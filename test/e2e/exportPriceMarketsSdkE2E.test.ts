@@ -85,7 +85,7 @@ describe('Export (feed-in) pricing per market (SDK-boundary e2e)', () => {
 
   beforeEach(() => {
     // 'Date' MUST be faked: under NODE_ENV=test the plan-rebuild scheduler reads
-    // Date.now() (app.ts getAppPlanRebuildNowMs); a real-vs-fake split strands it.
+    // Date.now() (setup/planRebuildIntentPolicy.ts getAppPlanRebuildNowMs); a real-vs-fake split strands it.
     vi.useFakeTimers({
       toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'],
     });
