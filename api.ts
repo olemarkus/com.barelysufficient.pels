@@ -18,23 +18,27 @@ import {
   getSettingsUiWeatherAdvisorReadout,
   getSettingsUiDeviceLogPayload,
   getSettingsUiDevicesPayload,
-  getSettingsUiHomesPayload,
-  saveSettingsUiHomesConfig,
   getSettingsUiPlanPayload,
   getSettingsUiPowerPayload,
   getSettingsUiPricesPayload,
   logSettingsUiMessage,
   applySettingsUiDailyBudgetModel,
   previewSettingsUiDailyBudgetModel,
-  createSettingsUiStarvationRescue,
-  getSettingsUiStarvationRescueDevices,
-  previewSettingsUiStarvationRescue,
   refreshSettingsUiDevices,
   refreshSettingsUiGridTariff,
   refreshSettingsUiPrices,
   recomputeSettingsUiDailyBudget,
   resetSettingsUiPowerStats,
 } from './setup/settingsUiApi';
+import {
+  getSettingsUiHomesPayload,
+  saveSettingsUiHomesConfig,
+} from './setup/settingsUiHomesApi';
+import {
+  createSettingsUiStarvationRescue,
+  getSettingsUiStarvationRescueDevices,
+  previewSettingsUiStarvationRescue,
+} from './setup/settingsUiStarvationRescueApi';
 import {
   cancelSettingsUiSmartTask,
   previewSettingsUiSmartTask,

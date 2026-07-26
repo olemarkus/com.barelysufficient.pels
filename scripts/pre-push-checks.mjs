@@ -13,6 +13,7 @@ const RUNTIME_PATHS = [
   'drivers/',
   'flowCards/',
   'lib/',
+  'setup/',
   'test/',
   'packages/contracts/src/',
   'packages/shared-domain/src/',

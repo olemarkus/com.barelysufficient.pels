@@ -251,7 +251,7 @@ const formatCostLine = (estimate: OkPreview['estimate']): string | null => {
 // Read-only "Extra permissions" summary: the standing permissions the rescue
 // grants, shown so the user sees exactly what confirming will allow. The rescue
 // requests both `exemptFromBudget` + `limitLowerPriorityDevices`, but the backend
-// GATES `limitLowerPriorityDevices` (`App.gateCandidateExtraPermissions`): it is
+// GATES `limitLowerPriorityDevices` (`AppSmartTaskApi.gateCandidateExtraPermissions`): it is
 // dropped unless the device is stepped-load eligible AND at top priority — a
 // permission the planner would otherwise ignore. So the summary is derived from
 // the already-gated `estimate.grantedRescuePermissions` (only the SURVIVING

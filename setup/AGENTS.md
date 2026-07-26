@@ -5,9 +5,9 @@
 ## Conventions (authoritative)
 
 - One purpose per file, named for the concrete wiring it does. No grab-bag `setupHelpers.ts`.
-- Each file exposes a class or a single `register*` / `init*` / `create*` function — no bags of utility functions.
-- Files larger than ~150 LOC are considered fat-fingered and should split.
-- `setup/**` may import `lib/**` and `packages/**`; the reverse is forbidden (`no-lib-to-setup` dep-cruiser rule, `npm run arch:check`).
+- Each file exposes a class or a single `register*` / `init*` / `create*` function — no bags of utility functions. **One carve-out:** the settings-UI/widget endpoint handler files (`settingsUiApi.ts`, `settingsUiHomesApi.ts`, `settingsUiStarvationRescueApi.ts`, `settingsUiSmartTaskApi.ts`) each export the handler set for ONE endpoint family, because `api.ts` imports handlers by name. The cohesion rule still binds: a new endpoint family gets a new file, never an extra export on an unrelated one.
+- `setup/**` may import `lib/**` and `packages/**`; the reverse is forbidden (`no-lib-to-setup` dep-cruiser rule, `npm run arch:check`). `setup/**` must not import `packages/settings-ui/**` either (`no-backend-to-settings-ui`).
+- **An extracted body may re-assert a boot-window invariant by throwing, never by defaulting.** Six `AppContext` members are optional (`priceCoordinator`, `dailyBudgetService`, `deviceManager`, `planEngine`, `planService`, `deviceDiagnosticsService`) while `PelsApp` declares them definite, so a body moved out of `app.ts` behind `ctx: AppContext` inherits a nullability the original never had. `?.` or `?? someDefault` there silently converts a wiring bug into a plausible-looking value and violates the resolution-in-producer rule. Assert instead — `AppSmartTaskApi.requirePriceRateLabel` is the reference — or narrow the constructor to a `Pick<AppContext, …>` when every member you need is genuinely optional upstream too (`AppSmartTaskPayloads`).
 
 ## Boot path
 
@@ -17,7 +17,9 @@
   - `powerSamplePipeline.ts` — `PowerSamplePipeline`: routes power samples into capacity tracking and plan-rebuild scheduling.
   - `backgroundTasksController.ts` — `BackgroundTasksController`: owns periodic tasks (perf logging, price-lowest triggers, deferred-objective lifecycle clock).
   - `settingsRepository.ts` — `SettingsRepository`: typed reads of persisted Homey settings at boot.
-  - `settingsUiApi.ts` — the handlers `api.ts` delegates to for every settings-UI endpoint.
+  - `settingsUiApi.ts` — the handlers `api.ts` delegates to for the settings-UI bootstrap/read/refresh endpoints. Two endpoint families have their own root files `api.ts` imports directly: `settingsUiHomesApi.ts` (`ui_homes` + the `ui_homes_save` ownership-write seam) and `settingsUiStarvationRescueApi.ts` (the overview device-card budget-exempt rescue), alongside the existing `settingsUiSmartTaskApi.ts`.
+  - `appSmartTaskApi.ts` / `appSmartTaskPayloads.ts` — the smart-task (deferred-objective) preview+write lanes and the read-only UI payload assembly. `app.ts` keeps thin delegating stubs because the widget host API and the settings-UI handlers reach them through `homey.app`.
+  - `planRebuildIntentPolicy.ts` — `getAppPlanRebuildNowMs` plus the due-time/execution decisions `PlanRebuildScheduler` delegates back to the app.
   - `appSettingsHelpers.ts` — loads/normalizes capacity settings and reacts to settings changes.
   - `homeRuntime/` — per-home wiring (multi-home): the `HomeScope` closure bundle the plan factories consume, the pipeline factory, and the R7b capacity-only sub-home bundles (`homeRuntimeRegistry.ts` + `createHomeCapacityBundle.ts`, reconciled against `homes_config`; the main home never routes through the bundle factory).
 

@@ -454,7 +454,7 @@ describe('previewDeferredObjectivePlan', () => {
 
   // ── Granted rescue permissions (honest "Extra permissions" summary) ────────
   // The producer is handed the ALREADY-GATED candidate (the caller runs
-  // `App.gateCandidateExtraPermissions` first), so it reflects the surviving
+  // `AppSmartTaskApi.gateCandidateExtraPermissions` first), so it reflects the surviving
   // permission set verbatim. A non-eligible device's gated candidate carries
   // only `exemptFromBudget`, so the summary must NOT claim the boost.
   it('reflects both granted rescue permissions when the gated candidate carries both', () => {

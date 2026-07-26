@@ -1000,7 +1000,7 @@
     return resolveActivePlans(buildSampleActivePlans());
   };
 
-  // Mirror the real API producer (`app.ts buildPlanHistoryUiPayload` →
+  // Mirror the real API producer (`setup/appSmartTaskPayloads.ts buildPlanHistoryUiPayload` →
   // `toResolvedPlanHistoryEntry`): the settings UI receives plan-history entries
   // with the kind-split (°C/%) pairs already resolved to flat `*Value` fields.
   // Fixtures inject raw entries, so resolve them here. Idempotent (nullish-keeps

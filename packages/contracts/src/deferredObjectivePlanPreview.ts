@@ -142,7 +142,7 @@ export type DeferredObjectivePlanPreviewEstimate = {
   // measured-draw / hard-cap reading, or the current hour is not scheduled.
   atCapNow?: boolean;
   // The rescue "Extra permissions" that SURVIVED the candidate's per-device
-  // gate (`App.gateCandidateExtraPermissions`). The producer is handed the
+  // gate (`AppSmartTaskApi.gateCandidateExtraPermissions`). The producer is handed the
   // already-gated candidate, so this reflects exactly what the rescue would
   // persist — a non-eligible device sees `limitLowerPriorityDevices: false`
   // even though it requested it, because the gate drops a grant the planner

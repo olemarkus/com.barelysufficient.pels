@@ -252,7 +252,7 @@ describe('sample-pipeline usage split (createHomePowerPipeline)', () => {
       rebuildPlanFromCache: vi.fn(async () => undefined),
     } as unknown as PlanService;
     const nowMs = Date.UTC(2026, 0, 15, 12, 0, 0);
-    // Mirrors `PelsApp.executePlanRebuildIntent`: the sample promise is a
+    // Mirrors `PlanRebuildIntentPolicy.executeIntent`: the sample promise is a
     // deferred on `powerSampleRebuildState` that ONLY this executor resolves —
     // an inert executeIntent stub would hang the recordPowerSample await.
     const executeIntent = () => executePendingPowerRebuild({

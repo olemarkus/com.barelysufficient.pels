@@ -83,7 +83,7 @@ const advancePastSettle = async () => {
 describe('Surplus-absorb setpoint raise (SDK-boundary e2e)', () => {
   beforeEach(() => {
     // 'Date' MUST be faked — under NODE_ENV=test the plan-rebuild scheduler reads
-    // its clock via Date.now() (app.ts getAppPlanRebuildNowMs); a real-vs-fake split
+    // its clock via Date.now() (setup/planRebuildIntentPolicy.ts getAppPlanRebuildNowMs); a real-vs-fake split
     // intermittently strands the rebuild under CI load.
     vi.useFakeTimers({
       toFake: ['Date', 'setTimeout', 'setInterval', 'setImmediate', 'clearTimeout', 'clearInterval', 'clearImmediate'],

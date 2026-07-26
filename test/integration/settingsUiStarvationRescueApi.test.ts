@@ -8,7 +8,7 @@ import {
   createSettingsUiStarvationRescue,
   getSettingsUiStarvationRescueDevices,
   previewSettingsUiStarvationRescue,
-} from '../../setup/settingsUiApi';
+} from '../../setup/settingsUiStarvationRescueApi';
 
 // Settings-UI overview device-card budget-exempt rescue handlers. They reach the
 // SAME app methods the starvation_rescue widget calls and reuse the shared

@@ -886,8 +886,8 @@ program) remain deferred.*
       and `DecoratedDeviceSnapshot` now intersect both new probes (the transport produces and the app-layer
       decorator re-resolves + writes these onto the carrier). `suggestedSteppedLoadProfile` STAYS on the base
       (it is a CONFIGURE hint for non-stepped devices, not part of the stepped cluster). Consumers migrated:
-      objectives `resolveCredibleDevicePower`, the flow-card stepped-load + EV-phase paths, `app.ts`
-      `deviceSupportsLimitLowerPriority`, and the settings-UI device-detail carrier + smart-tasks widget payload;
+      objectives `resolveCredibleDevicePower`, the flow-card stepped-load + EV-phase paths,
+      `AppSmartTaskApi.deviceSupportsLimitLowerPriority`, and the settings-UI device-detail carrier + smart-tasks widget payload;
       owner/producer seams (transport parse/calibration-store/native-EV/debug-snapshot) probe-widen instead.
       `targetPowerConfig` reads stay owner-probe reads (a continuous EV preset carries it without a full stepped
       profile), not `isSteppedLoadSnapshot` narrows. Type-level only — zero runtime behavior change.
@@ -1880,11 +1880,43 @@ CI failure, so future field-move slices can't silently grow the debt.*
       stale `deadlineAtMs`/label could be shown or reused on a later confirm — guard it the same way. Source: codex +
       coderabbit on #1736, 2026-06-17.
 
-- [ ] **Extract the settings-UI starvation-rescue handlers out of `setup/settingsUiApi.ts`.** The `get`/`preview`/
-      `create` rescue handlers were added to the already multi-purpose `settingsUiApi.ts`; a dedicated rescue-wiring
-      module would lower coupling and future churn. Pure refactor (no behaviour change). Persona: maintainer;
-      hypothesis: the rescue surface will keep growing and is easier to evolve isolated. P2 maintainability. Source:
-      coderabbit on #1736, 2026-06-17.
+- [ ] **The weather-insight cluster entered the 80% coverage gate at near-zero coverage.** Adding `setup/**` to the
+      `vitest.config.mts` coverage include (multi-home headroom PR) pulled in
+      `setup/appInit/weatherAdvisorReadoutAssembler.ts` (0% statements, 0% branches) and
+      `setup/appInit/createWeatherCollector.ts` (45% st / 41% br) — 68 uncovered branches between them. The suite
+      clears the gate today with ~6.6pp of branch headroom, so nothing is red, but `project_weather_insight` is
+      "merged, needs deploy": the next iteration on it starts from ~zero instrumented coverage and can push the
+      global gate down while the author is looking at an unrelated diff. Same family, smaller: `appDebugCompaction.ts`
+      (47 uncovered branches), `appInit/registerSettingsHandler.ts`, `appInit/priceServices.ts`,
+      `backgroundTasksController.ts`, `appDebugPrimitives.ts`. Fix: add integration cover for the readout assembler
+      and the collector factory before the next weather PR. Persona: contributor landing the next weather change;
+      hypothesis: a coverage failure attributed to an unrelated diff costs a full CI round to diagnose. P2.
+
+- [ ] **The power-driven rebuild due-time floor is implemented twice.** `PlanRebuildIntentPolicy.resolveDueAtMs`
+      (`setup/planRebuildIntentPolicy.ts`) and `createBundleRebuildScheduler` (`setup/homeRuntime/
+      createHomeCapacityBundle.ts:218-226`) compute the tight-unactionable floor and the `hardCap`/`signal` due
+      times byte-for-byte identically; the bundle's comment even says "Mirrors `PlanRebuildIntentPolicy
+      .resolveDueAtMs`". They legitimately differ elsewhere (the bundle uses a wall clock and has no `flow` lane),
+      so only the power-driven half should be shared. Both are in `setup/`, so no boundary blocks it. Fix: export a
+      `resolvePowerDrivenDueAtMs(intent, nowMs, rebuildState)` from `planRebuildIntentPolicy.ts` and call it from
+      both — `test/unit/planRebuildIntentPolicy.test.ts` then covers the sub-home path too. Persona: contributor
+      tuning the floor; hypothesis: a one-sided edit changes main-home pacing while sub-homes silently keep the old
+      behaviour, and nothing fails. P2. Source: adversarial review, multi-home headroom PR.
+
+- [ ] **The starvation-rescue preview return shape is written out inline in four places.**
+      `{ estimate; deadlineAtMs; hasExistingObjective }` appears at `app.ts` (the stub),
+      `setup/appSmartTaskApi.ts`, `setup/settingsUiStarvationRescueApi.ts` and
+      `packages/contracts/src/widgetHostApi.ts`. Three predate the headroom PR; the extraction added the fourth.
+      Fix: name it in `packages/contracts/src/starvationRescue.ts` and alias it at all four sites (type-only, so no
+      bundle churn). Persona: contributor adding a field to the rescue preview; hypothesis: a four-way inline shape
+      means adding a field is four edits and missing one is a silent structural mismatch at whichever site is
+      typed loosest. P3. Source: adversarial review, multi-home headroom PR.
+
+- [ ] **`notes/state-management/snapshot-decomposition.md` cites line numbers that no longer exist.** Line 102 cites
+      `app.ts:1841 latestTargetSnapshot` (app.ts is now ~1060 raw lines) and line 273 says "`app.ts` (×5)"
+      `getSnapshot()` pullers where there are 6. Fix: repoint to symbol names rather than line numbers. Persona:
+      contributor picking up the remaining snapshot-decomposition stages; hypothesis: a wrong line number sends the
+      reader to unrelated code and erodes trust in the whole note. P3.
 
 - [ ] **Gate the device-detail Price-response + Solar-surplus sections on `canManageDevice`, not just `resolveManagedState`.**
       Both sections (and the Price/Surplus Control toggles) gate visibility/enable on `resolveManagedState`
@@ -2183,16 +2215,17 @@ live-walk screenshots.*
       `lib/plan/planReasons.ts` (mixes reason normalization with shed-temperature hold decisions),
       plan/executor/rendering boundaries.
 - [ ] **Split the `PelsApp` class so `app.ts` reaches <=500** — the last Bucket-B god-file still
-      carrying a `max-lines` override (lowered 1907→1110 by the eslint-cleanup train, not deleted).
+      carrying a `max-lines` override (lowered 1907→1110→950 by successive trains, not deleted).
       Every other Bucket-B god-file was decomposed under 500 and its override deleted (the
       eslint-cleanup train, PRs #1786–#1796: deviceTransport 2261→491, restore/index 1340→379,
       registerFlowCards 1148→148, deviceDiagnosticsService 1200→320, plus planBuilder / planReasons /
       planService / planExecutor / steppedLoadExecutor / managerObservation / planDevices /
       activePlanRecorder / diagnosticsBridge / deferredPlanHistory(+Receipt) / powerDriven /
       appDebugHelpers). Remaining: `app.ts` is the `Homey.App` composition root (~40 service fields +
-      the `implements AppContext` delegator surface + the smart-task widget API); reaching <500 needs
-      splitting `PelsApp` into sub-controllers — a large entrypoint restructure, out of scope for the
-      behavior-neutral exemption sweep. The `import-x/max-dependencies` overrides on `app.ts` (50) and
+      the `implements AppContext` delegator surface); the smart-task API cluster and the plan-rebuild
+      intent policy came out in the multi-home headroom PR (override lowered 1110→950), so reaching
+      <500 now needs the per-domain delegator surface split into sub-controllers — a large entrypoint
+      restructure, out of scope for the behavior-neutral exemption sweep. The `import-x/max-dependencies` overrides on `app.ts` (50) and
       `setup/appServiceWiring.ts` (30) — the two composition roots — are accountable here too.
       Persona: contributor.
 *Smart-task controller extraction (2026-05-30, `feat/smarttask-lifecycle-producer`).
@@ -2723,3 +2756,14 @@ persona but no current support-cost pressure; reframed to the P3 bar.*
       planner itself caused, however brief, reads as PELS breaking its one promise. Source: Codex
       review of multi-home PR #1886 (thread "Admit fresh-sample raises against available headroom"),
       2026-07-27. Files: `lib/plan/planDevices.ts`, `lib/plan/planActionMaterialization.ts`. [P2]
+- [ ] **The plan-time daily-budget provider still defaults where the new setup rule says assert.**
+      *Persona:* maintainer moving wiring out of `app.ts` under the `setup/AGENTS.md` boot-window rule.
+      *Hypothesis:* `buildMainHomeScope` builds `getDailyBudgetSnapshot: () => ctx.dailyBudgetService?.getSnapshot() ?? null`,
+      the same shape `AppSmartTaskApi.previewDeferredObjectivePlan` just replaced with an assertion. It is
+      unreachable today only because `initHomeRuntimeRegistry` runs after `initDailyBudgetService` in
+      `AppServiceWiring.startApp`, and nothing enforces that order. *Why:* `getSnapshot()` legitimately
+      returns `null`, so the default makes "no daily budget" and "service not wired yet" indistinguishable —
+      here on the path that feeds the *planner*, not a preview, so a reordering would silently plan without
+      the daily budget instead of failing loudly. Ship the rule with no live counter-example: assert, or
+      state in the closure why absence is a genuine domain value at this seam. Behaviour-neutral today.
+      Source: adversarial review of PR #1889, 2026-07-26. File: `setup/homeRuntime/homeScope.ts`.

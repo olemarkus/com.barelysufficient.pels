@@ -8,7 +8,7 @@ import { isRuntimePlannedDevice } from '../appDeviceSupport';
 
 /**
  * Multi-home v1 scope predicate shared by EVERY smart-task surface: the app's
- * candidate list + create validation (`app.ts`), the device-scoped write op's
+ * candidate list + create validation (`appSmartTaskApi.ts`), the device-scoped write op's
  * defence-in-depth gate (`buildDeferredObjectiveDeviceWriteDeps`), the
  * set-deadline flow-card autocompletes (`registerAppFlowCards`), and — negated
  * — the decoration controller's diagnostics honesty (`createPlanEngine`).

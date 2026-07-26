@@ -253,4 +253,4 @@ area exists).
 | HomeScope (main vs sub) | `setup/homeRuntime/homeScope.ts` |
 | Per-meter live read | `extractLiveMeterPowerWatts` (power source) |
 | Suffixed key helper (`homeScopedSettingsKey`) | `lib/utils/settingsKeys.ts` |
-| Read/write UI seam | `setup/settingsUiApi.ts` |
+| Read/write UI seam | `setup/settingsUiHomesApi.ts` |

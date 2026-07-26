@@ -19,7 +19,7 @@ module.exports = {
       name: 'no-backend-to-settings-ui',
       comment: 'Backend runtime must not depend on UI code.',
       severity: 'error',
-      from: { path: '^(app\\.ts|flowCards/|drivers/|lib/)' },
+      from: { path: '^(app\\.ts|api\\.ts|flowCards/|drivers/|lib/|setup/)' },
       to: { path: '^packages/settings-ui/' },
     },
     {
@@ -27,7 +27,7 @@ module.exports = {
       comment: 'Settings UI must consume shared contracts, not runtime internals.',
       severity: 'error',
       from: { path: '^packages/settings-ui/src/' },
-      to: { path: '^(app\\.ts|flowCards/|drivers/|lib/)' },
+      to: { path: '^(app\\.ts|api\\.ts|flowCards/|drivers/|lib/|setup/)' },
     },
     {
       name: 'no-domain-to-app-layer',
@@ -185,7 +185,7 @@ module.exports = {
         + '(e.g. @pels/contracts), never on the app runtime.',
       severity: 'error',
       from: { path: '^packages/(contracts|shared-domain|planner-types)/src/' },
-      to: { path: '^(app\\.ts|flowCards/|drivers/|lib/)' },
+      to: { path: '^(app\\.ts|api\\.ts|flowCards/|drivers/|lib/)' },
     },
     {
       name: 'todo-tighten-utils-layering',

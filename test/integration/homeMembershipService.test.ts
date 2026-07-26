@@ -53,7 +53,7 @@ import { POWER_SAMPLE_STALE_THRESHOLD_MS } from '../../packages/shared-domain/sr
 import type { ConfiguredPowerSourceRead } from '../../setup/powerSourceSettings';
 import type { StableSampleRevision } from '../../setup/powerSamplePipeline';
 import type { AppContext } from '../../lib/app/appContext';
-import { getSettingsUiHomesPayload, saveSettingsUiHomesConfig } from '../../setup/settingsUiApi';
+import { getSettingsUiHomesPayload, saveSettingsUiHomesConfig } from '../../setup/settingsUiHomesApi';
 import { TimerRegistry } from '../../lib/utils/timerRegistry';
 import {
   buildStarvedRescueDevices,
