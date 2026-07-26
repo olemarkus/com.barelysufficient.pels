@@ -147,6 +147,12 @@ export const buildSignatureFromDiagnostic = (diag: DeferredObjectiveDiagnostic):
   });
 };
 
+// Seeded from a flow-card / settings edit, before any diagnostic exists. The
+// reason must still be stated: leaving it absent let every consumer's local
+// default speak for it, and the settings hero and widget both defaulted to
+// `awaiting_horizon_plan` — so a task created with tomorrow's prices already in
+// hand announced "Waiting for tomorrow's prices" (prod 2026-07-26). The first
+// lifecycle tick replaces this with the diagnostic-derived reason.
 export const createPlanFromSeed = (seed: ActivePlanFlowCardSeed, nowMs: number): DeferredObjectiveActivePlanV1 => ({
   deviceId: seed.deviceId,
   deviceName: seed.deviceName,
@@ -156,6 +162,7 @@ export const createPlanFromSeed = (seed: ActivePlanFlowCardSeed, nowMs: number):
   deadlineAtMs: seed.deadlineAtMs,
   startedAtMs: nowMs,
   pending: true,
+  pendingReason: 'not_yet_planned',
   objectiveSignature: buildObjectiveSignature({
     objectiveKind: seed.objectiveKind,
     targetTemperatureC: seed.targetTemperatureC,

@@ -12,6 +12,7 @@ import {
   resolveEffectivePlanStatus,
   SMART_TASK_BANNER_UNAVAILABLE_FOR_DEVICE,
   type DeadlinePendingContext,
+  type DeadlinePlanPendingReason,
   type DeadlinePlanUnavailableReason,
 } from '../../../shared-domain/src/deadlineLabels.ts';
 import { buildPlanInputs } from './deadlinePlanInputs.ts';
@@ -94,12 +95,17 @@ const resolveObjectiveContext = (params: ObjectivePlanInput): ResolvedContextRes
   return { kind: 'active', context: { device, objective, deviceId, deadlineAtMs, activePlan, nowMs } };
 };
 
+// `reasonOverride` is for the one pending branch this page establishes itself:
+// a committed plan whose prices stop short of the deadline (`awaiting_prices`).
+// There the price gap is the page's own finding, not something the record
+// reports, so the record's reason must not speak for it.
 const buildPendingPayload = (
   ctx: ResolvedObjectiveContext,
   priceContext: Pick<DeadlinePendingContext, 'priceSource' | 'lastFetchedShort'>,
+  reasonOverride?: DeadlinePlanPendingReason,
 ): DeadlinePlanPendingPayload => {
   const labels = deadlineLabels(ctx.objective.kind);
-  const reason = resolvePendingReason(ctx.activePlan);
+  const reason = reasonOverride ?? resolvePendingReason(ctx.activePlan);
   // Resolve device + deadline strings on this side of the layer so shared-
   // domain copy helpers stay free of locale and Date helpers (same rule as
   // the queued-hero headlineReason resolver).
@@ -559,7 +565,10 @@ export const resolveRenderInput = (params: ObjectivePlanInput): DeadlineRenderIn
     return { status: 'unavailable', kind: ctx.objective.kind, reason: result.reason };
   }
   if (result.kind === 'awaiting_prices') {
-    return { status: 'pending', pending: buildPendingPayload(ctx, priceContext) };
+    return {
+      status: 'pending',
+      pending: buildPendingPayload(ctx, priceContext, 'awaiting_horizon_plan'),
+    };
   }
   return { status: 'ready', payload: result.payload };
 };

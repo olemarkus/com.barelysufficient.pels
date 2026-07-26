@@ -405,7 +405,11 @@ describe('deadline plan page payload', () => {
     if (renderInput?.status !== 'pending') return;
     expect(renderInput.pending.actionMode).toBe('edit_and_clear');
     expect(renderInput.pending.kind).toBe('temperature');
-    expect(renderInput.pending.hero.headline).toContain('Waiting');
+    // A record with no reason has no known blocker, so the hero must not name
+    // one. It said "Waiting for tomorrow's prices" on a freshly created task
+    // whose prices were already in (prod 2026-07-26).
+    expect(renderInput.pending.hero.headline).toBe('Choosing the cheapest hours');
+    expect(renderInput.pending.hero.headline).not.toContain('prices');
     expect(renderInput.pending.hero.subline).toContain('Connected 300');
   });
 

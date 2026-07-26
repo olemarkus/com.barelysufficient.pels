@@ -483,6 +483,35 @@ describe('buildSmartTasksWidgetPayload', () => {
     expect(payload.rows[0].recourseHint).toBeNull();
   });
 
+  // A record seeded from a flow-card / settings edit carries no diagnostic yet.
+  // The row must not borrow a blocker it has no evidence for: it claimed
+  // "Waiting for tomorrow's prices" on a screen already showing them
+  // (prod 2026-07-26).
+  test('names no blocker on a pending row that carries no reason', () => {
+    const pendingPlan = buildPlan({
+      deviceId: 'p',
+      pending: true,
+      latest: null,
+      kwhPerUnitProvenance: {
+        source: 'bootstrap',
+        kWhPerUnit: 0.5,
+        acceptedSamples: 0,
+        confidence: 'low',
+        lastAcceptedAtMs: null,
+      },
+    });
+    const payload = buildSmartTasksWidgetPayload(buildInput({ p: pendingPlan }));
+    expect(payload.state).toBe('ready');
+    if (payload.state !== 'ready') return;
+    expect(payload.rows[0].statusLabel).toBe('Building plan…');
+    expect(payload.rows[0].whyLabel).toBe('Choosing the cheapest hours now.');
+    expect(payload.rows[0].recourseHint).toBeNull();
+    // The copy branch and the suppression branch must agree about absence —
+    // they disagreed before, so the row showed "Estimating" beside a "why" line
+    // the suppression exists to let own the row.
+    expect(payload.rows[0].confidenceLabel).toBeNull();
+  });
+
   test('composes planMetaLabel from revision speed + duration + needed energy', () => {
     const plan = buildPlan({
       deviceId: 'dev',

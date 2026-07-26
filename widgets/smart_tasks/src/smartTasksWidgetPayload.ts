@@ -34,6 +34,7 @@ import {
   resolveSmartTaskLearning,
   resolveSmartTaskListStatus,
   resolveSmartTaskWidgetDetailCopy,
+  suppressesSmartTaskConfidenceChip,
   resolveSmartTaskWidgetEtaVerb,
   resolveSmartTaskWidgetTargetActionVerb,
   SMART_TASK_WIDGET_EMPTY_HINT,
@@ -342,10 +343,12 @@ const resolveRowCopy = (
   // dropping the meta keeps the 220 px detail panel from pushing the recourse
   // below the fold (asymmetric-treatment thesis, notes/smart-task-ui).
   const suppressPlanMeta = statusId === 'cannot_meet' || statusId === 'unavailable' || !plan.latest;
-  // "Estimating" alongside "Waiting for tomorrow's prices" reads as two
-  // conflicting blocked states; the price-wait reason owns the row here.
+  // "Estimating" alongside a pending "why" line reads as two conflicting
+  // blocked states; those reasons own the row. Routed through the shared
+  // resolver so a record with no `pendingReason` is judged by the same rule the
+  // copy above used — comparing the raw field here let the two disagree.
   const suppressConfidence = statusId === 'unavailable'
-    || (statusId === 'building_plan' && plan.pendingReason === 'awaiting_horizon_plan');
+    || (statusId === 'building_plan' && suppressesSmartTaskConfidenceChip(plan.pendingReason));
   return {
     planMetaLabel: suppressPlanMeta || plan.latest === null ? null : formatPlanMetaLabel(plan.latest),
     confidenceLabel: suppressConfidence
