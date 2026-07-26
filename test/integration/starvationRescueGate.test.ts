@@ -143,6 +143,7 @@ const buildPowerTracker = (nowMs: number): PowerTrackerState => ({
 const buildDevice = (nowMs: number): PlanInputDevice => withTemperatureDiscriminant(withBinaryDiscriminant({
   id: DEVICE_ID,
   name: 'Water Heater',
+  commandableNow: true,
   controllable: true, // capacity-based control is ON — the budget-starvation scenario
   controlModel: 'stepped_load',
   controlCapabilityId: 'onoff',

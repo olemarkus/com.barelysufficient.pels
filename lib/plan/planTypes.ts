@@ -428,6 +428,17 @@ type DevicePlanDeviceBase = {
   // (`lib/plan/planEvDevice.ts`). The flat EV plug-state sub-fields below are on
   // the base, materialized once by the producer from the observed
   // `evChargingState` (the observer owns the raw plug-state).
+  /**
+   * Producer-resolved commandability, REQUIRED so no consumer can read absence
+   * as an answer. It was optional through the dual-read transition, and the
+   * consequence was concrete: `withEvDiscriminant` strips `evChargingState`, so
+   * every plan-device `isCommandableNow` call fell into the raw-field fallback,
+   * found nothing, and returned "charger state unknown" — leaving
+   * `hasStableBinaryReleaseActuation` dead in production. Same class of bug as a
+   * fabricated `currentOn: true`.
+   */
+  commandableNow: boolean;
+  commandableNowReason?: string | null;
   evBlockReason?: string | null;
   evSessionInactive?: boolean;
   evChargerNotResumable?: boolean;

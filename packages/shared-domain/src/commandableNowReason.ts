@@ -23,60 +23,89 @@
 import type { EvChargingState, EvObservedFields } from '../../contracts/src/types';
 
 /**
- * Discriminator for the non-commandable EV states that produce a reason
- * string. `plugged_in_paused` / `plugged_in_charging` are commandable and
- * have no entry here.
+ * Discriminator for the two EV plug-states that block actuation. Both are
+ * states where the electrics say no: there is no car to charge (`plugged_out`)
+ * or the session is exporting (`plugged_in_discharging`).
+ *
+ * Every other plug-state — including `plugged_in` and an absent/unrecognised
+ * one — is commandable and has no entry here. See {@link resolveEvBlockReasonKey}
+ * for why.
  */
 export type EvCommandableNowReasonKey =
   | 'plugged_out'
-  | 'plugged_in'
-  | 'plugged_in_discharging'
-  | 'state_unknown';
+  | 'plugged_in_discharging';
 
 export const EV_COMMANDABLE_NOW_REASONS: Record<EvCommandableNowReasonKey, string> = {
   plugged_out: 'charger is unplugged',
-  plugged_in: 'charger is not resumable',
   plugged_in_discharging: 'charger is discharging',
-  state_unknown: 'charger state unknown',
 };
 
 /**
- * The EV-state → block-reason switch, GATELESS (the caller applies its own
- * EV-device gate). Single source of truth for the three byte-identical
- * EV-block-reason consumers that used to inline this switch:
+ * THE EV plug-state switch — the single place any layer decides whether the
+ * plug-state blocks PELS from driving the charger. Returns the block key, or
+ * `null` when nothing about the plug-state stands in the way.
+ *
+ * Everything keyed off EV plug-state derives from this one function: the
+ * commandability reason ({@link resolveEvBlockReason}, materialized onto
+ * `evBlockReason` by `resolveCommandableNow`) and the boost-panel copy
+ * ({@link resolveEvBoostBlockReason}). There is deliberately no second switch —
+ * the two vocabularies differ, the classification must not.
+ *
+ * **Only `plugged_out` and `plugged_in_discharging` block.** `plugged_in` does
+ * NOT, and that is the point: the value is vendor-defined and inconsistent
+ * across Homey apps. Easee maps "Awaiting Authentication" and "Ready to Charge"
+ * to it (a start command is exactly what those want); Wallbox maps its `Paused`
+ * state to it and never emits `plugged_in_paused` at all — so treating it as a
+ * block let PELS's own pause create a state PELS then refused to leave. go-e is
+ * the lone app using it for a finished session, where a start command is merely
+ * a no-op. Commandability is not knowable from this literal; PELS learns it by
+ * commanding and watching (`lib/plan/admission/activationBackoff.ts`).
+ *
+ * Takes a REQUIRED `EvChargingState`: an absent plug-state is unrepresentable
+ * here, the same way `EvObservedFields` makes it unrepresentable downstream.
+ * Absence is resolved once at the capability read (`getEvChargingState` yields
+ * no value, so the snapshot simply carries no `evChargingState`) and means
+ * "there is no such signal — skip", exactly like a device with no `onoff`
+ * capability. It is not a fifth plug-state to classify: it collapses a
+ * permanently-absent capability, a vendor value outside the Homey enum, a cold
+ * start, and a transient observation gap, so nothing principled can be decided
+ * from it. Callers narrow (`isEvObserved`) and do nothing when absent.
+ */
+export const resolveEvBlockReasonKey = (
+  evChargingState: EvChargingState,
+): EvCommandableNowReasonKey | null => {
+  switch (evChargingState) {
+    case 'plugged_out':
+      return 'plugged_out';
+    case 'plugged_in_discharging':
+      return 'plugged_in_discharging';
+    case 'plugged_in':
+    case 'plugged_in_paused':
+    case 'plugged_in_charging':
+      return null;
+    default: {
+      // Exhaustiveness guard: a new EvChargingState member must be classified
+      // above rather than silently inheriting the commandable default.
+      const exhaustive: never = evChargingState;
+      void exhaustive;
+      return null;
+    }
+  }
+};
+
+/**
+ * Commandability reason string, GATELESS (the caller applies its own EV-device
+ * gate). Consumed by:
  *   - `resolveCommandableNow` (`commandableNow.ts`)
  *   - `getEvRestoreBlockReason` (`lib/device/deviceActionProjection.ts`, snapshot-shaped)
  *   - `getEvRestoreStateBlockReason` (`lib/plan/restore/devices.ts`, plan-device-shaped)
  *
- * Returns `null` for the commandable states (`plugged_in_paused` /
- * `plugged_in_charging`), the reason string for the non-commandable ones, and
- * `state_unknown` for `undefined`. `undefined` covers both a genuine cold start
- * (no trusted plug-state yet) and a vendor value outside the capability enum:
- * the producer (`getEvChargingState`) normalises any unrecognised value to
- * `undefined`, so such a charger is simply uncommandable here — the raw value is
- * never surfaced.
+ * Pure copy lookup over {@link resolveEvBlockReasonKey} — no classification here.
+ * Requires an observed plug-state for the same reason the key resolver does.
  */
-export const resolveEvBlockReason = (evChargingState: EvChargingState | undefined): string | null => {
-  switch (evChargingState) {
-    case 'plugged_in_paused':
-    case 'plugged_in_charging':
-      return null;
-    case 'plugged_in':
-      return EV_COMMANDABLE_NOW_REASONS.plugged_in;
-    case 'plugged_out':
-      return EV_COMMANDABLE_NOW_REASONS.plugged_out;
-    case 'plugged_in_discharging':
-      return EV_COMMANDABLE_NOW_REASONS.plugged_in_discharging;
-    case undefined:
-      return EV_COMMANDABLE_NOW_REASONS.state_unknown;
-    default: {
-      // Exhaustiveness guard: a new EvChargingState member must be classified
-      // above rather than silently treated as the unknown/uncommandable state.
-      const exhaustive: never = evChargingState;
-      void exhaustive;
-      return EV_COMMANDABLE_NOW_REASONS.state_unknown;
-    }
-  }
+export const resolveEvBlockReason = (evChargingState: EvChargingState): string | null => {
+  const key = resolveEvBlockReasonKey(evChargingState);
+  return key === null ? null : EV_COMMANDABLE_NOW_REASONS[key];
 };
 
 /**
@@ -86,35 +115,28 @@ export const resolveEvBlockReason = (evChargingState: EvChargingState | undefine
  * with the other EV-state-keyed reason strings so both vocabularies live in
  * one browser-safe home, per `feedback_ui_text_shared_with_logs`.
  *
- * The keys mirror the EV-state values that block boost. `plugged_in` (connected
- * but NOT resumable — distinct from the resumable `plugged_in_paused`) blocks
- * too: PELS cannot drive a non-resumable charger, so boost can never activate.
- * The remaining EV states (`plugged_in_paused`, `plugged_in_charging`) allow
- * boost or fall through to the battery-level checks downstream.
+ * Keyed by {@link EvCommandableNowReasonKey} — the boost panel blocks on exactly
+ * the states that block actuation, because "boost" is just "command it on now".
+ * Same classification, different vocabulary: these strings speak to the owner
+ * looking at the boost panel, the `EV_COMMANDABLE_NOW_REASONS` ones appear in
+ * plan reason detail and logs.
  */
-export type EvBoostBlockReasonKey = 'plugged_out' | 'plugged_in_discharging' | 'plugged_in';
-
-export const EV_BOOST_BLOCK_REASONS: Record<EvBoostBlockReasonKey, string> = {
+export const EV_BOOST_BLOCK_REASONS: Record<EvCommandableNowReasonKey, string> = {
   plugged_out: 'Car not connected. Boost will not activate.',
   plugged_in_discharging: 'Car is discharging. Boost will not activate.',
-  plugged_in: 'Car charging won’t resume. Boost will not activate.',
 };
 
 /**
  * Device-shaped resolver for the boost-block reason so the settings-UI boost
  * panel reads it off the device instead of inlining the plug-state literals
- * (the bug-magnet this de-couple removes). Returns the specific block-reason
- * string for the three boost-blocking states, else `null` (boost not blocked by
- * plug state — fall through to the battery-level checks).
+ * (the bug-magnet this de-couple removes). Returns the block-reason string when
+ * the plug-state blocks, else `null` (fall through to the battery-level checks).
  *
- * Takes the NARROWED `EvObservedFields` shape: the caller decides plug-state
- * presence exactly once, at the `isEvObserved` guard (an unobserved plug-state
- * never blocks boost). No implicit absent branch here — the absent case is
- * unrepresentable in the input.
+ * Classification comes from {@link resolveEvBlockReasonKey}; this only picks the
+ * boost-panel wording. Takes the NARROWED `EvObservedFields` shape: the caller
+ * decides plug-state presence exactly once, at the `isEvObserved` guard.
  */
 export const resolveEvBoostBlockReason = (dev: EvObservedFields): string | null => {
-  if (dev.evChargingState === 'plugged_out') return EV_BOOST_BLOCK_REASONS.plugged_out;
-  if (dev.evChargingState === 'plugged_in_discharging') return EV_BOOST_BLOCK_REASONS.plugged_in_discharging;
-  if (dev.evChargingState === 'plugged_in') return EV_BOOST_BLOCK_REASONS.plugged_in;
-  return null;
+  const key = resolveEvBlockReasonKey(dev.evChargingState);
+  return key === null ? null : EV_BOOST_BLOCK_REASONS[key];
 };

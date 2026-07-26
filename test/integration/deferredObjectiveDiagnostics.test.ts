@@ -2351,6 +2351,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const heater = withTemperatureDiscriminant(withBinaryDiscriminant({
       id: 'heater-1',
       name: 'Mill v2 Panel Heater',
+      commandableNow: true,
       targets: [{ id: 'target_temperature', value: 22, unit: 'C', min: 5, max: 30, step: 0.5 }],
       binaryControl: { on: true },
       controlCapabilityId: 'onoff' as const,
@@ -2437,6 +2438,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const heater = withTemperatureDiscriminant(withBinaryDiscriminant({
       id: 'heater-1',
       name: 'Idle Panel Heater',
+      commandableNow: true,
       targets: [{ id: 'target_temperature', value: 22, unit: 'C', min: 5, max: 30, step: 0.5 }],
       binaryControl: { on: false },
       controlCapabilityId: 'onoff' as const,
@@ -2501,6 +2503,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const heater = withTemperatureDiscriminant(withBinaryDiscriminant({
       id: 'heater-1',
       name: 'Powerless Thermostat',
+      commandableNow: true,
       targets: [{ id: 'target_temperature', value: 22, unit: 'C', min: 5, max: 30, step: 0.5 }],
       binaryControl: { on: false },
       controlCapabilityId: 'onoff' as const,

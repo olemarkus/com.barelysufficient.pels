@@ -1,4 +1,5 @@
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
+import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 
 /**
  * Test fixture builder for `PlanInputDevice`. Applies a small set of safe
@@ -31,6 +32,9 @@ export function buildPlanInputDevice(
     name: overrides.id,
     targets: [],
     binaryControl: { on: true },
+    // Required base field: resolve it the way the producer does rather than
+    // leaving it undefined, so no consumer can read absence as "not commandable".
+    commandableNow: resolveCommandableNow({ dev: overrides }).commandableNow,
     ...overrides,
   } as unknown as PlanInputDevice;
 }

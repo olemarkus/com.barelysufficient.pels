@@ -211,10 +211,14 @@ describe('plan binary control helpers', () => {
       canSetControl: false,
     }))).toEqual({ capabilityId: 'evcharger_charging', observedStateComparable: false, canSet: false });
 
-    expect(getEvRestoreBlockReason(buildSnapshot({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging', expectedPowerSource: 'default' }))).toBe('charger state unknown');
-    expect(getEvRestoreBlockReason(buildSnapshot({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging' }))).toBe('charger state unknown');
+    // An unobserved plug-state no longer blocks: the un-narrowed `isEvObserved`
+    // arm defers to the same switch, which treats absence as "nothing known
+    // against commanding".
+    expect(getEvRestoreBlockReason(buildSnapshot({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging', expectedPowerSource: 'default' }))).toBeNull();
+    expect(getEvRestoreBlockReason(buildSnapshot({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging' }))).toBeNull();
     expect(getEvRestoreBlockReason(buildSnapshot({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging', evChargingState: 'plugged_out' }))).toBe('charger is unplugged');
-    expect(getEvRestoreBlockReason(buildSnapshot({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging', evChargingState: 'plugged_in' }))).toBe('charger is not resumable');
+    expect(getEvRestoreBlockReason(buildSnapshot({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging', evChargingState: 'plugged_in_discharging' }))).toBe('charger is discharging');
+    expect(getEvRestoreBlockReason(buildSnapshot({ id: 'ev1', name: 'EV', controlCapabilityId: 'evcharger_charging', evChargingState: 'plugged_in' }))).toBeNull();
   });
 
   it('handles EV and standard binary control actions', async () => {

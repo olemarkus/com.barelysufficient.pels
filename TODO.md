@@ -60,21 +60,18 @@ What remains open is below.*
       shed relief from measured power when the observation is fresh. Source: prod log review
       2026-07-25 06:16:46Z. [P1]
 
-- [ ] **`isCommandableNow` is always false for an EV charger on the plan-device path.**
-      `resolveCommandableNow` reads `evChargingState`, but `withEvDiscriminant`
-      (`lib/plan/planTypes.ts` ~270-284) deliberately strips that field on the way to a
-      `DevicePlanDevice`, and `lib/plan/planDevicesBase.ts` never copies the producer's
-      `commandableNow` either. So for `deviceClass: 'evcharger'` the switch lands on
-      `state_unknown` → "charger state unknown" → blocked, every time. Live consequence:
-      `hasStableBinaryReleaseActuation` (`lib/executor/planExecutorPredicates.ts` ~70) is dead in
-      production for its EV-only `deferredReleaseIntent: 'binary_restore'` case. The other two call
-      sites (`binaryExecutor.ts` ~204, `planExecutionDrift.ts` ~173) correctly pass the *snapshot*,
-      which does carry `evChargingState`, so they are fine. Tests hide it: `pd()` in
-      `test/integration/planExecutor.test.ts` applies the temperature/stepped/binary discriminants
-      but not `withEvDiscriminant`, so fixtures keep a field production strips — any fix needs a
-      fixture that regroups the way the producer does. Either carry `commandableNow` onto the plan
-      device as a producer-resolved bit, or give plan-device callers an EV-aware variant. Source:
-      adversarial review, 2026-07-25. [P1]
+- [ ] **An EV charger needs two `evcharger_charging=true` writes and ~90 s to actually start.**
+      Prod 2026-07-26, first session PELS ever started from a bare `plugged_in` charger: the
+      19:32:37Z write logged `binary_write_timeout` then
+      `stepped_load_restore_binary_undriven` (step prepared, binary axis not driven on); the
+      19:34:07Z retry is what landed, with draw appearing at 19:35:07Z. So the resume path
+      recovers, but only via the retry — ~2.5 min from admission to current flowing, on a device
+      that was already admitted with 7.3 kW of headroom. Same family as `2e637fb40` ("step
+      prepared, still off"), which is present in that build, so this is a *remaining* gap in the
+      stepped-restore binary phase rather than a regression of it. Worth confirming whether the
+      first write is lost at the Homey seam (the timeout) or the executor declines to drive the
+      binary axis on that cycle. Persona: EV owner who plugs in and watches nothing happen for two
+      minutes. Source: prod verification of the plug-state commandability fix. [P2]
 
 - [ ] **Restore actuation re-stamps the GLOBAL `state.lastRestoreMs`.**
       `recordRestoreActuation` (`lib/executor/planExecutor.ts` ~210) sets both the per-device

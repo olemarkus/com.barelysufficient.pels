@@ -3,7 +3,7 @@ import type { DeviceDescriptor, ObservedDeviceState } from '../../packages/contr
 import type { PlanEngineState } from './planState';
 import {
   isCanSetControl,
-  isCommandableNow,
+  resolveCommandableNow,
 } from '../device/deviceActionProjection';
 import {
   type ActivationAttemptSource,
@@ -50,7 +50,9 @@ export type CanTurnOnDeviceSnapshot = ObservedDeviceState
 
 export const canTurnOnDevice = (snapshot?: CanTurnOnDeviceSnapshot): boolean => {
   if (!snapshot) return false;
-  if (!isCommandableNow(snapshot)) return false;
+  // `canTurnOnDevice` takes a raw observed snapshot, so this IS the producer
+  // call — the one sanctioned reader of the plug-state for this carrier.
+  if (!resolveCommandableNow({ dev: snapshot }).commandableNow) return false;
   if (!isCanSetControl({
     controlCapabilityId: snapshot.controlCapabilityId,
     capabilities: snapshot.capabilities,

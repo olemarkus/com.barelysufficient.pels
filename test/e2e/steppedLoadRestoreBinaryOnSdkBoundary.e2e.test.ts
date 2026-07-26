@@ -228,6 +228,7 @@ const buildRestoreToLowPlan = (): DevicePlan => ({
   devices: [withSteppedDiscriminant(withTemperatureDiscriminant(withBinaryDiscriminant({
     id: DEVICE_ID,
     name: 'Connected 300',
+    commandableNow: true,
     deviceClass: 'water_heater',
     // Mirrors the honestly-parsed snapshot for the missing-onoff anomaly:
     // currentOn:false with no trusted binary observation.

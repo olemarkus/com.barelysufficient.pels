@@ -170,6 +170,7 @@ describe('resolveTerminalShedCommand — set_temperature setpoint normalization'
   const thermostat = (overrides: Partial<PlanInputDevice['targets'][number]> = {}): PlanInputDevice => ({
     id: 't1',
     name: 'Thermostat',
+    commandableNow: true,
     binaryControl: { on: true },
     targets: [{ id: 'target_temperature', unit: 'C', min: 5, max: 30, step: 0.5, value: 21, ...overrides }],
   } as PlanInputDevice);
