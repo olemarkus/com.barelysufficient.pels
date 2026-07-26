@@ -3,8 +3,11 @@ name: Test
 on:
   push:
     branches: [main]
+  # No `branches:` filter: that key matches the PR's BASE, so restricting it to
+  # `main` meant a stacked PR (base = another train branch) ran no tests at all —
+  # `gh pr checks` showed only CodeQL and read as green because nothing had run.
+  # Every PR gets the full suite regardless of what it targets.
   pull_request:
-    branches: [main]
 
 permissions:
   contents: read
