@@ -30,9 +30,11 @@ export const installRentalMeterDeviceList = async (page: Page): Promise<void> =>
         ...(stubWindow.__PELS_HOMEY_STUB__?.apiHandlers ?? {}),
         // Both meter pickers read the endpoint's resolved meter list (whole-home
         // cumulative + sensor-class device meters), already narrowed to real
-        // meters — appliances never appear here. The fixture home has two
-        // sensor sub-meters the specs assign to areas.
+        // meters — appliances never appear here. The fixture home has the
+        // whole-home HAN meter (the Main home's own, seeded by `gotoApp`) plus
+        // two sensor sub-meters the specs assign to areas.
         'GET /homey_energy_meters': () => [
+          { id: 'dev_han', name: 'HAN power meter' },
           { id: 'dev_rental_meter', name: 'Rental meter' },
           { id: 'dev_utility_meter', name: 'Utility meter' },
         ],
@@ -125,6 +127,12 @@ export const gotoApp = async (page: Page): Promise<void> => {
   // default, so these fixtures model the Homey Energy owner explicitly. A spec
   // that exercises the Flow warning overrides this afterwards.
   await seedStubSetting(page, 'power_source', 'homey_energy');
+  // …and the Main home naming its own meter, which the runtime requires before
+  // an area can be saved on that source. `dev_han` is the whole-home meter both
+  // the stub default and `installRentalMeterDeviceList` list, so the picker
+  // shows it by name rather than as a not-found selection. Specs about the
+  // missing-meter notice or the save refusal clear this again.
+  await seedStubSetting(page, 'homey_energy_meter_device_id', 'dev_han');
 };
 
 /** Seed an arbitrary stub setting (e.g. power_source) before panel activation. */

@@ -13,7 +13,11 @@
  * only ever move together with the watts it governs.
  */
 import type { TransportContext } from './transportContext';
-import type { LivePowerReport } from './managerFetch';
+import {
+  deriveHomeMeterArrangement,
+  type HomeMeterArrangementObservation,
+  type LivePowerReport,
+} from './managerFetch';
 
 /** One whole-home power sample, carrying the identity of the meter it came from. */
 export type HomePowerSampleWithIdentity = {
@@ -26,6 +30,13 @@ export type HomePowerSampleWithIdentity = {
    * sample thereby discard the identity claim with it.
    */
   resolvedHomeMeterDeviceId: string | null;
+  /**
+   * The report's meter-arrangement observation (id-bearing, id-less-aggregate-
+   * only, or unproven), derived where the sample is produced and riding it to
+   * the same admitted ingest as the identity — so the two claims can never be
+   * published on different clocks or admission decisions.
+   */
+  homeMeterArrangement: HomeMeterArrangementObservation;
 };
 
 export function updateHomePowerFromReport(
@@ -41,11 +52,17 @@ export function updateHomePowerFromReport(
     ctx.observedStateDispatcher?.setHomePowerW(report.homePowerW);
     ctx.observedStateDispatcher?.setGenerationW(report.generationW);
     if (report.homePowerW === null) return null;
+    const homeMeterArrangement = deriveHomeMeterArrangement(report);
     return report.generationW === null
-        ? { powerW: report.homePowerW, resolvedHomeMeterDeviceId: report.resolvedHomeMeterDeviceId }
+        ? {
+            powerW: report.homePowerW,
+            resolvedHomeMeterDeviceId: report.resolvedHomeMeterDeviceId,
+            homeMeterArrangement,
+        }
         : {
             powerW: report.homePowerW,
             generationW: report.generationW,
             resolvedHomeMeterDeviceId: report.resolvedHomeMeterDeviceId,
+            homeMeterArrangement,
         };
 }

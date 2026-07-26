@@ -108,6 +108,22 @@ test('overlap with an existing area blocks save; outside-zone meter only warns',
   await expect(page.locator('.homes-settings__row')).toHaveCount(2);
 });
 
+test('saving an area without a whole-home meter is refused with the remedy', async ({ page }) => {
+  await installRentalMeterDeviceList(page);
+  await gotoApp(page);
+  await seedRentalMeterSnapshot(page);
+  // The Main home back on Automatic: PELS would read every meter as its own.
+  await seedStubSetting(page, 'homey_energy_meter_device_id', null);
+  await openHomesPanel(page);
+  await page.locator('#homes-add-button').click();
+  await page.selectOption('#homes-meter-select', 'dev_rental_meter');
+  await page.locator('#homes-editor-save').click();
+  // Reason first, then the control named as a setting to change.
+  await expect(page.locator('#toast')).toContainText('get limited by this area’s usage');
+  await expect(page.locator('#toast')).toContainText('Set “Whole-home meter” under Limits & safety');
+  await expect(page.locator('.homes-settings__row')).toHaveCount(0);
+});
+
 test('zone preview counts the devices in the chosen subtree, live', async ({ page }) => {
   await openWithRentalMeter(page);
   await page.locator('#homes-add-button').click();
@@ -129,6 +145,7 @@ test('main-meter notice shows exactly for areas + Homey Energy + no explicit who
   await seedRentalMeterSnapshot(page);
   await seedRentalArea(page);
   await seedStubSetting(page, 'power_source', 'homey_energy');
+  await seedStubSetting(page, 'homey_energy_meter_device_id', null);
   await openHomesPanel(page);
   const notice = page.locator('#homes-main-meter-notice');
   await expect(notice).toBeVisible();

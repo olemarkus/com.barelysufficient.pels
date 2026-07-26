@@ -44,7 +44,12 @@ const prepareState = async (page: Page, state: StateName): Promise<void> => {
   if (state === 'list' || state === 'warning' || state === 'notice' || state === 'confirm') {
     await seedRentalArea(page);
   }
-  if (state === 'notice') await seedStubSetting(page, 'power_source', 'homey_energy');
+  // The notice is exactly the "areas exist, Main home still on Automatic" state,
+  // so it needs the fixture's default whole-home meter cleared again.
+  if (state === 'notice') {
+    await seedStubSetting(page, 'power_source', 'homey_energy');
+    await seedStubSetting(page, 'homey_energy_meter_device_id', null);
+  }
   if (state === 'hub-card') {
     await page.getByRole('tab', { name: 'Settings' }).click();
     await expect(page.locator('.settings-nav-card[data-settings-target="homes"]')).toBeVisible();

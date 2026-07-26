@@ -1429,6 +1429,13 @@
   // Producer mirror of the runtime's intent-op save endpoint: apply the one
   // op to the persisted settings blob (create allocates an `h_` + 8-hex id),
   // so the UI's save → refetch round-trip behaves like production.
+  // The area name/count rules the runtime also enforces (non-empty, unique,
+  // length- and count-capped, "Main home" reserved), and the id-less-aggregate
+  // unnameable-meter refusal (which needs the producer's latched arrangement,
+  // absent from this stub), are deliberately NOT re-spelled here: their constants live in TypeScript shared-domain, this
+  // fixture cannot import them, and a hand-copied cap would drift silently.
+  // They are covered by test/integration/homeMembershipService.test.ts. The
+  // whole-home meter requirement below is structural, so it does mirror.
   const applyHomesSaveOp = (body) => {
     const raw = settings.homes_config;
     const current = raw && Array.isArray(raw.subHomes) ? raw.subHomes : [];
@@ -1440,6 +1447,14 @@
       const meterDeviceId = body.meterDeviceId === null ? null : body.meterDeviceId.trim();
       if (body.meterDeviceId !== null && meterDeviceId.length === 0) {
         return { ok: false, reason: 'invalid' };
+      }
+      // Automatic while meter areas are RUNNING would read every area's meter
+      // as the Main home's own. Same activation term as production (a dormant
+      // pre-GA config is not running, so it must not block Automatic).
+      const areasRunning = current.length > 0
+        && (raw?.activationVersion === 1 || settings.multi_home_enabled === true);
+      if (meterDeviceId === null && areasRunning) {
+        return { ok: false, reason: 'main_meter_required' };
       }
       const collision = meterDeviceId === null
         ? null
@@ -1463,6 +1478,13 @@
     const requested = body.area;
     if (HOMES_ZONE_TREE[requested.rootZoneId] && HOMES_ZONE_TREE[requested.rootZoneId].parent === null) {
       return { ok: false, reason: 'invalid' };
+    }
+    // On the Homey Energy source the Main home must name its own meter before
+    // an area can exist; the picker only renders on that source, so the Flow
+    // (and unset) case carries no requirement.
+    if (settings.power_source === 'homey_energy'
+      && (settings.homey_energy_meter_device_id ?? null) === null) {
+      return { ok: false, reason: 'main_meter_required' };
     }
     const homeId = requested.homeId
       ?? `h_${Math.random().toString(16).slice(2, 10).padEnd(8, '0')}`;

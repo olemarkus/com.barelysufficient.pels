@@ -113,6 +113,15 @@ export type HomeMembershipPort = {
    * control to fresh-plan recovery after a source switch.
    */
   noteAdmittedFlowHomeSample(): void;
+  /**
+   * The sampled report's meter-arrangement observation, riding the same
+   * admitted ingest as the identity above. Primitive union re-declared here
+   * (not imported) because `lib/home` may not import `lib/device` —
+   * `no-home-to-peer`; the producer's type in
+   * `lib/device/transport/managerFetch.ts` is the source of truth and the
+   * service latches only proven values (`unproven` never overwrites).
+   */
+  noteHomeMeterArrangement(observation: 'identified' | 'idless_aggregate_only' | 'unproven'): void;
   /** Re-resolve from the cached inputs; cheap, never throws destructively. */
   recompute(): void;
 };
