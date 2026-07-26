@@ -83,10 +83,15 @@ export function createPlanEngine(ctx: AppContext, scope: HomeScope, options?: Cr
     getCapacityDryRun: scope.getCapacityDryRun,
     // Policy closures from the scope: the main home binds the live ctx reads
     // (byte-identical to the pre-R7b hardwiring); a sub-home capacity bundle
-    // binds disabled constants, so its engine is capacity-only without this
-    // factory branching on which home it serves.
+    // binds disabled constants for the PRICE/BUDGET members, so its engine is
+    // capacity-only without this factory branching on which home it serves.
+    // The two mode members are the exception — every home binds them live,
+    // because the mode target is the restore anchor (see `homeScope.ts`). What
+    // IS per-home is whether a mode-target RAISE is held while this home's own
+    // power reading is unknown; only a sub-home opts in.
     getOperatingMode: scope.getOperatingMode,
     getModeDeviceTargets: scope.getModeDeviceTargets,
+    holdsModeTargetRaisesWhilePowerUnknown: scope.holdsModeTargetRaisesWhilePowerUnknown,
     getPriceOptimizationEnabled: scope.getPriceOptimizationEnabled,
     getPriceOptimizationSettings: scope.getPriceOptimizationSettings,
     isCurrentHourCheap: scope.isCurrentHourCheap,

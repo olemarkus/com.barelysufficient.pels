@@ -271,6 +271,45 @@ What remains open is below.*
       countdown the native-charger fix removed; hypothesis: the freeze class is configuration-shaped,
       not device-shaped, and the flow-backed arm is untested in prod. Source: pels-runtime-reality
       review of the deadlock fix, 2026-07-27. [P2]
+- [ ] **A setpoint-shed temperature device with no mode target stays stranded at its shed setpoint.**
+      *Persona:* any owner who never opened the Modes screen and has a managed radiator or panel heater
+      (Main home or a meter area). *Hypothesis:* PELS auto-assigns the `set_temperature` shed behaviour
+      without user action (`enforceTemperatureWithoutOnOffOvershootBehaviors`,
+      `setup/appDeviceSupport.ts`), but the RESTORE ANCHOR is the mode target, which requires user
+      action — `seedMissingModeTargets` bails out entirely on an empty `mode_device_targets` blob
+      (`setup/appDeviceSupport.ts:466-468`). With no anchor, `resolveTemperatureSeed` falls back to the
+      live setpoint, which while shed IS the shed setpoint, so on release `plannedTarget ===
+      currentTarget` and the executor drops the write (`lib/executor/executableTargetProjection.ts:37`).
+      Reproduced on a Main-home-only install with no meter areas: the shed to 16 C lands and the resume
+      never happens in 60 poll cycles. The structural fix is a **pre-shed setpoint memory** captured when
+      the shed write goes out and consumed on release, which closes this for every home and every device
+      regardless of settings; binding mode targets per home (2026-07-26) only closed the anchored case.
+      Source: pels-runtime-reality review of the multi-home finishing train PR 1.
+
+- [ ] **`seedMissingModeTargets` can re-seed a shed setpoint as the permanent anchor.**
+      *Persona:* owner who clears a heater's per-mode target, then restarts PELS (or updates the app)
+      while that heater is shed. *Hypothesis:* the seeder fills a missing entry from the device's
+      *current* setpoint with no shed-state guard, and its "already seeded" fingerprints are in-memory
+      only (`setup/appDeviceSupport.ts:370-376,457-484`), so a restart while shed records the shed
+      setpoint (e.g. 16 C) as the mode target. PELS then holds the device there indefinitely and reverts
+      any manual raise. Before mode targets bound for meter areas this mis-seed was inert for an area
+      device; it is now actively enforced. Fix: skip seeding while the device is shed, or seed from the
+      pre-shed value. Source: pels-runtime-reality review of the multi-home finishing train PR 1.
+
+- [ ] **A mode-target raise bypasses headroom admission even with a fresh power reading — planner-wide.**
+      *Persona:* owner of a small-cap meter area (or a tight Main hard cap) whose heater's expected draw
+      exceeds the headroom left at the moment a mode raise lands (e.g. 5.5 kW of a 6 kW cap, ~2 kW
+      heater, 18→22). *Hypothesis:* a mode-target raise from a NON-shed state is emitted as an ordinary
+      `target_update` (`resolvePlannedTarget`, `lib/plan/planDevices.ts`), so unlike the from-shed
+      release lane — which IS admission-gated on headroom (`applyRestorePlan`,
+      `insufficient_headroom`) — it consults neither `context.headroom` nor the device's expected load,
+      briefly pushing the home over its soft limit until the next poll's shed cascade recovers (with
+      restore backoff damping any oscillation). This is Main's long-standing command-intent →
+      measure → shed model, deliberately preserved when mode targets bound live for meter areas
+      (PR #1886, owner decision "PELS drives area setpoints"); gating it on headroom + expected-load
+      reservation is a planner-wide product change affecting Main identically, so it needs an owner
+      call, not a rider on the area fix. Raised by Codex on PR #1886, 2026-07-27, declined there as
+      pre-existing-by-design.
 
 - [ ] **Homes UI: explain cached rows that stay locked after a refresh failure.**
       A failed `/ui_homes` refresh preserves the last-good rows and correctly disables mutations, but
@@ -2593,3 +2632,15 @@ persona but no current support-cost pressure; reframed to the P3 bar.*
       narrow it to `string | null`, or give the "never observed" case a real consumer and say what that
       consumer does differently. Behaviour-neutral either way. Source: multi-home boundary-hygiene audit of
       the GA train, 2026-07-25. File: `setup/homeMembership.ts`.
+- [ ] **Owner decision: gate load-adding mode raises on available headroom, not just a fresh sample?**
+      A meter area holds a load-adding mode-target write until its meter has a fresh sample, but once
+      one lands the raise is emitted as an ordinary `target_update` regardless of remaining headroom:
+      at 5.5 kW measured against a 6 kW cap, raising a heater 18→22 °C (~2 kW) bypasses restore
+      admission, reserves nothing, and can push the area over its cap until later polls and shed
+      cooldowns claw it back. Declined in the multi-home stack because the same admission shape
+      applies to the Main home's mode raises today — gating them on headroom is a planner-wide product
+      change (mode changes stop being immediate whenever the home is near its cap), not an area bug.
+      *Persona:* owner whose area runs close to its cap most hours. *Hypothesis:* an overshoot the
+      planner itself caused, however brief, reads as PELS breaking its one promise. Source: Codex
+      review of multi-home PR #1886 (thread "Admit fresh-sample raises against available headroom"),
+      2026-07-27. Files: `lib/plan/planDevices.ts`, `lib/plan/planActionMaterialization.ts`. [P2]

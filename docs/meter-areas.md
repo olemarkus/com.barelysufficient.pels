@@ -162,6 +162,17 @@ set those once per operating mode and they apply across your whole home; inside
 a busy meter area, its own lower-priority devices give way first, and a device
 keeps the same priority wherever it lives.
 
+Your **per-mode temperature settings** apply inside meter areas too. Where you
+have set a target for the current mode, a heater or thermostat in an area is
+held at it, and PELS writes its setpoint to get it there, the same way it does
+for a Main-home device. That target is also what PELS puts the device back to
+after lowering it to protect the area's cap, so a device with no target for the
+current mode can stay at the lowered setpoint. Set one on the Modes screen for
+every heater you want PELS to bring back. Change mode and the area's devices
+follow within about half a minute; a change that would raise a device's
+setpoint waits until PELS has a live reading from the area's meter, the same
+rule as below.
+
 Your whole-home features stay whole-home. The daily energy budget, price-based
 load shifting, and smart tasks plan your Main-home devices, while each meter
 area runs on its own cap, safety margin, and priorities. Smart tasks currently
@@ -181,6 +192,15 @@ lives in a meter area. Flow cards apply to PELS as a whole.
 - **A device is in the wrong area.** Devices follow their Homey zone. Move the
   device to the right zone in Homey, or adjust the area's zone, and the device
   re-homes accordingly.
+- **An area's heaters are stuck below their per-mode temperature.** First check
+  that the heater has a target set for the current mode on the Modes screen. If
+  it does, check that the area's meter device is online and reporting in Homey
+  Energy: PELS does not raise a heater's setpoint in an area it has no live
+  reading for, because that adds power draw it would not be able to see.
+  Lowering a heater's setpoint still works, so a switch to a cooler mode always
+  takes effect. Cooling-capable devices (air-conditioning, heat pumps,
+  air-treatment units, and thermostats that may control one) are held in both
+  directions while the meter is quiet, since cooling harder adds draw too.
 
 ## See also
 
