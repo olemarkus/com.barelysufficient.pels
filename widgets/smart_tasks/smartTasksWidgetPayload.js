@@ -418,6 +418,7 @@ var SMART_TASK_WIDGET_WHY_BY_STATUS = {
   satisfied: null
 };
 var SMART_TASK_WIDGET_WHY_BY_PENDING_REASON = {
+  not_yet_planned: "Choosing the cheapest hours now.",
   awaiting_horizon_plan: "Waiting for tomorrow\u2019s prices.",
   device_data_missing: "Waiting for a reading from this device.",
   invalid_session: "EV is unplugged \u2014 plug in to start.",
@@ -433,6 +434,12 @@ var WHY_AT_RISK_DEVICE_LEFT_OFF = "Device is staying off until turned on again."
 var RECOURSE_CANNOT_MEET_BUDGET = "Budget settings show whether future days need power reserved earlier.";
 var RECOURSE_CANNOT_MEET_DEVICE = "Device settings show what\u2019s holding it back.";
 var RECOURSE_INVALID_SESSION = "Plug the EV in to resume.";
+var resolveSmartTaskPendingReason = (reason) => reason ?? "not_yet_planned";
+var PENDING_REASONS_OWNING_DETAIL_ROW = /* @__PURE__ */ new Set([
+  "not_yet_planned",
+  "awaiting_horizon_plan"
+]);
+var suppressesSmartTaskConfidenceChip = (reason) => PENDING_REASONS_OWNING_DETAIL_ROW.has(resolveSmartTaskPendingReason(reason));
 var isBudgetDriven = (input) => {
   if (input.floorShortfallCause !== void 0) return input.floorShortfallCause === "budget";
   return input.statusId === "at_risk" && (input.dailyBudgetExhaustedBucketCount ?? 0) > 0;
@@ -456,8 +463,8 @@ var resolveSmartTaskWidgetDetailCopy = (input) => {
   }
   if (input.statusId === "at_risk") return resolveAtRiskCopy(input);
   if (input.statusId === "building_plan") {
-    const reason = input.pendingReason ?? "awaiting_horizon_plan";
-    const why = SMART_TASK_WIDGET_WHY_BY_PENDING_REASON[reason] ?? SMART_TASK_WIDGET_WHY_BY_PENDING_REASON.awaiting_horizon_plan ?? null;
+    const reason = resolveSmartTaskPendingReason(input.pendingReason);
+    const why = SMART_TASK_WIDGET_WHY_BY_PENDING_REASON[reason] ?? SMART_TASK_WIDGET_WHY_BY_PENDING_REASON.not_yet_planned ?? null;
     return {
       whyLabel: why,
       recourseHint: reason === "invalid_session" ? RECOURSE_INVALID_SESSION : null
@@ -720,6 +727,12 @@ var separateMeterUnavailableResolver = () => ({
   headlineReason: null,
   recourse: null
 });
+var notYetPlannedCopy = (kindNoun) => (() => ({
+  headline: "Choosing the cheapest hours",
+  body: `PELS is working out the ${kindNoun}. This normally lands within a minute.`,
+  headlineReason: null,
+  recourse: null
+}));
 var awaitingHorizonCopy = (kindNoun) => ((ctx) => {
   const isFlow = ctx.priceSource === "external_flow";
   const body = isFlow ? `PELS needs prices through the deadline before it can build a ${kindNoun}. In flow price mode, prices arrive only when a Flow calls the \u201CSet external prices (tomorrow)\u201D action. Check the Flow that publishes prices if this message stays up after tomorrow\u2019s prices should have arrived.` : `PELS will build a ${kindNoun} as soon as prices through the deadline are available.`;
@@ -786,6 +799,7 @@ var DEADLINE_LABELS = {
     // recourse lands on Overview where the user can verify the heater is
     // actually running and reporting power.
     pendingHeroByReason: {
+      not_yet_planned: notYetPlannedCopy("heat plan"),
       awaiting_horizon_plan: awaitingHorizonCopy("heat plan"),
       price_feature_disabled: () => ({
         headline: "Price-aware optimisation is off",
@@ -880,6 +894,7 @@ var DEADLINE_LABELS = {
     // `missing_capacity` should never fire (bootstrap fallback exists); the
     // device-data-missing copy is kept as a safety net.
     pendingHeroByReason: {
+      not_yet_planned: notYetPlannedCopy("charging plan"),
       awaiting_horizon_plan: awaitingHorizonCopy("charging plan"),
       price_feature_disabled: () => ({
         headline: "Price-aware optimisation is off",
@@ -1328,7 +1343,7 @@ var resolveRowCopy = (plan, statusId, firstPlannedTimeLabel) => {
     firstPlannedTimeLabel
   });
   const suppressPlanMeta = statusId === "cannot_meet" || statusId === "unavailable" || !plan.latest;
-  const suppressConfidence = statusId === "unavailable" || statusId === "building_plan" && plan.pendingReason === "awaiting_horizon_plan";
+  const suppressConfidence = statusId === "unavailable" || statusId === "building_plan" && suppressesSmartTaskConfidenceChip(plan.pendingReason);
   return {
     planMetaLabel: suppressPlanMeta || plan.latest === null ? null : formatPlanMetaLabel(plan.latest),
     confidenceLabel: suppressConfidence ? null : resolveConfidenceLabel(plan.kwhPerUnitProvenance, statusId),

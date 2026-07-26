@@ -1,6 +1,7 @@
 import {
   resolveBuildingPlanChipTone,
   resolvePausedUnpluggedChipTone,
+  resolveSmartTaskPendingReason,
   SMART_TASK_LIST_STATUS_CHIP_VARIANT,
   type DeadlineLabels,
   type DeadlineLiveState,
@@ -50,7 +51,7 @@ export const resolvePendingReason = (
 ): DeadlinePlanPendingReason => (
   activePlan?.diagnosticReasonCode === 'objective_device_in_sub_home'
     ? 'device_in_sub_home'
-    : activePlan?.pendingReason ?? 'awaiting_horizon_plan'
+    : resolveSmartTaskPendingReason(activePlan?.pendingReason)
 );
 
 const resolvePriceSource = (scheme: unknown): DeadlinePendingPriceSource => {

@@ -29,6 +29,10 @@ export type DeadlinePlanUnavailableReason =
   | 'already_satisfied';
 
 export type DeadlinePlanPendingReason =
+  // Just created or just edited — the allocator has not run yet, so there is no
+  // blocker to name. Also the resolved default for a record with no reason, so
+  // absence can never be rendered as a specific cause.
+  | 'not_yet_planned'
   | 'awaiting_horizon_plan'
   | 'price_feature_disabled'
   | 'device_data_missing'
@@ -159,6 +163,7 @@ export const EV_PLUG_OUT_PAUSED_CARD_LINE = 'Charging paused — car unplugged';
 
 const SMART_TASK_WIDGET_WHY_BY_PENDING_REASON:
 Partial<Record<DeferredObjectiveActivePlanPendingReason, string>> = {
+  not_yet_planned: 'Choosing the cheapest hours now.',
   awaiting_horizon_plan: 'Waiting for tomorrow’s prices.',
   device_data_missing: 'Waiting for a reading from this device.',
   invalid_session: 'EV is unplugged — plug in to start.',
@@ -188,6 +193,39 @@ export const WHY_AT_RISK_DEVICE_LEFT_OFF = 'Device is staying off until turned o
 export const RECOURSE_CANNOT_MEET_BUDGET = 'Budget settings show whether future days need power reserved earlier.';
 export const RECOURSE_CANNOT_MEET_DEVICE = 'Device settings show what’s holding it back.';
 const RECOURSE_INVALID_SESSION = 'Plug the EV in to resume.';
+
+/**
+ * The one place absence of a `pendingReason` is turned into a reason. A pending
+ * record can legitimately carry none — the recorder seeds it from a flow-card /
+ * settings edit before any diagnostic exists, and records persisted before the
+ * field shipped have none either. Both mean "no blocker is known", which is
+ * exactly `not_yet_planned`.
+ *
+ * Every consumer must route through this instead of defaulting locally. A local
+ * `?? 'awaiting_horizon_plan'` made a freshly created task assert "Waiting for
+ * tomorrow's prices" on a screen that was already drawing tomorrow's prices
+ * (prod 2026-07-26), and the widget's confidence-chip suppression compared the
+ * raw field with no fallback at all — so the two branches disagreed about what
+ * absence meant.
+ */
+export const resolveSmartTaskPendingReason = (
+  reason: DeferredObjectiveActivePlanPendingReason | undefined,
+): DeferredObjectiveActivePlanPendingReason => reason ?? 'not_yet_planned';
+
+/**
+ * Pending reasons whose "why" line owns the detail row: showing the
+ * "Estimating" confidence chip beside one reads as two conflicting blocked
+ * states. Resolved through {@link resolveSmartTaskPendingReason} so a record
+ * with no reason is judged by the same rule as one that carries it.
+ */
+const PENDING_REASONS_OWNING_DETAIL_ROW: ReadonlySet<DeferredObjectiveActivePlanPendingReason> = new Set([
+  'not_yet_planned',
+  'awaiting_horizon_plan',
+]);
+
+export const suppressesSmartTaskConfidenceChip = (
+  reason: DeferredObjectiveActivePlanPendingReason | undefined,
+): boolean => PENDING_REASONS_OWNING_DETAIL_ROW.has(resolveSmartTaskPendingReason(reason));
 
 export type SmartTaskWidgetDetailCopy = {
   whyLabel: string | null;
@@ -253,9 +291,9 @@ export const resolveSmartTaskWidgetDetailCopy = (
   }
   if (input.statusId === 'at_risk') return resolveAtRiskCopy(input);
   if (input.statusId === 'building_plan') {
-    const reason = input.pendingReason ?? 'awaiting_horizon_plan';
+    const reason = resolveSmartTaskPendingReason(input.pendingReason);
     const why = SMART_TASK_WIDGET_WHY_BY_PENDING_REASON[reason]
-      ?? SMART_TASK_WIDGET_WHY_BY_PENDING_REASON.awaiting_horizon_plan
+      ?? SMART_TASK_WIDGET_WHY_BY_PENDING_REASON.not_yet_planned
       ?? null;
     return {
       whyLabel: why,
@@ -1744,6 +1782,28 @@ const separateMeterUnavailableResolver: DeadlinePendingCopyResolver = () => ({
 // repeats the salient horizon time at headline height so the user knows what
 // they're waiting on; `recourse` is null because the planner replans itself
 // when prices arrive (no user action).
+// `not_yet_planned` is the no-blocker pending state: the task was just created
+// or edited and the allocator has not run yet. It resolves within a lifecycle
+// tick, so the copy describes work in progress and names no cause the user
+// could act on — the failure it replaces was claiming a price wait that was not
+// happening. `recourse` is null for the same reason `awaiting_horizon_plan`
+// has none: there is nothing for the user to do.
+//
+// The body stays silent about whether prices are in hand. This state is seeded
+// before any diagnostic exists, so it cannot know: a task created while prices
+// really are missing would be told PELS is working "from the prices it already
+// has", trading the price-wait overclaim this fix removes for its mirror image.
+// The first lifecycle tick states the real reason either way.
+const notYetPlannedCopy = (kindNoun: 'heat plan' | 'charging plan'): DeadlinePendingCopyResolver => (
+  () => ({
+    headline: 'Choosing the cheapest hours',
+    body: `PELS is working out the ${kindNoun}. `
+      + 'This normally lands within a minute.',
+    headlineReason: null,
+    recourse: null,
+  })
+);
+
 const awaitingHorizonCopy = (kindNoun: 'heat plan' | 'charging plan'): DeadlinePendingCopyResolver => (
   (ctx) => {
     const isFlow = ctx.priceSource === 'external_flow';
@@ -1843,6 +1903,7 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     // recourse lands on Overview where the user can verify the heater is
     // actually running and reporting power.
     pendingHeroByReason: {
+      not_yet_planned: notYetPlannedCopy('heat plan'),
       awaiting_horizon_plan: awaitingHorizonCopy('heat plan'),
       price_feature_disabled: () => ({
         headline: 'Price-aware optimisation is off',
@@ -1941,6 +2002,7 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
     // `missing_capacity` should never fire (bootstrap fallback exists); the
     // device-data-missing copy is kept as a safety net.
     pendingHeroByReason: {
+      not_yet_planned: notYetPlannedCopy('charging plan'),
       awaiting_horizon_plan: awaitingHorizonCopy('charging plan'),
       price_feature_disabled: () => ({
         headline: 'Price-aware optimisation is off',

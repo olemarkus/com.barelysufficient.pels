@@ -431,6 +431,10 @@ describe('DeferredObjectiveActivePlanRecorder', () => {
     expect(plan.pending).toBe(true);
     expect(plan.original).toBeNull();
     expect(plan.latest).toBeNull();
+    // The seed has no diagnostic to name a cause from, but it must still state
+    // the reason: leaving it absent let each consumer default locally, and both
+    // defaulted to the price wait (prod 2026-07-26).
+    expect(plan.pendingReason).toBe('not_yet_planned');
   });
 
   it('emits a pending status event when replacing a settled active plan', () => {

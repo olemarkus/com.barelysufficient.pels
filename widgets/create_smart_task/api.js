@@ -5102,6 +5102,12 @@ var separateMeterUnavailableResolver = () => ({
   headlineReason: null,
   recourse: null
 });
+var notYetPlannedCopy = (kindNoun) => (() => ({
+  headline: "Choosing the cheapest hours",
+  body: `PELS is working out the ${kindNoun}. This normally lands within a minute.`,
+  headlineReason: null,
+  recourse: null
+}));
 var awaitingHorizonCopy = (kindNoun) => ((ctx) => {
   const isFlow = ctx.priceSource === "external_flow";
   const body = isFlow ? `PELS needs prices through the deadline before it can build a ${kindNoun}. In flow price mode, prices arrive only when a Flow calls the \u201CSet external prices (tomorrow)\u201D action. Check the Flow that publishes prices if this message stays up after tomorrow\u2019s prices should have arrived.` : `PELS will build a ${kindNoun} as soon as prices through the deadline are available.`;
@@ -5168,6 +5174,7 @@ var DEADLINE_LABELS = {
     // recourse lands on Overview where the user can verify the heater is
     // actually running and reporting power.
     pendingHeroByReason: {
+      not_yet_planned: notYetPlannedCopy("heat plan"),
       awaiting_horizon_plan: awaitingHorizonCopy("heat plan"),
       price_feature_disabled: () => ({
         headline: "Price-aware optimisation is off",
@@ -5262,6 +5269,7 @@ var DEADLINE_LABELS = {
     // `missing_capacity` should never fire (bootstrap fallback exists); the
     // device-data-missing copy is kept as a safety net.
     pendingHeroByReason: {
+      not_yet_planned: notYetPlannedCopy("charging plan"),
       awaiting_horizon_plan: awaitingHorizonCopy("charging plan"),
       price_feature_disabled: () => ({
         headline: "Price-aware optimisation is off",

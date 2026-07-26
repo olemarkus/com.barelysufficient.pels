@@ -222,6 +222,12 @@ export type DeferredObjectiveActivePlanRevisionV1 = {
 };
 
 export type DeferredObjectiveActivePlanPendingReason =
+  // Seeded the moment the user creates or edits the task, before the allocator
+  // has run for the first time. Nothing is blocking — the recorder simply has
+  // no diagnostic yet, so it cannot name a cause. Also the resolved default for
+  // legacy records persisted before `pendingReason` existed: consumers must not
+  // read absence as any particular blocker.
+  | 'not_yet_planned'
   | 'awaiting_horizon_plan'
   | 'price_feature_disabled'
   | 'device_data_missing'
