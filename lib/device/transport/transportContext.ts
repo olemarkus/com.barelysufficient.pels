@@ -53,6 +53,21 @@ export type TransportSolarRoleProducer = {
 };
 
 /**
+ * The EV car-to-charger link probe (`lib/device/evCarLinkProducer.ts`). Unlike
+ * the battery/solar role producers it takes an explicit `nowMs`: its whole job
+ * is timing coincident plug edges, so the clock is an input rather than an
+ * ambient read.
+ */
+export type TransportEvCarLinkProducer = {
+  observe: (
+    devices: readonly HomeyDeviceLike[],
+    options: { fullRefresh: boolean; nowMs: number },
+  ) => void;
+  noteDeviceUpdate: (device: HomeyDeviceLike, nowMs: number) => void;
+  getObservedCarDeviceIds: () => string[];
+};
+
+/**
  * The shared state + callback surface the extracted transport collaborators use.
  * Members typed as getters resolve fields the leaf reassigns (`latestSnapshot`,
  * `latestSnapshotById`); plain map/object members are stable references mutated
@@ -77,8 +92,12 @@ export type TransportContext = {
   readonly binarySettleState: BinarySettleState;
   readonly binarySettleOps: DeviceTransportBinarySettleOps;
 
-  readonly batteryStateProducer: TransportRoleProducer;
-  readonly solarProductionProducer: TransportSolarRoleProducer;
+  /** The read-only observation producers, built together in `observationProducers.ts`. */
+  readonly observationProducers: {
+    readonly battery: TransportRoleProducer;
+    readonly solar: TransportSolarRoleProducer;
+    readonly evCarLink: TransportEvCarLinkProducer;
+  };
 
   nextObservationCursor(deviceId: string, nowMs?: number): ObservationCursor;
   dispatchObservedStateChanged(event: ObservedDeviceStateEvent): void;

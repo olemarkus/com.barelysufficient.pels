@@ -91,8 +91,11 @@ function observeBatteryStateFromList(
     fetchSource: DeviceFetchSource,
 ): HomeyDeviceLike[] {
     const fullRefresh = fetchSource === 'raw_manager_devices';
-    ctx.batteryStateProducer.observe(effectiveList, { fullRefresh });
-    ctx.solarProductionProducer.observe(effectiveList, { fullRefresh });
+    ctx.observationProducers.battery.observe(effectiveList, { fullRefresh });
+    ctx.observationProducers.solar.observe(effectiveList, { fullRefresh });
+    // Same pre-parse list: class `car` devices are dropped by `resolveDeviceClassKey`,
+    // so the EV car-link probe must read them here, before parse discards them.
+    ctx.observationProducers.evCarLink.observe(effectiveList, { fullRefresh, nowMs: Date.now() });
     return effectiveList;
 }
 
@@ -320,7 +323,16 @@ export async function fetchDevicesForSnapshot(ctx: TransportContext): Promise<De
 export async function fetchDevicesByKnownIds(ctx: TransportContext): Promise<DeviceFetchResult> {
     const start = Date.now();
     try {
-        const deviceIds = ctx.latestSnapshot.map((d) => d.id);
+        // Parsed devices, plus the cars the EV link probe tracks. Cars are dropped
+        // by parse so they never reach `latestSnapshot`, which would otherwise make
+        // the first full fetch their only read on this path. They are additive to
+        // the request only: parse still drops them, so they never enter the
+        // snapshot and the targeted-miss grace (keyed on `latestSnapshot`) is
+        // unaffected.
+        const deviceIds = [...new Set([
+            ...ctx.latestSnapshot.map((d) => d.id),
+            ...ctx.observationProducers.evCarLink.getObservedCarDeviceIds(),
+        ])];
         return await fetchDevicesByIds({
             deviceIds,
             logger: ctx.logger,

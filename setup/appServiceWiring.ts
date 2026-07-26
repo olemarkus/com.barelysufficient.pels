@@ -1,6 +1,7 @@
 import type Homey from 'homey';
 import CapacityGuard from '../lib/power/capacityGuard';
 import { DeviceTransport, type DeviceTransportBinarySettleOps } from '../lib/device/deviceTransport';
+import { EvCarLinkStoreWiring } from './evCarLinkStoreWiring';
 import {
   clearAllPendingBinarySettleWindows,
   clearPendingBinarySettleWindow,
@@ -428,6 +429,7 @@ export class AppServiceWiring {
         hasPendingBinarySettleWindow(this.deps.getObserverBinarySettleState(), deviceId, capabilityId)
       ),
       observedStateDispatcher: this.deps.getObservedStateEmitter().asDispatcher(this.deps.getObservedHomePower()),
+      evCarLinkSnapshotAccess: new EvCarLinkStoreWiring(() => ctx.homey).snapshotAccess(),
     });
     ctx.deviceManager = deviceManager;
     await deviceManager.init();

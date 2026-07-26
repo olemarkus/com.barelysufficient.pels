@@ -10,6 +10,8 @@
 - `deviceActionProjection.ts` — the producer that resolves observed/planner-facing bits onto `PlanInputDevice`; consumers must not re-branch on source/provenance/evidence.
 - `devicePowerEstimate.ts` / `devicePowerCalibration*.ts` / `deviceResidualKw.ts` — expected-power estimation and step calibration.
 - `manager*.ts` — transport halves (control, energy, flow support, measured power, native EV, native stepped command).
+- `observationProducers.ts` — builds the three read-only observation producers (battery, solar, EV car-link) as one seam; none of them feeds an actuation path.
+- `evCarLink*.ts` — the EV car-to-charger link **probe**: correlates class `car` devices against charger plug edges and logs what it finds. Log-only — no planning, admission, or actuation consumer. Official Homey capabilities only (`ev_charging_state`, `measure_battery`); read `notes/ev-car-link/README.md` before changing it.
 
 Design-of-record: `notes/state-management/` (especially `observer-transport-split.md`).
 

@@ -517,6 +517,27 @@ program) remains deferred.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **Act on the EV car-link probe once detection accuracy is proven.** The probe
+      (`notes/ev-car-link/README.md`) currently only logs: it links a class `car` device to a
+      charger from coincident plug edges, records where the car stops charging on its own, and
+      shadow-compares the car's `measure_battery` against whatever the flow card reports. Nothing
+      reaches planning. Once a few weeks of `/tmp/pels` logs show `ev_car_link_resolved` picking
+      the right pair and `stoppedAtSocPct` clustering, the two payoffs are: (a) clamp a smart
+      task's target to the car's observed limit so a 90% task on an 80%-limited car reads
+      "your car stops at 80%" instead of silently landing `missed`; (b) stop crediting smart-task
+      progress while `ev_car_self_stopped` holds, so the allocator stops booking hours the car
+      will not take. (b) needs a seam: the producer lives in `lib/device`, a peer that may not
+      import `lib/objectives`. Persona: EV owner with a car-side charge limit; hypothesis: an
+      unexplained missed deadline is the single worst smart-task outcome. [P2]
+
+- [ ] **`runtimePackaging` contract-import detector false-positives on prose.** The regex in
+      `test/integration/runtimePackaging.test.ts` is not line-anchored, so the bare word "import"
+      inside a docblock matches and `[\s\S]*?` runs on into the next real declaration — flagging a
+      pure `import type` as a value import. Hit while adding `lib/device/evCarLinkWiring.ts`
+      (2026-07-26); worked around by rewording the comment. Anchor the pattern to a line start so
+      the guard stops depending on comment wording. Left out of that PR to avoid loosening a
+      packaging guard in the same change that needed it to pass. [P2]
+
 - [ ] **Limits & safety: converge the Main-home form onto the native `.pels-input` field language (U-track).**
       *Persona:* multi-home owner who switches the per-home Limits switcher between the Main home and a meter
       area. *Hypothesis:* U3 added the per-home editor using native `.pels-input` + unit-in-label ("Hard cap

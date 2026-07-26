@@ -153,3 +153,9 @@ export const PV_FORECAST_STATE = 'pv_forecast_state';
 // Curtailment-surplus refute ladder: {holdLevel, holdUntilMs, importLatchUntilMs},
 // written on verification transitions only (crash-loop resilience).
 export const CURTAILMENT_HOLD_STATE = 'curtailment_hold_state';
+// EV car-to-charger link probe: coincidence-vote affinity map plus the
+// per-car self-stop state-of-charge samples. Observation-only — no consumer
+// reads it for planning. The `_INITIALIZED` companion distinguishes a fresh
+// install from a transient settings-read miss (see `evCarLinkStore.ts`).
+export const EV_CAR_LINK_STATE = 'ev_car_link_state';
+export const EV_CAR_LINK_STATE_INITIALIZED = 'ev_car_link_state_initialized';
