@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { AppContext } from '../../lib/app/appContext';
 import {
   logBundleReplacementFailure,
+  logHomeReadFailed,
   logHomeScopedSettingForUnknownHome,
   logIncompleteIdentityTransition,
   logPowerSourceTransitionIncomplete,
@@ -49,6 +50,18 @@ describe('homeRuntimeRegistryLogs', () => {
       event: 'home_scoped_setting_for_unknown_home',
       homeId: 'cabin',
       baseKey: 'power_tracker_state',
+    });
+  });
+
+  it('warns — never errors — when a per-home UI read is classified as unavailable', () => {
+    const logger = createLogger();
+    logHomeReadFailed(createCtx(logger), 'cabin', new Error('plan serialization failed'));
+    // A read the producer already classified is not a fault: the consumer was
+    // told `unavailable` and rendered "no data for this home".
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(logger.warn.mock.calls[0][0]).toMatchObject({
+      event: 'home_runtime_read_failed',
+      homeId: 'cabin',
     });
   });
 

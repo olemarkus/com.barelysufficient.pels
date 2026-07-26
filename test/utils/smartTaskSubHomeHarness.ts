@@ -51,9 +51,10 @@ export const settleAsyncSeams = async (): Promise<void> => {
 
 // Boot the real app, pin the runtime-planned snapshot (with zone ids), then
 // configure the sub-home + the `heater-sub` pin through settings writes.
-// `assertMembership` (integration-tier callers) additionally sanity-asserts the
-// resolved membership before the lanes run; the e2e caller omits it and relies
-// on observable behavior only.
+// `assertMembership` additionally sanity-asserts the resolved membership before
+// the lanes run. It reads `app.homeMembership` — an internal service — so it is
+// for INTEGRATION-tier callers only; e2e callers must omit it and observe
+// membership effects through an external seam.
 // Returns the untyped app seam (matches `createApp`'s deliberate `any`).
 export const initAppWithSubHome = async (
   options: { assertMembership?: boolean } = {},

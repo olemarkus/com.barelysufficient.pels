@@ -28,6 +28,7 @@
  */
 import type { AppContext } from '../../lib/app/appContext';
 import type { HomesStore, SubHomeConfig } from '../../lib/home/homeConfig';
+import type { HomeRuntimeReadPort, HomeRuntimeReadResult } from '../../lib/home/homeRuntimeRead';
 import type { PowerTrackerMeterIdentity } from '../../lib/power/trackerTypes';
 import type { HomeId } from '../../lib/utils/settingsKeys';
 import {
@@ -43,6 +44,7 @@ import { readConfiguredPowerSource } from '../powerSourceSettings';
 import { PowerSourceEpochFence } from './powerSourceEpochFence';
 import {
   logBundleReplacementFailure,
+  logHomeReadFailed,
   logHomeScopedSettingForUnknownHome,
   logIncompleteIdentityTransition,
   logPowerSourceTransitionIncomplete,
@@ -80,7 +82,7 @@ export type HomeRuntimeRegistryDeps = {
   homesStore?: HomesStore;
 };
 
-export class HomeRuntimeRegistry {
+export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
   private readonly bundles = new Map<HomeId, HomeCapacityBundle>();
   private readonly homesStore: HomesStore;
   // Source epochs are observed synchronously at the settings-event boundary,
@@ -118,6 +120,31 @@ export class HomeRuntimeRegistry {
   /** Read-only per-bundle diagnostics (test observability + future `ui_homes`). */
   getDiagnostics(): HomeCapacityBundleDiagnostics[] {
     return this.getLiveBundles().map((bundle) => bundle.getDiagnostics());
+  }
+
+  /**
+   * Already-committed state for ONE sub-home, backing the `AppContext` read
+   * port (`lib/home/homeRuntimeRead.ts`). A pure read: it never reconciles,
+   * rebuilds, or touches the device snapshot, so a UI poll costs nothing.
+   *
+   * `unavailable` is this producer's COMPLETE classification of every
+   * non-serving case: no such sub-home (including the main home, which has no
+   * bundle), a retained tombstone whose runtime is already fenced, and — via
+   * the catch — anything the assembly throws. Completeness is the point: this
+   * is the whole reason a consumer may treat the result as typed and never
+   * reinterpret absence, so a raw exception must not escape and become an
+   * unclassified failure at the endpoint. Every input is non-throwing by
+   * inspection today; the boundary exists so that stays true as they change.
+   */
+  readHome(homeId: HomeId): HomeRuntimeReadResult {
+    const bundle = this.bundles.get(homeId);
+    if (!bundle || bundle.isTornDown()) return { state: 'unavailable' };
+    try {
+      return { state: 'resolved', reading: bundle.getReadModel() };
+    } catch (error) {
+      logHomeReadFailed(this.deps.ctx, homeId, error);
+      return { state: 'unavailable' };
+    }
   }
 
   /**

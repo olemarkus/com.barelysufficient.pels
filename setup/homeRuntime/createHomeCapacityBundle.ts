@@ -37,6 +37,7 @@
  */
 import type { AppContext } from '../../lib/app/appContext';
 import type { SubHomeConfig } from '../../lib/home/homeConfig';
+import type { HomeRuntimeDiagnostics, HomeRuntimeReading } from '../../lib/home/homeRuntimeRead';
 import type { HomeId } from '../../lib/utils/settingsKeys';
 import type {
   PowerTrackerMeterIdentity,
@@ -72,6 +73,7 @@ import { createHomePowerPipeline } from './createHomePowerPipeline';
 import {
   buildHomeCapacityBundleApi,
   createPreparedBundleSampleFence,
+  resolveEffectiveDryRun,
   resolveHomeAreaDisplayName,
   startHomeCapacityBundle,
 } from './homeCapacityBundleApi';
@@ -120,17 +122,12 @@ export type HomeCapacityBundleDeps = {
   isMeterSourceEpochDiscarded: () => boolean;
 };
 
-/** Read-only per-bundle diagnostics (test observability + future `ui_homes`). */
-export type HomeCapacityBundleDiagnostics = {
-  homeId: HomeId;
-  meterDeviceId: string | null;
-  capacityScalars: CapacityScalarSettings;
-  /** Effective no-actuation switch (persisted flag, membership gate, or source-epoch gate). */
-  dryRunEffective: boolean;
-  /** Last meter reading this bundle's guard saw (kW), or null before the first sample. */
-  lastMeterPowerKw: number | null;
-  lastDeviceControlledMs: Record<string, number>;
-};
+/**
+ * Read-only per-bundle diagnostics. ONE declaration, owned by the read port's
+ * contract in `lib/home` — the legal direction is `setup → lib`, so there is no
+ * boundary reason to keep a second copy here (the field docs live there).
+ */
+export type HomeCapacityBundleDiagnostics = HomeRuntimeDiagnostics;
 
 /**
  * The realtime-reconcile routing seam for a device THIS home owns (multi-home
@@ -171,6 +168,13 @@ export type HomeCapacityBundle = {
   /** This home's meter device id (fresh from the last reconciled config). */
   getMeterDeviceId: () => string | null;
   getDiagnostics: () => HomeCapacityBundleDiagnostics;
+  /**
+   * This home's already-committed state for the per-home UI read seam
+   * (`lib/home/homeRuntimeRead.ts`): the last committed plan snapshot, this
+   * home's tracker state, and the diagnostics above. Pure reads — no rebuild,
+   * no snapshot refresh/decorate, no actuation.
+   */
+  getReadModel: () => HomeRuntimeReading;
   /**
    * Realtime-reconcile routing hooks (see {@link RealtimeReconcileHooks}): the
    * reconcile wrapper binds these for a device this home owns so the drift is
@@ -302,12 +306,12 @@ function buildSubHomeScope(params: {
     // every home shares — without it an area's alert reads as the Main home's.
     getHomeDisplayName: () => resolveHomeAreaDisplayName(getHome().name),
     getCapacitySettings: () => ({ limitKw: getScalars().limitKw, marginKw: getScalars().marginKw }),
-    // Both external trust boundaries fold into the canonical no-actuation
-    // switch: membership must be committed and this meter-bearing source epoch
-    // must be authorized before the persisted per-home toggle can enable writes.
-    getCapacityDryRun: () => (
-      isTornDown() || !isMembershipReady() || !isMeterSourceAuthorized() || getScalars().dryRun
-    ),
+    // The canonical no-actuation switch (see `resolveEffectiveDryRun`). This is
+    // the CONTROL path, so it passes the execution source predicate — the one
+    // that also arms source recovery.
+    getCapacityDryRun: () => resolveEffectiveDryRun({
+      isTornDown, isMembershipReady, isMeterSourceAuthorized, getScalars,
+    }),
     getCapacityGuard: getGuard,
     getPowerTracker: getTracker,
     getDailyBudgetSnapshot: () => null,
@@ -683,6 +687,14 @@ export function createHomeCapacityBundle(deps: HomeCapacityBundleDeps): HomeCapa
     planEngine,
     planService,
     scope,
+    // The registry's RAW predicates: unlike the scope's execution predicate they
+    // arm no source recovery, so the read surface stays inert. Listed
+    // explicitly rather than passed as `deps`, so the declared two-key shape and
+    // the runtime object cannot disagree (the consumer spreads this).
+    readDryRunGates: {
+      isMembershipReady: deps.isMembershipReady,
+      isMeterSourceAuthorized: deps.isMeterSourceAuthorized,
+    },
     tracker,
     pipeline,
     planRebuildScheduler,

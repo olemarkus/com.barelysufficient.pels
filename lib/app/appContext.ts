@@ -43,6 +43,7 @@ import type {
 import type { HomeyDeviceLike } from '../utils/types';
 import type { AppDeviceControlHelpers } from '../../setup/appDeviceControlHelpers';
 import type { HomeMembershipPort } from '../home/membership';
+import type { HomeRuntimeReadPort } from '../home/homeRuntimeRead';
 import type { HomeyEnergyPollSource } from '../power/sources/homeyEnergyPoll';
 import type { PowerSampleRebuildState } from '../plan/rebuildScheduler/powerDriven';
 import type { RefreshTargetDevicesSnapshotOptions, AppSnapshotHelpers } from '../../setup/appSnapshotHelpers';
@@ -260,6 +261,15 @@ export type AppContext = {
   // and cleared at uninit; optional so tests building a bare context are
   // unaffected.
   homeMembership?: HomeMembershipPort;
+  // Read-only access to each sub-home runtime's ALREADY-COMMITTED state (last
+  // committed plan snapshot, that home's tracker state, bundle diagnostics) for
+  // the settings UI. Typed as the lib/home PORT because the backing
+  // `HomeRuntimeRegistry` is a private `AppServiceWiring` field that must not
+  // be handed out — the same reason `homeMembership` is a port. Sub-homes only:
+  // the main home keeps the existing unsuffixed ctx reads. Assigned by
+  // `AppServiceWiring.initHomeRuntimeRegistry` and cleared at uninit; optional
+  // so tests building a bare context are unaffected.
+  homeRuntimeRead?: HomeRuntimeReadPort;
   planEngine?: PlanEngine;
   // "Leave off until turned on again": the opt-in config plus the per-device
   // hold state recording that a device was turned off outside PELS while the
