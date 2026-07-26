@@ -34,7 +34,7 @@ import {
 } from './appInit';
 import { buildMainHomeScope, type HomeScope } from './homeRuntime/homeScope';
 import type { HomeRuntimeRegistry } from './homeRuntime/homeRuntimeRegistry';
-import { createHomeRuntimeRegistryForApp } from './appInit/wireHomeRuntimeRegistry';
+import { buildHomeRuntimeReadPort, createHomeRuntimeRegistryForApp } from './appInit/wireHomeRuntimeRegistry';
 import { wireDeviceTransport } from './appInit/wireDeviceTransport';
 import type { HomeMembershipService } from './homeMembership';
 import type { PvForecastController } from './appInit/createPvForecastService';
@@ -335,6 +335,10 @@ export class AppServiceWiring {
       () => this.homeMembershipService?.isSubHomeExecutionReady() === true,
       () => this.homeMembershipService?.isRuntimeActive() === true,
     );
+    // Publish the per-home read seam. The registry stays private: `ctx` gets a
+    // closure over the field exposing only `readHome`, so it reports
+    // `unavailable` before this step and again once `runUninit` clears it.
+    this.deps.ctx.homeRuntimeRead = buildHomeRuntimeReadPort(() => this.homeRuntimeRegistry);
   }
 
   initCapacityGuard(): void {
@@ -476,6 +480,7 @@ export class AppServiceWiring {
     // per-meter fan-out: an in-flight poll resolving after this routes nowhere.
     this.homeRuntimeRegistry?.teardownAll();
     this.homeRuntimeRegistry = undefined;
+    ctx.homeRuntimeRead = undefined;
     this.clearUninitTimers();
     realtimeReconcile.clearRealtimeDeviceReconcileState(this.deps.getRealtimeDeviceReconcileState());
     this.stopUninitServices();

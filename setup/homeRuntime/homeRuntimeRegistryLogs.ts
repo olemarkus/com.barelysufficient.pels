@@ -53,6 +53,16 @@ export function logIncompleteIdentityTransition(ctx: AppContext, home: SubHomeCo
   });
 }
 
+/** A per-home UI read threw; the caller is told `unavailable` rather than failing. */
+export function logHomeReadFailed(ctx: AppContext, homeId: string, error: unknown): void {
+  ctx.getStructuredLogger('homes')?.warn({
+    event: 'home_runtime_read_failed',
+    homeId,
+    detail: 'already-committed read threw; reported unavailable',
+    err: normalizeError(error),
+  });
+}
+
 /** Constructing the replacement bundle threw; the old runtime stays fenced. */
 export function logBundleReplacementFailure(
   ctx: AppContext,

@@ -132,6 +132,16 @@ for the user-facing vocabulary, see the "Multiple meters vocabulary" section of
 - Lifecycle: bundles are (re)built on boot and on a `homes_config` change, and
   torn down in the uninit path; teardown fences in-flight work and nulls the
   actuator seam so a late callback cannot actuate after ownership moved.
+- **Reading a sub-home goes through its own narrow port, not the registry.** The
+  registry is a private `AppServiceWiring` field; `AppContext.homeRuntimeRead`
+  (`lib/home/homeRuntimeRead.ts`) is the only consumer surface, and it serves
+  ONLY already-committed values — the last committed plan snapshot, that home's
+  tracker state, the bundle diagnostics. It exposes no device list on purpose:
+  the scope's plan-device view seeds observed state and decorates the whole
+  snapshot, so serving it would turn a UI poll into a snapshot rebuild. Every
+  non-serving case (no such sub-home — main included, it has no bundle — a
+  fenced tombstone, or no wired registry) is the single typed `unavailable`
+  result, never a fabricated default.
 
 ## v1 scope boundary (do not widen without a scope decision)
 

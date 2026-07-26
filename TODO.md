@@ -1277,6 +1277,44 @@ program) remain deferred.*
       to the Main home" on the Multiple meters page and say so. Overlaps the empty-meter-list hint
       item above. Persona: owner with a single HAN meter who tries to add a rental. Source: multi-home
       finishing train, area-config invariants PR. [P2]
+- [ ] **`isMeterSourceAuthorizedForExecution` is a query that performs a command.** In
+      `setup/homeRuntime/createHomeCapacityBundle.ts`, a predicate named `is…Authorized` calls
+      `scheduleSourceActuationRetry()` — registering a timer that later runs `rebuildPlanFromCache` +
+      `reconcileLatestPlanState`, and mutating the back-off attempt counter. Merely ASKING whether the
+      source is authorized therefore schedules device writes. PR 5a hit this: the per-home read seam
+      resolved `dryRunEffective` through the scope and armed recovery from a UI read. The fix there
+      forked the source predicate (`resolveEffectiveDryRun` takes it as a parameter; control passes the
+      execution one, reads pass the registry's raw one) — but both are structurally identical
+      `() => boolean`, so the split now rests on comments telling future callers which to pass, and the
+      compiler cannot help. Two candidate fixes: (a) brand the two predicate types nominally so passing
+      the wrong one is a type error, or (b) **preferred** — move the recovery arming out of the query and
+      into the actuation fence that actually needs it, which makes every read path safe by construction
+      rather than by convention. *Persona:* contributor adding any new read of a bundle's effective
+      dry-run state. Source: adversarial + layering review of multi-home PR 5a, 2026-07-26.
+
+- [ ] **`setup/homeRuntime/createHomeCapacityBundle.ts` is import-capped: 20/20 with no override.**
+      `import-x/max-dependencies` is severity ERROR at max 20 and this file sits exactly on it, so the
+      next extraction out of it — the usual remedy when it approaches the 500-line ceiling — is a hard
+      CI failure unless the new module is reached through a specifier the file already value-imports
+      (PR 5a put `resolveEffectiveDryRun` in `homeCapacityBundleApi.ts` for exactly this reason) or is
+      type-only. Effective lines are 487/500. Any planned work here should budget both numbers up front.
+      *Persona:* contributor extending the per-home capacity bundle. Source: multi-home PR 5a, 2026-07-26.
+
+- [ ] **Move the capacity scalar block to the shared-utils layer so `lib/home` stops duplicating it.**
+      `HomeRuntimeCapacityScalars` (`lib/home/homeRuntimeRead.ts`) is a hand-kept structural duplicate of
+      `CapacityScalarSettings` (`lib/power/capacitySettingsStore.ts`): `lib/home` is a leaf domain and
+      `no-home-to-peer` (severity ERROR) forbids reaching `lib/power`, so the read port cannot import the
+      real type. The drift is asymmetric and the dangerous direction is the silent one: REMOVING or
+      retyping a field in `CapacityScalarSettings` fails the build, but ADDING one does not — the producer
+      spreads the concrete block (`homeCapacityBundleApi.ts`, `capacityScalars: { ...getScalars() }`) and a
+      spread is exempt from excess-property checking, so the new field ships in the read payload while
+      staying invisible in the port contract. That is a silent payload widening, not a silent omission, so
+      the eventual fix must guard the contract rather than the carrying. The repo already
+      solved this exact pair once: `HomeId` lives in `lib/utils/settingsKeys.ts` precisely so the capacity
+      store and the home domain share ONE identity type without a peer import (see that file's own comment).
+      Do the same for the three-field scalar block and re-export it from `capacitySettingsStore.ts`, then
+      delete the duplicate. Persona: contributor extending capacity settings, who has no signal that a second
+      declaration needs widening. Source: adversarial design review of multi-home PR 5a, 2026-07-26.
 
 - [ ] **Persisted-store load grace only postpones a destructive reset.** `loadPowerCalibrationStore`
       (and the EV car-link store that mirrors it) run exactly once at init. When that read is
@@ -2374,6 +2412,25 @@ cosmetic chores — do them in passing or drop them; don't park them here.*
       inconsistent recovery cadence without an intentional product decision. *Why:* one pure helper
       keeps the timing contract aligned while each consumer retains ownership of its timer lifecycle.
       Source: adversarial simplification review of PR #1872, 2026-07-23.
+
+- [ ] **`runtimePackaging.test.ts` is a weaker duplicate of the real contracts guard, and it cries wolf.**
+      `test/integration/runtimePackaging.test.ts:19` runs `import\s+(?!type\b)[\s\S]*?\s+from '…'`
+      globally over each file, so prose anywhere above the import block (a module docblock explaining
+      the contracts boundary) starts a match that runs on to the next `from '…'` specifier and reports
+      a genuinely `import type` line as a value import. The failure mode is one-directional — the lazy
+      `[\s\S]*?` cannot skip a valid ` from '…'`, so prose yields false POSITIVES and never false
+      negatives. It is also silent on the `export { X } from '…contracts…'` re-export form, and its
+      `runtimeRoots` omits `setup/` and `packages/shared-domain/src/`. **The boot-crash invariant is
+      NOT at risk:** all three gaps are covered by the dependency-cruiser rule
+      `no-runtime-value-deps-on-contracts` (severity error, wider path set, evaluated post-compilation),
+      which is green. *Persona:* contributor adding a types-only module under `lib/**` that documents
+      why it types its payload off `packages/contracts`, and loses a cycle to a red lane that is wrong.
+      *Hypothesis:* the test earns its keep only if it stops false-positiving — anchor per line and
+      forbid the match from crossing a statement
+      (`/^import\s+(?!type\b)[^;]*?\s+from ['"]([^'"]+)['"]|^import\s*['"]([^'"]+)['"]/gm`) — otherwise
+      delete it and rely on the cruiser rule, which is strictly stronger. *Why:* a duplicated guard that
+      is both weaker and noisier trains contributors to route around the accurate one. Worked around in
+      `lib/home/homeRuntimeRead.ts` by rewording the comment. Source: multi-home PR 5a, 2026-07-26.
 
 - [ ] **Pinned sub-home device stays uncontrolled if the zones API never commits a tree.**
       *Persona:* multi-home owner who PINNED a device into a sub-home on a Homey whose zones API is degraded.

@@ -74,6 +74,8 @@ type Rig = {
   ctx: AppContext;
   registry: HomeRuntimeRegistry;
   setMembershipReady: (ready: boolean) => void;
+  /** Make the injected membership authority THROW (a failing outward seam). */
+  setMembershipAuthorityFailure: (failing: boolean) => void;
   setRuntimeActive: (active: boolean) => void;
 };
 
@@ -87,16 +89,21 @@ const buildRig = (): Rig => {
     latestTargetSnapshot: [],
   });
   let membershipReady = true;
+  let membershipAuthorityFailing = false;
   let runtimeActive = true;
   const registry = new HomeRuntimeRegistry({
     ctx,
-    isMembershipReady: () => membershipReady,
+    isMembershipReady: () => {
+      if (membershipAuthorityFailing) throw new Error('membership authority unavailable');
+      return membershipReady;
+    },
     isRuntimeActive: () => runtimeActive,
   });
   return {
     ctx,
     registry,
     setMembershipReady: (ready) => { membershipReady = ready; },
+    setMembershipAuthorityFailure: (failing) => { membershipAuthorityFailing = failing; },
     setRuntimeActive: (active) => { runtimeActive = active; },
   };
 };
@@ -220,6 +227,140 @@ describe('HomeRuntimeRegistry (per-home capacity bundles)', () => {
     await drainPending();
     expect(diagnosticsFor(rig.registry, 'h_a').lastMeterPowerKw).toBeCloseTo(0.5);
     expect(diagnosticsFor(rig.registry, 'h_b').lastMeterPowerKw).toBeCloseTo(1.2);
+  });
+
+  it('readHome serves each home\'s OWN already-committed plan, tracker and diagnostics', async () => {
+    writeActiveHomesConfig({ subHomes: [HOME_A, HOME_B] });
+    rig.registry.reconcile();
+    await drainPending();
+    const sampleTs = Date.now();
+    rig.registry.routeMeterReadings({ 'm-a': 3000, 'm-b': 1200 }, sampleTs);
+    await drainPending();
+
+    const readA = rig.registry.readHome('h_a');
+    const readB = rig.registry.readHome('h_b');
+    if (readA.state !== 'resolved' || readB.state !== 'resolved') {
+      throw new Error(`expected both sub-homes to resolve, got ${readA.state}/${readB.state}`);
+    }
+
+    expect(readA.reading.homeId).toBe('h_a');
+    // Each home's tracker carries ONLY its own meter's sample.
+    expect(readA.reading.powerTracker.lastPowerW).toBeCloseTo(3000);
+    expect(readB.reading.powerTracker.lastPowerW).toBeCloseTo(1200);
+    expect(readA.reading.powerTracker.lastTimestamp).toBe(sampleTs);
+    // Diagnostics come from the same bundle block `getDiagnostics` serves.
+    expect(readA.reading.diagnostics).toEqual(diagnosticsFor(rig.registry, 'h_a'));
+    expect(readB.reading.diagnostics.meterDeviceId).toBe('m-b');
+    // The plan is the one the bundle already committed, with its commit stamp.
+    expect(readA.reading.plan).not.toBeNull();
+    expect(readA.reading.planUpdatedAtMs).toBe(readA.reading.plan?.generatedAtMs);
+  });
+
+  it('readHome is a pure read: no rebuild, no snapshot decorate, stable commit stamp', async () => {
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    rig.registry.reconcile();
+    await drainPending();
+    rig.registry.routeMeterReadings({ 'm-a': 3000 }, Date.now());
+    await drainPending();
+
+    const first = rig.registry.readHome('h_a');
+    if (first.state !== 'resolved') throw new Error('expected h_a to resolve');
+    // `scope.getPlanDevices()` seeds observed state and decorates the whole
+    // device snapshot. A read that touched it would turn a UI poll into a
+    // snapshot rebuild, so the seed must not fire and the commit stamp must
+    // not move between two reads.
+    vi.mocked(rig.ctx.seedObservedStateFromSnapshot).mockClear();
+    await vi.advanceTimersByTimeAsync(5_000);
+    const second = rig.registry.readHome('h_a');
+    if (second.state !== 'resolved') throw new Error('expected h_a to resolve');
+
+    expect(rig.ctx.seedObservedStateFromSnapshot).not.toHaveBeenCalled();
+    expect(second.reading.planUpdatedAtMs).toBe(first.reading.planUpdatedAtMs);
+  });
+
+  it('readHome arms no source-recovery work while the power source cannot be read', async () => {
+    // Turn actuation ON first: with the sub-home default (`dryRun: true`) the
+    // effective flag reads true either way, and the value assertion below could
+    // not tell the two source predicates apart.
+    mockHomeyInstance.settings.set(`${CAPACITY_DRY_RUN}:h_a`, false);
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    rig.registry.reconcile();
+    await drainPending();
+    rig.registry.routeMeterReadings({ 'm-a': 3000 }, Date.now());
+    await drainPending();
+    const before = rig.registry.readHome('h_a');
+    if (before.state !== 'resolved') throw new Error('expected h_a to resolve');
+    expect(before.reading.diagnostics.dryRunEffective).toBe(false);
+
+    // The bundle's EXECUTION source predicate schedules a recovery
+    // rebuild+reconcile (device writes) when the source cannot be authorized.
+    // The read seam must evaluate the same dry-run formula through the RAW
+    // predicate, so a UI poll landing in a transient settings-read failure
+    // starts no background actuation work.
+    const originalGet = mockHomeyInstance.settings.get.bind(mockHomeyInstance.settings);
+    vi.spyOn(mockHomeyInstance.settings, 'get').mockImplementation((key) => {
+      if (key === POWER_SOURCE) throw new Error('settings unavailable');
+      return originalGet(key);
+    });
+    const during = rig.registry.readHome('h_a');
+    if (during.state !== 'resolved') throw new Error('expected h_a to resolve');
+    // The raw predicate returns the execution predicate's VALUE verbatim, so
+    // the read still reports the fail-closed flip (actuation on → off) that a
+    // control-path caller would see. Only the retry-arming differs, and that is
+    // the whole point: the read must not schedule the recovery rebuild.
+    expect(during.reading.diagnostics.dryRunEffective).toBe(true);
+    expect(rig.ctx.timers.has('home:h_a:sourceActuationRetry')).toBe(false);
+
+    // ...and nothing fires once the source recovers.
+    vi.mocked(mockHomeyInstance.settings.get).mockRestore();
+    await vi.advanceTimersByTimeAsync(5_000);
+    await drainPending();
+    const after = rig.registry.readHome('h_a');
+    if (after.state !== 'resolved') throw new Error('expected h_a to resolve');
+    expect(after.reading.planUpdatedAtMs).toBe(before.reading.planUpdatedAtMs);
+  });
+
+  it('readHome classifies a throwing assembly as unavailable instead of propagating it', async () => {
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    rig.registry.reconcile();
+    await drainPending();
+    expect(rig.registry.readHome('h_a').state).toBe('resolved');
+
+    // The completeness claim is what lets a consumer treat the result as typed:
+    // a raw throw must never reach the endpoint as an unclassified failure.
+    // Induced at the layer's OUTWARD seam — the injected membership authority,
+    // which the read assembly consults for its effective dry-run — so the real
+    // registry → bundle → reads chain runs unmocked. (The emitted warn is
+    // pinned in the log-vocabulary unit spec.)
+    rig.setMembershipAuthorityFailure(true);
+    expect(() => rig.registry.readHome('h_a')).not.toThrow();
+    expect(rig.registry.readHome('h_a')).toEqual({ state: 'unavailable' });
+
+    // Transient authority failure, transient answer: the bundle was not torn
+    // down, so the read recovers as soon as the seam does.
+    rig.setMembershipAuthorityFailure(false);
+    expect(rig.registry.readHome('h_a').state).toBe('resolved');
+  });
+
+  it('readHome reports unavailable for the main home, an unknown home, and after teardown', async () => {
+    writeActiveHomesConfig({ subHomes: [HOME_A] });
+    rig.registry.reconcile();
+    await drainPending();
+
+    // The main home has no bundle; its reads stay on the unsuffixed ctx path.
+    expect(rig.registry.readHome(MAIN_HOME_ID)).toEqual({ state: 'unavailable' });
+    expect(rig.registry.readHome('h_ghost')).toEqual({ state: 'unavailable' });
+    expect(rig.registry.readHome('h_a').state).toBe('resolved');
+
+    // A removed home is retained as a fenced tombstone until the next
+    // reconcile clears it; it must never serve stale committed values.
+    writeActiveHomesConfig({ subHomes: [] });
+    rig.registry.reconcile();
+    await drainPending();
+    expect(rig.registry.readHome('h_a')).toEqual({ state: 'unavailable' });
+
+    rig.registry.teardownAll();
+    expect(rig.registry.readHome('h_a')).toEqual({ state: 'unavailable' });
   });
 
   it('suffix hook reloads ONE bundle\'s capacity scalars; main\'s snapshot stays untouched', async () => {
