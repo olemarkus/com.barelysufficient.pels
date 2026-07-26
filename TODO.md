@@ -76,31 +76,23 @@ What remains open is below.*
       device as a producer-resolved bit, or give plan-device callers an EV-aware variant. Source:
       adversarial review, 2026-07-25. [P1]
 
-- [ ] **Restore actuation re-stamps the GLOBAL `state.lastRestoreMs`.**
-      `recordRestoreActuation` (`lib/executor/planExecutor.ts` ~210) sets both the per-device
-      `lastDeviceRestoreMs[id]` and the global `state.lastRestoreMs`, and `restore/timing.ts` ~47
-      derives `inRestoreCooldown` from the global one. So any device's restore attempt pushes out
-      the restore gate for every device that is observed OFF (an active-step device reads its own
-      per-device stamp instead — `restore/steppedRestoreGates.ts` ~67). One device retrying on a
-      cadence therefore delays other devices' resumes. The 2.17.5 stepped binary-restore gate
-      (`hasStableSteppedLoadBinaryRestoreActuation`) is rate-limited per device specifically to
-      keep its worst case at the same cadence as an ordinary restore rather than per rebuild
-      cycle, but the underlying global/per-device mismatch is still there. Fix by making the
-      restore cooldown per-device throughout, or by scoping the global stamp to the device that
-      actuated. Source: prod log review + adversarial review, 2026-07-25; re-confirmed while
-      shipping 2.17.5. [P1]
-
-- [ ] **Rejected stepped restores re-write `off` to an already-off device and re-stamp the shed
-      cooldown.** Each restore rejection flips the plan device back to shed posture via
-      `buildOffSteppedRestoreShedUpdate` (`lib/plan/restore/planDeviceUpdates.ts` ~24), which
-      changes the plan action signature, re-runs the executor, and writes the control capability
-      to `false` on a device already observed off. Observed live 2026-07-25 21:01–21:06: six such
-      writes to Elbillader at ~30 s intervals, each with a `diagnostics_shed_recorded` and a fresh
-      60 s shed cooldown. When background usage then collapsed 2.85 → 0.71 kW at 21:06:39 and
-      ~3.97 kW became available, the resume was blocked on `cooldown (shedding)` stamped by the
-      redundant 21:06:22 write, costing about a minute of charging. Skip the write when the
-      observed binary state already matches the shed target, or stop the posture from oscillating
-      between `shed` and `keep` on alternating cycles. Source: prod log review 2026-07-25. [P1]
+- [ ] **A `keep`-planned stepped device observed off can stall its own turn-on.**
+      `hasStableSteppedLoadStepActuation` (`lib/executor/planExecutorPredicates.ts` ~91) returns
+      false whenever the desired step equals the selected step. Since 2026-07-25 a paused device
+      that last reported a non-off step reaches exactly that state with the binary turn-on still
+      outstanding, and once the plan signature settles `maybeApplyPlanChanges`
+      (`lib/plan/planServiceRebuild.ts` ~239) stops calling the executor. Observed live: eight
+      consecutive `restore_stepped_admitted` for the Easee over ~4 min, `deltaKw` 1.38,
+      `availableKw` 6.6, and zero `evcharger_charging` writes; the charger only came on because it
+      turned itself on externally, so whether it would have stalled indefinitely is unproven.
+      A first attempt at this (adding an observed-off branch to the predicate) was reverted: it
+      relied on `isCommandableNow(dev)`, which is always false for an EV charger on that path (see
+      the item above), so it was a no-op for the motivating device — and where it *did* fire
+      (non-EV steppers) each retry re-stamps the GLOBAL `state.lastRestoreMs`
+      (`lib/executor/planExecutor.ts` ~210), which would keep `inRestoreCooldown` from ever
+      clearing and starve every other device's restore. Needs the commandability defect fixed
+      first, a per-device rather than global rate limit, and live validation. Source: prod log
+      review + adversarial review, 2026-07-25. [P1]
 
 - [ ] **An observed-off device attributes usage from whatever step it is parked at.**
       `resolveObservedOffUsageKw` (`lib/plan/planUsage.ts` ~36-41) falls to

@@ -38,7 +38,6 @@ import type { PlanExecutorSteppedContext } from './steppedLoadExecutor';
 import type { PlanExecutorBinaryContext } from './binaryExecutor';
 import {
   hasStableBinaryReleaseActuation,
-  hasStableSteppedLoadBinaryRestoreActuation,
   hasStableSteppedLoadStepActuation,
   hasStableUncontrolledRestoreActuation,
   resolveConfirmedBinaryCommandReasonCode,
@@ -410,7 +409,6 @@ export class PlanExecutor {
       hasStableUncontrolledRestoreActuation(dev, this.state)
       || hasStableBinaryReleaseActuation(dev)
       || hasStableSteppedLoadStepActuation(dev)
-      || hasStableSteppedLoadBinaryRestoreActuation(dev, this.state)
     ));
   }
 

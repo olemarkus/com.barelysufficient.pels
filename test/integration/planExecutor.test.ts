@@ -1,7 +1,7 @@
 import type Homey from 'homey';
 import { PlanExecutor, type PlanExecutorDeps } from '../../lib/executor/planExecutor';
 import { captureLogger, type LoggerCapture } from '../utils/loggerCapture';
-import { RESTORE_COOLDOWN_MS, TARGET_COMMAND_RETRY_DELAYS_MS } from '../../lib/plan/planConstants';
+import { TARGET_COMMAND_RETRY_DELAYS_MS } from '../../lib/plan/planConstants';
 import { createPlanEngineState } from '../../lib/plan/planState';
 import { createPendingBinaryCommandStore } from '../../lib/observer/pendingBinaryCommands';
 import { createDeviceActuator } from '../../lib/actuator/deviceActuator';
@@ -21,7 +21,6 @@ import type {
 } from '../../lib/plan/planTypes';
 import {
   withBinaryDiscriminant,
-  withEvDiscriminant,
   withSteppedDiscriminant,
   withTemperatureDiscriminant,
 } from '../../lib/plan/planTypes';
@@ -1672,110 +1671,6 @@ describe('PlanExecutor stepped loads', () => {
       stepCommandStatus: 'stale',
       nextStepCommandRetryAtMs: Date.now() + 30_000,
     }))).toBe(false);
-  });
-
-  // Prod incident 2026-07-25: a flow-backed EV charger sat off for 6+ minutes with
-  // its target step already confirmed at the lowest active step. Phase 1 of
-  // restore-from-off (prepare the step) ran on the cycle the plan action signature
-  // changed; phase 2 (write the binary on) needed a LATER cycle, but by then the
-  // signature was identical (`keep` / same desiredStepId — the signature carries no
-  // observed state) and `hasStableSteppedLoadStepActuation` returns false once the
-  // step axis has nothing left to do. So the plan-apply gate never invoked the
-  // executor and the binary-on was never issued.
-  const preparedRestoreFromOffPlan = (overrides: Record<string, unknown> = {}): DevicePlan => steppedPlan({
-    currentState: 'off',
-    plannedState: 'keep',
-    selectedStepId: 'low',
-    reportedStepId: 'low',
-    desiredStepId: 'low',
-    reason: {
-      code: PLAN_REASON_CODES.restoreNeed,
-      fromTarget: 'off',
-      toTarget: 'low',
-      needKw: 1.5,
-      headroomKw: null,
-    },
-    ...overrides,
-  });
-
-  it('marks a prepared stepped restore-from-off actuatable so the binary-on still fires', () => {
-    const { executor } = buildExecutor();
-
-    expect(executor.hasStablePlanActuation(preparedRestoreFromOffPlan())).toBe(true);
-  });
-
-  it('marks a prepared stepped restore-from-off actuatable under a plain keep reason', () => {
-    const { executor } = buildExecutor();
-
-    expect(executor.hasStablePlanActuation(preparedRestoreFromOffPlan({
-      reason: KEEP_REASON,
-    }))).toBe(true);
-  });
-
-  it('does not mark a stepped restore-from-off actuatable before the step is reported', () => {
-    // Phase 1 has been commanded but the device has not reported the step back:
-    // the transition is still `step_preparation`, and the signature change that
-    // issued the step command is what drives that cycle.
-    const { executor } = buildExecutor();
-
-    expect(executor.hasStablePlanActuation(preparedRestoreFromOffPlan({
-      reportedStepId: undefined,
-    }))).toBe(false);
-  });
-
-  it('does not mark a prepared stepped restore-from-off actuatable once the device reads on', () => {
-    const { executor } = buildExecutor();
-
-    expect(executor.hasStablePlanActuation(preparedRestoreFromOffPlan({
-      currentState: 'on',
-    }))).toBe(false);
-  });
-
-  it('does not mark a prepared stepped restore-from-off actuatable during a restore hold', () => {
-    const { executor } = buildExecutor();
-
-    expect(executor.hasStablePlanActuation(preparedRestoreFromOffPlan({
-      reason: { code: PLAN_REASON_CODES.cooldownRestore, remainingSec: 120 },
-    }))).toBe(false);
-  });
-
-  it('does not mark a prepared stepped restore-from-off actuatable while a binary command is pending', () => {
-    const { executor } = buildExecutor();
-
-    expect(executor.hasStablePlanActuation(preparedRestoreFromOffPlan({
-      binaryCommandPending: true,
-    }))).toBe(false);
-  });
-
-  it('marks a prepared stepped restore-from-off actuatable for an EV charger regrouped like production', () => {
-    // The motivating device is an EV charger, and `withEvDiscriminant` strips
-    // `evChargingState` on the way to a plan device, so `isCommandableNow(dev)` is
-    // always false here (TODO.md P1). Guard that this gate never starts depending on
-    // it again: run the fixture through the same regrouping the producer applies.
-    const { executor } = buildExecutor();
-    const plan = preparedRestoreFromOffPlan({
-      deviceClass: 'evcharger',
-      controlCapabilityId: 'evcharger_charging',
-      evChargingState: 'plugged_in_paused',
-    });
-    const evPlan: DevicePlan = {
-      ...plan,
-      devices: [withEvDiscriminant(plan.devices[0]!)],
-    };
-
-    expect(evPlan.devices[0]).not.toHaveProperty('evChargingState');
-    expect(executor.hasStablePlanActuation(evPlan)).toBe(true);
-  });
-
-  it('rate-limits a prepared stepped restore-from-off to one attempt per restore cooldown', () => {
-    const { executor, state } = buildExecutor();
-    state.lastDeviceRestoreMs['dev-1'] = Date.now() - 1_000;
-
-    expect(executor.hasStablePlanActuation(preparedRestoreFromOffPlan())).toBe(false);
-
-    state.lastDeviceRestoreMs['dev-1'] = Date.now() - (RESTORE_COOLDOWN_MS + 1_000);
-
-    expect(executor.hasStablePlanActuation(preparedRestoreFromOffPlan())).toBe(true);
   });
 
   const evDeadlinePlan = (
