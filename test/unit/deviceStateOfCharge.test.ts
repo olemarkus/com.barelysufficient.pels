@@ -30,4 +30,100 @@ describe('resolveStateOfChargeSnapshot', () => {
       status: 'fresh',
     }));
   });
+
+  const SOC_AT = Date.parse('2026-03-20T06:00:00.000Z');
+
+  const resolve = (params: {
+    chargingState: string;
+    chargingStateAt: number;
+    nowMs: number;
+    charging?: boolean;
+    retainedSession?: { sessionStartedAtMs?: number; invalidatedAtMs?: number };
+  }) => resolveStateOfChargeSnapshot({
+    deviceClassKey: 'evcharger',
+    nowMs: params.nowMs,
+    capabilityObj: {
+      evcharger_charging_state: {
+        value: params.chargingState,
+        lastUpdated: params.chargingStateAt,
+      },
+      ...(params.charging === undefined
+        ? {}
+        : { evcharger_charging: { value: params.charging } }),
+      measure_battery: { value: 34, lastUpdated: SOC_AT },
+    },
+    reportedCapabilities: {},
+    retainedSession: params.retainedSession,
+  });
+
+  // Prod 2026-07-26: PELS paused an Easee, the charger dropped
+  // `plugged_in_charging` → `plugged_in` two minutes after the last SoC report,
+  // and the re-stamped charging-state timestamp was read as a new session —
+  // marking a two-minute-old reading stale for the rest of the night.
+  it('keeps the reading fresh when a connected sub-state change post-dates it', () => {
+    expect(resolve({
+      chargingState: 'plugged_in',
+      chargingStateAt: SOC_AT + 2 * 60_000,
+      nowMs: SOC_AT + 3 * 60_000,
+    })).toEqual(expect.objectContaining({ percent: 34, status: 'fresh' }));
+  });
+
+  // The charger republishes only on a level change, which cannot happen while
+  // it is idle; ageing the reading out would strand the smart task that paused it.
+  it('does not age out a reading while the charger is idle', () => {
+    expect(resolve({
+      chargingState: 'plugged_in_paused',
+      chargingStateAt: SOC_AT,
+      charging: false,
+      nowMs: SOC_AT + 6 * 60 * 60_000,
+    })).toEqual(expect.objectContaining({ percent: 34, status: 'fresh' }));
+  });
+
+  it('ages out a reading that goes unrefreshed while the charger is charging', () => {
+    expect(resolve({
+      chargingState: 'plugged_in_charging',
+      chargingStateAt: SOC_AT,
+      charging: true,
+      nowMs: SOC_AT + 41 * 60_000,
+    })).toEqual(expect.objectContaining({ percent: 34, status: 'stale' }));
+  });
+
+  it('ages out on the charging boolean alone when the plug state stays generic', () => {
+    expect(resolve({
+      chargingState: 'plugged_in',
+      chargingStateAt: SOC_AT,
+      charging: true,
+      nowMs: SOC_AT + 41 * 60_000,
+    })).toEqual(expect.objectContaining({ percent: 34, status: 'stale' }));
+  });
+
+  it('marks the reading stale once the car is unplugged', () => {
+    expect(resolve({
+      chargingState: 'plugged_out',
+      chargingStateAt: SOC_AT + 60_000,
+      nowMs: SOC_AT + 2 * 60_000,
+    })).toEqual(expect.objectContaining({ percent: 34, status: 'stale' }));
+  });
+
+  // A refresh sees only the CURRENT plug state, so the retained session is the
+  // only evidence that the connected charger was replugged — possibly with a
+  // different car — since the reading was taken.
+  it('marks the reading stale after a replug reported through the retained session', () => {
+    const unplugged = resolve({
+      chargingState: 'plugged_out',
+      chargingStateAt: SOC_AT + 60_000,
+      nowMs: SOC_AT + 2 * 60_000,
+    });
+
+    expect(resolve({
+      chargingState: 'plugged_in',
+      chargingStateAt: SOC_AT + 3 * 60_000,
+      nowMs: SOC_AT + 4 * 60_000,
+      retainedSession: unplugged,
+    })).toEqual(expect.objectContaining({
+      percent: 34,
+      status: 'stale',
+      sessionStartedAtMs: SOC_AT + 3 * 60_000,
+    }));
+  });
 });

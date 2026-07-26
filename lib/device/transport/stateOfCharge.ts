@@ -18,23 +18,41 @@ export const EV_SOC_NATIVE_CAPABILITY_IDS = [
 
 const EV_SOC_STALE_MS = 40 * 60 * 1000;
 
+// Plug states in which the battery level can actually move. Everything else
+// (`plugged_in`, `plugged_in_paused`, and the disconnected states) leaves the
+// pack untouched, so the last reported level stays true no matter how old it is.
+const CHARGE_IN_MOTION_STATES: ReadonlySet<string> = new Set([
+  'plugged_in_charging',
+  'plugged_in_discharging',
+]);
+
 type StateOfChargeCandidate = {
   percent: number;
   observedAtMs?: number;
   capabilityId: string;
 };
 
+// The session anchoring / invalidation pair the caller already knows about.
+// Threaded through the parse so a full refresh reasons from the retained
+// session instead of re-deriving one from whatever timestamp the charging-state
+// capability happens to carry right now (see `resolveEvSessionBoundary`).
+export type RetainedStateOfChargeSession = Pick<
+  DeviceStateOfChargeSnapshot, 'sessionStartedAtMs' | 'invalidatedAtMs'
+>;
+
 export function resolveStateOfChargeSnapshot(params: {
   deviceClassKey: string;
   nowMs: number;
   capabilityObj: DeviceCapabilityMap;
   reportedCapabilities: FlowReportedCapabilitiesForDevice;
+  retainedSession?: RetainedStateOfChargeSession;
 }): DeviceStateOfChargeSnapshot | undefined {
   const {
     deviceClassKey,
     nowMs,
     capabilityObj,
     reportedCapabilities,
+    retainedSession,
   } = params;
   if (deviceClassKey !== 'evcharger') return undefined;
 
@@ -48,6 +66,11 @@ export function resolveStateOfChargeSnapshot(params: {
     capabilityObj,
     reportedCapabilities,
     nowMs,
+    retainedSession,
+    chargeInMotion: isChargeInMotion({
+      chargingState: getStringCapabilityValue(capabilityObj.evcharger_charging_state?.value),
+      charging: getBooleanCapabilityValue(capabilityObj.evcharger_charging?.value),
+    }),
   });
 }
 
@@ -68,6 +91,7 @@ export function updateStateOfChargeObservationFreshness(params: {
       nowMs,
       sessionStartedAtMs: previous.sessionStartedAtMs,
       invalidatedAtMs: previous.invalidatedAtMs,
+      chargeInMotion: isChargeInMotionForSnapshot(snapshot),
     }),
   };
   return true;
@@ -90,6 +114,7 @@ export function updateStateOfChargeFromRealtimeCapability(params: {
   const percent = normalizeStateOfChargePercent(value);
   if (percent === undefined) return false;
 
+  const chargeInMotion = isChargeInMotionForSnapshot(snapshot);
   const next = buildStateOfChargeSnapshot({
     percent,
     observedAtMs,
@@ -102,6 +127,8 @@ export function updateStateOfChargeFromRealtimeCapability(params: {
     },
     reportedCapabilities: {},
     nowMs: observedAtMs,
+    retainedSession: snapshot.stateOfCharge,
+    chargeInMotion,
   });
   const previous = snapshot.stateOfCharge;
   const invalidatedAtMs = maxPositive([
@@ -118,6 +145,7 @@ export function updateStateOfChargeFromRealtimeCapability(params: {
       nowMs: observedAtMs,
       sessionStartedAtMs,
       invalidatedAtMs,
+      chargeInMotion,
     }),
   };
   return !previous
@@ -151,6 +179,10 @@ export function updateStateOfChargeSessionBoundary(params: {
     nowMs,
     sessionStartedAtMs: sessionStartedAtMs || undefined,
     invalidatedAtMs: invalidatedAtMs || undefined,
+    chargeInMotion: isChargeInMotion({
+      chargingState: evChargingState,
+      charging: snapshot.evCharging,
+    }),
   });
   snapshot.stateOfCharge = {
     ...previous,
@@ -190,14 +222,49 @@ function resolveRealtimeSessionStartedAtMs(
   return previous.sessionStartedAtMs;
 }
 
+// Whether a connected observation would mark a RECONNECT rather than a
+// re-sighting of the session already running: there is a recorded disconnect
+// that the current session anchor does not already account for.
+//
+// This is the single rule both session paths use — the stateful realtime
+// boundary (`shouldStartNewSession`) and the stateless parse
+// (`resolveEvSessionBoundary`) — so a full refresh can never re-anchor a
+// session the realtime path deliberately left alone. Without a recorded
+// disconnect there is no evidence the car changed, so there is no new session
+// to anchor.
+function hasPendingReconnect(session: RetainedStateOfChargeSession): boolean {
+  const { sessionStartedAtMs, invalidatedAtMs } = session;
+  if (invalidatedAtMs === undefined) return false;
+  return sessionStartedAtMs === undefined || invalidatedAtMs >= sessionStartedAtMs;
+}
+
 function shouldStartNewSession(
   previous: DeviceStateOfChargeSnapshot,
   evChargingState: EvChargingState,
 ): boolean {
-  if (!isConnectedEvState(evChargingState)) return false;
-  if (previous.sessionStartedAtMs === undefined) return true;
-  return previous.invalidatedAtMs !== undefined
-    && previous.invalidatedAtMs >= previous.sessionStartedAtMs;
+  return isConnectedEvState(evChargingState) && hasPendingReconnect(previous);
+}
+
+// The battery level only moves while the charger is delivering (or pulling)
+// charge. Homey EV chargers publish `measure_battery` on level CHANGE, so a
+// connected-but-idle charger simply never republishes — the same change-only
+// push model the observation layer already trusts for stale binary reads
+// (`lib/observer/AGENTS.md`) and the thermal objective trusts for a thermostat
+// that has fallen silent at setpoint (`hasUsableTemperatureProgress`).
+function isChargeInMotion(params: {
+  chargingState?: string;
+  charging?: boolean;
+}): boolean {
+  const { chargingState, charging } = params;
+  return (chargingState !== undefined && CHARGE_IN_MOTION_STATES.has(chargingState))
+    || charging === true;
+}
+
+function isChargeInMotionForSnapshot(snapshot: TransportDeviceSnapshot): boolean {
+  return isChargeInMotion({
+    chargingState: snapshot.evChargingState,
+    charging: snapshot.evCharging,
+  });
 }
 
 function resolveStateOfChargeCandidate(params: {
@@ -224,6 +291,8 @@ function buildStateOfChargeSnapshot(params: {
   capabilityObj: DeviceCapabilityMap;
   reportedCapabilities: FlowReportedCapabilitiesForDevice;
   nowMs: number;
+  chargeInMotion: boolean;
+  retainedSession?: RetainedStateOfChargeSession;
 }): DeviceStateOfChargeSnapshot {
   const {
     percent,
@@ -232,13 +301,21 @@ function buildStateOfChargeSnapshot(params: {
     capabilityObj,
     reportedCapabilities,
     nowMs,
+    chargeInMotion,
+    retainedSession,
   } = params;
-  const session = resolveEvSessionBoundary({ capabilityObj, reportedCapabilities, nowMs });
+  const session = resolveEvSessionBoundary({
+    capabilityObj,
+    reportedCapabilities,
+    nowMs,
+    retainedSession,
+  });
   const status = resolveStateOfChargeStatus({
     observedAtMs,
     nowMs,
     invalidatedAtMs: session.invalidatedAtMs,
     sessionStartedAtMs: session.sessionStartedAtMs,
+    chargeInMotion,
   });
   return {
     percent,
@@ -255,23 +332,31 @@ function resolveStateOfChargeStatus(params: {
   nowMs: number;
   invalidatedAtMs?: number;
   sessionStartedAtMs?: number;
+  chargeInMotion: boolean;
 }): DeviceStateOfChargeSnapshot['status'] {
   const {
     observedAtMs,
     nowMs,
     invalidatedAtMs,
     sessionStartedAtMs,
+    chargeInMotion,
   } = params;
   if (!observedAtMs) return 'unknown';
-  const sessionCurrentlyInvalid = invalidatedAtMs !== undefined
-    && (sessionStartedAtMs === undefined || invalidatedAtMs >= sessionStartedAtMs);
   if (
-    sessionCurrentlyInvalid
+    hasPendingReconnect({ sessionStartedAtMs, invalidatedAtMs })
     || (invalidatedAtMs !== undefined && invalidatedAtMs >= observedAtMs)
     || (sessionStartedAtMs !== undefined && sessionStartedAtMs > observedAtMs)
   ) {
     return 'stale';
   }
+  // Age out only while the level can actually move. A reading taken before PELS
+  // paused the charger stays true for as long as the car sits there, and ageing
+  // it out would strand exactly the smart tasks PELS itself paused: the charger
+  // republishes only on a level change, which cannot happen while it is idle,
+  // so the objective would fall to `objective_progress_stale` and never plan
+  // again (prod 2026-07-26). A plug-out is what invalidates the reading
+  // otherwise, and that is handled above.
+  if (!chargeInMotion) return 'fresh';
   return nowMs - observedAtMs >= EV_SOC_STALE_MS ? 'stale' : 'fresh';
 }
 
@@ -279,11 +364,14 @@ function resolveEvSessionBoundary(params: {
   capabilityObj: DeviceCapabilityMap;
   reportedCapabilities: FlowReportedCapabilitiesForDevice;
   nowMs: number;
+  retainedSession?: RetainedStateOfChargeSession;
 }): {
   sessionStartedAtMs?: number;
   invalidatedAtMs?: number;
 } {
-  const { capabilityObj, reportedCapabilities, nowMs } = params;
+  const {
+    capabilityObj, reportedCapabilities, nowMs, retainedSession,
+  } = params;
   const chargingState = getStringCapabilityValue(capabilityObj.evcharger_charging_state?.value);
   const chargingStateObservedAt = getCapabilityLastUpdatedMs(capabilityObj, 'evcharger_charging_state');
   const flowConnected = getBooleanFlowEntry(reportedCapabilities['alarm_generic.car_connected']);
@@ -291,17 +379,35 @@ function resolveEvSessionBoundary(params: {
   const invalidatedAtCandidates = [
     isDisconnectedEvState(chargingState) ? chargingStateObservedAt ?? nowMs : undefined,
     flowConnected?.value === false ? flowConnected.reportedAt : undefined,
+    retainedSession?.invalidatedAtMs,
   ].filter(isFinitePositiveNumber);
+  const invalidatedAtMs = maxPositive(invalidatedAtCandidates);
 
-  const sessionStartedCandidates = [
-    isConnectedEvState(chargingState) ? chargingStateObservedAt : undefined,
-    flowConnected?.value === true ? flowConnected.reportedAt : undefined,
-  ].filter(isFinitePositiveNumber);
+  // A connected observation anchors a session only when it marks a reconnect.
+  // `evcharger_charging_state` re-stamps its `lastUpdated` on every connected
+  // sub-state change — an Easee drops `plugged_in_charging` → `plugged_in` the
+  // moment PELS pauses it — and anchoring the session on that pushed the start
+  // past the last SoC report, marking a two-minute-old reading stale for good
+  // (prod 2026-07-26). Absent a disconnect, the retained anchor stands.
+  const reconnectPending = hasPendingReconnect({
+    sessionStartedAtMs: retainedSession?.sessionStartedAtMs,
+    invalidatedAtMs,
+  });
+  const reconnectCandidates = reconnectPending && invalidatedAtMs !== undefined
+    ? [
+      isConnectedEvState(chargingState) ? chargingStateObservedAt : undefined,
+      flowConnected?.value === true ? flowConnected.reportedAt : undefined,
+    ].filter(isFinitePositiveNumber).filter((ms) => ms > invalidatedAtMs)
+    : [];
 
   return {
-    sessionStartedAtMs: maxPositive(sessionStartedCandidates),
-    invalidatedAtMs: maxPositive(invalidatedAtCandidates),
+    sessionStartedAtMs: maxPositive(reconnectCandidates) ?? retainedSession?.sessionStartedAtMs,
+    invalidatedAtMs,
   };
+}
+
+function getBooleanCapabilityValue(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined;
 }
 
 function getBooleanFlowEntry(
