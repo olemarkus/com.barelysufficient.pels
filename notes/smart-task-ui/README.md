@@ -233,6 +233,84 @@ See `TODO.md` for the discrete entries. The split (loosely):
   new entries this review adds are the ones whose framing depends on
   the personas/asymmetric-treatment thesis above.
 
+## Addendum — 2026-07-26: creation and immediate intent
+
+The Smart tasks destination in the settings UI is the aggregate place to
+understand active and past tasks, but it cannot create one. Its first-run state
+sends the user to a Flow action or the separate New smart task dashboard
+widget. That split is no longer the target product shape: the Smart tasks page
+should be a complete route for creating, inspecting, editing, and cancelling a
+task.
+
+Reuse the existing candidate-device, goal-bound, preview, and device-scoped
+write paths. Do not introduce a page-specific persistence lane. After choosing
+a temperature device or EV charger, the creation surface should distinguish two
+user intents:
+
+1. **Start now** — begin making progress in the current hour whenever the
+   device is commandable and the hard cap permits it.
+2. **Ready by** — retain the existing price-aware target-and-deadline planner.
+
+`Start now` is one generic Smart-task intent with kind-specific presentation,
+not separate heating and charging subsystems. Temperature devices may seed the
+goal from the current mode target; an EV must show an explicit target percent
+because there is no universally correct implicit full-charge target. The first
+slice remains limited to the two objective kinds the planner already supports;
+generic binary loads have no trustworthy progress target and must not be
+promised the same behaviour.
+
+Unlike `Ready by`, `Start now` is price-neutral. Its preview and runtime path
+must construct a non-price horizon with a current-hour bucket when price-aware
+planning is disabled or prices are unavailable; those states must not become
+`objective_price_feature_disabled` or `objective_missing_price_horizon`.
+
+The immediate intent applies all three existing objective-scoped permissions as
+`always`: `exemptFromBudget`, `limitLowerPriorityDevices`, and
+`pauseLowerPriorityDevices`. That lets the task exceed the soft daily budget
+and make room from lower-priority managed devices without weakening the hard
+cap. These permissions are necessary but not sufficient: the current hour has
+to be included whenever it is physically and operationally available, and the
+immediate-intent discriminator must suppress both the `priceDeferralEligible`
+and `coldStartReleaseEligible` per-cycle release paths. Otherwise admission can
+still idle a booked current bucket in favor of a later hour.
+
+The preview resolves one finite absolute deadline and create echoes that exact
+value: `now + max(3 h, estimated duration + 1 h)`. Refuse `Start now` when the
+duration estimate is unavailable/non-finite or the result exceeds the existing
+36 h candidate horizon. Show the resolved end before confirmation. Reaching
+the target finalizes the task as `Succeeded`; reaching the deadline without the
+target finalizes it as `Missed`; user cancellation finalizes it as `Abandoned`.
+This gives a disconnected or unavailable device a bounded wait without treating
+one transient observation as a terminal failure.
+
+Immediate tasks also:
+
+- stay inside the hard cap and stale-power safety posture;
+- expose the target and resolved end condition before confirmation;
+- pause actuation when a device temporarily cannot continue. An EV disconnect
+  invalidates session progress and requires a fresh sample after reconnect; it
+  must not silently clear the task on one transient observation;
+- **stop the device on success before finalizing.** Reaching the target must
+  actuate, not merely record. Today's terminal release is gated on
+  `shouldEmitTerminalRelease` (`lib/objectives/deferredObjectives/admission.ts`),
+  which fires only for `controllable === false` devices — a cap-on charger stays
+  on the planner's normal managed lane and never sees a release intent, and
+  `handleDeferredDeadlineReached` disarms it without actuation. An 80 % task on a
+  power-limit-controlled charger would therefore keep charging past its target.
+  The immediate-success path must pause a binary charger and settle or retry
+  that command before it removes the diagnostic and records `Succeeded`;
+- resolve conflicts with an existing task explicitly rather than silently
+  replacing it.
+
+The dashboard New smart task widget and the Smart tasks page should share this
+engine and vocabulary. The Held-back devices widget and the contextual Overview
+action remain useful recovery surfaces, but their current temperature-only,
+daily-budget-caused rescue is not the generic immediate intent: it appears only
+after a device is held back and its short task can still be scheduled in a
+later hour. Do not add permanent action chips to every quiet Overview card;
+keep proactive creation in Smart tasks and reserve Overview actions for a live
+condition the user can act on.
+
 ## Addendum — 2026-06-11: chart-overhaul train closures
 
 The chart-overhaul train (PRs #1677–#1681) closed three of the findings
