@@ -41,6 +41,40 @@ tracked as P1/P2/P3 follow-up below.
 patch releases, not release blockers; each item carries its own source/date.
 (The v2.8.0 card-title rename landed in PR #934.)*
 
+- [ ] **An EV SoC reading goes stale the instant a long pause ends.** `resolveStateOfChargeStatus`
+      (`lib/device/transport/stateOfCharge.ts` ~360) stops ageing a reading out while the charger is
+      idle — that is the fix in PR #1897 — but once `chargeInMotion` becomes true again it compares
+      `nowMs - observedAtMs` against `EV_SOC_STALE_MS` using TOTAL wall-clock, which includes the
+      whole idle interval. So a charger paused longer than 40 minutes has an immediately-stale
+      reading the moment PELS resumes it, and `measure_battery` is change-only: the car cannot
+      republish until the level actually moves. The objective can therefore fall to
+      `objective_progress_stale` in the window right after a resume and pause the charger again,
+      which is the oscillation shape #1897 exists to remove, reached by a different route. The fix
+      is to measure staleness against elapsed CHARGE-IN-MOTION time, or grant a fresh window from
+      the idle-to-charging transition — either way it needs a new retained field threaded through
+      `RetainedStateOfChargeSession`, so it is its own change rather than a rider on #1897. Raised
+      by Codex on PR #1897, 2026-07-27. Two adjacent session/freshness holes found in the same
+      review, both left open deliberately: (a) a reconnect observed WITHOUT `lastUpdated` anchors
+      nothing, so the invalidation stands and an idle charger — which republishes only on a level
+      change — keeps a stale reading indefinitely. Substituting the refresh time was implemented and
+      then reverted on #1897, because a full refresh can carry a cached connected state older than a
+      newer realtime plug-out (`snapshotRefresh.ts` parses the pull before merging retained fresher
+      observations) and a fabricated future `sessionStartedAtMs` cannot be undone by reapplying that
+      plug-out — trading a stale reading for a session anchored to the wrong car. A correct fix needs
+      the refresh path to distinguish cached from fresh connected evidence, not a timestamp
+      substitution at this seam. (b) For a charger that keeps a generic `plugged_in` and only toggles
+      `evcharger_charging`, that boolean is the sole age-gate input, but the realtime binary path
+      mutates `snapshot.evCharging` without re-running `resolveStateOfChargeStatus` — so freshness
+      only moves on an unrelated refresh or SoC event. Recompute SoC freshness whenever the charging
+      boolean changes. The SAME missing accounting causes the mirror defect: once a
+      reading HAS aged out during a genuine charging interval, the next idle observation reaches the
+      unconditional `if (!chargeInMotion) return 'fresh'` and resurrects it, so objective and
+      EV-boost consumers trust a percentage that may have moved a long way while the charger was
+      delivering. Accumulated in-motion age fixes both directions at once — do them together, and do
+      not patch one with a sticky flag. Persona: EV owner whose overnight smart task is paused by
+      PELS and then stalls the moment PELS restarts it; hypothesis: a task that stalls on resume is
+      indistinguishable from one that never planned. [P1]
+
 *The bulk of the P1 backlog shipped in the 2026-06-03 reconciliation train (PRs #1450–#1461):
 insights mode-options coalescing, headroom over-cap overage, the history-detail title/link fixes,
 deviceOverview canonical-string routing, the flow-reported / pendingBinaryCommands /
