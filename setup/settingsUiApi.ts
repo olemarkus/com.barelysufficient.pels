@@ -46,6 +46,8 @@ import {
 } from './settingsUiAppRuntime';
 
 type SettingsUiApiApp = Homey.App & {
+  capacityDryRun?: unknown;
+  capacitySettings?: unknown;
   getDailyBudgetUiPayload?: () => DailyBudgetUiPayload | null;
   recomputeDailyBudgetToday?: () => DailyBudgetUiPayload | null;
   previewDailyBudgetModel?: (settings: Partial<DailyBudgetModelSettings>) => DailyBudgetModelPreviewResponse;
@@ -125,7 +127,19 @@ const getSettingsUiPlan = ({ homey }: ApiContext): SettingsUiPlanSnapshot | null
   getPlanSnapshotForUiFromHomey(homey)
 );
 
+const resolveMainCapacityScalars = (
+  value: unknown,
+): SettingsUiPowerPayload['mainCapacityScalars'] => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const { limitKw, marginKw } = value as { limitKw?: unknown; marginKw?: unknown };
+  if (typeof limitKw !== 'number' || !Number.isFinite(limitKw)) return undefined;
+  if (typeof marginKw !== 'number' || !Number.isFinite(marginKw)) return undefined;
+  return { limitKw, marginKw };
+};
+
 const getSettingsUiPower = ({ homey }: ApiContext): SettingsUiPowerPayload => {
+  const app = getApp(homey);
+  const mainCapacityScalars = resolveMainCapacityScalars(app?.capacitySettings);
   const tracker = getPowerTrackerForUiFromApp(homey)
     ?? (homey.settings.get(POWER_TRACKER_STATE) as PowerTrackerState | null);
   const status = homey.settings.get('pels_status') as {
@@ -140,6 +154,10 @@ const getSettingsUiPower = ({ homey }: ApiContext): SettingsUiPowerPayload => {
     tracker: tracker && typeof tracker === 'object' ? tracker : null,
     status: status && typeof status === 'object' ? status : null,
     heartbeat: null,
+    ...(typeof app?.capacityDryRun === 'boolean'
+      ? { mainDryRunEffective: app.capacityDryRun }
+      : {}),
+    ...(mainCapacityScalars ? { mainCapacityScalars } : {}),
     // Home-level "this home has solar surfaces" gate for the Usage tab's
     // Solar card (the device list is lazy-loaded, so the card can't read the
     // ui_devices flag). Requires BOTH a role-detected PV device (class-key

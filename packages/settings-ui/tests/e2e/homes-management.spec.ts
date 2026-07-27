@@ -86,6 +86,26 @@ test('create flow prefills zone by the ancestor walk, names it after the zone, a
   await expect(page.locator('#homes-empty-explainer')).toHaveCount(0);
 });
 
+test('the beta notice leads the page in both the empty and the list states', async ({ page }) => {
+  await gotoApp(page);
+  await openHomesPanel(page);
+  const notice = page.locator('#homes-beta-notice');
+  await expect(notice).toBeVisible();
+  // Locked copy (decision 11): confident, names the coverage gap, invites
+  // reports — asserted in full so a hedged rewrite cannot slip in quietly.
+  await expect(notice).toHaveText(
+    'Meter areas are new. They work as intended, but some PELS features don’t cover them yet. '
+    + 'Report anything unexpected and it gets fixed fast.',
+  );
+
+  // Same page with a configured area: the notice still leads the list.
+  await gotoApp(page);
+  await seedRentalArea(page);
+  await openHomesPanel(page);
+  await expect(page.locator('#homes-list')).toBeVisible();
+  await expect(notice).toBeVisible();
+});
+
 test('overlap with an existing area blocks save; outside-zone meter only warns', async ({ page }) => {
   await installRentalMeterDeviceList(page);
   await gotoApp(page);

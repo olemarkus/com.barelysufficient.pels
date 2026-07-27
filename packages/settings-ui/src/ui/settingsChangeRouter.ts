@@ -34,7 +34,7 @@ import {
   PRICE_SCHEME,
   WEATHER_ADVISOR_SETTINGS,
 } from '../../../contracts/src/settingsKeys.ts';
-import { loadAdvancedSettings, loadCapacitySettings } from './capacity.ts';
+import { loadAdvancedSettings, loadCapacitySettings, notifyAreaSimulationSettingChanged } from './capacity.ts';
 import { notifyHomeLimitsSettingChanged } from './homeLimits.ts';
 import { notifyHomeScopeSettingChanged } from './homeScope.ts';
 import {
@@ -118,6 +118,20 @@ const PLAN_REFRESH_KEYS = new Set([
   BUDGET_EXEMPT_DEVICES,
   OPERATING_MODE_SETTING,
 ]);
+
+// An area added/removed elsewhere rewrites `homes_config`: refresh the shell's
+// scope roster first (it owns the selection), then let the open meter-area
+// Limits card react to external status/scalar changes on the suffixed keys the
+// CAPACITY_SETTINGS_KEYS set intentionally excludes. The aggregate posture
+// behind the global simulation banner and the hub chip re-resolves on BOTH a
+// suffixed `capacity_dry_run:<homeId>` write (the Limits control toggle, a
+// second WebView — the exact-key sets can never match it) AND the roster keys
+// themselves, which decide which flags belong in the posture at all.
+const notifyHomeScopedControllers = (key: string) => {
+  notifyHomeScopeSettingChanged(key);
+  notifyHomeLimitsSettingChanged(key);
+  notifyAreaSimulationSettingChanged(key);
+};
 
 const refreshDailyBudgetSettings = (key: string) => {
   if (!DAILY_BUDGET_REFRESH_KEYS.has(key)) return;
@@ -242,6 +256,17 @@ export const createSettingsUnsetHandler = () => (key: string) => {
   // Clears `unset` the per-device key; reload objectives so a cleared task drops out
   // of an already-open WebView (Homey may deliver clears as an unset event).
   invalidateSettingCache(key);
+  // Main capacity settings retain the runtime's last-good values when absent.
+  // Route the bare key through the full loader so it can preserve and repaint
+  // that posture instead of fabricating a boot default.
+  if (CAPACITY_SETTINGS_KEYS.has(key)) {
+    runLoggedTask(loadCapacitySettings(), 'Failed to load capacity settings', 'settings.unset');
+  }
+  // An unset suffixed flag is a real posture change too: the runtime reads an
+  // absent per-area flag as its simulating boot default. So is an unset
+  // roster — the posture must narrow with it, and no other unset route
+  // re-resolves it.
+  notifyAreaSimulationSettingChanged(key);
   reloadObjectivesIfObjectiveKey(key, 'settings.unset');
   reloadActivePlansIfActivePlansKey(key, 'settings.unset');
   reloadWeatherInsightIfWeatherKey(key, 'settings.unset');
@@ -262,12 +287,7 @@ export const createSettingsSetHandler = () => (key: string) => {
   if (CAPACITY_SETTINGS_KEYS.has(key)) {
     runLoggedTask(loadCapacitySettings(), 'Failed to load capacity settings', 'settings.set');
   }
-  // An area added/removed elsewhere rewrites `homes_config`: refresh the shell's
-  // scope roster first (it owns the selection), then let the open meter-area
-  // Limits card react to external status/scalar changes on the suffixed keys the
-  // CAPACITY_SETTINGS_KEYS set intentionally excludes.
-  notifyHomeScopeSettingChanged(key);
-  notifyHomeLimitsSettingChanged(key);
+  notifyHomeScopedControllers(key);
   if (ADVANCED_SETTINGS_KEYS.has(key)) {
     runLoggedTask(loadAdvancedSettings(), 'Failed to load advanced settings', 'settings.set');
   }

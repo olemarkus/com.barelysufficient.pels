@@ -836,6 +836,34 @@ values are `Main home` and area names. `Part of home` was considered and
 rejected: it is wordier everywhere to defuse a collision that does not happen,
 because `Home` as a stock operating-mode name appears as a dropdown *value* on
 other cards, never as a tag title.
+### Simulation posture across homes
+
+Main's simulation flag and each active meter area's control flag are
+independent, so the global surfaces render the AGGREGATE posture — all live /
+all simulating / mixed (source: `resolveSimulationPosture` and
+`resolveSimulationBannerContent` in
+`packages/shared-domain/src/simulationPosture.ts`; chip labels in
+`settingsHubChips.ts` beside them):
+
+| State | Global simulation banner | Settings hub Simulation chip |
+|---|---|---|
+| Simulating, no meter areas | `Simulation on — devices stay as-is` | `On` |
+| Main simulating, areas exist | `Main home simulation on — Main home devices stay as-is` (never appends the areas — the button acts on Main) | `On` while the areas simulate too, else `Partly on` |
+| Main live, one area simulating | `PELS is only simulating “<area>”. Turn on control under Limits & safety.` — no button: each area's control lives on its Limits & safety page | `Partly on` |
+| Main live, several areas simulating | `PELS is only simulating N meter areas. Turn on control under Limits & safety.` | `Partly on` |
+| Everything live | hidden | hidden |
+
+Held pre-GA areas never enter the posture: their devices still belong to the
+Main home, so their flags say nothing about what PELS controls.
+
+### Beta notice
+
+The Multiple meters page leads with `HOMES_BETA_NOTICE`
+(`homesManagementCopy.ts`): `Meter areas are new. They work as intended, but
+some PELS features don’t cover them yet. Report anything unexpected and it
+gets fixed fast.` Confident and factual — never reworded into a hedge about
+whether the feature works, and never an em-dashed aside.
+
 ### Save refusals (`homeAreaConfigRulesCopy.ts`)
 
 Saving a meter area can be refused, and each refusal names one next step

@@ -17,6 +17,16 @@ import type { SubHomeDraftError, SubHomeDraftWarning } from './homesManagement';
 // home with their own meter") live in the static `public/index.html` markup,
 // like every other settings sub-page's chrome — they are not re-exported here.
 
+// ── Beta notice ────────────────────────────────────────────────────────────
+
+/**
+ * Leads the Multiple meters page while the feature is newly released (locked
+ * decision: confident, names the coverage gap, invites reports — no hedging
+ * about whether it works).
+ */
+export const HOMES_BETA_NOTICE = 'Meter areas are new. They work as intended, but some PELS '
+  + 'features don’t cover them yet. Report anything unexpected and it gets fixed fast.';
+
 // ── Progressive disclosure: empty state ────────────────────────────────────
 
 /** Shown alone (with the Add button) until the first meter area exists. */
