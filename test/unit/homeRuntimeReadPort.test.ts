@@ -17,6 +17,7 @@ const readingFor = (homeId: string): HomeRuntimeReading => ({
   diagnostics: {
     homeId,
     meterDeviceId: 'm-a',
+    operatingMode: 'Home',
     dryRunEffective: false,
     lastMeterPowerKw: 2.4,
     capacityScalars: { limitKw: 7, marginKw: 0.2, dryRun: false },

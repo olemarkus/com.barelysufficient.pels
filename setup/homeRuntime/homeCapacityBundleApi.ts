@@ -257,14 +257,19 @@ const buildHomeCapacityBundleReads = (params: {
   planEngine: ReturnType<typeof createPlanEngine>;
   planService: PlanService;
   readEffectiveDryRun: () => boolean;
+  /** THIS home's effective mode (scope accessor — pure resolution, no recovery arming). */
+  getOperatingMode: () => string;
   tracker: SuffixedTrackerPersistence;
   getHome: () => SubHomeConfig;
   getScalars: () => CapacityScalarSettings;
 }): Pick<HomeCapacityBundle, 'getDiagnostics' | 'getReadModel'> => {
-  const { homeId, guard, planEngine, planService, readEffectiveDryRun, tracker, getHome, getScalars } = params;
+  const {
+    homeId, guard, planEngine, planService, readEffectiveDryRun, getOperatingMode, tracker, getHome, getScalars,
+  } = params;
   const readDiagnostics = (): HomeCapacityBundleDiagnostics => ({
     homeId,
     meterDeviceId: getHome().meterDeviceId,
+    operatingMode: getOperatingMode(),
     capacityScalars: { ...getScalars() },
     dryRunEffective: readEffectiveDryRun(),
     lastMeterPowerKw: guard.getLastTotalPower(),
@@ -298,6 +303,7 @@ const buildScopedBundleReads = (params: {
   tracker: SuffixedTrackerPersistence;
   getHome: () => SubHomeConfig;
   getScalars: () => CapacityScalarSettings;
+  getOperatingMode: () => string;
   isTornDown: () => boolean;
   readDryRunGates: { isMembershipReady: () => boolean; isMeterSourceAuthorized: () => boolean };
 }): Pick<HomeCapacityBundle, 'getDiagnostics' | 'getReadModel'> => {
@@ -307,6 +313,7 @@ const buildScopedBundleReads = (params: {
     guard: params.guard,
     planEngine: params.planEngine,
     planService: params.planService,
+    getOperatingMode: params.getOperatingMode,
     tracker: params.tracker,
     getHome: params.getHome,
     getScalars,
@@ -371,6 +378,9 @@ export function buildHomeCapacityBundleApi(params: {
   });
   const readOperations = buildScopedBundleReads({
     homeId, guard, planEngine, planService, tracker, getHome, getScalars, isTornDown, readDryRunGates,
+    // The scope's mode accessor: pure resolution + edge-triggered transition
+    // log, no recovery arming — safe on the read surface (unlike its dry-run).
+    getOperatingMode: scope.getOperatingMode,
   });
   return {
     homeId,

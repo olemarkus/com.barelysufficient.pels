@@ -36,6 +36,7 @@ import {
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
   MAIN_HOME_ID,
+  OPERATING_MODE_SETTING,
   POWER_TRACKER_STATE,
 } from '../../lib/utils/settingsKeys';
 import type { PowerSource } from '../../lib/power/powerSource';
@@ -394,7 +395,10 @@ export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
     for (const bundle of this.getLiveBundles()) void bundle.rebuildForMembershipChange();
   }
 
-  /** Fan a global `operating_mode`/`mode_device_targets` write to every live plan. */
+  /**
+   * Fan a global `operating_mode`/`mode_device_targets`/`mode_aliases`/
+   * `capacity_priorities` write to every live plan.
+   */
   onModeSettingsChanged(): void {
     for (const bundle of this.getLiveBundles()) bundle.rebuildForModeSettingsChange();
   }
@@ -438,6 +442,13 @@ export class HomeRuntimeRegistry implements HomeRuntimeReadPort {
     }
     if (baseKey === POWER_TRACKER_STATE) {
       bundle.reloadPowerTracker();
+      return;
+    }
+    // Per-home active mode: the scope's closures re-resolve on read, so a
+    // rebuild is all that is needed — same funnel as the global mode fan-out
+    // (`onModeSettingsChanged`), where the accessor also logs the transition.
+    if (baseKey === OPERATING_MODE_SETTING) {
+      bundle.rebuildForModeSettingsChange();
       return;
     }
     if (CAPACITY_SCALAR_BASE_KEYS.has(baseKey)) bundle.reloadCapacityScalars();

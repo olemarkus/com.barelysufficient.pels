@@ -7,6 +7,11 @@ export const POWER_SOURCE = 'power_source';
 // item). Mirror of HOMEY_ENERGY_METER_DEVICE_ID in lib/utils/settingsKeys.ts —
 // keep both in sync (the settings UI can't import lib).
 export const HOMEY_ENERGY_METER_DEVICE_ID = 'homey_energy_meter_device_id';
+// Home-scopable at runtime: a meter area may pin its own active mode under
+// `operating_mode:<homeId>` (absent = the area follows this global key). Mirror
+// of OPERATING_MODE_SETTING in lib/utils/settingsKeys.ts — keep both in sync
+// (the settings UI can't import lib); the runtime's HOME_SCOPABLE_BASE_KEYS is
+// the scoping source of truth.
 export const OPERATING_MODE_SETTING = 'operating_mode';
 export const MANAGED_DEVICES = 'managed_devices';
 export const CONTROLLABLE_DEVICES = 'controllable_devices';

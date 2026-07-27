@@ -126,6 +126,16 @@ export type HomeMembershipServiceDeps = {
    */
   onMainAuthorityReopened?: () => void;
   /**
+   * Fired synchronously after the first trustworthy ownership map commits but
+   * before any membership-driven plan rebuild starts. Consumers that deferred
+   * persisted classification while ownership was provisional can retry here,
+   * so the rebuild observes the repaired settings.
+   */
+  onOwnershipReadyBeforePlanWork?: (
+    membership: HomeMembershipService,
+    allowPendingOwnershipGeneration: boolean,
+  ) => void;
+  /**
    * Fired ONCE, on the false→true `hasSeenZoneTreeCommit` edge (a committed zone
    * tree first lands). The per-home capacity bundles (R7b) gate EXECUTION on
    * that signal; this lets the registry fire each bundle's membership-ready
@@ -302,19 +312,43 @@ export class HomeMembershipService implements HomeMembershipPort {
     ]));
     this.lastKnownZoneIdByDeviceId = nextLastKnownZoneIds;
     this.retentionLoggedDeviceIds = nextRetentionLogged;
+    const ownershipBecameReady = !mainOwnershipWasReady
+      && this.isOwnershipReady()
+      && !this.hasPendingOwnershipGeneration();
+    // This producer has just committed the first trustworthy device→home map.
+    // Retry deferred persistent classification BEFORE plan invalidation reads
+    // those settings; the later execution-readiness callback remains last.
+    if (ownershipBecameReady) {
+      this.retryDeferredSeedBeforeInitialPlanWork();
+    }
     this.logIfChanged();
     this.notifyIfPlanRelevantMembershipChanged();
     if (this.runtimeActive !== this.lastNotifiedRuntimeActive) {
       this.lastNotifiedRuntimeActive = this.runtimeActive;
       this.deps.onRuntimeActiveChanged?.(this.runtimeActive);
     }
-    if (!mainOwnershipWasReady && this.isOwnershipReady()) {
+    if (ownershipBecameReady) {
       this.deps.onMainOwnershipReady?.();
     }
     // Fire the execution-readiness edge LAST — after the membership map is
     // committed — so the registry's bundles see fresh membership when they apply.
     if (!subHomeExecutionWasReady && this.isSubHomeExecutionReady()) {
       this.deps.onZoneTreeCommitReady?.();
+    }
+  }
+
+  private retryDeferredSeedBeforeInitialPlanWork(): void {
+    try {
+      this.deps.onOwnershipReadyBeforePlanWork?.(this, false);
+    } catch (error: unknown) {
+      // Classification settings are an external boundary. Their failure must
+      // not consume the one-shot readiness edges; publish readiness and let
+      // the owned recovery retry the seed before its next plan build.
+      this.deps.getLogger()?.error({
+        event: 'home_ownership_seed_retry_failed',
+        err: normalizeError(error),
+      });
+      this.deps.onMainAuthorityUnresolved?.();
     }
   }
 
@@ -744,6 +778,11 @@ export const createHomeMembershipService = (params: {
   onMainAuthorityUnresolved?: () => void;
   /** See {@link HomeMembershipServiceDeps.onMainAuthorityReopened}. */
   onMainAuthorityReopened?: () => void;
+  /** See {@link HomeMembershipServiceDeps.onOwnershipReadyBeforePlanWork}. */
+  onOwnershipReadyBeforePlanWork?: (
+    membership: HomeMembershipService,
+    allowPendingOwnershipGeneration: boolean,
+  ) => void;
   /** See {@link HomeMembershipServiceDeps.onZoneTreeCommitReady}. */
   onZoneTreeCommitReady?: () => void;
 }): HomeMembershipWiring => {
@@ -762,6 +801,7 @@ export const createHomeMembershipService = (params: {
     onMainOwnershipReady: params.onMainOwnershipReady,
     onMainAuthorityUnresolved: params.onMainAuthorityUnresolved,
     onMainAuthorityReopened: params.onMainAuthorityReopened,
+    onOwnershipReadyBeforePlanWork: params.onOwnershipReadyBeforePlanWork,
     onZoneTreeCommitReady: params.onZoneTreeCommitReady,
   });
   const recomputeContained = (

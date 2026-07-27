@@ -146,8 +146,9 @@ export type SettingsHandlerDeps = {
    */
   reconcileHomeRuntimes?: () => void;
   /**
-   * Fan a global `operating_mode` / `mode_device_targets` write to every live
-   * sub-home plan. The bundles read those settings through live closures, but
+   * Fan a global `operating_mode` / `mode_device_targets` / `mode_aliases` /
+   * `capacity_priorities` write to every live sub-home plan. The bundles read
+   * those settings through live closures, but
    * nothing re-RUNS their planners on the write — and an area whose meter is
    * silent gets no power-driven rebuilds, so without this hook a mode change
    * (e.g. a cooler-mode lowering) could stay unapplied indefinitely. Optional:
@@ -320,10 +321,28 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
   return {
     mode_device_targets: async () => handleModeTargetsChange(deps),
     [OPERATING_MODE_SETTING]: async () => handleModeTargetsChange(deps),
-    mode_aliases: async () => deps.loadCapacitySettings(),
+    mode_aliases: async () => {
+      deps.loadCapacitySettings();
+      // An alias remap changes what a pinned `operating_mode:<homeId>`
+      // resolves to. The rename flow writes `mode_device_targets` BEFORE
+      // `mode_aliases` (packages/settings-ui/src/ui/modes.ts renameMode), so
+      // the fan-out that ran on the targets write saw the old pinned name
+      // without a targets record and fell back to the global mode — only this
+      // write restores the pin, and an area whose meter is silent gets no
+      // power-driven rebuild to self-heal. Same fan-out as the mode keys above.
+      deps.rebuildHomeRuntimePlansForModeChange?.();
+    },
     capacity_priorities: async () => {
       deps.loadCapacitySettings();
       await rebuildPlanFromSettings(deps, 'capacity_priorities');
+      // Priorities are ranked per MODE, and a sub-home resolves them through
+      // its own effective mode (the accessor's `getPriorityForDevice`), so a
+      // reorder changes a pinned area's shedding order too. The bundles read
+      // the reloaded blob through live closures, but nothing re-RUNS their
+      // planners on this write — and an area whose meter is silent gets no
+      // power-driven rebuild — so without this fan-out the previous order
+      // would stick indefinitely. Same fan-out as the mode keys above.
+      deps.rebuildHomeRuntimePlansForModeChange?.();
     },
     [CONTROLLABLE_DEVICES]: async () => {
       deps.loadCapacitySettings();
@@ -395,6 +414,11 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
       deps.loadCapacitySettings();
       await refreshSnapshotWithLog(deps, 'overshoot_behavior_change');
       await rebuildPlanFromSettings(deps, OVERSHOOT_BEHAVIORS);
+      // The global behavior map is also read by every sub-home plan. This is
+      // especially important when a deferred temperature-only-device seed
+      // finally succeeds: a silent/Flow-backed area may have no later meter
+      // event to replace its previously committed turn_off default.
+      deps.rebuildHomeRuntimePlansForModeChange?.();
     },
     refresh_target_devices_snapshot: async () => {
       await refreshSnapshotWithLog(deps, 'manual_snapshot_refresh');

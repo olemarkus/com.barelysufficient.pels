@@ -102,6 +102,10 @@ export type AppServiceWiringDeps = {
   getFlowConflict: (deviceId: string) => { conflictingCapabilities: readonly string[]; flowName?: string } | undefined;
   computeShortfallThreshold: () => number;
   getSnapshotDevice: (deviceId: string) => TargetDeviceSnapshot | undefined;
+  retryDeferredOvershootSeed: (
+    membership: HomeMembershipService,
+    allowPendingOwnershipGeneration: boolean,
+  ) => void;
   hasEnabledEvBoostForSnapshot: (device: TargetDeviceSnapshot | undefined) => boolean;
   loadFlowReportedCapabilities: () => void;
   loadPowerCalibrationStore: () => void;
@@ -312,6 +316,7 @@ export class AppServiceWiring {
         flushMainShortfallSideEffect: async () => (
           this.mainShortfallSideEffectGate?.flushAfterPreparedApply() ?? true
         ),
+        retryDeferredOvershootSeed: this.deps.retryDeferredOvershootSeed,
       }),
     );
     this.deps.ctx.homeMembership = wiring.service;

@@ -54,6 +54,7 @@ const areaReading = (): HomeRuntimeReading => ({
   diagnostics: {
     homeId: AREA_ID,
     meterDeviceId: 'meter-1',
+    operatingMode: 'Home',
     dryRunEffective: false,
     lastMeterPowerKw: 1.5,
     capacityScalars: { limitKw: 10, marginKw: 1, dryRun: false },

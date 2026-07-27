@@ -15,9 +15,11 @@
  *
  * That is a claim about POLICY INPUTS, not about the write surface. The mode
  * target is the RESTORE ANCHOR rather than a policy, so `getOperatingMode` /
- * `getModeDeviceTargets` bind live here exactly as they do for main, and this
- * bundle will command a member to its mode target with no capacity pressure at
- * all. Neutralizing them left an area temperature device shed indefinitely.
+ * `getModeDeviceTargets` bind live here, and this bundle will command a member
+ * to its mode target with no capacity pressure at all. Neutralizing them left
+ * an area temperature device shed indefinitely. The ACTIVE mode is per home
+ * (`operating_mode:<homeId>` → global fallback, via the operating-mode
+ * accessor); the mode-target and priority BLOBS stay global (mode-name-keyed).
  *
  * Boot-window double-control guard: `getCapacityDryRun` reads `true` until
  * membership has resolved from a COMMITTED zone tree
@@ -78,6 +80,7 @@ import {
   startHomeCapacityBundle,
 } from './homeCapacityBundleApi';
 import { installBundleReadinessAndFreshness } from './homeCapacityBundleReadiness';
+import { createHomeOperatingModeAccessor } from './homeOperatingMode';
 import { installHomeCapacityBundleSourceRecovery } from './homeCapacityBundleSourceRecovery';
 import type { HomeScope } from './homeScope';
 import {
@@ -291,6 +294,10 @@ function buildSubHomeScope(params: {
     ctx, homeId, getHome, isMembershipReady, isMeterSourceAuthorized, isTornDown, getScalars, getGuard,
     getTracker, getServiceForSync, getPlanEngineForPending,
   } = params;
+  // THIS home's active-mode + priority resolution (per-home value → global
+  // fallback), one accessor per bundle so its mode-transition log latch
+  // follows the bundle lifecycle.
+  const operatingModeAccessor = createHomeOperatingModeAccessor(ctx, homeId);
   // Suffixed persisted-signal write, fenced on teardown: an in-flight
   // rebuild/reconcile continuation that resolves AFTER teardown must not
   // re-create this home's suffixed keys (nor clobber a same-`homeId` bundle
@@ -346,8 +353,15 @@ function buildSubHomeScope(params: {
     // equalled `currentTarget`, the executor dropped the write, and an area
     // temperature device stayed cold indefinitely. Price-opt and surplus stay
     // gated separately above — they only modulate a `kind: 'mode'` seed.
-    getOperatingMode: () => ctx.operatingMode,
+    //
+    // The ACTIVE mode and the priority ranking are THIS home's own
+    // (`operating_mode:<homeId>` → global fallback; the accessor constrains a
+    // pinned mode to the blob's key set so `modeDeviceTargets[mode]` can never
+    // silently resolve empty). The targets BLOB itself stays the global,
+    // mode-name-keyed map — membership partitions device ids disjointly.
+    getOperatingMode: operatingModeAccessor.getOperatingMode,
     getModeDeviceTargets: () => ctx.modeDeviceTargets,
+    getPriorityForDevice: operatingModeAccessor.getPriorityForDevice,
     // ...but a RAISE to that target is held while this area's own draw is
     // unknown. It adds load, and it is the one load-adding write nothing else
     // fences: a restore is gated on headroom (0 whenever power is unknown),

@@ -39,7 +39,12 @@ export const buildAppHomeMembershipOptions = (params: {
   getMainStableSampleRevision: () => StableSampleRevision;
   beginMainPreparedReconcile: (sampleRevision: number) => () => void;
   flushMainShortfallSideEffect: () => Promise<boolean>;
+  retryDeferredOvershootSeed: (
+    membership: HomeMembershipService,
+    allowPendingOwnershipGeneration: boolean,
+  ) => void;
 }): WireHomeMembershipOptions => ({
+  onOwnershipReadyBeforePlanWork: params.retryDeferredOvershootSeed,
   onZoneTreeCommitReady: () => params.getRegistry()?.onMembershipReady(),
   onRuntimeActiveChanged: () => params.getRegistry()?.reconcile(),
   onSubHomeMembershipChanged: () => params.getRegistry()?.onMembershipChanged(),

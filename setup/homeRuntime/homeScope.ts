@@ -115,6 +115,15 @@ export type HomeScope = {
    */
   getModeDeviceTargets: PlanEngineDeps['getModeDeviceTargets'];
   /**
+   * Device priority under THIS home's active mode. Priorities are ranked per
+   * mode, so a home pinned to its own operating mode must rank its members by
+   * that mode. Main binds the app's resolver (global mode, byte-identical to
+   * the pre-existing `ctx.getPriorityForDevice` wiring); a sub-home bundle
+   * binds its operating-mode accessor's resolver
+   * (`setup/homeRuntime/homeOperatingMode.ts`).
+   */
+  getPriorityForDevice: PlanEngineDeps['getPriorityForDevice'];
+  /**
    * Does this home hold a mode-target RAISE while its own power reading is
    * unknown? A raise ADDS load and is issued as an ordinary `target_update`, so
    * unlike every other load-adding decision it consults neither headroom nor the
@@ -247,6 +256,7 @@ export function buildMainHomeScope(ctx: AppContext): HomeScope {
     getDynamicSoftLimitOverride: () => ctx.getDynamicSoftLimitOverride(),
     getOperatingMode: () => ctx.operatingMode,
     getModeDeviceTargets: () => ctx.modeDeviceTargets,
+    getPriorityForDevice: (deviceId) => ctx.getPriorityForDevice(deviceId),
     // Main keeps its pre-existing behaviour: mode targets are commanded whether
     // or not a power sample has landed. See the contract above for why the hold
     // is a sub-home posture rather than a global rule.

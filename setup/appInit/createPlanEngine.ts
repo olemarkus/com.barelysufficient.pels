@@ -109,7 +109,9 @@ export function createPlanEngine(ctx: AppContext, scope: HomeScope, options?: Cr
     // constructs the DeferredObjectiveDecorationController; sub-home scopes
     // omit the member, so the builder falls back to identity decoration).
     decorateDeferredObjectives: scope.decorateDeferredObjectives,
-    getPriorityForDevice: (deviceId) => ctx.getPriorityForDevice(deviceId),
+    // Scope-owned: priorities are ranked per mode, and only the scope knows
+    // this home's ACTIVE mode (a sub-home may pin its own; see homeScope.ts).
+    getPriorityForDevice: scope.getPriorityForDevice,
     getShedBehavior: (deviceId) => ctx.getShedBehavior(deviceId),
     getDynamicSoftLimitOverride: scope.getDynamicSoftLimitOverride,
     markSteppedLoadDesiredStepIssued: (params) => ctx.deviceControlHelpers.markSteppedLoadDesiredStepIssued(params),
