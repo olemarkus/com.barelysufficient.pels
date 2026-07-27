@@ -514,6 +514,118 @@ describe('plan binary control helpers', () => {
     });
   });
 
+  // Charger already-matched semantics (the 2026-07-26 re-shed loop): the
+  // activity-derived `binaryControl.on` stays non-comparable; only evidence
+  // whose provenance is the raw switch capability mirrors the OFF direction.
+  describe('charger (evcharger_charging) already-matched skip', () => {
+    const rawSwitchOff = () => binaryObservation('evcharger_charging', false, 1_000);
+    const chargerCycle = (params: {
+      desired: boolean;
+      latest: Record<string, unknown>;
+      state?: ReturnType<typeof createPlanEngineState>;
+    }) => {
+      const deviceManager = withGetSnapshotByDeviceId({
+        setCapability: vi.fn().mockResolvedValue(undefined),
+        getSnapshot: vi.fn().mockReturnValue([{
+          id: 'ev1',
+          name: 'Elbillader',
+          controlCapabilityId: 'evcharger_charging',
+          canSetControl: true,
+          ...params.latest,
+        }]),
+      });
+      const run = setBinaryControl({
+        state: params.state ?? createPlanEngineState(),
+        deviceManager: deviceManager as never,
+        deviceId: 'ev1',
+        name: 'Elbillader',
+        desired: params.desired,
+        snapshot: {
+          id: 'ev1',
+          name: 'Elbillader',
+          controlCapabilityId: 'evcharger_charging',
+          canSetControl: true,
+        },
+        logContext: 'capacity',
+        reason: 'shedding',
+      });
+      return { run, deviceManager };
+    };
+
+    it('skips a charger off-command on raw-switch-provenance off evidence', async () => {
+      const { run, deviceManager } = chargerCycle({
+        desired: false,
+        latest: { binaryControl: { on: false }, binaryControlObservation: rawSwitchOff() },
+      });
+      await expect(run).resolves.toBe(false);
+      expect(deviceManager.setCapability).not.toHaveBeenCalled();
+      expect(logCapture.findEvent('binary_command_skipped')).toMatchObject({
+        reasonCode: 'already_matched',
+      });
+    });
+
+    it('still writes a charger off-command on state-derived off evidence (paused-but-armed)', async () => {
+      // `plugged_in_paused` yields observedValue false with STATE provenance
+      // while the real switch may still be armed. The switch is what the write
+      // changes, so the command must go out.
+      const { run, deviceManager } = chargerCycle({
+        desired: false,
+        latest: {
+          binaryControl: { on: false },
+          binaryControlObservation: binaryObservation(
+            'evcharger_charging', false, 1_000, ['evcharger_charging_state'],
+          ),
+        },
+      });
+      await expect(run).resolves.toBe(true);
+      expect(deviceManager.setCapability).toHaveBeenCalledWith('ev1', 'evcharger_charging', false);
+    });
+
+    it('does not skip a charger off-command without switch evidence', async () => {
+      const { run, deviceManager } = chargerCycle({
+        desired: false,
+        latest: { binaryControl: { on: false } },
+      });
+      await expect(run).resolves.toBe(true);
+      expect(deviceManager.setCapability).toHaveBeenCalledWith('ev1', 'evcharger_charging', false);
+    });
+
+    it('never skips a charger ON command, even over an already-true switch', async () => {
+      // A `true` write over an already-true switch is how a paused charger is
+      // kicked to resume; the skip is deliberately off-direction only.
+      const { run, deviceManager } = chargerCycle({
+        desired: true,
+        latest: {
+          binaryControl: { on: false },
+          binaryControlObservation: binaryObservation('evcharger_charging', true, 1_000),
+        },
+      });
+      await expect(run).resolves.toBe(true);
+      expect(deviceManager.setCapability).toHaveBeenCalledWith('ev1', 'evcharger_charging', true);
+    });
+
+    it('does not skip an off-command while an opposite ON command is pending — the OFF supersedes it', async () => {
+      // A shed decided while a restore is still settling must replace the
+      // pending ON (recordPendingForDispatch overwrites the entry), exactly as
+      // before the skip existed — otherwise the restore stays free to
+      // materialize against the shed plan.
+      const state = createPlanEngineState();
+      state.pendingBinaryCommands.ev1 = {
+        capabilityId: 'evcharger_charging',
+        desired: true,
+        startedMs: 500,
+      };
+      const { run, deviceManager } = chargerCycle({
+        desired: false,
+        state,
+        latest: { binaryControl: { on: false }, binaryControlObservation: rawSwitchOff() },
+      });
+      await expect(run).resolves.toBe(true);
+      expect(deviceManager.setCapability).toHaveBeenCalledWith('ev1', 'evcharger_charging', false);
+      expect(state.pendingBinaryCommands.ev1).toMatchObject({ desired: false });
+    });
+  });
+
   it('clears pending standard binary commands once the live state confirms them', async () => {
     const state = createPlanEngineState();
 
