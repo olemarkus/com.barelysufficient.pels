@@ -49,6 +49,10 @@ export type ObjectiveDeviceInput = {
   // `evChargingState` consumer arm is retired).
   evSessionInactive?: boolean;
   evChargerNotResumable?: boolean;
+  // Producer-resolved "Leave off until turned on again" posture: the user turned
+  // the device off outside PELS and asked PELS to respect that. Structurally
+  // assignable from `PlanInputDevice`, which carries the same flat bit.
+  externalOffHoldActive?: true;
   powerKw?: number;
   expectedPowerKw?: number;
   planningPowerKw?: number;

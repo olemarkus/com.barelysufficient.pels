@@ -15,6 +15,7 @@ import {
   OBJECTIVE_WRITE_REFUSED_RETRY,
   SMART_TASK_SUB_HOME_UNAVAILABLE,
 } from '../packages/shared-domain/src/objectiveWriteStrings';
+import { resolveEffectivePlanStatus } from '../packages/shared-domain/src/deadlineLabels';
 import { normalizeError } from '../lib/utils/errorUtils';
 import { buildDeviceAutocompleteOptions, getDeviceIdFromFlowArg, type RawFlowDeviceArg } from './deviceArgs';
 import { isEvCharger, supportsTemperatureObjective } from './smartTaskDeviceCapability';
@@ -176,13 +177,17 @@ const mapPreviousPlanStatusToFlowStatus = (
   return event.previousPlanStatus === null ? null : mapPlanStatusToFlowStatus(event.previousPlanStatus);
 };
 
+// `effectivePlanStatus` wins when present: it carries a live overlay the frozen
+// revision deliberately does not (a device left off outside PELS keeps a settled
+// `on_track`, so it recovers the moment the device is switched back on). Reading
+// `revision.planStatus` here would leave Flows matching On track for a task every
+// screen reports as At risk.
 const mapPlanEventToFlowStatus = (
   event: DeferredObjectivePlanRevisionEvent,
-): SmartTaskActiveFlowStatus => (
-  event.eventType === 'pending_written'
-    ? PENDING_FLOW_STATUS
-    : mapPlanStatusToFlowStatus(event.revision.planStatus)
-);
+): SmartTaskActiveFlowStatus => {
+  if (event.eventType === 'pending_written') return PENDING_FLOW_STATUS;
+  return mapPlanStatusToFlowStatus(event.effectivePlanStatus ?? event.revision.planStatus);
+};
 
 // Backward-compat for the 'none' dropdown id from the initial
 // `deadline_status_is` card (committed 2026-05-10 as `3ba281d7`, refactored
@@ -596,7 +601,13 @@ function registerDeadlineStatusIsCondition(deps: FlowCardDeps): void {
 //   2. Persisted plan is past deadline → no active status matches; the ended
 //      trigger owns that event.
 //   3. No settled revision yet → waiting.
-//   4. Settled revision exists → use `latest.planStatus`.
+//   4. Settled revision exists → its `planStatus`, with the live per-cycle
+//      overlay applied. A device left off outside PELS keeps a settled
+//      `on_track` (that stays the trajectory truth, so it recovers instantly),
+//      so without the overlay a Flow would keep matching **On track** for a task
+//      whose device the user has switched off — the exact claim the feature
+//      exists to stop the UI making. Same resolver the list, widget and detail
+//      hero use, so no surface can disagree with a Flow.
 const resolveEffectiveStatus = (
   plan: DeferredObjectiveActivePlanV1 | null,
   hasEntry: boolean,
@@ -607,7 +618,9 @@ const resolveEffectiveStatus = (
   if (objectiveDeadlineAtMs !== null && objectiveDeadlineAtMs <= nowMs) return null;
   if (plan !== null && plan.deadlineAtMs <= nowMs) return null;
   if (plan === null || plan.pending || plan.latest === null) return PENDING_FLOW_STATUS;
-  return mapPlanStatusToFlowStatus(plan.latest.planStatus);
+  return mapPlanStatusToFlowStatus(
+    resolveEffectivePlanStatus(plan.latest.planStatus, plan.diagnosticReasonCode),
+  );
 };
 
 function registerHasActiveDeadlineCondition(deps: FlowCardDeps): void {

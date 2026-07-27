@@ -692,6 +692,34 @@ describe('deadline objective flow cards', () => {
     expect(await condition.run!({ device: 'heater-1', status: 'unachievable' })).toBe(false);
   });
 
+  it('deadline_status_is reports at-risk while the device is left off, on a settled on-track plan', async () => {
+    // The settled `planStatus` deliberately stays `on_track` — it is the
+    // trajectory truth, and freezing the hold into it would keep every surface
+    // reporting risk for up to an hour after the user turned the device back on.
+    // The Flow therefore has to apply the same live overlay the UI does, or an
+    // automation keeps matching On track for a task whose device is switched off.
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+      activePlans: buildActivePlans([buildActivePlan({
+        planStatus: 'on_track',
+        diagnosticReasonCode: 'objective_device_left_off',
+      })]),
+    });
+    seedObjectives(mock.settings, {
+      'heater-1': {
+        enabled: true,
+        kind: 'temperature',
+        enforcement: 'soft',
+        targetTemperatureC: 55,
+        deadlineAtMs: HH_MM_TO_UTC_MS(7, 0),
+      },
+    });
+    registerDeadlineObjectiveCards(deps);
+    const condition = mock.conditions.get('deadline_status_is')!;
+    expect(await condition.run!({ device: 'heater-1', status: 'at_risk' })).toBe(true);
+    expect(await condition.run!({ device: 'heater-1', status: 'on_track' })).toBe(false);
+  });
+
   it('deadline_status_is returns true for waiting when a task has no status yet', async () => {
     const { deps, mock } = buildDeps({
       snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
@@ -901,6 +929,43 @@ describe('deadline objective flow cards', () => {
       status: 'on_track',
     });
     expect(state).toEqual({ deviceId: 'heater-1' });
+  });
+
+  it('fires for a live off-hold overlay, whose revision status never changes', async () => {
+    // The overlay deliberately leaves the settled `planStatus` alone so it
+    // recovers the moment the device is switched back on — which means no
+    // revision is written, and the revision bus is all this trigger listens to.
+    // Reading `revision.planStatus` here would leave the automation on On track
+    // while every screen showed At risk.
+    const planRevisionBus = createDeferredObjectivePlanRevisionBus();
+    const { deps, mock } = buildDeps({
+      snapshot: [buildDevice({ id: 'heater-1', name: 'Boiler', deviceType: 'temperature' })],
+      planRevisionBus,
+    });
+    registerDeadlineObjectiveCards(deps);
+    const trigger = mock.triggers.get('deadline_status_changed')!;
+
+    planRevisionBus.publish(buildPlanRevisionEvent({
+      previousPlanStatus: 'on_track',
+      planStatus: 'on_track',
+      effectivePlanStatus: 'at_risk',
+    }));
+    expect(trigger.trigger).toHaveBeenCalledTimes(1);
+    expect(trigger.trigger.mock.calls[0]![0]).toEqual({
+      device_name: 'Boiler',
+      status: 'at_risk',
+    });
+
+    // ...and again on the way back, when the user turns the device on.
+    planRevisionBus.publish(buildPlanRevisionEvent({
+      previousPlanStatus: 'at_risk',
+      planStatus: 'on_track',
+    }));
+    expect(trigger.trigger).toHaveBeenCalledTimes(2);
+    expect(trigger.trigger.mock.calls[1]![0]).toEqual({
+      device_name: 'Boiler',
+      status: 'on_track',
+    });
   });
 
   it('publishes waiting when a settled task is replaced by a pending plan', () => {

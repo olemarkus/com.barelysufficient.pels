@@ -28,6 +28,7 @@ import {
 import type { StructuredDebugEmitter } from '../../logging/logger';
 import type { DeferredObjectiveDiagnostic } from './diagnosticsBridge';
 import type { DeferredObjectivePlanRevisionEvent } from './planRevisionBus';
+import type { DeferredObjectiveActivePlanStatusV1 } from '../../../packages/contracts/src/deferredObjectiveActivePlans';
 import type { DeferredObjectiveRescuePermissions } from './settings';
 import { resolveProjectedFinishAtMs } from './activePlanSchedule';
 import { roundKWh } from './activePlanMath';
@@ -81,9 +82,19 @@ export const notifyRevisionWrittenIfPubliclyObservable = (params: {
   revision: DeferredObjectiveActivePlanRevisionV1;
   reason: DeferredObjectiveActivePlanRevisionReason;
   allocationChanged: boolean;
+  /**
+   * The status the task PUBLICLY had before this cycle — the committed verdict
+   * with any live overlay already applied. Differs from `latest.planStatus`
+   * exactly when an overlay was active, and using the raw value there both
+   * misreports the transition's origin and can suppress a real one (a device
+   * turned back on during the same cycle that settles looks like no change).
+   */
+  previousEffectivePlanStatus: DeferredObjectiveActivePlanStatusV1;
+  /** The status it publicly has after this cycle. */
+  effectivePlanStatus: DeferredObjectiveActivePlanStatusV1;
 }): void => {
-  const planStatusChanged = params.latest.planStatus !== params.revision.planStatus;
-  if (!params.allocationChanged && !planStatusChanged) return;
+  const publicStatusChanged = params.previousEffectivePlanStatus !== params.effectivePlanStatus;
+  if (!params.allocationChanged && !publicStatusChanged) return;
   params.deps.onRevisionWritten?.({
     eventType: 'revision_written',
     deviceId: params.diag.deviceId,
@@ -91,10 +102,11 @@ export const notifyRevisionWrittenIfPubliclyObservable = (params: {
     objectiveKind: params.diag.objectiveKind,
     revision: params.revision,
     reason: params.reason,
-    previousPlanStatus: params.latest.planStatus,
+    previousPlanStatus: params.previousEffectivePlanStatus,
     previousWasPending: false,
     allocationChanged: params.allocationChanged,
     projectedFinishAtMs: resolveProjectedFinishAtMs(params.diag),
+    effectivePlanStatus: params.effectivePlanStatus,
   });
 };
 

@@ -13,6 +13,13 @@ export const resolveDiagnosticReasonCode = (
 ): DeferredObjectiveActivePlanDiagnosticReason | undefined => {
   if (diag.reasonCode === 'objective_invalid_session') return 'objective_invalid_session';
   if (diag.reasonCode === 'objective_charger_not_resumable') return 'objective_charger_not_resumable';
+  // "Leave off until turned on again". The status downgrade in `diagnosticsBridge`
+  // only reaches the LIVE diagnostic; `planStatus` / `floorShortfallCause` are not
+  // rewritten until the next `:58` settle. Routing the cause through here puts it
+  // on the persisted plan every cycle — which is what the settings UI and the
+  // widget read — so the chip stops claiming "On track" the moment the device
+  // goes off, and stops claiming risk the moment it is turned back on.
+  if (diag.externalOffHoldActive === true) return 'objective_device_left_off';
   return undefined;
 };
 

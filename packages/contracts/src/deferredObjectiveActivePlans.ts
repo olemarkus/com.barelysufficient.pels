@@ -272,7 +272,11 @@ export type DeferredObjectiveKwhPerUnitProvenanceV1 = {
 // persisted plans (without the field) continue to load.
 export type DeferredObjectiveActivePlanDiagnosticReason =
   | 'objective_charger_not_resumable'
-  | 'objective_invalid_session';
+  | 'objective_invalid_session'
+  // "Leave off until turned on again" is active on the task's device. Same
+  // reason as the one above: the committed schedule keeps saying "On track"
+  // until the next settle, so the live cause has to travel on the plan itself.
+  | 'objective_device_left_off';
 
 export type DeferredObjectiveActivePlanV1 = {
   deviceId: string;

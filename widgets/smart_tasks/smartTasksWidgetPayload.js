@@ -423,6 +423,7 @@ var WHY_CANNOT_MEET_BUDGET = "Today\u2019s daily budget runs out before the dead
 var WHY_CANNOT_MEET_DEVICE = "Not enough delivery before the deadline.";
 var WHY_AT_RISK_BUDGET = "Today\u2019s daily budget may run out before the deadline.";
 var WHY_AT_RISK_TIME = "Limited time left before the deadline.";
+var WHY_AT_RISK_DEVICE_LEFT_OFF = "Device is staying off until turned on again.";
 var RECOURSE_CANNOT_MEET_BUDGET = "Budget settings show whether future days need power reserved earlier.";
 var RECOURSE_CANNOT_MEET_DEVICE = "Device settings show what\u2019s holding it back.";
 var RECOURSE_INVALID_SESSION = "Plug the EV in to resume.";
@@ -430,13 +431,18 @@ var isBudgetDriven = (input) => {
   if (input.floorShortfallCause !== void 0) return input.floorShortfallCause === "budget";
   return input.statusId === "at_risk" && (input.dailyBudgetExhaustedBucketCount ?? 0) > 0;
 };
+var isLeftOffDriven = (input) => input.diagnosticReasonCode === "objective_device_left_off";
+var resolveAtRiskCopy = (input) => {
+  if (isLeftOffDriven(input)) {
+    return { whyLabel: WHY_AT_RISK_DEVICE_LEFT_OFF, recourseHint: null };
+  }
+  return isBudgetDriven(input) ? { whyLabel: WHY_AT_RISK_BUDGET, recourseHint: RECOURSE_CANNOT_MEET_BUDGET } : { whyLabel: WHY_AT_RISK_TIME, recourseHint: null };
+};
 var resolveSmartTaskWidgetDetailCopy = (input) => {
   if (input.statusId === "cannot_meet") {
     return isBudgetDriven(input) ? { whyLabel: WHY_CANNOT_MEET_BUDGET, recourseHint: RECOURSE_CANNOT_MEET_BUDGET } : { whyLabel: WHY_CANNOT_MEET_DEVICE, recourseHint: RECOURSE_CANNOT_MEET_DEVICE };
   }
-  if (input.statusId === "at_risk") {
-    return isBudgetDriven(input) ? { whyLabel: WHY_AT_RISK_BUDGET, recourseHint: RECOURSE_CANNOT_MEET_BUDGET } : { whyLabel: WHY_AT_RISK_TIME, recourseHint: null };
-  }
+  if (input.statusId === "at_risk") return resolveAtRiskCopy(input);
   if (input.statusId === "building_plan") {
     const reason = input.pendingReason ?? "awaiting_horizon_plan";
     const why = SMART_TASK_WIDGET_WHY_BY_PENDING_REASON[reason] ?? SMART_TASK_WIDGET_WHY_BY_PENDING_REASON.awaiting_horizon_plan ?? null;
@@ -638,6 +644,7 @@ var SMART_TASK_WIDGET_TARGET_ACTION_VERB = {
 };
 var resolveSmartTaskWidgetTargetActionVerb = (kind) => SMART_TASK_WIDGET_TARGET_ACTION_VERB[kind];
 var SMART_TASK_WIDGET_TARGET_NOUN = SMART_TASK_LIST_ROW_LABELS.target;
+var resolveEffectivePlanStatus = (planStatus, diagnosticReasonCode) => diagnosticReasonCode === "objective_device_left_off" && planStatus === "on_track" ? "at_risk" : planStatus;
 var resolveSmartTaskListStatus = (params) => {
   const { pending, pendingReason, diagnosticReasonCode, planStatus, firstActionAtMs, nowMs } = params;
   if (diagnosticReasonCode === "objective_invalid_session") return "paused_unplugged";
@@ -646,9 +653,10 @@ var resolveSmartTaskListStatus = (params) => {
     if (pendingReason === "invalid_session") return "paused_unplugged";
     return "building_plan";
   }
-  if (planStatus === "satisfied") return "satisfied";
-  if (planStatus === "cannot_meet") return "cannot_meet";
-  if (planStatus === "at_risk") return "at_risk";
+  const reported = resolveEffectivePlanStatus(planStatus, diagnosticReasonCode);
+  if (reported === "satisfied") return "satisfied";
+  if (reported === "cannot_meet") return "cannot_meet";
+  if (reported === "at_risk") return "at_risk";
   if (firstActionAtMs !== null && firstActionAtMs > nowMs) return "queued";
   return "on_track";
 };
@@ -1285,6 +1293,7 @@ var resolveRowCopy = (plan, statusId, firstPlannedTimeLabel) => {
   const detail = resolveSmartTaskWidgetDetailCopy({
     statusId,
     pendingReason: plan.pendingReason,
+    diagnosticReasonCode: plan.diagnosticReasonCode,
     floorShortfallCause: plan.latest?.floorShortfallCause,
     dailyBudgetExhaustedBucketCount: plan.latest?.dailyBudgetExhaustedBucketCount,
     firstPlannedTimeLabel

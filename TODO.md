@@ -548,6 +548,91 @@ program) remains deferred.*
       import `lib/objectives`. Persona: EV owner with a car-side charge limit; hypothesis: an
       unexplained missed deadline is the single worst smart-task outcome. [P2]
 
+- [ ] **Smart-task `status: 'unknown'` conflates "no verdict" with a verdict, one layer above the adapter.**
+      `withUnknown()` (`diagnosticFields.ts`) stamps `status: 'unknown'` for transient DATA problems —
+      `objective_progress_stale`, `objective_missing_temperature`, `objective_missing_charge_rate`,
+      `objective_missing_capacity` — into the same field that otherwise carries genuine trajectory
+      verdicts (`on_track` / `at_risk` / `cannot_meet` / `satisfied` / `invalid`). Every consumer
+      must then branch on a value meaning "we could not compute one":
+      `activePlanRevisionBuild.ts:56` falls back to `horizonPlan.status`, `planPreview.ts`,
+      `endedEventBus.ts`, and `planHistoryInProgressState.ts` each special-case it.
+      This is the consumer-side dual of the boundary rule in `AGENTS.md`: a read failure should
+      become an explicit semantic result at the producer, not a nullable/sentinel business value
+      that flows inward. It has already produced a real bug — gating the external-off overlay on
+      the live status meant a stale SoC reading silently reverted every surface to a cached
+      **On track** while the device was held off (fixed by not consuming the degraded value at all,
+      but the shape that invited it is still there).
+      Fix shape: split availability from verdict — e.g. `{ kind: 'resolved', status } | { kind: 'unavailable', reasonCode }`
+      — so no downstream layer can accidentally treat "unknown" as a trajectory claim.
+
+- [ ] **"Leave off until turned on again": sub-home plan paths are not driven by hold changes.**
+      Three related gaps, all multi-home-only and all with the same shape — the hold store is
+      shared across homes but the plan paths are not, so a sub-home keeps a stale
+      `inactive/external_off_hold` plan until an unrelated sample or rebuild reaches it (which
+      in flow mode can be a long wait):
+      (a) realtime observed-state settlement (`setup/appServiceWiring.ts`) invokes only the MAIN
+      `ctx.planService`, so a sub-home bundle's pending ON stays active past its confirmation and
+      a genuine off inside the 15 s/75 s window is misread as PELS's;
+      (b) a sub-home ON event reaches `scope.getPlanDevices()`, whose pre-pass releases the hold
+      before `syncExternalOffHoldForDevice` sees it, so the detector reports `none` and no release
+      rebuild is scheduled for that bundle;
+      (c) the `respect_external_off_devices` settings handler rebuilds only main after
+      `releaseDeOptedHolds()`, ignoring the returned device ids.
+      Fix together: route settlement to the owning bundle, and use the released ids to rebuild
+      each owning home. Single-home installs — the overwhelming majority — are unaffected.
+
+- [ ] **"Leave off until turned on again": a release is lost if the store never recovers.**
+      `clearHold` during an unreadable-state window records a tombstone, but deleting from the
+      empty in-memory map returns false, so no pending write is retained. If the read stays broken
+      for the full `EXTERNAL_OFF_HOLD_LOAD_GRACE_MS`, grace expiry stops further reloads without
+      reconciling the tombstone, and a restart can reload the stale persisted hold and strand a
+      device that was already released. Keep unresolved clears pending until they can be applied
+      durably. Needs a five-minute total settings outage to reach.
+
+- [ ] **"Leave off until turned on again": UI write can resurrect opt-ins cleared elsewhere.**
+      `writeFreshSetting` skips `readFresh` for nullish values, so when another WebView or the
+      Homey API UNSETS `respect_external_off_devices`, a toggle made before the realtime reload
+      lands mutates the stale in-memory snapshot and writes the cleared opt-ins back. Distinguish
+      a resolved-absent setting from an unavailable read before applying the fallback snapshot.
+
+- [ ] **"Leave off until turned on again" can strand a DUAL-CONTROL device (binary + stepped).**
+      `resolveCurrentOn` folds both axes, so a device whose step axis sits at the off step reports
+      `currentOn: false` even after the user turns the binary capability ON. The release branch in
+      `syncExternalOffHoldForDevice` never fires, and the hold also suppresses drift, so in flow
+      mode with no later plan cycle the device can stay held indefinitely despite an explicit ON.
+      The pull sweep already uses affirmative binary evidence (`isAffirmativelyOn`); the push path
+      cannot, because `BinaryPlanInputKind` deliberately carries only the folded `currentOn` and
+      the raw `binaryControl` is transport/observer-internal by design. Fixing it therefore means
+      a DESIGN choice, not a patch: either the producer resolves a second flat bit (a per-axis
+      `binaryAxisOn`) onto the binary cluster, or detection stops consuming `PlanInputDevice` for
+      this question. Decide before implementing — do not read `binaryControl` from the plan device.
+
+- [ ] **"Leave off until turned on again": the smart-task warning goes stale.**
+      `reloadObjectivesIfObjectiveKey` updates `state.deferredObjectiveSettings` but neither
+      refreshes the open detail controls nor emits `devices-updated`, and the `plan-updated`
+      handler refreshes only live status and diagnostics. A task created, disabled, or cleared
+      from another WebView therefore leaves the switch's "a Smart task may not finish on time"
+      hint showing the previous state — the user can enable the switch without the warning, or
+      keep seeing it after the task is gone. Refresh the open detail after the objective reload.
+
+- [ ] **"Leave off until turned on again" does not suppress the smart-task deadline floor.**
+      `applyDeferredAdmissionToInput` gates override, boost, priority holds, and budget exemption
+      on `heldOff`, but `hasDeadlineFloor` still activates the decoration path:
+      `buildDeferredTargetOverrides` supplies a floor for every planned thermal diagnostic, and
+      `buildExecutableTargetIntent` can emit a target update even though the plan device is
+      inactive, because the external-off reason is not a target-intent admission hold. PELS can
+      therefore still move the thermostat setpoint on a device the user has switched off. It does
+      not turn the device on — the binary guards hold — so the visible effect is a changed target
+      on an off device, and the right setpoint is already in place when they turn it back on.
+      Decide whether that is desirable before suppressing it.
+
+- [ ] **"Leave off until turned on again" is missing from Advanced → Clear device data.**
+      `collectDeviceIdsFromSettings`, `clearDeviceSettings`, and `clearMultipleDeviceSettings`
+      (`packages/settings-ui/src/ui/advanced.ts`) neither enumerate nor clear
+      `respect_external_off_devices`, so clearing a device leaves the flag (and any persisted
+      hold) behind, and a deleted device known only through this map is never offered by
+      "Clear unknown devices". Re-adding the device silently reactivates the old behaviour.
+
 - [ ] **"Leave off until turned on again" only STARTS a hold from a push-delivered off.**
       Detection runs at the realtime-reconcile gate (`setup/externalOffHoldDetection.ts`), so it
       fires on `realtime_capability` / `device_update` observations. A full snapshot refresh does
