@@ -136,9 +136,16 @@ describe('pre-push checks script', () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('pre-push: running npm run ci:checks');
-    expect(result.stdout).toContain('pre-push: running npm run test:unit');
-    expect(result.stdout).toContain('pre-push: running npm run test:unit:tz');
-    expect(result.stdout).toContain('pre-push: running npm --workspace @pels/settings-ui exec -- vitest run --config vitest.config.ts');
+    // Source-only push: every runtime lane narrows to `vitest related` over the
+    // pushed files; the full suites must NOT run.
+    expect(result.stdout).toContain(
+      'pre-push: running npx vitest related packages/contracts/src/targetCapabilities.ts --run --config vitest.config.unit.mts',
+    );
+    expect(result.stdout).toContain('--config vitest.config.tz.mts');
+    expect(result.stdout).not.toContain('pre-push: running npm run test:unit');
+    expect(result.stdout).toContain(
+      'pre-push: running npm --workspace @pels/settings-ui exec -- vitest related ../../packages/contracts/src/targetCapabilities.ts --run --config vitest.config.ts',
+    );
     expect(result.stdout).not.toContain('playwright');
     expect(result.stdout).not.toContain('ci:test:runtime');
     expect(result.stdout).not.toContain('ci:full');
@@ -156,8 +163,10 @@ describe('pre-push checks script', () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('pre-push: running npm run ci:checks');
-    expect(result.stdout).toContain('pre-push: running npm run test:unit');
-    expect(result.stdout).toContain('pre-push: running npm run test:unit:tz');
+    expect(result.stdout).toContain(
+      'pre-push: running npx vitest related drivers/pels_insights/device.ts --run --config vitest.config.unit.mts',
+    );
+    expect(result.stdout).not.toContain('pre-push: running npm run test:unit');
     expect(result.stdout).toContain('pre-push: running npm run validate');
     expect(result.stdout).not.toContain('playwright');
   });
@@ -247,7 +256,10 @@ describe('pre-push checks script', () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('pre-push: running npm run ci:checks');
-    expect(result.stdout).toContain('pre-push: running npm run test:unit');
+    expect(result.stdout).toContain(
+      'pre-push: running npx vitest related test/integration/planExecutor.test.ts --run --config vitest.config.integration.mts',
+    );
+    expect(result.stdout).not.toContain('pre-push: running npm run test:unit');
   });
 
   it('runs only ci:checks for unrelated changes like docs', () => {

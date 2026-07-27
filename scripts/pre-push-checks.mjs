@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import process from 'node:process';
-import { runParallel } from './lib/run-parallel.mjs';
+import { runSequential } from './lib/run-parallel.mjs';
 
 const ZERO_SHA_PATTERN = /^0+$/;
 const DRY_RUN = process.env.PELS_PRE_PUSH_DRY_RUN === '1';
@@ -114,26 +114,82 @@ const matchesAnyPath = (files, patterns) => files.some((file) => (
   patterns.some((pattern) => file === pattern || file.startsWith(pattern))
 ));
 
+// Test *wiring* changes invalidate `vitest related`'s narrowing — a changed
+// config can pull in or drop specs no source edit points at — so only these
+// fall back to the full lanes.
+const RUNTIME_TEST_WIRING = [
+  'vitest.shared.mts',
+  'vitest.config.mts',
+  'vitest.config.unit.mts',
+  'vitest.config.integration.mts',
+  'vitest.config.e2e.mts',
+  'vitest.config.tz.mts',
+  'vitest-env.d.ts',
+];
+
+const RUNTIME_LANE_CONFIGS = [
+  ['related:unit', 'vitest.config.unit.mts'],
+  ['related:integration', 'vitest.config.integration.mts'],
+  ['related:e2e', 'vitest.config.e2e.mts'],
+  // Host-TZ only, mirroring pre-commit: CI's timezone-tests job does the
+  // multi-TZ sweep; here we only need "a tz spec this change touches still
+  // passes somewhere".
+  ['related:tz', 'vitest.config.tz.mts'],
+];
+
+const isRelatable = (file) => file.endsWith('.ts') || file.endsWith('.mts') || file.endsWith('.tsx');
+
 const planCommands = (changedFiles) => {
   const commands = [
     { label: 'ci:checks', command: 'npm', args: ['run', 'ci:checks'] },
   ];
 
+  const relatable = changedFiles.filter(isRelatable);
+
   if (matchesAnyPath(changedFiles, RUNTIME_PATHS)) {
-    commands.push(
-      { label: 'test:unit', command: 'npm', args: ['run', 'test:unit'] },
-      { label: 'test:integration', command: 'npm', args: ['run', 'test:integration'] },
-      { label: 'test:e2e:runtime', command: 'npm', args: ['run', 'test:e2e:runtime'] },
-      { label: 'test:unit:tz', command: 'npm', args: ['run', 'test:unit:tz'] },
-    );
+    if (matchesAnyPath(changedFiles, RUNTIME_TEST_WIRING) || relatable.length === 0) {
+      // Wiring changed (or nothing `related` can key on): full lanes, still
+      // sequential — the parallel fan-out is what made the hook fail on
+      // unmodified code under its own load (six lanes on eight cores).
+      commands.push(
+        { label: 'test:unit', command: 'npm', args: ['run', 'test:unit'] },
+        { label: 'test:integration', command: 'npm', args: ['run', 'test:integration'] },
+        { label: 'test:e2e:runtime', command: 'npm', args: ['run', 'test:e2e:runtime'] },
+        { label: 'test:unit:tz', command: 'npm', args: ['run', 'test:unit:tz'] },
+      );
+    } else {
+      // `related` narrows each lane to the specs whose import graph reaches a
+      // pushed file. CI (post #1892) runs every full lane on every PR, so the
+      // hook's job is fast local signal, not last-line defence.
+      for (const [label, config] of RUNTIME_LANE_CONFIGS) {
+        commands.push({
+          label,
+          command: 'npx',
+          args: ['vitest', 'related', ...relatable, '--run', '--config', config],
+        });
+      }
+    }
   }
 
   if (matchesAnyPath(changedFiles, SETTINGS_UI_PATHS)) {
-    commands.push({
-      label: 'test:ui:unit',
-      command: 'npm',
-      args: ['--workspace', '@pels/settings-ui', 'exec', '--', 'vitest', 'run', '--config', 'vitest.config.ts'],
-    });
+    const uiRelatable = relatable.filter((file) => (
+      matchesAnyPath([file], SETTINGS_UI_PATHS)
+    ));
+    commands.push(uiRelatable.length === 0
+      ? {
+        label: 'test:ui:unit',
+        command: 'npm',
+        args: ['--workspace', '@pels/settings-ui', 'exec', '--', 'vitest', 'run', '--config', 'vitest.config.ts'],
+      }
+      : {
+        label: 'related:ui',
+        command: 'npm',
+        args: [
+          '--workspace', '@pels/settings-ui', 'exec', '--', 'vitest', 'related',
+          ...uiRelatable.map((file) => `../../${file}`),
+          '--run', '--config', 'vitest.config.ts',
+        ],
+      });
   }
 
   if (matchesAnyPath(changedFiles, MANIFEST_PATHS)) {
@@ -169,7 +225,7 @@ const main = async () => {
 
   if (DRY_RUN) return;
 
-  await runParallel(commands);
+  await runSequential(commands);
 };
 
 await main();
