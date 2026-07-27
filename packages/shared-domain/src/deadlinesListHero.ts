@@ -276,7 +276,7 @@ const buildSoonestSubline = (card: DeadlinesListHeroCard, formatTime: (ms: numbe
 // the view never branches on status.
 const PAUSED_SUBLINE_REASON: Partial<Record<SmartTaskListStatusId, string>> = {
   paused_unplugged: 'car unplugged',
-  paused_not_resumable: 'charging won’t resume',
+  paused_not_resumable: 'not charging yet',
 };
 
 const buildPausedSubline = (card: DeadlinesListHeroCard, formatTime: (ms: number) => string): string => {

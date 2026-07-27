@@ -16,7 +16,7 @@ import {
 import type { LiveFeedHealth } from '../../lib/device/liveFeed';
 import type { EvObservedProbe, MeasuredPowerObservedProbe, StateOfChargeObservedProbe, TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
-import { isCommandableNow } from '../../packages/shared-domain/src/commandableNow';
+import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import { isManagedFilterActive } from '../../setup/appDeviceSupport';
 import {
     mockHomeyInstance,
@@ -3953,7 +3953,7 @@ describe('DeviceTransport', () => {
                     observedValue: true,
                 }),
             }));
-            expect(isCommandableNow(snapshotDevice)).toBe(false);
+            expect(resolveCommandableNow({ dev: snapshotDevice }).commandableNow).toBe(false);
         });
 
         it('emits reconcile event when target temperature changes via device.update', async () => {
@@ -4473,7 +4473,7 @@ describe('DeviceTransport', () => {
                 available: false,
                 lastFreshDataMs: undefined,
             }));
-            expect(isCommandableNow(deviceManager.getSnapshot()[0])).toBe(false);
+            expect(resolveCommandableNow({ dev: deviceManager.getSnapshot()[0] }).commandableNow).toBe(false);
             expect(loggerMock.structuredLog.error).toHaveBeenCalledWith(expect.objectContaining({
                 event: 'device_snapshot_control_state_dropped',
                 reasonCode: 'missing_boolean_onoff',

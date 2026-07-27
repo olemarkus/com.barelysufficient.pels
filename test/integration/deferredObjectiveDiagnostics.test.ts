@@ -1879,12 +1879,12 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
   });
 
-  it('flags a connected-but-not-resumable charger (plugged_in) instead of crediting its SoC as on-track', () => {
-    // The car is plugged in with a fresh SoC, but `plugged_in` is the
-    // not-resumable state — PELS cannot drive the charger toward the target, so
-    // the SoC must not be credited as progress. The diagnostic resolves to
-    // `unknown` with the dedicated reason that drives the "Paused — can't resume"
-    // chip instead of an "On track" plan.
+  it('plans for a bare-connected charger (plugged_in) instead of refusing to', () => {
+    // `plugged_in` is commandable — PELS starts a charger in this state (prod
+    // 2026-07-26, Easee "Awaiting Authentication"). Blocking here did not merely
+    // annotate: it returned `remainingUnits: 0` with a reason code, so the bridge
+    // could not reach the satisfied path and the energy resolver computed zero
+    // need — the task planned no hours and never admitted the charger.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       nowMs: NOW_MS,
       timeZone: 'UTC',
@@ -1895,11 +1895,9 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       priceOptimizationEnabled: true,
     });
 
-    expect(diagnostic).toMatchObject({
-      objectiveKind: 'ev_soc',
-      status: 'unknown',
-      reasonCode: 'objective_charger_not_resumable',
-    });
+    expect(diagnostic).toMatchObject({ objectiveKind: 'ev_soc' });
+    expect(diagnostic?.reasonCode).not.toBe('objective_charger_not_resumable');
+    expect(diagnostic?.status).not.toBe('unknown');
   });
 
   it('rolls a past local deadline to tomorrow and waits when tomorrow prices are missing', () => {
@@ -2351,6 +2349,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const heater = withTemperatureDiscriminant(withBinaryDiscriminant({
       id: 'heater-1',
       name: 'Mill v2 Panel Heater',
+      commandableNow: true,
       targets: [{ id: 'target_temperature', value: 22, unit: 'C', min: 5, max: 30, step: 0.5 }],
       binaryControl: { on: true },
       controlCapabilityId: 'onoff' as const,
@@ -2437,6 +2436,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const heater = withTemperatureDiscriminant(withBinaryDiscriminant({
       id: 'heater-1',
       name: 'Idle Panel Heater',
+      commandableNow: true,
       targets: [{ id: 'target_temperature', value: 22, unit: 'C', min: 5, max: 30, step: 0.5 }],
       binaryControl: { on: false },
       controlCapabilityId: 'onoff' as const,
@@ -2501,6 +2501,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const heater = withTemperatureDiscriminant(withBinaryDiscriminant({
       id: 'heater-1',
       name: 'Powerless Thermostat',
+      commandableNow: true,
       targets: [{ id: 'target_temperature', value: 22, unit: 'C', min: 5, max: 30, step: 0.5 }],
       binaryControl: { on: false },
       controlCapabilityId: 'onoff' as const,

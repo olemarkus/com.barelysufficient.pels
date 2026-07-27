@@ -82,12 +82,14 @@ describe('resolveCommandableNow — availability', () => {
   });
 });
 
-describe('resolveCommandableNow — no trusted plug state (cold start)', () => {
-  it('is pessimistic when an EV charger has no evChargingState yet', () => {
-    // The only `undefined` plug-state case is a genuine cold start — transport's
-    // consolidated truth preserves a real value across transient pulls, so this
-    // does not fire on a hiccup. Pessimistic: never actuate without trusted
-    // evidence the device is responsive.
+describe('resolveCommandableNow — no trusted plug state', () => {
+  it('stays commandable when an EV charger has no evChargingState', () => {
+    // `undefined` is not one case but four: a permanently-absent
+    // `evcharger_charging_state` capability (a `car`-class device driven through
+    // `evcharger_charging` never has one), a vendor value outside the Homey enum,
+    // a cold start, and a live-feed gap. Failing closed read as caution but was a
+    // permanent block for the first two, so the gate fails open and the command
+    // outcome decides (`activationBackoff` penalises a device that never draws).
     const result = resolveCommandableNow({
       dev: {
         deviceClass: 'evcharger',
@@ -95,22 +97,29 @@ describe('resolveCommandableNow — no trusted plug state (cold start)', () => {
         evChargingState: undefined,
       },
     });
-    expect(result.commandableNow).toBe(false);
-    expect(result.reason).toBe('charger state unknown');
+    expect(result.commandableNow).toBe(true);
+    expect(result.reason).toBeNull();
   });
 });
 
-describe('isCommandableNow — dual-read fallback', () => {
-  it('prefers the producer-resolved bit when defined', () => {
+describe('isCommandableNow — producer-resolved bit only', () => {
+  it('reads the producer-resolved bit', () => {
     expect(isCommandableNow({ commandableNow: false })).toBe(false);
     expect(isCommandableNow({ commandableNow: true })).toBe(true);
   });
 
-  it('falls back to local resolution when commandableNow is undefined', () => {
-    // `available: false` would resolve to commandableNow=false even with no
-    // pre-populated bit.
-    expect(isCommandableNow({ available: false })).toBe(false);
-    expect(isCommandableNow({ available: true })).toBe(true);
+  it('ignores raw fields entirely — only the producer-resolved bit is read', () => {
+    // The dual-read is deleted: raw fields sitting alongside the bit must not
+    // change the answer. That fallback is what made every plan device read
+    // "charger state unknown" — `withEvDiscriminant` strips `evChargingState`,
+    // the fallback saw absence, and answered anyway. Callers holding a raw
+    // snapshot now call `resolveCommandableNow` explicitly instead.
+    const withRawFieldsThatUsedToWin = {
+      commandableNow: true,
+      available: false,
+      evChargingState: 'plugged_out',
+    } as unknown as Parameters<typeof isCommandableNow>[0];
+    expect(isCommandableNow(withRawFieldsThatUsedToWin)).toBe(true);
   });
 
   it('honours the materialized commandableNow on an EV plan device and does NOT recompute from absent raw plug-state', () => {
@@ -121,8 +130,8 @@ describe('isCommandableNow — dual-read fallback', () => {
     // `evChargingState` would resolve a genuinely-commandable charging EV to
     // `state-unknown`/not-commandable, regressing EV resume on the executor's
     // `hasStableBinaryReleaseActuation` path.
-    expect(isCommandableNow({ deviceClass: 'evcharger', commandableNow: true })).toBe(true);
-    expect(isCommandableNow({ deviceClass: 'evcharger', commandableNow: false })).toBe(false);
+    expect(isCommandableNow({ commandableNow: true })).toBe(true);
+    expect(isCommandableNow({ commandableNow: false })).toBe(false);
   });
 });
 

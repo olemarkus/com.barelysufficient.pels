@@ -31,6 +31,7 @@ const buildPlanDevice = (
 ): DevicePlan['devices'][number] => withTemperatureDiscriminant({
   id: deviceId,
   name,
+  commandableNow: true,
   currentState: 'on',
   plannedState: 'keep' as const,
   currentTarget,

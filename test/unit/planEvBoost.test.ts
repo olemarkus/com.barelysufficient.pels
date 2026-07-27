@@ -80,14 +80,14 @@ describe('resolveEvBoostActive', () => {
     expect(resolveEvBoostActive(buildEvDevice({ evChargingState: 'plugged_out' }))).toBe(false);
   });
 
-  it('does not activate for a connected-but-not-resumable charger (plugged_in)', () => {
-    // `plugged_in` (distinct from the resumable `plugged_in_paused`) cannot be
-    // driven by PELS, so boost must never claim to activate — even with a fresh
-    // SoC below the threshold.
+  it('activates for a bare connected charger (plugged_in)', () => {
+    // `plugged_in` is commandable — the literal is vendor-inconsistent (Easee
+    // reports it while awaiting authentication, Wallbox for its own paused state),
+    // so boost tries and `activationBackoff` handles a charger that never draws.
     expect(resolveEvBoostActive(buildEvDevice({
       evChargingState: 'plugged_in',
       stateOfCharge: { percent: 20, status: 'fresh' as const },
-    }))).toBe(false);
+    }))).toBe(true);
   });
 
   it('does not activate for non-stepped or non-EV devices', () => {

@@ -75,7 +75,7 @@ export type SmartTaskListStatusId =
   | 'queued'          // plan ready, first hour in the future
   | 'unavailable'     // device moved to a separately-metered home
   | 'paused_unplugged' // EV: car unplugged / session ended
-  | 'paused_not_resumable' // EV: connected but charging can't be resumed (plugged_in)
+  | 'paused_not_resumable' // EV: connected but no confirmed charging session yet (plugged_in)
   | 'on_track'
   | 'at_risk'
   | 'cannot_meet'
@@ -94,7 +94,7 @@ export const SMART_TASK_LIST_STATUS_LABELS: Record<SmartTaskListStatusId, string
   queued: 'On track',
   unavailable: 'Unavailable',
   paused_unplugged: 'Paused — unplugged',
-  paused_not_resumable: 'Paused — can’t resume',
+  paused_not_resumable: 'Paused — not charging yet',
   on_track: 'On track',
   at_risk: 'At risk',
   cannot_meet: 'Cannot finish',
@@ -112,7 +112,7 @@ export const SMART_TASK_LIST_STATUS_LABELS: Record<SmartTaskListStatusId, string
 export const SMART_TASK_WIDGET_STATUS_LABELS: Record<SmartTaskListStatusId, string> = {
   ...SMART_TASK_LIST_STATUS_LABELS,
   paused_unplugged: 'Unplugged',
-  paused_not_resumable: 'Can’t resume',
+  paused_not_resumable: 'Not charging yet',
 };
 
 // Widget detail-panel "why" + recourse copy. Composed from producer-resolved
@@ -130,7 +130,7 @@ const SMART_TASK_WIDGET_WHY_BY_STATUS: Record<SmartTaskListStatusId, string | nu
   queued: null, // composed from firstPlannedTimeLabel when present
   unavailable: SMART_TASK_SUB_HOME_UNAVAILABLE,
   paused_unplugged: 'EV is unplugged — plug in to resume.',
-  paused_not_resumable: 'Car charging won’t resume — check the charger.',
+  paused_not_resumable: 'Car isn’t drawing power yet — progress can’t be counted.',
   on_track: null, // affirmative line resolved from firstPlannedTimeLabel
   at_risk: null, // disambiguated by budget vs time below
   cannot_meet: null, // resolved by floor cause / budget bucket count
@@ -138,12 +138,17 @@ const SMART_TASK_WIDGET_WHY_BY_STATUS: Record<SmartTaskListStatusId, string | nu
 };
 
 // EV device-card variant of the canonical `paused_not_resumable` "why" line.
-// The card slot drops the leading "Car" (the card already names the device) and
-// the trailing period (card state lines render without terminal punctuation),
-// so it can't reuse `SMART_TASK_WIDGET_WHY_BY_STATUS.paused_not_resumable`
-// verbatim. Co-located here as a single named export so the card / chip / hero
-// surfaces share one source for the cause copy and can't drift.
-export const EV_NOT_RESUMABLE_CARD_LINE = 'Charging won’t resume — check the charger';
+// The card already names the device and renders state lines without terminal
+// punctuation, so it can't reuse `SMART_TASK_WIDGET_WHY_BY_STATUS` verbatim.
+// Co-located here as a single named export so the card / chip / hero surfaces
+// share one source for the cause copy and can't drift.
+//
+// Says what is observed, not what PELS can do: a `plugged_in` charger IS
+// commandable and PELS does try to start it (see `resolveEvBlockReasonKey`).
+// Only the SoC behind it isn't creditable progress until the session confirms,
+// so this copy must not read as "can't resume" — that told the owner to go
+// check a charger PELS was in the middle of starting.
+export const EV_NOT_RESUMABLE_CARD_LINE = 'Not drawing power yet';
 
 // EV device-card variant of the unplugged/invalid-session pause line. Same
 // rationale as `EV_NOT_RESUMABLE_CARD_LINE`: a card-slot phrasing with no
@@ -722,8 +727,8 @@ const SMART_TASK_LIST_READY_BY_STATUS_WORD: Record<SmartTaskListStatusId, string
   // full label; this is the same sanctioned shared-domain string, not a new
   // variant.
   paused_unplugged: SMART_TASK_WIDGET_STATUS_LABELS.paused_unplugged,
-  // Compressed widget label ('Can’t resume') for the same double-em-dash reason
-  // as paused_unplugged — the full chip label carries its own em-dash.
+  // Compressed widget label ('Not charging yet') for the same double-em-dash
+  // reason as paused_unplugged — the full chip label carries its own em-dash.
   paused_not_resumable: SMART_TASK_WIDGET_STATUS_LABELS.paused_not_resumable,
   on_track: null,
   at_risk: SMART_TASK_LIST_STATUS_LABELS.at_risk,
@@ -1868,16 +1873,19 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
         headlineReason: 'Charger reports the car isn’t plugged in.',
         recourse: null,
       }),
-      // Connected (plugged_in) but PELS can't resume charging. Distinct from
-      // `invalid_session`: the car IS plugged in, so the lever is the charger,
-      // not the cable. Recourse is null — like unplugged, the fix is a physical
-      // action with no in-app tab to land on. `headlineReason` reuses the
+      // Connected (plugged_in) with no confirmed charging session. Distinct from
+      // `invalid_session`: the car IS plugged in. PELS does command this charger
+      // on — `plugged_in` is commandable — so this must NOT read as "can't
+      // resume" or send the owner to check hardware PELS is mid-way through
+      // starting. What is true is narrower: no power is flowing yet, so the SoC
+      // behind it isn't creditable progress. Recourse is null; there is no in-app
+      // tab that makes the car start drawing. `headlineReason` reuses the
       // canonical widget "why" line so the three EV surfaces (list chip / hero /
       // card) agree on the cause copy.
       charger_not_resumable: () => ({
-        headline: 'Charging won’t resume',
-        body: 'PELS can’t resume charging on this charger. Check the charger and the EV — '
-          + 'PELS will pick the schedule back up once charging can run again.',
+        headline: 'Not charging yet',
+        body: 'The car is connected but not drawing power yet. PELS keeps asking the charger '
+          + 'to start, and picks the schedule back up as soon as current flows.',
         headlineReason: SMART_TASK_WIDGET_WHY_BY_STATUS.paused_not_resumable,
         recourse: null,
       }),

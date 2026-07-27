@@ -36,7 +36,7 @@ import { buildLiveStatePlan, hasPlanExecutionDrift } from '../../lib/plan/planRe
 import { legacyDeviceReason } from '../utils/deviceReasonTestUtils';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
-import { resolveFixtureCurrentOn } from '../utils/planTestUtils';
+import { resolveFixtureCurrentOn, withMaterializedEvPlugState } from '../utils/planTestUtils';
 import { createCapacityShortfallSideEffectGate } from '../../setup/capacityShortfallSideEffectGate';
 
 const KEEP_REASON = legacyDeviceReason('keep')!;
@@ -75,7 +75,15 @@ const pd = (
       evChargingState?: string;
     },
 ): DevicePlanDevice => withTemperatureDiscriminant(
-  withSteppedDiscriminant(withBinaryDiscriminant({ ...loose, currentOn: resolveFixtureCurrentOn(loose) })),
+  // `withMaterializedEvPlugState` regroups the way the producer does: it strips the
+  // raw `evChargingState` (which `withEvDiscriminant` drops in production) and
+  // materializes `commandableNow` + the EV trio in its place. Without it these
+  // fixtures kept a field production removes, which is exactly why the executor's
+  // EV path looked covered while `hasStableBinaryReleaseActuation` was dead.
+  withSteppedDiscriminant(withBinaryDiscriminant({
+    ...withMaterializedEvPlugState(loose),
+    currentOn: resolveFixtureCurrentOn(loose),
+  })),
 ) as DevicePlanDevice;
 
 const buildPlan = (): DevicePlan => ({
@@ -88,6 +96,7 @@ const buildPlan = (): DevicePlan => ({
     withTemperatureDiscriminant({
       id: 'dev-1',
       name: 'Heater',
+      commandableNow: true,
       deviceType: 'temperature' as const,
       currentState: 'off',
       plannedState: 'keep' as const,
@@ -110,6 +119,7 @@ const buildTargetPlan = (currentTarget = 18, plannedTarget = 23): DevicePlan => 
     withTemperatureDiscriminant({
       id: 'dev-1',
       name: 'Heater',
+      commandableNow: true,
       deviceType: 'temperature' as const,
       currentState: 'on',
       plannedState: 'keep' as const,
@@ -1599,6 +1609,7 @@ describe('PlanExecutor stepped loads', () => {
       controllable: true,
       controlCapabilityId: 'onoff' as const,
       reason: KEEP_REASON,
+      commandableNow: true,
       steppedLoadProfile: steppedProfile,
       selectedStepId: 'low',
       desiredStepId: 'max',
@@ -2038,6 +2049,21 @@ describe('PlanExecutor stepped loads', () => {
 
     expect(executor.hasStablePlanActuation(evDeadlinePlan({
       binaryCommandPending: true,
+    }))).toBe(false);
+  });
+
+  it('does not mark an unplugged charger stable for a deadline resume', () => {
+    // Pins the newly-live half of `hasStableBinaryReleaseActuation`: it reads the
+    // producer-resolved `commandableNow` off the plan device. Before that bit was
+    // carried across `planDevicesBase`, the predicate re-derived from a stripped
+    // `evChargingState`, resolved every EV to "state unknown", and was therefore
+    // dead in production — so the positive case above passed for the wrong reason
+    // and this negative case could not fail. `plugged_out` is one of the two
+    // states that genuinely blocks actuation, so it must read false here.
+    const { executor } = buildExecutor();
+
+    expect(executor.hasStablePlanActuation(evDeadlinePlan({
+      evChargingState: 'plugged_out',
     }))).toBe(false);
   });
 
@@ -3753,11 +3779,11 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const shedDevice = {
       id: 'shed-1', name: 'Heater', currentState: 'off' as const, plannedState: 'shed' as const,
       currentTarget: null, controllable: true, reason: CAPACITY_REASON,
-      controlCapabilityId: 'onoff' as const, currentOn: false,
+      controlCapabilityId: 'onoff' as const, currentOn: false, commandableNow: true,
     };
     const steppedDevice = (desiredStepId: string) => ({
       id: 'dev-1', name: 'Tank', currentState: 'off' as const, plannedState: 'keep' as const,
-      currentTarget: null, controllable: true, reason: KEEP_REASON,
+      currentTarget: null, controllable: true, reason: KEEP_REASON, commandableNow: true,
       controlModel: 'stepped_load' as const,
       controlCapabilityId: 'onoff' as const, currentOn: false,
       steppedLoadProfile: multiStepProfile,

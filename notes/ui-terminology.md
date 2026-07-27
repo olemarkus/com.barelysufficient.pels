@@ -317,8 +317,8 @@ contracts remain stable — only the user-visible chip label changed. `queued`
 and `on_track` now share one label and tone; the distinction stays internal.
 
 The dashboard widget's compressed row variants are registered:
-`Unplugged` (for `Paused — unplugged`) and `Can’t resume` (for
-`Paused — can’t resume`) — the widget row at 320–480 px has roughly half the
+`Unplugged` (for `Paused — unplugged`) and `Not charging yet` (for
+`Paused — not charging yet`) — the widget row at 320–480 px has roughly half the
 list card's width and the full em-dash forms truncate. Source:
 `SMART_TASK_WIDGET_STATUS_LABELS` in `deadlineLabels.ts`. The same compressed
 forms are the sanctioned inline status words on the list card's Ready-by line

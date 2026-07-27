@@ -410,7 +410,7 @@ var SMART_TASK_LIST_STATUS_LABELS = {
   queued: "On track",
   unavailable: "Unavailable",
   paused_unplugged: "Paused \u2014 unplugged",
-  paused_not_resumable: "Paused \u2014 can\u2019t resume",
+  paused_not_resumable: "Paused \u2014 not charging yet",
   on_track: "On track",
   at_risk: "At risk",
   cannot_meet: "Cannot finish",
@@ -419,7 +419,7 @@ var SMART_TASK_LIST_STATUS_LABELS = {
 var SMART_TASK_WIDGET_STATUS_LABELS = {
   ...SMART_TASK_LIST_STATUS_LABELS,
   paused_unplugged: "Unplugged",
-  paused_not_resumable: "Can\u2019t resume"
+  paused_not_resumable: "Not charging yet"
 };
 var SMART_TASK_WIDGET_WHY_BY_STATUS = {
   building_plan: null,
@@ -428,7 +428,7 @@ var SMART_TASK_WIDGET_WHY_BY_STATUS = {
   // composed from firstPlannedTimeLabel when present
   unavailable: SMART_TASK_SUB_HOME_UNAVAILABLE,
   paused_unplugged: "EV is unplugged \u2014 plug in to resume.",
-  paused_not_resumable: "Car charging won\u2019t resume \u2014 check the charger.",
+  paused_not_resumable: "Car isn\u2019t drawing power yet \u2014 progress can\u2019t be counted.",
   on_track: null,
   // affirmative line resolved from firstPlannedTimeLabel
   at_risk: null,
@@ -641,8 +641,8 @@ var SMART_TASK_LIST_READY_BY_STATUS_WORD = {
   // full label; this is the same sanctioned shared-domain string, not a new
   // variant.
   paused_unplugged: SMART_TASK_WIDGET_STATUS_LABELS.paused_unplugged,
-  // Compressed widget label ('Can’t resume') for the same double-em-dash reason
-  // as paused_unplugged — the full chip label carries its own em-dash.
+  // Compressed widget label ('Not charging yet') for the same double-em-dash
+  // reason as paused_unplugged — the full chip label carries its own em-dash.
   paused_not_resumable: SMART_TASK_WIDGET_STATUS_LABELS.paused_not_resumable,
   on_track: null,
   at_risk: SMART_TASK_LIST_STATUS_LABELS.at_risk,
@@ -914,15 +914,18 @@ var DEADLINE_LABELS = {
         headlineReason: "Charger reports the car isn\u2019t plugged in.",
         recourse: null
       }),
-      // Connected (plugged_in) but PELS can't resume charging. Distinct from
-      // `invalid_session`: the car IS plugged in, so the lever is the charger,
-      // not the cable. Recourse is null — like unplugged, the fix is a physical
-      // action with no in-app tab to land on. `headlineReason` reuses the
+      // Connected (plugged_in) with no confirmed charging session. Distinct from
+      // `invalid_session`: the car IS plugged in. PELS does command this charger
+      // on — `plugged_in` is commandable — so this must NOT read as "can't
+      // resume" or send the owner to check hardware PELS is mid-way through
+      // starting. What is true is narrower: no power is flowing yet, so the SoC
+      // behind it isn't creditable progress. Recourse is null; there is no in-app
+      // tab that makes the car start drawing. `headlineReason` reuses the
       // canonical widget "why" line so the three EV surfaces (list chip / hero /
       // card) agree on the cause copy.
       charger_not_resumable: () => ({
-        headline: "Charging won\u2019t resume",
-        body: "PELS can\u2019t resume charging on this charger. Check the charger and the EV \u2014 PELS will pick the schedule back up once charging can run again.",
+        headline: "Not charging yet",
+        body: "The car is connected but not drawing power yet. PELS keeps asking the charger to start, and picks the schedule back up as soon as current flows.",
         headlineReason: SMART_TASK_WIDGET_WHY_BY_STATUS.paused_not_resumable,
         recourse: null
       }),

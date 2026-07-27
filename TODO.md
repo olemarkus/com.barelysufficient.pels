@@ -290,21 +290,18 @@ What remains open is below.*
       shed relief from measured power when the observation is fresh. Source: prod log review
       2026-07-25 06:16:46Z. [P1]
 
-- [ ] **`isCommandableNow` is always false for an EV charger on the plan-device path.**
-      `resolveCommandableNow` reads `evChargingState`, but `withEvDiscriminant`
-      (`lib/plan/planTypes.ts` ~270-284) deliberately strips that field on the way to a
-      `DevicePlanDevice`, and `lib/plan/planDevicesBase.ts` never copies the producer's
-      `commandableNow` either. So for `deviceClass: 'evcharger'` the switch lands on
-      `state_unknown` → "charger state unknown" → blocked, every time. Live consequence:
-      `hasStableBinaryReleaseActuation` (`lib/executor/planExecutorPredicates.ts` ~70) is dead in
-      production for its EV-only `deferredReleaseIntent: 'binary_restore'` case. The other two call
-      sites (`binaryExecutor.ts` ~204, `planExecutionDrift.ts` ~173) correctly pass the *snapshot*,
-      which does carry `evChargingState`, so they are fine. Tests hide it: `pd()` in
-      `test/integration/planExecutor.test.ts` applies the temperature/stepped/binary discriminants
-      but not `withEvDiscriminant`, so fixtures keep a field production strips — any fix needs a
-      fixture that regroups the way the producer does. Either carry `commandableNow` onto the plan
-      device as a producer-resolved bit, or give plan-device callers an EV-aware variant. Source:
-      adversarial review, 2026-07-25. [P1]
+- [ ] **An EV charger needs two `evcharger_charging=true` writes and ~90 s to actually start.**
+      Prod 2026-07-26, first session PELS ever started from a bare `plugged_in` charger: the
+      19:32:37Z write logged `binary_write_timeout` then
+      `stepped_load_restore_binary_undriven` (step prepared, binary axis not driven on); the
+      19:34:07Z retry is what landed, with draw appearing at 19:35:07Z. So the resume path
+      recovers, but only via the retry — ~2.5 min from admission to current flowing, on a device
+      that was already admitted with 7.3 kW of headroom. Same family as `2e637fb40` ("step
+      prepared, still off"), which is present in that build, so this is a *remaining* gap in the
+      stepped-restore binary phase rather than a regression of it. Worth confirming whether the
+      first write is lost at the Homey seam (the timeout) or the executor declines to drive the
+      binary axis on that cycle. Persona: EV owner who plugs in and watches nothing happen for two
+      minutes. Source: prod verification of the plug-state commandability fix. [P2]
 
 - [ ] **Restore actuation re-stamps the GLOBAL `state.lastRestoreMs`.**
       `recordRestoreActuation` (`lib/executor/planExecutor.ts` ~210) sets both the per-device
@@ -1018,6 +1015,41 @@ program) remain deferred.*
       `respect_external_off_devices`, so clearing a device leaves the flag (and any persisted
       hold) behind, and a deleted device known only through this map is never offered by
       "Clear unknown devices". Re-adding the device silently reactivates the old behaviour.
+
+- [ ] **`commandableNow` cannot tell an absent EV capability from an unreadable one.**
+      `packages/shared-domain/src/commandableNow.ts` ~191 treats `evChargingState === undefined` as
+      "no such signal — skip", so an EV whose charging-state observation is momentarily unavailable
+      fails OPEN: an off charger becomes commandable and eligible for `binary_restore`, the no-op
+      Homey write resolves successfully, and `recordRestoreActuation` stamps the GLOBAL restore
+      cooldown — delaying valid restores for every other device with no charging convergence to show
+      for it. Raised by Codex on PR #1901 and deliberately deferred there, because the two cases are
+      not equally reachable: a genuinely-absent capability never reaches this code at all (an EV
+      charger needs BOTH `evcharger_charging` and `evcharger_charging_state` or it drops out of the
+      snapshot entirely — `deviceCapabilityLifecycle.integration.test.ts` ~204), so the only residual
+      case is a vendor value outside the Homey enum, which `getEvChargingState` normalises to
+      `undefined` permanently. Failing closed on that would be a permanent block, which is strictly
+      worse than the cooldown stamp. The real fix is a producer-resolved distinction
+      (`resolved | unavailable`) at the capability read, per the resolution-in-producer rule, so the
+      consumer can fail open only for genuine absence. Second observable consequence, found while
+      rebasing #1901 onto the merged external-off hold: `setup/externalOffHoldDetection.ts` ~163
+      gates on `commandableNow`, so a charger in an unknown plug state that is switched off outside
+      PELS now STARTS a "leave off until turned on again" hold
+      (`externalOffHoldDetection.test.ts` records this). That is the correct reading of the
+      fail-open decision — such a charger really is commandable — but it means the unresolved-state
+      case now has behaviour attached to it in two places, so the producer-resolved fix should
+      revisit both. Third site, and the one that makes this structural rather than cosmetic:
+      `lib/executor/planExecutionDrift.ts` ~183 RE-DERIVES commandability with
+      `resolveCommandableNow({ dev: observed.snapshot })`. Its comment claims a raw snapshot, but
+      `ExecutableObservedDeviceState` documents (`executablePlan.ts` ~56) that the drift/reconcile
+      path feeds a PLAN device — and `toPlanDevice` ~237 strips `evChargingState` after resolving
+      `commandableNow` ~279. So on that path the re-derivation sees no plug state, fails open, and
+      reports restore drift for an EV that is genuinely unplugged or discharging; repeated realtime
+      events can then trip the per-device reconcile circuit breaker and suppress GENUINE drift. The
+      fix is to consume the materialized `commandableNow` instead of recomputing, which needs it
+      carried on `ExecutableObservedDeviceState` (`ExecutorDeviceSnapshot` does not expose it
+      today) — a typed-seam change, hence its own PR. Persona: owner whose water heater waits out a
+      restore cooldown burned by a charger that was never going to start; hypothesis: a global
+      cooldown stamped by a no-op write is invisible and self-inflicted. [P2]
 
 - [ ] **"Leave off until turned on again" only STARTS a hold from a push-delivered off.**
       Detection runs at the realtime-reconcile gate (`setup/externalOffHoldDetection.ts`), so it

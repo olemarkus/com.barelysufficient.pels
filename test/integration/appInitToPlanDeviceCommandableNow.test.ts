@@ -50,11 +50,14 @@ describe('toPlanDevice — commandableNow producer wiring', () => {
     expect(result.commandableNowReason).toBe('charger is unplugged');
   });
 
-  it('is pessimistic (commandableNow=false) when the EV has no plug state yet', () => {
+  it('stays commandable when the EV has no plug state', () => {
+    // An absent plug-state is not a device state — it also covers an EV device
+    // whose app never exposes `evcharger_charging_state` at all, which the old
+    // pessimistic arm blocked permanently.
     const ctx = ctxAtFixedNow();
     const result = toPlanDevice(ctx, buildEvSnapshot({ evChargingState: undefined }));
-    expect(result.commandableNow).toBe(false);
-    expect(result.commandableNowReason).toBe('charger state unknown');
+    expect(result.commandableNow).toBe(true);
+    expect(result.commandableNowReason).toBeNull();
   });
 
   it('does not write back into live AppContext state (pure projection)', () => {

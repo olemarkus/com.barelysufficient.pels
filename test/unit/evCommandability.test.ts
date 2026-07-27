@@ -41,8 +41,15 @@ describe('resolveCommandableNow — EV plug-state sub-classification', () => {
       evSessionInactive: true,
       evChargerNotResumable: false,
     });
+  });
+
+  it('leaves `plugged_in` commandable while still marking it not-resumable', () => {
+    // The two questions are separate: PELS may command a bare-connected charger
+    // (no block reason), but the SoC behind it is not creditable progress until
+    // the state moves to `plugged_in_charging` — so the flat bit stays true and
+    // `diagnosticProgress` keeps reporting honestly.
     expect(evSub({ ...EV, evChargingState: 'plugged_in' })).toEqual({
-      evBlockReason: EV_COMMANDABLE_NOW_REASONS.plugged_in,
+      evBlockReason: null,
       evSessionInactive: false,
       evChargerNotResumable: true,
     });
@@ -58,9 +65,13 @@ describe('resolveCommandableNow — EV plug-state sub-classification', () => {
     }
   });
 
-  it('resolves an unread plug-state (undefined) to state_unknown without flagging inactive', () => {
+  it('leaves an unread plug-state (undefined) commandable', () => {
+    // `undefined` is not a device state — it collapses a permanently-absent
+    // `evcharger_charging_state` capability (a `car`-class device driven through
+    // `evcharger_charging` never has one), a vendor value outside the enum, and a
+    // cold start. Failing closed on it was a permanent block for the first two.
     expect(evSub(EV)).toEqual({
-      evBlockReason: EV_COMMANDABLE_NOW_REASONS.state_unknown,
+      evBlockReason: null,
       evSessionInactive: false,
       evChargerNotResumable: false,
     });
@@ -91,16 +102,19 @@ describe('device-shaped EV resolvers — single materialized input (raw arm reti
     expect(isEvBoostBlockedByPlugState(dev)).toBe(true);
   });
 
-  it('classifies a connected-but-not-resumable device off the flat bit', () => {
+  it('keeps boost unblocked for a not-resumable device (the two questions are separate)', () => {
+    // What the producer materializes for `plugged_in`: no block reason (PELS may
+    // command it), but not-resumable stays true for SoC crediting. Boost reads the
+    // block reason — the same input actuation reads — so it must NOT block here.
     const dev = {
-      evBlockReason: EV_COMMANDABLE_NOW_REASONS.plugged_in,
+      evBlockReason: null,
       evSessionInactive: false,
       evChargerNotResumable: true,
     };
     expect(isEvSessionInactiveForDevice(dev)).toBe(false);
     expect(isEvChargerNotResumableForDevice(dev)).toBe(true);
-    expect(resolveEvBlockReasonForDevice(dev)).toBe(EV_COMMANDABLE_NOW_REASONS.plugged_in);
-    expect(isEvBoostBlockedByPlugState(dev)).toBe(true);
+    expect(resolveEvBlockReasonForDevice(dev)).toBeNull();
+    expect(isEvBoostBlockedByPlugState(dev)).toBe(false);
   });
 
   it('defaults to not-blocked when the flat bits are absent (non-EV device)', () => {
@@ -121,7 +135,7 @@ describe('device-shaped EV resolvers — single materialized input (raw arm reti
     // be classified as session-inactive (the resolvers themselves do not gate on
     // `isEvDevice`). With the raw arm gone, an unknown extra property is inert —
     // only the producer-materialized flat bits are honoured.
-    const handConstructed = { evChargingState: 'plugged_out' } as unknown as { evSessionInactive?: boolean };
+    const handConstructed = { evChargingState: 'plugged_out' } as unknown as { evSessionInactive?: boolean; evBlockReason?: string | null };
     expect(isEvSessionInactiveForDevice(handConstructed)).toBe(false);
     expect(isEvChargerNotResumableForDevice(handConstructed)).toBe(false);
     expect(isEvBoostBlockedByPlugState(handConstructed)).toBe(false);

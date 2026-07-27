@@ -225,16 +225,29 @@ describe('syncExternalOffHoldForDevice — EV plug states', () => {
     evChargingState,
   });
 
-  it('starts a hold for a connected charger that was explicitly paused', () => {
+  // A hold is only meaningful where PELS could otherwise command the charger on;
+  // detection gates on `commandableNow`. `plugged_in` belongs here now that it is
+  // commandable — an Easee awaiting authorization reports it, and PELS would
+  // start that session, so an outside-off there is exactly what the hold exists
+  // to respect.
+  it.each([
+    ['explicitly paused', 'plugged_in_paused'],
+    ['connected and idle', 'plugged_in'],
+    // Unknown plug state is commandable by design: `commandableNow` fails OPEN on
+    // an unresolved EV state, and in practice that means a vendor value outside
+    // the Homey enum, which normalises to `undefined` permanently rather than
+    // transiently. Such a charger IS commandable, so an outside-off deserves the
+    // hold. The residual risk of failing open is tracked as a P2 in TODO.md
+    // (`commandableNow` cannot tell an absent capability from an unreadable one).
+    ['in an unknown plug state', undefined],
+  ] as const)('starts a hold for a connected charger that is %s', (_label, state) => {
     const h = buildCtx({ optedIn: true });
-    expect(sync(h, liveDevicesFor(h.ctx, evSnapshot('plugged_in_paused')), planExpectingOn(), EV_OFF_TRANSITION)).toBe('started');
+    expect(sync(h, liveDevicesFor(h.ctx, evSnapshot(state)), planExpectingOn(), EV_OFF_TRANSITION)).toBe('started');
   });
 
   it.each([
     ['unplugged', 'plugged_out'],
-    ['connected but not resumable', 'plugged_in'],
     ['discharging', 'plugged_in_discharging'],
-    ['state unknown', undefined],
   ] as const)('does not start a hold for a charger that is %s', (_label, state) => {
     const h = buildCtx({ optedIn: true });
     expect(sync(h, liveDevicesFor(h.ctx, evSnapshot(state)), planExpectingOn(), EV_OFF_TRANSITION)).toBe('none');
