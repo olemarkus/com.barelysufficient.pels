@@ -81,6 +81,32 @@ export const composeSubHomeSupportingLine = (params: {
   formatHomeDeviceCount(params.deviceCount),
 ].join(' · ');
 
+// ── Home badges (Devices + Modes lists) ────────────────────────────────────
+
+/**
+ * The label a device row carries once meter areas are in use: the owner's own
+ * name for the area, or this constant for the implicit complement. Same word
+ * the Limits switcher's Main option uses (`homeLimitsCopy.ts`) so the implicit
+ * home reads identically on every surface.
+ */
+export const HOMES_BADGE_MAIN_HOME = 'Main home';
+
+/** The badge's own text: the area name as authored, else the Main-home word. */
+export const composeHomeBadgeLabel = (areaName: string | null): string => (
+  areaName ?? HOMES_BADGE_MAIN_HOME
+);
+
+/**
+ * Badge tooltip. Says what the badge means for the bill (which meter this
+ * device's usage counts against) and doubles as the full-name reveal when a
+ * long user-authored area name is truncated in the chip.
+ */
+export const composeHomeBadgeTooltip = (areaName: string | null): string => (
+  areaName === null
+    ? 'This device belongs to the Main home.'
+    : `This device belongs to “${areaName}” and counts against that meter.`
+);
+
 // ── Delete confirm ─────────────────────────────────────────────────────────
 
 /** The confirm step names the consequence: devices re-home to the Main home. */

@@ -23,6 +23,7 @@ import {
 import { showToast, showToastError } from './toast.ts';
 import { resolveManagedState, state } from './state.ts';
 import { createDragHandle } from './components.ts';
+import { appendHomeBadge } from './homeBadges.ts';
 import { logSettingsError } from './logging.ts';
 import { DEFAULT_MODE_NAME, resolveModeName } from '../../../shared-domain/src/modeLabels.ts';
 import { normalizeModePriorities } from '../../../shared-domain/src/modePriorities.ts';
@@ -243,7 +244,14 @@ const buildPriorityRow = (device: SettingsUiDeviceListItem) => {
 
   const name = document.createElement('div');
   name.className = 'device-row__name entity-name';
-  name.textContent = formatDisplayDeviceName(device.name);
+  const nameText = document.createElement('span');
+  nameText.className = 'mode-row__name-text';
+  nameText.textContent = formatDisplayDeviceName(device.name);
+  name.appendChild(nameText);
+  // Meter-area badge only — this list is NEVER filtered by home. `savePriorities`
+  // ranks the rendered rows `index + 1`, so hiding one home's rows would rewrite
+  // that home's stored priorities on the next save.
+  appendHomeBadge(name, device.id);
 
   const desired = getDesiredTarget(device);
   const input = buildModeTargetInput(device, desired);

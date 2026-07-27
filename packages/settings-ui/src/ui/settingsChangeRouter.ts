@@ -56,6 +56,7 @@ import { handleWeatherAdvisorSettingsChanged } from './weatherInsight.ts';
 import { DAILY_BUDGET_REFRESH_KEYS, DAILY_BUDGET_SETTINGS_KEYS } from './realtimeDailyBudgetKeys.ts';
 import {
   refreshDailyBudgetIfVisible,
+  refreshHomeBadgesForUi,
   refreshModeAndDeviceControls,
   refreshPlanForUi,
   refreshPowerData,
@@ -290,6 +291,13 @@ export const createSettingsSetHandler = () => (key: string) => {
   }
   if (DEVICE_CONTROL_KEYS.has(key)) {
     refreshModeAndDeviceControls();
+  }
+  // Both the roster (`homes_config`) and the device→home pins
+  // (`device_home_assignments`) decide what a row's home badge says — an area
+  // rename/delete changes the label, a re-pin moves a device — so either write
+  // refetches membership and repaints the two badge-carrying lists.
+  if (key === HOMES_CONFIG || key === DEVICE_HOME_ASSIGNMENTS) {
+    refreshHomeBadgesForUi('settings.set');
   }
 
   refreshPriceSettings(key);

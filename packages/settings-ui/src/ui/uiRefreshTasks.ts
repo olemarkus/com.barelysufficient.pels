@@ -6,6 +6,7 @@ import {
 } from '../../../contracts/src/settingsUiApi.ts';
 import { getTargetDevices, renderDevices } from './devices.ts';
 import { loadStaleDataStatus } from './capacity.ts';
+import { refreshHomeBadges } from './homeBadges.ts';
 import { invalidateApiCache, invalidateApiCacheForAllHomes } from './homey.ts';
 import { loadModeAndPriorities, renderPriorities } from './modes.ts';
 import { refreshPriceConfigView, updatePriceConfigDevices } from './priceConfig.ts';
@@ -117,6 +118,21 @@ export const refreshDevicesForUi = () => {
     .catch((error) => {
       void logSettingsError('Failed to refresh devices', error, 'settings.set');
     });
+};
+
+/**
+ * Meter areas changed (`homes_config`): refetch the home-badge membership and
+ * repaint the two lists that carry badges. The device payload itself is
+ * unaffected, so this deliberately does NOT refetch `/ui_devices` — without it
+ * the badges would keep naming the pre-edit areas for the rest of the session
+ * (`loadDevicesOnce` only ever runs once).
+ */
+export const refreshHomeBadgesForUi = (context: string) => {
+  runLoggedTask(refreshHomeBadges().then(() => {
+    if (!state.devicesLoaded) return;
+    renderPriorities(state.latestDevices);
+    renderDevices(state.latestDevices);
+  }), 'Failed to refresh meter area badges', context);
 };
 
 export const refreshModeAndDeviceControls = () => {
