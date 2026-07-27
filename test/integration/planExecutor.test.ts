@@ -36,7 +36,7 @@ import { buildLiveStatePlan, hasPlanExecutionDrift } from '../../lib/plan/planRe
 import { legacyDeviceReason } from '../utils/deviceReasonTestUtils';
 import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 import { withGetSnapshotByDeviceId } from '../utils/deviceObservationMock';
-import { resolveFixtureCurrentOn } from '../utils/planTestUtils';
+import { resolveFixtureCurrentOn, withMaterializedEvPlugState } from '../utils/planTestUtils';
 import { createCapacityShortfallSideEffectGate } from '../../setup/capacityShortfallSideEffectGate';
 
 const KEEP_REASON = legacyDeviceReason('keep')!;
@@ -75,7 +75,15 @@ const pd = (
       evChargingState?: string;
     },
 ): DevicePlanDevice => withTemperatureDiscriminant(
-  withSteppedDiscriminant(withBinaryDiscriminant({ ...loose, currentOn: resolveFixtureCurrentOn(loose) })),
+  // `withMaterializedEvPlugState` regroups the way the producer does: it strips the
+  // raw `evChargingState` (which `withEvDiscriminant` drops in production) and
+  // materializes `commandableNow` + the EV trio in its place. Without it these
+  // fixtures kept a field production removes, which is exactly why the executor's
+  // EV path looked covered while `hasStableBinaryReleaseActuation` was dead.
+  withSteppedDiscriminant(withBinaryDiscriminant({
+    ...withMaterializedEvPlugState(loose),
+    currentOn: resolveFixtureCurrentOn(loose),
+  })),
 ) as DevicePlanDevice;
 
 const buildPlan = (): DevicePlan => ({
@@ -88,6 +96,7 @@ const buildPlan = (): DevicePlan => ({
     withTemperatureDiscriminant({
       id: 'dev-1',
       name: 'Heater',
+      commandableNow: true,
       deviceType: 'temperature' as const,
       currentState: 'off',
       plannedState: 'keep' as const,
@@ -110,6 +119,7 @@ const buildTargetPlan = (currentTarget = 18, plannedTarget = 23): DevicePlan => 
     withTemperatureDiscriminant({
       id: 'dev-1',
       name: 'Heater',
+      commandableNow: true,
       deviceType: 'temperature' as const,
       currentState: 'on',
       plannedState: 'keep' as const,
@@ -1599,6 +1609,7 @@ describe('PlanExecutor stepped loads', () => {
       controllable: true,
       controlCapabilityId: 'onoff' as const,
       reason: KEEP_REASON,
+      commandableNow: true,
       steppedLoadProfile: steppedProfile,
       selectedStepId: 'low',
       desiredStepId: 'max',
@@ -2038,6 +2049,21 @@ describe('PlanExecutor stepped loads', () => {
 
     expect(executor.hasStablePlanActuation(evDeadlinePlan({
       binaryCommandPending: true,
+    }))).toBe(false);
+  });
+
+  it('does not mark an unplugged charger stable for a deadline resume', () => {
+    // Pins the newly-live half of `hasStableBinaryReleaseActuation`: it reads the
+    // producer-resolved `commandableNow` off the plan device. Before that bit was
+    // carried across `planDevicesBase`, the predicate re-derived from a stripped
+    // `evChargingState`, resolved every EV to "state unknown", and was therefore
+    // dead in production — so the positive case above passed for the wrong reason
+    // and this negative case could not fail. `plugged_out` is one of the two
+    // states that genuinely blocks actuation, so it must read false here.
+    const { executor } = buildExecutor();
+
+    expect(executor.hasStablePlanActuation(evDeadlinePlan({
+      evChargingState: 'plugged_out',
     }))).toBe(false);
   });
 
@@ -3753,11 +3779,11 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
     const shedDevice = {
       id: 'shed-1', name: 'Heater', currentState: 'off' as const, plannedState: 'shed' as const,
       currentTarget: null, controllable: true, reason: CAPACITY_REASON,
-      controlCapabilityId: 'onoff' as const, currentOn: false,
+      controlCapabilityId: 'onoff' as const, currentOn: false, commandableNow: true,
     };
     const steppedDevice = (desiredStepId: string) => ({
       id: 'dev-1', name: 'Tank', currentState: 'off' as const, plannedState: 'keep' as const,
-      currentTarget: null, controllable: true, reason: KEEP_REASON,
+      currentTarget: null, controllable: true, reason: KEEP_REASON, commandableNow: true,
       controlModel: 'stepped_load' as const,
       controlCapabilityId: 'onoff' as const, currentOn: false,
       steppedLoadProfile: multiStepProfile,
@@ -4185,6 +4211,109 @@ describe('PlanExecutor stepped load reconciliation loop', () => {
       }));
 
       expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'onoff', false);
+    });
+  });
+
+  // The charger re-shed cooldown deadlock (prod 2026-07-26): a held stepped EV
+  // charger got a real `evcharger_charging=false` write on every rebuild (the
+  // already-matched skip is disabled for chargers), and every write restamped
+  // the GLOBAL shed cooldown via `recordShedActuation` — freezing every restore
+  // in the house. These pin the two independent halves of the fix at the
+  // applyPlanActions level.
+  describe('charger shed re-assert (cooldown-freeze P0, prod 2026-07-26)', () => {
+    const trustedOffObservation = {
+      valid: true as const,
+      capabilityId: 'evcharger_charging',
+      observedValue: false,
+      observedCapabilityIds: ['evcharger_charging'],
+      observedAtMs: 1,
+      source: 'device_update' as const,
+    };
+    const chargerSnapshot = (overrides: Record<string, unknown>) => ([{
+      id: 'dev-1',
+      name: 'Elbillader',
+      controlCapabilityId: 'evcharger_charging',
+      canSetControl: true,
+      available: true,
+      controlModel: 'stepped_load' as const,
+      steppedLoadProfile: steppedProfile,
+      targets: [],
+      ...overrides,
+    }]);
+    const chargerShedPlan = () => steppedPlan({
+      name: 'Elbillader',
+      currentState: 'off',
+      plannedState: 'shed',
+      shedAction: 'turn_off',
+      controlCapabilityId: 'evcharger_charging',
+      selectedStepId: 'low',
+      desiredStepId: 'off',
+      reason: CAPACITY_REASON,
+    });
+
+    it('skips the off-write entirely on raw-switch-provenance off evidence', async () => {
+      const state = createPlanEngineState();
+      const { executor, deviceManager } = buildExecutor(state, chargerSnapshot({
+        binaryControl: { on: false },
+        binaryControlObservation: trustedOffObservation,
+      }));
+
+      await executor.applyPlanActions(chargerShedPlan());
+
+      expect(deviceManager.setCapability).not.toHaveBeenCalledWith('dev-1', 'evcharger_charging', false);
+      expect(state.lastInstabilityMs).toBeNull();
+      expect(state.lastDeviceShedMs['dev-1']).toBeUndefined();
+    });
+
+    it('writes off a paused-but-armed charger without stamping the shed cooldown', async () => {
+      // State-derived off evidence (`plugged_in_paused` shape): the switch may
+      // still be armed, so the write is needed (the car could resume on its
+      // own) and the skip must not fire — but charging activity is trusted
+      // observed-off, so no load changes and the cooldown clocks and shed
+      // diagnostics must not be touched.
+      const state = createPlanEngineState();
+      const { executor, deviceManager } = buildExecutor(state, chargerSnapshot({
+        binaryControl: { on: false },
+        binaryControlObservation: {
+          ...trustedOffObservation,
+          observedCapabilityIds: ['evcharger_charging_state'],
+        },
+      }));
+
+      await executor.applyPlanActions(chargerShedPlan());
+
+      expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'evcharger_charging', false);
+      expect(state.lastInstabilityMs).toBeNull();
+      expect(state.lastDeviceShedMs['dev-1']).toBeUndefined();
+    });
+
+    it('stamps the shed cooldown for a real shed of a charging charger', async () => {
+      const state = createPlanEngineState();
+      const { executor, deviceManager } = buildExecutor(state, chargerSnapshot({
+        binaryControl: { on: true },
+        binaryControlObservation: { ...trustedOffObservation, observedValue: true },
+      }));
+
+      await executor.applyPlanActions(chargerShedPlan());
+
+      expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'evcharger_charging', false);
+      expect(typeof state.lastInstabilityMs).toBe('number');
+      expect(typeof state.lastDeviceShedMs['dev-1']).toBe('number');
+    });
+
+    it('writes AND stamps with no observation evidence at all (cold start fails safe)', async () => {
+      // No observed switch, no evidence record: absence must mean "write and
+      // stamp" — an unproven no-op is treated as a real shed, never skipped.
+      const state = createPlanEngineState();
+      const { executor, deviceManager } = buildExecutor(state, chargerSnapshot({
+        binaryControl: { on: false },
+      }));
+
+      await executor.applyPlanActions(chargerShedPlan());
+
+      expect(deviceManager.setCapability).toHaveBeenCalledWith('dev-1', 'evcharger_charging', false);
+      expect(typeof state.lastInstabilityMs).toBe('number');
+      expect(typeof state.lastDeviceShedMs['dev-1']).toBe('number');
     });
   });
 });

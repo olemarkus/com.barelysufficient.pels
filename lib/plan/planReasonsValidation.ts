@@ -59,8 +59,30 @@ const SHED_REASON_RULES: readonly ReasonCodeRule[] = [
   { code: PLAN_REASON_CODES.startupStabilization, label: 'startup stabilization' },
 ] as const;
 
+/**
+ * Reasons that require a producer-resolved posture flag on the same device.
+ * See the cross-field invariant in `findPlanReasonPairIssue`.
+ */
+const REASON_REQUIRED_FLAGS = [
+  {
+    code: PLAN_REASON_CODES.awaitingSolarSurplus,
+    flag: 'surplusOnly',
+    label: 'awaiting solar surplus requires surplusOnly',
+  },
+  {
+    code: PLAN_REASON_CODES.externalOffHold,
+    flag: 'externalOffHoldActive',
+    label: 'external off hold requires externalOffHoldActive',
+  },
+] as const satisfies readonly {
+  code: PlanReasonCode;
+  flag: keyof DevicePlanDevice;
+  label: string;
+}[];
+
 const INACTIVE_REASON_RULES: readonly ReasonCodeRule[] = [
   { code: PLAN_REASON_CODES.inactive, label: 'inactive' },
+  { code: PLAN_REASON_CODES.externalOffHold, label: 'external off hold' },
 ] as const;
 
 function stripCandidateReasons(dev: DevicePlanDevice): DevicePlanDevice {
@@ -108,19 +130,20 @@ function validatePlanReasonPair(dev: DevicePlanDevice): PlanReasonPairValidation
     };
   }
 
-  // Cross-field invariant: the `awaitingSolarSurplus` reason is meaningful ONLY
-  // on a producer-resolved dump-load device (`surplusOnly`). Attaching it to a
-  // non-surplus device would mis-attribute the starvation-pause classification
-  // (`resolveStarvationSuppressionSemantics` treats it as a deliberate posture,
-  // not starvation) and silently hide a real capacity/budget hold. Cheap to
-  // check here at finalization; a violation is a planner bug, not user input.
-  if (reasonCode === PLAN_REASON_CODES.awaitingSolarSurplus && dev.surplusOnly !== true) {
+  // Cross-field invariant: each of these reasons is meaningful ONLY on a device
+  // the producer resolved into the matching posture. Attaching one elsewhere
+  // mis-attributes the device's state to the user — `awaitingSolarSurplus` would
+  // hide a real capacity/budget hold behind a deliberate-posture classification,
+  // and `externalOffHold` would claim PELS is respecting an off action it never
+  // observed. Cheap to check at finalization; a violation is a planner bug.
+  const requiredFlag = REASON_REQUIRED_FLAGS.find((rule) => rule.code === reasonCode);
+  if (requiredFlag && dev[requiredFlag.flag] !== true) {
     return {
       deviceId: dev.id,
       deviceName: dev.name,
       plannedState,
       reason,
-      allowedReasonKinds: ['awaiting solar surplus requires surplusOnly'],
+      allowedReasonKinds: [requiredFlag.label],
     };
   }
 

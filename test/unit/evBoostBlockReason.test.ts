@@ -5,16 +5,19 @@ import {
 } from '../../packages/shared-domain/src/commandableNowReason';
 
 describe('resolveEvBoostBlockReason', () => {
-  it('blocks the three plug-states PELS cannot drive toward a charge', () => {
+  it('blocks the two plug-states PELS cannot drive toward a charge', () => {
     expect(resolveEvBoostBlockReason({ evChargingState: 'plugged_out' }))
       .toBe(EV_BOOST_BLOCK_REASONS.plugged_out);
     expect(resolveEvBoostBlockReason({ evChargingState: 'plugged_in_discharging' }))
       .toBe(EV_BOOST_BLOCK_REASONS.plugged_in_discharging);
-    // `plugged_in` = connected but NOT resumable (distinct from the resumable
-    // `plugged_in_paused`): boost can never activate, so it must surface a reason.
-    expect(resolveEvBoostBlockReason({ evChargingState: 'plugged_in' }))
-      .toBe(EV_BOOST_BLOCK_REASONS.plugged_in);
-    expect(EV_BOOST_BLOCK_REASONS.plugged_in).toBe('Car charging won’t resume. Boost will not activate.');
+  });
+
+  it('does not block `plugged_in` — boost is just "command it on now"', () => {
+    // Boost blocks on exactly what actuation blocks on, off the same
+    // `resolveEvBlockReasonKey` classification. `plugged_in` is commandable
+    // (Easee reports it while awaiting authentication; Wallbox reports it for its
+    // own paused state), so the boost panel must not claim boost won't activate.
+    expect(resolveEvBoostBlockReason({ evChargingState: 'plugged_in' })).toBeNull();
   });
 
   it('does not block the resumable / charging states (fall through to SoC checks)', () => {

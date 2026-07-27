@@ -70,6 +70,7 @@ export type UiState = {
   controllableMap: Record<string, boolean>;
   managedMap: Record<string, boolean>;
   budgetExemptMap: Record<string, boolean>;
+  respectExternalOffMap: Record<string, boolean>;
   nativeWiringMap: Record<string, boolean>;
   deviceControlProfiles: DeviceControlProfiles;
   deviceTargetPowerConfigs: DeviceTargetPowerConfigs;
@@ -120,6 +121,7 @@ export const state: UiState = {
   controllableMap: {},
   managedMap: {},
   budgetExemptMap: {},
+  respectExternalOffMap: {},
   nativeWiringMap: {},
   deviceControlProfiles: {},
   deviceTargetPowerConfigs: {},

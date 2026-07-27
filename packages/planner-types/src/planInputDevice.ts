@@ -147,14 +147,14 @@ export type PlanInputDeviceBase = {
   controlModel?: DeviceControlModel;
   priority?: number;
   /**
-   * Producer-resolved bit (chunk 2 of the planner-detype refactor): true when
-   * the device is commandable in this cycle, false when physically blocked
-   * (EV unplugged/discharging, snapshot `available === false`, etc.). Optional
-   * for the duration of the dual-read transition; chunk 6 makes it required.
-   * Consumers MUST go through `lib/device/deviceActionProjection.isCommandableNow`
-   * (or the boost equivalent) so the dual-read fallback applies uniformly.
+   * Producer-resolved bit: true when the device is commandable in this cycle,
+   * false when physically blocked (EV unplugged/discharging, snapshot
+   * `available === false`). REQUIRED — the dual-read transition this was optional
+   * for is over, and the fallback it enabled is deleted. Consumers read it via
+   * `isCommandableNow`; nothing re-derives it from raw fields, so absence can
+   * never be mistaken for a decision.
    */
-  commandableNow?: boolean;
+  commandableNow: boolean;
   /** Opaque diagnostic string; UI / diagnostics consumers only. */
   commandableNowReason?: string | null;
   /**
@@ -269,6 +269,18 @@ export type PlanInputDeviceBase = {
    * it from the blob (resolution-in-producer).
    */
   surplusOnly?: true;
+  /**
+   * Producer-resolved "Leave off until turned on again" posture. `true` when the
+   * device is opted in, PELS observed it turn off outside PELS while the plan
+   * expected it to run, and it is STILL observed off. Resolved once at
+   * `toPlanDevice` from the hold store + `currentOn`; the planner reads this
+   * flat bit and never asks why the device is off (resolution-in-producer).
+   *
+   * Pairing the stored hold with the live off state here is what keeps a stale
+   * hold harmless: if the device is on, the posture simply does not apply, so a
+   * missed release event can never make the planner ignore a running device.
+   */
+  externalOffHoldActive?: true;
   budgetExempt?: boolean;
   available?: boolean;
   zone?: string;

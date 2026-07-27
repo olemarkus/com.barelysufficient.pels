@@ -32,8 +32,7 @@ import type { HomeyDeviceLike, Logger } from '../utils/types';
 import type { TargetedMissState } from './transport/targetedSnapshotMerge';
 import type { PowerEstimateState } from './devicePowerEstimate';
 import type { LiveDevicePowerWatts } from './managerEnergy';
-import { BatteryStateProducer } from './batteryStateProducer';
-import { SolarProductionProducer } from './solarProductionProducer';
+import { createObservationProducers, type ObservationProducers } from './observationProducers';
 import { DeviceMeasuredPowerResolver } from './measuredPowerResolver';
 import {
   clearLocalCapabilityWrite,
@@ -85,7 +84,7 @@ import {
   reconcileBinarySettleEvidenceWithSnapshot,
 } from './transport/binarySettleEvidence';
 import {
-  handleRealtimeCapabilityUpdate as runHandleRealtimeCapabilityUpdate,
+  handleRealtimeCapabilityUpdateWithProbe as runHandleRealtimeCapabilityUpdate,
 } from './transport/realtimeCapabilityHandling';
 import {
   handleRealtimeDeviceUpdateEvent,
@@ -192,13 +191,16 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     // resolution consults) and emits `battery_state_observed`; never feeds the
     // hard-cap import path. See `batteryStateProducer.ts`. Constructed in the
     // constructor body (its emit needs the already-assigned logger).
-    private readonly batteryStateProducer: BatteryStateProducer;
+    private readonly observationProducers: ObservationProducers;
     // Read-only PV / solar production awareness producer. Holds the detected solar-id
     // set (the authoritative role-membership set the app's managed/controllable
     // resolution consults) and emits `solar_production_observed`; never feeds the
     // hard-cap import path nor the whole-home generation aggregate. See
     // `solarProductionProducer.ts`.
-    private readonly solarProductionProducer: SolarProductionProducer;
+    // Read-only EV car-to-charger link probe. Correlates class `car` devices
+    // (invisible to the rest of PELS) against charger plug edges and emits
+    // structured events only — no planning, admission, or actuation consumer.
+    // See `evCarLinkProducer.ts`.
     // One shared context handed to the homey-free transport collaborators; built
     // once so the extracted free functions mutate the SAME snapshot / evidence
     // maps this class owns (object identity preserved).
@@ -209,6 +211,9 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         capabilityId: string,
         value: unknown,
     ): void => runHandleRealtimeCapabilityUpdate(this.ctx, deviceId, capabilityId, value);
+
+    /** Heartbeat for the EV car-link probe's elapsed-time decisions. */
+    tickEvCarLink(nowMs: number): void { this.observationProducers.evCarLink.tick(nowMs); }
 
     private readonly handleRealtimeDeviceUpdate = (device: HomeyDeviceLike): void => (
         handleRealtimeDeviceUpdateEvent(this.ctx, device)
@@ -234,12 +239,11 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         this.onSnapshotMutated = options?.onSnapshotMutated;
         this.pendingPredicate = options?.pendingPredicate;
         this.observedStateDispatcher = options?.observedStateDispatcher;
-        this.batteryStateProducer = new BatteryStateProducer(
-            (p) => (this.logger.structuredLog ?? moduleLogger).info(p),
-        );
-        this.solarProductionProducer = new SolarProductionProducer(
-            (p) => (this.logger.structuredLog ?? moduleLogger).info(p),
-        );
+        this.observationProducers = createObservationProducers({
+            emit: (p) => (this.logger.structuredLog ?? moduleLogger).info(p),
+            getSnapshots: () => this.latestSnapshot,
+            evCarLinkSnapshotAccess: options?.evCarLinkSnapshotAccess,
+        });
         this.binarySettleOps = options?.binarySettleOps ?? createInertBinarySettleOps();
         this.binarySettleState = options?.binarySettleState ?? createEmptyBinarySettleState();
         if (providers) this.providers = providers;
@@ -282,8 +286,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
             recentRealtimeCapabilityEventLogByKey: t.recentRealtimeCapabilityEventLogByKey,
             binarySettleState: t.binarySettleState,
             binarySettleOps: t.binarySettleOps,
-            batteryStateProducer: t.batteryStateProducer,
-            solarProductionProducer: t.solarProductionProducer,
+            observationProducers: t.observationProducers,
             getFlowTriggerCard: t.getFlowTriggerCard,
             nextObservationCursor: (deviceId, nowMs) => t.nextObservationCursor(deviceId, nowMs),
             dispatchObservedStateChanged: (event) => t.dispatchObservedStateChanged(event),
@@ -330,17 +333,17 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
 
     /** Whether `deviceId` is a currently-detected home battery (incl. offline). */
     isBatteryDevice(deviceId: string): boolean {
-        return this.batteryStateProducer.isBatteryDevice(deviceId);
+        return this.observationProducers.battery.isBatteryDevice(deviceId);
     }
 
     /** Whether ANY home battery is currently detected (incl. offline). */
     hasBatteryDevices(): boolean {
-        return this.batteryStateProducer.hasBatteryDevices();
+        return this.observationProducers.battery.hasBatteryDevices();
     }
 
     /** Whether `deviceId` is a currently-detected solar device (incl. offline). */
     isSolarDevice(deviceId: string): boolean {
-        return this.solarProductionProducer.isSolarDevice(deviceId);
+        return this.observationProducers.solar.isSolarDevice(deviceId);
     }
 
     private nextObservationCursor(deviceId: string, nowMs: number = Date.now()): ObservationCursor {
@@ -494,6 +497,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
         snap.lastLocalWriteMs = Date.now();
     }
 
+
     getPeriodicStatusMetrics(): ({ devicesTotal: number } & SnapshotRefreshMetrics) | null {
         return computePeriodicStatusMetrics(this.ctx);
     }
@@ -548,6 +552,7 @@ export class DeviceTransport extends EventEmitter implements DeviceObservation {
     }
 
     public destroy(): void {
+        this.observationProducers.destroy();
         void this.liveFeed?.stop();
         this.liveFeed = null;
         this.binarySettleOps.clearAll(this.binarySettleState);

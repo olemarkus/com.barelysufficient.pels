@@ -282,6 +282,8 @@ export function initSettingsHandlerForApp(
     onHomeScopedSettingChanged?: (baseKey: string, homeId: string) => void | Promise<void>;
     /** Reconcile the per-home capacity bundles after a `homes_config` write. */
     reconcileHomeRuntimes?: () => void;
+    /** Fan a global `operating_mode`/`mode_device_targets` write to every live sub-home plan. */
+    rebuildHomeRuntimePlansForModeChange?: () => void;
     /** Synchronously fence per-home runtimes for a newly observed source epoch. */
     onHomeRuntimePowerSourceObserved?: () => void;
     /** Replace per-home meter runtimes for the latest observed source epoch. */
@@ -302,6 +304,7 @@ export function initSettingsHandlerForApp(
     homey: ctx.homey,
     onHomeScopedSettingChanged: options?.onHomeScopedSettingChanged,
     reconcileHomeRuntimes: options?.reconcileHomeRuntimes,
+    rebuildHomeRuntimePlansForModeChange: options?.rebuildHomeRuntimePlansForModeChange,
     onHomeRuntimePowerSourceObserved: options?.onHomeRuntimePowerSourceObserved,
     onHomeRuntimePowerSourceChanged: options?.onHomeRuntimePowerSourceChanged,
     onHomeyEnergyMeterObserved: options?.onHomeyEnergyMeterObserved,
@@ -337,6 +340,7 @@ export function initSettingsHandlerForApp(
       ctx.powerTracker.lastTimestamp,
     ),
     reloadWeatherAdvisor: () => ctx.reloadWeatherCollector?.(),
+    releaseDeOptedExternalOffHolds: () => ctx.externalOffHold?.releaseDeOptedHolds() ?? [],
   });
   const onSettingsSet = async (key: string) => {
     await settingsHandler?.(key);

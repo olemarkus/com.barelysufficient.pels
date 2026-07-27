@@ -9,6 +9,7 @@ import {
 import type { ObservedDeviceState } from '../../../contracts/src/types.ts';
 import {
   deadlineLabels,
+  resolveEffectivePlanStatus,
   SMART_TASK_BANNER_UNAVAILABLE_FOR_DEVICE,
   type DeadlinePendingContext,
   type DeadlinePlanUnavailableReason,
@@ -354,7 +355,17 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
   const originalChargeByStartMs = buildChargeByStartMs(activePlan!.original ?? latest);
   const currentChargeByStartMs = buildChargeByStartMs(latest);
   const progressPerKWh = energyNeededKWh > 0 ? progress.remainingUnits / energyNeededKWh : 0;
-  const cannotMeet = latest.planStatus === 'cannot_meet' || latest.planStatus === 'at_risk';
+  // The status this page REPORTS: the committed verdict, overlaid with the live
+  // per-cycle cause. Without the overlay a row the list marks `At risk` opens on
+  // a green on-track hero until the next settle. `latest.planStatus` stays the
+  // committed trajectory and is still what the budget-cause derivation below
+  // reads — a device left off is not a budget shortfall.
+  const reportedPlanStatus = resolveEffectivePlanStatus(
+    latest.planStatus,
+    activePlan!.diagnosticReasonCode,
+  );
+  const deviceLeftOff = activePlan!.diagnosticReasonCode === 'objective_device_left_off';
+  const cannotMeet = reportedPlanStatus === 'cannot_meet' || reportedPlanStatus === 'at_risk';
   const firstChargingHour = hours.find((hour) => currentChargeByStartMs.has(hour.startsAtMs));
   const costAndDelivery = resolveLiveCostAndDelivery({
     bootstrap, deviceId, hours, currentChargeByStartMs, costDisplay: input.costDisplay,
@@ -437,10 +448,11 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
       energyExpectedKWh: heroEnergy.energyExpectedKWh,
       confidence: energy?.confidence ?? null,
       learning: heroEnergy.learning,
-      planStatus: latest.planStatus,
+      planStatus: reportedPlanStatus,
       nowMs,
       cannotMeet,
       dailyBudgetExhausted,
+      deviceLeftOff,
       dailyBudgetExhaustedInRunUp: dailyBudgetExhaustedAnywhere,
       // Latest revision's `computedFromPricesUpTo` is carried verbatim so the
       // hero's headline-reason resolver can branch on "prices not through
@@ -451,7 +463,7 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
       plannedWindowCheaperThanNow: resolvePlannedWindowCheaperThanNow({
         hours, currentChargeByStartMs, nowMs,
       }),
-      tone: resolveDeadlineHeroTone(latest.planStatus),
+      tone: resolveDeadlineHeroTone(reportedPlanStatus),
       plannedTotalCost: costAndDelivery.plannedTotalCost,
       costUnit: input.costDisplay.unit,
       deliveredKWh: costAndDelivery.deliveredKWh,
@@ -474,7 +486,7 @@ const buildReadyPayload = (input: ObjectivePayloadReady): DeadlinePlanPayload =>
     trajectory: buildTrajectory({
       device,
       activePlan: activePlan!,
-      planStatus: latest.planStatus,
+      planStatus: reportedPlanStatus,
       hours,
       currentChargeByStartMs,
       currentCoverStartByStartMs: buildCoverStartByStartMs(latest),

@@ -587,7 +587,7 @@ describe('previewDeferredObjectivePlan', () => {
     expect(estimate.unavailableReason).toBe('price_feature_disabled');
   });
 
-  it('tags unavailable as not_resumable when the charger is connected but cannot resume (plugged_in)', () => {
+  it('previews a plan for a bare-connected charger (plugged_in) rather than tagging it unavailable', () => {
     const ctx: PreviewContext = {
       device: buildEvDevice({ evChargingState: 'plugged_in' }),
       powerTracker: buildEvPowerTracker(),
@@ -597,8 +597,10 @@ describe('previewDeferredObjectivePlan', () => {
     };
     const estimate = runPreview({ deviceId: 'ev-1', candidate: evCandidate(), ctx });
 
-    expect(estimate.status).toBe('unavailable');
-    expect(estimate.unavailableReason).toBe('not_resumable');
+    // `plugged_in` is commandable, so the preview must not declare the task
+    // unavailable — that is what made an EV deadline unmeetable by construction.
+    expect(estimate.status).not.toBe('unavailable');
+    expect(estimate.unavailableReason).not.toBe('not_resumable');
   });
 
   it('returns at_risk when the deadline forces the plan into its safety reserve', () => {

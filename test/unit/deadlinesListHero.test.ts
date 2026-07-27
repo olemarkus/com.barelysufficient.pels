@@ -218,17 +218,18 @@ describe('resolveDeadlinesListHero', () => {
     expect(hero?.subline).toBe('Tesla due 06:30 — car unplugged.');
   });
 
-  it('names "charging won’t resume" — not "car unplugged" — for a paused_not_resumable card', () => {
-    // The connected-but-not-resumable card shares the `paused` bucket, but the
-    // subline must name the real recovery (check the charger), never tell a
-    // plugged-in owner to replug.
+  it('names "not charging yet" — not "car unplugged" — for a paused_not_resumable card', () => {
+    // The connected-but-no-session card shares the `paused` bucket, but the
+    // subline must name what is actually observed and never tell a plugged-in
+    // owner to replug. It must also not claim charging "won't resume": PELS does
+    // command a `plugged_in` charger on.
     const hero = resolveDeadlinesListHero({
       cards: [buildCard({ deviceName: 'Tesla', statusId: 'paused_not_resumable', deadlineAtMs: T0 })],
       formatTime,
     });
     expect(hero?.headline).toBe('1 smart task paused');
     expect(hero?.tone).toBe('warn');
-    expect(hero?.subline).toBe('Tesla due 06:30 — charging won’t resume.');
+    expect(hero?.subline).toBe('Tesla due 06:30 — not charging yet.');
   });
 
   // Paused outranks pending / on-track / satisfied so a mixed list with one

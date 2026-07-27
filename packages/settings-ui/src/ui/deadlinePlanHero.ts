@@ -8,6 +8,7 @@ import {
   formatEnergyEstimateKWh,
   formatEstimatedCostStatValue,
   SMART_TASK_HERO_STAT_LABELS,
+  WHY_AT_RISK_DEVICE_LEFT_OFF,
   type DeadlineCannotMeetRecourse,
   type DeadlineLabels,
 } from '../../../shared-domain/src/deadlineLabels.ts';
@@ -185,7 +186,12 @@ export const resolveQueuedHeadlineReason = (params: {
 export const resolveCannotMeetMeta = (params: {
   labels: DeadlineLabels;
   dailyBudgetExhausted: boolean;
+  deviceLeftOff: boolean;
 }): string => {
+  // The device being off outranks both cost causes: the plan itself is fine and
+  // neither the target nor the deadline is what needs changing. Same sentence the
+  // Smart-task list and the widget use, so the three surfaces cannot diverge.
+  if (params.deviceLeftOff) return WHY_AT_RISK_DEVICE_LEFT_OFF;
   if (params.dailyBudgetExhausted) return params.labels.cannotMeetDailyBudgetExhausted;
   return params.labels.cannotMeetShortfall();
 };
@@ -211,9 +217,14 @@ export const resolveCannotMeetRecourse = (params: {
   labels: DeadlineLabels;
   cannotMeet: boolean;
   dailyBudgetExhausted: boolean;
+  deviceLeftOff: boolean;
   deviceId: string;
 }): DeadlineCannotMeetRecourse | null => {
   if (!params.cannotMeet) return null;
+  // No recourse for a device the user turned off: the reason sentence already
+  // names the only action ("until turned on again"), and neither the budget
+  // surface nor the device settings hold the fix.
+  if (params.deviceLeftOff) return null;
   if (params.dailyBudgetExhausted) return params.labels.cannotMeetRecourse.openBudget;
   return { ...params.labels.cannotMeetRecourse.openOverview, deviceId: params.deviceId };
 };
@@ -241,6 +252,10 @@ export type BuildHeroInput = {
   nowMs: number;
   cannotMeet: boolean;
   dailyBudgetExhausted: boolean;
+  // "Leave off until turned on again" is live on this device. Drives the reason
+  // sentence and suppresses the recourse, so an at-risk hero reached through the
+  // overlay never explains itself with the target, the deadline, or the budget.
+  deviceLeftOff: boolean;
   // Whether the latest revision's `dailyBudgetExhaustedBucketCount` is > 0.
   // Distinct from `dailyBudgetExhausted` above (which is gated on
   // `planStatus === 'cannot_meet'`): the queued headline-reason resolver

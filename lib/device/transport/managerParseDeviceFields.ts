@@ -45,7 +45,10 @@ import {
     resolveLastFreshDataMs,
     resolveBinaryControlObservation,
 } from './managerParseSnapshot';
-import { resolveStateOfChargeSnapshot } from './stateOfCharge';
+import {
+    resolveStateOfChargeSnapshot,
+    type RetainedStateOfChargeSession,
+} from './stateOfCharge';
 import { resolveDeviceParsedControlState } from './managerParsedControlState';
 import { resolveAvailable as resolveAvail } from './managerParsedAvailability';
 import type { ParsedDeviceIdentity } from './managerParseIdentity';
@@ -232,6 +235,7 @@ export function assembleDeviceSnapshot(params: {
         evChargingState: control.evChargingState,
         stateOfCharge: resolveParsedSoc(
             deviceClassKey, now, overlay.capabilityObj, overlay.reportedCapabilities,
+            previousSnapshot?.stateOfCharge,
         ),
         currentTemperature,
         capabilities: overlay.capabilities,
@@ -286,17 +290,25 @@ function resolveTargetDeviceType(targetCaps: readonly string[]): TargetDeviceSna
     return targetCaps.length > 0 ? 'temperature' : 'onoff';
 }
 
+// `retainedSession` carries the session anchor the transport already holds for
+// this charger. A full refresh sees only the CURRENT plug state, never the
+// plug-out that preceded it, so re-deriving the anchor from scratch would let a
+// mid-session charging-state change look like a reconnect and invalidate the
+// last SoC report. Same rule as "never let an older full fetch erase a fresher
+// realtime observation" (`lib/device/AGENTS.md`).
 function resolveParsedSoc(
     deviceClassKey: string,
     nowMs: number,
     capabilityObj: DeviceCapabilityMap,
     reportedCapabilities: FlowReportedCapabilitiesForDevice,
+    retainedSession: RetainedStateOfChargeSession | undefined,
 ): DeviceStateOfChargeSnapshot | undefined {
     return resolveStateOfChargeSnapshot({
         deviceClassKey,
         nowMs,
         capabilityObj,
         reportedCapabilities,
+        retainedSession,
     });
 }
 

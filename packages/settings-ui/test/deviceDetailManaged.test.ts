@@ -1904,7 +1904,7 @@ describe('device detail managed state saves', () => {
     expect(status?.textContent).toBe('Battery level is stale. Boost will not activate.');
   });
 
-  it('blocks EV boost for a connected-but-not-resumable charger (plugged_in)', async () => {
+  it('allows EV boost for a bare-connected charger (plugged_in)', async () => {
     vi.doMock('../src/ui/devices.ts', () => ({
       renderDevices: vi.fn(),
     }));
@@ -1939,9 +1939,10 @@ describe('device detail managed state saves', () => {
     } = await import('../src/ui/deviceDetail/index.ts');
     const { state } = await import('../src/ui/state.ts');
 
-    // Fresh SoC below the 40% threshold: without the plug-state block the panel
-    // would say "Boost active when planning". `plugged_in` is not resumable, so
-    // the block reason must win over the SoC check.
+    // Fresh SoC below the 40% threshold. `plugged_in` no longer blocks: boost is
+    // "command it on now", and PELS does command a bare-connected charger, so the
+    // panel must not claim boost won't activate. Only `plugged_out` /
+    // `plugged_in_discharging` still win over the SoC check.
     state.latestDevices = [buildDevice('charger-1', 'Driveway charger', {
       deviceClass: 'evcharger',
       deviceType: 'onoff',
@@ -1977,6 +1978,6 @@ describe('device detail managed state saves', () => {
     await flushPromises();
 
     const status = document.querySelector('#device-detail-ev-boost-status') as HTMLElement | null;
-    expect(status?.textContent).toBe('Car charging won’t resume. Boost will not activate.');
+    expect(status?.textContent).toBe('Boost active when planning: 32% < 40%.');
   });
 });

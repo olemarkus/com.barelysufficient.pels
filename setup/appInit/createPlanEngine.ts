@@ -1,5 +1,6 @@
 import { buildDeviceActuator } from './buildDeviceActuator';
 import { requireDeviceManager } from './contextGuards';
+import { isExternalOffHeldForDevice } from './toPlanDevice';
 import { PlanEngine as PlanEngineClass } from '../../lib/plan/planEngine';
 import { isDeviceObservationStale } from '../../lib/observer/observationFreshness';
 import type { DeviceDiagnosticsRecorder } from '../../lib/diagnostics/deviceDiagnosticsService';
@@ -66,6 +67,12 @@ export function createPlanEngine(ctx: AppContext, scope: HomeScope, options?: Cr
     // (starvation must not count stale-but-unobserved time). Same observer-projection
     // seam as createPlanService.getObservationStale; resolved to a flat boolean here.
     // A device with no projection entry yet is treated as not stale.
+    // "Leave off until turned on again": resolved HERE rather than per caller so
+    // no home can be wired without it — a missing one would silently make the
+    // executor's restore carve-out a no-op for that home's devices. Same
+    // resolution the producer applies, so plan and executor share one definition
+    // of "held".
+    isExternalOffHeld: (deviceId) => isExternalOffHeldForDevice(ctx, deviceId),
     getObservationStale: (deviceId) => {
       const observed = ctx.getObservedState(deviceId);
       return observed !== undefined && isDeviceObservationStale(observed);
@@ -76,10 +83,15 @@ export function createPlanEngine(ctx: AppContext, scope: HomeScope, options?: Cr
     getCapacityDryRun: scope.getCapacityDryRun,
     // Policy closures from the scope: the main home binds the live ctx reads
     // (byte-identical to the pre-R7b hardwiring); a sub-home capacity bundle
-    // binds disabled constants, so its engine is capacity-only without this
-    // factory branching on which home it serves.
+    // binds disabled constants for the PRICE/BUDGET members, so its engine is
+    // capacity-only without this factory branching on which home it serves.
+    // The two mode members are the exception — every home binds them live,
+    // because the mode target is the restore anchor (see `homeScope.ts`). What
+    // IS per-home is whether a mode-target RAISE is held while this home's own
+    // power reading is unknown; only a sub-home opts in.
     getOperatingMode: scope.getOperatingMode,
     getModeDeviceTargets: scope.getModeDeviceTargets,
+    holdsModeTargetRaisesWhilePowerUnknown: scope.holdsModeTargetRaisesWhilePowerUnknown,
     getPriceOptimizationEnabled: scope.getPriceOptimizationEnabled,
     getPriceOptimizationSettings: scope.getPriceOptimizationSettings,
     isCurrentHourCheap: scope.isCurrentHourCheap,

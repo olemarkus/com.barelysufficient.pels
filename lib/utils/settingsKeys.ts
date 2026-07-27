@@ -67,6 +67,22 @@ export const OPERATING_MODE_SETTING = 'operating_mode';
 export const MANAGED_DEVICES = 'managed_devices';
 export const CONTROLLABLE_DEVICES = 'controllable_devices';
 export const BUDGET_EXEMPT_DEVICES = 'budget_exempt_devices';
+// Opt-in config for "Leave off until turned on again": `Record<deviceId, true>`
+// (absent = off). Mirror of RESPECT_EXTERNAL_OFF_DEVICES in
+// packages/contracts/src/settingsKeys.ts — keep both in sync (the settings UI
+// can't import lib).
+export const RESPECT_EXTERNAL_OFF_DEVICES = 'respect_external_off_devices';
+// Runtime state for the above — which devices PELS is currently leaving off
+// because they were turned off outside PELS. Deliberately a separate key from
+// the config: clearing the opt-in must not lose the config, and vice versa.
+// Shape validated by `lib/observer/externalOffHold.ts`.
+export const EXTERNAL_OFF_HOLDS = 'external_off_holds';
+// Written-before marker for the above. Lets the store tell a fresh install
+// (no marker, absent state => persist immediately) from a transient read miss
+// (marker set, absent state => engage the abandon-grace window instead of
+// full-replacing the state with an empty map). Same trick as
+// `power_calibration_initialized`.
+export const EXTERNAL_OFF_HOLDS_INITIALIZED = 'external_off_holds_initialized';
 export const TEMPERATURE_BOOST_SETTINGS = 'temperature_boost_settings';
 export const EV_BOOST_SETTINGS = 'ev_boost_settings';
 export const DEFERRED_OBJECTIVES_SETTINGS = 'deferred_objectives';
@@ -142,3 +158,9 @@ export const PV_FORECAST_STATE = 'pv_forecast_state';
 // Curtailment-surplus refute ladder: {holdLevel, holdUntilMs, importLatchUntilMs},
 // written on verification transitions only (crash-loop resilience).
 export const CURTAILMENT_HOLD_STATE = 'curtailment_hold_state';
+// EV car-to-charger link probe: coincidence-vote affinity map plus the
+// per-car self-stop state-of-charge samples. Observation-only — no consumer
+// reads it for planning. The `_INITIALIZED` companion distinguishes a fresh
+// install from a transient settings-read miss (see `evCarLinkStore.ts`).
+export const EV_CAR_LINK_STATE = 'ev_car_link_state';
+export const EV_CAR_LINK_STATE_INITIALIZED = 'ev_car_link_state_initialized';

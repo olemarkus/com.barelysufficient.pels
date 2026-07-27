@@ -268,7 +268,17 @@ describe('EV charger integration', { retry: 2 }, () => {
     }));
   });
 
-  it('keeps a connected but non-resumable Easee-like charger inactive from plugged_in state', async () => {
+  it('starts a bare-connected (plugged_in) Easee-like charger when headroom allows', async () => {
+    // Regression (prod 2026-07-26): PELS classified `plugged_in` as "not
+    // resumable" and planned the charger inactive, so it never issued a start
+    // command — with 4.5 kW of available power and nothing else holding it. The
+    // Easee Homey app maps op mode 7 "Awaiting Authentication" AND 6 "Ready to
+    // Charge" to `plugged_in`, and its `evcharger_charging` write calls
+    // `startCharging()` (the Easee `start_charging` command, with
+    // `resume_charging` as fallback) — which is exactly the authorization the
+    // charger is waiting for. Wallbox maps its own `Paused` state to `plugged_in`
+    // and never emits `plugged_in_paused` at all, so the old gate also meant PELS
+    // could never resume a charger it had paused itself.
     const charger = new EaseeMockCharger({ loadW: 7200 });
     await charger.seedState('plugged_in');
     const app = await createEvApp(charger);
@@ -276,15 +286,14 @@ describe('EV charger integration', { retry: 2 }, () => {
     const plan = await rebuildPlan(app, { totalPowerKw: 0.4, softLimitKw: 10.0 });
     const evPlan = getPlanEntry(plan, charger.idValue);
 
-    expect(evPlan.plannedState).toBe('inactive');
-    expect(reasonText(evPlan.reason)).toBe('inactive (charger is not resumable)');
-    expect(charger.getCommandSequence()).toEqual([]);
+    expect(evPlan.plannedState).not.toBe('inactive');
+    expect(charger.getCommandSequence()).toEqual(['evcharger_charging:true']);
 
     const snapshot = await refreshSnapshot(app);
     const entry = getSnapshotEntry(snapshot, charger.idValue);
     expect(entry).toEqual(expect.objectContaining({
-      binaryControl: { on: false },
-      evChargingState: 'plugged_in',
+      binaryControl: { on: true },
+      evChargingState: 'plugged_in_charging',
     }));
   });
 
@@ -314,11 +323,13 @@ describe('EV charger integration', { retry: 2 }, () => {
     },
   );
 
-  it('normalises a vendor charging state outside the enum to the uncommandable unknown state', async () => {
+  it('normalises a vendor charging state outside the enum without blocking the charger', async () => {
     // The producer (`getEvChargingState`) maps any value outside the
-    // `evcharger_charging_state` enum to `undefined`, so an unrecognised state
-    // is never surfaced verbatim: the charger is planned inactive as
-    // "charger state unknown" and its snapshot carries no charging state.
+    // `evcharger_charging_state` enum to `undefined`, so an unrecognised state is
+    // never surfaced verbatim. That normalisation stands — what changed is that
+    // the resulting absence no longer blocks: an app reporting a non-standard
+    // string would otherwise be uncommandable forever, not for one cold-start
+    // cycle. PELS commands it and activation backoff judges the outcome.
     const charger = new EaseeMockCharger({ loadW: 7200 });
     await charger.seedState('mystery');
     const app = await createEvApp(charger);
@@ -326,16 +337,10 @@ describe('EV charger integration', { retry: 2 }, () => {
     const plan = await rebuildPlan(app, { totalPowerKw: 0.4, softLimitKw: 10.0 });
     const evPlan = getPlanEntry(plan, charger.idValue);
 
-    expect(evPlan.plannedState).toBe('inactive');
-    expect(reasonText(evPlan.reason)).toBe('inactive (charger state unknown)');
-    expect(charger.commandLog).toHaveLength(0);
-
-    const snapshot = await refreshSnapshot(app);
-    const entry = getSnapshotEntry(snapshot, charger.idValue);
-    expect(entry).toEqual(expect.objectContaining({
-      binaryControl: { on: false },
-      evChargingState: undefined,
-    }));
+    expect(evPlan.plannedState).not.toBe('inactive');
+    expect(charger.getCommandSequence()).toEqual(['evcharger_charging:true']);
+    // The unrecognised vendor value never reaches a consumer.
+    expect(charger.commandLog.some((entry) => entry.value === 'mystery')).toBe(false);
   });
 
   it('resumes a paused plugged-in charger during a planned EV deadline bucket', async () => {

@@ -12,6 +12,7 @@ import type { PlanActuationMode } from './executorTypes';
 import {
   type PlanExecutorBinaryContext,
   runBinaryControl,
+  skipRestoreForExternalOffHold,
   skipRestoreForSurplusPosture,
 } from './binaryControlShared';
 
@@ -89,6 +90,12 @@ export const applyBinaryRestoreWithSnapshot = async (
     snapshot,
     mode,
   } = params;
+  // "Leave off until turned on again", at the FUNNEL: every controlled-restore
+  // lane ends here — the plan lane, and the smart-task deferred `binary_restore`
+  // — so one guard covers them all and they cannot drift apart. Placed like
+  // `skipRestoreForSurplusPosture` in the capacity-control-off helper for the
+  // same reason. See `skipRestoreForExternalOffHold`.
+  if (skipRestoreForExternalOffHold(ctx, deviceId, name)) return false;
   if (ctx.state.pendingRestores.has(deviceId)) {
     logger.debug({
       event: 'restore_command_skipped',
@@ -159,6 +166,12 @@ export const applyCapacityControlOffRestoreWithSnapshot = async (
   // reaches this helper, the shared guard skips force-turning-ON a baseline-off
   // dump load on capacity-control-off/unmanage. See `skipRestoreForSurplusPosture`.
   if (skipRestoreForSurplusPosture(ctx, deviceId, name)) return false;
+  // "Leave off until turned on again" reaches this lane too. A device that still
+  // carries `shedDecidedMs` from an earlier capacity shed, is then turned off
+  // outside PELS, and is then unmanaged (or has Power-limit control switched off)
+  // would otherwise be force-turned-ON here — the one thing the hold forbids.
+  // Losing control authority is not consent to undo the user's own off action.
+  if (skipRestoreForExternalOffHold(ctx, deviceId, name)) return false;
   try {
     const outcome = await runBinaryControl({
       ctx,

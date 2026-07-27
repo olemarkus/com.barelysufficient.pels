@@ -126,9 +126,76 @@ for the user-facing vocabulary, see the "Multiple meters vocabulary" section of
 Per-meter: **hard cap, safety margin, dry-run (control on/off), device
 priorities, real-time limit/resume.** These are genuinely per-meter.
 
+**Operating mode is a single global mode, but its per-device targets apply in
+EVERY home.** The active mode itself is not yet per-home (a per-home active mode
+is a planned follow-up), yet every home's scope binds `getOperatingMode` /
+`getModeDeviceTargets` to the live `ctx` reads. This is not a policy choice: the
+mode target is the **restore anchor**. Binding it to `{}` for a sub-home made
+`resolveTemperatureSeed` fall back to the device's live setpoint, which while
+shed IS the shed setpoint, so on release `plannedTarget === currentTarget`, the
+executor dropped the write, and an area temperature device stayed cold
+indefinitely. Price optimization and surplus absorb stay off for a sub-home
+independently, via `getPriceOptimizationSettings: () => ({})` — they only
+modulate a `kind: 'mode'` seed and both require a per-device config entry.
+
+Binding those targets live for a sub-home also opened a LOAD-ADDING write, so
+one more per-home posture rides alongside them: **`holdsModeTargetRaisesWhile
+PowerUnknown`** (sub-homes `true`, main `false`). When it is on and
+`context.powerKnown` is false, a load-adding mode-target change is held at the
+device's own current setpoint (`applyModeSeedModulation`,
+`lib/plan/planDevices.ts`).
+
+A mode target is the one load-adding thing the planner commands as an ordinary
+`target_update`, so it consults neither headroom — 0 or negative whenever power
+is unknown — nor the restore cooldowns and startup stabilization:
+`isTargetRestore` (`lib/executor/executableTargetProjection.ts`) only matches an
+observed value equal to the configured shed setpoint, so an 18→22 raise is not a
+restore. The hold's shape (rather than blanking `getModeDeviceTargets`) is
+load-bearing in these ways:
+
+- **Class-aware direction.** For heat-direction devices a RAISE is held and a
+  LOWERING still applies — blanking the map would strand an area consuming
+  *more* than the user configured. For cooling-capable classes
+  (`isCoolingCapableTemperatureDeviceClass`: heat pump, air conditioning, air
+  treatment) BOTH directions are held, because lowering adds compressor load in
+  cooling mode and PELS cannot observe which mode a reversible unit is in.
+- **Exact observed value, not its normalization.** The hold emits the device's
+  reported setpoint verbatim (an off-step 18.6 with a 1° step would otherwise
+  round to 19 — a load-adding write the executor could not drop). Planned equals
+  observed is by construction the no-op `Object.is(observedValue, desired)`
+  drops.
+- **Fail closed without an observation.** When the current setpoint is
+  unreadable (`buildTargets` omits `value` on a malformed read), no target is
+  planned at all: any emitted value would reach the executor with
+  `observedValue` undefined, where the no-op fence cannot trip.
+- **Honest to the planner.** The mode target stays present, so the device is not
+  routed through `resolveMissingModeTargetSeed` — no false `missing_mode_target`
+  diagnostics and no grace-window `skip` dropping the device from the plan.
+- **Freshness-based, not "never sampled".** `powerKnown` re-closes on every
+  stale window, so an area meter that reports once and then dies stops earning
+  raises.
+
+Because the hold deliberately lets heat-device lowerings through, those
+lowerings must actually reach a silent-meter area: a global `operating_mode` /
+`mode_device_targets` write now fans out to every live bundle's planner
+(`SettingsHandlerDeps.rebuildHomeRuntimePlansForModeChange` →
+`HomeRuntimeRegistry.onModeSettingsChanged`), because a silent meter produces no
+power-driven rebuilds and the freshness heartbeat fires at most once per stale
+period — without the fan-out a cooler-mode lowering could stay unapplied
+indefinitely.
+
+Main binds `false` deliberately. Its unknown-power window is normally the
+seconds before the first Homey Energy poll, where an area's unknown-power window lasts as long as its
+meter is offline; and main owns settle/dwell machinery for the
+power-goes-unknown transition (`lib/plan/planSurplusAbsorb.ts`) that a blanket
+clamp would pre-empt. Two exemptions apply to both homes: the deadline floor is
+applied after the hold (a smart task's floor is a promise, not opportunistic
+load), and a shed setpoint is written regardless, since `planDevicesBase.ts`
+overrides `plannedTarget` without consulting the mode map.
+
 Whole-home / main-only, on purpose: **daily budget, price optimization, smart
-tasks, operating mode.** Budget and price are about home-wide energy/cost, not a
-single meter; R8 blocks smart-task admission on a sub-home device: the
+tasks.** Budget and price are about home-wide energy/cost, not a single meter;
+R8 blocks smart-task admission on a sub-home device: the
 create/edit/Flow write refuses with the typed **rejection reason**
 `device_in_sub_home` (`lib/objectives/deferredObjectives/objectiveWrite.ts`).
 A provisional/global Main authority fence is different from durable

@@ -23,8 +23,10 @@ export type EvObservedSnapshot = TargetDeviceSnapshot & EvObservedFields;
  * narrow the same way the runtime does.
  *
  * A `false` result therefore covers two cases the caller handles at the
- * boundary: a non-EV device, or an EV charger with no resolved state yet (the
- * pessimistic "state unknown / uncommandable" case).
+ * boundary: a non-EV device, or an EV charger with no resolved plug-state. The
+ * latter is NOT a block — absence collapses a permanently-absent capability, a
+ * cold start, and a vendor value outside the enum, so commandability consumers
+ * treat it as "nothing known against commanding" (`resolveEvBlockReasonKey`).
  */
 export const isEvObserved = <T extends { deviceClass?: string; controlCapabilityId?: string } & EvObservedProbe>(
   snapshot: T,

@@ -31,10 +31,7 @@ import {
 } from '../utils/observationTrust';
 import { normalizeTargetCapabilityValue } from '../utils/targetCapabilities';
 import { hasTemperatureBoostTarget } from '../utils/temperatureBoost';
-import {
-  EV_COMMANDABLE_NOW_REASONS,
-  resolveEvBlockReason,
-} from '../../packages/shared-domain/src/commandableNowReason';
+import { resolveEvBlockReason } from '../../packages/shared-domain/src/commandableNowReason';
 import { isEvObserved } from '../../packages/shared-domain/src/evObservedState';
 import {
   isEvBoostBlockedByPlugState,
@@ -91,6 +88,7 @@ type ControllableFlags = {
 export type EvBoostResolveInput = SteppedLoadIdentity & ControllableFlags & {
   deviceClass?: string;
   controlCapabilityId?: BinaryControlCapabilityId;
+  evBlockReason?: string | null;
   evSessionInactive?: boolean;
   evChargerNotResumable?: boolean;
   forceBoostActive?: boolean;
@@ -149,11 +147,12 @@ export function resolveEvBoostActive(dev: EvBoostResolveInput): boolean {
   if (!isEvDevice(dev)) return false;
   if (!hasSteppedLoadProfile(dev)) return false;
   if (dev.controllable === false || dev.managed === false || dev.available === false) return false;
-  // Block boost for every plug-state PELS cannot drive: unplugged / discharging
-  // (no creditable session) AND `plugged_in` (connected but NOT resumable).
-  // Reads the producer-resolved flat EV plug-state bits; the settings-UI boost panel
-  // renders the matching reason STRING (`resolveEvBoostBlockReason`) off the same
-  // plug-state set, so the runtime never forces boost the UI says won't activate.
+  // Block boost only where PELS genuinely cannot drive the charger: unplugged or
+  // discharging. Boost is "command it on now", so this reads the producer-resolved
+  // `evBlockReason` — the same classification the restore path uses — rather than
+  // composing a second plug-state union. The settings-UI boost panel renders the
+  // matching reason STRING (`resolveEvBoostBlockReason`) off that same key, so the
+  // runtime never forces boost the UI says won't activate.
   if (isEvBoostBlockedByPlugState(dev)) return false;
   // The deferred limit-lower-priority rescue lane forces boost while the task is in its
   // planned hours, independent of the device's own boost config/threshold.
@@ -203,14 +202,14 @@ export function getBinaryControlPlan(snapshot?: TargetDeviceSnapshot): BinaryCon
 
 export function getEvRestoreBlockReason(snapshot?: TargetDeviceSnapshot): string | null {
   if (!snapshot || !isEvDevice(snapshot)) return null;
-  // Narrow through the EV-observed guard so the block reason reads a guaranteed
-  // plug-state; an EV charger with no resolved state yet is pessimistically
-  // uncommandable ('state_unknown'). The reason vocabulary (one source of truth,
-  // shared with resolveCommandableNow + the plan restore-reason gate) lives in
-  // commandableNowReason.
-  return isEvObserved(snapshot)
-    ? resolveEvBlockReason(snapshot.evChargingState)
-    : EV_COMMANDABLE_NOW_REASONS.state_unknown;
+  // `isEvObserved` is the only typed way to reach `evChargingState` (the field is
+  // omitted from the base snapshot by design), so the guard stays. What changed is
+  // the un-narrowed arm: an EV charger with no resolved plug-state no longer reads
+  // as blocked. Absence is not a device state — it covers a permanently-absent
+  // capability as well as a cold start — so both arms defer to the one switch in
+  // commandableNowReason, and PELS learns commandability by commanding and
+  // watching (activationBackoff).
+  return isEvObserved(snapshot) ? resolveEvBlockReason(snapshot.evChargingState) : null;
 }
 
 type BinaryCapabilityResolveInput = {

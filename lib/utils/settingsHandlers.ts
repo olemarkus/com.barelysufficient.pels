@@ -4,6 +4,7 @@ import type { DailyBudgetUpdateStateOptions } from '../dailyBudget/dailyBudgetTy
 import type { SettingsUiLogEntry } from '../../packages/contracts/src/types';
 import {
   BUDGET_EXEMPT_DEVICES,
+  RESPECT_EXTERNAL_OFF_DEVICES,
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
   CAPACITY_MARGIN_KW,
@@ -95,6 +96,11 @@ export type SettingsHandlerDeps = {
   syncFlowPowerSampleFreshnessClock?: () => void;
   reloadWeatherAdvisor?: () => void;
   /**
+   * Re-read the "Leave off until turned on again" opt-in and release any hold
+   * whose device is no longer opted in. Returns the released device ids.
+   */
+  releaseDeOptedExternalOffHolds?: () => string[];
+  /**
    * Synchronously observe a source settings event before it enters the async
    * settings queue. This closes per-home authorization for the new generation.
    */
@@ -139,6 +145,15 @@ export type SettingsHandlerDeps = {
    * still self-reconciles on the next suffixed-write dirty-mark.
    */
   reconcileHomeRuntimes?: () => void;
+  /**
+   * Fan a global `operating_mode` / `mode_device_targets` write to every live
+   * sub-home plan. The bundles read those settings through live closures, but
+   * nothing re-RUNS their planners on the write — and an area whose meter is
+   * silent gets no power-driven rebuilds, so without this hook a mode change
+   * (e.g. a cooler-mode lowering) could stay unapplied indefinitely. Optional:
+   * absent in single-home wiring and tests.
+   */
+  rebuildHomeRuntimePlansForModeChange?: () => void;
 };
 
 const DAILY_BUDGET_PRICE_REBUILD_DEBOUNCE_MS = 1000;
@@ -351,6 +366,16 @@ function buildCapacitySettingsHandlers(deps: SettingsHandlerDeps): SettingsHandl
       deps.updateDailyBudgetState(FORCE_DAILY_BUDGET_STATE_PERSIST);
       await rebuildPlanFromSettings(deps, BUDGET_EXEMPT_DEVICES);
     },
+    [RESPECT_EXTERNAL_OFF_DEVICES]: async () => {
+      // Clear holds for de-opted devices BEFORE the rebuild, so the same rebuild
+      // that observes the new config also sees those devices manageable again.
+      deps.releaseDeOptedExternalOffHolds?.();
+      // No snapshot refresh: the opt-in changes neither which devices are
+      // fetched nor how they parse. It is read live at detection time, and
+      // `externalOffHoldActive` is re-resolved from the cached snapshot by the
+      // rebuild below.
+      await rebuildPlanFromSettings(deps, RESPECT_EXTERNAL_OFF_DEVICES);
+    },
     [TEMPERATURE_BOOST_SETTINGS]: async () => {
       deps.loadCapacitySettings();
       await rebuildPlanFromSettings(deps, TEMPERATURE_BOOST_SETTINGS);
@@ -507,6 +532,9 @@ async function handleModeTargetsChange(deps: SettingsHandlerDeps): Promise<void>
     });
     await rebuildPlanFromSettings(deps, 'mode_targets_fallback');
   }
+  // After the snapshot refresh (bundles read the same `latestTargetSnapshot`),
+  // so a sub-home's rebuild sees fresh device state alongside the new targets.
+  deps.rebuildHomeRuntimePlansForModeChange?.();
 }
 
 async function handleCapacityLimitChange(deps: SettingsHandlerDeps): Promise<void> {

@@ -428,6 +428,17 @@ type DevicePlanDeviceBase = {
   // (`lib/plan/planEvDevice.ts`). The flat EV plug-state sub-fields below are on
   // the base, materialized once by the producer from the observed
   // `evChargingState` (the observer owns the raw plug-state).
+  /**
+   * Producer-resolved commandability, REQUIRED so no consumer can read absence
+   * as an answer. It was optional through the dual-read transition, and the
+   * consequence was concrete: `withEvDiscriminant` strips `evChargingState`, so
+   * every plan-device `isCommandableNow` call fell into the raw-field fallback,
+   * found nothing, and returned "charger state unknown" — leaving
+   * `hasStableBinaryReleaseActuation` dead in production. Same class of bug as a
+   * fabricated `currentOn: true`.
+   */
+  commandableNow: boolean;
+  commandableNowReason?: string | null;
   evBlockReason?: string | null;
   evSessionInactive?: boolean;
   evChargerNotResumable?: boolean;
@@ -469,6 +480,10 @@ type DevicePlanDeviceBase = {
   // builder can maintain the plan-less-safe `surplusOnlyShedByDevice` stamp from the
   // finalized shed set.
   surplusOnly?: true;
+  // Producer-resolved "Leave off until turned on again" posture, forwarded flat
+  // from `PlanInputDevice.externalOffHoldActive` (see its doc block). The planner
+  // makes the device inactive and never asks why it is off.
+  externalOffHoldActive?: true;
   stepCommandPending?: boolean;
   stepCommandStatus?: SteppedLoadCommandStatus;
   binaryCommandPending?: boolean;

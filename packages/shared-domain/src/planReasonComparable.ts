@@ -65,6 +65,7 @@ const CODE_ONLY_REASONS = new Set<PlanReasonCode>([
   PLAN_REASON_CODES.meterSettling,
   PLAN_REASON_CODES.activationBackoff,
   PLAN_REASON_CODES.restorePending,
+  PLAN_REASON_CODES.externalOffHold,
   PLAN_REASON_CODES.neutralStartupHold,
   PLAN_REASON_CODES.startupStabilization,
   PLAN_REASON_CODES.capacityControlOff,
@@ -81,6 +82,7 @@ type CodeOnlyReason = Extract<
   | { code: typeof PLAN_REASON_CODES.meterSettling }
   | { code: typeof PLAN_REASON_CODES.activationBackoff }
   | { code: typeof PLAN_REASON_CODES.restorePending }
+  | { code: typeof PLAN_REASON_CODES.externalOffHold }
   | { code: typeof PLAN_REASON_CODES.neutralStartupHold }
   | { code: typeof PLAN_REASON_CODES.startupStabilization }
   | { code: typeof PLAN_REASON_CODES.capacityControlOff }

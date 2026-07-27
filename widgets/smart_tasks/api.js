@@ -410,7 +410,7 @@ var SMART_TASK_LIST_STATUS_LABELS = {
   queued: "On track",
   unavailable: "Unavailable",
   paused_unplugged: "Paused \u2014 unplugged",
-  paused_not_resumable: "Paused \u2014 can\u2019t resume",
+  paused_not_resumable: "Paused \u2014 not charging yet",
   on_track: "On track",
   at_risk: "At risk",
   cannot_meet: "Cannot finish",
@@ -419,7 +419,7 @@ var SMART_TASK_LIST_STATUS_LABELS = {
 var SMART_TASK_WIDGET_STATUS_LABELS = {
   ...SMART_TASK_LIST_STATUS_LABELS,
   paused_unplugged: "Unplugged",
-  paused_not_resumable: "Can\u2019t resume"
+  paused_not_resumable: "Not charging yet"
 };
 var SMART_TASK_WIDGET_WHY_BY_STATUS = {
   building_plan: null,
@@ -428,7 +428,7 @@ var SMART_TASK_WIDGET_WHY_BY_STATUS = {
   // composed from firstPlannedTimeLabel when present
   unavailable: SMART_TASK_SUB_HOME_UNAVAILABLE,
   paused_unplugged: "EV is unplugged \u2014 plug in to resume.",
-  paused_not_resumable: "Car charging won\u2019t resume \u2014 check the charger.",
+  paused_not_resumable: "Car isn\u2019t drawing power yet \u2014 progress can\u2019t be counted.",
   on_track: null,
   // affirmative line resolved from firstPlannedTimeLabel
   at_risk: null,
@@ -449,12 +449,20 @@ var WHY_CANNOT_MEET_BUDGET = "Today\u2019s daily budget runs out before the dead
 var WHY_CANNOT_MEET_DEVICE = "Not enough delivery before the deadline.";
 var WHY_AT_RISK_BUDGET = "Today\u2019s daily budget may run out before the deadline.";
 var WHY_AT_RISK_TIME = "Limited time left before the deadline.";
+var WHY_AT_RISK_DEVICE_LEFT_OFF = "Device is staying off until turned on again.";
 var RECOURSE_CANNOT_MEET_BUDGET = "Budget settings show whether future days need power reserved earlier.";
 var RECOURSE_CANNOT_MEET_DEVICE = "Device settings show what\u2019s holding it back.";
 var RECOURSE_INVALID_SESSION = "Plug the EV in to resume.";
 var isBudgetDriven = (input) => {
   if (input.floorShortfallCause !== void 0) return input.floorShortfallCause === "budget";
   return input.statusId === "at_risk" && (input.dailyBudgetExhaustedBucketCount ?? 0) > 0;
+};
+var isLeftOffDriven = (input) => input.diagnosticReasonCode === "objective_device_left_off";
+var resolveAtRiskCopy = (input) => {
+  if (isLeftOffDriven(input)) {
+    return { whyLabel: WHY_AT_RISK_DEVICE_LEFT_OFF, recourseHint: null };
+  }
+  return isBudgetDriven(input) ? { whyLabel: WHY_AT_RISK_BUDGET, recourseHint: RECOURSE_CANNOT_MEET_BUDGET } : { whyLabel: WHY_AT_RISK_TIME, recourseHint: null };
 };
 var resolveSmartTaskWidgetDetailCopy = (input) => {
   if (input.pendingReason === "device_in_sub_home") {
@@ -466,9 +474,7 @@ var resolveSmartTaskWidgetDetailCopy = (input) => {
   if (input.statusId === "cannot_meet") {
     return isBudgetDriven(input) ? { whyLabel: WHY_CANNOT_MEET_BUDGET, recourseHint: RECOURSE_CANNOT_MEET_BUDGET } : { whyLabel: WHY_CANNOT_MEET_DEVICE, recourseHint: RECOURSE_CANNOT_MEET_DEVICE };
   }
-  if (input.statusId === "at_risk") {
-    return isBudgetDriven(input) ? { whyLabel: WHY_AT_RISK_BUDGET, recourseHint: RECOURSE_CANNOT_MEET_BUDGET } : { whyLabel: WHY_AT_RISK_TIME, recourseHint: null };
-  }
+  if (input.statusId === "at_risk") return resolveAtRiskCopy(input);
   if (input.statusId === "building_plan") {
     const reason = input.pendingReason ?? "awaiting_horizon_plan";
     const why = SMART_TASK_WIDGET_WHY_BY_PENDING_REASON[reason] ?? SMART_TASK_WIDGET_WHY_BY_PENDING_REASON.awaiting_horizon_plan ?? null;
@@ -635,8 +641,8 @@ var SMART_TASK_LIST_READY_BY_STATUS_WORD = {
   // full label; this is the same sanctioned shared-domain string, not a new
   // variant.
   paused_unplugged: SMART_TASK_WIDGET_STATUS_LABELS.paused_unplugged,
-  // Compressed widget label ('Can’t resume') for the same double-em-dash reason
-  // as paused_unplugged — the full chip label carries its own em-dash.
+  // Compressed widget label ('Not charging yet') for the same double-em-dash
+  // reason as paused_unplugged — the full chip label carries its own em-dash.
   paused_not_resumable: SMART_TASK_WIDGET_STATUS_LABELS.paused_not_resumable,
   on_track: null,
   at_risk: SMART_TASK_LIST_STATUS_LABELS.at_risk,
@@ -673,6 +679,7 @@ var SMART_TASK_WIDGET_TARGET_ACTION_VERB = {
 var resolveSmartTaskWidgetTargetActionVerb = (kind) => SMART_TASK_WIDGET_TARGET_ACTION_VERB[kind];
 var SMART_TASK_WIDGET_TARGET_NOUN = SMART_TASK_LIST_ROW_LABELS.target;
 var SMART_TASK_BANNER_UNAVAILABLE_TITLE = "Smart task unavailable";
+var resolveEffectivePlanStatus = (planStatus, diagnosticReasonCode) => diagnosticReasonCode === "objective_device_left_off" && planStatus === "on_track" ? "at_risk" : planStatus;
 var resolveSmartTaskListStatus = (params) => {
   const { pending, pendingReason, diagnosticReasonCode, planStatus, firstActionAtMs, nowMs } = params;
   if (diagnosticReasonCode === "objective_device_in_sub_home") return "unavailable";
@@ -683,9 +690,10 @@ var resolveSmartTaskListStatus = (params) => {
     if (pendingReason === "invalid_session") return "paused_unplugged";
     return "building_plan";
   }
-  if (planStatus === "satisfied") return "satisfied";
-  if (planStatus === "cannot_meet") return "cannot_meet";
-  if (planStatus === "at_risk") return "at_risk";
+  const reported = resolveEffectivePlanStatus(planStatus, diagnosticReasonCode);
+  if (reported === "satisfied") return "satisfied";
+  if (reported === "cannot_meet") return "cannot_meet";
+  if (reported === "at_risk") return "at_risk";
   if (firstActionAtMs !== null && firstActionAtMs > nowMs) return "queued";
   return "on_track";
 };
@@ -906,15 +914,18 @@ var DEADLINE_LABELS = {
         headlineReason: "Charger reports the car isn\u2019t plugged in.",
         recourse: null
       }),
-      // Connected (plugged_in) but PELS can't resume charging. Distinct from
-      // `invalid_session`: the car IS plugged in, so the lever is the charger,
-      // not the cable. Recourse is null — like unplugged, the fix is a physical
-      // action with no in-app tab to land on. `headlineReason` reuses the
+      // Connected (plugged_in) with no confirmed charging session. Distinct from
+      // `invalid_session`: the car IS plugged in. PELS does command this charger
+      // on — `plugged_in` is commandable — so this must NOT read as "can't
+      // resume" or send the owner to check hardware PELS is mid-way through
+      // starting. What is true is narrower: no power is flowing yet, so the SoC
+      // behind it isn't creditable progress. Recourse is null; there is no in-app
+      // tab that makes the car start drawing. `headlineReason` reuses the
       // canonical widget "why" line so the three EV surfaces (list chip / hero /
       // card) agree on the cause copy.
       charger_not_resumable: () => ({
-        headline: "Charging won\u2019t resume",
-        body: "PELS can\u2019t resume charging on this charger. Check the charger and the EV \u2014 PELS will pick the schedule back up once charging can run again.",
+        headline: "Not charging yet",
+        body: "The car is connected but not drawing power yet. PELS keeps asking the charger to start, and picks the schedule back up as soon as current flows.",
         headlineReason: SMART_TASK_WIDGET_WHY_BY_STATUS.paused_not_resumable,
         recourse: null
       }),
@@ -1331,6 +1342,7 @@ var resolveRowCopy = (plan, statusId, firstPlannedTimeLabel) => {
   const detail = resolveSmartTaskWidgetDetailCopy({
     statusId,
     pendingReason: plan.pendingReason,
+    diagnosticReasonCode: plan.diagnosticReasonCode,
     floorShortfallCause: plan.latest?.floorShortfallCause,
     dailyBudgetExhaustedBucketCount: plan.latest?.dailyBudgetExhaustedBucketCount,
     firstPlannedTimeLabel

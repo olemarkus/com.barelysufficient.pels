@@ -53,6 +53,23 @@ export type TransportSolarRoleProducer = {
   noteSolarDevice: (device: HomeyDeviceLike) => void;
 };
 
+/**
+ * The EV car-to-charger link probe (`lib/device/evCarLinkProducer.ts`). Unlike
+ * the battery/solar role producers it takes an explicit `nowMs`: its whole job
+ * is timing coincident plug edges, so the clock is an input rather than an
+ * ambient read.
+ */
+export type TransportEvCarLinkProducer = {
+  observe: (
+    devices: readonly HomeyDeviceLike[],
+    options: { fullRefresh: boolean; nowMs: number },
+  ) => void;
+  noteDeviceUpdate: (device: HomeyDeviceLike, nowMs: number) => void;
+  noteCapabilityUpdate: (deviceId: string, capabilityId: string, value: unknown, nowMs: number) => void;
+  tick: (nowMs: number) => void;
+  getObservedCarDeviceIds: () => string[];
+};
+
 export type SnapshotRefreshOptions = {
   includeLivePower?: boolean;
   targetedRefresh?: boolean;
@@ -84,8 +101,12 @@ export type TransportContext = {
   readonly binarySettleState: BinarySettleState;
   readonly binarySettleOps: DeviceTransportBinarySettleOps;
 
-  readonly batteryStateProducer: TransportRoleProducer;
-  readonly solarProductionProducer: TransportSolarRoleProducer;
+  /** The read-only observation producers, built together in `observationProducers.ts`. */
+  readonly observationProducers: {
+    readonly battery: TransportRoleProducer;
+    readonly solar: TransportSolarRoleProducer;
+    readonly evCarLink: TransportEvCarLinkProducer;
+  };
 
   nextObservationCursor(deviceId: string, nowMs?: number): ObservationCursor;
   dispatchObservedStateChanged(event: ObservedDeviceStateEvent): void;

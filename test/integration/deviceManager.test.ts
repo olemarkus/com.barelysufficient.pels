@@ -16,7 +16,7 @@ import {
 import type { LiveFeedHealth } from '../../lib/device/liveFeed';
 import type { EvObservedProbe, MeasuredPowerObservedProbe, StateOfChargeObservedProbe, TargetDeviceSnapshot, TemperatureObservedProbe } from '../../packages/contracts/src/types';
 import type { HomeyDeviceLike, Logger } from '../../lib/utils/types';
-import { isCommandableNow } from '../../packages/shared-domain/src/commandableNow';
+import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import { isManagedFilterActive } from '../../setup/appDeviceSupport';
 import {
     mockHomeyInstance,
@@ -3953,7 +3953,7 @@ describe('DeviceTransport', () => {
                     observedValue: true,
                 }),
             }));
-            expect(isCommandableNow(snapshotDevice)).toBe(false);
+            expect(resolveCommandableNow({ dev: snapshotDevice }).commandableNow).toBe(false);
         });
 
         it('emits reconcile event when target temperature changes via device.update', async () => {
@@ -4473,7 +4473,7 @@ describe('DeviceTransport', () => {
                 available: false,
                 lastFreshDataMs: undefined,
             }));
-            expect(isCommandableNow(deviceManager.getSnapshot()[0])).toBe(false);
+            expect(resolveCommandableNow({ dev: deviceManager.getSnapshot()[0] }).commandableNow).toBe(false);
             expect(loggerMock.structuredLog.error).toHaveBeenCalledWith(expect.objectContaining({
                 event: 'device_snapshot_control_state_dropped',
                 reasonCode: 'missing_boolean_onoff',
@@ -4807,11 +4807,14 @@ describe('DeviceTransport', () => {
                 vi.setSystemTime(new Date('2026-03-20T06:05:00.000Z'));
                 evDeviceManager.injectCapabilityUpdateForTest('ev1', 'evcharger_charging_state', 'plugged_in_charging');
 
+                // The sub-state change post-dates the SoC report by five minutes.
+                // No disconnect was observed, so it is the same session and the
+                // reading stands — there is no session anchor to move.
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     percent: 51,
                     status: 'fresh',
-                    sessionStartedAtMs: new Date('2026-03-20T06:00:00.000Z').getTime(),
                 }));
+                expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge?.sessionStartedAtMs).toBeUndefined();
 
                 evDeviceManager.destroy();
             } finally {
@@ -4819,7 +4822,7 @@ describe('DeviceTransport', () => {
             }
         });
 
-        it('initializes realtime EV state of charge against the current connected session', async () => {
+        it('accepts a realtime EV state of charge reported on a connected charger', async () => {
             vi.useFakeTimers();
             try {
                 const evDeviceManager = new DeviceTransport(homeyMock, loggerMock, {
@@ -4846,7 +4849,6 @@ describe('DeviceTransport', () => {
                 expect((evDeviceManager.getSnapshot()[0] as TargetDeviceSnapshot & StateOfChargeObservedProbe).stateOfCharge).toEqual(expect.objectContaining({
                     percent: 52,
                     status: 'fresh',
-                    sessionStartedAtMs: new Date('2026-03-20T06:05:00.000Z').getTime(),
                 }));
 
                 evDeviceManager.destroy();

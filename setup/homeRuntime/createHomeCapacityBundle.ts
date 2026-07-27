@@ -7,11 +7,17 @@
  * `app.ts`/`setup/appServiceWiring.ts` is untouched and its four unsuffixed
  * persisted keys are never written by bundle code.
  *
- * Strictly capacity-only by construction: the sub-home `HomeScope` binds
+ * Capacity-only by construction: the sub-home `HomeScope` binds
  * `getDailyBudgetSnapshot: () => null`, price-optimization/cheap/expensive to
  * `false`, the surplus term to `null`, and omits the smart-task decoration
  * seam — the shared plan factories then collapse to pure capacity control
  * without branching on which home they serve.
+ *
+ * That is a claim about POLICY INPUTS, not about the write surface. The mode
+ * target is the RESTORE ANCHOR rather than a policy, so `getOperatingMode` /
+ * `getModeDeviceTargets` bind live here exactly as they do for main, and this
+ * bundle will command a member to its mode target with no capacity pressure at
+ * all. Neutralizing them left an area temperature device shed indefinitely.
  *
  * Boot-window double-control guard: `getCapacityDryRun` reads `true` until
  * membership has resolved from a COMMITTED zone tree
@@ -61,9 +67,7 @@ import { createCapacitySettingsStore } from '../capacitySettingsStoreAdapter';
 // `homeScope.ts` and avoid the factory↔scope module cycle via the barrel.
 import { createPlanEngine } from '../appInit/createPlanEngine';
 import { createPlanService } from '../appInit/createPlanService';
-import { evictMissingDeviceCacheEntries, toPlanDevice } from '../appInit/toPlanDevice';
-import { isRuntimePlannedDevice } from '../appDeviceSupport';
-import { filterDevicesForHome } from '../homeMembership';
+import { buildHomePlanDevices } from './planDevicePrePass';
 import { createHomePowerPipeline } from './createHomePowerPipeline';
 import {
   buildHomeCapacityBundleApi,
@@ -86,12 +90,6 @@ import { createCapacityShortfallSideEffectGate } from '../capacityShortfallSideE
 // main's contract limit. Dry-run defaults TRUE (the safe boot default): an
 // unconfigured sub-home plans but never actuates.
 const SUB_HOME_CAPACITY_DEFAULTS: CapacityScalarSettings = { limitKw: 10, marginKw: 0.2, dryRun: true };
-
-// A neutral operating mode for the capacity-only sub-home scope. The mode value
-// is only ever used to index `getModeDeviceTargets()`, which a sub-home binds to
-// `{}` — so no member is ever driven to a mode target regardless of this value.
-// A non-real sentinel makes the "no mode targets" intent explicit.
-const SUB_HOME_NEUTRAL_OPERATING_MODE = '';
 
 // Mirrors `STARTUP_RESTORE_STABILIZATION_MS` in `setup/appServiceWiring.ts`:
 // a freshly (re)created bundle holds restores until its meter proves live
@@ -145,6 +143,22 @@ export type RealtimeReconcileHooks = {
   getLatestPlanSnapshot: () => DevicePlan | null;
   getLiveDevices: () => PlanInputDevice[];
   reconcile: () => Promise<boolean>;
+  /**
+   * "Leave off until turned on again" seams, routed to THIS home. Its pending
+   * commands live in this bundle's engine and its plan in this bundle's service,
+   * so answering either from MAIN would fabricate holds (PELS's own write looks
+   * external) and rebuild a plan that does not contain the device.
+   */
+  hasPendingBinaryCommand: (deviceId: string, capabilityId: string) => boolean;
+  rebuild: (reason: string) => Promise<unknown>;
+  /**
+   * THIS home's effective dry-run posture — which is not main's. A sub-home in
+   * simulation, not membership-ready, or not source-authorized has no actuation
+   * authority, so its devices sit off for reasons that are not user actions and
+   * must never create a hold; conversely main being in simulation must not
+   * suppress holds for a sub-home that is actively controlling.
+   */
+  isDryRun: () => boolean;
 };
 
 export type HomeCapacityBundle = {
@@ -164,6 +178,8 @@ export type HomeCapacityBundle = {
   getReconcileHooks: () => RealtimeReconcileHooks;
   /** Adopt a same-meter config change (root-zone/name) without teardown. */
   updateHomeConfig: (home: SubHomeConfig) => void;
+  /** Re-read the global operating-mode/mode-target closures into this home's plan. */
+  rebuildForModeSettingsChange: () => void;
   /**
    * Apply the once-only membership-ready edge (rebuild → reconcile). Idempotent
    * and latched; a no-op until the execution gate opens. Driven by the registry
@@ -290,38 +306,48 @@ function buildSubHomeScope(params: {
     getPowerTracker: getTracker,
     getDailyBudgetSnapshot: () => null,
     getPlanDevices: () => {
-      // Same seed + evict pre-passes as the main scope (both idempotent and
-      // full-snapshot-based); see `buildMainHomeScope.getPlanDevices`.
-      ctx.seedObservedStateFromSnapshot();
-      const snapshot = ctx.latestTargetSnapshot;
-      evictMissingDeviceCacheEntries(ctx, snapshot);
-      return filterDevicesForHome(ctx.homeMembership, snapshot, homeId)
-        // Capacity-only overrides: NO surplus posture (a sub-home has no
-        // price/surplus signal, so a surplusWilling device would be held OFF
-        // forever), and the pending-binary read routed to THIS bundle's engine
-        // (not MAIN's via `ctx.planEngine`).
-        .map((device) => toPlanDevice(ctx, device, {
-          surplusPostureEnabled: false,
-          getPendingBinaryCommand: (id, model) => (
-            getPlanEngineForPending()?.getPendingBinaryCommandForDevice(id, model) ?? null
-          ),
-        }))
-        .filter(isRuntimePlannedDevice);
+      // Capacity-only overrides: NO surplus posture (a sub-home has no
+      // price/surplus signal, so a surplusWilling device would be held OFF
+      // forever), and the pending-binary read routed to THIS bundle's engine
+      // (not MAIN's via `ctx.planEngine`).
+      return buildHomePlanDevices(ctx, homeId, {
+        surplusPostureEnabled: false,
+        getPendingBinaryCommand: (id, model) => (
+          getPlanEngineForPending()?.getPendingBinaryCommandForDevice(id, model) ?? null
+        ),
+      });
     },
     setCapacityInShortfall: (inShortfall) => writeSuffixed(CAPACITY_IN_SHORTFALL, inShortfall),
     persistLastControlledMs: (lastControlledMs) => writeSuffixed(DEVICE_LAST_CONTROLLED_MS, lastControlledMs),
     writePelsStatus: (status) => writeSuffixed(PELS_STATUS, status),
     // Capacity-only policy: no price optimization, no cheap/expensive hours,
     // no surplus term, no smart-task decoration (absent = identity), no
-    // mode-target driving, no dynamic-soft-limit override.
+    // dynamic-soft-limit override.
     getPriceOptimizationEnabled: () => false,
     isCurrentHourCheap: () => false,
     isCurrentHourExpensive: () => false,
     getInferredSurplusKw: () => null,
     getPriceOptimizationSettings: () => ({}),
     getDynamicSoftLimitOverride: () => null,
-    getOperatingMode: () => SUB_HOME_NEUTRAL_OPERATING_MODE,
-    getModeDeviceTargets: () => ({}),
+    // Mode targets are the RESTORE ANCHOR, not a price/budget policy, so they
+    // bind live for every home. Binding them to `{}` made `resolveTemperatureSeed`
+    // fall back to the device's live setpoint (`lib/plan/planDevices.ts`); while
+    // shed that reading IS the shed setpoint, so on release `plannedTarget`
+    // equalled `currentTarget`, the executor dropped the write, and an area
+    // temperature device stayed cold indefinitely. Price-opt and surplus stay
+    // gated separately above — they only modulate a `kind: 'mode'` seed.
+    getOperatingMode: () => ctx.operatingMode,
+    getModeDeviceTargets: () => ctx.modeDeviceTargets,
+    // ...but a RAISE to that target is held while this area's own draw is
+    // unknown. It adds load, and it is the one load-adding write nothing else
+    // fences: a restore is gated on headroom (0 whenever power is unknown),
+    // while an 18→22 raise is an ordinary `target_update`, not an
+    // `isTargetRestore`, so neither `BUNDLE_RESTORE_STABILIZATION_MS` nor the
+    // restore cooldowns see it. An area meter can stay silent indefinitely, and
+    // a never-sampled bundle has no aging timestamp for the freshness heartbeat
+    // to escalate. Held one-directionally: a mode change that LOWERS a setpoint
+    // removes draw, so it still applies (see `applyModeSeedModulation`).
+    holdsModeTargetRaisesWhilePowerUnknown: () => true,
     // Capacity-only UI/side-effect posture: no combined prices (→ price level
     // UNKNOWN, `price_level_changed` never fires), no shared `plan_updated`
     // emit (the settings UI reads only MAIN's plan stream), and no shared

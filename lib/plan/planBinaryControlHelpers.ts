@@ -5,7 +5,11 @@ import type {
   ObservedDeviceState,
 } from '../../packages/contracts/src/types';
 import type { PendingBinaryCommandStore } from '../observer/pendingBinaryCommands';
-import { isBinaryControlled, getBinaryOn } from '../../packages/shared-domain/src/binaryControlState';
+import {
+  isBinaryControlled,
+  getBinaryOn,
+  getObservedBinaryControlValue,
+} from '../../packages/shared-domain/src/binaryControlState';
 import { getLogger } from '../logging/logger';
 import type { BinaryControlPlan } from '../device/deviceActionProjection';
 
@@ -113,7 +117,9 @@ export function shouldSkipBinaryControl(params: {
     });
     return true;
   }
-  if (shouldSkipAlreadyMatched({ deviceManager, controlPlan, deviceId, desired, snapshot })) {
+  if (shouldSkipAlreadyMatched({
+    deviceManager, controlPlan, deviceId, desired, snapshot, pendingBinaryCommandStore,
+  })) {
     logger.debug({
       event: 'binary_command_skipped',
       reasonCode: 'already_matched',
@@ -148,18 +154,54 @@ export function shouldSkipAlreadyMatched(params: {
   deviceId: string;
   desired: boolean;
   snapshot?: BinaryControlDecisionSnapshot;
+  pendingBinaryCommandStore: PendingBinaryCommandStore;
 }): boolean {
-  const { deviceManager, controlPlan, deviceId, desired, snapshot } = params;
+  const { deviceManager, controlPlan, deviceId, desired, snapshot, pendingBinaryCommandStore } = params;
+  const latestObservedSnapshot = deviceManager.getSnapshotByDeviceId(deviceId) ?? snapshot;
   // Only skip an already-matched command when the device's observed binary
   // on-state faithfully mirrors its control state. Devices whose observation
   // does not track the on/off control (chargers) report
-  // `observedStateComparable === false` and must never short-circuit here.
-  if (!controlPlan.observedStateComparable) return false;
-  const latestObservedSnapshot = deviceManager.getSnapshotByDeviceId(deviceId) ?? snapshot;
+  // `observedStateComparable === false` and must not consult `binaryControl.on`
+  // here — a charger's on-state is activity-derived, not the switch.
+  if (!controlPlan.observedStateComparable) {
+    // The OFF direction has a faithful mirror of its own: the producer-resolved
+    // observed control value (raw-switch-provenance evidence only — see
+    // `getObservedBinaryControlValue`). A desired `false` against an
+    // observed-off switch is a no-op re-assert — skipping it is what breaks
+    // the charger re-shed loop (prod 2026-07-26: one redundant off-write per
+    // rebuild, 321 in an evening, each restamping the global shed cooldown and
+    // freezing every restore in the house). Two deliberate non-skips: the ON
+    // direction always writes (a `true` write over an already-true switch is
+    // how a paused charger gets kicked to resume), and an in-flight OPPOSITE
+    // command always writes — the dispatch must supersede a pending ON with
+    // this OFF (`recordPendingForDispatch` overwrites the entry), exactly as
+    // it did before the skip existed; otherwise a shed decided while a restore
+    // is still settling leaves the restore free to materialize.
+    if (desired !== false) return false;
+    if (hasOppositePendingBinaryCommand({ pendingBinaryCommandStore, deviceId, controlPlan, desired })) {
+      return false;
+    }
+    return getObservedBinaryControlValue(latestObservedSnapshot, controlPlan.capabilityId) === false;
+  }
   // A device with no binary control is the guard's else-branch (returns false) —
   // so absent binary state never short-circuits (matches the prior explicit
   // `binaryControl === undefined → return false`).
   return isBinaryControlled(latestObservedSnapshot) && getBinaryOn(latestObservedSnapshot) === desired;
+}
+
+function hasOppositePendingBinaryCommand(params: {
+  pendingBinaryCommandStore: PendingBinaryCommandStore;
+  deviceId: string;
+  controlPlan: BinaryControlPlan;
+  desired: boolean;
+}): boolean {
+  const { pendingBinaryCommandStore, deviceId, controlPlan, desired } = params;
+  // `peek` (not `get`): freshness-eviction stays owned by the matching-pending
+  // guard below; this read only asks whether an un-superseded opposite intent
+  // exists right now.
+  const pending = pendingBinaryCommandStore.peek(deviceId);
+  if (!pending) return false;
+  return pending.capabilityId === controlPlan.capabilityId && pending.desired !== desired;
 }
 
 export function hasPendingMatchingBinaryCommand(params: {

@@ -279,7 +279,11 @@ export type DeferredObjectiveActivePlanDiagnosticReason =
   | 'objective_invalid_session'
   // Live home-scope truth. Kept on committed plans with a cached revision so
   // consumers can override that stale schedule while the task is out of scope.
-  | 'objective_device_in_sub_home';
+  | 'objective_device_in_sub_home'
+  // "Leave off until turned on again" is active on the task's device. Same
+  // reason as the two above: the committed schedule keeps saying "On track"
+  // until the next settle, so the live cause has to travel on the plan itself.
+  | 'objective_device_left_off';
 
 export type DeferredObjectiveActivePlanV1 = {
   deviceId: string;

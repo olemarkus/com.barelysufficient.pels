@@ -41,12 +41,275 @@ tracked as P1/P2/P3 follow-up below.
 patch releases, not release blockers; each item carries its own source/date.
 (The v2.8.0 card-title rename landed in PR #934.)*
 
+- [ ] **An EV SoC reading goes stale the instant a long pause ends.** `resolveStateOfChargeStatus`
+      (`lib/device/transport/stateOfCharge.ts` ~360) stops ageing a reading out while the charger is
+      idle — that is the fix in PR #1897 — but once `chargeInMotion` becomes true again it compares
+      `nowMs - observedAtMs` against `EV_SOC_STALE_MS` using TOTAL wall-clock, which includes the
+      whole idle interval. So a charger paused longer than 40 minutes has an immediately-stale
+      reading the moment PELS resumes it, and `measure_battery` is change-only: the car cannot
+      republish until the level actually moves. The objective can therefore fall to
+      `objective_progress_stale` in the window right after a resume and pause the charger again,
+      which is the oscillation shape #1897 exists to remove, reached by a different route. The fix
+      is to measure staleness against elapsed CHARGE-IN-MOTION time, or grant a fresh window from
+      the idle-to-charging transition — either way it needs a new retained field threaded through
+      `RetainedStateOfChargeSession`, so it is its own change rather than a rider on #1897. Raised
+      by Codex on PR #1897, 2026-07-27. Two adjacent session/freshness holes found in the same
+      review, both left open deliberately: (a) a reconnect observed WITHOUT `lastUpdated` anchors
+      nothing, so the invalidation stands and an idle charger — which republishes only on a level
+      change — keeps a stale reading indefinitely. Substituting the refresh time was implemented and
+      then reverted on #1897, because a full refresh can carry a cached connected state older than a
+      newer realtime plug-out (`snapshotRefresh.ts` parses the pull before merging retained fresher
+      observations) and a fabricated future `sessionStartedAtMs` cannot be undone by reapplying that
+      plug-out — trading a stale reading for a session anchored to the wrong car. A correct fix needs
+      the refresh path to distinguish cached from fresh connected evidence, not a timestamp
+      substitution at this seam. (b) For a charger that keeps a generic `plugged_in` and only toggles
+      `evcharger_charging`, that boolean is the sole age-gate input, but the realtime binary path
+      mutates `snapshot.evCharging` without re-running `resolveStateOfChargeStatus` — so freshness
+      only moves on an unrelated refresh or SoC event. Recompute SoC freshness whenever the charging
+      boolean changes. The SAME missing accounting causes the mirror defect: once a
+      reading HAS aged out during a genuine charging interval, the next idle observation reaches the
+      unconditional `if (!chargeInMotion) return 'fresh'` and resurrects it, so objective and
+      EV-boost consumers trust a percentage that may have moved a long way while the charger was
+      delivering. Accumulated in-motion age fixes both directions at once — do them together, and do
+      not patch one with a sticky flag. Persona: EV owner whose overnight smart task is paused by
+      PELS and then stalls the moment PELS restarts it; hypothesis: a task that stalls on resume is
+      indistinguishable from one that never planned. [P1]
+
 *The bulk of the P1 backlog shipped in the 2026-06-03 reconciliation train (PRs #1450–#1461):
 insights mode-options coalescing, headroom over-cap overage, the history-detail title/link fixes,
 deviceOverview canonical-string routing, the flow-reported / pendingBinaryCommands /
 stepped-restore-wrapper / stepped-swap-completion refactors, the settings.test.ts flake, the
 plan_budget truncation, the starvation confirm-sheet sub-parts, and the shared widget runtime.
 What remains open is below.*
+
+- [ ] **Nothing tells the owner WHY a scheduled charger is held, and three surfaces each name a
+      different wrong reason.** The cooldown half of this incident is FIXED: the re-sheds were real,
+      accepted `evcharger_charging=false` writes on essentially every rebuild (321 between 20:55Z
+      and 23:43Z in the hotfix run's raw log), each restamping the global instability clock — cause
+      established 2026-07-27 and fixed in PR #1904, with the remaining flow-backed class tracked
+      separately above. What is left open, and is what this entry is now about, is the REPORTING:
+      the hold is real and correct, and no surface says so. Original observation: Prod
+      2026-07-26 21:03-21:16Z:
+      `Elbillader`, badged "Always on"
+      (`PLAN_CARD_ALWAYS_ON_CHIP_LABEL` = budget exempt), took 20 `diagnostics_shed_recorded` /
+      `full_shed_to_off` events in 13 minutes, the first six at 21:03:28, 21:04:09, 21:04:48,
+      21:05:20, 21:05:48, 21:06:18 and the rest continuing at the same ~35 s cadence to 21:16Z
+      — while `plan_debug_summary` read `totalKw 0.85`, `softLimitKw 4.73→4.84`,
+      `headroomKw 3.89→3.99`, `softLimitSource daily`, `capacityBreached null`, and NO
+      `overshoot_entered` fired at all. Its reason trail carries `limited_by_daily_budget`, so the
+      daily-budget path is attributed. **Do not act on that attribution alone** — three separate
+      cases in the same session had correct behaviour behind a wrong reason code.
+
+      **The soft limit had ample room, which is why this looked like a shedding bug — it is not.**
+      The daily budget had already computed what was affordable: `softLimitKw 4.84` against
+      `totalKw 0.85`, i.e. `headroomKw 3.99`. The charger needs 1.38 kW at 6 A, which would have put
+      the house near 2.2 kW, under half the limit the budget itself set. That mismatch is what sent
+      the investigation into the shedding filters — but the off-write did not come from shedding at
+      all (see the release-path paragraph below), and a deferred-objective release is ENTITLED to
+      turn the charger off while the soft limit has room, because the schedule, not the pacing
+      constraint, is what is holding it. Do not re-open this as a budget/shedding defect; the
+      defect here is that nothing SAYS the schedule is the reason.
+
+      **Design rule (owner, 2026-07-26): the daily budget converts into the hourly soft limits and
+      nothing else. There is no whole-day budget acting as an additional control input.** So the
+      derived `softLimitKw` is the entire authority the daily budget has over shedding, and any shed
+      taken past it is a second, undesigned budget reading the same data. That makes this a defect by
+      construction rather than a threshold to tune, and it fixes the direction: day-level state may
+      inform reporting and Flow triggers, never a shed decision.
+
+      **Ruled out: there is no `exceeded`-driven shed path.** `exceeded` reaches only
+      `planDailyBudgetWindow.ts` ~110 (carrier), `planContext.ts` ~13 (type) and
+      `planBuilderMeta.ts` ~76 as `dailyBudgetExceeded` — reporting metadata, never a shed decision.
+      The daily budget already acts solely through the derived hourly soft limit, exactly as the rule
+      above requires. Do not go looking for a second budget to delete; there isn't one.
+
+      **What actually produced the misleading label:** `shedding/selection.ts` ~87-88 attributes
+      `PLAN_REASON_CODES.dailyBudget` to ANY shed taken while `limitSource === 'daily' &&
+      !capacityBreached`, irrespective of cause. So `limited_by_daily_budget` in the trail says only
+      "the daily soft limit was the binding one at the time", not "the daily budget shed this". The
+      fourth attribution-vs-behaviour mismatch in one session.
+
+      **The planner discards the remaining fraction of the CURRENT hour, even for an at-risk task
+      at the cheapest available price.** Prod 2026-07-26 23:18: the task planned 7 buckets covering
+      00:00, 01:00 ... 06:00 — precisely the WHOLE hours left before its 07:00 deadline — and skipped
+      the ~42 minutes remaining of 23:00. Meanwhile `price_optimization_completed` reported the
+      current hour at **72.96 øre/kWh** while the hero rendered "cheapest hour ahead: 00:00,
+      0.73 kr/kWh". NOTE the comparison is not decisive on its own: 0.73 kr is a ROUNDED display
+      value, so the raw 00:00 price could be anywhere in ~72.5-73.5 øre and might be marginally
+      below 72.96. Confirm against raw prices before quoting this as "now was cheaper". What does
+      NOT depend on the rounding: the two hours are within ~1% of each other, so deferring bought
+      no meaningful saving either way, and the task status
+      was already `at_risk` needing 2.79 kWh. Whether charging immediately would have cost anything
+      extra is exactly what the raw price has to settle — do not assume it was free — but at a ~1%
+      spread the cost either way is negligible against the risk it would have retired; instead the
+      first available slot was declined, which itself feeds the
+      `at_risk` verdict. At 1.4-7 kW a discarded 42-minute remainder is 1-5 kWh of the deadline's
+      total need. Note the hero's "cheapest hour AHEAD" wording hides this by construction: it
+      excludes the current hour, so a curve whose minimum is now reads as though later is better.
+      Do NOT chase bucket granularity: `normalizeHorizonBuckets` already clips the leading bucket to
+      `nowMs` (`bucketAllocation.ts` ~423 `Math.max(bucket.startMs, nowMs)`), and allocation into that
+      shortened bucket is covered by existing tests. `currentBucket: null` therefore means the
+      allocator assigned no energy to the partial hour, not that it was unable to. The open question
+      is WHY it assigned none — the allocation constraint, an existing commitment, or the price
+      comparison that ranked 00:00 above the remaining 42 minutes of 23:00 — and whether `at_risk`
+      should force the leading partial bucket to be taken regardless. Persona: owner
+      whose at-risk deadline sits idle through the cheapest hour of the night; hypothesis: declining
+      the cheapest available energy on a task you have already flagged as at risk is indefensible
+      whatever the granularity argument. Source: prod investigation, 2026-07-26. [P1]
+
+      **On the hold itself — correct in shape, wrong in extent; the rest of the defect is reporting.** The task's
+      planned buckets were 00:00-07:00 (7 hourly buckets to a 07:00 deadline, 2.79 kWh) and the
+      observation was taken at 23:18. The charger was deferred to the cheap overnight hours exactly
+      as intended ("cheapest hour ahead 00:00, 0.73 kr/kWh"). `currentBucket: null`,
+      `desiredStepId: 'off'`, 20 shed records against 1 off-write, and headroom being ignored are all
+      consistent with a deliberate time-based hold, re-recorded each cycle.
+
+      What made this cost an evening of investigation is that NO surface says when the device will
+      run. The card said "Limited — will try to resume in Ns if power is available" (power was never
+      the blocker, and was in fact abundant), the reason trail said `limited_by_daily_budget` (daily
+      merely happened to be the binding soft limit — `shedding/selection.ts` ~87 attributes that code
+      to any shed while daily is binding), and the hero said "Holding back 13 devices so the house
+      stays under 4.7 kW". Three explanations, none of them the real one, for a schedule PELS had
+      already computed and could simply have displayed.
+
+      **The fix is to say when, not why-not.** A device held by a deferred-objective schedule should
+      surface its next planned hour ("Charging starts 00:00") on the card and in the hero, and must
+      not borrow capacity/cooldown copy that names conditions already satisfied. Persona: owner who
+      concluded the app was broken while it was doing exactly the right thing; hypothesis: for a
+      deferred device, the next run time is the single most valuable thing on the screen and it is
+      absent everywhere. Note for whoever picks this up: four wrong hypotheses were chased here
+      (missing `budgetExempt`, an `exceeded`-driven shed path, a shed/restore oscillation, and a
+      capacity-headroom contradiction) all because `limited_by_daily_budget` was read as a cause.
+      PELS's reason codes did not track its behaviour in ANY of the four. [P1]
+
+      **The exemption IS reaching the planner.** The card rendered the "Always on" chip, which
+      `planCardGrammar.ts` ~196 emits only `if (budgetExempt)` (tooltip "Exempt from the daily
+      budget"), sourced from the plan device via `settingsOverviewReadModel.ts` ~145. So
+      `budgetExempt: true` was on the plan device and the shed happened anyway — this is NOT the
+      missing-producer-bit shape of the `commandableNow` drop, and adding `budgetExempt` to the
+      debug payload would answer a question already answered.
+
+      No shed path bypassed the filter, and that lead should not be re-chased. `shedding/candidates.ts`
+      ~110 and `admission/sheddingGuard.ts` ~147 both gate on
+      `limitSource !== 'daily' || capacityBreached || budgetExempt !== true`, and the summary reported
+      `softLimitSource: daily` with `capacityBreached: null` — so both correctly excluded the device.
+      The off-write did not come from capacity shedding at all: with no bucket for the current hour,
+      `deferredObjectives/admission.ts` ~127 returns an idle decision carrying
+      `releaseIntent: 'binary_release'` for a binary-controlled device, and the executor acts on that
+      independently of either shedding candidate filter. The charger being off is fully explained by
+      the deferred-objective release path. What remains defective is the ATTRIBUTION (that release is
+      reported as `limited_by_daily_budget`) and the repeated per-rebuild diagnostics below — not the
+      shed decision.
+
+      One caveat before treating the hold itself as wrong: the device's smart task reported
+      `currentBucket: null` (it does not want the current hour) against a 07:00 deadline with
+      "cheapest hour ahead 00:00", so SOME hold here is correct price deferral. The defect is the
+      shed being attributed to — and apparently driven by — the daily budget on a device exempt
+      from it, not the fact that the charger is off at 23:00. Reproduce with an exempt device,
+      `softLimitSource: 'daily'`, `capacityBreached: false`, and no planned bucket for the current
+      hour, and assert it is never a shed candidate.
+
+      Separately: "exempt from the daily budget" is the wrong instrument for an EV charger at all —
+      it is the largest discretionary load in the house and exemption removes the only thing pacing
+      it. A deadline device wants "the deadline may overrun the budget, as late and as cheaply as
+      possible", which is a conflict-resolution rule rather than a per-device flag. Adjacent to
+      [[project_starvation_rescue_boost_direction]].
+
+      A **re-shed that restarts the cooldown** is a real starvation shape and is worth a guard, but
+      do NOT cite this incident's 20 diagnostics as evidence for it: `recordReleaseShedActuation`
+      writes those records without stamping the shed or instability clocks, and this run produced
+      only ONE accepted write. The evidence for the restamping mechanism is the 321 accepted writes
+      in the hotfix run, documented in the entry below. Persona: owner watching a charger badged
+      "Always on" that never draws; hypothesis: whichever cause holds, a resetting countdown reads
+      as a hung app. Source: prod investigation, 2026-07-26. [P1]
+
+- [ ] **A device card claims "Running" and "Limited — will try to resume" at the same time.**
+      Prod screenshot 2026-07-26: `Connected 300` rendered headline **Running**, `0.0 kW`,
+      `61.7 °C · target 65 °C`, and reason line **"Limited — will try to resume in 17s if power is
+      available"** — three mutually exclusive claims in one card, with the step slider sitting at
+      roughly 60 %. The headline renders OBSERVED state (`currentState`) while the reason line
+      renders PLANNED intent (`plannedState` + reason code), so during any window where PELS has
+      decided `shed` but the device is still observed on, both are individually true and jointly
+      nonsense. `Elbillader` reads coherently in the same screenshot only because observed and
+      planned happen to agree there. The two lines need to resolve from one state, with
+      observed-vs-planned disagreement rendered as a transition ("Turning down…") rather than as
+      two competing truths. Persona: owner checking whether the water heater is actually running;
+      hypothesis: a self-contradicting card is worse than a vague one, because there is no reading
+      of it that is correct. Source: prod screenshot + card-field inspection, 2026-07-26. [P1]
+
+- [ ] **The Overview hero and the device cards never say today's daily budget is used up.** Prod 2026-07-26:
+      `budget_recomputed` read `newBudgetKWh 40.91`, `actualKWh 64.07`, `remainingNewKWh -23.16`,
+      `exceeded true` — the day was 23 kWh over and that was the binding soft limit for the devices
+      the daily-budget path actually held. NOT all 13: `Elbillader` was budget-exempt and was held
+      by the deferred-objective `binary_release` path instead, so any warning built from this must
+      be scoped to devices genuinely held by the budget rather than repeating the same
+      one-size-fits-all attribution this incident is filed against. What the UI showed instead: the hero said "Energy used this hour 0.0 of
+      3.2 kWh used · projected 0.80 kWh · Hard cap this hour 5.0 kWh · Holding back 13 devices so
+      the house stays under 4.7 kW", and every device card said "Limited — will try to resume in
+      Ns if power is available". The hourly framing reads as abundance (nothing used, 3.2 kWh
+      allowed) while everything is held, and the 4.7 kW figure is daily-derived but never labelled
+      as such. `PLAN_STATE_DAILY_BUDGET_STATUS` ("Limited by today's daily budget") already exists
+      and is not reaching these surfaces. Scope note: the Daily budget view is NOT part of this gap —
+      `resolveBudgetRemainingLine` already converts a negative `remainingKWh` into
+      "23.2 kWh over budget already used" and `BudgetOverview` renders it in that view's hero. The
+      confirmed gap is the Overview hero and the device cards, the two surfaces inspected here. Persona: owner who sees an idle house and 13 paused
+      devices and concludes PELS is broken; hypothesis: naming the exhausted daily budget is the
+      single highest-value line on the screen and it is absent. Source: prod screenshot + log,
+      2026-07-26. [P1]
+
+- [ ] **Residual re-shed freeze class: a charger with no observable switch still restamps the
+      global shed cooldown every rebuild.** The charger re-shed deadlock fix (skip + edge-triggered
+      stamp) is evidence-gated by design — absence of an observed `evcharger_charging` value means
+      "write and stamp" — so a flow-backed charger whose switch is never observed reproduces the
+      2026-07-26 house-wide `cooldown (shedding)` freeze unchanged. Two sub-parts: (a) surface or
+      synthesize switch evidence for flow-backed chargers (the flow report path already carries the
+      boolean); (b) `handleConfirmedBinaryCommand` stamps flow-backed off-confirmations with no
+      reassert-awareness — give it the same trusted-observed-off gate. Related refinement: the skip
+      gate keys off the raw switch while the stamp gate keys off the evidence record; a
+      producer-resolved `observedControlOff` bit on the executable action would collapse the two
+      truth sources. Persona: owner with a flow-integrated charger watching the same resetting
+      countdown the native-charger fix removed; hypothesis: the freeze class is configuration-shaped,
+      not device-shaped, and the flow-backed arm is untested in prod. Source: pels-runtime-reality
+      review of the deadlock fix, 2026-07-27. [P2]
+- [ ] **A setpoint-shed temperature device with no mode target stays stranded at its shed setpoint.**
+      *Persona:* any owner who never opened the Modes screen and has a managed radiator or panel heater
+      (Main home or a meter area). *Hypothesis:* PELS auto-assigns the `set_temperature` shed behaviour
+      without user action (`enforceTemperatureWithoutOnOffOvershootBehaviors`,
+      `setup/appDeviceSupport.ts`), but the RESTORE ANCHOR is the mode target, which requires user
+      action — `seedMissingModeTargets` bails out entirely on an empty `mode_device_targets` blob
+      (`setup/appDeviceSupport.ts:466-468`). With no anchor, `resolveTemperatureSeed` falls back to the
+      live setpoint, which while shed IS the shed setpoint, so on release `plannedTarget ===
+      currentTarget` and the executor drops the write (`lib/executor/executableTargetProjection.ts:37`).
+      Reproduced on a Main-home-only install with no meter areas: the shed to 16 C lands and the resume
+      never happens in 60 poll cycles. The structural fix is a **pre-shed setpoint memory** captured when
+      the shed write goes out and consumed on release, which closes this for every home and every device
+      regardless of settings; binding mode targets per home (2026-07-26) only closed the anchored case.
+      Source: pels-runtime-reality review of the multi-home finishing train PR 1.
+
+- [ ] **`seedMissingModeTargets` can re-seed a shed setpoint as the permanent anchor.**
+      *Persona:* owner who clears a heater's per-mode target, then restarts PELS (or updates the app)
+      while that heater is shed. *Hypothesis:* the seeder fills a missing entry from the device's
+      *current* setpoint with no shed-state guard, and its "already seeded" fingerprints are in-memory
+      only (`setup/appDeviceSupport.ts:370-376,457-484`), so a restart while shed records the shed
+      setpoint (e.g. 16 C) as the mode target. PELS then holds the device there indefinitely and reverts
+      any manual raise. Before mode targets bound for meter areas this mis-seed was inert for an area
+      device; it is now actively enforced. Fix: skip seeding while the device is shed, or seed from the
+      pre-shed value. Source: pels-runtime-reality review of the multi-home finishing train PR 1.
+
+- [ ] **A mode-target raise bypasses headroom admission even with a fresh power reading — planner-wide.**
+      *Persona:* owner of a small-cap meter area (or a tight Main hard cap) whose heater's expected draw
+      exceeds the headroom left at the moment a mode raise lands (e.g. 5.5 kW of a 6 kW cap, ~2 kW
+      heater, 18→22). *Hypothesis:* a mode-target raise from a NON-shed state is emitted as an ordinary
+      `target_update` (`resolvePlannedTarget`, `lib/plan/planDevices.ts`), so unlike the from-shed
+      release lane — which IS admission-gated on headroom (`applyRestorePlan`,
+      `insufficient_headroom`) — it consults neither `context.headroom` nor the device's expected load,
+      briefly pushing the home over its soft limit until the next poll's shed cascade recovers (with
+      restore backoff damping any oscillation). This is Main's long-standing command-intent →
+      measure → shed model, deliberately preserved when mode targets bound live for meter areas
+      (PR #1886, owner decision "PELS drives area setpoints"); gating it on headroom + expected-load
+      reservation is a planner-wide product change affecting Main identically, so it needs an owner
+      call, not a rider on the area fix. Raised by Codex on PR #1886, 2026-07-27, declined there as
+      pre-existing-by-design.
 
 - [ ] **Homes UI: explain cached rows that stay locked after a refresh failure.**
       A failed `/ui_homes` refresh preserves the last-good rows and correctly disables mutations, but
@@ -66,21 +329,18 @@ What remains open is below.*
       shed relief from measured power when the observation is fresh. Source: prod log review
       2026-07-25 06:16:46Z. [P1]
 
-- [ ] **`isCommandableNow` is always false for an EV charger on the plan-device path.**
-      `resolveCommandableNow` reads `evChargingState`, but `withEvDiscriminant`
-      (`lib/plan/planTypes.ts` ~270-284) deliberately strips that field on the way to a
-      `DevicePlanDevice`, and `lib/plan/planDevicesBase.ts` never copies the producer's
-      `commandableNow` either. So for `deviceClass: 'evcharger'` the switch lands on
-      `state_unknown` → "charger state unknown" → blocked, every time. Live consequence:
-      `hasStableBinaryReleaseActuation` (`lib/executor/planExecutorPredicates.ts` ~70) is dead in
-      production for its EV-only `deferredReleaseIntent: 'binary_restore'` case. The other two call
-      sites (`binaryExecutor.ts` ~204, `planExecutionDrift.ts` ~173) correctly pass the *snapshot*,
-      which does carry `evChargingState`, so they are fine. Tests hide it: `pd()` in
-      `test/integration/planExecutor.test.ts` applies the temperature/stepped/binary discriminants
-      but not `withEvDiscriminant`, so fixtures keep a field production strips — any fix needs a
-      fixture that regroups the way the producer does. Either carry `commandableNow` onto the plan
-      device as a producer-resolved bit, or give plan-device callers an EV-aware variant. Source:
-      adversarial review, 2026-07-25. [P1]
+- [ ] **An EV charger needs two `evcharger_charging=true` writes and ~90 s to actually start.**
+      Prod 2026-07-26, first session PELS ever started from a bare `plugged_in` charger: the
+      19:32:37Z write logged `binary_write_timeout` then
+      `stepped_load_restore_binary_undriven` (step prepared, binary axis not driven on); the
+      19:34:07Z retry is what landed, with draw appearing at 19:35:07Z. So the resume path
+      recovers, but only via the retry — ~2.5 min from admission to current flowing, on a device
+      that was already admitted with 7.3 kW of headroom. Same family as `2e637fb40` ("step
+      prepared, still off"), which is present in that build, so this is a *remaining* gap in the
+      stepped-restore binary phase rather than a regression of it. Worth confirming whether the
+      first write is lost at the Homey seam (the timeout) or the executor declines to drive the
+      binary axis on that cycle. Persona: EV owner who plugs in and watches nothing happen for two
+      minutes. Source: prod verification of the plug-state commandability fix. [P2]
 
 - [ ] **Restore actuation re-stamps the GLOBAL `state.lastRestoreMs`.**
       `recordRestoreActuation` (`lib/executor/planExecutor.ts` ~210) sets both the per-device
@@ -240,13 +500,196 @@ What remains open is below.*
       (`DeviceLogView.tsx`) + runtime logs. If the device-detail log should also read
       hypothetically under simulation, thread `dryRun` there too — out of scope for PR #1819
       (Overview plan-card surface only). Source: PR #1819 review gates (2026-07-02).
+- [ ] **An unresolved budget-exempt draw is treated as zero exempt draw.**
+      `computeDailySoftLimit` (`lib/plan/planBuilder.ts:534`) does
+      `sumBudgetExemptLiveUsageKw(devices) ?? 0`, but that producer
+      (`lib/plan/planUsage.ts:75`) returns `null` when exempt devices exist and none report
+      power, and returns a silent *partial* sum when only some report. `budgetPaceImportKw` then
+      collapses to `budgetPaceKw` while `P_import` still includes the exempt device's draw, so
+      the threshold is short by that draw and non-exempt devices get shed for a missing reading
+      rather than for real budget pressure. Given that Homey reads transiently fail, this is
+      reachable in normal operation. Fix at the producer: return an explicit "exempt draw
+      unresolved" state (and distinguish partial from complete) and have the planner handle it
+      rather than defaulting to zero. Same `?? null` path feeds `lib/power/sampleIngest.ts:167`,
+      so the energy bucket silently stops excluding that device for the interval too. Note the
+      rebased threshold needs no floor: `P_import > budgetPaceKw + exemptKw` already equals
+      `P_nonExempt > budgetPaceKw`. No clamp is missing anywhere on the kW axis;
+      `P_nonExempt` stays signed, per the naming/ownership refactor below. Also correct the
+      stale comment at `lib/plan/planReasons.ts:63-68` while here: it says the daily limit "adds back
+      only an exempt device's LIVE draw, zero while it is off", but `computeDailySoftLimit` sums
+      `PlanInputDevice[]`, which carries no `plannedState`
+      (`packages/planner-types/src/planInputDevice.ts:112-114`), so `resolveUsageKw` cannot take
+      its shed-zero branch and an observed-off exempt device falls to `getHighestKnownPowerKw`
+      instead. The add-back already projects an off device's expected draw, which matters
+      because a future "project the candidate draw so exempt devices are capacity-bound for
+      restore" change would double-count. Same fallback as the open P1 observed-off attribution
+      item. Source: safe-pace model review (2026-07-26); see `notes/safe-pace-two-constraints.md`.
+- [ ] **The hero's budget reason line contradicts the number it explains.** When a device is
+      budget-exempt, `computeDailySoftLimit` rebases the daily pace into total-power space by
+      adding the exempt live draw (`lib/plan/planBuilder.ts:528-539`), so a 7 kW "Get power now"
+      load makes "Safe pace now" jump by 7 kW while the tooltip still reads "slowed to stay
+      within today's budget; daily pacing is the tighter constraint right now"
+      (`packages/shared-domain/src/planHeroTooltips.ts:24-28`). The budget did not get looser.
+      Needs a third copy case naming the carve-out (in "Get power now" vocabulary, not the word
+      *exempt*; clear wording via `notes/ui-terminology.md`), which in turn needs `plan.meta` to
+      carry the un-rebased budget pace and the exempt kW, neither of which it exposes today.
+      Do not reach for `meta.dailySoftLimitKw`: that field is the *rebased* value (the
+      `+ exemptKw` add-back happens inside `computeDailySoftLimit` before it reaches the
+      context), and the raw budget pace is an unnamed intermediate that no contract carries.
+      Persona: skeptical optimiser watching the hero during a boost. Source: safe-pace model
+      review (2026-07-26); see `notes/safe-pace-two-constraints.md`.
+- [ ] **A tight-capacity hour hands `softLimitSource` over to `'capacity'` near `:00`.**
+      `capacityPaceKw` decays toward `sustainableRateKw` as the hour ends
+      (`lib/plan/planBudget.ts:44-46`) while `budgetPaceImportKw` holds level, so a hand-over
+      fires exactly when the rebased daily pace sits above the decaying capacity pace near the
+      boundary. It does not fire when the daily pace is well below the sustainable rate (a 2 kW
+      daily pace against an 8 kW sustainable rate stays daily-bound through `:00`), so this is a
+      conditional transition on tight-capacity hours, not a guaranteed hourly one. When it does
+      fire it moves every `softLimitSource` consumer at once: the reason copy flips from budget
+      to capacity, `resolveLimitReason` follows, starvation cause attribution re-buckets, and the
+      startup stabilization gate (`lib/plan/restore/index.ts:55`) changes state. Decide whether
+      the reason line should change under the user at the hour boundary, and whether the runtime
+      gates should read a `capacityActive` predicate rather than the display source. Distinct
+      from the open `resolveSoftLimitSource` hysteresis item (that one is epsilon-band jitter,
+      this is a real transition) but they share consumers and should be designed together.
+      Source: safe-pace EOH review (2026-07-26).
+
+- [ ] **The docs define safe pace as "hard cap minus safety margin", which is wrong.**
+      `docs/glossary.md` ("Safe pace") and `docs/how-pels-decides.md` (~line 55) both state the
+      safe pace *is* the cap minus the margin. It is not: the capacity pace is a burst rate,
+      `remainingKWh / remainingHours` capped by the end-of-hour drain ceiling
+      (`lib/plan/planBudget.ts:20`), which legitimately sits *above* cap-minus-margin for most of
+      an under-used hour. `notes/ui-terminology.md` § "Safe pace, hard cap, and safety margin"
+      and `docs/technical.md` already say this correctly, and the glossary entry contradicts its
+      own next sentence ("a moving target, not a fixed limit"). Cap-minus-margin is the
+      *sustainable* rate and is the right frame only for the Advanced page's "safe pace starts
+      each hour at" preview. Persona: first-time user reading the glossary link from the hero
+      tooltip. Source: safe-pace definition audit (2026-07-26).
 
 ### P1 — targeted refactors (deferred)
 
 *Concrete, bounded changes to specific named surfaces (not structural re-splits — those stay P2).
 The flow-reported / pendingBinaryCommands / stepped-restore-wrapper / stepped-swap-completion /
-deviceOverview entries shipped in the 2026-06-03 train; the one item below (a multi-slice
-program) remains deferred.*
+deviceOverview entries shipped in the 2026-06-03 train; the items below (the first a multi-slice
+program) remain deferred.*
+
+- [ ] **One concept, one name, one owner for the pace/limit family.** `softLimit` currently names
+      four different quantities depending on call site and wiring, and the unwired fallbacks
+      disagree with each other: `lib/power/capacityGuard.ts:124-129` falls back to the hourly
+      allowance, `lib/executor/planExecutor.ts:428` falls back to the **hard cap**,
+      `lib/diagnostics/periodicStatus.ts:83` and `lib/plan/rebuildScheduler/signalDriven.ts:86-87`
+      to the allowance. A caller cannot tell which quantity it got, so a wiring regression
+      degrades to a quieter limit instead of failing loudly, which is the root `AGENTS.md`
+      "unavailable must not become a default" rule applied to a control threshold. Adopt the
+      canonical names in `notes/safe-pace-two-constraints.md` § "Canonical names"
+      (`hardCapKw`, `safetyMarginKw`, `hourlyAllowanceKWh`, `sustainableRateKw`, `capacityPaceKw`,
+      `budgetPaceKw`, `budgetPaceImportKw`, `bindingPaceKw`) and give each exactly one producer.
+      `hourlyAllowanceKWh` and `sustainableRateKw` are one owner with two named readings, since
+      `planBudget.ts:25` subtracts it as energy and line 44 multiplies it as a rate. "One owner"
+      means one per scope: the capacity rows are per home (each bundle wires its own provider,
+      `setup/homeRuntime/createHomeCapacityBundle.ts:406`), the budget rows are main-only
+      (sub-homes get `getDailyBudgetSnapshot: () => null`, `createHomeCapacityBundle.ts:291`), so
+      a sub-home has no `budgetPaceKw` and its `softLimitSource` can never be `'daily'`. Concrete work:
+      (a) collapse the five independent `hardCapKw - safetyMarginKw` computations
+      (`lib/power/capacityModel.ts:7`, `lib/power/capacityGuard.ts:129`,
+      `lib/plan/rebuildScheduler/signalDriven.ts:87`, `lib/power/sampleIngest.ts:159`,
+      `packages/settings-ui/src/ui/capacity.ts:219`) onto one owner. It is a pure function of two
+      settings values with no runtime state, so the owner is the capacity-settings owner, and it
+      should be handed out already resolved next to the existing `getHardCapKw` accessor
+      (`setup/homeRuntime/homeScope.ts:153`). The settings UI then receives it through the
+      contract as data rather than recomputing it, which also sidesteps that it cannot import
+      `lib/**`;
+      (b) delete `resolveCapacitySoftLimitKw` (`lib/power/capacityModel.ts:10`), an alias of
+      `resolveUsableCapacityKw` whose name promises the capacity pace but returns the allowance;
+      (c) make `capacityGuard.getSoftLimit()` return one quantity, surfacing an unwired provider
+      as an explicit unresolved state rather than a substituted threshold, and decide the caller
+      contract at the same time: `lib/executor/planExecutor.ts:428` needs a number, so specify
+      fail-closed (matching the stale-meter posture) rather than today's fall back to
+      `hardCapKw`, which is the loosest candidate. Without that the ambiguity just moves from the
+      producer to every call site;
+      (d) give `budgetPaceKw` a real name and producer instead of leaving it an unnamed
+      intermediate inside `computeDailySoftLimit`, so downstream can obtain the pace that applies
+      to the non-exempt house;
+      (e) materialise `P_nonExempt = P_import - exemptKw` on `PlanContext` and `plan.meta`,
+      **unclamped**. The power side only ever has it as an implicit term inside the rebased
+      threshold, so nothing downstream can show the user what is actually measured against their
+      budget. It equals `nonExemptGross - solar` and goes negative when solar more than covers
+      the non-exempt load, which is the exact analogue of `P_import` going negative on export
+      (`capacityGuard.reportTotalPower` does not floor). Do not add a floor: it would break the
+      deficit identity in the item below (`capacityPaceKw` 20, `budgetPaceKw` 5, `exemptKw` 7,
+      `P_import` 2 gives 10 kW headroom today and 5 kW clamped, delaying restores). The kWh axis
+      keeps its floor for the separate reason at `lib/plan/planHourContext.ts:21-22`. Ship it as
+      **two distinctly named quantities with distinct contract fields**, not one field computed
+      two ways: `P_nonExemptControl = P_import - projectedExemptKw` and
+      `P_nonExemptMeasured = P_import - measuredExemptKw`. `sumBudgetExemptLiveUsageKw` returns
+      the projected value (`getHighestKnownPowerKw` for observed-off devices), which is right for
+      control and wrong for the hero, whose segments are defined as current load
+      (`notes/overview-hero-spec.md:158-164`); the two can differ by several kW, so a single name
+      would leave a `plan.meta` consumer unable to tell whether hypothetical off-device load is
+      included. Do this before the
+      two-predicate item below, which is unwriteable while one identifier means four things.
+      Touches log event fields and test fixtures, so
+      expect churn in `pels-log-review` expectations. Source: safe-pace naming audit (2026-07-26).
+
+- [ ] **Express the soft limit as two predicates instead of one rebased `min()`.** Names below
+      are the canonical ones from the naming item above; land that first. `capacityPaceKw` and
+      `budgetPaceKw` measure different loads: capacity counts all of `P_import`, the budget
+      excludes budget-exempt devices. `planBuilder.ts:309-312` collapses them by rebasing the
+      budget pace onto the import axis (`+ exemptKw`) and taking `min()`. Replace with
+      `overCapacityPace = P_import > capacityPaceKw`,
+      `overBudgetPace = P_nonExempt > budgetPaceKw`, and
+      `deficitKw = max(P_import - capacityPaceKw, P_nonExempt - budgetPaceKw)`, with
+      `P_nonExempt` unclamped. That deficit is algebraically identical to today's, so shedding
+      sizing and shed/restore timing do not change. **What it buys is provenance, not
+      decoupling:** `P_nonExempt` contains `exemptKw` and the forms are identical, so control
+      does not become exempt-independent; the planner just gains the ability to say which
+      constraint bound and by how much, instead of deriving it from a source string computed off
+      a collapsed scalar. Three things it must preserve, each a review counterexample:
+      (i) the two forced-headroom branches at `lib/plan/planContext.ts:82-91` need *opposite*
+      handling. Stale fail-closed sheds while `overCapacityPace` is false and must keep admitting
+      exempt candidates, so candidacy needs `overCapacityPace || staleFailClosed`. The
+      exhausted-hour branch must NOT join it: `lib/plan/shedding/buildSheddingPlan.ts:103` already
+      overrides the source to `'daily'` there specifically to protect exempt devices, pinned by
+      `test/integration/planShedding.test.ts:3424-3488`, so folding it into a single
+      `forcedBreach` term would let `shedAllCandidates` shed "Get power now" devices; (ii) `softLimitSource` is a control input at
+      `lib/plan/restore/index.ts:55`, which gates startup stabilization on `=== 'capacity'`, so
+      introducing `'both'` changes restore behaviour unless every consumer is updated or a
+      separate `capacityActive` predicate is kept for the runtime gates; (iii) no floor inside
+      the deficit, per the naming item above. **Scope
+      limit:** it does not make the displayed pace exempt-independent. Any single tick on a
+      `P_import` axis is `min(capacityPaceKw, budgetPaceKw + exemptKw)` by construction, so
+      `softLimitSource` must stay a common-axis argmin (what `resolveSoftLimitSource` computes
+      today) and stays coupled to exempt draw; a raw argmin over the two paces is meaningless
+      because they are on different
+      axes. Showing that coupling is the P2 hero carve-out's job, not this refactor's. Two
+      follow-ons: `'both'` becomes producible (already defined in
+      `packages/contracts/src/settingsUiApi.ts:156`, in `SAFE_PACE_TOOLTIP_BY_SOURCE`, and in
+      `notes/ui-terminology.md`, but `resolveSoftLimitSource` at `lib/plan/planBuilder.ts:522-526`
+      can only return `'capacity'` or `'daily'`, so that copy is unreachable today), meaning the
+      two common-axis thresholds agree within `SOFT_LIMIT_EPSILON`, which needs the existing
+      `'both'` tooltip reworded out of its current breach reading. Consumers that want "is the
+      non-exempt house over budget" must read `overBudgetPace` rather than infer it from the source
+      string, as the reason copy and starvation attribution do today. Second follow-on: exempt
+      shed candidacy
+      (`lib/plan/shedding/candidates.ts:110`, `lib/plan/planRemainingSheddableLoad.ts:243`) keys
+      off `overCapacityPace || forcedBreach` instead of
+      `limitSource !== 'daily' || capacityBreached`. Behaviour-preserving only with the
+      `forcedBreach` term per (i) above; the two clauses coincide in the ordinary case (source
+      `'capacity'` plus `headroom < 0` implies `capacityBreached`) but not in the forced
+      branches. The value is that candidacy stops depending on a source string an exempt
+      device's live draw can move.
+      Converge with
+      `resolveLimitReason` (`lib/plan/pelsStatus.ts:265-291`) rather than adding a second fold:
+      it already returns `'none'|'hourly'|'daily'|'both'` for the `limitReason` field, derived
+      from `softLimitSource` plus shed state and headroom sign. Preserve the two `headroom = -1`
+      overrides at `lib/plan/planContext.ts:79-92` (stale fail-closed, exhausted-hour), which the
+      deficit identity does not cover. Does **not** subsume the P3 hysteresis item on
+      `resolveSoftLimitSource` further down: adding a `'both'` band keeps the resolver stateless,
+      so a pace difference oscillating across the epsilon boundary still alternates
+      `capacity`/`both`/`daily` between rebuilds and every source-dependent surface still
+      flickers. That item stays open and needs retained state or enter/exit thresholds. Fix the
+      `?? 0` P1 above first. Source: safe-pace model review (2026-07-26); design in
+      `notes/safe-pace-two-constraints.md`.
 
 - [ ] **Tighten the device-state snapshots to discriminated types.** `TargetDeviceSnapshot`,
       `DevicePlanDevice`, and `PlanInputDevice` carry binary/temperature/stepped/EV/freshness/power
@@ -527,6 +970,250 @@ program) remains deferred.*
 
 ## P2 Product, Observability, and Maintainability
 
+- [ ] **Three EV car-link membership gaps that keep the probe blind to a car.** All three leave a
+      car unobserved rather than mis-observed, so they cap what the probe can measure without
+      corrupting anything. (a) *Initially-unavailable cars are never retained.* A class `car` device
+      whose `ev_charging_state` is absent/malformed on the first authoritative fetch is not tracked
+      at all, so it gets no realtime subscription and no place in targeted reads, and
+      `noteCapabilityUpdate` only accepts already-tracked cars — a later valid value cannot recover
+      it until a full refresh or restart. (b) *Targeted misses ignore `failedIds`.* A by-id read
+      failure is classified separately by the fetch layer but that never reaches the probe's miss
+      counter, so three flaky reads (post-actuation and stuck-command refreshes come in bursts)
+      permanently forget a still-present car; it should use the same count-plus-wall-clock grace as
+      `mergeTargetedRefreshSnapshot`. (c) *Cars created after startup are undiscoverable.* Periodic
+      refreshes are targeted and the live-feed handler ignores `device.create`, so a car app
+      installed later is invisible until a full refresh or restart. Persona: anyone installing a car
+      app after PELS; hypothesis: "the probe logged nothing" reads as "detection failed" rather than
+      "it never saw the device". Source: Codex round 9 on PR #1895. [P2]
+
+- [ ] **`lib/device/evCarLinkProducer.ts` is over the 500 LOC cap.** It accumulated nine rounds of
+      correlation rules (edges, settle, contention, sessions, self-stop, shadow, membership). The
+      natural seam is session lifecycle (`resolveSession` / `resolveColdStartSessions` /
+      `resolveUnexplainedSessions` / `clearSession*`) versus observation ingest, which barely share
+      state beyond `activeLinks`. Source: CodeRabbit on PR #1895. [P2]
+
+- [ ] **Smart-task `status: 'unknown'` conflates "no verdict" with a verdict, one layer above the adapter.**
+      `withUnknown()` (`diagnosticFields.ts`) stamps `status: 'unknown'` for transient DATA problems —
+      `objective_progress_stale`, `objective_missing_temperature`, `objective_missing_charge_rate`,
+      `objective_missing_capacity` — into the same field that otherwise carries genuine trajectory
+      verdicts (`on_track` / `at_risk` / `cannot_meet` / `satisfied` / `invalid`). Every consumer
+      must then branch on a value meaning "we could not compute one":
+      `activePlanRevisionBuild.ts:56` falls back to `horizonPlan.status`, `planPreview.ts`,
+      `endedEventBus.ts`, and `planHistoryInProgressState.ts` each special-case it.
+      This is the consumer-side dual of the boundary rule in `AGENTS.md`: a read failure should
+      become an explicit semantic result at the producer, not a nullable/sentinel business value
+      that flows inward. It has already produced a real bug — gating the external-off overlay on
+      the live status meant a stale SoC reading silently reverted every surface to a cached
+      **On track** while the device was held off (fixed by not consuming the degraded value at all,
+      but the shape that invited it is still there).
+      Fix shape: split availability from verdict — e.g. `{ kind: 'resolved', status } | { kind: 'unavailable', reasonCode }`
+      — so no downstream layer can accidentally treat "unknown" as a trajectory claim.
+
+- [ ] **"Leave off until turned on again": sub-home plan paths are not driven by hold changes.**
+      Three related gaps, all multi-home-only and all with the same shape — the hold store is
+      shared across homes but the plan paths are not, so a sub-home keeps a stale
+      `inactive/external_off_hold` plan until an unrelated sample or rebuild reaches it (which
+      in flow mode can be a long wait):
+      (a) realtime observed-state settlement (`setup/appServiceWiring.ts`) invokes only the MAIN
+      `ctx.planService`, so a sub-home bundle's pending ON stays active past its confirmation and
+      a genuine off inside the 15 s/75 s window is misread as PELS's;
+      (b) a sub-home ON event reaches `scope.getPlanDevices()`, whose pre-pass releases the hold
+      before `syncExternalOffHoldForDevice` sees it, so the detector reports `none` and no release
+      rebuild is scheduled for that bundle;
+      (c) the `respect_external_off_devices` settings handler rebuilds only main after
+      `releaseDeOptedHolds()`, ignoring the returned device ids.
+      Fix together: route settlement to the owning bundle, and use the released ids to rebuild
+      each owning home. Single-home installs — the overwhelming majority — are unaffected.
+
+- [ ] **"Leave off until turned on again": a release is lost if the store never recovers.**
+      `clearHold` during an unreadable-state window records a tombstone, but deleting from the
+      empty in-memory map returns false, so no pending write is retained. If the read stays broken
+      for the full `EXTERNAL_OFF_HOLD_LOAD_GRACE_MS`, grace expiry stops further reloads without
+      reconciling the tombstone, and a restart can reload the stale persisted hold and strand a
+      device that was already released. Keep unresolved clears pending until they can be applied
+      durably. Needs a five-minute total settings outage to reach.
+
+- [ ] **"Leave off until turned on again": UI write can resurrect opt-ins cleared elsewhere.**
+      `writeFreshSetting` skips `readFresh` for nullish values, so when another WebView or the
+      Homey API UNSETS `respect_external_off_devices`, a toggle made before the realtime reload
+      lands mutates the stale in-memory snapshot and writes the cleared opt-ins back. Distinguish
+      a resolved-absent setting from an unavailable read before applying the fallback snapshot.
+
+- [ ] **"Leave off until turned on again" can strand a DUAL-CONTROL device (binary + stepped).**
+      `resolveCurrentOn` folds both axes, so a device whose step axis sits at the off step reports
+      `currentOn: false` even after the user turns the binary capability ON. The release branch in
+      `syncExternalOffHoldForDevice` never fires, and the hold also suppresses drift, so in flow
+      mode with no later plan cycle the device can stay held indefinitely despite an explicit ON.
+      The pull sweep already uses affirmative binary evidence (`isAffirmativelyOn`); the push path
+      cannot, because `BinaryPlanInputKind` deliberately carries only the folded `currentOn` and
+      the raw `binaryControl` is transport/observer-internal by design. Fixing it therefore means
+      a DESIGN choice, not a patch: either the producer resolves a second flat bit (a per-axis
+      `binaryAxisOn`) onto the binary cluster, or detection stops consuming `PlanInputDevice` for
+      this question. Decide before implementing — do not read `binaryControl` from the plan device.
+
+- [ ] **"Leave off until turned on again": the smart-task warning goes stale.**
+      `reloadObjectivesIfObjectiveKey` updates `state.deferredObjectiveSettings` but neither
+      refreshes the open detail controls nor emits `devices-updated`, and the `plan-updated`
+      handler refreshes only live status and diagnostics. A task created, disabled, or cleared
+      from another WebView therefore leaves the switch's "a Smart task may not finish on time"
+      hint showing the previous state — the user can enable the switch without the warning, or
+      keep seeing it after the task is gone. Refresh the open detail after the objective reload.
+
+- [ ] **"Leave off until turned on again" does not suppress the smart-task deadline floor.**
+      `applyDeferredAdmissionToInput` gates override, boost, priority holds, and budget exemption
+      on `heldOff`, but `hasDeadlineFloor` still activates the decoration path:
+      `buildDeferredTargetOverrides` supplies a floor for every planned thermal diagnostic, and
+      `buildExecutableTargetIntent` can emit a target update even though the plan device is
+      inactive, because the external-off reason is not a target-intent admission hold. PELS can
+      therefore still move the thermostat setpoint on a device the user has switched off. It does
+      not turn the device on — the binary guards hold — so the visible effect is a changed target
+      on an off device, and the right setpoint is already in place when they turn it back on.
+      Decide whether that is desirable before suppressing it.
+
+- [ ] **"Leave off until turned on again" is missing from Advanced → Clear device data.**
+      `collectDeviceIdsFromSettings`, `clearDeviceSettings`, and `clearMultipleDeviceSettings`
+      (`packages/settings-ui/src/ui/advanced.ts`) neither enumerate nor clear
+      `respect_external_off_devices`, so clearing a device leaves the flag (and any persisted
+      hold) behind, and a deleted device known only through this map is never offered by
+      "Clear unknown devices". Re-adding the device silently reactivates the old behaviour.
+
+- [ ] **`commandableNow` cannot tell an absent EV capability from an unreadable one.**
+      `packages/shared-domain/src/commandableNow.ts` ~191 treats `evChargingState === undefined` as
+      "no such signal — skip", so an EV whose charging-state observation is momentarily unavailable
+      fails OPEN: an off charger becomes commandable and eligible for `binary_restore`, the no-op
+      Homey write resolves successfully, and `recordRestoreActuation` stamps the GLOBAL restore
+      cooldown — delaying valid restores for every other device with no charging convergence to show
+      for it. Raised by Codex on PR #1901 and deliberately deferred there, because the two cases are
+      not equally reachable: a genuinely-absent capability never reaches this code at all (an EV
+      charger needs BOTH `evcharger_charging` and `evcharger_charging_state` or it drops out of the
+      snapshot entirely — `deviceCapabilityLifecycle.integration.test.ts` ~204), so the only residual
+      case is a vendor value outside the Homey enum, which `getEvChargingState` normalises to
+      `undefined` permanently. Failing closed on that would be a permanent block, which is strictly
+      worse than the cooldown stamp. The real fix is a producer-resolved distinction
+      (`resolved | unavailable`) at the capability read, per the resolution-in-producer rule, so the
+      consumer can fail open only for genuine absence. Second observable consequence, found while
+      rebasing #1901 onto the merged external-off hold: `setup/externalOffHoldDetection.ts` ~163
+      gates on `commandableNow`, so a charger in an unknown plug state that is switched off outside
+      PELS now STARTS a "leave off until turned on again" hold
+      (`externalOffHoldDetection.test.ts` records this). That is the correct reading of the
+      fail-open decision — such a charger really is commandable — but it means the unresolved-state
+      case now has behaviour attached to it in two places, so the producer-resolved fix should
+      revisit both. Third site, and the one that makes this structural rather than cosmetic:
+      `lib/executor/planExecutionDrift.ts` ~183 RE-DERIVES commandability with
+      `resolveCommandableNow({ dev: observed.snapshot })`. Its comment claims a raw snapshot, but
+      `ExecutableObservedDeviceState` documents (`executablePlan.ts` ~56) that the drift/reconcile
+      path feeds a PLAN device — and `toPlanDevice` ~237 strips `evChargingState` after resolving
+      `commandableNow` ~279. So on that path the re-derivation sees no plug state, fails open, and
+      reports restore drift for an EV that is genuinely unplugged or discharging; repeated realtime
+      events can then trip the per-device reconcile circuit breaker and suppress GENUINE drift. The
+      fix is to consume the materialized `commandableNow` instead of recomputing, which needs it
+      carried on `ExecutableObservedDeviceState` (`ExecutorDeviceSnapshot` does not expose it
+      today) — a typed-seam change, hence its own PR. Persona: owner whose water heater waits out a
+      restore cooldown burned by a charger that was never going to start; hypothesis: a global
+      cooldown stamped by a no-op write is invisible and self-inflicted. [P2]
+
+- [ ] **"Leave off until turned on again" only STARTS a hold from a push-delivered off.**
+      Detection runs at the realtime-reconcile gate (`setup/externalOffHoldDetection.ts`), so it
+      fires on `realtime_capability` / `device_update` observations. A full snapshot refresh does
+      not dispatch `plan_reconcile`, so an outside-off discovered only by a pull (live feed down
+      for the whole window) starts no hold and the device is managed as usual. Deliberate for v1 —
+      a pull cannot distinguish "the user just turned it off" from "PELS turned it off before the
+      last restart", which is the cold-start ambiguity the spec refuses to guess at. Revisit only
+      with a way to date the observation against the last PELS command. NOTE the RELEASE side is
+      deliberately not symmetric: it sweeps the pull path every plan cycle
+      (`releaseExternalOffHoldsForObservedOn`), because a missed release strands a device off
+      whereas a missed detection merely means normal management. Persona: cabin owner on a flaky
+      connection; hypothesis: they toggle the heater at the panel, the live feed is down, and PELS
+      keeps managing it. Source: PR-1 implementation of the external-off hold (2026-07-25).
+
+- [ ] **Thin `deviceDetail/index.ts` with a table-driven Setup-control registry.** The file is the
+      device-detail orchestrator and sits at a documented 505-line ceiling (raised from the 500
+      default by the "Leave off until turned on again" row). Every new per-device setting costs it
+      an import, a handler registration, and a reflect call, so the next one breaches it again. The
+      registrations are uniform enough to become a table of `{ sync, init }` entries iterated once.
+      Persona: contributor; hypothesis: the next settings feature stalls on an unrelated lint
+      ceiling and gets a second ad-hoc raise. Source: PR-2 of the external-off hold train
+      (2026-07-25).
+
+- [ ] **Show the budget-exempt carve-out on the Overview hero instead of hiding it in the number.**
+      The hero power bar's x-axis is total metered power, which is the natural axis for the cap
+      pace and the wrong axis for the budget pace (whose subject is the house minus the exempt
+      slab). Today the mismatch is papered over by rebasing the budget pace (`+ exemptKw`), which
+      is why the number moves for a non-budget reason. Direction: pull exempt devices out as a
+      leading sub-segment of managed, so the bar reads `[exempt][managed][background][free]`, and
+      draw the budget tick at `exempt + budgetNet`. "Over budget" then reads as "everything right
+      of the exempt slab exceeds the tick", which is literally the predicate, and the tick
+      position explains itself. Gate on `exemptKw > 0` so the default hero is unchanged.
+      Prerequisite: settle the axis. The bar total is net grid import
+      (`lib/power/sampleIngest.ts:113-123` keeps the cap path and the kWh bucket on net) while
+      per-device `exemptKw` is gross appliance draw, so on a solar home the slab can exceed the
+      bar; decide whether the hero axis is net (slab needs a clamp with a visible treatment) or
+      gross (cap tick no longer sits on the axis the cap meters). Do NOT present "available
+      power" as cap-only for an exempt device: `lib/plan/planReasons.ts:63-68` documents that
+      the exemption covers daily-budget shedding only, restore admission still gates on
+      `min(capacitySoftLimit, dailySoftLimit)`, and an off exempt device can genuinely be held
+      by the daily budget, though not for the reason that comment gives (see below). Depends on
+      the P1 reason-line copy fix and on `plan.meta` carrying the un-rebased pace + exempt kW.
+      Rejected alternative: two permanently visible pace ticks (three ticks at 320 px, with the
+      cap tick already mandatory, for a state most homes never enter). Persona: skeptical
+      optimiser during a boost. Hypothesis: a bar that shows the carve-out is trusted where a
+      jumping number is not. Source: safe-pace model review (2026-07-26); design in
+      `notes/safe-pace-two-constraints.md` and `notes/overview-hero-spec.md`.
+
+- [ ] **Persisted-store load grace only postpones a destructive reset.** `loadPowerCalibrationStore`
+      (and the EV car-link store that mirrors it) run exactly once at init. When that read is
+      transiently absent/malformed/throwing for an existing install, the store starts empty and the
+      grace merely blocks writes for five minutes — nothing ever re-reads the recoverable value, so
+      the first accepted mutation after the grace overwrites the real history with the empty-derived
+      state. Related: the store stays dirty when a write lands inside the debounce or fails, and only
+      another mutation or shutdown retries it, so accepted state can sit memory-only indefinitely and
+      be lost on an unclean restart. Re-read and merge persisted history before enabling the first
+      post-grace write, and schedule a retry when the gate expires or a write fails. Found by Codex on
+      PR #1895 against the EV car-link store; deliberately NOT fixed there because it describes the
+      shipped calibration-store pattern that store was modelled on, so the fix belongs where the
+      pattern lives. Persona: any user whose Homey has a slow/flaky settings read at boot; hypothesis:
+      silent loss of learned calibration is far worse than a delayed first write. See
+      `notes/persisted-settings-state.md`. [P2]
+
+- [ ] **Act on the EV car-link probe once detection accuracy is proven.** The probe
+      (`notes/ev-car-link/README.md`) currently only logs: it links a class `car` device to a
+      charger from coincident plug edges, records where the car stops charging on its own, and
+      shadow-compares the car's `measure_battery` against whatever the flow card reports. Nothing
+      reaches planning. Once a few weeks of `/tmp/pels` logs show `ev_car_link_resolved` picking
+      the right pair and `stoppedAtSocPct` clustering, the two payoffs are: (a) clamp a smart
+      task's target to the car's observed limit so a 90% task on an 80%-limited car reads
+      "your car stops at 80%" instead of silently landing `missed`; (b) stop crediting smart-task
+      progress while `ev_car_self_stopped` holds, so the allocator stops booking hours the car
+      will not take. (b) needs a seam: the producer lives in `lib/device`, a peer that may not
+      import `lib/objectives`. Persona: EV owner with a car-side charge limit; hypothesis: an
+      unexplained missed deadline is the single worst smart-task outcome. [P2]
+
+- [ ] **Two EV car-link edge-lifecycle holes, both deferred from PR #1895 as design decisions.**
+      (a) *Ambiguity is not durable.* Car and charger edge rings are pruned independently, so an
+      ambiguous group can later become a unique match: with charger edges at t=0 and t=160 s and a
+      car edge at t=80 s both chargers are reported ambiguous, but once the t=0 edge expires while
+      the other two survive, the next pass awards the remaining pair a vote — contradicting the
+      no-vote verdict already emitted. Either consume ambiguous groups or retain the verdict until
+      every related edge has expired. (b) *Charger membership is never pruned.* When a charger
+      leaves the committed view neither `lastChargerState` nor its `activeLinks` entry is cleared,
+      so a charger returning under the same Homey id is diffed against its pre-removal baseline
+      (manufacturing a plug edge), or keeps attributing the new session to the car that left. The
+      reason this is not a one-line prune: the view builder already drops a charger whose plug
+      state is momentarily unreadable, so this seam cannot tell "removed from Homey" from
+      "temporarily unreadable", and pruning naively would churn sessions on every transient gap.
+      Wants a membership signal that survives an unreadable capability. Both corrupt probe
+      EVIDENCE only — nothing reads these events. Persona: two-car household whose affinity map
+      the probe is meant to learn; hypothesis: a vote that contradicts an ambiguity already
+      reported makes the whole log untrustworthy. [P2]
+
+- [ ] **`runtimePackaging` contract-import detector false-positives on prose.** The regex in
+      `test/integration/runtimePackaging.test.ts` is not line-anchored, so the bare word "import"
+      inside a docblock matches and `[\s\S]*?` runs on into the next real declaration — flagging a
+      pure `import type` as a value import. Hit while adding `lib/device/evCarLinkWiring.ts`
+      (2026-07-26); worked around by rewording the comment. Anchor the pattern to a line start so
+      the guard stops depending on comment wording. Left out of that PR to avoid loosening a
+      packaging guard in the same change that needed it to pass. [P2]
+
 - [ ] **Meter picker hint invites an impossible pick when no meters are listed.** When the Homey
       Energy report exposes no id-carrying whole-home (cumulative) meter and no sensor-class device
       meter, the Whole-home meter select shows just "Automatic" while the always-visible hint still
@@ -606,6 +1293,45 @@ program) remains deferred.*
       for a feature the install isn't using. Topic-gate it, or only warn once the store has ever been
       `present` (an initialized marker exists). Source: pels-runtime-reality review of the multi-home GA cut,
       2026-07-22. File: `setup/homeMembership.ts` (`noteSuspectEdge` / `refreshStoreCaches`).
+- [ ] **`dryRunEffective` doubles as a sub-home discriminator in the `pels_status` producer.**
+      *Persona:* maintainer extending per-home status, plus any owner whose Flow automations read the
+      persisted `pels_status` blob. *Hypothesis:* `buildPelsStatus` takes `dryRunEffective?: boolean` where
+      `undefined` means "main home" and `true`/`false` is a sub-home's membership-gated posture, then gates a
+      SECOND, unrelated field on it: `const areaTotalKw = dryRunEffective !== undefined && …` decides whether
+      the blob carries `totalKw`. One optional boolean therefore carries two orthogonal meanings, actuation
+      posture and home kind. The tri-state itself is sound (the consumer, `resolveHomeLimitsStatus`, reads
+      `undefined` as "fall back to the persisted dry-run intent"), but the overload means that the first time
+      the main home writes its own posture — a perfectly reasonable change, since main has a posture too —
+      `totalKw` silently starts appearing in main's persisted blob, altering a payload external automations
+      read. Pass the area-total decision explicitly (an `includeAreaTotalKw` flag or a `homeKind`
+      discriminator) instead of inferring it from `dryRunEffective !== undefined`. No current bug: main is the
+      only caller that omits the field today. Source: multi-home boundary-hygiene audit of the GA train
+      (`ee09127c4..origin/main`), 2026-07-25. Files: `lib/plan/pelsStatus.ts` (`areaTotalKw`),
+      `lib/plan/planStatusWriter.ts`, `packages/shared-domain/src/homeLimitsStatus.ts`.
+- [ ] **Two `MainMeterSelection`/power-source seams fabricate `state: 'resolved'` when their resolver is
+      absent.** *Persona:* maintainer wiring a new call path into membership or snapshot refresh.
+      *Hypothesis:* three seams fabricate an authoritative selection when their optional resolver is missing.
+      `HomeMembershipService.readActiveMeterPowerSource` falls back to
+      `?? { state: 'resolved', value: 'homey_energy' }` when the optional `getConfiguredPowerSource` dep is
+      omitted; `AppSnapshotHelpers.resolveMainMeterSelection` falls back to
+      `?? { state: 'resolved', meterDeviceId: null }` when its resolver is unbound; and
+      `fetchLivePowerReport` ends its `mainMeterSelection ?? getHomeyEnergyMeterSelection?.() ??` chain on the
+      same fabricated `resolved`/Automatic literal. All three claim the STRONGEST authority at seams whose
+      entire purpose is to fence control when authority is unknown; every other path in those modules fails
+      closed on `unavailable`. No live bug is proven (the power-source dep is always passed by
+      `createHomeMembershipService`, and the snapshot resolver is bound at `appServiceWiring.ts`
+      `bindHomeyEnergyMeterResolver`), but the optional-with-fabricated-default shape means a wiring path that
+      omits one silently claims authority instead of fencing, and it is now repeated three times. Note that
+      `mainMeterSelection` is optional at EVERY level of the `refreshSnapshot` →
+      `resolveLivePowerForRefresh` → `fetchLivePowerReport` chain, so the fabricated literal is reachable by
+      simply not threading it. Make the deps required and let tests pass explicit stubs. Verified NOT a defect
+      while auditing: an `unavailable` selection forces `homePowerW: null`
+      (`snapshotRefresh.ts` `fetchLivePowerReport`), so `updateHomePowerFromReport` returns null and
+      `recordImplicitHomeyEnergySample` writes nothing — `sameMainMeterSelection` treating
+      `unavailable === unavailable` as equal only suppresses a debug log, and needs no change.
+      Source: multi-home boundary-hygiene audit of the GA train, 2026-07-25. Files:
+      `setup/homeMembership.ts`, `setup/appSnapshotHelpers.ts`,
+      `lib/device/transport/snapshotRefresh.ts` (`fetchLivePowerReport`).
 - [ ] **Hoist `createSelectOption` (and the render-signature guard pattern) out of `advanced.ts` into a
       shared settings-ui primitive module.** *Persona:* maintainer adding the next dynamic device picker.
       *Hypothesis:* three near-copies now exist — `createModeOption` (`modes.ts`), `createSelectOption`
@@ -1209,7 +1935,11 @@ CI failure, so future field-move slices can't silently grow the debt.*
       rescue button that appears and vanishes every few seconds reads as a bug and erodes trust. Candidate fix:
       add hysteresis (or a `both`-leaning-to-budget tiebreak) to `resolveSoftLimitSource`. Out of scope for the
       cause-classification fix (#1735) because it also moves the hero "Safe pace now" source label. Source:
-      pels-runtime-reality on #1735, 2026-06-16.
+      pels-runtime-reality on #1735, 2026-06-16. **Not** solved by the P1 targeted refactor
+      "Express the soft limit as two predicates instead of one rebased `min()`": that gives
+      `softLimitSource` a real `both` band, but the resolver stays stateless, so values
+      oscillating across the epsilon boundary still alternate `capacity`/`both`/`daily`. This
+      item needs retained state or separate enter/exit thresholds either way.
 
 - [ ] **Busy-gate the Budget header toggle (inherited apply race).** `onToggleClick` ignores
       `adjust.busy`: confirming a discard while an apply is in flight yields a post-navigation
@@ -1881,3 +2611,36 @@ persona but no current support-cost pressure; reframed to the P3 bar.*
 - [ ] **Smart-task edit/clear gates: treat a still-pending legacy-blob migration as untrusted absence.**
       *Persona:* Legacy install whose `deferred_objectives` blob migration deferred on a flaky read.
       *Hypothesis:* `gateEditableTask` and `cancelDeferredObjectiveForContext` answer `task_not_found` when the per-device key is absent and `getKeys()` is non-empty — but if `migrateBlobToPerKeyIfNeeded` just deferred, the task may still live in the un-migrated blob. Trust absence only when the `DEFERRED_OBJECTIVES_PERKEY_MIGRATED` marker is set; otherwise map to the retryable `write_conflict`/`write_refused` lane. Nearly extinct in practice (all live installs are migrated). Source: Codex review on PR #1843 (2026-07-06). Files: `setup/settingsUiSmartTaskApi.ts`, `setup/appInit/deferredObjectiveCancel.ts`.
+- [ ] **Smart-task home-scope gates optional-chain a REQUIRED `HomeMembershipPort` method.**
+      *Persona:* maintainer reading the smart-task authority gates to decide whether a new caller is safe.
+      *Hypothesis:* `isSmartTaskDeviceInMainHome` and `resolveSmartTaskHomeScope` both write
+      `membership.hasPendingOwnershipGeneration?.() !== false`, but `hasPendingOwnershipGeneration(): boolean`
+      is NON-optional on `HomeMembershipPort` — the `?.` is unreachable and the `!== false` exists only to
+      absorb an `undefined` it can never produce. *Why:* the port was deliberately designed so control paths
+      see one total, provenance-free surface; a dead optional-chain re-introduces exactly the "might this be
+      missing?" ambiguity the port removed, and the double negative reads as if absence were a third state.
+      Collapse both to a plain call (`membership.hasPendingOwnershipGeneration()`), keeping the genuine
+      `membership?.` guard for the optional `ctx.homeMembership` itself. Behaviour-neutral. Source: multi-home
+      boundary-hygiene audit of the GA train, 2026-07-25. File: `setup/appInit/smartTaskHomeScope.ts`.
+- [ ] **`lastResolvedMainMeterDeviceId` is a three-state field whose third state is never distinguished.**
+      *Persona:* maintainer extending Main-meter source fencing. *Hypothesis:* the field is typed
+      `string | null | undefined` and documented as "`undefined` means no authoritative Main-meter selection
+      has been observed; `null` is the authoritative Automatic selection", but at its ONLY read
+      (`getKnownConfiguredMeterDeviceIds`) the two collapse into one branch
+      (`=== undefined || === null ? [] : [id]`), so the extra state carries no information today. *Why:* an
+      unused third state on a nullable field is the shape that made `currentOn` hard to reason about; either
+      narrow it to `string | null`, or give the "never observed" case a real consumer and say what that
+      consumer does differently. Behaviour-neutral either way. Source: multi-home boundary-hygiene audit of
+      the GA train, 2026-07-25. File: `setup/homeMembership.ts`.
+- [ ] **Owner decision: gate load-adding mode raises on available headroom, not just a fresh sample?**
+      A meter area holds a load-adding mode-target write until its meter has a fresh sample, but once
+      one lands the raise is emitted as an ordinary `target_update` regardless of remaining headroom:
+      at 5.5 kW measured against a 6 kW cap, raising a heater 18→22 °C (~2 kW) bypasses restore
+      admission, reserves nothing, and can push the area over its cap until later polls and shed
+      cooldowns claw it back. Declined in the multi-home stack because the same admission shape
+      applies to the Main home's mode raises today — gating them on headroom is a planner-wide product
+      change (mode changes stop being immediate whenever the home is near its cap), not an area bug.
+      *Persona:* owner whose area runs close to its cap most hours. *Hypothesis:* an overshoot the
+      planner itself caused, however brief, reads as PELS breaking its one promise. Source: Codex
+      review of multi-home PR #1886 (thread "Admit fresh-sample raises against available headroom"),
+      2026-07-27. Files: `lib/plan/planDevices.ts`, `lib/plan/planActionMaterialization.ts`. [P2]
