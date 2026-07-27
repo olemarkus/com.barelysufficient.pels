@@ -379,6 +379,63 @@ test('simulation banner keeps a conservative scope across transient and realtime
   await expect(action).toHaveText('Turn off simulation');
 });
 
+test('a simulating area surfaces on the global banner while Main is live, until control turns on', async ({ page }) => {
+  // The inverse of the Main-scoped chain above: Main is LIVE, and the freshly
+  // seeded area still simulates (its suffixed flag is unwritten, which is the
+  // runtime's dry-run-TRUE boot default). The Main-flag-only banner used to
+  // stay silent here — an "everything is live" claim the Limits page disproved.
+  await page.addInitScript(() => {
+    const stubWindow = window as Window & {
+      __PELS_HOMEY_STUB__?: { settings?: Record<string, unknown> };
+    };
+    const existing = stubWindow.__PELS_HOMEY_STUB__ ?? {};
+    stubWindow.__PELS_HOMEY_STUB__ = {
+      ...existing,
+      settings: { ...(existing.settings ?? {}), capacity_dry_run: false },
+    };
+  });
+  await installRentalMeterDeviceList(page);
+  await gotoApp(page);
+  await seedRentalMeterSnapshot(page);
+  await seedRentalArea(page);
+
+  const banner = page.locator('#dry-run-banner');
+  await expect(banner).toBeVisible();
+  await expect(banner).toContainText(
+    'PELS is only simulating “Rental unit”. Turn on control under Limits & safety.',
+  );
+  await expect(banner).toHaveAttribute('data-home-scope', 'areas');
+  // The button writes MAIN's flag, which is already off — it hides, and the
+  // text names the page that holds the area's own control.
+  await expect(page.locator('#simulation-disable-button')).toHaveJSProperty('hidden', true);
+
+  // The Settings hub chip renders the aggregate split, not Main's bare flag.
+  await page.getByRole('tab', { name: 'Settings' }).click();
+  const chip = page.locator('#settings-nav-chip-simulation');
+  await expect(chip).toBeVisible();
+  await expect(chip).toHaveText('Partly on');
+
+  // Following the chip into Simulation mode must NOT present an all-live
+  // screen: the page's own switch is Main's — off in this posture — so the
+  // area-naming banner is the only truthful pointer to the active control
+  // and stays visible here (only the Main-remedy banner variants suppress).
+  await page.locator('.settings-nav-card[data-settings-target="simulation"]').click();
+  await expect(page.locator('#simulation-panel')).toBeVisible();
+  await expect(banner).toBeVisible();
+  await expect(banner).toContainText(
+    'PELS is only simulating “Rental unit”. Turn on control under Limits & safety.',
+  );
+
+  // Turning on control (the suffixed `capacity_dry_run:<id>` write) reaches
+  // the banner and chip through the realtime settings.set stream.
+  await openLimitsPanel(page);
+  await pickHomeScope(page, AREA_ID);
+  await page.locator('#home-limits-simulation-switch').click();
+  await expect.poll(() => readStubSetting(page, `capacity_dry_run:${AREA_ID}`)).toBe(false);
+  await expect(banner).toBeHidden();
+  await expect(chip).toHaveJSProperty('hidden', true);
+});
+
 test('a held pre-GA meter area cannot claim active control or stale live power', async ({ page }) => {
   await installRentalMeterDeviceList(page);
   await gotoApp(page);

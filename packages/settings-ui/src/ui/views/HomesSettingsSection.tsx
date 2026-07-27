@@ -2,6 +2,7 @@ import { render } from 'preact';
 import {
   composeDeleteConfirmBody,
   HOMES_ADD_BUTTON,
+  HOMES_BETA_NOTICE,
   HOMES_CANCEL_BUTTON,
   HOMES_CONFIG_DEGRADED,
   HOMES_DELETE_BUTTON,
@@ -359,6 +360,16 @@ const FlowSourceNotice = () => (
   </section>
 );
 
+// Beta notice (locked decision 11): confident about what ships, honest about
+// the coverage gap, invites reports. Info rail — it warns about nothing. The
+// exceptional warn states above keep leading the page; the editor skips it
+// (a focused form is not the moment for release posture).
+const BetaNotice = () => (
+  <section class="pels-notice-info homes-settings__notice" id="homes-beta-notice">
+    <p class="homes-settings__notice-body">{HOMES_BETA_NOTICE}</p>
+  </section>
+);
+
 const HomesSettingsSectionView = (props: HomesSettingsSectionProps) => {
   if (props.status === 'loading') {
     return (
@@ -390,6 +401,7 @@ const HomesSettingsSectionView = (props: HomesSettingsSectionProps) => {
       <div class="homes-settings">
         {props.showFlowSourceNotice && <FlowSourceNotice />}
         {props.configDegraded && <DegradedNotice />}
+        <BetaNotice />
         <section class="settings-form-card">
           <p class="pels-card-supporting" id="homes-empty-explainer">{HOMES_EMPTY_EXPLAINER}</p>
         </section>
@@ -406,6 +418,7 @@ const HomesSettingsSectionView = (props: HomesSettingsSectionProps) => {
     <div class="homes-settings">
       {props.showFlowSourceNotice && <FlowSourceNotice />}
       {props.configDegraded && <DegradedNotice />}
+      <BetaNotice />
       <HomesList {...props} />
       {/* Deliberately a bare footnote BELOW the card: it describes the
           complement of every area, not the last row (M3 placement decision). */}

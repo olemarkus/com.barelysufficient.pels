@@ -336,6 +336,19 @@ export type SettingsUiPowerPayload = {
   tracker: PowerTrackerState | null;
   status: SettingsUiPowerStatus | null;
   heartbeat: number | null;
+  // Runtime-authoritative Main-home simulation posture. The persisted
+  // `capacity_dry_run` key may be absent while the running app deliberately
+  // retains its last-good value, so a freshly opened WebView must not infer a
+  // boot default from settings absence. Present only on whole-home reads;
+  // scoped reads get their effective posture from the scoped status blob.
+  mainDryRunEffective?: boolean;
+  // Runtime-authoritative Main-home capacity scalars. Like dry-run above, the
+  // running adapter retains these values when a persisted key is absent or
+  // malformed; a WebView reload must render and preserve the same values.
+  mainCapacityScalars?: {
+    limitKw: number;
+    marginKw: number;
+  };
   // Home-level "this home has solar surfaces" gate for the Usage tab's Solar
   // card (which cannot read the lazy-loaded devices payload). True only when
   // a tracked solar/PV device exists AND the power source is homey_energy —

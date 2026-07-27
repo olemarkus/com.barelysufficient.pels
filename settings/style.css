@@ -4620,18 +4620,31 @@ md-filled-button.is-busy {
    neutral surface + neutral hairline on three sides + a 4px role-coloured
    left state-rail. The notice text itself is already role-toned, so the rail
    completes the status read without a full role-coloured edge or tint. */
+/* Railed info-notice primitive, generalized from the price surface exactly as
+   `.pels-notice-warning` was from `.price-notice-warning`: the left info rail
+   + contained surface carry the signal, so `.pels-notice-info` keeps body text
+   in the normal tone; the original `.price-notice-info` alias retains its
+   info-toned text + bottom margin for the existing price surfaces. */
+.pels-notice-info,
 .price-notice-info {
-  color: var(--color-state-info-text);
   font-style: normal;
   font-size: var(--font-size-sm);
   padding: var(--spacing-3);
-  margin-bottom: var(--spacing-3);
   background: var(--pels-surface-container-low);
   border-width: 1px 1px 1px var(--spacing-1);
   border-style: solid;
   border-color: var(--color-border-default) var(--color-border-default)
     var(--color-border-default) var(--color-state-info-border);
   border-radius: var(--radius-md);
+}
+
+.pels-notice-info {
+  color: var(--text);
+}
+
+.price-notice-info {
+  color: var(--color-state-info-text);
+  margin-bottom: var(--spacing-3);
 }
 
 /* Railed warning-notice primitive: the left warning rail + contained surface
