@@ -9,10 +9,11 @@ import {
   findNestedSubHomeRoots,
   hasUniqueSubHomeMeters,
   HOME_CONFIG_ACTIVATION_VERSION,
+  type HomeConfig,
   type SubHomeConfig,
   type ZoneTree,
 } from '../lib/home/homeConfig';
-import { HOMEY_ENERGY_METER_DEVICE_ID } from '../lib/utils/settingsKeys';
+import { HOMEY_ENERGY_METER_DEVICE_ID, POWER_SOURCE } from '../lib/utils/settingsKeys';
 import {
   findHomeAreaNameRejection,
   HOME_AREA_MAX_COUNT,
@@ -22,7 +23,8 @@ import { readMainMeterSelection } from './mainMeterSettings';
 import { readConfiguredPowerSource } from './powerSourceSettings';
 
 type MainMeterSaveRequest = Extract<SettingsUiHomesSaveRequest, { op: 'set_main_meter' }>;
-type AreaMutationRequest = Exclude<SettingsUiHomesSaveRequest, MainMeterSaveRequest>;
+type PowerSourceSaveRequest = Extract<SettingsUiHomesSaveRequest, { op: 'set_power_source' }>;
+type AreaMutationRequest = Exclude<SettingsUiHomesSaveRequest, MainMeterSaveRequest | PowerSourceSaveRequest>;
 
 /**
  * Multi-home activation as the membership service latched it, passed in rather
@@ -53,12 +55,13 @@ export type MainMeterArrangement = 'unknown' | 'identified' | 'idless_aggregate_
  * usage. The settings UI already nudges (`HOMES_MAIN_METER_NOTICE`); this is
  * the config invariant behind the nudge.
  *
- * Deliberately gated on the Homey Energy power source, because that is the
- * only source where a whole-home meter selection exists at all: the picker is
- * hidden on the Flow source, so demanding it there would be a refusal with no
- * control to act on. (The Flow source has its own, separate problem with
- * areas: a Flow power reading carries no meter identity, so an area gets no
- * samples. That exclusion is tracked in TODO.md, not papered over here.)
+ * The Flow source is refused outright before that requirement is even asked:
+ * meter areas and the Flow power source are mutually exclusive (a Flow power
+ * reading carries no meter identity, so an area gets no samples and is never
+ * limited). `savePowerSourceSelection` enforces the same exclusion from the
+ * other side. The refusal order is deliberate: on Flow the whole-home meter
+ * picker is hidden, so `main_meter_required` would name a control the owner
+ * cannot reach — the source refusal is the one with an actionable remedy.
  *
  * No activation gate is needed on this path: every upsert commits
  * `activationVersion`, so a save through here always leaves multi-home running.
@@ -69,6 +72,12 @@ const findMeterOwnershipRefusal = (
   mainMeterArrangement: MainMeterArrangement,
 ): SettingsUiHomesSaveRefusal | null => {
   if (!hasUniqueSubHomeMeters(subHomes)) return { ok: false, reason: 'invalid' };
+  const powerSource = readConfiguredPowerSource(homey.settings);
+  // A suspect source read cannot decide whether the save is allowed at all
+  // (an upsert always results in at least one area), and guessing either way
+  // is a wrong answer: refuse and let the owner retry.
+  if (powerSource.state === 'suspect') return { ok: false, reason: 'degraded' };
+  if (powerSource.value === 'flow') return { ok: false, reason: 'homey_energy_required' };
   const mainMeter = readMainMeterSelection(homey.settings);
   // Unavailable = the persisted selection could not be read, which is a
   // degraded store, not a bad payload. Never guess Automatic from it.
@@ -77,11 +86,6 @@ const findMeterOwnershipRefusal = (
     return { ok: false, reason: 'invalid' };
   }
   if (subHomes.length === 0 || mainMeter.meterDeviceId !== null) return null;
-  const powerSource = readConfiguredPowerSource(homey.settings);
-  // A suspect source read cannot decide whether the requirement applies, and
-  // guessing either way is a wrong answer: refuse and let the owner retry.
-  if (powerSource.state === 'suspect') return { ok: false, reason: 'degraded' };
-  if (powerSource.value !== 'homey_energy') return null;
   // On a home whose whole-home reading is a PROVEN id-less aggregate, the
   // main_meter_required remedy can never be satisfied — the picker has no
   // whole-home meter to offer. Refuse honestly instead of pointing at it.
@@ -151,6 +155,34 @@ export const findComposedHomeInvariantViolation = (
 };
 
 /**
+ * Whether the freshly read config's areas are RUNNING, for the two saves that
+ * must not proceed while they are (Automatic, and the Flow source). A saved
+ * pre-GA config that multi-home is deliberately holding dormant is not
+ * running and must not block either save.
+ *
+ * The activation MARKER travels in the same fresh read as `subHomes`, so an
+ * upsert that just activated this config is visible here even while the
+ * membership recompute it queued is still pending — the latched snapshot
+ * would still say "not running" in that window, and consulting it first
+ * would let the save persist moments before the area controllers start.
+ *
+ * No marker: dormant, or activated only through the retired legacy flag.
+ * That discrimination is the membership service's latched answer; `unknown`
+ * refuses rather than guesses, because the legacy flag's own read fails
+ * closed to `false`, which HERE would read as "not running" and would
+ * silently permit exactly the save the caller exists to refuse.
+ */
+const classifyAreasRunning = (
+  config: HomeConfig,
+  activation: MultiHomeActivationRead,
+): 'running' | 'dormant' | 'unknown' => {
+  if (config.subHomes.length === 0) return 'dormant';
+  if (config.activationVersion === HOME_CONFIG_ACTIVATION_VERSION) return 'running';
+  if (activation.state === 'unavailable') return 'unknown';
+  return activation.runtimeActive ? 'running' : 'dormant';
+};
+
+/**
  * Validate + persist Main's selection in one synchronous server turn. Sharing
  * the ui_homes_save intent seam with area mutations means either concurrent
  * arrival order observes the first owner and refuses the second.
@@ -166,35 +198,50 @@ export const saveMainMeterSelection = (
   const { subHomes } = config;
   // The same requirement the area path enforces, from the other side: going
   // back to Automatic while meter areas are RUNNING would make the Main home
-  // read every area's meter as its own. A saved pre-GA config that multi-home
-  // is deliberately holding dormant is not running, and its combined total is
-  // simply the whole home, so it must not block Automatic. No power-source
-  // gate here, unlike the area path: this endpoint is only reachable from the
-  // Whole-home meter picker, which renders on the Homey Energy source alone.
+  // read every area's meter as its own. No power-source gate here, unlike the
+  // area path: this endpoint is only reachable from the Whole-home meter
+  // picker, which renders on the Homey Energy source alone.
   //
   // Only this branch consults activation, so picking an explicit meter — the
   // remedy every other refusal names — can never itself be blocked.
-  if (request.meterDeviceId === null && subHomes.length > 0) {
-    // The activation MARKER travels in the same fresh read as `subHomes`, so
-    // an upsert that just activated this config is visible here even while the
-    // membership recompute it queued is still pending — the latched snapshot
-    // would still say "not running" in that window, and consulting it first
-    // would let Automatic persist moments before the area controllers start.
-    if (config.activationVersion === HOME_CONFIG_ACTIVATION_VERSION) {
-      return { ok: false, reason: 'main_meter_required' };
-    }
-    // No marker: dormant, or activated only through the retired legacy flag.
-    // That discrimination is the membership service's latched answer; unknown
-    // activation refuses rather than guesses, because the legacy flag's own
-    // read fails closed to `false`, which HERE would read as "not running" and
-    // would silently permit exactly the save this exists to refuse.
-    if (activation.state === 'unavailable') return { ok: false, reason: 'degraded' };
-    if (activation.runtimeActive) return { ok: false, reason: 'main_meter_required' };
+  if (request.meterDeviceId === null) {
+    const running = classifyAreasRunning(config, activation);
+    if (running === 'unknown') return { ok: false, reason: 'degraded' };
+    if (running === 'running') return { ok: false, reason: 'main_meter_required' };
   }
   const collision = findMainMeterCollision(request.meterDeviceId, subHomes);
   if (collision !== null) {
     return { ok: false, reason: 'meter_in_use', otherName: collision.name };
   }
   homey.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, request.meterDeviceId);
+  return { ok: true };
+};
+
+/**
+ * Validate + persist the power source in the same serialized server turn as
+ * area mutations, so "save an area" and "switch to Flow" cannot both land.
+ * The exclusion the area path enforces, from the other side: a Flow reading
+ * carries no meter identity, so RUNNING meter areas would silently stop
+ * receiving samples the moment the source flips. Dormancy discrimination is
+ * `classifyAreasRunning`, shared with the Automatic refusal.
+ *
+ * Switching TO Homey Energy never consults the homes store: it is the
+ * direction every refusal's remedy lives in, and for a legacy config whose
+ * areas were saved under Flow it is the only road back to a working setup.
+ */
+export const savePowerSourceSelection = (
+  homey: Homey.App['homey'],
+  request: PowerSourceSaveRequest,
+  activation: MultiHomeActivationRead,
+): SettingsUiHomesSaveResponse => {
+  if (request.source === 'flow') {
+    const read = createHomesStore(homey).read();
+    if (read.state === 'suspect') return { ok: false, reason: 'degraded' };
+    const config = read.state === 'present' ? read.value : { subHomes: [] };
+    const running = classifyAreasRunning(config, activation);
+    if (running === 'unknown') return { ok: false, reason: 'degraded' };
+    if (running === 'running') return { ok: false, reason: 'homey_energy_required' };
+  }
+  homey.settings.set(POWER_SOURCE, request.source);
   return { ok: true };
 };

@@ -44,7 +44,7 @@ test.describe('Power source setting', () => {
     await expect(select).toHaveJSProperty('value', 'flow');
 
     await setMaterialSelectValue(page, '#settings-power-source', 'homey_energy');
-    await expect(page.locator('#toast')).toContainText('Limits & safety saved');
+    await expect(page.locator('#toast')).toContainText('Power source saved');
 
     // Verify the setting was persisted in the Homey stub
     const stored = await page.evaluate(() => {
@@ -74,7 +74,7 @@ test.describe('Power source setting', () => {
     await expect(select).toHaveJSProperty('value', 'homey_energy');
 
     await setMaterialSelectValue(page, '#settings-power-source', 'flow');
-    await expect(page.locator('#toast')).toContainText('Limits & safety saved');
+    await expect(page.locator('#toast')).toContainText('Power source saved');
 
     const stored = await page.evaluate(() => {
       return new Promise<unknown>((resolve, reject) => {
@@ -88,6 +88,44 @@ test.describe('Power source setting', () => {
       });
     });
     expect(stored).toBe('flow');
+  });
+
+  test('refuses switching to Flow while a meter area runs and rolls the select back', async ({ page }) => {
+    await page.addInitScript(() => {
+      (window as any).__PELS_HOMEY_STUB__ = {
+        settings: {
+          power_source: 'homey_energy',
+          homey_energy_meter_device_id: 'dev_han',
+          homes_config: {
+            activationVersion: 1,
+            subHomes: [{
+              homeId: 'h_rental',
+              name: 'Rental unit',
+              rootZoneId: 'z_rental',
+              meterDeviceId: 'dev_subpanel',
+            }],
+          },
+        },
+      };
+    });
+    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    await openLimitsAndSafety(page);
+
+    const select = page.locator('#settings-power-source');
+    await expect(select).toHaveJSProperty('value', 'homey_energy');
+    await setMaterialSelectValue(page, '#settings-power-source', 'flow');
+
+    // The refusal names the remedy and the screen never shows the unsaved choice.
+    await expect(page.locator('#toast'))
+      .toContainText('Remove your meter areas under Multiple meters first');
+    await expect(select).toHaveJSProperty('value', 'homey_energy');
+    const stored = await page.evaluate(() => new Promise<unknown>((resolve, reject) => {
+      (window as any).Homey.get(
+        'power_source',
+        (error: Error | null, value?: unknown) => (error ? reject(error) : resolve(value)),
+      );
+    }));
+    expect(stored).toBe('homey_energy');
   });
 
   test('offers a resolved sub-meter (unmarked sensor meter), not just the whole-home-marked one', async ({ page }) => {

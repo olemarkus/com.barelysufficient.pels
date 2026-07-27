@@ -264,12 +264,15 @@ export const HOMES_MAIN_METER_SAVE_DEGRADED = 'PELS can’t safely change the Wh
 /**
  * Shown while the power source is Flow (not Homey Energy). Meter areas read each
  * meter's own live power from the Homey Energy report; a Flow power reading
- * carries no meter identity, so an area configured under Flow receives no
- * samples and is never limited. Consequence-first, names the requirement.
+ * carries no meter identity, so an area under Flow would receive no samples
+ * and never be limited — which is why saving one is refused on this source
+ * (`homey_energy_required`, both directions). Consequence-first, names the
+ * requirement and the control; removal stays available as the way out for a
+ * config that predates the exclusion.
  */
 export const HOMES_FLOW_SOURCE_NOTICE = 'Meter areas need the Homey Energy power source. On the '
-  + 'Flow power source PELS can’t tell which meter a reading belongs to, so an area you add here '
-  + 'won’t be limited.';
+  + 'Flow power source PELS can’t tell which meter a reading belongs to, so meter areas can’t be '
+  + 'saved here. Set “Power source” under Limits & safety first. Removing an area still works.';
 
 // ── Load / save states ─────────────────────────────────────────────────────
 

@@ -149,9 +149,13 @@ type WiredHealthyHomey = Homey.App['homey'] & {
 const MAIN_METER_ID = 'm-main-home';
 
 const makeWiredHealthyHomey = (legacyMultiHomeEnabled = true): WiredHealthyHomey => {
-  // A non-empty live key list positively proves that an absent optional Main
-  // meter setting is truly unwritten, not a store-wide transient miss.
-  if (mockHomeyInstance.settings.getKeys().length === 0) {
+  // The healthy path models the Homey Energy owner: area saves are refused
+  // outright on the Flow source (and unset resolves to Flow), so an absent
+  // source would turn every upsert scenario into the exclusion refusal.
+  // Setting it also keeps the key list non-empty, which positively proves an
+  // absent optional Main meter setting is truly unwritten, not a store-wide
+  // transient miss. Flow-source scenarios seed 'flow' before calling this.
+  if (mockHomeyInstance.settings.get(POWER_SOURCE) === undefined) {
     mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
   }
   // The healthy path now includes the Main home naming its own meter: on the
@@ -951,14 +955,178 @@ describe('ui_homes payload', () => {
     })).toEqual({ ok: false, reason: 'main_meter_required' });
   });
 
-  it('does not demand a whole-home meter on the Flow source, whose picker does not exist', () => {
+  it('refuses an area save on the Flow source, whatever the Main meter says', () => {
+    // Mutual exclusion, area side: a Flow reading carries no meter identity,
+    // so the area would never receive samples. An explicitly named Main meter
+    // does not soften it.
     mockHomeyInstance.settings.set(POWER_SOURCE, 'flow');
-    mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, null);
+    mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, MAIN_METER_ID);
+    const homeyWired = makeWiredHealthyHomey();
+    const setSpy = vi.spyOn(mockHomeyInstance.settings, 'set');
 
     expect(saveSettingsUiHomesConfig({
-      homey: makeWiredHealthyHomey(),
+      homey: homeyWired,
+      body: { op: 'upsert', area: { name: 'Upstairs', rootZoneId: 'z2', meterDeviceId: 'm-sub' } },
+    })).toEqual({ ok: false, reason: 'homey_energy_required' });
+    expect(createHomesStore(homeyLike).read()).toEqual({ state: 'unwritten' });
+    expect(setSpy).not.toHaveBeenCalled();
+    setSpy.mockRestore();
+
+    // On Automatic the refusal must be the SAME one: main_meter_required would
+    // name the whole-home meter picker, which is hidden on the Flow source,
+    // so the source refusal wins the ordering.
+    mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, null);
+    expect(saveSettingsUiHomesConfig({
+      homey: homeyWired,
+      body: { op: 'upsert', area: { name: 'Upstairs', rootZoneId: 'z2', meterDeviceId: 'm-sub' } },
+    })).toEqual({ ok: false, reason: 'homey_energy_required' });
+
+    // Switching the source (with Main named) unblocks exactly the same save.
+    mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
+    mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, MAIN_METER_ID);
+    expect(saveSettingsUiHomesConfig({
+      homey: homeyWired,
       body: { op: 'upsert', area: { name: 'Upstairs', rootZoneId: 'z2', meterDeviceId: 'm-sub' } },
     })).toEqual({ ok: true });
+  });
+
+  it('keeps delete as the Flow-source escape hatch while edits stay refused', () => {
+    // A config that predates the exclusion: areas saved, source now Flow. The
+    // refusal copy says "remove your meter areas first", so removal must work
+    // on any source; an edit would keep an unmeasurable area alive.
+    createHomesStore(homeyLike).write({
+      activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
+      subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-sub' }],
+    });
+    mockHomeyInstance.settings.set(POWER_SOURCE, 'flow');
+    const homeyWired = makeWiredHealthyHomey();
+
+    expect(saveSettingsUiHomesConfig({
+      homey: homeyWired,
+      body: {
+        op: 'upsert',
+        area: {
+          homeId: SUB_HOME_A.homeId, name: 'Renamed', rootZoneId: 'z2', meterDeviceId: 'm-sub',
+        },
+      },
+    })).toEqual({ ok: false, reason: 'homey_energy_required' });
+
+    expect(saveSettingsUiHomesConfig({
+      homey: homeyWired, body: { op: 'delete', homeId: SUB_HOME_A.homeId },
+    })).toEqual({ ok: true });
+    const read = createHomesStore(homeyLike).read();
+    expect(read.state === 'present' && read.value.subHomes).toEqual([]);
+  });
+
+  it('refuses switching the power source to Flow while meter areas are running', () => {
+    createHomesStore(homeyLike).write({
+      activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
+      subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-sub' }],
+    });
+    mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
+    mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, MAIN_METER_ID);
+    const homeyWired = makeWiredHealthyHomey();
+
+    expect(saveSettingsUiHomesConfig({
+      homey: homeyWired, body: { op: 'set_power_source', source: 'flow' },
+    })).toEqual({ ok: false, reason: 'homey_energy_required' });
+    expect(mockHomeyInstance.settings.get(POWER_SOURCE)).toBe('homey_energy');
+
+    // Removing the last area unblocks exactly the same switch.
+    expect(saveSettingsUiHomesConfig({
+      homey: homeyWired, body: { op: 'delete', homeId: SUB_HOME_A.homeId },
+    })).toEqual({ ok: true });
+    expect(saveSettingsUiHomesConfig({
+      homey: homeyWired, body: { op: 'set_power_source', source: 'flow' },
+    })).toEqual({ ok: true });
+    expect(mockHomeyInstance.settings.get(POWER_SOURCE)).toBe('flow');
+  });
+
+  it('lets a dormant (never-activated) config through the Flow switch and never blocks Homey Energy', () => {
+    // Marker-less config with the legacy flag latched false: multi-home is
+    // deliberately holding the saved pre-GA areas dormant, so they are not
+    // running and must not block the switch.
+    createHomesStore(homeyLike).write({
+      subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-sub' }],
+    });
+    mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
+    const homeyWired = makeWiredHealthyHomey(false);
+    expect(saveSettingsUiHomesConfig({
+      homey: homeyWired, body: { op: 'set_power_source', source: 'flow' },
+    })).toEqual({ ok: true });
+    expect(mockHomeyInstance.settings.get(POWER_SOURCE)).toBe('flow');
+
+    // Switching TO Homey Energy is the remedy direction: allowed even while
+    // areas are running (a legacy Flow-saved config's only road back).
+    createHomesStore(homeyLike).write({
+      activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
+      subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-sub' }],
+    });
+    expect(saveSettingsUiHomesConfig({
+      homey: homeyWired, body: { op: 'set_power_source', source: 'homey_energy' },
+    })).toEqual({ ok: true });
+    expect(mockHomeyInstance.settings.get(POWER_SOURCE)).toBe('homey_energy');
+  });
+
+  it('still refuses Flow when a marker-less config is running via the latched legacy flag', () => {
+    createHomesStore(homeyLike).write({
+      subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-sub' }],
+    });
+    mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
+    const homeyWired = makeWiredHealthyHomey(true);
+    expect(saveSettingsUiHomesConfig({
+      homey: homeyWired, body: { op: 'set_power_source', source: 'flow' },
+    })).toEqual({ ok: false, reason: 'homey_energy_required' });
+    expect(mockHomeyInstance.settings.get(POWER_SOURCE)).toBe('homey_energy');
+  });
+
+  it('answers the Flow switch from the fresh read in the boot window, and refuses to guess without the marker', () => {
+    // Marker-activated config: the proof travels in the same read as subHomes,
+    // so even an unwired membership service refuses with the specific reason.
+    createHomesStore(homeyLike).write({
+      activationVersion: HOME_CONFIG_ACTIVATION_VERSION,
+      subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-sub' }],
+    });
+    mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
+    expect(saveSettingsUiHomesConfig({
+      homey: homeyNoService, body: { op: 'set_power_source', source: 'flow' },
+    })).toEqual({ ok: false, reason: 'homey_energy_required' });
+
+    // No marker: activation may still come from the retired legacy flag, and
+    // that answer is the unwired membership service's — neither yes nor no
+    // may be guessed.
+    createHomesStore(homeyLike).write({
+      subHomes: [{ ...SUB_HOME_A, meterDeviceId: 'm-sub' }],
+    });
+    expect(saveSettingsUiHomesConfig({
+      homey: homeyNoService, body: { op: 'set_power_source', source: 'flow' },
+    })).toEqual({ ok: false, reason: 'degraded' });
+    expect(mockHomeyInstance.settings.get(POWER_SOURCE)).toBe('homey_energy');
+
+    // Homey Energy needs no area answer, so the boot window never blocks it.
+    expect(saveSettingsUiHomesConfig({
+      homey: homeyNoService, body: { op: 'set_power_source', source: 'homey_energy' },
+    })).toEqual({ ok: true });
+  });
+
+  it('refuses the Flow switch as degraded when the homes store reads suspect', () => {
+    mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
+    mockHomeyInstance.settings.set(HOMES_CONFIG, 'not-a-homes-config');
+    expect(saveSettingsUiHomesConfig({
+      homey: homeyNoService, body: { op: 'set_power_source', source: 'flow' },
+    })).toEqual({ ok: false, reason: 'degraded' });
+    expect(mockHomeyInstance.settings.get(POWER_SOURCE)).toBe('homey_energy');
+  });
+
+  it('refuses a malformed power-source payload instead of coercing a default', () => {
+    const homeyWired = makeWiredHealthyHomey();
+    expect(saveSettingsUiHomesConfig({
+      homey: homeyWired, body: { op: 'set_power_source', source: 'garbage' },
+    })).toEqual({ ok: false, reason: 'invalid' });
+    expect(saveSettingsUiHomesConfig({
+      homey: homeyWired, body: { op: 'set_power_source' },
+    })).toEqual({ ok: false, reason: 'invalid' });
+    expect(mockHomeyInstance.settings.get(POWER_SOURCE)).toBe('homey_energy');
   });
 
   it('refuses an area upsert on a suspect power-source read rather than guessing the source', () => {

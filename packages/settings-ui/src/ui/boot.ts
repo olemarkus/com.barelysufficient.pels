@@ -46,6 +46,7 @@ import {
 } from './capacity.ts';
 import { initHomeScope, selectHomeScope } from './homeScope.ts';
 import { initHomeyEnergyMeterHandlers } from './homeyEnergyMeter.ts';
+import { savePowerSourceSetting } from './powerSourceSave.ts';
 import {
   DEBUG_LOGGING_TOPICS as DEBUG_LOGGING_TOPICS_SETTING,
   MAIN_HOME_ID,
@@ -232,9 +233,9 @@ const initTabHandlers = () => {
 };
 
 const initLimitsAndSimulationHandlers = () => {
-  const autoSaveSettingsLimits = async (options?: { includePowerSource?: boolean }) => {
+  const autoSaveSettingsLimits = async () => {
     try {
-      await saveSettingsLimitsSettings(options);
+      await saveSettingsLimitsSettings();
     } catch (error) {
       await logSettingsError('Failed to save limits and safety settings', error, 'autoSaveSettingsLimits');
       await showToastError(error, 'Failed to save limits and safety settings.');
@@ -244,9 +245,12 @@ const initLimitsAndSimulationHandlers = () => {
   settingsCapacityMarginInput?.addEventListener('input', refreshLimitsValidationHints);
   settingsCapacityLimitInput?.addEventListener('change', () => autoSaveSettingsLimits());
   settingsCapacityMarginInput?.addEventListener('change', () => autoSaveSettingsLimits());
-  // Only the select's own change may carry power_source into the save — see
-  // the persist guard in saveCapacitySettingsPatch.
-  settingsPowerSourceSelect?.addEventListener('change', () => autoSaveSettingsLimits({ includePowerSource: true }));
+  // The power-source select persists itself through the guarded ui_homes_save
+  // seam (the runtime refuses Flow while meter areas run), so it never rides
+  // the bulk limits save. The handler owns its own error/rollback path.
+  settingsPowerSourceSelect?.addEventListener('change', () => {
+    void savePowerSourceSetting();
+  });
   // The meter select persists itself (its options load lazily, so routing it
   // through the bulk limits save could write an empty value before they load).
   initHomeyEnergyMeterHandlers();
