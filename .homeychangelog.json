@@ -451,5 +451,8 @@
   },
   "2.17.6": {
     "en": "An EV charger that reports plugged-in but idle (i.e not just paused) can now be started, and smart tasks will plan for it. This means PELS will also authenticate an Easee charger itself."
+  },
+  "2.18.0": {
+    "en": "New setting for devices PELS can switch on and off: Leave off until turned on again. When it is enabled and you turn the device off yourself, in Homey or from another automation, PELS leaves it off and uses the freed power elsewhere instead of resuming it. Turning the device back on hands it straight back to normal control, and a smart task that needs the device will show it is at risk while it stays off.\n\nAlso fixed an issue where a paused EV charger could keep every other limited device from resuming, leaving them off even when there was power to spare."
   }
 }
