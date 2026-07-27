@@ -8067,6 +8067,19 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
   display: none;
 }
 
+/* Per-home Usage honest state (multi-home): while the selected part of the
+ * home cannot be served (`homeScope: unavailable`), the data sections hide and
+ * the `#usage-scope-unavailable` notice card is the only content — zeros would
+ * read as that home's measurements. Mirrors the `data-loading` contract above;
+ * `power.ts` stamps `data-scope-read` on every stats render. */
+#usage-panel[data-scope-read="unavailable"] > .usage-return-link,
+#usage-panel[data-scope-read="unavailable"] > .usage-hero,
+#usage-panel[data-scope-read="unavailable"] > .usage-card:not(.usage-scope-unavailable),
+#usage-panel[data-scope-read="unavailable"] > .solar-usage-mount,
+#usage-panel[data-scope-read="unavailable"] > .usage-footer {
+  display: none;
+}
+
 /* ---------------------------------------------------------------------------
  * Usage tab — Solar card (display-only rows; see views/SolarUsageCard.tsx)
  *

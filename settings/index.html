@@ -234,6 +234,20 @@
         </div>
         <span class="visually-hidden">Loading usage…</span>
       </div>
+      <!-- Honest per-home state (multi-home): shown INSTEAD of the data
+           sections when the selected part of the home cannot be served
+           (`homeScope: unavailable`). Copy is populated by power.ts from the
+           shared-domain module (homeScopeCopy.ts) so the words can never
+           drift from the runtime's; CSS keys the section swap off
+           `#usage-panel[data-scope-read="unavailable"]`. -->
+      <section class="pels-surface-card usage-card usage-scope-unavailable" id="usage-scope-unavailable" hidden aria-live="polite">
+        <md-elevation aria-hidden="true"></md-elevation>
+        <!-- Deliberately not an <h3>: the text arrives at render time, and an
+             empty heading fails html-validate / reads as a hole in the
+             document outline. The panel keeps its own hidden h2 landmark. -->
+        <p class="plan-card__title" id="usage-scope-unavailable-headline"></p>
+        <p class="pels-card-supporting" id="usage-scope-unavailable-body"></p>
+      </section>
       <div class="usage-return-link" id="usage-return-link" hidden>
         <!-- Static `href` is defensive hardening: the container is hidden by
              default and `showUsageReturnLink()` overwrites `href` before the

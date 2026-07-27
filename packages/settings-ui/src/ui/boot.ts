@@ -34,7 +34,7 @@ import {
 } from './homey.ts';
 import { showToast, showToastError } from './toast.ts';
 import { refreshDevices, renderDevices } from './devices.ts';
-import { getPowerUsage, renderPowerStats, renderPowerUsage } from './power.ts';
+import { refreshPowerData } from './uiRefreshTasks.ts';
 import {
   loadCapacitySettings,
   loadAdvancedSettings,
@@ -154,6 +154,11 @@ const initTabHandlers = () => {
     // The recourse answers "what used the energy TODAY" — reset a lingering
     // Yesterday selection before the jump.
     showUsageDayToday();
+    // The daily budget is a Main-home constraint (multi-home keeps budgets
+    // whole-home), so the destination must show Main's history — a lingering
+    // meter-area selection could never explain the overage. Same scope-first
+    // precedent as the `data-settings-home-scope` deep links below.
+    selectHomeScope(MAIN_HOME_ID);
     showTab('usage');
   });
   tabs.forEach((tab) => {
@@ -387,8 +392,7 @@ const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
   await loadModeAndPriorities();
 
   // Phase 2: Load remaining settings in parallel for faster load time
-  const [usage] = await Promise.all([
-    getPowerUsage(),
+  await Promise.all([
     loadCapacitySettings(),
     loadBudgetAdjust(),
     loadStaleDataStatus(),
@@ -408,13 +412,22 @@ const loadInitialData = async (bootstrap: SettingsUiBootstrap | null) => {
   // Phase 3: Render everything once with all state populated
   // Device-dependent renders (renderPriorities, renderDevices)
   // are deferred to first tab open via lazy loading in showTab().
-  renderPowerUsage(usage);
+  //
   // Budget payload before the first power-stats render: the Usage tab's
   // daily-history chart sources its budget overlay from the active
   // daily-budget payload (`activeDailyBudget.ts`), so the mark line and
   // readout context are present from first paint.
   await refreshDailyBudgetPlan(bootstrap?.dailyBudget);
-  await renderPowerStats();
+  // The bootstrap Usage paint goes through the generation-fenced refresh, not
+  // a directly captured read: handlers are interactive before this point, so a
+  // scope pick made mid-boot has already painted the picked home via its own
+  // `refreshPowerData` run — a separately captured Main payload rendered here
+  // would overwrite that home's hourly chart with Main's entries while the
+  // stats pass recomputes the hero for the picked scope, mixing two homes on
+  // one panel. Routing through the same entry re-reads under the CURRENT
+  // scope, and a pick landing mid-flight supersedes this run instead of racing
+  // it.
+  await refreshPowerData();
   renderModeOptions();
   await refreshAdvancedDeviceLogger();
 
