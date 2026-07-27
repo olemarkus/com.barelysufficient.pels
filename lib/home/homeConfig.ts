@@ -20,6 +20,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { isCanonicalHomeyDeviceId } from '../utils/homeyDeviceId';
 import { MAIN_HOME_ID, type HomeId } from '../utils/settingsKeys';
 
 /**
@@ -89,7 +90,7 @@ export const hasUniqueSubHomeMeters = (
  */
 export const resolveExplicitMainMeterDeviceId = (raw: unknown): string | null => {
   const trimmed = typeof raw === 'string' ? raw.trim() : '';
-  return trimmed === '' ? null : trimmed;
+  return isCanonicalHomeyDeviceId(trimmed) ? trimmed : null;
 };
 
 /**

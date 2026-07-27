@@ -108,6 +108,8 @@ describe('explicit Main meter ownership', () => {
     expect(resolveExplicitMainMeterDeviceId('  meter-annex  ')).toBe('meter-annex');
     expect(resolveExplicitMainMeterDeviceId('   ')).toBeNull();
     expect(resolveExplicitMainMeterDeviceId(42)).toBeNull();
+    expect(resolveExplicitMainMeterDeviceId('automatic')).toBeNull();
+    expect(resolveExplicitMainMeterDeviceId('meter|annex')).toBeNull();
   });
 
   it('finds only an explicit meter that a sub-home already owns', () => {

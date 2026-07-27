@@ -1,4 +1,5 @@
 import type { Logger as PinoLogger } from 'pino';
+import type { MainMeterSelection } from '../../packages/contracts/src/mainMeterSelection';
 import type {
   WeatherAdvisorSettings,
   WeatherHistoryState,
@@ -34,6 +35,44 @@ export type WeatherCollectorDeps = {
     deadlineMissedToBudget?: boolean;
   };
   getSettings: () => WeatherAdvisorSettings;
+  /**
+   * Resolved fingerprint of the whole-home metering arrangement, composed by
+   * the setup layer (`setup/weatherMeterScopeSignature.ts`) from only the
+   * settings relevant to the active producer. `lib/weather` must not read the
+   * homes config itself (the `no-weather-to-peer` boundary). `undefined` means
+   * a required setting is unavailable; the collector then keeps the stamped
+   * signature and never invalidates on it — ambiguity is not change evidence.
+   */
+  readMeterScopeSignature: () => string | undefined;
+  /**
+   * Main's meter selection, resolved by the setup layer
+   * (`setup/mainMeterSettings.ts`) — the same read the scope fingerprint is
+   * composed from; `lib/weather` must not read settings itself. Constrains the
+   * historical-kWh election (`resolveMeterDailyKwh`): with an EXPLICIT
+   * selection only that meter may win — the open probe would otherwise
+   * re-admit a still-installed previous meter whose pre-switch days match the
+   * retained power-tracker history strongest, re-vouching old-scope kWh right
+   * after a scope invalidation. `null` (Automatic) keeps the open probe: the
+   * Automatic pick's resolved identity is structurally unavailable at this
+   * seam (the fingerprint's documented limitation). `unavailable` defers the
+   * election — a failed read must not widen it back to every installed meter.
+   */
+  readMainMeterSelection: () => MainMeterSelection;
+  /**
+   * The configured whole-home power source, resolved by the setup layer from
+   * the same adapter the scope fingerprint's source arm is composed from
+   * (`setup/powerSourceSettings.ts`). Gates the historical-kWh election: the
+   * election exists only for the Homey Energy producer — Flow samples come
+   * from the user's own wiring, not an id-bearing meter, so no installed
+   * meter is that scope's producer, and probing one anyway would let it
+   * validate against the retained pre-switch tracker buckets and re-vouch
+   * old-scope kWh right after a source-switch invalidation. `suspect` (a
+   * transiently unreadable setting) defers the launch, like an unavailable
+   * Main selection. The source union is declared structurally because
+   * `lib/weather` must not import `lib/power` (`no-weather-to-peer`); it
+   * mirrors `PowerSource` in `lib/power/powerSource.ts`.
+   */
+  readPowerSource: () => { state: 'resolved'; value: 'homey_energy' | 'flow' } | { state: 'suspect' };
   getNowMs: () => number;
   getTimeZone: () => string;
   /**

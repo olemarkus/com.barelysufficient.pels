@@ -14,6 +14,7 @@ import {
   normalizeLastAutoApply,
   normalizeMetForecast,
 } from './weatherHistoryNormalize';
+import { normalizeMeterScopeMarkers } from './weatherMeterScope';
 
 /** Two years of daily records ≈ 90 KB JSON — well inside the persisted-state budget. */
 export const WEATHER_HISTORY_RETENTION_DAYS = 730;
@@ -183,6 +184,66 @@ export function upsertBackfillRecords(
 }
 
 /**
+ * Forgets every field derived under one specific whole-home metering
+ * arrangement, keeping everything scope-independent (temperature history and
+ * its markers, suppression evidence, the MET cache). Dropped:
+ * - the meter-kWh markers, so the meter pass re-runs and re-elects a source
+ *   under the new arrangement;
+ * - `kwhPurgeVersion`, so that re-run runs with `allowStrip` re-armed and may
+ *   purge kWh values the new arrangement does not vouch for — without this the
+ *   re-run only fills and the old scope's wrong values survive;
+ * - `controlledBackfillVersion` (uncontrolled = total − controlled, so the
+ *   split must re-resolve against the re-resolved totals);
+ * - the fit/suggestion, which were learned from the old-scope kWh layer;
+ * - EVERY retained record's kWh layer (total, controlled/uncontrolled split,
+ *   `quality.kwhBackfilled` provenance — the day flips back to `missingKwh`).
+ *   Those values were measured under the OLD arrangement: keeping them would
+ *   let the next refit reproduce the old-scope signature immediately (the fit
+ *   was just cleared, so it recomputes from whatever records still carry kWh),
+ *   and a surviving `kwhBackfilled` flag would let the re-armed reconcile
+ *   treat an old-meter fill as already validated where the new meter lacks
+ *   history for the day. After the strip, only the re-run itself can re-vouch
+ *   a day — from the NEW meter's Insights, or from the power tracker on full
+ *   days after the new arrangement took effect;
+ * - the scope stamp and tracker epoch — the caller stamps both for the new
+ *   arrangement in the same transition (`WeatherCollector.reconcileMeterScope`).
+ */
+export function stripMeterScopeDerivedState(state: WeatherHistoryState): WeatherHistoryState {
+  const {
+    meterKwhBackfillDone: _done,
+    meterKwhDeviceId: _meter,
+    kwhPurgeVersion: _purge,
+    controlledBackfillVersion: _split,
+    latestFit: _fit,
+    latestSuggestion: _suggestion,
+    meterScopeSignature: _scope,
+    meterScopeSinceDateKey: _scopeSince,
+    ...kept
+  } = state;
+  return { ...kept, records: kept.records.map(stripRecordKwhEvidence) };
+}
+
+/**
+ * The per-record arm of the scope strip: removes the day's kWh evidence and
+ * its meter-fill provenance, leaving a `missingKwh` record whose temperature
+ * fields, quality flags, and suppression evidence are untouched. Records that
+ * carry no kWh evidence are returned by reference so an all-clean record set
+ * costs nothing.
+ */
+function stripRecordKwhEvidence(record: WeatherDailyRecord): WeatherDailyRecord {
+  const hasKwhEvidence = record.kwhTotal !== undefined
+    || record.kwhControlled !== undefined
+    || record.kwhUncontrolled !== undefined
+    || record.quality.kwhBackfilled === true;
+  if (!hasKwhEvidence) return record;
+  const {
+    kwhTotal: _total, kwhControlled: _controlled, kwhUncontrolled: _uncontrolled, ...rest
+  } = record;
+  const { kwhBackfilled: _flag, ...quality } = record.quality;
+  return { ...rest, quality: { ...quality, missingKwh: true } };
+}
+
+/**
  * Merges a late-recovered persisted state with what accumulated in memory
  * while the store was unreadable. The recovered blob is the richer base
  * (potentially years of records); the in-memory state holds only what this
@@ -222,16 +283,18 @@ function mergeBackfillMarkers(
 ): Pick<
   WeatherHistoryState,
   'backfilledDeviceId' | 'backfillVersion' | 'meterKwhBackfillDone' | 'meterKwhDeviceId'
-  | 'kwhPurgeVersion' | 'controlledBackfillVersion'
+  | 'kwhPurgeVersion' | 'controlledBackfillVersion' | 'meterScopeSignature' | 'meterScopeSinceDateKey'
   > {
   // Temperature marker: prefer the recovered pair; the version describes the
   // same completed run as its deviceId, so they must travel together.
   const tempSource = recovered.backfilledDeviceId !== undefined ? recovered : inMemory;
-  // Meter markers and the purge/split stamps: recovered-only. An in-memory
-  // completion was computed while the store was unreadable, against a record
-  // set the recovered blob may extend by months — carrying it over would
-  // latch those days unfilled (or unpurged) forever; dropping it costs one
-  // idempotent re-run next start.
+  // Meter markers and the purge/split/scope stamps: recovered-only. An
+  // in-memory completion was computed while the store was unreadable, against
+  // a record set the recovered blob may extend by months — carrying it over
+  // would latch those days unfilled (or unpurged) forever; dropping it costs
+  // one idempotent re-run next start. The scope stamp travels with the meter
+  // markers it vouches for; the caller re-reconciles it against the live
+  // arrangement right after the merge.
   return {
     ...(tempSource.backfilledDeviceId !== undefined ? { backfilledDeviceId: tempSource.backfilledDeviceId } : {}),
     ...(tempSource.backfilledDeviceId !== undefined && tempSource.backfillVersion !== undefined
@@ -242,6 +305,14 @@ function mergeBackfillMarkers(
     ...(recovered.kwhPurgeVersion !== undefined ? { kwhPurgeVersion: recovered.kwhPurgeVersion } : {}),
     ...(recovered.controlledBackfillVersion !== undefined
       ? { controlledBackfillVersion: recovered.controlledBackfillVersion }
+      : {}),
+    ...(recovered.meterScopeSignature !== undefined
+      ? {
+        meterScopeSignature: recovered.meterScopeSignature,
+        ...(recovered.meterScopeSinceDateKey !== undefined
+          ? { meterScopeSinceDateKey: recovered.meterScopeSinceDateKey }
+          : {}),
+      }
       : {}),
   };
 }
@@ -437,7 +508,7 @@ export function periodsOverlapWindow(
  * persistence grace window rather than overwriting (this store's temperature
  * history cannot be reconstructed once lost).
  */
-export function normalizeWeatherHistoryState(raw: unknown): WeatherHistoryState | null {
+export function normalizeWeatherHistoryState(raw: unknown, currentDateKey?: string): WeatherHistoryState | null {
   if (!isUnknownRecord(raw)) return null;
   if (!Array.isArray(raw.records)) return null;
   const accumulators = isUnknownRecord(raw.accumulators)
@@ -457,7 +528,7 @@ export function normalizeWeatherHistoryState(raw: unknown): WeatherHistoryState 
     // Legacy +24h-device profile, no longer written; read for BC only (PR 2 drops it).
     ...(Object.keys(forecastHourly).length > 0 ? { forecastHourly } : {}),
     ...(metForecast ? { metForecast } : {}),
-    ...normalizeBackfillMarkers(raw),
+    ...normalizeBackfillMarkers(raw, currentDateKey),
     // Derived fields: producer-written and recomputed after every records
     // change, so a shallow shape check suffices — corruption self-heals at
     // the next rollup/backfill. The new suppression fields are defaulted so a
@@ -471,12 +542,10 @@ export function normalizeWeatherHistoryState(raw: unknown): WeatherHistoryState 
   };
 }
 
-function normalizeBackfillMarkers(
-  raw: Record<string, unknown>,
-): Pick<
+function normalizeBackfillMarkers(raw: Record<string, unknown>, currentDateKey?: string): Pick<
   WeatherHistoryState,
   'backfilledDeviceId' | 'backfillVersion' | 'meterKwhBackfillDone' | 'meterKwhDeviceId'
-  | 'kwhPurgeVersion' | 'controlledBackfillVersion'
+  | 'kwhPurgeVersion' | 'controlledBackfillVersion' | 'meterScopeSignature' | 'meterScopeSinceDateKey'
   > {
   const isNonEmptyString = (value: unknown): value is string => typeof value === 'string' && value.length > 0;
   const isPositiveInteger = (value: unknown): value is number => (
@@ -491,6 +560,7 @@ function normalizeBackfillMarkers(
     ...(isPositiveInteger(raw.controlledBackfillVersion)
       ? { controlledBackfillVersion: raw.controlledBackfillVersion }
       : {}),
+    ...normalizeMeterScopeMarkers(raw, currentDateKey),
   };
 }
 

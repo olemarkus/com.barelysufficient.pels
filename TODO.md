@@ -2002,6 +2002,31 @@ CI failure, so future field-move slices can't silently grow the debt.*
       and the collector factory before the next weather PR. Persona: contributor landing the next weather change;
       hypothesis: a coverage failure attributed to an unrelated diff costs a full CI round to diagnose. P2.
 
+- [ ] **Weather meter-scope fingerprint: resolve the Automatic arm to the sampled meter identity.** With Main on
+      Automatic, `readWholeHomeMeterScopeSignature` (`setup/weatherMeterScopeSignature.ts`) composes the constant
+      `main:automatic`, but `extractAutomaticHomePowerReading` samples the FIRST usable cumulative item — a Homey
+      reorder/availability change can silently switch the physically sampled device with no fingerprint change, so
+      records from two physical scopes mix without an invalidation. The resolved identity already exists: membership
+      publishes it through `noteResolvedHomeMeter` into `SampledMeterIdentity` (`setup/homeSampledMeterIdentity.ts`),
+      keyed to the sample's own freshness horizon. It cannot simply be consumed by the composer, because it is
+      unproven at the collector's boot-time `start()` reconcile (the primary invalidation edge): composing
+      `undefined` there would skip the boot reconcile for Automatic homes entirely, and falling back to a constant
+      arm would flip-flop against the resolved arm and strip learned state spuriously. Sharpened by the round-5
+      narrowing: the fingerprint no longer carries the per-area meter roster (area meters are fenced out of Main's
+      samples, so an area re-meter must not strip Main's history), which makes the Automatic arm the ONLY remaining
+      way a roster edit can silently move Main's sampled device — an area claiming the very device Automatic had
+      elected. The sound design is a mid-run reconcile edge: expose the current sampled id through the
+      membership port, fire an identity-proven/changed callback from `MainMeterAuthority.noteResolvedHomeMeter`,
+      and have the wiring compare the freshly composed signature against
+      `weatherCollector.getHistoryStateSnapshot().meterScopeSignature`, driving `reloadWeatherCollector` only on a
+      real mismatch (a full restart, not an in-place strip — a mid-run strip races in-flight backfill-chain
+      continuations, which only the stop()-generation bump discards). Needs flap dampening: an Automatic pick that
+      oscillates between two devices must not strip the learned state on every flip. Do NOT re-resolve the
+      Automatic pick anywhere else — consume the membership fence's identity. Persona: multi-meter Automatic-mode
+      home (e.g. main meter plus a PV/battery cumulative device); hypothesis: a silent sampled-device switch makes
+      the energy signature blend two scopes and the advisor's suggestions drift without any visible cause. Source:
+      codex P2 on PR #1910, 2026-07-27. P2.
+
 - [ ] **The power-driven rebuild due-time floor is implemented twice.** `PlanRebuildIntentPolicy.resolveDueAtMs`
       (`setup/planRebuildIntentPolicy.ts`) and `createBundleRebuildScheduler` (`setup/homeRuntime/
       createHomeCapacityBundle.ts:218-226`) compute the tight-unactionable floor and the `hardCap`/`signal` due

@@ -172,6 +172,22 @@ export type WeatherHistoryState = {
    * fill; cleared with the meter markers on a device switch. Producer-internal.
    */
   controlledBackfillVersion?: number;
+  /**
+   * Fingerprint of the whole-home metering arrangement the kWh layer was
+   * collected under. Stamped by the collector; on a mismatch with the live
+   * arrangement it forgets the meter-derived state so the energy signature
+   * relearns against the new scope (`lib/weather/weatherCollector.ts`).
+   * Producer-internal.
+   */
+  meterScopeSignature?: string;
+  /**
+   * Local day the current metering arrangement took effect. The power tracker
+   * is inadmissible on or before this day: its switch-day bucket can mix the
+   * old and new arrangements, while earlier buckets belong wholly to the old
+   * one. Absent when history merely adopted its first scope stamp, preserving
+   * existing single-home tracker history. Producer-internal.
+   */
+  meterScopeSinceDateKey?: string;
   /** Derived after each rollup/backfill; recomputed from records, never hand-edited. */
   latestFit?: EnergySignatureFit;
   latestSuggestion?: EnergySignatureSuggestion;

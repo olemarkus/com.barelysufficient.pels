@@ -188,6 +188,9 @@ const settleDetachedZoneFetch = async (): Promise<void> => (
 
 beforeEach(() => {
   mockHomeyInstance.settings.clear();
+  // A non-empty live key snapshot proves the two home-store keys are absent.
+  // The empty snapshot has its own degraded-path coverage below.
+  mockHomeyInstance.settings.set('test_fixture_initialized', true);
   setMockZones({ ...ZONES });
   setMockDrivers({});
 });
@@ -889,7 +892,9 @@ describe('ui_homes payload', () => {
       },
     })).toEqual({ ok: false, reason: 'degraded' });
 
-    expect(createHomesStore(homeyLike).read()).toEqual({ state: 'unwritten' });
+    expect(createHomesStore(homeyLike).read()).toEqual({
+      state: emptyKeyList ? 'suspect' : 'unwritten',
+    });
     expect(setSpy).not.toHaveBeenCalled();
   });
 
@@ -1355,6 +1360,12 @@ describe('ui_homes payload', () => {
     expect(saveSettingsUiHomesConfig({
       homey: homeyWired,
       body: { op: 'set_main_meter', meterDeviceId: '   ' },
+    })).toEqual({ ok: false, reason: 'invalid' });
+    expect(mockHomeyInstance.settings.get(HOMEY_ENERGY_METER_DEVICE_ID)).toBe('m-main');
+
+    expect(saveSettingsUiHomesConfig({
+      homey: homeyWired,
+      body: { op: 'set_main_meter', meterDeviceId: 'meter|other' },
     })).toEqual({ ok: false, reason: 'invalid' });
     expect(mockHomeyInstance.settings.get(HOMEY_ENERGY_METER_DEVICE_ID)).toBe('m-main');
   });

@@ -18,7 +18,9 @@ import {
   normalizeWeatherHistoryState,
   periodsOverlapWindow,
   rollupDay,
+  stripMeterScopeDerivedState,
 } from './weatherHistory';
+import { readMeterScopeDailyKwh } from './weatherMeterScope';
 import { WeatherBackfillChain } from './weatherBackfillChain';
 import { performBudgetAutoApply } from './weatherAutoApply';
 
@@ -27,6 +29,8 @@ const HOURLY_SAMPLE_OFFSET_MS = 90 * 1000;
 const MIDNIGHT_ROLLUP_OFFSET_MS = 5 * 60 * 1000;
 const PERSIST_DEBOUNCE_MS = 30 * 1000;
 const PERSIST_RETRY_MS = 60 * 1000;
+/** Retry a transiently unavailable scope read before any new kWh evidence is admitted. */
+const METER_SCOPE_RETRY_MS = 60 * 1000;
 /**
  * Window after an absent/implausible settings read during which persisting is
  * refused. A transient SDK miss must not let an empty in-memory state
@@ -71,6 +75,14 @@ export class WeatherCollector {
   private sampleTimer?: ReturnType<typeof setTimeout>;
   private rollupTimer?: ReturnType<typeof setTimeout>;
   private persistTimer?: ReturnType<typeof setTimeout>;
+  private meterScopeRetryTimer?: ReturnType<typeof setTimeout>;
+  /**
+   * False while the current run has not resolved its live meter-scope
+   * signature. Temperature collection may continue, but every kWh ingress is
+   * held until the read heals and the old stamp has been reconciled.
+   */
+  private meterScopeResolved = false;
+  private meterScopeUnavailableLogged = false;
   private readonly lastWarnAtMsByKey = new Map<string, number>();
   /** One-shot temperature → meter kWh → controlled-split chain (`weatherBackfillChain.ts`). */
   private readonly backfillChain: WeatherBackfillChain;
@@ -92,6 +104,7 @@ export class WeatherCollector {
       setState: (state) => { this.state = state; },
       markDirty: () => this.markDirty(),
       isCollectorRunning: () => this.running,
+      isMeterScopeResolved: () => this.meterScopeResolved,
       currentRunGeneration: () => this.runGeneration,
     });
   }
@@ -108,7 +121,16 @@ export class WeatherCollector {
       return () => this.stop();
     }
     this.loadState();
+    const meterScope = this.reconcileMeterScope();
     this.running = true;
+    // Persist either a newly adopted stamp or a forgetting on the restart edge
+    // itself, not the 30 s debounce. Without the adoption write, a crash can
+    // leave old history unstamped and let the next scope be adopted as if it
+    // had produced that history. A normalized pre-stamp blob has no load
+    // grace; a genuinely absent/implausible store still keeps the existing
+    // grace refusal in `flush()`.
+    if (meterScope.persistImmediately) this.flushScopeTransitionWithRetry();
+    if (!meterScope.resolved) this.scheduleMeterScopeRetry();
     // States written before the purge stamp existed: a latched validated-
     // meter pass already reconciled (and purged) everything reachable, so
     // the stamp is subsumed — without it, a marker-dropping re-run years
@@ -147,14 +169,19 @@ export class WeatherCollector {
   }
 
   stop(): void {
+    this.backfillChain.stop();
     if (this.sampleTimer) clearTimeout(this.sampleTimer);
     if (this.rollupTimer) clearTimeout(this.rollupTimer);
     if (this.persistTimer) clearTimeout(this.persistTimer);
+    if (this.meterScopeRetryTimer) clearTimeout(this.meterScopeRetryTimer);
     this.sampleTimer = undefined;
     this.rollupTimer = undefined;
     this.persistTimer = undefined;
+    this.meterScopeRetryTimer = undefined;
     if (this.running) this.flush();
     this.running = false;
+    this.meterScopeResolved = false;
+    this.meterScopeUnavailableLogged = false;
     this.runGeneration += 1;
     // The covariate must not outlive an active collector: after a
     // disable-reload the power-sample path keeps asking for the temperature,
@@ -209,7 +236,7 @@ export class WeatherCollector {
 
   private loadState(): void {
     const raw = this.deps.store.read();
-    const normalized = normalizeWeatherHistoryState(raw);
+    const normalized = normalizeWeatherHistoryState(raw, this.getCurrentDateKey());
     if (normalized) {
       this.state = normalized;
       this.loadedImplausibleAtMs = undefined;
@@ -222,6 +249,111 @@ export class WeatherCollector {
     } else {
       this.deps.logger.warn({ event: 'weather_history_state_implausible' });
     }
+  }
+
+  /**
+   * Compares the stamped meter-scope signature against the live whole-home
+   * metering arrangement and, on a mismatch, forgets every meter-derived field
+   * (`stripMeterScopeDerivedState`) — the kWh history behind the energy
+   * signature would otherwise mix data from different meter arrangements.
+   * Collector-owned by necessity: an outside store-only clear is inert,
+   * because the next start() begins with stop() → flush(), which writes the
+   * unforgetting in-memory blob back over the store before reloading. Runs
+   * after every state load and after a grace-window recovery merge (which
+   * deliberately resurrects the recovered markers and stamp), so a settings
+   * event missed while the collector was down self-heals at the next start.
+   * Epistemics: an unavailable signature read keeps the stamp untouched, and
+   * a pre-stamp blob adopts the current signature without forgetting —
+   * neither is evidence the arrangement actually changed.
+   * Returns whether the live scope was resolved, whether anything was
+   * forgotten, and whether the resulting stamp transition must be flushed
+   * immediately.
+   */
+  private reconcileMeterScope(): {
+    resolved: boolean;
+    invalidated: boolean;
+    persistImmediately: boolean;
+  } {
+    const signature = this.deps.readMeterScopeSignature();
+    if (signature === undefined) {
+      this.meterScopeResolved = false;
+      if (!this.meterScopeUnavailableLogged) {
+        this.meterScopeUnavailableLogged = true;
+        this.deps.logger.info({ event: 'weather_meter_scope_reconcile_deferred' });
+      }
+      return { resolved: false, invalidated: false, persistImmediately: false };
+    }
+    this.meterScopeResolved = true;
+    this.meterScopeUnavailableLogged = false;
+    if (this.state.meterScopeSignature === signature) {
+      return { resolved: true, invalidated: false, persistImmediately: false };
+    }
+    const previous = this.state.meterScopeSignature;
+    if (previous === undefined) {
+      this.state = { ...this.state, meterScopeSignature: signature };
+      this.markDirty();
+      return {
+        resolved: true,
+        invalidated: false,
+        // A normalized pre-stamp history must be stamped durably now. When
+        // the history read itself was absent/implausible, keep the existing
+        // recovery grace; `tryRecoverPersistedState` re-reconciles and the
+        // caller writes the recovered state immediately.
+        persistImmediately: this.loadedImplausibleAtMs === undefined,
+      };
+    }
+    const hadMeterBackfill = this.state.meterKwhBackfillDone === true;
+    const hadFit = this.state.latestFit !== undefined;
+    const meterScopeSinceDateKey = getDateKeyInTimeZone(
+      new Date(this.deps.getNowMs()),
+      this.deps.getTimeZone(),
+    );
+    this.state = {
+      ...stripMeterScopeDerivedState(this.state),
+      meterScopeSignature: signature,
+      meterScopeSinceDateKey,
+    };
+    this.markDirty();
+    this.deps.logger.info({
+      event: 'weather_meter_scope_invalidated',
+      reason: 'meter_scope_changed',
+      previousSignature: previous,
+      currentSignature: signature,
+      hadMeterBackfill,
+      hadFit,
+    });
+    return { resolved: true, invalidated: true, persistImmediately: true };
+  }
+
+  /**
+   * Retries indefinitely at a bounded cadence: one unavailable settings read
+   * must not become the run's permanent answer. Until it heals,
+   * `meterScopeResolved` fences tracker reads and both historical-kWh stages.
+   */
+  private scheduleMeterScopeRetry(): void {
+    if (!this.running || this.meterScopeRetryTimer) return;
+    this.meterScopeRetryTimer = setTimeout(() => {
+      this.meterScopeRetryTimer = undefined;
+      if (!this.running) return;
+      const outcome = this.reconcileMeterScope();
+      if (!outcome.resolved) {
+        this.scheduleMeterScopeRetry();
+        return;
+      }
+      if (outcome.persistImmediately) this.flushScopeTransitionWithRetry();
+      // Boot catch-up stays pending while the scope is unknown: rolling an
+      // accumulator without its tracker kWh would permanently consume it as a
+      // missing-kWh record. Recovery is the first safe point to retry.
+      this.catchUpRollupsSafely();
+      // A temperature backfill may have settled while kWh admission was held;
+      // resume both downstream stages now instead of waiting for a restart.
+      this.backfillChain.startMeterKwhBackfill();
+      this.backfillChain.startControlledKwhBackfill();
+      this.deps.logger.info({
+        event: 'weather_meter_scope_reconcile_recovered',
+        invalidated: outcome.invalidated,
+      });
+    }, METER_SCOPE_RETRY_MS);
   }
 
   private isLoadGraceActive(): boolean {
@@ -244,6 +376,12 @@ export class WeatherCollector {
     }, delayMs);
   }
 
+  /** Immediate scope writes retain their normal retry path when persistence fails. */
+  private flushScopeTransitionWithRetry(): void {
+    this.flush();
+    if (this.dirty && !this.persistTimer) this.schedulePersist(PERSIST_RETRY_MS);
+  }
+
   private persistIfDue(): void {
     if (!this.dirty) return;
     // While the boot read was absent/implausible, every persist attempt first
@@ -264,15 +402,31 @@ export class WeatherCollector {
 
   /** Re-reads the store after a failed boot read; merges and clears the grace on success. */
   private tryRecoverPersistedState(): boolean {
-    const normalized = normalizeWeatherHistoryState(this.deps.store.read());
+    const normalized = normalizeWeatherHistoryState(this.deps.store.read(), this.getCurrentDateKey());
     if (!normalized) return false;
     this.state = mergeRecoveredState(normalized, this.state);
     this.loadedImplausibleAtMs = undefined;
+    // The merge adopts the recovered blob's meter markers and scope stamp
+    // wholesale; if the arrangement changed while the store was unreadable,
+    // forget them again before the caller persists the merged state.
+    const meterScope = this.reconcileMeterScope();
+    if (!meterScope.resolved) this.scheduleMeterScopeRetry();
+    if (meterScope.resolved) {
+      this.backfillChain.startMeterKwhBackfill();
+      this.backfillChain.startControlledKwhBackfill();
+    }
     this.deps.logger.info({
       event: 'weather_history_state_recovered',
       recordCount: this.state.records.length,
     });
     return true;
+  }
+
+  private getCurrentDateKey(): string {
+    return getDateKeyInTimeZone(
+      new Date(this.deps.getNowMs()),
+      this.deps.getTimeZone(),
+    );
   }
 
   private writeState(): void {
@@ -429,6 +583,7 @@ export class WeatherCollector {
    * one bad day cannot abort boot or the rollup timer.
    */
   private catchUpRollupsSafely(): void {
+    if (!this.meterScopeResolved) return;
     try {
       this.catchUpRollups();
     } catch (error) {
@@ -458,7 +613,9 @@ export class WeatherCollector {
     const timeZone = this.deps.getTimeZone();
     const dayStartMs = getDateKeyStartMs(dateKey, timeZone);
     const nextDayStartMs = getDateKeyStartMs(shiftDateKey(dateKey, 1), timeZone);
-    const kwh = this.deps.getDailyKwh(dateKey);
+    const kwh = this.meterScopeResolved
+      ? readMeterScopeDailyKwh(this.state, dateKey, this.deps.getDailyKwh)
+      : {};
     this.state = rollupDay(this.state, {
       dateKey,
       dayLengthHours: Math.round((nextDayStartMs - dayStartMs) / HOUR_MS),

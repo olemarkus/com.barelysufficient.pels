@@ -29,6 +29,14 @@ describe('Main meter settings boundary', () => {
       get: () => 42,
       getKeys: () => [HOMEY_ENERGY_METER_DEVICE_ID],
     }).state).toBe('unavailable');
+    expect(readMainMeterSelection({
+      get: () => 'automatic',
+      getKeys: () => [HOMEY_ENERGY_METER_DEVICE_ID],
+    }).state).toBe('unavailable');
+    expect(readMainMeterSelection({
+      get: () => 'meter-main|areas:active',
+      getKeys: () => [HOMEY_ENERGY_METER_DEVICE_ID],
+    }).state).toBe('unavailable');
   });
 
   it('contains read failures as semantic unavailable authority', () => {

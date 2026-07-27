@@ -19,6 +19,7 @@ import {
 } from '../lib/utils/settingsKeys';
 
 type SettingsReadResult = { value: unknown; threw: false } | { value: undefined; threw: true };
+type SettingsKeysReadResult = { value: string[]; threw: false } | { value: []; threw: true };
 
 // Homey SDK reads can transiently fail; a throw must classify the read
 // 'suspect' (persisted truth unknown), never 'unwritten' (write permission).
@@ -27,6 +28,14 @@ const readKey = (homey: Homey.App['homey'], key: string): SettingsReadResult => 
     return { value: homey.settings.get(key) as unknown, threw: false };
   } catch {
     return { value: undefined, threw: true };
+  }
+};
+
+const readKeys = (homey: Homey.App['homey']): SettingsKeysReadResult => {
+  try {
+    return { value: homey.settings.getKeys(), threw: false };
+  } catch {
+    return { value: [], threw: true };
   }
 };
 
@@ -82,7 +91,17 @@ const classifyRead = <T>(params: {
       return { state: 'present', value: normalize(raw.value) };
     }
     const absent = raw.value === undefined || raw.value === null;
-    if (absent && !readMarker(homey, markerKey)) return { state: 'unwritten' };
+    if (absent && !readMarker(homey, markerKey)) {
+      // A cleanly absent key is genuinely unwritten. If the live key list says
+      // the key exists, `get()` returning undefined is a transient miss — this
+      // also closes the narrow window where a pre-marker blob's best-effort
+      // marker backfill failed. A failed key-list read is equally suspect.
+      const keys = readKeys(homey);
+      if (keys.threw || keys.value.length === 0 || keys.value.includes(key)) {
+        return { state: 'suspect' };
+      }
+      return { state: 'unwritten' };
+    }
     return { state: 'suspect' };
   } catch {
     return { state: 'suspect' };

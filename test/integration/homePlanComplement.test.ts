@@ -94,6 +94,7 @@ const makeCtx = (service: HomeMembershipService | undefined) => createAppContext
 
 beforeEach(() => {
   mockHomeyInstance.settings.clear();
+  mockHomeyInstance.settings.set('test_fixture_initialized', true);
 });
 
 describe('filterDevicesForHome identity guard', () => {
