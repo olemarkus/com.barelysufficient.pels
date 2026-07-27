@@ -49,7 +49,12 @@ describe('createHomesStore', () => {
     ],
   };
 
-  it('classifies nothing-persisted as unwritten (fresh install)', () => {
+  it('classifies an empty settings-key snapshot as suspect', () => {
+    expect(createHomesStore(homey).read()).toEqual({ state: 'suspect' });
+  });
+
+  it('classifies a proven absent blob as unwritten (fresh install)', () => {
+    mockHomeyInstance.settings.set('unrelated_setting', true);
     expect(createHomesStore(homey).read()).toEqual({ state: 'unwritten' });
   });
 
@@ -82,6 +87,11 @@ describe('createHomesStore', () => {
 
   it('classifies an absent blob with the marker set as suspect (transient SDK miss, not fresh)', () => {
     mockHomeyInstance.settings.set(HOMES_CONFIG_INITIALIZED, true);
+    expect(createHomesStore(homey).read()).toEqual({ state: 'suspect' });
+  });
+
+  it('classifies an absent value for a known key as suspect even when marker backfill failed', () => {
+    mockHomeyInstance.settings.set(HOMES_CONFIG, undefined);
     expect(createHomesStore(homey).read()).toEqual({ state: 'suspect' });
   });
 
@@ -187,7 +197,12 @@ describe('createHomesStore', () => {
 describe('createDeviceHomeAssignmentsStore', () => {
   const assignments = { 'dev-1': 'main', 'dev-2': 'h_aaaa1111' };
 
-  it('classifies nothing-persisted as unwritten (fresh install)', () => {
+  it('classifies an empty settings-key snapshot as suspect', () => {
+    expect(createDeviceHomeAssignmentsStore(homey).read()).toEqual({ state: 'suspect' });
+  });
+
+  it('classifies a proven absent blob as unwritten (fresh install)', () => {
+    mockHomeyInstance.settings.set('unrelated_setting', true);
     expect(createDeviceHomeAssignmentsStore(homey).read()).toEqual({ state: 'unwritten' });
   });
 

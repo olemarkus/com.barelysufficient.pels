@@ -600,9 +600,11 @@ describe('createSettingsHandler', () => {
 
   it('refreshes snapshot, restarts poll, and rebuilds plan when power source changes', async () => {
     const order: string[] = [];
+    const reloadWeatherAdvisor = vi.fn();
     const deps = buildDeps({
       onHomeRuntimePowerSourceChanged: vi.fn(() => { order.push('home-runtime'); }),
       restartHomeyEnergyPoll: vi.fn(() => { order.push('poll'); }),
+      reloadWeatherAdvisor,
     });
     const handler = createSettingsHandler(deps);
 
@@ -614,6 +616,9 @@ describe('createSettingsHandler', () => {
     expect(order).toEqual(['home-runtime', 'poll']);
     expect(deps.stopFlowPowerSampleFreshnessClock).toHaveBeenCalled();
     expect(deps.syncFlowPowerSampleFreshnessClock).toHaveBeenCalled();
+    // The source is part of the weather meter-scope fingerprint: the switch
+    // must hit the collector's restart edge so its reconcile can invalidate.
+    expect(reloadWeatherAdvisor).toHaveBeenCalledTimes(1);
     expect(deps.refreshTargetDevicesSnapshot).toHaveBeenCalled();
     expect(deps.rebuildPlanFromCache).toHaveBeenCalledWith('settings:power_source');
   });

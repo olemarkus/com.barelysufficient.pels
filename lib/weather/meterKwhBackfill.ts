@@ -15,14 +15,18 @@ import { getDateKeyInTimeZone, getDateKeyStartMs, shiftDateKey } from '../utils/
  * tracker measured on the days both cover — that overlap check is the gate,
  * regardless of which source the kWh comes from.
  *
- * Candidate meters are auto-detected (no setting): every device exposing a
- * cumulative meter capability is probed with a recent Insights window, its
+ * Candidate meters are auto-detected: every device exposing a cumulative
+ * meter capability is probed with a recent Insights window, its
  * local-midnight counter diffs are compared with the tracker's daily totals,
  * and the best candidate whose median ratio sits in [0.9, 1.1] over ≥ 14
  * overlap days wins. Device-level meters (thermostats, EV chargers) fail the
- * gate by an order of magnitude, so being liberal in discovery is safe. On a
- * fresh install the tracker has fewer than 14 days for a while — the caller
- * retries every start until the overlap exists, then latches its done-marker.
+ * gate by an order of magnitude, so being liberal in discovery is safe — but
+ * when the caller knows the admitted meter identity (`restrictToDeviceId`,
+ * Main's explicit selection), the election is confined to it: the overlap
+ * gate alone cannot reject a previously-selected meter whose old days still
+ * match the retained tracker history. On a fresh install the tracker has
+ * fewer than 14 days for a while — the caller retries every start until the
+ * overlap exists, then latches its done-marker.
  */
 
 const CANDIDATE_CAPABILITIES = ['meter_power.imported', 'meter_power'] as const;
@@ -89,13 +93,26 @@ export type MeterKwhBackfillDeps = {
   fetchFromHomeyApi: (path: string) => Promise<unknown>;
   /** Flat daily totals from the power tracker — the comparison ground truth. */
   getDailyKwh: (dateKey: string) => { total?: number; controlled?: number };
+  /**
+   * When set, only this device may stand for election (the caller's admitted
+   * meter identity — Main's explicit selection). The tracker-overlap gate
+   * cannot provide this constraint itself: after an explicit meter switch the
+   * PREVIOUS meter's pre-switch days still match the retained tracker history
+   * strongest, so an open election would re-admit it and re-vouch old-scope
+   * kWh. Absent = open election over every installed cumulative meter
+   * (Automatic mode, where no admitted identity exists).
+   */
+  restrictToDeviceId?: string;
   timeZone: string;
   nowMs: number;
 };
 
 export async function resolveMeterDailyKwh(deps: MeterKwhBackfillDeps): Promise<MeterKwhBackfillOutcome> {
   const devices = await deps.fetchFromHomeyApi('manager/devices/device');
-  const candidates = listMeterCandidates(devices);
+  const installed = listMeterCandidates(devices);
+  const candidates = deps.restrictToDeviceId === undefined
+    ? installed
+    : installed.filter((candidate) => candidate.deviceId === deps.restrictToDeviceId);
   if (candidates.length === 0) return { outcome: 'no_candidates' };
   const todayKey = getDateKeyInTimeZone(new Date(deps.nowMs), deps.timeZone);
   const probe = await probeCandidates(candidates, todayKey, deps);

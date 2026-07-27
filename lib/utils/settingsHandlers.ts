@@ -481,6 +481,11 @@ function buildMiscSettingsHandlers(deps: SettingsHandlerDeps): SettingsHandlerMa
     [HOMES_CONFIG]: async () => {
       deps.recomputeHomeMembership?.();
       deps.reconcileHomeRuntimes?.();
+      // The active area-meter roster may have changed: restart the weather
+      // collector so its start()-time meter-scope reconcile can invalidate the
+      // learned energy signature (`lib/weather/weatherCollector.ts`). A
+      // scope-neutral write (rename, zone move) restarts but forgets nothing.
+      deps.reloadWeatherAdvisor?.();
     },
     [DEVICE_HOME_ASSIGNMENTS]: async () => {
       deps.recomputeHomeMembership?.();
@@ -559,6 +564,10 @@ async function handleHomeyEnergyMeterChange(deps: SettingsHandlerDeps): Promise<
   // but restart's immediate pollNow() surfaces the new meter's reading within
   // seconds instead of up to 10s. No-ops unless the source is homey_energy.
   deps.restartHomeyEnergyPoll?.();
+  // Main's measured scope changed with its meter: restart the weather
+  // collector so its start()-time meter-scope reconcile can invalidate the
+  // learned energy signature (`lib/weather/weatherCollector.ts`).
+  deps.reloadWeatherAdvisor?.();
   await rebuildPlanFromSettings(deps, 'homey_energy_meter');
 }
 
@@ -568,6 +577,12 @@ async function handlePowerSourceChange(deps: SettingsHandlerDeps): Promise<void>
   deps.restartHomeyEnergyPoll?.();
   deps.stopFlowPowerSampleFreshnessClock?.();
   deps.syncFlowPowerSampleFreshnessClock?.();
+  // Flow and Homey Energy are different producers of the power-tracker
+  // history the weather insight's kWh layer consumes, so the source is part
+  // of the meter-scope fingerprint: restart the collector so its start()-time
+  // reconcile can invalidate the learned energy signature
+  // (`lib/weather/weatherCollector.ts`).
+  deps.reloadWeatherAdvisor?.();
   await refreshSnapshotWithLog(deps, 'power_source_change');
   await rebuildPlanFromSettings(deps, 'power_source');
 }

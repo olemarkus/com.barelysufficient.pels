@@ -29,7 +29,10 @@ export const readMainMeterSelection = (
     if (typeof raw !== 'string') {
       return { state: 'unavailable' };
     }
-    return { state: 'resolved', meterDeviceId: resolveExplicitMainMeterDeviceId(raw) };
+    const meterDeviceId = resolveExplicitMainMeterDeviceId(raw);
+    return meterDeviceId === null
+      ? { state: 'unavailable' }
+      : { state: 'resolved', meterDeviceId };
   } catch {
     return { state: 'unavailable' };
   }
