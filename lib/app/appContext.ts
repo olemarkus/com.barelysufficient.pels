@@ -17,6 +17,7 @@ import type {
   DeferredObjectiveStatusBus,
 } from '../objectives/deferredObjectives';
 import type { PlanEngine } from '../plan/planEngine';
+import type { ExternalOffHoldPolicy } from '../observer/externalOffHold';
 import type { SnapshotWarmupGate } from '../plan/snapshotWarmupGate';
 import type { PendingTargetObservationSource, ShedAction, ShedBehavior } from '../plan/planTypes';
 import type { PlanService } from '../plan/planService';
@@ -249,6 +250,14 @@ export type AppContext = {
   // unaffected.
   homeMembership?: HomeMembershipPort;
   planEngine?: PlanEngine;
+  // "Leave off until turned on again": the opt-in config plus the per-device
+  // hold state recording that a device was turned off outside PELS while the
+  // plan expected it to run. ASSIGNED by `AppServiceWiring.initDeviceManager`
+  // (the wiring-assigns-ctx-members house pattern) so it exists before the
+  // first plan cycle can resume anything. Consumers get only the resolved
+  // policy — never the provenance evidence, which is settled once at the
+  // transport ingest seam. See `lib/observer/externalOffHold.ts`.
+  externalOffHold?: ExternalOffHoldPolicy;
   // Curtailment-surplus estimator seams, both ASSIGNED by `wireCurtailmentSurplus`
   // post-startup (the wiring-assigns-ctx-members house pattern): the flat read of
   // the inferred curtailed-surplus term (kW; null when absent or suppressed) the

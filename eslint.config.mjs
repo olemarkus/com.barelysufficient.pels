@@ -633,6 +633,20 @@ export default tseslint.config(
       'max-lines': ['warn', { max: 1110, skipBlankLines: true, skipComments: true }],
     },
   },
+  {
+    // packages/settings-ui/src/ui/deviceDetail/index.ts is the device-detail
+    // orchestrator: it binds every Setup control's reflect + handler pair to the
+    // shared open/refresh lifecycle. Each new per-device setting costs it ~3
+    // lines (import, handler registration, reflect call), which is the honest
+    // floor for adding a control — the alternative is laundering the same lines
+    // into another file that would breach the same cap. Ceiling just above
+    // current. Target: <=500 needs the Setup-control registrations extracted
+    // into a table-driven registry (TODO "Thin deviceDetail/index.ts ...").
+    files: ['packages/settings-ui/src/ui/deviceDetail/index.ts'],
+    rules: {
+      'max-lines': ['warn', { max: 505, skipBlankLines: true, skipComments: true }],
+    },
+  },
   // ---------------------------------------------------------------------------
   // Documented `max-lines` exceptions migrated out of file-level blanket
   // `/* eslint-disable max-lines */` pragmas (Bucket B in

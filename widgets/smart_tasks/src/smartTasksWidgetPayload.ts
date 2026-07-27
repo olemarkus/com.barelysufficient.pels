@@ -332,6 +332,7 @@ const resolveRowCopy = (
   const detail = resolveSmartTaskWidgetDetailCopy({
     statusId,
     pendingReason: plan.pendingReason,
+    diagnosticReasonCode: plan.diagnosticReasonCode,
     floorShortfallCause: plan.latest?.floorShortfallCause,
     dailyBudgetExhaustedBucketCount: plan.latest?.dailyBudgetExhaustedBucketCount,
     firstPlannedTimeLabel,

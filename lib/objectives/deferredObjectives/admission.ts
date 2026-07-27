@@ -153,11 +153,28 @@ export const applyDeferredObjectiveAdmission = (
   return decisions;
 };
 
+/**
+ * "Leave off until turned on again": the hold guarantees this device will not
+ * start, so every rescue decoration is spent on a device that cannot use it —
+ * and each one costs OTHER devices. `holdLowerPriority` sheds every eligible
+ * lower-priority managed device, `engageBoost` escalates past the shed
+ * invariant, the cap-off `override` hands the planner a controllable device to
+ * resume, and `budgetExempt` spends daily budget. All of that would be pure
+ * collateral damage on unrelated loads, potentially for the whole planned
+ * window. An explicit off action beats the task; the task reports the deadline
+ * risk instead (`objective_device_left_off`).
+ */
+const rescueBlockedByExternalOffHold = (device: PlanInputDevice): boolean => (
+  device.externalOffHoldActive === true
+);
+
 // Soft deferred objectives only override the cap-off (controllable=false) fallback. When the
 // user keeps capacity-based control on for the device, normal PELS behavior already runs and
 // the deferred plan should not bypass restore admission, cooldowns, or daily-budget logic.
 const requiresOverride = (decision: DeferredAdmissionDecision, device: PlanInputDevice): boolean => (
-  decision.kind !== 'inactive' && device.controllable === false
+  decision.kind !== 'inactive'
+  && device.controllable === false
+  && !rescueBlockedByExternalOffHold(device)
 );
 
 export type DeferredAdmissionInput = {
@@ -209,6 +226,9 @@ export const applyDeferredAdmissionToInput = (
     const deadlineFloorTargetC = targetOverrides[device.id];
     const hasDeadlineFloor = typeof deadlineFloorTargetC === 'number';
     if (!decision) return hasDeadlineFloor ? { ...device, deadlineFloorTargetC } : device;
+    // Every claim below is made ON BEHALF of this device; a held device cannot
+    // use any of them. See `rescueBlockedByExternalOffHold`.
+    const heldOff = rescueBlockedByExternalOffHold(device);
     const override = requiresOverride(decision, device);
     if (override && decision.kind === 'idle') forceShedSet.add(device.id);
     // Engage the device's boost while a limit-lower-priority task is in its planned hours.
@@ -216,20 +236,21 @@ export const applyDeferredAdmissionToInput = (
     // devices via temperatureBoost) to escalate past the shed-invariant and claim capacity
     // from lower-priority devices — the deferred target override already commands the task's
     // target. Physical capacity stays enforced by the capacity guard.
-    const engageBoost = decision.kind === 'planned' && decision.engageBoost;
+    const engageBoost = !heldOff && decision.kind === 'planned' && decision.engageBoost;
     // Boost-free proactive hold: flag the device so the plan layer holds lower-priority
     // managed devices off. Only during planned hours (same gate as engageBoost); it never
     // sets forceBoostActive.
-    const holdLowerPriority = decision.kind === 'planned' && decision.holdLowerPriority;
+    const holdLowerPriority = !heldOff && decision.kind === 'planned' && decision.holdLowerPriority;
     // The rescue budget exemption applies cap-agnostically, but only during the
     // planned current bucket. It should not turn idle/background cycles into the
     // device's standing budget-exemption setting.
-    if (!override && !decision.budgetExempt && !engageBoost && !holdLowerPriority && !hasDeadlineFloor) return device;
+    const budgetExempt = !heldOff && decision.budgetExempt;
+    if (!override && !budgetExempt && !engageBoost && !holdLowerPriority && !hasDeadlineFloor) return device;
     return {
       ...device,
       ...buildAdmissionDecoration({
         override,
-        budgetExempt: decision.budgetExempt,
+        budgetExempt,
         engageBoost,
         holdLowerPriority,
         hasDeadlineFloor,

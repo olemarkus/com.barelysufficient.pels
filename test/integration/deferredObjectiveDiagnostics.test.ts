@@ -1879,12 +1879,12 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     });
   });
 
-  it('flags a connected-but-not-resumable charger (plugged_in) instead of crediting its SoC as on-track', () => {
-    // The car is plugged in with a fresh SoC, but `plugged_in` is the
-    // not-resumable state — PELS cannot drive the charger toward the target, so
-    // the SoC must not be credited as progress. The diagnostic resolves to
-    // `unknown` with the dedicated reason that drives the "Paused — can't resume"
-    // chip instead of an "On track" plan.
+  it('plans for a bare-connected charger (plugged_in) instead of refusing to', () => {
+    // `plugged_in` is commandable — PELS starts a charger in this state (prod
+    // 2026-07-26, Easee "Awaiting Authentication"). Blocking here did not merely
+    // annotate: it returned `remainingUnits: 0` with a reason code, so the bridge
+    // could not reach the satisfied path and the energy resolver computed zero
+    // need — the task planned no hours and never admitted the charger.
     const [diagnostic] = buildDeferredObjectiveDiagnostics({
       nowMs: NOW_MS,
       timeZone: 'UTC',
@@ -1895,11 +1895,9 @@ describe('buildDeferredObjectiveDiagnostics', () => {
       priceOptimizationEnabled: true,
     });
 
-    expect(diagnostic).toMatchObject({
-      objectiveKind: 'ev_soc',
-      status: 'unknown',
-      reasonCode: 'objective_charger_not_resumable',
-    });
+    expect(diagnostic).toMatchObject({ objectiveKind: 'ev_soc' });
+    expect(diagnostic?.reasonCode).not.toBe('objective_charger_not_resumable');
+    expect(diagnostic?.status).not.toBe('unknown');
   });
 
   it('rolls a past local deadline to tomorrow and waits when tomorrow prices are missing', () => {
@@ -2351,6 +2349,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const heater = withTemperatureDiscriminant(withBinaryDiscriminant({
       id: 'heater-1',
       name: 'Mill v2 Panel Heater',
+      commandableNow: true,
       targets: [{ id: 'target_temperature', value: 22, unit: 'C', min: 5, max: 30, step: 0.5 }],
       binaryControl: { on: true },
       controlCapabilityId: 'onoff' as const,
@@ -2437,6 +2436,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const heater = withTemperatureDiscriminant(withBinaryDiscriminant({
       id: 'heater-1',
       name: 'Idle Panel Heater',
+      commandableNow: true,
       targets: [{ id: 'target_temperature', value: 22, unit: 'C', min: 5, max: 30, step: 0.5 }],
       binaryControl: { on: false },
       controlCapabilityId: 'onoff' as const,
@@ -2501,6 +2501,7 @@ describe('buildDeferredObjectiveDiagnostics', () => {
     const heater = withTemperatureDiscriminant(withBinaryDiscriminant({
       id: 'heater-1',
       name: 'Powerless Thermostat',
+      commandableNow: true,
       targets: [{ id: 'target_temperature', value: 22, unit: 'C', min: 5, max: 30, step: 0.5 }],
       binaryControl: { on: false },
       controlCapabilityId: 'onoff' as const,
@@ -3084,6 +3085,62 @@ describe('buildDeferredObjectiveDiagnostics — stall-classification status reso
     if (deadlineAtMs == null) throw new Error('expected a resolved deadline');
     return { ...params, activePlans: establishedPlans(deadlineAtMs) };
   };
+
+  it('marks an on_track task with the left-off cause without rewriting its status', () => {
+    // An explicit off action beats the task, but the task must not keep claiming
+    // it is on track just because future hours are still scheduled — those hours
+    // cannot run while the device stays off.
+    const [before] = buildDeferredObjectiveDiagnostics(onTrackParams());
+    expect(before?.externalOffHoldActive).toBeUndefined();
+
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      ...onTrackParams(),
+      devices: [buildDevice({ externalOffHoldActive: true })],
+    });
+    expect(diagnostic?.externalOffHoldActive).toBe(true);
+    // The planner's own verdict is untouched: it is frozen into the committed
+    // revision (it resolves `floorShortfallCause`), so overwriting it would
+    // erase a budget-bound task's real cause the moment the hold spans a settle.
+    expect(diagnostic?.reasonCode).toBe(before?.reasonCode);
+    // `status` is what the recorder FREEZES into a committed revision at the
+    // settle. Rewriting it here would outlive the hold: turning the device back
+    // on clears the live cause, but the frozen verdict would keep every surface
+    // reporting risk for up to an hour. Consumers overlay it per cycle instead
+    // (`resolveEffectivePlanStatus`), which is live in both directions.
+    expect(diagnostic?.status).toBe('on_track');
+    expect(diagnostic?.horizonPlan?.status).toBe('on_track');
+  });
+
+  it('carries the hold through a diagnostic data gap', () => {
+    // Stale temperature/SoC, capacity, or charge-step data degrades the live
+    // verdict to `unknown`. Dropping the flag there cleared the cause on the
+    // committed plan, so every surface reverted to the cached `on_track` while
+    // the device was still held off — and no status-change event fired, possibly
+    // for the whole outage. A data gap is not the user turning the device on.
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      ...onTrackParams(),
+      // A stale SoC reading is one of the data gaps that degrades the live
+      // verdict; the committed plan and the hold are both unaffected by it.
+      devices: [buildDevice({
+        externalOffHoldActive: true,
+        stateOfCharge: { percent: 40, status: 'stale', observedAtMs: NOW_MS - 86_400_000 },
+      })],
+    });
+    // Guard the guard: if this ever stops degrading the live verdict, the case
+    // is no longer being exercised and the assertion below means nothing.
+    expect(diagnostic?.status).toBe('unknown');
+    expect(diagnostic?.externalOffHoldActive).toBe(true);
+  });
+
+  it('keeps the unplugged reason for a held charger that is also unplugged', () => {
+    // "Paused — unplugged" is the more immediate thing for the user to act on;
+    // the hold is still stored and reappears once the car is reconnected.
+    const [diagnostic] = buildDeferredObjectiveDiagnostics({
+      ...onTrackParams(),
+      devices: [buildDevice({ externalOffHoldActive: true, evChargingState: 'plugged_out' })],
+    });
+    expect(diagnostic?.externalOffHoldActive).toBeUndefined();
+  });
 
   it('leaves the trajectory status untouched when no stall reader is supplied', () => {
     const [diagnostic] = buildDeferredObjectiveDiagnostics(onTrackParams());

@@ -16,6 +16,7 @@ import { closeModeNameEditor, initModeEditor } from './modeEditor.ts';
 import { getSetting, setSetting } from './homey.ts';
 import {
   BUDGET_EXEMPT_DEVICES,
+  RESPECT_EXTERNAL_OFF_DEVICES,
   NATIVE_EV_WIRING_DEVICES,
   OPERATING_MODE_SETTING,
 } from '../../../contracts/src/settingsKeys.ts';
@@ -83,6 +84,22 @@ const readBooleanSettingMap = (value: unknown): Record<string, boolean> => (
   value && typeof value === 'object' ? value as Record<string, boolean> : {}
 );
 
+// `respect_external_off_devices` is validated as a WHOLE by the runtime
+// (`isBooleanMap` in `setup/externalOffHoldAdapter.ts`), which rejects the entire
+// map on a single non-boolean entry — and, crucially, then KEEPS ITS LAST GOOD
+// map rather than treating it as empty. Mirror both halves: a shape-cast would
+// render a device as opted in while the runtime honoured nothing, and collapsing
+// a malformed reload to `{}` would show a held device as opted out while the
+// runtime went on leaving it off. `null` means "cannot say", and the caller
+// keeps whatever it already had.
+const readStrictBooleanSettingMap = (value: unknown): Record<string, boolean> | null => {
+  if (value === undefined || value === null) return {};
+  if (typeof value !== 'object' || Array.isArray(value)) return null;
+  const entries = Object.entries(value);
+  if (!entries.every(([, entry]) => typeof entry === 'boolean')) return null;
+  return Object.fromEntries(entries.filter(([, entry]) => entry === true));
+};
+
 const readModeAliases = (value: unknown): Record<string, string> => (
   value && typeof value === 'object'
     ? Object.entries(value).reduce<Record<string, string>>((acc, [key, alias]) => {
@@ -101,6 +118,7 @@ export const loadModeAndPriorities = async () => {
   const controllables = await getSetting('controllable_devices');
   const managed = await getSetting('managed_devices');
   const budgetExempt = await getSetting(BUDGET_EXEMPT_DEVICES);
+  const respectExternalOff = await getSetting(RESPECT_EXTERNAL_OFF_DEVICES);
   const nativeWiring = await getSetting(NATIVE_EV_WIRING_DEVICES);
   const aliases = await getSetting('mode_aliases');
   state.activeMode = typeof mode === 'string' && mode.trim() ? mode : DEFAULT_MODE_NAME;
@@ -119,6 +137,11 @@ export const loadModeAndPriorities = async () => {
   state.controllableMap = readBooleanSettingMap(controllables);
   state.managedMap = readBooleanSettingMap(managed);
   state.budgetExemptMap = readBooleanSettingMap(budgetExempt);
+  // Keep the last known map when the read cannot be interpreted, exactly as the
+  // runtime adapter does — otherwise the UI and the runtime disagree about which
+  // devices are opted in, in a direction the user cannot see.
+  state.respectExternalOffMap = readStrictBooleanSettingMap(respectExternalOff)
+    ?? state.respectExternalOffMap;
   state.nativeWiringMap = readBooleanSettingMap(nativeWiring);
   state.modeAliases = readModeAliases(aliases);
   renderModeOptions();

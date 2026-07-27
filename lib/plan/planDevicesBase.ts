@@ -105,6 +105,32 @@ function resolveInputBinaryControlField(
   return isBinaryPlanDevice(dev) ? { currentOn: dev.currentOn } : {};
 }
 
+/**
+ * The decisions the producer (`toPlanDevice` → `resolveCommandableNow`) already
+ * made, forwarded verbatim onto the output plan device. No EV narrowing needed —
+ * they live on the base.
+ *
+ * `commandableNow` MUST be carried. Dropping it is what forced consumers back
+ * onto raw-field re-derivation against fields `withEvDiscriminant` had already
+ * stripped, so every plan-device `isCommandableNow` answered from absence and
+ * reported "charger state unknown" for every EV charger.
+ */
+function producerResolvedDecisionFields(dev: PlanInputDevice): {
+  commandableNow: boolean;
+  commandableNowReason?: string | null;
+  evBlockReason?: string | null;
+  evSessionInactive?: boolean;
+  evChargerNotResumable?: boolean;
+} {
+  return {
+    commandableNow: dev.commandableNow,
+    commandableNowReason: dev.commandableNowReason,
+    evBlockReason: dev.evBlockReason,
+    evSessionInactive: dev.evSessionInactive,
+    evChargerNotResumable: dev.evChargerNotResumable,
+  };
+}
+
 export function buildBasePlanDevice(params: {
   dev: PlanInputDevice;
   devices: PlanInputDevice[];
@@ -212,12 +238,7 @@ export function buildBasePlanDevice(params: {
     measuredPowerKw: dev.measuredPowerKw,
     controlCapabilityId: dev.controlCapabilityId,
     controlAdapter: dev.controlAdapter,
-    // Flat EV plug-state sub-fields are base fields materialized once upstream at
-    // `toPlanDevice`; forward them straight from the input device onto the output
-    // plan device (no EV narrowing needed — they live on the base).
-    evBlockReason: dev.evBlockReason,
-    evSessionInactive: dev.evSessionInactive,
-    evChargerNotResumable: dev.evChargerNotResumable,
+    ...producerResolvedDecisionFields(dev),
     reason: baseReason,
     zone: dev.zone || 'Unknown',
     controllable,
@@ -238,10 +259,12 @@ function pickPropagatedPlanFields(
   dev: Pick<
     PlanInputDevice,
     'stepPowerCalibration' | 'hasRecentObservedDraw' | 'residualKw' | 'surplusOnly'
+    | 'externalOffHoldActive'
   >,
 ): Partial<Pick<
   DevicePlanDevice,
   'stepPowerCalibration' | 'hasRecentObservedDraw' | 'residualKw' | 'surplusOnly'
+  | 'externalOffHoldActive'
 >> {
   return {
     ...(dev.stepPowerCalibration ? { stepPowerCalibration: dev.stepPowerCalibration } : {}),
@@ -250,6 +273,7 @@ function pickPropagatedPlanFields(
       : {}),
     ...(dev.residualKw ? { residualKw: dev.residualKw } : {}),
     ...(dev.surplusOnly === true ? { surplusOnly: true as const } : {}),
+    ...(dev.externalOffHoldActive === true ? { externalOffHoldActive: true as const } : {}),
   };
 }
 

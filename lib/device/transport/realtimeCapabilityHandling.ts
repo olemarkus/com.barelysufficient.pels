@@ -364,3 +364,23 @@ export function handleRealtimeCapabilityUpdate(
         });
     }
 }
+
+/**
+ * The capability-event entry point the SDK leaf calls: apply the value, THEN let
+ * the EV car-link probe observe.
+ *
+ * The order is the point, so it lives with the handler rather than in the leaf.
+ * `handleRealtimeCapabilityUpdate` returns early for anything outside the managed
+ * snapshot, which is every class `car` device — so the probe would never hear a
+ * car at all if it were called from inside. And running it before the value is
+ * applied would correlate a charger event against the charger's PREVIOUS state.
+ */
+export function handleRealtimeCapabilityUpdateWithProbe(
+    ctx: TransportContext,
+    deviceId: string,
+    capabilityId: string,
+    value: unknown,
+): void {
+    handleRealtimeCapabilityUpdate(ctx, deviceId, capabilityId, value);
+    ctx.observationProducers.evCarLink.noteCapabilityUpdate(deviceId, capabilityId, value, Date.now());
+}

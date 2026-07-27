@@ -1,4 +1,5 @@
 import type { PlanInputDevice } from '../../lib/plan/planTypes';
+import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 
 /**
  * Test fixture builder for `PlanInputDevice`. Applies a small set of safe
@@ -27,10 +28,16 @@ export function buildPlanInputDevice(
   // exact runtime shape callers rely on rather than routing through
   // `withBinaryDiscriminant`, whose runtime stripping (binaryControl omitted
   // without `controlCapabilityId`) would change every consumer's fixture.
+  const { commandableNow, ...rest } = overrides;
   return {
     name: overrides.id,
     targets: [],
     binaryControl: { on: true },
-    ...overrides,
+    ...rest,
+    // Required base field: resolve it the way the producer does rather than
+    // leaving it undefined, so no consumer can read absence as "not commandable".
+    // Spread LAST and `??`-guarded so an explicit `commandableNow: undefined`
+    // override cannot erase the required field, while an explicit `false` stands.
+    commandableNow: commandableNow ?? resolveCommandableNow({ dev: rest }).commandableNow,
   } as unknown as PlanInputDevice;
 }

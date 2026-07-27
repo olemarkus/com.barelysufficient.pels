@@ -91,6 +91,14 @@ export const PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS = 'Waiting for cheaper h
 // its draw. Registered in `notes/ui-terminology.md` § "Solar surplus vocabulary".
 export const PLAN_STATE_AWAITING_SOLAR_SURPLUS_STATUS = 'Waiting for solar surplus';
 
+// Reason line for a device PELS is leaving off because it was turned off
+// outside PELS while the plan expected it to run (reason code
+// `externalOffHold`, opt-in per device). Pairs with the `Idle` state word, NOT
+// `Limited`: PELS is not holding the device back, it is respecting an explicit
+// action — so this code is deliberately absent from `HOLD_REASON_CODES` in
+// `planCardGrammar.ts`. Registered in `notes/ui-terminology.md`.
+export const PLAN_STATE_EXTERNAL_OFF_HOLD_STATUS = 'Staying off until turned on again';
+
 const normalize = (value: string | undefined): string => (value ?? '').trim().toLowerCase();
 
 const isOffLike = (value: string | undefined): boolean => {

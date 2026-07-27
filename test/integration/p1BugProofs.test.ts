@@ -174,6 +174,7 @@ describe('P1 bug proofs', () => {
         withBinaryDiscriminant({
           id: 'shed',
           name: 'Shed',
+          commandableNow: true,
           targets: [],
           binaryControl: { on: true },
           controllable: true,
@@ -184,6 +185,7 @@ describe('P1 bug proofs', () => {
         withBinaryDiscriminant({
           id: 'stale',
           name: 'Stale',
+          commandableNow: true,
           targets: [],
           binaryControl: { on: true },
           controllable: true,

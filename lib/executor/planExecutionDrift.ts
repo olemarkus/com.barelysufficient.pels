@@ -1,5 +1,5 @@
 import type { DevicePlan, PlanInputDevice } from '../plan/planTypes';
-import { isCommandableNow } from '../../packages/shared-domain/src/commandableNow';
+import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import { isSteppedLoadOffStep } from '../utils/deviceControlProfiles';
 import type {
   ExecutableDeviceIntent,
@@ -48,6 +48,14 @@ export function hasPlanDeviceExecutionDrift(params: {
   liveDevice: PlanInputDevice;
 }): boolean {
   const { planDevice, liveDevice } = params;
+  // "Leave off until turned on again": the device is off because the user turned
+  // it off, and the producer only sets this bit while it is STILL observed off.
+  // A plan built before the hold still says `keep`, so without this every
+  // observation would report drift, re-fire the reconcile, and trip the
+  // per-device circuit breaker (3 in 30 s → 60 s suppression) — which would then
+  // mask GENUINE drift on that device too. The rebuild scheduled alongside the
+  // hold marks it inactive; until then there is nothing to reconcile.
+  if (liveDevice.externalOffHoldActive === true) return false;
   return hasExecutableDeviceExecutionDrift({
     intent: buildExecutableDeviceIntent(planDevice),
     observed: buildExecutableObservedDeviceState(liveDevice),
@@ -170,7 +178,9 @@ function hasExecutableBinaryReleaseExecutionDrift(
   if (intent.kind === 'binary_restore') {
     // Restore drift: still off-but-commandable (released) — transition not yet seen.
     // `observedBinaryState` is the producer-resolved on/off (prefers `currentOn`).
-    return observed.observedBinaryState === 'off' && isCommandableNow(observed.snapshot);
+    // Raw snapshot: resolve at the producer, no consumer-side re-derivation.
+    return observed.observedBinaryState === 'off'
+      && resolveCommandableNow({ dev: observed.snapshot }).commandableNow;
   }
   // Release drift: still on — transition not yet seen.
   return observed.observedBinaryState !== 'off';

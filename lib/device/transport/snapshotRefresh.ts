@@ -86,14 +86,47 @@ const EMPTY_SNAPSHOT_ABANDON_GRACE_READS = SNAPSHOT_ABANDON_GRACE_READS;
 // `battery_state_observed` / `solar_production_observed` events. A FULL read
 // (`raw_manager_devices`) re-derives the sets; a targeted by-id read re-reads the
 // SAME known ids and must not narrow them.
+/**
+ * Run the EV car-link probe after the snapshot commit, then re-sync the realtime
+ * subscription set.
+ *
+ * Both halves have to happen here. The probe resolves charger state from the
+ * COMMITTED snapshot, so it cannot run pre-parse with the battery/solar
+ * producers. And the commit built the subscription list before the probe had
+ * learned which cars exist — per-device capability subscriptions are the only
+ * realtime source of capability VALUE changes, and a class `car` device never
+ * survives parse, so without this re-sync a newly-seen car stays unsubscribed
+ * until the next fetch: half an hour of blindness at every boot.
+ */
+function observeEvCarLinkAndResubscribe(
+    ctx: TransportContext,
+    effectiveList: HomeyDeviceLike[],
+    fetchSource: DeviceFetchSource,
+    snapshot: readonly TargetDeviceSnapshot[],
+): void {
+    ctx.observationProducers.evCarLink.observe(effectiveList, {
+        fullRefresh: fetchSource === 'raw_manager_devices',
+        nowMs: Date.now(),
+    });
+    ctx.updateLiveFeedTrackedDevices([
+        ...snapshot.map((device) => device.id),
+        ...ctx.observationProducers.evCarLink.getObservedCarDeviceIds(),
+    ]);
+}
+
 function observeBatteryStateFromList(
     ctx: TransportContext,
     effectiveList: HomeyDeviceLike[],
     fetchSource: DeviceFetchSource,
 ): HomeyDeviceLike[] {
     const fullRefresh = fetchSource === 'raw_manager_devices';
-    ctx.batteryStateProducer.observe(effectiveList, { fullRefresh });
-    ctx.solarProductionProducer.observe(effectiveList, { fullRefresh });
+    ctx.observationProducers.battery.observe(effectiveList, { fullRefresh });
+    ctx.observationProducers.solar.observe(effectiveList, { fullRefresh });
+    // The EV car-link probe is deliberately NOT observed here — it runs after the
+    // snapshot commit (see `refreshSnapshot`), because it resolves charger state
+    // from the committed snapshot. Observing it here as well would give it one
+    // pass against the PREVIOUS charger state, which can emit and persist a false
+    // self-stop on the very refresh where the dwell expires.
     return effectiveList;
 }
 
@@ -209,7 +242,16 @@ function commitRefreshedSnapshot(ctx: TransportContext, params: {
     // path returns above (before setSnapshot), so the abandon-grace invariant
     // — no refresh event on a deferred empty read — holds by construction.
     ctx.dispatchObservedStateRefresh(snapshot);
-    ctx.updateLiveFeedTrackedDevices(snapshot.map((d) => d.id));
+    // Managed devices PLUS the cars the EV car-link probe tracks. Per-device
+    // capability subscriptions (`homey:device:<id>`) are the ONLY realtime source
+    // of capability VALUE changes; the manager-level `device.update` stream does
+    // not carry them. A class `car` device never survives parse, so without this
+    // union the probe would never see a plug transition in realtime and would be
+    // limited to the :25/:55 fetch — far coarser than its 90 s coincidence window.
+    ctx.updateLiveFeedTrackedDevices([
+        ...snapshot.map((d) => d.id),
+        ...ctx.observationProducers.evCarLink.getObservedCarDeviceIds(),
+    ]);
     fireSnapshotMutatedForRefresh(ctx, snapshot, previousSnapshot);
     return true;
 }
@@ -321,7 +363,16 @@ export async function fetchDevicesForSnapshot(ctx: TransportContext): Promise<De
 export async function fetchDevicesByKnownIds(ctx: TransportContext): Promise<DeviceFetchResult> {
     const start = Date.now();
     try {
-        const deviceIds = ctx.latestSnapshot.map((d) => d.id);
+        // Parsed devices, plus the cars the EV link probe tracks. Cars are dropped
+        // by parse so they never reach `latestSnapshot`, which would otherwise make
+        // the first full fetch their only read on this path. They are additive to
+        // the request only: parse still drops them, so they never enter the
+        // snapshot and the targeted-miss grace (keyed on `latestSnapshot`) is
+        // unaffected.
+        const deviceIds = [...new Set([
+            ...ctx.latestSnapshot.map((d) => d.id),
+            ...ctx.observationProducers.evCarLink.getObservedCarDeviceIds(),
+        ])];
         return await fetchDevicesByIds({
             deviceIds,
             logger: ctx.logger,
@@ -632,6 +683,15 @@ export async function refreshSnapshot(
         });
         if (!committed) return homePowerSample;
         adoptCommittedDeviceList(ctx, effectiveList, fetchSource, snapshot);
+        // AFTER the commit, unlike the battery/solar producers above: the EV
+        // car-link probe resolves charger state by reading the committed
+        // snapshot, so running it pre-parse would pair a car transition read in
+        // THIS fetch against charger state from the previous one — putting the
+        // two sides of a genuine home session in different refreshes and, on the
+        // coarse fetch-only cadence, outside the coincidence window entirely.
+        // Class `car` devices are dropped by parse, so the probe still reads them
+        // from the raw list.
+        observeEvCarLinkAndResubscribe(ctx, effectiveList, fetchSource, snapshot);
         recordSnapshotRefreshObservations({
             state: ctx.observationState,
             snapshot,

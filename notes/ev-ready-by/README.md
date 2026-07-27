@@ -92,12 +92,40 @@ deadline feature end-to-end and to display EV deadline plans without actuating t
 - EV admission and pause/resume actuation wired across admission, planner, and executor:
   `admission.ts` emits `binary_restore`/`binary_release` intents per cycle;
   `lib/plan/planBuilder.ts` collects them via `attachDeferredReleaseIntents`;
-  `lib/executor/binaryExecutor.ts` (`applyDeferredBinaryCommand`) actuates pause when
-  `plugged_in_charging` and resume when `plugged_in_paused`;
+  `lib/executor/binaryExecutor.ts` (`applyDeferredBinaryCommand`) actuates pause when the charger
+  is drawing and resume whenever the plug-state does not physically forbid it — that is every state
+  except `plugged_out` / `plugged_in_discharging`, so a bare `plugged_in` charger resumes too;
   `lib/executor/planExecutor.ts` runs stability checks
   (`hasStableBinaryReleaseActuation`). Integration tests under
   `test/integration/evDevices.integration.test.ts` cover the resume and pause transitions
   (e.g. `deferredReleaseIntent: 'binary_restore'` for a paused plugged-in charger).
+
+### Plug-state is not a commandability oracle
+
+PELS blocks actuation on exactly two plug-states — `plugged_out` and `plugged_in_discharging` —
+and on nothing else, including an absent `evcharger_charging_state`. `resolveEvBlockReasonKey`
+(`packages/shared-domain/src/commandableNowReason.ts`) is the only place that decision is made;
+commandability, the boost gate, and the boost-panel copy all derive from it.
+
+The value is vendor-defined and inconsistent, so nothing finer can be read from it. Easee maps op
+mode 6 "Ready to Charge" AND 7 "Awaiting Authentication" to `plugged_in`, and its Homey
+`evcharger_charging` write calls the Easee `start_charging` command — the authorization the charger
+is waiting for. Wallbox maps its own `Paused` state to `plugged_in` and never emits
+`plugged_in_paused` at all, so treating `plugged_in` as a block meant PELS could not resume a
+charger it had paused itself. go-e alone uses it for a finished session, where a start command is a
+no-op rather than harmful. Verified on production 2026-07-26: with the block removed, PELS wrote
+`evcharger_charging=true` on a charger waiting for approval and the session started.
+
+Absence is resolved at the capability read (`getEvChargingState` yields no value, so the snapshot
+simply carries no `evChargingState`) and means "no such signal — skip", like a device with no
+`onoff`. It is not a fifth state: it collapses a permanently-absent capability (a `car`-class
+device driven through `evcharger_charging` never has one), a vendor value outside the enum, a cold
+start, and a transient observation gap. Commandability is learned by commanding and watching —
+`lib/plan/admission/activationBackoff.ts` penalises a device commanded on that never draws.
+
+Separately: `plugged_in` still means the SoC behind it is NOT creditable objective progress
+(`isEvChargerNotResumable` → `diagnosticProgress`). May-we-command and is-there-a-session are
+different questions; only the second keys off that bit.
 
 ## Where the trust gap is today
 

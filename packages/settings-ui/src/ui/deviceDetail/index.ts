@@ -108,6 +108,7 @@ import {
   initDeviceDetailBudgetExemptHandler,
   setDeviceDetailBudgetExemptState,
 } from './budgetExempt.ts';
+import { initRespectExternalOffHandler, syncRespectExternalOffRow } from './respectExternalOff.ts';
 import { initDeviceDetailManagedControlHandlers } from './managedControl.ts';
 import { formatDisplayDeviceName } from '../../../../shared-domain/src/displayDeviceName.ts';
 
@@ -186,6 +187,7 @@ const setDeviceDetailControlStates = (deviceId: string) => {
   // Binary sibling: the "Run on solar surplus" dump-load posture row (solarSurplus.ts
   // owns the gate — managed binary device, solar present, not temperature/stepped/EV).
   setDeviceDetailDumpLoadControl({ deviceId, getDeviceById });
+  syncRespectExternalOffRow({ deviceId, getDeviceById });
 
   setDeviceDetailBudgetExemptState(device);
   setDeviceDetailSocState(device);
@@ -537,6 +539,7 @@ export const initDeviceDetailHandlers = () => {
     refreshSharedDeviceViews,
     refreshOpenDeviceDetail,
   });
+  initRespectExternalOffHandler({ getCurrentDetailDeviceId, refreshSharedDeviceViews, refreshOpenDeviceDetail });
   initDeviceDetailShedHandlers({
     getCurrentDetailDeviceId,
     getDeviceById,

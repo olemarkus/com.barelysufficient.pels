@@ -6,6 +6,8 @@ import {
   type RealtimeDeviceReconcileState,
 } from './appRealtimeDeviceReconcile';
 import { evictMissingDeviceCacheEntries, toPlanDevice } from './appInit/toPlanDevice';
+import { syncExternalOffHoldForDevice } from './externalOffHoldDetection';
+import type { ExternalOffHoldReconcileHooks } from './externalOffHoldDetection';
 import { hasPlanExecutionDriftForDevice } from '../lib/executor/planExecutionDrift';
 import { isTemperaturePlanDevice } from '../lib/plan/planTemperatureDevice';
 import type { AppContext } from '../lib/app/appContext';
@@ -74,13 +76,28 @@ export function scheduleAppRealtimeDeviceReconcileForApp(params: {
   });
   const reconcile = subHomeHooks?.reconcile
     ?? ((): Promise<boolean> => ctx.planService?.reconcileLatestPlanState() ?? Promise.resolve(false));
+  // Shared across this event's synchronous phase only: on the main path
+  // `getLiveDevices` maps the whole snapshot through `toPlanDevice`, and the hold
+  // check plus the drift gate would otherwise pay for that twice per realtime
+  // event — for every user, including the majority with nothing opted in.
+  const planSnapshotForEvent = perEventCache(getLatestPlanSnapshot);
+  const liveDevicesForEvent = perEventCache(getLiveDevices);
+  if (applyExternalOffHoldToReconcile({
+    ctx,
+    event,
+    latestPlanSnapshot: planSnapshotForEvent.read(),
+    liveDevices: liveDevicesForEvent.read(),
+    hooks: buildExternalOffHoldHooks(ctx, subHomeHooks),
+    structuredLog,
+    debugStructured,
+  })) return;
   const timer = scheduleAppRealtimeDeviceReconcile({
     event,
     state,
     queueKey,
     hasPendingTimer: timers.has(timerKey),
-    getLatestPlanSnapshot,
-    getLiveDevices,
+    getLatestPlanSnapshot: planSnapshotForEvent.read,
+    getLiveDevices: liveDevicesForEvent.read,
     structuredLog,
     debugStructured,
     reconcile,
@@ -94,9 +111,101 @@ export function scheduleAppRealtimeDeviceReconcileForApp(params: {
       });
     },
   });
+  // Release before the debounced flush can run. That flush classifies each
+  // coalesced event AFTER the reconcile has executed, so a frozen "still
+  // drifting" answer would count a successful reconcile toward the three-strike
+  // circuit breaker and suppress genuine drift on the device for 60 s.
+  planSnapshotForEvent.release();
+  liveDevicesForEvent.release();
   if (timer) {
     timers.registerTimeout(timerKey, timer);
   }
+}
+
+/**
+ * A getter that evaluates its source at most once until {@link release} is
+ * called. Used to deduplicate the expensive plan/live-device reads within one
+ * event's synchronous phase without freezing them for the later flush.
+ */
+function perEventCache<T>(read: () => T): { read: () => T; release: () => void } {
+  let cached: { value: T } | null = null;
+  return {
+    read: () => (cached ??= { value: read() }).value,
+    release: () => {
+      cached = null;
+    },
+  };
+}
+
+/** Bind the external-off seams to the device's owning home (main when unrouted). */
+function buildExternalOffHoldHooks(
+  ctx: AppContext,
+  subHomeHooks: RealtimeReconcileHooks | undefined,
+): ExternalOffHoldReconcileHooks {
+  return {
+    hasPendingBinaryCommand: subHomeHooks?.hasPendingBinaryCommand
+      ?? ((deviceId, capabilityId) => (
+        ctx.planEngine?.hasPendingBinaryCommandForCapability(deviceId, capabilityId) === true
+      )),
+    rebuild: subHomeHooks?.rebuild
+      ?? ((reason: string) => ctx.planService?.rebuildPlanFromCache(reason) ?? Promise.resolve()),
+    isDryRun: subHomeHooks?.isDryRun ?? (() => ctx.capacityDryRun === true),
+  };
+}
+
+/**
+ * Resolves "Leave off until turned on again" for this event, BEFORE the drift
+ * gate, and reports whether the caller must stop without queuing a reconcile.
+ *
+ * Both outcomes suppress and rebuild. `started`, because the reconcile this
+ * event would queue is exactly the stale-plan ON command the hold exists to
+ * prevent. `cleared`, because the stale plan still says the device is inactive
+ * while it is now observed ON — reconciling that would command it straight back
+ * off, moments after the user turned it on. The rebuild re-plans it under
+ * current conditions, which may legitimately limit it again.
+ *
+ * Every seam is routed to the device's OWNING home: pending commands, the plan
+ * snapshot, the live devices, and the rebuild. Main and each sub-home keep their
+ * own plan engine and service, so asking main's about a sub-home device reports
+ * "no pending command" for PELS's own write (fabricating a hold) and rebuilds a
+ * plan that does not contain the device.
+ */
+function applyExternalOffHoldToReconcile(params: {
+  ctx: AppContext;
+  event: RealtimeDeviceReconcileEvent;
+  latestPlanSnapshot: DevicePlan | null;
+  liveDevices: PlanInputDevice[];
+  hooks: ExternalOffHoldReconcileHooks;
+  structuredLog?: PinoLogger;
+  debugStructured?: StructuredDebugEmitter;
+}): boolean {
+  const {
+    ctx, event, latestPlanSnapshot, liveDevices, hooks, structuredLog, debugStructured,
+  } = params;
+  if (!ctx.externalOffHold) return false;
+  const outcome = syncExternalOffHoldForDevice({
+    deps: {
+      policy: ctx.externalOffHold,
+      hasPendingBinaryCommand: hooks.hasPendingBinaryCommand,
+      isDryRun: hooks.isDryRun,
+      nowMs: Date.now(),
+      debugStructured,
+    },
+    deviceId: event.deviceId,
+    liveDevices,
+    latestPlanSnapshot,
+    changes: event.changes,
+  });
+  if (outcome === 'none') return false;
+  void hooks.rebuild(
+    outcome === 'started' ? 'external_off_hold_started' : 'external_off_hold_cleared',
+  ).catch((error: unknown) => {
+    structuredLog?.error({
+      event: 'external_off_hold_rebuild_failed',
+      err: normalizeError(error),
+    });
+  });
+  return true;
 }
 
 export function hasRealtimeDeviceReconcileDrift(params: {

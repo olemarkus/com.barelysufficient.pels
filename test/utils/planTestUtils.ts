@@ -102,7 +102,7 @@ type MaterializedEvFields = {
   evBlockReason?: string | null;
   evSessionInactive?: boolean;
   evChargerNotResumable?: boolean;
-  commandableNow?: boolean;
+  commandableNow: boolean;
   commandableNowReason?: string | null;
 };
 
@@ -117,22 +117,26 @@ type MaterializedEvFields = {
  * Mirrors the producer (`toPlanDevice`) for EV devices: it runs the same
  * `resolveCommandableNow` and attaches `commandableNow` / `commandableNowReason`
  * alongside the EV trio, so the fixture is faithful to a real `PlanInputDevice`
- * (the executor drift path reads `commandableNow` off it). Crucially it
- * materializes even when `evChargingState` is absent — a cold-start EV resolves
- * to `'charger state unknown'` / `commandableNow: false`, exactly as the
- * producer does for a device that has not yet reported a plug-state.
+ * (the executor drift path reads `commandableNow` off it). An EV with no
+ * `evChargingState` resolves to commandable: absence means "no such signal —
+ * skip", not a blocking state, matching the producer.
  *
- * Non-EV fixtures are left uncluttered (the resolvers default an absent field to
- * `false`/`null`, identical to the producer's explicit `false`/`null`).
+ * `commandableNow` is materialized for EVERY fixture, EV or not, because it is a
+ * required base field — a fixture without it would let a consumer read `undefined`
+ * as "not commandable", the exact absence-as-answer bug this field's requiredness
+ * exists to prevent. The EV trio stays EV-only so non-EV fixtures are uncluttered
+ * (the resolvers default an absent field to `false`/`null` anyway).
  */
 export const withMaterializedEvPlugState = <T extends { deviceClass?: string; controlCapabilityId?: string }>(
   overrides: T & { evChargingState?: string },
 ): Omit<T, 'evChargingState'> & MaterializedEvFields => {
   const { evChargingState, ...rest } = overrides;
-  if (!isEvDevice(rest)) return rest;
   const commandable = resolveCommandableNow({
     dev: { ...rest, evChargingState: evChargingState as EvChargingState | undefined },
   });
+  if (!isEvDevice(rest)) {
+    return { ...rest, commandableNow: commandable.commandableNow, commandableNowReason: commandable.reason };
+  }
   const evFields: MaterializedEvFields = {
     evBlockReason: commandable.evBlockReason,
     evSessionInactive: commandable.evSessionInactive,

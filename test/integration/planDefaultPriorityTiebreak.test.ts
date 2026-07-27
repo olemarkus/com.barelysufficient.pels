@@ -16,6 +16,7 @@ import { withBinaryDiscriminant } from '../../lib/plan/planTypes';
 const buildShedDevice = (id: string): PlanInputDevice => withBinaryDiscriminant({
   id,
   name: id,
+  commandableNow: true,
   targets: [],
   controllable: true,
   // Real parse output resolves a binary control capability for a sheddable

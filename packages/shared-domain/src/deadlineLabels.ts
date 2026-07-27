@@ -17,6 +17,7 @@ import type {
   DeferredObjectiveActivePlanFloorShortfallCause,
   DeferredObjectiveActivePlanPendingReason,
   DeferredObjectiveActivePlanRevisionReason,
+  DeferredObjectiveActivePlanStatusV1,
   DeferredObjectiveKwhPerUnitProvenanceV1,
 } from '../../contracts/src/deferredObjectiveActivePlans';
 import type { ObjectiveProfileConfidence } from '../../contracts/src/objectiveProfileTypes';
@@ -74,7 +75,7 @@ export type SmartTaskListStatusId =
   | 'queued'          // plan ready, first hour in the future
   | 'unavailable'     // device moved to a separately-metered home
   | 'paused_unplugged' // EV: car unplugged / session ended
-  | 'paused_not_resumable' // EV: connected but charging can't be resumed (plugged_in)
+  | 'paused_not_resumable' // EV: connected but no confirmed charging session yet (plugged_in)
   | 'on_track'
   | 'at_risk'
   | 'cannot_meet'
@@ -93,7 +94,7 @@ export const SMART_TASK_LIST_STATUS_LABELS: Record<SmartTaskListStatusId, string
   queued: 'On track',
   unavailable: 'Unavailable',
   paused_unplugged: 'Paused — unplugged',
-  paused_not_resumable: 'Paused — can’t resume',
+  paused_not_resumable: 'Paused — not charging yet',
   on_track: 'On track',
   at_risk: 'At risk',
   cannot_meet: 'Cannot finish',
@@ -111,7 +112,7 @@ export const SMART_TASK_LIST_STATUS_LABELS: Record<SmartTaskListStatusId, string
 export const SMART_TASK_WIDGET_STATUS_LABELS: Record<SmartTaskListStatusId, string> = {
   ...SMART_TASK_LIST_STATUS_LABELS,
   paused_unplugged: 'Unplugged',
-  paused_not_resumable: 'Can’t resume',
+  paused_not_resumable: 'Not charging yet',
 };
 
 // Widget detail-panel "why" + recourse copy. Composed from producer-resolved
@@ -129,7 +130,7 @@ const SMART_TASK_WIDGET_WHY_BY_STATUS: Record<SmartTaskListStatusId, string | nu
   queued: null, // composed from firstPlannedTimeLabel when present
   unavailable: SMART_TASK_SUB_HOME_UNAVAILABLE,
   paused_unplugged: 'EV is unplugged — plug in to resume.',
-  paused_not_resumable: 'Car charging won’t resume — check the charger.',
+  paused_not_resumable: 'Car isn’t drawing power yet — progress can’t be counted.',
   on_track: null, // affirmative line resolved from firstPlannedTimeLabel
   at_risk: null, // disambiguated by budget vs time below
   cannot_meet: null, // resolved by floor cause / budget bucket count
@@ -137,12 +138,17 @@ const SMART_TASK_WIDGET_WHY_BY_STATUS: Record<SmartTaskListStatusId, string | nu
 };
 
 // EV device-card variant of the canonical `paused_not_resumable` "why" line.
-// The card slot drops the leading "Car" (the card already names the device) and
-// the trailing period (card state lines render without terminal punctuation),
-// so it can't reuse `SMART_TASK_WIDGET_WHY_BY_STATUS.paused_not_resumable`
-// verbatim. Co-located here as a single named export so the card / chip / hero
-// surfaces share one source for the cause copy and can't drift.
-export const EV_NOT_RESUMABLE_CARD_LINE = 'Charging won’t resume — check the charger';
+// The card already names the device and renders state lines without terminal
+// punctuation, so it can't reuse `SMART_TASK_WIDGET_WHY_BY_STATUS` verbatim.
+// Co-located here as a single named export so the card / chip / hero surfaces
+// share one source for the cause copy and can't drift.
+//
+// Says what is observed, not what PELS can do: a `plugged_in` charger IS
+// commandable and PELS does try to start it (see `resolveEvBlockReasonKey`).
+// Only the SoC behind it isn't creditable progress until the session confirms,
+// so this copy must not read as "can't resume" — that told the owner to go
+// check a charger PELS was in the middle of starting.
+export const EV_NOT_RESUMABLE_CARD_LINE = 'Not drawing power yet';
 
 // EV device-card variant of the unplugged/invalid-session pause line. Same
 // rationale as `EV_NOT_RESUMABLE_CARD_LINE`: a card-slot phrasing with no
@@ -167,6 +173,11 @@ const WHY_CANNOT_MEET_DEVICE = 'Not enough delivery before the deadline.';
 // "time OR budget" guess the user would otherwise have to resolve themselves.
 const WHY_AT_RISK_BUDGET = 'Today’s daily budget may run out before the deadline.';
 const WHY_AT_RISK_TIME = 'Limited time left before the deadline.';
+// The device is off because the user turned it off and asked PELS to leave it
+// off, so neither the budget nor the clock is the thing to act on — turning the
+// device on is. Named before the budget/time split so it is never mistaken for
+// one of those.
+export const WHY_AT_RISK_DEVICE_LEFT_OFF = 'Device is staying off until turned on again.';
 
 // Exported so the widget's recently-ended detail reuses the SAME recourse copy
 // for a Missed task that the active cannot-finish path uses — budget-bound vs
@@ -185,6 +196,10 @@ export type SmartTaskWidgetDetailCopy = {
 export type SmartTaskWidgetDetailInput = {
   statusId: SmartTaskListStatusId;
   pendingReason?: DeferredObjectiveActivePlanPendingReason;
+  // Live per-cycle cause, refreshed on the plan even when `latest` is cached.
+  // Takes precedence over the settle-time `floorShortfallCause` below, which is
+  // up to an hour stale.
+  diagnosticReasonCode?: DeferredObjectiveActivePlanDiagnosticReason;
   floorShortfallCause?: DeferredObjectiveActivePlanFloorShortfallCause;
   dailyBudgetExhaustedBucketCount?: number;
   // Pre-formatted local time of the first planned hour (e.g. "16:00") for the
@@ -206,6 +221,20 @@ const isBudgetDriven = (input: SmartTaskWidgetDetailInput): boolean => {
   return input.statusId === 'at_risk' && (input.dailyBudgetExhaustedBucketCount ?? 0) > 0;
 };
 
+// An explicit off action is its own cause — neither the budget nor the clock.
+const isLeftOffDriven = (input: SmartTaskWidgetDetailInput): boolean => (
+  input.diagnosticReasonCode === 'objective_device_left_off'
+);
+
+const resolveAtRiskCopy = (input: SmartTaskWidgetDetailInput): SmartTaskWidgetDetailCopy => {
+  if (isLeftOffDriven(input)) {
+    return { whyLabel: WHY_AT_RISK_DEVICE_LEFT_OFF, recourseHint: null };
+  }
+  return isBudgetDriven(input)
+    ? { whyLabel: WHY_AT_RISK_BUDGET, recourseHint: RECOURSE_CANNOT_MEET_BUDGET }
+    : { whyLabel: WHY_AT_RISK_TIME, recourseHint: null };
+};
+
 export const resolveSmartTaskWidgetDetailCopy = (
   input: SmartTaskWidgetDetailInput,
 ): SmartTaskWidgetDetailCopy => {
@@ -221,11 +250,7 @@ export const resolveSmartTaskWidgetDetailCopy = (
       ? { whyLabel: WHY_CANNOT_MEET_BUDGET, recourseHint: RECOURSE_CANNOT_MEET_BUDGET }
       : { whyLabel: WHY_CANNOT_MEET_DEVICE, recourseHint: RECOURSE_CANNOT_MEET_DEVICE };
   }
-  if (input.statusId === 'at_risk') {
-    return isBudgetDriven(input)
-      ? { whyLabel: WHY_AT_RISK_BUDGET, recourseHint: RECOURSE_CANNOT_MEET_BUDGET }
-      : { whyLabel: WHY_AT_RISK_TIME, recourseHint: null };
-  }
+  if (input.statusId === 'at_risk') return resolveAtRiskCopy(input);
   if (input.statusId === 'building_plan') {
     const reason = input.pendingReason ?? 'awaiting_horizon_plan';
     const why = SMART_TASK_WIDGET_WHY_BY_PENDING_REASON[reason]
@@ -702,8 +727,8 @@ const SMART_TASK_LIST_READY_BY_STATUS_WORD: Record<SmartTaskListStatusId, string
   // full label; this is the same sanctioned shared-domain string, not a new
   // variant.
   paused_unplugged: SMART_TASK_WIDGET_STATUS_LABELS.paused_unplugged,
-  // Compressed widget label ('Can’t resume') for the same double-em-dash reason
-  // as paused_unplugged — the full chip label carries its own em-dash.
+  // Compressed widget label ('Not charging yet') for the same double-em-dash
+  // reason as paused_unplugged — the full chip label carries its own em-dash.
   paused_not_resumable: SMART_TASK_WIDGET_STATUS_LABELS.paused_not_resumable,
   on_track: null,
   at_risk: SMART_TASK_LIST_STATUS_LABELS.at_risk,
@@ -1064,6 +1089,43 @@ export const SMART_TASK_USAGE_RETURN_LABEL = SMART_TASK_HISTORY_EYEBROW;
 export const SMART_TASK_USAGE_RETURN_CONTEXT = 'Showing household usage.';
 
 // Resolve the list card status id from plan data.
+/**
+ * The status a surface should REPORT, given the committed verdict plus the live
+ * per-cycle cause. The single home for the "Leave off until turned on again"
+ * overlay: the list chip, the widget row, and the detail hero all resolve
+ * through this, so a user opening a row marked `At risk` can never land on a
+ * green on-track hero.
+ *
+ * Only a healthy verdict is overlaid. `cannot_meet` and `satisfied` are already
+ * the more truthful answer, and softening either would misreport a finished or
+ * already-failed task. The overlay is live in BOTH directions — the recorder
+ * refreshes `diagnosticReasonCode` every cycle — so turning the device back on
+ * restores the committed verdict immediately rather than at the next settle.
+ *
+ * EVERY surface that reports a task's status must resolve through here. The full
+ * set, so a new one can be checked against it:
+ *  - Smart-tasks list chip + Overview smart-task row → `resolveSmartTaskListStatus`
+ *  - Smart-tasks widget row → the same resolver, via `smartTasksWidgetPayload`
+ *  - Smart-task detail hero (status, tone, `cannotMeet`) and its trajectory →
+ *    `deadlinePlan.ts:buildReadyPayload`
+ *  - Flow condition `deadline_status_is` → `deadlineObjectiveCards.ts`
+ *  - Flow trigger `deadline_status_changed` → the `effectivePlanStatus` carried
+ *    on the revision event, published by the recorder when the overlay flips
+ *
+ * Deliberately NOT overlaid: the persisted revision itself, the frozen history
+ * diagnostic, and the daily-budget cause derivation. Those record what the
+ * TRAJECTORY was; a device left off is not a budget shortfall, and freezing the
+ * overlay is what would make it outlive the hold.
+ */
+export const resolveEffectivePlanStatus = <T extends DeferredObjectiveActivePlanStatusV1>(
+  planStatus: T,
+  diagnosticReasonCode: DeferredObjectiveActivePlanDiagnosticReason | undefined,
+): T | 'at_risk' => (
+  diagnosticReasonCode === 'objective_device_left_off' && planStatus === 'on_track'
+    ? 'at_risk'
+    : planStatus
+);
+
 // `nowMs` is used to distinguish the `queued` id (plan ready, first action in
 // future — labelled "On track" in the UI, same as `on_track`) from other
 // non-pending states.
@@ -1100,6 +1162,9 @@ export const resolveSmartTaskListStatus = (params: {
     if (pendingReason === 'invalid_session') return 'paused_unplugged';
     return 'building_plan';
   }
+  // Device left off outside PELS: overlay the committed verdict, which is still
+  // the trajectory truth and says nothing about a device that is not running.
+  const reported = resolveEffectivePlanStatus(planStatus, diagnosticReasonCode);
 
   // Plan verdicts outrank the future-first-action check: `queued` renders the
   // same green `On track` chip as `on_track`, so letting it win here would
@@ -1107,9 +1172,9 @@ export const resolveSmartTaskListStatus = (params: {
   // because its first hour hasn't started yet. (Pre-sweep this ordering only
   // mislabelled those as a muted "Scheduled"; with the shared `On track`
   // label it would actively assert health.)
-  if (planStatus === 'satisfied') return 'satisfied';
-  if (planStatus === 'cannot_meet') return 'cannot_meet';
-  if (planStatus === 'at_risk') return 'at_risk';
+  if (reported === 'satisfied') return 'satisfied';
+  if (reported === 'cannot_meet') return 'cannot_meet';
+  if (reported === 'at_risk') return 'at_risk';
 
   // Plan is ready and healthy — a future first action keeps the `queued` id
   // (label and tone identical to `on_track`; the distinction stays internal
@@ -1808,16 +1873,19 @@ const DEADLINE_LABELS: Record<DeferredObjectiveSettingsKind, DeadlineLabels> = {
         headlineReason: 'Charger reports the car isn’t plugged in.',
         recourse: null,
       }),
-      // Connected (plugged_in) but PELS can't resume charging. Distinct from
-      // `invalid_session`: the car IS plugged in, so the lever is the charger,
-      // not the cable. Recourse is null — like unplugged, the fix is a physical
-      // action with no in-app tab to land on. `headlineReason` reuses the
+      // Connected (plugged_in) with no confirmed charging session. Distinct from
+      // `invalid_session`: the car IS plugged in. PELS does command this charger
+      // on — `plugged_in` is commandable — so this must NOT read as "can't
+      // resume" or send the owner to check hardware PELS is mid-way through
+      // starting. What is true is narrower: no power is flowing yet, so the SoC
+      // behind it isn't creditable progress. Recourse is null; there is no in-app
+      // tab that makes the car start drawing. `headlineReason` reuses the
       // canonical widget "why" line so the three EV surfaces (list chip / hero /
       // card) agree on the cause copy.
       charger_not_resumable: () => ({
-        headline: 'Charging won’t resume',
-        body: 'PELS can’t resume charging on this charger. Check the charger and the EV — '
-          + 'PELS will pick the schedule back up once charging can run again.',
+        headline: 'Not charging yet',
+        body: 'The car is connected but not drawing power yet. PELS keeps asking the charger '
+          + 'to start, and picks the schedule back up as soon as current flows.',
         headlineReason: SMART_TASK_WIDGET_WHY_BY_STATUS.paused_not_resumable,
         recourse: null,
       }),

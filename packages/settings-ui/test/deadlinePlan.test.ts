@@ -4700,6 +4700,7 @@ describe('resolveCannotMeetRecourse', () => {
       labels,
       cannotMeet: false,
       dailyBudgetExhausted: false,
+      deviceLeftOff: false,
       deviceId: 'heater',
     })).toBeNull();
   });
@@ -4710,6 +4711,7 @@ describe('resolveCannotMeetRecourse', () => {
       labels,
       cannotMeet: true,
       dailyBudgetExhausted: true,
+      deviceLeftOff: false,
       deviceId: 'heater',
     });
     expect(out?.label).toBe('Open Budget');
@@ -4725,6 +4727,7 @@ describe('resolveCannotMeetRecourse', () => {
       labels,
       cannotMeet: true,
       dailyBudgetExhausted: false,
+      deviceLeftOff: false,
       deviceId: 'heater',
     });
     expect(out?.label).toBe('Adjust device');
@@ -4732,6 +4735,31 @@ describe('resolveCannotMeetRecourse', () => {
     // Device-side branch carries the deviceId so the click dispatcher can
     // deep-link the device-settings overlay after landing on Overview.
     expect(out?.deviceId).toBe('heater');
+  });
+
+  it('offers no recourse for a device the user turned off', async () => {
+    // The reason sentence already names the only action ("until turned on
+    // again"); neither the Budget tab nor the device settings hold the fix, and
+    // "Adjust device" would send the user looking for a setting to change.
+    const { resolveCannotMeetRecourse } = await import('../src/ui/deadlinePlanHero.ts');
+    expect(resolveCannotMeetRecourse({
+      labels,
+      cannotMeet: true,
+      dailyBudgetExhausted: true,
+      deviceLeftOff: true,
+      deviceId: 'heater',
+    })).toBeNull();
+  });
+
+  it('explains an at-risk hero with the device, not the target or the budget', async () => {
+    const { resolveCannotMeetMeta } = await import('../src/ui/deadlinePlanHero.ts');
+    expect(resolveCannotMeetMeta({ labels, dailyBudgetExhausted: true, deviceLeftOff: true }))
+      .toBe('Device is staying off until turned on again.');
+    // Unheld tasks keep their existing diagnosis.
+    expect(resolveCannotMeetMeta({ labels, dailyBudgetExhausted: false, deviceLeftOff: false }))
+      .toContain('Not enough time');
+    expect(resolveCannotMeetMeta({ labels, dailyBudgetExhausted: true, deviceLeftOff: false }))
+      .toContain('daily budget');
   });
 
   it('emits an empty deviceId when none is available (cold-start / history-detail-only state)', async () => {
@@ -4744,6 +4772,7 @@ describe('resolveCannotMeetRecourse', () => {
       labels,
       cannotMeet: true,
       dailyBudgetExhausted: false,
+      deviceLeftOff: false,
       deviceId: '',
     });
     expect(out?.label).toBe('Adjust device');

@@ -21,7 +21,13 @@ export type RestoreCandidate = {
 export function isRestoreLiveEligibleDevice(device: DevicePlanDevice): boolean {
   return device.controllable !== false
     && device.plannedState !== 'shed'
-    && device.plannedState !== 'inactive';
+    && device.plannedState !== 'inactive'
+    // "Leave off until turned on again": the single gate every restore-candidate
+    // predicate funnels through, so excluding the device here removes it from
+    // binary restore, stepped restore, headroom reservation, and swap
+    // beneficiary selection at once. The device stays managed and its measured
+    // draw still counts toward whole-home power — PELS just never resumes it.
+    && device.externalOffHoldActive !== true;
 }
 
 type RestoreObservedState = 'off' | 'on' | 'target_only' | 'unknown';
@@ -155,6 +161,10 @@ export function getEvRestoreStateBlockReason(dev: DevicePlanDevice): string | nu
 export function getInactiveReason(dev: DevicePlanDevice): DeviceReason | null {
   const evStateBlock = getEvRestoreStateBlockReason(dev);
   if (evStateBlock) return { code: PLAN_REASON_CODES.inactive, detail: evStateBlock };
+  // Checked after the EV plug-state block so an unplugged held charger still
+  // reads as unplugged — that is the more immediate fact for the user, and the
+  // hold stays stored underneath, becoming visible again after reconnection.
+  if (dev.externalOffHoldActive === true) return { code: PLAN_REASON_CODES.externalOffHold };
 
   return null;
 }

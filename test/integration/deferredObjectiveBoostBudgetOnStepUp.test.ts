@@ -179,6 +179,7 @@ const buildSteppedDevice = (nowMs: number): PlanInputDevice => withSteppedDiscri
   withTemperatureDiscriminant(withBinaryDiscriminant({
     id: STEP_DEVICE_ID,
     name: 'Priority Tank',
+    commandableNow: true,
     controllable: true,
     controlCapabilityId: 'onoff' as const,
     binaryControl: { on: true },
@@ -198,6 +199,7 @@ const buildSteppedDevice = (nowMs: number): PlanInputDevice => withSteppedDiscri
 const buildLowerPriorityDevice = (nowMs: number): PlanInputDevice => withBinaryDiscriminant({
   id: LOWER_PRIORITY_ID,
   name: 'Lower Priority Heater',
+  commandableNow: true,
     controllable: true,
     controlCapabilityId: 'onoff' as const,
     binaryControl: { on: false },

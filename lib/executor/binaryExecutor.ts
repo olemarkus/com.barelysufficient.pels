@@ -1,5 +1,5 @@
 import { isBinaryObservedOff, isBinaryOnOrUnknown } from '../../packages/shared-domain/src/binaryControlState';
-import { isCommandableNow } from '../../packages/shared-domain/src/commandableNow';
+import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import { getLogger } from '../logging/logger';
 import {
   shouldSkipShedding,
@@ -201,7 +201,9 @@ export const applyDeferredBinaryCommand = async (
   // Restore only an off-but-commandable device — i.e. released. Reads the binary
   // truth (`binaryControl.on`) + producer-resolved commandability, not any
   // device-specific state string.
-  if (isBinaryOnOrUnknown(snapshot) || !isCommandableNow(snapshot)) return false;
+  // Raw snapshot, not a producer-resolved carrier: call the producer explicitly
+  // rather than a helper that would guess from whichever fields are present.
+  if (isBinaryOnOrUnknown(snapshot) || !resolveCommandableNow({ dev: snapshot }).commandableNow) return false;
   if (!canApplyRestoreSnapshot(ctx, {
     snapshot,
     deviceId: intent.deviceId,

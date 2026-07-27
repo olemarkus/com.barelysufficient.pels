@@ -1,5 +1,6 @@
 import { buildDeviceActuator } from './buildDeviceActuator';
 import { requireDeviceManager } from './contextGuards';
+import { isExternalOffHeldForDevice } from './toPlanDevice';
 import { PlanEngine as PlanEngineClass } from '../../lib/plan/planEngine';
 import { isDeviceObservationStale } from '../../lib/observer/observationFreshness';
 import type { DeviceDiagnosticsRecorder } from '../../lib/diagnostics/deviceDiagnosticsService';
@@ -66,6 +67,12 @@ export function createPlanEngine(ctx: AppContext, scope: HomeScope, options?: Cr
     // (starvation must not count stale-but-unobserved time). Same observer-projection
     // seam as createPlanService.getObservationStale; resolved to a flat boolean here.
     // A device with no projection entry yet is treated as not stale.
+    // "Leave off until turned on again": resolved HERE rather than per caller so
+    // no home can be wired without it — a missing one would silently make the
+    // executor's restore carve-out a no-op for that home's devices. Same
+    // resolution the producer applies, so plan and executor share one definition
+    // of "held".
+    isExternalOffHeld: (deviceId) => isExternalOffHeldForDevice(ctx, deviceId),
     getObservationStale: (deviceId) => {
       const observed = ctx.getObservedState(deviceId);
       return observed !== undefined && isDeviceObservationStale(observed);

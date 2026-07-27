@@ -162,6 +162,13 @@ const resolveEligibleForStarvation = (params: {
   if (isEv || !inputDevice) return false;
   if (!isTemperatureInputDevice(inputDevice)) return false;
   if (!isStarvationSupportedDeviceClass(device.deviceClass ?? inputDevice.deviceClass)) return false;
+  // A device the user turned off outside PELS is not starved — PELS is not
+  // withholding power from it, it is respecting an explicit action. Excluding it
+  // from ELIGIBILITY (rather than pausing an episode) resets any accrual and
+  // keeps it out of the Held-back list entirely, which is what keeps
+  // `notes/ui-terminology.md` § "Held back" accurate: there is still no
+  // "manual"/"external" starvation cause.
+  if (device.externalOffHoldActive === true) return false;
   return inputDevice.managed === true
     && inputDevice.controllable === true
     && device.controllable !== false

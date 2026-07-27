@@ -235,6 +235,7 @@ describe('PlanService', () => {
         withTemperatureDiscriminant(withBinaryDiscriminant({
           id: 'dev-1',
           name: 'Heater 1',
+          commandableNow: true,
           controlCapabilityId: 'onoff' as const,
           binaryControl: { on: false },
           currentOn: false,
@@ -247,6 +248,7 @@ describe('PlanService', () => {
         withTemperatureDiscriminant(withBinaryDiscriminant({
           id: 'dev-2',
           name: 'Heater 2',
+          commandableNow: true,
           controlCapabilityId: 'onoff' as const,
           binaryControl: { on: false },
           currentOn: false,
@@ -259,6 +261,7 @@ describe('PlanService', () => {
         withTemperatureDiscriminant(withBinaryDiscriminant({
           id: 'ev-1',
           name: 'EV',
+          commandableNow: true,
           controlCapabilityId: 'onoff' as const,
           binaryControl: { on: false },
           currentOn: false,
@@ -728,6 +731,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [{
         id: 'dev-1',
         name: 'Heater',
+        commandableNow: true,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
         deviceType: 'temperature',
         controlCapabilityId: 'onoff',
@@ -889,6 +893,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [{
         id: 'dev-1',
         name: 'Heater',
+        commandableNow: true,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
         deviceType: 'temperature',
         controlCapabilityId: 'onoff',
@@ -1066,6 +1071,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [{
         id: 'dev-1',
         name: 'Heater',
+        commandableNow: true,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
         deviceType: 'temperature',
         controlCapabilityId: 'onoff',
@@ -1142,6 +1148,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [{
         id: 'dev-1',
         name: 'Heater',
+        commandableNow: true,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
         deviceType: 'temperature',
         controlCapabilityId: 'onoff',
@@ -1261,6 +1268,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [{
         id: 'dev-1',
         name: 'Heater',
+        commandableNow: true,
         targets: [{ id: 'target_temperature', value: 17, unit: '°C' }],
         deviceType: 'temperature',
         controlCapabilityId: 'onoff',
@@ -1349,6 +1357,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [{
         id: 'dev-1',
         name: 'Heater',
+        commandableNow: true,
         targets: [{ id: 'target_temperature', value: 18, unit: '°C' }],
         deviceType: 'temperature',
         controlCapabilityId: 'onoff',
@@ -1438,6 +1447,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [{
         id: 'dev-1',
         name: 'Heater',
+        commandableNow: true,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
         deviceType: 'temperature',
         controlCapabilityId: 'onoff',
@@ -1495,6 +1505,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [{
         id: 'dev-1',
         name: 'Heater',
+        commandableNow: true,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
         deviceType: 'temperature',
         controlCapabilityId: 'onoff',
@@ -1558,6 +1569,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [{
         id: 'dev-1',
         name: 'Heater',
+        commandableNow: true,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
         deviceType: 'temperature',
         controlCapabilityId: 'onoff',
@@ -1611,6 +1623,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [{
         id: 'dev-1',
         name: 'Heater',
+        commandableNow: true,
         targets: [{ id: 'target_temperature', value: 23.5, unit: '°C' }],
         deviceType: 'temperature',
         controlCapabilityId: 'onoff',
@@ -1659,6 +1672,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [{
         id: 'dev-1',
         name: 'Heater',
+        commandableNow: true,
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
         deviceType: 'temperature',
         controlCapabilityId: 'onoff',
@@ -1723,6 +1737,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [{
         id: 'dev-1',
         name: 'Heater',
+        commandableNow: true,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
         deviceType: 'temperature',
         controlCapabilityId: 'onoff',
@@ -1788,6 +1803,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [{
         id: 'dev-1',
         name: 'Heater',
+        commandableNow: true,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
         deviceType: 'temperature',
         controlCapabilityId: 'onoff',
@@ -1859,6 +1875,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [{
         id: 'dev-1',
         name: 'Heater',
+        commandableNow: true,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
         deviceType: 'temperature',
         controlCapabilityId: 'onoff',
@@ -1916,6 +1933,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [{
         id: 'dev-1',
         name: 'Heater',
+        commandableNow: true,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
         deviceType: 'temperature',
         controlCapabilityId: 'onoff',
@@ -2029,6 +2047,7 @@ describe('PlanService', () => {
         {
           id: 'dev-1',
           name: 'Heater 1',
+          commandableNow: true,
           targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
           deviceType: 'temperature',
           controlCapabilityId: 'onoff',
@@ -2039,6 +2058,7 @@ describe('PlanService', () => {
         {
           id: 'dev-2',
           name: 'Heater 2',
+          commandableNow: true,
           targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
           deviceType: 'temperature',
           controlCapabilityId: 'onoff',
@@ -2119,6 +2139,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [{
         id: 'dev-1',
         name: 'Heater',
+        commandableNow: true,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
         deviceType: 'temperature',
         controlCapabilityId: 'onoff',
@@ -2219,6 +2240,7 @@ describe('PlanService', () => {
         {
           id: 'dev-1',
           name: 'Heater 1',
+          commandableNow: true,
           targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
           deviceType: 'temperature',
           controlCapabilityId: 'onoff',
@@ -2230,6 +2252,7 @@ describe('PlanService', () => {
         {
           id: 'dev-2',
           name: 'Heater 2',
+          commandableNow: true,
           targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
           deviceType: 'temperature',
           controlCapabilityId: 'onoff',
@@ -2339,6 +2362,7 @@ describe('PlanService', () => {
         {
           id: 'dev-1',
           name: 'Heater 1',
+          commandableNow: true,
           targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
           deviceType: 'temperature',
           controlCapabilityId: 'onoff',
@@ -2351,6 +2375,9 @@ describe('PlanService', () => {
         {
           id: 'dev-2',
           name: 'Heater 2',
+          // `available: false` below: the producer resolves that to
+          // commandableNow=false ('device unavailable'), so the fixture must too.
+          commandableNow: false,
           targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
           deviceType: 'temperature',
           controlCapabilityId: 'onoff',
@@ -2430,6 +2457,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [{
         id: 'dev-1',
         name: 'Heater',
+        commandableNow: true,
         targets: [{ id: 'target_temperature', value: 21, unit: '°C' }],
         deviceType: 'temperature',
         controlCapabilityId: 'onoff',
@@ -2493,6 +2521,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [{
         id: 'dev-1',
         name: 'Heater',
+        commandableNow: true,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
         deviceType: 'temperature',
         controlCapabilityId: 'onoff',
@@ -2575,6 +2604,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [{
         id: 'dev-1',
         name: 'Heater',
+        commandableNow: true,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
         deviceType: 'temperature',
         controlCapabilityId: 'onoff',
@@ -2688,6 +2718,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [{
         id: 'dev-1',
         name: 'Heater',
+        commandableNow: true,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
         deviceType: 'temperature',
         controlCapabilityId: 'onoff',
@@ -2797,6 +2828,7 @@ describe('PlanService', () => {
     const buildLiveDevice = (binaryControlObservation: BinaryControlObservation) => ({
       id: 'dev-1',
       name: 'Heater',
+      commandableNow: true,
       targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
       deviceType: 'temperature' as const,
       controlCapabilityId: 'onoff' as const,
@@ -2892,6 +2924,7 @@ describe('PlanService', () => {
     const liveDeviceBase = {
       id: 'dev-1',
       name: 'Heater',
+      commandableNow: true,
       targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
       deviceType: 'temperature' as const,
       controlCapabilityId: 'onoff' as const,
@@ -3394,6 +3427,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [{
         id: 'dev-1',
         name: 'Heater',
+        commandableNow: true,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
         deviceType: 'temperature',
         controlCapabilityId: 'onoff',
@@ -3441,6 +3475,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [{
         id: 'dev-1',
         name: 'Heater',
+        commandableNow: true,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
         deviceType: 'temperature',
         controlCapabilityId: 'onoff',
@@ -3560,6 +3595,7 @@ describe('PlanService', () => {
       getPlanDevices: () => [{
         id: 'dev-1',
         name: 'Heater',
+        commandableNow: true,
         targets: [{ id: 'target_temperature', value: 20, unit: '°C' }],
         deviceType: 'temperature',
         controlCapabilityId: 'onoff',

@@ -9,6 +9,7 @@ import type { PlanEngineState } from '../plan/planState';
 import type { BinaryControlDecisionSnapshot } from '../plan/planBinaryControlHelpers';
 import type { PlanActuationMode } from './executorTypes';
 import { getLogger } from '../logging/logger';
+import { PLAN_REASON_CODES } from '../../packages/shared-domain/src/planReasonSemantics';
 
 const sharedLogger = getLogger('executor/binary');
 
@@ -55,6 +56,37 @@ export const skipRestoreForSurplusPosture = (
   });
   ctx.state.clearDeviceShed(deviceId);
   ctx.state.clearShedDecision(deviceId); // clears shedDecidedMs + the surplus stamp
+  return true;
+};
+
+/**
+ * "Leave off until turned on again" restore carve-out — the defensive twin of
+ * {@link skipRestoreForSurplusPosture}. A device the user turned off outside
+ * PELS must never be commanded back ON: not by a plan built before the hold
+ * existed, not by the capacity-control-off force-ON lane, and not by a smart
+ * task's deferred restore.
+ *
+ * Reads the plan-less-safe flat getter on engine state, never the plan device,
+ * so a cold/absent/stale plan cannot bypass it. That getter applies the SAME
+ * resolution as the producer (hold AND still observed off), so this can never
+ * refuse a resume the planner thinks is fine. Unlike the surplus stamp it is
+ * persistence-backed, so the guard also holds across a restart.
+ *
+ * Deliberately does NOT clear the shed bookkeeping: PELS never shed this device,
+ * so there is no claim to release — it is off because the user turned it off.
+ */
+export const skipRestoreForExternalOffHold = (
+  ctx: Pick<PlanExecutorBinaryContext, 'state'>,
+  deviceId: string,
+  name: string,
+): boolean => {
+  if (ctx.state.isExternalOffHeld?.(deviceId) !== true) return false;
+  sharedLogger.debug({
+    event: 'restore_command_skipped',
+    reasonCode: PLAN_REASON_CODES.externalOffHold,
+    deviceId,
+    deviceName: name,
+  });
   return true;
 };
 

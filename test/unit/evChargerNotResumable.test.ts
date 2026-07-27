@@ -53,8 +53,8 @@ describe('resolveSmartTaskListStatus — connected-but-not-resumable charger', (
   });
 
   it('exposes the approved chip / widget copy', () => {
-    expect(SMART_TASK_LIST_STATUS_LABELS.paused_not_resumable).toBe('Paused — can’t resume');
-    expect(SMART_TASK_WIDGET_STATUS_LABELS.paused_not_resumable).toBe('Can’t resume');
+    expect(SMART_TASK_LIST_STATUS_LABELS.paused_not_resumable).toBe('Paused — not charging yet');
+    expect(SMART_TASK_WIDGET_STATUS_LABELS.paused_not_resumable).toBe('Not charging yet');
   });
 });
 
@@ -95,7 +95,7 @@ describe('resolveEvCardStateLine — connected-but-not-resumable charger (C1)', 
   it('surfaces a distinct not_resumable state line', () => {
     expect(resolveEvCardStateLine({
       hours: [], nowMs: 0, isPlugOutPaused: false, isNotResumable: true, formatTime,
-    })).toEqual({ kind: 'not_resumable', text: 'Charging won’t resume — check the charger' });
+    })).toEqual({ kind: 'not_resumable', text: 'Not drawing power yet' });
   });
 
   it('not-resumable wins over planned hours (the schedule can\'t run)', () => {
@@ -127,7 +127,7 @@ describe('EV pending hero — charger_not_resumable (C2)', () => {
   it('renders a charger-focused hero distinct from the unplugged copy', () => {
     const notResumable = deadlineLabels('ev_soc').pendingHeroByReason.charger_not_resumable(ctx);
     const unplugged = deadlineLabels('ev_soc').pendingHeroByReason.invalid_session(ctx);
-    expect(notResumable.headline).toBe('Charging won’t resume');
+    expect(notResumable.headline).toBe('Not charging yet');
     expect(notResumable.recourse).toBeNull();
     expect(notResumable.headlineReason).not.toBeNull();
     // Must NOT be the "plug in" copy — the car is connected.
