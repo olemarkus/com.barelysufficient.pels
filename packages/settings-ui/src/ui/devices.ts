@@ -6,7 +6,13 @@ import {
   SETTINGS_UI_REFRESH_DEVICES_PATH,
   type SettingsUiDevicesPayload,
 } from '../../../contracts/src/settingsUiApi.ts';
-import { callApi, getApiReadModel, invalidateApiCache, primeApiCache } from './homey.ts';
+import {
+  callApi,
+  getApiReadModel,
+  invalidateApiCacheForAllHomes,
+  invalidateApiCacheForScopedHomes,
+  primeApiCache,
+} from './homey.ts';
 import { showToast, showToastError } from './toast.ts';
 import { state } from './state.ts';
 import { renderPriorities } from './modes.ts';
@@ -31,6 +37,11 @@ import {
 } from './deviceListPresentation.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
 
+// Whole-home only, deliberately: the two `state.*` solar flags are HOME-level
+// gates, so a future scoped read must not funnel through here — a sub-home
+// payload assigning them would retract the whole home's solar surfaces. The
+// scope-selector PR adds its own scoped reader that discriminates
+// `payload.homeScope` before touching any flat field (see TODO.md).
 export const getTargetDevices = async (): Promise<SettingsUiDeviceListItem[]> => {
   const payload = await getApiReadModel<SettingsUiDevicesPayload>(SETTINGS_UI_DEVICES_PATH);
   state.hasManagedSolarDevice = payload?.hasManagedSolarDevice === true;
@@ -348,6 +359,10 @@ export const refreshDevices = async (options?: { render?: boolean }) => {
     const response = await callApi<SettingsUiDevicesPayload>('POST', SETTINGS_UI_REFRESH_DEVICES_PATH, {});
     const hasDevices = Array.isArray(response?.devices);
     if (hasDevices) {
+      // The refresh endpoint answers for the WHOLE home, so it may only re-seed
+      // the bare entry; every home-scoped entry it did not refresh is dropped
+      // rather than left to serve a pre-refresh device list.
+      invalidateApiCacheForScopedHomes(SETTINGS_UI_DEVICES_PATH);
       primeApiCache(SETTINGS_UI_DEVICES_PATH, {
         devices: response.devices,
         hasManagedSolarDevice: response.hasManagedSolarDevice === true,
@@ -356,7 +371,7 @@ export const refreshDevices = async (options?: { render?: boolean }) => {
       state.hasManagedSolarDevice = response.hasManagedSolarDevice === true;
       state.hasExhibitedExport = response.hasExhibitedExport === true;
     } else {
-      invalidateApiCache(SETTINGS_UI_DEVICES_PATH);
+      invalidateApiCacheForAllHomes(SETTINGS_UI_DEVICES_PATH);
     }
 
     // When the refresh returns no devices we fall back to the cached read model via
@@ -371,7 +386,7 @@ export const refreshDevices = async (options?: { render?: boolean }) => {
     }
     const devicesUpdated = new CustomEvent('devices-updated', { detail: { devices } });
     document.dispatchEvent(devicesUpdated);
-    invalidateApiCache(SETTINGS_UI_PLAN_PATH);
+    invalidateApiCacheForAllHomes(SETTINGS_UI_PLAN_PATH);
     await refreshPlan();
   } catch (error) {
     await logSettingsError('Failed to refresh devices', error, 'refreshDevices');

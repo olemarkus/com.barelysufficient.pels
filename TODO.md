@@ -1370,6 +1370,37 @@ program) remain deferred.*
       the guard stops depending on comment wording. Left out of that PR to avoid loosening a
       packaging guard in the same change that needed it to pass. [P2]
 
+- [ ] **Scoped read-model consumers (6b/7c) must discriminate `homeScope` before reading any flat
+      field.** PR 5b ships the `?homeId=` endpoints and the client cache discipline but deliberately NO
+      scoped client reader: the existing whole-home readers (`getPlanSnapshot` in `planRedesign.ts`,
+      `getPowerReadModel` in `power.ts`, `getTargetDevices` in `devices.ts`) collapse the payload to a
+      flat nullable, so passing them a `homeId` would make `homeScope: unavailable` indistinguishable
+      from "healthy home, no data yet" — and `getTargetDevices` additionally writes the HOME-level
+      `state.hasManagedSolarDevice` / `state.hasExhibitedExport` gates, which a resolved sub-home payload
+      would silently retract for the whole home (an area without PV would hide the export-price section
+      home-wide). The selector PR must add scoped readers that (a) branch on
+      `payload.homeScope?.state === 'unavailable'` FIRST — the review-suggested shape is a
+      `resolveHomeScopedRead` helper in `packages/contracts` returning
+      `{ state: 'served'; payload } | { state: 'unavailable' }` so the flat fields are unreachable
+      without discriminating — and (b) never funnel a scoped devices payload into the two global solar
+      flags. The `homey.stub.js` scoped plan handler also serves `plan: null` until that PR seeds a
+      per-area plan fixture. P2. Source: adversarial review (typing + correctness lenses) of multi-home
+      PR 5b, 2026-07-27. Files: `packages/settings-ui/src/ui/{planRedesign,power,devices}.ts`,
+      `packages/contracts/src/settingsUiApi.ts`, `packages/settings-ui/tests/e2e/fixtures/homey.stub.js`.
+
+- [ ] **`pels_status` blobs (bare and suffixed) are object-guarded, not field-resolved.** Both
+      `getSettingsUiPower` (`setup/settingsUiApi.ts`, main's unsuffixed read) and `readSubHomeStatus`
+      (`setup/settingsUiHomeScope.ts`, the `pels_status:<id>` read PR 5b added with deliberate precedent
+      parity) check object-ness and then assert the full `SettingsUiPowerStatus` shape — closed unions
+      (`powerFreshnessState`) and numbers included. *Persona:* contributor debugging a WebView that
+      renders nothing for a status field after a partial/corrupt settings write. *Hypothesis:* a
+      malformed blob (e.g. `powerFreshnessState: "garbage"`, `headroomKw: "3"`) flows inward typed as
+      the closed union / number, matches no branch, and the surface silently drops the field with no
+      log — the AGENTS.md boundary rule ("finiteness-gate numbers, shape-guard objects") says the
+      producer should classify it instead. Extract one field-level status resolver (the
+      `asRecord` + `toFiniteNumber` pattern `managerEnergy.ts` cites) and use it from both readers. P3.
+      Source: adversarial review (typing lens) of multi-home PR 5b, 2026-07-27.
+
 - [ ] **Meter picker hint invites an impossible pick when no meters are listed.** When the Homey
       Energy report exposes no id-carrying whole-home (cumulative) meter and no sensor-class device
       meter, the Whole-home meter select shows just "Automatic" while the always-visible hint still

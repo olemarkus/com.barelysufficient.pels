@@ -11,6 +11,10 @@ import type { PowerTrackerState } from '../packages/contracts/src/powerTrackerTy
 import { hasMaterialExhibitedExport } from '../packages/shared-domain/src/solar/exhibitedExport';
 import { SETTINGS_UI_BOOTSTRAP_KEYS } from '../lib/utils/settingsUiBootstrapKeys';
 import { DEFERRED_OBJECTIVES_SETTINGS, POWER_TRACKER_STATE } from '../lib/utils/settingsKeys';
+import {
+  SettingsUiHomeScopeAdapter,
+  type ResolvedSubHomeScope,
+} from './settingsUiHomeScope';
 import { readAllObjectives } from '../lib/objectives/deferredObjectives/objectiveStore';
 import type { DeferredObjectiveSettingsV1 } from '../lib/objectives/deferredObjectives/settings';
 import type {
@@ -56,6 +60,14 @@ type SettingsUiApiApp = Homey.App & {
 type ApiContext = {
   homey: Homey.App['homey'];
 };
+
+/**
+ * The three read endpoints that accept an optional `?homeId=`. `query` is the
+ * raw inbound bag; `settingsUiHomeScope` owns its complete classification.
+ * Optional so every in-process caller (bootstrap, refresh endpoints, tests)
+ * keeps the whole-home behaviour without naming it.
+ */
+type HomeScopedApiContext = ApiContext & { query?: unknown };
 
 const getApp = (homey: Homey.App['homey']): SettingsUiApiApp | null => {
   if (!homey || typeof homey !== 'object') return null;
@@ -136,9 +148,8 @@ const getSettingsUiPower = ({ homey }: ApiContext): SettingsUiPowerPayload => {
     // so the solar buckets can never fill — flagging such a home would render
     // an eternal "gathering" card that promises data that will never come
     // (terminology rule: flow homes get NO solar surfaces).
-    hasManagedSolarDevice: normalizePowerSource(homey.settings.get('power_source')) === 'homey_energy'
-      && getRawSettingsUiDeviceCandidates({ homey })
-        .some((device) => device.deviceClass === 'solarpanel'),
+    hasManagedSolarDevice: isHomeyEnergySource(homey)
+      && hasSolarCandidate(getRawSettingsUiDeviceCandidates({ homey })),
   };
 };
 
@@ -191,7 +202,114 @@ export const buildSettingsUiBootstrap = async ({ homey }: ApiContext): Promise<S
   };
 };
 
-export const getSettingsUiDevicesPayload = ({ homey }: ApiContext): SettingsUiDevicesPayload => {
+// Whether this home has solar surfaces, from ITS candidate list. Shared by the
+// whole-home and per-home composers so the two can never diverge; the two
+// endpoints keep their historical source gating (ui_power gates on
+// homey_energy, ui_devices deliberately does not — see each field's contract).
+const hasSolarCandidate = (candidates: readonly TargetDeviceSnapshot[]): boolean => (
+  candidates.some((device) => device.deviceClass === 'solarpanel')
+);
+
+const isHomeyEnergySource = (homey: Homey.App['homey']): boolean => (
+  normalizePowerSource(homey.settings.get('power_source')) === 'homey_energy'
+);
+
+// ── `?homeId=` composers ────────────────────────────────────────────────────
+// Each returns the empty shape plus an `unavailable` scope when the sub-home
+// cannot be served, so a consumer can never mistake the emptiness for a
+// measurement — the solar flags are OMITTED there, never fabricated `false`.
+// Values come from the read port + that home's own suffixed `pels_status`;
+// nothing here rebuilds, refreshes or actuates. The helpers accept only a
+// parser-resolved scope, so no untrusted string can reach them.
+
+const UNAVAILABLE_PLAN_PAYLOAD: SettingsUiPlanPayload = {
+  plan: null, homeScope: { state: 'unavailable' },
+};
+const UNAVAILABLE_POWER_PAYLOAD: SettingsUiPowerPayload = {
+  tracker: null, status: null, heartbeat: null, homeScope: { state: 'unavailable' },
+};
+const UNAVAILABLE_DEVICES_PAYLOAD: SettingsUiDevicesPayload = {
+  devices: [], homeScope: { state: 'unavailable' },
+};
+
+const planPayloadForHome = (
+  homey: Homey.App['homey'],
+  scope: ResolvedSubHomeScope,
+): SettingsUiPlanPayload => {
+  const reading = new SettingsUiHomeScopeAdapter(homey).readRuntime(scope);
+  if (!reading) return UNAVAILABLE_PLAN_PAYLOAD;
+  return { plan: reading.plan, homeScope: { state: 'resolved', homeId: scope.homeId } };
+};
+
+const powerPayloadForHome = (
+  homey: Homey.App['homey'],
+  scope: ResolvedSubHomeScope,
+): SettingsUiPowerPayload => {
+  const homeScope = new SettingsUiHomeScopeAdapter(homey);
+  const reading = homeScope.readRuntime(scope);
+  if (!reading) return UNAVAILABLE_POWER_PAYLOAD;
+  // Unwired or provisional membership refuses the WHOLE payload, exactly as
+  // the devices composer does, so `homeScope: resolved` always means every
+  // field is this home's truth — an absent solar flag never has to carry a
+  // second meaning (the contract's documented absence case is the realtime
+  // status-only push).
+  const members = homeScope.filterDevicesForHome(scope, getRawSettingsUiDeviceCandidates({ homey }));
+  if (members === null) return UNAVAILABLE_POWER_PAYLOAD;
+  // A thrown status read (transient Homey store failure) is unavailable too:
+  // it is not "no status committed yet", and a resolved payload built from it
+  // could be cached for the session.
+  const statusRead = homeScope.readStatus(scope);
+  if (statusRead.state === 'unavailable') return UNAVAILABLE_POWER_PAYLOAD;
+  // The `power_source` gate behind the solar flag is a settings read as well,
+  // so the adapter classifies its failure the same way — never an untyped
+  // transport error escaping a scoped request, never a flag fabricated from a
+  // failed read (absence already means "realtime status-only push" here).
+  const sourceRead = homeScope.readPowerSource();
+  if (sourceRead.state === 'unavailable') return UNAVAILABLE_POWER_PAYLOAD;
+  return {
+    tracker: reading.powerTracker,
+    status: statusRead.status,
+    heartbeat: null,
+    hasManagedSolarDevice: sourceRead.source === 'homey_energy' && hasSolarCandidate(members),
+    homeScope: { state: 'resolved', homeId: scope.homeId },
+  };
+};
+
+const devicesPayloadForHome = (
+  homey: Homey.App['homey'],
+  scope: ResolvedSubHomeScope,
+): SettingsUiDevicesPayload => {
+  const homeScope = new SettingsUiHomeScopeAdapter(homey);
+  const reading = homeScope.readRuntime(scope);
+  if (reading === null) return UNAVAILABLE_DEVICES_PAYLOAD;
+  // Device→home attribution is what makes a per-home list true; without a
+  // wired, non-provisional membership service there is no honest list, only an
+  // unfiltered, empty or previous-generation one.
+  const members = homeScope.filterDevicesForHome(scope, getRawSettingsUiDeviceCandidates({ homey }));
+  if (members === null) return UNAVAILABLE_DEVICES_PAYLOAD;
+  // Same rule as the power composer's status read: the `power_source` gate is
+  // a settings read, and the adapter classifies its transient failure into the
+  // endpoint's typed `unavailable` instead of rejecting the request.
+  const sourceRead = homeScope.readPowerSource();
+  if (sourceRead.state === 'unavailable') return UNAVAILABLE_DEVICES_PAYLOAD;
+  return {
+    devices: members.filter((device) => !isObserveOnlyRoleClassKey(device.deviceClass)),
+    hasManagedSolarDevice: hasSolarCandidate(members),
+    hasExhibitedExport: sourceRead.source === 'homey_energy' && hasMaterialExhibitedExport(reading.powerTracker),
+    homeScope: { state: 'resolved', homeId: scope.homeId },
+  };
+};
+
+export const getSettingsUiDevicesPayload = (
+  { homey, query }: HomeScopedApiContext,
+): SettingsUiDevicesPayload => {
+  const scope = SettingsUiHomeScopeAdapter.parseRequestedScope(query);
+  if (scope.state === 'whole_home') return getWholeHomeDevicesPayload({ homey });
+  if (scope.state === 'rejected') return UNAVAILABLE_DEVICES_PAYLOAD;
+  return devicesPayloadForHome(homey, scope);
+};
+
+const getWholeHomeDevicesPayload = ({ homey }: ApiContext): SettingsUiDevicesPayload => {
   const candidates = getRawSettingsUiDeviceCandidates({ homey });
   const tracker = getPowerTrackerForUiFromApp(homey)
     ?? (homey.settings.get(POWER_TRACKER_STATE) as PowerTrackerState | null);
@@ -212,24 +330,42 @@ export const getSettingsUiDevicesPayload = ({ homey }: ApiContext): SettingsUiDe
     // gates the runtime `surplusOnly` stamp to homey_energy), so the toggle is at worst inert
     // on flow, never destructive. Gating this flag to source-hide the surplus controls WITHOUT
     // hiding the export section needs a decoupled per-control gate — tracked in TODO.
-    hasManagedSolarDevice: candidates.some((device) => device.deviceClass === 'solarpanel'),
+    hasManagedSolarDevice: hasSolarCandidate(candidates),
     // Meter-only PV homes (a string inverter with no Homey solarpanel device) get no
     // `hasManagedSolarDevice` signal, yet the surplus-absorb engine keys off whole-home net
     // export, which they DO exhibit. Broaden the "Use solar surplus" toggle gate to them via a
     // stable, accumulated export-kWh signal. Source-gated to homey_energy: the flow power
     // boundary rejects negative watts, so a flow home's export families are always empty anyway.
-    hasExhibitedExport: normalizePowerSource(homey.settings.get('power_source')) === 'homey_energy'
+    hasExhibitedExport: isHomeyEnergySource(homey)
       && hasMaterialExhibitedExport(tracker && typeof tracker === 'object' ? tracker : null),
   };
 };
 
-export const getSettingsUiPlanPayload = ({ homey }: ApiContext): SettingsUiPlanPayload => ({
-  plan: getSettingsUiPlan({ homey }),
-});
+// ── The three `?homeId=`-aware endpoints ────────────────────────────────────
+// One dispatch shape each: an absent id returns the historical payload with NO
+// `homeScope` member, so the whole-home response — the one a single-home
+// install and every whole-home surface reads — stays byte-identical. A refused
+// id (`''`, `'main'`, `':'`-bearing, prototype-colliding, non-string) never
+// reaches a settings read; it returns the empty shape marked `unavailable`,
+// which is also what an unknown or unwired sub-home returns.
 
-export const getSettingsUiPowerPayload = ({ homey }: ApiContext): SettingsUiPowerPayload => (
-  getSettingsUiPower({ homey })
-);
+export const getSettingsUiPlanPayload = (
+  { homey, query }: HomeScopedApiContext,
+): SettingsUiPlanPayload => {
+  const scope = SettingsUiHomeScopeAdapter.parseRequestedScope(query);
+  if (scope.state === 'whole_home') return { plan: getSettingsUiPlan({ homey }) };
+  if (scope.state === 'rejected') return UNAVAILABLE_PLAN_PAYLOAD;
+  return planPayloadForHome(homey, scope);
+};
+
+export const getSettingsUiPowerPayload = (
+  { homey, query }: HomeScopedApiContext,
+): SettingsUiPowerPayload => {
+  const scope = SettingsUiHomeScopeAdapter.parseRequestedScope(query);
+  if (scope.state === 'whole_home') return getSettingsUiPower({ homey });
+  if (scope.state === 'rejected') return UNAVAILABLE_POWER_PAYLOAD;
+  return powerPayloadForHome(homey, scope);
+};
 
 export const getSettingsUiPricesPayload = ({ homey }: ApiContext): SettingsUiPricesPayload => (
   getSettingsUiPrices({ homey })

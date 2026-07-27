@@ -142,6 +142,37 @@ for the user-facing vocabulary, see the "Multiple meters vocabulary" section of
   non-serving case (no such sub-home — main included, it has no bundle — a
   fenced tombstone, or no wired registry) is the single typed `unavailable`
   result, never a fabricated default.
+- **The settings UI reaches that port through an optional `?homeId=` on
+  `ui_plan` / `ui_power` / `ui_devices`** (`setup/settingsUiHomeScope.ts` owns
+  the boundary). Three rules hold this together and must not be relaxed:
+  - **Absent `homeId` ⇒ the bare URI and the historical payload, byte for
+    byte** — no `homeScope` member, and the client's `homeScopedApiUri` maps
+    both "no home" and the `'main'` sentinel to the unchanged path. The
+    WebView's `apiCache` is keyed by exact URI and ~20 sites invalidate the bare
+    path, so a whole-home read that silently became `?homeId=main` would miss
+    every one of them and serve a single-home owner a stale Overview with no
+    staleness signal. The runtime refuses `?homeId=main` for the same reason,
+    so both sides agree the main home *is* the bare URI.
+  - **A refused id never becomes a settings key.** `''`, `'main'`, anything
+    containing the `':'` key separator, the prototype-colliding keys, and any
+    non-string (express hands repeated/bracketed parameters through as arrays
+    and objects) are classified before any `homeScopedSettingsKey` call or
+    settings read. Refusal is DISTINCT from absence: it answers the empty shape
+    plus `homeScope: unavailable`, never a degraded main-home read.
+  - **The realtime `plan_updated` / `power_updated` streams stay the main
+    home's.** Widening them would repaint Main's Overview from a sub-home's
+    device set in a Homey-cached stale WebView. A sub-home's freshness rides
+    the suffixed `settings.set` stream (`pels_status:<id>`,
+    `power_tracker_state:<id>`) instead, which the change router turns into a
+    scoped-only cache sweep. Correspondingly, a main-home push re-seeds the bare
+    cache entry and drops the scoped entries it cannot speak for
+    (`invalidateApiCacheForScopedHomes`), while every other invalidation of a
+    home-scopable read model sweeps bare + scoped together
+    (`invalidateApiCacheForAllHomes`).
+  - Transport note: a GET query parameter does reach an app API handler. The
+    firmware's app-level route passes `args: { query, params, body }` (the same
+    shape the widget route uses) and the apps SDK spreads it into the handler
+    context — the identical seam `body` already arrives on for `ui_homes_save`.
 
 ## v1 scope boundary (do not widen without a scope decision)
 

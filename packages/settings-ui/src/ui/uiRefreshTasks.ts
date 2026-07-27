@@ -6,7 +6,7 @@ import {
 } from '../../../contracts/src/settingsUiApi.ts';
 import { getTargetDevices, renderDevices } from './devices.ts';
 import { loadStaleDataStatus } from './capacity.ts';
-import { invalidateApiCache } from './homey.ts';
+import { invalidateApiCache, invalidateApiCacheForAllHomes } from './homey.ts';
 import { loadModeAndPriorities, renderPriorities } from './modes.ts';
 import { refreshPriceConfigView, updatePriceConfigDevices } from './priceConfig.ts';
 import { refreshDailyBudgetPlan } from './dailyBudget.ts';
@@ -44,7 +44,7 @@ export const isPanelVisible = (selector: string): boolean => {
 };
 
 export const refreshPlanForUi = (context: string) => {
-  invalidateApiCache(SETTINGS_UI_PLAN_PATH);
+  invalidateApiCacheForAllHomes(SETTINGS_UI_PLAN_PATH);
   runLoggedTask(refreshPlan(), 'Failed to refresh plan', context);
 };
 
@@ -79,7 +79,7 @@ export const refreshPowerDataIfVisible = (
     return;
   }
   if (options.invalidateBeforeRefresh) {
-    invalidateApiCache(SETTINGS_UI_POWER_PATH);
+    invalidateApiCacheForAllHomes(SETTINGS_UI_POWER_PATH);
   }
   runLoggedTask(refreshPowerData(), 'Failed to refresh power data', context);
 };
@@ -109,7 +109,7 @@ export const loadDevicesOnce = () => {
 };
 
 export const refreshDevicesForUi = () => {
-  invalidateApiCache(SETTINGS_UI_DEVICES_PATH);
+  invalidateApiCacheForAllHomes(SETTINGS_UI_DEVICES_PATH);
   invalidateApiCache(SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH);
   if (!state.devicesLoaded || state.devicesLoading) return;
   getTargetDevices()

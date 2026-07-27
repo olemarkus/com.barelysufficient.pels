@@ -1,5 +1,10 @@
 import { syncSettingsHubChips } from './settingsHubChips.ts';
-import { SETTINGS_UI_PRICES_PATH, SETTINGS_UI_POWER_PATH } from '../../../contracts/src/settingsUiApi.ts';
+import {
+  SETTINGS_UI_DEVICES_PATH,
+  SETTINGS_UI_PLAN_PATH,
+  SETTINGS_UI_POWER_PATH,
+  SETTINGS_UI_PRICES_PATH,
+} from '../../../contracts/src/settingsUiApi.ts';
 import {
   CAPACITY_DRY_RUN,
   CAPACITY_LIMIT_KW,
@@ -18,8 +23,11 @@ import {
   NATIVE_EV_WIRING_DEVICES,
   RESPECT_EXTERNAL_OFF_DEVICES,
   DEBUG_LOGGING_TOPICS,
+  DEVICE_HOME_ASSIGNMENTS,
   HOMES_CONFIG, HOMES_CONFIG_INITIALIZED,
   NORWAY_PRICE_MODEL,
+  PELS_STATUS,
+  POWER_TRACKER_STATE,
   OPERATING_MODE_SETTING,
   OVERSHOOT_BEHAVIORS,
   TEMPERATURE_BOOST_SETTINGS,
@@ -29,7 +37,12 @@ import {
 import { loadAdvancedSettings, loadCapacitySettings } from './capacity.ts';
 import { notifyHomeLimitsSettingChanged } from './homeLimits.ts';
 import { notifyHomeScopeSettingChanged } from './homeScope.ts';
-import { invalidateApiCache, invalidateSettingCache } from './homey.ts';
+import {
+  invalidateApiCache,
+  invalidateApiCacheForAllHomes,
+  invalidateApiCacheForScopedHomes,
+  invalidateSettingCache,
+} from './homey.ts';
 import { refreshActiveMode } from './modes.ts';
 import { reloadPriceConfigSettings } from './priceConfig.ts';
 import { refreshBudgetAdjust } from './budgetAdjustController.ts';
@@ -127,16 +140,56 @@ const refreshPriceSettings = (key: string) => {
 };
 
 const refreshPowerSettings = (key: string) => {
-  if (key === 'power_tracker_state') {
-    invalidateApiCache(SETTINGS_UI_POWER_PATH);
+  if (key === POWER_TRACKER_STATE) {
+    invalidateApiCacheForAllHomes(SETTINGS_UI_POWER_PATH);
     runLoggedTask(refreshPowerData(), 'Failed to refresh power data', 'settings.set');
     refreshStaleDataStatus('settings.set');
     refreshDailyBudgetIfVisible('settings.set');
     return;
   }
-  if (key !== 'pels_status') return;
-  invalidateApiCache(SETTINGS_UI_POWER_PATH);
+  if (key !== PELS_STATUS) return;
+  invalidateApiCacheForAllHomes(SETTINGS_UI_POWER_PATH);
   refreshStaleDataStatus('settings.set');
+};
+
+// A sub-home commits a plan by persisting its own suffixed `pels_status:<id>`
+// and `power_tracker_state:<id>` — the ONLY freshness signal a sub-home gets,
+// because the realtime `plan_updated` / `power_updated` streams are the main
+// home's and are deliberately never widened (widening them would repaint Main's
+// Overview from a sub-home's device set in a Homey-cached stale WebView).
+//
+// Drop every home-scoped plan/power entry on any such write rather than parsing
+// the id out of the key: resolving suffixed keys client-side is the precedent
+// this train is correcting, and the over-broad sweep costs at most one refetch
+// per area while being impossible to get wrong. The BARE entries are untouched —
+// a sub-home write says nothing about the whole home.
+const SUFFIXED_HOME_PLAN_KEY_PREFIXES = [`${PELS_STATUS}:`, `${POWER_TRACKER_STATE}:`];
+
+const refreshHomeScopedReadModels = (key: string) => {
+  // The roster (`homes_config`) and the device→home pins
+  // (`device_home_assignments`) decide which home ids resolve at all and which
+  // devices a scoped read serves — neither writes any suffixed status key, so
+  // without this branch a deleted area's cached payload would keep rendering
+  // `homeScope: resolved` for a home the runtime no longer has, and a re-pinned
+  // device would stay in the wrong home's list for the session. The bare
+  // entries are untouched: the whole-home read models don't depend on either.
+  if (key === HOMES_CONFIG || key === DEVICE_HOME_ASSIGNMENTS) {
+    invalidateApiCacheForScopedHomes(SETTINGS_UI_PLAN_PATH);
+    invalidateApiCacheForScopedHomes(SETTINGS_UI_POWER_PATH);
+    invalidateApiCacheForScopedHomes(SETTINGS_UI_DEVICES_PATH);
+    return;
+  }
+  if (!SUFFIXED_HOME_PLAN_KEY_PREFIXES.some((prefix) => key.startsWith(prefix))) return;
+  invalidateApiCacheForScopedHomes(SETTINGS_UI_PLAN_PATH);
+  invalidateApiCacheForScopedHomes(SETTINGS_UI_POWER_PATH);
+  // A scoped `ui_devices` payload derives `hasExhibitedExport` from that home's
+  // power tracker, so a suffixed tracker write must sweep the scoped devices
+  // entries too — otherwise a meter-only PV area cached before its first
+  // export keeps the solar-surplus controls hidden until the WebView reloads.
+  // The status blob feeds no devices field, so its writes leave devices alone.
+  if (key.startsWith(`${POWER_TRACKER_STATE}:`)) {
+    invalidateApiCacheForScopedHomes(SETTINGS_UI_DEVICES_PATH);
+  }
 };
 
 // A per-device objective change (`deferred_objective.<id>`) — or a legacy-alias
@@ -241,5 +294,6 @@ export const createSettingsSetHandler = () => (key: string) => {
 
   refreshPriceSettings(key);
   refreshPowerSettings(key);
+  refreshHomeScopedReadModels(key);
   refreshDailyBudgetSettings(key);
 };

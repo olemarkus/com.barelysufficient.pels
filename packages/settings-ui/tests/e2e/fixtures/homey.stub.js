@@ -1373,8 +1373,9 @@
   // Multi-home fixtures (the R4 read-only `ui_homes` endpoint). The zone
   // forest matches the `zone`/`zoneId` fields on `target_devices_snapshot`;
   // the rental subtree exists so the "Multiple meters" specs can seed an area
-  // there. Membership mirrors the producer's zone rule only (no pins — the
-  // stub keeps the resolver minimal): a device belongs to the first configured
+  // there. Membership mirrors the producer's rule of record (`resolveDeviceHome`,
+  // lib/home/membership.ts): an explicit pin in `device_home_assignments`
+  // overrides the zone rule, otherwise a device belongs to the first configured
   // area whose root zone sits on its zone's ancestor path, else the main home.
   // Composed from live `settings.homes_config` so a settings write from the
   // create/edit/delete flows round-trips into the next `ui_homes` fetch like
@@ -1404,14 +1405,27 @@
       }
       return path;
     };
+    // Mirror of `resolveDeviceHome` (lib/home/membership.ts): an explicit pin
+    // overrides the zone rule — a pin to a rostered area or to 'main' wins
+    // (pinning to 'main' opts a device out of a surrounding area), while a
+    // dangling pin (nonexistent homeId) falls back to the zone rule, visibly
+    // as `source: 'fallback'`. No pin → the zone rule, `source: 'zone'`.
+    const rawPins = settings.device_home_assignments;
+    const pins = rawPins && typeof rawPins === 'object' && !Array.isArray(rawPins) ? rawPins : {};
     const membershipByDeviceId = {};
     (settings.target_devices_snapshot || []).forEach((device) => {
+      const pin = Object.prototype.hasOwnProperty.call(pins, device.id) ? pins[device.id] : undefined;
+      if (pin === 'main' || subHomes.some((home) => home.homeId === pin)) {
+        membershipByDeviceId[device.id] = { homeId: pin, source: 'pin' };
+        return;
+      }
       if (!device.zoneId) return;
       const path = zonePath(device.zoneId);
       const owner = subHomes.find((home) => path.includes(home.rootZoneId));
-      membershipByDeviceId[device.id] = owner
-        ? { homeId: owner.homeId, source: 'zone' }
-        : { homeId: 'main', source: 'zone' };
+      membershipByDeviceId[device.id] = {
+        homeId: owner ? owner.homeId : 'main',
+        source: pin === undefined ? 'zone' : 'fallback',
+      };
     });
     return {
       homes: subHomes,
@@ -1501,6 +1515,91 @@
     return { ok: true };
   };
 
+  // Mirror the producer's `?homeId=` contract (`setup/settingsUiHomeScope.ts` +
+  // the composers in `setup/settingsUiApi.ts`):
+  //
+  // - no `homeId`  → the historical payload, with NO `homeScope` member, so the
+  //   whole-home response stays byte-identical (this is what every existing spec
+  //   asserts against, and what a single-home install always gets);
+  // - a live meter area → THAT AREA'S data (its suffixed fixtures, its member
+  //   devices), never the whole home's payload wearing a sub-home badge — a
+  //   spec written against this stub must not pass on another home's values;
+  // - anything else — a refused id, an unknown area, or a rostered area whose
+  //   runtime is not active → the EMPTY shape plus an `unavailable` scope. The
+  //   refused ids need no hand-copied character rules here: they are never in
+  //   the roster, so the membership check alone classifies them identically.
+  const resolveServableHomeId = (query) => {
+    const homeId = query?.homeId;
+    if (homeId === undefined) return { scoped: false };
+    const isServable = typeof homeId === 'string'
+      && (settings.homes_config?.subHomes ?? []).some((home) => home.homeId === homeId)
+      // The producer serves only a WIRED bundle; the stub's activation bit is
+      // the closest seam (`buildHomesPayload` derives it the same way).
+      && buildHomesPayload().runtimeActive;
+    return { scoped: true, homeId: isServable ? homeId : null };
+  };
+
+  // One sub-home's member devices, via the same pin-over-zone membership
+  // `buildHomesPayload` computes — the stub's one attribution source.
+  const devicesForHome = (homeId) => {
+    const membership = buildHomesPayload().membershipByDeviceId;
+    return (settings.target_devices_snapshot || [])
+      .filter((device) => membership[device.id]?.homeId === homeId);
+  };
+
+  const scopedPlanHandler = (query, wholeHomePayload) => {
+    const scope = resolveServableHomeId(query);
+    if (!scope.scoped) return wholeHomePayload;
+    if (scope.homeId === null) return { plan: null, homeScope: { state: 'unavailable' } };
+    // No committed area plan fixture exists yet (the runtime serves it from the
+    // bundle's memory, not a setting). `null` is the honest pre-first-commit
+    // shape; the scope-selector PR adds a per-area fixture when a spec needs a
+    // rendered area plan.
+    return { plan: null, homeScope: { state: 'resolved', homeId: scope.homeId } };
+  };
+
+  const scopedPowerHandler = (query, wholeHomePayload) => {
+    const scope = resolveServableHomeId(query);
+    if (!scope.scoped) return wholeHomePayload;
+    if (scope.homeId === null) {
+      return { tracker: null, status: null, heartbeat: null, homeScope: { state: 'unavailable' } };
+    }
+    return {
+      // The area's OWN suffixed fixtures — absence is honest "not committed
+      // yet", never main's tracker/status under an area badge.
+      tracker: settings[`power_tracker_state:${scope.homeId}`] ?? null,
+      status: settings[`pels_status:${scope.homeId}`] ?? null,
+      heartbeat: null,
+      hasManagedSolarDevice: devicesForHome(scope.homeId)
+        .some((device) => device.deviceClass === 'solarpanel'),
+      homeScope: { state: 'resolved', homeId: scope.homeId },
+    };
+  };
+
+  // Mirror of `OBSERVE_ONLY_ROLE_CLASS_KEYS` in
+  // `packages/shared-domain/src/observeOnlyRole.ts` — the stub is injected into
+  // the WebView as a plain script and cannot import it. Keep the two in sync.
+  const OBSERVE_ONLY_ROLE_CLASS_KEYS = new Set(['battery', 'solarpanel']);
+
+  const scopedDevicesHandler = (query, wholeHomePayload) => {
+    const scope = resolveServableHomeId(query);
+    if (!scope.scoped) return wholeHomePayload;
+    if (scope.homeId === null) return { devices: [], homeScope: { state: 'unavailable' } };
+    const members = devicesForHome(scope.homeId);
+    return {
+      // The real producer (`devicesPayloadForHome`, setup/settingsUiApi.ts)
+      // removes every observe-only role member from the user-facing list while
+      // computing the solar flag from the UNFILTERED member set — mirror both,
+      // or scoped specs would render management controls production never offers.
+      devices: members.filter((device) => !OBSERVE_ONLY_ROLE_CLASS_KEYS.has(device.deviceClass)),
+      hasManagedSolarDevice: members.some((device) => device.deviceClass === 'solarpanel'),
+      // A sub-meter has its own export accounting; default false, per-area
+      // override when a spec seeds it.
+      hasExhibitedExport: settings[`ui_devices_has_exhibited_export:${scope.homeId}`] ?? false,
+      homeScope: { state: 'resolved', homeId: scope.homeId },
+    };
+  };
+
   const apiHandlers = {
     'GET /daily_budget': () => resolveDailyBudgetPayload(),
     'GET /ui_homes': () => buildHomesPayload(),
@@ -1538,7 +1637,7 @@
       power: buildPowerPayload(),
       prices: buildPricesPayload(),
     }),
-    'GET /ui_devices': () => ({
+    'GET /ui_devices': (_body, query) => scopedDevicesHandler(query, {
       devices: settings.target_devices_snapshot,
       // This fixture home has a tracked solar/PV device by default, so the per-device
       // "Use solar surplus" control is offered (see device-detail.spec surplus test).
@@ -1547,10 +1646,10 @@
       hasManagedSolarDevice: settings.ui_devices_has_managed_solar ?? true,
       hasExhibitedExport: settings.ui_devices_has_exhibited_export ?? false,
     }),
-    'GET /ui_plan': () => ({
+    'GET /ui_plan': (_body, query) => scopedPlanHandler(query, {
       plan: buildPlanPayload(),
     }),
-    'GET /ui_power': () => buildPowerPayload(),
+    'GET /ui_power': (_body, query) => scopedPowerHandler(query, buildPowerPayload()),
     'GET /ui_prices': () => buildPricesPayload(),
     'GET /ui_device_diagnostics': () => resolveDeviceDiagnosticsPayload(),
     'GET /ui_device_log': () => resolveDeviceLogPayload(),
@@ -1920,9 +2019,47 @@
       body = bodyOrCallback;
     }
 
-    const key = `${String(method).toUpperCase()} ${uri}`;
+    // Mirror the real producer's routing: Homey registers an app API route on
+    // the bare manifest path and express matches the PATHNAME, handing the
+    // handler a separate `query` bag (firmware `ManagerApiLocal.onAppStart`
+    // sends `args: { query, params, body }`; the apps SDK spreads it into the
+    // handler context). So `GET /ui_plan?homeId=x` must resolve the SAME
+    // handler as `GET /ui_plan` and pass the parsed query alongside the body —
+    // keying handlers on the raw URI would reject every scoped read instead.
+    // Hand-rolled rather than `URLSearchParams`: this stub is also evaluated in
+    // a bare `vm` context by `auditScenarios.test.ts`, which supplies only the
+    // globals it declares, so web APIs are not available here.
+    const queryIndex = String(uri).indexOf('?');
+    const path = queryIndex === -1 ? String(uri) : String(uri).slice(0, queryIndex);
+    const query = {};
+    if (queryIndex !== -1) {
+      String(uri).slice(queryIndex + 1).split('&').forEach((pair) => {
+        if (!pair) return;
+        const eq = pair.indexOf('=');
+        const rawKey = eq === -1 ? pair : pair.slice(0, eq);
+        const rawValue = eq === -1 ? '' : pair.slice(eq + 1);
+        // Own-property assignment only, so a `?__proto__=x` query cannot walk
+        // into the object's prototype — the same guard the runtime boundary
+        // applies when it reads this parameter. A repeated parameter becomes an
+        // array, mirroring express, so `?homeId=a&homeId=b` fails the
+        // producer's string check here too instead of last-value-winning.
+        const key = decodeURIComponent(rawKey);
+        const value = decodeURIComponent(rawValue.replace(/\+/g, ' '));
+        const existing = Object.prototype.hasOwnProperty.call(query, key) ? query[key] : undefined;
+        Object.defineProperty(query, key, {
+          value: existing === undefined ? value : [].concat(existing, value),
+          enumerable: true,
+          configurable: true,
+          writable: true,
+        });
+      });
+    }
+    const key = `${String(method).toUpperCase()} ${path}`;
     const handler = runtimeOverrides.apiHandlers[key] ?? apiHandlers[key];
-    runtimeOverrides.apiCallCounts[key] = (runtimeOverrides.apiCallCounts[key] ?? 0) + 1;
+    // Counted by the full URI so a spec can still tell a scoped fetch from a
+    // whole-home one (the settings-UI `apiCache` keys entries the same way).
+    const countKey = `${String(method).toUpperCase()} ${uri}`;
+    runtimeOverrides.apiCallCounts[countKey] = (runtimeOverrides.apiCallCounts[countKey] ?? 0) + 1;
 
     setTimeout(() => {
       if (typeof callback !== 'function') return;
@@ -1931,7 +2068,7 @@
           callback(new Error(`Homey stub: no handler for ${key}`));
           return;
         }
-        const result = handler(body);
+        const result = handler(body, query);
         // Mirror the real API producer: plan-history entries reach the UI with
         // the kind-split (°C/%) pairs resolved to flat `*Value` fields. Apply at
         // the dispatch chokepoint so BOTH the default handler and any per-test

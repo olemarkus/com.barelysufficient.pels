@@ -4,7 +4,7 @@ import {
   SETTINGS_UI_RESET_POWER_STATS_PATH,
   type SettingsUiResetPowerStatsResponse,
 } from '../../../contracts/src/settingsUiApi.ts';
-import { callApi, primeApiCache } from './homey.ts';
+import { callApi, invalidateApiCacheForScopedHomes, primeApiCache } from './homey.ts';
 import { showToast, showToastError } from './toast.ts';
 import { logSettingsError, logSettingsInfo } from './logging.ts';
 import { refreshDailyBudgetPlan } from './dailyBudget.ts';
@@ -36,6 +36,9 @@ export const handleResetStats = async (btn: MdButtonElement) => {
 
   try {
     const response = await callApi<SettingsUiResetPowerStatsResponse>('POST', SETTINGS_UI_RESET_POWER_STATS_PATH, {});
+    // The reset answers for the main home only; drop the sub-home entries it
+    // cannot speak for instead of leaving them to serve pre-reset figures.
+    invalidateApiCacheForScopedHomes(SETTINGS_UI_POWER_PATH);
     primeApiCache(SETTINGS_UI_POWER_PATH, response?.power ?? { tracker: null, status: null, heartbeat: null });
 
     const usage = await getPowerUsage();
