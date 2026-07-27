@@ -8,6 +8,7 @@ import { legacyDeviceReason } from '../utils/deviceReasonTestUtils';
 
 describe('pels status limit reason', () => {
   const baseDevice = {
+    commandableNow: true,
     id: 'dev-1',
     name: 'Living Room Heater',
     currentState: 'on',
@@ -122,6 +123,7 @@ describe('pels status limit reason', () => {
         withTemperatureDiscriminant({
           id: 'ev-1',
           name: 'EV Charger',
+          commandableNow: true,
           currentState: 'off',
           plannedState: 'inactive' as const,
           currentTarget: null,

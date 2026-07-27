@@ -1,5 +1,5 @@
 import type { DevicePlan, PlanInputDevice } from '../plan/planTypes';
-import { isCommandableNow } from '../../packages/shared-domain/src/commandableNow';
+import { resolveCommandableNow } from '../../packages/shared-domain/src/commandableNow';
 import { isSteppedLoadOffStep } from '../utils/deviceControlProfiles';
 import type {
   ExecutableDeviceIntent,
@@ -178,7 +178,9 @@ function hasExecutableBinaryReleaseExecutionDrift(
   if (intent.kind === 'binary_restore') {
     // Restore drift: still off-but-commandable (released) — transition not yet seen.
     // `observedBinaryState` is the producer-resolved on/off (prefers `currentOn`).
-    return observed.observedBinaryState === 'off' && isCommandableNow(observed.snapshot);
+    // Raw snapshot: resolve at the producer, no consumer-side re-derivation.
+    return observed.observedBinaryState === 'off'
+      && resolveCommandableNow({ dev: observed.snapshot }).commandableNow;
   }
   // Release drift: still on — transition not yet seen.
   return observed.observedBinaryState !== 'off';

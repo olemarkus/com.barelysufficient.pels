@@ -52,14 +52,19 @@ export const isEvSessionInactiveForDevice = (dev: EvStateConsumerInput): boolean
 );
 
 /**
- * The connected-but-NOT-resumable EV state: the car is plugged in but the
- * charging session cannot be driven back on by a command (`plugged_in` —
- * distinct from the resumable `plugged_in_paused`). PELS cannot move this
- * charger toward its SoC target, so its SoC must not be credited as on-track
- * progress and boost / objective surfaces must say so rather than reading as
- * healthy. Co-located with {@link isEvSessionInactive} for the same
- * vocabulary-containment reason — consumers read this resolved predicate
- * instead of inlining the plug-state literal. Caller scopes EV-ness.
+ * The bare connected state (`plugged_in` — distinct from `plugged_in_paused` /
+ * `plugged_in_charging`): the car is plugged in and the charger is reporting no
+ * active session. PELS still commands a charger in this state — the literal is
+ * too vendor-inconsistent to gate actuation on (see `resolveEvBlockReasonKey`) —
+ * but it is NOT evidence that charge is flowing, so the SoC behind it must not
+ * be credited as on-track objective progress until the state moves to
+ * `plugged_in_charging`.
+ *
+ * Actuation and progress-crediting are separate questions; this predicate
+ * answers only the second. Its sole consumer is
+ * `lib/objectives/deferredObjectives/diagnosticProgress.ts`. Co-located with
+ * {@link isEvSessionInactive} for the same vocabulary-containment reason.
+ * Caller scopes EV-ness.
  */
 export const isEvChargerNotResumable = (evChargingState?: EvChargingState): boolean => (
   evChargingState === 'plugged_in'
@@ -75,16 +80,18 @@ export const isEvChargerNotResumableForDevice = (dev: EvStateConsumerInput): boo
 );
 
 /**
- * Whether the EV plug-state blocks boost activation: every state PELS cannot
- * drive toward a target — unplugged / discharging (no creditable session) OR
- * `plugged_in` (connected but NOT resumable). The runtime boost-active gate
+ * Whether the EV plug-state blocks boost activation. Boost is "command it on
+ * now", so this is not a second question — it is exactly `not commandable`,
+ * read off the producer-resolved `evBlockReason`. The runtime boost-active gate
  * (`resolveEvBoostActive`) reads this; the settings-UI boost panel renders the
- * matching reason STRING via `resolveEvBoostBlockReason`. Both decide on the
- * same plug-state set so the runtime never forces boost the UI says won't
- * activate. Caller scopes EV-ness.
+ * matching reason STRING via `resolveEvBoostBlockReason`, keyed off the same
+ * `resolveEvBlockReasonKey` classification. One switch decides for both, so the
+ * runtime can never force boost the UI says won't activate — and the two cannot
+ * drift apart the way a separately-composed predicate did.
+ * Caller scopes EV-ness.
  */
-export const isEvBoostBlockedByPlugState = (dev: EvStateConsumerInput): boolean => (
-  isEvSessionInactiveForDevice(dev) || isEvChargerNotResumableForDevice(dev)
+export const isEvBoostBlockedByPlugState = (dev: { evBlockReason?: string | null }): boolean => (
+  resolveEvBlockReasonForDevice(dev) !== null
 );
 
 /**
@@ -121,8 +128,17 @@ export type CommandableNowResolution = {
   evChargerNotResumable: boolean;    // plugged_in
 };
 
-export type CommandableNowConsumerInput = CommandableNowResolveInput & {
-  commandableNow?: boolean;
+/**
+ * Consumer input: the producer-resolved bits ONLY. There is deliberately no raw
+ * `evChargingState` arm here — a consumer that could fall back to re-resolving
+ * would be answering from whatever fields happen to be present, which is how
+ * `isCommandableNow` came to report `false` for every plan device (the raw state
+ * is stripped by `withEvDiscriminant`, so the fallback saw absence and called it
+ * "charger state unknown"). Absence must not be interpretable: `commandableNow`
+ * is required on every carrier that reaches a consumer.
+ */
+export type CommandableNowConsumerInput = {
+  commandableNow: boolean;
   commandableNowReason?: string | null;
 };
 
@@ -133,22 +149,19 @@ export type CommandableNowConsumerInput = CommandableNowResolveInput & {
  *
  * Returns:
  *   - `commandableNow: false` with a reason string when actuation is impossible
- *     or pointless (EV unplugged / discharging / not-resumable, unavailable, or
- *     no trusted plug-state yet).
+ *     (EV unplugged / discharging, or the device is unavailable).
  *   - `commandableNow: true` with `reason: null` when the device accepts
  *     commands.
  *
- * No abandon-grace here: PELS device state is push-primary (realtime capability
- * events). While a retained realtime `evcharger_charging_state` observation
- * exists, transport's fresher-wins merge re-applies it
- * (`managerObservation.mergeCapabilityObservation`), so `evChargingState` does
- * not flap to `undefined` on a transient missing pull. `undefined` only reaches
- * here on a genuine cold start (or the narrow window where the live feed is down
- * AND a pull omits the capability with no prior retained observation), and it
- * resolves pessimistically to `{ commandableNow: false, reason: 'charger state
- * unknown' }`. That is the safe direction: the resume gate fails closed, and
- * `currentOn` is independently preserved via previous-snapshot synthesis, so a
- * one-cycle `undefined` never drives a spurious actuation.
+ * An EV device with no resolved plug-state is commandable. `undefined` is not a
+ * device state: it collapses a permanently-absent `evcharger_charging_state`
+ * capability (a `car`-class device driven through `evcharger_charging` never has
+ * one), a vendor value outside the Homey enum, a cold start, and the narrow
+ * window where the live feed is down AND a pull omits the capability with no
+ * retained observation. Failing closed on that looked like safety but was a
+ * permanent block for the first two, so the gate now fails OPEN and the command
+ * outcome decides: `activationBackoff` penalises a device commanded on that
+ * never draws. Commanding an unplugged charger is a no-op, not a hazard.
  */
 export function resolveCommandableNow(params: {
   dev: CommandableNowResolveInput;
@@ -162,8 +175,20 @@ export function resolveCommandableNow(params: {
   // non-EV — even if a non-EV device unexpectedly carries an `evChargingState`.
   // This is the ONE place the raw plug-state is read; downstream consumers read
   // the flat bits below through the device-shaped resolvers (no raw arm).
+  // `evBlockReason` and `evSessionInactive` classify the same two states today
+  // (`resolveEvBlockReasonKey` blocks exactly what `isEvSessionInactive` marks);
+  // they stay separate fields because they answer different questions — may we
+  // command it, and is there a creditable session — and a future plug-state
+  // could separate them again.
+  // Absence is resolved HERE, at the seam nearest the capability read, and means
+  // "no such signal — skip", never a classified state. `resolveEvBlockReason`
+  // therefore takes a required `EvChargingState` and has no `undefined` arm to
+  // misread. Same discipline as a device with no `onoff` capability: nothing is
+  // inferred from the missing signal.
   const isEv = isEvDevice(dev);
-  const evBlock = isEv ? resolveEvBlockReason(dev.evChargingState) : null;
+  const evBlock = isEv && dev.evChargingState !== undefined
+    ? resolveEvBlockReason(dev.evChargingState)
+    : null;
   const evSub = {
     evBlockReason: evBlock,
     evSessionInactive: isEv && isEvSessionInactive(dev.evChargingState),
@@ -182,20 +207,21 @@ export function resolveCommandableNow(params: {
 }
 
 /**
- * Dual-read consumer helper: prefer the producer-resolved bit when present
- * (planner call sites pass a `PlanInputDevice`), else resolve from raw fields
- * (executor / snapshot call sites). One shared resolver — consumers never
- * re-implement the policy.
+ * Consumer read of the producer-resolved bit. NOT a dual-read: the fallback that
+ * re-resolved from raw fields is gone, because it answered from whichever fields
+ * a carrier happened to have. On a `DevicePlanDevice` — where `withEvDiscriminant`
+ * strips `evChargingState` — that fallback saw absence and reported "charger
+ * state unknown" for every EV charger, which is why `hasStableBinaryReleaseActuation`
+ * was dead in production (TODO 2026-07-25). Callers that hold a raw snapshot
+ * instead of a resolved carrier call {@link resolveCommandableNow} explicitly.
  */
 export function isCommandableNow(dev: CommandableNowConsumerInput): boolean {
-  if (dev.commandableNow !== undefined) return dev.commandableNow;
-  return resolveCommandableNow({ dev }).commandableNow;
+  return dev.commandableNow;
 }
 
 /** @public — intentionally retained (was in check-dead-code parked list). */
 export function getCommandableNowReason(dev: CommandableNowConsumerInput): string | null {
-  if (dev.commandableNow !== undefined) return dev.commandableNowReason ?? null;
-  return resolveCommandableNow({ dev }).reason;
+  return dev.commandableNowReason ?? null;
 }
 
 /**

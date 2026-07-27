@@ -204,6 +204,7 @@ describe('device-scoped write op: sub-home gate', () => {
 const buildHeaterDevice = (): PlanInputDevice => withTemperatureDiscriminant(withBinaryDiscriminant({
   id: 'heater-sub',
   name: 'Cabin heater',
+  commandableNow: true,
   targets: [{ id: 'target_temperature', value: 55, unit: 'C', min: 0, max: 95, step: 0.5 }],
   binaryControl: { on: false },
   deviceType: 'temperature' as const,
@@ -516,6 +517,7 @@ describe('handleDeferredDeadlineReached: sub-home device gets no terminal actuat
         getPlanDevices: () => [withBinaryDiscriminant({
           id: 'd1',
           name: 'Cabin heater',
+          commandableNow: true,
           available: true,
           controllable: true,
           controlCapabilityId: 'onoff',

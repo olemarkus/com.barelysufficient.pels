@@ -133,6 +133,7 @@ const buildDevice = (params: {
 }): PlanInputDevice => withTemperatureDiscriminant(withBinaryDiscriminant({
   id: DEVICE_ID,
   name: 'Water Heater',
+  commandableNow: true,
   controllable: false, // capacity-based control toggle is OFF for this scenario
   controlModel: 'stepped_load',
   controlCapabilityId: 'onoff',
@@ -229,6 +230,7 @@ const buildContender = (params: {
 }): PlanInputDevice => withBinaryDiscriminant({
   id: CONTENDER_ID,
   name: 'Contender',
+  commandableNow: true,
   controllable: params.controllable ?? true,
   controlCapabilityId: 'onoff',
   binaryControl: { on: params.currentOn },

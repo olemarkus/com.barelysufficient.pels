@@ -14,6 +14,9 @@ describe('buildPlanInputDevice', () => {
       name: 'dev-1',
       targets: [],
       binaryControl: { on: true },
+      // Required base field — resolved the way the producer resolves it, never
+      // left undefined for a consumer to read as "not commandable".
+      commandableNow: true,
     });
   });
 

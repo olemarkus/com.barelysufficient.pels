@@ -59,6 +59,8 @@ export function buildLiveStatePlan(plan: DevicePlan, liveDevices: PlanInputDevic
       const liveTemperature = isTemperaturePlanDevice(live) ? live : null;
       return withSteppedDiscriminant(withTemperatureDiscriminant(withEvDiscriminant({
         ...device,
+        commandableNow: live.commandableNow,
+        commandableNowReason: live.commandableNowReason,
         evBlockReason: live.evBlockReason,
         evSessionInactive: live.evSessionInactive,
         evChargerNotResumable: live.evChargerNotResumable,
