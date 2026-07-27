@@ -1,7 +1,9 @@
+export { parsePlanSnapshot } from './planSnapshotParse.ts';
 export {
-  parsePlanSnapshot,
   refreshPlan,
   renderPlan,
+  resetPlanSurfaceForScopeChange,
+  resetPlanSurfaceIfScopeChanged,
   updatePlanPower,
   updatePlanPrices,
 } from './planRedesign.ts';

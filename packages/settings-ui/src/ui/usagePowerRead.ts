@@ -6,7 +6,9 @@ import { getHomeScope } from './homeScope.ts';
 import { logSettingsError } from './logging.ts';
 
 /**
- * The Usage surface's scope-following `ui_power` read (multi-home).
+ * The scope-following `ui_power` read (multi-home). Named for the Usage
+ * surface that introduced it; the Overview's plan refresh reuses it
+ * (`planRedesign.ts`) so both scope-aware surfaces share one discrimination.
  *
  * Main selection keeps the historical whole-home request byte for byte: the
  * BARE `/ui_power` URI and the same `apiCache` entry every existing

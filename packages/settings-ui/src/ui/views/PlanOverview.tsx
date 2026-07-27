@@ -2,6 +2,10 @@ import { render } from 'preact';
 import { MdElevation, MdOutlinedButton, MdRipple } from './materialWebJSX.tsx';
 import { PlanHero, type HeroContext } from './PlanHero.tsx';
 import {
+  HOME_SCOPE_OVERVIEW_UNAVAILABLE_BODY,
+  HOME_SCOPE_OVERVIEW_UNAVAILABLE_HEADLINE,
+} from '../../../../shared-domain/src/homeScopeCopy.ts';
+import {
   formatOverviewSmartTaskRowLine,
   type OverviewSmartTaskRow,
 } from '../../../../shared-domain/src/overviewSmartTaskRow.ts';
@@ -21,6 +25,11 @@ type OverviewProps = {
   // suppress the "No plan available yet" empty state, which would otherwise
   // flash as a premature verdict during a slow boot.
   planResolved: boolean;
+  // True when the selected part of the home answered `homeScope: unavailable`
+  // (multi-home): the honest notice replaces the hero and cards — the flat
+  // payload is the empty shape, and rendering it would fabricate a `0.0 kW`
+  // reading nobody took.
+  scopeUnavailable: boolean;
   power: SettingsUiPowerStatus | null;
   prices: SettingsUiPricesPayload | null;
   solarNowInput: SolarNowInput | null;
@@ -91,9 +100,28 @@ const PlanCard = ({
   return <PlanGenericCard dev={dev} plan={plan} dryRun={dryRun} renderedAtMs={renderedAtMs} nowMs={nowMs} />;
 };
 
+// Honest per-home state (multi-home), the Usage tab's `#usage-scope-unavailable`
+// contract on the Preact surface: one notice card INSTEAD of the data sections.
+// Copy comes from shared-domain (`homeScopeCopy.ts`) so the words can never
+// drift from the Usage notice's or a future runtime log line's.
+const ScopeUnavailableNotice = () => (
+  <section
+    class="pels-surface-card plan-scope-unavailable"
+    id="plan-scope-unavailable"
+    aria-live="polite"
+  >
+    <MdElevation aria-hidden="true" />
+    <p class="plan-card__title">{HOME_SCOPE_OVERVIEW_UNAVAILABLE_HEADLINE}</p>
+    <p class="pels-card-supporting">{HOME_SCOPE_OVERVIEW_UNAVAILABLE_BODY}</p>
+  </section>
+);
+
 const PlanOverviewRoot = ({
-  plan, planResolved, power, prices, solarNowInput, smartTaskRow, context, renderedAtMs, nowMs,
+  plan, planResolved, scopeUnavailable, power, prices, solarNowInput, smartTaskRow, context, renderedAtMs, nowMs,
 }: OverviewProps) => {
+  if (scopeUnavailable) {
+    return <div><ScopeUnavailableNotice /></div>;
+  }
   const devices = plan
     ? [...(plan.devices ?? [])].sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999))
     : [];

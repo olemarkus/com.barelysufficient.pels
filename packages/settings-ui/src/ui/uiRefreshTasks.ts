@@ -10,9 +10,10 @@ import { refreshHomeBadges } from './homeBadges.ts';
 import { subscribeToHomeScope } from './homeScope.ts';
 import { invalidateApiCache, invalidateApiCacheForAllHomes } from './homey.ts';
 import { loadModeAndPriorities, renderPriorities } from './modes.ts';
+import { refreshOverviewPlanWithRescueGate } from './overviewRescueGate.ts';
 import { refreshPriceConfigView, updatePriceConfigDevices } from './priceConfig.ts';
 import { refreshDailyBudgetPlan } from './dailyBudget.ts';
-import { refreshPlan } from './plan.ts';
+import { refreshPlan, resetPlanSurfaceForScopeChange } from './plan.ts';
 import { refreshAdvancedDeviceCleanup } from './advanced.ts';
 import {
   getPowerUsageFromRead,
@@ -60,6 +61,17 @@ export const isPanelVisible = (selector: string): boolean => {
 
 export const refreshPlanForUi = (context: string) => {
   invalidateApiCacheForAllHomes(SETTINGS_UI_PLAN_PATH);
+  runLoggedTask(refreshPlan(), 'Failed to refresh plan', context);
+};
+
+// A selected meter area's own freshness path (multi-home): its suffixed
+// `pels_status:<id>` / `capacity_dry_run:<id>` writes repaint an OPEN
+// Overview from the area's scoped reads (the caller already invalidated the
+// scoped cache entries). Visible-only, unlike `refreshPlanForUi`: these keys
+// fire on every area plan commit, and repainting a hidden panel is pure cost —
+// the Overview activation hook refetches on open anyway.
+export const refreshOverviewPlanIfVisible = (context: string) => {
+  if (!isPanelVisible('#overview-panel')) return;
   runLoggedTask(refreshPlan(), 'Failed to refresh plan', context);
 };
 
@@ -125,6 +137,16 @@ subscribeToHomeScope(() => {
   markUsagePanelPendingForScopeChange();
   if (!isPanelVisible('#usage-panel')) return;
   runLoggedTask(refreshPowerData(), 'Failed to refresh power data', 'homeScope');
+});
+
+// The Overview's twin subscription. Blank to the skeleton FIRST: the previous
+// home's hero and cards must never sit under the just-picked home's name while
+// the scoped read is in flight — a wrong home's numbers labelled with the new
+// one is worse than a moment of loading shimmer.
+subscribeToHomeScope(() => {
+  if (!isPanelVisible('#overview-panel')) return;
+  resetPlanSurfaceForScopeChange();
+  runLoggedTask(refreshOverviewPlanWithRescueGate(), 'Failed to refresh plan', 'homeScope');
 });
 
 const renderLatestDevices = (devices: Awaited<ReturnType<typeof getTargetDevices>>) => {

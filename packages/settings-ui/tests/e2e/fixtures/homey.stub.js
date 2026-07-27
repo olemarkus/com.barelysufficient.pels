@@ -1569,11 +1569,15 @@
     const scope = resolveServableHomeId(query);
     if (!scope.scoped) return wholeHomePayload;
     if (scope.homeId === null) return { plan: null, homeScope: { state: 'unavailable' } };
-    // No committed area plan fixture exists yet (the runtime serves it from the
-    // bundle's memory, not a setting). `null` is the honest pre-first-commit
-    // shape; the scope-selector PR adds a per-area fixture when a spec needs a
-    // rendered area plan.
-    return { plan: null, homeScope: { state: 'resolved', homeId: scope.homeId } };
+    // The area's OWN committed-plan fixture (`plan_snapshot:<homeId>`, the
+    // same suffix convention as its `pels_status:<homeId>` status blob; in
+    // production the runtime serves this from the bundle's memory, not a
+    // setting). Absence is the honest pre-first-commit `null` — never Main's
+    // plan under an area badge.
+    return {
+      plan: settings[`plan_snapshot:${scope.homeId}`] ?? null,
+      homeScope: { state: 'resolved', homeId: scope.homeId },
+    };
   };
 
   const scopedPowerHandler = (query, wholeHomePayload) => {

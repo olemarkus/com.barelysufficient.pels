@@ -50,3 +50,15 @@ export const HOME_SCOPE_USAGE_UNAVAILABLE_HEADLINE = 'Usage couldn’t be read';
 
 export const HOME_SCOPE_USAGE_UNAVAILABLE_BODY = 'PELS couldn’t read usage for this part of the home right now. '
   + 'Check back in a moment, or pick another part of the home above.';
+
+/**
+ * Overview honest state when the selected part of the home cannot be served
+ * (`homeScope: unavailable`). Same contract as the Usage notice above: the
+ * hero and device cards hide behind this card instead of rendering fabricated
+ * numbers — a `0.0 kW` hero would answer "am I OK right now?" with a
+ * measurement nobody took.
+ */
+export const HOME_SCOPE_OVERVIEW_UNAVAILABLE_HEADLINE = 'Status couldn’t be read';
+
+export const HOME_SCOPE_OVERVIEW_UNAVAILABLE_BODY = 'PELS couldn’t read the current status for this part of the home '
+  + 'right now. Check back in a moment, or pick another part of the home above.';
