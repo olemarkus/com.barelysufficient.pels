@@ -107,6 +107,7 @@ export const isEvBoostBlockedByPlugState = (dev: { evBlockReason?: string | null
 export type EvStateConsumerInput = {
   evSessionInactive?: boolean;
   evChargerNotResumable?: boolean;
+  evExplicitlyPaused?: boolean;
 };
 
 export type CommandableNowResolveInput = {
@@ -115,6 +116,7 @@ export type CommandableNowResolveInput = {
   evChargingState?: EvChargingState;
   evSessionInactive?: boolean;
   evChargerNotResumable?: boolean;
+  evExplicitlyPaused?: boolean;
   evBlockReason?: string | null;
   available?: boolean;
 };
@@ -126,6 +128,7 @@ export type CommandableNowResolution = {
   evBlockReason: string | null;      // EV-plug-specific block reason (independent of 'device unavailable')
   evSessionInactive: boolean;        // plugged_out / plugged_in_discharging
   evChargerNotResumable: boolean;    // plugged_in
+  evExplicitlyPaused: boolean;       // plugged_in_paused (positive; absence is NOT this)
 };
 
 /**
@@ -193,6 +196,15 @@ export function resolveCommandableNow(params: {
     evBlockReason: evBlock,
     evSessionInactive: isEv && isEvSessionInactive(dev.evChargingState),
     evChargerNotResumable: isEv && isEvChargerNotResumable(dev.evChargingState),
+    // POSITIVE evidence of an explicit pause, materialized here for the same
+    // reason as its siblings: this is the one sanctioned reader of the raw
+    // plug-state. The exclusion bits cannot answer this — absence resolves to
+    // "no signal, skip", so an unknown-state charger is commandable, which is
+    // right for actuation but wrong for "did the user pause this?".
+    // "Leave off until turned on again" needs the positive form: a hold may
+    // start for an EV ONLY from `plugged_in_paused`, never from a bare
+    // `plugged_in` and never from a missing reading.
+    evExplicitlyPaused: isEv && dev.evChargingState === 'plugged_in_paused',
   };
 
   if (evBlock !== null) {

@@ -8,16 +8,21 @@
 // sub-home rebuilding on its own cadence would never clear a hold whose ON
 // arrived by pull — and the next shed in that bundle would strand the device.
 //
-// NOTE (release/2.18.0): on `main` this module also owns the membership
-// complement and the planned-set filter, as `buildHomePlanDevices`. Here it stops
-// at the snapshot on purpose — this branch's sub-home projection carries an
-// own-meter carve-out that `main` does not have, and folding the chain into a
-// shared helper would have dropped that carve-out silently. Keep the two callers'
-// chains local until the carve-out exists on both lines.
+// NOTE (release/2.18.0): `excludeDeviceId` does not exist on `main`. It carries
+// this branch's own-meter carve-out — a home's configured meter is its power
+// SOURCE, never a managed load — which `main` does not have. Folding the chain
+// into the shared helper without it would have dropped that carve-out silently,
+// so it is a parameter rather than an omission. Drop it only once both lines
+// agree on where the carve-out lives.
 
-import { evictMissingDeviceCacheEntries } from '../appInit/toPlanDevice';
+import { evictMissingDeviceCacheEntries, toPlanDevice } from '../appInit/toPlanDevice';
 import { isAffirmativelyOn, releaseExternalOffHoldsForObservedOn } from '../externalOffHoldDetection';
+import { filterDevicesForHome } from '../homeMembership';
+import { isRuntimePlannedDevice } from '../appDeviceSupport';
 import type { AppContext } from '../../lib/app/appContext';
+import type { HomeId } from '../../lib/utils/settingsKeys';
+import type { PlanInputDevice } from '../../lib/plan/planTypes';
+import type { ToPlanDeviceOptions } from '../appInit/toPlanDevice';
 
 /**
  * Seed observed state, release any external-off hold whose device is observed
@@ -36,7 +41,7 @@ import type { AppContext } from '../../lib/app/appContext';
  * from the main home's plan input, but it is still present on Homey, so its
  * cached per-device state must survive for the per-home bundles.
  */
-export const runPlanDeviceSnapshotPrePass = (ctx: AppContext): AppContext['latestTargetSnapshot'] => {
+const runSnapshotPrePass = (ctx: AppContext): AppContext['latestTargetSnapshot'] => {
   ctx.seedObservedStateFromSnapshot();
   const snapshot = ctx.latestTargetSnapshot;
   releaseExternalOffHoldsForObservedOn({
@@ -50,3 +55,33 @@ export const runPlanDeviceSnapshotPrePass = (ctx: AppContext): AppContext['lates
   evictMissingDeviceCacheEntries(ctx, snapshot);
   return snapshot;
 };
+
+/**
+ * This home's plan input: the snapshot pre-pass, the membership complement, the
+ * own-meter carve-out, and the shared planned-set filter.
+ *
+ * Membership complement: with sub-homes configured, a home plans only its own
+ * members; a sub-home device is simply not in the main plan input (uncontrolled
+ * — never double-controlled).
+ *
+ * `excludeDeviceId` drops a home's configured meter device. That plug is the
+ * home's power SOURCE, not a managed load: if it were also managed+controllable
+ * it would be shed on overshoot, giving either an oscillation (off plug reads
+ * ~0 W → "under cap" → restore → spike) or a freeze-off (plug goes unavailable →
+ * the bundle stops sampling).
+ *
+ * `isRuntimePlannedDevice` is the SAME predicate the create-smart-task candidate
+ * list and create-time validation use, so a `managed: false` device can never be
+ * offered or persisted but left unplanned.
+ */
+export const buildHomePlanDevices = (
+  ctx: AppContext,
+  homeId: HomeId,
+  options?: ToPlanDeviceOptions,
+  excludeDeviceId?: string | null,
+): PlanInputDevice[] => (
+  filterDevicesForHome(ctx.homeMembership, runSnapshotPrePass(ctx), homeId)
+    .filter((device) => !excludeDeviceId || device.id !== excludeDeviceId)
+    .map((device) => toPlanDevice(ctx, device, options))
+    .filter(isRuntimePlannedDevice)
+);

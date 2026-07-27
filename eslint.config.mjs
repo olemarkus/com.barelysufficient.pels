@@ -706,11 +706,15 @@ export default tseslint.config(
   // app.ts). Its value-import fan-in is the set of service constructors it wires,
   // inherently high and not type-only-reducible. The second principled override;
   // splitting it further would only fragment the boot graph and launder the count.
+  // Ceiling raised 30 -> 31 on this branch for the external-off hold's policy
+  // constructor (`createExternalOffHoldPolicy`). `main` fits the same feature at
+  // 30; this line carries additional service constructors from its own fixes, and
+  // laundering one into another `setup/*` file would only breach that file's cap.
   {
     files: ['setup/appServiceWiring.ts'],
     plugins: { 'import-x': importX },
     rules: {
-      'import-x/max-dependencies': ['error', { max: 30, ignoreTypeImports: true }],
+      'import-x/max-dependencies': ['error', { max: 31, ignoreTypeImports: true }],
     },
   },
 );

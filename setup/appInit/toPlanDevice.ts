@@ -277,6 +277,7 @@ export function toPlanDevice(
     evBlockReason: commandable.evBlockReason,
     evSessionInactive: commandable.evSessionInactive,
     evChargerNotResumable: commandable.evChargerNotResumable,
+    evExplicitlyPaused: commandable.evExplicitlyPaused,
     canSetControlResolved,
     residualKw,
     ...(calibration ? { stepPowerCalibration: calibration } : {}),

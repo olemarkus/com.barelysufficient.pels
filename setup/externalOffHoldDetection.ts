@@ -158,9 +158,15 @@ function shouldStartHold(params: {
   // Power-limit control off is the OTHER opt-out; PELS has no control authority
   // there, so an off state is not an override of anything.
   if (device.controllable !== true) return false;
-  // Producer-resolved: excludes unavailable devices, and for an EV excludes
-  // unplugged / discharging / not-resumable / unknown plug state.
+  // Producer-resolved: excludes unavailable devices and EV-plug-blocked states.
   if (device.commandableNow !== true) return false;
+  // ...but on this branch `commandableNow` stays TRUE for a bare `plugged_in`
+  // charger and for one with no plug-state reading at all — deliberate, because
+  // the literal is too vendor-inconsistent to gate actuation on. That makes it
+  // the wrong gate for "did the user pause this?". A hold may start for an EV
+  // ONLY from an explicit pause, so require the positive bit rather than
+  // inferring one from the absence of a block.
+  if (capabilityId === 'evcharger_charging' && device.evExplicitlyPaused !== true) return false;
   if (!planExpectedDeviceOn(latestPlanSnapshot, deviceId)) return false;
   if (deps.hasPendingBinaryCommand(deviceId, capabilityId)) return false;
   return !deps.isDryRun();

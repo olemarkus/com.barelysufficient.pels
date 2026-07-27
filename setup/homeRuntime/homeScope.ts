@@ -29,10 +29,7 @@ import type { AppContext } from '../../lib/app/appContext';
 // Direct file imports (not the `setup/appInit.ts` barrel): the barrel also
 // exports the plan factories, which import this module — going through the
 // barrel would create a module cycle.
-import { runPlanDeviceSnapshotPrePass } from './planDevicePrePass';
-import { toPlanDevice } from '../appInit/toPlanDevice';
-import { filterDevicesForHome } from '../homeMembership';
-import { isRuntimePlannedDevice } from '../appDeviceSupport';
+import { buildHomePlanDevices } from './planDevicePrePass';
 import { createObjectivePriceHorizonBuilder } from '../appInit/objectivePriceHorizon';
 import { isSmartTaskDeviceInMainHome } from '../appInit/smartTaskHomeScope';
 import {
@@ -180,19 +177,11 @@ export function buildMainHomeScope(ctx: AppContext): HomeScope {
       // `toPlanDevice` would fall back to the snapshot. Seeding fills only empty
       // slots (never clobbers a recorded observation) and uses the raw cached
       // array, so it adds no re-decoration and no device-manager re-entry.
-      // ...plus the external-off release sweep and cache eviction, all shared
-      // with every sub-home bundle — see `runPlanDeviceSnapshotPrePass`.
-      const snapshot = runPlanDeviceSnapshotPrePass(ctx);
-      // Membership complement: with sub-homes configured, this home plans only
-      // its own members; a sub-home device is simply not in the plan input
-      // (uncontrolled — never double-controlled). Identity (same array) when
+      // ...plus the external-off release sweep, cache eviction, the membership
+      // complement and the planned-set filter — all shared with every sub-home
+      // bundle, see `buildHomePlanDevices`. Identity (same array) when
       // `hasSubHomes()` is false, so single-home behavior is bit-identical.
-      return filterDevicesForHome(ctx.homeMembership, snapshot, homeId)
-        .map((device) => toPlanDevice(ctx, device))
-        // Shared planned-set predicate — the create-smart-task candidate list
-        // and create-time validation use the SAME `isRuntimePlannedDevice` so a
-        // `managed: false` device can never be offered/persisted but unplanned.
-        .filter(isRuntimePlannedDevice);
+      return buildHomePlanDevices(ctx, homeId);
     },
     setCapacityInShortfall: (inShortfall) => (
       ctx.homey.settings.set(homeScopedSettingsKey(CAPACITY_IN_SHORTFALL, homeId), inShortfall)

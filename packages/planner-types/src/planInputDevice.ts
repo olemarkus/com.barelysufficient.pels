@@ -170,6 +170,12 @@ export type PlanInputDeviceBase = {
   evSessionInactive?: boolean;
   evChargerNotResumable?: boolean;
   /**
+   * Positive evidence the charger is explicitly PAUSED (`plugged_in_paused`).
+   * Distinct from the exclusion bits: absence of a plug-state reading resolves
+   * to "no signal, skip", so it can be commandable without being paused.
+   */
+  evExplicitlyPaused?: boolean;
+  /**
    * Producer-resolved sibling bit (chunk 6 of the planner-detype refactor):
    * true when the device's binary control capability can be written this
    * cycle (`canSetControl !== false`, plus the legacy `canSetOnOff` fallback

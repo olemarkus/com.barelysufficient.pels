@@ -60,10 +60,7 @@ import { createCapacitySettingsStore } from '../capacitySettingsStoreAdapter';
 // `homeScope.ts` and avoid the factory↔scope module cycle via the barrel.
 import { createPlanEngine } from '../appInit/createPlanEngine';
 import { createPlanService } from '../appInit/createPlanService';
-import { runPlanDeviceSnapshotPrePass } from './planDevicePrePass';
-import { toPlanDevice } from '../appInit/toPlanDevice';
-import { filterDevicesForHome } from '../homeMembership';
-import { isRuntimePlannedDevice } from '../appDeviceSupport';
+import { buildHomePlanDevices } from './planDevicePrePass';
 import { createHomePowerPipeline } from './createHomePowerPipeline';
 import { buildHomeCapacityBundleApi } from './homeCapacityBundleApi';
 import { installBundleReadinessAndFreshness } from './homeCapacityBundleReadiness';
@@ -393,30 +390,17 @@ function buildSubHomeScope(params: {
     getPowerTracker: getTracker,
     getDailyBudgetSnapshot: () => null,
     getPlanDevices: () => {
-      // Shared snapshot pre-pass — seed, external-off release sweep, evict.
-      // Identical for main and every sub-home; see `runPlanDeviceSnapshotPrePass`.
-      const snapshot = runPlanDeviceSnapshotPrePass(ctx);
-      const meterDeviceId = getMeterDeviceId();
-      return filterDevicesForHome(ctx.homeMembership, snapshot, homeId)
-        // Own-meter carve-out: a home's configured meter device is its power
-        // SOURCE, not a managed load. If that metering plug were also
-        // managed+controllable it would be shed on overshoot — either an
-        // oscillation (off plug reads ~0 W → "under cap" → restore → spike) or a
-        // freeze-off (plug goes unavailable → the bundle stops sampling). Drop it
-        // from the plan input entirely (RUNTIME guard; the homes UI should also
-        // warn — see TODO.md).
-        .filter((device) => meterDeviceId === null || device.id !== meterDeviceId)
-        // Capacity-only overrides: NO surplus posture (a sub-home has no
-        // price/surplus signal, so a surplusWilling device would be held OFF
-        // forever), and the pending-binary read routed to THIS bundle's engine
-        // (not MAIN's via `ctx.planEngine`).
-        .map((device) => toPlanDevice(ctx, device, {
-          surplusPostureEnabled: false,
-          getPendingBinaryCommand: (id, model) => (
-            getPlanEngineForPending()?.getPendingBinaryCommandForDevice(id, model) ?? null
-          ),
-        }))
-        .filter(isRuntimePlannedDevice);
+      // Capacity-only overrides: NO surplus posture (a sub-home has no
+      // price/surplus signal, so a surplusWilling device would be held OFF
+      // forever), and the pending-binary read routed to THIS bundle's engine
+      // (not MAIN's via `ctx.planEngine`). The own-meter carve-out rides along
+      // as the exclusion argument — see `buildHomePlanDevices`.
+      return buildHomePlanDevices(ctx, homeId, {
+        surplusPostureEnabled: false,
+        getPendingBinaryCommand: (id, model) => (
+          getPlanEngineForPending()?.getPendingBinaryCommandForDevice(id, model) ?? null
+        ),
+      }, getMeterDeviceId());
     },
     setCapacityInShortfall: (inShortfall) => writeSuffixed(CAPACITY_IN_SHORTFALL, inShortfall),
     persistLastControlledMs: (lastControlledMs) => writeSuffixed(DEVICE_LAST_CONTROLLED_MS, lastControlledMs),
