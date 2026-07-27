@@ -1,4 +1,8 @@
-import { isBinaryObservedOff, isBinaryOnOrUnknown } from '../../packages/shared-domain/src/binaryControlState';
+import {
+  isBinaryObservedOff,
+  isBinaryOnOrUnknown,
+  isTrustedObservedBinaryOff,
+} from '../../packages/shared-domain/src/binaryControlState';
 import { getSteppedLoadStep } from '../utils/deviceControlProfiles';
 import { logSteppedLoadRestoreBinaryUndriven } from './steppedLoadRestoreDiagnostics';
 import { decideAndDispatchBinaryControl } from './binaryControlDispatch';
@@ -184,6 +188,38 @@ export const applySteppedLoadRestore = async (
   return { ready: wroteBinary, wroteBinary };
 };
 
+/**
+ * Post-dispatch recording for a shed binary OFF. A real shed stamps the shed
+ * cooldown / instability clocks and the shed diagnostics; a re-assert — an
+ * off-write over a device trusted-evidence observed OFF — changed no load, so
+ * it must stamp neither. Restamping on re-asserts is what turned one held
+ * charger into a house-wide restore freeze (prod 2026-07-26:
+ * `lastInstabilityMs` refreshed every rebuild, all 12 devices at
+ * `cooldown (shedding)` for 3.5 h) and inflated its shed statistics 20:1.
+ */
+const recordSteppedShedOffActuation = (
+  ctx: PlanExecutorSteppedContext,
+  action: ExecutableSteppedLoadDevice,
+  snapshot: ExecutorDeviceSnapshot,
+  mode: PlanActuationMode,
+  reassertOverObservedOff: boolean,
+): void => {
+  if (mode !== 'plan') return;
+  if (!reassertOverObservedOff) {
+    // Intentionally NOT gated on `flowBacked` (unlike the binary direct-write *diagnostic*
+    // recorder): this stamps the shed *cooldown*, which must fire regardless of actuation channel.
+    ctx.recordShedActuation(action.id, action.name, Date.now());
+    return;
+  }
+  logger.info({
+    event: 'stepped_shed_binary_reassert',
+    deviceId: action.id,
+    deviceName: action.name,
+    capabilityId: snapshot.controlCapabilityId ?? 'onoff',
+    mode,
+  });
+};
+
 export const applySteppedLoadShedOff = async (
   ctx: PlanExecutorSteppedContext,
   action: ExecutableSteppedLoadDevice,
@@ -195,9 +231,17 @@ export const applySteppedLoadShedOff = async (
   if (action.shedAction !== 'turn_off' && !atOffStep) return false;
   if (!snapshot) return false;
   const name = action.name;
+  const transport = ctx.buildBinaryControlTransport();
+  // Resolved BEFORE the dispatch so the stamp decision reads the pre-write
+  // observation, not the write's own echo — and from the SAME observation
+  // source the dispatch's skip gate consults, so the two decisions cannot
+  // diverge when the live store is fresher than this cycle's snapshot.
+  const reassertOverObservedOff = isTrustedObservedBinaryOff(
+    transport.observation.getSnapshotByDeviceId(action.id) ?? snapshot,
+  );
   try {
     const outcome = await decideAndDispatchBinaryControl({
-      transport: ctx.buildBinaryControlTransport(),
+      transport,
       deviceId: action.id,
       name,
       desired: false,
@@ -206,12 +250,7 @@ export const applySteppedLoadShedOff = async (
       actuationMode: mode,
     });
     if (!outcome.applied) return false;
-    if (mode === 'plan') {
-      const now = Date.now();
-      // Intentionally NOT gated on `flowBacked` (unlike the binary direct-write *diagnostic*
-      // recorder): this stamps the shed *cooldown*, which must fire regardless of actuation channel.
-      ctx.recordShedActuation(action.id, name, now);
-    }
+    recordSteppedShedOffActuation(ctx, action, snapshot, mode, reassertOverObservedOff);
     logger.info({
       event: 'binary_command_applied',
       deviceId: action.id,
