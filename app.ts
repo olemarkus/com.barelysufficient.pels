@@ -55,6 +55,7 @@ import {
 import {
   getAllModes as getAllModesHelper,
   getShedBehavior as getShedBehaviorHelper,
+  resolveDevicePriority as resolveDevicePriorityHelper,
   resolveModeName as resolveModeNameHelper,
 } from './lib/utils/capacityHelpers';
 import {
@@ -112,6 +113,9 @@ import {
   seedMissingModeTargets as seedMissingModeTargetsHelper,
   isManagedFilterActive as isManagedFilterActiveHelper,
 } from './setup/appDeviceSupport';
+import {
+  resolveOperatingModeForDevice as resolveOperatingModeForDeviceHelper,
+} from './setup/homeRuntime/homeOperatingMode';
 import { migrateManagedDevices as migrateManagedDevicesHelper } from './setup/appManagedDeviceMigration';
 import { runBootMigrations as runBootMigrationsHelper } from './setup/appBootMigrations';
 import * as realtimeReconcile from './setup/appRealtimeDeviceReconcile';
@@ -362,9 +366,11 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
     getStructuredDebugEmitter: (component, topic) => this.getStructuredDebugEmitter(component, topic),
     getNow: () => this.getNow(),
     logPeriodicStatus: (options) => this.logPeriodicStatus(options),
-    disableUnsupportedDevices: (snapshot) => disableUnsupportedDevicesHelper({
-      snapshot,
-      settings: this.homey.settings,
+    disableUnsupportedDevices: (snapshot, operatingModeResolver) => disableUnsupportedDevicesHelper({
+      snapshot, settings: this.homey.settings,
+      // Overshoot defaults follow the OWNING home's effective mode.
+      resolveOperatingModeForDevice: operatingModeResolver
+        ?? ((deviceId) => resolveOperatingModeForDeviceHelper(this.ctx, deviceId)),
       debugStructured: this.getStructuredDebugEmitter('devices', 'devices'),
     }),
     seedMissingModeTargets: (snapshot) => seedMissingModeTargetsHelper({
@@ -487,6 +493,9 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
     getFlowConflict: (deviceId) => this.flowConflictsByDevice[deviceId],
     computeShortfallThreshold: () => this.computeShortfallThreshold(),
     getSnapshotDevice: (deviceId) => this.getSnapshotDevice(deviceId),
+    retryDeferredOvershootSeed: (membership, allowPending) => this.snapshotHelpers.retryDeferredOvershootSeed(
+      (deviceId) => resolveOperatingModeForDeviceHelper(this.ctx, deviceId, membership, allowPending),
+    ),
     hasEnabledEvBoostForSnapshot: (device) => this.hasEnabledEvBoostForSnapshot(device),
     loadFlowReportedCapabilities: () => this.loadFlowReportedCapabilities(),
     loadPowerCalibrationStore: () => this.loadPowerCalibrationStore(),
@@ -838,7 +847,11 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
     registerAppFlowCards(this.ctx);
   }
   public async handleOperatingModeChange(rawMode: string): Promise<void> {
-    const resolved = resolveModeNameHelper(rawMode, this.modeAliases);
+    const resolved = resolveModeNameHelper(
+      rawMode,
+      this.modeAliases,
+      getAllModesHelper('', this.capacityPriorities, this.modeDeviceTargets),
+    );
     const previousMode = this.operatingMode;
     if (resolved !== rawMode) {
       this.getStructuredDebugEmitter('settings', 'settings')({
@@ -959,10 +972,16 @@ class PelsApp extends Homey.App implements PelsWidgetHostApi, AppContext {
       error: (...args: unknown[]) => this.error(...args),
     });
   }
+  // Main's resolver ranks by the GLOBAL mode; a sub-home scope ranks by its
+  // own effective mode through the same shared helper (one formula).
   public getPriorityForDevice = (deviceId: string) => (
-    this.capacityPriorities[this.operatingMode || 'Home']?.[deviceId] ?? 100
+    resolveDevicePriorityHelper(this.capacityPriorities, this.operatingMode, deviceId)
   );
-  public resolveModeName = (name: string) => resolveModeNameHelper(name, this.modeAliases);
+  public resolveModeName = (name: string) => resolveModeNameHelper(
+    name,
+    this.modeAliases,
+    getAllModesHelper('', this.capacityPriorities, this.modeDeviceTargets),
+  );
   public getAllModes = () => getAllModesHelper(this.operatingMode, this.capacityPriorities, this.modeDeviceTargets);
   // A role-detected OBSERVE-ONLY device (home battery OR solar) is ALWAYS managed
   // observe-only. The AUTHORITATIVE resolution is STRUCTURAL at parse

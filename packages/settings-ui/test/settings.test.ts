@@ -1216,6 +1216,73 @@ describe('settings script', () => {
     expect(setSpy).toHaveBeenCalledWith('mode_device_targets', { cozy: { 'dev-1': 20 } }, expect.any(Function));
   });
 
+  it('repoints retained aliases when the same mode is renamed twice', async () => {
+    const setSpy = vi.fn((key, val, cb) => cb && cb(null));
+    // @ts-ignore mutate mock
+    global.Homey.set = setSpy;
+    // @ts-ignore mutate mock
+    global.Homey.get = vi.fn((key, cb) => {
+      if (key === 'capacity_priorities') return cb(null, { Home: { 'dev-1': 1 } });
+      if (key === 'mode_device_targets') return cb(null, { Home: { 'dev-1': 20 } });
+      if (key === 'operating_mode') return cb(null, 'Home');
+      if (key === 'mode_aliases') return cb(null, {});
+      return cb(null, []);
+    });
+
+    await loadSettingsScript();
+    const { renameMode } = await import('../src/ui/modes.ts');
+
+    await renameMode('Home', 'Chill');
+    await renameMode('Chill', 'Cold');
+
+    const aliasWrites = setSpy.mock.calls.filter(([key]) => key === 'mode_aliases');
+    expect(aliasWrites[aliasWrites.length - 1]?.[1]).toEqual({
+      home: 'Cold',
+      chill: 'Cold',
+    });
+  });
+
+  it('publishes a rename additively before removing the old mode record', async () => {
+    const setSpy = vi.fn((key, val, cb) => cb && cb(null));
+    // @ts-ignore mutate mock
+    global.Homey.set = setSpy;
+    // @ts-ignore mutate mock
+    global.Homey.get = vi.fn((key, cb) => {
+      if (key === 'capacity_priorities') return cb(null, { Home: { 'dev-1': 1 } });
+      if (key === 'mode_device_targets') return cb(null, { Home: { 'dev-1': 20 } });
+      if (key === 'operating_mode') return cb(null, 'Home');
+      if (key === 'mode_aliases') return cb(null, {});
+      return cb(null, []);
+    });
+
+    await loadSettingsScript();
+    const { renameMode } = await import('../src/ui/modes.ts');
+    await renameMode('Home', 'Chill');
+
+    const writes = setSpy.mock.calls.map(([key, value]) => ({ key, value }));
+    expect(writes).toEqual(expect.arrayContaining([
+      {
+        key: 'mode_device_targets',
+        value: { Home: { 'dev-1': 20 }, Chill: { 'dev-1': 20 } },
+      },
+      { key: 'mode_aliases', value: { home: 'Chill' } },
+      { key: 'mode_device_targets', value: { Chill: { 'dev-1': 20 } } },
+    ]));
+    const additiveTargetsIndex = writes.findIndex(({ key, value }) => (
+      key === 'mode_device_targets'
+      && Object.prototype.hasOwnProperty.call(value, 'Home')
+      && Object.prototype.hasOwnProperty.call(value, 'Chill')
+    ));
+    const aliasIndex = writes.findIndex(({ key }) => key === 'mode_aliases');
+    const finalTargetsIndex = writes.findIndex(({ key, value }) => (
+      key === 'mode_device_targets'
+      && !Object.prototype.hasOwnProperty.call(value, 'Home')
+    ));
+    expect(additiveTargetsIndex).toBeGreaterThanOrEqual(0);
+    expect(aliasIndex).toBeGreaterThan(additiveTargetsIndex);
+    expect(finalTargetsIndex).toBeGreaterThan(aliasIndex);
+  });
+
   it('keeps active mode separate from editing mode when saving priorities', async () => {
     const setSpy = vi.fn((key, val, cb) => cb && cb(null));
     // @ts-ignore mutate mock

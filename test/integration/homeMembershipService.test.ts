@@ -3157,6 +3157,123 @@ describe('HomeMembershipService — positive ownership readiness', () => {
     )).toBe(true);
   });
 
+  it('publishes readiness even when the deferred seed retry throws', () => {
+    let zoneTree: ZoneTree | null = null;
+    const { error, logger } = makeLoggerSpy();
+    const onRecoveryNeeded = vi.fn();
+    const onZoneTreeCommitReady = vi.fn();
+    const service = new HomeMembershipService({
+      homesStore: {
+        read: () => ({ state: 'present', value: ACTIVE_HOME_CONFIG }),
+        write: vi.fn(),
+      },
+      assignmentsStore: unwrittenAssignments,
+      getZoneTree: () => zoneTree,
+      getDevices: () => [{ deviceId: 'd-sub', zoneId: 'z2' }],
+      getLogger: () => logger,
+      getMainMeterSelection: () => ({ state: 'resolved', meterDeviceId: 'm-main' }),
+      legacyMultiHomeEnabled: true,
+      onOwnershipReadyBeforePlanWork: () => {
+        throw new Error('settings unavailable');
+      },
+      onMainAuthorityUnresolved: onRecoveryNeeded,
+      onZoneTreeCommitReady,
+    });
+
+    service.recompute();
+    zoneTree = ZONES;
+    expect(() => service.recompute()).not.toThrow();
+
+    expect(service.isOwnershipReady()).toBe(true);
+    expect(onZoneTreeCommitReady).toHaveBeenCalledOnce();
+    expect(onRecoveryNeeded).toHaveBeenCalledOnce();
+    expect(error).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'home_ownership_seed_retry_failed',
+    }));
+  });
+
+  it('retries deferred seeds before preparing every later ownership generation', async () => {
+    vi.useFakeTimers();
+    createHomesStore(homeyLike).write(ACTIVE_HOME_CONFIG);
+    createDeviceHomeAssignmentsStore(homeyLike).write({});
+    mockHomeyInstance.settings.set(POWER_SOURCE, 'homey_energy');
+    mockHomeyInstance.settings.set(HOMEY_ENERGY_METER_DEVICE_ID, 'meter-main');
+
+    const order: string[] = [];
+    let failPendingSeedOnce = true;
+    const retryDeferredOvershootSeed = vi.fn((
+      _membership: HomeMembershipService,
+      allowPending: boolean,
+    ) => {
+      order.push(`seed:${allowPending}`);
+      if (allowPending && failPendingSeedOnce) {
+        failPendingSeedOnce = false;
+        throw new Error('overshoot settings unavailable');
+      }
+    });
+    const prepare = vi.fn().mockImplementation(async () => {
+      order.push('prepare');
+      return true;
+    });
+    const rebuildPlanFromCache = vi.fn().mockImplementation(async () => {
+      order.push('rebuild');
+      return { failed: false };
+    });
+    const reconcileLatestPlanState = vi.fn().mockResolvedValue(true);
+    const reconcilePrepared = vi.fn().mockResolvedValue(true);
+    const timers = new TimerRegistry();
+    const ctx = {
+      homey: homeyLike,
+      timers,
+      deviceManager: {
+        getZoneTree: () => ZONES,
+        getSnapshot: () => [{ id: 'd-sub', zoneId: 'z2' }],
+        setOnZoneTreeCommitted: vi.fn(),
+        setOnDeviceZoneChanged: vi.fn(),
+      },
+      planService: { rebuildPlanFromCache, reconcileLatestPlanState },
+      powerTracker: {},
+      getStructuredLogger: () => undefined,
+    } as unknown as AppContext;
+    const wiring = wireHomeMembership(ctx, new ObservedStateEmitter(), {
+      onOwnershipReadyBeforePlanWork: retryDeferredOvershootSeed,
+      ownershipGenerationRuntime: {
+        getMainStableSampleRevision: () => ({ state: 'stable', revision: 1 }),
+        beginMainPreparedReconcile: () => () => undefined,
+        prepare,
+        isPreparedCurrent: () => true,
+        reconcile: reconcilePrepared,
+        flushMainShortfallSideEffect: async () => true,
+      },
+    });
+
+    try {
+      expect(retryDeferredOvershootSeed).toHaveBeenCalledWith(wiring.service, false);
+      vi.clearAllMocks();
+      order.length = 0;
+
+      wiring.service.observeOwnershipConfigurationChanged();
+      await vi.advanceTimersByTimeAsync(1_000);
+      await flushHandlerQueue();
+
+      expect(order).toEqual(['seed:true']);
+      expect(prepare).not.toHaveBeenCalled();
+      expect(rebuildPlanFromCache).not.toHaveBeenCalled();
+      expect(wiring.service.hasPendingOwnershipGeneration()).toBe(true);
+      expect(timers.has('mainOwnershipRecovery')).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(2_000);
+      await flushHandlerQueue();
+
+      expect(order).toEqual(['seed:true', 'seed:true', 'prepare', 'rebuild']);
+      expect(wiring.service.hasPendingOwnershipGeneration()).toBe(false);
+      expect(timers.has('mainOwnershipRecovery')).toBe(false);
+    } finally {
+      wiring.teardown();
+      vi.useRealTimers();
+    }
+  });
+
   it('re-probes a first suspect store and recovers readiness without another event', async () => {
     vi.useFakeTimers();
     createHomesStore(homeyLike).write(ACTIVE_HOME_CONFIG);

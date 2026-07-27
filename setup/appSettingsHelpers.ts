@@ -7,6 +7,7 @@ import type {
   TemperatureBoostSettings,
 } from '../packages/contracts/src/types';
 import {
+  getAllModes as getAllModesHelper,
   normalizeShedBehaviors as normalizeShedBehaviorsHelper,
   resolveModeName as resolveModeNameHelper,
 } from '../lib/utils/capacityHelpers';
@@ -41,6 +42,7 @@ import {
   MANAGED_DEVICES,
   OPERATING_MODE_SETTING,
   OVERSHOOT_BEHAVIORS,
+  parseHomeScopedSettingsKey,
   TEMPERATURE_BOOST_SETTINGS,
 } from '../lib/utils/settingsKeys';
 import type { PriceCoordinator } from '../lib/price/priceCoordinator';
@@ -100,18 +102,25 @@ export function buildCapacitySettingsSnapshot(params: {
     )
     : current.modeAliases;
 
+  // Resolve aliases against the mode records that actually survived a rename.
+  // Do this before the active-mode read so a retained chain can skip a removed
+  // intermediate name, while a name swap stops at its still-configured target.
+  const nextPriorities = normalizeModePriorities(
+    isPrioritySettings(priorities) ? priorities : current.capacityPriorities,
+  );
+  const nextTargets = isModeDeviceTargets(modeTargets) ? modeTargets : current.modeDeviceTargets;
   const nextMode = (typeof modeRaw === 'string' && modeRaw.length > 0)
-    ? resolveModeNameHelper(modeRaw, nextAliases)
+    ? resolveModeNameHelper(
+      modeRaw,
+      nextAliases,
+      getAllModesHelper('', nextPriorities, nextTargets),
+    )
     : current.operatingMode;
 
   // Resolution-in-producer: the persisted payload may carry duplicate or gapped
   // priorities, so normalize to a strict 1..N order here. Every runtime consumer
   // (getPriorityForDevice → planSort/shedding) reads this resolved snapshot, so
   // they all inherit the strict order without branching on stored shape.
-  const nextPriorities = normalizeModePriorities(
-    isPrioritySettings(priorities) ? priorities : current.capacityPriorities,
-  );
-  const nextTargets = isModeDeviceTargets(modeTargets) ? modeTargets : current.modeDeviceTargets;
   const nextDryRun = capacityScalars.dryRun;
   const nextBehaviors = normalizeShedBehaviorsHelper(rawShedBehaviors as Record<string, ShedBehavior> | undefined);
 
@@ -282,7 +291,10 @@ export function initSettingsHandlerForApp(
     onHomeScopedSettingChanged?: (baseKey: string, homeId: string) => void | Promise<void>;
     /** Reconcile the per-home capacity bundles after a `homes_config` write. */
     reconcileHomeRuntimes?: () => void;
-    /** Fan a global `operating_mode`/`mode_device_targets` write to every live sub-home plan. */
+    /**
+     * Fan a global `operating_mode`/`mode_device_targets`/`mode_aliases`/
+     * `capacity_priorities` write to every live sub-home plan.
+     */
     rebuildHomeRuntimePlansForModeChange?: () => void;
     /** Synchronously fence per-home runtimes for a newly observed source epoch. */
     onHomeRuntimePowerSourceObserved?: () => void;
@@ -349,10 +361,17 @@ export function initSettingsHandlerForApp(
     }
   };
   ctx.homey.settings.on('set', onSettingsSet);
+  const onSettingsUnset = async (key: string) => {
+    const scoped = parseHomeScopedSettingsKey(key);
+    if (scoped.homeId === MAIN_HOME_ID || scoped.baseKey !== OPERATING_MODE_SETTING) return;
+    await settingsHandler?.(key);
+  };
+  ctx.homey.settings.on('unset', onSettingsUnset);
   return {
     handle: settingsHandler,
     stop: () => {
       ctx.homey.settings.off('set', onSettingsSet);
+      ctx.homey.settings.off('unset', onSettingsUnset);
       settingsHandler.stop();
     },
   };

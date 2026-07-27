@@ -21,6 +21,9 @@ export type HomeId = string;
 export const homeScopedSettingsKey = (baseKey: string, homeId: string): string => (
   homeId === MAIN_HOME_ID ? baseKey : `${baseKey}:${homeId}`
 );
+// Declared above the scopable set below; the historical position further down
+// kept a re-export comment breadcrumb instead.
+export const OPERATING_MODE_SETTING = 'operating_mode';
 // Base keys whose values may be scoped per home via `homeScopedSettingsKey`
 // (multi-home train). Kept private: the parse helper below is the boundary,
 // and consumers route on its output (or the predicate) rather than probing
@@ -30,6 +33,10 @@ const HOME_SCOPABLE_BASE_KEYS: ReadonlySet<string> = new Set([
   CAPACITY_MARGIN_KW,
   CAPACITY_DRY_RUN,
   POWER_TRACKER_STATE,
+  // Per-home active operating mode (multi-home): a sub-home may pin its own
+  // mode; absence means the home follows the global (main) mode. Resolution
+  // lives in `resolveHomeOperatingMode` (lib/utils/capacityHelpers.ts).
+  OPERATING_MODE_SETTING,
 ]);
 /** Whether `baseKey` is one of the home-scopable base settings keys. */
 export const isHomeScopableBaseKey = (baseKey: string): boolean => (
@@ -63,7 +70,8 @@ export const POWER_SOURCE = 'power_source';
 // packages/contracts/src/settingsKeys.ts — keep both in sync (the settings UI
 // can't import lib).
 export const HOMEY_ENERGY_METER_DEVICE_ID = 'homey_energy_meter_device_id';
-export const OPERATING_MODE_SETTING = 'operating_mode';
+// OPERATING_MODE_SETTING is declared above HOME_SCOPABLE_BASE_KEYS (it is a
+// member of that set).
 export const MANAGED_DEVICES = 'managed_devices';
 export const CONTROLLABLE_DEVICES = 'controllable_devices';
 export const BUDGET_EXEMPT_DEVICES = 'budget_exempt_devices';

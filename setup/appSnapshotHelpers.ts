@@ -15,6 +15,7 @@ import type { MainMeterSelection } from '../packages/contracts/src/mainMeterSele
 import { hasObservedMeasuredPower } from '../packages/shared-domain/src/measuredPowerObservedState';
 import { normalizeError } from '../lib/utils/errorUtils';
 import type { TimerRegistry } from '../lib/utils/timerRegistry';
+import type { ResolveOperatingModeForDevice } from './appDeviceSupport';
 
 const SNAPSHOT_REFRESH_MINUTE_INTERVALS = [25, 55];
 const TARGET_CONFIRMATION_POLL_INTERVAL_MS = TARGET_CONFIRMATION_STUCK_POLL_MS;
@@ -113,7 +114,10 @@ export class AppSnapshotHelpers {
     getStructuredDebugEmitter: (component: string, topic: 'devices' | 'plan') => StructuredDebugEmitter;
     getNow: () => Date;
     logPeriodicStatus: (options?: { includeDeviceHealth?: boolean }) => void;
-    disableUnsupportedDevices: (snapshot: TargetDeviceSnapshot[]) => void;
+    disableUnsupportedDevices: (
+      snapshot: TargetDeviceSnapshot[],
+      resolveOperatingModeForDevice?: ResolveOperatingModeForDevice,
+    ) => void;
     seedMissingModeTargets: (snapshot: TargetDeviceSnapshot[]) => void;
     getFlowReportedDeviceIds: () => string[];
     emitFlowBackedRefreshRequests: (deviceIds: string[]) => Promise<void>;
@@ -441,6 +445,20 @@ export class AppSnapshotHelpers {
     });
     this.deps.emitSettingsUiDevicesUpdated();
     await this.recordImplicitHomeyEnergySample(options, homePowerSample, meterSelectionAtStart);
+  }
+
+  /**
+   * Retry only the support/default classification that may have been deferred
+   * when the snapshot arrived before ownership. The existing snapshot is
+   * enough; ownership readiness cannot make the Homey device payload fresher.
+   */
+  public retryDeferredOvershootSeed(
+    resolveOperatingModeForDevice: ResolveOperatingModeForDevice,
+  ): void {
+    this.deps.disableUnsupportedDevices(
+      this.deps.getLatestTargetSnapshot(),
+      resolveOperatingModeForDevice,
+    );
   }
 
   /**

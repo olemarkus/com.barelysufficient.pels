@@ -65,6 +65,13 @@ export type HomeRuntimeCapacityScalars = Readonly<{
 export type HomeRuntimeDiagnostics = Readonly<{
   homeId: HomeId;
   meterDeviceId: string | null;
+  /**
+   * The EFFECTIVE operating mode this home plans with: its pinned
+   * `operating_mode:<homeId>` when that names a configured mode, else the
+   * global mode (resolution: `resolveHomeOperatingMode`). Purely derived at
+   * read time from already-committed settings state.
+   */
+  operatingMode: string;
   /** Effective no-actuation switch (persisted flag, membership gate, or source-epoch gate). */
   dryRunEffective: boolean;
   /** Last meter reading this home's guard saw (kW), or null before its first sample. */
