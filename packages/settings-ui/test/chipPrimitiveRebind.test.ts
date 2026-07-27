@@ -143,7 +143,10 @@ describe('chip primitive: the legacy `.chip` primitive no longer exists', () => 
       const text = fs.readFileSync(file, 'utf8');
       const lines = text.split('\n');
       lines.forEach((line, i) => {
-        // Skip comments.
+        // Skip comments. Block-comment CONTINUATION lines (` * prose`) are
+        // dropped wholesale: prose apostrophes ("Main's chip") otherwise read
+        // as a quoted className to the literal test below.
+        if (/^\s*\*/.test(line)) return;
         const stripped = line.replace(/\/\/.*$/, '').replace(/\/\*[\s\S]*?\*\//g, '');
         // Look for bare `chip` or `chip--{ok|boost|neutral|alert}` inside a
         // className-style string literal (single or double quote, or backtick).

@@ -1,4 +1,4 @@
-import { getPowerUsage, renderPowerStats, renderPowerUsage } from './power.ts';
+import { refreshPowerData } from './uiRefreshTasks.ts';
 import {
   SETTINGS_UI_POWER_PATH,
   SETTINGS_UI_RESET_POWER_STATS_PATH,
@@ -41,9 +41,10 @@ export const handleResetStats = async (btn: MdButtonElement) => {
     invalidateApiCacheForScopedHomes(SETTINGS_UI_POWER_PATH);
     primeApiCache(SETTINGS_UI_POWER_PATH, response?.power ?? { tracker: null, status: null, heartbeat: null });
 
-    const usage = await getPowerUsage();
-    renderPowerUsage(usage);
-    await renderPowerStats();
+    // Repaint through the generation-fenced refresh (not directly captured
+    // reads): a scope pick landing while the reset repaints would otherwise
+    // race this paint the same way a mid-boot pick races the bootstrap one.
+    await refreshPowerData();
     if (response?.dailyBudget !== undefined) {
       await refreshDailyBudgetPlan(response.dailyBudget);
     }

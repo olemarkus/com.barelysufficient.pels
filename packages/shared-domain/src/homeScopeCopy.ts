@@ -37,3 +37,16 @@ export { HOMES_MAIN_HOME_NAME as MAIN_HOME_NAME } from './homesManagementCopy';
 export const composeHomeScopedTitle = (title: string, homeName: string): string => (
   `${title} · ${homeName}`
 );
+
+/**
+ * Usage-tab honest state when the selected part of the home cannot be served
+ * (`homeScope: unavailable` — a held or just-removed area, or a runtime still
+ * wiring up). The data sections hide behind this notice instead of rendering
+ * zeros: a fabricated `0.0 kWh today` would read as a measurement. "Part of
+ * the home" is the scope bar's own phrase; internal words (`scope`,
+ * `sub-home`, `unavailable`) never surface.
+ */
+export const HOME_SCOPE_USAGE_UNAVAILABLE_HEADLINE = 'Usage couldn’t be read';
+
+export const HOME_SCOPE_USAGE_UNAVAILABLE_BODY = 'PELS couldn’t read usage for this part of the home right now. '
+  + 'Check back in a moment, or pick another part of the home above.';

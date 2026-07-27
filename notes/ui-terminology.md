@@ -793,6 +793,25 @@ selected home**. A bar naming a home above whole-home figures would be a claim
 the page cannot pay, so a surface earns the bar in the same change that teaches
 it the scope, never before.
 
+### Per-home Usage honest states
+
+When the Usage tab's selected part of the home cannot be served (a held or
+just-removed area, or a runtime still wiring up), the data sections hide
+behind one notice card instead of rendering zeros — a fabricated
+`0.0 kWh today` would read as a measurement. Canonical copy (source:
+`HOME_SCOPE_USAGE_UNAVAILABLE_*` in `homeScopeCopy.ts`): headline
+`Usage couldn’t be read`, body `PELS couldn’t read usage for this part of the
+home right now. Check back in a moment, or pick another part of the home
+above.` A served meter area with nothing recorded yet is a different, healthy
+state: it keeps the normal empty surfaces, but the awaiting-samples line reads
+`No usage recorded for this part of the home yet.`
+(`formatPowerUsageEmptyForMeterArea` in `powerUsageStrings.ts`) — never the
+Main home's `Set up the Report power usage Flow action` remedy, which is not
+an area's setup path. The daily-history budget overlay and its
+within/over-budget readout context render in Main scope only: the daily budget
+is a Main-home constraint (locked decision 3), so painting it on an area's
+history would claim the area is held to it.
+
 ### Home badges on the Devices and Modes lists
 
 Once a meter area is in use, every row in the Devices and Modes lists carries a

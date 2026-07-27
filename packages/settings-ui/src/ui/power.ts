@@ -19,17 +19,25 @@ import {
 } from './dom.ts';
 import { renderUsageHero } from './usageHero.ts';
 import { SETTINGS_UI_POWER_PATH, type SettingsUiPowerPayload } from '../../../contracts/src/settingsUiApi.ts';
+import { MAIN_HOME_ID } from '../../../contracts/src/settingsKeys.ts';
 import {
   disposePowerWeekChart,
   renderPowerWeekChart,
   resolvePowerWeekChartValueRange,
 } from './powerWeekChartEcharts.ts';
 import { getApiReadModel, getHomeyTimezone } from './homey.ts';
+import { getHomeScope } from './homeScope.ts';
+import { readUsagePower } from './usagePowerRead.ts';
 import { createToggleGroup } from './components.ts';
 import type { PowerTrackerState } from '../../../contracts/src/powerTrackerTypes.ts';
 import { buildDayContext } from '../../../shared-domain/src/dailyBudget/dayContext.ts';
 import {
+  HOME_SCOPE_USAGE_UNAVAILABLE_BODY,
+  HOME_SCOPE_USAGE_UNAVAILABLE_HEADLINE,
+} from '../../../shared-domain/src/homeScopeCopy.ts';
+import {
   formatPowerUsageEmptyAwaitingSamples,
+  formatPowerUsageEmptyForMeterArea,
   formatPowerUsageEmptyForWeek,
 } from '../../../shared-domain/src/powerUsageStrings.ts';
 import { initUsageDayViewHandlers, renderUsageDayView, type UsageDayEntry } from './usageDayView.ts';
@@ -66,6 +74,8 @@ import {
 export type PowerTracker = PowerTrackerState;
 
 type PowerUsageEntry = UsageDayEntry;
+type UsagePowerRead = Awaited<ReturnType<typeof readUsagePower>>;
+type ServedUsagePowerRead = Extract<UsagePowerRead, { state: 'served' }>;
 
 type HourlyPatternView = 'all' | 'weekday' | 'weekend';
 const MIN_RELIABLE_SAMPLES_PER_HOUR = 2;
@@ -108,10 +118,12 @@ let usageHistoryToggleReady = false;
 let powerStatsRendered = false;
 let setHourlyPatternToggleActive: (view: HourlyPatternView | null) => void = () => {};
 
-// Whole-home only, deliberately: this reader flattens the payload, so an
-// `unavailable` scoped read would be indistinguishable from a measured idle.
-// The scope-selector PR adds a scoped reader that discriminates
-// `payload.homeScope` first (see TODO.md).
+// Whole-home only, deliberately: this reader flattens the payload, so it must
+// never be handed a scoped read (an `unavailable` one would be
+// indistinguishable from a measured idle). Its remaining consumer is the
+// stale-data banner (`capacity.ts`), which is Main's surface. The Usage
+// surface reads through `readUsagePower`, which follows the selected home and
+// keeps the scope discriminated.
 const getPowerReadModel = async (): Promise<SettingsUiPowerPayload> => {
   const payload = await getApiReadModel<SettingsUiPowerPayload>(SETTINGS_UI_POWER_PATH);
   return payload ?? { tracker: null, status: null, heartbeat: null };
@@ -265,8 +277,11 @@ const renderDailyHistory = (stats: PowerStatsSummary, timeZone: string) => {
     timeZone,
     // Same active-budget payload the Budget hero renders — never the
     // budget-adjust draft, which clamps the stored value into the slider
-    // range on read (see `activeDailyBudget.ts`).
-    budgetKWh: getActiveDailyBudgetKWh(),
+    // range on read (see `activeDailyBudget.ts`). Main scope only: the daily
+    // budget is a MAIN-home constraint (the service binds Main's tracker), so
+    // overlaying it — and the readout's within/over-budget context — on a
+    // meter area's history would claim the area is held to a budget it isn't.
+    budgetKWh: getHomeScope().selectedHomeId === MAIN_HOME_ID ? getActiveDailyBudgetKWh() : undefined,
     leadingPartialDay: stats.dailyHistoryLeadingPartial,
     readoutHost: dailyHistoryReadout,
   });
@@ -318,7 +333,16 @@ setActiveDailyBudgetChangeListener(() => {
 });
 
 export const getPowerStats = async (): Promise<{ stats: PowerStatsSummary; timeZone: string }> => {
-  const tracker = (await getPowerReadModel()).tracker as PowerTracker | null;
+  const read = await readUsagePower();
+  // An unavailable scoped read has NO stats — the empty summary here is only
+  // a safe return shape for callers; `renderPowerStats` (the render owner)
+  // discriminates the same read itself and never paints these as figures.
+  return computePowerStats(read.state === 'served' ? read.payload.tracker : null);
+};
+
+const computePowerStats = (
+  tracker: PowerTrackerState | null,
+): { stats: PowerStatsSummary; timeZone: string } => {
   if (!tracker || typeof tracker !== 'object') {
     return { stats: getEmptyPowerStats(), timeZone: getHomeyTimezone() };
   }
@@ -374,8 +398,8 @@ export const getPowerStats = async (): Promise<{ stats: PowerStatsSummary; timeZ
   };
 };
 
-export const getPowerUsage = async (): Promise<PowerUsageEntry[]> => {
-  const tracker = (await getPowerReadModel()).tracker as PowerTracker | null;
+export const getPowerUsageFromRead = (read: ServedUsagePowerRead): PowerUsageEntry[] => {
+  const tracker = read.payload.tracker as PowerTracker | null;
   if (!tracker || typeof tracker !== 'object' || !tracker.buckets) return [];
 
   const unreliablePeriods = tracker.unreliablePeriods || [];
@@ -408,6 +432,11 @@ export const getPowerUsage = async (): Promise<PowerUsageEntry[]> => {
     .sort((a, b) => a.hour.getTime() - b.hour.getTime());
 };
 
+export const getPowerUsage = async (): Promise<PowerUsageEntry[]> => {
+  const read = await readUsagePower();
+  return read.state === 'served' ? getPowerUsageFromRead(read) : [];
+};
+
 export { getPowerReadModel };
 
 // Drops the first-paint loading skeleton on the Usage panel by flipping
@@ -421,31 +450,113 @@ const clearUsagePanelLoadingState = (): void => {
   }
 };
 
-export const renderPowerStats = async () => {
+/**
+ * Put the Usage panel back into that same pending state, for a scope change:
+ * the scope chip renames the panel SYNCHRONOUSLY while the newly picked home's
+ * figures are still a read away, so without this the new home's name sits over
+ * the previous home's hero, charts and solar card until it lands. Reusing the
+ * first-paint skeleton contract (rather than a second "changing scope" visual)
+ * keeps one honest pending state for "these numbers aren't resolved yet".
+ *
+ * Deliberately not gated on the panel being visible: an off-panel scope pick
+ * leaves figures that a later tab open would otherwise flash before its own
+ * refresh resolves, and the Usage activation hook always runs `refreshPowerData`
+ * — so the state a hidden panel is left in is always cleared by the run that
+ * repaints it.
+ */
+export const markUsagePanelPendingForScopeChange = (): void => {
+  const panel = document.getElementById('usage-panel');
+  if (panel) panel.dataset.loading = 'true';
+};
+
+// The panel-level honest state for a scoped read the runtime cannot serve
+// (multi-home). `data-scope-read="unavailable"` hides the data sections via
+// CSS — mirroring the `data-loading` skeleton contract — and the notice card
+// becomes the only content, so zeros never masquerade as an area's history.
+// Copy is populated here (not baked into the markup) so the words come from
+// the shared-domain module the runtime shares.
+const applyUsageScopeReadState = (state: 'served' | 'unavailable'): void => {
+  const panel = document.getElementById('usage-panel');
+  if (panel) panel.dataset.scopeRead = state;
+  const notice = document.getElementById('usage-scope-unavailable');
+  if (!notice) return;
+  const headline = document.getElementById('usage-scope-unavailable-headline');
+  if (headline) headline.textContent = HOME_SCOPE_USAGE_UNAVAILABLE_HEADLINE;
+  const body = document.getElementById('usage-scope-unavailable-body');
+  if (body) body.textContent = HOME_SCOPE_USAGE_UNAVAILABLE_BODY;
+  notice.hidden = state !== 'unavailable';
+};
+
+/**
+ * @param isCurrentRun Staleness gate owned by the caller's refresh pass
+ * (`refreshPowerData`'s run generation): checked after every await, before the
+ * paints that follow it, so a read that settles late — superseded by a newer
+ * refresh, typically a scope pick mid-flight — is dropped instead of painting
+ * a stale home's figures over the newer run's. Every production caller routes
+ * through `refreshPowerData` (boot and the stats reset included), so the
+ * always-current default is a test-only convenience.
+ */
+export const renderPowerStatsFromRead = async (
+  read: UsagePowerRead,
+  isCurrentRun: () => boolean = () => true,
+) => {
   try {
-    const { stats, timeZone } = await getPowerStats();
+    // ONE discriminated read drives this render pass: the honest-state flip,
+    // the stats, and the solar card all resolve from the same payload.
+    if (!isCurrentRun()) return;
+    applyUsageScopeReadState(read.state);
+    if (read.state === 'unavailable') return;
+    const { stats, timeZone } = computePowerStats(read.payload.tracker);
     latestPowerStats = stats;
     latestPowerStatsTimeZone = timeZone;
     powerStatsRendered = true;
-    // Solar card rides the same stats render (cache hit — getPowerStats just
-    // fetched the payload). Rendered FIRST so the hero summary can carry the
-    // "+ … of your own solar" reconciliation line the section resolves; the
-    // gate + degradation tiers live in the section itself.
-    const powerPayload = await getPowerReadModel();
+    // Solar card rides the same payload. Rendered FIRST so the hero summary
+    // can carry the "+ … of your own solar" reconciliation line the section
+    // resolves; the gate + degradation tiers live in the section itself. The
+    // per-payload solar flag is scoped-safe: it never feeds the HOME-level
+    // solar gates the devices reader owns.
+    // The gate is handed IN because the section awaits its own prices read: a
+    // check here would come back too late to stop it painting the card.
     const { todaySelfUsedKWh } = await renderSolarUsageSection({
-      tracker: powerPayload.tracker,
+      tracker: read.payload.tracker,
       timeZone,
-      hasManagedSolarDevice: powerPayload.hasManagedSolarDevice === true,
+      hasManagedSolarDevice: read.payload.hasManagedSolarDevice === true,
+      isCurrentRun,
     });
+    if (!isCurrentRun()) return;
     renderPowerSummary(stats, timeZone, todaySelfUsedKWh);
     renderPowerAverages(stats);
     renderUsageHistorySections();
   } finally {
-    // Always drop the first-paint skeleton, even if `getPowerStats` rejected —
-    // otherwise the panel sits behind the shimmer forever. The static
-    // `-- kWh` placeholders in `index.html` are the graceful no-data state.
-    clearUsagePanelLoadingState();
+    // Drop the skeleton, even if the read rejected — otherwise the panel sits
+    // behind the shimmer forever. The static `-- kWh` placeholders in
+    // `index.html` are the graceful no-data state.
+    //
+    // Only the CURRENT run may reveal the panel: after a scope change the
+    // pending state belongs to the newly picked home's run, and a superseded
+    // run reaching this point would lift the shimmer off the PREVIOUS home's
+    // figures under the new home's name. The current run always gets here
+    // (`finally` runs on the throwing path too), so nothing strands the panel.
+    if (isCurrentRun()) clearUsagePanelLoadingState();
   }
+};
+
+export const renderPowerStats = async (isCurrentRun: () => boolean = () => true) => (
+  renderPowerStatsFromRead(await readUsagePower(), isCurrentRun)
+);
+
+// Empty state for the selected week's hourly-detail chart (split out to keep
+// `renderPowerUsage` within the cognitive-complexity lint budget). The
+// awaiting-samples remedy (the Report power usage Flow action) is the MAIN
+// home's setup path; a meter area with nothing recorded yet gets the plain
+// fact instead.
+const renderPowerWeekEmptyState = (hasAnyEntries: boolean): void => {
+  if (!powerEmpty) return;
+  const awaitingSamples = getHomeScope().selectedHomeId === MAIN_HOME_ID
+    ? formatPowerUsageEmptyAwaitingSamples()
+    : formatPowerUsageEmptyForMeterArea();
+  powerEmpty.textContent = hasAnyEntries ? formatPowerUsageEmptyForWeek() : awaitingSamples;
+  powerEmpty.hidden = false;
 };
 
 export const renderPowerUsage = (entries: PowerUsageEntry[]) => {
@@ -471,12 +582,7 @@ export const renderPowerUsage = (entries: PowerUsageEntry[]) => {
   if (!filtered.length) {
     disposePowerWeekChart(powerList);
     powerList.replaceChildren();
-    if (powerEmpty) {
-      powerEmpty.textContent = entries.length
-        ? formatPowerUsageEmptyForWeek()
-        : formatPowerUsageEmptyAwaitingSamples();
-      powerEmpty.hidden = false;
-    }
+    renderPowerWeekEmptyState(entries.length > 0);
     return;
   }
 

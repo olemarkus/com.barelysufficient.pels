@@ -2,6 +2,7 @@ import { panels, tabListEntries, tabs, type MdTabElement } from './dom.ts';
 import { SETTINGS_UI_POWER_PATH } from '../../../contracts/src/settingsUiApi.ts';
 import { loadCapacitySettings } from './capacity.ts';
 import { refreshHomeLimitsOnLimitsPanel } from './homeLimits.ts';
+import { refreshHomeScope } from './homeScope.ts';
 import { invalidateApiCacheForAllHomes } from './homey.ts';
 import { refreshPriceConfigView } from './priceConfig.ts';
 import { refreshDailyBudgetPlan } from './dailyBudget.ts';
@@ -57,7 +58,16 @@ const runTabActivationSideEffects = (tabId: string) => {
   }
   if (tabId === 'usage') {
     invalidateApiCacheForAllHomes(SETTINGS_UI_POWER_PATH);
-    runLoggedTask(refreshPowerData(), 'Failed to refresh power data', 'showTab');
+    // Scope-aware panel activation hook (multi-home): refresh the shell's
+    // meter-area roster BEFORE the power read, so a persisted area pick (or a
+    // just-deleted area's reconcile back to Main) is settled by the time the
+    // Usage surface resolves which home to read. A roster-refresh failure
+    // keeps the last-good scope (abandon-grace) and the read still runs.
+    runLoggedTask(
+      refreshHomeScope().then(() => refreshPowerData()),
+      'Failed to refresh power data',
+      'showTab',
+    );
     return;
   }
   if (tabId === 'budget') {

@@ -1370,23 +1370,23 @@ program) remain deferred.*
       the guard stops depending on comment wording. Left out of that PR to avoid loosening a
       packaging guard in the same change that needed it to pass. [P2]
 
-- [ ] **Scoped read-model consumers (6b/7c) must discriminate `homeScope` before reading any flat
-      field.** PR 5b ships the `?homeId=` endpoints and the client cache discipline but deliberately NO
-      scoped client reader: the existing whole-home readers (`getPlanSnapshot` in `planRedesign.ts`,
-      `getPowerReadModel` in `power.ts`, `getTargetDevices` in `devices.ts`) collapse the payload to a
-      flat nullable, so passing them a `homeId` would make `homeScope: unavailable` indistinguishable
-      from "healthy home, no data yet" — and `getTargetDevices` additionally writes the HOME-level
+- [ ] **Scoped read-model consumers (6b) must discriminate `homeScope` before reading any flat
+      field.** PR 5b ships the `?homeId=` endpoints and the client cache discipline; PR 7c added the
+      `resolveHomeScopedRead` helper (`packages/contracts/src/homeScopedRead.ts`, returning
+      `{ state: 'served'; payload } | { state: 'unavailable' }` so the flat fields are unreachable
+      without discriminating) and converted the Usage surface (`readUsagePower` in
+      `usagePowerRead.ts`). Still open for 6b: the remaining whole-home readers (`getPlanSnapshot` in
+      `planRedesign.ts`, `getTargetDevices` in `devices.ts`) collapse the payload to a flat nullable,
+      so passing them a `homeId` would make `homeScope: unavailable` indistinguishable from "healthy
+      home, no data yet" — and `getTargetDevices` additionally writes the HOME-level
       `state.hasManagedSolarDevice` / `state.hasExhibitedExport` gates, which a resolved sub-home payload
       would silently retract for the whole home (an area without PV would hide the export-price section
-      home-wide). The selector PR must add scoped readers that (a) branch on
-      `payload.homeScope?.state === 'unavailable'` FIRST — the review-suggested shape is a
-      `resolveHomeScopedRead` helper in `packages/contracts` returning
-      `{ state: 'served'; payload } | { state: 'unavailable' }` so the flat fields are unreachable
-      without discriminating — and (b) never funnel a scoped devices payload into the two global solar
-      flags. The `homey.stub.js` scoped plan handler also serves `plan: null` until that PR seeds a
-      per-area plan fixture. P2. Source: adversarial review (typing + correctness lenses) of multi-home
-      PR 5b, 2026-07-27. Files: `packages/settings-ui/src/ui/{planRedesign,power,devices}.ts`,
-      `packages/contracts/src/settingsUiApi.ts`, `packages/settings-ui/tests/e2e/fixtures/homey.stub.js`.
+      home-wide). 6b's scoped readers must (a) resolve through `resolveHomeScopedRead` and (b) never
+      funnel a scoped devices payload into the two global solar flags. The `homey.stub.js` scoped plan
+      handler also serves `plan: null` until that PR seeds a per-area plan fixture. P2. Source:
+      adversarial review (typing + correctness lenses) of multi-home PR 5b, 2026-07-27. Files:
+      `packages/settings-ui/src/ui/{planRedesign,devices}.ts`,
+      `packages/contracts/src/homeScopedRead.ts`, `packages/settings-ui/tests/e2e/fixtures/homey.stub.js`.
 
 - [ ] **`pels_status` blobs (bare and suffixed) are object-guarded, not field-resolved.** Both
       `getSettingsUiPower` (`setup/settingsUiApi.ts`, main's unsuffixed read) and `readSubHomeStatus`

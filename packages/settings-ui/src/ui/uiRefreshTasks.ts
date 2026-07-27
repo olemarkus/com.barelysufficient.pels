@@ -7,13 +7,20 @@ import {
 import { getTargetDevices, renderDevices } from './devices.ts';
 import { loadStaleDataStatus } from './capacity.ts';
 import { refreshHomeBadges } from './homeBadges.ts';
+import { subscribeToHomeScope } from './homeScope.ts';
 import { invalidateApiCache, invalidateApiCacheForAllHomes } from './homey.ts';
 import { loadModeAndPriorities, renderPriorities } from './modes.ts';
 import { refreshPriceConfigView, updatePriceConfigDevices } from './priceConfig.ts';
 import { refreshDailyBudgetPlan } from './dailyBudget.ts';
 import { refreshPlan } from './plan.ts';
 import { refreshAdvancedDeviceCleanup } from './advanced.ts';
-import { getPowerUsage, renderPowerStats, renderPowerUsage } from './power.ts';
+import {
+  getPowerUsageFromRead,
+  markUsagePanelPendingForScopeChange,
+  renderPowerStatsFromRead,
+  renderPowerUsage,
+} from './power.ts';
+import { readUsagePower } from './usagePowerRead.ts';
 import { state } from './state.ts';
 import { logSettingsError } from './logging.ts';
 
@@ -31,6 +38,13 @@ import { logSettingsError } from './logging.ts';
 const POWER_USAGE_REALTIME_REFRESH_MIN_INTERVAL_MS = 30 * 1000;
 
 let lastPowerUsageRefreshStartedAt = 0;
+
+// Monotonic run id for the Usage repaint. Its callers overlap freely — a rapid
+// Main→area scope pick starts a second run while the first is still awaiting,
+// and the older run's late completion would repaint over the newer one's.
+// Each run stamps itself and every paint is gated on still being the latest
+// run — the `rosterGeneration` precedent in `homeScope.ts`.
+let powerRefreshGeneration = 0;
 
 /** Run a fire-and-forget task, routing any rejection to the app log. */
 export const runLoggedTask = (task: Promise<unknown>, message: string, context: string) => {
@@ -65,9 +79,21 @@ export const refreshStaleDataStatus = (context: string) => {
 
 export const refreshPowerData = async () => {
   lastPowerUsageRefreshStartedAt = Date.now();
-  const usage = await getPowerUsage();
-  renderPowerUsage(usage);
-  await renderPowerStats();
+  powerRefreshGeneration += 1;
+  const generation = powerRefreshGeneration;
+  const isCurrentRun = () => generation === powerRefreshGeneration;
+  // One discriminated read owns the complete Usage refresh. In particular, an
+  // unavailable Main read must not be flattened to an empty hourly list and
+  // then masked by a second successful stats read.
+  const read = await readUsagePower();
+  // A newer run started while this read was in flight; its answer owns the
+  // panel. Dropping the whole completion keeps every Usage surface on the
+  // same selected-home generation.
+  if (!isCurrentRun()) return;
+  if (read.state === 'served') {
+    renderPowerUsage(getPowerUsageFromRead(read));
+  }
+  await renderPowerStatsFromRead(read, isCurrentRun);
 };
 
 export const refreshPowerDataIfVisible = (
@@ -84,6 +110,22 @@ export const refreshPowerDataIfVisible = (
   }
   runLoggedTask(refreshPowerData(), 'Failed to refresh power data', context);
 };
+
+// Follow the shell's home scope on the Usage panel (registered at import time,
+// the `homeLimits.ts` precedent): a pick from the global bar repaints the
+// visible Usage surface from the newly selected home's own read, immediately —
+// no throttle, since the user just asked for a different home. Off-panel picks
+// skip the READ (the Usage activation hook re-reads the scope on the next
+// open) but still invalidate what is on the panel — see below.
+subscribeToHomeScope(() => {
+  // Pending state FIRST, before the refresh is even started: the scope chip has
+  // already flipped to the new home's name, and the panel below it still holds
+  // the previous home's numbers. Hiding them until the new home's run owns a
+  // complete paint is what keeps the name and the figures the same home's.
+  markUsagePanelPendingForScopeChange();
+  if (!isPanelVisible('#usage-panel')) return;
+  runLoggedTask(refreshPowerData(), 'Failed to refresh power data', 'homeScope');
+});
 
 const renderLatestDevices = (devices: Awaited<ReturnType<typeof getTargetDevices>>) => {
   state.latestDevices = devices;

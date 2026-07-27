@@ -25,9 +25,11 @@ import {
   DEBUG_LOGGING_TOPICS,
   DEVICE_HOME_ASSIGNMENTS,
   HOMES_CONFIG, HOMES_CONFIG_INITIALIZED,
+  MAIN_HOME_ID,
   NORWAY_PRICE_MODEL,
   PELS_STATUS,
   POWER_TRACKER_STATE,
+  homeScopedSettingsKey,
   OPERATING_MODE_SETTING,
   OVERSHOOT_BEHAVIORS,
   TEMPERATURE_BOOST_SETTINGS,
@@ -36,7 +38,7 @@ import {
 } from '../../../contracts/src/settingsKeys.ts';
 import { loadAdvancedSettings, loadCapacitySettings, notifyAreaSimulationSettingChanged } from './capacity.ts';
 import { notifyHomeLimitsSettingChanged } from './homeLimits.ts';
-import { notifyHomeScopeSettingChanged } from './homeScope.ts';
+import { getHomeScope, notifyHomeScopeSettingChanged } from './homeScope.ts';
 import {
   invalidateApiCache,
   invalidateApiCacheForAllHomes,
@@ -60,6 +62,7 @@ import {
   refreshModeAndDeviceControls,
   refreshPlanForUi,
   refreshPowerData,
+  refreshPowerDataIfVisible,
   refreshPricesIfVisible,
   refreshStaleDataStatus,
   runLoggedTask,
@@ -204,6 +207,17 @@ const refreshHomeScopedReadModels = (key: string) => {
   // The status blob feeds no devices field, so its writes leave devices alone.
   if (key.startsWith(`${POWER_TRACKER_STATE}:`)) {
     invalidateApiCacheForScopedHomes(SETTINGS_UI_DEVICES_PATH);
+  }
+  // The SELECTED area's own tracker write also repaints a visible Usage panel
+  // — this suffixed stream is that home's only freshness signal (the realtime
+  // `power_updated` push is Main's and is never widened). The key is REBUILT
+  // from the selected scope and compared whole, never parsed (the
+  // `notifyHomeLimitsSettingChanged` precedent); Main's mirror of this lives
+  // in `refreshPowerSettings` on the bare key.
+  const { selectedHomeId } = getHomeScope();
+  if (selectedHomeId !== MAIN_HOME_ID
+    && key === homeScopedSettingsKey(POWER_TRACKER_STATE, selectedHomeId)) {
+    refreshPowerDataIfVisible('settings.set', { force: true });
   }
 };
 

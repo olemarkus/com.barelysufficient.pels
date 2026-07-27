@@ -146,7 +146,8 @@ to its limit.
 Simulation is the safe way to trial a new area. Leave control off for a while
 and watch the area's own status on its **Limits & safety** card (power now, and
 what PELS *would* limit to hold the cap), then turn control on with confidence.
-In this version the Usage tab shows whole-home figures.
+The **Usage** tab follows the shown home too: pick the area in the **Showing**
+bar to see its own recorded history.
 :::
 
 ## Giving the Main home its own meter
