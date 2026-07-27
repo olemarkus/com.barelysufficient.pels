@@ -48,6 +48,181 @@ stepped-restore-wrapper / stepped-swap-completion refactors, the settings.test.t
 plan_budget truncation, the starvation confirm-sheet sub-parts, and the shared widget runtime.
 What remains open is below.*
 
+- [ ] **Nothing tells the owner WHY a scheduled charger is held, and three surfaces each name a
+      different wrong reason.** The cooldown half of this incident is FIXED: the re-sheds were real,
+      accepted `evcharger_charging=false` writes on essentially every rebuild (321 between 20:55Z
+      and 23:43Z in the hotfix run's raw log), each restamping the global instability clock — cause
+      established 2026-07-27 and fixed in PR #1904, with the remaining flow-backed class tracked
+      separately above. What is left open, and is what this entry is now about, is the REPORTING:
+      the hold is real and correct, and no surface says so. Original observation: Prod
+      2026-07-26 21:03-21:16Z:
+      `Elbillader`, badged "Always on"
+      (`PLAN_CARD_ALWAYS_ON_CHIP_LABEL` = budget exempt), took 20 `diagnostics_shed_recorded` /
+      `full_shed_to_off` events in 13 minutes, the first six at 21:03:28, 21:04:09, 21:04:48,
+      21:05:20, 21:05:48, 21:06:18 and the rest continuing at the same ~35 s cadence to 21:16Z
+      — while `plan_debug_summary` read `totalKw 0.85`, `softLimitKw 4.73→4.84`,
+      `headroomKw 3.89→3.99`, `softLimitSource daily`, `capacityBreached null`, and NO
+      `overshoot_entered` fired at all. Its reason trail carries `limited_by_daily_budget`, so the
+      daily-budget path is attributed. **Do not act on that attribution alone** — three separate
+      cases in the same session had correct behaviour behind a wrong reason code.
+
+      **The soft limit had ample room, which is why this looked like a shedding bug — it is not.**
+      The daily budget had already computed what was affordable: `softLimitKw 4.84` against
+      `totalKw 0.85`, i.e. `headroomKw 3.99`. The charger needs 1.38 kW at 6 A, which would have put
+      the house near 2.2 kW, under half the limit the budget itself set. That mismatch is what sent
+      the investigation into the shedding filters — but the off-write did not come from shedding at
+      all (see the release-path paragraph below), and a deferred-objective release is ENTITLED to
+      turn the charger off while the soft limit has room, because the schedule, not the pacing
+      constraint, is what is holding it. Do not re-open this as a budget/shedding defect; the
+      defect here is that nothing SAYS the schedule is the reason.
+
+      **Design rule (owner, 2026-07-26): the daily budget converts into the hourly soft limits and
+      nothing else. There is no whole-day budget acting as an additional control input.** So the
+      derived `softLimitKw` is the entire authority the daily budget has over shedding, and any shed
+      taken past it is a second, undesigned budget reading the same data. That makes this a defect by
+      construction rather than a threshold to tune, and it fixes the direction: day-level state may
+      inform reporting and Flow triggers, never a shed decision.
+
+      **Ruled out: there is no `exceeded`-driven shed path.** `exceeded` reaches only
+      `planDailyBudgetWindow.ts` ~110 (carrier), `planContext.ts` ~13 (type) and
+      `planBuilderMeta.ts` ~76 as `dailyBudgetExceeded` — reporting metadata, never a shed decision.
+      The daily budget already acts solely through the derived hourly soft limit, exactly as the rule
+      above requires. Do not go looking for a second budget to delete; there isn't one.
+
+      **What actually produced the misleading label:** `shedding/selection.ts` ~87-88 attributes
+      `PLAN_REASON_CODES.dailyBudget` to ANY shed taken while `limitSource === 'daily' &&
+      !capacityBreached`, irrespective of cause. So `limited_by_daily_budget` in the trail says only
+      "the daily soft limit was the binding one at the time", not "the daily budget shed this". The
+      fourth attribution-vs-behaviour mismatch in one session.
+
+      **The planner discards the remaining fraction of the CURRENT hour, even for an at-risk task
+      at the cheapest available price.** Prod 2026-07-26 23:18: the task planned 7 buckets covering
+      00:00, 01:00 ... 06:00 — precisely the WHOLE hours left before its 07:00 deadline — and skipped
+      the ~42 minutes remaining of 23:00. Meanwhile `price_optimization_completed` reported the
+      current hour at **72.96 øre/kWh** while the hero rendered "cheapest hour ahead: 00:00,
+      0.73 kr/kWh". NOTE the comparison is not decisive on its own: 0.73 kr is a ROUNDED display
+      value, so the raw 00:00 price could be anywhere in ~72.5-73.5 øre and might be marginally
+      below 72.96. Confirm against raw prices before quoting this as "now was cheaper". What does
+      NOT depend on the rounding: the two hours are within ~1% of each other, so deferring bought
+      no meaningful saving either way, and the task status
+      was already `at_risk` needing 2.79 kWh. Whether charging immediately would have cost anything
+      extra is exactly what the raw price has to settle — do not assume it was free — but at a ~1%
+      spread the cost either way is negligible against the risk it would have retired; instead the
+      first available slot was declined, which itself feeds the
+      `at_risk` verdict. At 1.4-7 kW a discarded 42-minute remainder is 1-5 kWh of the deadline's
+      total need. Note the hero's "cheapest hour AHEAD" wording hides this by construction: it
+      excludes the current hour, so a curve whose minimum is now reads as though later is better.
+      Do NOT chase bucket granularity: `normalizeHorizonBuckets` already clips the leading bucket to
+      `nowMs` (`bucketAllocation.ts` ~423 `Math.max(bucket.startMs, nowMs)`), and allocation into that
+      shortened bucket is covered by existing tests. `currentBucket: null` therefore means the
+      allocator assigned no energy to the partial hour, not that it was unable to. The open question
+      is WHY it assigned none — the allocation constraint, an existing commitment, or the price
+      comparison that ranked 00:00 above the remaining 42 minutes of 23:00 — and whether `at_risk`
+      should force the leading partial bucket to be taken regardless. Persona: owner
+      whose at-risk deadline sits idle through the cheapest hour of the night; hypothesis: declining
+      the cheapest available energy on a task you have already flagged as at risk is indefensible
+      whatever the granularity argument. Source: prod investigation, 2026-07-26. [P1]
+
+      **On the hold itself — correct in shape, wrong in extent; the rest of the defect is reporting.** The task's
+      planned buckets were 00:00-07:00 (7 hourly buckets to a 07:00 deadline, 2.79 kWh) and the
+      observation was taken at 23:18. The charger was deferred to the cheap overnight hours exactly
+      as intended ("cheapest hour ahead 00:00, 0.73 kr/kWh"). `currentBucket: null`,
+      `desiredStepId: 'off'`, 20 shed records against 1 off-write, and headroom being ignored are all
+      consistent with a deliberate time-based hold, re-recorded each cycle.
+
+      What made this cost an evening of investigation is that NO surface says when the device will
+      run. The card said "Limited — will try to resume in Ns if power is available" (power was never
+      the blocker, and was in fact abundant), the reason trail said `limited_by_daily_budget` (daily
+      merely happened to be the binding soft limit — `shedding/selection.ts` ~87 attributes that code
+      to any shed while daily is binding), and the hero said "Holding back 13 devices so the house
+      stays under 4.7 kW". Three explanations, none of them the real one, for a schedule PELS had
+      already computed and could simply have displayed.
+
+      **The fix is to say when, not why-not.** A device held by a deferred-objective schedule should
+      surface its next planned hour ("Charging starts 00:00") on the card and in the hero, and must
+      not borrow capacity/cooldown copy that names conditions already satisfied. Persona: owner who
+      concluded the app was broken while it was doing exactly the right thing; hypothesis: for a
+      deferred device, the next run time is the single most valuable thing on the screen and it is
+      absent everywhere. Note for whoever picks this up: four wrong hypotheses were chased here
+      (missing `budgetExempt`, an `exceeded`-driven shed path, a shed/restore oscillation, and a
+      capacity-headroom contradiction) all because `limited_by_daily_budget` was read as a cause.
+      PELS's reason codes did not track its behaviour in ANY of the four. [P1]
+
+      **The exemption IS reaching the planner.** The card rendered the "Always on" chip, which
+      `planCardGrammar.ts` ~196 emits only `if (budgetExempt)` (tooltip "Exempt from the daily
+      budget"), sourced from the plan device via `settingsOverviewReadModel.ts` ~145. So
+      `budgetExempt: true` was on the plan device and the shed happened anyway — this is NOT the
+      missing-producer-bit shape of the `commandableNow` drop, and adding `budgetExempt` to the
+      debug payload would answer a question already answered.
+
+      No shed path bypassed the filter, and that lead should not be re-chased. `shedding/candidates.ts`
+      ~110 and `admission/sheddingGuard.ts` ~147 both gate on
+      `limitSource !== 'daily' || capacityBreached || budgetExempt !== true`, and the summary reported
+      `softLimitSource: daily` with `capacityBreached: null` — so both correctly excluded the device.
+      The off-write did not come from capacity shedding at all: with no bucket for the current hour,
+      `deferredObjectives/admission.ts` ~127 returns an idle decision carrying
+      `releaseIntent: 'binary_release'` for a binary-controlled device, and the executor acts on that
+      independently of either shedding candidate filter. The charger being off is fully explained by
+      the deferred-objective release path. What remains defective is the ATTRIBUTION (that release is
+      reported as `limited_by_daily_budget`) and the repeated per-rebuild diagnostics below — not the
+      shed decision.
+
+      One caveat before treating the hold itself as wrong: the device's smart task reported
+      `currentBucket: null` (it does not want the current hour) against a 07:00 deadline with
+      "cheapest hour ahead 00:00", so SOME hold here is correct price deferral. The defect is the
+      shed being attributed to — and apparently driven by — the daily budget on a device exempt
+      from it, not the fact that the charger is off at 23:00. Reproduce with an exempt device,
+      `softLimitSource: 'daily'`, `capacityBreached: false`, and no planned bucket for the current
+      hour, and assert it is never a shed candidate.
+
+      Separately: "exempt from the daily budget" is the wrong instrument for an EV charger at all —
+      it is the largest discretionary load in the house and exemption removes the only thing pacing
+      it. A deadline device wants "the deadline may overrun the budget, as late and as cheaply as
+      possible", which is a conflict-resolution rule rather than a per-device flag. Adjacent to
+      [[project_starvation_rescue_boost_direction]].
+
+      A **re-shed that restarts the cooldown** is a real starvation shape and is worth a guard, but
+      do NOT cite this incident's 20 diagnostics as evidence for it: `recordReleaseShedActuation`
+      writes those records without stamping the shed or instability clocks, and this run produced
+      only ONE accepted write. The evidence for the restamping mechanism is the 321 accepted writes
+      in the hotfix run, documented in the entry below. Persona: owner watching a charger badged
+      "Always on" that never draws; hypothesis: whichever cause holds, a resetting countdown reads
+      as a hung app. Source: prod investigation, 2026-07-26. [P1]
+
+- [ ] **A device card claims "Running" and "Limited — will try to resume" at the same time.**
+      Prod screenshot 2026-07-26: `Connected 300` rendered headline **Running**, `0.0 kW`,
+      `61.7 °C · target 65 °C`, and reason line **"Limited — will try to resume in 17s if power is
+      available"** — three mutually exclusive claims in one card, with the step slider sitting at
+      roughly 60 %. The headline renders OBSERVED state (`currentState`) while the reason line
+      renders PLANNED intent (`plannedState` + reason code), so during any window where PELS has
+      decided `shed` but the device is still observed on, both are individually true and jointly
+      nonsense. `Elbillader` reads coherently in the same screenshot only because observed and
+      planned happen to agree there. The two lines need to resolve from one state, with
+      observed-vs-planned disagreement rendered as a transition ("Turning down…") rather than as
+      two competing truths. Persona: owner checking whether the water heater is actually running;
+      hypothesis: a self-contradicting card is worse than a vague one, because there is no reading
+      of it that is correct. Source: prod screenshot + card-field inspection, 2026-07-26. [P1]
+
+- [ ] **The Overview hero and the device cards never say today's daily budget is used up.** Prod 2026-07-26:
+      `budget_recomputed` read `newBudgetKWh 40.91`, `actualKWh 64.07`, `remainingNewKWh -23.16`,
+      `exceeded true` — the day was 23 kWh over and that was the binding soft limit for the devices
+      the daily-budget path actually held. NOT all 13: `Elbillader` was budget-exempt and was held
+      by the deferred-objective `binary_release` path instead, so any warning built from this must
+      be scoped to devices genuinely held by the budget rather than repeating the same
+      one-size-fits-all attribution this incident is filed against. What the UI showed instead: the hero said "Energy used this hour 0.0 of
+      3.2 kWh used · projected 0.80 kWh · Hard cap this hour 5.0 kWh · Holding back 13 devices so
+      the house stays under 4.7 kW", and every device card said "Limited — will try to resume in
+      Ns if power is available". The hourly framing reads as abundance (nothing used, 3.2 kWh
+      allowed) while everything is held, and the 4.7 kW figure is daily-derived but never labelled
+      as such. `PLAN_STATE_DAILY_BUDGET_STATUS` ("Limited by today's daily budget") already exists
+      and is not reaching these surfaces. Scope note: the Daily budget view is NOT part of this gap —
+      `resolveBudgetRemainingLine` already converts a negative `remainingKWh` into
+      "23.2 kWh over budget already used" and `BudgetOverview` renders it in that view's hero. The
+      confirmed gap is the Overview hero and the device cards, the two surfaces inspected here. Persona: owner who sees an idle house and 13 paused
+      devices and concludes PELS is broken; hypothesis: naming the exhausted daily budget is the
+      single highest-value line on the screen and it is absent. Source: prod screenshot + log,
+      2026-07-26. [P1]
+
 - [ ] **Residual re-shed freeze class: a charger with no observable switch still restamps the
       global shed cooldown every rebuild.** The charger re-shed deadlock fix (skip + edge-triggered
       stamp) is evidence-gated by design — absence of an observed `evcharger_charging` value means
