@@ -135,14 +135,10 @@ const ensureMeterDevicesLoaded = async (): Promise<void> => {
   }
 };
 
-/**
- * Show/hide the picker (visible only for the homey_energy power source) and
- * adopt the persisted selection. The device list is fetched lazily on first
- * visibility, so flow-source homes never pay for it.
- */
-export const syncHomeyEnergyMeterField = (powerSource: string, selectedId: string | null): void => {
+/** Adopt a freshly read selection without changing source-owned visibility. */
+export const syncHomeyEnergyMeterSelection = (selectedId: string | null): void => {
   selectedMeterId = selectedId;
-  syncHomeyEnergyMeterVisibility(powerSource);
+  if (settingsHomeyEnergyMeterField?.hidden === false) renderMeterOptions();
 };
 
 /** Visibility-only variant for callers that don't re-read the setting (uses the stored selection). */

@@ -901,6 +901,14 @@ rather than a generic failure. Three of them pin vocabulary:
   **Whole-home meter**, under **Limits & safety**. Name it as a setting to
   change, never as an option to pick — the picker's options are device names
   plus `Automatic`.
+- **The Homey Energy requirement also runs both directions** (saving an area
+  on the Flow source, and switching the source to Flow while areas run), and
+  each side names the OTHER side's control: the area save points at
+  **Power source**, under **Limits & safety**; the source switch says to
+  remove the areas under **Multiple meters**. The switch-side remedy is
+  removal on purpose — deleting an area works on any source, so the
+  instruction can always be followed. Internal terms (`mutual exclusion`,
+  `homey_energy_required`) stay internal.
 - **An id-less whole-home aggregate gets the honest-state refusal, not the
   remedy.** Some Homey setups read the whole home through an aggregate that
   carries no device id, so the Whole-home meter picker has nothing to offer

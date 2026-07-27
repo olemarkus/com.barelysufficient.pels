@@ -1479,6 +1479,20 @@
       settings.homey_energy_meter_device_id = meterDeviceId;
       return { ok: true };
     }
+    if (body.op === 'set_power_source') {
+      if (body.source !== 'homey_energy' && body.source !== 'flow') {
+        return { ok: false, reason: 'invalid' };
+      }
+      // Flow and RUNNING meter areas are mutually exclusive. Same activation
+      // term as production; a dormant pre-GA config never blocks the switch.
+      const areasRunning = current.length > 0
+        && (raw?.activationVersion === 1 || settings.multi_home_enabled === true);
+      if (body.source === 'flow' && areasRunning) {
+        return { ok: false, reason: 'homey_energy_required' };
+      }
+      settings.power_source = body.source;
+      return { ok: true };
+    }
     if (body.op === 'delete') {
       settings.homes_config = {
         ...(raw?.activationVersion === 1 ? { activationVersion: 1 } : {}),
@@ -1493,11 +1507,15 @@
     if (HOMES_ZONE_TREE[requested.rootZoneId] && HOMES_ZONE_TREE[requested.rootZoneId].parent === null) {
       return { ok: false, reason: 'invalid' };
     }
+    // The other direction of the same exclusion, structural like the meter
+    // requirement below: no area save on the Flow (or unset, which the
+    // runtime resolves to Flow) power source.
+    if (settings.power_source !== 'homey_energy') {
+      return { ok: false, reason: 'homey_energy_required' };
+    }
     // On the Homey Energy source the Main home must name its own meter before
-    // an area can exist; the picker only renders on that source, so the Flow
-    // (and unset) case carries no requirement.
-    if (settings.power_source === 'homey_energy'
-      && (settings.homey_energy_meter_device_id ?? null) === null) {
+    // an area can exist.
+    if ((settings.homey_energy_meter_device_id ?? null) === null) {
       return { ok: false, reason: 'main_meter_required' };
     }
     const homeId = requested.homeId

@@ -16,7 +16,10 @@ import {
   beginPersistedHomeTrackerFreshnessResetInSettings,
 } from './resetPersistedHomeTrackerFreshness';
 
-type AreaMutationRequest = Exclude<SettingsUiHomesSaveRequest, { op: 'set_main_meter' }>;
+type AreaMutationRequest = Exclude<
+SettingsUiHomesSaveRequest,
+{ op: 'set_main_meter' } | { op: 'set_power_source' }
+>;
 
 type HomeTrackerConfigSafetyFailure =
   | {

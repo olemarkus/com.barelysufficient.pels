@@ -12,8 +12,12 @@ import {
 } from '../../packages/shared-domain/src/homeAreaConfigRules';
 import {
   composeHomeAreaSaveRefusalLine,
+  composePowerSourceSaveRefusalLine,
+  HOMES_AREA_NEEDS_HOMEY_ENERGY,
   HOMES_AREA_NEEDS_MAIN_METER,
   HOMES_MAIN_METER_NEEDED_BY_AREAS,
+  HOMES_POWER_SOURCE_NEEDED_BY_AREAS,
+  HOMES_POWER_SOURCE_SAVE_FAILED,
 } from '../../packages/shared-domain/src/homeAreaConfigRulesCopy';
 import { HOMES_MAIN_HOME_NAME } from '../../packages/shared-domain/src/homesManagementCopy';
 
@@ -188,5 +192,32 @@ describe('composeHomeAreaSaveRefusalLine', () => {
       .toBe('“Cabin” already uses this meter.');
     expect(composeHomeAreaSaveRefusalLine({ ok: false, reason: 'invalid' }))
       .toBe('Couldn’t save changes — try again.');
+  });
+
+  it('names the power-source control when an area save is refused on the Flow source', () => {
+    expect(composeHomeAreaSaveRefusalLine({ ok: false, reason: 'homey_energy_required' }))
+      .toBe(HOMES_AREA_NEEDS_HOMEY_ENERGY);
+    // Same shape as the main-meter line: the consequence, then the control
+    // named as a setting to change (the picker is on another panel).
+    expect(HOMES_AREA_NEEDS_HOMEY_ENERGY).toContain('“Power source” under Limits & safety');
+  });
+});
+
+describe('composePowerSourceSaveRefusalLine', () => {
+  it('says the exclusion from the switch side and names the removal remedy', () => {
+    expect(composePowerSourceSaveRefusalLine({ ok: false, reason: 'homey_energy_required' }))
+      .toBe(HOMES_POWER_SOURCE_NEEDED_BY_AREAS);
+    // The remedy the line names (deleting areas) is never itself refused, so
+    // the instruction can always be followed.
+    expect(HOMES_POWER_SOURCE_NEEDED_BY_AREAS).toContain('under Multiple meters first');
+  });
+
+  it('keeps degraded and unexpected reasons on their own lines', () => {
+    expect(composePowerSourceSaveRefusalLine({ ok: false, reason: 'degraded' }))
+      .toContain('couldn’t be read');
+    // A reason this op cannot produce must not render an area instruction
+    // over the power-source control.
+    expect(composePowerSourceSaveRefusalLine({ ok: false, reason: 'main_meter_required' }))
+      .toBe(HOMES_POWER_SOURCE_SAVE_FAILED);
   });
 });

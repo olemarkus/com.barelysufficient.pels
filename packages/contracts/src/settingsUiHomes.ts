@@ -37,6 +37,15 @@ export type SettingsUiHomesSaveRequest =
     op: 'set_main_meter';
     /** `null` selects Automatic; a string selects Main's explicit meter. */
     meterDeviceId: string | null;
+  }
+  | {
+    op: 'set_power_source';
+    /**
+     * Where PELS reads whole-home power. Routed through this seam (not a bare
+     * settings write) because `flow` must be refused while meter areas are
+     * running, and this seam is where area mutations serialize.
+     */
+    source: 'homey_energy' | 'flow';
   };
 
 /**
@@ -58,6 +67,12 @@ export type SettingsUiHomesSaveRequest =
  *   meter can be selected and meter areas are not supported yet. Honest-state
  *   refusal — chosen only from the producer's latched arrangement, never from
  *   a transient read miss.
+ * - `homey_energy_required` — meter areas and the Flow power source are
+ *   mutually exclusive: a Flow reading carries no meter identity, so an area
+ *   under Flow gets no samples and is never limited. Refused in both
+ *   directions: saving an area while the source is Flow, and switching the
+ *   source to Flow while meter areas are running. Deleting an area works on
+ *   any source, so the way out is never blocked.
  * - `area_limit_reached` / `name_*` — the area being saved breaks a config rule
  *   from `packages/shared-domain/src/homeAreaConfigRules.ts`. The names are
  *   load-bearing (home selector labels, `capacity_shortfall` Flow token), so
@@ -65,7 +80,10 @@ export type SettingsUiHomesSaveRequest =
  */
 export type SettingsUiHomesSaveResponse =
   | { ok: true }
-  | { ok: false; reason: 'degraded' | 'invalid' | 'main_meter_required' | 'meter_unnameable' }
+  | {
+    ok: false;
+    reason: 'degraded' | 'invalid' | 'main_meter_required' | 'meter_unnameable' | 'homey_energy_required';
+  }
   | { ok: false; reason: 'meter_in_use'; otherName: string }
   | { ok: false; reason: 'area_limit_reached'; maxCount: number }
   | { ok: false; reason: 'name_required' }

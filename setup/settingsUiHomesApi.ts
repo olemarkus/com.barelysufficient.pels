@@ -22,6 +22,7 @@ import {
   areaRootsAtForestRoot,
   findComposedHomeInvariantViolation,
   saveMainMeterSelection,
+  savePowerSourceSelection,
   type MultiHomeActivationRead,
 } from './homeMeterOwnership';
 
@@ -108,13 +109,15 @@ export const getSettingsUiHomesPayload = ({ homey }: HomesApiContext): SettingsU
 };
 
 // ── ui_homes_save: the Multiple meters UI's ONLY ownership-write seam ───────
-// Intent operations (upsert/delete ONE area or select Main's explicit meter),
-// never client-composed state: the runtime re-reads the persisted config
-// through the CLASSIFIED store reader, refuses when it classifies suspect,
-// then applies one operation. Area writes use the marker-first classified
-// writer; Main-meter writes validate and persist synchronously in this same
-// server turn. The app's single-threaded event loop therefore serializes both
-// sides of meter ownership, and stale panels cannot wipe or double-own areas.
+// Intent operations (upsert/delete ONE area, select Main's explicit meter, or
+// switch the power source), never client-composed state: the runtime re-reads
+// the persisted config through the CLASSIFIED store reader, refuses when it
+// classifies suspect, then applies one operation. Area writes use the
+// marker-first classified writer; Main-meter and power-source writes validate
+// and persist synchronously in this same server turn. The app's
+// single-threaded event loop therefore serializes both sides of meter
+// ownership AND the flow/area mutual exclusion, so stale panels cannot wipe
+// or double-own areas, and "save an area" cannot race "switch to Flow".
 
 const asSaveRecord = (value: unknown): Record<string, unknown> | null => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -166,6 +169,14 @@ const parseHomesSaveRequest = (body: unknown): SettingsUiHomesSaveRequest | null
     const meterDeviceId = resolveExplicitMainMeterDeviceId(meterRaw);
     return meterDeviceId === null ? null : { op: 'set_main_meter', meterDeviceId };
   }
+  if (record.op === 'set_power_source') {
+    // Strict closed union: anything else is a malformed payload, never a
+    // coerced default (the runtime treats unset as Flow, so a junk write
+    // slipping through as Flow would flip the sampling mode).
+    return record.source === 'homey_energy' || record.source === 'flow'
+      ? { op: 'set_power_source', source: record.source }
+      : null;
+  }
   if (record.op === 'delete') {
     const homeId = toSaveNonEmptyString(record.homeId);
     return homeId !== null && isValidSubHomeId(homeId) ? { op: 'delete', homeId } : null;
@@ -196,7 +207,10 @@ const applyHomesUpsert = (
   };
 };
 
-type AreaMutationRequest = Exclude<SettingsUiHomesSaveRequest, { op: 'set_main_meter' }>;
+type AreaMutationRequest = Exclude<
+SettingsUiHomesSaveRequest,
+{ op: 'set_main_meter' } | { op: 'set_power_source' }
+>;
 
 const saveAreaMutation = (
   homey: Homey.App['homey'],
@@ -263,6 +277,19 @@ const saveAreaMutation = (
   return { ok: false, reason: commit.state === 'invalid' ? 'invalid' : 'degraded' };
 };
 
+const routeHomesSaveRequest = (
+  homey: Homey.App['homey'],
+  request: SettingsUiHomesSaveRequest,
+): SettingsUiHomesSaveResponse => {
+  if (request.op === 'set_main_meter') {
+    return saveMainMeterSelection(homey, request, readMultiHomeActivation(homey));
+  }
+  if (request.op === 'set_power_source') {
+    return savePowerSourceSelection(homey, request, readMultiHomeActivation(homey));
+  }
+  return saveAreaMutation(homey, request);
+};
+
 // Every refusal, at the one seam that sees them all. Without it a support
 // report of "PELS won't let me save my area" leaves nothing in the log that
 // separates a missing whole-home meter from a duplicate name from the area
@@ -292,9 +319,7 @@ export const saveSettingsUiHomesConfig = (
     logHomesSaveRefusal(homey, 'unparsed', refusal);
     return refusal;
   }
-  const response = request.op === 'set_main_meter'
-    ? saveMainMeterSelection(homey, request, readMultiHomeActivation(homey))
-    : saveAreaMutation(homey, request);
+  const response = routeHomesSaveRequest(homey, request);
   logHomesSaveRefusal(homey, request.op, response);
   return response;
 };

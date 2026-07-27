@@ -45,6 +45,32 @@ export const HOMES_METER_UNNAMEABLE = 'Your whole-home meter doesn’t report a 
   + 'meter areas need one to keep homes apart. Not supported for meter areas yet.';
 
 /**
+ * An area save refused because the power source is Flow: a Flow reading
+ * carries no meter identity, so the area would never be limited. Reason
+ * first, then the control named as a setting to change, same shape as
+ * `HOMES_AREA_NEEDS_MAIN_METER`. Fires from the editor, where
+ * `HOMES_FLOW_SOURCE_NOTICE` has already explained the why in full.
+ */
+export const HOMES_AREA_NEEDS_HOMEY_ENERGY = 'Meter areas need the Homey Energy power source, '
+  + 'or PELS can’t tell which meter a reading belongs to. Set “Power source” under '
+  + 'Limits & safety, then save this area.';
+
+/**
+ * The same exclusion from the other side: switching the power source to Flow
+ * while meter areas are running. Deleting an area works on any source, so
+ * the remedy this names is never itself blocked.
+ */
+export const HOMES_POWER_SOURCE_NEEDED_BY_AREAS = 'While meter areas exist, PELS needs the '
+  + 'Homey Energy power source. Remove your meter areas under Multiple meters first.';
+
+/** Power-source save refused while the meter-area config cannot be read safely. */
+export const HOMES_POWER_SOURCE_SAVE_DEGRADED = 'PELS can’t safely change the power source '
+  + 'right now. Your meter-area settings couldn’t be read. Try again in a few minutes.';
+
+/** Generic power-source save failure, also the toast fallback for thrown errors. */
+export const HOMES_POWER_SOURCE_SAVE_FAILED = 'Failed to save power source.';
+
+/**
  * One actionable line per refusal of an area create/edit/delete. `invalid` is
  * the only one that keeps the generic save-failed line: it covers malformed
  * payloads and the zone-overlap combinations the editor already blocks inline,
@@ -54,6 +80,7 @@ export const composeHomeAreaSaveRefusalLine = (refusal: SettingsUiHomesSaveRefus
   if (refusal.reason === 'degraded') return HOMES_CONFIG_DEGRADED;
   if (refusal.reason === 'main_meter_required') return HOMES_AREA_NEEDS_MAIN_METER;
   if (refusal.reason === 'meter_unnameable') return HOMES_METER_UNNAMEABLE;
+  if (refusal.reason === 'homey_energy_required') return HOMES_AREA_NEEDS_HOMEY_ENERGY;
   if (refusal.reason === 'area_limit_reached') {
     // Reachable on an edit too (a config already past the cap), so the remedy
     // must not assume the user was adding.
@@ -74,4 +101,16 @@ export const composeHomeAreaSaveRefusalLine = (refusal: SettingsUiHomesSaveRefus
     return `Shorten the name to ${refusal.maxLength} characters or fewer.`;
   }
   return HOMES_SAVE_FAILED_TOAST;
+};
+
+/**
+ * One actionable line per refusal of a power-source change. Typed over the
+ * full refusal union like `composeHomeAreaSaveRefusalLine`, so a reason this
+ * op cannot produce falls back to the generic line instead of rendering an
+ * area instruction over the power-source control.
+ */
+export const composePowerSourceSaveRefusalLine = (refusal: SettingsUiHomesSaveRefusal): string => {
+  if (refusal.reason === 'degraded') return HOMES_POWER_SOURCE_SAVE_DEGRADED;
+  if (refusal.reason === 'homey_energy_required') return HOMES_POWER_SOURCE_NEEDED_BY_AREAS;
+  return HOMES_POWER_SOURCE_SAVE_FAILED;
 };

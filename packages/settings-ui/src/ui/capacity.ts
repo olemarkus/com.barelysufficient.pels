@@ -38,7 +38,7 @@ import {
 } from '../../../contracts/src/settingsKeys.ts';
 import {
   isHomeyEnergyMeterExplicit,
-  syncHomeyEnergyMeterField,
+  syncHomeyEnergyMeterSelection,
   syncHomeyEnergyMeterVisibility,
 } from './homeyEnergyMeter.ts';
 import {
@@ -60,27 +60,24 @@ import { showToast } from './toast.ts';
 import { pushSettingWriteIfChanged } from './settingWrites.ts';
 import { refreshPlanSurface } from './planSurfaceRefresh.ts';
 
-type PowerSource = 'flow' | 'homey_energy';
+export type PowerSource = 'flow' | 'homey_energy';
 
 type CapacitySettingsPatch = {
   limit?: number;
   margin?: number;
   dryRun?: boolean;
-  powerSource?: PowerSource;
 };
 
 type CurrentCapacitySettings = {
   limit: unknown;
   margin: unknown;
   dryRun: unknown;
-  powerSource: unknown;
 };
 
 type ResolvedCapacitySettings = {
   limit: number;
   margin: number;
   dryRun: boolean;
-  powerSource: PowerSource;
 };
 
 // Mirrors the runtime snapshot's lifecycle: simulation is the boot default,
@@ -128,7 +125,7 @@ const resolveMainDryRun = (
   return lastGood;
 };
 
-const normalizePowerSource = (raw: unknown): PowerSource => (
+export const normalizePowerSource = (raw: unknown): PowerSource => (
   raw === 'homey_energy' ? 'homey_energy' : 'flow'
 );
 
@@ -334,11 +331,10 @@ export const refreshLimitsValidationHints = () => {
   renderMarginAlert(getMarginVsLimitError(limit, margin));
 };
 
-const syncCapacityControls = (
+const syncCapacityOwnedControls = (
   limit: number,
   margin: number,
   isDryRun: boolean,
-  powerSource: PowerSource,
 ) => {
   if (settingsCapacityLimitInput) {
     settingsCapacityLimitInput.value = limit.toString();
@@ -346,13 +342,9 @@ const syncCapacityControls = (
   if (settingsCapacityMarginInput) {
     settingsCapacityMarginInput.value = margin.toString();
   }
-  if (settingsPowerSourceSelect) {
-    settingsPowerSourceSelect.value = powerSource;
-  }
   if (settingsSimulationModeInput) {
     settingsSimulationModeInput.selected = isDryRun;
   }
-  syncHomeyEnergyMeterVisibility(powerSource);
   updateCapacityReactionHint(limit, margin);
   renderMarginAlert(getMarginVsLimitError(limit, margin));
 };
@@ -364,13 +356,12 @@ const readNumberInput = (input: MdFilledTextFieldElement | null, label: string):
 };
 
 const readCurrentCapacitySettings = async (): Promise<CurrentCapacitySettings> => {
-  const [limit, margin, dryRun, powerSource] = await Promise.all([
+  const [limit, margin, dryRun] = await Promise.all([
     getSetting(CAPACITY_LIMIT_KW),
     getSetting(CAPACITY_MARGIN_KW),
     getSetting(CAPACITY_DRY_RUN),
-    getSetting(POWER_SOURCE),
   ]);
-  return { limit, margin, dryRun, powerSource };
+  return { limit, margin, dryRun };
 };
 
 const resolveCapacitySettings = (
@@ -385,7 +376,6 @@ const resolveCapacitySettings = (
   dryRun: patch.dryRun ?? (
     typeof current.dryRun === 'boolean' ? current.dryRun : lastGoodCapacityDryRun
   ),
-  powerSource: patch.powerSource ?? normalizePowerSource(current.powerSource),
 });
 
 const validateCapacitySettings = ({ limit, margin }: ResolvedCapacitySettings) => {
@@ -408,6 +398,28 @@ let powerSourceConfigured: boolean | null = null;
 // first power read can re-render the copy without refetching power. undefined
 // = the banner has never rendered.
 let lastBannerPowerUpdate: number | null | undefined;
+// Newer loads supersede the entire older snapshot. Power-source saves have a
+// narrower generation: they fence stale source-dependent paint without
+// discarding unrelated capacity values read from a realtime refresh.
+let capacitySettingsLoadGeneration = 0;
+let capacitySettingsAppliedGeneration = 0;
+let powerSourcePaintGeneration = 0;
+let confirmedPowerSourcePaintGeneration = 0;
+
+export const supersedeCapacityPowerSourcePaints = (): number => {
+  powerSourcePaintGeneration += 1;
+  return confirmedPowerSourcePaintGeneration;
+};
+
+export const hasConfirmedPowerSourcePaintSince = (generation: number): boolean => (
+  confirmedPowerSourcePaintGeneration !== generation
+);
+
+const recordConfirmedPowerSourcePaint = (powerSource: unknown): void => {
+  if (powerSource === 'flow' || powerSource === 'homey_energy') {
+    confirmedPowerSourcePaintGeneration += 1;
+  }
+};
 
 const updateStaleDataBanner = (lastPowerUpdate: number | null) => {
   lastBannerPowerUpdate = lastPowerUpdate;
@@ -424,9 +436,13 @@ const updateStaleDataBanner = (lastPowerUpdate: number | null) => {
   if (staleDataBannerAction) staleDataBannerAction.textContent = content.actionLabel;
 };
 
-const setPowerSourceConfigured = (configured: boolean) => {
+export const setPowerSourceConfigured = (configured: boolean) => {
   if (powerSourceConfigured === configured) return;
   powerSourceConfigured = configured;
+  if (lastBannerPowerUpdate !== undefined) updateStaleDataBanner(lastBannerPowerUpdate);
+};
+
+export const refreshStaleDataBanner = (): void => {
   if (lastBannerPowerUpdate !== undefined) updateStaleDataBanner(lastBannerPowerUpdate);
 };
 
@@ -448,7 +464,28 @@ export const updateStaleDataStatusFromPowerPayload = (power: SettingsUiPowerPayl
   updateStaleDataBanner(power ? resolveLastPowerUpdate(power) : null);
 };
 
+const syncLoadedPowerSource = (powerSource: unknown): void => {
+  const sourceResolved = powerSource === 'flow' || powerSource === 'homey_energy';
+  if (sourceResolved) {
+    setPowerSourceConfigured(true);
+    if (settingsPowerSourceSelect) settingsPowerSourceSelect.value = powerSource;
+    syncHomeyEnergyMeterVisibility(powerSource);
+    recordConfirmedPowerSourcePaint(powerSource);
+    return;
+  }
+  if (powerSourceConfigured === null) {
+    // First load with no configured source: keep the template's Flow default
+    // but mark it as onboarding, not persisted truth. After any confirmed
+    // paint, an unavailable read preserves that last-good source instead of
+    // fabricating Flow over a save rollback or another WebView's write.
+    setPowerSourceConfigured(false);
+  }
+};
+
 export const loadCapacitySettings = async () => {
+  capacitySettingsLoadGeneration += 1;
+  const generation = capacitySettingsLoadGeneration;
+  const sourceGeneration = powerSourcePaintGeneration;
   // Publish the home scope first and independently. A transient roster/marker
   // read failure must narrow the banner to Main even if another settings read
   // later rejects and aborts the rest of the capacity refresh.
@@ -479,15 +516,20 @@ export const loadCapacitySettings = async () => {
     runtimeScalars?.mainDryRunEffective,
     lastGoodCapacityDryRun,
   );
-  const normalizedPowerSource = normalizePowerSource(powerSource);
-  setPowerSourceConfigured(powerSource === 'flow' || powerSource === 'homey_energy');
-  // Adopt the persisted meter selection BEFORE syncCapacityControls runs its
-  // visibility-only sync, so the select renders the saved choice. Trimmed the
-  // same way as the runtime seam (resolveHomeyEnergyMeterDeviceId) so the UI
-  // and the poll never disagree about a padded id meaning Automatic.
+  // Only a successfully completed newer load supersedes this snapshot. A load
+  // that merely STARTED later but failed must not discard valid settings with
+  // no remaining refresh guaranteed.
+  if (generation < capacitySettingsAppliedGeneration) return;
+  capacitySettingsAppliedGeneration = generation;
+  syncCapacityOwnedControls(normalizedLimit, normalizedMargin, isDryRun);
+  // Meter selection is independently persisted. A power-source save may fence
+  // source-owned paint while this load is in flight, but it must not discard a
+  // concurrent Whole-home meter refresh that this snapshot already read.
   const trimmedMeterId = typeof meterDeviceId === 'string' ? meterDeviceId.trim() : '';
-  syncHomeyEnergyMeterField(normalizedPowerSource, trimmedMeterId === '' ? null : trimmedMeterId);
-  syncCapacityControls(normalizedLimit, normalizedMargin, isDryRun, normalizedPowerSource);
+  syncHomeyEnergyMeterSelection(trimmedMeterId === '' ? null : trimmedMeterId);
+  if (sourceGeneration === powerSourcePaintGeneration) {
+    syncLoadedPowerSource(powerSource);
+  }
   const dryRunChanged = state.dryRun !== isDryRun;
   commitCapacityScalars(normalizedLimit, normalizedMargin, isDryRun);
   syncDryRunBannerVisibility();
@@ -505,27 +547,25 @@ const saveCapacitySettingsPatch = async (
   successMessage = 'Capacity settings saved.',
 ) => {
   const current = await readCurrentCapacitySettings();
-  const { limit, margin, dryRun, powerSource } = resolveCapacitySettings(current, patch);
-  validateCapacitySettings({ limit, margin, dryRun, powerSource });
+  const { limit, margin, dryRun } = resolveCapacitySettings(current, patch);
+  validateCapacitySettings({ limit, margin, dryRun });
 
   const writes: Array<Promise<void>> = [];
   pushSettingWriteIfChanged(writes, CAPACITY_LIMIT_KW, current.limit, limit);
   pushSettingWriteIfChanged(writes, CAPACITY_MARGIN_KW, current.margin, margin);
   pushSettingWriteIfChanged(writes, CAPACITY_DRY_RUN, current.dryRun, dryRun);
-  // Persist power_source ONLY when the patch explicitly carries it (the user
-  // changed the select). An unrelated hard-cap/margin/simulation save must not
-  // materialize the 'flow' default — that would silently flip the banner's
-  // fresh-install copy to "check your Flow" for a user who never chose a source.
-  if (patch.powerSource !== undefined) {
-    pushSettingWriteIfChanged(writes, POWER_SOURCE, current.powerSource, powerSource);
-  }
+  // Never power_source: a hard-cap/margin/simulation save must not materialize
+  // the 'flow' default for a user who never chose a source, and the select's
+  // own change goes through the guarded seam (`savePowerSourceSetting`).
   if (writes.length > 0) {
     await Promise.all(writes);
   }
   const dryRunChanged = current.dryRun !== dryRun;
   commitCapacityScalars(limit, margin, dryRun);
-  if (patch.powerSource !== undefined) setPowerSourceConfigured(true);
-  syncCapacityControls(limit, margin, dryRun, powerSource);
+  // This save owns only cap, margin and simulation. In particular it must not
+  // repaint the Power source from its pre-write read: a source save can overlap
+  // this awaited settings write and owns that control's final value.
+  syncCapacityOwnedControls(limit, margin, dryRun);
   syncDryRunBannerVisibility();
   syncSettingsHubChips();
   // Toggling simulation flips the hero decision sentence and the device-card
@@ -536,15 +576,10 @@ const saveCapacitySettingsPatch = async (
   await showToast(successMessage, 'ok');
 };
 
-export const saveSettingsLimitsSettings = async (
-  options?: { includePowerSource?: boolean },
-) => {
+export const saveSettingsLimitsSettings = async () => {
   await saveCapacitySettingsPatch({
     limit: readNumberInput(settingsCapacityLimitInput, 'Hard cap'),
     margin: readNumberInput(settingsCapacityMarginInput, 'Safety margin'),
-    ...(options?.includePowerSource === true
-      ? { powerSource: normalizePowerSource(settingsPowerSourceSelect?.value) }
-      : {}),
   }, 'Limits & safety saved.');
 };
 

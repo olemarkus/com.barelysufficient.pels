@@ -1223,22 +1223,18 @@ program) remain deferred.*
       per-area Flow work rather than widening the card twice. (The reservation, uniqueness and
       length halves of the original entry landed in PR #1893.)
       Source: adversarial review of the multi-home finishing train PR 8a, 2026-07-26.
-- [ ] **The power source can move in either direction behind the meter-area invariants.** Three
-      unguarded transitions, all reachable because the invariants are a WRITE-SEAM convention that
-      only `ui_homes_save` passes through:
-      (a) an owner on the Flow source can still save a meter area;
-      (b) an owner with meter areas can still switch the power source to Flow, where a reading
-      carries no meter identity so the area receives no samples and is never limited (the Multiple
-      meters page warns via `HOMES_FLOW_SOURCE_NOTICE`, but nothing refuses);
-      (c) an owner can save an area under Flow and then switch **to** Homey Energy with the Main home
-      still on Automatic, re-entering exactly the silent misconfiguration the whole-home-meter
-      requirement exists to prevent, degrading back to the `shouldPromptMainHomeMeter` nudge.
-      (c) is the direct cost of gating that requirement on the Homey Energy source, which is itself
-      right: the Whole-home meter picker does not render on Flow, so demanding it there would be an
-      unactionable refusal. Refuse (a) and (b) symmetrically with copy that names the remedy, and
-      make the power-source write path re-check the invariant for (c). Persona: owner who set up
-      areas, then moved between power sources and quietly lost area limiting or Main-home protection.
-      Source: multi-home finishing train, area-config invariants PR. [P2]
+- [ ] **A legacy Flow-saved area config re-enters Homey Energy with the Main home on Automatic.**
+      The residual (c) of the flow/area transitions: (a) saving an area on the Flow source and
+      (b) switching to Flow while areas run are now refused symmetrically at the `ui_homes_save`
+      seam (`homey_energy_required`, both power-source writes routed through the seam), but a
+      config whose areas were saved BEFORE the exclusion can still switch **to** Homey Energy
+      while the Main home is on Automatic — deliberately, because that switch is the remedy
+      direction (the Whole-home meter picker only renders on Homey Energy) and refusing it would
+      trap the owner on Flow. The cost is a window where areas run against Automatic, covered only
+      by the `shouldPromptMainHomeMeter` nudge until the next area save re-asserts
+      `main_meter_required`. Persona: pre-exclusion owner moving back to Homey Energy who misses
+      the nudge. *Hypothesis:* rare and self-healing; revisit only if support reports show the
+      nudge being missed. Source: multi-home finishing train, PR 4c. [P3]
 
 - [ ] **The area name rules are implemented twice in one package.**
       `packages/shared-domain/src/homeAreaConfigRules.ts` (`findHomeAreaNameRejection`, the
