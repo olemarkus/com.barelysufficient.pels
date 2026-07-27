@@ -36,6 +36,15 @@ import {
   type DeviceGroup,
 } from './deviceListPresentation.ts';
 import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDeviceName.ts';
+import { appendHomeBadge, refreshHomeBadges } from './homeBadges.ts';
+
+const refreshHomeBadgesAndRepaint = (): void => {
+  void refreshHomeBadges().then(() => {
+    if (!state.devicesLoaded) return;
+    renderDevices(state.latestDevices);
+    renderPriorities(state.latestDevices);
+  });
+};
 
 // Whole-home only, deliberately: the two `state.*` solar flags are HOME-level
 // gates, so a future scoped read must not funnel through here — a sub-home
@@ -43,7 +52,11 @@ import { formatDisplayDeviceName } from '../../../shared-domain/src/displayDevic
 // scope-selector PR adds its own scoped reader that discriminates
 // `payload.homeScope` before touching any flat field (see TODO.md).
 export const getTargetDevices = async (): Promise<SettingsUiDeviceListItem[]> => {
+  // Badges are additive metadata, never authority for the device list. Fetch
+  // them independently so a slow Homey callback cannot blank Devices, Modes,
+  // price-device pickers, and Advanced after /ui_devices already resolved.
   const payload = await getApiReadModel<SettingsUiDevicesPayload>(SETTINGS_UI_DEVICES_PATH);
+  refreshHomeBadgesAndRepaint();
   state.hasManagedSolarDevice = payload?.hasManagedSolarDevice === true;
   state.hasExhibitedExport = payload?.hasExhibitedExport === true;
   return Array.isArray(payload?.devices) ? payload.devices : [];
@@ -175,6 +188,9 @@ const buildRedesignNameCell = (device: SettingsUiDeviceListItem): HTMLElement =>
   nameText.className = 'device-row__title';
   nameText.textContent = formatDisplayDeviceName(device.name);
   nameWrap.appendChild(nameText);
+  // Which meter this device counts against, before the state chips: structural
+  // metadata reads first, the tonal state signals after it.
+  appendHomeBadge(nameWrap, device.id);
   appendDeviceStateChips(nameWrap, device);
   return nameWrap;
 };
@@ -370,6 +386,14 @@ export const refreshDevices = async (options?: { render?: boolean }) => {
       });
       state.hasManagedSolarDevice = response.hasManagedSolarDevice === true;
       state.hasExhibitedExport = response.hasExhibitedExport === true;
+      // Discovery bypasses `getTargetDevices`, the seam that starts the badge
+      // membership refresh — without its own fetch here a
+      // newly discovered device renders unbadged until an unrelated refetch.
+      // The no-devices fallback below goes through `getTargetDevices`, which
+      // already fetches badges, so only this branch refreshes (no double
+      // fetch). It remains independent so a stuck badge callback cannot block
+      // the successfully discovered device payload.
+      refreshHomeBadgesAndRepaint();
     } else {
       invalidateApiCacheForAllHomes(SETTINGS_UI_DEVICES_PATH);
     }

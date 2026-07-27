@@ -793,6 +793,21 @@ selected home**. A bar naming a home above whole-home figures would be a claim
 the page cannot pay, so a surface earns the bar in the same change that teaches
 it the scope, never before.
 
+### Home badges on the Devices and Modes lists
+
+Once a meter area is in use, every row in the Devices and Modes lists carries a
+quiet outline chip naming the home it belongs to: the area's own name as the
+owner authored it, or **Main home** for the implicit complement — the same word
+the Limits switcher uses, never a synonym. A single-home install renders no
+badge at all.
+
+The badge is a label, never a filter: both lists keep showing every device.
+Chips stay short, so the "why it matters" sentence lives in the tooltip
+(`This device belongs to “Rental unit” and counts against that meter.`), which
+doubles as the full-name reveal when a long area name is truncated. Source:
+`composeHomeBadgeLabel` / `composeHomeBadgeTooltip` in
+`packages/shared-domain/src/homesManagementCopy.ts`.
+
 Internal terms that stay internal: `sub-home`, `homeId`, `membership`,
 `scope` (as a word in copy), `zone rule`, `pin`, `suspect`/`degraded` (store
 classifications). Copy says what happens ("Its devices move back to the Main
