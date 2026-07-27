@@ -812,6 +812,25 @@ within/over-budget readout context render in Main scope only: the daily budget
 is a Main-home constraint (locked decision 3), so painting it on an area's
 history would claim the area is held to it.
 
+### Per-home Overview honest states
+
+The Overview follows the shown home the same way Usage does. When the selected
+part of the home cannot be served (`homeScope: unavailable`), the hero and
+device cards hide behind one notice card instead of rendering fabricated
+numbers — a `0.0 kW` hero would answer "am I OK right now?" with a measurement
+nobody took. Canonical copy (source: `HOME_SCOPE_OVERVIEW_UNAVAILABLE_*` in
+`homeScopeCopy.ts`): headline `Status couldn’t be read`, body `PELS couldn’t
+read the current status for this part of the home right now. Check back in a
+moment, or pick another part of the home above.`
+
+Under a meter area the Main-only elements are OMITTED as not-applicable, never
+zeroed: the smart-task row (smart tasks are a Main-home feature) and every
+daily-budget-derived hero element (the daily budget is a Main-home constraint,
+locked decision 3 — an area's plan meta simply carries no daily allocation, so
+`Budget this hour` there is always the area's own capacity allocation). The
+hero's `Simulation mode` chip and hypothetical voice follow the area's OWN
+control flag (`capacity_dry_run:<id>`), never Main's.
+
 ### Home badges on the Devices and Modes lists
 
 Once a meter area is in use, every row in the Devices and Modes lists carries a

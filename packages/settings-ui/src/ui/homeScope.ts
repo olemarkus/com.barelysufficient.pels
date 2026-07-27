@@ -26,13 +26,16 @@ import { renderHomeScopeBar, type HomeScopeOption } from './views/HomeScopeBar.t
 
 /**
  * Panels whose content is resolved against the selected home today. Grow this
- * set in the PR that teaches a surface the scope, never ahead of it: Overview
- * device cards + hero, Devices/Modes, and the explicit not-supported-yet
- * states each land in their own train PR. `usage` honours the scope through
- * `readUsagePower` (its history, hero, and charts resolve from the selected
- * home's own tracker, with an honest unavailable state).
+ * set in the PR that teaches a surface the scope, never ahead of it:
+ * Devices/Modes and the explicit not-supported-yet states each land in their
+ * own train PR. `usage` honours the scope through `readUsagePower` (its
+ * history, hero, and charts resolve from the selected home's own tracker,
+ * with an honest unavailable state). `overview` honours it through
+ * `readOverviewPlan` + the scope-following `refreshPlan` in `planRedesign.ts`
+ * (hero + device cards from the selected home's own plan/power, Main-only
+ * elements omitted, honest unavailable notice).
  */
-const SCOPE_AWARE_PANELS = new Set(['limits', 'usage']);
+const SCOPE_AWARE_PANELS = new Set(['limits', 'usage', 'overview']);
 
 /**
  * Persisted selection. Namespaced under `pels.` so it cannot collide with other

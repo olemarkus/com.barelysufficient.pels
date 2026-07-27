@@ -60,6 +60,7 @@ import {
   refreshDailyBudgetIfVisible,
   refreshHomeBadgesForUi,
   refreshModeAndDeviceControls,
+  refreshOverviewPlanIfVisible,
   refreshPlanForUi,
   refreshPowerData,
   refreshPowerDataIfVisible,
@@ -183,7 +184,7 @@ const refreshPowerSettings = (key: string) => {
 // a sub-home write says nothing about the whole home.
 const SUFFIXED_HOME_PLAN_KEY_PREFIXES = [`${PELS_STATUS}:`, `${POWER_TRACKER_STATE}:`];
 
-const refreshHomeScopedReadModels = (key: string) => {
+const refreshHomeScopedReadModels = (key: string, context: string) => {
   // The roster (`homes_config`) and the device→home pins
   // (`device_home_assignments`) decide which home ids resolve at all and which
   // devices a scoped read serves — neither writes any suffixed status key, so
@@ -197,7 +198,17 @@ const refreshHomeScopedReadModels = (key: string) => {
     invalidateApiCacheForScopedHomes(SETTINGS_UI_DEVICES_PATH);
     return;
   }
-  if (!SUFFIXED_HOME_PLAN_KEY_PREFIXES.some((prefix) => key.startsWith(prefix))) return;
+  const { selectedHomeId } = getHomeScope();
+  // The SELECTED area's own control-flag write (`capacity_dry_run:<id>`, the
+  // Limits toggle or a second WebView) repaints a visible Overview: its hero's
+  // simulation chip and hypothetical voice read that flag. The exact settings
+  // cache entry was already invalidated by the caller.
+  const isSelectedAreaSimulationKey = selectedHomeId !== MAIN_HOME_ID
+    && key === homeScopedSettingsKey(CAPACITY_DRY_RUN, selectedHomeId);
+  if (!SUFFIXED_HOME_PLAN_KEY_PREFIXES.some((prefix) => key.startsWith(prefix))) {
+    if (isSelectedAreaSimulationKey) refreshOverviewPlanIfVisible(context);
+    return;
+  }
   invalidateApiCacheForScopedHomes(SETTINGS_UI_PLAN_PATH);
   invalidateApiCacheForScopedHomes(SETTINGS_UI_POWER_PATH);
   // A scoped `ui_devices` payload derives `hasExhibitedExport` from that home's
@@ -208,16 +219,29 @@ const refreshHomeScopedReadModels = (key: string) => {
   if (key.startsWith(`${POWER_TRACKER_STATE}:`)) {
     invalidateApiCacheForScopedHomes(SETTINGS_UI_DEVICES_PATH);
   }
-  // The SELECTED area's own tracker write also repaints a visible Usage panel
-  // — this suffixed stream is that home's only freshness signal (the realtime
-  // `power_updated` push is Main's and is never widened). The key is REBUILT
-  // from the selected scope and compared whole, never parsed (the
-  // `notifyHomeLimitsSettingChanged` precedent); Main's mirror of this lives
-  // in `refreshPowerSettings` on the bare key.
-  const { selectedHomeId } = getHomeScope();
-  if (selectedHomeId !== MAIN_HOME_ID
-    && key === homeScopedSettingsKey(POWER_TRACKER_STATE, selectedHomeId)) {
-    refreshPowerDataIfVisible('settings.set', { force: true });
+  if (selectedHomeId === MAIN_HOME_ID) return;
+  // The SELECTED area's own tracker write repaints a visible Usage panel AND a
+  // visible Overview — this suffixed stream is that home's only freshness
+  // signal (the realtime `power_updated` push is Main's and is never widened),
+  // and BOTH surfaces consume the scoped power payload just invalidated above:
+  // the Overview hero's power, solar and freshness state come from it. Routing
+  // only Usage left an open Overview cached until some later status write, and
+  // the tracker key writes on its own — scheduled persistence, the hourly
+  // prune, a meter-swap freshness reset — with no status write beside it. The
+  // key is REBUILT from the selected scope and compared whole, never parsed
+  // (the `notifyHomeLimitsSettingChanged` precedent); Main's mirror of this
+  // lives in `refreshPowerSettings` on the bare key.
+  if (key === homeScopedSettingsKey(POWER_TRACKER_STATE, selectedHomeId)) {
+    refreshPowerDataIfVisible(context, { force: true });
+    refreshOverviewPlanIfVisible(context);
+    return;
+  }
+  // …and the SELECTED area's committed plan (`pels_status:<id>` — its plan
+  // service persists this on every commit, the area's only plan-freshness
+  // signal) repaints a visible Overview from the scoped reads just
+  // invalidated above. Main's Overview mirror is the `plan_updated` push.
+  if (key === homeScopedSettingsKey(PELS_STATUS, selectedHomeId)) {
+    refreshOverviewPlanIfVisible(context);
   }
 };
 
@@ -289,6 +313,15 @@ export const createSettingsUnsetHandler = () => (key: string) => {
   // Only `settings.set` consulted this set before, leaving switches asserting a
   // configuration the runtime had already dropped.
   if (DEVICE_CONTROL_KEYS.has(key)) refreshModeAndDeviceControls();
+  // The home-scoped read-model routes fire on unset too — the full mirror of
+  // the set path, because NONE of the keys that route reads is set-only: an
+  // unset `capacity_dry_run:<selectedId>` returns the runtime posture to its
+  // simulating boot default (an open area Overview must repaint, not keep the
+  // live-control voice); an unset `pels_status:<id>` / `power_tracker_state:
+  // <id>` retires an area's committed payloads (the cached scoped entries must
+  // drop with them); and an unset roster/pins blob de-resolves the scoped
+  // homes just like a rewrite does.
+  refreshHomeScopedReadModels(key, 'settings.unset');
 };
 
 export const createSettingsSetHandler = () => (key: string) => {
@@ -336,6 +369,6 @@ export const createSettingsSetHandler = () => (key: string) => {
 
   refreshPriceSettings(key);
   refreshPowerSettings(key);
-  refreshHomeScopedReadModels(key);
+  refreshHomeScopedReadModels(key, 'settings.set');
   refreshDailyBudgetSettings(key);
 };

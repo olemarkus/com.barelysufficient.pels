@@ -12,6 +12,7 @@ import { showToast } from './toast.ts';
 import { state } from './state.ts';
 import { refreshDeadlinesList } from './deadlinesList.ts';
 import { refreshOverviewPlanWithRescueGate } from './overviewRescueGate.ts';
+import { resetPlanSurfaceIfScopeChanged } from './plan.ts';
 import { refreshHomesOnHomesPanel } from './homesSettings.ts';
 import { clearUsageReturnLink } from './usageReturnLink.ts';
 import {
@@ -49,7 +50,25 @@ const DEVICE_DEPENDENT_TABS = new Set([
 const runTabActivationSideEffects = (tabId: string) => {
   if (tabId === 'overview') {
     document.dispatchEvent(new Event('overview-tab-activated'));
-    runLoggedTask(refreshOverviewPlanWithRescueGate(), 'Failed to refresh plan', 'showTab');
+    // Scope-aware panel activation hook (multi-home, the Usage pattern below):
+    // settle the meter-area roster — and a persisted or just-invalidated area
+    // pick — BEFORE resolving which home's plan to read. A roster-refresh
+    // failure keeps the last-good scope (abandon-grace) and the refresh runs.
+    runLoggedTask(
+      refreshHomeScope().then(() => {
+        // The scope may have moved while the Overview was HIDDEN (the
+        // visible-panel subscription in `uiRefreshTasks.ts` never fired for
+        // it): blank the stale home's committed render before the scoped
+        // refresh, so the old home's hero/cards never sit under the new
+        // home's scope bar. After the roster settles, deliberately — the
+        // reconcile itself can move the selection (persisted pick, deleted
+        // area), and the check must compare against the scope in force.
+        resetPlanSurfaceIfScopeChanged();
+        return refreshOverviewPlanWithRescueGate();
+      }),
+      'Failed to refresh plan',
+      'showTab',
+    );
     return;
   }
   if (tabId === 'electricity-prices' || tabId === 'price-aware-devices') {

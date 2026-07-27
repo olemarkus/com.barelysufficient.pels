@@ -5,7 +5,7 @@ import {
   primeApiCache,
   setHomeyClient,
 } from '../src/ui/homey.ts';
-import { createSettingsSetHandler } from '../src/ui/settingsChangeRouter.ts';
+import { createSettingsSetHandler, createSettingsUnsetHandler } from '../src/ui/settingsChangeRouter.ts';
 import {
   SETTINGS_UI_DEVICES_PATH,
   SETTINGS_UI_PLAN_PATH,
@@ -108,5 +108,24 @@ describe('settings-change router sweeps home-scoped read models', () => {
     createSettingsSetHandler()(`combined_prices:${AREA}`);
     expect(await isCached(scoped(SETTINGS_UI_PLAN_PATH), 'area-plan')).toBe(true);
     expect(await isCached(scoped(SETTINGS_UI_POWER_PATH), 'area-power')).toBe(true);
+  });
+
+  // The UNSET mirror: Homey delivers deletes as `settings.unset`, and an unset
+  // suffixed status/tracker (area retirement) or roster/pins blob de-resolves
+  // the same scoped read models a set rewrites — none of these keys is
+  // set-only. Without this route a deleted area's cached payloads would keep
+  // serving `homeScope: resolved` for the rest of the WebView session.
+  it.each([
+    [`${PELS_STATUS}:${AREA}`],
+    [`${POWER_TRACKER_STATE}:${AREA}`],
+    [HOMES_CONFIG],
+    [DEVICE_HOME_ASSIGNMENTS],
+  ])('a %s UNSET drops the scoped plan+power entries and keeps the bare ones', async (key) => {
+    createSettingsUnsetHandler()(key);
+
+    expect(await isCached(scoped(SETTINGS_UI_PLAN_PATH), 'area-plan')).toBe(false);
+    expect(await isCached(scoped(SETTINGS_UI_POWER_PATH), 'area-power')).toBe(false);
+    expect(await isCached(SETTINGS_UI_PLAN_PATH, 'bare-plan')).toBe(true);
+    expect(await isCached(SETTINGS_UI_POWER_PATH, 'bare-power')).toBe(true);
   });
 });

@@ -132,9 +132,11 @@ describe('visibility', () => {
   it('stays hidden on a page whose content does not honour the scope', async () => {
     // Honesty gate: a bar naming a home on a page still showing whole-home
     // figures would be a claim the page cannot pay. Later train PRs add their
-    // panel id as each surface learns the scope.
+    // panel id as each surface learns the scope. (`budget` stays Main-only —
+    // the daily budget is a Main-home constraint; its explicit scope line
+    // lands in the honest-states PR.)
     install([{ homeId: AREA_ID, name: 'Utleie' }]);
-    state.activePanel = 'overview';
+    state.activePanel = 'budget';
     await refreshHomeScope();
     await flushAsync();
     expect(bar().hidden).toBe(true);
@@ -211,8 +213,10 @@ describe('selection', () => {
     // ignored (stale-echo guard), so returning would otherwise remount the
     // picker already open, popping over the page with no user action.
     initHomeScope();
-    state.activePanel = 'overview';
-    document.dispatchEvent(new CustomEvent('pels:tab-shown', { detail: { tabId: 'overview' } }));
+    // 'budget' stays scope-unaware through the train (the daily budget is a
+    // Main-home constraint), so it is the stable navigate-away target.
+    state.activePanel = 'budget';
+    document.dispatchEvent(new CustomEvent('pels:tab-shown', { detail: { tabId: 'budget' } }));
     expect(bar().hidden).toBe(true);
     state.activePanel = 'limits';
     document.dispatchEvent(new CustomEvent('pels:tab-shown', { detail: { tabId: 'limits' } }));
