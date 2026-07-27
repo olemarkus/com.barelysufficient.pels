@@ -48,6 +48,21 @@ stepped-restore-wrapper / stepped-swap-completion refactors, the settings.test.t
 plan_budget truncation, the starvation confirm-sheet sub-parts, and the shared widget runtime.
 What remains open is below.*
 
+- [ ] **Residual re-shed freeze class: a charger with no observable switch still restamps the
+      global shed cooldown every rebuild.** The charger re-shed deadlock fix (skip + edge-triggered
+      stamp) is evidence-gated by design — absence of an observed `evcharger_charging` value means
+      "write and stamp" — so a flow-backed charger whose switch is never observed reproduces the
+      2026-07-26 house-wide `cooldown (shedding)` freeze unchanged. Two sub-parts: (a) surface or
+      synthesize switch evidence for flow-backed chargers (the flow report path already carries the
+      boolean); (b) `handleConfirmedBinaryCommand` stamps flow-backed off-confirmations with no
+      reassert-awareness — give it the same trusted-observed-off gate. Related refinement: the skip
+      gate keys off the raw switch while the stamp gate keys off the evidence record; a
+      producer-resolved `observedControlOff` bit on the executable action would collapse the two
+      truth sources. Persona: owner with a flow-integrated charger watching the same resetting
+      countdown the native-charger fix removed; hypothesis: the freeze class is configuration-shaped,
+      not device-shaped, and the flow-backed arm is untested in prod. Source: pels-runtime-reality
+      review of the deadlock fix, 2026-07-27. [P2]
+
 - [ ] **Homes UI: explain cached rows that stay locked after a refresh failure.**
       A failed `/ui_homes` refresh preserves the last-good rows and correctly disables mutations, but
       the ready/list view gives no visible reason its Add/Edit/Remove controls remain unavailable.
