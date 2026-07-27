@@ -1,10 +1,15 @@
 import { render } from 'preact';
 import type { SettingsUiDeviceLogEntry } from '../../../../contracts/src/settingsUiApi.ts';
+import { HOME_SCOPE_ACTIVITY_NOT_RECORDED } from '../../../../shared-domain/src/homeScopeCopy.ts';
 import { chipModifierForTone } from './chipModifier.ts';
 
 export type DeviceLogViewState =
   | { status: 'loading' }
   | { status: 'error' }
+  // Honest not-supported state (multi-home locked decision 5): the log is the
+  // Main home's recorder, so for a meter-area device the truthful answer is
+  // "not recorded yet", never an empty list that reads as a quiet device.
+  | { status: 'notRecorded' }
   | { status: 'ready'; entries: SettingsUiDeviceLogEntry[] };
 
 type DeviceLogViewProps = {
@@ -47,6 +52,9 @@ const DeviceLogRoot = ({ state, formatTimestamp }: DeviceLogViewProps) => {
   }
   if (state.status === 'error') {
     return <DeviceLogEmpty message="Activity log unavailable." />;
+  }
+  if (state.status === 'notRecorded') {
+    return <DeviceLogEmpty message={HOME_SCOPE_ACTIVITY_NOT_RECORDED} />;
   }
   if (state.entries.length === 0) {
     return <DeviceLogEmpty message="No activity recorded yet — the log starts fresh after a restart. Changes appear here as PELS limits or resumes this device." />;

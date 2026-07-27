@@ -3100,3 +3100,36 @@ persona but no current support-cost pressure; reframed to the P3 bar.*
       chosen to avoid importing the parent back; that is worth keeping, but the copies should be
       derived rather than retyped.
       Source: PR-3b adversarial review, 2026-07-26.
+- [ ] **Residual tracker contamination after meter-scope invalidation.** When the whole-home meter
+      selection changes, the weather collector forgets its meter-derived state — but the kWh
+      reconcile still trusts the power tracker first, and the tracker's retained daily totals for
+      the last ~30 days were measured under the OLD scope, so recent days can be re-vouched with
+      old-scope values until they age out. Bounded (the fit spans up to two years of days), but a
+      fit seeded with mixed-scope days is quietly wrong for weeks. Persona: owner who split their
+      home into meter areas mid-season. *Hypothesis:* the energy signature drifts silently right
+      after the scope change, when the owner is most likely to be watching it. Files:
+      `lib/weather/weatherCollector.ts` (kWh reconcile), power-tracker daily totals.
+      Source: multi-home finishing train, weather meter-scope PR. [P3]
+- [ ] **`operating_mode_changed` Flow trigger fires only for the global mode.** A sub-home's pinned
+      mode change (`operating_mode:<homeId>`) does not fire it; the card has a mode arg but no home
+      token. Widening it is flow-card home-scope territory (the `capacity_shortfall` `Home`-token
+      pattern). Persona: meter-area owner automating on mode changes. *Hypothesis:* a trigger that
+      silently ignores area pins reads as broken the moment areas pin modes — today only reachable
+      via a raw suffixed settings write, so this ripens when the per-home mode UI ships.
+      Source: multi-home finishing train, runtime mode-pinning PR. [P3]
+- [ ] **Suffixed `operating_mode:<homeId>` writes are not noop-deduped.** Suffixed keys bypass the
+      settings write skipper by design, so repeated identical writes cause repeated (cheap) bundle
+      rebuilds. Only matters if a future per-home mode UI writes eagerly on every render. Persona:
+      contributor building the per-home mode picker. *Hypothesis:* an eager writer turns every
+      repaint into a plan rebuild for that area. Files: `lib/utils/settingsWriteDedupe.ts`,
+      `setup/homeRuntime/homeRuntimeRegistry.ts`.
+      Source: multi-home finishing train, runtime mode-pinning PR. [P3]
+- [ ] **Usage footer promises a Main-only reset under area scope.** "Reset usage history lives under
+      Settings → Advanced" resets Main's tracker; a per-home reset through the bundle's persistence
+      API is not built. Either scope the footer copy per home or build the per-home reset (route it
+      through the bundle's persistence API, never a raw suffixed settings write — it collides with
+      `SuffixedTrackerPersistenceController`'s echo-suppression latch). Persona: meter-area owner
+      wanting a clean slate for one rental unit. *Hypothesis:* the owner follows the footer, resets
+      the wrong home's history, and loses Main's data without clearing the area's. Files:
+      `packages/settings-ui/src/ui/power.ts` (footer), `setup/homeRuntime/` (persistence API).
+      Source: multi-home finishing train, per-home Usage PR. [P3]

@@ -46,6 +46,9 @@ entirely remotely.
   reporting its own live power to Homey. This is the [Homey
   Energy](homey-energy.md) setup, not the Flow-driven power source: a Flow power
   reading has no meter identity, so PELS can't tell which area it belongs to.
+  PELS enforces this both ways: saving a meter area is refused while your power
+  source is Flow, and switching the source to Flow is refused while meter areas
+  are running. Removing an area works on any source.
 - **A meter for the area, already added to Homey.** Each meter area is built
   around one power **meter** that Homey reads as that area's total: a HAN/P1
   meter reader or another sensor-class power meter. An ordinary metering smart
@@ -58,7 +61,7 @@ entirely remotely.
   home's, and Main-home devices get limited by the area's usage. The
   [Giving the Main home its own meter](#giving-the-main-home-its-own-meter)
   section explains why. A few Homey setups read the whole home through an
-  aggregate that doesn't report a device id — there the picker has nothing to
+  aggregate that doesn't report a device id. There the picker has nothing to
   offer, and meter areas aren't supported yet; PELS says so when you try to
   save one.
 - **Your zones set up to match.** PELS assigns devices to a meter area by
@@ -92,7 +95,7 @@ meter** right away. Actually *limiting* them is a separate, deliberate step: a
 new area only simulates until you turn on control (see below), so nothing in it
 is turned down the moment you save.
 
-![The Multiple meters panel showing one meter area, "Rental unit", with its meter, zone and device count, a note that devices outside these areas belong to the Main home, and an Add meter area button](/screenshots/meter-areas/list.png)
+![The Multiple meters panel leading with a notice that meter areas are new, then one configured meter area, "Rental unit", with its meter, zone and device count, a note that devices outside these areas belong to the Main home, and an Add meter area button](/screenshots/meter-areas/list.png)
 
 ::: tip The Main home is automatic
 You never configure which devices belong to the Main home. It's simply
@@ -111,7 +114,7 @@ Each meter area gets its own limit under **Settings → Limits & safety**. Once
 you have at least one meter area, a **"Showing"** bar appears above that page.
 Pick the **Main home** or any meter area there, and the cap and margin below
 apply to whichever you've selected. The bar stays put as you scroll, so the
-home you're editing is always named on screen:
+part of the home you're editing is always named on screen:
 
 - **Hard cap (kW):** that area's grid tariff step. PELS keeps each hour's
   average power under this, the same way it does for the whole home.
@@ -142,12 +145,16 @@ to its limit.
 
 ![The same Limits & safety panel with "Control devices in this area" turned on (green), and a "Status now" card reading Active, with Power now 4.0 kW, Hard cap 8.0 kW, and "Limiting 1 device to stay under the cap"](/screenshots/meter-areas/limits-active.png)
 
+While only part of your home is simulating, the Settings page's **Simulation
+mode** entry shows a **Partly on** chip, and a banner names the part still
+simulating, so a half-live setup is never mistaken for a fully live one.
+
 ::: tip Simulate first
 Simulation is the safe way to trial a new area. Leave control off for a while
 and watch the area's own status on its **Limits & safety** card (power now, and
 what PELS *would* limit to hold the cap), then turn control on with confidence.
-The **Usage** tab follows the shown home too: pick the area in the **Showing**
-bar to see its own recorded history.
+The **Overview** and **Usage** tabs follow the shown home too: pick the area in
+the **Showing** bar to see its live status and its own recorded history.
 :::
 
 ## Giving the Main home its own meter
@@ -198,11 +205,15 @@ follow within about half a minute; a change that would raise a device's
 setpoint waits until PELS has a live reading from the area's meter, the same
 rule as below.
 
-Your whole-home features stay whole-home. The daily energy budget, price-based
-load shifting, and smart tasks plan your Main-home devices, while each meter
-area runs on its own cap, safety margin, and priorities. Smart tasks currently
-run on Main-home devices, and PELS tells you if you set one on a device that
-lives in a meter area.
+The **Devices** and **Modes** lists label every device with the part of the
+home it belongs to, so you can always see which meter a device counts against.
+
+Some PELS features stay with the **Main home**. The daily energy budget,
+price-based load shifting, and smart tasks plan and measure your Main-home
+devices, while each meter area runs on its own cap, safety margin, and
+priorities. The Budget and Smart tasks pages say so once you have meter areas,
+and PELS tells you if you set a smart task on a device that lives in a meter
+area.
 
 Flow cards split three ways. Cards that act on a **device** work wherever that
 device lives, including inside a meter area: turning power-limit control on or

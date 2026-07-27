@@ -51,6 +51,7 @@ const buildProps = (overrides: Partial<BudgetOverviewProps> = {}): BudgetOvervie
   allocationWarning: null,
   priceLevelChip: null,
   weatherInsight: null,
+  mainHomeScopeLine: null,
   adjustReturnTarget: 'plan',
   onReturnToSettings: () => {},
   onShowUsage: () => {},

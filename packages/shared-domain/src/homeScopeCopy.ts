@@ -12,6 +12,8 @@
  * Import this module directly — there is no shared-domain barrel.
  */
 
+import { HOME_LIMITS_CONTROL_LABEL } from './homeLimitsCopy';
+
 /** Lead word before the selected home's name: "Showing [Main home ▾]". */
 export const HOME_SCOPE_BAR_LABEL = 'Showing';
 
@@ -62,3 +64,54 @@ export const HOME_SCOPE_OVERVIEW_UNAVAILABLE_HEADLINE = 'Status couldn’t be re
 
 export const HOME_SCOPE_OVERVIEW_UNAVAILABLE_BODY = 'PELS couldn’t read the current status for this part of the home '
   + 'right now. Check back in a moment, or pick another part of the home above.';
+
+// ── Honest scope / not-supported-yet states (multi-home locked decision 1) ──
+//
+// Surfaces that do NOT follow the shell's home picker say so once meter areas
+// are in use: a Main-home page carries a scope line naming the Main home, and
+// a feature that does not cover meter areas yet says so explicitly instead of
+// serving an empty payload that reads as healthy. All four strings render only
+// while at least one ACTIVE meter area exists (`areMeterAreasInUse`) — for a
+// single-meter home, and for a held pre-GA config whose devices still belong
+// to the Main home, every one of them would be noise.
+
+/**
+ * Budget tab scope line. The daily budget is a MAIN-HOME budget (locked
+ * decision 3): `createDailyBudgetService` binds the Main home's tracker and
+ * capacity, so once areas run on their own meters the budget plans and
+ * measures the Main home only. No aggregation exists, so the line must say
+ * "Main home", never "whole home".
+ */
+export const HOME_SCOPE_BUDGET_MAIN_ONLY_LINE = 'Your daily budget covers the Main home. '
+  + 'Each meter area runs on its own cap and isn’t counted here.';
+
+/**
+ * Smart tasks list notice (locked decision 4): smart tasks are refused on a
+ * device that lives in a meter area, so the page says so up front rather than
+ * letting the refusal be the first signal.
+ */
+export const HOME_SCOPE_SMART_TASKS_MAIN_ONLY_NOTICE = 'Smart tasks run on Main home devices. '
+  + 'A device in a meter area can’t have a smart task yet.';
+
+/**
+ * Device-detail honest states for a device that belongs to a meter area
+ * (locked decision 5): the diagnostics recorder and the activity log are the
+ * Main home's, so for an area device both sections would serve an empty
+ * payload that reads as healthy ("No diagnostics recorded yet"). Say what is
+ * actually true — not measured yet — and that normal control is unaffected.
+ */
+export const HOME_SCOPE_DIAGNOSTICS_NOT_MEASURED = 'Not measured for meter areas yet. '
+  + 'PELS limits and resumes this device normally, but doesn’t record diagnostics for it yet.';
+
+export const HOME_SCOPE_ACTIVITY_NOT_RECORDED = 'Not recorded for meter areas yet. '
+  + 'PELS limits and resumes this device normally, but doesn’t keep an activity log for it yet.';
+
+/**
+ * Simulation-mode settings page scope note. The page carries only the Main
+ * home's switch, yet the Settings hub's `Partly on` chip routes here for any
+ * split posture — so the page must name where the rest of the control lives.
+ * Composed from the real toggle's label so the pointer cannot drift from the
+ * control it names.
+ */
+export const HOME_SCOPE_SIMULATION_MAIN_ONLY_NOTE = 'This switch covers the Main home. '
+  + `Each meter area has its own “${HOME_LIMITS_CONTROL_LABEL}” switch, under Limits & safety.`;

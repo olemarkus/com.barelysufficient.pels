@@ -176,6 +176,19 @@ export const refreshHomeBadges = async (): Promise<void> => {
   }
 };
 
+/**
+ * Whether the device belongs to a meter area per the last-good membership
+ * index. Gates the device-detail honest states (diagnostics + activity log are
+ * the MAIN home's recorders, so an area device would otherwise serve an empty
+ * payload that reads as healthy). Inherits the index's own gating: a held
+ * pre-GA config or a single-home install resolves every device to `false`.
+ */
+export const isDeviceInMeterArea = (deviceId: string): boolean => (
+  // Own-key guard as in `resolveHomeBadge`: an inherited-property device id
+  // must read as Main home, never resolve Object.prototype machinery.
+  Object.prototype.hasOwnProperty.call(index.areaHomeIdByDeviceId, deviceId)
+);
+
 type HomeBadge = { label: string; tooltip: string };
 
 /** `null` ⇒ this install badges nothing (no meter area is in use). */

@@ -54,6 +54,7 @@ import {
   resolveSimulationBannerContent,
   type SimulationBannerScope,
 } from '../../../shared-domain/src/simulationPosture.ts';
+import { syncSimulationHomeScopeNote } from './simulationScopeNote.ts';
 import type { SettingsUiPowerPayload } from '../../../contracts/src/settingsUiApi.ts';
 import { logSettingsError } from './logging.ts';
 import { showToast } from './toast.ts';
@@ -236,6 +237,9 @@ export const syncDryRunBannerVisibility = (): void => {
     dryRunBanner.hidden = content === null
       || isSimulationBannerSuppressedOnPanel(content.scope, state.activePanel);
   }
+  // Honest Simulation-page scope note (multi-home): synced here because every
+  // input it depends on (the active-area roster) already drives this function.
+  syncSimulationHomeScopeNote(state.meterAreaSimulation.length > 0);
 };
 
 // Generation fence, mirroring `refreshHomeScope`: rapid suffixed-flag or

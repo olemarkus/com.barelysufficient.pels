@@ -4,6 +4,7 @@ import type {
   ResolvedDeferredObjectivePlanHistoryEntry,
 } from '../../contracts/src/deferredObjectivePlanHistory.ts';
 import { toResolvedPlanHistoryEntry } from '../../shared-domain/src/deferredPlanHistoryResolvedView.ts';
+import { HOME_SCOPE_SMART_TASKS_MAIN_ONLY_NOTICE } from '../../shared-domain/src/homeScopeCopy.ts';
 import {
   renderDeadlinesList,
   type DeadlinesListCard,
@@ -46,6 +47,49 @@ afterEach(() => {
 });
 
 describe('DeadlinesList', () => {
+  it('renders the honest Main-only notice on a populated list once meter areas are in use', () => {
+    // Multi-home locked decision 4: smart tasks are refused on a device in a
+    // meter area, so the page must say so up front rather than letting the
+    // refusal be the first signal.
+    const mount = mountIntoBody();
+    renderDeadlinesList(mount, {
+      status: 'ready',
+      cards: [buildCard()],
+      meterAreasInUse: true,
+    });
+    const notice = mount.querySelector('#deadlines-home-scope-notice');
+    expect(notice?.textContent).toBe(HOME_SCOPE_SMART_TASKS_MAIN_ONLY_NOTICE);
+  });
+
+  it('renders the honest Main-only notice on the empty (between-runs) state too', () => {
+    // The notice matters most BEFORE a task exists — an area owner about to
+    // compose a Flow card for an area device reads it here.
+    const mount = mountIntoBody();
+    renderDeadlinesList(mount, {
+      status: 'ready',
+      cards: [],
+      historyPresent: true,
+      meterAreasInUse: true,
+    });
+    expect(mount.querySelector('#deadlines-home-scope-notice')).not.toBeNull();
+  });
+
+  it('renders no Main-only notice DOM on a single-home install (flag absent or false)', () => {
+    const mount = mountIntoBody();
+    renderDeadlinesList(mount, {
+      status: 'ready',
+      cards: [buildCard()],
+    });
+    expect(mount.querySelector('#deadlines-home-scope-notice')).toBeNull();
+
+    renderDeadlinesList(mount, {
+      status: 'ready',
+      cards: [buildCard()],
+      meterAreasInUse: false,
+    });
+    expect(mount.querySelector('#deadlines-home-scope-notice')).toBeNull();
+  });
+
   it('maps medium confidence to the live-hero chip vocabulary while learning on a recoverable card', () => {
     const mount = mountIntoBody();
     renderDeadlinesList(mount, {
