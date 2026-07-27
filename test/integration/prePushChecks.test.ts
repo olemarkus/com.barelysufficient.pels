@@ -250,6 +250,53 @@ describe('pre-push checks script', () => {
     expect(result.stdout).toContain('pre-push: running npm run test:unit');
   });
 
+  it('runs the integration tier when the machine-wide test lock changes', () => {
+    const { dir } = createFakeGitDir();
+    const result = runPrePush({
+      PATH: `${dir}:${process.env.PATH ?? ''}`,
+      FAKE_GIT_LOG: path.join(dir, 'git.log'),
+      FAKE_MERGE_BASE_VALUE: 'base-sha',
+      FAKE_DIFF_RANGE: 'base-sha..local-sha',
+      FAKE_DIFF_OUTPUT: 'scripts/lib/test-lock.mjs',
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('pre-push: running npm run ci:checks');
+    expect(result.stdout).toContain('pre-push: running npm run test:integration');
+    expect(result.stdout).not.toContain('pre-push: running npm run test:unit\n');
+  });
+
+  it('runs the integration tier when a git hook itself changes', () => {
+    const { dir } = createFakeGitDir();
+    const result = runPrePush({
+      PATH: `${dir}:${process.env.PATH ?? ''}`,
+      FAKE_GIT_LOG: path.join(dir, 'git.log'),
+      FAKE_MERGE_BASE_VALUE: 'base-sha',
+      FAKE_DIFF_RANGE: 'base-sha..local-sha',
+      FAKE_DIFF_OUTPUT: '.husky/pre-push',
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('pre-push: running npm run test:integration');
+    // The trailing newline matters: without it this also matches test:unit:tz.
+    expect(result.stdout).not.toContain('pre-push: running npm run test:unit\n');
+  });
+
+  it('announces each lane once when several rules select the same one', () => {
+    const { dir } = createFakeGitDir();
+    const result = runPrePush({
+      PATH: `${dir}:${process.env.PATH ?? ''}`,
+      FAKE_GIT_LOG: path.join(dir, 'git.log'),
+      FAKE_MERGE_BASE_VALUE: 'base-sha',
+      FAKE_DIFF_RANGE: 'base-sha..local-sha',
+      FAKE_DIFF_OUTPUT: 'test/integration/planExecutor.test.ts\n.husky/pre-push',
+    });
+
+    expect(result.status).toBe(0);
+    const integrationRuns = result.stdout.split('pre-push: running npm run test:integration').length - 1;
+    expect(integrationRuns).toBe(1);
+  });
+
   it('runs only ci:checks for unrelated changes like docs', () => {
     const { dir } = createFakeGitDir();
     const result = runPrePush({

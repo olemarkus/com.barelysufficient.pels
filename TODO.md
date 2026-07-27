@@ -2593,3 +2593,58 @@ persona but no current support-cost pressure; reframed to the P3 bar.*
       narrow it to `string | null`, or give the "never observed" case a real consumer and say what that
       consumer does differently. Behaviour-neutral either way. Source: multi-home boundary-hygiene audit of
       the GA train, 2026-07-25. File: `setup/homeMembership.ts`.
+- [ ] **The pre-push hook still self-contends: four lanes in parallel on 8 cores.**
+      *Persona:* anyone pushing, once the machine-wide lock has removed every *other* worktree
+      as a cause of failure. *Hypothesis:* `scripts/pre-push-checks.mjs` fans `ci:checks`,
+      `test:integration`, `test:unit:tz` and `test:ui:unit` out concurrently, and each forks
+      further. Observed twice on 2026-07-27, both on an otherwise idle box with the machine-wide
+      lock held: first `pvDeviceLearning.test.ts` failing one case at **10371 ms**; then, on the
+      next push, that same spec timing out at 10 s *and* `test/settings.test.ts` timing out at
+      30 s in a different lane. Run alone that spec takes **1.9 s** and its whole tier 27 s.
+      That is the same timeout-shaped false failure the lock exists
+      to stop, sourced from inside one run instead of between two — and it is the shape that
+      teaches people to reach for `--no-verify`. Pre-existing, not introduced by the lock; the lock
+      simply removes the louder cause and leaves this one visible. Fix is a concurrency cap in
+      `runParallel` (lanes, not `Infinity`), or making the heavy lanes sequential and keeping only
+      `ci:checks` alongside. Measure before changing: sequential may well be *faster*, as it was
+      between worktrees. *P3.* File: `scripts/pre-push-checks.mjs`.
+- [ ] **Sweep the test lock's stray staging and probe files out of `/tmp`.**
+      *Persona:* maintainer who runs `ls /tmp` after a hard-killed run and finds
+      `pels-test-lock.1000.json.staging.*` litter. *Hypothesis:* `stageRecord` writes a private
+      `.staging.*` file that `writeRecord` unlinks in a `finally` and `takeOver` either consumes
+      with `rename` or unlinks in its own `finally`, alongside the `.probe.*` link — so a leak
+      needs a SIGKILL inside a window of a few syscalls, or a `finally` whose own `unlinkSync`
+      throws. A stray is ~200 bytes and is never read by anything (only the lock entry is), so
+      this is cosmetic accumulation on a `/tmp` that reboots clear, not a correctness issue. Fix,
+      if it ever matters, is an opportunistic sweep of siblings older than the heartbeat grace
+      during acquire. *P3.* Source: CodeRabbit on PR #1899, 2026-07-26.
+      File: `scripts/lib/test-lock.mjs`.
+- [ ] **Direct coverage for the test lock's helpers, `takeOver` above all.**
+      *Persona:* maintainer refactoring `takeOver` or changing the `decideMode` truth table.
+      *Hypothesis:* every spec today drives the module through the spawned CLI, which asserts
+      *outcomes* — and the takeover outcome ("taking over X", exit 0) is identical before and
+      after the swap rewrite, so nothing in the suite fails if `takeOver` is reverted to the old
+      remove-then-recreate shape. A direct call has a race-free discriminator: against a stale
+      record the new `takeOver` returns `true` with our own token published, where the old one
+      returned `undefined` leaving the lock path **empty**. Same gap, lower stakes, for the pure
+      helpers (`formatDuration`, `decideMode`, `isAbandoned`, `describeHolder`, `resolveLockFile`),
+      which per `notes/testing-taxonomy.md` want a unit-tier table test rather than a process per
+      case. The obstacle is real: `tsconfig.json` sets `allowJs: false`, so a TS spec cannot import
+      the `.mjs` without a small `scripts/lib/test-lock.d.mts`, and `takeOver` would have to be
+      exported (check `knip` does not then flag it as test-only). The same gap covers
+      `scripts/with-test-lock.mjs`'s teardown: signal forwarding to the process group and the
+      pre-release drain are deliberately redundant, so no CLI-level assertion separates them —
+      reverting `process.kill(-pid)` to `child.kill()` leaves the suite green because the drain
+      still reaps the tree. The one observable difference (the drain announcing itself) is a
+      race under load and was removed for that reason. *P2 — the structural argument holds today
+      (`takeOver` contains no operation that removes or moves the lock entry), but nothing stops
+      the next refactor from reintroducing one.* Source: adversarial review of the test-lock PR,
+      2026-07-26 and 2026-07-27.
+- [ ] **Delete the dead `.githooks/` directory.**
+      *Persona:* contributor who finds `.githooks/pre-commit` and believes it is the hook that runs.
+      *Hypothesis:* husky drives everything from `.husky/`, and `core.hooksPath` is not set to
+      `.githooks`, so `.githooks/pre-commit` is dead code — it still calls `npm run build` plus a
+      Puppeteer UI suite that no longer exists. It is now actively misleading, because `AGENTS.md`
+      documents that "both git hooks" take the machine-wide test lock and this one does not.
+      Confirm no contributor doc points at it, then remove. Source: adversarial review of the
+      test-lock PR, 2026-07-26.

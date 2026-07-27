@@ -1,2 +1,3 @@
-npx lint-staged
-node scripts/pre-commit-extra-checks.mjs
+# A commit is a test run: lint-staged runs `vitest related` per tier. Hold the
+# machine-wide test lock for the whole hook so it is taken once, not per step.
+node scripts/with-test-lock.mjs --label git-commit -- npm run hooks:pre-commit

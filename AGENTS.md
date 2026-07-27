@@ -141,6 +141,9 @@ npm run test:e2e            # Settings-UI Playwright E2E (chromium + firefox mob
 npm run ci:full             # Complete CI: checks + runtime + settings UI + Playwright
 ```
 
+Every entry point above serializes against the other worktrees on this machine — see
+[One heavy run at a time](#one-heavy-run-at-a-time-the-machine-wide-test-lock).
+
 **Test taxonomy.** Tests are classified into three tiers — **unit** (one pure function, no I/O), **integration** (one layer, only outward seams mocked via shared helpers), **e2e** (nothing internal mocked; driven through an external seam — Homey SDK for runtime e2e, the UI for Playwright e2e — and observed through that seam + structured logs, never parsed prose). Every spec lives in `test/unit/`, `test/integration/`, or `test/e2e/`; shared mocks/helpers/setup stay at `test/` root. jsdom widget-render specs are unit-tier and self-declare their environment via a `// @vitest-environment jsdom` pragma. Before adding or moving a test, read `notes/testing-taxonomy.md` (and `test/AGENTS.md` for the short rules); bump import depth when moving a spec, then run `knip`.
 
 **Coverage threshold:** 80% across branches, functions, lines, statements, enforced by the `coverage` CI job (`npm run test:coverage`). Collected from `app.ts`, `api.ts`, `lib/**`, `flowCards/**`, and `drivers/**`.
@@ -149,6 +152,106 @@ npm run ci:full             # Complete CI: checks + runtime + settings UI + Play
 - Unit tests must have a narrow, specific purpose — avoid adding broad checks already covered by integration or regression tests.
 - Use shared, type-safe mock helpers instead of ad-hoc `as any` casts so mocks stay in sync with the production API. Runtime tests use the mock SDK in `test/mocks/homey.ts`; if a runtime change uses a new Homey SDK API, update that mock.
 - **Deferred-objective / planner e2e simulate only the Homey SDK boundary** (device temperature/SoC, prices, clock) and drive the real bridge + recorder + admission — never mock PELS internals like `aheadOfHourMilestone` or the fresh/frozen dispatch. Mocking those confirms your assumptions instead of the system's behaviour (it once turned a non-existent cold-start "catastrophe" into a phantom P0). See `lib/objectives/deferredObjectives/AGENTS.md` and `test/e2e/deferredObjectiveColdStartSdkE2E.test.ts`.
+
+### One heavy run at a time (the machine-wide test lock)
+
+Several PELS worktrees are usually live on the same 8-core box. Vitest forks per tier and
+Playwright adds browser projects, so **two concurrent runs starve each other and fail in ways
+that are indistinguishable from real regressions** — timeouts, crash-shaped errors, and even
+plain assertion failures on an unmodified base. Every heavy entry point therefore runs under a
+machine-wide advisory mutex (`scripts/with-test-lock.mjs`, `scripts/lib/test-lock.mjs`).
+
+**Serializing is faster than sharing.** Measured 2026-07-26 on the maintainer's 8-core box,
+same command, same commit: `npm run ci:checks` took **156 s** on a clear machine and **543 s**
+with one other worktree mid-suite, 3.5x slower. A Playwright matrix took 21 min under
+contention against a usual 8, and produced 29 failures, every one of which passed in isolation.
+Queueing behind someone else's run is not a fairness tax you pay for reliability; it finishes
+sooner in wall-clock too. (Figures are one-off and will drift as the suite grows; the ordering
+is the durable part.)
+
+- **Locked:** every vitest lane (`test:unit`, `test:integration`, `test:e2e:runtime`,
+  `test:unit:tz`, `test:coverage`, `test:unit:ci`), `test:ui`, the Playwright entry points
+  (`test:e2e`, `test:e2e:ui`, `ci:test:playwright*`), the aggregates (`ci`, `ci:full`,
+  `ci:test:runtime`), `ci:checks`, and **both git hooks**. `ci:checks` is in because its 16-way
+  parallel tsc/eslint/knip fan-out saturates the box just as hard as a vitest tier, only for
+  less time — and re-entrancy makes it free inside `ci` and the hooks.
+- **Not locked:** `npm run build`, `homey app validate`, docs builds. Short, mostly
+  single-process. `ci:full` deliberately builds *before* it takes the lock, so the exclusive
+  window others queue behind covers only the test work.
+- **The lock wraps entry points, not every possible invocation.** A direct `npx vitest …`, or
+  an internal step script such as `ci:steps` or `hooks:pre-commit`, runs whatever it runs; the
+  wrapped `npm run` scripts are the contract. Use them.
+- **A commit and a push are test runs.** `.husky/pre-commit` runs `vitest related` per tier via
+  lint-staged, and `.husky/pre-push` fans out `ci:checks` plus every tier in parallel. Both take
+  the lock for the whole hook, so **committing while someone else's suite runs will wait**. That
+  is intended: it is what stops the pre-push gate from being eroded into `--no-verify`.
+
+**Waiting is the default.** A blocked run prints who holds the lock — worktree, script label,
+pid, and how long it has been running — then repeats every 30 s, so you can decide whether to
+wait or intervene. Ctrl-C aborts. After `PELS_TEST_LOCK_TIMEOUT_MS` (default 60 min) it gives up
+with exit code **75**, deliberately not `1`, so a lock timeout never reads as a test failure.
+
+```bash
+npm run test:lock:status             # who holds the lock right now (or "free")
+npm run test:lock:release            # break-glass: drop a record whose run is gone
+PELS_TEST_LOCK=0 npm run test:unit   # escape hatch: skip the lock entirely
+```
+
+**Re-entrancy:** the holder exports its lock token in the environment, and every child process
+inherits it, so nested invocations (`ci` → `ci:checks`, the pre-push hook → four parallel tiers)
+pass straight through instead of blocking on their own ancestor. A run whose inherited token no
+longer matches the live record acquires normally rather than assuming a hold it does not have.
+
+**Stale locks:** the lock is a per-uid record under `/tmp` — deliberately *not* `os.tmpdir()`,
+which follows `TMPDIR`, and agent sessions here export a per-session scratchpad `TMPDIR` that
+would give each of them a private lock and silently switch the mutex off. Pure Node, no
+`flock(1)`, so macOS behaves like Linux. A holder is taken over when its pid stops answering
+`kill(pid, 0)` *and* its record is at least one heartbeat old, when its record is unreadable
+*and* has not been touched for 2 min, or when its heartbeat alone has been silent for 2 min —
+that last rule is what covers pid reuse. A crashed or SIGKILLed run therefore cannot wedge the
+machine, **with one exception**: nothing can distinguish a live, still-beating wrapper from a
+healthy long run, so such a holder is never taken over, however pointless its hold has become.
+
+That exception is reachable. If a supervisor kills the *shim* pid rather than the process group
+(`node` here is a Volta shim that forwards neither SIGTERM nor SIGHUP), the real wrapper is
+orphaned and keeps beating a lock nobody is waiting on. `npm run test:lock:release` is the
+break-glass for exactly this, and it names the pid to stop first.
+
+**Releasing means nothing is left running.** The wrapper puts the command in its own session
+(`detached` is `setsid`, so a new process group *and* a new session), signals the *group* on
+SIGINT/SIGTERM/SIGHUP, then, once the command exits, waits for the group to drain — escalating
+SIGTERM then SIGKILL — before it releases. Without that, killing `-- npm run ci:steps`
+non-interactively stops npm while the vitest workers under it keep running, and the lock goes
+free next to a live suite. What the new session costs:
+
+- The command no longer shares this terminal's foreground group, so **Ctrl-C** reaches it via
+  the wrapper's forwarding rather than from the TTY directly, and a terminal **hangup** likewise
+  only arrives if the wrapper is alive to forward it.
+- **Ctrl-Z suspends the wrapper only.** The shell hands back the prompt while the run keeps
+  saturating the box and holding the lock. Stop a run with Ctrl-C, not Ctrl-Z.
+- The command cannot open `/dev/tty`, so nothing under the lock may prompt through the
+  controlling terminal (an ssh passphrase, `sudo`, a git credential fallback). Reading fd 0 is
+  unaffected, as are TTY detection and colour.
+- Anything that calls `setsid` for *itself* leaves the group and is out of reach — including a
+  nested wrapper, which puts *its* command in a further session. Each wrapper drains its own
+  group, so `npm run ci` is covered layer by layer; only SIGKILLing an inner wrapper escapes.
+
+**Do not replace this with a `ps` grep.** Two properties make it work, and process-sniffing has
+neither. It **acquires atomically**: the record is staged and then `link()`ed into place, which
+fails outright when the lock is held, so there is no observe-then-act window where two waiters
+both conclude the box is free and start (hand-coordinating by `ps` failed exactly that way twice
+in one evening — and once with a `ps` check taken 250 s before the run, on a box confirmed idle,
+which siblings then joined mid-run). Taking an abandoned record over never empties the lock path
+either: the stealer pins the entry with `link()`, checks it is still the inode it judged, and
+`rename()`s its own record over it in one step, so no ordinary waiter can slip into a gap. Two
+waiters that judge the *same* record abandoned in the same instant remain a two-syscall
+preemption, not an excluded case — POSIX exposes no compare-and-swap on a directory entry.
+And it **names a holder**, so a waiter can tell a sibling worktree's suite from machine noise;
+"wait until `ps` looks quiet" is unsatisfiable on a box that is near-continuously busy, whereas
+"wait for this named run to release" always terminates.
+
+**CI is a no-op.** GitHub runners are isolated, so serializing there would only slow the matrix;
+the lock detects `CI` and skips. `PELS_TEST_LOCK=1` forces it back on if you need to test it there.
 
 ### Linting and Checks
 

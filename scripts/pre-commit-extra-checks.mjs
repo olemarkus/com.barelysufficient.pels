@@ -28,6 +28,12 @@ if (hasStagedFile(stagedFiles, ['.husky/pre-commit', 'scripts/pre-commit-extra-c
   commands.push(['npx', ['vitest', 'run', '--config', 'vitest.config.integration.mts', 'test/integration/prePushChecks.test.ts']]);
 }
 
+// The lock is what keeps concurrent runs from destroying each other, so a change
+// to it has to prove itself on the way in — including in the hook that uses it.
+if (hasStagedFile(stagedFiles, ['.husky/pre-commit', '.husky/pre-push', 'scripts/with-test-lock.mjs', 'scripts/lib/test-lock.mjs'])) {
+  commands.push(['npx', ['vitest', 'run', '--config', 'vitest.config.integration.mts', 'test/integration/testLock.test.ts']]);
+}
+
 if (hasStagedFile(stagedFiles, ['.husky/pre-commit', 'scripts/pre-commit-extra-checks.mjs', 'scripts/pre-commit-typecheck.mjs'])) {
   commands.push(['node', ['scripts/pre-commit-typecheck.mjs', 'test/integration/prePushChecks.test.ts']]);
 }

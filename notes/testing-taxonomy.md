@@ -193,3 +193,11 @@ When in doubt about a spec's tier, apply the two border-case rules above; if it 
 obvious, it is probably an integration test wearing a unit test's clothes. Moving a spec into a
 tier folder bumps its import depth (see the rule above) — run `knip` afterward to catch
 type-only-import depth errors, which esbuild silently strips so vitest won't.
+
+## Repo tooling is integration-tier
+
+Specs that drive a repo tooling script through its real CLI (`scripts/pre-push-checks.mjs`,
+`scripts/with-test-lock.mjs`) are **integration**: one layer end to end, spawning the real
+script against a temp fixture. They are not runtime e2e — that tier is reserved for specs
+driven through the Homey SDK boundary, and its "structured logs only, never parse prose" rule
+does not apply to a CLI whose stderr *is* its contract.

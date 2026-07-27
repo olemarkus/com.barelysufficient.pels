@@ -49,7 +49,13 @@ npm run test:integration     # test/integration/ only (fast)
 npm run test:e2e:runtime     # test/e2e/ only (fast, 30s timeout)
 npm run test:unit:tz         # test/tz/ timezone lane
 npm run test:coverage        # all tiers in one pass + 80% coverage gate
+npm run test:lock:status     # who else on this machine is mid-run
 ```
+
+Every lane takes the machine-wide test lock and waits for any other worktree's run to finish,
+so two sessions never starve each other into fake failures. Committing and pushing count as
+test runs too. See the root `AGENTS.md` ("One heavy run at a time") for the wait behaviour,
+the `PELS_TEST_LOCK=0` escape hatch, and the exit-75 timeout.
 
 Every spec is classified into a tier folder; there are no flat `test/*.test.ts` specs left. A
 new spec lands directly in its tier folder (see `notes/testing-taxonomy.md`).

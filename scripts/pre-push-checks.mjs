@@ -42,6 +42,14 @@ const MANIFEST_PATHS = [
   'scripts/check-homey-packaging.mjs',
 ];
 
+// The machine-wide test lock gates this very hook, so it has to be exercised
+// whenever it (or a hook that holds it) changes.
+const TEST_LOCK_PATHS = [
+  '.husky/',
+  'scripts/with-test-lock.mjs',
+  'scripts/lib/test-lock.mjs',
+];
+
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim();
 
 const tryGit = (...args) => {
@@ -136,11 +144,21 @@ const planCommands = (changedFiles) => {
     });
   }
 
+  if (matchesAnyPath(changedFiles, TEST_LOCK_PATHS)) {
+    commands.push({ label: 'test:integration', command: 'npm', args: ['run', 'test:integration'] });
+  }
+
   if (matchesAnyPath(changedFiles, MANIFEST_PATHS)) {
     commands.push({ label: 'validate', command: 'npm', args: ['run', 'validate'] });
   }
 
-  return commands;
+  // Keep the first entry per label: two rules selecting one lane must run it once,
+  // and the earlier rule's arguments are the ones its own test pins.
+  const byLabel = new Map();
+  for (const entry of commands) {
+    if (!byLabel.has(entry.label)) byLabel.set(entry.label, entry);
+  }
+  return [...byLabel.values()];
 };
 
 const announce = (commands) => {

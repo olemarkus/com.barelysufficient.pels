@@ -1,1 +1,4 @@
-node scripts/pre-push-checks.mjs "$@"
+# A push is a test run: pre-push-checks fans out ci:checks plus every vitest
+# tier in parallel. The hook owns the lock; the wrapped npm scripts it spawns
+# inherit the hold and pass straight through.
+node scripts/with-test-lock.mjs --label git-push -- node scripts/pre-push-checks.mjs "$@"
