@@ -11,6 +11,8 @@ import { updateStaleDataStatusFromPowerPayload } from './capacity.ts';
 import {
   getHomeyClient,
   invalidateApiCache,
+  invalidateApiCacheForAllHomes,
+  invalidateApiCacheForScopedHomes,
   primeApiCache,
   updateApiCache,
 } from './homey.ts';
@@ -58,6 +60,15 @@ const handlePlanUpdated = (plan: unknown) => {
     );
     return;
   }
+  // `plan_updated` is the MAIN home's stream and stays that way: only the main
+  // plan service drives it (`lib/plan/planServiceDeps.ts`, `homeScope.ts`).
+  // Widening it would repaint Main's Overview from a sub-home's device set in a
+  // Homey-cached stale WebView. So the push re-seeds the bare entry only, and
+  // the sub-home entries it cannot speak for are dropped rather than left to
+  // serve a plan from before this rebuild. A selected sub-home refetches on its
+  // next read; its own freshness signal is the suffixed `settings.set` stream
+  // (`pels_status:<homeId>`), routed in `settingsChangeRouter.ts`.
+  invalidateApiCacheForScopedHomes(SETTINGS_UI_PLAN_PATH);
   primeApiCache(SETTINGS_UI_PLAN_PATH, { plan: parsedPlan });
   invalidateApiCache(SETTINGS_UI_DEVICE_DIAGNOSTICS_PATH);
   // The device-log payload is recorded backend-side on the same plan pass, so
@@ -118,6 +129,9 @@ const handleDevicesUpdated = () => {
 const handlePowerUpdated = (power: unknown) => {
   const payload = power as SettingsUiPowerPayload;
   const hasFullTracker = Boolean(payload?.tracker && typeof payload.tracker === 'object');
+  // Main's stream, like `plan_updated` — never widened. Drop the sub-home
+  // entries this push does not refresh; the bare entry is seeded/patched below.
+  invalidateApiCacheForScopedHomes(SETTINGS_UI_POWER_PATH);
   if (hasFullTracker) {
     primeApiCache(SETTINGS_UI_POWER_PATH, payload);
   } else {
@@ -169,7 +183,7 @@ export const initRealtimeListeners = () => {
 
 export const startStaleDataRefreshInterval = () => {
   setInterval(() => {
-    invalidateApiCache(SETTINGS_UI_POWER_PATH);
+    invalidateApiCacheForAllHomes(SETTINGS_UI_POWER_PATH);
     refreshStaleDataStatus('staleDataInterval');
     if (isPanelVisible('#overview-panel')) {
       refreshPlanForUi('periodicRefresh');

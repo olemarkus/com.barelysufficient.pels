@@ -108,6 +108,10 @@ let usageHistoryToggleReady = false;
 let powerStatsRendered = false;
 let setHourlyPatternToggleActive: (view: HourlyPatternView | null) => void = () => {};
 
+// Whole-home only, deliberately: this reader flattens the payload, so an
+// `unavailable` scoped read would be indistinguishable from a measured idle.
+// The scope-selector PR adds a scoped reader that discriminates
+// `payload.homeScope` first (see TODO.md).
 const getPowerReadModel = async (): Promise<SettingsUiPowerPayload> => {
   const payload = await getApiReadModel<SettingsUiPowerPayload>(SETTINGS_UI_POWER_PATH);
   return payload ?? { tracker: null, status: null, heartbeat: null };

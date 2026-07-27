@@ -2,7 +2,7 @@ import { panels, tabListEntries, tabs, type MdTabElement } from './dom.ts';
 import { SETTINGS_UI_POWER_PATH } from '../../../contracts/src/settingsUiApi.ts';
 import { loadCapacitySettings } from './capacity.ts';
 import { refreshHomeLimitsOnLimitsPanel } from './homeLimits.ts';
-import { invalidateApiCache } from './homey.ts';
+import { invalidateApiCacheForAllHomes } from './homey.ts';
 import { refreshPriceConfigView } from './priceConfig.ts';
 import { refreshDailyBudgetPlan } from './dailyBudget.ts';
 import { discardBudgetAdjust, getBudgetAdjustView } from './budgetAdjustController.ts';
@@ -56,7 +56,7 @@ const runTabActivationSideEffects = (tabId: string) => {
     return;
   }
   if (tabId === 'usage') {
-    invalidateApiCache(SETTINGS_UI_POWER_PATH);
+    invalidateApiCacheForAllHomes(SETTINGS_UI_POWER_PATH);
     runLoggedTask(refreshPowerData(), 'Failed to refresh power data', 'showTab');
     return;
   }

@@ -2,7 +2,7 @@ import {
   SETTINGS_UI_PLAN_PATH,
   SETTINGS_UI_STARVATION_RESCUE_DEVICES_PATH,
 } from '../../../contracts/src/settingsUiApi.ts';
-import { invalidateApiCache } from './homey.ts';
+import { invalidateApiCache, invalidateApiCacheForAllHomes } from './homey.ts';
 import { loadStarvationRescuableDevices } from './starvationRescue.ts';
 import { refreshPlan, renderPlan, type PlanSnapshot } from './plan.ts';
 
@@ -39,7 +39,7 @@ export const repaintOverviewWithRescueGate = (
 // gate. Bumps the same token so a concurrent in-flight gate fetch can't repaint a
 // stale snapshot over this.
 export const refreshOverviewPlanWithRescueGate = (): Promise<void> => {
-  invalidateApiCache(SETTINGS_UI_PLAN_PATH);
+  invalidateApiCacheForAllHomes(SETTINGS_UI_PLAN_PATH);
   invalidateApiCache(SETTINGS_UI_STARVATION_RESCUE_DEVICES_PATH);
   ++generation;
   // The gate loader already swallows + logs its own fetch errors, but guard the

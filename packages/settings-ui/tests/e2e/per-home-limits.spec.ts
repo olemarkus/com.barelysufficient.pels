@@ -406,3 +406,52 @@ test('a held pre-GA meter area cannot claim active control or stale live power',
   await expect(page.locator('#home-limits-inactive-notice'))
     .toContainText('open Multiple meters and save this area');
 });
+
+test('a device pin overrides zone membership in a scoped devices read', async ({ page }) => {
+  // Pins the stub seam the scope-selector surface consumes: a scoped
+  // `/ui_devices?homeId=` read must honor `device_home_assignments` with the
+  // producer's precedence (`resolveDeviceHome`, lib/home/membership.ts) — a
+  // pin to an existing home beats the zone rule, a pin to 'main' opts a
+  // device out of a surrounding area, and a dangling pin falls back to the
+  // zone rule. No panel drives this read yet, so the spec speaks the same
+  // transport the client's `homeScopedApiUri` composes.
+  await gotoApp(page);
+  await seedRentalMeterSnapshot(page);
+  await seedRentalArea(page);
+
+  const readScopedDeviceIds = (): Promise<string[]> => page.evaluate(async (areaId) => {
+    const { Homey } = window as unknown as {
+      Homey: {
+        api: (
+          method: string,
+          uri: string,
+          cb: (err: Error | null, result?: { devices?: Array<{ id: string }> }) => void,
+        ) => void;
+      };
+    };
+    return new Promise<string[]>((resolve, reject) => {
+      Homey.api('GET', `/ui_devices?homeId=${areaId}`, (err, result) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        resolve((result?.devices ?? []).map((device) => device.id));
+      });
+    });
+  }, AREA_ID);
+
+  // Zone rule alone: the rental meter is the area's only in-subtree device.
+  expect(await readScopedDeviceIds()).toEqual(['dev_rental_meter']);
+
+  // The water heater (Utility room, outside the rental subtree) is pinned INTO
+  // the area; the rental meter is pinned OUT to the Main home despite its
+  // in-subtree zone; the heat pump's pin dangles (no such area) and falls back
+  // to its zone rule → main, so it must not leak into the area.
+  await seedStubSetting(page, 'device_home_assignments', {
+    dev_waterheater: AREA_ID,
+    dev_rental_meter: 'main',
+    dev_heatpump: 'h_99999999',
+  });
+
+  expect(await readScopedDeviceIds()).toEqual(['dev_waterheater']);
+});

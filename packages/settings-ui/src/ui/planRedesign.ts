@@ -74,6 +74,10 @@ const getPlanSnapshotFromPayload = (payload: SettingsUiPlanPayload | null | unde
   parsePlanSnapshot(payload?.plan)
 );
 
+// Whole-home only, deliberately: this reader collapses the payload to
+// `PlanSnapshot | null`, so an `unavailable` scoped read would masquerade as
+// "no plan committed yet". The scope-selector PR adds a scoped reader that
+// discriminates `payload.homeScope` first (see TODO.md).
 const getPlanSnapshot = async (): Promise<PlanSnapshot | null> => (
   getPlanSnapshotFromPayload(await getApiReadModel<SettingsUiPlanPayload>(SETTINGS_UI_PLAN_PATH))
 );
