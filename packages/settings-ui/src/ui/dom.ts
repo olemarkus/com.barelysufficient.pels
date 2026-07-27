@@ -117,6 +117,7 @@ export const settingsSimulationModeInput = document.querySelector(
 export const dryRunBanner = qs('#dry-run-banner');
 export const dryRunBannerText = document.querySelector('#dry-run-banner-text') as HTMLElement | null;
 export const simulationDisableButton = document.querySelector('#simulation-disable-button') as MdButtonElement | null;
+export const simulationHomeScopeNote = document.querySelector('#simulation-home-scope-note') as HTMLElement | null;
 export const staleDataBanner = qs('#stale-data-banner');
 export const staleDataBannerText = qs('#stale-data-text');
 export const staleDataBannerAction = document.querySelector('#stale-data-action') as MdButtonElement | null;

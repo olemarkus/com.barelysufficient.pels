@@ -27,6 +27,7 @@ import { hasObservedStateOfCharge } from '../../../shared-domain/src/stateOfChar
 import { flattenPlanHistoryEntries } from '../../../shared-domain/src/deferredPlanHistory.ts';
 import { buildDeadlineHref } from './deadlineUrls.ts';
 import { resolveBrowserTimeZone } from './deadlinePlanHistoryFetch.ts';
+import { areMeterAreasInUse, subscribeToHomeScope } from './homeScope.ts';
 import {
   formatSmartTaskExtraPermissionsValue,
   formatSmartTaskCurrentValueLine,
@@ -295,6 +296,11 @@ export const refreshDeadlinesList = async (): Promise<void> => {
       status: 'ready',
       cards: latestCards,
       historyPresent,
+      // Honest Main-only notice gate (multi-home locked decision 4). Read at
+      // render time from the shell's roster — fresh here because the roster
+      // refreshes on `homes_config` realtime pushes and on every scope-aware
+      // panel activation, and this panel refreshes on its own activation.
+      meterAreasInUse: areMeterAreasInUse(),
     };
     renderDeadlinesList(surface, state);
   };
@@ -342,6 +348,21 @@ export const refreshDeadlinesList = async (): Promise<void> => {
     });
   }
 };
+
+// The Main-only notice's only external input is the shell's roster +
+// activation posture; refresh a VISIBLE Smart tasks panel when they change (an
+// area added or removed from the Multiple-meters panel, or a second WebView).
+// Scope PICKS also fire this listener, but the picker never renders on this
+// panel, so those only arrive while it is hidden. Visibility is checked inline
+// (the `budgetRedesign.ts` precedent) — the tab-activation hook covers the
+// hidden-panel case on the next open.
+subscribeToHomeScope(() => {
+  const panel = document.querySelector('#deadlines-panel');
+  if (!panel || panel.classList.contains('hidden')) return;
+  void refreshDeadlinesList().catch((error: unknown) => {
+    void logSettingsError('Failed to refresh deadlines list', error, 'homeScope');
+  });
+});
 
 export const testExports = {
   resolveDeadlinesListCards,

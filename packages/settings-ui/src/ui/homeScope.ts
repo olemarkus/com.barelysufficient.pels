@@ -113,6 +113,16 @@ const writePersistedScope = (homeId: string): void => {
 
 export const getHomeScope = (): HomeScopeState => ({ selectedHomeId, areas, runtimeActive });
 
+/**
+ * Whether at least one meter area is actually IN USE — the gate for the honest
+ * scope lines and not-supported-yet notices (Budget's Main-home scope line,
+ * the Smart tasks Main-only notice). A held pre-GA config (`runtimeActive`
+ * false) does not count: its devices still belong to the Main home, so a
+ * "Main home only" claim there would describe a split the runtime is not
+ * doing. Same predicate the home badges resolve (`resolveHomeBadgeRead`).
+ */
+export const areMeterAreasInUse = (): boolean => runtimeActive && areas.length > 0;
+
 
 /** Register a consumer of the selected home. There is no unsubscribe: every
  * subscriber is a long-lived shell controller. */

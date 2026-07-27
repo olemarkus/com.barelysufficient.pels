@@ -44,6 +44,8 @@ import {
 } from './budgetRedesignResolvers.ts';
 import { resolveExportPriceNowLine } from './budgetExportPriceLine.ts';
 import type { CombinedPriceRow } from './combinedPrices.ts';
+import { HOME_SCOPE_BUDGET_MAIN_ONLY_LINE } from '../../../shared-domain/src/homeScopeCopy.ts';
+import { areMeterAreasInUse, subscribeToHomeScope } from './homeScope.ts';
 
 export type { BudgetDayView } from './budgetRedesignResolvers.ts';
 
@@ -223,6 +225,11 @@ const buildProps = (): BudgetOverviewProps => {
     allocationWarning: view === 'today' ? resolveAllocationWarning(planPayload) : null,
     priceLevelChip: resolvePriceLevelChip(latestRenderState.priceLevel),
     weatherInsight,
+    // Honest scope line (multi-home locked decision 3): once meter areas are
+    // in use, the page says the daily budget is the Main home's. Resolved at
+    // render time from the shell's roster; the tab-activation refresh and the
+    // roster-change re-render below keep it current.
+    mainHomeScopeLine: areMeterAreasInUse() ? HOME_SCOPE_BUDGET_MAIN_ONLY_LINE : null,
     adjustReturnTarget,
     onShowUsage: () => {
       usageNavigator();
@@ -262,6 +269,18 @@ setBudgetAdjustRenderer(() => doRender());
 // Weather-insight data lands asynchronously (budget-tab fetch, settings.set
 // round-trips); re-render the Budget surface whenever the controller updates.
 setWeatherInsightRenderer(() => doRender());
+// The Main-home scope line's only inputs are the shell's roster + activation
+// posture; repaint a VISIBLE Budget panel when they change (an area added or
+// removed from the Multiple-meters panel, or a second WebView). Scope PICKS
+// also fire this listener, but the picker never renders on the Budget panel,
+// so those only ever arrive while the panel is hidden. Visibility is checked
+// inline rather than via `uiRefreshTasks.isPanelVisible` — importing it here
+// would close a module cycle through `dailyBudget.ts`.
+subscribeToHomeScope(() => {
+  const panel = document.querySelector('#budget-panel');
+  if (!panel || panel.classList.contains('hidden')) return;
+  doRender();
+});
 
 // Entry point for the `budget-weather` virtual settings-target (boot.ts):
 // open the Budget tab directly on the Weather insight detail view. If the

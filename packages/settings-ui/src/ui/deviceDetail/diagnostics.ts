@@ -13,11 +13,13 @@ import {
   PLAN_STATE_DEFERRED_OBJECTIVE_AVOID_STATUS,
 } from '../../../../shared-domain/src/planStateLabels.ts';
 import { STARVATION_WAITING_FOR_POWER_COPY } from '../../../../shared-domain/src/planStarvation.ts';
+import { HOME_SCOPE_DIAGNOSTICS_NOT_MEASURED } from '../../../../shared-domain/src/homeScopeCopy.ts';
 import {
   deviceDetailDiagnosticsCards,
   deviceDetailDiagnosticsDisclosure,
   deviceDetailDiagnosticsStatus,
 } from '../dom.ts';
+import { isDeviceInMeterArea } from '../homeBadges.ts';
 import { getApiReadModel, getHomeyTimezone } from '../homey.ts';
 import { logSettingsError } from '../logging.ts';
 
@@ -280,6 +282,15 @@ export const refreshDeviceDetailDiagnostics = async (params: {
 }) => {
   const requestSeq = diagnosticsRequestSeq + 1;
   diagnosticsRequestSeq = requestSeq;
+  // Honest not-supported state (multi-home locked decision 5): the payload is
+  // the MAIN home's diagnostics recorder, which never sees a meter-area
+  // device's plan — so for one, "No diagnostics recorded yet" would read as a
+  // healthy device nobody is worried about. Say the truth instead, and skip
+  // the fetch the answer cannot come from.
+  if (isDeviceInMeterArea(params.deviceId)) {
+    renderDeviceDiagnosticsEmpty(HOME_SCOPE_DIAGNOSTICS_NOT_MEASURED);
+    return;
+  }
   if (params.showLoading) {
     showDeviceDetailDiagnosticsLoading();
   }

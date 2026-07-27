@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { renderBudgetOverview, type BudgetOverviewProps } from '../src/ui/views/BudgetOverview.tsx';
+import { HOME_SCOPE_BUDGET_MAIN_ONLY_LINE } from '../../shared-domain/src/homeScopeCopy.ts';
 
 /* -------------------------------------------------------------------------- *
  * Budget hero managed/background split bar.
@@ -48,6 +49,7 @@ const buildProps = (overrides: Partial<BudgetOverviewProps> = {}): BudgetOvervie
   allocationWarning: null,
   priceLevelChip: null,
   weatherInsight: null,
+  mainHomeScopeLine: null,
   adjustReturnTarget: 'plan',
   onReturnToSettings: () => {},
   onShowUsage: () => {},
@@ -166,5 +168,26 @@ describe('BudgetHero managed/background split bar', () => {
   it('renders no split DOM at all when the hero carries no split', () => {
     renderBudgetOverview(mount, withSplit(null));
     expect(mount.querySelector('#budget-redesign-split')).toBeNull();
+  });
+});
+
+describe('Budget Main-home scope line (multi-home honest states)', () => {
+  it('renders the scope line under the header when meter areas are in use', () => {
+    renderBudgetOverview(mount, buildProps({ mainHomeScopeLine: HOME_SCOPE_BUDGET_MAIN_ONLY_LINE }));
+    const line = mount.querySelector<HTMLElement>('#budget-home-scope-line');
+    expect(line?.textContent).toBe(HOME_SCOPE_BUDGET_MAIN_ONLY_LINE);
+  });
+
+  it('keeps the scope claim on the Adjust sub-view (same Main-home budget being edited)', () => {
+    renderBudgetOverview(mount, buildProps({
+      localView: 'adjust',
+      mainHomeScopeLine: HOME_SCOPE_BUDGET_MAIN_ONLY_LINE,
+    }));
+    expect(mount.querySelector('#budget-home-scope-line')).not.toBeNull();
+  });
+
+  it('renders no scope-line DOM on a single-home install', () => {
+    renderBudgetOverview(mount, buildProps());
+    expect(mount.querySelector('#budget-home-scope-line')).toBeNull();
   });
 });

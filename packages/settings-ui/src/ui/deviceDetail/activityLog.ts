@@ -4,6 +4,7 @@ import {
   deviceDetailActivityLogBody,
   deviceDetailActivityLogDisclosure,
 } from '../dom.ts';
+import { isDeviceInMeterArea } from '../homeBadges.ts';
 import { getApiReadModel, getHomeyTimezone } from '../homey.ts';
 import { logSettingsError } from '../logging.ts';
 import { renderDeviceLogView } from '../views/DeviceLogView.tsx';
@@ -52,6 +53,7 @@ export const resetDeviceDetailActivityLogView = (): void => {
 type ActivityLogState =
   | { status: 'loading' }
   | { status: 'error' }
+  | { status: 'notRecorded' }
   | { status: 'ready'; entries: SettingsUiDeviceLogPayload['entriesByDeviceId'][string] };
 
 const renderState = (state: ActivityLogState): void => {
@@ -73,6 +75,14 @@ export const refreshDeviceDetailActivityLog = async (params: {
 }): Promise<void> => {
   const requestSeq = activityLogRequestSeq + 1;
   activityLogRequestSeq = requestSeq;
+  // Honest not-supported state (multi-home locked decision 5): the payload is
+  // the MAIN home's log, which never records a meter-area device — so for one,
+  // "No activity recorded yet" would read as a quiet, healthy device. Say the
+  // truth instead, and skip the fetch the answer cannot come from.
+  if (isDeviceInMeterArea(params.deviceId)) {
+    renderState({ status: 'notRecorded' });
+    return;
+  }
   if (params.showLoading) {
     showDeviceDetailActivityLogLoading();
   }

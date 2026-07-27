@@ -629,6 +629,13 @@
           <small class="field__hint">PELS shows what it would do, but devices are not switched automatically.</small>
         </span>
       </div>
+      <!-- Honest scope note (multi-home): this page carries only the Main
+           home's switch, yet the Settings hub's "Partly on" chip routes here
+           for any split posture. Copy is set from shared-domain
+           (HOME_SCOPE_SIMULATION_MAIN_ONLY_NOTE) and the note un-hides only
+           while at least one active meter area exists — `capacity.ts`
+           syncDryRunBannerVisibility owns both. -->
+      <p class="pels-notice-info simulation-home-scope-note" id="simulation-home-scope-note" hidden></p>
     </section>
 
     <section class="card panel" id="overview-panel" data-panel="overview">

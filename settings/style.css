@@ -5516,6 +5516,13 @@ details[open] > summary .disclosure-chevron {
   gap: var(--spacing-3);
 }
 
+/* Honest Main-home scope line under the Budget header (multi-home): quiet
+   supporting text on the page background, spaced as its own row between the
+   header and whichever local view renders below. */
+.budget-home-scope-line {
+  margin: var(--spacing-2) 0 var(--spacing-3);
+}
+
 /* Budget page header now consumes the shared `.plan-hero` / `.pels-hero`
    primitive — eyebrow + headline + chip-row inherit the same typography,
    surface, and tone scaffolding the four sibling panels render. The
@@ -7343,6 +7350,19 @@ body:has(#budget-redesign-adjust-view .budget-redesign-actions) .toast {
  * the page-level answer to "are my deadlines on track?". */
 .deadlines-list-hero {
   margin-bottom: var(--spacing-3);
+}
+
+/* Honest Main-only notice under the Smart tasks header (multi-home): rides
+   the shared `.pels-notice-info` primitive, spaced as its own row between
+   the hero and the task cards (or the Past tasks archive when empty). */
+.deadlines-home-scope-notice {
+  margin-bottom: var(--spacing-3);
+}
+
+/* Honest scope note on the Simulation-mode settings page (multi-home):
+   spaced below the Main home's switch card it qualifies. */
+.simulation-home-scope-note {
+  margin-top: var(--spacing-3);
 }
 
 /* Hero subline affordance: when the subline names a specific card, the

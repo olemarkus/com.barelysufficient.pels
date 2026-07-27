@@ -902,6 +902,35 @@ some PELS features don’t cover them yet. Report anything unexpected and it
 gets fixed fast.` Confident and factual — never reworded into a hedge about
 whether the feature works, and never an em-dashed aside.
 
+### Honest scope lines and not-supported-yet states
+
+Surfaces that do NOT follow the `Showing` picker say so once meter areas are
+**in use** (an active roster with `runtimeActive` — a held pre-GA config or a
+single-home install renders none of these). Canonical copy lives in
+`homeScopeCopy.ts`; every line says what happens and names the Main home with
+the one registered constant:
+
+| Surface | Copy |
+|---|---|
+| Budget tab (scope line under the header) | `Your daily budget covers the Main home. Each meter area runs on its own cap and isn’t counted here.` |
+| Smart tasks list (info notice under the hero) | `Smart tasks run on Main home devices. A device in a meter area can’t have a smart task yet.` |
+| Device-detail diagnostics, area device | `Not measured for meter areas yet. PELS limits and resumes this device normally, but doesn’t record diagnostics for it yet.` |
+| Device-detail activity log, area device | `Not recorded for meter areas yet. PELS limits and resumes this device normally, but doesn’t keep an activity log for it yet.` |
+| Simulation-mode settings page (note under the switch) | `This switch covers the Main home. Each meter area has its own “Control devices in this area” switch, under Limits & safety.` |
+
+Rules pinned by these lines:
+
+- The Budget line says **Main home**, never "whole home" — the daily budget
+  binds Main's tracker and meter (locked decision 3).
+- The device-detail lines lead with the honest gap ("Not measured/recorded …
+  yet") and then say control is unaffected — an empty diagnostics payload that
+  reads as a healthy device is exactly what they exist to prevent (locked
+  decision 5). The fetch is skipped: the Main-home payload cannot answer for
+  an area device.
+- The Simulation-page note composes the toggle name from
+  `HOME_LIMITS_CONTROL_LABEL`, so the pointer cannot drift from the real
+  control it names.
+
 ### Save refusals (`homeAreaConfigRulesCopy.ts`)
 
 Saving a meter area can be refused, and each refusal names one next step
