@@ -132,6 +132,7 @@ const buildActivePlan = (overrides: {
   pending?: boolean;
   latest?: DeferredObjectiveActivePlanRevisionV1 | null;
   deadlineAtMs?: number;
+  diagnosticReasonCode?: DeferredObjectiveActivePlanV1['diagnosticReasonCode'];
 } = {}): DeferredObjectiveActivePlanV1 => {
   const deviceId = overrides.deviceId ?? 'heater-1';
   const pending = overrides.pending ?? false;
@@ -146,6 +147,9 @@ const buildActivePlan = (overrides: {
     startedAtMs: MOCK_NOW_MS,
     pending,
     objectiveSignature: `${deviceId}:sig`,
+    ...(overrides.diagnosticReasonCode !== undefined
+      ? { diagnosticReasonCode: overrides.diagnosticReasonCode }
+      : {}),
     original: latest,
     latest,
   };
